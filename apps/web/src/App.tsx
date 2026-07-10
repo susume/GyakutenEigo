@@ -78,6 +78,7 @@ const emptyQuestion = {
 };
 
 const choices: Choice[] = ["A", "B", "C", "D"];
+const publicAsset = (path: string) => `${import.meta.env.BASE_URL}${path.replace(/^\//, "")}`;
 
 type QuestionDraft = typeof emptyQuestion;
 type ArenaPositionPayload = { x: number; z: number; y?: number; facing: number };
@@ -624,7 +625,7 @@ function GyakutenEigoHome({ onOpenGame, onJoinGame }: { onOpenGame: () => void; 
         </div>
       </div>
       <button className="game-host-card" onClick={onOpenGame}>
-        <img src="/assets/player-blue.png" alt="" aria-hidden="true" />
+        <img src={publicAsset("/assets/player-blue.png")} alt="" aria-hidden="true" />
         <span className="game-host-card-label">Live Game Host</span>
         <strong>Quiz-Strike</strong>
         <small>Host a quiz arena, share a join code, and run team rounds online.</small>
@@ -671,17 +672,21 @@ function QuizStrikeLanding({ onTeacher, onStudent }: { onTeacher: () => void; on
 function TeacherAuth({ onAuthed }: { onAuthed: (user: TeacherUser) => void }) {
   const [isSignup, setIsSignup] = useState(true);
   const [form, setForm] = useState({ name: "", email: "", password: "" });
+  const [isSubmitting, setIsSubmitting] = useState(false);
   const status = useAsyncMessage();
 
   const submit = async (event: React.FormEvent) => {
     event.preventDefault();
     status.clear();
+    setIsSubmitting(true);
     try {
       const payload = (isSignup ? await authApi.signup(form) : await authApi.login(form)) as AuthPayload;
       localStorage.setItem("quizstrike_token", payload.token);
       onAuthed(payload.user);
     } catch (err) {
       status.report(err);
+    } finally {
+      setIsSubmitting(false);
     }
   };
 
@@ -715,11 +720,11 @@ function TeacherAuth({ onAuthed }: { onAuthed: (user: TeacherUser) => void }) {
           />
         </label>
         {status.error && <p className="error-text">{status.error}</p>}
-        <button className="primary" type="submit">
+        <button className="primary" type="submit" disabled={isSubmitting}>
           <GraduationCap size={18} aria-hidden="true" />
-          {isSignup ? "Create Account" : "Log In"}
+          {isSubmitting ? "Working..." : isSignup ? "Create Account" : "Log In"}
         </button>
-        <button className="text-button" type="button" onClick={() => setIsSignup(!isSignup)}>
+        <button className="text-button" type="button" onClick={() => setIsSignup(!isSignup)} disabled={isSubmitting}>
           {isSignup ? "Use existing account" : "Create a teacher account"}
         </button>
       </form>

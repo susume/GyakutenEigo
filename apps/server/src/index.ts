@@ -635,14 +635,16 @@ const registerFireRequest = (playerId: string, requestId: unknown) => {
   return { ok: true as const };
 };
 
-app.get("/health", (_req, res) => {
-  res.json({
-    ok: true,
-    service: "quizstrike-server",
-    environment: process.env.NODE_ENV ?? "development",
-    storage: "memory",
-    time: now()
-  });
+const healthPayload = () => ({
+  ok: true,
+  service: "quizstrike-server",
+  environment: process.env.NODE_ENV ?? "development",
+  storage: "memory",
+  time: now()
+});
+
+app.get(["/health", "/api/health"], (_req, res) => {
+  res.json(healthPayload());
 });
 
 app.post("/api/auth/signup", async (req, res) => {

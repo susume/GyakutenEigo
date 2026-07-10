@@ -1,8 +1,13 @@
 import type { Choice, SessionSettings } from "@quizstrike/shared";
 
+const cleanUrl = (value: string | undefined) => {
+  const trimmed = value?.trim();
+  return trimmed ? trimmed.replace(/\/$/, "") : undefined;
+};
+
 const localApiUrl = `${window.location.protocol}//${window.location.hostname}:4000`;
 const API_URL =
-  (import.meta.env.VITE_API_URL as string | undefined)?.replace(/\/$/, "") ??
+  cleanUrl(import.meta.env.VITE_API_URL as string | undefined) ??
   (window.location.hostname === "localhost" || window.location.hostname === "127.0.0.1" ? localApiUrl : window.location.origin);
 
 export class ApiError extends Error {
@@ -21,10 +26,18 @@ export async function api<T>(path: string, options: RequestInit = {}): Promise<T
   const token = getToken();
   if (token) headers.set("Authorization", `Bearer ${token}`);
 
-  const response = await fetch(`${API_URL}${path}`, {
-    ...options,
-    headers
-  });
+  let response: Response;
+  try {
+    response = await fetch(`${API_URL}${path}`, {
+      ...options,
+      headers
+    });
+  } catch {
+    throw new ApiError(
+      `Could not reach the Quiz-Strike game server at ${API_URL}. Check that the server is deployed, VITE_API_URL is correct, and CLIENT_ORIGIN allows this web address.`,
+      0
+    );
+  }
 
   const payload = (await response.json().catch(() => ({}))) as { error?: string };
   if (!response.ok) {
@@ -61,9 +74,17 @@ export const teacherApi = {
   report: (code: string) => api(`/api/sessions/${code}/report`),
   reportCsv: async (code: string) => {
     const token = getToken();
-    const response = await fetch(`${API_URL}/api/sessions/${code}/report.csv`, {
-      headers: token ? { Authorization: `Bearer ${token}` } : undefined
-    });
+    let response: Response;
+    try {
+      response = await fetch(`${API_URL}/api/sessions/${code}/report.csv`, {
+        headers: token ? { Authorization: `Bearer ${token}` } : undefined
+      });
+    } catch {
+      throw new ApiError(
+        `Could not reach the Quiz-Strike game server at ${API_URL}. Check that the server is deployed, VITE_API_URL is correct, and CLIENT_ORIGIN allows this web address.`,
+        0
+      );
+    }
     if (!response.ok) {
       const payload = (await response.json().catch(() => ({}))) as { error?: string };
       throw new ApiError(payload.error ?? "CSV export failed.", response.status);

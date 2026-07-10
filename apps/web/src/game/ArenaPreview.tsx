@@ -290,7 +290,8 @@ export default function ArenaPreview({
 
     const textureLoader = new THREE.TextureLoader();
     const loadTexture = (path: string) => {
-      const texture = textureLoader.load(path);
+      const url = `${import.meta.env.BASE_URL}${path.replace(/^\//, "")}`;
+      const texture = textureLoader.load(url);
       texture.colorSpace = THREE.SRGBColorSpace;
       return texture;
     };

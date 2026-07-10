@@ -2,7 +2,7 @@
 
 This guide prepares the GyakutenEigo site and its Quiz-Strike game page for a hosted multiplayer test.
 
-Target domains:
+Example target domains:
 
 - Web site: `https://www.gyakuteneigo.com`
 - Game API/socket server: `https://api.gyakuteneigo.com`
@@ -36,7 +36,7 @@ Web build:
 VITE_API_URL=https://api.gyakuteneigo.com
 ```
 
-Use `.env.production.example` as the template for hosted environments.
+Use `.env.production.example` as the template for hosted environments. If you test from the default GitHub Pages URL before a custom domain is ready, include that Pages URL in `CLIENT_ORIGIN`, or the browser will block account creation.
 
 ## Build Commands
 
@@ -74,12 +74,14 @@ After the repository is pushed to GitHub:
 1. Open the `susume/GyakutenEigo` GitHub repository.
 2. Go to Settings -> Pages.
 3. Under Build and deployment, choose GitHub Actions.
-4. Go to Actions -> Deploy Web.
-5. Run the workflow, or push to `main`.
-6. In Settings -> Pages, set the custom domain to `www.gyakuteneigo.com`.
-7. Enable Enforce HTTPS when GitHub makes it available.
+4. In Settings -> Secrets and variables -> Actions -> Variables, set `VITE_API_URL` to the public server URL, for example `https://api.gyakuteneigo.com`.
+5. If you are using the default project Pages URL, leave `PAGE_CUSTOM_DOMAIN` blank. The workflow will build assets under `/<repo-name>/`.
+6. If you are using a custom domain, set `PAGE_CUSTOM_DOMAIN` to that domain, for example `www.gyakuteneigo.com`. The workflow will write the `CNAME` file and build assets for `/`.
+7. Go to Actions -> Deploy Web.
+8. Run the workflow, or push to `main`.
+9. If using a custom domain, enable Enforce HTTPS when GitHub makes it available.
 
-The workflow writes the `CNAME` file and a `404.html` SPA fallback into the Pages artifact during deployment.
+The workflow writes a `404.html` SPA fallback into the Pages artifact during deployment, and writes `CNAME` only when `PAGE_CUSTOM_DOMAIN` is set.
 
 ## Domain DNS
 
