@@ -1,208 +1,185 @@
-# QuizStrike Architecture
+# GyakutenEigo and Quiz Strike Architecture
 
-QuizStrike Classroom is a multiplayer quiz arena. Teachers create quiz sets and sessions in the web app. Students join with a session code, answer questions to earn quiz money, and play a snowball-tag arena through the React + Three.js/WebGL browser client.
+GyakutenEigo is the public English-learning site. Quiz Strike is its separate, private classroom multiplayer game. The landing page lives at `/`; the Quiz Strike host page lives at `/quiz-strike`.
 
-## System Overview
+## Production Topology
 
 ```mermaid
 flowchart LR
-  Teacher["Teacher Browser\nReact/Vite dashboard"] -->|REST + JWT| Server["Node/Express Server"]
-  StudentWeb["Student Browser\nReact + Three.js/WebGL player"] -->|REST quiz/buy actions| Server
-  StudentWeb -->|Socket.IO movement + snowball actions| Server
-  Server -->|Socket.IO session_state| Teacher
-  Server -->|Socket.IO session_state + results| StudentWeb
-  Shared["packages/shared\nrules + types"] --> Server
-  Shared --> Teacher
-  Shared --> StudentWeb
+  Visitor["Teacher or student browser"] --> Pages["GitHub Pages\nwww.gyakuteneigo.com\nReact + Vite"]
+  Pages -->|"HTTPS REST + Socket.IO"| Api["Render\napi.gyakuteneigo.com\nNode + Express + Socket.IO"]
+  Api --> Memory["Single-process in-memory state\nteachers, quizzes, sessions, players, reports"]
+  Shared["packages/shared\ntypes, validation, deterministic rules"] --> Pages
+  Shared --> Api
 ```
+
+### Public addresses
+
+| Purpose | Address | Host |
+| --- | --- | --- |
+| GyakutenEigo landing page | `https://www.gyakuteneigo.com/` | GitHub Pages |
+| Quiz Strike host page | `https://www.gyakuteneigo.com/quiz-strike/` | GitHub Pages |
+| Student join page | `https://www.gyakuteneigo.com/join/` | GitHub Pages |
+| Student arena | `https://www.gyakuteneigo.com/game/` | GitHub Pages |
+| Game API and Socket.IO server | `https://api.gyakuteneigo.com/` | Render |
+| Service health check | `https://api.gyakuteneigo.com/api/health` | Render |
+
+The apex address, `https://gyakuteneigo.com`, is also a valid entry point and must remain allowed by the API. It may redirect visitors to `www`, but requests can originate from either address during that transition.
 
 ## Repository Layout
 
-- `apps/web`: React + Vite app for teacher dashboard, student join flow, and the Three.js/WebGL arena player.
-- `apps/server`: Express + Socket.IO backend for teacher auth, quiz sets, sessions, quiz answers, snowball purchases, bots, movement, and snowball tag results.
-- `packages/shared`: TypeScript contracts and deterministic game rules shared by web and server.
-- `docs`: deployment and handoff notes.
-- `prisma`: reserved database schema area. The current backend still uses in-memory maps.
+- `apps/web`: React + Vite site. It contains the GyakutenEigo landing page, Quiz Strike marketing/host page, teacher dashboard, student join flow, and Three.js/WebGL arena.
+- `apps/server`: Express + Socket.IO API for teacher authentication, quiz data, sessions, game simulation, bots, live state, reports, and CSV exports.
+- `packages/shared`: shared TypeScript contracts, input validation, map data, session rules, quiz economy, movement checks, game-mode rules, and report helpers.
+- `docs`: deployment instructions and the developer handoff prompt.
+- `.github/workflows/deploy-web.yml`: GitHub Pages build and deployment workflow.
+- `prisma`: reserved for a future persistent database. It is not active in the deployed game.
 
-## Runtime Components
+## Web Application
 
-### Web App
+Primary client entry points:
 
-Entry points:
+- `apps/web/src/App.tsx`: client routes and teacher/student flows.
+- `apps/web/src/api/client.ts`: API base URL selection, HTTP calls, and teacher/player credentials.
+- `apps/web/src/game/ArenaPreview.tsx`: Three.js renderer, FPS controls, arena UI, mobile controls, and client Socket.IO events.
+- `apps/web/src/game/desertCitadelMap.ts`: Desert Citadel geometry, routes, landmarks, and collision layout.
 
-- `apps/web/src/main.tsx`
-- `apps/web/src/App.tsx`
-- `apps/web/src/api/client.ts`
-- `apps/web/src/game/ArenaPreview.tsx`
-- `apps/web/src/game/desertCitadelMap.ts`
+Routes are implemented by the React application and are also emitted as static fallback folders during the Pages build:
 
-Responsibilities:
+- `/`: GyakutenEigo home.
+- `/quiz-strike`: Quiz Strike landing page and teacher entry.
+- `/join`: student session-code and nickname flow.
+- `/game`: student arena.
+- `/character-lab`: character preview.
 
-- Teacher signup/login and dashboard.
-- Class and quiz-set creation.
-- Session creation and classroom settings.
-- Live teacher roster and reports.
-- Student join form at `/join`.
-- Three.js/WebGL FPS arena at `/game`, including live Socket.IO movement, snowball actions, corridor-friendly map collision, and minimap exploration support.
+The build reads `VITE_API_URL`. In production it is `https://api.gyakuteneigo.com`; on local development hosts it defaults to port `4000` on the same machine.
 
-Configuration:
+## Server Application
 
-- `VITE_API_URL` sets the public server URL for hosted builds.
-- If `VITE_API_URL` is not set, local browser builds use `http://<host>:4000`.
+Entry point: `apps/server/src/index.ts`.
 
-### Server
+The server is the authority for authentication, teacher-owned data, valid player tokens, question issue/answer gates, quiz rewards, purchases, movement constraints, snowball use, hit resolution, eliminations, respawns, mode objectives, bot behavior, and reports. The browser is a renderer and input source; it is not trusted for money, answers, ammo, targets, or final player state.
 
-Entry point:
+Important HTTP routes:
 
-- `apps/server/src/index.ts`
+- `GET /health` and `GET /api/health`: deployment health checks.
+- `POST /api/auth/signup`, `POST /api/auth/login`, `GET /api/me`: teacher authentication.
+- `GET /api/teacher/dashboard`: teacher workspace data.
+- `POST /api/classes`, `POST /api/quiz-sets`, `POST /api/quiz-sets/:id/questions`: teacher content creation.
+- `POST /api/sessions`, `POST /api/sessions/:code/start`, `POST /api/sessions/:code/end`: session lifecycle.
+- `POST /api/sessions/:code/bots`: test bot creation.
+- `POST /api/sessions/:code/join`: public student entry by session code and nickname.
+- `GET /api/sessions/:code/players/:playerId/question` and `POST /api/sessions/:code/players/:playerId/answer`: quiz play.
+- `POST /api/sessions/:code/players/:playerId/buy` and `POST /api/sessions/:code/players/:playerId/buy-snowballs`: purchases.
+- `GET /api/sessions/:code/report` and `/report.csv`: teacher session results.
 
-Responsibilities:
+Socket.IO room events:
 
-- Teacher JWT auth.
-- In-memory teacher, class, quiz, session, answer, player-token storage.
-- Public student session join by code.
-- Quiz question issuing and answer validation.
-- Money, score, snowball, gear, and damage resolution using shared rules.
-- Socket.IO rooms per session code for live roster, movement, and snowball actions.
-- Bot creation and simple bot movement.
-- CSV report export.
+- Client to server: `join_session_room`, `player_position`, `fire_action`, `flag_action`.
+- Server to clients: `session_state`, `game_event`, `damage_result`, `elimination_update`, `error_message`.
 
-Important routes:
+## Game Rules and Modes
 
-- `GET /health`
-- `POST /api/auth/signup`
-- `POST /api/auth/login`
-- `GET /api/teacher/dashboard`
-- `POST /api/quiz-sets`
-- `POST /api/quiz-sets/:id/questions`
-- `POST /api/sessions`
-- `POST /api/sessions/:code/start`
-- `POST /api/sessions/:code/bots`
-- `POST /api/sessions/:code/join`
-- `GET /api/sessions/:code/players/:playerId/question`
-- `POST /api/sessions/:code/players/:playerId/answer`
-- `POST /api/sessions/:code/players/:playerId/buy`
-- `POST /api/sessions/:code/players/:playerId/buy-snowballs`
+Shared game contracts and deterministic helpers are in `packages/shared/src/index.ts`; focused tests are in `packages/shared/src/sessionRules.test.ts` and `packages/shared/src/studentSecurity.test.ts`.
 
-Socket events:
+### Flag Mode (default)
 
-- `join_session_room`
-- `session_state`
-- `player_position`
-- `fire_action`
-- `damage_result`
-- `elimination_update`
-- `quiz_result`
-- `error_message`
+- Red Team carries the flag from Red base to Blue base.
+- Red protects a placed flag; Blue captures it.
+- Round count, round duration, flag-hold duration, teams, quiz economy, snowball supplies, and player limits are teacher settings.
 
-Production config:
+### Zombie Mode
 
-- `NODE_ENV=production`
-- `JWT_SECRET` must be set to a real secret.
-- `CLIENT_ORIGIN` should be the hosted web app URL.
-- `TRUST_PROXY=true` when hosted behind a proxy.
+- Selected players begin as zombies.
+- Zombies convert humans through valid server-side tag actions.
+- The match ends when every human has been converted.
 
-### Shared Rules Package
+### Classroom game loop
 
-Entry point:
+1. A teacher creates a quiz set and a private session.
+2. Students join with the generated code and a classroom-safe nickname; they do not create accounts.
+3. The teacher starts the session and may add bots while testing.
+4. Students answer questions for in-game money, buy gear or snowball packs, and play in the Desert Citadel arena.
+5. Eliminated players can complete practice questions to respawn when the session settings permit it.
+6. The teacher ends the session and reviews live results or exports CSV.
 
-- `packages/shared/src/index.ts`
+The map is a lightweight, original Desert Citadel blockout with team spawns, free-for-all spawn metadata, protected buy zones, capture/delivery areas, obstacle bounds, a minimap, and classroom-safe visuals.
 
-Responsibilities:
+## Deployment Configuration
 
-- Core data contracts: `TeacherUser`, `QuizSet`, `Question`, `GameSession`, `PlayerSession`, `SessionSettings`.
-- Session setting defaults and sanitization.
-- Quiz reward resolution.
-- Player-token validation.
-- Question gate to prevent stale or repeated answer submissions.
-- Gear definitions.
-- Arena spawn, bounds, base-zone checks, and objective metadata.
-- Snowball use and snowball purchase rules.
-- Snowball tag damage/elimination resolution.
-- Report CSV generation.
+### GitHub Pages
 
-Rule tests live in:
+The Pages workflow builds the shared package first, then the web application. It supplies:
 
-- `packages/shared/src/sessionRules.test.ts`
-- `packages/shared/src/studentSecurity.test.ts`
+```text
+VITE_API_URL=https://api.gyakuteneigo.com
+VITE_BASE_PATH=/
+PAGE_CUSTOM_DOMAIN=www.gyakuteneigo.com
+```
 
-## Main User Flows
+It writes `CNAME`, creates SPA fallback pages for `/quiz-strike`, `/join`, `/game`, and `/character-lab`, then deploys `apps/web/dist`.
 
-### Teacher Session Flow
+DNS for the site uses GitHub Pages records at the apex and a `www` CNAME to `susume.github.io`. GitHub Pages provides HTTPS for the site.
 
-1. Teacher signs up or logs in.
-2. Teacher creates a quiz set and adds multiple-choice questions.
-3. Teacher creates a session with settings such as starting money, snowball pack price, snowballs per pack, and max players.
-4. Teacher shares the generated session code.
-5. Teacher can add bots for testing.
-6. Teacher starts the round.
-7. Teacher watches live roster and ends session to view report/CSV.
+### Render API service
 
-### Student Arena Flow
+The active service is `gyakuteneigo-api` and its custom domain is `api.gyakuteneigo.com`.
 
-1. Student opens `/join`.
-2. Student enters session code and nickname.
-3. React calls `POST /api/sessions/:code/join`.
-4. React opens `/game` with the joined player context.
-5. The Three.js arena joins the Socket.IO room and renders the Desert Citadel map.
-6. Student answers questions to earn money.
-7. Student buys snowballs or gear.
-8. Student explores the arena with the minimap, launches snowballs, and receives server-authoritative results.
+Render build command:
 
-## Data Model Summary
+```text
+npm ci --include=dev && npm run build -w @quizstrike/shared && npm run build -w @quizstrike/server
+```
 
-The current in-memory server stores:
+Render start command:
 
-- `users`: teacher accounts with password hashes.
-- `classes`: teacher-owned class summaries.
-- `quizSets`: teacher-owned quiz sets and questions.
-- `sessions`: live game sessions with players.
-- `answers`: answer logs used for reports.
-- `playerTokens`: per-student session tokens.
-- `playerQuestionGate`: current issued question per player.
-- `quizRateLimits`: simple answer-submission throttling.
+```text
+npm start -w @quizstrike/server
+```
 
-Important limitation:
+Required Render environment variables:
 
-- This data disappears when the server restarts.
-- A real classroom deployment should move these collections into persistent database tables.
+```text
+NODE_ENV=production
+NODE_VERSION=22
+JWT_SECRET=<long random secret>
+TRUST_PROXY=true
+CLIENT_ORIGIN=http://www.gyakuteneigo.com,https://www.gyakuteneigo.com,http://gyakuteneigo.com,https://gyakuteneigo.com
+```
 
-## Online Deployment Shape
+`CLIENT_ORIGIN` is a comma-separated allow-list used by both Express CORS and Socket.IO. Omitting either HTTPS origin blocks teacher account creation or real-time game connections when visitors use that address. Do not expose or commit the actual `JWT_SECRET`.
 
-For hosted playtests:
+The `api` DNS record is a CNAME to `gyakuteneigo-api.onrender.com`. Render must show the custom domain as verified with a certificate issued before relying on `https://api.gyakuteneigo.com`.
 
-1. Deploy `apps/server` as one Node service.
-2. Deploy `apps/web/dist` as a static site.
-3. Set `VITE_API_URL` in the web build to the public server URL.
-4. Set `CLIENT_ORIGIN` on the server to the public web URL.
+## Data and Operational Limits
 
-See `docs/online-play.md` for deployment commands and checklist.
+The current server stores users, classes, quiz sets, sessions, answer logs, player tokens, question gates, and rate-limit state in process memory. A Render restart, redeploy, or service sleep clears all of it, including teacher accounts and quiz content. The free Render tier can take time to wake after inactivity; the first request may be slow.
 
-## Verification Commands
+The server assumes one process. Socket.IO rooms and in-memory state are not shared between multiple instances. Before a serious classroom launch, add persistent storage and a shared Socket.IO adapter or keep a single instance intentionally.
+
+## Verification
+
+Run before pushing code:
 
 ```bash
-npm ci
 npm run typecheck
 npm test
 npm run build
 ```
 
-Current known build note:
+For a live deployment check:
 
-- Vite warns that the web bundle is larger than 500 kB. This is expected for now because the app includes Three.js and game-facing code. It is not a failing build error.
+1. Open `https://api.gyakuteneigo.com/api/health` and confirm a successful response.
+2. Open `https://www.gyakuteneigo.com/quiz-strike/` and create a teacher account.
+3. Create a quiz/session, open `https://www.gyakuteneigo.com/join/` in a second browser, join with the code, then start the round.
+4. Verify that the teacher roster and student arena update live.
 
-## Design And Safety Constraints
+The Vite bundle-size warning is expected because the frontend includes Three.js and game code; it is not a build failure.
 
-- Use school-safe language: snowballs, snowball launcher, warmth, gear, arena.
-- Do not use Counter-Strike names, maps, sounds, realistic weapon terminology, blood, gore, public matchmaking, public chat, or voice chat.
-- Students do not need accounts or emails; they join with code and nickname.
-- Teachers own quiz data and session reports.
-- Server-side validation is the authority for quiz rewards, money, snowballs, gear, damage, and eliminations.
+## Next Architecture Milestones
 
-## Current Risks And Next Architecture Milestones
-
-- Persistence: replace in-memory maps with database-backed repositories.
-- Horizontal scaling: Socket.IO rooms and session state currently assume one server instance.
-- Security hardening: add stricter production rate limits, persistent token revocation, request logging, and hosted HTTPS-only checks.
-- Accessibility: improve keyboard, screen-reader, and reduced-motion flows, especially around the game UI.
-- Observability: add structured logs and server metrics for online playtests.
+1. Replace in-memory maps with persistent database repositories and migrations.
+2. Add import/export or seed flows for teacher quiz content.
+3. Add production request logging, monitoring, durable rate limits, and token revocation.
+4. Add browser-based end-to-end tests for signup, teacher session creation, student join, gameplay, and reports.
+5. Improve keyboard, screen-reader, reduced-motion, and mobile accessibility across the teacher and game interfaces.
