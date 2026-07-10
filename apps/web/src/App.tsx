@@ -423,10 +423,11 @@ function ArenaLoading({ label = "Loading arena" }: { label?: string }) {
 
 export default function App() {
   const path = window.location.pathname;
-  const isJoinRoute = path === "/join";
-  const isGameRoute = path === "/game" || path === "/game/";
-  const isQuizStrikeRoute = path === "/quiz-strike" || path === "/quiz-strike/";
-  const isCharacterLabRoute = path === "/character-lab";
+  const routePath = path === "/" ? path : path.replace(/\/$/, "");
+  const isJoinRoute = routePath === "/join";
+  const isGameRoute = routePath === "/game";
+  const isQuizStrikeRoute = routePath === "/quiz-strike";
+  const isCharacterLabRoute = routePath === "/character-lab";
   const [mode, setMode] = useState<AppMode>(
     isCharacterLabRoute ? "characterLab" : isJoinRoute || isGameRoute ? "student" : isQuizStrikeRoute ? "quizStrike" : "home"
   );
