@@ -50,6 +50,10 @@ jobs:
           PAGE_CUSTOM_DOMAIN: ${{ vars.PAGE_CUSTOM_DOMAIN || 'www.gyakuteneigo.com' }}
         run: |
           cp apps/web/dist/index.html apps/web/dist/404.html
+          for route in quiz-strike join game character-lab; do
+            mkdir -p "apps/web/dist/$route"
+            cp apps/web/dist/index.html "apps/web/dist/$route/index.html"
+          done
           echo "$PAGE_CUSTOM_DOMAIN" > apps/web/dist/CNAME
 
       - name: Upload Pages artifact
