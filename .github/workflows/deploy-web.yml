@@ -41,18 +41,16 @@ jobs:
       - name: Build web app
         run: npm run build -w @quizstrike/web
         env:
-          VITE_API_URL: ${{ vars.VITE_API_URL }}
-          VITE_BASE_PATH: ${{ vars.PAGE_CUSTOM_DOMAIN && '/' || vars.PAGE_BASE_PATH || format('/{0}/', github.event.repository.name) }}
+          VITE_API_URL: ${{ vars.VITE_API_URL || 'https://api.gyakuteneigo.com' }}
+          VITE_BASE_PATH: ${{ vars.VITE_BASE_PATH || '/' }}
 
       - name: Configure SPA fallback and optional custom domain
         shell: bash
         env:
-          PAGE_CUSTOM_DOMAIN: ${{ vars.PAGE_CUSTOM_DOMAIN }}
+          PAGE_CUSTOM_DOMAIN: ${{ vars.PAGE_CUSTOM_DOMAIN || 'www.gyakuteneigo.com' }}
         run: |
           cp apps/web/dist/index.html apps/web/dist/404.html
-          if [ -n "$PAGE_CUSTOM_DOMAIN" ]; then
-            echo "$PAGE_CUSTOM_DOMAIN" > apps/web/dist/CNAME
-          fi
+          echo "$PAGE_CUSTOM_DOMAIN" > apps/web/dist/CNAME
 
       - name: Upload Pages artifact
         uses: actions/upload-pages-artifact@v3
