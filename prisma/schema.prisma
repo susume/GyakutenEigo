@@ -1,0 +1,148 @@
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+enum UserRole {
+  teacher
+  admin
+}
+
+enum SessionStatus {
+  waiting
+  active
+  paused
+  ended
+}
+
+enum Team {
+  blue
+  red
+}
+
+model User {
+  id           String        @id @default(cuid())
+  name         String
+  email        String        @unique
+  passwordHash String
+  role         UserRole      @default(teacher)
+  classes      Class[]
+  quizSets     QuizSet[]
+  sessions     GameSession[]
+  createdAt    DateTime      @default(now())
+  updatedAt    DateTime      @updatedAt
+}
+
+model Class {
+  id          String        @id @default(cuid())
+  teacherId   String
+  teacher     User          @relation(fields: [teacherId], references: [id], onDelete: Cascade)
+  name        String
+  description String?
+  quizSets    QuizSet[]
+  sessions    GameSession[]
+  createdAt   DateTime      @default(now())
+  updatedAt   DateTime      @updatedAt
+}
+
+model QuizSet {
+  id          String        @id @default(cuid())
+  teacherId   String
+  classId     String?
+  teacher     User          @relation(fields: [teacherId], references: [id], onDelete: Cascade)
+  class       Class?        @relation(fields: [classId], references: [id], onDelete: SetNull)
+  title       String
+  description String?
+  questions   Question[]
+  sessions    GameSession[]
+  createdAt   DateTime      @default(now())
+  updatedAt   DateTime      @updatedAt
+}
+
+model Question {
+  id          String      @id @default(cuid())
+  quizSetId   String
+  quizSet     QuizSet     @relation(fields: [quizSetId], references: [id], onDelete: Cascade)
+  prompt      String
+  choiceA     String
+  choiceB     String
+  choiceC     String
+  choiceD     String
+  correctChoice String
+  explanation String?
+  difficulty  String?
+  answerLogs  AnswerLog[]
+  createdAt   DateTime    @default(now())
+  updatedAt   DateTime    @updatedAt
+}
+
+model GameSession {
+  id           String          @id @default(cuid())
+  teacherId    String
+  classId      String?
+  quizSetId    String
+  teacher      User            @relation(fields: [teacherId], references: [id], onDelete: Cascade)
+  class        Class?          @relation(fields: [classId], references: [id], onDelete: SetNull)
+  quizSet      QuizSet         @relation(fields: [quizSetId], references: [id], onDelete: Cascade)
+  sessionCode  String          @unique
+  status       SessionStatus   @default(waiting)
+  maxPlayers   Int             @default(20)
+  currentRound Int             @default(1)
+  settingsJson Json
+  players      PlayerSession[]
+  answerLogs   AnswerLog[]
+  roundLogs    RoundLog[]
+  createdAt    DateTime        @default(now())
+  updatedAt    DateTime        @updatedAt
+  startedAt    DateTime?
+  endedAt      DateTime?
+}
+
+model PlayerSession {
+  id             String       @id @default(cuid())
+  gameSessionId  String
+  gameSession    GameSession  @relation(fields: [gameSessionId], references: [id], onDelete: Cascade)
+  nickname       String
+  team           Team
+  money          Int          @default(0)
+  isAlive        Boolean      @default(true)
+  score          Int          @default(0)
+  correctAnswers Int          @default(0)
+  wrongAnswers   Int          @default(0)
+  socketId       String?
+  gear           String       @default("starter_blaster")
+  joinedAt       DateTime     @default(now())
+  leftAt         DateTime?
+  answerLogs     AnswerLog[]
+
+  @@unique([gameSessionId, nickname])
+}
+
+model AnswerLog {
+  id              String        @id @default(cuid())
+  gameSessionId   String
+  playerSessionId String
+  questionId      String
+  gameSession     GameSession   @relation(fields: [gameSessionId], references: [id], onDelete: Cascade)
+  playerSession   PlayerSession @relation(fields: [playerSessionId], references: [id], onDelete: Cascade)
+  question        Question      @relation(fields: [questionId], references: [id], onDelete: Cascade)
+  selectedChoice  String
+  isCorrect       Boolean
+  moneyAwarded    Int
+  responseTimeMs  Int?
+  answeredAt      DateTime      @default(now())
+}
+
+model RoundLog {
+  id            String       @id @default(cuid())
+  gameSessionId String
+  gameSession   GameSession  @relation(fields: [gameSessionId], references: [id], onDelete: Cascade)
+  roundNumber   Int
+  winningTeam   Team?
+  startedAt     DateTime     @default(now())
+  endedAt       DateTime?
+}

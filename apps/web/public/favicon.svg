@@ -1,0 +1,4 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 64 64" role="img" aria-label="QuizStrike Classroom">
+  <path d="M32 6 52 14v16c0 13-8 23-20 28C20 53 12 43 12 30V14L32 6Z" fill="#eaf8f0" stroke="#147a4f" stroke-width="5" stroke-linejoin="round"/>
+  <path d="M24 31h16M32 23v16" stroke="#147a4f" stroke-width="5" stroke-linecap="round"/>
+</svg>

@@ -1,0 +1,24 @@
+{
+  "name": "quizstrike-classroom",
+  "version": "0.1.0",
+  "private": true,
+  "workspaces": [
+    "apps/web",
+    "apps/server",
+    "packages/shared"
+  ],
+  "scripts": {
+    "dev": "concurrently -n shared,server,web -c cyan,green,magenta \"npm run dev -w @quizstrike/shared\" \"npm run dev -w @quizstrike/server\" \"npm run dev -w @quizstrike/web\"",
+    "build": "npm run build -w @quizstrike/shared && npm run build -w @quizstrike/server && npm run build -w @quizstrike/web",
+    "test": "npm run test -w @quizstrike/shared",
+    "typecheck": "npm run typecheck -w @quizstrike/shared && npm run typecheck -w @quizstrike/server && npm run typecheck -w @quizstrike/web",
+    "prisma:generate": "prisma generate",
+    "prisma:migrate": "prisma migrate dev",
+    "prisma:studio": "prisma studio"
+  },
+  "devDependencies": {
+    "concurrently": "^9.2.1",
+    "prisma": "^6.11.1",
+    "typescript": "^5.8.3"
+  }
+}

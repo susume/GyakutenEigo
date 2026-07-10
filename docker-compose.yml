@@ -1,0 +1,21 @@
+services:
+  postgres:
+    image: postgres:16-alpine
+    environment:
+      POSTGRES_USER: quizstrike
+      POSTGRES_PASSWORD: quizstrike
+      POSTGRES_DB: quizstrike
+    ports:
+      - "5432:5432"
+    volumes:
+      - quizstrike-postgres:/var/lib/postgresql/data
+
+  adminer:
+    image: adminer:4
+    ports:
+      - "8080:8080"
+    depends_on:
+      - postgres
+
+volumes:
+  quizstrike-postgres:
