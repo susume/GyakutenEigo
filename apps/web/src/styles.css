@@ -229,6 +229,100 @@ label.toggle-row input {
   pointer-events: none;
 }
 
+.eyebrow {
+  display: inline-flex;
+  align-items: center;
+  width: fit-content;
+  min-height: 30px;
+  border: 1px solid #c7d2fe;
+  border-radius: 8px;
+  padding: 0 10px;
+  background: #eef2ff;
+  color: #3730a3;
+  font-size: 0.76rem;
+  font-weight: 900;
+  text-transform: uppercase;
+}
+
+.site-home {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) minmax(280px, 420px);
+  align-items: center;
+  gap: 42px;
+  min-height: calc(100vh - 72px);
+  padding: 70px clamp(24px, 7vw, 92px) 56px;
+}
+
+.site-home-copy {
+  display: grid;
+  gap: 18px;
+  max-width: 760px;
+}
+
+.site-home-copy h1 {
+  max-width: 780px;
+  margin: 0;
+  font-size: clamp(2.6rem, 6vw, 5.8rem);
+  line-height: 0.96;
+}
+
+.site-home-copy p {
+  max-width: 680px;
+  color: #334155;
+  font-size: 1.2rem;
+}
+
+.game-host-card {
+  min-height: 430px;
+  display: grid;
+  grid-template-rows: 1fr auto auto auto;
+  align-items: end;
+  justify-items: start;
+  gap: 9px;
+  overflow: hidden;
+  border: 1px solid #cbd5e1;
+  border-radius: 8px;
+  padding: 26px;
+  background: #172033;
+  color: #ffffff;
+  box-shadow: 0 22px 50px rgba(15, 23, 42, 0.2);
+  text-align: left;
+}
+
+.game-host-card img {
+  align-self: center;
+  justify-self: center;
+  width: min(260px, 78%);
+  max-height: 250px;
+  object-fit: contain;
+  filter: drop-shadow(0 22px 26px rgba(0, 0, 0, 0.28));
+}
+
+.game-host-card-label {
+  min-height: 28px;
+  display: inline-flex;
+  align-items: center;
+  border: 1px solid rgba(191, 219, 254, 0.56);
+  border-radius: 8px;
+  padding: 0 9px;
+  color: #bfdbfe;
+  font-size: 0.72rem;
+  font-weight: 900;
+  text-transform: uppercase;
+}
+
+.game-host-card strong {
+  font-size: 2rem;
+  line-height: 1;
+}
+
+.game-host-card small {
+  max-width: 310px;
+  color: #dbeafe;
+  font-size: 0.96rem;
+  font-weight: 800;
+}
+
 .landing-grid {
   display: grid;
   grid-template-columns: minmax(0, 0.95fr) minmax(360px, 1.05fr);
@@ -1741,6 +1835,7 @@ small {
   }
 
   .landing-grid,
+  .site-home,
   .character-lab-grid,
   .auth-layout,
   .workspace,
@@ -1796,6 +1891,15 @@ small {
 
   .wide-panel {
     grid-column: span 1;
+  }
+
+  .site-home {
+    min-height: auto;
+    padding-top: 44px;
+  }
+
+  .game-host-card {
+    min-height: 320px;
   }
 
   .game-stage {
@@ -1863,6 +1967,27 @@ small {
 
   .brand-button {
     justify-content: center;
+  }
+
+  .site-home {
+    padding: 32px 18px 24px;
+  }
+
+  .site-home-copy h1 {
+    font-size: 2.55rem;
+  }
+
+  .site-home-copy p {
+    font-size: 1rem;
+  }
+
+  .game-host-card {
+    min-height: 300px;
+    padding: 18px;
+  }
+
+  .game-host-card img {
+    max-height: 180px;
   }
 
   .top-actions {

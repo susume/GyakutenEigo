@@ -57,6 +57,7 @@ import {
 
 const ArenaPreview = lazy(() => import("./game/ArenaPreview"));
 
+type AppMode = "home" | "quizStrike" | "teacher" | "student" | "characterLab";
 type DashboardPayload = {
   classes: Array<{ id: string; name: string; description?: string; createdAt: string }>;
   quizSets: QuizSet[];
@@ -423,14 +424,15 @@ export default function App() {
   const path = window.location.pathname;
   const isJoinRoute = path === "/join";
   const isGameRoute = path === "/game" || path === "/game/";
+  const isQuizStrikeRoute = path === "/quiz-strike" || path === "/quiz-strike/";
   const isCharacterLabRoute = path === "/character-lab";
-  const [mode, setMode] = useState<"landing" | "teacher" | "student" | "characterLab">(
-    isCharacterLabRoute ? "characterLab" : isJoinRoute || isGameRoute ? "student" : "landing"
+  const [mode, setMode] = useState<AppMode>(
+    isCharacterLabRoute ? "characterLab" : isJoinRoute || isGameRoute ? "student" : isQuizStrikeRoute ? "quizStrike" : "home"
   );
   const [teacher, setTeacher] = useState<TeacherUser | null>(null);
 
   useEffect(() => {
-    if (isJoinRoute || isGameRoute || isCharacterLabRoute) return;
+    if (isJoinRoute || isGameRoute || isCharacterLabRoute || !isQuizStrikeRoute) return;
     if (!localStorage.getItem("quizstrike_token")) return;
     authApi
       .me()
@@ -440,12 +442,13 @@ export default function App() {
         setMode("teacher");
       })
       .catch(() => localStorage.removeItem("quizstrike_token"));
-  }, [isJoinRoute, isGameRoute, isCharacterLabRoute]);
+  }, [isJoinRoute, isGameRoute, isQuizStrikeRoute, isCharacterLabRoute]);
 
   const logout = () => {
     localStorage.removeItem("quizstrike_token");
     setTeacher(null);
-    setMode("landing");
+    window.history.pushState(null, "", "/");
+    setMode("home");
   };
 
   return (
@@ -453,12 +456,19 @@ export default function App() {
       <header className="topbar">
         <button className="brand-button" onClick={() => {
           window.history.pushState(null, "", "/");
-          setMode(teacher ? "teacher" : "landing");
+          setMode("home");
         }}>
           <Shield size={24} aria-hidden="true" />
-          <span>QuizStrike Classroom</span>
+          <span>GyakutenEigo</span>
         </button>
         <nav className="top-actions" aria-label="Primary">
+          <button className={mode === "quizStrike" ? "active" : ""} onClick={() => {
+            window.history.pushState(null, "", "/quiz-strike");
+            setMode("quizStrike");
+          }}>
+            <Play size={18} aria-hidden="true" />
+            Quiz-Strike
+          </button>
           <button className={mode === "student" ? "active" : ""} onClick={() => {
             window.history.pushState(null, "", "/join");
             setMode("student");
@@ -468,7 +478,10 @@ export default function App() {
           </button>
           {teacher ? (
             <>
-              <button className={mode === "teacher" ? "active" : ""} onClick={() => setMode("teacher")}>
+              <button className={mode === "teacher" ? "active" : ""} onClick={() => {
+                window.history.pushState(null, "", "/quiz-strike");
+                setMode("teacher");
+              }}>
                 <GraduationCap size={18} aria-hidden="true" />
                 Teacher Dashboard
               </button>
@@ -478,7 +491,10 @@ export default function App() {
               </button>
             </>
           ) : (
-            <button className={mode === "teacher" ? "active" : ""} onClick={() => setMode("teacher")}>
+            <button className={mode === "teacher" ? "active" : ""} onClick={() => {
+              window.history.pushState(null, "", "/quiz-strike");
+              setMode("teacher");
+            }}>
               <GraduationCap size={18} aria-hidden="true" />
               Teacher Login
             </button>
@@ -486,7 +502,17 @@ export default function App() {
         </nav>
       </header>
 
-      {mode === "landing" && <Landing onTeacher={() => setMode("teacher")} onStudent={() => {
+      {mode === "home" && <GyakutenEigoHome onOpenGame={() => {
+        window.history.pushState(null, "", "/quiz-strike");
+        setMode("quizStrike");
+      }} onJoinGame={() => {
+        window.history.pushState(null, "", "/join");
+        setMode("student");
+      }} />}
+      {mode === "quizStrike" && <QuizStrikeLanding onTeacher={() => {
+        window.history.pushState(null, "", "/quiz-strike");
+        setMode("teacher");
+      }} onStudent={() => {
         window.history.pushState(null, "", "/join");
         setMode("student");
       }} />}
@@ -494,6 +520,7 @@ export default function App() {
       {mode === "teacher" &&
         (teacher ? <TeacherDashboard teacher={teacher} onLogout={logout} /> : <TeacherAuth onAuthed={(user) => {
           setTeacher(user);
+          window.history.pushState(null, "", "/quiz-strike");
           setMode("teacher");
         }} />)}
       {mode === "student" && <StudentExperience />}
@@ -575,11 +602,43 @@ function CharacterLab() {
   );
 }
 
-function Landing({ onTeacher, onStudent }: { onTeacher: () => void; onStudent: () => void }) {
+function GyakutenEigoHome({ onOpenGame, onJoinGame }: { onOpenGame: () => void; onJoinGame: () => void }) {
+  return (
+    <section className="site-home">
+      <div className="site-home-copy">
+        <span className="eyebrow">GyakutenEigo</span>
+        <h1>English practice that turns review into play.</h1>
+        <p>
+          A home for classroom-friendly learning games. Start with Quiz-Strike, a live multiplayer review game
+          where teachers host private sessions and students join from any browser.
+        </p>
+        <div className="button-row">
+          <button className="primary" onClick={onOpenGame}>
+            <Play size={18} aria-hidden="true" />
+            Open Quiz-Strike
+          </button>
+          <button onClick={onJoinGame}>
+            <DoorOpen size={18} aria-hidden="true" />
+            Student Join
+          </button>
+        </div>
+      </div>
+      <button className="game-host-card" onClick={onOpenGame}>
+        <img src="/assets/player-blue.png" alt="" aria-hidden="true" />
+        <span className="game-host-card-label">Live Game Host</span>
+        <strong>Quiz-Strike</strong>
+        <small>Host a quiz arena, share a join code, and run team rounds online.</small>
+      </button>
+    </section>
+  );
+}
+
+function QuizStrikeLanding({ onTeacher, onStudent }: { onTeacher: () => void; onStudent: () => void }) {
   return (
     <section className="landing-grid">
       <div className="landing-copy">
-        <h1>QuizStrike Classroom</h1>
+        <span className="eyebrow">GyakutenEigo Game Host</span>
+        <h1>Quiz-Strike</h1>
         <p>
           A browser-based educational arena game where students answer questions to earn in-game money and help
           their team win.

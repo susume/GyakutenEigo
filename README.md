@@ -1,6 +1,6 @@
-# QuizStrike Classroom
+# GyakutenEigo
 
-QuizStrike Classroom is a browser-based educational arena prototype. Teachers create quiz sets, start private sessions, and students join with a code to answer questions, earn in-game money, and buy school-safe gear.
+GyakutenEigo is a browser-based English learning site. Its first hosted game is Quiz-Strike, a classroom arena prototype where teachers create quiz sets, start private sessions, and students join with a code to answer questions, earn in-game money, and buy school-safe gear.
 
 ## Local Setup
 
@@ -30,11 +30,11 @@ QuizStrike Classroom is a browser-based educational arena prototype. Teachers cr
    npm run dev
    ```
 
-The frontend runs on `http://localhost:5173` and the backend runs on `http://localhost:4000`.
+The frontend runs on `http://localhost:5173` and the backend runs on `http://localhost:4000`. The GyakutenEigo home page is `/`, and the Quiz-Strike game host page is `/quiz-strike`.
 
 ## Online Play
 
-For a hosted playtest, deploy the web app and game server separately:
+For a hosted playtest, deploy the GyakutenEigo web app and Quiz-Strike game server separately:
 
 - Web app: build `apps/web` and host `apps/web/dist`.
 - Game server: build and run `apps/server`.
@@ -46,7 +46,7 @@ See [docs/online-play.md](docs/online-play.md) for the full GitHub and deploymen
 
 ## Student Player and Load Time
 
-The student player is the lightweight React + Three.js/WebGL arena at `/join` and `/game`. It uses the same server-side quiz/economy/combat rules and loads as part of the normal web app.
+The student player is the lightweight React + Three.js/WebGL arena at `/join` and `/game`. The host page for Quiz-Strike is `/quiz-strike`. It uses the same server-side quiz/economy/combat rules and loads as part of the normal web app.
 
 Default play now starts in Flag Mode: Red Team carries the flag to the Blue base, while Blue Team defends and captures a placed flag. Zombie Mode is also available from the teacher session settings.
 

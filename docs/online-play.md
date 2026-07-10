@@ -1,20 +1,20 @@
 # Online Play Deployment
 
-This guide prepares QuizStrike Classroom for a hosted multiplayer test.
+This guide prepares the GyakutenEigo site and its Quiz-Strike game page for a hosted multiplayer test.
 
 Target domains:
 
-- Web game: `https://www.gyakuteneigo.com`
+- Web site: `https://www.gyakuteneigo.com`
 - Game API/socket server: `https://api.gyakuteneigo.com`
 
 ## Recommended Hosting Shape
 
 Use two hosted services:
 
-1. Web app: a static Vite build from `apps/web`.
-2. Game server: the Node server from `apps/server`.
+1. GyakutenEigo web app: a static Vite build from `apps/web`.
+2. Quiz-Strike game server: the Node server from `apps/server`.
 
-The browser connects to the game server through `VITE_API_URL`. The student player is the React + Three.js/WebGL arena at `/join` and `/game`.
+The browser connects to the game server through `VITE_API_URL`. The site home is `/`, the Quiz-Strike host page is `/quiz-strike`, and the student player is the React + Three.js/WebGL arena at `/join` and `/game`.
 
 GitHub Pages can host the web game, but it cannot run the live Node/Socket.IO server. Host the server on a Node-capable host such as Render, Railway, Fly.io, or a VPS.
 
@@ -71,7 +71,7 @@ The repository includes `.github/workflows/deploy-web.yml`.
 
 After the repository is pushed to GitHub:
 
-1. Open the GitHub repository.
+1. Open the `susume/GyakutenEigo` GitHub repository.
 2. Go to Settings -> Pages.
 3. Under Build and deployment, choose GitHub Actions.
 4. Go to Actions -> Deploy Web.
