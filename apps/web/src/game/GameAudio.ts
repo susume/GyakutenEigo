@@ -80,6 +80,7 @@ class GameAudioController {
   private bgmIndex = 0;
   private bgmActive = false;
   private lastStepAt = 0;
+  private muted = false;
 
   warm() {
     try {
@@ -98,6 +99,13 @@ class GameAudioController {
       return;
     }
     this.warm();
+  }
+
+  setMuted(muted: boolean) {
+    this.muted = muted;
+    if (this.audio && this.masterGain) {
+      this.masterGain.gain.setTargetAtTime(muted ? 0 : 0.72, this.audio.currentTime, 0.02);
+    }
   }
 
   play(cue: GameAudioCue) {
@@ -125,7 +133,7 @@ class GameAudioController {
     if (!this.audio || this.audio.state === "closed") {
       this.audio = new AudioCtor();
       this.masterGain = this.audio.createGain();
-      this.masterGain.gain.setValueAtTime(0.72, this.audio.currentTime);
+      this.masterGain.gain.setValueAtTime(this.muted ? 0 : 0.72, this.audio.currentTime);
       this.masterGain.connect(this.audio.destination);
     }
     return this.audio;

@@ -526,6 +526,18 @@ label.toggle-row input {
   z-index: 8;
 }
 
+.arena-error strong,
+.arena-error span {
+  display: block;
+}
+
+.arena-error button {
+  margin-top: var(--space-2);
+  border-color: currentColor;
+  background: var(--color-surface);
+  color: var(--color-danger);
+}
+
 .character-debug-overlay {
   position: absolute;
   right: 12px;
@@ -2420,6 +2432,35 @@ small {
     animation-iteration-count: 1 !important;
     transition-duration: 0.01ms !important;
   }
+}
+
+.game-preferences-panel {
+  display: grid;
+  gap: var(--space-3);
+}
+
+.game-preferences-panel .toggle-row {
+  border-top: 1px solid var(--color-border);
+  padding-top: var(--space-3);
+}
+
+.game-preferences-panel small,
+.settings-help {
+  color: var(--color-text-muted);
+  font-size: 0.84rem;
+}
+
+.settings-help {
+  margin: calc(var(--space-2) * -1) 0 0 30px;
+}
+
+.question-text,
+.gear-row small,
+.scoreboard-table th,
+.scoreboard-table td,
+.event-item span,
+.plain-list span {
+  overflow-wrap: anywhere;
 }
 
 @media (prefers-contrast: more) {

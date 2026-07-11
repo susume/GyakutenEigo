@@ -14,6 +14,7 @@ import {
   Play,
   Plus,
   RefreshCw,
+  Settings,
   Shield,
   ShoppingBag,
   Target,
@@ -53,6 +54,7 @@ import {
   type CharacterStressCount
 } from "./game/characters/CharacterDebugScenarios";
 import { gameAudio, type GameAudioCue } from "./game/GameAudio";
+import { readGamePreferences, writeGamePreferences, type GamePreferences } from "./game/gamePreferences";
 import {
   getIncomingHitDirection,
   shouldAutoOpenRespawnPractice,
@@ -415,7 +417,7 @@ const playFeedbackCue = (cue: FeedbackCue) => {
 
 const feedbackCue = (cue: FeedbackCue) => {
   playFeedbackCue(cue);
-  if (!window.matchMedia?.("(prefers-reduced-motion: reduce)").matches) {
+  if (readGamePreferences().vibrationEnabled && !window.matchMedia?.("(prefers-reduced-motion: reduce)").matches) {
     navigator.vibrate?.(cue === "success" ? 24 : cue === "warning" ? [20, 25, 20] : [35, 30, 35]);
   }
 };
@@ -457,6 +459,7 @@ export default function App() {
   const isGameRoute = routePath === "/game";
   const isQuizStrikeRoute = routePath === "/quiz-strike";
   const isCharacterLabRoute = routePath === "/character-lab";
+  const isCharacterLabAvailable = import.meta.env.DEV;
   const [mode, setMode] = useState<AppMode>(() => modeForRoute(routePath));
   const [teacher, setTeacher] = useState<TeacherUser | null>(null);
   const [teacherAuthMode, setTeacherAuthMode] = useState<"login" | "signup">("login");
@@ -550,7 +553,7 @@ export default function App() {
 
       {mode === "home" && <GyakutenEigoHome onOpenGame={() => navigateTo("/quiz-strike", "quizStrike")} onJoinGame={() => navigateTo("/join", "student")} />}
       {mode === "quizStrike" && <QuizStrikeLanding onTeacherLogin={() => { setTeacherAuthMode("login"); navigateTo("/quiz-strike", "teacher"); }} onTeacherSignup={() => { setTeacherAuthMode("signup"); navigateTo("/quiz-strike", "teacher"); }} onStudent={() => navigateTo("/join", "student")} />}
-      {mode === "characterLab" && <CharacterLab />}
+      {mode === "characterLab" && (isCharacterLabAvailable ? <CharacterLab /> : <InternalToolNotice onReturn={() => navigateTo("/quiz-strike", "quizStrike")} />)}
       {mode === "teacher" &&
         (teacher ? <TeacherDashboard teacher={teacher} onLogout={logout} /> : <TeacherAuth initialMode={teacherAuthMode} onAuthed={(user) => {
           setTeacher(user);
@@ -558,6 +561,16 @@ export default function App() {
         }} />)}
       {mode === "student" && <StudentExperience onExit={() => navigateTo("/quiz-strike", "quizStrike")} />}
     </main>
+  );
+}
+
+function InternalToolNotice({ onReturn }: { onReturn: () => void }) {
+  return (
+    <section className="notice-panel">
+      <h1>Internal diagnostic</h1>
+      <p>Character Lab is available only in local development. It is not a supported public game mode.</p>
+      <button className="primary" onClick={onReturn}>Return to Quiz-Strike</button>
+    </section>
   );
 }
 
@@ -1750,6 +1763,8 @@ function StudentExperience({ onExit }: { onExit: () => void }) {
   const [quizOpen, setQuizOpen] = useState(false);
   const [buyOpen, setBuyOpen] = useState(false);
   const [scoreboardOpen, setScoreboardOpen] = useState(false);
+  const [settingsOpen, setSettingsOpen] = useState(false);
+  const [gamePreferences, setGamePreferences] = useState<GamePreferences>(() => readGamePreferences());
   const [feedback, setFeedback] = useState("");
   const [viewportWidth, setViewportWidth] = useState(() => window.innerWidth);
   const [isSocketReconnecting, setIsSocketReconnecting] = useState(false);
@@ -1771,6 +1786,19 @@ function StudentExperience({ onExit }: { onExit: () => void }) {
 
   const isCompactViewport = viewportWidth <= 780;
   const nicknameError = useMemo(() => getNicknameError(nickname), [nickname]);
+
+  const updateGamePreferences = (update: Partial<GamePreferences>) => {
+    setGamePreferences((current) => {
+      const next = { ...current, ...update };
+      writeGamePreferences(next);
+      return next;
+    });
+  };
+
+  useEffect(() => {
+    gameAudio.setMuted(!gamePreferences.soundEnabled);
+    return () => gameAudio.setMuted(false);
+  }, [gamePreferences.soundEnabled]);
 
   useEffect(() => {
     const stored = readStoredStudentSession();
@@ -1923,12 +1951,14 @@ function StudentExperience({ onExit }: { onExit: () => void }) {
         setQuizOpen((open) => !open);
         setBuyOpen(false);
         setScoreboardOpen(false);
+        setSettingsOpen(false);
       }
       if (event.key.toLowerCase() === "b") {
         gameAudio.play("menu_toggle");
         setBuyOpen((open) => !open);
         setQuizOpen(false);
         setScoreboardOpen(false);
+        setSettingsOpen(false);
       }
       if (event.key === "Tab") {
         event.preventDefault();
@@ -1936,6 +1966,7 @@ function StudentExperience({ onExit }: { onExit: () => void }) {
         setScoreboardOpen(true);
         setQuizOpen(false);
         setBuyOpen(false);
+        setSettingsOpen(false);
       }
       const index = Number(event.key) - 1;
       if (quizOpen && question && index >= 0 && index < choices.length) {
@@ -1955,8 +1986,8 @@ function StudentExperience({ onExit }: { onExit: () => void }) {
     };
   }, [player, session, playerToken, quizOpen, question, scoreboardOpen]);
 
-  const panelsOpen = quizOpen || buyOpen || scoreboardOpen;
-  const gameplayInputPaused = quizOpen || buyOpen;
+  const panelsOpen = quizOpen || buyOpen || scoreboardOpen || settingsOpen;
+  const gameplayInputPaused = quizOpen || buyOpen || settingsOpen;
 
   useEffect(() => {
     if (!gameplayInputPaused || !document.pointerLockElement) return;
@@ -2215,7 +2246,7 @@ function StudentExperience({ onExit }: { onExit: () => void }) {
   const canPracticeToRespawn = !player.isAlive && session.settings.deadPlayersCanPractice && session.settings.gameMode !== "flag";
   const roundActive = session.status === "active";
   const roundEnded = session.status === "ended";
-  const menuTitle = canPracticeToRespawn && quizOpen ? "Practice to Respawn" : quizOpen ? "Quiz" : buyOpen ? "Buy Menu" : "Scoreboard";
+  const menuTitle = canPracticeToRespawn && quizOpen ? "Practice to Respawn" : quizOpen ? "Quiz" : buyOpen ? "Buy Menu" : settingsOpen ? "Game Settings" : "Scoreboard";
   const roundTimeLabel = formatDuration(remainingSeconds);
   const roundCountdownClassName = [
     "round-countdown",
@@ -2234,6 +2265,7 @@ function StudentExperience({ onExit }: { onExit: () => void }) {
       <div className="game-stage">
         <div className="game-utility-bar">
           <span>{gameModeLabel(session.settings.gameMode)}</span>
+          <button type="button" onClick={() => { setSettingsOpen(true); setQuizOpen(false); setBuyOpen(false); setScoreboardOpen(false); }}><Settings size={16} aria-hidden="true" />Settings</button>
           <button type="button" onClick={onExit}>Exit Game</button>
         </div>
         <Suspense fallback={<ArenaLoading />}>
@@ -2242,6 +2274,8 @@ function StudentExperience({ onExit }: { onExit: () => void }) {
             currentPlayer={player}
             view="fps"
             suppressHint
+            quality={gamePreferences.arenaQuality}
+            gamepadEnabled={gamePreferences.gamepadEnabled}
             controlsDisabled={!roundActive || !player.isAlive}
             inputPaused={gameplayInputPaused}
             onMove={roundActive && player.isAlive ? sendArenaPosition : undefined}
@@ -2326,14 +2360,15 @@ function StudentExperience({ onExit }: { onExit: () => void }) {
         <div className="control-prompts">
           <button disabled={roundEnded} onClick={() => { gameAudio.play("menu_toggle"); setQuizOpen(!quizOpen); setBuyOpen(false); setScoreboardOpen(false); }}>Q Quiz</button>
           <button disabled={roundEnded || !player.isAlive} onClick={() => { gameAudio.play("menu_toggle"); setBuyOpen(!buyOpen); setQuizOpen(false); setScoreboardOpen(false); }}>B Buy</button>
-          <button onMouseDown={() => { gameAudio.play("menu_toggle"); setScoreboardOpen(true); setQuizOpen(false); setBuyOpen(false); }} onMouseUp={() => setScoreboardOpen(false)} onBlur={() => setScoreboardOpen(false)}>Hold Tab Scoreboard</button>
+          <button onMouseDown={() => { gameAudio.play("menu_toggle"); setScoreboardOpen(true); setQuizOpen(false); setBuyOpen(false); setSettingsOpen(false); }} onMouseUp={() => setScoreboardOpen(false)} onBlur={() => setScoreboardOpen(false)}>Hold Tab Scoreboard</button>
+          <button onClick={() => { gameAudio.play("menu_toggle"); setSettingsOpen((open) => !open); setQuizOpen(false); setBuyOpen(false); setScoreboardOpen(false); }}><Settings size={18} aria-hidden="true" />Settings</button>
         </div>
         {rewardPulse && <div className="reward-toast" onAnimationEnd={() => setRewardPulse("")}>{rewardPulse}</div>}
         {panelsOpen && (
           <div className="game-menu-overlay" role="dialog" aria-modal="false" aria-label="Arena menu">
             <div className="game-menu-bar">
               <strong>{menuTitle}</strong>
-              <button type="button" onClick={() => { gameAudio.play("menu_toggle"); setQuizOpen(false); setBuyOpen(false); setScoreboardOpen(false); }}>
+              <button type="button" onClick={() => { gameAudio.play("menu_toggle"); setQuizOpen(false); setBuyOpen(false); setScoreboardOpen(false); setSettingsOpen(false); }}>
                 Return to Arena
               </button>
             </div>
@@ -2365,6 +2400,7 @@ function StudentExperience({ onExit }: { onExit: () => void }) {
               />
             )}
             {scoreboardOpen && <Scoreboard players={session.players} localPlayerId={player.id} gameMode={session.settings.gameMode} />}
+            {settingsOpen && <GamePreferencesPanel preferences={gamePreferences} onChange={updateGamePreferences} />}
           </div>
         )}
         {(session.status === "waiting" || roundEnded || isSocketReconnecting || !player.isAlive || status.error || feedback) && (
@@ -2538,6 +2574,58 @@ function BuyPanel({
           <em>{formatMoney(gear.cost)}</em>
         </button>
       ))}
+    </div>
+  );
+}
+
+function GamePreferencesPanel({
+  preferences,
+  onChange
+}: {
+  preferences: GamePreferences;
+  onChange: (update: Partial<GamePreferences>) => void;
+}) {
+  const [gamepadDetected, setGamepadDetected] = useState(() => Boolean(navigator.getGamepads?.().some((gamepad) => gamepad?.connected)));
+
+  useEffect(() => {
+    const sync = () => setGamepadDetected(Boolean(navigator.getGamepads?.().some((gamepad) => gamepad?.connected)));
+    window.addEventListener("gamepadconnected", sync);
+    window.addEventListener("gamepaddisconnected", sync);
+    return () => {
+      window.removeEventListener("gamepadconnected", sync);
+      window.removeEventListener("gamepaddisconnected", sync);
+    };
+  }, []);
+
+  return (
+    <div className="panel game-preferences-panel">
+      <div className="panel-title">
+        <h2>Game Settings</h2>
+        <span>Saved on this device</span>
+      </div>
+      <label>
+        Graphics quality
+        <select value={preferences.arenaQuality} onChange={(event) => onChange({ arenaQuality: event.target.value as GamePreferences["arenaQuality"] })}>
+          <option value="auto">Auto (recommended)</option>
+          <option value="performance">Performance</option>
+          <option value="balanced">Balanced</option>
+          <option value="high">High quality</option>
+        </select>
+        <small>Performance lowers pixel density and disables costly shadows for older classroom devices.</small>
+      </label>
+      <label className="toggle-row">
+        <input type="checkbox" checked={preferences.gamepadEnabled} onChange={(event) => onChange({ gamepadEnabled: event.target.checked })} />
+        <span>Enable standard controller controls {gamepadDetected ? "(controller connected)" : "(connect a controller to use)"}</span>
+      </label>
+      <p className="settings-help">Controller: left stick moves, right stick looks, A or right trigger fires, and X interacts.</p>
+      <label className="toggle-row">
+        <input type="checkbox" checked={preferences.soundEnabled} onChange={(event) => onChange({ soundEnabled: event.target.checked })} />
+        <span>Sound effects and background audio</span>
+      </label>
+      <label className="toggle-row">
+        <input type="checkbox" checked={preferences.vibrationEnabled} onChange={(event) => onChange({ vibrationEnabled: event.target.checked })} />
+        <span>Vibration feedback when available</span>
+      </label>
     </div>
   );
 }

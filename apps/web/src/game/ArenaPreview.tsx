@@ -29,6 +29,11 @@ import { CharacterFactory } from "./characters/CharacterFactory";
 import { CharacterManager, type CharacterManagerStats } from "./characters/CharacterManager";
 import { resolveCombatPointerAction } from "./arenaInput";
 import { gameAudio, type MovementAudioMode } from "./GameAudio";
+import {
+  readGamePreferences,
+  resolveArenaQuality,
+  type ArenaQuality,
+} from "./gamePreferences";
 
 interface ArenaPreviewProps {
   session?: GameSession;
@@ -39,6 +44,8 @@ interface ArenaPreviewProps {
   inputPaused?: boolean;
   debugOverlay?: boolean;
   debugLabel?: string;
+  quality?: ArenaQuality;
+  gamepadEnabled?: boolean;
   onMove?: (position: ArenaLivePosition) => void;
   onFire?: (position: ArenaLivePosition) => void;
   onInteract?: (position: ArenaLivePosition) => void;
@@ -53,6 +60,7 @@ const CROUCH_SPEED = 6.4;
 const FPS_BASE_FOV = 72;
 const MINIMAP_WIDTH = 120;
 const MINIMAP_HEIGHT = 110;
+const GAMEPAD_DEAD_ZONE = 0.18;
 const clamp = (value: number, min: number, max: number) => Math.min(max, Math.max(min, value));
 const isFiniteNumber = (value: unknown): value is number => typeof value === "number" && Number.isFinite(value);
 const serverToLocalX = (x: number) => clamp(x, -ARENA_LIMIT_X, ARENA_LIMIT_X);
@@ -204,6 +212,8 @@ export default function ArenaPreview({
   inputPaused = false,
   debugOverlay = false,
   debugLabel = "Character debug",
+  quality = "auto",
+  gamepadEnabled = true,
   onMove,
   onFire,
   onInteract
@@ -223,10 +233,16 @@ export default function ArenaPreview({
   const [zoomActive, setZoomActive] = useState(false);
   const [miniMapPosition, setMiniMapPosition] = useState<ArenaLivePosition | null>(null);
   const [renderError, setRenderError] = useState("");
+  const [fallbackQuality, setFallbackQuality] = useState<ArenaQuality | null>(null);
   const [characterDebugStats, setCharacterDebugStats] = useState<CharacterManagerStats | null>(null);
   const sceneSessionId = session?.id ?? "training";
   const currentPlayerId = currentPlayer?.id ?? "";
   const currentPlayerTeam = currentPlayer?.team ?? "blue";
+  const activeQuality = resolveArenaQuality(fallbackQuality ?? quality);
+
+  useEffect(() => {
+    setFallbackQuality(null);
+  }, [quality]);
 
   useEffect(() => {
     onMoveRef.current = onMove;
@@ -272,14 +288,19 @@ export default function ArenaPreview({
 
     let renderer: THREE.WebGLRenderer;
     try {
-      renderer = new THREE.WebGLRenderer({ antialias: true, alpha: false, powerPreference: "high-performance" });
+      renderer = new THREE.WebGLRenderer({ antialias: activeQuality !== "performance", alpha: false, powerPreference: "high-performance" });
     } catch {
       setRenderError("WebGL is not available in this browser. Try updating the browser or enabling hardware acceleration.");
       return;
     }
-    renderer.setPixelRatio(Math.min(window.devicePixelRatio, 1.75));
+    const qualityConfig = activeQuality === "performance"
+      ? { pixelRatio: 1, shadows: false, anisotropy: 2 }
+      : activeQuality === "balanced"
+        ? { pixelRatio: 1.25, shadows: false, anisotropy: 4 }
+        : { pixelRatio: 1.75, shadows: true, anisotropy: 8 };
+    renderer.setPixelRatio(Math.min(window.devicePixelRatio, qualityConfig.pixelRatio));
     renderer.setSize(mount.clientWidth, mount.clientHeight);
-    renderer.shadowMap.enabled = !isFps;
+    renderer.shadowMap.enabled = !isFps && qualityConfig.shadows;
     renderer.shadowMap.type = THREE.PCFSoftShadowMap;
     renderer.outputColorSpace = THREE.SRGBColorSpace;
     renderer.toneMapping = THREE.ACESFilmicToneMapping;
@@ -302,6 +323,9 @@ export default function ArenaPreview({
     const woodTexture = makeCanvasTexture("wood", "#bb8652");
     const waterTexture = makeCanvasTexture("water", "#67e8f9");
     const sandTexture = makeCanvasTexture("sand", "#f2ca73");
+    [floorTexture, stoneTexture, woodTexture, waterTexture, sandTexture].forEach((texture) => {
+      texture.anisotropy = qualityConfig.anisotropy;
+    });
 
     const materialCache = new Map<string, THREE.MeshStandardMaterial>();
     const materialFor = (color: string, material = "stone") => {
@@ -354,7 +378,7 @@ export default function ArenaPreview({
     grid.position.y = 0.012;
     grid.material.transparent = true;
     grid.material.opacity = 0.13;
-    scene.add(grid);
+    if (activeQuality !== "performance") scene.add(grid);
 
     const coverBoxes: THREE.Box3[] = [];
     const colliderForObject = (object: THREE.Object3D, pad = 0.25) => {
@@ -630,13 +654,45 @@ export default function ArenaPreview({
         if (equippedGearId === "power_blaster") gameAudio.playHeavyFire();
         else gameAudio.play("fire");
         window.setTimeout(() => {
-          navigator.vibrate?.(18);
+          if (readGamePreferences().vibrationEnabled) {
+            navigator.vibrate?.(18);
+          }
           onFireRef.current?.(launchPosition);
         }, 0);
       };
       fireControlRef.current = fire;
 
       const keys = new Set<string>();
+      const gamepadMove = { forward: 0, right: 0 };
+      let gamepadFireWasPressed = false;
+      let gamepadInteractWasPressed = false;
+      const applyGamepadInput = () => {
+        if (!gamepadEnabled || controlsDisabled || inputPausedRef.current || !navigator.getGamepads) {
+          gamepadMove.forward = 0;
+          gamepadMove.right = 0;
+          return;
+        }
+        const gamepad = Array.from(navigator.getGamepads()).find((item) => item?.connected);
+        if (!gamepad) {
+          gamepadMove.forward = 0;
+          gamepadMove.right = 0;
+          return;
+        }
+        const leftX = Math.abs(gamepad.axes[0] ?? 0) >= GAMEPAD_DEAD_ZONE ? gamepad.axes[0] ?? 0 : 0;
+        const leftY = Math.abs(gamepad.axes[1] ?? 0) >= GAMEPAD_DEAD_ZONE ? gamepad.axes[1] ?? 0 : 0;
+        const rightX = Math.abs(gamepad.axes[2] ?? 0) >= GAMEPAD_DEAD_ZONE ? gamepad.axes[2] ?? 0 : 0;
+        const rightY = Math.abs(gamepad.axes[3] ?? 0) >= GAMEPAD_DEAD_ZONE ? gamepad.axes[3] ?? 0 : 0;
+        gamepadMove.forward = -leftY;
+        gamepadMove.right = leftX;
+        yaw -= rightX * 0.055;
+        pitch = clamp(pitch - rightY * 0.042, -0.85, 0.62);
+        const firePressed = Boolean(gamepad.buttons[7]?.pressed || gamepad.buttons[0]?.pressed);
+        const interactPressed = Boolean(gamepad.buttons[2]?.pressed);
+        if (firePressed && !gamepadFireWasPressed) fire();
+        if (interactPressed && !gamepadInteractWasPressed) onInteractRef.current?.(localToServerPosition(playerPosition, yaw));
+        gamepadFireWasPressed = firePressed;
+        gamepadInteractWasPressed = interactPressed;
+      };
       const onKeyDown = (event: KeyboardEvent) => {
         if (controlsDisabled || inputPausedRef.current) return;
         if (event.code === "KeyF" || event.key.toLowerCase() === "f") {
@@ -790,6 +846,7 @@ export default function ArenaPreview({
         const delta = Math.min(clock.getDelta(), 0.035);
         const currentTime = performance.now();
         if (inputPausedRef.current) keys.clear();
+        applyGamepadInput();
         const crouching = keys.has("Control");
         const floorEyeHeight = crouching ? FPS_CROUCH_EYE_HEIGHT : FPS_STANDING_EYE_HEIGHT;
         const grounded = playerPosition.y <= floorEyeHeight + 0.02 && Math.abs(verticalVelocity) < 0.01;
@@ -826,6 +883,10 @@ export default function ArenaPreview({
         if (touchMove.forward < 0) movement.sub(forward);
         if (touchMove.right > 0) movement.add(right);
         if (touchMove.right < 0) movement.sub(right);
+        if (gamepadMove.forward > GAMEPAD_DEAD_ZONE) movement.add(forward);
+        if (gamepadMove.forward < -GAMEPAD_DEAD_ZONE) movement.sub(forward);
+        if (gamepadMove.right > GAMEPAD_DEAD_ZONE) movement.add(right);
+        if (gamepadMove.right < -GAMEPAD_DEAD_ZONE) movement.sub(right);
 
         if (movement.lengthSq() > 0) {
           if (wasGrounded) gameAudio.playMovementStep(movementAudioMode, currentTime);
@@ -958,7 +1019,7 @@ export default function ArenaPreview({
       renderer.dispose();
       mount.removeChild(renderer.domElement);
     };
-  }, [sceneSessionId, currentPlayerId, currentPlayerTeam, view, controlsDisabled, debugOverlay]);
+  }, [sceneSessionId, currentPlayerId, currentPlayerTeam, view, controlsDisabled, debugOverlay, activeQuality, gamepadEnabled]);
 
   const beginTouchMove = (forward: number, right: number) => (event: ReactPointerEvent<HTMLButtonElement>) => {
     event.preventDefault();
@@ -985,7 +1046,7 @@ export default function ArenaPreview({
   return (
     <div className={view === "fps" ? "arena-frame fps-view" : "arena-frame"}>
       <div className="arena-canvas" ref={mountRef} aria-label="Desert Citadel arena" />
-      {renderError && <div className="arena-error" role="alert">{renderError}</div>}
+      {renderError && <div className="arena-error" role="alert"><strong>Arena unavailable</strong><span>{renderError}</span><button type="button" onClick={() => { setFallbackQuality("performance"); setRenderError(""); }}>Retry in performance mode</button></div>}
       {debugOverlay && characterDebugStats && (
         <div className="character-debug-overlay" aria-label="Character debug stats">
           <strong>{debugLabel}</strong>

@@ -5,5 +5,15 @@ const configuredBase = process.env.VITE_BASE_PATH?.trim();
 
 export default defineConfig({
   base: configuredBase || "/",
-  plugins: [react()]
+  plugins: [react()],
+  build: {
+    rollupOptions: {
+      output: {
+        manualChunks: {
+          three: ["three"],
+          socket: ["socket.io-client"]
+        }
+      }
+    }
+  }
 });
