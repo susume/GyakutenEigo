@@ -29,6 +29,7 @@ import { CharacterFactory } from "./characters/CharacterFactory";
 import { CharacterManager, type CharacterManagerStats } from "./characters/CharacterManager";
 import { resolveCombatPointerAction } from "./arenaInput";
 import { gameAudio, type MovementAudioMode } from "./GameAudio";
+import { cycleHeavyGunZoom, getWeaponFov, shouldResetWeaponZoom } from "./weaponControls";
 import {
   readGamePreferences,
   resolveArenaQuality,
@@ -51,7 +52,7 @@ interface ArenaPreviewProps {
   onInteract?: (position: ArenaLivePosition) => void;
 }
 
-type ArenaLivePosition = { x: number; z: number; y?: number; facing: number; scoped?: boolean };
+type ArenaLivePosition = { x: number; z: number; y?: number; facing: number; scoped?: boolean; zoomLevel?: number };
 
 const PLAYER_RADIUS = 0.45;
 const WALK_SPEED = 10.8;
@@ -230,7 +231,8 @@ export default function ArenaPreview({
   const syncPlayersRef = useRef<(session?: GameSession, currentPlayer?: PlayerSession) => void>(() => undefined);
   const [isPointerLocked, setIsPointerLocked] = useState(false);
   const [hitPulse, setHitPulse] = useState(0);
-  const [zoomActive, setZoomActive] = useState(false);
+  const [zoomLevel, setZoomLevelState] = useState(0);
+  const [weaponCooldown, setWeaponCooldown] = useState<{ startedAt: number; durationMs: number } | null>(null);
   const [miniMapPosition, setMiniMapPosition] = useState<ArenaLivePosition | null>(null);
   const [renderError, setRenderError] = useState("");
   const [fallbackQuality, setFallbackQuality] = useState<ArenaQuality | null>(null);
@@ -266,9 +268,10 @@ export default function ArenaPreview({
     setRenderError("");
 
     const isFps = view === "fps";
+    const isZombieMode = session?.settings.gameMode === "zombie";
     const scene = new THREE.Scene();
-    scene.background = new THREE.Color(isFps ? "#e8c27b" : "#f4dca8");
-    scene.fog = new THREE.Fog("#e8c27b", isFps ? 130 : 220, isFps ? 360 : 520);
+    scene.background = new THREE.Color(isZombieMode ? "#5d668a" : isFps ? "#87b9d1" : "#b9d7e5");
+    scene.fog = new THREE.Fog(isZombieMode ? "#8f8395" : "#d8bd82", isFps ? 120 : 210, isFps ? 350 : 500);
 
     const camera = new THREE.PerspectiveCamera(isFps ? FPS_BASE_FOV : 52, mount.clientWidth / Math.max(1, mount.clientHeight), 0.1, 620);
     const fallbackSpawn = currentPlayer ? getTeamSpawn(currentPlayer.team) : getTeamSpawn("blue");
@@ -309,6 +312,17 @@ export default function ArenaPreview({
     renderer.domElement.className = "arena-webgl";
     mount.appendChild(renderer.domElement);
 
+    const sky = new THREE.Mesh(
+      new THREE.SphereGeometry(560, 20, 12),
+      new THREE.MeshBasicMaterial({
+        color: isZombieMode ? "#66718c" : "#91c5dd",
+        side: THREE.BackSide,
+        fog: false
+      })
+    );
+    sky.position.y = -88;
+    scene.add(sky);
+
     const textureLoader = new THREE.TextureLoader();
     const loadTexture = (path: string) => {
       const url = `${import.meta.env.BASE_URL}${path.replace(/^\//, "")}`;
@@ -346,9 +360,9 @@ export default function ArenaPreview({
       return next;
     };
 
-    scene.add(new THREE.HemisphereLight("#fff6d8", "#8f7d6f", isFps ? 1.05 : 1.2));
+    scene.add(new THREE.HemisphereLight(isZombieMode ? "#d8ddff" : "#fff6d8", isZombieMode ? "#65556e" : "#8f7d6f", isFps ? 1.12 : 1.28));
 
-    const keyLight = new THREE.DirectionalLight("#fff0ca", isFps ? 2.05 : 2.65);
+    const keyLight = new THREE.DirectionalLight(isZombieMode ? "#d9e1ff" : "#fff0ca", isFps ? 2.18 : 2.72);
     keyLight.position.set(-85, 180, 95);
     keyLight.castShadow = !isFps;
     keyLight.shadow.mapSize.set(1024, 1024);
@@ -358,13 +372,75 @@ export default function ArenaPreview({
     keyLight.shadow.camera.bottom = -175;
     scene.add(keyLight);
 
-    const fillLight = new THREE.DirectionalLight("#ffe7bd", isFps ? 1.15 : 0.75);
+    const fillLight = new THREE.DirectionalLight(isZombieMode ? "#b7a8de" : "#ffe7bd", isFps ? 1.22 : 0.82);
     fillLight.position.set(110, 80, -130);
     scene.add(fillLight);
 
     const aqueductLight = new THREE.PointLight("#53e7ff", 42, 135, 2);
     aqueductLight.position.set(0, 7, 0);
     scene.add(aqueductLight);
+
+    const addBaseBeacon = (team: "blue" | "red", color: string) => {
+      const base = TEAM_BASE_ZONES[team];
+      const x = (base.minX + base.maxX) / 2;
+      const z = (base.minZ + base.maxZ) / 2;
+      const beacon = new THREE.Group();
+      const pillar = new THREE.Mesh(
+        new THREE.CylinderGeometry(0.65, 1.05, 8, 10),
+        new THREE.MeshStandardMaterial({ color: "#fff7df", emissive: color, emissiveIntensity: 0.5, roughness: 0.36 })
+      );
+      pillar.position.y = 4;
+      beacon.add(pillar);
+      const ring = new THREE.Mesh(
+        new THREE.TorusGeometry(3.4, 0.16, 8, 24),
+        new THREE.MeshBasicMaterial({ color, transparent: true, opacity: 0.66 })
+      );
+      ring.rotation.x = Math.PI / 2;
+      ring.position.y = 0.16;
+      beacon.add(ring);
+      beacon.position.set(x, 0, z);
+      scene.add(beacon);
+      if (activeQuality !== "performance") {
+        const accentLight = new THREE.PointLight(color, isFps ? 9 : 16, 42, 2);
+        accentLight.position.set(x, 7, z);
+        scene.add(accentLight);
+      }
+    };
+    addBaseBeacon("blue", "#38bdf8");
+    addBaseBeacon("red", isZombieMode ? "#c084fc" : "#fb7185");
+
+    if (session?.settings.gameMode === "flag" && session.flag) {
+      const carrier = session.flag.carrierId ? session.players.find((player) => player.id === session.flag?.carrierId) : undefined;
+      const markerX = carrier?.x ?? session.flag.position.x;
+      const markerZ = carrier?.z ?? session.flag.position.z;
+      const flagMarker = new THREE.Group();
+      const markerColor = session.flag.state === "placed" ? "#facc15" : "#fb7185";
+      const pole = new THREE.Mesh(
+        new THREE.CylinderGeometry(0.12, 0.14, 8.8, 8),
+        new THREE.MeshStandardMaterial({ color: "#f8fafc", metalness: 0.42, roughness: 0.35 })
+      );
+      pole.position.y = 4.4;
+      flagMarker.add(pole);
+      const fabric = new THREE.Mesh(
+        new THREE.PlaneGeometry(4.8, 2.6, 2, 1),
+        new THREE.MeshBasicMaterial({ color: markerColor, transparent: true, opacity: 0.93, side: THREE.DoubleSide })
+      );
+      fabric.position.set(2.3, 7.1, 0);
+      fabric.rotation.y = Math.PI / 2;
+      flagMarker.add(fabric);
+      const objectiveRing = new THREE.Mesh(
+        new THREE.TorusGeometry(4.8, 0.2, 8, 32),
+        new THREE.MeshBasicMaterial({ color: markerColor, transparent: true, opacity: 0.72 })
+      );
+      objectiveRing.position.y = 0.23;
+      objectiveRing.rotation.x = Math.PI / 2;
+      flagMarker.add(objectiveRing);
+      const flagGlow = new THREE.PointLight(markerColor, activeQuality === "performance" ? 0 : 18, 42, 2);
+      flagGlow.position.y = 5;
+      flagMarker.add(flagGlow);
+      flagMarker.position.set(markerX, 0, markerZ);
+      scene.add(flagMarker);
+    }
 
     const floor = new THREE.Mesh(
       new THREE.BoxGeometry(ARENA_LIMIT_X * 2, 0.3, ARENA_LIMIT_Z * 2),
@@ -611,19 +687,22 @@ export default function ArenaPreview({
       let jumpQueued = false;
       let lastEmptyFireRequestAt = 0;
       let lastLocalFireAt = 0;
-      let isZooming = false;
+      let activeZoomLevel = 0;
+      let cooldownTimeout: number | undefined;
       let wasGrounded = true;
       let fireHeld = false;
       const getEquippedGearId = () => currentPlayerRef.current?.gear ?? "starter_blaster";
       const hasZoomGear = () => getGearZoomFovMultiplier(getEquippedGearId()) < 1;
+      const hasHeavyGun = () => getEquippedGearId() === "power_blaster";
       const hasAutoFireGear = () => isGearAutoFireEnabled(getEquippedGearId());
-      const setZooming = (nextZooming: boolean) => {
-        const next = nextZooming && hasZoomGear();
-        if (isZooming === next) return;
-        isZooming = next;
-        renderer.domElement.dataset.zoomed = String(isZooming);
-        setZoomActive(isZooming);
-        gameAudio.play(isZooming ? "zoom_in" : "zoom_out");
+      const setZoomLevel = (nextLevel: number) => {
+        const maxLevel = hasHeavyGun() ? 2 : hasZoomGear() ? 1 : 0;
+        const next = Math.max(0, Math.min(maxLevel, nextLevel));
+        if (activeZoomLevel === next) return;
+        activeZoomLevel = next;
+        renderer.domElement.dataset.zoomLevel = String(next);
+        setZoomLevelState(next);
+        gameAudio.play(next > 0 ? "zoom_in" : "zoom_out");
       };
       const fire = () => {
         if (controlsDisabled || inputPausedRef.current || !onFireRef.current) return;
@@ -631,7 +710,7 @@ export default function ArenaPreview({
         const currentTime = performance.now();
         const equippedGearId = getEquippedGearId();
         if (currentTime - lastLocalFireAt < getGearFireCooldownMs(equippedGearId)) return;
-        const launchPosition = { ...localToServerPosition(playerPosition, yaw), scoped: isZooming };
+        const launchPosition = { ...localToServerPosition(playerPosition, yaw), scoped: activeZoomLevel > 0, zoomLevel: activeZoomLevel };
         const authoritativeSnowballs = currentPlayerRef.current?.snowballs;
         const availableSnowballs = isFiniteNumber(authoritativeSnowballs)
           ? Math.floor(authoritativeSnowballs) - pendingShotsRef.current
@@ -645,6 +724,10 @@ export default function ArenaPreview({
           return;
         }
         lastLocalFireAt = currentTime;
+        const cooldownMs = getGearFireCooldownMs(equippedGearId);
+        setWeaponCooldown({ startedAt: currentTime, durationMs: cooldownMs });
+        if (cooldownTimeout) window.clearTimeout(cooldownTimeout);
+        cooldownTimeout = window.setTimeout(() => setWeaponCooldown(null), cooldownMs);
         pendingShotsRef.current += 1;
         flashUntil = performance.now() + 95;
         snowballLaunchAt = currentTime;
@@ -726,7 +809,7 @@ export default function ArenaPreview({
       const onPointerLockChange = () => {
         const locked = document.pointerLockElement === renderer.domElement;
         setIsPointerLocked(locked);
-        if (!locked) setZooming(false);
+        if (!locked) setZoomLevel(0);
       };
       const onPointerLockError = () => setIsPointerLocked(false);
       const onPointerDown = (event: PointerEvent) => {
@@ -740,19 +823,7 @@ export default function ArenaPreview({
         const action = resolveCombatPointerAction({ button: event.button, buttons: event.buttons });
         if (action === "scope") {
           event.preventDefault();
-          setZooming(true);
-          return;
-        }
-        if (action !== "fire") return;
-        if (hasAutoFireGear()) fireHeld = true;
-        fire();
-      };
-      const onMouseDown = (event: MouseEvent) => {
-        if (controlsDisabled || inputPausedRef.current || document.pointerLockElement !== renderer.domElement) return;
-        const action = resolveCombatPointerAction({ button: event.button, buttons: event.buttons });
-        if (action === "scope") {
-          event.preventDefault();
-          setZooming(true);
+          setZoomLevel(hasHeavyGun() ? cycleHeavyGunZoom(activeZoomLevel) : 1);
           return;
         }
         if (action !== "fire") return;
@@ -760,17 +831,13 @@ export default function ArenaPreview({
         fire();
       };
       const onPointerUp = (event: PointerEvent) => {
-        if (event.button === 2) setZooming(false);
-        if (event.button === 0) fireHeld = false;
-      };
-      const onMouseUp = (event: MouseEvent) => {
-        if (event.button === 2) setZooming(false);
+        if (event.button === 2 && !hasHeavyGun()) setZoomLevel(0);
         if (event.button === 0) fireHeld = false;
       };
       const onContextMenu = (event: MouseEvent) => event.preventDefault();
       const clearKeys = () => {
         keys.clear();
-        setZooming(false);
+        setZoomLevel(0);
         fireHeld = false;
       };
       const verifyPointerLock = window.setInterval(() => {
@@ -785,8 +852,6 @@ export default function ArenaPreview({
       document.addEventListener("pointerlockerror", onPointerLockError);
       renderer.domElement.addEventListener("pointerdown", onPointerDown);
       renderer.domElement.addEventListener("pointerup", onPointerUp);
-      window.addEventListener("mousedown", onMouseDown, true);
-      window.addEventListener("mouseup", onMouseUp, true);
       renderer.domElement.addEventListener("contextmenu", onContextMenu);
 
       const cleanupControls = () => {
@@ -799,8 +864,6 @@ export default function ArenaPreview({
         document.removeEventListener("pointerlockerror", onPointerLockError);
         renderer.domElement.removeEventListener("pointerdown", onPointerDown);
         renderer.domElement.removeEventListener("pointerup", onPointerUp);
-        window.removeEventListener("mousedown", onMouseDown, true);
-        window.removeEventListener("mouseup", onMouseUp, true);
         renderer.domElement.removeEventListener("contextmenu", onContextMenu);
         if (document.pointerLockElement === renderer.domElement) document.exitPointerLock();
       };
@@ -845,7 +908,10 @@ export default function ArenaPreview({
         frame = requestAnimationFrame(animateFps);
         const delta = Math.min(clock.getDelta(), 0.035);
         const currentTime = performance.now();
-        if (inputPausedRef.current) keys.clear();
+        if (inputPausedRef.current) {
+          keys.clear();
+          if (activeZoomLevel > 0) setZoomLevel(0);
+        }
         applyGamepadInput();
         const crouching = keys.has("Control");
         const floorEyeHeight = crouching ? FPS_CROUCH_EYE_HEIGHT : FPS_STANDING_EYE_HEIGHT;
@@ -904,8 +970,16 @@ export default function ArenaPreview({
 
         if (fireHeld && hasAutoFireGear() && !inputPausedRef.current && !controlsDisabled) fire();
 
-        const zoomMultiplier = isZooming ? getGearZoomFovMultiplier(getEquippedGearId()) : 1;
-        const targetFov = FPS_BASE_FOV * zoomMultiplier;
+        const equippedGearId = getEquippedGearId();
+        if (!hasZoomGear() && activeZoomLevel > 0) setZoomLevel(0);
+        if (hasHeavyGun() && activeZoomLevel > 0 && shouldResetWeaponZoom({
+          gearId: equippedGearId,
+          isAlive: !controlsDisabled,
+          roundActive: !controlsDisabled,
+          inputPaused: inputPausedRef.current,
+          pointerLocked: document.pointerLockElement === renderer.domElement
+        })) setZoomLevel(0);
+        const targetFov = getWeaponFov(equippedGearId, activeZoomLevel, FPS_BASE_FOV);
         if (Math.abs(camera.fov - targetFov) > 0.05) {
           camera.fov += (targetFov - camera.fov) * 0.18;
           camera.updateProjectionMatrix();
@@ -957,7 +1031,9 @@ export default function ArenaPreview({
         window.removeEventListener("resize", resizeFps);
         fireControlRef.current = () => undefined;
         syncPlayersRef.current = () => undefined;
-        setZoomActive(false);
+        if (cooldownTimeout) window.clearTimeout(cooldownTimeout);
+        setZoomLevel(0);
+        setWeaponCooldown(null);
         cleanupControls();
         disposeObject(scene);
         materialCache.forEach((material) => material.dispose());
@@ -1019,7 +1095,7 @@ export default function ArenaPreview({
       renderer.dispose();
       mount.removeChild(renderer.domElement);
     };
-  }, [sceneSessionId, currentPlayerId, currentPlayerTeam, view, controlsDisabled, debugOverlay, activeQuality, gamepadEnabled]);
+  }, [sceneSessionId, currentPlayerId, currentPlayerTeam, view, controlsDisabled, debugOverlay, activeQuality, gamepadEnabled, session?.settings.gameMode, session?.flag?.state, session?.flag?.carrierId, session?.flag?.position.x, session?.flag?.position.z]);
 
   const beginTouchMove = (forward: number, right: number) => (event: ReactPointerEvent<HTMLButtonElement>) => {
     event.preventDefault();
@@ -1060,7 +1136,18 @@ export default function ArenaPreview({
       )}
       {view === "fps" && (
         <>
-          <div className={`${hitPulse % 2 === 0 ? "crosshair" : "crosshair fire"}${zoomActive ? " zoom" : ""}`} aria-hidden="true" />
+          <div className={`${hitPulse % 2 === 0 ? "crosshair" : "crosshair fire"}${zoomLevel > 0 ? ` zoom zoom-level-${zoomLevel}` : ""}`} aria-hidden="true" />
+          {zoomLevel > 0 && (
+            <div className={`scope-overlay scope-level-${zoomLevel}`} aria-hidden="true">
+              <span>Heavy Scope</span>
+              <strong>{zoomLevel === 1 ? "2×" : "4×"}</strong>
+            </div>
+          )}
+          {weaponCooldown && (
+            <div className="weapon-cooldown" aria-label="Weapon cooldown">
+              <span key={weaponCooldown.startedAt} style={{ animationDuration: `${weaponCooldown.durationMs}ms` }} />
+            </div>
+          )}
           <div className="fps-callout">Desert Citadel</div>
           <div className="arena-minimap" aria-label="Desert Citadel minimap">
             <div className="minimap-title">Map</div>
@@ -1106,6 +1193,12 @@ export default function ArenaPreview({
               {SEARCH_RETRIEVE_ITEMS.map((item) => (
                 <rect key={item.id} x={toMiniMapX(item.x) - 1.4} y={toMiniMapY(item.z) - 1.4} width="2.8" height="2.8" className="minimap-item" />
               ))}
+              {session?.settings.gameMode === "flag" && session.flag && (
+                <g className={`minimap-flag minimap-flag-${session.flag.state}`} transform={`translate(${toMiniMapX(session.flag.position.x)} ${toMiniMapY(session.flag.position.z)})`}>
+                  <circle r="3" />
+                  <path d="M 0 -4 L 0 4 M 0 -4 L 4 -2 L 0 0" />
+                </g>
+              )}
               <text x={toMiniMapX(-140)} y={toMiniMapY(-78)} className="minimap-label">West</text>
               <text x={toMiniMapX(122)} y={toMiniMapY(-78)} className="minimap-label">East</text>
               <text x={toMiniMapX(0)} y={toMiniMapY(-128)} className="minimap-label">Ruins</text>
@@ -1121,7 +1214,7 @@ export default function ArenaPreview({
               )}
             </svg>
           </div>
-          {!controlsDisabled && !isPointerLocked && !suppressHint && <div className="control-lock">Click arena to control mouse. WASD or arrows move. F or left click launches. Right click scopes supported gear. E interacts with the flag.</div>}
+          {!controlsDisabled && !isPointerLocked && !suppressHint && <div className="control-lock">Click arena to control mouse. WASD or arrows move. F or left click launches. Heavy Launcher: right click cycles 2×, 4×, then normal. E interacts with the flag.</div>}
           <div className="touch-controls" aria-label="Touch controls">
             <div className="touch-dpad" aria-label="Move">
               <button type="button" className="touch-up" aria-label="Move forward" disabled={controlsDisabled} onPointerDown={beginTouchMove(1, 0)} onPointerUp={endTouchMove} onPointerCancel={endTouchMove} onPointerLeave={endTouchMove}>W</button>

@@ -93,6 +93,7 @@ export interface GearItem {
   damage?: number;
   range?: number;
   scopedHitRadius?: number;
+  deepScopedHitRadius?: number;
   unscopedHitRadius?: number;
   speedBonus?: number;
   healthBonus?: number;
@@ -238,11 +239,16 @@ export const FLAG_MODE_DEFAULTS = {
 } as const;
 
 export const HEAVY_GUN_DAMAGE = 100;
-export const HEAVY_GUN_COOLDOWN_MS = 1200;
+export const HEAVY_GUN_COOLDOWN_MS = 1350;
 export const HEAVY_GUN_RANGE = 80;
-export const HEAVY_GUN_SCOPED_HIT_RADIUS = 0.98;
-export const HEAVY_GUN_UNSCOPED_HIT_RADIUS = 0.58;
+export const HEAVY_GUN_UNSCOPED_HIT_RADIUS = 0.52;
+export const HEAVY_GUN_SCOPED_HIT_RADIUS = 0.82;
+export const HEAVY_GUN_DEEP_SCOPED_HIT_RADIUS = 0.98;
+export const HEAVY_GUN_ZOOM_LEVEL_0_FOV = 72;
+export const HEAVY_GUN_ZOOM_LEVEL_1_FOV = 46;
+export const HEAVY_GUN_ZOOM_LEVEL_2_FOV = 30;
 export const QUICK_BLASTER_RANGE = 30;
+export const QUICK_BLASTER_COOLDOWN_MS = 125;
 export const STARTER_BLASTER_RANGE = 28;
 
 export const DEFAULT_SESSION_SETTINGS: SessionSettings = {
@@ -442,7 +448,7 @@ export const GEAR_ITEMS: GearItem[] = [
     description: "Faster launches with lighter snowballs.",
     damage: 10,
     range: QUICK_BLASTER_RANGE,
-    fireCooldownMs: 85,
+    fireCooldownMs: QUICK_BLASTER_COOLDOWN_MS,
     autoFire: true
   },
   {
@@ -453,9 +459,10 @@ export const GEAR_ITEMS: GearItem[] = [
     damage: HEAVY_GUN_DAMAGE,
     range: HEAVY_GUN_RANGE,
     scopedHitRadius: HEAVY_GUN_SCOPED_HIT_RADIUS,
+    deepScopedHitRadius: HEAVY_GUN_DEEP_SCOPED_HIT_RADIUS,
     unscopedHitRadius: HEAVY_GUN_UNSCOPED_HIT_RADIUS,
     fireCooldownMs: HEAVY_GUN_COOLDOWN_MS,
-    zoomFovMultiplier: 0.38
+    zoomFovMultiplier: HEAVY_GUN_ZOOM_LEVEL_1_FOV / HEAVY_GUN_ZOOM_LEVEL_0_FOV
   },
   {
     id: "shield_vest",
@@ -880,11 +887,13 @@ export const isGearAutoFireEnabled = (gearId: string) => getGearItem(gearId)?.au
 
 export const getGearRange = (gearId: string) => getGearItem(gearId)?.range ?? TAG_RANGE;
 
-export const getGearHitRadius = (gearId: string, scoped = true) => {
+export const getGearHitRadius = (gearId: string, zoomLevel: number | boolean = true) => {
   const gear = getGearItem(gearId);
   if (!gear) return SNOWBALL_HIT_RADIUS;
-  if (scoped && gear.scopedHitRadius !== undefined) return gear.scopedHitRadius;
-  if (!scoped && gear.unscopedHitRadius !== undefined) return gear.unscopedHitRadius;
+  const normalizedZoomLevel = typeof zoomLevel === "boolean" ? (zoomLevel ? 1 : 0) : Math.max(0, Math.min(2, Math.floor(zoomLevel)));
+  if (normalizedZoomLevel >= 2 && gear.deepScopedHitRadius !== undefined) return gear.deepScopedHitRadius;
+  if (normalizedZoomLevel >= 1 && gear.scopedHitRadius !== undefined) return gear.scopedHitRadius;
+  if (normalizedZoomLevel === 0 && gear.unscopedHitRadius !== undefined) return gear.unscopedHitRadius;
   return SNOWBALL_HIT_RADIUS;
 };
 

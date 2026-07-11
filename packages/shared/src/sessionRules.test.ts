@@ -5,6 +5,9 @@ import {
   DEFAULT_PLAYER_HEALTH,
   FLAG_MODE_DEFAULTS,
   HEAVY_GUN_DAMAGE,
+  HEAVY_GUN_COOLDOWN_MS,
+  HEAVY_GUN_DEEP_SCOPED_HIT_RADIUS,
+  QUICK_BLASTER_COOLDOWN_MS,
   RESPAWN_CORRECT_ANSWERS_REQUIRED,
   ARENA_LIMIT_X,
   ARENA_LIMIT_Z,
@@ -472,7 +475,8 @@ test("gear store items expose real combat and movement mechanics", () => {
   assert.equal(getGearFireCooldownMs("quick_blaster") < getGearFireCooldownMs("starter_blaster"), true);
   assert.equal(getGearFireCooldownMs("power_blaster") > getGearFireCooldownMs("starter_blaster"), true);
   assert.equal(getGearFireCooldownMs("starter_blaster") <= 220, true);
-  assert.equal(getGearFireCooldownMs("quick_blaster") <= 95, true);
+  assert.equal(getGearFireCooldownMs("quick_blaster"), QUICK_BLASTER_COOLDOWN_MS);
+  assert.equal(getGearFireCooldownMs("quick_blaster") > 95, true);
   assert.equal(isGearAutoFireEnabled("quick_blaster"), true);
   assert.equal(isGearAutoFireEnabled("starter_blaster"), false);
   assert.equal(getGearDamage("starter_blaster"), 15);
@@ -489,8 +493,11 @@ test("heavy launcher uses named AWP-style combat settings", () => {
   assert.equal(DEFAULT_SESSION_SETTINGS.roundDurationSeconds, FLAG_MODE_DEFAULTS.roundDurationSeconds);
   assert.equal(DEFAULT_SESSION_SETTINGS.flagHoldSeconds, FLAG_MODE_DEFAULTS.flagHoldSeconds);
   assert.equal(getGearDamage("power_blaster"), HEAVY_GUN_DAMAGE);
-  assert.equal(getGearFireCooldownMs("power_blaster") >= 1000, true);
-  assert.equal(getGearZoomFovMultiplier("power_blaster") < 0.5, true);
+  assert.equal(getGearFireCooldownMs("power_blaster"), HEAVY_GUN_COOLDOWN_MS);
+  assert.equal(getGearFireCooldownMs("power_blaster") > 1200, true);
+  assert.equal(getGearZoomFovMultiplier("power_blaster") < 1, true);
+  assert.equal(getGearHitRadius("power_blaster", 2), HEAVY_GUN_DEEP_SCOPED_HIT_RADIUS);
+  assert.equal(getGearHitRadius("power_blaster", 2) > getGearHitRadius("power_blaster", 1), true);
   assert.equal(getGearRange("power_blaster") > getGearRange("starter_blaster"), true);
 });
 

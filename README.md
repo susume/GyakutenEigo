@@ -89,7 +89,7 @@ To open and test:
 
 1. Run `npm run dev`.
 2. Open `http://localhost:5173/join` for the student flow or use the landing-page preview.
-3. Create or join a session, start the round, then move through Desert Citadel with WASD/arrows and fire with F or click. Right click scopes supported gear, E interacts with the flag, and holding Tab shows the scoreboard.
+3. Create or join a session, start the round, then move through Desert Citadel with WASD/arrows and fire with F or click. The Heavy Snowball Launcher cycles normal → 2× → 4× → normal with right click, E interacts with the flag, and holding Tab shows the scoreboard.
 4. Use the teacher dashboard bot button to add test players up to the configured session limit.
 
 Implemented blockout coverage:

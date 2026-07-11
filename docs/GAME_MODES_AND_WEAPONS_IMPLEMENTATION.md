@@ -31,13 +31,13 @@ The fix keeps one shared pipeline:
 The old `power_blaster` is now the Heavy Snowball Launcher.
 
 - Damage: `HEAVY_GUN_DAMAGE = 100`
-- Cooldown: `HEAVY_GUN_COOLDOWN_MS = 1200`
+- Cooldown: `HEAVY_GUN_COOLDOWN_MS = 1350`
 - Range: `HEAVY_GUN_RANGE = 80`
-- Scope: right mouse button, FOV multiplier `0.38`
-- Unscoped accuracy penalty: smaller unscoped hit radius
+- Scope: right-click cycle: normal (`72°`) → medium (`46°`) → deep (`30°`) → normal
+- Accuracy: unscoped (`0.52`) < medium scope (`0.82`) < deep scope (`0.98`) hit radius
 - Audio: procedural `heavy_fire` report plus delayed echo, with no external asset dependency
 
-The Heavy launcher can fire while scoped. Scope exits when controls clean up, pointer lock exits, the weapon no longer supports zoom, or the arena component unmounts.
+The Heavy launcher can fire at either zoom level. Its zoom exits on a weapon switch, knockout, round/match end, game menu pause, pointer-lock exit, or arena cleanup. The server receives the zoom level with fire intent so the configured accuracy tier is resolved by the same authoritative projectile path.
 
 ## Flag Mode
 

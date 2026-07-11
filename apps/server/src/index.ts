@@ -1396,7 +1396,7 @@ io.on("connection", (socket) => {
     });
   });
 
-  socket.on("fire_action", (payload: { code?: string; playerId?: string; playerToken?: string; requestId?: string; x?: number; z?: number; y?: number; facing?: number; targetId?: string; scoped?: boolean }) => {
+  socket.on("fire_action", (payload: { code?: string; playerId?: string; playerToken?: string; requestId?: string; x?: number; z?: number; y?: number; facing?: number; targetId?: string; scoped?: boolean; zoomLevel?: number }) => {
     const session = getSessionByCode(String(payload.code ?? ""));
     const attacker = session?.players.find((candidate) => candidate.id === payload.playerId);
     if (!session || !attacker || !hasPlayerAccess(session, attacker, payload.playerToken)) return;
@@ -1435,7 +1435,7 @@ io.on("connection", (socket) => {
       candidates: session.players,
       requestedTargetId: typeof payload.targetId === "string" && payload.targetId.trim() ? payload.targetId : undefined,
       range: getGearRange(attacker.gear),
-      hitRadius: getGearHitRadius(attacker.gear, payload.scoped === true)
+      hitRadius: getGearHitRadius(attacker.gear, typeof payload.zoomLevel === "number" ? payload.zoomLevel : payload.scoped === true)
     });
     if (!targetSelection.ok) {
       broadcastSession(session);

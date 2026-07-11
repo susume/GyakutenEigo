@@ -103,7 +103,7 @@ const readStoredStudentSession = (): StoredStudentSession | null => {
 const clearStoredStudentSession = () => localStorage.removeItem(STUDENT_SESSION_STORAGE_KEY);
 
 type QuestionDraft = typeof emptyQuestion;
-type ArenaPositionPayload = { x: number; z: number; y?: number; facing: number };
+type ArenaPositionPayload = { x: number; z: number; y?: number; facing: number; scoped?: boolean; zoomLevel?: number };
 type DamageResultPayload =
   | {
       ok: true;
@@ -650,68 +650,138 @@ function CharacterLab() {
 
 function GyakutenEigoHome({ onOpenGame, onJoinGame }: { onOpenGame: () => void; onJoinGame: () => void }) {
   return (
-    <section className="site-home">
-      <div className="site-home-copy">
-        <span className="eyebrow">GyakutenEigo</span>
-        <h1>English practice that turns review into play.</h1>
-        <p>
-          A home for classroom-friendly learning games. Start with Quiz-Strike, a live multiplayer review game
-          where teachers host private sessions and students join from any browser.
-        </p>
-        <div className="button-row">
-          <button className="primary" onClick={onOpenGame}>
-            <Play size={18} aria-hidden="true" />
-            Open Quiz-Strike
-          </button>
-          <button onClick={onJoinGame}>
-            <DoorOpen size={18} aria-hidden="true" />
-            Student Join
-          </button>
+    <div className="product-home">
+      <section className="site-home">
+        <div className="site-home-copy">
+          <span className="eyebrow">GyakutenEigo · classroom game lab</span>
+          <h1>Turn English review into a room full of momentum.</h1>
+          <p>
+            Quiz-Strike is a teacher-hosted learning game where students answer questions, earn gear, and work
+            toward a shared round objective. It opens in the browser on the devices already in class.
+          </p>
+          <div className="hero-proof-row" aria-label="Product qualities">
+            <span><Shield size={16} aria-hidden="true" />Private room codes</span>
+            <span><BookOpen size={16} aria-hidden="true" />Teacher-made questions</span>
+            <span><Users size={16} aria-hidden="true" />Team competition</span>
+          </div>
+          <div className="button-row">
+            <button className="primary" onClick={onOpenGame}>
+              <Play size={18} aria-hidden="true" />
+              Explore Quiz-Strike
+            </button>
+            <button onClick={onJoinGame}>
+              <DoorOpen size={18} aria-hidden="true" />
+              Join a Class Game
+            </button>
+          </div>
         </div>
-      </div>
-      <button className="game-host-card" onClick={onOpenGame}>
-        <img src={publicAsset("/assets/player-blue.png")} alt="" aria-hidden="true" />
-        <span className="game-host-card-label">Live Game Host</span>
-        <strong>Quiz-Strike</strong>
-        <small>Host a quiz arena, share a join code, and run team rounds online.</small>
-      </button>
-    </section>
+        <button className="game-host-card" onClick={onOpenGame}>
+          <span className="game-host-card-label">Now hosting · Quiz-Strike</span>
+          <img src={publicAsset("/assets/player-blue.png")} alt="" aria-hidden="true" />
+          <span className="game-preview-objective"><Target size={16} aria-hidden="true" />Answer · earn · capture</span>
+          <strong>Desert Citadel</strong>
+          <small>Private classroom rooms, live objectives, and a learning report when the round is done.</small>
+        </button>
+      </section>
+
+      <section className="landing-section product-intro" aria-labelledby="why-play-title">
+        <div className="section-kicker">Built for the classroom moment</div>
+        <h2 id="why-play-title">The energy of a game, with the structure teachers need.</h2>
+        <div className="value-card-grid">
+          <article><BookOpen size={22} aria-hidden="true" /><h3>Questions stay central</h3><p>Every round starts with the learning content you choose. Correct answers unlock money and momentum.</p></article>
+          <article><Target size={22} aria-hidden="true" /><h3>Objectives create focus</h3><p>Flag Mode, Zombie Mode, and classic practice give students a clear reason to collaborate and return to the quiz.</p></article>
+          <article><Shield size={22} aria-hidden="true" /><h3>Teacher-led by design</h3><p>Create a private room, set the round rules, watch participation, and end with a class learning report.</p></article>
+        </div>
+      </section>
+
+      <section className="landing-section mode-section" aria-labelledby="modes-title">
+        <div>
+          <span className="eyebrow">More than a quiz screen</span>
+          <h2 id="modes-title">Three ways to turn review into a round.</h2>
+        </div>
+        <div className="mode-card-grid">
+          <article className="mode-card flag-mode-card"><span>01</span><h3>Flag Mode</h3><p>Red delivers and protects the flag. Blue defends and captures. The scoreboard keeps the objective visible.</p></article>
+          <article className="mode-card zombie-mode-card"><span>02</span><h3>Zombie Mode</h3><p>Humans hold the arena while conversions change the teams. Roles are visible in the game and scoreboards.</p></article>
+          <article className="mode-card classic-mode-card"><span>03</span><h3>Classic Practice</h3><p>A simple team round for introducing the controls, reviewing a set, or running a quick warmup.</p></article>
+        </div>
+      </section>
+
+      <section className="landing-section classroom-flow-section" aria-labelledby="classroom-flow-title">
+        <div>
+          <span className="eyebrow">A simple classroom flow</span>
+          <h2 id="classroom-flow-title">From question set to game recap in four clear steps.</h2>
+        </div>
+        <ol className="classroom-flow">
+          <li><span>1</span><strong>Create a quiz set</strong><p>Paste study terms or add your own multiple-choice questions.</p></li>
+          <li><span>2</span><strong>Open a private room</strong><p>Choose a mode, timing, rewards, and classroom settings.</p></li>
+          <li><span>3</span><strong>Share the join code</strong><p>Students join from a browser with a nickname—no student email required.</p></li>
+          <li><span>4</span><strong>Review the round</strong><p>Use participation, accuracy, and missed-question data to guide the next lesson.</p></li>
+        </ol>
+      </section>
+
+      <section className="landing-section faq-section" aria-labelledby="faq-title">
+        <div><span className="eyebrow">Teacher questions</span><h2 id="faq-title">Ready for a real classroom, not a demo carousel.</h2></div>
+        <div className="faq-list">
+          <details open><summary>What do students need?</summary><p>A current desktop, Chromebook, or laptop browser and the private code from their teacher.</p></details>
+          <details><summary>Can a teacher control the room?</summary><p>Yes. Teachers create and start sessions, select modes and settings, monitor the roster, and end a session when the class is ready.</p></details>
+          <details><summary>What happens after the game?</summary><p>The teacher dashboard keeps a session report with participation and question-accuracy information for follow-up review.</p></details>
+        </div>
+      </section>
+
+      <section className="landing-final-cta">
+        <span className="eyebrow">Start the next review round</span>
+        <h2>Bring the questions. We’ll bring the game loop.</h2>
+        <div className="button-row"><button className="primary" onClick={onOpenGame}><Play size={18} aria-hidden="true" />Open Quiz-Strike</button><button onClick={onJoinGame}><DoorOpen size={18} aria-hidden="true" />Student Join</button></div>
+      </section>
+    </div>
   );
 }
 
 function QuizStrikeLanding({ onTeacherLogin, onTeacherSignup, onStudent }: { onTeacherLogin: () => void; onTeacherSignup: () => void; onStudent: () => void }) {
   return (
-    <section className="landing-grid">
-      <div className="landing-copy">
-        <span className="eyebrow">GyakutenEigo Game Host</span>
-        <h1>Quiz-Strike</h1>
-        <p>
-          A browser-based educational arena game where students answer questions to earn in-game money and help
-          their team win.
-        </p>
-        <div className="button-row">
-          <button className="primary" onClick={onTeacherLogin}>
-            <GraduationCap size={18} aria-hidden="true" />
-            Teacher Login
-          </button>
-          <button onClick={onTeacherSignup}>Create Teacher Account</button>
-          <button onClick={onStudent}>
-            <DoorOpen size={18} aria-hidden="true" />
-            Join Game
-          </button>
+    <div className="quizstrike-page">
+      <section className="landing-grid">
+        <div className="landing-copy">
+          <span className="eyebrow">GyakutenEigo game host</span>
+          <h1>A quiz arena that rewards the right answer.</h1>
+          <p>
+            Host a private Quiz-Strike match, share one join code, and guide the class through team objectives while every student keeps practicing the material.
+          </p>
+          <ul className="landing-benefit-list">
+            <li><Target size={18} aria-hidden="true" />Objective-led rounds: Flag, Zombie, or classic practice.</li>
+            <li><Users size={18} aria-hidden="true" />Live roster, scoreboards, and teacher controls in one workspace.</li>
+            <li><BookOpen size={18} aria-hidden="true" />Question accuracy stays connected to the game report.</li>
+          </ul>
+          <div className="button-row">
+            <button className="primary" onClick={onTeacherLogin}>
+              <GraduationCap size={18} aria-hidden="true" />
+              Teacher Login
+            </button>
+            <button onClick={onTeacherSignup}>Create Teacher Account</button>
+            <button onClick={onStudent}>
+              <DoorOpen size={18} aria-hidden="true" />
+              Join Game
+            </button>
+          </div>
         </div>
-      </div>
-      <div className="landing-preview">
-        <Suspense fallback={<ArenaLoading label="Loading preview" />}>
-          <ArenaPreview />
-        </Suspense>
-        <div className="hud-strip">
-          <span>Warmth 100</span>
-          <span>Money $0</span>
-          <span>Gear Starter Snowball Launcher</span>
+        <div className="landing-preview">
+          <Suspense fallback={<ArenaLoading label="Loading preview" />}>
+            <ArenaPreview />
+          </Suspense>
+          <div className="preview-mode-chip"><Target size={16} aria-hidden="true" />Flag Mode · Desert Citadel</div>
+          <div className="hud-strip">
+            <span>Warmth 100</span>
+            <span>Money $0</span>
+            <span>Starter Launcher</span>
+          </div>
         </div>
-      </div>
-    </section>
+      </section>
+      <section className="host-assurance" aria-label="Quiz-Strike classroom features">
+        <span><Shield size={18} aria-hidden="true" />Private teacher-hosted sessions</span>
+        <span><Timer size={18} aria-hidden="true" />Round timing and classroom settings</span>
+        <span><Download size={18} aria-hidden="true" />Learning reports after play</span>
+      </section>
+    </div>
   );
 }
 
@@ -849,16 +919,16 @@ function TeacherDashboard({ teacher, onLogout }: { teacher: TeacherUser; onLogou
           <strong>{teacher.name}</strong>
           <span>{teacher.email}</span>
         </div>
-        <button className={tab === "home" ? "active" : ""} onClick={() => setTab("home")}>
+        <button aria-current={tab === "home" ? "page" : undefined} className={tab === "home" ? "active" : ""} onClick={() => setTab("home")}>
           <Target size={18} aria-hidden="true" /> Dashboard Home
         </button>
-        <button className={tab === "quizzes" ? "active" : ""} onClick={() => setTab("quizzes")}>
+        <button aria-current={tab === "quizzes" ? "page" : undefined} className={tab === "quizzes" ? "active" : ""} onClick={() => setTab("quizzes")}>
           <BookOpen size={18} aria-hidden="true" /> Quiz Sets
         </button>
-        <button className={tab === "sessions" ? "active" : ""} onClick={() => setTab("sessions")}>
+        <button aria-current={tab === "sessions" ? "page" : undefined} className={tab === "sessions" ? "active" : ""} onClick={() => setTab("sessions")}>
           <Play size={18} aria-hidden="true" /> Live Session
         </button>
-        <button className={tab === "reports" ? "active" : ""} onClick={() => setTab("reports")}>
+        <button aria-current={tab === "reports" ? "page" : undefined} className={tab === "reports" ? "active" : ""} onClick={() => setTab("reports")}>
           <Download size={18} aria-hidden="true" /> Reports
         </button>
         <button onClick={onLogout}>
@@ -869,8 +939,9 @@ function TeacherDashboard({ teacher, onLogout }: { teacher: TeacherUser; onLogou
       <div className="main-panel">
         <div className="section-heading">
           <div>
-            <h1>Teacher Dashboard</h1>
-            <p>Build quizzes, host private games, and watch learning progress live.</p>
+            <span className="eyebrow">Teacher control center</span>
+            <h1>Run the room with confidence.</h1>
+            <p>Build the next quiz, open a private game, and keep the class learning signal in view.</p>
           </div>
           <button onClick={refresh}>
             <RefreshCw size={18} aria-hidden="true" />
@@ -924,46 +995,58 @@ function TeacherDashboard({ teacher, onLogout }: { teacher: TeacherUser; onLogou
 }
 
 function DashboardHome({ data, onTab }: { data: DashboardPayload; onTab: (tab: "quizzes" | "sessions") => void }) {
+  const activeSession = data.sessions.find((session) => session.status !== "ended");
+  const totalQuestions = data.quizSets.reduce((total, quiz) => total + quiz.questions.length, 0);
+  const studentsConnected = data.sessions.reduce((total, session) => total + session.players.length, 0);
+  const recentSessions = data.sessions.slice(0, 4);
+  const topLearner = activeSession ? getTopLearner(activeSession.players) : undefined;
   return (
-    <div className="dashboard-grid">
-      <div className="metric">
-        <span>Quiz Sets</span>
-        <strong>{data.quizSets.length}</strong>
-      </div>
-      <div className="metric">
-        <span>Active Sessions</span>
-        <strong>{data.sessions.filter((session) => session.status !== "ended").length}</strong>
-      </div>
-      <div className="metric">
-        <span>Students Connected</span>
-        <strong>{data.sessions.reduce((total, session) => total + session.players.length, 0)}</strong>
-      </div>
-      <div className="panel wide-panel">
-        <h2>Launch Flow</h2>
-        <p>Create a quiz, generate questions, open a private room, then run the round from the live monitor.</p>
-        <div className="button-row">
-          <button className="primary" onClick={() => onTab("quizzes")}>
-            <Plus size={18} aria-hidden="true" />
-            Create New Quiz
-          </button>
-          <button onClick={() => onTab("sessions")}>
-            <Play size={18} aria-hidden="true" />
-            Create Session
-          </button>
+    <div className="dashboard-home-grid">
+      <section className="panel dashboard-command-card">
+        <div>
+          <span className={activeSession ? "dashboard-live-label active" : "dashboard-live-label"}>{activeSession ? "Live classroom room" : "Next classroom action"}</span>
+          <h2>{activeSession ? `${activeSession.sessionCode} is ${sessionStatusLabel(activeSession.status).toLowerCase()}` : "Create a room when your quiz is ready."}</h2>
+          <p>{activeSession ? `${gameModeLabel(activeSession.settings.gameMode)} · ${activeSession.players.length} joined · ${topLearner ? `Top learner: ${topLearner.nickname}` : "Waiting for the first answer"}` : "Start with a quiz set, then choose the game mode and share one private code with the class."}</p>
         </div>
-      </div>
-      <div className="panel">
-        <h2>Recent Quiz Sets</h2>
-        <ul className="plain-list">
-          {data.quizSets.slice(0, 5).map((quiz) => (
-            <li key={quiz.id}>
-              <span>{quiz.title}</span>
-              <small>{quiz.questions.length} questions</small>
-            </li>
-          ))}
-          {data.quizSets.length === 0 && <li>No quiz sets yet.</li>}
+        <div className="button-row">
+          <button className="primary" onClick={() => onTab(activeSession ? "sessions" : "quizzes")}>
+            {activeSession ? <Play size={18} aria-hidden="true" /> : <Plus size={18} aria-hidden="true" />}
+            {activeSession ? "Open Live Control" : "Create New Quiz"}
+          </button>
+          {!activeSession && <button onClick={() => onTab("sessions")}><Target size={18} aria-hidden="true" />Create Session</button>}
+        </div>
+      </section>
+
+      <section className="dashboard-metrics" aria-label="Classroom overview">
+        <div className="metric"><span>Quiz sets</span><strong>{data.quizSets.length}</strong><small>{totalQuestions} total questions</small></div>
+        <div className="metric"><span>Live rooms</span><strong>{data.sessions.filter((session) => session.status !== "ended").length}</strong><small>{activeSession ? gameModeLabel(activeSession.settings.gameMode) : "No room open"}</small></div>
+        <div className="metric"><span>Students joined</span><strong>{studentsConnected}</strong><small>Across available sessions</small></div>
+      </section>
+
+      <section className="panel dashboard-workflow-card">
+        <div className="panel-title"><h2>Classroom workflow</h2><span>Keep the next step obvious</span></div>
+        <ol className="teacher-flow-list">
+          <li><span>01</span><div><strong>Prepare questions</strong><small>Build a quiz set or turn pasted study terms into questions.</small></div><button onClick={() => onTab("quizzes")}>Quiz Sets</button></li>
+          <li><span>02</span><div><strong>Open a private room</strong><small>Set the mode, timing, rewards, and student capacity.</small></div><button onClick={() => onTab("sessions")}>Sessions</button></li>
+          <li><span>03</span><div><strong>Guide and review</strong><small>Watch the live roster, then use the report to follow up.</small></div><button onClick={() => onTab("sessions")}>Live Control</button></li>
+        </ol>
+      </section>
+
+      <section className="panel dashboard-list-card">
+        <div className="panel-title"><h2>Recent sessions</h2><span>{recentSessions.length ? `${recentSessions.length} available` : "No sessions yet"}</span></div>
+        <ul className="dashboard-session-list">
+          {recentSessions.map((session) => <li key={session.id}><div><strong>{session.sessionCode}</strong><small>{gameModeLabel(session.settings.gameMode)} · {session.players.length} joined</small></div><span className={`status-pill status-${session.status}`}>{sessionStatusLabel(session.status)}</span></li>)}
+          {recentSessions.length === 0 && <li className="dashboard-empty-state"><Target size={22} aria-hidden="true" /><div><strong>No sessions yet</strong><small>Your first private room will appear here after you create one.</small></div></li>}
         </ul>
-      </div>
+      </section>
+
+      <section className="panel dashboard-list-card">
+        <div className="panel-title"><h2>Ready quiz sets</h2><span>{data.quizSets.length} saved</span></div>
+        <ul className="dashboard-session-list">
+          {data.quizSets.slice(0, 4).map((quiz) => <li key={quiz.id}><div><strong>{quiz.title}</strong><small>{quiz.questions.length} questions{quiz.description ? ` · ${quiz.description}` : ""}</small></div><button onClick={() => onTab("sessions")}>Host</button></li>)}
+          {data.quizSets.length === 0 && <li className="dashboard-empty-state"><BookOpen size={22} aria-hidden="true" /><div><strong>No quiz sets yet</strong><small>Create a set first, then turn it into a game room.</small></div></li>}
+        </ul>
+      </section>
     </div>
   );
 }
@@ -2203,7 +2286,7 @@ function StudentExperience({ onExit }: { onExit: () => void }) {
           <div className="panel how-to-card">
             <h2>How to Play</h2>
             <p>Answer questions to earn money, buy snowballs and gear, then tag the other team in the arena.</p>
-            <p>Fast web arena: click to aim, use WASD or arrows to move, F to fire, right click to scope supported gear, E for the flag, Q for quiz, B for buy, hold Tab for scoreboard.</p>
+            <p>Fast web arena: click to aim, use WASD or arrows to move, F or left click to fire, and E for the flag. The Heavy Snowball Launcher cycles 2× scope, 4× scope, then normal view with right click. Q opens quiz, B opens buy, and hold Tab for the scoreboard.</p>
             <p>If you are frozen out, keep practicing. Three correct answers respawn you back into the round.</p>
           </div>
         </div>
@@ -2290,7 +2373,7 @@ function StudentExperience({ onExit }: { onExit: () => void }) {
         </div>
         <div className="arena-objective-strip">
           <span className={`status-pill status-${session.status}`}>{sessionStatusLabel(session.status)}</span>
-          <span>{gameModeLabel(session.settings.gameMode)}</span>
+          <span className={`mode-pill mode-${session.settings.gameMode}`}>{gameModeLabel(session.settings.gameMode)}</span>
           <span className="objective-primary">{objectiveText}</span>
           {session.settings.gameMode === "flag" ? (
             <>
@@ -2319,17 +2402,17 @@ function StudentExperience({ onExit }: { onExit: () => void }) {
               <strong>${player.money}</strong>
             </span>
           </span>
-          <span className="hud-stat">
+          <span className={`hud-stat team-${player.team}`}>
             <Users size={18} aria-hidden="true" />
             <span>
               <small>Team</small>
-              <strong>{player.team === "blue" ? "Blue" : "Red"}</strong>
+              <strong>{session.settings.gameMode === "zombie" ? (player.role === "zombie" ? "Zombie" : "Human") : player.team === "blue" ? "Blue Team" : "Red Team"}</strong>
             </span>
           </span>
-          <span className="hud-stat">
+          <span className="hud-stat weapon">
             <Package size={18} aria-hidden="true" />
             <span>
-              <small>Gear</small>
+              <small>Gear · {((gear.fireCooldownMs ?? 160) / 1000).toFixed(2)}s cadence</small>
               <strong>{gear.name}</strong>
             </span>
           </span>
