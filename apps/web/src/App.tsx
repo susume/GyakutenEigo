@@ -5,6 +5,8 @@ import {
   ClipboardPaste,
   DoorOpen,
   Download,
+  Eye,
+  EyeOff,
   GraduationCap,
   HeartPulse,
   LogOut,
@@ -143,17 +145,17 @@ const getNicknameError = (value: string) => {
 };
 
 const sessionNumberFields = [
-  { name: "roundCount", label: "Rounds", min: 1, max: 30 },
-  { name: "flagHoldSeconds", label: "Flag Hold Time", min: 5, max: 180, step: 5 },
-  { name: "initialZombieCount", label: "Starting Zombies", min: 0, max: 20 },
-  { name: "maxPlayers", label: "Max Players", min: 2, max: 40 },
-  { name: "startingMoney", label: "Starting Money", min: 0, max: 16000, step: 100 },
-  { name: "correctAnswerReward", label: "Correct Answer Reward", min: 0, max: 5000, step: 100 },
-  { name: "startingSnowballs", label: "Starting Snowballs", min: 1, max: 99 },
-  { name: "snowballPackPrice", label: "Snowball Pack Price", min: 0, max: 5000, step: 50 },
-  { name: "snowballsPerPack", label: "Snowballs Per Pack", min: 1, max: 50 },
-  { name: "wrongAnswerPenalty", label: "Wrong Answer Penalty", min: 0, max: 16000, step: 100 },
-  { name: "roundDurationSeconds", label: "Round Time Limit", min: 60, max: 3600, step: 30 }
+  { name: "roundCount", label: "Rounds", min: 1, max: 30, help: "Complete rounds before the session ends." },
+  { name: "flagHoldSeconds", label: "Flag Hold Time", min: 5, max: 180, step: 5, unit: "seconds", help: "How long Red protects a placed flag." },
+  { name: "initialZombieCount", label: "Starting Zombies", min: 0, max: 20, help: "Students who begin as Zombies." },
+  { name: "maxPlayers", label: "Max Players", min: 2, max: 40, unit: "students", help: "Maximum students and test bots in the room." },
+  { name: "startingMoney", label: "Starting Money", min: 0, max: 16000, step: 100, unit: "dollars", help: "Money each student receives at the start." },
+  { name: "correctAnswerReward", label: "Correct Answer Reward", min: 0, max: 5000, step: 100, unit: "dollars", help: "Money earned for each correct answer." },
+  { name: "startingSnowballs", label: "Starting Snowballs", min: 1, max: 99, unit: "snowballs", help: "Starting ammunition for each student." },
+  { name: "snowballPackPrice", label: "Snowball Pack Price", min: 0, max: 5000, step: 50, unit: "dollars", help: "Cost of one snowball pack." },
+  { name: "snowballsPerPack", label: "Snowballs Per Pack", min: 1, max: 50, unit: "snowballs", help: "Ammunition in each purchased pack." },
+  { name: "wrongAnswerPenalty", label: "Wrong Answer Penalty", min: 0, max: 16000, step: 100, unit: "dollars", help: "Money removed for an incorrect answer." },
+  { name: "roundDurationSeconds", label: "Round Time Limit", min: 60, max: 3600, step: 30, unit: "seconds", help: "Time available in each round." }
 ] as const satisfies ReadonlyArray<{
   name: keyof Pick<
     SessionSettings,
@@ -173,6 +175,8 @@ const sessionNumberFields = [
   min: number;
   max: number;
   step?: number;
+  unit?: string;
+  help: string;
 }>;
 
 type SessionNumberField = (typeof sessionNumberFields)[number]["name"];
@@ -285,12 +289,12 @@ function useAsyncMessage() {
   }, []);
 
   useEffect(() => {
-    if (!message && !error) return;
-    const timeout = window.setTimeout(clear, 4500);
+    if (!message) return;
+    const timeout = window.setTimeout(() => setMessage(""), 4500);
     return () => window.clearTimeout(timeout);
-  }, [message, error, clear]);
+  }, [message]);
 
-  return useMemo(() => ({ message, error, setMessage, setError, clear, report }), [message, error, clear, report]);
+  return useMemo(() => ({ message, error, setMessage, setError, clear, clearError: () => setError(""), report }), [message, error, clear, report]);
 }
 
 function accuracy(player: PlayerSession) {
@@ -377,6 +381,12 @@ const SESSION_PRESETS = [
   }
 ];
 
+const sessionSettingGroups: Array<{ title: string; description: string; fields: SessionNumberField[] }> = [
+  { title: "Classroom and timing", description: "Choose the room size and how long each activity runs.", fields: ["maxPlayers", "roundDurationSeconds", "roundCount", "flagHoldSeconds", "initialZombieCount"] },
+  { title: "Rewards and spending", description: "Set what correct answers earn and how much supplies cost.", fields: ["startingMoney", "correctAnswerReward", "wrongAnswerPenalty", "snowballPackPrice"] },
+  { title: "Starting supplies", description: "Set the ammunition students start with and receive in a pack.", fields: ["startingSnowballs", "snowballsPerPack"] }
+];
+
 const formatDuration = (seconds: number) => {
   const safeSeconds = Math.max(0, Math.round(seconds));
   const minutes = Math.floor(safeSeconds / 60);
@@ -404,7 +414,9 @@ const playFeedbackCue = (cue: FeedbackCue) => {
 
 const feedbackCue = (cue: FeedbackCue) => {
   playFeedbackCue(cue);
-  navigator.vibrate?.(cue === "success" ? 24 : cue === "warning" ? [20, 25, 20] : [35, 30, 35]);
+  if (!window.matchMedia?.("(prefers-reduced-motion: reduce)").matches) {
+    navigator.vibrate?.(cue === "success" ? 24 : cue === "warning" ? [20, 25, 20] : [35, 30, 35]);
+  }
 };
 
 const queueFeedbackCue = (cue: FeedbackCue) => {
@@ -446,6 +458,7 @@ export default function App() {
   const isCharacterLabRoute = routePath === "/character-lab";
   const [mode, setMode] = useState<AppMode>(() => modeForRoute(routePath));
   const [teacher, setTeacher] = useState<TeacherUser | null>(null);
+  const [teacherAuthMode, setTeacherAuthMode] = useState<"login" | "signup">("login");
   const [isMobileNavOpen, setIsMobileNavOpen] = useState(false);
 
   const navigateTo = useCallback((nextPath: string, nextMode = modeForRoute(normalizeRoutePath(nextPath))) => {
@@ -524,7 +537,7 @@ export default function App() {
               </button>
             </>
           ) : (
-            <button className={mode === "teacher" ? "active" : ""} onClick={() => navigateTo("/quiz-strike", "teacher")}>
+            <button className={mode === "teacher" ? "active" : ""} onClick={() => { setTeacherAuthMode("login"); navigateTo("/quiz-strike", "teacher"); }}>
               <GraduationCap size={18} aria-hidden="true" />
               Teacher Login
             </button>
@@ -534,14 +547,14 @@ export default function App() {
       </header>
 
       {mode === "home" && <GyakutenEigoHome onOpenGame={() => navigateTo("/quiz-strike", "quizStrike")} onJoinGame={() => navigateTo("/join", "student")} />}
-      {mode === "quizStrike" && <QuizStrikeLanding onTeacher={() => navigateTo("/quiz-strike", "teacher")} onStudent={() => navigateTo("/join", "student")} />}
+      {mode === "quizStrike" && <QuizStrikeLanding onTeacherLogin={() => { setTeacherAuthMode("login"); navigateTo("/quiz-strike", "teacher"); }} onTeacherSignup={() => { setTeacherAuthMode("signup"); navigateTo("/quiz-strike", "teacher"); }} onStudent={() => navigateTo("/join", "student")} />}
       {mode === "characterLab" && <CharacterLab />}
       {mode === "teacher" &&
-        (teacher ? <TeacherDashboard teacher={teacher} onLogout={logout} /> : <TeacherAuth onAuthed={(user) => {
+        (teacher ? <TeacherDashboard teacher={teacher} onLogout={logout} /> : <TeacherAuth initialMode={teacherAuthMode} onAuthed={(user) => {
           setTeacher(user);
           navigateTo("/quiz-strike", "teacher");
         }} />)}
-      {mode === "student" && <StudentExperience />}
+      {mode === "student" && <StudentExperience onExit={() => navigateTo("/quiz-strike", "quizStrike")} />}
     </main>
   );
 }
@@ -651,7 +664,7 @@ function GyakutenEigoHome({ onOpenGame, onJoinGame }: { onOpenGame: () => void; 
   );
 }
 
-function QuizStrikeLanding({ onTeacher, onStudent }: { onTeacher: () => void; onStudent: () => void }) {
+function QuizStrikeLanding({ onTeacherLogin, onTeacherSignup, onStudent }: { onTeacherLogin: () => void; onTeacherSignup: () => void; onStudent: () => void }) {
   return (
     <section className="landing-grid">
       <div className="landing-copy">
@@ -662,10 +675,11 @@ function QuizStrikeLanding({ onTeacher, onStudent }: { onTeacher: () => void; on
           their team win.
         </p>
         <div className="button-row">
-          <button className="primary" onClick={onTeacher}>
+          <button className="primary" onClick={onTeacherLogin}>
             <GraduationCap size={18} aria-hidden="true" />
             Teacher Login
           </button>
+          <button onClick={onTeacherSignup}>Create Teacher Account</button>
           <button onClick={onStudent}>
             <DoorOpen size={18} aria-hidden="true" />
             Join Game
@@ -686,11 +700,14 @@ function QuizStrikeLanding({ onTeacher, onStudent }: { onTeacher: () => void; on
   );
 }
 
-function TeacherAuth({ onAuthed }: { onAuthed: (user: TeacherUser) => void }) {
-  const [isSignup, setIsSignup] = useState(true);
+function TeacherAuth({ onAuthed, initialMode }: { onAuthed: (user: TeacherUser) => void; initialMode: "login" | "signup" }) {
+  const [isSignup, setIsSignup] = useState(initialMode === "signup");
   const [form, setForm] = useState({ name: "", email: "", password: "" });
+  const [isPasswordVisible, setIsPasswordVisible] = useState(false);
   const [isSubmitting, setIsSubmitting] = useState(false);
   const status = useAsyncMessage();
+
+  useEffect(() => setIsSignup(initialMode === "signup"), [initialMode]);
 
   const submit = async (event: React.FormEvent) => {
     event.preventDefault();
@@ -717,26 +734,36 @@ function TeacherAuth({ onAuthed }: { onAuthed: (user: TeacherUser) => void }) {
         {isSignup && (
           <label>
             Name
-            <input value={form.name} onChange={(event) => setForm({ ...form, name: event.target.value })} />
+            <input autoComplete="name" value={form.name} onChange={(event) => { setForm({ ...form, name: event.target.value }); status.clearError(); }} />
           </label>
         )}
         <label>
           Email
           <input
             type="email"
+            autoComplete="email"
+            inputMode="email"
+            enterKeyHint="next"
             value={form.email}
-            onChange={(event) => setForm({ ...form, email: event.target.value })}
+            onChange={(event) => { setForm({ ...form, email: event.target.value }); status.clearError(); }}
           />
         </label>
         <label>
           Password
-          <input
-            type="password"
-            value={form.password}
-            onChange={(event) => setForm({ ...form, password: event.target.value })}
-          />
+          <span className="password-field">
+            <input
+              type={isPasswordVisible ? "text" : "password"}
+              autoComplete={isSignup ? "new-password" : "current-password"}
+              enterKeyHint="go"
+              value={form.password}
+              onChange={(event) => { setForm({ ...form, password: event.target.value }); status.clearError(); }}
+            />
+            <button type="button" className="password-toggle" aria-label={isPasswordVisible ? "Hide password" : "Show password"} onClick={() => setIsPasswordVisible((visible) => !visible)}>
+              {isPasswordVisible ? <EyeOff size={18} aria-hidden="true" /> : <Eye size={18} aria-hidden="true" />}
+            </button>
+          </span>
         </label>
-        {status.error && <p className="error-text">{status.error}</p>}
+        {status.error && <p className="error-text" role="alert">{status.error}</p>}
         <button className="primary" type="submit" disabled={isSubmitting}>
           <GraduationCap size={18} aria-hidden="true" />
           {isSubmitting ? "Working..." : isSignup ? "Create Account" : "Log In"}
@@ -853,6 +880,7 @@ function TeacherDashboard({ teacher, onLogout }: { teacher: TeacherUser; onLogou
             setSelectedSession={setSelectedSession}
             onRefresh={refresh}
             onReport={setReport}
+            onOpenReports={() => setTab("reports")}
           />
         )}
         {tab === "reports" && (
@@ -1174,13 +1202,15 @@ function SessionManager({
   selectedSession,
   setSelectedSession,
   onRefresh,
-  onReport
+  onReport,
+  onOpenReports
 }: {
   data: DashboardPayload;
   selectedSession: GameSession | null;
   setSelectedSession: (session: GameSession | null) => void;
   onRefresh: () => Promise<void>;
   onReport: (report: SessionReport | null) => void;
+  onOpenReports: () => void;
 }) {
   const [quizSetId, setQuizSetId] = useState(data.quizSets[0]?.id ?? "");
   const [settings, setSettings] = useState<SessionSettings>(DEFAULT_SESSION_SETTINGS);
@@ -1346,6 +1376,7 @@ function SessionManager({
         : "Add at least one student before starting."
       : "";
   const shouldShowSetup = !selectedSession || selectedSession.status === "ended";
+  const isSessionEnded = selectedSession?.status === "ended";
   const visibleNumberFields = sessionNumberFields.filter((field) => {
     if (settings.gameMode === "flag") return field.name !== "initialZombieCount";
     if (settings.gameMode === "zombie") return field.name !== "roundCount" && field.name !== "flagHoldSeconds";
@@ -1419,26 +1450,50 @@ function SessionManager({
         )}
         <div className="preset-grid" aria-label="Session presets">
           {SESSION_PRESETS.map((preset) => (
-            <button type="button" key={preset.name} onClick={() => applyPreset(preset.settings)}>
+            <button type="button" key={preset.name} onClick={() => { applyPreset(preset.settings); status.setMessage(`${preset.name} applied: ${preset.description}`); }}>
               <strong>{preset.name}</strong>
               <small>{preset.description}</small>
             </button>
           ))}
         </div>
-        {visibleNumberFields.map((field) => (
-          <label key={field.name}>
-            {field.label}
-            <input
-              type="number"
-              min={field.min}
-              max={field.max}
-              step={"step" in field ? field.step : undefined}
-              value={settingInputs[field.name]}
-              aria-invalid={invalidSettings[field.name] ? "true" : undefined}
-              onChange={(event) => updateNumberSetting(field.name, event.target.value)}
-            />
-          </label>
-        ))}
+        <div className="session-setting-groups">
+          {sessionSettingGroups.map((group) => {
+            const fields = group.fields
+              .map((name) => sessionNumberFields.find((field) => field.name === name))
+              .filter((field): field is (typeof sessionNumberFields)[number] => Boolean(field && visibleNumberFields.includes(field)));
+            if (fields.length === 0) return null;
+            return (
+              <fieldset key={group.title}>
+                <legend>{group.title}</legend>
+                <p>{group.description}</p>
+                <div className="session-setting-grid">
+                  {fields.map((field) => {
+                    const errorId = `session-setting-${field.name}-error`;
+                    const unit = "unit" in field ? field.unit : undefined;
+                    return (
+                      <label key={field.name}>
+                        <span>{field.label}{unit ? ` (${unit})` : ""}</span>
+                        <input
+                          type="number"
+                          min={field.min}
+                          max={field.max}
+                          step={"step" in field ? field.step : undefined}
+                          inputMode="numeric"
+                          value={settingInputs[field.name]}
+                          aria-invalid={invalidSettings[field.name] ? "true" : undefined}
+                          aria-describedby={invalidSettings[field.name] ? errorId : undefined}
+                          onChange={(event) => updateNumberSetting(field.name, event.target.value)}
+                        />
+                        <small>{field.help}</small>
+                        {invalidSettings[field.name] && <small id={errorId} className="field-error" role="alert">Use a value from {field.min} to {field.max}{unit ? ` ${unit}` : ""}.</small>}
+                      </label>
+                    );
+                  })}
+                </div>
+              </fieldset>
+            );
+          })}
+        </div>
         <label className="toggle-row">
           <input
             type="checkbox"
@@ -1466,7 +1521,22 @@ function SessionManager({
 
       <div className="panel live-session">
         <h2>Live Session Control</h2>
-        {selectedSession ? (
+        {selectedSession ? isSessionEnded ? (
+          <div className="session-ended-summary">
+            <span className="status-pill status-ended">Session complete</span>
+            <h3>{gameModeLabel(selectedSession.settings.gameMode)} has ended</h3>
+            <p>The room is closed. Students can view their summary, and the full class learning report is ready.</p>
+            <dl>
+              <div><dt>Final players</dt><dd>{selectedSession.players.length}</dd></div>
+              <div><dt>Final score</dt><dd>Blue {teamTotals.blue} – Red {teamTotals.red}</dd></div>
+              <div><dt>Top learner</dt><dd>{topLearner?.nickname ?? "No answers recorded"}</dd></div>
+            </dl>
+            <div className="button-row">
+              <button className="primary" onClick={onOpenReports}><Download size={18} aria-hidden="true" />View Learning Report</button>
+              <button onClick={() => setSelectedSession(null)}>Create Another Session</button>
+            </div>
+          </div>
+        ) : (
           <>
             <div className="live-summary">
               <span className={`status-pill status-${selectedSession.status}`}>{sessionStatusLabel(selectedSession.status)}</span>
@@ -1672,7 +1742,7 @@ function ReportsPanel({
   );
 }
 
-function StudentExperience() {
+function StudentExperience({ onExit }: { onExit: () => void }) {
   const [joinCode, setJoinCode] = useState("");
   const [nickname, setNickname] = useState("");
   const [session, setSession] = useState<GameSession | null>(null);
@@ -1990,6 +2060,17 @@ function StudentExperience() {
     }
   };
 
+  const returnToJoin = () => {
+    socketRef.current?.disconnect();
+    clearStoredStudentSession();
+    setSession(null);
+    setPlayer(null);
+    setPlayerToken("");
+    setQuestion(null);
+    setFeedback("");
+    status.clear();
+  };
+
   const answer = async (choice: Choice) => {
     if (!session || !player || !question || !playerToken || answeringChoice) return;
     status.clear();
@@ -2102,16 +2183,22 @@ function StudentExperience() {
             Session Code
             <input
               value={joinCode}
-              onChange={(event) => setJoinCode(event.target.value.toUpperCase())}
+              onChange={(event) => { setJoinCode(event.target.value.toUpperCase()); status.clearError(); }}
               maxLength={8}
+              autoComplete="off"
+              autoCapitalize="characters"
+              inputMode="text"
+              enterKeyHint="next"
+              aria-invalid={Boolean(status.error)}
+              aria-describedby={status.error ? "join-error" : undefined}
             />
           </label>
           <label>
             Nickname
-            <input value={nickname} onChange={(event) => setNickname(event.target.value)} maxLength={20} />
+            <input autoComplete="nickname" enterKeyHint="done" value={nickname} onChange={(event) => { setNickname(event.target.value); status.clearError(); }} maxLength={20} aria-invalid={Boolean(nicknameError)} aria-describedby={nicknameError ? "nickname-error" : undefined} />
           </label>
-          {nicknameError && <p className="error-text">{nicknameError}</p>}
-          {status.error && <p className="error-text">{status.error}</p>}
+          {nicknameError && <p id="nickname-error" className="error-text" role="alert">{nicknameError}</p>}
+          {status.error && <p id="join-error" className="error-text" role="alert">{status.error} Check the code with your teacher, then try again.</p>}
           <button className="primary" type="submit" disabled={isJoining || Boolean(nicknameError)}>
             <DoorOpen size={18} aria-hidden="true" />
             {isJoining ? "Working..." : "Join"}
@@ -2125,6 +2212,7 @@ function StudentExperience() {
   const snowballs = player.snowballs ?? session.settings.startingSnowballs;
   const warmth = getPlayerWarmth(player);
   const topLearner = getTopLearner(session.players);
+  const teamTotals = getTeamTotals(session.players);
   const respawnProgress = player.respawnCorrectAnswers ?? 0;
   const canPracticeToRespawn = !player.isAlive && session.settings.deadPlayersCanPractice && session.settings.gameMode !== "flag";
   const roundActive = session.status === "active";
@@ -2136,10 +2224,20 @@ function StudentExperience() {
     roundActive ? "round-countdown-active" : "",
     roundActive && remainingSeconds <= 30 ? "round-countdown-low" : ""
   ].filter(Boolean).join(" ");
+  const objectiveText = session.settings.gameMode === "flag"
+    ? flagStatusText(session)
+    : session.settings.gameMode === "zombie"
+      ? zombieStatusText(session, player)
+      : "Answer questions, earn supplies, and tag the other team.";
+  const teamResult = teamTotals.blue === teamTotals.red ? "The teams finished tied." : `${teamTotals.blue > teamTotals.red ? "Blue" : "Red"} Team won the round.`;
 
   return (
     <section className={isCompactViewport ? "game-layout compact-game-layout" : "game-layout"}>
       <div className="game-stage">
+        <div className="game-utility-bar">
+          <span>{gameModeLabel(session.settings.gameMode)}</span>
+          <button type="button" onClick={onExit}>Exit Game</button>
+        </div>
         <Suspense fallback={<ArenaLoading />}>
           <ArenaPreview
             session={session}
@@ -2161,17 +2259,13 @@ function StudentExperience() {
         <div className="arena-objective-strip">
           <span className={`status-pill status-${session.status}`}>{sessionStatusLabel(session.status)}</span>
           <span>{gameModeLabel(session.settings.gameMode)}</span>
+          <span className="objective-primary">{objectiveText}</span>
           {session.settings.gameMode === "flag" ? (
             <>
               <span>Round {session.currentRound}/{session.settings.roundCount}</span>
-              <span>{flagStatusText(session)}</span>
               <span>{player.team === "red" ? "Carry the flag to the Blue base" : "Capture the Flag after Red places it"}</span>
             </>
-          ) : session.settings.gameMode === "zombie" ? (
-            <span>{zombieStatusText(session, player)}</span>
-          ) : (
-            <span>Goal: answer, earn, buy, tag.</span>
-          )}
+          ) : null}
           <span>
             {session.settings.gameMode === "flag"
               ? "Knocked-out players return next round."
@@ -2298,9 +2392,18 @@ function StudentExperience() {
               </div>
             )}
             {roundEnded && (
-              <div className="panel pre-round-card">
+              <div className="panel pre-round-card student-end-summary">
                 <h2>Session Ended</h2>
-                <p>The round is closed and the class report is ready.</p>
+                <p>{teamResult}</p>
+                <div className="student-summary-metrics">
+                  <span><strong>{accuracy(player)}%</strong> question accuracy</span>
+                  <span><strong>{formatMoney(player.money)}</strong> earned</span>
+                  <span><strong>{player.score}</strong> final score</span>
+                </div>
+                <div className="button-row">
+                  <button className="primary" onClick={returnToJoin}>Join Another Game</button>
+                  <button onClick={onExit}>Return to Quiz-Strike</button>
+                </div>
               </div>
             )}
             {isSocketReconnecting && (
@@ -2417,7 +2520,8 @@ function BuyPanel({
         <ShoppingBag size={18} aria-hidden="true" />
         <span>
           <strong>{isBuyingSnowballs ? "Working..." : `${snowballCount} Snowballs`}</strong>
-          <small>{player.money < snowballPrice ? `Need ${formatMoney(snowballPrice - player.money)}` : "Buy anywhere on the map"}</small>
+          <small>Restock ammunition anywhere on the map.</small>
+          <small className="gear-status">{player.money < snowballPrice ? `Need ${formatMoney(snowballPrice - player.money)} more` : player.isAlive ? "Ready to buy" : "Available next round"}</small>
         </span>
         <em>{formatMoney(snowballPrice)}</em>
       </button>
@@ -2431,7 +2535,8 @@ function BuyPanel({
           <ShoppingBag size={18} aria-hidden="true" />
           <span>
             <strong>{buyingGearId === gear.id ? "Working..." : gear.name}</strong>
-            <small>{player.gear === gear.id ? "Equipped" : player.money < gear.cost || !player.isAlive ? gearLockReason(gear.cost) : gear.description}</small>
+            <small>{gear.description}</small>
+            <small className="gear-status">{player.gear === gear.id ? "Equipped" : player.money < gear.cost || !player.isAlive ? gearLockReason(gear.cost) : "Ready to buy"}</small>
           </span>
           <em>{formatMoney(gear.cost)}</em>
         </button>
@@ -2492,29 +2597,34 @@ function Scoreboard({
         {grouped.map((group) => (
           <div className="scoreboard-group" key={group.id}>
             <h3>{group.label} <span>{group.rows.length}</span></h3>
-            <div className="scoreboard-table" role="table" aria-label={`${group.label} scoreboard`}>
-              <div className="scoreboard-row scoreboard-head" role="row">
-                <span>Player Name</span>
-                <span>Tags</span>
-                <span>Respawns</span>
-                <span>Question Accuracy</span>
-              </div>
+            <table className="scoreboard-table">
+              <caption>{group.label} scoreboard</caption>
+              <thead>
+                <tr className="scoreboard-row scoreboard-head">
+                  <th scope="col">Player Name</th>
+                  <th scope="col">Tags</th>
+                  <th scope="col">Respawns</th>
+                  <th scope="col">Question Accuracy</th>
+                </tr>
+              </thead>
+              <tbody>
               {group.rows.map((row) => (
-                <div className={`scoreboard-row ${row.teamId}-team`} role="row" key={row.playerId}>
-                  <span title={row.displayName}>
+                <tr className={`scoreboard-row ${row.teamId}-team`} key={row.playerId}>
+                  <th scope="row" title={row.displayName}>
                     {row.displayName}
                     {row.isBot ? " Bot" : ""}
                     {row.isLocalPlayer ? " You" : ""}
                     {row.connectionState === "disconnected" ? " Offline" : ""}
                     <small>{gameMode === "zombie" ? (row.role === "zombie" ? "Zombie" : "Human") : teamLabel(row.teamId)}</small>
-                  </span>
-                  <span>{row.tags}</span>
-                  <span>{row.respawns}</span>
-                  <span>{row.questionAccuracy}</span>
-                </div>
+                  </th>
+                  <td>{row.tags}</td>
+                  <td>{row.respawns}</td>
+                  <td>{row.questionAccuracy}</td>
+                </tr>
               ))}
-              {group.rows.length === 0 && <p>No players in this group.</p>}
-            </div>
+              {group.rows.length === 0 && <tr><td colSpan={4}>No players in this group.</td></tr>}
+              </tbody>
+            </table>
           </div>
         ))}
       </div>
