@@ -16,7 +16,7 @@ GyakutenEigo is a browser-based English learning site. Its first hosted game is 
    copy .env.example .env
    ```
 
-3. Optional database services:
+3. Optional local database services (required for durable local data):
 
    ```bash
    docker compose up -d
@@ -110,7 +110,7 @@ Known limitations:
 
 This is an educational prototype. Schools should review privacy, safeguarding, accessibility, and local policy requirements before classroom deployment.
 
-The current backend stores accounts, quiz sets, live sessions, and reports in memory. That is suitable for a first private online playtest, but data will reset when the server restarts. Persistent database storage should be added before serious classroom use.
+Local development can run without PostgreSQL and uses temporary in-memory data. Production requires `DATABASE_URL`; the server mirrors classroom state to PostgreSQL so teacher accounts, quiz sets, sessions, and reports survive process restarts. The production server start command applies committed migrations before accepting traffic.
 
 ## Design Rules
 

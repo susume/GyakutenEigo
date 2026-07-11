@@ -10,10 +10,11 @@
   "scripts": {
     "dev": "concurrently -n shared,server,web -c cyan,green,magenta \"npm run dev -w @quizstrike/shared\" \"npm run dev -w @quizstrike/server\" \"npm run dev -w @quizstrike/web\"",
     "build": "npm run build -w @quizstrike/shared && npm run build -w @quizstrike/server && npm run build -w @quizstrike/web",
-    "test": "npm run test -w @quizstrike/shared",
+    "test": "npm run test -w @quizstrike/shared && npm run test -w @quizstrike/web",
     "typecheck": "npm run typecheck -w @quizstrike/shared && npm run build -w @quizstrike/shared && npm run typecheck -w @quizstrike/server && npm run typecheck -w @quizstrike/web",
     "prisma:generate": "prisma generate",
     "prisma:migrate": "prisma migrate dev",
+    "prisma:deploy": "prisma migrate deploy",
     "prisma:studio": "prisma studio"
   },
   "devDependencies": {

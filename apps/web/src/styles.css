@@ -204,6 +204,15 @@ label.toggle-row input {
   gap: 10px;
 }
 
+.primary-nav {
+  display: flex;
+  align-items: center;
+}
+
+.nav-menu-toggle {
+  display: none;
+}
+
 .file-import-button {
   position: relative;
   width: auto;
@@ -1990,16 +1999,30 @@ small {
     max-height: 180px;
   }
 
+  .primary-nav {
+    width: 100%;
+    display: grid;
+    gap: 8px;
+  }
+
+  .nav-menu-toggle {
+    display: inline-flex;
+    width: 100%;
+  }
+
   .top-actions {
-    display: flex;
-    flex-wrap: nowrap;
-    overflow-x: auto;
-    padding-bottom: 2px;
+    display: none;
+    width: 100%;
+    overflow: visible;
+  }
+
+  .top-actions[data-open="true"] {
+    display: grid;
+    grid-template-columns: 1fr;
   }
 
   .top-actions button {
-    flex: 0 0 auto;
-    min-width: max-content;
+    width: 100%;
   }
 
   .landing-grid,

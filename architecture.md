@@ -8,7 +8,7 @@ GyakutenEigo is the public English-learning site. Quiz Strike is its separate, p
 flowchart LR
   Visitor["Teacher or student browser"] --> Pages["GitHub Pages\nwww.gyakuteneigo.com\nReact + Vite"]
   Pages -->|"HTTPS REST + Socket.IO"| Api["Render\napi.gyakuteneigo.com\nNode + Express + Socket.IO"]
-  Api --> Memory["Single-process in-memory state\nteachers, quizzes, sessions, players, reports"]
+  Api --> State["PostgreSQL durable runtime snapshot\nplus single-process live simulation"]
   Shared["packages/shared\ntypes, validation, deterministic rules"] --> Pages
   Shared --> Api
 ```
@@ -128,7 +128,7 @@ The active service is `gyakuteneigo-api` and its custom domain is `api.gyakutene
 Render build command:
 
 ```text
-npm ci --include=dev && npm run build -w @quizstrike/shared && npm run build -w @quizstrike/server
+npm ci --include=dev && npx prisma generate && npm run build -w @quizstrike/shared && npm run build -w @quizstrike/server
 ```
 
 Render start command:
@@ -153,7 +153,7 @@ The `api` DNS record is a CNAME to `gyakuteneigo-api.onrender.com`. Render must 
 
 ## Data and Operational Limits
 
-The current server stores users, classes, quiz sets, sessions, answer logs, player tokens, question gates, and rate-limit state in process memory. A Render restart, redeploy, or service sleep clears all of it, including teacher accounts and quiz content. The free Render tier can take time to wake after inactivity; the first request may be slow.
+The live simulation keeps transient rate limits, fire cooldowns, socket bindings, and question gates in process memory. Durable classroom state (teachers, classes, quizzes, sessions, players, and answer logs) is mirrored to PostgreSQL through the `RuntimeSnapshot` record and restored at startup. Production refuses to start without `DATABASE_URL`; local development may intentionally use temporary memory-only data. The free Render tier can still take time to wake after inactivity; the first request may be slow.
 
 The server assumes one process. Socket.IO rooms and in-memory state are not shared between multiple instances. Before a serious classroom launch, add persistent storage and a shared Socket.IO adapter or keep a single instance intentionally.
 

@@ -23,7 +23,6 @@ import {
 import { io, type Socket } from "socket.io-client";
 import {
   calculateAccuracy,
-  buildScoreboardRows,
   canStartRound,
   DEFAULT_SESSION_SETTINGS,
   FLAG_MODE_DEFAULTS,
@@ -42,6 +41,8 @@ import {
   type TeacherUser
 } from "@quizstrike/shared";
 import { API_URL, ApiError, authApi, studentApi, teacherApi } from "./api/client";
+import { modeForRoute, normalizeRoutePath, type AppMode } from "./navigation";
+import { groupScoreboardRows } from "./scoreboardGroups";
 import {
   CHARACTER_STRESS_COUNTS,
   createCharacterDebugSession,
@@ -57,7 +58,6 @@ import {
 
 const ArenaPreview = lazy(() => import("./game/ArenaPreview"));
 
-type AppMode = "home" | "quizStrike" | "teacher" | "student" | "characterLab";
 type DashboardPayload = {
   classes: Array<{ id: string; name: string; description?: string; createdAt: string }>;
   quizSets: QuizSet[];
@@ -65,6 +65,7 @@ type DashboardPayload = {
 };
 
 type AuthPayload = { user: TeacherUser; token: string };
+type StoredStudentSession = { sessionCode: string; playerId: string; playerToken: string };
 
 const emptyQuestion = {
   prompt: "",
@@ -79,6 +80,22 @@ const emptyQuestion = {
 
 const choices: Choice[] = ["A", "B", "C", "D"];
 const publicAsset = (path: string) => `${import.meta.env.BASE_URL}${path.replace(/^\//, "")}`;
+const STUDENT_SESSION_STORAGE_KEY = "quizstrike_student_session";
+
+const readStoredStudentSession = (): StoredStudentSession | null => {
+  try {
+    const raw = localStorage.getItem(STUDENT_SESSION_STORAGE_KEY);
+    if (!raw) return null;
+    const stored = JSON.parse(raw) as Partial<StoredStudentSession>;
+    return stored.sessionCode && stored.playerId && stored.playerToken
+      ? { sessionCode: stored.sessionCode, playerId: stored.playerId, playerToken: stored.playerToken }
+      : null;
+  } catch {
+    return null;
+  }
+};
+
+const clearStoredStudentSession = () => localStorage.removeItem(STUDENT_SESSION_STORAGE_KEY);
 
 type QuestionDraft = typeof emptyQuestion;
 type ArenaPositionPayload = { x: number; z: number; y?: number; facing: number };
@@ -422,16 +439,33 @@ function ArenaLoading({ label = "Loading arena" }: { label?: string }) {
 }
 
 export default function App() {
-  const path = window.location.pathname;
-  const routePath = path === "/" ? path : path.replace(/\/$/, "");
+  const [routePath, setRoutePath] = useState(() => normalizeRoutePath(window.location.pathname));
   const isJoinRoute = routePath === "/join";
   const isGameRoute = routePath === "/game";
   const isQuizStrikeRoute = routePath === "/quiz-strike";
   const isCharacterLabRoute = routePath === "/character-lab";
-  const [mode, setMode] = useState<AppMode>(
-    isCharacterLabRoute ? "characterLab" : isJoinRoute || isGameRoute ? "student" : isQuizStrikeRoute ? "quizStrike" : "home"
-  );
+  const [mode, setMode] = useState<AppMode>(() => modeForRoute(routePath));
   const [teacher, setTeacher] = useState<TeacherUser | null>(null);
+  const [isMobileNavOpen, setIsMobileNavOpen] = useState(false);
+
+  const navigateTo = useCallback((nextPath: string, nextMode = modeForRoute(normalizeRoutePath(nextPath))) => {
+    const normalizedPath = normalizeRoutePath(nextPath);
+    if (window.location.pathname !== normalizedPath) window.history.pushState(null, "", normalizedPath);
+    setRoutePath(normalizedPath);
+    setMode(nextMode);
+    setIsMobileNavOpen(false);
+  }, []);
+
+  useEffect(() => {
+    const syncRouteFromHistory = () => {
+      const nextRoutePath = normalizeRoutePath(window.location.pathname);
+      setRoutePath(nextRoutePath);
+      setMode(modeForRoute(nextRoutePath));
+      setIsMobileNavOpen(false);
+    };
+    window.addEventListener("popstate", syncRouteFromHistory);
+    return () => window.removeEventListener("popstate", syncRouteFromHistory);
+  }, []);
 
   useEffect(() => {
     if (isJoinRoute || isGameRoute || isCharacterLabRoute || !isQuizStrikeRoute) return;
@@ -449,41 +483,38 @@ export default function App() {
   const logout = () => {
     localStorage.removeItem("quizstrike_token");
     setTeacher(null);
-    window.history.pushState(null, "", "/");
-    setMode("home");
+    navigateTo("/", "home");
   };
 
   return (
     <main className="app-shell">
       <header className="topbar">
-        <button className="brand-button" onClick={() => {
-          window.history.pushState(null, "", "/");
-          setMode("home");
-        }}>
+        <button className="brand-button" onClick={() => navigateTo("/", "home")}>
           <Shield size={24} aria-hidden="true" />
           <span>GyakutenEigo</span>
         </button>
-        <nav className="top-actions" aria-label="Primary">
-          <button className={mode === "quizStrike" ? "active" : ""} onClick={() => {
-            window.history.pushState(null, "", "/quiz-strike");
-            setMode("quizStrike");
-          }}>
+        <nav className="primary-nav" aria-label="Primary">
+          <button
+            className="nav-menu-toggle"
+            type="button"
+            aria-expanded={isMobileNavOpen}
+            aria-controls="primary-actions"
+            onClick={() => setIsMobileNavOpen((open) => !open)}
+          >
+            Menu
+          </button>
+          <div id="primary-actions" className="top-actions" data-open={isMobileNavOpen ? "true" : "false"}>
+          <button className={mode === "quizStrike" ? "active" : ""} onClick={() => navigateTo("/quiz-strike", "quizStrike")}>
             <Play size={18} aria-hidden="true" />
             Quiz-Strike
           </button>
-          <button className={mode === "student" ? "active" : ""} onClick={() => {
-            window.history.pushState(null, "", "/join");
-            setMode("student");
-          }}>
+          <button className={mode === "student" ? "active" : ""} onClick={() => navigateTo("/join", "student")}>
             <DoorOpen size={18} aria-hidden="true" />
             Join Game
           </button>
           {teacher ? (
             <>
-              <button className={mode === "teacher" ? "active" : ""} onClick={() => {
-                window.history.pushState(null, "", "/quiz-strike");
-                setMode("teacher");
-              }}>
+              <button className={mode === "teacher" ? "active" : ""} onClick={() => navigateTo("/quiz-strike", "teacher")}>
                 <GraduationCap size={18} aria-hidden="true" />
                 Teacher Dashboard
               </button>
@@ -493,37 +524,22 @@ export default function App() {
               </button>
             </>
           ) : (
-            <button className={mode === "teacher" ? "active" : ""} onClick={() => {
-              window.history.pushState(null, "", "/quiz-strike");
-              setMode("teacher");
-            }}>
+            <button className={mode === "teacher" ? "active" : ""} onClick={() => navigateTo("/quiz-strike", "teacher")}>
               <GraduationCap size={18} aria-hidden="true" />
               Teacher Login
             </button>
           )}
+          </div>
         </nav>
       </header>
 
-      {mode === "home" && <GyakutenEigoHome onOpenGame={() => {
-        window.history.pushState(null, "", "/quiz-strike");
-        setMode("quizStrike");
-      }} onJoinGame={() => {
-        window.history.pushState(null, "", "/join");
-        setMode("student");
-      }} />}
-      {mode === "quizStrike" && <QuizStrikeLanding onTeacher={() => {
-        window.history.pushState(null, "", "/quiz-strike");
-        setMode("teacher");
-      }} onStudent={() => {
-        window.history.pushState(null, "", "/join");
-        setMode("student");
-      }} />}
+      {mode === "home" && <GyakutenEigoHome onOpenGame={() => navigateTo("/quiz-strike", "quizStrike")} onJoinGame={() => navigateTo("/join", "student")} />}
+      {mode === "quizStrike" && <QuizStrikeLanding onTeacher={() => navigateTo("/quiz-strike", "teacher")} onStudent={() => navigateTo("/join", "student")} />}
       {mode === "characterLab" && <CharacterLab />}
       {mode === "teacher" &&
         (teacher ? <TeacherDashboard teacher={teacher} onLogout={logout} /> : <TeacherAuth onAuthed={(user) => {
           setTeacher(user);
-          window.history.pushState(null, "", "/quiz-strike");
-          setMode("teacher");
+          navigateTo("/quiz-strike", "teacher");
         }} />)}
       {mode === "student" && <StudentExperience />}
     </main>
@@ -1177,12 +1193,54 @@ function SessionManager({
   const [isEndingSession, setIsEndingSession] = useState(false);
   const [isAddingBot, setIsAddingBot] = useState(false);
   const [isEndConfirmOpen, setIsEndConfirmOpen] = useState(false);
+  const endSessionTriggerRef = useRef<HTMLButtonElement>(null);
+  const endSessionDialogRef = useRef<HTMLDivElement>(null);
+  const keepSessionOpenRef = useRef<HTMLButtonElement>(null);
   const status = useAsyncMessage();
   const remainingSeconds = useRoundRemaining(selectedSession);
 
   useEffect(() => {
     if (!quizSetId && data.quizSets[0]) setQuizSetId(data.quizSets[0].id);
   }, [data.quizSets, quizSetId]);
+
+  useEffect(() => {
+    if (!isEndConfirmOpen) return;
+    const previousFocus = document.activeElement instanceof HTMLElement ? document.activeElement : null;
+    const previousOverflow = document.body.style.overflow;
+    document.body.style.overflow = "hidden";
+    window.setTimeout(() => keepSessionOpenRef.current?.focus(), 0);
+
+    const handleKeyDown = (event: KeyboardEvent) => {
+      if (event.key === "Escape") {
+        event.preventDefault();
+        setIsEndConfirmOpen(false);
+        return;
+      }
+      if (event.key !== "Tab") return;
+      const focusable = Array.from(
+        endSessionDialogRef.current?.querySelectorAll<HTMLElement>(
+          'button:not([disabled]), [href], input:not([disabled]), select:not([disabled]), textarea:not([disabled]), [tabindex]:not([tabindex="-1"])'
+        ) ?? []
+      );
+      if (focusable.length === 0) return;
+      const first = focusable[0];
+      const last = focusable[focusable.length - 1];
+      if (event.shiftKey && document.activeElement === first) {
+        event.preventDefault();
+        last.focus();
+      } else if (!event.shiftKey && document.activeElement === last) {
+        event.preventDefault();
+        first.focus();
+      }
+    };
+
+    document.addEventListener("keydown", handleKeyDown);
+    return () => {
+      document.body.style.overflow = previousOverflow;
+      document.removeEventListener("keydown", handleKeyDown);
+      previousFocus?.focus();
+    };
+  }, [isEndConfirmOpen]);
 
   const hasInvalidSettings = Object.values(invalidSettings).some(Boolean);
 
@@ -1437,7 +1495,7 @@ function SessionManager({
                   {isStartingSession ? "Working..." : startBlockedReason ? "Waiting for Students" : "Begin Round"}
                 </button>
               )}
-              <button onClick={() => setIsEndConfirmOpen(true)} disabled={selectedSession.status === "ended" || isEndingSession}>
+              <button ref={endSessionTriggerRef} onClick={() => setIsEndConfirmOpen(true)} disabled={selectedSession.status === "ended" || isEndingSession}>
                 {isEndingSession ? "Working..." : "End Session"}
               </button>
               <button onClick={addBot} disabled={selectedSession.players.length >= selectedSession.maxPlayers || isAddingBot}>
@@ -1448,18 +1506,18 @@ function SessionManager({
             <Suspense fallback={<ArenaLoading label="Loading live arena" />}>
               <ArenaPreview session={selectedSession} />
             </Suspense>
-            <Scoreboard players={selectedSession.players} />
+            <Scoreboard players={selectedSession.players} gameMode={selectedSession.settings.gameMode} />
             <EventFeed events={selectedSession.events ?? []} />
             {isEndConfirmOpen && (
               <div className="modal-backdrop" role="presentation">
-                <div className="panel confirm-modal" role="dialog" aria-modal="true" aria-labelledby="end-session-title">
+                <div ref={endSessionDialogRef} className="panel confirm-modal" role="dialog" aria-modal="true" aria-labelledby="end-session-title">
                   <h2 id="end-session-title">End Session?</h2>
                   <p>This will close the round and prepare the learning report. Students cannot rejoin this session.</p>
                   <div className="button-row">
                     <button className="primary" onClick={end} disabled={isEndingSession}>
                       {isEndingSession ? "Working..." : "End and Create Report"}
                     </button>
-                    <button onClick={() => setIsEndConfirmOpen(false)}>Keep Session Open</button>
+                    <button ref={keepSessionOpenRef} onClick={() => setIsEndConfirmOpen(false)}>Keep Session Open</button>
                   </div>
                 </div>
               </div>
@@ -1631,6 +1689,7 @@ function StudentExperience() {
   const [answeringChoice, setAnsweringChoice] = useState<Choice | null>(null);
   const [buyingGearId, setBuyingGearId] = useState<string | null>(null);
   const [isBuyingSnowballs, setIsBuyingSnowballs] = useState(false);
+  const [isRestoringStudentSession, setIsRestoringStudentSession] = useState(true);
   const [rewardPulse, setRewardPulse] = useState("");
   const [incomingHitCue, setIncomingHitCue] = useState<{
     id: number;
@@ -1644,6 +1703,37 @@ function StudentExperience() {
 
   const isCompactViewport = viewportWidth <= 780;
   const nicknameError = useMemo(() => getNicknameError(nickname), [nickname]);
+
+  useEffect(() => {
+    const stored = readStoredStudentSession();
+    if (!stored) {
+      setIsRestoringStudentSession(false);
+      return;
+    }
+
+    let cancelled = false;
+    void studentApi
+      .rejoin(stored.sessionCode, stored.playerId, stored.playerToken)
+      .then((payload) => {
+        if (cancelled) return;
+        const data = payload as { session: GameSession; player: PlayerSession; question?: PublicQuestion };
+        setSession(data.session);
+        setPlayer(data.player);
+        setPlayerToken(stored.playerToken);
+        setQuestion(data.question ?? null);
+        setFeedback("Your student session was restored.");
+      })
+      .catch(() => {
+        clearStoredStudentSession();
+      })
+      .finally(() => {
+        if (!cancelled) setIsRestoringStudentSession(false);
+      });
+
+    return () => {
+      cancelled = true;
+    };
+  }, []);
 
   useEffect(() => {
     const updateViewportWidth = () => setViewportWidth(window.innerWidth);
@@ -1887,6 +1977,11 @@ function StudentExperience() {
       setPlayer(payload.player);
       setPlayerToken(payload.playerToken);
       setQuestion(payload.question ?? null);
+      localStorage.setItem(STUDENT_SESSION_STORAGE_KEY, JSON.stringify({
+        sessionCode: payload.session.sessionCode,
+        playerId: payload.player.id,
+        playerToken: payload.playerToken
+      } satisfies StoredStudentSession));
       setFeedback("Joined. Click the arena to aim, or use the touch controls on smaller screens.");
     } catch (err) {
       status.report(err);
@@ -1983,6 +2078,13 @@ function StudentExperience() {
   };
 
   if (!session || !player) {
+    if (isRestoringStudentSession) {
+      return (
+        <section className="auth-layout">
+          <ArenaLoading label="Restoring your student session" />
+        </section>
+      );
+    }
     return (
       <section className="auth-layout">
         <div>
@@ -2170,7 +2272,7 @@ function StudentExperience() {
                 isBuyingSnowballs={isBuyingSnowballs}
               />
             )}
-            {scoreboardOpen && <Scoreboard players={session.players} localPlayerId={player.id} />}
+            {scoreboardOpen && <Scoreboard players={session.players} localPlayerId={player.id} gameMode={session.settings.gameMode} />}
           </div>
         )}
         {(session.status === "waiting" || roundEnded || isSocketReconnecting || !player.isAlive || status.error || feedback) && (
@@ -2365,18 +2467,16 @@ function ScoreboardLegacy({ players }: { players: PlayerSession[] }) {
   );
 }
 
-function Scoreboard({ players, localPlayerId }: { players: PlayerSession[]; localPlayerId?: string }) {
-  const rows = buildScoreboardRows(players, localPlayerId).sort((a, b) => b.tags - a.tags || b.questionsCorrect - a.questionsCorrect);
-  const grouped =
-    rows.some((row) => row.role === "zombie" || row.role === "human")
-      ? [
-          { id: "human", label: "Humans", rows: rows.filter((row) => row.role !== "zombie") },
-          { id: "zombie", label: "Zombies", rows: rows.filter((row) => row.role === "zombie") }
-        ]
-      : [
-          { id: "red", label: "Red Team", rows: rows.filter((row) => row.teamId === "red") },
-          { id: "blue", label: "Blue Team", rows: rows.filter((row) => row.teamId === "blue") }
-        ];
+function Scoreboard({
+  players,
+  localPlayerId,
+  gameMode
+}: {
+  players: PlayerSession[];
+  localPlayerId?: string;
+  gameMode: SessionSettings["gameMode"];
+}) {
+  const grouped = groupScoreboardRows(players, gameMode, localPlayerId);
   const totals = getTeamTotals(players);
   return (
     <div className="scoreboard">
@@ -2406,7 +2506,7 @@ function Scoreboard({ players, localPlayerId }: { players: PlayerSession[]; loca
                     {row.isBot ? " Bot" : ""}
                     {row.isLocalPlayer ? " You" : ""}
                     {row.connectionState === "disconnected" ? " Offline" : ""}
-                    <small>{row.role === "zombie" ? "Zombie" : row.role === "human" ? "Human" : teamLabel(row.teamId)}</small>
+                    <small>{gameMode === "zombie" ? (row.role === "zombie" ? "Zombie" : "Human") : teamLabel(row.teamId)}</small>
                   </span>
                   <span>{row.tags}</span>
                   <span>{row.respawns}</span>

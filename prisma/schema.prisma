@@ -146,3 +146,12 @@ model RoundLog {
   startedAt     DateTime     @default(now())
   endedAt       DateTime?
 }
+
+/// Durable runtime state for the current lightweight game engine. The application
+/// keeps the existing in-memory model for fast real-time simulation, then mirrors
+/// it here so production restarts do not erase classroom data between releases.
+model RuntimeSnapshot {
+  id        String   @id
+  data      Json
+  updatedAt DateTime @updatedAt
+}

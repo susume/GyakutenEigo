@@ -3,6 +3,7 @@ import bcrypt from "bcryptjs";
 import cors from "cors";
 import express, { type Request, type Response } from "express";
 import jwt from "jsonwebtoken";
+import { Prisma, PrismaClient } from "@prisma/client";
 import { createServer } from "node:http";
 import { randomUUID } from "node:crypto";
 import { Server } from "socket.io";
@@ -27,7 +28,6 @@ import {
   isChoice,
   isMainRoundAnswer,
   isRoundActive,
-  isValidPlayerToken,
   createInitialFlagState,
   randomizeBalancedTeams,
   resolveAnswerReward,
@@ -78,6 +78,8 @@ const server = createServer(app);
 const port = Number(process.env.PORT ?? 4000);
 const isProduction = process.env.NODE_ENV === "production";
 const jwtSecret = process.env.JWT_SECRET ?? "local-dev-only-change-me";
+const databaseUrl = process.env.DATABASE_URL?.trim();
+const prisma = databaseUrl ? new PrismaClient() : undefined;
 const clientOrigins = (process.env.CLIENT_ORIGIN ?? process.env.CORS_ORIGIN ?? "")
   .split(",")
   .map((origin) => origin.trim())
@@ -86,6 +88,10 @@ const corsOrigin = clientOrigins.length > 0 ? clientOrigins : true;
 
 if (isProduction && jwtSecret === "local-dev-only-change-me") {
   throw new Error("JWT_SECRET must be set before running QuizStrike online.");
+}
+
+if (isProduction && !databaseUrl) {
+  throw new Error("DATABASE_URL must be set before running QuizStrike online so classroom data remains durable.");
 }
 
 if (process.env.TRUST_PROXY === "true") {
@@ -102,7 +108,6 @@ const quizSets = new Map<string, QuizSet>();
 const sessions = new Map<string, GameSession>();
 const answers: AnswerLog[] = [];
 const playerQuestionHistory = new Map<string, Set<string>>();
-const playerTokens = new Map<string, string>();
 const playerQuestionGate = new PlayerQuestionGate();
 const quizRateLimits = new Map<string, number[]>();
 const fireRequestIds = new Map<string, Map<string, number>>();
@@ -110,6 +115,71 @@ const playerMoveTimestamps = new Map<string, number>();
 const playerNextFireAt = new Map<string, number>();
 const botRespawnAt = new Map<string, number>();
 const botNextAttackAt = new Map<string, number>();
+
+type PersistedRuntimeState = {
+  users: StoredUser[];
+  classes: Array<ClassSummary & { teacherId: string }>;
+  quizSets: QuizSet[];
+  sessions: GameSession[];
+  answers: AnswerLog[];
+};
+
+const runtimeSnapshotId = "primary";
+let persistenceQueue = Promise.resolve();
+
+const getPersistedRuntimeState = (): PersistedRuntimeState => ({
+  users: [...users.values()],
+  classes: [...classes.values()],
+  quizSets: [...quizSets.values()],
+  sessions: [...sessions.values()],
+  answers: [...answers]
+});
+
+const hydrateRuntimeState = async () => {
+  if (!prisma) return;
+
+  const snapshot = await prisma.runtimeSnapshot.findUnique({ where: { id: runtimeSnapshotId } });
+  if (!snapshot) return;
+
+  const state = snapshot.data as unknown as Partial<PersistedRuntimeState>;
+  const savedUsers = Array.isArray(state.users) ? state.users : [];
+  const savedClasses = Array.isArray(state.classes) ? state.classes : [];
+  const savedQuizSets = Array.isArray(state.quizSets) ? state.quizSets : [];
+  const savedSessions = Array.isArray(state.sessions) ? state.sessions : [];
+  const savedAnswers = Array.isArray(state.answers) ? state.answers : [];
+
+  users.clear();
+  classes.clear();
+  quizSets.clear();
+  sessions.clear();
+  answers.length = 0;
+
+  for (const user of savedUsers) if (user?.id) users.set(user.id, user);
+  for (const klass of savedClasses) if (klass?.id) classes.set(klass.id, klass);
+  for (const quiz of savedQuizSets) if (quiz?.id) quizSets.set(quiz.id, quiz);
+  for (const session of savedSessions) if (session?.id) sessions.set(session.id, session);
+  answers.push(...savedAnswers.filter((answer) => answer?.id));
+
+  console.log(`Restored ${users.size} teachers, ${quizSets.size} quiz sets, and ${sessions.size} sessions from PostgreSQL.`);
+};
+
+const schedulePersistence = () => {
+  if (!prisma) return;
+  const data = getPersistedRuntimeState();
+  persistenceQueue = persistenceQueue
+    .catch(() => undefined)
+    .then(async () => {
+      const jsonData = data as unknown as Prisma.InputJsonValue;
+      await prisma.runtimeSnapshot.upsert({
+        where: { id: runtimeSnapshotId },
+        create: { id: runtimeSnapshotId, data: jsonData },
+        update: { data: jsonData }
+      });
+    })
+    .catch((error: unknown) => {
+      console.error("Failed to persist QuizStrike runtime state.", error);
+    });
+};
 
 const botNames = ["Atlas", "Nova", "Echo", "Pixel", "Orbit", "Scout", "Comet", "River"];
 const blockedNicknameTerms = [
@@ -158,6 +228,15 @@ const getNicknameError = (value: string) => {
 
 const makeToken = (user: TeacherUser) =>
   jwt.sign({ sub: user.id }, jwtSecret, { expiresIn: "8h" });
+
+type PlayerTokenPayload = {
+  sub?: string;
+  sessionCode?: string;
+  scope?: string;
+};
+
+const makePlayerToken = (session: GameSession, player: PlayerSession) =>
+  jwt.sign({ sub: player.id, sessionCode: session.sessionCode, scope: "student" }, jwtSecret, { expiresIn: "8h" });
 
 const getBearerUser = (req: Request): TeacherUser | undefined => {
   const header = req.header("authorization");
@@ -216,8 +295,18 @@ const getPlayerToken = (req: Request) => {
   return bodyToken;
 };
 
-const requirePlayerAccess = (req: Request, res: Response, player: PlayerSession) => {
-  if (isValidPlayerToken(playerTokens.get(player.id), getPlayerToken(req))) return true;
+const hasPlayerAccess = (session: GameSession, player: PlayerSession, token: unknown) => {
+  if (typeof token !== "string" || !token) return false;
+  try {
+    const payload = jwt.verify(token, jwtSecret) as PlayerTokenPayload;
+    return payload.scope === "student" && payload.sub === player.id && payload.sessionCode === session.sessionCode;
+  } catch {
+    return false;
+  }
+};
+
+const requirePlayerAccess = (req: Request, res: Response, session: GameSession, player: PlayerSession) => {
+  if (hasPlayerAccess(session, player, getPlayerToken(req))) return true;
   res.status(401).json({ error: "Student session token is required." });
   return false;
 };
@@ -249,6 +338,7 @@ const issueNextQuestion = (session: GameSession, playerId: string): PublicQuesti
 
 const broadcastSession = (session: GameSession) => {
   io.to(session.sessionCode).emit("session_state", session);
+  schedulePersistence();
 };
 
 const appendEvent = (
@@ -639,7 +729,7 @@ const healthPayload = () => ({
   ok: true,
   service: "quizstrike-server",
   environment: process.env.NODE_ENV ?? "development",
-  storage: "memory",
+  storage: prisma ? "postgres" : "memory",
   time: now()
 });
 
@@ -670,6 +760,7 @@ app.post("/api/auth/signup", async (req, res) => {
     passwordHash: await bcrypt.hash(password, 10)
   };
   users.set(user.id, user);
+  schedulePersistence();
   const teacher = publicUser(user);
   res.status(201).json({ user: teacher, token: makeToken(teacher) });
 });
@@ -715,6 +806,7 @@ app.post("/api/classes", requireTeacher, (req: AuthedRequest, res) => {
     createdAt: now()
   };
   classes.set(klass.id, klass);
+  schedulePersistence();
   res.status(201).json({ class: klass });
 });
 
@@ -734,6 +826,7 @@ app.post("/api/quiz-sets", requireTeacher, (req: AuthedRequest, res) => {
     createdAt: now()
   };
   quizSets.set(quizSet.id, quizSet);
+  schedulePersistence();
   res.status(201).json({ quizSet });
 });
 
@@ -777,6 +870,7 @@ app.post("/api/quiz-sets/:id/questions", requireTeacher, (req: AuthedRequest, re
   }
 
   quiz.questions.push(question);
+  schedulePersistence();
   res.status(201).json({ question, quizSet: quiz });
 });
 
@@ -799,6 +893,7 @@ app.put("/api/questions/:id", requireTeacher, (req: AuthedRequest, res) => {
   question.choiceD = String(req.body.choiceD ?? question.choiceD).trim();
   question.explanation = String(req.body.explanation ?? question.explanation ?? "").trim() || undefined;
   question.difficulty = String(req.body.difficulty ?? question.difficulty ?? "").trim() || undefined;
+  schedulePersistence();
   res.json({ question, quizSet: quiz });
 });
 
@@ -814,6 +909,7 @@ app.delete("/api/questions/:id", requireTeacher, (req: AuthedRequest, res) => {
     return;
   }
   quiz.questions = quiz.questions.filter((item) => item.id !== question.id);
+  schedulePersistence();
   res.json({ quizSet: quiz });
 });
 
@@ -840,6 +936,7 @@ app.post("/api/sessions", requireTeacher, (req: AuthedRequest, res) => {
   };
   appendEvent(session, { type: "join", message: `Session ${session.sessionCode} created.` });
   sessions.set(session.id, session);
+  schedulePersistence();
   res.status(201).json({ session });
 });
 
@@ -1016,11 +1113,28 @@ app.post("/api/sessions/:code/join", (req, res) => {
     joinedAt: now()
   };
   session.players.push(player);
-  const playerToken = id();
-  playerTokens.set(player.id, playerToken);
+  const playerToken = makePlayerToken(session, player);
   appendEvent(session, { type: "join", message: `${player.nickname} joined ${team === "blue" ? "Blue" : "Red"} Team.`, playerId: player.id, team });
   broadcastSession(session);
   res.status(201).json({ session, player, playerToken, question: issueNextQuestion(session, player.id) });
+});
+
+app.get("/api/sessions/:code/players/:playerId/rejoin", (req, res) => {
+  const session = getSessionByCode(routeParam(req.params.code));
+  const player = session?.players.find((candidate) => candidate.id === routeParam(req.params.playerId));
+  if (!session || !player || player.isBot) {
+    res.status(404).json({ error: "This student session is no longer available." });
+    return;
+  }
+  if (!requirePlayerAccess(req, res, session, player)) return;
+
+  player.connectionState = "connected";
+  const question =
+    session.status === "active" && (player.isAlive || session.settings.deadPlayersCanPractice)
+      ? issueNextQuestion(session, player.id)
+      : undefined;
+  broadcastSession(session);
+  res.json({ session, player, question });
 });
 
 app.post("/api/sessions/:code/players/:playerId/team", (req, res) => {
@@ -1031,7 +1145,7 @@ app.post("/api/sessions/:code/players/:playerId/team", (req, res) => {
     res.status(404).json({ error: "Player session not found." });
     return;
   }
-  if (!requirePlayerAccess(req, res, player)) return;
+  if (!requirePlayerAccess(req, res, session, player)) return;
   if (session.status !== "waiting" || session.settings.teamAssignment !== "players_choose") {
     res.status(400).json({ error: "Team changes are closed for this round." });
     return;
@@ -1062,7 +1176,7 @@ app.get("/api/sessions/:code/players/:playerId/question", (req, res) => {
     res.status(404).json({ error: "Player session not found." });
     return;
   }
-  if (!requirePlayerAccess(req, res, player)) return;
+  if (!requirePlayerAccess(req, res, session, player)) return;
   if (!player.isAlive && !session.settings.deadPlayersCanPractice) {
     res.status(400).json({ error: "Practice questions are disabled while out for the round." });
     return;
@@ -1082,7 +1196,7 @@ app.post("/api/sessions/:code/players/:playerId/answer", (req, res) => {
     res.status(404).json({ error: "Player session not found." });
     return;
   }
-  if (!requirePlayerAccess(req, res, player)) return;
+  if (!requirePlayerAccess(req, res, session, player)) return;
   if (session.status !== "active") {
     res.status(400).json({ error: "The teacher has not started the active round yet." });
     return;
@@ -1192,7 +1306,7 @@ app.post("/api/sessions/:code/players/:playerId/buy", (req, res) => {
     res.status(404).json({ error: "Player session not found." });
     return;
   }
-  if (!requirePlayerAccess(req, res, player)) return;
+  if (!requirePlayerAccess(req, res, session, player)) return;
   if (!isRoundActive(session)) {
     res.status(400).json({ error: "The round has ended. Gear buying is closed." });
     return;
@@ -1232,7 +1346,7 @@ app.post("/api/sessions/:code/players/:playerId/buy-snowballs", (req, res) => {
     res.status(404).json({ error: "Player session not found." });
     return;
   }
-  if (!requirePlayerAccess(req, res, player)) return;
+  if (!requirePlayerAccess(req, res, session, player)) return;
   if (!isRoundActive(session)) {
     res.status(400).json({ error: "The round has ended. Snowball buying is closed." });
     return;
@@ -1271,7 +1385,7 @@ io.on("connection", (socket) => {
     const code = String(payload.code ?? "");
     const session = getSessionByCode(code);
     const player = session?.players.find((candidate) => candidate.id === payload.playerId);
-    if (!session || !player || !isValidPlayerToken(playerTokens.get(player.id), payload.playerToken)) return;
+    if (!session || !player || !hasPlayerAccess(session, player, payload.playerToken)) return;
     if (!player.isAlive) return;
     const position = applyAuthoritativePosition(player, payload);
     socket.to(session.sessionCode).emit("player_position", {
@@ -1285,7 +1399,7 @@ io.on("connection", (socket) => {
   socket.on("fire_action", (payload: { code?: string; playerId?: string; playerToken?: string; requestId?: string; x?: number; z?: number; y?: number; facing?: number; targetId?: string; scoped?: boolean }) => {
     const session = getSessionByCode(String(payload.code ?? ""));
     const attacker = session?.players.find((candidate) => candidate.id === payload.playerId);
-    if (!session || !attacker || !isValidPlayerToken(playerTokens.get(attacker.id), payload.playerToken)) return;
+    if (!session || !attacker || !hasPlayerAccess(session, attacker, payload.playerToken)) return;
     if (session.status !== "active") {
       socket.emit("error_message", { error: "The teacher has not started the active round yet." });
       return;
@@ -1347,7 +1461,7 @@ io.on("connection", (socket) => {
   socket.on("flag_action", (payload: { code?: string; playerId?: string; playerToken?: string; x?: number; z?: number; y?: number; facing?: number }) => {
     const session = getSessionByCode(String(payload.code ?? ""));
     const player = session?.players.find((candidate) => candidate.id === payload.playerId);
-    if (!session || !player || !isValidPlayerToken(playerTokens.get(player.id), payload.playerToken)) return;
+    if (!session || !player || !hasPlayerAccess(session, player, payload.playerToken)) return;
     if (session.status !== "active" || session.settings.gameMode !== "flag") return;
     const position = applyAuthoritativePosition(player, payload);
     const previousState = session.flag?.state;
@@ -1388,8 +1502,34 @@ io.on("connection", (socket) => {
   });
 });
 
-setInterval(advanceBots, BOT_TICK_MS);
+const startServer = async () => {
+  try {
+    await hydrateRuntimeState();
+    setInterval(advanceBots, BOT_TICK_MS);
+    server.listen(port, () => {
+      console.log(`QuizStrike Classroom server listening on http://localhost:${port}`);
+    });
+  } catch (error) {
+    console.error("QuizStrike could not restore durable classroom data.", error);
+    process.exitCode = 1;
+  }
+};
 
-server.listen(port, () => {
-  console.log(`QuizStrike Classroom server listening on http://localhost:${port}`);
-});
+void startServer();
+
+let isShuttingDown = false;
+const shutdown = (signal: string) => {
+  if (isShuttingDown) return;
+  isShuttingDown = true;
+  console.log(`Received ${signal}; saving classroom state before shutdown.`);
+  schedulePersistence();
+  void persistenceQueue.finally(() => {
+    server.close(() => {
+      const disconnect = prisma ? prisma.$disconnect() : Promise.resolve();
+      void disconnect.finally(() => process.exit(0));
+    });
+  });
+};
+
+process.once("SIGTERM", () => shutdown("SIGTERM"));
+process.once("SIGINT", () => shutdown("SIGINT"));

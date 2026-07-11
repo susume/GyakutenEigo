@@ -103,6 +103,8 @@ export const studentApi = {
       body: JSON.stringify({ team })
     }),
   session: (code: string) => api(`/api/sessions/${code}`),
+  rejoin: (code: string, playerId: string, playerToken: string) =>
+    api(`/api/sessions/${code}/players/${playerId}/rejoin`, { headers: playerHeaders(playerToken) }),
   question: (code: string, playerId: string, playerToken: string) =>
     api(`/api/sessions/${code}/players/${playerId}/question`, { headers: playerHeaders(playerToken) }),
   answer: (
