@@ -45,6 +45,7 @@ import {
 import { API_URL, ApiError, authApi, studentApi, teacherApi } from "./api/client";
 import { modeForRoute, normalizeRoutePath, type AppMode } from "./navigation";
 import { groupScoreboardRows } from "./scoreboardGroups";
+import { StatusMessages } from "./ui/StatusMessages";
 import {
   CHARACTER_STRESS_COUNTS,
   createCharacterDebugSession,
@@ -500,7 +501,8 @@ export default function App() {
   };
 
   return (
-    <main className="app-shell">
+    <main id="main-content" className="app-shell" tabIndex={-1}>
+      <a className="skip-link" href="#main-content">Skip to main content</a>
       <header className="topbar">
         <button className="brand-button" onClick={() => navigateTo("/", "home")}>
           <Shield size={24} aria-hidden="true" />
@@ -763,7 +765,7 @@ function TeacherAuth({ onAuthed, initialMode }: { onAuthed: (user: TeacherUser) 
             </button>
           </span>
         </label>
-        {status.error && <p className="error-text" role="alert">{status.error}</p>}
+        <StatusMessages error={status.error} />
         <button className="primary" type="submit" disabled={isSubmitting}>
           <GraduationCap size={18} aria-hidden="true" />
           {isSubmitting ? "Working..." : isSignup ? "Create Account" : "Log In"}
@@ -862,8 +864,7 @@ function TeacherDashboard({ teacher, onLogout }: { teacher: TeacherUser; onLogou
             Refresh
           </button>
         </div>
-        {status.error && <p className="error-text">{status.error}</p>}
-        {status.message && <p className="success-text">{status.message}</p>}
+        <StatusMessages error={status.error} message={status.message} />
         {isSocketReconnecting && (
           <p className="connection-banner">
             <WifiOff size={16} aria-hidden="true" />
@@ -1190,8 +1191,7 @@ function QuizManager({ data, onRefresh }: { data: DashboardPayload; onRefresh: (
         ) : (
           <p>Create a quiz set to begin adding questions.</p>
         )}
-        {status.error && <p className="error-text">{status.error}</p>}
-        {status.message && <p className="success-text">{status.message}</p>}
+        <StatusMessages error={status.error} message={status.message} />
       </div>
     </div>
   );
@@ -1515,8 +1515,7 @@ function SessionManager({
           <Play size={18} aria-hidden="true" />
           {isCreatingSession ? "Working..." : "Create Session"}
         </button>
-        {status.error && <p className="error-text">{status.error}</p>}
-        {status.message && <p className="success-text">{status.message}</p>}
+        <StatusMessages error={status.error} message={status.message} />
       </form>
 
       <div className="panel live-session">
@@ -1678,8 +1677,7 @@ function ReportsPanel({
           {isExportingCsv ? "Working..." : "Export CSV"}
         </button>
       </div>
-      {status.error && <p className="error-text">{status.error}</p>}
-      {status.message && <p className="success-text">{status.message}</p>}
+      <StatusMessages error={status.error} message={status.message} />
       {report && (
         <>
           <div className="report-summary-grid">
@@ -2430,8 +2428,7 @@ function StudentExperience({ onExit }: { onExit: () => void }) {
                 </p>
               </div>
             )}
-            {status.error && <p className="error-text">{status.error}</p>}
-            {feedback && <p className="success-text">{feedback}</p>}
+            <StatusMessages error={status.error} message={feedback} />
           </div>
         )}
       </div>

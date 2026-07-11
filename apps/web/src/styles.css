@@ -1,8 +1,9 @@
+@import "./styles/tokens.css";
+
 :root {
-  color-scheme: light;
-  font-family: Inter, ui-sans-serif, system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
-  background: #f7fafc;
-  color: #172033;
+  font-family: var(--font-sans);
+  background: var(--color-surface-page);
+  color: var(--color-text-strong);
   font-synthesis: none;
   text-rendering: optimizeLegibility;
 }
@@ -17,7 +18,7 @@ body {
   min-height: 100vh;
   background:
     linear-gradient(90deg, rgba(37, 99, 235, 0.06), transparent 34%),
-    linear-gradient(180deg, #ffffff 0%, #f5f9fc 48%, #eef6f2 100%);
+    linear-gradient(180deg, var(--color-surface) 0%, #f5f9fc 48%, #eef6f2 100%);
 }
 
 button,
@@ -28,23 +29,28 @@ select {
 }
 
 button {
-  border: 1px solid #ccd8e5;
-  background: #ffffff;
-  color: #172033;
-  min-height: 40px;
+  border: 1px solid var(--color-border-strong);
+  background: var(--color-surface);
+  color: var(--color-text-strong);
+  min-height: var(--tap-target);
   padding: 0 14px;
-  border-radius: 8px;
+  border-radius: var(--radius-control);
   display: inline-flex;
   align-items: center;
   justify-content: center;
   gap: 8px;
   cursor: pointer;
   font-weight: 700;
+  transition: border-color var(--motion-fast) var(--ease-standard), background-color var(--motion-fast) var(--ease-standard), color var(--motion-fast) var(--ease-standard), transform var(--motion-fast) var(--ease-standard);
 }
 
 button:hover {
   border-color: #8fb0d8;
-  background: #f6fbff;
+  background: var(--color-surface-subtle);
+}
+
+button:not(:disabled):active {
+  transform: translateY(1px);
 }
 
 button:disabled {
@@ -53,26 +59,26 @@ button:disabled {
 }
 
 button.primary {
-  background: #146c43;
-  border-color: #146c43;
-  color: #ffffff;
+  background: var(--color-action);
+  border-color: var(--color-action);
+  color: var(--color-action-contrast);
 }
 
 button.primary:hover {
-  background: #0f5b38;
+  background: var(--color-action-hover);
 }
 
 button.active {
-  background: #eaf3ff;
+  background: var(--color-selected);
   border-color: #7aa7e6;
-  color: #174a8b;
+  color: var(--color-selected-text);
 }
 
 button.text-button {
   border: 0;
   background: transparent;
   min-height: auto;
-  color: #235a96;
+  color: var(--color-selected-text);
   padding: 0;
 }
 
@@ -80,8 +86,8 @@ button:focus-visible,
 input:focus-visible,
 textarea:focus-visible,
 select:focus-visible {
-  outline: 3px solid #2563eb;
-  outline-offset: 3px;
+  outline: none;
+  box-shadow: var(--focus-ring);
 }
 
 h1,
@@ -109,7 +115,7 @@ h3 {
 }
 
 p {
-  color: #4b5870;
+  color: var(--color-text);
   line-height: 1.6;
 }
 
@@ -136,11 +142,11 @@ input,
 textarea,
 select {
   width: 100%;
-  border: 1px solid #cad6e3;
-  border-radius: 8px;
-  background: #ffffff;
-  color: #172033;
-  min-height: 42px;
+  border: 1px solid var(--color-border-strong);
+  border-radius: var(--radius-control);
+  background: var(--color-surface);
+  color: var(--color-text-strong);
+  min-height: var(--tap-target);
   padding: 10px 12px;
 }
 
@@ -157,7 +163,7 @@ textarea {
 label {
   display: grid;
   gap: 7px;
-  color: #334155;
+  color: var(--color-text);
   font-size: 0.9rem;
   font-weight: 700;
 }
@@ -196,6 +202,26 @@ label.toggle-row input {
   min-height: 100vh;
 }
 
+.skip-link {
+  position: fixed;
+  top: var(--space-2);
+  left: var(--space-2);
+  z-index: calc(var(--z-overlay) + 1);
+  transform: translateY(-160%);
+  border-radius: var(--radius-control);
+  padding: var(--space-3) var(--space-4);
+  background: var(--color-text-strong);
+  color: var(--color-action-contrast);
+  font-weight: 800;
+  text-decoration: none;
+  transition: transform var(--motion-fast) var(--ease-standard);
+}
+
+.skip-link:focus {
+  transform: translateY(0);
+  box-shadow: var(--focus-ring);
+}
+
 .topbar {
   height: 72px;
   display: flex;
@@ -203,12 +229,12 @@ label.toggle-row input {
   justify-content: space-between;
   gap: 20px;
   padding: 0 32px;
-  border-bottom: 1px solid rgba(189, 203, 219, 0.8);
-  background: rgba(255, 255, 255, 0.86);
+  border-bottom: 1px solid color-mix(in srgb, var(--color-border) 84%, transparent);
+  background: color-mix(in srgb, var(--color-surface) 86%, transparent);
   backdrop-filter: blur(14px);
   position: sticky;
   top: 0;
-  z-index: 10;
+  z-index: var(--z-navigation);
 }
 
 .brand-button {
@@ -243,15 +269,15 @@ label.toggle-row input {
 .file-import-button {
   position: relative;
   width: auto;
-  min-height: 40px;
+  min-height: var(--tap-target);
   display: inline-flex;
   align-items: center;
   justify-content: center;
   gap: 8px;
-  border: 1px solid #ccd8e5;
-  border-radius: 8px;
-  background: #ffffff;
-  color: #172033;
+  border: 1px solid var(--color-border-strong);
+  border-radius: var(--radius-control);
+  background: var(--color-surface);
+  color: var(--color-text-strong);
   padding: 0 14px;
   cursor: pointer;
   font-weight: 800;
@@ -845,10 +871,10 @@ label.toggle-row input {
 
 .panel,
 .metric {
-  background: rgba(255, 255, 255, 0.96);
-  border: 1px solid #d5e0ea;
-  border-radius: 8px;
-  box-shadow: 0 18px 50px rgba(28, 50, 78, 0.08);
+  background: color-mix(in srgb, var(--color-surface) 96%, transparent);
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius-panel);
+  box-shadow: var(--shadow-panel);
 }
 
 .panel {
@@ -867,8 +893,8 @@ label.toggle-row input {
 }
 
 .sidebar {
-  border-right: 1px solid #d8e3ed;
-  background: #ffffff;
+  border-right: 1px solid var(--color-border);
+  background: var(--color-surface);
   padding: 24px 18px;
   display: flex;
   flex-direction: column;
@@ -2393,5 +2419,22 @@ small {
     animation-duration: 0.01ms !important;
     animation-iteration-count: 1 !important;
     transition-duration: 0.01ms !important;
+  }
+}
+
+@media (prefers-contrast: more) {
+  :root {
+    --color-border: #64748b;
+    --color-border-strong: #334155;
+    --focus-ring: 0 0 0 4px #ffffff, 0 0 0 7px var(--color-focus);
+  }
+
+  .panel,
+  .metric,
+  input,
+  textarea,
+  select,
+  button {
+    border-width: 2px;
   }
 }

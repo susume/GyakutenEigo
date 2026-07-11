@@ -169,7 +169,7 @@ const makeLabelTexture = (label: string, color: string, background = "rgba(41, 2
   ctx.fill();
   ctx.stroke();
   ctx.fillStyle = color;
-  ctx.font = "bold 52px Inter, Arial, sans-serif";
+  ctx.font = "700 52px system-ui, sans-serif";
   ctx.textAlign = "center";
   ctx.textBaseline = "middle";
   ctx.fillText(label, 384, 128, 660);
