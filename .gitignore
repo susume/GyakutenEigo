@@ -19,6 +19,10 @@ Quiz-Strike/
 !.env.example
 !.env.production.example
 
+# Private local planning and handoff notes
+/architecture.md
+/docs/handoff-prompt.md
+
 # Databases and local runtime data
 prisma/dev.db
 *.sqlite
