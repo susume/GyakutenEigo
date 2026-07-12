@@ -2400,7 +2400,7 @@ function StudentExperience({ onExit }: { onExit: () => void }) {
           <div className="panel how-to-card">
             <h2>How to Play</h2>
             <p>Answer questions to earn money, buy snowballs and gear, then tag the other team in the arena.</p>
-            <p>Fast web arena: click to aim, use WASD or arrows to move, F or left click to fire, and E for the flag. The Heavy Snowball Launcher cycles 2× scope, 4× scope, then normal view with right click. Q opens quiz, B opens buy, and hold Tab for the scoreboard.</p>
+            <p>Fast web arena: use WASD to move, arrow keys or a swipe on the arena to look around, F or left click to fire, and E for the flag. The Heavy Snowball Launcher cycles 2× scope, 4× scope, then normal view with right click. Q opens quiz, B opens buy, and hold Tab for the scoreboard.</p>
             <p>If you are frozen out, keep practicing. Three correct answers respawn you back into the round.</p>
           </div>
         </div>

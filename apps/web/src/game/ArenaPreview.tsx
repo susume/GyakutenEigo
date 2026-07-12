@@ -70,6 +70,8 @@ const warning = "#d18a3f";
 const MINIMAP_WIDTH = 120;
 const MINIMAP_HEIGHT = 110;
 const GAMEPAD_DEAD_ZONE = 0.18;
+const KEYBOARD_LOOK_SPEED = 1.9;
+const TOUCH_LOOK_SENSITIVITY = 0.006;
 const clamp = (value: number, min: number, max: number) => Math.min(max, Math.max(min, value));
 const isFiniteNumber = (value: unknown): value is number => typeof value === "number" && Number.isFinite(value);
 const serverToLocalX = (x: number) => clamp(x, -ARENA_LIMIT_X, ARENA_LIMIT_X);
@@ -97,15 +99,13 @@ const movementCode = (event: KeyboardEvent) => {
   if (event.code === "KeyA" || key === "a") return "KeyA";
   if (event.code === "KeyS" || key === "s") return "KeyS";
   if (event.code === "KeyD" || key === "d") return "KeyD";
-  if (event.code === "ArrowUp") return "KeyW";
-  if (event.code === "ArrowLeft") return "KeyA";
-  if (event.code === "ArrowDown") return "KeyS";
-  if (event.code === "ArrowRight") return "KeyD";
   if (event.code === "ShiftLeft" || event.code === "ShiftRight" || key === "shift") return "Shift";
   if (event.code === "Space" || key === " ") return "Space";
   if (event.code === "ControlLeft" || event.code === "ControlRight" || key === "control") return "Control";
   return "";
 };
+
+const lookCode = (event: KeyboardEvent) => event.code.startsWith("Arrow") ? event.code : "";
 
 const makeCanvasTexture = (kind: "floor" | "stone" | "wood" | "water" | "sand", accent = "#e8c67a") => {
   const canvas = document.createElement("canvas");
@@ -1066,6 +1066,10 @@ export default function ArenaPreview({
       fireControlRef.current = fire;
 
       const keys = new Set<string>();
+      const lookKeys = new Set<string>();
+      let touchLookPointerId: number | null = null;
+      let touchLookX = 0;
+      let touchLookY = 0;
       const gamepadMove = { forward: 0, right: 0 };
       let gamepadFireWasPressed = false;
       let gamepadInteractWasPressed = false;
@@ -1114,12 +1118,20 @@ export default function ArenaPreview({
           if (code === "Space" && !keys.has("Space")) jumpQueued = true;
           keys.add(code);
           event.preventDefault();
+          return;
+        }
+        const look = lookCode(event);
+        if (look) {
+          lookKeys.add(look);
+          event.preventDefault();
         }
       };
       const onKeyUp = (event: KeyboardEvent) => {
         if (event.code === "KeyF" || event.key.toLowerCase() === "f") fireHeld = false;
         const code = movementCode(event);
         if (code) keys.delete(code);
+        const look = lookCode(event);
+        if (look) lookKeys.delete(look);
       };
       const onMouseMove = (event: MouseEvent) => {
         if (document.pointerLockElement !== renderer.domElement) return;
@@ -1136,6 +1148,14 @@ export default function ArenaPreview({
         if (controlsDisabled || inputPausedRef.current) return;
         gameAudio.warm();
         renderer.domElement.focus();
+        if (event.pointerType === "touch") {
+          touchLookPointerId = event.pointerId;
+          touchLookX = event.clientX;
+          touchLookY = event.clientY;
+          renderer.domElement.setPointerCapture(event.pointerId);
+          event.preventDefault();
+          return;
+        }
         if (document.pointerLockElement !== renderer.domElement) {
           void renderer.domElement.requestPointerLock().catch(() => setIsPointerLocked(false));
           return;
@@ -1151,12 +1171,25 @@ export default function ArenaPreview({
         fire();
       };
       const onPointerUp = (event: PointerEvent) => {
+        if (event.pointerId === touchLookPointerId) touchLookPointerId = null;
         if (event.button === 2 && !hasHeavyGun()) setZoomLevel(0);
         if (event.button === 0) fireHeld = false;
+      };
+      const onPointerMove = (event: PointerEvent) => {
+        if (event.pointerType !== "touch" || event.pointerId !== touchLookPointerId) return;
+        yaw -= (event.clientX - touchLookX) * TOUCH_LOOK_SENSITIVITY;
+        pitch = clamp(pitch - (event.clientY - touchLookY) * TOUCH_LOOK_SENSITIVITY, -0.85, 0.62);
+        touchLookX = event.clientX;
+        touchLookY = event.clientY;
+        event.preventDefault();
+      };
+      const onPointerCancel = (event: PointerEvent) => {
+        if (event.pointerId === touchLookPointerId) touchLookPointerId = null;
       };
       const onContextMenu = (event: MouseEvent) => event.preventDefault();
       const clearKeys = () => {
         keys.clear();
+        lookKeys.clear();
         setZoomLevel(0);
         fireHeld = false;
       };
@@ -1171,7 +1204,9 @@ export default function ArenaPreview({
       document.addEventListener("pointerlockchange", onPointerLockChange);
       document.addEventListener("pointerlockerror", onPointerLockError);
       renderer.domElement.addEventListener("pointerdown", onPointerDown);
+      renderer.domElement.addEventListener("pointermove", onPointerMove);
       renderer.domElement.addEventListener("pointerup", onPointerUp);
+      renderer.domElement.addEventListener("pointercancel", onPointerCancel);
       renderer.domElement.addEventListener("contextmenu", onContextMenu);
 
       const cleanupControls = () => {
@@ -1183,7 +1218,9 @@ export default function ArenaPreview({
         document.removeEventListener("pointerlockchange", onPointerLockChange);
         document.removeEventListener("pointerlockerror", onPointerLockError);
         renderer.domElement.removeEventListener("pointerdown", onPointerDown);
+        renderer.domElement.removeEventListener("pointermove", onPointerMove);
         renderer.domElement.removeEventListener("pointerup", onPointerUp);
+        renderer.domElement.removeEventListener("pointercancel", onPointerCancel);
         renderer.domElement.removeEventListener("contextmenu", onContextMenu);
         if (document.pointerLockElement === renderer.domElement) document.exitPointerLock();
       };
@@ -1228,8 +1265,13 @@ export default function ArenaPreview({
         frame = requestAnimationFrame(animateFps);
         const delta = Math.min(clock.getDelta(), 0.035);
         const currentTime = performance.now();
+        const horizontalLook = Number(lookKeys.has("ArrowLeft")) - Number(lookKeys.has("ArrowRight"));
+        const verticalLook = Number(lookKeys.has("ArrowUp")) - Number(lookKeys.has("ArrowDown"));
+        yaw += horizontalLook * KEYBOARD_LOOK_SPEED * delta;
+        pitch = clamp(pitch + verticalLook * KEYBOARD_LOOK_SPEED * delta, -0.85, 0.62);
         if (inputPausedRef.current) {
           keys.clear();
+          lookKeys.clear();
           if (activeZoomLevel > 0) setZoomLevel(0);
         }
         applyGamepadInput();
@@ -1534,7 +1576,7 @@ export default function ArenaPreview({
               )}
             </svg>
           </div>
-          {!controlsDisabled && !isPointerLocked && !suppressHint && <div className="control-lock">Click arena to control mouse. WASD or arrows move. F or left click launches. Heavy Launcher: right click cycles 2×, 4×, then normal. E interacts with the flag.</div>}
+          {!controlsDisabled && !isPointerLocked && !suppressHint && <div className="control-lock">WASD moves. Arrow keys or swipe the arena to look around. Click the arena for mouse aim. F or left click launches. E interacts with the flag.</div>}
           <div className="touch-controls" aria-label="Touch controls">
             <div className="touch-dpad" aria-label="Move">
               <button type="button" className="touch-up" aria-label="Move forward" disabled={controlsDisabled} onPointerDown={beginTouchMove(1, 0)} onPointerUp={endTouchMove} onPointerCancel={endTouchMove} onPointerLeave={endTouchMove}>W</button>
