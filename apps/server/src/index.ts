@@ -91,7 +91,7 @@ if (isProduction && jwtSecret === "local-dev-only-change-me") {
 }
 
 if (isProduction && !databaseUrl) {
-  throw new Error("DATABASE_URL must be set before running QuizStrike online so classroom data remains durable.");
+  console.warn("DATABASE_URL is not configured; QuizStrike is running online with in-memory storage.");
 }
 
 if (process.env.TRUST_PROXY === "true") {
