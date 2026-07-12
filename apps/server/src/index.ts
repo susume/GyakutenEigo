@@ -6,7 +6,7 @@ import jwt from "jsonwebtoken";
 import { Prisma, PrismaClient } from "@prisma/client";
 import { createServer } from "node:http";
 import { randomUUID } from "node:crypto";
-import { Server } from "socket.io";
+import { Server, type Socket } from "socket.io";
 import {
   clampArenaPosition,
   ARENA_SCALE,
@@ -115,6 +115,11 @@ const playerMoveTimestamps = new Map<string, number>();
 const playerNextFireAt = new Map<string, number>();
 const botRespawnAt = new Map<string, number>();
 const botNextAttackAt = new Map<string, number>();
+const playerSockets = new Map<string, Set<string>>();
+const playerDisconnectTimers = new Map<string, ReturnType<typeof setTimeout>>();
+
+type SocketPlayerBinding = { sessionCode: string; playerId: string };
+const playerSocketKey = (sessionCode: string, playerId: string) => `${sessionCode}:${playerId}`;
 
 type PersistedRuntimeState = {
   users: StoredUser[];
@@ -203,6 +208,7 @@ const FIRE_REQUEST_TTL_MS = 30_000;
 const BOT_ATTACK_COOLDOWN_FLOOR_MS = 1700;
 const BOT_RESPAWN_MS = 8000;
 const PLAYER_MAX_SPEED = 22;
+const PLAYER_DISCONNECT_GRACE_MS = 5000;
 
 app.use(cors({ origin: corsOrigin, credentials: true }));
 app.use(express.json({ limit: "1mb" }));
@@ -369,6 +375,11 @@ const finishSession = (session: GameSession, message = "Round ended. Report is r
   broadcastSession(session);
 };
 
+const inactiveRoundMessage = (session: GameSession) =>
+  session.status === "ended"
+    ? "The round has ended. This action was not counted."
+    : "The teacher has not started the round yet.";
+
 const resetRoundPlayer = (session: GameSession, player: PlayerSession, index: number): PlayerSession => {
   const spawn = player.isBot ? getBotSpawn(session, player.team, index) : selectSessionSpawn(session, player.team, index);
   return {
@@ -440,14 +451,16 @@ const finishRound = (session: GameSession, winner: Team, reason: string) => {
 
 const finishZombieMatchIfComplete = (session: GameSession) => {
   if (session.settings.gameMode !== "zombie" || session.status !== "active") return;
-  const humansRemaining = session.players.some((player) => player.isAlive && player.role !== "zombie");
+  const humansRemaining = session.players.some(
+    (player) => player.connectionState !== "disconnected" && player.isAlive && player.role !== "zombie"
+  );
   if (!humansRemaining) finishSession(session, "Zombies converted everyone.");
 };
 
 const evaluateFlagEliminationWin = (session: GameSession) => {
   if (session.settings.gameMode !== "flag" || session.status !== "active") return;
-  const redActive = session.players.some((player) => player.team === "red" && player.isAlive);
-  const blueActive = session.players.some((player) => player.team === "blue" && player.isAlive);
+  const redActive = session.players.some((player) => player.team === "red" && player.connectionState !== "disconnected" && player.isAlive);
+  const blueActive = session.players.some((player) => player.team === "blue" && player.connectionState !== "disconnected" && player.isAlive);
   if (!blueActive) {
     finishRound(session, "red", "Red Team knocked out Blue Team");
     return;
@@ -455,6 +468,45 @@ const evaluateFlagEliminationWin = (session: GameSession) => {
   if (!redActive && session.flag?.state !== "placed") {
     finishRound(session, "blue", "Blue Team knocked out Red Team before the flag was placed");
   }
+};
+
+const clearPlayerDisconnectTimer = (session: GameSession, playerId: string) => {
+  const key = playerSocketKey(session.sessionCode, playerId);
+  const timer = playerDisconnectTimers.get(key);
+  if (timer) clearTimeout(timer);
+  playerDisconnectTimers.delete(key);
+};
+
+const schedulePlayerDisconnectResolution = (session: GameSession, playerId: string) => {
+  const key = playerSocketKey(session.sessionCode, playerId);
+  clearPlayerDisconnectTimer(session, playerId);
+  const timer = setTimeout(() => {
+    playerDisconnectTimers.delete(key);
+    const player = session.players.find((candidate) => candidate.id === playerId);
+    if (!player || player.connectionState !== "disconnected") return;
+    evaluateFlagEliminationWin(session);
+    finishZombieMatchIfComplete(session);
+  }, PLAYER_DISCONNECT_GRACE_MS);
+  playerDisconnectTimers.set(key, timer);
+};
+
+const markPlayerDisconnected = (session: GameSession, player: PlayerSession) => {
+  if (player.connectionState === "disconnected") return;
+  player.connectionState = "disconnected";
+  if (session.flag && player.id === session.flag.carrierId) {
+    session.flag = resolveFlagDropForPlayer(session.flag, player, {
+      x: player.x ?? 0,
+      z: player.z ?? 0
+    });
+  }
+  appendEvent(session, {
+    type: "timer",
+    message: `${player.nickname} went Offline.`,
+    playerId: player.id,
+    team: player.team
+  });
+  broadcastSession(session);
+  schedulePlayerDisconnectResolution(session, player.id);
 };
 
 const assertTeacherOwnsQuiz = (userId: string, quizSetId: string) => {
@@ -1088,6 +1140,10 @@ app.post("/api/sessions/:code/join", (req, res) => {
     res.status(400).json({ error: nicknameError });
     return;
   }
+  if (session.status === "active") {
+    res.status(409).json({ error: "This session has already started." });
+    return;
+  }
   if (session.players.length >= session.maxPlayers) {
     res.status(400).json({ error: "This session is full." });
     return;
@@ -1126,7 +1182,14 @@ app.post("/api/sessions/:code/join", (req, res) => {
   };
   session.players.push(player);
   const playerToken = makePlayerToken(session, player);
-  appendEvent(session, { type: "join", message: `${player.nickname} joined ${team === "blue" ? "Blue" : "Red"} Team.`, playerId: player.id, team });
+  appendEvent(session, {
+    type: "join",
+    message: session.settings.gameMode === "zombie"
+      ? `${player.nickname} joined the Zombie Mode lobby.`
+      : `${player.nickname} joined ${team === "blue" ? "Blue" : "Red"} Team.`,
+    playerId: player.id,
+    team
+  });
   broadcastSession(session);
   res.status(201).json({ session, player, playerToken, question: issueNextQuestion(session, player.id) });
 });
@@ -1140,6 +1203,7 @@ app.get("/api/sessions/:code/players/:playerId/rejoin", (req, res) => {
   }
   if (!requirePlayerAccess(req, res, session, player)) return;
 
+  clearPlayerDisconnectTimer(session, player.id);
   player.connectionState = "connected";
   const question =
     session.status === "active" && (player.isAlive || session.settings.deadPlayersCanPractice)
@@ -1210,7 +1274,7 @@ app.post("/api/sessions/:code/players/:playerId/answer", (req, res) => {
   }
   if (!requirePlayerAccess(req, res, session, player)) return;
   if (session.status !== "active") {
-    res.status(400).json({ error: "The teacher has not started the active round yet." });
+    res.status(400).json({ error: inactiveRoundMessage(session) });
     return;
   }
   if (!player.isAlive && !session.settings.deadPlayersCanPractice) {
@@ -1333,6 +1397,8 @@ app.post("/api/sessions/:code/players/:playerId/buy", (req, res) => {
       error:
         purchase.reason === "player_eliminated"
           ? "Students out for the round cannot buy gear."
+          : purchase.reason === "starter_weapon"
+            ? "The Starter Snowball Launcher is your default weapon and cannot replace purchased gear."
           : purchase.reason === "outside_base"
             ? "Return to your team base to buy gear."
             : "Not enough money for that gear."
@@ -1386,11 +1452,48 @@ app.post("/api/sessions/:code/players/:playerId/buy-snowballs", (req, res) => {
 });
 
 io.on("connection", (socket) => {
-  socket.on("join_session_room", (code: string) => {
-    const session = getSessionByCode(String(code));
+  socket.on("join_session_room", (payload: string | { code?: string; playerId?: string; playerToken?: string }) => {
+    const code = typeof payload === "string" ? payload : String(payload.code ?? "");
+    const session = getSessionByCode(code);
     if (!session) return;
+
+    if (typeof payload !== "string" && payload.playerId) {
+      const player = session.players.find((candidate) => candidate.id === payload.playerId);
+      if (!player || !hasPlayerAccess(session, player, payload.playerToken)) return;
+
+      const currentBinding = socket.data.playerBinding as SocketPlayerBinding | undefined;
+      if (currentBinding && playerSocketKey(currentBinding.sessionCode, currentBinding.playerId) !== playerSocketKey(session.sessionCode, player.id)) {
+        detachSocketBinding(socket);
+      }
+
+      const key = playerSocketKey(session.sessionCode, player.id);
+      const sockets = playerSockets.get(key) ?? new Set<string>();
+      sockets.add(socket.id);
+      playerSockets.set(key, sockets);
+      socket.data.playerBinding = { sessionCode: session.sessionCode, playerId: player.id } satisfies SocketPlayerBinding;
+      clearPlayerDisconnectTimer(session, player.id);
+      if (player.connectionState === "disconnected") {
+        player.connectionState = "connected";
+        appendEvent(session, { type: "timer", message: `${player.nickname} reconnected.`, playerId: player.id, team: player.team });
+        broadcastSession(session);
+      }
+    }
+
     socket.join(session.sessionCode);
     socket.emit("session_state", session);
+  });
+
+  socket.on("disconnect", () => {
+    const binding = socket.data.playerBinding as SocketPlayerBinding | undefined;
+    if (!binding) return;
+    const key = playerSocketKey(binding.sessionCode, binding.playerId);
+    const sockets = playerSockets.get(key);
+    sockets?.delete(socket.id);
+    if (sockets && sockets.size > 0) return;
+    playerSockets.delete(key);
+    const session = getSessionByCode(binding.sessionCode);
+    const player = session?.players.find((candidate) => candidate.id === binding.playerId);
+    if (session && player) markPlayerDisconnected(session, player);
   });
 
   socket.on("player_position", (payload: { code?: string; playerId?: string; playerToken?: string; x?: number; z?: number; y?: number; facing?: number }) => {
@@ -1413,7 +1516,7 @@ io.on("connection", (socket) => {
     const attacker = session?.players.find((candidate) => candidate.id === payload.playerId);
     if (!session || !attacker || !hasPlayerAccess(session, attacker, payload.playerToken)) return;
     if (session.status !== "active") {
-      socket.emit("error_message", { error: "The teacher has not started the active round yet." });
+      socket.emit("error_message", { error: inactiveRoundMessage(session) });
       return;
     }
 
@@ -1514,6 +1617,21 @@ io.on("connection", (socket) => {
     }
   });
 });
+
+function detachSocketBinding(socket: Socket) {
+  const binding = socket.data.playerBinding as SocketPlayerBinding | undefined;
+  if (!binding) return;
+  const key = playerSocketKey(binding.sessionCode, binding.playerId);
+  const sockets = playerSockets.get(key);
+  sockets?.delete(socket.id);
+  if (!sockets || sockets.size === 0) {
+    playerSockets.delete(key);
+    const session = getSessionByCode(binding.sessionCode);
+    const player = session?.players.find((candidate) => candidate.id === binding.playerId);
+    if (session && player) markPlayerDisconnected(session, player);
+  }
+  delete socket.data.playerBinding;
+}
 
 const startServer = async () => {
   try {

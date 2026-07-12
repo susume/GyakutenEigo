@@ -1166,6 +1166,100 @@ small {
   margin-bottom: 14px;
 }
 
+.join-link-share {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 14px;
+  margin-bottom: 14px;
+  padding: 12px 14px;
+  border: 1px solid #c8ddea;
+  border-radius: 10px;
+  background: #f5fbff;
+}
+
+.join-link-share > div {
+  min-width: 0;
+  display: grid;
+  gap: 4px;
+}
+
+.join-link-url-row {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  min-width: 0;
+}
+
+.join-link-url-row input {
+  min-width: 0;
+  width: min(100%, 520px);
+  padding: 8px 10px;
+  border: 1px solid #b9d2e2;
+  border-radius: 7px;
+  background: #ffffff;
+  color: #125f8a;
+  font-size: 0.86rem;
+  font-weight: 750;
+}
+
+.join-link-url-row a {
+  flex: 0 0 auto;
+  color: #125f8a;
+  font-weight: 800;
+}
+
+.join-link-label {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  color: #1e5374;
+  font-weight: 850;
+}
+
+.join-link-share a {
+  overflow: hidden;
+  color: #125f8a;
+  font-size: 0.86rem;
+  font-weight: 750;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.join-link-share small {
+  color: #557087;
+}
+
+.join-link-share button {
+  flex: 0 0 auto;
+}
+
+.linked-join-code {
+  display: grid;
+  gap: 5px;
+  padding: 14px;
+  border: 1px solid #b9dfc5;
+  border-radius: 10px;
+  background: #eef8f1;
+}
+
+.linked-join-code span {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  color: #40634b;
+  font-weight: 850;
+}
+
+.linked-join-code strong {
+  font-size: 1.55rem;
+  letter-spacing: 0.12em;
+}
+
+.linked-join-code small {
+  color: #54705b;
+}
+
 .live-session .arena-canvas {
   min-height: 280px;
   margin: 16px 0;
@@ -2994,6 +3088,9 @@ small {
 
 @media (max-width: 700px) {
   .landing-section,.landing-final-cta,.host-assurance { width:min(100% - 32px,1160px); }
+  .join-link-share { align-items: flex-start; flex-direction: column; }
+  .join-link-url-row { width: 100%; }
+  .join-link-url-row input { flex: 1; width: auto; }
   .value-card-grid,.mode-card-grid { grid-template-columns:1fr; }
   .value-card-grid article,.mode-card { min-height:0; }
   .hero-proof-row span { font-size:.72rem; }

@@ -1,0 +1,9 @@
+Local runtime started 2026-07-12 around 17:10 JST.
+
+Web: Vite 7.3.6, http://localhost:5173
+Game server: http://localhost:4000
+Shared TypeScript watch: 0 compilation errors
+
+Observed server/runtime output during the playtest contained startup messages only. No server exception, rejected socket stack trace, asset-load failure, or repeated warning was printed during the three completed rooms.
+
+The browser tooling exposed console warnings/errors but did not expose a HAR or WebSocket frame export. Captured console JSON files contain empty host/player error arrays for the lobby and Flag results.

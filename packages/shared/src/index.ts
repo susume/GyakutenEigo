@@ -242,16 +242,16 @@ export const FLAG_MODE_DEFAULTS = {
 
 export const HEAVY_GUN_DAMAGE = 100;
 export const HEAVY_GUN_COOLDOWN_MS = 1500;
-export const HEAVY_GUN_RANGE = 80;
+export const HEAVY_GUN_RANGE = 120;
 export const HEAVY_GUN_UNSCOPED_HIT_RADIUS = 0.52;
 export const HEAVY_GUN_SCOPED_HIT_RADIUS = 0.82;
 export const HEAVY_GUN_DEEP_SCOPED_HIT_RADIUS = 0.98;
 export const HEAVY_GUN_ZOOM_LEVEL_0_FOV = 72;
 export const HEAVY_GUN_ZOOM_LEVEL_1_FOV = 46;
 export const HEAVY_GUN_ZOOM_LEVEL_2_FOV = 30;
-export const QUICK_BLASTER_RANGE = 30;
+export const QUICK_BLASTER_RANGE = 48;
 export const QUICK_BLASTER_COOLDOWN_MS = 150;
-export const STARTER_BLASTER_RANGE = 28;
+export const STARTER_BLASTER_RANGE = 36;
 
 export const DEFAULT_SESSION_SETTINGS: SessionSettings = {
   mapId: "desert_citadel",
@@ -451,7 +451,7 @@ export const GEAR_ITEMS: GearItem[] = [
   {
     id: "quick_blaster",
     name: "Quick Snowball Launcher",
-    cost: 1200,
+    cost: 3000,
     description: "Faster launches with lighter snowballs.",
     damage: 10,
     range: QUICK_BLASTER_RANGE,
@@ -461,7 +461,7 @@ export const GEAR_ITEMS: GearItem[] = [
   {
     id: "power_blaster",
     name: "Heavy Snowball Launcher",
-    cost: 2500,
+    cost: 6000,
     description: "High-focus launcher with a deliberate rhythm, long reach, and right-click scope.",
     damage: HEAVY_GUN_DAMAGE,
     range: HEAVY_GUN_RANGE,
@@ -1088,7 +1088,7 @@ export type GearPurchaseResult =
       nextHealth?: number;
       gearChanged: boolean;
     }
-  | { ok: false; reason: "player_eliminated" | "outside_base" | "not_enough_money" };
+  | { ok: false; reason: "player_eliminated" | "outside_base" | "not_enough_money" | "starter_weapon" };
 
 export const resolveGearPurchase = ({
   player,
@@ -1107,6 +1107,7 @@ export const resolveGearPurchase = ({
       gearChanged: false
     };
   }
+  if (gear.id === "starter_blaster") return { ok: false, reason: "starter_weapon" };
   if (!isInsideTeamBase(player.team, { x: player.x ?? getTeamSpawn(player.team).x, z: player.z ?? getTeamSpawn(player.team).z })) {
     return { ok: false, reason: "outside_base" };
   }
@@ -1220,7 +1221,7 @@ export const resolveProjectileTarget = ({
   hitRadius = SNOWBALL_HIT_RADIUS
 }: {
   attacker: Pick<PlayerSession, "id" | "team" | "isAlive" | "x" | "z" | "facing">;
-  candidates: Array<Pick<PlayerSession, "id" | "team" | "isAlive" | "x" | "z" | "isBot">>;
+  candidates: Array<Pick<PlayerSession, "id" | "team" | "isAlive" | "connectionState" | "x" | "z" | "isBot">>;
   requestedTargetId?: string;
   obstacles?: readonly ArenaObstacle[];
   range?: number;
@@ -1246,7 +1247,7 @@ export const resolveProjectileTarget = ({
   for (const candidate of candidates) {
     if (candidate.id === attacker.id) continue;
     if (requestedTargetId && candidate.id !== requestedTargetId) continue;
-    if (!candidate.isAlive || candidate.team === attacker.team) continue;
+    if (candidate.connectionState === "disconnected" || !candidate.isAlive || candidate.team === attacker.team) continue;
     const target = {
       x: Number.isFinite(candidate.x) ? candidate.x! : 0,
       z: Number.isFinite(candidate.z) ? candidate.z! : 0
@@ -1320,7 +1321,7 @@ export const resolveBotAttackTarget = ({
   range = TAG_RANGE
 }: {
   bot: Pick<PlayerSession, "id" | "team" | "isAlive" | "x" | "z">;
-  candidates: Array<Pick<PlayerSession, "id" | "team" | "isAlive" | "isBot" | "x" | "z">>;
+  candidates: Array<Pick<PlayerSession, "id" | "team" | "isAlive" | "connectionState" | "isBot" | "x" | "z">>;
   obstacles?: readonly ArenaObstacle[];
   range?: number;
 }): BotAttackTargetResult => {
@@ -1328,7 +1329,7 @@ export const resolveBotAttackTarget = ({
   const botPosition = { x: bot.x ?? 0, z: bot.z ?? 0 };
   let selected: { id: string; distance: number } | undefined;
   for (const candidate of candidates) {
-    if (candidate.id === bot.id || candidate.isBot || !candidate.isAlive || candidate.team === bot.team) continue;
+    if (candidate.id === bot.id || candidate.isBot || candidate.connectionState === "disconnected" || !candidate.isAlive || candidate.team === bot.team) continue;
     const targetPosition = { x: candidate.x ?? 0, z: candidate.z ?? 0 };
     const distance = Math.hypot(targetPosition.x - botPosition.x, targetPosition.z - botPosition.z);
     if (distance > range || !hasLineOfSight({ from: botPosition, to: targetPosition, obstacles })) continue;
