@@ -468,31 +468,21 @@ export const GEAR_ITEMS: GearItem[] = [
     id: "shield_vest",
     name: "Warm Vest",
     cost: 1000,
-    description: "Extra warmth for the current round.",
+    description: "+50 warmth for the current round.",
     damage: 15,
     range: STARTER_BLASTER_RANGE,
     fireCooldownMs: 160,
-    healthBonus: 30
+    healthBonus: 50
   },
   {
     id: "speed_shoes",
-    name: "Speed Shoes",
+    name: "Speed Boots",
     cost: 1500,
-    description: "Small movement speed bonus.",
+    description: "+15% walk, sprint, and crouch speed.",
     damage: 15,
     range: STARTER_BLASTER_RANGE,
     fireCooldownMs: 160,
     speedBonus: 0.15
-  },
-  {
-    id: "focus_scope",
-    name: "Snow Goggles",
-    cost: 2000,
-    description: "Right-click zoom for long sightlines.",
-    damage: 15,
-    range: STARTER_BLASTER_RANGE,
-    fireCooldownMs: 160,
-    zoomFovMultiplier: 0.52
   }
 ];
 

@@ -25,16 +25,16 @@ export class CharacterAnimator {
 
   update(parts: CharacterAnimationParts, state: CharacterAnimationState) {
     if (!state.alive) {
-      // Classroom-safe knockout state: freeze upright instead of falling over.
-      parts.root.rotation.z = THREE.MathUtils.lerp(parts.root.rotation.z, 0, 0.24);
-      parts.root.position.y = THREE.MathUtils.lerp(parts.root.position.y, 0, 0.2);
-      parts.leftLeg.rotation.x = THREE.MathUtils.lerp(parts.leftLeg.rotation.x, 0, 0.24);
-      parts.rightLeg.rotation.x = THREE.MathUtils.lerp(parts.rightLeg.rotation.x, 0, 0.24);
-      parts.leftArm.rotation.x = THREE.MathUtils.lerp(parts.leftArm.rotation.x, -0.18, 0.24);
-      parts.rightArm.rotation.x = THREE.MathUtils.lerp(parts.rightArm.rotation.x, -0.18, 0.24);
-      parts.torso.rotation.x = THREE.MathUtils.lerp(parts.torso.rotation.x, 0, 0.24);
-      parts.head.rotation.x = THREE.MathUtils.lerp(parts.head.rotation.x, 0, 0.24);
-      parts.weapon.rotation.x = THREE.MathUtils.lerp(parts.weapon.rotation.x, 0.35, 0.24);
+      // Knocked-out state: keep the player frozen in place, but make the silhouette unmistakably inactive.
+      parts.root.rotation.z = THREE.MathUtils.lerp(parts.root.rotation.z, -0.34, 0.18);
+      parts.root.position.y = THREE.MathUtils.lerp(parts.root.position.y, 0.02, 0.18);
+      parts.leftLeg.rotation.x = THREE.MathUtils.lerp(parts.leftLeg.rotation.x, 0.16, 0.2);
+      parts.rightLeg.rotation.x = THREE.MathUtils.lerp(parts.rightLeg.rotation.x, -0.08, 0.2);
+      parts.leftArm.rotation.x = THREE.MathUtils.lerp(parts.leftArm.rotation.x, 0.42, 0.2);
+      parts.rightArm.rotation.x = THREE.MathUtils.lerp(parts.rightArm.rotation.x, 0.58, 0.2);
+      parts.torso.rotation.x = THREE.MathUtils.lerp(parts.torso.rotation.x, 0.22, 0.2);
+      parts.head.rotation.x = THREE.MathUtils.lerp(parts.head.rotation.x, 0.32, 0.2);
+      parts.weapon.rotation.x = THREE.MathUtils.lerp(parts.weapon.rotation.x, 0.72, 0.2);
       return;
     }
 

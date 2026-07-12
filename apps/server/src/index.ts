@@ -519,14 +519,19 @@ const applyValidatedDamage = (session: GameSession, attacker: PlayerSession, tar
 
   target.health = tagResult.nextHealth;
   if (tagResult.eliminated) {
+    const knockedOutPosition = {
+      x: target.x ?? getTeamSpawn(target.team).x,
+      z: target.z ?? getTeamSpawn(target.team).z
+    };
+    const baseSpawn = getTeamSpawn(target.team);
     target.isAlive = false;
     target.respawnCorrectAnswers = 0;
     if (session.flag) {
-      session.flag = resolveFlagDropForPlayer(session.flag, target, {
-        x: target.x ?? getTeamSpawn(target.team).x,
-        z: target.z ?? getTeamSpawn(target.team).z
-      });
+      session.flag = resolveFlagDropForPlayer(session.flag, target, knockedOutPosition);
     }
+    target.x = baseSpawn.x;
+    target.z = baseSpawn.z;
+    target.facing = baseSpawn.facing;
     if (target.isBot && session.settings.gameMode !== "flag") botRespawnAt.set(target.id, Date.now() + BOT_RESPAWN_MS);
     attacker.money = Math.min(16000, attacker.money + tagResult.moneyAwarded);
     attacker.score += tagResult.scoreDelta;

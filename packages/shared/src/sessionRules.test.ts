@@ -471,6 +471,16 @@ test("resolveGearPurchase charges once for new gear in base", () => {
   });
 });
 
+test("warm vest adds 50 warmth when purchased in base", () => {
+  const player = makePlayer({ money: 1000, health: DEFAULT_PLAYER_HEALTH, gear: "starter_blaster", ...getTeamSpawn("blue") });
+  const gear = GEAR_ITEMS.find((item) => item.id === "shield_vest")!;
+
+  assert.equal(gear.healthBonus, 50);
+  const result = resolveGearPurchase({ player, gear });
+  assert.equal(result.ok, true);
+  if (result.ok) assert.equal(result.nextHealth, 150);
+});
+
 test("gear store items expose real combat and movement mechanics", () => {
   assert.equal(getGearFireCooldownMs("quick_blaster") < getGearFireCooldownMs("starter_blaster"), true);
   assert.equal(getGearFireCooldownMs("power_blaster") > getGearFireCooldownMs("starter_blaster"), true);
@@ -480,11 +490,14 @@ test("gear store items expose real combat and movement mechanics", () => {
   assert.equal(isGearAutoFireEnabled("quick_blaster"), true);
   assert.equal(isGearAutoFireEnabled("starter_blaster"), false);
   assert.equal(getGearDamage("starter_blaster"), 15);
-  assert.equal(getGearHitRadius("focus_scope"), getGearHitRadius("starter_blaster"));
-  assert.equal(getGearMoveSpeedMultiplier("speed_shoes") > getGearMoveSpeedMultiplier("starter_blaster"), true);
-  assert.equal(getGearZoomFovMultiplier("focus_scope") < getGearZoomFovMultiplier("starter_blaster"), true);
+  assert.equal(getGearMoveSpeedMultiplier("speed_shoes"), 1.15);
+  assert.equal(getGearZoomFovMultiplier("power_blaster") < getGearZoomFovMultiplier("starter_blaster"), true);
   assert.equal(getGearMoveSpeedMultiplier("unknown_gear"), 1);
   assert.equal(getGearZoomFovMultiplier("unknown_gear"), 1);
+});
+
+test("snow goggles are removed from the gear store", () => {
+  assert.equal(GEAR_ITEMS.some((item) => item.id === "focus_scope"), false);
 });
 
 test("heavy launcher uses named AWP-style combat settings", () => {
@@ -555,8 +568,8 @@ test("starter snowball hits remove 15 warmth", () => {
   });
 });
 
-test("snow goggles do not widen snowball hit validation", () => {
-  const attacker = makePlayer({ id: "attacker", team: "blue", gear: "focus_scope", x: 0, z: 0, facing: 0 });
+test("removed gear does not widen snowball hit validation", () => {
+  const attacker = makePlayer({ id: "attacker", team: "blue", gear: "starter_blaster", x: 0, z: 0, facing: 0 });
   const target = makePlayer({ id: "target", team: "red", x: 1.9, z: -8 });
 
   assert.deepEqual(
@@ -564,15 +577,6 @@ test("snow goggles do not widen snowball hit validation", () => {
       attacker,
       candidates: [attacker, target],
       hitRadius: getGearHitRadius("starter_blaster"),
-      obstacles: []
-    }),
-    { ok: false, reason: "no_valid_target" }
-  );
-  assert.deepEqual(
-    resolveProjectileTarget({
-      attacker,
-      candidates: [attacker, target],
-      hitRadius: getGearHitRadius("focus_scope"),
       obstacles: []
     }),
     { ok: false, reason: "no_valid_target" }

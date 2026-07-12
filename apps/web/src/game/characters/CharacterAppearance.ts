@@ -118,7 +118,6 @@ const stableHash = (value: string) => {
 const variantFromGear = (gear?: string): CharacterVariant | null => {
   if (gear === "power_blaster") return "heavy";
   if (gear === "quick_blaster" || gear === "speed_shoes") return "support";
-  if (gear === "focus_scope") return "sniper";
   if (gear === "shield_vest") return "engineer";
   return null;
 };

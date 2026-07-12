@@ -15,8 +15,7 @@ const DEBUG_GEARS = [
   "quick_blaster",
   "power_blaster",
   "shield_vest",
-  "speed_shoes",
-  "focus_scope"
+  "speed_shoes"
 ] as const;
 
 const clampStressCount = (count: number): CharacterStressCount => {

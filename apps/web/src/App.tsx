@@ -2543,7 +2543,7 @@ function StudentExperience({ onExit }: { onExit: () => void }) {
                   {session.settings.gameMode === "flag"
                     ? "Flag Mode is round-based. You can keep practicing, but you return when the next round begins."
                     : canPracticeToRespawn
-                    ? `Answer ${Math.max(0, RESPAWN_CORRECT_ANSWERS_REQUIRED - respawnProgress)} more correctly to rejoin with full warmth and fresh snowballs.`
+                    ? `Answer ${Math.max(0, RESPAWN_CORRECT_ANSWERS_REQUIRED - respawnProgress)} more correctly to rejoin at your team base with full warmth and fresh snowballs.`
                     : "Practice questions are off for this session, so watch the scoreboard and get ready for the next round."}
                 </p>
               </div>
@@ -2615,6 +2615,12 @@ function BuyPanel({
   buyingGearId: string | null;
   isBuyingSnowballs: boolean;
 }) {
+  const GearGlyph = ({ gearId }: { gearId: string }) => {
+    if (gearId === "starter_blaster") return <span className="gear-glyph launcher-starter" aria-hidden="true" />;
+    if (gearId === "quick_blaster") return <span className="gear-glyph launcher-quick" aria-hidden="true" />;
+    if (gearId === "power_blaster") return <span className="gear-glyph launcher-heavy" aria-hidden="true" />;
+    return <ShoppingBag size={18} aria-hidden="true" />;
+  };
   const snowballPrice = session.settings.snowballPackPrice;
   const snowballCount = session.settings.snowballsPerPack;
   const isBuyingGear = Boolean(buyingGearId);
@@ -2634,7 +2640,7 @@ function BuyPanel({
         onClick={onBuySnowballs}
         disabled={!player.isAlive || player.money < snowballPrice || isBuyingSnowballs || isBuyingGear}
       >
-        <ShoppingBag size={18} aria-hidden="true" />
+        <GearGlyph gearId="snowballs" />
         <span>
           <strong>{isBuyingSnowballs ? "Working..." : `${snowballCount} Snowballs`}</strong>
           <small>Restock ammunition anywhere on the map.</small>
@@ -2649,7 +2655,7 @@ function BuyPanel({
           onClick={() => onBuy(gear.id)}
           disabled={!player.isAlive || player.money < gear.cost || isBuyingSnowballs || isBuyingGear}
         >
-          <ShoppingBag size={18} aria-hidden="true" />
+          <GearGlyph gearId={gear.id} />
           <span>
             <strong>{buyingGearId === gear.id ? "Working..." : gear.name}</strong>
             <small>{gear.description}</small>

@@ -50,14 +50,6 @@ export class CharacterModel {
     this.root.rotation.y = facing;
     this.root.visible = true;
     this.hitboxes.update(this.root.position, this.appearance.silhouette.heightScale);
-    this.root.traverse((child) => {
-      const mesh = child as THREE.Mesh;
-      if (mesh.material && "opacity" in mesh.material) {
-        const material = mesh.material as THREE.Material;
-        material.transparent = !alive;
-        material.opacity = alive ? 1 : 0.48;
-      }
-    });
   }
 
   update({ camera, delta, elapsed, speed, alive, firing, crouching }: CharacterModelUpdate) {
@@ -66,7 +58,7 @@ export class CharacterModel {
       this.animator.update(this.parts, { elapsed, speed, alive, firing, crouching });
       this.audio.update(speed, delta);
     }
-    this.parts.equipment.weapon.visible = lodState.level.equipment !== "minimal";
-    if (this.parts.equipment.backpack) this.parts.equipment.backpack.visible = lodState.level.equipment === "full";
+    this.parts.equipment.weapon.visible = alive && lodState.level.equipment !== "minimal";
+    if (this.parts.equipment.backpack) this.parts.equipment.backpack.visible = alive && lodState.level.equipment === "full";
   }
 }

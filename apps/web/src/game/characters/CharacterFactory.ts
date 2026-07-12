@@ -128,7 +128,7 @@ export class CharacterFactory {
     this.addBox(rightLeg, materials.uniform, [0, -0.2, 0], [0.22, 0.54, 0.24]);
     this.addBox(rightLeg, materials.dark, [0, -0.58, -0.02], [0.26, 0.22, 0.3]);
 
-    const { weapon, muzzle } = createWeaponSet(materials, this.boxGeometry);
+    const { weapon, muzzle } = createWeaponSet(materials, this.boxGeometry, input.gear);
     weapon.position.set(0.2, 1.14, -0.5);
     weapon.rotation.set(-0.24, Math.PI, -0.04);
     weapon.scale.setScalar(0.72);
@@ -156,8 +156,8 @@ export class CharacterFactory {
     });
   }
 
-  createFirstPersonViewModel(team: Team): FirstPersonViewModel {
-    const appearance = resolveCharacterAppearance({ team, playerId: "local", gear: "starter_blaster", variant: "assault" });
+  createFirstPersonViewModel(team: Team, gear = "starter_blaster"): FirstPersonViewModel {
+    const appearance = resolveCharacterAppearance({ team, playerId: "local", gear, variant: "assault" });
     const materials = this.materialsFor(appearance);
     const root = new THREE.Group();
     root.position.set(0.34, -0.58, -1.02);
@@ -168,7 +168,7 @@ export class CharacterFactory {
     this.addBox(root, materials.dark, [-0.24, -0.4, -0.42], [0.16, 0.12, 0.16], [-0.64, 0.12, 0.08]);
     this.addBox(root, materials.dark, [0.36, -0.36, -0.38], [0.16, 0.12, 0.16], [-0.7, -0.08, -0.04]);
 
-    const { weapon, muzzle } = createWeaponSet(materials, this.boxGeometry);
+    const { weapon, muzzle } = createWeaponSet(materials, this.boxGeometry, gear);
     weapon.position.set(0.06, -0.24, -0.62);
     weapon.rotation.set(-0.1, Math.PI, 0);
     weapon.scale.set(0.62, 0.62, 0.82);

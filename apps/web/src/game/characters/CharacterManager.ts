@@ -19,6 +19,8 @@ type CharacterRecord = {
   controller: CharacterController;
   badge: THREE.Sprite;
   ring?: THREE.Mesh;
+  gear: string;
+  badgeAlive: boolean;
 };
 
 export interface CharacterManagerStats {
@@ -44,12 +46,37 @@ export class CharacterManager {
       if (this.options.isFps && player.id === this.options.currentPlayerId) return;
       seen.add(player.id);
       const state = getVisualState(player, index);
-      const record = this.records.get(player.id);
+      let record = this.records.get(player.id);
       if (!record) {
         this.add(player, state);
+        record = this.records.get(player.id);
+      }
+      if (!record) return;
+      if (record.gear !== player.gear) {
+        this.removeRecord(record);
+        this.records.delete(player.id);
+        this.add(player, state);
+        record = this.records.get(player.id);
+      }
+      if (!record) return;
+      if (!player.isAlive) {
+        record.controller.model.root.visible = false;
+        record.badge.visible = false;
+        if (record.ring) record.ring.visible = false;
         return;
       }
+      if (record.badgeAlive !== player.isAlive) {
+        const previousMaterial = record.badge.material;
+        record.badge.material = this.options.makeBadgeMaterial(player);
+        if (!Array.isArray(previousMaterial)) {
+          const mappedMaterial = previousMaterial as THREE.Material & { map?: THREE.Texture | null };
+          mappedMaterial.map?.dispose();
+          previousMaterial.dispose();
+        }
+        record.badgeAlive = player.isAlive;
+      }
       record.controller.setTarget(state.x, state.z, state.facing, player.isAlive);
+      record.controller.model.root.visible = true;
       record.badge.visible = true;
       if (record.ring) record.ring.visible = player.id === this.options.currentPlayerId;
     });
@@ -115,6 +142,12 @@ export class CharacterManager {
       this.scene.add(ring);
     }
 
-    this.records.set(player.id, { controller, badge, ring });
+    this.records.set(player.id, { controller, badge, ring, gear: player.gear, badgeAlive: player.isAlive });
+  }
+
+  private removeRecord(record: CharacterRecord) {
+    this.scene.remove(record.controller.model.root);
+    this.scene.remove(record.badge);
+    if (record.ring) this.scene.remove(record.ring);
   }
 }

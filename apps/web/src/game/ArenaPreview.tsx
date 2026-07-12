@@ -258,7 +258,7 @@ export default function ArenaPreview({
   useEffect(() => {
     currentPlayerRef.current = currentPlayer;
     pendingShotsRef.current = 0;
-  }, [currentPlayer?.id, currentPlayer?.snowballs, currentPlayer?.isAlive]);
+  }, [currentPlayer?.id, currentPlayer?.snowballs, currentPlayer?.isAlive, currentPlayer?.gear]);
 
   useEffect(() => {
     syncPlayersRef.current(session, currentPlayer);
@@ -861,7 +861,7 @@ export default function ArenaPreview({
       scene.add(cameraRig);
       cameraRig.add(camera);
 
-      const firstPersonModel = characterFactory.createFirstPersonViewModel(currentPlayerTeam);
+      const firstPersonModel = characterFactory.createFirstPersonViewModel(currentPlayerTeam, currentPlayer?.gear ?? "starter_blaster");
       camera.add(firstPersonModel.root);
 
       const flashMaterial = new THREE.SpriteMaterial({
@@ -1297,7 +1297,7 @@ export default function ArenaPreview({
       renderer.dispose();
       mount.removeChild(renderer.domElement);
     };
-  }, [sceneSessionId, currentPlayerId, currentPlayerTeam, view, controlsDisabled, debugOverlay, activeQuality, gamepadEnabled, session?.settings.gameMode, session?.flag?.state, session?.flag?.carrierId, session?.flag?.position.x, session?.flag?.position.z]);
+  }, [sceneSessionId, currentPlayerId, currentPlayerTeam, currentPlayer?.gear, view, controlsDisabled, debugOverlay, activeQuality, gamepadEnabled, session?.settings.gameMode, session?.flag?.state, session?.flag?.carrierId, session?.flag?.position.x, session?.flag?.position.z]);
 
   const beginTouchMove = (forward: number, right: number) => (event: ReactPointerEvent<HTMLButtonElement>) => {
     event.preventDefault();

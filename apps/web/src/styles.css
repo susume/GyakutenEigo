@@ -1724,10 +1724,96 @@ small {
   text-align: left;
 }
 
-.gear-row span {
+.gear-row > span:not(.gear-glyph) {
   display: grid;
   gap: 2px;
   flex: 1;
+}
+
+.gear-glyph {
+  display: block;
+  position: relative;
+  width: 40px;
+  height: 28px;
+  flex: 0 0 40px;
+  border: 2px solid #22314b;
+  border-radius: 8px;
+  background: #dce8f4;
+  box-shadow: inset 0 -4px 0 rgba(15, 23, 42, 0.14);
+}
+
+.gear-glyph::before,
+.gear-glyph::after {
+  content: "";
+  position: absolute;
+  display: block;
+}
+
+.launcher-starter::before {
+  left: 17px;
+  top: 8px;
+  width: 17px;
+  height: 5px;
+  border-radius: 2px;
+  background: #172033;
+}
+
+.launcher-starter::after {
+  left: 7px;
+  top: 6px;
+  width: 14px;
+  height: 10px;
+  border-radius: 3px;
+  background: #526278;
+}
+
+.launcher-quick {
+  height: 24px;
+  border-color: #0f766e;
+  background: #d8f4ee;
+}
+
+.launcher-quick::before {
+  left: 15px;
+  top: 8px;
+  width: 18px;
+  height: 5px;
+  border-radius: 2px;
+  background: #0f3d3c;
+}
+
+.launcher-quick::after {
+  left: 10px;
+  top: 13px;
+  width: 6px;
+  height: 9px;
+  border-radius: 1px 1px 3px 3px;
+  background: #14b8a6;
+}
+
+.launcher-heavy {
+  width: 46px;
+  border-color: #7c3f14;
+  background: #f8e5c6;
+}
+
+.launcher-heavy::before {
+  left: 9px;
+  top: 10px;
+  width: 31px;
+  height: 5px;
+  border-radius: 2px;
+  background: #2f261f;
+}
+
+.launcher-heavy::after {
+  left: 16px;
+  top: 4px;
+  width: 16px;
+  height: 5px;
+  border: 2px solid #9a5b28;
+  border-radius: 4px;
+  background: #344054;
 }
 
 .gear-row em {

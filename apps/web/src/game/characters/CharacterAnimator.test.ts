@@ -14,7 +14,7 @@ const makeParts = (): CharacterAnimationParts => ({
   weapon: new THREE.Object3D()
 });
 
-test("knocked-out characters freeze upright instead of falling over", () => {
+test("knocked-out characters freeze with an inactive leaning pose", () => {
   const animator = new CharacterAnimator();
   const parts = makeParts();
   parts.root.rotation.z = -Math.PI / 3;
@@ -24,7 +24,7 @@ test("knocked-out characters freeze upright instead of falling over", () => {
     animator.update(parts, { elapsed: frame / 60, speed: 0, alive: false });
   }
 
-  assert.ok(Math.abs(parts.root.rotation.z) < 0.001);
-  assert.ok(Math.abs(parts.root.position.y) < 0.001);
-  assert.ok(parts.weapon.rotation.x > 0.34);
+  assert.ok(parts.root.rotation.z < -0.2);
+  assert.ok(Math.abs(parts.root.position.y - 0.02) < 0.02);
+  assert.ok(parts.weapon.rotation.x > 0.6);
 });
