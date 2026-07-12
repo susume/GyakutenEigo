@@ -7,11 +7,14 @@ import {
   HEAVY_GUN_DAMAGE,
   HEAVY_GUN_COOLDOWN_MS,
   HEAVY_GUN_DEEP_SCOPED_HIT_RADIUS,
+  HEAVY_GUN_RANGE,
   QUICK_BLASTER_COOLDOWN_MS,
+  QUICK_BLASTER_RANGE,
   RESPAWN_CORRECT_ANSWERS_REQUIRED,
   ARENA_LIMIT_X,
   ARENA_LIMIT_Z,
   ARENA_SCALE,
+  STARTER_BLASTER_RANGE,
   FREE_FOR_ALL_SPAWNS,
   buildCsvReport,
   buildReportRows,
@@ -476,7 +479,7 @@ test("resolveGearPurchase is idempotent for currently equipped gear", () => {
 });
 
 test("resolveGearPurchase charges once for new gear in base", () => {
-  const player = makePlayer({ money: 1200, gear: "starter_blaster", ...getTeamSpawn("blue") });
+  const player = makePlayer({ money: 3000, gear: "starter_blaster", ...getTeamSpawn("blue") });
   const gear = GEAR_ITEMS.find((item) => item.id === "quick_blaster")!;
 
   assert.deepEqual(resolveGearPurchase({ player, gear }), {
@@ -486,6 +489,12 @@ test("resolveGearPurchase charges once for new gear in base", () => {
     nextHealth: player.health,
     gearChanged: true
   });
+});
+
+test("resolveGearPurchase cannot downgrade a purchased launcher to the default", () => {
+  const player = makePlayer({ money: 6000, gear: "power_blaster", ...getTeamSpawn("blue") });
+  const starter = GEAR_ITEMS.find((item) => item.id === "starter_blaster")!;
+  assert.deepEqual(resolveGearPurchase({ player, gear: starter }), { ok: false, reason: "starter_weapon" });
 });
 
 test("warm vest adds 50 warmth when purchased in base", () => {
@@ -499,6 +508,11 @@ test("warm vest adds 50 warmth when purchased in base", () => {
 });
 
 test("gear store items expose real combat and movement mechanics", () => {
+  assert.equal(GEAR_ITEMS.find((item) => item.id === "quick_blaster")?.cost, 3000);
+  assert.equal(GEAR_ITEMS.find((item) => item.id === "power_blaster")?.cost, 6000);
+  assert.equal(getGearRange("starter_blaster"), STARTER_BLASTER_RANGE);
+  assert.equal(getGearRange("quick_blaster"), QUICK_BLASTER_RANGE);
+  assert.equal(getGearRange("power_blaster"), HEAVY_GUN_RANGE);
   assert.equal(getGearFireCooldownMs("quick_blaster") < getGearFireCooldownMs("starter_blaster"), true);
   assert.equal(getGearFireCooldownMs("power_blaster") > getGearFireCooldownMs("starter_blaster"), true);
   assert.equal(getGearFireCooldownMs("starter_blaster") <= 220, true);

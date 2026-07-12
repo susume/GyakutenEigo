@@ -148,7 +148,11 @@ const rawBlocks: CitadelBlock[] = [
   { id: "south-route-cover-b", label: "Loaded Cart", x: 112, z: 94, w: 12, d: 8, h: 4, color: stone, collides: true, style: "stall" }
 ];
 
-export const blocks: CitadelBlock[] = rawBlocks.map(scaleRect);
+const DESERT_CITADEL_ROOF_RISE = 2.25;
+export const blocks: CitadelBlock[] = rawBlocks.map((block) => scaleRect({
+  ...block,
+  h: block.style === "house" ? block.h + DESERT_CITADEL_ROOF_RISE : block.h
+}));
 
 const rawProps: CitadelProp[] = [
   // North Lane: military remnants and a readable long-range silhouette.

@@ -1397,6 +1397,8 @@ app.post("/api/sessions/:code/players/:playerId/buy", (req, res) => {
       error:
         purchase.reason === "player_eliminated"
           ? "Students out for the round cannot buy gear."
+          : purchase.reason === "starter_weapon"
+            ? "The Starter Snowball Launcher is your default weapon and cannot replace purchased gear."
           : purchase.reason === "outside_base"
             ? "Return to your team base to buy gear."
             : "Not enough money for that gear."

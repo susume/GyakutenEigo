@@ -31,13 +31,22 @@ The fix keeps one shared pipeline:
 The old `power_blaster` is now the Heavy Snowball Launcher.
 
 - Damage: `HEAVY_GUN_DAMAGE = 100`
-- Cooldown: `HEAVY_GUN_COOLDOWN_MS = 1350`
-- Range: `HEAVY_GUN_RANGE = 80`
+- Purchase price: `$6000` (the default Starter launcher is not sold in the Buy Menu)
+- Cooldown: `HEAVY_GUN_COOLDOWN_MS = 1500`
+- Range: `HEAVY_GUN_RANGE = 120`
 - Scope: right-click cycle: normal (`72°`) → medium (`46°`) → deep (`30°`) → normal
 - Accuracy: unscoped (`0.52`) < medium scope (`0.82`) < deep scope (`0.98`) hit radius
 - Audio: procedural `heavy_fire` report plus delayed echo, with no external asset dependency
 
 The Heavy launcher can fire at either zoom level. Its zoom exits on a weapon switch, knockout, round/match end, game menu pause, pointer-lock exit, or arena cleanup. The server receives the zoom level with fire intent so the configured accuracy tier is resolved by the same authoritative projectile path.
+
+## Launcher shop balance
+
+- Starter Snowball Launcher: default equipment, range `36`, not purchasable as a downgrade.
+- Quick Snowball Launcher: `$3000`, range `48`.
+- Heavy Snowball Launcher: `$6000`, range `120`.
+
+The server rejects attempts to replace a purchased launcher with the default Starter launcher, even if an old client or crafted request still sends that gear id.
 
 ## Flag Mode
 

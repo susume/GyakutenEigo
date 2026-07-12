@@ -3,6 +3,7 @@ import {
   BookOpen,
   CircleDollarSign,
   ClipboardPaste,
+  Copy,
   DoorOpen,
   Download,
   Eye,
@@ -10,6 +11,7 @@ import {
   GraduationCap,
   HeartPulse,
   LogOut,
+  Link2,
   Package,
   Play,
   Plus,
@@ -45,7 +47,7 @@ import {
   type TeacherUser
 } from "@quizstrike/shared";
 import { API_URL, ApiError, authApi, studentApi, teacherApi } from "./api/client";
-import { modeForRoute, normalizeRoutePath, type AppMode } from "./navigation";
+import { buildStudentJoinUrl, getJoinCodeFromSearch, modeForRoute, normalizeRoutePath, type AppMode } from "./navigation";
 import { groupScoreboardRows } from "./scoreboardGroups";
 import { getModeScoreSummary, getReadyRoomTitle, getSessionResultText, getZombieCounts } from "./sessionPresentation";
 import { formatStudentJoinError } from "./studentJoinErrors";
@@ -1333,6 +1335,9 @@ function SessionManager({
   const status = useAsyncMessage();
   const remainingSeconds = useRoundRemaining(selectedSession);
   const selectedMap = getArenaMap(settings.mapId);
+  const studentJoinLink = selectedSession
+    ? buildStudentJoinUrl(window.location.origin, selectedSession.sessionCode)
+    : "";
 
   useEffect(() => {
     if (!quizSetId && data.quizSets[0]) setQuizSetId(data.quizSets[0].id);
@@ -1503,6 +1508,29 @@ function SessionManager({
       status.report(err);
     } finally {
       setIsAddingBot(false);
+    }
+  };
+
+  const copyStudentJoinLink = async () => {
+    if (!studentJoinLink) return;
+    try {
+      if (navigator.clipboard?.writeText) {
+        await navigator.clipboard.writeText(studentJoinLink);
+      } else {
+        const textArea = document.createElement("textarea");
+        textArea.value = studentJoinLink;
+        textArea.setAttribute("readonly", "true");
+        textArea.style.position = "fixed";
+        textArea.style.opacity = "0";
+        document.body.appendChild(textArea);
+        textArea.select();
+        const copied = document.execCommand("copy");
+        textArea.remove();
+        if (!copied) throw new Error("Copy was not available.");
+      }
+      status.setMessage("Student join link copied.");
+    } catch {
+      status.setError("Copy was not available. Select the link and copy it manually.");
     }
   };
 
@@ -1682,7 +1710,16 @@ function SessionManager({
               <span>Join Code</span>
               <strong>{selectedSession.sessionCode}</strong>
             </div>
-            <p className="join-link">Students can join from this app with code {selectedSession.sessionCode}.</p>
+            <div className="join-link-share">
+              <div>
+                <span className="join-link-label"><Link2 size={16} aria-hidden="true" />Student Join Link</span>
+                <a href={studentJoinLink} target="_blank" rel="noreferrer">{studentJoinLink}</a>
+                <small>Students open this link and enter only their name.</small>
+              </div>
+              <button type="button" onClick={copyStudentJoinLink}>
+                <Copy size={16} aria-hidden="true" />Copy Link
+              </button>
+            </div>
             <p className="mini-copy">
               If a player is frozen out, they can answer {RESPAWN_CORRECT_ANSWERS_REQUIRED} correct practice questions to respawn.
             </p>
@@ -1873,7 +1910,8 @@ function ReportsPanel({
 }
 
 function StudentExperience({ onExit }: { onExit: () => void }) {
-  const [joinCode, setJoinCode] = useState("");
+  const [joinCodeFromLink] = useState(() => getJoinCodeFromSearch(window.location.search));
+  const [joinCode, setJoinCode] = useState(joinCodeFromLink);
   const [nickname, setNickname] = useState("");
   const [session, setSession] = useState<GameSession | null>(null);
   const [player, setPlayer] = useState<PlayerSession | null>(null);
@@ -1921,6 +1959,11 @@ function StudentExperience({ onExit }: { onExit: () => void }) {
 
   useEffect(() => {
     const stored = readStoredStudentSession();
+    if (stored && joinCodeFromLink && stored.sessionCode !== joinCodeFromLink) {
+      clearStoredStudentSession();
+      setIsRestoringStudentSession(false);
+      return;
+    }
     if (!stored) {
       setIsRestoringStudentSession(false);
       return;
@@ -1948,7 +1991,7 @@ function StudentExperience({ onExit }: { onExit: () => void }) {
     return () => {
       cancelled = true;
     };
-  }, []);
+  }, [joinCodeFromLink]);
 
   useEffect(() => {
     const updateViewportWidth = () => setViewportWidth(window.innerWidth);
@@ -2348,20 +2391,28 @@ function StudentExperience({ onExit }: { onExit: () => void }) {
           </div>
         </div>
         <form className="panel form-panel" onSubmit={join}>
-          <label>
-            Session Code
-            <input
-              value={joinCode}
-              onChange={(event) => { setJoinCode(event.target.value.toUpperCase()); status.clearError(); }}
-              maxLength={8}
-              autoComplete="off"
-              autoCapitalize="characters"
-              inputMode="text"
-              enterKeyHint="next"
-              aria-invalid={Boolean(status.error)}
-              aria-describedby={status.error ? "join-error" : undefined}
-            />
-          </label>
+          {joinCodeFromLink ? (
+            <div className="linked-join-code" aria-label={`Join session ${joinCode}`}>
+              <span><Link2 size={17} aria-hidden="true" />Session link ready</span>
+              <strong>{joinCode}</strong>
+              <small>Enter your name below to join.</small>
+            </div>
+          ) : (
+            <label>
+              Session Code
+              <input
+                value={joinCode}
+                onChange={(event) => { setJoinCode(event.target.value.toUpperCase()); status.clearError(); }}
+                maxLength={8}
+                autoComplete="off"
+                autoCapitalize="characters"
+                inputMode="text"
+                enterKeyHint="next"
+                aria-invalid={Boolean(status.error)}
+                aria-describedby={status.error ? "join-error" : undefined}
+              />
+            </label>
+          )}
           <label>
             Nickname
             <input autoComplete="nickname" enterKeyHint="done" value={nickname} onChange={(event) => { setNickname(event.target.value); status.clearError(); }} maxLength={20} aria-invalid={Boolean(nicknameError)} aria-describedby={nicknameError ? "nickname-error" : undefined} />
@@ -2704,7 +2755,7 @@ function BuyPanel({
         </span>
         <em>{formatMoney(snowballPrice)}</em>
       </button>
-      {GEAR_ITEMS.map((gear) => (
+      {GEAR_ITEMS.filter((gear) => gear.id !== "starter_blaster").map((gear) => (
         <button
           key={gear.id}
           className="gear-row"
