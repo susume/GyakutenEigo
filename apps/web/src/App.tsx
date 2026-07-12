@@ -32,6 +32,7 @@ import {
   GEAR_ITEMS,
   RESPAWN_CORRECT_ANSWERS_REQUIRED,
   getRoundRemainingSeconds,
+  type ArenaMapId,
   type Choice,
   type GameEvent,
   type GameSession,
@@ -47,6 +48,7 @@ import { API_URL, ApiError, authApi, studentApi, teacherApi } from "./api/client
 import { modeForRoute, normalizeRoutePath, type AppMode } from "./navigation";
 import { groupScoreboardRows } from "./scoreboardGroups";
 import { StatusMessages } from "./ui/StatusMessages";
+import { ARENA_MAPS, getArenaMap } from "./game/arenaMaps";
 import {
   CHARACTER_STRESS_COUNTS,
   createCharacterDebugSession,
@@ -319,6 +321,8 @@ const gameModeLabel = (mode: SessionSettings["gameMode"]) => {
   if (mode === "zombie") return "Zombie Mode";
   return "Classic Tag Practice";
 };
+
+const arenaMapLabel = (mapId: ArenaMapId | string | undefined) => getArenaMap(mapId).title;
 
 const flagStatusText = (session: GameSession) => {
   if (session.settings.gameMode !== "flag") return "";
@@ -1007,7 +1011,7 @@ function DashboardHome({ data, onTab }: { data: DashboardPayload; onTab: (tab: "
         <div>
           <span className={activeSession ? "dashboard-live-label active" : "dashboard-live-label"}>{activeSession ? "Live classroom room" : "Next classroom action"}</span>
           <h2>{activeSession ? `${activeSession.sessionCode} is ${sessionStatusLabel(activeSession.status).toLowerCase()}` : "Create a room when your quiz is ready."}</h2>
-          <p>{activeSession ? `${gameModeLabel(activeSession.settings.gameMode)} · ${activeSession.players.length} joined · ${topLearner ? `Top learner: ${topLearner.nickname}` : "Waiting for the first answer"}` : "Start with a quiz set, then choose the game mode and share one private code with the class."}</p>
+          <p>{activeSession ? `${gameModeLabel(activeSession.settings.gameMode)} · ${arenaMapLabel(activeSession.settings.mapId)} · ${activeSession.players.length} joined · ${topLearner ? `Top learner: ${topLearner.nickname}` : "Waiting for the first answer"}` : "Start with a quiz set, then choose the game mode and share one private code with the class."}</p>
         </div>
         <div className="button-row">
           <button className="primary" onClick={() => onTab(activeSession ? "sessions" : "quizzes")}>
@@ -1036,7 +1040,7 @@ function DashboardHome({ data, onTab }: { data: DashboardPayload; onTab: (tab: "
       <section className="panel dashboard-list-card">
         <div className="panel-title"><h2>Recent sessions</h2><span>{recentSessions.length ? `${recentSessions.length} available` : "No sessions yet"}</span></div>
         <ul className="dashboard-session-list">
-          {recentSessions.map((session) => <li key={session.id}><div><strong>{session.sessionCode}</strong><small>{gameModeLabel(session.settings.gameMode)} · {session.players.length} joined</small></div><span className={`status-pill status-${session.status}`}>{sessionStatusLabel(session.status)}</span></li>)}
+          {recentSessions.map((session) => <li key={session.id}><div><strong>{session.sessionCode}</strong><small>{gameModeLabel(session.settings.gameMode)} · {arenaMapLabel(session.settings.mapId)} · {session.players.length} joined</small></div><span className={`status-pill status-${session.status}`}>{sessionStatusLabel(session.status)}</span></li>)}
           {recentSessions.length === 0 && <li className="dashboard-empty-state"><Target size={22} aria-hidden="true" /><div><strong>No sessions yet</strong><small>Your first private room will appear here after you create one.</small></div></li>}
         </ul>
       </section>
@@ -1325,6 +1329,7 @@ function SessionManager({
   const keepSessionOpenRef = useRef<HTMLButtonElement>(null);
   const status = useAsyncMessage();
   const remainingSeconds = useRoundRemaining(selectedSession);
+  const selectedMap = getArenaMap(settings.mapId);
 
   useEffect(() => {
     if (!quizSetId && data.quizSets[0]) setQuizSetId(data.quizSets[0].id);
@@ -1372,8 +1377,9 @@ function SessionManager({
   const hasInvalidSettings = Object.values(invalidSettings).some(Boolean);
 
   const applyPreset = (presetSettings: SessionSettings) => {
-    setSettings(presetSettings);
-    setSettingInputs(createSessionSettingInputs(presetSettings));
+    const nextSettings = { ...presetSettings, mapId: settings.mapId };
+    setSettings(nextSettings);
+    setSettingInputs(createSessionSettingInputs(nextSettings));
     setInvalidSettings({});
   };
 
@@ -1533,6 +1539,26 @@ function SessionManager({
             <option value="classic">Classic Tag Practice</option>
           </select>
         </label>
+        <label>
+          Battlefield Map
+          <select
+            value={settings.mapId}
+            onChange={(event) => setSettings({ ...settings, mapId: event.target.value as ArenaMapId })}
+          >
+            {ARENA_MAPS.map((map) => (
+              <option key={map.id} value={map.id}>
+                {map.title}
+              </option>
+            ))}
+          </select>
+          <small className="field-help">{selectedMap.description}</small>
+        </label>
+        <div className={`map-selection-card map-${selectedMap.id}`} aria-live="polite">
+          <div className="map-selection-card__eyebrow">Selected battlefield</div>
+          <strong>{selectedMap.title}</strong>
+          <span>{selectedMap.districts.slice(0, 3).join(" · ")}</span>
+          {selectedMap.id === "iron_junction" && <small>Generated from the Iron Junction industrial railway brief · three lanes · balanced East/West spawns</small>}
+        </div>
         {settings.gameMode === "flag" && (
           <label>
             Team Assignment
@@ -1637,6 +1663,7 @@ function SessionManager({
             <div className="live-summary">
               <span className={`status-pill status-${selectedSession.status}`}>{sessionStatusLabel(selectedSession.status)}</span>
               <span>{gameModeLabel(selectedSession.settings.gameMode)}</span>
+              <span>{arenaMapLabel(selectedSession.settings.mapId)}</span>
               {selectedSession.settings.gameMode === "flag" && <span>Round {selectedSession.currentRound}/{selectedSession.settings.roundCount}</span>}
               <span>Time {formatDuration(remainingSeconds)}</span>
               <span>{activePlayers}/{selectedSession.players.length || 0} active</span>

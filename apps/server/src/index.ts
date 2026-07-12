@@ -9,7 +9,6 @@ import { randomUUID } from "node:crypto";
 import { Server } from "socket.io";
 import {
   clampArenaPosition,
-  ARENA_OBSTACLES,
   ARENA_SCALE,
   DEFAULT_PLAYER_HEALTH,
   GEAR_ITEMS,
@@ -17,9 +16,10 @@ import {
   getGearHitRadius,
   getGearRange,
   getGearMoveSpeedMultiplier,
+  getArenaObstacles,
   getRoundRemainingSeconds,
-  getTeamSpawn,
-  selectTeamSpawn,
+  getTeamSpawnForMap,
+  selectTeamSpawnForMap,
   PlayerQuestionGate,
   RESPAWN_CORRECT_ANSWERS_REQUIRED,
   buildReportRows,
@@ -272,6 +272,12 @@ const generateSessionCode = () => {
 
 const createDefaultSettings = (input: Partial<SessionSettings> = {}): SessionSettings => sanitizeSessionSettings(input);
 
+const sessionSpawn = (session: GameSession, team: Team, index = 0) =>
+  getTeamSpawnForMap(session.settings.mapId, team, index);
+
+const selectSessionSpawn = (session: GameSession, team: Team, preferredIndex = 0) =>
+  selectTeamSpawnForMap(session.settings.mapId, team, session.players, preferredIndex);
+
 const getSessionByCode = (code: string) =>
   [...sessions.values()].find((session) => session.sessionCode.toUpperCase() === code.toUpperCase());
 
@@ -364,7 +370,7 @@ const finishSession = (session: GameSession, message = "Round ended. Report is r
 };
 
 const resetRoundPlayer = (session: GameSession, player: PlayerSession, index: number): PlayerSession => {
-  const spawn = player.isBot ? getBotSpawn(player.team, index) : selectTeamSpawn(player.team, session.players, index);
+  const spawn = player.isBot ? getBotSpawn(session, player.team, index) : selectSessionSpawn(session, player.team, index);
   return {
     ...player,
     ...spawn,
@@ -381,7 +387,7 @@ const prepareModeStateForRound = (session: GameSession) => {
     if (session.settings.teamAssignment === "random") {
       session.players = randomizeBalancedTeams(session.players, Date.now());
     }
-    session.flag = createInitialFlagState(getTeamSpawn("red"));
+    session.flag = createInitialFlagState(sessionSpawn(session, "red"));
   } else if (session.settings.gameMode === "zombie") {
     session.players = selectInitialZombies(session.players, session.settings.initialZombieCount);
     session.flag = undefined;
@@ -476,8 +482,8 @@ const makeReport = (session: GameSession): SessionReport => {
   return { session, rows, missedQuestions };
 };
 
-const getBotSpawn = (team: Team, index: number) => {
-  return getTeamSpawn(team, index);
+const getBotSpawn = (session: GameSession, team: Team, index: number) => {
+  return sessionSpawn(session, team, index);
 };
 
 const applyValidatedDamage = (session: GameSession, attacker: PlayerSession, target: PlayerSession) => {
@@ -498,11 +504,11 @@ const applyValidatedDamage = (session: GameSession, attacker: PlayerSession, tar
       ok: true,
       attackerId: attacker.id,
       targetId: target.id,
-      attackerX: attacker.x ?? getTeamSpawn(attacker.team).x,
-      attackerZ: attacker.z ?? getTeamSpawn(attacker.team).z,
-      targetX: target.x ?? getTeamSpawn(target.team).x,
-      targetZ: target.z ?? getTeamSpawn(target.team).z,
-      targetFacing: target.facing ?? getTeamSpawn(target.team).facing,
+      attackerX: attacker.x ?? sessionSpawn(session, attacker.team).x,
+      attackerZ: attacker.z ?? sessionSpawn(session, attacker.team).z,
+      targetX: target.x ?? sessionSpawn(session, target.team).x,
+      targetZ: target.z ?? sessionSpawn(session, target.team).z,
+      targetFacing: target.facing ?? sessionSpawn(session, target.team).facing,
       damage: DEFAULT_PLAYER_HEALTH,
       health: target.health,
       snowballs: attacker.snowballs,
@@ -520,10 +526,10 @@ const applyValidatedDamage = (session: GameSession, attacker: PlayerSession, tar
   target.health = tagResult.nextHealth;
   if (tagResult.eliminated) {
     const knockedOutPosition = {
-      x: target.x ?? getTeamSpawn(target.team).x,
-      z: target.z ?? getTeamSpawn(target.team).z
+      x: target.x ?? sessionSpawn(session, target.team).x,
+      z: target.z ?? sessionSpawn(session, target.team).z
     };
-    const baseSpawn = getTeamSpawn(target.team);
+    const baseSpawn = sessionSpawn(session, target.team);
     target.isAlive = false;
     target.respawnCorrectAnswers = 0;
     if (session.flag) {
@@ -553,11 +559,11 @@ const applyValidatedDamage = (session: GameSession, attacker: PlayerSession, tar
     ok: true,
     attackerId: attacker.id,
     targetId: target.id,
-    attackerX: attacker.x ?? getTeamSpawn(attacker.team).x,
-    attackerZ: attacker.z ?? getTeamSpawn(attacker.team).z,
-    targetX: target.x ?? getTeamSpawn(target.team).x,
-    targetZ: target.z ?? getTeamSpawn(target.team).z,
-    targetFacing: target.facing ?? getTeamSpawn(target.team).facing,
+    attackerX: attacker.x ?? sessionSpawn(session, attacker.team).x,
+    attackerZ: attacker.z ?? sessionSpawn(session, attacker.team).z,
+    targetX: target.x ?? sessionSpawn(session, target.team).x,
+    targetZ: target.z ?? sessionSpawn(session, target.team).z,
+    targetFacing: target.facing ?? sessionSpawn(session, target.team).facing,
     damage: tagResult.damage,
     health: target.health,
     snowballs: attacker.snowballs,
@@ -579,11 +585,12 @@ const applyValidatedDamage = (session: GameSession, attacker: PlayerSession, tar
 };
 
 const applyAuthoritativePosition = (
+  session: GameSession,
   player: PlayerSession,
   requested: { x?: number; z?: number; y?: number; facing?: number },
   nowMs = Date.now()
 ) => {
-  const fallback = getTeamSpawn(player.team);
+  const fallback = sessionSpawn(session, player.team);
   const lastMoveAt = playerMoveTimestamps.get(player.id) ?? nowMs - BOT_TICK_MS;
   const position = resolveAuthoritativeMovement({
     current: {
@@ -599,7 +606,7 @@ const applyAuthoritativePosition = (
     },
     elapsedMs: nowMs - lastMoveAt,
     maxSpeed: PLAYER_MAX_SPEED * getGearMoveSpeedMultiplier(player.gear),
-    obstacles: ARENA_OBSTACLES
+    obstacles: getArenaObstacles(session.settings.mapId)
   });
   playerMoveTimestamps.set(player.id, nowMs);
   player.x = position.x;
@@ -641,7 +648,7 @@ const advanceBots = () => {
         if (session.settings.gameMode === "flag") return;
         const respawn = resolveBotRespawn({
           bot,
-          spawn: getBotSpawn(bot.team, index),
+          spawn: getBotSpawn(session, bot.team, index),
           nowMs: currentMs,
           respawnAtMs: botRespawnAt.get(bot.id),
           startingSnowballs: session.settings.startingSnowballs
@@ -655,8 +662,8 @@ const advanceBots = () => {
         }
         return;
       }
-      const oldX = bot.x ?? getTeamSpawn(bot.team).x;
-      const oldZ = bot.z ?? getTeamSpawn(bot.team).z;
+      const oldX = bot.x ?? sessionSpawn(session, bot.team).x;
+      const oldZ = bot.z ?? sessionSpawn(session, bot.team).z;
       const laneOffset = (index % 5) - 2;
       const speed = 0.42 + (index % 3) * 0.07;
       const angle = seconds * speed + index * 1.37;
@@ -672,7 +679,7 @@ const advanceBots = () => {
         desired,
         elapsedMs: BOT_TICK_MS,
         speed: 24,
-        obstacles: ARENA_OBSTACLES
+        obstacles: getArenaObstacles(session.settings.mapId)
       });
       bot.x = next.x;
       bot.z = next.z;
@@ -681,7 +688,7 @@ const advanceBots = () => {
       moved = true;
 
       if ((botNextAttackAt.get(bot.id) ?? 0) > currentMs) return;
-      const attackTarget = resolveBotAttackTarget({ bot, candidates: session.players, obstacles: ARENA_OBSTACLES });
+      const attackTarget = resolveBotAttackTarget({ bot, candidates: session.players, obstacles: getArenaObstacles(session.settings.mapId) });
       if (!attackTarget.ok) return;
       const target = session.players.find((player) => player.id === attackTarget.targetId);
       if (!target) return;
@@ -999,7 +1006,7 @@ app.post("/api/sessions/:code/bots", requireTeacher, (req: AuthedRequest, res) =
   const redCount = session.players.filter((player) => player.team === "red").length;
   const team: Team = blueCount <= redCount ? "blue" : "red";
   const botIndex = session.players.filter((player) => player.isBot).length;
-  const spawn = session.status === "active" ? getBotSpawn(team, botIndex) : selectTeamSpawn(team, session.players, botIndex);
+  const spawn = session.status === "active" ? getBotSpawn(session, team, botIndex) : selectSessionSpawn(session, team, botIndex);
   const bot: PlayerSession = {
     id: id(),
     gameSessionId: session.id,
@@ -1093,7 +1100,7 @@ app.post("/api/sessions/:code/join", (req, res) => {
   const blueCount = session.players.filter((player) => player.team === "blue").length;
   const redCount = session.players.filter((player) => player.team === "red").length;
   const team: Team = blueCount <= redCount ? "blue" : "red";
-  const spawn = selectTeamSpawn(team, session.players);
+  const spawn = selectSessionSpawn(session, team);
   const player: PlayerSession = {
     id: id(),
     gameSessionId: session.id,
@@ -1160,7 +1167,7 @@ app.post("/api/sessions/:code/players/:playerId/team", (req, res) => {
     return;
   }
   player.team = requestedTeam;
-  const spawn = selectTeamSpawn(player.team, session.players);
+  const spawn = selectSessionSpawn(session, player.team);
   player.x = spawn.x;
   player.z = spawn.z;
   player.facing = spawn.facing;
@@ -1392,7 +1399,7 @@ io.on("connection", (socket) => {
     const player = session?.players.find((candidate) => candidate.id === payload.playerId);
     if (!session || !player || !hasPlayerAccess(session, player, payload.playerToken)) return;
     if (!player.isAlive) return;
-    const position = applyAuthoritativePosition(player, payload);
+    const position = applyAuthoritativePosition(session, player, payload);
     socket.to(session.sessionCode).emit("player_position", {
       playerId: player.id,
       x: position.x,
@@ -1417,7 +1424,7 @@ io.on("connection", (socket) => {
       return;
     }
 
-    applyAuthoritativePosition(attacker, payload);
+    applyAuthoritativePosition(session, attacker, payload);
 
     const currentMs = Date.now();
     const nextAllowedFireAt = playerNextFireAt.get(attacker.id) ?? 0;
@@ -1440,7 +1447,8 @@ io.on("connection", (socket) => {
       candidates: session.players,
       requestedTargetId: typeof payload.targetId === "string" && payload.targetId.trim() ? payload.targetId : undefined,
       range: getGearRange(attacker.gear),
-      hitRadius: getGearHitRadius(attacker.gear, typeof payload.zoomLevel === "number" ? payload.zoomLevel : payload.scoped === true)
+      hitRadius: getGearHitRadius(attacker.gear, typeof payload.zoomLevel === "number" ? payload.zoomLevel : payload.scoped === true),
+      obstacles: getArenaObstacles(session.settings.mapId)
     });
     if (!targetSelection.ok) {
       broadcastSession(session);
@@ -1468,9 +1476,9 @@ io.on("connection", (socket) => {
     const player = session?.players.find((candidate) => candidate.id === payload.playerId);
     if (!session || !player || !hasPlayerAccess(session, player, payload.playerToken)) return;
     if (session.status !== "active" || session.settings.gameMode !== "flag") return;
-    const position = applyAuthoritativePosition(player, payload);
+    const position = applyAuthoritativePosition(session, player, payload);
     const previousState = session.flag?.state;
-    session.flag = resolveFlagPickup(session.flag ?? createInitialFlagState(getTeamSpawn("red")), player);
+    session.flag = resolveFlagPickup(session.flag ?? createInitialFlagState(sessionSpawn(session, "red")), player);
     session.flag = resolveFlagPlacement({
       flag: session.flag,
       player,

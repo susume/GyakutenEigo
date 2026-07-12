@@ -28,8 +28,10 @@ import {
   getGearRange,
   getGearMoveSpeedMultiplier,
   getGearZoomFovMultiplier,
+  getArenaObstacles,
   getRoundRemainingSeconds,
   getTeamSpawn,
+  getTeamSpawnForMap,
   selectTeamSpawn,
   TEAM_SPAWNS,
   isRoundActive,
@@ -242,6 +244,7 @@ test("sanitizeSessionSettings keeps classroom settings inside safe bounds", () =
   });
 
   assert.deepEqual(settings, {
+    mapId: "desert_citadel",
     gameMode: "flag",
     roundCount: FLAG_MODE_DEFAULTS.roundCount,
     flagHoldSeconds: FLAG_MODE_DEFAULTS.flagHoldSeconds,
@@ -707,6 +710,18 @@ test("Desert Citadel spawn points begin on walkable ground", () => {
   });
 
   assert.deepEqual(blocked, []);
+});
+
+test("Iron Junction uses its own map spawn labels and collision proxies", () => {
+  const blueSpawn = getTeamSpawnForMap("iron_junction", "blue");
+  const redSpawn = getTeamSpawnForMap("iron_junction", "red");
+  const ironObstacles = getArenaObstacles("iron_junction");
+
+  assert.equal(blueSpawn.x < 0, true);
+  assert.equal(redSpawn.x > 0, true);
+  assert.equal(ironObstacles.some((obstacle) => obstacle.id === "sorting-booth"), true);
+  assert.notEqual(ironObstacles, getArenaObstacles("desert_citadel"));
+  assert.equal(sanitizeSessionSettings({ mapId: "iron_junction" }).mapId, "iron_junction");
 });
 
 test("selectTeamSpawn avoids nearby visible enemies when alternatives exist", () => {

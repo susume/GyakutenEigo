@@ -693,6 +693,10 @@ label.toggle-row input {
   fill: #d7ad64;
 }
 
+.minimap-iron {
+  fill: #465258;
+}
+
 .minimap-route {
   fill: rgba(104, 213, 224, 0.28);
 }
@@ -1019,6 +1023,44 @@ small {
 
 .preset-grid small {
   line-height: 1.35;
+}
+
+.field-help {
+  display: block;
+  margin-top: 5px;
+  line-height: 1.45;
+}
+
+.map-selection-card {
+  display: grid;
+  gap: 5px;
+  border: 1px solid #c7d9e7;
+  border-radius: 12px;
+  background: linear-gradient(135deg, #eef7fb, #ffffff);
+  padding: 13px 14px;
+}
+
+.map-selection-card.map-iron_junction {
+  border-color: #a9b7b5;
+  background: linear-gradient(135deg, #e7eceb, #f9f7f2);
+}
+
+.map-selection-card__eyebrow {
+  color: #63778a;
+  font-size: 0.68rem;
+  font-weight: 950;
+  letter-spacing: 0.12em;
+  text-transform: uppercase;
+}
+
+.map-selection-card strong {
+  color: #18354a;
+  font-size: 1rem;
+}
+
+.map-selection-card span,
+.map-selection-card small {
+  line-height: 1.4;
 }
 
 .choice-grid {

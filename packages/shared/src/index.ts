@@ -2,6 +2,7 @@ export type Team = "blue" | "red";
 export type SessionStatus = "waiting" | "active" | "paused" | "ended";
 export type Choice = "A" | "B" | "C" | "D";
 export type GameMode = "flag" | "zombie" | "classic";
+export type ArenaMapId = "desert_citadel" | "iron_junction";
 export type TeamAssignment = "players_choose" | "random";
 export type PlayerRole = "human" | "zombie";
 export type FlagStateName =
@@ -66,6 +67,7 @@ export interface QuizSet {
 }
 
 export interface SessionSettings {
+  mapId: ArenaMapId;
   gameMode: GameMode;
   roundCount: number;
   flagHoldSeconds: number;
@@ -252,6 +254,7 @@ export const QUICK_BLASTER_COOLDOWN_MS = 150;
 export const STARTER_BLASTER_RANGE = 28;
 
 export const DEFAULT_SESSION_SETTINGS: SessionSettings = {
+  mapId: "desert_citadel",
   gameMode: "flag",
   roundCount: FLAG_MODE_DEFAULTS.roundCount,
   flagHoldSeconds: FLAG_MODE_DEFAULTS.flagHoldSeconds,
@@ -281,10 +284,14 @@ const clampNumber = (value: unknown, fallback: number, min: number, max: number)
 const sanitizeGameMode = (value: unknown): GameMode =>
   value === "zombie" || value === "classic" || value === "flag" ? value : DEFAULT_SESSION_SETTINGS.gameMode;
 
+const sanitizeArenaMap = (value: unknown): ArenaMapId =>
+  value === "iron_junction" ? "iron_junction" : DEFAULT_SESSION_SETTINGS.mapId;
+
 const sanitizeTeamAssignment = (value: unknown): TeamAssignment =>
   value === "random" || value === "players_choose" ? value : DEFAULT_SESSION_SETTINGS.teamAssignment;
 
 export const sanitizeSessionSettings = (input: Partial<SessionSettings> = {}): SessionSettings => ({
+  mapId: sanitizeArenaMap(input.mapId),
   gameMode: sanitizeGameMode(input.gameMode),
   roundCount: clampNumber(input.roundCount, DEFAULT_SESSION_SETTINGS.roundCount, 1, 30),
   flagHoldSeconds: clampNumber(input.flagHoldSeconds, DEFAULT_SESSION_SETTINGS.flagHoldSeconds, 5, 180),
@@ -689,6 +696,14 @@ export const TEAM_SPAWNS: Record<Team, SpawnPoint[]> = {
   red: RAW_TEAM_SPAWNS.red.map(scaleArenaPosition)
 };
 
+const IRON_JUNCTION_TEAM_SPAWNS: Record<Team, SpawnPoint[]> = {
+  blue: TEAM_SPAWNS.blue.map((spawn) => ({ ...spawn, id: spawn.id.replace("west-fortress", "west-yard"), label: "West Signal Yard" })),
+  red: TEAM_SPAWNS.red.map((spawn) => ({ ...spawn, id: spawn.id.replace("east-camp", "east-yard"), label: "East Signal Yard" }))
+};
+
+const teamSpawnsForMap = (mapId: ArenaMapId | string | undefined) =>
+  mapId === "iron_junction" ? IRON_JUNCTION_TEAM_SPAWNS : TEAM_SPAWNS;
+
 const RAW_FREE_FOR_ALL_SPAWNS: SpawnPoint[] = [
   { id: "ffa-west-outer-1", label: "West Outer Wall", x: -146, z: -78, facing: -0.9 },
   { id: "ffa-west-outer-2", label: "West Outer Wall", x: -146, z: 78, facing: -2.25 },
@@ -800,7 +815,13 @@ const distanceToClosestPlayer = (
 };
 
 export const getTeamSpawn = (team: Team, index = 0): GroundArenaPosition => {
-  const spawns = TEAM_SPAWNS[team];
+  const spawns = teamSpawnsForMap("desert_citadel")[team];
+  const spawn = spawns[((index % spawns.length) + spawns.length) % spawns.length];
+  return { x: spawn.x, z: spawn.z, facing: spawn.facing };
+};
+
+export const getTeamSpawnForMap = (mapId: ArenaMapId | string | undefined, team: Team, index = 0): GroundArenaPosition => {
+  const spawns = teamSpawnsForMap(mapId)[team];
   const spawn = spawns[((index % spawns.length) + spawns.length) % spawns.length];
   return { x: spawn.x, z: spawn.z, facing: spawn.facing };
 };
@@ -809,9 +830,16 @@ export const selectTeamSpawn = (
   team: Team,
   players: Array<Pick<PlayerSession, "x" | "z" | "team" | "isAlive">> = [],
   preferredIndex = 0
+): GroundArenaPosition => selectTeamSpawnForMap("desert_citadel", team, players, preferredIndex);
+
+export const selectTeamSpawnForMap = (
+  mapId: ArenaMapId | string | undefined,
+  team: Team,
+  players: Array<Pick<PlayerSession, "x" | "z" | "team" | "isAlive">> = [],
+  preferredIndex = 0
 ): GroundArenaPosition => {
-  const spawns = TEAM_SPAWNS[team];
-  if (players.length === 0) return getTeamSpawn(team, preferredIndex);
+  const spawns = teamSpawnsForMap(mapId)[team];
+  if (players.length === 0) return getTeamSpawnForMap(mapId, team, preferredIndex);
   const scored = spawns.map((spawn, index) => {
     const enemyDistance = distanceToClosestPlayer(spawn, players, team);
     const teammateDistance = distanceToClosestPlayer(
@@ -966,6 +994,57 @@ export const ARENA_OBSTACLES: ArenaObstacle[] = [
   circleObstacle("market-pottery-a", -30, -4, 3, true),
   circleObstacle("market-pottery-b", 34, -34, 3, true)
 ];
+
+/** Simplified collision proxies for the Iron Junction props and architecture. */
+export const IRON_JUNCTION_OBSTACLES: ArenaObstacle[] = [
+  rectObstacle("iron-north-retaining-wall", 0, -156, 350, 8),
+  rectObstacle("iron-south-cliff-face", 0, 156, 350, 8),
+  rectObstacle("iron-west-embankment", -169, 0, 8, 142),
+  rectObstacle("iron-east-embankment", 169, 0, 8, 142),
+  rectObstacle("west-signal-house", -151, -64, 24, 20),
+  rectObstacle("west-freight-office", -151, 64, 26, 18),
+  rectObstacle("east-signal-house", 151, -64, 24, 20),
+  rectObstacle("east-freight-office", 151, 64, 26, 18),
+  rectObstacle("depot-north-roof", 0, -151, 142, 6),
+  rectObstacle("depot-south-wall-west", -86, -88, 48, 7),
+  rectObstacle("depot-south-wall-east", 76, -88, 46, 7),
+  rectObstacle("depot-railcar-west", -56, -119, 30, 10),
+  rectObstacle("depot-railcar-east", 35, -133, 34, 10),
+  rectObstacle("depot-control-booth", 0, -99, 20, 13),
+  rectObstacle("depot-east-workshop", 78, -118, 22, 24),
+  rectObstacle("depot-west-tool-cage", -91, -113, 12, 16),
+  rectObstacle("gantry-foot-west", -28, -14, 9, 18),
+  rectObstacle("gantry-foot-east", 28, 14, 9, 18),
+  rectObstacle("sorting-booth", 0, 25, 21, 16),
+  rectObstacle("mid-boxcar-north", -68, -22, 28, 10),
+  rectObstacle("mid-boxcar-south", 60, 30, 30, 10),
+  rectObstacle("mid-flatbed-cover", -20, 12, 22, 7, true),
+  rectObstacle("switch-control-hut", 88, 0, 13, 14),
+  rectObstacle("offset-cargo-container", 18, -28, 14, 9),
+  rectObstacle("timber-shelter-west", -83, 90, 32, 18),
+  rectObstacle("timber-shelter-east", 85, 100, 28, 18),
+  rectObstacle("log-stack-west", -50, 100, 24, 10),
+  rectObstacle("log-stack-east", 42, 124, 26, 10),
+  rectObstacle("loader-cabin", -10, 105, 14, 13),
+  rectObstacle("water-tower-base", 82, 116, 16, 16),
+  rectObstacle("gorge-retaining-wall", 0, 151, 170, 7),
+  rectObstacle("rock-outcrop-west", -117, 120, 18, 16),
+  rectObstacle("rock-outcrop-east", 115, 88, 18, 14),
+  rectObstacle("timber-drop-landing", 14, 82, 16, 8, true),
+  circleObstacle("depot-hydraulic-west", -72, -128, 2),
+  circleObstacle("depot-hydraulic-east", 51, -117, 2),
+  circleObstacle("oil-drums-west", -100, -94, 3),
+  circleObstacle("oil-drums-east", 104, 64, 3),
+  circleObstacle("gorge-winch", -4, 133, 3)
+];
+
+const ARENA_OBSTACLES_BY_MAP: Record<ArenaMapId, ArenaObstacle[]> = {
+  desert_citadel: ARENA_OBSTACLES,
+  iron_junction: IRON_JUNCTION_OBSTACLES
+};
+
+export const getArenaObstacles = (mapId: ArenaMapId | string | undefined): ArenaObstacle[] =>
+  ARENA_OBSTACLES_BY_MAP[mapId === "iron_junction" ? "iron_junction" : "desert_citadel"];
 
 export type SnowballUseResult =
   | { ok: true; nextSnowballs: number }

@@ -1,67 +1,6 @@
 import { ARENA_SCALE } from "@quizstrike/shared";
-
-export type CitadelBlock = {
-  id: string;
-  label?: string;
-  x: number;
-  z: number;
-  w: number;
-  d: number;
-  h: number;
-  color: string;
-  y?: number;
-  rotationY?: number;
-  collides?: boolean;
-  material?: "stone" | "wood" | "cloth" | "sand" | "water" | "accent";
-  style?: "wall" | "ruin" | "gate" | "stall" | "house" | "channel" | "bridge" | "tower" | "sandbank";
-};
-
-export type CitadelCylinder = {
-  id: string;
-  label?: string;
-  x: number;
-  z: number;
-  radius: number;
-  h: number;
-  color: string;
-  y?: number;
-  collides?: boolean;
-  material?: "stone" | "wood" | "water" | "accent";
-};
-
-export type CitadelSign = {
-  id: string;
-  label: string;
-  x: number;
-  z: number;
-  color: string;
-  rotationY?: number;
-  y?: number;
-};
-
-export type CitadelFloorMark = {
-  id: string;
-  label: string;
-  x: number;
-  z: number;
-  w: number;
-  d: number;
-  color: string;
-  rotation?: number;
-};
-
-export type CitadelProp = {
-  id: string;
-  kind: "arch" | "banner" | "cart" | "column" | "crate" | "debris" | "lamp" | "palm" | "pipe" | "shade";
-  x: number;
-  z: number;
-  size: number;
-  color: string;
-  h?: number;
-  y?: number;
-  rotationY?: number;
-  material?: "stone" | "wood" | "cloth" | "sand" | "water" | "accent";
-};
+export type { ArenaMapDefinition, CitadelBlock, CitadelCylinder, CitadelFloorMark, CitadelProp, CitadelSign } from "./mapTypes";
+import type { ArenaMapDefinition, CitadelBlock, CitadelCylinder, CitadelFloorMark, CitadelProp, CitadelSign } from "./mapTypes";
 
 const scaleArenaValue = (value: number) => Number((value * ARENA_SCALE).toFixed(2));
 const scaleRect = <T extends { x: number; z: number; w: number; d: number }>(item: T): T =>
@@ -71,8 +10,10 @@ const scaleCylinder = <T extends { x: number; z: number; radius: number }>(item:
 const scalePoint = <T extends { x: number; z: number }>(item: T): T =>
   ({ ...item, x: scaleArenaValue(item.x), z: scaleArenaValue(item.z) }) as T;
 
-export const DESERT_CITADEL = {
+export const DESERT_CITADEL: ArenaMapDefinition = {
   title: "Desert Citadel",
+  id: "desert_citadel",
+  description: "A sun-baked fortress with market lanes, waterworks, and broken ramparts.",
   footprint: { width: scaleArenaValue(350), depth: scaleArenaValue(320) },
   districts: [
     "North Lane • Broken Ramparts",
@@ -88,8 +29,15 @@ export const DESERT_CITADEL = {
     "South Lane • Bazaar approach",
     "Service alleys • spawn-to-center rotations",
     "Cistern bridges • cross-lane rotations"
-  ]
-} as const;
+  ],
+  palette: {
+    sky: "#91c5dd",
+    fog: "#d8bd82",
+    floor: "#d8b06e",
+    floorTexture: "sand",
+    accent: "#f2ca73"
+  }
+};
 
 const stone = "#c79b61";
 const darkStone = "#9c7247";

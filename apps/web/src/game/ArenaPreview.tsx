@@ -13,12 +13,13 @@ import {
   getGearFireCooldownMs,
   getGearMoveSpeedMultiplier,
   getGearZoomFovMultiplier,
-  getTeamSpawn,
+  getTeamSpawnForMap,
+  type ArenaMapId,
   isGearAutoFireEnabled,
   type GameSession,
   type PlayerSession
 } from "@quizstrike/shared";
-import { blocks, cylinders, floorMarks, props, signs } from "./desertCitadelMap";
+import { getArenaMap } from "./arenaMaps";
 import {
   FPS_CROUCH_EYE_HEIGHT,
   FPS_STANDING_EYE_HEIGHT,
@@ -61,6 +62,11 @@ const CROUCH_SPEED = 6.4;
 const FPS_BASE_FOV = 72;
 const paleStone = "#dec28a";
 const wood = "#65462e";
+const steel = "#39464b";
+const darkSteel = "#263237";
+const rust = "#8b4f37";
+const timber = "#765038";
+const warning = "#d18a3f";
 const MINIMAP_WIDTH = 120;
 const MINIMAP_HEIGHT = 110;
 const GAMEPAD_DEAD_ZONE = 0.18;
@@ -242,6 +248,8 @@ export default function ArenaPreview({
   const sceneSessionId = session?.id ?? "training";
   const currentPlayerId = currentPlayer?.id ?? "";
   const currentPlayerTeam = currentPlayer?.team ?? "blue";
+  const arenaMapId: ArenaMapId = session?.settings.mapId ?? "desert_citadel";
+  const arenaMap = getArenaMap(arenaMapId);
   const activeQuality = resolveArenaQuality(fallbackQuality ?? quality);
 
   useEffect(() => {
@@ -271,12 +279,13 @@ export default function ArenaPreview({
 
     const isFps = view === "fps";
     const isZombieMode = session?.settings.gameMode === "zombie";
+    const palette = arenaMap.palette;
     const scene = new THREE.Scene();
-    scene.background = new THREE.Color(isZombieMode ? "#5d668a" : isFps ? "#87b9d1" : "#b9d7e5");
-    scene.fog = new THREE.Fog(isZombieMode ? "#8f8395" : "#d8bd82", isFps ? 120 : 210, isFps ? 350 : 500);
+    scene.background = new THREE.Color(isZombieMode ? "#5d668a" : palette.sky);
+    scene.fog = new THREE.Fog(isZombieMode ? "#8f8395" : palette.fog, isFps ? 120 : 210, isFps ? 350 : 500);
 
     const camera = new THREE.PerspectiveCamera(isFps ? FPS_BASE_FOV : 52, mount.clientWidth / Math.max(1, mount.clientHeight), 0.1, 620);
-    const fallbackSpawn = currentPlayer ? getTeamSpawn(currentPlayer.team) : getTeamSpawn("blue");
+    const fallbackSpawn = currentPlayer ? getTeamSpawnForMap(arenaMapId, currentPlayer.team) : getTeamSpawnForMap(arenaMapId, "blue");
     const initialServerX = isFiniteNumber(currentPlayer?.x) ? currentPlayer.x : fallbackSpawn.x;
     const initialServerZ = isFiniteNumber(currentPlayer?.z) ? currentPlayer.z : fallbackSpawn.z;
     const playerPosition = new THREE.Vector3(serverToLocalX(initialServerX), FPS_STANDING_EYE_HEIGHT, serverToLocalZ(initialServerZ));
@@ -317,7 +326,7 @@ export default function ArenaPreview({
     const sky = new THREE.Mesh(
       new THREE.SphereGeometry(560, 20, 12),
       new THREE.MeshBasicMaterial({
-        color: isZombieMode ? "#66718c" : "#91c5dd",
+        color: isZombieMode ? "#66718c" : palette.sky,
         side: THREE.BackSide,
         fog: false
       })
@@ -334,7 +343,7 @@ export default function ArenaPreview({
     };
 
     const puffTexture = loadTexture("/assets/snowball-puff.svg");
-    const floorTexture = makeCanvasTexture("floor", "#f2ca73");
+    const floorTexture = makeCanvasTexture(palette.floorTexture, palette.accent);
     const stoneTexture = makeCanvasTexture("stone", "#f6d98e");
     const woodTexture = makeCanvasTexture("wood", "#bb8652");
     const waterTexture = makeCanvasTexture("water", "#67e8f9");
@@ -348,11 +357,19 @@ export default function ArenaPreview({
       const key = `${color}-${material}`;
       const cached = materialCache.get(key);
       if (cached) return cached;
-      const texture = material === "wood" ? woodTexture : material === "water" ? waterTexture : material === "sand" ? sandTexture : stoneTexture;
+      const texture = material === "wood"
+        ? woodTexture
+        : material === "water"
+          ? waterTexture
+          : material === "sand"
+            ? sandTexture
+            : material === "gravel"
+              ? floorTexture
+              : stoneTexture;
       const materialOptions: THREE.MeshStandardMaterialParameters = {
         color,
-        roughness: material === "water" ? 0.18 : material === "cloth" ? 0.84 : 0.68,
-        metalness: material === "water" ? 0.05 : 0.02,
+        roughness: material === "water" ? 0.18 : material === "cloth" ? 0.84 : material === "metal" ? 0.42 : 0.68,
+        metalness: material === "water" ? 0.05 : material === "metal" ? 0.62 : 0.02,
         emissive: material === "water" ? color : "#000000",
         emissiveIntensity: material === "water" ? 0.35 : 0
       };
@@ -446,13 +463,13 @@ export default function ArenaPreview({
 
     const floor = new THREE.Mesh(
       new THREE.BoxGeometry(ARENA_LIMIT_X * 2, 0.3, ARENA_LIMIT_Z * 2),
-      new THREE.MeshStandardMaterial({ map: floorTexture, color: "#d8b06e", roughness: 0.88, metalness: 0.01 })
+      new THREE.MeshStandardMaterial({ map: floorTexture, color: palette.floor, roughness: 0.88, metalness: 0.01 })
     );
     floor.position.y = -0.2;
     floor.receiveShadow = true;
     scene.add(floor);
 
-    const grid = new THREE.GridHelper(ARENA_LIMIT_X * 2, 35, "#fff1c1", "#ad7b45");
+    const grid = new THREE.GridHelper(ARENA_LIMIT_X * 2, 35, arenaMapId === "iron_junction" ? "#aeb8b5" : "#fff1c1", arenaMapId === "iron_junction" ? "#566266" : "#ad7b45");
     grid.position.y = 0.012;
     grid.material.transparent = true;
     grid.material.opacity = 0.13;
@@ -471,7 +488,7 @@ export default function ArenaPreview({
       return mesh;
     };
 
-    const addBlockDetail = (block: (typeof blocks)[number]) => {
+    const addBlockDetail = (block: (typeof arenaMap.blocks)[number]) => {
       if (!block.style) return;
       const detail = new THREE.Group();
       detail.position.set(block.x, block.y ?? 0, block.z);
@@ -556,9 +573,58 @@ export default function ArenaPreview({
         lip.position.y = block.h + 0.12;
       }
 
+      if (block.style === "railcar") {
+        const roof = addDecorativeMesh(detail, new THREE.BoxGeometry(block.w * 0.88, 0.28, block.d * 0.9), "#a85c3d", "metal");
+        roof.position.y = block.h + 0.2;
+        for (const x of [-block.w * 0.28, block.w * 0.28]) {
+          const wheel = addDecorativeMesh(detail, new THREE.CylinderGeometry(0.85, 0.85, 0.35, 12), "#222b2d", "metal");
+          wheel.rotation.x = Math.PI / 2;
+          wheel.position.set(x, 0.7, block.d * 0.54);
+        }
+      }
+
+      if (block.style === "gantry") {
+        const beam = addDecorativeMesh(detail, new THREE.BoxGeometry(block.w * 1.7, 0.6, block.d * 0.42), rust, "metal");
+        beam.position.y = block.h + 0.5;
+        const brace = addDecorativeMesh(detail, new THREE.BoxGeometry(block.w * 0.22, block.h * 0.9, block.d * 0.32), warning, "metal");
+        brace.position.set(0, block.h * 0.48, 0);
+      }
+
+      if (block.style === "shed") {
+        const roof = addDecorativeMesh(detail, new THREE.BoxGeometry(block.w * 1.04, 0.28, block.d * 1.04), block.material === "wood" ? timber : steel, block.material === "wood" ? "wood" : "metal");
+        roof.position.y = block.h + 0.2;
+        for (const x of [-block.w * 0.38, block.w * 0.38]) {
+          const post = addDecorativeMesh(detail, new THREE.BoxGeometry(0.22, block.h * 0.9, 0.22), block.material === "wood" ? timber : warning, block.material === "wood" ? "wood" : "metal");
+          post.position.set(x, block.h * 0.45, block.d * 0.48);
+        }
+      }
+
+      if (block.style === "machinery") {
+        for (const x of [-block.w * 0.3, 0, block.w * 0.3]) {
+          const pipe = addDecorativeMesh(detail, new THREE.CylinderGeometry(0.16, 0.16, block.h * 1.1, 8), warning, "metal");
+          pipe.position.set(x, block.h * 0.62, 0);
+        }
+        const top = addDecorativeMesh(detail, new THREE.BoxGeometry(block.w * 0.86, 0.32, block.d * 0.7), darkSteel, "metal");
+        top.position.y = block.h + 0.4;
+      }
+
+      if (block.style === "logstack") {
+        for (let row = 0; row < 3; row += 1) {
+          const log = addDecorativeMesh(detail, new THREE.CylinderGeometry(1.35, 1.35, block.w * 0.86, 10), timber, "wood");
+          log.rotation.z = Math.PI / 2;
+          log.position.set(0, 1.25 + row * 1.9, (row % 2 ? 1 : -1) * block.d * 0.18);
+        }
+      }
+
+      if (block.style === "rock") {
+        const rock = addDecorativeMesh(detail, new THREE.IcosahedronGeometry(Math.max(block.w, block.d) * 0.34, 1), block.color, "stone");
+        rock.scale.y = 0.72;
+        rock.position.y = block.h * 0.42;
+      }
+
     };
 
-    const addBlock = (block: (typeof blocks)[number]) => {
+    const addBlock = (block: (typeof arenaMap.blocks)[number]) => {
       const mesh = new THREE.Mesh(
         new THREE.BoxGeometry(block.w, block.h, block.d),
         materialFor(block.color, block.material)
@@ -578,9 +644,9 @@ export default function ArenaPreview({
       }
       return mesh;
     };
-    blocks.forEach(addBlock);
+    arenaMap.blocks.forEach(addBlock);
 
-    const addProp = (prop: (typeof props)[number]) => {
+    const addProp = (prop: (typeof arenaMap.props)[number]) => {
       const group = new THREE.Group();
       group.position.set(prop.x, prop.y ?? 0, prop.z);
       group.rotation.y = prop.rotationY ?? 0;
@@ -680,11 +746,63 @@ export default function ArenaPreview({
         const canopy = addDecorativeMesh(group, new THREE.BoxGeometry(prop.size * 1.25, 0.22, prop.size), prop.color, "cloth");
         canopy.position.y = postHeight + 0.15;
       }
+
+      if (prop.kind === "tree") {
+        const trunk = addDecorativeMesh(group, new THREE.CylinderGeometry(prop.size * 0.16, prop.size * 0.24, height, 8), prop.color, "wood");
+        trunk.position.y = height / 2;
+        for (let index = 0; index < 5; index += 1) {
+          const crown = addDecorativeMesh(group, new THREE.IcosahedronGeometry(prop.size * 0.5, 1), ["#a54f32", "#c4773e", "#7f5b36"][index % 3], "accent");
+          crown.position.set(Math.cos(index * 1.25) * prop.size * 0.38, height * 0.82 + (index % 2) * 0.7, Math.sin(index * 1.25) * prop.size * 0.38);
+        }
+      }
+
+      if (prop.kind === "rail") {
+        for (const z of [-prop.size * 0.08, prop.size * 0.08]) {
+          const rail = addDecorativeMesh(group, new THREE.BoxGeometry(prop.size, 0.14, 0.12), prop.color, "metal");
+          rail.position.set(0, 0.16, z);
+        }
+        for (let x = -prop.size / 2; x <= prop.size / 2; x += Math.max(2, prop.size / 6)) {
+          const sleeper = addDecorativeMesh(group, new THREE.BoxGeometry(0.32, 0.12, prop.size * 0.22), timber, "wood");
+          sleeper.position.set(x, 0.08, 0);
+        }
+      }
+
+      if (prop.kind === "cable") {
+        const mast = addDecorativeMesh(group, new THREE.CylinderGeometry(0.14, 0.2, height, 8), steel, "metal");
+        mast.position.y = height / 2;
+        const cable = addDecorativeMesh(group, new THREE.CylinderGeometry(0.08, 0.08, prop.size, 8), prop.color, "metal");
+        cable.rotation.z = Math.PI / 2;
+        cable.position.y = height;
+      }
+
+      if (prop.kind === "signal") {
+        const pole = addDecorativeMesh(group, new THREE.CylinderGeometry(0.12, 0.16, height, 8), steel, "metal");
+        pole.position.y = height / 2;
+        const signal = addDecorativeMesh(group, new THREE.BoxGeometry(prop.size * 0.8, prop.size * 1.2, 0.35), prop.color, "accent");
+        signal.position.y = height * 0.84;
+      }
+
+      if (prop.kind === "steam") {
+        const steam = new THREE.Mesh(
+          new THREE.SphereGeometry(prop.size * 0.55, 10, 8),
+          new THREE.MeshBasicMaterial({ color: prop.color, transparent: true, opacity: 0.18, depthWrite: false })
+        );
+        steam.position.y = height;
+        group.add(steam);
+      }
+
+      if (prop.kind === "winch") {
+        const drum = addDecorativeMesh(group, new THREE.CylinderGeometry(prop.size * 0.48, prop.size * 0.48, prop.size * 0.7, 12), prop.color, "metal");
+        drum.rotation.z = Math.PI / 2;
+        drum.position.y = prop.size * 0.7;
+        const arm = addDecorativeMesh(group, new THREE.BoxGeometry(prop.size * 0.18, height, prop.size * 0.18), steel, "metal");
+        arm.position.y = height / 2;
+      }
     };
 
-    props.forEach(addProp);
+    arenaMap.props.forEach(addProp);
 
-    cylinders.forEach((cylinder) => {
+    arenaMap.cylinders.forEach((cylinder) => {
       const mesh = new THREE.Mesh(
         new THREE.CylinderGeometry(cylinder.radius * 0.88, cylinder.radius, cylinder.h, 24),
         materialFor(cylinder.color, cylinder.material)
@@ -719,7 +837,7 @@ export default function ArenaPreview({
       return marker;
     };
 
-    floorMarks.forEach((mark) => addFloorLabel(mark.label, mark.x, mark.z, mark.w, mark.d, mark.color, mark.rotation));
+    arenaMap.floorMarks.forEach((mark) => addFloorLabel(mark.label, mark.x, mark.z, mark.w, mark.d, mark.color, mark.rotation));
 
     const addWallSign = (label: string, x: number, z: number, color: string, rotationY = 0, y = 7) => {
       const sign = new THREE.Mesh(
@@ -735,7 +853,7 @@ export default function ArenaPreview({
       sign.rotation.y = rotationY;
       scene.add(sign);
     };
-    signs.forEach((sign) => addWallSign(sign.label, sign.x, sign.z, sign.color, sign.rotationY, sign.y));
+    arenaMap.signs.forEach((sign) => addWallSign(sign.label, sign.x, sign.z, sign.color, sign.rotationY, sign.y));
 
     const addCircle = (x: number, z: number, radius: number, color: string, opacity = 0.24) => {
       const circle = new THREE.Mesh(
@@ -808,7 +926,7 @@ export default function ArenaPreview({
       const liveX = player.x;
       const liveZ = player.z;
       const hasLivePosition = isFiniteNumber(liveX) && isFiniteNumber(liveZ);
-      const fallback = getTeamSpawn(player.team, index);
+      const fallback = getTeamSpawnForMap(arenaMapId, player.team, index);
       return {
         x: hasLivePosition ? serverToLocalX(liveX) : fallback.x,
         z: hasLivePosition ? serverToLocalZ(liveZ) : fallback.z,
@@ -1297,7 +1415,7 @@ export default function ArenaPreview({
       renderer.dispose();
       mount.removeChild(renderer.domElement);
     };
-  }, [sceneSessionId, currentPlayerId, currentPlayerTeam, currentPlayer?.gear, view, controlsDisabled, debugOverlay, activeQuality, gamepadEnabled, session?.settings.gameMode, session?.flag?.state, session?.flag?.carrierId, session?.flag?.position.x, session?.flag?.position.z]);
+  }, [sceneSessionId, currentPlayerId, currentPlayerTeam, currentPlayer?.gear, view, controlsDisabled, debugOverlay, activeQuality, gamepadEnabled, arenaMapId, session?.settings.gameMode, session?.flag?.state, session?.flag?.carrierId, session?.flag?.position.x, session?.flag?.position.z]);
 
   const beginTouchMove = (forward: number, right: number) => (event: ReactPointerEvent<HTMLButtonElement>) => {
     event.preventDefault();
@@ -1323,7 +1441,7 @@ export default function ArenaPreview({
 
   return (
     <div className={view === "fps" ? "arena-frame fps-view" : "arena-frame"}>
-      <div className="arena-canvas" ref={mountRef} aria-label="Desert Citadel arena" />
+      <div className="arena-canvas" ref={mountRef} aria-label={`${arenaMap.title} arena`} />
       {renderError && <div className="arena-error" role="alert"><strong>Arena unavailable</strong><span>{renderError}</span><button type="button" onClick={() => { setFallbackQuality("performance"); setRenderError(""); }}>Retry in performance mode</button></div>}
       {debugOverlay && characterDebugStats && (
         <div className="character-debug-overlay" aria-label="Character debug stats">
@@ -1350,12 +1468,12 @@ export default function ArenaPreview({
               <span key={weaponCooldown.startedAt} style={{ animationDuration: `${weaponCooldown.durationMs}ms` }} />
             </div>
           )}
-          <div className="fps-callout">Desert Citadel</div>
-          <div className="arena-minimap" aria-label="Desert Citadel minimap">
+          <div className="fps-callout">{arenaMap.title}</div>
+          <div className="arena-minimap" aria-label={`${arenaMap.title} minimap`}>
             <div className="minimap-title">Map</div>
-            <svg viewBox={`0 0 ${MINIMAP_WIDTH} ${MINIMAP_HEIGHT}`} role="img" aria-label="Desert Citadel route overview">
-              <rect x="0" y="0" width={MINIMAP_WIDTH} height={MINIMAP_HEIGHT} rx="5" className="minimap-sand" />
-              {floorMarks.slice(0, 5).map((mark) => (
+            <svg viewBox={`0 0 ${MINIMAP_WIDTH} ${MINIMAP_HEIGHT}`} role="img" aria-label={`${arenaMap.title} route overview`}>
+              <rect x="0" y="0" width={MINIMAP_WIDTH} height={MINIMAP_HEIGHT} rx="5" className={arenaMapId === "iron_junction" ? "minimap-iron" : "minimap-sand"} />
+              {arenaMap.floorMarks.slice(0, 5).map((mark) => (
                 <rect
                   key={mark.id}
                   x={toMiniMapX(mark.x - mark.w / 2)}
@@ -1365,7 +1483,7 @@ export default function ArenaPreview({
                   className="minimap-route"
                 />
               ))}
-              {blocks.filter((block) => block.collides).map((block) => (
+              {arenaMap.blocks.filter((block) => block.collides).map((block) => (
                 <rect
                   key={block.id}
                   x={toMiniMapX(block.x - block.w / 2)}
@@ -1403,9 +1521,9 @@ export default function ArenaPreview({
               )}
               <text x={toMiniMapX(-140)} y={toMiniMapY(-78)} className="minimap-label">West</text>
               <text x={toMiniMapX(122)} y={toMiniMapY(-78)} className="minimap-label">East</text>
-              <text x={toMiniMapX(0)} y={toMiniMapY(-128)} className="minimap-label">Ruins</text>
-              <text x={toMiniMapX(0)} y={toMiniMapY(-22)} className="minimap-label">Market</text>
-              <text x={toMiniMapX(0)} y={toMiniMapY(118)} className="minimap-label">Homes</text>
+              <text x={toMiniMapX(0)} y={toMiniMapY(-128)} className="minimap-label">{arenaMapId === "iron_junction" ? "Depot" : "Ruins"}</text>
+              <text x={toMiniMapX(0)} y={toMiniMapY(-22)} className="minimap-label">{arenaMapId === "iron_junction" ? "Gantry" : "Market"}</text>
+              <text x={toMiniMapX(0)} y={toMiniMapY(118)} className="minimap-label">{arenaMapId === "iron_junction" ? "Timber" : "Homes"}</text>
               {miniMapPlayer && (
                 <g
                   className="minimap-player"
