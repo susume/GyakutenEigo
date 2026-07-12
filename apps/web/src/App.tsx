@@ -1,6 +1,7 @@
 import { lazy, Suspense, useCallback, useEffect, useMemo, useRef, useState } from "react";
 import {
   BookOpen,
+  Check,
   CircleDollarSign,
   ClipboardPaste,
   Copy,
@@ -1328,6 +1329,7 @@ function SessionManager({
   const [isStartingSession, setIsStartingSession] = useState(false);
   const [isEndingSession, setIsEndingSession] = useState(false);
   const [isAddingBot, setIsAddingBot] = useState(false);
+  const [isJoinLinkCopied, setIsJoinLinkCopied] = useState(false);
   const [isEndConfirmOpen, setIsEndConfirmOpen] = useState(false);
   const endSessionTriggerRef = useRef<HTMLButtonElement>(null);
   const endSessionDialogRef = useRef<HTMLDivElement>(null);
@@ -1528,6 +1530,8 @@ function SessionManager({
         textArea.remove();
         if (!copied) throw new Error("Copy was not available.");
       }
+      setIsJoinLinkCopied(true);
+      window.setTimeout(() => setIsJoinLinkCopied(false), 2200);
       status.setMessage("Student join link copied.");
     } catch {
       status.setError("Copy was not available. Select the link and copy it manually.");
@@ -1711,13 +1715,23 @@ function SessionManager({
               <strong>{selectedSession.sessionCode}</strong>
             </div>
             <div className="join-link-share">
-              <div>
+              <div className="join-link-content">
                 <span className="join-link-label"><Link2 size={16} aria-hidden="true" />Student Join Link</span>
-                <a href={studentJoinLink} target="_blank" rel="noreferrer">{studentJoinLink}</a>
+                <div className="join-link-url-row">
+                  <input
+                    aria-label="Student join link"
+                    value={studentJoinLink}
+                    readOnly
+                    onFocus={(event) => event.currentTarget.select()}
+                    onClick={(event) => event.currentTarget.select()}
+                  />
+                  <a href={studentJoinLink} target="_blank" rel="noreferrer" aria-label="Open student join link">Open</a>
+                </div>
                 <small>Students open this link and enter only their name.</small>
               </div>
-              <button type="button" onClick={copyStudentJoinLink}>
-                <Copy size={16} aria-hidden="true" />Copy Link
+              <button type="button" onClick={copyStudentJoinLink} aria-label="Copy student join link">
+                {isJoinLinkCopied ? <Check size={16} aria-hidden="true" /> : <Copy size={16} aria-hidden="true" />}
+                {isJoinLinkCopied ? "Copied" : "Copy Link"}
               </button>
             </div>
             <p className="mini-copy">

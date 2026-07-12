@@ -1184,6 +1184,31 @@ small {
   gap: 4px;
 }
 
+.join-link-url-row {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  min-width: 0;
+}
+
+.join-link-url-row input {
+  min-width: 0;
+  width: min(100%, 520px);
+  padding: 8px 10px;
+  border: 1px solid #b9d2e2;
+  border-radius: 7px;
+  background: #ffffff;
+  color: #125f8a;
+  font-size: 0.86rem;
+  font-weight: 750;
+}
+
+.join-link-url-row a {
+  flex: 0 0 auto;
+  color: #125f8a;
+  font-weight: 800;
+}
+
 .join-link-label {
   display: inline-flex;
   align-items: center;
@@ -3064,6 +3089,8 @@ small {
 @media (max-width: 700px) {
   .landing-section,.landing-final-cta,.host-assurance { width:min(100% - 32px,1160px); }
   .join-link-share { align-items: flex-start; flex-direction: column; }
+  .join-link-url-row { width: 100%; }
+  .join-link-url-row input { flex: 1; width: auto; }
   .value-card-grid,.mode-card-grid { grid-template-columns:1fr; }
   .value-card-grid article,.mode-card { min-height:0; }
   .hero-proof-row span { font-size:.72rem; }
