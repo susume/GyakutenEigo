@@ -2496,6 +2496,29 @@ small {
 }
 
 /* Stage 5: product polish, classroom command center, and game presentation. */
+.rescued-home .mode-section,
+.rescued-home .classroom-flow-section,
+.rescued-home .faq-section {
+  display: none;
+}
+
+.rescued-home .product-intro {
+  padding-top: clamp(54px, 7vw, 82px);
+  padding-bottom: clamp(64px, 8vw, 96px);
+}
+
+.rescued-home .value-card-grid article {
+  min-height: 178px;
+}
+
+.rescued-home .value-card-grid h3 {
+  margin-top: 34px;
+}
+
+.rescued-home .site-home-copy > p {
+  max-width: 560px;
+}
+
 .product-home,
 .quizstrike-page {
   overflow: hidden;
@@ -2610,6 +2633,35 @@ small {
   max-height: 295px;
   transform: translateY(8px);
   filter: drop-shadow(0 24px 28px rgba(4, 12, 24, 0.5));
+}
+
+.hero-arena-preview {
+  position: relative;
+  z-index: 1;
+  width: 100%;
+  min-height: 285px;
+  overflow: hidden;
+  border: 1px solid rgba(125, 211, 252, 0.24);
+  border-radius: 14px;
+  background: #0f2238;
+  box-shadow: 0 22px 38px rgba(2, 12, 24, 0.4);
+}
+
+.hero-arena-preview .arena-frame,
+.hero-arena-preview .arena-canvas {
+  min-height: 285px;
+  height: 285px;
+  border: 0;
+  border-radius: 0;
+}
+
+.hero-arena-preview .arena-map-labels,
+.hero-arena-preview .arena-map-legend,
+.hero-arena-preview .game-utility-bar,
+.hero-arena-preview .arena-objective-strip,
+.hero-arena-preview .control-prompts,
+.hero-arena-preview .hud {
+  display: none;
 }
 
 .game-host-card-label,
@@ -2825,4 +2877,87 @@ small {
   .scope-overlay { border-width:42px; }
   .scope-level-2 { border-width:62px; }
   .control-prompts { grid-template-columns:repeat(2,minmax(0,1fr)); }
+}
+
+/* Emergency layout correction: use the teacher workspace instead of reserving empty columns. */
+.main-panel {
+  min-width: 0;
+  width: 100%;
+  max-width: none;
+  overflow: visible;
+}
+
+.dashboard-command-card {
+  grid-template-columns: minmax(0, 1fr);
+  align-content: space-between;
+}
+
+.dashboard-command-card .button-row {
+  justify-content: flex-start;
+}
+
+.session-grid.two-column {
+  grid-template-columns: minmax(0, 1fr);
+}
+
+.session-grid.two-column > .form-panel {
+  min-width: 0;
+}
+
+.session-grid.two-column .empty-live-session {
+  display: none;
+}
+
+.session-grid.two-column .empty-live-session > h2 {
+  margin-bottom: 8px;
+}
+
+.session-setting-groups {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 18px;
+}
+
+.session-setting-groups fieldset {
+  min-width: 0;
+  margin: 0;
+}
+
+.session-setting-grid {
+  grid-template-columns: repeat(2, minmax(180px, 1fr));
+}
+
+.live-first-grid {
+  grid-template-columns: minmax(0, 1fr);
+}
+
+.live-first-grid .session-setup-minimized {
+  display: none;
+}
+
+.live-first-grid .live-session {
+  width: 100%;
+  min-width: 0;
+}
+
+.live-session .scoreboard,
+.live-session .event-feed {
+  width: 100%;
+  max-width: none;
+}
+
+@media (max-width: 1180px) {
+  .session-grid.two-column {
+    grid-template-columns: minmax(0, 1fr);
+  }
+
+  .session-setting-groups {
+    grid-template-columns: minmax(0, 1fr);
+  }
+}
+
+@media (max-width: 760px) {
+  .session-setting-grid {
+    grid-template-columns: minmax(0, 1fr);
+  }
 }

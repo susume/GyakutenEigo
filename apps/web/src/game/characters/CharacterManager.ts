@@ -67,8 +67,8 @@ export class CharacterManager {
       if (!record.controller.model.root.visible) continue;
       record.controller.update(delta, elapsed, camera);
       const { current, alive } = record.controller;
-      record.badge.position.set(current.x, alive ? 6.2 : 2.3, current.z);
-      record.badge.scale.set(alive ? 8.2 : 6.2, alive ? 3 : 2.3, 1);
+      record.badge.position.set(current.x, 6.2, current.z);
+      record.badge.scale.set(alive ? 8.2 : 7.2, alive ? 3 : 2.6, 1);
       record.badge.lookAt(camera.position);
       if (record.ring) record.ring.position.set(current.x, 0.08, current.z);
     }
@@ -100,7 +100,7 @@ export class CharacterManager {
     this.scene.add(model.root);
 
     const badge = new THREE.Sprite(this.options.makeBadgeMaterial(player));
-    badge.position.set(state.x, player.isAlive ? 6.2 : 2.3, state.z);
+    badge.position.set(state.x, 6.2, state.z);
     badge.scale.set(8.2, 3, 1);
     this.scene.add(badge);
 

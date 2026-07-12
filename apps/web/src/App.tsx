@@ -650,15 +650,12 @@ function CharacterLab() {
 
 function GyakutenEigoHome({ onOpenGame, onJoinGame }: { onOpenGame: () => void; onJoinGame: () => void }) {
   return (
-    <div className="product-home">
+    <div className="product-home rescued-home">
       <section className="site-home">
         <div className="site-home-copy">
           <span className="eyebrow">GyakutenEigo · classroom game lab</span>
-          <h1>Turn English review into a room full of momentum.</h1>
-          <p>
-            Quiz-Strike is a teacher-hosted learning game where students answer questions, earn gear, and work
-            toward a shared round objective. It opens in the browser on the devices already in class.
-          </p>
+          <h1>Make every answer change the match.</h1>
+          <p>Launch a private team arena where quiz progress powers the action.</p>
           <div className="hero-proof-row" aria-label="Product qualities">
             <span><Shield size={16} aria-hidden="true" />Private room codes</span>
             <span><BookOpen size={16} aria-hidden="true" />Teacher-made questions</span>
@@ -677,20 +674,24 @@ function GyakutenEigoHome({ onOpenGame, onJoinGame }: { onOpenGame: () => void; 
         </div>
         <button className="game-host-card" onClick={onOpenGame}>
           <span className="game-host-card-label">Now hosting · Quiz-Strike</span>
-          <img src={publicAsset("/assets/player-blue.png")} alt="" aria-hidden="true" />
+          <div className="hero-arena-preview" aria-hidden="true">
+            <Suspense fallback={<ArenaLoading label="Loading Desert Citadel" />}>
+              <ArenaPreview />
+            </Suspense>
+          </div>
           <span className="game-preview-objective"><Target size={16} aria-hidden="true" />Answer · earn · capture</span>
           <strong>Desert Citadel</strong>
-          <small>Private classroom rooms, live objectives, and a learning report when the round is done.</small>
+          <small>Market. Ruins. Aqueduct. Two team strongholds.</small>
         </button>
       </section>
 
       <section className="landing-section product-intro" aria-labelledby="why-play-title">
         <div className="section-kicker">Built for the classroom moment</div>
-        <h2 id="why-play-title">The energy of a game, with the structure teachers need.</h2>
+        <h2 id="why-play-title">Fast to launch. Hard to tune out.</h2>
         <div className="value-card-grid">
-          <article><BookOpen size={22} aria-hidden="true" /><h3>Questions stay central</h3><p>Every round starts with the learning content you choose. Correct answers unlock money and momentum.</p></article>
-          <article><Target size={22} aria-hidden="true" /><h3>Objectives create focus</h3><p>Flag Mode, Zombie Mode, and classic practice give students a clear reason to collaborate and return to the quiz.</p></article>
-          <article><Shield size={22} aria-hidden="true" /><h3>Teacher-led by design</h3><p>Create a private room, set the round rules, watch participation, and end with a class learning report.</p></article>
+          <article><BookOpen size={22} aria-hidden="true" /><h3>Fast setup</h3><p>Pick a quiz. Open a room.</p></article>
+          <article><Target size={22} aria-hidden="true" /><h3>Team energy</h3><p>Every learner affects the round.</p></article>
+          <article><Shield size={22} aria-hidden="true" /><h3>Clear control</h3><p>Run the match from one workspace.</p></article>
         </div>
       </section>
 
@@ -940,8 +941,8 @@ function TeacherDashboard({ teacher, onLogout }: { teacher: TeacherUser; onLogou
         <div className="section-heading">
           <div>
             <span className="eyebrow">Teacher control center</span>
-            <h1>Run the room with confidence.</h1>
-            <p>Build the next quiz, open a private game, and keep the class learning signal in view.</p>
+            <h1>Classroom command center</h1>
+            <p>Build, launch, and monitor every round.</p>
           </div>
           <button onClick={refresh}>
             <RefreshCw size={18} aria-hidden="true" />
@@ -1614,7 +1615,7 @@ function SessionManager({
         <StatusMessages error={status.error} message={status.message} />
       </form>
 
-      <div className="panel live-session">
+      <div className={`panel live-session${selectedSession ? "" : " empty-live-session"}`}>
         <h2>Live Session Control</h2>
         {selectedSession ? isSessionEnded ? (
           <div className="session-ended-summary">

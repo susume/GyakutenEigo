@@ -239,7 +239,7 @@ export const FLAG_MODE_DEFAULTS = {
 } as const;
 
 export const HEAVY_GUN_DAMAGE = 100;
-export const HEAVY_GUN_COOLDOWN_MS = 1350;
+export const HEAVY_GUN_COOLDOWN_MS = 1500;
 export const HEAVY_GUN_RANGE = 80;
 export const HEAVY_GUN_UNSCOPED_HIT_RADIUS = 0.52;
 export const HEAVY_GUN_SCOPED_HIT_RADIUS = 0.82;
@@ -248,7 +248,7 @@ export const HEAVY_GUN_ZOOM_LEVEL_0_FOV = 72;
 export const HEAVY_GUN_ZOOM_LEVEL_1_FOV = 46;
 export const HEAVY_GUN_ZOOM_LEVEL_2_FOV = 30;
 export const QUICK_BLASTER_RANGE = 30;
-export const QUICK_BLASTER_COOLDOWN_MS = 125;
+export const QUICK_BLASTER_COOLDOWN_MS = 150;
 export const STARTER_BLASTER_RANGE = 28;
 
 export const DEFAULT_SESSION_SETTINGS: SessionSettings = {
