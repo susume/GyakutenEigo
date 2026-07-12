@@ -18,7 +18,7 @@ import {
   type GameSession,
   type PlayerSession
 } from "@quizstrike/shared";
-import { blocks, cylinders, floorMarks, signs } from "./desertCitadelMap";
+import { blocks, cylinders, floorMarks, props, signs } from "./desertCitadelMap";
 import {
   FPS_CROUCH_EYE_HEIGHT,
   FPS_STANDING_EYE_HEIGHT,
@@ -59,6 +59,8 @@ const WALK_SPEED = 10.8;
 const RUN_SPEED = 14.8;
 const CROUCH_SPEED = 6.4;
 const FPS_BASE_FOV = 72;
+const paleStone = "#dec28a";
+const wood = "#65462e";
 const MINIMAP_WIDTH = 120;
 const MINIMAP_HEIGHT = 110;
 const GAMEPAD_DEAD_ZONE = 0.18;
@@ -461,6 +463,101 @@ export default function ArenaPreview({
       coverBoxes.push(new THREE.Box3().setFromObject(object).expandByScalar(pad));
     };
 
+    const addDecorativeMesh = (parent: THREE.Object3D, geometry: THREE.BufferGeometry, color: string, material = "stone") => {
+      const mesh = new THREE.Mesh(geometry, materialFor(color, material));
+      mesh.castShadow = !isFps;
+      mesh.receiveShadow = true;
+      parent.add(mesh);
+      return mesh;
+    };
+
+    const addBlockDetail = (block: (typeof blocks)[number]) => {
+      if (!block.style) return;
+      const detail = new THREE.Group();
+      detail.position.set(block.x, block.y ?? 0, block.z);
+      detail.rotation.y = block.rotationY ?? 0;
+      scene.add(detail);
+      const stoneTone = block.material === "wood" ? block.color : paleStone;
+
+      if (block.style === "wall") {
+        addDecorativeMesh(detail, new THREE.BoxGeometry(block.w * 0.98, 0.28, block.d * 1.08), stoneTone);
+        const crenelCount = Math.min(10, Math.max(2, Math.floor(block.w / 22)));
+        for (let index = 0; index < crenelCount; index += 1) {
+          const x = -block.w / 2 + ((index + 0.5) / crenelCount) * block.w;
+          const crenel = addDecorativeMesh(detail, new THREE.BoxGeometry(Math.min(3.6, block.w / crenelCount * 0.55), 0.85, block.d * 1.1), stoneTone);
+          crenel.position.set(x, block.h + 0.56, 0);
+        }
+      }
+
+      if (block.style === "ruin") {
+        const alongX = block.w >= block.d;
+        const chunkCount = alongX ? 3 : 2;
+        for (let index = 0; index < chunkCount; index += 1) {
+          const span = alongX ? block.w : block.d;
+          const chunk = addDecorativeMesh(detail, new THREE.BoxGeometry(
+            alongX ? span / chunkCount * 0.72 : block.w * 0.95,
+            0.65 + (index % 2) * 0.42,
+            alongX ? block.d * 1.04 : span / chunkCount * 0.7
+          ), index % 2 === 0 ? paleStone : stoneTone);
+          const offset = -span / 2 + (index + 0.5) * (span / chunkCount);
+          chunk.position.set(alongX ? offset : 0, block.h + 0.35 + (index % 2) * 0.2, alongX ? 0 : offset);
+          chunk.rotation.y = (index - 1) * 0.08;
+        }
+      }
+
+      if (block.style === "gate") {
+        const brace = addDecorativeMesh(detail, new THREE.BoxGeometry(block.w * 0.68, Math.min(0.42, block.h * 0.08), Math.max(0.18, block.d * 0.76)), wood, "wood");
+        brace.position.y = Math.min(block.h * 0.7, 4.8);
+        for (const x of [-block.w * 0.28, block.w * 0.28]) {
+          const post = addDecorativeMesh(detail, new THREE.BoxGeometry(0.28, block.h * 0.78, 0.28), "#b98950", "wood");
+          post.position.set(x, block.h * 0.42, block.d * 0.4);
+        }
+      }
+
+      if (block.style === "stall") {
+        const canopy = addDecorativeMesh(detail, new THREE.BoxGeometry(block.w * 1.12, 0.22, block.d * 1.3), block.color, "cloth");
+        canopy.position.y = block.h + 1.6;
+        for (const x of [-block.w * 0.42, block.w * 0.42]) {
+          const post = addDecorativeMesh(detail, new THREE.CylinderGeometry(0.12, 0.16, Math.max(2.6, block.h + 1.4), 8), "#b9874c", "wood");
+          post.position.set(x, (block.h + 1.4) / 2, 0);
+        }
+      }
+
+      if (block.style === "house") {
+        const roof = addDecorativeMesh(detail, new THREE.BoxGeometry(block.w * 0.94, 0.24, block.d * 0.94), block.color, "stone");
+        roof.position.y = block.h + 0.18;
+        const beam = addDecorativeMesh(detail, new THREE.BoxGeometry(block.w * 0.7, 0.18, 0.22), wood, "wood");
+        beam.position.set(0, Math.min(block.h * 0.65, 4.5), block.d * 0.5 + 0.12);
+      }
+
+      if (block.style === "channel" && block.material !== "water") {
+        const coping = addDecorativeMesh(detail, new THREE.BoxGeometry(block.w * 1.04, 0.22, block.d * 1.3), "#b7b09a");
+        coping.position.y = block.h + 0.14;
+      }
+
+      if (block.style === "bridge") {
+        for (const z of [-block.d * 0.46, block.d * 0.46]) {
+          const rail = addDecorativeMesh(detail, new THREE.BoxGeometry(block.w * 0.92, 0.38, 0.18), "#b7a27c");
+          rail.position.set(0, block.h + 0.35, z);
+        }
+      }
+
+      if (block.style === "tower") {
+        const battlementCount = Math.max(3, Math.min(6, Math.floor(block.w / 3.5)));
+        for (let index = 0; index < battlementCount; index += 1) {
+          const cap = addDecorativeMesh(detail, new THREE.BoxGeometry(block.w / battlementCount * 0.55, 0.8, block.d * 0.18), paleStone);
+          cap.position.set(-block.w / 2 + (index + 0.5) * block.w / battlementCount, block.h + 0.45, block.d / 2 - block.d * 0.12);
+        }
+      }
+
+      if (block.style === "sandbank") {
+        detail.scale.y = 0.5;
+        const lip = addDecorativeMesh(detail, new THREE.BoxGeometry(block.w * 0.85, 0.18, block.d * 0.65), "#e6bf76", "sand");
+        lip.position.y = block.h + 0.12;
+      }
+
+    };
+
     const addBlock = (block: (typeof blocks)[number]) => {
       const mesh = new THREE.Mesh(
         new THREE.BoxGeometry(block.w, block.h, block.d),
@@ -472,6 +569,7 @@ export default function ArenaPreview({
       mesh.receiveShadow = true;
       scene.add(mesh);
       if (block.collides) colliderForObject(mesh, 0.25);
+      addBlockDetail(block);
       if (block.label && !isFps) {
         const label = new THREE.Sprite(makeSpriteLabel(block.label, "#fef3c7"));
         label.position.set(block.x, (block.y ?? block.h) + block.h / 2 + 6, block.z);
@@ -481,6 +579,110 @@ export default function ArenaPreview({
       return mesh;
     };
     blocks.forEach(addBlock);
+
+    const addProp = (prop: (typeof props)[number]) => {
+      const group = new THREE.Group();
+      group.position.set(prop.x, prop.y ?? 0, prop.z);
+      group.rotation.y = prop.rotationY ?? 0;
+      scene.add(group);
+      const height = prop.h ?? Math.max(3, prop.size);
+      const propMaterial = prop.material ?? "stone";
+
+      if (prop.kind === "arch") {
+        const columnWidth = Math.max(0.8, prop.size * 0.16);
+        for (const x of [-prop.size * 0.42, prop.size * 0.42]) {
+          const column = addDecorativeMesh(group, new THREE.BoxGeometry(columnWidth, height, prop.size * 0.32), prop.color, propMaterial);
+          column.position.set(x, height / 2, 0);
+        }
+        const lintel = addDecorativeMesh(group, new THREE.BoxGeometry(prop.size, Math.max(0.8, prop.size * 0.16), prop.size * 0.36), prop.color, propMaterial);
+        lintel.position.y = height - Math.max(0.4, prop.size * 0.08);
+      }
+
+      if (prop.kind === "banner") {
+        const pole = addDecorativeMesh(group, new THREE.CylinderGeometry(0.1, 0.14, height, 8), "#c49a5b", "wood");
+        pole.position.y = height / 2;
+        const fabric = addDecorativeMesh(group, new THREE.PlaneGeometry(prop.size * 1.3, prop.size * 1.7), prop.color, "cloth");
+        fabric.position.set(prop.size * 0.62, height * 0.7, 0);
+        fabric.rotation.y = Math.PI / 2;
+      }
+
+      if (prop.kind === "column") {
+        const column = addDecorativeMesh(group, new THREE.CylinderGeometry(prop.size * 0.4, prop.size * 0.52, height, 10), prop.color, propMaterial);
+        column.position.y = height / 2;
+        const capital = addDecorativeMesh(group, new THREE.CylinderGeometry(prop.size * 0.58, prop.size * 0.58, 0.3, 10), paleStone);
+        capital.position.y = height + 0.12;
+      }
+
+      if (prop.kind === "cart") {
+        const body = addDecorativeMesh(group, new THREE.BoxGeometry(prop.size * 1.55, prop.size * 0.42, prop.size), prop.color, "wood");
+        body.position.y = prop.size * 0.65;
+        for (const x of [-prop.size * 0.58, prop.size * 0.58]) {
+          const wheel = addDecorativeMesh(group, new THREE.CylinderGeometry(prop.size * 0.35, prop.size * 0.35, 0.28, 14), "#3c2a1d", "wood");
+          wheel.rotation.x = Math.PI / 2;
+          wheel.position.set(x, prop.size * 0.42, prop.size * 0.56);
+        }
+        const load = addDecorativeMesh(group, new THREE.BoxGeometry(prop.size * 0.9, prop.size * 0.45, prop.size * 0.7), "#a36b37", "wood");
+        load.position.set(0, prop.size * 1.05, 0);
+      }
+
+      if (prop.kind === "crate") {
+        const lower = addDecorativeMesh(group, new THREE.BoxGeometry(prop.size, Math.min(height * 0.55, prop.size), prop.size), prop.color, "wood");
+        lower.position.y = Math.min(height * 0.28, prop.size * 0.5);
+        const upper = addDecorativeMesh(group, new THREE.BoxGeometry(prop.size * 0.72, Math.min(height * 0.35, prop.size * 0.7), prop.size * 0.72), prop.color, "wood");
+        upper.position.y = Math.min(height * 0.76, prop.size * 1.1);
+      }
+
+      if (prop.kind === "debris") {
+        for (let index = 0; index < 3; index += 1) {
+          const chunk = addDecorativeMesh(group, new THREE.BoxGeometry(prop.size * (0.34 + index * 0.08), prop.h ?? 1.4, prop.size * (0.28 + (2 - index) * 0.08)), index === 1 ? paleStone : prop.color);
+          chunk.position.set((index - 1) * prop.size * 0.3, (prop.h ?? 1.4) / 2 + index * 0.12, (index % 2 ? 1 : -1) * prop.size * 0.12);
+          chunk.rotation.y = (index - 1) * 0.22;
+        }
+      }
+
+      if (prop.kind === "lamp") {
+        const pole = addDecorativeMesh(group, new THREE.CylinderGeometry(0.12, 0.16, height, 8), "#704a2d", "wood");
+        pole.position.y = height / 2;
+        const glow = addDecorativeMesh(group, new THREE.SphereGeometry(prop.size * 0.45, 12, 8), prop.color, "accent");
+        glow.position.y = height + prop.size * 0.2;
+        if (activeQuality !== "performance") {
+          const light = new THREE.PointLight(prop.color, isFps ? 2.5 : 5, 18, 2);
+          light.position.y = height + prop.size * 0.2;
+          group.add(light);
+        }
+      }
+
+      if (prop.kind === "palm") {
+        const trunk = addDecorativeMesh(group, new THREE.CylinderGeometry(prop.size * 0.18, prop.size * 0.32, height, 8), prop.color, "wood");
+        trunk.position.y = height / 2;
+        for (let index = 0; index < 5; index += 1) {
+          const leaf = addDecorativeMesh(group, new THREE.ConeGeometry(prop.size * 0.16, prop.size * 1.4, 5), "#6f8b50", "accent");
+          leaf.position.set(Math.cos(index * 1.26) * prop.size * 0.55, height + 0.15, Math.sin(index * 1.26) * prop.size * 0.55);
+          leaf.rotation.z = Math.PI / 2.6;
+          leaf.rotation.y = index * 1.26;
+        }
+      }
+
+      if (prop.kind === "pipe") {
+        const pipe = addDecorativeMesh(group, new THREE.CylinderGeometry(prop.size * 0.24, prop.size * 0.24, height, 12), prop.color, propMaterial);
+        pipe.rotation.z = Math.PI / 2;
+        pipe.position.y = prop.size * 0.5;
+      }
+
+      if (prop.kind === "shade") {
+        const postHeight = Math.max(2.8, height - 0.8);
+        for (const x of [-prop.size * 0.48, prop.size * 0.48]) {
+          for (const z of [-prop.size * 0.42, prop.size * 0.42]) {
+            const post = addDecorativeMesh(group, new THREE.CylinderGeometry(0.1, 0.14, postHeight, 8), "#9b6a40", "wood");
+            post.position.set(x, postHeight / 2, z);
+          }
+        }
+        const canopy = addDecorativeMesh(group, new THREE.BoxGeometry(prop.size * 1.25, 0.22, prop.size), prop.color, "cloth");
+        canopy.position.y = postHeight + 0.15;
+      }
+    };
+
+    props.forEach(addProp);
 
     cylinders.forEach((cylinder) => {
       const mesh = new THREE.Mesh(

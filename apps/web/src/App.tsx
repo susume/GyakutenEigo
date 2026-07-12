@@ -681,7 +681,7 @@ function GyakutenEigoHome({ onOpenGame, onJoinGame }: { onOpenGame: () => void; 
           </div>
           <span className="game-preview-objective"><Target size={16} aria-hidden="true" />Answer · earn · capture</span>
           <strong>Desert Citadel</strong>
-          <small>Market. Ruins. Aqueduct. Two team strongholds.</small>
+          <small>Ramparts. Waterworks. Caravan Quarter. Two gate courts.</small>
         </button>
       </section>
 
