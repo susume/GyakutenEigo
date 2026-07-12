@@ -1,0 +1,36 @@
+{
+  "capturedAt": "2026-07-12T08:23:03.943Z",
+  "host": {
+    "canvases": [],
+    "memory": null,
+    "navigation": null,
+    "url": "http://localhost:5173/quiz-strike",
+    "viewport": {
+      "dpr": 1.75,
+      "height": 720,
+      "width": 1280
+    }
+  },
+  "player": {
+    "canvases": [
+      {
+        "clientHeight": 531,
+        "clientWidth": 1098,
+        "height": 587,
+        "width": 1098
+      }
+    ],
+    "memory": null,
+    "navigation": null,
+    "url": "http://localhost:5173/join",
+    "viewport": {
+      "dpr": 1.75,
+      "height": 531,
+      "width": 1098
+    }
+  },
+  "notes": [
+    "FPS and long-task traces unavailable through provided browser instrumentation.",
+    "Player browser control timed out once during Classic round start, then recovered on retry."
+  ]
+}

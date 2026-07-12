@@ -1,4 +1,7 @@
 import type { Choice, SessionSettings } from "@quizstrike/shared";
+import { ApiError } from "./errors";
+
+export { ApiError } from "./errors";
 
 const cleanUrl = (value: string | undefined) => {
   const trimmed = value?.trim();
@@ -9,12 +12,6 @@ const localApiUrl = `${window.location.protocol}//${window.location.hostname}:40
 const API_URL =
   cleanUrl(import.meta.env.VITE_API_URL as string | undefined) ??
   (window.location.hostname === "localhost" || window.location.hostname === "127.0.0.1" ? localApiUrl : window.location.origin);
-
-export class ApiError extends Error {
-  constructor(message: string, public status: number) {
-    super(message);
-  }
-}
 
 const getToken = () => localStorage.getItem("quizstrike_token");
 

@@ -1220,7 +1220,7 @@ export const resolveProjectileTarget = ({
   hitRadius = SNOWBALL_HIT_RADIUS
 }: {
   attacker: Pick<PlayerSession, "id" | "team" | "isAlive" | "x" | "z" | "facing">;
-  candidates: Array<Pick<PlayerSession, "id" | "team" | "isAlive" | "x" | "z" | "isBot">>;
+  candidates: Array<Pick<PlayerSession, "id" | "team" | "isAlive" | "connectionState" | "x" | "z" | "isBot">>;
   requestedTargetId?: string;
   obstacles?: readonly ArenaObstacle[];
   range?: number;
@@ -1246,7 +1246,7 @@ export const resolveProjectileTarget = ({
   for (const candidate of candidates) {
     if (candidate.id === attacker.id) continue;
     if (requestedTargetId && candidate.id !== requestedTargetId) continue;
-    if (!candidate.isAlive || candidate.team === attacker.team) continue;
+    if (candidate.connectionState === "disconnected" || !candidate.isAlive || candidate.team === attacker.team) continue;
     const target = {
       x: Number.isFinite(candidate.x) ? candidate.x! : 0,
       z: Number.isFinite(candidate.z) ? candidate.z! : 0
@@ -1320,7 +1320,7 @@ export const resolveBotAttackTarget = ({
   range = TAG_RANGE
 }: {
   bot: Pick<PlayerSession, "id" | "team" | "isAlive" | "x" | "z">;
-  candidates: Array<Pick<PlayerSession, "id" | "team" | "isAlive" | "isBot" | "x" | "z">>;
+  candidates: Array<Pick<PlayerSession, "id" | "team" | "isAlive" | "connectionState" | "isBot" | "x" | "z">>;
   obstacles?: readonly ArenaObstacle[];
   range?: number;
 }): BotAttackTargetResult => {
@@ -1328,7 +1328,7 @@ export const resolveBotAttackTarget = ({
   const botPosition = { x: bot.x ?? 0, z: bot.z ?? 0 };
   let selected: { id: string; distance: number } | undefined;
   for (const candidate of candidates) {
-    if (candidate.id === bot.id || candidate.isBot || !candidate.isAlive || candidate.team === bot.team) continue;
+    if (candidate.id === bot.id || candidate.isBot || candidate.connectionState === "disconnected" || !candidate.isAlive || candidate.team === bot.team) continue;
     const targetPosition = { x: candidate.x ?? 0, z: candidate.z ?? 0 };
     const distance = Math.hypot(targetPosition.x - botPosition.x, targetPosition.z - botPosition.z);
     if (distance > range || !hasLineOfSight({ from: botPosition, to: targetPosition, obstacles })) continue;

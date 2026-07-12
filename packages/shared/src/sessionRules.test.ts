@@ -321,6 +321,20 @@ test("resolveProjectileTarget rejects misses, invalid targets, and friendly fire
   });
 });
 
+test("authoritative projectile and bot targeting ignore disconnected players", () => {
+  const attacker = makePlayer({ id: "attacker", team: "blue", x: 0, z: 0, facing: -Math.PI / 2 });
+  const disconnected = makePlayer({ id: "disconnected", team: "red", connectionState: "disconnected", x: 8, z: 0 });
+  assert.deepEqual(resolveProjectileTarget({ attacker, candidates: [disconnected], obstacles: [] }), {
+    ok: false,
+    reason: "no_valid_target"
+  });
+  const bot = makePlayer({ id: "bot", isBot: true, team: "red", x: 0, z: 0 });
+  assert.deepEqual(resolveBotAttackTarget({ bot, candidates: [disconnected], obstacles: [] }), {
+    ok: false,
+    reason: "no_valid_target"
+  });
+});
+
 test("resolveProjectileTarget ignores opponents hidden behind arena cover", () => {
   const attacker = makePlayer({ id: "attacker", team: "blue", x: 0, z: 0, facing: -Math.PI / 2 });
   const target = makePlayer({ id: "target", team: "red", x: 12, z: 0 });

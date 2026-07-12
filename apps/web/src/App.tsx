@@ -47,6 +47,8 @@ import {
 import { API_URL, ApiError, authApi, studentApi, teacherApi } from "./api/client";
 import { modeForRoute, normalizeRoutePath, type AppMode } from "./navigation";
 import { groupScoreboardRows } from "./scoreboardGroups";
+import { getModeScoreSummary, getReadyRoomTitle, getSessionResultText, getZombieCounts } from "./sessionPresentation";
+import { formatStudentJoinError } from "./studentJoinErrors";
 import { StatusMessages } from "./ui/StatusMessages";
 import { ARENA_MAPS, getArenaMap } from "./game/arenaMaps";
 import {
@@ -443,7 +445,8 @@ function useRoundRemaining(session: GameSession | null) {
     return () => window.clearInterval(interval);
   }, [session?.status, session?.startedAt, session?.endsAt]);
 
-  return session ? getRoundRemainingSeconds(session, nowIso) : 0;
+  if (!session || session.status === "ended") return 0;
+  return getRoundRemainingSeconds(session, nowIso);
 }
 
 function ArenaLoading({ label = "Loading arena" }: { label?: string }) {
@@ -1470,7 +1473,8 @@ function SessionManager({
 
   const topLearner = selectedSession ? getTopLearner(selectedSession.players) : undefined;
   const teamTotals = selectedSession ? getTeamTotals(selectedSession.players) : { blue: 0, red: 0 };
-  const activePlayers = selectedSession?.players.filter((player) => player.isAlive).length ?? 0;
+  const zombieCounts = selectedSession ? getZombieCounts(selectedSession.players) : { humans: 0, zombies: 0 };
+  const activePlayers = selectedSession?.players.filter((player) => player.connectionState !== "disconnected" && player.isAlive).length ?? 0;
   const startCheck = selectedSession ? canStartRound(selectedSession) : undefined;
   const startBlockedReason =
     startCheck && !startCheck.ok
@@ -1650,7 +1654,7 @@ function SessionManager({
             <p>The room is closed. Students can view their summary, and the full class learning report is ready.</p>
             <dl>
               <div><dt>Final players</dt><dd>{selectedSession.players.length}</dd></div>
-              <div><dt>Final score</dt><dd>Blue {teamTotals.blue} – Red {teamTotals.red}</dd></div>
+              <div><dt>Final outcome</dt><dd>{getModeScoreSummary(selectedSession)}</dd></div>
               <div><dt>Top learner</dt><dd>{topLearner?.nickname ?? "No answers recorded"}</dd></div>
             </dl>
             <div className="button-row">
@@ -1667,7 +1671,11 @@ function SessionManager({
               {selectedSession.settings.gameMode === "flag" && <span>Round {selectedSession.currentRound}/{selectedSession.settings.roundCount}</span>}
               <span>Time {formatDuration(remainingSeconds)}</span>
               <span>{activePlayers}/{selectedSession.players.length || 0} active</span>
-              <span>Blue {teamTotals.blue} - Red {teamTotals.red}</span>
+              <span>
+                {selectedSession.settings.gameMode === "zombie"
+                  ? `Humans ${zombieCounts.humans} - Zombies ${zombieCounts.zombies}`
+                  : `Blue ${teamTotals.blue} - Red ${teamTotals.red}`}
+              </span>
               <span>{topLearner ? `Top learner: ${topLearner.nickname}` : "No learners yet"}</span>
             </div>
             <div className="join-code">
@@ -1975,10 +1983,11 @@ function StudentExperience({ onExit }: { onExit: () => void }) {
     const activePlayerId = player.id;
     const socket = io(API_URL);
     socketRef.current = socket;
-    socket.emit("join_session_room", session.sessionCode);
+    const roomJoinPayload = { code: session.sessionCode, playerId: activePlayerId, playerToken };
+    socket.emit("join_session_room", roomJoinPayload);
     socket.on("connect", () => {
       setIsSocketReconnecting(false);
-      socket.emit("join_session_room", session.sessionCode);
+      socket.emit("join_session_room", roomJoinPayload);
     });
     socket.on("connect_error", () => setIsSocketReconnecting(true));
     socket.on("disconnect", () => setIsSocketReconnecting(true));
@@ -2187,6 +2196,11 @@ function StudentExperience({ onExit }: { onExit: () => void }) {
       setPlayer(payload.player);
       setPlayerToken(payload.playerToken);
       setQuestion(payload.question ?? null);
+      setQuizOpen(false);
+      setBuyOpen(false);
+      setScoreboardOpen(false);
+      setSettingsOpen(false);
+      setAnsweringChoice(null);
       localStorage.setItem(STUDENT_SESSION_STORAGE_KEY, JSON.stringify({
         sessionCode: payload.session.sessionCode,
         playerId: payload.player.id,
@@ -2194,7 +2208,7 @@ function StudentExperience({ onExit }: { onExit: () => void }) {
       } satisfies StoredStudentSession));
       setFeedback("Joined. Click the arena to aim, or use the touch controls on smaller screens.");
     } catch (err) {
-      status.report(err);
+      status.setError(formatStudentJoinError(err));
     } finally {
       setIsJoining(false);
     }
@@ -2207,6 +2221,11 @@ function StudentExperience({ onExit }: { onExit: () => void }) {
     setPlayer(null);
     setPlayerToken("");
     setQuestion(null);
+    setQuizOpen(false);
+    setBuyOpen(false);
+    setScoreboardOpen(false);
+    setSettingsOpen(false);
+    setAnsweringChoice(null);
     setFeedback("");
     status.clear();
   };
@@ -2245,6 +2264,16 @@ function StudentExperience({ onExit }: { onExit: () => void }) {
       setAnsweringChoice(null);
     }
   };
+
+  useEffect(() => {
+    if (!session || session.status !== "ended") return;
+    setQuizOpen(false);
+    setBuyOpen(false);
+    setScoreboardOpen(false);
+    setSettingsOpen(false);
+    setAnsweringChoice(null);
+    if (document.pointerLockElement) document.exitPointerLock();
+  }, [session?.id, session?.status]);
 
   const buy = async (gearId: string) => {
     if (!session || !player || !playerToken || buyingGearId || isBuyingSnowballs) return;
@@ -2338,7 +2367,7 @@ function StudentExperience({ onExit }: { onExit: () => void }) {
             <input autoComplete="nickname" enterKeyHint="done" value={nickname} onChange={(event) => { setNickname(event.target.value); status.clearError(); }} maxLength={20} aria-invalid={Boolean(nicknameError)} aria-describedby={nicknameError ? "nickname-error" : undefined} />
           </label>
           {nicknameError && <p id="nickname-error" className="error-text" role="alert">{nicknameError}</p>}
-          {status.error && <p id="join-error" className="error-text" role="alert">{status.error} Check the code with your teacher, then try again.</p>}
+          {status.error && <p id="join-error" className="error-text" role="alert">{status.error}</p>}
           <button className="primary" type="submit" disabled={isJoining || Boolean(nicknameError)}>
             <DoorOpen size={18} aria-hidden="true" />
             {isJoining ? "Working..." : "Join"}
@@ -2352,7 +2381,6 @@ function StudentExperience({ onExit }: { onExit: () => void }) {
   const snowballs = player.snowballs ?? session.settings.startingSnowballs;
   const warmth = getPlayerWarmth(player);
   const topLearner = getTopLearner(session.players);
-  const teamTotals = getTeamTotals(session.players);
   const respawnProgress = player.respawnCorrectAnswers ?? 0;
   const canPracticeToRespawn = !player.isAlive && session.settings.deadPlayersCanPractice && session.settings.gameMode !== "flag";
   const roundActive = session.status === "active";
@@ -2369,7 +2397,7 @@ function StudentExperience({ onExit }: { onExit: () => void }) {
     : session.settings.gameMode === "zombie"
       ? zombieStatusText(session, player)
       : "Answer questions, earn supplies, and tag the other team.";
-  const teamResult = teamTotals.blue === teamTotals.red ? "The teams finished tied." : `${teamTotals.blue > teamTotals.red ? "Blue" : "Red"} Team won the round.`;
+  const sessionResult = getSessionResultText(session);
 
   return (
     <section className={isCompactViewport ? "game-layout compact-game-layout" : "game-layout"}>
@@ -2518,7 +2546,7 @@ function StudentExperience({ onExit }: { onExit: () => void }) {
           <div className="student-alerts" aria-live="polite">
             {session.status === "waiting" && (
               <div className="panel pre-round-card">
-                <h2>{teamLabel(player.team)} Ready Room</h2>
+                <h2>{getReadyRoomTitle(session, player)}</h2>
                 <p>Wait for the teacher to start the round.</p>
                 {session.settings.gameMode === "flag" && session.settings.teamAssignment === "players_choose" && (
                   <div className="button-row">
@@ -2539,7 +2567,7 @@ function StudentExperience({ onExit }: { onExit: () => void }) {
             {roundEnded && (
               <div className="panel pre-round-card student-end-summary">
                 <h2>Session Ended</h2>
-                <p>{teamResult}</p>
+                <p>{sessionResult}</p>
                 <div className="student-summary-metrics">
                   <span><strong>{accuracy(player)}%</strong> question accuracy</span>
                   <span><strong>{formatMoney(player.money)}</strong> earned</span>
@@ -2648,6 +2676,7 @@ function BuyPanel({
     if (gearId === "power_blaster") return <span className="gear-glyph launcher-heavy" aria-hidden="true" />;
     return <ShoppingBag size={18} aria-hidden="true" />;
   };
+
   const snowballPrice = session.settings.snowballPackPrice;
   const snowballCount = session.settings.snowballsPerPack;
   const isBuyingGear = Boolean(buyingGearId);
@@ -2785,6 +2814,7 @@ function Scoreboard({
 }) {
   const grouped = groupScoreboardRows(players, gameMode, localPlayerId);
   const totals = getTeamTotals(players);
+  const zombieCounts = getZombieCounts(players);
   return (
     <div className="scoreboard">
       <div className="panel-title">
@@ -2792,8 +2822,17 @@ function Scoreboard({
         <span>{players.length} players</span>
       </div>
       <div className="team-score-row">
-        <span className="team-score blue-team">Blue {totals.blue}</span>
-        <span className="team-score red-team">Red {totals.red}</span>
+        {gameMode === "zombie" ? (
+          <>
+            <span className="team-score blue-team">Humans {zombieCounts.humans}</span>
+            <span className="team-score red-team">Zombies {zombieCounts.zombies}</span>
+          </>
+        ) : (
+          <>
+            <span className="team-score blue-team">Blue {totals.blue}</span>
+            <span className="team-score red-team">Red {totals.red}</span>
+          </>
+        )}
       </div>
       <div className="scoreboard-table-wrap">
         {grouped.map((group) => (
