@@ -1204,7 +1204,11 @@ export default function ArenaPreview({
           touchLookStartY = event.clientY;
           touchLookStartedAt = performance.now();
           touchLookDistance = 0;
-          renderer.domElement.setPointerCapture(event.pointerId);
+          try {
+            renderer.domElement.setPointerCapture(event.pointerId);
+          } catch {
+            // Window-level tracking keeps touch-look working when capture is unavailable.
+          }
           event.preventDefault();
           return;
         }
@@ -1223,14 +1227,10 @@ export default function ArenaPreview({
         fire();
       };
       const onPointerUp = (event: PointerEvent) => {
-        if (event.pointerType === "touch" && event.pointerId === touchLookPointerId) {
-          if (shouldFireFromTouchGesture({ distance: touchLookDistance, durationMs: performance.now() - touchLookStartedAt })) fire();
-          touchLookPointerId = null;
-        }
         if (event.button === 2 && !hasHeavyGun()) setZoomLevel(0);
         if (event.button === 0) fireHeld = false;
       };
-      const onPointerMove = (event: PointerEvent) => {
+      const onTouchPointerMove = (event: PointerEvent) => {
         if (event.pointerType !== "touch" || event.pointerId !== touchLookPointerId) return;
         yaw -= (event.clientX - touchLookX) * TOUCH_LOOK_SENSITIVITY;
         pitch = clamp(pitch - (event.clientY - touchLookY) * TOUCH_LOOK_SENSITIVITY, -0.85, 0.62);
@@ -1239,7 +1239,12 @@ export default function ArenaPreview({
         touchLookY = event.clientY;
         event.preventDefault();
       };
-      const onPointerCancel = (event: PointerEvent) => {
+      const finishTouchPointer = (event: PointerEvent) => {
+        if (event.pointerType !== "touch" || event.pointerId !== touchLookPointerId) return;
+        if (shouldFireFromTouchGesture({ distance: touchLookDistance, durationMs: performance.now() - touchLookStartedAt })) fire();
+        touchLookPointerId = null;
+      };
+      const onTouchPointerCancel = (event: PointerEvent) => {
         if (event.pointerId === touchLookPointerId) touchLookPointerId = null;
       };
       const onContextMenu = (event: MouseEvent) => event.preventDefault();
@@ -1260,9 +1265,10 @@ export default function ArenaPreview({
       document.addEventListener("pointerlockchange", onPointerLockChange);
       document.addEventListener("pointerlockerror", onPointerLockError);
       renderer.domElement.addEventListener("pointerdown", onPointerDown);
-      renderer.domElement.addEventListener("pointermove", onPointerMove);
       renderer.domElement.addEventListener("pointerup", onPointerUp);
-      renderer.domElement.addEventListener("pointercancel", onPointerCancel);
+      window.addEventListener("pointermove", onTouchPointerMove, { passive: false });
+      window.addEventListener("pointerup", finishTouchPointer);
+      window.addEventListener("pointercancel", onTouchPointerCancel);
       renderer.domElement.addEventListener("contextmenu", onContextMenu);
 
       const cleanupControls = () => {
@@ -1274,9 +1280,10 @@ export default function ArenaPreview({
         document.removeEventListener("pointerlockchange", onPointerLockChange);
         document.removeEventListener("pointerlockerror", onPointerLockError);
         renderer.domElement.removeEventListener("pointerdown", onPointerDown);
-        renderer.domElement.removeEventListener("pointermove", onPointerMove);
         renderer.domElement.removeEventListener("pointerup", onPointerUp);
-        renderer.domElement.removeEventListener("pointercancel", onPointerCancel);
+        window.removeEventListener("pointermove", onTouchPointerMove);
+        window.removeEventListener("pointerup", finishTouchPointer);
+        window.removeEventListener("pointercancel", onTouchPointerCancel);
         renderer.domElement.removeEventListener("contextmenu", onContextMenu);
         if (document.pointerLockElement === renderer.domElement) document.exitPointerLock();
       };
