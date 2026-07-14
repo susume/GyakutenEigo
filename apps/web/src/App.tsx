@@ -2061,6 +2061,9 @@ function StudentExperience({ onExit }: { onExit: () => void }) {
       }
     });
     socket.on("damage_result", (result: DamageResultPayload) => {
+      if (typeof result.snowballs === "number" && (!result.ok || result.attackerId === activePlayerId)) {
+        setPlayer((current) => current && current.id === activePlayerId ? { ...current, snowballs: result.snowballs } : current);
+      }
       if (!result.ok) {
         const messages: Record<string, string> = {
           attacker_eliminated: "You are frozen out. Answer practice questions to respawn.",
