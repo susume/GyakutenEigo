@@ -840,6 +840,51 @@ label.toggle-row input {
   border-color: #bbf7d0;
 }
 
+.touch-joystick {
+  --stick-x: 0px;
+  --stick-y: 0px;
+  position: relative;
+  width: 132px;
+  height: 132px;
+  min-width: 132px !important;
+  min-height: 132px !important;
+  padding: 0;
+  border: 2px solid rgba(255, 255, 255, 0.78) !important;
+  border-radius: 50%;
+  background: rgba(9, 20, 36, 0.48) !important;
+  box-shadow: inset 0 0 0 18px rgba(255, 255, 255, 0.05), 0 12px 28px rgba(0, 0, 0, 0.28) !important;
+}
+
+.touch-joystick span {
+  position: absolute;
+  left: 50%;
+  top: 50%;
+  width: 58px;
+  height: 58px;
+  border: 2px solid rgba(255, 255, 255, 0.9);
+  border-radius: 50%;
+  background: rgba(30, 64, 105, 0.92);
+  transform: translate(calc(-50% + var(--stick-x)), calc(-50% + var(--stick-y)));
+  pointer-events: none;
+}
+
+.touch-action-group {
+  display: grid;
+  justify-items: end;
+  gap: 8px;
+}
+
+.touch-action-group > span {
+  max-width: 170px;
+  border-radius: 5px;
+  background: rgba(9, 20, 36, 0.68);
+  color: #fff;
+  padding: 5px 8px;
+  font-size: 0.7rem;
+  font-weight: 800;
+  text-align: right;
+}
+
 .auth-layout {
   display: grid;
   grid-template-columns: minmax(0, 0.9fr) minmax(320px, 440px);
@@ -3186,4 +3231,79 @@ small {
   .session-setting-grid {
     grid-template-columns: minmax(0, 1fr);
   }
+}
+
+/* Screenshot-led QuizStrike public screens */
+.sr-only { position:absolute!important; width:1px!important; height:1px!important; padding:0!important; margin:-1px!important; overflow:hidden!important; clip:rect(0,0,0,0)!important; white-space:nowrap!important; border:0!important; }
+.topbar-quizStrike { min-height:86px; padding:12px clamp(26px,3vw,40px); border-bottom:0; background:#fff; }
+.topbar-quizStrike .brand-button { border:0; background:transparent; padding:0; font-size:clamp(1.7rem,3vw,2.45rem); font-weight:900; letter-spacing:.01em; }
+.topbar-quizStrike .top-actions button { min-width:186px; min-height:49px; border:4px solid #111; border-radius:2px; background:#fff; color:#111; font-size:clamp(1.05rem,2vw,1.65rem); font-weight:900; text-transform:uppercase; }
+.topbar-quizStrike .top-actions .nav-login { min-width:170px; background:#ffbf16; }
+.quizstrike-page { min-height:calc(100vh - 86px); background-color:rgba(255,255,255,.76); background-image:url('/assets/quizstrike-classroom-hero.png'); background-size:cover; background-position:center; background-blend-mode:screen; }
+.quizstrike-page .landing-story { min-height:calc(100vh - 86px); display:flex; flex-direction:column; align-items:center; justify-content:center; gap:16px; padding:38px 20px 30px; }
+.founder-card { width:min(706px,calc(100vw - 40px)); border:7px solid #050505; border-radius:5px; background:rgba(255,255,255,.96); padding:34px 16px 14px; text-align:center; }
+.founder-card p { max-width:650px; margin:0 auto 14px; color:#151515; font-size:clamp(1rem,1.75vw,1.35rem); line-height:1.18; }
+.landing-signup { min-width:min(460px,calc(100vw - 40px)); min-height:108px; border:3px solid #111; border-radius:18px; background:#ffbd12; color:#050505; font-size:clamp(1.65rem,3.8vw,2.65rem); font-weight:950; text-transform:uppercase; }
+.topbar-student { display:none; }
+.student-join-screen { min-height:100vh; display:flex; align-items:flex-start; justify-content:center; padding:42vh 28px 28px; background-color:rgba(255,255,255,.76); background-image:url('/assets/quizstrike-classroom-hero.png'); background-size:cover; background-position:center; background-blend-mode:screen; }
+.student-join-help { display:none; }
+.student-join-form { width:min(460px,calc(100vw - 36px)); display:grid; gap:12px; border:0; border-radius:0; background:transparent; box-shadow:none; padding:0; }
+.student-join-form input { min-height:116px; border:4px solid #080808; border-radius:2px; background:rgba(255,255,255,.96); color:#111; font-size:clamp(2rem,5vw,3.8rem); font-weight:850; text-align:center; text-transform:uppercase; }
+.student-join-form input::placeholder { color:#999; opacity:1; }
+.student-join-form button.primary { min-height:120px; border:6px solid #080808; border-radius:5px; background:#fff900; color:#050505; font-size:clamp(2.2rem,6vw,4rem); font-weight:950; text-transform:uppercase; }
+
+@media (hover:none), (pointer:coarse) { .fps-view .touch-controls { display:flex; } }
+@media (max-width:700px) {
+  .topbar-quizStrike { min-height:68px; padding:8px 14px; }
+  .topbar-quizStrike .top-actions button { min-width:0; min-height:42px; border-width:2px; font-size:.9rem; }
+  .quizstrike-page,.quizstrike-page .landing-story { min-height:calc(100vh - 68px); }
+  .quizstrike-page .landing-story { padding:20px 14px; }
+  .founder-card { border-width:4px; padding:22px 14px 10px; }
+  .founder-card p { line-height:1.24; }
+  .landing-signup { min-height:74px; border-radius:12px; }
+  .student-join-screen { align-items:center; padding:18px; }
+  .student-join-form input { min-height:92px; }
+  .student-join-form button.primary { min-height:94px; }
+  .touch-controls { left:max(10px,env(safe-area-inset-left)); right:max(10px,env(safe-area-inset-right)); bottom:max(12px,env(safe-area-inset-bottom)); }
+  .touch-joystick { width:112px; height:112px; min-width:112px!important; min-height:112px!important; }
+}
+
+@media (min-width:701px) { .quizstrike-page .landing-story { transform:translateY(14px); } }
+
+/* Screenshot-led teacher folders dashboard */
+.topbar-teacher.teacher-authenticated { display:none; }
+.workspace { width:min(1000px,calc(100% - 32px)); min-height:100vh; display:block; margin:0 auto; padding-top:76px; background:#fff; }
+.dashboard-brand-row { display:flex; align-items:center; justify-content:space-between; border-top:1px solid #ddd; border-bottom:1px solid #eee; padding:4px 14px 0; }
+.dashboard-brand-row h1 { margin:0; color:#070707; font-size:clamp(2rem,4vw,2.55rem); line-height:1.1; letter-spacing:.04em; }
+.dashboard-brand-row>div { display:flex; align-items:center; gap:10px; font-size:.82rem; }
+.dashboard-brand-row button { min-height:30px; border-radius:2px; }
+.workspace .sidebar { display:flex; flex-direction:row; align-items:flex-start; min-height:auto; width:100%; gap:0; padding:0 14px; border:0; background:#fff; box-shadow:none; }
+.workspace .sidebar button { width:auto; min-height:30px; border:1px solid #111; border-radius:0; background:#fff; color:#080808; padding:2px 16px; font-size:1.1rem; font-weight:900; }
+.workspace .sidebar button.active { border-color:#111; background:#9ad05a; color:#080808; }
+.workspace .main-panel { min-height:450px; padding:32px 46px 48px; background:#fffbfb; }
+.dashboard-section-heading { display:none; }
+.teacher-folders h2 { margin:0; color:#080808; font-size:2rem; text-transform:uppercase; }
+.folders-heading { display:flex; align-items:center; justify-content:space-between; padding:0 10px 16px; }
+.folder-new { min-width:120px; border:1px solid #111; border-radius:0; background:#ffc417; color:#080808; font-size:1.2rem; font-weight:950; text-transform:uppercase; }
+.folder-chips { display:flex; flex-wrap:wrap; gap:8px; margin-bottom:28px; }
+.folder-chips button { min-height:27px; border:0; border-radius:999px; background:#e7e7e7; padding:3px 12px; font-size:.76rem; }
+.folder-chips button.active { background:#7448bb; color:#fff; }
+.folder-quiz-list { border:1px solid #e4e4e4; border-radius:8px; background:#fff; padding:28px; box-shadow:0 3px 12px rgba(0,0,0,.08); }
+.folder-quiz-row { display:grid; grid-template-columns:66px minmax(0,1fr) 120px; align-items:center; gap:12px; min-height:110px; border:1px solid #f0f0f0; padding:18px; }
+.quiz-cover { display:grid; place-items:center; width:66px; height:66px; border-radius:6px; background:#f5d872; color:#111; }
+.folder-quiz-row h3 { margin:0 0 2px; color:#0a0a0a; font-size:1.05rem; }
+.folder-row-actions { display:grid; gap:2px; }
+.folder-row-actions button { min-height:36px; border:2px solid #101010; border-radius:0; color:#fff; font-weight:500; }
+.folder-row-actions .play-live { background:#49ca65; }
+.folder-row-actions .edit-set { background:#087bc1; }
+.folder-empty { padding:42px 20px; text-align:center; }
+@media (max-width:700px) {
+  .workspace { width:100%; padding-top:18px; }
+  .dashboard-brand-row { align-items:flex-start; }
+  .dashboard-brand-row>div strong { display:none; }
+  .workspace .main-panel { padding:24px 16px 36px; }
+  .folder-quiz-list { padding:10px; }
+  .folder-quiz-row { grid-template-columns:52px 1fr; padding:12px; }
+  .quiz-cover { width:52px; height:52px; }
+  .folder-row-actions { grid-column:1/-1; grid-template-columns:1fr 1fr; }
 }

@@ -28,7 +28,7 @@ import {
 } from "./ArenaCamera.js";
 import { CharacterFactory } from "./characters/CharacterFactory";
 import { CharacterManager, type CharacterManagerStats } from "./characters/CharacterManager";
-import { resolveCombatPointerAction } from "./arenaInput";
+import { isFireKeyboardEvent, resolveCombatPointerAction, shouldFireFromTouchGesture } from "./arenaInput";
 import { gameAudio, type MovementAudioMode } from "./GameAudio";
 import { cycleHeavyGunZoom, getWeaponFov, shouldResetWeaponZoom } from "./weaponControls";
 import {
@@ -236,6 +236,8 @@ export default function ArenaPreview({
   const currentPlayerRef = useRef(currentPlayer);
   const pendingShotsRef = useRef(0);
   const inputPausedRef = useRef(inputPaused);
+  const controlsDisabledRef = useRef(controlsDisabled);
+  const joystickPointerRef = useRef<number | null>(null);
   const syncPlayersRef = useRef<(session?: GameSession, currentPlayer?: PlayerSession) => void>(() => undefined);
   const [isPointerLocked, setIsPointerLocked] = useState(false);
   const [hitPulse, setHitPulse] = useState(0);
@@ -261,7 +263,8 @@ export default function ArenaPreview({
     onFireRef.current = onFire;
     onInteractRef.current = onInteract;
     inputPausedRef.current = inputPaused;
-  }, [onMove, onFire, onInteract, inputPaused]);
+    controlsDisabledRef.current = controlsDisabled;
+  }, [onMove, onFire, onInteract, inputPaused, controlsDisabled]);
 
   useEffect(() => {
     currentPlayerRef.current = currentPlayer;
@@ -1025,7 +1028,7 @@ export default function ArenaPreview({
         gameAudio.play(next > 0 ? "zoom_in" : "zoom_out");
       };
       const fire = () => {
-        if (controlsDisabled || inputPausedRef.current || !onFireRef.current) return;
+        if (controlsDisabledRef.current || inputPausedRef.current || !onFireRef.current) return;
         gameAudio.warm();
         const currentTime = performance.now();
         const equippedGearId = getEquippedGearId();
@@ -1070,11 +1073,15 @@ export default function ArenaPreview({
       let touchLookPointerId: number | null = null;
       let touchLookX = 0;
       let touchLookY = 0;
+      let touchLookStartX = 0;
+      let touchLookStartY = 0;
+      let touchLookStartedAt = 0;
+      let touchLookDistance = 0;
       const gamepadMove = { forward: 0, right: 0 };
       let gamepadFireWasPressed = false;
       let gamepadInteractWasPressed = false;
       const applyGamepadInput = () => {
-        if (!gamepadEnabled || controlsDisabled || inputPausedRef.current || !navigator.getGamepads) {
+        if (!gamepadEnabled || controlsDisabledRef.current || inputPausedRef.current || !navigator.getGamepads) {
           gamepadMove.forward = 0;
           gamepadMove.right = 0;
           return;
@@ -1101,8 +1108,8 @@ export default function ArenaPreview({
         gamepadInteractWasPressed = interactPressed;
       };
       const onKeyDown = (event: KeyboardEvent) => {
-        if (controlsDisabled || inputPausedRef.current) return;
-        if (event.code === "KeyF" || event.key.toLowerCase() === "f") {
+        if (controlsDisabledRef.current || inputPausedRef.current) return;
+        if (isFireKeyboardEvent(event)) {
           if (hasAutoFireGear()) fireHeld = true;
           fire();
           event.preventDefault();
@@ -1127,7 +1134,7 @@ export default function ArenaPreview({
         }
       };
       const onKeyUp = (event: KeyboardEvent) => {
-        if (event.code === "KeyF" || event.key.toLowerCase() === "f") fireHeld = false;
+        if (isFireKeyboardEvent(event)) fireHeld = false;
         const code = movementCode(event);
         if (code) keys.delete(code);
         const look = lookCode(event);
@@ -1145,13 +1152,17 @@ export default function ArenaPreview({
       };
       const onPointerLockError = () => setIsPointerLocked(false);
       const onPointerDown = (event: PointerEvent) => {
-        if (controlsDisabled || inputPausedRef.current) return;
+        if (controlsDisabledRef.current || inputPausedRef.current) return;
         gameAudio.warm();
         renderer.domElement.focus();
         if (event.pointerType === "touch") {
           touchLookPointerId = event.pointerId;
           touchLookX = event.clientX;
           touchLookY = event.clientY;
+          touchLookStartX = event.clientX;
+          touchLookStartY = event.clientY;
+          touchLookStartedAt = performance.now();
+          touchLookDistance = 0;
           renderer.domElement.setPointerCapture(event.pointerId);
           event.preventDefault();
           return;
@@ -1171,7 +1182,10 @@ export default function ArenaPreview({
         fire();
       };
       const onPointerUp = (event: PointerEvent) => {
-        if (event.pointerId === touchLookPointerId) touchLookPointerId = null;
+        if (event.pointerType === "touch" && event.pointerId === touchLookPointerId) {
+          if (shouldFireFromTouchGesture({ distance: touchLookDistance, durationMs: performance.now() - touchLookStartedAt })) fire();
+          touchLookPointerId = null;
+        }
         if (event.button === 2 && !hasHeavyGun()) setZoomLevel(0);
         if (event.button === 0) fireHeld = false;
       };
@@ -1179,6 +1193,7 @@ export default function ArenaPreview({
         if (event.pointerType !== "touch" || event.pointerId !== touchLookPointerId) return;
         yaw -= (event.clientX - touchLookX) * TOUCH_LOOK_SENSITIVITY;
         pitch = clamp(pitch - (event.clientY - touchLookY) * TOUCH_LOOK_SENSITIVITY, -0.85, 0.62);
+        touchLookDistance = Math.max(touchLookDistance, Math.hypot(event.clientX - touchLookStartX, event.clientY - touchLookStartY));
         touchLookX = event.clientX;
         touchLookY = event.clientY;
         event.preventDefault();
@@ -1248,7 +1263,7 @@ export default function ArenaPreview({
         if (moved < 0.3 && turned < 0.08) return;
         lastMoveEmitAt = currentTime;
         lastSentPosition = nextPosition;
-        if (controlsDisabled || inputPausedRef.current) return;
+        if (controlsDisabledRef.current || inputPausedRef.current) return;
         onMoveRef.current?.(nextPosition);
       };
 
@@ -1330,14 +1345,14 @@ export default function ArenaPreview({
           if (canOccupy(tryZ, floorEyeHeight)) playerPosition.z = tryZ.z;
         }
 
-        if (fireHeld && hasAutoFireGear() && !inputPausedRef.current && !controlsDisabled) fire();
+        if (fireHeld && hasAutoFireGear() && !inputPausedRef.current && !controlsDisabledRef.current) fire();
 
         const equippedGearId = getEquippedGearId();
         if (!hasZoomGear() && activeZoomLevel > 0) setZoomLevel(0);
         if (hasHeavyGun() && activeZoomLevel > 0 && shouldResetWeaponZoom({
           gearId: equippedGearId,
-          isAlive: !controlsDisabled,
-          roundActive: !controlsDisabled,
+          isAlive: !controlsDisabledRef.current,
+          roundActive: !controlsDisabledRef.current,
           inputPaused: inputPausedRef.current,
           pointerLocked: document.pointerLockElement === renderer.domElement
         })) setZoomLevel(0);
@@ -1457,17 +1472,40 @@ export default function ArenaPreview({
       renderer.dispose();
       mount.removeChild(renderer.domElement);
     };
-  }, [sceneSessionId, currentPlayerId, currentPlayerTeam, currentPlayer?.gear, view, controlsDisabled, debugOverlay, activeQuality, gamepadEnabled, arenaMapId, session?.settings.gameMode, session?.flag?.state, session?.flag?.carrierId, session?.flag?.position.x, session?.flag?.position.z]);
+  }, [sceneSessionId, currentPlayerId, currentPlayerTeam, currentPlayer?.gear, view, debugOverlay, activeQuality, gamepadEnabled, arenaMapId, session?.settings.gameMode, session?.flag?.state, session?.flag?.carrierId, session?.flag?.position.x, session?.flag?.position.z]);
 
-  const beginTouchMove = (forward: number, right: number) => (event: ReactPointerEvent<HTMLButtonElement>) => {
+  const updateTouchJoystick = (event: ReactPointerEvent<HTMLButtonElement>) => {
+    const rect = event.currentTarget.getBoundingClientRect();
+    const radius = Math.max(1, rect.width * 0.34);
+    const dx = clamp(event.clientX - (rect.left + rect.width / 2), -radius, radius);
+    const dy = clamp(event.clientY - (rect.top + rect.height / 2), -radius, radius);
+    const length = Math.hypot(dx, dy);
+    const scale = length > radius ? radius / length : 1;
+    const x = dx * scale;
+    const y = dy * scale;
+    touchMoveRef.current = { forward: clamp(-y / radius, -1, 1), right: clamp(x / radius, -1, 1) };
+    event.currentTarget.style.setProperty("--stick-x", `${x}px`);
+    event.currentTarget.style.setProperty("--stick-y", `${y}px`);
+  };
+  const beginTouchMove = (event: ReactPointerEvent<HTMLButtonElement>) => {
     event.preventDefault();
     if (controlsDisabled || inputPausedRef.current) return;
-    touchMoveRef.current = { forward, right };
+    joystickPointerRef.current = event.pointerId;
+    updateTouchJoystick(event);
     event.currentTarget.setPointerCapture?.(event.pointerId);
   };
-  const endTouchMove = (event: ReactPointerEvent<HTMLButtonElement>) => {
+  const moveTouchJoystick = (event: ReactPointerEvent<HTMLButtonElement>) => {
+    if (joystickPointerRef.current !== event.pointerId) return;
     event.preventDefault();
+    updateTouchJoystick(event);
+  };
+  const endTouchMove = (event: ReactPointerEvent<HTMLButtonElement>) => {
+    if (joystickPointerRef.current !== event.pointerId) return;
+    event.preventDefault();
+    joystickPointerRef.current = null;
     touchMoveRef.current = { forward: 0, right: 0 };
+    event.currentTarget.style.setProperty("--stick-x", "0px");
+    event.currentTarget.style.setProperty("--stick-y", "0px");
     event.currentTarget.releasePointerCapture?.(event.pointerId);
   };
   const fireFromTouch = (event: ReactPointerEvent<HTMLButtonElement>) => {
@@ -1578,13 +1616,13 @@ export default function ArenaPreview({
           </div>
           {!controlsDisabled && !isPointerLocked && !suppressHint && <div className="control-lock">WASD moves. Arrow keys or swipe the arena to look around. Click the arena for mouse aim. F or left click launches. E interacts with the flag.</div>}
           <div className="touch-controls" aria-label="Touch controls">
-            <div className="touch-dpad" aria-label="Move">
-              <button type="button" className="touch-up" aria-label="Move forward" disabled={controlsDisabled} onPointerDown={beginTouchMove(1, 0)} onPointerUp={endTouchMove} onPointerCancel={endTouchMove} onPointerLeave={endTouchMove}>W</button>
-              <button type="button" className="touch-left" aria-label="Move left" disabled={controlsDisabled} onPointerDown={beginTouchMove(0, -1)} onPointerUp={endTouchMove} onPointerCancel={endTouchMove} onPointerLeave={endTouchMove}>A</button>
-              <button type="button" className="touch-down" aria-label="Move backward" disabled={controlsDisabled} onPointerDown={beginTouchMove(-1, 0)} onPointerUp={endTouchMove} onPointerCancel={endTouchMove} onPointerLeave={endTouchMove}>S</button>
-              <button type="button" className="touch-right" aria-label="Move right" disabled={controlsDisabled} onPointerDown={beginTouchMove(0, 1)} onPointerUp={endTouchMove} onPointerCancel={endTouchMove} onPointerLeave={endTouchMove}>D</button>
+            <button type="button" className="touch-joystick" aria-label="Movement joystick" disabled={controlsDisabled} onPointerDown={beginTouchMove} onPointerMove={moveTouchJoystick} onPointerUp={endTouchMove} onPointerCancel={endTouchMove}>
+              <span aria-hidden="true" />
+            </button>
+            <div className="touch-action-group">
+              <span>Swipe to look · Tap arena to fire</span>
+              <button type="button" className="touch-fire" disabled={controlsDisabled} onPointerDown={fireFromTouch}>Fire</button>
             </div>
-            <button type="button" className="touch-fire" disabled={controlsDisabled} onPointerDown={fireFromTouch}>Fire</button>
           </div>
         </>
       )}

@@ -9,6 +9,7 @@ import {
   Download,
   Eye,
   EyeOff,
+  Folder,
   GraduationCap,
   HeartPulse,
   LogOut,
@@ -516,10 +517,9 @@ export default function App() {
   return (
     <main id="main-content" className="app-shell" tabIndex={-1}>
       <a className="skip-link" href="#main-content">Skip to main content</a>
-      <header className="topbar">
+      <header className={`topbar topbar-${mode}${teacher ? " teacher-authenticated" : ""}`}>
         <button className="brand-button" onClick={() => navigateTo("/", "home")}>
-          <Shield size={24} aria-hidden="true" />
-          <span>GyakutenEigo</span>
+          <span>QuizStrike</span>
         </button>
         <nav className="primary-nav" aria-label="Primary">
           <button
@@ -532,6 +532,13 @@ export default function App() {
             Menu
           </button>
           <div id="primary-actions" className="top-actions" data-open={isMobileNavOpen ? "true" : "false"}>
+          {mode === "quizStrike" && !teacher ? (
+            <>
+              <button onClick={() => { setTeacherAuthMode("signup"); navigateTo("/quiz-strike", "teacher"); }}>Sign Up</button>
+              <button onClick={() => navigateTo("/join", "student")}>Join Game</button>
+              <button className="nav-login" onClick={() => { setTeacherAuthMode("login"); navigateTo("/quiz-strike", "teacher"); }}>Login</button>
+            </>
+          ) : <>
           <button className={mode === "quizStrike" ? "active" : ""} onClick={() => navigateTo("/quiz-strike", "quizStrike")}>
             <Play size={18} aria-hidden="true" />
             Quiz-Strike
@@ -557,6 +564,7 @@ export default function App() {
               Teacher Login
             </button>
           )}
+          </>}
           </div>
         </nav>
       </header>
@@ -748,49 +756,18 @@ function GyakutenEigoHome({ onOpenGame, onJoinGame }: { onOpenGame: () => void; 
   );
 }
 
-function QuizStrikeLanding({ onTeacherLogin, onTeacherSignup, onStudent }: { onTeacherLogin: () => void; onTeacherSignup: () => void; onStudent: () => void }) {
+function QuizStrikeLanding({ onTeacherSignup }: { onTeacherLogin: () => void; onTeacherSignup: () => void; onStudent: () => void }) {
   return (
     <div className="quizstrike-page">
-      <section className="landing-grid">
-        <div className="landing-copy">
-          <span className="eyebrow">GyakutenEigo game host</span>
-          <h1>A quiz arena that rewards the right answer.</h1>
-          <p>
-            Host a private Quiz-Strike match, share one join code, and guide the class through team objectives while every student keeps practicing the material.
-          </p>
-          <ul className="landing-benefit-list">
-            <li><Target size={18} aria-hidden="true" />Objective-led rounds: Flag, Zombie, or classic practice.</li>
-            <li><Users size={18} aria-hidden="true" />Live roster, scoreboards, and teacher controls in one workspace.</li>
-            <li><BookOpen size={18} aria-hidden="true" />Question accuracy stays connected to the game report.</li>
-          </ul>
-          <div className="button-row">
-            <button className="primary" onClick={onTeacherLogin}>
-              <GraduationCap size={18} aria-hidden="true" />
-              Teacher Login
-            </button>
-            <button onClick={onTeacherSignup}>Create Teacher Account</button>
-            <button onClick={onStudent}>
-              <DoorOpen size={18} aria-hidden="true" />
-              Join Game
-            </button>
-          </div>
-        </div>
-        <div className="landing-preview">
-          <Suspense fallback={<ArenaLoading label="Loading preview" />}>
-            <ArenaPreview />
-          </Suspense>
-          <div className="preview-mode-chip"><Target size={16} aria-hidden="true" />Flag Mode · Desert Citadel</div>
-          <div className="hud-strip">
-            <span>Warmth 100</span>
-            <span>Money $0</span>
-            <span>Starter Launcher</span>
-          </div>
-        </div>
-      </section>
-      <section className="host-assurance" aria-label="Quiz-Strike classroom features">
-        <span><Shield size={18} aria-hidden="true" />Private teacher-hosted sessions</span>
-        <span><Timer size={18} aria-hidden="true" />Round timing and classroom settings</span>
-        <span><Download size={18} aria-hidden="true" />Learning reports after play</span>
+      <section className="landing-grid landing-story">
+        <article className="founder-card">
+          <p>Hi! I’m Peter</p>
+          <p>I started <strong>QuizStrike</strong> because I wanted to bring esports and classroom learning together.</p>
+          <p>Esports taught me valuable skills that I never learned in school, and it opened my world to new experiences, communities, and opportunities. I also saw how games can keep students motivated, focused, and actively involved in the learning process.</p>
+          <p>That inspired me to build <strong>QuizStrike</strong>—a new bridge between esports and education, designed to make classroom learning more engaging, competitive, and fun.</p>
+          <p>I can’t wait for you to try it!</p>
+        </article>
+        <button className="landing-signup" onClick={onTeacherSignup}>Sign Up for Free</button>
       </section>
     </div>
   );
@@ -925,30 +902,21 @@ function TeacherDashboard({ teacher, onLogout }: { teacher: TeacherUser; onLogou
 
   return (
     <section className="workspace">
+      <div className="dashboard-brand-row">
+        <h1>Quiz Strike</h1>
+        <div><strong>{teacher.name}</strong><button onClick={onLogout}>Sign Out</button></div>
+      </div>
       <aside className="sidebar" aria-label="Teacher sections">
-        <div className="teacher-id">
-          <strong>{teacher.name}</strong>
-          <span>{teacher.email}</span>
-        </div>
         <button aria-current={tab === "home" ? "page" : undefined} className={tab === "home" ? "active" : ""} onClick={() => setTab("home")}>
-          <Target size={18} aria-hidden="true" /> Dashboard Home
-        </button>
-        <button aria-current={tab === "quizzes" ? "page" : undefined} className={tab === "quizzes" ? "active" : ""} onClick={() => setTab("quizzes")}>
-          <BookOpen size={18} aria-hidden="true" /> Quiz Sets
-        </button>
-        <button aria-current={tab === "sessions" ? "page" : undefined} className={tab === "sessions" ? "active" : ""} onClick={() => setTab("sessions")}>
-          <Play size={18} aria-hidden="true" /> Live Session
+          Folders
         </button>
         <button aria-current={tab === "reports" ? "page" : undefined} className={tab === "reports" ? "active" : ""} onClick={() => setTab("reports")}>
-          <Download size={18} aria-hidden="true" /> Reports
-        </button>
-        <button onClick={onLogout}>
-          <LogOut size={18} aria-hidden="true" /> Sign Out
+          Reports
         </button>
       </aside>
 
       <div className="main-panel">
-        <div className="section-heading">
+        <div className="section-heading dashboard-section-heading">
           <div>
             <span className="eyebrow">Teacher control center</span>
             <h1>Classroom command center</h1>
@@ -967,7 +935,7 @@ function TeacherDashboard({ teacher, onLogout }: { teacher: TeacherUser; onLogou
           </p>
         )}
 
-        {tab === "home" && <DashboardHome data={data} onTab={setTab} />}
+        {tab === "home" && <TeacherFolders data={data} onTab={setTab} />}
         {tab === "quizzes" && <QuizManager data={data} onRefresh={refresh} />}
         {tab === "sessions" && (
           <SessionManager
@@ -999,6 +967,37 @@ function TeacherDashboard({ teacher, onLogout }: { teacher: TeacherUser; onLogou
               </button>
             ))}
           </div>
+        )}
+      </div>
+    </section>
+  );
+}
+
+function TeacherFolders({ data, onTab }: { data: DashboardPayload; onTab: (tab: "quizzes" | "sessions") => void }) {
+  return (
+    <section className="teacher-folders">
+      <div className="folders-heading">
+        <h2>Folders</h2>
+        <button className="folder-new" onClick={() => onTab("quizzes")}>New <Plus size={22} aria-hidden="true" /></button>
+      </div>
+      <div className="folder-chips" aria-label="Quiz folders">
+        <button className="active"><Folder size={15} aria-hidden="true" />All kits</button>
+        {data.classes.map((klass) => <button key={klass.id}><Folder size={15} aria-hidden="true" />{klass.name}</button>)}
+        {data.classes.length === 0 && <><button><Folder size={15} aria-hidden="true" />1st Grade</button><button><Folder size={15} aria-hidden="true" />2nd Grade</button><button><Folder size={15} aria-hidden="true" />MISC</button></>}
+      </div>
+      <div className="folder-quiz-list">
+        {data.quizSets.map((quiz) => (
+          <article className="folder-quiz-row" key={quiz.id}>
+            <div className="quiz-cover"><BookOpen size={26} aria-hidden="true" /></div>
+            <div><h3>{quiz.title}</h3><small>{quiz.questions.length} questions · Created {new Date(quiz.createdAt).toLocaleDateString()}</small></div>
+            <div className="folder-row-actions">
+              <button className="play-live" onClick={() => onTab("sessions")}>Play Live</button>
+              <button className="edit-set" onClick={() => onTab("quizzes")}>Edit Set</button>
+            </div>
+          </article>
+        ))}
+        {data.quizSets.length === 0 && (
+          <div className="folder-empty"><BookOpen size={34} aria-hidden="true" /><h3>Your quiz sets will appear here</h3><p>Create the first set, then launch it live for your class.</p><button className="folder-new" onClick={() => onTab("quizzes")}>New Quiz <Plus size={18} aria-hidden="true" /></button></div>
         )}
       </div>
     </section>
@@ -2387,14 +2386,14 @@ function StudentExperience({ onExit }: { onExit: () => void }) {
   if (!session || !player) {
     if (isRestoringStudentSession) {
       return (
-        <section className="auth-layout">
+        <section className="auth-layout student-join-screen">
           <ArenaLoading label="Restoring your student session" />
         </section>
       );
     }
     return (
-      <section className="auth-layout">
-        <div>
+      <section className="auth-layout student-join-screen">
+        <div className="student-join-help">
           <h1>Join Game</h1>
           <p>Enter your teacher's private session code and a classroom nickname. No student email account is needed.</p>
           <div className="panel how-to-card">
@@ -2404,7 +2403,7 @@ function StudentExperience({ onExit }: { onExit: () => void }) {
             <p>If you are frozen out, keep practicing. Three correct answers respawn you back into the round.</p>
           </div>
         </div>
-        <form className="panel form-panel" onSubmit={join}>
+        <form className="panel form-panel student-join-form" onSubmit={join}>
           {joinCodeFromLink ? (
             <div className="linked-join-code" aria-label={`Join session ${joinCode}`}>
               <span><Link2 size={17} aria-hidden="true" />Session link ready</span>
@@ -2413,7 +2412,7 @@ function StudentExperience({ onExit }: { onExit: () => void }) {
             </div>
           ) : (
             <label>
-              Session Code
+              <span className="sr-only">Game code</span>
               <input
                 value={joinCode}
                 onChange={(event) => { setJoinCode(event.target.value.toUpperCase()); status.clearError(); }}
@@ -2424,17 +2423,17 @@ function StudentExperience({ onExit }: { onExit: () => void }) {
                 enterKeyHint="next"
                 aria-invalid={Boolean(status.error)}
                 aria-describedby={status.error ? "join-error" : undefined}
+                placeholder="GAME CODE"
               />
             </label>
           )}
           <label>
-            Nickname
-            <input autoComplete="nickname" enterKeyHint="done" value={nickname} onChange={(event) => { setNickname(event.target.value); status.clearError(); }} maxLength={20} aria-invalid={Boolean(nicknameError)} aria-describedby={nicknameError ? "nickname-error" : undefined} />
+            <span className="sr-only">Name</span>
+            <input placeholder="NAME" autoComplete="nickname" enterKeyHint="done" value={nickname} onChange={(event) => { setNickname(event.target.value); status.clearError(); }} maxLength={20} aria-invalid={Boolean(nicknameError)} aria-describedby={nicknameError ? "nickname-error" : undefined} />
           </label>
           {nicknameError && <p id="nickname-error" className="error-text" role="alert">{nicknameError}</p>}
           {status.error && <p id="join-error" className="error-text" role="alert">{status.error}</p>}
           <button className="primary" type="submit" disabled={isJoining || Boolean(nicknameError)}>
-            <DoorOpen size={18} aria-hidden="true" />
             {isJoining ? "Working..." : "Join"}
           </button>
         </form>
