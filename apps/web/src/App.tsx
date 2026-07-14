@@ -2038,7 +2038,7 @@ function StudentExperience({ onExit }: { onExit: () => void }) {
   }, []);
 
   useEffect(() => {
-    if (!session || !player?.id) return;
+    if (!session || !player?.id || !playerToken) return;
     const activePlayerId = player.id;
     const socket = io(API_URL);
     socketRef.current = socket;
@@ -2114,7 +2114,31 @@ function StudentExperience({ onExit }: { onExit: () => void }) {
       if (socketRef.current === socket) socketRef.current = null;
       socket.disconnect();
     };
-  }, [session?.sessionCode, session?.settings.deadPlayersCanPractice, player?.id, openRespawnPractice]);
+  }, [session?.sessionCode, session?.settings.deadPlayersCanPractice, player?.id, playerToken, openRespawnPractice]);
+
+  useEffect(() => {
+    if (!session || !player?.id || session.status !== "waiting") return;
+    const sessionCode = session.sessionCode;
+    const activePlayerId = player.id;
+    let cancelled = false;
+
+    const syncWaitingRoom = async () => {
+      try {
+        const payload = (await studentApi.session(sessionCode)) as { session: GameSession };
+        if (cancelled) return;
+        setSession(payload.session);
+        setPlayer((current) => payload.session.players.find((item) => item.id === (current?.id ?? activePlayerId)) ?? current);
+      } catch {
+        // The socket remains the primary transport; the next poll retries transient failures.
+      }
+    };
+
+    const interval = window.setInterval(() => void syncWaitingRoom(), 1000);
+    return () => {
+      cancelled = true;
+      window.clearInterval(interval);
+    };
+  }, [session?.sessionCode, session?.status, player?.id]);
 
   useEffect(() => {
     const isTypingTarget = (target: EventTarget | null) => {
