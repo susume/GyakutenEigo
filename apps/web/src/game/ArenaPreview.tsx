@@ -31,6 +31,7 @@ import { CharacterManager, type CharacterManagerStats } from "./characters/Chara
 import { isFireKeyboardEvent, resolveCombatPointerAction, shouldFireFromTouchGesture } from "./arenaInput";
 import { gameAudio, type MovementAudioMode } from "./GameAudio";
 import { cycleHeavyGunZoom, getWeaponFov, shouldResetWeaponZoom } from "./weaponControls";
+import { resolveTouchJoystickVector } from "./touchJoystick";
 import {
   readGamePreferences,
   resolveArenaQuality,
@@ -238,6 +239,7 @@ export default function ArenaPreview({
   const inputPausedRef = useRef(inputPaused);
   const controlsDisabledRef = useRef(controlsDisabled);
   const joystickPointerRef = useRef<number | null>(null);
+  const joystickElementRef = useRef<HTMLButtonElement | null>(null);
   const syncPlayersRef = useRef<(session?: GameSession, currentPlayer?: PlayerSession) => void>(() => undefined);
   const [isPointerLocked, setIsPointerLocked] = useState(false);
   const [hitPulse, setHitPulse] = useState(0);
@@ -265,6 +267,45 @@ export default function ArenaPreview({
     inputPausedRef.current = inputPaused;
     controlsDisabledRef.current = controlsDisabled;
   }, [onMove, onFire, onInteract, inputPaused, controlsDisabled]);
+
+  useEffect(() => {
+    const resetJoystick = () => {
+      joystickPointerRef.current = null;
+      touchMoveRef.current = { forward: 0, right: 0 };
+      joystickElementRef.current?.style.setProperty("--stick-x", "0px");
+      joystickElementRef.current?.style.setProperty("--stick-y", "0px");
+    };
+    const moveJoystick = (event: PointerEvent) => {
+      const joystick = joystickElementRef.current;
+      if (!joystick || joystickPointerRef.current !== event.pointerId) return;
+      event.preventDefault();
+      const vector = resolveTouchJoystickVector(event.clientX, event.clientY, joystick.getBoundingClientRect());
+      touchMoveRef.current = { forward: vector.forward, right: vector.right };
+      joystick.style.setProperty("--stick-x", `${vector.stickX}px`);
+      joystick.style.setProperty("--stick-y", `${vector.stickY}px`);
+    };
+    const stopJoystick = (event: PointerEvent) => {
+      if (joystickPointerRef.current === event.pointerId) resetJoystick();
+    };
+
+    window.addEventListener("pointermove", moveJoystick, { passive: false });
+    window.addEventListener("pointerup", stopJoystick);
+    window.addEventListener("pointercancel", stopJoystick);
+    return () => {
+      window.removeEventListener("pointermove", moveJoystick);
+      window.removeEventListener("pointerup", stopJoystick);
+      window.removeEventListener("pointercancel", stopJoystick);
+      resetJoystick();
+    };
+  }, []);
+
+  useEffect(() => {
+    if (!controlsDisabled && !inputPaused) return;
+    joystickPointerRef.current = null;
+    touchMoveRef.current = { forward: 0, right: 0 };
+    joystickElementRef.current?.style.setProperty("--stick-x", "0px");
+    joystickElementRef.current?.style.setProperty("--stick-y", "0px");
+  }, [controlsDisabled, inputPaused]);
 
   useEffect(() => {
     currentPlayerRef.current = currentPlayer;
@@ -1474,39 +1515,19 @@ export default function ArenaPreview({
     };
   }, [sceneSessionId, currentPlayerId, currentPlayerTeam, currentPlayer?.gear, view, debugOverlay, activeQuality, gamepadEnabled, arenaMapId, session?.settings.gameMode, session?.flag?.state, session?.flag?.carrierId, session?.flag?.position.x, session?.flag?.position.z]);
 
-  const updateTouchJoystick = (event: ReactPointerEvent<HTMLButtonElement>) => {
-    const rect = event.currentTarget.getBoundingClientRect();
-    const radius = Math.max(1, rect.width * 0.34);
-    const dx = clamp(event.clientX - (rect.left + rect.width / 2), -radius, radius);
-    const dy = clamp(event.clientY - (rect.top + rect.height / 2), -radius, radius);
-    const length = Math.hypot(dx, dy);
-    const scale = length > radius ? radius / length : 1;
-    const x = dx * scale;
-    const y = dy * scale;
-    touchMoveRef.current = { forward: clamp(-y / radius, -1, 1), right: clamp(x / radius, -1, 1) };
-    event.currentTarget.style.setProperty("--stick-x", `${x}px`);
-    event.currentTarget.style.setProperty("--stick-y", `${y}px`);
-  };
   const beginTouchMove = (event: ReactPointerEvent<HTMLButtonElement>) => {
     event.preventDefault();
     if (controlsDisabled || inputPausedRef.current) return;
     joystickPointerRef.current = event.pointerId;
-    updateTouchJoystick(event);
-    event.currentTarget.setPointerCapture?.(event.pointerId);
-  };
-  const moveTouchJoystick = (event: ReactPointerEvent<HTMLButtonElement>) => {
-    if (joystickPointerRef.current !== event.pointerId) return;
-    event.preventDefault();
-    updateTouchJoystick(event);
-  };
-  const endTouchMove = (event: ReactPointerEvent<HTMLButtonElement>) => {
-    if (joystickPointerRef.current !== event.pointerId) return;
-    event.preventDefault();
-    joystickPointerRef.current = null;
-    touchMoveRef.current = { forward: 0, right: 0 };
-    event.currentTarget.style.setProperty("--stick-x", "0px");
-    event.currentTarget.style.setProperty("--stick-y", "0px");
-    event.currentTarget.releasePointerCapture?.(event.pointerId);
+    const vector = resolveTouchJoystickVector(event.clientX, event.clientY, event.currentTarget.getBoundingClientRect());
+    touchMoveRef.current = { forward: vector.forward, right: vector.right };
+    event.currentTarget.style.setProperty("--stick-x", `${vector.stickX}px`);
+    event.currentTarget.style.setProperty("--stick-y", `${vector.stickY}px`);
+    try {
+      event.currentTarget.setPointerCapture?.(event.pointerId);
+    } catch {
+      // Window-level tracking keeps the joystick working when pointer capture is unavailable.
+    }
   };
   const fireFromTouch = (event: ReactPointerEvent<HTMLButtonElement>) => {
     event.preventDefault();
@@ -1616,7 +1637,7 @@ export default function ArenaPreview({
           </div>
           {!controlsDisabled && !isPointerLocked && !suppressHint && <div className="control-lock">WASD moves. Arrow keys or swipe the arena to look around. Click the arena for mouse aim. F or left click launches. E interacts with the flag.</div>}
           <div className="touch-controls" aria-label="Touch controls">
-            <button type="button" className="touch-joystick" aria-label="Movement joystick" disabled={controlsDisabled} onPointerDown={beginTouchMove} onPointerMove={moveTouchJoystick} onPointerUp={endTouchMove} onPointerCancel={endTouchMove}>
+            <button ref={joystickElementRef} type="button" className="touch-joystick" aria-label="Movement joystick" disabled={controlsDisabled} onPointerDown={beginTouchMove}>
               <span aria-hidden="true" />
             </button>
             <div className="touch-action-group">
