@@ -1755,7 +1755,10 @@ function SessionManager({
               </button>
             </div>
             <Suspense fallback={<ArenaLoading label="Loading live arena" />}>
-              <ArenaPreview session={selectedSession} />
+              <ArenaPreview
+                key={`${selectedSession.id}:${selectedSession.startedAt ?? "waiting"}:overview`}
+                session={selectedSession}
+              />
             </Suspense>
             <Scoreboard players={selectedSession.players} gameMode={selectedSession.settings.gameMode} />
             <EventFeed events={selectedSession.events ?? []} />
@@ -2473,6 +2476,7 @@ function StudentExperience({ onExit }: { onExit: () => void }) {
         </div>
         <Suspense fallback={<ArenaLoading />}>
           <ArenaPreview
+            key={`${session.id}:${session.startedAt ?? "waiting"}:${player.id}`}
             session={session}
             currentPlayer={player}
             view="fps"
