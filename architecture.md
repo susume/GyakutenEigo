@@ -9,7 +9,7 @@ flowchart LR
   Visitor["Teacher or student browser"] --> Pages["GitHub Pages\nwww.gyakuteneigo.com\nReact + Vite"]
   Pages -->|"HTTPS REST + Socket.IO\nprimary + school-network fallback"| Api["Render\napi.gyakuteneigo.com\nNode + Express + Socket.IO"]
   Pages -.->|"fallback endpoint"| RenderUrl["gyakuteneigo-api.onrender.com"]
-  Api --> State["Optional PostgreSQL runtime snapshot\nplus single-process live simulation"]
+  Api --> State["Render PostgreSQL RuntimeSnapshot\nplus single-process live simulation"]
   Shared["packages/shared\ntypes, validation, deterministic rules"] --> Pages
   Shared --> Api
 ```
@@ -37,7 +37,7 @@ The apex address, `https://gyakuteneigo.com`, is also a valid entry point and mu
 - `packages/shared`: shared TypeScript contracts, input validation, map data, session rules, quiz economy, movement checks, game-mode rules, and report helpers.
 - `docs`: deployment instructions and the developer handoff prompt.
 - `.github/workflows/deploy-web.yml`: GitHub Pages build and deployment workflow.
-- `prisma`: optional persistence schema and migrations. It is not active in the current deployed Render service because `DATABASE_URL` is not configured.
+- `prisma`: persistence schema and migrations. The deployed Render service runs these migrations at startup when `DATABASE_URL` is present.
 
 ## Audit and Current Implementation Status
 
@@ -60,11 +60,11 @@ The audit findings and subsequent classroom fixes are implemented on `main` and 
 - Bots pursue the nearest active real opponent and detour around arena cover instead of freezing against a blocked path.
 - Hosted account creation and Socket.IO connections retry the Render service hostname when a school network blocks the branded `api.` hostname.
 
-Validation for this implementation is green: 53 shared tests, 4 server tests, 41 web tests, server/web typechecks, full production build, live 60-second Classic Tag round transition, live bot socket movement, GitHub Actions CI, and Render deployment.
+Validation for this implementation is green: 53 shared tests, 4 server tests, 41 web tests, server/web typechecks, full production build, live 60-second Classic Tag round transition, live bot socket movement, GitHub Actions CI, and Render deployment. The production API health check currently reports `storage: "postgres"`.
 
 ### Remaining live QA gaps
 
-The audit is not release certification. Still unverified or only partially covered are complete Flag placement/capture/hold and simultaneous objective races; Zombie projectile conversion and near-simultaneous conversions; knocked-out refresh/rejoin; host-browser disconnect; multi-tab/network-drop edge cases; hold/release Tab scoreboard behavior; human-vs-human damage and full weapon/zoom/reload coverage; 40-player scale; long soak; real Chromebook performance; FPS/heap/GPU/long-task/HAR/WebSocket instrumentation; and safe live client-message mutation/replay. The deployed Render service is also memory-only until `DATABASE_URL` is configured.
+The audit is not release certification. Still unverified or only partially covered are complete Flag placement/capture/hold and simultaneous objective races; Zombie projectile conversion and near-simultaneous conversions; knocked-out refresh/rejoin; host-browser disconnect; multi-tab/network-drop edge cases; hold/release Tab scoreboard behavior; human-vs-human damage and full weapon/zoom/reload coverage; 40-player scale; long soak; real Chromebook performance; FPS/heap/GPU/long-task/HAR/WebSocket instrumentation; and safe live client-message mutation/replay. PostgreSQL persistence is configured, but scale, backup, and broader live-QA work remain.
 
 ## Web Application
 
@@ -199,13 +199,15 @@ CLIENT_ORIGIN=https://gyakuteneigo.com,https://www.gyakuteneigo.com,https://susu
 
 `CLIENT_ORIGIN` is a comma-separated allow-list used by both Express CORS and Socket.IO. Production also adds the three supported hosted origins by default. Omitting an additional school or Pages origin can block teacher account creation or real-time game connections when visitors use that address. Do not expose or commit the actual `JWT_SECRET`.
 
-`apps/server/src/start.ts` is the Render-safe entry wrapper compiled to `dist/start.js`. It runs Prisma migrations only when `DATABASE_URL` is configured and resolves the repository-level schema explicitly; otherwise it starts the existing in-memory mode. This matches the current Render service configuration and prevents a missing database from blocking the API entirely.
+`apps/server/src/start.ts` is the Render-safe entry wrapper compiled to `dist/start.js`. It runs Prisma migrations only when `DATABASE_URL` is configured and resolves the repository-level schema explicitly; otherwise it starts the existing in-memory mode. The current Render service has `DATABASE_URL` set to the internal PostgreSQL connection, and deployment `98aac2f` successfully applied the runtime-snapshot migration.
 
 The `api` DNS record is a CNAME to `gyakuteneigo-api.onrender.com`. Render must show the custom domain as verified with a certificate issued before relying on `https://api.gyakuteneigo.com`; the Render hostname remains the browser fallback for restricted networks.
 
 ## Data and Operational Limits
 
-The live simulation keeps transient rate limits, fire cooldowns, socket bindings, question gates, and—when no `DATABASE_URL` is configured—teacher/classroom data in process memory. When PostgreSQL is configured, durable classroom state (teachers, classes, quizzes, sessions, players, and answer logs) is mirrored through the `RuntimeSnapshot` record and restored at startup. The current Render service reports `storage: "memory"`, so every restart or redeploy clears accounts, quizzes, sessions, and player tokens. The free Render tier can still take time to wake after inactivity; the first request may be slow.
+The live simulation keeps transient rate limits, fire cooldowns, socket bindings, question gates, and other process-local runtime details in memory. When PostgreSQL is configured, durable classroom state (teachers, classes, quizzes, sessions, players, and answer logs) is mirrored through the single `RuntimeSnapshot` record and restored at startup. The current Render API reports `storage: "postgres"`, so teacher content and session data survive service restarts and redeploys.
+
+The database is currently `gyakuteneigo-db` on Render's Free PostgreSQL tier (Oregon, Production). Render Free PostgreSQL is limited to 1 GB, has no backups, may restart for maintenance, and expires 30 days after creation. This instance is scheduled to expire on August 14, 2026 unless it is upgraded or migrated. **Neon Free** is the preferred no-cost alternative to evaluate: it is PostgreSQL-compatible and can use the same Prisma `DATABASE_URL`, but it has 0.5 GB per project, 100 compute-hours per month, and scales to zero when idle.
 
 The server assumes one process. Socket.IO rooms and in-memory state are not shared between multiple instances. Before a serious classroom launch, add persistent storage and a shared Socket.IO adapter or keep a single instance intentionally.
 
@@ -238,8 +240,9 @@ The audit report and current fix verification are maintained at:
 
 ## Next Architecture Milestones
 
-1. Replace in-memory maps with persistent database repositories and migrations.
-2. Add import/export or seed flows for teacher quiz content.
-3. Add production request logging, monitoring, durable rate limits, and token revocation.
-4. Add browser-based end-to-end tests for signup, teacher session creation, student join, gameplay, and reports.
-5. Improve keyboard, screen-reader, reduced-motion, and mobile accessibility across the teacher and game interfaces.
+1. Replace the single runtime snapshot with persistent database repositories and normalized migrations.
+2. Add an export/backup job before the Render Free database expiry and evaluate a move to Neon Free.
+3. Add import/export or seed flows for teacher quiz content.
+4. Add production request logging, monitoring, durable rate limits, and token revocation.
+5. Add browser-based end-to-end tests for signup, teacher session creation, student join, gameplay, and reports.
+6. Improve keyboard, screen-reader, reduced-motion, and mobile accessibility across the teacher and game interfaces.

@@ -71,7 +71,7 @@ Build: npm ci --include=dev && npm run build -w @quizstrike/shared && npm run bu
 Start: npm start -w @quizstrike/server
 ```
 
-The server start script resolves to `node dist/start.js`. The start wrapper runs `prisma migrate deploy` with the repository-level schema only when `DATABASE_URL` is configured. The current Render service has no `DATABASE_URL`, so it starts in memory-only mode and logs a warning instead of failing startup.
+The server start script resolves to `node dist/start.js`. The start wrapper runs `prisma migrate deploy` with the repository-level schema when `DATABASE_URL` is configured. The current Render service has PostgreSQL configured and the latest deployment successfully applied the `RuntimeSnapshot` migration. The API health check reports `storage: "postgres"`.
 
 Its required environment variables are:
 
@@ -81,13 +81,30 @@ NODE_VERSION=22
 JWT_SECRET=<secret stored only in Render>
 TRUST_PROXY=true
 CLIENT_ORIGIN=https://gyakuteneigo.com,https://www.gyakuteneigo.com,https://susume.github.io
+DATABASE_URL=<internal PostgreSQL URL stored only in Render>
 ```
 
 Keep all supported hosted origins in `CLIENT_ORIGIN`, including `https://susume.github.io` when the default Pages URL may be used. Both Express and Socket.IO use this allow-list. The production server also supplies the three known hosted origins by default. The web client retries `gyakuteneigo-api.onrender.com` if a school network cannot reach `api.gyakuteneigo.com`, then uses the successful endpoint for Socket.IO.
 
 The `api` DNS record is a CNAME to `gyakuteneigo-api.onrender.com`. The Render custom-domain page must report verification and an issued HTTPS certificate.
 
-The current production deployment is on `main` at commit `b985770` and Render shows that commit as live. GitHub Actions CI and the Pages deployment for that commit are green. The web bundle and API must both be refreshed after a deployment before testing a new session.
+The current production deployment is on `main` at commit `98aac2f` (`Fix Prisma schema path on Render`) and Render shows that commit as live. GitHub Actions CI, the Pages deployment, and the Render API deployment are green. The web bundle and API must both be refreshed after a deployment before testing a new session.
+
+### Persistence status
+
+Render PostgreSQL database `gyakuteneigo-db` is active in the Oregon Production environment. The server persists teachers, classes, quiz sets, sessions, players, and answer logs through the single `RuntimeSnapshot` record and hydrates them at startup. The database is on Render's Free PostgreSQL tier: 1 GB, no managed backups, and a 30-day lifetime. It is scheduled to expire on **August 14, 2026** unless it is upgraded or migrated.
+
+**Neon Free** is the preferred free alternative to evaluate. It is PostgreSQL-compatible and can use the existing Prisma schema and `DATABASE_URL`; its current limits are 0.5 GB per project, 100 compute-hours per month, and scale-to-zero when idle.
+
+## TODO checklist
+
+- [ ] Export the current Render `RuntimeSnapshot` before the August 14, 2026 expiry date.
+- [ ] Create a Neon Free PostgreSQL project and run the Prisma migrations against it.
+- [ ] Migrate the exported runtime snapshot to Neon and update Render's `DATABASE_URL`.
+- [ ] Verify `GET /api/health` returns `storage: "postgres"` after the migration.
+- [ ] Test teacher login, quiz-set creation, session creation, student join, reports, and restart recovery.
+- [ ] Decide whether to upgrade Render PostgreSQL ($6/month Basic-256mb) or remain on Neon Free before classroom launch.
+- [ ] Replace the single JSON runtime snapshot with normalized repositories and add scheduled backups.
 
 ## Audit and handoff status (2026-07-15)
 
@@ -111,7 +128,7 @@ Implemented and verified:
 - Network-resilient API client with branded API primary and Render-hostname fallback for restricted school networks.
 - Automated validation: 53 shared tests, 4 server tests, 41 web tests, server/web typechecks, and a full production build.
 
-The current implementation is on `main` at commit `b985770`. It is deployed to GitHub Pages and Render, but this remains a classroom playtest deployment rather than a full production certification.
+The current implementation is on `main` at commit `98aac2f`. It is deployed to GitHub Pages and Render, but this remains a classroom playtest deployment rather than a full production certification.
 
 Remaining live QA work:
 
@@ -121,7 +138,8 @@ Remaining live QA work:
 - Verify human-vs-human damage, same-team fire rejection, full weapon/reload/zoom matrix, and hold/release Tab scoreboard semantics.
 - Run 40-player scale, long soak, real Chromebook, FPS/heap/GPU/long-task/HAR/WebSocket instrumentation, and browser edge-case coverage.
 - Attempt safe live client-message mutation/replay tests against server authority.
-- Configure PostgreSQL on Render before treating accounts, sessions, tokens, and reports as durable.
+- Confirm the PostgreSQL snapshot survives a planned Render restart/redeploy and document the recovery check.
+- Evaluate Neon Free as the no-cost replacement before the Render Free database expiry.
 - Verify first-load/cold-start behavior on a school network; the Render Free service can take 50 seconds or more to wake.
 
 Audit references:
@@ -145,7 +163,8 @@ The shared server uses map-specific team spawn fallbacks, movement obstacles, bo
 
 ## Known operational limits
 
-- The current Render deployment uses in-memory storage because `DATABASE_URL` is not configured. Any Render restart, redeploy, or sleep clears teacher accounts, quizzes, sessions, answer logs, and player tokens. Configure PostgreSQL before relying on durable classroom data.
+- The current Render deployment uses PostgreSQL-backed runtime snapshots. Teacher accounts, quizzes, sessions, answer logs, and player tokens are restored after restart, but the data is stored in one JSON snapshot rather than normalized tables.
+- Render Free PostgreSQL has a 1 GB limit, no managed backups, possible maintenance restarts, and a 30-day expiry. Export or migrate the data before August 14, 2026. Neon Free is the planned alternative if a paid Render database is not desired.
 - The Render Free plan may take a while to wake after inactivity. The first API request can be slow; retry only after the service has started.
 - The system is single-instance only. Do not scale to multiple server processes without persistent storage and shared Socket.IO state.
 - Socket bindings and disconnect grace timers are process-local; the live disconnect/rejoin fix assumes one server process.
@@ -188,7 +207,7 @@ For deployment verification, check both `https://api.gyakuteneigo.com/api/health
 
 1. Complete the remaining live QA matrix above, prioritizing objective races, reconnection edge cases, and human-vs-human authority checks.
 2. Add end-to-end smoke tests covering teacher signup, session creation, copy-link join, round start, quiz answer, purchase/downgrade rejection, disconnect/rejoin, and report export.
-3. Add persistent storage for teachers, quiz sets, sessions, players, player tokens, and reports; configure PostgreSQL before classroom use.
+3. Migrate from the single runtime snapshot to normalized persistent storage, and choose between Render Basic-256mb ($6/month) and Neon Free for the long-term database.
 4. Add durable logging, monitoring, rate limits, token revocation, and a shared Socket.IO adapter if scaling beyond one process.
 5. Add quiz import/export or seed flows so content survives service restarts.
 6. Continue accessibility, mobile, Chromebook performance, and map traversal polish without weakening server authority or live-game controls.
