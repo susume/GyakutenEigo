@@ -9,6 +9,7 @@ You are taking over the `susume/GyakutenEigo` repository. It is a TypeScript mon
 - Student join: `https://www.gyakuteneigo.com/join/`
 - Student arena: `https://www.gyakuteneigo.com/game/`
 - Live API and Socket.IO server: `https://api.gyakuteneigo.com/`
+- API fallback for restricted school networks: `https://gyakuteneigo-api.onrender.com/`
 - Health check: `https://api.gyakuteneigo.com/api/health`
 
 The apex URL, `https://gyakuteneigo.com`, can also be used by visitors. It is an allowed frontend origin even if the site ultimately redirects to `www`.
@@ -17,7 +18,7 @@ The apex URL, `https://gyakuteneigo.com`, can also be used by visitors. It is an
 
 Teachers create accounts, build multiple-choice quiz sets, create private sessions, and share a generated code or one-click join link. Students join with a code or `/join?code=...` link and a classroom-safe nickname, answer questions to earn in-game money, buy gear or snowballs, and play a live Three.js arena. Teachers can add bots for testing, monitor the roster, end the session, review results, and export CSV.
 
-The default game is Flag Mode: Red Team carries the flag to Blue base, then protects it while Blue tries to capture it. Zombie Mode is also selectable. Flag/Zombie objectives, quiz economics, purchases, tagging, eliminations, respawns, movement validation, and player-token checks are server-authoritative.
+The default game is Flag Mode: Red Team carries the flag to Blue base, then protects it while Blue tries to capture it. Zombie Mode and Classic Tag Practice are also selectable. Flag/Zombie/Classic objectives, quiz economics, purchases, tagging, eliminations, respawns, movement validation, and player-token checks are server-authoritative.
 
 Use only the existing school-safe language: snowballs, snowball launchers, warmth, gear, arena, Blue Team, and Red Team. Do not introduce Counter-Strike assets/names/maps, realistic weapons, blood, gore, public matchmaking, public chat, or voice chat.
 
@@ -34,6 +35,7 @@ Important source files:
 
 - `apps/web/src/App.tsx`
 - `apps/web/src/api/client.ts`
+- `apps/web/src/api/endpoints.ts` and `apps/web/src/api/endpoints.test.ts`
 - `apps/web/src/game/ArenaPreview.tsx`
 - `apps/web/src/game/arenaMaps.ts`
 - `apps/web/src/game/mapTypes.ts`
@@ -42,6 +44,7 @@ Important source files:
 - `apps/web/src/navigation.ts`
 - `apps/web/src/game/desertCitadelMap.test.ts`
 - `apps/server/src/index.ts`
+- `apps/server/src/origins.ts` and `apps/server/src/origins.test.ts`
 - `apps/server/src/start.ts`
 - `apps/server/package.json`
 - `packages/shared/src/index.ts`
@@ -56,6 +59,7 @@ GitHub Pages builds the web app with:
 
 ```text
 VITE_API_URL=https://api.gyakuteneigo.com
+VITE_API_FALLBACK_URL=https://gyakuteneigo-api.onrender.com
 VITE_BASE_PATH=/
 PAGE_CUSTOM_DOMAIN=www.gyakuteneigo.com
 ```
@@ -76,16 +80,16 @@ NODE_ENV=production
 NODE_VERSION=22
 JWT_SECRET=<secret stored only in Render>
 TRUST_PROXY=true
-CLIENT_ORIGIN=http://www.gyakuteneigo.com,https://www.gyakuteneigo.com,http://gyakuteneigo.com,https://gyakuteneigo.com
+CLIENT_ORIGIN=https://gyakuteneigo.com,https://www.gyakuteneigo.com,https://susume.github.io
 ```
 
-Keep all four `CLIENT_ORIGIN` values unless the corresponding public URL is retired. Both Express and Socket.IO use this allow-list; a missing HTTPS origin causes browser errors such as inability to create an account or connect to the game server.
+Keep all supported hosted origins in `CLIENT_ORIGIN`, including `https://susume.github.io` when the default Pages URL may be used. Both Express and Socket.IO use this allow-list. The production server also supplies the three known hosted origins by default. The web client retries `gyakuteneigo-api.onrender.com` if a school network cannot reach `api.gyakuteneigo.com`, then uses the successful endpoint for Socket.IO.
 
 The `api` DNS record is a CNAME to `gyakuteneigo-api.onrender.com`. The Render custom-domain page must report verification and an issued HTTPS certificate.
 
-The current map-selection/server deployment is on `main` at commit `f3c4001` and the Render service should show that commit as live. The web bundle and API must both be refreshed after a deployment before testing a new session.
+The current production deployment is on `main` at commit `b985770` and Render shows that commit as live. GitHub Actions CI and the Pages deployment for that commit are green. The web bundle and API must both be refreshed after a deployment before testing a new session.
 
-## Audit and handoff status (2026-07-13)
+## Audit and handoff status (2026-07-15)
 
 The local live multiplayer audit used independent teacher/student browser stores plus a server bot. Flag, Zombie, and Classic flows were exercised through room setup, joining, start, timeout/results, quiz rewards, selected purchases, refresh/reconnect, late-join, duplicate/full-room, and Flag carrier disconnect scenarios. The detailed evidence is in `docs/live-multiplayer-qa/`.
 
@@ -98,9 +102,16 @@ Implemented and verified:
 - Starter launcher removed from the Buy Menu and blocked as a server-side downgrade. Quick is `$3000`; Heavy/AWP is `$6000`; ranges are Starter `36`, Quick `48`, Heavy `120`.
 - Teacher Copy Link control and student `/join?code=<SESSION_CODE>` flow, so linked students enter only a nickname.
 - Desert Citadel house roofs raised by `+2.25` map units before scaling.
-- Automated validation: 50 shared tests, 35 web tests, server/web typechecks, and a full production build.
+- Projector waiting room with QR join, large session code, roster, Copy Link, and keyboard focus management.
+- Server-stamped synchronized countdowns with an upper-duration clamp.
+- Classic Tag now advances to the next configured round over Socket.IO without browser refresh; round winners use score then tags, with draw handling.
+- Flag and Classic Tag use a four-second synchronized result intermission, then announce the next round as it begins. The final Classic Tag screen names the winner and displays Game Over.
+- Zombie Mode records conversion order and announces up to six best players at Game Over: surviving Humans first, then the latest Humans converted.
+- Bots pursue active opponents and detour around cover; live socket verification observed changing bot positions.
+- Network-resilient API client with branded API primary and Render-hostname fallback for restricted school networks.
+- Automated validation: 53 shared tests, 4 server tests, 41 web tests, server/web typechecks, and a full production build.
 
-The current implementation is on branch `agent/fix-live-multiplayer-qa` in draft PR [#2](https://github.com/susume/GyakutenEigo/pull/2). It has been pushed but is not a statement that production has been deployed or certified.
+The current implementation is on `main` at commit `b985770`. It is deployed to GitHub Pages and Render, but this remains a classroom playtest deployment rather than a full production certification.
 
 Remaining live QA work:
 
@@ -111,6 +122,7 @@ Remaining live QA work:
 - Run 40-player scale, long soak, real Chromebook, FPS/heap/GPU/long-task/HAR/WebSocket instrumentation, and browser edge-case coverage.
 - Attempt safe live client-message mutation/replay tests against server authority.
 - Configure PostgreSQL on Render before treating accounts, sessions, tokens, and reports as durable.
+- Verify first-load/cold-start behavior on a school network; the Render Free service can take 50 seconds or more to wake.
 
 Audit references:
 
@@ -168,9 +180,9 @@ npm test
 npm run build
 ```
 
-The current baseline is 50 shared tests and 35 web tests. When touching the live multiplayer lifecycle, also repeat the two-browser/socket checks documented in `docs/live-multiplayer-qa/FIX_VERIFICATION_2026-07-13.md`.
+The current baseline is 53 shared tests, 4 server tests, and 41 web tests. When touching the live multiplayer lifecycle, also repeat the two-browser/socket checks documented in `docs/live-multiplayer-qa/FIX_VERIFICATION_2026-07-13.md` plus the Classic Tag round-transition and API-fallback checks described above.
 
-For deployment verification, check `https://api.gyakuteneigo.com/api/health` first. Then use two separate browser sessions: create or sign in as a teacher at the Quiz Strike page, create a quiz/session, select **The Iron Junction**, join from the other session, start the round, and confirm that both the teacher preview and student arena show the selected map. If the map falls back to Desert Citadel, verify that the API and web app are both on the latest deployment before investigating client cache.
+For deployment verification, check both `https://api.gyakuteneigo.com/api/health` and `https://gyakuteneigo-api.onrender.com/api/health` first. Confirm CORS for `https://gyakuteneigo.com`, `https://www.gyakuteneigo.com`, and `https://susume.github.io`. Then use two separate browser sessions: create or sign in as a teacher at the Quiz Strike page, create a quiz/session, select **The Iron Junction**, join from the other session, start the round, and confirm that both the teacher preview and student arena show the selected map. For Classic Tag, allow a short round to expire and confirm the same browser reaches round 2 without refresh. If the map or connection falls back unexpectedly, verify that the API and web app are both on the latest deployment before investigating client cache.
 
 ## Recommended next work
 

@@ -5,6 +5,7 @@ export type GameMode = "flag" | "zombie" | "classic";
 export type ArenaMapId = "desert_citadel" | "iron_junction";
 export type TeamAssignment = "players_choose" | "random";
 export type PlayerRole = "human" | "zombie";
+export type GameAnnouncementKind = "round_result" | "round_start" | "game_over";
 export type FlagStateName =
   | "available"
   | "carried"
@@ -116,6 +117,8 @@ export interface PlayerSession {
   respawnCorrectAnswers?: number;
   isBot?: boolean;
   role?: PlayerRole;
+  /** Set when a human is converted during Zombie Mode; initial zombies do not receive a timestamp. */
+  zombieConvertedAt?: string;
   tags?: number;
   respawns?: number;
   connectionState?: "connected" | "disconnected";
@@ -139,6 +142,20 @@ export interface GameEvent {
   team?: Team;
 }
 
+export interface GameAnnouncement {
+  id: string;
+  kind: GameAnnouncementKind;
+  title: string;
+  message: string;
+  detail?: string;
+  expiresAt?: string;
+}
+
+export interface RoundTransition {
+  nextRound: number;
+  startsAt: string;
+}
+
 export interface GameSession {
   id: string;
   teacherId: string;
@@ -153,6 +170,8 @@ export interface GameSession {
   roundWins?: Record<Team, number>;
   flag?: FlagState;
   events?: GameEvent[];
+  announcement?: GameAnnouncement;
+  roundTransition?: RoundTransition;
   createdAt: string;
   startedAt?: string;
   endsAt?: string;
@@ -1603,6 +1622,7 @@ export const selectInitialZombies = <T extends PlayerSession>(
   return players.map((player) => ({
     ...player,
     role: chosenIds.has(player.id) ? "zombie" : "human",
+    zombieConvertedAt: undefined,
     team: chosenIds.has(player.id) ? "red" : "blue",
     gear: chosenIds.has(player.id) ? "starter_blaster" : player.gear,
     isAlive: true
@@ -1639,6 +1659,22 @@ export const resolveZombieConversion = ({
       respawnCorrectAnswers: 0
     }
   };
+};
+
+/**
+ * Ranks Zombie Mode's strongest survivors. Humans who lasted until time
+ * expired rank first, followed by the most recently converted humans. Initial
+ * zombies are excluded because they did not survive as humans during the game.
+ */
+export const getZombieBestPlayers = (players: readonly PlayerSession[], limit = 6): PlayerSession[] => {
+  const safeLimit = Math.max(0, Math.floor(limit));
+  const humans = players
+    .filter((player) => player.role !== "zombie" && player.connectionState !== "disconnected")
+    .sort((a, b) => a.joinedAt.localeCompare(b.joinedAt));
+  const converted = players
+    .filter((player) => player.role === "zombie" && Boolean(player.zombieConvertedAt))
+    .sort((a, b) => Date.parse(b.zombieConvertedAt!) - Date.parse(a.zombieConvertedAt!));
+  return [...humans, ...converted].slice(0, safeLimit);
 };
 
 export const buildScoreboardRows = (

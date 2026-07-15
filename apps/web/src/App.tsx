@@ -39,6 +39,7 @@ import {
   getRoundRemainingSeconds,
   type ArenaMapId,
   type Choice,
+  type GameAnnouncement,
   type GameEvent,
   type GameSession,
   type PlayerSession,
@@ -319,6 +320,7 @@ const teamLabel = (team: PlayerSession["team"]) => (team === "blue" ? "Blue Team
 
 const sessionStatusLabel = (status: GameSession["status"]) => {
   if (status === "active") return "Round Active";
+  if (status === "paused") return "Round Results";
   if (status === "ended") return "Session Ended";
   return "Waiting Room";
 };
@@ -456,8 +458,49 @@ function useRoundRemaining(session: GameSession | null) {
     return () => window.clearInterval(interval);
   }, [session?.status, session?.startedAt, session?.endsAt]);
 
-  if (!session || session.status === "ended") return 0;
+  if (!session || session.status === "ended" || session.status === "paused") return 0;
   return getRoundRemainingSeconds(session, new Date(clientNowMs + serverOffsetMs).toISOString());
+}
+
+function GameAnnouncementOverlay({
+  announcement,
+  serverTime
+}: {
+  announcement?: GameAnnouncement;
+  serverTime?: string;
+}) {
+  const [visible, setVisible] = useState(Boolean(announcement));
+
+  useEffect(() => {
+    if (!announcement) {
+      setVisible(false);
+      return;
+    }
+    if (!announcement.expiresAt) {
+      setVisible(true);
+      return;
+    }
+
+    const serverTimeMs = serverTime ? Date.parse(serverTime) : Number.NaN;
+    const serverOffsetMs = Number.isFinite(serverTimeMs) ? serverTimeMs - Date.now() : 0;
+    const remainingMs = Date.parse(announcement.expiresAt) - (Date.now() + serverOffsetMs);
+    setVisible(remainingMs > 0);
+    if (remainingMs <= 0) return;
+    const timeout = window.setTimeout(() => setVisible(false), remainingMs);
+    return () => window.clearTimeout(timeout);
+  }, [announcement?.id, announcement?.expiresAt, serverTime]);
+
+  if (!announcement || !visible) return null;
+  return (
+    <div className={`game-announcement game-announcement-${announcement.kind}`} role="alert" aria-live="assertive" aria-atomic="true">
+      <div className="game-announcement-card">
+        <span>{announcement.kind === "game_over" ? "Final result" : announcement.kind === "round_result" ? "Round complete" : "Get ready"}</span>
+        <h2>{announcement.title}</h2>
+        <p>{announcement.message}</p>
+        {announcement.detail && <strong>{announcement.detail}</strong>}
+      </div>
+    </div>
+  );
 }
 
 function ArenaLoading({ label = "Loading arena" }: { label?: string }) {
@@ -1724,6 +1767,7 @@ function SessionManager({
 
       <div className={`panel live-session${selectedSession ? "" : " empty-live-session"}`}>
         <h2>Live Session Control</h2>
+        {selectedSession && <GameAnnouncementOverlay announcement={selectedSession.announcement} serverTime={selectedSession.serverTime} />}
         {selectedSession ? isSessionEnded ? (
           <div className="session-ended-summary">
             <span className="status-pill status-ended">Session complete</span>
@@ -1797,6 +1841,8 @@ function SessionManager({
               )}
               {selectedSession.status === "active" ? (
                 <span className="status-pill status-active">Round Active</span>
+              ) : selectedSession.status === "paused" ? (
+                <span className="status-pill status-paused">Next round starting...</span>
               ) : (
                 <button className="primary" onClick={start} disabled={selectedSession.status === "ended" || Boolean(startBlockedReason) || isStartingSession}>
                   <Play size={18} aria-hidden="true" />
@@ -2603,6 +2649,7 @@ function StudentExperience({ onExit }: { onExit: () => void }) {
   return (
     <section className={isCompactViewport ? "game-layout compact-game-layout" : "game-layout"}>
       <div className="game-stage">
+        <GameAnnouncementOverlay announcement={session.announcement} serverTime={session.serverTime} />
         <div className="game-utility-bar">
           <span>{gameModeLabel(session.settings.gameMode)}</span>
           <button type="button" onClick={() => { setSettingsOpen(true); setQuizOpen(false); setBuyOpen(false); setScoreboardOpen(false); }}><Settings size={16} aria-hidden="true" />Settings</button>

@@ -8,6 +8,7 @@ import { createServer } from "node:http";
 import { randomUUID } from "node:crypto";
 import { Server, type Socket } from "socket.io";
 import { resolveClientOrigins } from "./origins.js";
+import { planRoundConclusion } from "./roundFlow.js";
 import {
   clampArenaPosition,
   ARENA_SCALE,
@@ -19,6 +20,7 @@ import {
   getGearMoveSpeedMultiplier,
   getArenaObstacles,
   getRoundRemainingSeconds,
+  getZombieBestPlayers,
   resolveTeamRoundWinner,
   getTeamSpawnForMap,
   selectTeamSpawnForMap,
@@ -56,6 +58,7 @@ import {
   type Choice,
   type ClassSummary,
   type GameSession,
+  type GameAnnouncement,
   type GameEvent,
   type PlayerSession,
   type PublicQuestion,
@@ -212,6 +215,9 @@ const BOT_ATTACK_COOLDOWN_FLOOR_MS = 1700;
 const BOT_RESPAWN_MS = 8000;
 const PLAYER_MAX_SPEED = 22;
 const PLAYER_DISCONNECT_GRACE_MS = 5000;
+const ROUND_RESULT_ANNOUNCEMENT_MS = 4000;
+const ROUND_START_ANNOUNCEMENT_MS = 2500;
+const GAME_OVER_ANNOUNCEMENT_MS = 7000;
 
 app.use(cors({ origin: corsOrigin, credentials: true }));
 app.use(express.json({ limit: "1mb" }));
@@ -375,18 +381,55 @@ const appendEvent = (
   return nextEvent;
 };
 
-const finishSession = (session: GameSession, message = "Round ended. Report is ready.") => {
+const makeAnnouncement = (
+  kind: GameAnnouncement["kind"],
+  title: string,
+  message: string,
+  detail?: string,
+  durationMs?: number
+): GameAnnouncement => ({
+  id: id(),
+  kind,
+  title,
+  message,
+  detail,
+  expiresAt: durationMs ? new Date(Date.now() + durationMs).toISOString() : undefined
+});
+
+const teamName = (team: Team) => team === "red" ? "Red Team" : "Blue Team";
+
+const finishSession = (
+  session: GameSession,
+  message = "Round ended. Report is ready.",
+  announcement = makeAnnouncement("game_over", "Game Over", message, undefined, GAME_OVER_ANNOUNCEMENT_MS)
+) => {
   if (session.status === "ended") return;
   session.status = "ended";
   session.endedAt = now();
+  session.roundTransition = undefined;
+  session.announcement = announcement;
   appendEvent(session, { type: "end", message });
   broadcastSession(session);
+};
+
+const finishZombieSession = (session: GameSession, outcome: string) => {
+  const bestPlayers = getZombieBestPlayers(session.players, 6);
+  const detail = bestPlayers.length > 0
+    ? `Best players: ${bestPlayers.map((player) => player.nickname).join(", ")}`
+    : "No survivor ranking was available.";
+  finishSession(
+    session,
+    `${outcome} ${detail}`,
+    makeAnnouncement("game_over", "Game Over", outcome, detail, GAME_OVER_ANNOUNCEMENT_MS)
+  );
 };
 
 const inactiveRoundMessage = (session: GameSession) =>
   session.status === "ended"
     ? "The round has ended. This action was not counted."
-    : "The teacher has not started the round yet.";
+    : session.status === "paused"
+      ? "The round has ended. The next round is starting shortly."
+      : "The teacher has not started the round yet.";
 
 const resetRoundPlayer = (session: GameSession, player: PlayerSession, index: number): PlayerSession => {
   const spawn = player.isBot ? getBotSpawn(session, player.team, index) : selectSessionSpawn(session, player.team, index);
@@ -418,6 +461,7 @@ const prepareModeStateForRound = (session: GameSession) => {
 const startRoundState = (session: GameSession, preserveStats = true) => {
   prepareModeStateForRound(session);
   session.status = "active";
+  session.roundTransition = undefined;
   session.startedAt = now();
   session.endsAt = new Date(Date.now() + session.settings.roundDurationSeconds * 1000).toISOString();
   session.roundWins = session.roundWins ?? { blue: 0, red: 0 };
@@ -432,29 +476,57 @@ const startRoundState = (session: GameSession, preserveStats = true) => {
 
 const finishRound = (session: GameSession, winner: Team | undefined, reason: string) => {
   if (session.status !== "active") return;
-  session.roundWins = session.roundWins ?? { blue: 0, red: 0 };
-  if (winner) session.roundWins[winner] += 1;
+  const conclusion = planRoundConclusion({
+    currentRound: session.currentRound,
+    roundCount: session.settings.roundCount,
+    roundWins: session.roundWins ?? { blue: 0, red: 0 },
+    winner,
+    reason
+  });
+  session.roundWins = conclusion.roundWins;
   appendEvent(session, {
     type: "end",
-    message: winner
-      ? `${winner === "red" ? "Red Team" : "Blue Team"} wins round ${session.currentRound}: ${reason}.`
-      : `Round ${session.currentRound} ended in a draw: ${reason}.`,
+    message: conclusion.eventMessage,
     team: winner
   });
 
-  if (session.currentRound >= session.settings.roundCount) {
-    const redWins = session.roundWins.red;
-    const blueWins = session.roundWins.blue;
-    const result =
-      redWins === blueWins
-        ? `Match draw ${redWins}-${blueWins}.`
-        : `${redWins > blueWins ? "Red Team" : "Blue Team"} wins the match ${redWins}-${blueWins}.`;
-    finishSession(session, result);
+  if (conclusion.matchResult) {
+    const title = conclusion.matchWinner ? `${teamName(conclusion.matchWinner)} wins!` : "The match is a draw";
+    finishSession(
+      session,
+      conclusion.matchResult,
+      makeAnnouncement("game_over", title, "Game Over", conclusion.matchResult, GAME_OVER_ANNOUNCEMENT_MS)
+    );
     return;
   }
 
-  session.currentRound += 1;
+  const nextRound = conclusion.nextRound!;
+  const resultTitle = winner ? `${teamName(winner)} wins Round ${session.currentRound}!` : `Round ${session.currentRound} is a draw`;
+  const resultMessage = `${reason}. Round ${nextRound} begins shortly.`;
+  const startsAt = new Date(Date.now() + ROUND_RESULT_ANNOUNCEMENT_MS).toISOString();
+  session.status = "paused";
+  session.endsAt = now();
+  session.announcement = {
+    ...makeAnnouncement("round_result", resultTitle, resultMessage, undefined, ROUND_RESULT_ANNOUNCEMENT_MS),
+    expiresAt: startsAt
+  };
+  session.roundTransition = { nextRound, startsAt };
+  broadcastSession(session);
+};
+
+const startPendingRound = (session: GameSession) => {
+  if (session.status !== "paused" || !session.roundTransition) return;
+  session.currentRound = session.roundTransition.nextRound;
   startRoundState(session);
+  session.announcement = makeAnnouncement(
+    "round_start",
+    `Round ${session.currentRound} has begun!`,
+    session.settings.gameMode === "flag"
+      ? "Red carries and protects the flag. Blue defends and captures."
+      : "Answer questions, earn supplies, and tag the other team.",
+    undefined,
+    ROUND_START_ANNOUNCEMENT_MS
+  );
   appendEvent(session, { type: "start", message: `Round ${session.currentRound} started.` });
   broadcastSession(session);
 };
@@ -464,7 +536,7 @@ const finishZombieMatchIfComplete = (session: GameSession) => {
   const humansRemaining = session.players.some(
     (player) => player.connectionState !== "disconnected" && player.isAlive && player.role !== "zombie"
   );
-  if (!humansRemaining) finishSession(session, "Zombies converted everyone.");
+  if (!humansRemaining) finishZombieSession(session, "Zombies converted everyone.");
 };
 
 const evaluateFlagEliminationWin = (session: GameSession) => {
@@ -553,6 +625,7 @@ const applyValidatedDamage = (session: GameSession, attacker: PlayerSession, tar
     const conversion = resolveZombieConversion({ attacker, target });
     if (!conversion.ok) return conversion;
     Object.assign(target, conversion.player);
+    target.zombieConvertedAt = now();
     attacker.tags = (attacker.tags ?? attacker.score) + conversion.tagCredit;
     attacker.score += conversion.tagCredit;
     appendEvent(session, {
@@ -681,7 +754,19 @@ const advanceBots = () => {
   const seconds = Date.now() / 1000;
   const currentMs = Date.now();
   for (const session of sessions.values()) {
+    if (session.status === "paused") {
+      const startsAtMs = session.roundTransition ? Date.parse(session.roundTransition.startsAt) : Number.NaN;
+      if (Number.isFinite(startsAtMs) && currentMs >= startsAtMs) startPendingRound(session);
+      continue;
+    }
     if (session.status !== "active") continue;
+    const announcementExpiresAtMs = session.announcement?.expiresAt
+      ? Date.parse(session.announcement.expiresAt)
+      : Number.NaN;
+    if (Number.isFinite(announcementExpiresAtMs) && currentMs >= announcementExpiresAtMs) {
+      session.announcement = undefined;
+      broadcastSession(session);
+    }
     if (session.settings.gameMode === "flag" && session.flag) {
       const flagCountdown = resolveFlagCountdown(session.flag, currentMs);
       if (flagCountdown.winner) {
@@ -697,7 +782,7 @@ const advanceBots = () => {
       if (session.settings.gameMode === "flag") {
         finishRound(session, "blue", "Time expired before Red placed the flag");
       } else if (session.settings.gameMode === "zombie") {
-        finishSession(session, "Humans survived until time expired.");
+        finishZombieSession(session, "Humans survived until time expired.");
       } else {
         const winner = resolveTeamRoundWinner(session.players);
         finishRound(session, winner, winner ? "Higher team score when time expired" : "Teams were tied when time expired");
@@ -1032,6 +1117,19 @@ app.post("/api/sessions/:code/start", requireTeacher, (req: AuthedRequest, res) 
   session.currentRound = 1;
   session.roundWins = { blue: 0, red: 0 };
   startRoundState(session, false);
+  session.announcement = makeAnnouncement(
+    "round_start",
+    session.settings.gameMode === "zombie"
+      ? "Zombie Mode has begun!"
+      : `Round ${session.currentRound} has begun!`,
+    session.settings.gameMode === "flag"
+      ? "Red carries and protects the flag. Blue defends and captures."
+      : session.settings.gameMode === "zombie"
+        ? "Zombies tag humans. Humans: survive as long as you can."
+        : "Answer questions, earn supplies, and tag the other team.",
+    undefined,
+    ROUND_START_ANNOUNCEMENT_MS
+  );
   appendEvent(session, {
     type: "start",
     message:
@@ -1051,7 +1149,11 @@ app.post("/api/sessions/:code/end", requireTeacher, (req: AuthedRequest, res) =>
     res.status(404).json({ error: "Session not found." });
     return;
   }
-  finishSession(session, "Teacher ended the round. Report is ready.");
+  if (session.settings.gameMode === "zombie") {
+    finishZombieSession(session, "The teacher ended Zombie Mode.");
+  } else {
+    finishSession(session, "Teacher ended the round. Report is ready.");
+  }
   res.json({ report: makeReport(session) });
 });
 

@@ -33,6 +33,7 @@ import {
   getGearZoomFovMultiplier,
   getArenaObstacles,
   getRoundRemainingSeconds,
+  getZombieBestPlayers,
   resolveTeamRoundWinner,
   getTeamSpawn,
   getTeamSpawnForMap,
@@ -433,6 +434,21 @@ test("resolveTeamRoundWinner scores Classic Tag rounds and preserves draws", () 
     makePlayer({ team: "blue", score: 5, tags: 2 }),
     makePlayer({ team: "red", score: 5, tags: 2 })
   ]), undefined);
+});
+
+test("getZombieBestPlayers ranks surviving humans before the last players converted", () => {
+  const players = [
+    makePlayer({ id: "initial", nickname: "Initial Zombie", role: "zombie" }),
+    makePlayer({ id: "early", nickname: "Early", role: "zombie", zombieConvertedAt: "2026-07-15T10:00:00.000Z" }),
+    makePlayer({ id: "late", nickname: "Late", role: "zombie", zombieConvertedAt: "2026-07-15T10:02:00.000Z" }),
+    makePlayer({ id: "survivor", nickname: "Survivor", role: "human" })
+  ];
+
+  assert.deepEqual(getZombieBestPlayers(players, 3).map((player) => player.nickname), ["Survivor", "Late", "Early"]);
+  assert.deepEqual(
+    getZombieBestPlayers(players.filter((player) => player.role === "zombie"), 6).map((player) => player.nickname),
+    ["Late", "Early"]
+  );
 });
 
 test("resolveBotPursuitTarget sends bots toward the nearest connected real opponent", () => {
