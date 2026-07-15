@@ -1912,6 +1912,35 @@ small {
   text-align: left;
 }
 
+.buy-shortcut-help {
+  margin: 8px 0 2px;
+  color: #526278;
+  font-size: 0.88rem;
+  font-weight: 700;
+}
+
+.buy-shortcut-key {
+  display: inline-grid;
+  width: 30px;
+  height: 30px;
+  flex: 0 0 30px;
+  place-items: center;
+  border: 2px solid #174a8b;
+  border-radius: 7px;
+  background: #eaf3ff;
+  color: #174a8b;
+  font: inherit;
+  font-weight: 1000;
+  box-shadow: 0 2px 0 #bfd7f5;
+}
+
+.gear-row:disabled .buy-shortcut-key {
+  border-color: #94a3b8;
+  background: #e2e8f0;
+  color: #64748b;
+  box-shadow: none;
+}
+
 .gear-row > span:not(.gear-glyph) {
   display: grid;
   gap: 2px;

@@ -1,6 +1,12 @@
 import assert from "node:assert/strict";
 import test from "node:test";
-import { planRoundConclusion } from "./roundFlow.js";
+import { getPausedRoundAction, planRoundConclusion } from "./roundFlow.js";
+
+test("Flag Mode opens a buy phase before starting each prepared round", () => {
+  assert.equal(getPausedRoundAction({ gameMode: "flag", phase: "result" }), "open_buy_phase");
+  assert.equal(getPausedRoundAction({ gameMode: "flag", phase: "buy" }), "start_round");
+  assert.equal(getPausedRoundAction({ gameMode: "classic", phase: "result" }), "start_round");
+});
 
 test("Flag Mode plans a result intermission before the next round", () => {
   const result = planRoundConclusion({

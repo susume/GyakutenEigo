@@ -40,6 +40,7 @@ import {
   selectTeamSpawn,
   TEAM_SPAWNS,
   isRoundActive,
+  isRoundBuyPhase,
   isInsideTeamBase,
   isGearAutoFireEnabled,
   randomizeBalancedTeams,
@@ -127,6 +128,17 @@ test("isRoundActive opens economy only during an active round", () => {
   assert.equal(isRoundActive(makeSession({ status: "waiting" })), false);
   assert.equal(isRoundActive(makeSession({ status: "active" })), true);
   assert.equal(isRoundActive(makeSession({ status: "ended" })), false);
+});
+
+test("isRoundBuyPhase only opens the Flag pre-round shop window", () => {
+  const transition = { nextRound: 2, startsAt: "2026-07-15T00:00:06.000Z", phase: "buy" as const };
+  assert.equal(isRoundBuyPhase(makeSession({ status: "paused", roundTransition: transition })), true);
+  assert.equal(isRoundBuyPhase(makeSession({ status: "active", roundTransition: transition })), false);
+  assert.equal(isRoundBuyPhase(makeSession({
+    status: "paused",
+    settings: { ...DEFAULT_SESSION_SETTINGS, gameMode: "classic" },
+    roundTransition: transition
+  })), false);
 });
 
 test("buildReportRows excludes bots and practice answers from class accuracy", () => {

@@ -5,7 +5,8 @@ export type GameMode = "flag" | "zombie" | "classic";
 export type ArenaMapId = "desert_citadel" | "iron_junction";
 export type TeamAssignment = "players_choose" | "random";
 export type PlayerRole = "human" | "zombie";
-export type GameAnnouncementKind = "round_result" | "round_start" | "game_over";
+export type GameAnnouncementKind = "round_result" | "buy_phase" | "round_start" | "game_over";
+export type RoundTransitionPhase = "result" | "buy";
 export type FlagStateName =
   | "available"
   | "carried"
@@ -154,6 +155,8 @@ export interface GameAnnouncement {
 export interface RoundTransition {
   nextRound: number;
   startsAt: string;
+  /** Optional for compatibility with sessions saved before phased round transitions were introduced. */
+  phase?: RoundTransitionPhase;
 }
 
 export interface GameSession {
@@ -531,6 +534,12 @@ export const canStartRound = (session: Pick<GameSession, "players" | "status">):
 };
 
 export const isRoundActive = (session: Pick<GameSession, "status">) => session.status === "active";
+
+export const isRoundBuyPhase = (
+  session: Pick<GameSession, "status" | "settings" | "roundTransition">
+) => session.status === "paused"
+  && session.settings.gameMode === "flag"
+  && session.roundTransition?.phase === "buy";
 
 export const isMainRoundAnswer = (answer: Pick<AnswerLog, "context">) => answer.context !== "practice";
 

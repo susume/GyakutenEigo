@@ -1,4 +1,4 @@
-import type { Team } from "@quizstrike/shared";
+import type { GameMode, RoundTransitionPhase, Team } from "@quizstrike/shared";
 
 export type RoundConclusion = {
   roundWins: Record<Team, number>;
@@ -9,6 +9,14 @@ export type RoundConclusion = {
 };
 
 const teamName = (team: Team) => team === "red" ? "Red Team" : "Blue Team";
+
+export const getPausedRoundAction = ({
+  gameMode,
+  phase
+}: {
+  gameMode: GameMode;
+  phase?: RoundTransitionPhase;
+}) => gameMode === "flag" && phase !== "buy" ? "open_buy_phase" : "start_round";
 
 export const planRoundConclusion = ({
   currentRound,

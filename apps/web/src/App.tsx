@@ -37,6 +37,7 @@ import {
   GEAR_ITEMS,
   RESPAWN_CORRECT_ANSWERS_REQUIRED,
   getRoundRemainingSeconds,
+  isRoundBuyPhase,
   type ArenaMapId,
   type Choice,
   type GameAnnouncement,
@@ -55,6 +56,7 @@ import { buildStudentJoinUrl, getJoinCodeFromSearch, modeForRoute, normalizeRout
 import { groupScoreboardRows } from "./scoreboardGroups";
 import { getModeScoreSummary, getReadyRoomTitle, getSessionResultText, getZombieCounts } from "./sessionPresentation";
 import { formatStudentJoinError } from "./studentJoinErrors";
+import { getShopShortcut, getShopShortcutKey } from "./shopShortcuts";
 import { StatusMessages } from "./ui/StatusMessages";
 import { ARENA_MAPS, getArenaMap } from "./game/arenaMaps";
 import {
@@ -462,6 +464,26 @@ function useRoundRemaining(session: GameSession | null) {
   return getRoundRemainingSeconds(session, new Date(clientNowMs + serverOffsetMs).toISOString());
 }
 
+function useDeadlineRemainingSeconds(deadline?: string, serverTime?: string) {
+  const [clientNowMs, setClientNowMs] = useState(() => Date.now());
+  const [serverOffsetMs, setServerOffsetMs] = useState(0);
+
+  useEffect(() => {
+    const serverTimeMs = serverTime ? Date.parse(serverTime) : Number.NaN;
+    setServerOffsetMs(Number.isFinite(serverTimeMs) ? serverTimeMs - Date.now() : 0);
+  }, [serverTime]);
+
+  useEffect(() => {
+    setClientNowMs(Date.now());
+    if (!deadline) return;
+    const interval = window.setInterval(() => setClientNowMs(Date.now()), 250);
+    return () => window.clearInterval(interval);
+  }, [deadline, serverTime]);
+
+  if (!deadline) return 0;
+  return Math.max(0, Math.ceil((Date.parse(deadline) - (clientNowMs + serverOffsetMs)) / 1000));
+}
+
 function GameAnnouncementOverlay({
   announcement,
   serverTime
@@ -494,7 +516,7 @@ function GameAnnouncementOverlay({
   return (
     <div className={`game-announcement game-announcement-${announcement.kind}`} role="alert" aria-live="assertive" aria-atomic="true">
       <div className="game-announcement-card">
-        <span>{announcement.kind === "game_over" ? "Final result" : announcement.kind === "round_result" ? "Round complete" : "Get ready"}</span>
+        <span>{announcement.kind === "game_over" ? "Final result" : announcement.kind === "round_result" ? "Round complete" : announcement.kind === "buy_phase" ? "Shop open" : "Get ready"}</span>
         <h2>{announcement.title}</h2>
         <p>{announcement.message}</p>
         {announcement.detail && <strong>{announcement.detail}</strong>}
@@ -1786,7 +1808,7 @@ function SessionManager({
         ) : (
           <>
             <div className="live-summary">
-              <span className={`status-pill status-${selectedSession.status}`}>{sessionStatusLabel(selectedSession.status)}</span>
+              <span className={`status-pill status-${selectedSession.status}`}>{isRoundBuyPhase(selectedSession) ? "Buy Phase" : sessionStatusLabel(selectedSession.status)}</span>
               <span>{gameModeLabel(selectedSession.settings.gameMode)}</span>
               <span>{arenaMapLabel(selectedSession.settings.mapId)}</span>
               {selectedSession.settings.gameMode === "flag" && <span>Round {selectedSession.currentRound}/{selectedSession.settings.roundCount}</span>}
@@ -1842,7 +1864,7 @@ function SessionManager({
               {selectedSession.status === "active" ? (
                 <span className="status-pill status-active">Round Active</span>
               ) : selectedSession.status === "paused" ? (
-                <span className="status-pill status-paused">Next round starting...</span>
+                <span className="status-pill status-paused">{isRoundBuyPhase(selectedSession) ? "Buy phase..." : "Next round starting..."}</span>
               ) : (
                 <button className="primary" onClick={start} disabled={selectedSession.status === "ended" || Boolean(startBlockedReason) || isStartingSession}>
                   <Play size={18} aria-hidden="true" />
@@ -2101,8 +2123,14 @@ function StudentExperience({ onExit }: { onExit: () => void }) {
   } | null>(null);
   const status = useAsyncMessage();
   const remainingSeconds = useRoundRemaining(session);
+  const flagBuyPhase = Boolean(session && isRoundBuyPhase(session));
+  const buyPhaseRemainingSeconds = useDeadlineRemainingSeconds(
+    flagBuyPhase ? session?.roundTransition?.startsAt : undefined,
+    session?.serverTime
+  );
   const socketRef = useRef<Socket | null>(null);
   const previousAliveRef = useRef<boolean | null>(null);
+  const previousFlagBuyPhaseRef = useRef(false);
 
   const isCompactViewport = viewportWidth <= 780;
   const nicknameError = useMemo(() => getNicknameError(nickname), [nickname]);
@@ -2291,53 +2319,17 @@ function StudentExperience({ onExit }: { onExit: () => void }) {
   }, [session?.sessionCode, session?.status, player?.id]);
 
   useEffect(() => {
-    const isTypingTarget = (target: EventTarget | null) => {
-      const element = target instanceof HTMLElement ? target : null;
-      if (!element) return false;
-      return ["INPUT", "TEXTAREA", "SELECT", "BUTTON"].includes(element.tagName) || element.isContentEditable;
-    };
-    const onKeyDown = (event: KeyboardEvent) => {
-      if (!player || !session) return;
-      if (isTypingTarget(event.target)) return;
-      if (event.key.toLowerCase() === "q") {
-        gameAudio.play("menu_toggle");
-        setQuizOpen((open) => !open);
-        setBuyOpen(false);
-        setScoreboardOpen(false);
-        setSettingsOpen(false);
-      }
-      if (event.key.toLowerCase() === "b") {
-        gameAudio.play("menu_toggle");
-        setBuyOpen((open) => !open);
-        setQuizOpen(false);
-        setScoreboardOpen(false);
-        setSettingsOpen(false);
-      }
-      if (event.key === "Tab") {
-        event.preventDefault();
-        if (!scoreboardOpen) gameAudio.play("menu_toggle");
-        setScoreboardOpen(true);
-        setQuizOpen(false);
-        setBuyOpen(false);
-        setSettingsOpen(false);
-      }
-      const index = Number(event.key) - 1;
-      if (quizOpen && question && index >= 0 && index < choices.length) {
-        void answer(choices[index]);
-      }
-    };
-    const onKeyUp = (event: KeyboardEvent) => {
-      if (event.key !== "Tab" || !player || !session || isTypingTarget(event.target)) return;
-      event.preventDefault();
+    if (flagBuyPhase && player?.isAlive) {
+      gameAudio.play("menu_toggle");
+      setBuyOpen(true);
+      setQuizOpen(false);
       setScoreboardOpen(false);
-    };
-    window.addEventListener("keydown", onKeyDown);
-    window.addEventListener("keyup", onKeyUp);
-    return () => {
-      window.removeEventListener("keydown", onKeyDown);
-      window.removeEventListener("keyup", onKeyUp);
-    };
-  }, [player, session, playerToken, quizOpen, question, scoreboardOpen]);
+      setSettingsOpen(false);
+    } else if (previousFlagBuyPhaseRef.current) {
+      setBuyOpen(false);
+    }
+    previousFlagBuyPhaseRef.current = flagBuyPhase;
+  }, [flagBuyPhase, session?.roundTransition?.startsAt, player?.id, player?.isAlive]);
 
   const panelsOpen = quizOpen || buyOpen || scoreboardOpen || settingsOpen;
   const gameplayInputPaused = quizOpen || buyOpen || settingsOpen;
@@ -2544,6 +2536,74 @@ function StudentExperience({ onExit }: { onExit: () => void }) {
     }
   };
 
+  useEffect(() => {
+    const isTypingTarget = (target: EventTarget | null) => {
+      const element = target instanceof HTMLElement ? target : null;
+      if (!element) return false;
+      return ["INPUT", "TEXTAREA", "SELECT"].includes(element.tagName) || element.isContentEditable;
+    };
+    const onKeyDown = (event: KeyboardEvent) => {
+      if (!player || !session || isTypingTarget(event.target)) return;
+      if (event.key.toLowerCase() === "q") {
+        gameAudio.play("menu_toggle");
+        setQuizOpen((open) => !open);
+        setBuyOpen(false);
+        setScoreboardOpen(false);
+        setSettingsOpen(false);
+      }
+      if (event.key.toLowerCase() === "b") {
+        gameAudio.play("menu_toggle");
+        setBuyOpen((open) => !open);
+        setQuizOpen(false);
+        setScoreboardOpen(false);
+        setSettingsOpen(false);
+      }
+      if (event.key === "Tab") {
+        event.preventDefault();
+        if (!scoreboardOpen) gameAudio.play("menu_toggle");
+        setScoreboardOpen(true);
+        setQuizOpen(false);
+        setBuyOpen(false);
+        setSettingsOpen(false);
+      }
+      const index = Number(event.key) - 1;
+      if (quizOpen && question && index >= 0 && index < choices.length) {
+        event.preventDefault();
+        void answer(choices[index]);
+        return;
+      }
+      if (buyOpen && !event.repeat) {
+        const shortcut = getShopShortcut(event.key);
+        if (!shortcut) return;
+        event.preventDefault();
+        if (shortcut.item === "snowballs") void buySnowballs();
+        else void buy(shortcut.item);
+      }
+    };
+    const onKeyUp = (event: KeyboardEvent) => {
+      if (event.key !== "Tab" || !player || !session || isTypingTarget(event.target)) return;
+      event.preventDefault();
+      setScoreboardOpen(false);
+    };
+    window.addEventListener("keydown", onKeyDown);
+    window.addEventListener("keyup", onKeyUp);
+    return () => {
+      window.removeEventListener("keydown", onKeyDown);
+      window.removeEventListener("keyup", onKeyUp);
+    };
+  }, [
+    player,
+    session,
+    playerToken,
+    quizOpen,
+    buyOpen,
+    question,
+    scoreboardOpen,
+    answeringChoice,
+    buyingGearId,
+    isBuyingSnowballs
+  ]);
+
   const chooseTeam = async (team: Team) => {
     if (!session || !player || !playerToken || session.status !== "waiting") return;
     status.clear();
@@ -2576,7 +2636,7 @@ function StudentExperience({ onExit }: { onExit: () => void }) {
           <div className="panel how-to-card">
             <h2>How to Play</h2>
             <p>Answer questions to earn money, buy snowballs and gear, then tag the other team in the arena.</p>
-            <p>Fast web arena: use WASD to move, arrow keys or a swipe on the arena to look around, F or left click to fire, and E for the flag. The Heavy Snowball Launcher cycles 2× scope, 4× scope, then normal view with right click. Q opens quiz, B opens buy, and hold Tab for the scoreboard.</p>
+            <p>Fast web arena: use WASD to move, arrow keys or a swipe on the arena to look around, F or left click to fire, and E for the flag. The Heavy Snowball Launcher cycles 2× scope, 4× scope, then normal view with right click. Q opens quiz, B opens buy, number keys 1–5 purchase shop items, and hold Tab for the scoreboard.</p>
             <p>If you are frozen out, keep practicing. Three correct answers respawn you back into the round.</p>
           </div>
         </div>
@@ -2649,7 +2709,7 @@ function StudentExperience({ onExit }: { onExit: () => void }) {
   return (
     <section className={isCompactViewport ? "game-layout compact-game-layout" : "game-layout"}>
       <div className="game-stage">
-        <GameAnnouncementOverlay announcement={session.announcement} serverTime={session.serverTime} />
+        <GameAnnouncementOverlay announcement={flagBuyPhase ? undefined : session.announcement} serverTime={session.serverTime} />
         <div className="game-utility-bar">
           <span>{gameModeLabel(session.settings.gameMode)}</span>
           <button type="button" onClick={() => { setSettingsOpen(true); setQuizOpen(false); setBuyOpen(false); setScoreboardOpen(false); }}><Settings size={16} aria-hidden="true" />Settings</button>
@@ -2677,7 +2737,7 @@ function StudentExperience({ onExit }: { onExit: () => void }) {
           <strong>{roundTimeLabel}</strong>
         </div>
         <div className="arena-objective-strip">
-          <span className={`status-pill status-${session.status}`}>{sessionStatusLabel(session.status)}</span>
+          <span className={`status-pill status-${session.status}`}>{flagBuyPhase ? "Buy Phase" : sessionStatusLabel(session.status)}</span>
           <span className="objective-primary">{objectiveText}</span>
           <span className={`mode-pill mode-${session.settings.gameMode}`}>
             {gameModeLabel(session.settings.gameMode)}
@@ -2732,7 +2792,7 @@ function StudentExperience({ onExit }: { onExit: () => void }) {
         )}
         <div className="control-prompts">
           <button disabled={roundEnded} onClick={() => { gameAudio.play("menu_toggle"); setQuizOpen(!quizOpen); setBuyOpen(false); setScoreboardOpen(false); }}>{isCompactViewport ? "Quiz" : "Q Quiz"}</button>
-          <button disabled={roundEnded || !player.isAlive} onClick={() => { gameAudio.play("menu_toggle"); setBuyOpen(!buyOpen); setQuizOpen(false); setScoreboardOpen(false); }}>{isCompactViewport ? "Buy" : "B Buy"}</button>
+          <button disabled={roundEnded || !player.isAlive} onClick={() => { gameAudio.play("menu_toggle"); setBuyOpen(!buyOpen); setQuizOpen(false); setScoreboardOpen(false); }}>{isCompactViewport ? "Buy" : "B Buy · 1–5"}</button>
           <button onMouseDown={() => { gameAudio.play("menu_toggle"); setScoreboardOpen(true); setQuizOpen(false); setBuyOpen(false); setSettingsOpen(false); }} onMouseUp={() => setScoreboardOpen(false)} onBlur={() => setScoreboardOpen(false)}>{isCompactViewport ? "Scoreboard" : "Hold Tab · Scoreboard"}</button>
           <button onClick={() => { gameAudio.play("menu_toggle"); setSettingsOpen((open) => !open); setQuizOpen(false); setBuyOpen(false); setScoreboardOpen(false); }}><Settings size={18} aria-hidden="true" />Settings</button>
         </div>
@@ -2770,6 +2830,7 @@ function StudentExperience({ onExit }: { onExit: () => void }) {
                 onBuySnowballs={buySnowballs}
                 buyingGearId={buyingGearId}
                 isBuyingSnowballs={isBuyingSnowballs}
+                buyPhaseSeconds={flagBuyPhase ? buyPhaseRemainingSeconds : undefined}
               />
             )}
             {scoreboardOpen && <Scoreboard players={session.players} localPlayerId={player.id} gameMode={session.settings.gameMode} />}
@@ -2895,7 +2956,8 @@ function BuyPanel({
   onBuy,
   onBuySnowballs,
   buyingGearId,
-  isBuyingSnowballs
+  isBuyingSnowballs,
+  buyPhaseSeconds
 }: {
   player: PlayerSession;
   session: GameSession;
@@ -2903,6 +2965,7 @@ function BuyPanel({
   onBuySnowballs: () => void;
   buyingGearId: string | null;
   isBuyingSnowballs: boolean;
+  buyPhaseSeconds?: number;
 }) {
   const GearGlyph = ({ gearId }: { gearId: string }) => {
     if (gearId === "starter_blaster") return <span className="gear-glyph launcher-starter" aria-hidden="true" />;
@@ -2922,14 +2985,17 @@ function BuyPanel({
   return (
     <div className="panel buy-panel">
       <div className="panel-title">
-        <h2>Buy Menu</h2>
+        <h2>{buyPhaseSeconds === undefined ? "Buy Menu" : `Buy Phase · ${buyPhaseSeconds}s`}</h2>
         <span>{formatMoney(player.money)}</span>
       </div>
+      <p className="buy-shortcut-help">Press 1–5 to buy instantly. Press B to open or close this menu.</p>
       <button
         className="gear-row"
         onClick={onBuySnowballs}
+        aria-keyshortcuts="1"
         disabled={!player.isAlive || player.money < snowballPrice || isBuyingSnowballs || isBuyingGear}
       >
+        <kbd className="buy-shortcut-key">1</kbd>
         <GearGlyph gearId="snowballs" />
         <span>
           <strong>{isBuyingSnowballs ? "Working..." : `${snowballCount} Snowballs`}</strong>
@@ -2943,8 +3009,10 @@ function BuyPanel({
           key={gear.id}
           className="gear-row"
           onClick={() => onBuy(gear.id)}
+          aria-keyshortcuts={getShopShortcutKey(gear.id)}
           disabled={!player.isAlive || player.money < gear.cost || isBuyingSnowballs || isBuyingGear}
         >
+          <kbd className="buy-shortcut-key">{getShopShortcutKey(gear.id)}</kbd>
           <GearGlyph gearId={gear.id} />
           <span>
             <strong>{buyingGearId === gear.id ? "Working..." : gear.name}</strong>

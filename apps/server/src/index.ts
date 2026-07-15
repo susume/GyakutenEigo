@@ -8,7 +8,7 @@ import { createServer } from "node:http";
 import { randomUUID } from "node:crypto";
 import { Server, type Socket } from "socket.io";
 import { resolveClientOrigins } from "./origins.js";
-import { planRoundConclusion } from "./roundFlow.js";
+import { getPausedRoundAction, planRoundConclusion } from "./roundFlow.js";
 import {
   clampArenaPosition,
   ARENA_SCALE,
@@ -32,6 +32,7 @@ import {
   isChoice,
   isMainRoundAnswer,
   isRoundActive,
+  isRoundBuyPhase,
   createInitialFlagState,
   randomizeBalancedTeams,
   resolveAnswerReward,
@@ -216,6 +217,7 @@ const BOT_RESPAWN_MS = 8000;
 const PLAYER_MAX_SPEED = 22;
 const PLAYER_DISCONNECT_GRACE_MS = 5000;
 const ROUND_RESULT_ANNOUNCEMENT_MS = 4000;
+const FLAG_BUY_PHASE_MS = 6000;
 const ROUND_START_ANNOUNCEMENT_MS = 2500;
 const GAME_OVER_ANNOUNCEMENT_MS = 7000;
 
@@ -427,6 +429,8 @@ const finishZombieSession = (session: GameSession, outcome: string) => {
 const inactiveRoundMessage = (session: GameSession) =>
   session.status === "ended"
     ? "The round has ended. This action was not counted."
+    : isRoundBuyPhase(session)
+      ? "The buy phase is open. The round begins shortly."
     : session.status === "paused"
       ? "The round has ended. The next round is starting shortly."
       : "The teacher has not started the round yet.";
@@ -458,12 +462,8 @@ const prepareModeStateForRound = (session: GameSession) => {
   }
 };
 
-const startRoundState = (session: GameSession, preserveStats = true) => {
+const prepareRoundState = (session: GameSession, preserveStats = true) => {
   prepareModeStateForRound(session);
-  session.status = "active";
-  session.roundTransition = undefined;
-  session.startedAt = now();
-  session.endsAt = new Date(Date.now() + session.settings.roundDurationSeconds * 1000).toISOString();
   session.roundWins = session.roundWins ?? { blue: 0, red: 0 };
   session.players = session.players.map((player, index) => {
     const wasOutForRound = !player.isAlive;
@@ -472,6 +472,37 @@ const startRoundState = (session: GameSession, preserveStats = true) => {
       ? { ...reset, respawns: wasOutForRound ? (player.respawns ?? 0) + 1 : (player.respawns ?? 0) }
       : { ...reset, score: 0, correctAnswers: 0, wrongAnswers: 0, tags: 0, respawns: 0 };
   });
+};
+
+const activatePreparedRound = (session: GameSession) => {
+  session.status = "active";
+  session.roundTransition = undefined;
+  session.startedAt = now();
+  session.endsAt = new Date(Date.now() + session.settings.roundDurationSeconds * 1000).toISOString();
+};
+
+const startRoundState = (session: GameSession, preserveStats = true) => {
+  prepareRoundState(session, preserveStats);
+  activatePreparedRound(session);
+};
+
+const openFlagBuyPhase = (session: GameSession, preserveStats = true) => {
+  prepareRoundState(session, preserveStats);
+  const startsAt = new Date(Date.now() + FLAG_BUY_PHASE_MS).toISOString();
+  session.status = "paused";
+  session.startedAt = undefined;
+  session.endsAt = undefined;
+  session.roundTransition = { nextRound: session.currentRound, startsAt, phase: "buy" };
+  session.announcement = {
+    ...makeAnnouncement(
+      "buy_phase",
+      "Buy Phase",
+      "Press B, then use number keys 1–5 to buy supplies and gear.",
+      `Round ${session.currentRound} begins in 6 seconds.`,
+      FLAG_BUY_PHASE_MS
+    ),
+    expiresAt: startsAt
+  };
 };
 
 const finishRound = (session: GameSession, winner: Team | undefined, reason: string) => {
@@ -502,7 +533,9 @@ const finishRound = (session: GameSession, winner: Team | undefined, reason: str
 
   const nextRound = conclusion.nextRound!;
   const resultTitle = winner ? `${teamName(winner)} wins Round ${session.currentRound}!` : `Round ${session.currentRound} is a draw`;
-  const resultMessage = `${reason}. Round ${nextRound} begins shortly.`;
+  const resultMessage = session.settings.gameMode === "flag"
+    ? `${reason}. Round ${nextRound} buy phase begins shortly.`
+    : `${reason}. Round ${nextRound} begins shortly.`;
   const startsAt = new Date(Date.now() + ROUND_RESULT_ANNOUNCEMENT_MS).toISOString();
   session.status = "paused";
   session.endsAt = now();
@@ -510,14 +543,23 @@ const finishRound = (session: GameSession, winner: Team | undefined, reason: str
     ...makeAnnouncement("round_result", resultTitle, resultMessage, undefined, ROUND_RESULT_ANNOUNCEMENT_MS),
     expiresAt: startsAt
   };
-  session.roundTransition = { nextRound, startsAt };
+  session.roundTransition = { nextRound, startsAt, phase: "result" };
   broadcastSession(session);
 };
 
 const startPendingRound = (session: GameSession) => {
   if (session.status !== "paused" || !session.roundTransition) return;
-  session.currentRound = session.roundTransition.nextRound;
-  startRoundState(session);
+  const transition = session.roundTransition;
+  session.currentRound = transition.nextRound;
+  if (getPausedRoundAction({ gameMode: session.settings.gameMode, phase: transition.phase }) === "open_buy_phase") {
+    openFlagBuyPhase(session);
+    appendEvent(session, { type: "start", message: `Round ${session.currentRound} buy phase opened.` });
+    broadcastSession(session);
+    return;
+  }
+
+  if (transition.phase === "buy") activatePreparedRound(session);
+  else startRoundState(session);
   session.announcement = makeAnnouncement(
     "round_start",
     `Round ${session.currentRound} has begun!`,
@@ -1116,29 +1158,27 @@ app.post("/api/sessions/:code/start", requireTeacher, (req: AuthedRequest, res) 
   }
   session.currentRound = 1;
   session.roundWins = { blue: 0, red: 0 };
-  startRoundState(session, false);
-  session.announcement = makeAnnouncement(
-    "round_start",
-    session.settings.gameMode === "zombie"
-      ? "Zombie Mode has begun!"
-      : `Round ${session.currentRound} has begun!`,
-    session.settings.gameMode === "flag"
-      ? "Red carries and protects the flag. Blue defends and captures."
-      : session.settings.gameMode === "zombie"
+  if (session.settings.gameMode === "flag") {
+    openFlagBuyPhase(session, false);
+    appendEvent(session, { type: "start", message: "Flag Mode round 1 buy phase opened." });
+  } else {
+    startRoundState(session, false);
+    session.announcement = makeAnnouncement(
+      "round_start",
+      session.settings.gameMode === "zombie" ? "Zombie Mode has begun!" : `Round ${session.currentRound} has begun!`,
+      session.settings.gameMode === "zombie"
         ? "Zombies tag humans. Humans: survive as long as you can."
         : "Answer questions, earn supplies, and tag the other team.",
-    undefined,
-    ROUND_START_ANNOUNCEMENT_MS
-  );
-  appendEvent(session, {
-    type: "start",
-    message:
-      session.settings.gameMode === "flag"
-        ? `Flag Mode round 1 started. Red carries the flag to Blue base.`
-        : session.settings.gameMode === "zombie"
-          ? "Zombie Mode started. Zombies tag humans with Snowball Launchers."
-          : `Round started. Answer ${RESPAWN_CORRECT_ANSWERS_REQUIRED} practice questions to respawn if frozen out.`
-  });
+      undefined,
+      ROUND_START_ANNOUNCEMENT_MS
+    );
+    appendEvent(session, {
+      type: "start",
+      message: session.settings.gameMode === "zombie"
+        ? "Zombie Mode started. Zombies tag humans with Snowball Launchers."
+        : `Round started. Answer ${RESPAWN_CORRECT_ANSWERS_REQUIRED} practice questions to respawn if frozen out.`
+    });
+  }
   broadcastSession(session);
   res.json({ session: stampSession(session) });
 });
@@ -1497,7 +1537,7 @@ app.post("/api/sessions/:code/players/:playerId/buy", (req, res) => {
     return;
   }
   if (!requirePlayerAccess(req, res, session, player)) return;
-  if (!isRoundActive(session)) {
+  if (!isRoundActive(session) && !isRoundBuyPhase(session)) {
     res.status(400).json({ error: "The round has ended. Gear buying is closed." });
     return;
   }
@@ -1539,7 +1579,7 @@ app.post("/api/sessions/:code/players/:playerId/buy-snowballs", (req, res) => {
     return;
   }
   if (!requirePlayerAccess(req, res, session, player)) return;
-  if (!isRoundActive(session)) {
+  if (!isRoundActive(session) && !isRoundBuyPhase(session)) {
     res.status(400).json({ error: "The round has ended. Snowball buying is closed." });
     return;
   }
