@@ -42,6 +42,7 @@ jobs:
         run: npm run build -w @quizstrike/web
         env:
           VITE_API_URL: ${{ vars.VITE_API_URL || 'https://api.gyakuteneigo.com' }}
+          VITE_API_FALLBACK_URL: ${{ vars.VITE_API_FALLBACK_URL || 'https://gyakuteneigo-api.onrender.com' }}
           VITE_BASE_PATH: ${{ vars.VITE_BASE_PATH || '/' }}
 
       - name: Configure SPA fallback and optional custom domain

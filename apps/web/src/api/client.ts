@@ -1,5 +1,6 @@
 import type { Choice, SessionSettings } from "@quizstrike/shared";
 import { ApiError } from "./errors";
+import { buildApiUrlCandidates, fetchFromApiCandidates } from "./endpoints.js";
 
 export { ApiError } from "./errors";
 
@@ -11,6 +12,26 @@ const cleanUrl = (value: string | undefined) => {
 const API_URL =
   cleanUrl(import.meta.env.VITE_API_URL as string | undefined) ??
   window.location.origin;
+const DEFAULT_HOSTED_FALLBACK = "https://gyakuteneigo-api.onrender.com";
+const API_URLS = buildApiUrlCandidates(
+  API_URL,
+  cleanUrl(import.meta.env.VITE_API_FALLBACK_URL as string | undefined) ??
+    (API_URL === "https://api.gyakuteneigo.com" ? DEFAULT_HOSTED_FALLBACK : undefined)
+);
+let activeApiUrl = API_URLS[0] ?? API_URL;
+
+export const getApiUrl = () => activeApiUrl;
+
+const fetchApi = async (path: string, options?: RequestInit) => {
+  const result = await fetchFromApiCandidates({
+    candidates: API_URLS,
+    activeUrl: activeApiUrl,
+    path,
+    options
+  });
+  activeApiUrl = result.url;
+  return result.response;
+};
 
 const getToken = () => localStorage.getItem("quizstrike_token");
 
@@ -24,13 +45,13 @@ export async function api<T>(path: string, options: RequestInit = {}): Promise<T
 
   let response: Response;
   try {
-    response = await fetch(`${API_URL}${path}`, {
+    response = await fetchApi(path, {
       ...options,
       headers
     });
   } catch {
     throw new ApiError(
-      `Could not reach the Quiz-Strike game server at ${API_URL}. Check that the server is deployed, VITE_API_URL is correct, and CLIENT_ORIGIN allows this web address.`,
+      "QuizStrike could not connect to the game server. Reload the page and try again. If this only happens on the school network, ask school IT to allow api.gyakuteneigo.com and gyakuteneigo-api.onrender.com.",
       0
     );
   }
@@ -72,12 +93,12 @@ export const teacherApi = {
     const token = getToken();
     let response: Response;
     try {
-      response = await fetch(`${API_URL}/api/sessions/${code}/report.csv`, {
+      response = await fetchApi(`/api/sessions/${code}/report.csv`, {
         headers: token ? { Authorization: `Bearer ${token}` } : undefined
       });
     } catch {
       throw new ApiError(
-        `Could not reach the Quiz-Strike game server at ${API_URL}. Check that the server is deployed, VITE_API_URL is correct, and CLIENT_ORIGIN allows this web address.`,
+        "QuizStrike could not connect to the game server. Reload the page and try again. If this only happens on the school network, ask school IT to allow api.gyakuteneigo.com and gyakuteneigo-api.onrender.com.",
         0
       );
     }

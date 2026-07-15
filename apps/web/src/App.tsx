@@ -49,7 +49,7 @@ import {
   type Team,
   type TeacherUser
 } from "@quizstrike/shared";
-import { API_URL, ApiError, authApi, studentApi, teacherApi } from "./api/client";
+import { ApiError, authApi, getApiUrl, studentApi, teacherApi } from "./api/client";
 import { buildStudentJoinUrl, getJoinCodeFromSearch, modeForRoute, normalizeRoutePath, type AppMode } from "./navigation";
 import { groupScoreboardRows } from "./scoreboardGroups";
 import { getModeScoreSummary, getReadyRoomTitle, getSessionResultText, getZombieCounts } from "./sessionPresentation";
@@ -881,7 +881,7 @@ function TeacherDashboard({ teacher, onLogout }: { teacher: TeacherUser; onLogou
 
   useEffect(() => {
     if (!selectedSession) return;
-    const socket: Socket = io(API_URL);
+    const socket: Socket = io(getApiUrl());
     socket.emit("join_session_room", selectedSession.sessionCode);
     socket.on("connect", () => {
       setIsSocketReconnecting(false);
@@ -1539,7 +1539,7 @@ function SessionManager({
   const visibleNumberFields = sessionNumberFields.filter((field) => {
     if (settings.gameMode === "flag") return field.name !== "initialZombieCount";
     if (settings.gameMode === "zombie") return field.name !== "roundCount" && field.name !== "flagHoldSeconds";
-    return field.name !== "roundCount" && field.name !== "flagHoldSeconds" && field.name !== "initialZombieCount";
+    return field.name !== "flagHoldSeconds" && field.name !== "initialZombieCount";
   });
 
   const addBot = async () => {
@@ -2141,7 +2141,7 @@ function StudentExperience({ onExit }: { onExit: () => void }) {
   useEffect(() => {
     if (!session || !player?.id || !playerToken) return;
     const activePlayerId = player.id;
-    const socket = io(API_URL);
+    const socket = io(getApiUrl());
     socketRef.current = socket;
     const roomJoinPayload = { code: session.sessionCode, playerId: activePlayerId, playerToken };
     socket.emit("join_session_room", roomJoinPayload);

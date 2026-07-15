@@ -559,6 +559,22 @@ export const getRoundRemainingSeconds = (
   );
 };
 
+export const resolveTeamRoundWinner = (
+  players: Array<Pick<PlayerSession, "team" | "score" | "tags">>
+): Team | undefined => {
+  const totals = players.reduce(
+    (result, player) => {
+      result[player.team].score += player.score;
+      result[player.team].tags += player.tags ?? 0;
+      return result;
+    },
+    { blue: { score: 0, tags: 0 }, red: { score: 0, tags: 0 } }
+  );
+  if (totals.blue.score !== totals.red.score) return totals.blue.score > totals.red.score ? "blue" : "red";
+  if (totals.blue.tags !== totals.red.tags) return totals.blue.tags > totals.red.tags ? "blue" : "red";
+  return undefined;
+};
+
 export const resolvePracticeRespawn = ({
   player,
   settings,

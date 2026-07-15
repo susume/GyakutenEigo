@@ -19,6 +19,7 @@ import {
   getGearMoveSpeedMultiplier,
   getArenaObstacles,
   getRoundRemainingSeconds,
+  resolveTeamRoundWinner,
   getTeamSpawnForMap,
   selectTeamSpawnForMap,
   PlayerQuestionGate,
@@ -429,13 +430,15 @@ const startRoundState = (session: GameSession, preserveStats = true) => {
   });
 };
 
-const finishRound = (session: GameSession, winner: Team, reason: string) => {
+const finishRound = (session: GameSession, winner: Team | undefined, reason: string) => {
   if (session.status !== "active") return;
   session.roundWins = session.roundWins ?? { blue: 0, red: 0 };
-  session.roundWins[winner] += 1;
+  if (winner) session.roundWins[winner] += 1;
   appendEvent(session, {
     type: "end",
-    message: `${winner === "red" ? "Red Team" : "Blue Team"} wins round ${session.currentRound}: ${reason}.`,
+    message: winner
+      ? `${winner === "red" ? "Red Team" : "Blue Team"} wins round ${session.currentRound}: ${reason}.`
+      : `Round ${session.currentRound} ended in a draw: ${reason}.`,
     team: winner
   });
 
@@ -696,7 +699,8 @@ const advanceBots = () => {
       } else if (session.settings.gameMode === "zombie") {
         finishSession(session, "Humans survived until time expired.");
       } else {
-        finishSession(session, "Time is up. Report is ready.");
+        const winner = resolveTeamRoundWinner(session.players);
+        finishRound(session, winner, winner ? "Higher team score when time expired" : "Teams were tied when time expired");
       }
       continue;
     }

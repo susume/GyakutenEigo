@@ -34,6 +34,7 @@ Web build:
 
 ```bash
 VITE_API_URL=https://api.gyakuteneigo.com
+VITE_API_FALLBACK_URL=https://gyakuteneigo-api.onrender.com
 ```
 
 Use `.env.production.example` as the template for hosted environments. If you test from the default GitHub Pages URL before a custom domain is ready, include that Pages URL in `CLIENT_ORIGIN`, or the browser will block account creation.

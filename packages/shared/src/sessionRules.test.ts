@@ -33,6 +33,7 @@ import {
   getGearZoomFovMultiplier,
   getArenaObstacles,
   getRoundRemainingSeconds,
+  resolveTeamRoundWinner,
   getTeamSpawn,
   getTeamSpawnForMap,
   selectTeamSpawn,
@@ -417,6 +418,21 @@ test("resolveBotAttackTarget chooses the nearest visible real opponent", () => {
     }),
     { ok: true, targetId: "visible" }
   );
+});
+
+test("resolveTeamRoundWinner scores Classic Tag rounds and preserves draws", () => {
+  assert.equal(resolveTeamRoundWinner([
+    makePlayer({ team: "blue", score: 10, tags: 2 }),
+    makePlayer({ team: "red", score: 5, tags: 4 })
+  ]), "blue");
+  assert.equal(resolveTeamRoundWinner([
+    makePlayer({ team: "blue", score: 5, tags: 3 }),
+    makePlayer({ team: "red", score: 5, tags: 2 })
+  ]), "blue");
+  assert.equal(resolveTeamRoundWinner([
+    makePlayer({ team: "blue", score: 5, tags: 2 }),
+    makePlayer({ team: "red", score: 5, tags: 2 })
+  ]), undefined);
 });
 
 test("resolveBotPursuitTarget sends bots toward the nearest connected real opponent", () => {
