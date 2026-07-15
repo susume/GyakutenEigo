@@ -268,7 +268,7 @@ test("sanitizeSessionSettings keeps classroom settings inside safe bounds", () =
   });
 });
 
-test("getRoundRemainingSeconds clamps active round countdowns to zero", () => {
+test("getRoundRemainingSeconds clamps active round countdowns between zero and the configured duration", () => {
   const session = {
     id: "session-1",
     teacherId: "teacher-1",
@@ -285,6 +285,7 @@ test("getRoundRemainingSeconds clamps active round countdowns to zero", () => {
 
   assert.equal(getRoundRemainingSeconds(session, "2026-07-03T00:01:00.000Z"), 60);
   assert.equal(getRoundRemainingSeconds(session, "2026-07-03T00:03:00.000Z"), 0);
+  assert.equal(getRoundRemainingSeconds(session, "2026-07-02T23:59:30.000Z"), 120);
   assert.equal(getRoundRemainingSeconds({ ...session, status: "waiting" }, "2026-07-03T00:01:00.000Z"), 120);
 });
 

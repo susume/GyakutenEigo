@@ -348,8 +348,13 @@ const issueNextQuestion = (session: GameSession, playerId: string): PublicQuesti
   return question;
 };
 
+const stampSession = (session: GameSession) => {
+  session.serverTime = now();
+  return session;
+};
+
 const broadcastSession = (session: GameSession) => {
-  io.to(session.sessionCode).emit("session_state", session);
+  io.to(session.sessionCode).emit("session_state", stampSession(session));
   schedulePersistence();
 };
 
@@ -852,7 +857,7 @@ app.get("/api/teacher/dashboard", requireTeacher, (req: AuthedRequest, res) => {
   res.json({
     classes: [...classes.values()].filter((item) => item.teacherId === teacherId),
     quizSets: [...quizSets.values()].filter((item) => item.teacherId === teacherId),
-    sessions: [...sessions.values()].filter((item) => item.teacherId === teacherId)
+    sessions: [...sessions.values()].filter((item) => item.teacherId === teacherId).map(stampSession)
   });
 });
 
@@ -1001,7 +1006,7 @@ app.post("/api/sessions", requireTeacher, (req: AuthedRequest, res) => {
   appendEvent(session, { type: "join", message: `Session ${session.sessionCode} created.` });
   sessions.set(session.id, session);
   schedulePersistence();
-  res.status(201).json({ session });
+  res.status(201).json({ session: stampSession(session) });
 });
 
 app.post("/api/sessions/:code/start", requireTeacher, (req: AuthedRequest, res) => {
@@ -1030,7 +1035,7 @@ app.post("/api/sessions/:code/start", requireTeacher, (req: AuthedRequest, res) 
           : `Round started. Answer ${RESPAWN_CORRECT_ANSWERS_REQUIRED} practice questions to respawn if frozen out.`
   });
   broadcastSession(session);
-  res.json({ session });
+  res.json({ session: stampSession(session) });
 });
 
 app.post("/api/sessions/:code/end", requireTeacher, (req: AuthedRequest, res) => {
@@ -1086,7 +1091,7 @@ app.post("/api/sessions/:code/bots", requireTeacher, (req: AuthedRequest, res) =
   session.players.push(bot);
   appendEvent(session, { type: "join", message: `${bot.nickname} joined for testing.`, playerId: bot.id, team });
   broadcastSession(session);
-  res.status(201).json({ session, bot });
+  res.status(201).json({ session: stampSession(session), bot });
 });
 
 app.get("/api/sessions/:code", (req, res) => {
@@ -1095,7 +1100,7 @@ app.get("/api/sessions/:code", (req, res) => {
     res.status(404).json({ error: "Session not found." });
     return;
   }
-  res.json({ session });
+  res.json({ session: stampSession(session) });
 });
 
 app.get("/api/sessions/:code/report", requireTeacher, (req: AuthedRequest, res) => {
@@ -1191,7 +1196,7 @@ app.post("/api/sessions/:code/join", (req, res) => {
     team
   });
   broadcastSession(session);
-  res.status(201).json({ session, player, playerToken, question: issueNextQuestion(session, player.id) });
+  res.status(201).json({ session: stampSession(session), player, playerToken, question: issueNextQuestion(session, player.id) });
 });
 
 app.get("/api/sessions/:code/players/:playerId/rejoin", (req, res) => {
@@ -1210,7 +1215,7 @@ app.get("/api/sessions/:code/players/:playerId/rejoin", (req, res) => {
       ? issueNextQuestion(session, player.id)
       : undefined;
   broadcastSession(session);
-  res.json({ session, player, question });
+  res.json({ session: stampSession(session), player, question });
 });
 
 app.post("/api/sessions/:code/players/:playerId/team", (req, res) => {
@@ -1242,7 +1247,7 @@ app.post("/api/sessions/:code/players/:playerId/team", (req, res) => {
     team: player.team
   });
   broadcastSession(session);
-  res.json({ session, player });
+  res.json({ session: stampSession(session), player });
 });
 
 app.get("/api/sessions/:code/players/:playerId/question", (req, res) => {
@@ -1480,7 +1485,7 @@ io.on("connection", (socket) => {
     }
 
     socket.join(session.sessionCode);
-    socket.emit("session_state", session);
+    socket.emit("session_state", stampSession(session));
   });
 
   socket.on("disconnect", () => {

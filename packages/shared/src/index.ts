@@ -157,6 +157,8 @@ export interface GameSession {
   startedAt?: string;
   endsAt?: string;
   endedAt?: string;
+  /** Server clock captured when this session snapshot was sent to a client. */
+  serverTime?: string;
 }
 
 export interface AnswerLog {
@@ -551,7 +553,10 @@ export const getRoundRemainingSeconds = (
       ? start + session.settings.roundDurationSeconds * 1000
       : Date.parse(at) + session.settings.roundDurationSeconds * 1000;
   const nowMs = Date.parse(at);
-  return Math.max(0, Math.ceil((end - nowMs) / 1000));
+  return Math.min(
+    session.settings.roundDurationSeconds,
+    Math.max(0, Math.ceil((end - nowMs) / 1000))
+  );
 };
 
 export const resolvePracticeRespawn = ({

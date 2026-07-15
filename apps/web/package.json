@@ -14,6 +14,7 @@
     "@quizstrike/shared": "0.1.0",
     "@vitejs/plugin-react": "^4.6.0",
     "lucide-react": "^0.525.0",
+    "qrcode.react": "^4.2.0",
     "react": "^19.1.0",
     "react-dom": "^19.1.0",
     "socket.io-client": "^4.8.1",

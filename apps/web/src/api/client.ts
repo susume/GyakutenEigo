@@ -8,10 +8,9 @@ const cleanUrl = (value: string | undefined) => {
   return trimmed ? trimmed.replace(/\/$/, "") : undefined;
 };
 
-const localApiUrl = `${window.location.protocol}//${window.location.hostname}:4000`;
 const API_URL =
   cleanUrl(import.meta.env.VITE_API_URL as string | undefined) ??
-  (window.location.hostname === "localhost" || window.location.hostname === "127.0.0.1" ? localApiUrl : window.location.origin);
+  window.location.origin;
 
 const getToken = () => localStorage.getItem("quizstrike_token");
 

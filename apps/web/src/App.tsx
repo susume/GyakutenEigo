@@ -28,6 +28,7 @@ import {
   WandSparkles
 } from "lucide-react";
 import { io, type Socket } from "socket.io-client";
+import { QRCodeSVG } from "qrcode.react";
 import {
   calculateAccuracy,
   canStartRound,
@@ -437,20 +438,26 @@ const queueFeedbackCue = (cue: FeedbackCue) => {
 };
 
 function useRoundRemaining(session: GameSession | null) {
-  const [nowIso, setNowIso] = useState(() => new Date().toISOString());
+  const [clientNowMs, setClientNowMs] = useState(() => Date.now());
+  const [serverOffsetMs, setServerOffsetMs] = useState(0);
+
+  useEffect(() => {
+    const serverTimeMs = session?.serverTime ? Date.parse(session.serverTime) : Number.NaN;
+    setServerOffsetMs(Number.isFinite(serverTimeMs) ? serverTimeMs - Date.now() : 0);
+  }, [session?.serverTime]);
 
   useEffect(() => {
     if (session?.status !== "active") {
-      setNowIso(new Date().toISOString());
+      setClientNowMs(Date.now());
       return;
     }
 
-    const interval = window.setInterval(() => setNowIso(new Date().toISOString()), 1000);
+    const interval = window.setInterval(() => setClientNowMs(Date.now()), 1000);
     return () => window.clearInterval(interval);
   }, [session?.status, session?.startedAt, session?.endsAt]);
 
   if (!session || session.status === "ended") return 0;
-  return getRoundRemainingSeconds(session, nowIso);
+  return getRoundRemainingSeconds(session, new Date(clientNowMs + serverOffsetMs).toISOString());
 }
 
 function ArenaLoading({ label = "Loading arena" }: { label?: string }) {
@@ -516,7 +523,7 @@ export default function App() {
 
   return (
     <main id="main-content" className="app-shell" tabIndex={-1}>
-      <a className="skip-link" href="#main-content">Skip to main content</a>
+      <a className={`skip-link skip-link-${mode}`} href="#main-content">Skip to main content</a>
       <header className={`topbar topbar-${mode}${teacher ? " teacher-authenticated" : ""}`}>
         <button className="brand-button" onClick={() => navigateTo("/", "home")}>
           <span>QuizStrike</span>
@@ -682,25 +689,23 @@ function GyakutenEigoHome({ onOpenGame, onJoinGame }: { onOpenGame: () => void; 
           <div className="button-row">
             <button className="primary" onClick={onOpenGame}>
               <Play size={18} aria-hidden="true" />
-              Explore Quiz-Strike
+              Open Teacher Workspace
             </button>
             <button onClick={onJoinGame}>
               <DoorOpen size={18} aria-hidden="true" />
-              Join a Class Game
+              Student Join
             </button>
           </div>
         </div>
-        <button className="game-host-card" onClick={onOpenGame}>
-          <span className="game-host-card-label">Now hosting · Quiz-Strike</span>
+        <article className="game-host-card">
+          <span className="game-host-card-label">Live classroom game · QuizStrike</span>
           <div className="hero-arena-preview" aria-hidden="true">
-            <Suspense fallback={<ArenaLoading label="Loading Desert Citadel" />}>
-              <ArenaPreview />
-            </Suspense>
+            <img className="game-host-card-art" src="/assets/quizstrike-classroom-hero.png" alt="" />
           </div>
           <span className="game-preview-objective"><Target size={16} aria-hidden="true" />Answer · earn · capture</span>
           <strong>Desert Citadel</strong>
           <small>Ramparts. Waterworks. Caravan Quarter. Two gate courts.</small>
-        </button>
+        </article>
       </section>
 
       <section className="landing-section product-intro" aria-labelledby="why-play-title">
@@ -750,7 +755,7 @@ function GyakutenEigoHome({ onOpenGame, onJoinGame }: { onOpenGame: () => void; 
       <section className="landing-final-cta">
         <span className="eyebrow">Start the next review round</span>
         <h2>Bring the questions. We’ll bring the game loop.</h2>
-        <div className="button-row"><button className="primary" onClick={onOpenGame}><Play size={18} aria-hidden="true" />Open Quiz-Strike</button><button onClick={onJoinGame}><DoorOpen size={18} aria-hidden="true" />Student Join</button></div>
+        <div className="button-row"><button className="primary" onClick={onOpenGame}><Play size={18} aria-hidden="true" />Open Teacher Workspace</button></div>
       </section>
     </div>
   );
@@ -1330,15 +1335,19 @@ function SessionManager({
   const [isAddingBot, setIsAddingBot] = useState(false);
   const [isJoinLinkCopied, setIsJoinLinkCopied] = useState(false);
   const [isEndConfirmOpen, setIsEndConfirmOpen] = useState(false);
+  const [isProjectorOpen, setIsProjectorOpen] = useState(false);
   const endSessionTriggerRef = useRef<HTMLButtonElement>(null);
   const endSessionDialogRef = useRef<HTMLDivElement>(null);
   const keepSessionOpenRef = useRef<HTMLButtonElement>(null);
+  const projectorDialogRef = useRef<HTMLElement>(null);
+  const projectorCloseRef = useRef<HTMLButtonElement>(null);
   const status = useAsyncMessage();
   const remainingSeconds = useRoundRemaining(selectedSession);
   const selectedMap = getArenaMap(settings.mapId);
   const studentJoinLink = selectedSession
     ? buildStudentJoinUrl(window.location.origin, selectedSession.sessionCode)
     : "";
+  const isLocalOnlyJoinLink = window.location.hostname === "localhost" || window.location.hostname === "127.0.0.1";
 
   useEffect(() => {
     if (!quizSetId && data.quizSets[0]) setQuizSetId(data.quizSets[0].id);
@@ -1382,6 +1391,42 @@ function SessionManager({
       previousFocus?.focus();
     };
   }, [isEndConfirmOpen]);
+
+  useEffect(() => {
+    if (!isProjectorOpen) return;
+    const previousFocus = document.activeElement instanceof HTMLElement ? document.activeElement : null;
+    const previousOverflow = document.body.style.overflow;
+    document.body.style.overflow = "hidden";
+    window.setTimeout(() => projectorCloseRef.current?.focus(), 0);
+    const handleProjectorKeys = (event: KeyboardEvent) => {
+      if (event.key === "Escape") {
+        setIsProjectorOpen(false);
+        return;
+      }
+      if (event.key !== "Tab") return;
+      const focusable = Array.from(
+        projectorDialogRef.current?.querySelectorAll<HTMLElement>(
+          'button:not([disabled]), [href], input:not([disabled]), [tabindex]:not([tabindex="-1"])'
+        ) ?? []
+      );
+      if (focusable.length === 0) return;
+      const first = focusable[0];
+      const last = focusable[focusable.length - 1];
+      if (event.shiftKey && document.activeElement === first) {
+        event.preventDefault();
+        last.focus();
+      } else if (!event.shiftKey && document.activeElement === last) {
+        event.preventDefault();
+        first.focus();
+      }
+    };
+    document.addEventListener("keydown", handleProjectorKeys);
+    return () => {
+      document.body.style.overflow = previousOverflow;
+      document.removeEventListener("keydown", handleProjectorKeys);
+      previousFocus?.focus();
+    };
+  }, [isProjectorOpen]);
 
   const hasInvalidSettings = Object.values(invalidSettings).some(Boolean);
 
@@ -1450,6 +1495,7 @@ function SessionManager({
     try {
       const payload = (await teacherApi.startSession(selectedSession.sessionCode)) as { session: GameSession };
       setSelectedSession(payload.session);
+      setIsProjectorOpen(false);
       await onRefresh();
       status.setMessage("Round started.");
     } catch (err) {
@@ -1733,11 +1779,22 @@ function SessionManager({
                 {isJoinLinkCopied ? "Copied" : "Copy Link"}
               </button>
             </div>
+            {isLocalOnlyJoinLink && (
+              <p className="network-share-warning" role="status">
+                This link works only on this computer. For student devices, open this teacher page using the Wi-Fi address shown by the app server, then share the new link.
+              </p>
+            )}
             <p className="mini-copy">
               If a player is frozen out, they can answer {RESPAWN_CORRECT_ANSWERS_REQUIRED} correct practice questions to respawn.
             </p>
             {selectedSession.status === "waiting" && startBlockedReason && <p className="mini-copy">{startBlockedReason}</p>}
             <div className="button-row">
+              {selectedSession.status === "waiting" && (
+                <button type="button" className="projector-button" onClick={() => setIsProjectorOpen(true)}>
+                  <Eye size={18} aria-hidden="true" />
+                  Project Waiting Room
+                </button>
+              )}
               {selectedSession.status === "active" ? (
                 <span className="status-pill status-active">Round Active</span>
               ) : (
@@ -1774,6 +1831,50 @@ function SessionManager({
                     <button ref={keepSessionOpenRef} onClick={() => setIsEndConfirmOpen(false)}>Keep Session Open</button>
                   </div>
                 </div>
+              </div>
+            )}
+            {isProjectorOpen && selectedSession.status === "waiting" && (
+              <div className="projector-backdrop" role="presentation">
+                <section ref={projectorDialogRef} className="projector-waiting-room" role="dialog" aria-modal="true" aria-labelledby="projector-title">
+                  <header>
+                    <div>
+                      <span className="projector-kicker">QuizStrike classroom lobby</span>
+                      <h2 id="projector-title">Join the game</h2>
+                    </div>
+                    <button ref={projectorCloseRef} type="button" onClick={() => setIsProjectorOpen(false)} aria-label="Close projector waiting room">Close</button>
+                  </header>
+                  <div className="projector-content">
+                    <div className="projector-join-code">
+                      <span>Game code</span>
+                      <strong>{selectedSession.sessionCode}</strong>
+                      <small>{studentJoinLink.replace(/^https?:\/\//, "")}</small>
+                    </div>
+                    <div className="projector-qr">
+                      <QRCodeSVG
+                        value={studentJoinLink}
+                        size={260}
+                        level="M"
+                        marginSize={2}
+                        title={`Join QuizStrike session ${selectedSession.sessionCode}`}
+                      />
+                      <span>Scan to join</span>
+                    </div>
+                  </div>
+                  <div className="projector-roster" aria-live="polite">
+                    <strong>{selectedSession.players.filter((item) => !item.isBot).length} students joined</strong>
+                    <div>
+                      {selectedSession.players.filter((item) => !item.isBot).map((item) => <span key={item.id}>{item.nickname}</span>)}
+                      {selectedSession.players.every((item) => item.isBot) && <span>Waiting for the class...</span>}
+                    </div>
+                  </div>
+                  <footer>
+                    <button type="button" onClick={copyStudentJoinLink}><Copy size={20} aria-hidden="true" />Copy Link</button>
+                    <button className="primary" type="button" onClick={start} disabled={Boolean(startBlockedReason) || isStartingSession}>
+                      <Play size={22} aria-hidden="true" />
+                      {isStartingSession ? "Starting..." : startBlockedReason ? "Waiting for Students" : "Begin Round"}
+                    </button>
+                  </footer>
+                </section>
               </div>
             )}
           </>
@@ -1837,7 +1938,7 @@ function ReportsPanel({
   };
 
   return (
-    <div className="panel">
+    <div className="panel report-panel">
       <div className="section-heading compact">
         <div>
           <h2>Session Results</h2>
@@ -1883,7 +1984,7 @@ function ReportsPanel({
               <strong>{report.missedQuestions.length}</strong>
             </div>
           </div>
-          <table>
+          <table className="report-table">
             <thead>
               <tr>
                 <th>Student</th>
@@ -1898,13 +1999,13 @@ function ReportsPanel({
             <tbody>
               {report.rows.map((row) => (
                 <tr key={row.nickname}>
-                  <td>{row.nickname}</td>
-                  <td>{teamLabel(row.team)}</td>
-                  <td>{row.correctAnswers}</td>
-                  <td>{row.wrongAnswers}</td>
-                  <td>{row.accuracy}%</td>
-                  <td>{formatMoney(row.quizMoney)}</td>
-                  <td>{row.score}</td>
+                  <td data-label="Student">{row.nickname}</td>
+                  <td data-label="Team">{teamLabel(row.team)}</td>
+                  <td data-label="Correct">{row.correctAnswers}</td>
+                  <td data-label="Wrong">{row.wrongAnswers}</td>
+                  <td data-label="Accuracy">{row.accuracy}%</td>
+                  <td data-label="Quiz Money">{formatMoney(row.quizMoney)}</td>
+                  <td data-label="Score">{row.score}</td>
                 </tr>
               ))}
             </tbody>
@@ -2441,25 +2542,31 @@ function StudentExperience({ onExit }: { onExit: () => void }) {
               <small>Enter your name below to join.</small>
             </div>
           ) : (
-            <label>
-              <span className="sr-only">Game code</span>
+            <label className="join-field">
+              <span className="join-field-label">Game code</span>
               <input
                 value={joinCode}
-                onChange={(event) => { setJoinCode(event.target.value.toUpperCase()); status.clearError(); }}
-                maxLength={8}
+                onChange={(event) => {
+                  setJoinCode(event.target.value.toUpperCase().replace(/[^A-Z0-9]/g, "").slice(0, 6));
+                  status.clearError();
+                }}
+                maxLength={6}
                 autoComplete="off"
                 autoCapitalize="characters"
+                autoFocus
                 inputMode="text"
                 enterKeyHint="next"
                 aria-invalid={Boolean(status.error)}
-                aria-describedby={status.error ? "join-error" : undefined}
-                placeholder="GAME CODE"
+                aria-describedby={status.error ? "join-error join-code-help" : "join-code-help"}
+                placeholder="ABC123"
               />
+              <small id="join-code-help">Enter the 6-character code on your teacher's screen.</small>
             </label>
           )}
-          <label>
-            <span className="sr-only">Name</span>
-            <input placeholder="NAME" autoComplete="nickname" enterKeyHint="done" value={nickname} onChange={(event) => { setNickname(event.target.value); status.clearError(); }} maxLength={20} aria-invalid={Boolean(nicknameError)} aria-describedby={nicknameError ? "nickname-error" : undefined} />
+          <label className="join-field">
+            <span className="join-field-label">Your name</span>
+            <input placeholder="Student name" autoComplete="nickname" autoFocus={Boolean(joinCodeFromLink)} enterKeyHint="done" value={nickname} onChange={(event) => { setNickname(event.target.value); status.clearError(); }} maxLength={20} aria-invalid={Boolean(nicknameError)} aria-describedby={nicknameError ? "nickname-error nickname-help" : "nickname-help"} />
+            <small id="nickname-help">Use the classroom name your teacher will recognize.</small>
           </label>
           {nicknameError && <p id="nickname-error" className="error-text" role="alert">{nicknameError}</p>}
           {status.error && <p id="join-error" className="error-text" role="alert">{status.error}</p>}
@@ -2524,18 +2631,10 @@ function StudentExperience({ onExit }: { onExit: () => void }) {
         </div>
         <div className="arena-objective-strip">
           <span className={`status-pill status-${session.status}`}>{sessionStatusLabel(session.status)}</span>
-          <span className={`mode-pill mode-${session.settings.gameMode}`}>{gameModeLabel(session.settings.gameMode)}</span>
           <span className="objective-primary">{objectiveText}</span>
-          {session.settings.gameMode === "flag" ? (
-            <>
-              <span>Round {session.currentRound}/{session.settings.roundCount}</span>
-              <span>{player.team === "red" ? "Carry the flag to the Blue base" : "Capture the Flag after Red places it"}</span>
-            </>
-          ) : null}
-          <span>
-            {session.settings.gameMode === "flag"
-              ? "Knocked-out players return next round."
-              : `Respawn: ${RESPAWN_CORRECT_ANSWERS_REQUIRED} correct practice answers.`}
+          <span className={`mode-pill mode-${session.settings.gameMode}`}>
+            {gameModeLabel(session.settings.gameMode)}
+            {session.settings.gameMode === "flag" ? ` · Round ${session.currentRound}/${session.settings.roundCount}` : ""}
           </span>
         </div>
         <div className="hud">
@@ -2574,13 +2673,6 @@ function StudentExperience({ onExit }: { onExit: () => void }) {
               <strong>{snowballs}</strong>
             </span>
           </span>
-          <span className="hud-stat">
-            <Timer size={18} aria-hidden="true" />
-            <span>
-              <small>Time</small>
-              <strong>{roundTimeLabel}</strong>
-            </span>
-          </span>
         </div>
         {incomingHitCue && (
           <div
@@ -2592,9 +2684,9 @@ function StudentExperience({ onExit }: { onExit: () => void }) {
           />
         )}
         <div className="control-prompts">
-          <button disabled={roundEnded} onClick={() => { gameAudio.play("menu_toggle"); setQuizOpen(!quizOpen); setBuyOpen(false); setScoreboardOpen(false); }}>Q Quiz</button>
-          <button disabled={roundEnded || !player.isAlive} onClick={() => { gameAudio.play("menu_toggle"); setBuyOpen(!buyOpen); setQuizOpen(false); setScoreboardOpen(false); }}>B Buy</button>
-          <button onMouseDown={() => { gameAudio.play("menu_toggle"); setScoreboardOpen(true); setQuizOpen(false); setBuyOpen(false); setSettingsOpen(false); }} onMouseUp={() => setScoreboardOpen(false)} onBlur={() => setScoreboardOpen(false)}>Hold Tab Scoreboard</button>
+          <button disabled={roundEnded} onClick={() => { gameAudio.play("menu_toggle"); setQuizOpen(!quizOpen); setBuyOpen(false); setScoreboardOpen(false); }}>{isCompactViewport ? "Quiz" : "Q Quiz"}</button>
+          <button disabled={roundEnded || !player.isAlive} onClick={() => { gameAudio.play("menu_toggle"); setBuyOpen(!buyOpen); setQuizOpen(false); setScoreboardOpen(false); }}>{isCompactViewport ? "Buy" : "B Buy"}</button>
+          <button onMouseDown={() => { gameAudio.play("menu_toggle"); setScoreboardOpen(true); setQuizOpen(false); setBuyOpen(false); setSettingsOpen(false); }} onMouseUp={() => setScoreboardOpen(false)} onBlur={() => setScoreboardOpen(false)}>{isCompactViewport ? "Scoreboard" : "Hold Tab · Scoreboard"}</button>
           <button onClick={() => { gameAudio.play("menu_toggle"); setSettingsOpen((open) => !open); setQuizOpen(false); setBuyOpen(false); setScoreboardOpen(false); }}><Settings size={18} aria-hidden="true" />Settings</button>
         </div>
         {rewardPulse && <div className="reward-toast" onAnimationEnd={() => setRewardPulse("")}>{rewardPulse}</div>}
