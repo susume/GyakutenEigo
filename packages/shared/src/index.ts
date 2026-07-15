@@ -1319,6 +1319,31 @@ export const resolveAuthoritativeMovement = ({
 
 export type BotAttackTargetResult = { ok: true; targetId: string } | { ok: false; reason: "no_valid_target" };
 
+export const resolveBotPursuitTarget = ({
+  bot,
+  candidates
+}: {
+  bot: Pick<PlayerSession, "id" | "team" | "isAlive" | "x" | "z">;
+  candidates: Array<Pick<PlayerSession, "id" | "team" | "isAlive" | "connectionState" | "isBot" | "x" | "z">>;
+}): ArenaPosition | undefined => {
+  if (!bot.isAlive) return undefined;
+  const botPosition = { x: bot.x ?? 0, z: bot.z ?? 0 };
+  let selected: { position: ArenaPosition; distance: number } | undefined;
+  for (const candidate of candidates) {
+    if (
+      candidate.id === bot.id ||
+      candidate.isBot ||
+      candidate.connectionState === "disconnected" ||
+      !candidate.isAlive ||
+      candidate.team === bot.team
+    ) continue;
+    const position = { x: candidate.x ?? 0, z: candidate.z ?? 0 };
+    const distance = Math.hypot(position.x - botPosition.x, position.z - botPosition.z);
+    if (!selected || distance < selected.distance) selected = { position, distance };
+  }
+  return selected?.position;
+};
+
 export const resolveBotAttackTarget = ({
   bot,
   candidates,
@@ -1355,14 +1380,39 @@ export const resolveBotRoamStep = ({
   elapsedMs: number;
   speed: number;
   obstacles?: readonly ArenaObstacle[];
-}): AuthoritativeMovementResult =>
-  resolveAuthoritativeMovement({
+}): AuthoritativeMovementResult => {
+  const direct = resolveAuthoritativeMovement({
     current,
     requested: desired,
     elapsedMs,
     maxSpeed: speed,
     obstacles
   });
+  if (!direct.blocked) return direct;
+
+  const dx = desired.x - current.x;
+  const dz = desired.z - current.z;
+  const distance = Math.hypot(dx, dz);
+  const detourDistance = Math.min(distance, Math.max(0, speed * (elapsedMs / 1000)));
+  if (distance === 0 || detourDistance === 0) return direct;
+
+  for (const direction of [1, -1]) {
+    const detour = resolveAuthoritativeMovement({
+      current,
+      requested: {
+        x: current.x + (-dz / distance) * detourDistance * direction,
+        z: current.z + (dx / distance) * detourDistance * direction,
+        facing: desired.facing
+      },
+      elapsedMs,
+      maxSpeed: speed,
+      obstacles
+    });
+    if (!detour.blocked) return detour;
+  }
+
+  return direct;
+};
 
 export const resolveBotRespawn = ({
   bot,

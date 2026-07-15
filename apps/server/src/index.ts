@@ -7,6 +7,7 @@ import { Prisma, PrismaClient } from "@prisma/client";
 import { createServer } from "node:http";
 import { randomUUID } from "node:crypto";
 import { Server, type Socket } from "socket.io";
+import { resolveClientOrigins } from "./origins.js";
 import {
   clampArenaPosition,
   ARENA_SCALE,
@@ -40,6 +41,7 @@ import {
   resolvePracticeRespawn,
   resolveAuthoritativeMovement,
   resolveBotAttackTarget,
+  resolveBotPursuitTarget,
   resolveBotRespawn,
   resolveBotRoamStep,
   resolveProjectileTarget,
@@ -80,10 +82,10 @@ const isProduction = process.env.NODE_ENV === "production";
 const jwtSecret = process.env.JWT_SECRET ?? "local-dev-only-change-me";
 const databaseUrl = process.env.DATABASE_URL?.trim();
 const prisma = databaseUrl ? new PrismaClient() : undefined;
-const clientOrigins = (process.env.CLIENT_ORIGIN ?? process.env.CORS_ORIGIN ?? "")
-  .split(",")
-  .map((origin) => origin.trim())
-  .filter(Boolean);
+const clientOrigins = resolveClientOrigins({
+  configuredOrigins: process.env.CLIENT_ORIGIN ?? process.env.CORS_ORIGIN,
+  isProduction
+});
 const corsOrigin = clientOrigins.length > 0 ? clientOrigins : true;
 
 if (isProduction && jwtSecret === "local-dev-only-change-me") {
@@ -721,14 +723,15 @@ const advanceBots = () => {
       }
       const oldX = bot.x ?? sessionSpawn(session, bot.team).x;
       const oldZ = bot.z ?? sessionSpawn(session, bot.team).z;
+      const pursuitTarget = resolveBotPursuitTarget({ bot, candidates: session.players });
       const laneOffset = (index % 5) - 2;
       const speed = 0.42 + (index % 3) * 0.07;
       const angle = seconds * speed + index * 1.37;
       const centerX = (bot.team === "blue" ? -48 : 48) * ARENA_SCALE;
       const centerZ = (bot.team === "blue" ? -8 : 8) * ARENA_SCALE;
       const desired = clampArenaPosition({
-        x: centerX + Math.sin(angle) * ((52 + Math.abs(laneOffset) * 8) * ARENA_SCALE),
-        z: centerZ + Math.cos(angle * 0.82) * ((64 - Math.abs(laneOffset) * 6) * ARENA_SCALE),
+        x: pursuitTarget?.x ?? centerX + Math.sin(angle) * ((52 + Math.abs(laneOffset) * 8) * ARENA_SCALE),
+        z: pursuitTarget?.z ?? centerZ + Math.cos(angle * 0.82) * ((64 - Math.abs(laneOffset) * 6) * ARENA_SCALE),
         facing: Math.atan2(oldX - bot.x!, oldZ - bot.z!)
       });
       const next = resolveBotRoamStep({

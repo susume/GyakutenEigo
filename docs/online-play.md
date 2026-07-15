@@ -26,7 +26,7 @@ Server:
 NODE_ENV=production
 PORT=4000
 JWT_SECRET=replace-with-a-long-random-production-secret
-CLIENT_ORIGIN=https://www.gyakuteneigo.com
+CLIENT_ORIGIN=https://gyakuteneigo.com,https://www.gyakuteneigo.com,https://susume.github.io
 TRUST_PROXY=true
 ```
 
@@ -75,7 +75,7 @@ After the repository is pushed to GitHub:
 2. Go to Settings -> Pages.
 3. Under Build and deployment, choose GitHub Actions.
 4. In Settings -> Secrets and variables -> Actions -> Variables, set `VITE_API_URL` to the public server URL, for example `https://api.gyakuteneigo.com`.
-5. If you are using the default project Pages URL, leave `PAGE_CUSTOM_DOMAIN` blank. The workflow will build assets under `/<repo-name>/`.
+5. If you are using the default project Pages URL, leave `PAGE_CUSTOM_DOMAIN` blank. The workflow will build assets under `/<repo-name>/`. Keep `https://susume.github.io` in `CLIENT_ORIGIN` so alternate computers can use that address without a CORS failure.
 6. If you are using a custom domain, set `PAGE_CUSTOM_DOMAIN` to that domain, for example `www.gyakuteneigo.com`. The workflow will write the `CNAME` file and build assets for `/`.
 7. Go to Actions -> Deploy Web.
 8. Run the workflow, or push to `main`.
@@ -112,7 +112,7 @@ For a first online playtest, Render is a straightforward Node host:
 5. Add environment variables:
    - `NODE_ENV=production`
    - `JWT_SECRET=<long-random-secret>`
-   - `CLIENT_ORIGIN=https://www.gyakuteneigo.com`
+   - `CLIENT_ORIGIN=https://gyakuteneigo.com,https://www.gyakuteneigo.com,https://susume.github.io`
    - `TRUST_PROXY=true`
    - `NODE_VERSION=22`
 6. Deploy the service.

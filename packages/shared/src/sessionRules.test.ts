@@ -50,6 +50,7 @@ import {
   resolvePracticeRespawn,
   resolveAuthoritativeMovement,
   resolveBotAttackTarget,
+  resolveBotPursuitTarget,
   resolveBotRespawn,
   resolveBotRoamStep,
   resolveProjectileTarget,
@@ -418,17 +419,27 @@ test("resolveBotAttackTarget chooses the nearest visible real opponent", () => {
   );
 });
 
-test("resolveBotRoamStep keeps bot movement out of arena cover", () => {
-  assert.deepEqual(
-    resolveBotRoamStep({
-      current: { x: 0, z: 0, facing: 0 },
-      desired: { x: 8, z: 0, facing: 1 },
-      elapsedMs: 450,
-      speed: 40,
-      obstacles: [{ id: "wall", kind: "rect", x: 4, z: 0, width: 2, depth: 8 }]
-    }),
-    { x: 0, z: 0, facing: 1, blocked: true }
-  );
+test("resolveBotPursuitTarget sends bots toward the nearest connected real opponent", () => {
+  const bot = makePlayer({ id: "bot", isBot: true, team: "red", x: 0, z: 0 });
+  const near = makePlayer({ id: "near", team: "blue", x: 8, z: 4 });
+  const far = makePlayer({ id: "far", team: "blue", x: 30, z: 0 });
+  const disconnected = makePlayer({ id: "offline", team: "blue", x: 1, z: 0, connectionState: "disconnected" });
+
+  assert.deepEqual(resolveBotPursuitTarget({ bot, candidates: [far, disconnected, near] }), { x: 8, z: 4 });
+});
+
+test("resolveBotRoamStep detours around cover instead of freezing in place", () => {
+  const result = resolveBotRoamStep({
+    current: { x: 0, z: 0, facing: 0 },
+    desired: { x: 8, z: 0, facing: 1 },
+    elapsedMs: 450,
+    speed: 40,
+    obstacles: [{ id: "wall", kind: "rect", x: 4, z: 0, width: 2, depth: 8 }]
+  });
+
+  assert.equal(result.blocked, undefined);
+  assert.equal(result.x, 0);
+  assert.notEqual(result.z, 0);
 });
 
 test("resolveBotRespawn revives bots only after the respawn time", () => {
