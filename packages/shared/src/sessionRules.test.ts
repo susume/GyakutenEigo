@@ -547,6 +547,20 @@ test("resolveGearPurchase charges once for new gear in base", () => {
   });
 });
 
+test("classic-style stores can allow weapon purchases away from a team base", () => {
+  const player = makePlayer({ money: 6000, gear: "starter_blaster", x: 0, z: 0 });
+  const gear = GEAR_ITEMS.find((item) => item.id === "power_blaster")!;
+
+  assert.equal(resolveGearPurchase({ player, gear }).ok, false);
+  assert.deepEqual(resolveGearPurchase({ player, gear, requireBase: false }), {
+    ok: true,
+    alreadyEquipped: false,
+    nextMoney: 0,
+    nextHealth: player.health,
+    gearChanged: true
+  });
+});
+
 test("resolveGearPurchase cannot downgrade a purchased launcher to the default", () => {
   const player = makePlayer({ money: 6000, gear: "power_blaster", ...getTeamSpawn("blue") });
   const starter = GEAR_ITEMS.find((item) => item.id === "starter_blaster")!;
@@ -896,13 +910,27 @@ test("flag state supports pickup, placement, countdown, drop, and capture", () =
   assert.equal(placed.expiresAtMs, 31_000);
   assert.deepEqual(resolveFlagCountdown(placed, 31_000), { winner: "red", reason: "flag_protected" });
 
-  const captured = resolveFlagCapture(placed, blue);
+  const captured = resolveFlagCapture(placed, { ...blue, ...placed.position });
   assert.equal(captured.state, "captured");
   assert.equal(captured.capturedById, "blue");
 
   const dropped = resolveFlagDropForPlayer(carried, red, { x: 5, z: 6 });
   assert.equal(dropped.state, "dropped");
   assert.deepEqual(dropped.position, { x: 5, z: 6 });
+});
+
+test("flag interactions require the student to be next to the flag", () => {
+  const initialFlag = createInitialFlagState(getTeamSpawn("red"));
+  const distantRed = makePlayer({ id: "red", team: "red", isAlive: true, ...getTeamSpawn("blue") });
+  assert.equal(resolveFlagPickup(initialFlag, distantRed).state, "available");
+
+  const placed = {
+    ...initialFlag,
+    state: "placed" as const,
+    position: getTeamSpawn("blue")
+  };
+  const distantBlue = makePlayer({ id: "blue", team: "blue", isAlive: true, ...getTeamSpawn("red") });
+  assert.equal(resolveFlagCapture(placed, distantBlue).state, "placed");
 });
 
 test("zombie mode selects initial zombies and converts humans once", () => {

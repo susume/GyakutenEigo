@@ -25,12 +25,11 @@ export const shouldResetWeaponZoom = ({
   gearId,
   isAlive,
   roundActive,
-  inputPaused,
-  pointerLocked
+  inputPaused
 }: {
   gearId: string;
   isAlive: boolean;
   roundActive: boolean;
   inputPaused: boolean;
   pointerLocked: boolean;
-}) => gearId !== "power_blaster" || !isAlive || !roundActive || inputPaused || !pointerLocked;
+}) => gearId !== "power_blaster" || !isAlive || !roundActive || inputPaused;

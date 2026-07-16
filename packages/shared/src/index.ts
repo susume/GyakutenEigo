@@ -273,6 +273,7 @@ export const HEAVY_GUN_DEEP_SCOPED_HIT_RADIUS = 0.98;
 export const HEAVY_GUN_ZOOM_LEVEL_0_FOV = 72;
 export const HEAVY_GUN_ZOOM_LEVEL_1_FOV = 46;
 export const HEAVY_GUN_ZOOM_LEVEL_2_FOV = 30;
+export const FLAG_INTERACTION_RADIUS = 7;
 export const QUICK_BLASTER_RANGE = 48;
 export const QUICK_BLASTER_COOLDOWN_MS = 150;
 export const STARTER_BLASTER_RANGE = 36;
@@ -486,7 +487,7 @@ export const GEAR_ITEMS: GearItem[] = [
     id: "power_blaster",
     name: "Heavy Snowball Launcher",
     cost: 6000,
-    description: "High-focus launcher with a deliberate rhythm, long reach, and right-click scope.",
+    description: "High-focus launcher with a deliberate rhythm, long reach, and C-key or right-click scope.",
     damage: HEAVY_GUN_DAMAGE,
     range: HEAVY_GUN_RANGE,
     scopedHitRadius: HEAVY_GUN_SCOPED_HIT_RADIUS,
@@ -1141,10 +1142,12 @@ export type GearPurchaseResult =
 
 export const resolveGearPurchase = ({
   player,
-  gear
+  gear,
+  requireBase = true
 }: {
   player: Pick<PlayerSession, "isAlive" | "money" | "gear" | "health" | "team" | "x" | "z">;
   gear: GearItem;
+  requireBase?: boolean;
 }): GearPurchaseResult => {
   if (!player.isAlive) return { ok: false, reason: "player_eliminated" };
   if (player.gear === gear.id) {
@@ -1157,7 +1160,7 @@ export const resolveGearPurchase = ({
     };
   }
   if (gear.id === "starter_blaster") return { ok: false, reason: "starter_weapon" };
-  if (!isInsideTeamBase(player.team, { x: player.x ?? getTeamSpawn(player.team).x, z: player.z ?? getTeamSpawn(player.team).z })) {
+  if (requireBase && !isInsideTeamBase(player.team, { x: player.x ?? getTeamSpawn(player.team).x, z: player.z ?? getTeamSpawn(player.team).z })) {
     return { ok: false, reason: "outside_base" };
   }
   if (player.money < gear.cost) return { ok: false, reason: "not_enough_money" };
@@ -1538,8 +1541,18 @@ export const createInitialFlagState = (position: ArenaPosition): FlagState => ({
   position: { x: position.x, z: position.z, ...(position.y !== undefined ? { y: position.y } : {}) }
 });
 
-export const resolveFlagPickup = (flag: FlagState, player: Pick<PlayerSession, "id" | "team" | "isAlive">): FlagState => {
+const isPlayerNearFlag = (
+  flag: Pick<FlagState, "position">,
+  player: Pick<PlayerSession, "x" | "z">
+) => Number.isFinite(player.x) && Number.isFinite(player.z)
+  && Math.hypot(player.x! - flag.position.x, player.z! - flag.position.z) <= FLAG_INTERACTION_RADIUS;
+
+export const resolveFlagPickup = (
+  flag: FlagState,
+  player: Pick<PlayerSession, "id" | "team" | "isAlive" | "x" | "z">
+): FlagState => {
   if (!player.isAlive || player.team !== "red" || !["available", "dropped"].includes(flag.state)) return flag;
+  if (!isPlayerNearFlag(flag, player)) return flag;
   return { ...flag, state: "carried", carrierId: player.id, capturedById: undefined };
 };
 
@@ -1594,9 +1607,10 @@ export const resolveFlagPlacement = ({
 
 export const resolveFlagCapture = (
   flag: FlagState,
-  player: Pick<PlayerSession, "id" | "team" | "isAlive">
+  player: Pick<PlayerSession, "id" | "team" | "isAlive" | "x" | "z">
 ): FlagState => {
   if (flag.state !== "placed" || player.team !== "blue" || !player.isAlive) return flag;
+  if (!isPlayerNearFlag(flag, player)) return flag;
   return { ...flag, state: "captured", capturedById: player.id };
 };
 

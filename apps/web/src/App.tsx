@@ -2116,6 +2116,7 @@ function StudentExperience({ onExit }: { onExit: () => void }) {
   const [isBuyingSnowballs, setIsBuyingSnowballs] = useState(false);
   const [isRestoringStudentSession, setIsRestoringStudentSession] = useState(true);
   const [rewardPulse, setRewardPulse] = useState("");
+  const [spectatorPlayerId, setSpectatorPlayerId] = useState("");
   const [incomingHitCue, setIncomingHitCue] = useState<{
     id: number;
     direction: IncomingHitDirection;
@@ -2134,6 +2135,23 @@ function StudentExperience({ onExit }: { onExit: () => void }) {
 
   const isCompactViewport = viewportWidth <= 780;
   const nicknameError = useMemo(() => getNicknameError(nickname), [nickname]);
+  const spectatorCandidates = useMemo(() => {
+    if (!session || !player || player.isAlive || session.settings.gameMode !== "flag") return [];
+    return session.players
+      .filter((candidate) => candidate.id !== player.id && candidate.isAlive && candidate.connectionState !== "disconnected")
+      .sort((left, right) => Number(right.team === player.team) - Number(left.team === player.team));
+  }, [session?.players, session?.settings.gameMode, player?.id, player?.isAlive, player?.team]);
+  const spectatorPlayer = spectatorCandidates.find((candidate) => candidate.id === spectatorPlayerId) ?? spectatorCandidates[0];
+
+  useEffect(() => {
+    if (spectatorCandidates.length === 0) {
+      setSpectatorPlayerId("");
+      return;
+    }
+    if (!spectatorCandidates.some((candidate) => candidate.id === spectatorPlayerId)) {
+      setSpectatorPlayerId(spectatorCandidates[0].id);
+    }
+  }, [spectatorCandidates, spectatorPlayerId]);
 
   const updateGamePreferences = (update: Partial<GamePreferences>) => {
     setGamePreferences((current) => {
@@ -2172,8 +2190,13 @@ function StudentExperience({ onExit }: { onExit: () => void }) {
         setQuestion(data.question ?? null);
         setFeedback("Your student session was restored.");
       })
-      .catch(() => {
-        clearStoredStudentSession();
+      .catch((error: unknown) => {
+        if (error instanceof ApiError && (error.status === 401 || error.status === 404)) {
+          clearStoredStudentSession();
+          return;
+        }
+        setJoinCode(stored.sessionCode);
+        status.setError("Your connection dropped while restoring the game. Reconnect, then reload or join again with the same name.");
       })
       .finally(() => {
         if (!cancelled) setIsRestoringStudentSession(false);
@@ -2218,6 +2241,23 @@ function StudentExperience({ onExit }: { onExit: () => void }) {
     const socket = io(getApiUrl());
     socketRef.current = socket;
     const roomJoinPayload = { code: session.sessionCode, playerId: activePlayerId, playerToken };
+    const pendingPositions = new Map<string, { x: number; z: number; facing: number }>();
+    let positionFlushTimer: number | undefined;
+    const flushPositions = () => {
+      positionFlushTimer = undefined;
+      if (pendingPositions.size === 0) return;
+      const updates = new Map(pendingPositions);
+      pendingPositions.clear();
+      setSession((current) => current ? {
+        ...current,
+        players: current.players.map((candidate) => {
+          const update = updates.get(candidate.id);
+          return update ? { ...candidate, ...update } : candidate;
+        })
+      } : current);
+      const ownUpdate = updates.get(activePlayerId);
+      if (ownUpdate) setPlayer((current) => current ? { ...current, ...ownUpdate } : current);
+    };
     socket.emit("join_session_room", roomJoinPayload);
     socket.on("connect", () => {
       setIsSocketReconnecting(false);
@@ -2234,6 +2274,15 @@ function StudentExperience({ onExit }: { onExit: () => void }) {
       if (event.playerId === activePlayerId || event.targetId === activePlayerId) {
         setFeedback(event.message);
       }
+    });
+    socket.on("player_position", (position: { playerId?: string; x?: number; z?: number; facing?: number }) => {
+      if (!position.playerId || !Number.isFinite(position.x) || !Number.isFinite(position.z) || !Number.isFinite(position.facing)) return;
+      pendingPositions.set(position.playerId, {
+        x: position.x!,
+        z: position.z!,
+        facing: position.facing!
+      });
+      positionFlushTimer ??= window.setTimeout(flushPositions, 50);
     });
     socket.on("damage_result", (result: DamageResultPayload) => {
       if (typeof result.snowballs === "number" && (!result.ok || result.attackerId === activePlayerId)) {
@@ -2288,6 +2337,7 @@ function StudentExperience({ onExit }: { onExit: () => void }) {
       setFeedback(payload.error ?? "Action failed.");
     });
     return () => {
+      if (positionFlushTimer !== undefined) window.clearTimeout(positionFlushTimer);
       setIsSocketReconnecting(false);
       if (socketRef.current === socket) socketRef.current = null;
       socket.disconnect();
@@ -2360,7 +2410,7 @@ function StudentExperience({ onExit }: { onExit: () => void }) {
   const sendArenaPosition = useCallback(
     (position: ArenaPositionPayload) => {
       if (!session || !player || !playerToken) return;
-      socketRef.current?.emit("player_position", {
+      socketRef.current?.volatile.emit("player_position", {
         code: session.sessionCode,
         playerId: player.id,
         playerToken,
@@ -2636,7 +2686,7 @@ function StudentExperience({ onExit }: { onExit: () => void }) {
           <div className="panel how-to-card">
             <h2>How to Play</h2>
             <p>Answer questions to earn money, buy snowballs and gear, then tag the other team in the arena.</p>
-            <p>Fast web arena: use WASD to move, arrow keys or a swipe on the arena to look around, F or left click to fire, and E for the flag. The Heavy Snowball Launcher cycles 2× scope, 4× scope, then normal view with right click. Q opens quiz, B opens buy, number keys 1–5 purchase shop items, and hold Tab for the scoreboard.</p>
+            <p>Fast web arena: use WASD to move, arrow keys or a swipe on the arena to look around, F or left click to fire, and E for the flag. Press C or right click to cycle the Heavy Snowball Launcher through 2× scope, 4× scope, and normal view. Q opens quiz, B opens buy, number keys 1–5 purchase shop items, and hold Tab for the scoreboard.</p>
             <p>If you are frozen out, keep practicing. Three correct answers respawn you back into the round.</p>
           </div>
         </div>
@@ -2705,6 +2755,13 @@ function StudentExperience({ onExit }: { onExit: () => void }) {
       ? zombieStatusText(session, player)
       : "Answer questions, earn supplies, and tag the other team.";
   const sessionResult = getSessionResultText(session);
+  const arenaPlayer = spectatorPlayer ?? player;
+  const cycleSpectator = (direction: -1 | 1) => {
+    if (spectatorCandidates.length < 2) return;
+    const currentIndex = Math.max(0, spectatorCandidates.findIndex((candidate) => candidate.id === arenaPlayer.id));
+    const nextIndex = (currentIndex + direction + spectatorCandidates.length) % spectatorCandidates.length;
+    setSpectatorPlayerId(spectatorCandidates[nextIndex].id);
+  };
 
   return (
     <section className={isCompactViewport ? "game-layout compact-game-layout" : "game-layout"}>
@@ -2719,7 +2776,7 @@ function StudentExperience({ onExit }: { onExit: () => void }) {
           <ArenaPreview
             key={`${session.id}:${session.startedAt ?? "waiting"}:${player.id}`}
             session={session}
-            currentPlayer={player}
+            currentPlayer={arenaPlayer}
             view="fps"
             suppressHint
             quality={gamePreferences.arenaQuality}
@@ -2880,7 +2937,22 @@ function StudentExperience({ onExit }: { onExit: () => void }) {
                 Reconnecting...
               </p>
             )}
-            {!player.isAlive && (
+            {!player.isAlive && session.settings.gameMode === "flag" && (
+              <div className="panel respawn-card">
+                <div className="panel-title">
+                  <h2>Frozen · Spectator Mode</h2>
+                  <span>{spectatorPlayer ? `Watching ${spectatorPlayer.nickname}` : "Waiting"}</span>
+                </div>
+                <p>You are frozen for this round. Watch another active student until time runs out; you will return at the start of the next round.</p>
+                {spectatorCandidates.length > 1 && (
+                  <div className="button-row">
+                    <button type="button" onClick={() => cycleSpectator(-1)}>Previous Player</button>
+                    <button type="button" onClick={() => cycleSpectator(1)}>Next Player</button>
+                  </div>
+                )}
+              </div>
+            )}
+            {!player.isAlive && session.settings.gameMode !== "flag" && (
               <div className="panel respawn-card">
                 <div className="panel-title">
                   <h2>{canPracticeToRespawn ? "Practice to Respawn" : "Waiting for Next Round"}</h2>
@@ -2889,13 +2961,9 @@ function StudentExperience({ onExit }: { onExit: () => void }) {
                 <div className="respawn-meter" aria-label="Respawn progress">
                   <span style={{ width: `${Math.min(100, (respawnProgress / RESPAWN_CORRECT_ANSWERS_REQUIRED) * 100)}%` }} />
                 </div>
-                <p>
-                  {session.settings.gameMode === "flag"
-                    ? "Flag Mode is round-based. You can keep practicing, but you return when the next round begins."
-                    : canPracticeToRespawn
-                    ? `Answer ${Math.max(0, RESPAWN_CORRECT_ANSWERS_REQUIRED - respawnProgress)} more correctly to rejoin at your team base with full warmth and fresh snowballs.`
-                    : "Practice questions are off for this session, so watch the scoreboard and get ready for the next round."}
-                </p>
+                <p>{canPracticeToRespawn
+                  ? `Answer ${Math.max(0, RESPAWN_CORRECT_ANSWERS_REQUIRED - respawnProgress)} more correctly to rejoin at your team base with full warmth and fresh snowballs.`
+                  : "Practice questions are off for this session, so watch the scoreboard and get ready for the next round."}</p>
               </div>
             )}
             <StatusMessages error={status.error} message={feedback} />

@@ -20,15 +20,21 @@ test("Heavy Snowball Launcher FOV gets tighter at each zoom level", () => {
   assert.equal(normal > medium && medium > deep, true);
 });
 
-test("zoom safely resets on weapon switch, knockout, round end, menu pause, and pointer-lock loss", () => {
+test("zoom safely resets on weapon switch, knockout, round end, and menu pause", () => {
   assert.equal(normalizeWeaponZoom("starter_blaster", 2), 0);
   for (const state of [
     { gearId: "starter_blaster", isAlive: true, roundActive: true, inputPaused: false, pointerLocked: true },
     { gearId: "power_blaster", isAlive: false, roundActive: true, inputPaused: false, pointerLocked: true },
     { gearId: "power_blaster", isAlive: true, roundActive: false, inputPaused: false, pointerLocked: true },
     { gearId: "power_blaster", isAlive: true, roundActive: true, inputPaused: true, pointerLocked: true },
-    { gearId: "power_blaster", isAlive: true, roundActive: true, inputPaused: false, pointerLocked: false }
   ]) {
     assert.equal(shouldResetWeaponZoom(state), true);
   }
+  assert.equal(shouldResetWeaponZoom({
+    gearId: "power_blaster",
+    isAlive: true,
+    roundActive: true,
+    inputPaused: false,
+    pointerLocked: false
+  }), false);
 });

@@ -138,6 +138,7 @@ type PersistedRuntimeState = {
 
 const runtimeSnapshotId = "primary";
 let persistenceQueue = Promise.resolve();
+let persistenceTimer: ReturnType<typeof setTimeout> | undefined;
 
 const getPersistedRuntimeState = (): PersistedRuntimeState => ({
   users: [...users.values()],
@@ -175,7 +176,7 @@ const hydrateRuntimeState = async () => {
   console.log(`Restored ${users.size} teachers, ${quizSets.size} quiz sets, and ${sessions.size} sessions from PostgreSQL.`);
 };
 
-const schedulePersistence = () => {
+const persistRuntimeState = () => {
   if (!prisma) return;
   const data = getPersistedRuntimeState();
   persistenceQueue = persistenceQueue
@@ -191,6 +192,20 @@ const schedulePersistence = () => {
     .catch((error: unknown) => {
       console.error("Failed to persist QuizStrike runtime state.", error);
     });
+};
+
+const schedulePersistence = () => {
+  if (!prisma || persistenceTimer) return;
+  persistenceTimer = setTimeout(() => {
+    persistenceTimer = undefined;
+    persistRuntimeState();
+  }, 1000);
+};
+
+const flushPersistence = () => {
+  if (persistenceTimer) clearTimeout(persistenceTimer);
+  persistenceTimer = undefined;
+  persistRuntimeState();
 };
 
 const botNames = ["Atlas", "Nova", "Echo", "Pixel", "Orbit", "Scout", "Comet", "River"];
@@ -218,6 +233,7 @@ const PLAYER_MAX_SPEED = 22;
 const PLAYER_DISCONNECT_GRACE_MS = 5000;
 const ROUND_RESULT_ANNOUNCEMENT_MS = 4000;
 const FLAG_BUY_PHASE_MS = 6000;
+const SESSION_BROADCAST_WINDOW_MS = 75;
 const ROUND_START_ANNOUNCEMENT_MS = 2500;
 const GAME_OVER_ANNOUNCEMENT_MS = 7000;
 
@@ -364,9 +380,37 @@ const stampSession = (session: GameSession) => {
   return session;
 };
 
+const pendingSessionBroadcasts = new Map<string, GameSession>();
+let sessionBroadcastTimer: ReturnType<typeof setTimeout> | undefined;
+
+const flushSessionBroadcasts = () => {
+  sessionBroadcastTimer = undefined;
+  for (const session of pendingSessionBroadcasts.values()) {
+    io.to(session.sessionCode).emit("session_state", stampSession(session));
+  }
+  pendingSessionBroadcasts.clear();
+};
+
 const broadcastSession = (session: GameSession) => {
-  io.to(session.sessionCode).emit("session_state", stampSession(session));
+  pendingSessionBroadcasts.set(session.sessionCode, session);
+  sessionBroadcastTimer ??= setTimeout(flushSessionBroadcasts, SESSION_BROADCAST_WINDOW_MS);
   schedulePersistence();
+};
+
+const emitToPlayers = (
+  session: GameSession,
+  playerIds: Array<string | undefined>,
+  eventName: string,
+  payload: unknown
+) => {
+  const socketIds = new Set<string>();
+  for (const playerId of playerIds) {
+    if (!playerId) continue;
+    for (const socketId of playerSockets.get(playerSocketKey(session.sessionCode, playerId)) ?? []) {
+      socketIds.add(socketId);
+    }
+  }
+  for (const socketId of socketIds) io.to(socketId).emit(eventName, payload);
 };
 
 const appendEvent = (
@@ -379,7 +423,9 @@ const appendEvent = (
     ...event
   };
   session.events = [nextEvent, ...(session.events ?? [])].slice(0, 40);
-  io.to(session.sessionCode).emit("game_event", nextEvent);
+  const directAudience = [nextEvent.playerId, nextEvent.targetId];
+  if (directAudience.some(Boolean)) emitToPlayers(session, directAudience, "game_event", nextEvent);
+  else io.to(session.sessionCode).emit("game_event", nextEvent);
   return nextEvent;
 };
 
@@ -677,7 +723,7 @@ const applyValidatedDamage = (session: GameSession, attacker: PlayerSession, tar
       targetId: target.id,
       team: attacker.team
     });
-    io.to(session.sessionCode).emit("damage_result", {
+    emitToPlayers(session, [attacker.id, target.id], "damage_result", {
       ok: true,
       attackerId: attacker.id,
       targetId: target.id,
@@ -732,7 +778,7 @@ const applyValidatedDamage = (session: GameSession, attacker: PlayerSession, tar
   });
 
   broadcastSession(session);
-  io.to(session.sessionCode).emit("damage_result", {
+  emitToPlayers(session, [attacker.id, target.id], "damage_result", {
     ok: true,
     attackerId: attacker.id,
     targetId: target.id,
@@ -748,7 +794,7 @@ const applyValidatedDamage = (session: GameSession, attacker: PlayerSession, tar
     moneyAwarded: tagResult.moneyAwarded
   });
   if (tagResult.eliminated) {
-    io.to(session.sessionCode).emit("elimination_update", {
+    emitToPlayers(session, [attacker.id, target.id], "elimination_update", {
       attackerId: attacker.id,
       targetId: target.id,
       moneyAwarded: tagResult.moneyAwarded
@@ -1294,6 +1340,30 @@ app.post("/api/sessions/:code/join", (req, res) => {
     res.status(400).json({ error: nicknameError });
     return;
   }
+  const returningPlayer = session.players.find(
+    (player) => !player.isBot && player.nickname.toLowerCase() === nickname.toLowerCase()
+  );
+  if (returningPlayer?.connectionState === "disconnected") {
+    clearPlayerDisconnectTimer(session, returningPlayer.id);
+    returningPlayer.connectionState = "connected";
+    const playerToken = makePlayerToken(session, returningPlayer);
+    const question = returningPlayer.isAlive || session.settings.deadPlayersCanPractice
+      ? issueNextQuestion(session, returningPlayer.id)
+      : undefined;
+    appendEvent(session, {
+      type: "timer",
+      message: `${returningPlayer.nickname} rejoined the game.`,
+      playerId: returningPlayer.id,
+      team: returningPlayer.team
+    });
+    broadcastSession(session);
+    res.status(200).json({ session: stampSession(session), player: returningPlayer, playerToken, question });
+    return;
+  }
+  if (returningPlayer) {
+    res.status(409).json({ error: "That nickname is already taken in this session." });
+    return;
+  }
   if (session.status === "active") {
     res.status(409).json({ error: "This session has already started." });
     return;
@@ -1302,11 +1372,6 @@ app.post("/api/sessions/:code/join", (req, res) => {
     res.status(400).json({ error: "This session is full." });
     return;
   }
-  if (session.players.some((player) => player.nickname.toLowerCase() === nickname.toLowerCase())) {
-    res.status(409).json({ error: "That nickname is already taken in this session." });
-    return;
-  }
-
   const blueCount = session.players.filter((player) => player.team === "blue").length;
   const redCount = session.players.filter((player) => player.team === "red").length;
   const team: Team = blueCount <= redCount ? "blue" : "red";
@@ -1524,7 +1589,6 @@ app.post("/api/sessions/:code/players/:playerId/answer", (req, res) => {
     respawnRequired: respawn.required
   };
   broadcastSession(session);
-  io.to(session.sessionCode).emit("quiz_result", { playerId: player.id, result });
   res.json({ result });
 });
 
@@ -1545,7 +1609,11 @@ app.post("/api/sessions/:code/players/:playerId/buy", (req, res) => {
     res.status(400).json({ error: "That gear item does not exist." });
     return;
   }
-  const purchase = resolveGearPurchase({ player, gear });
+  const purchase = resolveGearPurchase({
+    player,
+    gear,
+    requireBase: session.settings.gameMode === "flag"
+  });
   if (!purchase.ok) {
     res.status(400).json({
       error:
@@ -1657,7 +1725,7 @@ io.on("connection", (socket) => {
     if (!session || !player || !hasPlayerAccess(session, player, payload.playerToken)) return;
     if (!player.isAlive) return;
     const position = applyAuthoritativePosition(session, player, payload);
-    socket.to(session.sessionCode).emit("player_position", {
+    socket.to(session.sessionCode).volatile.emit("player_position", {
       playerId: player.id,
       x: position.x,
       z: position.z,
@@ -1732,7 +1800,7 @@ io.on("connection", (socket) => {
     const session = getSessionByCode(String(payload.code ?? ""));
     const player = session?.players.find((candidate) => candidate.id === payload.playerId);
     if (!session || !player || !hasPlayerAccess(session, player, payload.playerToken)) return;
-    if (session.status !== "active" || session.settings.gameMode !== "flag") return;
+    if (session.status !== "active" || session.settings.gameMode !== "flag" || !player.isAlive) return;
     const position = applyAuthoritativePosition(session, player, payload);
     const previousState = session.flag?.state;
     session.flag = resolveFlagPickup(session.flag ?? createInitialFlagState(sessionSpawn(session, "red")), player);
@@ -1764,8 +1832,17 @@ io.on("connection", (socket) => {
         broadcastSession(session);
       }
     } else {
+      const flagState = session.flag.state;
       socket.emit("error_message", {
-        error: player.team === "red" ? "Carry the flag to the Blue base." : "Blue can capture after Red places the flag."
+        error: player.team === "red"
+          ? flagState === "available" || flagState === "dropped"
+            ? "Move next to the flag, then press E to pick it up."
+            : flagState === "carried" && session.flag.carrierId !== player.id
+              ? "A Red teammate is carrying the flag."
+              : "Carry the flag into the Blue base, then press E to place it."
+          : flagState === "placed"
+            ? "Move next to the placed flag, then press E to capture it."
+            : "Blue can capture after Red places the flag."
       });
       socket.emit("player_position", { playerId: player.id, x: position.x, z: position.z, facing: position.facing });
     }
@@ -1807,7 +1884,7 @@ const shutdown = (signal: string) => {
   if (isShuttingDown) return;
   isShuttingDown = true;
   console.log(`Received ${signal}; saving classroom state before shutdown.`);
-  schedulePersistence();
+  flushPersistence();
   void persistenceQueue.finally(() => {
     server.close(() => {
       const disconnect = prisma ? prisma.$disconnect() : Promise.resolve();

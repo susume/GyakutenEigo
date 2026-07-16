@@ -28,7 +28,7 @@ import {
 } from "./ArenaCamera.js";
 import { CharacterFactory } from "./characters/CharacterFactory";
 import { CharacterManager, type CharacterManagerStats } from "./characters/CharacterManager";
-import { isFireKeyboardEvent, resolveCombatPointerAction, shouldFireFromTouchGesture } from "./arenaInput";
+import { isFireKeyboardEvent, isScopeKeyboardEvent, resolveCombatPointerAction, shouldFireFromTouchGesture } from "./arenaInput";
 import { gameAudio, type MovementAudioMode } from "./GameAudio";
 import { cycleHeavyGunZoom, getWeaponFov, shouldResetWeaponZoom } from "./weaponControls";
 import { resolveTouchJoystickVector } from "./touchJoystick";
@@ -309,6 +309,9 @@ export default function ArenaPreview({
 
   useEffect(() => {
     currentPlayerRef.current = currentPlayer;
+  }, [currentPlayer]);
+
+  useEffect(() => {
     pendingShotsRef.current = 0;
   }, [currentPlayer?.id, currentPlayer?.snowballs, currentPlayer?.isAlive, currentPlayer?.gear]);
 
@@ -472,11 +475,12 @@ export default function ArenaPreview({
     addBaseBeacon("blue", "#38bdf8");
     addBaseBeacon("red", isZombieMode ? "#c084fc" : "#fb7185");
 
+    let flagMarker: THREE.Group | undefined;
     if (session?.settings.gameMode === "flag" && session.flag) {
       const carrier = session.flag.carrierId ? session.players.find((player) => player.id === session.flag?.carrierId) : undefined;
       const markerX = carrier?.x ?? session.flag.position.x;
       const markerZ = carrier?.z ?? session.flag.position.z;
-      const flagMarker = new THREE.Group();
+      flagMarker = new THREE.Group();
       const markerColor = session.flag.state === "placed" ? "#facc15" : "#fb7185";
       const pole = new THREE.Mesh(
         new THREE.CylinderGeometry(0.12, 0.14, 8.8, 8),
@@ -1015,6 +1019,13 @@ export default function ArenaPreview({
     syncPlayersRef.current = (nextSession?: GameSession, nextCurrentPlayer?: PlayerSession) => {
       const nextPlayers = nextSession?.players.length ? nextSession.players : nextCurrentPlayer ? [nextCurrentPlayer] : [];
       characterManager.sync(getDisplayPlayers(nextPlayers), getVisualPosition);
+      const nextFlag = nextSession?.flag;
+      if (flagMarker && nextFlag) {
+        const nextCarrier = nextFlag.carrierId
+          ? nextPlayers.find((player) => player.id === nextFlag.carrierId)
+          : undefined;
+        flagMarker.position.set(nextCarrier?.x ?? nextFlag.position.x, 0, nextCarrier?.z ?? nextFlag.position.z);
+      }
     };
     syncPlayersRef.current(session, currentPlayer);
 
@@ -1165,6 +1176,11 @@ export default function ArenaPreview({
         if (code) {
           if (code === "Space" && !keys.has("Space")) jumpQueued = true;
           keys.add(code);
+          event.preventDefault();
+          return;
+        }
+        if (isScopeKeyboardEvent(event) && hasHeavyGun()) {
+          setZoomLevel(cycleHeavyGunZoom(activeZoomLevel));
           event.preventDefault();
           return;
         }
@@ -1328,6 +1344,14 @@ export default function ArenaPreview({
         frame = requestAnimationFrame(animateFps);
         const delta = Math.min(clock.getDelta(), 0.035);
         const currentTime = performance.now();
+        if (controlsDisabledRef.current) {
+          const followedPlayer = currentPlayerRef.current;
+          if (isFiniteNumber(followedPlayer?.x) && isFiniteNumber(followedPlayer?.z)) {
+            playerPosition.x += (serverToLocalX(followedPlayer.x) - playerPosition.x) * 0.24;
+            playerPosition.z += (serverToLocalZ(followedPlayer.z) - playerPosition.z) * 0.24;
+            if (isFiniteNumber(followedPlayer.facing)) yaw = followedPlayer.facing;
+          }
+        }
         const horizontalLook = Number(lookKeys.has("ArrowLeft")) - Number(lookKeys.has("ArrowRight"));
         const verticalLook = Number(lookKeys.has("ArrowUp")) - Number(lookKeys.has("ArrowDown"));
         yaw += horizontalLook * KEYBOARD_LOOK_SPEED * delta;
@@ -1546,6 +1570,12 @@ export default function ArenaPreview({
       ? { x: currentPlayer.x, z: currentPlayer.z, facing: currentPlayer.facing ?? 0 }
       : null
   );
+  const flagCarrier = session?.flag?.carrierId
+    ? session.players.find((candidate) => candidate.id === session.flag?.carrierId)
+    : undefined;
+  const displayedFlagPosition = session?.flag
+    ? { x: flagCarrier?.x ?? session.flag.position.x, z: flagCarrier?.z ?? session.flag.position.z }
+    : undefined;
 
   return (
     <div className={view === "fps" ? "arena-frame fps-view" : "arena-frame"}>
@@ -1621,8 +1651,8 @@ export default function ArenaPreview({
               {SEARCH_RETRIEVE_ITEMS.map((item) => (
                 <rect key={item.id} x={toMiniMapX(item.x) - 1.4} y={toMiniMapY(item.z) - 1.4} width="2.8" height="2.8" className="minimap-item" />
               ))}
-              {session?.settings.gameMode === "flag" && session.flag && (
-                <g className={`minimap-flag minimap-flag-${session.flag.state}`} transform={`translate(${toMiniMapX(session.flag.position.x)} ${toMiniMapY(session.flag.position.z)})`}>
+              {session?.settings.gameMode === "flag" && session.flag && displayedFlagPosition && (
+                <g className={`minimap-flag minimap-flag-${session.flag.state}`} transform={`translate(${toMiniMapX(displayedFlagPosition.x)} ${toMiniMapY(displayedFlagPosition.z)})`}>
                   <circle r="3" />
                   <path d="M 0 -4 L 0 4 M 0 -4 L 4 -2 L 0 0" />
                 </g>
@@ -1642,7 +1672,7 @@ export default function ArenaPreview({
               )}
             </svg>
           </div>
-          {!controlsDisabled && !isPointerLocked && !suppressHint && <div className="control-lock">WASD moves. Arrow keys or swipe the arena to look around. Click the arena for mouse aim. F or left click launches. E interacts with the flag.</div>}
+          {!controlsDisabled && !isPointerLocked && !suppressHint && <div className="control-lock">WASD moves. Arrow keys or swipe the arena to look around. Click the arena for mouse aim. F or left click launches. C scopes the Heavy Launcher. E interacts with the flag.</div>}
           <div className="touch-controls" aria-label="Touch controls">
             <button ref={joystickElementRef} type="button" className="touch-joystick" aria-label="Movement joystick" disabled={controlsDisabled} onPointerDown={beginTouchMove}>
               <span aria-hidden="true" />

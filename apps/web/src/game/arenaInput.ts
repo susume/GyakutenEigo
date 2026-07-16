@@ -3,6 +3,9 @@ export type CombatPointerAction = "fire" | "scope" | "none";
 export const isFireKeyboardEvent = ({ code, key }: { code: string; key: string }) =>
   code === "KeyF" || key.toLowerCase() === "f";
 
+export const isScopeKeyboardEvent = ({ code, key }: { code: string; key: string }) =>
+  code === "KeyC" || key.toLowerCase() === "c";
+
 export const shouldFireFromTouchGesture = ({
   distance,
   durationMs
