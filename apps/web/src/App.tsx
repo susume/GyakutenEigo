@@ -57,6 +57,7 @@ import { groupScoreboardRows } from "./scoreboardGroups";
 import { getModeScoreSummary, getReadyRoomTitle, getSessionResultText, getZombieCounts } from "./sessionPresentation";
 import { formatStudentJoinError } from "./studentJoinErrors";
 import { getShopShortcut, getShopShortcutKey } from "./shopShortcuts";
+import { sendStudentCommand } from "./studentCommandTransport";
 import { StatusMessages } from "./ui/StatusMessages";
 import { ARENA_MAPS, getArenaMap } from "./game/arenaMaps";
 import {
@@ -2508,13 +2509,10 @@ function StudentExperience({ onExit }: { onExit: () => void }) {
   const answer = async (choice: Choice) => {
     if (!session || !player || !question || !playerToken || answeringChoice) return;
     status.clear();
-    setFeedback("");
+    setFeedback("Answer selected...");
     setAnsweringChoice(choice);
     try {
-      const payload = (await studentApi.answer(session.sessionCode, player.id, playerToken, {
-        questionId: question.id,
-        selectedChoice: choice
-      })) as {
+      type AnswerPayload = {
         result: {
           feedback: string;
           explanation?: string;
@@ -2523,6 +2521,13 @@ function StudentExperience({ onExit }: { onExit: () => void }) {
           respawned?: boolean;
         };
       };
+      const command = { questionId: question.id, selectedChoice: choice };
+      const payload = await sendStudentCommand<AnswerPayload>(
+        socketRef.current,
+        "answer_question",
+        command,
+        () => studentApi.answer(session.sessionCode, player.id, playerToken, command) as Promise<AnswerPayload>
+      );
       setPlayer(payload.result.player);
       setFeedback(`${payload.result.feedback}${payload.result.explanation ? ` ${payload.result.explanation}` : ""}`);
       gameAudio.play(payload.result.player.wrongAnswers > player.wrongAnswers ? "quiz_wrong" : "quiz_correct");
@@ -2553,10 +2558,16 @@ function StudentExperience({ onExit }: { onExit: () => void }) {
   const buy = async (gearId: string) => {
     if (!session || !player || !playerToken || buyingGearId || isBuyingSnowballs) return;
     status.clear();
-    setFeedback("");
+    setFeedback("Purchasing gear...");
     setBuyingGearId(gearId);
     try {
-      const payload = (await studentApi.buy(session.sessionCode, player.id, playerToken, gearId)) as { player: PlayerSession; message: string };
+      type BuyPayload = { player: PlayerSession; message: string };
+      const payload = await sendStudentCommand<BuyPayload>(
+        socketRef.current,
+        "buy_gear",
+        { gearId },
+        () => studentApi.buy(session.sessionCode, player.id, playerToken, gearId) as Promise<BuyPayload>
+      );
       setPlayer(payload.player);
       setFeedback(payload.message);
       setRewardPulse(payload.message);
@@ -2571,10 +2582,16 @@ function StudentExperience({ onExit }: { onExit: () => void }) {
   const buySnowballs = async () => {
     if (!session || !player || !playerToken || isBuyingSnowballs || buyingGearId) return;
     status.clear();
-    setFeedback("");
+    setFeedback("Purchasing snowballs...");
     setIsBuyingSnowballs(true);
     try {
-      const payload = (await studentApi.buySnowballs(session.sessionCode, player.id, playerToken)) as { player: PlayerSession; message: string };
+      type BuySnowballsPayload = { player: PlayerSession; message: string };
+      const payload = await sendStudentCommand<BuySnowballsPayload>(
+        socketRef.current,
+        "buy_snowballs",
+        {},
+        () => studentApi.buySnowballs(session.sessionCode, player.id, playerToken) as Promise<BuySnowballsPayload>
+      );
       setPlayer(payload.player);
       setFeedback(payload.message);
       setRewardPulse(payload.message);

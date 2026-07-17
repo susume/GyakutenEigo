@@ -106,7 +106,7 @@ if (process.env.TRUST_PROXY === "true") {
 }
 
 const io = new Server(server, {
-  cors: { origin: corsOrigin, credentials: true }
+  cors: { origin: corsOrigin, credentials: true, maxAge: 86_400 }
 });
 
 const users = new Map<string, StoredUser>();
@@ -237,7 +237,7 @@ const SESSION_BROADCAST_WINDOW_MS = 75;
 const ROUND_START_ANNOUNCEMENT_MS = 2500;
 const GAME_OVER_ANNOUNCEMENT_MS = 7000;
 
-app.use(cors({ origin: corsOrigin, credentials: true }));
+app.use(cors({ origin: corsOrigin, credentials: true, maxAge: 86_400 }));
 app.use(express.json({ limit: "1mb" }));
 
 const now = () => new Date().toISOString();
@@ -1484,37 +1484,43 @@ app.get("/api/sessions/:code/players/:playerId/question", (req, res) => {
   res.json({ question });
 });
 
-app.post("/api/sessions/:code/players/:playerId/answer", (req, res) => {
-  const session = getSessionByCode(routeParam(req.params.code));
-  const player = session?.players.find((candidate) => candidate.id === routeParam(req.params.playerId));
-  if (!session || !player) {
-    res.status(404).json({ error: "Player session not found." });
-    return;
-  }
-  if (!requirePlayerAccess(req, res, session, player)) return;
+type StudentCommandResult<T> =
+  | { ok: true; data: T }
+  | { ok: false; status: number; error: string };
+
+type GearPurchaseResponse = {
+  player: PlayerSession;
+  gear: (typeof GEAR_ITEMS)[number];
+  message: string;
+};
+
+type SnowballPurchaseResponse = { player: PlayerSession; message: string };
+
+const failStudentCommand = (status: number, error: string): StudentCommandResult<never> => ({ ok: false, status, error });
+
+const answerQuestion = (
+  session: GameSession,
+  player: PlayerSession,
+  body: { questionId?: unknown; selectedChoice?: unknown }
+): StudentCommandResult<{ result: QuizResult }> => {
   if (session.status !== "active") {
-    res.status(400).json({ error: inactiveRoundMessage(session) });
-    return;
+    return failStudentCommand(400, inactiveRoundMessage(session));
   }
   if (!player.isAlive && !session.settings.deadPlayersCanPractice) {
-    res.status(400).json({ error: "Practice questions are disabled while out for the round." });
-    return;
+    return failStudentCommand(400, "Practice questions are disabled while out for the round.");
   }
   if (!checkQuizRateLimit(player.id)) {
-    res.status(429).json({ error: "Slow down before answering another question." });
-    return;
+    return failStudentCommand(429, "Slow down before answering another question.");
   }
-  const question = getQuizQuestion(String(req.body.questionId ?? ""));
-  const selectedChoice = req.body.selectedChoice;
+  const question = getQuizQuestion(String(body.questionId ?? ""));
+  const selectedChoice = body.selectedChoice;
   if (!question || question.quizSetId !== session.quizSetId || !isChoice(selectedChoice)) {
-    res.status(400).json({ error: "Question or answer choice is invalid." });
-    return;
+    return failStudentCommand(400, "Question or answer choice is invalid.");
   }
 
   const gatedQuestion = playerQuestionGate.consume(player.id, question.id);
   if (!gatedQuestion.ok) {
-    res.status(409).json({ error: "Answer the currently assigned question before submitting." });
-    return;
+    return failStudentCommand(409, "Answer the currently assigned question before submitting.");
   }
 
   const responseTimeMs = gatedQuestion.responseTimeMs;
@@ -1589,25 +1595,16 @@ app.post("/api/sessions/:code/players/:playerId/answer", (req, res) => {
     respawnRequired: respawn.required
   };
   broadcastSession(session);
-  res.json({ result });
-});
+  return { ok: true, data: { result } };
+};
 
-app.post("/api/sessions/:code/players/:playerId/buy", (req, res) => {
-  const session = getSessionByCode(routeParam(req.params.code));
-  const player = session?.players.find((candidate) => candidate.id === routeParam(req.params.playerId));
-  const gear = GEAR_ITEMS.find((item) => item.id === req.body.gearId);
-  if (!session || !player) {
-    res.status(404).json({ error: "Player session not found." });
-    return;
-  }
-  if (!requirePlayerAccess(req, res, session, player)) return;
+const buyGear = (session: GameSession, player: PlayerSession, gearId: unknown): StudentCommandResult<GearPurchaseResponse> => {
+  const gear = GEAR_ITEMS.find((item) => item.id === gearId);
   if (!isRoundActive(session) && !isRoundBuyPhase(session)) {
-    res.status(400).json({ error: "The round has ended. Gear buying is closed." });
-    return;
+    return failStudentCommand(400, "The round has ended. Gear buying is closed.");
   }
   if (!gear) {
-    res.status(400).json({ error: "That gear item does not exist." });
-    return;
+    return failStudentCommand(400, "That gear item does not exist.");
   }
   const purchase = resolveGearPurchase({
     player,
@@ -1615,51 +1612,40 @@ app.post("/api/sessions/:code/players/:playerId/buy", (req, res) => {
     requireBase: session.settings.gameMode === "flag"
   });
   if (!purchase.ok) {
-    res.status(400).json({
-      error:
-        purchase.reason === "player_eliminated"
-          ? "Students out for the round cannot buy gear."
-          : purchase.reason === "starter_weapon"
-            ? "The Starter Snowball Launcher is your default weapon and cannot replace purchased gear."
-          : purchase.reason === "outside_base"
-            ? "Return to your team base to buy gear."
-            : "Not enough money for that gear."
-    });
-    return;
+    return failStudentCommand(
+      400,
+      purchase.reason === "player_eliminated"
+        ? "Students out for the round cannot buy gear."
+        : purchase.reason === "starter_weapon"
+          ? "The Starter Snowball Launcher is your default weapon and cannot replace purchased gear."
+        : purchase.reason === "outside_base"
+          ? "Return to your team base to buy gear."
+          : "Not enough money for that gear."
+    );
   }
   if (purchase.alreadyEquipped) {
-    res.json({ player, gear, message: `${gear.name} already equipped.` });
-    return;
+    return { ok: true, data: { player, gear, message: `${gear.name} already equipped.` } };
   }
   player.money = purchase.nextMoney;
   player.gear = gear.id;
   if (purchase.nextHealth !== undefined) player.health = purchase.nextHealth;
   appendEvent(session, { type: "buy", message: `${player.nickname} equipped ${gear.name}.`, playerId: player.id, team: player.team });
   broadcastSession(session);
-  res.json({ player, gear, message: `${gear.name} equipped.` });
-});
+  return { ok: true, data: { player, gear, message: `${gear.name} equipped.` } };
+};
 
-app.post("/api/sessions/:code/players/:playerId/buy-snowballs", (req, res) => {
-  const session = getSessionByCode(routeParam(req.params.code));
-  const player = session?.players.find((candidate) => candidate.id === routeParam(req.params.playerId));
-  if (!session || !player) {
-    res.status(404).json({ error: "Player session not found." });
-    return;
-  }
-  if (!requirePlayerAccess(req, res, session, player)) return;
+const buySnowballs = (session: GameSession, player: PlayerSession): StudentCommandResult<SnowballPurchaseResponse> => {
   if (!isRoundActive(session) && !isRoundBuyPhase(session)) {
-    res.status(400).json({ error: "The round has ended. Snowball buying is closed." });
-    return;
+    return failStudentCommand(400, "The round has ended. Snowball buying is closed.");
   }
   const purchase = resolveSnowballPurchase({ player, settings: session.settings });
   if (!purchase.ok) {
-    res.status(400).json({
-      error:
-        purchase.reason === "player_eliminated"
-          ? "Students out for the round cannot buy snowballs."
-          : "Not enough money for snowballs."
-    });
-    return;
+    return failStudentCommand(
+      400,
+      purchase.reason === "player_eliminated"
+        ? "Students out for the round cannot buy snowballs."
+        : "Not enough money for snowballs."
+    );
   }
   player.money = purchase.nextMoney;
   player.snowballs = purchase.nextSnowballs;
@@ -1670,7 +1656,63 @@ app.post("/api/sessions/:code/players/:playerId/buy-snowballs", (req, res) => {
     team: player.team
   });
   broadcastSession(session);
-  res.json({ player, message: `+${purchase.snowballsAdded} snowballs ready.` });
+  return { ok: true, data: { player, message: `+${purchase.snowballsAdded} snowballs ready.` } };
+};
+
+const sendStudentCommand = <T>(res: Response, result: StudentCommandResult<T>) => {
+  if (!result.ok) {
+    res.status(result.status).json({ error: result.error });
+    return;
+  }
+  res.json(result.data);
+};
+
+type StudentCommandAck<T> =
+  | { ok: true; data: T }
+  | { ok: false; status: number; error: string };
+
+const commandAck = <T>(result: StudentCommandResult<T>): StudentCommandAck<T> =>
+  result.ok ? { ok: true, data: result.data } : { ok: false, status: result.status, error: result.error };
+
+const getBoundStudent = (socket: Socket) => {
+  const binding = socket.data.playerBinding as SocketPlayerBinding | undefined;
+  if (!binding) return undefined;
+  const session = getSessionByCode(binding.sessionCode);
+  const player = session?.players.find((candidate) => candidate.id === binding.playerId);
+  return session && player ? { session, player } : undefined;
+};
+
+app.post("/api/sessions/:code/players/:playerId/answer", (req, res) => {
+  const session = getSessionByCode(routeParam(req.params.code));
+  const player = session?.players.find((candidate) => candidate.id === routeParam(req.params.playerId));
+  if (!session || !player) {
+    res.status(404).json({ error: "Player session not found." });
+    return;
+  }
+  if (!requirePlayerAccess(req, res, session, player)) return;
+  sendStudentCommand(res, answerQuestion(session, player, req.body));
+});
+
+app.post("/api/sessions/:code/players/:playerId/buy", (req, res) => {
+  const session = getSessionByCode(routeParam(req.params.code));
+  const player = session?.players.find((candidate) => candidate.id === routeParam(req.params.playerId));
+  if (!session || !player) {
+    res.status(404).json({ error: "Player session not found." });
+    return;
+  }
+  if (!requirePlayerAccess(req, res, session, player)) return;
+  sendStudentCommand(res, buyGear(session, player, req.body.gearId));
+});
+
+app.post("/api/sessions/:code/players/:playerId/buy-snowballs", (req, res) => {
+  const session = getSessionByCode(routeParam(req.params.code));
+  const player = session?.players.find((candidate) => candidate.id === routeParam(req.params.playerId));
+  if (!session || !player) {
+    res.status(404).json({ error: "Player session not found." });
+    return;
+  }
+  if (!requirePlayerAccess(req, res, session, player)) return;
+  sendStudentCommand(res, buySnowballs(session, player));
 });
 
 io.on("connection", (socket) => {
@@ -1704,6 +1746,48 @@ io.on("connection", (socket) => {
     socket.join(session.sessionCode);
     socket.emit("session_state", stampSession(session));
   });
+
+  socket.on(
+    "answer_question",
+    (
+      payload: { questionId?: unknown; selectedChoice?: unknown },
+      acknowledge: (response: StudentCommandAck<{ result: QuizResult }>) => void
+    ) => {
+      if (typeof acknowledge !== "function") return;
+      const student = getBoundStudent(socket);
+      acknowledge(
+        student
+          ? commandAck(answerQuestion(student.session, student.player, payload ?? {}))
+          : { ok: false, status: 401, error: "Reconnect to the game before answering." }
+      );
+    }
+  );
+
+  socket.on(
+    "buy_gear",
+    (payload: { gearId?: unknown }, acknowledge: (response: StudentCommandAck<GearPurchaseResponse>) => void) => {
+      if (typeof acknowledge !== "function") return;
+      const student = getBoundStudent(socket);
+      acknowledge(
+        student
+          ? commandAck(buyGear(student.session, student.player, payload?.gearId))
+          : { ok: false, status: 401, error: "Reconnect to the game before buying gear." }
+      );
+    }
+  );
+
+  socket.on(
+    "buy_snowballs",
+    (_payload: Record<string, never>, acknowledge: (response: StudentCommandAck<SnowballPurchaseResponse>) => void) => {
+      if (typeof acknowledge !== "function") return;
+      const student = getBoundStudent(socket);
+      acknowledge(
+        student
+          ? commandAck(buySnowballs(student.session, student.player))
+          : { ok: false, status: 401, error: "Reconnect to the game before buying snowballs." }
+      );
+    }
+  );
 
   socket.on("disconnect", () => {
     const binding = socket.data.playerBinding as SocketPlayerBinding | undefined;
