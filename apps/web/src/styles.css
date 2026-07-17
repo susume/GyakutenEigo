@@ -3778,3 +3778,440 @@ small {
     text-transform: uppercase;
   }
 }
+
+/* Stable in-match HUD shell */
+body.gameplay-body-lock,
+body:has(.game-layout) {
+  overflow: hidden;
+}
+
+body.gameplay-body-lock .topbar,
+body:has(.game-layout) .topbar {
+  display: none;
+}
+
+.game-layout {
+  --action-bar-height: clamp(52px, 7vh, 70px);
+  --hud-safe-edge: clamp(12px, 2vw, 24px);
+  --hud-safe-top: clamp(12px, 2vh, 20px);
+  --player-hud-height: clamp(56px, 7.5vh, 76px);
+  --z-game: 0;
+  --z-world-overlay: 10;
+  --z-hud: 20;
+  --z-notification: 30;
+  --z-menu: 40;
+  --z-modal: 50;
+  width: 100vw;
+  height: 100vh;
+  height: 100dvh;
+  min-height: 100vh;
+  min-height: 100dvh;
+  display: grid;
+  grid-template-rows: minmax(0, 1fr) var(--action-bar-height);
+  gap: 0;
+  padding: 0;
+  overflow: hidden;
+  background: #071827;
+}
+
+.game-stage {
+  position: relative;
+  display: block;
+  min-width: 0;
+  min-height: 0;
+  width: 100%;
+  height: 100%;
+  overflow: hidden;
+}
+
+.game-stage > .arena-frame,
+.game-stage > .arena-loading {
+  position: absolute;
+  inset: 0;
+  z-index: var(--z-game);
+  min-width: 0;
+  height: 100%;
+}
+
+.game-stage .arena-canvas,
+.game-stage .arena-frame {
+  min-height: 0;
+}
+
+.game-stage .arena-canvas {
+  position: relative;
+  width: 100%;
+  height: 100%;
+  border-radius: 0;
+}
+
+.game-stage > .control-prompts {
+  display: none;
+}
+
+.game-stage .fps-callout {
+  display: none;
+}
+
+.arena-objective-strip {
+  left: var(--hud-safe-edge);
+  right: auto;
+  top: var(--hud-safe-top);
+  z-index: var(--z-hud);
+  max-width: min(620px, calc(50% - 158px));
+  gap: clamp(5px, 0.75vw, 8px);
+  align-items: flex-start;
+}
+
+.arena-objective-strip .status-pill {
+  flex: 0 0 auto;
+  min-height: clamp(28px, 4vh, 34px);
+  padding: 0 clamp(9px, 1vw, 12px);
+  box-shadow: 0 8px 20px rgba(8, 25, 42, 0.18);
+}
+
+.arena-objective-strip span:not(.status-pill) {
+  min-width: 0;
+  min-height: clamp(28px, 4vh, 34px);
+  padding: 0 clamp(8px, 1vw, 11px);
+  font-size: clamp(0.68rem, 0.78vw, 0.82rem);
+  line-height: 1.12;
+}
+
+.arena-objective-strip .objective-primary {
+  flex: 1 1 280px;
+  white-space: normal;
+}
+
+.arena-objective-strip .mode-pill {
+  flex: 0 1 auto;
+}
+
+.round-countdown {
+  left: 50%;
+  top: var(--hud-safe-top);
+  z-index: var(--z-hud);
+  min-width: clamp(150px, 13vw, 184px);
+  min-height: clamp(36px, 5vh, 44px);
+  gap: clamp(6px, 0.8vw, 9px);
+  padding: 0 clamp(10px, 1.1vw, 14px);
+}
+
+.round-countdown span {
+  font-size: clamp(0.62rem, 0.68vw, 0.72rem);
+}
+
+.round-countdown strong {
+  min-width: 44px;
+  font-size: clamp(1rem, 1.1vw, 1.14rem);
+}
+
+.game-stage .arena-minimap {
+  right: var(--hud-safe-edge);
+  top: var(--hud-safe-top);
+  z-index: var(--z-hud);
+  width: clamp(190px, 15vw, 270px);
+  aspect-ratio: 1;
+  display: grid;
+  grid-template-rows: auto minmax(0, 1fr);
+  gap: 4px;
+  padding: clamp(6px, 0.7vw, 9px);
+  overflow: hidden;
+}
+
+.game-stage .minimap-title {
+  margin: 0;
+  font-size: clamp(0.56rem, 0.64vw, 0.68rem);
+  line-height: 1;
+}
+
+.game-stage .arena-minimap svg {
+  width: 100%;
+  height: 100%;
+  min-height: 0;
+}
+
+.game-stage > .player-status-hud {
+  position: absolute;
+  left: 50%;
+  bottom: clamp(12px, 2vh, 24px);
+  z-index: var(--z-hud);
+  width: min(1060px, calc(100% - 32px));
+  min-height: var(--player-hud-height);
+  display: grid;
+  grid-template-columns:
+    minmax(100px, 0.8fr)
+    minmax(112px, 0.9fr)
+    minmax(128px, 1fr)
+    minmax(230px, 2.2fr)
+    minmax(100px, 0.8fr);
+  align-items: stretch;
+  gap: clamp(5px, 0.7vw, 8px);
+  padding: clamp(7px, 1vw, 10px);
+  transform: translateX(-50%);
+  pointer-events: none;
+}
+
+.game-stage > .player-status-hud .hud-stat {
+  min-width: 0;
+  width: 100%;
+  gap: clamp(5px, 0.7vw, 8px);
+  padding: clamp(6px, 0.8vw, 9px) clamp(7px, 0.9vw, 10px);
+}
+
+.game-stage > .player-status-hud .hud-stat svg {
+  width: clamp(15px, 1.35vw, 18px);
+  height: clamp(15px, 1.35vw, 18px);
+}
+
+.game-stage > .player-status-hud .hud-stat small {
+  font-size: clamp(0.55rem, 0.62vw, 0.68rem);
+  line-height: 1;
+}
+
+.game-stage > .player-status-hud .hud-stat strong {
+  font-size: clamp(0.78rem, 0.85vw, 0.96rem);
+  line-height: 1.12;
+}
+
+.game-stage > .player-status-hud .hud-stat.weapon {
+  min-width: 0;
+}
+
+.game-stage > .player-status-hud .hud-stat.weapon strong {
+  display: -webkit-box;
+  overflow: hidden;
+  white-space: normal;
+  -webkit-box-orient: vertical;
+  -webkit-line-clamp: 2;
+}
+
+.action-bar {
+  z-index: var(--z-hud);
+  height: var(--action-bar-height);
+  min-height: 0;
+  display: grid;
+  grid-template-columns: repeat(4, minmax(0, 1fr));
+  align-items: center;
+  gap: clamp(6px, 1vw, 12px);
+  padding: clamp(6px, 1vh, 10px) clamp(10px, 2vw, 24px) max(clamp(6px, 1vh, 10px), env(safe-area-inset-bottom));
+  border-top: 1px solid rgba(186, 230, 253, 0.22);
+  background: linear-gradient(180deg, rgba(5, 20, 33, 0.98), rgba(8, 27, 43, 0.98));
+  box-shadow: 0 -12px 34px rgba(2, 10, 20, 0.34);
+}
+
+.action-bar button {
+  width: 100%;
+  min-width: 0;
+  min-height: 0;
+  height: 100%;
+  padding: 0 clamp(8px, 1.2vw, 14px);
+  overflow: hidden;
+  border-radius: 8px;
+  font-size: clamp(0.72rem, 1vw, 0.94rem);
+  font-weight: 900;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.notification-layer {
+  position: absolute;
+  left: clamp(16px, 2vw, 28px);
+  bottom: calc(var(--player-hud-height) + clamp(28px, 4vh, 42px));
+  z-index: var(--z-notification);
+  width: min(420px, calc(100% - 32px));
+  display: flex;
+  flex-direction: column-reverse;
+  gap: 8px;
+  pointer-events: none;
+}
+
+.notification-layer .success-text,
+.notification-layer .error-text {
+  width: fit-content;
+  max-width: 100%;
+  margin: 0;
+  border: 1px solid rgba(186, 230, 253, 0.38);
+  border-radius: 8px;
+  padding: 10px 12px;
+  background: rgba(8, 25, 42, 0.9);
+  color: #e0f2fe;
+  box-shadow: 0 14px 32px rgba(2, 10, 20, 0.3);
+  font-size: clamp(0.78rem, 0.85vw, 0.92rem);
+  font-weight: 850;
+  line-height: 1.25;
+  animation: gameplay-toast-in 180ms ease-out both;
+  backdrop-filter: blur(8px);
+}
+
+.notification-layer .error-text {
+  border-color: rgba(252, 165, 165, 0.54);
+  background: rgba(69, 10, 10, 0.9);
+  color: #fee2e2;
+}
+
+.student-alerts {
+  position: absolute;
+  inset: clamp(74px, 12vh, 104px) clamp(16px, 2vw, 28px) calc(var(--player-hud-height) + 34px);
+  z-index: var(--z-notification);
+  display: grid;
+  grid-template-columns: minmax(0, min(720px, 100%));
+  place-content: center;
+  align-items: center;
+  overflow: auto;
+  pointer-events: none;
+}
+
+.student-alerts .panel,
+.student-alerts .connection-banner {
+  pointer-events: auto;
+}
+
+.game-menu-overlay {
+  z-index: var(--z-menu);
+  inset: clamp(64px, 10vh, 84px) clamp(14px, 2vw, 22px) calc(var(--player-hud-height) + 34px);
+  max-height: none;
+}
+
+.incoming-hit-flash {
+  z-index: var(--z-world-overlay);
+}
+
+.reward-toast {
+  z-index: var(--z-notification);
+}
+
+.weapon-cooldown {
+  bottom: calc(var(--player-hud-height) + 18px);
+  z-index: var(--z-world-overlay);
+}
+
+@keyframes gameplay-toast-in {
+  from {
+    opacity: 0;
+    transform: translateY(8px);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}
+
+@media (max-width: 1500px) {
+  .arena-objective-strip {
+    max-width: min(540px, calc(50% - 148px));
+  }
+
+  .game-stage > .player-status-hud {
+    grid-template-columns:
+      minmax(92px, 0.78fr)
+      minmax(104px, 0.86fr)
+      minmax(116px, 0.96fr)
+      minmax(210px, 2fr)
+      minmax(92px, 0.78fr);
+  }
+}
+
+@media (max-width: 1280px) {
+  .game-layout {
+    --action-bar-height: clamp(50px, 7vh, 64px);
+    --player-hud-height: clamp(52px, 7vh, 68px);
+  }
+
+  .arena-objective-strip {
+    max-width: min(480px, calc(50% - 134px));
+  }
+
+  .game-stage .arena-minimap {
+    width: clamp(176px, 14.5vw, 210px);
+  }
+
+  .game-stage > .player-status-hud {
+    width: min(1010px, calc(100% - 24px));
+    grid-template-columns:
+      minmax(84px, 0.75fr)
+      minmax(96px, 0.82fr)
+      minmax(108px, 0.92fr)
+      minmax(190px, 1.8fr)
+      minmax(84px, 0.75fr);
+  }
+}
+
+@media (max-width: 1120px) {
+  .round-countdown {
+    top: calc(var(--hud-safe-top) + 44px);
+  }
+
+  .arena-objective-strip {
+    max-width: calc(100% - clamp(196px, 18vw, 238px) - 44px);
+  }
+
+  .game-stage > .player-status-hud {
+    grid-template-columns: repeat(5, minmax(0, 1fr));
+  }
+
+  .game-stage > .player-status-hud .hud-stat.weapon {
+    grid-column: span 2;
+  }
+
+  .game-stage > .player-status-hud .hud-stat:last-child {
+    grid-column: span 1;
+  }
+}
+
+@media (max-width: 780px) {
+  .game-layout.compact-game-layout,
+  .compact-game-layout {
+    padding: 0;
+  }
+
+  .arena-objective-strip {
+    max-width: calc(100% - 176px);
+  }
+
+  .arena-objective-strip .objective-primary {
+    display: none;
+  }
+
+  .round-countdown {
+    top: calc(var(--hud-safe-top) + 40px);
+  }
+
+  .game-stage .arena-minimap {
+    width: 154px;
+  }
+
+  .game-stage > .player-status-hud,
+  .compact-game-layout .hud,
+  .game-stage > .hud {
+    position: absolute;
+    left: 50%;
+    bottom: 10px;
+    width: calc(100% - 20px);
+    display: grid;
+    grid-template-columns: repeat(3, minmax(0, 1fr));
+    transform: translateX(-50%);
+  }
+
+  .game-stage > .player-status-hud .hud-stat.weapon,
+  .game-stage > .player-status-hud .hud-warmth {
+    grid-column: span 1;
+  }
+
+  .action-bar {
+    grid-template-columns: repeat(4, minmax(0, 1fr));
+    gap: 5px;
+    padding-inline: 8px;
+  }
+
+  .action-bar button {
+    padding-inline: 6px;
+    font-size: 0.68rem;
+  }
+
+  .notification-layer {
+    left: 10px;
+    bottom: calc(var(--player-hud-height) + 54px);
+    width: calc(100% - 20px);
+  }
+}

@@ -573,6 +573,11 @@ export default function App() {
   }, []);
 
   useEffect(() => {
+    document.body.classList.toggle("gameplay-body-lock", isGameRoute);
+    return () => document.body.classList.remove("gameplay-body-lock");
+  }, [isGameRoute]);
+
+  useEffect(() => {
     if (isJoinRoute || isGameRoute || isCharacterLabRoute || !isQuizStrikeRoute) return;
     if (!localStorage.getItem("quizstrike_token")) return;
     authApi
@@ -3012,7 +3017,7 @@ function StudentExperience({ onExit }: { onExit: () => void }) {
             {session.settings.gameMode === "flag" ? ` · Round ${session.currentRound}/${session.settings.roundCount}` : ""}
           </span>
         </div>
-        <div className="hud">
+        <div className="hud player-status-hud">
           <span className={player.isAlive ? "hud-stat hud-warmth" : "hud-stat hud-warmth low"}>
             <HeartPulse size={18} aria-hidden="true" />
             <span>
@@ -3058,12 +3063,6 @@ function StudentExperience({ onExit }: { onExit: () => void }) {
             onAnimationEnd={() => setIncomingHitCue(null)}
           />
         )}
-        <div className="control-prompts">
-          <button disabled={roundEnded} onClick={() => { gameAudio.playEvent(quizOpen ? "modal_close" : "quiz_open"); setQuizOpen(!quizOpen); setBuyOpen(false); setScoreboardOpen(false); }}>{isCompactViewport ? "Quiz" : "Q Quiz"}</button>
-          <button disabled={roundEnded || !player.isAlive} onClick={() => { gameAudio.play("menu_toggle"); setBuyOpen(!buyOpen); setQuizOpen(false); setScoreboardOpen(false); }}>{isCompactViewport ? "Buy" : "B Buy · 1–5"}</button>
-          <button onMouseDown={() => { gameAudio.play("menu_toggle"); setScoreboardOpen(true); setQuizOpen(false); setBuyOpen(false); setSettingsOpen(false); }} onMouseUp={() => setScoreboardOpen(false)} onBlur={() => setScoreboardOpen(false)}>{isCompactViewport ? "Scoreboard" : "Hold Tab · Scoreboard"}</button>
-          <button onClick={() => { gameAudio.play("menu_toggle"); setSettingsOpen((open) => !open); setQuizOpen(false); setBuyOpen(false); setScoreboardOpen(false); }}><Settings size={18} aria-hidden="true" />Settings</button>
-        </div>
         {rewardPulse && <div className="reward-toast" onAnimationEnd={() => setRewardPulse("")}>{rewardPulse}</div>}
         {panelsOpen && (
           <div className="game-menu-overlay" role="dialog" aria-modal="false" aria-label="Arena menu">
@@ -3177,9 +3176,19 @@ function StudentExperience({ onExit }: { onExit: () => void }) {
                   : "Practice questions are off for this session, so watch the scoreboard and get ready for the next round."}</p>
               </div>
             )}
+          </div>
+        )}
+        {(status.error || feedback) && (
+          <div className="notification-layer" aria-live="polite">
             <StatusMessages error={status.error} message={feedback} />
           </div>
         )}
+      </div>
+      <div className="action-bar control-prompts">
+        <button disabled={roundEnded} onClick={() => { gameAudio.playEvent(quizOpen ? "modal_close" : "quiz_open"); setQuizOpen(!quizOpen); setBuyOpen(false); setScoreboardOpen(false); }}>Q Quiz</button>
+        <button disabled={roundEnded || !player.isAlive} onClick={() => { gameAudio.play("menu_toggle"); setBuyOpen(!buyOpen); setQuizOpen(false); setScoreboardOpen(false); }}>B Buy · 1-5</button>
+        <button onMouseDown={() => { gameAudio.play("menu_toggle"); setScoreboardOpen(true); setQuizOpen(false); setBuyOpen(false); setSettingsOpen(false); }} onMouseUp={() => setScoreboardOpen(false)} onBlur={() => setScoreboardOpen(false)}>Hold Tab · Scoreboard</button>
+        <button onClick={() => { gameAudio.play("menu_toggle"); setSettingsOpen((open) => !open); setQuizOpen(false); setBuyOpen(false); setScoreboardOpen(false); }}><Settings size={18} aria-hidden="true" />Settings</button>
       </div>
     </section>
   );
