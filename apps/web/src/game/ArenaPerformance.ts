@@ -25,9 +25,12 @@ declare global {
 }
 
 const percentile = (sorted: number[], ratio: number) => sorted[Math.min(sorted.length - 1, Math.floor(sorted.length * ratio))] ?? 0;
+const FRAME_SAMPLE_LIMIT = 600;
 
 export class ArenaPerformanceCapture {
-  private readonly frameTimes: number[] = [];
+  private readonly frameTimes = new Array<number>(FRAME_SAMPLE_LIMIT);
+  private frameCount = 0;
+  private frameCursor = 0;
   private lastFrameAt = performance.now();
   private longTasks = 0;
   private longestTaskMs = 0;
@@ -48,12 +51,14 @@ export class ArenaPerformanceCapture {
   frame(now = performance.now()) {
     const duration = now - this.lastFrameAt;
     this.lastFrameAt = now;
-    if (duration > 0 && duration < 1000) this.frameTimes.push(duration);
-    if (this.frameTimes.length > 72000) this.frameTimes.splice(0, this.frameTimes.length - 72000);
+    if (duration <= 0 || duration >= 1000) return;
+    this.frameTimes[this.frameCursor] = duration;
+    this.frameCursor = (this.frameCursor + 1) % FRAME_SAMPLE_LIMIT;
+    this.frameCount = Math.min(FRAME_SAMPLE_LIMIT, this.frameCount + 1);
   }
 
   snapshot(now = performance.now()): ArenaPerformanceSnapshot {
-    const sorted = [...this.frameTimes].sort((a, b) => a - b);
+    const sorted = this.frameTimes.slice(0, this.frameCount).sort((a, b) => a - b);
     const seconds = Math.max(0.001, sorted.reduce((total, duration) => total + duration, 0) / 1000);
     const memory = performance as Performance & { memory?: { usedJSHeapSize: number } };
     const snapshot: ArenaPerformanceSnapshot = {
