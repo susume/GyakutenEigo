@@ -7,7 +7,7 @@ import {
   serializeCharacterAppearance
 } from "./CharacterAppearance.js";
 
-test("resolveCharacterAppearance gives Alpha and Bravo distinct tactical identities", () => {
+test("resolveCharacterAppearance gives Alpha and Bravo distinct sports identities", () => {
   const alpha = resolveCharacterAppearance({ team: "blue", playerId: "alpha-1", gear: "starter_blaster" });
   const bravo = resolveCharacterAppearance({ team: "red", playerId: "bravo-1", gear: "starter_blaster" });
 

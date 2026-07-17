@@ -32,6 +32,10 @@ import { isFireKeyboardEvent, isScopeKeyboardEvent, resolveCombatPointerAction, 
 import { gameAudio, type MovementAudioMode } from "./GameAudio";
 import { cycleHeavyGunZoom, getWeaponFov, shouldResetWeaponZoom } from "./weaponControls";
 import { resolveTouchJoystickVector } from "./touchJoystick";
+import { ArenaStaticBatcher, makeSurfaceAtlas } from "./ArenaStaticBatch";
+import { ArenaVfxPool, subscribeArenaVfx } from "./ArenaVfx";
+import { ArenaPerformanceCapture, type ArenaPerformanceSnapshot } from "./ArenaPerformance";
+import { addIronJunctionArtPass } from "./IronJunctionArtPass";
 import {
   readGamePreferences,
   resolveArenaQuality,
@@ -62,6 +66,7 @@ const RUN_SPEED = 14.8;
 const CROUCH_SPEED = 6.4;
 const FPS_BASE_FOV = 72;
 const paleStone = "#dec28a";
+const darkStone = "#846744";
 const wood = "#65462e";
 const steel = "#39464b";
 const darkSteel = "#263237";
@@ -108,17 +113,26 @@ const movementCode = (event: KeyboardEvent) => {
 
 const lookCode = (event: KeyboardEvent) => event.code.startsWith("Arrow") ? event.code : "";
 
-const makeCanvasTexture = (kind: "floor" | "stone" | "wood" | "water" | "sand", accent = "#e8c67a") => {
+const seededRandom = (seed: number) => {
+  let state = seed >>> 0;
+  return () => {
+    state = (state * 1664525 + 1013904223) >>> 0;
+    return state / 0xffffffff;
+  };
+};
+
+const makeCanvasTexture = (kind: "floor" | "stone" | "wood" | "water" | "sand" | "metal", accent = "#e8c67a") => {
   const canvas = document.createElement("canvas");
   canvas.width = 1024;
   canvas.height = 1024;
   const ctx = canvas.getContext("2d")!;
   const palettes = {
-    floor: ["#c99d5a", "#e5c17b"],
-    stone: ["#a77b4c", "#dec48b"],
-    wood: ["#4f3524", "#8b623c"],
-    water: ["#137f90", "#36d5e6"],
-    sand: ["#cfa660", "#edcf8b"]
+    floor: ["#b9ab94", "#f2e7cf"],
+    stone: ["#bdb3a7", "#f1e9df"],
+    wood: ["#a99482", "#e8d5bd"],
+    water: ["#7eb8bd", "#ddfbff"],
+    sand: ["#c7b99e", "#f7ebcc"],
+    metal: ["#8d9a9e", "#e8eef0"]
   } as const;
   const gradient = ctx.createLinearGradient(0, 0, 1024, 1024);
   gradient.addColorStop(0, palettes[kind][0]);
@@ -126,18 +140,19 @@ const makeCanvasTexture = (kind: "floor" | "stone" | "wood" | "water" | "sand", 
   ctx.fillStyle = gradient;
   ctx.fillRect(0, 0, 1024, 1024);
 
+  const random = seededRandom({ floor: 17, stone: 31, wood: 47, water: 59, sand: 71, metal: 83 }[kind]);
   ctx.globalAlpha = kind === "water" ? 0.08 : 0.16;
   for (let index = 0; index < 1100; index += 1) {
-    const shade = Math.floor(105 + Math.random() * 115);
+    const shade = Math.floor(105 + random() * 115);
     ctx.fillStyle = kind === "water" ? `rgba(210,250,255,.8)` : `rgb(${shade},${shade},${shade})`;
-    ctx.fillRect(Math.random() * 1024, Math.random() * 1024, 1 + Math.random() * 4, 1 + Math.random() * 4);
+    ctx.fillRect(random() * 1024, random() * 1024, 1 + random() * 4, 1 + random() * 4);
   }
   ctx.globalAlpha = 1;
 
   if (kind !== "water") {
     ctx.strokeStyle = "rgba(255,255,255,.18)";
     ctx.lineWidth = kind === "floor" || kind === "sand" ? 3 : 5;
-    const step = kind === "wood" ? 128 : 256;
+    const step = kind === "wood" ? 128 : kind === "metal" ? 512 : 256;
     for (let pos = 0; pos <= 1024; pos += step) {
       ctx.beginPath();
       ctx.moveTo(pos, 0);
@@ -145,6 +160,46 @@ const makeCanvasTexture = (kind: "floor" | "stone" | "wood" | "water" | "sand", 
       ctx.moveTo(0, pos);
       ctx.lineTo(1024, pos);
       ctx.stroke();
+    }
+    if (kind === "stone") {
+      ctx.strokeStyle = "rgba(78,54,32,.24)";
+      ctx.lineWidth = 5;
+      for (let y = 128; y < 1024; y += 128) {
+        ctx.beginPath();
+        ctx.moveTo(0, y);
+        ctx.lineTo(1024, y);
+        ctx.stroke();
+        const offset = (y / 128) % 2 ? 128 : 0;
+        for (let x = offset; x < 1024; x += 256) {
+          ctx.beginPath();
+          ctx.moveTo(x, y - 128);
+          ctx.lineTo(x, y);
+          ctx.stroke();
+        }
+      }
+    }
+    if (kind === "sand" || kind === "floor") {
+      ctx.strokeStyle = "rgba(255,241,199,.2)";
+      ctx.lineWidth = 3;
+      for (let y = 48; y < 1024; y += 72) {
+        ctx.beginPath();
+        for (let x = 0; x <= 1024; x += 32) {
+          const waveY = y + Math.sin((x + y) * 0.018) * 8;
+          if (x === 0) ctx.moveTo(x, waveY);
+          else ctx.lineTo(x, waveY);
+        }
+        ctx.stroke();
+      }
+    }
+    if (kind === "metal") {
+      ctx.fillStyle = "rgba(240,250,252,.2)";
+      for (let y = 96; y < 1024; y += 256) {
+        for (let x = 96; x < 1024; x += 256) {
+          ctx.beginPath();
+          ctx.arc(x, y, 9, 0, Math.PI * 2);
+          ctx.fill();
+        }
+      }
     }
   } else {
     ctx.strokeStyle = "rgba(190,250,255,.32)";
@@ -249,6 +304,7 @@ export default function ArenaPreview({
   const [renderError, setRenderError] = useState("");
   const [fallbackQuality, setFallbackQuality] = useState<ArenaQuality | null>(null);
   const [characterDebugStats, setCharacterDebugStats] = useState<CharacterManagerStats | null>(null);
+  const [performanceSnapshot, setPerformanceSnapshot] = useState<ArenaPerformanceSnapshot | null>(null);
   const sceneSessionId = session?.id ?? "training";
   const currentPlayerId = currentPlayer?.id ?? "";
   const currentPlayerTeam = currentPlayer?.team ?? "blue";
@@ -323,9 +379,11 @@ export default function ArenaPreview({
     const mount = mountRef.current;
     if (!mount) return;
     setRenderError("");
+    setPerformanceSnapshot(null);
 
     const isFps = view === "fps";
     const isZombieMode = session?.settings.gameMode === "zombie";
+    const isIronJunction = arenaMapId === "iron_junction";
     const palette = arenaMap.palette;
     const scene = new THREE.Scene();
     scene.background = new THREE.Color(isZombieMode ? "#5d668a" : palette.sky);
@@ -355,10 +413,10 @@ export default function ArenaPreview({
       return;
     }
     const qualityConfig = activeQuality === "performance"
-      ? { pixelRatio: 1, shadows: false, anisotropy: 2 }
+      ? { pixelRatio: 1, shadows: false, anisotropy: 2, detail: 0 }
       : activeQuality === "balanced"
-        ? { pixelRatio: 1.25, shadows: false, anisotropy: 4 }
-        : { pixelRatio: 1.75, shadows: true, anisotropy: 8 };
+        ? { pixelRatio: 1.25, shadows: false, anisotropy: 4, detail: 1 }
+        : { pixelRatio: 1.75, shadows: true, anisotropy: 8, detail: 2 };
     renderer.setPixelRatio(Math.min(window.devicePixelRatio, qualityConfig.pixelRatio));
     renderer.setSize(mount.clientWidth, mount.clientHeight);
     renderer.shadowMap.enabled = !isFps && qualityConfig.shadows;
@@ -368,14 +426,21 @@ export default function ArenaPreview({
     renderer.toneMappingExposure = isFps ? 0.86 : 0.98;
     renderer.domElement.tabIndex = 0;
     renderer.domElement.className = "arena-webgl";
+    renderer.domElement.dataset.quality = activeQuality;
     mount.appendChild(renderer.domElement);
 
     const sky = new THREE.Mesh(
       new THREE.SphereGeometry(560, 20, 12),
-      new THREE.MeshBasicMaterial({
-        color: isZombieMode ? "#66718c" : palette.sky,
+      new THREE.ShaderMaterial({
         side: THREE.BackSide,
-        fog: false
+        fog: false,
+        uniforms: {
+          topColor: { value: new THREE.Color(isZombieMode ? "#313b59" : isIronJunction ? "#53666d" : "#4c9ccc") },
+          horizonColor: { value: new THREE.Color(isZombieMode ? "#8f8395" : palette.sky) },
+          groundColor: { value: new THREE.Color(isZombieMode ? "#6b6174" : isIronJunction ? "#a9b7b2" : "#e6c88e") }
+        },
+        vertexShader: `varying vec3 vWorldPosition; void main(){ vec4 worldPosition = modelMatrix * vec4(position,1.0); vWorldPosition = worldPosition.xyz; gl_Position = projectionMatrix * modelViewMatrix * vec4(position,1.0); }`,
+        fragmentShader: `uniform vec3 topColor; uniform vec3 horizonColor; uniform vec3 groundColor; varying vec3 vWorldPosition; void main(){ float h=normalize(vWorldPosition).y; vec3 lower=mix(groundColor,horizonColor,smoothstep(-0.22,0.08,h)); vec3 color=mix(lower,topColor,smoothstep(0.02,0.72,h)); gl_FragColor=vec4(color,1.0); }`
       })
     );
     sky.position.y = -88;
@@ -395,9 +460,13 @@ export default function ArenaPreview({
     const woodTexture = makeCanvasTexture("wood", "#bb8652");
     const waterTexture = makeCanvasTexture("water", "#67e8f9");
     const sandTexture = makeCanvasTexture("sand", "#f2ca73");
-    [floorTexture, stoneTexture, woodTexture, waterTexture, sandTexture].forEach((texture) => {
+    const metalTexture = makeCanvasTexture("metal", "#93a6ad");
+    [floorTexture, stoneTexture, woodTexture, waterTexture, sandTexture, metalTexture].forEach((texture) => {
       texture.anisotropy = qualityConfig.anisotropy;
     });
+    const surfaceAtlas = makeSurfaceAtlas({ stone: stoneTexture, wood: woodTexture, metal: metalTexture, sand: sandTexture });
+    surfaceAtlas.anisotropy = qualityConfig.anisotropy;
+    const staticBatcher = new ArenaStaticBatcher(surfaceAtlas, !isFps && qualityConfig.shadows);
 
     const materialCache = new Map<string, THREE.MeshStandardMaterial>();
     const materialFor = (color: string, material = "stone") => {
@@ -406,6 +475,8 @@ export default function ArenaPreview({
       if (cached) return cached;
       const texture = material === "wood"
         ? woodTexture
+        : material === "metal"
+          ? metalTexture
         : material === "water"
           ? waterTexture
           : material === "sand"
@@ -417,19 +488,31 @@ export default function ArenaPreview({
         color,
         roughness: material === "water" ? 0.18 : material === "cloth" ? 0.84 : material === "metal" ? 0.42 : 0.68,
         metalness: material === "water" ? 0.05 : material === "metal" ? 0.62 : 0.02,
-        emissive: material === "water" ? color : "#000000",
-        emissiveIntensity: material === "water" ? 0.35 : 0
+        emissive: material === "water" || material === "accent" ? color : "#000000",
+        emissiveIntensity: material === "water" ? 0.28 : material === "accent" ? 0.16 : 0,
+        transparent: material === "water",
+        opacity: material === "water" ? 0.84 : 1
       };
-      if (material !== "cloth" && material !== "accent") materialOptions.map = texture;
+      if (material !== "cloth" && material !== "accent") {
+        materialOptions.map = texture;
+        if (material !== "water") {
+          materialOptions.bumpMap = texture;
+          materialOptions.bumpScale = material === "metal" ? 0.025 : 0.065;
+        }
+      }
       const next = new THREE.MeshStandardMaterial(materialOptions);
       materialCache.set(key, next);
       return next;
     };
 
-    scene.add(new THREE.HemisphereLight(isZombieMode ? "#d8ddff" : "#fff6d8", isZombieMode ? "#65556e" : "#8f7d6f", isFps ? 1.12 : 1.28));
+    scene.add(new THREE.HemisphereLight(
+      isZombieMode ? "#d8ddff" : isIronJunction ? "#d9edf0" : "#fff6d8",
+      isZombieMode ? "#65556e" : isIronJunction ? "#354146" : "#8f7d6f",
+      isFps ? 1.12 : 1.28
+    ));
 
-    const keyLight = new THREE.DirectionalLight(isZombieMode ? "#d9e1ff" : "#fff0ca", isFps ? 2.18 : 2.72);
-    keyLight.position.set(-85, 180, 95);
+    const keyLight = new THREE.DirectionalLight(isZombieMode ? "#d9e1ff" : isIronJunction ? "#d6edf0" : "#fff0ca", isFps ? 2.18 : isIronJunction ? 2.35 : 2.72);
+    keyLight.position.set(isIronJunction ? -120 : -85, 180, isIronJunction ? -60 : 95);
     keyLight.castShadow = !isFps;
     keyLight.shadow.mapSize.set(1024, 1024);
     keyLight.shadow.camera.left = -190;
@@ -438,19 +521,27 @@ export default function ArenaPreview({
     keyLight.shadow.camera.bottom = -175;
     scene.add(keyLight);
 
-    const fillLight = new THREE.DirectionalLight(isZombieMode ? "#b7a8de" : "#ffe7bd", isFps ? 1.22 : 0.82);
+    const fillLight = new THREE.DirectionalLight(isZombieMode ? "#b7a8de" : isIronJunction ? "#f3b47a" : "#ffe7bd", isFps ? 1.22 : 0.82);
     fillLight.position.set(110, 80, -130);
     scene.add(fillLight);
 
-    const aqueductLight = new THREE.PointLight("#53e7ff", 42, 135, 2);
-    aqueductLight.position.set(0, 7, 0);
-    scene.add(aqueductLight);
+    if (!isIronJunction) {
+      const aqueductLight = new THREE.PointLight("#53e7ff", 42, 135, 2);
+      aqueductLight.position.set(0, 7, 0);
+      scene.add(aqueductLight);
+    }
 
     const addBaseBeacon = (team: "blue" | "red", color: string) => {
       const base = TEAM_BASE_ZONES[team];
-      const x = (base.minX + base.maxX) / 2;
+      const x = team === "blue" ? base.minX + 4.5 : base.maxX - 4.5;
       const z = (base.minZ + base.maxZ) / 2;
       const beacon = new THREE.Group();
+      const plinth = new THREE.Mesh(
+        new THREE.CylinderGeometry(4.8, 5.4, 0.6, 12),
+        materialFor(team === "blue" ? "#27485d" : "#5a343a", "metal")
+      );
+      plinth.position.y = 0.3;
+      beacon.add(plinth);
       const pillar = new THREE.Mesh(
         new THREE.CylinderGeometry(0.65, 1.05, 8, 10),
         new THREE.MeshStandardMaterial({ color: "#fff7df", emissive: color, emissiveIntensity: 0.5, roughness: 0.36 })
@@ -464,6 +555,24 @@ export default function ArenaPreview({
       ring.rotation.x = Math.PI / 2;
       ring.position.y = 0.16;
       beacon.add(ring);
+      const crown = new THREE.Mesh(
+        new THREE.OctahedronGeometry(0.95, 0),
+        new THREE.MeshStandardMaterial({ color: "#f3fbff", emissive: color, emissiveIntensity: 0.85, roughness: 0.22 })
+      );
+      crown.position.y = 8.9;
+      beacon.add(crown);
+      if (qualityConfig.detail === 2) {
+        for (let index = 0; index < 4; index += 1) {
+          const angle = (index / 4) * Math.PI * 2 + Math.PI / 4;
+          const pylon = new THREE.Mesh(
+            new THREE.BoxGeometry(0.42, 3.6, 0.42),
+            materialFor(team === "blue" ? "#8cd9ff" : "#ff9d9d", "metal")
+          );
+          pylon.position.set(Math.cos(angle) * 3.7, 1.8, Math.sin(angle) * 3.7);
+          pylon.rotation.y = -angle;
+          beacon.add(pylon);
+        }
+      }
       beacon.position.set(x, 0, z);
       scene.add(beacon);
       if (activeQuality !== "performance") {
@@ -488,13 +597,30 @@ export default function ArenaPreview({
       );
       pole.position.y = 4.4;
       flagMarker.add(pole);
-      const fabric = new THREE.Mesh(
-        new THREE.PlaneGeometry(4.8, 2.6, 2, 1),
-        new THREE.MeshBasicMaterial({ color: markerColor, transparent: true, opacity: 0.93, side: THREE.DoubleSide })
-      );
-      fabric.position.set(2.3, 7.1, 0);
-      fabric.rotation.y = Math.PI / 2;
-      flagMarker.add(fabric);
+      if (isFps) {
+        const objectiveCore = new THREE.Mesh(
+          new THREE.OctahedronGeometry(0.72, 0),
+          new THREE.MeshStandardMaterial({ color: "#fff7ed", emissive: markerColor, emissiveIntensity: 0.9, roughness: 0.24 })
+        );
+        objectiveCore.position.y = 7.6;
+        flagMarker.add(objectiveCore);
+      } else {
+        const fabric = new THREE.Mesh(
+          new THREE.PlaneGeometry(3.2, 1.55, 2, 1),
+          new THREE.MeshStandardMaterial({
+            color: markerColor,
+            emissive: markerColor,
+            emissiveIntensity: 0.22,
+            roughness: 0.82,
+            transparent: true,
+            opacity: 0.9,
+            side: THREE.DoubleSide
+          })
+        );
+        fabric.position.set(1.55, 6.5, 0);
+        fabric.rotation.y = Math.PI / 2;
+        flagMarker.add(fabric);
+      }
       const objectiveRing = new THREE.Mesh(
         new THREE.TorusGeometry(4.8, 0.2, 8, 32),
         new THREE.MeshBasicMaterial({ color: markerColor, transparent: true, opacity: 0.72 })
@@ -524,25 +650,36 @@ export default function ArenaPreview({
     if (activeQuality !== "performance") scene.add(grid);
 
     const coverBoxes: THREE.Box3[] = [];
+    const collisionProxyMaterial = new THREE.MeshBasicMaterial({ visible: false, colorWrite: false, depthWrite: false });
     const colliderForObject = (object: THREE.Object3D, pad = 0.25) => {
       coverBoxes.push(new THREE.Box3().setFromObject(object).expandByScalar(pad));
     };
 
     const addDecorativeMesh = (parent: THREE.Object3D, geometry: THREE.BufferGeometry, color: string, material = "stone") => {
       const mesh = new THREE.Mesh(geometry, materialFor(color, material));
-      mesh.castShadow = !isFps;
-      mesh.receiveShadow = true;
+      staticBatcher.prepare(mesh, color, material);
       parent.add(mesh);
       return mesh;
     };
 
     const addBlockDetail = (block: (typeof arenaMap.blocks)[number]) => {
-      if (!block.style) return;
+      if (!block.style || qualityConfig.detail === 0) return;
       const detail = new THREE.Group();
       detail.position.set(block.x, block.y ?? 0, block.z);
       detail.rotation.y = block.rotationY ?? 0;
       scene.add(detail);
       const stoneTone = block.material === "wood" ? block.color : paleStone;
+      const structuralStyle = ["wall", "ruin", "gate", "house", "tower", "shed", "machinery"].includes(block.style);
+
+      if (structuralStyle) {
+        const foundation = addDecorativeMesh(
+          detail,
+          new THREE.BoxGeometry(block.w * 1.025, Math.min(0.48, Math.max(0.22, block.h * 0.065)), block.d * 1.025),
+          block.material === "metal" ? darkSteel : block.material === "wood" ? "#49311f" : "#846744",
+          block.material === "metal" ? "metal" : block.material === "wood" ? "wood" : "stone"
+        );
+        foundation.position.y = Math.min(0.24, block.h * 0.04);
+      }
 
       if (block.style === "wall") {
         addDecorativeMesh(detail, new THREE.BoxGeometry(block.w * 0.98, 0.28, block.d * 1.08), stoneTone);
@@ -551,6 +688,16 @@ export default function ArenaPreview({
           const x = -block.w / 2 + ((index + 0.5) / crenelCount) * block.w;
           const crenel = addDecorativeMesh(detail, new THREE.BoxGeometry(Math.min(3.6, block.w / crenelCount * 0.55), 0.85, block.d * 1.1), stoneTone);
           crenel.position.set(x, block.h + 0.56, 0);
+        }
+        if (qualityConfig.detail === 2) {
+          const supportCount = Math.min(8, Math.max(2, Math.floor(block.w / 24)));
+          for (let index = 0; index < supportCount; index += 1) {
+            const x = -block.w / 2 + ((index + 0.5) / supportCount) * block.w;
+            const buttress = addDecorativeMesh(detail, new THREE.BoxGeometry(0.5, block.h * 0.72, block.d * 1.24), darkStone);
+            buttress.position.set(x, block.h * 0.36, 0);
+          }
+          const course = addDecorativeMesh(detail, new THREE.BoxGeometry(block.w * 1.01, 0.22, block.d * 1.14), "#e5c98f");
+          course.position.y = block.h * 0.62;
         }
       }
 
@@ -577,6 +724,11 @@ export default function ArenaPreview({
           const post = addDecorativeMesh(detail, new THREE.BoxGeometry(0.28, block.h * 0.78, 0.28), "#b98950", "wood");
           post.position.set(x, block.h * 0.42, block.d * 0.4);
         }
+        if (qualityConfig.detail === 2) {
+          const crest = addDecorativeMesh(detail, new THREE.TorusGeometry(Math.min(block.w, block.h) * 0.16, 0.12, 6, 18, Math.PI), "#e9c77f", "metal");
+          crest.position.set(0, block.h * 0.78, -block.d * 0.51);
+          crest.rotation.z = Math.PI;
+        }
       }
 
       if (block.style === "stall") {
@@ -586,6 +738,12 @@ export default function ArenaPreview({
           const post = addDecorativeMesh(detail, new THREE.CylinderGeometry(0.12, 0.16, Math.max(2.6, block.h + 1.4), 8), "#b9874c", "wood");
           post.position.set(x, (block.h + 1.4) / 2, 0);
         }
+        if (qualityConfig.detail === 2) {
+          for (const x of [-block.w * 0.32, 0, block.w * 0.32]) {
+            const stripe = addDecorativeMesh(detail, new THREE.BoxGeometry(block.w * 0.16, 0.235, block.d * 1.32), x === 0 ? "#f4dfb4" : block.color, "cloth");
+            stripe.position.set(x, block.h + 1.61, 0);
+          }
+        }
       }
 
       if (block.style === "house") {
@@ -593,6 +751,20 @@ export default function ArenaPreview({
         roof.position.y = block.h + 0.18;
         const beam = addDecorativeMesh(detail, new THREE.BoxGeometry(block.w * 0.7, 0.18, 0.22), wood, "wood");
         beam.position.set(0, Math.min(block.h * 0.65, 4.5), block.d * 0.5 + 0.12);
+        const roofTrim = addDecorativeMesh(detail, new THREE.BoxGeometry(block.w * 1.04, 0.34, block.d * 1.04), stoneTone, "stone");
+        roofTrim.position.y = block.h + 0.38;
+        if (qualityConfig.detail === 2) {
+          for (const x of [-block.w * 0.33, block.w * 0.33]) {
+            const windowFrame = addDecorativeMesh(detail, new THREE.BoxGeometry(block.w * 0.18, Math.min(1.8, block.h * 0.24), 0.14), "#375d69", "accent");
+            windowFrame.position.set(x, block.h * 0.58, -block.d * 0.505);
+            const sill = addDecorativeMesh(detail, new THREE.BoxGeometry(block.w * 0.22, 0.16, 0.32), "#e1c58e", "stone");
+            sill.position.set(x, block.h * 0.45, -block.d * 0.51);
+          }
+          for (const x of [-block.w * 0.46, block.w * 0.46]) {
+            const corner = addDecorativeMesh(detail, new THREE.BoxGeometry(0.38, block.h * 0.9, block.d * 1.035), "#b68b58", "stone");
+            corner.position.set(x, block.h * 0.48, 0);
+          }
+        }
       }
 
       if (block.style === "channel" && block.material !== "water") {
@@ -612,6 +784,16 @@ export default function ArenaPreview({
         for (let index = 0; index < battlementCount; index += 1) {
           const cap = addDecorativeMesh(detail, new THREE.BoxGeometry(block.w / battlementCount * 0.55, 0.8, block.d * 0.18), paleStone);
           cap.position.set(-block.w / 2 + (index + 0.5) * block.w / battlementCount, block.h + 0.45, block.d / 2 - block.d * 0.12);
+        }
+        if (qualityConfig.detail === 2) {
+          for (const x of [-block.w * 0.43, block.w * 0.43]) {
+            for (const z of [-block.d * 0.43, block.d * 0.43]) {
+              const pier = addDecorativeMesh(detail, new THREE.BoxGeometry(0.65, block.h * 0.82, 0.65), "#846744", "stone");
+              pier.position.set(x, block.h * 0.42, z);
+            }
+          }
+          const arenaBand = addDecorativeMesh(detail, new THREE.BoxGeometry(block.w * 1.025, 0.42, block.d * 1.025), "#d8b46f", "metal");
+          arenaBand.position.y = block.h * 0.68;
         }
       }
 
@@ -672,17 +854,67 @@ export default function ArenaPreview({
 
     };
 
+    const addModularBlockBody = (block: (typeof arenaMap.blocks)[number]) => {
+      const group = new THREE.Group();
+      group.name = `modular_${block.id}`;
+      group.position.set(block.x, block.y ?? block.h / 2, block.z);
+      group.rotation.y = block.rotationY ?? 0;
+      scene.add(group);
+      const structural = ["wall", "ruin", "gate", "house", "tower", "shed", "machinery", "railcar", "gantry"].includes(block.style ?? "");
+      if (qualityConfig.detail === 0 || !structural || block.material === "water") {
+        const body = new THREE.Mesh(new THREE.BoxGeometry(block.w, block.h, block.d), materialFor(block.color, block.material ?? "stone"));
+        if (block.material === "water") {
+          body.castShadow = false;
+          body.receiveShadow = true;
+          group.add(body);
+        } else {
+          staticBatcher.prepare(body, block.color, block.material ?? "stone");
+          group.add(body);
+        }
+        return group;
+      }
+      const surface = block.material ?? "stone";
+      const bayCount = Math.max(1, Math.min(8, Math.ceil(block.w / 18)));
+      const bayWidth = block.w / bayCount;
+      const seam = Math.min(0.22, bayWidth * 0.025);
+      for (let index = 0; index < bayCount; index += 1) {
+        const x = -block.w / 2 + bayWidth * (index + 0.5);
+        for (const z of [-block.d / 2, block.d / 2]) {
+          const panel = addDecorativeMesh(group, new THREE.BoxGeometry(Math.max(0.25, bayWidth - seam), block.h * 0.94, 0.34), block.color, surface);
+          panel.position.set(x, -block.h * 0.02, z);
+        }
+      }
+      const sideCount = Math.max(1, Math.min(5, Math.ceil(block.d / 16)));
+      const sideDepth = block.d / sideCount;
+      for (let index = 0; index < sideCount; index += 1) {
+        const z = -block.d / 2 + sideDepth * (index + 0.5);
+        for (const x of [-block.w / 2, block.w / 2]) {
+          const panel = addDecorativeMesh(group, new THREE.BoxGeometry(0.34, block.h * 0.94, Math.max(0.25, sideDepth - seam)), block.color, surface);
+          panel.position.set(x, -block.h * 0.02, z);
+        }
+      }
+      const cornerColor = surface === "metal" ? darkSteel : surface === "wood" ? "#4b3221" : darkStone;
+      for (const x of [-block.w / 2, block.w / 2]) {
+        for (const z of [-block.d / 2, block.d / 2]) {
+          const pier = addDecorativeMesh(group, new THREE.BoxGeometry(0.68, block.h, 0.68), cornerColor, surface);
+          pier.position.set(x, 0, z);
+        }
+      }
+      const roof = addDecorativeMesh(group, new THREE.BoxGeometry(block.w * 1.025, 0.32, block.d * 1.025), surface === "metal" ? rust : paleStone, surface);
+      roof.position.y = block.h / 2 + 0.1;
+      return group;
+    };
+
     const addBlock = (block: (typeof arenaMap.blocks)[number]) => {
-      const mesh = new THREE.Mesh(
-        new THREE.BoxGeometry(block.w, block.h, block.d),
-        materialFor(block.color, block.material)
-      );
-      mesh.position.set(block.x, block.y ?? block.h / 2, block.z);
-      mesh.rotation.y = block.rotationY ?? 0;
-      mesh.castShadow = !isFps;
-      mesh.receiveShadow = true;
-      scene.add(mesh);
-      if (block.collides) colliderForObject(mesh, 0.25);
+      const proxy = new THREE.Mesh(new THREE.BoxGeometry(block.w, block.h, block.d), collisionProxyMaterial);
+      proxy.name = `collision_proxy_${block.id}`;
+      proxy.position.set(block.x, block.y ?? block.h / 2, block.z);
+      proxy.rotation.y = block.rotationY ?? 0;
+      proxy.visible = false;
+      proxy.userData.collisionProxy = true;
+      scene.add(proxy);
+      if (block.collides) colliderForObject(proxy, 0.25);
+      addModularBlockBody(block);
       addBlockDetail(block);
       if (block.label && !isFps) {
         const label = new THREE.Sprite(makeSpriteLabel(block.label, "#fef3c7"));
@@ -690,7 +922,7 @@ export default function ArenaPreview({
         label.scale.set(22, 7.5, 1);
         scene.add(label);
       }
-      return mesh;
+      return proxy;
     };
     arenaMap.blocks.forEach(addBlock);
 
@@ -710,6 +942,15 @@ export default function ArenaPreview({
         }
         const lintel = addDecorativeMesh(group, new THREE.BoxGeometry(prop.size, Math.max(0.8, prop.size * 0.16), prop.size * 0.36), prop.color, propMaterial);
         lintel.position.y = height - Math.max(0.4, prop.size * 0.08);
+        if (qualityConfig.detail === 2) {
+          const archFace = addDecorativeMesh(
+            group,
+            new THREE.TorusGeometry(prop.size * 0.33, Math.max(0.16, prop.size * 0.055), 7, 20, Math.PI),
+            paleStone,
+            propMaterial
+          );
+          archFace.position.set(0, height - prop.size * 0.18, -prop.size * 0.19);
+        }
       }
 
       if (prop.kind === "banner") {
@@ -718,6 +959,9 @@ export default function ArenaPreview({
         const fabric = addDecorativeMesh(group, new THREE.PlaneGeometry(prop.size * 1.3, prop.size * 1.7), prop.color, "cloth");
         fabric.position.set(prop.size * 0.62, height * 0.7, 0);
         fabric.rotation.y = Math.PI / 2;
+        const crossbar = addDecorativeMesh(group, new THREE.CylinderGeometry(0.08, 0.08, prop.size * 1.45, 8), "#c49a5b", "wood");
+        crossbar.rotation.z = Math.PI / 2;
+        crossbar.position.set(prop.size * 0.58, height * 0.92, 0);
       }
 
       if (prop.kind === "column") {
@@ -744,6 +988,16 @@ export default function ArenaPreview({
         lower.position.y = Math.min(height * 0.28, prop.size * 0.5);
         const upper = addDecorativeMesh(group, new THREE.BoxGeometry(prop.size * 0.72, Math.min(height * 0.35, prop.size * 0.7), prop.size * 0.72), prop.color, "wood");
         upper.position.y = Math.min(height * 0.76, prop.size * 1.1);
+        if (qualityConfig.detail === 2) {
+          for (const y of [prop.size * 0.22, prop.size * 0.72]) {
+            const band = addDecorativeMesh(group, new THREE.BoxGeometry(prop.size * 1.04, 0.12, prop.size * 1.04), "#51341f", "wood");
+            band.position.y = y;
+          }
+          for (const x of [-prop.size * 0.36, prop.size * 0.36]) {
+            const slat = addDecorativeMesh(group, new THREE.BoxGeometry(0.12, prop.size * 0.78, prop.size * 1.03), "#c58a47", "wood");
+            slat.position.set(x, prop.size * 0.46, 0);
+          }
+        }
       }
 
       if (prop.kind === "debris") {
@@ -759,6 +1013,8 @@ export default function ArenaPreview({
         pole.position.y = height / 2;
         const glow = addDecorativeMesh(group, new THREE.SphereGeometry(prop.size * 0.45, 12, 8), prop.color, "accent");
         glow.position.y = height + prop.size * 0.2;
+        const shade = addDecorativeMesh(group, new THREE.CylinderGeometry(prop.size * 0.62, prop.size * 0.34, prop.size * 0.4, 10, 1, true), "#3d4548", "metal");
+        shade.position.y = height + prop.size * 0.42;
         if (activeQuality !== "performance") {
           const light = new THREE.PointLight(prop.color, isFps ? 2.5 : 5, 18, 2);
           light.position.y = height + prop.size * 0.2;
@@ -848,16 +1104,21 @@ export default function ArenaPreview({
       }
     };
 
-    arenaMap.props.forEach(addProp);
+    const lowQualityLandmarks = new Set(["arch", "banner", "lamp", "rail", "signal"]);
+    arenaMap.props.forEach((prop) => {
+      if (qualityConfig.detail === 0 && !lowQualityLandmarks.has(prop.kind)) return;
+      addProp(prop);
+    });
 
     arenaMap.cylinders.forEach((cylinder) => {
       const mesh = new THREE.Mesh(
         new THREE.CylinderGeometry(cylinder.radius * 0.88, cylinder.radius, cylinder.h, 24),
-        materialFor(cylinder.color, cylinder.material)
+        materialFor(cylinder.color, cylinder.material ?? "stone")
       );
       mesh.position.set(cylinder.x, cylinder.y ?? cylinder.h / 2, cylinder.z);
       mesh.castShadow = !isFps;
       mesh.receiveShadow = true;
+      if (cylinder.material !== "water") staticBatcher.prepare(mesh, cylinder.color, cylinder.material ?? "stone");
       scene.add(mesh);
       if (cylinder.collides) colliderForObject(mesh, 0.2);
       if (cylinder.label && !isFps) {
@@ -901,7 +1162,9 @@ export default function ArenaPreview({
       sign.rotation.y = rotationY;
       scene.add(sign);
     };
-    arenaMap.signs.forEach((sign) => addWallSign(sign.label, sign.x, sign.z, sign.color, sign.rotationY, sign.y));
+    // Overview labels help teachers orient to the map, but billboard-scale signs would
+    // become misleading visual cover at first-person distance.
+    if (!isFps) arenaMap.signs.forEach((sign) => addWallSign(sign.label, sign.x, sign.z, sign.color, sign.rotationY, sign.y));
 
     const addCircle = (x: number, z: number, radius: number, color: string, opacity = 0.24) => {
       const circle = new THREE.Mesh(
@@ -916,6 +1179,25 @@ export default function ArenaPreview({
 
     CAPTURE_ZONES.forEach((zone) => {
       addCircle(zone.x, zone.z, zone.radius, "#facc15", 0.18);
+      const terminal = new THREE.Group();
+      terminal.position.set(zone.x, 0.085, zone.z);
+      const terminalRing = addDecorativeMesh(terminal, new THREE.TorusGeometry(Math.max(1.2, zone.radius * 0.18), 0.1, 6, 24), "#facc15", "accent");
+      terminalRing.rotation.x = Math.PI / 2;
+      for (let index = -1; index <= 1; index += 1) {
+        const answerPad = new THREE.Mesh(
+          new THREE.PlaneGeometry(Math.max(0.7, zone.radius * 0.11), Math.max(0.9, zone.radius * 0.16)),
+          new THREE.MeshBasicMaterial({
+            color: ["#38bdf8", "#facc15", "#fb7185"][index + 1],
+            transparent: true,
+            opacity: 0.52,
+            depthWrite: false
+          })
+        );
+        answerPad.rotation.x = -Math.PI / 2;
+        answerPad.position.set(index * Math.max(0.9, zone.radius * 0.14), 0.012, 0);
+        terminal.add(answerPad);
+      }
+      scene.add(terminal);
       if (!isFps) {
         const label = new THREE.Sprite(makeSpriteLabel(zone.label, "#fde68a"));
         label.position.set(zone.x, 12, zone.z);
@@ -939,23 +1221,53 @@ export default function ArenaPreview({
     TEAM_SPAWNS.red.forEach((spawn) => addCircle(spawn.x, spawn.z, 2.2, "#fb7185", isFps ? 0.08 : 0.28));
     if (!isFps) FREE_FOR_ALL_SPAWNS.forEach((spawn) => addCircle(spawn.x, spawn.z, 1.3, "#ffffff", 0.18));
 
-    for (const [x, z, sx, sz] of [
-      [-120, -176, 58, 12],
-      [116, -176, 48, 10],
-      [-142, 174, 42, 10],
-      [112, 176, 58, 12],
-      [-190, -42, 16, 70],
-      [190, 38, 16, 70]
-    ] as const) {
-      const dune = new THREE.Mesh(
-        new THREE.SphereGeometry(1, 24, 10),
-        materialFor("#c99d5a", "sand")
-      );
-      dune.position.set(scaleArenaValue(x), -0.05, scaleArenaValue(z));
-      dune.scale.set(scaleArenaValue(sx), 2.1, scaleArenaValue(sz));
-      dune.receiveShadow = true;
-      scene.add(dune);
+    if (!isIronJunction) {
+      for (const [x, z, sx, sz] of [
+        [-120, -176, 58, 12],
+        [116, -176, 48, 10],
+        [-142, 174, 42, 10],
+        [112, 176, 58, 12],
+        [-190, -42, 16, 70],
+        [190, 38, 16, 70]
+      ] as const) {
+        const dune = new THREE.Mesh(new THREE.SphereGeometry(1, 24, 10), materialFor("#c99d5a", "sand"));
+        dune.position.set(scaleArenaValue(x), -0.05, scaleArenaValue(z));
+        dune.scale.set(scaleArenaValue(sx), 2.1, scaleArenaValue(sz));
+        dune.receiveShadow = true;
+        scene.add(dune);
+      }
     }
+
+    if (qualityConfig.detail === 2) {
+      const rockCount = qualityConfig.detail === 2 ? 34 : 20;
+      const rockGeometry = new THREE.IcosahedronGeometry(1, 0);
+      const rockInstances = new THREE.InstancedMesh(rockGeometry, materialFor("#8f704d", "stone"), rockCount);
+      const rockMatrix = new THREE.Matrix4();
+      const rockPosition = new THREE.Vector3();
+      const rockRotation = new THREE.Quaternion();
+      const rockScale = new THREE.Vector3();
+      const random = seededRandom(arenaMapId === "iron_junction" ? 913 : 617);
+      for (let index = 0; index < rockCount; index += 1) {
+        const onHorizontalEdge = index % 2 === 0;
+        rockPosition.set(
+          onHorizontalEdge ? (random() * 2 - 1) * (ARENA_LIMIT_X - 9) : (random() > 0.5 ? -1 : 1) * (ARENA_LIMIT_X - 5 - random() * 5),
+          0.28 + random() * 0.45,
+          onHorizontalEdge ? (random() > 0.5 ? -1 : 1) * (ARENA_LIMIT_Z - 5 - random() * 5) : (random() * 2 - 1) * (ARENA_LIMIT_Z - 9)
+        );
+        rockRotation.setFromEuler(new THREE.Euler(random() * 0.4, random() * Math.PI, random() * 0.25));
+        rockScale.set(0.4 + random() * 1.2, 0.32 + random() * 0.62, 0.45 + random() * 1.3);
+        rockMatrix.compose(rockPosition, rockRotation, rockScale);
+        rockInstances.setMatrixAt(index, rockMatrix);
+      }
+      rockInstances.instanceMatrix.needsUpdate = true;
+      rockInstances.receiveShadow = true;
+      scene.add(rockInstances);
+    }
+
+    if (isIronJunction) addIronJunctionArtPass(scene, addDecorativeMesh, qualityConfig.detail, isFps);
+    const staticBatchStats = staticBatcher.flush(scene);
+    renderer.domElement.dataset.staticSources = String(staticBatchStats.sourceMeshes);
+    renderer.domElement.dataset.staticBatches = String(staticBatchStats.batchMeshes);
 
     const players = session?.players.length ? session.players : currentPlayer ? [currentPlayer] : [];
     const billboardSprites: THREE.Sprite[] = [];
@@ -969,6 +1281,10 @@ export default function ArenaPreview({
         depthWrite: false
       })
     });
+    const vfxPool = new ArenaVfxPool(scene, qualityConfig.detail);
+    const unsubscribeVfx = subscribeArenaVfx((event) => vfxPool.emit(event));
+    const performanceCapture = new ArenaPerformanceCapture(renderer, activeQuality);
+    const knownAlive = new Map(players.map((player) => [player.id, player.isAlive]));
 
     const getVisualPosition = (player: PlayerSession, index: number) => {
       const liveX = player.x;
@@ -1018,6 +1334,12 @@ export default function ArenaPreview({
 
     syncPlayersRef.current = (nextSession?: GameSession, nextCurrentPlayer?: PlayerSession) => {
       const nextPlayers = nextSession?.players.length ? nextSession.players : nextCurrentPlayer ? [nextCurrentPlayer] : [];
+      nextPlayers.forEach((nextPlayer) => {
+        const wasAlive = knownAlive.get(nextPlayer.id);
+        if (wasAlive === false && nextPlayer.isAlive) vfxPool.emit({ kind: "spawn", x: nextPlayer.x ?? 0, z: nextPlayer.z ?? 0, team: nextPlayer.team });
+        if (wasAlive === true && !nextPlayer.isAlive) vfxPool.emit({ kind: "elimination", x: nextPlayer.x ?? 0, z: nextPlayer.z ?? 0, team: nextPlayer.team });
+        knownAlive.set(nextPlayer.id, nextPlayer.isAlive);
+      });
       characterManager.sync(getDisplayPlayers(nextPlayers), getVisualPosition);
       const nextFlag = nextSession?.flag;
       if (flagMarker && nextFlag) {
@@ -1049,12 +1371,33 @@ export default function ArenaPreview({
       flash.scale.set(0.95, 0.5, 1);
       camera.add(flash);
 
+      const muzzleRingMaterial = new THREE.MeshBasicMaterial({ color: "#9cecff", transparent: true, opacity: 0, depthTest: false, depthWrite: false });
+      const muzzleRing = new THREE.Mesh(new THREE.TorusGeometry(0.17, 0.025, 6, 18), muzzleRingMaterial);
+      muzzleRing.position.set(0.06, -0.36, -1.96);
+      camera.add(muzzleRing);
+
       const snowball = new THREE.Mesh(
         new THREE.SphereGeometry(0.13, 18, 12),
         new THREE.MeshStandardMaterial({ color: "#f7fcff", roughness: 0.32, emissive: "#dff6ff", emissiveIntensity: 0.18 })
       );
       snowball.visible = false;
       camera.add(snowball);
+
+      const projectileTrail = new THREE.Group();
+      const trailMaterial = new THREE.MeshBasicMaterial({ color: "#8be9ff", transparent: true, opacity: 0.42, depthWrite: false });
+      for (let index = 0; index < 4; index += 1) {
+        const mote = new THREE.Mesh(new THREE.SphereGeometry(0.055, 8, 6), trailMaterial);
+        mote.position.z = index * 0.18;
+        mote.scale.setScalar(1 - index * 0.14);
+        projectileTrail.add(mote);
+      }
+      projectileTrail.visible = false;
+      camera.add(projectileTrail);
+
+      const impactMaterial = new THREE.SpriteMaterial({ map: puffTexture, color: "#b9f4ff", transparent: true, opacity: 0, depthTest: false, depthWrite: false });
+      const impactPuff = new THREE.Sprite(impactMaterial);
+      impactPuff.scale.set(0.8, 0.8, 1);
+      camera.add(impactPuff);
 
       let flashUntil = 0;
       let snowballLaunchAt = 0;
@@ -1107,7 +1450,11 @@ export default function ArenaPreview({
         flashUntil = performance.now() + 95;
         snowballLaunchAt = currentTime;
         flash.material.opacity = 1;
+        muzzleRingMaterial.opacity = 0.88;
+        muzzleRing.scale.setScalar(0.72);
         snowball.visible = true;
+        projectileTrail.visible = true;
+        impactMaterial.opacity = 0;
         setHitPulse((value) => value + 1);
         if (equippedGearId === "power_blaster") gameAudio.playHeavyFire();
         else gameAudio.play("fire");
@@ -1318,6 +1665,7 @@ export default function ArenaPreview({
       let lastMoveEmitAt = 0;
       let lastMiniMapAt = 0;
       let lastDebugStatsAt = 0;
+      let performanceWindowAt = performance.now();
       let lastSentPosition = localToServerPosition(playerPosition, yaw);
       const maybeEmitPosition = (currentTime: number) => {
         if (currentTime - lastMoveEmitAt < 180) return;
@@ -1344,6 +1692,19 @@ export default function ArenaPreview({
         frame = requestAnimationFrame(animateFps);
         const delta = Math.min(clock.getDelta(), 0.035);
         const currentTime = performance.now();
+        performanceCapture.frame(currentTime);
+        vfxPool.update(currentTime);
+        if (currentTime - performanceWindowAt >= 1000) {
+          const profile = performanceCapture.snapshot(currentTime);
+          renderer.domElement.dataset.fps = String(profile.fps);
+          renderer.domElement.dataset.frameP95 = String(profile.frameMsP95);
+          renderer.domElement.dataset.drawCalls = String(profile.drawCalls);
+          renderer.domElement.dataset.triangles = String(profile.triangles);
+          renderer.domElement.dataset.longTasks = String(profile.longTasks);
+          renderer.domElement.dataset.vfxActive = String(vfxPool.activeCount);
+          if (debugOverlay) setPerformanceSnapshot(profile);
+          performanceWindowAt = currentTime;
+        }
         if (controlsDisabledRef.current) {
           const followedPlayer = currentPlayerRef.current;
           if (isFiniteNumber(followedPlayer?.x) && isFiniteNumber(followedPlayer?.z)) {
@@ -1446,24 +1807,38 @@ export default function ArenaPreview({
           setCharacterDebugStats(characterManager.getStats());
         }
         flash.material.opacity = currentTime < flashUntil ? 0.86 : Math.max(0, flash.material.opacity - delta * 10);
+        muzzleRingMaterial.opacity = Math.max(0, muzzleRingMaterial.opacity - delta * 8.5);
+        muzzleRing.scale.multiplyScalar(1 + delta * 3.2);
         firstPersonModel.root.position.y = -0.58 + Math.sin(currentTime * 0.006) * 0.012;
         firstPersonModel.weapon.rotation.x = -0.1 - flash.material.opacity * 0.035;
         if (snowballLaunchAt > 0) {
           const travel = clamp((currentTime - snowballLaunchAt) / 260, 0, 1);
           snowball.visible = travel < 1;
           snowball.position.set(0.05, -0.36 - travel * 0.08, -1.55 - travel * 6.5);
+          projectileTrail.visible = travel < 0.96;
+          projectileTrail.position.copy(snowball.position);
+          projectileTrail.rotation.z = currentTime * 0.01;
           const scale = Math.max(0.38, 1 - travel * 0.62);
           snowball.scale.setScalar(scale);
+          if (travel > 0.82) {
+            impactPuff.position.set(0.05, -0.44, -8.02);
+            impactMaterial.opacity = Math.max(0, (1 - travel) * 3.8);
+            impactPuff.scale.setScalar(0.8 + (travel - 0.82) * 5.5);
+          }
         }
         renderer.render(scene, camera);
       };
       flash.material.opacity = 1;
       snowball.visible = true;
+      characterManager.update(0, 0, camera);
       renderer.compile(scene, camera);
       renderer.render(scene, camera);
       flash.material.opacity = 0;
       snowball.visible = false;
+      projectileTrail.visible = false;
       renderer.render(scene, camera);
+      renderer.domElement.dataset.drawCalls = String(renderer.info.render.calls);
+      renderer.domElement.dataset.triangles = String(renderer.info.render.triangles);
       animateFps();
 
       const resizeFps = () => {
@@ -1478,6 +1853,9 @@ export default function ArenaPreview({
       return () => {
         cancelAnimationFrame(frame);
         window.removeEventListener("resize", resizeFps);
+        unsubscribeVfx();
+        performanceCapture.dispose();
+        vfxPool.dispose();
         fireControlRef.current = () => undefined;
         syncPlayersRef.current = () => undefined;
         if (cooldownTimeout) window.clearTimeout(cooldownTimeout);
@@ -1485,12 +1863,15 @@ export default function ArenaPreview({
         setWeaponCooldown(null);
         cleanupControls();
         disposeObject(scene);
+        staticBatcher.dispose();
+        collisionProxyMaterial.dispose();
         materialCache.forEach((material) => material.dispose());
         floorTexture.dispose();
         stoneTexture.dispose();
         woodTexture.dispose();
         waterTexture.dispose();
         sandTexture.dispose();
+        metalTexture.dispose();
         puffTexture.dispose();
         renderer.dispose();
         mount.removeChild(renderer.domElement);
@@ -1500,11 +1881,25 @@ export default function ArenaPreview({
     const clock = new THREE.Clock();
     let frame = 0;
     let lastDebugStatsAt = 0;
+    let performanceWindowAt = performance.now();
     const animateOverview = () => {
       frame = requestAnimationFrame(animateOverview);
       const delta = Math.min(clock.getDelta(), 0.05);
       const elapsed = clock.elapsedTime;
       const currentTime = performance.now();
+      performanceCapture.frame(currentTime);
+      vfxPool.update(currentTime);
+      if (currentTime - performanceWindowAt >= 1000) {
+        const profile = performanceCapture.snapshot(currentTime);
+        renderer.domElement.dataset.fps = String(profile.fps);
+        renderer.domElement.dataset.frameP95 = String(profile.frameMsP95);
+        renderer.domElement.dataset.drawCalls = String(profile.drawCalls);
+        renderer.domElement.dataset.triangles = String(profile.triangles);
+        renderer.domElement.dataset.longTasks = String(profile.longTasks);
+        renderer.domElement.dataset.vfxActive = String(vfxPool.activeCount);
+        if (debugOverlay) setPerformanceSnapshot(profile);
+        performanceWindowAt = currentTime;
+      }
       camera.position.x = Math.sin(elapsed * 0.04) * 24;
       camera.position.z = 246 + Math.cos(elapsed * 0.04) * 16;
       camera.lookAt(0, 0, -6);
@@ -1516,8 +1911,11 @@ export default function ArenaPreview({
       }
       renderer.render(scene, camera);
     };
+    characterManager.update(0, 0, camera);
     renderer.compile(scene, camera);
     renderer.render(scene, camera);
+    renderer.domElement.dataset.drawCalls = String(renderer.info.render.calls);
+    renderer.domElement.dataset.triangles = String(renderer.info.render.triangles);
     animateOverview();
 
     const resize = () => {
@@ -1532,14 +1930,20 @@ export default function ArenaPreview({
     return () => {
       cancelAnimationFrame(frame);
       window.removeEventListener("resize", resize);
+      unsubscribeVfx();
+      performanceCapture.dispose();
+      vfxPool.dispose();
       syncPlayersRef.current = () => undefined;
       disposeObject(scene);
+      staticBatcher.dispose();
+      collisionProxyMaterial.dispose();
       materialCache.forEach((material) => material.dispose());
       floorTexture.dispose();
       stoneTexture.dispose();
       woodTexture.dispose();
       waterTexture.dispose();
       sandTexture.dispose();
+      metalTexture.dispose();
       puffTexture.dispose();
       renderer.dispose();
       mount.removeChild(renderer.domElement);
@@ -1590,6 +1994,13 @@ export default function ArenaPreview({
           <span>
             LOD {characterDebugStats.lod.LOD0}/{characterDebugStats.lod.LOD1}/{characterDebugStats.lod.LOD2}/{characterDebugStats.lod.LOD3}
           </span>
+          {performanceSnapshot && (
+            <>
+              <span>{performanceSnapshot.fps} FPS · p95 {performanceSnapshot.frameMsP95} ms</span>
+              <span>{performanceSnapshot.drawCalls} calls · {performanceSnapshot.triangles.toLocaleString()} tris</span>
+              <span>{performanceSnapshot.longTasks} long tasks · {performanceSnapshot.heapMb ?? "n/a"} MB heap</span>
+            </>
+          )}
         </div>
       )}
       {view === "fps" && (

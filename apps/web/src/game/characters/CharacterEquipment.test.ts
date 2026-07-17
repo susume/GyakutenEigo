@@ -16,7 +16,7 @@ const makeMaterials = (): CharacterMaterials => {
   };
 };
 
-test("starter, quick, and heavy launchers use distinct combat silhouettes", () => {
+test("starter, quick, and heavy launchers use distinct sports-equipment silhouettes", () => {
   const materials = makeMaterials();
   const geometry = new THREE.BoxGeometry(1, 1, 1);
   const starter = createWeaponSet(materials, geometry, "starter_blaster").weapon;
@@ -27,5 +27,5 @@ test("starter, quick, and heavy launchers use distinct combat silhouettes", () =
   assert.notEqual(starter.children.length, quick.children.length);
   assert.notEqual(quick.children.length, heavy.children.length);
   assert.ok(bounds(heavy).max.z > bounds(quick).max.z);
-  assert.ok(bounds(quick).max.z > bounds(starter).max.z);
+  assert.ok(bounds(starter).max.z > bounds(quick).max.z);
 });

@@ -72,8 +72,8 @@ const rawBlocks: CitadelBlock[] = [
   { id: "west-fort-inner-north", x: -112, z: -50, w: 5, d: 44, h: 8, color: darkStone, collides: true, style: "wall" },
   { id: "west-fort-inner-south", x: -112, z: 42, w: 5, d: 28, h: 8, color: darkStone, collides: true, style: "wall" },
   { id: "west-fort-back", x: -166, z: 0, w: 5, d: 126, h: 9, color: darkStone, collides: true, style: "wall" },
-  { id: "west-barracks", label: "Guard Barracks", x: -150, z: -52, w: 25, d: 18, h: 8, color: stone, collides: true, style: "house" },
-  { id: "west-armoury", label: "Armoury Court", x: -149, z: 52, w: 27, d: 18, h: 7, color: paleStone, collides: true, style: "house" },
+  { id: "west-barracks", label: "Team Lodge", x: -150, z: -52, w: 25, d: 18, h: 8, color: stone, collides: true, style: "house" },
+  { id: "west-armoury", label: "Equipment Court", x: -149, z: 52, w: 27, d: 18, h: 7, color: paleStone, collides: true, style: "house" },
   { id: "west-watchtower", label: "West Watchtower", x: -118, z: -82, w: 15, d: 15, h: 22, color: darkStone, collides: true, style: "tower" },
   { id: "west-gate-shield", label: "Gatehouse Pier", x: -122, z: -17, w: 9, d: 18, h: 7, color: stone, collides: true, style: "gate" },
   { id: "west-tunnel-mouth", x: -116, z: 66, w: 14, d: 7, h: 4, color: "#6d5b4a" },
@@ -155,7 +155,7 @@ export const blocks: CitadelBlock[] = rawBlocks.map((block) => scaleRect({
 }));
 
 const rawProps: CitadelProp[] = [
-  // North Lane: military remnants and a readable long-range silhouette.
+  // North Lane: repaired civic ruins and a readable long-range silhouette.
   { id: "north-arch-west", kind: "arch", x: -92, z: -72, size: 12, h: 9, color: paleStone },
   { id: "north-arch-east", kind: "arch", x: 72, z: -74, size: 12, h: 8, color: stone, rotationY: Math.PI },
   { id: "north-column-a", kind: "column", x: -62, z: -126, size: 4, h: 5, color: paleStone },

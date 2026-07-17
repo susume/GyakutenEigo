@@ -3119,12 +3119,15 @@ small {
 
 .fps-view .arena-canvas { border-color: rgba(125,211,252,.72); box-shadow: inset 0 0 0 1px rgba(255,255,255,.13), 0 22px 56px rgba(16,46,72,.23); }
 .fps-view .arena-canvas::after { content: ""; position: absolute; inset: 0; pointer-events: none; background: linear-gradient(180deg, rgba(255,255,255,.09), transparent 24%, transparent 72%, rgba(3,18,31,.18)); }
-.crosshair { width: 38px; height: 38px; filter: drop-shadow(0 2px 3px rgba(2,12,24,.55)); }
-.crosshair::before { left: 17px; height: 38px; }
-.crosshair::after { top: 17px; width: 38px; }
+.fps-view .arena-minimap { border-color:rgba(186,230,253,.5); border-radius:13px; background:linear-gradient(150deg,rgba(9,25,41,.88),rgba(21,52,65,.78)); box-shadow:0 16px 34px rgba(4,16,27,.34),inset 0 0 0 1px rgba(125,211,252,.16); padding:9px; backdrop-filter:blur(8px); }
+.crosshair { width:38px; height:38px; border-radius:50%; background:radial-gradient(circle,rgba(255,255,255,.98) 0 2px,rgba(13,34,51,.88) 2px 3px,transparent 3px); filter:drop-shadow(0 2px 3px rgba(2,12,24,.55)); }
+.crosshair::before,.crosshair::after { background:#f5fbff; }
+.crosshair::before { left:17px; top:1px; width:3px; height:8px; box-shadow:0 28px 0 #f5fbff,0 0 10px rgba(105,224,255,.7); }
+.crosshair::after { left:1px; top:17px; width:8px; height:3px; box-shadow:28px 0 0 #f5fbff,0 0 10px rgba(105,224,255,.7); }
+.crosshair.fire { background:radial-gradient(circle,#fef08a 0 3px,rgba(13,34,51,.88) 3px 4px,transparent 4px); }
 .crosshair.zoom { width: 66px; height: 66px; }
-.crosshair.zoom::before { left: 31px; height: 66px; }
-.crosshair.zoom::after { top: 31px; width: 66px; }
+.crosshair.zoom::before { left:31px; top:0; height:66px; box-shadow:0 0 14px rgba(105,224,255,.68); }
+.crosshair.zoom::after { left:0; top:31px; width:66px; box-shadow:0 0 14px rgba(105,224,255,.68); }
 .crosshair.zoom-level-2 { width: 88px; height: 88px; }
 .crosshair.zoom-level-2::before { left: 42px; height: 88px; }
 .crosshair.zoom-level-2::after { top: 42px; width: 88px; }
@@ -3146,10 +3149,12 @@ small {
 .arena-objective-strip .mode-pill { border-color: rgba(94,234,212,.48); color: #ccfbf1; }
 .arena-objective-strip .mode-zombie { border-color: rgba(216,180,254,.54); color: #f3e8ff; }
 .round-countdown { border-radius: 12px; background:rgba(10,26,45,.9); }
-.hud { position:relative; gap:8px; border:1px solid rgba(125,211,252,.3); border-radius:14px; background:linear-gradient(135deg,rgba(14,31,54,.97),rgba(21,53,78,.96)); box-shadow:0 16px 38px rgba(16,35,63,.16); }
-.hud-stat { min-width:118px; border-radius:10px; background:rgba(255,255,255,.075); }
+.game-stage > .hud { position:absolute; left:50%; bottom:68px; z-index:6; width:min(920px,calc(100% - 40px)); transform:translateX(-50%); pointer-events:none; }
+.hud { gap:7px; border:1px solid rgba(148,221,248,.34); border-radius:15px; background:linear-gradient(120deg,rgba(7,23,39,.91),rgba(17,48,68,.88)); box-shadow:0 20px 46px rgba(2,14,25,.34),inset 0 1px 0 rgba(255,255,255,.1); backdrop-filter:blur(10px); }
+.hud-stat { min-width:118px; border-color:rgba(186,230,253,.16); border-radius:10px; background:linear-gradient(180deg,rgba(255,255,255,.1),rgba(255,255,255,.045)); }
 .hud-stat:hover { background:rgba(255,255,255,.13); }
-.hud-warmth { box-shadow: inset 0 -3px 0 rgba(22,163,74,.42); }
+.hud-warmth { background:linear-gradient(180deg,rgba(52,211,153,.16),rgba(255,255,255,.045)); color:#ecfdf5; border-color:rgba(110,231,183,.25); box-shadow:inset 0 -3px 0 rgba(52,211,153,.68); }
+.hud-warmth svg,.hud-warmth small { color:#6ee7b7; }
 .hud-stat.team-blue { box-shadow: inset 0 -3px 0 #38bdf8; }
 .hud-stat.team-red { box-shadow: inset 0 -3px 0 #fb7185; }
 .hud-stat.weapon { min-width:184px; box-shadow: inset 0 -3px 0 #facc15; }
@@ -3168,6 +3173,7 @@ small {
 }
 
 @media (max-width: 700px) {
+  .game-stage > .hud { position:relative; left:auto; bottom:auto; z-index:2; width:100%; transform:none; pointer-events:auto; }
   .landing-section,.landing-final-cta,.host-assurance { width:min(100% - 32px,1160px); }
   .join-link-share { align-items: flex-start; flex-direction: column; }
   .join-link-url-row { width: 100%; }

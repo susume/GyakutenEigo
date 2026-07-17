@@ -32,6 +32,8 @@ GyakutenEigo is a browser-based English learning site. Its first hosted game is 
 
 The frontend runs on `http://localhost:5173` and the backend runs on `http://localhost:4000`. The GyakutenEigo home page is `/`, and the Quiz-Strike game host page is `/quiz-strike`.
 
+The local-only Character Lab at `/character-lab` includes map, quality, and 10–60 player stress presets. Chromebook and integrated-GPU certification steps and the latest local baseline are documented in `docs/performance/CHROMEBOOK_CERTIFICATION.md`.
+
 ## Online Play
 
 For a hosted playtest, deploy the GyakutenEigo web app and Quiz-Strike game server separately:
@@ -50,7 +52,7 @@ The student player is the lightweight React + Three.js/WebGL arena at `/join` an
 
 Default play now starts in Flag Mode: Red Team carries the flag to the Blue base, while Blue Team defends and captures a placed flag. Zombie Mode is also available from the teacher session settings.
 
-The current map is Desert Citadel, a large desert fortress and market-town blockout sized for classroom sessions of up to 40 students.
+The current map is Desert Citadel, a large desert fortress and market-town arena sized for classroom sessions of up to 40 students. Its original collision blockout now carries a production-minded procedural environment, character, launcher, VFX, lighting, quality-preset, and HUD pass; bespoke skinned characters and authored modular environment assets remain future work.
 
 ## Project Documentation
 
@@ -65,12 +67,12 @@ The current map is Desert Citadel, a large desert fortress and market-town block
 - Student join by code and nickname
 - Three.js student arena with FPS controls, live movement/fire socket events, minimap, HUD, quiz panel, buy menu, scoreboard, and mobile touch controls
 - Default Flag Mode, selectable Zombie Mode, Heavy Snowball Launcher scope/echo behavior, and hold-Tab scoreboard columns for Tags, Respawns, and Question Accuracy
-- Desert Citadel arena blockout with 24 protected spawns per team, 60 free-for-all spawn positions, capture zones, retrieve-item markers, district signs, and large-scale map bounds
+- Desert Citadel arena with 24 protected spawns per team, 60 free-for-all spawn positions, capture zones, retrieve-item terminals, district landmarks, and large-scale map bounds
 - Live teacher roster
 - Quiz answering with server-side money awards
 - Practice-only quiz answers while eliminated
 - Gear buying with server-side validation
-- Simple bright low-poly arena with procedural decals
+- Stylized low-poly arena with deterministic layered materials, architectural facade modules, atmospheric lighting, objective technology, sports competitors, and scalable visual detail
 - Session results based on stored answer logs
 
 ## Desert Citadel Map
@@ -92,7 +94,7 @@ To open and test:
 3. Create or join a session, start the round, then move through Desert Citadel with WASD/arrows and fire with F or click. The Heavy Snowball Launcher cycles normal → 2× → 4× → normal with C or right click, E interacts with the flag, and holding Tab shows the scoreboard.
 4. Use the teacher dashboard bot button to add test players up to the configured session limit.
 
-Implemented blockout coverage:
+Implemented layout and production-pass coverage:
 
 - Six districts: West Fortress, East Camp, Central Market, North Ruins, South Homes, and Aqueduct.
 - Five major route families: north ruins, central market, south homes, aqueduct, and rooftop/wall route.
@@ -102,9 +104,12 @@ Implemented blockout coverage:
 
 Known limitations:
 
-- This is a playable blockout, not a final art pass.
+- The collision and route layout began as a playable blockout and intentionally remain authoritative underneath the visual facade pass.
+- This is not yet a final asset-authored art pass: procedural characters, generated surface textures, and collider-derived building bodies remain temporary.
 - Rooftop and aqueduct routes are represented with readable blockout geometry and collision, but the current player controller still uses mostly flat movement.
 - Free-for-all spawn metadata is present for future mode support; the current live session flow remains team-based.
+
+See [docs/art-pass/README.md](docs/art-pass/README.md) for the 2026-07-17 visual audit, changed systems, screenshots, preset renderer counts, remaining placeholders, and next art priorities.
 
 ## Safety Note
 

@@ -67,7 +67,8 @@ import {
   type CharacterStressCount
 } from "./game/characters/CharacterDebugScenarios";
 import { gameAudio, type GameAudioCue } from "./game/GameAudio";
-import { readGamePreferences, writeGamePreferences, type GamePreferences } from "./game/gamePreferences";
+import { readGamePreferences, writeGamePreferences, type ArenaQuality, type GamePreferences } from "./game/gamePreferences";
+import { emitArenaVfx, type ArenaVfxKind } from "./game/ArenaVfx";
 import {
   getIncomingHitDirection,
   shouldAutoOpenRespawnPractice,
@@ -669,7 +670,12 @@ function CharacterLab() {
   const [count, setCount] = useState<CharacterStressCount>(40);
   const [isMoving, setIsMoving] = useState(true);
   const [tick, setTick] = useState(0);
-  const session = useMemo(() => createCharacterDebugSession({ count, tick }), [count, tick]);
+  const [labMapId, setLabMapId] = useState<ArenaMapId>("desert_citadel");
+  const [labQuality, setLabQuality] = useState<ArenaQuality>("balanced");
+  const session = useMemo(() => {
+    const generated = createCharacterDebugSession({ count, tick });
+    return { ...generated, settings: { ...generated.settings, mapId: labMapId } };
+  }, [count, tick, labMapId]);
   const summary = useMemo(() => summarizeCharacterDebugSession(session), [session]);
 
   useEffect(() => {
@@ -701,6 +707,15 @@ function CharacterLab() {
       <div className="character-lab-grid">
         <div className="panel character-lab-controls">
           <h2>Scenario</h2>
+          <div className="button-row" aria-label="Character lab map">
+            <button className={labMapId === "desert_citadel" ? "active" : ""} onClick={() => setLabMapId("desert_citadel")}>Desert Citadel</button>
+            <button className={labMapId === "iron_junction" ? "active" : ""} onClick={() => setLabMapId("iron_junction")}>Iron Junction</button>
+          </div>
+          <div className="button-row" aria-label="Character lab quality">
+            <button className={labQuality === "performance" ? "active" : ""} onClick={() => setLabQuality("performance")}>Low</button>
+            <button className={labQuality === "balanced" ? "active" : ""} onClick={() => setLabQuality("balanced")}>Medium</button>
+            <button className={labQuality === "high" ? "active" : ""} onClick={() => setLabQuality("high")}>High</button>
+          </div>
           <div className="lab-metrics">
             <span><strong>{summary.total}</strong>Total</span>
             <span><strong>{summary.alive}</strong>Alive</span>
@@ -731,6 +746,7 @@ function CharacterLab() {
               session={session}
               debugOverlay
               debugLabel={`${count}-player character stress`}
+              quality={labQuality}
             />
           </Suspense>
         </div>
@@ -2243,6 +2259,10 @@ function StudentExperience({ onExit }: { onExit: () => void }) {
     socketRef.current = socket;
     const roomJoinPayload = { code: session.sessionCode, playerId: activePlayerId, playerToken };
     const pendingPositions = new Map<string, { x: number; z: number; facing: number }>();
+    const emitPlayerVfx = (kind: ArenaVfxKind, playerId = activePlayerId) => {
+      const target = session.players.find((candidate) => candidate.id === playerId);
+      emitArenaVfx({ kind, x: target?.x ?? 0, z: target?.z ?? 0, team: target?.team });
+    };
     let positionFlushTimer: number | undefined;
     const flushPositions = () => {
       positionFlushTimer = undefined;
@@ -2275,6 +2295,13 @@ function StudentExperience({ onExit }: { onExit: () => void }) {
       if (event.playerId === activePlayerId || event.targetId === activePlayerId) {
         setFeedback(event.message);
       }
+      if (event.type === "start" || event.type === "respawn") emitPlayerVfx("spawn", event.playerId ?? event.targetId);
+      if (/flag|capture|objective|placed/i.test(event.message)) emitPlayerVfx("objective", event.playerId ?? event.targetId);
+      if (event.type === "elimination") emitPlayerVfx("elimination", event.targetId ?? event.playerId);
+      if (event.type === "end") {
+        const localWon = /win|victory/i.test(event.message) && (!event.team || event.team === player.team);
+        emitPlayerVfx(localWon ? "victory" : "defeat");
+      }
     });
     socket.on("player_position", (position: { playerId?: string; x?: number; z?: number; facing?: number }) => {
       if (!position.playerId || !Number.isFinite(position.x) || !Number.isFinite(position.z) || !Number.isFinite(position.facing)) return;
@@ -2304,6 +2331,10 @@ function StudentExperience({ onExit }: { onExit: () => void }) {
         setFeedback(messages[result.reason ?? ""] ?? "Snowball launched.");
         return;
       }
+      const targetTeam = session.players.find((candidate) => candidate.id === result.targetId)?.team;
+      emitArenaVfx({ kind: "impact", x: result.targetX, z: result.targetZ, team: targetTeam });
+      if (!result.eliminated) emitArenaVfx({ kind: "shield", x: result.targetX, z: result.targetZ, team: targetTeam });
+      if (result.eliminated) emitArenaVfx({ kind: "elimination", x: result.targetX, z: result.targetZ, team: targetTeam });
       if (result.attackerId === activePlayerId) {
         gameAudio.play(result.eliminated ? "eliminated" : "hit_confirm");
         setFeedback(
@@ -3140,11 +3171,11 @@ function GamePreferencesPanel({
         Graphics quality
         <select value={preferences.arenaQuality} onChange={(event) => onChange({ arenaQuality: event.target.value as GamePreferences["arenaQuality"] })}>
           <option value="auto">Auto (recommended)</option>
-          <option value="performance">Performance</option>
-          <option value="balanced">Balanced</option>
-          <option value="high">High quality</option>
+          <option value="performance">Low — school device</option>
+          <option value="balanced">Medium — balanced</option>
+          <option value="high">High — full detail</option>
         </select>
-        <small>Performance lowers pixel density and disables costly shadows for older classroom devices.</small>
+        <small>Low reduces pixel density and decorative detail; team colors, objectives, and route landmarks remain visible.</small>
       </label>
       <label className="toggle-row">
         <input type="checkbox" checked={preferences.gamepadEnabled} onChange={(event) => onChange({ gamepadEnabled: event.target.checked })} />

@@ -43,5 +43,5 @@ export const resolveArenaQuality = (
   devicePixelRatio = typeof window === "undefined" ? 1 : window.devicePixelRatio,
 ) => {
   if (quality !== "auto") return quality;
-  return devicePixelRatio > 1.5 ? "balanced" : "high";
+  return devicePixelRatio >= 1.75 ? "performance" : "balanced";
 };

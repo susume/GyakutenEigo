@@ -2,9 +2,9 @@ import assert from "node:assert/strict";
 import test from "node:test";
 import { resolveArenaQuality } from "./gamePreferences";
 
-test("auto quality selects balanced on high-density screens", () => {
-  assert.equal(resolveArenaQuality("auto", 2), "balanced");
-  assert.equal(resolveArenaQuality("auto", 1), "high");
+test("auto quality protects frame rate while preserving the medium art pass", () => {
+  assert.equal(resolveArenaQuality("auto", 2), "performance");
+  assert.equal(resolveArenaQuality("auto", 1), "balanced");
 });
 
 test("explicit quality preference is preserved", () => {

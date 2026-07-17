@@ -40,14 +40,14 @@ export const TEAM_CHARACTER_CONFIGS = {
   blue: {
     teamName: "Team Alpha",
     palette: {
-      uniform: "#172743",
-      armor: "#253347",
-      cloth: "#1f334f",
-      accent: "#3b82f6",
+      uniform: "#174a78",
+      armor: "#e9f2f7",
+      cloth: "#18324c",
+      accent: "#31b6ff",
       accentName: "blue",
-      dark: "#0d1320",
-      visor: "#111827",
-      skin: "#c8a481"
+      dark: "#102334",
+      visor: "#8ee8ff",
+      skin: "#c99f7c"
     },
     silhouette: {
       helmet: "visor",
@@ -61,14 +61,14 @@ export const TEAM_CHARACTER_CONFIGS = {
   red: {
     teamName: "Team Bravo",
     palette: {
-      uniform: "#6b5939",
-      armor: "#3f3d2d",
-      cloth: "#7b633d",
-      accent: "#ea580c",
+      uniform: "#8d2f3f",
+      armor: "#fff0e6",
+      cloth: "#4b2632",
+      accent: "#ff6b46",
       accentName: "orange",
-      dark: "#241c14",
-      visor: "#1b1712",
-      skin: "#b89467"
+      dark: "#2f1b26",
+      visor: "#ffd09c",
+      skin: "#b98766"
     },
     silhouette: {
       helmet: "ridge",
