@@ -123,10 +123,8 @@ The current automated baseline is 59 shared tests, 5 server tests, and 53 web te
 ## Documentation
 
 - [architecture.md](architecture.md): system architecture, runtime ownership, deployment shape, and risks.
-- [docs/handoff-prompt.md](docs/handoff-prompt.md): copy/paste handoff for another developer or coding agent.
 - [docs/art-pass/README.md](docs/art-pass/README.md): visual direction, before/after evidence, and quality counts.
 - [docs/performance/CHROMEBOOK_CERTIFICATION.md](docs/performance/CHROMEBOOK_CERTIFICATION.md): profiling baseline and physical certification matrix.
-- [docs/live-multiplayer-qa/README.md](docs/live-multiplayer-qa/README.md): multiplayer audit evidence and continuation notes.
 
 ## Safety and Design Rules
 
