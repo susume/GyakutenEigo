@@ -60,6 +60,7 @@ See [docs/online-play.md](docs/online-play.md) for the GitHub Pages and Render d
 - Directional locomotion plus event-driven hit, respawn, jump, landing, flag interaction, victory, and defeat animation states
 - Pooled combat, healing, objective, round, heavy-fire, zoom, cooldown, elimination, and results VFX with strict coverage caps
 - Live teacher roster, bots, practice respawn questions, server-validated purchases, and CSV reports
+- Independent weapon/perk loadout slots: buying Warm Vest or Speed Boots preserves the equipped launcher, including Heavy/AWP; living players retain the full loadout between rounds
 - PostgreSQL-backed runtime snapshots when `DATABASE_URL` is configured; in-memory fallback for local development
 
 ## Arena Rendering Architecture
@@ -108,7 +109,7 @@ npm test
 npm run build
 ```
 
-The current automated baseline is 56 shared tests, 5 server tests, and 52 web tests: 113 total. The Vite bundle warning for the Three.js chunk is expected and is not a build failure.
+The current automated baseline is 59 shared tests, 5 server tests, and 53 web tests: 117 total. The Vite bundle warning for the Three.js chunk is expected and is not a build failure.
 
 ## Known Limits
 

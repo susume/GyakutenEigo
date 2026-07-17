@@ -35,6 +35,8 @@ import {
   DEFAULT_SESSION_SETTINGS,
   FLAG_MODE_DEFAULTS,
   GEAR_ITEMS,
+  getPlayerPerks,
+  getPlayerWeaponId,
   RESPAWN_CORRECT_ANSWERS_REQUIRED,
   getRoundRemainingSeconds,
   isRoundBuyPhase,
@@ -2298,7 +2300,7 @@ function StudentExperience({ onExit }: { onExit: () => void }) {
       setPlayer((current) => nextSession.players.find((item) => item.id === (current?.id ?? activePlayerId)) ?? current);
     });
     socket.on("game_event", (event: GameEvent) => {
-      if (event.playerId === activePlayerId || event.targetId === activePlayerId) {
+      if (event.type === "elimination" || event.playerId === activePlayerId || event.targetId === activePlayerId) {
         setFeedback(event.message);
       }
       if (event.type === "respawn") {
@@ -2806,7 +2808,7 @@ function StudentExperience({ onExit }: { onExit: () => void }) {
     );
   }
 
-  const gear = GEAR_ITEMS.find((item) => item.id === player.gear) ?? GEAR_ITEMS[0];
+  const gear = GEAR_ITEMS.find((item) => item.id === getPlayerWeaponId(player)) ?? GEAR_ITEMS[0];
   const snowballs = player.snowballs ?? session.settings.startingSnowballs;
   const warmth = getPlayerWarmth(player);
   const topLearner = getTopLearner(session.players);
@@ -3157,7 +3159,7 @@ function BuyPanel({
           <span>
             <strong>{buyingGearId === gear.id ? "Working..." : gear.name}</strong>
             <small>{gear.description}</small>
-            <small className="gear-status">{player.gear === gear.id ? "Equipped" : player.money < gear.cost || !player.isAlive ? gearLockReason(gear.cost) : "Ready to buy"}</small>
+            <small className="gear-status">{(getPlayerWeaponId(player) === gear.id || getPlayerPerks(player).includes(gear.id)) ? "Equipped" : player.money < gear.cost || !player.isAlive ? gearLockReason(gear.cost) : "Ready to buy"}</small>
           </span>
           <em>{formatMoney(gear.cost)}</em>
         </button>

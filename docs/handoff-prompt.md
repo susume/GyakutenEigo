@@ -20,6 +20,8 @@ Teachers create accounts, build multiple-choice quiz sets, create private sessio
 
 The default game is Flag Mode: Red Team carries the flag to Blue base, then protects it while Blue tries to capture it. Zombie Mode and Classic Tag Practice are also selectable. Flag/Zombie/Classic objectives, quiz economics, purchases, tagging, eliminations, respawns, movement validation, and player-token checks are server-authoritative.
 
+Loadout state is split into an authoritative weapon slot and independent perk slots. `weapon` holds Starter/Quick/Heavy, `perks` holds Warm Vest and Speed Boots, and `gear` is retained as the current weapon for legacy clients. Buying a perk never replaces a launcher. Living players preserve weapon, perks, and remaining snowballs across round transitions; knocked-out players re-arm with Starter and the configured starting snowballs.
+
 Use only the existing school-safe language: snowballs, snowball launchers, warmth, gear, arena, Blue Team, and Red Team. Do not introduce Counter-Strike assets/names/maps, realistic weapons, blood, gore, public matchmaking, public chat, or voice chat.
 
 ## Project structure
@@ -61,6 +63,12 @@ Important source files:
 - `packages/shared/src/sessionRules.test.ts`
 - `packages/shared/src/studentSecurity.test.ts`
 
+Loadout-specific implementation points:
+
+- `packages/shared/src/index.ts`: `getPlayerWeaponId`, `getPlayerPerks`, `getPlayerHealthMax`, `getPlayerMoveSpeedMultiplier`, and round-reset compatibility helpers.
+- `apps/server/src/index.ts`: authoritative purchase mutation, weapon cooldown/range/damage selection, movement bonuses, and round reset.
+- `apps/web/src/App.tsx` and `apps/web/src/game/ArenaPreview.tsx`: weapon HUD/shop state, first-person equipment, zoom, fire cadence, and movement presentation.
+
 ## Current production deployment
 
 The web app is hosted by GitHub Pages on `www.gyakuteneigo.com`. The API/socket server runs on Render as the `gyakuteneigo-api` service, using `api.gyakuteneigo.com`. DNS is managed through Namecheap.
@@ -98,7 +106,7 @@ Keep all supported hosted origins in `CLIENT_ORIGIN`, including `https://susume.
 
 The `api` DNS record is a CNAME to `gyakuteneigo-api.onrender.com`. The Render custom-domain page must report verification and an issued HTTPS certificate.
 
-The latest feature implementation baseline is `main` commit `533946b` (`Upgrade arena art and performance`). GitHub Actions CI and Deploy Web both completed successfully for that commit on 2026-07-17. This handoff refresh may be committed after that feature baseline, so always check the latest `main` SHA before reporting deployment state. The Render persistence migration path was previously verified at `98aac2f`; the `533946b` pass changed the web client and documentation rather than the server persistence model. Check the Render dashboard and API health before claiming that a later server commit is live.
+The latest committed revision includes the weapon/perk loadout preservation fix described above. Always check the latest `main` SHA and deployment status before reporting production state. The Render persistence migration path was previously verified at `98aac2f`; the loadout fix changes the shared contract, server simulation, and client presentation but does not change the persistence schema. Check the Render dashboard and API health before claiming that a later server commit is live.
 
 ### Persistence status
 
@@ -127,6 +135,7 @@ Implemented and verified:
 - New identities are rejected after round start; authenticated existing-player rejoin remains allowed.
 - Authenticated Socket.IO room joins, last-socket Offline tracking, carried-Flag reset, five-second reconnect grace, and Flag/Zombie resolution after grace.
 - Starter launcher removed from the Buy Menu and blocked as a server-side downgrade. Quick is `$3000`; Heavy/AWP is `$6000`; ranges are Starter `36`, Quick `48`, Heavy `120`.
+- Weapon/perk loadout preservation: Heavy/AWP remains equipped after Warm Vest and Speed Boots purchases; vest warmth and shoe movement bonuses stack with the selected launcher, and round resets preserve living loadouts while re-arming knocked-out players.
 - Teacher Copy Link control and student `/join?code=<SESSION_CODE>` flow, so linked students enter only a nickname.
 - Desert Citadel house roofs raised by `+2.25` map units before scaling.
 - Projector waiting room with QR join, large session code, roster, Copy Link, and keyboard focus management.
@@ -143,9 +152,9 @@ Implemented and verified:
 - Event-driven pooled combat, healing, objective, round, heavy-fire, zoom, cooldown, elimination, and results VFX with Low/Medium/High active-effect caps of 6/12/16 and strict 6-unit/1.1-second coverage limits.
 - Iron Junction-specific cold lighting, frost and ballast transitions, switchyard crane landmark, work lights, and maintenance storytelling.
 - Character Lab map/quality selectors and frame-time, draw-call, triangle, memory-count, heap, active-VFX, and long-task instrumentation.
-- Automated validation: 56 shared tests, 5 server tests, 52 web tests, and a full production build.
+- Automated validation: 59 shared tests, 5 server tests, 53 web tests, and a full production build.
 
-The arena feature pass is represented by `533946b`; CI and the GitHub Pages deployment passed for that SHA. Later documentation-only commits do not change its validation evidence. The project remains a classroom playtest deployment rather than full production or physical-device certification.
+The arena feature pass was originally represented by `533946b`; the current `main` history also includes the loadout-preservation fix and its documentation refresh. Check CI and deployment status for the latest SHA before claiming production readiness. The project remains a classroom playtest deployment rather than full production or physical-device certification.
 
 Remaining live QA work:
 
@@ -251,7 +260,7 @@ npm test
 npm run build
 ```
 
-The current baseline is 56 shared tests, 5 server tests, and 52 web tests: 113 total. When touching the live multiplayer lifecycle, also repeat the two-browser/socket checks documented in `docs/live-multiplayer-qa/FIX_VERIFICATION_2026-07-13.md` plus the Classic Tag round-transition and API-fallback checks described above.
+The current baseline is 59 shared tests, 5 server tests, and 53 web tests: 117 total. When touching the live multiplayer lifecycle, also repeat the two-browser/socket checks documented in `docs/live-multiplayer-qa/FIX_VERIFICATION_2026-07-13.md` plus the Classic Tag round-transition and API-fallback checks described above.
 
 When touching arena rendering, also open `/character-lab`, select Medium and 40 players, and verify both maps remain below 400 draw calls. Record p95 frame time, triangles, long tasks, and heap. Use the physical-device checklist instead of extrapolating certification from desktop automation.
 

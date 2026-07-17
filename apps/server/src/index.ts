@@ -17,9 +17,14 @@ import {
   getGearFireCooldownMs,
   getGearHitRadius,
   getGearRange,
-  getGearMoveSpeedMultiplier,
+  getPlayerHealthMax,
+  getPlayerMoveSpeedMultiplier,
+  getPlayerPerks,
+  getPlayerWeaponId,
+  isWeaponGearId,
   getArenaObstacles,
   getRoundRemainingSeconds,
+  getRoundResetLoadout,
   getZombieBestPlayers,
   resolveTeamRoundWinner,
   getTeamSpawnForMap,
@@ -424,8 +429,8 @@ const appendEvent = (
   };
   session.events = [nextEvent, ...(session.events ?? [])].slice(0, 40);
   const directAudience = [nextEvent.playerId, nextEvent.targetId];
-  if (directAudience.some(Boolean)) emitToPlayers(session, directAudience, "game_event", nextEvent);
-  else io.to(session.sessionCode).emit("game_event", nextEvent);
+  if (nextEvent.type === "elimination" || !directAudience.some(Boolean)) io.to(session.sessionCode).emit("game_event", nextEvent);
+  else emitToPlayers(session, directAudience, "game_event", nextEvent);
   return nextEvent;
 };
 
@@ -483,12 +488,13 @@ const inactiveRoundMessage = (session: GameSession) =>
 
 const resetRoundPlayer = (session: GameSession, player: PlayerSession, index: number): PlayerSession => {
   const spawn = player.isBot ? getBotSpawn(session, player.team, index) : selectSessionSpawn(session, player.team, index);
+  const loadout = getRoundResetLoadout({ player, startingSnowballs: session.settings.startingSnowballs });
   return {
     ...player,
     ...spawn,
     role: session.settings.gameMode === "zombie" ? player.role ?? "human" : player.role,
-    health: DEFAULT_PLAYER_HEALTH,
-    snowballs: session.settings.startingSnowballs,
+    health: getPlayerHealthMax({ ...player, ...loadout }),
+    ...loadout,
     isAlive: true,
     respawnCorrectAnswers: 0
   };
@@ -770,7 +776,7 @@ const applyValidatedDamage = (session: GameSession, attacker: PlayerSession, tar
   appendEvent(session, {
     type: tagResult.eliminated ? "elimination" : "tag",
     message: tagResult.eliminated
-      ? `${attacker.nickname} froze out ${target.nickname}.`
+      ? `${attacker.nickname} has frozen ${target.nickname}.`
       : `${attacker.nickname} tagged ${target.nickname} for ${tagResult.damage} warmth.`,
     playerId: attacker.id,
     targetId: target.id,
@@ -828,7 +834,7 @@ const applyAuthoritativePosition = (
       facing: Number(requested.facing)
     },
     elapsedMs: nowMs - lastMoveAt,
-    maxSpeed: PLAYER_MAX_SPEED * getGearMoveSpeedMultiplier(player.gear),
+    maxSpeed: PLAYER_MAX_SPEED * getPlayerMoveSpeedMultiplier(player),
     obstacles: getArenaObstacles(session.settings.mapId)
   });
   playerMoveTimestamps.set(player.id, nowMs);
@@ -933,7 +939,7 @@ const advanceBots = () => {
       if (!snowballUse.ok) return;
       bot.snowballs = snowballUse.nextSnowballs;
       bot.facing = Math.atan2((bot.x ?? 0) - (target.x ?? 0), (bot.z ?? 0) - (target.z ?? 0));
-      botNextAttackAt.set(bot.id, currentMs + Math.max(BOT_ATTACK_COOLDOWN_FLOOR_MS, getGearFireCooldownMs(bot.gear)));
+      botNextAttackAt.set(bot.id, currentMs + Math.max(BOT_ATTACK_COOLDOWN_FLOOR_MS, getGearFireCooldownMs(getPlayerWeaponId(bot))));
       applyValidatedDamage(session, bot, target);
     });
     if (moved) broadcastSession(session);
@@ -1281,6 +1287,8 @@ app.post("/api/sessions/:code/bots", requireTeacher, (req: AuthedRequest, res) =
     correctAnswers: 0,
     wrongAnswers: 0,
     gear: "starter_blaster",
+    weapon: "starter_blaster",
+    perks: [],
     joinedAt: now()
   };
   session.players.push(bot);
@@ -1397,6 +1405,8 @@ app.post("/api/sessions/:code/join", (req, res) => {
     correctAnswers: 0,
     wrongAnswers: 0,
     gear: "starter_blaster",
+    weapon: "starter_blaster",
+    perks: [],
     joinedAt: now()
   };
   session.players.push(player);
@@ -1627,7 +1637,13 @@ const buyGear = (session: GameSession, player: PlayerSession, gearId: unknown): 
     return { ok: true, data: { player, gear, message: `${gear.name} already equipped.` } };
   }
   player.money = purchase.nextMoney;
-  player.gear = gear.id;
+  if (isWeaponGearId(gear.id)) {
+    player.weapon = gear.id;
+    player.gear = gear.id;
+  } else {
+    player.perks = [...new Set([...getPlayerPerks(player), gear.id])];
+    player.gear = getPlayerWeaponId(player);
+  }
   if (purchase.nextHealth !== undefined) player.health = purchase.nextHealth;
   appendEvent(session, { type: "buy", message: `${player.nickname} equipped ${gear.name}.`, playerId: player.id, team: player.team });
   broadcastSession(session);
@@ -1849,14 +1865,15 @@ io.on("connection", (socket) => {
       return;
     }
     attacker.snowballs = snowballUse.nextSnowballs;
-    playerNextFireAt.set(attacker.id, currentMs + getGearFireCooldownMs(attacker.gear));
+    const weaponId = getPlayerWeaponId(attacker);
+    playerNextFireAt.set(attacker.id, currentMs + getGearFireCooldownMs(weaponId));
 
     const targetSelection = resolveProjectileTarget({
       attacker,
       candidates: session.players,
       requestedTargetId: typeof payload.targetId === "string" && payload.targetId.trim() ? payload.targetId : undefined,
-      range: getGearRange(attacker.gear),
-      hitRadius: getGearHitRadius(attacker.gear, typeof payload.zoomLevel === "number" ? payload.zoomLevel : payload.scoped === true),
+      range: getGearRange(weaponId),
+      hitRadius: getGearHitRadius(weaponId, typeof payload.zoomLevel === "number" ? payload.zoomLevel : payload.scoped === true),
       obstacles: getArenaObstacles(session.settings.mapId)
     });
     if (!targetSelection.ok) {

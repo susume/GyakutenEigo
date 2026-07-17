@@ -67,6 +67,8 @@ The automated browser was simultaneously capturing and instrumenting WebGL and r
 
 ## 6. Remaining placeholder art
 
+**Decision:** imported GLB/KTX2 assets are not required to call the runtime technically production-ready, but they are required for final visual/art-direction sign-off. The current code-authored set remains the tested fallback and low-quality option; the final gate is an artist-authored shared student-athlete GLB with authored clips/LODs, while KTX2 is adopted where atlas payload and startup budgets justify it.
+
 - Invisible collision proxies remain generated boxes by design; separate modular shells now own the visible architecture.
 - Characters use a real shared `THREE.SkinnedMesh`, but remain code-authored rather than imported GLB assets.
 - Animation remains code-driven rather than motion-captured or clip-blended.

@@ -50,6 +50,7 @@ The audit findings and subsequent classroom fixes are implemented on `main` and 
 - New identities are rejected after a round starts with `409 This session has already started.`; authenticated existing-player rejoin remains allowed.
 - Student Socket.IO room joins authenticate the player token. Last-socket disconnects mark a player Offline, drop a carried Flag, broadcast an event, and reevaluate Flag/Zombie resolution after a five-second reconnect grace period. Disconnected players are excluded from active counts and authoritative targeting.
 - The Starter launcher is hidden from the Buy Menu and cannot be used as a server-side downgrade. Quick costs `$3000`; Heavy/AWP costs `$6000`; launcher ranges are Starter `36`, Quick `48`, and Heavy `120`.
+- Weapon and perk loadouts are independent: `weapon` stores the launcher, `perks` stores Warm Vest/Speed Boots, and legacy `gear` remains the current weapon for older clients. Buying a vest or shoes therefore cannot replace an AWP/Heavy launcher; living players carry the complete loadout into the next round and knocked-out players reset to Starter.
 - Teachers can copy `/join?code=<SESSION_CODE>` links. The student page reads the code from the URL and asks only for a nickname.
 - Desert Citadel house blocks and roofs use a raised roofline (`+2.25` map units before arena scaling).
 - Projector waiting room with QR code, large join code, roster, copy-link action, keyboard focus trapping, and mobile layout.
@@ -67,7 +68,7 @@ The audit findings and subsequent classroom fixes are implemented on `main` and 
 - The Iron Junction has a distinct cold industrial sky, terrain transitions, frost berms, work lighting, switchyard crane landmark, and maintenance storytelling pass.
 - Character Lab now switches maps and quality presets and exposes FPS, frame percentiles, draw calls, triangles, renderer memory counts, JavaScript heap when available, active VFX, and long tasks.
 
-The 2026-07-17 feature baseline is green: 56 shared tests, 5 server tests, 52 web tests, a full production build, live multiplayer checks, and the local 40-player performance captures. GitHub Actions CI and Deploy Web both passed for feature commit `533946b` on 2026-07-17. The production API health check was last verified with `storage: "postgres"`.
+The 2026-07-17 feature baseline is green: 59 shared tests, 5 server tests, 53 web tests, a full production build, live multiplayer checks, and the local 40-player performance captures. The loadout-preservation regression is covered by the shared suite and the server/web builds. The production API health check was last verified with `storage: "postgres"`.
 
 ### Remaining live QA gaps
 
@@ -205,7 +206,7 @@ Shared game contracts and deterministic helpers are in `packages/shared/src/inde
 
 The map system supports a teacher-selected `SessionSettings.mapId`. Desert Citadel remains the default. The Iron Junction base is a cold industrial railway yard generated from the supplied design brief, with Maintenance Depot, Sorting Tracks and Gantry, Timber Line and Gorge, service-rotation markings, map-specific props, palette, minimap labels, spawns, collision proxies, bot movement obstacles, and projectile line-of-sight cover.
 
-Weapon shop rules are shared between the client display and server authority. Starter is default equipment, Quick is `$3000`, Heavy/AWP is `$6000`, and the server resolves the increased launcher ranges from `packages/shared` rather than trusting the browser.
+Weapon shop rules are shared between the client display and server authority. Starter is default equipment, Quick is `$3000`, Heavy/AWP is `$6000`, and the server resolves launcher ranges, weapon cooldowns, damage, and independent perk state from `packages/shared` rather than trusting the browser. Warm Vest and Speed Boots can be equipped alongside any launcher.
 
 Map selection is authoritative at session creation. The web client sends `mapId`, the server sanitizes and broadcasts it with `GameSession`, and both students and teachers resolve the same map data. `packages/shared` owns map IDs, map-aware spawns, and simplified server collision proxies; `apps/web` owns the visual geometry and renderer details.
 
@@ -276,7 +277,7 @@ npm test
 npm run build
 ```
 
-The current automated baseline is 56 shared tests, 5 server tests, and 52 web tests. CI and Deploy Web passed for `533946b`; the animation/VFX follow-up is locally validated until it is committed and deployed.
+The current automated baseline is 59 shared tests, 5 server tests, and 53 web tests. The loadout-preservation change is locally validated by the full suite and production builds; check the latest `main` SHA and deployment checks before claiming it is live.
 
 For arena changes, also open `/character-lab`, select 40 players and Medium, and record both maps. Medium must remain below 400 draw calls. If the change affects VFX, verify that `data-vfx-active` never exceeds the quality cap. Follow `docs/performance/CHROMEBOOK_CERTIFICATION.md` for physical-device runs.
 

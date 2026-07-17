@@ -43,8 +43,12 @@ The Heavy launcher can fire at either zoom level. Its zoom exits on a weapon swi
 ## Launcher shop balance
 
 - Starter Snowball Launcher: default equipment, range `36`, not purchasable as a downgrade.
-- Quick Snowball Launcher: `$3000`, range `48`.
+- Quick Snowball Launcher: `$3000`, range `48`, damage `22`, cooldown `250 ms`, automatic fire.
 - Heavy Snowball Launcher: `$6000`, range `120`.
+
+Living players carry their equipped gear and remaining snowballs into the next round. A player who was knocked out is re-armed with the Starter launcher and the configured starting snowball count.
+
+Weapon and perk loadout slots are independent: buying the Warm Vest or Speed Boots no longer replaces the equipped launcher. The legacy `gear` field remains the current weapon for older clients, while `weapon` and `perks` are authoritative when present.
 
 The server rejects attempts to replace a purchased launcher with the default Starter launcher, even if an old client or crafted request still sends that gear id.
 

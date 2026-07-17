@@ -70,6 +70,18 @@ The generated scenario balances Team Alpha and Team Bravo, rotates through avail
 
 ## Production GLB Requirements
 
+### Production art-bar decision
+
+Imported artist-authored assets are a release gate for **final visual sign-off**, but not a prerequisite for technical production readiness. The current shared `THREE.SkinnedMesh` and code-authored variants are suitable for multiplayer integration, QA, and performance certification because the network schema, hitboxes, LODs, batching, and fallback behavior are already exercised.
+
+The final art gate is therefore staged:
+
+- **Required before final art/marketing sign-off:** an artist-authored shared student-athlete GLB, authored skeletal clips for the supported gameplay states, and authored LODs/attachments for the hero and close-range views.
+- **Required where texture payload warrants it:** KTX2/Basis-compressed atlases with a tested fallback. KTX2 is a bandwidth/startup optimization, not a visual-quality requirement for every material.
+- **Retained in production:** the code-authored mesh remains the deterministic fallback and may serve distant/low-quality representations when measurements show it is the better budget trade-off.
+
+This means the project can ship an internal multiplayer milestone with the current assets, but cannot claim the final character art bar until the imported GLB/clip set passes silhouette, deformation, UV/texel-density, LOD, file-size, and device-performance review.
+
 Place final assets under:
 
 - `apps/web/public/assets/characters/shared/`

@@ -25,13 +25,14 @@ Stage 5 improves the presentation and classroom workflow without changing the ex
 
 ### Quick Snowball Launcher
 
-- `QUICK_BLASTER_COOLDOWN_MS = 125` ms (previously 85 ms).
-- It remains faster than the Starter Snowball Launcher (160 ms), retains auto-fire, and still follows the existing authoritative projectile/damage path.
+- `QUICK_BLASTER_COOLDOWN_MS = 250` ms (previously 150 ms).
+- The controlled cadence retains auto-fire while reducing spam; each shot now deals 22 damage through the existing authoritative projectile path.
 - The slower cadence also reduces procedural audio and muzzle-flash repetition because those effects only occur on accepted local shots.
 
 ### Heavy Snowball Launcher
 
-- `HEAVY_GUN_COOLDOWN_MS = 1350` ms (previously 1200 ms).
+- `HEAVY_GUN_DAMAGE = 100`; a 150-warmth Warm Vest player survives one AWP hit.
+- `HEAVY_GUN_COOLDOWN_MS = 1500` ms (previously 1200 ms).
 - The cooldown is still enforced by the server-side `playerNextFireAt` guard, so input spam, zoom changes, and gear switching cannot bypass a heavy shot that has already been fired.
 - Right click now cycles `normal → 2× → 4× → normal` while pointer lock is active.
 - Named FOV constants: `HEAVY_GUN_ZOOM_LEVEL_0_FOV = 72`, `HEAVY_GUN_ZOOM_LEVEL_1_FOV = 46`, and `HEAVY_GUN_ZOOM_LEVEL_2_FOV = 30`.

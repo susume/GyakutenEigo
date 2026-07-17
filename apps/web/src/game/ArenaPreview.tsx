@@ -11,8 +11,9 @@ import {
   TEAM_BASE_ZONES,
   TEAM_SPAWNS,
   getGearFireCooldownMs,
-  getGearMoveSpeedMultiplier,
   getGearZoomFovMultiplier,
+  getPlayerMoveSpeedMultiplier,
+  getPlayerWeaponId,
   getTeamSpawnForMap,
   type ArenaMapId,
   isGearAutoFireEnabled,
@@ -37,6 +38,7 @@ import { ArenaVfxPool, emitArenaVfx, subscribeArenaVfx } from "./ArenaVfx";
 import { emitArenaAnimation, subscribeArenaAnimation } from "./ArenaAnimation";
 import { ArenaPerformanceCapture, type ArenaPerformanceSnapshot } from "./ArenaPerformance";
 import { addIronJunctionArtPass } from "./IronJunctionArtPass";
+import { addDesertCitadelVfx } from "./DesertCitadelVfx";
 import {
   readGamePreferences,
   resolveArenaQuality,
@@ -371,7 +373,7 @@ export default function ArenaPreview({
 
   useEffect(() => {
     pendingShotsRef.current = 0;
-  }, [currentPlayer?.id, currentPlayer?.snowballs, currentPlayer?.isAlive, currentPlayer?.gear]);
+  }, [currentPlayer?.id, currentPlayer?.snowballs, currentPlayer?.isAlive, currentPlayer?.gear, currentPlayer?.weapon, currentPlayer?.perks]);
 
   useEffect(() => {
     syncPlayersRef.current(session, currentPlayer);
@@ -1267,6 +1269,7 @@ export default function ArenaPreview({
     }
 
     if (isIronJunction) addIronJunctionArtPass(scene, addDecorativeMesh, qualityConfig.detail, isFps);
+    const desertCitadelVfx = isIronJunction ? null : addDesertCitadelVfx(scene, qualityConfig.detail);
     const staticBatchStats = staticBatcher.flush(scene);
     renderer.domElement.dataset.staticSources = String(staticBatchStats.sourceMeshes);
     renderer.domElement.dataset.staticBatches = String(staticBatchStats.batchMeshes);
@@ -1399,7 +1402,7 @@ export default function ArenaPreview({
       scene.add(cameraRig);
       cameraRig.add(camera);
 
-      const firstPersonModel = characterFactory.createFirstPersonViewModel(currentPlayerTeam, currentPlayer?.gear ?? "starter_blaster");
+      const firstPersonModel = characterFactory.createFirstPersonViewModel(currentPlayerTeam, getPlayerWeaponId(currentPlayer ?? { gear: "starter_blaster" }));
       camera.add(firstPersonModel.root);
 
       const flashMaterial = new THREE.SpriteMaterial({
@@ -1454,7 +1457,7 @@ export default function ArenaPreview({
       let wasGrounded = true;
       let landedAt = 0;
       let fireHeld = false;
-      const getEquippedGearId = () => currentPlayerRef.current?.gear ?? "starter_blaster";
+      const getEquippedGearId = () => getPlayerWeaponId(currentPlayerRef.current ?? { gear: "starter_blaster" });
       const hasZoomGear = () => getGearZoomFovMultiplier(getEquippedGearId()) < 1;
       const hasHeavyGun = () => getEquippedGearId() === "power_blaster";
       const hasAutoFireGear = () => isGearAutoFireEnabled(getEquippedGearId());
@@ -1756,6 +1759,7 @@ export default function ArenaPreview({
         const currentTime = performance.now();
         performanceCapture.frame(currentTime);
         vfxPool.update(currentTime);
+        desertCitadelVfx?.update(clock.elapsedTime);
         if (currentTime - performanceWindowAt >= 1000) {
           const profile = performanceCapture.snapshot(currentTime);
           renderer.domElement.dataset.fps = String(profile.fps);
@@ -1811,7 +1815,7 @@ export default function ArenaPreview({
           wasGrounded = false;
         }
 
-        const gearSpeedMultiplier = getGearMoveSpeedMultiplier(currentPlayerRef.current?.gear ?? "starter_blaster");
+        const gearSpeedMultiplier = getPlayerMoveSpeedMultiplier(currentPlayerRef.current ?? { gear: "starter_blaster" });
         const movementAudioMode: MovementAudioMode = crouching ? "crouch" : keys.has("Shift") ? "run" : "walk";
         const moveSpeed = (crouching ? CROUCH_SPEED : keys.has("Shift") ? RUN_SPEED : WALK_SPEED) * gearSpeedMultiplier;
         const forward = new THREE.Vector3(-Math.sin(yaw), 0, -Math.cos(yaw));
@@ -1926,6 +1930,7 @@ export default function ArenaPreview({
         unsubscribeAnimation();
         performanceCapture.dispose();
         vfxPool.dispose();
+        desertCitadelVfx?.dispose();
         fireControlRef.current = () => undefined;
         syncPlayersRef.current = () => undefined;
         if (cooldownTimeout) window.clearTimeout(cooldownTimeout);
@@ -1959,6 +1964,7 @@ export default function ArenaPreview({
       const currentTime = performance.now();
       performanceCapture.frame(currentTime);
       vfxPool.update(currentTime);
+      desertCitadelVfx?.update(elapsed);
       if (currentTime - performanceWindowAt >= 1000) {
         const profile = performanceCapture.snapshot(currentTime);
         renderer.domElement.dataset.fps = String(profile.fps);
@@ -2004,6 +2010,7 @@ export default function ArenaPreview({
       unsubscribeAnimation();
       performanceCapture.dispose();
       vfxPool.dispose();
+      desertCitadelVfx?.dispose();
       syncPlayersRef.current = () => undefined;
       disposeObject(scene);
       staticBatcher.dispose();
@@ -2019,7 +2026,7 @@ export default function ArenaPreview({
       renderer.dispose();
       mount.removeChild(renderer.domElement);
     };
-  }, [sceneSessionId, currentPlayerId, currentPlayerTeam, currentPlayer?.gear, view, debugOverlay, activeQuality, gamepadEnabled, arenaMapId, session?.settings.gameMode, session?.flag?.state, session?.flag?.carrierId, session?.flag?.position.x, session?.flag?.position.z]);
+  }, [sceneSessionId, currentPlayerId, currentPlayerTeam, currentPlayer?.gear, currentPlayer?.weapon, currentPlayer?.perks, view, debugOverlay, activeQuality, gamepadEnabled, arenaMapId, session?.settings.gameMode, session?.flag?.state, session?.flag?.carrierId, session?.flag?.position.x, session?.flag?.position.z]);
 
   const beginTouchMove = (event: ReactPointerEvent<HTMLButtonElement>) => {
     event.preventDefault();

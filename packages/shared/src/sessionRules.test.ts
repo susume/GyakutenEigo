@@ -31,6 +31,11 @@ import {
   getGearRange,
   getGearMoveSpeedMultiplier,
   getGearZoomFovMultiplier,
+  getPlayerHealthMax,
+  getPlayerMoveSpeedMultiplier,
+  getPlayerPerks,
+  getPlayerWeaponId,
+  getRoundResetLoadout,
   getArenaObstacles,
   getRoundRemainingSeconds,
   getZombieBestPlayers,
@@ -583,14 +588,15 @@ test("gear store items expose real combat and movement mechanics", () => {
   assert.equal(getGearRange("starter_blaster"), STARTER_BLASTER_RANGE);
   assert.equal(getGearRange("quick_blaster"), QUICK_BLASTER_RANGE);
   assert.equal(getGearRange("power_blaster"), HEAVY_GUN_RANGE);
-  assert.equal(getGearFireCooldownMs("quick_blaster") < getGearFireCooldownMs("starter_blaster"), true);
+  assert.equal(getGearFireCooldownMs("quick_blaster") > getGearFireCooldownMs("starter_blaster"), true);
   assert.equal(getGearFireCooldownMs("power_blaster") > getGearFireCooldownMs("starter_blaster"), true);
   assert.equal(getGearFireCooldownMs("starter_blaster") <= 220, true);
   assert.equal(getGearFireCooldownMs("quick_blaster"), QUICK_BLASTER_COOLDOWN_MS);
-  assert.equal(getGearFireCooldownMs("quick_blaster") > 95, true);
+  assert.equal(getGearFireCooldownMs("quick_blaster") >= 240, true);
   assert.equal(isGearAutoFireEnabled("quick_blaster"), true);
   assert.equal(isGearAutoFireEnabled("starter_blaster"), false);
   assert.equal(getGearDamage("starter_blaster"), 15);
+  assert.equal(getGearDamage("quick_blaster"), 22);
   assert.equal(getGearMoveSpeedMultiplier("speed_shoes"), 1.15);
   assert.equal(getGearZoomFovMultiplier("power_blaster") < getGearZoomFovMultiplier("starter_blaster"), true);
   assert.equal(getGearMoveSpeedMultiplier("unknown_gear"), 1);
@@ -607,6 +613,7 @@ test("heavy launcher uses named AWP-style combat settings", () => {
   assert.equal(DEFAULT_SESSION_SETTINGS.roundDurationSeconds, FLAG_MODE_DEFAULTS.roundDurationSeconds);
   assert.equal(DEFAULT_SESSION_SETTINGS.flagHoldSeconds, FLAG_MODE_DEFAULTS.flagHoldSeconds);
   assert.equal(getGearDamage("power_blaster"), HEAVY_GUN_DAMAGE);
+  assert.equal(getGearDamage("power_blaster"), 100);
   assert.equal(getGearFireCooldownMs("power_blaster"), HEAVY_GUN_COOLDOWN_MS);
   assert.equal(getGearFireCooldownMs("power_blaster") > 1200, true);
   assert.equal(getGearZoomFovMultiplier("power_blaster") < 1, true);
@@ -917,6 +924,43 @@ test("flag state supports pickup, placement, countdown, drop, and capture", () =
   const dropped = resolveFlagDropForPlayer(carried, red, { x: 5, z: 6 });
   assert.equal(dropped.state, "dropped");
   assert.deepEqual(dropped.position, { x: 5, z: 6 });
+});
+
+test("round reset preserves living loadouts and re-arms knocked-out players", () => {
+  assert.deepEqual(
+    getRoundResetLoadout({ player: makePlayer({ isAlive: true, gear: "quick_blaster", snowballs: 27 }), startingSnowballs: 10 }),
+    { gear: "quick_blaster", snowballs: 27 }
+  );
+  assert.deepEqual(
+    getRoundResetLoadout({ player: makePlayer({ isAlive: false, gear: "power_blaster", snowballs: 0 }), startingSnowballs: 10 }),
+    { gear: "starter_blaster", snowballs: 10 }
+  );
+});
+
+test("AWP damage does not freeze a player with a warm vest in one hit", () => {
+  const attacker = makePlayer({ team: "blue", gear: "power_blaster", x: -1, z: 0 });
+  const vestTarget = makePlayer({ team: "red", gear: "shield_vest", health: 150, x: 2, z: 0 });
+  const result = resolveTagAction({ attacker, target: vestTarget });
+  assert.deepEqual(result, {
+    ok: true,
+    damage: 100,
+    nextHealth: 50,
+    eliminated: false,
+    moneyAwarded: 0,
+    scoreDelta: 0
+  });
+});
+
+test("weapon slot survives independent vest and shoe purchases", () => {
+  const player = makePlayer({ gear: "power_blaster", weapon: "power_blaster", perks: ["shield_vest"] });
+  assert.equal(getPlayerWeaponId(player), "power_blaster");
+  assert.deepEqual(getPlayerPerks(player), ["shield_vest"]);
+  assert.equal(getPlayerHealthMax(player), 150);
+  assert.equal(getPlayerMoveSpeedMultiplier({ ...player, perks: ["shield_vest", "speed_shoes"] }), 1.15);
+  const vest = GEAR_ITEMS.find((item) => item.id === "shield_vest")!;
+  const shoes = GEAR_ITEMS.find((item) => item.id === "speed_shoes")!;
+  assert.equal(resolveGearPurchase({ player, gear: vest, requireBase: false }).alreadyEquipped, true);
+  assert.equal(resolveGearPurchase({ player: { ...player, perks: ["shield_vest"] }, gear: shoes, requireBase: false }).ok, true);
 });
 
 test("flag interactions require the student to be next to the flag", () => {

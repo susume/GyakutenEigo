@@ -49,7 +49,7 @@ The previous presentation spread small amounts of content across large blank are
 
 ## Weapon tuning
 
-- Quick Blaster cooldown increased from 125 ms to 150 ms. It remains faster than the 160 ms starter weapon but is less spammy.
+- Quick Blaster cooldown increased from 150 ms to 250 ms and damage is now 22 per bullet, reducing spam while keeping the SMG meaningful.
 - Heavy Snowball Launcher cooldown increased from 1350 ms to 1500 ms.
 - Heavy scope cycles on right click: normal → 2× → 4× → normal.
 - Zoom resets on weapon switch, knockout, round end, paused input, and pointer-lock loss.

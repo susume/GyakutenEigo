@@ -130,6 +130,10 @@ export interface PlayerSession {
   correctAnswers: number;
   wrongAnswers: number;
   gear: string;
+  /** Authoritative weapon slot. `gear` remains the current weapon for legacy clients. */
+  weapon?: string;
+  /** Independently equipped non-weapon gear such as the vest and shoes. */
+  perks?: string[];
   joinedAt: string;
 }
 
@@ -275,7 +279,7 @@ export const HEAVY_GUN_ZOOM_LEVEL_1_FOV = 46;
 export const HEAVY_GUN_ZOOM_LEVEL_2_FOV = 30;
 export const FLAG_INTERACTION_RADIUS = 7;
 export const QUICK_BLASTER_RANGE = 48;
-export const QUICK_BLASTER_COOLDOWN_MS = 150;
+export const QUICK_BLASTER_COOLDOWN_MS = 250;
 export const STARTER_BLASTER_RANGE = 36;
 
 export const DEFAULT_SESSION_SETTINGS: SessionSettings = {
@@ -477,8 +481,8 @@ export const GEAR_ITEMS: GearItem[] = [
     id: "quick_blaster",
     name: "Quick Snowball Launcher",
     cost: 3000,
-    description: "Faster launches with lighter snowballs.",
-    damage: 10,
+    description: "Automatic launcher with a controlled fire rhythm.",
+    damage: 22,
     range: QUICK_BLASTER_RANGE,
     fireCooldownMs: QUICK_BLASTER_COOLDOWN_MS,
     autoFire: true
@@ -517,6 +521,12 @@ export const GEAR_ITEMS: GearItem[] = [
     speedBonus: 0.15
   }
 ];
+
+export const WEAPON_GEAR_IDS = ["starter_blaster", "quick_blaster", "power_blaster"] as const;
+export const PERK_GEAR_IDS = ["shield_vest", "speed_shoes"] as const;
+
+export const isWeaponGearId = (gearId: string): boolean => (WEAPON_GEAR_IDS as readonly string[]).includes(gearId);
+export const isPerkGearId = (gearId: string): boolean => (PERK_GEAR_IDS as readonly string[]).includes(gearId);
 
 export const isChoice = (value: unknown): value is Choice =>
   value === "A" || value === "B" || value === "C" || value === "D";
@@ -970,6 +980,28 @@ export const getGearMoveSpeedMultiplier = (gearId: string) =>
 
 export const getGearZoomFovMultiplier = (gearId: string) => getGearItem(gearId)?.zoomFovMultiplier ?? 1;
 
+export const getPlayerWeaponId = (player: Pick<PlayerSession, "gear" | "weapon">): string =>
+  player.weapon && isWeaponGearId(player.weapon)
+    ? player.weapon
+    : isWeaponGearId(player.gear)
+      ? player.gear
+      : "starter_blaster";
+
+export const getPlayerPerks = (player: Pick<PlayerSession, "gear" | "perks">): string[] => {
+  const equipped = (player.perks ?? []).filter(isPerkGearId);
+  if (isPerkGearId(player.gear)) equipped.push(player.gear);
+  return [...new Set(equipped)];
+};
+
+export const hasPlayerPerk = (player: Pick<PlayerSession, "gear" | "perks">, perkId: string): boolean =>
+  getPlayerPerks(player).includes(perkId);
+
+export const getPlayerHealthMax = (player: Pick<PlayerSession, "gear" | "perks">): number =>
+  DEFAULT_PLAYER_HEALTH + (hasPlayerPerk(player, "shield_vest") ? 50 : 0);
+
+export const getPlayerMoveSpeedMultiplier = (player: Pick<PlayerSession, "gear" | "weapon" | "perks">): number =>
+  Number((getGearMoveSpeedMultiplier(getPlayerWeaponId(player)) * (hasPlayerPerk(player, "speed_shoes") ? 1.15 : 1)).toFixed(2));
+
 export type ArenaObstacle =
   | { id: string; kind: "rect"; x: number; z: number; width: number; depth: number; jumpable?: boolean }
   | { id: string; kind: "circle"; x: number; z: number; radius: number; jumpable?: boolean };
@@ -1145,12 +1177,12 @@ export const resolveGearPurchase = ({
   gear,
   requireBase = true
 }: {
-  player: Pick<PlayerSession, "isAlive" | "money" | "gear" | "health" | "team" | "x" | "z">;
+  player: Pick<PlayerSession, "isAlive" | "money" | "gear" | "weapon" | "perks" | "health" | "team" | "x" | "z">;
   gear: GearItem;
   requireBase?: boolean;
 }): GearPurchaseResult => {
   if (!player.isAlive) return { ok: false, reason: "player_eliminated" };
-  if (player.gear === gear.id) {
+  if (getPlayerWeaponId(player) === gear.id || hasPlayerPerk(player, gear.id)) {
     return {
       ok: true,
       alreadyEquipped: true,
@@ -1391,6 +1423,32 @@ export const resolveBotPursuitTarget = ({
   return selected?.position;
 };
 
+export const getRoundResetLoadout = ({
+  player,
+  startingSnowballs
+}: {
+  player: Pick<PlayerSession, "isAlive" | "gear" | "weapon" | "perks" | "snowballs">;
+  startingSnowballs: number;
+}) => {
+  const weapon = player.isAlive ? getPlayerWeaponId(player) : "starter_blaster";
+  const loadout: {
+    gear: string;
+    snowballs: number;
+    weapon?: string;
+    perks?: string[];
+  } = {
+    gear: weapon,
+    snowballs: player.isAlive
+      ? Math.max(0, Math.floor(Number.isFinite(player.snowballs) ? player.snowballs! : startingSnowballs))
+      : Math.max(0, Math.floor(startingSnowballs))
+  };
+  if ("weapon" in player || "perks" in player) {
+    loadout.weapon = weapon;
+    loadout.perks = player.isAlive ? getPlayerPerks(player) : [];
+  }
+  return loadout;
+};
+
 export const resolveBotAttackTarget = ({
   bot,
   candidates,
@@ -1485,6 +1543,9 @@ export const resolveBotRespawn = ({
       isAlive: true,
       health: DEFAULT_PLAYER_HEALTH,
       snowballs: startingSnowballs,
+      ...( "weapon" in bot || "perks" in bot
+        ? { gear: "starter_blaster", weapon: "starter_blaster", perks: [] }
+        : {}),
       respawnCorrectAnswers: 0
     }
   };
@@ -1494,7 +1555,7 @@ export const resolveTagAction = ({
   attacker,
   target
 }: {
-  attacker: Pick<PlayerSession, "team" | "isAlive" | "gear" | "x" | "z">;
+  attacker: Pick<PlayerSession, "team" | "isAlive" | "gear" | "weapon" | "x" | "z">;
   target: Pick<PlayerSession, "team" | "isAlive" | "health" | "x" | "z">;
 }): TagActionResult => {
   if (!attacker.isAlive) return { ok: false, reason: "attacker_eliminated" };
@@ -1504,9 +1565,10 @@ export const resolveTagAction = ({
   const attackerPosition = { x: attacker.x ?? 0, z: attacker.z ?? 0 };
   const targetPosition = { x: target.x ?? 0, z: target.z ?? 0 };
   const distance = Math.hypot(targetPosition.x - attackerPosition.x, targetPosition.z - attackerPosition.z);
-  if (distance > getGearRange(attacker.gear)) return { ok: false, reason: "out_of_range" };
+  const weaponId = getPlayerWeaponId(attacker);
+  if (distance > getGearRange(weaponId)) return { ok: false, reason: "out_of_range" };
 
-  const damage = getGearDamage(attacker.gear);
+  const damage = getGearDamage(weaponId);
   const nextHealth = Math.max(0, (target.health ?? DEFAULT_PLAYER_HEALTH) - damage);
   const eliminated = nextHealth === 0;
   return {
@@ -1648,6 +1710,8 @@ export const selectInitialZombies = <T extends PlayerSession>(
     zombieConvertedAt: undefined,
     team: chosenIds.has(player.id) ? "red" : "blue",
     gear: chosenIds.has(player.id) ? "starter_blaster" : player.gear,
+    weapon: chosenIds.has(player.id) ? "starter_blaster" : player.weapon,
+    perks: chosenIds.has(player.id) ? [] : player.perks,
     isAlive: true
   }) as T);
 };
