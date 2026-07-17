@@ -959,7 +959,9 @@ test("weapon slot survives independent vest and shoe purchases", () => {
   assert.equal(getPlayerMoveSpeedMultiplier({ ...player, perks: ["shield_vest", "speed_shoes"] }), 1.15);
   const vest = GEAR_ITEMS.find((item) => item.id === "shield_vest")!;
   const shoes = GEAR_ITEMS.find((item) => item.id === "speed_shoes")!;
-  assert.equal(resolveGearPurchase({ player, gear: vest, requireBase: false }).alreadyEquipped, true);
+  const vestPurchase = resolveGearPurchase({ player, gear: vest, requireBase: false });
+  assert.equal(vestPurchase.ok, true);
+  if (vestPurchase.ok) assert.equal(vestPurchase.alreadyEquipped, true);
   assert.equal(resolveGearPurchase({ player: { ...player, perks: ["shield_vest"] }, gear: shoes, requireBase: false }).ok, true);
 });
 
