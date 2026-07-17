@@ -2,6 +2,7 @@ import * as THREE from "three";
 import type { PlayerSession } from "@quizstrike/shared";
 import { CharacterController } from "./CharacterController.js";
 import { CharacterFactory } from "./CharacterFactory.js";
+import type { ArenaAnimationCue, ArenaAnimationEvent } from "../ArenaAnimation.js";
 
 export interface CharacterVisualState {
   x: number;
@@ -21,6 +22,8 @@ type CharacterRecord = {
   ring?: THREE.Mesh;
   gear: string;
   badgeAlive: boolean;
+  alive: boolean;
+  team: PlayerSession["team"];
 };
 
 export interface CharacterManagerStats {
@@ -40,7 +43,7 @@ export class CharacterManager {
     private readonly options: CharacterManagerOptions
   ) {}
 
-  sync(players: PlayerSession[], getVisualState: (player: PlayerSession, index: number) => CharacterVisualState) {
+  sync(players: PlayerSession[], getVisualState: (player: PlayerSession, index: number) => CharacterVisualState, objectiveCarrierId?: string) {
     const seen = new Set<string>();
     players.forEach((player, index) => {
       if (this.options.isFps && player.id === this.options.currentPlayerId) return;
@@ -59,6 +62,10 @@ export class CharacterManager {
         record = this.records.get(player.id);
       }
       if (!record) return;
+      if (!record.alive && player.isAlive) record.controller.triggerAnimation("respawn");
+      record.alive = player.isAlive;
+      record.team = player.team;
+      record.controller.carryingObjective = objectiveCarrierId === player.id;
       if (!player.isAlive) {
         record.controller.model.root.visible = false;
         record.badge.visible = false;
@@ -87,6 +94,20 @@ export class CharacterManager {
       record.badge.visible = false;
       if (record.ring) record.ring.visible = false;
     }
+  }
+
+  triggerAnimation(event: ArenaAnimationEvent) {
+    if (event.playerId) {
+      this.records.get(event.playerId)?.controller.triggerAnimation(event.kind);
+      return;
+    }
+    for (const record of this.records.values()) {
+      if (!event.team || record.team === event.team) record.controller.triggerAnimation(event.kind);
+    }
+  }
+
+  triggerPlayerAnimation(playerId: string, cue: ArenaAnimationCue) {
+    this.records.get(playerId)?.controller.triggerAnimation(cue);
   }
 
   update(delta: number, elapsed: number, camera: THREE.Camera) {
@@ -142,7 +163,15 @@ export class CharacterManager {
       this.scene.add(ring);
     }
 
-    this.records.set(player.id, { controller, badge, ring, gear: player.gear, badgeAlive: player.isAlive });
+    this.records.set(player.id, {
+      controller,
+      badge,
+      ring,
+      gear: player.gear,
+      badgeAlive: player.isAlive,
+      alive: player.isAlive,
+      team: player.team
+    });
   }
 
   private removeRecord(record: CharacterRecord) {

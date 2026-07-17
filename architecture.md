@@ -35,7 +35,7 @@ The apex address, `https://gyakuteneigo.com`, is also a valid entry point and mu
 - `apps/server`: Express + Socket.IO API for teacher authentication, quiz data, sessions, game simulation, bots, live state, reports, and CSV exports.
 - `apps/server/src/origins.ts`: production CORS origin normalization and supported hosted-origin defaults.
 - `packages/shared`: shared TypeScript contracts, input validation, map data, session rules, quiz economy, movement checks, game-mode rules, and report helpers.
-- `docs`: deployment instructions and the developer handoff prompt.
+- `docs`: deployment instructions, developer handoff, live multiplayer QA, visual-audit evidence, and performance certification guidance.
 - `.github/workflows/deploy-web.yml`: GitHub Pages build and deployment workflow.
 - `prisma`: persistence schema and migrations. The deployed Render service runs these migrations at startup when `DATABASE_URL` is present.
 
@@ -59,12 +59,21 @@ The audit findings and subsequent classroom fixes are implemented on `main` and 
 - Zombie conversions record their server timestamp. At Game Over, the announcement names up to six best survivors: remaining Humans first, followed by the last Humans converted into Zombies.
 - Bots pursue the nearest active real opponent and detour around arena cover instead of freezing against a blocked path.
 - Hosted account creation and Socket.IO connections retry the Render service hostname when a school network blocks the branded `api.` hostname.
+- The shared student-athlete set now uses a real `THREE.SkinnedMesh` skeleton with palette-cached geometry and a single-draw body. Class silhouettes and launcher equipment remain modular.
+- Visible collider-box buildings were replaced with code-authored modular shells while invisible proxy boxes continue to own client movement collision and match the shared server cover model.
+- Static facade and prop geometry uses a shared 2K surface atlas, vertex tinting, and material batching. Medium now renders six static batches per map and stays below the previous 486-call baseline in the 40-player lab.
+- Character animation now layers directional locomotion, objective-carry posture, hit recoil, respawn, jump/landing, flag interaction, victory, and defeat cues over the shared skinned rig.
+- Combat, healing, objective progress, flag placement/capture, round, heavy-fire, zoom, cooldown, elimination, and results VFX are event-driven, world-space, pooled, and capped by quality level.
+- The Iron Junction has a distinct cold industrial sky, terrain transitions, frost berms, work lighting, switchyard crane landmark, and maintenance storytelling pass.
+- Character Lab now switches maps and quality presets and exposes FPS, frame percentiles, draw calls, triangles, renderer memory counts, JavaScript heap when available, active VFX, and long tasks.
 
-Validation for this implementation is green: 53 shared tests, 4 server tests, 41 web tests, server/web typechecks, full production build, live 60-second Classic Tag round transition, live bot socket movement, GitHub Actions CI, and Render deployment. The production API health check currently reports `storage: "postgres"`.
+The 2026-07-17 feature baseline is green: 56 shared tests, 5 server tests, 52 web tests, a full production build, live multiplayer checks, and the local 40-player performance captures. GitHub Actions CI and Deploy Web both passed for feature commit `533946b` on 2026-07-17. The production API health check was last verified with `storage: "postgres"`.
 
 ### Remaining live QA gaps
 
-The audit is not release certification. Still unverified or only partially covered are complete Flag placement/capture/hold and simultaneous objective races; Zombie projectile conversion and near-simultaneous conversions; knocked-out refresh/rejoin; host-browser disconnect; multi-tab/network-drop edge cases; hold/release Tab scoreboard behavior; human-vs-human damage and full weapon/zoom/reload coverage; 40-player scale; long soak; real Chromebook performance; FPS/heap/GPU/long-task/HAR/WebSocket instrumentation; and safe live client-message mutation/replay. PostgreSQL persistence is configured, but scale, backup, and broader live-QA work remain.
+The audit is not release certification. Still unverified or only partially covered are complete Flag placement/capture/hold and simultaneous objective races; Zombie projectile conversion and near-simultaneous conversions; knocked-out refresh/rejoin; host-browser disconnect; multi-tab/network-drop edge cases; hold/release Tab scoreboard behavior; human-vs-human damage and the full weapon/zoom matrix; safe live client-message mutation/replay; and PostgreSQL backup/recovery at scale.
+
+A local 40-player Medium regression baseline and ~60-second Iron Junction soak are complete. Physical Chromebook, explicit Microsoft Edge, integrated-GPU desktop, GPU-memory capture, HAR/WebSocket capture, thermal behavior, and the full ten-minute soak remain pending device access. The acceptance gates and procedure are in `docs/performance/CHROMEBOOK_CERTIFICATION.md`.
 
 ## Web Application
 
@@ -78,6 +87,13 @@ Primary client entry points:
 - `apps/web/src/game/arenaMaps.ts`: map catalog and map lookup used by teacher setup and the renderer.
 - `apps/web/src/game/desertCitadelMap.ts`: Desert Citadel geometry, raised house roofs, routes, landmarks, and collision layout.
 - `apps/web/src/game/ironJunctionMap.ts`: The Iron Junction geometry, railway landmarks, routes, palette, and collision layout.
+- `apps/web/src/game/IronJunctionArtPass.ts`: Iron Junction lighting, frost/ballast transitions, switchyard landmark, and maintenance storytelling.
+- `apps/web/src/game/ArenaStaticBatch.ts`: the shared 2K surface atlas, per-vertex tint preparation, and static material batching.
+- `apps/web/src/game/ArenaAnimation.ts`: typed gameplay-to-character animation events.
+- `apps/web/src/game/ArenaVfx.ts`: the typed client event bus and bounded pooled world-space effects.
+- `apps/web/src/game/ArenaPerformance.ts`: rolling frame-time percentiles, long-task observation, heap, and renderer counters.
+- `apps/web/src/game/characters/CharacterFactory.ts`: character/equipment assembly and appearance material caching.
+- `apps/web/src/game/characters/SharedSkinnedStudent.ts`: shared skin geometry, bones, palette cache, and single-draw body.
 - `apps/web/src/navigation.ts`: route helpers plus student join-link code parsing and URL construction.
 
 Routes are implemented by the React application and are also emitted as static fallback folders during the Pages build:
@@ -86,9 +102,48 @@ Routes are implemented by the React application and are also emitted as static f
 - `/quiz-strike`: Quiz Strike landing page and teacher entry.
 - `/join`: student session-code and nickname flow; `/join?code=<SESSION_CODE>` pre-fills the code from a teacher link.
 - `/game`: student arena.
-- `/character-lab`: character preview.
+- `/character-lab`: local-only 10/20/40/60-player map, quality, LOD, and performance stress lab.
 
 The build reads `VITE_API_URL` and optional `VITE_API_FALLBACK_URL`. Production defaults are `https://api.gyakuteneigo.com` and `https://gyakuteneigo-api.onrender.com`; local development defaults to port `4000` on the same machine. HTTP fallback is only attempted when the current endpoint cannot be reached; normal HTTP error responses are not silently rerouted.
+
+## Arena Rendering Architecture
+
+The arena maintains a strict separation between authority, collision, presentation, and diagnostics:
+
+```mermaid
+flowchart TD
+  Settings["GameSession settings and mapId"] --> Catalog["arenaMaps visual catalog"]
+  SharedRules["packages/shared rules, spawns, cover"] --> Server["authoritative server simulation"]
+  SharedRules --> Preview["ArenaPreview client scene"]
+  Catalog --> Preview
+  Preview --> Proxies["invisible movement collision proxies"]
+  Preview --> Modular["modular visual structures"]
+  Modular --> Batcher["surface atlas and static batches"]
+  Preview --> Characters["CharacterManager and shared skinned athletes"]
+  Events["Socket.IO gameplay events"] --> Vfx["bounded ArenaVfx pool"]
+  Vfx --> Preview
+  Preview --> Profiler["frame, draw, memory, and long-task capture"]
+```
+
+### Ownership and invariants
+
+- `packages/shared` owns map IDs, arena bounds, map-aware spawn selection, objectives, buy zones, simplified collision, and projectile line-of-sight cover. The server remains authoritative.
+- `ArenaPreview` derives client movement `Box3` bounds from invisible proxy meshes. These proxies are not rendered and must remain aligned with shared server obstacles.
+- Medium and High render separate modular shells. Low may use simpler visual bodies, but all presets keep the same collision proxies.
+- `ArenaStaticBatcher` converts static meshes to non-indexed, atlas-mapped, vertex-tinted geometry; groups by shared material; applies world transforms; and merges each group. Dynamic objectives, players, VFX, transparent water, and first-person equipment must not enter a static batch.
+- `SharedSkinnedStudent` builds rigid-weighted body parts into one skinned geometry, creates a unique skeleton per player, and caches geometry/materials by palette. `CharacterAnimator` drives directional locomotion and timed gameplay cues; `CharacterLOD` throttles idle locomotion while active cues continue to completion.
+- `ArenaAnimation` carries typed player/team cues from authoritative socket and session transitions into each scene's `CharacterManager`.
+- `ArenaVfx` receives events from `App.tsx`, first-person weapon presentation, and player-state transitions. Its fixed pool caps active effects at 6/12/16 on Low/Medium/High, while every effect stays at or below a 6-unit radius and 1.1-second lifetime.
+- `ArenaPerformanceCapture` keeps up to 72,000 frame samples, observes browser long tasks, and publishes the latest summary to the canvas dataset, Character Lab overlay, and `window.__quizstrikeArenaProfile`.
+
+### Current render budgets
+
+| Map, Medium, 40-player lab | Static sources | Static batches | Draw calls | Triangles |
+| --- | ---: | ---: | ---: | ---: |
+| Desert Citadel | 830 | 6 | 356 | 66,528 |
+| The Iron Junction | 624 | 6 | 338 | 63,236 |
+
+The engineering acceptance threshold is fewer than 400 draw calls on Medium in the 40-player lab. Physical frame-rate and GPU-memory acceptance remain governed by `docs/performance/CHROMEBOOK_CERTIFICATION.md`.
 
 ## Server Application
 
@@ -199,7 +254,7 @@ CLIENT_ORIGIN=https://gyakuteneigo.com,https://www.gyakuteneigo.com,https://susu
 
 `CLIENT_ORIGIN` is a comma-separated allow-list used by both Express CORS and Socket.IO. Production also adds the three supported hosted origins by default. Omitting an additional school or Pages origin can block teacher account creation or real-time game connections when visitors use that address. Do not expose or commit the actual `JWT_SECRET`.
 
-`apps/server/src/start.ts` is the Render-safe entry wrapper compiled to `dist/start.js`. It runs Prisma migrations only when `DATABASE_URL` is configured and resolves the repository-level schema explicitly; otherwise it starts the existing in-memory mode. The current Render service has `DATABASE_URL` set to the internal PostgreSQL connection, and deployment `98aac2f` successfully applied the runtime-snapshot migration.
+`apps/server/src/start.ts` is the Render-safe entry wrapper compiled to `dist/start.js`. It runs Prisma migrations only when `DATABASE_URL` is configured and resolves the repository-level schema explicitly; otherwise it starts the existing in-memory mode. The Render service has `DATABASE_URL` set to the internal PostgreSQL connection; deployment `98aac2f` was the migration-path deployment that successfully applied the runtime-snapshot migration. The 2026-07-17 art/performance commit `533946b` changed the web client and documentation, not the server persistence model.
 
 The `api` DNS record is a CNAME to `gyakuteneigo-api.onrender.com`. Render must show the custom domain as verified with a certificate issued before relying on `https://api.gyakuteneigo.com`; the Render hostname remains the browser fallback for restricted networks.
 
@@ -221,6 +276,10 @@ npm test
 npm run build
 ```
 
+The current automated baseline is 56 shared tests, 5 server tests, and 52 web tests. CI and Deploy Web passed for `533946b`; the animation/VFX follow-up is locally validated until it is committed and deployed.
+
+For arena changes, also open `/character-lab`, select 40 players and Medium, and record both maps. Medium must remain below 400 draw calls. If the change affects VFX, verify that `data-vfx-active` never exceeds the quality cap. Follow `docs/performance/CHROMEBOOK_CERTIFICATION.md` for physical-device runs.
+
 For a live deployment check:
 
 1. Open `https://api.gyakuteneigo.com/api/health` and confirm a successful response.
@@ -240,9 +299,10 @@ The audit report and current fix verification are maintained at:
 
 ## Next Architecture Milestones
 
-1. Replace the single runtime snapshot with persistent database repositories and normalized migrations.
-2. Add an export/backup job before the Render Free database expiry and evaluate a move to Neon Free.
-3. Add import/export or seed flows for teacher quiz content.
-4. Add production request logging, monitoring, durable rate limits, and token revocation.
+1. Run the physical Chromebook, explicit Edge, integrated-GPU desktop, and ten-minute 40-player certification matrix with GPU-memory and trace exports.
+2. Add automated render-budget regression coverage around Character Lab so Medium cannot exceed the 400-call gate unnoticed.
+3. Replace the single runtime snapshot with normalized persistent repositories and migrations.
+4. Add an export/backup job before the Render Free database expiry and evaluate a move to Neon Free.
 5. Add browser-based end-to-end tests for signup, teacher session creation, student join, gameplay, and reports.
-6. Improve keyboard, screen-reader, reduced-motion, and mobile accessibility across the teacher and game interfaces.
+6. Add production request logging, monitoring, durable rate limits, token revocation, and a shared Socket.IO adapter before multi-instance scaling.
+7. Improve keyboard, screen-reader, reduced-motion, and mobile accessibility across the teacher and game interfaces.

@@ -1,6 +1,6 @@
 # QuizStrike visual production pass — 2026-07-17
 
-This pass upgrades the procedural browser renderer while preserving the authoritative gameplay map, spawn tables, hitboxes, collision proxies, routes, and network protocol. It is a substantial production-minded procedural art pass, but it is not described as the final asset-authored art pass: bespoke character rigs, authored modular environment meshes, and compressed texture atlases remain future work.
+This pass upgrades the browser renderer while preserving the authoritative gameplay map, spawn tables, hitboxes, collision proxies, routes, and network protocol. Follow-up work now includes a shared skinned student rig, code-authored modular building shells, a shared surface atlas with static batching, pooled event VFX, and an Iron Junction-specific art pass. Imported DCC-authored meshes, clip-blended animation, and compressed production textures remain future work.
 
 ## 1. Original visual audit
 
@@ -32,7 +32,9 @@ The renderer now uses a neutral procedural surface-detail layer under material p
 - `apps/web/src/game/characters/CharacterAppearance.ts`: brighter sports palettes while preserving stable team/variant serialization.
 - `apps/web/src/game/characters/CharacterFactory.ts`: rounded athletic proportions, jersey panels, caps/headbands/hair variants, shoes, contact shadows, and improved first-person arms.
 - `apps/web/src/game/characters/CharacterEquipment.ts`: three distinct classroom-safe energy/snow launcher silhouettes and sport-pack presentation.
-- `apps/web/src/game/characters/CharacterAnimator.ts`: foot lift, torso lean, head motion, and weapon sway layered over responsive movement.
+- `apps/web/src/game/characters/CharacterAnimator.ts`: directional locomotion, objective carry, hit, respawn, jump, land, flag interaction, victory, and defeat states layered over responsive movement.
+- `apps/web/src/game/ArenaAnimation.ts`: typed player/team animation cues driven by authoritative gameplay transitions.
+- `apps/web/src/game/ArenaVfx.ts`: fixed pooled combat, healing, objective, round, weapon, elimination, and results effects with coverage budgets.
 - `apps/web/src/styles.css`: compact segmented reticle, upgraded minimap glass, arena-integrated HUD, team/warmth accents, and mobile fallback.
 - `apps/web/src/game/gamePreferences.ts` and `apps/web/src/App.tsx`: clear Low/Medium/High labels and a safer Auto policy.
 - `apps/web/src/game/desertCitadelMap.ts`: school-safe location naming and environmental-story language.
@@ -59,28 +61,30 @@ Renderer work was sampled in a local Chrome development build at a 1280×720 vie
 | Medium | `balanced` | 1.25 | Off | 486 | 15,676 |
 | High | `high` | 1.75 | Off in FPS; overview only | 665 | 20,776 |
 
+After shared skinning, atlas batching, and modular-shell integration, the 40-player Medium Character Lab records 356 draw calls / 66,528 triangles for Desert Citadel and 338 / 63,236 for Iron Junction. The table above is retained as the original pre-batching comparison.
+
 The automated browser was simultaneously capturing and instrumenting WebGL and reported inconsistent 1–13 FPS samples, so those readings are rejected as device-performance evidence. Real school-desktop and Chromebook measurements are still required before claiming 60 FPS / 30–45 FPS targets. Auto now selects Low on high-density displays and Medium otherwise; it no longer silently selects High.
 
 ## 6. Remaining placeholder art
 
-- Collision-bearing environment bodies are still generated from boxes and cylinders under the new facade/detail layer.
-- Characters are procedural Three.js meshes rather than authored skinned GLB models.
+- Invisible collision proxies remain generated boxes by design; separate modular shells now own the visible architecture.
+- Characters use a real shared `THREE.SkinnedMesh`, but remain code-authored rather than imported GLB assets.
 - Animation remains code-driven rather than motion-captured or clip-blended.
-- Surface detail is generated canvas texture data rather than a compressed texture atlas/trim sheet set.
-- Iron Junction benefits from the shared material, sky, prop, HUD, character, weapon, and quality work, but did not receive a map-specific composition pass in this change.
-- Remote projectile travel, shield hits, healing, capture celebration, elimination, victory, and defeat still need complete event-driven VFX coverage.
+- Surface detail uses a shared generated 2K atlas rather than compressed KTX2 production textures.
+- Equipment and modular environment pieces remain code-authored instead of DCC-authored meshes with artist-made LODs.
+- Physical-device performance certification and extended multiplayer objective-race VFX QA remain open.
 
 ## 7. Issues requiring custom artist-created assets
 
-1. A shared student-athlete skeleton with authored idle, sprint, strafe, crouch, jump, land, carry, fire, knockout, respawn, and victory clips.
+1. Authored clip animation for the existing shared student-athlete skeleton, including crouch, fire, knockout, and transition clips beyond the current code-driven states.
 2. A modular Desert Citadel kit with bevelled walls, arches, gates, stairs, roof sets, damaged variants, and snap-safe collision proxies.
 3. Atlas/trim-sheet materials for plaster, stone, timber, painted metal, fabric, decals, and team equipment, exported in compressed browser formats.
 4. Authored first/third-person launcher meshes with consistent muzzle sockets and LODs.
-5. A pooled event VFX library tied to authoritative hit, objective, healing, spawn, round, and result events.
+5. Artist-authored textures/meshes for the existing pooled VFX vocabulary if the procedural style is replaced.
 
 ## 8. Stability and gameplay retest
 
-- Full repository tests pass: 56 shared, 5 server, and 47 web tests (108 total).
+- Full repository tests pass: 56 shared, 5 server, and 52 web tests (113 total).
 - Shared tests cover movement collision, jump clearance, projectile line of sight and cover, hit resolution, spawns, objective state, base-zone checks, team balance, and bot navigation.
 - Production build passes for shared, server, and web packages.
 - A local teacher and student connected through separate live browser tabs, joined the same room, advanced through multiple Flag rounds, and restored the authenticated student session after refresh.
@@ -90,10 +94,7 @@ The automated browser was simultaneously capturing and instrumenting WebGL and r
 
 ## 9. Recommended next visual improvements
 
-1. Build and integrate the shared skinned student-athlete character set; it is the largest remaining perceived-quality gain.
-2. Replace the facade-over-collider buildings with authored modular meshes while retaining the current invisible collision proxies.
-3. Merge/batch static facade geometry and atlas materials to bring Medium below the current draw-call count before Chromebook certification.
-4. Complete event-driven impact, shield, objective, spawn, elimination, and results VFX with pooling and strict screen-coverage budgets.
-5. Give Iron Junction its own lighting, terrain-transition, landmark, and storytelling pass.
-6. Run physical Chromebook, integrated-GPU desktop, Edge, and 40-player soak profiling with frame-time, GPU memory, and long-task capture.
-
+1. Run physical Chromebook, integrated-GPU desktop, Edge, and 40-player soak profiling with frame-time, GPU memory, and long-task capture.
+2. Complete the remaining live multiplayer QA matrix for simultaneous Flag interactions, reconnects, and round transitions while the new cues are active.
+3. Replace code-authored environment, equipment, and character surfaces with DCC-authored assets only where the measured quality gain justifies their download and draw-call cost.
+4. Add automated Character Lab budget checks so Medium cannot regress above 400 draw calls.

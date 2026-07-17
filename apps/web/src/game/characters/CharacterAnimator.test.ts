@@ -28,3 +28,26 @@ test("knocked-out characters freeze with an inactive leaning pose", () => {
   assert.ok(Math.abs(parts.root.position.y - 0.02) < 0.02);
   assert.ok(parts.weapon.rotation.x > 0.6);
 });
+
+test("hit cues add recoil and then expire back toward locomotion", () => {
+  const animator = new CharacterAnimator();
+  const parts = makeParts();
+  animator.trigger("hit");
+  for (let frame = 0; frame < 10; frame += 1) {
+    animator.update(parts, { delta: 1 / 60, elapsed: frame / 60, speed: 0, alive: true });
+  }
+  assert.ok(Math.abs(parts.torso.rotation.y) > 0.05);
+  for (let frame = 10; frame < 60; frame += 1) {
+    animator.update(parts, { delta: 1 / 60, elapsed: frame / 60, speed: 0, alive: true });
+  }
+  assert.equal(animator.hasActiveCue, false);
+  assert.ok(Math.abs(parts.torso.rotation.y) < 0.01);
+});
+
+test("objective carriers keep a readable cradle pose while moving", () => {
+  const animator = new CharacterAnimator();
+  const parts = makeParts();
+  animator.update(parts, { delta: 1 / 60, elapsed: 0.2, speed: 4, forwardSpeed: 4, alive: true, carryingObjective: true });
+  assert.equal(parts.leftArm.rotation.x, -1.08);
+  assert.notEqual(parts.leftLeg.rotation.x, 0);
+});

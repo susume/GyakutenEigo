@@ -1,6 +1,6 @@
 # GyakutenEigo
 
-GyakutenEigo is a browser-based English learning site. Its first hosted game is Quiz-Strike, a classroom arena prototype where teachers create quiz sets, start private sessions, and students join with a code to answer questions, earn in-game money, and buy school-safe gear.
+GyakutenEigo is a browser-based English learning site. Its first hosted game is Quiz Strike, a private classroom arena where teachers create quiz sets and sessions while students answer questions, earn in-game money, buy school-safe gear, and play live team modes.
 
 ## Local Setup
 
@@ -16,7 +16,7 @@ GyakutenEigo is a browser-based English learning site. Its first hosted game is 
    copy .env.example .env
    ```
 
-3. Optional local database services (required for durable local data):
+3. Optional local database services, required for durable local data:
 
    ```bash
    docker compose up -d
@@ -30,93 +30,105 @@ GyakutenEigo is a browser-based English learning site. Its first hosted game is 
    npm run dev
    ```
 
-The frontend runs on `http://localhost:5173` and the backend runs on `http://localhost:4000`. The GyakutenEigo home page is `/`, and the Quiz-Strike game host page is `/quiz-strike`.
+The frontend runs on `http://localhost:5173` and the backend on `http://localhost:4000`. The public site is `/`, the Quiz Strike host page is `/quiz-strike`, student entry is `/join`, and the arena is `/game`.
 
-The local-only Character Lab at `/character-lab` includes map, quality, and 10–60 player stress presets. Chromebook and integrated-GPU certification steps and the latest local baseline are documented in `docs/performance/CHROMEBOOK_CERTIFICATION.md`.
+The local-only Character Lab at `/character-lab` includes both maps, all three quality presets, and 10–60 player stress scenarios.
 
 ## Online Play
 
-For a hosted playtest, deploy the GyakutenEigo web app and Quiz-Strike game server separately:
+For a hosted playtest, deploy the web app and game server separately:
 
-- Web app: build `apps/web` and host `apps/web/dist`.
-- Game server: build and run `apps/server`.
+- Build `apps/web` and host `apps/web/dist`.
+- Build and run `apps/server` on a Node host with WebSocket support.
 - Set `VITE_API_URL` in the web build to the public server URL.
-- Set `CLIENT_ORIGIN` on the server to the public web app URL.
-- Set a real `JWT_SECRET` before running with `NODE_ENV=production`.
+- Set `CLIENT_ORIGIN` on the server to the public web origin.
+- Set a real `JWT_SECRET` before using `NODE_ENV=production`.
 
-See [docs/online-play.md](docs/online-play.md) for the full GitHub and deployment checklist.
-
-## Student Player and Load Time
-
-The student player is the lightweight React + Three.js/WebGL arena at `/join` and `/game`. The host page for Quiz-Strike is `/quiz-strike`. It uses the same server-side quiz/economy/combat rules and loads as part of the normal web app.
-
-Default play now starts in Flag Mode: Red Team carries the flag to the Blue base, while Blue Team defends and captures a placed flag. Zombie Mode is also available from the teacher session settings.
-
-The current map is Desert Citadel, a large desert fortress and market-town arena sized for classroom sessions of up to 40 students. Its original collision blockout now carries a production-minded procedural environment, character, launcher, VFX, lighting, quality-preset, and HUD pass; bespoke skinned characters and authored modular environment assets remain future work.
-
-## Project Documentation
-
-- [architecture.md](architecture.md) explains the system architecture, data flow, runtime components, deployment shape, and known risks.
-- [docs/handoff-prompt.md](docs/handoff-prompt.md) is a copy/paste handoff prompt for another developer or coding agent.
+See [docs/online-play.md](docs/online-play.md) for the GitHub Pages and Render deployment checklist.
 
 ## Current Vertical Slice
 
-- Teacher signup and login
-- Quiz set creation with multiple-choice questions
-- Private session creation with generated join codes
-- Student join by code and nickname
-- Three.js student arena with FPS controls, live movement/fire socket events, minimap, HUD, quiz panel, buy menu, scoreboard, and mobile touch controls
-- Default Flag Mode, selectable Zombie Mode, Heavy Snowball Launcher scope/echo behavior, and hold-Tab scoreboard columns for Tags, Respawns, and Question Accuracy
-- Desert Citadel arena with 24 protected spawns per team, 60 free-for-all spawn positions, capture zones, retrieve-item terminals, district landmarks, and large-scale map bounds
-- Live teacher roster
-- Quiz answering with server-side money awards
-- Practice-only quiz answers while eliminated
-- Gear buying with server-side validation
-- Stylized low-poly arena with deterministic layered materials, architectural facade modules, atmospheric lighting, objective technology, sports competitors, and scalable visual detail
-- Session results based on stored answer logs
+- Teacher signup/login, class management, and multiple-choice quiz authoring
+- Private session creation with generated join codes and copyable join links
+- Student join by code and classroom-safe nickname
+- Flag Mode, Zombie Mode, and Classic Tag Practice with server-authoritative rules
+- Live Three.js FPS arena with movement, firing, objectives, minimap, HUD, quiz, shop, scoreboard, and touch controls
+- Desert Citadel and The Iron Junction with map-specific spawns, cover, landmarks, lighting, and minimap labels
+- Shared skinned student-athlete characters and modular launcher/equipment silhouettes
+- Invisible gameplay collision proxies with separate modular rendered structures
+- Atlas-batched static scenery and scalable Low/Medium/High quality presets
+- Directional locomotion plus event-driven hit, respawn, jump, landing, flag interaction, victory, and defeat animation states
+- Pooled combat, healing, objective, round, heavy-fire, zoom, cooldown, elimination, and results VFX with strict coverage caps
+- Live teacher roster, bots, practice respawn questions, server-validated purchases, and CSV reports
+- PostgreSQL-backed runtime snapshots when `DATABASE_URL` is configured; in-memory fallback for local development
 
-## Desert Citadel Map
+## Arena Rendering Architecture
 
-Desert Citadel is implemented in the React + Three.js/WebGL arena client. The shared package owns gameplay-scale data such as map bounds, team spawns, free-for-all spawns, capture zones, retrieve-item markers, delivery zones, and base buy zones. The web client owns the blockout geometry, labels, landmarks, materials, lighting, and collision boxes.
+Gameplay and presentation deliberately have separate sources of truth:
 
-Relevant files:
+- `packages/shared` owns map IDs, arena bounds, spawn tables, objectives, buy zones, simplified server collision, projectile cover, validation, and deterministic rules.
+- `apps/server` owns authoritative movement, combat, economy, objectives, session lifecycle, bots, and results.
+- `apps/web` owns Three.js scene assembly, rendered map metadata, invisible client collision proxies, modular visuals, lighting, effects, UI, and diagnostics.
 
-- `packages/shared/src/index.ts`: arena limits, spawn tables, spawn selection, capture/retrieve metadata, base-zone checks.
-- `apps/server/src/index.ts`: round-start, join, bot, and movement logic using the expanded spawn map.
-- `apps/web/src/game/desertCitadelMap.ts`: Desert Citadel blockout pieces, signs, route labels, and landmarks.
-- `apps/web/src/game/ArenaPreview.tsx`: Three.js renderer, collision checks, FPS camera controls, minimap overlay, overview preview, and player visuals.
-- `packages/shared/src/sessionRules.test.ts`: spawn-count, arena-clamp, base-zone, and spawn-selection coverage.
+Rendered buildings no longer expose collider boxes as their visible bodies. `ArenaPreview` creates invisible box proxies for movement and cover, then assembles separate modular visual shells. Static decorative meshes are vertex-tinted through a shared 2K surface atlas and merged into six or fewer material batches per map.
 
-To open and test:
+Characters use a shared `THREE.SkinnedMesh` skeleton with palette-cached geometry and a single-draw body. Equipment remains modular. Event effects are world-space, pooled, and limited to 6/12/16 active effects on Low/Medium/High to protect screen readability and frame time.
 
-1. Run `npm run dev`.
-2. Open `http://localhost:5173/join` for the student flow or use the landing-page preview.
-3. Create or join a session, start the round, then move through Desert Citadel with WASD/arrows and fire with F or click. The Heavy Snowball Launcher cycles normal → 2× → 4× → normal with C or right click, E interacts with the flag, and holding Tab shows the scoreboard.
-4. Use the teacher dashboard bot button to add test players up to the configured session limit.
+Important files:
 
-Implemented layout and production-pass coverage:
+- `apps/web/src/game/ArenaPreview.tsx`: scene assembly, invisible client collision proxies, modular structures, FPS controls, minimap, VFX, and profiling integration.
+- `apps/web/src/game/arenaMaps.ts`: map catalog and lookup.
+- `apps/web/src/game/desertCitadelMap.ts`: Desert Citadel layout and landmarks.
+- `apps/web/src/game/ironJunctionMap.ts`: Iron Junction layout, routes, and industrial props.
+- `apps/web/src/game/IronJunctionArtPass.ts`: frost transitions, industrial lighting, crane landmark, and maintenance storytelling.
+- `apps/web/src/game/ArenaStaticBatch.ts`: shared surface atlas, vertex tinting, and static geometry batching.
+- `apps/web/src/game/characters/SharedSkinnedStudent.ts`: shared character skin, skeleton, and palette cache.
+- `apps/web/src/game/ArenaAnimation.ts`: typed event bus for gameplay-driven character animation cues.
+- `apps/web/src/game/ArenaVfx.ts`: typed event bus and bounded VFX pool.
+- `apps/web/src/game/ArenaPerformance.ts`: frame-time, long-task, renderer-memory, heap, and draw-count capture.
+- `packages/shared/src/index.ts`: shared game contracts, map constants, spawns, and deterministic rules.
+- `apps/server/src/index.ts`: authoritative HTTP, Socket.IO, and game simulation.
 
-- Six districts: West Fortress, East Camp, Central Market, North Ruins, South Homes, and Aqueduct.
-- Five major route families: north ruins, central market, south homes, aqueduct, and rooftop/wall route.
-- Landmarks: citadel tower, old well, broken bridge, blue canopy, ruined watchtower, eastern wooden gate, buried statue, and glowing aqueduct chamber.
-- Objective metadata: five capture zones, three retrieve items, and two team delivery zones.
-- Performance-conscious simple geometry, reusable generated materials, limited shadows, static scenery without network synchronization.
+## Performance and Verification
 
-Known limitations:
+The latest 40-player Medium baseline is:
 
-- The collision and route layout began as a playable blockout and intentionally remain authoritative underneath the visual facade pass.
-- This is not yet a final asset-authored art pass: procedural characters, generated surface textures, and collider-derived building bodies remain temporary.
-- Rooftop and aqueduct routes are represented with readable blockout geometry and collision, but the current player controller still uses mostly flat movement.
-- Free-for-all spawn metadata is present for future mode support; the current live session flow remains team-based.
+| Map | Draw calls | Triangles | Local sample |
+| --- | ---: | ---: | --- |
+| Desert Citadel | 356 | 66,528 | 45 FPS, 29.4 ms p95 |
+| The Iron Junction | 338 | 63,236 | 55 FPS, 22.8 ms p95 after ~60 seconds |
 
-See [docs/art-pass/README.md](docs/art-pass/README.md) for the 2026-07-17 visual audit, changed systems, screenshots, preset renderer counts, remaining placeholders, and next art priorities.
+These measurements are useful regression baselines, not physical-device certification. Physical Chromebook, explicit Microsoft Edge, integrated-GPU desktop, GPU-memory, and ten-minute soak runs remain pending. See [docs/performance/CHROMEBOOK_CERTIFICATION.md](docs/performance/CHROMEBOOK_CERTIFICATION.md).
 
-## Safety Note
+Run before pushing:
+
+```bash
+npm run typecheck
+npm test
+npm run build
+```
+
+The current automated baseline is 56 shared tests, 5 server tests, and 52 web tests: 113 total. The Vite bundle warning for the Three.js chunk is expected and is not a build failure.
+
+## Known Limits
+
+- Invisible collision proxies intentionally remain authoritative underneath modular visual meshes. Visual edits must not silently change server or client collision.
+- The environment and character set are code-authored and production-minded, not imported DCC-authored assets.
+- Rooftop and aqueduct routes are readable and collidable, but the player controller still uses mostly flat movement.
+- Free-for-all spawn metadata exists for future support; current live session flows remain team-based.
+- The server is single-instance. Process-local socket bindings, timers, and simulation state require a shared adapter before horizontal scaling.
+- Production persistence currently uses one PostgreSQL `RuntimeSnapshot`, not normalized repositories.
+
+## Documentation
+
+- [architecture.md](architecture.md): system architecture, runtime ownership, deployment shape, and risks.
+- [docs/handoff-prompt.md](docs/handoff-prompt.md): copy/paste handoff for another developer or coding agent.
+- [docs/art-pass/README.md](docs/art-pass/README.md): visual direction, before/after evidence, and quality counts.
+- [docs/performance/CHROMEBOOK_CERTIFICATION.md](docs/performance/CHROMEBOOK_CERTIFICATION.md): profiling baseline and physical certification matrix.
+- [docs/live-multiplayer-qa/README.md](docs/live-multiplayer-qa/README.md): multiplayer audit evidence and continuation notes.
+
+## Safety and Design Rules
 
 This is an educational prototype. Schools should review privacy, safeguarding, accessibility, and local policy requirements before classroom deployment.
 
-Local development can run without PostgreSQL and uses temporary in-memory data. Production requires `DATABASE_URL`; the server mirrors classroom state to PostgreSQL so teacher accounts, quiz sets, sessions, and reports survive process restarts. The production server start command applies committed migrations before accepting traffic.
-
-## Design Rules
-
-This project uses original school-safe terminology only: snow tags, snowball launchers, warmth, gear, arena, Blue Team, and Red Team. It does not include Counter-Strike assets, names, maps, sounds, realistic weapon names, blood, gore, public matchmaking, public chat, or voice chat.
+Use original school-safe terminology only: snow tags, snowball launchers, warmth, gear, arena, Blue Team, and Red Team. Do not add Counter-Strike assets, names, maps, or sounds; realistic weapon names; blood or gore; public matchmaking; public chat; or voice chat.

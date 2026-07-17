@@ -69,6 +69,7 @@ import {
 import { gameAudio, type GameAudioCue } from "./game/GameAudio";
 import { readGamePreferences, writeGamePreferences, type ArenaQuality, type GamePreferences } from "./game/gamePreferences";
 import { emitArenaVfx, type ArenaVfxKind } from "./game/ArenaVfx";
+import { emitArenaAnimation, type ArenaAnimationCue } from "./game/ArenaAnimation";
 import {
   getIncomingHitDirection,
   shouldAutoOpenRespawnPractice,
@@ -2259,9 +2260,13 @@ function StudentExperience({ onExit }: { onExit: () => void }) {
     socketRef.current = socket;
     const roomJoinPayload = { code: session.sessionCode, playerId: activePlayerId, playerToken };
     const pendingPositions = new Map<string, { x: number; z: number; facing: number }>();
-    const emitPlayerVfx = (kind: ArenaVfxKind, playerId = activePlayerId) => {
-      const target = session.players.find((candidate) => candidate.id === playerId);
+    let lastVisualSession = session;
+    const emitPlayerVfx = (kind: ArenaVfxKind, playerId = activePlayerId, source = lastVisualSession) => {
+      const target = source.players.find((candidate) => candidate.id === playerId);
       emitArenaVfx({ kind, x: target?.x ?? 0, z: target?.z ?? 0, team: target?.team });
+    };
+    const emitPlayerAnimation = (kind: ArenaAnimationCue, playerId?: string, team?: Team) => {
+      emitArenaAnimation({ kind, playerId, team });
     };
     let positionFlushTimer: number | undefined;
     const flushPositions = () => {
@@ -2288,6 +2293,7 @@ function StudentExperience({ onExit }: { onExit: () => void }) {
     socket.on("disconnect", () => setIsSocketReconnecting(true));
     socket.on("session_state", (nextSession: GameSession) => {
       setIsSocketReconnecting(false);
+      lastVisualSession = nextSession;
       setSession(nextSession);
       setPlayer((current) => nextSession.players.find((item) => item.id === (current?.id ?? activePlayerId)) ?? current);
     });
@@ -2295,12 +2301,25 @@ function StudentExperience({ onExit }: { onExit: () => void }) {
       if (event.playerId === activePlayerId || event.targetId === activePlayerId) {
         setFeedback(event.message);
       }
-      if (event.type === "start" || event.type === "respawn") emitPlayerVfx("spawn", event.playerId ?? event.targetId);
-      if (/flag|capture|objective|placed/i.test(event.message)) emitPlayerVfx("objective", event.playerId ?? event.targetId);
-      if (event.type === "elimination") emitPlayerVfx("elimination", event.targetId ?? event.playerId);
-      if (event.type === "end") {
-        const localWon = /win|victory/i.test(event.message) && (!event.team || event.team === player.team);
+      if (event.type === "respawn") {
+        const respawnedId = event.playerId ?? event.targetId;
+        emitPlayerVfx("healing", respawnedId);
+        emitPlayerAnimation("respawn", respawnedId, event.team);
+      }
+      if (event.type === "elimination") {
+        const eliminatedId = event.targetId ?? event.playerId;
+        emitPlayerAnimation("defeat", eliminatedId);
+      }
+      if (event.type === "end" && lastVisualSession.settings.gameMode === "zombie") {
+        const humansWon = /humans survive/i.test(event.message);
+        const zombiesWon = /zombie|converted/i.test(event.message) && !humansWon;
+        const localWon = humansWon
+          ? player.role !== "zombie"
+          : zombiesWon
+            ? player.role === "zombie"
+            : false;
         emitPlayerVfx(localWon ? "victory" : "defeat");
+        emitPlayerAnimation(localWon ? "victory" : "defeat", activePlayerId, player.team);
       }
     });
     socket.on("player_position", (position: { playerId?: string; x?: number; z?: number; facing?: number }) => {
@@ -2328,11 +2347,13 @@ function StudentExperience({ onExit }: { onExit: () => void }) {
           fire_cooldown: "Launcher is cooling down."
         };
         queueFeedbackCue(result.reason === "no_valid_target" ? "warning" : "error");
+        if (result.reason === "fire_cooldown") emitPlayerVfx("cooldown");
         setFeedback(messages[result.reason ?? ""] ?? "Snowball launched.");
         return;
       }
       const targetTeam = session.players.find((candidate) => candidate.id === result.targetId)?.team;
       emitArenaVfx({ kind: "impact", x: result.targetX, z: result.targetZ, team: targetTeam });
+      emitPlayerAnimation("hit", result.targetId, targetTeam);
       if (!result.eliminated) emitArenaVfx({ kind: "shield", x: result.targetX, z: result.targetZ, team: targetTeam });
       if (result.eliminated) emitArenaVfx({ kind: "elimination", x: result.targetX, z: result.targetZ, team: targetTeam });
       if (result.attackerId === activePlayerId) {
@@ -2563,6 +2584,9 @@ function StudentExperience({ onExit }: { onExit: () => void }) {
       setFeedback(`${payload.result.feedback}${payload.result.explanation ? ` ${payload.result.explanation}` : ""}`);
       gameAudio.play(payload.result.player.wrongAnswers > player.wrongAnswers ? "quiz_wrong" : "quiz_correct");
       if (payload.result.respawned) {
+        emitArenaVfx({ kind: "healing", x: payload.result.player.x ?? 0, z: payload.result.player.z ?? 0, team: payload.result.player.team });
+        emitArenaVfx({ kind: "spawn", x: payload.result.player.x ?? 0, z: payload.result.player.z ?? 0, team: payload.result.player.team });
+        emitArenaAnimation({ kind: "respawn", playerId: payload.result.player.id, team: payload.result.player.team });
         setRewardPulse("Respawned!");
         setQuizOpen(false);
       } else if (payload.result.player.money > player.money) {

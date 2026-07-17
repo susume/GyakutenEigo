@@ -1,6 +1,6 @@
 import * as THREE from "three";
 import type { CharacterAppearance } from "./CharacterAppearance.js";
-import { CharacterAnimator } from "./CharacterAnimator.js";
+import { CharacterAnimator, type CharacterAnimationCue } from "./CharacterAnimator.js";
 import { CharacterAudio } from "./CharacterAudio.js";
 import { CharacterHitboxController } from "./CharacterHitboxController.js";
 import { CharacterLOD } from "./CharacterLOD.js";
@@ -23,9 +23,12 @@ export interface CharacterModelUpdate {
   delta: number;
   elapsed: number;
   speed: number;
+  forwardSpeed?: number;
+  strafeSpeed?: number;
   alive: boolean;
   firing?: boolean;
   crouching?: boolean;
+  carryingObjective?: boolean;
 }
 
 export class CharacterModel {
@@ -52,10 +55,14 @@ export class CharacterModel {
     this.hitboxes.update(this.root.position, this.appearance.silhouette.heightScale);
   }
 
-  update({ camera, delta, elapsed, speed, alive, firing, crouching }: CharacterModelUpdate) {
+  triggerAnimation(cue: CharacterAnimationCue) {
+    this.animator.trigger(cue);
+  }
+
+  update({ camera, delta, elapsed, speed, forwardSpeed, strafeSpeed, alive, firing, crouching, carryingObjective }: CharacterModelUpdate) {
     const lodState = this.lod.update(this.root, camera);
-    if (lodState.shouldAnimate) {
-      this.animator.update(this.parts, { elapsed, speed, alive, firing, crouching });
+    if (lodState.shouldAnimate || this.animator.hasActiveCue) {
+      this.animator.update(this.parts, { delta, elapsed, speed, forwardSpeed, strafeSpeed, alive, firing, crouching, carryingObjective });
       this.audio.update(speed, delta);
     }
     this.parts.equipment.weapon.visible = alive && lodState.level.equipment !== "minimal";

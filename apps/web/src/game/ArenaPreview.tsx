@@ -33,7 +33,8 @@ import { gameAudio, type MovementAudioMode } from "./GameAudio";
 import { cycleHeavyGunZoom, getWeaponFov, shouldResetWeaponZoom } from "./weaponControls";
 import { resolveTouchJoystickVector } from "./touchJoystick";
 import { ArenaStaticBatcher, makeSurfaceAtlas } from "./ArenaStaticBatch";
-import { ArenaVfxPool, subscribeArenaVfx } from "./ArenaVfx";
+import { ArenaVfxPool, emitArenaVfx, subscribeArenaVfx } from "./ArenaVfx";
+import { emitArenaAnimation, subscribeArenaAnimation } from "./ArenaAnimation";
 import { ArenaPerformanceCapture, type ArenaPerformanceSnapshot } from "./ArenaPerformance";
 import { addIronJunctionArtPass } from "./IronJunctionArtPass";
 import {
@@ -299,6 +300,7 @@ export default function ArenaPreview({
   const [isPointerLocked, setIsPointerLocked] = useState(false);
   const [hitPulse, setHitPulse] = useState(0);
   const [zoomLevel, setZoomLevelState] = useState(0);
+  const [zoomPulse, setZoomPulse] = useState(0);
   const [weaponCooldown, setWeaponCooldown] = useState<{ startedAt: number; durationMs: number } | null>(null);
   const [miniMapPosition, setMiniMapPosition] = useState<ArenaLivePosition | null>(null);
   const [renderError, setRenderError] = useState("");
@@ -1283,8 +1285,12 @@ export default function ArenaPreview({
     });
     const vfxPool = new ArenaVfxPool(scene, qualityConfig.detail);
     const unsubscribeVfx = subscribeArenaVfx((event) => vfxPool.emit(event));
+    const unsubscribeAnimation = subscribeArenaAnimation((event) => characterManager.triggerAnimation(event));
     const performanceCapture = new ArenaPerformanceCapture(renderer, activeQuality);
     const knownAlive = new Map(players.map((player) => [player.id, player.isAlive]));
+    let knownFlagState = session?.flag?.state;
+    let knownFlagInteraction = session?.flag?.interactionPlayerId;
+    let knownAnnouncementId = session?.announcement?.id;
 
     const getVisualPosition = (player: PlayerSession, index: number) => {
       const liveX = player.x;
@@ -1330,7 +1336,7 @@ export default function ArenaPreview({
     const getDisplayPlayers = (nextPlayers: PlayerSession[]) =>
       nextPlayers.length === 0 || (isFps && nextPlayers.length === 1) ? makeTrainingPlayers() : nextPlayers;
 
-    characterManager.sync(getDisplayPlayers(players), getVisualPosition);
+    characterManager.sync(getDisplayPlayers(players), getVisualPosition, session?.flag?.carrierId);
 
     syncPlayersRef.current = (nextSession?: GameSession, nextCurrentPlayer?: PlayerSession) => {
       const nextPlayers = nextSession?.players.length ? nextSession.players : nextCurrentPlayer ? [nextCurrentPlayer] : [];
@@ -1340,8 +1346,45 @@ export default function ArenaPreview({
         if (wasAlive === true && !nextPlayer.isAlive) vfxPool.emit({ kind: "elimination", x: nextPlayer.x ?? 0, z: nextPlayer.z ?? 0, team: nextPlayer.team });
         knownAlive.set(nextPlayer.id, nextPlayer.isAlive);
       });
-      characterManager.sync(getDisplayPlayers(nextPlayers), getVisualPosition);
       const nextFlag = nextSession?.flag;
+      characterManager.sync(getDisplayPlayers(nextPlayers), getVisualPosition, nextFlag?.carrierId);
+      if (nextFlag && (knownFlagState !== nextFlag.state || knownFlagInteraction !== nextFlag.interactionPlayerId)) {
+        const objectivePlayerId = nextFlag.interactionPlayerId ?? nextFlag.capturedById ?? nextFlag.placedById ?? nextFlag.carrierId;
+        const objectivePlayer = nextPlayers.find((candidate) => candidate.id === objectivePlayerId);
+        const objectivePosition = objectivePlayer && nextFlag.state === "carried"
+          ? { x: objectivePlayer.x ?? nextFlag.position.x, z: objectivePlayer.z ?? nextFlag.position.z }
+          : nextFlag.position;
+        if (nextFlag.state === "being_placed" || nextFlag.state === "being_captured") {
+          vfxPool.emit({ kind: "objective_progress", ...objectivePosition, team: objectivePlayer?.team });
+          if (objectivePlayerId) characterManager.triggerPlayerAnimation(objectivePlayerId, "flag_plant");
+        } else if (nextFlag.state === "placed") {
+          vfxPool.emit({ kind: "flag_plant", ...objectivePosition, team: objectivePlayer?.team });
+          if (objectivePlayerId) characterManager.triggerPlayerAnimation(objectivePlayerId, "flag_plant");
+        } else if (nextFlag.state === "captured") {
+          vfxPool.emit({ kind: "flag_capture", ...objectivePosition, team: objectivePlayer?.team });
+          if (objectivePlayerId) characterManager.triggerPlayerAnimation(objectivePlayerId, "flag_capture");
+        } else if (nextFlag.state === "carried") {
+          vfxPool.emit({ kind: "objective", ...objectivePosition, team: objectivePlayer?.team });
+        }
+        knownFlagState = nextFlag.state;
+        knownFlagInteraction = nextFlag.interactionPlayerId;
+      }
+      const announcement = nextSession?.announcement;
+      if (announcement?.id && knownAnnouncementId !== announcement.id) {
+        const anchor = nextCurrentPlayer ?? nextPlayers[0];
+        if (announcement.kind === "round_start") {
+          vfxPool.emit({ kind: "round_start", x: anchor?.x ?? 0, z: anchor?.z ?? 0, team: anchor?.team });
+          characterManager.triggerAnimation({ kind: "respawn" });
+        } else if (announcement.kind === "round_result" || announcement.kind === "game_over") {
+          vfxPool.emit({ kind: "round_end", x: anchor?.x ?? 0, z: anchor?.z ?? 0, team: anchor?.team });
+          const winningTeam = /blue/i.test(announcement.title) ? "blue" : /red/i.test(announcement.title) ? "red" : undefined;
+          if (winningTeam) {
+            characterManager.triggerAnimation({ kind: "victory", team: winningTeam });
+            characterManager.triggerAnimation({ kind: "defeat", team: winningTeam === "blue" ? "red" : "blue" });
+          }
+        }
+        knownAnnouncementId = announcement.id;
+      }
       if (flagMarker && nextFlag) {
         const nextCarrier = nextFlag.carrierId
           ? nextPlayers.find((player) => player.id === nextFlag.carrierId)
@@ -1405,9 +1448,11 @@ export default function ArenaPreview({
       let jumpQueued = false;
       let lastEmptyFireRequestAt = 0;
       let lastLocalFireAt = 0;
+      let lastCooldownFxAt = 0;
       let activeZoomLevel = 0;
       let cooldownTimeout: number | undefined;
       let wasGrounded = true;
+      let landedAt = 0;
       let fireHeld = false;
       const getEquippedGearId = () => currentPlayerRef.current?.gear ?? "starter_blaster";
       const hasZoomGear = () => getGearZoomFovMultiplier(getEquippedGearId()) < 1;
@@ -1420,6 +1465,8 @@ export default function ArenaPreview({
         activeZoomLevel = next;
         renderer.domElement.dataset.zoomLevel = String(next);
         setZoomLevelState(next);
+        setZoomPulse((value) => value + 1);
+        if (next > 0) emitArenaVfx({ kind: "zoom", x: playerPosition.x, z: playerPosition.z, y: 0.9, team: currentPlayerTeam });
         gameAudio.play(next > 0 ? "zoom_in" : "zoom_out");
       };
       const fire = () => {
@@ -1427,7 +1474,13 @@ export default function ArenaPreview({
         gameAudio.warm();
         const currentTime = performance.now();
         const equippedGearId = getEquippedGearId();
-        if (currentTime - lastLocalFireAt < getGearFireCooldownMs(equippedGearId)) return;
+        if (currentTime - lastLocalFireAt < getGearFireCooldownMs(equippedGearId)) {
+          if (currentTime - lastCooldownFxAt > 280) {
+            lastCooldownFxAt = currentTime;
+            emitArenaVfx({ kind: "cooldown", x: playerPosition.x, z: playerPosition.z, y: 0.8, team: currentPlayerTeam });
+          }
+          return;
+        }
         const launchPosition = { ...localToServerPosition(playerPosition, yaw), scoped: activeZoomLevel > 0, zoomLevel: activeZoomLevel };
         const authoritativeSnowballs = currentPlayerRef.current?.snowballs;
         const availableSnowballs = isFiniteNumber(authoritativeSnowballs)
@@ -1456,7 +1509,16 @@ export default function ArenaPreview({
         projectileTrail.visible = true;
         impactMaterial.opacity = 0;
         setHitPulse((value) => value + 1);
-        if (equippedGearId === "power_blaster") gameAudio.playHeavyFire();
+        if (equippedGearId === "power_blaster") {
+          gameAudio.playHeavyFire();
+          emitArenaVfx({
+            kind: "heavy_fire",
+            x: playerPosition.x - Math.sin(yaw) * 2.2,
+            z: playerPosition.z - Math.cos(yaw) * 2.2,
+            y: 1.1,
+            team: currentPlayerTeam
+          });
+        }
         else gameAudio.play("fire");
         window.setTimeout(() => {
           if (readGamePreferences().vibrationEnabled) {
@@ -1728,6 +1790,7 @@ export default function ArenaPreview({
         const grounded = playerPosition.y <= floorEyeHeight + 0.02 && Math.abs(verticalVelocity) < 0.01;
         if (jumpQueued && grounded && !crouching) {
           verticalVelocity = 5.8;
+          emitArenaAnimation({ kind: "jump", playerId: currentPlayerId, team: currentPlayerTeam });
           gameAudio.play("jump");
         }
         jumpQueued = false;
@@ -1736,7 +1799,11 @@ export default function ArenaPreview({
         if (playerPosition.y < floorEyeHeight) {
           playerPosition.y = floorEyeHeight;
           verticalVelocity = 0;
-          if (!wasGrounded) gameAudio.play("land");
+          if (!wasGrounded) {
+            landedAt = currentTime;
+            emitArenaAnimation({ kind: "land", playerId: currentPlayerId, team: currentPlayerTeam });
+            gameAudio.play("land");
+          }
           wasGrounded = true;
         } else if (crouching && verticalVelocity === 0) {
           playerPosition.y += (floorEyeHeight - playerPosition.y) * 0.18;
@@ -1809,7 +1876,9 @@ export default function ArenaPreview({
         flash.material.opacity = currentTime < flashUntil ? 0.86 : Math.max(0, flash.material.opacity - delta * 10);
         muzzleRingMaterial.opacity = Math.max(0, muzzleRingMaterial.opacity - delta * 8.5);
         muzzleRing.scale.multiplyScalar(1 + delta * 3.2);
-        firstPersonModel.root.position.y = -0.58 + Math.sin(currentTime * 0.006) * 0.012;
+        const landingPulse = Math.max(0, 1 - (currentTime - landedAt) / 220);
+        const airborneLift = Math.max(0, playerPosition.y - floorEyeHeight) * 0.045;
+        firstPersonModel.root.position.y = -0.58 + Math.sin(currentTime * 0.006) * 0.012 + airborneLift - Math.sin(landingPulse * Math.PI) * 0.055;
         firstPersonModel.weapon.rotation.x = -0.1 - flash.material.opacity * 0.035;
         if (snowballLaunchAt > 0) {
           const travel = clamp((currentTime - snowballLaunchAt) / 260, 0, 1);
@@ -1854,6 +1923,7 @@ export default function ArenaPreview({
         cancelAnimationFrame(frame);
         window.removeEventListener("resize", resizeFps);
         unsubscribeVfx();
+        unsubscribeAnimation();
         performanceCapture.dispose();
         vfxPool.dispose();
         fireControlRef.current = () => undefined;
@@ -1931,6 +2001,7 @@ export default function ArenaPreview({
       cancelAnimationFrame(frame);
       window.removeEventListener("resize", resize);
       unsubscribeVfx();
+      unsubscribeAnimation();
       performanceCapture.dispose();
       vfxPool.dispose();
       syncPlayersRef.current = () => undefined;
@@ -2007,7 +2078,7 @@ export default function ArenaPreview({
         <>
           <div className={`${hitPulse % 2 === 0 ? "crosshair" : "crosshair fire"}${zoomLevel > 0 ? ` zoom zoom-level-${zoomLevel}` : ""}`} aria-hidden="true" />
           {zoomLevel > 0 && (
-            <div className={`scope-overlay scope-level-${zoomLevel}`} aria-hidden="true">
+            <div key={`${zoomLevel}-${zoomPulse}`} className={`scope-overlay scope-level-${zoomLevel} scope-pulse`} aria-hidden="true">
               <span>Heavy Scope</span>
               <strong>{zoomLevel === 1 ? "2×" : "4×"}</strong>
             </div>
