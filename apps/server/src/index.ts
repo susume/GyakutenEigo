@@ -744,6 +744,13 @@ const applyValidatedDamage = (session: GameSession, attacker: PlayerSession, tar
       eliminated: false,
       moneyAwarded: 0
     });
+    io.to(session.sessionCode).emit("world_impact", {
+      attackerId: attacker.id,
+      targetId: target.id,
+      x: target.x ?? sessionSpawn(session, target.team).x,
+      z: target.z ?? sessionSpawn(session, target.team).z,
+      shield: true
+    });
     broadcastSession(session);
     finishZombieMatchIfComplete(session);
     return { ok: true as const, damage: DEFAULT_PLAYER_HEALTH, nextHealth: DEFAULT_PLAYER_HEALTH, eliminated: false, moneyAwarded: 0, scoreDelta: 1 };
@@ -798,6 +805,13 @@ const applyValidatedDamage = (session: GameSession, attacker: PlayerSession, tar
     snowballs: attacker.snowballs,
     eliminated: tagResult.eliminated,
     moneyAwarded: tagResult.moneyAwarded
+  });
+  io.to(session.sessionCode).emit("world_impact", {
+    attackerId: attacker.id,
+    targetId: target.id,
+    x: target.x ?? sessionSpawn(session, target.team).x,
+    z: target.z ?? sessionSpawn(session, target.team).z,
+    shield: !tagResult.eliminated
   });
   if (tagResult.eliminated) {
     emitToPlayers(session, [attacker.id, target.id], "elimination_update", {
@@ -1867,6 +1881,15 @@ io.on("connection", (socket) => {
     attacker.snowballs = snowballUse.nextSnowballs;
     const weaponId = getPlayerWeaponId(attacker);
     playerNextFireAt.set(attacker.id, currentMs + getGearFireCooldownMs(weaponId));
+    socket.to(session.sessionCode).emit("remote_weapon_fire", {
+      playerId: attacker.id,
+      x: attacker.x ?? sessionSpawn(session, attacker.team).x,
+      z: attacker.z ?? sessionSpawn(session, attacker.team).z,
+      facing: attacker.facing ?? sessionSpawn(session, attacker.team).facing,
+      gearId: weaponId,
+      scoped: payload.scoped === true,
+      zoomLevel: payload.zoomLevel ?? 0
+    });
 
     const targetSelection = resolveProjectileTarget({
       attacker,

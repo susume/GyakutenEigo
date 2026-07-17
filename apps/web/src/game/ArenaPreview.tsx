@@ -309,6 +309,7 @@ export default function ArenaPreview({
   const [fallbackQuality, setFallbackQuality] = useState<ArenaQuality | null>(null);
   const [characterDebugStats, setCharacterDebugStats] = useState<CharacterManagerStats | null>(null);
   const [performanceSnapshot, setPerformanceSnapshot] = useState<ArenaPerformanceSnapshot | null>(null);
+  const previousWeaponRef = useRef<string | null>(null);
   const sceneSessionId = session?.id ?? "training";
   const currentPlayerId = currentPlayer?.id ?? "";
   const currentPlayerTeam = currentPlayer?.team ?? "blue";
@@ -370,6 +371,14 @@ export default function ArenaPreview({
   useEffect(() => {
     currentPlayerRef.current = currentPlayer;
   }, [currentPlayer]);
+
+  useEffect(() => {
+    if (!currentPlayer) return;
+    const weaponId = getPlayerWeaponId(currentPlayer);
+    if (previousWeaponRef.current === null) gameAudio.playEvent("weapon_equip");
+    else if (previousWeaponRef.current !== weaponId) gameAudio.playEvent("weapon_switch");
+    previousWeaponRef.current = weaponId;
+  }, [currentPlayer?.gear, currentPlayer?.weapon, currentPlayer?.perks]);
 
   useEffect(() => {
     pendingShotsRef.current = 0;
@@ -1470,7 +1479,8 @@ export default function ArenaPreview({
         setZoomLevelState(next);
         setZoomPulse((value) => value + 1);
         if (next > 0) emitArenaVfx({ kind: "zoom", x: playerPosition.x, z: playerPosition.z, y: 0.9, team: currentPlayerTeam });
-        gameAudio.play(next > 0 ? "zoom_in" : "zoom_out");
+        if (hasHeavyGun()) gameAudio.playEvent("heavy_scope");
+        else gameAudio.play(next > 0 ? "zoom_in" : "zoom_out");
       };
       const fire = () => {
         if (controlsDisabledRef.current || inputPausedRef.current || !onFireRef.current) return;
@@ -1481,6 +1491,7 @@ export default function ArenaPreview({
           if (currentTime - lastCooldownFxAt > 280) {
             lastCooldownFxAt = currentTime;
             emitArenaVfx({ kind: "cooldown", x: playerPosition.x, z: playerPosition.z, y: 0.8, team: currentPlayerTeam });
+            if (equippedGearId === "quick_blaster") gameAudio.playEvent("cooldown_tick");
           }
           return;
         }
@@ -1501,7 +1512,10 @@ export default function ArenaPreview({
         const cooldownMs = getGearFireCooldownMs(equippedGearId);
         setWeaponCooldown({ startedAt: currentTime, durationMs: cooldownMs });
         if (cooldownTimeout) window.clearTimeout(cooldownTimeout);
-        cooldownTimeout = window.setTimeout(() => setWeaponCooldown(null), cooldownMs);
+        cooldownTimeout = window.setTimeout(() => {
+          setWeaponCooldown(null);
+          if (equippedGearId !== "quick_blaster") gameAudio.playEvent("cooldown_ready");
+        }, cooldownMs);
         pendingShotsRef.current += 1;
         flashUntil = performance.now() + 95;
         snowballLaunchAt = currentTime;
@@ -1513,7 +1527,7 @@ export default function ArenaPreview({
         impactMaterial.opacity = 0;
         setHitPulse((value) => value + 1);
         if (equippedGearId === "power_blaster") {
-          gameAudio.playHeavyFire();
+          gameAudio.playEvent("weapon_fire_heavy_local");
           emitArenaVfx({
             kind: "heavy_fire",
             x: playerPosition.x - Math.sin(yaw) * 2.2,
@@ -1522,7 +1536,7 @@ export default function ArenaPreview({
             team: currentPlayerTeam
           });
         }
-        else gameAudio.play("fire");
+        else gameAudio.playEvent(equippedGearId === "quick_blaster" ? "weapon_fire_quick" : "weapon_fire_basic");
         window.setTimeout(() => {
           if (readGamePreferences().vibrationEnabled) {
             navigator.vibrate?.(18);
@@ -1836,7 +1850,7 @@ export default function ArenaPreview({
         if (gamepadMove.right < -GAMEPAD_DEAD_ZONE) movement.sub(right);
 
         if (movement.lengthSq() > 0) {
-          if (wasGrounded) gameAudio.playMovementStep(movementAudioMode, currentTime);
+          if (wasGrounded) gameAudio.playMovementStep(movementAudioMode, currentTime, isIronJunction ? "metal" : "sand");
           movement.normalize().multiplyScalar(moveSpeed * delta);
           const next = playerPosition.clone().add(movement);
           next.x = clamp(next.x, -ARENA_LIMIT_X + PLAYER_RADIUS, ARENA_LIMIT_X - PLAYER_RADIUS);

@@ -68,7 +68,7 @@ import {
   summarizeCharacterDebugSession,
   type CharacterStressCount
 } from "./game/characters/CharacterDebugScenarios";
-import { gameAudio, type GameAudioCue } from "./game/GameAudio";
+import { gameAudio, getCombatAudioSpatial, type AudioEventCue, type GameAudioCue } from "./game/GameAudio";
 import { readGamePreferences, writeGamePreferences, type ArenaQuality, type GamePreferences } from "./game/gamePreferences";
 import { emitArenaVfx, type ArenaVfxKind } from "./game/ArenaVfx";
 import { emitArenaAnimation, type ArenaAnimationCue } from "./game/ArenaAnimation";
@@ -2152,6 +2152,7 @@ function StudentExperience({ onExit }: { onExit: () => void }) {
   const socketRef = useRef<Socket | null>(null);
   const previousAliveRef = useRef<boolean | null>(null);
   const previousFlagBuyPhaseRef = useRef(false);
+  const lastCountdownCueRef = useRef("");
 
   const isCompactViewport = viewportWidth <= 780;
   const nicknameError = useMemo(() => getNicknameError(nickname), [nickname]);
@@ -2177,14 +2178,19 @@ function StudentExperience({ onExit }: { onExit: () => void }) {
     setGamePreferences((current) => {
       const next = { ...current, ...update };
       writeGamePreferences(next);
+      if (update.soundEnabled !== undefined || update.gamepadEnabled !== undefined || update.vibrationEnabled !== undefined) {
+        gameAudio.playEvent("settings_saved");
+      }
       return next;
     });
   };
 
   useEffect(() => {
     gameAudio.setMuted(!gamePreferences.soundEnabled);
+    gameAudio.setMusicVolume(gamePreferences.musicVolume);
+    if (gamePreferences.soundEnabled) gameAudio.warm();
     return () => gameAudio.setMuted(false);
-  }, [gamePreferences.soundEnabled]);
+  }, [gamePreferences.soundEnabled, gamePreferences.musicVolume]);
 
   useEffect(() => {
     const stored = readStoredStudentSession();
@@ -2244,9 +2250,31 @@ function StudentExperience({ onExit }: { onExit: () => void }) {
   }, [feedback]);
 
   useEffect(() => {
-    const shouldPlayBgm = Boolean(session && player && session.status === "active");
-    gameAudio.setBgmActive(shouldPlayBgm);
-    return () => gameAudio.setBgmActive(false);
+    if (!session || session.status !== "active") {
+      lastCountdownCueRef.current = "";
+      return;
+    }
+    const cueKey = `${session.currentRound}:${remainingSeconds}`;
+    if ([10, 5, 3, 2, 1].includes(remainingSeconds) && lastCountdownCueRef.current !== cueKey) {
+      lastCountdownCueRef.current = cueKey;
+      gameAudio.playEvent(remainingSeconds <= 5 ? "quiz_timer_warning" : "round_ending");
+    }
+  }, [remainingSeconds, session?.currentRound, session?.status]);
+
+  useEffect(() => {
+    if (quizOpen && question) gameAudio.playEvent("quiz_timer_start");
+  }, [quizOpen, question?.id]);
+
+  useEffect(() => {
+    const syncBgm = () => {
+      gameAudio.setBgmActive(Boolean(session && player && session.status === "active" && document.visibilityState === "visible"));
+    };
+    syncBgm();
+    document.addEventListener("visibilitychange", syncBgm);
+    return () => {
+      document.removeEventListener("visibilitychange", syncBgm);
+      gameAudio.setBgmActive(false);
+    };
   }, [session?.id, session?.status, player?.id]);
 
   const openRespawnPractice = useCallback(() => {
@@ -2262,6 +2290,7 @@ function StudentExperience({ onExit }: { onExit: () => void }) {
     socketRef.current = socket;
     const roomJoinPayload = { code: session.sessionCode, playerId: activePlayerId, playerToken };
     const pendingPositions = new Map<string, { x: number; z: number; facing: number }>();
+    const lastRemotePositions = new Map<string, { x: number; z: number }>();
     let lastVisualSession = session;
     const emitPlayerVfx = (kind: ArenaVfxKind, playerId = activePlayerId, source = lastVisualSession) => {
       const target = source.players.find((candidate) => candidate.id === playerId);
@@ -2294,21 +2323,99 @@ function StudentExperience({ onExit }: { onExit: () => void }) {
     socket.on("connect_error", () => setIsSocketReconnecting(true));
     socket.on("disconnect", () => setIsSocketReconnecting(true));
     socket.on("session_state", (nextSession: GameSession) => {
+      const previousSession = lastVisualSession;
+      const previousLocal = previousSession.players.find((candidate) => candidate.id === activePlayerId);
+      const nextLocal = nextSession.players.find((candidate) => candidate.id === activePlayerId);
+      if (nextSession.players.length > previousSession.players.length) gameAudio.playEvent("player_join");
+      if (nextSession.players.length < previousSession.players.length) gameAudio.playEvent("player_leave");
+      if (previousSession.status !== "active" && nextSession.status === "active") gameAudio.playEvent("round_start");
+      if (previousSession.status === "active" && nextSession.status === "paused") gameAudio.playEvent("round_ending");
+      if (nextSession.status === "ended" && previousSession.status !== "ended") {
+        const title = nextSession.announcement?.title?.toLowerCase() ?? "";
+        gameAudio.playEvent(title.includes("draw") ? "draw" : title.includes(player.team) ? "match_victory" : "match_defeat");
+      }
+      if ((previousLocal?.health ?? 100) > 25 && (nextLocal?.health ?? 100) <= 25 && nextLocal?.isAlive) gameAudio.playEvent("low_health");
+      if (previousLocal?.isAlive === false && nextLocal?.isAlive) gameAudio.playEvent("temporary_invulnerability");
+      const previousFlagState = previousSession.flag?.state;
+      const nextFlagState = nextSession.flag?.state;
+      if (nextFlagState && nextFlagState !== previousFlagState) {
+        const localPoint = nextLocal && Number.isFinite(nextLocal.x) && Number.isFinite(nextLocal.z)
+          ? { x: nextLocal.x!, z: nextLocal.z!, facing: nextLocal.facing ?? 0 }
+          : undefined;
+        const flagPoint = nextSession.flag?.position;
+        const spatial = localPoint && flagPoint
+          ? getCombatAudioSpatial({ attacker: flagPoint, target: localPoint })
+          : {};
+        const carrier = nextSession.players.find((candidate) => candidate.id === nextSession.flag?.carrierId);
+        const flagCue: AudioEventCue = nextFlagState === "carried"
+          ? carrier?.id === activePlayerId ? "flag_pickup" : carrier?.team === player.team ? "flag_teammate" : "flag_enemy"
+          : nextFlagState === "dropped"
+            ? "flag_drop"
+            : nextFlagState === "placed"
+              ? "flag_planted"
+              : nextFlagState === "being_placed"
+                ? "flag_plant_start"
+                : nextFlagState === "being_captured"
+                  ? "objective_countdown"
+                  : nextFlagState === "captured"
+                    ? "flag_capture"
+                    : previousFlagState === "carried" && nextFlagState === "available"
+                      ? "flag_return"
+                      : "flag_reset";
+        gameAudio.playEvent(flagCue, flagCue === "flag_capture" ? {} : spatial);
+      }
       setIsSocketReconnecting(false);
       lastVisualSession = nextSession;
       setSession(nextSession);
       setPlayer((current) => nextSession.players.find((item) => item.id === (current?.id ?? activePlayerId)) ?? current);
     });
+    socket.on("remote_weapon_fire", (payload: { playerId?: string; x?: number; z?: number; facing?: number; gearId?: string }) => {
+      if (payload.playerId === activePlayerId || !Number.isFinite(payload.x) || !Number.isFinite(payload.z)) return;
+      const local = lastVisualSession.players.find((candidate) => candidate.id === activePlayerId);
+      if (!local || !Number.isFinite(local.x) || !Number.isFinite(local.z)) return;
+      const cue: AudioEventCue = payload.gearId === "power_blaster"
+        ? "weapon_fire_heavy_remote"
+        : payload.gearId === "quick_blaster"
+          ? "weapon_fire_quick_remote"
+          : "weapon_fire_basic_remote";
+      gameAudio.playEvent(cue, getCombatAudioSpatial({
+        attacker: { x: payload.x!, z: payload.z! },
+        target: { x: local.x!, z: local.z!, facing: local.facing ?? 0 }
+      }));
+      if (cue === "weapon_fire_heavy_remote") {
+        const spatial = getCombatAudioSpatial({
+          attacker: { x: payload.x!, z: payload.z! },
+          target: { x: local.x!, z: local.z!, facing: local.facing ?? 0 }
+        });
+        window.setTimeout(() => gameAudio.playEvent("projectile_pass", spatial), 160);
+      }
+    });
+    socket.on("world_impact", (payload: { attackerId?: string; targetId?: string; x?: number; z?: number; shield?: boolean }) => {
+      if (payload.attackerId === activePlayerId || payload.targetId === activePlayerId || !Number.isFinite(payload.x) || !Number.isFinite(payload.z)) return;
+      const local = lastVisualSession.players.find((candidate) => candidate.id === activePlayerId);
+      if (!local || !Number.isFinite(local.x) || !Number.isFinite(local.z)) return;
+      gameAudio.playEvent(payload.shield ? "shield_impact" : "world_impact", getCombatAudioSpatial({
+        attacker: { x: payload.x!, z: payload.z! },
+        target: { x: local.x!, z: local.z!, facing: local.facing ?? 0 }
+      }));
+    });
     socket.on("game_event", (event: GameEvent) => {
+      if (event.type === "join") gameAudio.playEvent("player_join");
+      if (event.type === "start") gameAudio.playEvent("round_start");
+      if (event.type === "buy") gameAudio.playEvent("results_confirm");
+      if (event.type === "answer") gameAudio.playEvent("answer_reveal");
+      if (event.type === "timer") gameAudio.playEvent("objective_countdown");
       if (event.type === "elimination" || event.playerId === activePlayerId || event.targetId === activePlayerId) {
         setFeedback(event.message);
       }
       if (event.type === "respawn") {
+        gameAudio.playEvent("temporary_invulnerability");
         const respawnedId = event.playerId ?? event.targetId;
         emitPlayerVfx("healing", respawnedId);
         emitPlayerAnimation("respawn", respawnedId, event.team);
       }
       if (event.type === "elimination") {
+        if (event.playerId === activePlayerId || event.targetId === activePlayerId) gameAudio.playEvent("low_health");
         const eliminatedId = event.targetId ?? event.playerId;
         emitPlayerAnimation("defeat", eliminatedId);
       }
@@ -2326,6 +2433,21 @@ function StudentExperience({ onExit }: { onExit: () => void }) {
     });
     socket.on("player_position", (position: { playerId?: string; x?: number; z?: number; facing?: number }) => {
       if (!position.playerId || !Number.isFinite(position.x) || !Number.isFinite(position.z) || !Number.isFinite(position.facing)) return;
+      if (position.playerId !== activePlayerId) {
+        const previous = lastRemotePositions.get(position.playerId);
+        const local = lastVisualSession.players.find((candidate) => candidate.id === activePlayerId);
+        if (previous && local && Number.isFinite(local.x) && Number.isFinite(local.z) && Math.hypot(position.x! - previous.x, position.z! - previous.z) > 0.45) {
+          gameAudio.playRemoteFootstep(
+            position.playerId,
+            getCombatAudioSpatial({
+              attacker: { x: position.x!, z: position.z! },
+              target: { x: local.x!, z: local.z!, facing: local.facing ?? 0 }
+            }),
+            lastVisualSession.settings.mapId === "iron_junction" ? "metal" : "sand"
+          );
+        }
+        lastRemotePositions.set(position.playerId, { x: position.x!, z: position.z! });
+      }
       pendingPositions.set(position.playerId, {
         x: position.x!,
         z: position.z!,
@@ -2368,7 +2490,13 @@ function StudentExperience({ onExit }: { onExit: () => void }) {
         if (result.eliminated) setRewardPulse("Freeze!");
       }
       if (result.targetId === activePlayerId) {
-        gameAudio.play(result.eliminated ? "eliminated" : "player_tagged");
+        const incomingSpatial = getCombatAudioSpatial({
+          attacker: { x: result.attackerX, z: result.attackerZ },
+          target: { x: result.targetX, z: result.targetZ, facing: result.targetFacing }
+        });
+        if (result.eliminated) gameAudio.play("eliminated", incomingSpatial);
+        else if (player.perks?.includes("shield_vest")) gameAudio.playEvent("shield_impact", incomingSpatial);
+        else gameAudio.play("player_tagged", incomingSpatial);
         setIncomingHitCue({
           id: Date.now(),
           direction: getIncomingHitDirection({
@@ -2537,14 +2665,17 @@ function StudentExperience({ onExit }: { onExit: () => void }) {
         playerToken: payload.playerToken
       } satisfies StoredStudentSession));
       setFeedback("Joined. Click the arena to aim, or use the touch controls on smaller screens.");
+      gameAudio.playEvent("room_joined");
     } catch (err) {
       status.setError(formatStudentJoinError(err));
+      gameAudio.playEvent("room_join_failed");
     } finally {
       setIsJoining(false);
     }
   };
 
   const returnToJoin = () => {
+    gameAudio.playEvent("lobby_return");
     socketRef.current?.disconnect();
     clearStoredStudentSession();
     setSession(null);
@@ -2565,6 +2696,8 @@ function StudentExperience({ onExit }: { onExit: () => void }) {
     status.clear();
     setFeedback("Answer selected...");
     setAnsweringChoice(choice);
+    gameAudio.playEvent("quiz_select");
+    gameAudio.playEvent("quiz_lock");
     try {
       type AnswerPayload = {
         result: {
@@ -2584,7 +2717,10 @@ function StudentExperience({ onExit }: { onExit: () => void }) {
       );
       setPlayer(payload.result.player);
       setFeedback(`${payload.result.feedback}${payload.result.explanation ? ` ${payload.result.explanation}` : ""}`);
-      gameAudio.play(payload.result.player.wrongAnswers > player.wrongAnswers ? "quiz_wrong" : "quiz_correct");
+      const wasWrong = payload.result.player.wrongAnswers > player.wrongAnswers;
+      gameAudio.play(wasWrong ? "quiz_wrong" : "quiz_correct");
+      gameAudio.playEvent("answer_reveal");
+      if (!wasWrong && payload.result.player.money > player.money) gameAudio.playEvent("score_awarded");
       if (payload.result.respawned) {
         emitArenaVfx({ kind: "healing", x: payload.result.player.x ?? 0, z: payload.result.player.z ?? 0, team: payload.result.player.team });
         emitArenaVfx({ kind: "spawn", x: payload.result.player.x ?? 0, z: payload.result.player.z ?? 0, team: payload.result.player.team });
@@ -2628,7 +2764,7 @@ function StudentExperience({ onExit }: { onExit: () => void }) {
       setPlayer(payload.player);
       setFeedback(payload.message);
       setRewardPulse(payload.message);
-      gameAudio.play("buy");
+      gameAudio.playEvent(gearId.endsWith("_blaster") ? "weapon_equip" : "results_confirm");
     } catch (err) {
       status.report(err);
     } finally {
@@ -2669,7 +2805,7 @@ function StudentExperience({ onExit }: { onExit: () => void }) {
     const onKeyDown = (event: KeyboardEvent) => {
       if (!player || !session || isTypingTarget(event.target)) return;
       if (event.key.toLowerCase() === "q") {
-        gameAudio.play("menu_toggle");
+        gameAudio.playEvent(quizOpen ? "modal_close" : "quiz_open");
         setQuizOpen((open) => !open);
         setBuyOpen(false);
         setScoreboardOpen(false);
@@ -2739,6 +2875,7 @@ function StudentExperience({ onExit }: { onExit: () => void }) {
       setSession(payload.session);
       setPlayer(payload.player);
       setFeedback(`You are on ${team === "red" ? "Red Team" : "Blue Team"}.`);
+      gameAudio.playEvent("team_select");
     } catch (err) {
       status.report(err);
     }
@@ -2922,7 +3059,7 @@ function StudentExperience({ onExit }: { onExit: () => void }) {
           />
         )}
         <div className="control-prompts">
-          <button disabled={roundEnded} onClick={() => { gameAudio.play("menu_toggle"); setQuizOpen(!quizOpen); setBuyOpen(false); setScoreboardOpen(false); }}>{isCompactViewport ? "Quiz" : "Q Quiz"}</button>
+          <button disabled={roundEnded} onClick={() => { gameAudio.playEvent(quizOpen ? "modal_close" : "quiz_open"); setQuizOpen(!quizOpen); setBuyOpen(false); setScoreboardOpen(false); }}>{isCompactViewport ? "Quiz" : "Q Quiz"}</button>
           <button disabled={roundEnded || !player.isAlive} onClick={() => { gameAudio.play("menu_toggle"); setBuyOpen(!buyOpen); setQuizOpen(false); setScoreboardOpen(false); }}>{isCompactViewport ? "Buy" : "B Buy · 1–5"}</button>
           <button onMouseDown={() => { gameAudio.play("menu_toggle"); setScoreboardOpen(true); setQuizOpen(false); setBuyOpen(false); setSettingsOpen(false); }} onMouseUp={() => setScoreboardOpen(false)} onBlur={() => setScoreboardOpen(false)}>{isCompactViewport ? "Scoreboard" : "Hold Tab · Scoreboard"}</button>
           <button onClick={() => { gameAudio.play("menu_toggle"); setSettingsOpen((open) => !open); setQuizOpen(false); setBuyOpen(false); setScoreboardOpen(false); }}><Settings size={18} aria-hidden="true" />Settings</button>
@@ -3211,6 +3348,18 @@ function GamePreferencesPanel({
       <label className="toggle-row">
         <input type="checkbox" checked={preferences.soundEnabled} onChange={(event) => onChange({ soundEnabled: event.target.checked })} />
         <span>Sound effects and background audio</span>
+      </label>
+      <label>
+        Music volume
+        <input
+          type="range"
+          min="0"
+          max="0.4"
+          step="0.01"
+          value={preferences.musicVolume}
+          onChange={(event) => onChange({ musicVolume: Number(event.target.value) })}
+        />
+        <small>{Math.round(preferences.musicVolume * 100)}% arena bed level. Music remains secondary to gameplay feedback.</small>
       </label>
       <label className="toggle-row">
         <input type="checkbox" checked={preferences.vibrationEnabled} onChange={(event) => onChange({ vibrationEnabled: event.target.checked })} />

@@ -4,6 +4,7 @@ export type GamePreferences = {
   arenaQuality: ArenaQuality;
   gamepadEnabled: boolean;
   soundEnabled: boolean;
+  musicVolume: number;
   vibrationEnabled: boolean;
 };
 
@@ -13,6 +14,7 @@ export const DEFAULT_GAME_PREFERENCES: GamePreferences = {
   arenaQuality: "auto",
   gamepadEnabled: true,
   soundEnabled: true,
+  musicVolume: 0.16,
   vibrationEnabled: true
 };
 
@@ -27,6 +29,7 @@ export const readGamePreferences = (): GamePreferences => {
         : DEFAULT_GAME_PREFERENCES.arenaQuality,
       gamepadEnabled: typeof stored.gamepadEnabled === "boolean" ? stored.gamepadEnabled : DEFAULT_GAME_PREFERENCES.gamepadEnabled,
       soundEnabled: typeof stored.soundEnabled === "boolean" ? stored.soundEnabled : DEFAULT_GAME_PREFERENCES.soundEnabled,
+      musicVolume: typeof stored.musicVolume === "number" ? Math.min(1, Math.max(0, stored.musicVolume)) : DEFAULT_GAME_PREFERENCES.musicVolume,
       vibrationEnabled: typeof stored.vibrationEnabled === "boolean" ? stored.vibrationEnabled : DEFAULT_GAME_PREFERENCES.vibrationEnabled
     };
   } catch {
