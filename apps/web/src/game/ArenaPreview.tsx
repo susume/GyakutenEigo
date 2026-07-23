@@ -391,6 +391,7 @@ export default function ArenaPreview({
     syncPlayersRef.current(session, currentPlayer);
   }, [session, currentPlayer]);
 
+  // Live session payloads replace array references, so only primitive scene-build inputs belong in this dependency list.
   useEffect(() => {
     const mount = mountRef.current;
     if (!mount) return;
@@ -1763,6 +1764,14 @@ export default function ArenaPreview({
       let lastDebugStatsAt = 0;
       let performanceWindowAt = performance.now();
       let lastSentPosition = localToServerPosition(playerPosition, yaw);
+      const forwardVector = new THREE.Vector3();
+      const rightVector = new THREE.Vector3();
+      const movementVector = new THREE.Vector3();
+      const nextPosition = new THREE.Vector3();
+      const axisPosition = new THREE.Vector3();
+      const bodyBox = new THREE.Box3();
+      const bodyMin = new THREE.Vector3();
+      const bodyMax = new THREE.Vector3();
       const maybeEmitPosition = (currentTime: number) => {
         if (currentTime - lastMoveEmitAt < 180) return;
         const nextPosition = localToServerPosition(playerPosition, yaw);
@@ -1777,10 +1786,9 @@ export default function ArenaPreview({
 
       const canOccupy = (next: THREE.Vector3, floorEyeHeight: number) => {
         const verticalBounds = getFpsBodyVerticalBounds(next.y, floorEyeHeight);
-        const bodyBox = new THREE.Box3(
-          new THREE.Vector3(next.x - PLAYER_RADIUS, verticalBounds.minY, next.z - PLAYER_RADIUS),
-          new THREE.Vector3(next.x + PLAYER_RADIUS, verticalBounds.maxY, next.z + PLAYER_RADIUS)
-        );
+        bodyMin.set(next.x - PLAYER_RADIUS, verticalBounds.minY, next.z - PLAYER_RADIUS);
+        bodyMax.set(next.x + PLAYER_RADIUS, verticalBounds.maxY, next.z + PLAYER_RADIUS);
+        bodyBox.set(bodyMin, bodyMax);
         return !coverBoxes.some((box) => box.intersectsBox(bodyBox) && !canFpsBodyClearObstacle(verticalBounds, box.max.y));
       };
 
@@ -1849,35 +1857,35 @@ export default function ArenaPreview({
         const gearSpeedMultiplier = getPlayerMoveSpeedMultiplier(currentPlayerRef.current ?? { gear: "starter_blaster" });
         const movementAudioMode: MovementAudioMode = crouching ? "crouch" : keys.has("Shift") ? "run" : "walk";
         const moveSpeed = (crouching ? CROUCH_SPEED : keys.has("Shift") ? RUN_SPEED : WALK_SPEED) * gearSpeedMultiplier;
-        const forward = new THREE.Vector3(-Math.sin(yaw), 0, -Math.cos(yaw));
-        const right = new THREE.Vector3(Math.cos(yaw), 0, -Math.sin(yaw));
-        const movement = new THREE.Vector3();
+        forwardVector.set(-Math.sin(yaw), 0, -Math.cos(yaw));
+        rightVector.set(Math.cos(yaw), 0, -Math.sin(yaw));
+        movementVector.set(0, 0, 0);
         const touchMove = touchMoveRef.current;
-        if (keys.has("KeyW")) movement.add(forward);
-        if (keys.has("KeyS")) movement.sub(forward);
-        if (keys.has("KeyD")) movement.add(right);
-        if (keys.has("KeyA")) movement.sub(right);
-        if (touchMove.forward > 0) movement.add(forward);
-        if (touchMove.forward < 0) movement.sub(forward);
-        if (touchMove.right > 0) movement.add(right);
-        if (touchMove.right < 0) movement.sub(right);
-        if (gamepadMove.forward > GAMEPAD_DEAD_ZONE) movement.add(forward);
-        if (gamepadMove.forward < -GAMEPAD_DEAD_ZONE) movement.sub(forward);
-        if (gamepadMove.right > GAMEPAD_DEAD_ZONE) movement.add(right);
-        if (gamepadMove.right < -GAMEPAD_DEAD_ZONE) movement.sub(right);
+        if (keys.has("KeyW")) movementVector.add(forwardVector);
+        if (keys.has("KeyS")) movementVector.sub(forwardVector);
+        if (keys.has("KeyD")) movementVector.add(rightVector);
+        if (keys.has("KeyA")) movementVector.sub(rightVector);
+        if (touchMove.forward > 0) movementVector.add(forwardVector);
+        if (touchMove.forward < 0) movementVector.sub(forwardVector);
+        if (touchMove.right > 0) movementVector.add(rightVector);
+        if (touchMove.right < 0) movementVector.sub(rightVector);
+        if (gamepadMove.forward > GAMEPAD_DEAD_ZONE) movementVector.add(forwardVector);
+        if (gamepadMove.forward < -GAMEPAD_DEAD_ZONE) movementVector.sub(forwardVector);
+        if (gamepadMove.right > GAMEPAD_DEAD_ZONE) movementVector.add(rightVector);
+        if (gamepadMove.right < -GAMEPAD_DEAD_ZONE) movementVector.sub(rightVector);
 
-        if (movement.lengthSq() > 0) {
+        if (movementVector.lengthSq() > 0) {
           if (wasGrounded) gameAudio.playMovementStep(movementAudioMode, currentTime, isIronJunction ? "metal" : "sand");
-          movement.normalize().multiplyScalar(moveSpeed * delta);
-          const next = playerPosition.clone().add(movement);
-          next.x = clamp(next.x, -ARENA_LIMIT_X + PLAYER_RADIUS, ARENA_LIMIT_X - PLAYER_RADIUS);
-          next.z = clamp(next.z, -ARENA_LIMIT_Z + PLAYER_RADIUS, ARENA_LIMIT_Z - PLAYER_RADIUS);
-          const tryX = playerPosition.clone();
-          tryX.x = next.x;
-          if (canOccupy(tryX, floorEyeHeight)) playerPosition.x = tryX.x;
-          const tryZ = playerPosition.clone();
-          tryZ.z = next.z;
-          if (canOccupy(tryZ, floorEyeHeight)) playerPosition.z = tryZ.z;
+          movementVector.normalize().multiplyScalar(moveSpeed * delta);
+          nextPosition.copy(playerPosition).add(movementVector);
+          nextPosition.x = clamp(nextPosition.x, -ARENA_LIMIT_X + PLAYER_RADIUS, ARENA_LIMIT_X - PLAYER_RADIUS);
+          nextPosition.z = clamp(nextPosition.z, -ARENA_LIMIT_Z + PLAYER_RADIUS, ARENA_LIMIT_Z - PLAYER_RADIUS);
+          axisPosition.copy(playerPosition);
+          axisPosition.x = nextPosition.x;
+          if (canOccupy(axisPosition, floorEyeHeight)) playerPosition.x = axisPosition.x;
+          axisPosition.copy(playerPosition);
+          axisPosition.z = nextPosition.z;
+          if (canOccupy(axisPosition, floorEyeHeight)) playerPosition.z = axisPosition.z;
         }
 
         if (fireHeld && hasAutoFireGear() && !inputPausedRef.current && !controlsDisabledRef.current) fire();
@@ -2059,7 +2067,7 @@ export default function ArenaPreview({
       renderer.dispose();
       mount.removeChild(renderer.domElement);
     };
-  }, [sceneSessionId, currentPlayerId, currentPlayerTeam, currentPlayer?.gear, currentPlayer?.weapon, currentPlayer?.perks, view, debugOverlay, activeQuality, gamepadEnabled, arenaMapId, session?.settings.gameMode, session?.flag?.state, session?.flag?.carrierId, session?.flag?.position.x, session?.flag?.position.z, loadDecalAsset]);
+  }, [sceneSessionId, currentPlayerId, currentPlayerTeam, currentPlayer?.gear, currentPlayer?.weapon, view, debugOverlay, activeQuality, gamepadEnabled, arenaMapId, session?.settings.gameMode, session?.flag?.state, session?.flag?.carrierId, session?.flag?.position.x, session?.flag?.position.z, loadDecalAsset]);
 
   const beginTouchMove = (event: ReactPointerEvent<HTMLButtonElement>) => {
     event.preventDefault();

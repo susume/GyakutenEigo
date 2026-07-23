@@ -328,6 +328,9 @@ class GameAudioController {
   private muted = false;
   private musicVolume = 0.16;
   private assetLoadPromise: Promise<void> | null = null;
+  private assetLoadScheduled = false;
+  private noiseBuffer: AudioBuffer | null = null;
+  private readonly assetBufferPromises = new Map<string, Promise<AudioBuffer | null>>();
   private readonly buffers = new Map<AudioSampleKey, AudioBuffer[]>();
   private readonly assetCursors = new Map<AudioSampleKey, number>();
   private readonly activeVoices = new Map<AudioSampleKey, number>();
@@ -338,7 +341,7 @@ class GameAudioController {
     try {
       const audio = this.ensureAudio();
       if (audio?.state === "suspended") void audio.resume();
-      if (audio) void this.loadAssets(audio);
+      if (audio) this.scheduleAssetLoad(audio);
       if (this.bgmActive) this.scheduleBgm();
     } catch {
       // Browsers may block audio until a trusted user gesture.
@@ -378,7 +381,7 @@ class GameAudioController {
       this.playSample(cue, buffers, spatial);
     } else {
       this.playTone(GAME_AUDIO_CUES[cue], spatial);
-      void this.loadAssets(audio);
+      this.scheduleAssetLoad(audio);
     }
     this.playCueAccent(cue, spatial);
   }
@@ -475,6 +478,7 @@ class GameAudioController {
       this.masterGain = this.audio.createGain();
       this.sfxGain = this.audio.createGain();
       this.musicGain = this.audio.createGain();
+      this.noiseBuffer = null;
       this.masterGain.gain.setValueAtTime(this.muted ? 0 : 0.72, this.audio.currentTime);
       this.sfxGain.gain.setValueAtTime(0.86, this.audio.currentTime);
       this.musicGain.gain.setValueAtTime(this.musicVolume, this.audio.currentTime);
@@ -485,24 +489,45 @@ class GameAudioController {
     return this.audio;
   }
 
+  private scheduleAssetLoad(audio: AudioContext) {
+    if (this.assetLoadPromise || this.assetLoadScheduled) return;
+    this.assetLoadScheduled = true;
+    const start = () => {
+      this.assetLoadScheduled = false;
+      void this.loadAssets(audio);
+    };
+    if (typeof window.requestIdleCallback === "function") {
+      window.requestIdleCallback(start, { timeout: 1200 });
+    } else {
+      window.setTimeout(start, 120);
+    }
+  }
+
   private loadAssets(audio: AudioContext) {
     if (this.assetLoadPromise) return this.assetLoadPromise;
     const entries = Object.entries(GAME_AUDIO_ASSETS) as [AudioSampleKey, SampleDefinition][];
     this.assetLoadPromise = Promise.all(entries.map(async ([cue, definition]) => {
-      const buffers: AudioBuffer[] = [];
-      for (const asset of definition.files) {
-        try {
-          const response = await fetch(file(asset), { cache: "force-cache" });
-          if (!response.ok) continue;
-          const data = await response.arrayBuffer();
-          buffers.push(await audio.decodeAudioData(data));
-        } catch {
-          // A single unsupported/cached asset should not block the rest.
-        }
-      }
+      const loaded = await Promise.all(definition.files.map((asset) => this.loadAssetBuffer(audio, asset)));
+      const buffers = loaded.filter((buffer): buffer is AudioBuffer => buffer !== null);
       if (buffers.length) this.buffers.set(cue, buffers);
     })).then(() => undefined).catch(() => undefined);
     return this.assetLoadPromise;
+  }
+
+  private loadAssetBuffer(audio: AudioContext, asset: string) {
+    const existing = this.assetBufferPromises.get(asset);
+    if (existing) return existing;
+    const loading = (async () => {
+      try {
+        const response = await fetch(file(asset), { cache: "force-cache" });
+        if (!response.ok) return null;
+        return await audio.decodeAudioData(await response.arrayBuffer());
+      } catch {
+        return null;
+      }
+    })();
+    this.assetBufferPromises.set(asset, loading);
+    return loading;
   }
 
   private playSample(cue: AudioSampleKey, buffers: AudioBuffer[], spatial: SpatialAudioOptions, playbackRateMultiplier = 1) {
@@ -614,17 +639,18 @@ class GameAudioController {
 
   private playNoiseWhoosh(start: number, end: number, peakGain: number) {
     if (!this.audio || !this.sfxGain) return;
-    const length = Math.max(1, Math.floor(this.audio.sampleRate * Math.max(0.05, end - start)));
-    const buffer = this.audio.createBuffer(1, length, this.audio.sampleRate);
-    const data = buffer.getChannelData(0);
-    for (let index = 0; index < length; index += 1) {
-      const fade = 1 - index / length;
-      data[index] = (Math.random() * 2 - 1) * fade;
+    if (!this.noiseBuffer) {
+      this.noiseBuffer = this.audio.createBuffer(1, 4096, this.audio.sampleRate);
+      const data = this.noiseBuffer.getChannelData(0);
+      for (let index = 0; index < data.length; index += 1) {
+        data[index] = Math.random() * 2 - 1;
+      }
     }
     const source = this.audio.createBufferSource();
     const filter = this.audio.createBiquadFilter();
     const gain = this.audio.createGain();
-    source.buffer = buffer;
+    source.buffer = this.noiseBuffer;
+    source.loop = true;
     filter.type = "lowpass";
     filter.frequency.setValueAtTime(520, start);
     filter.frequency.exponentialRampToValueAtTime(120, end);
