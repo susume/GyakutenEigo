@@ -22,6 +22,19 @@ const BODY_MATERIALS = {
 
 const sharedBodyGeometries = new Map<string, THREE.BufferGeometry>();
 const sharedBodyMaterials = new Map<string, THREE.MeshStandardMaterial>();
+const sharedBodyReferences = new Map<string, number>();
+const SHARED_BODY_CACHE_LIMIT = 64;
+
+const evictUnusedSharedBody = () => {
+  if (sharedBodyGeometries.size < SHARED_BODY_CACHE_LIMIT) return;
+  const unusedKey = [...sharedBodyGeometries.keys()].find((key) => (sharedBodyReferences.get(key) ?? 0) === 0);
+  if (!unusedKey) return;
+  sharedBodyGeometries.get(unusedKey)?.dispose();
+  sharedBodyMaterials.get(unusedKey)?.dispose();
+  sharedBodyGeometries.delete(unusedKey);
+  sharedBodyMaterials.delete(unusedKey);
+  sharedBodyReferences.delete(unusedKey);
+};
 
 const addRigidSkinning = (geometry: THREE.BufferGeometry, boneIndex: number) => {
   const count = geometry.getAttribute("position").count;
@@ -54,11 +67,13 @@ const part = (
   return addRigidSkinning(next, boneIndex);
 };
 
-const buildSharedBodyGeometry = (palette: THREE.Color[]) => {
+const buildSharedBodyGeometry = (palette: THREE.Color[], shoeStyle: CharacterAppearance["customization"]["shoeStyle"]) => {
   const box = () => new THREE.BoxGeometry(1, 1, 1);
   const torso = () => new THREE.CylinderGeometry(0.42, 0.34, 0.78, 8);
   const limb = () => new THREE.CylinderGeometry(0.13, 0.105, 0.62, 8);
   const joint = () => new THREE.SphereGeometry(0.14, 8, 6);
+  const shoeY = shoeStyle === "trainers" ? -0.06 : -0.02;
+  const shoeScale: [number, number, number] = shoeStyle === "trainers" ? [0.29, 0.12, 0.39] : [0.27, 0.16, 0.36];
   const pieces = [
     part(torso(), 1, BODY_MATERIALS.uniform, [0, 1.2, 0], [1, 1, 0.82]),
     part(torso(), 1, BODY_MATERIALS.armor, [0, 1.22, -0.055], [1.04, 0.84, 0.72]),
@@ -79,11 +94,11 @@ const buildSharedBodyGeometry = (palette: THREE.Color[]) => {
     part(joint(), 4, BODY_MATERIALS.dark, [0.48, 0.66, -0.04], [0.85, 0.85, 0.85]),
     part(limb(), 5, BODY_MATERIALS.uniform, [-0.2, 0.36, 0], [1.08, 1.02, 1.08]),
     part(box(), 5, BODY_MATERIALS.armor, [-0.2, 0.17, -0.02], [0.2, 0.2, 0.2]),
-    part(box(), 5, BODY_MATERIALS.dark, [-0.2, -0.02, -0.08], [0.27, 0.16, 0.36], [0.04, 0, 0]),
+    part(box(), 5, BODY_MATERIALS.dark, [-0.2, shoeY, -0.08], shoeScale, [0.04, 0, 0]),
     part(box(), 5, BODY_MATERIALS.accent, [-0.2, -0.08, -0.25], [0.28, 0.045, 0.16]),
     part(limb(), 6, BODY_MATERIALS.uniform, [0.2, 0.36, 0], [1.08, 1.02, 1.08]),
     part(box(), 6, BODY_MATERIALS.armor, [0.2, 0.17, -0.02], [0.2, 0.2, 0.2]),
-    part(box(), 6, BODY_MATERIALS.dark, [0.2, -0.02, -0.08], [0.27, 0.16, 0.36], [0.04, 0, 0]),
+    part(box(), 6, BODY_MATERIALS.dark, [0.2, shoeY, -0.08], shoeScale, [0.04, 0, 0]),
     part(box(), 6, BODY_MATERIALS.accent, [0.2, -0.08, -0.25], [0.28, 0.045, 0.16])
   ];
   pieces.forEach((piece) => {
@@ -144,10 +159,11 @@ export const createSharedSkinnedStudent = (
     materials.visor,
     materials.skin
   ];
-  const paletteKey = materialArray.map((material) => `#${material.color.getHexString()}`).join("-");
+  const paletteKey = `${materialArray.map((material) => `#${material.color.getHexString()}`).join("-")}-${appearance.customization.shoeStyle}`;
   let geometry = sharedBodyGeometries.get(paletteKey);
   if (!geometry) {
-    geometry = buildSharedBodyGeometry(materialArray.map((material) => material.color));
+    evictUnusedSharedBody();
+    geometry = buildSharedBodyGeometry(materialArray.map((material) => material.color), appearance.customization.shoeStyle);
     sharedBodyGeometries.set(paletteKey, geometry);
   }
   let bodyMaterial = sharedBodyMaterials.get(paletteKey);
@@ -166,8 +182,16 @@ export const createSharedSkinnedStudent = (
   mesh.name = `student_athlete_${appearance.variant}`;
   mesh.castShadow = true;
   mesh.receiveShadow = true;
+  mesh.userData.preserveSharedResources = true;
   mesh.add(bones.root);
   mesh.bind(new THREE.Skeleton(Object.values(bones)));
   mesh.frustumCulled = false;
+  sharedBodyReferences.set(paletteKey, (sharedBodyReferences.get(paletteKey) ?? 0) + 1);
+  let released = false;
+  mesh.userData.releaseSharedStudentBody = () => {
+    if (released) return;
+    released = true;
+    sharedBodyReferences.set(paletteKey, Math.max(0, (sharedBodyReferences.get(paletteKey) ?? 1) - 1));
+  };
   return { mesh, bones };
 };

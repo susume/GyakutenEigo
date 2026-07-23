@@ -40,12 +40,15 @@ import {
   RESPAWN_CORRECT_ANSWERS_REQUIRED,
   getRoundRemainingSeconds,
   isRoundBuyPhase,
+  sanitizePlayerAppearance,
+  type CharacterCustomizationSettings,
   type ArenaMapId,
   type Choice,
   type GameAnnouncement,
   type GameEvent,
   type GameSession,
   type PlayerSession,
+  type PlayerAppearance,
   type PublicQuestion,
   type QuizSet,
   type SessionReport,
@@ -53,7 +56,7 @@ import {
   type Team,
   type TeacherUser
 } from "@quizstrike/shared";
-import { ApiError, authApi, getApiUrl, studentApi, teacherApi } from "./api/client";
+import { ApiError, authApi, fetchDecalAsset, getApiUrl, studentApi, teacherApi } from "./api/client";
 import { buildStudentJoinUrl, getJoinCodeFromSearch, modeForRoute, normalizeRoutePath, type AppMode } from "./navigation";
 import { groupScoreboardRows } from "./scoreboardGroups";
 import { getModeScoreSummary, getReadyRoomTitle, getSessionResultText, getZombieCounts } from "./sessionPresentation";
@@ -61,6 +64,7 @@ import { formatStudentJoinError } from "./studentJoinErrors";
 import { getShopShortcut, getShopShortcutKey } from "./shopShortcuts";
 import { sendStudentCommand } from "./studentCommandTransport";
 import { StatusMessages } from "./ui/StatusMessages";
+import TeacherDecalGallery from "./ui/TeacherDecalGallery";
 import { ARENA_MAPS, getArenaMap } from "./game/arenaMaps";
 import {
   CHARACTER_STRESS_COUNTS,
@@ -79,6 +83,7 @@ import {
 } from "./studentCombatFeedback";
 
 const ArenaPreview = lazy(() => import("./game/ArenaPreview"));
+const CharacterCreator = lazy(() => import("./ui/CharacterCreator"));
 
 type DashboardPayload = {
   classes: Array<{ id: string; name: string; description?: string; createdAt: string }>;
@@ -103,6 +108,7 @@ const emptyQuestion = {
 const choices: Choice[] = ["A", "B", "C", "D"];
 const publicAsset = (path: string) => `${import.meta.env.BASE_URL}${path.replace(/^\//, "")}`;
 const STUDENT_SESSION_STORAGE_KEY = "quizstrike_student_session";
+const STUDENT_APPEARANCE_STORAGE_KEY = "quizstrike_student_appearance_v1";
 
 const readStoredStudentSession = (): StoredStudentSession | null => {
   try {
@@ -118,6 +124,15 @@ const readStoredStudentSession = (): StoredStudentSession | null => {
 };
 
 const clearStoredStudentSession = () => localStorage.removeItem(STUDENT_SESSION_STORAGE_KEY);
+
+const readStoredAppearance = (): PlayerAppearance | null => {
+  try {
+    const raw = localStorage.getItem(STUDENT_APPEARANCE_STORAGE_KEY);
+    return raw ? sanitizePlayerAppearance(JSON.parse(raw) as Partial<PlayerAppearance>) : null;
+  } catch {
+    return null;
+  }
+};
 
 type QuestionDraft = typeof emptyQuestion;
 type ArenaPositionPayload = { x: number; z: number; y?: number; facing: number; scoped?: boolean; zoomLevel?: number };
@@ -1643,6 +1658,65 @@ function SessionManager({
     }
   };
 
+  const updateLiveCustomization = async (next: CharacterCustomizationSettings) => {
+    if (!selectedSession) return;
+    status.clear();
+    try {
+      const payload = await teacherApi.updateCustomization(selectedSession.sessionCode, next) as { session: GameSession };
+      setSelectedSession(payload.session);
+      status.setMessage("Character rules updated.");
+    } catch (err) {
+      status.report(err);
+    }
+  };
+
+  const clearPlayerAppearance = async (playerId: string) => {
+    if (!selectedSession) return;
+    try {
+      const payload = await teacherApi.clearPlayerAppearance(selectedSession.sessionCode, playerId) as { session: GameSession };
+      setSelectedSession(payload.session);
+      status.setMessage("Player appearance reset.");
+    } catch (err) {
+      status.report(err);
+    }
+  };
+
+  const resetAllAppearances = async () => {
+    if (!selectedSession) return;
+    try {
+      const payload = await teacherApi.resetAppearances(selectedSession.sessionCode) as { session: GameSession };
+      setSelectedSession(payload.session);
+      status.setMessage("All player appearances reset.");
+    } catch (err) {
+      status.report(err);
+    }
+  };
+
+  const removePlayerDecal = async (playerId: string) => {
+    if (!selectedSession) return;
+    try {
+      const payload = await teacherApi.removePlayerDecal(selectedSession.sessionCode, playerId) as { session: GameSession };
+      setSelectedSession(payload.session);
+      status.setMessage("Player sticker removed.");
+    } catch (err) {
+      status.report(err);
+    }
+  };
+
+  const removeDecalAsset = async (assetId: string) => {
+    if (!selectedSession) return;
+    const payload = await teacherApi.removeDecalAsset(selectedSession.sessionCode, assetId) as { session: GameSession };
+    setSelectedSession(payload.session);
+    status.setMessage("Sticker removed from the room.");
+  };
+
+  const loadTeacherDecal = useCallback(
+    (assetId: string) => selectedSession
+      ? fetchDecalAsset(selectedSession.sessionCode, assetId)
+      : Promise.reject(new Error("No active room.")),
+    [selectedSession?.sessionCode]
+  );
+
   const copyStudentJoinLink = async () => {
     if (!studentJoinLink) return;
     try {
@@ -1799,6 +1873,15 @@ function SessionManager({
           />
           Students out for the round can earn money
         </label>
+        <fieldset className="customization-settings">
+          <legend>Lobby Characters</legend>
+          <p>School-safe presets are always available. Image uploads start off.</p>
+          <label className="toggle-row"><input type="checkbox" checked={settings.characterCustomization.enabled} onChange={(event) => setSettings({ ...settings, characterCustomization: { ...settings.characterCustomization, enabled: event.target.checked } })} />Enable character creator</label>
+          <label className="toggle-row"><input type="checkbox" checked={settings.characterCustomization.uploadsEnabled} disabled={!settings.characterCustomization.enabled} onChange={(event) => setSettings({ ...settings, characterCustomization: { ...settings.characterCustomization, uploadsEnabled: event.target.checked } })} />Allow processed artwork stickers</label>
+          <label className="toggle-row"><input type="checkbox" checked={settings.characterCustomization.presetsOnly} disabled={!settings.characterCustomization.enabled} onChange={(event) => setSettings({ ...settings, characterCustomization: { ...settings.characterCustomization, presetsOnly: event.target.checked } })} />Approved presets only</label>
+          <label className="toggle-row"><input type="checkbox" checked={settings.characterCustomization.persistAcrossSessions} disabled={!settings.characterCustomization.enabled} onChange={(event) => setSettings({ ...settings, characterCustomization: { ...settings.characterCustomization, persistAcrossSessions: event.target.checked } })} />Let this browser remember non-image choices</label>
+          <label className="toggle-row"><input type="checkbox" checked={false} disabled />AI designs (secure provider not configured)</label>
+        </fieldset>
         {hasInvalidSettings && <p className="error-text">Check the number fields before starting a game.</p>}
         <button className="primary" type="submit" disabled={!shouldShowSetup || !quizSetId || hasInvalidSettings || isCreatingSession}>
           <Play size={18} aria-hidden="true" />
@@ -1899,10 +1982,33 @@ function SessionManager({
                 {isAddingBot ? "Working..." : "Add Bot"}
               </button>
             </div>
+            <section className="teacher-customization-controls" aria-label="Character customization controls">
+                <div><h3>Lobby Characters</h3><p>Uploads are room-only and disabled unless you approve them.</p></div>
+                <div className="teacher-customization-toggles">
+                  <label className="toggle-row"><input type="checkbox" checked={selectedSession.settings.characterCustomization.enabled} disabled={selectedSession.status !== "waiting"} onChange={(event) => void updateLiveCustomization({ ...selectedSession.settings.characterCustomization, enabled: event.target.checked })} />Creator enabled</label>
+                  <label className="toggle-row"><input type="checkbox" checked={selectedSession.settings.characterCustomization.uploadsEnabled} disabled={selectedSession.status !== "waiting" || !selectedSession.settings.characterCustomization.enabled} onChange={(event) => void updateLiveCustomization({ ...selectedSession.settings.characterCustomization, uploadsEnabled: event.target.checked })} />Artwork uploads</label>
+                  <label className="toggle-row"><input type="checkbox" checked={selectedSession.settings.characterCustomization.presetsOnly} disabled={selectedSession.status !== "waiting" || !selectedSession.settings.characterCustomization.enabled} onChange={(event) => void updateLiveCustomization({ ...selectedSession.settings.characterCustomization, presetsOnly: event.target.checked })} />Presets only</label>
+                  <label className="toggle-row"><input type="checkbox" checked={selectedSession.settings.characterCustomization.persistAcrossSessions} disabled={selectedSession.status !== "waiting" || !selectedSession.settings.characterCustomization.enabled} onChange={(event) => void updateLiveCustomization({ ...selectedSession.settings.characterCustomization, persistAcrossSessions: event.target.checked })} />Remember choices</label>
+                  <label className="toggle-row"><input type="checkbox" checked={false} disabled />AI unavailable</label>
+                </div>
+                <button type="button" onClick={() => void resetAllAppearances()}>Reset Everyone</button>
+                <div className="appearance-moderation-list">
+                  {selectedSession.players.filter((item) => !item.isBot).map((item) => (
+                    <div key={item.id}><span>{item.nickname}{item.appearance?.decalAssetId ? " · sticker submitted" : ""}</span><span>{item.appearance?.decalAssetId && <button type="button" onClick={() => void removePlayerDecal(item.id)}>Remove Sticker</button>}<button type="button" onClick={() => void clearPlayerAppearance(item.id)}>Clear Player</button></span></div>
+                  ))}
+                </div>
+                <TeacherDecalGallery
+                  sessionCode={selectedSession.sessionCode}
+                  refreshKey={selectedSession.players.map((item) => `${item.id}:${item.appearance?.decalAssetId ?? "none"}`).join("|")}
+                  loadAsset={loadTeacherDecal}
+                  onRemove={removeDecalAsset}
+                />
+            </section>
             <Suspense fallback={<ArenaLoading label="Loading live arena" />}>
               <ArenaPreview
                 key={`${selectedSession.id}:${selectedSession.startedAt ?? "waiting"}:overview`}
                 session={selectedSession}
+                loadDecalAsset={loadTeacherDecal}
               />
             </Suspense>
             <Scoreboard players={selectedSession.players} gameMode={selectedSession.settings.gameMode} />
@@ -2664,6 +2770,21 @@ function StudentExperience({ onExit }: { onExit: () => void }) {
         playerId: payload.player.id,
         playerToken: payload.playerToken
       } satisfies StoredStudentSession));
+      const rememberedAppearance = payload.session.settings.characterCustomization.persistAcrossSessions
+        ? readStoredAppearance()
+        : null;
+      if (rememberedAppearance && payload.session.settings.characterCustomization.enabled) {
+        void studentApi.saveAppearance(
+          payload.session.sessionCode,
+          payload.player.id,
+          payload.playerToken,
+          rememberedAppearance
+        ).then((saved) => {
+          const result = saved as { session: GameSession; player: PlayerSession };
+          setSession(result.session);
+          setPlayer(result.player);
+        }).catch(() => undefined);
+      }
       setFeedback("Joined. Click the arena to aim, or use the touch controls on smaller screens.");
       gameAudio.playEvent("room_joined");
     } catch (err) {
@@ -2881,6 +3002,33 @@ function StudentExperience({ onExit }: { onExit: () => void }) {
     }
   };
 
+  const savePlayerAppearance = async (appearance: PlayerAppearance) => {
+    if (!session || !player || !playerToken) throw new Error("Reconnect before saving your character.");
+    const payload = await studentApi.saveAppearance(session.sessionCode, player.id, playerToken, appearance) as {
+      session: GameSession;
+      player: PlayerSession;
+    };
+    setSession(payload.session);
+    setPlayer(payload.player);
+    if (session.settings.characterCustomization.persistAcrossSessions) {
+      const stored = { ...appearance, decalAssetId: undefined };
+      localStorage.setItem(STUDENT_APPEARANCE_STORAGE_KEY, JSON.stringify(stored));
+    }
+  };
+
+  const uploadPlayerDecal = async (blob: Blob) => {
+    if (!session || !player || !playerToken) throw new Error("Reconnect before uploading a sticker.");
+    const payload = await studentApi.uploadDecal(session.sessionCode, player.id, playerToken, blob) as { assetId: string };
+    return payload.assetId;
+  };
+
+  const loadStudentDecal = useCallback(
+    (assetId: string) => session
+      ? fetchDecalAsset(session.sessionCode, assetId, playerToken)
+      : Promise.reject(new Error("No active room.")),
+    [session?.sessionCode, playerToken]
+  );
+
   if (!session || !player) {
     if (isRestoringStudentSession) {
       return (
@@ -2983,22 +3131,27 @@ function StudentExperience({ onExit }: { onExit: () => void }) {
           <button type="button" onClick={() => { setSettingsOpen(true); setQuizOpen(false); setBuyOpen(false); setScoreboardOpen(false); }}><Settings size={16} aria-hidden="true" />Settings</button>
           <button type="button" onClick={onExit}>Exit Game</button>
         </div>
-        <Suspense fallback={<ArenaLoading />}>
-          <ArenaPreview
-            key={`${session.id}:${session.startedAt ?? "waiting"}:${player.id}`}
-            session={session}
-            currentPlayer={arenaPlayer}
-            view="fps"
-            suppressHint
-            quality={gamePreferences.arenaQuality}
-            gamepadEnabled={gamePreferences.gamepadEnabled}
-            controlsDisabled={!roundActive || !player.isAlive}
-            inputPaused={gameplayInputPaused}
-            onMove={roundActive && player.isAlive ? sendArenaPosition : undefined}
-            onFire={roundActive && player.isAlive ? sendArenaFire : undefined}
-            onInteract={roundActive && player.isAlive ? sendFlagAction : undefined}
-          />
-        </Suspense>
+        {session.status === "waiting" ? (
+          <div className="arena-waiting-surface" aria-hidden="true" />
+        ) : (
+          <Suspense fallback={<ArenaLoading />}>
+            <ArenaPreview
+              key={`${session.id}:${session.startedAt ?? "waiting"}:${player.id}`}
+              session={session}
+              currentPlayer={arenaPlayer}
+              view="fps"
+              suppressHint
+              quality={gamePreferences.arenaQuality}
+              gamepadEnabled={gamePreferences.gamepadEnabled}
+              controlsDisabled={!roundActive || !player.isAlive}
+              inputPaused={gameplayInputPaused}
+              onMove={roundActive && player.isAlive ? sendArenaPosition : undefined}
+              onFire={roundActive && player.isAlive ? sendArenaFire : undefined}
+              onInteract={roundActive && player.isAlive ? sendFlagAction : undefined}
+              loadDecalAsset={loadStudentDecal}
+            />
+          </Suspense>
+        )}
         <div className={roundCountdownClassName} role="timer" aria-label={`Round time remaining ${roundTimeLabel}`}>
           <Timer size={18} aria-hidden="true" />
           <span>Round Timer</span>
@@ -3125,6 +3278,17 @@ function StudentExperience({ onExit }: { onExit: () => void }) {
                   <span>{session.players.length} joined</span>
                   <span>Top learner: {topLearner?.nickname ?? "not yet"}</span>
                 </div>
+                <Suspense fallback={<ArenaLoading label="Loading character creator" />}>
+                  <CharacterCreator
+                    appearance={player.appearance}
+                    team={player.team}
+                    policy={session.settings.characterCustomization}
+                    disabled={session.status !== "waiting" || isSocketReconnecting}
+                    onSave={savePlayerAppearance}
+                    onUploadDecal={uploadPlayerDecal}
+                    loadDecalAsset={loadStudentDecal}
+                  />
+                </Suspense>
               </div>
             )}
             {roundEnded && (

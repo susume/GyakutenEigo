@@ -1,5 +1,5 @@
 import * as THREE from "three";
-import type { Team } from "@quizstrike/shared";
+import type { PlayerAppearance, Team } from "@quizstrike/shared";
 import { resolveCharacterAppearance, type CharacterAppearance } from "./CharacterAppearance.js";
 import { createBackpack, createWeaponSet, type CharacterMaterials } from "./CharacterEquipment.js";
 import { CharacterModel } from "./CharacterModel.js";
@@ -9,6 +9,10 @@ export interface FirstPersonViewModel {
   root: THREE.Group;
   weapon: THREE.Object3D;
   muzzle: THREE.Object3D;
+}
+
+export interface CharacterFactoryOptions {
+  loadDecalTexture?: (assetId: string) => Promise<THREE.Texture | null>;
 }
 
 const CHARACTER_VISUAL_SCALE = 2.45;
@@ -29,7 +33,23 @@ export class CharacterFactory {
   private readonly limbGeometry = new THREE.CylinderGeometry(0.13, 0.105, 0.62, 8);
   private readonly jointGeometry = new THREE.SphereGeometry(0.14, 8, 6);
   private readonly shadowGeometry = new THREE.CircleGeometry(0.52, 16);
+  private readonly roundEyewearGeometry = new THREE.TorusGeometry(0.105, 0.026, 6, 12);
   private readonly materialCache = new Map<string, THREE.MeshStandardMaterial>();
+
+  constructor(private readonly options: CharacterFactoryOptions = {}) {}
+
+  dispose() {
+    this.boxGeometry.dispose();
+    this.headGeometry.dispose();
+    this.helmetGeometry.dispose();
+    this.torsoGeometry.dispose();
+    this.limbGeometry.dispose();
+    this.jointGeometry.dispose();
+    this.shadowGeometry.dispose();
+    this.roundEyewearGeometry.dispose();
+    this.materialCache.forEach((material) => material.dispose());
+    this.materialCache.clear();
+  }
 
   private material(color: string, roughness = 0.82, metalness = 0.03) {
     const key = `${color}-${roughness}-${metalness}`;
@@ -48,7 +68,8 @@ export class CharacterFactory {
       accent: this.material(appearance.palette.accent, 0.62, 0.05),
       dark: this.material(appearance.palette.dark, 0.8, 0.06),
       visor: this.material(appearance.palette.visor, 0.38, 0.12),
-      skin: this.material(appearance.palette.skin, 0.78)
+      skin: this.material(appearance.palette.skin, 0.78),
+      backpack: this.material(appearance.customization.backpackColor, 0.9)
     };
   }
 
@@ -87,7 +108,7 @@ export class CharacterFactory {
     return mesh;
   }
 
-  createCharacter(input: { playerId: string; team: Team; gear?: string }) {
+  createCharacter(input: { playerId: string; team: Team; gear?: string; appearance?: PlayerAppearance }) {
     const appearance = resolveCharacterAppearance(input);
     const materials = this.materialsFor(appearance);
     const root = new THREE.Group();
@@ -103,6 +124,7 @@ export class CharacterFactory {
     );
     contactShadow.rotation.x = -Math.PI / 2;
     contactShadow.position.y = 0.015;
+    contactShadow.userData.disposeWithCharacterMaterial = true;
     root.add(contactShadow);
     const athlete = createSharedSkinnedStudent(appearance, materials);
     root.add(athlete.mesh);
@@ -111,13 +133,24 @@ export class CharacterFactory {
     // Small silhouette accessories remain bone-attached so every class shares the same
     // body skin and animation rig without losing readable role identity.
     if (appearance.silhouette.helmet === "hood") {
-      this.addShape(head, new THREE.TorusGeometry(0.38, 0.085, 7, 14), materials.cloth, [0, 0, 0.04], [1, 1.18, 1], [Math.PI / 2, 0, 0]);
+      this.addShape(head, new THREE.TorusGeometry(0.38, 0.085, 7, 14), materials.cloth, [0, 0, 0.04], [1, 1.18, 1], [Math.PI / 2, 0, 0]).userData.disposeWithCharacterGeometry = true;
     }
     if (appearance.silhouette.helmet === "ridge") {
-      this.addShape(head, new THREE.ConeGeometry(0.16, 0.36, 7), materials.dark, [0, 0.29, 0.05], [1, 1, 1], [0.08, 0, -0.08]);
+      this.addShape(head, new THREE.ConeGeometry(0.16, 0.36, 7), materials.dark, [0, 0.29, 0.05], [1, 1, 1], [0.08, 0, -0.08]).userData.disposeWithCharacterGeometry = true;
     }
     if (appearance.silhouette.helmet === "headset") {
-      this.addShape(head, new THREE.TorusGeometry(0.37, 0.045, 6, 12, Math.PI), materials.dark, [0, 0.06, 0.02], [1, 1.1, 1], [0, 0, Math.PI / 2]);
+      this.addShape(head, new THREE.TorusGeometry(0.37, 0.045, 6, 12, Math.PI), materials.dark, [0, 0.06, 0.02], [1, 1.1, 1], [0, 0, Math.PI / 2]).userData.disposeWithCharacterGeometry = true;
+    }
+    if (appearance.customization.eyewearStyle !== "none") {
+      const eyewearMaterial = this.material(appearance.customization.eyewearColor, 0.42, 0.12);
+      const lensGeometry = appearance.customization.eyewearStyle === "goggles" ? this.boxGeometry : this.roundEyewearGeometry;
+      const lensScale: [number, number, number] = appearance.customization.eyewearStyle === "goggles"
+        ? [0.23, 0.11, 0.035]
+        : [1, 1, 1];
+      for (const x of [-0.13, 0.13]) {
+        this.addShape(head, lensGeometry, eyewearMaterial, [x, 0, -0.35], lensScale, [0, 0, 0]);
+      }
+      this.addShape(head, this.boxGeometry, eyewearMaterial, [0, 0, -0.355], [0.08, 0.025, 0.02]);
     }
 
     const { weapon, muzzle } = createWeaponSet(materials, this.boxGeometry, input.gear);
@@ -130,6 +163,29 @@ export class CharacterFactory {
     if (backpack) {
       backpack.position.set(0, 1.16, 0.28);
       root.add(backpack);
+    }
+
+    if (appearance.customization.decalAssetId && this.options.loadDecalTexture) {
+      const decalMaterial = new THREE.MeshBasicMaterial({ transparent: true, depthWrite: false, side: THREE.DoubleSide });
+      const decal = new THREE.Mesh(new THREE.PlaneGeometry(0.32, 0.32), decalMaterial);
+      decal.position.set(0, 1.28, -0.385);
+      decal.rotation.y = Math.PI;
+      decal.visible = false;
+      decal.userData.ownedDecalMaterial = true;
+      decal.userData.disposeWithCharacterGeometry = true;
+      root.add(decal);
+      void this.options.loadDecalTexture(appearance.customization.decalAssetId).then((texture) => {
+        if (!texture) return;
+        if (root.userData.disposed) {
+          texture.dispose();
+          return;
+        }
+        texture.colorSpace = THREE.SRGBColorSpace;
+        texture.anisotropy = 2;
+        decalMaterial.map = texture;
+        decalMaterial.needsUpdate = true;
+        decal.visible = true;
+      }).catch(() => undefined);
     }
 
     return new CharacterModel(appearance, {

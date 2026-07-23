@@ -1,7 +1,7 @@
 import "dotenv/config";
 import bcrypt from "bcryptjs";
 import cors from "cors";
-import express, { type Request, type Response } from "express";
+import express, { type NextFunction, type Request, type Response } from "express";
 import jwt from "jsonwebtoken";
 import { Prisma, PrismaClient } from "@prisma/client";
 import { createServer } from "node:http";
@@ -9,7 +9,12 @@ import { randomUUID } from "node:crypto";
 import { Server, type Socket } from "socket.io";
 import { resolveClientOrigins } from "./origins.js";
 import { getPausedRoundAction, planRoundConclusion } from "./roundFlow.js";
+import { inspectProcessedDecal } from "./appearanceSecurity.js";
+import { DecalStore, type StoredDecalMime } from "./decalStore.js";
 import {
+  APPEARANCE_UPDATE_COOLDOWN_MS,
+  DECAL_MAX_PROCESSED_BYTES,
+  DEFAULT_PLAYER_APPEARANCE,
   clampArenaPosition,
   ARENA_SCALE,
   DEFAULT_PLAYER_HEALTH,
@@ -38,6 +43,7 @@ import {
   isMainRoundAnswer,
   isRoundActive,
   isRoundBuyPhase,
+  isApprovedAppearancePreset,
   createInitialFlagState,
   randomizeBalancedTeams,
   resolveAnswerReward,
@@ -59,6 +65,9 @@ import {
   resolveTagAction,
   resolveZombieConversion,
   sanitizeSessionSettings,
+  sanitizePlayerAppearance,
+  sanitizeCharacterCustomizationSettings,
+  getPlayerAppearanceError,
   selectInitialZombies,
   type AnswerLog,
   type Choice,
@@ -67,6 +76,7 @@ import {
   type GameAnnouncement,
   type GameEvent,
   type PlayerSession,
+  type PlayerAppearance,
   type PublicQuestion,
   type Question,
   type QuizResult,
@@ -85,8 +95,8 @@ interface AuthedRequest extends Request {
   user?: TeacherUser;
 }
 
-const app = express();
-const server = createServer(app);
+export const app = express();
+export const server = createServer(app);
 const port = Number(process.env.PORT ?? 4000);
 const isProduction = process.env.NODE_ENV === "production";
 const jwtSecret = process.env.JWT_SECRET ?? "local-dev-only-change-me";
@@ -110,7 +120,7 @@ if (process.env.TRUST_PROXY === "true") {
   app.set("trust proxy", 1);
 }
 
-const io = new Server(server, {
+export const io = new Server(server, {
   cors: { origin: corsOrigin, credentials: true, maxAge: 86_400 }
 });
 
@@ -127,8 +137,16 @@ const playerMoveTimestamps = new Map<string, number>();
 const playerNextFireAt = new Map<string, number>();
 const botRespawnAt = new Map<string, number>();
 const botNextAttackAt = new Map<string, number>();
+const appearanceUpdateTimestamps = new Map<string, number>();
 const playerSockets = new Map<string, Set<string>>();
 const playerDisconnectTimers = new Map<string, ReturnType<typeof setTimeout>>();
+
+const decalStore = new DecalStore();
+const decalUploadTimestamps = new Map<string, number[]>();
+// The provider boundary is documented in the web package, but no moderated server
+// adapter ships with this build. Keep the policy fail-closed even if an unrelated
+// environment variable is present.
+const aiSkinProviderConfigured = false;
 
 type SocketPlayerBinding = { sessionCode: string; playerId: string };
 const playerSocketKey = (sessionCode: string, playerId: string) => `${sessionCode}:${playerId}`;
@@ -175,7 +193,17 @@ const hydrateRuntimeState = async () => {
   for (const user of savedUsers) if (user?.id) users.set(user.id, user);
   for (const klass of savedClasses) if (klass?.id) classes.set(klass.id, klass);
   for (const quiz of savedQuizSets) if (quiz?.id) quizSets.set(quiz.id, quiz);
-  for (const session of savedSessions) if (session?.id) sessions.set(session.id, session);
+  for (const session of savedSessions) {
+    if (!session?.id) continue;
+    session.settings = sanitizeSessionSettings(session.settings);
+    session.players = Array.isArray(session.players)
+      ? session.players.map((player) => ({
+          ...player,
+          appearance: { ...sanitizePlayerAppearance(player.appearance), decalAssetId: undefined }
+        }))
+      : [];
+    sessions.set(session.id, session);
+  }
   answers.push(...savedAnswers.filter((answer) => answer?.id));
 
   console.log(`Restored ${users.size} teachers, ${quizSets.size} quiz sets, and ${sessions.size} sessions from PostgreSQL.`);
@@ -243,6 +271,7 @@ const ROUND_START_ANNOUNCEMENT_MS = 2500;
 const GAME_OVER_ANNOUNCEMENT_MS = 7000;
 
 app.use(cors({ origin: corsOrigin, credentials: true, maxAge: 86_400 }));
+app.use("/api/sessions/:code/players/:playerId/decals", express.raw({ type: ["image/png", "image/webp"], limit: DECAL_MAX_PROCESSED_BYTES }));
 app.use(express.json({ limit: "1mb" }));
 
 const now = () => new Date().toISOString();
@@ -308,7 +337,11 @@ const generateSessionCode = () => {
   return code;
 };
 
-const createDefaultSettings = (input: Partial<SessionSettings> = {}): SessionSettings => sanitizeSessionSettings(input);
+const createDefaultSettings = (input: Partial<SessionSettings> = {}): SessionSettings => {
+  const settings = sanitizeSessionSettings(input);
+  if (!aiSkinProviderConfigured) settings.characterCustomization.aiEnabled = false;
+  return settings;
+};
 
 const sessionSpawn = (session: GameSession, team: Team, index = 0) =>
   getTeamSpawnForMap(session.settings.mapId, team, index);
@@ -353,6 +386,53 @@ const requirePlayerAccess = (req: Request, res: Response, session: GameSession, 
   if (hasPlayerAccess(session, player, getPlayerToken(req))) return true;
   res.status(401).json({ error: "Student session token is required." });
   return false;
+};
+
+const canReadRoomAsset = (req: Request, session: GameSession) => {
+  const teacher = getBearerUser(req);
+  if (teacher?.id === session.teacherId) return true;
+  const token = getPlayerToken(req);
+  return session.players.some((player) => !player.isBot && hasPlayerAccess(session, player, token));
+};
+
+const deleteDecal = (assetId: string | undefined) => {
+  decalStore.delete(assetId);
+};
+
+const clearPlayerAppearance = (session: GameSession, player: PlayerSession) => {
+  decalStore.deletePlayer(session.id, player.id);
+  player.appearance = { ...DEFAULT_PLAYER_APPEARANCE };
+};
+
+const purgeSessionDecals = (session: GameSession) => {
+  decalStore.deleteSession(session.id);
+  for (const player of session.players) {
+    if (player.appearance?.decalAssetId) player.appearance = { ...player.appearance, decalAssetId: undefined };
+    appearanceUpdateTimestamps.delete(player.id);
+    decalUploadTimestamps.delete(player.id);
+  }
+};
+
+const pruneExpiredDecals = () => {
+  const removed = decalStore.pruneExpired();
+  const touchedSessions = new Set<GameSession>();
+  for (const asset of removed) {
+    const session = sessions.get(asset.sessionId);
+    const player = session?.players.find((candidate) => candidate.id === asset.playerId);
+    if (!session || player?.appearance?.decalAssetId !== asset.id) continue;
+    player.appearance = { ...player.appearance, decalAssetId: undefined };
+    touchedSessions.add(session);
+  }
+  touchedSessions.forEach(broadcastSession);
+};
+
+const checkDecalUploadRate = (playerId: string) => {
+  const cutoff = Date.now() - 60_000;
+  const recent = (decalUploadTimestamps.get(playerId) ?? []).filter((timestamp) => timestamp >= cutoff);
+  if (recent.length >= 3) return false;
+  recent.push(Date.now());
+  decalUploadTimestamps.set(playerId, recent);
+  return true;
 };
 
 const selectNextQuestion = (session: GameSession, playerId: string): PublicQuestion | undefined => {
@@ -461,6 +541,7 @@ const finishSession = (
   session.endedAt = now();
   session.roundTransition = undefined;
   session.announcement = announcement;
+  purgeSessionDecals(session);
   appendEvent(session, { type: "end", message });
   broadcastSession(session);
 };
@@ -1303,6 +1384,7 @@ app.post("/api/sessions/:code/bots", requireTeacher, (req: AuthedRequest, res) =
     gear: "starter_blaster",
     weapon: "starter_blaster",
     perks: [],
+    appearance: { ...DEFAULT_PLAYER_APPEARANCE, characterPreset: "support" },
     joinedAt: now()
   };
   session.players.push(bot);
@@ -1421,6 +1503,7 @@ app.post("/api/sessions/:code/join", (req, res) => {
     gear: "starter_blaster",
     weapon: "starter_blaster",
     perks: [],
+    appearance: { ...DEFAULT_PLAYER_APPEARANCE },
     joinedAt: now()
   };
   session.players.push(player);
@@ -1486,6 +1569,203 @@ app.post("/api/sessions/:code/players/:playerId/team", (req, res) => {
   });
   broadcastSession(session);
   res.json({ session: stampSession(session), player });
+});
+
+app.put("/api/sessions/:code/players/:playerId/appearance", (req, res) => {
+  const session = getSessionByCode(routeParam(req.params.code));
+  const player = session?.players.find((candidate) => candidate.id === routeParam(req.params.playerId));
+  if (!session || !player || player.isBot) {
+    res.status(404).json({ error: "Player session not found." });
+    return;
+  }
+  if (!requirePlayerAccess(req, res, session, player)) return;
+  const policy = session.settings.characterCustomization;
+  if (session.status !== "waiting" || !policy.enabled) {
+    res.status(423).json({ error: "Character customization is locked." });
+    return;
+  }
+  const lastUpdate = appearanceUpdateTimestamps.get(player.id) ?? 0;
+  if (Date.now() - lastUpdate < APPEARANCE_UPDATE_COOLDOWN_MS) {
+    res.status(429).json({ error: "Please wait a moment before saving again." });
+    return;
+  }
+  const input = req.body?.appearance ?? req.body;
+  const validationError = getPlayerAppearanceError(input);
+  if (validationError) {
+    res.status(400).json({ error: validationError });
+    return;
+  }
+  const appearance = sanitizePlayerAppearance(input as Partial<PlayerAppearance>);
+  if (policy.presetsOnly && !isApprovedAppearancePreset(appearance)) {
+    res.status(400).json({ error: "This room is limited to approved appearance presets." });
+    return;
+  }
+  if (appearance.decalAssetId) {
+    const decal = decalStore.get(appearance.decalAssetId);
+    if (!policy.uploadsEnabled || !decal || decal.sessionId !== session.id || decal.playerId !== player.id) {
+      res.status(400).json({ error: "That decal is not available for this player." });
+      return;
+    }
+  }
+  if (player.appearance?.decalAssetId !== appearance.decalAssetId) deleteDecal(player.appearance?.decalAssetId);
+  player.appearance = appearance;
+  appearanceUpdateTimestamps.set(player.id, Date.now());
+  broadcastSession(session);
+  res.json({ session: stampSession(session), player });
+});
+
+app.post("/api/sessions/:code/players/:playerId/decals", (req, res) => {
+  const session = getSessionByCode(routeParam(req.params.code));
+  const player = session?.players.find((candidate) => candidate.id === routeParam(req.params.playerId));
+  if (!session || !player || player.isBot) {
+    res.status(404).json({ error: "Player session not found." });
+    return;
+  }
+  if (!requirePlayerAccess(req, res, session, player)) return;
+  const policy = session.settings.characterCustomization;
+  if (session.status !== "waiting" || !policy.enabled || !policy.uploadsEnabled) {
+    res.status(423).json({ error: "Uploaded decals are not enabled for this room." });
+    return;
+  }
+  if (!checkDecalUploadRate(player.id)) {
+    res.status(429).json({ error: "Upload limit reached. Try again in one minute." });
+    return;
+  }
+  const bytes = Buffer.isBuffer(req.body) ? req.body : Buffer.alloc(0);
+  const mimeType = inspectProcessedDecal(bytes, req.header("content-type")?.split(";")[0]);
+  if (!mimeType || bytes.length === 0 || bytes.length > DECAL_MAX_PROCESSED_BYTES) {
+    res.status(415).json({ error: "Upload a processed PNG or WebP decal within the size limit." });
+    return;
+  }
+  const assetId = id();
+  const stored = decalStore.put(
+    { id: assetId, sessionId: session.id, playerId: player.id, mimeType: mimeType as StoredDecalMime, bytes, createdAt: Date.now() },
+    player.appearance?.decalAssetId
+  );
+  if (!stored.ok) {
+    res.status(413).json({ error: "This room's sticker storage is full. Ask your teacher to remove an older sticker." });
+    return;
+  }
+  res.status(201).json({ assetId, mimeType, bytes: bytes.length });
+});
+
+app.get("/api/sessions/:code/decals", requireTeacher, (req: AuthedRequest, res) => {
+  const session = getSessionByCode(routeParam(req.params.code));
+  if (!session || session.teacherId !== req.user!.id) {
+    res.status(404).json({ error: "Session not found." });
+    return;
+  }
+  const assets = decalStore.listSession(session.id).map((asset) => {
+    const player = session.players.find((candidate) => candidate.id === asset.playerId);
+    return {
+      ...asset,
+      nickname: player?.nickname ?? "Former player",
+      createdAt: new Date(asset.createdAt).toISOString(),
+      expiresAt: new Date(asset.expiresAt).toISOString(),
+      isActive: player?.appearance?.decalAssetId === asset.assetId
+    };
+  });
+  res.json({ assets, totalBytes: decalStore.getSessionBytes(session.id), maxBytes: decalStore.roomMaxBytes });
+});
+
+app.get("/api/sessions/:code/decals/:assetId", (req, res) => {
+  const session = getSessionByCode(routeParam(req.params.code));
+  const decal = decalStore.get(routeParam(req.params.assetId));
+  if (!session || !decal || decal.sessionId !== session.id) {
+    res.status(404).json({ error: "Decal not found." });
+    return;
+  }
+  if (!canReadRoomAsset(req, session)) {
+    res.status(401).json({ error: "Room access is required." });
+    return;
+  }
+  res.setHeader("Cache-Control", "private, max-age=3600, immutable");
+  res.setHeader("X-Content-Type-Options", "nosniff");
+  res.status(200).type(decal.mimeType).send(decal.bytes);
+});
+
+app.put("/api/sessions/:code/customization", requireTeacher, (req: AuthedRequest, res) => {
+  const session = getSessionByCode(routeParam(req.params.code));
+  if (!session || session.teacherId !== req.user!.id) {
+    res.status(404).json({ error: "Session not found." });
+    return;
+  }
+  if (session.status !== "waiting") {
+    res.status(423).json({ error: "Customization settings are locked after the match starts." });
+    return;
+  }
+  const requested = sanitizeCharacterCustomizationSettings(req.body);
+  if (requested.aiEnabled && !aiSkinProviderConfigured) {
+    res.status(400).json({ error: "AI designs require a configured secure server provider." });
+    return;
+  }
+  if (!requested.uploadsEnabled) {
+    for (const player of session.players) {
+      if (player.appearance?.decalAssetId) {
+        player.appearance = { ...player.appearance, decalAssetId: undefined };
+      }
+    }
+    decalStore.deleteSession(session.id);
+  }
+  session.settings.characterCustomization = requested;
+  broadcastSession(session);
+  res.json({ session: stampSession(session), aiProviderConfigured: aiSkinProviderConfigured });
+});
+
+app.delete("/api/sessions/:code/players/:playerId/appearance", requireTeacher, (req: AuthedRequest, res) => {
+  const session = getSessionByCode(routeParam(req.params.code));
+  const player = session?.players.find((candidate) => candidate.id === routeParam(req.params.playerId));
+  if (!session || session.teacherId !== req.user!.id || !player) {
+    res.status(404).json({ error: "Player session not found." });
+    return;
+  }
+  clearPlayerAppearance(session, player);
+  appendEvent(session, { type: "timer", message: `Teacher cleared ${player.nickname}'s custom appearance.`, playerId: player.id, team: player.team });
+  broadcastSession(session);
+  res.json({ session: stampSession(session), player });
+});
+
+app.delete("/api/sessions/:code/players/:playerId/decal", requireTeacher, (req: AuthedRequest, res) => {
+  const session = getSessionByCode(routeParam(req.params.code));
+  const player = session?.players.find((candidate) => candidate.id === routeParam(req.params.playerId));
+  if (!session || session.teacherId !== req.user!.id || !player) {
+    res.status(404).json({ error: "Player session not found." });
+    return;
+  }
+  decalStore.deletePlayer(session.id, player.id);
+  player.appearance = { ...sanitizePlayerAppearance(player.appearance), decalAssetId: undefined };
+  appendEvent(session, { type: "timer", message: `Teacher removed ${player.nickname}'s custom sticker.`, playerId: player.id, team: player.team });
+  broadcastSession(session);
+  res.json({ session: stampSession(session), player });
+});
+
+app.delete("/api/sessions/:code/decals/:assetId", requireTeacher, (req: AuthedRequest, res) => {
+  const session = getSessionByCode(routeParam(req.params.code));
+  const assetId = routeParam(req.params.assetId);
+  const decal = decalStore.get(assetId);
+  if (!session || session.teacherId !== req.user!.id || !decal || decal.sessionId !== session.id) {
+    res.status(404).json({ error: "Decal not found." });
+    return;
+  }
+  decalStore.delete(assetId);
+  const player = session.players.find((candidate) => candidate.id === decal.playerId);
+  if (player?.appearance?.decalAssetId === assetId) player.appearance = { ...player.appearance, decalAssetId: undefined };
+  appendEvent(session, { type: "timer", message: `Teacher removed ${player?.nickname ?? "a player's"} custom sticker.`, playerId: player?.id, team: player?.team });
+  broadcastSession(session);
+  res.json({ session: stampSession(session) });
+});
+
+app.post("/api/sessions/:code/appearance/reset", requireTeacher, (req: AuthedRequest, res) => {
+  const session = getSessionByCode(routeParam(req.params.code));
+  if (!session || session.teacherId !== req.user!.id) {
+    res.status(404).json({ error: "Session not found." });
+    return;
+  }
+  session.players.forEach((player) => clearPlayerAppearance(session, player));
+  decalStore.deleteSession(session.id);
+  appendEvent(session, { type: "timer", message: "Teacher reset all custom appearances." });
+  broadcastSession(session);
+  res.json({ session: stampSession(session) });
 });
 
 app.get("/api/sessions/:code/players/:playerId/question", (req, res) => {
@@ -1745,6 +2025,19 @@ app.post("/api/sessions/:code/players/:playerId/buy-snowballs", (req, res) => {
   sendStudentCommand(res, buySnowballs(session, player));
 });
 
+app.use((error: unknown, _req: Request, res: Response, next: NextFunction) => {
+  const bodyError = error as { type?: string; status?: number };
+  if (bodyError.type === "entity.too.large" || bodyError.status === 413) {
+    res.status(413).json({ error: "That upload is too large. Choose a smaller image and try again." });
+    return;
+  }
+  if (bodyError.type === "entity.parse.failed") {
+    res.status(400).json({ error: "The request could not be read. Check the file or form and try again." });
+    return;
+  }
+  next(error);
+});
+
 io.on("connection", (socket) => {
   socket.on("join_session_room", (payload: string | { code?: string; playerId?: string; playerToken?: string }) => {
     const code = typeof payload === "string" ? payload : String(payload.code ?? "");
@@ -1992,6 +2285,7 @@ const startServer = async () => {
   try {
     await hydrateRuntimeState();
     setInterval(advanceBots, BOT_TICK_MS);
+    setInterval(pruneExpiredDecals, 15 * 60 * 1000).unref();
     server.listen(port, () => {
       console.log(`QuizStrike Classroom server listening on http://localhost:${port}`);
     });
@@ -2000,8 +2294,6 @@ const startServer = async () => {
     process.exitCode = 1;
   }
 };
-
-void startServer();
 
 let isShuttingDown = false;
 const shutdown = (signal: string) => {
@@ -2017,5 +2309,8 @@ const shutdown = (signal: string) => {
   });
 };
 
-process.once("SIGTERM", () => shutdown("SIGTERM"));
-process.once("SIGINT", () => shutdown("SIGINT"));
+if (process.env.QUIZSTRIKE_NO_AUTOSTART !== "true") {
+  void startServer();
+  process.once("SIGTERM", () => shutdown("SIGTERM"));
+  process.once("SIGINT", () => shutdown("SIGINT"));
+}

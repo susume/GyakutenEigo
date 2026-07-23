@@ -284,7 +284,8 @@ test("sanitizeSessionSettings keeps classroom settings inside safe bounds", () =
     deadPlayersEarnMoney: true,
     snowballPackPrice: 5000,
     snowballsPerPack: 1,
-    startingSnowballs: 99
+    startingSnowballs: 99,
+    characterCustomization: DEFAULT_SESSION_SETTINGS.characterCustomization
   });
 });
 

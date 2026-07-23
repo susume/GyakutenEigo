@@ -24,6 +24,7 @@ type CharacterRecord = {
   badgeAlive: boolean;
   alive: boolean;
   team: PlayerSession["team"];
+  appearanceSignature: string;
 };
 
 export interface CharacterManagerStats {
@@ -55,7 +56,8 @@ export class CharacterManager {
         record = this.records.get(player.id);
       }
       if (!record) return;
-      if (record.gear !== player.gear) {
+      const appearanceSignature = JSON.stringify(player.appearance ?? null);
+      if (record.gear !== player.gear || record.team !== player.team || record.appearanceSignature !== appearanceSignature) {
         this.removeRecord(record);
         this.records.delete(player.id);
         this.add(player, state);
@@ -90,9 +92,8 @@ export class CharacterManager {
 
     for (const [playerId, record] of this.records) {
       if (seen.has(playerId)) continue;
-      record.controller.model.root.visible = false;
-      record.badge.visible = false;
-      if (record.ring) record.ring.visible = false;
+      this.removeRecord(record);
+      this.records.delete(playerId);
     }
   }
 
@@ -143,7 +144,7 @@ export class CharacterManager {
   }
 
   private add(player: PlayerSession, state: CharacterVisualState) {
-    const model = this.factory.createCharacter({ playerId: player.id, team: player.team, gear: player.gear });
+    const model = this.factory.createCharacter({ playerId: player.id, team: player.team, gear: player.gear, appearance: player.appearance });
     const controller = new CharacterController(model, state.x, state.z, state.facing, player.isAlive);
     this.scene.add(model.root);
 
@@ -170,13 +171,31 @@ export class CharacterManager {
       gear: player.gear,
       badgeAlive: player.isAlive,
       alive: player.isAlive,
-      team: player.team
+      team: player.team,
+      appearanceSignature: JSON.stringify(player.appearance ?? null)
     });
   }
 
+  dispose() {
+    for (const record of this.records.values()) this.removeRecord(record);
+    this.records.clear();
+  }
+
   private removeRecord(record: CharacterRecord) {
+    record.controller.model.dispose();
     this.scene.remove(record.controller.model.root);
     this.scene.remove(record.badge);
-    if (record.ring) this.scene.remove(record.ring);
+    const badgeMaterial = Array.isArray(record.badge.material) ? record.badge.material : [record.badge.material];
+    badgeMaterial.forEach((material) => {
+      const mapped = material as THREE.Material & { map?: THREE.Texture | null };
+      mapped.map?.dispose();
+      material.dispose();
+    });
+    if (record.ring) {
+      this.scene.remove(record.ring);
+      record.ring.geometry.dispose();
+      const ringMaterials = Array.isArray(record.ring.material) ? record.ring.material : [record.ring.material];
+      ringMaterials.forEach((material) => material.dispose());
+    }
   }
 }

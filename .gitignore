@@ -7,6 +7,8 @@ dist/
 **/dist/
 coverage/
 apps/web/.vite/
+apps/web/playwright-report/
+apps/web/test-results/
 .tools/
 .codex-run-logs/
 product-audit*/

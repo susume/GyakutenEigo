@@ -9,6 +9,7 @@
     "build": "tsc",
     "start": "node dist/start.js",
     "test": "tsx --test \"src/**/*.test.ts\"",
+    "test:load": "tsx --test --test-name-pattern=\"40 authenticated Socket.IO\" src/appearanceFlow.integration.test.ts",
     "typecheck": "tsc --noEmit"
   },
   "dependencies": {
@@ -26,6 +27,7 @@
     "@types/express": "^5.0.3",
     "@types/jsonwebtoken": "^9.0.10",
     "@types/node": "^24.0.10",
+    "socket.io-client": "^4.8.3",
     "tsx": "^4.20.3",
     "typescript": "^5.8.3"
   }

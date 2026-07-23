@@ -1,8 +1,25 @@
-import type { Choice, SessionSettings } from "@quizstrike/shared";
+import type { CharacterCustomizationSettings, Choice, PlayerAppearance, SessionSettings } from "@quizstrike/shared";
 import { ApiError } from "./errors";
 import { buildApiUrlCandidates, fetchFromApiCandidates } from "./endpoints.js";
 
 export { ApiError } from "./errors";
+
+export interface DecalModerationAsset {
+  assetId: string;
+  playerId: string;
+  nickname: string;
+  mimeType: "image/png" | "image/webp";
+  byteLength: number;
+  createdAt: string;
+  expiresAt: string;
+  isActive: boolean;
+}
+
+export interface DecalModerationSummary {
+  assets: DecalModerationAsset[];
+  totalBytes: number;
+  maxBytes: number;
+}
 
 const cleanUrl = (value: string | undefined) => {
   const trimmed = value?.trim();
@@ -88,6 +105,16 @@ export const teacherApi = {
   startSession: (code: string) => api(`/api/sessions/${code}/start`, { method: "POST" }),
   endSession: (code: string) => api(`/api/sessions/${code}/end`, { method: "POST" }),
   addBot: (code: string) => api(`/api/sessions/${code}/bots`, { method: "POST" }),
+  updateCustomization: (code: string, settings: CharacterCustomizationSettings) =>
+    api(`/api/sessions/${code}/customization`, { method: "PUT", body: JSON.stringify(settings) }),
+  clearPlayerAppearance: (code: string, playerId: string) =>
+    api(`/api/sessions/${code}/players/${playerId}/appearance`, { method: "DELETE" }),
+  removePlayerDecal: (code: string, playerId: string) =>
+    api(`/api/sessions/${code}/players/${playerId}/decal`, { method: "DELETE" }),
+  listDecals: (code: string) => api(`/api/sessions/${code}/decals`),
+  removeDecalAsset: (code: string, assetId: string) =>
+    api(`/api/sessions/${code}/decals/${assetId}`, { method: "DELETE" }),
+  resetAppearances: (code: string) => api(`/api/sessions/${code}/appearance/reset`, { method: "POST" }),
   report: (code: string) => api(`/api/sessions/${code}/report`),
   reportCsv: async (code: string) => {
     const token = getToken();
@@ -119,6 +146,18 @@ export const studentApi = {
       headers: playerHeaders(playerToken),
       body: JSON.stringify({ team })
     }),
+  saveAppearance: (code: string, playerId: string, playerToken: string, appearance: PlayerAppearance) =>
+    api(`/api/sessions/${code}/players/${playerId}/appearance`, {
+      method: "PUT",
+      headers: playerHeaders(playerToken),
+      body: JSON.stringify({ appearance })
+    }),
+  uploadDecal: (code: string, playerId: string, playerToken: string, blob: Blob) =>
+    api(`/api/sessions/${code}/players/${playerId}/decals`, {
+      method: "POST",
+      headers: { ...playerHeaders(playerToken), "Content-Type": blob.type },
+      body: blob
+    }),
   session: (code: string) => api(`/api/sessions/${code}`),
   rejoin: (code: string, playerId: string, playerToken: string) =>
     api(`/api/sessions/${code}/players/${playerId}/rejoin`, { headers: playerHeaders(playerToken) }),
@@ -146,6 +185,21 @@ export const studentApi = {
       method: "POST",
       headers: playerHeaders(playerToken)
     })
+};
+
+export const fetchDecalAsset = async (code: string, assetId: string, playerToken?: string): Promise<Blob> => {
+  const teacherToken = getToken();
+  const headers = playerToken
+    ? playerHeaders(playerToken)
+    : teacherToken
+      ? { Authorization: `Bearer ${teacherToken}` }
+      : undefined;
+  const response = await fetchApi(`/api/sessions/${code}/decals/${assetId}`, { headers });
+  if (!response.ok) {
+    const payload = (await response.json().catch(() => ({}))) as { error?: string };
+    throw new ApiError(payload.error ?? "Decal is unavailable.", response.status);
+  }
+  return response.blob();
 };
 
 export { API_URL };

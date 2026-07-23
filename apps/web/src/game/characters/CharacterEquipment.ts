@@ -9,6 +9,7 @@ export interface CharacterMaterials {
   dark: THREE.MeshStandardMaterial;
   visor: THREE.MeshStandardMaterial;
   skin: THREE.MeshStandardMaterial;
+  backpack: THREE.MeshStandardMaterial;
 }
 
 export interface EquipmentParts {
@@ -42,6 +43,7 @@ const addCylinder = (
   rotation: [number, number, number] = [Math.PI / 2, 0, 0]
 ) => {
   const mesh = new THREE.Mesh(geometry, material);
+  mesh.userData.disposeWithCharacterGeometry = true;
   mesh.position.set(...position);
   mesh.rotation.set(...rotation);
   mesh.castShadow = true;
@@ -57,6 +59,7 @@ const addRing = (
   tube: number
 ) => {
   const mesh = new THREE.Mesh(new THREE.TorusGeometry(radius, tube, 6, 14), material);
+  mesh.userData.disposeWithCharacterGeometry = true;
   mesh.position.set(...position);
   mesh.castShadow = true;
   parent.add(mesh);
@@ -120,7 +123,7 @@ export const createBackpack = (
   if (appearance.silhouette.backpack === "none") return undefined;
   const backpack = new THREE.Group();
   const size = appearance.silhouette.backpack === "bedroll" ? [0.66, 0.5, 0.2] : [0.54, 0.68, 0.18];
-  addBox(backpack, boxGeometry, materials.cloth, [0, 0, 0], size as [number, number, number]);
+  addBox(backpack, boxGeometry, materials.backpack, [0, 0, 0], size as [number, number, number]);
   addBox(backpack, boxGeometry, materials.accent, [0, 0.08, 0.19], [size[0] * 0.72, 0.08, 0.035]);
   if (appearance.silhouette.backpack === "radio_pack") {
     addCylinder(backpack, new THREE.CylinderGeometry(0.055, 0.055, 0.44, 8), materials.visor, [0.18, 0.22, 0.12], [0, 0, 0]);

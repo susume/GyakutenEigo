@@ -109,7 +109,15 @@ npm test
 npm run build
 ```
 
-The current automated baseline is 59 shared tests, 5 server tests, and 53 web tests: 117 total. The Vite bundle warning for the Three.js chunk is expected and is not a build failure.
+Run the classroom harnesses after multiplayer, lobby, or rendering changes:
+
+```bash
+npm run test:load
+npx playwright install chromium # first run only
+npm run test:e2e
+```
+
+The current baseline is 62 shared tests, 15 server tests, and 59 web unit tests: 136 Node tests, plus one production-Chromium classroom scenario. The server suite includes real HTTP appearance/decal lifecycle coverage, a 40-student capacity scenario, and 40 authenticated Socket.IO clients. The Vite bundle warning for the Three.js chunk is expected and is not a build failure.
 
 ## Known Limits
 
@@ -122,6 +130,12 @@ The current automated baseline is 59 shared tests, 5 server tests, and 53 web te
 
 ## Documentation
 
+- [Lobby character customization audit](docs/character-customization-audit.md)
+- [Lobby character customization plan](docs/character-customization-plan.md)
+- [Character customization operations and test checklist](docs/character-customization-operations.md)
+- [Character customization post-implementation audit and Phase 2 decision](docs/character-customization-phase-2-audit.md)
+- [Character customization Phase 3 integration audit](docs/character-customization-phase-3-testing.md)
+- [Character customization Phase 4 browser and Socket.IO audit](docs/character-customization-phase-4-browser-load.md)
 - [architecture.md](architecture.md): system architecture, runtime ownership, deployment shape, and risks.
 - [docs/art-pass/README.md](docs/art-pass/README.md): visual direction, before/after evidence, and quality counts.
 - [docs/performance/CHROMEBOOK_CERTIFICATION.md](docs/performance/CHROMEBOOK_CERTIFICATION.md): profiling baseline and physical certification matrix.

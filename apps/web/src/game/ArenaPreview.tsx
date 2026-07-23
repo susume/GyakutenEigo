@@ -59,6 +59,7 @@ interface ArenaPreviewProps {
   onMove?: (position: ArenaLivePosition) => void;
   onFire?: (position: ArenaLivePosition) => void;
   onInteract?: (position: ArenaLivePosition) => void;
+  loadDecalAsset?: (assetId: string) => Promise<Blob>;
 }
 
 type ArenaLivePosition = { x: number; z: number; y?: number; facing: number; scoped?: boolean; zoomLevel?: number };
@@ -264,6 +265,7 @@ const makeSpriteLabel = (label: string, color: string) =>
 const disposeObject = (object: THREE.Object3D) => {
   object.traverse((child) => {
     const mesh = child as THREE.Mesh;
+    if (mesh.userData?.preserveSharedResources) return;
     if (mesh.geometry) mesh.geometry.dispose();
     const material = mesh.material;
     if (Array.isArray(material)) material.forEach((item) => item.dispose());
@@ -284,7 +286,8 @@ export default function ArenaPreview({
   gamepadEnabled = true,
   onMove,
   onFire,
-  onInteract
+  onInteract,
+  loadDecalAsset
 }: ArenaPreviewProps) {
   const mountRef = useRef<HTMLDivElement | null>(null);
   const touchMoveRef = useRef({ forward: 0, right: 0 });
@@ -1285,7 +1288,21 @@ export default function ArenaPreview({
 
     const players = session?.players.length ? session.players : currentPlayer ? [currentPlayer] : [];
     const billboardSprites: THREE.Sprite[] = [];
-    const characterFactory = new CharacterFactory();
+    const characterFactory = new CharacterFactory({
+      loadDecalTexture: loadDecalAsset
+        ? async (assetId) => {
+            const blob = await loadDecalAsset(assetId);
+            const objectUrl = URL.createObjectURL(blob);
+            try {
+              return await new Promise<THREE.Texture>((resolve, reject) => {
+                new THREE.TextureLoader().load(objectUrl, resolve, undefined, reject);
+              });
+            } finally {
+              URL.revokeObjectURL(objectUrl);
+            }
+          }
+        : undefined
+    });
     const characterManager = new CharacterManager(scene, characterFactory, {
       isFps,
       currentPlayerId,
@@ -2026,7 +2043,9 @@ export default function ArenaPreview({
       vfxPool.dispose();
       desertCitadelVfx?.dispose();
       syncPlayersRef.current = () => undefined;
+      characterManager.dispose();
       disposeObject(scene);
+      characterFactory.dispose();
       staticBatcher.dispose();
       collisionProxyMaterial.dispose();
       materialCache.forEach((material) => material.dispose());
@@ -2040,7 +2059,7 @@ export default function ArenaPreview({
       renderer.dispose();
       mount.removeChild(renderer.domElement);
     };
-  }, [sceneSessionId, currentPlayerId, currentPlayerTeam, currentPlayer?.gear, currentPlayer?.weapon, currentPlayer?.perks, view, debugOverlay, activeQuality, gamepadEnabled, arenaMapId, session?.settings.gameMode, session?.flag?.state, session?.flag?.carrierId, session?.flag?.position.x, session?.flag?.position.z]);
+  }, [sceneSessionId, currentPlayerId, currentPlayerTeam, currentPlayer?.gear, currentPlayer?.weapon, currentPlayer?.perks, view, debugOverlay, activeQuality, gamepadEnabled, arenaMapId, session?.settings.gameMode, session?.flag?.state, session?.flag?.carrierId, session?.flag?.position.x, session?.flag?.position.z, loadDecalAsset]);
 
   const beginTouchMove = (event: ReactPointerEvent<HTMLButtonElement>) => {
     event.preventDefault();

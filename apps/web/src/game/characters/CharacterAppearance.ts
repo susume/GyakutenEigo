@@ -1,4 +1,4 @@
-import type { Team } from "@quizstrike/shared";
+import { sanitizePlayerAppearance, type PlayerAppearance, type Team } from "@quizstrike/shared";
 
 export type CharacterVariant = "assault" | "support" | "sniper" | "engineer" | "medic" | "heavy";
 export type HelmetStyle = "visor" | "rounded" | "hood" | "headset" | "ridge";
@@ -10,6 +10,7 @@ export interface CharacterAppearanceInput {
   playerId: string;
   gear?: string;
   variant?: CharacterVariant;
+  appearance?: PlayerAppearance;
 }
 
 export interface CharacterAppearance {
@@ -33,6 +34,13 @@ export interface CharacterAppearance {
     shoulderBulk: number;
     heightScale: number;
     widthScale: number;
+  };
+  customization: {
+    eyewearStyle: PlayerAppearance["eyewearStyle"];
+    eyewearColor: string;
+    shoeStyle: PlayerAppearance["shoeStyle"];
+    backpackColor: string;
+    decalAssetId?: string;
   };
 }
 
@@ -79,7 +87,7 @@ export const TEAM_CHARACTER_CONFIGS = {
       widthScale: 1.08
     }
   }
-} as const satisfies Record<Team, Omit<CharacterAppearance, "team" | "variant">>;
+} as const satisfies Record<Team, Omit<CharacterAppearance, "team" | "variant" | "customization">>;
 
 export const CHARACTER_VARIANTS: Record<CharacterVariant, Partial<CharacterAppearance["silhouette"]>> = {
   assault: { vest: "plate_carrier", backpack: "flat_pack", shoulderBulk: 1.1 },
@@ -132,16 +140,31 @@ export const resolveCharacterVariant = ({ playerId, gear, variant }: CharacterAp
 
 export const resolveCharacterAppearance = (input: CharacterAppearanceInput): CharacterAppearance => {
   const base = TEAM_CHARACTER_CONFIGS[input.team];
-  const variant = resolveCharacterVariant(input);
+  const custom = input.appearance ? sanitizePlayerAppearance(input.appearance) : undefined;
+  const variant = custom?.characterPreset ?? resolveCharacterVariant(input);
   const variantSilhouette = CHARACTER_VARIANTS[variant];
   return {
     team: input.team,
     teamName: base.teamName,
     variant,
-    palette: { ...base.palette },
+    palette: custom ? {
+      ...base.palette,
+      uniform: custom.clothingPrimaryColor,
+      armor: custom.helmetColor,
+      cloth: custom.clothingSecondaryColor,
+      dark: custom.shoeColor
+    } : { ...base.palette },
     silhouette: {
       ...base.silhouette,
-      ...variantSilhouette
+      ...variantSilhouette,
+      ...(custom ? { helmet: custom.helmetStyle, backpack: custom.backpackStyle } : {})
+    },
+    customization: {
+      eyewearStyle: custom?.eyewearStyle ?? "none",
+      eyewearColor: custom?.eyewearColor ?? base.palette.dark,
+      shoeStyle: custom?.shoeStyle ?? "boots",
+      backpackColor: custom?.backpackColor ?? base.palette.cloth,
+      ...(custom?.decalAssetId ? { decalAssetId: custom.decalAssetId } : {})
     }
   };
 };

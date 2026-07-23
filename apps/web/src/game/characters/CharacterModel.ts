@@ -59,6 +59,23 @@ export class CharacterModel {
     this.animator.trigger(cue);
   }
 
+  dispose() {
+    this.root.userData.disposed = true;
+    this.root.traverse((object) => {
+      const releaseSharedStudentBody = object.userData.releaseSharedStudentBody as (() => void) | undefined;
+      releaseSharedStudentBody?.();
+      if (!(object instanceof THREE.Mesh)) return;
+      if (object.userData.disposeWithCharacterGeometry) object.geometry.dispose();
+      if (!object.userData.ownedDecalMaterial && !object.userData.disposeWithCharacterMaterial) return;
+      const materials = Array.isArray(object.material) ? object.material : [object.material];
+      materials.forEach((material) => {
+        const mapped = material as THREE.Material & { map?: THREE.Texture | null };
+        mapped.map?.dispose();
+        material.dispose();
+      });
+    });
+  }
+
   update({ camera, delta, elapsed, speed, forwardSpeed, strafeSpeed, alive, firing, crouching, carryingObjective }: CharacterModelUpdate) {
     const lodState = this.lod.update(this.root, camera);
     if (lodState.shouldAnimate || this.animator.hasActiveCue) {

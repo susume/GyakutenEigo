@@ -68,6 +68,188 @@ export interface QuizSet {
   createdAt: string;
 }
 
+export const APPEARANCE_VERSION = 1 as const;
+export const APPEARANCE_MAX_JSON_BYTES = 2048;
+export const APPEARANCE_UPDATE_COOLDOWN_MS = 750;
+export const DECAL_MAX_SOURCE_BYTES = 5 * 1024 * 1024;
+export const DECAL_MAX_PROCESSED_BYTES = 384 * 1024;
+export const DECAL_MAX_DIMENSION = 512;
+
+export const CHARACTER_PRESETS = ["assault", "support", "sniper", "engineer", "medic", "heavy"] as const;
+export const HELMET_STYLES = ["visor", "rounded", "hood", "headset", "ridge"] as const;
+export const BACKPACK_STYLES = ["radio_pack", "flat_pack", "bedroll", "none"] as const;
+export const EYEWEAR_STYLES = ["none", "round", "goggles"] as const;
+export const SHOE_STYLES = ["boots", "trainers"] as const;
+export const APPEARANCE_COLORS = [
+  "#174a78", "#8d2f3f", "#18324c", "#4b2632", "#176b5b", "#6b3f8c",
+  "#f2b134", "#f4f7fb", "#343b4a", "#31b6ff", "#ff6b46", "#86d96f"
+] as const;
+
+export type CharacterPreset = (typeof CHARACTER_PRESETS)[number];
+export type PlayerHelmetStyle = (typeof HELMET_STYLES)[number];
+export type PlayerBackpackStyle = (typeof BACKPACK_STYLES)[number];
+export type EyewearStyle = (typeof EYEWEAR_STYLES)[number];
+export type ShoeStyle = (typeof SHOE_STYLES)[number];
+export type AppearanceColor = (typeof APPEARANCE_COLORS)[number];
+
+export interface PlayerAppearance {
+  characterPreset: CharacterPreset;
+  helmetStyle: PlayerHelmetStyle;
+  helmetColor: AppearanceColor;
+  backpackStyle: PlayerBackpackStyle;
+  backpackColor: AppearanceColor;
+  eyewearStyle: EyewearStyle;
+  eyewearColor: AppearanceColor;
+  clothingPrimaryColor: AppearanceColor;
+  clothingSecondaryColor: AppearanceColor;
+  shoeStyle: ShoeStyle;
+  shoeColor: AppearanceColor;
+  decalAssetId?: string;
+  appearanceVersion: typeof APPEARANCE_VERSION;
+}
+
+export interface CharacterCustomizationSettings {
+  enabled: boolean;
+  uploadsEnabled: boolean;
+  aiEnabled: boolean;
+  presetsOnly: boolean;
+  persistAcrossSessions: boolean;
+}
+
+export const DEFAULT_PLAYER_APPEARANCE: PlayerAppearance = {
+  characterPreset: "assault",
+  helmetStyle: "visor",
+  helmetColor: "#f4f7fb",
+  backpackStyle: "flat_pack",
+  backpackColor: "#18324c",
+  eyewearStyle: "none",
+  eyewearColor: "#343b4a",
+  clothingPrimaryColor: "#174a78",
+  clothingSecondaryColor: "#18324c",
+  shoeStyle: "boots",
+  shoeColor: "#343b4a",
+  appearanceVersion: APPEARANCE_VERSION
+};
+
+export const SCHOOL_APPEARANCE_PRESETS = [
+  { id: "captain", name: "Captain", appearance: DEFAULT_PLAYER_APPEARANCE },
+  {
+    id: "trailblazer",
+    name: "Trailblazer",
+    appearance: {
+      ...DEFAULT_PLAYER_APPEARANCE,
+      characterPreset: "support",
+      helmetStyle: "headset",
+      backpackStyle: "radio_pack",
+      clothingPrimaryColor: "#176b5b",
+      clothingSecondaryColor: "#343b4a",
+      backpackColor: "#176b5b",
+      shoeStyle: "trainers",
+      shoeColor: "#f4f7fb"
+    }
+  },
+  {
+    id: "inventor",
+    name: "Inventor",
+    appearance: {
+      ...DEFAULT_PLAYER_APPEARANCE,
+      characterPreset: "engineer",
+      helmetStyle: "rounded",
+      helmetColor: "#f2b134",
+      backpackStyle: "flat_pack",
+      backpackColor: "#6b3f8c",
+      eyewearStyle: "goggles",
+      eyewearColor: "#31b6ff",
+      clothingPrimaryColor: "#6b3f8c",
+      clothingSecondaryColor: "#343b4a"
+    }
+  }
+] as const satisfies ReadonlyArray<{ id: string; name: string; appearance: PlayerAppearance }>;
+
+export const isApprovedAppearancePreset = (appearance: PlayerAppearance): boolean => {
+  const comparable = { ...appearance, decalAssetId: undefined };
+  return SCHOOL_APPEARANCE_PRESETS.some((preset) =>
+    JSON.stringify({ ...preset.appearance, decalAssetId: undefined }) === JSON.stringify(comparable)
+  );
+};
+
+export const DEFAULT_CHARACTER_CUSTOMIZATION_SETTINGS: CharacterCustomizationSettings = {
+  enabled: true,
+  uploadsEnabled: false,
+  aiEnabled: false,
+  presetsOnly: false,
+  persistAcrossSessions: false
+};
+
+const isAllowed = <T extends readonly string[]>(values: T, value: unknown): value is T[number] =>
+  typeof value === "string" && (values as readonly string[]).includes(value);
+
+export const sanitizeCharacterCustomizationSettings = (
+  input: Partial<CharacterCustomizationSettings> | undefined
+): CharacterCustomizationSettings => ({
+  enabled: typeof input?.enabled === "boolean" ? input.enabled : DEFAULT_CHARACTER_CUSTOMIZATION_SETTINGS.enabled,
+  uploadsEnabled: typeof input?.uploadsEnabled === "boolean" ? input.uploadsEnabled : DEFAULT_CHARACTER_CUSTOMIZATION_SETTINGS.uploadsEnabled,
+  aiEnabled: typeof input?.aiEnabled === "boolean" ? input.aiEnabled : DEFAULT_CHARACTER_CUSTOMIZATION_SETTINGS.aiEnabled,
+  presetsOnly: typeof input?.presetsOnly === "boolean" ? input.presetsOnly : DEFAULT_CHARACTER_CUSTOMIZATION_SETTINGS.presetsOnly,
+  persistAcrossSessions: typeof input?.persistAcrossSessions === "boolean"
+    ? input.persistAcrossSessions
+    : DEFAULT_CHARACTER_CUSTOMIZATION_SETTINGS.persistAcrossSessions
+});
+
+export const sanitizePlayerAppearance = (input: Partial<PlayerAppearance> | undefined): PlayerAppearance => {
+  const source = input ?? {};
+  const decalAssetId = typeof source.decalAssetId === "string" && /^[a-f0-9-]{36}$/.test(source.decalAssetId)
+    ? source.decalAssetId
+    : undefined;
+  return {
+    characterPreset: isAllowed(CHARACTER_PRESETS, source.characterPreset) ? source.characterPreset : DEFAULT_PLAYER_APPEARANCE.characterPreset,
+    helmetStyle: isAllowed(HELMET_STYLES, source.helmetStyle) ? source.helmetStyle : DEFAULT_PLAYER_APPEARANCE.helmetStyle,
+    helmetColor: isAllowed(APPEARANCE_COLORS, source.helmetColor) ? source.helmetColor : DEFAULT_PLAYER_APPEARANCE.helmetColor,
+    backpackStyle: isAllowed(BACKPACK_STYLES, source.backpackStyle) ? source.backpackStyle : DEFAULT_PLAYER_APPEARANCE.backpackStyle,
+    backpackColor: isAllowed(APPEARANCE_COLORS, source.backpackColor) ? source.backpackColor : DEFAULT_PLAYER_APPEARANCE.backpackColor,
+    eyewearStyle: isAllowed(EYEWEAR_STYLES, source.eyewearStyle) ? source.eyewearStyle : DEFAULT_PLAYER_APPEARANCE.eyewearStyle,
+    eyewearColor: isAllowed(APPEARANCE_COLORS, source.eyewearColor) ? source.eyewearColor : DEFAULT_PLAYER_APPEARANCE.eyewearColor,
+    clothingPrimaryColor: isAllowed(APPEARANCE_COLORS, source.clothingPrimaryColor) ? source.clothingPrimaryColor : DEFAULT_PLAYER_APPEARANCE.clothingPrimaryColor,
+    clothingSecondaryColor: isAllowed(APPEARANCE_COLORS, source.clothingSecondaryColor) ? source.clothingSecondaryColor : DEFAULT_PLAYER_APPEARANCE.clothingSecondaryColor,
+    shoeStyle: isAllowed(SHOE_STYLES, source.shoeStyle) ? source.shoeStyle : DEFAULT_PLAYER_APPEARANCE.shoeStyle,
+    shoeColor: isAllowed(APPEARANCE_COLORS, source.shoeColor) ? source.shoeColor : DEFAULT_PLAYER_APPEARANCE.shoeColor,
+    ...(decalAssetId ? { decalAssetId } : {}),
+    appearanceVersion: APPEARANCE_VERSION
+  };
+};
+
+export const getPlayerAppearanceError = (input: unknown): string | undefined => {
+  if (!input || typeof input !== "object" || Array.isArray(input)) return "Appearance must be an object.";
+  if (new TextEncoder().encode(JSON.stringify(input)).byteLength > APPEARANCE_MAX_JSON_BYTES) return "Appearance data is too large.";
+  const source = input as Record<string, unknown>;
+  const allowedKeys = new Set([
+    "characterPreset", "helmetStyle", "helmetColor", "backpackStyle", "backpackColor", "eyewearStyle",
+    "eyewearColor", "clothingPrimaryColor", "clothingSecondaryColor", "shoeStyle", "shoeColor", "decalAssetId",
+    "appearanceVersion"
+  ]);
+  if (Object.keys(source).some((key) => !allowedKeys.has(key))) return "Appearance contains an unsupported field.";
+  if (source.appearanceVersion !== APPEARANCE_VERSION) return "Unsupported appearance version.";
+  const checks: Array<[readonly string[], unknown, string]> = [
+    [CHARACTER_PRESETS, source.characterPreset, "character preset"],
+    [HELMET_STYLES, source.helmetStyle, "helmet style"],
+    [APPEARANCE_COLORS, source.helmetColor, "helmet colour"],
+    [BACKPACK_STYLES, source.backpackStyle, "backpack style"],
+    [APPEARANCE_COLORS, source.backpackColor, "backpack colour"],
+    [EYEWEAR_STYLES, source.eyewearStyle, "eyewear style"],
+    [APPEARANCE_COLORS, source.eyewearColor, "eyewear colour"],
+    [APPEARANCE_COLORS, source.clothingPrimaryColor, "primary clothing colour"],
+    [APPEARANCE_COLORS, source.clothingSecondaryColor, "secondary clothing colour"],
+    [SHOE_STYLES, source.shoeStyle, "shoe style"],
+    [APPEARANCE_COLORS, source.shoeColor, "shoe colour"]
+  ];
+  const invalid = checks.find(([values, value]) => !isAllowed(values, value));
+  if (invalid) return `Invalid ${invalid[2]}.`;
+  if (source.decalAssetId !== undefined && (typeof source.decalAssetId !== "string" || !/^[a-f0-9-]{36}$/.test(source.decalAssetId))) {
+    return "Invalid decal asset ID.";
+  }
+  return undefined;
+};
+
 export interface SessionSettings {
   mapId: ArenaMapId;
   gameMode: GameMode;
@@ -87,6 +269,7 @@ export interface SessionSettings {
   maxPlayers: number;
   deadPlayersCanPractice: boolean;
   deadPlayersEarnMoney: boolean;
+  characterCustomization: CharacterCustomizationSettings;
 }
 
 export interface GearItem {
@@ -134,6 +317,7 @@ export interface PlayerSession {
   weapon?: string;
   /** Independently equipped non-weapon gear such as the vest and shoes. */
   perks?: string[];
+  appearance?: PlayerAppearance;
   joinedAt: string;
 }
 
@@ -299,7 +483,8 @@ export const DEFAULT_SESSION_SETTINGS: SessionSettings = {
   roundDurationSeconds: FLAG_MODE_DEFAULTS.roundDurationSeconds,
   maxPlayers: 20,
   deadPlayersCanPractice: true,
-  deadPlayersEarnMoney: false
+  deadPlayersEarnMoney: false,
+  characterCustomization: DEFAULT_CHARACTER_CUSTOMIZATION_SETTINGS
 };
 
 export const RESPAWN_CORRECT_ANSWERS_REQUIRED = 3;
@@ -351,7 +536,8 @@ export const sanitizeSessionSettings = (input: Partial<SessionSettings> = {}): S
   deadPlayersEarnMoney:
     typeof input.deadPlayersEarnMoney === "boolean"
       ? input.deadPlayersEarnMoney
-      : DEFAULT_SESSION_SETTINGS.deadPlayersEarnMoney
+      : DEFAULT_SESSION_SETTINGS.deadPlayersEarnMoney,
+  characterCustomization: sanitizeCharacterCustomizationSettings(input.characterCustomization)
 });
 
 export interface AnswerRewardInput {
