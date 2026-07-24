@@ -1,6 +1,7 @@
 import type { CharacterCustomizationSettings, Choice, PlayerAppearance, SessionSettings } from "@quizstrike/shared";
 import { ApiError } from "./errors";
 import { buildApiUrlCandidates, fetchFromApiCandidates } from "./endpoints.js";
+import { retryOnce } from "./retry.js";
 
 export { ApiError } from "./errors";
 
@@ -39,12 +40,21 @@ let activeApiUrl = API_URLS[0] ?? API_URL;
 
 export const getApiUrl = () => activeApiUrl;
 
-const fetchApi = async (path: string, options?: RequestInit) => {
+type ApiRequestPolicy = {
+  attemptTimeoutMs?: number;
+};
+
+export type AuthRequestOptions = {
+  onRetry?: () => void;
+};
+
+const fetchApi = async (path: string, options?: RequestInit, policy: ApiRequestPolicy = {}) => {
   const result = await fetchFromApiCandidates({
     candidates: API_URLS,
     activeUrl: activeApiUrl,
     path,
-    options
+    options,
+    attemptTimeoutMs: policy.attemptTimeoutMs
   });
   activeApiUrl = result.url;
   return result.response;
@@ -54,7 +64,7 @@ const getToken = () => localStorage.getItem("quizstrike_token");
 
 const playerHeaders = (playerToken: string) => ({ "X-Player-Token": playerToken });
 
-export async function api<T>(path: string, options: RequestInit = {}): Promise<T> {
+export async function api<T>(path: string, options: RequestInit = {}, policy: ApiRequestPolicy = {}): Promise<T> {
   const headers = new Headers(options.headers);
   if (!headers.has("Content-Type") && options.body) headers.set("Content-Type", "application/json");
   const token = getToken();
@@ -65,7 +75,7 @@ export async function api<T>(path: string, options: RequestInit = {}): Promise<T
     response = await fetchApi(path, {
       ...options,
       headers
-    });
+    }, policy);
   } catch {
     throw new ApiError(
       "QuizStrike could not connect to the game server. Reload the page and try again. If this only happens on the school network, ask school IT to allow api.gyakuteneigo.com and gyakuteneigo-api.onrender.com.",
@@ -80,12 +90,57 @@ export async function api<T>(path: string, options: RequestInit = {}): Promise<T
   return payload as T;
 }
 
+let apiWarmupPromise: Promise<void> | undefined;
+
+const warmApi = () => {
+  if (!apiWarmupPromise) {
+    apiWarmupPromise = fetchApi("/api/health", undefined, { attemptTimeoutMs: 35_000 })
+      .then((response) => {
+        if (!response.ok) throw new ApiError("The game server is still waking up.", response.status);
+      })
+      .catch((error) => {
+        apiWarmupPromise = undefined;
+        throw error;
+      });
+  }
+  return apiWarmupPromise;
+};
+
+const isTemporaryAuthFailure = (error: unknown) =>
+  error instanceof ApiError && (error.status === 0 || error.status === 502 || error.status === 503 || error.status === 504);
+
+const requestLogin = async (
+  body: { email: string; password: string },
+  options: AuthRequestOptions = {}
+) => {
+  try {
+    return await retryOnce({
+      request: (attempt) => api(
+        "/api/auth/login",
+        { method: "POST", body: JSON.stringify(body) },
+        { attemptTimeoutMs: attempt === 0 ? 6_000 : 24_000 }
+      ),
+      shouldRetry: isTemporaryAuthFailure,
+      onRetry: options.onRetry,
+      delayMs: 1_000
+    });
+  } catch (error) {
+    if (isTemporaryAuthFailure(error)) {
+      throw new ApiError(
+        "The free game server is still waking up. Wait 15 seconds, then try logging in again.",
+        0
+      );
+    }
+    throw error;
+  }
+};
+
 export const authApi = {
+  warmUp: warmApi,
   signup: (body: { name: string; email: string; password: string }) =>
-    api("/api/auth/signup", { method: "POST", body: JSON.stringify(body) }),
-  login: (body: { email: string; password: string }) =>
-    api("/api/auth/login", { method: "POST", body: JSON.stringify(body) }),
-  me: () => api("/api/me")
+    api("/api/auth/signup", { method: "POST", body: JSON.stringify(body) }, { attemptTimeoutMs: 30_000 }),
+  login: requestLogin,
+  me: () => api("/api/me", {}, { attemptTimeoutMs: 10_000 })
 };
 
 export const teacherApi = {

@@ -356,33 +356,41 @@ export default function CharacterCreator({ appearance, team, policy, disabled, o
 
   return (
     <section className="character-creator" aria-label="Character creator">
+      <div className="creator-heading">
+        <div><span>Ready room</span><h3>Build Your Player</h3></div>
+        <div className="creator-actions">
+          <button type="button" onClick={randomize} disabled={disabled || policy.presetsOnly}><Dice5 size={16} />Randomize</button>
+          <button type="button" onClick={() => setDraft({ ...DEFAULT_PLAYER_APPEARANCE })} disabled={disabled}><RotateCcw size={16} />Reset</button>
+        </div>
+      </div>
       <div className="character-creator-preview-column">
         <CharacterPreview appearance={draft} team={team} loadDecalAsset={loadDecalAsset} />
         <div className="appearance-save-state" aria-live="polite">{dirty ? "Unsaved changes" : <><Check size={15} />{message}</>}</div>
       </div>
       <div className="character-creator-controls">
-        <div className="creator-heading"><div><span>Ready room</span><h3>Build Your Player</h3></div><div className="creator-actions"><button type="button" onClick={randomize} disabled={disabled || policy.presetsOnly}><Dice5 size={16} />Randomize</button><button type="button" onClick={() => setDraft({ ...DEFAULT_PLAYER_APPEARANCE })} disabled={disabled}><RotateCcw size={16} />Reset</button></div></div>
-        <div className="appearance-presets" aria-label="Approved presets">{SCHOOL_APPEARANCE_PRESETS.map((preset) => <button type="button" key={preset.id} onClick={() => setDraft({ ...preset.appearance })} disabled={disabled}>{preset.name}</button>)}</div>
-        {!policy.presetsOnly && (
-          <div className="appearance-fields">
-            {([
-              ["characterPreset", "Body preset", CHARACTER_PRESETS],
-              ["helmetStyle", "Helmet", HELMET_STYLES],
-              ["backpackStyle", "Backpack", BACKPACK_STYLES],
-              ["eyewearStyle", "Glasses", EYEWEAR_STYLES],
-              ["shoeStyle", "Shoes", SHOE_STYLES]
-            ] as const).map(([key, label, values]) => <label key={key}>{label}<select value={draft[key]} onChange={(event) => change(key, event.target.value as never)} disabled={disabled}>{values.map((value) => <option key={value} value={value}>{labelFor(value)}</option>)}</select></label>)}
-            {([['clothingPrimaryColor', 'Jacket'], ['clothingSecondaryColor', 'Trousers'], ['helmetColor', 'Helmet colour'], ['backpackColor', 'Pack colour'], ['eyewearColor', 'Glasses colour'], ['shoeColor', 'Shoe colour']] as const).map(([key, label]) => (
-              <fieldset className="colour-field" key={key}><legend>{label}</legend><div>{APPEARANCE_COLORS.map((color) => <button type="button" key={color} className={draft[key] === color ? "selected" : ""} style={{ '--swatch': color } as CSSProperties} onClick={() => change(key, color)} aria-label={`${label} ${color}`} aria-pressed={draft[key] === color} disabled={disabled} />)}</div></fieldset>
-            ))}
+        <div className="creator-controls-scroll">
+          <div className="appearance-presets" aria-label="Approved presets">{SCHOOL_APPEARANCE_PRESETS.map((preset) => <button type="button" key={preset.id} onClick={() => setDraft({ ...preset.appearance })} disabled={disabled}>{preset.name}</button>)}</div>
+          {!policy.presetsOnly && (
+            <div className="appearance-fields">
+              {([
+                ["characterPreset", "Body preset", CHARACTER_PRESETS],
+                ["helmetStyle", "Helmet", HELMET_STYLES],
+                ["backpackStyle", "Backpack", BACKPACK_STYLES],
+                ["eyewearStyle", "Glasses", EYEWEAR_STYLES],
+                ["shoeStyle", "Shoes", SHOE_STYLES]
+              ] as const).map(([key, label, values]) => <label key={key}>{label}<select value={draft[key]} onChange={(event) => change(key, event.target.value as never)} disabled={disabled}>{values.map((value) => <option key={value} value={value}>{labelFor(value)}</option>)}</select></label>)}
+              {([['clothingPrimaryColor', 'Jacket'], ['clothingSecondaryColor', 'Trousers'], ['helmetColor', 'Helmet colour'], ['backpackColor', 'Pack colour'], ['eyewearColor', 'Glasses colour'], ['shoeColor', 'Shoe colour']] as const).map(([key, label]) => (
+                <fieldset className="colour-field" key={key}><legend>{label}</legend><div>{APPEARANCE_COLORS.map((color) => <button type="button" key={color} className={draft[key] === color ? "selected" : ""} style={{ '--swatch': color } as CSSProperties} onClick={() => change(key, color)} aria-label={`${label} ${color}`} aria-pressed={draft[key] === color} disabled={disabled} />)}</div></fieldset>
+              ))}
+            </div>
+          )}
+          <div className="decal-row">
+            <div><strong>Artwork sticker</strong><small>{policy.uploadsEnabled ? "Processed here; only the small finished sticker is uploaded." : "Teacher approval is required for uploads."}</small></div>
+            {policy.uploadsEnabled && <div className="decal-input-actions"><label className="file-button"><ImagePlus size={17} />Upload<input type="file" accept="image/png,image/jpeg,image/webp" onChange={(event) => { chooseFile(event.target.files?.[0]); event.currentTarget.value = ""; }} disabled={disabled} /></label><label className="file-button"><Camera size={17} />Camera<input type="file" accept="image/*" capture="environment" onChange={(event) => { chooseFile(event.target.files?.[0]); event.currentTarget.value = ""; }} disabled={disabled} /></label></div>}
+            {draft.decalAssetId && <button type="button" onClick={() => change("decalAssetId", undefined)} disabled={disabled}>Remove</button>}
           </div>
-        )}
-        <div className="decal-row">
-          <div><strong>Artwork sticker</strong><small>{policy.uploadsEnabled ? "Processed here; only the small finished sticker is uploaded." : "Teacher approval is required for uploads."}</small></div>
-          {policy.uploadsEnabled && <div className="decal-input-actions"><label className="file-button"><ImagePlus size={17} />Upload<input type="file" accept="image/png,image/jpeg,image/webp" onChange={(event) => { chooseFile(event.target.files?.[0]); event.currentTarget.value = ""; }} disabled={disabled} /></label><label className="file-button"><Camera size={17} />Camera<input type="file" accept="image/*" capture="environment" onChange={(event) => { chooseFile(event.target.files?.[0]); event.currentTarget.value = ""; }} disabled={disabled} /></label></div>}
-          {draft.decalAssetId && <button type="button" onClick={() => change("decalAssetId", undefined)} disabled={disabled}>Remove</button>}
+          {error && <p className="error-text" role="alert">{error}</p>}
         </div>
-        {error && <p className="error-text" role="alert">{error}</p>}
         <button className="primary save-appearance" type="button" onClick={() => void save()} disabled={disabled || saving || !dirty}><Save size={17} />{saving ? "Saving…" : dirty ? "Save Appearance" : "Saved"}</button>
       </div>
       {decalFile && <DecalEditor file={decalFile} appearance={draft} team={team} loadDecalAsset={loadDecalAsset} onCancel={() => setDecalFile(null)} onConfirm={async (blob) => { const assetId = await onUploadDecal(blob); const next = { ...draft, decalAssetId: assetId }; setDraft(next); setDecalFile(null); await save(next); }} />}

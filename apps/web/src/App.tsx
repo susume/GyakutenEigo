@@ -93,6 +93,7 @@ type DashboardPayload = {
 
 type AuthPayload = { user: TeacherUser; token: string };
 type StoredStudentSession = { sessionCode: string; playerId: string; playerToken: string };
+type ApiWakeState = "waking" | "ready" | "slow";
 
 const emptyQuestion = {
   prompt: "",
@@ -567,6 +568,7 @@ export default function App() {
   const [teacher, setTeacher] = useState<TeacherUser | null>(null);
   const [teacherAuthMode, setTeacherAuthMode] = useState<"login" | "signup">("login");
   const [isMobileNavOpen, setIsMobileNavOpen] = useState(false);
+  const [apiWakeState, setApiWakeState] = useState<ApiWakeState>("waking");
 
   const navigateTo = useCallback((nextPath: string, nextMode = modeForRoute(normalizeRoutePath(nextPath))) => {
     const normalizedPath = normalizeRoutePath(nextPath);
@@ -591,6 +593,21 @@ export default function App() {
     document.body.classList.toggle("gameplay-body-lock", isGameRoute);
     return () => document.body.classList.remove("gameplay-body-lock");
   }, [isGameRoute]);
+
+  useEffect(() => {
+    let cancelled = false;
+    void authApi
+      .warmUp()
+      .then(() => {
+        if (!cancelled) setApiWakeState("ready");
+      })
+      .catch(() => {
+        if (!cancelled) setApiWakeState("slow");
+      });
+    return () => {
+      cancelled = true;
+    };
+  }, []);
 
   useEffect(() => {
     if (isJoinRoute || isGameRoute || isCharacterLabRoute || !isQuizStrikeRoute) return;
@@ -670,7 +687,7 @@ export default function App() {
       {mode === "quizStrike" && <QuizStrikeLanding onTeacherLogin={() => { setTeacherAuthMode("login"); navigateTo("/quiz-strike", "teacher"); }} onTeacherSignup={() => { setTeacherAuthMode("signup"); navigateTo("/quiz-strike", "teacher"); }} onStudent={() => navigateTo("/join", "student")} />}
       {mode === "characterLab" && (isCharacterLabAvailable ? <CharacterLab /> : <InternalToolNotice onReturn={() => navigateTo("/quiz-strike", "quizStrike")} />)}
       {mode === "teacher" &&
-        (teacher ? <TeacherDashboard teacher={teacher} onLogout={logout} /> : <TeacherAuth initialMode={teacherAuthMode} onAuthed={(user) => {
+        (teacher ? <TeacherDashboard teacher={teacher} onLogout={logout} /> : <TeacherAuth apiWakeState={apiWakeState} initialMode={teacherAuthMode} onAuthed={(user) => {
           setTeacher(user);
           navigateTo("/quiz-strike", "teacher");
         }} />)}
@@ -883,11 +900,20 @@ function QuizStrikeLanding({ onTeacherSignup }: { onTeacherLogin: () => void; on
   );
 }
 
-function TeacherAuth({ onAuthed, initialMode }: { onAuthed: (user: TeacherUser) => void; initialMode: "login" | "signup" }) {
+function TeacherAuth({
+  onAuthed,
+  initialMode,
+  apiWakeState
+}: {
+  onAuthed: (user: TeacherUser) => void;
+  initialMode: "login" | "signup";
+  apiWakeState: ApiWakeState;
+}) {
   const [isSignup, setIsSignup] = useState(initialMode === "signup");
   const [form, setForm] = useState({ name: "", email: "", password: "" });
   const [isPasswordVisible, setIsPasswordVisible] = useState(false);
   const [isSubmitting, setIsSubmitting] = useState(false);
+  const [authProgress, setAuthProgress] = useState<"idle" | "connecting" | "retrying">("idle");
   const status = useAsyncMessage();
 
   useEffect(() => setIsSignup(initialMode === "signup"), [initialMode]);
@@ -896,16 +922,58 @@ function TeacherAuth({ onAuthed, initialMode }: { onAuthed: (user: TeacherUser) 
     event.preventDefault();
     status.clear();
     setIsSubmitting(true);
+    setAuthProgress("connecting");
     try {
-      const payload = (isSignup ? await authApi.signup(form) : await authApi.login(form)) as AuthPayload;
+      const payload = (
+        isSignup
+          ? await authApi.signup(form)
+          : await authApi.login(form, { onRetry: () => setAuthProgress("retrying") })
+      ) as AuthPayload;
       localStorage.setItem("quizstrike_token", payload.token);
       onAuthed(payload.user);
     } catch (err) {
       status.report(err);
     } finally {
       setIsSubmitting(false);
+      setAuthProgress("idle");
     }
   };
+
+  const wakeDisplay = authProgress === "retrying"
+    ? {
+        tone: "waking",
+        title: "Server is waking up",
+        detail: "The first attempt timed out. Retrying your login automatically..."
+      }
+    : apiWakeState === "ready"
+      ? {
+          tone: "ready",
+          title: "Server ready",
+          detail: "Login should complete normally."
+        }
+      : apiWakeState === "slow"
+        ? {
+            tone: "slow",
+            title: "Server is taking longer than usual",
+            detail: "You can still log in; one automatic retry is included."
+          }
+        : {
+            tone: "waking",
+            title: "Server is waking up",
+            detail: "Enter your details while the free game server gets ready."
+          };
+
+  const submitLabel = isSubmitting
+    ? authProgress === "retrying"
+      ? "Retrying login..."
+      : isSignup
+        ? "Creating account..."
+        : apiWakeState === "ready"
+          ? "Logging in..."
+          : "Waking server..."
+    : isSignup
+      ? "Create Account"
+      : "Log In";
 
   return (
     <section className="auth-layout">
@@ -946,10 +1014,14 @@ function TeacherAuth({ onAuthed, initialMode }: { onAuthed: (user: TeacherUser) 
             </button>
           </span>
         </label>
+        <div className={`server-wake-status server-wake-${wakeDisplay.tone}`} role="status" aria-live="polite">
+          <RefreshCw size={18} aria-hidden="true" />
+          <span><strong>{wakeDisplay.title}</strong><small>{wakeDisplay.detail}</small></span>
+        </div>
         <StatusMessages error={status.error} />
         <button className="primary" type="submit" disabled={isSubmitting}>
           <GraduationCap size={18} aria-hidden="true" />
-          {isSubmitting ? "Working..." : isSignup ? "Create Account" : "Log In"}
+          {submitLabel}
         </button>
         <button className="text-button" type="button" onClick={() => setIsSignup(!isSignup)} disabled={isSubmitting}>
           {isSignup ? "Use existing account" : "Create a teacher account"}
@@ -3258,9 +3330,9 @@ function StudentExperience({ onExit }: { onExit: () => void }) {
           </div>
         )}
         {(session.status === "waiting" || roundEnded || isSocketReconnecting || !player.isAlive || status.error || feedback) && (
-          <div className="student-alerts" aria-live="polite">
+          <div className={`student-alerts${session.status === "waiting" ? " has-character-creator" : ""}`} aria-live="polite">
             {session.status === "waiting" && (
-              <div className="panel pre-round-card">
+              <div className="panel pre-round-card creator-ready-room">
                 <h2>{getReadyRoomTitle(session, player)}</h2>
                 <p>Wait for the teacher to start the round.</p>
                 {session.settings.gameMode === "flag" && session.settings.teamAssignment === "players_choose" && (
