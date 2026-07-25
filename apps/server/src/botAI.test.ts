@@ -1,0 +1,109 @@
+import assert from "node:assert/strict";
+import test from "node:test";
+import {
+  BOT_DIFFICULTIES,
+  chooseBotRole,
+  chooseBotTarget,
+  createBotMemory,
+  resolveBotAim,
+  resolveBotState
+} from "./botAI.js";
+
+test("bot roles react to flag urgency instead of staying fixed", () => {
+  assert.equal(chooseBotRole({
+    gameMode: "flag",
+    team: "red",
+    flagState: "carried",
+    flagCarrierTeam: "red",
+    index: 0,
+    teammateCount: 4,
+    remainingSeconds: 90,
+    personality: "supportive"
+  }), "escort");
+  assert.equal(chooseBotRole({
+    gameMode: "flag",
+    team: "blue",
+    flagState: "carried",
+    flagCarrierTeam: "red",
+    index: 1,
+    teammateCount: 4,
+    remainingSeconds: 90,
+    personality: "objective"
+  }), "defender");
+});
+
+test("target selection respects target commitment but switches to a much greater threat", () => {
+  const candidates = [
+    { id: "committed", distance: 12, health: 100, visible: true, isFlagCarrier: false, attackingObjective: false, alliesNearTarget: 0 },
+    { id: "carrier", distance: 22, health: 100, visible: true, isFlagCarrier: false, attackingObjective: false, alliesNearTarget: 0 }
+  ];
+  assert.equal(chooseBotTarget({
+    candidates,
+    currentTargetId: "committed",
+    nowMs: 100,
+    commitUntilMs: 1000,
+    role: "attacker",
+    personality: "aggressive",
+    weaponRange: 36
+  })?.id, "committed");
+  assert.equal(chooseBotTarget({
+    candidates: candidates.map((candidate) => candidate.id === "carrier"
+      ? { ...candidate, isFlagCarrier: true, attackingObjective: true }
+      : candidate),
+    currentTargetId: "committed",
+    nowMs: 100,
+    commitUntilMs: 1000,
+    role: "interceptor",
+    personality: "objective",
+    weaponRange: 36
+  })?.id, "carrier");
+});
+
+test("reaction and difficulty keep aim imperfect and non-instant", () => {
+  const memory = createBotMemory("aim-bot", 0, 0);
+  memory.targetId = "target";
+  memory.lastSeenTargetId = "target";
+  memory.lastSeenAtMs = 0;
+  const aim = resolveBotAim({
+    memory,
+    from: { x: 0, z: 0 },
+    target: { x: 20, z: 0 },
+    currentFacing: 0,
+    profile: BOT_DIFFICULTIES.beginner,
+    distance: 20,
+    nowMs: 1000
+  });
+  assert.notEqual(aim.desiredFacing, Math.atan2(-20, 0));
+  assert.ok(Math.abs(aim.facing) <= BOT_DIFFICULTIES.beginner.aimTurnRadians + 0.001);
+});
+
+test("bots retreat from danger unless the objective is urgent", () => {
+  assert.equal(resolveBotState({
+    current: "engage_enemy",
+    health: 15,
+    maxHealth: 100,
+    targetVisible: true,
+    hasLastKnownTarget: true,
+    objectiveUrgent: false,
+    role: "attacker",
+    personality: "cautious",
+    alliesNearby: 0,
+    enemiesVisible: 2,
+    flankAvailable: true,
+    randomValue: 0.9
+  }), "retreat");
+  assert.equal(resolveBotState({
+    current: "engage_enemy",
+    health: 15,
+    maxHealth: 100,
+    targetVisible: true,
+    hasLastKnownTarget: true,
+    objectiveUrgent: true,
+    role: "interceptor",
+    personality: "cautious",
+    alliesNearby: 0,
+    enemiesVisible: 2,
+    flankAvailable: false,
+    randomValue: 0.9
+  }), "take_cover");
+});
