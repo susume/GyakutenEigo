@@ -74,6 +74,7 @@ import {
   type AnswerLog,
   hasLineOfSight,
   type ArenaPosition,
+  type BotDifficulty,
   type Choice,
   type ClassSummary,
   type GameSession,
@@ -282,7 +283,7 @@ const blockedNicknameTerms = [
 const BOT_TICK_MS = 300;
 const FIRE_REQUEST_TTL_MS = 30_000;
 const BOT_RESPAWN_MS = 8000;
-const BOT_DIFFICULTY = process.env.BOT_DIFFICULTY === "beginner" || process.env.BOT_DIFFICULTY === "advanced"
+const BOT_DIFFICULTY: BotDifficulty = process.env.BOT_DIFFICULTY === "beginner" || process.env.BOT_DIFFICULTY === "advanced"
   ? process.env.BOT_DIFFICULTY
   : "standard";
 const PLAYER_MAX_SPEED = 22;
@@ -1290,7 +1291,7 @@ const advanceBots = () => {
         return;
       }
       const brain = getBotBrain(bot, index, currentMs);
-      const profile = BOT_DIFFICULTIES[BOT_DIFFICULTY];
+      const profile = BOT_DIFFICULTIES[session.settings.botDifficulty ?? BOT_DIFFICULTY];
       const obstacles = getArenaObstacles(session.settings.mapId);
       const remainingSeconds = getRoundRemainingSeconds(session);
       const aliveTeammates = session.players.filter((player) => player.isAlive && player.team === bot.team);
@@ -1781,50 +1782,76 @@ app.post("/api/sessions/:code/bots", requireTeacher, (req: AuthedRequest, res) =
     res.status(404).json({ error: "Session not found." });
     return;
   }
-  if (session.players.length >= session.maxPlayers) {
+  if (session.status === "ended") {
+    res.status(400).json({ error: "This session has ended." });
+    return;
+  }
+  const remainingSlots = session.maxPlayers - session.players.length;
+  if (remainingSlots <= 0) {
     res.status(400).json({ error: "This session is full." });
     return;
   }
 
-  const blueCount = session.players.filter((player) => player.team === "blue").length;
-  const redCount = session.players.filter((player) => player.team === "red").length;
-  const team: Team = blueCount <= redCount ? "blue" : "red";
-  const botIndex = session.players.filter((player) => player.isBot).length;
-  const spawn = session.status === "active" ? getBotSpawn(session, team, botIndex) : selectSessionSpawn(session, team, botIndex);
-  const bot: PlayerSession = {
-    id: id(),
-    gameSessionId: session.id,
-    nickname: `${botNames[botIndex % botNames.length]} Bot ${botIndex + 1}`,
-    team,
-    money: session.settings.startingMoney,
-    quizMoneyEarned: 0,
-    moneySpent: 0,
-    isAlive: true,
-    isBot: true,
-    role: "human",
-    tags: 0,
-    respawns: 0,
-    connectionState: "connected",
-    health: DEFAULT_PLAYER_HEALTH,
-    snowballs: session.settings.startingSnowballs,
-    respawnCorrectAnswers: 0,
-    x: spawn.x,
-    y: spawn.y,
-    z: spawn.z,
-    facing: spawn.facing,
-    score: 0,
-    correctAnswers: 0,
-    wrongAnswers: 0,
-    gear: "starter_blaster",
-    weapon: "starter_blaster",
-    perks: [],
-    appearance: { ...DEFAULT_PLAYER_APPEARANCE, characterPreset: "support" },
-    joinedAt: now()
-  };
-  session.players.push(bot);
-  appendEvent(session, { type: "join", message: `${bot.nickname} joined for testing.`, playerId: bot.id, team });
+  const requestedCount = req.body?.count === undefined ? 1 : Number(req.body.count);
+  if (!Number.isInteger(requestedCount) || requestedCount < 1) {
+    res.status(400).json({ error: "Choose at least one bot." });
+    return;
+  }
+  const difficulty: BotDifficulty = req.body?.difficulty === "beginner" || req.body?.difficulty === "advanced"
+    ? req.body.difficulty
+    : req.body?.difficulty === "standard"
+      ? "standard"
+      : session.settings.botDifficulty ?? BOT_DIFFICULTY;
+  const count = Math.min(requestedCount, remainingSlots);
+  session.settings.botDifficulty = difficulty;
+  const bots: PlayerSession[] = [];
+  const firstBotIndex = session.players.filter((player) => player.isBot).length;
+  for (let offset = 0; offset < count; offset += 1) {
+    const blueCount = session.players.filter((player) => player.team === "blue").length;
+    const redCount = session.players.filter((player) => player.team === "red").length;
+    const team: Team = blueCount <= redCount ? "blue" : "red";
+    const botIndex = firstBotIndex + offset;
+    const spawn = session.status === "active" ? getBotSpawn(session, team, botIndex) : selectSessionSpawn(session, team, botIndex);
+    const bot: PlayerSession = {
+      id: id(),
+      gameSessionId: session.id,
+      nickname: `${botNames[botIndex % botNames.length]} Bot ${botIndex + 1}`,
+      team,
+      money: session.settings.startingMoney,
+      quizMoneyEarned: 0,
+      moneySpent: 0,
+      isAlive: true,
+      isBot: true,
+      role: "human",
+      tags: 0,
+      respawns: 0,
+      connectionState: "connected",
+      health: DEFAULT_PLAYER_HEALTH,
+      snowballs: session.settings.startingSnowballs,
+      respawnCorrectAnswers: 0,
+      x: spawn.x,
+      y: spawn.y,
+      z: spawn.z,
+      facing: spawn.facing,
+      score: 0,
+      correctAnswers: 0,
+      wrongAnswers: 0,
+      gear: "starter_blaster",
+      weapon: "starter_blaster",
+      perks: [],
+      appearance: { ...DEFAULT_PLAYER_APPEARANCE, characterPreset: "support" },
+      joinedAt: now()
+    };
+    session.players.push(bot);
+    bots.push(bot);
+  }
+  appendEvent(session, {
+    type: "join",
+    message: `${count} ${difficulty} test bot${count === 1 ? "" : "s"} added to the room.`,
+    team: undefined
+  });
   broadcastSession(session);
-  res.status(201).json({ session: stampSession(session), bot });
+  res.status(201).json({ session: stampSession(session), bots, difficulty });
 });
 
 app.get("/api/sessions/:code", (req, res) => {

@@ -1,6 +1,7 @@
 import { lazy, Suspense, useCallback, useEffect, useMemo, useRef, useState } from "react";
 import {
   BookOpen,
+  Bot,
   Check,
   ChevronLeft,
   ChevronRight,
@@ -49,6 +50,7 @@ import {
   sanitizePlayerAppearance,
   type CharacterCustomizationSettings,
   type ArenaMapId,
+  type BotDifficulty,
   type Choice,
   type GameAnnouncement,
   type GameEvent,
@@ -1530,6 +1532,8 @@ function SessionManager({
   const [isStartingSession, setIsStartingSession] = useState(false);
   const [isEndingSession, setIsEndingSession] = useState(false);
   const [isAddingBot, setIsAddingBot] = useState(false);
+  const [botCount, setBotCount] = useState(4);
+  const [botDifficulty, setBotDifficulty] = useState<BotDifficulty>(DEFAULT_SESSION_SETTINGS.botDifficulty);
   const [isJoinLinkCopied, setIsJoinLinkCopied] = useState(false);
   const [isEndConfirmOpen, setIsEndConfirmOpen] = useState(false);
   const [isProjectorOpen, setIsProjectorOpen] = useState(false);
@@ -1549,6 +1553,11 @@ function SessionManager({
   useEffect(() => {
     if (!quizSetId && data.quizSets[0]) setQuizSetId(data.quizSets[0].id);
   }, [data.quizSets, quizSetId]);
+
+  useEffect(() => {
+    if (!selectedSession) return;
+    setBotDifficulty(selectedSession.settings.botDifficulty ?? DEFAULT_SESSION_SETTINGS.botDifficulty);
+  }, [selectedSession?.id, selectedSession?.settings.botDifficulty]);
 
   useEffect(() => {
     if (!isEndConfirmOpen) return;
@@ -1750,15 +1759,18 @@ function SessionManager({
     return field.name !== "flagHoldSeconds" && field.name !== "initialZombieCount";
   });
 
-  const addBot = async () => {
-    if (!selectedSession || isAddingBot) return;
+  const availableBotSlots = selectedSession ? Math.max(0, selectedSession.maxPlayers - selectedSession.players.length) : 0;
+
+  const addBots = async () => {
+    if (!selectedSession || isAddingBot || availableBotSlots <= 0) return;
+    const count = Math.max(1, Math.min(availableBotSlots, Math.floor(botCount)));
     status.clear();
     setIsAddingBot(true);
     try {
-      const payload = (await teacherApi.addBot(selectedSession.sessionCode)) as { session: GameSession };
+      const payload = (await teacherApi.addBots(selectedSession.sessionCode, { count, difficulty: botDifficulty })) as { session: GameSession; bots: PlayerSession[] };
       setSelectedSession(payload.session);
       await onRefresh();
-      status.setMessage("Bot added for testing.");
+      status.setMessage(`${payload.bots.length} ${botDifficulty} test bot${payload.bots.length === 1 ? "" : "s"} added.`);
     } catch (err) {
       status.report(err);
     } finally {
@@ -2107,11 +2119,43 @@ function SessionManager({
               <button ref={endSessionTriggerRef} onClick={() => setIsEndConfirmOpen(true)} disabled={selectedSession.status === "ended" || isEndingSession}>
                 {isEndingSession ? "Working..." : "End Session"}
               </button>
-              <button onClick={addBot} disabled={selectedSession.players.length >= selectedSession.maxPlayers || isAddingBot}>
-                <Plus size={18} aria-hidden="true" />
-                {isAddingBot ? "Working..." : "Add Bot"}
-              </button>
             </div>
+            <section className="bot-control-card" aria-labelledby="bot-control-title">
+              <div className="bot-control-heading">
+                <div className="bot-control-icon" aria-hidden="true"><Bot size={20} /></div>
+                <div>
+                  <h3 id="bot-control-title">Fill empty seats with bots</h3>
+                  <p>Use bots to test the room before learners join. Their difficulty applies to this session.</p>
+                </div>
+              </div>
+              <div className="bot-control-fields">
+                <label>
+                  <span>Number of bots</span>
+                  <input
+                    type="number"
+                    min={1}
+                    max={Math.max(1, availableBotSlots)}
+                    value={botCount}
+                    disabled={availableBotSlots === 0 || isAddingBot}
+                    onChange={(event) => setBotCount(Math.max(1, Number(event.target.value) || 1))}
+                  />
+                  <small>{availableBotSlots} seat{availableBotSlots === 1 ? "" : "s"} available</small>
+                </label>
+                <label>
+                  <span>Difficulty</span>
+                  <select value={botDifficulty} disabled={isAddingBot} onChange={(event) => setBotDifficulty(event.target.value as BotDifficulty)}>
+                    <option value="beginner">Beginner · forgiving</option>
+                    <option value="standard">Standard · classroom</option>
+                    <option value="advanced">Advanced · challenging</option>
+                  </select>
+                  <small>Changes how quickly bots react, aim, and choose tactics.</small>
+                </label>
+                <button className="primary bot-control-submit" type="button" onClick={addBots} disabled={availableBotSlots === 0 || isAddingBot}>
+                  <Bot size={18} aria-hidden="true" />
+                  {isAddingBot ? "Adding bots..." : `Add ${Math.min(botCount, availableBotSlots)} bot${Math.min(botCount, availableBotSlots) === 1 ? "" : "s"}`}
+                </button>
+              </div>
+            </section>
              <details className="teacher-customization-controls" aria-label="Character customization controls" open={selectedSession.players.some((item) => !item.isBot && item.appearance?.decalAssetId)}>
                  <summary><span><strong>Lobby Characters</strong><small>Manage presets, artwork, and room-only stickers.</small></span><span className="details-summary-action">Manage</span></summary>
                  <div className="teacher-customization-toggles">

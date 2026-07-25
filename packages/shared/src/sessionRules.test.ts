@@ -287,6 +287,7 @@ test("sanitizeSessionSettings keeps classroom settings inside safe bounds", () =
   assert.deepEqual(settings, {
     mapId: "desert_citadel",
     gameMode: "flag",
+    botDifficulty: "standard",
     roundCount: FLAG_MODE_DEFAULTS.roundCount,
     flagHoldSeconds: FLAG_MODE_DEFAULTS.flagHoldSeconds,
     teamAssignment: "players_choose",

@@ -159,7 +159,8 @@ export const teacherApi = {
     api("/api/sessions", { method: "POST", body: JSON.stringify(body) }),
   startSession: (code: string) => api(`/api/sessions/${code}/start`, { method: "POST" }),
   endSession: (code: string) => api(`/api/sessions/${code}/end`, { method: "POST" }),
-  addBot: (code: string) => api(`/api/sessions/${code}/bots`, { method: "POST" }),
+  addBots: (code: string, body: { count: number; difficulty: "beginner" | "standard" | "advanced" }) =>
+    api(`/api/sessions/${code}/bots`, { method: "POST", body: JSON.stringify(body) }),
   updateCustomization: (code: string, settings: CharacterCustomizationSettings) =>
     api(`/api/sessions/${code}/customization`, { method: "PUT", body: JSON.stringify(settings) }),
   clearPlayerAppearance: (code: string, playerId: string) =>

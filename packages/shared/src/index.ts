@@ -5,6 +5,7 @@ export type GameMode = "flag" | "zombie" | "classic";
 export type ArenaMapId = "desert_citadel" | "iron_junction" | "temple_runoff";
 export type TeamAssignment = "players_choose" | "random";
 export type PlayerRole = "human" | "zombie";
+export type BotDifficulty = "beginner" | "standard" | "advanced";
 export type GameAnnouncementKind = "round_result" | "buy_phase" | "round_start" | "game_over";
 export type RoundTransitionPhase = "result" | "buy";
 export type FlagStateName =
@@ -374,6 +375,7 @@ export const getPlayerAppearanceError = (input: unknown): string | undefined => 
 export interface SessionSettings {
   mapId: ArenaMapId;
   gameMode: GameMode;
+  botDifficulty: BotDifficulty;
   roundCount: number;
   flagHoldSeconds: number;
   teamAssignment: TeamAssignment;
@@ -597,6 +599,7 @@ export const STARTER_BLASTER_RANGE = 36;
 export const DEFAULT_SESSION_SETTINGS: SessionSettings = {
   mapId: "desert_citadel",
   gameMode: "flag",
+  botDifficulty: "standard",
   roundCount: FLAG_MODE_DEFAULTS.roundCount,
   flagHoldSeconds: FLAG_MODE_DEFAULTS.flagHoldSeconds,
   teamAssignment: "players_choose",
@@ -632,9 +635,13 @@ const sanitizeArenaMap = (value: unknown): ArenaMapId =>
 const sanitizeTeamAssignment = (value: unknown): TeamAssignment =>
   value === "random" || value === "players_choose" ? value : DEFAULT_SESSION_SETTINGS.teamAssignment;
 
+const sanitizeBotDifficulty = (value: unknown): BotDifficulty =>
+  value === "beginner" || value === "advanced" || value === "standard" ? value : DEFAULT_SESSION_SETTINGS.botDifficulty;
+
 export const sanitizeSessionSettings = (input: Partial<SessionSettings> = {}): SessionSettings => ({
   mapId: sanitizeArenaMap(input.mapId),
   gameMode: sanitizeGameMode(input.gameMode),
+  botDifficulty: sanitizeBotDifficulty(input.botDifficulty),
   roundCount: clampNumber(input.roundCount, DEFAULT_SESSION_SETTINGS.roundCount, 1, 30),
   flagHoldSeconds: clampNumber(input.flagHoldSeconds, DEFAULT_SESSION_SETTINGS.flagHoldSeconds, 5, 180),
   teamAssignment: sanitizeTeamAssignment(input.teamAssignment),
