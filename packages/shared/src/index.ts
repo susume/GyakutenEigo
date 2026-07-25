@@ -118,11 +118,11 @@ export interface CosmeticCatalogItem {
 }
 
 export const COSMETIC_CATALOG = [
-  { id: "visor", slot: "head", name: "Arena Visor", description: "Classic eye shield", unlockLevel: 1 },
-  { id: "comms", slot: "head", name: "Comms Set", description: "Team radio headset", unlockLevel: 1 },
-  { id: "goggles", slot: "head", name: "Field Goggles", description: "Explorer lenses", unlockLevel: 1 },
+  { id: "visor", slot: "head", name: "Baseball Cap", description: "Classic diamond cap", unlockLevel: 1 },
+  { id: "comms", slot: "head", name: "Football Helmet", description: "Gridiron helmet and face cage", unlockLevel: 1 },
+  { id: "goggles", slot: "head", name: "Scuba Mask", description: "Wide underwater mask", unlockLevel: 1 },
   { id: "hood", slot: "head", name: "Storm Hood", description: "Soft field hood", unlockLevel: 1 },
-  { id: "field_cap", slot: "head", name: "Field Cap", description: "QuizStrike cap", unlockLevel: 2 },
+  { id: "field_cap", slot: "head", name: "Team Beanie", description: "Warm pom-pom beanie", unlockLevel: 2 },
   { id: "crown_band", slot: "head", name: "Champion Band", description: "Victory headband", unlockLevel: 4 },
   { id: "none", slot: "back", name: "No Back Gear", description: "Clean arena kit", unlockLevel: 1 },
   { id: "utility_pack", slot: "back", name: "Utility Pack", description: "Classic field pack", unlockLevel: 1 },

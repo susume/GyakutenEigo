@@ -60,3 +60,30 @@ test("every head option creates a socket-ready cosmetic group", () => {
     assert.ok(headOption.children.length > 0);
   }
 });
+
+test("the requested head cosmetics keep recognisable, migration-safe silhouettes", () => {
+  const materials = makeMaterials();
+  assert.equal(createHeadOption("visor", materials).userData.cosmeticShape, "baseball_cap");
+  assert.equal(createHeadOption("comms", materials).userData.cosmeticShape, "football_helmet");
+  assert.equal(createHeadOption("goggles", materials).userData.cosmeticShape, "scuba_mask");
+});
+
+test("detail badges are large and have distinct silhouettes", () => {
+  const materials = makeMaterials();
+  const geometrySignatures = new Set<string>();
+  for (const id of DETAIL_ACCESSORY_IDS) {
+    if (id === "none") continue;
+    const accessory = createDetailAccessory(id, materials);
+    assert.ok(accessory);
+    accessory.updateMatrixWorld(true);
+    const size = new THREE.Vector3();
+    new THREE.Box3().setFromObject(accessory).getSize(size);
+    assert.ok(Math.max(size.x, size.y) >= 0.2, `${id} is too small to read`);
+    geometrySignatures.add(
+      accessory.children
+        .map((child) => child instanceof THREE.Mesh ? child.geometry.type : child.type)
+        .join(":")
+    );
+  }
+  assert.equal(geometrySignatures.size, DETAIL_ACCESSORY_IDS.length - 1);
+});

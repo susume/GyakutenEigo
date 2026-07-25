@@ -55,6 +55,7 @@ const cylinderUnit = new THREE.CylinderGeometry(0.5, 0.5, 1, 10);
 const coneUnit = new THREE.ConeGeometry(0.5, 1, 8);
 const sphereUnit = new THREE.SphereGeometry(0.5, 10, 7);
 const torusUnit = new THREE.TorusGeometry(0.5, 0.11, 7, 16);
+const helmetShell = new THREE.SphereGeometry(0.5, 16, 10, 0, Math.PI * 2, 0, Math.PI * 0.72);
 
 const add = (
   parent: THREE.Object3D,
@@ -141,25 +142,34 @@ export const createDetailAccessory = (
   const group = new THREE.Group();
 
   if (accessoryId === "shoulder_badge") {
-    add(group, cylinderUnit, materials.armor, [0, 0, 0], [0.11, 0.035, 0.11], [Math.PI / 2, 0, 0]);
-    add(group, torusUnit, materials.accent, [0, -0.035, -0.005], [0.12, 0.12, 0.055], [Math.PI / 2, 0, 0]);
+    // Oversized shield crest with a pointed base, readable even on distant players.
+    add(group, roundedUnit, materials.armor, [0, 0.015, -0.035], [0.28, 0.25, 0.055]);
+    add(group, coneUnit, materials.armor, [0, -0.15, -0.035], [0.28, 0.2, 0.055], [0, 0, Math.PI]);
+    add(group, roundedUnit, materials.accent, [0, 0.035, -0.072], [0.16, 0.055, 0.025]);
+    add(group, sphereUnit, materials.accent, [0, -0.055, -0.072], [0.07, 0.07, 0.025]);
   } else if (accessoryId === "wrist_device") {
-    add(group, roundedUnit, materials.dark, [0, 0, 0], [0.16, 0.09, 0.13]);
-    add(group, roundedUnit, materials.visor, [0, 0.015, -0.075], [0.11, 0.055, 0.025]);
-    add(group, torusUnit, materials.accent, [0, 0, 0], [0.18, 0.15, 0.14], [Math.PI / 2, 0, 0]);
+    add(group, roundedUnit, materials.dark, [0, 0, 0], [0.23, 0.13, 0.18]);
+    add(group, roundedUnit, materials.visor, [0, 0.02, -0.105], [0.16, 0.08, 0.03]);
+    add(group, torusUnit, materials.accent, [0, 0, 0], [0.26, 0.21, 0.19], [Math.PI / 2, 0, 0]);
   } else if (accessoryId === "quiz_medal") {
-    add(group, torusUnit, materials.accent, [0, 0.07, 0], [0.16, 0.16, 0.055]);
-    add(group, cylinderUnit, materials.armor, [0, -0.03, 0], [0.105, 0.035, 0.105], [Math.PI / 2, 0, 0]);
-    add(group, roundedUnit, materials.accent, [0, 0.17, 0], [0.035, 0.18, 0.025], [0, 0, 0.55]);
+    // Twin ribbons and a large circular medal produce a unique hanging silhouette.
+    add(group, roundedUnit, materials.accent, [-0.07, 0.16, 0], [0.065, 0.28, 0.035], [0, 0, 0.34]);
+    add(group, roundedUnit, materials.armor, [0.07, 0.16, 0], [0.065, 0.28, 0.035], [0, 0, -0.34]);
+    add(group, torusUnit, materials.accent, [0, -0.035, -0.015], [0.25, 0.25, 0.075]);
+    add(group, cylinderUnit, materials.armor, [0, -0.035, -0.04], [0.175, 0.055, 0.175], [Math.PI / 2, 0, 0]);
+    add(group, sphereUnit, materials.accent, [0, -0.035, -0.085], [0.075, 0.075, 0.025]);
   } else if (accessoryId === "compass_badge") {
-    add(group, cylinderUnit, materials.armor, [0, 0, 0], [0.12, 0.035, 0.12], [Math.PI / 2, 0, 0]);
-    add(group, coneUnit, materials.accent, [0, -0.04, -0.035], [0.07, 0.14, 0.035], [Math.PI / 2, 0, 0]);
+    add(group, torusUnit, materials.dark, [0, 0, -0.01], [0.25, 0.25, 0.075]);
+    add(group, cylinderUnit, materials.armor, [0, 0, -0.035], [0.18, 0.045, 0.18], [Math.PI / 2, 0, 0]);
+    add(group, coneUnit, materials.accent, [0, 0.065, -0.09], [0.095, 0.24, 0.035], [Math.PI / 2, 0, 0]);
+    add(group, coneUnit, materials.dark, [0, -0.065, -0.09], [0.07, 0.17, 0.03], [-Math.PI / 2, 0, 0]);
   } else if (accessoryId === "champion_star") {
-    add(group, sphereUnit, materials.accent, [0, 0, 0], [0.13, 0.13, 0.035]);
+    add(group, sphereUnit, materials.armor, [0, 0, 0], [0.18, 0.18, 0.045]);
     for (let index = 0; index < 5; index += 1) {
       const angle = (index / 5) * Math.PI * 2;
-      add(group, coneUnit, materials.accent, [Math.sin(angle) * 0.1, Math.cos(angle) * 0.1, 0], [0.06, 0.13, 0.025], [0, 0, -angle]);
+      add(group, coneUnit, materials.accent, [Math.sin(angle) * 0.17, Math.cos(angle) * 0.17, -0.035], [0.105, 0.25, 0.04], [0, 0, -angle]);
     }
+    add(group, sphereUnit, materials.accent, [0, 0, -0.085], [0.08, 0.08, 0.025]);
   }
 
   return finishAccessory(accessoryId, DETAIL_ACCESSORY_DEFINITIONS[accessoryId], group);
@@ -173,24 +183,39 @@ export const createHeadOption = (
   group.name = `HeadOption_${option}`;
 
   if (option === "visor") {
-    add(group, roundedUnit, materials.visor, [0, 0.045, -0.3], [0.46, 0.13, 0.045]);
-    add(group, roundedUnit, materials.accent, [0, 0.13, -0.285], [0.34, 0.035, 0.035]);
+    group.userData.cosmeticShape = "baseball_cap";
+    add(group, sphereUnit, materials.cloth, [0, 0.2, 0.015], [0.38, 0.27, 0.36]);
+    add(group, roundedUnit, materials.accent, [0, 0.115, -0.335], [0.44, 0.055, 0.23]);
+    add(group, roundedUnit, materials.armor, [0, 0.22, -0.315], [0.075, 0.13, 0.025]);
+    add(group, sphereUnit, materials.accent, [0, 0.34, 0.015], [0.055, 0.055, 0.055]);
   } else if (option === "comms") {
-    add(group, torusUnit, materials.dark, [0, 0.08, 0], [0.68, 0.74, 0.66], [0, 0, Math.PI / 2]);
-    add(group, roundedUnit, materials.armor, [-0.31, 0.02, 0], [0.09, 0.18, 0.12]);
-    add(group, roundedUnit, materials.armor, [0.31, 0.02, 0], [0.09, 0.18, 0.12]);
-    add(group, cylinderUnit, materials.accent, [0.24, -0.08, -0.18], [0.025, 0.2, 0.025], [0.88, 0, 0.2]);
+    group.userData.cosmeticShape = "football_helmet";
+    add(group, helmetShell, materials.armor, [0, 0.34, 0.045], [0.9, 0.82, 0.86]);
+    add(group, roundedUnit, materials.accent, [0, 0.31, -0.31], [0.32, 0.07, 0.035]);
+    add(group, torusUnit, materials.dark, [-0.34, 0.07, 0.015], [0.17, 0.17, 0.08], [0, Math.PI / 2, 0]);
+    add(group, torusUnit, materials.dark, [0.34, 0.07, 0.015], [0.17, 0.17, 0.08], [0, Math.PI / 2, 0]);
+    // Broad face cage and chin bar make the gridiron silhouette unmistakable.
+    for (const x of [-0.25, 0.25]) {
+      add(group, cylinderUnit, materials.dark, [x, -0.02, -0.39], [0.025, 0.34, 0.025], [0.12, 0, 0]);
+    }
+    add(group, cylinderUnit, materials.dark, [0, 0.03, -0.39], [0.025, 0.56, 0.025], [0, 0, Math.PI / 2]);
+    add(group, cylinderUnit, materials.dark, [0, -0.13, -0.37], [0.025, 0.45, 0.025], [0, 0, Math.PI / 2]);
   } else if (option === "goggles") {
-    add(group, torusUnit, materials.visor, [-0.105, 0.045, -0.295], [0.18, 0.18, 0.1]);
-    add(group, torusUnit, materials.visor, [0.105, 0.045, -0.295], [0.18, 0.18, 0.1]);
-    add(group, roundedUnit, materials.dark, [0, 0.045, -0.29], [0.085, 0.025, 0.025]);
+    group.userData.cosmeticShape = "scuba_mask";
+    add(group, roundedUnit, materials.dark, [0, 0.03, -0.315], [0.56, 0.27, 0.065]);
+    add(group, roundedUnit, materials.visor, [0, 0.045, -0.355], [0.45, 0.17, 0.035]);
+    add(group, roundedUnit, materials.dark, [0, -0.075, -0.36], [0.15, 0.13, 0.045]);
+    add(group, torusUnit, materials.dark, [0, 0.03, 0.01], [0.72, 0.6, 0.62], [Math.PI / 2, 0, 0]);
+    add(group, roundedUnit, materials.accent, [-0.285, 0.025, -0.29], [0.06, 0.12, 0.055]);
+    add(group, roundedUnit, materials.accent, [0.285, 0.025, -0.29], [0.06, 0.12, 0.055]);
   } else if (option === "hood") {
     add(group, torusUnit, materials.cloth, [0, -0.005, 0.015], [0.67, 0.75, 0.68], [Math.PI / 2, 0, 0]);
     add(group, sphereUnit, materials.cloth, [0, 0.15, 0.03], [0.34, 0.25, 0.32]);
   } else if (option === "field_cap") {
-    add(group, sphereUnit, materials.cloth, [0, 0.2, 0.01], [0.34, 0.15, 0.31]);
-    add(group, roundedUnit, materials.accent, [0, 0.17, -0.29], [0.36, 0.035, 0.16]);
-    add(group, sphereUnit, materials.armor, [0, 0.31, 0.02], [0.055, 0.055, 0.055]);
+    group.userData.cosmeticShape = "beanie";
+    add(group, sphereUnit, materials.cloth, [0, 0.25, 0.015], [0.38, 0.32, 0.36]);
+    add(group, roundedUnit, materials.accent, [0, 0.075, -0.01], [0.72, 0.13, 0.66]);
+    add(group, sphereUnit, materials.armor, [0, 0.43, 0.02], [0.09, 0.09, 0.09]);
   } else {
     add(group, torusUnit, materials.accent, [0, 0.18, 0], [0.63, 0.66, 0.62], [Math.PI / 2, 0, 0]);
     add(group, roundedUnit, materials.armor, [0, 0.18, -0.285], [0.18, 0.07, 0.035]);

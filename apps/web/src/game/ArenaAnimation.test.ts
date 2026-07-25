@@ -5,7 +5,7 @@ import { emitArenaAnimation, subscribeArenaAnimation } from "./ArenaAnimation";
 test("arena animation cues are delivered until the listener unsubscribes", () => {
   const received: unknown[] = [];
   const unsubscribe = subscribeArenaAnimation((event) => received.push(event));
-  const event = { kind: "flag_capture" as const, playerId: "player-1", team: "blue" as const };
+  const event = { kind: "fire" as const, playerId: "player-1", team: "blue" as const };
   emitArenaAnimation(event);
   assert.deepEqual(received, [event]);
   unsubscribe();

@@ -29,6 +29,7 @@ export interface CharacterModelUpdate {
   speed: number;
   forwardSpeed?: number;
   strafeSpeed?: number;
+  turnSpeed?: number;
   alive: boolean;
   aimPitch?: number;
   firing?: boolean;
@@ -82,10 +83,10 @@ export class CharacterModel {
     });
   }
 
-  update({ camera, delta, elapsed, speed, forwardSpeed, strafeSpeed, alive, aimPitch, firing, crouching, carryingObjective }: CharacterModelUpdate) {
+  update({ camera, delta, elapsed, speed, forwardSpeed, strafeSpeed, turnSpeed, alive, aimPitch, firing, crouching, carryingObjective }: CharacterModelUpdate) {
     const lodState = this.lod.update(this.root, camera);
     if (lodState.shouldAnimate || this.animator.hasActiveCue) {
-      this.animator.update(this.parts, { delta, elapsed, speed, forwardSpeed, strafeSpeed, alive, aimPitch, firing, crouching, carryingObjective });
+      this.animator.update(this.parts, { delta, elapsed, speed, forwardSpeed, strafeSpeed, turnSpeed, alive, aimPitch, firing, crouching, carryingObjective });
       this.audio.update(speed, delta);
     }
     this.parts.equipment.weapon.visible = alive && lodState.level.equipment !== "minimal";

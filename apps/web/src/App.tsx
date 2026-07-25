@@ -2336,6 +2336,7 @@ function StudentExperience({ onExit }: { onExit: () => void }) {
     id: number;
     direction: IncomingHitDirection;
     eliminated: boolean;
+    attackerName: string;
   } | null>(null);
   const status = useAsyncMessage();
   const remainingSeconds = useRoundRemaining(session);
@@ -2573,6 +2574,15 @@ function StudentExperience({ onExit }: { onExit: () => void }) {
     });
     socket.on("remote_weapon_fire", (payload: { playerId?: string; x?: number; z?: number; facing?: number; gearId?: string }) => {
       if (payload.playerId === activePlayerId || !Number.isFinite(payload.x) || !Number.isFinite(payload.z)) return;
+      const attacker = lastVisualSession.players.find((candidate) => candidate.id === payload.playerId);
+      emitPlayerAnimation("fire", payload.playerId, attacker?.team);
+      emitArenaVfx({
+        kind: "weapon_fire",
+        x: payload.x!,
+        z: payload.z!,
+        y: 1.15,
+        team: attacker?.team
+      });
       const local = lastVisualSession.players.find((candidate) => candidate.id === activePlayerId);
       if (!local || !Number.isFinite(local.x) || !Number.isFinite(local.z)) return;
       const cue: AudioEventCue = payload.gearId === "power_blaster"
@@ -2692,6 +2702,7 @@ function StudentExperience({ onExit }: { onExit: () => void }) {
         if (result.eliminated) setRewardPulse("Freeze!");
       }
       if (result.targetId === activePlayerId) {
+        const attackerName = lastVisualSession.players.find((candidate) => candidate.id === result.attackerId)?.nickname ?? "Opponent";
         const incomingSpatial = getCombatAudioSpatial({
           attacker: { x: result.attackerX, z: result.attackerZ },
           target: { x: result.targetX, z: result.targetZ, facing: result.targetFacing }
@@ -2705,9 +2716,14 @@ function StudentExperience({ onExit }: { onExit: () => void }) {
             attacker: { x: result.attackerX, z: result.attackerZ },
             target: { x: result.targetX, z: result.targetZ, facing: result.targetFacing }
           }),
-          eliminated: result.eliminated
+          eliminated: result.eliminated,
+          attackerName
         });
-        setFeedback(result.eliminated ? "Frozen out. Answer three practice questions to respawn." : `Tagged for ${result.damage} warmth.`);
+        setFeedback(
+          result.eliminated
+            ? `${attackerName} froze you out. Answer three practice questions to respawn.`
+            : `${attackerName} tagged you for ${result.damage} warmth.`
+        );
         if (result.eliminated && session.settings.deadPlayersCanPractice && session.settings.gameMode !== "flag") {
           openRespawnPractice();
         }
@@ -3330,9 +3346,22 @@ function StudentExperience({ onExit }: { onExit: () => void }) {
             key={incomingHitCue.id}
             className={`incoming-hit-flash incoming-hit-flash-${incomingHitCue.direction}${incomingHitCue.eliminated ? " incoming-hit-flash-eliminated" : ""}`}
             data-testid="incoming-hit-flash"
-            aria-hidden="true"
+            role="status"
+            aria-live="assertive"
             onAnimationEnd={() => setIncomingHitCue(null)}
-          />
+          >
+            <span className="incoming-attacker-label">
+              <strong>{incomingHitCue.attackerName}</strong>
+              <small>
+                {incomingHitCue.eliminated ? "froze you" : "attacking"} from{" "}
+                {incomingHitCue.direction === "front"
+                  ? "ahead"
+                  : incomingHitCue.direction === "back"
+                    ? "behind"
+                    : incomingHitCue.direction}
+              </small>
+            </span>
+          </div>
         )}
         {rewardPulse && <div className="reward-toast" onAnimationEnd={() => setRewardPulse("")}>{rewardPulse}</div>}
         {panelsOpen && (

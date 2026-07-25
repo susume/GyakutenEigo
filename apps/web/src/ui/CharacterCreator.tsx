@@ -18,7 +18,6 @@ import {
   Flag,
   Glasses,
   HardHat,
-  Headphones,
   Medal,
   Package,
   Radio,
@@ -55,11 +54,11 @@ export const HEAD_OPTIONS: ReadonlyArray<{
   label: string;
   Icon: LucideIcon;
 }> = [
-  { id: "visor", label: "Visor", Icon: UserRound },
-  { id: "comms", label: "Comms", Icon: Headphones },
-  { id: "goggles", label: "Goggles", Icon: Glasses },
+  { id: "visor", label: "Baseball cap", Icon: UserRound },
+  { id: "comms", label: "Football helmet", Icon: HardHat },
+  { id: "goggles", label: "Scuba mask", Icon: Glasses },
   { id: "hood", label: "Hood", Icon: HardHat },
-  { id: "field_cap", label: "Field cap", Icon: ScanFace },
+  { id: "field_cap", label: "Beanie", Icon: ScanFace },
   { id: "crown_band", label: "Champion", Icon: Crown }
 ];
 

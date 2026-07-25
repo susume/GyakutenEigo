@@ -48,6 +48,36 @@ test("hit cues add recoil and then expire back toward locomotion", () => {
   assert.ok(Math.abs(parts.torso.rotation.y) < 0.01);
 });
 
+test("remote fire cues produce a readable braced recoil pose", () => {
+  const animator = new CharacterAnimator();
+  const parts = makeParts();
+  animator.trigger("fire");
+  for (let frame = 0; frame < 7; frame += 1) {
+    animator.update(parts, { delta: 1 / 60, elapsed: frame / 60, speed: 0, alive: true });
+  }
+  assert.ok(parts.weapon.position.z > 0.04);
+  assert.ok(parts.weapon.rotation.x < -0.08);
+  assert.ok(parts.leftForearm.rotation.x > 0.75);
+});
+
+test("turning characters lean and counter-rotate their head", () => {
+  const animator = new CharacterAnimator();
+  const parts = makeParts();
+  for (let frame = 0; frame < 20; frame += 1) {
+    animator.update(parts, {
+      delta: 1 / 60,
+      elapsed: frame / 60,
+      speed: 2,
+      forwardSpeed: 2,
+      turnSpeed: 2.4,
+      alive: true
+    });
+  }
+  assert.ok(parts.root.rotation.z < -0.05);
+  assert.ok(parts.torso.rotation.y > 0.05);
+  assert.ok(parts.head.rotation.y < 0);
+});
+
 test("objective carriers keep a readable cradle pose while moving", () => {
   const animator = new CharacterAnimator();
   const parts = makeParts();

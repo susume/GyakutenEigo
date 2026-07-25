@@ -2,6 +2,7 @@ import * as THREE from "three";
 import type { Team } from "@quizstrike/shared";
 
 export type ArenaVfxKind =
+  | "weapon_fire"
   | "impact"
   | "shield"
   | "objective"
@@ -58,6 +59,7 @@ export interface ArenaVfxStyle {
 }
 
 const vfxStyles: Record<ArenaVfxKind, ArenaVfxStyle> = {
+  weapon_fire: { lifetime: 240, radius: 1.55, ringOpacity: 0.9, haloOpacity: 0.24, rise: 0.65 },
   impact: { lifetime: 320, radius: 1.2, ringOpacity: 0.66, haloOpacity: 0.18, rise: 0.8 },
   shield: { lifetime: 520, radius: 2.4, ringOpacity: 0.66, haloOpacity: 0.38, rise: 0.8 },
   objective: { lifetime: 760, radius: 3.2, ringOpacity: 0.82, haloOpacity: 0.2, rise: 1.1 },

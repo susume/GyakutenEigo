@@ -15,6 +15,7 @@ test("arena VFX events are delivered until the listener unsubscribes", () => {
 
 test("secondary effects stay inside the strict world-coverage budget", () => {
   const kinds: ArenaVfxKind[] = [
+    "weapon_fire",
     "healing",
     "flag_plant",
     "flag_capture",

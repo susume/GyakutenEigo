@@ -22,6 +22,7 @@ export interface CharacterAnimationState {
   speed: number;
   forwardSpeed?: number;
   strafeSpeed?: number;
+  turnSpeed?: number;
   alive: boolean;
   aimPitch?: number;
   firing?: boolean;
@@ -29,9 +30,10 @@ export interface CharacterAnimationState {
   carryingObjective?: boolean;
 }
 
-export type CharacterAnimationCue = "hit" | "respawn" | "jump" | "land" | "flag_plant" | "flag_capture" | "victory" | "defeat";
+export type CharacterAnimationCue = "fire" | "hit" | "respawn" | "jump" | "land" | "flag_plant" | "flag_capture" | "victory" | "defeat";
 
 const cueDuration: Record<CharacterAnimationCue, number> = {
+  fire: 0.24,
   hit: 0.32,
   respawn: 0.9,
   jump: 0.55,
@@ -59,6 +61,7 @@ export class CharacterAnimator {
   trigger(kind: CharacterAnimationCue) {
     const duration = cueDuration[kind];
     this.cue = { kind, duration, remaining: duration };
+    if (kind === "fire") this.fireKick = 1;
   }
 
   update(parts: CharacterAnimationParts, state: CharacterAnimationState) {
@@ -99,8 +102,9 @@ export class CharacterAnimator {
       1 - Math.exp(-delta * 14)
     );
     const strafeLean = THREE.MathUtils.clamp((state.strafeSpeed ?? 0) * -0.028, -0.18, 0.18);
+    const turnLean = THREE.MathUtils.clamp((state.turnSpeed ?? 0) * -0.045, -0.16, 0.16);
     const backwards = (state.forwardSpeed ?? state.speed) < -0.25 ? -1 : 1;
-    parts.root.rotation.z = THREE.MathUtils.lerp(parts.root.rotation.z, strafeLean, locomotionResponse);
+    parts.root.rotation.z = THREE.MathUtils.lerp(parts.root.rotation.z, strafeLean + turnLean, locomotionResponse);
     const cycle = state.elapsed * THREE.MathUtils.lerp(2.1, 10.4, this.gaitBlend);
     const gaitBob = Math.abs(Math.cos(cycle)) * 0.055 * this.gaitBlend;
     parts.root.position.y = THREE.MathUtils.lerp(
@@ -162,13 +166,18 @@ export class CharacterAnimator {
     parts.rightForearm.rotation.z = THREE.MathUtils.lerp(parts.rightForearm.rotation.z, -0.22, 0.18);
     parts.torso.rotation.x = breath + this.gaitBlend * 0.075 + this.crouchBlend * 0.12;
     parts.torso.rotation.z = Math.sin(cycle * 0.5) * 0.05 * this.gaitBlend;
-    parts.torso.rotation.y = THREE.MathUtils.lerp(parts.torso.rotation.y, torsoTwist, locomotionResponse);
+    const turnTwist = THREE.MathUtils.clamp((state.turnSpeed ?? 0) * 0.055, -0.2, 0.2);
+    parts.torso.rotation.y = THREE.MathUtils.lerp(parts.torso.rotation.y, torsoTwist + turnTwist, locomotionResponse);
     parts.head.rotation.x = THREE.MathUtils.lerp(
       parts.head.rotation.x,
       THREE.MathUtils.clamp(state.aimPitch ?? 0, -0.42, 0.42) - gaitBob * 0.25,
       1 - Math.exp(-delta * 18)
     );
-    parts.head.rotation.y = Math.sin(state.elapsed * 0.85) * THREE.MathUtils.lerp(0.05, 0.012, this.gaitBlend);
+    parts.head.rotation.y = THREE.MathUtils.lerp(
+      parts.head.rotation.y,
+      Math.sin(state.elapsed * 0.85) * THREE.MathUtils.lerp(0.05, 0.012, this.gaitBlend) - turnTwist * 0.7,
+      1 - Math.exp(-delta * 14)
+    );
     parts.head.rotation.z = THREE.MathUtils.lerp(parts.head.rotation.z, 0, 0.18);
     parts.leftArm.rotation.z = THREE.MathUtils.lerp(parts.leftArm.rotation.z, state.carryingObjective ? 0.12 : 0.28, 0.16);
     parts.rightArm.rotation.z = THREE.MathUtils.lerp(parts.rightArm.rotation.z, -0.2, 0.16);
@@ -185,7 +194,18 @@ export class CharacterAnimator {
     if (!cue) return;
     const pulse = Math.sin(cueProgress * Math.PI);
     const snap = Math.min(1, (state.delta ?? 1 / 60) * 18);
-    if (cue.kind === "hit") {
+    if (cue.kind === "fire") {
+      // Square the shoulders, brace the arms and kick the launcher so remote attacks
+      // are readable from the player's body rather than only from sound.
+      parts.torso.rotation.x = THREE.MathUtils.lerp(parts.torso.rotation.x, -0.13 * pulse, snap);
+      parts.torso.rotation.y = THREE.MathUtils.lerp(parts.torso.rotation.y, 0, snap);
+      parts.leftArm.rotation.x = THREE.MathUtils.lerp(parts.leftArm.rotation.x, 0.24, snap);
+      parts.rightArm.rotation.x = THREE.MathUtils.lerp(parts.rightArm.rotation.x, 0.31, snap);
+      parts.leftForearm.rotation.x = THREE.MathUtils.lerp(parts.leftForearm.rotation.x, 1.08, snap);
+      parts.rightForearm.rotation.x = THREE.MathUtils.lerp(parts.rightForearm.rotation.x, 0.94, snap);
+      parts.weapon.position.z += 0.13 * pulse;
+      parts.weapon.rotation.x -= 0.18 * pulse;
+    } else if (cue.kind === "hit") {
       parts.root.rotation.z = THREE.MathUtils.lerp(parts.root.rotation.z, -0.24 * pulse, snap);
       parts.torso.rotation.y = THREE.MathUtils.lerp(parts.torso.rotation.y, 0.34 * pulse, snap);
       parts.head.rotation.z = THREE.MathUtils.lerp(parts.head.rotation.z, -0.18 * pulse, snap);

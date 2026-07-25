@@ -1878,7 +1878,7 @@ small {
   overflow: hidden;
   border-radius: 8px;
   pointer-events: none;
-  animation: incoming-hit-fade 760ms ease-out both;
+  animation: incoming-hit-fade 1120ms ease-out both;
 }
 
 .incoming-hit-flash::before,
@@ -1894,6 +1894,38 @@ small {
 
 .incoming-hit-flash::after {
   opacity: 0.94;
+}
+
+.incoming-attacker-label {
+  position: absolute;
+  top: clamp(84px, 13vh, 132px);
+  left: 50%;
+  z-index: 1;
+  display: grid;
+  min-width: 190px;
+  transform: translateX(-50%);
+  border: 1px solid rgba(254, 202, 202, 0.76);
+  border-radius: 12px;
+  padding: 9px 16px;
+  background: rgba(69, 10, 10, 0.88);
+  box-shadow: 0 12px 34px rgba(127, 29, 29, 0.34);
+  color: #ffffff;
+  text-align: center;
+  text-transform: none;
+}
+
+.incoming-attacker-label strong {
+  font-size: 1.05rem;
+  line-height: 1.1;
+}
+
+.incoming-attacker-label small {
+  margin-top: 3px;
+  color: #fecaca;
+  font-size: 0.76rem;
+  font-weight: 900;
+  letter-spacing: 0.055em;
+  text-transform: uppercase;
 }
 
 .incoming-hit-flash-front::after {
@@ -1917,7 +1949,7 @@ small {
 }
 
 .incoming-hit-flash-eliminated {
-  animation-duration: 980ms;
+  animation-duration: 1320ms;
 }
 
 .incoming-hit-flash-eliminated::before {

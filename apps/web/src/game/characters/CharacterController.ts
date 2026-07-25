@@ -14,6 +14,7 @@ export class CharacterController {
   speed = 0;
   forwardSpeed = 0;
   strafeSpeed = 0;
+  turnSpeed = 0;
   carryingObjective = false;
 
   constructor(model: CharacterModel, x: number, z: number, facing: number, alive: boolean) {
@@ -39,16 +40,31 @@ export class CharacterController {
   update(delta: number, elapsed: number, camera: THREE.Camera) {
     const previousX = this.current.x;
     const previousZ = this.current.z;
+    const previousFacing = this.currentFacing;
     const smoothing = Math.min(1, delta * 9);
     this.current.lerp(this.target, smoothing);
     this.currentFacing += angleDelta(this.currentFacing, this.targetFacing) * Math.min(1, delta * 10);
     const velocityX = (this.current.x - previousX) / Math.max(delta, 0.001);
     const velocityZ = (this.current.z - previousZ) / Math.max(delta, 0.001);
-    this.speed = Math.hypot(velocityX, velocityZ);
+    const motionResponse = 1 - Math.exp(-Math.max(delta, 0.001) * 12);
+    this.speed = THREE.MathUtils.lerp(this.speed, Math.hypot(velocityX, velocityZ), motionResponse);
     const forwardX = -Math.sin(this.currentFacing);
     const forwardZ = -Math.cos(this.currentFacing);
-    this.forwardSpeed = velocityX * forwardX + velocityZ * forwardZ;
-    this.strafeSpeed = velocityX * Math.cos(this.currentFacing) - velocityZ * Math.sin(this.currentFacing);
+    this.forwardSpeed = THREE.MathUtils.lerp(
+      this.forwardSpeed,
+      velocityX * forwardX + velocityZ * forwardZ,
+      motionResponse
+    );
+    this.strafeSpeed = THREE.MathUtils.lerp(
+      this.strafeSpeed,
+      velocityX * Math.cos(this.currentFacing) - velocityZ * Math.sin(this.currentFacing),
+      motionResponse
+    );
+    this.turnSpeed = THREE.MathUtils.lerp(
+      this.turnSpeed,
+      angleDelta(previousFacing, this.currentFacing) / Math.max(delta, 0.001),
+      motionResponse
+    );
     this.model.setWorldState(this.current.x, this.current.z, this.currentFacing, this.alive);
     this.model.update({
       camera,
@@ -57,6 +73,7 @@ export class CharacterController {
       speed: this.speed,
       forwardSpeed: this.forwardSpeed,
       strafeSpeed: this.strafeSpeed,
+      turnSpeed: this.turnSpeed,
       alive: this.alive,
       carryingObjective: this.carryingObjective
     });
