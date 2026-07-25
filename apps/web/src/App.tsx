@@ -59,7 +59,7 @@ import {
 import { ApiError, authApi, fetchDecalAsset, getApiUrl, studentApi, teacherApi } from "./api/client";
 import { buildStudentJoinUrl, getJoinCodeFromSearch, modeForRoute, normalizeRoutePath, type AppMode } from "./navigation";
 import { groupScoreboardRows } from "./scoreboardGroups";
-import { getModeScoreSummary, getReadyRoomTitle, getSessionResultText, getZombieCounts } from "./sessionPresentation";
+import { getModeScoreSummary, getSessionResultText, getZombieCounts } from "./sessionPresentation";
 import { formatStudentJoinError } from "./studentJoinErrors";
 import { getShopShortcut, getShopShortcutKey } from "./shopShortcuts";
 import { sendStudentCommand } from "./studentCommandTransport";
@@ -83,7 +83,7 @@ import {
 } from "./studentCombatFeedback";
 
 const ArenaPreview = lazy(() => import("./game/ArenaPreview"));
-const CharacterCreator = lazy(() => import("./ui/CharacterCreator"));
+const CharacterCreator = lazy(() => import("./ui/PremiumCharacterCreator"));
 
 type DashboardPayload = {
   classes: Array<{ id: string; name: string; description?: string; createdAt: string }>;
@@ -2317,6 +2317,7 @@ function StudentExperience({ onExit }: { onExit: () => void }) {
   const [answeringChoice, setAnsweringChoice] = useState<Choice | null>(null);
   const [buyingGearId, setBuyingGearId] = useState<string | null>(null);
   const [isBuyingSnowballs, setIsBuyingSnowballs] = useState(false);
+  const [isSwitchingTeam, setIsSwitchingTeam] = useState(false);
   const [isRestoringStudentSession, setIsRestoringStudentSession] = useState(true);
   const [rewardPulse, setRewardPulse] = useState("");
   const [spectatorPlayerId, setSpectatorPlayerId] = useState("");
@@ -2336,6 +2337,7 @@ function StudentExperience({ onExit }: { onExit: () => void }) {
   const previousAliveRef = useRef<boolean | null>(null);
   const previousFlagBuyPhaseRef = useRef(false);
   const lastCountdownCueRef = useRef("");
+  const lastTeamSwitchAtRef = useRef(0);
 
   const isCompactViewport = viewportWidth <= 780;
   const nicknameError = useMemo(() => getNicknameError(nickname), [nickname]);
@@ -3063,7 +3065,11 @@ function StudentExperience({ onExit }: { onExit: () => void }) {
   ]);
 
   const chooseTeam = async (team: Team) => {
-    if (!session || !player || !playerToken || session.status !== "waiting") return;
+    if (!session || !player || !playerToken || session.status !== "waiting" || isSwitchingTeam || player.team === team) return;
+    const now = performance.now();
+    if (now - lastTeamSwitchAtRef.current < 900) return;
+    lastTeamSwitchAtRef.current = now;
+    setIsSwitchingTeam(true);
     status.clear();
     try {
       const payload = (await studentApi.chooseTeam(session.sessionCode, player.id, playerToken, team)) as {
@@ -3076,6 +3082,8 @@ function StudentExperience({ onExit }: { onExit: () => void }) {
       gameAudio.playEvent("team_select");
     } catch (err) {
       status.report(err);
+    } finally {
+      setIsSwitchingTeam(false);
     }
   };
 
@@ -3173,7 +3181,9 @@ function StudentExperience({ onExit }: { onExit: () => void }) {
   const gear = GEAR_ITEMS.find((item) => item.id === getPlayerWeaponId(player)) ?? GEAR_ITEMS[0];
   const snowballs = player.snowballs ?? session.settings.startingSnowballs;
   const warmth = getPlayerWarmth(player);
-  const topLearner = getTopLearner(session.players);
+  const connectedPlayers = session.players.filter((candidate) => candidate.connectionState !== "disconnected");
+  const redTeamCount = connectedPlayers.filter((candidate) => candidate.team === "red").length;
+  const blueTeamCount = connectedPlayers.filter((candidate) => candidate.team === "blue").length;
   const respawnProgress = player.respawnCorrectAnswers ?? 0;
   const canPracticeToRespawn = !player.isAlive && session.settings.deadPlayersCanPractice && session.settings.gameMode !== "flag";
   const roundActive = session.status === "active";
@@ -3200,11 +3210,20 @@ function StudentExperience({ onExit }: { onExit: () => void }) {
   };
 
   return (
-    <section className={isCompactViewport ? "game-layout compact-game-layout" : "game-layout"}>
+    <section className={[
+      "game-layout",
+      isCompactViewport ? "compact-game-layout" : "",
+      session.status === "waiting" ? "waiting-game-layout" : ""
+    ].filter(Boolean).join(" ")}>
       <div className="game-stage">
-        <GameAnnouncementOverlay announcement={flagBuyPhase ? undefined : session.announcement} serverTime={session.serverTime} />
-        <div className="game-utility-bar">
-          <span>{gameModeLabel(session.settings.gameMode)}</span>
+        {session.status !== "waiting" && <GameAnnouncementOverlay announcement={flagBuyPhase ? undefined : session.announcement} serverTime={session.serverTime} />}
+        <div className={`game-utility-bar${session.status === "waiting" ? " lobby-utility-bar" : ""}`}>
+          {session.status === "waiting" ? (
+            <div className="lobby-brand">
+              <strong>QuizStrike Classroom</strong>
+              <small>{gameModeLabel(session.settings.gameMode)} · Room {session.sessionCode}</small>
+            </div>
+          ) : <span>{gameModeLabel(session.settings.gameMode)}</span>}
           <button type="button" onClick={() => { setSettingsOpen(true); setQuizOpen(false); setBuyOpen(false); setScoreboardOpen(false); }}><Settings size={16} aria-hidden="true" />Settings</button>
           <button type="button" onClick={onExit}>Exit Game</button>
         </div>
@@ -3229,6 +3248,7 @@ function StudentExperience({ onExit }: { onExit: () => void }) {
             />
           </Suspense>
         )}
+        {session.status !== "waiting" && (<>
         <div className={roundCountdownClassName} role="timer" aria-label={`Round time remaining ${roundTimeLabel}`}>
           <Timer size={18} aria-hidden="true" />
           <span>Round Timer</span>
@@ -3279,6 +3299,7 @@ function StudentExperience({ onExit }: { onExit: () => void }) {
             </span>
           </span>
         </div>
+        </>)}
         {incomingHitCue && (
           <div
             key={incomingHitCue.id}
@@ -3333,22 +3354,41 @@ function StudentExperience({ onExit }: { onExit: () => void }) {
           <div className={`student-alerts${session.status === "waiting" ? " has-character-creator" : ""}`} aria-live="polite">
             {session.status === "waiting" && (
               <div className="panel pre-round-card creator-ready-room">
-                <h2>{getReadyRoomTitle(session, player)}</h2>
-                <p>Wait for the teacher to start the round.</p>
-                {session.settings.gameMode === "flag" && session.settings.teamAssignment === "players_choose" && (
-                  <div className="button-row">
-                    <button className={player.team === "red" ? "active" : ""} onClick={() => chooseTeam("red")}>
-                      Red Team
-                    </button>
-                    <button className={player.team === "blue" ? "active" : ""} onClick={() => chooseTeam("blue")}>
-                      Blue Team
-                    </button>
+                <header className="lobby-selection-header">
+                  <div className="lobby-instruction">
+                    <span>Choose your team</span>
+                    <h2>Choose your team and wait for the teacher to start the game.</h2>
+                    <div className="lobby-status-row">
+                      <span className="waiting-status"><span className="waiting-pulse" />Waiting for teacher…</span>
+                      <span className="lobby-player-count"><Users size={15} />{connectedPlayers.length} {connectedPlayers.length === 1 ? "player" : "players"} joined</span>
+                    </div>
                   </div>
-                )}
-                <div className="live-summary">
-                  <span>{session.players.length} joined</span>
-                  <span>Top learner: {topLearner?.nickname ?? "not yet"}</span>
-                </div>
+                  <div className="team-choice-grid" aria-label="Choose your team">
+                    <button
+                      type="button"
+                      className={`team-choice team-choice-red${player.team === "red" ? " selected" : ""}`}
+                      onClick={() => void chooseTeam("red")}
+                      disabled={isSwitchingTeam || session.settings.teamAssignment !== "players_choose" || session.settings.gameMode === "zombie"}
+                      aria-pressed={player.team === "red"}
+                    >
+                      <span className="team-choice-emblem"><Shield size={20} /></span>
+                      <span><small>Red team</small><strong>{redTeamCount} joined</strong></span>
+                      {player.team === "red" && <Check className="team-choice-check" size={18} />}
+                    </button>
+                    <button
+                      type="button"
+                      className={`team-choice team-choice-blue${player.team === "blue" ? " selected" : ""}`}
+                      onClick={() => void chooseTeam("blue")}
+                      disabled={isSwitchingTeam || session.settings.teamAssignment !== "players_choose" || session.settings.gameMode === "zombie"}
+                      aria-pressed={player.team === "blue"}
+                    >
+                      <span className="team-choice-emblem"><Shield size={20} /></span>
+                      <span><small>Blue team</small><strong>{blueTeamCount} joined</strong></span>
+                      {player.team === "blue" && <Check className="team-choice-check" size={18} />}
+                    </button>
+                    {session.settings.teamAssignment !== "players_choose" && <small className="team-lock-note">Teams are assigned by your teacher.</small>}
+                  </div>
+                </header>
                 <Suspense fallback={<ArenaLoading label="Loading character creator" />}>
                   <CharacterCreator
                     appearance={player.appearance}
@@ -3420,12 +3460,12 @@ function StudentExperience({ onExit }: { onExit: () => void }) {
           </div>
         )}
       </div>
-      <div className="action-bar control-prompts">
+      {session.status !== "waiting" && <div className="action-bar control-prompts">
         <button disabled={roundEnded} onClick={() => { gameAudio.playEvent(quizOpen ? "modal_close" : "quiz_open"); setQuizOpen(!quizOpen); setBuyOpen(false); setScoreboardOpen(false); }}>Q Quiz</button>
         <button disabled={roundEnded || !player.isAlive} onClick={() => { gameAudio.play("menu_toggle"); setBuyOpen(!buyOpen); setQuizOpen(false); setScoreboardOpen(false); }}>B Buy · 1-5</button>
         <button onMouseDown={() => { gameAudio.play("menu_toggle"); setScoreboardOpen(true); setQuizOpen(false); setBuyOpen(false); setSettingsOpen(false); }} onMouseUp={() => setScoreboardOpen(false)} onBlur={() => setScoreboardOpen(false)}>Hold Tab · Scoreboard</button>
         <button onClick={() => { gameAudio.play("menu_toggle"); setSettingsOpen((open) => !open); setQuizOpen(false); setBuyOpen(false); setScoreboardOpen(false); }}><Settings size={18} aria-hidden="true" />Settings</button>
-      </div>
+      </div>}
     </section>
   );
 }

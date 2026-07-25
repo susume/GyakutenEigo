@@ -9,8 +9,12 @@ const makeParts = (): CharacterAnimationParts => ({
   head: new THREE.Object3D(),
   leftArm: new THREE.Object3D(),
   rightArm: new THREE.Object3D(),
+  leftForearm: new THREE.Object3D(),
+  rightForearm: new THREE.Object3D(),
   leftLeg: new THREE.Object3D(),
   rightLeg: new THREE.Object3D(),
+  leftShin: new THREE.Object3D(),
+  rightShin: new THREE.Object3D(),
   weapon: new THREE.Object3D()
 });
 
@@ -48,6 +52,7 @@ test("objective carriers keep a readable cradle pose while moving", () => {
   const animator = new CharacterAnimator();
   const parts = makeParts();
   animator.update(parts, { delta: 1 / 60, elapsed: 0.2, speed: 4, forwardSpeed: 4, alive: true, carryingObjective: true });
-  assert.equal(parts.leftArm.rotation.x, -1.08);
+  assert.equal(parts.leftArm.rotation.x, -0.72);
+  assert.ok(parts.leftForearm.rotation.x > 0);
   assert.notEqual(parts.leftLeg.rotation.x, 0);
 });

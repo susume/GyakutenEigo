@@ -29,3 +29,15 @@ test("starter, quick, and heavy launchers use distinct sports-equipment silhouet
   assert.ok(bounds(heavy).max.z > bounds(quick).max.z);
   assert.ok(bounds(starter).max.z > bounds(quick).max.z);
 });
+
+test("every launcher exposes named muzzle and support sockets", () => {
+  const materials = makeMaterials();
+  const geometry = new THREE.BoxGeometry(1, 1, 1);
+
+  for (const gearId of ["starter_blaster", "quick_blaster", "power_blaster"]) {
+    const set = createWeaponSet(materials, geometry, gearId);
+    assert.equal(set.muzzle.name, "MuzzleSocket");
+    assert.equal(set.leftHandSupport.name, "LeftHandSupport");
+    assert.equal(set.leftHandSupport.parent, set.weapon);
+  }
+});

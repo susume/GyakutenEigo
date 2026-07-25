@@ -12,8 +12,12 @@ export interface CharacterModelParts {
   head: THREE.Object3D;
   leftArm: THREE.Object3D;
   rightArm: THREE.Object3D;
+  leftForearm: THREE.Object3D;
+  rightForearm: THREE.Object3D;
   leftLeg: THREE.Object3D;
   rightLeg: THREE.Object3D;
+  leftShin: THREE.Object3D;
+  rightShin: THREE.Object3D;
   weapon: THREE.Object3D;
   equipment: EquipmentParts;
 }
@@ -26,6 +30,7 @@ export interface CharacterModelUpdate {
   forwardSpeed?: number;
   strafeSpeed?: number;
   alive: boolean;
+  aimPitch?: number;
   firing?: boolean;
   crouching?: boolean;
   carryingObjective?: boolean;
@@ -76,13 +81,13 @@ export class CharacterModel {
     });
   }
 
-  update({ camera, delta, elapsed, speed, forwardSpeed, strafeSpeed, alive, firing, crouching, carryingObjective }: CharacterModelUpdate) {
+  update({ camera, delta, elapsed, speed, forwardSpeed, strafeSpeed, alive, aimPitch, firing, crouching, carryingObjective }: CharacterModelUpdate) {
     const lodState = this.lod.update(this.root, camera);
     if (lodState.shouldAnimate || this.animator.hasActiveCue) {
-      this.animator.update(this.parts, { delta, elapsed, speed, forwardSpeed, strafeSpeed, alive, firing, crouching, carryingObjective });
+      this.animator.update(this.parts, { delta, elapsed, speed, forwardSpeed, strafeSpeed, alive, aimPitch, firing, crouching, carryingObjective });
       this.audio.update(speed, delta);
     }
     this.parts.equipment.weapon.visible = alive && lodState.level.equipment !== "minimal";
-    if (this.parts.equipment.backpack) this.parts.equipment.backpack.visible = alive && lodState.level.equipment === "full";
+    if (this.parts.equipment.accessory) this.parts.equipment.accessory.visible = alive && lodState.level.equipment === "full";
   }
 }

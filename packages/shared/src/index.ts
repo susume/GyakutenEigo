@@ -68,7 +68,7 @@ export interface QuizSet {
   createdAt: string;
 }
 
-export const APPEARANCE_VERSION = 1 as const;
+export const APPEARANCE_VERSION = 2 as const;
 export const APPEARANCE_MAX_JSON_BYTES = 2048;
 export const APPEARANCE_UPDATE_COOLDOWN_MS = 750;
 export const DECAL_MAX_SOURCE_BYTES = 5 * 1024 * 1024;
@@ -76,34 +76,24 @@ export const DECAL_MAX_PROCESSED_BYTES = 384 * 1024;
 export const DECAL_MAX_DIMENSION = 512;
 
 export const CHARACTER_PRESETS = ["assault", "support", "sniper", "engineer", "medic", "heavy"] as const;
-export const HELMET_STYLES = ["visor", "rounded", "hood", "headset", "ridge"] as const;
-export const BACKPACK_STYLES = ["radio_pack", "flat_pack", "bedroll", "none"] as const;
-export const EYEWEAR_STYLES = ["none", "round", "goggles"] as const;
-export const SHOE_STYLES = ["boots", "trainers"] as const;
-export const APPEARANCE_COLORS = [
-  "#174a78", "#8d2f3f", "#18324c", "#4b2632", "#176b5b", "#6b3f8c",
-  "#f2b134", "#f4f7fb", "#343b4a", "#31b6ff", "#ff6b46", "#86d96f"
+export const HEAD_OPTIONS = ["visor", "comms", "goggles", "hood"] as const;
+export const ACCESSORY_IDS = [
+  "none",
+  "utility_pack",
+  "compact_pack",
+  "tech_pack",
+  "trail_pack",
+  "shoulder_badge"
 ] as const;
 
 export type CharacterPreset = (typeof CHARACTER_PRESETS)[number];
-export type PlayerHelmetStyle = (typeof HELMET_STYLES)[number];
-export type PlayerBackpackStyle = (typeof BACKPACK_STYLES)[number];
-export type EyewearStyle = (typeof EYEWEAR_STYLES)[number];
-export type ShoeStyle = (typeof SHOE_STYLES)[number];
-export type AppearanceColor = (typeof APPEARANCE_COLORS)[number];
+export type PlayerHeadOption = (typeof HEAD_OPTIONS)[number];
+export type PlayerAccessoryId = (typeof ACCESSORY_IDS)[number];
 
 export interface PlayerAppearance {
   characterPreset: CharacterPreset;
-  helmetStyle: PlayerHelmetStyle;
-  helmetColor: AppearanceColor;
-  backpackStyle: PlayerBackpackStyle;
-  backpackColor: AppearanceColor;
-  eyewearStyle: EyewearStyle;
-  eyewearColor: AppearanceColor;
-  clothingPrimaryColor: AppearanceColor;
-  clothingSecondaryColor: AppearanceColor;
-  shoeStyle: ShoeStyle;
-  shoeColor: AppearanceColor;
+  headOption: PlayerHeadOption;
+  accessoryId: PlayerAccessoryId;
   decalAssetId?: string;
   appearanceVersion: typeof APPEARANCE_VERSION;
 }
@@ -118,16 +108,8 @@ export interface CharacterCustomizationSettings {
 
 export const DEFAULT_PLAYER_APPEARANCE: PlayerAppearance = {
   characterPreset: "assault",
-  helmetStyle: "visor",
-  helmetColor: "#f4f7fb",
-  backpackStyle: "flat_pack",
-  backpackColor: "#18324c",
-  eyewearStyle: "none",
-  eyewearColor: "#343b4a",
-  clothingPrimaryColor: "#174a78",
-  clothingSecondaryColor: "#18324c",
-  shoeStyle: "boots",
-  shoeColor: "#343b4a",
+  headOption: "visor",
+  accessoryId: "utility_pack",
   appearanceVersion: APPEARANCE_VERSION
 };
 
@@ -139,13 +121,8 @@ export const SCHOOL_APPEARANCE_PRESETS = [
     appearance: {
       ...DEFAULT_PLAYER_APPEARANCE,
       characterPreset: "support",
-      helmetStyle: "headset",
-      backpackStyle: "radio_pack",
-      clothingPrimaryColor: "#176b5b",
-      clothingSecondaryColor: "#343b4a",
-      backpackColor: "#176b5b",
-      shoeStyle: "trainers",
-      shoeColor: "#f4f7fb"
+      headOption: "comms",
+      accessoryId: "compact_pack"
     }
   },
   {
@@ -154,14 +131,38 @@ export const SCHOOL_APPEARANCE_PRESETS = [
     appearance: {
       ...DEFAULT_PLAYER_APPEARANCE,
       characterPreset: "engineer",
-      helmetStyle: "rounded",
-      helmetColor: "#f2b134",
-      backpackStyle: "flat_pack",
-      backpackColor: "#6b3f8c",
-      eyewearStyle: "goggles",
-      eyewearColor: "#31b6ff",
-      clothingPrimaryColor: "#6b3f8c",
-      clothingSecondaryColor: "#343b4a"
+      headOption: "goggles",
+      accessoryId: "tech_pack"
+    }
+  },
+  {
+    id: "scout",
+    name: "Scout",
+    appearance: {
+      ...DEFAULT_PLAYER_APPEARANCE,
+      characterPreset: "sniper",
+      headOption: "hood",
+      accessoryId: "none"
+    }
+  },
+  {
+    id: "defender",
+    name: "Defender",
+    appearance: {
+      ...DEFAULT_PLAYER_APPEARANCE,
+      characterPreset: "heavy",
+      headOption: "visor",
+      accessoryId: "utility_pack"
+    }
+  },
+  {
+    id: "explorer",
+    name: "Explorer",
+    appearance: {
+      ...DEFAULT_PLAYER_APPEARANCE,
+      characterPreset: "medic",
+      headOption: "hood",
+      accessoryId: "trail_pack"
     }
   }
 ] as const satisfies ReadonlyArray<{ id: string; name: string; appearance: PlayerAppearance }>;
@@ -196,23 +197,29 @@ export const sanitizeCharacterCustomizationSettings = (
     : DEFAULT_CHARACTER_CUSTOMIZATION_SETTINGS.persistAcrossSessions
 });
 
-export const sanitizePlayerAppearance = (input: Partial<PlayerAppearance> | undefined): PlayerAppearance => {
-  const source = input ?? {};
+export const sanitizePlayerAppearance = (
+  input: Partial<PlayerAppearance> | Record<string, unknown> | undefined
+): PlayerAppearance => {
+  const source = (input ?? {}) as Record<string, unknown>;
   const decalAssetId = typeof source.decalAssetId === "string" && /^[a-f0-9-]{36}$/.test(source.decalAssetId)
     ? source.decalAssetId
     : undefined;
+  const legacyHelmet = source.helmetStyle;
+  const legacyEyewear = source.eyewearStyle;
+  const migratedHeadOption: PlayerHeadOption =
+    legacyEyewear === "goggles" ? "goggles"
+      : legacyHelmet === "headset" ? "comms"
+        : legacyHelmet === "hood" ? "hood"
+          : "visor";
+  const migratedAccessory: PlayerAccessoryId =
+    source.backpackStyle === "radio_pack" ? "tech_pack"
+      : source.backpackStyle === "bedroll" ? "trail_pack"
+        : source.backpackStyle === "none" ? "none"
+          : "utility_pack";
   return {
     characterPreset: isAllowed(CHARACTER_PRESETS, source.characterPreset) ? source.characterPreset : DEFAULT_PLAYER_APPEARANCE.characterPreset,
-    helmetStyle: isAllowed(HELMET_STYLES, source.helmetStyle) ? source.helmetStyle : DEFAULT_PLAYER_APPEARANCE.helmetStyle,
-    helmetColor: isAllowed(APPEARANCE_COLORS, source.helmetColor) ? source.helmetColor : DEFAULT_PLAYER_APPEARANCE.helmetColor,
-    backpackStyle: isAllowed(BACKPACK_STYLES, source.backpackStyle) ? source.backpackStyle : DEFAULT_PLAYER_APPEARANCE.backpackStyle,
-    backpackColor: isAllowed(APPEARANCE_COLORS, source.backpackColor) ? source.backpackColor : DEFAULT_PLAYER_APPEARANCE.backpackColor,
-    eyewearStyle: isAllowed(EYEWEAR_STYLES, source.eyewearStyle) ? source.eyewearStyle : DEFAULT_PLAYER_APPEARANCE.eyewearStyle,
-    eyewearColor: isAllowed(APPEARANCE_COLORS, source.eyewearColor) ? source.eyewearColor : DEFAULT_PLAYER_APPEARANCE.eyewearColor,
-    clothingPrimaryColor: isAllowed(APPEARANCE_COLORS, source.clothingPrimaryColor) ? source.clothingPrimaryColor : DEFAULT_PLAYER_APPEARANCE.clothingPrimaryColor,
-    clothingSecondaryColor: isAllowed(APPEARANCE_COLORS, source.clothingSecondaryColor) ? source.clothingSecondaryColor : DEFAULT_PLAYER_APPEARANCE.clothingSecondaryColor,
-    shoeStyle: isAllowed(SHOE_STYLES, source.shoeStyle) ? source.shoeStyle : DEFAULT_PLAYER_APPEARANCE.shoeStyle,
-    shoeColor: isAllowed(APPEARANCE_COLORS, source.shoeColor) ? source.shoeColor : DEFAULT_PLAYER_APPEARANCE.shoeColor,
+    headOption: isAllowed(HEAD_OPTIONS, source.headOption) ? source.headOption : migratedHeadOption,
+    accessoryId: isAllowed(ACCESSORY_IDS, source.accessoryId) ? source.accessoryId : migratedAccessory,
     ...(decalAssetId ? { decalAssetId } : {}),
     appearanceVersion: APPEARANCE_VERSION
   };
@@ -223,24 +230,14 @@ export const getPlayerAppearanceError = (input: unknown): string | undefined => 
   if (new TextEncoder().encode(JSON.stringify(input)).byteLength > APPEARANCE_MAX_JSON_BYTES) return "Appearance data is too large.";
   const source = input as Record<string, unknown>;
   const allowedKeys = new Set([
-    "characterPreset", "helmetStyle", "helmetColor", "backpackStyle", "backpackColor", "eyewearStyle",
-    "eyewearColor", "clothingPrimaryColor", "clothingSecondaryColor", "shoeStyle", "shoeColor", "decalAssetId",
-    "appearanceVersion"
+    "characterPreset", "headOption", "accessoryId", "decalAssetId", "appearanceVersion"
   ]);
   if (Object.keys(source).some((key) => !allowedKeys.has(key))) return "Appearance contains an unsupported field.";
   if (source.appearanceVersion !== APPEARANCE_VERSION) return "Unsupported appearance version.";
   const checks: Array<[readonly string[], unknown, string]> = [
     [CHARACTER_PRESETS, source.characterPreset, "character preset"],
-    [HELMET_STYLES, source.helmetStyle, "helmet style"],
-    [APPEARANCE_COLORS, source.helmetColor, "helmet colour"],
-    [BACKPACK_STYLES, source.backpackStyle, "backpack style"],
-    [APPEARANCE_COLORS, source.backpackColor, "backpack colour"],
-    [EYEWEAR_STYLES, source.eyewearStyle, "eyewear style"],
-    [APPEARANCE_COLORS, source.eyewearColor, "eyewear colour"],
-    [APPEARANCE_COLORS, source.clothingPrimaryColor, "primary clothing colour"],
-    [APPEARANCE_COLORS, source.clothingSecondaryColor, "secondary clothing colour"],
-    [SHOE_STYLES, source.shoeStyle, "shoe style"],
-    [APPEARANCE_COLORS, source.shoeColor, "shoe colour"]
+    [HEAD_OPTIONS, source.headOption, "head option"],
+    [ACCESSORY_IDS, source.accessoryId, "accessory"]
   ];
   const invalid = checks.find(([values, value]) => !isAllowed(values, value));
   if (invalid) return `Invalid ${invalid[2]}.`;

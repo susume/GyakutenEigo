@@ -25,18 +25,10 @@ type PlayerFixture = {
 
 type AppearanceFixture = {
   characterPreset: string;
-  helmetStyle: string;
-  helmetColor: string;
-  backpackStyle: string;
-  backpackColor: string;
-  eyewearStyle: string;
-  eyewearColor: string;
-  clothingPrimaryColor: string;
-  clothingSecondaryColor: string;
-  shoeStyle: string;
-  shoeColor: string;
+  headOption: string;
+  accessoryId: string;
   decalAssetId?: string;
-  appearanceVersion: 1;
+  appearanceVersion: 2;
 };
 
 type JoinedPlayer = {
@@ -47,17 +39,9 @@ type JoinedPlayer = {
 
 const defaultAppearance: AppearanceFixture = {
   characterPreset: "assault",
-  helmetStyle: "visor",
-  helmetColor: "#f4f7fb",
-  backpackStyle: "flat_pack",
-  backpackColor: "#18324c",
-  eyewearStyle: "none",
-  eyewearColor: "#343b4a",
-  clothingPrimaryColor: "#174a78",
-  clothingSecondaryColor: "#18324c",
-  shoeStyle: "boots",
-  shoeColor: "#343b4a",
-  appearanceVersion: 1
+  headOption: "visor",
+  accessoryId: "utility_pack",
+  appearanceVersion: 2
 };
 
 const onePixelPng = Buffer.from(
@@ -269,6 +253,16 @@ test("real HTTP appearance flow enforces identity, room scope, locking, and clea
   assert.equal(crossRoomAsset.status, 401);
 
   const appearance = { ...defaultAppearance, decalAssetId: uploaded.assetId };
+  const colourInjection = await api(
+    `/api/sessions/${session.sessionCode}/players/${alpha.player.id}/appearance`,
+    {
+      method: "PUT",
+      playerToken: alpha.playerToken,
+      body: { appearance: { ...defaultAppearance, clothingPrimaryColor: "#6b3f8c" } }
+    }
+  );
+  assert.equal(colourInjection.response.status, 400);
+
   const saved = await api<{ player: PlayerFixture }>(
     `/api/sessions/${session.sessionCode}/players/${alpha.player.id}/appearance`,
     { method: "PUT", playerToken: alpha.playerToken, body: { appearance } }
@@ -356,8 +350,8 @@ test("a 40-student room keeps bounded appearance state and rejects student 41", 
     const appearance: AppearanceFixture = {
       ...defaultAppearance,
       characterPreset: index % 2 === 0 ? "support" : "engineer",
-      helmetStyle: index % 2 === 0 ? "headset" : "rounded",
-      clothingPrimaryColor: index % 2 === 0 ? "#176b5b" : "#6b3f8c"
+      headOption: index % 2 === 0 ? "comms" : "goggles",
+      accessoryId: index % 2 === 0 ? "compact_pack" : "tech_pack"
     };
     return api(
       `/api/sessions/${session.sessionCode}/players/${student.player.id}/appearance`,
@@ -369,7 +363,7 @@ test("a 40-student room keeps bounded appearance state and rejects student 41", 
   const state = await api<{ session: SessionFixture }>(`/api/sessions/${session.sessionCode}`);
   assert.equal(state.response.status, 200);
   assert.equal(state.body.session.players.length, 40);
-  assert.ok(state.body.session.players.every((player) => player.appearance?.appearanceVersion === 1));
+  assert.ok(state.body.session.players.every((player) => player.appearance?.appearanceVersion === 2));
   assert.equal(state.text.includes("data:image"), false);
   assert.equal(state.text.includes(onePixelPng.toString("base64")), false);
 

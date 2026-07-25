@@ -14,9 +14,35 @@ test("resolveCharacterAppearance gives Alpha and Bravo distinct sports identitie
   assert.equal(alpha.teamName, "Team Alpha");
   assert.equal(bravo.teamName, "Team Bravo");
   assert.notEqual(alpha.palette.uniform, bravo.palette.uniform);
-  assert.notEqual(alpha.silhouette.helmet, bravo.silhouette.helmet);
   assert.notEqual(alpha.silhouette.vest, bravo.silhouette.vest);
-  assert.notEqual(alpha.silhouette.backpack, bravo.silhouette.backpack);
+  assert.notEqual(alpha.silhouette.widthScale, bravo.silhouette.widthScale);
+});
+
+test("team palette remains authoritative when legacy colour fields are injected", () => {
+  const injected = {
+    characterPreset: "captain",
+    headOption: "visor",
+    accessoryId: "none",
+    clothingPrimaryColor: "#00ff00",
+    clothingSecondaryColor: "#ff00ff",
+    appearanceVersion: 1
+  };
+
+  const alpha = resolveCharacterAppearance({
+    team: "blue",
+    playerId: "learner-7",
+    appearance: injected as never
+  });
+  const bravo = resolveCharacterAppearance({
+    team: "red",
+    playerId: "learner-7",
+    appearance: injected as never
+  });
+
+  assert.equal(alpha.palette.uniform, "#174a78");
+  assert.equal(alpha.palette.accent, "#31b6ff");
+  assert.equal(bravo.palette.uniform, "#8d2f3f");
+  assert.equal(bravo.palette.accent, "#ff6b46");
 });
 
 test("serializeCharacterAppearance returns compact multiplayer-safe appearance state", () => {
@@ -25,9 +51,9 @@ test("serializeCharacterAppearance returns compact multiplayer-safe appearance s
     {
       team: "blue",
       variant: "heavy",
-      helmet: "visor",
+      headOption: "visor",
       vest: "plate_carrier",
-      backpack: "radio_pack",
+      accessoryId: "utility_pack",
       accent: "blue"
     }
   );

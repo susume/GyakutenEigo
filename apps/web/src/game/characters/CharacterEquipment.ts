@@ -1,5 +1,4 @@
 import * as THREE from "three";
-import type { CharacterAppearance } from "./CharacterAppearance.js";
 
 export interface CharacterMaterials {
   uniform: THREE.MeshStandardMaterial;
@@ -9,14 +8,46 @@ export interface CharacterMaterials {
   dark: THREE.MeshStandardMaterial;
   visor: THREE.MeshStandardMaterial;
   skin: THREE.MeshStandardMaterial;
-  backpack: THREE.MeshStandardMaterial;
 }
 
 export interface EquipmentParts {
   weapon: THREE.Group;
   muzzle: THREE.Object3D;
-  backpack?: THREE.Object3D;
+  weaponSocket: THREE.Object3D;
+  leftHandSupport: THREE.Object3D;
+  accessory?: THREE.Object3D;
 }
+
+export interface WeaponMountTransform {
+  position: readonly [number, number, number];
+  rotation: readonly [number, number, number];
+  scale: number;
+  support: readonly [number, number, number];
+}
+
+export const WEAPON_MOUNT_TRANSFORMS: Record<string, WeaponMountTransform> = {
+  starter_blaster: {
+    position: [0, 0.14, -0.06],
+    rotation: [-0.08, Math.PI, -0.12],
+    scale: 0.68,
+    support: [0, 0.02, 0.5]
+  },
+  quick_blaster: {
+    position: [0, 0.13, -0.05],
+    rotation: [-0.04, Math.PI, -0.1],
+    scale: 0.7,
+    support: [0, 0.02, 0.38]
+  },
+  power_blaster: {
+    position: [0, 0.15, -0.08],
+    rotation: [-0.1, Math.PI, -0.14],
+    scale: 0.62,
+    support: [0, 0.03, 0.58]
+  }
+};
+
+export const getWeaponMountTransform = (gearId = "starter_blaster") =>
+  WEAPON_MOUNT_TRANSFORMS[gearId] ?? WEAPON_MOUNT_TRANSFORMS.starter_blaster;
 
 const addBox = (
   parent: THREE.Object3D,
@@ -72,6 +103,7 @@ export const createWeaponSet = (
   gearId = "starter_blaster"
 ) => {
   const weapon = new THREE.Group();
+  weapon.name = `snowball_blaster_${gearId}`;
   let muzzleZ = 0.9;
 
   if (gearId === "quick_blaster") {
@@ -110,23 +142,12 @@ export const createWeaponSet = (
   }
 
   const muzzle = new THREE.Object3D();
+  muzzle.name = "MuzzleSocket";
   muzzle.position.set(0, 0, muzzleZ);
   weapon.add(muzzle);
-  return { weapon, muzzle };
-};
-
-export const createBackpack = (
-  appearance: CharacterAppearance,
-  materials: CharacterMaterials,
-  boxGeometry: THREE.BufferGeometry
-) => {
-  if (appearance.silhouette.backpack === "none") return undefined;
-  const backpack = new THREE.Group();
-  const size = appearance.silhouette.backpack === "bedroll" ? [0.66, 0.5, 0.2] : [0.54, 0.68, 0.18];
-  addBox(backpack, boxGeometry, materials.backpack, [0, 0, 0], size as [number, number, number]);
-  addBox(backpack, boxGeometry, materials.accent, [0, 0.08, 0.19], [size[0] * 0.72, 0.08, 0.035]);
-  if (appearance.silhouette.backpack === "radio_pack") {
-    addCylinder(backpack, new THREE.CylinderGeometry(0.055, 0.055, 0.44, 8), materials.visor, [0.18, 0.22, 0.12], [0, 0, 0]);
-  }
-  return backpack;
+  const leftHandSupport = new THREE.Object3D();
+  leftHandSupport.name = "LeftHandSupport";
+  leftHandSupport.position.set(...getWeaponMountTransform(gearId).support);
+  weapon.add(leftHandSupport);
+  return { weapon, muzzle, leftHandSupport };
 };
