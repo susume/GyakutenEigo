@@ -1,4 +1,4 @@
-import type { GameMode, Team } from "@quizstrike/shared";
+import type { FlagStateName, GameMode, Team } from "@quizstrike/shared";
 
 export type BotState =
   | "spawn"
@@ -7,7 +7,6 @@ export type BotState =
   | "move_to_objective"
   | "defend_objective"
   | "escort_flag_carrier"
-  | "attack_flag_carrier"
   | "attack_flag_carrier"
   | "search"
   | "engage_enemy"
@@ -153,6 +152,25 @@ export const nextBotRandom = (memory: BotMemory) => {
 
 export const randomBetween = (memory: BotMemory, min: number, max: number) =>
   min + (max - min) * nextBotRandom(memory);
+
+export const shouldBotAttemptFlagInteraction = ({
+  flagState,
+  carrierId,
+  botId,
+  botPosition,
+  flagPosition,
+  interactionRadius
+}: {
+  flagState: FlagStateName;
+  carrierId?: string;
+  botId: string;
+  botPosition: { x: number; z: number };
+  flagPosition: { x: number; z: number };
+  interactionRadius: number;
+}) => {
+  if (flagState === "carried") return carrierId === botId;
+  return Math.hypot(botPosition.x - flagPosition.x, botPosition.z - flagPosition.z) <= interactionRadius;
+};
 
 const hasFlag = (state: string | undefined, ...values: string[]) => Boolean(state && values.includes(state));
 

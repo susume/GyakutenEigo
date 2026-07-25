@@ -1,12 +1,14 @@
 import assert from "node:assert/strict";
 import test from "node:test";
+import { resolveFlagPlacement, type FlagState, type PlayerSession } from "@quizstrike/shared";
 import {
   BOT_DIFFICULTIES,
   chooseBotRole,
   chooseBotTarget,
   createBotMemory,
   resolveBotAim,
-  resolveBotState
+  resolveBotState,
+  shouldBotAttemptFlagInteraction
 } from "./botAI.js";
 
 test("bot roles react to flag urgency instead of staying fixed", () => {
@@ -106,4 +108,43 @@ test("bots retreat from danger unless the objective is urgent", () => {
     flankAvailable: false,
     randomValue: 0.9
   }), "take_cover");
+});
+
+test("a flag carrier attempts placement after leaving the original pickup position", () => {
+  const carrier = {
+    id: "carrier",
+    team: "red",
+    isAlive: true,
+    x: -88,
+    z: 0
+  } satisfies Pick<PlayerSession, "id" | "team" | "isAlive" | "x" | "z">;
+  const carriedFlag = {
+    state: "carried",
+    teamId: "red",
+    carrierId: carrier.id,
+    position: { x: 98, z: -74 }
+  } satisfies FlagState;
+
+  assert.equal(shouldBotAttemptFlagInteraction({
+    flagState: "carried",
+    carrierId: carriedFlag.carrierId,
+    botId: carrier.id,
+    botPosition: carrier,
+    flagPosition: carriedFlag.position,
+    interactionRadius: 7
+  }), true);
+  assert.equal(resolveFlagPlacement({
+    flag: carriedFlag,
+    player: carrier,
+    nowMs: 10_000,
+    holdSeconds: 30
+  }).state, "placed");
+  assert.equal(shouldBotAttemptFlagInteraction({
+    flagState: "carried",
+    carrierId: carriedFlag.carrierId,
+    botId: "escort",
+    botPosition: carrier,
+    flagPosition: carriedFlag.position,
+    interactionRadius: 7
+  }), false);
 });

@@ -101,6 +101,7 @@ import {
   randomBetween,
   resolveBotAim,
   resolveBotState,
+  shouldBotAttemptFlagInteraction,
   type BotMemory,
   type BotState
 } from "./botAI.js";
@@ -1465,7 +1466,14 @@ const advanceBots = () => {
       if (target && currentTargetVisible && ["engage_enemy", "take_cover"].includes(brain.state)) {
         botFire(session, bot, target, brain, profile, currentMs, obstacles);
       }
-      if (session.settings.gameMode === "flag" && session.flag && horizontalDistance(botPosition(bot), session.flag.position) <= 7) {
+      if (session.settings.gameMode === "flag" && session.flag && shouldBotAttemptFlagInteraction({
+        flagState: session.flag.state,
+        carrierId: session.flag.carrierId,
+        botId: bot.id,
+        botPosition: botPosition(bot),
+        flagPosition: session.flag.position,
+        interactionRadius: 7
+      })) {
         moved = shouldBotObjectiveAction(session, bot) || moved;
       }
     });
