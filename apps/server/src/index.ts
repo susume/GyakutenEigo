@@ -108,6 +108,7 @@ import {
   nextBotRandom,
   randomBetween,
   resolveBotAim,
+  resolveBotPerceptionFocus,
   resolveBotSpacingGoal,
   resolveBotState,
   shouldAdvanceBotPatrolRoute,
@@ -1393,34 +1394,40 @@ const advanceBots = () => {
           remainingSeconds,
           personality: brain.personality
         });
-        for (const candidate of enemyPlayers
+        const perceivedTargets = enemyPlayers
           .map((player) => ({ player, distance: horizontalDistance(botPosition(bot), botPosition(player)) }))
           .sort((a, b) => a.distance - b.distance)
-          .slice(0, 8)) {
-          if (!canBotSee(session, bot, candidate.player, profile, obstacles)) continue;
-          if (brain.visibleTargetId !== candidate.player.id) {
-            brain.visibleTargetId = candidate.player.id;
-            brain.visibleSinceAtMs = currentMs;
-          }
-          if ((brain.visibleSinceAtMs ?? currentMs) + profile.reactionMs > currentMs) continue;
-          visibleTargets.push(candidate.player);
-          brain.lastSeenTargetId = candidate.player.id;
-          brain.lastSeenPosition = { x: candidate.player.x ?? 0, z: candidate.player.z ?? 0 };
+          .slice(0, 8)
+          .filter((candidate) => canBotSee(session, bot, candidate.player, profile, obstacles));
+        const perception = resolveBotPerceptionFocus({
+          visibleTargetIds: perceivedTargets.map((candidate) => candidate.player.id),
+          currentTargetId: brain.visibleTargetId,
+          visibleSinceAtMs: brain.visibleSinceAtMs,
+          nowMs: currentMs,
+          reactionMs: profile.reactionMs
+        });
+        brain.visibleTargetId = perception.focusId;
+        brain.visibleSinceAtMs = perception.visibleSinceAtMs;
+        const focus = perceivedTargets.find((candidate) => candidate.player.id === perception.focusId)?.player;
+        if (focus) {
+          brain.lastSeenTargetId = focus.id;
+          brain.lastSeenPosition = { x: focus.x ?? 0, z: focus.z ?? 0 };
           brain.lastSeenAtMs = currentMs;
+        }
+        if (perception.reacted) {
+          visibleTargets = perceivedTargets.map((candidate) => candidate.player);
           const alerts = botAlertsBySession.get(session.sessionCode) ?? new Map<Team, BotAlert>();
           alerts.set(bot.team, {
             position: {
-              x: (candidate.player.x ?? 0) + randomBetween(brain, -6, 6),
-              z: (candidate.player.z ?? 0) + randomBetween(brain, -6, 6)
+              x: (focus?.x ?? 0) + randomBetween(brain, -6, 6),
+              z: (focus?.z ?? 0) + randomBetween(brain, -6, 6)
             },
             createdAtMs: currentMs,
             sourceId: bot.id
           });
           botAlertsBySession.set(session.sessionCode, alerts);
         }
-        if (visibleTargets.length === 0) {
-          brain.visibleTargetId = undefined;
-          brain.visibleSinceAtMs = undefined;
+        if (perceivedTargets.length === 0) {
           const alert = botAlertsBySession.get(session.sessionCode)?.get(bot.team);
           if (alert && currentMs - alert.createdAtMs < profile.memoryMs * 0.65 && alert.sourceId !== bot.id) {
             brain.lastSeenPosition = alert.position;

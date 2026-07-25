@@ -8,6 +8,7 @@ import {
   createBotMemory,
   isTargetInsideBotAwareness,
   resolveBotAim,
+  resolveBotPerceptionFocus,
   resolveBotSpacingGoal,
   resolveBotState,
   shouldAdvanceBotPatrolRoute,
@@ -236,4 +237,35 @@ test("bots notice enemies at close range even outside their forward view", () =>
   assert.equal(isTargetInsideBotAwareness({ distance: 8, inFieldOfView: false }), true);
   assert.equal(isTargetInsideBotAwareness({ distance: 18, inFieldOfView: false }), false);
   assert.equal(isTargetInsideBotAwareness({ distance: 18, inFieldOfView: true }), true);
+});
+
+test("bot perception preserves acquisition time until reaction completes", () => {
+  const acquired = resolveBotPerceptionFocus({
+    visibleTargetIds: ["player"],
+    nowMs: 1000,
+    reactionMs: 500
+  });
+  assert.deepEqual(acquired, {
+    focusId: "player",
+    visibleSinceAtMs: 1000,
+    reacted: false
+  });
+  assert.deepEqual(resolveBotPerceptionFocus({
+    visibleTargetIds: ["player"],
+    currentTargetId: acquired.focusId,
+    visibleSinceAtMs: acquired.visibleSinceAtMs,
+    nowMs: 1500,
+    reactionMs: 500
+  }), {
+    focusId: "player",
+    visibleSinceAtMs: 1000,
+    reacted: true
+  });
+  assert.deepEqual(resolveBotPerceptionFocus({
+    visibleTargetIds: [],
+    currentTargetId: "player",
+    visibleSinceAtMs: 1000,
+    nowMs: 1500,
+    reactionMs: 500
+  }), { reacted: false });
 });

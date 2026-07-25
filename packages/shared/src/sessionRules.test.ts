@@ -437,6 +437,29 @@ test("resolveAuthoritativeMovement clamps speed and rejects movement through cov
   );
 });
 
+test("authoritative movement mirrors client axis sliding instead of getting stuck behind a corner", () => {
+  const obstacle = { id: "corner", kind: "rect" as const, x: 0, z: 0, width: 2, depth: 2 };
+  const result = resolveAuthoritativeMovement({
+    current: { x: -2, z: -2, facing: 0 },
+    requested: { x: 2, z: 2, facing: 1 },
+    elapsedMs: 1000,
+    maxSpeed: 10,
+    obstacles: [obstacle]
+  });
+
+  assert.deepEqual(result, { x: 2, z: 2, facing: 1, blocked: true });
+  assert.deepEqual(
+    resolveAuthoritativeMovement({
+      current: { x: -1.4, z: 0, facing: 0 },
+      requested: { x: -2.4, z: 0, facing: 0 },
+      elapsedMs: 100,
+      maxSpeed: 20,
+      obstacles: [obstacle]
+    }),
+    { x: -2.4, z: 0, facing: 0 }
+  );
+});
+
 test("resolveAuthoritativeMovement allows jump-height movement over jumpable low cover", () => {
   const lowCover = [{ id: "low-cover", kind: "rect" as const, x: 3, z: 0, width: 2, depth: 2, jumpable: true }];
 

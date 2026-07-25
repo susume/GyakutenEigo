@@ -2016,8 +2016,33 @@ export const resolveAuthoritativeMovement = ({
     : to;
 
   const canClearJumpable = (obstacle: ArenaObstacle) => obstacle.jumpable === true && Number(to.y) - groundY >= 5;
-  if (obstacles.some((obstacle) => !canClearJumpable(obstacle) && segmentIntersectsObstacle(from, next, obstacle, radius))) {
-    return { ...from, facing: to.facing, blocked: true };
+  const movementIsBlocked = (start: ArenaPosition, end: ArenaPosition) => obstacles.some((obstacle) => {
+    if (canClearJumpable(obstacle) || !segmentIntersectsObstacle(start, end, obstacle, radius)) return false;
+    // A player whose last accepted point sits on the padded collision boundary
+    // must be allowed to move back out instead of remaining trapped forever.
+    return !(pointInsideObstacle(start, obstacle, radius) && !pointInsideObstacle(end, obstacle, radius));
+  });
+  if (movementIsBlocked(from, next)) {
+    // The FPS controller resolves X and Z independently so players slide around
+    // cover. Mirror that ordering on the server to keep authoritative and visual
+    // positions together when an intermediate volatile packet is skipped.
+    let resolved = {
+      ...from,
+      ...(Number.isFinite(next.y) ? { y: next.y } : {}),
+      facing: to.facing
+    };
+    const xStep = { ...resolved, x: next.x };
+    if (!movementIsBlocked(resolved, xStep)) resolved = xStep;
+    const zStep = { ...resolved, z: next.z };
+    if (!movementIsBlocked(resolved, zStep)) resolved = zStep;
+    if (resolved.x === from.x && resolved.z === from.z) {
+      return { ...from, facing: to.facing, blocked: true };
+    }
+    return {
+      ...resolved,
+      blocked: true,
+      ...(limited ? { limited: true as const } : {})
+    };
   }
 
   return limited ? { ...next, limited: true } : next;

@@ -194,6 +194,33 @@ export const isTargetInsideBotAwareness = ({
   closeAwarenessDistance?: number;
 }) => distance <= closeAwarenessDistance || inFieldOfView;
 
+export const resolveBotPerceptionFocus = ({
+  visibleTargetIds,
+  currentTargetId,
+  visibleSinceAtMs,
+  nowMs,
+  reactionMs
+}: {
+  visibleTargetIds: string[];
+  currentTargetId?: string;
+  visibleSinceAtMs?: number;
+  nowMs: number;
+  reactionMs: number;
+}) => {
+  const focusId = currentTargetId && visibleTargetIds.includes(currentTargetId)
+    ? currentTargetId
+    : visibleTargetIds[0];
+  if (!focusId) return { reacted: false as const };
+  const acquiredAtMs = focusId === currentTargetId
+    ? visibleSinceAtMs ?? nowMs
+    : nowMs;
+  return {
+    focusId,
+    visibleSinceAtMs: acquiredAtMs,
+    reacted: acquiredAtMs + reactionMs <= nowMs
+  };
+};
+
 export const createBotMemory = (id: string, index: number, nowMs: number): BotMemory => ({
   state: "spawn",
   role: "patrol",
