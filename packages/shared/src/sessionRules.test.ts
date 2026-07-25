@@ -17,6 +17,7 @@ import {
   STARTER_BLASTER_RANGE,
   FREE_FOR_ALL_SPAWNS,
   buildCsvReport,
+  calculateClassAccuracy,
   buildReportRows,
   buildScoreboardRows,
   clampArenaPosition,
@@ -170,6 +171,18 @@ test("buildReportRows excludes bots and practice answers from class accuracy", (
       score: realPlayer.score
     }
   ]);
+});
+
+test("calculateClassAccuracy weights attempted answers and ignores no-attempt learners", () => {
+  assert.equal(calculateClassAccuracy([
+    { correctAnswers: 1, wrongAnswers: 0 },
+    { correctAnswers: 0, wrongAnswers: 0 }
+  ]), 100);
+  assert.equal(calculateClassAccuracy([
+    { correctAnswers: 1, wrongAnswers: 0 },
+    { correctAnswers: 0, wrongAnswers: 1 }
+  ]), 50);
+  assert.equal(calculateClassAccuracy([{ correctAnswers: 0, wrongAnswers: 0 }]), null);
 });
 
 test("resolveAnswerReward caps correct-answer money and adds fast bonus only when allowed", () => {
@@ -746,7 +759,7 @@ test("buildCsvReport escapes classroom report rows for spreadsheet export", () =
   assert.equal(
     buildCsvReport(report),
     [
-      "Session Code,Student,Team,Correct,Wrong,Accuracy %,Current Money,Quiz Money,Score",
+      "Session Code,Student,Team,Correct,Wrong,Accuracy %,Wallet,Quiz Rewards,Score",
       "ABC123,\"Ada, A.\",blue,3,1,75,1200,1800,34",
       "",
       "Most Missed Question,Misses",

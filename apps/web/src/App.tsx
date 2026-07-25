@@ -31,6 +31,7 @@ import { io, type Socket } from "socket.io-client";
 import { QRCodeSVG } from "qrcode.react";
 import {
   calculateAccuracy,
+  calculateClassAccuracy,
   canStartRound,
   DEFAULT_SESSION_SETTINGS,
   FLAG_MODE_DEFAULTS,
@@ -385,7 +386,9 @@ const zombieStatusText = (session: GameSession, player?: PlayerSession | null) =
 };
 
 const getTopLearner = (players: PlayerSession[]) =>
-  [...players].sort((a, b) => b.correctAnswers - a.correctAnswers || b.score - a.score)[0];
+  [...players]
+    .filter((player) => !player.isBot && player.correctAnswers + player.wrongAnswers > 0)
+    .sort((a, b) => b.correctAnswers - a.correctAnswers || b.score - a.score)[0];
 
 const getTeamTotals = (players: PlayerSession[]) => ({
   blue: players.filter((player) => player.team === "blue").reduce((total, player) => total + player.score, 0),
@@ -408,7 +411,8 @@ const SESSION_PRESETS = [
       startingSnowballs: 8,
       snowballPackPrice: 400,
       snowballsPerPack: 8,
-      roundDurationSeconds: 180
+      roundDurationSeconds: 90,
+      roundCount: 1
     })
   },
   {
@@ -1675,7 +1679,13 @@ function SessionManager({
     if (!selectedSession || isStartingSession) return;
     const startCheck = canStartRound(selectedSession);
     if (!startCheck.ok) {
-      status.setError(startCheck.reason === "session_ended" ? "This session has ended." : "Add at least one student before starting.");
+      status.setError(
+        startCheck.reason === "session_ended"
+          ? "This session has ended."
+          : selectedSession.players.some((player) => player.isBot)
+            ? "Bots are ready for testing. Add at least one learner to begin."
+            : "Add at least one learner to begin."
+      );
       return;
     }
     status.clear();
@@ -1715,14 +1725,19 @@ function SessionManager({
   const teamTotals = selectedSession ? getTeamTotals(selectedSession.players) : { blue: 0, red: 0 };
   const zombieCounts = selectedSession ? getZombieCounts(selectedSession.players) : { humans: 0, zombies: 0 };
   const activePlayers = selectedSession?.players.filter((player) => player.connectionState !== "disconnected" && player.isAlive).length ?? 0;
+  const learnerPlayers = selectedSession?.players.filter((player) => !player.isBot) ?? [];
+  const botPlayers = selectedSession?.players.filter((player) => player.isBot) ?? [];
+  const activeLearners = learnerPlayers.filter((player) => player.connectionState !== "disconnected" && player.isAlive).length;
   const startCheck = selectedSession ? canStartRound(selectedSession) : undefined;
   const startBlockedReason =
     startCheck && !startCheck.ok
       ? startCheck.reason === "session_ended"
         ? "This session has ended."
-        : "Add at least one student before starting."
+        : botPlayers.length > 0
+          ? "Bots are ready for testing. Add at least one learner to begin."
+          : "Add at least one learner to begin."
       : "";
-  const shouldShowSetup = !selectedSession || selectedSession.status === "ended";
+  const shouldShowSetup = !selectedSession;
   const isSessionEnded = selectedSession?.status === "ended";
   const visibleNumberFields = sessionNumberFields.filter((field) => {
     if (settings.gameMode === "flag") return field.name !== "initialZombieCount";
@@ -1987,7 +2002,8 @@ function SessionManager({
             <h3>{gameModeLabel(selectedSession.settings.gameMode)} has ended</h3>
             <p>The room is closed. Students can view their summary, and the full class learning report is ready.</p>
             <dl>
-              <div><dt>Final players</dt><dd>{selectedSession.players.length}</dd></div>
+              <div><dt>Final learners</dt><dd>{learnerPlayers.length}</dd></div>
+              <div><dt>Test bots</dt><dd>{botPlayers.length}</dd></div>
               <div><dt>Final outcome</dt><dd>{getModeScoreSummary(selectedSession)}</dd></div>
               <div><dt>Top learner</dt><dd>{topLearner?.nickname ?? "No answers recorded"}</dd></div>
             </dl>
@@ -2004,7 +2020,9 @@ function SessionManager({
               <span>{arenaMapLabel(selectedSession.settings.mapId)}</span>
               {selectedSession.settings.gameMode === "flag" && <span>Round {selectedSession.currentRound}/{selectedSession.settings.roundCount}</span>}
               <span>Time {formatDuration(remainingSeconds)}</span>
-              <span>{activePlayers}/{selectedSession.players.length || 0} active</span>
+               <span>{activePlayers}/{selectedSession.players.length || 0} active</span>
+               <span>{activeLearners} learner{activeLearners === 1 ? "" : "s"}</span>
+               {botPlayers.length > 0 && <span>{botPlayers.length} test bot{botPlayers.length === 1 ? "" : "s"}</span>}
               <span>
                 {selectedSession.settings.gameMode === "zombie"
                   ? `Humans ${zombieCounts.humans} - Zombies ${zombieCounts.zombies}`
@@ -2044,7 +2062,25 @@ function SessionManager({
             <p className="mini-copy">
               If a player is frozen out, they can answer {RESPAWN_CORRECT_ANSWERS_REQUIRED} correct practice questions to respawn.
             </p>
-            {selectedSession.status === "waiting" && startBlockedReason && <p className="mini-copy">{startBlockedReason}</p>}
+             {selectedSession.status === "waiting" && startBlockedReason && <p className="mini-copy start-gate-copy">{startBlockedReason}</p>}
+             {selectedSession.status === "waiting" && (
+               <div className="lobby-readiness" aria-live="polite">
+                 <div>
+                   <strong>{learnerPlayers.length} learner{learnerPlayers.length === 1 ? "" : "s"} joined</strong>
+                   <span>{botPlayers.length > 0 ? `${botPlayers.length} test bot${botPlayers.length === 1 ? "" : "s"} in the room` : "Share the code above to invite your class."}</span>
+                 </div>
+                 <div className="lobby-readiness-list">
+                   {learnerPlayers.length > 0
+                     ? learnerPlayers.map((learner) => (
+                       <span key={learner.id} className="lobby-readiness-chip">
+                         <span className={`readiness-dot ${learner.connectionState === "connected" ? "is-connected" : "is-away"}`} aria-hidden="true" />
+                         {learner.nickname}<small>{learner.connectionState === "connected" ? "Connected" : "Reconnecting"}</small>
+                       </span>
+                     ))
+                     : <span className="lobby-readiness-empty">No learners yet</span>}
+                 </div>
+               </div>
+             )}
             <div className="button-row">
               {selectedSession.status === "waiting" && (
                 <button type="button" className="projector-button" onClick={() => setIsProjectorOpen(true)}>
@@ -2070,9 +2106,9 @@ function SessionManager({
                 {isAddingBot ? "Working..." : "Add Bot"}
               </button>
             </div>
-            <section className="teacher-customization-controls" aria-label="Character customization controls">
-                <div><h3>Lobby Characters</h3><p>Uploads are room-only and disabled unless you approve them.</p></div>
-                <div className="teacher-customization-toggles">
+             <details className="teacher-customization-controls" aria-label="Character customization controls" open={selectedSession.players.some((item) => !item.isBot && item.appearance?.decalAssetId)}>
+                 <summary><span><strong>Lobby Characters</strong><small>Manage presets, artwork, and room-only stickers.</small></span><span className="details-summary-action">Manage</span></summary>
+                 <div className="teacher-customization-toggles">
                   <label className="toggle-row"><input type="checkbox" checked={selectedSession.settings.characterCustomization.enabled} disabled={selectedSession.status !== "waiting"} onChange={(event) => void updateLiveCustomization({ ...selectedSession.settings.characterCustomization, enabled: event.target.checked })} />Creator enabled</label>
                   <label className="toggle-row"><input type="checkbox" checked={selectedSession.settings.characterCustomization.uploadsEnabled} disabled={selectedSession.status !== "waiting" || !selectedSession.settings.characterCustomization.enabled} onChange={(event) => void updateLiveCustomization({ ...selectedSession.settings.characterCustomization, uploadsEnabled: event.target.checked })} />Artwork uploads</label>
                   <label className="toggle-row"><input type="checkbox" checked={selectedSession.settings.characterCustomization.presetsOnly} disabled={selectedSession.status !== "waiting" || !selectedSession.settings.characterCustomization.enabled} onChange={(event) => void updateLiveCustomization({ ...selectedSession.settings.characterCustomization, presetsOnly: event.target.checked })} />Presets only</label>
@@ -2091,7 +2127,7 @@ function SessionManager({
                   loadAsset={loadTeacherDecal}
                   onRemove={removeDecalAsset}
                 />
-            </section>
+             </details>
             <Suspense fallback={<ArenaLoading label="Loading live arena" />}>
               <ArenaPreview
                 key={`${selectedSession.id}:${selectedSession.startedAt ?? "waiting"}:overview`}
@@ -2224,7 +2260,7 @@ function ReportsPanel({
       <div className="section-heading compact">
         <div>
           <h2>Session Results</h2>
-          <p>Review accuracy, money earned from quizzes, and missed questions.</p>
+          <p>Review answered questions, quiz rewards, and missed questions.</p>
         </div>
         <button onClick={() => setTab("sessions")}>Open Live Session</button>
       </div>
@@ -2248,24 +2284,29 @@ function ReportsPanel({
       <StatusMessages error={status.error} message={status.message} />
       {report && (
         <>
+          {(() => {
+            const classAccuracy = calculateClassAccuracy(report.rows);
+            const attemptedStudents = report.rows.filter((row) => row.correctAnswers + row.wrongAnswers > 0).length;
+            return (
           <div className="report-summary-grid">
             <div className="metric">
               <span>Class Accuracy</span>
-              <strong>
-                {report.rows.length
-                  ? Math.round(report.rows.reduce((total, row) => total + row.accuracy, 0) / report.rows.length)
-                  : 0}%
-              </strong>
+              <strong>{classAccuracy === null ? "—" : `${classAccuracy}%`}</strong>
+              <small>{attemptedStudents} of {report.rows.length} learners answered</small>
             </div>
             <div className="metric">
-              <span>Quiz Money Earned</span>
+              <span>Quiz Rewards</span>
               <strong>{formatMoney(report.rows.reduce((total, row) => total + row.quizMoney, 0))}</strong>
+              <small>Rewards from correct answers</small>
             </div>
             <div className="metric">
               <span>Reteach Signals</span>
               <strong>{report.missedQuestions.length}</strong>
+              <small>Questions missed by learners</small>
             </div>
           </div>
+            );
+          })()}
           <table className="report-table">
             <thead>
               <tr>
@@ -2274,7 +2315,7 @@ function ReportsPanel({
                 <th>Correct</th>
                 <th>Wrong</th>
                 <th>Accuracy</th>
-                <th>Quiz Money</th>
+                <th>Quiz Rewards</th>
                 <th>Score</th>
               </tr>
             </thead>
@@ -2285,8 +2326,8 @@ function ReportsPanel({
                   <td data-label="Team">{teamLabel(row.team)}</td>
                   <td data-label="Correct">{row.correctAnswers}</td>
                   <td data-label="Wrong">{row.wrongAnswers}</td>
-                  <td data-label="Accuracy">{row.accuracy}%</td>
-                  <td data-label="Quiz Money">{formatMoney(row.quizMoney)}</td>
+                  <td data-label="Accuracy">{row.correctAnswers + row.wrongAnswers > 0 ? `${row.accuracy}%` : "—"}</td>
+                  <td data-label="Quiz Rewards">{formatMoney(row.quizMoney)}</td>
                   <td data-label="Score">{row.score}</td>
                 </tr>
               ))}
@@ -3204,6 +3245,10 @@ function StudentExperience({ onExit }: { onExit: () => void }) {
               <small id="join-code-help">Enter the 6-character code on your teacher's screen.</small>
             </label>
           )}
+          <details className="student-join-tips">
+            <summary>How to play</summary>
+            <p>Answer questions to earn money, buy snowballs, then use WASD and F or click to play in the arena.</p>
+          </details>
           <label className="join-field">
             <span className="join-field-label">Your name</span>
             <input placeholder="Student name" autoComplete="nickname" autoFocus={Boolean(joinCodeFromLink)} enterKeyHint="done" value={nickname} onChange={(event) => { setNickname(event.target.value); status.clearError(); }} maxLength={20} aria-invalid={Boolean(nicknameError)} aria-describedby={nicknameError ? "nickname-error nickname-help" : "nickname-help"} />
@@ -3254,6 +3299,7 @@ function StudentExperience({ onExit }: { onExit: () => void }) {
     <section className={[
       "game-layout",
       isCompactViewport ? "compact-game-layout" : "",
+      gamePreferences.highContrastHud ? "high-contrast-hud" : "",
       session.status === "waiting" ? "waiting-game-layout" : ""
     ].filter(Boolean).join(" ")}>
       <div className="game-stage">
@@ -3412,6 +3458,7 @@ function StudentExperience({ onExit }: { onExit: () => void }) {
                   <div className="lobby-instruction">
                     <span>Choose your team</span>
                     <h2>Choose your team and wait for the teacher to start the game.</h2>
+                    <p className="lobby-ready-note">You are connected. Pick a team and customize your player while the class joins.</p>
                     <div className="lobby-status-row">
                       <span className="waiting-status"><span className="waiting-pulse" />Waiting for teacher…</span>
                       <span className="lobby-player-count"><Users size={15} />{connectedPlayers.length} {connectedPlayers.length === 1 ? "player" : "players"} joined</span>
@@ -3462,8 +3509,10 @@ function StudentExperience({ onExit }: { onExit: () => void }) {
                 <h2>Session Ended</h2>
                 <p>{sessionResult}</p>
                 <div className="student-summary-metrics">
-                  <span><strong>{accuracy(player)}%</strong> question accuracy</span>
-                  <span><strong>{formatMoney(player.money)}</strong> earned</span>
+                  <span><strong>{player.correctAnswers + player.wrongAnswers > 0 ? `${accuracy(player)}%` : "—"}</strong> question accuracy</span>
+                  <span><strong>{formatMoney(player.quizMoneyEarned ?? 0)}</strong> quiz rewards</span>
+                  <span><strong>{formatMoney(player.moneySpent ?? 0)}</strong> spent in shop</span>
+                  <span><strong>{formatMoney(player.money)}</strong> wallet balance</span>
                   <span><strong>{player.score}</strong> final score</span>
                 </div>
                 <div className="button-row">
@@ -3556,6 +3605,7 @@ function QuizPanel({
         <h2>Quiz Panel</h2>
         <span>{reward}</span>
       </div>
+      <p className="menu-timer-note">The round timer continues while this panel is open.</p>
       <p className="question-text">{question.prompt}</p>
       <div className="answer-grid">
         {choices.map((choice, index) => (
@@ -3607,6 +3657,7 @@ function BuyPanel({
         <h2>{buyPhaseSeconds === undefined ? "Buy Menu" : `Buy Phase · ${buyPhaseSeconds}s`}</h2>
         <span>{formatMoney(player.money)}</span>
       </div>
+      <p className="menu-timer-note">The round timer continues while this menu is open.</p>
       <p className="buy-shortcut-help">Press 1–5 to buy instantly. Press B to open or close this menu.</p>
       <button
         className="gear-row"
@@ -3680,6 +3731,11 @@ function GamePreferencesPanel({
         </select>
         <small>Low reduces pixel density and decorative detail; team colors, objectives, and route landmarks remain visible.</small>
       </label>
+      <label className="toggle-row">
+        <input type="checkbox" checked={preferences.highContrastHud} onChange={(event) => onChange({ highContrastHud: event.target.checked })} />
+        <span>High-contrast HUD</span>
+      </label>
+      <p className="settings-help">Adds stronger HUD borders, text contrast, and focus outlines for busy scenes or low-vision play.</p>
       <label className="toggle-row">
         <input type="checkbox" checked={preferences.gamepadEnabled} onChange={(event) => onChange({ gamepadEnabled: event.target.checked })} />
         <span>Enable standard controller controls {gamepadDetected ? "(controller connected)" : "(connect a controller to use)"}</span>

@@ -2,6 +2,7 @@ export type ArenaQuality = "auto" | "performance" | "balanced" | "high";
 
 export type GamePreferences = {
   arenaQuality: ArenaQuality;
+  highContrastHud: boolean;
   gamepadEnabled: boolean;
   soundEnabled: boolean;
   musicVolume: number;
@@ -12,6 +13,7 @@ export const GAME_PREFERENCES_STORAGE_KEY = "quizstrike_game_preferences";
 
 export const DEFAULT_GAME_PREFERENCES: GamePreferences = {
   arenaQuality: "auto",
+  highContrastHud: false,
   gamepadEnabled: true,
   soundEnabled: true,
   musicVolume: 0.16,
@@ -27,6 +29,7 @@ export const readGamePreferences = (): GamePreferences => {
       arenaQuality: ["auto", "performance", "balanced", "high"].includes(stored.arenaQuality ?? "")
         ? stored.arenaQuality as ArenaQuality
         : DEFAULT_GAME_PREFERENCES.arenaQuality,
+      highContrastHud: typeof stored.highContrastHud === "boolean" ? stored.highContrastHud : DEFAULT_GAME_PREFERENCES.highContrastHud,
       gamepadEnabled: typeof stored.gamepadEnabled === "boolean" ? stored.gamepadEnabled : DEFAULT_GAME_PREFERENCES.gamepadEnabled,
       soundEnabled: typeof stored.soundEnabled === "boolean" ? stored.soundEnabled : DEFAULT_GAME_PREFERENCES.soundEnabled,
       musicVolume: typeof stored.musicVolume === "number" ? Math.min(1, Math.max(0, stored.musicVolume)) : DEFAULT_GAME_PREFERENCES.musicVolume,

@@ -3403,6 +3403,71 @@ body:has(.waiting-game-layout) {
   }
 }
 
+/* Keep the public join CTA visible on desktop classroom displays. */
+@media (min-width: 701px) {
+  .student-join-screen {
+    align-items: center;
+    padding: clamp(24px, 7vh, 72px) 28px 28px;
+  }
+}
+
+@media (min-width: 701px) and (max-width: 1100px) {
+  .topbar-quizStrike {
+    gap: 12px;
+    padding-inline: 18px;
+  }
+
+  .topbar-quizStrike .brand-button {
+    font-size: 1.9rem;
+  }
+
+  .topbar-quizStrike .top-actions {
+    gap: 6px;
+  }
+
+  .topbar-quizStrike .top-actions button,
+  .topbar-quizStrike .top-actions .nav-login {
+    min-width: 0;
+    padding-inline: 12px;
+    font-size: 1rem;
+  }
+}
+
+/* Optional HUD contrast mode for busy arenas and low-vision play. */
+.high-contrast-hud .game-stage > .player-status-hud,
+.high-contrast-hud .game-stage > .hud,
+.high-contrast-hud .game-utility-bar,
+.high-contrast-hud .game-menu-overlay,
+.high-contrast-hud .game-menu-bar,
+.high-contrast-hud .game-menu-overlay .panel {
+  border-color: #ffffff;
+  background: #07111d;
+  color: #ffffff;
+  box-shadow: 0 0 0 2px #07111d, 0 0 0 4px #ffffff, 0 18px 42px rgba(0, 0, 0, .6);
+}
+
+.high-contrast-hud .hud-stat,
+.high-contrast-hud .game-menu-overlay button,
+.high-contrast-hud .game-menu-overlay a {
+  border-color: #ffffff;
+  color: #ffffff;
+  background: #10283d;
+}
+
+.high-contrast-hud .hud-stat small,
+.high-contrast-hud .hud-stat svg,
+.high-contrast-hud .game-menu-overlay small {
+  color: #d9f5ff;
+}
+
+.high-contrast-hud button:focus-visible,
+.high-contrast-hud a:focus-visible,
+.high-contrast-hud input:focus-visible,
+.high-contrast-hud select:focus-visible {
+  outline: 3px solid #facc15;
+  outline-offset: 3px;
+}
+
 @media (max-width: 620px) {
   .game-utility-bar.lobby-utility-bar {
     inset-inline: 8px;
@@ -3748,7 +3813,7 @@ body:has(.waiting-game-layout) {
 
 .student-summary-metrics {
   display: grid;
-  grid-template-columns: repeat(3, minmax(0, 1fr));
+  grid-template-columns: repeat(auto-fit, minmax(132px, 1fr));
   gap: 8px;
 }
 
@@ -3765,6 +3830,172 @@ body:has(.waiting-game-layout) {
 .student-summary-metrics strong {
   color: #172033;
   font-size: 1.1rem;
+}
+
+.report-summary-grid .metric {
+  min-width: 0;
+}
+
+.report-summary-grid .metric small {
+  display: block;
+  margin-top: 4px;
+  color: #64748b;
+  font-size: .76rem;
+  line-height: 1.3;
+}
+
+.lobby-readiness {
+  display: grid;
+  gap: 10px;
+  margin: 12px 0 14px;
+  padding: 12px 14px;
+  border: 1px solid #cfe0ef;
+  border-radius: 12px;
+  background: #f6fbff;
+}
+
+.lobby-ready-note {
+  margin: 6px 0 0;
+  color: #53728a;
+  font-size: .84rem;
+  font-weight: 700;
+  line-height: 1.35;
+}
+
+.lobby-readiness > div:first-child {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: baseline;
+  gap: 8px 12px;
+}
+
+.lobby-readiness > div:first-child strong {
+  color: #143c5d;
+}
+
+.lobby-readiness > div:first-child span {
+  color: #61748a;
+  font-size: .82rem;
+  font-weight: 700;
+}
+
+.lobby-readiness-list {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+}
+
+.lobby-readiness-chip,
+.lobby-readiness-empty {
+  display: inline-flex;
+  align-items: center;
+  gap: 7px;
+  border-radius: 999px;
+  padding: 6px 10px;
+  background: #e4f2fb;
+  color: #164a70;
+  font-size: .82rem;
+  font-weight: 850;
+}
+
+.lobby-readiness-chip small {
+  color: #53728a;
+  font-size: .7rem;
+  font-weight: 800;
+}
+
+.readiness-dot {
+  width: 8px;
+  height: 8px;
+  border-radius: 50%;
+  background: #f59e0b;
+}
+
+.readiness-dot.is-connected { background: #16a34a; }
+.readiness-dot.is-away { background: #f59e0b; }
+
+.teacher-customization-controls {
+  display: grid;
+  gap: 12px;
+}
+
+.teacher-customization-controls > summary {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  cursor: pointer;
+  list-style: none;
+}
+
+.teacher-customization-controls > summary::-webkit-details-marker { display: none; }
+
+.teacher-customization-controls > summary::before {
+  content: "＋";
+  color: #167f78;
+  font-size: 1.1rem;
+  font-weight: 900;
+}
+
+.teacher-customization-controls[open] > summary::before { content: "−"; }
+
+.teacher-customization-controls > summary > span:first-of-type {
+  display: grid;
+  gap: 2px;
+  flex: 1;
+}
+
+.teacher-customization-controls > summary strong {
+  color: #143c5d;
+}
+
+.teacher-customization-controls > summary small {
+  color: #61748a;
+  font-size: .8rem;
+  font-weight: 700;
+}
+
+.details-summary-action {
+  color: #167f78;
+  font-size: .78rem;
+  font-weight: 900;
+  text-transform: uppercase;
+}
+
+.menu-timer-note {
+  margin: -4px 0 12px;
+  color: #64748b;
+  font-size: .8rem;
+  font-weight: 750;
+}
+
+@media (min-width: 701px) {
+  .student-join-screen {
+    align-items: center;
+    padding: clamp(24px, 10vh, 96px) 28px 28px;
+  }
+}
+
+@media (min-width: 701px) and (max-width: 1100px) {
+  .topbar-quizStrike {
+    gap: 12px;
+    padding-inline: 18px;
+  }
+
+  .topbar-quizStrike .brand-button {
+    font-size: 1.9rem;
+  }
+
+  .topbar-quizStrike .top-actions {
+    gap: 6px;
+  }
+
+  .topbar-quizStrike .top-actions button,
+  .topbar-quizStrike .top-actions .nav-login {
+    min-width: 0;
+    padding-inline: 12px;
+    font-size: 1rem;
+  }
 }
 
 @media (max-width: 680px) {
@@ -4782,6 +5013,27 @@ body:has(.waiting-game-layout) {
   font-size: clamp(1.9rem, 5vw, 3rem);
 }
 
+.student-join-tips {
+  border: 1px solid #cfe0ef;
+  border-radius: 8px;
+  padding: 8px 10px;
+  background: #f6fbff;
+}
+
+.student-join-tips summary {
+  cursor: pointer;
+  color: #164a70;
+  font-size: .82rem;
+  font-weight: 900;
+}
+
+.student-join-tips p {
+  margin: 7px 0 0;
+  color: #4f5d69;
+  font-size: .8rem;
+  line-height: 1.35;
+}
+
 .arena-objective-strip {
   right: 220px;
   max-width: calc(100% - 244px);
@@ -5395,5 +5647,35 @@ body:has(.game-layout) .topbar {
   .waiting-game-layout .game-stage {
     min-height: 100dvh;
     overflow: visible;
+  }
+}
+
+/* Keep the public join CTA visible on desktop classroom displays. */
+@media (min-width: 701px) {
+  .student-join-screen {
+    align-items: center;
+    padding: clamp(24px, 7vh, 72px) 28px 28px;
+  }
+}
+
+@media (min-width: 701px) and (max-width: 1100px) {
+  .topbar-quizStrike {
+    gap: 12px;
+    padding-inline: 18px;
+  }
+
+  .topbar-quizStrike .brand-button {
+    font-size: 1.9rem;
+  }
+
+  .topbar-quizStrike .top-actions {
+    gap: 6px;
+  }
+
+  .topbar-quizStrike .top-actions button,
+  .topbar-quizStrike .top-actions .nav-login {
+    min-width: 0;
+    padding-inline: 12px;
+    font-size: 1rem;
   }
 }

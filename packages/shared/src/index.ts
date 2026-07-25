@@ -416,6 +416,10 @@ export interface PlayerSession {
   nickname: string;
   team: Team;
   money: number;
+  /** Total rewards earned from quiz answers in this session. */
+  quizMoneyEarned?: number;
+  /** Total money spent on shop purchases in this session. */
+  moneySpent?: number;
   isAlive: boolean;
   health?: number;
   snowballs?: number;
@@ -727,7 +731,7 @@ const csvCell = (value: string | number) => {
 
 export const buildCsvReport = (report: SessionReport) => {
   const rows = [
-    ["Session Code", "Student", "Team", "Correct", "Wrong", "Accuracy %", "Current Money", "Quiz Money", "Score"],
+    ["Session Code", "Student", "Team", "Correct", "Wrong", "Accuracy %", "Wallet", "Quiz Rewards", "Score"],
     ...report.rows.map((row) => [
       report.session.sessionCode,
       row.nickname,
@@ -843,6 +847,13 @@ export const isChoice = (value: unknown): value is Choice =>
 export const calculateAccuracy = (correct: number, wrong: number) => {
   const total = correct + wrong;
   return total === 0 ? 0 : Math.round((correct / total) * 100);
+};
+
+/** Weighted class accuracy across attempted questions; null means nobody has answered yet. */
+export const calculateClassAccuracy = (rows: Pick<SessionReportRow, "correctAnswers" | "wrongAnswers">[]) => {
+  const correct = rows.reduce((total, row) => total + row.correctAnswers, 0);
+  const attempted = rows.reduce((total, row) => total + row.correctAnswers + row.wrongAnswers, 0);
+  return attempted === 0 ? null : Math.round((correct / attempted) * 100);
 };
 
 export type StartRoundResult = { ok: true } | { ok: false; reason: "no_real_players" | "session_ended" };

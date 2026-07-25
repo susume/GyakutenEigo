@@ -1390,6 +1390,8 @@ app.post("/api/sessions/:code/bots", requireTeacher, (req: AuthedRequest, res) =
     nickname: `${botNames[botIndex % botNames.length]} Bot ${botIndex + 1}`,
     team,
     money: session.settings.startingMoney,
+    quizMoneyEarned: 0,
+    moneySpent: 0,
     isAlive: true,
     isBot: true,
     role: "human",
@@ -1516,6 +1518,8 @@ app.post("/api/sessions/:code/join", (req, res) => {
     nickname,
     team,
     money: session.settings.startingMoney,
+    quizMoneyEarned: 0,
+    moneySpent: 0,
     isAlive: true,
     role: "human",
     tags: 0,
@@ -1879,6 +1883,7 @@ const answerQuestion = (
   const answerContext: AnswerLog["context"] = player.isAlive ? "main" : "practice";
   const reward = resolveAnswerReward({ player, settings: session.settings, isCorrect, responseTimeMs });
   player.money = reward.nextMoney;
+  player.quizMoneyEarned = (player.quizMoneyEarned ?? 0) + reward.moneyAwarded;
   player.score += reward.scoreDelta;
   player.correctAnswers += reward.correctDelta;
   player.wrongAnswers += reward.wrongDelta;
@@ -1978,7 +1983,9 @@ const buyGear = (session: GameSession, player: PlayerSession, gearId: unknown): 
   if (purchase.alreadyEquipped) {
     return { ok: true, data: { player, gear, message: `${gear.name} already equipped.` } };
   }
+  const moneySpent = player.money - purchase.nextMoney;
   player.money = purchase.nextMoney;
+  player.moneySpent = (player.moneySpent ?? 0) + moneySpent;
   if (isWeaponGearId(gear.id)) {
     player.weapon = gear.id;
     player.gear = gear.id;
@@ -2005,7 +2012,9 @@ const buySnowballs = (session: GameSession, player: PlayerSession): StudentComma
         : "Not enough money for snowballs."
     );
   }
+  const moneySpent = player.money - purchase.nextMoney;
   player.money = purchase.nextMoney;
+  player.moneySpent = (player.moneySpent ?? 0) + moneySpent;
   player.snowballs = purchase.nextSnowballs;
   appendEvent(session, {
     type: "buy",
