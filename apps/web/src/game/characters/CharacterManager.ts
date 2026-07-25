@@ -13,6 +13,7 @@ export interface CharacterVisualState {
 export interface CharacterManagerOptions {
   isFps: boolean;
   currentPlayerId?: string;
+  showBadges?: boolean;
   makeBadgeMaterial: (player: PlayerSession) => THREE.SpriteMaterial;
 }
 
@@ -86,7 +87,7 @@ export class CharacterManager {
       }
       record.controller.setTarget(state.x, state.z, state.facing, player.isAlive);
       record.controller.model.root.visible = true;
-      record.badge.visible = true;
+      record.badge.visible = this.options.showBadges !== false;
       if (record.ring) record.ring.visible = player.id === this.options.currentPlayerId;
     });
 
@@ -151,6 +152,7 @@ export class CharacterManager {
     const badge = new THREE.Sprite(this.options.makeBadgeMaterial(player));
     badge.position.set(state.x, 6.2, state.z);
     badge.scale.set(8.2, 3, 1);
+    badge.visible = this.options.showBadges !== false;
     this.scene.add(badge);
 
     let ring: THREE.Mesh | undefined;

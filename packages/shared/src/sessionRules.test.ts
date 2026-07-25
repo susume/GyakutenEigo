@@ -43,6 +43,7 @@ import {
   resolveTeamRoundWinner,
   getTeamSpawn,
   getTeamSpawnForMap,
+  getTeamSpawnsForMap,
   selectTeamSpawn,
   TEAM_SPAWNS,
   isRoundActive,
@@ -841,6 +842,32 @@ test("Iron Junction uses its own map spawn labels and collision proxies", () => 
   assert.equal(ironObstacles.some((obstacle) => obstacle.id === "sorting-booth"), true);
   assert.notEqual(ironObstacles, getArenaObstacles("desert_citadel"));
   assert.equal(sanitizeSessionSettings({ mapId: "iron_junction" }).mapId, "iron_junction");
+});
+
+test("Temple Runoff supports 20 safe spawns per team and authoritative map selection", () => {
+  const spawns = getTeamSpawnsForMap("temple_runoff");
+  const obstacles = getArenaObstacles("temple_runoff");
+
+  assert.equal(spawns.blue.length, 20);
+  assert.equal(spawns.red.length, 20);
+  assert.equal(new Set(spawns.blue.map((spawn) => `${spawn.x}:${spawn.z}`)).size, 20);
+  assert.equal(new Set(spawns.red.map((spawn) => `${spawn.x}:${spawn.z}`)).size, 20);
+  assert.equal(new Set(spawns.blue.map((spawn) => spawn.label)).size, 4);
+  assert.equal(obstacles.some((obstacle) => obstacle.id === "rain-god-statue"), true);
+  assert.equal(obstacles.some((obstacle) => obstacle.id === "blue-base-screen-b"), true);
+  assert.notEqual(obstacles, getArenaObstacles("desert_citadel"));
+  assert.equal(sanitizeSessionSettings({ mapId: "temple_runoff" }).mapId, "temple_runoff");
+
+  for (const spawn of [...spawns.blue, ...spawns.red]) {
+    const firstStep = resolveAuthoritativeMovement({
+      current: spawn,
+      requested: { ...spawn, x: spawn.x + (spawn.x < 0 ? 0.05 : -0.05) },
+      elapsedMs: 100,
+      maxSpeed: 1,
+      obstacles
+    });
+    assert.equal(firstStep.blocked, undefined, `${spawn.id} should not overlap collision`);
+  }
 });
 
 test("selectTeamSpawn avoids nearby visible enemies when alternatives exist", () => {

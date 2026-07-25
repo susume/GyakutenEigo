@@ -2,6 +2,8 @@ import { lazy, Suspense, useCallback, useEffect, useMemo, useRef, useState } fro
 import {
   BookOpen,
   Check,
+  ChevronLeft,
+  ChevronRight,
   CircleDollarSign,
   ClipboardPaste,
   Copy,
@@ -21,6 +23,7 @@ import {
   Settings,
   Shield,
   ShoppingBag,
+  Snowflake,
   Target,
   Timer,
   Users,
@@ -765,6 +768,7 @@ function CharacterLab() {
           <div className="button-row" aria-label="Character lab map">
             <button className={labMapId === "desert_citadel" ? "active" : ""} onClick={() => setLabMapId("desert_citadel")}>Desert Citadel</button>
             <button className={labMapId === "iron_junction" ? "active" : ""} onClick={() => setLabMapId("iron_junction")}>Iron Junction</button>
+            <button className={labMapId === "temple_runoff" ? "active" : ""} onClick={() => setLabMapId("temple_runoff")}>Temple Runoff</button>
           </div>
           <div className="button-row" aria-label="Character lab quality">
             <button className={labQuality === "performance" ? "active" : ""} onClick={() => setLabQuality("performance")}>Low</button>
@@ -1901,6 +1905,7 @@ function SessionManager({
           <strong>{selectedMap.title}</strong>
           <span>{selectedMap.districts.slice(0, 3).join(" · ")}</span>
           {selectedMap.id === "iron_junction" && <small>Generated from the Iron Junction industrial railway brief · three lanes · balanced East/West spawns</small>}
+          {selectedMap.id === "temple_runoff" && <small>Four primary routes · four protected spawn exits · Rain God Statue landmark · optimized jungle batching</small>}
         </div>
         {settings.gameMode === "flag" && (
           <label>
@@ -2696,7 +2701,11 @@ function StudentExperience({ onExit }: { onExit: () => void }) {
               attacker: { x: position.x!, z: position.z! },
               target: { x: local.x!, z: local.z!, facing: local.facing ?? 0 }
             }),
-            lastVisualSession.settings.mapId === "iron_junction" ? "metal" : "sand"
+            lastVisualSession.settings.mapId === "iron_junction"
+              ? "metal"
+              : lastVisualSession.settings.mapId === "temple_runoff"
+                ? "stone"
+                : "sand"
           );
         }
         lastRemotePositions.set(position.playerId, { x: position.x!, z: position.z! });
@@ -3288,6 +3297,13 @@ function StudentExperience({ onExit }: { onExit: () => void }) {
       : "Answer questions, earn supplies, and tag the other team.";
   const sessionResult = getSessionResultText(session);
   const arenaPlayer = spectatorPlayer ?? player;
+  const isFlagSpectator = !player.isAlive && session.settings.gameMode === "flag";
+  const spectatorIndex = spectatorPlayer
+    ? spectatorCandidates.findIndex((candidate) => candidate.id === spectatorPlayer.id) + 1
+    : 0;
+  const spectatorGear = spectatorPlayer
+    ? GEAR_ITEMS.find((item) => item.id === getPlayerWeaponId(spectatorPlayer)) ?? GEAR_ITEMS[0]
+    : undefined;
   const cycleSpectator = (direction: -1 | 1) => {
     if (spectatorCandidates.length < 2) return;
     const currentIndex = Math.max(0, spectatorCandidates.findIndex((candidate) => candidate.id === arenaPlayer.id));
@@ -3349,6 +3365,66 @@ function StudentExperience({ onExit }: { onExit: () => void }) {
             {session.settings.gameMode === "flag" ? ` · Round ${session.currentRound}/${session.settings.roundCount}` : ""}
           </span>
         </div>
+        {isFlagSpectator ? (
+          <section className="spectator-dock" aria-label="Spectator controls" data-testid="spectator-dock">
+            <div className="spectator-state">
+              <span className="spectator-state-icon"><Snowflake size={20} aria-hidden="true" /></span>
+              <span>
+                <small>Frozen this round</small>
+                <strong>Back next round</strong>
+              </span>
+            </div>
+            <button
+              className="spectator-cycle-button"
+              type="button"
+              onClick={() => cycleSpectator(-1)}
+              disabled={spectatorCandidates.length < 2}
+              aria-label="Watch previous player"
+            >
+              <ChevronLeft size={22} aria-hidden="true" />
+              <span>Previous</span>
+            </button>
+            <div className="spectator-focus" aria-live="polite" aria-atomic="true">
+              <small><Eye size={15} aria-hidden="true" />Now watching{spectatorCandidates.length > 0 ? ` ${spectatorIndex} of ${spectatorCandidates.length}` : ""}</small>
+              <div>
+                <strong>{spectatorPlayer?.nickname ?? "Waiting for an active player"}</strong>
+                {spectatorPlayer && (
+                  <span className={`spectator-team spectator-team-${spectatorPlayer.team}`}>
+                    {spectatorPlayer.team === "blue" ? "Blue Team" : "Red Team"}
+                  </span>
+                )}
+              </div>
+            </div>
+            <button
+              className="spectator-cycle-button"
+              type="button"
+              onClick={() => cycleSpectator(1)}
+              disabled={spectatorCandidates.length < 2}
+              aria-label="Watch next player"
+            >
+              <span>Next</span>
+              <ChevronRight size={22} aria-hidden="true" />
+            </button>
+            {spectatorPlayer && spectatorGear ? (
+              <div className="spectator-player-stats" aria-label={`${spectatorPlayer.nickname} status`}>
+                <span>
+                  <HeartPulse size={16} aria-hidden="true" />
+                  <span><small>Warmth</small><strong>{getPlayerWarmth(spectatorPlayer)}</strong></span>
+                </span>
+                <span>
+                  <Target size={16} aria-hidden="true" />
+                  <span><small>Snowballs</small><strong>{spectatorPlayer.snowballs ?? session.settings.startingSnowballs}</strong></span>
+                </span>
+                <span className="spectator-gear">
+                  <Package size={16} aria-hidden="true" />
+                  <span><small>Gear</small><strong>{spectatorGear.name}</strong></span>
+                </span>
+              </div>
+            ) : (
+              <p className="spectator-waiting-copy">The camera will switch when a player is active.</p>
+            )}
+          </section>
+        ) : (
         <div className="hud player-status-hud">
           <span className={player.isAlive ? "hud-stat hud-warmth" : "hud-stat hud-warmth low"}>
             <HeartPulse size={18} aria-hidden="true" />
@@ -3386,6 +3462,7 @@ function StudentExperience({ onExit }: { onExit: () => void }) {
             </span>
           </span>
         </div>
+        )}
         </>)}
         {incomingHitCue && (
           <div
@@ -3450,7 +3527,7 @@ function StudentExperience({ onExit }: { onExit: () => void }) {
             {settingsOpen && <GamePreferencesPanel preferences={gamePreferences} onChange={updateGamePreferences} />}
           </div>
         )}
-        {(session.status === "waiting" || roundEnded || isSocketReconnecting || !player.isAlive || status.error || feedback) && (
+        {(session.status === "waiting" || roundEnded || isSocketReconnecting || (!player.isAlive && session.settings.gameMode !== "flag") || status.error || feedback) && (
           <div className={`student-alerts${session.status === "waiting" ? " has-character-creator" : ""}`} aria-live="polite">
             {session.status === "waiting" && (
               <div className="panel pre-round-card creator-ready-room">
@@ -3526,21 +3603,6 @@ function StudentExperience({ onExit }: { onExit: () => void }) {
                 <WifiOff size={16} aria-hidden="true" />
                 Reconnecting...
               </p>
-            )}
-            {!player.isAlive && session.settings.gameMode === "flag" && (
-              <div className="panel respawn-card">
-                <div className="panel-title">
-                  <h2>Frozen · Spectator Mode</h2>
-                  <span>{spectatorPlayer ? `Watching ${spectatorPlayer.nickname}` : "Waiting"}</span>
-                </div>
-                <p>You are frozen for this round. Watch another active student until time runs out; you will return at the start of the next round.</p>
-                {spectatorCandidates.length > 1 && (
-                  <div className="button-row">
-                    <button type="button" onClick={() => cycleSpectator(-1)}>Previous Player</button>
-                    <button type="button" onClick={() => cycleSpectator(1)}>Next Player</button>
-                  </div>
-                )}
-              </div>
             )}
             {!player.isAlive && session.settings.gameMode !== "flag" && (
               <div className="panel respawn-card">

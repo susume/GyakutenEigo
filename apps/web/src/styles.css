@@ -791,6 +791,10 @@ label.toggle-row input {
   fill: #465258;
 }
 
+.minimap-temple {
+  fill: #65704b;
+}
+
 .minimap-route {
   fill: rgba(104, 213, 224, 0.28);
 }
@@ -1236,6 +1240,13 @@ small {
 .map-selection-card.map-iron_junction {
   border-color: #a9b7b5;
   background: linear-gradient(135deg, #e7eceb, #f9f7f2);
+}
+
+.map-selection-card.map-temple_runoff {
+  border-color: #7ca485;
+  background:
+    radial-gradient(circle at 88% 18%, rgba(58, 190, 177, 0.2), transparent 34%),
+    linear-gradient(135deg, #e6f0dc, #fff7df);
 }
 
 .map-selection-card__eyebrow {
@@ -5367,6 +5378,202 @@ body:has(.game-layout) .topbar {
   -webkit-line-clamp: 2;
 }
 
+.spectator-dock {
+  position: absolute;
+  left: 50%;
+  bottom: clamp(12px, 2vh, 24px);
+  z-index: var(--z-hud);
+  width: min(1120px, calc(100% - 32px));
+  min-height: var(--player-hud-height);
+  display: grid;
+  grid-template-columns: minmax(170px, 0.9fr) auto minmax(230px, 1.3fr) auto minmax(310px, 1.55fr);
+  align-items: stretch;
+  gap: clamp(5px, 0.7vw, 8px);
+  padding: clamp(7px, 1vw, 10px);
+  border: 1px solid rgba(125, 211, 252, 0.38);
+  border-radius: 12px;
+  background: rgba(8, 28, 45, 0.94);
+  box-shadow: 0 16px 40px rgba(2, 10, 20, 0.38);
+  color: #f8fafc;
+  transform: translateX(-50%);
+  backdrop-filter: blur(10px);
+}
+
+.spectator-state,
+.spectator-focus,
+.spectator-player-stats,
+.spectator-waiting-copy {
+  min-width: 0;
+  border: 1px solid rgba(186, 230, 253, 0.16);
+  border-radius: 8px;
+  background: rgba(255, 255, 255, 0.06);
+}
+
+.spectator-state {
+  display: flex;
+  align-items: center;
+  gap: 9px;
+  padding: 8px 10px;
+}
+
+.spectator-state-icon {
+  width: 34px;
+  height: 34px;
+  flex: 0 0 auto;
+  display: grid;
+  place-items: center;
+  border: 1px solid rgba(186, 230, 253, 0.46);
+  border-radius: 50%;
+  background: rgba(14, 116, 144, 0.3);
+  color: #bae6fd;
+}
+
+.spectator-state > span:last-child,
+.spectator-player-stats > span > span {
+  min-width: 0;
+  display: grid;
+  gap: 2px;
+}
+
+.spectator-state small,
+.spectator-focus small,
+.spectator-player-stats small {
+  color: #a9c7d8;
+  font-size: clamp(0.54rem, 0.62vw, 0.66rem);
+  font-weight: 900;
+  letter-spacing: 0.055em;
+  line-height: 1;
+  text-transform: uppercase;
+}
+
+.spectator-state strong {
+  font-size: clamp(0.78rem, 0.88vw, 0.94rem);
+  line-height: 1.1;
+}
+
+.spectator-cycle-button {
+  min-width: 86px;
+  min-height: 48px;
+  align-self: stretch;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 5px;
+  border-color: rgba(186, 230, 253, 0.38);
+  background: rgba(255, 255, 255, 0.08);
+  color: #f8fafc;
+  font-size: clamp(0.68rem, 0.76vw, 0.78rem);
+  font-weight: 900;
+}
+
+.spectator-cycle-button:hover:not(:disabled),
+.spectator-cycle-button:focus-visible {
+  border-color: #7dd3fc;
+  background: rgba(14, 116, 144, 0.32);
+  color: #ffffff;
+}
+
+.spectator-cycle-button:disabled {
+  opacity: 0.42;
+}
+
+.spectator-focus {
+  display: grid;
+  align-content: center;
+  gap: 5px;
+  padding: 8px 12px;
+}
+
+.spectator-focus small {
+  display: flex;
+  align-items: center;
+  gap: 5px;
+  color: #7dd3fc;
+}
+
+.spectator-focus > div {
+  min-width: 0;
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.spectator-focus strong {
+  min-width: 0;
+  overflow: hidden;
+  color: #ffffff;
+  font-size: clamp(0.92rem, 1.15vw, 1.14rem);
+  line-height: 1.08;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.spectator-team {
+  flex: 0 0 auto;
+  border: 1px solid currentColor;
+  border-radius: 999px;
+  padding: 3px 7px;
+  font-size: clamp(0.52rem, 0.58vw, 0.62rem);
+  font-weight: 950;
+  letter-spacing: 0.04em;
+  line-height: 1;
+  text-transform: uppercase;
+}
+
+.spectator-team-blue {
+  background: rgba(14, 165, 233, 0.16);
+  color: #7dd3fc;
+}
+
+.spectator-team-red {
+  background: rgba(244, 63, 94, 0.14);
+  color: #fda4af;
+}
+
+.spectator-player-stats {
+  display: grid;
+  grid-template-columns: minmax(72px, 0.8fr) minmax(82px, 0.9fr) minmax(132px, 1.4fr);
+  align-items: center;
+  gap: 8px;
+  padding: 7px 10px;
+}
+
+.spectator-player-stats > span {
+  min-width: 0;
+  display: flex;
+  align-items: center;
+  gap: 6px;
+}
+
+.spectator-player-stats svg {
+  flex: 0 0 auto;
+  color: #bae6fd;
+}
+
+.spectator-player-stats strong {
+  overflow: hidden;
+  color: #ffffff;
+  font-size: clamp(0.72rem, 0.82vw, 0.88rem);
+  line-height: 1.05;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.spectator-waiting-copy {
+  display: flex;
+  align-items: center;
+  margin: 0;
+  padding: 8px 12px;
+  color: #cbd5e1;
+  font-size: 0.78rem;
+  font-weight: 800;
+}
+
+.high-contrast-hud .spectator-dock {
+  border-color: #e0f2fe;
+  background: #061827;
+}
+
 .action-bar {
   z-index: var(--z-hud);
   height: var(--action-bar-height);
@@ -5562,6 +5769,15 @@ body:has(.game-layout) .topbar {
   .game-stage > .player-status-hud .hud-stat:last-child {
     grid-column: span 1;
   }
+
+  .spectator-dock {
+    grid-template-columns: minmax(150px, 0.8fr) auto minmax(220px, 1.3fr) auto;
+  }
+
+  .spectator-player-stats,
+  .spectator-waiting-copy {
+    display: none;
+  }
 }
 
 @media (max-width: 780px) {
@@ -5603,6 +5819,40 @@ body:has(.game-layout) .topbar {
     grid-column: span 1;
   }
 
+  .spectator-dock {
+    bottom: 10px;
+    width: calc(100% - 20px);
+    grid-template-columns: minmax(104px, 0.7fr) auto minmax(150px, 1.3fr) auto;
+    gap: 5px;
+    padding: 6px;
+  }
+
+  .spectator-state {
+    padding: 6px 8px;
+  }
+
+  .spectator-state-icon {
+    width: 30px;
+    height: 30px;
+  }
+
+  .spectator-cycle-button {
+    min-width: 48px;
+    padding-inline: 8px;
+  }
+
+  .spectator-cycle-button span {
+    display: none;
+  }
+
+  .spectator-focus {
+    padding-inline: 9px;
+  }
+
+  .spectator-team {
+    display: none;
+  }
+
   .action-bar {
     grid-template-columns: repeat(4, minmax(0, 1fr));
     gap: 5px;
@@ -5624,6 +5874,46 @@ body:has(.game-layout) .topbar {
     inset-inline: 8px;
   }
 
+}
+
+@media (max-width: 520px) {
+  .spectator-dock {
+    grid-template-columns: auto minmax(0, 1fr) auto;
+  }
+
+  .spectator-state {
+    position: absolute;
+    left: 6px;
+    bottom: calc(100% + 6px);
+    min-height: 36px;
+    padding: 4px 8px;
+    background: rgba(8, 28, 45, 0.94);
+  }
+
+  .spectator-state-icon {
+    width: 26px;
+    height: 26px;
+  }
+
+  .spectator-state small {
+    display: none;
+  }
+
+  .spectator-state strong {
+    font-size: 0.72rem;
+  }
+
+  .spectator-cycle-button:first-of-type {
+    grid-column: 1;
+  }
+
+  .spectator-focus {
+    grid-column: 2;
+  }
+
+  .spectator-cycle-button:last-of-type {
+    grid-column: 3;
+  }
 }
 
 /* Keep lobby shell overrides after the in-match HUD rules above. */

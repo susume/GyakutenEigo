@@ -93,7 +93,7 @@ export type CitadelProp = {
 };
 
 export type ArenaMapDefinition = {
-  id: "desert_citadel" | "iron_junction";
+  id: "desert_citadel" | "iron_junction" | "temple_runoff";
   title: string;
   description: string;
   districts: readonly string[];

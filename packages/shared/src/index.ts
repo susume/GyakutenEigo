@@ -2,7 +2,7 @@ export type Team = "blue" | "red";
 export type SessionStatus = "waiting" | "active" | "paused" | "ended";
 export type Choice = "A" | "B" | "C" | "D";
 export type GameMode = "flag" | "zombie" | "classic";
-export type ArenaMapId = "desert_citadel" | "iron_junction";
+export type ArenaMapId = "desert_citadel" | "iron_junction" | "temple_runoff";
 export type TeamAssignment = "players_choose" | "random";
 export type PlayerRole = "human" | "zombie";
 export type GameAnnouncementKind = "round_result" | "buy_phase" | "round_start" | "game_over";
@@ -626,7 +626,7 @@ const sanitizeGameMode = (value: unknown): GameMode =>
   value === "zombie" || value === "classic" || value === "flag" ? value : DEFAULT_SESSION_SETTINGS.gameMode;
 
 const sanitizeArenaMap = (value: unknown): ArenaMapId =>
-  value === "iron_junction" ? "iron_junction" : DEFAULT_SESSION_SETTINGS.mapId;
+  value === "iron_junction" || value === "temple_runoff" ? value : DEFAULT_SESSION_SETTINGS.mapId;
 
 const sanitizeTeamAssignment = (value: unknown): TeamAssignment =>
   value === "random" || value === "players_choose" ? value : DEFAULT_SESSION_SETTINGS.teamAssignment;
@@ -1081,8 +1081,40 @@ const IRON_JUNCTION_TEAM_SPAWNS: Record<Team, SpawnPoint[]> = {
   red: TEAM_SPAWNS.red.map((spawn) => ({ ...spawn, id: spawn.id.replace("east-camp", "east-yard"), label: "East Signal Yard" }))
 };
 
-const teamSpawnsForMap = (mapId: ArenaMapId | string | undefined) =>
-  mapId === "iron_junction" ? IRON_JUNCTION_TEAM_SPAWNS : TEAM_SPAWNS;
+const RAW_TEMPLE_RUNOFF_BLUE_SPAWNS: SpawnPoint[] = [
+  [-158, -119], [-149, -119], [-140, -119], [-154, -109], [-144, -109],
+  [-158, -50], [-149, -50], [-140, -50], [-154, -40], [-144, -40],
+  [-158, 25], [-149, 25], [-140, 25], [-154, 35], [-144, 35],
+  [-158, 102], [-149, 102], [-140, 102], [-154, 112], [-144, 112]
+].map(([x, z], index) => ({
+  id: `blue-temple-${index + 1}`,
+  label: ["Sun Gate", "Canal Gate", "Court Gate", "Root Gate"][Math.floor(index / 5)],
+  x,
+  z,
+  facing: -Math.PI / 2
+}));
+
+export const TEMPLE_RUNOFF_TEAM_SPAWNS: Record<Team, SpawnPoint[]> = {
+  blue: RAW_TEMPLE_RUNOFF_BLUE_SPAWNS.map(scaleArenaPosition),
+  red: RAW_TEMPLE_RUNOFF_BLUE_SPAWNS.map((spawn, index) => scaleArenaPosition({
+    ...spawn,
+    id: `red-temple-${index + 1}`,
+    label: spawn.label.replace("Gate", "Approach"),
+    x: -spawn.x,
+    facing: Math.PI / 2
+  }))
+};
+
+const TEAM_SPAWNS_BY_MAP: Record<ArenaMapId, Record<Team, SpawnPoint[]>> = {
+  desert_citadel: TEAM_SPAWNS,
+  iron_junction: IRON_JUNCTION_TEAM_SPAWNS,
+  temple_runoff: TEMPLE_RUNOFF_TEAM_SPAWNS
+};
+
+export const getTeamSpawnsForMap = (mapId: ArenaMapId | string | undefined) =>
+  TEAM_SPAWNS_BY_MAP[mapId === "iron_junction" || mapId === "temple_runoff" ? mapId : "desert_citadel"];
+
+const teamSpawnsForMap = getTeamSpawnsForMap;
 
 const RAW_FREE_FOR_ALL_SPAWNS: SpawnPoint[] = [
   { id: "ffa-west-outer-1", label: "West Outer Wall", x: -146, z: -78, facing: -0.9 },
@@ -1440,13 +1472,67 @@ export const IRON_JUNCTION_OBSTACLES: ArenaObstacle[] = [
   circleObstacle("gorge-winch", -4, 133, 3)
 ];
 
+/** Ground-plane collision proxies for Temple Runoff's playable architecture. */
+export const TEMPLE_RUNOFF_OBSTACLES: ArenaObstacle[] = [
+  rectObstacle("temple-north-cliff", 0, -156, 350, 8),
+  rectObstacle("temple-south-cliff", 0, 156, 350, 8),
+  rectObstacle("temple-west-cliff", -171, 0, 8, 320),
+  rectObstacle("temple-east-cliff", 171, 0, 8, 320),
+  rectObstacle("blue-base-screen-north", -128, -144, 7, 22),
+  rectObstacle("blue-base-screen-a", -128, -77, 7, 30),
+  rectObstacle("blue-base-screen-b", -128, -5, 7, 30),
+  rectObstacle("blue-base-screen-c", -128, 66, 7, 28),
+  rectObstacle("blue-base-screen-south", -128, 140, 7, 24),
+  rectObstacle("red-base-screen-north", 128, -144, 7, 22),
+  rectObstacle("red-base-screen-a", 128, -77, 7, 30),
+  rectObstacle("red-base-screen-b", 128, -5, 7, 30),
+  rectObstacle("red-base-screen-c", 128, 66, 7, 28),
+  rectObstacle("red-base-screen-south", 128, 140, 7, 24),
+  rectObstacle("blue-spawn-idol", -151, 8, 13, 17),
+  rectObstacle("red-spawn-pavilion", 151, 8, 14, 17),
+  rectObstacle("sun-parapet-west-a", -91, -124, 35, 5),
+  rectObstacle("sun-parapet-west-b", -41, -100, 24, 5),
+  rectObstacle("sun-parapet-mid-a", -3, -124, 20, 5),
+  rectObstacle("sun-parapet-mid-b", 37, -100, 22, 5),
+  rectObstacle("sun-parapet-east", 88, -124, 34, 5),
+  rectObstacle("sun-repair-screen", 69, -110, 13, 7, true),
+  rectObstacle("canal-bank-north-west", -88, -61, 68, 6),
+  rectObstacle("canal-bank-north-mid", 0, -61, 46, 6),
+  rectObstacle("canal-bank-north-east", 88, -61, 68, 6),
+  rectObstacle("canal-bank-south-west", -83, -25, 58, 6),
+  rectObstacle("canal-bank-south-mid", 10, -25, 52, 6),
+  rectObstacle("canal-bank-south-east", 91, -25, 50, 6),
+  rectObstacle("canal-pillar-cover-west", -46, -43, 9, 9),
+  rectObstacle("canal-pillar-cover-east", 46, -43, 9, 9),
+  rectObstacle("canal-debris-cover", 5, -46, 15, 7, true),
+  rectObstacle("court-northwest-ruin", -78, 18, 32, 10),
+  rectObstacle("court-northeast-ruin", 78, 16, 30, 10),
+  rectObstacle("court-southwest-ruin", -76, 61, 28, 10),
+  rectObstacle("court-southeast-ruin", 76, 60, 34, 10),
+  rectObstacle("court-altar-west", -28, 39, 16, 9, true),
+  rectObstacle("court-altar-east", 32, 30, 16, 9, true),
+  rectObstacle("rootway-cave-west", -92, 112, 35, 18),
+  rectObstacle("rootway-log-west", -48, 99, 25, 8, true),
+  rectObstacle("rootway-idol-mid", -6, 120, 15, 14),
+  rectObstacle("rootway-survey-camp", 48, 101, 27, 17),
+  rectObstacle("rootway-rock-east", 91, 124, 28, 17),
+  circleObstacle("rain-god-statue", 0, 37, 8),
+  circleObstacle("sun-monument-west", -67, -112, 4),
+  circleObstacle("sun-monument-east", 29, -112, 4),
+  circleObstacle("court-column-west", -48, 48, 3),
+  circleObstacle("court-column-east", 52, 47, 3),
+  circleObstacle("canal-drain-west", -80, -43, 3),
+  circleObstacle("canal-drain-east", 83, -43, 3)
+];
+
 const ARENA_OBSTACLES_BY_MAP: Record<ArenaMapId, ArenaObstacle[]> = {
   desert_citadel: ARENA_OBSTACLES,
-  iron_junction: IRON_JUNCTION_OBSTACLES
+  iron_junction: IRON_JUNCTION_OBSTACLES,
+  temple_runoff: TEMPLE_RUNOFF_OBSTACLES
 };
 
 export const getArenaObstacles = (mapId: ArenaMapId | string | undefined): ArenaObstacle[] =>
-  ARENA_OBSTACLES_BY_MAP[mapId === "iron_junction" ? "iron_junction" : "desert_citadel"];
+  ARENA_OBSTACLES_BY_MAP[mapId === "iron_junction" || mapId === "temple_runoff" ? mapId : "desert_citadel"];
 
 export type SnowballUseResult =
   | { ok: true; nextSnowballs: number }

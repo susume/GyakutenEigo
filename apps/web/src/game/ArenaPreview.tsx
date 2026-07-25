@@ -9,12 +9,12 @@ import {
   SEARCH_RETRIEVE_DELIVERY_ZONES,
   SEARCH_RETRIEVE_ITEMS,
   TEAM_BASE_ZONES,
-  TEAM_SPAWNS,
   getGearFireCooldownMs,
   getGearZoomFovMultiplier,
   getPlayerMoveSpeedMultiplier,
   getPlayerWeaponId,
   getTeamSpawnForMap,
+  getTeamSpawnsForMap,
   type ArenaMapId,
   isGearAutoFireEnabled,
   type GameSession,
@@ -39,6 +39,7 @@ import { emitArenaAnimation, subscribeArenaAnimation } from "./ArenaAnimation";
 import { ArenaPerformanceCapture, type ArenaPerformanceSnapshot } from "./ArenaPerformance";
 import { addIronJunctionArtPass } from "./IronJunctionArtPass";
 import { addDesertCitadelVfx } from "./DesertCitadelVfx";
+import { addTempleRunoffArtPass } from "./TempleRunoffArtPass";
 import {
   readGamePreferences,
   resolveArenaQuality,
@@ -318,6 +319,8 @@ export default function ArenaPreview({
   const currentPlayerTeam = currentPlayer?.team ?? "blue";
   const arenaMapId: ArenaMapId = session?.settings.mapId ?? "desert_citadel";
   const arenaMap = getArenaMap(arenaMapId);
+  const isIronJunction = arenaMapId === "iron_junction";
+  const isTempleRunoff = arenaMapId === "temple_runoff";
   const activeQuality = resolveArenaQuality(fallbackQuality ?? quality);
 
   useEffect(() => {
@@ -400,7 +403,6 @@ export default function ArenaPreview({
 
     const isFps = view === "fps";
     const isZombieMode = session?.settings.gameMode === "zombie";
-    const isIronJunction = arenaMapId === "iron_junction";
     const palette = arenaMap.palette;
     const scene = new THREE.Scene();
     scene.background = new THREE.Color(isZombieMode ? "#5d668a" : palette.sky);
@@ -452,9 +454,9 @@ export default function ArenaPreview({
         side: THREE.BackSide,
         fog: false,
         uniforms: {
-          topColor: { value: new THREE.Color(isZombieMode ? "#313b59" : isIronJunction ? "#53666d" : "#4c9ccc") },
+          topColor: { value: new THREE.Color(isZombieMode ? "#313b59" : isIronJunction ? "#53666d" : isTempleRunoff ? "#367b80" : "#4c9ccc") },
           horizonColor: { value: new THREE.Color(isZombieMode ? "#8f8395" : palette.sky) },
-          groundColor: { value: new THREE.Color(isZombieMode ? "#6b6174" : isIronJunction ? "#a9b7b2" : "#e6c88e") }
+          groundColor: { value: new THREE.Color(isZombieMode ? "#6b6174" : isIronJunction ? "#a9b7b2" : isTempleRunoff ? "#c79a62" : "#e6c88e") }
         },
         vertexShader: `varying vec3 vWorldPosition; void main(){ vec4 worldPosition = modelMatrix * vec4(position,1.0); vWorldPosition = worldPosition.xyz; gl_Position = projectionMatrix * modelViewMatrix * vec4(position,1.0); }`,
         fragmentShader: `uniform vec3 topColor; uniform vec3 horizonColor; uniform vec3 groundColor; varying vec3 vWorldPosition; void main(){ float h=normalize(vWorldPosition).y; vec3 lower=mix(groundColor,horizonColor,smoothstep(-0.22,0.08,h)); vec3 color=mix(lower,topColor,smoothstep(0.02,0.72,h)); gl_FragColor=vec4(color,1.0); }`
@@ -523,13 +525,13 @@ export default function ArenaPreview({
     };
 
     scene.add(new THREE.HemisphereLight(
-      isZombieMode ? "#d8ddff" : isIronJunction ? "#d9edf0" : "#fff6d8",
-      isZombieMode ? "#65556e" : isIronJunction ? "#354146" : "#8f7d6f",
+      isZombieMode ? "#d8ddff" : isIronJunction ? "#d9edf0" : isTempleRunoff ? "#e7f4d5" : "#fff6d8",
+      isZombieMode ? "#65556e" : isIronJunction ? "#354146" : isTempleRunoff ? "#334836" : "#8f7d6f",
       isFps ? 1.12 : 1.28
     ));
 
-    const keyLight = new THREE.DirectionalLight(isZombieMode ? "#d9e1ff" : isIronJunction ? "#d6edf0" : "#fff0ca", isFps ? 2.18 : isIronJunction ? 2.35 : 2.72);
-    keyLight.position.set(isIronJunction ? -120 : -85, 180, isIronJunction ? -60 : 95);
+    const keyLight = new THREE.DirectionalLight(isZombieMode ? "#d9e1ff" : isIronJunction ? "#d6edf0" : isTempleRunoff ? "#ffd798" : "#fff0ca", isFps ? 2.18 : isIronJunction ? 2.35 : isTempleRunoff ? 2.5 : 2.72);
+    keyLight.position.set(isIronJunction ? -120 : isTempleRunoff ? -105 : -85, 180, isIronJunction ? -60 : 95);
     keyLight.castShadow = !isFps;
     keyLight.shadow.mapSize.set(1024, 1024);
     keyLight.shadow.camera.left = -190;
@@ -538,13 +540,13 @@ export default function ArenaPreview({
     keyLight.shadow.camera.bottom = -175;
     scene.add(keyLight);
 
-    const fillLight = new THREE.DirectionalLight(isZombieMode ? "#b7a8de" : isIronJunction ? "#f3b47a" : "#ffe7bd", isFps ? 1.22 : 0.82);
+    const fillLight = new THREE.DirectionalLight(isZombieMode ? "#b7a8de" : isIronJunction ? "#f3b47a" : isTempleRunoff ? "#7ed9c8" : "#ffe7bd", isFps ? 1.22 : 0.82);
     fillLight.position.set(110, 80, -130);
     scene.add(fillLight);
 
     if (!isIronJunction) {
       const aqueductLight = new THREE.PointLight("#53e7ff", 42, 135, 2);
-      aqueductLight.position.set(0, 7, 0);
+      aqueductLight.position.set(0, 7, isTempleRunoff ? -27 : 0);
       scene.add(aqueductLight);
     }
 
@@ -660,7 +662,12 @@ export default function ArenaPreview({
     floor.receiveShadow = true;
     scene.add(floor);
 
-    const grid = new THREE.GridHelper(ARENA_LIMIT_X * 2, 35, arenaMapId === "iron_junction" ? "#aeb8b5" : "#fff1c1", arenaMapId === "iron_junction" ? "#566266" : "#ad7b45");
+    const grid = new THREE.GridHelper(
+      ARENA_LIMIT_X * 2,
+      35,
+      isIronJunction ? "#aeb8b5" : isTempleRunoff ? "#b8d8ad" : "#fff1c1",
+      isIronJunction ? "#566266" : isTempleRunoff ? "#4f6f52" : "#ad7b45"
+    );
     grid.position.y = 0.012;
     grid.material.transparent = true;
     grid.material.opacity = 0.13;
@@ -1234,11 +1241,12 @@ export default function ArenaPreview({
     addCircle(SEARCH_RETRIEVE_DELIVERY_ZONES.blue.x, SEARCH_RETRIEVE_DELIVERY_ZONES.blue.z, SEARCH_RETRIEVE_DELIVERY_ZONES.blue.radius, "#38bdf8", 0.16);
     addCircle(SEARCH_RETRIEVE_DELIVERY_ZONES.red.x, SEARCH_RETRIEVE_DELIVERY_ZONES.red.z, SEARCH_RETRIEVE_DELIVERY_ZONES.red.radius, "#fb7185", 0.16);
 
-    TEAM_SPAWNS.blue.forEach((spawn) => addCircle(spawn.x, spawn.z, 2.2, "#38bdf8", isFps ? 0.08 : 0.28));
-    TEAM_SPAWNS.red.forEach((spawn) => addCircle(spawn.x, spawn.z, 2.2, "#fb7185", isFps ? 0.08 : 0.28));
+    const visibleTeamSpawns = getTeamSpawnsForMap(arenaMapId);
+    visibleTeamSpawns.blue.forEach((spawn) => addCircle(spawn.x, spawn.z, 2.2, "#38bdf8", isFps ? 0.08 : 0.28));
+    visibleTeamSpawns.red.forEach((spawn) => addCircle(spawn.x, spawn.z, 2.2, "#fb7185", isFps ? 0.08 : 0.28));
     if (!isFps) FREE_FOR_ALL_SPAWNS.forEach((spawn) => addCircle(spawn.x, spawn.z, 1.3, "#ffffff", 0.18));
 
-    if (!isIronJunction) {
+    if (!isIronJunction && !isTempleRunoff) {
       for (const [x, z, sx, sz] of [
         [-120, -176, 58, 12],
         [116, -176, 48, 10],
@@ -1258,12 +1266,12 @@ export default function ArenaPreview({
     if (qualityConfig.detail === 2) {
       const rockCount = qualityConfig.detail === 2 ? 34 : 20;
       const rockGeometry = new THREE.IcosahedronGeometry(1, 0);
-      const rockInstances = new THREE.InstancedMesh(rockGeometry, materialFor("#8f704d", "stone"), rockCount);
+      const rockInstances = new THREE.InstancedMesh(rockGeometry, materialFor(isTempleRunoff ? "#56634b" : "#8f704d", "stone"), rockCount);
       const rockMatrix = new THREE.Matrix4();
       const rockPosition = new THREE.Vector3();
       const rockRotation = new THREE.Quaternion();
       const rockScale = new THREE.Vector3();
-      const random = seededRandom(arenaMapId === "iron_junction" ? 913 : 617);
+      const random = seededRandom(isIronJunction ? 913 : isTempleRunoff ? 74013 : 617);
       for (let index = 0; index < rockCount; index += 1) {
         const onHorizontalEdge = index % 2 === 0;
         rockPosition.set(
@@ -1282,7 +1290,8 @@ export default function ArenaPreview({
     }
 
     if (isIronJunction) addIronJunctionArtPass(scene, addDecorativeMesh, qualityConfig.detail, isFps);
-    const desertCitadelVfx = isIronJunction ? null : addDesertCitadelVfx(scene, qualityConfig.detail);
+    const templeRunoffArt = isTempleRunoff ? addTempleRunoffArtPass(scene, addDecorativeMesh, qualityConfig.detail, isFps) : null;
+    const desertCitadelVfx = isIronJunction || isTempleRunoff ? null : addDesertCitadelVfx(scene, qualityConfig.detail);
     const staticBatchStats = staticBatcher.flush(scene);
     renderer.domElement.dataset.staticSources = String(staticBatchStats.sourceMeshes);
     renderer.domElement.dataset.staticBatches = String(staticBatchStats.batchMeshes);
@@ -1307,6 +1316,7 @@ export default function ArenaPreview({
     const characterManager = new CharacterManager(scene, characterFactory, {
       isFps,
       currentPlayerId,
+      showBadges: isFps || players.length <= 24,
       makeBadgeMaterial: (player) => new THREE.SpriteMaterial({
         map: makeLabelTexture(player.isBot ? "BOT" : `${playerAccuracy(player)}%`, player.team === "blue" ? "#7dd3fc" : "#fb923c"),
         transparent: true,
@@ -1799,6 +1809,7 @@ export default function ArenaPreview({
         performanceCapture.frame(currentTime);
         vfxPool.update(currentTime);
         desertCitadelVfx?.update(clock.elapsedTime);
+        templeRunoffArt?.update(clock.elapsedTime);
         if (currentTime - performanceWindowAt >= 1000) {
           const profile = performanceCapture.snapshot(currentTime);
           renderer.domElement.dataset.fps = String(profile.fps);
@@ -1875,7 +1886,7 @@ export default function ArenaPreview({
         if (gamepadMove.right < -GAMEPAD_DEAD_ZONE) movementVector.sub(rightVector);
 
         if (movementVector.lengthSq() > 0) {
-          if (wasGrounded) gameAudio.playMovementStep(movementAudioMode, currentTime, isIronJunction ? "metal" : "sand");
+          if (wasGrounded) gameAudio.playMovementStep(movementAudioMode, currentTime, isIronJunction ? "metal" : isTempleRunoff ? "stone" : "sand");
           movementVector.normalize().multiplyScalar(moveSpeed * delta);
           nextPosition.copy(playerPosition).add(movementVector);
           nextPosition.x = clamp(nextPosition.x, -ARENA_LIMIT_X + PLAYER_RADIUS, ARENA_LIMIT_X - PLAYER_RADIUS);
@@ -1970,6 +1981,7 @@ export default function ArenaPreview({
         performanceCapture.dispose();
         vfxPool.dispose();
         desertCitadelVfx?.dispose();
+        templeRunoffArt?.dispose();
         fireControlRef.current = () => undefined;
         syncPlayersRef.current = () => undefined;
         if (cooldownTimeout) window.clearTimeout(cooldownTimeout);
@@ -2004,6 +2016,7 @@ export default function ArenaPreview({
       performanceCapture.frame(currentTime);
       vfxPool.update(currentTime);
       desertCitadelVfx?.update(elapsed);
+      templeRunoffArt?.update(elapsed);
       if (currentTime - performanceWindowAt >= 1000) {
         const profile = performanceCapture.snapshot(currentTime);
         renderer.domElement.dataset.fps = String(profile.fps);
@@ -2050,6 +2063,7 @@ export default function ArenaPreview({
       performanceCapture.dispose();
       vfxPool.dispose();
       desertCitadelVfx?.dispose();
+      templeRunoffArt?.dispose();
       syncPlayersRef.current = () => undefined;
       characterManager.dispose();
       disposeObject(scene);
@@ -2140,7 +2154,7 @@ export default function ArenaPreview({
           <div className="arena-minimap" aria-label={`${arenaMap.title} minimap`}>
             <div className="minimap-title">Map</div>
             <svg viewBox={`0 0 ${MINIMAP_WIDTH} ${MINIMAP_HEIGHT}`} role="img" aria-label={`${arenaMap.title} route overview`}>
-              <rect x="0" y="0" width={MINIMAP_WIDTH} height={MINIMAP_HEIGHT} rx="5" className={arenaMapId === "iron_junction" ? "minimap-iron" : "minimap-sand"} />
+              <rect x="0" y="0" width={MINIMAP_WIDTH} height={MINIMAP_HEIGHT} rx="5" className={isIronJunction ? "minimap-iron" : isTempleRunoff ? "minimap-temple" : "minimap-sand"} />
               {arenaMap.floorMarks.slice(0, 5).map((mark) => (
                 <rect
                   key={mark.id}
@@ -2189,9 +2203,9 @@ export default function ArenaPreview({
               )}
               <text x={toMiniMapX(-140)} y={toMiniMapY(-78)} className="minimap-label">West</text>
               <text x={toMiniMapX(122)} y={toMiniMapY(-78)} className="minimap-label">East</text>
-              <text x={toMiniMapX(0)} y={toMiniMapY(-128)} className="minimap-label">{arenaMapId === "iron_junction" ? "Depot" : "Ruins"}</text>
-              <text x={toMiniMapX(0)} y={toMiniMapY(-22)} className="minimap-label">{arenaMapId === "iron_junction" ? "Gantry" : "Market"}</text>
-              <text x={toMiniMapX(0)} y={toMiniMapY(118)} className="minimap-label">{arenaMapId === "iron_junction" ? "Timber" : "Homes"}</text>
+              <text x={toMiniMapX(0)} y={toMiniMapY(-128)} className="minimap-label">{isIronJunction ? "Depot" : isTempleRunoff ? "Sun" : "Ruins"}</text>
+              <text x={toMiniMapX(0)} y={toMiniMapY(-22)} className="minimap-label">{isIronJunction ? "Gantry" : isTempleRunoff ? "Canal" : "Market"}</text>
+              <text x={toMiniMapX(0)} y={toMiniMapY(118)} className="minimap-label">{isIronJunction ? "Timber" : isTempleRunoff ? "Rootway" : "Homes"}</text>
               {miniMapPlayer && (
                 <g
                   className="minimap-player"
