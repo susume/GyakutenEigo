@@ -10,7 +10,7 @@ const addStaticMesh = (parent: THREE.Object3D, geometry: THREE.BufferGeometry, c
 };
 
 test("Temple Runoff scales instanced vegetation by quality and cleans up its art groups", () => {
-  assert.deepEqual([0, 1, 2].map(getTempleRunoffVegetationCount), [0, 38, 64]);
+  assert.deepEqual([0, 1, 2].map(getTempleRunoffVegetationCount), [0, 24, 40]);
   const scene = new THREE.Scene();
   const art = addTempleRunoffArtPass(scene, addStaticMesh, 2, true);
 

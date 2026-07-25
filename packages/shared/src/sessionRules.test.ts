@@ -17,6 +17,7 @@ import {
   ARENA_LIMIT_Z,
   ARENA_SCALE,
   ARENA_PLAYER_EYE_HEIGHT,
+  TEMPLE_RUNOFF_MAIN_LEVEL_Y,
   TEMPLE_RUNOFF_UPPER_LEVEL_Y,
   STARTER_BLASTER_RANGE,
   FREE_FOR_ALL_SPAWNS,
@@ -46,6 +47,9 @@ import {
   getRoundResetLoadout,
   getArenaObstacles,
   getArenaGroundHeight,
+  getArenaGroundHeightForPlayer,
+  getArenaFloorSurfaces,
+  getArenaBounds,
   findBotNavigationPath,
   getRoundRemainingSeconds,
   getZombieBestPlayers,
@@ -945,10 +949,9 @@ test("Temple Runoff supports 20 safe spawns per team and authoritative map selec
   assert.equal(new Set(spawns.blue.map((spawn) => `${spawn.x}:${spawn.z}`)).size, 20);
   assert.equal(new Set(spawns.red.map((spawn) => `${spawn.x}:${spawn.z}`)).size, 20);
   assert.equal(new Set(spawns.blue.map((spawn) => spawn.label)).size, 4);
-  assert.equal(spawns.blue.filter((spawn) => spawn.y === ARENA_PLAYER_EYE_HEIGHT).length, 5);
-  assert.equal(spawns.blue.filter((spawn) => spawn.y === TEMPLE_RUNOFF_UPPER_LEVEL_Y + ARENA_PLAYER_EYE_HEIGHT).length, 15);
+  assert.equal(spawns.blue.filter((spawn) => spawn.y === TEMPLE_RUNOFF_MAIN_LEVEL_Y + ARENA_PLAYER_EYE_HEIGHT).length, 20);
   assert.equal(obstacles.some((obstacle) => obstacle.id === "rain-god-statue"), true);
-  assert.equal(obstacles.some((obstacle) => obstacle.id === "blue-base-screen-b"), true);
+  assert.equal(obstacles.some((obstacle) => obstacle.id === "blue-temple-gatehouse"), true);
   assert.notEqual(obstacles, getArenaObstacles("desert_citadel"));
   assert.equal(sanitizeSessionSettings({ mapId: "temple_runoff" }).mapId, "temple_runoff");
   const safeLateJoinSpawn = selectTeamSpawnForMap("temple_runoff", "blue", [
@@ -965,27 +968,55 @@ test("Temple Runoff supports 20 safe spawns per team and authoritative map selec
       requested: { ...spawn, x: spawn.x + (spawn.x < 0 ? 0.05 : -0.05) },
       elapsedMs: 100,
       maxSpeed: 1,
-      obstacles
+      obstacles,
+      mapId: "temple_runoff"
     });
     assert.equal(firstStep.blocked, undefined, `${spawn.id} should not overlap collision`);
   }
 });
 
-test("Temple Runoff exposes a lower river, raised monument tier, and four continuous ramps", () => {
-  assert.equal(getArenaGroundHeight("temple_runoff", 0, -43 * ARENA_SCALE), 0);
-  assert.equal(getArenaGroundHeight("temple_runoff", 0, 37 * ARENA_SCALE), TEMPLE_RUNOFF_UPPER_LEVEL_Y);
-  for (const rawX of [-38, 38]) {
-    const lower = getArenaGroundHeight("temple_runoff", rawX * ARENA_SCALE, -60 * ARENA_SCALE);
-    const middle = getArenaGroundHeight("temple_runoff", rawX * ARENA_SCALE, -69 * ARENA_SCALE);
-    const upper = getArenaGroundHeight("temple_runoff", rawX * ARENA_SCALE, -78 * ARENA_SCALE);
-    assert.deepEqual([lower, middle, upper], [0, TEMPLE_RUNOFF_UPPER_LEVEL_Y / 2, TEMPLE_RUNOFF_UPPER_LEVEL_Y]);
+test("Temple Runoff resolves stacked floors from player height instead of choosing the highest surface", () => {
+  const x = 0;
+  const z = 0;
+  assert.deepEqual(getArenaFloorSurfaces("temple_runoff", x, z), [0, TEMPLE_RUNOFF_UPPER_LEVEL_Y]);
+  assert.equal(getArenaGroundHeightForPlayer("temple_runoff", x, z, ARENA_PLAYER_EYE_HEIGHT), 0);
+  assert.equal(
+    getArenaGroundHeightForPlayer("temple_runoff", x, z, TEMPLE_RUNOFF_UPPER_LEVEL_Y + ARENA_PLAYER_EYE_HEIGHT),
+    TEMPLE_RUNOFF_UPPER_LEVEL_Y
+  );
+  for (let frame = 0; frame < 600; frame += 1) {
+    assert.equal(getArenaGroundHeightForPlayer("temple_runoff", x, z, ARENA_PLAYER_EYE_HEIGHT), 0);
   }
-  for (const rawX of [-35, 51]) {
-    const lower = getArenaGroundHeight("temple_runoff", rawX * ARENA_SCALE, -26 * ARENA_SCALE);
-    const middle = getArenaGroundHeight("temple_runoff", rawX * ARENA_SCALE, -17 * ARENA_SCALE);
-    const upper = getArenaGroundHeight("temple_runoff", rawX * ARENA_SCALE, -8 * ARENA_SCALE);
-    assert.deepEqual([lower, middle, upper], [0, TEMPLE_RUNOFF_UPPER_LEVEL_Y / 2, TEMPLE_RUNOFF_UPPER_LEVEL_Y]);
+});
+
+test("Temple Runoff exposes eight continuous canal ramps and three upper-level connections", () => {
+  for (const rawX of [-136, -52, 55, 136]) {
+    assert.deepEqual(
+      [24, 36, 48].map((rawZ) => getArenaGroundHeight("temple_runoff", rawX * ARENA_SCALE, rawZ * ARENA_SCALE)),
+      [0, TEMPLE_RUNOFF_MAIN_LEVEL_Y / 2, TEMPLE_RUNOFF_MAIN_LEVEL_Y]
+    );
+    assert.deepEqual(
+      [-24, -36, -48].map((rawZ) => getArenaGroundHeight("temple_runoff", rawX * ARENA_SCALE, rawZ * ARENA_SCALE)),
+      [0, TEMPLE_RUNOFF_MAIN_LEVEL_Y / 2, TEMPLE_RUNOFF_MAIN_LEVEL_Y]
+    );
   }
+  assert.deepEqual(
+    [-82, -70, -58].map((rawZ) => getArenaGroundHeight("temple_runoff", 0, rawZ * ARENA_SCALE)),
+    [TEMPLE_RUNOFF_MAIN_LEVEL_Y, 12.5, TEMPLE_RUNOFF_UPPER_LEVEL_Y]
+  );
+  assert.deepEqual(getArenaBounds("temple_runoff"), { limitX: 235 * ARENA_SCALE, limitZ: 200 * ARENA_SCALE });
+});
+
+test("Temple Runoff bot navigation keeps elevation and reaches the lower canal through a ramp", () => {
+  const path = findBotNavigationPath({
+    from: { x: -80 * ARENA_SCALE, y: TEMPLE_RUNOFF_MAIN_LEVEL_Y + ARENA_PLAYER_EYE_HEIGHT, z: -70 * ARENA_SCALE, facing: 0 },
+    to: { x: -90 * ARENA_SCALE, y: ARENA_PLAYER_EYE_HEIGHT, z: 0, facing: 0 },
+    obstacles: getArenaObstacles("temple_runoff"),
+    mapId: "temple_runoff"
+  });
+  assert.ok(path.length > 0);
+  assert.equal(path.at(-1)?.y, ARENA_PLAYER_EYE_HEIGHT);
+  assert.ok(path.some((point) => Number(point.y) < TEMPLE_RUNOFF_MAIN_LEVEL_Y + ARENA_PLAYER_EYE_HEIGHT));
 });
 
 test("projectiles do not tag players through Temple Runoff's vertical floor separation", () => {

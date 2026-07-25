@@ -112,8 +112,8 @@ export interface BotMemory {
   blockedTicks: number;
   noProgressTicks: number;
   lastPosition?: { x: number; z: number };
-  navigationGoal?: { x: number; z: number };
-  navigationPath?: Array<{ x: number; z: number }>;
+  navigationGoal?: { x: number; y?: number; z: number };
+  navigationPath?: Array<{ x: number; y?: number; z: number }>;
   strafeDirection: -1 | 1;
   seed: number;
 }

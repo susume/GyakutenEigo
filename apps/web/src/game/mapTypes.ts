@@ -8,7 +8,9 @@ export type CitadelBlock = {
   h: number;
   color: string;
   y?: number;
+  rotationX?: number;
   rotationY?: number;
+  rotationZ?: number;
   collides?: boolean;
   material?: "stone" | "wood" | "cloth" | "sand" | "water" | "accent" | "metal" | "gravel";
   style?:

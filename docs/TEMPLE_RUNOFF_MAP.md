@@ -1,98 +1,115 @@
-# Temple Runoff
+# Temple Runoff 2.0
 
-## Overview
+## Outcome
 
-Temple Runoff is an original, symmetrical 40-player jungle-temple battlefield with two genuinely walkable elevations:
+Temple Runoff 2.0 is a symmetrical 20-v-20 battlefield with three simultaneously
+walkable elevations:
 
-- Lower level: a recessed flooded canal, retaining banks, drain pillars, debris cover, and two roofed sluice mouths.
-- Upper level: north and south temple terraces containing the Sun Bridge, Rain Court, Rain God monument, Rootway, ruins, and team approaches.
-- Connections: four broad stone ramps—two north and two south—link the river floor to the monument tier.
-- Teams: 20 Alpha / 20 Bravo, with 15 upper-level and 5 lower-level spawn positions per team.
-- Playable footprint: 217 × 198 world units.
-- Elevation difference: 7.5 world units between the canal and temple terraces.
+- **River (Y=0):** a clear east-west canal beneath the central bridge, with sparse
+  broken-ruin cover, waterfalls, a broken ford, and a timber crossing.
+- **Main (Y=8):** broad team approaches, Rain Court, jungle ruins, bases, and eight
+  river ramps.
+- **Upper (Y=17):** the iconic north-south temple bridge, jungle terraces, broken
+  parapets, scaffolding, and three independent main-to-upper connections.
 
-Elevation is gameplay-authoritative. The server stores and broadcasts player height, validates movement against the current surface, and prevents projectiles and bots from targeting through the vertical separation.
+The source footprint is 470 × 400 design units, or approximately 291 × 248 world
+units. This increases playable plan area from 112,000 to 188,000 design units
+(+68.1%) while reducing discretionary prop count from 21 to 10 (-52.4%).
 
-## Two-level layout
+## Under-platform teleport: cause and fix
+
+The old client and server both asked for one ground height at each X/Z coordinate.
+That helper returned the highest authored surface, so a player below a bridge shared
+the bridge's X/Z and was clamped upward on the next movement update. Collision and
+bot navigation were also two-dimensional.
+
+The map now exposes every floor surface at an X/Z coordinate and selects only a
+surface that is physically reachable from the player's current feet. The server
+uses the submitted/current Y only to choose among authored surfaces, then validates
+the resulting movement; it no longer overwrites Y with the highest surface.
+Colliders carry vertical bounds, line-of-sight checks are height-aware, and bot
+navigation builds separate nodes for each stacked floor.
+
+## Layout and routes
 
 ```text
-                         NORTH TEMPLE TERRACE · UPPER
-  BLUE SHRINE   Sun Bridge / monuments / repair screens     RED EXPEDITION
-       │                  ╲ ramp      ramp ╱                       │
-       ├───────────────────╲──────────╱────────────────────────────┤
-       │               FLOODED CANAL · LOWER                      │
-       │        west sluice ~ river cover ~ east sluice           │
-       ├───────────────────╱──────────╲────────────────────────────┤
-       │                  ╱ ramp      ramp ╲                       │
-  BLUE APPROACH    Rain Court / Rain God / Rootway       RED APPROACH
-                         SOUTH TEMPLE TERRACE · UPPER
+                   NORTH JUNGLE TERRACE — UPPER (Y=17)
+                              │ side ramp
+ BLUE BASE — MAIN ── Rain Court / ruins ── RED BASE — MAIN (Y=8)
+       │      ╲    ╲      ╲          ╱      ╱    ╱      │
+       │       four west river ramps + four east river ramps
+       │                       │
+       ├──── broken ford ── FLOODED CANAL (Y=0) ── timber crossing ────┤
+       │                       │
+       │             CENTRAL TEMPLE BRIDGE
+       │             deck above canal (Y=17)
+       │              ╱ north ramp  south ramp ╲
+ BLUE BASE — MAIN ── jungle ruins / Rain Court ── RED BASE — MAIN (Y=8)
+                   SOUTH JUNGLE TERRACE — UPPER (Y=17)
 ```
 
-The canal is not a painted strip on the upper floor. Its water and cover sit at ground elevation, while the two terrace slabs and their monuments sit 7.5 units above it. The ramps interpolate continuously between those heights.
+The primary lanes are the lower flooded canal, two broad main-level approaches,
+the central upper bridge, outer jungle/ruin flanks, the broken ford, and the timber
+crossing. Eight river ramps prevent the lower level from collapsing into a single
+choke. Two central bridge ramps plus a side terrace ramp give the upper level three
+connections. The bridge has four tall supports and leaves a clean playable route
+under its deck.
 
-## Route identity
+Twenty unique spawns per team are distributed across four main-level rows near
+their bases. Objective, search-item, delivery, and base-zone coordinates are
+map-specific and retain their authored elevation.
 
-### Upper north: Sun Bridge
+## Collision, navigation, and minimap
 
-An exposed medium-to-long-range route with repaired deck sections, broken parapets, sun monuments, and timber scaffolding. Alternating cover interrupts a full base-to-base sightline.
-
-### Lower center: Flooded Canal
-
-A fast close-to-medium-range basement route with shallow water, segmented banks, drain pillars, debris, waterfalls, and roofed sluice openings. Five spawns per team seed this level so it is active from the beginning of a round.
-
-### Upper south: Rain Court and Rootway
-
-Rain Court supports larger fights around the Rain God Statue, altars, columns, and collapsed temple wings. Rootway provides a tighter outer flank through roots, rocks, camp cover, and jungle dressing.
-
-### Vertical rotations
-
-Four wide ramps create redundant level changes. Players cannot climb the terrace cliff directly; they must commit to a readable connector. This makes elevation a strategic choice without allowing one ramp to become a single choke point.
-
-## Multiplayer behavior
-
-- Spawn and respawn selection retains the selected floor elevation, including late joins.
-- Client movement follows the river, terrace, and ramp surface heights continuously.
-- The server recomputes the authoritative elevation from horizontal position instead of trusting a client-supplied height.
-- Remote character models, badges, and selection rings preserve their replicated world height while animating.
-- Crouching and gravity resolve relative to the current floor.
-- Projectiles and bot targeting reject opponents separated by more than 5.5 vertical units.
-- Water uses a distinct footstep surface; upper temple paths use stone.
+- Client gravity and movement resolve the floor relative to current eye height,
+  including continuous ramp interpolation.
+- Server movement, safe-position recovery, projectiles, and line of sight use
+  matching 3D collision bounds.
+- Visual blocks and authoritative colliders have exact test-covered parity,
+  including minimum and maximum Y.
+- Bot A* nodes are generated per floor surface. Height-constrained edges connect
+  the ramp sequence; a coordinate index avoids scanning the entire grid at every
+  expansion.
+- Bot patrol goals include river rotations, and waypoints retain Y.
+- The minimap uses the larger map bounds, map-specific bases/objectives, clear
+  Blue/Red/Jungle/River/Court labels, and level-aware dimming plus River/Main/Upper
+  status.
 
 ## Performance
 
-Representative local browser capture on Medium quality with a generated 40-player session:
+Local Chrome-compatible browser captures used Medium quality and a generated
+40-player session. Results are camera-sensitive:
 
-| Metric | Result | Budget |
-|---|---:|---:|
-| Draw calls | 398 | ≤ 400 |
-| Triangles | 208,358 | monitor; character-heavy |
-| Static batches | 5 | bounded |
-| Instanced vegetation draws | 3 | bounded |
-| Observed FPS | 64 FPS | ≥ 30 FPS |
-| Observed p95 frame time | 20.4 ms | ≤ 33 ms |
+| View | FPS | p95 | Draw calls | Triangles |
+|---|---:|---:|---:|---:|
+| River / under bridge | 69–72 | 18.4 ms | 308–337 | 180,454–184,688 |
+| Main approach | 69 | 25.7 ms | 598 | 235,146 |
+| Upper bridge | 64 | 26.4 ms | 599 | 235,418 |
 
-Large overhead badges remain suppressed above 24 players to keep the overview inside the draw-call budget. Hardware and background load affect FPS, so a physical Chromebook certification run is still recommended.
+For comparison, the previous overview capture recorded 64 FPS, 20.4 ms p95,
+398 calls, and 208,358 triangles. The new river view is comfortably inside the
+400-call target; exposed main and upper views are not. The map contains 68 block
+pieces, 6 cylinders, and 10 discretionary props (84 total authored objects).
+Its larger-area object density is approximately 37% lower than before even though
+ramps and split floor slabs increase structural piece count.
 
 ## Verification
 
-Automated coverage includes:
+- 72 targeted shared/web map and art-pass tests pass.
+- A 600-frame regression holds a player beneath the bridge on the river floor.
+- Tests cover identical X/Z positions on lower and upper floors, all eight river
+  ramps, all three upper connections, 20 safe spawns per team, 3D collision
+  parity, and a bot main-to-river route with vertical waypoints.
+- Live probes reported River Y=0, Main Y=8, and Upper Y=17 with no recovery event.
+- TypeScript checks and the production build pass.
 
-- 20 unique spawns per team, split 15 upper / 5 lower.
-- River, terrace, and all four continuous ramp height functions.
-- Late-join safe-spawn elevation retention.
-- Server-authoritative movement relative to the current floor.
-- Cross-floor projectile rejection.
-- Remote character animation preserving world elevation.
-- Visual/server collision parity and raised-floor placement.
-- Art-pass cleanup and quality-scaled vegetation.
-- Full shared, server, and web regression tests.
-- TypeScript checks and production build.
+## Remaining certification
 
-Browser verification covered the angled two-level overview, recessed river readability, raised terrace silhouette, 10-player clarity, and 40-player performance counters.
-
-## Known limitations
-
-- The sluices are short roofed basement pockets rather than long underground corridors.
-- Water is intentionally shallow and does not change movement speed or add buoyancy.
-- Decorative vegetation remains non-blocking to avoid invisible collision disagreements.
-- Travel-time and connector balance still need live classroom telemetry.
+- Run a 10-minute physical Chromebook match with a real 20-v-20 network session.
+- Profile and reduce the approximately 600 calls in exposed main/upper views if
+  the 400-call budget is a hard ship gate.
+- Validate first-contact and base-to-base timing with classroom telemetry; current
+  geometry is designed for roughly 10–18 second central contact and 20–30 second
+  committed base routes, but those are design estimates rather than match data.
+- Sluices remain short covered pockets rather than long tunnels. Water is shallow,
+  has no buoyancy, and vegetation remains non-blocking by design.

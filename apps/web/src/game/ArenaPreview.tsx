@@ -1,21 +1,23 @@
 import { useEffect, useRef, useState, type PointerEvent as ReactPointerEvent } from "react";
 import * as THREE from "three";
 import {
-  ARENA_LIMIT_X,
-  ARENA_LIMIT_Z,
   ARENA_SCALE,
-  CAPTURE_ZONES,
   FREE_FOR_ALL_SPAWNS,
-  SEARCH_RETRIEVE_DELIVERY_ZONES,
-  SEARCH_RETRIEVE_ITEMS,
-  TEAM_BASE_ZONES,
+  TEMPLE_RUNOFF_MAIN_LEVEL_Y,
   getGearFireCooldownMs,
   getGearZoomFovMultiplier,
   getArenaGroundHeight,
+  getArenaGroundHeightForPlayer,
+  getArenaBounds,
+  getArenaLevelLabel,
   getPlayerMoveSpeedMultiplier,
   getPlayerWeaponId,
   getTeamSpawnForMap,
   getTeamSpawnsForMap,
+  getTeamBaseZones,
+  getCaptureZonesForMap,
+  getSearchRetrieveItemsForMap,
+  getSearchRetrieveDeliveryZonesForMap,
   type ArenaMapId,
   isGearAutoFireEnabled,
   type GameSession,
@@ -94,18 +96,6 @@ const KEYBOARD_LOOK_SPEED = 1.9;
 const TOUCH_LOOK_SENSITIVITY = 0.006;
 const clamp = (value: number, min: number, max: number) => Math.min(max, Math.max(min, value));
 const isFiniteNumber = (value: unknown): value is number => typeof value === "number" && Number.isFinite(value);
-const serverToLocalX = (x: number) => clamp(x, -ARENA_LIMIT_X, ARENA_LIMIT_X);
-const serverToLocalZ = (z: number) => clamp(z, -ARENA_LIMIT_Z, ARENA_LIMIT_Z);
-const toMiniMapX = (x: number) => ((x + ARENA_LIMIT_X) / (ARENA_LIMIT_X * 2)) * MINIMAP_WIDTH;
-const toMiniMapY = (z: number) => ((z + ARENA_LIMIT_Z) / (ARENA_LIMIT_Z * 2)) * MINIMAP_HEIGHT;
-const toMiniMapW = (w: number) => (w / (ARENA_LIMIT_X * 2)) * MINIMAP_WIDTH;
-const toMiniMapH = (d: number) => (d / (ARENA_LIMIT_Z * 2)) * MINIMAP_HEIGHT;
-const localToServerPosition = (position: THREE.Vector3, facing: number): ArenaLivePosition => ({
-  x: clamp(position.x, -ARENA_LIMIT_X, ARENA_LIMIT_X),
-  z: clamp(position.z, -ARENA_LIMIT_Z, ARENA_LIMIT_Z),
-  y: Number(position.y.toFixed(2)),
-  facing
-});
 const scaleArenaValue = (value: number) => Number((value * ARENA_SCALE).toFixed(2));
 
 const playerAccuracy = (player: PlayerSession) => {
@@ -331,6 +321,23 @@ export default function ArenaPreview({
   const isIronJunction = arenaMapId === "iron_junction";
   const isTempleRunoff = arenaMapId === "temple_runoff";
   const activeQuality = resolveArenaQuality(fallbackQuality ?? quality);
+  const arenaBounds = getArenaBounds(arenaMapId);
+  const teamBaseZones = getTeamBaseZones(arenaMapId);
+  const captureZones = getCaptureZonesForMap(arenaMapId);
+  const searchRetrieveItems = getSearchRetrieveItemsForMap(arenaMapId);
+  const searchRetrieveDeliveryZones = getSearchRetrieveDeliveryZonesForMap(arenaMapId);
+  const serverToLocalX = (x: number) => clamp(x, -arenaBounds.limitX, arenaBounds.limitX);
+  const serverToLocalZ = (z: number) => clamp(z, -arenaBounds.limitZ, arenaBounds.limitZ);
+  const toMiniMapX = (x: number) => ((x + arenaBounds.limitX) / (arenaBounds.limitX * 2)) * MINIMAP_WIDTH;
+  const toMiniMapY = (z: number) => ((z + arenaBounds.limitZ) / (arenaBounds.limitZ * 2)) * MINIMAP_HEIGHT;
+  const toMiniMapW = (w: number) => (w / (arenaBounds.limitX * 2)) * MINIMAP_WIDTH;
+  const toMiniMapH = (d: number) => (d / (arenaBounds.limitZ * 2)) * MINIMAP_HEIGHT;
+  const localToServerPosition = (position: THREE.Vector3, facing: number): ArenaLivePosition => ({
+    x: clamp(position.x, -arenaBounds.limitX, arenaBounds.limitX),
+    z: clamp(position.z, -arenaBounds.limitZ, arenaBounds.limitZ),
+    y: Number(position.y.toFixed(2)),
+    facing
+  });
 
   useEffect(() => {
     setFallbackQuality(null);
@@ -520,12 +527,12 @@ export default function ArenaPreview({
               : stoneTexture;
       const materialOptions: THREE.MeshStandardMaterialParameters = {
         color,
-        roughness: material === "water" ? 0.18 : material === "cloth" ? 0.84 : material === "metal" ? 0.42 : 0.68,
+        roughness: material === "water" ? (isTempleRunoff ? 0.32 : 0.18) : material === "cloth" ? 0.84 : material === "metal" ? 0.42 : 0.68,
         metalness: material === "water" ? 0.05 : material === "metal" ? 0.62 : 0.02,
         emissive: material === "water" || material === "accent" ? color : "#000000",
-        emissiveIntensity: material === "water" ? 0.28 : material === "accent" ? 0.16 : 0,
+        emissiveIntensity: material === "water" ? (isTempleRunoff ? 0.12 : 0.28) : material === "accent" ? 0.16 : 0,
         transparent: material === "water",
-        opacity: material === "water" ? 0.84 : 1
+        opacity: material === "water" ? (isTempleRunoff ? 0.78 : 0.84) : 1
       };
       if (material !== "cloth" && material !== "accent") {
         materialOptions.map = texture;
@@ -566,7 +573,7 @@ export default function ArenaPreview({
     }
 
     const addBaseBeacon = (team: "blue" | "red", color: string) => {
-      const base = TEAM_BASE_ZONES[team];
+      const base = teamBaseZones[team];
       const x = team === "blue" ? base.minX + 4.5 : base.maxX - 4.5;
       const z = (base.minZ + base.maxZ) / 2;
       const beacon = new THREE.Group();
@@ -671,7 +678,7 @@ export default function ArenaPreview({
     }
 
     const floor = new THREE.Mesh(
-      new THREE.BoxGeometry(ARENA_LIMIT_X * 2, 0.3, ARENA_LIMIT_Z * 2),
+      new THREE.BoxGeometry(arenaBounds.limitX * 2, 0.3, arenaBounds.limitZ * 2),
       new THREE.MeshStandardMaterial({ map: floorTexture, color: palette.floor, roughness: 0.88, metalness: 0.01 })
     );
     floor.position.y = -0.2;
@@ -679,7 +686,7 @@ export default function ArenaPreview({
     scene.add(floor);
 
     const grid = new THREE.GridHelper(
-      ARENA_LIMIT_X * 2,
+      arenaBounds.limitX * 2,
       35,
       isIronJunction ? "#aeb8b5" : isTempleRunoff ? "#b8d8ad" : "#fff1c1",
       isIronJunction ? "#566266" : isTempleRunoff ? "#4f6f52" : "#ad7b45"
@@ -898,7 +905,7 @@ export default function ArenaPreview({
       const group = new THREE.Group();
       group.name = `modular_${block.id}`;
       group.position.set(block.x, block.y ?? block.h / 2, block.z);
-      group.rotation.y = block.rotationY ?? 0;
+      group.rotation.set(block.rotationX ?? 0, block.rotationY ?? 0, block.rotationZ ?? 0);
       scene.add(group);
       const structural = ["wall", "ruin", "gate", "house", "tower", "shed", "machinery", "railcar", "gantry"].includes(block.style ?? "");
       if (qualityConfig.detail === 0 || !structural || block.material === "water") {
@@ -949,7 +956,7 @@ export default function ArenaPreview({
       const proxy = new THREE.Mesh(new THREE.BoxGeometry(block.w, block.h, block.d), collisionProxyMaterial);
       proxy.name = `collision_proxy_${block.id}`;
       proxy.position.set(block.x, block.y ?? block.h / 2, block.z);
-      proxy.rotation.y = block.rotationY ?? 0;
+      proxy.rotation.set(block.rotationX ?? 0, block.rotationY ?? 0, block.rotationZ ?? 0);
       proxy.visible = false;
       proxy.userData.collisionProxy = true;
       scene.add(proxy);
@@ -1206,21 +1213,22 @@ export default function ArenaPreview({
     // become misleading visual cover at first-person distance.
     if (!isFps) arenaMap.signs.forEach((sign) => addWallSign(sign.label, sign.x, sign.z, sign.color, sign.rotationY, sign.y));
 
-    const addCircle = (x: number, z: number, radius: number, color: string, opacity = 0.24) => {
+    const addCircle = (x: number, z: number, radius: number, color: string, opacity = 0.24, y?: number) => {
       const circle = new THREE.Mesh(
         new THREE.CircleGeometry(radius, 48),
         new THREE.MeshBasicMaterial({ color, transparent: true, opacity, depthWrite: false })
       );
       circle.rotation.x = -Math.PI / 2;
-      circle.position.set(x, getArenaGroundHeight(arenaMapId, x, z) + 0.07, z);
+      circle.position.set(x, (y ?? getArenaGroundHeight(arenaMapId, x, z)) + 0.07, z);
       scene.add(circle);
       return circle;
     };
 
-    CAPTURE_ZONES.forEach((zone) => {
-      addCircle(zone.x, zone.z, zone.radius, "#facc15", 0.18);
+    captureZones.forEach((zone) => {
+      const zoneY = "y" in zone ? zone.y : getArenaGroundHeight(arenaMapId, zone.x, zone.z);
+      addCircle(zone.x, zone.z, zone.radius, "#facc15", 0.18, zoneY);
       const terminal = new THREE.Group();
-      terminal.position.set(zone.x, getArenaGroundHeight(arenaMapId, zone.x, zone.z) + 0.085, zone.z);
+      terminal.position.set(zone.x, zoneY + 0.085, zone.z);
       const terminalRing = addDecorativeMesh(terminal, new THREE.TorusGeometry(Math.max(1.2, zone.radius * 0.18), 0.1, 6, 24), "#facc15", "accent");
       terminalRing.rotation.x = Math.PI / 2;
       for (let index = -1; index <= 1; index += 1) {
@@ -1240,26 +1248,26 @@ export default function ArenaPreview({
       scene.add(terminal);
       if (!isFps) {
         const label = new THREE.Sprite(makeSpriteLabel(zone.label, "#fde68a"));
-        label.position.set(zone.x, getArenaGroundHeight(arenaMapId, zone.x, zone.z) + 12, zone.z);
+        label.position.set(zone.x, zoneY + 12, zone.z);
         label.scale.set(22, 7.5, 1);
         scene.add(label);
       }
     });
 
-    SEARCH_RETRIEVE_ITEMS.forEach((item) => {
+    searchRetrieveItems.forEach((item) => {
       const gem = new THREE.Mesh(
         new THREE.OctahedronGeometry(3.2),
         new THREE.MeshStandardMaterial({ color: "#f8fafc", emissive: "#67e8f9", emissiveIntensity: 0.52, roughness: 0.2 })
       );
-      gem.position.set(item.x, getArenaGroundHeight(arenaMapId, item.x, item.z) + 4.2, item.z);
+      gem.position.set(item.x, ("y" in item ? item.y : getArenaGroundHeight(arenaMapId, item.x, item.z)) + 4.2, item.z);
       scene.add(gem);
     });
-    addCircle(SEARCH_RETRIEVE_DELIVERY_ZONES.blue.x, SEARCH_RETRIEVE_DELIVERY_ZONES.blue.z, SEARCH_RETRIEVE_DELIVERY_ZONES.blue.radius, "#38bdf8", 0.16);
-    addCircle(SEARCH_RETRIEVE_DELIVERY_ZONES.red.x, SEARCH_RETRIEVE_DELIVERY_ZONES.red.z, SEARCH_RETRIEVE_DELIVERY_ZONES.red.radius, "#fb7185", 0.16);
+    addCircle(searchRetrieveDeliveryZones.blue.x, searchRetrieveDeliveryZones.blue.z, searchRetrieveDeliveryZones.blue.radius, "#38bdf8", 0.16, "y" in searchRetrieveDeliveryZones.blue ? searchRetrieveDeliveryZones.blue.y : undefined);
+    addCircle(searchRetrieveDeliveryZones.red.x, searchRetrieveDeliveryZones.red.z, searchRetrieveDeliveryZones.red.radius, "#fb7185", 0.16, "y" in searchRetrieveDeliveryZones.red ? searchRetrieveDeliveryZones.red.y : undefined);
 
     const visibleTeamSpawns = getTeamSpawnsForMap(arenaMapId);
-    visibleTeamSpawns.blue.forEach((spawn) => addCircle(spawn.x, spawn.z, 2.2, "#38bdf8", isFps ? 0.08 : 0.28));
-    visibleTeamSpawns.red.forEach((spawn) => addCircle(spawn.x, spawn.z, 2.2, "#fb7185", isFps ? 0.08 : 0.28));
+    visibleTeamSpawns.blue.forEach((spawn) => addCircle(spawn.x, spawn.z, 2.2, "#38bdf8", isFps ? 0.08 : 0.28, Number.isFinite(spawn.y) ? Number(spawn.y) - FPS_STANDING_EYE_HEIGHT : undefined));
+    visibleTeamSpawns.red.forEach((spawn) => addCircle(spawn.x, spawn.z, 2.2, "#fb7185", isFps ? 0.08 : 0.28, Number.isFinite(spawn.y) ? Number(spawn.y) - FPS_STANDING_EYE_HEIGHT : undefined));
     if (!isFps) FREE_FOR_ALL_SPAWNS.forEach((spawn) => addCircle(spawn.x, spawn.z, 1.3, "#ffffff", 0.18));
 
     if (!isIronJunction && !isTempleRunoff) {
@@ -1291,9 +1299,9 @@ export default function ArenaPreview({
       for (let index = 0; index < rockCount; index += 1) {
         const onHorizontalEdge = index % 2 === 0;
         rockPosition.set(
-          onHorizontalEdge ? (random() * 2 - 1) * (ARENA_LIMIT_X - 9) : (random() > 0.5 ? -1 : 1) * (ARENA_LIMIT_X - 5 - random() * 5),
+          onHorizontalEdge ? (random() * 2 - 1) * (arenaBounds.limitX - 9) : (random() > 0.5 ? -1 : 1) * (arenaBounds.limitX - 5 - random() * 5),
           0.28 + random() * 0.45,
-          onHorizontalEdge ? (random() > 0.5 ? -1 : 1) * (ARENA_LIMIT_Z - 5 - random() * 5) : (random() * 2 - 1) * (ARENA_LIMIT_Z - 9)
+          onHorizontalEdge ? (random() > 0.5 ? -1 : 1) * (arenaBounds.limitZ - 5 - random() * 5) : (random() * 2 - 1) * (arenaBounds.limitZ - 9)
         );
         rockRotation.setFromEuler(new THREE.Euler(random() * 0.4, random() * Math.PI, random() * 0.25));
         rockScale.set(0.4 + random() * 1.2, 0.32 + random() * 0.62, 0.45 + random() * 1.3);
@@ -1806,6 +1814,10 @@ export default function ArenaPreview({
       const bodyBox = new THREE.Box3();
       const bodyMin = new THREE.Vector3();
       const bodyMax = new THREE.Vector3();
+      const levelDebugEnabled = import.meta.env.DEV
+        && new URLSearchParams(window.location.search).get("debugTempleLevels") === "1";
+      let lastLevelDebugAt = 0;
+      let lastColliderName = "none";
       const maybeEmitPosition = (currentTime: number) => {
         if (currentTime - lastMoveEmitAt < 180) return;
         const nextPosition = { ...localToServerPosition(playerPosition, yaw), sprinting: isSprinting };
@@ -1823,7 +1835,9 @@ export default function ArenaPreview({
         bodyMin.set(next.x - PLAYER_RADIUS, verticalBounds.minY, next.z - PLAYER_RADIUS);
         bodyMax.set(next.x + PLAYER_RADIUS, verticalBounds.maxY, next.z + PLAYER_RADIUS);
         bodyBox.set(bodyMin, bodyMax);
-        return !coverBoxes.some((box) => box.intersectsBox(bodyBox) && !canFpsBodyClearObstacle(verticalBounds, box.max.y));
+        const blockingIndex = coverBoxes.findIndex((box) => box.intersectsBox(bodyBox) && !canFpsBodyClearObstacle(verticalBounds, box.max.y));
+        lastColliderName = blockingIndex >= 0 ? arenaMap.blocks.filter((block) => block.collides)[blockingIndex]?.id ?? "unknown" : "none";
+        return blockingIndex < 0;
       };
 
       const animateFps = () => {
@@ -1869,8 +1883,41 @@ export default function ArenaPreview({
         applyGamepadInput();
         const crouching = keys.has("Control");
         const floorEyeHeight = crouching ? FPS_CROUCH_EYE_HEIGHT : FPS_STANDING_EYE_HEIGHT;
-        let surfaceGroundY = getArenaGroundHeight(arenaMapId, playerPosition.x, playerPosition.z);
+        let surfaceGroundY = getArenaGroundHeightForPlayer(
+          arenaMapId,
+          playerPosition.x,
+          playerPosition.z,
+          playerPosition.y,
+          floorEyeHeight
+        );
         let groundEyeY = surfaceGroundY + floorEyeHeight;
+        const currentLevel = getArenaLevelLabel(arenaMapId, surfaceGroundY);
+        renderer.domElement.dataset.playerGroundY = surfaceGroundY.toFixed(3);
+        renderer.domElement.dataset.detectedFloor = surfaceGroundY.toFixed(3);
+        renderer.domElement.dataset.currentNavRegion = `${arenaMapId}:${currentLevel}`;
+        renderer.domElement.dataset.recoveryTriggered = "no";
+        renderer.domElement.dataset.recoveryReason = "none";
+        renderer.domElement.dataset.recoveryDestination = "none";
+        renderer.domElement.dataset.colliderName = lastColliderName;
+        renderer.domElement.dataset.currentLevel = currentLevel;
+        if (levelDebugEnabled && currentTime - lastLevelDebugAt >= 1000) {
+          console.debug("[Temple level diagnostics]", {
+            playerPosition: {
+              x: Number(playerPosition.x.toFixed(2)),
+              y: Number(playerPosition.y.toFixed(2)),
+              z: Number(playerPosition.z.toFixed(2))
+            },
+            playerGroundY: surfaceGroundY,
+            detectedFloor: surfaceGroundY,
+            currentNavRegion: `${arenaMapId}:${currentLevel}`,
+            recoveryTriggered: false,
+            recoveryReason: "none",
+            recoveryDestination: null,
+            colliderName: lastColliderName,
+            currentLevel
+          });
+          lastLevelDebugAt = currentTime;
+        }
         const grounded = playerPosition.y <= groundEyeY + 0.02 && Math.abs(verticalVelocity) < 0.01;
         if (jumpQueued && grounded && !crouching) {
           verticalVelocity = 5.8;
@@ -1931,11 +1978,17 @@ export default function ArenaPreview({
           );
           movementVector.normalize().multiplyScalar(moveSpeed * delta);
           nextPosition.copy(playerPosition).add(movementVector);
-          nextPosition.x = clamp(nextPosition.x, -ARENA_LIMIT_X + PLAYER_RADIUS, ARENA_LIMIT_X - PLAYER_RADIUS);
-          nextPosition.z = clamp(nextPosition.z, -ARENA_LIMIT_Z + PLAYER_RADIUS, ARENA_LIMIT_Z - PLAYER_RADIUS);
+          nextPosition.x = clamp(nextPosition.x, -arenaBounds.limitX + PLAYER_RADIUS, arenaBounds.limitX - PLAYER_RADIUS);
+          nextPosition.z = clamp(nextPosition.z, -arenaBounds.limitZ + PLAYER_RADIUS, arenaBounds.limitZ - PLAYER_RADIUS);
           axisPosition.copy(playerPosition);
           axisPosition.x = nextPosition.x;
-          const xGroundY = getArenaGroundHeight(arenaMapId, axisPosition.x, axisPosition.z);
+          const xGroundY = getArenaGroundHeightForPlayer(
+            arenaMapId,
+            axisPosition.x,
+            axisPosition.z,
+            axisPosition.y,
+            floorEyeHeight
+          );
           if (wasGrounded && Math.abs(xGroundY - surfaceGroundY) <= 0.8) axisPosition.y = xGroundY + floorEyeHeight;
           if (canOccupy(axisPosition, floorEyeHeight)) {
             playerPosition.x = axisPosition.x;
@@ -1943,14 +1996,32 @@ export default function ArenaPreview({
           }
           axisPosition.copy(playerPosition);
           axisPosition.z = nextPosition.z;
-          surfaceGroundY = getArenaGroundHeight(arenaMapId, playerPosition.x, playerPosition.z);
-          const zGroundY = getArenaGroundHeight(arenaMapId, axisPosition.x, axisPosition.z);
+          surfaceGroundY = getArenaGroundHeightForPlayer(
+            arenaMapId,
+            playerPosition.x,
+            playerPosition.z,
+            playerPosition.y,
+            floorEyeHeight
+          );
+          const zGroundY = getArenaGroundHeightForPlayer(
+            arenaMapId,
+            axisPosition.x,
+            axisPosition.z,
+            axisPosition.y,
+            floorEyeHeight
+          );
           if (wasGrounded && Math.abs(zGroundY - surfaceGroundY) <= 0.8) axisPosition.y = zGroundY + floorEyeHeight;
           if (canOccupy(axisPosition, floorEyeHeight)) {
             playerPosition.z = axisPosition.z;
             if (wasGrounded) playerPosition.y = axisPosition.y;
           }
-          surfaceGroundY = getArenaGroundHeight(arenaMapId, playerPosition.x, playerPosition.z);
+          surfaceGroundY = getArenaGroundHeightForPlayer(
+            arenaMapId,
+            playerPosition.x,
+            playerPosition.z,
+            playerPosition.y,
+            floorEyeHeight
+          );
           groundEyeY = surfaceGroundY + floorEyeHeight;
         }
 
@@ -2159,9 +2230,13 @@ export default function ArenaPreview({
   };
   const miniMapPlayer = miniMapPosition ?? (
     isFiniteNumber(currentPlayer?.x) && isFiniteNumber(currentPlayer?.z)
-      ? { x: currentPlayer.x, z: currentPlayer.z, facing: currentPlayer.facing ?? 0 }
+      ? { x: currentPlayer.x, y: currentPlayer.y, z: currentPlayer.z, facing: currentPlayer.facing ?? 0 }
       : null
   );
+  const miniMapPlayerGround = miniMapPlayer
+    ? getArenaGroundHeightForPlayer(arenaMapId, miniMapPlayer.x, miniMapPlayer.z, miniMapPlayer.y, FPS_STANDING_EYE_HEIGHT)
+    : 0;
+  const miniMapLevel = getArenaLevelLabel(arenaMapId, miniMapPlayerGround);
   const flagCarrier = session?.flag?.carrierId
     ? session.players.find((candidate) => candidate.id === session.flag?.carrierId)
     : undefined;
@@ -2218,6 +2293,7 @@ export default function ArenaPreview({
                   width={Math.max(1, toMiniMapW(mark.w))}
                   height={Math.max(1, toMiniMapH(mark.d))}
                   className="minimap-route"
+                  opacity={!isTempleRunoff || getArenaLevelLabel(arenaMapId, mark.y ?? TEMPLE_RUNOFF_MAIN_LEVEL_Y) === miniMapLevel ? 0.9 : 0.32}
                 />
               ))}
               {arenaMap.blocks.filter((block) => block.collides).map((block) => (
@@ -2228,26 +2304,27 @@ export default function ArenaPreview({
                   width={Math.max(0.7, toMiniMapW(block.w))}
                   height={Math.max(0.7, toMiniMapH(block.d))}
                   className={block.material === "wood" ? "minimap-wood" : "minimap-wall"}
+                  opacity={!isTempleRunoff || getArenaLevelLabel(arenaMapId, (block.y ?? block.h / 2) - block.h / 2) === miniMapLevel ? 0.82 : 0.28}
                 />
               ))}
               <rect
-                x={toMiniMapX(TEAM_BASE_ZONES.blue.minX)}
-                y={toMiniMapY(TEAM_BASE_ZONES.blue.minZ)}
-                width={toMiniMapW(TEAM_BASE_ZONES.blue.maxX - TEAM_BASE_ZONES.blue.minX)}
-                height={toMiniMapH(TEAM_BASE_ZONES.blue.maxZ - TEAM_BASE_ZONES.blue.minZ)}
+                x={toMiniMapX(teamBaseZones.blue.minX)}
+                y={toMiniMapY(teamBaseZones.blue.minZ)}
+                width={toMiniMapW(teamBaseZones.blue.maxX - teamBaseZones.blue.minX)}
+                height={toMiniMapH(teamBaseZones.blue.maxZ - teamBaseZones.blue.minZ)}
                 className="minimap-blue-base"
               />
               <rect
-                x={toMiniMapX(TEAM_BASE_ZONES.red.minX)}
-                y={toMiniMapY(TEAM_BASE_ZONES.red.minZ)}
-                width={toMiniMapW(TEAM_BASE_ZONES.red.maxX - TEAM_BASE_ZONES.red.minX)}
-                height={toMiniMapH(TEAM_BASE_ZONES.red.maxZ - TEAM_BASE_ZONES.red.minZ)}
+                x={toMiniMapX(teamBaseZones.red.minX)}
+                y={toMiniMapY(teamBaseZones.red.minZ)}
+                width={toMiniMapW(teamBaseZones.red.maxX - teamBaseZones.red.minX)}
+                height={toMiniMapH(teamBaseZones.red.maxZ - teamBaseZones.red.minZ)}
                 className="minimap-red-base"
               />
-              {CAPTURE_ZONES.map((zone) => (
+              {captureZones.map((zone) => (
                 <circle key={zone.id} cx={toMiniMapX(zone.x)} cy={toMiniMapY(zone.z)} r="2.1" className="minimap-capture" />
               ))}
-              {SEARCH_RETRIEVE_ITEMS.map((item) => (
+              {searchRetrieveItems.map((item) => (
                 <rect key={item.id} x={toMiniMapX(item.x) - 1.4} y={toMiniMapY(item.z) - 1.4} width="2.8" height="2.8" className="minimap-item" />
               ))}
               {session?.settings.gameMode === "flag" && session.flag && displayedFlagPosition && (
@@ -2256,11 +2333,16 @@ export default function ArenaPreview({
                   <path d="M 0 -4 L 0 4 M 0 -4 L 4 -2 L 0 0" />
                 </g>
               )}
-              <text x={toMiniMapX(-140)} y={toMiniMapY(-78)} className="minimap-label">West</text>
-              <text x={toMiniMapX(122)} y={toMiniMapY(-78)} className="minimap-label">East</text>
-              <text x={toMiniMapX(0)} y={toMiniMapY(-128)} className="minimap-label">{isIronJunction ? "Depot" : isTempleRunoff ? "Sun" : "Ruins"}</text>
-              <text x={toMiniMapX(0)} y={toMiniMapY(-22)} className="minimap-label">{isIronJunction ? "Gantry" : isTempleRunoff ? "Canal" : "Market"}</text>
-              <text x={toMiniMapX(0)} y={toMiniMapY(118)} className="minimap-label">{isIronJunction ? "Timber" : isTempleRunoff ? "Rootway" : "Homes"}</text>
+              <text x={toMiniMapX(isTempleRunoff ? scaleArenaValue(-205) : -140)} y={toMiniMapY(isTempleRunoff ? scaleArenaValue(-154) : -78)} className="minimap-label">{isTempleRunoff ? "Blue" : "West"}</text>
+              <text x={toMiniMapX(isTempleRunoff ? scaleArenaValue(184) : 122)} y={toMiniMapY(isTempleRunoff ? scaleArenaValue(-154) : -78)} className="minimap-label">{isTempleRunoff ? "Red" : "East"}</text>
+              <text x={toMiniMapX(0)} y={toMiniMapY(isTempleRunoff ? scaleArenaValue(-164) : -128)} className="minimap-label">{isIronJunction ? "Depot" : isTempleRunoff ? "Jungle" : "Ruins"}</text>
+              <text x={toMiniMapX(0)} y={toMiniMapY(isTempleRunoff ? 0 : -22)} className="minimap-label">{isIronJunction ? "Gantry" : isTempleRunoff ? "River" : "Market"}</text>
+              <text x={toMiniMapX(0)} y={toMiniMapY(isTempleRunoff ? scaleArenaValue(156) : 118)} className="minimap-label">{isIronJunction ? "Timber" : isTempleRunoff ? "Court" : "Homes"}</text>
+              {isTempleRunoff && (
+                <text x={MINIMAP_WIDTH - 5} y={10} textAnchor="end" className="minimap-label">
+                  {miniMapLevel === "lower" ? "↓ LOWER" : miniMapLevel === "upper" ? "↑ UPPER" : "• MAIN"}
+                </text>
+              )}
               {miniMapPlayer && (
                 <g
                   className="minimap-player"

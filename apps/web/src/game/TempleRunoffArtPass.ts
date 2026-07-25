@@ -1,5 +1,5 @@
 import * as THREE from "three";
-import { ARENA_SCALE, TEMPLE_RUNOFF_UPPER_LEVEL_Y, getArenaGroundHeight } from "@quizstrike/shared";
+import { ARENA_SCALE, TEMPLE_RUNOFF_MAIN_LEVEL_Y, TEMPLE_RUNOFF_UPPER_LEVEL_Y } from "@quizstrike/shared";
 
 type AddStaticMesh = (
   parent: THREE.Object3D,
@@ -23,7 +23,7 @@ const seededRandom = (seed: number) => {
   };
 };
 
-export const getTempleRunoffVegetationCount = (detail: number) => detail === 0 ? 0 : detail === 1 ? 38 : 64;
+export const getTempleRunoffVegetationCount = (detail: number) => detail === 0 ? 0 : detail === 1 ? 24 : 40;
 
 export const addTempleRunoffArtPass = (
   scene: THREE.Scene,
@@ -33,7 +33,7 @@ export const addTempleRunoffArtPass = (
 ): TempleRunoffArtHandle => {
   const landmark = new THREE.Group();
   landmark.name = "temple_runoff_rain_god_landmark";
-  landmark.position.set(0, TEMPLE_RUNOFF_UPPER_LEVEL_Y, scaled(37));
+  landmark.position.set(0, TEMPLE_RUNOFF_MAIN_LEVEL_Y, scaled(126));
   scene.add(landmark);
 
   const body = addStaticMesh(landmark, new THREE.BoxGeometry(8.4, 9.6, 5.6), "#586447", "stone");
@@ -56,28 +56,27 @@ export const addTempleRunoffArtPass = (
   const bridgeStory = new THREE.Group();
   bridgeStory.name = "temple_runoff_sun_bridge_scaffolding";
   scene.add(bridgeStory);
-  for (const x of [-72, -25, 22, 71].map(scaled)) {
-    for (const z of [-118, -106].map(scaled)) {
-      const support = addStaticMesh(bridgeStory, new THREE.CylinderGeometry(0.34, 0.5, 7, 7), "#68472f", "wood");
-      support.position.set(x, 3.5, z);
+  for (const z of [-35, 35].map(scaled)) {
+    for (const x of [-14, 14].map(scaled)) {
+      const support = addStaticMesh(bridgeStory, new THREE.CylinderGeometry(0.34, 0.5, 13, 7), "#68472f", "wood");
+      support.position.set(x, 8.2, z);
     }
-    const crossBrace = addStaticMesh(bridgeStory, new THREE.BoxGeometry(0.5, 7.2, 8), "#765033", "wood");
-    crossBrace.position.set(x, 3.4, scaled(-112));
-    crossBrace.rotation.x = 0.62;
+    const crossBrace = addStaticMesh(bridgeStory, new THREE.BoxGeometry(18, 0.55, 0.7), "#765033", "wood");
+    crossBrace.position.set(0, 11.5, z);
   }
-  for (const x of [-84, -12, 58].map(scaled)) {
-    const repairPlank = addStaticMesh(bridgeStory, new THREE.BoxGeometry(12, 0.34, 1.25), "#93613a", "wood");
-    repairPlank.position.set(x, TEMPLE_RUNOFF_UPPER_LEVEL_Y + 0.72, scaled(-112));
-    repairPlank.rotation.y = x > 0 ? 0.08 : -0.06;
+  for (const z of [-36, 4, 39].map(scaled)) {
+    const repairPlank = addStaticMesh(bridgeStory, new THREE.BoxGeometry(13, 0.34, 1.25), "#93613a", "wood");
+    repairPlank.position.set(0, TEMPLE_RUNOFF_UPPER_LEVEL_Y + 0.72, z);
+    repairPlank.rotation.y = z > 0 ? 0.08 : -0.06;
   }
 
   const tunnelStory = new THREE.Group();
   tunnelStory.name = "temple_runoff_sluice_story";
   scene.add(tunnelStory);
-  for (const x of [-105, 105].map(scaled)) {
-    const roof = addStaticMesh(tunnelStory, new THREE.BoxGeometry(10, 1.2, 18), "#343c35", "stone");
-    roof.position.set(x, 8.2, scaled(-43));
-    for (const z of [-49, -37].map(scaled)) {
+  for (const x of [-190, 190].map(scaled)) {
+    const roof = addStaticMesh(tunnelStory, new THREE.BoxGeometry(10, 1.2, 18), "#59665b", "stone");
+    roof.position.set(x, 10.5, 0);
+    for (const z of [-8, 8].map(scaled)) {
       const root = addStaticMesh(tunnelStory, new THREE.TorusGeometry(4.2, 0.42, 6, 16, Math.PI), "#59432e", "wood");
       root.position.set(x, 7.2, z);
       root.rotation.set(0, 0, Math.PI / 2);
@@ -87,21 +86,10 @@ export const addTempleRunoffArtPass = (
   const connectorStory = new THREE.Group();
   connectorStory.name = "temple_runoff_level_connectors";
   scene.add(connectorStory);
-  const rampRise = TEMPLE_RUNOFF_UPPER_LEVEL_Y;
-  const rampRun = scaled(18);
-  const rampLength = Math.hypot(rampRun, rampRise);
-  const rampAngle = Math.atan2(rampRise, rampRun);
-  for (const [rawX, rawZ, direction] of [
-    [-38, -69, 1], [38, -69, 1], [-35, -17, -1], [51, -17, -1]
-  ] as const) {
-    const ramp = addStaticMesh(connectorStory, new THREE.BoxGeometry(scaled(18), 0.48, rampLength), "#9b8153", "stone");
-    ramp.position.set(scaled(rawX), rampRise / 2, scaled(rawZ));
-    ramp.rotation.x = direction * rampAngle;
-    for (const side of [-1, 1]) {
-      const rail = addStaticMesh(connectorStory, new THREE.BoxGeometry(0.28, 1.15, rampLength), "#6d5436", "wood");
-      rail.position.set(scaled(rawX) + side * scaled(8.7), rampRise / 2 + 0.72, scaled(rawZ));
-      rail.rotation.x = direction * rampAngle;
-    }
+  for (const [x, z] of [[-16, -13], [16, 13], [-112, -18], [104, 18]] as const) {
+    const lantern = new THREE.PointLight("#8ce2d3", isFps ? 9 : 6, 34, 2);
+    lantern.position.set(scaled(x), 5.5, scaled(z));
+    connectorStory.add(lantern);
   }
 
   const waterGroup = new THREE.Group();
@@ -110,7 +98,7 @@ export const addTempleRunoffArtPass = (
   const waterfallMaterials: THREE.MeshBasicMaterial[] = [];
   const waterfallGeometry = new THREE.PlaneGeometry(5.2, 8.5, 1, 4);
   if (detail > 0) {
-    for (const [x, z] of [[-73, -58], [71, -28]] as const) {
+    for (const [x, z] of [[-136, -25], [136, 25]] as const) {
       const material = new THREE.MeshBasicMaterial({
         color: "#7df2e8",
         transparent: true,
@@ -155,12 +143,12 @@ export const addTempleRunoffArtPass = (
     for (let index = 0; index < vegetationCount; index += 1) {
       const edgeBand = index % 3 !== 0;
       const rawX = edgeBand
-        ? (random() > 0.5 ? 1 : -1) * (118 + random() * 43)
-        : -112 + random() * 224;
+        ? (random() > 0.5 ? 1 : -1) * (174 + random() * 46)
+        : -166 + random() * 332;
       const rawZ = edgeBand
-        ? -142 + random() * 284
-        : 78 + random() * 68;
-      const groundY = getArenaGroundHeight("temple_runoff", scaled(rawX), scaled(rawZ));
+        ? -184 + random() * 368
+        : (random() > 0.5 ? 1 : -1) * (126 + random() * 54);
+      const groundY = TEMPLE_RUNOFF_MAIN_LEVEL_Y;
       position.set(scaled(rawX), groundY + 2.5 + random() * 1.4, scaled(rawZ));
       rotation.setFromEuler(new THREE.Euler(0, random() * Math.PI, (random() - 0.5) * 0.12));
       const treeScale = 0.72 + random() * 0.72;

@@ -1078,10 +1078,83 @@ const scaleArenaRadius = <T extends { x: number; z: number; radius: number }>(po
 export const ARENA_LIMIT_X = scaleArenaValue(175);
 export const ARENA_LIMIT_Z = scaleArenaValue(160);
 
-export const ARENA_PLAYER_EYE_HEIGHT = 3.2;
-export const TEMPLE_RUNOFF_UPPER_LEVEL_Y = 7.5;
+export const ARENA_PLAYER_EYE_HEIGHT = 4.21;
+export const ARENA_PLAYER_BODY_HEIGHT = 5.02;
+export const TEMPLE_RUNOFF_MAIN_LEVEL_Y = 8;
+export const TEMPLE_RUNOFF_UPPER_LEVEL_Y = 17;
 
-const isInsideTempleRamp = (rawX: number, centerX: number) => Math.abs(rawX - centerX) <= 11;
+export type ArenaBounds = { limitX: number; limitZ: number };
+export const TEMPLE_RUNOFF_BOUNDS: ArenaBounds = {
+  limitX: scaleArenaValue(235),
+  limitZ: scaleArenaValue(200)
+};
+
+export const getArenaBounds = (mapId: ArenaMapId | string | undefined): ArenaBounds =>
+  mapId === "temple_runoff"
+    ? TEMPLE_RUNOFF_BOUNDS
+    : { limitX: ARENA_LIMIT_X, limitZ: ARENA_LIMIT_Z };
+
+const isInsideRawRect = (
+  x: number,
+  z: number,
+  minX: number,
+  maxX: number,
+  minZ: number,
+  maxZ: number
+) => x >= minX - 1e-6 && x <= maxX + 1e-6 && z >= minZ - 1e-6 && z <= maxZ + 1e-6;
+
+const templeRampHeight = (rawX: number, rawZ: number): number | undefined => {
+  for (const centerX of [-136, -52, 55, 136]) {
+    if (Math.abs(rawX - centerX) > 14) continue;
+    if (rawZ >= -48 - 1e-6 && rawZ <= -24 + 1e-6) {
+      const progress = Math.max(0, Math.min(1, (-24 - rawZ) / 24));
+      return Number((TEMPLE_RUNOFF_MAIN_LEVEL_Y * progress).toFixed(3));
+    }
+    if (rawZ >= 24 - 1e-6 && rawZ <= 48 + 1e-6) {
+      const progress = Math.max(0, Math.min(1, (rawZ - 24) / 24));
+      return Number((TEMPLE_RUNOFF_MAIN_LEVEL_Y * progress).toFixed(3));
+    }
+  }
+  if (Math.abs(rawX) <= 18 && rawZ >= -82 && rawZ < -58) {
+    return Number((TEMPLE_RUNOFF_MAIN_LEVEL_Y + 9 * ((rawZ + 82) / 24)).toFixed(3));
+  }
+  if (Math.abs(rawX) <= 18 && rawZ > 58 && rawZ <= 82) {
+    return Number((TEMPLE_RUNOFF_MAIN_LEVEL_Y + 9 * ((82 - rawZ) / 24)).toFixed(3));
+  }
+  if (rawX >= -148 && rawX < -118 && rawZ >= -80 && rawZ <= -52) {
+    return Number((TEMPLE_RUNOFF_MAIN_LEVEL_Y + 9 * ((rawX + 148) / 30)).toFixed(3));
+  }
+  if (rawX > 118 && rawX <= 148 && rawZ >= 52 && rawZ <= 80) {
+    return Number((TEMPLE_RUNOFF_MAIN_LEVEL_Y + 9 * ((148 - rawX) / 30)).toFixed(3));
+  }
+  return undefined;
+};
+
+/**
+ * Returns every legitimate walkable surface at an X/Z coordinate, low to high.
+ * Temple Runoff deliberately supports stacked surfaces at the same coordinate.
+ */
+export const getArenaFloorSurfaces = (
+  mapId: ArenaMapId | string | undefined,
+  x: number,
+  z: number
+): number[] => {
+  if (mapId !== "temple_runoff") return [0];
+  const rawX = x / ARENA_SCALE;
+  const rawZ = z / ARENA_SCALE;
+  const ramp = templeRampHeight(rawX, rawZ);
+  if (ramp !== undefined) return [ramp];
+
+  const inRiver = isInsideRawRect(rawX, rawZ, -202, 202, -24, 24);
+  const surfaces = [inRiver ? 0 : TEMPLE_RUNOFF_MAIN_LEVEL_Y];
+  const onCentralBridge = isInsideRawRect(rawX, rawZ, -18, 18, -58, 58);
+  const onNorthTerrace = isInsideRawRect(rawX, rawZ, -118, -18, -80, -52);
+  const onSouthTerrace = isInsideRawRect(rawX, rawZ, 18, 118, 52, 80);
+  const onTimberCrossing = isInsideRawRect(rawX, rawZ, 116, 136, -24, 24);
+  if (onTimberCrossing) surfaces.push(TEMPLE_RUNOFF_MAIN_LEVEL_Y);
+  if (onCentralBridge || onNorthTerrace || onSouthTerrace) surfaces.push(TEMPLE_RUNOFF_UPPER_LEVEL_Y);
+  return [...new Set(surfaces)].sort((a, b) => a - b);
+};
 
 /**
  * Returns the walkable floor elevation at an arena position.
@@ -1093,18 +1166,35 @@ export const getArenaGroundHeight = (
   x: number,
   z: number
 ): number => {
-  if (mapId !== "temple_runoff") return 0;
-  const rawX = x / ARENA_SCALE;
-  const rawZ = z / ARENA_SCALE;
-  if (rawZ >= -60 && rawZ <= -26) return 0;
-  if (rawZ >= -78 && rawZ < -60 && (isInsideTempleRamp(rawX, -38) || isInsideTempleRamp(rawX, 38))) {
-    return Number((TEMPLE_RUNOFF_UPPER_LEVEL_Y * ((-60 - rawZ) / 18)).toFixed(3));
-  }
-  if (rawZ > -26 && rawZ <= -8 && (isInsideTempleRamp(rawX, -35) || isInsideTempleRamp(rawX, 51))) {
-    return Number((TEMPLE_RUNOFF_UPPER_LEVEL_Y * ((rawZ + 26) / 18)).toFixed(3));
-  }
-  return TEMPLE_RUNOFF_UPPER_LEVEL_Y;
+  const surfaces = getArenaFloorSurfaces(mapId, x, z);
+  return surfaces[surfaces.length - 1] ?? 0;
 };
+
+export const getArenaGroundHeightForPlayer = (
+  mapId: ArenaMapId | string | undefined,
+  x: number,
+  z: number,
+  eyeY: number | undefined,
+  eyeHeight = ARENA_PLAYER_EYE_HEIGHT,
+  maxStepUp = 1
+): number => {
+  const surfaces = getArenaFloorSurfaces(mapId, x, z);
+  if (!Number.isFinite(eyeY)) return surfaces[surfaces.length - 1] ?? 0;
+  const footY = Number(eyeY) - eyeHeight;
+  const reachable = surfaces.filter((surface) => surface <= footY + maxStepUp);
+  return reachable[reachable.length - 1] ?? surfaces[0] ?? 0;
+};
+
+export const getArenaLevelLabel = (
+  mapId: ArenaMapId | string | undefined,
+  groundY: number
+) => mapId !== "temple_runoff"
+  ? "main"
+  : groundY < TEMPLE_RUNOFF_MAIN_LEVEL_Y - 1
+    ? "lower"
+    : groundY < TEMPLE_RUNOFF_UPPER_LEVEL_Y - 1
+      ? "main"
+      : "upper";
 
 export const getArenaEyeHeight = (
   mapId: ArenaMapId | string | undefined,
@@ -1185,13 +1275,13 @@ const IRON_JUNCTION_TEAM_SPAWNS: Record<Team, SpawnPoint[]> = {
 };
 
 const RAW_TEMPLE_RUNOFF_BLUE_SPAWNS: SpawnPoint[] = [
-  [-158, -119], [-149, -119], [-140, -119], [-154, -109], [-144, -109],
-  [-158, -50], [-149, -50], [-140, -50], [-154, -40], [-144, -40],
-  [-158, 25], [-149, 25], [-140, 25], [-154, 35], [-144, 35],
-  [-158, 102], [-149, 102], [-140, 102], [-154, 112], [-144, 112]
+  [-218, -154], [-210, -154], [-202, -154], [-194, -154], [-186, -154],
+  [-218, -52], [-210, -52], [-202, -52], [-194, -52], [-186, -52],
+  [-218, 48], [-210, 48], [-202, 48], [-194, 48], [-186, 48],
+  [-218, 154], [-210, 154], [-202, 154], [-194, 154], [-186, 154]
 ].map(([x, z], index) => ({
   id: `blue-temple-${index + 1}`,
-  label: ["Sun Gate", "Canal Gate", "Court Gate", "Root Gate"][Math.floor(index / 5)],
+  label: ["Jungle Gate", "Canal Gate", "Rain Gate", "Temple Gate"][Math.floor(index / 5)],
   x,
   z,
   facing: -Math.PI / 2
@@ -1299,6 +1389,16 @@ const RAW_CAPTURE_ZONES = [
 ] as const;
 
 export const CAPTURE_ZONES = RAW_CAPTURE_ZONES.map(scaleArenaRadius);
+export const TEMPLE_RUNOFF_CAPTURE_ZONES = [
+  { id: "jungle-ruins", label: "Jungle Ruins", x: scaleArenaValue(-112), z: scaleArenaValue(-132), radius: scaleArenaValue(22), y: TEMPLE_RUNOFF_MAIN_LEVEL_Y },
+  { id: "lower-waterway", label: "Lower Waterway", x: scaleArenaValue(-72), z: 0, radius: scaleArenaValue(24), y: 0 },
+  { id: "sun-bridge", label: "Sun Bridge", x: 0, z: scaleArenaValue(-18), radius: scaleArenaValue(18), y: TEMPLE_RUNOFF_UPPER_LEVEL_Y },
+  { id: "rain-court", label: "Rain Court", x: 0, z: scaleArenaValue(126), radius: scaleArenaValue(25), y: TEMPLE_RUNOFF_MAIN_LEVEL_Y },
+  { id: "temple-terrace", label: "Temple Terrace", x: scaleArenaValue(84), z: scaleArenaValue(66), radius: scaleArenaValue(18), y: TEMPLE_RUNOFF_UPPER_LEVEL_Y }
+] as const;
+
+export const getCaptureZonesForMap = (mapId: ArenaMapId | string | undefined) =>
+  mapId === "temple_runoff" ? TEMPLE_RUNOFF_CAPTURE_ZONES : CAPTURE_ZONES;
 
 const RAW_SEARCH_RETRIEVE_ITEMS = [
   { id: "old-well-scroll", label: "Old Well Scroll", x: -8, z: -18 },
@@ -1307,6 +1407,14 @@ const RAW_SEARCH_RETRIEVE_ITEMS = [
 ] as const;
 
 export const SEARCH_RETRIEVE_ITEMS = RAW_SEARCH_RETRIEVE_ITEMS.map(scaleArenaPosition);
+export const TEMPLE_RUNOFF_SEARCH_RETRIEVE_ITEMS = [
+  { id: "river-tablet", label: "River Tablet", x: scaleArenaValue(-70), z: scaleArenaValue(3), y: 1.4 },
+  { id: "rain-idol", label: "Rain Idol", x: scaleArenaValue(8), z: scaleArenaValue(142), y: TEMPLE_RUNOFF_MAIN_LEVEL_Y + 1.4 },
+  { id: "sun-glyph", label: "Sun Glyph", x: 0, z: scaleArenaValue(-34), y: TEMPLE_RUNOFF_UPPER_LEVEL_Y + 1.4 }
+] as const;
+
+export const getSearchRetrieveItemsForMap = (mapId: ArenaMapId | string | undefined) =>
+  mapId === "temple_runoff" ? TEMPLE_RUNOFF_SEARCH_RETRIEVE_ITEMS : SEARCH_RETRIEVE_ITEMS;
 
 const RAW_SEARCH_RETRIEVE_DELIVERY_ZONES = {
   blue: { id: "blue-delivery", label: "West Fortress Delivery", x: -146, z: 0, radius: 18 },
@@ -1317,6 +1425,13 @@ export const SEARCH_RETRIEVE_DELIVERY_ZONES = {
   blue: scaleArenaRadius(RAW_SEARCH_RETRIEVE_DELIVERY_ZONES.blue),
   red: scaleArenaRadius(RAW_SEARCH_RETRIEVE_DELIVERY_ZONES.red)
 } as const;
+export const TEMPLE_RUNOFF_SEARCH_RETRIEVE_DELIVERY_ZONES = {
+  blue: { id: "blue-temple-delivery", label: "Blue Temple Delivery", x: scaleArenaValue(-205), z: 0, radius: scaleArenaValue(20), y: TEMPLE_RUNOFF_MAIN_LEVEL_Y },
+  red: { id: "red-temple-delivery", label: "Red Temple Delivery", x: scaleArenaValue(205), z: 0, radius: scaleArenaValue(20), y: TEMPLE_RUNOFF_MAIN_LEVEL_Y }
+} as const;
+
+export const getSearchRetrieveDeliveryZonesForMap = (mapId: ArenaMapId | string | undefined) =>
+  mapId === "temple_runoff" ? TEMPLE_RUNOFF_SEARCH_RETRIEVE_DELIVERY_ZONES : SEARCH_RETRIEVE_DELIVERY_ZONES;
 
 const isKnownPosition = (position: { x?: number; z?: number } | undefined): position is { x: number; z: number } =>
   Boolean(position && Number.isFinite(position.x) && Number.isFinite(position.z));
@@ -1421,17 +1536,26 @@ export const TEAM_BASE_ZONES: Record<Team, { minX: number; maxX: number; minZ: n
   red: { minX: scaleArenaValue(112), maxX: scaleArenaValue(170), minZ: scaleArenaValue(-70), maxZ: scaleArenaValue(70) }
 };
 
-export const isInsideTeamBase = (team: Team, position: ArenaPosition | undefined) => {
+export const TEMPLE_RUNOFF_TEAM_BASE_ZONES: typeof TEAM_BASE_ZONES = {
+  blue: { minX: scaleArenaValue(-228), maxX: scaleArenaValue(-174), minZ: scaleArenaValue(-176), maxZ: scaleArenaValue(176) },
+  red: { minX: scaleArenaValue(174), maxX: scaleArenaValue(228), minZ: scaleArenaValue(-176), maxZ: scaleArenaValue(176) }
+};
+
+export const getTeamBaseZones = (mapId: ArenaMapId | string | undefined) =>
+  mapId === "temple_runoff" ? TEMPLE_RUNOFF_TEAM_BASE_ZONES : TEAM_BASE_ZONES;
+
+export const isInsideTeamBase = (team: Team, position: ArenaPosition | undefined, mapId?: ArenaMapId | string) => {
   if (!position || !Number.isFinite(position.x) || !Number.isFinite(position.z)) return false;
-  const zone = TEAM_BASE_ZONES[team];
+  const zone = getTeamBaseZones(mapId)[team];
   return position.x >= zone.minX && position.x <= zone.maxX && position.z >= zone.minZ && position.z <= zone.maxZ;
 };
 
 export const clampArenaPosition = (
-  position: ArenaPosition
+  position: ArenaPosition,
+  mapId?: ArenaMapId | string
 ): Required<Pick<ArenaPosition, "x" | "z" | "facing">> & Pick<ArenaPosition, "y"> => ({
-  x: Math.min(ARENA_LIMIT_X, Math.max(-ARENA_LIMIT_X, Number.isFinite(position.x) ? position.x : 0)),
-  z: Math.min(ARENA_LIMIT_Z, Math.max(-ARENA_LIMIT_Z, Number.isFinite(position.z) ? position.z : 0)),
+  x: Math.min(getArenaBounds(mapId).limitX, Math.max(-getArenaBounds(mapId).limitX, Number.isFinite(position.x) ? position.x : 0)),
+  z: Math.min(getArenaBounds(mapId).limitZ, Math.max(-getArenaBounds(mapId).limitZ, Number.isFinite(position.z) ? position.z : 0)),
   ...(Number.isFinite(position.y) ? { y: position.y } : {}),
   facing: Number.isFinite(position.facing) ? position.facing! : 0
 });
@@ -1489,26 +1613,47 @@ export const getPlayerMoveSpeedMultiplier = (player: Pick<PlayerSession, "gear" 
   Number((getGearMoveSpeedMultiplier(getPlayerWeaponId(player)) * (hasPlayerPerk(player, "speed_shoes") ? 1.15 : 1)).toFixed(2));
 
 export type ArenaObstacle =
-  | { id: string; kind: "rect"; x: number; z: number; width: number; depth: number; jumpable?: boolean }
-  | { id: string; kind: "circle"; x: number; z: number; radius: number; jumpable?: boolean };
+  | { id: string; kind: "rect"; x: number; z: number; width: number; depth: number; jumpable?: boolean; minY?: number; maxY?: number }
+  | { id: string; kind: "circle"; x: number; z: number; radius: number; jumpable?: boolean; minY?: number; maxY?: number };
 
-const rectObstacle = (id: string, x: number, z: number, width: number, depth: number, jumpable = false): ArenaObstacle => ({
+const rectObstacle = (
+  id: string,
+  x: number,
+  z: number,
+  width: number,
+  depth: number,
+  jumpable = false,
+  minY?: number,
+  maxY?: number
+): ArenaObstacle => ({
   id,
   kind: "rect",
   x: scaleArenaValue(x),
   z: scaleArenaValue(z),
   width: scaleArenaValue(width),
   depth: scaleArenaValue(depth),
-  jumpable
+  jumpable,
+  ...(Number.isFinite(minY) ? { minY } : {}),
+  ...(Number.isFinite(maxY) ? { maxY } : {})
 });
 
-const circleObstacle = (id: string, x: number, z: number, radius: number, jumpable = false): ArenaObstacle => ({
+const circleObstacle = (
+  id: string,
+  x: number,
+  z: number,
+  radius: number,
+  jumpable = false,
+  minY?: number,
+  maxY?: number
+): ArenaObstacle => ({
   id,
   kind: "circle",
   x: scaleArenaValue(x),
   z: scaleArenaValue(z),
   radius: scaleArenaValue(radius),
-  jumpable
+  jumpable,
+  ...(Number.isFinite(minY) ? { minY } : {}),
+  ...(Number.isFinite(maxY) ? { maxY } : {})
 });
 
 export const ARENA_OBSTACLES: ArenaObstacle[] = [
@@ -1608,55 +1753,47 @@ export const IRON_JUNCTION_OBSTACLES: ArenaObstacle[] = [
 
 /** Ground-plane collision proxies for Temple Runoff's playable architecture. */
 export const TEMPLE_RUNOFF_OBSTACLES: ArenaObstacle[] = [
-  rectObstacle("temple-north-cliff", 0, -156, 350, 8),
-  rectObstacle("temple-south-cliff", 0, 156, 350, 8),
-  rectObstacle("temple-west-cliff", -171, 0, 8, 320),
-  rectObstacle("temple-east-cliff", 171, 0, 8, 320),
-  rectObstacle("blue-base-screen-north", -128, -144, 7, 22),
-  rectObstacle("blue-base-screen-a", -128, -77, 7, 30),
-  rectObstacle("blue-base-screen-b", -128, -5, 7, 30),
-  rectObstacle("blue-base-screen-c", -128, 66, 7, 28),
-  rectObstacle("blue-base-screen-south", -128, 140, 7, 24),
-  rectObstacle("red-base-screen-north", 128, -144, 7, 22),
-  rectObstacle("red-base-screen-a", 128, -77, 7, 30),
-  rectObstacle("red-base-screen-b", 128, -5, 7, 30),
-  rectObstacle("red-base-screen-c", 128, 66, 7, 28),
-  rectObstacle("red-base-screen-south", 128, 140, 7, 24),
-  rectObstacle("blue-spawn-idol", -151, 8, 13, 17),
-  rectObstacle("red-spawn-pavilion", 151, 8, 14, 17),
-  rectObstacle("sun-parapet-west-a", -91, -124, 35, 5),
-  rectObstacle("sun-parapet-west-b", -41, -100, 24, 5),
-  rectObstacle("sun-parapet-mid-a", -3, -124, 20, 5),
-  rectObstacle("sun-parapet-mid-b", 37, -100, 22, 5),
-  rectObstacle("sun-parapet-east", 88, -124, 34, 5),
-  rectObstacle("sun-repair-screen", 69, -110, 13, 7, true),
-  rectObstacle("canal-bank-north-west", -88, -61, 68, 6),
-  rectObstacle("canal-bank-north-mid", 0, -61, 46, 6),
-  rectObstacle("canal-bank-north-east", 88, -61, 68, 6),
-  rectObstacle("canal-bank-south-west", -83, -25, 58, 6),
-  rectObstacle("canal-bank-south-mid", 10, -25, 52, 6),
-  rectObstacle("canal-bank-south-east", 91, -25, 50, 6),
-  rectObstacle("canal-pillar-cover-west", -46, -43, 9, 9),
-  rectObstacle("canal-pillar-cover-east", 46, -43, 9, 9),
-  rectObstacle("canal-debris-cover", 5, -46, 15, 7, true),
-  rectObstacle("court-northwest-ruin", -78, 18, 32, 10),
-  rectObstacle("court-northeast-ruin", 78, 16, 30, 10),
-  rectObstacle("court-southwest-ruin", -76, 61, 28, 10),
-  rectObstacle("court-southeast-ruin", 76, 60, 34, 10),
-  rectObstacle("court-altar-west", -28, 39, 16, 9, true),
-  rectObstacle("court-altar-east", 32, 30, 16, 9, true),
-  rectObstacle("rootway-cave-west", -92, 112, 35, 18),
-  rectObstacle("rootway-log-west", -48, 99, 25, 8, true),
-  rectObstacle("rootway-idol-mid", -6, 120, 15, 14),
-  rectObstacle("rootway-survey-camp", 48, 101, 27, 17),
-  rectObstacle("rootway-rock-east", 91, 124, 28, 17),
-  circleObstacle("rain-god-statue", 0, 37, 8),
-  circleObstacle("sun-monument-west", -67, -112, 4),
-  circleObstacle("sun-monument-east", 29, -112, 4),
-  circleObstacle("court-column-west", -48, 48, 3),
-  circleObstacle("court-column-east", 52, 47, 3),
-  circleObstacle("canal-drain-west", -80, -43, 3),
-  circleObstacle("canal-drain-east", 83, -43, 3)
+  rectObstacle("temple-north-cliff", 0, -196, 470, 8, false, 0, 28),
+  rectObstacle("temple-south-cliff", 0, 196, 470, 8, false, 0, 28),
+  rectObstacle("temple-west-cliff", -231, 0, 8, 400, false, 0, 28),
+  rectObstacle("temple-east-cliff", 231, 0, 8, 400, false, 0, 28),
+  rectObstacle("canal-bank-north-far-west", -188.5, -25, 77, 5, false, 0, 8),
+  rectObstacle("canal-bank-north-west", -94, -25, 56, 5, false, 0, 8),
+  rectObstacle("canal-bank-north-center", 1.5, -25, 79, 5, false, 0, 8),
+  rectObstacle("canal-bank-north-east", 95.5, -25, 53, 5, false, 0, 8),
+  rectObstacle("canal-bank-north-far-east", 188.5, -25, 77, 5, false, 0, 8),
+  rectObstacle("canal-bank-south-far-west", -188.5, 25, 77, 5, false, 0, 8),
+  rectObstacle("canal-bank-south-west", -94, 25, 56, 5, false, 0, 8),
+  rectObstacle("canal-bank-south-center", 1.5, 25, 79, 5, false, 0, 8),
+  rectObstacle("canal-bank-south-east", 95.5, 25, 53, 5, false, 0, 8),
+  rectObstacle("canal-bank-south-far-east", 188.5, 25, 77, 5, false, 0, 8),
+  rectObstacle("sun-bridge-support-nw", -14, -35, 7, 8, false, 0, 17),
+  rectObstacle("sun-bridge-support-ne", 14, -35, 7, 8, false, 0, 17),
+  rectObstacle("sun-bridge-support-sw", -14, 35, 7, 8, false, 0, 17),
+  rectObstacle("sun-bridge-support-se", 14, 35, 7, 8, false, 0, 17),
+  rectObstacle("sun-parapet-west", -19, -18, 4, 44, false, 17, 21),
+  rectObstacle("sun-parapet-east", 19, 17, 4, 46, false, 17, 21),
+  rectObstacle("upper-jungle-balustrade", -75, -82, 56, 4, false, 17, 21),
+  rectObstacle("upper-temple-balustrade", 75, 82, 56, 4, false, 17, 21),
+  rectObstacle("blue-temple-gatehouse", -204, -92, 28, 42, false, 8, 23),
+  rectObstacle("blue-temple-foundation", -204, 83, 30, 52, false, 8, 20),
+  rectObstacle("red-temple-gatehouse", 204, 92, 28, 42, false, 8, 23),
+  rectObstacle("red-temple-foundation", 204, -83, 30, 52, false, 8, 20),
+  rectObstacle("jungle-ruin-wall", -98, -132, 54, 8, false, 8, 18),
+  rectObstacle("jungle-root-cover", -42, -116, 22, 9, true, 8, 13),
+  rectObstacle("north-collapsed-sanctum", 76, -132, 42, 16, false, 8, 20),
+  rectObstacle("rain-court-wall-west", -90, 112, 44, 8, false, 8, 17),
+  rectObstacle("rain-court-wall-east", 82, 118, 48, 8, false, 8, 17),
+  rectObstacle("rain-court-planter", 18, 125, 24, 12, true, 8, 11.5),
+  rectObstacle("lower-broken-pillar", -72, 2, 10, 12, false, 0, 5.5),
+  rectObstacle("lower-collapsed-wall", 58, 17, 24, 7, true, 0, 4.5),
+  rectObstacle("lower-submerged-ruin", 150, 7, 20, 10, true, 0, 3.2),
+  circleObstacle("rain-god-statue", 0, 126, 7, false, 8, 25),
+  circleObstacle("jungle-column-west", -126, -104, 4, false, 8, 20),
+  circleObstacle("temple-column-east", 122, 111, 4, false, 8, 20),
+  circleObstacle("canal-rock", 18, 12, 5, true, 0, 4.2),
+  circleObstacle("upper-jungle-column", -94, -66, 3, false, 17, 25),
+  circleObstacle("upper-temple-column", 96, 66, 3, false, 17, 25)
 ];
 
 const ARENA_OBSTACLES_BY_MAP: Record<ArenaMapId, ArenaObstacle[]> = {
@@ -1715,11 +1852,13 @@ export type GearPurchaseResult =
 export const resolveGearPurchase = ({
   player,
   gear,
-  requireBase = true
+  requireBase = true,
+  mapId
 }: {
   player: Pick<PlayerSession, "isAlive" | "money" | "gear" | "weapon" | "perks" | "health" | "team" | "x" | "z">;
   gear: GearItem;
   requireBase?: boolean;
+  mapId?: ArenaMapId | string;
 }): GearPurchaseResult => {
   if (!player.isAlive) return { ok: false, reason: "player_eliminated" };
   if (getPlayerWeaponId(player) === gear.id || hasPlayerPerk(player, gear.id)) {
@@ -1732,7 +1871,7 @@ export const resolveGearPurchase = ({
     };
   }
   if (gear.id === "starter_blaster") return { ok: false, reason: "starter_weapon" };
-  if (requireBase && !isInsideTeamBase(player.team, { x: player.x ?? getTeamSpawn(player.team).x, z: player.z ?? getTeamSpawn(player.team).z })) {
+  if (requireBase && !isInsideTeamBase(player.team, { x: player.x ?? getTeamSpawnForMap(mapId, player.team).x, z: player.z ?? getTeamSpawnForMap(mapId, player.team).z }, mapId)) {
     return { ok: false, reason: "outside_base" };
   }
   if (player.money < gear.cost) return { ok: false, reason: "not_enough_money" };
@@ -1760,6 +1899,13 @@ const expandRect = (obstacle: Extract<ArenaObstacle, { kind: "rect" }>, padding:
 });
 
 const pointInsideObstacle = (point: ArenaPosition, obstacle: ArenaObstacle, padding = 0) => {
+  if (
+    Number.isFinite(point.y)
+    && (
+      (Number.isFinite(obstacle.minY) && Number(point.y) < Number(obstacle.minY))
+      || (Number.isFinite(obstacle.maxY) && Number(point.y) > Number(obstacle.maxY))
+    )
+  ) return false;
   if (obstacle.kind === "circle") {
     return Math.hypot(point.x - obstacle.x, point.z - obstacle.z) <= obstacle.radius + padding;
   }
@@ -1816,6 +1962,12 @@ const distanceToShotSegment = ({
 };
 
 const segmentIntersectsObstacle = (start: ArenaPosition, end: ArenaPosition, obstacle: ArenaObstacle, padding = 0) => {
+  if (Number.isFinite(start.y) && Number.isFinite(end.y)) {
+    const segmentMinY = Math.min(Number(start.y), Number(end.y));
+    const segmentMaxY = Math.max(Number(start.y), Number(end.y));
+    if (Number.isFinite(obstacle.minY) && segmentMaxY < Number(obstacle.minY)) return false;
+    if (Number.isFinite(obstacle.maxY) && segmentMinY > Number(obstacle.maxY)) return false;
+  }
   if (pointInsideObstacle(start, obstacle, padding) || pointInsideObstacle(end, obstacle, padding)) return true;
   if (obstacle.kind === "rect") return segmentIntersectsRect(start, end, obstacle, padding);
   const range = Math.hypot(end.x - start.x, end.z - start.z);
@@ -1985,7 +2137,8 @@ export const resolveAuthoritativeMovement = ({
   maxSpeed,
   obstacles = ARENA_OBSTACLES,
   radius = 0.45,
-  groundY = 0
+  groundY = 0,
+  mapId
 }: {
   current: ArenaPosition;
   requested: ArenaPosition;
@@ -1994,9 +2147,10 @@ export const resolveAuthoritativeMovement = ({
   obstacles?: readonly ArenaObstacle[];
   radius?: number;
   groundY?: number;
+  mapId?: ArenaMapId | string;
 }): AuthoritativeMovementResult => {
-  const from = clampArenaPosition(current);
-  const to = clampArenaPosition(requested);
+  const from = clampArenaPosition(current, mapId);
+  const to = clampArenaPosition(requested, mapId);
   const elapsedSeconds = Math.max(0.05, Math.min(1, elapsedMs / 1000));
   const maxDistance = Math.max(0, maxSpeed * elapsedSeconds);
   const dx = to.x - from.x;
@@ -2012,15 +2166,22 @@ export const resolveAuthoritativeMovement = ({
         z: from.z + (dz / distance) * maxDistance,
         y: to.y,
         facing: to.facing
-      })
+      }, mapId)
     : to;
 
   const canClearJumpable = (obstacle: ArenaObstacle) => obstacle.jumpable === true && Number(to.y) - groundY >= 5;
   const movementIsBlocked = (start: ArenaPosition, end: ArenaPosition) => obstacles.some((obstacle) => {
-    if (canClearJumpable(obstacle) || !segmentIntersectsObstacle(start, end, obstacle, radius)) return false;
+    const eyeY = Number.isFinite(end.y) ? Number(end.y) : groundY + ARENA_PLAYER_EYE_HEIGHT;
+    const bodyMinY = eyeY - ARENA_PLAYER_EYE_HEIGHT;
+    const bodyMaxY = bodyMinY + ARENA_PLAYER_BODY_HEIGHT;
+    if (Number.isFinite(obstacle.minY) && bodyMaxY < Number(obstacle.minY)) return false;
+    if (Number.isFinite(obstacle.maxY) && bodyMinY > Number(obstacle.maxY)) return false;
+    const horizontalStart = { ...start, y: undefined };
+    const horizontalEnd = { ...end, y: undefined };
+    if (canClearJumpable(obstacle) || !segmentIntersectsObstacle(horizontalStart, horizontalEnd, obstacle, radius)) return false;
     // A player whose last accepted point sits on the padded collision boundary
     // must be allowed to move back out instead of remaining trapped forever.
-    return !(pointInsideObstacle(start, obstacle, radius) && !pointInsideObstacle(end, obstacle, radius));
+    return !(pointInsideObstacle(horizontalStart, obstacle, radius) && !pointInsideObstacle(horizontalEnd, obstacle, radius));
   });
   if (movementIsBlocked(from, next)) {
     // The FPS controller resolves X and Z independently so players slide around
@@ -2127,10 +2288,11 @@ export const resolveBotAttackTarget = ({
   return selected ? { ok: true, targetId: selected.id } : { ok: false, reason: "no_valid_target" };
 };
 
-type BotNavigationNode = { key: string; ix: number; iz: number; x: number; z: number };
+type BotNavigationNode = { key: string; ix: number; iz: number; x: number; y: number; z: number };
 type BotNavigationGrid = {
   nodes: Map<string, BotNavigationNode>;
   neighborKeys: Map<string, string[]>;
+  coordinateKeys: Map<string, string[]>;
 };
 const botNavigationGridCache = new WeakMap<object, Map<string, BotNavigationGrid>>();
 
@@ -2139,24 +2301,35 @@ export const findBotNavigationPath = ({
   to,
   obstacles = ARENA_OBSTACLES,
   cellSize = 6,
-  padding = 0.7
+  padding = 0.7,
+  mapId
 }: {
   from: ArenaPosition;
   to: ArenaPosition;
   obstacles?: readonly ArenaObstacle[];
   cellSize?: number;
   padding?: number;
-}): Array<{ x: number; z: number }> => {
-  const start = clampArenaPosition(from);
-  const goal = clampArenaPosition(to);
-  if (hasLineOfSight({ from: start, to: goal, obstacles, padding })) return [{ x: goal.x, z: goal.z }];
+  mapId?: ArenaMapId | string;
+}): Array<{ x: number; y?: number; z: number }> => {
+  const start = clampArenaPosition(from, mapId);
+  const goal = clampArenaPosition(to, mapId);
+  start.y = Number.isFinite(start.y)
+    ? start.y
+    : getArenaGroundHeight(mapId, start.x, start.z) + ARENA_PLAYER_EYE_HEIGHT;
+  goal.y = Number.isFinite(goal.y)
+    ? goal.y
+    : getArenaGroundHeightForPlayer(mapId, goal.x, goal.z, start.y, ARENA_PLAYER_EYE_HEIGHT, 1.4) + ARENA_PLAYER_EYE_HEIGHT;
+  if (Math.abs(Number(start.y) - Number(goal.y)) <= 1.5 && hasLineOfSight({ from: start, to: goal, obstacles, padding })) {
+    return [{ x: goal.x, y: goal.y, z: goal.z }];
+  }
 
   const safeCellSize = Math.max(4, cellSize);
-  const minX = -ARENA_LIMIT_X + padding;
-  const minZ = -ARENA_LIMIT_Z + padding;
-  const xCount = Math.floor((ARENA_LIMIT_X * 2 - padding * 2) / safeCellSize) + 1;
-  const zCount = Math.floor((ARENA_LIMIT_Z * 2 - padding * 2) / safeCellSize) + 1;
-  const cacheKey = `${safeCellSize}:${padding}:${xCount}:${zCount}`;
+  const bounds = getArenaBounds(mapId);
+  const minX = -bounds.limitX + padding;
+  const minZ = -bounds.limitZ + padding;
+  const xCount = Math.floor((bounds.limitX * 2 - padding * 2) / safeCellSize) + 1;
+  const zCount = Math.floor((bounds.limitZ * 2 - padding * 2) / safeCellSize) + 1;
+  const cacheKey = `${mapId ?? "default"}:${safeCellSize}:${padding}:${xCount}:${zCount}`;
   let gridVariants = botNavigationGridCache.get(obstacles as object);
   if (!gridVariants) {
     gridVariants = new Map();
@@ -2165,15 +2338,23 @@ export const findBotNavigationPath = ({
   let grid = gridVariants.get(cacheKey);
   if (!grid) {
     const nodes = new Map<string, BotNavigationNode>();
+    const coordinateKeys = new Map<string, string[]>();
     for (let ix = 0; ix < xCount; ix += 1) {
       for (let iz = 0; iz < zCount; iz += 1) {
         const point = { x: minX + ix * safeCellSize, z: minZ + iz * safeCellSize };
-        if (!hasLineOfSight({ from: point, to: point, obstacles, padding })) continue;
-        const key = `${ix}:${iz}`;
-        nodes.set(key, { key, ix, iz, ...point });
+        for (const [levelIndex, surfaceY] of getArenaFloorSurfaces(mapId, point.x, point.z).entries()) {
+          const eyePoint = { ...point, y: surfaceY + ARENA_PLAYER_EYE_HEIGHT };
+          if (!hasLineOfSight({ from: eyePoint, to: eyePoint, obstacles, padding })) continue;
+          const key = `${ix}:${iz}:${levelIndex}`;
+          nodes.set(key, { key, ix, iz, ...eyePoint });
+          const coordinateKey = `${ix}:${iz}`;
+          const keysAtCoordinate = coordinateKeys.get(coordinateKey) ?? [];
+          keysAtCoordinate.push(key);
+          coordinateKeys.set(coordinateKey, keysAtCoordinate);
+        }
       }
     }
-    grid = { nodes, neighborKeys: new Map() };
+    grid = { nodes, neighborKeys: new Map(), coordinateKeys };
     gridVariants.set(cacheKey, grid);
   }
   const { nodes } = grid;
@@ -2184,6 +2365,7 @@ export const findBotNavigationPath = ({
       .sort((a, b) => a.distance - b.distance);
     const visible: typeof ranked = [];
     for (const entry of ranked) {
+      if (Math.abs(Number(point.y) - entry.node.y) > 2.5) continue;
       if (!hasLineOfSight({ from: point, to: entry.node, obstacles, padding })) continue;
       visible.push(entry);
       if (visible.length >= 24) break;
@@ -2202,7 +2384,7 @@ export const findBotNavigationPath = ({
   for (const { node, distance } of starts) {
     open.add(node.key);
     gScore.set(node.key, distance);
-    fScore.set(node.key, distance + Math.hypot(goal.x - node.x, goal.z - node.z));
+      fScore.set(node.key, distance + Math.hypot(goal.x - node.x, goal.z - node.z, Number(goal.y) - node.y));
   }
 
   let reachedKey: string | undefined;
@@ -2227,34 +2409,40 @@ export const findBotNavigationPath = ({
     if (!neighborKeys) {
       neighborKeys = [];
       for (const [dx, dz] of [[-1, -1], [-1, 0], [-1, 1], [0, -1], [0, 1], [1, -1], [1, 0], [1, 1]] as const) {
-        const neighbor = nodes.get(`${current.ix + dx}:${current.iz + dz}`);
-        if (neighbor && hasLineOfSight({ from: current, to: neighbor, obstacles, padding })) neighborKeys.push(neighbor.key);
+        const candidateKeys =
+          grid.coordinateKeys.get(`${current.ix + dx}:${current.iz + dz}`) ?? [];
+        for (const candidateKey of candidateKeys) {
+          const neighbor = nodes.get(candidateKey);
+          if (!neighbor) continue;
+          if (Math.abs(neighbor.y - current.y) > 3.6) continue;
+          if (hasLineOfSight({ from: current, to: neighbor, obstacles, padding })) neighborKeys.push(neighbor.key);
+        }
       }
       grid.neighborKeys.set(currentKey, neighborKeys);
     }
     for (const neighborKey of neighborKeys) {
       const neighbor = nodes.get(neighborKey)!;
       const tentative = (gScore.get(currentKey) ?? Number.POSITIVE_INFINITY)
-        + Math.hypot(neighbor.x - current.x, neighbor.z - current.z);
+        + Math.hypot(neighbor.x - current.x, neighbor.z - current.z, neighbor.y - current.y);
       if (tentative >= (gScore.get(neighbor.key) ?? Number.POSITIVE_INFINITY)) continue;
       cameFrom.set(neighbor.key, currentKey);
       gScore.set(neighbor.key, tentative);
-      fScore.set(neighbor.key, tentative + Math.hypot(goal.x - neighbor.x, goal.z - neighbor.z));
+      fScore.set(neighbor.key, tentative + Math.hypot(goal.x - neighbor.x, goal.z - neighbor.z, Number(goal.y) - neighbor.y));
       open.add(neighbor.key);
     }
   }
   if (!reachedKey) return [];
 
-  const rawPath: Array<{ x: number; z: number }> = [];
+  const rawPath: Array<{ x: number; y?: number; z: number }> = [];
   let pathKey: string | undefined = reachedKey;
   while (pathKey) {
     const node = nodes.get(pathKey);
-    if (node) rawPath.unshift({ x: node.x, z: node.z });
+    if (node) rawPath.unshift({ x: node.x, y: node.y, z: node.z });
     pathKey = cameFrom.get(pathKey);
   }
-  rawPath.push({ x: goal.x, z: goal.z });
+  rawPath.push({ x: goal.x, y: goal.y, z: goal.z });
 
-  const smoothed: Array<{ x: number; z: number }> = [];
+  const smoothed: Array<{ x: number; y?: number; z: number }> = [];
   let anchor: ArenaPosition = start;
   let index = 0;
   while (index < rawPath.length) {
@@ -2279,7 +2467,8 @@ export const resolveBotRoamStep = ({
   elapsedMs,
   speed,
   obstacles = ARENA_OBSTACLES,
-  detourDirection = 1
+  detourDirection = 1,
+  mapId
 }: {
   current: ArenaPosition;
   desired: ArenaPosition;
@@ -2287,13 +2476,15 @@ export const resolveBotRoamStep = ({
   speed: number;
   obstacles?: readonly ArenaObstacle[];
   detourDirection?: -1 | 1;
+  mapId?: ArenaMapId | string;
 }): AuthoritativeMovementResult => {
   const direct = resolveAuthoritativeMovement({
     current,
     requested: desired,
     elapsedMs,
     maxSpeed: speed,
-    obstacles
+    obstacles,
+    mapId
   });
   if (!direct.blocked) return direct;
 
@@ -2325,7 +2516,8 @@ export const resolveBotRoamStep = ({
       },
       elapsedMs,
       maxSpeed: speed,
-      obstacles
+      obstacles,
+      mapId
     });
     if (!detour.blocked) return detour;
   }

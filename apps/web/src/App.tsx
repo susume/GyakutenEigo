@@ -46,6 +46,10 @@ import {
   canPlayerFireInMode,
   getCosmeticProgress,
   getArenaGroundHeight,
+  ARENA_PLAYER_EYE_HEIGHT,
+  ARENA_SCALE,
+  TEMPLE_RUNOFF_MAIN_LEVEL_Y,
+  TEMPLE_RUNOFF_UPPER_LEVEL_Y,
   getPlayerPerks,
   getPlayerWeaponId,
   getPlayerWeaponIdForMode,
@@ -750,10 +754,22 @@ function CharacterLab() {
   const [tick, setTick] = useState(0);
   const [labMapId, setLabMapId] = useState<ArenaMapId>("desert_citadel");
   const [labQuality, setLabQuality] = useState<ArenaQuality>("balanced");
+  const [labView, setLabView] = useState<"overview" | "fps">("overview");
+  const [labLevel, setLabLevel] = useState<"lower" | "main" | "upper">("main");
   const session = useMemo(() => {
     const generated = createCharacterDebugSession({ count, tick });
-    return { ...generated, settings: { ...generated.settings, mapId: labMapId } };
-  }, [count, tick, labMapId]);
+    if (labMapId !== "temple_runoff") return { ...generated, settings: { ...generated.settings, mapId: labMapId } };
+    const testPositions = {
+      lower: { x: 0, y: ARENA_PLAYER_EYE_HEIGHT, z: 0, facing: -Math.PI / 2 },
+      main: { x: -52 * ARENA_SCALE, y: TEMPLE_RUNOFF_MAIN_LEVEL_Y + ARENA_PLAYER_EYE_HEIGHT, z: 100 * ARENA_SCALE, facing: 0 },
+      upper: { x: 0, y: TEMPLE_RUNOFF_UPPER_LEVEL_Y + ARENA_PLAYER_EYE_HEIGHT, z: 40 * ARENA_SCALE, facing: 0 }
+    };
+    return {
+      ...generated,
+      settings: { ...generated.settings, mapId: labMapId },
+      players: generated.players.map((player, index) => index === 0 ? { ...player, ...testPositions[labLevel] } : player)
+    };
+  }, [count, tick, labMapId, labLevel]);
   const summary = useMemo(() => summarizeCharacterDebugSession(session), [session]);
 
   useEffect(() => {
@@ -795,6 +811,17 @@ function CharacterLab() {
             <button className={labQuality === "balanced" ? "active" : ""} onClick={() => setLabQuality("balanced")}>Medium</button>
             <button className={labQuality === "high" ? "active" : ""} onClick={() => setLabQuality("high")}>High</button>
           </div>
+          <div className="button-row" aria-label="Character lab camera">
+            <button className={labView === "overview" ? "active" : ""} onClick={() => setLabView("overview")}>Overview</button>
+            <button className={labView === "fps" ? "active" : ""} onClick={() => setLabView("fps")}>Playable FPS</button>
+          </div>
+          {labMapId === "temple_runoff" && labView === "fps" && (
+            <div className="button-row" aria-label="Temple test level">
+              <button className={labLevel === "lower" ? "active" : ""} onClick={() => setLabLevel("lower")}>River ↓</button>
+              <button className={labLevel === "main" ? "active" : ""} onClick={() => setLabLevel("main")}>Main •</button>
+              <button className={labLevel === "upper" ? "active" : ""} onClick={() => setLabLevel("upper")}>Bridge ↑</button>
+            </div>
+          )}
           <div className="lab-metrics">
             <span><strong>{summary.total}</strong>Total</span>
             <span><strong>{summary.alive}</strong>Alive</span>
@@ -822,7 +849,11 @@ function CharacterLab() {
         <div className="character-lab-arena">
           <Suspense fallback={<ArenaLoading label="Loading character lab" />}>
             <ArenaPreview
+              key={`${labMapId}:${labView}:${labLevel}`}
               session={session}
+              currentPlayer={labView === "fps" ? session.players[0] : undefined}
+              view={labView}
+              suppressHint={labView === "fps"}
               debugOverlay
               debugLabel={`${count}-player character stress`}
               quality={labQuality}
@@ -1935,7 +1966,7 @@ function SessionManager({
           <strong>{selectedMap.title}</strong>
           <span>{selectedMap.districts.slice(0, 3).join(" · ")}</span>
           {selectedMap.id === "iron_junction" && <small>Generated from the Iron Junction industrial railway brief · three lanes · balanced East/West spawns</small>}
-          {selectedMap.id === "temple_runoff" && <small>Four primary routes · four protected spawn exits · Rain God Statue landmark · optimized jungle batching</small>}
+          {selectedMap.id === "temple_runoff" && <small>Three playable levels · eight canal ramps · high Sun Bridge · 40-player spawn fan · optimized jungle batching</small>}
         </div>
         {settings.gameMode === "flag" && (
           <label>

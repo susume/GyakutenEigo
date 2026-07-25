@@ -37,6 +37,7 @@ import {
   isWeaponGearId,
   getArenaObstacles,
   getArenaEyeHeight,
+  getArenaGroundHeightForPlayer,
   findBotNavigationPath,
   getRoundRemainingSeconds,
   getRoundResetLoadout,
@@ -1005,14 +1006,22 @@ const applyAuthoritativePosition = (
   const elapsedMs = nowMs - lastMoveAt;
   const requestedX = Number.isFinite(Number(requested.x)) ? Number(requested.x) : player.x ?? fallback.x;
   const requestedZ = Number.isFinite(Number(requested.z)) ? Number(requested.z) : player.z ?? fallback.z;
-  const requestedGroundY = getArenaEyeHeight(session.settings.mapId, requestedX, requestedZ) - ARENA_PLAYER_EYE_HEIGHT;
+  const currentEyeY = player.y ?? fallback.y ?? getArenaEyeHeight(session.settings.mapId, player.x ?? fallback.x, player.z ?? fallback.z);
+  const requestedEyeY = Number.isFinite(Number(requested.y)) ? Number(requested.y) : currentEyeY;
+  const requestedGroundY = getArenaGroundHeightForPlayer(
+    session.settings.mapId,
+    requestedX,
+    requestedZ,
+    requestedEyeY,
+    ARENA_PLAYER_EYE_HEIGHT
+  );
   const requestedStandingY = requestedGroundY + ARENA_PLAYER_EYE_HEIGHT;
   const requestedMovementY = Number.isFinite(Number(requested.y))
     ? Math.min(requestedStandingY + 4.5, Math.max(requestedStandingY, Number(requested.y)))
     : requestedStandingY;
   const currentPosition = {
     x: player.x ?? fallback.x,
-    y: player.y ?? fallback.y ?? getArenaEyeHeight(session.settings.mapId, player.x ?? fallback.x, player.z ?? fallback.z),
+    y: currentEyeY,
     z: player.z ?? fallback.z,
     facing: player.facing ?? fallback.facing
   };
@@ -1043,11 +1052,12 @@ const applyAuthoritativePosition = (
           : PLAYER_MAX_SPEED
     ) * getPlayerMoveSpeedMultiplier(player),
     obstacles: getArenaObstacles(session.settings.mapId),
-    groundY: requestedGroundY
+    groundY: requestedGroundY,
+    mapId: session.settings.mapId
   });
   playerMoveTimestamps.set(player.id, nowMs);
   player.x = position.x;
-  player.y = getArenaEyeHeight(session.settings.mapId, position.x, position.z);
+  player.y = position.y ?? requestedStandingY;
   player.z = position.z;
   player.facing = position.facing;
   if (session.settings.gameMode === "zombie" && player.role !== "zombie") {
@@ -1126,16 +1136,26 @@ const canBotSee = (
 
 const scaledPoint = (x: number, z: number) => ({ x: x * ARENA_SCALE, z: z * ARENA_SCALE });
 
-const botBasePoint = (team: Team) => scaledPoint(team === "blue" ? -142 : 142, 0);
-const botEnemyBasePoint = (team: Team) => scaledPoint(team === "blue" ? 142 : -142, 0);
+const botBasePoint = (team: Team, mapId?: string) =>
+  scaledPoint((team === "blue" ? -1 : 1) * (mapId === "temple_runoff" ? 205 : 142), 0);
+const botEnemyBasePoint = (team: Team, mapId?: string) =>
+  scaledPoint((team === "blue" ? 1 : -1) * (mapId === "temple_runoff" ? 205 : 142), 0);
 
-const getBotPatrolPoints = (team: Team) => [
-  scaledPoint(0, -84),
-  scaledPoint(team === "blue" ? -42 : 42, -28),
-  scaledPoint(0, 28),
-  scaledPoint(team === "blue" ? 42 : -42, 84),
-  botBasePoint(team)
-];
+const getBotPatrolPoints = (team: Team, mapId?: string) => mapId === "temple_runoff"
+  ? [
+      scaledPoint(team === "blue" ? -136 : 136, -36),
+      scaledPoint(team === "blue" ? -82 : 82, 0),
+      scaledPoint(0, team === "blue" ? -118 : 118),
+      scaledPoint(team === "blue" ? 52 : -52, 0),
+      botBasePoint(team, mapId)
+    ]
+  : [
+      scaledPoint(0, -84),
+      scaledPoint(team === "blue" ? -42 : 42, -28),
+      scaledPoint(0, 28),
+      scaledPoint(team === "blue" ? 42 : -42, 84),
+      botBasePoint(team, mapId)
+    ];
 
 const findBotCover = (
   session: GameSession,
@@ -1158,7 +1178,7 @@ const findBotCover = (
       { x: obstacle.x + (awayZ / awayDistance) * padding, z: obstacle.z - (awayX / awayDistance) * padding }
     ];
     for (const point of points) {
-      const candidate = clampArenaPosition({ ...point, facing: origin.facing ?? 0 });
+      const candidate = clampArenaPosition({ ...point, facing: origin.facing ?? 0 }, session.settings.mapId);
       if (hasLineOfSight({ from: threatPosition, to: candidate, obstacles })) continue;
       const score = horizontalDistance(origin, candidate) - horizontalDistance(threatPosition, candidate) * 0.25;
       candidates.push({ ...candidate, score });
@@ -1167,35 +1187,35 @@ const findBotCover = (
   return candidates.sort((a, b) => a.score - b.score)[0];
 };
 
-const applyBotSpacing = (session: GameSession, bot: PlayerSession, desired: { x: number; z: number }) => {
+const applyBotSpacing = (session: GameSession, bot: PlayerSession, desired: { x: number; y?: number; z: number }) => {
   const spaced = resolveBotSpacingGoal({
     botId: bot.id,
     botPosition: botPosition(bot),
     desired,
     teammates: session.players.filter((player) => player.isAlive && player.team === bot.team)
   });
-  return clampArenaPosition({ ...spaced, facing: bot.facing ?? 0 });
+  return clampArenaPosition({ ...spaced, ...(Number.isFinite(desired.y) ? { y: desired.y } : {}), facing: bot.facing ?? 0 }, session.settings.mapId);
 };
 
 const getBotObjectiveGoal = (session: GameSession, bot: PlayerSession, brain: BotMemory, state: BotState) => {
   const flag = session.flag;
   const carrier = flag?.carrierId ? session.players.find((player) => player.id === flag.carrierId) : undefined;
-  if (flag?.state === "carried" && carrier?.id === bot.id) return botEnemyBasePoint(bot.team);
+  if (flag?.state === "carried" && carrier?.id === bot.id) return botEnemyBasePoint(bot.team, session.settings.mapId);
   if (state === "escort_flag_carrier" && carrier && carrier.team === bot.team) return { x: carrier.x ?? 0, z: (carrier.z ?? 0) + brain.strafeDirection * 8 };
   if (state === "attack_flag_carrier" && carrier && carrier.team !== bot.team) return botPosition(carrier);
   if (state === "defend_objective" && flag && ["placed", "being_captured"].includes(flag.state)) return flag.position;
   if (state === "move_to_objective" || state === "defend_objective") {
     if (flag && bot.team === "red" && ["available", "dropped"].includes(flag.state)) return flag.position;
     if (flag && flag.state === "carried" && carrier) return botPosition(carrier);
-    return bot.team === "blue" ? botBasePoint(bot.team) : botEnemyBasePoint(bot.team);
+    return bot.team === "blue" ? botBasePoint(bot.team, session.settings.mapId) : botEnemyBasePoint(bot.team, session.settings.mapId);
   }
   if (state === "flank") {
     const side = brain.routeIndex % 2 === 0 ? -1 : 1;
     return scaledPoint(side * 82, brain.strafeDirection * 72);
   }
   if (state === "search" && brain.lastSeenPosition) return brain.lastSeenPosition;
-  if (state === "retreat" || state === "regroup" || state === "take_cover") return botBasePoint(bot.team);
-  const patrol = getBotPatrolPoints(bot.team);
+  if (state === "retreat" || state === "regroup" || state === "take_cover") return botBasePoint(bot.team, session.settings.mapId);
+  const patrol = getBotPatrolPoints(bot.team, session.settings.mapId);
   return patrol[brain.routeIndex % patrol.length];
 };
 
@@ -1510,7 +1530,7 @@ const advanceBots = () => {
           }
         }
       }
-      let rawGoal = clampArenaPosition({ ...goal, facing: bot.facing ?? 0 });
+      let rawGoal = clampArenaPosition({ ...goal, facing: bot.facing ?? 0 }, session.settings.mapId);
       if (shouldAdvanceBotPatrolRoute({
         state: brain.state,
         hasTarget: Boolean(target),
@@ -1519,7 +1539,7 @@ const advanceBots = () => {
         brain.routeIndex += 1;
         brain.navigationPath = undefined;
         goal = getBotObjectiveGoal(session, bot, brain, brain.state);
-        rawGoal = clampArenaPosition({ ...goal, facing: bot.facing ?? 0 });
+        rawGoal = clampArenaPosition({ ...goal, facing: bot.facing ?? 0 }, session.settings.mapId);
       }
       const navigationGoalChanged = !brain.navigationGoal
         || horizontalDistance({ ...brain.navigationGoal, facing: 0 }, rawGoal) > 10;
@@ -1533,7 +1553,8 @@ const advanceBots = () => {
           brain.navigationPath = findBotNavigationPath({
             from: botPosition(bot),
             to: rawGoal,
-            obstacles
+            obstacles,
+            mapId: session.settings.mapId
           });
         }
         goal = brain.navigationPath?.[0] ?? rawGoal;
@@ -1541,10 +1562,10 @@ const advanceBots = () => {
         brain.navigationPath = undefined;
         goal = rawGoal;
       }
-      const desired = applyBotSpacing(session, bot, clampArenaPosition({ ...goal, facing: bot.facing ?? 0 }));
+      const desired = applyBotSpacing(session, bot, clampArenaPosition({ ...goal, facing: bot.facing ?? 0 }, session.settings.mapId));
       desired.facing = Math.atan2(oldX - desired.x, oldZ - desired.z);
       const next = resolveBotRoamStep({
-        current: { x: oldX, z: oldZ, facing: bot.facing ?? desired.facing },
+        current: { x: oldX, y: oldY, z: oldZ, facing: bot.facing ?? desired.facing },
         desired,
         elapsedMs: BOT_TICK_MS,
         speed: (
@@ -1555,11 +1576,20 @@ const advanceBots = () => {
               : 19.5
         ) * getPlayerMoveSpeedMultiplier(bot),
         obstacles,
-        detourDirection: brain.strafeDirection
+        detourDirection: brain.strafeDirection,
+        mapId: session.settings.mapId
       });
       botPreviousPositions.set(bot.id, { x: oldX, y: oldY, z: oldZ });
       bot.x = next.x;
-      bot.y = getArenaEyeHeight(session.settings.mapId, next.x, next.z);
+      const botGroundY = getArenaGroundHeightForPlayer(
+        session.settings.mapId,
+        next.x,
+        next.z,
+        oldY,
+        ARENA_PLAYER_EYE_HEIGHT,
+        1.4
+      );
+      bot.y = botGroundY + ARENA_PLAYER_EYE_HEIGHT;
       bot.z = next.z;
       const movedDistance = Math.hypot(next.x - oldX, next.z - oldZ);
       if (isZombieHumanBot) {
@@ -2567,7 +2597,8 @@ const buyGear = (session: GameSession, player: PlayerSession, gearId: unknown): 
   const purchase = resolveGearPurchase({
     player,
     gear,
-    requireBase: session.settings.gameMode === "flag"
+    requireBase: session.settings.gameMode === "flag",
+    mapId: session.settings.mapId
   });
   if (!purchase.ok) {
     return failStudentCommand(

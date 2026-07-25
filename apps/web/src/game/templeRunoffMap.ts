@@ -1,5 +1,17 @@
-import { ARENA_SCALE, TEMPLE_RUNOFF_UPPER_LEVEL_Y, getArenaGroundHeight } from "@quizstrike/shared";
-import type { ArenaMapDefinition, CitadelBlock, CitadelCylinder, CitadelFloorMark, CitadelProp, CitadelSign } from "./mapTypes";
+import {
+  ARENA_SCALE,
+  TEMPLE_RUNOFF_MAIN_LEVEL_Y,
+  TEMPLE_RUNOFF_UPPER_LEVEL_Y,
+  getArenaGroundHeight
+} from "@quizstrike/shared";
+import type {
+  ArenaMapDefinition,
+  CitadelBlock,
+  CitadelCylinder,
+  CitadelFloorMark,
+  CitadelProp,
+  CitadelSign
+} from "./mapTypes";
 
 const scale = (value: number) => Number((value * ARENA_SCALE).toFixed(2));
 const scaleRect = <T extends { x: number; z: number; w: number; d: number }>(item: T): T =>
@@ -8,201 +20,177 @@ const scaleCylinder = <T extends { x: number; z: number; radius: number }>(item:
   ({ ...item, x: scale(item.x), z: scale(item.z), radius: scale(item.radius) }) as T;
 const scalePoint = <T extends { x: number; z: number }>(item: T): T =>
   ({ ...item, x: scale(item.x), z: scale(item.z) }) as T;
-const templeGround = (x: number, z: number) => getArenaGroundHeight("temple_runoff", x, z);
 
 export const TEMPLE_RUNOFF: ArenaMapDefinition = {
   id: "temple_runoff",
-  title: "Temple Runoff",
-  description: "A rain-soaked jungle sanctuary where a sun bridge, flooded canal, temple court, and root-choked trail create four distinct combat rhythms.",
-  footprint: { width: scale(350), depth: scale(320) },
+  title: "Temple Runoff 2.0",
+  description: "A flooded jungle city built as three stacked combat layers around a clear ceremonial canal and its high central bridge.",
+  footprint: { width: scale(470), depth: scale(400) },
   districts: [
-    "Sun Bridge · exposed upper crossing",
-    "Flooded Canal · fast lower route",
-    "Rain Court · broad central brawl",
-    "Rootway · protected jungle flank",
-    "Sluice Tunnels · hidden rotation",
-    "Survey Camp · outer landmark"
+    "Blue Temple Complex · western team staging",
+    "Flooded Ceremonial Canal · continuous lower lane",
+    "Rain Court · open main-level team fight",
+    "Sun Bridge · iconic elevated crossing",
+    "Jungle Ruins · close-range northern flank",
+    "Upper Terrace · limited long-range position"
   ],
   routes: [
-    "Sun Bridge · medium-long range",
-    "Flooded Canal · fast close-medium route",
-    "Rain Court · flexible team-fight lane",
-    "Rootway · safer close-range flank",
-    "Sluice Tunnels · two underground links",
-    "Broken Causeway · risky cross-lane shortcut"
+    "Lower Waterway · clean close-medium flanking lane",
+    "Temple Street · broad primary combat route",
+    "Jungle Ruins · broken-sightline quick-blaster flank",
+    "Sun Bridge · elevated medium-long crossing",
+    "Sluice Tunnels · protected river access",
+    "Broken Ford · fast exposed cross-canal rotation"
   ],
   palette: {
-    sky: "#6fa5a0",
-    fog: "#8db3a3",
-    floor: "#756947",
+    sky: "#80aaa1",
+    fog: "#a4bcaa",
+    floor: "#6f6b4d",
     floorTexture: "floor",
-    accent: "#2bb9b0"
+    accent: "#3aaea8"
   }
 };
 
-const sandstone = "#a98b55";
-const sunStone = "#c4a565";
-const mossStone = "#65704b";
-const deepMoss = "#3f563f";
-const darkStone = "#4b4c3c";
-const timber = "#755033";
-const water = "#35b8b3";
-const canvas = "#c06b4d";
+const sandstone = "#aa9162";
+const sunStone = "#c5ab70";
+const mossStone = "#697653";
+const dampStone = "#4f6657";
+const deepMoss = "#405542";
+const darkStone = "#454c43";
+const timber = "#6b4b31";
+const water = "#399e9e";
+const agedPlaster = "#b7a779";
 
-/**
- * Authored in the same 350 × 320 source grid as the other arenas, then scaled once.
- * Colliding block IDs and dimensions are mirrored in the shared authoritative proxies.
- */
+const mainFloorCenter = TEMPLE_RUNOFF_MAIN_LEVEL_Y - 0.7;
+const upperFloorCenter = TEMPLE_RUNOFF_UPPER_LEVEL_Y - 0.7;
+const centralRampAngle = Math.atan2(9, scale(24));
+const sideRampAngle = Math.atan2(9, scale(30));
+const riverRampAngle = Math.atan2(8, scale(24));
+
 const rawBlocks: CitadelBlock[] = [
-  { id: "temple-north-cliff", label: "North Escarpment", x: 0, z: -156, w: 350, d: 8, h: 18, color: darkStone, material: "stone", style: "wall", collides: true },
-  { id: "temple-south-cliff", label: "South Jungle Wall", x: 0, z: 156, w: 350, d: 8, h: 16, color: deepMoss, material: "stone", style: "wall", collides: true },
-  { id: "temple-west-cliff", x: -171, z: 0, w: 8, d: 320, h: 16, color: darkStone, material: "stone", style: "wall", collides: true },
-  { id: "temple-east-cliff", x: 171, z: 0, w: 8, d: 320, h: 16, color: darkStone, material: "stone", style: "wall", collides: true },
-  { id: "temple-upper-north-floor", label: "Upper Monument Terrace", x: 0, z: -109, w: 334, d: 94, h: 2, y: TEMPLE_RUNOFF_UPPER_LEVEL_Y - 1, color: sandstone, material: "stone", style: "sandbank" },
-  { id: "temple-upper-south-floor", label: "Upper Temple Terrace", x: 0, z: 67, w: 334, d: 170, h: 2, y: TEMPLE_RUNOFF_UPPER_LEVEL_Y - 1, color: mossStone, material: "stone", style: "sandbank" },
+  { id: "temple-north-cliff", label: "North Jungle Escarpment", x: 0, z: -196, w: 470, d: 8, h: 28, y: 14, color: darkStone, material: "stone", style: "wall", collides: true },
+  { id: "temple-south-cliff", label: "South Temple Wall", x: 0, z: 196, w: 470, d: 8, h: 28, y: 14, color: deepMoss, material: "stone", style: "wall", collides: true },
+  { id: "temple-west-cliff", x: -231, z: 0, w: 8, d: 400, h: 28, y: 14, color: darkStone, material: "stone", style: "wall", collides: true },
+  { id: "temple-east-cliff", x: 231, z: 0, w: 8, d: 400, h: 28, y: 14, color: darkStone, material: "stone", style: "wall", collides: true },
 
-  { id: "blue-base-screen-north", label: "Blue Shrine", x: -128, z: -144, w: 7, d: 22, h: 10, color: mossStone, material: "stone", style: "wall", collides: true },
-  { id: "blue-base-screen-a", x: -128, z: -77, w: 7, d: 30, h: 10, color: mossStone, material: "stone", style: "wall", collides: true },
-  { id: "blue-base-screen-b", x: -128, z: -5, w: 7, d: 30, h: 10, color: mossStone, material: "stone", style: "wall", collides: true },
-  { id: "blue-base-screen-c", x: -128, z: 66, w: 7, d: 28, h: 10, color: mossStone, material: "stone", style: "wall", collides: true },
-  { id: "blue-base-screen-south", x: -128, z: 140, w: 7, d: 24, h: 10, color: mossStone, material: "stone", style: "wall", collides: true },
-  { id: "red-base-screen-north", label: "Red Expedition", x: 128, z: -144, w: 7, d: 22, h: 10, color: sandstone, material: "stone", style: "wall", collides: true },
-  { id: "red-base-screen-a", x: 128, z: -77, w: 7, d: 30, h: 10, color: sandstone, material: "stone", style: "wall", collides: true },
-  { id: "red-base-screen-b", x: 128, z: -5, w: 7, d: 30, h: 10, color: sandstone, material: "stone", style: "wall", collides: true },
-  { id: "red-base-screen-c", x: 128, z: 66, w: 7, d: 28, h: 10, color: sandstone, material: "stone", style: "wall", collides: true },
-  { id: "red-base-screen-south", x: 128, z: 140, w: 7, d: 24, h: 10, color: sandstone, material: "stone", style: "wall", collides: true },
-  { id: "blue-spawn-idol", x: -151, z: 8, w: 13, d: 17, h: 7, color: deepMoss, material: "stone", style: "ruin", collides: true },
-  { id: "red-spawn-pavilion", x: 151, z: 8, w: 14, d: 17, h: 7, color: timber, material: "wood", style: "shed", collides: true },
+  { id: "temple-main-north-floor", label: "Jungle Temple Level", x: 0, z: -122, w: 454, d: 148, h: 1.4, y: mainFloorCenter, color: mossStone, material: "stone", style: "sandbank" },
+  { id: "temple-main-south-floor", label: "Rain Court Level", x: 0, z: 122, w: 454, d: 148, h: 1.4, y: mainFloorCenter, color: sandstone, material: "stone", style: "sandbank" },
+  { id: "north-lip-far-west", x: -188.5, z: -36, w: 77, d: 24, h: 1.4, y: mainFloorCenter, color: mossStone, material: "stone", style: "sandbank" },
+  { id: "north-lip-west", x: -94, z: -36, w: 56, d: 24, h: 1.4, y: mainFloorCenter, color: mossStone, material: "stone", style: "sandbank" },
+  { id: "north-lip-center", x: 1.5, z: -36, w: 79, d: 24, h: 1.4, y: mainFloorCenter, color: mossStone, material: "stone", style: "sandbank" },
+  { id: "north-lip-east", x: 95.5, z: -36, w: 53, d: 24, h: 1.4, y: mainFloorCenter, color: mossStone, material: "stone", style: "sandbank" },
+  { id: "north-lip-far-east", x: 188.5, z: -36, w: 77, d: 24, h: 1.4, y: mainFloorCenter, color: mossStone, material: "stone", style: "sandbank" },
+  { id: "south-lip-far-west", x: -188.5, z: 36, w: 77, d: 24, h: 1.4, y: mainFloorCenter, color: sandstone, material: "stone", style: "sandbank" },
+  { id: "south-lip-west", x: -94, z: 36, w: 56, d: 24, h: 1.4, y: mainFloorCenter, color: sandstone, material: "stone", style: "sandbank" },
+  { id: "south-lip-center", x: 1.5, z: 36, w: 79, d: 24, h: 1.4, y: mainFloorCenter, color: sandstone, material: "stone", style: "sandbank" },
+  { id: "south-lip-east", x: 95.5, z: 36, w: 53, d: 24, h: 1.4, y: mainFloorCenter, color: sandstone, material: "stone", style: "sandbank" },
+  { id: "south-lip-far-east", x: 188.5, z: 36, w: 77, d: 24, h: 1.4, y: mainFloorCenter, color: sandstone, material: "stone", style: "sandbank" },
+  { id: "ceremonial-canal-water", label: "Lower Waterway", x: 0, z: 0, w: 404, d: 48, h: 0.16, y: 0.03, color: water, material: "water", style: "channel" },
+  ...[-136, -52, 55, 136].flatMap((x, index): CitadelBlock[] => [
+    { id: `river-ramp-north-${index + 1}`, x, z: -36, w: 28, d: 28, h: 1, y: 4, rotationX: riverRampAngle, color: dampStone, material: "stone", style: "bridge" },
+    { id: `river-ramp-south-${index + 1}`, x, z: 36, w: 28, d: 28, h: 1, y: 4, rotationX: -riverRampAngle, color: sandstone, material: "stone", style: "bridge" }
+  ]),
 
-  { id: "sun-bridge-deck-west", label: "Sun Bridge", x: -76, z: -112, w: 78, d: 18, h: 0.55, y: 0.08, color: sunStone, material: "stone", style: "bridge" },
-  { id: "sun-bridge-deck-mid", x: 5, z: -112, w: 70, d: 18, h: 0.55, y: 0.08, color: sunStone, material: "stone", style: "bridge" },
-  { id: "sun-bridge-deck-east", x: 78, z: -112, w: 62, d: 18, h: 0.55, y: 0.08, color: sunStone, material: "stone", style: "bridge" },
-  { id: "sun-parapet-west-a", x: -91, z: -124, w: 35, d: 5, h: 5, color: sandstone, material: "stone", style: "ruin", collides: true },
-  { id: "sun-parapet-west-b", x: -41, z: -100, w: 24, d: 5, h: 4, color: mossStone, material: "stone", style: "ruin", collides: true },
-  { id: "sun-parapet-mid-a", x: -3, z: -124, w: 20, d: 5, h: 5, color: sandstone, material: "stone", style: "ruin", collides: true },
-  { id: "sun-parapet-mid-b", x: 37, z: -100, w: 22, d: 5, h: 4, color: mossStone, material: "stone", style: "ruin", collides: true },
-  { id: "sun-parapet-east", x: 88, z: -124, w: 34, d: 5, h: 5, color: sandstone, material: "stone", style: "ruin", collides: true },
-  { id: "sun-repair-screen", x: 69, z: -110, w: 13, d: 7, h: 3.2, color: timber, material: "wood", style: "bridge", collides: true },
+  { id: "canal-bank-north-far-west", x: -188.5, z: -25, w: 77, d: 5, h: 8, y: 4, color: dampStone, material: "stone", style: "wall", collides: true },
+  { id: "canal-bank-north-west", x: -94, z: -25, w: 56, d: 5, h: 8, y: 4, color: darkStone, material: "stone", style: "wall", collides: true },
+  { id: "canal-bank-north-center", x: 1.5, z: -25, w: 79, d: 5, h: 8, y: 4, color: mossStone, material: "stone", style: "ruin", collides: true },
+  { id: "canal-bank-north-east", x: 95.5, z: -25, w: 53, d: 5, h: 8, y: 4, color: dampStone, material: "stone", style: "wall", collides: true },
+  { id: "canal-bank-north-far-east", x: 188.5, z: -25, w: 77, d: 5, h: 8, y: 4, color: dampStone, material: "stone", style: "wall", collides: true },
+  { id: "canal-bank-south-far-west", x: -188.5, z: 25, w: 77, d: 5, h: 8, y: 4, color: darkStone, material: "stone", style: "wall", collides: true },
+  { id: "canal-bank-south-west", x: -94, z: 25, w: 56, d: 5, h: 8, y: 4, color: dampStone, material: "stone", style: "wall", collides: true },
+  { id: "canal-bank-south-center", x: 1.5, z: 25, w: 79, d: 5, h: 8, y: 4, color: sandstone, material: "stone", style: "ruin", collides: true },
+  { id: "canal-bank-south-east", x: 95.5, z: 25, w: 53, d: 5, h: 8, y: 4, color: mossStone, material: "stone", style: "wall", collides: true },
+  { id: "canal-bank-south-far-east", x: 188.5, z: 25, w: 77, d: 5, h: 8, y: 4, color: mossStone, material: "stone", style: "wall", collides: true },
 
-  { id: "canal-water", label: "Flooded Canal", x: 0, z: -43, w: 252, d: 26, h: 0.18, y: 0.02, color: water, material: "water", style: "channel" },
-  { id: "canal-bank-north-west", x: -88, z: -61, w: 68, d: 6, h: 5, color: darkStone, material: "stone", style: "wall", collides: true },
-  { id: "canal-bank-north-mid", x: 0, z: -61, w: 46, d: 6, h: 4, color: mossStone, material: "stone", style: "ruin", collides: true },
-  { id: "canal-bank-north-east", x: 88, z: -61, w: 68, d: 6, h: 5, color: darkStone, material: "stone", style: "wall", collides: true },
-  { id: "canal-bank-south-west", x: -83, z: -25, w: 58, d: 6, h: 5, color: mossStone, material: "stone", style: "wall", collides: true },
-  { id: "canal-bank-south-mid", x: 10, z: -25, w: 52, d: 6, h: 4, color: sandstone, material: "stone", style: "ruin", collides: true },
-  { id: "canal-bank-south-east", x: 91, z: -25, w: 50, d: 6, h: 5, color: mossStone, material: "stone", style: "wall", collides: true },
-  { id: "canal-pillar-cover-west", x: -46, z: -43, w: 9, d: 9, h: 7, color: sandstone, material: "stone", style: "tower", collides: true },
-  { id: "canal-pillar-cover-east", x: 46, z: -43, w: 9, d: 9, h: 7, color: mossStone, material: "stone", style: "tower", collides: true },
-  { id: "canal-debris-cover", x: 5, z: -46, w: 15, d: 7, h: 2.4, color: timber, material: "wood", style: "bridge", collides: true },
+  { id: "sun-bridge-deck", label: "Sun Bridge", x: 0, z: 0, w: 36, d: 116, h: 1.4, y: upperFloorCenter, color: sunStone, material: "stone", style: "bridge" },
+  { id: "sun-bridge-ramp-north", x: 0, z: -70, w: 36, d: 28, h: 1.2, y: 12.5, rotationX: -centralRampAngle, color: sunStone, material: "stone", style: "bridge" },
+  { id: "sun-bridge-ramp-south", x: 0, z: 70, w: 36, d: 28, h: 1.2, y: 12.5, rotationX: centralRampAngle, color: sunStone, material: "stone", style: "bridge" },
+  { id: "sun-bridge-support-nw", x: -14, z: -35, w: 7, d: 8, h: 17, y: 8.5, color: darkStone, material: "stone", style: "tower", collides: true },
+  { id: "sun-bridge-support-ne", x: 14, z: -35, w: 7, d: 8, h: 17, y: 8.5, color: darkStone, material: "stone", style: "tower", collides: true },
+  { id: "sun-bridge-support-sw", x: -14, z: 35, w: 7, d: 8, h: 17, y: 8.5, color: dampStone, material: "stone", style: "tower", collides: true },
+  { id: "sun-bridge-support-se", x: 14, z: 35, w: 7, d: 8, h: 17, y: 8.5, color: dampStone, material: "stone", style: "tower", collides: true },
+  { id: "sun-parapet-west", x: -19, z: -18, w: 4, d: 44, h: 4, y: 19, color: sandstone, material: "stone", style: "ruin", collides: true },
+  { id: "sun-parapet-east", x: 19, z: 17, w: 4, d: 46, h: 4, y: 19, color: mossStone, material: "stone", style: "ruin", collides: true },
 
-  { id: "court-northwest-ruin", label: "Rain Court", x: -78, z: 18, w: 32, d: 10, h: 8, color: mossStone, material: "stone", style: "ruin", collides: true },
-  { id: "court-northeast-ruin", x: 78, z: 16, w: 30, d: 10, h: 8, color: sandstone, material: "stone", style: "ruin", collides: true },
-  { id: "court-southwest-ruin", x: -76, z: 61, w: 28, d: 10, h: 7, color: sandstone, material: "stone", style: "ruin", collides: true },
-  { id: "court-southeast-ruin", x: 76, z: 60, w: 34, d: 10, h: 7, color: mossStone, material: "stone", style: "ruin", collides: true },
-  { id: "court-altar-west", x: -28, z: 39, w: 16, d: 9, h: 2.8, color: sunStone, material: "stone", style: "ruin", collides: true },
-  { id: "court-altar-east", x: 32, z: 30, w: 16, d: 9, h: 2.8, color: sunStone, material: "stone", style: "ruin", collides: true },
+  { id: "upper-jungle-terrace", label: "Jungle Walkway", x: -68, z: -66, w: 100, d: 28, h: 1.4, y: upperFloorCenter, color: mossStone, material: "stone", style: "bridge" },
+  { id: "upper-temple-terrace", label: "Temple Terrace", x: 68, z: 66, w: 100, d: 28, h: 1.4, y: upperFloorCenter, color: sandstone, material: "stone", style: "bridge" },
+  { id: "upper-jungle-ramp", x: -133, z: -66, w: 36, d: 28, h: 1.2, y: 12.5, rotationZ: -sideRampAngle, color: mossStone, material: "stone", style: "bridge" },
+  { id: "upper-temple-ramp", x: 133, z: 66, w: 36, d: 28, h: 1.2, y: 12.5, rotationZ: sideRampAngle, color: sandstone, material: "stone", style: "bridge" },
+  { id: "upper-jungle-balustrade", x: -75, z: -82, w: 56, d: 4, h: 4, y: 19, color: mossStone, material: "stone", style: "ruin", collides: true },
+  { id: "upper-temple-balustrade", x: 75, z: 82, w: 56, d: 4, h: 4, y: 19, color: sandstone, material: "stone", style: "ruin", collides: true },
 
-  { id: "rootway-cave-west", label: "Rootway", x: -92, z: 112, w: 35, d: 18, h: 8, color: darkStone, material: "stone", style: "ruin", collides: true },
-  { id: "rootway-log-west", x: -48, z: 99, w: 25, d: 8, h: 4, color: timber, material: "wood", style: "logstack", collides: true },
-  { id: "rootway-idol-mid", x: -6, z: 120, w: 15, d: 14, h: 7, color: mossStone, material: "stone", style: "ruin", collides: true },
-  { id: "rootway-survey-camp", label: "Survey Camp", x: 48, z: 101, w: 27, d: 17, h: 6, color: canvas, material: "cloth", style: "shed", collides: true },
-  { id: "rootway-rock-east", x: 91, z: 124, w: 28, d: 17, h: 7, color: darkStone, material: "stone", style: "rock", collides: true },
-  { id: "rootway-boardwalk", x: 72, z: 112, w: 24, d: 8, h: 0.6, y: 0.06, color: timber, material: "wood", style: "bridge" },
+  { id: "blue-temple-gatehouse", label: "Blue Temple Complex", x: -204, z: -92, w: 28, d: 42, h: 15, y: 15.5, color: mossStone, material: "stone", style: "gate", collides: true },
+  { id: "blue-temple-foundation", x: -204, z: 83, w: 30, d: 52, h: 12, y: 14, color: deepMoss, material: "stone", style: "ruin", collides: true },
+  { id: "red-temple-gatehouse", label: "Red Temple Complex", x: 204, z: 92, w: 28, d: 42, h: 15, y: 15.5, color: sandstone, material: "stone", style: "gate", collides: true },
+  { id: "red-temple-foundation", x: 204, z: -83, w: 30, d: 52, h: 12, y: 14, color: agedPlaster, material: "stone", style: "ruin", collides: true },
 
-  { id: "west-sluice-mouth", label: "West Sluice", x: -105, z: -43, w: 13, d: 15, h: 8, color: darkStone, material: "stone", style: "gate", rotationY: Math.PI / 2 },
-  { id: "east-sluice-mouth", label: "East Sluice", x: 105, z: -43, w: 13, d: 15, h: 8, color: darkStone, material: "stone", style: "gate", rotationY: Math.PI / 2 },
-  { id: "broken-causeway", label: "Broken Causeway", x: 3, z: 86, w: 28, d: 7, h: 0.7, y: 0.06, color: sunStone, material: "stone", style: "bridge" }
+  { id: "jungle-ruin-wall", label: "Jungle Ruins", x: -98, z: -132, w: 54, d: 8, h: 10, y: 13, color: deepMoss, material: "stone", style: "ruin", collides: true },
+  { id: "jungle-root-cover", x: -42, z: -116, w: 22, d: 9, h: 5, y: 10.5, color: timber, material: "wood", style: "logstack", collides: true },
+  { id: "north-collapsed-sanctum", x: 76, z: -132, w: 42, d: 16, h: 12, y: 14, color: dampStone, material: "stone", style: "ruin", collides: true },
+  { id: "rain-court-wall-west", label: "Rain Court", x: -90, z: 112, w: 44, d: 8, h: 9, y: 12.5, color: sandstone, material: "stone", style: "ruin", collides: true },
+  { id: "rain-court-wall-east", x: 82, z: 118, w: 48, d: 8, h: 9, y: 12.5, color: mossStone, material: "stone", style: "ruin", collides: true },
+  { id: "rain-court-planter", x: 18, z: 125, w: 24, d: 12, h: 3.5, y: 9.75, color: agedPlaster, material: "stone", style: "ruin", collides: true },
+
+  { id: "lower-broken-pillar", x: -72, z: 2, w: 10, d: 12, h: 5.5, y: 2.75, color: sandstone, material: "stone", style: "ruin", collides: true },
+  { id: "lower-collapsed-wall", x: 58, z: 17, w: 24, d: 7, h: 4.5, y: 2.25, color: dampStone, material: "stone", style: "ruin", collides: true },
+  { id: "lower-submerged-ruin", x: 150, z: 7, w: 20, d: 10, h: 3.2, y: 1.6, color: darkStone, material: "stone", style: "rock", collides: true },
+  { id: "west-broken-ford-a", label: "Broken Ford", x: -145, z: -8, w: 20, d: 12, h: 0.7, y: 0.35, color: sunStone, material: "stone", style: "bridge" },
+  { id: "west-broken-ford-b", x: -145, z: 10, w: 20, d: 10, h: 0.7, y: 0.35, color: mossStone, material: "stone", style: "bridge" },
+  { id: "east-wood-crossing", label: "Timber Crossing", x: 126, z: 0, w: 20, d: 48, h: 0.8, y: 7.6, color: timber, material: "wood", style: "bridge" },
+
+  { id: "west-sluice-mouth", label: "West Sluice", x: -190, z: 0, w: 12, d: 28, h: 12, y: 6, color: darkStone, material: "stone", style: "gate", rotationY: Math.PI / 2 },
+  { id: "east-sluice-mouth", label: "East Sluice", x: 190, z: 0, w: 12, d: 28, h: 12, y: 6, color: dampStone, material: "stone", style: "gate", rotationY: Math.PI / 2 }
 ];
 
-const lowerBlockIds = new Set([
-  "canal-water",
-  "canal-bank-north-west",
-  "canal-bank-north-mid",
-  "canal-bank-north-east",
-  "canal-bank-south-west",
-  "canal-bank-south-mid",
-  "canal-bank-south-east",
-  "canal-pillar-cover-west",
-  "canal-pillar-cover-east",
-  "canal-debris-cover",
-  "west-sluice-mouth",
-  "east-sluice-mouth"
-]);
-
-export const blocks = rawBlocks.map(scaleRect).map((block) => {
-  if (block.id === "temple-upper-north-floor" || block.id === "temple-upper-south-floor") return block;
-  const ground = lowerBlockIds.has(block.id) ? 0 : templeGround(block.x, block.z);
-  return { ...block, y: ground + (block.y ?? block.h / 2) };
-});
+export const blocks = rawBlocks.map(scaleRect);
 
 const rawCylinders: CitadelCylinder[] = [
-  { id: "rain-god-statue", label: "Rain God Statue", x: 0, z: 37, radius: 8, h: 16, color: mossStone, material: "stone", collides: true },
-  { id: "sun-monument-west", x: -67, z: -112, radius: 4, h: 11, color: sunStone, material: "stone", collides: true },
-  { id: "sun-monument-east", x: 29, z: -112, radius: 4, h: 10, color: sandstone, material: "stone", collides: true },
-  { id: "court-column-west", x: -48, z: 48, radius: 3, h: 9, color: sandstone, material: "stone", collides: true },
-  { id: "court-column-east", x: 52, z: 47, radius: 3, h: 9, color: mossStone, material: "stone", collides: true },
-  { id: "canal-drain-west", x: -80, z: -43, radius: 3, h: 4, color: darkStone, material: "stone", collides: true },
-  { id: "canal-drain-east", x: 83, z: -43, radius: 3, h: 4, color: darkStone, material: "stone", collides: true }
+  { id: "rain-god-statue", label: "Rain God", x: 0, z: 126, radius: 7, h: 17, y: 16.5, color: mossStone, material: "stone", collides: true },
+  { id: "jungle-column-west", x: -126, z: -104, radius: 4, h: 12, y: 14, color: mossStone, material: "stone", collides: true },
+  { id: "temple-column-east", x: 122, z: 111, radius: 4, h: 12, y: 14, color: sandstone, material: "stone", collides: true },
+  { id: "canal-rock", x: 18, z: 12, radius: 5, h: 4.2, y: 2.1, color: darkStone, material: "stone", collides: true },
+  { id: "upper-jungle-column", x: -94, z: -66, radius: 3, h: 8, y: 21, color: mossStone, material: "stone", collides: true },
+  { id: "upper-temple-column", x: 96, z: 66, radius: 3, h: 8, y: 21, color: sandstone, material: "stone", collides: true }
 ];
 
-export const cylinders = rawCylinders.map(scaleCylinder).map((cylinder) => {
-  const ground = cylinder.id.startsWith("canal-") ? 0 : templeGround(cylinder.x, cylinder.z);
-  return { ...cylinder, y: ground + (cylinder.y ?? cylinder.h / 2) };
-});
+export const cylinders = rawCylinders.map(scaleCylinder);
 
 const rawFloorMarks: CitadelFloorMark[] = [
-  { id: "temple-route-sun", label: "SUN BRIDGE", x: 0, z: -112, w: 82, d: 13, color: "#f5d477" },
-  { id: "temple-route-canal", label: "FLOODED CANAL", x: 0, z: -43, w: 86, d: 13, color: "#74e1d8" },
-  { id: "temple-route-court", label: "RAIN COURT", x: 0, z: 37, w: 78, d: 14, color: "#e4bd78" },
-  { id: "temple-route-root", label: "ROOTWAY", x: 0, z: 112, w: 74, d: 13, color: "#8fc47d" },
-  { id: "temple-west-sluice", label: "SLUICE TUNNEL", x: -103, z: -43, w: 32, d: 10, color: "#77d7cf", rotation: Math.PI / 2 },
-  { id: "temple-east-sluice", label: "HIDDEN DOOR", x: 103, z: -43, w: 32, d: 10, color: "#d9c18b", rotation: Math.PI / 2 }
+  { id: "temple-route-river", label: "LOWER WATERWAY ↓", x: 0, z: 0, w: 116, d: 16, color: "#78d4cc", y: 0.09 },
+  { id: "temple-route-jungle", label: "JUNGLE RUINS", x: -88, z: -151, w: 68, d: 14, color: "#a6cf87", y: TEMPLE_RUNOFF_MAIN_LEVEL_Y + 0.05 },
+  { id: "temple-route-court", label: "RAIN COURT", x: 0, z: 126, w: 74, d: 14, color: "#e3c687", y: TEMPLE_RUNOFF_MAIN_LEVEL_Y + 0.05 },
+  { id: "temple-route-bridge", label: "SUN BRIDGE ↑", x: 0, z: 0, w: 30, d: 52, color: "#f1d47c", y: TEMPLE_RUNOFF_UPPER_LEVEL_Y + 0.05 },
+  { id: "temple-route-blue", label: "BLUE TEMPLE", x: -192, z: 0, w: 54, d: 14, color: "#7dd3fc", y: TEMPLE_RUNOFF_MAIN_LEVEL_Y + 0.05 },
+  { id: "temple-route-red", label: "RED TEMPLE", x: 192, z: 0, w: 54, d: 14, color: "#fb9a72", y: TEMPLE_RUNOFF_MAIN_LEVEL_Y + 0.05 }
 ];
 
-export const floorMarks = rawFloorMarks.map(scaleRect).map((mark) => ({
-  ...mark,
-  y: templeGround(mark.x, mark.z) + 0.045
-}));
+export const floorMarks = rawFloorMarks.map(scaleRect);
 
 const rawProps: CitadelProp[] = [
-  { id: "sun-arch-west", kind: "arch", x: -112, z: -112, size: 10, h: 12, color: sandstone, material: "stone", rotationY: Math.PI / 2 },
-  { id: "sun-arch-east", kind: "arch", x: 112, z: -112, size: 10, h: 12, color: sandstone, material: "stone", rotationY: Math.PI / 2 },
-  { id: "canal-arch-west", kind: "arch", x: -113, z: -43, size: 12, h: 10, color: darkStone, material: "stone", rotationY: Math.PI / 2 },
-  { id: "canal-arch-east", kind: "arch", x: 113, z: -43, size: 12, h: 10, color: darkStone, material: "stone", rotationY: Math.PI / 2 },
-  { id: "court-column-a", kind: "column", x: -22, z: 13, size: 4, h: 10, color: sandstone, material: "stone" },
-  { id: "court-column-b", kind: "column", x: 23, z: 61, size: 4, h: 8, color: mossStone, material: "stone" },
-  { id: "court-pottery-west", kind: "debris", x: -52, z: 29, size: 6, h: 1.6, color: "#9b5a3c", material: "stone" },
-  { id: "court-pottery-east", kind: "debris", x: 57, z: 29, size: 6, h: 1.6, color: "#a96a42", material: "stone" },
-  { id: "bridge-repair-crates", kind: "crate", x: 78, z: -99, size: 4, h: 5, color: timber, material: "wood" },
-  { id: "survey-crates", kind: "crate", x: 59, z: 91, size: 4, h: 5, color: timber, material: "wood" },
-  { id: "survey-awning", kind: "shade", x: 46, z: 126, size: 9, h: 6, color: canvas, material: "cloth" },
-  { id: "blue-standard", kind: "banner", x: -150, z: -57, size: 3.5, h: 10, color: "#38bdf8", material: "cloth" },
-  { id: "red-standard", kind: "banner", x: 150, z: -57, size: 3.5, h: 10, color: "#fb7185", material: "cloth" },
-  { id: "rootway-tree-west", kind: "palm", x: -113, z: 132, size: 7, h: 18, color: timber, material: "wood" },
-  { id: "rootway-tree-east", kind: "palm", x: 114, z: 95, size: 7, h: 19, color: timber, material: "wood" },
-  { id: "court-tree-west", kind: "palm", x: -105, z: 52, size: 6, h: 17, color: timber, material: "wood" },
-  { id: "court-tree-east", kind: "palm", x: 106, z: 53, size: 6, h: 17, color: timber, material: "wood" },
-  { id: "sun-debris-west", kind: "debris", x: -18, z: -101, size: 7, h: 1.8, color: sandstone, material: "stone" },
-  { id: "rootway-fallen-idol", kind: "debris", x: -31, z: 127, size: 8, h: 2, color: mossStone, material: "stone" },
-  { id: "canal-lamp-west", kind: "lamp", x: -99, z: -23, size: 2, h: 7, color: "#6be4d8", material: "accent" },
-  { id: "canal-lamp-east", kind: "lamp", x: 97, z: -63, size: 2, h: 7, color: "#6be4d8", material: "accent" }
+  { id: "blue-standard", kind: "banner", x: -214, z: 0, size: 3.5, h: 12, y: TEMPLE_RUNOFF_MAIN_LEVEL_Y, color: "#38bdf8", material: "cloth" },
+  { id: "red-standard", kind: "banner", x: 214, z: 0, size: 3.5, h: 12, y: TEMPLE_RUNOFF_MAIN_LEVEL_Y, color: "#fb7185", material: "cloth" },
+  { id: "jungle-tree-west", kind: "palm", x: -158, z: -152, size: 8, h: 22, y: TEMPLE_RUNOFF_MAIN_LEVEL_Y, color: timber, material: "wood" },
+  { id: "jungle-tree-mid", kind: "tree", x: -22, z: -162, size: 8, h: 24, y: TEMPLE_RUNOFF_MAIN_LEVEL_Y, color: timber, material: "wood" },
+  { id: "court-tree-east", kind: "palm", x: 155, z: 148, size: 8, h: 22, y: TEMPLE_RUNOFF_MAIN_LEVEL_Y, color: timber, material: "wood" },
+  { id: "canal-lantern-west", kind: "lamp", x: -112, z: -20, size: 2, h: 7, y: 0, color: "#8be0cf", material: "accent" },
+  { id: "canal-lantern-east", kind: "lamp", x: 104, z: 20, size: 2, h: 7, y: 0, color: "#8be0cf", material: "accent" },
+  { id: "upper-sun-arch", kind: "arch", x: 0, z: -45, size: 10, h: 13, y: TEMPLE_RUNOFF_UPPER_LEVEL_Y, color: sunStone, material: "stone" },
+  { id: "court-fallen-idol", kind: "debris", x: -36, z: 102, size: 8, h: 2, y: TEMPLE_RUNOFF_MAIN_LEVEL_Y, color: mossStone, material: "stone" },
+  { id: "jungle-shrine-arch", kind: "arch", x: -158, z: -108, size: 10, h: 12, y: TEMPLE_RUNOFF_MAIN_LEVEL_Y, color: mossStone, material: "stone" }
 ];
 
-export const props = rawProps.map(scalePoint).map((prop) => ({
-  ...prop,
-  y: (prop.id.startsWith("canal-") ? 0 : templeGround(prop.x, prop.z)) + (prop.y ?? 0)
-}));
+export const props = rawProps.map(scalePoint);
 
 const rawSigns: CitadelSign[] = [
-  { id: "sign-sun", label: "SUN BRIDGE", x: -4, z: -128, color: "#f6d67d", rotationY: 0, y: 8 },
-  { id: "sign-canal", label: "FLOODED CANAL", x: 0, z: -62, color: "#7be5dc", rotationY: 0, y: 7 },
-  { id: "sign-court", label: "RAIN GOD COURT", x: 0, z: 66, color: "#ebc986", rotationY: Math.PI, y: 9 },
-  { id: "sign-root", label: "ROOTWAY", x: 0, z: 142, color: "#9fd28d", rotationY: Math.PI, y: 8 },
-  { id: "sign-blue", label: "BLUE SHRINE", x: -127, z: 84, color: "#7dd3fc", rotationY: Math.PI / 2, y: 8 },
-  { id: "sign-red", label: "RED EXPEDITION", x: 127, z: 84, color: "#fb9a72", rotationY: -Math.PI / 2, y: 8 }
+  { id: "sign-river", label: "LOWER WATERWAY ↓", x: -34, z: -28, color: "#83ded5", y: 7 },
+  { id: "sign-bridge", label: "SUN BRIDGE ↑", x: 0, z: -86, color: "#f2d77f", y: TEMPLE_RUNOFF_MAIN_LEVEL_Y + 8 },
+  { id: "sign-jungle", label: "JUNGLE RUINS", x: -88, z: -174, color: "#a7d08d", y: TEMPLE_RUNOFF_MAIN_LEVEL_Y + 8 },
+  { id: "sign-court", label: "RAIN COURT", x: 0, z: 160, color: "#e8cb8a", rotationY: Math.PI, y: TEMPLE_RUNOFF_MAIN_LEVEL_Y + 8 },
+  { id: "sign-blue", label: "BLUE TEMPLE", x: -219, z: 48, color: "#7dd3fc", rotationY: Math.PI / 2, y: TEMPLE_RUNOFF_MAIN_LEVEL_Y + 8 },
+  { id: "sign-red", label: "RED TEMPLE", x: 219, z: -48, color: "#fb9a72", rotationY: -Math.PI / 2, y: TEMPLE_RUNOFF_MAIN_LEVEL_Y + 8 }
 ];
 
 export const signs = rawSigns.map(scalePoint).map((sign) => ({
   ...sign,
-  y: (sign.id === "sign-canal" ? 0 : templeGround(sign.x, sign.z)) + (sign.y ?? 7)
+  y: sign.y ?? getArenaGroundHeight("temple_runoff", sign.x, sign.z) + 7
 }));

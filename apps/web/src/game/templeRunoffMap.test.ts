@@ -1,61 +1,32 @@
 import assert from "node:assert/strict";
 import test from "node:test";
-import { ARENA_SCALE, TEMPLE_RUNOFF_UPPER_LEVEL_Y, getArenaObstacles } from "@quizstrike/shared";
+import {
+  ARENA_PLAYER_BODY_HEIGHT,
+  ARENA_SCALE,
+  TEMPLE_RUNOFF_MAIN_LEVEL_Y,
+  TEMPLE_RUNOFF_UPPER_LEVEL_Y,
+  getArenaFloorSurfaces,
+  getArenaObstacles
+} from "@quizstrike/shared";
 import { ARENA_MAPS } from "./arenaMaps";
-import { blocks, cylinders, floorMarks } from "./templeRunoffMap";
+import { blocks, cylinders, floorMarks, props } from "./templeRunoffMap";
 
-const pointIsOpen = (x: number, z: number, padding = 0.55) =>
-  !getArenaObstacles("temple_runoff").some((obstacle) => {
-    if (obstacle.kind === "circle") {
-      return Math.hypot(x - obstacle.x, z - obstacle.z) <= obstacle.radius + padding;
-    }
-    return Math.abs(x - obstacle.x) <= obstacle.width / 2 + padding
-      && Math.abs(z - obstacle.z) <= obstacle.depth / 2 + padding;
-  });
-
-const routeCrossesArena = (rawZ: number, rawBandHalfDepth: number) => {
-  const step = 2.5;
-  const minX = -121 * ARENA_SCALE;
-  const maxX = 121 * ARENA_SCALE;
-  const minZ = (rawZ - rawBandHalfDepth) * ARENA_SCALE;
-  const maxZ = (rawZ + rawBandHalfDepth) * ARENA_SCALE;
-  const start = { x: minX, z: rawZ * ARENA_SCALE };
-  const key = (x: number, z: number) => `${Math.round(x / step)}:${Math.round(z / step)}`;
-  const queue = [start];
-  const visited = new Set([key(start.x, start.z)]);
-
-  while (queue.length > 0) {
-    const current = queue.shift()!;
-    if (current.x >= maxX) return true;
-    for (const [dx, dz] of [[step, 0], [-step, 0], [0, step], [0, -step]] as const) {
-      const next = { x: current.x + dx, z: current.z + dz };
-      if (next.x < minX || next.x > maxX + step || next.z < minZ || next.z > maxZ || !pointIsOpen(next.x, next.z)) continue;
-      const nextKey = key(next.x, next.z);
-      if (visited.has(nextKey)) continue;
-      visited.add(nextKey);
-      queue.push(next);
-    }
-  }
-  return false;
-};
-
-test("Temple Runoff is registered with four readable primary routes", () => {
+test("Temple Runoff 2.0 is a substantially larger three-level arena", () => {
   const map = ARENA_MAPS.find((candidate) => candidate.id === "temple_runoff");
   assert.ok(map);
-  assert.equal(map.title, "Temple Runoff");
+  assert.equal(map.title, "Temple Runoff 2.0");
+  assert.deepEqual(map.footprint, { width: 470 * ARENA_SCALE, depth: 400 * ARENA_SCALE });
   assert.deepEqual(floorMarks.slice(0, 4).map((mark) => mark.label), [
-    "SUN BRIDGE",
-    "FLOODED CANAL",
+    "LOWER WATERWAY ↓",
+    "JUNGLE RUINS",
     "RAIN COURT",
-    "ROOTWAY"
+    "SUN BRIDGE ↑"
   ]);
-  assert.equal(routeCrossesArena(-112, 19), true, "Sun Bridge must cross the arena");
-  assert.equal(routeCrossesArena(-43, 15), true, "Flooded Canal must cross the arena");
-  assert.equal(routeCrossesArena(37, 24), true, "Rain Court must cross the arena");
-  assert.equal(routeCrossesArena(112, 20), true, "Rootway must cross the arena");
+  assert.ok(map.routes.length >= 6);
+  assert.ok(props.length <= 10, "new space must not be filled with discretionary props");
 });
 
-test("Temple Runoff visual collision definitions mirror the shared authoritative proxies", () => {
+test("Temple Runoff visual collision definitions mirror authoritative 3D proxies", () => {
   const visualRects = blocks.filter((block) => block.collides);
   const visualCircles = cylinders.filter((cylinder) => cylinder.collides);
   const authoritative = getArenaObstacles("temple_runoff");
@@ -68,6 +39,8 @@ test("Temple Runoff visual collision definitions mirror the shared authoritative
       { x: obstacle.x, z: obstacle.z, width: obstacle.width, depth: obstacle.depth },
       { x: block.x, z: block.z, width: block.w, depth: block.d }
     );
+    assert.equal(obstacle.minY, (block.y ?? block.h / 2) - block.h / 2);
+    assert.equal(obstacle.maxY, (block.y ?? block.h / 2) + block.h / 2);
   }
   for (const cylinder of visualCircles) {
     const obstacle = authoritative.find((candidate) => candidate.id === cylinder.id);
@@ -76,19 +49,22 @@ test("Temple Runoff visual collision definitions mirror the shared authoritative
       { x: obstacle.x, z: obstacle.z, radius: obstacle.radius },
       { x: cylinder.x, z: cylinder.z, radius: cylinder.radius }
     );
+    assert.equal(obstacle.minY, (cylinder.y ?? cylinder.h / 2) - cylinder.h / 2);
+    assert.equal(obstacle.maxY, (cylinder.y ?? cylinder.h / 2) + cylinder.h / 2);
   }
 });
 
-test("Temple Runoff places the river below two raised temple floor slabs", () => {
-  const water = blocks.find((block) => block.id === "canal-water");
-  const northFloor = blocks.find((block) => block.id === "temple-upper-north-floor");
-  const southFloor = blocks.find((block) => block.id === "temple-upper-south-floor");
-  const statue = cylinders.find((cylinder) => cylinder.id === "rain-god-statue");
+test("the canal remains playable under the raised central bridge", () => {
+  const water = blocks.find((block) => block.id === "ceremonial-canal-water");
+  const bridge = blocks.find((block) => block.id === "sun-bridge-deck");
+  const northFloor = blocks.find((block) => block.id === "temple-main-north-floor");
+  const southFloor = blocks.find((block) => block.id === "temple-main-south-floor");
 
-  assert.ok(water && northFloor && southFloor && statue);
+  assert.ok(water && bridge && northFloor && southFloor);
   assert.ok((water.y ?? 0) < 0.1);
-  assert.equal((northFloor.y ?? 0) + northFloor.h / 2, TEMPLE_RUNOFF_UPPER_LEVEL_Y);
-  assert.equal((southFloor.y ?? 0) + southFloor.h / 2, TEMPLE_RUNOFF_UPPER_LEVEL_Y);
-  assert.equal((statue.y ?? 0) - statue.h / 2, TEMPLE_RUNOFF_UPPER_LEVEL_Y);
+  assert.equal((northFloor.y ?? 0) + northFloor.h / 2, TEMPLE_RUNOFF_MAIN_LEVEL_Y);
+  assert.equal((southFloor.y ?? 0) + southFloor.h / 2, TEMPLE_RUNOFF_MAIN_LEVEL_Y);
+  assert.equal((bridge.y ?? 0) + bridge.h / 2, TEMPLE_RUNOFF_UPPER_LEVEL_Y);
+  assert.deepEqual(getArenaFloorSurfaces("temple_runoff", 0, 0), [0, TEMPLE_RUNOFF_UPPER_LEVEL_Y]);
+  assert.ok(TEMPLE_RUNOFF_UPPER_LEVEL_Y / ARENA_PLAYER_BODY_HEIGHT > 3.2);
 });
-
