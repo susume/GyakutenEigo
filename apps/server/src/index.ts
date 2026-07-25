@@ -33,9 +33,11 @@ import {
   getPlayerMoveSpeedMultiplier,
   getPlayerPerks,
   getPlayerWeaponId,
+  getPlayerWeaponIdForMode,
   isWeaponGearId,
   getArenaObstacles,
   getArenaEyeHeight,
+  findBotNavigationPath,
   getRoundRemainingSeconds,
   getRoundResetLoadout,
   getZombieBestPlayers,
@@ -105,6 +107,7 @@ import {
   nextBotRandom,
   randomBetween,
   resolveBotAim,
+  resolveBotSpacingGoal,
   resolveBotState,
   shouldBotAttemptFlagInteraction,
   type BotMemory,
@@ -866,7 +869,10 @@ const applyValidatedDamage = (session: GameSession, attacker: PlayerSession, tar
     return { ok: false as const, reason: "humans_cannot_fire" as const };
   }
   const zombieAttack = session.settings.gameMode === "zombie" && attacker.role === "zombie";
-  const tagResult = resolveTagAction({ attacker, target });
+  const combatAttacker = session.settings.gameMode === "zombie"
+    ? { ...attacker, gear: "starter_blaster", weapon: "starter_blaster" }
+    : attacker;
+  const tagResult = resolveTagAction({ attacker: combatAttacker, target });
   if (!tagResult.ok) return tagResult;
 
   target.health = tagResult.nextHealth;
@@ -1009,6 +1015,8 @@ const applyAuthoritativePosition = (
     elapsedMs,
     movedDistance: 0
   });
+  const isZombieHuman = session.settings.gameMode === "zombie" && player.role !== "zombie";
+  const hasMovementEnergy = !isZombieHuman || (player.energy ?? 0) > 0;
   const position = resolveAuthoritativeMovement({
     current: currentPosition,
     requested: {
@@ -1019,11 +1027,11 @@ const applyAuthoritativePosition = (
     },
     elapsedMs,
     maxSpeed: (
-      session.settings.gameMode === "zombie"
-      && player.role !== "zombie"
-      && !sprintPolicy.canSprint
-        ? ZOMBIE_HUMAN_WALK_MAX_SPEED
-        : PLAYER_MAX_SPEED
+      !hasMovementEnergy
+        ? 0
+        : isZombieHuman && !sprintPolicy.canSprint
+          ? ZOMBIE_HUMAN_WALK_MAX_SPEED
+          : PLAYER_MAX_SPEED
     ) * getPlayerMoveSpeedMultiplier(player),
     obstacles: getArenaObstacles(session.settings.mapId),
     groundY: requestedGroundY
@@ -1141,17 +1149,13 @@ const findBotCover = (
 };
 
 const applyBotSpacing = (session: GameSession, bot: PlayerSession, desired: { x: number; z: number }) => {
-  let x = desired.x;
-  let z = desired.z;
-  for (const teammate of session.players) {
-    if (teammate.id === bot.id || !teammate.isAlive || teammate.team !== bot.team) continue;
-    const distance = horizontalDistance(botPosition(bot), botPosition(teammate));
-    if (distance <= 0.01 || distance > 8) continue;
-    const strength = (8 - distance) / 8;
-    x += ((bot.x ?? 0) - (teammate.x ?? 0)) / distance * strength * 5;
-    z += ((bot.z ?? 0) - (teammate.z ?? 0)) / distance * strength * 5;
-  }
-  return clampArenaPosition({ x, z, facing: bot.facing ?? 0 });
+  const spaced = resolveBotSpacingGoal({
+    botId: bot.id,
+    botPosition: botPosition(bot),
+    desired,
+    teammates: session.players.filter((player) => player.isAlive && player.team === bot.team)
+  });
+  return clampArenaPosition({ ...spaced, facing: bot.facing ?? 0 });
 };
 
 const getBotObjectiveGoal = (session: GameSession, bot: PlayerSession, brain: BotMemory, state: BotState) => {
@@ -1222,7 +1226,7 @@ const botFire = (
 ) => {
   if (!canPlayerFireInMode(session.settings.gameMode, bot.role)) return false;
   if ((botNextAttackAt.get(bot.id) ?? 0) > currentMs) return false;
-  const weaponId = getPlayerWeaponId(bot);
+  const weaponId = getPlayerWeaponIdForMode(session.settings.gameMode, bot);
   const preference = getBotWeaponPreference(weaponId);
   const distance = horizontalDistance(botPosition(bot), botPosition(target));
   if (distance > getGearRange(weaponId)) return false;
@@ -1335,6 +1339,15 @@ const advanceBots = () => {
       const brain = getBotBrain(bot, index, currentMs);
       const profile = BOT_DIFFICULTIES[session.settings.botDifficulty ?? BOT_DIFFICULTY];
       const obstacles = getArenaObstacles(session.settings.mapId);
+      const isZombieHumanBot = session.settings.gameMode === "zombie" && bot.role !== "zombie";
+      if (isZombieHumanBot && (bot.energy ?? 0) <= 0) {
+        bot.energy = awardZombieHumanEnergy({
+          gameMode: "zombie",
+          role: "human",
+          isCorrect: true,
+          currentEnergy: bot.energy
+        });
+      }
       const remainingSeconds = getRoundRemainingSeconds(session);
       const aliveTeammates = session.players.filter((player) => player.isAlive && player.team === bot.team);
       const nearbyAllies = aliveTeammates.filter((player) => player.id !== bot.id && horizontalDistance(botPosition(bot), botPosition(player)) < 30).length;
@@ -1410,7 +1423,7 @@ const advanceBots = () => {
           commitUntilMs: brain.targetCommitUntilMs,
           role: brain.role,
           personality: brain.personality,
-          weaponRange: getGearRange(getPlayerWeaponId(bot))
+          weaponRange: getGearRange(getPlayerWeaponIdForMode(session.settings.gameMode, bot))
         });
         if (targetChoice) {
           brain.targetId = targetChoice.id;
@@ -1445,7 +1458,7 @@ const advanceBots = () => {
       const target = brain.targetId ? session.players.find((player) => player.id === brain.targetId && isBotEnemy(session, bot, player)) : undefined;
       const oldX = bot.x ?? sessionSpawn(session, bot.team).x;
       const oldZ = bot.z ?? sessionSpawn(session, bot.team).z;
-      const preference = getBotWeaponPreference(getPlayerWeaponId(bot));
+      const preference = getBotWeaponPreference(getPlayerWeaponIdForMode(session.settings.gameMode, bot));
       let goal = getBotObjectiveGoal(session, bot, brain, brain.state);
       if (target && ["engage_enemy", "flank", "take_cover"].includes(brain.state)) {
         if (brain.state === "take_cover") {
@@ -1469,6 +1482,27 @@ const advanceBots = () => {
           }
         }
       }
+      const rawGoal = clampArenaPosition({ ...goal, facing: bot.facing ?? 0 });
+      const navigationGoalChanged = !brain.navigationGoal
+        || horizontalDistance({ ...brain.navigationGoal, facing: 0 }, rawGoal) > 10;
+      if (navigationGoalChanged) brain.navigationPath = undefined;
+      brain.navigationGoal = { x: rawGoal.x, z: rawGoal.z };
+      while (brain.navigationPath?.length && horizontalDistance(botPosition(bot), { ...brain.navigationPath[0], facing: 0 }) < 3) {
+        brain.navigationPath.shift();
+      }
+      if (!hasLineOfSight({ from: botPosition(bot), to: rawGoal, obstacles, padding: 0.7 })) {
+        if (!brain.navigationPath?.length) {
+          brain.navigationPath = findBotNavigationPath({
+            from: botPosition(bot),
+            to: rawGoal,
+            obstacles
+          });
+        }
+        goal = brain.navigationPath?.[0] ?? rawGoal;
+      } else {
+        brain.navigationPath = undefined;
+        goal = rawGoal;
+      }
       const desired = applyBotSpacing(session, bot, clampArenaPosition({ ...goal, facing: bot.facing ?? 0 }));
       desired.facing = Math.atan2(oldX - desired.x, oldZ - desired.z);
       const next = resolveBotRoamStep({
@@ -1476,16 +1510,29 @@ const advanceBots = () => {
         desired,
         elapsedMs: BOT_TICK_MS,
         speed: (
-          session.settings.gameMode === "zombie"
-            ? bot.role === "zombie" ? 14.8 : 10.8
-            : 19.5
+          isZombieHumanBot && (bot.energy ?? 0) <= 0
+            ? 0
+            : session.settings.gameMode === "zombie"
+              ? bot.role === "zombie" ? 14.8 : 10.8
+              : 19.5
         ) * getPlayerMoveSpeedMultiplier(bot),
-        obstacles
+        obstacles,
+        detourDirection: brain.strafeDirection
       });
       bot.x = next.x;
       bot.y = getArenaEyeHeight(session.settings.mapId, next.x, next.z);
       bot.z = next.z;
       const movedDistance = Math.hypot(next.x - oldX, next.z - oldZ);
+      if (isZombieHumanBot) {
+        bot.energy = resolveZombieSprintEnergy({
+          gameMode: "zombie",
+          role: "human",
+          sprinting: true,
+          currentEnergy: bot.energy,
+          elapsedMs: BOT_TICK_MS,
+          movedDistance
+        }).nextEnergy;
+      }
       if (movedDistance > 0.1) bot.facing = Math.atan2(next.x - oldX, next.z - oldZ);
       else bot.facing = next.facing;
       bot.snowballs = bot.snowballs ?? session.settings.startingSnowballs;
@@ -2466,8 +2513,8 @@ const buyGear = (session: GameSession, player: PlayerSession, gearId: unknown): 
   if (!gear) {
     return failStudentCommand(400, "That gear item does not exist.");
   }
-  if (session.settings.gameMode === "zombie" && player.role !== "zombie" && isWeaponGearId(gear.id)) {
-    return failStudentCommand(400, "Humans cannot equip launchers in Zombie Mode.");
+  if (session.settings.gameMode === "zombie" && isWeaponGearId(gear.id)) {
+    return failStudentCommand(400, "Zombie Mode only allows the Starter Snowball Launcher.");
   }
   const purchase = resolveGearPurchase({
     player,
@@ -2748,7 +2795,7 @@ io.on("connection", (socket) => {
       return;
     }
     attacker.snowballs = snowballUse.nextSnowballs;
-    const weaponId = getPlayerWeaponId(attacker);
+    const weaponId = getPlayerWeaponIdForMode(session.settings.gameMode, attacker);
     playerNextFireAt.set(attacker.id, currentMs + getGearFireCooldownMs(weaponId));
     socket.to(session.sessionCode).emit("remote_weapon_fire", {
       playerId: attacker.id,

@@ -1898,10 +1898,13 @@ export default function ArenaPreview({
         const activePlayer = currentPlayerRef.current;
         const gearSpeedMultiplier = getPlayerMoveSpeedMultiplier(activePlayer ?? { gear: "starter_blaster" });
         const isZombieHuman = session?.settings.gameMode === "zombie" && activePlayer?.role !== "zombie";
+        const hasMovementEnergy = !isZombieHuman || (activePlayer?.energy ?? 0) > 0;
         const runRequested = keys.has("Shift");
-        const runAllowed = runRequested && (!isZombieHuman || (activePlayer?.energy ?? 0) > 0);
+        const runAllowed = runRequested && hasMovementEnergy;
         const movementAudioMode: MovementAudioMode = crouching ? "crouch" : runAllowed ? "run" : "walk";
-        const moveSpeed = (crouching ? CROUCH_SPEED : runAllowed ? RUN_SPEED : WALK_SPEED) * gearSpeedMultiplier;
+        const moveSpeed = hasMovementEnergy
+          ? (crouching ? CROUCH_SPEED : runAllowed ? RUN_SPEED : WALK_SPEED) * gearSpeedMultiplier
+          : 0;
         forwardVector.set(-Math.sin(yaw), 0, -Math.cos(yaw));
         rightVector.set(Math.cos(yaw), 0, -Math.sin(yaw));
         movementVector.set(0, 0, 0);
@@ -1921,7 +1924,7 @@ export default function ArenaPreview({
         isSprinting = runAllowed && movementVector.lengthSq() > 0;
 
         if (movementVector.lengthSq() > 0) {
-          if (wasGrounded) gameAudio.playMovementStep(
+          if (wasGrounded && moveSpeed > 0) gameAudio.playMovementStep(
             movementAudioMode,
             currentTime,
             isIronJunction ? "metal" : isTempleRunoff ? (surfaceGroundY < 1 ? "water" : "stone") : "sand"

@@ -16,7 +16,7 @@ import {
   BACK_ACCESSORY_OPTIONS,
   CharacterPreview,
   DETAIL_ACCESSORY_OPTIONS,
-  HEAD_OPTIONS,
+  HEAD_STYLE_OPTIONS,
   PRESET_PRESENTATION,
   VICTORY_POSE_OPTIONS
 } from "./CharacterCreator";
@@ -124,13 +124,13 @@ export default function PremiumCharacterCreator({
       choosePreset(preset);
       return;
     }
-    const head = pick(HEAD_OPTIONS.filter((option) => isUnlocked("head", option.id)));
+    const head = pick(HEAD_STYLE_OPTIONS.filter((option) => isUnlocked("head", option.id)));
     const back = pick(BACK_ACCESSORY_OPTIONS.filter((option) => isUnlocked("back", option.value)));
     const detail = pick(DETAIL_ACCESSORY_OPTIONS.filter((option) => isUnlocked("detail", option.value)));
     const pose = pick(VICTORY_POSE_OPTIONS.filter((option) => isUnlocked("pose", option.value)));
     updateDraft((current) => ({
       ...preset.appearance,
-      headOption: head.id,
+      headStyleId: head.id,
       backAccessoryId: back.value,
       detailAccessoryId: detail.value,
       victoryPoseId: pose.value,
@@ -238,23 +238,24 @@ export default function PremiumCharacterCreator({
 
               {activeCategory === "head" && (
                 <fieldset className="creator-option-section accessory-options cosmetic-catalog-grid">
-                  <legend>Head gear</legend>
+                  <legend>Head style</legend>
+                  <p className="creator-option-help">Choose your character&apos;s complete head.</p>
                   <div className="accessory-card-grid">
-                    {HEAD_OPTIONS.map((option) => {
+                    {HEAD_STYLE_OPTIONS.map((option) => {
                       const level = unlockLevel("head", option.id);
                       const locked = level > progress.level;
                       return (
                         <button
                           type="button"
                           key={option.id}
-                          className={draft.headOption === option.id ? "selected" : ""}
-                          onClick={() => updateDraft((current) => ({ ...current, headOption: option.id }))}
-                          aria-pressed={draft.headOption === option.id}
+                          className={draft.headStyleId === option.id ? "selected" : ""}
+                          onClick={() => updateDraft((current) => ({ ...current, headStyleId: option.id }))}
+                          aria-pressed={draft.headStyleId === option.id}
                           disabled={disabled || locked}
                           title={locked ? `Unlocks at level ${level}` : option.label}
                         >
                           <option.Icon size={17} />
-                          <span><strong>{option.label}</strong><small>{locked ? `Level ${level}` : "Head style"}</small></span>
+                          <span><strong>{option.label}</strong><small>{locked ? `Level ${level}` : option.description}</small></span>
                           {locked && <Lock className="cosmetic-lock" size={12} />}
                         </button>
                       );

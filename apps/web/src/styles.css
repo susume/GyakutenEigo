@@ -3032,6 +3032,13 @@ body:has(.waiting-game-layout) {
   font-weight: 900;
 }
 
+.creator-option-help {
+  margin: -2px 0 7px;
+  color: #7898aa;
+  font-size: 0.61rem;
+  line-height: 1.25;
+}
+
 .premium-character-creator .appearance-presets {
   grid-template-columns: repeat(3, minmax(0, 1fr));
   gap: 7px;

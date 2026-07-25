@@ -2,8 +2,7 @@ import * as THREE from "three";
 import { RoundedBoxGeometry } from "three/examples/jsm/geometries/RoundedBoxGeometry.js";
 import type {
   PlayerBackAccessoryId,
-  PlayerDetailAccessoryId,
-  PlayerHeadOption
+  PlayerDetailAccessoryId
 } from "@quizstrike/shared";
 import type { CharacterMaterials } from "./CharacterEquipment.js";
 
@@ -55,7 +54,6 @@ const cylinderUnit = new THREE.CylinderGeometry(0.5, 0.5, 1, 10);
 const coneUnit = new THREE.ConeGeometry(0.5, 1, 8);
 const sphereUnit = new THREE.SphereGeometry(0.5, 10, 7);
 const torusUnit = new THREE.TorusGeometry(0.5, 0.11, 7, 16);
-const helmetShell = new THREE.SphereGeometry(0.5, 16, 10, 0, Math.PI * 2, 0, Math.PI * 0.72);
 
 const add = (
   parent: THREE.Object3D,
@@ -173,54 +171,4 @@ export const createDetailAccessory = (
   }
 
   return finishAccessory(accessoryId, DETAIL_ACCESSORY_DEFINITIONS[accessoryId], group);
-};
-
-export const createHeadOption = (
-  option: PlayerHeadOption,
-  materials: CharacterMaterials
-): THREE.Group => {
-  const group = new THREE.Group();
-  group.name = `HeadOption_${option}`;
-
-  if (option === "visor") {
-    group.userData.cosmeticShape = "baseball_cap";
-    add(group, sphereUnit, materials.cloth, [0, 0.2, 0.015], [0.38, 0.27, 0.36]);
-    add(group, roundedUnit, materials.accent, [0, 0.115, -0.335], [0.44, 0.055, 0.23]);
-    add(group, roundedUnit, materials.armor, [0, 0.22, -0.315], [0.075, 0.13, 0.025]);
-    add(group, sphereUnit, materials.accent, [0, 0.34, 0.015], [0.055, 0.055, 0.055]);
-  } else if (option === "comms") {
-    group.userData.cosmeticShape = "football_helmet";
-    add(group, helmetShell, materials.armor, [0, 0.34, 0.045], [0.9, 0.82, 0.86]);
-    add(group, roundedUnit, materials.accent, [0, 0.31, -0.31], [0.32, 0.07, 0.035]);
-    add(group, torusUnit, materials.dark, [-0.34, 0.07, 0.015], [0.17, 0.17, 0.08], [0, Math.PI / 2, 0]);
-    add(group, torusUnit, materials.dark, [0.34, 0.07, 0.015], [0.17, 0.17, 0.08], [0, Math.PI / 2, 0]);
-    // Broad face cage and chin bar make the gridiron silhouette unmistakable.
-    for (const x of [-0.25, 0.25]) {
-      add(group, cylinderUnit, materials.dark, [x, -0.02, -0.39], [0.025, 0.34, 0.025], [0.12, 0, 0]);
-    }
-    add(group, cylinderUnit, materials.dark, [0, 0.03, -0.39], [0.025, 0.56, 0.025], [0, 0, Math.PI / 2]);
-    add(group, cylinderUnit, materials.dark, [0, -0.13, -0.37], [0.025, 0.45, 0.025], [0, 0, Math.PI / 2]);
-  } else if (option === "goggles") {
-    group.userData.cosmeticShape = "scuba_mask";
-    add(group, roundedUnit, materials.dark, [0, 0.03, -0.315], [0.56, 0.27, 0.065]);
-    add(group, roundedUnit, materials.visor, [0, 0.045, -0.355], [0.45, 0.17, 0.035]);
-    add(group, roundedUnit, materials.dark, [0, -0.075, -0.36], [0.15, 0.13, 0.045]);
-    add(group, torusUnit, materials.dark, [0, 0.03, 0.01], [0.72, 0.6, 0.62], [Math.PI / 2, 0, 0]);
-    add(group, roundedUnit, materials.accent, [-0.285, 0.025, -0.29], [0.06, 0.12, 0.055]);
-    add(group, roundedUnit, materials.accent, [0.285, 0.025, -0.29], [0.06, 0.12, 0.055]);
-  } else if (option === "hood") {
-    add(group, torusUnit, materials.cloth, [0, -0.005, 0.015], [0.67, 0.75, 0.68], [Math.PI / 2, 0, 0]);
-    add(group, sphereUnit, materials.cloth, [0, 0.15, 0.03], [0.34, 0.25, 0.32]);
-  } else if (option === "field_cap") {
-    group.userData.cosmeticShape = "beanie";
-    add(group, sphereUnit, materials.cloth, [0, 0.25, 0.015], [0.38, 0.32, 0.36]);
-    add(group, roundedUnit, materials.accent, [0, 0.075, -0.01], [0.72, 0.13, 0.66]);
-    add(group, sphereUnit, materials.armor, [0, 0.43, 0.02], [0.09, 0.09, 0.09]);
-  } else {
-    add(group, torusUnit, materials.accent, [0, 0.18, 0], [0.63, 0.66, 0.62], [Math.PI / 2, 0, 0]);
-    add(group, roundedUnit, materials.armor, [0, 0.18, -0.285], [0.18, 0.07, 0.035]);
-    add(group, sphereUnit, materials.accent, [0, 0.27, 0.01], [0.07, 0.07, 0.07]);
-  }
-
-  return group;
 };

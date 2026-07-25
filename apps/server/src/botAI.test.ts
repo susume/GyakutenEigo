@@ -7,6 +7,7 @@ import {
   chooseBotTarget,
   createBotMemory,
   resolveBotAim,
+  resolveBotSpacingGoal,
   resolveBotState,
   shouldBotAttemptFlagInteraction
 } from "./botAI.js";
@@ -185,4 +186,28 @@ test("Blue cannot capture a flag that Red merely dropped", () => {
   } satisfies Pick<PlayerSession, "id" | "team" | "isAlive" | "x" | "z">;
 
   assert.equal(resolveFlagCapture(droppedFlag, blue).state, "dropped");
+});
+
+test("overlapping bots receive deterministic separation goals", () => {
+  const sharedPosition = { x: -88, z: 0 };
+  const teammates = [
+    { id: "alpha", ...sharedPosition },
+    { id: "bravo", ...sharedPosition }
+  ];
+  const alphaGoal = resolveBotSpacingGoal({
+    botId: "alpha",
+    botPosition: sharedPosition,
+    desired: sharedPosition,
+    teammates
+  });
+  const bravoGoal = resolveBotSpacingGoal({
+    botId: "bravo",
+    botPosition: sharedPosition,
+    desired: sharedPosition,
+    teammates
+  });
+
+  assert.notDeepEqual(alphaGoal, sharedPosition);
+  assert.notDeepEqual(bravoGoal, sharedPosition);
+  assert.notDeepEqual(alphaGoal, bravoGoal);
 });

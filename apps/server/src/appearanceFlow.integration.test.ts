@@ -26,12 +26,12 @@ type PlayerFixture = {
 
 type AppearanceFixture = {
   characterPreset: string;
-  headOption: string;
+  headStyleId: string;
   backAccessoryId: string;
   detailAccessoryId: string;
   victoryPoseId: string;
   decalAssetId?: string;
-  appearanceVersion: 3;
+  appearanceVersion: 4;
 };
 
 type JoinedPlayer = {
@@ -44,11 +44,11 @@ type JoinedPlayer = {
 
 const defaultAppearance: AppearanceFixture = {
   characterPreset: "assault",
-  headOption: "visor",
+  headStyleId: "human",
   backAccessoryId: "utility_pack",
   detailAccessoryId: "none",
   victoryPoseId: "champion",
-  appearanceVersion: 3
+  appearanceVersion: 4
 };
 
 const onePixelPng = Buffer.from(
@@ -367,7 +367,7 @@ test("a 40-student room keeps bounded appearance state and rejects student 41", 
     const appearance: AppearanceFixture = {
       ...defaultAppearance,
       characterPreset: index % 2 === 0 ? "support" : "engineer",
-      headOption: index % 2 === 0 ? "comms" : "goggles",
+      headStyleId: index % 2 === 0 ? "fox" : "panda",
       backAccessoryId: index % 2 === 0 ? "compact_pack" : "tech_pack"
     };
     return api(
@@ -380,7 +380,7 @@ test("a 40-student room keeps bounded appearance state and rejects student 41", 
   const state = await api<{ session: SessionFixture }>(`/api/sessions/${session.sessionCode}`);
   assert.equal(state.response.status, 200);
   assert.equal(state.body.session.players.length, 40);
-  assert.ok(state.body.session.players.every((player) => player.appearance?.appearanceVersion === 3));
+  assert.ok(state.body.session.players.every((player) => player.appearance?.appearanceVersion === 4));
   assert.equal(state.text.includes("data:image"), false);
   assert.equal(state.text.includes(onePixelPng.toString("base64")), false);
 

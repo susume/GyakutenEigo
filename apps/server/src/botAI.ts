@@ -112,6 +112,8 @@ export interface BotMemory {
   blockedTicks: number;
   noProgressTicks: number;
   lastPosition?: { x: number; z: number };
+  navigationGoal?: { x: number; z: number };
+  navigationPath?: Array<{ x: number; z: number }>;
   strafeDirection: -1 | 1;
   seed: number;
 }
@@ -133,6 +135,41 @@ const hashString = (value: string) => {
     hash = Math.imul(hash, 16777619);
   }
   return hash >>> 0;
+};
+
+export const resolveBotSpacingGoal = ({
+  botId,
+  botPosition,
+  desired,
+  teammates,
+  minimumDistance = 8
+}: {
+  botId: string;
+  botPosition: { x: number; z: number };
+  desired: { x: number; z: number };
+  teammates: Array<{ id: string; x?: number; z?: number }>;
+  minimumDistance?: number;
+}) => {
+  let x = desired.x;
+  let z = desired.z;
+  for (const teammate of teammates) {
+    if (teammate.id === botId) continue;
+    const teammatePosition = { x: teammate.x ?? 0, z: teammate.z ?? 0 };
+    const dx = botPosition.x - teammatePosition.x;
+    const dz = botPosition.z - teammatePosition.z;
+    const distance = Math.hypot(dx, dz);
+    if (distance > minimumDistance) continue;
+    const strength = (minimumDistance - distance) / minimumDistance;
+    if (distance <= 0.01) {
+      const angle = (hashString(botId) % 360) * Math.PI / 180;
+      x += Math.cos(angle) * strength * 5;
+      z += Math.sin(angle) * strength * 5;
+      continue;
+    }
+    x += (dx / distance) * strength * 5;
+    z += (dz / distance) * strength * 5;
+  }
+  return { x, z };
 };
 
 export const createBotMemory = (id: string, index: number, nowMs: number): BotMemory => ({

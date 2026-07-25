@@ -14,7 +14,7 @@ import {
 
 test("appearance sanitizer produces a complete safe default", () => {
   assert.deepEqual(sanitizePlayerAppearance(undefined), DEFAULT_PLAYER_APPEARANCE);
-  assert.equal(sanitizePlayerAppearance({ clothingPrimaryColor: "#ffffff" }).appearanceVersion, 3);
+  assert.equal(sanitizePlayerAppearance({ clothingPrimaryColor: "#ffffff" }).appearanceVersion, 4);
   assert.equal(sanitizePlayerAppearance({ decalAssetId: "https://example.com/student.jpg" }).decalAssetId, undefined);
 });
 
@@ -25,7 +25,7 @@ test("appearance validation rejects arbitrary URLs, legacy colours, fields, and 
   assert.match(getPlayerAppearanceError({ ...DEFAULT_PLAYER_APPEARANCE, appearanceVersion: 99 }) ?? "", /version/i);
 });
 
-test("version one profiles migrate cosmetic choices without keeping colours", () => {
+test("legacy accessory profiles migrate to one safe complete human head", () => {
   assert.deepEqual(sanitizePlayerAppearance({
     characterPreset: "engineer",
     helmetStyle: "headset",
@@ -34,17 +34,23 @@ test("version one profiles migrate cosmetic choices without keeping colours", ()
     appearanceVersion: 1
   }), {
     characterPreset: "engineer",
-    headOption: "comms",
+    headStyleId: "human",
     backAccessoryId: "tech_pack",
     detailAccessoryId: "none",
     victoryPoseId: "champion",
-    appearanceVersion: 3
+    appearanceVersion: 4
   });
+  assert.equal(sanitizePlayerAppearance({
+    ...DEFAULT_PLAYER_APPEARANCE,
+    headStyleId: undefined,
+    headOption: "goggles",
+    appearanceVersion: 3
+  }).headStyleId, "human");
 });
 
 test("approved presets and customization policy remain deterministic", () => {
   assert.equal(isApprovedAppearancePreset({ ...SCHOOL_APPEARANCE_PRESETS[1].appearance }), true);
-  assert.equal(isApprovedAppearancePreset({ ...DEFAULT_PLAYER_APPEARANCE, headOption: "hood" }), false);
+  assert.equal(isApprovedAppearancePreset({ ...DEFAULT_PLAYER_APPEARANCE, headStyleId: "rabbit" }), false);
   assert.deepEqual(sanitizeCharacterCustomizationSettings(undefined), DEFAULT_CHARACTER_CUSTOMIZATION_SETTINGS);
   assert.equal(sanitizeCharacterCustomizationSettings({ uploadsEnabled: true }).uploadsEnabled, true);
 });

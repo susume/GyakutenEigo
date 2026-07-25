@@ -4,26 +4,28 @@ import type {
   PlayerBackAccessoryId,
   PlayerDetailAccessoryId,
   PlayerAppearance,
-  PlayerHeadOption,
+  PlayerHeadStyleId,
   PlayerVictoryPoseId,
   Team
 } from "@quizstrike/shared";
+import { HEAD_STYLE_CATALOG } from "@quizstrike/shared";
 import {
   Badge,
   Backpack,
+  Bot,
   BookOpen,
   BriefcaseBusiness,
+  Cat,
+  Circle,
   Crown,
   Compass,
   Flag,
-  Glasses,
-  HardHat,
   Medal,
   Package,
+  Rabbit,
   Radio,
   Rocket,
   Rotate3d,
-  ScanFace,
   Shield,
   ShieldCheck,
   Sparkles,
@@ -49,18 +51,26 @@ export const PRESET_PRESENTATION: Record<string, { description: string; Icon: Lu
   explorer: { description: "Adventure ready", Icon: Compass }
 };
 
-export const HEAD_OPTIONS: ReadonlyArray<{
-  id: PlayerHeadOption;
+const HEAD_STYLE_ICONS: Record<PlayerHeadStyleId, LucideIcon> = {
+  human: UserRound,
+  fox: Cat,
+  panda: Circle,
+  bear: Shield,
+  rabbit: Rabbit,
+  robot: Bot
+};
+
+export const HEAD_STYLE_OPTIONS: ReadonlyArray<{
+  id: PlayerHeadStyleId;
   label: string;
+  description: string;
   Icon: LucideIcon;
-}> = [
-  { id: "visor", label: "Baseball cap", Icon: UserRound },
-  { id: "comms", label: "Football helmet", Icon: HardHat },
-  { id: "goggles", label: "Scuba mask", Icon: Glasses },
-  { id: "hood", label: "Hood", Icon: HardHat },
-  { id: "field_cap", label: "Beanie", Icon: ScanFace },
-  { id: "crown_band", label: "Champion", Icon: Crown }
-];
+}> = HEAD_STYLE_CATALOG.map((style) => ({
+  id: style.id,
+  label: style.name,
+  description: style.description,
+  Icon: HEAD_STYLE_ICONS[style.id]
+}));
 
 export const BACK_ACCESSORY_OPTIONS: ReadonlyArray<{
   value: PlayerBackAccessoryId;
@@ -129,9 +139,9 @@ export function CharacterPreview({
     const scene = new THREE.Scene();
     const camera = new THREE.PerspectiveCamera(32, 1, 0.1, 40);
     const compactLandscape = window.innerHeight <= 620 && window.innerWidth >= 901;
-    let distance = compactLandscape ? 9.8 : 11.4;
-    camera.position.set(0.45, compactLandscape ? 2.4 : 1.95, distance);
-    camera.lookAt(0, compactLandscape ? 2.3 : 1.85, 0);
+    let distance = compactLandscape ? 11.4 : 13.1;
+    camera.position.set(0.45, compactLandscape ? 2.65 : 2.5, distance);
+    camera.lookAt(0, compactLandscape ? 2.5 : 2.42, 0);
     const renderer = new THREE.WebGLRenderer({ antialias: true, alpha: true, powerPreference: "low-power" });
     renderer.setPixelRatio(Math.min(window.devicePixelRatio, 1.5));
     renderer.outputColorSpace = THREE.SRGBColorSpace;
@@ -284,7 +294,7 @@ export function CharacterPreview({
         const [first, second] = [...pointers.values()];
         const nextDistance = Math.hypot(second.x - first.x, second.y - first.y);
         if (pinchDistance > 0) {
-          distance = Math.max(9.5, Math.min(15, distance - (nextDistance - pinchDistance) * 0.02));
+          distance = Math.max(11.5, Math.min(17, distance - (nextDistance - pinchDistance) * 0.02));
           camera.position.z = distance;
         }
         pinchDistance = nextDistance;
@@ -305,7 +315,7 @@ export function CharacterPreview({
     };
     const wheel = (event: WheelEvent) => {
       event.preventDefault();
-      distance = Math.max(9.5, Math.min(15, distance + event.deltaY * 0.011));
+      distance = Math.max(11.5, Math.min(17, distance + event.deltaY * 0.011));
       camera.position.z = distance;
       if (reducedMotion) renderer.render(scene, camera);
     };

@@ -3,7 +3,7 @@ import {
   type PlayerAppearance,
   type PlayerBackAccessoryId,
   type PlayerDetailAccessoryId,
-  type PlayerHeadOption,
+  type PlayerHeadStyleId,
   type PlayerVictoryPoseId,
   type Team
 } from "@quizstrike/shared";
@@ -40,7 +40,7 @@ export interface CharacterAppearance {
     widthScale: number;
   };
   customization: {
-    headOption: PlayerHeadOption;
+    headStyleId: PlayerHeadStyleId;
     backAccessoryId: PlayerBackAccessoryId;
     detailAccessoryId: PlayerDetailAccessoryId;
     victoryPoseId: PlayerVictoryPoseId;
@@ -162,7 +162,7 @@ export const resolveCharacterAppearance = (input: CharacterAppearanceInput): Cha
       ...variantSilhouette
     },
     customization: {
-      headOption: custom?.headOption ?? "visor",
+      headStyleId: custom?.headStyleId ?? "human",
       backAccessoryId: custom?.backAccessoryId ?? "utility_pack",
       detailAccessoryId: custom?.detailAccessoryId ?? "none",
       victoryPoseId: custom?.victoryPoseId ?? "champion",
@@ -176,7 +176,7 @@ export const serializeCharacterAppearance = (input: CharacterAppearanceInput) =>
   return {
     team: appearance.team,
     variant: appearance.variant,
-    headOption: appearance.customization.headOption,
+    headStyleId: appearance.customization.headStyleId,
     vest: appearance.silhouette.vest,
     backAccessoryId: appearance.customization.backAccessoryId,
     detailAccessoryId: appearance.customization.detailAccessoryId,

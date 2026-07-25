@@ -42,9 +42,11 @@ import {
   getPlayerMoveSpeedMultiplier,
   getPlayerPerks,
   getPlayerWeaponId,
+  getPlayerWeaponIdForMode,
   getRoundResetLoadout,
   getArenaObstacles,
   getArenaGroundHeight,
+  findBotNavigationPath,
   getRoundRemainingSeconds,
   getZombieBestPlayers,
   resolveTeamRoundWinner,
@@ -512,8 +514,39 @@ test("resolveBotRoamStep detours around cover instead of freezing in place", () 
   });
 
   assert.equal(result.blocked, undefined);
-  assert.equal(result.x, 0);
+  assert.ok(Math.abs(result.x) < 0.000001);
   assert.notEqual(result.z, 0);
+});
+
+test("bot roam routes escape every map spawn instead of wedging against base cover", () => {
+  for (const mapId of ["desert_citadel", "iron_junction", "temple_runoff"] as const) {
+    for (const team of ["blue", "red"] as const) {
+      const goal = {
+        x: (team === "red" ? -142 : 142) * ARENA_SCALE,
+        z: 0,
+        facing: 0
+      };
+      for (const [spawnIndex, spawn] of getTeamSpawnsForMap(mapId)[team].entries()) {
+        let current = { x: spawn.x, z: spawn.z, facing: spawn.facing };
+        const obstacles = getArenaObstacles(mapId);
+        const path = findBotNavigationPath({ from: current, to: goal, obstacles });
+        assert.ok(path.length > 0, `${mapId} ${team} spawn ${spawnIndex} had no route`);
+        for (const waypoint of path) {
+          for (let tick = 0; tick < 100 && Math.hypot(waypoint.x - current.x, waypoint.z - current.z) >= 2; tick += 1) {
+            current = resolveBotRoamStep({
+              current,
+              desired: { ...waypoint, facing: goal.facing },
+              elapsedMs: 300,
+              speed: 19.5,
+              obstacles,
+              detourDirection: spawnIndex % 2 === 0 ? 1 : -1
+            });
+          }
+        }
+        assert.ok(Math.hypot(goal.x - current.x, goal.z - current.z) < 2, `${mapId} ${team} spawn ${spawnIndex} remained stuck`);
+      }
+    }
+  }
 });
 
 test("resolveBotRespawn revives bots only after the respawn time", () => {
@@ -736,6 +769,18 @@ test("speed shoes increase server-authoritative movement distance", () => {
 
   assert.equal(normal.x, 22);
   assert.equal(Number(boosted.x.toFixed(2)), 25.3);
+});
+
+test("zero authoritative speed blocks position changes", () => {
+  const result = resolveAuthoritativeMovement({
+    current: { x: 5, z: -4, facing: 0 },
+    requested: { x: 80, z: 60, facing: 1 },
+    elapsedMs: 1000,
+    maxSpeed: 0,
+    obstacles: []
+  });
+
+  assert.deepEqual(result, { x: 5, z: -4, facing: 1, limited: true });
 });
 
 test("buildCsvReport escapes classroom report rows for spreadsheet export", () => {
@@ -1097,6 +1142,18 @@ test("zombie mode selects initial zombies and converts humans once", () => {
   });
 });
 
+test("Zombie Mode always resolves combat to the default launcher", () => {
+  const upgradedPlayer = makePlayer({
+    gear: "power_blaster",
+    weapon: "power_blaster",
+    perks: ["shield_vest"]
+  });
+
+  assert.equal(getPlayerWeaponIdForMode("zombie", upgradedPlayer), "starter_blaster");
+  assert.equal(getPlayerWeaponIdForMode("flag", upgradedPlayer), "power_blaster");
+  assert.equal(getPlayerWeaponIdForMode("classic", upgradedPlayer), "power_blaster");
+});
+
 test("zombie mode gives Humans question-powered running energy and reserves firing for Zombies", () => {
   assert.equal(canPlayerFireInMode("zombie", "human"), false);
   assert.equal(canPlayerFireInMode("zombie", "zombie"), true);
@@ -1137,7 +1194,7 @@ test("zombie mode gives Humans question-powered running energy and reserves firi
     currentEnergy: earnedEnergy,
     elapsedMs: 500,
     movedDistance: 5
-  }), { canSprint: true, nextEnergy: 15 });
+  }), { canSprint: true, nextEnergy: earnedEnergy - 10 });
 });
 
 test("scoreboard rows expose tags, respawns, and readable question accuracy", () => {

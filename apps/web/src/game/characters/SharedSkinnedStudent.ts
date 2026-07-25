@@ -134,15 +134,6 @@ const buildSharedBodyGeometry = (palette: THREE.Color[], shoulderBulk: number) =
     part(new THREE.TorusGeometry(0.245, 0.025, 6, 16), "torso", BODY_MATERIALS.accent, [0, 1.49, -0.08], [1, 0.74, 1], [Math.PI / 2, 0, 0]),
     part(new THREE.TorusGeometry(0.28, 0.026, 6, 16), "root", BODY_MATERIALS.dark, [0, 0.9, 0], [1, 0.85, 1], [Math.PI / 2, 0, 0]),
 
-    // Layered cranium and jaw, plus ears, brow, and nose, make the head readable in silhouette.
-    part(new THREE.SphereGeometry(0.5, 14, 10), "head", BODY_MATERIALS.skin, [0, 1.79, 0], [0.31, 0.34, 0.285]),
-    part(new THREE.SphereGeometry(0.5, 12, 8), "head", BODY_MATERIALS.skin, [0, 1.69, -0.015], [0.265, 0.23, 0.25]),
-    part(new THREE.SphereGeometry(0.055, 8, 6), "head", BODY_MATERIALS.skin, [-0.3, 1.78, 0]),
-    part(new THREE.SphereGeometry(0.055, 8, 6), "head", BODY_MATERIALS.skin, [0.3, 1.78, 0]),
-    part(new THREE.ConeGeometry(0.042, 0.095, 7), "head", BODY_MATERIALS.skin, [0, 1.76, -0.285], [1, 1, 1], [-Math.PI / 2, 0, 0]),
-    part(capsule(0.022, 0.17, 8), "head", BODY_MATERIALS.dark, [-0.09, 1.82, -0.273], [1, 1, 0.6], [0, 0, Math.PI / 2]),
-    part(capsule(0.022, 0.17, 8), "head", BODY_MATERIALS.dark, [0.09, 1.82, -0.273], [1, 1, 0.6], [0, 0, Math.PI / 2]),
-
     // Sloped shoulders, upper arms, elbows, forearms, mitten hands, and thumbs.
     part(joint(shoulderRadius, 1.08), "leftArm", BODY_MATERIALS.armor, [-0.37, 1.41, 0]),
     part(joint(shoulderRadius, 1.08), "rightArm", BODY_MATERIALS.armor, [0.37, 1.41, 0]),
@@ -285,7 +276,7 @@ export const createSharedSkinnedStudent = (
     materials.visor,
     materials.skin
   ];
-  const paletteKey = `humanoid-v2-${materialArray
+  const paletteKey = `humanoid-v3-headless-${materialArray
     .map((material) => `#${material.color.getHexString()}`)
     .join("-")}-${appearance.silhouette.shoulderBulk.toFixed(2)}`;
   let geometry = sharedBodyGeometries.get(paletteKey);

@@ -51,7 +51,7 @@ test("serializeCharacterAppearance returns compact multiplayer-safe appearance s
     {
       team: "blue",
       variant: "heavy",
-      headOption: "visor",
+      headStyleId: "human",
       vest: "plate_carrier",
       backAccessoryId: "utility_pack",
       detailAccessoryId: "none",

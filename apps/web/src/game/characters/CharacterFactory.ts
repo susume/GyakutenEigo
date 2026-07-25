@@ -5,9 +5,9 @@ import {
   DETAIL_ACCESSORY_DEFINITIONS,
   createBackAccessory,
   createDetailAccessory,
-  createHeadOption,
   type AccessorySocketName
 } from "./CharacterAccessories.js";
+import { createHeadStyle, createHeadStyleDebugEnvelope } from "./CharacterHeadStyles.js";
 import { resolveCharacterAppearance, type CharacterAppearance } from "./CharacterAppearance.js";
 import {
   createWeaponSet,
@@ -187,7 +187,9 @@ export class CharacterFactory {
       accessorySockets[name] = socket;
     });
 
-    accessorySockets.HeadSocket.add(createHeadOption(appearance.customization.headOption, materials));
+    const activeHeadStyle = createHeadStyle(appearance.customization.headStyleId, materials);
+    accessorySockets.HeadSocket.add(activeHeadStyle);
+    root.userData.activeHeadStyleId = activeHeadStyle.userData.headStyleId;
     const accessories: THREE.Object3D[] = [];
     const backDefinition = BACK_ACCESSORY_DEFINITIONS[appearance.customization.backAccessoryId];
     const backAccessory = createBackAccessory(appearance.customization.backAccessoryId, materials);
@@ -222,6 +224,7 @@ export class CharacterFactory {
       leftHandSupport.add(new THREE.AxesHelper(0.2));
       rightHand.add(new THREE.AxesHelper(0.18));
       Object.values(accessorySockets).forEach((socket) => socket.add(new THREE.AxesHelper(0.14)));
+      accessorySockets.HeadSocket.add(createHeadStyleDebugEnvelope());
     }
 
     if (appearance.customization.decalAssetId && this.options.loadDecalTexture) {

@@ -48,6 +48,7 @@ import {
   getArenaGroundHeight,
   getPlayerPerks,
   getPlayerWeaponId,
+  getPlayerWeaponIdForMode,
   isWeaponGearId,
   RESPAWN_CORRECT_ANSWERS_REQUIRED,
   getRoundRemainingSeconds,
@@ -3341,7 +3342,7 @@ function StudentExperience({ onExit }: { onExit: () => void }) {
     );
   }
 
-  const gear = GEAR_ITEMS.find((item) => item.id === getPlayerWeaponId(player)) ?? GEAR_ITEMS[0];
+  const gear = GEAR_ITEMS.find((item) => item.id === getPlayerWeaponIdForMode(session.settings.gameMode, player)) ?? GEAR_ITEMS[0];
   const snowballs = player.snowballs ?? session.settings.startingSnowballs;
   const warmth = getPlayerWarmth(player);
   const isZombieHuman = session.settings.gameMode === "zombie" && player.role !== "zombie";
@@ -3373,7 +3374,7 @@ function StudentExperience({ onExit }: { onExit: () => void }) {
     ? spectatorCandidates.findIndex((candidate) => candidate.id === spectatorPlayer.id) + 1
     : 0;
   const spectatorGear = spectatorPlayer
-    ? GEAR_ITEMS.find((item) => item.id === getPlayerWeaponId(spectatorPlayer)) ?? GEAR_ITEMS[0]
+    ? GEAR_ITEMS.find((item) => item.id === getPlayerWeaponIdForMode(session.settings.gameMode, spectatorPlayer)) ?? GEAR_ITEMS[0]
     : undefined;
   const cycleSpectator = (direction: -1 | 1) => {
     if (spectatorCandidates.length < 2) return;
@@ -3541,7 +3542,7 @@ function StudentExperience({ onExit }: { onExit: () => void }) {
                 <Shield size={18} aria-hidden="true" />
                 <span>
                   <small>Human objective</small>
-                  <strong>Run and survive</strong>
+                  <strong>{runningEnergy > 0 ? "Run and survive" : "Answer to move"}</strong>
                 </span>
               </span>
             </>
@@ -3810,6 +3811,7 @@ function BuyPanel({
   const snowballPrice = session.settings.snowballPackPrice;
   const snowballCount = session.settings.snowballsPerPack;
   const isBuyingGear = Boolean(buyingGearId);
+  const isZombieMode = session.settings.gameMode === "zombie";
   const isZombieHuman = session.settings.gameMode === "zombie" && player.role !== "zombie";
   const gearLockReason = (cost: number) => {
     if (!player.isAlive) return "Round only";
@@ -3845,14 +3847,14 @@ function BuyPanel({
           className="gear-row"
           onClick={() => onBuy(gear.id)}
           aria-keyshortcuts={getShopShortcutKey(gear.id)}
-          disabled={(isZombieHuman && isWeaponGearId(gear.id)) || !player.isAlive || player.money < gear.cost || isBuyingSnowballs || isBuyingGear}
+          disabled={(isZombieMode && isWeaponGearId(gear.id)) || !player.isAlive || player.money < gear.cost || isBuyingSnowballs || isBuyingGear}
         >
           <kbd className="buy-shortcut-key">{getShopShortcutKey(gear.id)}</kbd>
           <GearGlyph gearId={gear.id} />
           <span>
             <strong>{buyingGearId === gear.id ? "Working..." : gear.name}</strong>
             <small>{gear.description}</small>
-            <small className="gear-status">{isZombieHuman && isWeaponGearId(gear.id) ? "Zombies only" : (getPlayerWeaponId(player) === gear.id || getPlayerPerks(player).includes(gear.id)) ? "Equipped" : player.money < gear.cost || !player.isAlive ? gearLockReason(gear.cost) : "Ready to buy"}</small>
+            <small className="gear-status">{isZombieMode && isWeaponGearId(gear.id) ? "Default launcher only" : (getPlayerWeaponId(player) === gear.id || getPlayerPerks(player).includes(gear.id)) ? "Equipped" : player.money < gear.cost || !player.isAlive ? gearLockReason(gear.cost) : "Ready to buy"}</small>
           </span>
           <em>{formatMoney(gear.cost)}</em>
         </button>
