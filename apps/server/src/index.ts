@@ -104,11 +104,13 @@ import {
   chooseBotTarget,
   createBotMemory,
   getBotWeaponPreference,
+  isTargetInsideBotAwareness,
   nextBotRandom,
   randomBetween,
   resolveBotAim,
   resolveBotSpacingGoal,
   resolveBotState,
+  shouldAdvanceBotPatrolRoute,
   shouldBotAttemptFlagInteraction,
   type BotMemory,
   type BotState
@@ -165,6 +167,7 @@ const playerNextFireAt = new Map<string, number>();
 const botRespawnAt = new Map<string, number>();
 const botNextAttackAt = new Map<string, number>();
 const botMemoryById = new Map<string, BotMemory>();
+const botPreviousPositions = new Map<string, { x: number; y?: number; z: number }>();
 const appearanceUpdateTimestamps = new Map<string, number>();
 const playerSockets = new Map<string, Set<string>>();
 const playerDisconnectTimers = new Map<string, ReturnType<typeof setTimeout>>();
@@ -598,6 +601,7 @@ const finishSession = (
     botMemoryById.delete(player.id);
     botNextAttackAt.delete(player.id);
     botRespawnAt.delete(player.id);
+    botPreviousPositions.delete(player.id);
   }
   botAlertsBySession.delete(session.sessionCode);
   purgeSessionDecals(session);
@@ -631,6 +635,7 @@ const resetRoundPlayer = (session: GameSession, player: PlayerSession, index: nu
     botMemoryById.delete(player.id);
     botNextAttackAt.delete(player.id);
     botRespawnAt.delete(player.id);
+    botPreviousPositions.delete(player.id);
   }
   const spawn = player.isBot ? getBotSpawn(session, player.team, index) : selectSessionSpawn(session, player.team, index);
   const loadout = getRoundResetLoadout({ player, startingSnowballs: session.settings.startingSnowballs });
@@ -932,7 +937,10 @@ const applyValidatedDamage = (session: GameSession, attacker: PlayerSession, tar
     target.y = baseSpawn.y;
     target.z = baseSpawn.z;
     target.facing = baseSpawn.facing;
-    if (target.isBot && session.settings.gameMode !== "flag") botRespawnAt.set(target.id, Date.now() + BOT_RESPAWN_MS);
+    if (target.isBot) {
+      botPreviousPositions.delete(target.id);
+      if (session.settings.gameMode !== "flag") botRespawnAt.set(target.id, Date.now() + BOT_RESPAWN_MS);
+    }
     attacker.money = Math.min(16000, attacker.money + tagResult.moneyAwarded);
     attacker.score += tagResult.scoreDelta;
     attacker.tags = (attacker.tags ?? 0) + 1;
@@ -1073,6 +1081,13 @@ const botPosition = (player: PlayerSession): ArenaPosition => ({
   facing: player.facing ?? 0
 });
 
+const playersWithBotRewind = (players: PlayerSession[]) => players.map((player) => {
+  const previous = player.isBot ? botPreviousPositions.get(player.id) : undefined;
+  return previous
+    ? { ...player, previousX: previous.x, previousY: previous.y, previousZ: previous.z }
+    : player;
+});
+
 const horizontalDistance = (a: ArenaPosition, b: ArenaPosition) => Math.hypot(a.x - b.x, a.z - b.z);
 
 const isBotEnemy = (session: GameSession, bot: PlayerSession, candidate: PlayerSession) => {
@@ -1101,7 +1116,10 @@ const canBotSee = (
   const distance = horizontalDistance(botPosition(bot), botPosition(target));
   return distance <= profile.viewDistance
     && Math.abs((target.y ?? 0) - (bot.y ?? 0)) <= 5.5
-    && isInsideBotFov(bot, target, profile.viewHalfAngle)
+    && isTargetInsideBotAwareness({
+      distance,
+      inFieldOfView: isInsideBotFov(bot, target, profile.viewHalfAngle)
+    })
     && hasLineOfSight({ from: botPosition(bot), to: botPosition(target), obstacles });
 };
 
@@ -1256,7 +1274,7 @@ const botFire = (
   });
   const targetSelection = resolveProjectileTarget({
     attacker: bot,
-    candidates: session.players,
+    candidates: playersWithBotRewind(session.players),
     requestedTargetId: target.id,
     range: getGearRange(weaponId),
     hitRadius: getGearHitRadius(weaponId, weaponId === "power_blaster" && brain.role === "overwatch" ? 1 : 0),
@@ -1331,6 +1349,7 @@ const advanceBots = () => {
           Object.assign(bot, respawn.player);
           bot.respawns = (bot.respawns ?? 0) + 1;
           botRespawnAt.delete(bot.id);
+          botPreviousPositions.delete(bot.id);
           appendEvent(session, { type: "respawn", message: `${bot.nickname} returned to the arena.`, playerId: bot.id, team: bot.team });
           moved = true;
         }
@@ -1457,7 +1476,9 @@ const advanceBots = () => {
 
       const target = brain.targetId ? session.players.find((player) => player.id === brain.targetId && isBotEnemy(session, bot, player)) : undefined;
       const oldX = bot.x ?? sessionSpawn(session, bot.team).x;
+      const oldY = bot.y;
       const oldZ = bot.z ?? sessionSpawn(session, bot.team).z;
+      const oldFacing = bot.facing ?? 0;
       const preference = getBotWeaponPreference(getPlayerWeaponIdForMode(session.settings.gameMode, bot));
       let goal = getBotObjectiveGoal(session, bot, brain, brain.state);
       if (target && ["engage_enemy", "flank", "take_cover"].includes(brain.state)) {
@@ -1482,7 +1503,17 @@ const advanceBots = () => {
           }
         }
       }
-      const rawGoal = clampArenaPosition({ ...goal, facing: bot.facing ?? 0 });
+      let rawGoal = clampArenaPosition({ ...goal, facing: bot.facing ?? 0 });
+      if (shouldAdvanceBotPatrolRoute({
+        state: brain.state,
+        hasTarget: Boolean(target),
+        distanceToGoal: horizontalDistance(botPosition(bot), rawGoal)
+      })) {
+        brain.routeIndex += 1;
+        brain.navigationPath = undefined;
+        goal = getBotObjectiveGoal(session, bot, brain, brain.state);
+        rawGoal = clampArenaPosition({ ...goal, facing: bot.facing ?? 0 });
+      }
       const navigationGoalChanged = !brain.navigationGoal
         || horizontalDistance({ ...brain.navigationGoal, facing: 0 }, rawGoal) > 10;
       if (navigationGoalChanged) brain.navigationPath = undefined;
@@ -1519,6 +1550,7 @@ const advanceBots = () => {
         obstacles,
         detourDirection: brain.strafeDirection
       });
+      botPreviousPositions.set(bot.id, { x: oldX, y: oldY, z: oldZ });
       bot.x = next.x;
       bot.y = getArenaEyeHeight(session.settings.mapId, next.x, next.z);
       bot.z = next.z;
@@ -1535,6 +1567,15 @@ const advanceBots = () => {
       }
       if (movedDistance > 0.1) bot.facing = Math.atan2(next.x - oldX, next.z - oldZ);
       else bot.facing = next.facing;
+      if (movedDistance > 0.01 || Math.abs((bot.facing ?? 0) - oldFacing) > 0.01) {
+        io.to(session.sessionCode).volatile.emit("player_position", {
+          playerId: bot.id,
+          x: bot.x,
+          y: bot.y,
+          z: bot.z,
+          facing: bot.facing
+        });
+      }
       bot.snowballs = bot.snowballs ?? session.settings.startingSnowballs;
       moved = moved || movedDistance > 0.1;
       if (next.blocked || (horizontalDistance(botPosition(bot), { ...goal, y: bot.y }) > 5 && movedDistance < 0.1)) {
@@ -2809,7 +2850,7 @@ io.on("connection", (socket) => {
 
     const targetSelection = resolveProjectileTarget({
       attacker,
-      candidates: session.players,
+      candidates: playersWithBotRewind(session.players),
       requestedTargetId: typeof payload.targetId === "string" && payload.targetId.trim() ? payload.targetId : undefined,
       range: getGearRange(weaponId),
       hitRadius: getGearHitRadius(weaponId, typeof payload.zoomLevel === "number" ? payload.zoomLevel : payload.scoped === true),

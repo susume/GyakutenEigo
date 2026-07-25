@@ -357,6 +357,20 @@ test("resolveProjectileTarget finds bots and players along the swept snowball pa
   });
 });
 
+test("resolveProjectileTarget rewinds across a bot's last authoritative movement step", () => {
+  const attacker = makePlayer({ id: "attacker", team: "blue", x: 0, z: 0, facing: -Math.PI / 2 });
+  const bot = {
+    ...makePlayer({ id: "moving-bot", team: "red", isBot: true, x: 12, z: 4 }),
+    previousX: 12,
+    previousZ: 0
+  };
+
+  assert.deepEqual(resolveProjectileTarget({ attacker, candidates: [bot], obstacles: [] }), {
+    ok: true,
+    targetId: "moving-bot"
+  });
+});
+
 test("resolveProjectileTarget rejects misses, invalid targets, and friendly fire", () => {
   const attacker = makePlayer({ id: "attacker", team: "blue", x: 0, z: 0, facing: -Math.PI / 2 });
   const teammate = makePlayer({ id: "teammate", team: "blue", x: 6, z: 0 });

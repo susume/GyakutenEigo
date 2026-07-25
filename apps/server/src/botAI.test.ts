@@ -6,9 +6,11 @@ import {
   chooseBotRole,
   chooseBotTarget,
   createBotMemory,
+  isTargetInsideBotAwareness,
   resolveBotAim,
   resolveBotSpacingGoal,
   resolveBotState,
+  shouldAdvanceBotPatrolRoute,
   shouldBotAttemptFlagInteraction
 } from "./botAI.js";
 
@@ -210,4 +212,28 @@ test("overlapping bots receive deterministic separation goals", () => {
   assert.notDeepEqual(alphaGoal, sharedPosition);
   assert.notDeepEqual(bravoGoal, sharedPosition);
   assert.notDeepEqual(alphaGoal, bravoGoal);
+});
+
+test("patrolling bots advance after reaching a route point instead of parking forever", () => {
+  assert.equal(shouldAdvanceBotPatrolRoute({
+    state: "patrol",
+    hasTarget: false,
+    distanceToGoal: 3.9
+  }), true);
+  assert.equal(shouldAdvanceBotPatrolRoute({
+    state: "patrol",
+    hasTarget: true,
+    distanceToGoal: 0
+  }), false);
+  assert.equal(shouldAdvanceBotPatrolRoute({
+    state: "defend_objective",
+    hasTarget: false,
+    distanceToGoal: 0
+  }), false);
+});
+
+test("bots notice enemies at close range even outside their forward view", () => {
+  assert.equal(isTargetInsideBotAwareness({ distance: 8, inFieldOfView: false }), true);
+  assert.equal(isTargetInsideBotAwareness({ distance: 18, inFieldOfView: false }), false);
+  assert.equal(isTargetInsideBotAwareness({ distance: 18, inFieldOfView: true }), true);
 });

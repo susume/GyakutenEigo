@@ -1792,27 +1792,6 @@ const segmentIntersectsRect = (start: ArenaPosition, end: ArenaPosition, obstacl
   return true;
 };
 
-const segmentIntersectsObstacle = (start: ArenaPosition, end: ArenaPosition, obstacle: ArenaObstacle, padding = 0) => {
-  if (pointInsideObstacle(start, obstacle, padding) || pointInsideObstacle(end, obstacle, padding)) return true;
-  if (obstacle.kind === "rect") return segmentIntersectsRect(start, end, obstacle, padding);
-  const range = Math.hypot(end.x - start.x, end.z - start.z);
-  if (range <= 0.0001) return false;
-  const direction = { x: (end.x - start.x) / range, z: (end.z - start.z) / range };
-  return distanceToShotSegment({ origin: start, direction, target: obstacle, range }).distance <= obstacle.radius + padding;
-};
-
-export const hasLineOfSight = ({
-  from,
-  to,
-  obstacles = ARENA_OBSTACLES,
-  padding = 0
-}: {
-  from: ArenaPosition;
-  to: ArenaPosition;
-  obstacles?: readonly ArenaObstacle[];
-  padding?: number;
-}) => !obstacles.some((obstacle) => segmentIntersectsObstacle(from, to, obstacle, padding));
-
 const distanceToShotSegment = ({
   origin,
   direction,
@@ -1836,6 +1815,81 @@ const distanceToShotSegment = ({
   };
 };
 
+const segmentIntersectsObstacle = (start: ArenaPosition, end: ArenaPosition, obstacle: ArenaObstacle, padding = 0) => {
+  if (pointInsideObstacle(start, obstacle, padding) || pointInsideObstacle(end, obstacle, padding)) return true;
+  if (obstacle.kind === "rect") return segmentIntersectsRect(start, end, obstacle, padding);
+  const range = Math.hypot(end.x - start.x, end.z - start.z);
+  if (range <= 0.0001) return false;
+  const direction = { x: (end.x - start.x) / range, z: (end.z - start.z) / range };
+  return distanceToShotSegment({ origin: start, direction, target: obstacle, range }).distance <= obstacle.radius + padding;
+};
+
+export const hasLineOfSight = ({
+  from,
+  to,
+  obstacles = ARENA_OBSTACLES,
+  padding = 0
+}: {
+  from: ArenaPosition;
+  to: ArenaPosition;
+  obstacles?: readonly ArenaObstacle[];
+  padding?: number;
+}) => !obstacles.some((obstacle) => segmentIntersectsObstacle(from, to, obstacle, padding));
+
+const distanceBetweenSegments = ({
+  firstStart,
+  firstEnd,
+  secondStart,
+  secondEnd
+}: {
+  firstStart: { x: number; z: number };
+  firstEnd: { x: number; z: number };
+  secondStart: { x: number; z: number };
+  secondEnd: { x: number; z: number };
+}) => {
+  const firstDirection = { x: firstEnd.x - firstStart.x, z: firstEnd.z - firstStart.z };
+  const secondDirection = { x: secondEnd.x - secondStart.x, z: secondEnd.z - secondStart.z };
+  const offset = { x: firstStart.x - secondStart.x, z: firstStart.z - secondStart.z };
+  const firstLengthSquared = firstDirection.x ** 2 + firstDirection.z ** 2;
+  const secondLengthSquared = secondDirection.x ** 2 + secondDirection.z ** 2;
+  const directionsDot = firstDirection.x * secondDirection.x + firstDirection.z * secondDirection.z;
+  const firstOffsetDot = firstDirection.x * offset.x + firstDirection.z * offset.z;
+  const secondOffsetDot = secondDirection.x * offset.x + secondDirection.z * offset.z;
+  const denominator = firstLengthSquared * secondLengthSquared - directionsDot ** 2;
+  let firstAmount = secondLengthSquared <= Number.EPSILON
+    ? firstLengthSquared > 0 ? Math.min(1, Math.max(0, -firstOffsetDot / firstLengthSquared)) : 0
+    : denominator > 0
+      ? Math.min(1, Math.max(0, (directionsDot * secondOffsetDot - firstOffsetDot * secondLengthSquared) / denominator))
+      : 0;
+  let secondAmount = secondLengthSquared > 0
+    ? (directionsDot * firstAmount + secondOffsetDot) / secondLengthSquared
+    : 0;
+
+  if (secondAmount < 0) {
+    secondAmount = 0;
+    firstAmount = firstLengthSquared > 0 ? Math.min(1, Math.max(0, -firstOffsetDot / firstLengthSquared)) : 0;
+  } else if (secondAmount > 1) {
+    secondAmount = 1;
+    firstAmount = firstLengthSquared > 0
+      ? Math.min(1, Math.max(0, (directionsDot - firstOffsetDot) / firstLengthSquared))
+      : 0;
+  }
+
+  const firstPoint = {
+    x: firstStart.x + firstDirection.x * firstAmount,
+    z: firstStart.z + firstDirection.z * firstAmount
+  };
+  const secondPoint = {
+    x: secondStart.x + secondDirection.x * secondAmount,
+    z: secondStart.z + secondDirection.z * secondAmount
+  };
+  return {
+    alongFirst: firstAmount,
+    distance: Math.hypot(firstPoint.x - secondPoint.x, firstPoint.z - secondPoint.z),
+    secondPoint
+  };
+};
+
 export const resolveProjectileTarget = ({
   attacker,
   candidates,
@@ -1845,7 +1899,10 @@ export const resolveProjectileTarget = ({
   hitRadius = SNOWBALL_HIT_RADIUS
 }: {
   attacker: Pick<PlayerSession, "id" | "team" | "isAlive" | "x" | "y" | "z" | "facing">;
-  candidates: Array<Pick<PlayerSession, "id" | "team" | "isAlive" | "connectionState" | "x" | "y" | "z" | "isBot">>;
+  candidates: Array<
+    Pick<PlayerSession, "id" | "team" | "isAlive" | "connectionState" | "x" | "y" | "z" | "isBot">
+    & { previousX?: number; previousY?: number; previousZ?: number }
+  >;
   requestedTargetId?: string;
   obstacles?: readonly ArenaObstacle[];
   range?: number;
@@ -1879,9 +1936,31 @@ export const resolveProjectileTarget = ({
       y: Number.isFinite(candidate.y) ? candidate.y! : 0,
       z: Number.isFinite(candidate.z) ? candidate.z! : 0
     };
-    const hit = distanceToShotSegment({ origin, direction, target, range });
+    const previousTarget = {
+      x: Number.isFinite(candidate.previousX) ? candidate.previousX! : target.x,
+      y: Number.isFinite(candidate.previousY) ? candidate.previousY! : target.y,
+      z: Number.isFinite(candidate.previousZ) ? candidate.previousZ! : target.z
+    };
+    const rewoundHit = distanceBetweenSegments({
+      firstStart: origin,
+      firstEnd: {
+        x: origin.x + direction.x * range,
+        z: origin.z + direction.z * range
+      },
+      secondStart: previousTarget,
+      secondEnd: target
+    });
+    const hit = {
+      alongShot: rewoundHit.alongFirst * range,
+      distance: rewoundHit.distance
+    };
     if (hit.alongShot < 0 || hit.alongShot > range || hit.distance > hitRadius) continue;
-    if (!hasLineOfSight({ from: origin, to: target, obstacles })) {
+    const rewindTarget = {
+      x: rewoundHit.secondPoint.x,
+      y: target.y,
+      z: rewoundHit.secondPoint.z
+    };
+    if (!hasLineOfSight({ from: origin, to: rewindTarget, obstacles })) {
       blockedByCover = true;
       continue;
     }

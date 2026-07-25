@@ -172,6 +172,28 @@ export const resolveBotSpacingGoal = ({
   return { x, z };
 };
 
+export const shouldAdvanceBotPatrolRoute = ({
+  state,
+  hasTarget,
+  distanceToGoal,
+  arrivalDistance = 4
+}: {
+  state: BotState;
+  hasTarget: boolean;
+  distanceToGoal: number;
+  arrivalDistance?: number;
+}) => state === "patrol" && !hasTarget && distanceToGoal <= arrivalDistance;
+
+export const isTargetInsideBotAwareness = ({
+  distance,
+  inFieldOfView,
+  closeAwarenessDistance = 10
+}: {
+  distance: number;
+  inFieldOfView: boolean;
+  closeAwarenessDistance?: number;
+}) => distance <= closeAwarenessDistance || inFieldOfView;
+
 export const createBotMemory = (id: string, index: number, nowMs: number): BotMemory => ({
   state: "spawn",
   role: "patrol",
