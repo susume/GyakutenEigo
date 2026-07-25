@@ -1,6 +1,6 @@
 import assert from "node:assert/strict";
 import test from "node:test";
-import { ARENA_SCALE, getArenaObstacles } from "@quizstrike/shared";
+import { ARENA_SCALE, TEMPLE_RUNOFF_UPPER_LEVEL_Y, getArenaObstacles } from "@quizstrike/shared";
 import { ARENA_MAPS } from "./arenaMaps";
 import { blocks, cylinders, floorMarks } from "./templeRunoffMap";
 
@@ -77,5 +77,18 @@ test("Temple Runoff visual collision definitions mirror the shared authoritative
       { x: cylinder.x, z: cylinder.z, radius: cylinder.radius }
     );
   }
+});
+
+test("Temple Runoff places the river below two raised temple floor slabs", () => {
+  const water = blocks.find((block) => block.id === "canal-water");
+  const northFloor = blocks.find((block) => block.id === "temple-upper-north-floor");
+  const southFloor = blocks.find((block) => block.id === "temple-upper-south-floor");
+  const statue = cylinders.find((cylinder) => cylinder.id === "rain-god-statue");
+
+  assert.ok(water && northFloor && southFloor && statue);
+  assert.ok((water.y ?? 0) < 0.1);
+  assert.equal((northFloor.y ?? 0) + northFloor.h / 2, TEMPLE_RUNOFF_UPPER_LEVEL_Y);
+  assert.equal((southFloor.y ?? 0) + southFloor.h / 2, TEMPLE_RUNOFF_UPPER_LEVEL_Y);
+  assert.equal((statue.y ?? 0) - statue.h / 2, TEMPLE_RUNOFF_UPPER_LEVEL_Y);
 });
 

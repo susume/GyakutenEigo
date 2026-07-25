@@ -1,4 +1,4 @@
-import { ARENA_SCALE } from "@quizstrike/shared";
+import { ARENA_SCALE, TEMPLE_RUNOFF_UPPER_LEVEL_Y, getArenaGroundHeight } from "@quizstrike/shared";
 import type { ArenaMapDefinition, CitadelBlock, CitadelCylinder, CitadelFloorMark, CitadelProp, CitadelSign } from "./mapTypes";
 
 const scale = (value: number) => Number((value * ARENA_SCALE).toFixed(2));
@@ -8,6 +8,7 @@ const scaleCylinder = <T extends { x: number; z: number; radius: number }>(item:
   ({ ...item, x: scale(item.x), z: scale(item.z), radius: scale(item.radius) }) as T;
 const scalePoint = <T extends { x: number; z: number }>(item: T): T =>
   ({ ...item, x: scale(item.x), z: scale(item.z) }) as T;
+const templeGround = (x: number, z: number) => getArenaGroundHeight("temple_runoff", x, z);
 
 export const TEMPLE_RUNOFF: ArenaMapDefinition = {
   id: "temple_runoff",
@@ -57,6 +58,8 @@ const rawBlocks: CitadelBlock[] = [
   { id: "temple-south-cliff", label: "South Jungle Wall", x: 0, z: 156, w: 350, d: 8, h: 16, color: deepMoss, material: "stone", style: "wall", collides: true },
   { id: "temple-west-cliff", x: -171, z: 0, w: 8, d: 320, h: 16, color: darkStone, material: "stone", style: "wall", collides: true },
   { id: "temple-east-cliff", x: 171, z: 0, w: 8, d: 320, h: 16, color: darkStone, material: "stone", style: "wall", collides: true },
+  { id: "temple-upper-north-floor", label: "Upper Monument Terrace", x: 0, z: -109, w: 334, d: 94, h: 2, y: TEMPLE_RUNOFF_UPPER_LEVEL_Y - 1, color: sandstone, material: "stone", style: "sandbank" },
+  { id: "temple-upper-south-floor", label: "Upper Temple Terrace", x: 0, z: 67, w: 334, d: 170, h: 2, y: TEMPLE_RUNOFF_UPPER_LEVEL_Y - 1, color: mossStone, material: "stone", style: "sandbank" },
 
   { id: "blue-base-screen-north", label: "Blue Shrine", x: -128, z: -144, w: 7, d: 22, h: 10, color: mossStone, material: "stone", style: "wall", collides: true },
   { id: "blue-base-screen-a", x: -128, z: -77, w: 7, d: 30, h: 10, color: mossStone, material: "stone", style: "wall", collides: true },
@@ -106,12 +109,31 @@ const rawBlocks: CitadelBlock[] = [
   { id: "rootway-rock-east", x: 91, z: 124, w: 28, d: 17, h: 7, color: darkStone, material: "stone", style: "rock", collides: true },
   { id: "rootway-boardwalk", x: 72, z: 112, w: 24, d: 8, h: 0.6, y: 0.06, color: timber, material: "wood", style: "bridge" },
 
-  { id: "west-sluice-mouth", label: "West Sluice", x: -105, z: -2, w: 13, d: 15, h: 8, color: darkStone, material: "stone", style: "gate" },
-  { id: "east-sluice-mouth", label: "East Sluice", x: 105, z: -2, w: 13, d: 15, h: 8, color: darkStone, material: "stone", style: "gate" },
+  { id: "west-sluice-mouth", label: "West Sluice", x: -105, z: -43, w: 13, d: 15, h: 8, color: darkStone, material: "stone", style: "gate", rotationY: Math.PI / 2 },
+  { id: "east-sluice-mouth", label: "East Sluice", x: 105, z: -43, w: 13, d: 15, h: 8, color: darkStone, material: "stone", style: "gate", rotationY: Math.PI / 2 },
   { id: "broken-causeway", label: "Broken Causeway", x: 3, z: 86, w: 28, d: 7, h: 0.7, y: 0.06, color: sunStone, material: "stone", style: "bridge" }
 ];
 
-export const blocks = rawBlocks.map(scaleRect);
+const lowerBlockIds = new Set([
+  "canal-water",
+  "canal-bank-north-west",
+  "canal-bank-north-mid",
+  "canal-bank-north-east",
+  "canal-bank-south-west",
+  "canal-bank-south-mid",
+  "canal-bank-south-east",
+  "canal-pillar-cover-west",
+  "canal-pillar-cover-east",
+  "canal-debris-cover",
+  "west-sluice-mouth",
+  "east-sluice-mouth"
+]);
+
+export const blocks = rawBlocks.map(scaleRect).map((block) => {
+  if (block.id === "temple-upper-north-floor" || block.id === "temple-upper-south-floor") return block;
+  const ground = lowerBlockIds.has(block.id) ? 0 : templeGround(block.x, block.z);
+  return { ...block, y: ground + (block.y ?? block.h / 2) };
+});
 
 const rawCylinders: CitadelCylinder[] = [
   { id: "rain-god-statue", label: "Rain God Statue", x: 0, z: 37, radius: 8, h: 16, color: mossStone, material: "stone", collides: true },
@@ -123,18 +145,24 @@ const rawCylinders: CitadelCylinder[] = [
   { id: "canal-drain-east", x: 83, z: -43, radius: 3, h: 4, color: darkStone, material: "stone", collides: true }
 ];
 
-export const cylinders = rawCylinders.map(scaleCylinder);
+export const cylinders = rawCylinders.map(scaleCylinder).map((cylinder) => {
+  const ground = cylinder.id.startsWith("canal-") ? 0 : templeGround(cylinder.x, cylinder.z);
+  return { ...cylinder, y: ground + (cylinder.y ?? cylinder.h / 2) };
+});
 
 const rawFloorMarks: CitadelFloorMark[] = [
   { id: "temple-route-sun", label: "SUN BRIDGE", x: 0, z: -112, w: 82, d: 13, color: "#f5d477" },
   { id: "temple-route-canal", label: "FLOODED CANAL", x: 0, z: -43, w: 86, d: 13, color: "#74e1d8" },
   { id: "temple-route-court", label: "RAIN COURT", x: 0, z: 37, w: 78, d: 14, color: "#e4bd78" },
   { id: "temple-route-root", label: "ROOTWAY", x: 0, z: 112, w: 74, d: 13, color: "#8fc47d" },
-  { id: "temple-west-sluice", label: "SLUICE TUNNEL", x: -103, z: 10, w: 32, d: 10, color: "#77d7cf", rotation: Math.PI / 2 },
-  { id: "temple-east-sluice", label: "HIDDEN DOOR", x: 103, z: 10, w: 32, d: 10, color: "#d9c18b", rotation: Math.PI / 2 }
+  { id: "temple-west-sluice", label: "SLUICE TUNNEL", x: -103, z: -43, w: 32, d: 10, color: "#77d7cf", rotation: Math.PI / 2 },
+  { id: "temple-east-sluice", label: "HIDDEN DOOR", x: 103, z: -43, w: 32, d: 10, color: "#d9c18b", rotation: Math.PI / 2 }
 ];
 
-export const floorMarks = rawFloorMarks.map(scaleRect);
+export const floorMarks = rawFloorMarks.map(scaleRect).map((mark) => ({
+  ...mark,
+  y: templeGround(mark.x, mark.z) + 0.045
+}));
 
 const rawProps: CitadelProp[] = [
   { id: "sun-arch-west", kind: "arch", x: -112, z: -112, size: 10, h: 12, color: sandstone, material: "stone", rotationY: Math.PI / 2 },
@@ -160,7 +188,10 @@ const rawProps: CitadelProp[] = [
   { id: "canal-lamp-east", kind: "lamp", x: 97, z: -63, size: 2, h: 7, color: "#6be4d8", material: "accent" }
 ];
 
-export const props = rawProps.map(scalePoint);
+export const props = rawProps.map(scalePoint).map((prop) => ({
+  ...prop,
+  y: (prop.id.startsWith("canal-") ? 0 : templeGround(prop.x, prop.z)) + (prop.y ?? 0)
+}));
 
 const rawSigns: CitadelSign[] = [
   { id: "sign-sun", label: "SUN BRIDGE", x: -4, z: -128, color: "#f6d67d", rotationY: 0, y: 8 },
@@ -171,4 +202,7 @@ const rawSigns: CitadelSign[] = [
   { id: "sign-red", label: "RED EXPEDITION", x: 127, z: 84, color: "#fb9a72", rotationY: -Math.PI / 2, y: 8 }
 ];
 
-export const signs = rawSigns.map(scalePoint);
+export const signs = rawSigns.map(scalePoint).map((sign) => ({
+  ...sign,
+  y: (sign.id === "sign-canal" ? 0 : templeGround(sign.x, sign.z)) + (sign.y ?? 7)
+}));

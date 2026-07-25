@@ -434,6 +434,7 @@ export interface PlayerSession {
   cosmeticXp?: number;
   connectionState?: "connected" | "disconnected";
   x?: number;
+  y?: number;
   z?: number;
   facing?: number;
   score: number;
@@ -1009,7 +1010,41 @@ const scaleArenaRadius = <T extends { x: number; z: number; radius: number }>(po
 export const ARENA_LIMIT_X = scaleArenaValue(175);
 export const ARENA_LIMIT_Z = scaleArenaValue(160);
 
-export type GroundArenaPosition = Required<Pick<ArenaPosition, "x" | "z" | "facing">>;
+export const ARENA_PLAYER_EYE_HEIGHT = 3.2;
+export const TEMPLE_RUNOFF_UPPER_LEVEL_Y = 7.5;
+
+const isInsideTempleRamp = (rawX: number, centerX: number) => Math.abs(rawX - centerX) <= 11;
+
+/**
+ * Returns the walkable floor elevation at an arena position.
+ * Temple Runoff has a lower river floor, two north ramps, two south ramps,
+ * and a raised monument/courtyard tier everywhere else.
+ */
+export const getArenaGroundHeight = (
+  mapId: ArenaMapId | string | undefined,
+  x: number,
+  z: number
+): number => {
+  if (mapId !== "temple_runoff") return 0;
+  const rawX = x / ARENA_SCALE;
+  const rawZ = z / ARENA_SCALE;
+  if (rawZ >= -60 && rawZ <= -26) return 0;
+  if (rawZ >= -78 && rawZ < -60 && (isInsideTempleRamp(rawX, -38) || isInsideTempleRamp(rawX, 38))) {
+    return Number((TEMPLE_RUNOFF_UPPER_LEVEL_Y * ((-60 - rawZ) / 18)).toFixed(3));
+  }
+  if (rawZ > -26 && rawZ <= -8 && (isInsideTempleRamp(rawX, -35) || isInsideTempleRamp(rawX, 51))) {
+    return Number((TEMPLE_RUNOFF_UPPER_LEVEL_Y * ((rawZ + 26) / 18)).toFixed(3));
+  }
+  return TEMPLE_RUNOFF_UPPER_LEVEL_Y;
+};
+
+export const getArenaEyeHeight = (
+  mapId: ArenaMapId | string | undefined,
+  x: number,
+  z: number
+) => getArenaGroundHeight(mapId, x, z) + ARENA_PLAYER_EYE_HEIGHT;
+
+export type GroundArenaPosition = Required<Pick<ArenaPosition, "x" | "z" | "facing">> & Pick<ArenaPosition, "y">;
 
 export type SpawnPoint = GroundArenaPosition & {
   id: string;
@@ -1095,13 +1130,19 @@ const RAW_TEMPLE_RUNOFF_BLUE_SPAWNS: SpawnPoint[] = [
 }));
 
 export const TEMPLE_RUNOFF_TEAM_SPAWNS: Record<Team, SpawnPoint[]> = {
-  blue: RAW_TEMPLE_RUNOFF_BLUE_SPAWNS.map(scaleArenaPosition),
+  blue: RAW_TEMPLE_RUNOFF_BLUE_SPAWNS.map(scaleArenaPosition).map((spawn) => ({
+    ...spawn,
+    y: getArenaEyeHeight("temple_runoff", spawn.x, spawn.z)
+  })),
   red: RAW_TEMPLE_RUNOFF_BLUE_SPAWNS.map((spawn, index) => scaleArenaPosition({
     ...spawn,
     id: `red-temple-${index + 1}`,
     label: spawn.label.replace("Gate", "Approach"),
     x: -spawn.x,
     facing: Math.PI / 2
+  })).map((spawn) => ({
+    ...spawn,
+    y: getArenaEyeHeight("temple_runoff", spawn.x, spawn.z)
   }))
 };
 
@@ -1229,13 +1270,23 @@ const distanceToClosestPlayer = (
 export const getTeamSpawn = (team: Team, index = 0): GroundArenaPosition => {
   const spawns = teamSpawnsForMap("desert_citadel")[team];
   const spawn = spawns[((index % spawns.length) + spawns.length) % spawns.length];
-  return { x: spawn.x, z: spawn.z, facing: spawn.facing };
+  return {
+    x: spawn.x,
+    z: spawn.z,
+    facing: spawn.facing,
+    ...(Number.isFinite(spawn.y) ? { y: spawn.y } : {})
+  };
 };
 
 export const getTeamSpawnForMap = (mapId: ArenaMapId | string | undefined, team: Team, index = 0): GroundArenaPosition => {
   const spawns = teamSpawnsForMap(mapId)[team];
   const spawn = spawns[((index % spawns.length) + spawns.length) % spawns.length];
-  return { x: spawn.x, z: spawn.z, facing: spawn.facing };
+  return {
+    x: spawn.x,
+    z: spawn.z,
+    facing: spawn.facing,
+    ...(Number.isFinite(spawn.y) ? { y: spawn.y } : {})
+  };
 };
 
 export const selectTeamSpawn = (
@@ -1266,12 +1317,22 @@ export const selectTeamSpawnForMap = (
   });
   scored.sort((a, b) => b.score - a.score);
   const selected = scored[0]?.spawn ?? spawns[0];
-  return { x: selected.x, z: selected.z, facing: selected.facing };
+  return {
+    x: selected.x,
+    z: selected.z,
+    facing: selected.facing,
+    ...(Number.isFinite(selected.y) ? { y: selected.y } : {})
+  };
 };
 
 export const getFreeForAllSpawn = (index = 0): GroundArenaPosition => {
   const spawn = FREE_FOR_ALL_SPAWNS[((index % FREE_FOR_ALL_SPAWNS.length) + FREE_FOR_ALL_SPAWNS.length) % FREE_FOR_ALL_SPAWNS.length];
-  return { x: spawn.x, z: spawn.z, facing: spawn.facing };
+  return {
+    x: spawn.x,
+    z: spawn.z,
+    facing: spawn.facing,
+    ...(Number.isFinite(spawn.y) ? { y: spawn.y } : {})
+  };
 };
 
 export const selectFreeForAllSpawn = (
@@ -1710,8 +1771,8 @@ export const resolveProjectileTarget = ({
   range = TAG_RANGE,
   hitRadius = SNOWBALL_HIT_RADIUS
 }: {
-  attacker: Pick<PlayerSession, "id" | "team" | "isAlive" | "x" | "z" | "facing">;
-  candidates: Array<Pick<PlayerSession, "id" | "team" | "isAlive" | "connectionState" | "x" | "z" | "isBot">>;
+  attacker: Pick<PlayerSession, "id" | "team" | "isAlive" | "x" | "y" | "z" | "facing">;
+  candidates: Array<Pick<PlayerSession, "id" | "team" | "isAlive" | "connectionState" | "x" | "y" | "z" | "isBot">>;
   requestedTargetId?: string;
   obstacles?: readonly ArenaObstacle[];
   range?: number;
@@ -1724,6 +1785,7 @@ export const resolveProjectileTarget = ({
 
   const origin = {
     x: Number.isFinite(attacker.x) ? attacker.x! : 0,
+    y: Number.isFinite(attacker.y) ? attacker.y! : 0,
     z: Number.isFinite(attacker.z) ? attacker.z! : 0,
     facing: Number.isFinite(attacker.facing) ? attacker.facing : 0
   };
@@ -1738,8 +1800,10 @@ export const resolveProjectileTarget = ({
     if (candidate.id === attacker.id) continue;
     if (requestedTargetId && candidate.id !== requestedTargetId) continue;
     if (candidate.connectionState === "disconnected" || !candidate.isAlive || candidate.team === attacker.team) continue;
+    if (Math.abs((candidate.y ?? 0) - origin.y) > 5.5) continue;
     const target = {
       x: Number.isFinite(candidate.x) ? candidate.x! : 0,
+      y: Number.isFinite(candidate.y) ? candidate.y! : 0,
       z: Number.isFinite(candidate.z) ? candidate.z! : 0
     };
     const hit = distanceToShotSegment({ origin, direction, target, range });
@@ -1768,7 +1832,8 @@ export const resolveAuthoritativeMovement = ({
   elapsedMs,
   maxSpeed,
   obstacles = ARENA_OBSTACLES,
-  radius = 0.45
+  radius = 0.45,
+  groundY = 0
 }: {
   current: ArenaPosition;
   requested: ArenaPosition;
@@ -1776,6 +1841,7 @@ export const resolveAuthoritativeMovement = ({
   maxSpeed: number;
   obstacles?: readonly ArenaObstacle[];
   radius?: number;
+  groundY?: number;
 }): AuthoritativeMovementResult => {
   const from = clampArenaPosition(current);
   const to = clampArenaPosition(requested);
@@ -1794,7 +1860,7 @@ export const resolveAuthoritativeMovement = ({
       })
     : to;
 
-  const canClearJumpable = (obstacle: ArenaObstacle) => obstacle.jumpable === true && Number(to.y) >= 5;
+  const canClearJumpable = (obstacle: ArenaObstacle) => obstacle.jumpable === true && Number(to.y) - groundY >= 5;
   if (obstacles.some((obstacle) => !canClearJumpable(obstacle) && segmentIntersectsObstacle(from, next, obstacle, radius))) {
     return { ...from, facing: to.facing, blocked: true };
   }
@@ -1808,8 +1874,8 @@ export const resolveBotPursuitTarget = ({
   bot,
   candidates
 }: {
-  bot: Pick<PlayerSession, "id" | "team" | "isAlive" | "x" | "z">;
-  candidates: Array<Pick<PlayerSession, "id" | "team" | "isAlive" | "connectionState" | "isBot" | "x" | "z">>;
+  bot: Pick<PlayerSession, "id" | "team" | "isAlive" | "x" | "y" | "z">;
+  candidates: Array<Pick<PlayerSession, "id" | "team" | "isAlive" | "connectionState" | "isBot" | "x" | "y" | "z">>;
 }): ArenaPosition | undefined => {
   if (!bot.isAlive) return undefined;
   const botPosition = { x: bot.x ?? 0, z: bot.z ?? 0 };
@@ -1822,6 +1888,7 @@ export const resolveBotPursuitTarget = ({
       !candidate.isAlive ||
       candidate.team === bot.team
     ) continue;
+    if (Math.abs((candidate.y ?? 0) - (bot.y ?? 0)) > 5.5) continue;
     const position = { x: candidate.x ?? 0, z: candidate.z ?? 0 };
     const distance = Math.hypot(position.x - botPosition.x, position.z - botPosition.z);
     if (!selected || distance < selected.distance) selected = { position, distance };
@@ -1861,17 +1928,18 @@ export const resolveBotAttackTarget = ({
   obstacles = ARENA_OBSTACLES,
   range = TAG_RANGE
 }: {
-  bot: Pick<PlayerSession, "id" | "team" | "isAlive" | "x" | "z">;
-  candidates: Array<Pick<PlayerSession, "id" | "team" | "isAlive" | "connectionState" | "isBot" | "x" | "z">>;
+  bot: Pick<PlayerSession, "id" | "team" | "isAlive" | "x" | "y" | "z">;
+  candidates: Array<Pick<PlayerSession, "id" | "team" | "isAlive" | "connectionState" | "isBot" | "x" | "y" | "z">>;
   obstacles?: readonly ArenaObstacle[];
   range?: number;
 }): BotAttackTargetResult => {
   if (!bot.isAlive) return { ok: false, reason: "no_valid_target" };
-  const botPosition = { x: bot.x ?? 0, z: bot.z ?? 0 };
+  const botPosition = { x: bot.x ?? 0, y: bot.y ?? 0, z: bot.z ?? 0 };
   let selected: { id: string; distance: number } | undefined;
   for (const candidate of candidates) {
     if (candidate.id === bot.id || candidate.isBot || candidate.connectionState === "disconnected" || !candidate.isAlive || candidate.team === bot.team) continue;
-    const targetPosition = { x: candidate.x ?? 0, z: candidate.z ?? 0 };
+    if (Math.abs((candidate.y ?? 0) - botPosition.y) > 5.5) continue;
+    const targetPosition = { x: candidate.x ?? 0, y: candidate.y ?? 0, z: candidate.z ?? 0 };
     const distance = Math.hypot(targetPosition.x - botPosition.x, targetPosition.z - botPosition.z);
     if (distance > range || !hasLineOfSight({ from: botPosition, to: targetPosition, obstacles })) continue;
     if (!selected || distance < selected.distance) selected = { id: candidate.id, distance };

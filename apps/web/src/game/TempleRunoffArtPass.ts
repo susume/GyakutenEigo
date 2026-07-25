@@ -1,5 +1,5 @@
 import * as THREE from "three";
-import { ARENA_SCALE } from "@quizstrike/shared";
+import { ARENA_SCALE, TEMPLE_RUNOFF_UPPER_LEVEL_Y, getArenaGroundHeight } from "@quizstrike/shared";
 
 type AddStaticMesh = (
   parent: THREE.Object3D,
@@ -33,7 +33,7 @@ export const addTempleRunoffArtPass = (
 ): TempleRunoffArtHandle => {
   const landmark = new THREE.Group();
   landmark.name = "temple_runoff_rain_god_landmark";
-  landmark.position.set(0, 0, scaled(37));
+  landmark.position.set(0, TEMPLE_RUNOFF_UPPER_LEVEL_Y, scaled(37));
   scene.add(landmark);
 
   const body = addStaticMesh(landmark, new THREE.BoxGeometry(8.4, 9.6, 5.6), "#586447", "stone");
@@ -67,7 +67,7 @@ export const addTempleRunoffArtPass = (
   }
   for (const x of [-84, -12, 58].map(scaled)) {
     const repairPlank = addStaticMesh(bridgeStory, new THREE.BoxGeometry(12, 0.34, 1.25), "#93613a", "wood");
-    repairPlank.position.set(x, 0.72, scaled(-112));
+    repairPlank.position.set(x, TEMPLE_RUNOFF_UPPER_LEVEL_Y + 0.72, scaled(-112));
     repairPlank.rotation.y = x > 0 ? 0.08 : -0.06;
   }
 
@@ -76,11 +76,31 @@ export const addTempleRunoffArtPass = (
   scene.add(tunnelStory);
   for (const x of [-105, 105].map(scaled)) {
     const roof = addStaticMesh(tunnelStory, new THREE.BoxGeometry(10, 1.2, 18), "#343c35", "stone");
-    roof.position.set(x, 8.2, scaled(-2));
-    for (const z of [-8, 4].map(scaled)) {
+    roof.position.set(x, 8.2, scaled(-43));
+    for (const z of [-49, -37].map(scaled)) {
       const root = addStaticMesh(tunnelStory, new THREE.TorusGeometry(4.2, 0.42, 6, 16, Math.PI), "#59432e", "wood");
       root.position.set(x, 7.2, z);
       root.rotation.set(0, 0, Math.PI / 2);
+    }
+  }
+
+  const connectorStory = new THREE.Group();
+  connectorStory.name = "temple_runoff_level_connectors";
+  scene.add(connectorStory);
+  const rampRise = TEMPLE_RUNOFF_UPPER_LEVEL_Y;
+  const rampRun = scaled(18);
+  const rampLength = Math.hypot(rampRun, rampRise);
+  const rampAngle = Math.atan2(rampRise, rampRun);
+  for (const [rawX, rawZ, direction] of [
+    [-38, -69, 1], [38, -69, 1], [-35, -17, -1], [51, -17, -1]
+  ] as const) {
+    const ramp = addStaticMesh(connectorStory, new THREE.BoxGeometry(scaled(18), 0.48, rampLength), "#9b8153", "stone");
+    ramp.position.set(scaled(rawX), rampRise / 2, scaled(rawZ));
+    ramp.rotation.x = direction * rampAngle;
+    for (const side of [-1, 1]) {
+      const rail = addStaticMesh(connectorStory, new THREE.BoxGeometry(0.28, 1.15, rampLength), "#6d5436", "wood");
+      rail.position.set(scaled(rawX) + side * scaled(8.7), rampRise / 2 + 0.72, scaled(rawZ));
+      rail.rotation.x = direction * rampAngle;
     }
   }
 
@@ -140,7 +160,8 @@ export const addTempleRunoffArtPass = (
       const rawZ = edgeBand
         ? -142 + random() * 284
         : 78 + random() * 68;
-      position.set(scaled(rawX), 2.5 + random() * 1.4, scaled(rawZ));
+      const groundY = getArenaGroundHeight("temple_runoff", scaled(rawX), scaled(rawZ));
+      position.set(scaled(rawX), groundY + 2.5 + random() * 1.4, scaled(rawZ));
       rotation.setFromEuler(new THREE.Euler(0, random() * Math.PI, (random() - 0.5) * 0.12));
       const treeScale = 0.72 + random() * 0.72;
       itemScale.set(treeScale, treeScale, treeScale);
@@ -148,7 +169,7 @@ export const addTempleRunoffArtPass = (
       trunks.setMatrixAt(index, matrix);
 
       for (let crown = 0; crown < 2; crown += 1) {
-        position.set(scaled(rawX) + (crown ? 1.35 : -1.1), 5.2 + treeScale * 2.5 + crown * 0.55, scaled(rawZ) + (crown ? -0.8 : 0.7));
+        position.set(scaled(rawX) + (crown ? 1.35 : -1.1), groundY + 5.2 + treeScale * 2.5 + crown * 0.55, scaled(rawZ) + (crown ? -0.8 : 0.7));
         rotation.setFromEuler(new THREE.Euler(crown ? 1.16 : -1.12, random() * Math.PI, 0));
         itemScale.setScalar(0.72 + random() * 0.38);
         matrix.compose(position, rotation, itemScale);
@@ -156,7 +177,7 @@ export const addTempleRunoffArtPass = (
       }
 
       for (let fern = 0; fern < 2; fern += 1) {
-        position.set(scaled(rawX) + (fern ? 1.8 : -1.6), 0.24, scaled(rawZ) + (fern ? 1.2 : -1.1));
+        position.set(scaled(rawX) + (fern ? 1.8 : -1.6), groundY + 0.24, scaled(rawZ) + (fern ? 1.2 : -1.1));
         rotation.setFromEuler(new THREE.Euler(0, random() * Math.PI, fern ? 0.22 : -0.22));
         itemScale.setScalar(0.65 + random() * 0.6);
         matrix.compose(position, rotation, itemScale);
@@ -179,7 +200,7 @@ export const addTempleRunoffArtPass = (
       });
     },
     dispose() {
-      scene.remove(landmark, bridgeStory, tunnelStory, waterGroup, vegetationGroup);
+      scene.remove(landmark, bridgeStory, tunnelStory, connectorStory, waterGroup, vegetationGroup);
       disposable.forEach((resource) => resource.dispose());
     }
   };

@@ -40,6 +40,7 @@ import {
   FLAG_MODE_DEFAULTS,
   GEAR_ITEMS,
   getCosmeticProgress,
+  getArenaGroundHeight,
   getPlayerPerks,
   getPlayerWeaponId,
   RESPAWN_CORRECT_ANSWERS_REQUIRED,
@@ -2538,8 +2539,8 @@ function StudentExperience({ onExit }: { onExit: () => void }) {
     const socket = io(getApiUrl());
     socketRef.current = socket;
     const roomJoinPayload = { code: session.sessionCode, playerId: activePlayerId, playerToken };
-    const pendingPositions = new Map<string, { x: number; z: number; facing: number }>();
-    const lastRemotePositions = new Map<string, { x: number; z: number }>();
+    const pendingPositions = new Map<string, { x: number; y?: number; z: number; facing: number }>();
+    const lastRemotePositions = new Map<string, { x: number; y?: number; z: number }>();
     let lastVisualSession = session;
     const emitPlayerVfx = (kind: ArenaVfxKind, playerId = activePlayerId, source = lastVisualSession) => {
       const target = source.players.find((candidate) => candidate.id === playerId);
@@ -2689,7 +2690,7 @@ function StudentExperience({ onExit }: { onExit: () => void }) {
         emitPlayerAnimation(localWon ? "victory" : "defeat", activePlayerId, player.team);
       }
     });
-    socket.on("player_position", (position: { playerId?: string; x?: number; z?: number; facing?: number }) => {
+    socket.on("player_position", (position: { playerId?: string; x?: number; y?: number; z?: number; facing?: number }) => {
       if (!position.playerId || !Number.isFinite(position.x) || !Number.isFinite(position.z) || !Number.isFinite(position.facing)) return;
       if (position.playerId !== activePlayerId) {
         const previous = lastRemotePositions.get(position.playerId);
@@ -2704,14 +2705,15 @@ function StudentExperience({ onExit }: { onExit: () => void }) {
             lastVisualSession.settings.mapId === "iron_junction"
               ? "metal"
               : lastVisualSession.settings.mapId === "temple_runoff"
-                ? "stone"
+                ? getArenaGroundHeight("temple_runoff", position.x!, position.z!) < 1 ? "water" : "stone"
                 : "sand"
           );
         }
-        lastRemotePositions.set(position.playerId, { x: position.x!, z: position.z! });
+        lastRemotePositions.set(position.playerId, { x: position.x!, y: position.y, z: position.z! });
       }
       pendingPositions.set(position.playerId, {
         x: position.x!,
+        y: Number.isFinite(position.y) ? position.y : undefined,
         z: position.z!,
         facing: position.facing!
       });

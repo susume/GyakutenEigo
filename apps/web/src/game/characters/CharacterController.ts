@@ -17,18 +17,18 @@ export class CharacterController {
   turnSpeed = 0;
   carryingObjective = false;
 
-  constructor(model: CharacterModel, x: number, z: number, facing: number, alive: boolean) {
+  constructor(model: CharacterModel, x: number, z: number, facing: number, alive: boolean, y = 0) {
     this.model = model;
-    this.current.set(x, 0, z);
+    this.current.set(x, y, z);
     this.target.copy(this.current);
     this.targetFacing = facing;
     this.currentFacing = facing;
     this.alive = alive;
-    this.model.setWorldState(x, z, facing, alive);
+    this.model.setWorldState(x, z, facing, alive, y);
   }
 
-  setTarget(x: number, z: number, facing: number, alive: boolean) {
-    this.target.set(x, 0, z);
+  setTarget(x: number, z: number, facing: number, alive: boolean, y = 0) {
+    this.target.set(x, y, z);
     this.targetFacing = facing;
     this.alive = alive;
   }
@@ -65,7 +65,7 @@ export class CharacterController {
       angleDelta(previousFacing, this.currentFacing) / Math.max(delta, 0.001),
       motionResponse
     );
-    this.model.setWorldState(this.current.x, this.current.z, this.currentFacing, this.alive);
+    this.model.setWorldState(this.current.x, this.current.z, this.currentFacing, this.alive, this.current.y);
     this.model.update({
       camera,
       delta,

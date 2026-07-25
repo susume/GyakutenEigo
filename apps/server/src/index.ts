@@ -17,6 +17,7 @@ import {
   DEFAULT_PLAYER_APPEARANCE,
   clampArenaPosition,
   ARENA_SCALE,
+  ARENA_PLAYER_EYE_HEIGHT,
   DEFAULT_PLAYER_HEALTH,
   GEAR_ITEMS,
   getGearFireCooldownMs,
@@ -30,6 +31,7 @@ import {
   getPlayerWeaponId,
   isWeaponGearId,
   getArenaObstacles,
+  getArenaEyeHeight,
   getRoundRemainingSeconds,
   getRoundResetLoadout,
   getZombieBestPlayers,
@@ -877,6 +879,7 @@ const applyValidatedDamage = (session: GameSession, attacker: PlayerSession, tar
       session.flag = resolveFlagDropForPlayer(session.flag, target, knockedOutPosition);
     }
     target.x = baseSpawn.x;
+    target.y = baseSpawn.y;
     target.z = baseSpawn.z;
     target.facing = baseSpawn.facing;
     if (target.isBot && session.settings.gameMode !== "flag") botRespawnAt.set(target.id, Date.now() + BOT_RESPAWN_MS);
@@ -940,24 +943,34 @@ const applyAuthoritativePosition = (
 ) => {
   const fallback = sessionSpawn(session, player.team);
   const lastMoveAt = playerMoveTimestamps.get(player.id) ?? nowMs - BOT_TICK_MS;
+  const requestedX = Number.isFinite(Number(requested.x)) ? Number(requested.x) : player.x ?? fallback.x;
+  const requestedZ = Number.isFinite(Number(requested.z)) ? Number(requested.z) : player.z ?? fallback.z;
+  const requestedGroundY = getArenaEyeHeight(session.settings.mapId, requestedX, requestedZ) - ARENA_PLAYER_EYE_HEIGHT;
+  const requestedStandingY = requestedGroundY + ARENA_PLAYER_EYE_HEIGHT;
+  const requestedMovementY = Number.isFinite(Number(requested.y))
+    ? Math.min(requestedStandingY + 4.5, Math.max(requestedStandingY, Number(requested.y)))
+    : requestedStandingY;
   const position = resolveAuthoritativeMovement({
     current: {
       x: player.x ?? fallback.x,
+      y: player.y ?? fallback.y ?? getArenaEyeHeight(session.settings.mapId, player.x ?? fallback.x, player.z ?? fallback.z),
       z: player.z ?? fallback.z,
       facing: player.facing ?? fallback.facing
     },
     requested: {
-      x: Number(requested.x),
-      z: Number(requested.z),
-      y: Number(requested.y),
+      x: requestedX,
+      z: requestedZ,
+      y: requestedMovementY,
       facing: Number(requested.facing)
     },
     elapsedMs: nowMs - lastMoveAt,
     maxSpeed: PLAYER_MAX_SPEED * getPlayerMoveSpeedMultiplier(player),
-    obstacles: getArenaObstacles(session.settings.mapId)
+    obstacles: getArenaObstacles(session.settings.mapId),
+    groundY: requestedGroundY
   });
   playerMoveTimestamps.set(player.id, nowMs);
   player.x = position.x;
+  player.y = getArenaEyeHeight(session.settings.mapId, position.x, position.z);
   player.z = position.z;
   player.facing = position.facing;
   return position;
@@ -1044,6 +1057,7 @@ const advanceBots = () => {
         obstacles: getArenaObstacles(session.settings.mapId)
       });
       bot.x = next.x;
+      bot.y = getArenaEyeHeight(session.settings.mapId, next.x, next.z);
       bot.z = next.z;
       bot.facing = Math.atan2(next.x - oldX, next.z - oldZ);
       bot.snowballs = bot.snowballs ?? session.settings.startingSnowballs;
@@ -1402,6 +1416,7 @@ app.post("/api/sessions/:code/bots", requireTeacher, (req: AuthedRequest, res) =
     snowballs: session.settings.startingSnowballs,
     respawnCorrectAnswers: 0,
     x: spawn.x,
+    y: spawn.y,
     z: spawn.z,
     facing: spawn.facing,
     score: 0,
@@ -1530,6 +1545,7 @@ app.post("/api/sessions/:code/join", (req, res) => {
     snowballs: session.settings.startingSnowballs,
     respawnCorrectAnswers: 0,
     x: spawn.x,
+    y: spawn.y,
     z: spawn.z,
     facing: spawn.facing,
     score: 0,
@@ -1605,6 +1621,7 @@ app.post("/api/sessions/:code/players/:playerId/team", (req, res) => {
   player.team = requestedTeam;
   const spawn = selectSessionSpawn(session, player.team);
   player.x = spawn.x;
+  player.y = spawn.y;
   player.z = spawn.z;
   player.facing = spawn.facing;
   appendEvent(session, {
@@ -2192,6 +2209,7 @@ io.on("connection", (socket) => {
     socket.to(session.sessionCode).volatile.emit("player_position", {
       playerId: player.id,
       x: position.x,
+      y: player.y,
       z: position.z,
       facing: position.facing
     });
@@ -2318,7 +2336,7 @@ io.on("connection", (socket) => {
             ? "Move next to the placed flag, then press E to capture it."
             : "Blue can capture after Red places the flag."
       });
-      socket.emit("player_position", { playerId: player.id, x: position.x, z: position.z, facing: position.facing });
+      socket.emit("player_position", { playerId: player.id, x: position.x, y: player.y, z: position.z, facing: position.facing });
     }
   });
 });

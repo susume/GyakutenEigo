@@ -61,6 +61,7 @@ export type CitadelFloorMark = {
   d: number;
   color: string;
   rotation?: number;
+  y?: number;
 };
 
 export type CitadelProp = {

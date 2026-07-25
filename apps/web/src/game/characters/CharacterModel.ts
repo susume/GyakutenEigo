@@ -45,6 +45,8 @@ export class CharacterModel {
   readonly audio = new CharacterAudio();
   private readonly animator: CharacterAnimator;
   private readonly parts: CharacterModelParts;
+  private worldY = 0;
+  private animatedLocalY = 0;
 
   constructor(appearance: CharacterAppearance, parts: CharacterModelParts) {
     this.appearance = appearance;
@@ -54,8 +56,10 @@ export class CharacterModel {
     this.root.userData.characterAppearance = appearance;
   }
 
-  setWorldState(x: number, z: number, facing: number, alive: boolean) {
+  setWorldState(x: number, z: number, facing: number, alive: boolean, y = 0) {
+    this.worldY = y;
     this.root.position.x = x;
+    this.root.position.y = this.worldY + this.animatedLocalY;
     this.root.position.z = z;
     this.root.rotation.y = facing;
     this.root.visible = true;
@@ -86,9 +90,12 @@ export class CharacterModel {
   update({ camera, delta, elapsed, speed, forwardSpeed, strafeSpeed, turnSpeed, alive, aimPitch, firing, crouching, carryingObjective }: CharacterModelUpdate) {
     const lodState = this.lod.update(this.root, camera);
     if (lodState.shouldAnimate || this.animator.hasActiveCue) {
+      this.root.position.y = this.animatedLocalY;
       this.animator.update(this.parts, { delta, elapsed, speed, forwardSpeed, strafeSpeed, turnSpeed, alive, aimPitch, firing, crouching, carryingObjective });
+      this.animatedLocalY = this.root.position.y;
       this.audio.update(speed, delta);
     }
+    this.root.position.y = this.worldY + this.animatedLocalY;
     this.parts.equipment.weapon.visible = alive && lodState.level.equipment !== "minimal";
     this.parts.equipment.accessories.forEach((accessory) => {
       accessory.visible = alive && lodState.level.equipment === "full";

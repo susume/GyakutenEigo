@@ -11,6 +11,7 @@ import {
   TEAM_BASE_ZONES,
   getGearFireCooldownMs,
   getGearZoomFovMultiplier,
+  getArenaGroundHeight,
   getPlayerMoveSpeedMultiplier,
   getPlayerWeaponId,
   getTeamSpawnForMap,
@@ -412,7 +413,13 @@ export default function ArenaPreview({
     const fallbackSpawn = currentPlayer ? getTeamSpawnForMap(arenaMapId, currentPlayer.team) : getTeamSpawnForMap(arenaMapId, "blue");
     const initialServerX = isFiniteNumber(currentPlayer?.x) ? currentPlayer.x : fallbackSpawn.x;
     const initialServerZ = isFiniteNumber(currentPlayer?.z) ? currentPlayer.z : fallbackSpawn.z;
-    const playerPosition = new THREE.Vector3(serverToLocalX(initialServerX), FPS_STANDING_EYE_HEIGHT, serverToLocalZ(initialServerZ));
+    const initialGroundY = getArenaGroundHeight(arenaMapId, initialServerX, initialServerZ);
+    const initialServerY = isFiniteNumber(currentPlayer?.y) ? currentPlayer.y : fallbackSpawn.y;
+    const playerPosition = new THREE.Vector3(
+      serverToLocalX(initialServerX),
+      isFiniteNumber(initialServerY) ? initialServerY : initialGroundY + FPS_STANDING_EYE_HEIGHT,
+      serverToLocalZ(initialServerZ)
+    );
     let yaw = isFiniteNumber(currentPlayer?.facing) ? currentPlayer.facing : fallbackSpawn.facing;
     let pitch = -0.12;
     if (isFps) setMiniMapPosition(localToServerPosition(playerPosition, yaw));
@@ -592,11 +599,12 @@ export default function ArenaPreview({
           beacon.add(pylon);
         }
       }
-      beacon.position.set(x, 0, z);
+      const groundY = getArenaGroundHeight(arenaMapId, x, z);
+      beacon.position.set(x, groundY, z);
       scene.add(beacon);
       if (activeQuality !== "performance") {
         const accentLight = new THREE.PointLight(color, isFps ? 9 : 16, 42, 2);
-        accentLight.position.set(x, 7, z);
+        accentLight.position.set(x, groundY + 7, z);
         scene.add(accentLight);
       }
     };
@@ -650,7 +658,7 @@ export default function ArenaPreview({
       const flagGlow = new THREE.PointLight(markerColor, activeQuality === "performance" ? 0 : 18, 42, 2);
       flagGlow.position.y = 5;
       flagMarker.add(flagGlow);
-      flagMarker.position.set(markerX, 0, markerZ);
+      flagMarker.position.set(markerX, getArenaGroundHeight(arenaMapId, markerX, markerZ), markerZ);
       scene.add(flagMarker);
     }
 
@@ -689,7 +697,7 @@ export default function ArenaPreview({
     const addBlockDetail = (block: (typeof arenaMap.blocks)[number]) => {
       if (!block.style || qualityConfig.detail === 0) return;
       const detail = new THREE.Group();
-      detail.position.set(block.x, block.y ?? 0, block.z);
+      detail.position.set(block.x, (block.y ?? block.h / 2) - block.h / 2, block.z);
       detail.rotation.y = block.rotationY ?? 0;
       scene.add(detail);
       const stoneTone = block.material === "wood" ? block.color : paleStone;
@@ -942,7 +950,7 @@ export default function ArenaPreview({
       addBlockDetail(block);
       if (block.label && !isFps) {
         const label = new THREE.Sprite(makeSpriteLabel(block.label, "#fef3c7"));
-        label.position.set(block.x, (block.y ?? block.h) + block.h / 2 + 6, block.z);
+        label.position.set(block.x, (block.y ?? block.h / 2) + block.h / 2 + 6, block.z);
         label.scale.set(22, 7.5, 1);
         scene.add(label);
       }
@@ -1147,13 +1155,13 @@ export default function ArenaPreview({
       if (cylinder.collides) colliderForObject(mesh, 0.2);
       if (cylinder.label && !isFps) {
         const label = new THREE.Sprite(makeSpriteLabel(cylinder.label, "#fef3c7"));
-        label.position.set(cylinder.x, (cylinder.y ?? cylinder.h) + cylinder.h / 2 + 5, cylinder.z);
+        label.position.set(cylinder.x, (cylinder.y ?? cylinder.h / 2) + cylinder.h / 2 + 5, cylinder.z);
         label.scale.set(22, 7.5, 1);
         scene.add(label);
       }
     });
 
-    const addFloorLabel = (label: string, x: number, z: number, width: number, depth: number, color: string, rotation = 0) => {
+    const addFloorLabel = (label: string, x: number, z: number, width: number, depth: number, color: string, rotation = 0, y?: number) => {
       const marker = new THREE.Mesh(
         new THREE.PlaneGeometry(width, depth),
         new THREE.MeshBasicMaterial({
@@ -1165,12 +1173,12 @@ export default function ArenaPreview({
       );
       marker.rotation.x = -Math.PI / 2;
       marker.rotation.z = rotation;
-      marker.position.set(x, 0.045, z);
+      marker.position.set(x, y ?? getArenaGroundHeight(arenaMapId, x, z) + 0.045, z);
       scene.add(marker);
       return marker;
     };
 
-    arenaMap.floorMarks.forEach((mark) => addFloorLabel(mark.label, mark.x, mark.z, mark.w, mark.d, mark.color, mark.rotation));
+    arenaMap.floorMarks.forEach((mark) => addFloorLabel(mark.label, mark.x, mark.z, mark.w, mark.d, mark.color, mark.rotation, mark.y));
 
     const addWallSign = (label: string, x: number, z: number, color: string, rotationY = 0, y = 7) => {
       const sign = new THREE.Mesh(
@@ -1196,7 +1204,7 @@ export default function ArenaPreview({
         new THREE.MeshBasicMaterial({ color, transparent: true, opacity, depthWrite: false })
       );
       circle.rotation.x = -Math.PI / 2;
-      circle.position.set(x, 0.07, z);
+      circle.position.set(x, getArenaGroundHeight(arenaMapId, x, z) + 0.07, z);
       scene.add(circle);
       return circle;
     };
@@ -1204,7 +1212,7 @@ export default function ArenaPreview({
     CAPTURE_ZONES.forEach((zone) => {
       addCircle(zone.x, zone.z, zone.radius, "#facc15", 0.18);
       const terminal = new THREE.Group();
-      terminal.position.set(zone.x, 0.085, zone.z);
+      terminal.position.set(zone.x, getArenaGroundHeight(arenaMapId, zone.x, zone.z) + 0.085, zone.z);
       const terminalRing = addDecorativeMesh(terminal, new THREE.TorusGeometry(Math.max(1.2, zone.radius * 0.18), 0.1, 6, 24), "#facc15", "accent");
       terminalRing.rotation.x = Math.PI / 2;
       for (let index = -1; index <= 1; index += 1) {
@@ -1224,7 +1232,7 @@ export default function ArenaPreview({
       scene.add(terminal);
       if (!isFps) {
         const label = new THREE.Sprite(makeSpriteLabel(zone.label, "#fde68a"));
-        label.position.set(zone.x, 12, zone.z);
+        label.position.set(zone.x, getArenaGroundHeight(arenaMapId, zone.x, zone.z) + 12, zone.z);
         label.scale.set(22, 7.5, 1);
         scene.add(label);
       }
@@ -1235,7 +1243,7 @@ export default function ArenaPreview({
         new THREE.OctahedronGeometry(3.2),
         new THREE.MeshStandardMaterial({ color: "#f8fafc", emissive: "#67e8f9", emissiveIntensity: 0.52, roughness: 0.2 })
       );
-      gem.position.set(item.x, 4.2, item.z);
+      gem.position.set(item.x, getArenaGroundHeight(arenaMapId, item.x, item.z) + 4.2, item.z);
       scene.add(gem);
     });
     addCircle(SEARCH_RETRIEVE_DELIVERY_ZONES.blue.x, SEARCH_RETRIEVE_DELIVERY_ZONES.blue.z, SEARCH_RETRIEVE_DELIVERY_ZONES.blue.radius, "#38bdf8", 0.16);
@@ -1339,6 +1347,11 @@ export default function ArenaPreview({
       const fallback = getTeamSpawnForMap(arenaMapId, player.team, index);
       return {
         x: hasLivePosition ? serverToLocalX(liveX) : fallback.x,
+        y: getArenaGroundHeight(
+          arenaMapId,
+          hasLivePosition ? serverToLocalX(liveX) : fallback.x,
+          hasLivePosition ? serverToLocalZ(liveZ) : fallback.z
+        ),
         z: hasLivePosition ? serverToLocalZ(liveZ) : fallback.z,
         facing: isFiniteNumber(player.facing) ? player.facing : fallback.facing
       };
@@ -1429,7 +1442,9 @@ export default function ArenaPreview({
         const nextCarrier = nextFlag.carrierId
           ? nextPlayers.find((player) => player.id === nextFlag.carrierId)
           : undefined;
-        flagMarker.position.set(nextCarrier?.x ?? nextFlag.position.x, 0, nextCarrier?.z ?? nextFlag.position.z);
+        const nextX = nextCarrier?.x ?? nextFlag.position.x;
+        const nextZ = nextCarrier?.z ?? nextFlag.position.z;
+        flagMarker.position.set(nextX, getArenaGroundHeight(arenaMapId, nextX, nextZ), nextZ);
       }
     };
     syncPlayersRef.current(session, currentPlayer);
@@ -1826,6 +1841,10 @@ export default function ArenaPreview({
           if (isFiniteNumber(followedPlayer?.x) && isFiniteNumber(followedPlayer?.z)) {
             playerPosition.x += (serverToLocalX(followedPlayer.x) - playerPosition.x) * 0.24;
             playerPosition.z += (serverToLocalZ(followedPlayer.z) - playerPosition.z) * 0.24;
+            const followedEyeY = isFiniteNumber(followedPlayer.y)
+              ? followedPlayer.y
+              : getArenaGroundHeight(arenaMapId, followedPlayer.x, followedPlayer.z) + FPS_STANDING_EYE_HEIGHT;
+            playerPosition.y += (followedEyeY - playerPosition.y) * 0.24;
             if (isFiniteNumber(followedPlayer.facing)) yaw = followedPlayer.facing;
           }
         }
@@ -1841,7 +1860,9 @@ export default function ArenaPreview({
         applyGamepadInput();
         const crouching = keys.has("Control");
         const floorEyeHeight = crouching ? FPS_CROUCH_EYE_HEIGHT : FPS_STANDING_EYE_HEIGHT;
-        const grounded = playerPosition.y <= floorEyeHeight + 0.02 && Math.abs(verticalVelocity) < 0.01;
+        let surfaceGroundY = getArenaGroundHeight(arenaMapId, playerPosition.x, playerPosition.z);
+        let groundEyeY = surfaceGroundY + floorEyeHeight;
+        const grounded = playerPosition.y <= groundEyeY + 0.02 && Math.abs(verticalVelocity) < 0.01;
         if (jumpQueued && grounded && !crouching) {
           verticalVelocity = 5.8;
           emitArenaAnimation({ kind: "jump", playerId: currentPlayerId, team: currentPlayerTeam });
@@ -1850,8 +1871,8 @@ export default function ArenaPreview({
         jumpQueued = false;
         verticalVelocity -= 15.5 * delta;
         playerPosition.y += verticalVelocity * delta;
-        if (playerPosition.y < floorEyeHeight) {
-          playerPosition.y = floorEyeHeight;
+        if (playerPosition.y < groundEyeY) {
+          playerPosition.y = groundEyeY;
           verticalVelocity = 0;
           if (!wasGrounded) {
             landedAt = currentTime;
@@ -1860,7 +1881,7 @@ export default function ArenaPreview({
           }
           wasGrounded = true;
         } else if (crouching && verticalVelocity === 0) {
-          playerPosition.y += (floorEyeHeight - playerPosition.y) * 0.18;
+          playerPosition.y += (groundEyeY - playerPosition.y) * 0.18;
         } else {
           wasGrounded = false;
         }
@@ -1886,17 +1907,34 @@ export default function ArenaPreview({
         if (gamepadMove.right < -GAMEPAD_DEAD_ZONE) movementVector.sub(rightVector);
 
         if (movementVector.lengthSq() > 0) {
-          if (wasGrounded) gameAudio.playMovementStep(movementAudioMode, currentTime, isIronJunction ? "metal" : isTempleRunoff ? "stone" : "sand");
+          if (wasGrounded) gameAudio.playMovementStep(
+            movementAudioMode,
+            currentTime,
+            isIronJunction ? "metal" : isTempleRunoff ? (surfaceGroundY < 1 ? "water" : "stone") : "sand"
+          );
           movementVector.normalize().multiplyScalar(moveSpeed * delta);
           nextPosition.copy(playerPosition).add(movementVector);
           nextPosition.x = clamp(nextPosition.x, -ARENA_LIMIT_X + PLAYER_RADIUS, ARENA_LIMIT_X - PLAYER_RADIUS);
           nextPosition.z = clamp(nextPosition.z, -ARENA_LIMIT_Z + PLAYER_RADIUS, ARENA_LIMIT_Z - PLAYER_RADIUS);
           axisPosition.copy(playerPosition);
           axisPosition.x = nextPosition.x;
-          if (canOccupy(axisPosition, floorEyeHeight)) playerPosition.x = axisPosition.x;
+          const xGroundY = getArenaGroundHeight(arenaMapId, axisPosition.x, axisPosition.z);
+          if (wasGrounded && Math.abs(xGroundY - surfaceGroundY) <= 0.8) axisPosition.y = xGroundY + floorEyeHeight;
+          if (canOccupy(axisPosition, floorEyeHeight)) {
+            playerPosition.x = axisPosition.x;
+            if (wasGrounded) playerPosition.y = axisPosition.y;
+          }
           axisPosition.copy(playerPosition);
           axisPosition.z = nextPosition.z;
-          if (canOccupy(axisPosition, floorEyeHeight)) playerPosition.z = axisPosition.z;
+          surfaceGroundY = getArenaGroundHeight(arenaMapId, playerPosition.x, playerPosition.z);
+          const zGroundY = getArenaGroundHeight(arenaMapId, axisPosition.x, axisPosition.z);
+          if (wasGrounded && Math.abs(zGroundY - surfaceGroundY) <= 0.8) axisPosition.y = zGroundY + floorEyeHeight;
+          if (canOccupy(axisPosition, floorEyeHeight)) {
+            playerPosition.z = axisPosition.z;
+            if (wasGrounded) playerPosition.y = axisPosition.y;
+          }
+          surfaceGroundY = getArenaGroundHeight(arenaMapId, playerPosition.x, playerPosition.z);
+          groundEyeY = surfaceGroundY + floorEyeHeight;
         }
 
         if (fireHeld && hasAutoFireGear() && !inputPausedRef.current && !controlsDisabledRef.current) fire();
@@ -1931,7 +1969,7 @@ export default function ArenaPreview({
         muzzleRingMaterial.opacity = Math.max(0, muzzleRingMaterial.opacity - delta * 8.5);
         muzzleRing.scale.multiplyScalar(1 + delta * 3.2);
         const landingPulse = Math.max(0, 1 - (currentTime - landedAt) / 220);
-        const airborneLift = Math.max(0, playerPosition.y - floorEyeHeight) * 0.045;
+        const airborneLift = Math.max(0, playerPosition.y - groundEyeY) * 0.045;
         firstPersonModel.root.position.y = -0.58 + Math.sin(currentTime * 0.006) * 0.012 + airborneLift - Math.sin(landingPulse * Math.PI) * 0.055;
         firstPersonModel.weapon.rotation.x = -0.1 - flash.material.opacity * 0.035;
         if (snowballLaunchAt > 0) {

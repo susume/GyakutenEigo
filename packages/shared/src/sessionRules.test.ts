@@ -14,6 +14,8 @@ import {
   ARENA_LIMIT_X,
   ARENA_LIMIT_Z,
   ARENA_SCALE,
+  ARENA_PLAYER_EYE_HEIGHT,
+  TEMPLE_RUNOFF_UPPER_LEVEL_Y,
   STARTER_BLASTER_RANGE,
   FREE_FOR_ALL_SPAWNS,
   buildCsvReport,
@@ -38,6 +40,7 @@ import {
   getPlayerWeaponId,
   getRoundResetLoadout,
   getArenaObstacles,
+  getArenaGroundHeight,
   getRoundRemainingSeconds,
   getZombieBestPlayers,
   resolveTeamRoundWinner,
@@ -45,6 +48,7 @@ import {
   getTeamSpawnForMap,
   getTeamSpawnsForMap,
   selectTeamSpawn,
+  selectTeamSpawnForMap,
   TEAM_SPAWNS,
   isRoundActive,
   isRoundBuyPhase,
@@ -853,10 +857,19 @@ test("Temple Runoff supports 20 safe spawns per team and authoritative map selec
   assert.equal(new Set(spawns.blue.map((spawn) => `${spawn.x}:${spawn.z}`)).size, 20);
   assert.equal(new Set(spawns.red.map((spawn) => `${spawn.x}:${spawn.z}`)).size, 20);
   assert.equal(new Set(spawns.blue.map((spawn) => spawn.label)).size, 4);
+  assert.equal(spawns.blue.filter((spawn) => spawn.y === ARENA_PLAYER_EYE_HEIGHT).length, 5);
+  assert.equal(spawns.blue.filter((spawn) => spawn.y === TEMPLE_RUNOFF_UPPER_LEVEL_Y + ARENA_PLAYER_EYE_HEIGHT).length, 15);
   assert.equal(obstacles.some((obstacle) => obstacle.id === "rain-god-statue"), true);
   assert.equal(obstacles.some((obstacle) => obstacle.id === "blue-base-screen-b"), true);
   assert.notEqual(obstacles, getArenaObstacles("desert_citadel"));
   assert.equal(sanitizeSessionSettings({ mapId: "temple_runoff" }).mapId, "temple_runoff");
+  const safeLateJoinSpawn = selectTeamSpawnForMap("temple_runoff", "blue", [
+    makePlayer({ id: "existing-opponent", team: "red", x: spawns.blue[0].x, z: spawns.blue[0].z })
+  ]);
+  assert.equal(
+    safeLateJoinSpawn.y,
+    getArenaGroundHeight("temple_runoff", safeLateJoinSpawn.x, safeLateJoinSpawn.z) + ARENA_PLAYER_EYE_HEIGHT
+  );
 
   for (const spawn of [...spawns.blue, ...spawns.red]) {
     const firstStep = resolveAuthoritativeMovement({
@@ -868,6 +881,30 @@ test("Temple Runoff supports 20 safe spawns per team and authoritative map selec
     });
     assert.equal(firstStep.blocked, undefined, `${spawn.id} should not overlap collision`);
   }
+});
+
+test("Temple Runoff exposes a lower river, raised monument tier, and four continuous ramps", () => {
+  assert.equal(getArenaGroundHeight("temple_runoff", 0, -43 * ARENA_SCALE), 0);
+  assert.equal(getArenaGroundHeight("temple_runoff", 0, 37 * ARENA_SCALE), TEMPLE_RUNOFF_UPPER_LEVEL_Y);
+  for (const rawX of [-38, 38]) {
+    const lower = getArenaGroundHeight("temple_runoff", rawX * ARENA_SCALE, -60 * ARENA_SCALE);
+    const middle = getArenaGroundHeight("temple_runoff", rawX * ARENA_SCALE, -69 * ARENA_SCALE);
+    const upper = getArenaGroundHeight("temple_runoff", rawX * ARENA_SCALE, -78 * ARENA_SCALE);
+    assert.deepEqual([lower, middle, upper], [0, TEMPLE_RUNOFF_UPPER_LEVEL_Y / 2, TEMPLE_RUNOFF_UPPER_LEVEL_Y]);
+  }
+  for (const rawX of [-35, 51]) {
+    const lower = getArenaGroundHeight("temple_runoff", rawX * ARENA_SCALE, -26 * ARENA_SCALE);
+    const middle = getArenaGroundHeight("temple_runoff", rawX * ARENA_SCALE, -17 * ARENA_SCALE);
+    const upper = getArenaGroundHeight("temple_runoff", rawX * ARENA_SCALE, -8 * ARENA_SCALE);
+    assert.deepEqual([lower, middle, upper], [0, TEMPLE_RUNOFF_UPPER_LEVEL_Y / 2, TEMPLE_RUNOFF_UPPER_LEVEL_Y]);
+  }
+});
+
+test("projectiles do not tag players through Temple Runoff's vertical floor separation", () => {
+  const attacker = makePlayer({ id: "upper-attacker", team: "blue", x: 0, y: TEMPLE_RUNOFF_UPPER_LEVEL_Y + ARENA_PLAYER_EYE_HEIGHT, z: 0, facing: -Math.PI / 2 });
+  const lowerTarget = makePlayer({ id: "lower-target", team: "red", x: 8, y: ARENA_PLAYER_EYE_HEIGHT, z: 0 });
+  const result = resolveProjectileTarget({ attacker, candidates: [lowerTarget], obstacles: [] });
+  assert.deepEqual(result, { ok: false, reason: "no_valid_target" });
 });
 
 test("selectTeamSpawn avoids nearby visible enemies when alternatives exist", () => {
