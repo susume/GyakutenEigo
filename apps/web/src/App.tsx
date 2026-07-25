@@ -29,7 +29,8 @@ import {
   Timer,
   Users,
   WifiOff,
-  WandSparkles
+  WandSparkles,
+  Zap
 } from "lucide-react";
 import { io, type Socket } from "socket.io-client";
 import { QRCodeSVG } from "qrcode.react";
@@ -40,10 +41,14 @@ import {
   DEFAULT_SESSION_SETTINGS,
   FLAG_MODE_DEFAULTS,
   GEAR_ITEMS,
+  ZOMBIE_HUMAN_CORRECT_ENERGY,
+  ZOMBIE_HUMAN_MAX_ENERGY,
+  canPlayerFireInMode,
   getCosmeticProgress,
   getArenaGroundHeight,
   getPlayerPerks,
   getPlayerWeaponId,
+  isWeaponGearId,
   RESPAWN_CORRECT_ANSWERS_REQUIRED,
   getRoundRemainingSeconds,
   isRoundBuyPhase,
@@ -154,7 +159,15 @@ const readStoredAppearance = (): PlayerAppearance | null => {
 };
 
 type QuestionDraft = typeof emptyQuestion;
-type ArenaPositionPayload = { x: number; z: number; y?: number; facing: number; scoped?: boolean; zoomLevel?: number };
+type ArenaPositionPayload = {
+  x: number;
+  z: number;
+  y?: number;
+  facing: number;
+  scoped?: boolean;
+  zoomLevel?: number;
+  sprinting?: boolean;
+};
 type DamageResultPayload =
   | {
       ok: true;
@@ -169,6 +182,7 @@ type DamageResultPayload =
       health: number;
       snowballs: number;
       eliminated: boolean;
+      converted?: boolean;
       moneyAwarded?: number;
     }
   | { ok: false; reason?: string; snowballs?: number };
@@ -388,7 +402,9 @@ const zombieStatusText = (session: GameSession, player?: PlayerSession | null) =
   if (session.settings.gameMode !== "zombie") return "";
   const humans = session.players.filter((item) => item.role !== "zombie").length;
   const zombies = session.players.filter((item) => item.role === "zombie").length;
-  return `Humans ${humans} | Zombies ${zombies} | Role ${player?.role === "zombie" ? "Zombie" : "Human"}`;
+  return player?.role === "zombie"
+    ? `Humans ${humans} | Zombies ${zombies} | Hunt the Blue humans`
+    : `Humans ${humans} | Zombies ${zombies} | Answer for energy and run`;
 };
 
 const getTopLearner = (players: PlayerSession[]) =>
@@ -869,7 +885,7 @@ function GyakutenEigoHome({ onOpenGame, onJoinGame }: { onOpenGame: () => void; 
         </div>
         <div className="mode-card-grid">
           <article className="mode-card flag-mode-card"><span>01</span><h3>Flag Mode</h3><p>Red delivers and protects the flag. Blue defends and captures. The scoreboard keeps the objective visible.</p></article>
-          <article className="mode-card zombie-mode-card"><span>02</span><h3>Zombie Mode</h3><p>Humans hold the arena while conversions change the teams. Roles are visible in the game and scoreboards.</p></article>
+          <article className="mode-card zombie-mode-card"><span>02</span><h3>Zombie Mode</h3><p>Red Zombies shoot to convert. Blue Humans answer questions for running energy and survive without weapons.</p></article>
           <article className="mode-card classic-mode-card"><span>03</span><h3>Classic Practice</h3><p>A simple team round for introducing the controls, reviewing a set, or running a quick warmup.</p></article>
         </div>
       </section>
@@ -2583,7 +2599,7 @@ function StudentExperience({ onExit }: { onExit: () => void }) {
     const socket = io(getApiUrl());
     socketRef.current = socket;
     const roomJoinPayload = { code: session.sessionCode, playerId: activePlayerId, playerToken };
-    const pendingPositions = new Map<string, { x: number; y?: number; z: number; facing: number }>();
+    const pendingPositions = new Map<string, { x: number; y?: number; z: number; facing: number; energy?: number }>();
     const lastRemotePositions = new Map<string, { x: number; y?: number; z: number }>();
     let lastVisualSession = session;
     const emitPlayerVfx = (kind: ArenaVfxKind, playerId = activePlayerId, source = lastVisualSession) => {
@@ -2734,7 +2750,7 @@ function StudentExperience({ onExit }: { onExit: () => void }) {
         emitPlayerAnimation(localWon ? "victory" : "defeat", activePlayerId, player.team);
       }
     });
-    socket.on("player_position", (position: { playerId?: string; x?: number; y?: number; z?: number; facing?: number }) => {
+    socket.on("player_position", (position: { playerId?: string; x?: number; y?: number; z?: number; facing?: number; energy?: number }) => {
       if (!position.playerId || !Number.isFinite(position.x) || !Number.isFinite(position.z) || !Number.isFinite(position.facing)) return;
       if (position.playerId !== activePlayerId) {
         const previous = lastRemotePositions.get(position.playerId);
@@ -2759,7 +2775,8 @@ function StudentExperience({ onExit }: { onExit: () => void }) {
         x: position.x!,
         y: Number.isFinite(position.y) ? position.y : undefined,
         z: position.z!,
-        facing: position.facing!
+        facing: position.facing!,
+        ...(Number.isFinite(position.energy) ? { energy: position.energy } : {})
       });
       positionFlushTimer ??= window.setTimeout(flushPositions, 50);
     });
@@ -2776,6 +2793,7 @@ function StudentExperience({ onExit }: { onExit: () => void }) {
           invalid_target: "That snowball target was no longer valid.",
           invalid_projectile: "That shot was rejected. Try firing again.",
           duplicate_projectile: "That shot was already counted.",
+          humans_cannot_fire: "Humans cannot shoot in Zombie Mode. Answer questions for running energy and escape.",
           fire_cooldown: "Launcher is cooling down."
         };
         queueFeedbackCue(result.reason === "no_valid_target" ? "warning" : "error");
@@ -2791,11 +2809,13 @@ function StudentExperience({ onExit }: { onExit: () => void }) {
       if (result.attackerId === activePlayerId) {
         gameAudio.play(result.eliminated ? "eliminated" : "hit_confirm");
         setFeedback(
-          result.eliminated
+          result.converted
+            ? "Human knocked out and converted to a Red Zombie!"
+            : result.eliminated
             ? `Freeze! Opponent out. ${result.moneyAwarded ? `+${formatMoney(result.moneyAwarded)} bonus.` : ""}`
             : `Hit for ${result.damage} warmth.`
         );
-        if (result.eliminated) setRewardPulse("Freeze!");
+        if (result.eliminated) setRewardPulse(result.converted ? "Converted!" : "Freeze!");
       }
       if (result.targetId === activePlayerId) {
         const attackerName = lastVisualSession.players.find((candidate) => candidate.id === result.attackerId)?.nickname ?? "Opponent";
@@ -2816,11 +2836,13 @@ function StudentExperience({ onExit }: { onExit: () => void }) {
           attackerName
         });
         setFeedback(
-          result.eliminated
+          result.converted
+            ? `${attackerName} knocked you out. You are now a Red Zombie—hunt the Blue humans!`
+            : result.eliminated
             ? `${attackerName} froze you out. Answer three practice questions to respawn.`
             : `${attackerName} tagged you for ${result.damage} warmth.`
         );
-        if (result.eliminated && session.settings.deadPlayersCanPractice && session.settings.gameMode !== "flag") {
+        if (result.eliminated && !result.converted && session.settings.deadPlayersCanPractice && session.settings.gameMode !== "flag") {
           openRespawnPractice();
         }
       }
@@ -3322,6 +3344,9 @@ function StudentExperience({ onExit }: { onExit: () => void }) {
   const gear = GEAR_ITEMS.find((item) => item.id === getPlayerWeaponId(player)) ?? GEAR_ITEMS[0];
   const snowballs = player.snowballs ?? session.settings.startingSnowballs;
   const warmth = getPlayerWarmth(player);
+  const isZombieHuman = session.settings.gameMode === "zombie" && player.role !== "zombie";
+  const canFire = canPlayerFireInMode(session.settings.gameMode, player.role);
+  const runningEnergy = Math.round(Math.max(0, Math.min(ZOMBIE_HUMAN_MAX_ENERGY, player.energy ?? 0)));
   const connectedPlayers = session.players.filter((candidate) => candidate.connectionState !== "disconnected");
   const redTeamCount = connectedPlayers.filter((candidate) => candidate.team === "red").length;
   const blueTeamCount = connectedPlayers.filter((candidate) => candidate.team === "blue").length;
@@ -3391,7 +3416,7 @@ function StudentExperience({ onExit }: { onExit: () => void }) {
               controlsDisabled={!roundActive || !player.isAlive}
               inputPaused={gameplayInputPaused}
               onMove={roundActive && player.isAlive ? sendArenaPosition : undefined}
-              onFire={roundActive && player.isAlive ? sendArenaFire : undefined}
+              onFire={roundActive && player.isAlive && canFire ? sendArenaFire : undefined}
               onInteract={roundActive && player.isAlive ? sendFlagAction : undefined}
               loadDecalAsset={loadStudentDecal}
             />
@@ -3479,20 +3504,48 @@ function StudentExperience({ onExit }: { onExit: () => void }) {
               <strong>{warmth}</strong>
             </span>
           </span>
-          <span className="hud-stat">
-            <CircleDollarSign size={18} aria-hidden="true" />
-            <span>
-              <small>Money</small>
-              <strong>${player.money}</strong>
+          {isZombieHuman ? (
+            <span className={`hud-stat hud-energy${runningEnergy <= 20 ? " low" : ""}`}>
+              <Zap size={18} aria-hidden="true" />
+              <span>
+                <small>Running energy</small>
+                <strong>{runningEnergy}/{ZOMBIE_HUMAN_MAX_ENERGY}</strong>
+              </span>
             </span>
-          </span>
+          ) : (
+            <span className="hud-stat">
+              <CircleDollarSign size={18} aria-hidden="true" />
+              <span>
+                <small>Money</small>
+                <strong>${player.money}</strong>
+              </span>
+            </span>
+          )}
           <span className={`hud-stat team-${player.team}`}>
             <Users size={18} aria-hidden="true" />
             <span>
-              <small>Team</small>
-              <strong>{session.settings.gameMode === "zombie" ? (player.role === "zombie" ? "Zombie" : "Human") : player.team === "blue" ? "Blue Team" : "Red Team"}</strong>
+              <small>{session.settings.gameMode === "zombie" ? "Role · attire" : "Team"}</small>
+              <strong>{session.settings.gameMode === "zombie" ? (player.role === "zombie" ? "Zombie · Red" : "Human · Blue") : player.team === "blue" ? "Blue Team" : "Red Team"}</strong>
             </span>
           </span>
+          {isZombieHuman ? (
+            <>
+              <span className="hud-stat weapon">
+                <BookOpen size={18} aria-hidden="true" />
+                <span>
+                  <small>Recharge</small>
+                  <strong>Correct answer = +{ZOMBIE_HUMAN_CORRECT_ENERGY}</strong>
+                </span>
+              </span>
+              <span className="hud-stat">
+                <Shield size={18} aria-hidden="true" />
+                <span>
+                  <small>Human objective</small>
+                  <strong>Run and survive</strong>
+                </span>
+              </span>
+            </>
+          ) : (<>
           <span className="hud-stat weapon">
             <Package size={18} aria-hidden="true" />
             <span>
@@ -3507,6 +3560,7 @@ function StudentExperience({ onExit }: { onExit: () => void }) {
               <strong>{snowballs}</strong>
             </span>
           </span>
+          </>)}
         </div>
         )}
         </>)}
@@ -3696,7 +3750,9 @@ function QuizPanel({
   answeringChoice: Choice | null;
 }) {
   if (!question) return <div className="panel"><p>No quiz question is available yet.</p></div>;
-  const reward = player.isAlive || session.settings.deadPlayersEarnMoney
+  const reward = session.settings.gameMode === "zombie" && player.role !== "zombie"
+    ? `+${ZOMBIE_HUMAN_CORRECT_ENERGY} running energy`
+    : player.isAlive || session.settings.deadPlayersEarnMoney
     ? `$${session.settings.correctAnswerReward}`
     : session.settings.deadPlayersCanPractice
       ? `Respawn ${player.respawnCorrectAnswers ?? 0}/${RESPAWN_CORRECT_ANSWERS_REQUIRED}`
@@ -3754,6 +3810,7 @@ function BuyPanel({
   const snowballPrice = session.settings.snowballPackPrice;
   const snowballCount = session.settings.snowballsPerPack;
   const isBuyingGear = Boolean(buyingGearId);
+  const isZombieHuman = session.settings.gameMode === "zombie" && player.role !== "zombie";
   const gearLockReason = (cost: number) => {
     if (!player.isAlive) return "Round only";
     if (player.money < cost) return `Need ${formatMoney(cost - player.money)}`;
@@ -3771,14 +3828,14 @@ function BuyPanel({
         className="gear-row"
         onClick={onBuySnowballs}
         aria-keyshortcuts="1"
-        disabled={!player.isAlive || player.money < snowballPrice || isBuyingSnowballs || isBuyingGear}
+        disabled={isZombieHuman || !player.isAlive || player.money < snowballPrice || isBuyingSnowballs || isBuyingGear}
       >
         <kbd className="buy-shortcut-key">1</kbd>
         <GearGlyph gearId="snowballs" />
         <span>
           <strong>{isBuyingSnowballs ? "Working..." : `${snowballCount} Snowballs`}</strong>
           <small>Restock ammunition anywhere on the map.</small>
-          <small className="gear-status">{player.money < snowballPrice ? `Need ${formatMoney(snowballPrice - player.money)} more` : player.isAlive ? "Ready to buy" : "Available next round"}</small>
+          <small className="gear-status">{isZombieHuman ? "Zombies only" : player.money < snowballPrice ? `Need ${formatMoney(snowballPrice - player.money)} more` : player.isAlive ? "Ready to buy" : "Available next round"}</small>
         </span>
         <em>{formatMoney(snowballPrice)}</em>
       </button>
@@ -3788,14 +3845,14 @@ function BuyPanel({
           className="gear-row"
           onClick={() => onBuy(gear.id)}
           aria-keyshortcuts={getShopShortcutKey(gear.id)}
-          disabled={!player.isAlive || player.money < gear.cost || isBuyingSnowballs || isBuyingGear}
+          disabled={(isZombieHuman && isWeaponGearId(gear.id)) || !player.isAlive || player.money < gear.cost || isBuyingSnowballs || isBuyingGear}
         >
           <kbd className="buy-shortcut-key">{getShopShortcutKey(gear.id)}</kbd>
           <GearGlyph gearId={gear.id} />
           <span>
             <strong>{buyingGearId === gear.id ? "Working..." : gear.name}</strong>
             <small>{gear.description}</small>
-            <small className="gear-status">{(getPlayerWeaponId(player) === gear.id || getPlayerPerks(player).includes(gear.id)) ? "Equipped" : player.money < gear.cost || !player.isAlive ? gearLockReason(gear.cost) : "Ready to buy"}</small>
+            <small className="gear-status">{isZombieHuman && isWeaponGearId(gear.id) ? "Zombies only" : (getPlayerWeaponId(player) === gear.id || getPlayerPerks(player).includes(gear.id)) ? "Equipped" : player.money < gear.cost || !player.isAlive ? gearLockReason(gear.cost) : "Ready to buy"}</small>
           </span>
           <em>{formatMoney(gear.cost)}</em>
         </button>

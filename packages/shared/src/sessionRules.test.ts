@@ -11,6 +11,8 @@ import {
   QUICK_BLASTER_COOLDOWN_MS,
   QUICK_BLASTER_RANGE,
   RESPAWN_CORRECT_ANSWERS_REQUIRED,
+  ZOMBIE_HUMAN_CORRECT_ENERGY,
+  ZOMBIE_HUMAN_MAX_ENERGY,
   ARENA_LIMIT_X,
   ARENA_LIMIT_Z,
   ARENA_SCALE,
@@ -24,8 +26,10 @@ import {
   buildScoreboardRows,
   clampArenaPosition,
   canStartRound,
+  canPlayerFireInMode,
   canPlaceFlag,
   createInitialFlagState,
+  awardZombieHumanEnergy,
   GEAR_ITEMS,
   getDefaultInitialZombieCount,
   getGearDamage,
@@ -73,6 +77,7 @@ import {
   resolveAnswerReward,
   resolveTagAction,
   resolveZombieConversion,
+  resolveZombieSprintEnergy,
   selectInitialZombies,
   sanitizeSessionSettings,
   type PlayerSession,
@@ -1067,9 +1072,16 @@ test("zombie mode selects initial zombies and converts humans once", () => {
   assert.equal(selected.filter((player) => player.role === "zombie").length, 2);
   assert.equal(selected.filter((player) => player.role === "human").length, 6);
   assert.equal(selected.find((player) => player.role === "zombie")?.gear, "starter_blaster");
+  assert.equal(selected.every((player) => player.role === "zombie" ? player.team === "red" : player.team === "blue"), true);
+  assert.equal(selected.every((player) => player.role === "zombie" ? player.energy === ZOMBIE_HUMAN_MAX_ENERGY : player.energy === 0), true);
 
   const zombie = makePlayer({ id: "zombie", team: "red", role: "zombie", gear: "starter_blaster", isAlive: true });
-  const human = makePlayer({ id: "human", team: "blue", role: "human", isAlive: true, respawns: 0 });
+  const standingHuman = makePlayer({ id: "human", team: "blue", role: "human", isAlive: true, health: 40, respawns: 0 });
+  assert.deepEqual(resolveZombieConversion({ attacker: zombie, target: standingHuman }), {
+    ok: false,
+    reason: "target_not_knocked_out"
+  });
+  const human = { ...standingHuman, health: 0 };
   const conversion = resolveZombieConversion({ attacker: zombie, target: human });
   assert.equal(conversion.ok, true);
   if (conversion.ok) {
@@ -1077,11 +1089,55 @@ test("zombie mode selects initial zombies and converts humans once", () => {
     assert.equal(conversion.player.team, "red");
     assert.equal(conversion.player.respawns, 1);
     assert.equal(conversion.player.gear, "starter_blaster");
+    assert.equal(conversion.player.energy, ZOMBIE_HUMAN_MAX_ENERGY);
   }
   assert.deepEqual(resolveZombieConversion({ attacker: zombie, target: { ...human, role: "zombie" } }), {
     ok: false,
     reason: "target_not_human"
   });
+});
+
+test("zombie mode gives Humans question-powered running energy and reserves firing for Zombies", () => {
+  assert.equal(canPlayerFireInMode("zombie", "human"), false);
+  assert.equal(canPlayerFireInMode("zombie", "zombie"), true);
+  assert.equal(canPlayerFireInMode("flag", "human"), true);
+
+  const earnedEnergy = awardZombieHumanEnergy({
+    gameMode: "zombie",
+    role: "human",
+    isCorrect: true,
+    currentEnergy: 0
+  });
+  assert.equal(earnedEnergy, ZOMBIE_HUMAN_CORRECT_ENERGY);
+  assert.equal(awardZombieHumanEnergy({
+    gameMode: "zombie",
+    role: "human",
+    isCorrect: false,
+    currentEnergy: earnedEnergy
+  }), earnedEnergy);
+  assert.equal(awardZombieHumanEnergy({
+    gameMode: "zombie",
+    role: "human",
+    isCorrect: true,
+    currentEnergy: ZOMBIE_HUMAN_MAX_ENERGY
+  }), ZOMBIE_HUMAN_MAX_ENERGY);
+
+  assert.deepEqual(resolveZombieSprintEnergy({
+    gameMode: "zombie",
+    role: "human",
+    sprinting: true,
+    currentEnergy: 0,
+    elapsedMs: 500,
+    movedDistance: 5
+  }), { canSprint: false, nextEnergy: 0 });
+  assert.deepEqual(resolveZombieSprintEnergy({
+    gameMode: "zombie",
+    role: "human",
+    sprinting: true,
+    currentEnergy: earnedEnergy,
+    elapsedMs: 500,
+    movedDistance: 5
+  }), { canSprint: true, nextEnergy: 15 });
 });
 
 test("scoreboard rows expose tags, respawns, and readable question accuracy", () => {

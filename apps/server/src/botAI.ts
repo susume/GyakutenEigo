@@ -46,6 +46,7 @@ export interface BotDifficultyProfile {
   retreatHealthRatio: number;
   flankChance: number;
   firePauseMs: number;
+  objectiveCaptureDelayMs: number;
 }
 
 export const BOT_DIFFICULTIES: Record<"beginner" | "standard" | "advanced", BotDifficultyProfile> = {
@@ -60,7 +61,8 @@ export const BOT_DIFFICULTIES: Record<"beginner" | "standard" | "advanced", BotD
     targetCommitMs: 1000,
     retreatHealthRatio: 0.2,
     flankChance: 0.12,
-    firePauseMs: 700
+    firePauseMs: 700,
+    objectiveCaptureDelayMs: 6500
   },
   standard: {
     reactionMs: 500,
@@ -73,7 +75,8 @@ export const BOT_DIFFICULTIES: Record<"beginner" | "standard" | "advanced", BotD
     targetCommitMs: 1500,
     retreatHealthRatio: 0.3,
     flankChance: 0.28,
-    firePauseMs: 520
+    firePauseMs: 520,
+    objectiveCaptureDelayMs: 4500
   },
   advanced: {
     reactionMs: 320,
@@ -86,7 +89,8 @@ export const BOT_DIFFICULTIES: Record<"beginner" | "standard" | "advanced", BotD
     targetCommitMs: 2100,
     retreatHealthRatio: 0.36,
     flankChance: 0.42,
-    firePauseMs: 380
+    firePauseMs: 380,
+    objectiveCaptureDelayMs: 3000
   }
 };
 
@@ -159,7 +163,10 @@ export const shouldBotAttemptFlagInteraction = ({
   botId,
   botPosition,
   flagPosition,
-  interactionRadius
+  interactionRadius,
+  placedAtMs,
+  nowMs,
+  captureDelayMs = 0
 }: {
   flagState: FlagStateName;
   carrierId?: string;
@@ -167,8 +174,17 @@ export const shouldBotAttemptFlagInteraction = ({
   botPosition: { x: number; z: number };
   flagPosition: { x: number; z: number };
   interactionRadius: number;
+  placedAtMs?: number;
+  nowMs?: number;
+  captureDelayMs?: number;
 }) => {
   if (flagState === "carried") return carrierId === botId;
+  if (
+    flagState === "placed"
+    && placedAtMs !== undefined
+    && nowMs !== undefined
+    && nowMs - placedAtMs < captureDelayMs
+  ) return false;
   return Math.hypot(botPosition.x - flagPosition.x, botPosition.z - flagPosition.z) <= interactionRadius;
 };
 

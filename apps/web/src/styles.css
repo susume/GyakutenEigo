@@ -4623,6 +4623,10 @@ body:has(.waiting-game-layout) {
 .hud-stat:hover { background:rgba(255,255,255,.13); }
 .hud-warmth { background:linear-gradient(180deg,rgba(52,211,153,.16),rgba(255,255,255,.045)); color:#ecfdf5; border-color:rgba(110,231,183,.25); box-shadow:inset 0 -3px 0 rgba(52,211,153,.68); }
 .hud-warmth svg,.hud-warmth small { color:#6ee7b7; }
+.hud-energy { background:linear-gradient(180deg,rgba(250,204,21,.18),rgba(255,255,255,.045)); color:#fefce8; border-color:rgba(253,224,71,.3); box-shadow:inset 0 -3px 0 rgba(250,204,21,.82); }
+.hud-energy svg,.hud-energy small { color:#fde047; }
+.hud-energy.low { background:linear-gradient(180deg,rgba(251,113,133,.2),rgba(255,255,255,.045)); border-color:rgba(251,113,133,.38); box-shadow:inset 0 -3px 0 rgba(251,113,133,.86); }
+.hud-energy.low svg,.hud-energy.low small { color:#fda4af; }
 .hud-stat.team-blue { box-shadow: inset 0 -3px 0 #38bdf8; }
 .hud-stat.team-red { box-shadow: inset 0 -3px 0 #fb7185; }
 .hud-stat.weapon { min-width:184px; box-shadow: inset 0 -3px 0 #facc15; }

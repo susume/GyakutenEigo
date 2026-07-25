@@ -15,6 +15,10 @@ import {
   APPEARANCE_UPDATE_COOLDOWN_MS,
   DECAL_MAX_PROCESSED_BYTES,
   DEFAULT_PLAYER_APPEARANCE,
+  ZOMBIE_HUMAN_MAX_ENERGY,
+  ZOMBIE_HUMAN_WALK_MAX_SPEED,
+  awardZombieHumanEnergy,
+  canPlayerFireInMode,
   clampArenaPosition,
   ARENA_SCALE,
   ARENA_PLAYER_EYE_HEIGHT,
@@ -66,6 +70,7 @@ import {
   resolveSnowballUse,
   resolveTagAction,
   resolveZombieConversion,
+  resolveZombieSprintEnergy,
   sanitizeSessionSettings,
   sanitizePlayerAppearance,
   sanitizeCharacterCustomizationSettings,
@@ -626,12 +631,17 @@ const resetRoundPlayer = (session: GameSession, player: PlayerSession, index: nu
   }
   const spawn = player.isBot ? getBotSpawn(session, player.team, index) : selectSessionSpawn(session, player.team, index);
   const loadout = getRoundResetLoadout({ player, startingSnowballs: session.settings.startingSnowballs });
+  const isZombieHuman = session.settings.gameMode === "zombie" && player.role !== "zombie";
   return {
     ...player,
     ...spawn,
     role: session.settings.gameMode === "zombie" ? player.role ?? "human" : player.role,
     health: getPlayerHealthMax({ ...player, ...loadout }),
     ...loadout,
+    energy: session.settings.gameMode === "zombie"
+      ? player.role === "zombie" ? ZOMBIE_HUMAN_MAX_ENERGY : 0
+      : player.energy,
+    snowballs: isZombieHuman ? 0 : loadout.snowballs,
     isAlive: true,
     respawnCorrectAnswers: 0
   };
@@ -852,7 +862,15 @@ const getBotSpawn = (session: GameSession, team: Team, index: number) => {
 };
 
 const applyValidatedDamage = (session: GameSession, attacker: PlayerSession, target: PlayerSession) => {
-  if (session.settings.gameMode === "zombie" && attacker.role === "zombie") {
+  if (!canPlayerFireInMode(session.settings.gameMode, attacker.role)) {
+    return { ok: false as const, reason: "humans_cannot_fire" as const };
+  }
+  const zombieAttack = session.settings.gameMode === "zombie" && attacker.role === "zombie";
+  const tagResult = resolveTagAction({ attacker, target });
+  if (!tagResult.ok) return tagResult;
+
+  target.health = tagResult.nextHealth;
+  if (zombieAttack && tagResult.eliminated) {
     const conversion = resolveZombieConversion({ attacker, target });
     if (!conversion.ok) return conversion;
     Object.assign(target, conversion.player);
@@ -875,10 +893,11 @@ const applyValidatedDamage = (session: GameSession, attacker: PlayerSession, tar
       targetX: target.x ?? sessionSpawn(session, target.team).x,
       targetZ: target.z ?? sessionSpawn(session, target.team).z,
       targetFacing: target.facing ?? sessionSpawn(session, target.team).facing,
-      damage: DEFAULT_PLAYER_HEALTH,
+      damage: tagResult.damage,
       health: target.health,
       snowballs: attacker.snowballs,
-      eliminated: false,
+      eliminated: true,
+      converted: true,
       moneyAwarded: 0
     });
     io.to(session.sessionCode).emit("world_impact", {
@@ -886,17 +905,12 @@ const applyValidatedDamage = (session: GameSession, attacker: PlayerSession, tar
       targetId: target.id,
       x: target.x ?? sessionSpawn(session, target.team).x,
       z: target.z ?? sessionSpawn(session, target.team).z,
-      shield: true
+      shield: false
     });
     broadcastSession(session);
     finishZombieMatchIfComplete(session);
-    return { ok: true as const, damage: DEFAULT_PLAYER_HEALTH, nextHealth: DEFAULT_PLAYER_HEALTH, eliminated: false, moneyAwarded: 0, scoreDelta: 1 };
+    return { ok: true as const, damage: tagResult.damage, nextHealth: DEFAULT_PLAYER_HEALTH, eliminated: true, moneyAwarded: 0, scoreDelta: 1 };
   }
-
-  const tagResult = resolveTagAction({ attacker, target });
-  if (!tagResult.ok) return tagResult;
-
-  target.health = tagResult.nextHealth;
   if (tagResult.eliminated) {
     const knockedOutPosition = {
       x: target.x ?? sessionSpawn(session, target.team).x,
@@ -968,11 +982,12 @@ const applyValidatedDamage = (session: GameSession, attacker: PlayerSession, tar
 const applyAuthoritativePosition = (
   session: GameSession,
   player: PlayerSession,
-  requested: { x?: number; z?: number; y?: number; facing?: number },
+  requested: { x?: number; z?: number; y?: number; facing?: number; sprinting?: boolean },
   nowMs = Date.now()
 ) => {
   const fallback = sessionSpawn(session, player.team);
   const lastMoveAt = playerMoveTimestamps.get(player.id) ?? nowMs - BOT_TICK_MS;
+  const elapsedMs = nowMs - lastMoveAt;
   const requestedX = Number.isFinite(Number(requested.x)) ? Number(requested.x) : player.x ?? fallback.x;
   const requestedZ = Number.isFinite(Number(requested.z)) ? Number(requested.z) : player.z ?? fallback.z;
   const requestedGroundY = getArenaEyeHeight(session.settings.mapId, requestedX, requestedZ) - ARENA_PLAYER_EYE_HEIGHT;
@@ -980,21 +995,36 @@ const applyAuthoritativePosition = (
   const requestedMovementY = Number.isFinite(Number(requested.y))
     ? Math.min(requestedStandingY + 4.5, Math.max(requestedStandingY, Number(requested.y)))
     : requestedStandingY;
+  const currentPosition = {
+    x: player.x ?? fallback.x,
+    y: player.y ?? fallback.y ?? getArenaEyeHeight(session.settings.mapId, player.x ?? fallback.x, player.z ?? fallback.z),
+    z: player.z ?? fallback.z,
+    facing: player.facing ?? fallback.facing
+  };
+  const sprintPolicy = resolveZombieSprintEnergy({
+    gameMode: session.settings.gameMode,
+    role: player.role,
+    sprinting: requested.sprinting === true,
+    currentEnergy: player.energy,
+    elapsedMs,
+    movedDistance: 0
+  });
   const position = resolveAuthoritativeMovement({
-    current: {
-      x: player.x ?? fallback.x,
-      y: player.y ?? fallback.y ?? getArenaEyeHeight(session.settings.mapId, player.x ?? fallback.x, player.z ?? fallback.z),
-      z: player.z ?? fallback.z,
-      facing: player.facing ?? fallback.facing
-    },
+    current: currentPosition,
     requested: {
       x: requestedX,
       z: requestedZ,
       y: requestedMovementY,
       facing: Number(requested.facing)
     },
-    elapsedMs: nowMs - lastMoveAt,
-    maxSpeed: PLAYER_MAX_SPEED * getPlayerMoveSpeedMultiplier(player),
+    elapsedMs,
+    maxSpeed: (
+      session.settings.gameMode === "zombie"
+      && player.role !== "zombie"
+      && !sprintPolicy.canSprint
+        ? ZOMBIE_HUMAN_WALK_MAX_SPEED
+        : PLAYER_MAX_SPEED
+    ) * getPlayerMoveSpeedMultiplier(player),
     obstacles: getArenaObstacles(session.settings.mapId),
     groundY: requestedGroundY
   });
@@ -1003,6 +1033,16 @@ const applyAuthoritativePosition = (
   player.y = getArenaEyeHeight(session.settings.mapId, position.x, position.z);
   player.z = position.z;
   player.facing = position.facing;
+  if (session.settings.gameMode === "zombie" && player.role !== "zombie") {
+    player.energy = resolveZombieSprintEnergy({
+      gameMode: session.settings.gameMode,
+      role: player.role,
+      sprinting: requested.sprinting === true,
+      currentEnergy: player.energy,
+      elapsedMs,
+      movedDistance: Math.hypot(position.x - currentPosition.x, position.z - currentPosition.z)
+    }).nextEnergy;
+  }
   return position;
 };
 
@@ -1180,6 +1220,7 @@ const botFire = (
   currentMs: number,
   obstacles: ReturnType<typeof getArenaObstacles>
 ) => {
+  if (!canPlayerFireInMode(session.settings.gameMode, bot.role)) return false;
   if ((botNextAttackAt.get(bot.id) ?? 0) > currentMs) return false;
   const weaponId = getPlayerWeaponId(bot);
   const preference = getBotWeaponPreference(weaponId);
@@ -1434,7 +1475,11 @@ const advanceBots = () => {
         current: { x: oldX, z: oldZ, facing: bot.facing ?? desired.facing },
         desired,
         elapsedMs: BOT_TICK_MS,
-        speed: 19.5 * getPlayerMoveSpeedMultiplier(bot),
+        speed: (
+          session.settings.gameMode === "zombie"
+            ? bot.role === "zombie" ? 14.8 : 10.8
+            : 19.5
+        ) * getPlayerMoveSpeedMultiplier(bot),
         obstacles
       });
       bot.x = next.x;
@@ -1472,7 +1517,10 @@ const advanceBots = () => {
         botId: bot.id,
         botPosition: botPosition(bot),
         flagPosition: session.flag.position,
-        interactionRadius: 7
+        interactionRadius: 7,
+        placedAtMs: session.flag.placedAtMs,
+        nowMs: currentMs,
+        captureDelayMs: profile.objectiveCaptureDelayMs
       })) {
         moved = shouldBotObjectiveAction(session, bot) || moved;
       }
@@ -1754,7 +1802,7 @@ app.post("/api/sessions/:code/start", requireTeacher, (req: AuthedRequest, res) 
       "round_start",
       session.settings.gameMode === "zombie" ? "Zombie Mode has begun!" : `Round ${session.currentRound} has begun!`,
       session.settings.gameMode === "zombie"
-        ? "Zombies tag humans. Humans: survive as long as you can."
+        ? "Red Zombies shoot to convert. Blue Humans answer correctly for running energy and survive without weapons."
         : "Answer questions, earn supplies, and tag the other team.",
       undefined,
       ROUND_START_ANNOUNCEMENT_MS
@@ -1762,7 +1810,7 @@ app.post("/api/sessions/:code/start", requireTeacher, (req: AuthedRequest, res) 
     appendEvent(session, {
       type: "start",
       message: session.settings.gameMode === "zombie"
-        ? "Zombie Mode started. Zombies tag humans with Snowball Launchers."
+        ? "Zombie Mode started. Only Red Zombies can shoot; Blue Humans answer questions for running energy."
         : `Round started. Answer ${RESPAWN_CORRECT_ANSWERS_REQUIRED} practice questions to respawn if frozen out.`
     });
   }
@@ -2332,6 +2380,14 @@ const answerQuestion = (
   player.score += reward.scoreDelta;
   player.correctAnswers += reward.correctDelta;
   player.wrongAnswers += reward.wrongDelta;
+  const previousEnergy = player.energy ?? 0;
+  player.energy = awardZombieHumanEnergy({
+    gameMode: session.settings.gameMode,
+    role: player.role,
+    isCorrect,
+    currentEnergy: player.energy
+  });
+  const energyAwarded = Math.max(0, player.energy - previousEnergy);
   if (reward.correctDelta > 0) player.cosmeticXp = Math.max(0, player.cosmeticXp ?? 0) + reward.correctDelta * 100;
   const respawn =
     session.settings.gameMode === "flag"
@@ -2362,6 +2418,8 @@ const answerQuestion = (
   const feedback = isCorrect
     ? respawn.respawned
       ? "Respawned! Three correct practice answers brought you back."
+      : energyAwarded > 0
+        ? `Correct! +${energyAwarded} running energy`
       : reward.moneyAwarded > 0
         ? `Correct! +$${reward.moneyAwarded}`
         : session.settings.gameMode === "flag" && !player.isAlive
@@ -2408,6 +2466,9 @@ const buyGear = (session: GameSession, player: PlayerSession, gearId: unknown): 
   if (!gear) {
     return failStudentCommand(400, "That gear item does not exist.");
   }
+  if (session.settings.gameMode === "zombie" && player.role !== "zombie" && isWeaponGearId(gear.id)) {
+    return failStudentCommand(400, "Humans cannot equip launchers in Zombie Mode.");
+  }
   const purchase = resolveGearPurchase({
     player,
     gear,
@@ -2447,6 +2508,9 @@ const buyGear = (session: GameSession, player: PlayerSession, gearId: unknown): 
 const buySnowballs = (session: GameSession, player: PlayerSession): StudentCommandResult<SnowballPurchaseResponse> => {
   if (!isRoundActive(session) && !isRoundBuyPhase(session)) {
     return failStudentCommand(400, "The round has ended. Snowball buying is closed.");
+  }
+  if (session.settings.gameMode === "zombie" && player.role !== "zombie") {
+    return failStudentCommand(400, "Humans cannot buy snowballs in Zombie Mode.");
   }
   const purchase = resolveSnowballPurchase({ player, settings: session.settings });
   if (!purchase.ok) {
@@ -2627,20 +2691,25 @@ io.on("connection", (socket) => {
     if (session && player) markPlayerDisconnected(session, player);
   });
 
-  socket.on("player_position", (payload: { code?: string; playerId?: string; playerToken?: string; x?: number; z?: number; y?: number; facing?: number }) => {
+  socket.on("player_position", (payload: { code?: string; playerId?: string; playerToken?: string; x?: number; z?: number; y?: number; facing?: number; sprinting?: boolean }) => {
     const code = String(payload.code ?? "");
     const session = getSessionByCode(code);
     const player = session?.players.find((candidate) => candidate.id === payload.playerId);
     if (!session || !player || !hasPlayerAccess(session, player, payload.playerToken)) return;
     if (!player.isAlive) return;
     const position = applyAuthoritativePosition(session, player, payload);
-    socket.to(session.sessionCode).volatile.emit("player_position", {
+    const authoritativePosition = {
       playerId: player.id,
       x: position.x,
       y: player.y,
       z: position.z,
-      facing: position.facing
-    });
+      facing: position.facing,
+      energy: player.energy
+    };
+    socket.to(session.sessionCode).volatile.emit("player_position", authoritativePosition);
+    if (session.settings.gameMode === "zombie" && player.role !== "zombie") {
+      socket.volatile.emit("player_position", authoritativePosition);
+    }
   });
 
   socket.on("fire_action", (payload: { code?: string; playerId?: string; playerToken?: string; requestId?: string; x?: number; z?: number; y?: number; facing?: number; targetId?: string; scoped?: boolean; zoomLevel?: number }) => {
@@ -2649,6 +2718,10 @@ io.on("connection", (socket) => {
     if (!session || !attacker || !hasPlayerAccess(session, attacker, payload.playerToken)) return;
     if (session.status !== "active") {
       socket.emit("error_message", { error: inactiveRoundMessage(session) });
+      return;
+    }
+    if (!canPlayerFireInMode(session.settings.gameMode, attacker.role)) {
+      socket.emit("damage_result", { ok: false, reason: "humans_cannot_fire", snowballs: attacker.snowballs ?? 0 });
       return;
     }
 

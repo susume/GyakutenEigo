@@ -64,7 +64,15 @@ interface ArenaPreviewProps {
   loadDecalAsset?: (assetId: string) => Promise<Blob>;
 }
 
-type ArenaLivePosition = { x: number; z: number; y?: number; facing: number; scoped?: boolean; zoomLevel?: number };
+type ArenaLivePosition = {
+  x: number;
+  z: number;
+  y?: number;
+  facing: number;
+  scoped?: boolean;
+  zoomLevel?: number;
+  sprinting?: boolean;
+};
 
 const PLAYER_RADIUS = 0.45;
 const WALK_SPEED = 10.8;
@@ -1787,6 +1795,7 @@ export default function ArenaPreview({
       let lastMoveEmitAt = 0;
       let lastMiniMapAt = 0;
       let lastDebugStatsAt = 0;
+      let isSprinting = false;
       let performanceWindowAt = performance.now();
       let lastSentPosition = localToServerPosition(playerPosition, yaw);
       const forwardVector = new THREE.Vector3();
@@ -1799,7 +1808,7 @@ export default function ArenaPreview({
       const bodyMax = new THREE.Vector3();
       const maybeEmitPosition = (currentTime: number) => {
         if (currentTime - lastMoveEmitAt < 180) return;
-        const nextPosition = localToServerPosition(playerPosition, yaw);
+        const nextPosition = { ...localToServerPosition(playerPosition, yaw), sprinting: isSprinting };
         const moved = Math.hypot(nextPosition.x - lastSentPosition.x, nextPosition.z - lastSentPosition.z);
         const turned = Math.abs(nextPosition.facing - lastSentPosition.facing);
         if (moved < 0.3 && turned < 0.08) return;
@@ -1886,9 +1895,13 @@ export default function ArenaPreview({
           wasGrounded = false;
         }
 
-        const gearSpeedMultiplier = getPlayerMoveSpeedMultiplier(currentPlayerRef.current ?? { gear: "starter_blaster" });
-        const movementAudioMode: MovementAudioMode = crouching ? "crouch" : keys.has("Shift") ? "run" : "walk";
-        const moveSpeed = (crouching ? CROUCH_SPEED : keys.has("Shift") ? RUN_SPEED : WALK_SPEED) * gearSpeedMultiplier;
+        const activePlayer = currentPlayerRef.current;
+        const gearSpeedMultiplier = getPlayerMoveSpeedMultiplier(activePlayer ?? { gear: "starter_blaster" });
+        const isZombieHuman = session?.settings.gameMode === "zombie" && activePlayer?.role !== "zombie";
+        const runRequested = keys.has("Shift");
+        const runAllowed = runRequested && (!isZombieHuman || (activePlayer?.energy ?? 0) > 0);
+        const movementAudioMode: MovementAudioMode = crouching ? "crouch" : runAllowed ? "run" : "walk";
+        const moveSpeed = (crouching ? CROUCH_SPEED : runAllowed ? RUN_SPEED : WALK_SPEED) * gearSpeedMultiplier;
         forwardVector.set(-Math.sin(yaw), 0, -Math.cos(yaw));
         rightVector.set(Math.cos(yaw), 0, -Math.sin(yaw));
         movementVector.set(0, 0, 0);
@@ -1905,6 +1918,7 @@ export default function ArenaPreview({
         if (gamepadMove.forward < -GAMEPAD_DEAD_ZONE) movementVector.sub(forwardVector);
         if (gamepadMove.right > GAMEPAD_DEAD_ZONE) movementVector.add(rightVector);
         if (gamepadMove.right < -GAMEPAD_DEAD_ZONE) movementVector.sub(rightVector);
+        isSprinting = runAllowed && movementVector.lengthSq() > 0;
 
         if (movementVector.lengthSq() > 0) {
           if (wasGrounded) gameAudio.playMovementStep(

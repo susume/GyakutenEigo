@@ -1,6 +1,6 @@
 import assert from "node:assert/strict";
 import test from "node:test";
-import { resolveFlagPlacement, type FlagState, type PlayerSession } from "@quizstrike/shared";
+import { resolveFlagCapture, resolveFlagPlacement, type FlagState, type PlayerSession } from "@quizstrike/shared";
 import {
   BOT_DIFFICULTIES,
   chooseBotRole,
@@ -147,4 +147,42 @@ test("a flag carrier attempts placement after leaving the original pickup positi
     flagPosition: carriedFlag.position,
     interactionRadius: 7
   }), false);
+});
+
+test("bots cannot instantly capture a newly placed flag", () => {
+  const interaction = {
+    flagState: "placed" as const,
+    botId: "blue-defender",
+    botPosition: { x: -88, z: 0 },
+    flagPosition: { x: -88, z: 0 },
+    interactionRadius: 7,
+    placedAtMs: 10_000,
+    captureDelayMs: BOT_DIFFICULTIES.standard.objectiveCaptureDelayMs
+  };
+
+  assert.equal(shouldBotAttemptFlagInteraction({
+    ...interaction,
+    nowMs: 14_499
+  }), false);
+  assert.equal(shouldBotAttemptFlagInteraction({
+    ...interaction,
+    nowMs: 14_500
+  }), true);
+});
+
+test("Blue cannot capture a flag that Red merely dropped", () => {
+  const droppedFlag = {
+    state: "dropped",
+    teamId: "red",
+    position: { x: 0, z: 0 }
+  } satisfies FlagState;
+  const blue = {
+    id: "blue",
+    team: "blue",
+    isAlive: true,
+    x: 0,
+    z: 0
+  } satisfies Pick<PlayerSession, "id" | "team" | "isAlive" | "x" | "z">;
+
+  assert.equal(resolveFlagCapture(droppedFlag, blue).state, "dropped");
 });

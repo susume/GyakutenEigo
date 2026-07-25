@@ -424,6 +424,8 @@ export interface PlayerSession {
   moneySpent?: number;
   isAlive: boolean;
   health?: number;
+  /** Zombie Mode running energy. Humans spend it while sprinting; correct answers restore it. */
+  energy?: number;
   snowballs?: number;
   respawnCorrectAnswers?: number;
   isBot?: boolean;
@@ -1007,6 +1009,57 @@ export const TAG_OPPONENT_BONUS = 100;
 export const TAG_SCORE_DELTA = 5;
 export const TAG_RANGE = 18;
 export const SNOWBALL_HIT_RADIUS = 1.25;
+export const ZOMBIE_HUMAN_MAX_ENERGY = 100;
+export const ZOMBIE_HUMAN_CORRECT_ENERGY = 25;
+export const ZOMBIE_HUMAN_SPRINT_DRAIN_PER_SECOND = 20;
+export const ZOMBIE_HUMAN_WALK_MAX_SPEED = 13;
+
+export const canPlayerFireInMode = (gameMode: GameMode, role: PlayerRole | undefined) =>
+  gameMode !== "zombie" || role === "zombie";
+
+export const awardZombieHumanEnergy = ({
+  gameMode,
+  role,
+  isCorrect,
+  currentEnergy
+}: {
+  gameMode: GameMode;
+  role: PlayerRole | undefined;
+  isCorrect: boolean;
+  currentEnergy: number | undefined;
+}) => {
+  const safeEnergy = Math.min(ZOMBIE_HUMAN_MAX_ENERGY, Math.max(0, Number(currentEnergy) || 0));
+  if (gameMode !== "zombie" || role === "zombie" || !isCorrect) return safeEnergy;
+  return Math.min(ZOMBIE_HUMAN_MAX_ENERGY, safeEnergy + ZOMBIE_HUMAN_CORRECT_ENERGY);
+};
+
+export const resolveZombieSprintEnergy = ({
+  gameMode,
+  role,
+  sprinting,
+  currentEnergy,
+  elapsedMs,
+  movedDistance
+}: {
+  gameMode: GameMode;
+  role: PlayerRole | undefined;
+  sprinting: boolean;
+  currentEnergy: number | undefined;
+  elapsedMs: number;
+  movedDistance: number;
+}) => {
+  const safeEnergy = Math.min(ZOMBIE_HUMAN_MAX_ENERGY, Math.max(0, Number(currentEnergy) || 0));
+  if (gameMode !== "zombie" || role === "zombie") {
+    return { canSprint: true, nextEnergy: safeEnergy };
+  }
+  const canSprint = sprinting && safeEnergy > 0;
+  if (!canSprint || movedDistance <= 0.05) return { canSprint, nextEnergy: safeEnergy };
+  const elapsedSeconds = Math.max(0, Math.min(1, elapsedMs / 1000));
+  return {
+    canSprint,
+    nextEnergy: Math.max(0, safeEnergy - ZOMBIE_HUMAN_SPRINT_DRAIN_PER_SECOND * elapsedSeconds)
+  };
+};
 export const ARENA_SCALE = 0.62;
 const scaleArenaValue = (value: number) => Number((value * ARENA_SCALE).toFixed(2));
 const scaleArenaPosition = <T extends { x: number; z: number }>(position: T): T =>
@@ -2190,6 +2243,7 @@ export const selectInitialZombies = <T extends PlayerSession>(
     role: chosenIds.has(player.id) ? "zombie" : "human",
     zombieConvertedAt: undefined,
     team: chosenIds.has(player.id) ? "red" : "blue",
+    energy: chosenIds.has(player.id) ? ZOMBIE_HUMAN_MAX_ENERGY : 0,
     gear: chosenIds.has(player.id) ? "starter_blaster" : player.gear,
     weapon: chosenIds.has(player.id) ? "starter_blaster" : player.weapon,
     perks: chosenIds.has(player.id) ? [] : player.perks,
@@ -2199,7 +2253,7 @@ export const selectInitialZombies = <T extends PlayerSession>(
 
 export type ZombieConversionResult =
   | { ok: true; player: PlayerSession; tagCredit: number }
-  | { ok: false; reason: "attacker_not_zombie" | "target_not_human" | "attacker_eliminated" | "target_eliminated" };
+  | { ok: false; reason: "attacker_not_zombie" | "target_not_human" | "attacker_eliminated" | "target_eliminated" | "target_not_knocked_out" };
 
 export const resolveZombieConversion = ({
   attacker,
@@ -2212,6 +2266,7 @@ export const resolveZombieConversion = ({
   if (!target.isAlive) return { ok: false, reason: "target_eliminated" };
   if (attacker.role !== "zombie") return { ok: false, reason: "attacker_not_zombie" };
   if (target.role !== "human") return { ok: false, reason: "target_not_human" };
+  if ((target.health ?? DEFAULT_PLAYER_HEALTH) > 0) return { ok: false, reason: "target_not_knocked_out" };
   return {
     ok: true,
     tagCredit: 1,
@@ -2219,6 +2274,7 @@ export const resolveZombieConversion = ({
       ...target,
       role: "zombie",
       team: "red",
+      energy: ZOMBIE_HUMAN_MAX_ENERGY,
       gear: "starter_blaster",
       isAlive: true,
       health: DEFAULT_PLAYER_HEALTH,
