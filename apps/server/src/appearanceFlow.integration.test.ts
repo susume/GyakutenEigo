@@ -20,28 +20,35 @@ type PlayerFixture = {
   id: string;
   nickname: string;
   connectionState?: string;
+  cosmeticXp?: number;
   appearance?: AppearanceFixture;
 };
 
 type AppearanceFixture = {
   characterPreset: string;
   headOption: string;
-  accessoryId: string;
+  backAccessoryId: string;
+  detailAccessoryId: string;
+  victoryPoseId: string;
   decalAssetId?: string;
-  appearanceVersion: 2;
+  appearanceVersion: 3;
 };
 
 type JoinedPlayer = {
   session: SessionFixture;
   player: PlayerFixture;
   playerToken: string;
+  cosmeticProgressToken: string;
+  question?: { id: string };
 };
 
 const defaultAppearance: AppearanceFixture = {
   characterPreset: "assault",
   headOption: "visor",
-  accessoryId: "utility_pack",
-  appearanceVersion: 2
+  backAccessoryId: "utility_pack",
+  detailAccessoryId: "none",
+  victoryPoseId: "champion",
+  appearanceVersion: 3
 };
 
 const onePixelPng = Buffer.from(
@@ -216,6 +223,16 @@ test("real HTTP appearance flow enforces identity, room scope, locking, and clea
   );
   assert.equal(impersonation.response.status, 401);
 
+  const progressionLocked = await api(
+    `/api/sessions/${session.sessionCode}/players/${alpha.player.id}/appearance`,
+    {
+      method: "PUT",
+      playerToken: alpha.playerToken,
+      body: { appearance: { ...defaultAppearance, backAccessoryId: "rocket_pack" } }
+    }
+  );
+  assert.equal(progressionLocked.response.status, 403);
+
   const upload = await fetch(
     `${baseUrl}/api/sessions/${session.sessionCode}/players/${alpha.player.id}/decals`,
     {
@@ -351,7 +368,7 @@ test("a 40-student room keeps bounded appearance state and rejects student 41", 
       ...defaultAppearance,
       characterPreset: index % 2 === 0 ? "support" : "engineer",
       headOption: index % 2 === 0 ? "comms" : "goggles",
-      accessoryId: index % 2 === 0 ? "compact_pack" : "tech_pack"
+      backAccessoryId: index % 2 === 0 ? "compact_pack" : "tech_pack"
     };
     return api(
       `/api/sessions/${session.sessionCode}/players/${student.player.id}/appearance`,
@@ -363,7 +380,7 @@ test("a 40-student room keeps bounded appearance state and rejects student 41", 
   const state = await api<{ session: SessionFixture }>(`/api/sessions/${session.sessionCode}`);
   assert.equal(state.response.status, 200);
   assert.equal(state.body.session.players.length, 40);
-  assert.ok(state.body.session.players.every((player) => player.appearance?.appearanceVersion === 2));
+  assert.ok(state.body.session.players.every((player) => player.appearance?.appearanceVersion === 3));
   assert.equal(state.text.includes("data:image"), false);
   assert.equal(state.text.includes(onePixelPng.toString("base64")), false);
 
@@ -380,6 +397,42 @@ test("a 40-student room keeps bounded appearance state and rejects student 41", 
     teacherToken: teacher.token
   });
   assert.equal(ended.response.status, 200);
+});
+
+test("signed cosmetic progress carries quiz-earned XP into a new classroom", { timeout: 30_000 }, async () => {
+  const teacher = await createTeacherWithQuiz();
+  const firstSession = await createSession(teacher, { maxPlayers: 4, gameMode: "classic" });
+  const learner = await joinSession(firstSession.sessionCode, "Progress Learner");
+  assert.ok(learner.question?.id);
+
+  const started = await api(`/api/sessions/${firstSession.sessionCode}/start`, {
+    method: "POST",
+    teacherToken: teacher.token
+  });
+  assert.equal(started.response.status, 200);
+
+  const answered = await api<{
+    cosmeticProgressToken: string;
+    result: { player: PlayerFixture };
+  }>(`/api/sessions/${firstSession.sessionCode}/players/${learner.player.id}/answer`, {
+    method: "POST",
+    playerToken: learner.playerToken,
+    body: { questionId: learner.question!.id, selectedChoice: "A" }
+  });
+  assert.equal(answered.response.status, 200);
+  assert.equal(answered.body.result.player.cosmeticXp, 100);
+  assert.ok(answered.body.cosmeticProgressToken);
+
+  const secondSession = await createSession(teacher, { maxPlayers: 4 });
+  const restored = await api<JoinedPlayer>(`/api/sessions/${secondSession.sessionCode}/join`, {
+    method: "POST",
+    body: {
+      nickname: "Progress Learner",
+      cosmeticProgressToken: answered.body.cosmeticProgressToken
+    }
+  });
+  assert.equal(restored.response.status, 201);
+  assert.equal(restored.body.player.cosmeticXp, 100);
 });
 
 test("40 authenticated Socket.IO clients receive bounded room state and movement fan-out", { timeout: 30_000 }, async (context) => {

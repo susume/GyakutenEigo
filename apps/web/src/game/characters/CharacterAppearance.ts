@@ -1,8 +1,10 @@
 import {
   sanitizePlayerAppearance,
-  type PlayerAccessoryId,
   type PlayerAppearance,
+  type PlayerBackAccessoryId,
+  type PlayerDetailAccessoryId,
   type PlayerHeadOption,
+  type PlayerVictoryPoseId,
   type Team
 } from "@quizstrike/shared";
 
@@ -39,7 +41,9 @@ export interface CharacterAppearance {
   };
   customization: {
     headOption: PlayerHeadOption;
-    accessoryId: PlayerAccessoryId;
+    backAccessoryId: PlayerBackAccessoryId;
+    detailAccessoryId: PlayerDetailAccessoryId;
+    victoryPoseId: PlayerVictoryPoseId;
     decalAssetId?: string;
   };
 }
@@ -159,7 +163,9 @@ export const resolveCharacterAppearance = (input: CharacterAppearanceInput): Cha
     },
     customization: {
       headOption: custom?.headOption ?? "visor",
-      accessoryId: custom?.accessoryId ?? "utility_pack",
+      backAccessoryId: custom?.backAccessoryId ?? "utility_pack",
+      detailAccessoryId: custom?.detailAccessoryId ?? "none",
+      victoryPoseId: custom?.victoryPoseId ?? "champion",
       ...(custom?.decalAssetId ? { decalAssetId: custom.decalAssetId } : {})
     }
   };
@@ -172,7 +178,9 @@ export const serializeCharacterAppearance = (input: CharacterAppearanceInput) =>
     variant: appearance.variant,
     headOption: appearance.customization.headOption,
     vest: appearance.silhouette.vest,
-    accessoryId: appearance.customization.accessoryId,
+    backAccessoryId: appearance.customization.backAccessoryId,
+    detailAccessoryId: appearance.customization.detailAccessoryId,
+    victoryPoseId: appearance.customization.victoryPoseId,
     accent: appearance.palette.accentName
   };
 };

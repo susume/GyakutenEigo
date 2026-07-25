@@ -1,25 +1,31 @@
 import { useEffect, useMemo, useRef, useState } from "react";
 import {
   APPEARANCE_UPDATE_COOLDOWN_MS,
+  COSMETIC_CATALOG,
   DEFAULT_PLAYER_APPEARANCE,
   SCHOOL_APPEARANCE_PRESETS,
   sanitizePlayerAppearance,
   type CharacterCustomizationSettings,
+  type CosmeticProgress,
+  type CosmeticSlot,
   type PlayerAppearance,
   type Team
 } from "@quizstrike/shared";
-import { Check, Dice5, RotateCcw, UserRound, X } from "lucide-react";
+import { Award, Backpack, Check, Dice5, Lock, RotateCcw, Smile, UserRound, X } from "lucide-react";
 import {
-  ACCESSORY_OPTIONS,
+  BACK_ACCESSORY_OPTIONS,
   CharacterPreview,
+  DETAIL_ACCESSORY_OPTIONS,
   HEAD_OPTIONS,
-  PRESET_PRESENTATION
+  PRESET_PRESENTATION,
+  VICTORY_POSE_OPTIONS
 } from "./CharacterCreator";
 
 type PremiumCharacterCreatorProps = {
   appearance?: PlayerAppearance;
   team: Team;
   policy: CharacterCustomizationSettings;
+  progress: CosmeticProgress;
   disabled?: boolean;
   onSave: (appearance: PlayerAppearance) => Promise<void>;
   onUploadDecal: (blob: Blob) => Promise<string>;
@@ -32,6 +38,7 @@ export default function PremiumCharacterCreator({
   appearance,
   team,
   policy,
+  progress,
   disabled,
   onSave,
   loadDecalAsset
@@ -45,6 +52,7 @@ export default function PremiumCharacterCreator({
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState("");
   const [cameraResetSignal, setCameraResetSignal] = useState(0);
+  const [activeCategory, setActiveCategory] = useState<CosmeticSlot>("head");
   const lastSubmittedSignature = useRef("");
 
   useEffect(() => {
@@ -105,6 +113,10 @@ export default function PremiumCharacterCreator({
     updateDraft((current) => ({ ...preset.appearance, decalAssetId: current.decalAssetId }));
   };
 
+  const unlockLevel = (slot: CosmeticSlot, id: string) =>
+    COSMETIC_CATALOG.find((item) => item.slot === slot && item.id === id)?.unlockLevel ?? 1;
+  const isUnlocked = (slot: CosmeticSlot, id: string) => unlockLevel(slot, id) <= progress.level;
+
   const randomize = () => {
     const pick = <T,>(values: readonly T[]) => values[Math.floor(Math.random() * values.length)];
     const preset = pick(SCHOOL_APPEARANCE_PRESETS);
@@ -112,12 +124,16 @@ export default function PremiumCharacterCreator({
       choosePreset(preset);
       return;
     }
-    const head = pick(HEAD_OPTIONS);
-    const accessory = pick(ACCESSORY_OPTIONS);
+    const head = pick(HEAD_OPTIONS.filter((option) => isUnlocked("head", option.id)));
+    const back = pick(BACK_ACCESSORY_OPTIONS.filter((option) => isUnlocked("back", option.value)));
+    const detail = pick(DETAIL_ACCESSORY_OPTIONS.filter((option) => isUnlocked("detail", option.value)));
+    const pose = pick(VICTORY_POSE_OPTIONS.filter((option) => isUnlocked("pose", option.value)));
     updateDraft((current) => ({
       ...preset.appearance,
       headOption: head.id,
-      accessoryId: accessory.value,
+      backAccessoryId: back.value,
+      detailAccessoryId: detail.value,
+      victoryPoseId: pose.value,
       decalAssetId: current.decalAssetId
     }));
   };
@@ -154,15 +170,21 @@ export default function PremiumCharacterCreator({
           team={team}
           loadDecalAsset={loadDecalAsset}
           resetSignal={cameraResetSignal}
+          showVictoryPose={activeCategory === "pose"}
         />
         <p className="preview-hint"><RotateCcw size={13} />Drag to rotate <span /> Scroll to zoom</p>
       </div>
 
       <div className="character-creator-controls">
         <div className="customizer-heading">
-          <span>Player style</span>
-          <h3>Make it yours</h3>
-          <p>Choose a look, head option, and one cosmetic accessory.</p>
+          <div className="customizer-title-row">
+            <div><span>Player style</span><h3>Make it yours</h3></div>
+            <div className="cosmetic-level"><Award size={15} /><span>Level {progress.level}</span><strong>{progress.levelName}</strong></div>
+          </div>
+          <div className="cosmetic-progress" aria-label={`${progress.xp} cosmetic experience`}>
+            <span style={{ width: `${progress.progressPercent}%` }} />
+          </div>
+          <p>{progress.nextLevelXp === undefined ? "All cosmetics unlocked" : `${progress.nextLevelXp - progress.xp} XP to the next cosmetic level`}</p>
         </div>
         <div className="creator-controls-scroll">
           <fieldset className="creator-option-section preset-section">
@@ -194,43 +216,133 @@ export default function PremiumCharacterCreator({
 
           {!policy.presetsOnly && (
             <>
-              <fieldset className="creator-option-section compact-options">
-                <legend>Head option</legend>
-                <div>
-                  {HEAD_OPTIONS.map((option) => (
-                    <button
-                      type="button"
-                      key={option.id}
-                      className={draft.headOption === option.id ? "selected" : ""}
-                      onClick={() => updateDraft((current) => ({ ...current, headOption: option.id }))}
-                      aria-pressed={draft.headOption === option.id}
-                      disabled={disabled}
-                    >
-                      <option.Icon size={17} />
-                      <span>{option.label}</span>
-                    </button>
-                  ))}
-                </div>
-              </fieldset>
+              <div className="cosmetic-category-tabs" role="tablist" aria-label="Cosmetic categories">
+                {([
+                  { id: "head", label: "Head", Icon: UserRound },
+                  { id: "back", label: "Back", Icon: Backpack },
+                  { id: "detail", label: "Badges", Icon: Award },
+                  { id: "pose", label: "Victory", Icon: Smile }
+                ] as const).map((category) => (
+                  <button
+                    type="button"
+                    role="tab"
+                    key={category.id}
+                    className={activeCategory === category.id ? "selected" : ""}
+                    aria-selected={activeCategory === category.id}
+                    onClick={() => setActiveCategory(category.id)}
+                  >
+                    <category.Icon size={15} />{category.label}
+                  </button>
+                ))}
+              </div>
 
-              <fieldset className="creator-option-section accessory-options">
-                <legend>Choose an accessory</legend>
-                <div className="accessory-card-grid">
-                  {ACCESSORY_OPTIONS.map((option) => (
-                    <button
-                      type="button"
-                      key={option.value}
-                      className={draft.accessoryId === option.value ? "selected" : ""}
-                      onClick={() => updateDraft((current) => ({ ...current, accessoryId: option.value }))}
-                      aria-pressed={draft.accessoryId === option.value}
-                      disabled={disabled}
-                    >
-                      <option.Icon size={17} />
-                      <span><strong>{option.label}</strong><small>{option.detail}</small></span>
-                    </button>
-                  ))}
-                </div>
-              </fieldset>
+              {activeCategory === "head" && (
+                <fieldset className="creator-option-section accessory-options cosmetic-catalog-grid">
+                  <legend>Head gear</legend>
+                  <div className="accessory-card-grid">
+                    {HEAD_OPTIONS.map((option) => {
+                      const level = unlockLevel("head", option.id);
+                      const locked = level > progress.level;
+                      return (
+                        <button
+                          type="button"
+                          key={option.id}
+                          className={draft.headOption === option.id ? "selected" : ""}
+                          onClick={() => updateDraft((current) => ({ ...current, headOption: option.id }))}
+                          aria-pressed={draft.headOption === option.id}
+                          disabled={disabled || locked}
+                          title={locked ? `Unlocks at level ${level}` : option.label}
+                        >
+                          <option.Icon size={17} />
+                          <span><strong>{option.label}</strong><small>{locked ? `Level ${level}` : "Head style"}</small></span>
+                          {locked && <Lock className="cosmetic-lock" size={12} />}
+                        </button>
+                      );
+                    })}
+                  </div>
+                </fieldset>
+              )}
+
+              {activeCategory === "back" && (
+                <fieldset className="creator-option-section accessory-options cosmetic-catalog-grid">
+                  <legend>Back gear · equip one</legend>
+                  <div className="accessory-card-grid">
+                    {BACK_ACCESSORY_OPTIONS.map((option) => {
+                      const level = unlockLevel("back", option.value);
+                      const locked = level > progress.level;
+                      return (
+                        <button
+                          type="button"
+                          key={option.value}
+                          className={draft.backAccessoryId === option.value ? "selected" : ""}
+                          onClick={() => updateDraft((current) => ({ ...current, backAccessoryId: option.value }))}
+                          aria-pressed={draft.backAccessoryId === option.value}
+                          disabled={disabled || locked}
+                          title={locked ? `Unlocks at level ${level}` : option.detail}
+                        >
+                          <option.Icon size={17} />
+                          <span><strong>{option.label}</strong><small>{locked ? `Level ${level}` : option.detail}</small></span>
+                          {locked && <Lock className="cosmetic-lock" size={12} />}
+                        </button>
+                      );
+                    })}
+                  </div>
+                </fieldset>
+              )}
+
+              {activeCategory === "detail" && (
+                <fieldset className="creator-option-section accessory-options cosmetic-catalog-grid">
+                  <legend>Badge or device · equip one</legend>
+                  <div className="accessory-card-grid">
+                    {DETAIL_ACCESSORY_OPTIONS.map((option) => {
+                      const level = unlockLevel("detail", option.value);
+                      const locked = level > progress.level;
+                      return (
+                        <button
+                          type="button"
+                          key={option.value}
+                          className={draft.detailAccessoryId === option.value ? "selected" : ""}
+                          onClick={() => updateDraft((current) => ({ ...current, detailAccessoryId: option.value }))}
+                          aria-pressed={draft.detailAccessoryId === option.value}
+                          disabled={disabled || locked}
+                          title={locked ? `Unlocks at level ${level}` : option.detail}
+                        >
+                          <option.Icon size={17} />
+                          <span><strong>{option.label}</strong><small>{locked ? `Level ${level}` : option.detail}</small></span>
+                          {locked && <Lock className="cosmetic-lock" size={12} />}
+                        </button>
+                      );
+                    })}
+                  </div>
+                </fieldset>
+              )}
+
+              {activeCategory === "pose" && (
+                <fieldset className="creator-option-section accessory-options cosmetic-catalog-grid">
+                  <legend>Victory animation</legend>
+                  <div className="accessory-card-grid">
+                    {VICTORY_POSE_OPTIONS.map((option) => {
+                      const level = unlockLevel("pose", option.value);
+                      const locked = level > progress.level;
+                      return (
+                        <button
+                          type="button"
+                          key={option.value}
+                          className={draft.victoryPoseId === option.value ? "selected" : ""}
+                          onClick={() => updateDraft((current) => ({ ...current, victoryPoseId: option.value }))}
+                          aria-pressed={draft.victoryPoseId === option.value}
+                          disabled={disabled || locked}
+                          title={locked ? `Unlocks at level ${level}` : option.detail}
+                        >
+                          <option.Icon size={17} />
+                          <span><strong>{option.label}</strong><small>{locked ? `Level ${level}` : option.detail}</small></span>
+                          {locked && <Lock className="cosmetic-lock" size={12} />}
+                        </button>
+                      );
+                    })}
+                  </div>
+                </fieldset>
+              )}
             </>
           )}
         </div>

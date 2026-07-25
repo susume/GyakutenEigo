@@ -42,13 +42,14 @@ export class CharacterModel {
   readonly hitboxes = new CharacterHitboxController();
   readonly lod = new CharacterLOD();
   readonly audio = new CharacterAudio();
-  private readonly animator = new CharacterAnimator();
+  private readonly animator: CharacterAnimator;
   private readonly parts: CharacterModelParts;
 
   constructor(appearance: CharacterAppearance, parts: CharacterModelParts) {
     this.appearance = appearance;
     this.parts = parts;
     this.root = parts.root;
+    this.animator = new CharacterAnimator(appearance.customization.victoryPoseId);
     this.root.userData.characterAppearance = appearance;
   }
 
@@ -88,6 +89,8 @@ export class CharacterModel {
       this.audio.update(speed, delta);
     }
     this.parts.equipment.weapon.visible = alive && lodState.level.equipment !== "minimal";
-    if (this.parts.equipment.accessory) this.parts.equipment.accessory.visible = alive && lodState.level.equipment === "full";
+    this.parts.equipment.accessories.forEach((accessory) => {
+      accessory.visible = alive && lodState.level.equipment === "full";
+    });
   }
 }

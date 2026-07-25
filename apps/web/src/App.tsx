@@ -35,6 +35,7 @@ import {
   DEFAULT_SESSION_SETTINGS,
   FLAG_MODE_DEFAULTS,
   GEAR_ITEMS,
+  getCosmeticProgress,
   getPlayerPerks,
   getPlayerWeaponId,
   RESPAWN_CORRECT_ANSWERS_REQUIRED,
@@ -110,6 +111,7 @@ const choices: Choice[] = ["A", "B", "C", "D"];
 const publicAsset = (path: string) => `${import.meta.env.BASE_URL}${path.replace(/^\//, "")}`;
 const STUDENT_SESSION_STORAGE_KEY = "quizstrike_student_session";
 const STUDENT_APPEARANCE_STORAGE_KEY = "quizstrike_student_appearance_v1";
+const COSMETIC_PROGRESS_STORAGE_KEY = "quizstrike_cosmetic_progress_v1";
 
 const readStoredStudentSession = (): StoredStudentSession | null => {
   try {
@@ -125,6 +127,15 @@ const readStoredStudentSession = (): StoredStudentSession | null => {
 };
 
 const clearStoredStudentSession = () => localStorage.removeItem(STUDENT_SESSION_STORAGE_KEY);
+
+const readCosmeticProgressToken = () => {
+  const token = localStorage.getItem(COSMETIC_PROGRESS_STORAGE_KEY);
+  return token && token.length <= 2_048 ? token : undefined;
+};
+
+const storeCosmeticProgressToken = (token?: string) => {
+  if (token && token.length <= 2_048) localStorage.setItem(COSMETIC_PROGRESS_STORAGE_KEY, token);
+};
 
 const readStoredAppearance = (): PlayerAppearance | null => {
   try {
@@ -2394,9 +2405,15 @@ function StudentExperience({ onExit }: { onExit: () => void }) {
       .rejoin(stored.sessionCode, stored.playerId, stored.playerToken)
       .then((payload) => {
         if (cancelled) return;
-        const data = payload as { session: GameSession; player: PlayerSession; question?: PublicQuestion };
+        const data = payload as {
+          session: GameSession;
+          player: PlayerSession;
+          cosmeticProgressToken?: string;
+          question?: PublicQuestion;
+        };
         setSession(data.session);
         setPlayer(data.player);
+        storeCosmeticProgressToken(data.cosmeticProgressToken);
         setPlayerToken(stored.playerToken);
         setQuestion(data.question ?? null);
         setFeedback("Your student session was restored.");
@@ -2829,10 +2846,15 @@ function StudentExperience({ onExit }: { onExit: () => void }) {
     }
     setIsJoining(true);
     try {
-      const payload = (await studentApi.join(joinCode.trim().toUpperCase(), nickname)) as {
+      const payload = (await studentApi.join(
+        joinCode.trim().toUpperCase(),
+        nickname,
+        readCosmeticProgressToken()
+      )) as {
         session: GameSession;
         player: PlayerSession;
         playerToken: string;
+        cosmeticProgressToken?: string;
         question?: PublicQuestion;
       };
       setSession(payload.session);
@@ -2844,6 +2866,7 @@ function StudentExperience({ onExit }: { onExit: () => void }) {
       setScoreboardOpen(false);
       setSettingsOpen(false);
       setAnsweringChoice(null);
+      storeCosmeticProgressToken(payload.cosmeticProgressToken);
       localStorage.setItem(STUDENT_SESSION_STORAGE_KEY, JSON.stringify({
         sessionCode: payload.session.sessionCode,
         playerId: payload.player.id,
@@ -2900,6 +2923,7 @@ function StudentExperience({ onExit }: { onExit: () => void }) {
     gameAudio.playEvent("quiz_lock");
     try {
       type AnswerPayload = {
+        cosmeticProgressToken?: string;
         result: {
           feedback: string;
           explanation?: string;
@@ -2915,6 +2939,7 @@ function StudentExperience({ onExit }: { onExit: () => void }) {
         command,
         () => studentApi.answer(session.sessionCode, player.id, playerToken, command) as Promise<AnswerPayload>
       );
+      storeCosmeticProgressToken(payload.cosmeticProgressToken);
       setPlayer(payload.result.player);
       setFeedback(`${payload.result.feedback}${payload.result.explanation ? ` ${payload.result.explanation}` : ""}`);
       const wasWrong = payload.result.player.wrongAnswers > player.wrongAnswers;
@@ -3394,6 +3419,7 @@ function StudentExperience({ onExit }: { onExit: () => void }) {
                     appearance={player.appearance}
                     team={player.team}
                     policy={session.settings.characterCustomization}
+                    progress={getCosmeticProgress(player)}
                     disabled={session.status !== "waiting" || isSocketReconnecting}
                     onSave={savePlayerAppearance}
                     onUploadDecal={uploadPlayerDecal}

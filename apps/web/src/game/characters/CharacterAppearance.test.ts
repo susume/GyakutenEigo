@@ -53,7 +53,9 @@ test("serializeCharacterAppearance returns compact multiplayer-safe appearance s
       variant: "heavy",
       headOption: "visor",
       vest: "plate_carrier",
-      accessoryId: "utility_pack",
+      backAccessoryId: "utility_pack",
+      detailAccessoryId: "none",
+      victoryPoseId: "champion",
       accent: "blue"
     }
   );

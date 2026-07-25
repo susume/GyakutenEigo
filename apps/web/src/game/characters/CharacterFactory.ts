@@ -1,8 +1,10 @@
 import * as THREE from "three";
 import type { PlayerAppearance, Team } from "@quizstrike/shared";
 import {
-  ACCESSORY_DEFINITIONS,
-  createAccessory,
+  BACK_ACCESSORY_DEFINITIONS,
+  DETAIL_ACCESSORY_DEFINITIONS,
+  createBackAccessory,
+  createDetailAccessory,
   createHeadOption,
   type AccessorySocketName
 } from "./CharacterAccessories.js";
@@ -164,6 +166,7 @@ export class CharacterFactory {
       BackSocket: torso,
       ShoulderSocket: leftArm,
       ChestBadgeSocket: torso,
+      WristSocket: leftForearm,
       HipSocket: skeletonRoot
     };
     const socketOffsets: Record<AccessorySocketName, [number, number, number]> = {
@@ -172,6 +175,7 @@ export class CharacterFactory {
       BackSocket: [0, 0.04, 0.28],
       ShoulderSocket: [0, 0, -0.1],
       ChestBadgeSocket: [0, 0.12, -0.325],
+      WristSocket: [0, -0.19, -0.1],
       HipSocket: [0.29, 0.8, 0]
     };
     const accessorySockets = {} as Record<AccessorySocketName, THREE.Group>;
@@ -184,9 +188,19 @@ export class CharacterFactory {
     });
 
     accessorySockets.HeadSocket.add(createHeadOption(appearance.customization.headOption, materials));
-    const accessoryDefinition = ACCESSORY_DEFINITIONS[appearance.customization.accessoryId];
-    const accessory = createAccessory(appearance.customization.accessoryId, materials);
-    if (accessory) accessorySockets[accessoryDefinition.socket].add(accessory);
+    const accessories: THREE.Object3D[] = [];
+    const backDefinition = BACK_ACCESSORY_DEFINITIONS[appearance.customization.backAccessoryId];
+    const backAccessory = createBackAccessory(appearance.customization.backAccessoryId, materials);
+    if (backAccessory) {
+      accessorySockets[backDefinition.socket].add(backAccessory);
+      accessories.push(backAccessory);
+    }
+    const detailDefinition = DETAIL_ACCESSORY_DEFINITIONS[appearance.customization.detailAccessoryId];
+    const detailAccessory = createDetailAccessory(appearance.customization.detailAccessoryId, materials);
+    if (detailAccessory) {
+      accessorySockets[detailDefinition.socket].add(detailAccessory);
+      accessories.push(detailAccessory);
+    }
 
     const gearId = input.gear ?? "starter_blaster";
     const { weapon, muzzle, leftHandSupport } = createWeaponSet(materials, this.boxGeometry, gearId);
@@ -245,7 +259,7 @@ export class CharacterFactory {
       leftShin,
       rightShin,
       weapon,
-      equipment: { weapon, muzzle, weaponSocket, leftHandSupport, accessory }
+      equipment: { weapon, muzzle, weaponSocket, leftHandSupport, accessories }
     });
   }
 

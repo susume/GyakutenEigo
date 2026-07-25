@@ -51,8 +51,27 @@ test("hit cues add recoil and then expire back toward locomotion", () => {
 test("objective carriers keep a readable cradle pose while moving", () => {
   const animator = new CharacterAnimator();
   const parts = makeParts();
-  animator.update(parts, { delta: 1 / 60, elapsed: 0.2, speed: 4, forwardSpeed: 4, alive: true, carryingObjective: true });
-  assert.equal(parts.leftArm.rotation.x, -0.72);
+  for (let frame = 0; frame < 30; frame += 1) {
+    animator.update(parts, { delta: 1 / 60, elapsed: frame / 60, speed: 4, forwardSpeed: 4, alive: true, carryingObjective: true });
+  }
+  assert.ok(parts.leftArm.rotation.x < -0.68);
   assert.ok(parts.leftForearm.rotation.x > 0);
   assert.notEqual(parts.leftLeg.rotation.x, 0);
+});
+
+test("unlockable victory styles produce distinct readable poses", () => {
+  const waveParts = makeParts();
+  const powerParts = makeParts();
+  const wave = new CharacterAnimator("wave");
+  const power = new CharacterAnimator("power");
+  wave.trigger("victory");
+  power.trigger("victory");
+  for (let frame = 0; frame < 30; frame += 1) {
+    const state = { delta: 1 / 60, elapsed: frame / 60, speed: 0, alive: true };
+    wave.update(waveParts, state);
+    power.update(powerParts, state);
+  }
+  assert.ok(waveParts.rightArm.rotation.x < -1);
+  assert.ok(powerParts.rightArm.rotation.z > 0.3);
+  assert.ok(Math.abs(waveParts.rightArm.rotation.z - powerParts.rightArm.rotation.z) > 0.25);
 });

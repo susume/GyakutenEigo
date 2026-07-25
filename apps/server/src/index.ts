@@ -22,6 +22,8 @@ import {
   getGearFireCooldownMs,
   getGearHitRadius,
   getGearRange,
+  getCosmeticProgress,
+  getLockedAppearanceItems,
   getPlayerHealthMax,
   getPlayerMoveSpeedMultiplier,
   getPlayerPerks,
@@ -199,6 +201,9 @@ const hydrateRuntimeState = async () => {
     session.players = Array.isArray(session.players)
       ? session.players.map((player) => ({
           ...player,
+          cosmeticXp: Number.isFinite(player.cosmeticXp)
+            ? Math.max(0, Math.floor(player.cosmeticXp!))
+            : Math.max(0, player.correctAnswers ?? 0) * 100,
           appearance: { ...sanitizePlayerAppearance(player.appearance), decalAssetId: undefined }
         }))
       : [];
@@ -304,6 +309,25 @@ type PlayerTokenPayload = {
 
 const makePlayerToken = (session: GameSession, player: PlayerSession) =>
   jwt.sign({ sub: player.id, sessionCode: session.sessionCode, scope: "student" }, jwtSecret, { expiresIn: "8h" });
+
+const makeCosmeticProgressToken = (player: PlayerSession) =>
+  jwt.sign(
+    { scope: "cosmetic-progress", xp: Math.max(0, Math.floor(player.cosmeticXp ?? 0)) },
+    jwtSecret,
+    { expiresIn: "365d" }
+  );
+
+const readCosmeticProgressToken = (token: unknown) => {
+  if (typeof token !== "string" || token.length > 2_048) return 0;
+  try {
+    const payload = jwt.verify(token, jwtSecret) as { scope?: string; xp?: number };
+    return payload.scope === "cosmetic-progress" && Number.isFinite(payload.xp)
+      ? Math.min(1_000_000, Math.max(0, Math.floor(payload.xp!)))
+      : 0;
+  } catch {
+    return 0;
+  }
+};
 
 const getBearerUser = (req: Request): TeacherUser | undefined => {
   const header = req.header("authorization");
@@ -1461,7 +1485,13 @@ app.post("/api/sessions/:code/join", (req, res) => {
       team: returningPlayer.team
     });
     broadcastSession(session);
-    res.status(200).json({ session: stampSession(session), player: returningPlayer, playerToken, question });
+    res.status(200).json({
+      session: stampSession(session),
+      player: returningPlayer,
+      playerToken,
+      cosmeticProgressToken: makeCosmeticProgressToken(returningPlayer),
+      question
+    });
     return;
   }
   if (returningPlayer) {
@@ -1490,6 +1520,7 @@ app.post("/api/sessions/:code/join", (req, res) => {
     role: "human",
     tags: 0,
     respawns: 0,
+    cosmeticXp: readCosmeticProgressToken(req.body.cosmeticProgressToken),
     connectionState: "connected",
     health: DEFAULT_PLAYER_HEALTH,
     snowballs: session.settings.startingSnowballs,
@@ -1517,7 +1548,13 @@ app.post("/api/sessions/:code/join", (req, res) => {
     team
   });
   broadcastSession(session);
-  res.status(201).json({ session: stampSession(session), player, playerToken, question: issueNextQuestion(session, player.id) });
+  res.status(201).json({
+    session: stampSession(session),
+    player,
+    playerToken,
+    cosmeticProgressToken: makeCosmeticProgressToken(player),
+    question: issueNextQuestion(session, player.id)
+  });
 });
 
 app.get("/api/sessions/:code/players/:playerId/rejoin", (req, res) => {
@@ -1536,7 +1573,12 @@ app.get("/api/sessions/:code/players/:playerId/rejoin", (req, res) => {
       ? issueNextQuestion(session, player.id)
       : undefined;
   broadcastSession(session);
-  res.json({ session: stampSession(session), player, question });
+  res.json({
+    session: stampSession(session),
+    player,
+    cosmeticProgressToken: makeCosmeticProgressToken(player),
+    question
+  });
 });
 
 app.post("/api/sessions/:code/players/:playerId/team", (req, res) => {
@@ -1596,6 +1638,11 @@ app.put("/api/sessions/:code/players/:playerId/appearance", (req, res) => {
     return;
   }
   const appearance = sanitizePlayerAppearance(input as Partial<PlayerAppearance>);
+  const lockedItems = getLockedAppearanceItems(appearance, getCosmeticProgress(player).level);
+  if (lockedItems.length > 0) {
+    res.status(403).json({ error: `${lockedItems[0].name} unlocks at cosmetic level ${lockedItems[0].unlockLevel}.` });
+    return;
+  }
   if (policy.presetsOnly && !isApprovedAppearancePreset(appearance)) {
     res.status(400).json({ error: "This room is limited to approved appearance presets." });
     return;
@@ -1806,7 +1853,7 @@ const answerQuestion = (
   session: GameSession,
   player: PlayerSession,
   body: { questionId?: unknown; selectedChoice?: unknown }
-): StudentCommandResult<{ result: QuizResult }> => {
+): StudentCommandResult<{ result: QuizResult; cosmeticProgressToken: string }> => {
   if (session.status !== "active") {
     return failStudentCommand(400, inactiveRoundMessage(session));
   }
@@ -1835,6 +1882,7 @@ const answerQuestion = (
   player.score += reward.scoreDelta;
   player.correctAnswers += reward.correctDelta;
   player.wrongAnswers += reward.wrongDelta;
+  if (reward.correctDelta > 0) player.cosmeticXp = Math.max(0, player.cosmeticXp ?? 0) + reward.correctDelta * 100;
   const respawn =
     session.settings.gameMode === "flag"
       ? {
@@ -1899,7 +1947,7 @@ const answerQuestion = (
     respawnRequired: respawn.required
   };
   broadcastSession(session);
-  return { ok: true, data: { result } };
+  return { ok: true, data: { result, cosmeticProgressToken: makeCosmeticProgressToken(player) } };
 };
 
 const buyGear = (session: GameSession, player: PlayerSession, gearId: unknown): StudentCommandResult<GearPurchaseResponse> => {

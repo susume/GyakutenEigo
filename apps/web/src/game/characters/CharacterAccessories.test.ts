@@ -1,10 +1,12 @@
 import assert from "node:assert/strict";
 import test from "node:test";
 import * as THREE from "three";
-import { ACCESSORY_IDS, HEAD_OPTIONS } from "@quizstrike/shared";
+import { BACK_ACCESSORY_IDS, DETAIL_ACCESSORY_IDS, HEAD_OPTIONS } from "@quizstrike/shared";
 import {
-  ACCESSORY_DEFINITIONS,
-  createAccessory,
+  BACK_ACCESSORY_DEFINITIONS,
+  DETAIL_ACCESSORY_DEFINITIONS,
+  createBackAccessory,
+  createDetailAccessory,
   createHeadOption
 } from "./CharacterAccessories";
 import type { CharacterMaterials } from "./CharacterEquipment";
@@ -22,15 +24,29 @@ const makeMaterials = (): CharacterMaterials => {
   };
 };
 
-test("every cosmetic accessory uses one named socket and a bounded local transform", () => {
+test("every back cosmetic uses one named socket and a bounded local transform", () => {
   const materials = makeMaterials();
-  for (const id of ACCESSORY_IDS) {
-    const definition = ACCESSORY_DEFINITIONS[id];
+  for (const id of BACK_ACCESSORY_IDS) {
+    const definition = BACK_ACCESSORY_DEFINITIONS[id];
     assert.match(definition.socket, /Socket$/);
     assert.equal(definition.position.length, 3);
     assert.equal(definition.rotation.length, 3);
     assert.equal(definition.scale.length, 3);
-    const accessory = createAccessory(id, materials);
+    const accessory = createBackAccessory(id, materials);
+    assert.equal(Boolean(accessory), id !== "none");
+    if (accessory) assert.equal(accessory.name, `Accessory_${id}`);
+  }
+});
+
+test("every detail cosmetic uses one named socket and a bounded local transform", () => {
+  const materials = makeMaterials();
+  for (const id of DETAIL_ACCESSORY_IDS) {
+    const definition = DETAIL_ACCESSORY_DEFINITIONS[id];
+    assert.match(definition.socket, /Socket$/);
+    assert.equal(definition.position.length, 3);
+    assert.equal(definition.rotation.length, 3);
+    assert.equal(definition.scale.length, 3);
+    const accessory = createDetailAccessory(id, materials);
     assert.equal(Boolean(accessory), id !== "none");
     if (accessory) assert.equal(accessory.name, `Accessory_${id}`);
   }

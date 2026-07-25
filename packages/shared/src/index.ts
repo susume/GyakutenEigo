@@ -68,7 +68,7 @@ export interface QuizSet {
   createdAt: string;
 }
 
-export const APPEARANCE_VERSION = 2 as const;
+export const APPEARANCE_VERSION = 3 as const;
 export const APPEARANCE_MAX_JSON_BYTES = 2048;
 export const APPEARANCE_UPDATE_COOLDOWN_MS = 750;
 export const DECAL_MAX_SOURCE_BYTES = 5 * 1024 * 1024;
@@ -76,27 +76,132 @@ export const DECAL_MAX_PROCESSED_BYTES = 384 * 1024;
 export const DECAL_MAX_DIMENSION = 512;
 
 export const CHARACTER_PRESETS = ["assault", "support", "sniper", "engineer", "medic", "heavy"] as const;
-export const HEAD_OPTIONS = ["visor", "comms", "goggles", "hood"] as const;
-export const ACCESSORY_IDS = [
+export const HEAD_OPTIONS = ["visor", "comms", "goggles", "hood", "field_cap", "crown_band"] as const;
+export const BACK_ACCESSORY_IDS = [
   "none",
   "utility_pack",
   "compact_pack",
   "tech_pack",
   "trail_pack",
-  "shoulder_badge"
+  "book_satchel",
+  "rocket_pack",
+  "team_pennant"
+] as const;
+export const DETAIL_ACCESSORY_IDS = [
+  "none",
+  "shoulder_badge",
+  "wrist_device",
+  "quiz_medal",
+  "compass_badge",
+  "champion_star"
+] as const;
+export const VICTORY_POSE_IDS = [
+  "champion",
+  "wave",
+  "salute",
+  "power"
 ] as const;
 
 export type CharacterPreset = (typeof CHARACTER_PRESETS)[number];
 export type PlayerHeadOption = (typeof HEAD_OPTIONS)[number];
-export type PlayerAccessoryId = (typeof ACCESSORY_IDS)[number];
+export type PlayerBackAccessoryId = (typeof BACK_ACCESSORY_IDS)[number];
+export type PlayerDetailAccessoryId = (typeof DETAIL_ACCESSORY_IDS)[number];
+export type PlayerVictoryPoseId = (typeof VICTORY_POSE_IDS)[number];
+export type CosmeticSlot = "head" | "back" | "detail" | "pose";
+
+export interface CosmeticCatalogItem {
+  id: string;
+  slot: CosmeticSlot;
+  name: string;
+  description: string;
+  unlockLevel: number;
+}
+
+export const COSMETIC_CATALOG = [
+  { id: "visor", slot: "head", name: "Arena Visor", description: "Classic eye shield", unlockLevel: 1 },
+  { id: "comms", slot: "head", name: "Comms Set", description: "Team radio headset", unlockLevel: 1 },
+  { id: "goggles", slot: "head", name: "Field Goggles", description: "Explorer lenses", unlockLevel: 1 },
+  { id: "hood", slot: "head", name: "Storm Hood", description: "Soft field hood", unlockLevel: 1 },
+  { id: "field_cap", slot: "head", name: "Field Cap", description: "QuizStrike cap", unlockLevel: 2 },
+  { id: "crown_band", slot: "head", name: "Champion Band", description: "Victory headband", unlockLevel: 4 },
+  { id: "none", slot: "back", name: "No Back Gear", description: "Clean arena kit", unlockLevel: 1 },
+  { id: "utility_pack", slot: "back", name: "Utility Pack", description: "Classic field pack", unlockLevel: 1 },
+  { id: "compact_pack", slot: "back", name: "Compact Pack", description: "Light match kit", unlockLevel: 1 },
+  { id: "tech_pack", slot: "back", name: "Tech Pack", description: "Signal-ready pack", unlockLevel: 1 },
+  { id: "trail_pack", slot: "back", name: "Trail Pack", description: "Adventure roll", unlockLevel: 1 },
+  { id: "book_satchel", slot: "back", name: "Book Satchel", description: "Study supplies", unlockLevel: 2 },
+  { id: "rocket_pack", slot: "back", name: "Boost Pack", description: "Cosmetic thrusters", unlockLevel: 4 },
+  { id: "team_pennant", slot: "back", name: "Team Pennant", description: "Carry your colours", unlockLevel: 5 },
+  { id: "none", slot: "detail", name: "No Detail", description: "Simple uniform", unlockLevel: 1 },
+  { id: "shoulder_badge", slot: "detail", name: "Team Crest", description: "Shoulder emblem", unlockLevel: 1 },
+  { id: "wrist_device", slot: "detail", name: "Wrist Device", description: "Match tracker", unlockLevel: 2 },
+  { id: "quiz_medal", slot: "detail", name: "Quiz Medal", description: "Knowledge award", unlockLevel: 3 },
+  { id: "compass_badge", slot: "detail", name: "Compass Badge", description: "Explorer insignia", unlockLevel: 4 },
+  { id: "champion_star", slot: "detail", name: "Champion Star", description: "Top-tier crest", unlockLevel: 5 },
+  { id: "champion", slot: "pose", name: "Champion", description: "Two-arm celebration", unlockLevel: 1 },
+  { id: "wave", slot: "pose", name: "Friendly Wave", description: "Classroom hello", unlockLevel: 1 },
+  { id: "salute", slot: "pose", name: "Team Salute", description: "Ready for the round", unlockLevel: 2 },
+  { id: "power", slot: "pose", name: "Power Pose", description: "Confident finish", unlockLevel: 3 }
+] as const satisfies ReadonlyArray<CosmeticCatalogItem>;
+
+export const COSMETIC_LEVEL_THRESHOLDS = [0, 300, 700, 1200, 1800] as const;
+export const COSMETIC_LEVEL_NAMES = ["Rookie", "Scout", "Scholar", "Ace", "Champion"] as const;
+
+export interface CosmeticProgress {
+  xp: number;
+  level: number;
+  levelName: string;
+  levelStartXp: number;
+  nextLevelXp?: number;
+  progressPercent: number;
+}
+
+export const getCosmeticProgress = (
+  player: Pick<PlayerSession, "correctAnswers" | "tags" | "cosmeticXp">
+): CosmeticProgress => {
+  const xp = Number.isFinite(player.cosmeticXp)
+    ? Math.max(0, Math.floor(player.cosmeticXp!))
+    : Math.max(0, player.correctAnswers) * 100 + Math.max(0, player.tags ?? 0) * 75;
+  let levelIndex = 0;
+  for (let index = 0; index < COSMETIC_LEVEL_THRESHOLDS.length; index += 1) {
+    if (xp >= COSMETIC_LEVEL_THRESHOLDS[index]) levelIndex = index;
+  }
+  const levelStartXp = COSMETIC_LEVEL_THRESHOLDS[levelIndex];
+  const nextLevelXp = COSMETIC_LEVEL_THRESHOLDS[levelIndex + 1];
+  return {
+    xp,
+    level: levelIndex + 1,
+    levelName: COSMETIC_LEVEL_NAMES[levelIndex],
+    levelStartXp,
+    nextLevelXp,
+    progressPercent: nextLevelXp === undefined
+      ? 100
+      : Math.round(((xp - levelStartXp) / (nextLevelXp - levelStartXp)) * 100)
+  };
+};
+
+const catalogItem = (slot: CosmeticSlot, id: string) =>
+  COSMETIC_CATALOG.find((item) => item.slot === slot && item.id === id);
 
 export interface PlayerAppearance {
   characterPreset: CharacterPreset;
   headOption: PlayerHeadOption;
-  accessoryId: PlayerAccessoryId;
+  backAccessoryId: PlayerBackAccessoryId;
+  detailAccessoryId: PlayerDetailAccessoryId;
+  victoryPoseId: PlayerVictoryPoseId;
   decalAssetId?: string;
   appearanceVersion: typeof APPEARANCE_VERSION;
 }
+
+export const getLockedAppearanceItems = (
+  appearance: PlayerAppearance,
+  level: number
+): CosmeticCatalogItem[] => [
+  catalogItem("head", appearance.headOption),
+  catalogItem("back", appearance.backAccessoryId),
+  catalogItem("detail", appearance.detailAccessoryId),
+  catalogItem("pose", appearance.victoryPoseId)
+].filter((item): item is (typeof COSMETIC_CATALOG)[number] => Boolean(item && item.unlockLevel > level));
 
 export interface CharacterCustomizationSettings {
   enabled: boolean;
@@ -109,7 +214,9 @@ export interface CharacterCustomizationSettings {
 export const DEFAULT_PLAYER_APPEARANCE: PlayerAppearance = {
   characterPreset: "assault",
   headOption: "visor",
-  accessoryId: "utility_pack",
+  backAccessoryId: "utility_pack",
+  detailAccessoryId: "none",
+  victoryPoseId: "champion",
   appearanceVersion: APPEARANCE_VERSION
 };
 
@@ -122,7 +229,9 @@ export const SCHOOL_APPEARANCE_PRESETS = [
       ...DEFAULT_PLAYER_APPEARANCE,
       characterPreset: "support",
       headOption: "comms",
-      accessoryId: "compact_pack"
+      backAccessoryId: "compact_pack",
+      detailAccessoryId: "shoulder_badge",
+      victoryPoseId: "wave"
     }
   },
   {
@@ -132,7 +241,8 @@ export const SCHOOL_APPEARANCE_PRESETS = [
       ...DEFAULT_PLAYER_APPEARANCE,
       characterPreset: "engineer",
       headOption: "goggles",
-      accessoryId: "tech_pack"
+      backAccessoryId: "tech_pack",
+      detailAccessoryId: "none"
     }
   },
   {
@@ -142,7 +252,8 @@ export const SCHOOL_APPEARANCE_PRESETS = [
       ...DEFAULT_PLAYER_APPEARANCE,
       characterPreset: "sniper",
       headOption: "hood",
-      accessoryId: "none"
+      backAccessoryId: "none",
+      detailAccessoryId: "none"
     }
   },
   {
@@ -152,7 +263,8 @@ export const SCHOOL_APPEARANCE_PRESETS = [
       ...DEFAULT_PLAYER_APPEARANCE,
       characterPreset: "heavy",
       headOption: "visor",
-      accessoryId: "utility_pack"
+      backAccessoryId: "utility_pack",
+      detailAccessoryId: "shoulder_badge"
     }
   },
   {
@@ -162,7 +274,9 @@ export const SCHOOL_APPEARANCE_PRESETS = [
       ...DEFAULT_PLAYER_APPEARANCE,
       characterPreset: "medic",
       headOption: "hood",
-      accessoryId: "trail_pack"
+      backAccessoryId: "trail_pack",
+      detailAccessoryId: "none",
+      victoryPoseId: "wave"
     }
   }
 ] as const satisfies ReadonlyArray<{ id: string; name: string; appearance: PlayerAppearance }>;
@@ -211,15 +325,22 @@ export const sanitizePlayerAppearance = (
       : legacyHelmet === "headset" ? "comms"
         : legacyHelmet === "hood" ? "hood"
           : "visor";
-  const migratedAccessory: PlayerAccessoryId =
-    source.backpackStyle === "radio_pack" ? "tech_pack"
-      : source.backpackStyle === "bedroll" ? "trail_pack"
-        : source.backpackStyle === "none" ? "none"
-          : "utility_pack";
+  const legacyAccessory = source.accessoryId;
+  const migratedBackAccessory: PlayerBackAccessoryId =
+    legacyAccessory === "shoulder_badge" ? "none"
+      : isAllowed(BACK_ACCESSORY_IDS, legacyAccessory) ? legacyAccessory
+        : source.backpackStyle === "radio_pack" ? "tech_pack"
+          : source.backpackStyle === "bedroll" ? "trail_pack"
+            : source.backpackStyle === "none" ? "none"
+              : "utility_pack";
+  const migratedDetailAccessory: PlayerDetailAccessoryId =
+    legacyAccessory === "shoulder_badge" ? "shoulder_badge" : "none";
   return {
     characterPreset: isAllowed(CHARACTER_PRESETS, source.characterPreset) ? source.characterPreset : DEFAULT_PLAYER_APPEARANCE.characterPreset,
     headOption: isAllowed(HEAD_OPTIONS, source.headOption) ? source.headOption : migratedHeadOption,
-    accessoryId: isAllowed(ACCESSORY_IDS, source.accessoryId) ? source.accessoryId : migratedAccessory,
+    backAccessoryId: isAllowed(BACK_ACCESSORY_IDS, source.backAccessoryId) ? source.backAccessoryId : migratedBackAccessory,
+    detailAccessoryId: isAllowed(DETAIL_ACCESSORY_IDS, source.detailAccessoryId) ? source.detailAccessoryId : migratedDetailAccessory,
+    victoryPoseId: isAllowed(VICTORY_POSE_IDS, source.victoryPoseId) ? source.victoryPoseId : "champion",
     ...(decalAssetId ? { decalAssetId } : {}),
     appearanceVersion: APPEARANCE_VERSION
   };
@@ -230,14 +351,17 @@ export const getPlayerAppearanceError = (input: unknown): string | undefined => 
   if (new TextEncoder().encode(JSON.stringify(input)).byteLength > APPEARANCE_MAX_JSON_BYTES) return "Appearance data is too large.";
   const source = input as Record<string, unknown>;
   const allowedKeys = new Set([
-    "characterPreset", "headOption", "accessoryId", "decalAssetId", "appearanceVersion"
+    "characterPreset", "headOption", "backAccessoryId", "detailAccessoryId", "victoryPoseId",
+    "decalAssetId", "appearanceVersion"
   ]);
   if (Object.keys(source).some((key) => !allowedKeys.has(key))) return "Appearance contains an unsupported field.";
   if (source.appearanceVersion !== APPEARANCE_VERSION) return "Unsupported appearance version.";
   const checks: Array<[readonly string[], unknown, string]> = [
     [CHARACTER_PRESETS, source.characterPreset, "character preset"],
     [HEAD_OPTIONS, source.headOption, "head option"],
-    [ACCESSORY_IDS, source.accessoryId, "accessory"]
+    [BACK_ACCESSORY_IDS, source.backAccessoryId, "back accessory"],
+    [DETAIL_ACCESSORY_IDS, source.detailAccessoryId, "detail accessory"],
+    [VICTORY_POSE_IDS, source.victoryPoseId, "victory pose"]
   ];
   const invalid = checks.find(([values, value]) => !isAllowed(values, value));
   if (invalid) return `Invalid ${invalid[2]}.`;
@@ -302,6 +426,8 @@ export interface PlayerSession {
   zombieConvertedAt?: string;
   tags?: number;
   respawns?: number;
+  /** Server-earned cosmetic progression, portable through a signed progress token. */
+  cosmeticXp?: number;
   connectionState?: "connected" | "disconnected";
   x?: number;
   z?: number;

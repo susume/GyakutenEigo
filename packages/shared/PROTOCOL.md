@@ -11,7 +11,10 @@ The backend remains authoritative for session validation, nickname validation, t
 Request:
 
 ```json
-{ "nickname": "StudentName" }
+{
+  "nickname": "StudentName",
+  "cosmeticProgressToken": "optional-server-signed-token"
+}
 ```
 
 Response:
@@ -21,9 +24,14 @@ Response:
   "session": "GameSession",
   "player": "PlayerSession",
   "playerToken": "secret",
+  "cosmeticProgressToken": "portable-server-signed-token",
   "question": "PublicQuestion"
 }
 ```
+
+The cosmetic token contains progression only. Correct answers award cosmetic
+XP, and the server uses the signed value to enforce catalogue unlock levels
+across sessions without requiring a student account.
 
 ### Request Question
 
@@ -50,6 +58,8 @@ Request:
 ```json
 { "questionId": "question-id", "selectedChoice": "A" }
 ```
+
+Successful answer responses include a refreshed `cosmeticProgressToken`.
 
 ### Buy Gear
 

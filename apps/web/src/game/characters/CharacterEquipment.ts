@@ -15,7 +15,7 @@ export interface EquipmentParts {
   muzzle: THREE.Object3D;
   weaponSocket: THREE.Object3D;
   leftHandSupport: THREE.Object3D;
-  accessory?: THREE.Object3D;
+  accessories: THREE.Object3D[];
 }
 
 export interface WeaponMountTransform {

@@ -1,6 +1,10 @@
 import * as THREE from "three";
 import { RoundedBoxGeometry } from "three/examples/jsm/geometries/RoundedBoxGeometry.js";
-import type { PlayerAccessoryId, PlayerHeadOption } from "@quizstrike/shared";
+import type {
+  PlayerBackAccessoryId,
+  PlayerDetailAccessoryId,
+  PlayerHeadOption
+} from "@quizstrike/shared";
 import type { CharacterMaterials } from "./CharacterEquipment.js";
 
 export type AccessorySocketName =
@@ -9,63 +13,46 @@ export type AccessorySocketName =
   | "BackSocket"
   | "ShoulderSocket"
   | "ChestBadgeSocket"
+  | "WristSocket"
   | "HipSocket";
 
-export interface AccessoryDefinition {
-  id: PlayerAccessoryId;
+export interface AccessoryDefinition<TId extends string = string> {
+  id: TId;
   socket: AccessorySocketName;
   position: readonly [number, number, number];
   rotation: readonly [number, number, number];
   scale: readonly [number, number, number];
 }
 
-export const ACCESSORY_DEFINITIONS: Record<PlayerAccessoryId, AccessoryDefinition> = {
-  none: {
-    id: "none",
-    socket: "BackSocket",
-    position: [0, 0, 0],
-    rotation: [0, 0, 0],
-    scale: [1, 1, 1]
-  },
-  utility_pack: {
-    id: "utility_pack",
-    socket: "BackSocket",
-    position: [0, -0.04, 0.03],
-    rotation: [0, 0, 0],
-    scale: [0.92, 0.92, 0.92]
-  },
-  compact_pack: {
-    id: "compact_pack",
-    socket: "BackSocket",
-    position: [0, 0.02, 0.015],
-    rotation: [0, 0, 0],
-    scale: [0.82, 0.82, 0.82]
-  },
-  tech_pack: {
-    id: "tech_pack",
-    socket: "BackSocket",
-    position: [0, -0.01, 0.035],
-    rotation: [0, 0, 0],
-    scale: [0.9, 0.9, 0.9]
-  },
-  trail_pack: {
-    id: "trail_pack",
-    socket: "BackSocket",
-    position: [0, -0.02, 0.04],
-    rotation: [0, 0, 0],
-    scale: [0.9, 0.9, 0.9]
-  },
-  shoulder_badge: {
-    id: "shoulder_badge",
-    socket: "ShoulderSocket",
-    position: [0, 0, 0],
-    rotation: [0, -0.12, 0],
-    scale: [1, 1, 1]
-  }
+export const BACK_ACCESSORY_DEFINITIONS: Record<
+  PlayerBackAccessoryId,
+  AccessoryDefinition<PlayerBackAccessoryId>
+> = {
+  none: { id: "none", socket: "BackSocket", position: [0, 0, 0], rotation: [0, 0, 0], scale: [1, 1, 1] },
+  utility_pack: { id: "utility_pack", socket: "BackSocket", position: [0, -0.04, 0.03], rotation: [0, 0, 0], scale: [0.92, 0.92, 0.92] },
+  compact_pack: { id: "compact_pack", socket: "BackSocket", position: [0, 0.02, 0.015], rotation: [0, 0, 0], scale: [0.82, 0.82, 0.82] },
+  tech_pack: { id: "tech_pack", socket: "BackSocket", position: [0, -0.01, 0.035], rotation: [0, 0, 0], scale: [0.9, 0.9, 0.9] },
+  trail_pack: { id: "trail_pack", socket: "BackSocket", position: [0, -0.02, 0.04], rotation: [0, 0, 0], scale: [0.9, 0.9, 0.9] },
+  book_satchel: { id: "book_satchel", socket: "BackSocket", position: [0, -0.12, 0.02], rotation: [0, 0, -0.04], scale: [0.88, 0.88, 0.88] },
+  rocket_pack: { id: "rocket_pack", socket: "BackSocket", position: [0, -0.03, 0.05], rotation: [0, 0, 0], scale: [0.88, 0.88, 0.88] },
+  team_pennant: { id: "team_pennant", socket: "BackSocket", position: [0.2, 0.2, 0.02], rotation: [0, 0, -0.08], scale: [0.9, 0.9, 0.9] }
+};
+
+export const DETAIL_ACCESSORY_DEFINITIONS: Record<
+  PlayerDetailAccessoryId,
+  AccessoryDefinition<PlayerDetailAccessoryId>
+> = {
+  none: { id: "none", socket: "ChestBadgeSocket", position: [0, 0, 0], rotation: [0, 0, 0], scale: [1, 1, 1] },
+  shoulder_badge: { id: "shoulder_badge", socket: "ShoulderSocket", position: [0, 0, 0], rotation: [0, -0.12, 0], scale: [1, 1, 1] },
+  wrist_device: { id: "wrist_device", socket: "WristSocket", position: [0, 0, -0.01], rotation: [0, 0, 0], scale: [1, 1, 1] },
+  quiz_medal: { id: "quiz_medal", socket: "ChestBadgeSocket", position: [0, -0.02, 0], rotation: [0, 0, 0], scale: [1, 1, 1] },
+  compass_badge: { id: "compass_badge", socket: "ChestBadgeSocket", position: [-0.14, 0.06, 0], rotation: [0, 0, 0], scale: [0.9, 0.9, 0.9] },
+  champion_star: { id: "champion_star", socket: "ChestBadgeSocket", position: [0.14, 0.06, 0], rotation: [0, 0, 0], scale: [0.9, 0.9, 0.9] }
 };
 
 const roundedUnit = new RoundedBoxGeometry(1, 1, 1, 2, 0.12);
 const cylinderUnit = new THREE.CylinderGeometry(0.5, 0.5, 1, 10);
+const coneUnit = new THREE.ConeGeometry(0.5, 1, 8);
 const sphereUnit = new THREE.SphereGeometry(0.5, 10, 7);
 const torusUnit = new THREE.TorusGeometry(0.5, 0.11, 7, 16);
 
@@ -88,13 +75,24 @@ const add = (
   return mesh;
 };
 
-export const createAccessory = (
-  accessoryId: PlayerAccessoryId,
+const finishAccessory = <TId extends string>(
+  id: TId,
+  definition: AccessoryDefinition<TId>,
+  group: THREE.Group
+) => {
+  group.name = `Accessory_${id}`;
+  group.position.set(...definition.position);
+  group.rotation.set(...definition.rotation);
+  group.scale.set(...definition.scale);
+  return group;
+};
+
+export const createBackAccessory = (
+  accessoryId: PlayerBackAccessoryId,
   materials: CharacterMaterials
 ): THREE.Group | undefined => {
   if (accessoryId === "none") return undefined;
   const group = new THREE.Group();
-  group.name = `Accessory_${accessoryId}`;
 
   if (accessoryId === "utility_pack") {
     add(group, roundedUnit, materials.cloth, [0, 0, 0], [0.5, 0.55, 0.18]);
@@ -114,16 +112,57 @@ export const createAccessory = (
     add(group, roundedUnit, materials.cloth, [0, -0.03, 0], [0.48, 0.54, 0.17]);
     add(group, cylinderUnit, materials.armor, [0, 0.32, 0.03], [0.16, 0.48, 0.16], [0, 0, Math.PI / 2]);
     add(group, torusUnit, materials.accent, [0, 0.32, 0.03], [0.18, 0.18, 0.12], [0, Math.PI / 2, 0]);
-  } else if (accessoryId === "shoulder_badge") {
-    add(group, cylinderUnit, materials.armor, [0, 0, 0], [0.11, 0.035, 0.11], [Math.PI / 2, 0, 0]);
-    add(group, torusUnit, materials.accent, [0, -0.035, -0.005], [0.12, 0.12, 0.055], [Math.PI / 2, 0, 0]);
+  } else if (accessoryId === "book_satchel") {
+    add(group, roundedUnit, materials.cloth, [0, -0.04, 0], [0.48, 0.4, 0.14]);
+    add(group, roundedUnit, materials.armor, [0, 0.03, 0.11], [0.4, 0.08, 0.035]);
+    add(group, torusUnit, materials.accent, [0, -0.02, 0.15], [0.12, 0.12, 0.055]);
+    add(group, roundedUnit, materials.accent, [0, 0.22, 0], [0.04, 0.42, 0.035], [0, 0, -0.62]);
+  } else if (accessoryId === "rocket_pack") {
+    add(group, roundedUnit, materials.dark, [0, 0.05, 0], [0.42, 0.5, 0.17]);
+    for (const x of [-0.17, 0.17]) {
+      add(group, cylinderUnit, materials.armor, [x, -0.04, 0.04], [0.11, 0.55, 0.11]);
+      add(group, coneUnit, materials.accent, [x, -0.4, 0.04], [0.13, 0.24, 0.13], [0, 0, Math.PI]);
+    }
+    add(group, sphereUnit, materials.visor, [0, 0.13, 0.15], [0.1, 0.1, 0.05]);
+  } else if (accessoryId === "team_pennant") {
+    add(group, cylinderUnit, materials.dark, [0, 0.2, 0], [0.025, 0.75, 0.025]);
+    add(group, coneUnit, materials.accent, [0.18, 0.49, 0], [0.25, 0.38, 0.035], [0, 0, -Math.PI / 2]);
+    add(group, sphereUnit, materials.armor, [0, 0.61, 0], [0.055, 0.055, 0.055]);
   }
 
-  const definition = ACCESSORY_DEFINITIONS[accessoryId];
-  group.position.set(...definition.position);
-  group.rotation.set(...definition.rotation);
-  group.scale.set(...definition.scale);
-  return group;
+  return finishAccessory(accessoryId, BACK_ACCESSORY_DEFINITIONS[accessoryId], group);
+};
+
+export const createDetailAccessory = (
+  accessoryId: PlayerDetailAccessoryId,
+  materials: CharacterMaterials
+): THREE.Group | undefined => {
+  if (accessoryId === "none") return undefined;
+  const group = new THREE.Group();
+
+  if (accessoryId === "shoulder_badge") {
+    add(group, cylinderUnit, materials.armor, [0, 0, 0], [0.11, 0.035, 0.11], [Math.PI / 2, 0, 0]);
+    add(group, torusUnit, materials.accent, [0, -0.035, -0.005], [0.12, 0.12, 0.055], [Math.PI / 2, 0, 0]);
+  } else if (accessoryId === "wrist_device") {
+    add(group, roundedUnit, materials.dark, [0, 0, 0], [0.16, 0.09, 0.13]);
+    add(group, roundedUnit, materials.visor, [0, 0.015, -0.075], [0.11, 0.055, 0.025]);
+    add(group, torusUnit, materials.accent, [0, 0, 0], [0.18, 0.15, 0.14], [Math.PI / 2, 0, 0]);
+  } else if (accessoryId === "quiz_medal") {
+    add(group, torusUnit, materials.accent, [0, 0.07, 0], [0.16, 0.16, 0.055]);
+    add(group, cylinderUnit, materials.armor, [0, -0.03, 0], [0.105, 0.035, 0.105], [Math.PI / 2, 0, 0]);
+    add(group, roundedUnit, materials.accent, [0, 0.17, 0], [0.035, 0.18, 0.025], [0, 0, 0.55]);
+  } else if (accessoryId === "compass_badge") {
+    add(group, cylinderUnit, materials.armor, [0, 0, 0], [0.12, 0.035, 0.12], [Math.PI / 2, 0, 0]);
+    add(group, coneUnit, materials.accent, [0, -0.04, -0.035], [0.07, 0.14, 0.035], [Math.PI / 2, 0, 0]);
+  } else if (accessoryId === "champion_star") {
+    add(group, sphereUnit, materials.accent, [0, 0, 0], [0.13, 0.13, 0.035]);
+    for (let index = 0; index < 5; index += 1) {
+      const angle = (index / 5) * Math.PI * 2;
+      add(group, coneUnit, materials.accent, [Math.sin(angle) * 0.1, Math.cos(angle) * 0.1, 0], [0.06, 0.13, 0.025], [0, 0, -angle]);
+    }
+  }
+
+  return finishAccessory(accessoryId, DETAIL_ACCESSORY_DEFINITIONS[accessoryId], group);
 };
 
 export const createHeadOption = (
@@ -145,9 +184,17 @@ export const createHeadOption = (
     add(group, torusUnit, materials.visor, [-0.105, 0.045, -0.295], [0.18, 0.18, 0.1]);
     add(group, torusUnit, materials.visor, [0.105, 0.045, -0.295], [0.18, 0.18, 0.1]);
     add(group, roundedUnit, materials.dark, [0, 0.045, -0.29], [0.085, 0.025, 0.025]);
-  } else {
+  } else if (option === "hood") {
     add(group, torusUnit, materials.cloth, [0, -0.005, 0.015], [0.67, 0.75, 0.68], [Math.PI / 2, 0, 0]);
     add(group, sphereUnit, materials.cloth, [0, 0.15, 0.03], [0.34, 0.25, 0.32]);
+  } else if (option === "field_cap") {
+    add(group, sphereUnit, materials.cloth, [0, 0.2, 0.01], [0.34, 0.15, 0.31]);
+    add(group, roundedUnit, materials.accent, [0, 0.17, -0.29], [0.36, 0.035, 0.16]);
+    add(group, sphereUnit, materials.armor, [0, 0.31, 0.02], [0.055, 0.055, 0.055]);
+  } else {
+    add(group, torusUnit, materials.accent, [0, 0.18, 0], [0.63, 0.66, 0.62], [Math.PI / 2, 0, 0]);
+    add(group, roundedUnit, materials.armor, [0, 0.18, -0.285], [0.18, 0.07, 0.035]);
+    add(group, sphereUnit, materials.accent, [0, 0.27, 0.01], [0.07, 0.07, 0.07]);
   }
 
   return group;

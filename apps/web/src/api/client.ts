@@ -193,8 +193,11 @@ export const teacherApi = {
 };
 
 export const studentApi = {
-  join: (code: string, nickname: string) =>
-    api(`/api/sessions/${code}/join`, { method: "POST", body: JSON.stringify({ nickname }) }),
+  join: (code: string, nickname: string, cosmeticProgressToken?: string) =>
+    api(`/api/sessions/${code}/join`, {
+      method: "POST",
+      body: JSON.stringify({ nickname, ...(cosmeticProgressToken ? { cosmeticProgressToken } : {}) })
+    }),
   chooseTeam: (code: string, playerId: string, playerToken: string, team: "red" | "blue") =>
     api(`/api/sessions/${code}/players/${playerId}/team`, {
       method: "POST",

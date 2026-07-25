@@ -1,26 +1,38 @@
 import { useEffect, useRef } from "react";
 import * as THREE from "three";
 import type {
-  PlayerAccessoryId,
+  PlayerBackAccessoryId,
+  PlayerDetailAccessoryId,
   PlayerAppearance,
   PlayerHeadOption,
+  PlayerVictoryPoseId,
   Team
 } from "@quizstrike/shared";
 import {
   Badge,
   Backpack,
+  BookOpen,
   BriefcaseBusiness,
+  Crown,
   Compass,
+  Flag,
   Glasses,
   HardHat,
   Headphones,
+  Medal,
   Package,
   Radio,
+  Rocket,
+  Rotate3d,
+  ScanFace,
   Shield,
   ShieldCheck,
   Sparkles,
+  Star,
   Telescope,
   UserRound,
+  Watch,
+  Waves,
   Wrench,
   X,
   type LucideIcon
@@ -46,11 +58,13 @@ export const HEAD_OPTIONS: ReadonlyArray<{
   { id: "visor", label: "Visor", Icon: UserRound },
   { id: "comms", label: "Comms", Icon: Headphones },
   { id: "goggles", label: "Goggles", Icon: Glasses },
-  { id: "hood", label: "Hood", Icon: HardHat }
+  { id: "hood", label: "Hood", Icon: HardHat },
+  { id: "field_cap", label: "Field cap", Icon: ScanFace },
+  { id: "crown_band", label: "Champion", Icon: Crown }
 ];
 
-export const ACCESSORY_OPTIONS: ReadonlyArray<{
-  value: PlayerAccessoryId;
+export const BACK_ACCESSORY_OPTIONS: ReadonlyArray<{
+  value: PlayerBackAccessoryId;
   label: string;
   detail: string;
   Icon: LucideIcon;
@@ -60,7 +74,35 @@ export const ACCESSORY_OPTIONS: ReadonlyArray<{
   { value: "compact_pack", label: "Compact", detail: "Light pack", Icon: BriefcaseBusiness },
   { value: "tech_pack", label: "Tech", detail: "Signal pack", Icon: Radio },
   { value: "trail_pack", label: "Trail", detail: "Adventure roll", Icon: Package },
-  { value: "shoulder_badge", label: "Badge", detail: "Team crest", Icon: Badge }
+  { value: "book_satchel", label: "Satchel", detail: "Study supplies", Icon: BookOpen },
+  { value: "rocket_pack", label: "Boost pack", detail: "Cosmetic jets", Icon: Rocket },
+  { value: "team_pennant", label: "Pennant", detail: "Team colours", Icon: Flag }
+];
+
+export const DETAIL_ACCESSORY_OPTIONS: ReadonlyArray<{
+  value: PlayerDetailAccessoryId;
+  label: string;
+  detail: string;
+  Icon: LucideIcon;
+}> = [
+  { value: "none", label: "None", detail: "Simple uniform", Icon: X },
+  { value: "shoulder_badge", label: "Team crest", detail: "Shoulder badge", Icon: Badge },
+  { value: "wrist_device", label: "Wrist device", detail: "Match tracker", Icon: Watch },
+  { value: "quiz_medal", label: "Quiz medal", detail: "Knowledge award", Icon: Medal },
+  { value: "compass_badge", label: "Compass", detail: "Explorer badge", Icon: Compass },
+  { value: "champion_star", label: "Champion", detail: "Victory star", Icon: Star }
+];
+
+export const VICTORY_POSE_OPTIONS: ReadonlyArray<{
+  value: PlayerVictoryPoseId;
+  label: string;
+  detail: string;
+  Icon: LucideIcon;
+}> = [
+  { value: "champion", label: "Champion", detail: "Two-arm cheer", Icon: Crown },
+  { value: "wave", label: "Wave", detail: "Friendly hello", Icon: Waves },
+  { value: "salute", label: "Salute", detail: "Team ready", Icon: ShieldCheck },
+  { value: "power", label: "Power pose", detail: "Strong finish", Icon: Rotate3d }
 ];
 
 export function CharacterPreview({
@@ -68,13 +110,15 @@ export function CharacterPreview({
   team,
   loadDecalAsset,
   localDecal,
-  resetSignal = 0
+  resetSignal = 0,
+  showVictoryPose = false
 }: {
   appearance: PlayerAppearance;
   team: Team;
   loadDecalAsset: (assetId: string) => Promise<Blob>;
   localDecal?: Blob | null;
   resetSignal?: number;
+  showVictoryPose?: boolean;
 }) {
   const mountRef = useRef<HTMLDivElement>(null);
   const loadRef = useRef(loadDecalAsset);
@@ -163,6 +207,7 @@ export function CharacterPreview({
       "rear-three-quarter": 0.55
     }[previewView ?? ""] ?? Math.PI - 0.32;
     const previewPose = previewParams.get("characterPose");
+    if (showVictoryPose || previewPose === "victory") model.triggerAnimation("victory");
     model.root.rotation.y = presentationRotation;
     scene.add(model.root);
 
@@ -283,7 +328,7 @@ export function CharacterPreview({
       (platformRing.material as THREE.Material).dispose();
       renderer.domElement.remove();
     };
-  }, [appearanceSignature(appearance), team, localDecal, resetSignal]);
+  }, [appearanceSignature(appearance), team, localDecal, resetSignal, showVictoryPose]);
 
   return (
     <div
