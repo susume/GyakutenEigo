@@ -319,7 +319,9 @@ export default function ArenaPreview({
   const arenaMapId: ArenaMapId = session?.settings.mapId ?? "desert_citadel";
   const arenaMap = getArenaMap(arenaMapId);
   const isIronJunction = arenaMapId === "iron_junction";
+  const isDesertCitadel = arenaMapId === "desert_citadel";
   const isTempleRunoff = arenaMapId === "temple_runoff";
+  const hasMultipleLevels = isIronJunction || isDesertCitadel || isTempleRunoff;
   const activeQuality = resolveArenaQuality(fallbackQuality ?? quality);
   const arenaBounds = getArenaBounds(arenaMapId);
   const teamBaseZones = getTeamBaseZones(arenaMapId);
@@ -1901,7 +1903,7 @@ export default function ArenaPreview({
         renderer.domElement.dataset.colliderName = lastColliderName;
         renderer.domElement.dataset.currentLevel = currentLevel;
         if (levelDebugEnabled && currentTime - lastLevelDebugAt >= 1000) {
-          console.debug("[Temple level diagnostics]", {
+          console.debug("[Arena level diagnostics]", {
             playerPosition: {
               x: Number(playerPosition.x.toFixed(2)),
               y: Number(playerPosition.y.toFixed(2)),
@@ -2293,7 +2295,7 @@ export default function ArenaPreview({
                   width={Math.max(1, toMiniMapW(mark.w))}
                   height={Math.max(1, toMiniMapH(mark.d))}
                   className="minimap-route"
-                  opacity={!isTempleRunoff || getArenaLevelLabel(arenaMapId, mark.y ?? TEMPLE_RUNOFF_MAIN_LEVEL_Y) === miniMapLevel ? 0.9 : 0.32}
+                  opacity={!hasMultipleLevels || getArenaLevelLabel(arenaMapId, mark.y ?? 0) === miniMapLevel ? 0.9 : 0.32}
                 />
               ))}
               {arenaMap.blocks.filter((block) => block.collides).map((block) => (
@@ -2304,7 +2306,7 @@ export default function ArenaPreview({
                   width={Math.max(0.7, toMiniMapW(block.w))}
                   height={Math.max(0.7, toMiniMapH(block.d))}
                   className={block.material === "wood" ? "minimap-wood" : "minimap-wall"}
-                  opacity={!isTempleRunoff || getArenaLevelLabel(arenaMapId, (block.y ?? block.h / 2) - block.h / 2) === miniMapLevel ? 0.82 : 0.28}
+                  opacity={!hasMultipleLevels || getArenaLevelLabel(arenaMapId, (block.y ?? block.h / 2) - block.h / 2) === miniMapLevel ? 0.82 : 0.28}
                 />
               ))}
               <rect
@@ -2338,9 +2340,13 @@ export default function ArenaPreview({
               <text x={toMiniMapX(0)} y={toMiniMapY(isTempleRunoff ? scaleArenaValue(-164) : -128)} className="minimap-label">{isIronJunction ? "Depot" : isTempleRunoff ? "Jungle" : "Ruins"}</text>
               <text x={toMiniMapX(0)} y={toMiniMapY(isTempleRunoff ? 0 : -22)} className="minimap-label">{isIronJunction ? "Gantry" : isTempleRunoff ? "River" : "Market"}</text>
               <text x={toMiniMapX(0)} y={toMiniMapY(isTempleRunoff ? scaleArenaValue(156) : 118)} className="minimap-label">{isIronJunction ? "Timber" : isTempleRunoff ? "Court" : "Homes"}</text>
-              {isTempleRunoff && (
+              {hasMultipleLevels && (
                 <text x={MINIMAP_WIDTH - 5} y={10} textAnchor="end" className="minimap-label">
-                  {miniMapLevel === "lower" ? "↓ LOWER" : miniMapLevel === "upper" ? "↑ UPPER" : "• MAIN"}
+                  {isTempleRunoff
+                    ? miniMapLevel === "lower" ? "↓ LOWER" : miniMapLevel === "upper" ? "↑ UPPER" : "• MAIN"
+                    : isIronJunction
+                      ? miniMapLevel === "yard" ? "• YARD" : miniMapLevel === "highline" ? "↑ HIGHLINE" : "↑ CATWALK"
+                      : miniMapLevel === "street" ? "• STREET" : miniMapLevel === "rooftop" ? "↑ ROOFTOP" : "↑ CITADEL"}
                 </text>
               )}
               {miniMapPlayer && (

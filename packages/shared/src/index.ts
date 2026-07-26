@@ -1082,6 +1082,10 @@ export const ARENA_PLAYER_EYE_HEIGHT = 4.21;
 export const ARENA_PLAYER_BODY_HEIGHT = 5.02;
 export const TEMPLE_RUNOFF_MAIN_LEVEL_Y = 8;
 export const TEMPLE_RUNOFF_UPPER_LEVEL_Y = 17;
+export const IRON_JUNCTION_HIGHLINE_LEVEL_Y = 10;
+export const IRON_JUNCTION_CATWALK_LEVEL_Y = 16;
+export const DESERT_CITADEL_ROOFTOP_LEVEL_Y = 6;
+export const DESERT_CITADEL_CITADEL_LEVEL_Y = 12;
 
 export type ArenaBounds = { limitX: number; limitZ: number };
 export const TEMPLE_RUNOFF_BOUNDS: ArenaBounds = {
@@ -1130,6 +1134,36 @@ const templeRampHeight = (rawX: number, rawZ: number): number | undefined => {
   return undefined;
 };
 
+const ironRampHeight = (rawX: number, rawZ: number): number | undefined => {
+  if (rawZ >= 68 - 1e-6 && rawZ <= 82 + 1e-6) {
+    if (rawX >= -132 - 1e-6 && rawX <= -108 + 1e-6) {
+      return Number((IRON_JUNCTION_HIGHLINE_LEVEL_Y * Math.max(0, Math.min(1, (rawX + 132) / 24))).toFixed(3));
+    }
+    if (rawX >= 108 - 1e-6 && rawX <= 132 + 1e-6) {
+      return Number((IRON_JUNCTION_HIGHLINE_LEVEL_Y * Math.max(0, Math.min(1, (132 - rawX) / 24))).toFixed(3));
+    }
+  }
+  if (Math.abs(rawX) <= 36 && rawZ >= -70 - 1e-6 && rawZ <= -52 + 1e-6) {
+    return Number((IRON_JUNCTION_CATWALK_LEVEL_Y * Math.max(0, Math.min(1, (rawZ + 70) / 18))).toFixed(3));
+  }
+  return undefined;
+};
+
+const desertRampHeight = (rawX: number, rawZ: number): number | undefined => {
+  if (rawZ >= 62 - 1e-6 && rawZ <= 70 + 1e-6) {
+    if (rawX >= -112 - 1e-6 && rawX <= -91 + 1e-6) {
+      return Number((DESERT_CITADEL_ROOFTOP_LEVEL_Y * Math.max(0, Math.min(1, (rawX + 112) / 21))).toFixed(3));
+    }
+    if (rawX >= 91 - 1e-6 && rawX <= 112 + 1e-6) {
+      return Number((DESERT_CITADEL_ROOFTOP_LEVEL_Y * Math.max(0, Math.min(1, (112 - rawX) / 21))).toFixed(3));
+    }
+  }
+  if (Math.abs(rawX) <= 24 && rawZ >= 54 - 1e-6 && rawZ <= 70 + 1e-6) {
+    return Number((DESERT_CITADEL_CITADEL_LEVEL_Y * Math.max(0, Math.min(1, (rawZ - 54) / 16))).toFixed(3));
+  }
+  return undefined;
+};
+
 /**
  * Returns every legitimate walkable surface at an X/Z coordinate, low to high.
  * Temple Runoff deliberately supports stacked surfaces at the same coordinate.
@@ -1139,9 +1173,27 @@ export const getArenaFloorSurfaces = (
   x: number,
   z: number
 ): number[] => {
-  if (mapId !== "temple_runoff") return [0];
+  if (mapId !== "temple_runoff" && mapId !== "iron_junction" && mapId !== "desert_citadel") return [0];
   const rawX = x / ARENA_SCALE;
   const rawZ = z / ARENA_SCALE;
+  if (mapId === "iron_junction") {
+    const ramp = ironRampHeight(rawX, rawZ);
+    if (ramp !== undefined) return [ramp];
+    const surfaces = [0];
+    if (isInsideRawRect(rawX, rawZ, -108, 108, 68, 82)) surfaces.push(IRON_JUNCTION_HIGHLINE_LEVEL_Y);
+    if (isInsideRawRect(rawX, rawZ, -36, 36, -52, -34)) surfaces.push(IRON_JUNCTION_CATWALK_LEVEL_Y);
+    return [...new Set(surfaces)].sort((a, b) => a - b);
+  }
+  if (mapId === "desert_citadel") {
+    const ramp = desertRampHeight(rawX, rawZ);
+    if (ramp !== undefined) return [ramp];
+    const surfaces = [0];
+    if (isInsideRawRect(rawX, rawZ, -91, -19, 62, 70) || isInsideRawRect(rawX, rawZ, 19, 91, 62, 70)) {
+      surfaces.push(DESERT_CITADEL_ROOFTOP_LEVEL_Y);
+    }
+    if (isInsideRawRect(rawX, rawZ, -24, 24, 70, 86)) surfaces.push(DESERT_CITADEL_CITADEL_LEVEL_Y);
+    return [...new Set(surfaces)].sort((a, b) => a - b);
+  }
   const ramp = templeRampHeight(rawX, rawZ);
   if (ramp !== undefined) return [ramp];
 
@@ -1188,13 +1240,20 @@ export const getArenaGroundHeightForPlayer = (
 export const getArenaLevelLabel = (
   mapId: ArenaMapId | string | undefined,
   groundY: number
-) => mapId !== "temple_runoff"
-  ? "main"
-  : groundY < TEMPLE_RUNOFF_MAIN_LEVEL_Y - 1
-    ? "lower"
-    : groundY < TEMPLE_RUNOFF_UPPER_LEVEL_Y - 1
-      ? "main"
-      : "upper";
+) => {
+  if (mapId === "temple_runoff") {
+    return groundY < TEMPLE_RUNOFF_MAIN_LEVEL_Y - 1
+      ? "lower"
+      : groundY < TEMPLE_RUNOFF_UPPER_LEVEL_Y - 1 ? "main" : "upper";
+  }
+  if (mapId === "iron_junction") {
+    return groundY >= IRON_JUNCTION_CATWALK_LEVEL_Y - 1 ? "catwalk" : groundY >= IRON_JUNCTION_HIGHLINE_LEVEL_Y - 1 ? "highline" : "yard";
+  }
+  if (mapId === "desert_citadel") {
+    return groundY >= DESERT_CITADEL_CITADEL_LEVEL_Y - 1 ? "citadel" : groundY >= DESERT_CITADEL_ROOFTOP_LEVEL_Y - 1 ? "rooftop" : "street";
+  }
+  return "main";
+};
 
 export const getArenaEyeHeight = (
   mapId: ArenaMapId | string | undefined,
@@ -1397,8 +1456,29 @@ export const TEMPLE_RUNOFF_CAPTURE_ZONES = [
   { id: "temple-terrace", label: "Temple Terrace", x: scaleArenaValue(84), z: scaleArenaValue(66), radius: scaleArenaValue(18), y: TEMPLE_RUNOFF_UPPER_LEVEL_Y }
 ] as const;
 
+export const IRON_JUNCTION_CAPTURE_ZONES = [
+  { id: "iron-rail-switch", label: "Central Rail Switch", x: 0, z: 0, radius: scaleArenaValue(24), y: 0 },
+  { id: "iron-highline", label: "Highline Signal Deck", x: 0, z: scaleArenaValue(75), radius: scaleArenaValue(22), y: IRON_JUNCTION_HIGHLINE_LEVEL_Y },
+  { id: "iron-catwalk", label: "Signal Catwalk", x: 0, z: scaleArenaValue(-43), radius: scaleArenaValue(14), y: IRON_JUNCTION_CATWALK_LEVEL_Y },
+  { id: "iron-timber-line", label: "Timber Line", x: 0, z: scaleArenaValue(108), radius: scaleArenaValue(22), y: 0 }
+] as const;
+
+export const DESERT_CITADEL_CAPTURE_ZONES = [
+  { id: "desert-market", label: "Central Market", x: 0, z: scaleArenaValue(-10), radius: scaleArenaValue(24), y: 0 },
+  { id: "desert-waterworks", label: "Central Waterworks", x: 0, z: 0, radius: scaleArenaValue(20), y: 0 },
+  { id: "desert-rooftop", label: "Service Arcades", x: 0, z: scaleArenaValue(66), radius: scaleArenaValue(24), y: DESERT_CITADEL_ROOFTOP_LEVEL_Y },
+  { id: "desert-cistern-crown", label: "Cistern Crown", x: 0, z: scaleArenaValue(78), radius: scaleArenaValue(14), y: DESERT_CITADEL_CITADEL_LEVEL_Y },
+  { id: "desert-ramparts", label: "North Ramparts", x: 0, z: scaleArenaValue(-124), radius: scaleArenaValue(22), y: 0 }
+] as const;
+
 export const getCaptureZonesForMap = (mapId: ArenaMapId | string | undefined) =>
-  mapId === "temple_runoff" ? TEMPLE_RUNOFF_CAPTURE_ZONES : CAPTURE_ZONES;
+  mapId === "temple_runoff"
+    ? TEMPLE_RUNOFF_CAPTURE_ZONES
+    : mapId === "iron_junction"
+      ? IRON_JUNCTION_CAPTURE_ZONES
+      : mapId === "desert_citadel"
+        ? DESERT_CITADEL_CAPTURE_ZONES
+        : CAPTURE_ZONES;
 
 const RAW_SEARCH_RETRIEVE_ITEMS = [
   { id: "old-well-scroll", label: "Old Well Scroll", x: -8, z: -18 },
@@ -1413,8 +1493,26 @@ export const TEMPLE_RUNOFF_SEARCH_RETRIEVE_ITEMS = [
   { id: "sun-glyph", label: "Sun Glyph", x: 0, z: scaleArenaValue(-34), y: TEMPLE_RUNOFF_UPPER_LEVEL_Y + 1.4 }
 ] as const;
 
+export const IRON_JUNCTION_SEARCH_RETRIEVE_ITEMS = [
+  { id: "iron-switch-key", label: "Rail Switch Key", x: scaleArenaValue(88), z: 0, y: 1.4 },
+  { id: "iron-highline-manifest", label: "Highline Manifest", x: 0, z: scaleArenaValue(75), y: IRON_JUNCTION_HIGHLINE_LEVEL_Y + 1.4 },
+  { id: "iron-catwalk-lantern", label: "Signal Lantern", x: 0, z: scaleArenaValue(-43), y: IRON_JUNCTION_CATWALK_LEVEL_Y + 1.4 }
+] as const;
+
+export const DESERT_CITADEL_SEARCH_RETRIEVE_ITEMS = [
+  { id: "desert-well-scroll", label: "Well Scroll", x: 0, z: scaleArenaValue(-16), y: 1.4 },
+  { id: "desert-rooftop-seal", label: "Rooftop Seal", x: scaleArenaValue(-55), z: scaleArenaValue(66), y: DESERT_CITADEL_ROOFTOP_LEVEL_Y + 1.4 },
+  { id: "desert-cistern-crown", label: "Cistern Crown Seal", x: 0, z: scaleArenaValue(78), y: DESERT_CITADEL_CITADEL_LEVEL_Y + 1.4 }
+] as const;
+
 export const getSearchRetrieveItemsForMap = (mapId: ArenaMapId | string | undefined) =>
-  mapId === "temple_runoff" ? TEMPLE_RUNOFF_SEARCH_RETRIEVE_ITEMS : SEARCH_RETRIEVE_ITEMS;
+  mapId === "temple_runoff"
+    ? TEMPLE_RUNOFF_SEARCH_RETRIEVE_ITEMS
+    : mapId === "iron_junction"
+      ? IRON_JUNCTION_SEARCH_RETRIEVE_ITEMS
+      : mapId === "desert_citadel"
+        ? DESERT_CITADEL_SEARCH_RETRIEVE_ITEMS
+        : SEARCH_RETRIEVE_ITEMS;
 
 const RAW_SEARCH_RETRIEVE_DELIVERY_ZONES = {
   blue: { id: "blue-delivery", label: "West Fortress Delivery", x: -146, z: 0, radius: 18 },
@@ -1429,9 +1527,23 @@ export const TEMPLE_RUNOFF_SEARCH_RETRIEVE_DELIVERY_ZONES = {
   blue: { id: "blue-temple-delivery", label: "Blue Temple Delivery", x: scaleArenaValue(-205), z: 0, radius: scaleArenaValue(20), y: TEMPLE_RUNOFF_MAIN_LEVEL_Y },
   red: { id: "red-temple-delivery", label: "Red Temple Delivery", x: scaleArenaValue(205), z: 0, radius: scaleArenaValue(20), y: TEMPLE_RUNOFF_MAIN_LEVEL_Y }
 } as const;
+export const IRON_JUNCTION_SEARCH_RETRIEVE_DELIVERY_ZONES = {
+  blue: { id: "blue-iron-delivery", label: "West Yard Delivery", x: scaleArenaValue(-146), z: 0, radius: scaleArenaValue(18), y: 0 },
+  red: { id: "red-iron-delivery", label: "East Yard Delivery", x: scaleArenaValue(146), z: 0, radius: scaleArenaValue(18), y: 0 }
+} as const;
+export const DESERT_CITADEL_SEARCH_RETRIEVE_DELIVERY_ZONES = {
+  blue: { id: "blue-desert-delivery", label: "West Gate Delivery", x: scaleArenaValue(-146), z: 0, radius: scaleArenaValue(18), y: 0 },
+  red: { id: "red-desert-delivery", label: "East Gate Delivery", x: scaleArenaValue(146), z: 0, radius: scaleArenaValue(18), y: 0 }
+} as const;
 
 export const getSearchRetrieveDeliveryZonesForMap = (mapId: ArenaMapId | string | undefined) =>
-  mapId === "temple_runoff" ? TEMPLE_RUNOFF_SEARCH_RETRIEVE_DELIVERY_ZONES : SEARCH_RETRIEVE_DELIVERY_ZONES;
+  mapId === "temple_runoff"
+    ? TEMPLE_RUNOFF_SEARCH_RETRIEVE_DELIVERY_ZONES
+    : mapId === "iron_junction"
+      ? IRON_JUNCTION_SEARCH_RETRIEVE_DELIVERY_ZONES
+      : mapId === "desert_citadel"
+        ? DESERT_CITADEL_SEARCH_RETRIEVE_DELIVERY_ZONES
+        : SEARCH_RETRIEVE_DELIVERY_ZONES;
 
 const isKnownPosition = (position: { x?: number; z?: number } | undefined): position is { x: number; z: number } =>
   Boolean(position && Number.isFinite(position.x) && Number.isFinite(position.z));
@@ -1694,7 +1806,11 @@ export const ARENA_OBSTACLES: ArenaObstacle[] = [
   rectObstacle("aqueduct-south-wall-midwest", -30, 10, 28, 4),
   rectObstacle("aqueduct-south-wall-mideast", 30, 10, 28, 4),
   rectObstacle("aqueduct-south-wall-east", 84, 10, 42, 4),
-  rectObstacle("rooftop-center-gap-cover", 0, 66, 20, 8),
+  rectObstacle("rooftop-center-gap-cover", 0, 44, 20, 8),
+  rectObstacle("desert-west-rooftop-rail", -55, 62, 72, 1.2, false, 4, 9),
+  rectObstacle("desert-east-rooftop-rail", 55, 62, 72, 1.2, false, 4, 9),
+  rectObstacle("desert-citadel-platform-rail-west", -24, 78, 1.2, 16, false, 10, 15),
+  rectObstacle("desert-citadel-platform-rail-east", 24, 78, 1.2, 16, false, 10, 15),
   rectObstacle("north-route-cover-a", -108, -82, 12, 8, true),
   rectObstacle("north-route-cover-b", -44, -88, 12, 8, true),
   rectObstacle("north-route-cover-c", 22, -90, 12, 8, true),
@@ -1744,6 +1860,10 @@ export const IRON_JUNCTION_OBSTACLES: ArenaObstacle[] = [
   rectObstacle("rock-outcrop-west", -117, 120, 18, 16),
   rectObstacle("rock-outcrop-east", 115, 88, 18, 14),
   rectObstacle("timber-drop-landing", 14, 82, 16, 8, true),
+  rectObstacle("iron-highline-rail-north", 0, 68, 220, 1.2, false, 8, 13),
+  rectObstacle("iron-highline-rail-south", 0, 82, 220, 1.2, false, 8, 13),
+  rectObstacle("iron-catwalk-rail-west", -36, -43, 1.2, 18, false, 14, 19),
+  rectObstacle("iron-catwalk-rail-east", 36, -43, 1.2, 18, false, 14, 19),
   circleObstacle("depot-hydraulic-west", -72, -128, 2),
   circleObstacle("depot-hydraulic-east", 51, -117, 2),
   circleObstacle("oil-drums-west", -100, -94, 3),

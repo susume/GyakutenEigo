@@ -48,6 +48,10 @@ import {
   getArenaGroundHeight,
   ARENA_PLAYER_EYE_HEIGHT,
   ARENA_SCALE,
+  DESERT_CITADEL_CITADEL_LEVEL_Y,
+  DESERT_CITADEL_ROOFTOP_LEVEL_Y,
+  IRON_JUNCTION_CATWALK_LEVEL_Y,
+  IRON_JUNCTION_HIGHLINE_LEVEL_Y,
   TEMPLE_RUNOFF_MAIN_LEVEL_Y,
   TEMPLE_RUNOFF_UPPER_LEVEL_Y,
   getPlayerPerks,
@@ -758,12 +762,23 @@ function CharacterLab() {
   const [labLevel, setLabLevel] = useState<"lower" | "main" | "upper">("main");
   const session = useMemo(() => {
     const generated = createCharacterDebugSession({ count, tick });
-    if (labMapId !== "temple_runoff") return { ...generated, settings: { ...generated.settings, mapId: labMapId } };
-    const testPositions = {
-      lower: { x: 0, y: ARENA_PLAYER_EYE_HEIGHT, z: 0, facing: -Math.PI / 2 },
-      main: { x: -52 * ARENA_SCALE, y: TEMPLE_RUNOFF_MAIN_LEVEL_Y + ARENA_PLAYER_EYE_HEIGHT, z: 100 * ARENA_SCALE, facing: 0 },
-      upper: { x: 0, y: TEMPLE_RUNOFF_UPPER_LEVEL_Y + ARENA_PLAYER_EYE_HEIGHT, z: 40 * ARENA_SCALE, facing: 0 }
-    };
+    const testPositions = labMapId === "temple_runoff"
+      ? {
+          lower: { x: 0, y: ARENA_PLAYER_EYE_HEIGHT, z: 0, facing: -Math.PI / 2 },
+          main: { x: -52 * ARENA_SCALE, y: TEMPLE_RUNOFF_MAIN_LEVEL_Y + ARENA_PLAYER_EYE_HEIGHT, z: 100 * ARENA_SCALE, facing: 0 },
+          upper: { x: 0, y: TEMPLE_RUNOFF_UPPER_LEVEL_Y + ARENA_PLAYER_EYE_HEIGHT, z: 40 * ARENA_SCALE, facing: 0 }
+        }
+      : labMapId === "iron_junction"
+        ? {
+            lower: { x: 0, y: ARENA_PLAYER_EYE_HEIGHT, z: 0, facing: 0 },
+            main: { x: 0, y: IRON_JUNCTION_HIGHLINE_LEVEL_Y + ARENA_PLAYER_EYE_HEIGHT, z: 75 * ARENA_SCALE, facing: 0 },
+            upper: { x: 0, y: IRON_JUNCTION_CATWALK_LEVEL_Y + ARENA_PLAYER_EYE_HEIGHT, z: -43 * ARENA_SCALE, facing: 0 }
+          }
+        : {
+            lower: { x: 0, y: ARENA_PLAYER_EYE_HEIGHT, z: 0, facing: 0 },
+            main: { x: -55 * ARENA_SCALE, y: DESERT_CITADEL_ROOFTOP_LEVEL_Y + ARENA_PLAYER_EYE_HEIGHT, z: 66 * ARENA_SCALE, facing: 0 },
+            upper: { x: 0, y: DESERT_CITADEL_CITADEL_LEVEL_Y + ARENA_PLAYER_EYE_HEIGHT, z: 78 * ARENA_SCALE, facing: 0 }
+          };
     return {
       ...generated,
       settings: { ...generated.settings, mapId: labMapId },
@@ -815,11 +830,11 @@ function CharacterLab() {
             <button className={labView === "overview" ? "active" : ""} onClick={() => setLabView("overview")}>Overview</button>
             <button className={labView === "fps" ? "active" : ""} onClick={() => setLabView("fps")}>Playable FPS</button>
           </div>
-          {labMapId === "temple_runoff" && labView === "fps" && (
-            <div className="button-row" aria-label="Temple test level">
-              <button className={labLevel === "lower" ? "active" : ""} onClick={() => setLabLevel("lower")}>River ↓</button>
-              <button className={labLevel === "main" ? "active" : ""} onClick={() => setLabLevel("main")}>Main •</button>
-              <button className={labLevel === "upper" ? "active" : ""} onClick={() => setLabLevel("upper")}>Bridge ↑</button>
+          {labView === "fps" && (
+            <div className="button-row" aria-label="Map test level">
+              <button className={labLevel === "lower" ? "active" : ""} onClick={() => setLabLevel("lower")}>{labMapId === "temple_runoff" ? "River ↓" : labMapId === "iron_junction" ? "Yard •" : "Street •"}</button>
+              <button className={labLevel === "main" ? "active" : ""} onClick={() => setLabLevel("main")}>{labMapId === "temple_runoff" ? "Main •" : labMapId === "iron_junction" ? "Highline ↑" : "Rooftop ↑"}</button>
+              <button className={labLevel === "upper" ? "active" : ""} onClick={() => setLabLevel("upper")}>{labMapId === "temple_runoff" ? "Bridge ↑" : labMapId === "iron_junction" ? "Catwalk ↑" : "Cistern ↑"}</button>
             </div>
           )}
           <div className="lab-metrics">

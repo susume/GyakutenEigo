@@ -1,4 +1,4 @@
-import { ARENA_SCALE } from "@quizstrike/shared";
+import { ARENA_SCALE, DESERT_CITADEL_CITADEL_LEVEL_Y, DESERT_CITADEL_ROOFTOP_LEVEL_Y } from "@quizstrike/shared";
 export type { ArenaMapDefinition, CitadelBlock, CitadelCylinder, CitadelFloorMark, CitadelProp, CitadelSign } from "./mapTypes";
 import type { ArenaMapDefinition, CitadelBlock, CitadelCylinder, CitadelFloorMark, CitadelProp, CitadelSign } from "./mapTypes";
 
@@ -13,7 +13,7 @@ const scalePoint = <T extends { x: number; z: number }>(item: T): T =>
 export const DESERT_CITADEL: ArenaMapDefinition = {
   title: "Desert Citadel",
   id: "desert_citadel",
-  description: "A sun-baked fortress with market lanes, waterworks, and broken ramparts.",
+  description: "A sun-baked fortress with market lanes, waterworks, rooftop arcades, and a raised cistern crown.",
   footprint: { width: scaleArenaValue(350), depth: scaleArenaValue(320) },
   districts: [
     "North Lane • Broken Ramparts",
@@ -21,7 +21,9 @@ export const DESERT_CITADEL: ArenaMapDefinition = {
     "South Lane • Caravan Quarter",
     "West Gate Court",
     "East Gate Court",
-    "Central Cistern"
+    "Central Cistern",
+    "Rooftop Service Arcades",
+    "Cistern Crown Platform"
   ],
   routes: [
     "North Lane • Rampart approach",
@@ -48,13 +50,18 @@ const blue = "#2d84bd";
 const red = "#b64a45";
 const sand = "#d9b875";
 const water = "#21a4b8";
+const rooftopFloorCenter = DESERT_CITADEL_ROOFTOP_LEVEL_Y - 2;
+const citadelFloorCenter = DESERT_CITADEL_CITADEL_LEVEL_Y - 0.6;
+const rooftopRampAngle = Math.atan(DESERT_CITADEL_ROOFTOP_LEVEL_Y / 21);
+const citadelRampAngle = Math.atan(DESERT_CITADEL_CITADEL_LEVEL_Y / 16);
 
 const rawFloorMarks: CitadelFloorMark[] = [
   { id: "route-north", label: "NORTH LANE · RAMPARTS", x: 0, z: -124, w: 82, d: 16, color: "#9acb88" },
   { id: "route-market", label: "MID LANE · WATERWORKS", x: 0, z: -14, w: 92, d: 18, color: "#37aeca" },
   { id: "route-south", label: "SOUTH LANE · BAZAAR", x: 0, z: 112, w: 84, d: 16, color: "#d27b55" },
   { id: "route-aqueduct", label: "CENTRAL SLUICE", x: 0, z: 0, w: 136, d: 12, color: "#33d0dd" },
-  { id: "route-rooftop", label: "SERVICE ALLEY", x: 0, z: 66, w: 126, d: 12, color: "#e2b45c" },
+  { id: "route-rooftop", label: "SERVICE ALLEY ↑", x: 0, z: 66, w: 126, d: 12, color: "#e2b45c", y: DESERT_CITADEL_ROOFTOP_LEVEL_Y + 0.05 },
+  { id: "route-cistern-crown", label: "CISTERN CROWN ↑", x: 0, z: 78, w: 34, d: 9, color: "#f2cf75", y: DESERT_CITADEL_CITADEL_LEVEL_Y + 0.05 },
   { id: "blue-base", label: "WEST GATE COURT", x: -142, z: 0, w: 46, d: 18, color: "#5db7ff", rotation: Math.PI / 2 },
   { id: "red-base", label: "EAST GATE COURT", x: 142, z: 0, w: 42, d: 18, color: "#ff7777", rotation: -Math.PI / 2 }
 ];
@@ -134,9 +141,15 @@ const rawBlocks: CitadelBlock[] = [
   { id: "aqueduct-west-chamber", x: -82, z: 0, w: 22, d: 20, h: 0.4, y: 0.05, color: "#73807a" },
   { id: "aqueduct-east-chamber", x: 82, z: 0, w: 22, d: 20, h: 0.4, y: 0.05, color: "#73807a" },
 
-  { id: "rooftop-west-walk", label: "West Service Arcade", x: -55, z: 66, w: 72, d: 8, h: 4, color: "#b88b56", collides: true, style: "bridge" },
-  { id: "rooftop-east-walk", label: "East Service Arcade", x: 55, z: 66, w: 72, d: 8, h: 4, color: "#b88b56", collides: true, style: "bridge" },
-  { id: "rooftop-center-gap-cover", label: "Repair Scaffold", x: 0, z: 66, w: 20, d: 8, h: 3, color: wood, collides: true, material: "wood", style: "stall" },
+  { id: "rooftop-west-walk", label: "West Service Arcade", x: -55, z: 66, w: 72, d: 8, h: 4, y: rooftopFloorCenter, color: "#b88b56", collides: true, style: "bridge" },
+  { id: "rooftop-east-walk", label: "East Service Arcade", x: 55, z: 66, w: 72, d: 8, h: 4, y: rooftopFloorCenter, color: "#b88b56", collides: true, style: "bridge" },
+  { id: "desert-west-rooftop-ramp", label: "West Rooftop Ramp", x: -101.5, z: 66, w: 21, d: 8, h: 1.1, y: 3, rotationZ: rooftopRampAngle, color: "#b88b56", material: "stone", style: "bridge" },
+  { id: "desert-east-rooftop-ramp", label: "East Rooftop Ramp", x: 101.5, z: 66, w: 21, d: 8, h: 1.1, y: 3, rotationZ: -rooftopRampAngle, color: "#b88b56", material: "stone", style: "bridge" },
+  { id: "desert-citadel-platform", label: "Cistern Crown Platform", x: 0, z: 78, w: 48, d: 16, h: 1.2, y: citadelFloorCenter, color: paleStone, material: "stone", style: "bridge" },
+  { id: "desert-citadel-platform-ramp", label: "Cistern Crown Ramp", x: 0, z: 62, w: 18, d: 16, h: 1.1, y: 6, rotationX: -citadelRampAngle, color: paleStone, material: "stone", style: "bridge" },
+  { id: "desert-citadel-platform-support-west", x: -18, z: 78, w: 4, d: 4, h: 12, y: 6, color: darkStone, material: "stone", style: "tower" },
+  { id: "desert-citadel-platform-support-east", x: 18, z: 78, w: 4, d: 4, h: 12, y: 6, color: darkStone, material: "stone", style: "tower" },
+  { id: "rooftop-center-gap-cover", label: "Repair Scaffold", x: 0, z: 44, w: 20, d: 8, h: 3, color: wood, collides: true, material: "wood", style: "stall" },
 
   { id: "north-route-cover-a", label: "Rubble Breastwork", x: -108, z: -82, w: 12, d: 8, h: 4, color: stone, collides: true, style: "ruin" },
   { id: "north-route-cover-b", label: "Shield Wall", x: -44, z: -88, w: 12, d: 8, h: 4, color: stone, collides: true, style: "ruin" },
@@ -186,7 +199,13 @@ const rawProps: CitadelProp[] = [
   { id: "south-palm-east", kind: "palm", x: 118, z: 104, size: 5, h: 14, color: "#806040", material: "wood" },
   { id: "south-arch-west", kind: "arch", x: -80, z: 94, size: 10, h: 8, color: terracotta },
   { id: "south-arch-east", kind: "arch", x: 80, z: 94, size: 10, h: 8, color: paleStone, rotationY: Math.PI },
-  { id: "south-lamp", kind: "lamp", x: 0, z: 112, size: 2, h: 7, color: "#f1a25c", material: "accent" }
+  { id: "south-lamp", kind: "lamp", x: 0, z: 112, size: 2, h: 7, color: "#f1a25c", material: "accent" },
+  { id: "west-rooftop-banner", kind: "banner", x: -55, z: 66, size: 3.5, h: 8, y: DESERT_CITADEL_ROOFTOP_LEVEL_Y, color: blue, material: "cloth" },
+  { id: "east-rooftop-banner", kind: "banner", x: 55, z: 66, size: 3.5, h: 8, y: DESERT_CITADEL_ROOFTOP_LEVEL_Y, color: red, material: "cloth" },
+  { id: "rooftop-lamp-west", kind: "lamp", x: -18, z: 66, size: 1.8, h: 6, y: DESERT_CITADEL_ROOFTOP_LEVEL_Y, color: "#ffe19a", material: "accent" },
+  { id: "rooftop-lamp-east", kind: "lamp", x: 18, z: 66, size: 1.8, h: 6, y: DESERT_CITADEL_ROOFTOP_LEVEL_Y, color: "#ffe19a", material: "accent" },
+  { id: "citadel-crown-lamp", kind: "lamp", x: 0, z: 78, size: 2, h: 7, y: DESERT_CITADEL_CITADEL_LEVEL_Y, color: "#ffd166", material: "accent" },
+  { id: "citadel-crown-banner", kind: "banner", x: 0, z: 86, size: 3.5, h: 9, y: DESERT_CITADEL_CITADEL_LEVEL_Y, color: "#e7b75a", material: "cloth" }
 ];
 
 export const props: CitadelProp[] = rawProps.map((item) => ({
@@ -217,7 +236,8 @@ const rawSigns: CitadelSign[] = [
   { id: "sign-south", label: "Caravan Quarter", x: 6, z: 82, color: "#fdba74", rotationY: Math.PI },
   { id: "sign-aqueduct-west", label: "Waterworks", x: -82, z: 18, color: "#67e8f9" },
   { id: "sign-aqueduct-east", label: "Waterworks", x: 82, z: -18, color: "#67e8f9", rotationY: Math.PI },
-  { id: "sign-rooftop", label: "Service Arcade", x: 0, z: 78, color: "#fde68a", rotationY: Math.PI }
+  { id: "sign-rooftop", label: "Service Arcade ↑", x: 0, z: 78, color: "#fde68a", rotationY: Math.PI, y: DESERT_CITADEL_ROOFTOP_LEVEL_Y + 7 },
+  { id: "sign-cistern-crown", label: "Cistern Crown ↑", x: 0, z: 94, color: "#ffe29a", rotationY: Math.PI, y: DESERT_CITADEL_CITADEL_LEVEL_Y + 7 }
 ];
 
 export const signs: CitadelSign[] = rawSigns.map(scalePoint);

@@ -1,4 +1,4 @@
-import { ARENA_SCALE } from "@quizstrike/shared";
+import { ARENA_SCALE, IRON_JUNCTION_CATWALK_LEVEL_Y, IRON_JUNCTION_HIGHLINE_LEVEL_Y } from "@quizstrike/shared";
 import type { ArenaMapDefinition, CitadelBlock, CitadelCylinder, CitadelFloorMark, CitadelProp, CitadelSign } from "./mapTypes";
 
 const scale = (value: number) => Number((value * ARENA_SCALE).toFixed(2));
@@ -12,7 +12,7 @@ const scalePoint = <T extends { x: number; z: number }>(item: T): T =>
 export const IRON_JUNCTION: ArenaMapDefinition = {
   id: "iron_junction",
   title: "The Iron Junction",
-  description: "A derelict mountain train yard turned smuggling depot, built around three readable combat lanes.",
+  description: "A derelict mountain train yard turned smuggling depot, built around three ground lanes and two elevated rail routes.",
   footprint: { width: scale(350), depth: scale(320) },
   districts: [
     "North Lane · Maintenance Depot",
@@ -20,7 +20,9 @@ export const IRON_JUNCTION: ArenaMapDefinition = {
     "South Lane · Timber Line and Gorge",
     "Rear Service Tunnel",
     "Central Rail Switch",
-    "Water Tower Sniper Pocket"
+    "Water Tower Sniper Pocket",
+    "Highline Signal Catwalk",
+    "Signal Gantry Catwalk"
   ],
   routes: [
     "North Lane · Maintenance Depot",
@@ -48,6 +50,10 @@ const gravel = "#4c5354";
 const timber = "#765038";
 const warning = "#d18a3f";
 const fogBlue = "#8da1a3";
+const highlineFloorCenter = IRON_JUNCTION_HIGHLINE_LEVEL_Y - 0.6;
+const catwalkFloorCenter = IRON_JUNCTION_CATWALK_LEVEL_Y - 0.6;
+const highlineRampAngle = Math.atan(IRON_JUNCTION_HIGHLINE_LEVEL_Y / 24);
+const catwalkRampAngle = Math.atan(IRON_JUNCTION_CATWALK_LEVEL_Y / 18);
 
 const rawBlocks: CitadelBlock[] = [
   { id: "iron-north-retaining-wall", label: "Mountain Retaining Wall", x: 0, z: -156, w: 350, d: 8, h: 14, color: concrete, material: "stone", style: "wall", collides: true },
@@ -73,6 +79,15 @@ const rawBlocks: CitadelBlock[] = [
   { id: "north-track-bed", x: 0, z: -39, w: 300, d: 5, h: 0.35, y: 0.04, color: gravel, material: "gravel" },
   { id: "mid-track-bed", label: "Sorting Tracks", x: 0, z: 0, w: 300, d: 5, h: 0.35, y: 0.04, color: gravel, material: "gravel" },
   { id: "south-track-bed", x: 0, z: 39, w: 300, d: 5, h: 0.35, y: 0.04, color: gravel, material: "gravel" },
+  { id: "iron-highline-deck", label: "HIGHLINE SIGNAL CATWALK", x: 0, z: 75, w: 216, d: 14, h: 1.2, y: highlineFloorCenter, color: steel, material: "metal", style: "bridge" },
+  { id: "iron-highline-ramp-west", label: "West Highline Ramp", x: -120, z: 75, w: 24, d: 14, h: 1.1, y: 5, rotationZ: highlineRampAngle, color: steel, material: "metal", style: "bridge" },
+  { id: "iron-highline-ramp-east", label: "East Highline Ramp", x: 120, z: 75, w: 24, d: 14, h: 1.1, y: 5, rotationZ: -highlineRampAngle, color: steel, material: "metal", style: "bridge" },
+  { id: "iron-highline-support-west", x: -88, z: 75, w: 5, d: 5, h: 10, y: 5, color: rust, material: "metal", style: "tower" },
+  { id: "iron-highline-support-east", x: 88, z: 75, w: 5, d: 5, h: 10, y: 5, color: rust, material: "metal", style: "tower" },
+  { id: "iron-signal-catwalk", label: "SIGNAL CATWALK", x: 0, z: -43, w: 72, d: 18, h: 1.2, y: catwalkFloorCenter, color: warning, material: "metal", style: "bridge" },
+  { id: "iron-signal-catwalk-ramp", label: "Catwalk Access", x: 0, z: -61, w: 16, d: 18, h: 1.1, y: 8, rotationX: -catwalkRampAngle, color: warning, material: "metal", style: "bridge" },
+  { id: "iron-signal-catwalk-support-west", x: -28, z: -43, w: 4, d: 4, h: 16, y: 8, color: rust, material: "metal", style: "tower" },
+  { id: "iron-signal-catwalk-support-east", x: 28, z: -43, w: 4, d: 4, h: 16, y: 8, color: rust, material: "metal", style: "tower" },
   { id: "gantry-foot-west", label: "Gantry Crane", x: -28, z: -14, w: 9, d: 18, h: 20, color: rust, material: "metal", style: "gantry", collides: true },
   { id: "gantry-foot-east", label: "Gantry Crane", x: 28, z: 14, w: 9, d: 18, h: 20, color: rust, material: "metal", style: "gantry", collides: true },
   { id: "sorting-booth", label: "Sorting Booth", x: 0, z: 25, w: 21, d: 16, h: 14, color: greenPaint, material: "metal", style: "tower", collides: true },
@@ -113,7 +128,9 @@ const rawFloorMarks: CitadelFloorMark[] = [
   { id: "iron-route-south", label: "SOUTH LANE · TIMBER LINE", x: 0, z: 108, w: 88, d: 14, color: "#c78a55" },
   { id: "iron-rail-switch", label: "CENTRAL RAIL SWITCH", x: 0, z: 0, w: 38, d: 11, color: "#e1a550" },
   { id: "iron-rear-tunnel", label: "REAR SERVICE TUNNEL", x: 0, z: 70, w: 112, d: 10, color: "#91a6a1" },
-  { id: "iron-drop-route", label: "TIMBER DROP-DOWN", x: 30, z: 82, w: 38, d: 10, color: "#d68b4a" }
+  { id: "iron-drop-route", label: "TIMBER DROP-DOWN", x: 30, z: 82, w: 38, d: 10, color: "#d68b4a" },
+  { id: "iron-highline-route", label: "HIGHLINE CATWALK ↑", x: 0, z: 75, w: 84, d: 9, color: "#e0a24a", y: IRON_JUNCTION_HIGHLINE_LEVEL_Y + 0.05 },
+  { id: "iron-signal-route", label: "SIGNAL CATWALK ↑", x: 0, z: -43, w: 42, d: 9, color: "#f4bd59", y: IRON_JUNCTION_CATWALK_LEVEL_Y + 0.05 }
 ];
 
 export const floorMarks = rawFloorMarks.map(scaleRect);
@@ -140,6 +157,11 @@ const rawProps: CitadelProp[] = [
   { id: "winch-cable-west", kind: "cable", x: -52, z: 127, size: 28, h: 8, color: steel, material: "metal" },
   { id: "winch-cable-east", kind: "cable", x: 56, z: 133, size: 24, h: 9, color: steel, material: "metal" },
   { id: "tarpaulin-south", kind: "shade", x: 0, z: 82, size: 18, h: 5, color: "#495d62", material: "cloth" },
+  { id: "highline-signal-west", kind: "signal", x: -74, z: 75, size: 2, h: 8, y: IRON_JUNCTION_HIGHLINE_LEVEL_Y, color: "#e75c43", material: "metal" },
+  { id: "highline-signal-east", kind: "signal", x: 74, z: 75, size: 2, h: 8, y: IRON_JUNCTION_HIGHLINE_LEVEL_Y, color: "#62c3b1", material: "metal" },
+  { id: "highline-work-lamp", kind: "lamp", x: 0, z: 75, size: 2, h: 7, y: IRON_JUNCTION_HIGHLINE_LEVEL_Y, color: "#ffd48a", material: "accent" },
+  { id: "catwalk-warning-lamp", kind: "lamp", x: 0, z: -43, size: 1.6, h: 6, y: IRON_JUNCTION_CATWALK_LEVEL_Y, color: "#ffb24e", material: "accent" },
+  { id: "catwalk-hook", kind: "winch", x: -18, z: -43, size: 2.5, h: 6, y: IRON_JUNCTION_CATWALK_LEVEL_Y, color: warning, material: "metal" },
   { id: "depot-debris", kind: "debris", x: 28, z: -104, size: 7, h: 2.2, color: rust, material: "metal" },
   { id: "south-timber-debris", kind: "debris", x: -25, z: 132, size: 8, h: 2.1, color: timber, material: "wood" }
 ];
@@ -154,6 +176,8 @@ const rawSigns: CitadelSign[] = [
   { id: "sign-gorge", label: "Gorge Edge · Guard Rail", x: 100, z: 144, color: "#c9d3cf", rotationY: Math.PI, y: 8 },
   { id: "sign-west-spawn", label: "WEST YARD", x: -150, z: -48, color: "#7dd3fc", rotationY: Math.PI / 2, y: 7 },
   { id: "sign-east-spawn", label: "EAST YARD", x: 150, z: 48, color: "#fb9a72", rotationY: -Math.PI / 2, y: 7 }
+  ,{ id: "sign-highline", label: "HIGHLINE ↑", x: 0, z: 92, color: "#f8c26b", rotationY: Math.PI, y: IRON_JUNCTION_HIGHLINE_LEVEL_Y + 7 }
+  ,{ id: "sign-catwalk", label: "SIGNAL CATWALK ↑", x: 0, z: -76, color: "#ffd166", y: IRON_JUNCTION_CATWALK_LEVEL_Y + 7 }
 ];
 
 export const signs = rawSigns.map(scalePoint);
