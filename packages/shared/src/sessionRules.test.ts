@@ -571,7 +571,7 @@ test("bot roam routes escape every map spawn instead of wedging against base cov
       for (const [spawnIndex, spawn] of getTeamSpawnsForMap(mapId)[team].entries()) {
         let current = { x: spawn.x, z: spawn.z, facing: spawn.facing };
         const obstacles = getArenaObstacles(mapId);
-        const path = findBotNavigationPath({ from: current, to: goal, obstacles });
+        const path = findBotNavigationPath({ from: current, to: goal, obstacles, mapId });
         assert.ok(path.length > 0, `${mapId} ${team} spawn ${spawnIndex} had no route`);
         for (const waypoint of path) {
           for (let tick = 0; tick < 100 && Math.hypot(waypoint.x - current.x, waypoint.z - current.z) >= 2; tick += 1) {
@@ -921,7 +921,9 @@ test("Desert Citadel spawn points begin on walkable ground", () => {
       current: spawn,
       requested: { ...spawn, x: spawn.x + 0.05, z: spawn.z + 0.05 },
       elapsedMs: 100,
-      maxSpeed: 1
+      maxSpeed: 1,
+      obstacles: getArenaObstacles("desert_citadel"),
+      mapId: "desert_citadel"
     });
     return firstStep.blocked ? [`${group}:${spawn.id}`] : [];
   });

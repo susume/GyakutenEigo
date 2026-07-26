@@ -2371,6 +2371,11 @@ export default function ArenaPreview({
               <text x={toMiniMapX(isIronJunction ? scaleArenaValue(104) : isTempleRunoff ? 0 : scaleArenaValue(-105))} y={toMiniMapY(isIronJunction ? scaleArenaValue(151) : isTempleRunoff ? scaleArenaValue(156) : scaleArenaValue(82))} className="minimap-label">{isIronJunction ? "Depot" : isTempleRunoff ? "Court" : "Bazaar"}</text>
               {isDesertCitadel && <text x={toMiniMapX(scaleArenaValue(108))} y={toMiniMapY(scaleArenaValue(72))} className="minimap-label">Sun Hall</text>}
               {isDesertCitadel && <text x={toMiniMapX(0)} y={toMiniMapY(scaleArenaValue(133))} className="minimap-label">Canal</text>}
+              {isDesertCitadel && [
+                [-91, 0], [0, -66], [0, 102], [185, 70]
+              ].map(([x, z]) => (
+                <text key={`citadel-stair-${x}-${z}`} x={toMiniMapX(scaleArenaValue(x))} y={toMiniMapY(scaleArenaValue(z))} className="minimap-label">↑</text>
+              ))}
               {isIronJunction && <text x={toMiniMapX(scaleArenaValue(-35))} y={toMiniMapY(scaleArenaValue(218))} className="minimap-label">Tunnel</text>}
               {hasMultipleLevels && (
                 <text x={MINIMAP_WIDTH - 5} y={10} textAnchor="end" className="minimap-label">
@@ -2378,7 +2383,7 @@ export default function ArenaPreview({
                     ? miniMapLevel === "lower" ? "↓ LOWER" : miniMapLevel === "upper" ? "↑ UPPER" : "• MAIN"
                     : isIronJunction
                       ? miniMapLevel === "ground" ? "• GROUND" : miniMapLevel === "loading" ? "↑ LOADING" : "↑ OVERPASS"
-                      : miniMapLevel === "lower" ? "↓ LOWER" : miniMapLevel === "main" ? "• MAIN" : "↑ UPPER"}
+                      : miniMapLevel === "ground" ? "• GROUND" : miniMapLevel === "citadel" ? "↑ CITADEL" : "↑↑ LOOKOUT"}
                 </text>
               )}
               {miniMapPlayer && (

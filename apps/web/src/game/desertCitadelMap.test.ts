@@ -49,28 +49,31 @@ test("Desert Citadel expands the playable footprint without scaling prop clutter
   assert.ok(signs.some((sign) => sign.label.includes("Grand Bazaar")));
 });
 
-test("Desert Citadel chooses the valid floor below the player across three stacked levels", () => {
-  const tunnelX = 0;
-  const tunnelZ = 60 * ARENA_SCALE;
+test("Desert Citadel limits stacked floors to deliberate terrace and lookout footprints", () => {
+  const groundX = -140 * ARENA_SCALE;
+  const groundZ = 0;
+  const terraceX = 0;
+  const terraceZ = 0;
   const roofX = -105 * ARENA_SCALE;
   const roofZ = 76 * ARENA_SCALE;
+  assert.deepEqual(getArenaFloorSurfaces("desert_citadel", groundX, groundZ), [0]);
   assert.deepEqual(
-    getArenaFloorSurfaces("desert_citadel", tunnelX, tunnelZ),
-    [0, DESERT_CITADEL_MAIN_LEVEL_Y, DESERT_CITADEL_ROOFTOP_LEVEL_Y]
+    getArenaFloorSurfaces("desert_citadel", terraceX, terraceZ),
+    [0, DESERT_CITADEL_MAIN_LEVEL_Y]
   );
   assert.deepEqual(
     getArenaFloorSurfaces("desert_citadel", roofX, roofZ),
-    [0, DESERT_CITADEL_MAIN_LEVEL_Y, DESERT_CITADEL_ROOFTOP_LEVEL_Y]
+    [0, DESERT_CITADEL_ROOFTOP_LEVEL_Y]
   );
   assert.equal(
-    getArenaGroundHeightForPlayer("desert_citadel", tunnelX, tunnelZ, ARENA_PLAYER_EYE_HEIGHT),
+    getArenaGroundHeightForPlayer("desert_citadel", groundX, groundZ, ARENA_PLAYER_EYE_HEIGHT),
     0
   );
   assert.equal(
     getArenaGroundHeightForPlayer(
       "desert_citadel",
-      tunnelX,
-      tunnelZ,
+      terraceX,
+      terraceZ,
       DESERT_CITADEL_MAIN_LEVEL_Y + ARENA_PLAYER_EYE_HEIGHT
     ),
     DESERT_CITADEL_MAIN_LEVEL_Y
@@ -86,7 +89,7 @@ test("Desert Citadel chooses the valid floor below the player across three stack
   );
 });
 
-test("Desert Citadel ramps connect lower, main, and upper levels continuously", () => {
+test("Desert Citadel stair flights connect ground, citadel, and lookout levels continuously", () => {
   const groundAt = (rawX: number, rawZ: number, footY: number) =>
     getArenaGroundHeightForPlayer(
       "desert_citadel",
@@ -96,12 +99,12 @@ test("Desert Citadel ramps connect lower, main, and upper levels continuously", 
       ARENA_PLAYER_EYE_HEIGHT,
       2.5
     );
-  assert.equal(groundAt(-174, -100, 0), 0);
-  assert.ok(groundAt(-174, -86, 3) > 2.5 && groundAt(-174, -86, 3) < 3.5);
-  assert.equal(groundAt(-174, -72, DESERT_CITADEL_MAIN_LEVEL_Y), DESERT_CITADEL_MAIN_LEVEL_Y);
-  assert.equal(groundAt(-160, 92, DESERT_CITADEL_MAIN_LEVEL_Y), DESERT_CITADEL_MAIN_LEVEL_Y);
-  assert.ok(groundAt(-148, 92, 10) > DESERT_CITADEL_MAIN_LEVEL_Y);
-  assert.equal(groundAt(-136, 92, DESERT_CITADEL_ROOFTOP_LEVEL_Y), DESERT_CITADEL_ROOFTOP_LEVEL_Y);
+  assert.equal(groundAt(-106, 0, 0), 0);
+  assert.ok(groundAt(-86, 0, 5) > 4.9 && groundAt(-86, 0, 5) < 5.1);
+  assert.equal(groundAt(-66, 0, DESERT_CITADEL_MAIN_LEVEL_Y), DESERT_CITADEL_MAIN_LEVEL_Y);
+  assert.equal(groundAt(-216, 76, 0), 0);
+  assert.ok(groundAt(-181, 76, 12) > 11.9 && groundAt(-181, 76, 12) < 12.1);
+  assert.equal(groundAt(-146, 76, DESERT_CITADEL_ROOFTOP_LEVEL_Y), DESERT_CITADEL_ROOFTOP_LEVEL_Y);
 });
 
 test("Desert Citadel provides 20 clear, protected spawns per team", () => {
@@ -112,10 +115,10 @@ test("Desert Citadel provides 20 clear, protected spawns per team", () => {
   assert.equal(new Set(spawns.blue.map((spawn) => `${spawn.x}:${spawn.z}`)).size, 20);
   assert.equal(new Set(spawns.red.map((spawn) => `${spawn.x}:${spawn.z}`)).size, 20);
   for (const spawn of [...spawns.blue, ...spawns.red]) {
-    assert.equal(spawn.y, DESERT_CITADEL_MAIN_LEVEL_Y + ARENA_PLAYER_EYE_HEIGHT);
+    assert.equal(spawn.y, ARENA_PLAYER_EYE_HEIGHT);
     const overlaps = obstacles.filter((obstacle) => {
-      if ((obstacle.minY ?? -Infinity) > DESERT_CITADEL_MAIN_LEVEL_Y + 0.1) return false;
-      if ((obstacle.maxY ?? Infinity) < DESERT_CITADEL_MAIN_LEVEL_Y) return false;
+      if ((obstacle.minY ?? -Infinity) > 0.1) return false;
+      if ((obstacle.maxY ?? Infinity) < 0) return false;
       if (obstacle.kind === "circle") return Math.hypot(spawn.x - obstacle.x, spawn.z - obstacle.z) <= obstacle.radius + 0.45;
       return spawn.x >= obstacle.x - obstacle.width / 2 - 0.45
         && spawn.x <= obstacle.x + obstacle.width / 2 + 0.45
@@ -134,11 +137,10 @@ test("Desert Citadel bot navigation reaches all four route families and the roof
   const start = getTeamSpawnsForMap("desert_citadel").blue[0];
   const goals = [
     ["courtyard", { x: 0, y: DESERT_CITADEL_MAIN_LEVEL_Y + ARENA_PLAYER_EYE_HEIGHT, z: 0 }],
-    ["bazaar", { x: -110 * ARENA_SCALE, y: DESERT_CITADEL_MAIN_LEVEL_Y + ARENA_PLAYER_EYE_HEIGHT, z: 78 * ARENA_SCALE }],
+    ["bazaar", { x: -76 * ARENA_SCALE, y: ARENA_PLAYER_EYE_HEIGHT, z: 78 * ARENA_SCALE }],
     ["outer ruins", { x: -100 * ARENA_SCALE, y: ARENA_PLAYER_EYE_HEIGHT, z: -118 * ARENA_SCALE }],
     ["canal", { x: -174 * ARENA_SCALE, y: ARENA_PLAYER_EYE_HEIGHT, z: 133 * ARENA_SCALE }],
-    ["underground", { x: -80 * ARENA_SCALE, y: ARENA_PLAYER_EYE_HEIGHT, z: 60 * ARENA_SCALE }],
-    ["rooftop", { x: -115 * ARENA_SCALE, y: DESERT_CITADEL_ROOFTOP_LEVEL_Y + ARENA_PLAYER_EYE_HEIGHT, z: 76 * ARENA_SCALE }]
+    ["rooftop", { x: -116 * ARENA_SCALE, y: DESERT_CITADEL_ROOFTOP_LEVEL_Y + ARENA_PLAYER_EYE_HEIGHT, z: 76 * ARENA_SCALE }]
   ] as const;
   for (const [label, goal] of goals) {
     const path = findBotNavigationPath({ from: start, to: goal, obstacles, mapId: "desert_citadel" });
@@ -152,7 +154,7 @@ test("Desert Citadel route timings match the 40-player movement targets", () => 
   const blue = getTeamSpawnsForMap("desert_citadel").blue[0];
   const redObjective = {
     x: 235 * ARENA_SCALE,
-    y: DESERT_CITADEL_MAIN_LEVEL_Y + ARENA_PLAYER_EYE_HEIGHT,
+    y: ARENA_PLAYER_EYE_HEIGHT,
     z: -58 * ARENA_SCALE
   };
   const courtyard = { x: 0, y: DESERT_CITADEL_MAIN_LEVEL_Y + ARENA_PLAYER_EYE_HEIGHT, z: 0 };
@@ -171,14 +173,14 @@ test("40-player opening flow distributes evenly across five route choices", () =
   const routesFor = (team: "blue" | "red") => {
     const direction = team === "blue" ? 1 : -1;
     return [
-      ["main", { x: direction * -108 * ARENA_SCALE, y: DESERT_CITADEL_MAIN_LEVEL_Y + ARENA_PLAYER_EYE_HEIGHT, z: 0 }],
-      ["bazaar", { x: direction * -108 * ARENA_SCALE, y: DESERT_CITADEL_MAIN_LEVEL_Y + ARENA_PLAYER_EYE_HEIGHT, z: 78 * ARENA_SCALE }],
+      ["main", { x: direction * -108 * ARENA_SCALE, y: ARENA_PLAYER_EYE_HEIGHT, z: 0 }],
+      ["bazaar", { x: -76 * ARENA_SCALE, y: ARENA_PLAYER_EYE_HEIGHT, z: 78 * ARENA_SCALE }],
       ["ruins", { x: direction * -108 * ARENA_SCALE, y: ARENA_PLAYER_EYE_HEIGHT, z: -118 * ARENA_SCALE }],
       ["canal", { x: direction * -174 * ARENA_SCALE, y: ARENA_PLAYER_EYE_HEIGHT, z: 133 * ARENA_SCALE }],
       ["upper", {
-        x: (team === "blue" ? -115 : 90) * ARENA_SCALE,
+        x: (team === "blue" ? -116 : 90) * ARENA_SCALE,
         y: DESERT_CITADEL_ROOFTOP_LEVEL_Y + ARENA_PLAYER_EYE_HEIGHT,
-        z: (team === "blue" ? 76 : 55) * ARENA_SCALE
+        z: (team === "blue" ? 76 : 70) * ARENA_SCALE
       }]
     ] as const;
   };

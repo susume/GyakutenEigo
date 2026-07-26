@@ -1237,21 +1237,21 @@ const getDesertCitadelPatrolPoints = (team: Team) => {
   const xStages = [-182, -108, -20, 96].map((x) => x * direction);
   const upper = team === "blue"
     ? [
-        scaledLevelPoint(-148, 92, DESERT_CITADEL_MAIN_LEVEL_Y),
-        scaledLevelPoint(-115, 76, DESERT_CITADEL_ROOFTOP_LEVEL_Y),
-        scaledLevelPoint(-50, 76, DESERT_CITADEL_ROOFTOP_LEVEL_Y),
-        scaledLevelPoint(90, 55, DESERT_CITADEL_ROOFTOP_LEVEL_Y)
+        scaledLevelPoint(-45, 0, DESERT_CITADEL_MAIN_LEVEL_Y),
+        scaledLevelPoint(-116, 76, DESERT_CITADEL_ROOFTOP_LEVEL_Y),
+        scaledLevelPoint(30, 40, DESERT_CITADEL_MAIN_LEVEL_Y),
+        scaledLevelPoint(90, 70, DESERT_CITADEL_ROOFTOP_LEVEL_Y)
       ]
     : [
-        scaledLevelPoint(148, 88, DESERT_CITADEL_MAIN_LEVEL_Y),
-        scaledLevelPoint(90, 55, DESERT_CITADEL_ROOFTOP_LEVEL_Y),
-        scaledLevelPoint(50, 60, DESERT_CITADEL_ROOFTOP_LEVEL_Y),
-        scaledLevelPoint(-100, 76, DESERT_CITADEL_ROOFTOP_LEVEL_Y)
+        scaledLevelPoint(90, 70, DESERT_CITADEL_ROOFTOP_LEVEL_Y),
+        scaledLevelPoint(30, 40, DESERT_CITADEL_MAIN_LEVEL_Y),
+        scaledLevelPoint(-116, 76, DESERT_CITADEL_ROOFTOP_LEVEL_Y),
+        scaledLevelPoint(-45, 0, DESERT_CITADEL_MAIN_LEVEL_Y)
       ];
   const stages = xStages.map((x, stage) => {
     return [
-      scaledLevelPoint(x, 0, DESERT_CITADEL_MAIN_LEVEL_Y),
-      scaledLevelPoint(x, stage < 3 ? 78 : 70, DESERT_CITADEL_MAIN_LEVEL_Y),
+      scaledLevelPoint(x, 0),
+      scaledLevelPoint(x, stage < 3 ? 78 : 70),
       scaledLevelPoint(x, -118),
       scaledLevelPoint(x, stage === 0 || stage === 3 ? 133 : 60),
       upper[stage]
@@ -1337,7 +1337,7 @@ const getBotObjectiveGoal = (session: GameSession, bot: PlayerSession, brain: Bo
       const lowerRoute = brain.routeIndex % 2 === 0;
       return lowerRoute
         ? scaledLevelPoint(brain.strafeDirection * 42, -118)
-        : scaledLevelPoint(brain.strafeDirection * 72, 78, DESERT_CITADEL_MAIN_LEVEL_Y);
+        : scaledLevelPoint(brain.strafeDirection * 72, 78);
     }
     const side = brain.routeIndex % 2 === 0 ? -1 : 1;
     return scaledPoint(side * 82, brain.strafeDirection * 72);
