@@ -9,11 +9,14 @@ export interface CharacterAnimationParts {
   rightArm: THREE.Object3D;
   leftForearm: THREE.Object3D;
   rightForearm: THREE.Object3D;
+  leftHand?: THREE.Object3D;
   leftLeg: THREE.Object3D;
   rightLeg: THREE.Object3D;
   leftShin: THREE.Object3D;
   rightShin: THREE.Object3D;
   weapon: THREE.Object3D;
+  rearHandGrip?: THREE.Object3D;
+  leftHandSupport?: THREE.Object3D;
 }
 
 export interface CharacterAnimationState {
@@ -51,6 +54,108 @@ export class CharacterAnimator {
   private gaitBlend = 0;
   private crouchBlend = 0;
   private cue?: ActiveCue;
+  private readonly ikTarget = new THREE.Vector3();
+  private readonly ikShoulder = new THREE.Vector3();
+  private readonly ikDirection = new THREE.Vector3();
+  private readonly ikPole = new THREE.Vector3();
+  private readonly ikElbow = new THREE.Vector3();
+  private readonly ikForearmDirection = new THREE.Vector3();
+  private readonly ikQuaternion = new THREE.Quaternion();
+  private readonly ikInverseQuaternion = new THREE.Quaternion();
+  private readonly weaponTorsoQuaternion = new THREE.Quaternion();
+  private readonly weaponParentQuaternion = new THREE.Quaternion();
+  private readonly weaponDesiredQuaternion = new THREE.Quaternion();
+  private readonly weaponGripOffset = new THREE.Vector3();
+  private readonly downVector = new THREE.Vector3(0, -1, 0);
+  private readonly weaponEuler = new THREE.Euler();
+
+  private alignWeaponToDominantHand(
+    parts: CharacterAnimationParts,
+    state: CharacterAnimationState
+  ) {
+    if (!parts.rearHandGrip || !parts.weapon.parent) return;
+    parts.root.updateMatrixWorld(true);
+    parts.torso.getWorldQuaternion(this.weaponTorsoQuaternion);
+    parts.weapon.parent.getWorldQuaternion(this.weaponParentQuaternion);
+
+    const authoredRotation = (
+      parts.weapon.userData.mountRotation as [number, number, number] | undefined
+    ) ?? [0, Math.PI, -0.055];
+    const aimPitch = THREE.MathUtils.clamp(state.aimPitch ?? 0, -0.42, 0.42);
+    const loweredReadyPitch = 0.085 - this.gaitBlend * 0.12 + this.crouchBlend * 0.015;
+    this.weaponEuler.set(
+      loweredReadyPitch + aimPitch * 0.65 - this.fireKick * 0.025,
+      authoredRotation[1],
+      authoredRotation[2]
+    );
+    this.weaponDesiredQuaternion.setFromEuler(this.weaponEuler);
+    this.weaponDesiredQuaternion
+      .premultiply(this.weaponTorsoQuaternion)
+      .premultiply(this.ikInverseQuaternion.copy(this.weaponParentQuaternion).invert());
+    parts.weapon.quaternion.copy(this.weaponDesiredQuaternion);
+
+    // Place the authored rear-grip anchor directly in the dominant palm after
+    // orientation and scale are applied.
+    this.weaponGripOffset
+      .copy(parts.rearHandGrip.position)
+      .multiply(parts.weapon.scale)
+      .applyQuaternion(parts.weapon.quaternion)
+      .negate();
+    parts.weapon.position.copy(this.weaponGripOffset);
+  }
+
+  private applySupportHandIK(parts: CharacterAnimationParts) {
+    if (!parts.leftHand || !parts.leftHandSupport || !parts.leftArm.parent) return;
+
+    // The weapon is owned by the right hand. Resolve its authored support socket into
+    // torso space so the left arm follows the rifle instead of a coincidental pose.
+    parts.root.updateMatrixWorld(true);
+    parts.leftHandSupport.getWorldPosition(this.ikTarget);
+    parts.torso.worldToLocal(this.ikTarget);
+    this.ikShoulder.copy(parts.leftArm.position);
+    this.ikDirection.copy(this.ikTarget).sub(this.ikShoulder);
+
+    const upperLength = Math.max(0.001, parts.leftForearm.position.length());
+    const lowerLength = Math.max(0.001, parts.leftHand.position.length());
+    const targetDistance = THREE.MathUtils.clamp(
+      this.ikDirection.length(),
+      Math.abs(upperLength - lowerLength) + 0.015,
+      upperLength + lowerLength - 0.015
+    );
+    if (this.ikDirection.lengthSq() < 0.0001) return;
+    this.ikDirection.normalize();
+
+    // Keep the stylised support elbow down and outside the torso.
+    this.ikPole.set(-0.48, -0.22, 0.08);
+    this.ikPole.addScaledVector(this.ikDirection, -this.ikPole.dot(this.ikDirection));
+    if (this.ikPole.lengthSq() < 0.0001) this.ikPole.set(-1, 0, 0);
+    this.ikPole.normalize();
+
+    const along = (
+      upperLength * upperLength
+      + targetDistance * targetDistance
+      - lowerLength * lowerLength
+    ) / (2 * targetDistance);
+    const bend = Math.sqrt(Math.max(0, upperLength * upperLength - along * along));
+    this.ikElbow
+      .copy(this.ikShoulder)
+      .addScaledVector(this.ikDirection, along)
+      .addScaledVector(this.ikPole, bend);
+
+    const upperDirection = this.ikElbow.sub(this.ikShoulder).normalize();
+    this.ikQuaternion.setFromUnitVectors(this.downVector, upperDirection);
+    parts.leftArm.quaternion.copy(this.ikQuaternion);
+
+    const elbowPosition = this.ikShoulder
+      .copy(parts.leftArm.position)
+      .addScaledVector(upperDirection, upperLength);
+    this.ikForearmDirection.copy(this.ikTarget).sub(elbowPosition).normalize();
+    this.ikInverseQuaternion.copy(parts.leftArm.quaternion).invert();
+    this.ikForearmDirection.applyQuaternion(this.ikInverseQuaternion).normalize();
+    this.ikQuaternion.setFromUnitVectors(this.downVector, this.ikForearmDirection);
+    parts.leftForearm.quaternion.copy(this.ikQuaternion);
+    parts.leftHand.rotation.set(0.08, 0, -0.16);
+  }
 
   constructor(private readonly victoryPose: PlayerVictoryPoseId = "champion") {}
 
@@ -117,8 +222,7 @@ export class CharacterAnimator {
     const oppositeSwing = Math.sin(cycle + Math.PI);
     const breath = Math.sin(state.elapsed * 2.15) * 0.026 * (1 - this.gaitBlend * 0.7);
     const torsoTwist = Math.sin(cycle) * 0.075 * this.gaitBlend;
-    const weaponPosition = (parts.weapon.userData.mountPosition as [number, number, number] | undefined) ?? [0, 0.14, -0.06];
-    const weaponRotation = (parts.weapon.userData.mountRotation as [number, number, number] | undefined) ?? [-0.08, Math.PI, -0.12];
+    const aimBlend = THREE.MathUtils.clamp(Math.abs(state.aimPitch ?? 0) * 4.5, 0, 1);
 
     parts.leftLeg.rotation.x = THREE.MathUtils.lerp(
       parts.leftLeg.rotation.x,
@@ -149,7 +253,7 @@ export class CharacterAnimator {
     );
     parts.rightArm.rotation.x = THREE.MathUtils.lerp(
       parts.rightArm.rotation.x,
-      0.58 + swing * 0.055,
+      0.58 - aimBlend * 0.15 + this.gaitBlend * 0.06 + swing * 0.045,
       1 - Math.exp(-delta * 16)
     );
     parts.leftForearm.rotation.x = THREE.MathUtils.lerp(
@@ -157,7 +261,7 @@ export class CharacterAnimator {
       state.carryingObjective ? 1.24 : 0.92,
       0.18
     );
-    parts.rightForearm.rotation.x = THREE.MathUtils.lerp(parts.rightForearm.rotation.x, 0.72, 0.18);
+    parts.rightForearm.rotation.x = THREE.MathUtils.lerp(parts.rightForearm.rotation.x, 0.72 + aimBlend * 0.12, 0.18);
     parts.leftForearm.rotation.z = THREE.MathUtils.lerp(
       parts.leftForearm.rotation.z,
       state.carryingObjective ? 0.34 : 0.42,
@@ -184,14 +288,12 @@ export class CharacterAnimator {
 
     if (state.firing) this.fireKick = 1;
     this.fireKick = Math.max(0, this.fireKick - 0.18);
-    parts.weapon.position.set(weaponPosition[0], weaponPosition[1], weaponPosition[2] + this.fireKick * 0.08);
-    parts.weapon.rotation.set(
-      weaponRotation[0] - this.fireKick * 0.12,
-      weaponRotation[1],
-      weaponRotation[2] + Math.sin(cycle) * Math.min(0.025, state.speed * 0.002)
-    );
 
-    if (!cue) return;
+    if (!cue) {
+      this.alignWeaponToDominantHand(parts, state);
+      if (!state.carryingObjective) this.applySupportHandIK(parts);
+      return;
+    }
     const pulse = Math.sin(cueProgress * Math.PI);
     const snap = Math.min(1, (state.delta ?? 1 / 60) * 18);
     if (cue.kind === "fire") {
@@ -203,13 +305,10 @@ export class CharacterAnimator {
       parts.rightArm.rotation.x = THREE.MathUtils.lerp(parts.rightArm.rotation.x, 0.31, snap);
       parts.leftForearm.rotation.x = THREE.MathUtils.lerp(parts.leftForearm.rotation.x, 1.08, snap);
       parts.rightForearm.rotation.x = THREE.MathUtils.lerp(parts.rightForearm.rotation.x, 0.94, snap);
-      parts.weapon.position.z += 0.13 * pulse;
-      parts.weapon.rotation.x -= 0.18 * pulse;
     } else if (cue.kind === "hit") {
       parts.root.rotation.z = THREE.MathUtils.lerp(parts.root.rotation.z, -0.24 * pulse, snap);
       parts.torso.rotation.y = THREE.MathUtils.lerp(parts.torso.rotation.y, 0.34 * pulse, snap);
       parts.head.rotation.z = THREE.MathUtils.lerp(parts.head.rotation.z, -0.18 * pulse, snap);
-      parts.weapon.position.z -= 0.08 * pulse;
     } else if (cue.kind === "jump") {
       parts.root.position.y += pulse * 0.34;
       parts.leftLeg.rotation.x = THREE.MathUtils.lerp(parts.leftLeg.rotation.x, 0.62 * pulse, snap);
@@ -238,7 +337,25 @@ export class CharacterAnimator {
       parts.leftArm.rotation.z = THREE.MathUtils.lerp(parts.leftArm.rotation.z, -0.34, snap);
       parts.rightArm.rotation.z = THREE.MathUtils.lerp(parts.rightArm.rotation.z, 0.34, snap);
     } else if (cue.kind === "victory") {
-      if (this.victoryPose === "wave") {
+      if (parts.rearHandGrip && parts.leftHandSupport) {
+        // A full arm flourish would drag a hand-owned rifle through the torso.
+        // Keep the arena rifle in a proud two-handed high-ready instead.
+        parts.root.position.y += pulse * 0.12;
+        parts.torso.rotation.x = THREE.MathUtils.lerp(parts.torso.rotation.x, -0.1, snap);
+        parts.torso.rotation.z = THREE.MathUtils.lerp(
+          parts.torso.rotation.z,
+          Math.sin(cueProgress * Math.PI * 4) * 0.08,
+          snap
+        );
+        parts.rightArm.rotation.x = THREE.MathUtils.lerp(parts.rightArm.rotation.x, 0.42, snap);
+        parts.rightArm.rotation.z = THREE.MathUtils.lerp(parts.rightArm.rotation.z, -0.24, snap);
+        parts.rightForearm.rotation.x = THREE.MathUtils.lerp(parts.rightForearm.rotation.x, 0.88, snap);
+        parts.head.rotation.y = THREE.MathUtils.lerp(
+          parts.head.rotation.y,
+          Math.sin(cueProgress * Math.PI * 3) * 0.12,
+          snap
+        );
+      } else if (this.victoryPose === "wave") {
         parts.rightArm.rotation.x = THREE.MathUtils.lerp(parts.rightArm.rotation.x, -2.15, snap);
         parts.rightArm.rotation.z = THREE.MathUtils.lerp(
           parts.rightArm.rotation.z,
@@ -271,6 +388,10 @@ export class CharacterAnimator {
       parts.head.rotation.x = THREE.MathUtils.lerp(parts.head.rotation.x, 0.42 * cueProgress, snap);
       parts.leftArm.rotation.x = THREE.MathUtils.lerp(parts.leftArm.rotation.x, 0.24, snap);
       parts.rightArm.rotation.x = THREE.MathUtils.lerp(parts.rightArm.rotation.x, 0.34, snap);
+    }
+    this.alignWeaponToDominantHand(parts, state);
+    if (!state.carryingObjective && cue.kind !== "flag_plant" && cue.kind !== "flag_capture") {
+      this.applySupportHandIK(parts);
     }
   }
 }

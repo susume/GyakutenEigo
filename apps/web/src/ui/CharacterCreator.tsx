@@ -214,7 +214,7 @@ export function CharacterPreview({
       rear: 0,
       "three-quarter": Math.PI - 0.55,
       "rear-three-quarter": 0.55
-    }[previewView ?? ""] ?? Math.PI - 0.32;
+    }[previewView ?? ""] ?? Math.PI - 0.78;
     const previewPose = previewParams.get("characterPose");
     if (showVictoryPose || previewPose === "victory") {
       model.triggerAnimation("victory");

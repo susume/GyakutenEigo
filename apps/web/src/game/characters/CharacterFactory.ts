@@ -76,7 +76,10 @@ export class CharacterFactory {
         accent: silhouetteMaterial,
         dark: silhouetteMaterial,
         visor: silhouetteMaterial,
-        skin: silhouetteMaterial
+        skin: silhouetteMaterial,
+        weaponArmor: silhouetteMaterial,
+        weaponDark: silhouetteMaterial,
+        weaponCold: silhouetteMaterial
       };
     }
     return {
@@ -86,7 +89,10 @@ export class CharacterFactory {
       accent: this.material(appearance.palette.accent, 0.62, 0.05),
       dark: this.material(appearance.palette.dark, 0.8, 0.06),
       visor: this.material(appearance.palette.visor, 0.38, 0.12),
-      skin: this.material(appearance.palette.skin, 0.78)
+      skin: this.material(appearance.palette.skin, 0.78),
+      weaponArmor: this.material("#dfe4e5", 0.62, 0.08),
+      weaponDark: this.material("#101923", 0.68, 0.12),
+      weaponCold: this.material("#b9f4ff", 0.28, 0.08)
     };
   }
 
@@ -153,6 +159,7 @@ export class CharacterFactory {
       rightArm,
       leftForearm,
       rightForearm,
+      leftHand,
       rightHand,
       leftLeg,
       rightLeg,
@@ -205,7 +212,15 @@ export class CharacterFactory {
     }
 
     const gearId = input.gear ?? "starter_blaster";
-    const { weapon, muzzle, leftHandSupport } = createWeaponSet(materials, this.boxGeometry, gearId);
+    const {
+      weapon,
+      weaponDetails,
+      muzzle,
+      rearHandGrip,
+      leftHandSupport,
+      shoulderContact,
+      sight
+    } = createWeaponSet(materials, this.boxGeometry, gearId);
     const mount = getWeaponMountTransform(gearId);
     const weaponSocket = new THREE.Group();
     weaponSocket.name = "RightHandWeaponSocket";
@@ -257,12 +272,25 @@ export class CharacterFactory {
       rightArm,
       leftForearm,
       rightForearm,
+      leftHand,
       leftLeg,
       rightLeg,
       leftShin,
       rightShin,
       weapon,
-      equipment: { weapon, muzzle, weaponSocket, leftHandSupport, accessories }
+      rearHandGrip,
+      equipment: {
+        weapon,
+        weaponDetails,
+        muzzle,
+        weaponSocket,
+        rearHandGrip,
+        leftHandSupport,
+        shoulderContact,
+        sight,
+        accessories
+      },
+      leftHandSupport
     });
   }
 
@@ -270,8 +298,8 @@ export class CharacterFactory {
     const appearance = resolveCharacterAppearance({ team, playerId: "local", gear, variant: "assault" });
     const materials = this.materialsFor(appearance);
     const root = new THREE.Group();
-    root.position.set(0.34, -0.58, -1.02);
-    root.rotation.set(-0.04, -0.08, 0);
+    root.position.set(0.28, -0.46, -0.7);
+    root.rotation.set(-0.025, -0.055, 0);
 
     this.addShape(root, this.limbGeometry, materials.uniform, [-0.28, -0.17, -0.18], [0.92, 0.72, 0.92], [-0.64, 0.12, 0.08]);
     this.addShape(root, this.limbGeometry, materials.uniform, [0.32, -0.13, -0.12], [0.92, 0.78, 0.92], [-0.7, -0.08, -0.04]);
@@ -279,9 +307,10 @@ export class CharacterFactory {
     this.addShape(root, this.jointGeometry, materials.dark, [0.36, -0.38, -0.38], [0.9, 0.9, 0.9]);
 
     const { weapon, muzzle } = createWeaponSet(materials, this.boxGeometry, gear);
-    weapon.position.set(0.06, -0.24, -0.62);
-    weapon.rotation.set(-0.1, Math.PI, 0);
-    weapon.scale.set(0.62, 0.62, 0.82);
+    const firstPerson = getWeaponMountTransform(gear).firstPerson;
+    weapon.position.set(...firstPerson.position);
+    weapon.rotation.set(...firstPerson.rotation);
+    weapon.scale.set(...firstPerson.scale);
     root.add(weapon);
     return { root, weapon, muzzle };
   }

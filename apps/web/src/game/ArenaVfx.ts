@@ -27,6 +27,7 @@ export interface ArenaVfxEvent {
   y?: number;
   team?: Team;
   color?: string;
+  playerId?: string;
 }
 
 type ArenaVfxListener = (event: ArenaVfxEvent) => void;
@@ -59,7 +60,7 @@ export interface ArenaVfxStyle {
 }
 
 const vfxStyles: Record<ArenaVfxKind, ArenaVfxStyle> = {
-  weapon_fire: { lifetime: 240, radius: 1.55, ringOpacity: 0.9, haloOpacity: 0.24, rise: 0.65 },
+  weapon_fire: { lifetime: 210, radius: 0.72, ringOpacity: 0.9, haloOpacity: 0.24, rise: 0.32 },
   impact: { lifetime: 320, radius: 1.2, ringOpacity: 0.66, haloOpacity: 0.18, rise: 0.8 },
   shield: { lifetime: 520, radius: 2.4, ringOpacity: 0.66, haloOpacity: 0.38, rise: 0.8 },
   objective: { lifetime: 760, radius: 3.2, ringOpacity: 0.82, haloOpacity: 0.2, rise: 1.1 },
@@ -73,15 +74,16 @@ const vfxStyles: Record<ArenaVfxKind, ArenaVfxStyle> = {
   objective_progress: { lifetime: 560, radius: 2.7, ringOpacity: 0.56, haloOpacity: 0.16, rise: 0.9 },
   round_start: { lifetime: 1000, radius: 5.6, ringOpacity: 0.78, haloOpacity: 0.28, rise: 1.8 },
   round_end: { lifetime: 1100, radius: 6, ringOpacity: 0.76, haloOpacity: 0.26, rise: 2 },
-  heavy_fire: { lifetime: 280, radius: 1.65, ringOpacity: 0.76, haloOpacity: 0.16, rise: 0.5 },
+  heavy_fire: { lifetime: 260, radius: 1.05, ringOpacity: 0.76, haloOpacity: 0.16, rise: 0.42 },
   zoom: { lifetime: 260, radius: 1.4, ringOpacity: 0.52, haloOpacity: 0.12, rise: 0.35 },
   cooldown: { lifetime: 380, radius: 1.7, ringOpacity: 0.48, haloOpacity: 0.14, rise: 0.45 }
 };
 
 export const getArenaVfxStyle = (kind: ArenaVfxKind) => vfxStyles[kind];
 
-const colorForEvent = (event: ArenaVfxEvent) => event.color ?? (
-  event.kind === "defeat" ? "#fb7185"
+export const getArenaVfxColor = (event: ArenaVfxEvent) => event.color ?? (
+  event.kind === "weapon_fire" || event.kind === "heavy_fire" ? "#b9f4ff"
+    : event.kind === "defeat" ? "#fb7185"
     : event.kind === "victory" ? "#facc15"
       : event.kind === "healing" ? "#6ee7b7"
         : event.kind === "flag_plant" || event.kind === "flag_capture" || event.kind === "round_start" ? "#fde047"
@@ -124,7 +126,7 @@ export class ArenaVfxPool {
   emit(event: ArenaVfxEvent, now = performance.now()) {
     const slot = this.slots[this.cursor];
     this.cursor = (this.cursor + 1) % this.slots.length;
-    const color = new THREE.Color(colorForEvent(event));
+    const color = new THREE.Color(getArenaVfxColor(event));
     const style = getArenaVfxStyle(event.kind);
     slot.kind = event.kind;
     slot.startedAt = now;

@@ -14,11 +14,14 @@ export interface CharacterModelParts {
   rightArm: THREE.Object3D;
   leftForearm: THREE.Object3D;
   rightForearm: THREE.Object3D;
+  leftHand: THREE.Object3D;
   leftLeg: THREE.Object3D;
   rightLeg: THREE.Object3D;
   leftShin: THREE.Object3D;
   rightShin: THREE.Object3D;
   weapon: THREE.Object3D;
+  rearHandGrip: THREE.Object3D;
+  leftHandSupport: THREE.Object3D;
   equipment: EquipmentParts;
 }
 
@@ -70,6 +73,11 @@ export class CharacterModel {
     this.animator.trigger(cue);
   }
 
+  getMuzzleWorldPosition(target = new THREE.Vector3()) {
+    this.root.updateMatrixWorld(true);
+    return this.parts.equipment.muzzle.getWorldPosition(target);
+  }
+
   dispose() {
     this.root.userData.disposed = true;
     this.root.traverse((object) => {
@@ -97,6 +105,7 @@ export class CharacterModel {
     }
     this.root.position.y = this.worldY + this.animatedLocalY;
     this.parts.equipment.weapon.visible = alive && lodState.level.equipment !== "minimal";
+    this.parts.equipment.weaponDetails.visible = alive && lodState.level.equipment === "full";
     this.parts.equipment.accessories.forEach((accessory) => {
       accessory.visible = alive && lodState.level.equipment === "full";
     });

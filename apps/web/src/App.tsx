@@ -2768,7 +2768,8 @@ function StudentExperience({ onExit }: { onExit: () => void }) {
         x: payload.x!,
         z: payload.z!,
         y: 1.15,
-        team: attacker?.team
+        team: attacker?.team,
+        playerId: payload.playerId
       });
       const local = lastVisualSession.players.find((candidate) => candidate.id === activePlayerId);
       if (!local || !Number.isFinite(local.x) || !Number.isFinite(local.z)) return;

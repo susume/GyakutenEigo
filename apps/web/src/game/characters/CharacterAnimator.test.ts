@@ -48,16 +48,16 @@ test("hit cues add recoil and then expire back toward locomotion", () => {
   assert.ok(Math.abs(parts.torso.rotation.y) < 0.01);
 });
 
-test("remote fire cues produce a readable braced recoil pose", () => {
+test("remote fire cues brace the body without detaching the weapon from its grip", () => {
   const animator = new CharacterAnimator();
   const parts = makeParts();
   animator.trigger("fire");
   for (let frame = 0; frame < 7; frame += 1) {
     animator.update(parts, { delta: 1 / 60, elapsed: frame / 60, speed: 0, alive: true });
   }
-  assert.ok(parts.weapon.position.z > 0.04);
-  assert.ok(parts.weapon.rotation.x < -0.08);
+  assert.ok(parts.torso.rotation.x < -0.02);
   assert.ok(parts.leftForearm.rotation.x > 0.75);
+  assert.ok(parts.rightForearm.rotation.x > 0.75);
 });
 
 test("turning characters lean and counter-rotate their head", () => {

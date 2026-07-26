@@ -1375,7 +1375,17 @@ export default function ArenaPreview({
       })
     });
     const vfxPool = new ArenaVfxPool(scene, qualityConfig.detail);
-    const unsubscribeVfx = subscribeArenaVfx((event) => vfxPool.emit(event));
+    const unsubscribeVfx = subscribeArenaVfx((event) => {
+      const muzzlePosition = event.playerId
+        ? characterManager.getMuzzleWorldPosition(event.playerId)
+        : undefined;
+      vfxPool.emit(muzzlePosition ? {
+        ...event,
+        x: muzzlePosition.x,
+        y: muzzlePosition.y,
+        z: muzzlePosition.z
+      } : event);
+    });
     const unsubscribeAnimation = subscribeArenaAnimation((event) => characterManager.triggerAnimation(event));
     const performanceCapture = new ArenaPerformanceCapture(renderer, activeQuality);
     const knownAlive = new Map(players.map((player) => [player.id, player.isAlive]));
@@ -1499,6 +1509,14 @@ export default function ArenaPreview({
 
       const firstPersonModel = characterFactory.createFirstPersonViewModel(currentPlayerTeam, getPlayerWeaponId(currentPlayer ?? { gear: "starter_blaster" }));
       camera.add(firstPersonModel.root);
+      const firstPersonRootBaseY = firstPersonModel.root.position.y;
+      const firstPersonWeaponRotation = firstPersonModel.weapon.rotation.clone();
+      const fpsMuzzlePosition = new THREE.Vector3();
+      const syncFpsMuzzlePosition = () => {
+        camera.updateMatrixWorld(true);
+        firstPersonModel.muzzle.getWorldPosition(fpsMuzzlePosition);
+        camera.worldToLocal(fpsMuzzlePosition);
+      };
 
       const flashMaterial = new THREE.SpriteMaterial({
         map: puffTexture,
@@ -1508,13 +1526,11 @@ export default function ArenaPreview({
         depthWrite: false
       });
       const flash = new THREE.Sprite(flashMaterial);
-      flash.position.set(0.06, -0.36, -1.98);
       flash.scale.set(0.95, 0.5, 1);
       camera.add(flash);
 
       const muzzleRingMaterial = new THREE.MeshBasicMaterial({ color: "#9cecff", transparent: true, opacity: 0, depthTest: false, depthWrite: false });
       const muzzleRing = new THREE.Mesh(new THREE.TorusGeometry(0.17, 0.025, 6, 18), muzzleRingMaterial);
-      muzzleRing.position.set(0.06, -0.36, -1.96);
       camera.add(muzzleRing);
 
       const snowball = new THREE.Mesh(
@@ -2089,25 +2105,35 @@ export default function ArenaPreview({
         muzzleRing.scale.multiplyScalar(1 + delta * 3.2);
         const landingPulse = Math.max(0, 1 - (currentTime - landedAt) / 220);
         const airborneLift = Math.max(0, playerPosition.y - groundEyeY) * 0.045;
-        firstPersonModel.root.position.y = -0.58 + Math.sin(currentTime * 0.006) * 0.012 + airborneLift - Math.sin(landingPulse * Math.PI) * 0.055;
-        firstPersonModel.weapon.rotation.x = -0.1 - flash.material.opacity * 0.035;
+        firstPersonModel.root.position.y = firstPersonRootBaseY + Math.sin(currentTime * 0.006) * 0.012 + airborneLift - Math.sin(landingPulse * Math.PI) * 0.055;
+        firstPersonModel.weapon.rotation.x = firstPersonWeaponRotation.x - flash.material.opacity * 0.035;
+        syncFpsMuzzlePosition();
+        flash.position.copy(fpsMuzzlePosition);
+        muzzleRing.position.copy(fpsMuzzlePosition);
         if (snowballLaunchAt > 0) {
           const travel = clamp((currentTime - snowballLaunchAt) / 260, 0, 1);
           snowball.visible = travel < 1;
-          snowball.position.set(0.05, -0.36 - travel * 0.08, -1.55 - travel * 6.5);
+          snowball.position.set(
+            fpsMuzzlePosition.x,
+            fpsMuzzlePosition.y - travel * 0.08,
+            fpsMuzzlePosition.z - travel * 6.5
+          );
           projectileTrail.visible = travel < 0.96;
           projectileTrail.position.copy(snowball.position);
           projectileTrail.rotation.z = currentTime * 0.01;
           const scale = Math.max(0.38, 1 - travel * 0.62);
           snowball.scale.setScalar(scale);
           if (travel > 0.82) {
-            impactPuff.position.set(0.05, -0.44, -8.02);
+            impactPuff.position.set(fpsMuzzlePosition.x, fpsMuzzlePosition.y - 0.08, fpsMuzzlePosition.z - 6.5);
             impactMaterial.opacity = Math.max(0, (1 - travel) * 3.8);
             impactPuff.scale.setScalar(0.8 + (travel - 0.82) * 5.5);
           }
         }
         renderer.render(scene, camera);
       };
+      syncFpsMuzzlePosition();
+      flash.position.copy(fpsMuzzlePosition);
+      muzzleRing.position.copy(fpsMuzzlePosition);
       flash.material.opacity = 1;
       snowball.visible = true;
       characterManager.update(0, 0, camera);

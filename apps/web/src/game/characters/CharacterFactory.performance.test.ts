@@ -29,10 +29,17 @@ test("40 lobby characters keep the shared-body render budget bounded", () => {
   });
   const uniqueGeometries = new Set(bodies.map((body) => body.geometry));
   const uniqueMaterials = new Set(bodies.map((body) => body.material));
+  const weaponSilhouettes = models.map((model) => {
+    const weapon = model.root.getObjectByName("QS_AR1_Silhouette");
+    assert.ok(weapon instanceof THREE.Mesh);
+    return weapon;
+  });
+  const uniqueWeaponGeometries = new Set(weaponSilhouettes.map((weapon) => weapon.geometry));
 
   assert.equal(bodies.length, 40);
   assert.equal(uniqueGeometries.size, 2);
   assert.equal(uniqueMaterials.size, 2);
+  assert.equal(uniqueWeaponGeometries.size, 1);
   assert.equal(bodies[0].skeleton.bones.length, 13);
   assert.ok(constructionMs < 2_000);
 
@@ -40,8 +47,10 @@ test("40 lobby characters keep the shared-body render budget bounded", () => {
     characters: bodies.length,
     constructionMs: Math.round(constructionMs),
     sharedBodyGeometries: uniqueGeometries.size,
+    sharedWeaponGeometries: uniqueWeaponGeometries.size,
     sharedBodyMaterials: uniqueMaterials.size,
-    bodyTrianglesEach: bodies[0].geometry.getAttribute("position").count / 3
+    bodyTrianglesEach: bodies[0].geometry.getAttribute("position").count / 3,
+    weaponTrianglesEach: weaponSilhouettes[0].geometry.getAttribute("position").count / 3
   }));
 
   models.forEach((model) => model.dispose());

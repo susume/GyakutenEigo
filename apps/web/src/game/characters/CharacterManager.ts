@@ -113,6 +113,11 @@ export class CharacterManager {
     this.records.get(playerId)?.controller.triggerAnimation(cue);
   }
 
+  getMuzzleWorldPosition(playerId: string) {
+    const record = this.records.get(playerId);
+    return record?.controller.model.getMuzzleWorldPosition();
+  }
+
   update(delta: number, elapsed: number, camera: THREE.Camera) {
     for (const record of this.records.values()) {
       if (!record.controller.model.root.visible) continue;
