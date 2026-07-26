@@ -1,9 +1,6 @@
 import * as THREE from "three";
 import { RoundedBoxGeometry } from "three/examples/jsm/geometries/RoundedBoxGeometry.js";
-import type {
-  PlayerBackAccessoryId,
-  PlayerDetailAccessoryId
-} from "@quizstrike/shared";
+import type { PlayerBackAccessoryId } from "@quizstrike/shared";
 import type { CharacterMaterials } from "./CharacterEquipment.js";
 
 export type AccessorySocketName =
@@ -15,9 +12,7 @@ export type AccessorySocketName =
   | "LowerBackSocket"
   | "PelvisRearSocket"
   | "DiagonalBackSocket"
-  | "ShoulderSocket"
-  | "ChestBadgeSocket"
-  | "WristSocket"
+  | "ChestDecalSocket"
   | "HipSocket";
 
 export interface AccessoryDefinition<TId extends string = string> {
@@ -44,18 +39,6 @@ export const BACK_ACCESSORY_DEFINITIONS: Record<
   boost_pack: { id: "boost_pack", socket: "UpperBackSocket", mount: "upperBack", position: [0, -0.04, 0.055], rotation: [0, 0, 0], scale: [0.9, 0.9, 0.9] },
   arena_cape: { id: "arena_cape", socket: "UpperBackSocket", mount: "upperBack", motion: "cape", position: [0, 0.05, 0.055], rotation: [0, 0, 0], scale: [0.93, 0.93, 0.93] },
   snowboard: { id: "snowboard", socket: "DiagonalBackSocket", mount: "diagonalBack", position: [0, -0.02, 0.07], rotation: [0, 0, -0.34], scale: [0.88, 0.88, 0.88] }
-};
-
-export const DETAIL_ACCESSORY_DEFINITIONS: Record<
-  PlayerDetailAccessoryId,
-  AccessoryDefinition<PlayerDetailAccessoryId>
-> = {
-  none: { id: "none", socket: "ChestBadgeSocket", position: [0, 0, 0], rotation: [0, 0, 0], scale: [1, 1, 1] },
-  shoulder_badge: { id: "shoulder_badge", socket: "ShoulderSocket", position: [0, 0, 0], rotation: [0, -0.12, 0], scale: [1, 1, 1] },
-  wrist_device: { id: "wrist_device", socket: "WristSocket", position: [0, 0, -0.01], rotation: [0, 0, 0], scale: [1, 1, 1] },
-  quiz_medal: { id: "quiz_medal", socket: "ChestBadgeSocket", position: [0, -0.02, 0], rotation: [0, 0, 0], scale: [1, 1, 1] },
-  compass_badge: { id: "compass_badge", socket: "ChestBadgeSocket", position: [-0.14, 0.06, 0], rotation: [0, 0, 0], scale: [0.9, 0.9, 0.9] },
-  champion_star: { id: "champion_star", socket: "ChestBadgeSocket", position: [0.14, 0.06, 0], rotation: [0, 0, 0], scale: [0.9, 0.9, 0.9] }
 };
 
 const roundedUnit = new RoundedBoxGeometry(1, 1, 1, 2, 0.12);
@@ -387,49 +370,4 @@ export const createBackAccessory = (
   }
 
   return finishAccessory(accessoryId, BACK_ACCESSORY_DEFINITIONS[accessoryId], group);
-};
-
-export const createDetailAccessory = (
-  accessoryId: PlayerDetailAccessoryId,
-  materials: CharacterMaterials
-): THREE.Group | undefined => {
-  if (accessoryId === "none") return undefined;
-  const group = new THREE.Group();
-
-  if (accessoryId === "shoulder_badge") {
-    // Oversized shield crest with a pointed base, readable even on distant players.
-    add(group, roundedUnit, materials.armor, [0, 0.015, -0.035], [0.28, 0.25, 0.055]);
-    add(group, coneUnit, materials.armor, [0, -0.15, -0.035], [0.28, 0.2, 0.055], [0, 0, Math.PI]);
-    add(group, roundedUnit, materials.accent, [0, 0.035, -0.072], [0.16, 0.055, 0.025]);
-    add(group, sphereUnit, materials.accent, [0, -0.055, -0.072], [0.07, 0.07, 0.025]);
-  } else if (accessoryId === "wrist_device") {
-    add(group, roundedUnit, materials.dark, [0, 0, 0], [0.23, 0.13, 0.18]);
-    add(group, roundedUnit, materials.visor, [0, 0.02, -0.105], [0.16, 0.08, 0.03]);
-    add(group, torusUnit, materials.accent, [0, 0, 0], [0.26, 0.21, 0.19], [Math.PI / 2, 0, 0]);
-  } else if (accessoryId === "quiz_medal") {
-    // Twin ribbons and a large circular medal produce a unique hanging silhouette.
-    add(group, roundedUnit, materials.accent, [-0.07, 0.16, 0], [0.065, 0.28, 0.035], [0, 0, 0.34]);
-    add(group, roundedUnit, materials.armor, [0.07, 0.16, 0], [0.065, 0.28, 0.035], [0, 0, -0.34]);
-    add(group, torusUnit, materials.accent, [0, -0.035, -0.015], [0.25, 0.25, 0.075]);
-    add(group, cylinderUnit, materials.armor, [0, -0.035, -0.04], [0.175, 0.055, 0.175], [Math.PI / 2, 0, 0]);
-    add(group, sphereUnit, materials.accent, [0, -0.035, -0.085], [0.075, 0.075, 0.025]);
-  } else if (accessoryId === "compass_badge") {
-    add(group, torusUnit, materials.dark, [0, 0, -0.01], [0.25, 0.25, 0.075]);
-    add(group, cylinderUnit, materials.armor, [0, 0, -0.035], [0.18, 0.045, 0.18], [Math.PI / 2, 0, 0]);
-    add(group, coneUnit, materials.accent, [0, 0.065, -0.09], [0.095, 0.24, 0.035], [Math.PI / 2, 0, 0]);
-    add(group, coneUnit, materials.dark, [0, -0.065, -0.09], [0.07, 0.17, 0.03], [-Math.PI / 2, 0, 0]);
-  } else if (accessoryId === "champion_star") {
-    add(group, sphereUnit, materials.armor, [0, 0, 0], [0.18, 0.18, 0.045]);
-    for (let index = 0; index < 5; index += 1) {
-      const angle = (index / 5) * Math.PI * 2;
-      add(group, coneUnit, materials.accent, [Math.sin(angle) * 0.17, Math.cos(angle) * 0.17, -0.035], [0.105, 0.25, 0.04], [0, 0, -angle]);
-    }
-    add(group, sphereUnit, materials.accent, [0, 0, -0.085], [0.08, 0.08, 0.025]);
-  }
-
-  const finished = finishAccessory(accessoryId, DETAIL_ACCESSORY_DEFINITIONS[accessoryId], group);
-  finished.userData.accessorySlot = "detail";
-  finished.userData.mount = undefined;
-  finished.userData.motion = undefined;
-  return finished;
 };

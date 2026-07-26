@@ -12,7 +12,7 @@ import {
 
 test("appearance sanitizer produces a complete safe default", () => {
   assert.deepEqual(sanitizePlayerAppearance(undefined), DEFAULT_PLAYER_APPEARANCE);
-  assert.equal(sanitizePlayerAppearance({ clothingPrimaryColor: "#ffffff" }).appearanceVersion, 6);
+  assert.equal(sanitizePlayerAppearance({ clothingPrimaryColor: "#ffffff" }).appearanceVersion, 7);
   assert.equal(sanitizePlayerAppearance({ decalAssetId: "https://example.com/student.jpg" }).decalAssetId, undefined);
 });
 
@@ -23,7 +23,7 @@ test("appearance validation rejects arbitrary URLs, legacy colours, fields, and 
   assert.match(getPlayerAppearanceError({ ...DEFAULT_PLAYER_APPEARANCE, appearanceVersion: 99 }) ?? "", /version/i);
 });
 
-test("legacy accessory and retired Human profiles migrate to the Boy head", () => {
+test("legacy Badge/accessory profiles migrate to Boy with default Runners", () => {
   assert.deepEqual(sanitizePlayerAppearance({
     characterPreset: "engineer",
     helmetStyle: "headset",
@@ -33,9 +33,9 @@ test("legacy accessory and retired Human profiles migrate to the Boy head", () =
   }), {
     headStyleId: "boy_short_hair",
     backAccessoryId: "utility_pack",
-    detailAccessoryId: "none",
+    footwearId: "runners",
     victoryPoseId: "champion",
-    appearanceVersion: 6
+    appearanceVersion: 7
   });
   assert.equal(sanitizePlayerAppearance({
     ...DEFAULT_PLAYER_APPEARANCE,
@@ -48,6 +48,16 @@ test("legacy accessory and retired Human profiles migrate to the Boy head", () =
     headStyleId: "human" as never,
     appearanceVersion: 5
   }).headStyleId, "boy_short_hair");
+  assert.equal(sanitizePlayerAppearance({
+    ...DEFAULT_PLAYER_APPEARANCE,
+    detailAccessoryId: "quiz_medal",
+    footwearId: undefined,
+    appearanceVersion: 6
+  } as never).footwearId, "runners");
+  assert.equal(sanitizePlayerAppearance({
+    ...DEFAULT_PLAYER_APPEARANCE,
+    footwearId: "sandals"
+  }).footwearId, "sandals");
 });
 
 test("retired preset policy sanitizes to mix-and-match customization", () => {
@@ -72,8 +82,7 @@ test("cosmetic progression unlocks catalogue levels without changing gameplay st
   const locked = getLockedAppearanceItems({
     ...DEFAULT_PLAYER_APPEARANCE,
     backAccessoryId: "boost_pack",
-    detailAccessoryId: "champion_star",
     victoryPoseId: "power"
   }, 2);
-  assert.deepEqual(locked.map((item) => item.id), ["champion_star", "power"]);
+  assert.deepEqual(locked.map((item) => item.id), ["power"]);
 });

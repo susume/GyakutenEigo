@@ -32,10 +32,10 @@ type PlayerFixture = {
 type AppearanceFixture = {
   headStyleId: string;
   backAccessoryId: string;
-  detailAccessoryId: string;
+  footwearId: string;
   victoryPoseId: string;
   decalAssetId?: string;
-  appearanceVersion: 6;
+  appearanceVersion: 7;
 };
 
 type JoinedPlayer = {
@@ -49,9 +49,9 @@ type JoinedPlayer = {
 const defaultAppearance: AppearanceFixture = {
   headStyleId: "boy_short_hair",
   backAccessoryId: "none",
-  detailAccessoryId: "none",
+  footwearId: "runners",
   victoryPoseId: "champion",
-  appearanceVersion: 6
+  appearanceVersion: 7
 };
 
 const onePixelPng = Buffer.from(
@@ -230,7 +230,7 @@ test("real HTTP appearance flow enforces identity, room scope, locking, and clea
     {
       method: "PUT",
       playerToken: alpha.playerToken,
-      body: { appearance: { ...defaultAppearance, detailAccessoryId: "champion_star" } }
+      body: { appearance: { ...defaultAppearance, victoryPoseId: "power" } }
     }
   );
   assert.equal(progressionLocked.response.status, 403);
@@ -271,7 +271,11 @@ test("real HTTP appearance flow enforces identity, room scope, locking, and clea
   });
   assert.equal(crossRoomAsset.status, 401);
 
-  const appearance = { ...defaultAppearance, decalAssetId: uploaded.assetId };
+  const appearance = {
+    ...defaultAppearance,
+    footwearId: "army_boots",
+    decalAssetId: uploaded.assetId
+  };
   const colourInjection = await api(
     `/api/sessions/${session.sessionCode}/players/${alpha.player.id}/appearance`,
     {
@@ -300,6 +304,10 @@ test("real HTTP appearance flow enforces identity, room scope, locking, and clea
   assert.equal(
     publicState.body.session.players.find((player) => player.id === alpha.player.id)?.appearance?.decalAssetId,
     uploaded.assetId
+  );
+  assert.equal(
+    publicState.body.session.players.find((player) => player.id === alpha.player.id)?.appearance?.footwearId,
+    "army_boots"
   );
 
   const rejoined = await api<{ player: PlayerFixture }>(
@@ -483,10 +491,12 @@ test("a 40-student room keeps bounded appearance state and rejects student 41", 
   assert.equal(overflow.response.status, 400);
 
   const saves = await Promise.all(students.map((student, index) => {
+    const footwear = ["runners", "army_boots", "skate_shoes", "basketball_shoes", "sandals", "barefoot"];
     const appearance: AppearanceFixture = {
       ...defaultAppearance,
       headStyleId: index % 2 === 0 ? "fox" : "panda",
-      backAccessoryId: index % 2 === 0 ? "utility_pack" : "none"
+      backAccessoryId: index % 2 === 0 ? "utility_pack" : "none",
+      footwearId: footwear[index % footwear.length]
     };
     return api(
       `/api/sessions/${session.sessionCode}/players/${student.player.id}/appearance`,
@@ -498,7 +508,7 @@ test("a 40-student room keeps bounded appearance state and rejects student 41", 
   const state = await api<{ session: SessionFixture }>(`/api/sessions/${session.sessionCode}`);
   assert.equal(state.response.status, 200);
   assert.equal(state.body.session.players.length, 40);
-  assert.ok(state.body.session.players.every((player) => player.appearance?.appearanceVersion === 6));
+  assert.ok(state.body.session.players.every((player) => player.appearance?.appearanceVersion === 7));
   assert.equal(state.text.includes("data:image"), false);
   assert.equal(state.text.includes(onePixelPng.toString("base64")), false);
 
@@ -510,6 +520,7 @@ test("a 40-student room keeps bounded appearance state and rejects student 41", 
   assert.equal(rejoined.response.status, 200);
   assert.equal(rejoined.body.player.appearance?.headStyleId, "panda");
   assert.equal(rejoined.body.player.appearance?.backAccessoryId, "none");
+  assert.equal(rejoined.body.player.appearance?.footwearId, "barefoot");
 
   const ended = await api(`/api/sessions/${session.sessionCode}/end`, {
     method: "POST",

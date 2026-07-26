@@ -69,7 +69,7 @@ export interface QuizSet {
   createdAt: string;
 }
 
-export const APPEARANCE_VERSION = 6 as const;
+export const APPEARANCE_VERSION = 7 as const;
 export const APPEARANCE_MAX_JSON_BYTES = 2048;
 export const APPEARANCE_UPDATE_COOLDOWN_MS = 750;
 export const DECAL_MAX_SOURCE_BYTES = 5 * 1024 * 1024;
@@ -100,13 +100,13 @@ export const BACK_ACCESSORY_IDS = [
   "arena_cape",
   "snowboard"
 ] as const;
-export const DETAIL_ACCESSORY_IDS = [
-  "none",
-  "shoulder_badge",
-  "wrist_device",
-  "quiz_medal",
-  "compass_badge",
-  "champion_star"
+export const FOOTWEAR_IDS = [
+  "runners",
+  "army_boots",
+  "skate_shoes",
+  "basketball_shoes",
+  "sandals",
+  "barefoot"
 ] as const;
 export const VICTORY_POSE_IDS = [
   "champion",
@@ -117,9 +117,9 @@ export const VICTORY_POSE_IDS = [
 
 export type PlayerHeadStyleId = (typeof HEAD_STYLE_IDS)[number];
 export type PlayerBackAccessoryId = (typeof BACK_ACCESSORY_IDS)[number];
-export type PlayerDetailAccessoryId = (typeof DETAIL_ACCESSORY_IDS)[number];
+export type PlayerFootwearId = (typeof FOOTWEAR_IDS)[number];
 export type PlayerVictoryPoseId = (typeof VICTORY_POSE_IDS)[number];
-export type CosmeticSlot = "head" | "back" | "detail" | "pose";
+export type CosmeticSlot = "head" | "back" | "footwear" | "pose";
 
 export interface CosmeticCatalogItem {
   id: string;
@@ -136,6 +136,18 @@ export interface HeadStyleCatalogItem {
   unlockLevel: number;
 }
 
+export interface FootwearCatalogItem {
+  id: PlayerFootwearId;
+  name: string;
+  description: string;
+  visualType: PlayerFootwearId;
+  scale: readonly [number, number, number];
+  offset: readonly [number, number, number];
+  rotation: readonly [number, number, number];
+  teamAccent: "subtle" | "balanced" | "strong" | "none";
+  unlockLevel: number;
+}
+
 export const HEAD_STYLE_CATALOG = [
   { id: "boy_short_hair", name: "Boy", description: "Cool anime contender", unlockLevel: 1 },
   { id: "girl_mid_hair", name: "Girl", description: "Cute anime heroine", unlockLevel: 1 },
@@ -149,6 +161,75 @@ export const HEAD_STYLE_CATALOG = [
   { id: "ninja", name: "Ninja", description: "Silent arena rival", unlockLevel: 1 }
 ] as const satisfies ReadonlyArray<HeadStyleCatalogItem>;
 
+export const FOOTWEAR_CATALOG = [
+  {
+    id: "runners",
+    name: "Runners",
+    description: "Light athletic shoes",
+    visualType: "runners",
+    scale: [1, 1, 1],
+    offset: [0, 0, 0],
+    rotation: [0, 0, 0],
+    teamAccent: "balanced",
+    unlockLevel: 1
+  },
+  {
+    id: "army_boots",
+    name: "Army Boots",
+    description: "Heavy-duty style",
+    visualType: "army_boots",
+    scale: [1, 1, 1],
+    offset: [0, 0, 0],
+    rotation: [0, 0, 0],
+    teamAccent: "subtle",
+    unlockLevel: 1
+  },
+  {
+    id: "skate_shoes",
+    name: "Skate Shoes",
+    description: "Classic street style",
+    visualType: "skate_shoes",
+    scale: [1, 1, 1],
+    offset: [0, 0, 0],
+    rotation: [0, 0, 0],
+    teamAccent: "subtle",
+    unlockLevel: 1
+  },
+  {
+    id: "basketball_shoes",
+    name: "Basketball Shoes",
+    description: "Court-ready high tops",
+    visualType: "basketball_shoes",
+    scale: [1, 1, 1],
+    offset: [0, 0, 0],
+    rotation: [0, 0, 0],
+    teamAccent: "strong",
+    unlockLevel: 1
+  },
+  {
+    id: "sandals",
+    name: "Sandals",
+    description: "Relaxed arena style",
+    visualType: "sandals",
+    scale: [1, 1, 1],
+    offset: [0, 0, 0],
+    rotation: [0, 0, 0],
+    teamAccent: "balanced",
+    unlockLevel: 1
+  },
+  {
+    id: "barefoot",
+    name: "Barefoot",
+    description: "No shoes",
+    visualType: "barefoot",
+    scale: [1, 1, 1],
+    offset: [0, 0, 0],
+    rotation: [0, 0, 0],
+    teamAccent: "none",
+    unlockLevel: 1
+  }
+] as const satisfies ReadonlyArray<FootwearCatalogItem>;
+
 export const COSMETIC_CATALOG = [
   ...HEAD_STYLE_CATALOG.map((style) => ({ ...style, slot: "head" as const })),
   { id: "none", slot: "back", name: "No Back Gear", description: "Clean arena kit", unlockLevel: 1 },
@@ -161,12 +242,7 @@ export const COSMETIC_CATALOG = [
   { id: "boost_pack", slot: "back", name: "Boost Pack", description: "Ready for launch", unlockLevel: 1 },
   { id: "arena_cape", slot: "back", name: "Arena Cape", description: "Champion style", unlockLevel: 1 },
   { id: "snowboard", slot: "back", name: "Snowboard", description: "Slope ready", unlockLevel: 1 },
-  { id: "none", slot: "detail", name: "No Detail", description: "Simple uniform", unlockLevel: 1 },
-  { id: "shoulder_badge", slot: "detail", name: "Team Crest", description: "Shoulder emblem", unlockLevel: 1 },
-  { id: "wrist_device", slot: "detail", name: "Wrist Device", description: "Match tracker", unlockLevel: 2 },
-  { id: "quiz_medal", slot: "detail", name: "Quiz Medal", description: "Knowledge award", unlockLevel: 3 },
-  { id: "compass_badge", slot: "detail", name: "Compass Badge", description: "Explorer insignia", unlockLevel: 4 },
-  { id: "champion_star", slot: "detail", name: "Champion Star", description: "Top-tier crest", unlockLevel: 5 },
+  ...FOOTWEAR_CATALOG.map((footwear) => ({ ...footwear, slot: "footwear" as const })),
   { id: "champion", slot: "pose", name: "Champion", description: "Two-arm celebration", unlockLevel: 1 },
   { id: "wave", slot: "pose", name: "Friendly Wave", description: "Classroom hello", unlockLevel: 1 },
   { id: "salute", slot: "pose", name: "Team Salute", description: "Ready for the round", unlockLevel: 2 },
@@ -215,7 +291,7 @@ const catalogItem = (slot: CosmeticSlot, id: string) =>
 export interface PlayerAppearance {
   headStyleId: PlayerHeadStyleId;
   backAccessoryId: PlayerBackAccessoryId;
-  detailAccessoryId: PlayerDetailAccessoryId;
+  footwearId: PlayerFootwearId;
   victoryPoseId: PlayerVictoryPoseId;
   decalAssetId?: string;
   appearanceVersion: typeof APPEARANCE_VERSION;
@@ -227,7 +303,7 @@ export const getLockedAppearanceItems = (
 ): CosmeticCatalogItem[] => [
   catalogItem("head", appearance.headStyleId),
   catalogItem("back", appearance.backAccessoryId),
-  catalogItem("detail", appearance.detailAccessoryId),
+  catalogItem("footwear", appearance.footwearId),
   catalogItem("pose", appearance.victoryPoseId)
 ].filter((item): item is (typeof COSMETIC_CATALOG)[number] => Boolean(item && item.unlockLevel > level));
 
@@ -241,7 +317,7 @@ export interface CharacterCustomizationSettings {
 export const DEFAULT_PLAYER_APPEARANCE: PlayerAppearance = {
   headStyleId: "boy_short_hair",
   backAccessoryId: "none",
-  detailAccessoryId: "none",
+  footwearId: "runners",
   victoryPoseId: "champion",
   appearanceVersion: APPEARANCE_VERSION
 };
@@ -290,12 +366,10 @@ export const sanitizePlayerAppearance = (
           : source.backpackStyle === "bedroll" ? "utility_pack"
             : source.backpackStyle === "none" ? "none"
               : DEFAULT_PLAYER_APPEARANCE.backAccessoryId;
-  const migratedDetailAccessory: PlayerDetailAccessoryId =
-    legacyAccessory === "shoulder_badge" ? "shoulder_badge" : "none";
   return {
     headStyleId: isAllowed(HEAD_STYLE_IDS, source.headStyleId) ? source.headStyleId : migratedHeadStyle,
     backAccessoryId: migratedBackAccessory,
-    detailAccessoryId: isAllowed(DETAIL_ACCESSORY_IDS, source.detailAccessoryId) ? source.detailAccessoryId : migratedDetailAccessory,
+    footwearId: isAllowed(FOOTWEAR_IDS, source.footwearId) ? source.footwearId : "runners",
     victoryPoseId: isAllowed(VICTORY_POSE_IDS, source.victoryPoseId) ? source.victoryPoseId : "champion",
     ...(decalAssetId ? { decalAssetId } : {}),
     appearanceVersion: APPEARANCE_VERSION
@@ -307,7 +381,7 @@ export const getPlayerAppearanceError = (input: unknown): string | undefined => 
   if (new TextEncoder().encode(JSON.stringify(input)).byteLength > APPEARANCE_MAX_JSON_BYTES) return "Appearance data is too large.";
   const source = input as Record<string, unknown>;
   const allowedKeys = new Set([
-    "headStyleId", "backAccessoryId", "detailAccessoryId", "victoryPoseId",
+    "headStyleId", "backAccessoryId", "footwearId", "victoryPoseId",
     "decalAssetId", "appearanceVersion"
   ]);
   if (Object.keys(source).some((key) => !allowedKeys.has(key))) return "Appearance contains an unsupported field.";
@@ -315,7 +389,7 @@ export const getPlayerAppearanceError = (input: unknown): string | undefined => 
   const checks: Array<[readonly string[], unknown, string]> = [
     [HEAD_STYLE_IDS, source.headStyleId, "head style"],
     [BACK_ACCESSORY_IDS, source.backAccessoryId, "back accessory"],
-    [DETAIL_ACCESSORY_IDS, source.detailAccessoryId, "detail accessory"],
+    [FOOTWEAR_IDS, source.footwearId, "footwear"],
     [VICTORY_POSE_IDS, source.victoryPoseId, "victory pose"]
   ];
   const invalid = checks.find(([values, value]) => !isAllowed(values, value));

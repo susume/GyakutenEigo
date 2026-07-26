@@ -88,9 +88,9 @@ test("a character contains exactly one primary head visual and fixed hitboxes", 
     appearance: {
       headStyleId: "rabbit",
       backAccessoryId: "none",
-      detailAccessoryId: "none",
+      footwearId: "runners",
       victoryPoseId: "champion",
-      appearanceVersion: 6
+      appearanceVersion: 7
     }
   });
   const primaryHeads: THREE.Object3D[] = [];
@@ -109,9 +109,9 @@ test("two players can share a style without sharing scene nodes", () => {
   const appearance = {
     headStyleId: "fox" as const,
     backAccessoryId: "none" as const,
-    detailAccessoryId: "none" as const,
+    footwearId: "runners" as const,
     victoryPoseId: "champion" as const,
-    appearanceVersion: 6 as const
+    appearanceVersion: 7 as const
   };
   const first = factory.createCharacter({ playerId: "first", team: "blue", appearance });
   const second = factory.createCharacter({ playerId: "second", team: "red", appearance });
@@ -140,9 +140,9 @@ test("rapid replacement never grows the scene beyond one active character or hea
       appearance: {
         headStyleId,
         backAccessoryId: "none",
-        detailAccessoryId: "none",
+        footwearId: "runners",
         victoryPoseId: "champion",
-        appearanceVersion: 6
+        appearanceVersion: 7
       }
     });
     scene.add(active.root);
@@ -166,9 +166,9 @@ test("vertical movement and respawn animation keep the complete head attached", 
     appearance: {
       headStyleId: "robot",
       backAccessoryId: "none",
-      detailAccessoryId: "none",
+      footwearId: "runners",
       victoryPoseId: "champion",
-      appearanceVersion: 6
+      appearanceVersion: 7
     }
   });
   const head = model.root.getObjectByName("HeadStyle_robot");

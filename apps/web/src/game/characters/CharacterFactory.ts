@@ -2,9 +2,7 @@ import * as THREE from "three";
 import type { PlayerAppearance, Team } from "@quizstrike/shared";
 import {
   BACK_ACCESSORY_DEFINITIONS,
-  DETAIL_ACCESSORY_DEFINITIONS,
   createBackAccessory,
-  createDetailAccessory,
   type AccessorySocketName
 } from "./CharacterAccessories.js";
 import { createHeadStyle, createHeadStyleDebugEnvelope } from "./CharacterHeadStyles.js";
@@ -176,9 +174,7 @@ export class CharacterFactory {
       LowerBackSocket: torso,
       PelvisRearSocket: skeletonRoot,
       DiagonalBackSocket: torso,
-      ShoulderSocket: leftArm,
-      ChestBadgeSocket: torso,
-      WristSocket: leftForearm,
+      ChestDecalSocket: torso,
       HipSocket: skeletonRoot
     };
     const socketOffsets: Record<AccessorySocketName, [number, number, number]> = {
@@ -190,9 +186,7 @@ export class CharacterFactory {
       LowerBackSocket: [0, -0.2, 0.26],
       PelvisRearSocket: [0, 0.75, 0.18],
       DiagonalBackSocket: [0, 0.02, 0.29],
-      ShoulderSocket: [0, 0, -0.1],
-      ChestBadgeSocket: [0, 0.12, -0.325],
-      WristSocket: [0, -0.19, -0.1],
+      ChestDecalSocket: [0, 0.12, -0.325],
       HipSocket: [0.29, 0.8, 0]
     };
     const accessorySockets = {} as Record<AccessorySocketName, THREE.Group>;
@@ -216,13 +210,6 @@ export class CharacterFactory {
       root.userData.activeBackAccessoryId = appearance.customization.backAccessoryId;
       root.userData.activeBackMount = backDefinition.mount;
     }
-    const detailDefinition = DETAIL_ACCESSORY_DEFINITIONS[appearance.customization.detailAccessoryId];
-    const detailAccessory = createDetailAccessory(appearance.customization.detailAccessoryId, materials);
-    if (detailAccessory) {
-      accessorySockets[detailDefinition.socket].add(detailAccessory);
-      accessories.push(detailAccessory);
-    }
-
     const gearId = input.gear ?? "starter_blaster";
     const {
       weapon,
@@ -261,7 +248,7 @@ export class CharacterFactory {
       decal.visible = false;
       decal.userData.ownedDecalMaterial = true;
       decal.userData.disposeWithCharacterGeometry = true;
-      accessorySockets.ChestBadgeSocket.add(decal);
+      accessorySockets.ChestDecalSocket.add(decal);
       void this.options.loadDecalTexture(appearance.customization.decalAssetId).then((texture) => {
         if (!texture) return;
         if (root.userData.disposed) {

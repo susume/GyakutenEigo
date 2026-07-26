@@ -1,5 +1,6 @@
 import * as THREE from "three";
 import { mergeGeometries } from "three/examples/jsm/utils/BufferGeometryUtils.js";
+import type { PlayerFootwearId } from "@quizstrike/shared";
 import type { CharacterAppearance } from "./CharacterAppearance.js";
 import type { CharacterMaterials } from "./CharacterEquipment.js";
 
@@ -156,7 +157,108 @@ const chestPanelGeometry = () => {
 const roundedPad = (radius = 0.5, widthSegments = 12, heightSegments = 8) =>
   new THREE.SphereGeometry(radius, widthSegments, heightSegments);
 
-const buildSharedBodyGeometry = (palette: THREE.Color[], shoulderBulk: number) => {
+const FOOTWEAR_PROMINENCE_SCALE: Record<PlayerFootwearId, [number, number, number]> = {
+  runners: [1.36, 1.2, 1.42],
+  army_boots: [1.32, 1.2, 1.36],
+  skate_shoes: [1.4, 1.18, 1.46],
+  basketball_shoes: [1.38, 1.22, 1.42],
+  sandals: [1.4, 1.16, 1.44],
+  barefoot: [1.44, 1.18, 1.48]
+};
+
+const buildFootwearPieces = (footwearId: PlayerFootwearId) => {
+  const pieces: THREE.BufferGeometry[] = [];
+  const prominence = FOOTWEAR_PROMINENCE_SCALE[footwearId];
+  const forEachFoot = (
+    build: (bone: "leftShin" | "rightShin", x: number, yaw: number, side: -1 | 1) => void
+  ) => {
+    ([-1, 1] as const).forEach((side) => {
+      build(side === -1 ? "leftShin" : "rightShin", side * 0.18, side * -0.02, side);
+    });
+  };
+  const add = (
+    geometry: THREE.BufferGeometry,
+    bone: "leftShin" | "rightShin",
+    material: number,
+    position: [number, number, number],
+    scale: [number, number, number] = [1, 1, 1],
+    rotation: [number, number, number] = [0, 0, 0]
+  ) => {
+    const next = part(geometry, bone, material, position, scale, rotation);
+    const soleAnchor = new THREE.Vector3(bone === "leftShin" ? -0.18 : 0.18, -0.03, 0);
+    const prominenceMatrix = new THREE.Matrix4()
+      .makeTranslation(soleAnchor.x, soleAnchor.y, soleAnchor.z)
+      .multiply(new THREE.Matrix4().makeScale(...prominence))
+      .multiply(new THREE.Matrix4().makeTranslation(-soleAnchor.x, -soleAnchor.y, -soleAnchor.z));
+    next.applyMatrix4(prominenceMatrix);
+    pieces.push(next);
+  };
+
+  if (footwearId === "runners") {
+    forEachFoot((bone, x, yaw) => {
+      add(capsule(0.108, 0.235, 10), bone, BODY_MATERIALS.armor, [x, 0.02, -0.15], [1.08, 1, 0.33], [Math.PI / 2, 0, yaw]);
+      add(capsule(0.098, 0.205, 10), bone, BODY_MATERIALS.dark, [x, 0.08, -0.135], [1.02, 1, 0.72], [Math.PI / 2, 0, yaw]);
+      add(capsule(0.055, 0.135, 8), bone, BODY_MATERIALS.uniform, [x, 0.105, -0.205], [1.12, 1, 0.42], [Math.PI / 2, 0, yaw]);
+      add(roundedPad(), bone, BODY_MATERIALS.accent, [x, 0.105, -0.278], [0.085, 0.035, 0.055], [0, 0, yaw]);
+      add(new THREE.TorusGeometry(0.098, 0.016, 5, 12), bone, BODY_MATERIALS.accent, [x, 0.13, -0.01], [1, 1, 0.84], [Math.PI / 2, 0, 0]);
+    });
+  } else if (footwearId === "army_boots") {
+    forEachFoot((bone, x, yaw) => {
+      add(capsule(0.118, 0.245, 10), bone, BODY_MATERIALS.dark, [x, 0.025, -0.145], [1.08, 1, 0.37], [Math.PI / 2, 0, yaw]);
+      add(capsule(0.108, 0.215, 10), bone, BODY_MATERIALS.dark, [x, 0.09, -0.13], [1.04, 1, 0.72], [Math.PI / 2, 0, yaw]);
+      add(taperedLimb(0.115, 0.1, 0.235), bone, BODY_MATERIALS.dark, [x, 0.19, -0.005], [1, 1, 0.88]);
+      add(roundedPad(), bone, BODY_MATERIALS.armor, [x, 0.12, -0.285], [0.09, 0.05, 0.07], [0, 0, yaw]);
+      add(roundedPad(), bone, BODY_MATERIALS.uniform, [x, 0.205, -0.105], [0.073, 0.105, 0.026]);
+      [-0.035, 0.025, 0.085].forEach((offsetY) => {
+        add(capsule(0.014, 0.105, 6), bone, BODY_MATERIALS.accent, [x, 0.18 + offsetY, -0.135], [1, 1, 0.8], [0, 0, Math.PI / 2]);
+      });
+      add(new THREE.TorusGeometry(0.108, 0.018, 5, 12), bone, BODY_MATERIALS.accent, [x, 0.305, -0.005], [1, 1, 0.82], [Math.PI / 2, 0, 0]);
+    });
+  } else if (footwearId === "skate_shoes") {
+    forEachFoot((bone, x, yaw, side) => {
+      add(capsule(0.12, 0.28, 10), bone, BODY_MATERIALS.armor, [x, 0.018, -0.16], [1.16, 1, 0.27], [Math.PI / 2, 0, yaw]);
+      add(capsule(0.108, 0.255, 10), bone, BODY_MATERIALS.dark, [x, 0.066, -0.15], [1.14, 1, 0.57], [Math.PI / 2, 0, yaw]);
+      add(roundedPad(), bone, BODY_MATERIALS.dark, [x, 0.085, -0.315], [0.115, 0.055, 0.075], [0, 0, yaw]);
+      add(capsule(0.025, 0.16, 7), bone, BODY_MATERIALS.uniform, [x + side * 0.11, 0.08, -0.14], [0.65, 1, 0.42], [Math.PI / 2, 0, 0]);
+      add(capsule(0.014, 0.16, 6), bone, BODY_MATERIALS.accent, [x + side * 0.125, 0.08, -0.145], [0.7, 1, 0.45], [Math.PI / 2, 0, 0]);
+    });
+  } else if (footwearId === "basketball_shoes") {
+    forEachFoot((bone, x, yaw, side) => {
+      add(capsule(0.113, 0.26, 10), bone, BODY_MATERIALS.armor, [x, 0.022, -0.15], [1.1, 1, 0.34], [Math.PI / 2, 0, yaw]);
+      add(capsule(0.104, 0.23, 10), bone, BODY_MATERIALS.dark, [x, 0.085, -0.145], [1.05, 1, 0.72], [Math.PI / 2, 0, yaw]);
+      add(taperedLimb(0.107, 0.095, 0.2), bone, BODY_MATERIALS.uniform, [x, 0.18, -0.015], [1, 1, 0.86]);
+      add(roundedPad(), bone, BODY_MATERIALS.uniform, [x, 0.115, -0.285], [0.09, 0.055, 0.07], [0, 0, yaw]);
+      add(roundedPad(), bone, BODY_MATERIALS.accent, [x + side * 0.09, 0.14, -0.13], [0.035, 0.105, 0.075], [0.1, 0, side * -0.28]);
+      add(capsule(0.017, 0.14, 6), bone, BODY_MATERIALS.armor, [x, 0.15, -0.145], [0.72, 1, 0.55], [0, 0, Math.PI / 2]);
+      add(new THREE.TorusGeometry(0.104, 0.02, 5, 12), bone, BODY_MATERIALS.accent, [x, 0.275, -0.01], [1.02, 1, 0.84], [Math.PI / 2, 0, 0]);
+    });
+  } else if (footwearId === "sandals") {
+    forEachFoot((bone, x, yaw) => {
+      add(capsule(0.11, 0.24, 10), bone, BODY_MATERIALS.dark, [x, 0.012, -0.15], [1.08, 1, 0.22], [Math.PI / 2, 0, yaw]);
+      add(capsule(0.102, 0.225, 10), bone, BODY_MATERIALS.skin, [x, 0.052, -0.15], [1.02, 1, 0.42], [Math.PI / 2, 0, yaw]);
+      add(capsule(0.034, 0.17, 7), bone, BODY_MATERIALS.uniform, [x, 0.105, -0.205], [1, 1, 0.65], [0, 0, Math.PI / 2]);
+      add(capsule(0.031, 0.17, 7), bone, BODY_MATERIALS.accent, [x, 0.105, -0.095], [1, 1, 0.62], [0, 0, Math.PI / 2]);
+      add(new THREE.TorusGeometry(0.096, 0.02, 5, 12, Math.PI * 1.2), bone, BODY_MATERIALS.uniform, [x, 0.12, -0.015], [1, 1, 0.85], [Math.PI / 2, 0, -Math.PI * 0.6]);
+    });
+  } else {
+    forEachFoot((bone, x, yaw) => {
+      add(capsule(0.102, 0.225, 10), bone, BODY_MATERIALS.skin, [x, 0.035, -0.14], [1.04, 1, 0.4], [Math.PI / 2, 0, yaw]);
+      add(roundedPad(), bone, BODY_MATERIALS.skin, [x, 0.045, -0.275], [0.12, 0.055, 0.095], [0, 0, yaw]);
+      add(joint(0.065), bone, BODY_MATERIALS.skin, [x, 0.07, -0.015], [1.25, 1, 1]);
+      [-0.055, 0, 0.055].forEach((toeX, index) => {
+        add(joint(0.04), bone, BODY_MATERIALS.skin, [x + toeX, 0.045, -0.355 + Math.abs(index - 1) * 0.012], [1.05, 0.72, 1.05]);
+      });
+    });
+  }
+
+  return pieces;
+};
+
+const buildSharedBodyGeometry = (
+  palette: THREE.Color[],
+  shoulderBulk: number,
+  footwearId: PlayerFootwearId
+) => {
   const shoulderScale = Math.min(1.18, shoulderBulk);
   const pieces = [
     // One compact jersey silhouette: team-colour shell, dark side insets, a deliberately
@@ -219,17 +321,7 @@ const buildSharedBodyGeometry = (palette: THREE.Color[], shoulderBulk: number) =
     part(taperedLimb(0.105, 0.085, 0.29), "rightShin", BODY_MATERIALS.cloth, [0.18, 0.205, 0]),
     part(capsule(0.045, 0.16, 8), "leftShin", BODY_MATERIALS.uniform, [-0.255, 0.205, -0.025], [0.75, 1, 0.5]),
     part(capsule(0.045, 0.16, 8), "rightShin", BODY_MATERIALS.uniform, [0.255, 0.205, -0.025], [0.75, 1, 0.5]),
-
-    // Oversized lightweight trainers use a pale sole, dark upper, team quarter
-    // panel, and accent cuff for a stable arena-athlete stance.
-    part(capsule(0.105, 0.23, 10), "leftShin", BODY_MATERIALS.armor, [-0.18, 0.025, -0.145], [1.08, 1, 0.38], [Math.PI / 2, 0, 0.02]),
-    part(capsule(0.105, 0.23, 10), "rightShin", BODY_MATERIALS.armor, [0.18, 0.025, -0.145], [1.08, 1, 0.38], [Math.PI / 2, 0, -0.02]),
-    part(capsule(0.096, 0.2, 10), "leftShin", BODY_MATERIALS.dark, [-0.18, 0.07, -0.13], [1.03, 1, 0.94], [Math.PI / 2, 0, 0.02]),
-    part(capsule(0.096, 0.2, 10), "rightShin", BODY_MATERIALS.dark, [0.18, 0.07, -0.13], [1.03, 1, 0.94], [Math.PI / 2, 0, -0.02]),
-    part(capsule(0.052, 0.13, 8), "leftShin", BODY_MATERIALS.uniform, [-0.18, 0.105, -0.21], [1.12, 1, 0.48], [Math.PI / 2, 0, 0.02]),
-    part(capsule(0.052, 0.13, 8), "rightShin", BODY_MATERIALS.uniform, [0.18, 0.105, -0.21], [1.12, 1, 0.48], [Math.PI / 2, 0, -0.02]),
-    part(new THREE.TorusGeometry(0.1, 0.017, 5, 12), "leftShin", BODY_MATERIALS.accent, [-0.18, 0.13, -0.005], [1, 1, 0.85], [Math.PI / 2, 0, 0]),
-    part(new THREE.TorusGeometry(0.1, 0.017, 5, 12), "rightShin", BODY_MATERIALS.accent, [0.18, 0.13, -0.005], [1, 1, 0.85], [Math.PI / 2, 0, 0])
+    ...buildFootwearPieces(footwearId)
   ];
 
   pieces.forEach((piece) => {
@@ -341,7 +433,7 @@ export const createSharedSkinnedStudent = (
     materials.visor,
     materials.skin
   ];
-  const paletteKey = `humanoid-v4-quizstrike-uniform-${materialArray
+  const paletteKey = `humanoid-v5-footwear-${appearance.customization.footwearId}-${materialArray
     .map((material) => `#${material.color.getHexString()}`)
     .join("-")}-${appearance.silhouette.shoulderBulk.toFixed(2)}`;
   let geometry = sharedBodyGeometries.get(paletteKey);
@@ -349,7 +441,8 @@ export const createSharedSkinnedStudent = (
     evictUnusedSharedBody();
     geometry = buildSharedBodyGeometry(
       materialArray.map((material) => material.color),
-      appearance.silhouette.shoulderBulk
+      appearance.silhouette.shoulderBulk,
+      appearance.customization.footwearId
     );
     sharedBodyGeometries.set(paletteKey, geometry);
   }
@@ -377,7 +470,8 @@ export const createSharedSkinnedStudent = (
     triangles: geometry.getAttribute("position").count / 3,
     bones: skeletonBones.length,
     skinnedMeshes: 1,
-    bodyMaterials: 1
+    bodyMaterials: 1,
+    footwearId: appearance.customization.footwearId
   };
   mesh.add(bones.root);
   mesh.bind(new THREE.Skeleton(skeletonBones));

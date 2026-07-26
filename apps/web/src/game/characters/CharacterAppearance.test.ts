@@ -53,7 +53,7 @@ test("serializeCharacterAppearance returns compact multiplayer-safe appearance s
       headStyleId: "boy_short_hair",
       vest: "plate_carrier",
       backAccessoryId: "none",
-      detailAccessoryId: "none",
+      footwearId: "runners",
       victoryPoseId: "champion",
       accent: "blue"
     }

@@ -2,7 +2,7 @@ import {
   sanitizePlayerAppearance,
   type PlayerAppearance,
   type PlayerBackAccessoryId,
-  type PlayerDetailAccessoryId,
+  type PlayerFootwearId,
   type PlayerHeadStyleId,
   type PlayerVictoryPoseId,
   type Team
@@ -42,7 +42,7 @@ export interface CharacterAppearance {
   customization: {
     headStyleId: PlayerHeadStyleId;
     backAccessoryId: PlayerBackAccessoryId;
-    detailAccessoryId: PlayerDetailAccessoryId;
+    footwearId: PlayerFootwearId;
     victoryPoseId: PlayerVictoryPoseId;
     decalAssetId?: string;
   };
@@ -144,7 +144,7 @@ export const resolveCharacterAppearance = (input: CharacterAppearanceInput): Cha
     customization: {
       headStyleId: custom?.headStyleId ?? "boy_short_hair",
       backAccessoryId: custom?.backAccessoryId ?? "none",
-      detailAccessoryId: custom?.detailAccessoryId ?? "none",
+      footwearId: custom?.footwearId ?? "runners",
       victoryPoseId: custom?.victoryPoseId ?? "champion",
       ...(custom?.decalAssetId ? { decalAssetId: custom.decalAssetId } : {})
     }
@@ -159,7 +159,7 @@ export const serializeCharacterAppearance = (input: CharacterAppearanceInput) =>
     headStyleId: appearance.customization.headStyleId,
     vest: appearance.silhouette.vest,
     backAccessoryId: appearance.customization.backAccessoryId,
-    detailAccessoryId: appearance.customization.detailAccessoryId,
+    footwearId: appearance.customization.footwearId,
     victoryPoseId: appearance.customization.victoryPoseId,
     accent: appearance.palette.accentName
   };

@@ -3,15 +3,12 @@ import test from "node:test";
 import * as THREE from "three";
 import {
   BACK_ACCESSORY_IDS,
-  DETAIL_ACCESSORY_IDS,
   type PlayerBackAccessoryId,
   type PlayerHeadStyleId
 } from "@quizstrike/shared";
 import {
   BACK_ACCESSORY_DEFINITIONS,
-  DETAIL_ACCESSORY_DEFINITIONS,
-  createBackAccessory,
-  createDetailAccessory
+  createBackAccessory
 } from "./CharacterAccessories";
 import type { CharacterMaterials } from "./CharacterEquipment";
 import { CharacterFactory } from "./CharacterFactory";
@@ -99,9 +96,9 @@ test("required mix-and-match combinations stay attached through gameplay animati
         appearance: {
           headStyleId,
           backAccessoryId,
-          detailAccessoryId: "none",
+          footwearId: "runners",
           victoryPoseId: "champion",
-          appearanceVersion: 6
+          appearanceVersion: 7
         }
       });
       const head = model.root.getObjectByName(`HeadStyle_${headStyleId}`);
@@ -150,9 +147,9 @@ test("running produces follow-through in hair, tail, cape, and wings", () => {
       appearance: {
         headStyleId: "girl_mid_hair",
         backAccessoryId,
-        detailAccessoryId: "none",
+        footwearId: "runners",
         victoryPoseId: "champion",
-        appearanceVersion: 6
+        appearanceVersion: 7
       }
     });
     const movingNodes: THREE.Object3D[] = [];
@@ -179,9 +176,9 @@ test("major back silhouettes survive reduced LOD while local first person remain
     appearance: {
       headStyleId: "great_white",
       backAccessoryId: "angel_wings",
-      detailAccessoryId: "none",
+      footwearId: "runners",
       victoryPoseId: "champion",
-      appearanceVersion: 6
+      appearanceVersion: 7
     }
   });
   const wings = model.root.getObjectByName("Accessory_angel_wings");
@@ -198,38 +195,4 @@ test("major back silhouettes survive reduced LOD while local first person remain
   assert.equal(firstPerson.root.getObjectByName("Accessory_devil_tail"), undefined);
   model.dispose();
   factory.dispose();
-});
-
-test("every detail cosmetic uses one named socket and a bounded local transform", () => {
-  const materials = makeMaterials();
-  for (const id of DETAIL_ACCESSORY_IDS) {
-    const definition = DETAIL_ACCESSORY_DEFINITIONS[id];
-    assert.match(definition.socket, /Socket$/);
-    assert.equal(definition.position.length, 3);
-    assert.equal(definition.rotation.length, 3);
-    assert.equal(definition.scale.length, 3);
-    const accessory = createDetailAccessory(id, materials);
-    assert.equal(Boolean(accessory), id !== "none");
-    if (accessory) assert.equal(accessory.name, `Accessory_${id}`);
-  }
-});
-
-test("detail badges are large and have distinct silhouettes", () => {
-  const materials = makeMaterials();
-  const geometrySignatures = new Set<string>();
-  for (const id of DETAIL_ACCESSORY_IDS) {
-    if (id === "none") continue;
-    const accessory = createDetailAccessory(id, materials);
-    assert.ok(accessory);
-    accessory.updateMatrixWorld(true);
-    const size = new THREE.Vector3();
-    new THREE.Box3().setFromObject(accessory).getSize(size);
-    assert.ok(Math.max(size.x, size.y) >= 0.2, `${id} is too small to read`);
-    geometrySignatures.add(
-      accessory.children
-        .map((child) => child instanceof THREE.Mesh ? child.geometry.type : child.type)
-        .join(":")
-    );
-  }
-  assert.equal(geometrySignatures.size, DETAIL_ACCESSORY_IDS.length - 1);
 });

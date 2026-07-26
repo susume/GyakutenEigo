@@ -13,9 +13,9 @@ test("40 lobby characters keep the shared-body render budget bounded", () => {
     appearance: {
       headStyleId: HEAD_STYLE_IDS[index % HEAD_STYLE_IDS.length],
       backAccessoryId: BACK_ACCESSORY_IDS[index % BACK_ACCESSORY_IDS.length],
-      detailAccessoryId: "none",
+      footwearId: "runners",
       victoryPoseId: "champion",
-      appearanceVersion: 6
+      appearanceVersion: 7
     }
   }));
   const constructionMs = performance.now() - startedAt;

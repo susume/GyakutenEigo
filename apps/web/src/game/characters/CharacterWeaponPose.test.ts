@@ -25,9 +25,9 @@ test("QS AR-1 remains socket-driven and clear of every current head style", () =
       appearance: {
         headStyleId,
         backAccessoryId: "utility_pack",
-        detailAccessoryId: "none",
+        footwearId: "runners",
         victoryPoseId: "champion",
-        appearanceVersion: 6
+        appearanceVersion: 7
       }
     });
     for (let frame = 0; frame < 60; frame += 1) {

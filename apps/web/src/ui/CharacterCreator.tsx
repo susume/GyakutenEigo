@@ -2,42 +2,47 @@ import { useEffect, useRef } from "react";
 import * as THREE from "three";
 import type {
   PlayerBackAccessoryId,
-  PlayerDetailAccessoryId,
   PlayerAppearance,
+  PlayerFootwearId,
   PlayerHeadStyleId,
   PlayerVictoryPoseId,
   Team
 } from "@quizstrike/shared";
-import { HEAD_STYLE_CATALOG } from "@quizstrike/shared";
+import { FOOTWEAR_CATALOG, HEAD_STYLE_CATALOG } from "@quizstrike/shared";
 import {
-  Badge,
   Backpack,
   Bot,
   Cat,
   Circle,
   Crown,
-  Compass,
   Feather,
   Flame,
-  Medal,
+  Footprints,
+  Mountain,
   Rabbit,
+  RectangleHorizontal,
   Rocket,
   Rotate3d,
   Shield,
   ShieldCheck,
   Snowflake,
   Sparkles,
-  Star,
   Sword,
   UserRound,
-  Watch,
+  Volleyball,
   Waves,
+  Zap,
   X,
   type LucideIcon
 } from "lucide-react";
 import { CharacterFactory } from "../game/characters/CharacterFactory";
 
 const appearanceSignature = (appearance: PlayerAppearance) => JSON.stringify(appearance);
+
+const customizationThumbnail = (
+  category: "head" | "back" | "footwear" | "victory",
+  id: string
+) => `${import.meta.env.BASE_URL}assets/customization-thumbnails/${category}/${id}.png`;
 
 const HEAD_STYLE_ICONS: Record<PlayerHeadStyleId, LucideIcon> = {
   boy_short_hair: UserRound,
@@ -57,11 +62,13 @@ export const HEAD_STYLE_OPTIONS: ReadonlyArray<{
   label: string;
   description: string;
   Icon: LucideIcon;
+  thumbnail: string;
 }> = HEAD_STYLE_CATALOG.map((style) => ({
   id: style.id,
   label: style.name,
   description: style.description,
-  Icon: HEAD_STYLE_ICONS[style.id]
+  Icon: HEAD_STYLE_ICONS[style.id],
+  thumbnail: customizationThumbnail("head", style.id)
 }));
 
 export const BACK_ACCESSORY_OPTIONS: ReadonlyArray<{
@@ -69,7 +76,8 @@ export const BACK_ACCESSORY_OPTIONS: ReadonlyArray<{
   label: string;
   detail: string;
   Icon: LucideIcon;
-}> = [
+  thumbnail: string;
+}> = ([
   { value: "none", label: "None", detail: "Clean kit", Icon: X },
   { value: "utility_pack", label: "Utility Pack", detail: "Classic field pack", Icon: Backpack },
   { value: "angel_wings", label: "Angel Wings", detail: "Take flight", Icon: Feather },
@@ -80,33 +88,59 @@ export const BACK_ACCESSORY_OPTIONS: ReadonlyArray<{
   { value: "boost_pack", label: "Boost Pack", detail: "Ready for launch", Icon: Rocket },
   { value: "arena_cape", label: "Arena Cape", detail: "Champion style", Icon: Shield },
   { value: "snowboard", label: "Snowboard", detail: "Slope ready", Icon: Snowflake }
-];
-
-export const DETAIL_ACCESSORY_OPTIONS: ReadonlyArray<{
-  value: PlayerDetailAccessoryId;
+] satisfies ReadonlyArray<{
+  value: PlayerBackAccessoryId;
   label: string;
   detail: string;
   Icon: LucideIcon;
-}> = [
-  { value: "none", label: "None", detail: "Simple uniform", Icon: X },
-  { value: "shoulder_badge", label: "Team crest", detail: "Shoulder badge", Icon: Badge },
-  { value: "wrist_device", label: "Wrist device", detail: "Match tracker", Icon: Watch },
-  { value: "quiz_medal", label: "Quiz medal", detail: "Knowledge award", Icon: Medal },
-  { value: "compass_badge", label: "Compass", detail: "Explorer badge", Icon: Compass },
-  { value: "champion_star", label: "Champion", detail: "Victory star", Icon: Star }
-];
+}>).map((option) => ({
+  ...option,
+  thumbnail: customizationThumbnail("back", option.value)
+}));
+
+const FOOTWEAR_ICONS: Record<PlayerFootwearId, LucideIcon> = {
+  runners: Zap,
+  army_boots: Mountain,
+  skate_shoes: RectangleHorizontal,
+  basketball_shoes: Volleyball,
+  sandals: Waves,
+  barefoot: Footprints
+};
+
+export const FOOTWEAR_OPTIONS: ReadonlyArray<{
+  value: PlayerFootwearId;
+  label: string;
+  detail: string;
+  Icon: LucideIcon;
+  thumbnail: string;
+}> = FOOTWEAR_CATALOG.map((footwear) => ({
+  value: footwear.id,
+  label: footwear.name,
+  detail: footwear.description,
+  Icon: FOOTWEAR_ICONS[footwear.id],
+  thumbnail: customizationThumbnail("footwear", footwear.id)
+}));
 
 export const VICTORY_POSE_OPTIONS: ReadonlyArray<{
   value: PlayerVictoryPoseId;
   label: string;
   detail: string;
   Icon: LucideIcon;
-}> = [
+  thumbnail: string;
+}> = ([
   { value: "champion", label: "Champion", detail: "Two-arm cheer", Icon: Crown },
   { value: "wave", label: "Wave", detail: "Friendly hello", Icon: Waves },
   { value: "salute", label: "Salute", detail: "Team ready", Icon: ShieldCheck },
   { value: "power", label: "Power pose", detail: "Strong finish", Icon: Rotate3d }
-];
+] satisfies ReadonlyArray<{
+  value: PlayerVictoryPoseId;
+  label: string;
+  detail: string;
+  Icon: LucideIcon;
+}>).map((option) => ({
+  ...option,
+  thumbnail: customizationThumbnail("victory", option.value)
+}));
 
 export function CharacterPreview({
   appearance,
@@ -115,7 +149,8 @@ export function CharacterPreview({
   localDecal,
   resetSignal = 0,
   showVictoryPose = false,
-  focusBack = false
+  focusBack = false,
+  focusFootwear = false
 }: {
   appearance: PlayerAppearance;
   team: Team;
@@ -124,6 +159,7 @@ export function CharacterPreview({
   resetSignal?: number;
   showVictoryPose?: boolean;
   focusBack?: boolean;
+  focusFootwear?: boolean;
 }) {
   const mountRef = useRef<HTMLDivElement>(null);
   const loadRef = useRef(loadDecalAsset);
@@ -135,9 +171,11 @@ export function CharacterPreview({
     const scene = new THREE.Scene();
     const camera = new THREE.PerspectiveCamera(32, 1, 0.1, 40);
     const compactLandscape = window.innerHeight <= 620 && window.innerWidth >= 901;
-    let distance = compactLandscape ? 11.4 : 13.1;
-    camera.position.set(0.45, compactLandscape ? 2.65 : 2.5, distance);
-    camera.lookAt(0, compactLandscape ? 2.5 : 2.42, 0);
+    const minDistance = 12.5;
+    const maxDistance = 19;
+    let distance = focusFootwear ? (compactLandscape ? 14.5 : 15.1) : (compactLandscape ? 15.2 : 16.1);
+    camera.position.set(0.45, focusFootwear ? 2.25 : (compactLandscape ? 2.5 : 2.55), distance);
+    camera.lookAt(0, focusFootwear ? 1.8 : (compactLandscape ? 1.95 : 2), 0);
     const renderer = new THREE.WebGLRenderer({ antialias: true, alpha: true, powerPreference: "low-power" });
     renderer.setPixelRatio(Math.min(window.devicePixelRatio, 1.5));
     renderer.outputColorSpace = THREE.SRGBColorSpace;
@@ -300,7 +338,7 @@ export function CharacterPreview({
         const [first, second] = [...pointers.values()];
         const nextDistance = Math.hypot(second.x - first.x, second.y - first.y);
         if (pinchDistance > 0) {
-          distance = Math.max(11.5, Math.min(17, distance - (nextDistance - pinchDistance) * 0.02));
+          distance = Math.max(minDistance, Math.min(maxDistance, distance - (nextDistance - pinchDistance) * 0.02));
           camera.position.z = distance;
         }
         pinchDistance = nextDistance;
@@ -321,7 +359,7 @@ export function CharacterPreview({
     };
     const wheel = (event: WheelEvent) => {
       event.preventDefault();
-      distance = Math.max(11.5, Math.min(17, distance + event.deltaY * 0.011));
+      distance = Math.max(minDistance, Math.min(maxDistance, distance + event.deltaY * 0.011));
       camera.position.z = distance;
       if (reducedMotion) renderer.render(scene, camera);
     };
@@ -343,7 +381,7 @@ export function CharacterPreview({
       (platformRing.material as THREE.Material).dispose();
       renderer.domElement.remove();
     };
-  }, [appearanceSignature(appearance), team, localDecal, resetSignal, showVictoryPose, focusBack]);
+  }, [appearanceSignature(appearance), team, localDecal, resetSignal, showVictoryPose, focusBack, focusFootwear]);
 
   return (
     <div
