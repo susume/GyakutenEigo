@@ -22,6 +22,8 @@ import {
   clampArenaPosition,
   ARENA_SCALE,
   ARENA_PLAYER_EYE_HEIGHT,
+  DESERT_CITADEL_MAIN_LEVEL_Y,
+  DESERT_CITADEL_ROOFTOP_LEVEL_Y,
   IRON_JUNCTION_LOADING_LEVEL_Y,
   IRON_JUNCTION_OVERPASS_LEVEL_Y,
   DEFAULT_PLAYER_HEALTH,
@@ -1188,13 +1190,17 @@ const scaledLevelPoint = (x: number, z: number, groundY = 0) => ({
 });
 
 const botBasePoint = (team: Team, mapId?: string) =>
-  scaledPoint(
+  mapId === "desert_citadel"
+    ? scaledPoint((team === "blue" ? -1 : 1) * 235, team === "blue" ? 58 : -58)
+    : scaledPoint(
     (team === "blue" ? -1 : 1)
       * (mapId === "temple_runoff" ? 205 : mapId === "iron_junction" ? 248 : 142),
     0
   );
 const botEnemyBasePoint = (team: Team, mapId?: string) =>
-  scaledPoint(
+  mapId === "desert_citadel"
+    ? scaledPoint((team === "blue" ? 1 : -1) * 235, team === "blue" ? -58 : 58)
+    : scaledPoint(
     (team === "blue" ? 1 : -1)
       * (mapId === "temple_runoff" ? 205 : mapId === "iron_junction" ? 248 : 142),
     0
@@ -1226,6 +1232,34 @@ const getIronJunctionPatrolPoints = (team: Team) => {
   return stages.flat();
 };
 
+const getDesertCitadelPatrolPoints = (team: Team) => {
+  const direction = team === "blue" ? 1 : -1;
+  const xStages = [-182, -108, -20, 96].map((x) => x * direction);
+  const upper = team === "blue"
+    ? [
+        scaledLevelPoint(-148, 92, DESERT_CITADEL_MAIN_LEVEL_Y),
+        scaledLevelPoint(-115, 76, DESERT_CITADEL_ROOFTOP_LEVEL_Y),
+        scaledLevelPoint(-50, 76, DESERT_CITADEL_ROOFTOP_LEVEL_Y),
+        scaledLevelPoint(90, 55, DESERT_CITADEL_ROOFTOP_LEVEL_Y)
+      ]
+    : [
+        scaledLevelPoint(148, 88, DESERT_CITADEL_MAIN_LEVEL_Y),
+        scaledLevelPoint(90, 55, DESERT_CITADEL_ROOFTOP_LEVEL_Y),
+        scaledLevelPoint(50, 60, DESERT_CITADEL_ROOFTOP_LEVEL_Y),
+        scaledLevelPoint(-100, 76, DESERT_CITADEL_ROOFTOP_LEVEL_Y)
+      ];
+  const stages = xStages.map((x, stage) => {
+    return [
+      scaledLevelPoint(x, 0, DESERT_CITADEL_MAIN_LEVEL_Y),
+      scaledLevelPoint(x, stage < 3 ? 78 : 70, DESERT_CITADEL_MAIN_LEVEL_Y),
+      scaledLevelPoint(x, -118),
+      scaledLevelPoint(x, stage === 0 || stage === 3 ? 133 : 60),
+      upper[stage]
+    ];
+  });
+  return stages.flat();
+};
+
 const getBotPatrolPoints = (team: Team, mapId?: string) => mapId === "temple_runoff"
   ? [
       scaledPoint(team === "blue" ? -136 : 136, -36),
@@ -1236,6 +1270,8 @@ const getBotPatrolPoints = (team: Team, mapId?: string) => mapId === "temple_run
     ]
   : mapId === "iron_junction"
     ? getIronJunctionPatrolPoints(team)
+  : mapId === "desert_citadel"
+    ? getDesertCitadelPatrolPoints(team)
   : [
       scaledPoint(0, -84),
       scaledPoint(team === "blue" ? -42 : 42, -28),
@@ -1297,6 +1333,12 @@ const getBotObjectiveGoal = (session: GameSession, bot: PlayerSession, brain: Bo
     return bot.team === "blue" ? botBasePoint(bot.team, session.settings.mapId) : botEnemyBasePoint(bot.team, session.settings.mapId);
   }
   if (state === "flank") {
+    if (session.settings.mapId === "desert_citadel") {
+      const lowerRoute = brain.routeIndex % 2 === 0;
+      return lowerRoute
+        ? scaledLevelPoint(brain.strafeDirection * 42, -118)
+        : scaledLevelPoint(brain.strafeDirection * 72, 78, DESERT_CITADEL_MAIN_LEVEL_Y);
+    }
     const side = brain.routeIndex % 2 === 0 ? -1 : 1;
     return scaledPoint(side * 82, brain.strafeDirection * 72);
   }
@@ -1623,7 +1665,7 @@ const advanceBots = () => {
         hasTarget: Boolean(target),
         distanceToGoal: horizontalDistance(botPosition(bot), rawGoal)
       })) {
-        brain.routeIndex += session.settings.mapId === "iron_junction" ? 5 : 1;
+        brain.routeIndex += session.settings.mapId === "iron_junction" || session.settings.mapId === "desert_citadel" ? 5 : 1;
         brain.navigationPath = undefined;
         goal = getBotObjectiveGoal(session, bot, brain, brain.state);
         rawGoal = clampArenaPosition({ ...goal, facing: bot.facing ?? 0 }, session.settings.mapId);

@@ -2364,11 +2364,13 @@ export default function ArenaPreview({
                   <path d="M 0 -4 L 0 4 M 0 -4 L 4 -2 L 0 0" />
                 </g>
               )}
-              <text x={toMiniMapX(isIronJunction ? scaleArenaValue(-248) : isTempleRunoff ? scaleArenaValue(-205) : -140)} y={toMiniMapY(isIronJunction ? 0 : isTempleRunoff ? scaleArenaValue(-154) : -78)} className="minimap-label">{isIronJunction || isTempleRunoff ? "Blue" : "West"}</text>
-              <text x={toMiniMapX(isIronJunction ? scaleArenaValue(232) : isTempleRunoff ? scaleArenaValue(184) : 122)} y={toMiniMapY(isIronJunction ? 0 : isTempleRunoff ? scaleArenaValue(-154) : -78)} className="minimap-label">{isIronJunction || isTempleRunoff ? "Red" : "East"}</text>
-              <text x={toMiniMapX(isIronJunction ? scaleArenaValue(-112) : 0)} y={toMiniMapY(isIronJunction ? scaleArenaValue(-130) : isTempleRunoff ? scaleArenaValue(-164) : -128)} className="minimap-label">{isIronJunction ? "Warehouse" : isTempleRunoff ? "Jungle" : "Ruins"}</text>
-              <text x={toMiniMapX(isIronJunction ? scaleArenaValue(58) : 0)} y={toMiniMapY(isIronJunction ? scaleArenaValue(-38) : isTempleRunoff ? 0 : -22)} className="minimap-label">{isIronJunction ? "Control" : isTempleRunoff ? "River" : "Market"}</text>
-              <text x={toMiniMapX(isIronJunction ? scaleArenaValue(104) : 0)} y={toMiniMapY(isIronJunction ? scaleArenaValue(151) : isTempleRunoff ? scaleArenaValue(156) : 118)} className="minimap-label">{isIronJunction ? "Depot" : isTempleRunoff ? "Court" : "Homes"}</text>
+              <text x={toMiniMapX(isIronJunction ? scaleArenaValue(-248) : isTempleRunoff ? scaleArenaValue(-205) : scaleArenaValue(-220))} y={toMiniMapY(isIronJunction ? 0 : isTempleRunoff ? scaleArenaValue(-154) : 0)} className="minimap-label">Blue</text>
+              <text x={toMiniMapX(isIronJunction ? scaleArenaValue(232) : isTempleRunoff ? scaleArenaValue(184) : scaleArenaValue(220))} y={toMiniMapY(isIronJunction ? 0 : isTempleRunoff ? scaleArenaValue(-154) : 0)} className="minimap-label">Red</text>
+              <text x={toMiniMapX(isIronJunction ? scaleArenaValue(-112) : isTempleRunoff ? 0 : scaleArenaValue(-110))} y={toMiniMapY(isIronJunction ? scaleArenaValue(-130) : isTempleRunoff ? scaleArenaValue(-164) : scaleArenaValue(-118))} className="minimap-label">{isIronJunction ? "Warehouse" : isTempleRunoff ? "Jungle" : "Palm Ruins"}</text>
+              <text x={toMiniMapX(isIronJunction ? scaleArenaValue(58) : 0)} y={toMiniMapY(isIronJunction ? scaleArenaValue(-38) : isTempleRunoff ? 0 : 0)} className="minimap-label">{isIronJunction ? "Control" : isTempleRunoff ? "River" : "Fountain"}</text>
+              <text x={toMiniMapX(isIronJunction ? scaleArenaValue(104) : isTempleRunoff ? 0 : scaleArenaValue(-105))} y={toMiniMapY(isIronJunction ? scaleArenaValue(151) : isTempleRunoff ? scaleArenaValue(156) : scaleArenaValue(82))} className="minimap-label">{isIronJunction ? "Depot" : isTempleRunoff ? "Court" : "Bazaar"}</text>
+              {isDesertCitadel && <text x={toMiniMapX(scaleArenaValue(108))} y={toMiniMapY(scaleArenaValue(72))} className="minimap-label">Sun Hall</text>}
+              {isDesertCitadel && <text x={toMiniMapX(0)} y={toMiniMapY(scaleArenaValue(133))} className="minimap-label">Canal</text>}
               {isIronJunction && <text x={toMiniMapX(scaleArenaValue(-35))} y={toMiniMapY(scaleArenaValue(218))} className="minimap-label">Tunnel</text>}
               {hasMultipleLevels && (
                 <text x={MINIMAP_WIDTH - 5} y={10} textAnchor="end" className="minimap-label">
@@ -2376,7 +2378,7 @@ export default function ArenaPreview({
                     ? miniMapLevel === "lower" ? "↓ LOWER" : miniMapLevel === "upper" ? "↑ UPPER" : "• MAIN"
                     : isIronJunction
                       ? miniMapLevel === "ground" ? "• GROUND" : miniMapLevel === "loading" ? "↑ LOADING" : "↑ OVERPASS"
-                      : miniMapLevel === "street" ? "• STREET" : miniMapLevel === "rooftop" ? "↑ ROOFTOP" : "↑ CITADEL"}
+                      : miniMapLevel === "lower" ? "↓ LOWER" : miniMapLevel === "main" ? "• MAIN" : "↑ UPPER"}
                 </text>
               )}
               {miniMapPlayer && (

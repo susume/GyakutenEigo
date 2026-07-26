@@ -1,6 +1,6 @@
 import assert from "node:assert/strict";
 import test from "node:test";
-import { resolveFlagCapture, resolveFlagPlacement, type FlagState, type PlayerSession } from "@quizstrike/shared";
+import { ARENA_SCALE, resolveFlagCapture, resolveFlagPlacement, type FlagState, type PlayerSession } from "@quizstrike/shared";
 import {
   BOT_DIFFICULTIES,
   chooseBotRole,
@@ -119,7 +119,7 @@ test("a flag carrier attempts placement after leaving the original pickup positi
     id: "carrier",
     team: "red",
     isAlive: true,
-    x: -88,
+    x: -220 * ARENA_SCALE,
     z: 0
   } satisfies Pick<PlayerSession, "id" | "team" | "isAlive" | "x" | "z">;
   const carriedFlag = {

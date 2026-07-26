@@ -244,7 +244,7 @@ test("resolvePracticeRespawn revives an eliminated player after three correct pr
   assert.equal(almostReady.player.snowballs, DEFAULT_SESSION_SETTINGS.startingSnowballs);
   assert.equal(almostReady.player.respawnCorrectAnswers, 0);
   assert.deepEqual(
-    { x: almostReady.player.x, z: almostReady.player.z, facing: almostReady.player.facing },
+    { x: almostReady.player.x, y: almostReady.player.y, z: almostReady.player.z, facing: almostReady.player.facing },
     getTeamSpawn("blue")
   );
 });
@@ -879,8 +879,8 @@ test("clampArenaPosition preserves the large classroom arena footprint", () => {
 });
 
 test("Desert Citadel provides enough protected team and free-for-all spawns", () => {
-  assert.equal(TEAM_SPAWNS.blue.length, 24);
-  assert.equal(TEAM_SPAWNS.red.length, 24);
+  assert.equal(TEAM_SPAWNS.blue.length, 20);
+  assert.equal(TEAM_SPAWNS.red.length, 20);
   assert.equal(FREE_FOR_ALL_SPAWNS.length, 60);
   assert.equal(TEAM_SPAWNS.blue.every((spawn) => isInsideTeamBase("blue", spawn)), true);
   assert.equal(TEAM_SPAWNS.red.every((spawn) => isInsideTeamBase("red", spawn)), true);
