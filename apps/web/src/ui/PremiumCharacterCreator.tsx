@@ -3,7 +3,6 @@ import {
   APPEARANCE_UPDATE_COOLDOWN_MS,
   COSMETIC_CATALOG,
   DEFAULT_PLAYER_APPEARANCE,
-  SCHOOL_APPEARANCE_PRESETS,
   sanitizePlayerAppearance,
   type CharacterCustomizationSettings,
   type CosmeticProgress,
@@ -17,7 +16,6 @@ import {
   CharacterPreview,
   DETAIL_ACCESSORY_OPTIONS,
   HEAD_STYLE_OPTIONS,
-  PRESET_PRESENTATION,
   VICTORY_POSE_OPTIONS
 } from "./CharacterCreator";
 
@@ -109,27 +107,18 @@ export default function PremiumCharacterCreator({
     setDraft((current) => sanitizePlayerAppearance(makeNext(current)));
   };
 
-  const choosePreset = (preset: (typeof SCHOOL_APPEARANCE_PRESETS)[number]) => {
-    updateDraft((current) => ({ ...preset.appearance, decalAssetId: current.decalAssetId }));
-  };
-
   const unlockLevel = (slot: CosmeticSlot, id: string) =>
     COSMETIC_CATALOG.find((item) => item.slot === slot && item.id === id)?.unlockLevel ?? 1;
   const isUnlocked = (slot: CosmeticSlot, id: string) => unlockLevel(slot, id) <= progress.level;
 
   const randomize = () => {
     const pick = <T,>(values: readonly T[]) => values[Math.floor(Math.random() * values.length)];
-    const preset = pick(SCHOOL_APPEARANCE_PRESETS);
-    if (policy.presetsOnly) {
-      choosePreset(preset);
-      return;
-    }
     const head = pick(HEAD_STYLE_OPTIONS.filter((option) => isUnlocked("head", option.id)));
     const back = pick(BACK_ACCESSORY_OPTIONS.filter((option) => isUnlocked("back", option.value)));
     const detail = pick(DETAIL_ACCESSORY_OPTIONS.filter((option) => isUnlocked("detail", option.value)));
     const pose = pick(VICTORY_POSE_OPTIONS.filter((option) => isUnlocked("pose", option.value)));
     updateDraft((current) => ({
-      ...preset.appearance,
+      ...current,
       headStyleId: head.id,
       backAccessoryId: back.value,
       detailAccessoryId: detail.value,
@@ -171,6 +160,7 @@ export default function PremiumCharacterCreator({
           loadDecalAsset={loadDecalAsset}
           resetSignal={cameraResetSignal}
           showVictoryPose={activeCategory === "pose"}
+          focusBack={activeCategory === "back"}
         />
         <p className="preview-hint"><RotateCcw size={13} />Drag to rotate <span /> Scroll to zoom</p>
       </div>
@@ -187,36 +177,7 @@ export default function PremiumCharacterCreator({
           <p>{progress.nextLevelXp === undefined ? "All cosmetics unlocked" : `${progress.nextLevelXp - progress.xp} XP to the next cosmetic level`}</p>
         </div>
         <div className="creator-controls-scroll">
-          <fieldset className="creator-option-section preset-section">
-            <legend>Character preset</legend>
-            <div className="appearance-presets" aria-label="Approved presets">
-              {SCHOOL_APPEARANCE_PRESETS.map((preset) => {
-                const presentation = PRESET_PRESENTATION[preset.id] ?? {
-                  description: "Arena style",
-                  Icon: UserRound
-                };
-                const selected = draft.characterPreset === preset.appearance.characterPreset;
-                return (
-                  <button
-                    type="button"
-                    key={preset.id}
-                    className={selected ? "selected" : ""}
-                    onClick={() => choosePreset(preset)}
-                    aria-pressed={selected}
-                    disabled={disabled}
-                  >
-                    <span className="preset-icon"><presentation.Icon size={19} /></span>
-                    <span><strong>{preset.name}</strong><small>{presentation.description}</small></span>
-                    {selected && <Check className="preset-check" size={14} />}
-                  </button>
-                );
-              })}
-            </div>
-          </fieldset>
-
-          {!policy.presetsOnly && (
-            <>
-              <div className="cosmetic-category-tabs" role="tablist" aria-label="Cosmetic categories">
+          <div className="cosmetic-category-tabs" role="tablist" aria-label="Cosmetic categories">
                 {([
                   { id: "head", label: "Head", Icon: UserRound },
                   { id: "back", label: "Back", Icon: Backpack },
@@ -234,7 +195,7 @@ export default function PremiumCharacterCreator({
                     <category.Icon size={15} />{category.label}
                   </button>
                 ))}
-              </div>
+          </div>
 
               {activeCategory === "head" && (
                 <fieldset className="creator-option-section accessory-options cosmetic-catalog-grid">
@@ -254,9 +215,10 @@ export default function PremiumCharacterCreator({
                           disabled={disabled || locked}
                           title={locked ? `Unlocks at level ${level}` : option.label}
                         >
-                          <option.Icon size={17} />
+                          <span className="cosmetic-card-icon"><option.Icon size={21} /></span>
                           <span><strong>{option.label}</strong><small>{locked ? `Level ${level}` : option.description}</small></span>
                           {locked && <Lock className="cosmetic-lock" size={12} />}
+                          {!locked && draft.headStyleId === option.id && <Check className="cosmetic-check" size={13} />}
                         </button>
                       );
                     })}
@@ -281,9 +243,10 @@ export default function PremiumCharacterCreator({
                           disabled={disabled || locked}
                           title={locked ? `Unlocks at level ${level}` : option.detail}
                         >
-                          <option.Icon size={17} />
+                          <span className="cosmetic-card-icon"><option.Icon size={21} /></span>
                           <span><strong>{option.label}</strong><small>{locked ? `Level ${level}` : option.detail}</small></span>
                           {locked && <Lock className="cosmetic-lock" size={12} />}
+                          {!locked && draft.backAccessoryId === option.value && <Check className="cosmetic-check" size={13} />}
                         </button>
                       );
                     })}
@@ -308,9 +271,10 @@ export default function PremiumCharacterCreator({
                           disabled={disabled || locked}
                           title={locked ? `Unlocks at level ${level}` : option.detail}
                         >
-                          <option.Icon size={17} />
+                          <span className="cosmetic-card-icon"><option.Icon size={21} /></span>
                           <span><strong>{option.label}</strong><small>{locked ? `Level ${level}` : option.detail}</small></span>
                           {locked && <Lock className="cosmetic-lock" size={12} />}
+                          {!locked && draft.detailAccessoryId === option.value && <Check className="cosmetic-check" size={13} />}
                         </button>
                       );
                     })}
@@ -335,17 +299,16 @@ export default function PremiumCharacterCreator({
                           disabled={disabled || locked}
                           title={locked ? `Unlocks at level ${level}` : option.detail}
                         >
-                          <option.Icon size={17} />
+                          <span className="cosmetic-card-icon"><option.Icon size={21} /></span>
                           <span><strong>{option.label}</strong><small>{locked ? `Level ${level}` : option.detail}</small></span>
                           {locked && <Lock className="cosmetic-lock" size={12} />}
+                          {!locked && draft.victoryPoseId === option.value && <Check className="cosmetic-check" size={13} />}
                         </button>
                       );
                     })}
                   </div>
                 </fieldset>
               )}
-            </>
-          )}
         </div>
       </div>
 

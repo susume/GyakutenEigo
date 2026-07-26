@@ -49,10 +49,10 @@ test("serializeCharacterAppearance returns compact multiplayer-safe appearance s
     serializeCharacterAppearance({ team: "blue", playerId: "learner-7", gear: "power_blaster" }),
     {
       team: "blue",
-      variant: "heavy",
-      headStyleId: "human",
+      variant: "assault",
+      headStyleId: "boy_short_hair",
       vest: "plate_carrier",
-      backAccessoryId: "utility_pack",
+      backAccessoryId: "none",
       detailAccessoryId: "none",
       victoryPoseId: "champion",
       accent: "blue"

@@ -58,7 +58,6 @@ import {
   isMainRoundAnswer,
   isRoundActive,
   isRoundBuyPhase,
-  isApprovedAppearancePreset,
   createInitialFlagState,
   randomizeBalancedTeams,
   selectLateJoinTeam,
@@ -2149,7 +2148,7 @@ app.post("/api/sessions/:code/bots", requireTeacher, (req: AuthedRequest, res) =
       gear: "starter_blaster",
       weapon: "starter_blaster",
       perks: [],
-      appearance: { ...DEFAULT_PLAYER_APPEARANCE, characterPreset: "support" },
+      appearance: { ...DEFAULT_PLAYER_APPEARANCE },
       joinedAt: now()
     };
     session.players.push(bot);
@@ -2443,10 +2442,6 @@ app.put("/api/sessions/:code/players/:playerId/appearance", (req, res) => {
   const lockedItems = getLockedAppearanceItems(appearance, getCosmeticProgress(player).level);
   if (lockedItems.length > 0) {
     res.status(403).json({ error: `${lockedItems[0].name} unlocks at cosmetic level ${lockedItems[0].unlockLevel}.` });
-    return;
-  }
-  if (policy.presetsOnly && !isApprovedAppearancePreset(appearance)) {
-    res.status(400).json({ error: "This room is limited to approved appearance presets." });
     return;
   }
   if (appearance.decalAssetId) {

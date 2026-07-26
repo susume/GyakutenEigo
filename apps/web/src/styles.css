@@ -628,8 +628,6 @@ label.toggle-row input {
 .creator-heading h3 { margin:2px 0 0; color:#15243a; font-size:1.35rem; }
 .creator-actions { display:flex; gap:7px; }
 .creator-actions button,.file-button,.save-appearance { display:inline-flex; align-items:center; justify-content:center; gap:6px; }
-.appearance-presets { display:grid; grid-template-columns:repeat(3,1fr); gap:7px; }
-.appearance-presets button { border-color:#b9d1e5; background:#fff; font-weight:900; }
 .appearance-fields { display:grid; grid-template-columns:repeat(3,minmax(0,1fr)); gap:9px; }
 .appearance-fields > label { display:grid; gap:4px; color:#52677d; font-size:.74rem; font-weight:900; }
 .appearance-fields select { min-width:0; padding:8px; }
@@ -2997,7 +2995,7 @@ body:has(.waiting-game-layout) {
 
 .cosmetic-category-tabs button {
   min-width: 0;
-  min-height: 34px;
+  min-height: 42px;
   display: inline-flex;
   align-items: center;
   justify-content: center;
@@ -3007,7 +3005,7 @@ body:has(.waiting-game-layout) {
   padding: 5px;
   background: rgba(5, 21, 33, 0.62);
   color: #88aabc;
-  font-size: 0.58rem;
+  font-size: 0.64rem;
   font-weight: 900;
 }
 
@@ -3037,79 +3035,6 @@ body:has(.waiting-game-layout) {
   color: #7898aa;
   font-size: 0.61rem;
   line-height: 1.25;
-}
-
-.premium-character-creator .appearance-presets {
-  grid-template-columns: repeat(3, minmax(0, 1fr));
-  gap: 7px;
-}
-
-.premium-character-creator .appearance-presets button {
-  position: relative;
-  min-width: 0;
-  min-height: 58px;
-  display: grid;
-  grid-template-columns: 32px minmax(0, 1fr);
-  align-items: center;
-  gap: 8px;
-  border-color: rgba(158, 210, 235, 0.14);
-  border-radius: 12px;
-  padding: 7px 8px;
-  background: rgba(5, 21, 33, 0.7);
-  color: #dceefa;
-  text-align: left;
-}
-
-.premium-character-creator .appearance-presets button:hover,
-.premium-character-creator .appearance-presets button:focus-visible {
-  border-color: rgba(104, 215, 255, 0.55);
-  background: rgba(16, 50, 69, 0.9);
-}
-
-.premium-character-creator .appearance-presets button.selected {
-  border-color: #63d6ff;
-  background: linear-gradient(145deg, rgba(42, 127, 160, 0.28), rgba(13, 42, 60, 0.9));
-  box-shadow: inset 0 0 0 1px rgba(99, 214, 255, 0.32);
-}
-
-.preset-icon {
-  display: grid;
-  width: 32px;
-  height: 32px;
-  place-items: center;
-  border-radius: 9px;
-  background: rgba(104, 215, 255, 0.1);
-  color: #7ddcff;
-}
-
-.appearance-presets button > span:nth-child(2) {
-  min-width: 0;
-  display: grid;
-  gap: 1px;
-}
-
-.appearance-presets button strong {
-  overflow: hidden;
-  font-size: 0.72rem;
-  line-height: 1.1;
-  text-overflow: ellipsis;
-  white-space: nowrap;
-}
-
-.appearance-presets button small {
-  overflow: hidden;
-  color: #7f9daf;
-  font-size: 0.58rem;
-  line-height: 1.12;
-  text-overflow: ellipsis;
-  white-space: nowrap;
-}
-
-.preset-check {
-  position: absolute;
-  top: 5px;
-  right: 5px;
-  color: #84e4ff;
 }
 
 .compact-options > div {
@@ -3150,20 +3075,20 @@ body:has(.waiting-game-layout) {
 .accessory-card-grid {
   display: grid;
   grid-template-columns: repeat(3, minmax(0, 1fr));
-  gap: 6px;
+  gap: 8px;
 }
 
 .accessory-card-grid button {
   position: relative;
   min-width: 0;
-  min-height: 48px;
+  min-height: 62px;
   display: grid;
-  grid-template-columns: 24px minmax(0, 1fr);
+  grid-template-columns: 32px minmax(0, 1fr);
   align-items: center;
-  gap: 6px;
+  gap: 8px;
   border-color: rgba(155, 210, 237, 0.14);
   border-radius: 11px;
-  padding: 6px 7px;
+  padding: 8px 9px;
   background: rgba(5, 21, 33, 0.62);
   color: #8faebe;
   text-align: left;
@@ -3182,6 +3107,34 @@ body:has(.waiting-game-layout) {
   color: #eabf63;
 }
 
+.cosmetic-check {
+  position: absolute;
+  top: 5px;
+  right: 5px;
+  display: grid;
+  width: 17px;
+  height: 17px;
+  place-items: center;
+  border-radius: 50%;
+  background: #58ceff;
+  color: #082033;
+}
+
+.cosmetic-card-icon {
+  display: grid;
+  width: 32px;
+  height: 32px;
+  place-items: center;
+  border-radius: 9px;
+  background: rgba(104, 215, 255, 0.1);
+  color: #8bdfff;
+}
+
+.accessory-card-grid button.selected .cosmetic-card-icon {
+  background: rgba(89, 207, 255, 0.2);
+  color: #e7faff;
+}
+
 .accessory-card-grid button > span {
   min-width: 0;
   display: grid;
@@ -3191,7 +3144,7 @@ body:has(.waiting-game-layout) {
 .accessory-card-grid button strong {
   overflow: hidden;
   color: #dceefa;
-  font-size: 0.63rem;
+  font-size: 0.68rem;
   line-height: 1.05;
   text-overflow: ellipsis;
   white-space: nowrap;
@@ -3200,7 +3153,7 @@ body:has(.waiting-game-layout) {
 .accessory-card-grid button small {
   overflow: hidden;
   color: #7797aa;
-  font-size: 0.53rem;
+  font-size: 0.56rem;
   line-height: 1.05;
   text-overflow: ellipsis;
   white-space: nowrap;
@@ -3331,11 +3284,6 @@ body:has(.waiting-game-layout) {
     margin-bottom: 3px;
   }
 
-  .premium-character-creator .appearance-presets button {
-    min-height: 40px;
-    padding-block: 3px;
-  }
-
   .compact-options button {
     min-height: 30px;
     padding-block: 3px;
@@ -3346,8 +3294,8 @@ body:has(.waiting-game-layout) {
   }
 
   .accessory-card-grid button {
-    min-height: 32px;
-    padding-block: 3px;
+    min-height: 50px;
+    padding-block: 5px;
   }
 
   .creator-footer {
@@ -3523,10 +3471,6 @@ body:has(.waiting-game-layout) {
   .premium-character-creator {
     grid-template-rows: 330px auto auto;
     padding-inline: 10px;
-  }
-
-  .premium-character-creator .appearance-presets {
-    grid-template-columns: repeat(2, minmax(0, 1fr));
   }
 
   .compact-options > div {

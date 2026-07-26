@@ -171,6 +171,11 @@ export class CharacterFactory {
       HeadSocket: head,
       FaceSocket: head,
       BackSocket: torso,
+      UpperBackSocket: torso,
+      FullBackSocket: torso,
+      LowerBackSocket: torso,
+      PelvisRearSocket: skeletonRoot,
+      DiagonalBackSocket: torso,
       ShoulderSocket: leftArm,
       ChestBadgeSocket: torso,
       WristSocket: leftForearm,
@@ -180,6 +185,11 @@ export class CharacterFactory {
       HeadSocket: [0, 0, 0],
       FaceSocket: [0, 0.04, -0.3],
       BackSocket: [0, 0.04, 0.28],
+      UpperBackSocket: [0, 0.12, 0.27],
+      FullBackSocket: [0, 0.02, 0.25],
+      LowerBackSocket: [0, -0.2, 0.26],
+      PelvisRearSocket: [0, 0.75, 0.18],
+      DiagonalBackSocket: [0, 0.02, 0.29],
       ShoulderSocket: [0, 0, -0.1],
       ChestBadgeSocket: [0, 0.12, -0.325],
       WristSocket: [0, -0.19, -0.1],
@@ -203,6 +213,8 @@ export class CharacterFactory {
     if (backAccessory) {
       accessorySockets[backDefinition.socket].add(backAccessory);
       accessories.push(backAccessory);
+      root.userData.activeBackAccessoryId = appearance.customization.backAccessoryId;
+      root.userData.activeBackMount = backDefinition.mount;
     }
     const detailDefinition = DETAIL_ACCESSORY_DEFINITIONS[appearance.customization.detailAccessoryId];
     const detailAccessory = createDetailAccessory(appearance.customization.detailAccessoryId, materials);

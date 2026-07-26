@@ -30,13 +30,12 @@ type PlayerFixture = {
 };
 
 type AppearanceFixture = {
-  characterPreset: string;
   headStyleId: string;
   backAccessoryId: string;
   detailAccessoryId: string;
   victoryPoseId: string;
   decalAssetId?: string;
-  appearanceVersion: 4;
+  appearanceVersion: 6;
 };
 
 type JoinedPlayer = {
@@ -48,12 +47,11 @@ type JoinedPlayer = {
 };
 
 const defaultAppearance: AppearanceFixture = {
-  characterPreset: "assault",
-  headStyleId: "human",
-  backAccessoryId: "utility_pack",
+  headStyleId: "boy_short_hair",
+  backAccessoryId: "none",
   detailAccessoryId: "none",
   victoryPoseId: "champion",
-  appearanceVersion: 4
+  appearanceVersion: 6
 };
 
 const onePixelPng = Buffer.from(
@@ -215,7 +213,6 @@ test("real HTTP appearance flow enforces identity, room scope, locking, and clea
       enabled: true,
       uploadsEnabled: true,
       aiEnabled: false,
-      presetsOnly: false,
       persistAcrossSessions: false
     }
   });
@@ -233,7 +230,7 @@ test("real HTTP appearance flow enforces identity, room scope, locking, and clea
     {
       method: "PUT",
       playerToken: alpha.playerToken,
-      body: { appearance: { ...defaultAppearance, backAccessoryId: "rocket_pack" } }
+      body: { appearance: { ...defaultAppearance, detailAccessoryId: "champion_star" } }
     }
   );
   assert.equal(progressionLocked.response.status, 403);
@@ -470,7 +467,6 @@ test("a 40-student room keeps bounded appearance state and rejects student 41", 
       enabled: true,
       uploadsEnabled: false,
       aiEnabled: false,
-      presetsOnly: false,
       persistAcrossSessions: false
     }
   });
@@ -489,9 +485,8 @@ test("a 40-student room keeps bounded appearance state and rejects student 41", 
   const saves = await Promise.all(students.map((student, index) => {
     const appearance: AppearanceFixture = {
       ...defaultAppearance,
-      characterPreset: index % 2 === 0 ? "support" : "engineer",
       headStyleId: index % 2 === 0 ? "fox" : "panda",
-      backAccessoryId: index % 2 === 0 ? "compact_pack" : "tech_pack"
+      backAccessoryId: index % 2 === 0 ? "utility_pack" : "none"
     };
     return api(
       `/api/sessions/${session.sessionCode}/players/${student.player.id}/appearance`,
@@ -503,7 +498,7 @@ test("a 40-student room keeps bounded appearance state and rejects student 41", 
   const state = await api<{ session: SessionFixture }>(`/api/sessions/${session.sessionCode}`);
   assert.equal(state.response.status, 200);
   assert.equal(state.body.session.players.length, 40);
-  assert.ok(state.body.session.players.every((player) => player.appearance?.appearanceVersion === 4));
+  assert.ok(state.body.session.players.every((player) => player.appearance?.appearanceVersion === 6));
   assert.equal(state.text.includes("data:image"), false);
   assert.equal(state.text.includes(onePixelPng.toString("base64")), false);
 
@@ -513,7 +508,8 @@ test("a 40-student room keeps bounded appearance state and rejects student 41", 
     { playerToken: returning.playerToken }
   );
   assert.equal(rejoined.response.status, 200);
-  assert.equal(rejoined.body.player.appearance?.characterPreset, "engineer");
+  assert.equal(rejoined.body.player.appearance?.headStyleId, "panda");
+  assert.equal(rejoined.body.player.appearance?.backAccessoryId, "none");
 
   const ended = await api(`/api/sessions/${session.sessionCode}/end`, {
     method: "POST",
@@ -568,7 +564,6 @@ test("40 authenticated Socket.IO clients receive bounded room state and movement
       enabled: true,
       uploadsEnabled: false,
       aiEnabled: false,
-      presetsOnly: false,
       persistAcrossSessions: false
     }
   });

@@ -124,33 +124,13 @@ export const CHARACTER_HITBOXES = {
   rightLeg: { damageMultiplier: 0.75, centerY: 0.38, radius: 0.17, height: 0.7 }
 } as const;
 
-const stableHash = (value: string) => {
-  let hash = 0;
-  for (let index = 0; index < value.length; index += 1) {
-    hash = (hash * 31 + value.charCodeAt(index)) >>> 0;
-  }
-  return hash;
-};
-
-const variantFromGear = (gear?: string): CharacterVariant | null => {
-  if (gear === "power_blaster") return "heavy";
-  if (gear === "quick_blaster" || gear === "speed_shoes") return "support";
-  if (gear === "shield_vest") return "engineer";
-  return null;
-};
-
-export const resolveCharacterVariant = ({ playerId, gear, variant }: CharacterAppearanceInput): CharacterVariant => {
-  if (variant) return variant;
-  const gearVariant = variantFromGear(gear);
-  if (gearVariant) return gearVariant;
-  const variants: CharacterVariant[] = ["assault", "support", "sniper", "engineer", "medic"];
-  return variants[stableHash(playerId) % variants.length];
-};
+export const resolveCharacterVariant = ({ variant }: CharacterAppearanceInput): CharacterVariant =>
+  variant ?? "assault";
 
 export const resolveCharacterAppearance = (input: CharacterAppearanceInput): CharacterAppearance => {
   const base = TEAM_CHARACTER_CONFIGS[input.team];
   const custom = input.appearance ? sanitizePlayerAppearance(input.appearance) : undefined;
-  const variant = custom?.characterPreset ?? resolveCharacterVariant(input);
+  const variant = resolveCharacterVariant(input);
   const variantSilhouette = CHARACTER_VARIANTS[variant];
   return {
     team: input.team,
@@ -162,8 +142,8 @@ export const resolveCharacterAppearance = (input: CharacterAppearanceInput): Cha
       ...variantSilhouette
     },
     customization: {
-      headStyleId: custom?.headStyleId ?? "human",
-      backAccessoryId: custom?.backAccessoryId ?? "utility_pack",
+      headStyleId: custom?.headStyleId ?? "boy_short_hair",
+      backAccessoryId: custom?.backAccessoryId ?? "none",
       detailAccessoryId: custom?.detailAccessoryId ?? "none",
       victoryPoseId: custom?.victoryPoseId ?? "champion",
       ...(custom?.decalAssetId ? { decalAssetId: custom.decalAssetId } : {})

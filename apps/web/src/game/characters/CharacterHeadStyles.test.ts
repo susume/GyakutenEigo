@@ -43,20 +43,37 @@ test("every registered style builds one complete bounded head", () => {
   }
 });
 
-test("invalid head styles fail safely to human", () => {
+test("Boy and Girl use complete anime heads with lightweight hair controls", () => {
+  const materials = makeMaterials();
+  assert.equal(HEAD_STYLE_IDS.includes("human" as never), false);
+  for (const id of ["boy_short_hair", "girl_mid_hair"] as const) {
+    const head = createHeadStyle(id, materials);
+    const controls: THREE.Object3D[] = [];
+    head.traverse((object) => {
+      if (object.userData.cosmeticMotionNode?.startsWith("hair")) controls.push(object);
+    });
+    assert.ok(controls.some((object) => object.userData.cosmeticMotionNode === "hairCrown"));
+    assert.ok(controls.some((object) => object.userData.cosmeticMotionNode === "hairFringe"));
+    if (id === "girl_mid_hair") {
+      assert.ok(controls.filter((object) => object.userData.cosmeticMotionNode === "hairLock").length >= 4);
+    }
+  }
+});
+
+test("invalid head styles fail safely to Boy", () => {
   const head = createHeadStyle("missing-style", makeMaterials());
-  assert.equal(head.name, "HeadStyle_human");
+  assert.equal(head.name, "HeadStyle_boy_short_hair");
   assert.equal(head.userData.fallbackFrom, "missing-style");
 });
 
-test("a style build failure falls back to human", () => {
+test("a style build failure falls back to Boy", () => {
   const originalBuilder = HEAD_STYLE_REGISTRY.fox.create;
   HEAD_STYLE_REGISTRY.fox.create = () => {
     throw new Error("simulated asset failure");
   };
   try {
     const head = createHeadStyle("fox", makeMaterials());
-    assert.equal(head.name, "HeadStyle_human");
+    assert.equal(head.name, "HeadStyle_boy_short_hair");
     assert.equal(head.userData.fallbackFrom, "fox");
   } finally {
     HEAD_STYLE_REGISTRY.fox.create = originalBuilder;
@@ -69,12 +86,11 @@ test("a character contains exactly one primary head visual and fixed hitboxes", 
     playerId: "head-style-test",
     team: "blue",
     appearance: {
-      characterPreset: "assault",
       headStyleId: "rabbit",
       backAccessoryId: "none",
       detailAccessoryId: "none",
       victoryPoseId: "champion",
-      appearanceVersion: 4
+      appearanceVersion: 6
     }
   });
   const primaryHeads: THREE.Object3D[] = [];
@@ -91,12 +107,11 @@ test("a character contains exactly one primary head visual and fixed hitboxes", 
 test("two players can share a style without sharing scene nodes", () => {
   const factory = new CharacterFactory();
   const appearance = {
-    characterPreset: "assault" as const,
     headStyleId: "fox" as const,
     backAccessoryId: "none" as const,
     detailAccessoryId: "none" as const,
     victoryPoseId: "champion" as const,
-    appearanceVersion: 4 as const
+    appearanceVersion: 6 as const
   };
   const first = factory.createCharacter({ playerId: "first", team: "blue", appearance });
   const second = factory.createCharacter({ playerId: "second", team: "red", appearance });
@@ -123,12 +138,11 @@ test("rapid replacement never grows the scene beyond one active character or hea
       playerId: "rapid-switch",
       team: "blue",
       appearance: {
-        characterPreset: "assault",
         headStyleId,
         backAccessoryId: "none",
         detailAccessoryId: "none",
         victoryPoseId: "champion",
-        appearanceVersion: 4
+        appearanceVersion: 6
       }
     });
     scene.add(active.root);
@@ -150,12 +164,11 @@ test("vertical movement and respawn animation keep the complete head attached", 
     playerId: "vertical-head",
     team: "red",
     appearance: {
-      characterPreset: "assault",
       headStyleId: "robot",
       backAccessoryId: "none",
       detailAccessoryId: "none",
       victoryPoseId: "champion",
-      appearanceVersion: 4
+      appearanceVersion: 6
     }
   });
   const head = model.root.getObjectByName("HeadStyle_robot");

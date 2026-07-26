@@ -1,10 +1,10 @@
 import assert from "node:assert/strict";
 import test from "node:test";
 import * as THREE from "three";
-import type { PlayerHeadStyleId } from "@quizstrike/shared";
+import { HEAD_STYLE_IDS, type PlayerHeadStyleId } from "@quizstrike/shared";
 import { CharacterFactory } from "./CharacterFactory";
 
-const HEAD_STYLES: PlayerHeadStyleId[] = ["human", "fox", "panda", "bear", "rabbit", "robot"];
+const HEAD_STYLES: PlayerHeadStyleId[] = [...HEAD_STYLE_IDS];
 
 const worldPosition = (root: THREE.Object3D, name: string) => {
   const object = root.getObjectByName(name);
@@ -23,12 +23,11 @@ test("QS AR-1 remains socket-driven and clear of every current head style", () =
       team: headStyleId === "fox" ? "red" : "blue",
       gear: "starter_blaster",
       appearance: {
-        characterPreset: "captain",
         headStyleId,
         backAccessoryId: "utility_pack",
         detailAccessoryId: "none",
         victoryPoseId: "champion",
-        appearanceVersion: 4
+        appearanceVersion: 6
       }
     });
     for (let frame = 0; frame < 60; frame += 1) {

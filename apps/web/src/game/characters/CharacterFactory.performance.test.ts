@@ -1,6 +1,7 @@
 import test from "node:test";
 import assert from "node:assert/strict";
 import * as THREE from "three";
+import { BACK_ACCESSORY_IDS, HEAD_STYLE_IDS } from "@quizstrike/shared";
 import { CharacterFactory } from "./CharacterFactory.js";
 
 test("40 lobby characters keep the shared-body render budget bounded", () => {
@@ -10,12 +11,11 @@ test("40 lobby characters keep the shared-body render budget bounded", () => {
     playerId: `load-student-${index}`,
     team: index % 2 === 0 ? "blue" : "red",
     appearance: {
-      characterPreset: "captain",
-      headStyleId: index % 2 === 0 ? "fox" : "panda",
-      backAccessoryId: "utility_pack",
+      headStyleId: HEAD_STYLE_IDS[index % HEAD_STYLE_IDS.length],
+      backAccessoryId: BACK_ACCESSORY_IDS[index % BACK_ACCESSORY_IDS.length],
       detailAccessoryId: "none",
       victoryPoseId: "champion",
-      appearanceVersion: 4
+      appearanceVersion: 6
     }
   }));
   const constructionMs = performance.now() - startedAt;

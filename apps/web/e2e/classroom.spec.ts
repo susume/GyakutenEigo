@@ -50,7 +50,6 @@ const createClassroom = async (request: APIRequestContext): Promise<ClassroomFix
           enabled: true,
           uploadsEnabled: false,
           aiEnabled: false,
-          presetsOnly: false,
           persistAcrossSessions: false
         }
       }
@@ -85,19 +84,19 @@ test("student customizes, reloads, and receives match start over Socket.IO", asy
   await expect(page.getByRole("heading", { name: "Build Your Player" })).toBeVisible();
   const creatorReadyMs = performance.now() - browserStartedAt;
   await expect(page.getByText("1 joined", { exact: true })).toBeVisible();
-  const bodyPreset = page.getByLabel("Body preset");
+  const foxHead = page.getByRole("button", { name: /Fox/ });
   const appearanceSaved = page.waitForResponse(
     (response) => response.request().method() === "PUT" && response.url().includes("/appearance")
   );
-  await bodyPreset.selectOption("engineer");
+  await foxHead.click();
   expect((await appearanceSaved).status()).toBe(200);
   const appearanceSavedMs = performance.now() - browserStartedAt;
-  await expect(bodyPreset).toHaveValue("engineer");
+  await expect(foxHead).toHaveAttribute("aria-pressed", "true");
   await expect(page.getByRole("button", { name: "Saved" })).toBeDisabled();
 
   await page.reload();
   await expect(page.getByRole("heading", { name: "Build Your Player" })).toBeVisible();
-  await expect(page.getByLabel("Body preset")).toHaveValue("engineer");
+  await expect(page.getByRole("button", { name: /Fox/ })).toHaveAttribute("aria-pressed", "true");
   const restoredMs = performance.now() - browserStartedAt;
 
   const start = await request.post(`/api/sessions/${classroom.code}/start`, {

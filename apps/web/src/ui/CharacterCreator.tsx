@@ -13,28 +13,25 @@ import {
   Badge,
   Backpack,
   Bot,
-  BookOpen,
-  BriefcaseBusiness,
   Cat,
   Circle,
   Crown,
   Compass,
-  Flag,
+  Feather,
+  Flame,
   Medal,
-  Package,
   Rabbit,
-  Radio,
   Rocket,
   Rotate3d,
   Shield,
   ShieldCheck,
+  Snowflake,
   Sparkles,
   Star,
-  Telescope,
+  Sword,
   UserRound,
   Watch,
   Waves,
-  Wrench,
   X,
   type LucideIcon
 } from "lucide-react";
@@ -42,22 +39,17 @@ import { CharacterFactory } from "../game/characters/CharacterFactory";
 
 const appearanceSignature = (appearance: PlayerAppearance) => JSON.stringify(appearance);
 
-export const PRESET_PRESENTATION: Record<string, { description: string; Icon: LucideIcon }> = {
-  captain: { description: "Classic arena look", Icon: Shield },
-  trailblazer: { description: "Sporty field kit", Icon: Sparkles },
-  inventor: { description: "Workshop style", Icon: Wrench },
-  scout: { description: "Light explorer kit", Icon: Telescope },
-  defender: { description: "Strong silhouette", Icon: ShieldCheck },
-  explorer: { description: "Adventure ready", Icon: Compass }
-};
-
 const HEAD_STYLE_ICONS: Record<PlayerHeadStyleId, LucideIcon> = {
-  human: UserRound,
+  boy_short_hair: UserRound,
+  girl_mid_hair: Sparkles,
   fox: Cat,
   panda: Circle,
   bear: Shield,
   rabbit: Rabbit,
-  robot: Bot
+  great_white: Waves,
+  robot: Bot,
+  samurai: Sword,
+  ninja: UserRound
 };
 
 export const HEAD_STYLE_OPTIONS: ReadonlyArray<{
@@ -79,13 +71,15 @@ export const BACK_ACCESSORY_OPTIONS: ReadonlyArray<{
   Icon: LucideIcon;
 }> = [
   { value: "none", label: "None", detail: "Clean kit", Icon: X },
-  { value: "utility_pack", label: "Utility", detail: "Field pack", Icon: Backpack },
-  { value: "compact_pack", label: "Compact", detail: "Light pack", Icon: BriefcaseBusiness },
-  { value: "tech_pack", label: "Tech", detail: "Signal pack", Icon: Radio },
-  { value: "trail_pack", label: "Trail", detail: "Adventure roll", Icon: Package },
-  { value: "book_satchel", label: "Satchel", detail: "Study supplies", Icon: BookOpen },
-  { value: "rocket_pack", label: "Boost pack", detail: "Cosmetic jets", Icon: Rocket },
-  { value: "team_pennant", label: "Pennant", detail: "Team colours", Icon: Flag }
+  { value: "utility_pack", label: "Utility Pack", detail: "Classic field pack", Icon: Backpack },
+  { value: "angel_wings", label: "Angel Wings", detail: "Take flight", Icon: Feather },
+  { value: "demon_wings", label: "Demon Wings", detail: "Dark arena style", Icon: Flame },
+  { value: "devil_tail", label: "Devil Tail", detail: "Mischievous style", Icon: Flame },
+  { value: "samurai_sword", label: "Samurai Sword", detail: "Warrior style", Icon: Sword },
+  { value: "twin_swords", label: "Twin Swords", detail: "Double warrior style", Icon: Sword },
+  { value: "boost_pack", label: "Boost Pack", detail: "Ready for launch", Icon: Rocket },
+  { value: "arena_cape", label: "Arena Cape", detail: "Champion style", Icon: Shield },
+  { value: "snowboard", label: "Snowboard", detail: "Slope ready", Icon: Snowflake }
 ];
 
 export const DETAIL_ACCESSORY_OPTIONS: ReadonlyArray<{
@@ -120,7 +114,8 @@ export function CharacterPreview({
   loadDecalAsset,
   localDecal,
   resetSignal = 0,
-  showVictoryPose = false
+  showVictoryPose = false,
+  focusBack = false
 }: {
   appearance: PlayerAppearance;
   team: Team;
@@ -128,6 +123,7 @@ export function CharacterPreview({
   localDecal?: Blob | null;
   resetSignal?: number;
   showVictoryPose?: boolean;
+  focusBack?: boolean;
 }) {
   const mountRef = useRef<HTMLDivElement>(null);
   const loadRef = useRef(loadDecalAsset);
@@ -214,7 +210,7 @@ export function CharacterPreview({
       rear: 0,
       "three-quarter": Math.PI - 0.55,
       "rear-three-quarter": 0.55
-    }[previewView ?? ""] ?? Math.PI - 0.78;
+    }[previewView ?? ""] ?? (focusBack ? 0.68 : Math.PI - 0.78);
     const previewPose = previewParams.get("characterPose");
     if (showVictoryPose || previewPose === "victory") {
       model.triggerAnimation("victory");
@@ -347,7 +343,7 @@ export function CharacterPreview({
       (platformRing.material as THREE.Material).dispose();
       renderer.domElement.remove();
     };
-  }, [appearanceSignature(appearance), team, localDecal, resetSignal, showVictoryPose]);
+  }, [appearanceSignature(appearance), team, localDecal, resetSignal, showVictoryPose, focusBack]);
 
   return (
     <div

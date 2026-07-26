@@ -69,24 +69,36 @@ export interface QuizSet {
   createdAt: string;
 }
 
-export const APPEARANCE_VERSION = 4 as const;
+export const APPEARANCE_VERSION = 6 as const;
 export const APPEARANCE_MAX_JSON_BYTES = 2048;
 export const APPEARANCE_UPDATE_COOLDOWN_MS = 750;
 export const DECAL_MAX_SOURCE_BYTES = 5 * 1024 * 1024;
 export const DECAL_MAX_PROCESSED_BYTES = 384 * 1024;
 export const DECAL_MAX_DIMENSION = 512;
 
-export const CHARACTER_PRESETS = ["assault", "support", "sniper", "engineer", "medic", "heavy"] as const;
-export const HEAD_STYLE_IDS = ["human", "fox", "panda", "bear", "rabbit", "robot"] as const;
+export const HEAD_STYLE_IDS = [
+  "boy_short_hair",
+  "girl_mid_hair",
+  "fox",
+  "panda",
+  "bear",
+  "rabbit",
+  "great_white",
+  "robot",
+  "samurai",
+  "ninja"
+] as const;
 export const BACK_ACCESSORY_IDS = [
   "none",
   "utility_pack",
-  "compact_pack",
-  "tech_pack",
-  "trail_pack",
-  "book_satchel",
-  "rocket_pack",
-  "team_pennant"
+  "angel_wings",
+  "demon_wings",
+  "devil_tail",
+  "samurai_sword",
+  "twin_swords",
+  "boost_pack",
+  "arena_cape",
+  "snowboard"
 ] as const;
 export const DETAIL_ACCESSORY_IDS = [
   "none",
@@ -103,7 +115,6 @@ export const VICTORY_POSE_IDS = [
   "power"
 ] as const;
 
-export type CharacterPreset = (typeof CHARACTER_PRESETS)[number];
 export type PlayerHeadStyleId = (typeof HEAD_STYLE_IDS)[number];
 export type PlayerBackAccessoryId = (typeof BACK_ACCESSORY_IDS)[number];
 export type PlayerDetailAccessoryId = (typeof DETAIL_ACCESSORY_IDS)[number];
@@ -126,24 +137,30 @@ export interface HeadStyleCatalogItem {
 }
 
 export const HEAD_STYLE_CATALOG = [
-  { id: "human", name: "Human", description: "Classic QuizStrike hero", unlockLevel: 1 },
+  { id: "boy_short_hair", name: "Boy", description: "Cool anime contender", unlockLevel: 1 },
+  { id: "girl_mid_hair", name: "Girl", description: "Cute anime heroine", unlockLevel: 1 },
   { id: "fox", name: "Fox", description: "Bright, quick and confident", unlockLevel: 1 },
   { id: "panda", name: "Panda", description: "Calm mascot energy", unlockLevel: 1 },
   { id: "bear", name: "Bear", description: "Bold and dependable", unlockLevel: 1 },
   { id: "rabbit", name: "Rabbit", description: "Alert and arena-ready", unlockLevel: 1 },
-  { id: "robot", name: "Robot", description: "Friendly future fighter", unlockLevel: 1 }
+  { id: "great_white", name: "Great White", description: "Ocean arena predator", unlockLevel: 1 },
+  { id: "robot", name: "Robot", description: "Friendly future fighter", unlockLevel: 1 },
+  { id: "samurai", name: "Samurai", description: "Arena warrior", unlockLevel: 1 },
+  { id: "ninja", name: "Ninja", description: "Silent arena rival", unlockLevel: 1 }
 ] as const satisfies ReadonlyArray<HeadStyleCatalogItem>;
 
 export const COSMETIC_CATALOG = [
   ...HEAD_STYLE_CATALOG.map((style) => ({ ...style, slot: "head" as const })),
   { id: "none", slot: "back", name: "No Back Gear", description: "Clean arena kit", unlockLevel: 1 },
   { id: "utility_pack", slot: "back", name: "Utility Pack", description: "Classic field pack", unlockLevel: 1 },
-  { id: "compact_pack", slot: "back", name: "Compact Pack", description: "Light match kit", unlockLevel: 1 },
-  { id: "tech_pack", slot: "back", name: "Tech Pack", description: "Signal-ready pack", unlockLevel: 1 },
-  { id: "trail_pack", slot: "back", name: "Trail Pack", description: "Adventure roll", unlockLevel: 1 },
-  { id: "book_satchel", slot: "back", name: "Book Satchel", description: "Study supplies", unlockLevel: 2 },
-  { id: "rocket_pack", slot: "back", name: "Boost Pack", description: "Cosmetic thrusters", unlockLevel: 4 },
-  { id: "team_pennant", slot: "back", name: "Team Pennant", description: "Carry your colours", unlockLevel: 5 },
+  { id: "angel_wings", slot: "back", name: "Angel Wings", description: "Take flight", unlockLevel: 1 },
+  { id: "demon_wings", slot: "back", name: "Demon Wings", description: "Dark arena style", unlockLevel: 1 },
+  { id: "devil_tail", slot: "back", name: "Devil Tail", description: "Mischievous style", unlockLevel: 1 },
+  { id: "samurai_sword", slot: "back", name: "Samurai Sword", description: "Warrior style", unlockLevel: 1 },
+  { id: "twin_swords", slot: "back", name: "Twin Swords", description: "Double warrior style", unlockLevel: 1 },
+  { id: "boost_pack", slot: "back", name: "Boost Pack", description: "Ready for launch", unlockLevel: 1 },
+  { id: "arena_cape", slot: "back", name: "Arena Cape", description: "Champion style", unlockLevel: 1 },
+  { id: "snowboard", slot: "back", name: "Snowboard", description: "Slope ready", unlockLevel: 1 },
   { id: "none", slot: "detail", name: "No Detail", description: "Simple uniform", unlockLevel: 1 },
   { id: "shoulder_badge", slot: "detail", name: "Team Crest", description: "Shoulder emblem", unlockLevel: 1 },
   { id: "wrist_device", slot: "detail", name: "Wrist Device", description: "Match tracker", unlockLevel: 2 },
@@ -196,7 +213,6 @@ const catalogItem = (slot: CosmeticSlot, id: string) =>
   COSMETIC_CATALOG.find((item) => item.slot === slot && item.id === id);
 
 export interface PlayerAppearance {
-  characterPreset: CharacterPreset;
   headStyleId: PlayerHeadStyleId;
   backAccessoryId: PlayerBackAccessoryId;
   detailAccessoryId: PlayerDetailAccessoryId;
@@ -219,92 +235,21 @@ export interface CharacterCustomizationSettings {
   enabled: boolean;
   uploadsEnabled: boolean;
   aiEnabled: boolean;
-  presetsOnly: boolean;
   persistAcrossSessions: boolean;
 }
 
 export const DEFAULT_PLAYER_APPEARANCE: PlayerAppearance = {
-  characterPreset: "assault",
-  headStyleId: "human",
-  backAccessoryId: "utility_pack",
+  headStyleId: "boy_short_hair",
+  backAccessoryId: "none",
   detailAccessoryId: "none",
   victoryPoseId: "champion",
   appearanceVersion: APPEARANCE_VERSION
-};
-
-export const SCHOOL_APPEARANCE_PRESETS = [
-  { id: "captain", name: "Captain", appearance: DEFAULT_PLAYER_APPEARANCE },
-  {
-    id: "trailblazer",
-    name: "Trailblazer",
-    appearance: {
-      ...DEFAULT_PLAYER_APPEARANCE,
-      characterPreset: "support",
-      headStyleId: "fox",
-      backAccessoryId: "compact_pack",
-      detailAccessoryId: "shoulder_badge",
-      victoryPoseId: "wave"
-    }
-  },
-  {
-    id: "inventor",
-    name: "Inventor",
-    appearance: {
-      ...DEFAULT_PLAYER_APPEARANCE,
-      characterPreset: "engineer",
-      headStyleId: "robot",
-      backAccessoryId: "tech_pack",
-      detailAccessoryId: "none"
-    }
-  },
-  {
-    id: "scout",
-    name: "Scout",
-    appearance: {
-      ...DEFAULT_PLAYER_APPEARANCE,
-      characterPreset: "sniper",
-      headStyleId: "rabbit",
-      backAccessoryId: "none",
-      detailAccessoryId: "none"
-    }
-  },
-  {
-    id: "defender",
-    name: "Defender",
-    appearance: {
-      ...DEFAULT_PLAYER_APPEARANCE,
-      characterPreset: "heavy",
-      headStyleId: "bear",
-      backAccessoryId: "utility_pack",
-      detailAccessoryId: "shoulder_badge"
-    }
-  },
-  {
-    id: "explorer",
-    name: "Explorer",
-    appearance: {
-      ...DEFAULT_PLAYER_APPEARANCE,
-      characterPreset: "medic",
-      headStyleId: "panda",
-      backAccessoryId: "trail_pack",
-      detailAccessoryId: "none",
-      victoryPoseId: "wave"
-    }
-  }
-] as const satisfies ReadonlyArray<{ id: string; name: string; appearance: PlayerAppearance }>;
-
-export const isApprovedAppearancePreset = (appearance: PlayerAppearance): boolean => {
-  const comparable = { ...appearance, decalAssetId: undefined };
-  return SCHOOL_APPEARANCE_PRESETS.some((preset) =>
-    JSON.stringify({ ...preset.appearance, decalAssetId: undefined }) === JSON.stringify(comparable)
-  );
 };
 
 export const DEFAULT_CHARACTER_CUSTOMIZATION_SETTINGS: CharacterCustomizationSettings = {
   enabled: true,
   uploadsEnabled: false,
   aiEnabled: false,
-  presetsOnly: false,
   persistAcrossSessions: false
 };
 
@@ -312,12 +257,11 @@ const isAllowed = <T extends readonly string[]>(values: T, value: unknown): valu
   typeof value === "string" && (values as readonly string[]).includes(value);
 
 export const sanitizeCharacterCustomizationSettings = (
-  input: Partial<CharacterCustomizationSettings> | undefined
+  input: (Partial<CharacterCustomizationSettings> & { presetsOnly?: boolean }) | undefined
 ): CharacterCustomizationSettings => ({
   enabled: typeof input?.enabled === "boolean" ? input.enabled : DEFAULT_CHARACTER_CUSTOMIZATION_SETTINGS.enabled,
   uploadsEnabled: typeof input?.uploadsEnabled === "boolean" ? input.uploadsEnabled : DEFAULT_CHARACTER_CUSTOMIZATION_SETTINGS.uploadsEnabled,
   aiEnabled: typeof input?.aiEnabled === "boolean" ? input.aiEnabled : DEFAULT_CHARACTER_CUSTOMIZATION_SETTINGS.aiEnabled,
-  presetsOnly: typeof input?.presetsOnly === "boolean" ? input.presetsOnly : DEFAULT_CHARACTER_CUSTOMIZATION_SETTINGS.presetsOnly,
   persistAcrossSessions: typeof input?.persistAcrossSessions === "boolean"
     ? input.persistAcrossSessions
     : DEFAULT_CHARACTER_CUSTOMIZATION_SETTINGS.persistAcrossSessions
@@ -330,24 +274,27 @@ export const sanitizePlayerAppearance = (
   const decalAssetId = typeof source.decalAssetId === "string" && /^[a-f0-9-]{36}$/.test(source.decalAssetId)
     ? source.decalAssetId
     : undefined;
-  // Versions 1-3 stored pieces worn by an always-visible human head. The new
-  // complete-head system intentionally maps every one of those pieces to the
-  // safe human style rather than trying to stack or approximate old gear.
-  const migratedHeadStyle: PlayerHeadStyleId = "human";
+  // Versions 1-5 could store the retired Human style or pieces worn by its
+  // generic base. Map those records once to Boy, the new neutral default.
+  const migratedHeadStyle: PlayerHeadStyleId = "boy_short_hair";
   const legacyAccessory = source.accessoryId;
+  const legacyBackAccessory = source.backAccessoryId;
   const migratedBackAccessory: PlayerBackAccessoryId =
     legacyAccessory === "shoulder_badge" ? "none"
-      : isAllowed(BACK_ACCESSORY_IDS, legacyAccessory) ? legacyAccessory
-        : source.backpackStyle === "radio_pack" ? "tech_pack"
-          : source.backpackStyle === "bedroll" ? "trail_pack"
+      : isAllowed(BACK_ACCESSORY_IDS, legacyBackAccessory) ? legacyBackAccessory
+        : legacyBackAccessory === "rocket_pack" ? "boost_pack"
+          : legacyBackAccessory === "team_pennant" ? "arena_cape"
+            : ["utility_pack", "compact_pack", "tech_pack", "trail_pack", "book_satchel"].includes(String(legacyBackAccessory))
+              ? "utility_pack"
+        : source.backpackStyle === "radio_pack" ? "utility_pack"
+          : source.backpackStyle === "bedroll" ? "utility_pack"
             : source.backpackStyle === "none" ? "none"
-              : "utility_pack";
+              : DEFAULT_PLAYER_APPEARANCE.backAccessoryId;
   const migratedDetailAccessory: PlayerDetailAccessoryId =
     legacyAccessory === "shoulder_badge" ? "shoulder_badge" : "none";
   return {
-    characterPreset: isAllowed(CHARACTER_PRESETS, source.characterPreset) ? source.characterPreset : DEFAULT_PLAYER_APPEARANCE.characterPreset,
     headStyleId: isAllowed(HEAD_STYLE_IDS, source.headStyleId) ? source.headStyleId : migratedHeadStyle,
-    backAccessoryId: isAllowed(BACK_ACCESSORY_IDS, source.backAccessoryId) ? source.backAccessoryId : migratedBackAccessory,
+    backAccessoryId: migratedBackAccessory,
     detailAccessoryId: isAllowed(DETAIL_ACCESSORY_IDS, source.detailAccessoryId) ? source.detailAccessoryId : migratedDetailAccessory,
     victoryPoseId: isAllowed(VICTORY_POSE_IDS, source.victoryPoseId) ? source.victoryPoseId : "champion",
     ...(decalAssetId ? { decalAssetId } : {}),
@@ -360,13 +307,12 @@ export const getPlayerAppearanceError = (input: unknown): string | undefined => 
   if (new TextEncoder().encode(JSON.stringify(input)).byteLength > APPEARANCE_MAX_JSON_BYTES) return "Appearance data is too large.";
   const source = input as Record<string, unknown>;
   const allowedKeys = new Set([
-    "characterPreset", "headStyleId", "backAccessoryId", "detailAccessoryId", "victoryPoseId",
+    "headStyleId", "backAccessoryId", "detailAccessoryId", "victoryPoseId",
     "decalAssetId", "appearanceVersion"
   ]);
   if (Object.keys(source).some((key) => !allowedKeys.has(key))) return "Appearance contains an unsupported field.";
   if (source.appearanceVersion !== APPEARANCE_VERSION) return "Unsupported appearance version.";
   const checks: Array<[readonly string[], unknown, string]> = [
-    [CHARACTER_PRESETS, source.characterPreset, "character preset"],
     [HEAD_STYLE_IDS, source.headStyleId, "head style"],
     [BACK_ACCESSORY_IDS, source.backAccessoryId, "back accessory"],
     [DETAIL_ACCESSORY_IDS, source.detailAccessoryId, "detail accessory"],
