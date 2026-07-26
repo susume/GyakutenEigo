@@ -2,10 +2,12 @@ import assert from "node:assert/strict";
 import test from "node:test";
 import { getPausedRoundAction, planRoundConclusion } from "./roundFlow.js";
 
-test("Flag Mode opens a buy phase before starting each prepared round", () => {
-  assert.equal(getPausedRoundAction({ gameMode: "flag", phase: "result" }), "open_buy_phase");
+test("Flag and Classic Tag open preparation before starting each round", () => {
+  assert.equal(getPausedRoundAction({ gameMode: "flag", phase: "result" }), "open_preparation");
+  assert.equal(getPausedRoundAction({ gameMode: "classic", phase: "result" }), "open_preparation");
+  assert.equal(getPausedRoundAction({ gameMode: "flag", phase: "preparation" }), "start_round");
   assert.equal(getPausedRoundAction({ gameMode: "flag", phase: "buy" }), "start_round");
-  assert.equal(getPausedRoundAction({ gameMode: "classic", phase: "result" }), "start_round");
+  assert.equal(getPausedRoundAction({ gameMode: "zombie", phase: "zombie_selection" }), "start_round");
 });
 
 test("Flag Mode plans a result intermission before the next round", () => {

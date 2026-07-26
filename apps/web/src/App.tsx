@@ -61,7 +61,8 @@ import {
   isWeaponGearId,
   RESPAWN_CORRECT_ANSWERS_REQUIRED,
   getRoundRemainingSeconds,
-  isRoundBuyPhase,
+  isRoundPreparationPhase,
+  isZombieSelectionPhase,
   sanitizePlayerAppearance,
   type CharacterCustomizationSettings,
   type ArenaMapId,
@@ -225,7 +226,7 @@ const getNicknameError = (value: string) => {
 const sessionNumberFields = [
   { name: "roundCount", label: "Rounds", min: 1, max: 30, help: "Complete rounds before the session ends." },
   { name: "flagHoldSeconds", label: "Flag Hold Time", min: 5, max: 180, step: 5, unit: "seconds", help: "How long Red protects a placed flag." },
-  { name: "initialZombieCount", label: "Starting Zombies", min: 0, max: 20, help: "Students who begin as Zombies." },
+  { name: "initialZombieCount", label: "Zombies Chosen", min: 1, max: 20, help: "Students randomly revealed as Zombies after the 20-second energy period." },
   { name: "maxPlayers", label: "Max Players", min: 2, max: 40, unit: "students", help: "Maximum students and test bots in the room." },
   { name: "startingMoney", label: "Starting Money", min: 0, max: 16000, step: 100, unit: "dollars", help: "Money each student receives at the start." },
   { name: "correctAnswerReward", label: "Correct Answer Reward", min: 0, max: 5000, step: 100, unit: "dollars", help: "Money earned for each correct answer." },
@@ -591,7 +592,7 @@ function GameAnnouncementOverlay({
   return (
     <div className={`game-announcement game-announcement-${announcement.kind}`} role="alert" aria-live="assertive" aria-atomic="true">
       <div className="game-announcement-card">
-        <span>{announcement.kind === "game_over" ? "Final result" : announcement.kind === "round_result" ? "Round complete" : announcement.kind === "buy_phase" ? "Shop open" : "Get ready"}</span>
+        <span>{announcement.kind === "game_over" ? "Final result" : announcement.kind === "round_result" ? "Round complete" : announcement.kind === "buy_phase" || announcement.kind === "preparation" ? "Prepare" : "Get ready"}</span>
         <h2>{announcement.title}</h2>
         <p>{announcement.message}</p>
         {announcement.detail && <strong>{announcement.detail}</strong>}
@@ -1625,6 +1626,7 @@ function SessionManager({
   const [invalidSettings, setInvalidSettings] = useState<Partial<Record<SessionNumberField, boolean>>>({});
   const [isCreatingSession, setIsCreatingSession] = useState(false);
   const [isStartingSession, setIsStartingSession] = useState(false);
+  const [isEndingRound, setIsEndingRound] = useState(false);
   const [isEndingSession, setIsEndingSession] = useState(false);
   const [isAddingBot, setIsAddingBot] = useState(false);
   const [removingPlayerId, setRemovingPlayerId] = useState<string | null>(null);
@@ -1890,6 +1892,29 @@ function SessionManager({
       status.report(err);
     } finally {
       setIsAddingBot(false);
+    }
+  };
+
+  const endRound = async () => {
+    if (!selectedSession || selectedSession.status !== "active" || selectedSession.settings.gameMode === "zombie" || isEndingRound) return;
+    if (!window.confirm("End this round early? The room will stay open and the next round preparation will begin.")) return;
+    status.clear();
+    setIsEndingRound(true);
+    try {
+      const payload = (await teacherApi.endRound(selectedSession.sessionCode)) as {
+        session: GameSession;
+        report?: SessionReport;
+      };
+      setSelectedSession(payload.session);
+      if (payload.report) onReport(payload.report);
+      await onRefresh();
+      status.setMessage(payload.session.status === "ended"
+        ? "Final round ended. The learning report is ready."
+        : "Round ended. The next preparation period will begin shortly.");
+    } catch (err) {
+      status.report(err);
+    } finally {
+      setIsEndingRound(false);
     }
   };
 
@@ -2318,10 +2343,21 @@ function SessionManager({
           <>
             <header className="live-control-heading">
               <div><span className="flow-step">Step 4 of 4</span><h2>Live Game Control</h2></div>
-              <button ref={endSessionTriggerRef} onClick={() => setIsEndConfirmOpen(true)} disabled={isEndingSession}>{isEndingSession ? "Working..." : "End Game"}</button>
+              <div className="button-row">
+                {selectedSession.settings.gameMode !== "zombie" && (
+                  <button
+                    type="button"
+                    onClick={() => void endRound()}
+                    disabled={selectedSession.status !== "active" || isEndingRound || isEndingSession}
+                  >
+                    {isEndingRound ? "Ending Round..." : "End Round"}
+                  </button>
+                )}
+                <button ref={endSessionTriggerRef} onClick={() => setIsEndConfirmOpen(true)} disabled={isEndingSession}>{isEndingSession ? "Working..." : "End Game"}</button>
+              </div>
             </header>
             <div className="live-summary">
-              <span className={`status-pill status-${selectedSession.status}`}>{isRoundBuyPhase(selectedSession) ? "Buy Phase" : sessionStatusLabel(selectedSession.status)}</span>
+              <span className={`status-pill status-${selectedSession.status}`}>{isRoundPreparationPhase(selectedSession) ? "Preparation" : isZombieSelectionPhase(selectedSession) ? "Choosing Zombies" : sessionStatusLabel(selectedSession.status)}</span>
               <span>{gameModeLabel(selectedSession.settings.gameMode)}</span>
               <span>{arenaMapLabel(selectedSession.settings.mapId)}</span>
               {selectedSession.settings.gameMode === "flag" && <span>Round {selectedSession.currentRound}/{selectedSession.settings.roundCount}</span>}
@@ -2564,14 +2600,15 @@ function StudentExperience({ onExit }: { onExit: () => void }) {
   } | null>(null);
   const status = useAsyncMessage();
   const remainingSeconds = useRoundRemaining(session);
-  const flagBuyPhase = Boolean(session && isRoundBuyPhase(session));
-  const buyPhaseRemainingSeconds = useDeadlineRemainingSeconds(
-    flagBuyPhase ? session?.roundTransition?.startsAt : undefined,
+  const roundPreparation = Boolean(session && isRoundPreparationPhase(session));
+  const zombieSelection = Boolean(session && isZombieSelectionPhase(session));
+  const preparationRemainingSeconds = useDeadlineRemainingSeconds(
+    roundPreparation || zombieSelection ? session?.roundTransition?.startsAt : undefined,
     session?.serverTime
   );
   const socketRef = useRef<Socket | null>(null);
   const previousAliveRef = useRef<boolean | null>(null);
-  const previousFlagBuyPhaseRef = useRef(false);
+  const previousPreparationRef = useRef(false);
   const lastCountdownCueRef = useRef("");
   const lastTeamSwitchAtRef = useRef(0);
 
@@ -3026,17 +3063,24 @@ function StudentExperience({ onExit }: { onExit: () => void }) {
   }, [session?.sessionCode, session?.status, player?.id]);
 
   useEffect(() => {
-    if (flagBuyPhase && player?.isAlive) {
+    if (roundPreparation && player?.isAlive) {
       gameAudio.play("menu_toggle");
       setBuyOpen(true);
       setQuizOpen(false);
       setScoreboardOpen(false);
       setSettingsOpen(false);
-    } else if (previousFlagBuyPhaseRef.current) {
+    } else if (zombieSelection && player?.isAlive) {
+      gameAudio.playEvent("quiz_open");
+      setQuizOpen(true);
       setBuyOpen(false);
+      setScoreboardOpen(false);
+      setSettingsOpen(false);
+    } else if (previousPreparationRef.current) {
+      setBuyOpen(false);
+      setQuizOpen(false);
     }
-    previousFlagBuyPhaseRef.current = flagBuyPhase;
-  }, [flagBuyPhase, session?.roundTransition?.startsAt, player?.id, player?.isAlive]);
+    previousPreparationRef.current = roundPreparation || zombieSelection;
+  }, [roundPreparation, zombieSelection, session?.roundTransition?.startsAt, player?.id, player?.isAlive]);
 
   const panelsOpen = quizOpen || buyOpen || scoreboardOpen || settingsOpen;
   const gameplayInputPaused = quizOpen || buyOpen || settingsOpen;
@@ -3493,14 +3537,18 @@ function StudentExperience({ onExit }: { onExit: () => void }) {
   const roundActive = session.status === "active";
   const roundEnded = session.status === "ended";
   const menuTitle = canPracticeToRespawn && quizOpen ? "Practice to Respawn" : quizOpen ? "Quiz" : buyOpen ? "Buy Menu" : settingsOpen ? "Game Settings" : "Scoreboard";
-  const roundTimeLabel = formatDuration(remainingSeconds);
+  const roundTimeLabel = formatDuration(roundPreparation || zombieSelection ? preparationRemainingSeconds : remainingSeconds);
   const roundCountdownClassName = [
     "round-countdown",
     roundActive ? "round-countdown-active" : "",
     roundActive && remainingSeconds <= 30 ? "round-countdown-low" : ""
   ].filter(Boolean).join(" ");
-  const objectiveText = session.settings.gameMode === "flag"
-    ? flagStatusText(session)
+  const objectiveText = roundPreparation
+    ? "Buy gear or answer questions for money before the round starts."
+    : zombieSelection
+      ? `Everyone is Human. Answer questions for energy; Zombies are chosen in ${preparationRemainingSeconds}s.`
+    : session.settings.gameMode === "flag"
+      ? flagStatusText(session)
     : session.settings.gameMode === "zombie"
       ? zombieStatusText(session, player)
       : "Answer questions, earn supplies, and tag the other team.";
@@ -3528,7 +3576,7 @@ function StudentExperience({ onExit }: { onExit: () => void }) {
       session.status === "waiting" ? "waiting-game-layout" : ""
     ].filter(Boolean).join(" ")}>
       <div className="game-stage">
-        {session.status !== "waiting" && <GameAnnouncementOverlay announcement={flagBuyPhase ? undefined : session.announcement} serverTime={session.serverTime} />}
+        {session.status !== "waiting" && <GameAnnouncementOverlay announcement={roundPreparation || zombieSelection ? undefined : session.announcement} serverTime={session.serverTime} />}
         <div className={`game-utility-bar${session.status === "waiting" ? " lobby-utility-bar" : ""}`}>
           {session.status === "waiting" ? (
             <div className="lobby-brand">
@@ -3563,11 +3611,11 @@ function StudentExperience({ onExit }: { onExit: () => void }) {
         {session.status !== "waiting" && (<>
         <div className={roundCountdownClassName} role="timer" aria-label={`Round time remaining ${roundTimeLabel}`}>
           <Timer size={18} aria-hidden="true" />
-          <span>Round Timer</span>
+          <span>{roundPreparation ? "Preparation" : zombieSelection ? "Zombie Selection" : "Round Timer"}</span>
           <strong>{roundTimeLabel}</strong>
         </div>
         <div className="arena-objective-strip">
-          <span className={`status-pill status-${session.status}`}>{flagBuyPhase ? "Buy Phase" : sessionStatusLabel(session.status)}</span>
+          <span className={`status-pill status-${session.status}`}>{roundPreparation ? "Preparation" : zombieSelection ? "Choosing Zombies" : sessionStatusLabel(session.status)}</span>
           <span className="objective-primary">{objectiveText}</span>
           <span className={`mode-pill mode-${session.settings.gameMode}`}>
             {gameModeLabel(session.settings.gameMode)}
@@ -3660,7 +3708,9 @@ function StudentExperience({ onExit }: { onExit: () => void }) {
             </span>
           )}
           <span className={`hud-stat team-${player.team}`}>
-            <Users size={18} aria-hidden="true" />
+            {session.settings.gameMode === "zombie" && player.role === "zombie"
+              ? <img className="zombie-head-icon" src="/assets/zombie/zombie-head.png" alt="" aria-hidden="true" />
+              : <Users size={18} aria-hidden="true" />}
             <span>
               <small>{session.settings.gameMode === "zombie" ? "Role · attire" : "Team"}</small>
               <strong>{session.settings.gameMode === "zombie" ? (player.role === "zombie" ? "Zombie · Red" : "Human · Blue") : player.team === "blue" ? "Blue Team" : "Red Team"}</strong>
@@ -3758,7 +3808,7 @@ function StudentExperience({ onExit }: { onExit: () => void }) {
                 onBuySnowballs={buySnowballs}
                 buyingGearId={buyingGearId}
                 isBuyingSnowballs={isBuyingSnowballs}
-                buyPhaseSeconds={flagBuyPhase ? buyPhaseRemainingSeconds : undefined}
+                buyPhaseSeconds={roundPreparation ? preparationRemainingSeconds : undefined}
               />
             )}
             {scoreboardOpen && <Scoreboard players={session.players} localPlayerId={player.id} gameMode={session.settings.gameMode} />}
@@ -3958,10 +4008,12 @@ function BuyPanel({
   return (
     <div className="panel buy-panel">
       <div className="panel-title">
-        <h2>{buyPhaseSeconds === undefined ? "Buy Menu" : `Buy Phase · ${buyPhaseSeconds}s`}</h2>
+        <h2>{buyPhaseSeconds === undefined ? "Buy Menu" : `Preparation · ${buyPhaseSeconds}s`}</h2>
         <span>{formatMoney(player.money)}</span>
       </div>
-      <p className="menu-timer-note">The round timer continues while this menu is open.</p>
+      <p className="menu-timer-note">{buyPhaseSeconds === undefined
+        ? "The round timer continues while this menu is open."
+        : "Press Q to answer questions for more money before the round starts."}</p>
       <p className="buy-shortcut-help">Press 1–5 to buy instantly. Press B to open or close this menu.</p>
       <button
         className="gear-row"

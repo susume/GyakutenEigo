@@ -6,8 +6,8 @@ export type ArenaMapId = "desert_citadel" | "iron_junction" | "temple_runoff";
 export type TeamAssignment = "players_choose" | "random";
 export type PlayerRole = "human" | "zombie";
 export type BotDifficulty = "beginner" | "standard" | "advanced";
-export type GameAnnouncementKind = "round_result" | "buy_phase" | "round_start" | "game_over";
-export type RoundTransitionPhase = "result" | "buy";
+export type GameAnnouncementKind = "round_result" | "buy_phase" | "preparation" | "round_start" | "game_over";
+export type RoundTransitionPhase = "result" | "preparation" | "zombie_selection" | "buy";
 export type FlagStateName =
   | "available"
   | "carried"
@@ -904,11 +904,20 @@ export const canStartRound = (session: Pick<GameSession, "players" | "status">):
 
 export const isRoundActive = (session: Pick<GameSession, "status">) => session.status === "active";
 
-export const isRoundBuyPhase = (
+export const isRoundPreparationPhase = (
   session: Pick<GameSession, "status" | "settings" | "roundTransition">
 ) => session.status === "paused"
-  && session.settings.gameMode === "flag"
-  && session.roundTransition?.phase === "buy";
+  && (session.settings.gameMode === "flag" || session.settings.gameMode === "classic")
+  && (session.roundTransition?.phase === "preparation" || session.roundTransition?.phase === "buy");
+
+/** Compatibility alias for clients and saved sessions created before the phase was renamed. */
+export const isRoundBuyPhase = isRoundPreparationPhase;
+
+export const isZombieSelectionPhase = (
+  session: Pick<GameSession, "status" | "settings" | "roundTransition">
+) => session.status === "paused"
+  && session.settings.gameMode === "zombie"
+  && session.roundTransition?.phase === "zombie_selection";
 
 export const isMainRoundAnswer = (answer: Pick<AnswerLog, "context">) => answer.context !== "practice";
 
@@ -1748,6 +1757,22 @@ export const isInsideTeamBase = (team: Team, position: ArenaPosition | undefined
   return position.x >= zone.minX && position.x <= zone.maxX && position.z >= zone.minZ && position.z <= zone.maxZ;
 };
 
+export const SPAWN_SHOP_RADIUS = scaleArenaValue(18);
+
+export const isNearTeamSpawn = (
+  team: Team,
+  position: ArenaPosition | undefined,
+  mapId?: ArenaMapId | string,
+  radius = SPAWN_SHOP_RADIUS
+) => Boolean(
+  position
+  && Number.isFinite(position.x)
+  && Number.isFinite(position.z)
+  && getTeamSpawnsForMap(mapId)[team].some(
+    (spawn) => Math.hypot(position.x - spawn.x, position.z - spawn.z) <= Math.max(0, radius)
+  )
+);
+
 export const clampArenaPosition = (
   position: ArenaPosition,
   mapId?: ArenaMapId | string
@@ -2158,7 +2183,13 @@ export const resolveGearPurchase = ({
     };
   }
   if (gear.id === "starter_blaster") return { ok: false, reason: "starter_weapon" };
-  if (requireBase && !isInsideTeamBase(player.team, { x: player.x ?? getTeamSpawnForMap(mapId, player.team).x, z: player.z ?? getTeamSpawnForMap(mapId, player.team).z }, mapId)) {
+  const purchasePosition = {
+    x: player.x ?? getTeamSpawnForMap(mapId, player.team).x,
+    z: player.z ?? getTeamSpawnForMap(mapId, player.team).z
+  };
+  if (requireBase
+    && !isInsideTeamBase(player.team, purchasePosition, mapId)
+    && !isNearTeamSpawn(player.team, purchasePosition, mapId)) {
     return { ok: false, reason: "outside_base" };
   }
   if (player.money < gear.cost) return { ok: false, reason: "not_enough_money" };
@@ -3002,8 +3033,11 @@ export const selectInitialZombies = <T extends PlayerSession>(
   seed = Date.now()
 ): T[] => {
   const eligible = players.filter((player) => player.connectionState !== "disconnected");
+  const desiredCount = requestedCount === undefined || requestedCount <= 0
+    ? getDefaultInitialZombieCount(eligible.length)
+    : requestedCount;
   const zombieCount = Math.min(
-    Math.max(0, requestedCount ?? getDefaultInitialZombieCount(eligible.length)),
+    Math.max(0, desiredCount),
     Math.max(0, eligible.length - 1)
   );
   const chosenIds = new Set(randomizeBalancedTeams(eligible, seed).slice(0, zombieCount).map((player) => player.id));
@@ -3012,7 +3046,7 @@ export const selectInitialZombies = <T extends PlayerSession>(
     role: chosenIds.has(player.id) ? "zombie" : "human",
     zombieConvertedAt: undefined,
     team: chosenIds.has(player.id) ? "red" : "blue",
-    energy: chosenIds.has(player.id) ? ZOMBIE_HUMAN_MAX_ENERGY : 0,
+    energy: chosenIds.has(player.id) ? ZOMBIE_HUMAN_MAX_ENERGY : Math.max(0, player.energy ?? 0),
     gear: chosenIds.has(player.id) ? "starter_blaster" : player.gear,
     weapon: chosenIds.has(player.id) ? "starter_blaster" : player.weapon,
     perks: chosenIds.has(player.id) ? [] : player.perks,

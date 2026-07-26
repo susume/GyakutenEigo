@@ -43,6 +43,13 @@ const neutral = {
   samuraiIron: new THREE.MeshStandardMaterial({ color: "#26323e", roughness: 0.65, metalness: 0.16 }),
   shark: new THREE.MeshStandardMaterial({ color: "#66899a", roughness: 0.82 }),
   sharkLight: new THREE.MeshStandardMaterial({ color: "#dce4df", roughness: 0.88 }),
+  zombieSkin: new THREE.MeshStandardMaterial({ color: "#79ad39", roughness: 0.9 }),
+  zombieSkinDark: new THREE.MeshStandardMaterial({ color: "#3f6f2c", roughness: 0.94 }),
+  zombieEye: new THREE.MeshStandardMaterial({ color: "#f5df83", roughness: 0.68 }),
+  zombieIris: new THREE.MeshStandardMaterial({ color: "#a97916", roughness: 0.58 }),
+  zombieBrain: new THREE.MeshStandardMaterial({ color: "#e0a649", roughness: 0.86 }),
+  zombieMouth: new THREE.MeshStandardMaterial({ color: "#351f24", roughness: 0.96 }),
+  zombieTooth: new THREE.MeshStandardMaterial({ color: "#eadc9b", roughness: 0.84 }),
   dark: new THREE.MeshStandardMaterial({ color: "#27232a", roughness: 0.82 }),
   eyeWhite: new THREE.MeshStandardMaterial({ color: "#fffdf7", roughness: 0.64 })
 } as const;
@@ -312,6 +319,40 @@ const createGreatWhite = (materials: CharacterMaterials) => {
   return group;
 };
 
+const createZombie = (materials: CharacterMaterials) => {
+  const group = new THREE.Group();
+  add(group, softSphere, neutral.zombieSkin, [0, 0.02, 0.015], [0.68, 0.66, 0.59], [0, 0, -0.04]);
+  add(group, softSphere, neutral.zombieSkinDark, [0.02, -0.14, -0.02], [0.59, 0.42, 0.5], [0, 0, 0.05]);
+  add(group, sphere, neutral.zombieSkin, [-0.34, 0.015, 0], [0.12, 0.17, 0.1]);
+  add(group, sphere, neutral.zombieSkin, [0.34, 0.015, 0.02], [0.14, 0.2, 0.11]);
+
+  const eyes = [
+    { x: -0.13, y: 0.09, scale: [0.115, 0.14, 0.052] as [number, number, number] },
+    { x: 0.13, y: 0.12, scale: [0.18, 0.21, 0.065] as [number, number, number] }
+  ];
+  eyes.forEach(({ x, y, scale }, index) => {
+    add(group, sphere, neutral.zombieEye, [x, y, -0.31], scale);
+    add(group, sphere, neutral.zombieIris, [x + (index === 0 ? -0.012 : 0.018), y - 0.008, -0.366], [scale[0] * 0.35, scale[1] * 0.35, 0.025]);
+    add(group, sphere, materials.dark, [x + (index === 0 ? -0.012 : 0.018), y - 0.008, -0.386], [scale[0] * 0.16, scale[1] * 0.16, 0.014]);
+  });
+
+  add(group, cone, neutral.zombieSkinDark, [0.005, -0.015, -0.345], [0.055, 0.09, 0.05], [-Math.PI / 2, 0, 0]);
+  add(group, softSphere, neutral.zombieMouth, [0.015, -0.19, -0.345], [0.4, 0.18, 0.075], [0, 0, 0.08]);
+  add(group, roundedBox, neutral.zombieSkin, [0.03, -0.31, -0.29], [0.46, 0.14, 0.18], [0, 0, 0.08]);
+  for (const [x, y, tilt] of [[-0.2, -0.13, -0.08], [-0.055, -0.12, 0.04], [0.15, -0.14, 0.1], [-0.12, -0.25, Math.PI + 0.08], [0.08, -0.26, Math.PI - 0.08]] as const) {
+    add(group, cone, neutral.zombieTooth, [x, y, -0.425], [0.045, 0.09, 0.04], [0, 0, tilt]);
+  }
+
+  add(group, softSphere, neutral.zombieBrain, [0.17, 0.36, -0.15], [0.25, 0.11, 0.09], [0, 0, -0.18]);
+  for (const x of [0.05, 0.14, 0.23]) {
+    add(group, sphere, neutral.zombieBrain, [x, 0.4 - Math.abs(x - 0.14) * 0.22, -0.205], [0.075, 0.055, 0.025]);
+  }
+  for (const [x, tilt] of [[-0.24, -0.35], [-0.08, -0.12], [0.29, 0.34]] as const) {
+    add(group, cone, neutral.dark, [x, 0.43, 0.02], [0.035, 0.22, 0.035], [0, 0, tilt]);
+  }
+  return group;
+};
+
 export const HEAD_STYLE_REGISTRY: Record<PlayerHeadStyleId, HeadStyleDefinition> = {
   boy_short_hair: { id: "boy_short_hair", position: [0, -0.005, 0], rotation: [0, 0, 0], scale: [0.98, 0.98, 0.98], create: createBoy },
   girl_mid_hair: { id: "girl_mid_hair", position: [0, -0.01, 0.015], rotation: [0, 0, 0], scale: [0.94, 0.94, 0.94], create: createGirl },
@@ -354,6 +395,18 @@ export const createHeadStyle = (
     fallback.userData.fallbackFrom = requestedId;
     return fallback;
   }
+};
+
+/** Game-mode-only head; it is intentionally excluded from the customization registry. */
+export const createZombieHeadStyle = (materials: CharacterMaterials): THREE.Group => {
+  const group = createZombie(materials);
+  group.name = "HeadStyle_zombie";
+  group.position.set(0, -0.015, 0.005);
+  group.scale.setScalar(0.96);
+  group.userData.headStyleId = "zombie";
+  group.userData.primaryHeadVisual = true;
+  group.userData.gameModeOnly = "zombie";
+  return group;
 };
 
 export const createHeadStyleDebugEnvelope = () => {

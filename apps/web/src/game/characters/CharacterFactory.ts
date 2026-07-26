@@ -1,11 +1,11 @@
 import * as THREE from "three";
-import type { PlayerAppearance, Team } from "@quizstrike/shared";
+import type { PlayerAppearance, PlayerRole, Team } from "@quizstrike/shared";
 import {
   BACK_ACCESSORY_DEFINITIONS,
   createBackAccessory,
   type AccessorySocketName
 } from "./CharacterAccessories.js";
-import { createHeadStyle, createHeadStyleDebugEnvelope } from "./CharacterHeadStyles.js";
+import { createHeadStyle, createHeadStyleDebugEnvelope, createZombieHeadStyle } from "./CharacterHeadStyles.js";
 import { resolveCharacterAppearance, type CharacterAppearance } from "./CharacterAppearance.js";
 import {
   createWeaponSet,
@@ -129,7 +129,7 @@ export class CharacterFactory {
     return mesh;
   }
 
-  createCharacter(input: { playerId: string; team: Team; gear?: string; appearance?: PlayerAppearance }) {
+  createCharacter(input: { playerId: string; team: Team; role?: PlayerRole; gear?: string; appearance?: PlayerAppearance }) {
     const appearance = resolveCharacterAppearance(input);
     const materials = this.materialsFor(appearance);
     const root = new THREE.Group();
@@ -198,7 +198,9 @@ export class CharacterFactory {
       accessorySockets[name] = socket;
     });
 
-    const activeHeadStyle = createHeadStyle(appearance.customization.headStyleId, materials);
+    const activeHeadStyle = input.role === "zombie"
+      ? createZombieHeadStyle(materials)
+      : createHeadStyle(appearance.customization.headStyleId, materials);
     accessorySockets.HeadSocket.add(activeHeadStyle);
     root.userData.activeHeadStyleId = activeHeadStyle.userData.headStyleId;
     const accessories: THREE.Object3D[] = [];

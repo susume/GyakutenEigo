@@ -158,6 +158,7 @@ export const teacherApi = {
   createSession: (body: { quizSetId: string; classId?: string; settings?: Partial<SessionSettings> }) =>
     api("/api/sessions", { method: "POST", body: JSON.stringify(body) }),
   startSession: (code: string) => api(`/api/sessions/${code}/start`, { method: "POST" }),
+  endRound: (code: string) => api(`/api/sessions/${code}/end-round`, { method: "POST" }),
   endSession: (code: string) => api(`/api/sessions/${code}/end`, { method: "POST" }),
   addBots: (code: string, body: { count: number; difficulty: "beginner" | "standard" | "advanced" }) =>
     api(`/api/sessions/${code}/bots`, { method: "POST", body: JSON.stringify(body) }),

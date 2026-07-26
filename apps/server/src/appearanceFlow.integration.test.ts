@@ -187,6 +187,8 @@ test.before(async () => {
   process.env.JWT_SECRET = "phase-three-integration-secret";
   process.env.DATABASE_URL = " ";
   process.env.NODE_ENV = "test";
+  process.env.QUIZSTRIKE_TEST_ROUND_PREPARATION_MS = "100";
+  process.env.QUIZSTRIKE_TEST_ZOMBIE_SELECTION_MS = "100";
   runtime = await import("./index.js");
   await new Promise<void>((resolve, reject) => {
     runtime.server.once("error", reject);
@@ -623,6 +625,7 @@ test("40 authenticated Socket.IO clients receive bounded room state and movement
   assert.equal(started.response.status, 200);
   const activeDeadline = Date.now() + 5000;
   while (activeSocketIds.size < connected.length && Date.now() < activeDeadline) {
+    runtime.advanceBots();
     await new Promise((resolve) => setTimeout(resolve, 20));
   }
   assert.equal(activeSocketIds.size, connected.length, `${activeSocketIds.size} of ${connected.length} clients received active state.`);

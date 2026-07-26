@@ -57,7 +57,8 @@ import {
   isChoice,
   isMainRoundAnswer,
   isRoundActive,
-  isRoundBuyPhase,
+  isRoundPreparationPhase,
+  isZombieSelectionPhase,
   createInitialFlagState,
   randomizeBalancedTeams,
   selectLateJoinTeam,
@@ -307,7 +308,13 @@ const BOT_DIFFICULTY: BotDifficulty = process.env.BOT_DIFFICULTY === "beginner" 
 const PLAYER_MAX_SPEED = 22;
 const PLAYER_DISCONNECT_GRACE_MS = 5000;
 const ROUND_RESULT_ANNOUNCEMENT_MS = 4000;
-const FLAG_BUY_PHASE_MS = 6000;
+const testPhaseDuration = (name: string, fallback: number) => {
+  if (process.env.NODE_ENV !== "test") return fallback;
+  const configured = Number(process.env[name]);
+  return Number.isFinite(configured) ? Math.max(20, configured) : fallback;
+};
+const ROUND_PREPARATION_MS = testPhaseDuration("QUIZSTRIKE_TEST_ROUND_PREPARATION_MS", 35_000);
+const ZOMBIE_SELECTION_MS = testPhaseDuration("QUIZSTRIKE_TEST_ZOMBIE_SELECTION_MS", 20_000);
 const SESSION_BROADCAST_WINDOW_MS = 75;
 const ROUND_START_ANNOUNCEMENT_MS = 2500;
 const GAME_OVER_ANNOUNCEMENT_MS = 7000;
@@ -630,8 +637,10 @@ const finishZombieSession = (session: GameSession, outcome: string) => {
 const inactiveRoundMessage = (session: GameSession) =>
   session.status === "ended"
     ? "The round has ended. This action was not counted."
-    : isRoundBuyPhase(session)
-      ? "The buy phase is open. The round begins shortly."
+    : isRoundPreparationPhase(session)
+      ? "Preparation is open. Buy gear or answer questions before the round begins."
+    : isZombieSelectionPhase(session)
+      ? "Zombie selection is underway. Answer questions to build running energy."
     : session.status === "paused"
       ? "The round has ended. The next round is starting shortly."
       : "The teacher has not started the round yet.";
@@ -668,7 +677,14 @@ const prepareModeStateForRound = (session: GameSession) => {
     }
     session.flag = createInitialFlagState(sessionSpawn(session, "red"));
   } else if (session.settings.gameMode === "zombie") {
-    session.players = selectInitialZombies(session.players, session.settings.initialZombieCount);
+    session.players = session.players.map((player) => ({
+      ...player,
+      role: "human",
+      team: "blue",
+      zombieConvertedAt: undefined,
+      energy: 0,
+      isAlive: true
+    }));
     session.flag = undefined;
   } else {
     session.flag = undefined;
@@ -699,20 +715,39 @@ const startRoundState = (session: GameSession, preserveStats = true) => {
   activatePreparedRound(session);
 };
 
-const openFlagBuyPhase = (session: GameSession, preserveStats = true) => {
+const openRoundPreparation = (session: GameSession, preserveStats = true) => {
   prepareRoundState(session, preserveStats);
-  const startsAt = new Date(Date.now() + FLAG_BUY_PHASE_MS).toISOString();
+  const startsAt = new Date(Date.now() + ROUND_PREPARATION_MS).toISOString();
   session.status = "paused";
   session.startedAt = undefined;
   session.endsAt = undefined;
-  session.roundTransition = { nextRound: session.currentRound, startsAt, phase: "buy" };
+  session.roundTransition = { nextRound: session.currentRound, startsAt, phase: "preparation" };
   session.announcement = {
     ...makeAnnouncement(
-      "buy_phase",
-      "Buy Phase",
-      "Press B, then use number keys 1–5 to buy supplies and gear.",
-      `Round ${session.currentRound} begins in 6 seconds.`,
-      FLAG_BUY_PHASE_MS
+      "preparation",
+      "Preparation Time",
+      "Buy gear with B, or answer questions with Q to earn more money.",
+      `Round ${session.currentRound} begins in 35 seconds.`,
+      ROUND_PREPARATION_MS
+    ),
+    expiresAt: startsAt
+  };
+};
+
+const openZombieSelectionPhase = (session: GameSession, preserveStats = true) => {
+  prepareRoundState(session, preserveStats);
+  const startsAt = new Date(Date.now() + ZOMBIE_SELECTION_MS).toISOString();
+  session.status = "paused";
+  session.startedAt = undefined;
+  session.endsAt = undefined;
+  session.roundTransition = { nextRound: session.currentRound, startsAt, phase: "zombie_selection" };
+  session.announcement = {
+    ...makeAnnouncement(
+      "preparation",
+      "Everyone Starts Human",
+      "Answer questions now to charge your running energy. Zombies will be chosen at random.",
+      "Zombie selection in 20 seconds.",
+      ZOMBIE_SELECTION_MS
     ),
     expiresAt: startsAt
   };
@@ -746,8 +781,8 @@ const finishRound = (session: GameSession, winner: Team | undefined, reason: str
 
   const nextRound = conclusion.nextRound!;
   const resultTitle = winner ? `${teamName(winner)} wins Round ${session.currentRound}!` : `Round ${session.currentRound} is a draw`;
-  const resultMessage = session.settings.gameMode === "flag"
-    ? `${reason}. Round ${nextRound} buy phase begins shortly.`
+  const resultMessage = session.settings.gameMode === "flag" || session.settings.gameMode === "classic"
+    ? `${reason}. Round ${nextRound} preparation begins shortly.`
     : `${reason}. Round ${nextRound} begins shortly.`;
   const startsAt = new Date(Date.now() + ROUND_RESULT_ANNOUNCEMENT_MS).toISOString();
   session.status = "paused";
@@ -764,25 +799,42 @@ const startPendingRound = (session: GameSession) => {
   if (session.status !== "paused" || !session.roundTransition) return;
   const transition = session.roundTransition;
   session.currentRound = transition.nextRound;
-  if (getPausedRoundAction({ gameMode: session.settings.gameMode, phase: transition.phase }) === "open_buy_phase") {
-    openFlagBuyPhase(session);
-    appendEvent(session, { type: "start", message: `Round ${session.currentRound} buy phase opened.` });
+  if (getPausedRoundAction({ gameMode: session.settings.gameMode, phase: transition.phase }) === "open_preparation") {
+    openRoundPreparation(session);
+    appendEvent(session, { type: "start", message: `Round ${session.currentRound} preparation opened.` });
     broadcastSession(session);
     return;
   }
 
-  if (transition.phase === "buy") activatePreparedRound(session);
-  else startRoundState(session);
+  if (transition.phase === "zombie_selection") {
+    session.players = selectInitialZombies(session.players, session.settings.initialZombieCount).map((player) => (
+      player.role === "zombie"
+        ? { ...player, snowballs: session.settings.startingSnowballs }
+        : player
+    ));
+    activatePreparedRound(session);
+  } else if (transition.phase === "preparation" || transition.phase === "buy") {
+    activatePreparedRound(session);
+  } else {
+    startRoundState(session);
+  }
   session.announcement = makeAnnouncement(
     "round_start",
-    `Round ${session.currentRound} has begun!`,
+    session.settings.gameMode === "zombie" ? "Zombies Revealed!" : `Round ${session.currentRound} has begun!`,
     session.settings.gameMode === "flag"
       ? "Red carries and protects the flag. Blue defends and captures."
-      : "Answer questions, earn supplies, and tag the other team.",
+      : session.settings.gameMode === "zombie"
+        ? "Red Zombies hunt. Blue Humans use their stored energy to run and survive."
+        : "Answer questions, earn supplies, and tag the other team.",
     undefined,
     ROUND_START_ANNOUNCEMENT_MS
   );
-  appendEvent(session, { type: "start", message: `Round ${session.currentRound} started.` });
+  appendEvent(session, {
+    type: "start",
+    message: session.settings.gameMode === "zombie"
+      ? "Zombies were chosen at random. The survival round started."
+      : `Round ${session.currentRound} started.`
+  });
   broadcastSession(session);
 };
 
@@ -1444,7 +1496,7 @@ const botFire = (
   return true;
 };
 
-const advanceBots = () => {
+export const advanceBots = () => {
   const currentMs = Date.now();
   for (const session of sessions.values()) {
     if (session.status === "paused") {
@@ -2046,9 +2098,18 @@ app.post("/api/sessions/:code/start", requireTeacher, (req: AuthedRequest, res) 
   }
   session.currentRound = 1;
   session.roundWins = { blue: 0, red: 0 };
-  if (session.settings.gameMode === "flag") {
-    openFlagBuyPhase(session, false);
-    appendEvent(session, { type: "start", message: "Flag Mode round 1 buy phase opened." });
+  if (session.settings.gameMode === "flag" || session.settings.gameMode === "classic") {
+    openRoundPreparation(session, false);
+    appendEvent(session, {
+      type: "start",
+      message: `${session.settings.gameMode === "flag" ? "Flag Mode" : "Classic Tag"} round 1 preparation opened.`
+    });
+  } else if (session.settings.gameMode === "zombie") {
+    openZombieSelectionPhase(session, false);
+    appendEvent(session, {
+      type: "start",
+      message: "Zombie Mode preparation started. Everyone is Human for 20 seconds."
+    });
   } else {
     startRoundState(session, false);
     session.announcement = makeAnnouncement(
@@ -2083,6 +2144,28 @@ app.post("/api/sessions/:code/end", requireTeacher, (req: AuthedRequest, res) =>
     finishSession(session, "Teacher ended the round. Report is ready.");
   }
   res.json({ report: makeReport(session) });
+});
+
+app.post("/api/sessions/:code/end-round", requireTeacher, (req: AuthedRequest, res) => {
+  const session = getSessionByCode(routeParam(req.params.code));
+  if (!session || session.teacherId !== req.user!.id) {
+    res.status(404).json({ error: "Session not found." });
+    return;
+  }
+  if (session.settings.gameMode === "zombie") {
+    res.status(400).json({ error: "Zombie Mode is a single survival round. Use End Game to stop it." });
+    return;
+  }
+  if (session.status !== "active") {
+    res.status(409).json({ error: "A round must be active before it can be ended early." });
+    return;
+  }
+  finishRound(session, undefined, "Teacher ended the round early");
+  const responseSession = stampSession(session);
+  res.json({
+    session: responseSession,
+    ...(responseSession.status === "ended" ? { report: makeReport(session) } : {})
+  });
 });
 
 app.post("/api/sessions/:code/bots", requireTeacher, (req: AuthedRequest, res) => {
@@ -2651,7 +2734,7 @@ const answerQuestion = (
   player: PlayerSession,
   body: { questionId?: unknown; selectedChoice?: unknown }
 ): StudentCommandResult<{ result: QuizResult; cosmeticProgressToken: string }> => {
-  if (session.status !== "active") {
+  if (session.status !== "active" && !isRoundPreparationPhase(session) && !isZombieSelectionPhase(session)) {
     return failStudentCommand(400, inactiveRoundMessage(session));
   }
   if (!player.isAlive && !session.settings.deadPlayersCanPractice) {
@@ -2760,7 +2843,7 @@ const answerQuestion = (
 
 const buyGear = (session: GameSession, player: PlayerSession, gearId: unknown): StudentCommandResult<GearPurchaseResponse> => {
   const gear = GEAR_ITEMS.find((item) => item.id === gearId);
-  if (!isRoundActive(session) && !isRoundBuyPhase(session)) {
+  if (!isRoundActive(session) && !isRoundPreparationPhase(session)) {
     return failStudentCommand(400, "The round has ended. Gear buying is closed.");
   }
   if (!gear) {
@@ -2772,7 +2855,7 @@ const buyGear = (session: GameSession, player: PlayerSession, gearId: unknown): 
   const purchase = resolveGearPurchase({
     player,
     gear,
-    requireBase: session.settings.gameMode === "flag",
+    requireBase: session.settings.gameMode === "flag" && !isRoundPreparationPhase(session),
     mapId: session.settings.mapId
   });
   if (!purchase.ok) {
@@ -2783,7 +2866,7 @@ const buyGear = (session: GameSession, player: PlayerSession, gearId: unknown): 
         : purchase.reason === "starter_weapon"
           ? "The Starter Snowball Launcher is your default weapon and cannot replace purchased gear."
         : purchase.reason === "outside_base"
-          ? "Return to your team base to buy gear."
+          ? "Return to your team base or one of your team's spawn points to buy gear."
           : "Not enough money for that gear."
     );
   }
@@ -2807,7 +2890,7 @@ const buyGear = (session: GameSession, player: PlayerSession, gearId: unknown): 
 };
 
 const buySnowballs = (session: GameSession, player: PlayerSession): StudentCommandResult<SnowballPurchaseResponse> => {
-  if (!isRoundActive(session) && !isRoundBuyPhase(session)) {
+  if (!isRoundActive(session) && !isRoundPreparationPhase(session)) {
     return failStudentCommand(400, "The round has ended. Snowball buying is closed.");
   }
   if (session.settings.gameMode === "zombie" && player.role !== "zombie") {

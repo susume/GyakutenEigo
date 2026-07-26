@@ -104,6 +104,27 @@ test("a character contains exactly one primary head visual and fixed hitboxes", 
   factory.dispose();
 });
 
+test("Zombie Mode replaces customization with the game-only zombie head", () => {
+  const factory = new CharacterFactory();
+  const model = factory.createCharacter({
+    playerId: "zombie-head-test",
+    team: "red",
+    role: "zombie",
+    appearance: {
+      headStyleId: "rabbit",
+      backAccessoryId: "none",
+      footwearId: "runners",
+      victoryPoseId: "champion",
+      appearanceVersion: 7
+    }
+  });
+  assert.ok(model.root.getObjectByName("HeadStyle_zombie"));
+  assert.equal(model.root.getObjectByName("HeadStyle_rabbit"), undefined);
+  assert.equal(model.root.userData.activeHeadStyleId, "zombie");
+  model.dispose();
+  factory.dispose();
+});
+
 test("two players can share a style without sharing scene nodes", () => {
   const factory = new CharacterFactory();
   const appearance = {

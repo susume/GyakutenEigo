@@ -62,7 +62,10 @@ import {
   TEAM_SPAWNS,
   isRoundActive,
   isRoundBuyPhase,
+  isRoundPreparationPhase,
+  isZombieSelectionPhase,
   isInsideTeamBase,
+  isNearTeamSpawn,
   isGearAutoFireEnabled,
   randomizeBalancedTeams,
   selectLateJoinTeam,
@@ -153,15 +156,26 @@ test("isRoundActive opens economy only during an active round", () => {
   assert.equal(isRoundActive(makeSession({ status: "ended" })), false);
 });
 
-test("isRoundBuyPhase only opens the Flag pre-round shop window", () => {
-  const transition = { nextRound: 2, startsAt: "2026-07-15T00:00:06.000Z", phase: "buy" as const };
+test("round preparation opens the Tag and Flag quiz-and-shop window", () => {
+  const transition = { nextRound: 2, startsAt: "2026-07-15T00:00:35.000Z", phase: "preparation" as const };
   assert.equal(isRoundBuyPhase(makeSession({ status: "paused", roundTransition: transition })), true);
+  assert.equal(isRoundPreparationPhase(makeSession({ status: "paused", roundTransition: transition })), true);
   assert.equal(isRoundBuyPhase(makeSession({ status: "active", roundTransition: transition })), false);
-  assert.equal(isRoundBuyPhase(makeSession({
+  assert.equal(isRoundPreparationPhase(makeSession({
     status: "paused",
     settings: { ...DEFAULT_SESSION_SETTINGS, gameMode: "classic" },
     roundTransition: transition
+  })), true);
+  assert.equal(isRoundPreparationPhase(makeSession({
+    status: "paused",
+    settings: { ...DEFAULT_SESSION_SETTINGS, gameMode: "zombie" },
+    roundTransition: { ...transition, phase: "zombie_selection" }
   })), false);
+  assert.equal(isZombieSelectionPhase(makeSession({
+    status: "paused",
+    settings: { ...DEFAULT_SESSION_SETTINGS, gameMode: "zombie" },
+    roundTransition: { ...transition, phase: "zombie_selection" }
+  })), true);
 });
 
 test("buildReportRows excludes bots and practice answers from class accuracy", () => {
@@ -873,6 +887,19 @@ test("isInsideTeamBase allows buying only in the player's own base zone", () => 
   assert.equal(isInsideTeamBase("red", { x: 0, z: 0 }), false);
 });
 
+test("team spawn shop zones extend just beyond the home-base boundary", () => {
+  const blueEdgeSpawn = TEAM_SPAWNS.blue.reduce((closest, spawn) => spawn.x > closest.x ? spawn : closest);
+  const spawnShopPosition = { x: blueEdgeSpawn.x + 9, z: blueEdgeSpawn.z };
+  assert.equal(isInsideTeamBase("blue", spawnShopPosition), false);
+  assert.equal(isNearTeamSpawn("blue", spawnShopPosition), true);
+  const weapon = GEAR_ITEMS.find((item) => item.id === "quick_blaster")!;
+  assert.equal(resolveGearPurchase({
+    player: makePlayer({ team: "blue", ...spawnShopPosition }),
+    gear: weapon,
+    requireBase: true
+  }).ok, true);
+});
+
 test("clampArenaPosition preserves the large classroom arena footprint", () => {
   assert.deepEqual(clampArenaPosition({ x: 999, z: -999, facing: 1.25 }), { x: ARENA_LIMIT_X, z: -ARENA_LIMIT_Z, facing: 1.25 });
   assert.deepEqual(clampArenaPosition({ x: -999, z: 999, facing: Number.NaN }), { x: -ARENA_LIMIT_X, z: ARENA_LIMIT_Z, facing: 0 });
@@ -1185,8 +1212,13 @@ test("flag interactions require the student to be next to the flag", () => {
   assert.equal(resolveFlagCapture(placed, distantBlue).state, "placed");
 });
 
-test("zombie mode selects initial zombies and converts humans once", () => {
-  const players = Array.from({ length: 8 }, (_, index) => makePlayer({ id: `p-${index}`, team: "blue", role: "human" }));
+test("zombie mode selects initial zombies, preserves prepared human energy, and converts humans once", () => {
+  const players = Array.from({ length: 8 }, (_, index) => makePlayer({
+    id: `p-${index}`,
+    team: "blue",
+    role: "human",
+    energy: index + 10
+  }));
   assert.equal(getDefaultInitialZombieCount(2), 1);
   assert.equal(getDefaultInitialZombieCount(8), 2);
 
@@ -1195,7 +1227,9 @@ test("zombie mode selects initial zombies and converts humans once", () => {
   assert.equal(selected.filter((player) => player.role === "human").length, 6);
   assert.equal(selected.find((player) => player.role === "zombie")?.gear, "starter_blaster");
   assert.equal(selected.every((player) => player.role === "zombie" ? player.team === "red" : player.team === "blue"), true);
-  assert.equal(selected.every((player) => player.role === "zombie" ? player.energy === ZOMBIE_HUMAN_MAX_ENERGY : player.energy === 0), true);
+  assert.equal(selected.every((player) => player.role === "zombie"
+    ? player.energy === ZOMBIE_HUMAN_MAX_ENERGY
+    : player.energy === players.find((candidate) => candidate.id === player.id)?.energy), true);
 
   const zombie = makePlayer({ id: "zombie", team: "red", role: "zombie", gear: "starter_blaster", isAlive: true });
   const standingHuman = makePlayer({ id: "human", team: "blue", role: "human", isAlive: true, health: 40, respawns: 0 });

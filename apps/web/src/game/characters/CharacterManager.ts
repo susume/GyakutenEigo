@@ -26,6 +26,7 @@ type CharacterRecord = {
   badgeAlive: boolean;
   alive: boolean;
   team: PlayerSession["team"];
+  role?: PlayerSession["role"];
   appearanceSignature: string;
 };
 
@@ -59,7 +60,7 @@ export class CharacterManager {
       }
       if (!record) return;
       const appearanceSignature = JSON.stringify(player.appearance ?? null);
-      if (record.gear !== player.gear || record.team !== player.team || record.appearanceSignature !== appearanceSignature) {
+      if (record.gear !== player.gear || record.team !== player.team || record.role !== player.role || record.appearanceSignature !== appearanceSignature) {
         this.removeRecord(record);
         this.records.delete(player.id);
         this.add(player, state);
@@ -69,6 +70,7 @@ export class CharacterManager {
       if (!record.alive && player.isAlive) record.controller.triggerAnimation("respawn");
       record.alive = player.isAlive;
       record.team = player.team;
+      record.role = player.role;
       record.controller.carryingObjective = objectiveCarrierId === player.id;
       if (!player.isAlive) {
         record.controller.model.root.visible = false;
@@ -151,7 +153,13 @@ export class CharacterManager {
   }
 
   private add(player: PlayerSession, state: CharacterVisualState) {
-    const model = this.factory.createCharacter({ playerId: player.id, team: player.team, gear: player.gear, appearance: player.appearance });
+    const model = this.factory.createCharacter({
+      playerId: player.id,
+      team: player.team,
+      role: player.role,
+      gear: player.gear,
+      appearance: player.appearance
+    });
     const controller = new CharacterController(model, state.x, state.z, state.facing, player.isAlive, state.y ?? 0);
     this.scene.add(model.root);
 
@@ -180,6 +188,7 @@ export class CharacterManager {
       badgeAlive: player.isAlive,
       alive: player.isAlive,
       team: player.team,
+      role: player.role,
       appearanceSignature: JSON.stringify(player.appearance ?? null)
     });
   }
