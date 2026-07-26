@@ -52,26 +52,26 @@ export const TEAM_APPEARANCE = {
   blue: {
     teamName: "Team Alpha",
     palette: {
-      uniform: "#174a78",
-      armor: "#e9f2f7",
-      cloth: "#18324c",
-      accent: "#31b6ff",
+      uniform: "#1671bd",
+      armor: "#e8f0f4",
+      cloth: "#173250",
+      accent: "#49c8ff",
       accentName: "blue",
-      dark: "#102334",
-      visor: "#8ee8ff",
+      dark: "#0c1b2b",
+      visor: "#9be9ff",
       skin: "#c99f7c"
     }
   },
   red: {
     teamName: "Team Bravo",
     palette: {
-      uniform: "#8d2f3f",
-      armor: "#fff0e6",
-      cloth: "#4b2632",
-      accent: "#ff6b46",
+      uniform: "#c93643",
+      armor: "#f1eee9",
+      cloth: "#532433",
+      accent: "#ff6a55",
       accentName: "orange",
-      dark: "#2f1b26",
-      visor: "#ffd09c",
+      dark: "#281923",
+      visor: "#ffd1bd",
       skin: "#b98766"
     }
   }
@@ -82,18 +82,18 @@ export const TEAM_CHARACTER_CONFIGS = {
     ...TEAM_APPEARANCE.blue,
     silhouette: {
       vest: "plate_carrier",
-      shoulderBulk: 1.18,
-      heightScale: 1.02,
+      shoulderBulk: 1.1,
+      heightScale: 1,
       widthScale: 1
     }
   },
   red: {
     ...TEAM_APPEARANCE.red,
     silhouette: {
-      vest: "long_rig",
-      shoulderBulk: 1.04,
-      heightScale: 0.98,
-      widthScale: 1.08
+      vest: "plate_carrier",
+      shoulderBulk: 1.1,
+      heightScale: 1,
+      widthScale: 1
     }
   }
 } as const satisfies Record<Team, Omit<CharacterAppearance, "team" | "variant" | "customization">>;

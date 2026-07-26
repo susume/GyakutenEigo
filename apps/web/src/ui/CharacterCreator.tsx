@@ -216,7 +216,15 @@ export function CharacterPreview({
       "rear-three-quarter": 0.55
     }[previewView ?? ""] ?? Math.PI - 0.32;
     const previewPose = previewParams.get("characterPose");
-    if (showVictoryPose || previewPose === "victory") model.triggerAnimation("victory");
+    if (showVictoryPose || previewPose === "victory") {
+      model.triggerAnimation("victory");
+    } else if (previewPose === "jump") {
+      model.triggerAnimation("jump");
+    } else if (previewPose === "shoot") {
+      model.triggerAnimation("fire");
+    } else if (previewPose === "respawn") {
+      model.triggerAnimation("respawn");
+    }
     model.root.rotation.y = presentationRotation;
     scene.add(model.root);
 
@@ -255,14 +263,16 @@ export function CharacterPreview({
       if (!reducedMotion && !dragging && !hasInteracted) {
         model.root.rotation.y = presentationRotation + Math.sin(time * 0.00042) * 0.12;
       }
+      const previewSpeed = previewPose === "walk" ? 3.2 : previewPose === "sprint" ? 5.4 : 0;
       model.update({
         camera,
         delta,
         elapsed: time / 1000,
-        speed: previewPose === "walk" ? 3.2 : 0,
-        forwardSpeed: previewPose === "walk" ? 3.2 : 0,
+        speed: previewSpeed,
+        forwardSpeed: previewSpeed,
         alive: true,
         aimPitch: previewPose === "aim" ? -0.18 : 0,
+        firing: previewPose === "shoot",
         crouching: previewPose === "crouch"
       });
       renderer.render(scene, camera);

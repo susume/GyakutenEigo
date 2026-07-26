@@ -7,15 +7,14 @@ import {
   serializeCharacterAppearance
 } from "./CharacterAppearance.js";
 
-test("resolveCharacterAppearance gives Alpha and Bravo distinct sports identities", () => {
-  const alpha = resolveCharacterAppearance({ team: "blue", playerId: "alpha-1", gear: "starter_blaster" });
-  const bravo = resolveCharacterAppearance({ team: "red", playerId: "bravo-1", gear: "starter_blaster" });
+test("resolveCharacterAppearance gives both teams one uniform silhouette with distinct palettes", () => {
+  const alpha = resolveCharacterAppearance({ team: "blue", playerId: "learner-1", gear: "starter_blaster" });
+  const bravo = resolveCharacterAppearance({ team: "red", playerId: "learner-1", gear: "starter_blaster" });
 
   assert.equal(alpha.teamName, "Team Alpha");
   assert.equal(bravo.teamName, "Team Bravo");
   assert.notEqual(alpha.palette.uniform, bravo.palette.uniform);
-  assert.notEqual(alpha.silhouette.vest, bravo.silhouette.vest);
-  assert.notEqual(alpha.silhouette.widthScale, bravo.silhouette.widthScale);
+  assert.deepEqual(alpha.silhouette, bravo.silhouette);
 });
 
 test("team palette remains authoritative when legacy colour fields are injected", () => {
@@ -39,10 +38,10 @@ test("team palette remains authoritative when legacy colour fields are injected"
     appearance: injected as never
   });
 
-  assert.equal(alpha.palette.uniform, "#174a78");
-  assert.equal(alpha.palette.accent, "#31b6ff");
-  assert.equal(bravo.palette.uniform, "#8d2f3f");
-  assert.equal(bravo.palette.accent, "#ff6b46");
+  assert.equal(alpha.palette.uniform, "#1671bd");
+  assert.equal(alpha.palette.accent, "#49c8ff");
+  assert.equal(bravo.palette.uniform, "#c93643");
+  assert.equal(bravo.palette.accent, "#ff6a55");
 });
 
 test("serializeCharacterAppearance returns compact multiplayer-safe appearance state", () => {

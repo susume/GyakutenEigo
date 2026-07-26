@@ -91,7 +91,7 @@ const part = (
     new THREE.Quaternion().setFromEuler(new THREE.Euler(...rotation)),
     new THREE.Vector3(...scale)
   );
-  const next = geometry.toNonIndexed().applyMatrix4(matrix);
+  const next = (geometry.index ? geometry.toNonIndexed() : geometry.clone()).applyMatrix4(matrix);
   geometry.dispose();
   next.userData.materialIndex = materialIndex;
   return addRigidSkinning(next, BONE_INDEX[bone]);
@@ -104,67 +104,132 @@ const joint = (radius: number, widthScale = 1) =>
   new THREE.SphereGeometry(radius, 10, 7).scale(widthScale, 1, 1);
 
 const taperedLimb = (topRadius: number, bottomRadius: number, height: number) =>
-  new THREE.CylinderGeometry(topRadius, bottomRadius, height, 10, 1, false);
+  new THREE.CylinderGeometry(topRadius, bottomRadius, height, 12, 2, false);
 
 const torsoGeometry = () => new THREE.LatheGeometry([
-  new THREE.Vector2(0.27, -0.38),
-  new THREE.Vector2(0.3, -0.3),
-  new THREE.Vector2(0.31, -0.16),
-  new THREE.Vector2(0.36, 0.08),
-  new THREE.Vector2(0.39, 0.22),
-  new THREE.Vector2(0.35, 0.34),
-  new THREE.Vector2(0.29, 0.39)
-], 12);
+  new THREE.Vector2(0.255, -0.37),
+  new THREE.Vector2(0.285, -0.32),
+  new THREE.Vector2(0.31, -0.2),
+  new THREE.Vector2(0.355, 0.02),
+  new THREE.Vector2(0.39, 0.2),
+  new THREE.Vector2(0.37, 0.31),
+  new THREE.Vector2(0.3, 0.37)
+], 14);
 
 const pelvisGeometry = () => new THREE.LatheGeometry([
-  new THREE.Vector2(0.23, -0.17),
-  new THREE.Vector2(0.29, -0.11),
-  new THREE.Vector2(0.31, 0.04),
-  new THREE.Vector2(0.27, 0.16)
-], 10);
+  new THREE.Vector2(0.225, -0.18),
+  new THREE.Vector2(0.27, -0.14),
+  new THREE.Vector2(0.305, 0),
+  new THREE.Vector2(0.29, 0.12),
+  new THREE.Vector2(0.255, 0.17)
+], 12);
+
+const waistbandGeometry = () => new THREE.LatheGeometry([
+  new THREE.Vector2(0.245, -0.07),
+  new THREE.Vector2(0.285, -0.045),
+  new THREE.Vector2(0.295, 0.035),
+  new THREE.Vector2(0.265, 0.075)
+], 12);
+
+const chestPanelGeometry = () => {
+  const shape = new THREE.Shape();
+  shape.moveTo(-0.19, -0.24);
+  shape.quadraticCurveTo(-0.235, -0.18, -0.23, -0.08);
+  shape.lineTo(-0.205, 0.16);
+  shape.quadraticCurveTo(-0.18, 0.24, -0.1, 0.26);
+  shape.quadraticCurveTo(0, 0.285, 0.1, 0.26);
+  shape.quadraticCurveTo(0.18, 0.24, 0.205, 0.16);
+  shape.lineTo(0.23, -0.08);
+  shape.quadraticCurveTo(0.235, -0.18, 0.19, -0.24);
+  shape.quadraticCurveTo(0, -0.29, -0.19, -0.24);
+  return new THREE.ExtrudeGeometry(shape, {
+    depth: 0.035,
+    bevelEnabled: true,
+    bevelSegments: 2,
+    bevelSize: 0.018,
+    bevelThickness: 0.012,
+    curveSegments: 3,
+    steps: 1
+  });
+};
+
+const roundedPad = (radius = 0.5, widthSegments = 12, heightSegments = 8) =>
+  new THREE.SphereGeometry(radius, widthSegments, heightSegments);
 
 const buildSharedBodyGeometry = (palette: THREE.Color[], shoulderBulk: number) => {
-  const shoulderRadius = 0.128 * Math.min(1.18, shoulderBulk);
+  const shoulderScale = Math.min(1.18, shoulderBulk);
   const pieces = [
-    // A continuous tapered chest, waist, neck, and pelvis establish a human torso.
-    part(torsoGeometry(), "torso", BODY_MATERIALS.uniform, [0, 1.17, 0], [1, 1, 0.78]),
-    part(pelvisGeometry(), "root", BODY_MATERIALS.cloth, [0, 0.78, 0], [1, 1, 0.86]),
-    part(new THREE.CylinderGeometry(0.095, 0.105, 0.16, 10), "torso", BODY_MATERIALS.skin, [0, 1.61, 0]),
-    part(new THREE.SphereGeometry(0.5, 12, 8), "torso", BODY_MATERIALS.armor, [0, 1.27, -0.245], [0.58, 0.46, 0.16]),
-    part(new THREE.TorusGeometry(0.245, 0.025, 6, 16), "torso", BODY_MATERIALS.accent, [0, 1.49, -0.08], [1, 0.74, 1], [Math.PI / 2, 0, 0]),
-    part(new THREE.TorusGeometry(0.28, 0.026, 6, 16), "root", BODY_MATERIALS.dark, [0, 0.9, 0], [1, 0.85, 1], [Math.PI / 2, 0, 0]),
+    // One compact jersey silhouette: team-colour shell, dark side insets, a deliberately
+    // shaped neutral chest panel, and a padded collar that accepts every head style.
+    part(torsoGeometry(), "torso", BODY_MATERIALS.uniform, [0, 1.17, 0], [1, 1, 0.76]),
+    part(capsule(0.065, 0.4, 10), "torso", BODY_MATERIALS.cloth, [-0.285, 1.2, -0.205], [0.72, 1, 0.42], [0, 0, -0.09]),
+    part(capsule(0.065, 0.4, 10), "torso", BODY_MATERIALS.cloth, [0.285, 1.2, -0.205], [0.72, 1, 0.42], [0, 0, 0.09]),
+    part(chestPanelGeometry(), "torso", BODY_MATERIALS.armor, [0, 1.27, -0.286], [0.86, 0.86, 1], [0, Math.PI, 0]),
+    part(new THREE.TorusGeometry(0.052, 0.012, 6, 14), "torso", BODY_MATERIALS.dark, [0, 1.26, -0.333]),
+    part(roundedPad(), "torso", BODY_MATERIALS.accent, [0, 1.26, -0.347], [0.025, 0.025, 0.012]),
+    part(new THREE.CylinderGeometry(0.115, 0.135, 0.17, 12), "torso", BODY_MATERIALS.dark, [0, 1.61, 0], [1, 1, 0.88]),
+    part(new THREE.TorusGeometry(0.125, 0.018, 5, 14), "torso", BODY_MATERIALS.accent, [0, 1.68, 0], [1, 0.9, 1], [Math.PI / 2, 0, 0]),
 
-    // Sloped shoulders, upper arms, elbows, forearms, mitten hands, and thumbs.
-    part(joint(shoulderRadius, 1.08), "leftArm", BODY_MATERIALS.armor, [-0.37, 1.41, 0]),
-    part(joint(shoulderRadius, 1.08), "rightArm", BODY_MATERIALS.armor, [0.37, 1.41, 0]),
-    part(taperedLimb(0.105, 0.092, 0.34), "leftArm", BODY_MATERIALS.uniform, [-0.39, 1.23, 0]),
-    part(taperedLimb(0.105, 0.092, 0.34), "rightArm", BODY_MATERIALS.uniform, [0.39, 1.23, 0]),
-    part(joint(0.1), "leftForearm", BODY_MATERIALS.accent, [-0.39, 1.05, 0]),
-    part(joint(0.1), "rightForearm", BODY_MATERIALS.accent, [0.39, 1.05, 0]),
-    part(taperedLimb(0.09, 0.074, 0.28), "leftForearm", BODY_MATERIALS.uniform, [-0.39, 0.9, -0.005]),
-    part(taperedLimb(0.09, 0.074, 0.28), "rightForearm", BODY_MATERIALS.uniform, [0.39, 0.9, -0.005]),
-    part(capsule(0.082, 0.065, 8), "leftHand", BODY_MATERIALS.skin, [-0.39, 0.7, -0.015], [0.94, 1, 0.84]),
-    part(capsule(0.082, 0.065, 8), "rightHand", BODY_MATERIALS.skin, [0.39, 0.7, -0.015], [0.94, 1, 0.84]),
-    part(capsule(0.035, 0.055, 7), "leftHand", BODY_MATERIALS.skin, [-0.32, 0.72, -0.055], [1, 1, 0.9], [0.2, 0, -0.5]),
-    part(capsule(0.035, 0.055, 7), "rightHand", BODY_MATERIALS.skin, [0.32, 0.72, -0.055], [1, 1, 0.9], [0.2, 0, 0.5]),
-    part(new THREE.TorusGeometry(0.103, 0.018, 5, 12), "leftForearm", BODY_MATERIALS.accent, [-0.39, 0.78, -0.005], [1, 1, 0.82], [Math.PI / 2, 0, 0]),
-    part(new THREE.TorusGeometry(0.103, 0.018, 5, 12), "rightForearm", BODY_MATERIALS.accent, [0.39, 0.78, -0.005], [1, 1, 0.82], [Math.PI / 2, 0, 0]),
+    // A rounded athletic waistband and trouser seat overlap the jersey rather than
+    // presenting a separate rectangular pelvis block.
+    part(waistbandGeometry(), "root", BODY_MATERIALS.dark, [0, 0.91, 0], [1, 1, 0.82]),
+    part(new THREE.TorusGeometry(0.275, 0.018, 5, 16), "root", BODY_MATERIALS.accent, [0, 0.955, 0], [1, 0.82, 1], [Math.PI / 2, 0, 0]),
+    part(pelvisGeometry(), "root", BODY_MATERIALS.cloth, [0, 0.76, 0], [1, 1, 0.86]),
+    part(capsule(0.055, 0.2, 9), "root", BODY_MATERIALS.uniform, [-0.255, 0.75, -0.04], [0.72, 1, 0.55]),
+    part(capsule(0.055, 0.2, 9), "root", BODY_MATERIALS.uniform, [0.255, 0.75, -0.04], [0.72, 1, 0.55]),
 
-    // Distinct thighs, knees, calves, ankles, heels, and forward-facing toes.
-    part(taperedLimb(0.125, 0.145, 0.36), "leftLeg", BODY_MATERIALS.uniform, [-0.18, 0.55, 0]),
-    part(taperedLimb(0.125, 0.145, 0.36), "rightLeg", BODY_MATERIALS.uniform, [0.18, 0.55, 0]),
-    part(joint(0.112, 0.94), "leftShin", BODY_MATERIALS.armor, [-0.18, 0.36, -0.02]),
-    part(joint(0.112, 0.94), "rightShin", BODY_MATERIALS.armor, [0.18, 0.36, -0.02]),
-    part(taperedLimb(0.092, 0.108, 0.28), "leftShin", BODY_MATERIALS.uniform, [-0.18, 0.2, 0]),
-    part(taperedLimb(0.092, 0.108, 0.28), "rightShin", BODY_MATERIALS.uniform, [0.18, 0.2, 0]),
-    part(new THREE.CylinderGeometry(0.075, 0.08, 0.11, 9), "leftShin", BODY_MATERIALS.dark, [-0.18, 0.075, -0.005]),
-    part(new THREE.CylinderGeometry(0.075, 0.08, 0.11, 9), "rightShin", BODY_MATERIALS.dark, [0.18, 0.075, -0.005]),
-    part(capsule(0.095, 0.18, 9), "leftShin", BODY_MATERIALS.dark, [-0.18, 0.055, -0.14], [1.05, 1, 1], [Math.PI / 2, 0, 0.025]),
-    part(capsule(0.095, 0.18, 9), "rightShin", BODY_MATERIALS.dark, [0.18, 0.055, -0.14], [1.05, 1, 1], [Math.PI / 2, 0, -0.025]),
-    part(new THREE.SphereGeometry(0.085, 9, 6), "leftShin", BODY_MATERIALS.dark, [-0.18, 0.075, 0.025], [1, 0.85, 0.9]),
-    part(new THREE.SphereGeometry(0.085, 9, 6), "rightShin", BODY_MATERIALS.dark, [0.18, 0.075, 0.025], [1, 0.85, 0.9]),
-    part(new THREE.TorusGeometry(0.105, 0.018, 5, 12), "leftShin", BODY_MATERIALS.accent, [-0.18, 0.13, -0.015], [1, 1, 0.85], [Math.PI / 2, 0, 0]),
-    part(new THREE.TorusGeometry(0.105, 0.018, 5, 12), "rightShin", BODY_MATERIALS.accent, [0.18, 0.13, -0.015], [1, 1, 0.85], [Math.PI / 2, 0, 0])
+    // Shoulder yoke and flattened pads overlap both torso and sleeve, hiding the
+    // animated joint while preserving the existing upper-arm bones.
+    part(capsule(0.075, 0.55, 10), "torso", BODY_MATERIALS.uniform, [0, 1.43, 0], [1, 1, 0.72], [0, 0, Math.PI / 2]),
+    part(roundedPad(), "leftArm", BODY_MATERIALS.armor, [-0.37, 1.405, -0.018], [0.165 * shoulderScale, 0.115, 0.135]),
+    part(roundedPad(), "rightArm", BODY_MATERIALS.armor, [0.37, 1.405, -0.018], [0.165 * shoulderScale, 0.115, 0.135]),
+    part(roundedPad(), "leftArm", BODY_MATERIALS.uniform, [-0.37, 1.39, -0.09], [0.14 * shoulderScale, 0.085, 0.065]),
+    part(roundedPad(), "rightArm", BODY_MATERIALS.uniform, [0.37, 1.39, -0.09], [0.14 * shoulderScale, 0.085, 0.065]),
+
+    // Tapered jersey sleeves, concealed elbows, forearm guards, and dark arena
+    // gloves create one readable arm rather than a ball-cylinder chain.
+    part(taperedLimb(0.112, 0.096, 0.34), "leftArm", BODY_MATERIALS.uniform, [-0.39, 1.23, 0]),
+    part(taperedLimb(0.112, 0.096, 0.34), "rightArm", BODY_MATERIALS.uniform, [0.39, 1.23, 0]),
+    part(joint(0.087), "leftForearm", BODY_MATERIALS.cloth, [-0.39, 1.045, 0]),
+    part(joint(0.087), "rightForearm", BODY_MATERIALS.cloth, [0.39, 1.045, 0]),
+    part(taperedLimb(0.108, 0.073, 0.3), "leftForearm", BODY_MATERIALS.cloth, [-0.39, 0.89, -0.005]),
+    part(taperedLimb(0.108, 0.073, 0.3), "rightForearm", BODY_MATERIALS.cloth, [0.39, 0.89, -0.005]),
+    part(capsule(0.072, 0.13, 9), "leftForearm", BODY_MATERIALS.uniform, [-0.39, 0.915, -0.072], [0.95, 1, 0.45]),
+    part(capsule(0.072, 0.13, 9), "rightForearm", BODY_MATERIALS.uniform, [0.39, 0.915, -0.072], [0.95, 1, 0.45]),
+    part(new THREE.TorusGeometry(0.09, 0.017, 5, 12), "leftForearm", BODY_MATERIALS.accent, [-0.39, 0.765, -0.005], [1, 1, 0.82], [Math.PI / 2, 0, 0]),
+    part(new THREE.TorusGeometry(0.09, 0.017, 5, 12), "rightForearm", BODY_MATERIALS.accent, [0.39, 0.765, -0.005], [1, 1, 0.82], [Math.PI / 2, 0, 0]),
+    part(capsule(0.085, 0.07, 9), "leftHand", BODY_MATERIALS.dark, [-0.39, 0.69, -0.025], [1, 1, 0.88]),
+    part(capsule(0.085, 0.07, 9), "rightHand", BODY_MATERIALS.dark, [0.39, 0.69, -0.025], [1, 1, 0.88]),
+    part(capsule(0.035, 0.06, 7), "leftHand", BODY_MATERIALS.dark, [-0.32, 0.71, -0.065], [1, 1, 0.9], [0.2, 0, -0.5]),
+    part(capsule(0.035, 0.06, 7), "rightHand", BODY_MATERIALS.dark, [0.32, 0.71, -0.065], [1, 1, 0.9], [0.2, 0, 0.5]),
+
+    // Continuous trousers hide the knee pivots. Neutral pads sit on top of dark
+    // fabric, while broad outer-leg team panels remain readable at match distance.
+    part(taperedLimb(0.135, 0.15, 0.38), "leftLeg", BODY_MATERIALS.cloth, [-0.18, 0.55, 0]),
+    part(taperedLimb(0.135, 0.15, 0.38), "rightLeg", BODY_MATERIALS.cloth, [0.18, 0.55, 0]),
+    part(capsule(0.052, 0.22, 9), "leftLeg", BODY_MATERIALS.uniform, [-0.285, 0.56, -0.03], [0.78, 1, 0.5]),
+    part(capsule(0.052, 0.22, 9), "rightLeg", BODY_MATERIALS.uniform, [0.285, 0.56, -0.03], [0.78, 1, 0.5]),
+    part(joint(0.098, 0.96), "leftShin", BODY_MATERIALS.cloth, [-0.18, 0.36, 0]),
+    part(joint(0.098, 0.96), "rightShin", BODY_MATERIALS.cloth, [0.18, 0.36, 0]),
+    part(roundedPad(), "leftShin", BODY_MATERIALS.armor, [-0.18, 0.365, -0.095], [0.095, 0.09, 0.035]),
+    part(roundedPad(), "rightShin", BODY_MATERIALS.armor, [0.18, 0.365, -0.095], [0.095, 0.09, 0.035]),
+    part(roundedPad(), "leftShin", BODY_MATERIALS.uniform, [-0.18, 0.365, -0.118], [0.055, 0.045, 0.014]),
+    part(roundedPad(), "rightShin", BODY_MATERIALS.uniform, [0.18, 0.365, -0.118], [0.055, 0.045, 0.014]),
+    part(taperedLimb(0.105, 0.085, 0.29), "leftShin", BODY_MATERIALS.cloth, [-0.18, 0.205, 0]),
+    part(taperedLimb(0.105, 0.085, 0.29), "rightShin", BODY_MATERIALS.cloth, [0.18, 0.205, 0]),
+    part(capsule(0.045, 0.16, 8), "leftShin", BODY_MATERIALS.uniform, [-0.255, 0.205, -0.025], [0.75, 1, 0.5]),
+    part(capsule(0.045, 0.16, 8), "rightShin", BODY_MATERIALS.uniform, [0.255, 0.205, -0.025], [0.75, 1, 0.5]),
+
+    // Oversized lightweight trainers use a pale sole, dark upper, team quarter
+    // panel, and accent cuff for a stable arena-athlete stance.
+    part(capsule(0.105, 0.23, 10), "leftShin", BODY_MATERIALS.armor, [-0.18, 0.025, -0.145], [1.08, 1, 0.38], [Math.PI / 2, 0, 0.02]),
+    part(capsule(0.105, 0.23, 10), "rightShin", BODY_MATERIALS.armor, [0.18, 0.025, -0.145], [1.08, 1, 0.38], [Math.PI / 2, 0, -0.02]),
+    part(capsule(0.096, 0.2, 10), "leftShin", BODY_MATERIALS.dark, [-0.18, 0.07, -0.13], [1.03, 1, 0.94], [Math.PI / 2, 0, 0.02]),
+    part(capsule(0.096, 0.2, 10), "rightShin", BODY_MATERIALS.dark, [0.18, 0.07, -0.13], [1.03, 1, 0.94], [Math.PI / 2, 0, -0.02]),
+    part(capsule(0.052, 0.13, 8), "leftShin", BODY_MATERIALS.uniform, [-0.18, 0.105, -0.21], [1.12, 1, 0.48], [Math.PI / 2, 0, 0.02]),
+    part(capsule(0.052, 0.13, 8), "rightShin", BODY_MATERIALS.uniform, [0.18, 0.105, -0.21], [1.12, 1, 0.48], [Math.PI / 2, 0, -0.02]),
+    part(new THREE.TorusGeometry(0.1, 0.017, 5, 12), "leftShin", BODY_MATERIALS.accent, [-0.18, 0.13, -0.005], [1, 1, 0.85], [Math.PI / 2, 0, 0]),
+    part(new THREE.TorusGeometry(0.1, 0.017, 5, 12), "rightShin", BODY_MATERIALS.accent, [0.18, 0.13, -0.005], [1, 1, 0.85], [Math.PI / 2, 0, 0])
   ];
 
   pieces.forEach((piece) => {
@@ -276,7 +341,7 @@ export const createSharedSkinnedStudent = (
     materials.visor,
     materials.skin
   ];
-  const paletteKey = `humanoid-v3-headless-${materialArray
+  const paletteKey = `humanoid-v4-quizstrike-uniform-${materialArray
     .map((material) => `#${material.color.getHexString()}`)
     .join("-")}-${appearance.silhouette.shoulderBulk.toFixed(2)}`;
   let geometry = sharedBodyGeometries.get(paletteKey);

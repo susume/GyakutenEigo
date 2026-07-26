@@ -89,6 +89,47 @@ test("objective carriers keep a readable cradle pose while moving", () => {
   assert.notEqual(parts.leftLeg.rotation.x, 0);
 });
 
+test("walk, sprint, crouch, and aim keep connected playable poses", () => {
+  const walkParts = makeParts();
+  const sprintParts = makeParts();
+  const crouchParts = makeParts();
+  const aimParts = makeParts();
+  const walk = new CharacterAnimator();
+  const sprint = new CharacterAnimator();
+  const crouch = new CharacterAnimator();
+  const aim = new CharacterAnimator();
+  for (let frame = 0; frame < 45; frame += 1) {
+    const elapsed = frame / 60;
+    walk.update(walkParts, { delta: 1 / 60, elapsed, speed: 3.2, forwardSpeed: 3.2, alive: true });
+    sprint.update(sprintParts, { delta: 1 / 60, elapsed, speed: 5.4, forwardSpeed: 5.4, alive: true });
+    crouch.update(crouchParts, { delta: 1 / 60, elapsed, speed: 0, alive: true, crouching: true });
+    aim.update(aimParts, { delta: 1 / 60, elapsed, speed: 0, alive: true, aimPitch: -0.24 });
+  }
+  assert.ok(Math.abs(walkParts.leftLeg.rotation.x) > 0.08);
+  assert.ok(Math.abs(sprintParts.leftLeg.rotation.x) >= Math.abs(walkParts.leftLeg.rotation.x));
+  assert.ok(crouchParts.root.position.y < -0.24);
+  assert.ok(crouchParts.leftShin.rotation.x > 0.7);
+  assert.ok(aimParts.head.rotation.x < -0.2);
+});
+
+test("jump and respawn cues preserve a readable connected silhouette", () => {
+  const jumpParts = makeParts();
+  const respawnParts = makeParts();
+  const jump = new CharacterAnimator();
+  const respawn = new CharacterAnimator();
+  jump.trigger("jump");
+  respawn.trigger("respawn");
+  for (let frame = 0; frame < 15; frame += 1) {
+    const state = { delta: 1 / 60, elapsed: frame / 60, speed: 0, alive: true };
+    jump.update(jumpParts, state);
+    respawn.update(respawnParts, state);
+  }
+  assert.ok(jumpParts.root.position.y > 0.15);
+  assert.ok(jumpParts.leftLeg.rotation.x > 0.25);
+  assert.ok(respawnParts.root.position.y < 0);
+  assert.ok(Math.abs(respawnParts.leftArm.rotation.z) > 0.2);
+});
+
 test("unlockable victory styles produce distinct readable poses", () => {
   const waveParts = makeParts();
   const powerParts = makeParts();
