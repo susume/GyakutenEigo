@@ -435,7 +435,7 @@ const createPresetSettings = (overrides: Partial<SessionSettings>): SessionSetti
 const SESSION_PRESETS = [
   {
     name: "Quick Warmup",
-    description: "Short, low-pressure review for a starter activity.",
+    description: "Fast classroom activity.",
     settings: createPresetSettings({
       maxPlayers: 12,
       startingMoney: 300,
@@ -449,12 +449,12 @@ const SESSION_PRESETS = [
   },
   {
     name: "Classic Class",
-    description: "Balanced round for whole-class play.",
+    description: "Recommended default.",
     settings: createPresetSettings({})
   },
   {
     name: "Review Rush",
-    description: "More time and rewards for longer study sessions.",
+    description: "Longer review session.",
     settings: createPresetSettings({
       maxPlayers: 30,
       startingMoney: 600,
@@ -467,10 +467,17 @@ const SESSION_PRESETS = [
   }
 ];
 
-const sessionSettingGroups: Array<{ title: string; description: string; fields: SessionNumberField[] }> = [
-  { title: "Classroom and timing", description: "Choose the room size and how long each activity runs.", fields: ["maxPlayers", "roundDurationSeconds", "roundCount", "flagHoldSeconds", "initialZombieCount"] },
-  { title: "Rewards and spending", description: "Set what correct answers earn and how much supplies cost.", fields: ["startingMoney", "correctAnswerReward", "wrongAnswerPenalty", "snowballPackPrice"] },
-  { title: "Starting supplies", description: "Set the ammunition students start with and receive in a pack.", fields: ["startingSnowballs", "snowballsPerPack"] }
+const getSessionPresetName = (settings: SessionSettings) =>
+  SESSION_PRESETS.find((preset) =>
+    sessionNumberFields.every((field) => preset.settings[field.name] === settings[field.name]) &&
+    preset.settings.deadPlayersCanPractice === settings.deadPlayersCanPractice &&
+    preset.settings.deadPlayersEarnMoney === settings.deadPlayersEarnMoney
+  )?.name ?? "Custom Game";
+
+const sessionSettingGroups: Array<{ title: string; fields: SessionNumberField[] }> = [
+  { title: "Game", fields: ["maxPlayers", "roundDurationSeconds", "roundCount", "flagHoldSeconds", "initialZombieCount"] },
+  { title: "Quiz Economy", fields: ["startingMoney", "correctAnswerReward", "wrongAnswerPenalty", "snowballPackPrice"] },
+  { title: "Weapons / Supplies", fields: ["startingSnowballs", "snowballsPerPack"] }
 ];
 
 const formatDuration = (seconds: number) => {
@@ -1121,6 +1128,7 @@ function TeacherDashboard({ teacher, onLogout }: { teacher: TeacherUser; onLogou
   const [tab, setTab] = useState<"home" | "quizzes" | "sessions" | "reports">("home");
   const [data, setData] = useState<DashboardPayload>({ classes: [], quizSets: [], sessions: [] });
   const [selectedSession, setSelectedSession] = useState<GameSession | null>(null);
+  const [launchQuizId, setLaunchQuizId] = useState("");
   const [report, setReport] = useState<SessionReport | null>(null);
   const [isSocketReconnecting, setIsSocketReconnecting] = useState(false);
   const status = useAsyncMessage();
@@ -1161,8 +1169,9 @@ function TeacherDashboard({ teacher, onLogout }: { teacher: TeacherUser; onLogou
       }));
     });
     return () => {
-      setIsSocketReconnecting(false);
+      socket.removeAllListeners();
       socket.disconnect();
+      setIsSocketReconnecting(false);
     };
   }, [selectedSession?.sessionCode]);
 
@@ -1203,7 +1212,17 @@ function TeacherDashboard({ teacher, onLogout }: { teacher: TeacherUser; onLogou
           </p>
         )}
 
-        {tab === "home" && <TeacherFolders data={data} onTab={setTab} />}
+        {tab === "home" && (
+          <TeacherFolders
+            data={data}
+            onEditQuiz={() => setTab("quizzes")}
+            onPlayLive={(quizSetId) => {
+              setLaunchQuizId(quizSetId);
+              setSelectedSession(null);
+              setTab("sessions");
+            }}
+          />
+        )}
         {tab === "quizzes" && <QuizManager data={data} onRefresh={refresh} />}
         {tab === "sessions" && (
           <SessionManager
@@ -1213,6 +1232,7 @@ function TeacherDashboard({ teacher, onLogout }: { teacher: TeacherUser; onLogou
             onRefresh={refresh}
             onReport={setReport}
             onOpenReports={() => setTab("reports")}
+            initialQuizSetId={launchQuizId}
           />
         )}
         {tab === "reports" && (
@@ -1227,6 +1247,7 @@ function TeacherDashboard({ teacher, onLogout }: { teacher: TeacherUser; onLogou
                 className={selectedSession?.id === session.id ? "active session-chip" : "session-chip"}
                 onClick={() => {
                   setSelectedSession(session);
+                  setLaunchQuizId(session.quizSetId);
                   setTab("sessions");
                 }}
               >
@@ -1241,12 +1262,20 @@ function TeacherDashboard({ teacher, onLogout }: { teacher: TeacherUser; onLogou
   );
 }
 
-function TeacherFolders({ data, onTab }: { data: DashboardPayload; onTab: (tab: "quizzes" | "sessions") => void }) {
+function TeacherFolders({
+  data,
+  onEditQuiz,
+  onPlayLive
+}: {
+  data: DashboardPayload;
+  onEditQuiz: () => void;
+  onPlayLive: (quizSetId: string) => void;
+}) {
   return (
     <section className="teacher-folders">
       <div className="folders-heading">
         <h2>Folders</h2>
-        <button className="folder-new" onClick={() => onTab("quizzes")}>New <Plus size={22} aria-hidden="true" /></button>
+        <button className="folder-new" onClick={onEditQuiz}>New <Plus size={22} aria-hidden="true" /></button>
       </div>
       <div className="folder-chips" aria-label="Quiz folders">
         <button className="active"><Folder size={15} aria-hidden="true" />All kits</button>
@@ -1259,13 +1288,13 @@ function TeacherFolders({ data, onTab }: { data: DashboardPayload; onTab: (tab: 
             <div className="quiz-cover"><BookOpen size={26} aria-hidden="true" /></div>
             <div><h3>{quiz.title}</h3><small>{quiz.questions.length} questions · Created {new Date(quiz.createdAt).toLocaleDateString()}</small></div>
             <div className="folder-row-actions">
-              <button className="play-live" onClick={() => onTab("sessions")}>Play Live</button>
-              <button className="edit-set" onClick={() => onTab("quizzes")}>Edit Set</button>
+              <button className="play-live" onClick={() => onPlayLive(quiz.id)}><Play size={17} aria-hidden="true" />Play Live</button>
+              <button className="edit-set" onClick={onEditQuiz}>Edit Set</button>
             </div>
           </article>
         ))}
         {data.quizSets.length === 0 && (
-          <div className="folder-empty"><BookOpen size={34} aria-hidden="true" /><h3>Your quiz sets will appear here</h3><p>Create the first set, then launch it live for your class.</p><button className="folder-new" onClick={() => onTab("quizzes")}>New Quiz <Plus size={18} aria-hidden="true" /></button></div>
+          <div className="folder-empty"><BookOpen size={34} aria-hidden="true" /><h3>Your quiz sets will appear here</h3><p>Create the first set, then launch it live for your class.</p><button className="folder-new" onClick={onEditQuiz}>New Quiz <Plus size={18} aria-hidden="true" /></button></div>
         )}
       </div>
     </section>
@@ -1577,7 +1606,8 @@ function SessionManager({
   setSelectedSession,
   onRefresh,
   onReport,
-  onOpenReports
+  onOpenReports,
+  initialQuizSetId
 }: {
   data: DashboardPayload;
   selectedSession: GameSession | null;
@@ -1585,8 +1615,9 @@ function SessionManager({
   onRefresh: () => Promise<void>;
   onReport: (report: SessionReport | null) => void;
   onOpenReports: () => void;
+  initialQuizSetId?: string;
 }) {
-  const [quizSetId, setQuizSetId] = useState(data.quizSets[0]?.id ?? "");
+  const [quizSetId, setQuizSetId] = useState(initialQuizSetId || data.quizSets[0]?.id || "");
   const [settings, setSettings] = useState<SessionSettings>(DEFAULT_SESSION_SETTINGS);
   const [settingInputs, setSettingInputs] = useState<Record<SessionNumberField, string>>(() =>
     createSessionSettingInputs(DEFAULT_SESSION_SETTINGS)
@@ -1602,6 +1633,7 @@ function SessionManager({
   const [isJoinLinkCopied, setIsJoinLinkCopied] = useState(false);
   const [isEndConfirmOpen, setIsEndConfirmOpen] = useState(false);
   const [isProjectorOpen, setIsProjectorOpen] = useState(false);
+  const [selectedPresetName, setSelectedPresetName] = useState("Classic Class");
   const endSessionTriggerRef = useRef<HTMLButtonElement>(null);
   const endSessionDialogRef = useRef<HTMLDivElement>(null);
   const keepSessionOpenRef = useRef<HTMLButtonElement>(null);
@@ -1610,6 +1642,11 @@ function SessionManager({
   const status = useAsyncMessage();
   const remainingSeconds = useRoundRemaining(selectedSession);
   const selectedMap = getArenaMap(settings.mapId);
+  const selectedQuiz = data.quizSets.find((quiz) => quiz.id === quizSetId);
+  const sessionQuiz = selectedSession
+    ? data.quizSets.find((quiz) => quiz.id === selectedSession.quizSetId)
+    : undefined;
+  const displayedPresetName = selectedSession ? getSessionPresetName(selectedSession.settings) : selectedPresetName;
   const studentJoinLink = selectedSession
     ? buildStudentJoinUrl(window.location.origin, selectedSession.sessionCode)
     : "";
@@ -1618,6 +1655,11 @@ function SessionManager({
   useEffect(() => {
     if (!quizSetId && data.quizSets[0]) setQuizSetId(data.quizSets[0].id);
   }, [data.quizSets, quizSetId]);
+
+  useEffect(() => {
+    if (selectedSession || !initialQuizSetId || !data.quizSets.some((quiz) => quiz.id === initialQuizSetId)) return;
+    setQuizSetId(initialQuizSetId);
+  }, [data.quizSets, initialQuizSetId, selectedSession]);
 
   useEffect(() => {
     if (!selectedSession) return;
@@ -1701,14 +1743,22 @@ function SessionManager({
 
   const hasInvalidSettings = Object.values(invalidSettings).some(Boolean);
 
-  const applyPreset = (presetSettings: SessionSettings) => {
-    const nextSettings = { ...presetSettings, mapId: settings.mapId };
+  const applyPreset = (presetName: string, presetSettings: SessionSettings) => {
+    const nextSettings = {
+      ...presetSettings,
+      mapId: settings.mapId,
+      gameMode: settings.gameMode,
+      teamAssignment: settings.teamAssignment,
+      characterCustomization: settings.characterCustomization
+    };
     setSettings(nextSettings);
     setSettingInputs(createSessionSettingInputs(nextSettings));
     setInvalidSettings({});
+    setSelectedPresetName(presetName);
   };
 
   const updateNumberSetting = (field: SessionNumberField, rawValue: string) => {
+    setSelectedPresetName("Custom Game");
     setSettingInputs((current) => ({ ...current, [field]: rawValue }));
     const fieldConfig = sessionNumberFields.find((item) => item.name === field);
     const trimmedValue = rawValue.trim();
@@ -1952,154 +2002,176 @@ function SessionManager({
 
   return (
     <div className={shouldShowSetup ? "two-column session-grid" : "session-grid live-first-grid"}>
-      <form className={shouldShowSetup ? "panel form-panel" : "panel form-panel session-setup-minimized"} onSubmit={createSession}>
-        <h2>Create Session</h2>
-        {!shouldShowSetup && (
-          <p className="setup-lock-note">Live room is in focus. End this session before creating another room.</p>
+      <form className={shouldShowSetup ? "panel form-panel live-game-setup" : "panel form-panel session-setup-minimized"} onSubmit={createSession}>
+        {shouldShowSetup ? (
+          <>
+            <header className="setup-flow-header">
+              <span className="flow-step">Step 2 of 4</span>
+              <h2>Start a Live Game</h2>
+              <div className="setup-quiz-summary">
+                <BookOpen size={24} aria-hidden="true" />
+                <span>Quiz</span>
+                <strong>{selectedQuiz?.title ?? "Choose a quiz from Folders"}</strong>
+                <small>{selectedQuiz?.questions.length ?? 0} Questions</small>
+              </div>
+            </header>
+
+            <section className="setup-choice-section" aria-labelledby="preset-title">
+              <div className="setup-section-heading">
+                <span>1</span>
+                <div><h3 id="preset-title">Choose a game pace</h3><small>Classic Class is ready to go.</small></div>
+              </div>
+              <div className="preset-grid" aria-label="Game presets">
+                {SESSION_PRESETS.map((preset) => {
+                  const selected = selectedPresetName === preset.name;
+                  return (
+                    <button
+                      type="button"
+                      key={preset.name}
+                      className={selected ? "selected" : ""}
+                      aria-pressed={selected}
+                      onClick={() => applyPreset(preset.name, preset.settings)}
+                    >
+                      {selected && <span className="preset-check" aria-hidden="true"><Check size={18} /></span>}
+                      <strong>{preset.name}</strong>
+                      <small>{preset.description}</small>
+                      {preset.name === "Classic Class" && <em>Recommended</em>}
+                    </button>
+                  );
+                })}
+              </div>
+            </section>
+
+            <section className="setup-choice-section" aria-labelledby="arena-title">
+              <div className="setup-section-heading">
+                <span>2</span>
+                <div><h3 id="arena-title">Choose Arena</h3><small>Desert Citadel is selected by default.</small></div>
+              </div>
+              <div className="arena-choice-grid">
+                {ARENA_MAPS.map((map) => {
+                  const selected = settings.mapId === map.id;
+                  return (
+                    <button
+                      type="button"
+                      key={map.id}
+                      className={`arena-choice map-${map.id}${selected ? " selected" : ""}`}
+                      aria-pressed={selected}
+                      onClick={() => setSettings({ ...settings, mapId: map.id })}
+                    >
+                      <span className="arena-choice-art" aria-hidden="true"><Target size={28} /></span>
+                      <span><strong>{map.title}</strong><small>{map.districts.slice(0, 2).join(" · ")}</small></span>
+                      {selected && <Check className="arena-selected-check" size={20} aria-hidden="true" />}
+                    </button>
+                  );
+                })}
+              </div>
+            </section>
+
+            <details className="advanced-settings">
+              <summary><span><Settings size={19} aria-hidden="true" />Advanced Settings</span><small>Optional</small></summary>
+              <div className="advanced-settings-content">
+                <fieldset>
+                  <legend>Game Mode</legend>
+                  <label>
+                    <span>Mode</span>
+                    <select
+                      value={settings.gameMode}
+                      onChange={(event) => {
+                        const gameMode = event.target.value as SessionSettings["gameMode"];
+                        const nextSettings: SessionSettings = {
+                          ...settings,
+                          gameMode,
+                          roundDurationSeconds: gameMode === "flag" ? FLAG_MODE_DEFAULTS.roundDurationSeconds : settings.roundDurationSeconds
+                        };
+                        setSettings(nextSettings);
+                        setSettingInputs(createSessionSettingInputs(nextSettings));
+                      }}
+                    >
+                      <option value="flag">Flag Mode</option>
+                      <option value="zombie">Zombie Mode</option>
+                      <option value="classic">Classic Tag Practice</option>
+                    </select>
+                  </label>
+                </fieldset>
+
+                {settings.gameMode === "flag" && (
+                  <fieldset>
+                    <legend>Teams</legend>
+                    <label>
+                      <span>Team Assignment</span>
+                      <select
+                        value={settings.teamAssignment}
+                        onChange={(event) => setSettings({ ...settings, teamAssignment: event.target.value as SessionSettings["teamAssignment"] })}
+                      >
+                        <option value="players_choose">Players Choose</option>
+                        <option value="random">Random Teams</option>
+                      </select>
+                    </label>
+                  </fieldset>
+                )}
+
+                {sessionSettingGroups.map((group) => {
+                  const fields = group.fields
+                    .map((name) => sessionNumberFields.find((field) => field.name === name))
+                    .filter((field): field is (typeof sessionNumberFields)[number] => Boolean(field && visibleNumberFields.includes(field)));
+                  if (fields.length === 0) return null;
+                  return (
+                    <fieldset key={group.title}>
+                      <legend>{group.title}</legend>
+                      <div className="session-setting-grid">
+                        {fields.map((field) => {
+                          const errorId = `session-setting-${field.name}-error`;
+                          const unit = "unit" in field ? field.unit : undefined;
+                          return (
+                            <label key={field.name} title={field.help}>
+                              <span>{field.label}{unit ? ` (${unit})` : ""}</span>
+                              <input
+                                type="number"
+                                min={field.min}
+                                max={field.max}
+                                step={"step" in field ? field.step : undefined}
+                                inputMode="numeric"
+                                value={settingInputs[field.name]}
+                                aria-invalid={invalidSettings[field.name] ? "true" : undefined}
+                                aria-describedby={invalidSettings[field.name] ? errorId : undefined}
+                                onChange={(event) => updateNumberSetting(field.name, event.target.value)}
+                              />
+                              {invalidSettings[field.name] && <small id={errorId} className="field-error" role="alert">Use {field.min}–{field.max}{unit ? ` ${unit}` : ""}.</small>}
+                            </label>
+                          );
+                        })}
+                      </div>
+                    </fieldset>
+                  );
+                })}
+
+                <fieldset>
+                  <legend>Player Experience</legend>
+                  <label className="toggle-row"><input type="checkbox" checked={settings.deadPlayersCanPractice} onChange={(event) => setSettings({ ...settings, deadPlayersCanPractice: event.target.checked })} />Practice questions while out</label>
+                  <label className="toggle-row"><input type="checkbox" checked={settings.deadPlayersEarnMoney} onChange={(event) => setSettings({ ...settings, deadPlayersEarnMoney: event.target.checked })} />Earn money while out</label>
+                  <label className="toggle-row"><input type="checkbox" checked={settings.characterCustomization.enabled} onChange={(event) => setSettings({ ...settings, characterCustomization: { ...settings.characterCustomization, enabled: event.target.checked } })} />Character creator</label>
+                  <label className="toggle-row"><input type="checkbox" checked={settings.characterCustomization.uploadsEnabled} disabled={!settings.characterCustomization.enabled} onChange={(event) => setSettings({ ...settings, characterCustomization: { ...settings.characterCustomization, uploadsEnabled: event.target.checked } })} />Artwork stickers</label>
+                  <label className="toggle-row"><input type="checkbox" checked={settings.characterCustomization.persistAcrossSessions} disabled={!settings.characterCustomization.enabled} onChange={(event) => setSettings({ ...settings, characterCustomization: { ...settings.characterCustomization, persistAcrossSessions: event.target.checked } })} />Remember character choices</label>
+                </fieldset>
+              </div>
+            </details>
+
+            {hasInvalidSettings && <p className="error-text">Check the highlighted settings before creating the game.</p>}
+            <div className="setup-create-bar">
+              <span>{selectedPresetName} · {selectedMap.title}</span>
+              <button className="primary create-game-button" type="submit" disabled={!quizSetId || hasInvalidSettings || isCreatingSession}>
+                <Play size={20} aria-hidden="true" />
+                {isCreatingSession ? "Creating Game..." : "Create Game"}
+              </button>
+            </div>
+            <StatusMessages error={status.error} message={status.message} />
+          </>
+        ) : (
+          <p className="setup-lock-note">Live room in progress.</p>
         )}
-        <label>
-          Quiz Set
-          <select value={quizSetId} onChange={(event) => setQuizSetId(event.target.value)}>
-            {data.quizSets.map((quiz) => (
-              <option key={quiz.id} value={quiz.id}>
-                {quiz.title} ({quiz.questions.length})
-              </option>
-            ))}
-          </select>
-        </label>
-        <label>
-          Game Mode
-          <select
-            value={settings.gameMode}
-            onChange={(event) => {
-              const gameMode = event.target.value as SessionSettings["gameMode"];
-              const nextSettings: SessionSettings = {
-                ...settings,
-                gameMode,
-                roundDurationSeconds: gameMode === "flag" ? FLAG_MODE_DEFAULTS.roundDurationSeconds : settings.roundDurationSeconds
-              };
-              setSettings(nextSettings);
-              setSettingInputs(createSessionSettingInputs(nextSettings));
-            }}
-          >
-            <option value="flag">Flag Mode</option>
-            <option value="zombie">Zombie Mode</option>
-            <option value="classic">Classic Tag Practice</option>
-          </select>
-        </label>
-        <label>
-          Battlefield Map
-          <select
-            value={settings.mapId}
-            onChange={(event) => setSettings({ ...settings, mapId: event.target.value as ArenaMapId })}
-          >
-            {ARENA_MAPS.map((map) => (
-              <option key={map.id} value={map.id}>
-                {map.title}
-              </option>
-            ))}
-          </select>
-          <small className="field-help">{selectedMap.description}</small>
-        </label>
-        <div className={`map-selection-card map-${selectedMap.id}`} aria-live="polite">
-          <div className="map-selection-card__eyebrow">Selected battlefield</div>
-          <strong>{selectedMap.title}</strong>
-          <span>{selectedMap.districts.slice(0, 3).join(" · ")}</span>
-          {selectedMap.id === "iron_junction" && <small>Generated from the Iron Junction industrial railway brief · three lanes · balanced East/West spawns</small>}
-          {selectedMap.id === "temple_runoff" && <small>Three playable levels · eight canal ramps · high Sun Bridge · 40-player spawn fan · optimized jungle batching</small>}
-        </div>
-        {settings.gameMode === "flag" && (
-          <label>
-            Team Assignment
-            <select
-              value={settings.teamAssignment}
-              onChange={(event) => setSettings({ ...settings, teamAssignment: event.target.value as SessionSettings["teamAssignment"] })}
-            >
-              <option value="players_choose">Players Choose</option>
-              <option value="random">Randomize Teams</option>
-            </select>
-          </label>
-        )}
-        <div className="preset-grid" aria-label="Session presets">
-          {SESSION_PRESETS.map((preset) => (
-            <button type="button" key={preset.name} onClick={() => { applyPreset(preset.settings); status.setMessage(`${preset.name} applied: ${preset.description}`); }}>
-              <strong>{preset.name}</strong>
-              <small>{preset.description}</small>
-            </button>
-          ))}
-        </div>
-        <div className="session-setting-groups">
-          {sessionSettingGroups.map((group) => {
-            const fields = group.fields
-              .map((name) => sessionNumberFields.find((field) => field.name === name))
-              .filter((field): field is (typeof sessionNumberFields)[number] => Boolean(field && visibleNumberFields.includes(field)));
-            if (fields.length === 0) return null;
-            return (
-              <fieldset key={group.title}>
-                <legend>{group.title}</legend>
-                <p>{group.description}</p>
-                <div className="session-setting-grid">
-                  {fields.map((field) => {
-                    const errorId = `session-setting-${field.name}-error`;
-                    const unit = "unit" in field ? field.unit : undefined;
-                    return (
-                      <label key={field.name}>
-                        <span>{field.label}{unit ? ` (${unit})` : ""}</span>
-                        <input
-                          type="number"
-                          min={field.min}
-                          max={field.max}
-                          step={"step" in field ? field.step : undefined}
-                          inputMode="numeric"
-                          value={settingInputs[field.name]}
-                          aria-invalid={invalidSettings[field.name] ? "true" : undefined}
-                          aria-describedby={invalidSettings[field.name] ? errorId : undefined}
-                          onChange={(event) => updateNumberSetting(field.name, event.target.value)}
-                        />
-                        <small>{field.help}</small>
-                        {invalidSettings[field.name] && <small id={errorId} className="field-error" role="alert">Use a value from {field.min} to {field.max}{unit ? ` ${unit}` : ""}.</small>}
-                      </label>
-                    );
-                  })}
-                </div>
-              </fieldset>
-            );
-          })}
-        </div>
-        <label className="toggle-row">
-          <input
-            type="checkbox"
-            checked={settings.deadPlayersCanPractice}
-            onChange={(event) => setSettings({ ...settings, deadPlayersCanPractice: event.target.checked })}
-          />
-          Allow practice questions while out for the round
-        </label>
-        <label className="toggle-row">
-          <input
-            type="checkbox"
-            checked={settings.deadPlayersEarnMoney}
-            onChange={(event) => setSettings({ ...settings, deadPlayersEarnMoney: event.target.checked })}
-          />
-          Students out for the round can earn money
-        </label>
-        <fieldset className="customization-settings">
-          <legend>Lobby Characters</legend>
-          <p>School-safe presets are always available. Image uploads start off.</p>
-          <label className="toggle-row"><input type="checkbox" checked={settings.characterCustomization.enabled} onChange={(event) => setSettings({ ...settings, characterCustomization: { ...settings.characterCustomization, enabled: event.target.checked } })} />Enable character creator</label>
-          <label className="toggle-row"><input type="checkbox" checked={settings.characterCustomization.uploadsEnabled} disabled={!settings.characterCustomization.enabled} onChange={(event) => setSettings({ ...settings, characterCustomization: { ...settings.characterCustomization, uploadsEnabled: event.target.checked } })} />Allow processed artwork stickers</label>
-          <label className="toggle-row"><input type="checkbox" checked={settings.characterCustomization.persistAcrossSessions} disabled={!settings.characterCustomization.enabled} onChange={(event) => setSettings({ ...settings, characterCustomization: { ...settings.characterCustomization, persistAcrossSessions: event.target.checked } })} />Let this browser remember non-image choices</label>
-          <label className="toggle-row"><input type="checkbox" checked={false} disabled />AI designs (secure provider not configured)</label>
-        </fieldset>
-        {hasInvalidSettings && <p className="error-text">Check the number fields before starting a game.</p>}
-        <button className="primary" type="submit" disabled={!shouldShowSetup || !quizSetId || hasInvalidSettings || isCreatingSession}>
-          <Play size={18} aria-hidden="true" />
-          {isCreatingSession ? "Working..." : "Create Session"}
-        </button>
-        <StatusMessages error={status.error} message={status.message} />
       </form>
 
-      <div className={`panel live-session${selectedSession ? "" : " empty-live-session"}`}>
-        <h2>Live Session Control</h2>
+      <div className={`panel live-session${selectedSession ? "" : " empty-live-session"}${selectedSession?.status === "waiting" ? " waiting-room-panel" : ""}`}>
         {selectedSession && <GameAnnouncementOverlay announcement={selectedSession.announcement} serverTime={selectedSession.serverTime} />}
         {selectedSession ? isSessionEnded ? (
           <div className="session-ended-summary">
@@ -2114,231 +2186,201 @@ function SessionManager({
             </dl>
             <div className="button-row">
               <button className="primary" onClick={onOpenReports}><Download size={18} aria-hidden="true" />View Learning Report</button>
-              <button onClick={() => setSelectedSession(null)}>Create Another Session</button>
+              <button onClick={() => setSelectedSession(null)}>Create Another Game</button>
+            </div>
+          </div>
+        ) : selectedSession.status === "waiting" ? (
+          <div className="teacher-waiting-room">
+            <header className="waiting-room-header">
+              <div>
+                <span className="flow-step">Step 3 of 4 · Invite Students</span>
+                <h2>{sessionQuiz?.title ?? "Live Game"}</h2>
+                <p>{arenaMapLabel(selectedSession.settings.mapId)} · {displayedPresetName} · {selectedSession.settings.roundCount} Rounds · {formatDuration(selectedSession.settings.roundDurationSeconds)} per round</p>
+              </div>
+              <div className="waiting-header-actions">
+                <details className="waiting-settings-summary">
+                  <summary>View Game Settings</summary>
+                  <dl>
+                    <div><dt>Mode</dt><dd>{gameModeLabel(selectedSession.settings.gameMode)}</dd></div>
+                    <div><dt>Teams</dt><dd>{selectedSession.settings.teamAssignment === "players_choose" ? "Players Choose" : "Random Teams"}</dd></div>
+                    <div><dt>Players</dt><dd>Up to {selectedSession.maxPlayers}</dd></div>
+                  </dl>
+                </details>
+                <button type="button" className="projector-button" onClick={() => setIsProjectorOpen(true)}>
+                  <Eye size={18} aria-hidden="true" />
+                  Projector View
+                </button>
+                <button ref={endSessionTriggerRef} className="text-button danger-text" onClick={() => setIsEndConfirmOpen(true)} disabled={isEndingSession}>End Game</button>
+              </div>
+            </header>
+
+            <section className="invite-students-panel" aria-labelledby="join-game-title">
+              <div className="invite-code-block">
+                <span id="join-game-title">Join Game</span>
+                <strong>{selectedSession.sessionCode}</strong>
+                <small>Enter this code at {new URL(studentJoinLink).host}/join</small>
+              </div>
+              <div className="invite-link-grid">
+                <div className="invite-link-copy">
+                  <span><Link2 size={17} aria-hidden="true" />Student Join Link</span>
+                  <p>{studentJoinLink.replace(/^https?:\/\//, "")}</p>
+                  <button type="button" onClick={copyStudentJoinLink} aria-label="Copy student join link" aria-live="polite">
+                    {isJoinLinkCopied ? <Check size={18} aria-hidden="true" /> : <Copy size={18} aria-hidden="true" />}
+                    {isJoinLinkCopied ? "✓ Link Copied" : "Copy Link"}
+                  </button>
+                </div>
+                <div className="invite-qr">
+                  <QRCodeSVG
+                    value={studentJoinLink}
+                    size={220}
+                    level="M"
+                    marginSize={2}
+                    title={`Join QuizStrike game ${selectedSession.sessionCode}`}
+                  />
+                  <span>Scan to join</span>
+                </div>
+              </div>
+            </section>
+
+            {isLocalOnlyJoinLink && (
+              <p className="network-share-warning" role="status">
+                This preview link works only on this computer. Use the classroom Wi-Fi address before sharing with students.
+              </p>
+            )}
+
+            <section className="waiting-student-roster" aria-labelledby="students-title" aria-live="polite">
+              <header>
+                <div><h3 id="students-title">Students</h3><span>{learnerPlayers.length} / {selectedSession.maxPlayers} joined</span></div>
+                {botPlayers.length > 0 && <small>{botPlayers.length} bot{botPlayers.length === 1 ? "" : "s"} added</small>}
+              </header>
+              {learnerPlayers.length > 0 ? (
+                <div className="waiting-student-grid">
+                  {learnerPlayers.map((learner) => (
+                    <article key={learner.id}>
+                      <span className={`readiness-dot ${learner.connectionState === "connected" ? "is-connected" : "is-away"}`} aria-hidden="true" />
+                      <strong>{learner.nickname}</strong>
+                      <em className={`team-label team-${learner.team}`}>{learner.team}</em>
+                    </article>
+                  ))}
+                </div>
+              ) : (
+                <p className="waiting-students-empty">Waiting for students…</p>
+              )}
+            </section>
+
+            <details className="waiting-optional-control bot-control-card">
+              <summary><Bot size={19} aria-hidden="true" /><span>+ Add Bots</span><small>{availableBotSlots} seats available</small></summary>
+              <div className="bot-control-fields">
+                <label><span>Number of bots</span><input type="number" min={1} max={Math.max(1, availableBotSlots)} value={botCount} disabled={availableBotSlots === 0 || isAddingBot} onChange={(event) => setBotCount(Math.max(1, Number(event.target.value) || 1))} /></label>
+                <label>
+                  <span>Difficulty</span>
+                  <select value={botDifficulty} disabled={isAddingBot} onChange={(event) => setBotDifficulty(event.target.value as BotDifficulty)}>
+                    <option value="beginner">Beginner</option>
+                    <option value="standard">Standard</option>
+                    <option value="advanced">Advanced</option>
+                  </select>
+                </label>
+                <button type="button" onClick={addBots} disabled={availableBotSlots === 0 || isAddingBot}>
+                  {isAddingBot ? "Adding..." : `Add ${Math.min(botCount, availableBotSlots)} Bot${Math.min(botCount, availableBotSlots) === 1 ? "" : "s"}`}
+                </button>
+              </div>
+            </details>
+
+            <details className="teacher-customization-controls" aria-label="Character customization controls" open={selectedSession.players.some((item) => !item.isBot && item.appearance?.decalAssetId)}>
+              <summary><span><strong>Lobby Characters</strong><small>Optional character and sticker controls</small></span><span className="details-summary-action">Manage</span></summary>
+              <div className="teacher-customization-toggles">
+                <label className="toggle-row"><input type="checkbox" checked={selectedSession.settings.characterCustomization.enabled} onChange={(event) => void updateLiveCustomization({ ...selectedSession.settings.characterCustomization, enabled: event.target.checked })} />Creator enabled</label>
+                <label className="toggle-row"><input type="checkbox" checked={selectedSession.settings.characterCustomization.uploadsEnabled} disabled={!selectedSession.settings.characterCustomization.enabled} onChange={(event) => void updateLiveCustomization({ ...selectedSession.settings.characterCustomization, uploadsEnabled: event.target.checked })} />Artwork uploads</label>
+                <label className="toggle-row"><input type="checkbox" checked={selectedSession.settings.characterCustomization.persistAcrossSessions} disabled={!selectedSession.settings.characterCustomization.enabled} onChange={(event) => void updateLiveCustomization({ ...selectedSession.settings.characterCustomization, persistAcrossSessions: event.target.checked })} />Remember choices</label>
+              </div>
+              <button type="button" onClick={() => void resetAllAppearances()}>Reset Everyone</button>
+              <div className="appearance-moderation-list">
+                {learnerPlayers.map((item) => (
+                  <div key={item.id}><span>{item.nickname}{item.appearance?.decalAssetId ? " · sticker submitted" : ""}</span><span>{item.appearance?.decalAssetId && <button type="button" onClick={() => void removePlayerDecal(item.id)}>Remove Sticker</button>}<button type="button" onClick={() => void clearPlayerAppearance(item.id)}>Clear Player</button></span></div>
+                ))}
+              </div>
+              <TeacherDecalGallery sessionCode={selectedSession.sessionCode} refreshKey={selectedSession.players.map((item) => `${item.id}:${item.appearance?.decalAssetId ?? "none"}`).join("|")} loadAsset={loadTeacherDecal} onRemove={removeDecalAsset} />
+            </details>
+
+            <StatusMessages error={status.error} message={status.message} />
+            <div className="waiting-start-bar">
+              <div>
+                <strong>{learnerPlayers.length > 0 ? `${learnerPlayers.length} student${learnerPlayers.length === 1 ? "" : "s"} ready` : "Waiting for students…"}</strong>
+                {learnerPlayers.length > 0 && <small>Everyone can join until the room is full.</small>}
+              </div>
+              <button className="primary" type="button" onClick={start} disabled={Boolean(startBlockedReason) || isStartingSession}>
+                <Play size={22} aria-hidden="true" />
+                {isStartingSession ? "Starting..." : "Start Game"}
+              </button>
             </div>
           </div>
         ) : (
           <>
+            <header className="live-control-heading">
+              <div><span className="flow-step">Step 4 of 4</span><h2>Live Game Control</h2></div>
+              <button ref={endSessionTriggerRef} onClick={() => setIsEndConfirmOpen(true)} disabled={isEndingSession}>{isEndingSession ? "Working..." : "End Game"}</button>
+            </header>
             <div className="live-summary">
               <span className={`status-pill status-${selectedSession.status}`}>{isRoundBuyPhase(selectedSession) ? "Buy Phase" : sessionStatusLabel(selectedSession.status)}</span>
               <span>{gameModeLabel(selectedSession.settings.gameMode)}</span>
               <span>{arenaMapLabel(selectedSession.settings.mapId)}</span>
               {selectedSession.settings.gameMode === "flag" && <span>Round {selectedSession.currentRound}/{selectedSession.settings.roundCount}</span>}
               <span>Time {formatDuration(remainingSeconds)}</span>
-               <span>{activePlayers}/{selectedSession.players.length || 0} active</span>
-               <span>{activeLearners} learner{activeLearners === 1 ? "" : "s"}</span>
-               {botPlayers.length > 0 && <span>{botPlayers.length} test bot{botPlayers.length === 1 ? "" : "s"}</span>}
-              <span>
-                {selectedSession.settings.gameMode === "zombie"
-                  ? `Humans ${zombieCounts.humans} - Zombies ${zombieCounts.zombies}`
-                  : `Blue ${teamTotals.blue} - Red ${teamTotals.red}`}
-              </span>
-              <span>{topLearner ? `Top learner: ${topLearner.nickname}` : "No learners yet"}</span>
+              <span>{activePlayers}/{selectedSession.players.length || 0} active</span>
+              <span>{activeLearners} learner{activeLearners === 1 ? "" : "s"}</span>
+              {botPlayers.length > 0 && <span>{botPlayers.length} bot{botPlayers.length === 1 ? "" : "s"}</span>}
+              <span>{selectedSession.settings.gameMode === "zombie" ? `Humans ${zombieCounts.humans} - Zombies ${zombieCounts.zombies}` : `Blue ${teamTotals.blue} - Red ${teamTotals.red}`}</span>
             </div>
-            <div className="join-code">
-              <span>Join Code</span>
-              <strong>{selectedSession.sessionCode}</strong>
-            </div>
-            <div className="join-link-share">
-              <div className="join-link-content">
-                <span className="join-link-label"><Link2 size={16} aria-hidden="true" />Student Join Link</span>
-                <div className="join-link-url-row">
-                  <input
-                    aria-label="Student join link"
-                    value={studentJoinLink}
-                    readOnly
-                    onFocus={(event) => event.currentTarget.select()}
-                    onClick={(event) => event.currentTarget.select()}
-                  />
-                  <a href={studentJoinLink} target="_blank" rel="noreferrer" aria-label="Open student join link">Open</a>
-                </div>
-                <small>Students open this link and enter only their name.</small>
-              </div>
-              <button type="button" onClick={copyStudentJoinLink} aria-label="Copy student join link">
-                {isJoinLinkCopied ? <Check size={16} aria-hidden="true" /> : <Copy size={16} aria-hidden="true" />}
-                {isJoinLinkCopied ? "Copied" : "Copy Link"}
-              </button>
-            </div>
-            {isLocalOnlyJoinLink && (
-              <p className="network-share-warning" role="status">
-                This link works only on this computer. For student devices, open this teacher page using the Wi-Fi address shown by the app server, then share the new link.
-              </p>
-            )}
-            <p className="mini-copy">
-              If a player is frozen out, they can answer {RESPAWN_CORRECT_ANSWERS_REQUIRED} correct practice questions to respawn.
-            </p>
-             {selectedSession.status === "waiting" && startBlockedReason && <p className="mini-copy start-gate-copy">{startBlockedReason}</p>}
-             {selectedSession.status === "waiting" && (
-               <div className="lobby-readiness" aria-live="polite">
-                 <div>
-                   <strong>{learnerPlayers.length} learner{learnerPlayers.length === 1 ? "" : "s"} joined</strong>
-                   <span>{botPlayers.length > 0 ? `${botPlayers.length} test bot${botPlayers.length === 1 ? "" : "s"} in the room` : "Share the code above to invite your class."}</span>
-                 </div>
-                 <div className="lobby-readiness-list">
-                   {learnerPlayers.length > 0
-                     ? learnerPlayers.map((learner) => (
-                       <span key={learner.id} className="lobby-readiness-chip">
-                         <span className={`readiness-dot ${learner.connectionState === "connected" ? "is-connected" : "is-away"}`} aria-hidden="true" />
-                         {learner.nickname}<small>{learner.connectionState === "connected" ? "Connected" : "Reconnecting"}</small>
-                       </span>
-                     ))
-                     : <span className="lobby-readiness-empty">No learners yet</span>}
-                 </div>
-               </div>
-             )}
-            <div className="button-row">
-              {selectedSession.status === "waiting" && (
-                <button type="button" className="projector-button" onClick={() => setIsProjectorOpen(true)}>
-                  <Eye size={18} aria-hidden="true" />
-                  Project Waiting Room
-                </button>
-              )}
-              {selectedSession.status === "active" ? (
-                <span className="status-pill status-active">Round Active</span>
-              ) : selectedSession.status === "paused" ? (
-                <span className="status-pill status-paused">{isRoundBuyPhase(selectedSession) ? "Buy phase..." : "Next round starting..."}</span>
-              ) : (
-                <button className="primary" onClick={start} disabled={selectedSession.status === "ended" || Boolean(startBlockedReason) || isStartingSession}>
-                  <Play size={18} aria-hidden="true" />
-                  {isStartingSession ? "Working..." : startBlockedReason ? "Waiting for Students" : "Begin Round"}
-                </button>
-              )}
-              <button ref={endSessionTriggerRef} onClick={() => setIsEndConfirmOpen(true)} disabled={selectedSession.status === "ended" || isEndingSession}>
-                {isEndingSession ? "Working..." : "End Session"}
-              </button>
-            </div>
-            <section className="bot-control-card" aria-labelledby="bot-control-title">
-              <div className="bot-control-heading">
-                <div className="bot-control-icon" aria-hidden="true"><Bot size={20} /></div>
-                <div>
-                  <h3 id="bot-control-title">Fill empty seats with bots</h3>
-                  <p>Use bots to test the room before learners join. Their difficulty applies to this session.</p>
-                </div>
-              </div>
-              <div className="bot-control-fields">
-                <label>
-                  <span>Number of bots</span>
-                  <input
-                    type="number"
-                    min={1}
-                    max={Math.max(1, availableBotSlots)}
-                    value={botCount}
-                    disabled={availableBotSlots === 0 || isAddingBot}
-                    onChange={(event) => setBotCount(Math.max(1, Number(event.target.value) || 1))}
-                  />
-                  <small>{availableBotSlots} seat{availableBotSlots === 1 ? "" : "s"} available</small>
-                </label>
-                <label>
-                  <span>Difficulty</span>
-                  <select value={botDifficulty} disabled={isAddingBot} onChange={(event) => setBotDifficulty(event.target.value as BotDifficulty)}>
-                    <option value="beginner">Beginner · forgiving</option>
-                    <option value="standard">Standard · classroom</option>
-                    <option value="advanced">Advanced · challenging</option>
-                  </select>
-                  <small>Changes how quickly bots react, aim, and choose tactics.</small>
-                </label>
-                <button className="primary bot-control-submit" type="button" onClick={addBots} disabled={availableBotSlots === 0 || isAddingBot}>
-                  <Bot size={18} aria-hidden="true" />
-                  {isAddingBot ? "Adding bots..." : `Add ${Math.min(botCount, availableBotSlots)} bot${Math.min(botCount, availableBotSlots) === 1 ? "" : "s"}`}
-                </button>
-              </div>
-            </section>
-             <details className="teacher-customization-controls" aria-label="Character customization controls" open={selectedSession.players.some((item) => !item.isBot && item.appearance?.decalAssetId)}>
-                 <summary><span><strong>Lobby Characters</strong><small>Manage presets, artwork, and room-only stickers.</small></span><span className="details-summary-action">Manage</span></summary>
-                 <div className="teacher-customization-toggles">
-                  <label className="toggle-row"><input type="checkbox" checked={selectedSession.settings.characterCustomization.enabled} disabled={selectedSession.status !== "waiting"} onChange={(event) => void updateLiveCustomization({ ...selectedSession.settings.characterCustomization, enabled: event.target.checked })} />Creator enabled</label>
-                  <label className="toggle-row"><input type="checkbox" checked={selectedSession.settings.characterCustomization.uploadsEnabled} disabled={selectedSession.status !== "waiting" || !selectedSession.settings.characterCustomization.enabled} onChange={(event) => void updateLiveCustomization({ ...selectedSession.settings.characterCustomization, uploadsEnabled: event.target.checked })} />Artwork uploads</label>
-                  <label className="toggle-row"><input type="checkbox" checked={selectedSession.settings.characterCustomization.persistAcrossSessions} disabled={selectedSession.status !== "waiting" || !selectedSession.settings.characterCustomization.enabled} onChange={(event) => void updateLiveCustomization({ ...selectedSession.settings.characterCustomization, persistAcrossSessions: event.target.checked })} />Remember choices</label>
-                  <label className="toggle-row"><input type="checkbox" checked={false} disabled />AI unavailable</label>
-                </div>
-                <button type="button" onClick={() => void resetAllAppearances()}>Reset Everyone</button>
-                <div className="appearance-moderation-list">
-                  {selectedSession.players.filter((item) => !item.isBot).map((item) => (
-                    <div key={item.id}><span>{item.nickname}{item.appearance?.decalAssetId ? " · sticker submitted" : ""}</span><span>{item.appearance?.decalAssetId && <button type="button" onClick={() => void removePlayerDecal(item.id)}>Remove Sticker</button>}<button type="button" onClick={() => void clearPlayerAppearance(item.id)}>Clear Player</button></span></div>
-                  ))}
-                </div>
-                <TeacherDecalGallery
-                  sessionCode={selectedSession.sessionCode}
-                  refreshKey={selectedSession.players.map((item) => `${item.id}:${item.appearance?.decalAssetId ?? "none"}`).join("|")}
-                  loadAsset={loadTeacherDecal}
-                  onRemove={removeDecalAsset}
-                />
-             </details>
             <Suspense fallback={<ArenaLoading label="Loading live arena" />}>
-              <ArenaPreview
-                key={`${selectedSession.id}:${selectedSession.startedAt ?? "waiting"}:overview`}
-                session={selectedSession}
-                loadDecalAsset={loadTeacherDecal}
-              />
+              <ArenaPreview key={`${selectedSession.id}:${selectedSession.startedAt ?? "waiting"}:overview`} session={selectedSession} loadDecalAsset={loadTeacherDecal} />
             </Suspense>
-            <Scoreboard
-              players={selectedSession.players}
-              gameMode={selectedSession.settings.gameMode}
-              onRemovePlayer={selectedSession.status === "ended" ? undefined : (playerId) => void removePlayer(playerId)}
-              removingPlayerId={removingPlayerId}
-            />
+            <Scoreboard players={selectedSession.players} gameMode={selectedSession.settings.gameMode} onRemovePlayer={(playerId) => void removePlayer(playerId)} removingPlayerId={removingPlayerId} />
             <EventFeed events={selectedSession.events ?? []} />
-            {isEndConfirmOpen && (
-              <div className="modal-backdrop" role="presentation">
-                <div ref={endSessionDialogRef} className="panel confirm-modal" role="dialog" aria-modal="true" aria-labelledby="end-session-title">
-                  <h2 id="end-session-title">End Session?</h2>
-                  <p>This will close the round and prepare the learning report. Students cannot rejoin this session.</p>
-                  <div className="button-row">
-                    <button className="primary" onClick={end} disabled={isEndingSession}>
-                      {isEndingSession ? "Working..." : "End and Create Report"}
-                    </button>
-                    <button ref={keepSessionOpenRef} onClick={() => setIsEndConfirmOpen(false)}>Keep Session Open</button>
-                  </div>
-                </div>
-              </div>
-            )}
-            {isProjectorOpen && selectedSession.status === "waiting" && (
-              <div className="projector-backdrop" role="presentation">
-                <section ref={projectorDialogRef} className="projector-waiting-room" role="dialog" aria-modal="true" aria-labelledby="projector-title">
-                  <header>
-                    <div>
-                      <span className="projector-kicker">QuizStrike classroom lobby</span>
-                      <h2 id="projector-title">Join the game</h2>
-                    </div>
-                    <button ref={projectorCloseRef} type="button" onClick={() => setIsProjectorOpen(false)} aria-label="Close projector waiting room">Close</button>
-                  </header>
-                  <div className="projector-content">
-                    <div className="projector-join-code">
-                      <span>Game code</span>
-                      <strong>{selectedSession.sessionCode}</strong>
-                      <small>{studentJoinLink.replace(/^https?:\/\//, "")}</small>
-                    </div>
-                    <div className="projector-qr">
-                      <QRCodeSVG
-                        value={studentJoinLink}
-                        size={260}
-                        level="M"
-                        marginSize={2}
-                        title={`Join QuizStrike session ${selectedSession.sessionCode}`}
-                      />
-                      <span>Scan to join</span>
-                    </div>
-                  </div>
-                  <div className="projector-roster" aria-live="polite">
-                    <strong>{selectedSession.players.filter((item) => !item.isBot).length} students joined</strong>
-                    <div>
-                      {selectedSession.players.filter((item) => !item.isBot).map((item) => <span key={item.id}>{item.nickname}</span>)}
-                      {selectedSession.players.every((item) => item.isBot) && <span>Waiting for the class...</span>}
-                    </div>
-                  </div>
-                  <footer>
-                    <button type="button" onClick={copyStudentJoinLink}><Copy size={20} aria-hidden="true" />Copy Link</button>
-                    <button className="primary" type="button" onClick={start} disabled={Boolean(startBlockedReason) || isStartingSession}>
-                      <Play size={22} aria-hidden="true" />
-                      {isStartingSession ? "Starting..." : startBlockedReason ? "Waiting for Students" : "Begin Round"}
-                    </button>
-                  </footer>
-                </section>
-              </div>
-            )}
           </>
         ) : (
-          <p>Create a session to see live student progress.</p>
+          <p>Create a game to invite students.</p>
+        )}
+
+        {selectedSession && isEndConfirmOpen && (
+          <div className="modal-backdrop" role="presentation">
+            <div ref={endSessionDialogRef} className="panel confirm-modal" role="dialog" aria-modal="true" aria-labelledby="end-session-title">
+              <h2 id="end-session-title">End Game?</h2>
+              <p>This closes the room and prepares the learning report. Students cannot rejoin afterward.</p>
+              <div className="button-row">
+                <button className="primary" onClick={end} disabled={isEndingSession}>{isEndingSession ? "Working..." : "End and Create Report"}</button>
+                <button ref={keepSessionOpenRef} onClick={() => setIsEndConfirmOpen(false)}>Keep Game Open</button>
+              </div>
+            </div>
+          </div>
+        )}
+
+        {selectedSession && isProjectorOpen && selectedSession.status === "waiting" && (
+          <div className="projector-backdrop" role="presentation">
+            <section ref={projectorDialogRef} className="projector-waiting-room" role="dialog" aria-modal="true" aria-labelledby="projector-title">
+              <header>
+                <div><span className="projector-kicker">{sessionQuiz?.title ?? "QuizStrike Classroom"}</span><h2 id="projector-title">Join the Game</h2></div>
+                <button ref={projectorCloseRef} type="button" onClick={() => setIsProjectorOpen(false)} aria-label="Close projector view">Close</button>
+              </header>
+              <div className="projector-content">
+                <div className="projector-join-code"><span>Game Code</span><strong>{selectedSession.sessionCode}</strong><small>{studentJoinLink.replace(/^https?:\/\//, "")}</small></div>
+                <div className="projector-qr">
+                  <QRCodeSVG value={studentJoinLink} size={260} level="M" marginSize={2} title={`Join QuizStrike game ${selectedSession.sessionCode}`} />
+                  <span>Scan to join</span>
+                </div>
+              </div>
+              <div className="projector-roster" aria-live="polite">
+                <strong>{learnerPlayers.length} student{learnerPlayers.length === 1 ? "" : "s"} joined</strong>
+                <div>
+                  {learnerPlayers.map((item) => <span key={item.id}>{item.nickname} · {item.team.toUpperCase()}</span>)}
+                  {learnerPlayers.length === 0 && <span>Waiting for students…</span>}
+                </div>
+              </div>
+              <footer>
+                <button type="button" onClick={copyStudentJoinLink}>{isJoinLinkCopied ? <Check size={20} aria-hidden="true" /> : <Copy size={20} aria-hidden="true" />}{isJoinLinkCopied ? "✓ Link Copied" : "Copy Link"}</button>
+                <button className="primary" type="button" onClick={start} disabled={Boolean(startBlockedReason) || isStartingSession}><Play size={22} aria-hidden="true" />{isStartingSession ? "Starting..." : "Start Game"}</button>
+              </footer>
+            </section>
+          </div>
         )}
       </div>
     </div>

@@ -1050,7 +1050,7 @@ test("resolveTagAction applies gear damage and eliminates only opponents in rang
     damage: HEAVY_GUN_DAMAGE,
     nextHealth: 0,
     eliminated: true,
-    moneyAwarded: 100,
+    moneyAwarded: 400,
     scoreDelta: 5
   });
 });

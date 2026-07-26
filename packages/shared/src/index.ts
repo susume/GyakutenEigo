@@ -1033,7 +1033,7 @@ export type TagActionResult =
   | { ok: false; reason: TagRejectReason };
 
 export const DEFAULT_PLAYER_HEALTH = 100;
-export const TAG_OPPONENT_BONUS = 100;
+export const TAG_OPPONENT_BONUS = 400;
 export const TAG_SCORE_DELTA = 5;
 export const TAG_RANGE = 18;
 export const SNOWBALL_HIT_RADIUS = 1.25;
