@@ -3825,6 +3825,31 @@ body:has(.waiting-game-layout) {
   font-weight: 800;
 }
 
+.scoreboard-actions-heading,
+.scoreboard-actions {
+  width: 1%;
+  white-space: nowrap;
+}
+
+.scoreboard-remove-player {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 5px;
+  min-height: 34px;
+  padding: 6px 10px;
+  border-color: #f3a7a7;
+  background: #fff3f3;
+  color: #9b1c1c;
+  font-size: 0.78rem;
+  font-weight: 900;
+}
+
+.scoreboard-remove-player:hover:not(:disabled) {
+  border-color: #dc2626;
+  background: #fee2e2;
+}
+
 .game-utility-bar {
   display: none;
 }

@@ -22,6 +22,8 @@ import {
   clampArenaPosition,
   ARENA_SCALE,
   ARENA_PLAYER_EYE_HEIGHT,
+  IRON_JUNCTION_LOADING_LEVEL_Y,
+  IRON_JUNCTION_OVERPASS_LEVEL_Y,
   DEFAULT_PLAYER_HEALTH,
   GEAR_ITEMS,
   getGearFireCooldownMs,
@@ -57,6 +59,7 @@ import {
   isApprovedAppearancePreset,
   createInitialFlagState,
   randomizeBalancedTeams,
+  selectLateJoinTeam,
   resolveAnswerReward,
   resolveFlagCapture,
   resolveFlagCountdown,
@@ -842,6 +845,49 @@ const markPlayerDisconnected = (session: GameSession, player: PlayerSession) => 
   schedulePlayerDisconnectResolution(session, player.id);
 };
 
+const removePlayerRuntimeState = (session: GameSession, player: PlayerSession) => {
+  clearPlayerDisconnectTimer(session, player.id);
+  playerQuestionHistory.delete(player.id);
+  playerQuestionGate.clear(player.id);
+  quizRateLimits.delete(player.id);
+  fireRequestIds.delete(player.id);
+  playerMoveTimestamps.delete(player.id);
+  playerNextFireAt.delete(player.id);
+  botRespawnAt.delete(player.id);
+  botNextAttackAt.delete(player.id);
+  botMemoryById.delete(player.id);
+  botPreviousPositions.delete(player.id);
+  appearanceUpdateTimestamps.delete(player.id);
+  decalUploadTimestamps.delete(player.id);
+  decalStore.deletePlayer(session.id, player.id);
+
+  const alerts = botAlertsBySession.get(session.sessionCode);
+  if (alerts) {
+    for (const [team, alert] of alerts) {
+      if (alert.sourceId === player.id) alerts.delete(team);
+    }
+    if (alerts.size === 0) botAlertsBySession.delete(session.sessionCode);
+  }
+};
+
+const evictPlayerSockets = (session: GameSession, player: PlayerSession) => {
+  const key = playerSocketKey(session.sessionCode, player.id);
+  const socketIds = playerSockets.get(key) ?? new Set<string>();
+  for (const socketId of socketIds) {
+    const playerSocket = io.sockets.sockets.get(socketId);
+    if (!playerSocket) continue;
+    playerSocket.emit("player_removed", {
+      message: "Your teacher removed you from this game. You can return to the join screen."
+    });
+    playerSocket.leave(session.sessionCode);
+    const binding = playerSocket.data.playerBinding as SocketPlayerBinding | undefined;
+    if (binding?.sessionCode === session.sessionCode && binding.playerId === player.id) {
+      delete playerSocket.data.playerBinding;
+    }
+  }
+  playerSockets.delete(key);
+};
+
 const assertTeacherOwnsQuiz = (userId: string, quizSetId: string) => {
   const quiz = quizSets.get(quizSetId);
   return quiz?.teacherId === userId ? quiz : undefined;
@@ -1135,11 +1181,50 @@ const canBotSee = (
 };
 
 const scaledPoint = (x: number, z: number) => ({ x: x * ARENA_SCALE, z: z * ARENA_SCALE });
+const scaledLevelPoint = (x: number, z: number, groundY = 0) => ({
+  x: x * ARENA_SCALE,
+  y: groundY + ARENA_PLAYER_EYE_HEIGHT,
+  z: z * ARENA_SCALE
+});
 
 const botBasePoint = (team: Team, mapId?: string) =>
-  scaledPoint((team === "blue" ? -1 : 1) * (mapId === "temple_runoff" ? 205 : 142), 0);
+  scaledPoint(
+    (team === "blue" ? -1 : 1)
+      * (mapId === "temple_runoff" ? 205 : mapId === "iron_junction" ? 248 : 142),
+    0
+  );
 const botEnemyBasePoint = (team: Team, mapId?: string) =>
-  scaledPoint((team === "blue" ? 1 : -1) * (mapId === "temple_runoff" ? 205 : 142), 0);
+  scaledPoint(
+    (team === "blue" ? 1 : -1)
+      * (mapId === "temple_runoff" ? 205 : mapId === "iron_junction" ? 248 : 142),
+    0
+  );
+
+const getIronJunctionPatrolPoints = (team: Team) => {
+  const direction = team === "blue" ? 1 : -1;
+  const longitudinal = [-185, -85, 65, 175].map((value) => value * direction);
+  const upper = team === "blue"
+    ? [
+        scaledLevelPoint(-205, -57),
+        scaledLevelPoint(-150, -57, IRON_JUNCTION_LOADING_LEVEL_Y),
+        scaledLevelPoint(-105, -94, IRON_JUNCTION_OVERPASS_LEVEL_Y),
+        scaledLevelPoint(20, 25, IRON_JUNCTION_OVERPASS_LEVEL_Y)
+      ]
+    : [
+        scaledLevelPoint(165, 25),
+        scaledLevelPoint(125, 25, IRON_JUNCTION_OVERPASS_LEVEL_Y),
+        scaledLevelPoint(80, 25, IRON_JUNCTION_OVERPASS_LEVEL_Y),
+        scaledLevelPoint(-20, 25, IRON_JUNCTION_OVERPASS_LEVEL_Y)
+      ];
+  const stages = longitudinal.map((x, stage) => [
+    scaledLevelPoint(x, stage % 2 === 0 ? 0 : 42),
+    scaledLevelPoint(x, -112 + stage * 8),
+    scaledLevelPoint(x, 112 + stage * 12),
+    scaledLevelPoint(x, 202 + stage * 5),
+    upper[stage]
+  ]);
+  return stages.flat();
+};
 
 const getBotPatrolPoints = (team: Team, mapId?: string) => mapId === "temple_runoff"
   ? [
@@ -1149,6 +1234,8 @@ const getBotPatrolPoints = (team: Team, mapId?: string) => mapId === "temple_run
       scaledPoint(team === "blue" ? 52 : -52, 0),
       botBasePoint(team, mapId)
     ]
+  : mapId === "iron_junction"
+    ? getIronJunctionPatrolPoints(team)
   : [
       scaledPoint(0, -84),
       scaledPoint(team === "blue" ? -42 : 42, -28),
@@ -1536,7 +1623,7 @@ const advanceBots = () => {
         hasTarget: Boolean(target),
         distanceToGoal: horizontalDistance(botPosition(bot), rawGoal)
       })) {
-        brain.routeIndex += 1;
+        brain.routeIndex += session.settings.mapId === "iron_junction" ? 5 : 1;
         brain.navigationPath = undefined;
         goal = getBotObjectiveGoal(session, bot, brain, brain.state);
         rawGoal = clampArenaPosition({ ...goal, facing: bot.facing ?? 0 }, session.settings.mapId);
@@ -2035,6 +2122,48 @@ app.post("/api/sessions/:code/bots", requireTeacher, (req: AuthedRequest, res) =
   res.status(201).json({ session: stampSession(session), bots, difficulty });
 });
 
+app.delete("/api/sessions/:code/players/:playerId", requireTeacher, (req: AuthedRequest, res) => {
+  const session = getSessionByCode(routeParam(req.params.code));
+  if (!session || session.teacherId !== req.user!.id) {
+    res.status(404).json({ error: "Session not found." });
+    return;
+  }
+  if (session.status === "ended") {
+    res.status(400).json({ error: "Players cannot be removed after the session has ended." });
+    return;
+  }
+
+  const playerId = routeParam(req.params.playerId);
+  const playerIndex = session.players.findIndex((candidate) => candidate.id === playerId);
+  if (playerIndex < 0) {
+    res.status(404).json({ error: "Player not found." });
+    return;
+  }
+
+  const player = session.players[playerIndex]!;
+  if (session.flag?.carrierId === player.id) {
+    session.flag = resolveFlagDropForPlayer(session.flag, player, {
+      x: player.x ?? 0,
+      z: player.z ?? 0
+    });
+  }
+  evictPlayerSockets(session, player);
+  removePlayerRuntimeState(session, player);
+  session.players.splice(playerIndex, 1);
+  appendEvent(session, {
+    type: "timer",
+    message: `${player.nickname} was removed by the teacher.`,
+    team: player.team
+  });
+
+  const statusBeforeEvaluation = session.status;
+  evaluateFlagEliminationWin(session);
+  finishZombieMatchIfComplete(session);
+  if (session.status === statusBeforeEvaluation) broadcastSession(session);
+
+  res.json({ session: stampSession(session), removedPlayerId: player.id });
+});
+
 app.get("/api/sessions/:code", (req, res) => {
   const session = getSessionByCode(routeParam(req.params.code));
   if (!session) {
@@ -2116,17 +2245,19 @@ app.post("/api/sessions/:code/join", (req, res) => {
     res.status(409).json({ error: "That nickname is already taken in this session." });
     return;
   }
-  if (session.status === "active") {
-    res.status(409).json({ error: "This session has already started." });
-    return;
-  }
   if (session.players.length >= session.maxPlayers) {
     res.status(400).json({ error: "This session is full." });
     return;
   }
+  const isLateJoin = session.status !== "waiting";
   const blueCount = session.players.filter((player) => player.team === "blue").length;
   const redCount = session.players.filter((player) => player.team === "red").length;
-  const team: Team = blueCount <= redCount ? "blue" : "red";
+  const team: Team = isLateJoin
+    ? selectLateJoinTeam(session.players)
+    : blueCount <= redCount ? "blue" : "red";
+  const zombieRole = isLateJoin && session.settings.gameMode === "zombie"
+    ? team === "red" ? "zombie" : "human"
+    : "human";
   const spawn = selectSessionSpawn(session, team);
   const player: PlayerSession = {
     id: id(),
@@ -2137,13 +2268,18 @@ app.post("/api/sessions/:code/join", (req, res) => {
     quizMoneyEarned: 0,
     moneySpent: 0,
     isAlive: true,
-    role: "human",
+    role: zombieRole,
     tags: 0,
     respawns: 0,
     cosmeticXp: readCosmeticProgressToken(req.body.cosmeticProgressToken),
     connectionState: "connected",
     health: DEFAULT_PLAYER_HEALTH,
-    snowballs: session.settings.startingSnowballs,
+    energy: isLateJoin && session.settings.gameMode === "zombie"
+      ? zombieRole === "zombie" ? ZOMBIE_HUMAN_MAX_ENERGY : 0
+      : undefined,
+    snowballs: isLateJoin && session.settings.gameMode === "zombie" && zombieRole === "human"
+      ? 0
+      : session.settings.startingSnowballs,
     respawnCorrectAnswers: 0,
     x: spawn.x,
     y: spawn.y,
@@ -2162,7 +2298,9 @@ app.post("/api/sessions/:code/join", (req, res) => {
   const playerToken = makePlayerToken(session, player);
   appendEvent(session, {
     type: "join",
-    message: session.settings.gameMode === "zombie"
+    message: isLateJoin
+      ? `${player.nickname} joined the live game on ${team === "blue" ? "Blue" : "Red"} Team.`
+      : session.settings.gameMode === "zombie"
       ? `${player.nickname} joined the Zombie Mode lobby.`
       : `${player.nickname} joined ${team === "blue" ? "Blue" : "Red"} Team.`,
     playerId: player.id,

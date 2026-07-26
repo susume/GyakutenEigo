@@ -466,7 +466,7 @@ export default function ArenaPreview({
     renderer.shadowMap.type = THREE.PCFSoftShadowMap;
     renderer.outputColorSpace = THREE.SRGBColorSpace;
     renderer.toneMapping = THREE.ACESFilmicToneMapping;
-    renderer.toneMappingExposure = isFps ? 0.86 : 0.98;
+    renderer.toneMappingExposure = isFps ? (isIronJunction ? 1.06 : 0.9) : 0.98;
     renderer.domElement.tabIndex = 0;
     renderer.domElement.className = "arena-webgl";
     renderer.domElement.dataset.quality = activeQuality;
@@ -855,10 +855,35 @@ export default function ArenaPreview({
       if (block.style === "railcar") {
         const roof = addDecorativeMesh(detail, new THREE.BoxGeometry(block.w * 0.88, 0.28, block.d * 0.9), "#a85c3d", "metal");
         roof.position.y = block.h + 0.2;
-        for (const x of [-block.w * 0.28, block.w * 0.28]) {
-          const wheel = addDecorativeMesh(detail, new THREE.CylinderGeometry(0.85, 0.85, 0.35, 12), "#222b2d", "metal");
-          wheel.rotation.x = Math.PI / 2;
-          wheel.position.set(x, 0.7, block.d * 0.54);
+        for (const x of [-block.w * 0.32, -block.w * 0.22, block.w * 0.22, block.w * 0.32]) {
+          for (const z of [-block.d * 0.53, block.d * 0.53]) {
+            const wheel = addDecorativeMesh(detail, new THREE.CylinderGeometry(0.82, 0.82, 0.32, 12), "#202729", "metal");
+            wheel.rotation.x = Math.PI / 2;
+            wheel.position.set(x, 0.72, z);
+          }
+        }
+        for (const x of [-block.w * 0.27, block.w * 0.27]) {
+          const bogie = addDecorativeMesh(detail, new THREE.BoxGeometry(block.w * 0.2, 0.75, block.d * 0.72), "#293235", "metal");
+          bogie.position.set(x, 1.05, 0);
+        }
+        for (const x of [-block.w * 0.51, block.w * 0.51]) {
+          const coupler = addDecorativeMesh(detail, new THREE.BoxGeometry(block.w * 0.07, 0.34, 0.34), "#202729", "metal");
+          coupler.position.set(x, 1.25, 0);
+          const bumper = addDecorativeMesh(detail, new THREE.CylinderGeometry(0.28, 0.28, 0.5, 10), "#202729", "metal");
+          bumper.rotation.z = Math.PI / 2;
+          bumper.position.set(x + Math.sign(x) * 0.4, 1.25, 0);
+        }
+        const door = addDecorativeMesh(detail, new THREE.BoxGeometry(block.w * 0.26, block.h * 0.58, 0.18), block.color, "metal");
+        door.position.set(0, block.h * 0.54, block.d * 0.51);
+        for (const x of [-block.w * 0.11, block.w * 0.11]) {
+          const ladder = addDecorativeMesh(detail, new THREE.BoxGeometry(0.16, block.h * 0.68, 0.16), "#d19a55", "metal");
+          ladder.position.set(x, block.h * 0.47, -block.d * 0.53);
+        }
+        if (block.id.includes("locomotive")) {
+          const cab = addDecorativeMesh(detail, new THREE.BoxGeometry(block.w * 0.28, block.h * 0.78, block.d * 0.86), "#313d41", "metal");
+          cab.position.set(block.w * 0.27, block.h * 0.54, 0);
+          const nose = addDecorativeMesh(detail, new THREE.BoxGeometry(block.w * 0.2, block.h * 0.42, block.d * 0.72), "#744331", "metal");
+          nose.position.set(block.w * 0.45, block.h * 0.3, 0);
         }
       }
 
@@ -1817,7 +1842,11 @@ export default function ArenaPreview({
       const bodyMin = new THREE.Vector3();
       const bodyMax = new THREE.Vector3();
       const levelDebugEnabled = import.meta.env.DEV
-        && new URLSearchParams(window.location.search).get("debugTempleLevels") === "1";
+        && ["1", "true"].includes(
+          new URLSearchParams(window.location.search).get("debugArenaLevels")
+          ?? new URLSearchParams(window.location.search).get("debugTempleLevels")
+          ?? ""
+        );
       let lastLevelDebugAt = 0;
       let lastColliderName = "none";
       const maybeEmitPosition = (currentTime: number) => {
@@ -2335,17 +2364,18 @@ export default function ArenaPreview({
                   <path d="M 0 -4 L 0 4 M 0 -4 L 4 -2 L 0 0" />
                 </g>
               )}
-              <text x={toMiniMapX(isTempleRunoff ? scaleArenaValue(-205) : -140)} y={toMiniMapY(isTempleRunoff ? scaleArenaValue(-154) : -78)} className="minimap-label">{isTempleRunoff ? "Blue" : "West"}</text>
-              <text x={toMiniMapX(isTempleRunoff ? scaleArenaValue(184) : 122)} y={toMiniMapY(isTempleRunoff ? scaleArenaValue(-154) : -78)} className="minimap-label">{isTempleRunoff ? "Red" : "East"}</text>
-              <text x={toMiniMapX(0)} y={toMiniMapY(isTempleRunoff ? scaleArenaValue(-164) : -128)} className="minimap-label">{isIronJunction ? "Depot" : isTempleRunoff ? "Jungle" : "Ruins"}</text>
-              <text x={toMiniMapX(0)} y={toMiniMapY(isTempleRunoff ? 0 : -22)} className="minimap-label">{isIronJunction ? "Gantry" : isTempleRunoff ? "River" : "Market"}</text>
-              <text x={toMiniMapX(0)} y={toMiniMapY(isTempleRunoff ? scaleArenaValue(156) : 118)} className="minimap-label">{isIronJunction ? "Timber" : isTempleRunoff ? "Court" : "Homes"}</text>
+              <text x={toMiniMapX(isIronJunction ? scaleArenaValue(-248) : isTempleRunoff ? scaleArenaValue(-205) : -140)} y={toMiniMapY(isIronJunction ? 0 : isTempleRunoff ? scaleArenaValue(-154) : -78)} className="minimap-label">{isIronJunction || isTempleRunoff ? "Blue" : "West"}</text>
+              <text x={toMiniMapX(isIronJunction ? scaleArenaValue(232) : isTempleRunoff ? scaleArenaValue(184) : 122)} y={toMiniMapY(isIronJunction ? 0 : isTempleRunoff ? scaleArenaValue(-154) : -78)} className="minimap-label">{isIronJunction || isTempleRunoff ? "Red" : "East"}</text>
+              <text x={toMiniMapX(isIronJunction ? scaleArenaValue(-112) : 0)} y={toMiniMapY(isIronJunction ? scaleArenaValue(-130) : isTempleRunoff ? scaleArenaValue(-164) : -128)} className="minimap-label">{isIronJunction ? "Warehouse" : isTempleRunoff ? "Jungle" : "Ruins"}</text>
+              <text x={toMiniMapX(isIronJunction ? scaleArenaValue(58) : 0)} y={toMiniMapY(isIronJunction ? scaleArenaValue(-38) : isTempleRunoff ? 0 : -22)} className="minimap-label">{isIronJunction ? "Control" : isTempleRunoff ? "River" : "Market"}</text>
+              <text x={toMiniMapX(isIronJunction ? scaleArenaValue(104) : 0)} y={toMiniMapY(isIronJunction ? scaleArenaValue(151) : isTempleRunoff ? scaleArenaValue(156) : 118)} className="minimap-label">{isIronJunction ? "Depot" : isTempleRunoff ? "Court" : "Homes"}</text>
+              {isIronJunction && <text x={toMiniMapX(scaleArenaValue(-35))} y={toMiniMapY(scaleArenaValue(218))} className="minimap-label">Tunnel</text>}
               {hasMultipleLevels && (
                 <text x={MINIMAP_WIDTH - 5} y={10} textAnchor="end" className="minimap-label">
                   {isTempleRunoff
                     ? miniMapLevel === "lower" ? "↓ LOWER" : miniMapLevel === "upper" ? "↑ UPPER" : "• MAIN"
                     : isIronJunction
-                      ? miniMapLevel === "yard" ? "• YARD" : miniMapLevel === "highline" ? "↑ HIGHLINE" : "↑ CATWALK"
+                      ? miniMapLevel === "ground" ? "• GROUND" : miniMapLevel === "loading" ? "↑ LOADING" : "↑ OVERPASS"
                       : miniMapLevel === "street" ? "• STREET" : miniMapLevel === "rooftop" ? "↑ ROOFTOP" : "↑ CITADEL"}
                 </text>
               )}

@@ -65,6 +65,7 @@ import {
   isInsideTeamBase,
   isGearAutoFireEnabled,
   randomizeBalancedTeams,
+  selectLateJoinTeam,
   resolveFlagCapture,
   resolveFlagCountdown,
   resolveFlagDropForPlayer,
@@ -935,7 +936,7 @@ test("Iron Junction uses its own map spawn labels and collision proxies", () => 
 
   assert.equal(blueSpawn.x < 0, true);
   assert.equal(redSpawn.x > 0, true);
-  assert.equal(ironObstacles.some((obstacle) => obstacle.id === "sorting-booth"), true);
+  assert.equal(ironObstacles.some((obstacle) => obstacle.id === "junction-locomotive"), true);
   assert.notEqual(ironObstacles, getArenaObstacles("desert_citadel"));
   assert.equal(sanitizeSessionSettings({ mapId: "iron_junction" }).mapId, "iron_junction");
 });
@@ -1092,6 +1093,12 @@ test("randomizeBalancedTeams keeps teams balanced and authoritative", () => {
 
   assert.equal(Math.abs(red - blue) <= 1, true);
   assert.equal(assigned.map((player) => player.id).sort().join(","), players.map((player) => player.id).sort().join(","));
+});
+
+test("late join assignment fills the smaller team and randomizes ties", () => {
+  assert.equal(selectLateJoinTeam([{ team: "red" }, { team: "red" }, { team: "blue" }], 0.9), "blue");
+  assert.equal(selectLateJoinTeam([{ team: "red" }, { team: "blue" }], 0.1), "blue");
+  assert.equal(selectLateJoinTeam([{ team: "red" }, { team: "blue" }], 0.9), "red");
 });
 
 test("flag state supports pickup, placement, countdown, drop, and capture", () => {

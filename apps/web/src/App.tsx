@@ -27,6 +27,7 @@ import {
   Snowflake,
   Target,
   Timer,
+  Trash2,
   Users,
   WifiOff,
   WandSparkles,
@@ -50,8 +51,8 @@ import {
   ARENA_SCALE,
   DESERT_CITADEL_CITADEL_LEVEL_Y,
   DESERT_CITADEL_ROOFTOP_LEVEL_Y,
-  IRON_JUNCTION_CATWALK_LEVEL_Y,
-  IRON_JUNCTION_HIGHLINE_LEVEL_Y,
+  IRON_JUNCTION_LOADING_LEVEL_Y,
+  IRON_JUNCTION_OVERPASS_LEVEL_Y,
   TEMPLE_RUNOFF_MAIN_LEVEL_Y,
   TEMPLE_RUNOFF_UPPER_LEVEL_Y,
   getPlayerPerks,
@@ -770,9 +771,9 @@ function CharacterLab() {
         }
       : labMapId === "iron_junction"
         ? {
-            lower: { x: 0, y: ARENA_PLAYER_EYE_HEIGHT, z: 0, facing: 0 },
-            main: { x: 0, y: IRON_JUNCTION_HIGHLINE_LEVEL_Y + ARENA_PLAYER_EYE_HEIGHT, z: 75 * ARENA_SCALE, facing: 0 },
-            upper: { x: 0, y: IRON_JUNCTION_CATWALK_LEVEL_Y + ARENA_PLAYER_EYE_HEIGHT, z: -43 * ARENA_SCALE, facing: 0 }
+            lower: { x: 10 * ARENA_SCALE, y: ARENA_PLAYER_EYE_HEIGHT, z: 25 * ARENA_SCALE, facing: -Math.PI / 2 },
+            main: { x: -140 * ARENA_SCALE, y: IRON_JUNCTION_LOADING_LEVEL_Y + ARENA_PLAYER_EYE_HEIGHT, z: -57 * ARENA_SCALE, facing: Math.PI },
+            upper: { x: -40 * ARENA_SCALE, y: IRON_JUNCTION_OVERPASS_LEVEL_Y + ARENA_PLAYER_EYE_HEIGHT, z: 25 * ARENA_SCALE, facing: -Math.PI / 2 }
           }
         : {
             lower: { x: 0, y: ARENA_PLAYER_EYE_HEIGHT, z: 0, facing: 0 },
@@ -832,9 +833,9 @@ function CharacterLab() {
           </div>
           {labView === "fps" && (
             <div className="button-row" aria-label="Map test level">
-              <button className={labLevel === "lower" ? "active" : ""} onClick={() => setLabLevel("lower")}>{labMapId === "temple_runoff" ? "River ↓" : labMapId === "iron_junction" ? "Yard •" : "Street •"}</button>
-              <button className={labLevel === "main" ? "active" : ""} onClick={() => setLabLevel("main")}>{labMapId === "temple_runoff" ? "Main •" : labMapId === "iron_junction" ? "Highline ↑" : "Rooftop ↑"}</button>
-              <button className={labLevel === "upper" ? "active" : ""} onClick={() => setLabLevel("upper")}>{labMapId === "temple_runoff" ? "Bridge ↑" : labMapId === "iron_junction" ? "Catwalk ↑" : "Cistern ↑"}</button>
+              <button className={labLevel === "lower" ? "active" : ""} onClick={() => setLabLevel("lower")}>{labMapId === "temple_runoff" ? "River ↓" : labMapId === "iron_junction" ? "Ground •" : "Street •"}</button>
+              <button className={labLevel === "main" ? "active" : ""} onClick={() => setLabLevel("main")}>{labMapId === "temple_runoff" ? "Main •" : labMapId === "iron_junction" ? "Loading ↑" : "Rooftop ↑"}</button>
+              <button className={labLevel === "upper" ? "active" : ""} onClick={() => setLabLevel("upper")}>{labMapId === "temple_runoff" ? "Bridge ↑" : labMapId === "iron_junction" ? "Overpass ↑" : "Cistern ↑"}</button>
             </div>
           )}
           <div className="lab-metrics">
@@ -1595,6 +1596,7 @@ function SessionManager({
   const [isStartingSession, setIsStartingSession] = useState(false);
   const [isEndingSession, setIsEndingSession] = useState(false);
   const [isAddingBot, setIsAddingBot] = useState(false);
+  const [removingPlayerId, setRemovingPlayerId] = useState<string | null>(null);
   const [botCount, setBotCount] = useState(4);
   const [botDifficulty, setBotDifficulty] = useState<BotDifficulty>(DEFAULT_SESSION_SETTINGS.botDifficulty);
   const [isJoinLinkCopied, setIsJoinLinkCopied] = useState(false);
@@ -1838,6 +1840,29 @@ function SessionManager({
       status.report(err);
     } finally {
       setIsAddingBot(false);
+    }
+  };
+
+  const removePlayer = async (playerId: string) => {
+    if (!selectedSession || removingPlayerId) return;
+    const player = selectedSession.players.find((candidate) => candidate.id === playerId);
+    if (!player) return;
+    const confirmed = window.confirm(
+      `Remove ${player.nickname} from this game? They can join again as a new player.`
+    );
+    if (!confirmed) return;
+
+    status.clear();
+    setRemovingPlayerId(playerId);
+    try {
+      const payload = await teacherApi.removePlayer(selectedSession.sessionCode, playerId) as { session: GameSession };
+      setSelectedSession(payload.session);
+      await onRefresh();
+      status.setMessage(`${player.nickname} removed from the game.`);
+    } catch (err) {
+      status.report(err);
+    } finally {
+      setRemovingPlayerId(null);
     }
   };
 
@@ -2248,7 +2273,12 @@ function SessionManager({
                 loadDecalAsset={loadTeacherDecal}
               />
             </Suspense>
-            <Scoreboard players={selectedSession.players} gameMode={selectedSession.settings.gameMode} />
+            <Scoreboard
+              players={selectedSession.players}
+              gameMode={selectedSession.settings.gameMode}
+              onRemovePlayer={selectedSession.status === "ended" ? undefined : (playerId) => void removePlayer(playerId)}
+              removingPlayerId={removingPlayerId}
+            />
             <EventFeed events={selectedSession.events ?? []} />
             {isEndConfirmOpen && (
               <div className="modal-backdrop" role="presentation">
@@ -2649,6 +2679,7 @@ function StudentExperience({ onExit }: { onExit: () => void }) {
     const pendingPositions = new Map<string, { x: number; y?: number; z: number; facing: number; energy?: number }>();
     const lastRemotePositions = new Map<string, { x: number; y?: number; z: number }>();
     let lastVisualSession = session;
+    let removedByTeacher = false;
     const emitPlayerVfx = (kind: ArenaVfxKind, playerId = activePlayerId, source = lastVisualSession) => {
       const target = source.players.find((candidate) => candidate.id === playerId);
       emitArenaVfx({ kind, x: target?.x ?? 0, z: target?.z ?? 0, team: target?.team });
@@ -2678,7 +2709,9 @@ function StudentExperience({ onExit }: { onExit: () => void }) {
       socket.emit("join_session_room", roomJoinPayload);
     });
     socket.on("connect_error", () => setIsSocketReconnecting(true));
-    socket.on("disconnect", () => setIsSocketReconnecting(true));
+    socket.on("disconnect", () => {
+      if (!removedByTeacher) setIsSocketReconnecting(true);
+    });
     socket.on("session_state", (nextSession: GameSession) => {
       const previousSession = lastVisualSession;
       const previousLocal = previousSession.players.find((candidate) => candidate.id === activePlayerId);
@@ -2901,6 +2934,23 @@ function StudentExperience({ onExit }: { onExit: () => void }) {
     socket.on("error_message", (payload: { error?: string }) => {
       queueFeedbackCue("error");
       setFeedback(payload.error ?? "Action failed.");
+    });
+    socket.on("player_removed", (payload: { message?: string }) => {
+      removedByTeacher = true;
+      clearStoredStudentSession();
+      setSession(null);
+      setPlayer(null);
+      setPlayerToken("");
+      setQuestion(null);
+      setQuizOpen(false);
+      setBuyOpen(false);
+      setScoreboardOpen(false);
+      setSettingsOpen(false);
+      setAnsweringChoice(null);
+      setFeedback("");
+      setIsSocketReconnecting(false);
+      status.setError(payload.message ?? "Your teacher removed you from this game.");
+      socket.disconnect();
     });
     return () => {
       if (positionFlushTimer !== undefined) window.clearTimeout(positionFlushTimer);
@@ -4008,11 +4058,15 @@ function ScoreboardLegacy({ players }: { players: PlayerSession[] }) {
 function Scoreboard({
   players,
   localPlayerId,
-  gameMode
+  gameMode,
+  onRemovePlayer,
+  removingPlayerId
 }: {
   players: PlayerSession[];
   localPlayerId?: string;
   gameMode: SessionSettings["gameMode"];
+  onRemovePlayer?: (playerId: string) => void;
+  removingPlayerId?: string | null;
 }) {
   const grouped = groupScoreboardRows(players, gameMode, localPlayerId);
   const totals = getTeamTotals(players);
@@ -4048,6 +4102,7 @@ function Scoreboard({
                   <th scope="col">Tags</th>
                   <th scope="col">Respawns</th>
                   <th scope="col">Question Accuracy</th>
+                  {onRemovePlayer && <th scope="col" className="scoreboard-actions-heading">Actions</th>}
                 </tr>
               </thead>
               <tbody>
@@ -4063,9 +4118,23 @@ function Scoreboard({
                   <td>{row.tags}</td>
                   <td>{row.respawns}</td>
                   <td>{row.questionAccuracy}</td>
+                  {onRemovePlayer && (
+                    <td className="scoreboard-actions">
+                      <button
+                        type="button"
+                        className="scoreboard-remove-player"
+                        onClick={() => onRemovePlayer(row.playerId)}
+                        disabled={Boolean(removingPlayerId)}
+                        aria-label={`Remove ${row.displayName} from the game`}
+                      >
+                        <Trash2 size={15} aria-hidden="true" />
+                        {removingPlayerId === row.playerId ? "Removing..." : "Remove"}
+                      </button>
+                    </td>
+                  )}
                 </tr>
               ))}
-              {group.rows.length === 0 && <tr><td colSpan={4}>No players in this group.</td></tr>}
+              {group.rows.length === 0 && <tr><td colSpan={onRemovePlayer ? 5 : 4}>No players in this group.</td></tr>}
               </tbody>
             </table>
           </div>

@@ -1082,8 +1082,11 @@ export const ARENA_PLAYER_EYE_HEIGHT = 4.21;
 export const ARENA_PLAYER_BODY_HEIGHT = 5.02;
 export const TEMPLE_RUNOFF_MAIN_LEVEL_Y = 8;
 export const TEMPLE_RUNOFF_UPPER_LEVEL_Y = 17;
-export const IRON_JUNCTION_HIGHLINE_LEVEL_Y = 10;
-export const IRON_JUNCTION_CATWALK_LEVEL_Y = 16;
+export const IRON_JUNCTION_LOADING_LEVEL_Y = 8;
+export const IRON_JUNCTION_OVERPASS_LEVEL_Y = 18;
+// Compatibility aliases for older clients and saved diagnostics.
+export const IRON_JUNCTION_HIGHLINE_LEVEL_Y = IRON_JUNCTION_LOADING_LEVEL_Y;
+export const IRON_JUNCTION_CATWALK_LEVEL_Y = IRON_JUNCTION_OVERPASS_LEVEL_Y;
 export const DESERT_CITADEL_ROOFTOP_LEVEL_Y = 6;
 export const DESERT_CITADEL_CITADEL_LEVEL_Y = 12;
 
@@ -1092,10 +1095,16 @@ export const TEMPLE_RUNOFF_BOUNDS: ArenaBounds = {
   limitX: scaleArenaValue(235),
   limitZ: scaleArenaValue(200)
 };
+export const IRON_JUNCTION_BOUNDS: ArenaBounds = {
+  limitX: scaleArenaValue(280),
+  limitZ: scaleArenaValue(250)
+};
 
 export const getArenaBounds = (mapId: ArenaMapId | string | undefined): ArenaBounds =>
   mapId === "temple_runoff"
     ? TEMPLE_RUNOFF_BOUNDS
+    : mapId === "iron_junction"
+      ? IRON_JUNCTION_BOUNDS
     : { limitX: ARENA_LIMIT_X, limitZ: ARENA_LIMIT_Z };
 
 const isInsideRawRect = (
@@ -1135,16 +1144,26 @@ const templeRampHeight = (rawX: number, rawZ: number): number | undefined => {
 };
 
 const ironRampHeight = (rawX: number, rawZ: number): number | undefined => {
-  if (rawZ >= 68 - 1e-6 && rawZ <= 82 + 1e-6) {
-    if (rawX >= -132 - 1e-6 && rawX <= -108 + 1e-6) {
-      return Number((IRON_JUNCTION_HIGHLINE_LEVEL_Y * Math.max(0, Math.min(1, (rawX + 132) / 24))).toFixed(3));
-    }
-    if (rawX >= 108 - 1e-6 && rawX <= 132 + 1e-6) {
-      return Number((IRON_JUNCTION_HIGHLINE_LEVEL_Y * Math.max(0, Math.min(1, (132 - rawX) / 24))).toFixed(3));
-    }
+  if (rawZ >= -66 - 1e-6 && rawZ <= -48 + 1e-6 && rawX >= -218 && rawX <= -180) {
+    return Number((IRON_JUNCTION_LOADING_LEVEL_Y * ((rawX + 218) / 38)).toFixed(3));
   }
-  if (Math.abs(rawX) <= 36 && rawZ >= -70 - 1e-6 && rawZ <= -52 + 1e-6) {
-    return Number((IRON_JUNCTION_CATWALK_LEVEL_Y * Math.max(0, Math.min(1, (rawZ + 70) / 18))).toFixed(3));
+  if (rawZ >= -82 - 1e-6 && rawZ <= -58 + 1e-6 && rawX >= 190 && rawX <= 220) {
+    return Number((IRON_JUNCTION_LOADING_LEVEL_Y * ((220 - rawX) / 30)).toFixed(3));
+  }
+  if (rawZ >= 96 - 1e-6 && rawZ <= 116 + 1e-6 && rawX >= 163 && rawX <= 191) {
+    return Number((IRON_JUNCTION_LOADING_LEVEL_Y * ((191 - rawX) / 28)).toFixed(3));
+  }
+  if (rawZ >= 15 && rawZ <= 35 && rawX >= -50 && rawX <= -20) {
+    return Number((IRON_JUNCTION_LOADING_LEVEL_Y * ((rawX + 50) / 30)).toFixed(3));
+  }
+  if (rawX >= -115 && rawX <= -95 && rawZ >= -116 && rawZ <= -86) {
+    return Number((IRON_JUNCTION_LOADING_LEVEL_Y + 10 * ((rawZ + 116) / 30)).toFixed(3));
+  }
+  if (rawX >= 70 && rawX <= 90 && rawZ >= 35 && rawZ <= 95) {
+    return Number((IRON_JUNCTION_OVERPASS_LEVEL_Y - 10 * ((rawZ - 35) / 60)).toFixed(3));
+  }
+  if (rawZ >= 15 && rawZ <= 35 && rawX >= 125 && rawX <= 175) {
+    return Number((IRON_JUNCTION_OVERPASS_LEVEL_Y * ((175 - rawX) / 50)).toFixed(3));
   }
   return undefined;
 };
@@ -1178,10 +1197,21 @@ export const getArenaFloorSurfaces = (
   const rawZ = z / ARENA_SCALE;
   if (mapId === "iron_junction") {
     const ramp = ironRampHeight(rawX, rawZ);
-    if (ramp !== undefined) return [ramp];
     const surfaces = [0];
-    if (isInsideRawRect(rawX, rawZ, -108, 108, 68, 82)) surfaces.push(IRON_JUNCTION_HIGHLINE_LEVEL_Y);
-    if (isInsideRawRect(rawX, rawZ, -36, 36, -52, -34)) surfaces.push(IRON_JUNCTION_CATWALK_LEVEL_Y);
+    if (
+      isInsideRawRect(rawX, rawZ, -190, -70, -179, -115)
+      || isInsideRawRect(rawX, rawZ, -180, -36, -66, -48)
+      || isInsideRawRect(rawX, rawZ, 74, 190, -82, -58)
+      || isInsideRawRect(rawX, rawZ, 23, 165, 96, 116)
+      || isInsideRawRect(rawX, rawZ, -20, 40, 15, 35)
+    ) surfaces.push(IRON_JUNCTION_LOADING_LEVEL_Y);
+    if (
+      isInsideRawRect(rawX, rawZ, -105, 125, 15, 35)
+      || isInsideRawRect(rawX, rawZ, -71, 71, -21, -7)
+      || isInsideRawRect(rawX, rawZ, -115, -95, -86, 15)
+      || isInsideRawRect(rawX, rawZ, 109, 129, -62, 15)
+    ) surfaces.push(IRON_JUNCTION_OVERPASS_LEVEL_Y);
+    if (ramp !== undefined) surfaces.push(ramp);
     return [...new Set(surfaces)].sort((a, b) => a - b);
   }
   if (mapId === "desert_citadel") {
@@ -1247,7 +1277,9 @@ export const getArenaLevelLabel = (
       : groundY < TEMPLE_RUNOFF_UPPER_LEVEL_Y - 1 ? "main" : "upper";
   }
   if (mapId === "iron_junction") {
-    return groundY >= IRON_JUNCTION_CATWALK_LEVEL_Y - 1 ? "catwalk" : groundY >= IRON_JUNCTION_HIGHLINE_LEVEL_Y - 1 ? "highline" : "yard";
+    return groundY >= IRON_JUNCTION_OVERPASS_LEVEL_Y - 1
+      ? "overpass"
+      : groundY >= IRON_JUNCTION_LOADING_LEVEL_Y - 1 ? "loading" : "ground";
   }
   if (mapId === "desert_citadel") {
     return groundY >= DESERT_CITADEL_CITADEL_LEVEL_Y - 1 ? "citadel" : groundY >= DESERT_CITADEL_ROOFTOP_LEVEL_Y - 1 ? "rooftop" : "street";
@@ -1328,9 +1360,34 @@ export const TEAM_SPAWNS: Record<Team, SpawnPoint[]> = {
   red: RAW_TEAM_SPAWNS.red.map(scaleArenaPosition)
 };
 
-const IRON_JUNCTION_TEAM_SPAWNS: Record<Team, SpawnPoint[]> = {
-  blue: TEAM_SPAWNS.blue.map((spawn) => ({ ...spawn, id: spawn.id.replace("west-fortress", "west-yard"), label: "West Signal Yard" })),
-  red: TEAM_SPAWNS.red.map((spawn) => ({ ...spawn, id: spawn.id.replace("east-camp", "east-yard"), label: "East Signal Yard" }))
+const RAW_IRON_JUNCTION_BLUE_SPAWNS: SpawnPoint[] = [
+  [-260, -72], [-252, -72], [-244, -72], [-236, -72], [-228, -72],
+  [-260, -24], [-252, -24], [-244, -24], [-236, -24], [-228, -24],
+  [-260, 24], [-252, 24], [-244, 24], [-236, 24], [-228, 24],
+  [-260, 72], [-252, 72], [-244, 72], [-236, 72], [-228, 72]
+].map(([x, z], index) => ({
+  id: `blue-iron-${index + 1}`,
+  label: ["Warehouse Gate", "Rail Gate", "Depot Gate", "Tunnel Gate"][Math.floor(index / 5)],
+  x,
+  z,
+  facing: -Math.PI / 2
+}));
+
+export const IRON_JUNCTION_TEAM_SPAWNS: Record<Team, SpawnPoint[]> = {
+  blue: RAW_IRON_JUNCTION_BLUE_SPAWNS.map(scaleArenaPosition).map((spawn) => ({
+    ...spawn,
+    y: ARENA_PLAYER_EYE_HEIGHT
+  })),
+  red: RAW_IRON_JUNCTION_BLUE_SPAWNS.map((spawn, index) => scaleArenaPosition({
+    ...spawn,
+    id: `red-iron-${index + 1}`,
+    label: spawn.label.replace("Gate", "Approach"),
+    x: -spawn.x,
+    facing: Math.PI / 2
+  })).map((spawn) => ({
+    ...spawn,
+    y: ARENA_PLAYER_EYE_HEIGHT
+  }))
 };
 
 const RAW_TEMPLE_RUNOFF_BLUE_SPAWNS: SpawnPoint[] = [
@@ -1457,10 +1514,11 @@ export const TEMPLE_RUNOFF_CAPTURE_ZONES = [
 ] as const;
 
 export const IRON_JUNCTION_CAPTURE_ZONES = [
-  { id: "iron-rail-switch", label: "Central Rail Switch", x: 0, z: 0, radius: scaleArenaValue(24), y: 0 },
-  { id: "iron-highline", label: "Highline Signal Deck", x: 0, z: scaleArenaValue(75), radius: scaleArenaValue(22), y: IRON_JUNCTION_HIGHLINE_LEVEL_Y },
-  { id: "iron-catwalk", label: "Signal Catwalk", x: 0, z: scaleArenaValue(-43), radius: scaleArenaValue(14), y: IRON_JUNCTION_CATWALK_LEVEL_Y },
-  { id: "iron-timber-line", label: "Timber Line", x: 0, z: scaleArenaValue(108), radius: scaleArenaValue(22), y: 0 }
+  { id: "iron-grand-junction", label: "Grand Rail Junction", x: scaleArenaValue(38), z: scaleArenaValue(64), radius: scaleArenaValue(25), y: 0 },
+  { id: "iron-warehouse-loading", label: "Warehouse Loading Dock", x: scaleArenaValue(-108), z: scaleArenaValue(-57), radius: scaleArenaValue(20), y: IRON_JUNCTION_LOADING_LEVEL_Y },
+  { id: "iron-maintenance-pit", label: "Maintenance Pit", x: scaleArenaValue(104), z: scaleArenaValue(151), radius: scaleArenaValue(22), y: 0 },
+  { id: "iron-control-overpass", label: "Junction Overpass", x: scaleArenaValue(24), z: scaleArenaValue(25), radius: scaleArenaValue(18), y: IRON_JUNCTION_OVERPASS_LEVEL_Y },
+  { id: "iron-mountain-tunnel", label: "Mountain Service Tunnel", x: scaleArenaValue(-35), z: scaleArenaValue(218), radius: scaleArenaValue(22), y: 0 }
 ] as const;
 
 export const DESERT_CITADEL_CAPTURE_ZONES = [
@@ -1494,9 +1552,9 @@ export const TEMPLE_RUNOFF_SEARCH_RETRIEVE_ITEMS = [
 ] as const;
 
 export const IRON_JUNCTION_SEARCH_RETRIEVE_ITEMS = [
-  { id: "iron-switch-key", label: "Rail Switch Key", x: scaleArenaValue(88), z: 0, y: 1.4 },
-  { id: "iron-highline-manifest", label: "Highline Manifest", x: 0, z: scaleArenaValue(75), y: IRON_JUNCTION_HIGHLINE_LEVEL_Y + 1.4 },
-  { id: "iron-catwalk-lantern", label: "Signal Lantern", x: 0, z: scaleArenaValue(-43), y: IRON_JUNCTION_CATWALK_LEVEL_Y + 1.4 }
+  { id: "iron-switch-key", label: "Rail Switch Key", x: scaleArenaValue(112), z: scaleArenaValue(-17), y: 1.4 },
+  { id: "iron-freight-manifest", label: "Freight Manifest", x: scaleArenaValue(-108), z: scaleArenaValue(-57), y: IRON_JUNCTION_LOADING_LEVEL_Y + 1.4 },
+  { id: "iron-signal-lantern", label: "Signal Lantern", x: scaleArenaValue(24), z: scaleArenaValue(25), y: IRON_JUNCTION_OVERPASS_LEVEL_Y + 1.4 }
 ] as const;
 
 export const DESERT_CITADEL_SEARCH_RETRIEVE_ITEMS = [
@@ -1528,8 +1586,8 @@ export const TEMPLE_RUNOFF_SEARCH_RETRIEVE_DELIVERY_ZONES = {
   red: { id: "red-temple-delivery", label: "Red Temple Delivery", x: scaleArenaValue(205), z: 0, radius: scaleArenaValue(20), y: TEMPLE_RUNOFF_MAIN_LEVEL_Y }
 } as const;
 export const IRON_JUNCTION_SEARCH_RETRIEVE_DELIVERY_ZONES = {
-  blue: { id: "blue-iron-delivery", label: "West Yard Delivery", x: scaleArenaValue(-146), z: 0, radius: scaleArenaValue(18), y: 0 },
-  red: { id: "red-iron-delivery", label: "East Yard Delivery", x: scaleArenaValue(146), z: 0, radius: scaleArenaValue(18), y: 0 }
+  blue: { id: "blue-iron-delivery", label: "Blue Assembly Delivery", x: scaleArenaValue(-248), z: 0, radius: scaleArenaValue(24), y: 0 },
+  red: { id: "red-iron-delivery", label: "Red Assembly Delivery", x: scaleArenaValue(248), z: 0, radius: scaleArenaValue(24), y: 0 }
 } as const;
 export const DESERT_CITADEL_SEARCH_RETRIEVE_DELIVERY_ZONES = {
   blue: { id: "blue-desert-delivery", label: "West Gate Delivery", x: scaleArenaValue(-146), z: 0, radius: scaleArenaValue(18), y: 0 },
@@ -1652,9 +1710,15 @@ export const TEMPLE_RUNOFF_TEAM_BASE_ZONES: typeof TEAM_BASE_ZONES = {
   blue: { minX: scaleArenaValue(-228), maxX: scaleArenaValue(-174), minZ: scaleArenaValue(-176), maxZ: scaleArenaValue(176) },
   red: { minX: scaleArenaValue(174), maxX: scaleArenaValue(228), minZ: scaleArenaValue(-176), maxZ: scaleArenaValue(176) }
 };
+export const IRON_JUNCTION_TEAM_BASE_ZONES: typeof TEAM_BASE_ZONES = {
+  blue: { minX: scaleArenaValue(-272), maxX: scaleArenaValue(-220), minZ: scaleArenaValue(-110), maxZ: scaleArenaValue(110) },
+  red: { minX: scaleArenaValue(220), maxX: scaleArenaValue(272), minZ: scaleArenaValue(-110), maxZ: scaleArenaValue(110) }
+};
 
 export const getTeamBaseZones = (mapId: ArenaMapId | string | undefined) =>
-  mapId === "temple_runoff" ? TEMPLE_RUNOFF_TEAM_BASE_ZONES : TEAM_BASE_ZONES;
+  mapId === "temple_runoff"
+    ? TEMPLE_RUNOFF_TEAM_BASE_ZONES
+    : mapId === "iron_junction" ? IRON_JUNCTION_TEAM_BASE_ZONES : TEAM_BASE_ZONES;
 
 export const isInsideTeamBase = (team: Team, position: ArenaPosition | undefined, mapId?: ArenaMapId | string) => {
   if (!position || !Number.isFinite(position.x) || !Number.isFinite(position.z)) return false;
@@ -1826,49 +1890,97 @@ export const ARENA_OBSTACLES: ArenaObstacle[] = [
 
 /** Simplified collision proxies for the Iron Junction props and architecture. */
 export const IRON_JUNCTION_OBSTACLES: ArenaObstacle[] = [
-  rectObstacle("iron-north-retaining-wall", 0, -156, 350, 8),
-  rectObstacle("iron-south-cliff-face", 0, 156, 350, 8),
-  rectObstacle("iron-west-embankment", -169, 0, 8, 142),
-  rectObstacle("iron-east-embankment", 169, 0, 8, 142),
-  rectObstacle("west-signal-house", -151, -64, 24, 20),
-  rectObstacle("west-freight-office", -151, 64, 26, 18),
-  rectObstacle("east-signal-house", 151, -64, 24, 20),
-  rectObstacle("east-freight-office", 151, 64, 26, 18),
-  rectObstacle("depot-north-roof", 0, -151, 142, 6),
-  rectObstacle("depot-south-wall-west", -86, -88, 48, 7),
-  rectObstacle("depot-south-wall-east", 76, -88, 46, 7),
-  rectObstacle("depot-railcar-west", -56, -119, 30, 10),
-  rectObstacle("depot-railcar-east", 35, -133, 34, 10),
-  rectObstacle("depot-control-booth", 0, -99, 20, 13),
-  rectObstacle("depot-east-workshop", 78, -118, 22, 24),
-  rectObstacle("depot-west-tool-cage", -91, -113, 12, 16),
-  rectObstacle("gantry-foot-west", -28, -14, 9, 18),
-  rectObstacle("gantry-foot-east", 28, 14, 9, 18),
-  rectObstacle("sorting-booth", 0, 25, 21, 16),
-  rectObstacle("mid-boxcar-north", -68, -22, 28, 10),
-  rectObstacle("mid-boxcar-south", 60, 30, 30, 10),
-  rectObstacle("mid-flatbed-cover", -20, 12, 22, 7, true),
-  rectObstacle("switch-control-hut", 88, 0, 13, 14),
-  rectObstacle("offset-cargo-container", 18, -28, 14, 9),
-  rectObstacle("timber-shelter-west", -83, 90, 32, 18),
-  rectObstacle("timber-shelter-east", 85, 100, 28, 18),
-  rectObstacle("log-stack-west", -50, 100, 24, 10),
-  rectObstacle("log-stack-east", 42, 124, 26, 10),
-  rectObstacle("loader-cabin", -10, 105, 14, 13),
-  rectObstacle("water-tower-base", 82, 116, 16, 16),
-  rectObstacle("gorge-retaining-wall", 0, 151, 170, 7),
-  rectObstacle("rock-outcrop-west", -117, 120, 18, 16),
-  rectObstacle("rock-outcrop-east", 115, 88, 18, 14),
-  rectObstacle("timber-drop-landing", 14, 82, 16, 8, true),
-  rectObstacle("iron-highline-rail-north", 0, 68, 220, 1.2, false, 8, 13),
-  rectObstacle("iron-highline-rail-south", 0, 82, 220, 1.2, false, 8, 13),
-  rectObstacle("iron-catwalk-rail-west", -36, -43, 1.2, 18, false, 14, 19),
-  rectObstacle("iron-catwalk-rail-east", 36, -43, 1.2, 18, false, 14, 19),
-  circleObstacle("depot-hydraulic-west", -72, -128, 2),
-  circleObstacle("depot-hydraulic-east", 51, -117, 2),
-  circleObstacle("oil-drums-west", -100, -94, 3),
-  circleObstacle("oil-drums-east", 104, 64, 3),
-  circleObstacle("gorge-winch", -4, 133, 3)
+  rectObstacle("iron-north-cliff", 0, -246, 560, 8, false, 0, 24),
+  rectObstacle("iron-south-cliff", 0, 246, 560, 8, false, 0, 30),
+  rectObstacle("iron-west-cliff", -276, 0, 8, 500, false, 0, 22),
+  rectObstacle("iron-east-cliff", 276, 0, 8, 500, false, 0, 22),
+
+  rectObstacle("blue-base-inner-north", -218, -92, 8, 42, false, 0, 14),
+  rectObstacle("blue-base-inner-midnorth", -218, -55, 8, 16, false, 0, 14),
+  rectObstacle("blue-base-inner-center", -218, 0, 8, 38, false, 0, 14),
+  rectObstacle("blue-base-inner-midsouth", -218, 55, 8, 16, false, 0, 14),
+  rectObstacle("blue-base-inner-south", -218, 92, 8, 42, false, 0, 14),
+  rectObstacle("blue-base-sight-screen-north", -198, -58, 28, 7, false, 0, 9),
+  rectObstacle("blue-base-sight-screen-south", -198, 58, 28, 7, false, 0, 9),
+  rectObstacle("blue-objective-booth", -247, 0, 28, 32, false, 0, 10),
+  rectObstacle("red-base-inner-north", 218, -92, 8, 42, false, 0, 14),
+  rectObstacle("red-base-inner-midnorth", 218, -55, 8, 16, false, 0, 14),
+  rectObstacle("red-base-inner-center", 218, 0, 8, 38, false, 0, 14),
+  rectObstacle("red-base-inner-midsouth", 218, 55, 8, 16, false, 0, 14),
+  rectObstacle("red-base-inner-south", 218, 92, 8, 42, false, 0, 14),
+  rectObstacle("red-base-sight-screen-north", 198, -58, 28, 7, false, 0, 9),
+  rectObstacle("red-base-sight-screen-south", 198, 58, 28, 7, false, 0, 9),
+  rectObstacle("red-objective-booth", 247, 0, 28, 32, false, 0, 10),
+
+  rectObstacle("warehouse-north-wall", -112, -190, 164, 8, false, 0, 20),
+  rectObstacle("warehouse-west-wall", -194, -130, 8, 128, false, 0, 20),
+  rectObstacle("warehouse-east-wall-north", -30, -164, 8, 44, false, 0, 20),
+  rectObstacle("warehouse-east-wall-south", -30, -94, 8, 34, false, 0, 20),
+  rectObstacle("warehouse-south-wall-west", -165, -66, 58, 8, false, 0, 15),
+  rectObstacle("warehouse-south-wall-center", -92, -66, 40, 8, false, 0, 15),
+  rectObstacle("warehouse-south-wall-east", -45, -66, 22, 8, false, 0, 15),
+  rectObstacle("warehouse-office", -158, -157, 34, 26, false, 0, 9),
+  rectObstacle("warehouse-conveyor", -87, -132, 52, 9, false, 0, 4),
+  rectObstacle("warehouse-pillar-a", -126, -98, 4, 4, false, 0, 18),
+  rectObstacle("warehouse-pillar-b", -72, -98, 4, 4, false, 0, 18),
+
+  rectObstacle("dispatch-north-wall", 135, -188, 142, 8, false, 0, 16),
+  rectObstacle("dispatch-east-wall", 206, -139, 8, 106, false, 0, 16),
+  rectObstacle("dispatch-west-wall-north", 64, -164, 8, 42, false, 0, 16),
+  rectObstacle("dispatch-west-wall-south", 64, -103, 8, 34, false, 0, 16),
+  rectObstacle("dispatch-south-wall-west", 91, -86, 46, 8, false, 0, 13),
+  rectObstacle("dispatch-south-wall-east", 178, -86, 48, 8, false, 0, 13),
+  rectObstacle("dispatch-operations-room", 161, -149, 54, 38, false, 0, 10),
+  rectObstacle("junction-control-lower", 58, -38, 34, 32, false, 0, 9),
+  rectObstacle("junction-control-upper", 58, -38, 30, 28, false, 10, 18),
+
+  rectObstacle("freight-train-west", -100, -42, 58, 13, false, 0, 8),
+  rectObstacle("junction-locomotive", -8, 0, 70, 15, false, 0, 10),
+  rectObstacle("freight-train-east", 105, 42, 60, 13, false, 0, 8),
+  rectObstacle("damaged-railcar", -48, 82, 42, 13, false, 0, 7),
+  rectObstacle("yard-cover-signal-box", 112, -17, 20, 18, false, 0, 7),
+  rectObstacle("yard-platform-west", -155, 20, 54, 17, false, 0, 2),
+  rectObstacle("yard-platform-east", 157, 66, 48, 17, false, 0, 2),
+
+  rectObstacle("depot-east-wall", 190, 151, 8, 116, false, 0, 18),
+  rectObstacle("depot-north-wall-west", 37, 96, 58, 8, false, 0, 17),
+  rectObstacle("depot-north-wall-center", 106, 96, 38, 8, false, 0, 17),
+  rectObstacle("depot-north-wall-east", 169, 96, 34, 8, false, 0, 17),
+  rectObstacle("depot-south-wall-west", 40, 205, 64, 8, false, 0, 17),
+  rectObstacle("depot-south-wall-east", 157, 205, 66, 8, false, 0, 17),
+  rectObstacle("depot-west-wall-north", 4, 120, 8, 42, false, 0, 17),
+  rectObstacle("depot-west-wall-south", 4, 181, 8, 40, false, 0, 17),
+  rectObstacle("depot-side-office", 157, 174, 42, 35, false, 0, 9),
+  rectObstacle("depot-machinery-bay", 48, 164, 31, 19, false, 0, 6),
+
+  rectObstacle("tunnel-south-wall-west", -145, 234, 142, 8, false, 0, 15),
+  rectObstacle("tunnel-south-wall-east", 18, 238, 164, 8, false, 0, 15),
+  rectObstacle("tunnel-north-wall-a", -177, 194, 70, 8, false, 0, 13),
+  rectObstacle("tunnel-north-wall-b", -78, 198, 52, 8, false, 0, 13),
+  rectObstacle("tunnel-north-wall-c", 16, 202, 70, 8, false, 0, 13),
+  rectObstacle("tunnel-north-wall-d", 110, 206, 52, 8, false, 0, 13),
+  rectObstacle("tunnel-sight-break-west", -104, 216, 12, 16, false, 0, 8),
+  rectObstacle("tunnel-sight-break-east", 54, 220, 12, 16, false, 0, 8),
+
+  rectObstacle("overpass-support-west", -78, 25, 6, 6, false, 0, 18),
+  rectObstacle("overpass-support-center", 18, 25, 6, 6, false, 0, 18),
+  rectObstacle("overpass-support-east", 92, 25, 6, 6, false, 0, 18),
+  rectObstacle("gantry-sight-screen", -6, 25, 36, 5, false, 17.5, 24.5),
+  rectObstacle("overpass-north-rail-west", -77.5, 15, 55, 1.2, false, 18, 20.5),
+  rectObstacle("overpass-north-rail-center", 5, 15, 70, 1.2, false, 18, 20.5),
+  rectObstacle("overpass-north-rail-east", 92.5, 15, 65, 1.2, false, 18, 20.5),
+  rectObstacle("overpass-south-rail-west", -77.5, 35, 55, 1.2, false, 18, 20.5),
+  rectObstacle("overpass-south-rail-center", 5, 35, 70, 1.2, false, 18, 20.5),
+  rectObstacle("overpass-south-rail-east", 92.5, 35, 65, 1.2, false, 18, 20.5),
+  rectObstacle("warehouse-link-west-rail", -115, -35.5, 1.2, 101, false, 18, 20.5),
+  rectObstacle("warehouse-link-east-rail", -95, -35.5, 1.2, 101, false, 18, 20.5),
+  rectObstacle("dispatch-link-west-rail", 109, -22, 1.2, 80, false, 18, 20.5),
+  rectObstacle("dispatch-link-east-rail", 129, -22, 1.2, 80, false, 18, 20.5),
+
+  circleObstacle("yard-signal-base-west", -150, -18, 2.5, false, 0, 10),
+  circleObstacle("yard-signal-base-east", 150, 18, 2.5, false, 0, 10),
+  circleObstacle("depot-hydraulic-lift", 94, 172, 3, false, 0, 7),
+  circleObstacle("dispatch-clock-column", 105, -130, 2.5, false, 0, 11)
 ];
 
 /** Ground-plane collision proxies for Temple Runoff's playable architecture. */
@@ -2721,6 +2833,16 @@ export const randomizeBalancedTeams = <T extends Pick<PlayerSession, "id" | "tea
   };
   const shuffled = eligible.sort((a, b) => seededScore(a) - seededScore(b));
   return shuffled.map((player, index) => ({ ...player, team: index % 2 === 0 ? "red" : "blue" }) as T);
+};
+
+export const selectLateJoinTeam = (
+  players: readonly Pick<PlayerSession, "team">[],
+  randomValue = Math.random()
+): Team => {
+  const blueCount = players.filter((player) => player.team === "blue").length;
+  const redCount = players.filter((player) => player.team === "red").length;
+  if (blueCount !== redCount) return blueCount < redCount ? "blue" : "red";
+  return randomValue < 0.5 ? "blue" : "red";
 };
 
 export const createInitialFlagState = (position: ArenaPosition): FlagState => ({

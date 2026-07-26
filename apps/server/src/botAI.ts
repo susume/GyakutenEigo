@@ -225,7 +225,7 @@ export const createBotMemory = (id: string, index: number, nowMs: number): BotMe
   state: "spawn",
   role: "patrol",
   personality: BOT_PERSONALITIES[index % BOT_PERSONALITIES.length],
-  routeIndex: index % 4,
+  routeIndex: index % 5,
   nextThinkAtMs: nowMs + (index % 5) * 90,
   targetCommitUntilMs: 0,
   burstShotsRemaining: 1,

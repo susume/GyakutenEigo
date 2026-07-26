@@ -19,6 +19,11 @@ type SessionFixture = {
 type PlayerFixture = {
   id: string;
   nickname: string;
+  team?: "red" | "blue";
+  role?: "human" | "zombie";
+  isAlive?: boolean;
+  snowballs?: number;
+  energy?: number;
   connectionState?: string;
   cosmeticXp?: number;
   appearance?: AppearanceFixture;
@@ -337,6 +342,124 @@ test("real HTTP appearance flow enforces identity, room scope, locking, and clea
     headers: { Authorization: `Bearer ${teacher.token}` }
   });
   assert.equal(purgedAsset.status, 404);
+});
+
+test("live sessions admit late and returning students while teachers can remove players securely", { timeout: 30_000 }, async () => {
+  const teacher = await createTeacherWithQuiz();
+  const otherTeacher = await createTeacherWithQuiz();
+  const session = await createSession(teacher, {
+    maxPlayers: 8,
+    gameMode: "classic",
+    mapId: "iron_junction",
+    roundDurationSeconds: 120
+  });
+  const alpha = await joinSession(session.sessionCode, "Live Alpha");
+  await joinSession(session.sessionCode, "Live Bravo");
+
+  const started = await api(`/api/sessions/${session.sessionCode}/start`, {
+    method: "POST",
+    teacherToken: teacher.token
+  });
+  assert.equal(started.response.status, 200);
+
+  const late = await joinSession(session.sessionCode, "Late Student");
+  assert.equal(late.session.players.length, 3);
+  assert.equal(late.player.isAlive, true);
+  assert.ok(late.player.team === "red" || late.player.team === "blue");
+  assert.ok(late.question?.id);
+
+  const alphaSocket = connectStudentSocket(session.sessionCode, alpha);
+  await alphaSocket.initialState;
+  alphaSocket.socket.disconnect();
+  await new Promise((resolve) => setTimeout(resolve, 100));
+
+  const returning = await api<JoinedPlayer>(`/api/sessions/${session.sessionCode}/join`, {
+    method: "POST",
+    body: { nickname: "Live Alpha" }
+  });
+  assert.equal(returning.response.status, 200);
+  assert.equal(returning.body.player.id, alpha.player.id);
+  assert.equal(returning.body.player.connectionState, "connected");
+
+  const lateSocket = connectStudentSocket(session.sessionCode, late);
+  await lateSocket.initialState;
+  const removedNotice = new Promise<{ message?: string }>((resolve, reject) => {
+    const timeout = setTimeout(() => reject(new Error("Timed out waiting for the removal notice.")), 5_000);
+    lateSocket.socket.once("player_removed", (payload) => {
+      clearTimeout(timeout);
+      resolve(payload);
+    });
+  });
+
+  const anonymousRemoval = await api(
+    `/api/sessions/${session.sessionCode}/players/${late.player.id}`,
+    { method: "DELETE" }
+  );
+  assert.equal(anonymousRemoval.response.status, 401);
+
+  const otherTeacherRemoval = await api(
+    `/api/sessions/${session.sessionCode}/players/${late.player.id}`,
+    { method: "DELETE", teacherToken: otherTeacher.token }
+  );
+  assert.equal(otherTeacherRemoval.response.status, 404);
+
+  const removed = await api<{ session: SessionFixture; removedPlayerId: string }>(
+    `/api/sessions/${session.sessionCode}/players/${late.player.id}`,
+    { method: "DELETE", teacherToken: teacher.token }
+  );
+  assert.equal(removed.response.status, 200);
+  assert.equal(removed.body.removedPlayerId, late.player.id);
+  assert.equal(removed.body.session.players.some((player) => player.id === late.player.id), false);
+  assert.match((await removedNotice).message ?? "", /teacher removed you/i);
+
+  const staleRejoin = await api(
+    `/api/sessions/${session.sessionCode}/players/${late.player.id}/rejoin`,
+    { playerToken: late.playerToken }
+  );
+  assert.equal(staleRejoin.response.status, 404);
+
+  const joinedAgain = await joinSession(session.sessionCode, "Late Student");
+  assert.notEqual(joinedAgain.player.id, late.player.id);
+  lateSocket.socket.disconnect();
+
+  const zombieSession = await createSession(teacher, {
+    maxPlayers: 8,
+    gameMode: "zombie",
+    mapId: "temple_runoff",
+    roundDurationSeconds: 120,
+    initialZombieCount: 1
+  });
+  await joinSession(zombieSession.sessionCode, "Zombie Seed A");
+  await joinSession(zombieSession.sessionCode, "Zombie Seed B");
+  const zombieStarted = await api(`/api/sessions/${zombieSession.sessionCode}/start`, {
+    method: "POST",
+    teacherToken: teacher.token
+  });
+  assert.equal(zombieStarted.response.status, 200);
+  const zombieLate = await joinSession(zombieSession.sessionCode, "Zombie Late");
+  assert.equal(zombieLate.player.role, zombieLate.player.team === "red" ? "zombie" : "human");
+  assert.equal(zombieLate.player.snowballs === 0, zombieLate.player.role === "human");
+
+  const flagSession = await createSession(teacher, {
+    maxPlayers: 8,
+    gameMode: "flag",
+    mapId: "desert_citadel",
+    roundDurationSeconds: 120
+  });
+  await joinSession(flagSession.sessionCode, "Flag Seed");
+  const flagStarted = await api(`/api/sessions/${flagSession.sessionCode}/start`, {
+    method: "POST",
+    teacherToken: teacher.token
+  });
+  assert.equal(flagStarted.response.status, 200);
+  const flagLate = await joinSession(flagSession.sessionCode, "Flag Late");
+  assert.equal(flagLate.player.isAlive, true);
+
+  await Promise.all([
+    api(`/api/sessions/${session.sessionCode}/end`, { method: "POST", teacherToken: teacher.token }),
+    api(`/api/sessions/${zombieSession.sessionCode}/end`, { method: "POST", teacherToken: teacher.token }),
+    api(`/api/sessions/${flagSession.sessionCode}/end`, { method: "POST", teacherToken: teacher.token })
+  ]);
 });
 
 test("a 40-student room keeps bounded appearance state and rejects student 41", { timeout: 30_000 }, async () => {
