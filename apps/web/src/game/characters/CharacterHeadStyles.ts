@@ -19,7 +19,6 @@ const cone = new THREE.ConeGeometry(0.5, 1, 8);
 const cylinder = new THREE.CylinderGeometry(0.5, 0.5, 1, 10);
 const roundedBox = new RoundedBoxGeometry(1, 1, 1, 3, 0.14);
 const torus = new THREE.TorusGeometry(0.5, 0.1, 8, 20);
-const smileArc = new THREE.TorusGeometry(0.5, 0.08, 6, 16, Math.PI);
 
 const neutral = {
   fox: new THREE.MeshStandardMaterial({ color: "#df7446", roughness: 0.82 }),
@@ -38,7 +37,6 @@ const neutral = {
   boyIris: new THREE.MeshStandardMaterial({ color: "#29bad0", roughness: 0.5 }),
   girlIris: new THREE.MeshStandardMaterial({ color: "#9968d8", roughness: 0.5 }),
   blush: new THREE.MeshStandardMaterial({ color: "#f2a4ad", roughness: 0.92 }),
-  mouth: new THREE.MeshStandardMaterial({ color: "#914d59", roughness: 0.9 }),
   hairClip: new THREE.MeshStandardMaterial({ color: "#ffd56a", roughness: 0.6, metalness: 0.08 }),
   ninjaCloth: new THREE.MeshStandardMaterial({ color: "#202832", roughness: 0.96 }),
   ninjaFold: new THREE.MeshStandardMaterial({ color: "#35404d", roughness: 0.92 }),
@@ -117,11 +115,6 @@ const createAnimeFace = (materials: CharacterMaterials, style: "boy" | "girl") =
     }
   }
   add(group, cone, materials.skin, [0, -0.02, -0.297], [0.038, 0.05, 0.038], [-Math.PI / 2, 0, 0]);
-  if (isGirl) {
-    add(group, smileArc, neutral.mouth, [0, -0.17, -0.315], [0.18, 0.12, 0.04], [0, 0, Math.PI]);
-  } else {
-    add(group, roundedBox, neutral.mouth, [0, -0.17, -0.32], [0.14, 0.025, 0.018], [0, 0, -0.08]);
-  }
   return group;
 };
 

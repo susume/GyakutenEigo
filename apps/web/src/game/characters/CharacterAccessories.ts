@@ -36,8 +36,8 @@ export const BACK_ACCESSORY_DEFINITIONS: Record<
 > = {
   none: { id: "none", socket: "UpperBackSocket", mount: "upperBack", position: [0, 0, 0], rotation: [0, 0, 0], scale: [1, 1, 1] },
   utility_pack: { id: "utility_pack", socket: "UpperBackSocket", mount: "upperBack", position: [0, -0.03, 0.04], rotation: [0, 0, 0], scale: [0.94, 0.94, 0.94] },
-  angel_wings: { id: "angel_wings", socket: "FullBackSocket", mount: "fullBack", motion: "wings", position: [0, 0.03, 0.035], rotation: [0, 0, 0], scale: [0.9, 0.9, 0.9] },
-  demon_wings: { id: "demon_wings", socket: "FullBackSocket", mount: "fullBack", motion: "wings", position: [0, 0.02, 0.04], rotation: [0, 0, 0], scale: [0.9, 0.9, 0.9] },
+  angel_wings: { id: "angel_wings", socket: "FullBackSocket", mount: "fullBack", motion: "wings", position: [0, 0.03, 0.035], rotation: [0, 0, 0], scale: [0.92, 0.92, 0.92] },
+  demon_wings: { id: "demon_wings", socket: "FullBackSocket", mount: "fullBack", motion: "wings", position: [0, -0.05, 0.04], rotation: [0, 0, 0], scale: [1, 1, 1] },
   devil_tail: { id: "devil_tail", socket: "PelvisRearSocket", mount: "pelvisRear", motion: "tail", position: [0, 0.03, 0.04], rotation: [0, 0, 0], scale: [0.92, 0.92, 0.92] },
   samurai_sword: { id: "samurai_sword", socket: "DiagonalBackSocket", mount: "diagonalBack", position: [0.05, 0.02, 0.055], rotation: [0, 0, -0.58], scale: [0.92, 0.92, 0.92] },
   twin_swords: { id: "twin_swords", socket: "DiagonalBackSocket", mount: "diagonalBack", position: [0, 0.02, 0.06], rotation: [0, 0, 0], scale: [0.88, 0.88, 0.88] },
@@ -105,22 +105,36 @@ const capePanels = [
   createCapePanel(0.37, 0.33, 0.28, 0.045),
   createCapeHem()
 ] as const;
-const wingMembraneUnit = new THREE.BufferGeometry();
-wingMembraneUnit.setAttribute("position", new THREE.Float32BufferAttribute([
-  0, 0.25, 0,
-  0.76, 0.48, 0,
-  0.58, 0.05, 0.04,
-  0, 0.25, 0,
-  0.58, 0.05, 0.04,
-  0.48, -0.42, 0.08,
-  0, 0.25, 0,
-  0.48, -0.42, 0.08,
-  0.12, -0.15, 0.04
-], 3));
-wingMembraneUnit.computeVertexNormals();
+const featherUnit = createDoubleSidedGeometry([
+  0, 0.12, 0, -0.18, 0, 0.018, 0, -0.55, 0.04,
+  0, 0.12, 0, 0, -0.55, 0.04, 0.18, 0, 0.018
+]);
+const wingMembraneUnit = createDoubleSidedGeometry([
+  0, 0.12, 0,
+  1.02, 1, 0.025,
+  0.92, 0.42, 0.045,
+  0, 0.12, 0,
+  0.92, 0.42, 0.045,
+  1.32, 0.2, 0.055,
+  0, 0.12, 0,
+  1.32, 0.2, 0.055,
+  0.96, -0.04, 0.065,
+  0, 0.12, 0,
+  0.96, -0.04, 0.065,
+  1.16, -0.46, 0.07,
+  0, 0.12, 0,
+  1.16, -0.46, 0.07,
+  0.72, -0.3, 0.075,
+  0, 0.12, 0,
+  0.72, -0.3, 0.075,
+  0.64, -0.82, 0.08,
+  0, 0.12, 0,
+  0.64, -0.82, 0.08,
+  0.34, -0.5, 0.065
+]);
 const demonWingMaterial = new THREE.MeshStandardMaterial({
-  color: "#30343d",
-  roughness: 0.88,
+  color: "#781523",
+  roughness: 0.82,
   side: THREE.DoubleSide
 });
 const angelFeatherMaterial = new THREE.MeshStandardMaterial({
@@ -177,6 +191,19 @@ const addBetween = (
   return mesh;
 };
 
+const addStrut = (
+  parent: THREE.Object3D,
+  material: THREE.Material,
+  start: THREE.Vector3,
+  end: THREE.Vector3,
+  radius: number
+) => {
+  const anchor = new THREE.Group();
+  anchor.position.copy(start);
+  parent.add(anchor);
+  addBetween(anchor, material, end.clone().sub(start), radius);
+};
+
 const finishAccessory = <TId extends string>(
   id: TId,
   definition: AccessoryDefinition<TId>,
@@ -220,28 +247,45 @@ export const createBackAccessory = (
       wing.rotation.set(0, side * 0.035, side * 0.06);
       wing.userData.baseRotation = [wing.rotation.x, wing.rotation.y, wing.rotation.z];
       group.add(wing);
-      for (let index = 0; index < 6; index += 1) {
+      const primaryFeathers = [
+        [0.25, 0.33, 0.08, 0.8, 0.72],
+        [0.4, 0.42, 0.14, 1, 0.78],
+        [0.56, 0.52, 0.2, 1.2, 0.82],
+        [0.72, 0.61, 0.27, 1.4, 0.84],
+        [0.88, 0.68, 0.34, 1.6, 0.83],
+        [1.02, 0.72, 0.41, 1.82, 0.78],
+        [1.15, 0.71, 0.48, 2, 0.7]
+      ] as const;
+      primaryFeathers.forEach(([x, y, angle, length, width], index) => {
         const featherPivot = markMotionNode(new THREE.Group(), "feather", index, side);
-        featherPivot.position.set(side * (0.14 + index * 0.145), 0.08 + index * 0.032, 0.015 + index * 0.006);
-        featherPivot.rotation.z = side * (0.72 - index * 0.045);
+        featherPivot.position.set(side * x, y, 0.015 + index * 0.004);
+        featherPivot.rotation.z = side * angle;
         featherPivot.userData.baseRotation = [0, 0, featherPivot.rotation.z];
         wing.add(featherPivot);
-        const feather = add(
-          featherPivot,
-          sphereUnit,
-          angelFeatherMaterial,
-          [0, -0.17, 0],
-          [0.19, 0.45 - index * 0.025, 0.105]
-        );
-        if (index > 3) feather.userData.cosmeticDetail = true;
-      }
-      for (let index = 0; index < 4; index += 1) {
-        const covert = markMotionNode(new THREE.Group(), "feather", index + 10, side);
-        covert.position.set(side * (0.16 + index * 0.14), 0.19 + index * 0.028, -0.015);
-        covert.rotation.z = side * (0.68 - index * 0.035);
+        add(featherPivot, featherUnit, angelFeatherMaterial, [0, 0, 0], [width, length, 1]);
+      });
+      const secondaryFeathers = [
+        [0.15, 0.27, 0.18, 0.62, 0.82],
+        [0.28, 0.35, 0.23, 0.72, 0.86],
+        [0.41, 0.43, 0.28, 0.82, 0.86],
+        [0.54, 0.5, 0.34, 0.92, 0.82],
+        [0.67, 0.55, 0.4, 1, 0.75]
+      ] as const;
+      secondaryFeathers.forEach(([x, y, angle, length, width], index) => {
+        const featherPivot = markMotionNode(new THREE.Group(), "feather", index + 8, side);
+        featherPivot.position.set(side * x, y, 0.045 + index * 0.004);
+        featherPivot.rotation.z = side * angle;
+        featherPivot.userData.baseRotation = [0, 0, featherPivot.rotation.z];
+        wing.add(featherPivot);
+        add(featherPivot, featherUnit, angelFeatherMaterial, [0, 0, 0], [width, length, 1]);
+      });
+      for (let index = 0; index < 5; index += 1) {
+        const covert = markMotionNode(new THREE.Group(), "feather", index + 16, side);
+        covert.position.set(side * (0.13 + index * 0.09), 0.38 + index * 0.05, 0.075);
+        covert.rotation.z = side * (0.18 + index * 0.055);
         covert.userData.baseRotation = [0, 0, covert.rotation.z];
         wing.add(covert);
-        add(covert, sphereUnit, angelFeatherMaterial, [0, -0.1, -0.005], [0.15, 0.28 - index * 0.018, 0.09]).userData.cosmeticDetail = true;
+        add(covert, featherUnit, angelFeatherMaterial, [0, 0, 0], [0.68, 0.42, 1]).userData.cosmeticDetail = true;
       }
     }
   } else if (accessoryId === "demon_wings") {
@@ -253,16 +297,25 @@ export const createBackAccessory = (
       wing.rotation.set(0, side * 0.035, side * 0.035);
       wing.userData.baseRotation = [wing.rotation.x, wing.rotation.y, wing.rotation.z];
       group.add(wing);
-      add(wing, sphereUnit, demonWingMaterial, [side * 0.44, 0.2, 0.01], [0.52, 0.2, 0.075], [0, 0, side * 0.3]);
-      add(wing, sphereUnit, demonWingMaterial, [side * 0.74, -0.03, 0.035], [0.42, 0.18, 0.07], [0, 0, side * 0.58]);
       const membrane = new THREE.Mesh(wingMembraneUnit, demonWingMaterial);
-      membrane.scale.x = side * 1.25;
+      membrane.scale.x = side;
       membrane.castShadow = true;
       membrane.receiveShadow = true;
       membrane.userData.preserveSharedResources = true;
       wing.add(membrane);
-      add(wing, cylinderUnit, materials.accent, [side * 0.35, 0.34, 0.025], [0.04, 0.9, 0.04], [0, 0, side * 1.05]);
-      add(wing, coneUnit, materials.accent, [side * 0.8, 0.51, 0.02], [0.07, 0.16, 0.07], [0, 0, side * 0.72]).userData.cosmeticDetail = true;
+      const root = new THREE.Vector3(0, 0.12, 0.09);
+      const tips = [
+        new THREE.Vector3(side * 1.02, 1, 0.055),
+        new THREE.Vector3(side * 1.32, 0.2, 0.085),
+        new THREE.Vector3(side * 1.16, -0.46, 0.1),
+        new THREE.Vector3(side * 0.64, -0.82, 0.11)
+      ];
+      tips.forEach((tip, index) => addStrut(wing, materials.dark, root, tip, index === 0 ? 0.045 : 0.035));
+      for (let index = 0; index < tips.length - 1; index += 1) {
+        addStrut(wing, materials.dark, tips[index], tips[index + 1], 0.026);
+      }
+      add(wing, sphereUnit, materials.accent, [0, 0.12, 0.105], [0.12, 0.12, 0.065]);
+      add(wing, coneUnit, materials.dark, [side * 1.03, 1.04, 0.055], [0.07, 0.18, 0.07], [0, 0, side * -0.73]).userData.cosmeticDetail = true;
     }
   } else if (accessoryId === "devil_tail") {
     const points = [

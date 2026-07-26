@@ -1,49 +1,66 @@
-# Character Creator Refinement — Design QA
+# Wing Reference Refinement — Design QA
 
 ## Visual truth
 
-- Brief: `C:\Users\hungb\.codex\attachments\1f2a3be5-0ac8-4a13-bf67-147a85cd5a4d\pasted-text.txt`
-- Reference: `C:\Users\hungb\OneDrive\Pictures\Screenshots\Screenshot 2026-07-25 110452.png`
-- Final implementation: `C:\Users\hungb\OneDrive\Documents\GitHub\GyakutenEigo\docs\character-rebuild\after\lobby-final-wide.png`
-- Combined reference comparison: `C:\Users\hungb\OneDrive\Documents\GitHub\GyakutenEigo\docs\character-rebuild\design-comparison.png`
-- Flat-grey comparison: `C:\Users\hungb\OneDrive\Documents\GitHub\GyakutenEigo\docs\character-rebuild\silhouette-comparison.png`
-- Turnarounds, team states, accessory states, and gameplay poses: `C:\Users\hungb\OneDrive\Documents\GitHub\GyakutenEigo\docs\character-rebuild\after`
+- Angel Wings source: `C:\Users\hungb\Downloads\wings.png`
+- Demon Wings source: `C:\Users\hungb\Downloads\devils wings.jpg`
+- Angel implementation: `C:\Users\hungb\OneDrive\Documents\GitHub\GyakutenEigo\design-qa-assets\angel-wings-implementation.png`
+- Demon implementation: `C:\Users\hungb\OneDrive\Documents\GitHub\GyakutenEigo\design-qa-assets\demon-wings-implementation.png`
+- Mouthless Girl implementation: `C:\Users\hungb\OneDrive\Documents\GitHub\GyakutenEigo\design-qa-assets\girl-mouthless-implementation.png`
+- Mouthless Boy implementation: `C:\Users\hungb\OneDrive\Documents\GitHub\GyakutenEigo\design-qa-assets\boy-mouthless-implementation.png`
+- Focused comparisons:
+  - `C:\Users\hungb\OneDrive\Documents\GitHub\GyakutenEigo\design-qa-assets\angel-wings-comparison.png`
+  - `C:\Users\hungb\OneDrive\Documents\GitHub\GyakutenEigo\design-qa-assets\demon-wings-comparison.png`
 
-## Viewports and state
+## Viewport and normalization
 
-- Primary comparison: 1077 × 587, matching the supplied reference, Flag Mode waiting room, one connected Blue learner.
-- Additional responsive checks: 887 × 697 and 1280 × 720.
-- All six presets, four head options, and six accessory cards remain visible without an internal scrollbar at the primary compact-landscape viewport.
+- Browser viewport and implementation captures: 1366 × 768 CSS px at device pixel ratio 1.
+- Angel source: 480 × 599 px.
+- Demon source: 980 × 980 px.
+- Comparison crops normalize the isolated source silhouette and the 744 × 386 preview region to equal 744 × 386 panels. Browser chrome and the customization panel are excluded from the focused comparisons.
+- State: Blue Team waiting-room creator, rear three-quarter Back preview, Boy head, Angel Wings or Demon Wings selected. Separate Head previews verify both Boy and Girl without mouth geometry.
+
+## Full-view comparison evidence
+
+- Angel Wings now read as two tall white feather fans with a raised crown, layered secondary feathers, and long pointed primaries sweeping outward and down.
+- Demon Wings now read as broad ruby bat wings with black perimeter structure, radial ribs, high spear tips, notched trailing edges, and lower hooked lobes.
+- Both silhouettes remain centered on the shoulder-blade mount and leave the team uniform visible.
+- Boy and Girl retain eyes, brows, nose, blush/hair details, and hair animation controls without a visible mouth shape.
+
+## Focused comparison evidence
+
+- `angel-wings-comparison.png` confirms the source and implementation share the arched shoulder profile, overlapping feather layers, bilateral symmetry, and long tapered outer feathers.
+- `demon-wings-comparison.png` confirms the source and implementation share the red membrane, dark frame, tall upper point, radial webbing, notched outer edge, and lower lobe.
+- The implementation intentionally translates photographic/illustrated feather texture into low-poly QuizStrike geometry rather than reproducing raster detail.
+
+## Required fidelity surfaces
+
+- Fonts and typography: unchanged and outside the supplied wing references; the existing creator typography remains intact.
+- Spacing and layout rhythm: unchanged. Enlarged wings remain inside the preview frame; the Demon mount was lowered after QA to clear the top edge.
+- Colors and visual tokens: Angel feathers are warm off-white. Demon membranes are deep ruby with neutral dark ribs and a small team-color hub; Blue uniform identity remains clear.
+- Image/asset fidelity: the source silhouettes are represented with real Three.js meshes and shared geometry appropriate to the existing character pipeline. No screenshot texture or placeholder asset is used.
+- Copy and content: existing cosmetic names and descriptions are unchanged. Boy and Girl mouth geometry is removed without adding explanatory UI copy.
 
 ## Findings
 
-- Layout preservation: passed. The compact team header, large left preview, right control panel, footer actions, and compact saved state remain intact.
-- Colour removal: passed. No colour swatches or colour controls remain in the UI or accessible tree.
-- Team readability: passed. Switching teams immediately replaces the complete authoritative palette; Red and Blue captures remain unmistakable.
-- Accessory panel: passed. Six visual one-at-a-time cards replace the removed colour area and update the preview immediately.
-- Character silhouette: passed. The flat-grey comparison shows a neck, layered head and jaw, tapered chest and waist, pelvis, separated upper/lower limbs, joints, hands, knees, ankles, and forward feet.
-- Weapon pose: passed visually. The blaster remains parented to the right-hand socket, stays clear of the torso, and the support hand meets the forward grip area.
-- Accessory attachment: passed. Each accessory uses one named socket and remains attached in front, side, rear, idle, walk, crouch, and aim captures.
-- Full-screen density: passed. The compact-height rules expose the complete two-row accessory grid without introducing internal scrolling.
-- Accessibility: passed. Team and option controls expose names and pressed states; the creator is a named region with labelled groups and visible focus.
-- Browser console: passed in a fresh final tab with zero warnings or errors.
+- No remaining P0, P1, or P2 visual mismatches.
+- [P3] Feather surfaces are intentionally faceted and cleaner than the photographic reference.
+  - Impact: visible only at close lobby-preview range.
+  - Disposition: accepted to preserve the established low-poly QuizStrike art style and shared-geometry performance.
 
-## Verification
+## Comparison history
 
-- Shared build: passed.
-- Server build: passed after regenerating the existing Prisma client.
-- Production web build: passed.
-- Automated tests: 146 passed, 0 failed (63 shared, 15 server, 68 web).
-- 40 authenticated Socket.IO clients: passed; 222 ms connect, 100 ms start fan-out, 4 ms reconnect, 32,748-byte largest initial state, and 4,490-byte movement fan-out payload.
-- 40-character construction check: passed in 692 ms with two shared body geometries and two shared body materials across both teams.
-- Preview render sample: 1 skinned body, 13 bones, 4,314 body triangles, 1 body material; 14 total draw calls, 6,738 rendered triangles, 12 geometries, and 2 textures for the sampled preview state.
-- Hitbox constants and gameplay tests remained unchanged and passed.
+1. Initial pass: Angel Wings were too horizontal and compact.
+   - Fix: raised the outer feather roots, lengthened the primaries, and rebuilt the wing as primary, secondary, and covert layers.
+   - Post-fix evidence: `angel-wings-implementation.png`.
+2. Second pass: both wing sets were still narrower than the references; the enlarged Demon tip touched the preview edge.
+   - Fix: expanded both silhouettes, added broader Demon membrane sectors and ribs, and lowered the Demon mount.
+   - Post-fix evidence: both final focused comparison images.
 
-## Known limitations
+## Interaction and runtime checks
 
-- The upgrade stays procedural to preserve the existing shared preview/gameplay pipeline; it is not an authored GLB with blended animation clips.
-- Skinning is deliberately rigid per merged anatomical part. The expanded 13-bone rig improves articulation while staying inexpensive, but it does not provide organic deformation at elbows or knees.
-- The support hand is pose-tuned to the named weapon support anchor rather than solved by runtime inverse kinematics.
-- The performance checks are deterministic construction/network/render-budget measurements, not an FPS capture from representative Chromebook hardware.
+- Tested Head and Back tab switching, Boy/Girl selection, Angel/Demon selection, immediate 3D replacement, selected states, and preview reset.
+- Browser alerts: none.
+- Browser console errors: none.
 
 final result: passed
