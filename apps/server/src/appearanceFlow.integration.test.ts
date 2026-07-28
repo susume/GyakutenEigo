@@ -633,9 +633,13 @@ test("40 authenticated Socket.IO clients receive bounded room state and movement
 
   const movementSenders = new Set<string>();
   let movementPayloadBytes = 0;
-  connected[0]!.socket.on("player_position", (payload: { playerId?: string }) => {
-    movementPayloadBytes += Buffer.byteLength(JSON.stringify(payload));
-    if (payload.playerId) movementSenders.add(payload.playerId);
+  let movementBatchCount = 0;
+  connected[0]!.socket.on("player_positions", (payloads: Array<{ playerId?: string }>) => {
+    movementBatchCount += 1;
+    movementPayloadBytes += Buffer.byteLength(JSON.stringify(payloads));
+    for (const payload of payloads) {
+      if (payload.playerId) movementSenders.add(payload.playerId);
+    }
   });
   for (let index = 1; index < connected.length; index += 1) {
     const student = students[index]!;
@@ -653,6 +657,7 @@ test("40 authenticated Socket.IO clients receive bounded room state and movement
     await new Promise((resolve) => setTimeout(resolve, 20));
   }
   assert.ok(movementSenders.size >= 35, `Only ${movementSenders.size} movement senders reached the observer.`);
+  assert.ok(movementBatchCount <= 4, `Movement fan-out used ${movementBatchCount} socket events instead of bounded batches.`);
 
   const reconnectTarget = connected.at(-1)!;
   reconnectTarget.socket.disconnect();
@@ -680,6 +685,7 @@ test("40 authenticated Socket.IO clients receive bounded room state and movement
     reconnectMs: Math.round(reconnectMs),
     largestInitialStateBytes,
     observedMovementSenders: movementSenders.size,
+    movementBatchCount,
     observedMovementPayloadBytes: movementPayloadBytes
   }));
 

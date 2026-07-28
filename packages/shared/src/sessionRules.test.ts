@@ -521,18 +521,22 @@ test("resolveBotAttackTarget chooses the nearest visible real opponent", () => {
   );
 });
 
-test("resolveTeamRoundWinner scores Classic Tag rounds and preserves draws", () => {
+test("resolveTeamRoundWinner ranks Classic Tag rounds by tags, respawns, then quiz earnings", () => {
   assert.equal(resolveTeamRoundWinner([
-    makePlayer({ team: "blue", score: 10, tags: 2 }),
-    makePlayer({ team: "red", score: 5, tags: 4 })
+    makePlayer({ team: "blue", score: 100, roundTags: 2, roundRespawns: 8, roundQuizMoneyEarned: 5000 }),
+    makePlayer({ team: "red", score: 5, roundTags: 4, roundRespawns: 0, roundQuizMoneyEarned: 0 })
+  ]), "red");
+  assert.equal(resolveTeamRoundWinner([
+    makePlayer({ team: "blue", roundTags: 3, roundRespawns: 2, roundQuizMoneyEarned: 100 }),
+    makePlayer({ team: "red", roundTags: 3, roundRespawns: 1, roundQuizMoneyEarned: 5000 })
   ]), "blue");
   assert.equal(resolveTeamRoundWinner([
-    makePlayer({ team: "blue", score: 5, tags: 3 }),
-    makePlayer({ team: "red", score: 5, tags: 2 })
+    makePlayer({ team: "blue", roundTags: 2, roundRespawns: 1, roundQuizMoneyEarned: 1200 }),
+    makePlayer({ team: "red", roundTags: 2, roundRespawns: 1, roundQuizMoneyEarned: 900 })
   ]), "blue");
   assert.equal(resolveTeamRoundWinner([
-    makePlayer({ team: "blue", score: 5, tags: 2 }),
-    makePlayer({ team: "red", score: 5, tags: 2 })
+    makePlayer({ team: "blue", roundTags: 2, roundRespawns: 1, roundQuizMoneyEarned: 900 }),
+    makePlayer({ team: "red", roundTags: 2, roundRespawns: 1, roundQuizMoneyEarned: 900 })
   ]), undefined);
 });
 

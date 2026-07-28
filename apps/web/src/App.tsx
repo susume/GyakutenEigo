@@ -2908,7 +2908,8 @@ function StudentExperience({ onExit }: { onExit: () => void }) {
         emitPlayerAnimation(localWon ? "victory" : "defeat", activePlayerId, player.team);
       }
     });
-    socket.on("player_position", (position: { playerId?: string; x?: number; y?: number; z?: number; facing?: number; energy?: number }) => {
+    type LivePositionUpdate = { playerId?: string; x?: number; y?: number; z?: number; facing?: number; energy?: number };
+    const receivePlayerPosition = (position: LivePositionUpdate) => {
       if (!position.playerId || !Number.isFinite(position.x) || !Number.isFinite(position.z) || !Number.isFinite(position.facing)) return;
       if (position.playerId !== activePlayerId) {
         const previous = lastRemotePositions.get(position.playerId);
@@ -2937,6 +2938,11 @@ function StudentExperience({ onExit }: { onExit: () => void }) {
         ...(Number.isFinite(position.energy) ? { energy: position.energy } : {})
       });
       positionFlushTimer ??= window.setTimeout(flushPositions, 50);
+    };
+    socket.on("player_position", receivePlayerPosition);
+    socket.on("player_positions", (positions: LivePositionUpdate[]) => {
+      if (!Array.isArray(positions)) return;
+      positions.forEach(receivePlayerPosition);
     });
     socket.on("damage_result", (result: DamageResultPayload) => {
       if (typeof result.snowballs === "number" && (!result.ok || result.attackerId === activePlayerId)) {
@@ -3470,7 +3476,7 @@ function StudentExperience({ onExit }: { onExit: () => void }) {
           <p>Enter your teacher's private session code and a classroom nickname. No student email account is needed.</p>
           <div className="panel how-to-card">
             <h2>How to Play</h2>
-            <p>Answer questions to earn money, buy snowballs and gear, then tag the other team in the arena.</p>
+            <p>Answer questions to earn money, buy snowballs and gear, then tag the other team. Most tags wins; respawns, then quiz earnings break ties.</p>
             <p>Fast web arena: use WASD to move, arrow keys or a swipe on the arena to look around, F or left click to fire, and E for the flag. Press C or right click to cycle the Heavy Snowball Launcher through 2× scope, 4× scope, and normal view. Q opens quiz, B opens buy, number keys 1–5 purchase shop items, and hold Tab for the scoreboard.</p>
             <p>If you are frozen out, keep practicing. Three correct answers respawn you back into the round.</p>
           </div>
@@ -3551,7 +3557,7 @@ function StudentExperience({ onExit }: { onExit: () => void }) {
       ? flagStatusText(session)
     : session.settings.gameMode === "zombie"
       ? zombieStatusText(session, player)
-      : "Answer questions, earn supplies, and tag the other team.";
+      : "Most tags wins. Respawns, then quiz earnings break ties.";
   const sessionResult = getSessionResultText(session);
   const arenaPlayer = spectatorPlayer ?? player;
   const isFlagSpectator = !player.isAlive && session.settings.gameMode === "flag";

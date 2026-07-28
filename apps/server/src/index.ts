@@ -11,6 +11,7 @@ import { resolveClientOrigins } from "./origins.js";
 import { getPausedRoundAction, planRoundConclusion } from "./roundFlow.js";
 import { inspectProcessedDecal } from "./appearanceSecurity.js";
 import { DecalStore, type StoredDecalMime } from "./decalStore.js";
+import { PlayerPositionHistory } from "./playerPositionHistory.js";
 import {
   APPEARANCE_UPDATE_COOLDOWN_MS,
   DECAL_MAX_PROCESSED_BYTES,
@@ -175,6 +176,7 @@ const botRespawnAt = new Map<string, number>();
 const botNextAttackAt = new Map<string, number>();
 const botMemoryById = new Map<string, BotMemory>();
 const botPreviousPositions = new Map<string, { x: number; y?: number; z: number }>();
+const playerPositionHistory = new PlayerPositionHistory(350);
 const appearanceUpdateTimestamps = new Map<string, number>();
 const playerSockets = new Map<string, Set<string>>();
 const playerDisconnectTimers = new Map<string, ReturnType<typeof setTimeout>>();
@@ -535,6 +537,16 @@ const stampSession = (session: GameSession) => {
 
 const pendingSessionBroadcasts = new Map<string, GameSession>();
 let sessionBroadcastTimer: ReturnType<typeof setTimeout> | undefined;
+type LivePositionPayload = {
+  playerId: string;
+  x: number;
+  y?: number;
+  z: number;
+  facing: number;
+  energy?: number;
+};
+const pendingPositionBroadcasts = new Map<string, Map<string, LivePositionPayload>>();
+let positionBroadcastTimer: ReturnType<typeof setTimeout> | undefined;
 
 const flushSessionBroadcasts = () => {
   sessionBroadcastTimer = undefined;
@@ -698,8 +710,24 @@ const prepareRoundState = (session: GameSession, preserveStats = true) => {
     const wasOutForRound = !player.isAlive;
     const reset = resetRoundPlayer(session, player, index);
     return preserveStats
-      ? { ...reset, respawns: wasOutForRound ? (player.respawns ?? 0) + 1 : (player.respawns ?? 0) }
-      : { ...reset, score: 0, correctAnswers: 0, wrongAnswers: 0, tags: 0, respawns: 0 };
+      ? {
+          ...reset,
+          respawns: wasOutForRound ? (player.respawns ?? 0) + 1 : (player.respawns ?? 0),
+          roundTags: 0,
+          roundRespawns: 0,
+          roundQuizMoneyEarned: 0
+        }
+      : {
+          ...reset,
+          score: 0,
+          correctAnswers: 0,
+          wrongAnswers: 0,
+          tags: 0,
+          respawns: 0,
+          roundTags: 0,
+          roundRespawns: 0,
+          roundQuizMoneyEarned: 0
+        };
   });
 };
 
@@ -732,6 +760,21 @@ const openRoundPreparation = (session: GameSession, preserveStats = true) => {
     ),
     expiresAt: startsAt
   };
+};
+
+const flushPositionBroadcasts = () => {
+  positionBroadcastTimer = undefined;
+  for (const [sessionCode, positions] of pendingPositionBroadcasts) {
+    io.to(sessionCode).volatile.emit("player_positions", [...positions.values()]);
+  }
+  pendingPositionBroadcasts.clear();
+};
+
+const broadcastPlayerPosition = (session: GameSession, position: LivePositionPayload) => {
+  const positions = pendingPositionBroadcasts.get(session.sessionCode) ?? new Map<string, LivePositionPayload>();
+  positions.set(position.playerId, position);
+  pendingPositionBroadcasts.set(session.sessionCode, positions);
+  positionBroadcastTimer ??= setTimeout(flushPositionBroadcasts, 50);
 };
 
 const openZombieSelectionPhase = (session: GameSession, preserveStats = true) => {
@@ -825,7 +868,7 @@ const startPendingRound = (session: GameSession) => {
       ? "Red carries and protects the flag. Blue defends and captures."
       : session.settings.gameMode === "zombie"
         ? "Red Zombies hunt. Blue Humans use their stored energy to run and survive."
-        : "Answer questions, earn supplies, and tag the other team.",
+        : "Most tags wins. Respawns, then quiz earnings break ties.",
     undefined,
     ROUND_START_ANNOUNCEMENT_MS
   );
@@ -910,6 +953,7 @@ const removePlayerRuntimeState = (session: GameSession, player: PlayerSession) =
   botNextAttackAt.delete(player.id);
   botMemoryById.delete(player.id);
   botPreviousPositions.delete(player.id);
+  playerPositionHistory.clear(player.id);
   appearanceUpdateTimestamps.delete(player.id);
   decalUploadTimestamps.delete(player.id);
   decalStore.deletePlayer(session.id, player.id);
@@ -988,6 +1032,7 @@ const applyValidatedDamage = (session: GameSession, attacker: PlayerSession, tar
     Object.assign(target, conversion.player);
     target.zombieConvertedAt = now();
     attacker.tags = (attacker.tags ?? attacker.score) + conversion.tagCredit;
+    attacker.roundTags = (attacker.roundTags ?? 0) + conversion.tagCredit;
     attacker.score += conversion.tagCredit;
     appendEvent(session, {
       type: "tag",
@@ -1045,6 +1090,7 @@ const applyValidatedDamage = (session: GameSession, attacker: PlayerSession, tar
     attacker.money = Math.min(16000, attacker.money + tagResult.moneyAwarded);
     attacker.score += tagResult.scoreDelta;
     attacker.tags = (attacker.tags ?? 0) + 1;
+    attacker.roundTags = (attacker.roundTags ?? 0) + 1;
   }
 
   appendEvent(session, {
@@ -1124,6 +1170,7 @@ const applyAuthoritativePosition = (
     z: player.z ?? fallback.z,
     facing: player.facing ?? fallback.facing
   };
+  playerPositionHistory.record(player.id, currentPosition, lastMoveAt);
   const sprintPolicy = resolveZombieSprintEnergy({
     gameMode: session.settings.gameMode,
     role: player.role,
@@ -1169,6 +1216,11 @@ const applyAuthoritativePosition = (
       movedDistance: Math.hypot(position.x - currentPosition.x, position.z - currentPosition.z)
     }).nextEnergy;
   }
+  playerPositionHistory.record(player.id, {
+    x: player.x,
+    y: player.y,
+    z: player.z
+  }, nowMs);
   return position;
 };
 
@@ -1191,8 +1243,10 @@ const botPosition = (player: PlayerSession): ArenaPosition => ({
   facing: player.facing ?? 0
 });
 
-const playersWithBotRewind = (players: PlayerSession[]) => players.map((player) => {
-  const previous = player.isBot ? botPreviousPositions.get(player.id) : undefined;
+const playersWithRewind = (players: PlayerSession[], nowMs = Date.now()) => players.map((player) => {
+  const previous = player.isBot
+    ? botPreviousPositions.get(player.id)
+    : playerPositionHistory.rewind(player.id, nowMs);
   return previous
     ? { ...player, previousX: previous.x, previousY: previous.y, previousZ: previous.z }
     : player;
@@ -1475,7 +1529,7 @@ const botFire = (
   });
   const targetSelection = resolveProjectileTarget({
     attacker: bot,
-    candidates: playersWithBotRewind(session.players),
+    candidates: playersWithRewind(session.players),
     requestedTargetId: target.id,
     range: getGearRange(weaponId),
     hitRadius: getGearHitRadius(weaponId, weaponId === "power_blaster" && brain.role === "overwatch" ? 1 : 0),
@@ -1530,7 +1584,13 @@ export const advanceBots = () => {
         finishZombieSession(session, "Humans survived until time expired.");
       } else {
         const winner = resolveTeamRoundWinner(session.players);
-        finishRound(session, winner, winner ? "Higher team score when time expired" : "Teams were tied when time expired");
+        finishRound(
+          session,
+          winner,
+          winner
+            ? "More tags, respawns, or quiz earnings when time expired"
+            : "Teams tied on tags, respawns, and quiz earnings when time expired"
+        );
       }
       continue;
     }
@@ -1549,6 +1609,7 @@ export const advanceBots = () => {
         if (respawn.respawned) {
           Object.assign(bot, respawn.player);
           bot.respawns = (bot.respawns ?? 0) + 1;
+          bot.roundRespawns = (bot.roundRespawns ?? 0) + 1;
           botRespawnAt.delete(bot.id);
           botPreviousPositions.delete(bot.id);
           appendEvent(session, { type: "respawn", message: `${bot.nickname} returned to the arena.`, playerId: bot.id, team: bot.team });
@@ -1785,7 +1846,7 @@ export const advanceBots = () => {
       if (movedDistance > 0.1) bot.facing = Math.atan2(next.x - oldX, next.z - oldZ);
       else bot.facing = next.facing;
       if (movedDistance > 0.01 || Math.abs((bot.facing ?? 0) - oldFacing) > 0.01) {
-        io.to(session.sessionCode).volatile.emit("player_position", {
+        broadcastPlayerPosition(session, {
           playerId: bot.id,
           x: bot.x,
           y: bot.y,
@@ -2117,7 +2178,7 @@ app.post("/api/sessions/:code/start", requireTeacher, (req: AuthedRequest, res) 
       session.settings.gameMode === "zombie" ? "Zombie Mode has begun!" : `Round ${session.currentRound} has begun!`,
       session.settings.gameMode === "zombie"
         ? "Red Zombies shoot to convert. Blue Humans answer correctly for running energy and survive without weapons."
-        : "Answer questions, earn supplies, and tag the other team.",
+        : "Most tags wins. Respawns, then quiz earnings break ties.",
       undefined,
       ROUND_START_ANNOUNCEMENT_MS
     );
@@ -2211,12 +2272,15 @@ app.post("/api/sessions/:code/bots", requireTeacher, (req: AuthedRequest, res) =
       team,
       money: session.settings.startingMoney,
       quizMoneyEarned: 0,
+      roundQuizMoneyEarned: 0,
       moneySpent: 0,
       isAlive: true,
       isBot: true,
       role: "human",
       tags: 0,
+      roundTags: 0,
       respawns: 0,
+      roundRespawns: 0,
       connectionState: "connected",
       health: DEFAULT_PLAYER_HEALTH,
       snowballs: session.settings.startingSnowballs,
@@ -2390,11 +2454,14 @@ app.post("/api/sessions/:code/join", (req, res) => {
     team,
     money: session.settings.startingMoney,
     quizMoneyEarned: 0,
+    roundQuizMoneyEarned: 0,
     moneySpent: 0,
     isAlive: true,
     role: zombieRole,
     tags: 0,
+    roundTags: 0,
     respawns: 0,
+    roundRespawns: 0,
     cosmeticXp: readCosmeticProgressToken(req.body.cosmeticProgressToken),
     connectionState: "connected",
     health: DEFAULT_PLAYER_HEALTH,
@@ -2760,6 +2827,7 @@ const answerQuestion = (
   const reward = resolveAnswerReward({ player, settings: session.settings, isCorrect, responseTimeMs });
   player.money = reward.nextMoney;
   player.quizMoneyEarned = (player.quizMoneyEarned ?? 0) + reward.moneyAwarded;
+  player.roundQuizMoneyEarned = (player.roundQuizMoneyEarned ?? 0) + reward.moneyAwarded;
   player.score += reward.scoreDelta;
   player.correctAnswers += reward.correctDelta;
   player.wrongAnswers += reward.wrongDelta;
@@ -2782,7 +2850,10 @@ const answerQuestion = (
         }
       : resolvePracticeRespawn({ player, settings: session.settings, isCorrect });
   Object.assign(player, respawn.player);
-  if (respawn.respawned) player.respawns = (player.respawns ?? 0) + 1;
+  if (respawn.respawned) {
+    player.respawns = (player.respawns ?? 0) + 1;
+    player.roundRespawns = (player.roundRespawns ?? 0) + 1;
+  }
 
   const answer: AnswerLog = {
     id: id(),
@@ -3090,10 +3161,7 @@ io.on("connection", (socket) => {
       facing: position.facing,
       energy: player.energy
     };
-    socket.to(session.sessionCode).volatile.emit("player_position", authoritativePosition);
-    if (session.settings.gameMode === "zombie" && player.role !== "zombie") {
-      socket.volatile.emit("player_position", authoritativePosition);
-    }
+    broadcastPlayerPosition(session, authoritativePosition);
   });
 
   socket.on("fire_action", (payload: { code?: string; playerId?: string; playerToken?: string; requestId?: string; x?: number; z?: number; y?: number; facing?: number; targetId?: string; scoped?: boolean; zoomLevel?: number }) => {
@@ -3146,7 +3214,7 @@ io.on("connection", (socket) => {
 
     const targetSelection = resolveProjectileTarget({
       attacker,
-      candidates: playersWithBotRewind(session.players),
+      candidates: playersWithRewind(session.players, currentMs),
       requestedTargetId: typeof payload.targetId === "string" && payload.targetId.trim() ? payload.targetId : undefined,
       range: getGearRange(weaponId),
       hitRadius: getGearHitRadius(weaponId, typeof payload.zoomLevel === "number" ? payload.zoomLevel : payload.scoped === true),

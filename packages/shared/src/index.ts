@@ -448,6 +448,8 @@ export interface PlayerSession {
   money: number;
   /** Total rewards earned from quiz answers in this session. */
   quizMoneyEarned?: number;
+  /** Quiz rewards earned since the current round's preparation began. */
+  roundQuizMoneyEarned?: number;
   /** Total money spent on shop purchases in this session. */
   moneySpent?: number;
   isAlive: boolean;
@@ -461,7 +463,11 @@ export interface PlayerSession {
   /** Set when a human is converted during Zombie Mode; initial zombies do not receive a timestamp. */
   zombieConvertedAt?: string;
   tags?: number;
+  /** Opponents frozen during the current round. */
+  roundTags?: number;
   respawns?: number;
+  /** Practice or bot respawns completed during the current round. */
+  roundRespawns?: number;
   /** Server-earned cosmetic progression, portable through a signed progress token. */
   cosmeticXp?: number;
   connectionState?: "connected" | "disconnected";
@@ -966,18 +972,28 @@ export const getRoundRemainingSeconds = (
 };
 
 export const resolveTeamRoundWinner = (
-  players: Array<Pick<PlayerSession, "team" | "score" | "tags">>
+  players: Array<Pick<
+    PlayerSession,
+    "team" | "tags" | "respawns" | "quizMoneyEarned" | "roundTags" | "roundRespawns" | "roundQuizMoneyEarned"
+  >>
 ): Team | undefined => {
   const totals = players.reduce(
     (result, player) => {
-      result[player.team].score += player.score;
-      result[player.team].tags += player.tags ?? 0;
+      result[player.team].tags += player.roundTags ?? player.tags ?? 0;
+      result[player.team].respawns += player.roundRespawns ?? player.respawns ?? 0;
+      result[player.team].quizMoneyEarned += player.roundQuizMoneyEarned ?? player.quizMoneyEarned ?? 0;
       return result;
     },
-    { blue: { score: 0, tags: 0 }, red: { score: 0, tags: 0 } }
+    {
+      blue: { tags: 0, respawns: 0, quizMoneyEarned: 0 },
+      red: { tags: 0, respawns: 0, quizMoneyEarned: 0 }
+    }
   );
-  if (totals.blue.score !== totals.red.score) return totals.blue.score > totals.red.score ? "blue" : "red";
   if (totals.blue.tags !== totals.red.tags) return totals.blue.tags > totals.red.tags ? "blue" : "red";
+  if (totals.blue.respawns !== totals.red.respawns) return totals.blue.respawns > totals.red.respawns ? "blue" : "red";
+  if (totals.blue.quizMoneyEarned !== totals.red.quizMoneyEarned) {
+    return totals.blue.quizMoneyEarned > totals.red.quizMoneyEarned ? "blue" : "red";
+  }
   return undefined;
 };
 
