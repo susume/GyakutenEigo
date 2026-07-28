@@ -370,7 +370,7 @@ test("resolveProjectileTarget finds bots and players along the swept snowball pa
   const bot = makePlayer({ id: "bot-1", team: "red", isBot: true, x: 12, z: 0, health: 100 });
   const player = makePlayer({ id: "player-2", team: "red", x: 16, z: 0.25, health: 100 });
 
-  assert.deepEqual(resolveProjectileTarget({ attacker, candidates: [player, bot] }), {
+  assert.deepEqual(resolveProjectileTarget({ attacker, candidates: [player, bot], obstacles: [] }), {
     ok: true,
     targetId: "bot-1"
   });
@@ -439,7 +439,8 @@ test("resolveAuthoritativeMovement clamps speed and rejects movement through cov
       current: { x: 0, z: 0, facing: 0 },
       requested: { x: 100, z: 0, facing: 1 },
       elapsedMs: 1000,
-      maxSpeed: 10
+      maxSpeed: 10,
+      obstacles: []
     }),
     { x: 10, z: 0, facing: 1, limited: true }
   );
@@ -599,7 +600,8 @@ test("bot roam routes escape every map spawn instead of wedging against base cov
               elapsedMs: 300,
               speed: 19.5,
               obstacles,
-              detourDirection: spawnIndex % 2 === 0 ? 1 : -1
+              detourDirection: spawnIndex % 2 === 0 ? 1 : -1,
+              mapId
             });
           }
         }

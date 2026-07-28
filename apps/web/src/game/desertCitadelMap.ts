@@ -44,11 +44,10 @@ export const DESERT_CITADEL: ArenaMapDefinition = {
     "Sun Gate • Red assembly court"
   ],
   routes: [
-    "Main Citadel Route • gates, fountain court, Sun Hall",
-    "Bazaar Route • canopies, shop arcades, balconies",
-    "Outer Ruins Route • dunes, broken arches, long-range pockets",
-    "Canal Route • aqueduct channel and three landmark bridges",
-    "Cross-connections • four stair courts and two limited lookouts"
+    "North Lane • Palm Ruins and long-range cover",
+    "Center Lane • gates, fountain court, and Sun Hall",
+    "South Lane • Grand Bazaar and Broken Aqueduct",
+    "Vertical connectors • four terrace stairs and two limited lookouts"
   ],
   palette: {
     sky: "#8fc9df",
@@ -121,10 +120,10 @@ const makeStairFlight = ({
   });
 
 const rawFloorMarks: CitadelFloorMark[] = [
-  { id: "route-main", label: "MAIN STREET", x: 0, z: 0, w: 430, d: 30, color: "#f0c879", y: 0.04 },
-  { id: "route-bazaar", label: "GRAND BAZAAR", x: -116, z: 78, w: 150, d: 30, color: "#d77b58", y: 0.04 },
-  { id: "route-ruins", label: "PALM RUINS", x: 0, z: -118, w: 410, d: 34, color: "#88aa72", y: 0.04 },
-  { id: "route-canal", label: "BROKEN AQUEDUCT", x: 0, z: 133, w: 410, d: 18, color: "#43b9c7", y: 0.04 },
+  { id: "route-main", label: "CENTER LANE • CITADEL", x: 0, z: 0, w: 430, d: 30, color: "#f0c879", y: 0.04 },
+  { id: "route-bazaar", label: "SOUTH LANE • BAZAAR", x: -122, z: 78, w: 112, d: 30, color: "#d77b58", y: 0.04 },
+  { id: "route-ruins", label: "NORTH LANE • PALM RUINS", x: 0, z: -118, w: 410, d: 34, color: "#88aa72", y: 0.04 },
+  { id: "route-canal", label: "SOUTH FLANK • AQUEDUCT", x: 0, z: 133, w: 410, d: 18, color: "#43b9c7", y: 0.04 },
   { id: "citadel-terrace", label: "CITADEL TERRACE", x: 50, z: 30, w: 220, d: 104, color: "#f2d28c", y: mainY + 0.04 },
   { id: "stair-west-pad", label: "STAIRS UP", x: -91, z: 0, w: 38, d: 30, color: "#55d6d9", y: 0.05 },
   { id: "stair-north-pad", label: "STAIRS UP", x: 0, z: -66, w: 30, d: 38, color: "#55d6d9", y: 0.05 },
@@ -156,16 +155,9 @@ const rawBlocks: CitadelBlock[] = [
   { id: "bazaar-paving", x: -92, z: 78, w: 196, d: 72, h: 0.3, y: -0.15, color: warmStone, material: "stone", style: "bridge" },
   { id: "fortress-floor", x: 108, z: 70, w: 118, d: 88, h: 1, y: mainY - 0.5, color: goldStone, material: "stone", style: "bridge" },
 
-  // Tall retaining walls make the terrace read as one solid destination, never a hidden under-map.
-  { id: "court-foundation-west-north", x: -66, z: -23, w: 5, d: 16, h: 9.5, y: 4.75, color: darkStone, collides: true, style: "wall" },
-  { id: "court-foundation-west-south", x: -66, z: 49, w: 5, d: 76, h: 9.5, y: 4.75, color: darkStone, collides: true, style: "wall" },
-  { id: "court-foundation-north-west", x: -40, z: -31, w: 52, d: 5, h: 9.5, y: 4.75, color: darkStone, collides: true, style: "wall" },
-  { id: "court-foundation-north-east", x: 40, z: -31, w: 52, d: 5, h: 9.5, y: 4.75, color: darkStone, collides: true, style: "wall" },
-  { id: "court-foundation-south-west", x: -40, z: 87, w: 52, d: 5, h: 9.5, y: 4.75, color: darkStone, collides: true, style: "wall" },
-  { id: "court-foundation-south-east", x: 32, z: 87, w: 34, d: 5, h: 9.5, y: 4.75, color: darkStone, collides: true, style: "wall" },
-  { id: "hall-foundation-east-north", x: 167, z: 40, w: 5, d: 28, h: 9.5, y: 4.75, color: darkStone, collides: true, style: "wall" },
-  { id: "hall-foundation-east-south", x: 167, z: 99, w: 5, d: 30, h: 9.5, y: 4.75, color: darkStone, collides: true, style: "wall" },
-  { id: "hall-foundation-south", x: 108, z: 114, w: 118, d: 5, h: 9.5, y: 4.75, color: darkStone, collides: true, style: "wall" },
+  // Solid foundations remove every accidental under-map route.
+  { id: "court-foundation", x: 0, z: 28, w: 132, d: 118, h: 9.35, y: 4.675, color: darkStone, collides: true, style: "wall" },
+  { id: "hall-foundation", x: 108, z: 70, w: 118, d: 88, h: 9.35, y: 4.675, color: darkStone, collides: true, style: "wall" },
 
   // Team bases: 20-player courts, four broad exits, screened objectives.
   { id: "blue-base-back", x: -240, z: 0, w: 5, d: 126, h: 13, y: centerAt(groundY, 13), color: darkStone, collides: true, style: "wall" },
@@ -187,43 +179,45 @@ const rawBlocks: CitadelBlock[] = [
   { id: "sun-gate-south-pier", x: 174, z: 26, w: 10, d: 12, h: 17, y: centerAt(groundY, 17), color: ochre, collides: true, style: "tower" },
   { id: "sun-gate-lintel", x: 174, z: 0, w: 10, d: 40, h: 4, y: 16, color: paleStone, collides: true, style: "gate" },
 
-  // Blue Fountain courtyard: broken into pockets with five approaches.
-  { id: "court-north-wall-west", x: -45, z: -51, w: 36, d: 5, h: 9, y: centerAt(mainY, 9), color: darkStone, collides: true, style: "wall" },
-  { id: "court-north-wall-east", x: 45, z: -51, w: 36, d: 5, h: 9, y: centerAt(mainY, 9), color: darkStone, collides: true, style: "wall" },
-  { id: "court-south-arcade-west", x: -47, z: 73, w: 30, d: 7, h: 10, y: centerAt(mainY, 10), color: warmStone, collides: true, style: "house" },
-  { id: "court-south-arcade-east", x: 47, z: 73, w: 30, d: 7, h: 10, y: centerAt(mainY, 10), color: warmStone, collides: true, style: "house" },
+  // Low parapets define safe edges; every gap corresponds to a real stair.
+  { id: "court-parapet-north-west", x: -40.5, z: -29.5, w: 51, d: 3, h: 3, y: centerAt(mainY, 3), color: darkStone, collides: true, style: "wall" },
+  { id: "court-parapet-north-east", x: 40.5, z: -29.5, w: 51, d: 3, h: 3, y: centerAt(mainY, 3), color: darkStone, collides: true, style: "wall" },
+  { id: "court-parapet-west-north", x: -64.5, z: -23, w: 3, d: 16, h: 3, y: centerAt(mainY, 3), color: darkStone, collides: true, style: "wall" },
+  { id: "court-parapet-west-south", x: -64.5, z: 51, w: 3, d: 72, h: 3, y: centerAt(mainY, 3), color: darkStone, collides: true, style: "wall" },
+  { id: "court-parapet-south-west", x: -40.5, z: 85.5, w: 51, d: 3, h: 3, y: centerAt(mainY, 3), color: warmStone, collides: true, style: "wall" },
+  { id: "court-parapet-south-east", x: 32, z: 85.5, w: 34, d: 3, h: 3, y: centerAt(mainY, 3), color: warmStone, collides: true, style: "wall" },
   { id: "court-broken-wall-west", x: -55, z: 18, w: 6, d: 23, h: 5, y: centerAt(mainY, 5), color: ochre, collides: true, style: "ruin" },
   { id: "court-broken-wall-east", x: 55, z: -18, w: 6, d: 23, h: 5, y: centerAt(mainY, 5), color: ochre, collides: true, style: "ruin" },
   { id: "court-monument", label: "Sun Dial Monument", x: 25, z: 26, w: 9, d: 14, h: 7, y: centerAt(mainY, 7), color: terracotta, collides: true, style: "tower" },
   { id: "court-planter", x: -27, z: -24, w: 15, d: 9, h: 3, y: centerAt(mainY, 3), color: paleStone, collides: true, style: "wall" },
 
   // Grand Bazaar: one market street, edge cover, and one unmistakable lookout tower.
-  { id: "bazaar-north-shops-west", label: "Grand Bazaar", x: -132, z: 49, w: 72, d: 12, h: 10, y: centerAt(groundY, 10), color: terracotta, collides: true, style: "house" },
-  { id: "bazaar-north-shops-east", x: -62, z: 49, w: 52, d: 12, h: 9, y: centerAt(groundY, 9), color: goldStone, collides: true, style: "house" },
-  { id: "bazaar-south-shops-west", x: -143, z: 105, w: 52, d: 12, h: 9, y: centerAt(groundY, 9), color: warmStone, collides: true, style: "house" },
-  { id: "bazaar-south-shops-east", x: -74, z: 105, w: 58, d: 12, h: 10, y: centerAt(groundY, 10), color: paleStone, collides: true, style: "house" },
-  { id: "bazaar-balcony-west", x: -146, z: 64, w: 35, d: 5, h: 3, y: 8, color: timber, material: "wood", style: "bridge" },
-  { id: "bazaar-balcony-east", x: -70, z: 91, w: 32, d: 5, h: 3, y: 8, color: timber, material: "wood", style: "bridge" },
-  { id: "bazaar-stall-west", label: "Spice Stall", x: -157, z: 80, w: 15, d: 6, h: 3, y: centerAt(groundY, 3), color: timber, collides: true, material: "wood", style: "stall" },
-  { id: "bazaar-stall-east", label: "Rug Stall", x: -45, z: 91, w: 15, d: 6, h: 3, y: centerAt(groundY, 3), color: timber, collides: true, material: "wood", style: "stall" },
+  { id: "bazaar-north-shops-west", label: "Grand Bazaar", x: -145, z: 49, w: 50, d: 12, h: 10, y: centerAt(groundY, 10), color: terracotta, collides: true, style: "house" },
+  { id: "bazaar-north-shops-east", x: -114, z: 49, w: 40, d: 12, h: 9, y: centerAt(groundY, 9), color: goldStone, collides: true, style: "house" },
+  { id: "bazaar-south-shops-west", x: -145, z: 105, w: 50, d: 12, h: 9, y: centerAt(groundY, 9), color: warmStone, collides: true, style: "house" },
+  { id: "bazaar-south-shops-east", x: -114, z: 105, w: 40, d: 12, h: 10, y: centerAt(groundY, 10), color: paleStone, collides: true, style: "house" },
+  { id: "bazaar-balcony-west", x: -145, z: 61, w: 34, d: 5, h: 3, y: 8, color: timber, material: "wood", style: "bridge" },
+  { id: "bazaar-balcony-east", x: -108, z: 93, w: 32, d: 5, h: 3, y: 8, color: timber, material: "wood", style: "bridge" },
+  { id: "bazaar-stall-west", label: "Spice Stall", x: -150, z: 80, w: 15, d: 6, h: 3, y: centerAt(groundY, 3), color: timber, collides: true, material: "wood", style: "stall" },
+  { id: "bazaar-stall-east", label: "Rug Stall", x: -62, z: 96, w: 15, d: 6, h: 3, y: centerAt(groundY, 3), color: timber, collides: true, material: "wood", style: "stall" },
   { id: "bazaar-lookout-mass", x: -116, z: 76, w: 60, d: 32, h: 23.4, y: 11.7, color: terracotta, collides: true, style: "tower" },
 
   // Monumental fortress interior with large halls and three entrances.
-  { id: "sun-hall-north-west", label: "Sun Hall", x: 80, z: 35, w: 38, d: 7, h: 15, y: centerAt(mainY, 15), color: darkStone, collides: true, style: "house" },
-  { id: "sun-hall-north-east", x: 142, z: 35, w: 32, d: 7, h: 15, y: centerAt(mainY, 15), color: darkStone, collides: true, style: "house" },
+  { id: "sun-hall-north-west", label: "Sun Hall", x: 85, z: 28, w: 38, d: 5, h: 15, y: centerAt(mainY, 15), color: darkStone, collides: true, style: "house" },
+  { id: "sun-hall-north-east", x: 143.5, z: 28, w: 47, d: 5, h: 15, y: centerAt(mainY, 15), color: darkStone, collides: true, style: "house" },
   { id: "sun-hall-south-west", x: 82, z: 110, w: 34, d: 7, h: 14, y: centerAt(mainY, 14), color: warmStone, collides: true, style: "house" },
   { id: "sun-hall-south-east", x: 145, z: 110, w: 27, d: 7, h: 14, y: centerAt(mainY, 14), color: warmStone, collides: true, style: "house" },
-  { id: "sun-hall-east-north", x: 164, z: 54, w: 7, d: 30, h: 14, y: centerAt(mainY, 14), color: ochre, collides: true, style: "wall" },
-  { id: "sun-hall-east-south", x: 164, z: 96, w: 7, d: 18, h: 14, y: centerAt(mainY, 14), color: ochre, collides: true, style: "wall" },
+  { id: "sun-hall-east-north", x: 164, z: 40, w: 7, d: 28, h: 14, y: centerAt(mainY, 14), color: ochre, collides: true, style: "wall" },
+  { id: "sun-hall-east-south", x: 164, z: 100, w: 7, d: 28, h: 14, y: centerAt(mainY, 14), color: ochre, collides: true, style: "wall" },
   { id: "sun-hall-guard-room", x: 124, z: 76, w: 24, d: 20, h: 8, y: centerAt(mainY, 8), color: paleStone, collides: true, style: "house" },
 
   // Palm Ruins: low, broad cover breaks every Heavy Blaster line.
-  { id: "ruins-wall-west", label: "Palm Ruins", x: -155, z: -123, w: 48, d: 7, h: 6, color: ochre, rotationY: 0.16, collides: true, style: "ruin" },
-  { id: "ruins-foundation-west", x: -92, z: -99, w: 34, d: 18, h: 3, color: warmStone, rotationY: -0.12, collides: true, style: "ruin" },
+  { id: "ruins-wall-west", label: "Palm Ruins", x: -155, z: -123, w: 48, d: 7, h: 6, color: ochre, collides: true, style: "ruin" },
+  { id: "ruins-foundation-west", x: -92, z: -99, w: 34, d: 18, h: 3, color: warmStone, collides: true, style: "ruin" },
   { id: "ruins-arch-center-west", x: -34, z: -132, w: 20, d: 8, h: 7, color: paleStone, collides: true, style: "ruin" },
-  { id: "ruins-wall-center", x: 26, z: -105, w: 44, d: 7, h: 5, color: ochre, rotationY: 0.2, collides: true, style: "ruin" },
-  { id: "ruins-foundation-east", x: 92, z: -139, w: 32, d: 20, h: 3, color: warmStone, rotationY: 0.1, collides: true, style: "ruin" },
-  { id: "ruins-wall-east", x: 154, z: -110, w: 44, d: 7, h: 6, color: darkStone, rotationY: -0.18, collides: true, style: "ruin" },
+  { id: "ruins-wall-center", x: 26, z: -105, w: 44, d: 7, h: 5, color: ochre, collides: true, style: "ruin" },
+  { id: "ruins-foundation-east", x: 92, z: -139, w: 32, d: 20, h: 3, color: warmStone, collides: true, style: "ruin" },
+  { id: "ruins-wall-east", x: 154, z: -110, w: 44, d: 7, h: 6, color: darkStone, collides: true, style: "ruin" },
   { id: "ruins-broken-tower", label: "Broken Aqueduct Tower", x: 205, z: -122, w: 18, d: 18, h: 18, color: darkStone, collides: true, style: "tower" },
 
   // Ground-level canal and passage: distinct route language without an accidental second map.
@@ -243,13 +237,34 @@ const rawBlocks: CitadelBlock[] = [
   ...makeStairFlight({ id: "citadel-south", x: 0, z: 101, width: 30, length: 28, axis: "z", direction: -1, startY: 0, endY: mainY, color: paleStone }),
   ...makeStairFlight({ id: "citadel-east", x: 185, z: 70, width: 30, length: 36, axis: "x", direction: -1, startY: 0, endY: mainY, color: paleStone }),
   ...makeStairFlight({ id: "bazaar-lookout", x: -181, z: 76, width: 24, length: 70, axis: "x", direction: 1, startY: 0, endY: roofY, color: goldStone, steps: 14 }),
-  ...makeStairFlight({ id: "sun-hall-roof", x: 84, z: 90, width: 22, length: 44, axis: "x", direction: 1, startY: mainY, endY: roofY, color: paleStone, steps: 10 }),
+  ...makeStairFlight({ id: "sun-hall-roof", x: 84, z: 81, width: 22, length: 44, axis: "x", direction: 1, startY: mainY, endY: roofY, color: paleStone, steps: 10 }),
+
+  // High-contrast guide walls keep students on the mathematical ramp footprint.
+  { id: "citadel-west-guide-north", x: -86, z: -16.5, w: 40, d: 3, h: 13, y: 6.5, color: turquoise, collides: true, style: "wall" },
+  { id: "citadel-west-guide-south", x: -86, z: 16.5, w: 40, d: 3, h: 13, y: 6.5, color: turquoise, collides: true, style: "wall" },
+  { id: "citadel-north-guide-west", x: -16.5, z: -45, w: 3, d: 28, h: 13, y: 6.5, color: turquoise, collides: true, style: "wall" },
+  { id: "citadel-north-guide-east", x: 16.5, z: -45, w: 3, d: 28, h: 13, y: 6.5, color: turquoise, collides: true, style: "wall" },
+  { id: "citadel-south-guide-west", x: -16.5, z: 101, w: 3, d: 28, h: 13, y: 6.5, color: turquoise, collides: true, style: "wall" },
+  { id: "citadel-south-guide-east", x: 16.5, z: 101, w: 3, d: 28, h: 13, y: 6.5, color: turquoise, collides: true, style: "wall" },
+  { id: "citadel-east-guide-north", x: 185, z: 53.5, w: 36, d: 3, h: 13, y: 6.5, color: turquoise, collides: true, style: "wall" },
+  { id: "citadel-east-guide-south", x: 185, z: 86.5, w: 36, d: 3, h: 13, y: 6.5, color: turquoise, collides: true, style: "wall" },
+  { id: "bazaar-lookout-guide-north", x: -181, z: 62.5, w: 70, d: 3, h: 26, y: 13, color: goldStone, collides: true, style: "wall" },
+  { id: "bazaar-lookout-guide-south", x: -181, z: 89.5, w: 70, d: 3, h: 26, y: 13, color: goldStone, collides: true, style: "wall" },
+  { id: "sun-hall-roof-guide-north", x: 84, z: 68.5, w: 44, d: 3, h: 16, y: 18, color: goldStone, collides: true, style: "wall" },
+  { id: "sun-hall-roof-guide-south", x: 84, z: 93.5, w: 44, d: 3, h: 16, y: 18, color: goldStone, collides: true, style: "wall" },
 
   // Limited upper plane with rails and sightline screens.
   { id: "bazaar-roof-west", x: -116, z: 76, w: 60, d: 32, h: 1, y: roofY - 0.5, color: terracotta, material: "stone", style: "bridge" },
   { id: "sun-hall-roof", x: 112, z: 70, w: 88, d: 44, h: 1, y: roofY - 0.5, color: paleStone, material: "stone", style: "bridge" },
   { id: "bazaar-roof-screen", x: -92, z: 76, w: 8, d: 18, h: 5, y: centerAt(roofY, 5), color: blue, collides: true, style: "wall" },
   { id: "sun-hall-roof-screen", x: 112, z: 70, w: 8, d: 20, h: 5, y: centerAt(roofY, 5), color: red, collides: true, style: "wall" },
+  { id: "bazaar-roof-rail-north", x: -116, z: 61.5, w: 60, d: 3, h: 3, y: centerAt(roofY, 3), color: darkStone, collides: true, style: "wall" },
+  { id: "bazaar-roof-rail-south", x: -116, z: 90.5, w: 60, d: 3, h: 3, y: centerAt(roofY, 3), color: darkStone, collides: true, style: "wall" },
+  { id: "bazaar-roof-rail-east", x: -87.5, z: 76, w: 3, d: 32, h: 3, y: centerAt(roofY, 3), color: darkStone, collides: true, style: "wall" },
+  { id: "sun-roof-rail-north", x: 112, z: 49.5, w: 88, d: 3, h: 3, y: centerAt(roofY, 3), color: darkStone, collides: true, style: "wall" },
+  { id: "sun-roof-rail-south", x: 132, z: 90.5, w: 48, d: 3, h: 3, y: centerAt(roofY, 3), color: darkStone, collides: true, style: "wall" },
+  { id: "sun-roof-rail-east", x: 154.5, z: 70, w: 3, d: 44, h: 3, y: centerAt(roofY, 3), color: darkStone, collides: true, style: "wall" },
+  { id: "sun-roof-rail-west-north", x: 69.5, z: 59, w: 3, d: 22, h: 3, y: centerAt(roofY, 3), color: darkStone, collides: true, style: "wall" },
 
   // Sun Tower is a distant orientation landmark, intentionally decorative above its base.
   { id: "sun-tower-base", label: "Sun Tower", x: 63, z: -35, w: 19, d: 19, h: 20, y: centerAt(mainY, 20), color: ochre, collides: true, style: "tower" },
@@ -268,8 +283,8 @@ const rawProps: CitadelProp[] = [
   { id: "citadel-east-arch", kind: "arch", x: 203, z: 70, size: 27, h: 15, y: 0, color: turquoise, rotationY: Math.PI / 2 },
   { id: "court-column-west", kind: "column", x: -24, z: 18, size: 4, h: 9, y: mainY, color: paleStone },
   { id: "court-column-east", kind: "column", x: 24, z: -18, size: 4, h: 9, y: mainY, color: paleStone },
-  { id: "bazaar-blue-canopy", kind: "shade", x: -157, z: 80, size: 18, h: 6, y: 0, color: blue, material: "cloth" },
-  { id: "bazaar-red-canopy", kind: "shade", x: -45, z: 91, size: 18, h: 6, y: 0, color: red, material: "cloth" },
+  { id: "bazaar-blue-canopy", kind: "shade", x: -150, z: 80, size: 18, h: 6, y: 0, color: blue, material: "cloth" },
+  { id: "bazaar-red-canopy", kind: "shade", x: -62, z: 96, size: 18, h: 6, y: 0, color: red, material: "cloth" },
   { id: "ruins-arch-west", kind: "arch", x: -118, z: -112, size: 15, h: 10, color: paleStone, rotationY: 0.12 },
   { id: "ruins-arch-east", kind: "arch", x: 118, z: -124, size: 15, h: 10, color: warmStone, rotationY: Math.PI },
   { id: "ruins-palm-west", kind: "palm", x: -70, z: -139, size: 6, h: 17, color: palmGreen, material: "wood" },
@@ -320,6 +335,6 @@ const rawSigns: CitadelSign[] = [
   { id: "sign-canal", label: "Broken Aqueduct", x: 25, z: 112, color: "#67e8f9", y: 7 },
   { id: "sign-fortress", label: "Sun Hall •", x: 78, z: 20, color: "#fde68a", y: mainY + 8 },
   { id: "sign-roofs", label: "LOOKOUT STAIRS ↑", x: -218, z: 76, color: "#fde68a", y: 7, rotationY: Math.PI / 2 },
-  { id: "sign-sun-roof", label: "ROOF STAIRS ↑", x: 60, z: 90, color: "#fde68a", y: mainY + 7, rotationY: Math.PI / 2 }
+  { id: "sign-sun-roof", label: "ROOF STAIRS ↑", x: 60, z: 81, color: "#fde68a", y: mainY + 7, rotationY: Math.PI / 2 }
 ];
 export const signs: CitadelSign[] = rawSigns.map(scalePoint);

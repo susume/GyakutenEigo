@@ -8,6 +8,7 @@ import {
   getGearZoomFovMultiplier,
   getArenaGroundHeight,
   getArenaGroundHeightForPlayer,
+  getArenaRecoveryGroundHeight,
   getArenaBounds,
   getArenaLevelLabel,
   getPlayerMoveSpeedMultiplier,
@@ -980,14 +981,16 @@ export default function ArenaPreview({
     };
 
     const addBlock = (block: (typeof arenaMap.blocks)[number]) => {
-      const proxy = new THREE.Mesh(new THREE.BoxGeometry(block.w, block.h, block.d), collisionProxyMaterial);
-      proxy.name = `collision_proxy_${block.id}`;
-      proxy.position.set(block.x, block.y ?? block.h / 2, block.z);
-      proxy.rotation.set(block.rotationX ?? 0, block.rotationY ?? 0, block.rotationZ ?? 0);
-      proxy.visible = false;
-      proxy.userData.collisionProxy = true;
-      scene.add(proxy);
-      if (block.collides) colliderForObject(proxy, 0.25);
+      if (block.collides) {
+        const proxy = new THREE.Mesh(new THREE.BoxGeometry(block.w, block.h, block.d), collisionProxyMaterial);
+        proxy.name = `collision_proxy_${block.id}`;
+        proxy.position.set(block.x, block.y ?? block.h / 2, block.z);
+        proxy.rotation.set(block.rotationX ?? 0, block.rotationY ?? 0, block.rotationZ ?? 0);
+        proxy.visible = false;
+        proxy.userData.collisionProxy = true;
+        scene.add(proxy);
+        colliderForObject(proxy, 0.25);
+      }
       addModularBlockBody(block);
       addBlockDetail(block);
       if (block.label && !isFps) {
@@ -996,7 +999,6 @@ export default function ArenaPreview({
         label.scale.set(22, 7.5, 1);
         scene.add(label);
       }
-      return proxy;
     };
     arenaMap.blocks.forEach(addBlock);
 
@@ -1930,6 +1932,18 @@ export default function ArenaPreview({
         applyGamepadInput();
         const crouching = keys.has("Control");
         const floorEyeHeight = crouching ? FPS_CROUCH_EYE_HEIGHT : FPS_STANDING_EYE_HEIGHT;
+        const recoveryGroundY = getArenaRecoveryGroundHeight(
+          arenaMapId,
+          playerPosition.x,
+          playerPosition.z,
+          playerPosition.y,
+          floorEyeHeight
+        );
+        if (recoveryGroundY !== undefined) {
+          playerPosition.y = recoveryGroundY + floorEyeHeight;
+          verticalVelocity = 0;
+          wasGrounded = true;
+        }
         let surfaceGroundY = getArenaGroundHeightForPlayer(
           arenaMapId,
           playerPosition.x,
@@ -1942,9 +1956,9 @@ export default function ArenaPreview({
         renderer.domElement.dataset.playerGroundY = surfaceGroundY.toFixed(3);
         renderer.domElement.dataset.detectedFloor = surfaceGroundY.toFixed(3);
         renderer.domElement.dataset.currentNavRegion = `${arenaMapId}:${currentLevel}`;
-        renderer.domElement.dataset.recoveryTriggered = "no";
-        renderer.domElement.dataset.recoveryReason = "none";
-        renderer.domElement.dataset.recoveryDestination = "none";
+        renderer.domElement.dataset.recoveryTriggered = recoveryGroundY === undefined ? "no" : "yes";
+        renderer.domElement.dataset.recoveryReason = recoveryGroundY === undefined ? "none" : "solid_foundation";
+        renderer.domElement.dataset.recoveryDestination = recoveryGroundY === undefined ? "none" : recoveryGroundY.toFixed(3);
         renderer.domElement.dataset.colliderName = lastColliderName;
         renderer.domElement.dataset.currentLevel = currentLevel;
         if (levelDebugEnabled && currentTime - lastLevelDebugAt >= 1000) {
@@ -1957,9 +1971,9 @@ export default function ArenaPreview({
             playerGroundY: surfaceGroundY,
             detectedFloor: surfaceGroundY,
             currentNavRegion: `${arenaMapId}:${currentLevel}`,
-            recoveryTriggered: false,
-            recoveryReason: "none",
-            recoveryDestination: null,
+            recoveryTriggered: recoveryGroundY !== undefined,
+            recoveryReason: recoveryGroundY === undefined ? "none" : "solid_foundation",
+            recoveryDestination: recoveryGroundY ?? null,
             colliderName: lastColliderName,
             currentLevel
           });

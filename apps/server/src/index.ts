@@ -43,6 +43,7 @@ import {
   getArenaObstacles,
   getArenaEyeHeight,
   getArenaGroundHeightForPlayer,
+  getArenaRecoveryGroundHeight,
   findBotNavigationPath,
   getRoundRemainingSeconds,
   getRoundResetLoadout,
@@ -1151,7 +1152,20 @@ const applyAuthoritativePosition = (
   const elapsedMs = nowMs - lastMoveAt;
   const requestedX = Number.isFinite(Number(requested.x)) ? Number(requested.x) : player.x ?? fallback.x;
   const requestedZ = Number.isFinite(Number(requested.z)) ? Number(requested.z) : player.z ?? fallback.z;
-  const currentEyeY = player.y ?? fallback.y ?? getArenaEyeHeight(session.settings.mapId, player.x ?? fallback.x, player.z ?? fallback.z);
+  const currentX = player.x ?? fallback.x;
+  const currentZ = player.z ?? fallback.z;
+  let currentEyeY = player.y ?? fallback.y ?? getArenaEyeHeight(session.settings.mapId, currentX, currentZ);
+  const recoveryGroundY = getArenaRecoveryGroundHeight(
+    session.settings.mapId,
+    currentX,
+    currentZ,
+    currentEyeY,
+    ARENA_PLAYER_EYE_HEIGHT
+  );
+  if (recoveryGroundY !== undefined) {
+    currentEyeY = recoveryGroundY + ARENA_PLAYER_EYE_HEIGHT;
+    player.y = currentEyeY;
+  }
   const requestedEyeY = Number.isFinite(Number(requested.y)) ? Number(requested.y) : currentEyeY;
   const requestedGroundY = getArenaGroundHeightForPlayer(
     session.settings.mapId,
@@ -1165,9 +1179,9 @@ const applyAuthoritativePosition = (
     ? Math.min(requestedStandingY + 4.5, Math.max(requestedStandingY, Number(requested.y)))
     : requestedStandingY;
   const currentPosition = {
-    x: player.x ?? fallback.x,
+    x: currentX,
     y: currentEyeY,
-    z: player.z ?? fallback.z,
+    z: currentZ,
     facing: player.facing ?? fallback.facing
   };
   playerPositionHistory.record(player.id, currentPosition, lastMoveAt);

@@ -1239,7 +1239,7 @@ const desertRampHeight = (rawX: number, rawZ: number): number | undefined => {
   if (rawX >= -216 && rawX <= -146 && rawZ >= 64 && rawZ <= 88) {
     return Number((DESERT_CITADEL_ROOFTOP_LEVEL_Y * ((rawX + 216) / 70)).toFixed(3));
   }
-  if (rawX >= 62 && rawX <= 106 && rawZ >= 79 && rawZ <= 101) {
+  if (rawX >= 62 && rawX <= 106 && rawZ >= 70 && rawZ <= 92) {
     return Number((DESERT_CITADEL_MAIN_LEVEL_Y + (DESERT_CITADEL_ROOFTOP_LEVEL_Y - DESERT_CITADEL_MAIN_LEVEL_Y)
       * ((rawX - 62) / 44)).toFixed(3));
   }
@@ -1280,16 +1280,17 @@ export const getArenaFloorSurfaces = (
   if (mapId === "desert_citadel") {
     const ramp = desertRampHeight(rawX, rawZ);
     if (ramp !== undefined) return [ramp];
-    const surfaces = [0];
     const onCitadelTerrace =
       isInsideRawRect(rawX, rawZ, -66, 66, -31, 87)
       || isInsideRawRect(rawX, rawZ, 49, 167, 26, 114);
-    if (onCitadelTerrace) surfaces.push(DESERT_CITADEL_MAIN_LEVEL_Y);
-    const onRooftop =
-      isInsideRawRect(rawX, rawZ, -146, -86, 60, 92)
-      || isInsideRawRect(rawX, rawZ, 68, 156, 48, 92);
-    if (onRooftop) surfaces.push(DESERT_CITADEL_ROOFTOP_LEVEL_Y);
-    return [...new Set(surfaces)].sort((a, b) => a - b);
+    const onBazaarRooftop = isInsideRawRect(rawX, rawZ, -146, -86, 60, 92);
+    const onSunHallRooftop = isInsideRawRect(rawX, rawZ, 68, 156, 48, 92);
+    // The courtyard and bazaar lookout are solid masses, not playable undercrofts.
+    // Sun Hall deliberately retains its main-floor interior beneath the roof.
+    if (onBazaarRooftop) return [DESERT_CITADEL_ROOFTOP_LEVEL_Y];
+    if (onSunHallRooftop) return [DESERT_CITADEL_MAIN_LEVEL_Y, DESERT_CITADEL_ROOFTOP_LEVEL_Y];
+    if (onCitadelTerrace) return [DESERT_CITADEL_MAIN_LEVEL_Y];
+    return [0];
   }
   const ramp = templeRampHeight(rawX, rawZ);
   if (ramp !== undefined) return [ramp];
@@ -1331,7 +1332,35 @@ export const getArenaGroundHeightForPlayer = (
   if (!Number.isFinite(eyeY)) return surfaces[surfaces.length - 1] ?? 0;
   const footY = Number(eyeY) - eyeHeight;
   const reachable = surfaces.filter((surface) => surface <= footY + maxStepUp);
-  return reachable[reachable.length - 1] ?? surfaces[0] ?? 0;
+  if (reachable.length > 0) return reachable[reachable.length - 1];
+  // Desert Citadel's raised structures are solid. A ground-level player who
+  // probes their footprint must stay on ground so the foundation collider can
+  // reject the move instead of being lifted onto the terrace.
+  if (mapId === "desert_citadel" && (surfaces[0] ?? 0) >= DESERT_CITADEL_MAIN_LEVEL_Y) return 0;
+  return surfaces[0] ?? 0;
+};
+
+/**
+ * Finds a safe floor only when a Desert Citadel player is already inside a
+ * solid raised structure below its lowest legitimate surface. This is recovery,
+ * not traversal: callers should apply it to the last accepted position.
+ */
+export const getArenaRecoveryGroundHeight = (
+  mapId: ArenaMapId | string | undefined,
+  x: number,
+  z: number,
+  eyeY: number | undefined,
+  eyeHeight = ARENA_PLAYER_EYE_HEIGHT
+): number | undefined => {
+  if (mapId !== "desert_citadel" || !Number.isFinite(eyeY)) return undefined;
+  const surfaces = getArenaFloorSurfaces(mapId, x, z);
+  const lowest = surfaces[0] ?? 0;
+  const footY = Number(eyeY) - eyeHeight;
+  if (
+    (lowest === DESERT_CITADEL_MAIN_LEVEL_Y || lowest === DESERT_CITADEL_ROOFTOP_LEVEL_Y)
+    && footY < lowest - 1.5
+  ) return lowest;
+  return undefined;
 };
 
 export const getArenaLevelLabel = (
@@ -1491,7 +1520,7 @@ const RAW_FREE_FOR_ALL_SPAWNS: SpawnPoint[] = [
   { id: "ffa-north-ruins-6", label: "Ruined Watchtower", x: 112, z: -100, facing: 0.9 },
   { id: "ffa-market-1", label: "Central Market", x: -42, z: -42, facing: -0.6 },
   { id: "ffa-market-2", label: "Central Market", x: -12, z: -70, facing: -0.2 },
-  { id: "ffa-market-3", label: "Old Well", x: 18, z: -48, facing: 0.2 },
+  { id: "ffa-market-3", label: "Old Well", x: 24, z: -48, facing: 0.2 },
   { id: "ffa-market-4", label: "Blue Canopy", x: 46, z: -38, facing: 0.58 },
   { id: "ffa-market-5", label: "Citadel Terrace", x: -58, z: -8, y: DESERT_CITADEL_MAIN_LEVEL_Y + ARENA_PLAYER_EYE_HEIGHT, facing: -1.15 },
   { id: "ffa-market-6", label: "Citadel Terrace", x: -16, z: -20, y: DESERT_CITADEL_MAIN_LEVEL_Y + ARENA_PLAYER_EYE_HEIGHT, facing: -0.4 },
@@ -1501,13 +1530,13 @@ const RAW_FREE_FOR_ALL_SPAWNS: SpawnPoint[] = [
   { id: "ffa-market-10", label: "Fountain Court", x: -4, z: 30, y: DESERT_CITADEL_MAIN_LEVEL_Y + ARENA_PLAYER_EYE_HEIGHT, facing: Math.PI },
   { id: "ffa-market-11", label: "Fountain Court", x: 28, z: 42, y: DESERT_CITADEL_MAIN_LEVEL_Y + ARENA_PLAYER_EYE_HEIGHT, facing: 2.6 },
   { id: "ffa-market-12", label: "Sun Hall Court", x: 62, z: 28, y: DESERT_CITADEL_MAIN_LEVEL_Y + ARENA_PLAYER_EYE_HEIGHT, facing: 2.2 },
-  { id: "ffa-south-homes-1", label: "South Homes", x: -82, z: 82, facing: -2.4 },
+  { id: "ffa-south-homes-1", label: "South Homes", x: -50, z: 100, facing: -2.4 },
   { id: "ffa-south-homes-2", label: "Canal Approach", x: -30, z: 105, facing: -2.8 },
   { id: "ffa-south-homes-3", label: "Canal Road", x: -50, z: 158, facing: Math.PI },
-  { id: "ffa-south-homes-4", label: "South Courtyard", x: 18, z: 104, facing: 2.8 },
+  { id: "ffa-south-homes-4", label: "South Courtyard", x: 24, z: 104, facing: 2.8 },
   { id: "ffa-south-homes-5", label: "Canal Approach", x: 52, z: 130, facing: 2.4 },
   { id: "ffa-south-homes-6", label: "South Homes", x: 104, z: 118, facing: 2.2 },
-  { id: "ffa-rooftop-1", label: "Fountain Terrace", x: -66, z: 66, y: DESERT_CITADEL_MAIN_LEVEL_Y + ARENA_PLAYER_EYE_HEIGHT, facing: -2.15 },
+  { id: "ffa-rooftop-1", label: "Fountain Terrace", x: -58, z: 66, y: DESERT_CITADEL_MAIN_LEVEL_Y + ARENA_PLAYER_EYE_HEIGHT, facing: -2.15 },
   { id: "ffa-rooftop-2", label: "Fountain Terrace", x: -26, z: 70, y: DESERT_CITADEL_MAIN_LEVEL_Y + ARENA_PLAYER_EYE_HEIGHT, facing: -2.9 },
   { id: "ffa-rooftop-3", label: "Fountain Terrace", x: 20, z: 70, y: DESERT_CITADEL_MAIN_LEVEL_Y + ARENA_PLAYER_EYE_HEIGHT, facing: 2.9 },
   { id: "ffa-rooftop-4", label: "Sun Hall Terrace", x: 64, z: 66, y: DESERT_CITADEL_MAIN_LEVEL_Y + ARENA_PLAYER_EYE_HEIGHT, facing: 2.15 },
@@ -1519,7 +1548,7 @@ const RAW_FREE_FOR_ALL_SPAWNS: SpawnPoint[] = [
   { id: "ffa-aqueduct-6", label: "Aqueduct East", x: 72, z: 0, facing: 1.57 },
   { id: "ffa-aqueduct-7", label: "Aqueduct East", x: 104, z: 0, facing: 1.57 },
   { id: "ffa-east-gate-1", label: "Eastern Gate", x: 116, z: -48, facing: 1.3 },
-  { id: "ffa-east-gate-2", label: "Sun Hall Roof", x: 116, z: 48, y: DESERT_CITADEL_ROOFTOP_LEVEL_Y + ARENA_PLAYER_EYE_HEIGHT, facing: 1.85 },
+  { id: "ffa-east-gate-2", label: "Sun Hall Roof", x: 138, z: 58, y: DESERT_CITADEL_ROOFTOP_LEVEL_Y + ARENA_PLAYER_EYE_HEIGHT, facing: 1.85 },
   { id: "ffa-east-wall-1", label: "Eastern Wall", x: 128, z: -4, facing: 1.57 },
   { id: "ffa-east-wall-2", label: "Eastern Wall", x: 126, z: 23, facing: 1.57 },
   { id: "ffa-camp-court-1", label: "Caravan Camp", x: 138, z: -22, facing: 1.4 },
@@ -1563,7 +1592,7 @@ export const IRON_JUNCTION_CAPTURE_ZONES = [
 ] as const;
 
 export const DESERT_CITADEL_CAPTURE_ZONES = [
-  { id: "desert-blue-fountain", label: "Blue Fountain Court", x: 0, z: 0, radius: scaleArenaValue(25), y: DESERT_CITADEL_MAIN_LEVEL_Y },
+  { id: "desert-blue-fountain", label: "Blue Fountain Court", x: 0, z: scaleArenaValue(18), radius: scaleArenaValue(25), y: DESERT_CITADEL_MAIN_LEVEL_Y },
   { id: "desert-grand-bazaar", label: "Grand Bazaar", x: scaleArenaValue(-76), z: scaleArenaValue(78), radius: scaleArenaValue(16), y: 0 },
   { id: "desert-sun-hall", label: "Sun Hall", x: scaleArenaValue(108), z: scaleArenaValue(72), radius: scaleArenaValue(22), y: DESERT_CITADEL_MAIN_LEVEL_Y },
   { id: "desert-broken-aqueduct", label: "Broken Aqueduct", x: 0, z: scaleArenaValue(133), radius: scaleArenaValue(24), y: 0 },
@@ -1897,14 +1926,14 @@ const circleObstacle = (
 
 export const ARENA_OBSTACLES: ArenaObstacle[] = [
   // Perimeter architecture.
-  rectObstacle("north-cliff-west", -150, -178, 200, 8, false, 0, 13),
-  rectObstacle("north-cliff-east", 150, -178, 200, 8, false, 0, 15),
-  rectObstacle("south-wall-west", -150, 178, 200, 8, false, 0, 14),
-  rectObstacle("south-wall-east", 150, 178, 200, 8, false, 0, 14),
-  rectObstacle("west-city-wall-north", -248, -112, 8, 132, false, 0, 17),
-  rectObstacle("west-city-wall-south", -248, 112, 8, 132, false, 0, 17),
-  rectObstacle("east-city-wall-north", 248, -112, 8, 132, false, 0, 17),
-  rectObstacle("east-city-wall-south", 248, 112, 8, 132, false, 0, 17),
+  rectObstacle("north-cliff-west", -150, -178, 200, 8, false, 0, 11),
+  rectObstacle("north-cliff-east", 150, -178, 200, 8, false, 0, 13),
+  rectObstacle("south-wall-west", -150, 178, 200, 8, false, 0, 12),
+  rectObstacle("south-wall-east", 150, 178, 200, 8, false, 0, 12),
+  rectObstacle("west-city-wall-north", -248, -112, 8, 132, false, 0, 15),
+  rectObstacle("west-city-wall-south", -248, 112, 8, 132, false, 0, 15),
+  rectObstacle("east-city-wall-north", 248, -112, 8, 132, false, 0, 15),
+  rectObstacle("east-city-wall-south", 248, 112, 8, 132, false, 0, 15),
 
   // Blue and Red assembly courts remain on the ground plane.
   rectObstacle("blue-base-back", -240, 0, 5, 126, false, 0, 13),
@@ -1925,63 +1954,77 @@ export const ARENA_OBSTACLES: ArenaObstacle[] = [
   rectObstacle("sun-gate-north-pier", 174, -26, 10, 12, false, 0, 17),
   rectObstacle("sun-gate-south-pier", 174, 26, 10, 12, false, 0, 17),
   rectObstacle("sun-gate-lintel", 174, 0, 10, 40, false, 14, 18),
-  rectObstacle("court-foundation-west-north", -66, -23, 5, 16, false, 0, 9.5),
-  rectObstacle("court-foundation-west-south", -66, 49, 5, 76, false, 0, 9.5),
-  rectObstacle("court-foundation-north-west", -40, -31, 52, 5, false, 0, 9.5),
-  rectObstacle("court-foundation-north-east", 40, -31, 52, 5, false, 0, 9.5),
-  rectObstacle("court-foundation-south-west", -40, 87, 52, 5, false, 0, 9.5),
-  rectObstacle("court-foundation-south-east", 32, 87, 34, 5, false, 0, 9.5),
-  rectObstacle("hall-foundation-east-north", 167, 40, 5, 28, false, 0, 9.5),
-  rectObstacle("hall-foundation-east-south", 167, 99, 5, 30, false, 0, 9.5),
-  rectObstacle("hall-foundation-south", 108, 114, 118, 5, false, 0, 9.5),
-  rectObstacle("court-north-wall-west", -45, -51, 36, 5, false, DESERT_CITADEL_MAIN_LEVEL_Y, 17),
-  rectObstacle("court-north-wall-east", 45, -51, 36, 5, false, DESERT_CITADEL_MAIN_LEVEL_Y, 17),
-  rectObstacle("court-south-arcade-west", -47, 73, 30, 7, false, DESERT_CITADEL_MAIN_LEVEL_Y, 18),
-  rectObstacle("court-south-arcade-east", 47, 73, 30, 7, false, DESERT_CITADEL_MAIN_LEVEL_Y, 18),
-  rectObstacle("court-broken-wall-west", -55, 18, 6, 23, true, DESERT_CITADEL_MAIN_LEVEL_Y, 13),
-  rectObstacle("court-broken-wall-east", 55, -18, 6, 23, true, DESERT_CITADEL_MAIN_LEVEL_Y, 13),
-  rectObstacle("court-monument", 25, 26, 9, 14, false, DESERT_CITADEL_MAIN_LEVEL_Y, 15),
-  rectObstacle("court-planter", -27, -24, 15, 9, true, DESERT_CITADEL_MAIN_LEVEL_Y, 11),
-  circleObstacle("blue-fountain-rim", 0, 0, 12, false, DESERT_CITADEL_MAIN_LEVEL_Y, 10),
+  rectObstacle("court-foundation", 0, 28, 132, 118, false, 0, 9.35),
+  rectObstacle("hall-foundation", 108, 70, 118, 88, false, 0, 9.35),
+  rectObstacle("court-parapet-north-west", -40.5, -29.5, 51, 3, false, DESERT_CITADEL_MAIN_LEVEL_Y, 13),
+  rectObstacle("court-parapet-north-east", 40.5, -29.5, 51, 3, false, DESERT_CITADEL_MAIN_LEVEL_Y, 13),
+  rectObstacle("court-parapet-west-north", -64.5, -23, 3, 16, false, DESERT_CITADEL_MAIN_LEVEL_Y, 13),
+  rectObstacle("court-parapet-west-south", -64.5, 51, 3, 72, false, DESERT_CITADEL_MAIN_LEVEL_Y, 13),
+  rectObstacle("court-parapet-south-west", -40.5, 85.5, 51, 3, false, DESERT_CITADEL_MAIN_LEVEL_Y, 13),
+  rectObstacle("court-parapet-south-east", 32, 85.5, 34, 3, false, DESERT_CITADEL_MAIN_LEVEL_Y, 13),
+  rectObstacle("citadel-west-guide-north", -86, -16.5, 40, 3, false, 0, 13),
+  rectObstacle("citadel-west-guide-south", -86, 16.5, 40, 3, false, 0, 13),
+  rectObstacle("citadel-north-guide-west", -16.5, -45, 3, 28, false, 0, 13),
+  rectObstacle("citadel-north-guide-east", 16.5, -45, 3, 28, false, 0, 13),
+  rectObstacle("citadel-south-guide-west", -16.5, 101, 3, 28, false, 0, 13),
+  rectObstacle("citadel-south-guide-east", 16.5, 101, 3, 28, false, 0, 13),
+  rectObstacle("citadel-east-guide-north", 185, 53.5, 36, 3, false, 0, 13),
+  rectObstacle("citadel-east-guide-south", 185, 86.5, 36, 3, false, 0, 13),
+  rectObstacle("bazaar-lookout-guide-north", -181, 62.5, 70, 3, false, 0, 26),
+  rectObstacle("bazaar-lookout-guide-south", -181, 89.5, 70, 3, false, 0, 26),
+  rectObstacle("sun-hall-roof-guide-north", 84, 68.5, 44, 3, false, DESERT_CITADEL_MAIN_LEVEL_Y, 26),
+  rectObstacle("sun-hall-roof-guide-south", 84, 93.5, 44, 3, false, DESERT_CITADEL_MAIN_LEVEL_Y, 26),
+  rectObstacle("court-broken-wall-west", -55, 18, 6, 23, true, DESERT_CITADEL_MAIN_LEVEL_Y, 15),
+  rectObstacle("court-broken-wall-east", 55, -18, 6, 23, true, DESERT_CITADEL_MAIN_LEVEL_Y, 15),
+  rectObstacle("court-monument", 25, 26, 9, 14, false, DESERT_CITADEL_MAIN_LEVEL_Y, 17),
+  rectObstacle("court-planter", -27, -24, 15, 9, true, DESERT_CITADEL_MAIN_LEVEL_Y, 13),
+  circleObstacle("blue-fountain-rim", 0, 0, 12, false, DESERT_CITADEL_MAIN_LEVEL_Y, 12.4),
 
   // Bazaar and fortress interiors.
-  rectObstacle("bazaar-north-shops-west", -132, 49, 72, 12, false, 0, 10),
-  rectObstacle("bazaar-north-shops-east", -62, 49, 52, 12, false, 0, 9),
-  rectObstacle("bazaar-south-shops-west", -143, 105, 52, 12, false, 0, 9),
-  rectObstacle("bazaar-south-shops-east", -74, 105, 58, 12, false, 0, 10),
-  rectObstacle("bazaar-stall-west", -157, 80, 15, 6, true, 0, 3),
-  rectObstacle("bazaar-stall-east", -45, 91, 15, 6, true, 0, 3),
+  rectObstacle("bazaar-north-shops-west", -145, 49, 50, 12, false, 0, 10),
+  rectObstacle("bazaar-north-shops-east", -114, 49, 40, 12, false, 0, 9),
+  rectObstacle("bazaar-south-shops-west", -145, 105, 50, 12, false, 0, 9),
+  rectObstacle("bazaar-south-shops-east", -114, 105, 40, 12, false, 0, 10),
+  rectObstacle("bazaar-stall-west", -150, 80, 15, 6, true, 0, 3),
+  rectObstacle("bazaar-stall-east", -62, 96, 15, 6, true, 0, 3),
   rectObstacle("bazaar-lookout-mass", -116, 76, 60, 32, false, 0, 23.4),
-  rectObstacle("sun-hall-north-west", 80, 35, 38, 7, false, DESERT_CITADEL_MAIN_LEVEL_Y, 23),
-  rectObstacle("sun-hall-north-east", 142, 35, 32, 7, false, DESERT_CITADEL_MAIN_LEVEL_Y, 23),
-  rectObstacle("sun-hall-south-west", 82, 110, 34, 7, false, DESERT_CITADEL_MAIN_LEVEL_Y, 22),
-  rectObstacle("sun-hall-south-east", 145, 110, 27, 7, false, DESERT_CITADEL_MAIN_LEVEL_Y, 22),
-  rectObstacle("sun-hall-east-north", 164, 54, 7, 30, false, DESERT_CITADEL_MAIN_LEVEL_Y, 22),
-  rectObstacle("sun-hall-east-south", 164, 96, 7, 18, false, DESERT_CITADEL_MAIN_LEVEL_Y, 22),
-  rectObstacle("sun-hall-guard-room", 124, 76, 24, 20, false, DESERT_CITADEL_MAIN_LEVEL_Y, 16),
-  rectObstacle("sun-tower-base", 63, -35, 19, 19, false, DESERT_CITADEL_MAIN_LEVEL_Y, 28),
-  circleObstacle("sun-hall-column-west", 96, 58, 3, false, DESERT_CITADEL_MAIN_LEVEL_Y, 21),
-  circleObstacle("sun-hall-column-east", 142, 91, 3, false, DESERT_CITADEL_MAIN_LEVEL_Y, 21),
+  rectObstacle("sun-hall-north-west", 85, 28, 38, 5, false, DESERT_CITADEL_MAIN_LEVEL_Y, 25),
+  rectObstacle("sun-hall-north-east", 143.5, 28, 47, 5, false, DESERT_CITADEL_MAIN_LEVEL_Y, 25),
+  rectObstacle("sun-hall-south-west", 82, 110, 34, 7, false, DESERT_CITADEL_MAIN_LEVEL_Y, 24),
+  rectObstacle("sun-hall-south-east", 145, 110, 27, 7, false, DESERT_CITADEL_MAIN_LEVEL_Y, 24),
+  rectObstacle("sun-hall-east-north", 164, 40, 7, 28, false, DESERT_CITADEL_MAIN_LEVEL_Y, 24),
+  rectObstacle("sun-hall-east-south", 164, 100, 7, 28, false, DESERT_CITADEL_MAIN_LEVEL_Y, 24),
+  rectObstacle("sun-hall-guard-room", 124, 76, 24, 20, false, DESERT_CITADEL_MAIN_LEVEL_Y, 18),
+  rectObstacle("sun-tower-base", 63, -35, 19, 19, false, DESERT_CITADEL_MAIN_LEVEL_Y, 30),
+  circleObstacle("sun-hall-column-west", 96, 58, 3, false, DESERT_CITADEL_MAIN_LEVEL_Y, 23),
+  circleObstacle("sun-hall-column-east", 142, 91, 3, false, DESERT_CITADEL_MAIN_LEVEL_Y, 23),
 
   // Palm Ruins use low cover and short sightline blockers.
-  rectObstacle("ruins-wall-west", -155, -123, 48, 7, false, 0, 8),
-  rectObstacle("ruins-foundation-west", -92, -99, 34, 18, true, 0, 5),
-  rectObstacle("ruins-arch-center-west", -34, -132, 20, 8, false, 0, 9),
-  rectObstacle("ruins-wall-center", 26, -105, 44, 7, true, 0, 7),
-  rectObstacle("ruins-foundation-east", 92, -139, 32, 20, true, 0, 5),
-  rectObstacle("ruins-wall-east", 154, -110, 44, 7, false, 0, 8),
-  rectObstacle("ruins-broken-tower", 205, -122, 18, 18, false, 0, 20),
+  rectObstacle("ruins-wall-west", -155, -123, 48, 7, false, 0, 6),
+  rectObstacle("ruins-foundation-west", -92, -99, 34, 18, true, 0, 3),
+  rectObstacle("ruins-arch-center-west", -34, -132, 20, 8, false, 0, 7),
+  rectObstacle("ruins-wall-center", 26, -105, 44, 7, true, 0, 5),
+  rectObstacle("ruins-foundation-east", 92, -139, 32, 20, true, 0, 3),
+  rectObstacle("ruins-wall-east", 154, -110, 44, 7, false, 0, 6),
+  rectObstacle("ruins-broken-tower", 205, -122, 18, 18, false, 0, 18),
 
   // Canal and Founders' Passage remain ground-level route families.
-  rectObstacle("canal-north-bank-west", -155, 119, 90, 5, false, 0, 7),
-  rectObstacle("canal-north-bank-center", 0, 119, 80, 5, false, 0, 7),
-  rectObstacle("canal-north-bank-east", 155, 119, 90, 5, false, 0, 7),
-  rectObstacle("canal-south-bank-west", -155, 147, 90, 5, false, 0, 7),
-  rectObstacle("canal-south-bank-center", 0, 147, 80, 5, false, 0, 7),
-  rectObstacle("canal-south-bank-east", 155, 147, 90, 5, false, 0, 7),
+  rectObstacle("canal-north-bank-west", -155, 119, 90, 5, false, 0, 5),
+  rectObstacle("canal-north-bank-center", 0, 119, 80, 5, false, 0, 5),
+  rectObstacle("canal-north-bank-east", 155, 119, 90, 5, false, 0, 5),
+  rectObstacle("canal-south-bank-west", -155, 147, 90, 5, false, 0, 5),
+  rectObstacle("canal-south-bank-center", 0, 147, 80, 5, false, 0, 5),
+  rectObstacle("canal-south-bank-east", 155, 147, 90, 5, false, 0, 5),
   // Upper-level counterplay screens and parapets.
   rectObstacle("bazaar-roof-screen", -92, 76, 8, 18, false, DESERT_CITADEL_ROOFTOP_LEVEL_Y, DESERT_CITADEL_ROOFTOP_LEVEL_Y + 5),
-  rectObstacle("sun-hall-roof-screen", 112, 70, 8, 20, false, DESERT_CITADEL_ROOFTOP_LEVEL_Y, DESERT_CITADEL_ROOFTOP_LEVEL_Y + 5)
+  rectObstacle("sun-hall-roof-screen", 112, 70, 8, 20, false, DESERT_CITADEL_ROOFTOP_LEVEL_Y, DESERT_CITADEL_ROOFTOP_LEVEL_Y + 5),
+  rectObstacle("bazaar-roof-rail-north", -116, 61.5, 60, 3, false, DESERT_CITADEL_ROOFTOP_LEVEL_Y, 27),
+  rectObstacle("bazaar-roof-rail-south", -116, 90.5, 60, 3, false, DESERT_CITADEL_ROOFTOP_LEVEL_Y, 27),
+  rectObstacle("bazaar-roof-rail-east", -87.5, 76, 3, 32, false, DESERT_CITADEL_ROOFTOP_LEVEL_Y, 27),
+  rectObstacle("sun-roof-rail-north", 112, 49.5, 88, 3, false, DESERT_CITADEL_ROOFTOP_LEVEL_Y, 27),
+  rectObstacle("sun-roof-rail-south", 132, 90.5, 48, 3, false, DESERT_CITADEL_ROOFTOP_LEVEL_Y, 27),
+  rectObstacle("sun-roof-rail-east", 154.5, 70, 3, 44, false, DESERT_CITADEL_ROOFTOP_LEVEL_Y, 27),
+  rectObstacle("sun-roof-rail-west-north", 69.5, 59, 3, 22, false, DESERT_CITADEL_ROOFTOP_LEVEL_Y, 27)
 ];
 
 /** Simplified collision proxies for the Iron Junction props and architecture. */
@@ -2498,7 +2541,9 @@ export const resolveAuthoritativeMovement = ({
     ? clampArenaPosition({
         x: from.x + (dx / distance) * maxDistance,
         z: from.z + (dz / distance) * maxDistance,
-        y: to.y,
+        ...(Number.isFinite(from.y) && Number.isFinite(to.y)
+          ? { y: Number(from.y) + (Number(to.y) - Number(from.y)) * (maxDistance / distance) }
+          : Number.isFinite(to.y) ? { y: to.y } : {}),
         facing: to.facing
       }, mapId)
     : to;
@@ -2653,7 +2698,26 @@ export const findBotNavigationPath = ({
   goal.y = Number.isFinite(goal.y)
     ? goal.y
     : getArenaGroundHeightForPlayer(mapId, goal.x, goal.z, start.y, ARENA_PLAYER_EYE_HEIGHT, 1.4) + ARENA_PLAYER_EYE_HEIGHT;
-  if (Math.abs(Number(start.y) - Number(goal.y)) <= 1.5 && hasLineOfSight({ from: start, to: goal, obstacles, padding })) {
+  const hasNavigationClearance = (from: ArenaPosition, to: ArenaPosition) => {
+    if (!hasLineOfSight({ from, to, obstacles, padding })) return false;
+    if (!Number.isFinite(from.y) || !Number.isFinite(to.y)) return true;
+    const distance = Math.hypot(to.x - from.x, to.z - from.z);
+    const sampleCount = Math.max(1, Math.ceil(distance / 3));
+    for (let sample = 0; sample <= sampleCount; sample += 1) {
+      const progress = sample / sampleCount;
+      const eyeY = Number(from.y) + (Number(to.y) - Number(from.y)) * progress;
+      const footY = eyeY - ARENA_PLAYER_EYE_HEIGHT;
+      const point = {
+        x: from.x + (to.x - from.x) * progress,
+        z: from.z + (to.z - from.z) * progress
+      };
+      // Eye-level line-of-sight above catches tall and overhead architecture;
+      // this foot sample adds the low cover that would stop the player's body.
+      if (obstacles.some((obstacle) => pointInsideObstacle({ ...point, y: footY + 0.08 }, obstacle, padding))) return false;
+    }
+    return true;
+  };
+  if (Math.abs(Number(start.y) - Number(goal.y)) <= 1.5 && hasNavigationClearance(start, goal)) {
     return [{ x: goal.x, y: goal.y, z: goal.z }];
   }
 
@@ -2678,7 +2742,7 @@ export const findBotNavigationPath = ({
         const point = { x: minX + ix * safeCellSize, z: minZ + iz * safeCellSize };
         for (const [levelIndex, surfaceY] of getArenaFloorSurfaces(mapId, point.x, point.z).entries()) {
           const eyePoint = { ...point, y: surfaceY + ARENA_PLAYER_EYE_HEIGHT };
-          if (!hasLineOfSight({ from: eyePoint, to: eyePoint, obstacles, padding })) continue;
+          if (!hasNavigationClearance(eyePoint, eyePoint)) continue;
           const key = `${ix}:${iz}:${levelIndex}`;
           nodes.set(key, { key, ix, iz, ...eyePoint });
           const coordinateKey = `${ix}:${iz}`;
@@ -2700,7 +2764,7 @@ export const findBotNavigationPath = ({
     const visible: typeof ranked = [];
     for (const entry of ranked) {
       if (Math.abs(Number(point.y) - entry.node.y) > 2.5) continue;
-      if (!hasLineOfSight({ from: point, to: entry.node, obstacles, padding })) continue;
+      if (!hasNavigationClearance(point, entry.node)) continue;
       visible.push(entry);
       if (visible.length >= 24) break;
     }
@@ -2711,33 +2775,63 @@ export const findBotNavigationPath = ({
   if (starts.length === 0 || goalEntries.length === 0) return [];
 
   const goalCosts = new Map(goalEntries.map(({ node, distance }) => [node.key, distance]));
-  const open = new Set<string>();
+  type OpenEntry = { key: string; score: number };
+  const open: OpenEntry[] = [];
+  const pushOpen = (entry: OpenEntry) => {
+    open.push(entry);
+    let entryIndex = open.length - 1;
+    while (entryIndex > 0) {
+      const parentIndex = Math.floor((entryIndex - 1) / 2);
+      if (open[parentIndex].score <= entry.score) break;
+      open[entryIndex] = open[parentIndex];
+      entryIndex = parentIndex;
+    }
+    open[entryIndex] = entry;
+  };
+  const popOpen = (): OpenEntry | undefined => {
+    const first = open[0];
+    const last = open.pop();
+    if (!first || !last || open.length === 0) return first;
+    let entryIndex = 0;
+    while (true) {
+      const leftIndex = entryIndex * 2 + 1;
+      const rightIndex = leftIndex + 1;
+      if (leftIndex >= open.length) break;
+      const childIndex = rightIndex < open.length && open[rightIndex].score < open[leftIndex].score
+        ? rightIndex
+        : leftIndex;
+      if (open[childIndex].score >= last.score) break;
+      open[entryIndex] = open[childIndex];
+      entryIndex = childIndex;
+    }
+    open[entryIndex] = last;
+    return first;
+  };
+  const closed = new Set<string>();
   const gScore = new Map<string, number>();
   const fScore = new Map<string, number>();
   const cameFrom = new Map<string, string>();
   for (const { node, distance } of starts) {
-    open.add(node.key);
     gScore.set(node.key, distance);
-      fScore.set(node.key, distance + Math.hypot(goal.x - node.x, goal.z - node.z, Number(goal.y) - node.y));
+    const score = distance + Math.hypot(goal.x - node.x, goal.z - node.z, Number(goal.y) - node.y);
+    fScore.set(node.key, score);
+    pushOpen({ key: node.key, score });
   }
 
   let reachedKey: string | undefined;
-  while (open.size > 0) {
-    let currentKey: string | undefined;
-    let currentScore = Number.POSITIVE_INFINITY;
-    for (const key of open) {
-      const score = fScore.get(key) ?? Number.POSITIVE_INFINITY;
-      if (score < currentScore) {
-        currentKey = key;
-        currentScore = score;
-      }
-    }
-    if (!currentKey) break;
+  while (open.length > 0) {
+    const currentEntry = popOpen();
+    if (!currentEntry) break;
+    const currentKey = currentEntry.key;
+    if (
+      closed.has(currentKey)
+      || currentEntry.score > (fScore.get(currentKey) ?? Number.POSITIVE_INFINITY) + 0.000001
+    ) continue;
     if (goalCosts.has(currentKey)) {
       reachedKey = currentKey;
       break;
     }
-    open.delete(currentKey);
+    closed.add(currentKey);
     const current = nodes.get(currentKey)!;
     let neighborKeys = grid.neighborKeys.get(currentKey);
     if (!neighborKeys) {
@@ -2749,20 +2843,22 @@ export const findBotNavigationPath = ({
           const neighbor = nodes.get(candidateKey);
           if (!neighbor) continue;
           if (Math.abs(neighbor.y - current.y) > 3.6) continue;
-          if (hasLineOfSight({ from: current, to: neighbor, obstacles, padding })) neighborKeys.push(neighbor.key);
+          if (hasNavigationClearance(current, neighbor)) neighborKeys.push(neighbor.key);
         }
       }
       grid.neighborKeys.set(currentKey, neighborKeys);
     }
     for (const neighborKey of neighborKeys) {
-      const neighbor = nodes.get(neighborKey)!;
+      const neighbor = nodes.get(neighborKey);
+      if (!neighbor || closed.has(neighborKey)) continue;
       const tentative = (gScore.get(currentKey) ?? Number.POSITIVE_INFINITY)
         + Math.hypot(neighbor.x - current.x, neighbor.z - current.z, neighbor.y - current.y);
       if (tentative >= (gScore.get(neighbor.key) ?? Number.POSITIVE_INFINITY)) continue;
       cameFrom.set(neighbor.key, currentKey);
       gScore.set(neighbor.key, tentative);
-      fScore.set(neighbor.key, tentative + Math.hypot(goal.x - neighbor.x, goal.z - neighbor.z, Number(goal.y) - neighbor.y));
-      open.add(neighbor.key);
+      const score = tentative + Math.hypot(goal.x - neighbor.x, goal.z - neighbor.z, Number(goal.y) - neighbor.y);
+      fScore.set(neighbor.key, score);
+      pushOpen({ key: neighbor.key, score });
     }
   }
   if (!reachedKey) return [];
@@ -2782,7 +2878,23 @@ export const findBotNavigationPath = ({
   while (index < rawPath.length) {
     let furthest = index;
     for (let candidate = rawPath.length - 1; candidate >= index; candidate -= 1) {
-      if (hasLineOfSight({ from: anchor, to: rawPath[candidate], obstacles, padding })) {
+      if (
+        candidate > index
+        && Math.hypot(
+          rawPath[candidate].x - Number(anchor.x),
+          rawPath[candidate].z - Number(anchor.z)
+        ) > 36
+      ) continue;
+      // Do not smooth across a large elevation change. Keeping intermediate
+      // ramp nodes stops bots from lowering their body while still over the
+      // solid platform that supports the upper floor.
+      if (
+        candidate > index
+        && Number.isFinite(anchor.y)
+        && Number.isFinite(rawPath[candidate].y)
+        && Math.abs(Number(anchor.y) - Number(rawPath[candidate].y)) > 1.5
+      ) continue;
+      if (hasNavigationClearance(anchor, rawPath[candidate])) {
         furthest = candidate;
         break;
       }
