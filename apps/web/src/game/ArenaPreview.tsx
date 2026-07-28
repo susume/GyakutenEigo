@@ -27,6 +27,8 @@ import {
 import { getArenaMap } from "./arenaMaps";
 import {
   FPS_CROUCH_EYE_HEIGHT,
+  FPS_JUMP_GRAVITY,
+  FPS_JUMP_VELOCITY,
   FPS_STANDING_EYE_HEIGHT,
   canFpsBodyClearObstacle,
   getFpsBodyVerticalBounds
@@ -993,7 +995,7 @@ export default function ArenaPreview({
       }
       addModularBlockBody(block);
       addBlockDetail(block);
-      if (block.label && !isFps) {
+      if (block.label && !isFps && !isDesertCitadel) {
         const label = new THREE.Sprite(makeSpriteLabel(block.label, "#fef3c7"));
         label.position.set(block.x, (block.y ?? block.h / 2) + block.h / 2 + 6, block.z);
         label.scale.set(22, 7.5, 1);
@@ -1197,7 +1199,7 @@ export default function ArenaPreview({
       if (cylinder.material !== "water") staticBatcher.prepare(mesh, cylinder.color, cylinder.material ?? "stone");
       scene.add(mesh);
       if (cylinder.collides) colliderForObject(mesh, 0.2);
-      if (cylinder.label && !isFps) {
+      if (cylinder.label && !isFps && !isDesertCitadel) {
         const label = new THREE.Sprite(makeSpriteLabel(cylinder.label, "#fef3c7"));
         label.position.set(cylinder.x, (cylinder.y ?? cylinder.h / 2) + cylinder.h / 2 + 5, cylinder.z);
         label.scale.set(22, 7.5, 1);
@@ -1981,12 +1983,12 @@ export default function ArenaPreview({
         }
         const grounded = playerPosition.y <= groundEyeY + 0.02 && Math.abs(verticalVelocity) < 0.01;
         if (jumpQueued && grounded && !crouching) {
-          verticalVelocity = 5.8;
+          verticalVelocity = FPS_JUMP_VELOCITY;
           emitArenaAnimation({ kind: "jump", playerId: currentPlayerId, team: currentPlayerTeam });
           gameAudio.play("jump");
         }
         jumpQueued = false;
-        verticalVelocity -= 15.5 * delta;
+        verticalVelocity -= FPS_JUMP_GRAVITY * delta;
         playerPosition.y += verticalVelocity * delta;
         if (playerPosition.y < groundEyeY) {
           playerPosition.y = groundEyeY;
@@ -2351,7 +2353,7 @@ export default function ArenaPreview({
               <span key={weaponCooldown.startedAt} style={{ animationDuration: `${weaponCooldown.durationMs}ms` }} />
             </div>
           )}
-          <div className="fps-callout">{arenaMap.title}</div>
+          {!isDesertCitadel && <div className="fps-callout">{arenaMap.title}</div>}
           <div className="arena-minimap" aria-label={`${arenaMap.title} minimap`}>
             <div className="minimap-title">Map</div>
             <svg viewBox={`0 0 ${MINIMAP_WIDTH} ${MINIMAP_HEIGHT}`} role="img" aria-label={`${arenaMap.title} route overview`}>
@@ -2404,20 +2406,31 @@ export default function ArenaPreview({
                   <path d="M 0 -4 L 0 4 M 0 -4 L 4 -2 L 0 0" />
                 </g>
               )}
-              <text x={toMiniMapX(isIronJunction ? scaleArenaValue(-248) : isTempleRunoff ? scaleArenaValue(-205) : scaleArenaValue(-220))} y={toMiniMapY(isIronJunction ? 0 : isTempleRunoff ? scaleArenaValue(-154) : 0)} className="minimap-label">Blue</text>
-              <text x={toMiniMapX(isIronJunction ? scaleArenaValue(232) : isTempleRunoff ? scaleArenaValue(184) : scaleArenaValue(220))} y={toMiniMapY(isIronJunction ? 0 : isTempleRunoff ? scaleArenaValue(-154) : 0)} className="minimap-label">Red</text>
-              <text x={toMiniMapX(isIronJunction ? scaleArenaValue(-112) : isTempleRunoff ? 0 : scaleArenaValue(-110))} y={toMiniMapY(isIronJunction ? scaleArenaValue(-130) : isTempleRunoff ? scaleArenaValue(-164) : scaleArenaValue(-118))} className="minimap-label">{isIronJunction ? "Warehouse" : isTempleRunoff ? "Jungle" : "Palm Ruins"}</text>
-              <text x={toMiniMapX(isIronJunction ? scaleArenaValue(58) : 0)} y={toMiniMapY(isIronJunction ? scaleArenaValue(-38) : isTempleRunoff ? 0 : 0)} className="minimap-label">{isIronJunction ? "Control" : isTempleRunoff ? "River" : "Fountain"}</text>
-              <text x={toMiniMapX(isIronJunction ? scaleArenaValue(104) : isTempleRunoff ? 0 : scaleArenaValue(-105))} y={toMiniMapY(isIronJunction ? scaleArenaValue(151) : isTempleRunoff ? scaleArenaValue(156) : scaleArenaValue(82))} className="minimap-label">{isIronJunction ? "Depot" : isTempleRunoff ? "Court" : "Bazaar"}</text>
-              {isDesertCitadel && <text x={toMiniMapX(scaleArenaValue(108))} y={toMiniMapY(scaleArenaValue(72))} className="minimap-label">Sun Hall</text>}
-              {isDesertCitadel && <text x={toMiniMapX(0)} y={toMiniMapY(scaleArenaValue(133))} className="minimap-label">Canal</text>}
+              {!isDesertCitadel && (
+                <>
+                  <text x={toMiniMapX(isIronJunction ? scaleArenaValue(-248) : scaleArenaValue(-205))} y={toMiniMapY(isIronJunction ? 0 : scaleArenaValue(-154))} className="minimap-label">Blue</text>
+                  <text x={toMiniMapX(isIronJunction ? scaleArenaValue(232) : scaleArenaValue(184))} y={toMiniMapY(isIronJunction ? 0 : scaleArenaValue(-154))} className="minimap-label">Red</text>
+                  <text x={toMiniMapX(isIronJunction ? scaleArenaValue(-112) : 0)} y={toMiniMapY(isIronJunction ? scaleArenaValue(-130) : scaleArenaValue(-164))} className="minimap-label">{isIronJunction ? "Warehouse" : "Jungle"}</text>
+                  <text x={toMiniMapX(isIronJunction ? scaleArenaValue(58) : 0)} y={toMiniMapY(isIronJunction ? scaleArenaValue(-38) : 0)} className="minimap-label">{isIronJunction ? "Control" : "River"}</text>
+                  <text x={toMiniMapX(isIronJunction ? scaleArenaValue(104) : 0)} y={toMiniMapY(isIronJunction ? scaleArenaValue(151) : scaleArenaValue(156))} className="minimap-label">{isIronJunction ? "Depot" : "Court"}</text>
+                </>
+              )}
               {isDesertCitadel && [
-                [-91, 0], [0, -66], [0, 102], [185, 70]
+                [-86, 0], [0, -45], [0, 101], [185, 70], [-181, 76], [84, 81]
               ].map(([x, z]) => (
-                <text key={`citadel-stair-${x}-${z}`} x={toMiniMapX(scaleArenaValue(x))} y={toMiniMapY(scaleArenaValue(z))} className="minimap-label">↑</text>
+                <rect
+                  key={`citadel-stair-${x}-${z}`}
+                  x={toMiniMapX(scaleArenaValue(x)) - 1.6}
+                  y={toMiniMapY(scaleArenaValue(z)) - 1.6}
+                  width="3.2"
+                  height="3.2"
+                  rx="0.5"
+                  className="minimap-stair"
+                  transform={`rotate(45 ${toMiniMapX(scaleArenaValue(x))} ${toMiniMapY(scaleArenaValue(z))})`}
+                />
               ))}
               {isIronJunction && <text x={toMiniMapX(scaleArenaValue(-35))} y={toMiniMapY(scaleArenaValue(218))} className="minimap-label">Tunnel</text>}
-              {hasMultipleLevels && (
+              {hasMultipleLevels && !isDesertCitadel && (
                 <text x={MINIMAP_WIDTH - 5} y={10} textAnchor="end" className="minimap-label">
                   {isTempleRunoff
                     ? miniMapLevel === "lower" ? "↓ LOWER" : miniMapLevel === "upper" ? "↑ UPPER" : "• MAIN"

@@ -2,6 +2,7 @@ import test from "node:test";
 import assert from "node:assert/strict";
 import {
   FPS_CROUCH_EYE_HEIGHT,
+  FPS_JUMP_APEX_HEIGHT,
   FPS_STANDING_EYE_HEIGHT,
   canFpsBodyClearObstacle,
   getFpsBodyVerticalBounds
@@ -15,9 +16,11 @@ test("FPS camera eye height matches the scaled arena character proportions", () 
 
 test("FPS body collider rises while jumping so low obstacles can be cleared", () => {
   const grounded = getFpsBodyVerticalBounds(FPS_STANDING_EYE_HEIGHT, FPS_STANDING_EYE_HEIGHT);
-  const jumping = getFpsBodyVerticalBounds(FPS_STANDING_EYE_HEIGHT + 1.1, FPS_STANDING_EYE_HEIGHT);
+  const jumping = getFpsBodyVerticalBounds(FPS_STANDING_EYE_HEIGHT + FPS_JUMP_APEX_HEIGHT, FPS_STANDING_EYE_HEIGHT);
 
   assert.ok(jumping.minY > grounded.minY);
-  assert.equal(canFpsBodyClearObstacle(jumping, 0.75), true);
-  assert.equal(canFpsBodyClearObstacle(grounded, 0.75), false);
+  assert.ok(FPS_JUMP_APEX_HEIGHT > 3.2, "jump must clear the 3-unit citadel parapets");
+  assert.ok(FPS_JUMP_APEX_HEIGHT < 4, "jump must not skip 5-unit combat cover");
+  assert.equal(canFpsBodyClearObstacle(jumping, 3), true);
+  assert.equal(canFpsBodyClearObstacle(grounded, 3), false);
 });

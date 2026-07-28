@@ -25,8 +25,6 @@ const scaleRect = <T extends { x: number; z: number; w: number; d: number }>(ite
   ({ ...item, x: scaleArenaValue(item.x), z: scaleArenaValue(item.z), w: scaleArenaValue(item.w), d: scaleArenaValue(item.d) }) as T;
 const scaleCylinder = <T extends { x: number; z: number; radius: number }>(item: T): T =>
   ({ ...item, x: scaleArenaValue(item.x), z: scaleArenaValue(item.z), radius: scaleArenaValue(item.radius) }) as T;
-const scalePoint = <T extends { x: number; z: number }>(item: T): T =>
-  ({ ...item, x: scaleArenaValue(item.x), z: scaleArenaValue(item.z) }) as T;
 
 export const DESERT_CITADEL: ArenaMapDefinition = {
   title: "Desert Citadel",
@@ -119,22 +117,8 @@ const makeStairFlight = ({
     };
   });
 
-const rawFloorMarks: CitadelFloorMark[] = [
-  { id: "route-main", label: "CENTER LANE • CITADEL", x: 0, z: 0, w: 430, d: 30, color: "#f0c879", y: 0.04 },
-  { id: "route-bazaar", label: "SOUTH LANE • BAZAAR", x: -122, z: 78, w: 112, d: 30, color: "#d77b58", y: 0.04 },
-  { id: "route-ruins", label: "NORTH LANE • PALM RUINS", x: 0, z: -118, w: 410, d: 34, color: "#88aa72", y: 0.04 },
-  { id: "route-canal", label: "SOUTH FLANK • AQUEDUCT", x: 0, z: 133, w: 410, d: 18, color: "#43b9c7", y: 0.04 },
-  { id: "citadel-terrace", label: "CITADEL TERRACE", x: 50, z: 30, w: 220, d: 104, color: "#f2d28c", y: mainY + 0.04 },
-  { id: "stair-west-pad", label: "STAIRS UP", x: -91, z: 0, w: 38, d: 30, color: "#55d6d9", y: 0.05 },
-  { id: "stair-north-pad", label: "STAIRS UP", x: 0, z: -66, w: 30, d: 38, color: "#55d6d9", y: 0.05 },
-  { id: "stair-south-pad", label: "STAIRS UP", x: 0, z: 102, w: 30, d: 38, color: "#55d6d9", y: 0.05 },
-  { id: "stair-east-pad", label: "STAIRS UP", x: 185, z: 70, w: 38, d: 30, color: "#55d6d9", y: 0.05 },
-  { id: "route-rooftop-west", label: "BAZAAR LOOKOUT", x: -116, z: 76, w: 82, d: 17, color: "#dfb357", y: roofY + 0.04 },
-  { id: "route-rooftop-east", label: "SUN HALL ROOF", x: 112, z: 70, w: 82, d: 17, color: "#efcd76", y: roofY + 0.04 },
-  { id: "blue-base", label: "BLUE ASSEMBLY COURT", x: -218, z: 0, w: 46, d: 30, color: "#55b9ef", y: 0.04 },
-  { id: "red-base", label: "RED ASSEMBLY COURT", x: 218, z: 0, w: 46, d: 30, color: "#ef7474", y: 0.04 }
-];
-export const floorMarks: CitadelFloorMark[] = rawFloorMarks.map(scaleRect);
+// The citadel teaches routes through architecture and color, not printed directions.
+export const floorMarks: CitadelFloorMark[] = [];
 
 const rawBlocks: CitadelBlock[] = [
   // Natural perimeter: a continuous silhouette with readable gate breaks.
@@ -240,24 +224,24 @@ const rawBlocks: CitadelBlock[] = [
   ...makeStairFlight({ id: "sun-hall-roof", x: 84, z: 81, width: 22, length: 44, axis: "x", direction: 1, startY: mainY, endY: roofY, color: paleStone, steps: 10 }),
 
   // High-contrast guide walls keep students on the mathematical ramp footprint.
-  { id: "citadel-west-guide-north", x: -86, z: -16.5, w: 40, d: 3, h: 13, y: 6.5, color: turquoise, collides: true, style: "wall" },
-  { id: "citadel-west-guide-south", x: -86, z: 16.5, w: 40, d: 3, h: 13, y: 6.5, color: turquoise, collides: true, style: "wall" },
-  { id: "citadel-north-guide-west", x: -16.5, z: -45, w: 3, d: 28, h: 13, y: 6.5, color: turquoise, collides: true, style: "wall" },
-  { id: "citadel-north-guide-east", x: 16.5, z: -45, w: 3, d: 28, h: 13, y: 6.5, color: turquoise, collides: true, style: "wall" },
-  { id: "citadel-south-guide-west", x: -16.5, z: 101, w: 3, d: 28, h: 13, y: 6.5, color: turquoise, collides: true, style: "wall" },
-  { id: "citadel-south-guide-east", x: 16.5, z: 101, w: 3, d: 28, h: 13, y: 6.5, color: turquoise, collides: true, style: "wall" },
-  { id: "citadel-east-guide-north", x: 185, z: 53.5, w: 36, d: 3, h: 13, y: 6.5, color: turquoise, collides: true, style: "wall" },
-  { id: "citadel-east-guide-south", x: 185, z: 86.5, w: 36, d: 3, h: 13, y: 6.5, color: turquoise, collides: true, style: "wall" },
-  { id: "bazaar-lookout-guide-north", x: -181, z: 62.5, w: 70, d: 3, h: 26, y: 13, color: goldStone, collides: true, style: "wall" },
-  { id: "bazaar-lookout-guide-south", x: -181, z: 89.5, w: 70, d: 3, h: 26, y: 13, color: goldStone, collides: true, style: "wall" },
-  { id: "sun-hall-roof-guide-north", x: 84, z: 68.5, w: 44, d: 3, h: 16, y: 18, color: goldStone, collides: true, style: "wall" },
-  { id: "sun-hall-roof-guide-south", x: 84, z: 93.5, w: 44, d: 3, h: 16, y: 18, color: goldStone, collides: true, style: "wall" },
+  { id: "citadel-west-guide-north", x: -86, z: -16.5, w: 40, d: 3, h: 13, y: 6.5, color: turquoise, material: "accent", collides: true, style: "wall" },
+  { id: "citadel-west-guide-south", x: -86, z: 16.5, w: 40, d: 3, h: 13, y: 6.5, color: turquoise, material: "accent", collides: true, style: "wall" },
+  { id: "citadel-north-guide-west", x: -16.5, z: -45, w: 3, d: 28, h: 13, y: 6.5, color: turquoise, material: "accent", collides: true, style: "wall" },
+  { id: "citadel-north-guide-east", x: 16.5, z: -45, w: 3, d: 28, h: 13, y: 6.5, color: turquoise, material: "accent", collides: true, style: "wall" },
+  { id: "citadel-south-guide-west", x: -16.5, z: 101, w: 3, d: 28, h: 13, y: 6.5, color: turquoise, material: "accent", collides: true, style: "wall" },
+  { id: "citadel-south-guide-east", x: 16.5, z: 101, w: 3, d: 28, h: 13, y: 6.5, color: turquoise, material: "accent", collides: true, style: "wall" },
+  { id: "citadel-east-guide-north", x: 185, z: 53.5, w: 36, d: 3, h: 13, y: 6.5, color: turquoise, material: "accent", collides: true, style: "wall" },
+  { id: "citadel-east-guide-south", x: 185, z: 86.5, w: 36, d: 3, h: 13, y: 6.5, color: turquoise, material: "accent", collides: true, style: "wall" },
+  { id: "bazaar-lookout-guide-north", x: -181, z: 62.5, w: 70, d: 3, h: 26, y: 13, color: turquoise, material: "accent", collides: true, style: "wall" },
+  { id: "bazaar-lookout-guide-south", x: -181, z: 89.5, w: 70, d: 3, h: 26, y: 13, color: turquoise, material: "accent", collides: true, style: "wall" },
+  { id: "sun-hall-roof-guide-north", x: 84, z: 68.5, w: 44, d: 3, h: 16, y: 18, color: turquoise, material: "accent", collides: true, style: "wall" },
+  { id: "sun-hall-roof-guide-south", x: 84, z: 93.5, w: 44, d: 3, h: 16, y: 18, color: turquoise, material: "accent", collides: true, style: "wall" },
 
   // Limited upper plane with rails and sightline screens.
   { id: "bazaar-roof-west", x: -116, z: 76, w: 60, d: 32, h: 1, y: roofY - 0.5, color: terracotta, material: "stone", style: "bridge" },
   { id: "sun-hall-roof", x: 112, z: 70, w: 88, d: 44, h: 1, y: roofY - 0.5, color: paleStone, material: "stone", style: "bridge" },
   { id: "bazaar-roof-screen", x: -92, z: 76, w: 8, d: 18, h: 5, y: centerAt(roofY, 5), color: blue, collides: true, style: "wall" },
-  { id: "sun-hall-roof-screen", x: 112, z: 70, w: 8, d: 20, h: 5, y: centerAt(roofY, 5), color: red, collides: true, style: "wall" },
+  { id: "sun-hall-roof-screen", x: 132, z: 68, w: 8, d: 16, h: 5, y: centerAt(roofY, 5), color: red, collides: true, style: "wall" },
   { id: "bazaar-roof-rail-north", x: -116, z: 61.5, w: 60, d: 3, h: 3, y: centerAt(roofY, 3), color: darkStone, collides: true, style: "wall" },
   { id: "bazaar-roof-rail-south", x: -116, z: 90.5, w: 60, d: 3, h: 3, y: centerAt(roofY, 3), color: darkStone, collides: true, style: "wall" },
   { id: "bazaar-roof-rail-east", x: -87.5, z: 76, w: 3, d: 32, h: 3, y: centerAt(roofY, 3), color: darkStone, collides: true, style: "wall" },
@@ -277,10 +261,18 @@ const rawProps: CitadelProp[] = [
   // Route arches and banners are navigation beacons, always placed at a real entrance.
   { id: "lion-gate-arch", kind: "arch", x: -174, z: 0, size: 36, h: 18, y: 0, color: paleStone, rotationY: Math.PI / 2 },
   { id: "sun-gate-arch", kind: "arch", x: 174, z: 0, size: 36, h: 18, y: 0, color: paleStone, rotationY: Math.PI / 2 },
-  { id: "citadel-west-arch", kind: "arch", x: -105, z: 0, size: 27, h: 15, y: 0, color: turquoise, rotationY: Math.PI / 2 },
-  { id: "citadel-north-arch", kind: "arch", x: 0, z: -59, size: 27, h: 15, y: 0, color: turquoise },
-  { id: "citadel-south-arch", kind: "arch", x: 0, z: 115, size: 27, h: 15, y: 0, color: turquoise },
-  { id: "citadel-east-arch", kind: "arch", x: 203, z: 70, size: 27, h: 15, y: 0, color: turquoise, rotationY: Math.PI / 2 },
+  { id: "citadel-west-lower-arch", kind: "arch", x: -105, z: 0, size: 27, h: 15, y: 0, color: turquoise, material: "accent", rotationY: Math.PI / 2 },
+  { id: "citadel-west-upper-arch", kind: "arch", x: -66, z: 0, size: 27, h: 15, y: mainY, color: turquoise, material: "accent", rotationY: Math.PI / 2 },
+  { id: "citadel-north-lower-arch", kind: "arch", x: 0, z: -59, size: 27, h: 15, y: 0, color: turquoise, material: "accent" },
+  { id: "citadel-north-upper-arch", kind: "arch", x: 0, z: -31, size: 27, h: 15, y: mainY, color: turquoise, material: "accent" },
+  { id: "citadel-south-lower-arch", kind: "arch", x: 0, z: 115, size: 27, h: 15, y: 0, color: turquoise, material: "accent" },
+  { id: "citadel-south-upper-arch", kind: "arch", x: 0, z: 87, size: 27, h: 15, y: mainY, color: turquoise, material: "accent" },
+  { id: "citadel-east-lower-arch", kind: "arch", x: 203, z: 70, size: 27, h: 15, y: 0, color: turquoise, material: "accent", rotationY: Math.PI / 2 },
+  { id: "citadel-east-upper-arch", kind: "arch", x: 167, z: 70, size: 27, h: 15, y: mainY, color: turquoise, material: "accent", rotationY: Math.PI / 2 },
+  { id: "bazaar-lookout-lower-arch", kind: "arch", x: -216, z: 76, size: 22, h: 14, y: 0, color: turquoise, material: "accent", rotationY: Math.PI / 2 },
+  { id: "bazaar-lookout-upper-arch", kind: "arch", x: -146, z: 76, size: 22, h: 14, y: roofY, color: turquoise, material: "accent", rotationY: Math.PI / 2 },
+  { id: "sun-hall-roof-lower-arch", kind: "arch", x: 62, z: 81, size: 20, h: 13, y: mainY, color: turquoise, material: "accent", rotationY: Math.PI / 2 },
+  { id: "sun-hall-roof-upper-arch", kind: "arch", x: 106, z: 81, size: 20, h: 13, y: roofY, color: turquoise, material: "accent", rotationY: Math.PI / 2 },
   { id: "court-column-west", kind: "column", x: -24, z: 18, size: 4, h: 9, y: mainY, color: paleStone },
   { id: "court-column-east", kind: "column", x: 24, z: -18, size: 4, h: 9, y: mainY, color: paleStone },
   { id: "bazaar-blue-canopy", kind: "shade", x: -150, z: 80, size: 18, h: 6, y: 0, color: blue, material: "cloth" },
@@ -297,10 +289,6 @@ const rawProps: CitadelProp[] = [
   { id: "canal-arch-east", kind: "arch", x: 118, z: 133, size: 17, h: 11, color: darkStone, rotationY: Math.PI / 2 },
   { id: "blue-base-banner", kind: "banner", x: -235, z: -54, size: 4, h: 11, y: 0, color: blue, material: "cloth" },
   { id: "red-base-banner", kind: "banner", x: 235, z: 54, size: 4, h: 11, y: 0, color: red, material: "cloth" },
-  { id: "stair-west-banner", kind: "banner", x: -105, z: -17, size: 4, h: 10, y: 0, color: turquoise, material: "cloth" },
-  { id: "stair-north-banner", kind: "banner", x: -17, z: -59, size: 4, h: 10, y: 0, color: turquoise, material: "cloth" },
-  { id: "stair-south-banner", kind: "banner", x: 17, z: 115, size: 4, h: 10, y: 0, color: turquoise, material: "cloth" },
-  { id: "stair-east-banner", kind: "banner", x: 203, z: 53, size: 4, h: 10, y: 0, color: turquoise, material: "cloth" },
   { id: "sun-tower-banner", kind: "banner", x: 63, z: -35, size: 5, h: 15, y: mainY + 18, color: "#e4b64f", material: "cloth" }
 ];
 export const props: CitadelProp[] = rawProps.map((item) => ({
@@ -322,19 +310,4 @@ const rawCylinders: CitadelCylinder[] = [
 ];
 export const cylinders: CitadelCylinder[] = rawCylinders.map(scaleCylinder);
 
-const rawSigns: CitadelSign[] = [
-  { id: "sign-blue", label: "BLUE BASE ←", x: -188, z: 28, color: "#7dd3fc", rotationY: Math.PI / 2, y: 7 },
-  { id: "sign-red", label: "→ RED BASE", x: 188, z: -28, color: "#fda4af", rotationY: -Math.PI / 2, y: 7 },
-  { id: "sign-stair-west", label: "CITADEL ↑", x: -108, z: 0, color: "#67e8f9", y: 8, rotationY: Math.PI / 2 },
-  { id: "sign-stair-north", label: "CITADEL ↑", x: 0, z: -62, color: "#67e8f9", y: 8 },
-  { id: "sign-stair-south", label: "CITADEL ↑", x: 0, z: 118, color: "#67e8f9", y: 8, rotationY: Math.PI },
-  { id: "sign-stair-east", label: "CITADEL ↑", x: 206, z: 70, color: "#67e8f9", y: 8, rotationY: -Math.PI / 2 },
-  { id: "sign-court", label: "Blue Fountain", x: 0, z: -20, color: "#67e8f9", y: mainY + 7 },
-  { id: "sign-bazaar", label: "Grand Bazaar", x: -106, z: 39, color: "#fdba74", y: 7 },
-  { id: "sign-ruins", label: "Palm Ruins", x: -24, z: -78, color: "#bef264", y: 7 },
-  { id: "sign-canal", label: "Broken Aqueduct", x: 25, z: 112, color: "#67e8f9", y: 7 },
-  { id: "sign-fortress", label: "Sun Hall •", x: 78, z: 20, color: "#fde68a", y: mainY + 8 },
-  { id: "sign-roofs", label: "LOOKOUT STAIRS ↑", x: -218, z: 76, color: "#fde68a", y: 7, rotationY: Math.PI / 2 },
-  { id: "sign-sun-roof", label: "ROOF STAIRS ↑", x: 60, z: 81, color: "#fde68a", y: mainY + 7, rotationY: Math.PI / 2 }
-];
-export const signs: CitadelSign[] = rawSigns.map(scalePoint);
+export const signs: CitadelSign[] = [];

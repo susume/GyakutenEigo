@@ -47,8 +47,11 @@ test("Desert Citadel expands the playable footprint without scaling prop clutter
   assert.ok(props.length <= 32, "small decoration must remain deliberately sparse");
   assert.ok(props.filter((prop) => prop.kind === "crate").length <= 1);
   assert.ok(cylinders.length <= 10);
-  assert.ok(floorMarks.some((mark) => mark.label.includes("AQUEDUCT")));
-  assert.ok(signs.some((sign) => sign.label.includes("Grand Bazaar")));
+  assert.deepEqual(floorMarks, [], "printed floor directions add visual noise");
+  assert.deepEqual(signs, [], "architecture should replace floating map labels");
+  const stairGateways = props.filter((prop) => prop.id.includes("-lower-arch") || prop.id.includes("-upper-arch"));
+  assert.equal(stairGateways.length, 12, "each stair needs a beacon at both landings");
+  assert.ok(stairGateways.every((prop) => prop.color === "#2ca6af" && prop.material === "accent"));
 });
 
 test("Desert Citadel limits stacked floors to deliberate terrace and lookout footprints", () => {

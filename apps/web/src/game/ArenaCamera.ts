@@ -5,6 +5,11 @@ export const BASE_CROUCH_EYE_HEIGHT = 1.08;
 export const FPS_STANDING_EYE_HEIGHT = Number((BASE_STANDING_EYE_HEIGHT * CHARACTER_VISUAL_SCALE).toFixed(2));
 export const FPS_CROUCH_EYE_HEIGHT = Number((BASE_CROUCH_EYE_HEIGHT * CHARACTER_VISUAL_SCALE).toFixed(2));
 export const FPS_BODY_HEIGHT = Number((2.05 * CHARACTER_VISUAL_SCALE).toFixed(2));
+export const FPS_JUMP_VELOCITY = 11;
+export const FPS_JUMP_GRAVITY = 18;
+export const FPS_JUMP_APEX_HEIGHT = Number(
+  ((FPS_JUMP_VELOCITY * FPS_JUMP_VELOCITY) / (2 * FPS_JUMP_GRAVITY)).toFixed(2)
+);
 
 export const getFpsBodyVerticalBounds = (eyeY: number, floorEyeHeight: number) => {
   const lift = Math.max(0, eyeY - floorEyeHeight);

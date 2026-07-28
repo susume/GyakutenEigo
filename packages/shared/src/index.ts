@@ -2017,7 +2017,7 @@ export const ARENA_OBSTACLES: ArenaObstacle[] = [
   rectObstacle("canal-south-bank-east", 155, 147, 90, 5, false, 0, 5),
   // Upper-level counterplay screens and parapets.
   rectObstacle("bazaar-roof-screen", -92, 76, 8, 18, false, DESERT_CITADEL_ROOFTOP_LEVEL_Y, DESERT_CITADEL_ROOFTOP_LEVEL_Y + 5),
-  rectObstacle("sun-hall-roof-screen", 112, 70, 8, 20, false, DESERT_CITADEL_ROOFTOP_LEVEL_Y, DESERT_CITADEL_ROOFTOP_LEVEL_Y + 5),
+  rectObstacle("sun-hall-roof-screen", 132, 68, 8, 16, false, DESERT_CITADEL_ROOFTOP_LEVEL_Y, DESERT_CITADEL_ROOFTOP_LEVEL_Y + 5),
   rectObstacle("bazaar-roof-rail-north", -116, 61.5, 60, 3, false, DESERT_CITADEL_ROOFTOP_LEVEL_Y, 27),
   rectObstacle("bazaar-roof-rail-south", -116, 90.5, 60, 3, false, DESERT_CITADEL_ROOFTOP_LEVEL_Y, 27),
   rectObstacle("bazaar-roof-rail-east", -87.5, 76, 3, 32, false, DESERT_CITADEL_ROOFTOP_LEVEL_Y, 27),
