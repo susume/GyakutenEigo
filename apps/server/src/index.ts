@@ -22,6 +22,7 @@ import {
   canPlayerFireInMode,
   clampArenaPosition,
   ARENA_SCALE,
+  ARENA_PLAYER_CROUCH_EYE_HEIGHT,
   ARENA_PLAYER_EYE_HEIGHT,
   DESERT_CITADEL_MAIN_LEVEL_Y,
   DESERT_CITADEL_ROOFTOP_LEVEL_Y,
@@ -545,6 +546,8 @@ type LivePositionPayload = {
   z: number;
   facing: number;
   energy?: number;
+  crouching?: boolean;
+  jumping?: boolean;
 };
 const pendingPositionBroadcasts = new Map<string, Map<string, LivePositionPayload>>();
 let positionBroadcastTimer: ReturnType<typeof setTimeout> | undefined;
@@ -679,6 +682,8 @@ const resetRoundPlayer = (session: GameSession, player: PlayerSession, index: nu
       : player.energy,
     snowballs: isZombieHuman ? 0 : loadout.snowballs,
     isAlive: true,
+    crouching: false,
+    jumping: false,
     respawnCorrectAnswers: 0
   };
 };
@@ -1084,6 +1089,8 @@ const applyValidatedDamage = (session: GameSession, attacker: PlayerSession, tar
     target.y = baseSpawn.y;
     target.z = baseSpawn.z;
     target.facing = baseSpawn.facing;
+    target.crouching = false;
+    target.jumping = false;
     if (target.isBot) {
       botPreviousPositions.delete(target.id);
       if (session.settings.gameMode !== "flag") botRespawnAt.set(target.id, Date.now() + BOT_RESPAWN_MS);
@@ -1144,7 +1151,15 @@ const applyValidatedDamage = (session: GameSession, attacker: PlayerSession, tar
 const applyAuthoritativePosition = (
   session: GameSession,
   player: PlayerSession,
-  requested: { x?: number; z?: number; y?: number; facing?: number; sprinting?: boolean },
+  requested: {
+    x?: number;
+    z?: number;
+    y?: number;
+    facing?: number;
+    sprinting?: boolean;
+    crouching?: boolean;
+    jumping?: boolean;
+  },
   nowMs = Date.now()
 ) => {
   const fallback = sessionSpawn(session, player.team);
@@ -1154,16 +1169,25 @@ const applyAuthoritativePosition = (
   const requestedZ = Number.isFinite(Number(requested.z)) ? Number(requested.z) : player.z ?? fallback.z;
   const currentX = player.x ?? fallback.x;
   const currentZ = player.z ?? fallback.z;
+  const currentEyeHeight = player.crouching === true
+    ? ARENA_PLAYER_CROUCH_EYE_HEIGHT
+    : ARENA_PLAYER_EYE_HEIGHT;
+  const requestedCrouching = typeof requested.crouching === "boolean"
+    ? requested.crouching
+    : player.crouching === true;
+  const requestedEyeHeight = requestedCrouching
+    ? ARENA_PLAYER_CROUCH_EYE_HEIGHT
+    : ARENA_PLAYER_EYE_HEIGHT;
   let currentEyeY = player.y ?? fallback.y ?? getArenaEyeHeight(session.settings.mapId, currentX, currentZ);
   const recoveryGroundY = getArenaRecoveryGroundHeight(
     session.settings.mapId,
     currentX,
     currentZ,
     currentEyeY,
-    ARENA_PLAYER_EYE_HEIGHT
+    currentEyeHeight
   );
   if (recoveryGroundY !== undefined) {
-    currentEyeY = recoveryGroundY + ARENA_PLAYER_EYE_HEIGHT;
+    currentEyeY = recoveryGroundY + currentEyeHeight;
     player.y = currentEyeY;
   }
   const requestedEyeY = Number.isFinite(Number(requested.y)) ? Number(requested.y) : currentEyeY;
@@ -1172,9 +1196,9 @@ const applyAuthoritativePosition = (
     requestedX,
     requestedZ,
     requestedEyeY,
-    ARENA_PLAYER_EYE_HEIGHT
+    requestedEyeHeight
   );
-  const requestedStandingY = requestedGroundY + ARENA_PLAYER_EYE_HEIGHT;
+  const requestedStandingY = requestedGroundY + requestedEyeHeight;
   const requestedMovementY = Number.isFinite(Number(requested.y))
     ? Math.min(requestedStandingY + 4.5, Math.max(requestedStandingY, Number(requested.y)))
     : requestedStandingY;
@@ -1213,6 +1237,7 @@ const applyAuthoritativePosition = (
     ) * getPlayerMoveSpeedMultiplier(player),
     obstacles: getArenaObstacles(session.settings.mapId),
     groundY: requestedGroundY,
+    eyeHeight: requestedEyeHeight,
     mapId: session.settings.mapId
   });
   playerMoveTimestamps.set(player.id, nowMs);
@@ -1220,6 +1245,10 @@ const applyAuthoritativePosition = (
   player.y = position.y ?? requestedStandingY;
   player.z = position.z;
   player.facing = position.facing;
+  player.crouching = requestedCrouching;
+  if (typeof requested.jumping === "boolean") {
+    player.jumping = requested.jumping && !requestedCrouching;
+  }
   if (session.settings.gameMode === "zombie" && player.role !== "zombie") {
     player.energy = resolveZombieSprintEnergy({
       gameMode: session.settings.gameMode,
@@ -2867,6 +2896,8 @@ const answerQuestion = (
   if (respawn.respawned) {
     player.respawns = (player.respawns ?? 0) + 1;
     player.roundRespawns = (player.roundRespawns ?? 0) + 1;
+    player.crouching = false;
+    player.jumping = false;
   }
 
   const answer: AnswerLog = {
@@ -3160,7 +3191,18 @@ io.on("connection", (socket) => {
     if (session && player) markPlayerDisconnected(session, player);
   });
 
-  socket.on("player_position", (payload: { code?: string; playerId?: string; playerToken?: string; x?: number; z?: number; y?: number; facing?: number; sprinting?: boolean }) => {
+  socket.on("player_position", (payload: {
+    code?: string;
+    playerId?: string;
+    playerToken?: string;
+    x?: number;
+    z?: number;
+    y?: number;
+    facing?: number;
+    sprinting?: boolean;
+    crouching?: boolean;
+    jumping?: boolean;
+  }) => {
     const code = String(payload.code ?? "");
     const session = getSessionByCode(code);
     const player = session?.players.find((candidate) => candidate.id === payload.playerId);
@@ -3173,7 +3215,9 @@ io.on("connection", (socket) => {
       y: player.y,
       z: position.z,
       facing: position.facing,
-      energy: player.energy
+      energy: player.energy,
+      crouching: player.crouching === true,
+      jumping: player.jumping === true
     };
     broadcastPlayerPosition(session, authoritativePosition);
   });

@@ -178,6 +178,8 @@ type ArenaPositionPayload = {
   scoped?: boolean;
   zoomLevel?: number;
   sprinting?: boolean;
+  crouching?: boolean;
+  jumping?: boolean;
 };
 type DamageResultPayload =
   | {
@@ -2753,7 +2755,15 @@ function StudentExperience({ onExit }: { onExit: () => void }) {
     const socket = io(getApiUrl());
     socketRef.current = socket;
     const roomJoinPayload = { code: session.sessionCode, playerId: activePlayerId, playerToken };
-    const pendingPositions = new Map<string, { x: number; y?: number; z: number; facing: number; energy?: number }>();
+    const pendingPositions = new Map<string, {
+      x: number;
+      y?: number;
+      z: number;
+      facing: number;
+      energy?: number;
+      crouching?: boolean;
+      jumping?: boolean;
+    }>();
     const lastRemotePositions = new Map<string, { x: number; y?: number; z: number }>();
     let lastVisualSession = session;
     let removedByTeacher = false;
@@ -2908,7 +2918,16 @@ function StudentExperience({ onExit }: { onExit: () => void }) {
         emitPlayerAnimation(localWon ? "victory" : "defeat", activePlayerId, player.team);
       }
     });
-    type LivePositionUpdate = { playerId?: string; x?: number; y?: number; z?: number; facing?: number; energy?: number };
+    type LivePositionUpdate = {
+      playerId?: string;
+      x?: number;
+      y?: number;
+      z?: number;
+      facing?: number;
+      energy?: number;
+      crouching?: boolean;
+      jumping?: boolean;
+    };
     const receivePlayerPosition = (position: LivePositionUpdate) => {
       if (!position.playerId || !Number.isFinite(position.x) || !Number.isFinite(position.z) || !Number.isFinite(position.facing)) return;
       if (position.playerId !== activePlayerId) {
@@ -2935,7 +2954,9 @@ function StudentExperience({ onExit }: { onExit: () => void }) {
         y: Number.isFinite(position.y) ? position.y : undefined,
         z: position.z!,
         facing: position.facing!,
-        ...(Number.isFinite(position.energy) ? { energy: position.energy } : {})
+        ...(Number.isFinite(position.energy) ? { energy: position.energy } : {}),
+        crouching: position.crouching === true,
+        jumping: position.jumping === true
       });
       positionFlushTimer ??= window.setTimeout(flushPositions, 50);
     };

@@ -475,6 +475,10 @@ export interface PlayerSession {
   y?: number;
   z?: number;
   facing?: number;
+  /** Live visual posture replicated to other arena clients. */
+  crouching?: boolean;
+  /** True between takeoff and landing for remote jump animation. */
+  jumping?: boolean;
   score: number;
   correctAnswers: number;
   wrongAnswers: number;
@@ -1124,6 +1128,7 @@ export const ARENA_LIMIT_X = scaleArenaValue(175);
 export const ARENA_LIMIT_Z = scaleArenaValue(160);
 
 export const ARENA_PLAYER_EYE_HEIGHT = 4.21;
+export const ARENA_PLAYER_CROUCH_EYE_HEIGHT = 2.65;
 export const ARENA_PLAYER_BODY_HEIGHT = 5.02;
 export const TEMPLE_RUNOFF_MAIN_LEVEL_Y = 8;
 export const TEMPLE_RUNOFF_UPPER_LEVEL_Y = 17;
@@ -2515,6 +2520,7 @@ export const resolveAuthoritativeMovement = ({
   obstacles = ARENA_OBSTACLES,
   radius = 0.45,
   groundY = 0,
+  eyeHeight = ARENA_PLAYER_EYE_HEIGHT,
   mapId
 }: {
   current: ArenaPosition;
@@ -2524,6 +2530,7 @@ export const resolveAuthoritativeMovement = ({
   obstacles?: readonly ArenaObstacle[];
   radius?: number;
   groundY?: number;
+  eyeHeight?: number;
   mapId?: ArenaMapId | string;
 }): AuthoritativeMovementResult => {
   const from = clampArenaPosition(current, mapId);
@@ -2550,11 +2557,12 @@ export const resolveAuthoritativeMovement = ({
 
   const canClearJumpable = (obstacle: ArenaObstacle) => obstacle.jumpable === true && Number(to.y) - groundY >= 5;
   const movementIsBlocked = (start: ArenaPosition, end: ArenaPosition) => obstacles.some((obstacle) => {
-    const eyeY = Number.isFinite(end.y) ? Number(end.y) : groundY + ARENA_PLAYER_EYE_HEIGHT;
-    const bodyMinY = eyeY - ARENA_PLAYER_EYE_HEIGHT;
+    const eyeY = Number.isFinite(end.y) ? Number(end.y) : groundY + eyeHeight;
+    const bodyMinY = eyeY - eyeHeight;
     const bodyMaxY = bodyMinY + ARENA_PLAYER_BODY_HEIGHT;
-    if (Number.isFinite(obstacle.minY) && bodyMaxY < Number(obstacle.minY)) return false;
-    if (Number.isFinite(obstacle.maxY) && bodyMinY > Number(obstacle.maxY)) return false;
+    const verticalContactTolerance = 0.1;
+    if (Number.isFinite(obstacle.minY) && bodyMaxY <= Number(obstacle.minY) + verticalContactTolerance) return false;
+    if (Number.isFinite(obstacle.maxY) && bodyMinY >= Number(obstacle.maxY) - verticalContactTolerance) return false;
     const horizontalStart = { ...start, y: undefined };
     const horizontalEnd = { ...end, y: undefined };
     if (canClearJumpable(obstacle) || !segmentIntersectsObstacle(horizontalStart, horizontalEnd, obstacle, radius)) return false;

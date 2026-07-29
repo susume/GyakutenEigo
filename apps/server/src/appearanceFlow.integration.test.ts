@@ -634,11 +634,19 @@ test("40 authenticated Socket.IO clients receive bounded room state and movement
   const movementSenders = new Set<string>();
   let movementPayloadBytes = 0;
   let movementBatchCount = 0;
-  connected[0]!.socket.on("player_positions", (payloads: Array<{ playerId?: string }>) => {
+  let observedCrouching = false;
+  let observedJumping = false;
+  connected[0]!.socket.on("player_positions", (payloads: Array<{
+    playerId?: string;
+    crouching?: boolean;
+    jumping?: boolean;
+  }>) => {
     movementBatchCount += 1;
     movementPayloadBytes += Buffer.byteLength(JSON.stringify(payloads));
     for (const payload of payloads) {
       if (payload.playerId) movementSenders.add(payload.playerId);
+      observedCrouching ||= payload.crouching === true;
+      observedJumping ||= payload.jumping === true;
     }
   });
   for (let index = 1; index < connected.length; index += 1) {
@@ -649,7 +657,9 @@ test("40 authenticated Socket.IO clients receive bounded room state and movement
       playerToken: student.playerToken,
       x: index * 0.15,
       z: index * -0.1,
-      facing: index * 0.05
+      facing: index * 0.05,
+      crouching: index === 1,
+      jumping: index === 2
     });
   }
   const movementDeadline = Date.now() + 3000;
@@ -658,6 +668,8 @@ test("40 authenticated Socket.IO clients receive bounded room state and movement
   }
   assert.ok(movementSenders.size >= 35, `Only ${movementSenders.size} movement senders reached the observer.`);
   assert.ok(movementBatchCount <= 4, `Movement fan-out used ${movementBatchCount} socket events instead of bounded batches.`);
+  assert.equal(observedCrouching, true, "The observer did not receive a crouching posture.");
+  assert.equal(observedJumping, true, "The observer did not receive a jumping posture.");
 
   const reconnectTarget = connected.at(-1)!;
   reconnectTarget.socket.disconnect();

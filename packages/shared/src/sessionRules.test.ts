@@ -16,6 +16,7 @@ import {
   ARENA_LIMIT_X,
   ARENA_LIMIT_Z,
   ARENA_SCALE,
+  ARENA_PLAYER_CROUCH_EYE_HEIGHT,
   ARENA_PLAYER_EYE_HEIGHT,
   TEMPLE_RUNOFF_MAIN_LEVEL_Y,
   TEMPLE_RUNOFF_UPPER_LEVEL_Y,
@@ -504,6 +505,46 @@ test("resolveAuthoritativeMovement allows jump-height movement over jumpable low
     }).x,
     6
   );
+});
+
+test("authoritative movement remains free while standing on top of an object", () => {
+  const objectTopY = 3;
+  const obstacle = [{
+    id: "viewing-crate",
+    kind: "rect" as const,
+    x: 0,
+    z: 0,
+    width: 4,
+    depth: 4,
+    minY: 0,
+    maxY: objectTopY
+  }];
+  const standingY = objectTopY + ARENA_PLAYER_EYE_HEIGHT;
+
+  const result = resolveAuthoritativeMovement({
+    current: { x: 0, y: standingY, z: 0, facing: 0 },
+    requested: { x: 0.5, y: standingY, z: 0, facing: 0 },
+    elapsedMs: 100,
+    maxSpeed: 22,
+    obstacles: obstacle,
+    groundY: 0
+  });
+
+  assert.equal(result.x, 0.5);
+  assert.equal(result.blocked, undefined);
+
+  const crouchedResult = resolveAuthoritativeMovement({
+    current: { x: 0, y: objectTopY + ARENA_PLAYER_CROUCH_EYE_HEIGHT, z: 0, facing: 0 },
+    requested: { x: 0.5, y: objectTopY + ARENA_PLAYER_CROUCH_EYE_HEIGHT, z: 0, facing: 0 },
+    elapsedMs: 100,
+    maxSpeed: 22,
+    obstacles: obstacle,
+    groundY: 0,
+    eyeHeight: ARENA_PLAYER_CROUCH_EYE_HEIGHT
+  });
+
+  assert.equal(crouchedResult.x, 0.5);
+  assert.equal(crouchedResult.blocked, undefined);
 });
 
 test("resolveBotAttackTarget chooses the nearest visible real opponent", () => {

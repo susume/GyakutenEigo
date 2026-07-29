@@ -31,6 +31,7 @@ import {
   FPS_JUMP_VELOCITY,
   FPS_STANDING_EYE_HEIGHT,
   canFpsBodyClearObstacle,
+  findFpsSupportSurfaceY,
   getFpsBodyVerticalBounds
 } from "./ArenaCamera.js";
 import { CharacterFactory } from "./characters/CharacterFactory";
@@ -77,6 +78,8 @@ type ArenaLivePosition = {
   scoped?: boolean;
   zoomLevel?: number;
   sprinting?: boolean;
+  crouching?: boolean;
+  jumping?: boolean;
 };
 
 const PLAYER_RADIUS = 0.45;
@@ -704,7 +707,12 @@ export default function ArenaPreview({
     const coverBoxes: THREE.Box3[] = [];
     const collisionProxyMaterial = new THREE.MeshBasicMaterial({ visible: false, colorWrite: false, depthWrite: false });
     const colliderForObject = (object: THREE.Object3D, pad = 0.25) => {
-      coverBoxes.push(new THREE.Box3().setFromObject(object).expandByScalar(pad));
+      const box = new THREE.Box3().setFromObject(object);
+      box.min.x -= pad;
+      box.max.x += pad;
+      box.min.z -= pad;
+      box.max.z += pad;
+      coverBoxes.push(box);
     };
 
     const addDecorativeMesh = (parent: THREE.Object3D, geometry: THREE.BufferGeometry, color: string, material = "stone") => {
@@ -1402,13 +1410,17 @@ export default function ArenaPreview({
       const liveZ = player.z;
       const hasLivePosition = isFiniteNumber(liveX) && isFiniteNumber(liveZ);
       const fallback = getTeamSpawnForMap(arenaMapId, player.team, index);
+      const fallbackGroundY = getArenaGroundHeight(
+        arenaMapId,
+        hasLivePosition ? serverToLocalX(liveX) : fallback.x,
+        hasLivePosition ? serverToLocalZ(liveZ) : fallback.z
+      );
+      const replicatedEyeHeight = player.crouching
+        ? FPS_CROUCH_EYE_HEIGHT
+        : FPS_STANDING_EYE_HEIGHT;
       return {
         x: hasLivePosition ? serverToLocalX(liveX) : fallback.x,
-        y: getArenaGroundHeight(
-          arenaMapId,
-          hasLivePosition ? serverToLocalX(liveX) : fallback.x,
-          hasLivePosition ? serverToLocalZ(liveZ) : fallback.z
-        ),
+        y: isFiniteNumber(player.y) ? player.y - replicatedEyeHeight : fallbackGroundY,
         z: hasLivePosition ? serverToLocalZ(liveZ) : fallback.z,
         facing: isFiniteNumber(player.facing) ? player.facing : fallback.facing
       };
@@ -1851,8 +1863,15 @@ export default function ArenaPreview({
       let lastMiniMapAt = 0;
       let lastDebugStatsAt = 0;
       let isSprinting = false;
+      let isCrouching = false;
+      let isJumping = false;
+      let previousFloorEyeHeight = FPS_STANDING_EYE_HEIGHT;
       let performanceWindowAt = performance.now();
-      let lastSentPosition = localToServerPosition(playerPosition, yaw);
+      let lastSentPosition = {
+        ...localToServerPosition(playerPosition, yaw),
+        crouching: isCrouching,
+        jumping: isJumping
+      };
       const forwardVector = new THREE.Vector3();
       const rightVector = new THREE.Vector3();
       const movementVector = new THREE.Vector3();
@@ -1871,10 +1890,18 @@ export default function ArenaPreview({
       let lastColliderName = "none";
       const maybeEmitPosition = (currentTime: number) => {
         if (currentTime - lastMoveEmitAt < 180) return;
-        const nextPosition = { ...localToServerPosition(playerPosition, yaw), sprinting: isSprinting };
+        const nextPosition = {
+          ...localToServerPosition(playerPosition, yaw),
+          sprinting: isSprinting,
+          crouching: isCrouching,
+          jumping: isJumping
+        };
         const moved = Math.hypot(nextPosition.x - lastSentPosition.x, nextPosition.z - lastSentPosition.z);
+        const movedVertically = Math.abs(Number(nextPosition.y) - Number(lastSentPosition.y));
         const turned = Math.abs(nextPosition.facing - lastSentPosition.facing);
-        if (moved < 0.3 && turned < 0.08) return;
+        const postureChanged = nextPosition.crouching !== lastSentPosition.crouching
+          || nextPosition.jumping !== lastSentPosition.jumping;
+        if (moved < 0.3 && movedVertically < 0.12 && turned < 0.08 && !postureChanged) return;
         lastMoveEmitAt = currentTime;
         lastSentPosition = nextPosition;
         if (controlsDisabledRef.current || inputPausedRef.current) return;
@@ -1934,6 +1961,11 @@ export default function ArenaPreview({
         applyGamepadInput();
         const crouching = keys.has("Control");
         const floorEyeHeight = crouching ? FPS_CROUCH_EYE_HEIGHT : FPS_STANDING_EYE_HEIGHT;
+        if (floorEyeHeight !== previousFloorEyeHeight) {
+          playerPosition.y += floorEyeHeight - previousFloorEyeHeight;
+          previousFloorEyeHeight = floorEyeHeight;
+        }
+        isCrouching = crouching;
         const recoveryGroundY = getArenaRecoveryGroundHeight(
           arenaMapId,
           playerPosition.x,
@@ -1953,6 +1985,18 @@ export default function ArenaPreview({
           playerPosition.y,
           floorEyeHeight
         );
+        if (verticalVelocity <= 0) {
+          const footY = playerPosition.y - floorEyeHeight;
+          const supportY = findFpsSupportSurfaceY(
+            coverBoxes,
+            playerPosition.x,
+            playerPosition.z,
+            PLAYER_RADIUS,
+            footY,
+            footY
+          );
+          if (supportY !== undefined) surfaceGroundY = Math.max(surfaceGroundY, supportY);
+        }
         let groundEyeY = surfaceGroundY + floorEyeHeight;
         const currentLevel = getArenaLevelLabel(arenaMapId, surfaceGroundY);
         renderer.domElement.dataset.playerGroundY = surfaceGroundY.toFixed(3);
@@ -1988,8 +2032,23 @@ export default function ArenaPreview({
           gameAudio.play("jump");
         }
         jumpQueued = false;
+        const previousFootY = playerPosition.y - floorEyeHeight;
         verticalVelocity -= FPS_JUMP_GRAVITY * delta;
         playerPosition.y += verticalVelocity * delta;
+        if (verticalVelocity <= 0) {
+          const supportY = findFpsSupportSurfaceY(
+            coverBoxes,
+            playerPosition.x,
+            playerPosition.z,
+            PLAYER_RADIUS,
+            previousFootY,
+            playerPosition.y - floorEyeHeight
+          );
+          if (supportY !== undefined && supportY > surfaceGroundY) {
+            surfaceGroundY = supportY;
+            groundEyeY = supportY + floorEyeHeight;
+          }
+        }
         if (playerPosition.y < groundEyeY) {
           playerPosition.y = groundEyeY;
           verticalVelocity = 0;
@@ -2004,6 +2063,7 @@ export default function ArenaPreview({
         } else {
           wasGrounded = false;
         }
+        isJumping = !wasGrounded;
 
         const activePlayer = currentPlayerRef.current;
         const gearSpeedMultiplier = getPlayerMoveSpeedMultiplier(activePlayer ?? { gear: "starter_blaster" });

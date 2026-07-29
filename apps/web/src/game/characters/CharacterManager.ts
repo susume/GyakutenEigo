@@ -72,6 +72,7 @@ export class CharacterManager {
       record.team = player.team;
       record.role = player.role;
       record.controller.carryingObjective = objectiveCarrierId === player.id;
+      record.controller.setPosture(player.crouching === true, player.jumping === true);
       if (!player.isAlive) {
         record.controller.model.root.visible = false;
         record.badge.visible = false;

@@ -16,6 +16,8 @@ export class CharacterController {
   strafeSpeed = 0;
   turnSpeed = 0;
   carryingObjective = false;
+  crouching = false;
+  jumping = false;
 
   constructor(model: CharacterModel, x: number, z: number, facing: number, alive: boolean, y = 0) {
     this.model = model;
@@ -35,6 +37,14 @@ export class CharacterController {
 
   triggerAnimation(cue: CharacterAnimationCue) {
     this.model.triggerAnimation(cue);
+  }
+
+  setPosture(crouching: boolean, jumping: boolean) {
+    const nextJumping = jumping && !crouching;
+    if (nextJumping && !this.jumping) this.triggerAnimation("jump");
+    if (!nextJumping && this.jumping) this.triggerAnimation("land");
+    this.crouching = crouching;
+    this.jumping = nextJumping;
   }
 
   update(delta: number, elapsed: number, camera: THREE.Camera) {
@@ -75,6 +85,7 @@ export class CharacterController {
       strafeSpeed: this.strafeSpeed,
       turnSpeed: this.turnSpeed,
       alive: this.alive,
+      crouching: this.crouching,
       carryingObjective: this.carryingObjective
     });
   }
