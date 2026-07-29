@@ -105,10 +105,14 @@ const rawBlocks: CitadelBlock[] = [
   { id: "warehouse-conveyor", label: "Sorting Conveyor", x: -87, z: -132, w: 52, d: 9, h: 4, color: weatheredSteel, material: "metal", style: "machinery", collides: true },
   { id: "warehouse-pillar-a", x: -126, z: -98, w: 4, d: 4, h: 18, color: darkSteel, material: "metal", style: "tower", collides: true },
   { id: "warehouse-pillar-b", x: -72, z: -98, w: 4, d: 4, h: 18, color: darkSteel, material: "metal", style: "tower", collides: true },
-  { id: "warehouse-roof", x: -112, z: -130, w: 160, d: 120, h: 1, y: 20, color: weatheredSteel, material: "metal", style: "bridge" },
+  // The south roof opening gives the upper ramp full player-height clearance.
+  { id: "warehouse-roof-west", x: -154.5, z: -130, w: 75, d: 120, h: 1, y: 20, color: weatheredSteel, material: "metal", style: "bridge" },
+  { id: "warehouse-roof-east", x: -62.5, z: -130, w: 61, d: 120, h: 1, y: 20, color: weatheredSteel, material: "metal", style: "bridge" },
+  { id: "warehouse-roof-north-link", x: -105, z: -154, w: 24, d: 72, h: 1, y: 20, color: weatheredSteel, material: "metal", style: "bridge" },
   { id: "warehouse-mezzanine", label: "WAREHOUSE MEZZANINE", x: -130, z: -147, w: 120, d: 64, h: 1.1, y: loadingDeckCenter, color: steel, material: "metal", style: "bridge" },
   { id: "warehouse-loading-dock", label: "FREIGHT LOADING PLATFORM", x: -108, z: -57, w: 144, d: 18, h: 1.1, y: loadingDeckCenter, color: concrete, material: "stone", style: "bridge" },
   { id: "warehouse-loading-ramp", x: -199, z: -57, w: 38, d: 18, h: 1, y: 4, rotationZ: -rampAngle(IRON_JUNCTION_LOADING_LEVEL_Y, 38), color: steel, material: "metal", style: "bridge" },
+  { id: "warehouse-loading-east-ramp", x: -17, z: -57, w: 38, d: 18, h: 1, y: 4, rotationZ: rampAngle(IRON_JUNCTION_LOADING_LEVEL_Y, 38), color: steel, material: "metal", style: "bridge" },
 
   // Area F: Dispatch station and its landmark control tower.
   { id: "dispatch-north-wall", label: "Old Dispatch Station", x: 135, z: -188, w: 142, d: 8, h: 16, color: brick, material: "stone", style: "wall", collides: true },
@@ -120,6 +124,7 @@ const rawBlocks: CitadelBlock[] = [
   { id: "dispatch-operations-room", label: "Dispatch Operations", x: 161, z: -149, w: 54, d: 38, h: 10, color: dirtyCream, material: "metal", style: "shed", collides: true },
   { id: "dispatch-platform", label: "DISPATCH PLATFORM", x: 132, z: -70, w: 116, d: 24, h: 1.1, y: loadingDeckCenter, color: concrete, material: "stone", style: "bridge" },
   { id: "dispatch-platform-ramp", x: 205, z: -70, w: 30, d: 24, h: 1, y: 4, rotationZ: rampAngle(IRON_JUNCTION_LOADING_LEVEL_Y, 30), color: steel, material: "metal", style: "bridge" },
+  { id: "dispatch-platform-west-ramp", x: 59, z: -70, w: 30, d: 24, h: 1, y: 4, rotationZ: -rampAngle(IRON_JUNCTION_LOADING_LEVEL_Y, 30), color: steel, material: "metal", style: "bridge" },
   { id: "junction-control-lower", label: "Junction Control Tower", x: 58, z: -38, w: 34, d: 32, h: 9, color: concrete, material: "stone", style: "tower", collides: true },
   { id: "junction-control-upper", label: "JUNCTION CONTROL", x: 58, z: -38, w: 30, d: 28, h: 8, y: 14, color: dirtyCream, material: "metal", style: "tower", collides: true },
 
@@ -179,19 +184,21 @@ const rawBlocks: CitadelBlock[] = [
   { id: "overpass-support-center", x: 18, z: 25, w: 6, d: 6, h: 18, y: 9, color: rust, material: "metal", style: "gantry", collides: true },
   { id: "overpass-support-east", x: 92, z: 25, w: 6, d: 6, h: 18, y: 9, color: rust, material: "metal", style: "gantry", collides: true },
   { id: "gantry-sight-screen", x: -6, z: 25, w: 36, d: 5, h: 7, y: 21, color: weatheredSteel, material: "metal", style: "wall", collides: true }
-  ,{ id: "overpass-north-rail-west", x: -77.5, z: 15, w: 55, d: 1.2, h: 2.5, y: 19.25, color: steel, material: "metal", collides: true }
+  // Guardrails stop short of the three authored connectors instead of sealing them.
+  ,{ id: "overpass-north-rail-west", x: -72, z: 15, w: 44, d: 1.2, h: 2.5, y: 19.25, color: steel, material: "metal", collides: true }
   ,{ id: "overpass-north-rail-center", x: 5, z: 15, w: 70, d: 1.2, h: 2.5, y: 19.25, color: steel, material: "metal", collides: true }
-  ,{ id: "overpass-north-rail-east", x: 92.5, z: 15, w: 65, d: 1.2, h: 2.5, y: 19.25, color: steel, material: "metal", collides: true }
+  ,{ id: "overpass-north-rail-east", x: 83.5, z: 15, w: 47, d: 1.2, h: 2.5, y: 19.25, color: steel, material: "metal", collides: true }
   ,{ id: "overpass-south-rail-west", x: -77.5, z: 35, w: 55, d: 1.2, h: 2.5, y: 19.25, color: steel, material: "metal", collides: true }
   ,{ id: "overpass-south-rail-center", x: 5, z: 35, w: 70, d: 1.2, h: 2.5, y: 19.25, color: steel, material: "metal", collides: true }
-  ,{ id: "overpass-south-rail-east", x: 92.5, z: 35, w: 65, d: 1.2, h: 2.5, y: 19.25, color: steel, material: "metal", collides: true }
+  ,{ id: "overpass-south-rail-depot-west", x: 64, z: 35, w: 8, d: 1.2, h: 2.5, y: 19.25, color: steel, material: "metal", collides: true }
+  ,{ id: "overpass-south-rail-depot-east", x: 108.5, z: 35, w: 33, d: 1.2, h: 2.5, y: 19.25, color: steel, material: "metal", collides: true }
   ,{ id: "warehouse-link-west-rail", x: -115, z: -35.5, w: 1.2, d: 101, h: 2.5, y: 19.25, color: steel, material: "metal", collides: true }
   ,{ id: "warehouse-link-east-rail", x: -95, z: -35.5, w: 1.2, d: 101, h: 2.5, y: 19.25, color: steel, material: "metal", collides: true }
   ,{ id: "dispatch-link-west-rail", x: 109, z: -22, w: 1.2, d: 80, h: 2.5, y: 19.25, color: steel, material: "metal", collides: true }
   ,{ id: "dispatch-link-east-rail", x: 129, z: -22, w: 1.2, d: 80, h: 2.5, y: 19.25, color: steel, material: "metal", collides: true }
 ];
 
-export const blocks = rawBlocks.map(scaleRect);
+export const blocks: CitadelBlock[] = rawBlocks.map(({ label: _label, ...block }) => scaleRect(block));
 
 const rawCylinders: CitadelCylinder[] = [
   { id: "yard-signal-base-west", label: "Signal Mast", x: -150, z: -18, radius: 2.5, h: 10, color: rust, material: "metal", collides: true },
@@ -199,18 +206,11 @@ const rawCylinders: CitadelCylinder[] = [
   { id: "depot-hydraulic-lift", label: "Hydraulic Lift", x: 94, z: 172, radius: 3, h: 7, color: warning, material: "metal", collides: true },
   { id: "dispatch-clock-column", label: "Broken Station Clock", x: 105, z: -130, radius: 2.5, h: 11, color: dirtyCream, material: "metal", collides: true }
 ];
-export const cylinders = rawCylinders.map(scaleCylinder);
+export const cylinders: CitadelCylinder[] = rawCylinders.map(({ label: _label, ...cylinder }) => scaleCylinder(cylinder));
 
-const rawFloorMarks: CitadelFloorMark[] = [
-  { id: "iron-yard-route", label: "GRAND RAIL YARD · FAST ROUTE", x: 0, z: 58, w: 116, d: 13, color: "#e7b15f" },
-  { id: "iron-warehouse-route", label: "FREIGHT WAREHOUSE", x: -110, z: -111, w: 78, d: 13, color: "#d3c7aa" },
-  { id: "iron-depot-route", label: "MAINTENANCE DEPOT", x: 105, z: 150, w: 76, d: 13, color: "#e39a50" },
-  { id: "iron-tunnel-route", label: "MOUNTAIN TUNNEL · LOWER FLANK", x: -35, z: 218, w: 110, d: 13, color: "#9fb5ad" },
-  { id: "iron-dispatch-route", label: "DISPATCH STATION", x: 135, z: -126, w: 72, d: 13, color: "#d8c6a2" },
-  { id: "iron-loading-route", label: "LOADING LEVEL ↑", x: -110, z: -57, w: 70, d: 10, color: "#e0a24a", y: IRON_JUNCTION_LOADING_LEVEL_Y + 0.05 },
-  { id: "iron-overpass-route", label: "CONTROL OVERPASS ↑", x: 10, z: 25, w: 82, d: 10, color: "#f4bd59", y: IRON_JUNCTION_OVERPASS_LEVEL_Y + 0.05 }
-];
-export const floorMarks = rawFloorMarks.map(scaleRect);
+// Architecture, rail colors, team banners, and landmarks carry navigation.
+// Printed route directions were visually noisy in both overview and FPS views.
+export const floorMarks: CitadelFloorMark[] = [];
 
 const rawProps: CitadelProp[] = [
   { id: "blue-route-banner", kind: "banner", x: -210, z: -28, size: 4, h: 10, color: blueStripe, material: "cloth" },
@@ -232,13 +232,4 @@ const rawProps: CitadelProp[] = [
 ];
 export const props = rawProps.map(scalePoint);
 
-const rawSigns: CitadelSign[] = [
-  { id: "sign-blue-base", label: "BLUE ASSEMBLY · FOUR EXITS", x: -232, z: -112, color: "#7dd3fc", rotationY: Math.PI / 2, y: 8 },
-  { id: "sign-red-base", label: "RED ASSEMBLY · FOUR EXITS", x: 232, z: 112, color: "#fb9a72", rotationY: -Math.PI / 2, y: 8 },
-  { id: "sign-warehouse", label: "FREIGHT WAREHOUSE", x: -110, z: -61, color: "#e8cf9f", y: 12 },
-  { id: "sign-dispatch", label: "DISPATCH STATION", x: 135, z: -82, color: "#e8cf9f", y: 11 },
-  { id: "sign-depot", label: "MAINTENANCE DEPOT", x: 105, z: 91, color: "#f0b05b", rotationY: Math.PI, y: 12 },
-  { id: "sign-tunnel", label: "SERVICE TUNNEL ↓", x: -35, z: 188, color: "#e36a4f", rotationY: Math.PI, y: 9 },
-  { id: "sign-control", label: "JUNCTION CONTROL ↑", x: 58, z: -56, color: "#ffd166", y: 25 }
-];
-export const signs = rawSigns.map(scalePoint);
+export const signs: CitadelSign[] = [];

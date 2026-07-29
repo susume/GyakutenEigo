@@ -11,10 +11,12 @@ import {
   getArenaFloorSurfaces,
   getArenaGroundHeightForPlayer,
   getArenaObstacles,
+  getCaptureZonesForMap,
   getTeamSpawnsForMap,
-  hasLineOfSight
+  hasLineOfSight,
+  resolveAuthoritativeMovement
 } from "@quizstrike/shared";
-import { IRON_JUNCTION, blocks, cylinders, props } from "./ironJunctionMap.js";
+import { IRON_JUNCTION, blocks, cylinders, floorMarks, props, signs } from "./ironJunctionMap.js";
 
 const raw = (value: number) => value * ARENA_SCALE;
 
@@ -41,6 +43,13 @@ test("Iron Junction uses four architectural trains and sparse props", () => {
   assert.ok(trains.every((train) => train.w >= raw(42) && train.d >= raw(13)));
   assert.ok(props.length <= 18);
   assert.equal(props.filter((prop) => prop.kind === "crate").length, 1);
+});
+
+test("Iron Junction teaches navigation without printed labels", () => {
+  assert.deepEqual(floorMarks, []);
+  assert.deepEqual(signs, []);
+  assert.ok(blocks.every((block) => block.label === undefined));
+  assert.ok(cylinders.every((cylinder) => cylinder.label === undefined));
 });
 
 test("Iron Junction supports ground, loading, and overpass floors at one X/Z", () => {
@@ -100,6 +109,74 @@ test("Iron Junction visual colliders all have authoritative server proxies", () 
     ...cylinders.filter((cylinder) => cylinder.collides).map((cylinder) => cylinder.id)
   ];
   assert.deepEqual(visualIds.filter((id) => !authoritativeIds.has(id)), []);
+});
+
+test("Iron Junction loading objectives have two ground approaches", () => {
+  const warehouseWest = getArenaFloorSurfaces("iron_junction", raw(-218), raw(-57));
+  const warehouseEast = getArenaFloorSurfaces("iron_junction", raw(2), raw(-57));
+  const dispatchWest = getArenaFloorSurfaces("iron_junction", raw(44), raw(-70));
+  const dispatchEast = getArenaFloorSurfaces("iron_junction", raw(220), raw(-70));
+  assert.ok(warehouseWest.includes(0));
+  assert.ok(warehouseEast.includes(0));
+  assert.ok(dispatchWest.includes(0));
+  assert.ok(dispatchEast.includes(0));
+
+  const obstacles = getArenaObstacles("iron_junction");
+  const ground = (x: number, z: number) => ({ x: raw(x), y: ARENA_PLAYER_EYE_HEIGHT, z: raw(z), facing: 0 });
+  const loading = (x: number, z: number) => ({
+    x: raw(x),
+    y: IRON_JUNCTION_LOADING_LEVEL_Y + ARENA_PLAYER_EYE_HEIGHT,
+    z: raw(z),
+    facing: 0
+  });
+  for (const [label, from, to] of [
+    ["warehouse east ramp", ground(2, -57), loading(-50, -57)],
+    ["dispatch west ramp", ground(44, -70), loading(90, -70)]
+  ] as const) {
+    assert.ok(
+      findBotNavigationPath({ from, to, obstacles, mapId: "iron_junction" }).length > 0,
+      `${label} should support bot traversal`
+    );
+  }
+  assert.ok(getCaptureZonesForMap("iron_junction").some((zone) => zone.id === "iron-dispatch-platform"));
+});
+
+test("Iron Junction upper connectors are not sealed by guardrails", () => {
+  const obstacles = getArenaObstacles("iron_junction");
+  const upperEyeY = IRON_JUNCTION_OVERPASS_LEVEL_Y + ARENA_PLAYER_EYE_HEIGHT;
+  for (const [label, x, fromZ, toZ] of [
+    ["warehouse link", -100, 14, 16],
+    ["dispatch link", 117, 14, 16],
+    ["depot ramp", 80, 34, 36]
+  ] as const) {
+    const movement = resolveAuthoritativeMovement({
+      current: { x: raw(x), y: upperEyeY, z: raw(fromZ), facing: 0 },
+      requested: { x: raw(x), y: upperEyeY, z: raw(toZ), facing: 0 },
+      elapsedMs: 100,
+      maxSpeed: 20,
+      obstacles,
+      groundY: IRON_JUNCTION_OVERPASS_LEVEL_Y,
+      mapId: "iron_junction"
+    });
+    assert.equal(movement.blocked, undefined, `${label} should be open at player-body height`);
+  }
+});
+
+test("Iron Junction warehouse upper ramp has a full-height roof opening", () => {
+  const roofPieces = blocks.filter((block) => block.id.startsWith("warehouse-roof-"));
+  assert.equal(roofPieces.length, 3);
+  for (const z of [-105, -95, -86]) {
+    assert.equal(
+      roofPieces.some((roof) =>
+        raw(-105) >= roof.x - roof.w / 2
+        && raw(-105) <= roof.x + roof.w / 2
+        && raw(z) >= roof.z - roof.d / 2
+        && raw(z) <= roof.z + roof.d / 2
+      ),
+      false,
+      `roof should not cover the upper ramp at z=${z}`
+    );
+  }
 });
 
 test("Iron Junction bot navigation reaches the upper route without merging floors", () => {

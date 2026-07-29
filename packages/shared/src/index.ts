@@ -1205,8 +1205,14 @@ const ironRampHeight = (rawX: number, rawZ: number): number | undefined => {
   if (rawZ >= -66 - 1e-6 && rawZ <= -48 + 1e-6 && rawX >= -218 && rawX <= -180) {
     return Number((IRON_JUNCTION_LOADING_LEVEL_Y * ((rawX + 218) / 38)).toFixed(3));
   }
+  if (rawZ >= -66 - 1e-6 && rawZ <= -48 + 1e-6 && rawX >= -36 && rawX <= 2) {
+    return Number((IRON_JUNCTION_LOADING_LEVEL_Y * ((2 - rawX) / 38)).toFixed(3));
+  }
   if (rawZ >= -82 - 1e-6 && rawZ <= -58 + 1e-6 && rawX >= 190 && rawX <= 220) {
     return Number((IRON_JUNCTION_LOADING_LEVEL_Y * ((220 - rawX) / 30)).toFixed(3));
+  }
+  if (rawZ >= -82 - 1e-6 && rawZ <= -58 + 1e-6 && rawX >= 44 && rawX <= 74) {
+    return Number((IRON_JUNCTION_LOADING_LEVEL_Y * ((rawX - 44) / 30)).toFixed(3));
   }
   if (rawZ >= 96 - 1e-6 && rawZ <= 116 + 1e-6 && rawX >= 163 && rawX <= 191) {
     return Number((IRON_JUNCTION_LOADING_LEVEL_Y * ((191 - rawX) / 28)).toFixed(3));
@@ -1591,6 +1597,7 @@ export const TEMPLE_RUNOFF_CAPTURE_ZONES = [
 export const IRON_JUNCTION_CAPTURE_ZONES = [
   { id: "iron-grand-junction", label: "Grand Rail Junction", x: scaleArenaValue(38), z: scaleArenaValue(64), radius: scaleArenaValue(25), y: 0 },
   { id: "iron-warehouse-loading", label: "Warehouse Loading Dock", x: scaleArenaValue(-108), z: scaleArenaValue(-57), radius: scaleArenaValue(20), y: IRON_JUNCTION_LOADING_LEVEL_Y },
+  { id: "iron-dispatch-platform", label: "Dispatch Platform", x: scaleArenaValue(132), z: scaleArenaValue(-70), radius: scaleArenaValue(20), y: IRON_JUNCTION_LOADING_LEVEL_Y },
   { id: "iron-maintenance-pit", label: "Maintenance Pit", x: scaleArenaValue(104), z: scaleArenaValue(151), radius: scaleArenaValue(22), y: 0 },
   { id: "iron-control-overpass", label: "Junction Overpass", x: scaleArenaValue(24), z: scaleArenaValue(25), radius: scaleArenaValue(18), y: IRON_JUNCTION_OVERPASS_LEVEL_Y },
   { id: "iron-mountain-tunnel", label: "Mountain Service Tunnel", x: scaleArenaValue(-35), z: scaleArenaValue(218), radius: scaleArenaValue(22), y: 0 }
@@ -2110,12 +2117,13 @@ export const IRON_JUNCTION_OBSTACLES: ArenaObstacle[] = [
   rectObstacle("overpass-support-center", 18, 25, 6, 6, false, 0, 18),
   rectObstacle("overpass-support-east", 92, 25, 6, 6, false, 0, 18),
   rectObstacle("gantry-sight-screen", -6, 25, 36, 5, false, 17.5, 24.5),
-  rectObstacle("overpass-north-rail-west", -77.5, 15, 55, 1.2, false, 18, 20.5),
+  rectObstacle("overpass-north-rail-west", -72, 15, 44, 1.2, false, 18, 20.5),
   rectObstacle("overpass-north-rail-center", 5, 15, 70, 1.2, false, 18, 20.5),
-  rectObstacle("overpass-north-rail-east", 92.5, 15, 65, 1.2, false, 18, 20.5),
+  rectObstacle("overpass-north-rail-east", 83.5, 15, 47, 1.2, false, 18, 20.5),
   rectObstacle("overpass-south-rail-west", -77.5, 35, 55, 1.2, false, 18, 20.5),
   rectObstacle("overpass-south-rail-center", 5, 35, 70, 1.2, false, 18, 20.5),
-  rectObstacle("overpass-south-rail-east", 92.5, 35, 65, 1.2, false, 18, 20.5),
+  rectObstacle("overpass-south-rail-depot-west", 64, 35, 8, 1.2, false, 18, 20.5),
+  rectObstacle("overpass-south-rail-depot-east", 108.5, 35, 33, 1.2, false, 18, 20.5),
   rectObstacle("warehouse-link-west-rail", -115, -35.5, 1.2, 101, false, 18, 20.5),
   rectObstacle("warehouse-link-east-rail", -95, -35.5, 1.2, 101, false, 18, 20.5),
   rectObstacle("dispatch-link-west-rail", 109, -22, 1.2, 80, false, 18, 20.5),

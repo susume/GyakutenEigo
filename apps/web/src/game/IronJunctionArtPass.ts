@@ -95,10 +95,11 @@ export const addIronJunctionArtPass = (
   const tunnelLights = new THREE.Group();
   tunnelLights.name = "iron_junction_tunnel_lighting";
   scene.add(tunnelLights);
-  for (const rawX of [-175, -125, -65, -5, 55, 115]) {
+  const tunnelFixturePositions = [-175, -125, -65, -5, 55, 115] as const;
+  for (const [index, rawX] of tunnelFixturePositions.entries()) {
     const fixture = addStaticMesh(tunnelLights, new THREE.BoxGeometry(2.5, 0.35, 0.5), "#d86148", "accent");
     fixture.position.set(s(rawX), 8, s(rawX < -40 ? 213 : 219));
-    if (detail > 0 && rawX % 2 !== 0) {
+    if (detail === 2 || (detail === 1 && index % 2 === 0)) {
       const light = new THREE.PointLight("#e88662", isFps ? 2.2 : 3.8, 30, 2);
       light.position.copy(fixture.position);
       tunnelLights.add(light);
@@ -109,7 +110,8 @@ export const addIronJunctionArtPass = (
     const warmFillPositions = [
       [-145, -95], [-55, -92], [94, -102], [165, -103], [35, 120], [155, 116]
     ] as const;
-    for (const [rawX, rawZ] of warmFillPositions) {
+    const activeWarmFills = detail === 2 ? warmFillPositions : warmFillPositions.filter((_, index) => index % 2 === 0);
+    for (const [rawX, rawZ] of activeWarmFills) {
       const light = new THREE.SpotLight("#ffc176", isFps ? 6 : 10, 58, Math.PI / 4, 0.65, 1.7);
       light.position.set(s(rawX), 15, s(rawZ));
       light.target.position.set(s(rawX), 0, s(rawZ + 18));

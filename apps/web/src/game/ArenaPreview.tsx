@@ -2413,7 +2413,7 @@ export default function ArenaPreview({
               <span key={weaponCooldown.startedAt} style={{ animationDuration: `${weaponCooldown.durationMs}ms` }} />
             </div>
           )}
-          {!isDesertCitadel && <div className="fps-callout">{arenaMap.title}</div>}
+          {!isDesertCitadel && !isIronJunction && <div className="fps-callout">{arenaMap.title}</div>}
           <div className="arena-minimap" aria-label={`${arenaMap.title} minimap`}>
             <div className="minimap-title">Map</div>
             <svg viewBox={`0 0 ${MINIMAP_WIDTH} ${MINIMAP_HEIGHT}`} role="img" aria-label={`${arenaMap.title} route overview`}>
