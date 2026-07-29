@@ -5,11 +5,33 @@ export const BASE_CROUCH_EYE_HEIGHT = 1.08;
 export const FPS_STANDING_EYE_HEIGHT = Number((BASE_STANDING_EYE_HEIGHT * CHARACTER_VISUAL_SCALE).toFixed(2));
 export const FPS_CROUCH_EYE_HEIGHT = Number((BASE_CROUCH_EYE_HEIGHT * CHARACTER_VISUAL_SCALE).toFixed(2));
 export const FPS_BODY_HEIGHT = Number((2.05 * CHARACTER_VISUAL_SCALE).toFixed(2));
-export const FPS_JUMP_VELOCITY = 11;
-export const FPS_JUMP_GRAVITY = 18;
+// A high initial impulse and stronger gravity preserve the useful cover-clearing
+// apex while removing the long, floaty hang time of the previous 11/18 profile.
+export const FPS_JUMP_VELOCITY = 15.5;
+export const FPS_JUMP_GRAVITY = 36;
 export const FPS_JUMP_APEX_HEIGHT = Number(
   ((FPS_JUMP_VELOCITY * FPS_JUMP_VELOCITY) / (2 * FPS_JUMP_GRAVITY)).toFixed(2)
 );
+export const FPS_JUMP_AIRTIME_SECONDS = Number(
+  ((FPS_JUMP_VELOCITY * 2) / FPS_JUMP_GRAVITY).toFixed(3)
+);
+export const FPS_GROUNDED_CAMERA_RESPONSE = 18;
+
+/**
+ * Smooths only the rendered eye height while grounded. Collision and server
+ * position still use the exact authored stair, so the camera reads as an
+ * arcade-FPS incline without reintroducing slippery ramp collision.
+ */
+export const smoothFpsGroundedCameraY = (
+  currentY: number,
+  targetY: number,
+  deltaSeconds: number,
+  response = FPS_GROUNDED_CAMERA_RESPONSE
+) => {
+  if (deltaSeconds <= 0 || Math.abs(targetY - currentY) > 4.5) return targetY;
+  const alpha = 1 - Math.exp(-response * Math.min(deltaSeconds, 0.05));
+  return currentY + (targetY - currentY) * alpha;
+};
 
 export const getFpsBodyVerticalBounds = (eyeY: number, floorEyeHeight: number) => {
   const lift = Math.max(0, eyeY - floorEyeHeight);

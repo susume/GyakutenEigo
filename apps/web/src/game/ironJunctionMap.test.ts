@@ -101,6 +101,24 @@ test("Iron Junction supports ground, loading, and overpass floors at one X/Z", (
   assert.ok((IRON_JUNCTION_OVERPASS_LEVEL_Y - IRON_JUNCTION_LOADING_LEVEL_Y) / ARENA_PLAYER_BODY_HEIGHT > 1.9);
 });
 
+test("Iron Junction transfer platforms remain authoritative support after landing", () => {
+  for (const [x, z] of [[-155, 20], [157, 66]]) {
+    assert.deepEqual(
+      getArenaFloorSurfaces("iron_junction", raw(x), raw(z)),
+      [0, 2]
+    );
+    assert.equal(
+      getArenaGroundHeightForPlayer(
+        "iron_junction",
+        raw(x),
+        raw(z),
+        2 + ARENA_PLAYER_EYE_HEIGHT
+      ),
+      2
+    );
+  }
+});
+
 test("Iron Junction provides 20 non-overlapping protected spawns per team", () => {
   const spawns = getTeamSpawnsForMap("iron_junction");
   const obstacles = getArenaObstacles("iron_junction");

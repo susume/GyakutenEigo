@@ -2,11 +2,13 @@ import test from "node:test";
 import assert from "node:assert/strict";
 import {
   FPS_CROUCH_EYE_HEIGHT,
+  FPS_JUMP_AIRTIME_SECONDS,
   FPS_JUMP_APEX_HEIGHT,
   FPS_STANDING_EYE_HEIGHT,
   canFpsBodyClearObstacle,
   findFpsSupportSurfaceY,
-  getFpsBodyVerticalBounds
+  getFpsBodyVerticalBounds,
+  smoothFpsGroundedCameraY
 } from "./ArenaCamera.js";
 
 test("FPS camera eye height matches the scaled arena character proportions", () => {
@@ -24,6 +26,23 @@ test("FPS body collider rises while jumping so low obstacles can be cleared", ()
   assert.ok(FPS_JUMP_APEX_HEIGHT < 4, "jump must not skip 5-unit combat cover");
   assert.equal(canFpsBodyClearObstacle(jumping, 3), true);
   assert.equal(canFpsBodyClearObstacle(grounded, 3), false);
+});
+
+test("FPS jump keeps its useful apex without floaty hang time", () => {
+  assert.ok(FPS_JUMP_APEX_HEIGHT > 3.2);
+  assert.ok(FPS_JUMP_AIRTIME_SECONDS >= 0.8);
+  assert.ok(FPS_JUMP_AIRTIME_SECONDS < 0.9);
+});
+
+test("grounded camera eases over physical stair steps without changing collision height", () => {
+  const firstFrame = smoothFpsGroundedCameraY(4.2, 4.87, 1 / 60);
+  assert.ok(firstFrame > 4.2);
+  assert.ok(firstFrame < 4.87);
+  let renderedY = firstFrame;
+  for (let frame = 0; frame < 30; frame += 1) {
+    renderedY = smoothFpsGroundedCameraY(renderedY, 4.87, 1 / 60);
+  }
+  assert.ok(Math.abs(renderedY - 4.87) < 0.001);
 });
 
 test("FPS body collider can move while its feet rest on an object", () => {

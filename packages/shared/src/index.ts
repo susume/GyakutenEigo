@@ -1302,6 +1302,12 @@ export const getArenaFloorSurfaces = (
       || isInsideRawRect(rawX, rawZ, 23, 165, 96, 116)
       || isInsideRawRect(rawX, rawZ, -20, 40, 15, 35)
     ) surfaces.push(IRON_JUNCTION_LOADING_LEVEL_Y);
+    // The two solid transfer platforms are intentionally jump-accessible cover.
+    // Treat their tops as real support surfaces for both client and server.
+    if (
+      isInsideRawRect(rawX, rawZ, -182, -128, 11.5, 28.5)
+      || isInsideRawRect(rawX, rawZ, 133, 181, 57.5, 74.5)
+    ) surfaces.push(2);
     if (
       isInsideRawRect(rawX, rawZ, -105, 125, 15, 35)
       || isInsideRawRect(rawX, rawZ, -71, 71, -21, -7)

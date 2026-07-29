@@ -32,7 +32,8 @@ import {
   FPS_STANDING_EYE_HEIGHT,
   canFpsBodyClearObstacle,
   findFpsSupportSurfaceY,
-  getFpsBodyVerticalBounds
+  getFpsBodyVerticalBounds,
+  smoothFpsGroundedCameraY
 } from "./ArenaCamera.js";
 import { CharacterFactory } from "./characters/CharacterFactory";
 import { CharacterManager, type CharacterManagerStats } from "./characters/CharacterManager";
@@ -1676,6 +1677,7 @@ export default function ArenaPreview({
       let cooldownTimeout: number | undefined;
       let wasGrounded = true;
       let landedAt = 0;
+      let cameraVisualY = playerPosition.y;
       let fireHeld = false;
       const getEquippedGearId = () => getPlayerWeaponId(currentPlayerRef.current ?? { gear: "starter_blaster" });
       const hasZoomGear = () => getGearZoomFovMultiplier(getEquippedGearId()) < 1;
@@ -1941,8 +1943,11 @@ export default function ArenaPreview({
         if (document.pointerLockElement === renderer.domElement) document.exitPointerLock();
       };
 
-      const updateCamera = () => {
-        cameraRig.position.set(playerPosition.x, playerPosition.y, playerPosition.z);
+      const updateCamera = (delta = 0) => {
+        cameraVisualY = wasGrounded
+          ? smoothFpsGroundedCameraY(cameraVisualY, playerPosition.y, delta)
+          : playerPosition.y;
+        cameraRig.position.set(playerPosition.x, cameraVisualY, playerPosition.z);
         camera.rotation.set(pitch, yaw, 0, "YXZ");
         renderer.domElement.dataset.playerX = playerPosition.x.toFixed(3);
         renderer.domElement.dataset.playerY = playerPosition.y.toFixed(3);
@@ -2010,6 +2015,31 @@ export default function ArenaPreview({
         lastColliderName = blockingIndex >= 0 ? arenaMap.blocks.filter((block) => block.collides)[blockingIndex]?.id ?? "unknown" : "none";
         return blockingIndex < 0;
       };
+      const resolveSurfaceGroundY = (
+        x: number,
+        z: number,
+        eyeY: number,
+        floorEyeHeight: number
+      ) => {
+        const mappedGroundY = getArenaGroundHeightForPlayer(
+          arenaMapId,
+          x,
+          z,
+          eyeY,
+          floorEyeHeight
+        );
+        if (verticalVelocity > 0) return mappedGroundY;
+        const footY = eyeY - floorEyeHeight;
+        const supportY = findFpsSupportSurfaceY(
+          coverBoxes,
+          x,
+          z,
+          PLAYER_RADIUS,
+          footY,
+          footY
+        );
+        return supportY === undefined ? mappedGroundY : Math.max(mappedGroundY, supportY);
+      };
 
       const animateFps = () => {
         frame = requestAnimationFrame(animateFps);
@@ -2071,25 +2101,12 @@ export default function ArenaPreview({
           verticalVelocity = 0;
           wasGrounded = true;
         }
-        let surfaceGroundY = getArenaGroundHeightForPlayer(
-          arenaMapId,
+        let surfaceGroundY = resolveSurfaceGroundY(
           playerPosition.x,
           playerPosition.z,
           playerPosition.y,
           floorEyeHeight
         );
-        if (verticalVelocity <= 0) {
-          const footY = playerPosition.y - floorEyeHeight;
-          const supportY = findFpsSupportSurfaceY(
-            coverBoxes,
-            playerPosition.x,
-            playerPosition.z,
-            PLAYER_RADIUS,
-            footY,
-            footY
-          );
-          if (supportY !== undefined) surfaceGroundY = Math.max(surfaceGroundY, supportY);
-        }
         let groundEyeY = surfaceGroundY + floorEyeHeight;
         const currentLevel = getArenaLevelLabel(arenaMapId, surfaceGroundY);
         renderer.domElement.dataset.playerGroundY = surfaceGroundY.toFixed(3);
@@ -2198,8 +2215,7 @@ export default function ArenaPreview({
           nextPosition.z = clamp(nextPosition.z, -arenaBounds.limitZ + PLAYER_RADIUS, arenaBounds.limitZ - PLAYER_RADIUS);
           axisPosition.copy(playerPosition);
           axisPosition.x = nextPosition.x;
-          const xGroundY = getArenaGroundHeightForPlayer(
-            arenaMapId,
+          const xGroundY = resolveSurfaceGroundY(
             axisPosition.x,
             axisPosition.z,
             axisPosition.y,
@@ -2212,15 +2228,13 @@ export default function ArenaPreview({
           }
           axisPosition.copy(playerPosition);
           axisPosition.z = nextPosition.z;
-          surfaceGroundY = getArenaGroundHeightForPlayer(
-            arenaMapId,
+          surfaceGroundY = resolveSurfaceGroundY(
             playerPosition.x,
             playerPosition.z,
             playerPosition.y,
             floorEyeHeight
           );
-          const zGroundY = getArenaGroundHeightForPlayer(
-            arenaMapId,
+          const zGroundY = resolveSurfaceGroundY(
             axisPosition.x,
             axisPosition.z,
             axisPosition.y,
@@ -2231,8 +2245,7 @@ export default function ArenaPreview({
             playerPosition.z = axisPosition.z;
             if (wasGrounded) playerPosition.y = axisPosition.y;
           }
-          surfaceGroundY = getArenaGroundHeightForPlayer(
-            arenaMapId,
+          surfaceGroundY = resolveSurfaceGroundY(
             playerPosition.x,
             playerPosition.z,
             playerPosition.y,
@@ -2257,7 +2270,7 @@ export default function ArenaPreview({
           camera.fov += (targetFov - camera.fov) * 0.18;
           camera.updateProjectionMatrix();
         }
-        updateCamera();
+        updateCamera(delta);
         if (currentTime - lastMiniMapAt > 220) {
           lastMiniMapAt = currentTime;
           setMiniMapPosition(localToServerPosition(playerPosition, yaw));
@@ -2273,8 +2286,11 @@ export default function ArenaPreview({
         muzzleRingMaterial.opacity = Math.max(0, muzzleRingMaterial.opacity - delta * 8.5);
         muzzleRing.scale.multiplyScalar(1 + delta * 3.2);
         const landingPulse = Math.max(0, 1 - (currentTime - landedAt) / 220);
-        const airborneLift = Math.max(0, playerPosition.y - groundEyeY) * 0.045;
-        firstPersonModel.root.position.y = firstPersonRootBaseY + Math.sin(currentTime * 0.006) * 0.012 + airborneLift - Math.sin(landingPulse * Math.PI) * 0.055;
+        // The viewmodel is camera-relative. Never derive its offset from world
+        // elevation: a valid raised platform previously pushed the blue arm
+        // through the near plane as if the player were permanently airborne.
+        const airborneDip = wasGrounded ? 0 : -0.025;
+        firstPersonModel.root.position.y = firstPersonRootBaseY + Math.sin(currentTime * 0.006) * 0.012 + airborneDip - Math.sin(landingPulse * Math.PI) * 0.055;
         firstPersonModel.weapon.rotation.x = firstPersonWeaponRotation.x - flash.material.opacity * 0.035;
         syncFpsMuzzlePosition();
         flash.position.copy(fpsMuzzlePosition);
