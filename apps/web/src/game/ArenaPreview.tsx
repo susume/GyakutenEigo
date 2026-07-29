@@ -1,6 +1,8 @@
 import { useEffect, useRef, useState, type PointerEvent as ReactPointerEvent } from "react";
 import * as THREE from "three";
 import {
+  ARENA_MAX_AIM_PITCH,
+  ARENA_MIN_AIM_PITCH,
   ARENA_SCALE,
   FREE_FOR_ALL_SPAWNS,
   TEMPLE_RUNOFF_MAIN_LEVEL_Y,
@@ -76,6 +78,7 @@ type ArenaLivePosition = {
   z: number;
   y?: number;
   facing: number;
+  pitch?: number;
   scoped?: boolean;
   zoomLevel?: number;
   sprinting?: boolean;
@@ -1708,7 +1711,12 @@ export default function ArenaPreview({
           }
           return;
         }
-        const launchPosition = { ...localToServerPosition(playerPosition, yaw), scoped: activeZoomLevel > 0, zoomLevel: activeZoomLevel };
+        const launchPosition = {
+          ...localToServerPosition(playerPosition, yaw),
+          pitch,
+          scoped: activeZoomLevel > 0,
+          zoomLevel: activeZoomLevel
+        };
         const authoritativeSnowballs = currentPlayerRef.current?.snowballs;
         const availableSnowballs = isFiniteNumber(authoritativeSnowballs)
           ? Math.floor(authoritativeSnowballs) - pendingShotsRef.current
@@ -1790,7 +1798,7 @@ export default function ArenaPreview({
         gamepadMove.forward = -leftY;
         gamepadMove.right = leftX;
         yaw -= rightX * 0.055;
-        pitch = clamp(pitch - rightY * 0.042, -0.85, 0.62);
+        pitch = clamp(pitch - rightY * 0.042, ARENA_MIN_AIM_PITCH, ARENA_MAX_AIM_PITCH);
         const firePressed = Boolean(gamepad.buttons[7]?.pressed || gamepad.buttons[0]?.pressed);
         const interactPressed = Boolean(gamepad.buttons[2]?.pressed);
         if (firePressed && !gamepadFireWasPressed) fire();
@@ -1839,7 +1847,11 @@ export default function ArenaPreview({
       const onMouseMove = (event: MouseEvent) => {
         if (document.pointerLockElement !== renderer.domElement) return;
         yaw -= event.movementX * 0.0022;
-        pitch = clamp(pitch - event.movementY * 0.0018, -0.85, 0.62);
+        pitch = clamp(
+          pitch - event.movementY * 0.0018,
+          ARENA_MIN_AIM_PITCH,
+          ARENA_MAX_AIM_PITCH
+        );
       };
       const onPointerLockChange = () => {
         const locked = document.pointerLockElement === renderer.domElement;
@@ -1888,7 +1900,11 @@ export default function ArenaPreview({
       const onTouchPointerMove = (event: PointerEvent) => {
         if (event.pointerType !== "touch" || event.pointerId !== touchLookPointerId) return;
         yaw -= (event.clientX - touchLookX) * TOUCH_LOOK_SENSITIVITY;
-        pitch = clamp(pitch - (event.clientY - touchLookY) * TOUCH_LOOK_SENSITIVITY, -0.85, 0.62);
+        pitch = clamp(
+          pitch - (event.clientY - touchLookY) * TOUCH_LOOK_SENSITIVITY,
+          ARENA_MIN_AIM_PITCH,
+          ARENA_MAX_AIM_PITCH
+        );
         touchLookDistance = Math.max(touchLookDistance, Math.hypot(event.clientX - touchLookStartX, event.clientY - touchLookStartY));
         touchLookX = event.clientX;
         touchLookY = event.clientY;
@@ -2075,7 +2091,11 @@ export default function ArenaPreview({
         const horizontalLook = Number(lookKeys.has("ArrowLeft")) - Number(lookKeys.has("ArrowRight"));
         const verticalLook = Number(lookKeys.has("ArrowUp")) - Number(lookKeys.has("ArrowDown"));
         yaw += horizontalLook * KEYBOARD_LOOK_SPEED * delta;
-        pitch = clamp(pitch + verticalLook * KEYBOARD_LOOK_SPEED * delta, -0.85, 0.62);
+        pitch = clamp(
+          pitch + verticalLook * KEYBOARD_LOOK_SPEED * delta,
+          ARENA_MIN_AIM_PITCH,
+          ARENA_MAX_AIM_PITCH
+        );
         if (inputPausedRef.current) {
           keys.clear();
           lookKeys.clear();

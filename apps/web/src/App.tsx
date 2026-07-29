@@ -175,6 +175,7 @@ type ArenaPositionPayload = {
   z: number;
   y?: number;
   facing: number;
+  pitch?: number;
   scoped?: boolean;
   zoomLevel?: number;
   sprinting?: boolean;
@@ -2890,7 +2891,7 @@ function StudentExperience({ onExit }: { onExit: () => void }) {
       setSession(nextSession);
       setPlayer((current) => nextSession.players.find((item) => item.id === (current?.id ?? activePlayerId)) ?? current);
     });
-    socket.on("remote_weapon_fire", (payload: { playerId?: string; x?: number; z?: number; facing?: number; gearId?: string }) => {
+    socket.on("remote_weapon_fire", (payload: { playerId?: string; x?: number; y?: number; z?: number; facing?: number; pitch?: number; gearId?: string }) => {
       if (payload.playerId === activePlayerId || !Number.isFinite(payload.x) || !Number.isFinite(payload.z)) return;
       const attacker = lastVisualSession.players.find((candidate) => candidate.id === payload.playerId);
       emitPlayerAnimation("fire", payload.playerId, attacker?.team);
@@ -2898,7 +2899,9 @@ function StudentExperience({ onExit }: { onExit: () => void }) {
         kind: "weapon_fire",
         x: payload.x!,
         z: payload.z!,
-        y: 1.15,
+        y: Number.isFinite(payload.y)
+          ? Math.max(0.12, payload.y! - ARENA_PLAYER_EYE_HEIGHT + 1.15)
+          : 1.15,
         team: attacker?.team,
         playerId: payload.playerId
       });

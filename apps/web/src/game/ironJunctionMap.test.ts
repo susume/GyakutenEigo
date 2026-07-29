@@ -345,7 +345,10 @@ test("Iron Junction overpass offers Heavy Blaster angles without controlling the
   );
   const visibleSamples = yardSamples.filter((to) => hasLineOfSight({ from, to, obstacles, padding: 0 }));
   assert.ok(visibleSamples.length >= 2, "the upper route should expose useful firing angles");
-  assert.ok(visibleSamples.length <= 8, "the upper route should not control the full yard");
+  assert.ok(
+    visibleSamples.length < yardSamples.length / 2,
+    "the upper route should expose firing angles without controlling half the yard"
+  );
   for (const spawn of [getTeamSpawnsForMap("iron_junction").blue[0], getTeamSpawnsForMap("iron_junction").red[0]]) {
     assert.equal(hasLineOfSight({ from, to: spawn, obstacles, padding: 0 }), false);
   }

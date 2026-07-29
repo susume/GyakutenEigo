@@ -1066,6 +1066,12 @@ export const TAG_OPPONENT_BONUS = 400;
 export const TAG_SCORE_DELTA = 5;
 export const TAG_RANGE = 18;
 export const SNOWBALL_HIT_RADIUS = 1.25;
+export const ARENA_MIN_AIM_PITCH = -0.85;
+export const ARENA_MAX_AIM_PITCH = 0.62;
+export const clampArenaAimPitch = (pitch: number | undefined) =>
+  Number.isFinite(pitch)
+    ? Math.max(ARENA_MIN_AIM_PITCH, Math.min(ARENA_MAX_AIM_PITCH, Number(pitch)))
+    : 0;
 export const ZOMBIE_HUMAN_MAX_ENERGY = 1000;
 export const ZOMBIE_HUMAN_CORRECT_ENERGY = 100;
 export const ZOMBIE_HUMAN_SPRINT_DRAIN_PER_SECOND = 20;
@@ -2333,7 +2339,12 @@ const pointInsideObstacle = (point: ArenaPosition, obstacle: ArenaObstacle, padd
   return point.x >= rect.minX && point.x <= rect.maxX && point.z >= rect.minZ && point.z <= rect.maxZ;
 };
 
-const segmentIntersectsRect = (start: ArenaPosition, end: ArenaPosition, obstacle: Extract<ArenaObstacle, { kind: "rect" }>, padding = 0) => {
+const segmentRectIntersectionInterval = (
+  start: ArenaPosition,
+  end: ArenaPosition,
+  obstacle: Extract<ArenaObstacle, { kind: "rect" }>,
+  padding = 0
+): [number, number] | undefined => {
   const rect = expandRect(obstacle, padding);
   const dx = end.x - start.x;
   const dz = end.z - start.z;
@@ -2344,7 +2355,7 @@ const segmentIntersectsRect = (start: ArenaPosition, end: ArenaPosition, obstacl
     [start.z, dz, rect.minZ, rect.maxZ]
   ] as const) {
     if (Math.abs(delta) < 0.0001) {
-      if (origin < min || origin > max) return false;
+      if (origin < min || origin > max) return undefined;
       continue;
     }
     const inverse = 1 / delta;
@@ -2353,47 +2364,57 @@ const segmentIntersectsRect = (start: ArenaPosition, end: ArenaPosition, obstacl
     if (t1 > t2) [t1, t2] = [t2, t1];
     tMin = Math.max(tMin, t1);
     tMax = Math.min(tMax, t2);
-    if (tMin > tMax) return false;
+    if (tMin > tMax) return undefined;
   }
-  return true;
+  return [tMin, tMax];
 };
 
-const distanceToShotSegment = ({
-  origin,
-  direction,
-  target,
-  range
-}: {
-  origin: ArenaPosition;
-  direction: { x: number; z: number };
-  target: ArenaPosition;
-  range: number;
-}) => {
-  const targetX = target.x - origin.x;
-  const targetZ = target.z - origin.z;
-  const projection = targetX * direction.x + targetZ * direction.z;
-  const clampedProjection = Math.min(range, Math.max(0, projection));
-  const closestX = direction.x * clampedProjection;
-  const closestZ = direction.z * clampedProjection;
-  return {
-    alongShot: projection,
-    distance: Math.hypot(targetX - closestX, targetZ - closestZ)
-  };
+const segmentCircleIntersectionInterval = (
+  start: ArenaPosition,
+  end: ArenaPosition,
+  obstacle: Extract<ArenaObstacle, { kind: "circle" }>,
+  padding = 0
+): [number, number] | undefined => {
+  const dx = end.x - start.x;
+  const dz = end.z - start.z;
+  const offsetX = start.x - obstacle.x;
+  const offsetZ = start.z - obstacle.z;
+  const radius = obstacle.radius + padding;
+  const a = dx * dx + dz * dz;
+  if (a <= 0.000001) {
+    return offsetX * offsetX + offsetZ * offsetZ <= radius * radius
+      ? [0, 1]
+      : undefined;
+  }
+  const b = 2 * (offsetX * dx + offsetZ * dz);
+  const c = offsetX * offsetX + offsetZ * offsetZ - radius * radius;
+  const discriminant = b * b - 4 * a * c;
+  if (discriminant < 0) return undefined;
+  const root = Math.sqrt(discriminant);
+  const first = (-b - root) / (2 * a);
+  const second = (-b + root) / (2 * a);
+  const tMin = Math.max(0, Math.min(first, second));
+  const tMax = Math.min(1, Math.max(first, second));
+  return tMin <= tMax ? [tMin, tMax] : undefined;
 };
 
 const segmentIntersectsObstacle = (start: ArenaPosition, end: ArenaPosition, obstacle: ArenaObstacle, padding = 0) => {
-  if (Number.isFinite(start.y) && Number.isFinite(end.y)) {
-    const segmentMinY = Math.min(Number(start.y), Number(end.y));
-    const segmentMaxY = Math.max(Number(start.y), Number(end.y));
-    if (Number.isFinite(obstacle.minY) && segmentMaxY < Number(obstacle.minY)) return false;
-    if (Number.isFinite(obstacle.maxY) && segmentMinY > Number(obstacle.maxY)) return false;
-  }
-  if (pointInsideObstacle(start, obstacle, padding) || pointInsideObstacle(end, obstacle, padding)) return true;
-  if (obstacle.kind === "rect") return segmentIntersectsRect(start, end, obstacle, padding);
-  const range = Math.hypot(end.x - start.x, end.z - start.z);
-  if (range <= 0.0001) return false;
-  const direction = { x: (end.x - start.x) / range, z: (end.z - start.z) / range };
-  return distanceToShotSegment({ origin: start, direction, target: obstacle, range }).distance <= obstacle.radius + padding;
+  const horizontalInterval = obstacle.kind === "rect"
+    ? segmentRectIntersectionInterval(start, end, obstacle, padding)
+    : segmentCircleIntersectionInterval(start, end, obstacle, padding);
+  if (!horizontalInterval) return false;
+  if (!Number.isFinite(start.y) || !Number.isFinite(end.y)) return true;
+
+  const [tMin, tMax] = horizontalInterval;
+  const startY = Number(start.y);
+  const dy = Number(end.y) - startY;
+  const entryY = startY + dy * tMin;
+  const exitY = startY + dy * tMax;
+  const intervalMinY = Math.min(entryY, exitY);
+  const intervalMaxY = Math.max(entryY, exitY);
+  if (Number.isFinite(obstacle.minY) && intervalMaxY < Number(obstacle.minY)) return false;
+  if (Number.isFinite(obstacle.maxY) && intervalMinY > Number(obstacle.maxY)) return false;
+  return true;
 };
 
 export const hasLineOfSight = ({
@@ -2457,6 +2478,7 @@ const distanceBetweenSegments = ({
   };
   return {
     alongFirst: firstAmount,
+    alongSecond: secondLengthSquared > Number.EPSILON ? secondAmount : 1,
     distance: Math.hypot(firstPoint.x - secondPoint.x, firstPoint.z - secondPoint.z),
     secondPoint
   };
@@ -2468,17 +2490,19 @@ export const resolveProjectileTarget = ({
   requestedTargetId,
   obstacles = ARENA_OBSTACLES,
   range = TAG_RANGE,
-  hitRadius = SNOWBALL_HIT_RADIUS
+  hitRadius = SNOWBALL_HIT_RADIUS,
+  aimPitch
 }: {
   attacker: Pick<PlayerSession, "id" | "team" | "isAlive" | "x" | "y" | "z" | "facing">;
   candidates: Array<
-    Pick<PlayerSession, "id" | "team" | "isAlive" | "connectionState" | "x" | "y" | "z" | "isBot">
+    Pick<PlayerSession, "id" | "team" | "isAlive" | "connectionState" | "x" | "y" | "z" | "isBot" | "crouching">
     & { previousX?: number; previousY?: number; previousZ?: number }
   >;
   requestedTargetId?: string;
   obstacles?: readonly ArenaObstacle[];
   range?: number;
   hitRadius?: number;
+  aimPitch?: number;
 }): ProjectileTargetResult => {
   if (!attacker.isAlive) return { ok: false, reason: "attacker_eliminated" };
   if (requestedTargetId && !candidates.some((candidate) => candidate.id === requestedTargetId)) {
@@ -2491,9 +2515,12 @@ export const resolveProjectileTarget = ({
     z: Number.isFinite(attacker.z) ? attacker.z! : 0,
     facing: Number.isFinite(attacker.facing) ? attacker.facing : 0
   };
+  const pitch = clampArenaAimPitch(aimPitch);
+  const horizontalAim = Math.cos(pitch);
   const direction = {
-    x: -Math.sin(origin.facing ?? 0),
-    z: -Math.cos(origin.facing ?? 0)
+    x: -Math.sin(origin.facing ?? 0) * horizontalAim,
+    y: Math.sin(pitch),
+    z: -Math.cos(origin.facing ?? 0) * horizontalAim
   };
 
   let selected: { id: string; alongShot: number; distance: number } | undefined;
@@ -2502,7 +2529,6 @@ export const resolveProjectileTarget = ({
     if (candidate.id === attacker.id) continue;
     if (requestedTargetId && candidate.id !== requestedTargetId) continue;
     if (candidate.connectionState === "disconnected" || !candidate.isAlive || candidate.team === attacker.team) continue;
-    if (Math.abs((candidate.y ?? 0) - origin.y) > 5.5) continue;
     const target = {
       x: Number.isFinite(candidate.x) ? candidate.x! : 0,
       y: Number.isFinite(candidate.y) ? candidate.y! : 0,
@@ -2522,17 +2548,31 @@ export const resolveProjectileTarget = ({
       secondStart: previousTarget,
       secondEnd: target
     });
+    const alongShot = rewoundHit.alongFirst * range;
+    const shotY = origin.y + direction.y * alongShot;
+    const targetEyeHeight = candidate.crouching === true
+      ? ARENA_PLAYER_CROUCH_EYE_HEIGHT
+      : ARENA_PLAYER_EYE_HEIGHT;
+    const rewoundEyeY = previousTarget.y
+      + (target.y - previousTarget.y) * rewoundHit.alongSecond;
+    const targetBodyMinY = rewoundEyeY - targetEyeHeight + 0.08;
+    const targetBodyMaxY = targetBodyMinY + ARENA_PLAYER_BODY_HEIGHT;
+    const verticalDistance = shotY < targetBodyMinY
+      ? targetBodyMinY - shotY
+      : shotY > targetBodyMaxY
+        ? shotY - targetBodyMaxY
+        : 0;
     const hit = {
-      alongShot: rewoundHit.alongFirst * range,
-      distance: rewoundHit.distance
+      alongShot,
+      distance: Math.hypot(rewoundHit.distance, verticalDistance)
     };
     if (hit.alongShot < 0 || hit.alongShot > range || hit.distance > hitRadius) continue;
-    const rewindTarget = {
-      x: rewoundHit.secondPoint.x,
-      y: target.y,
-      z: rewoundHit.secondPoint.z
+    const shotPoint = {
+      x: origin.x + direction.x * hit.alongShot,
+      y: shotY,
+      z: origin.z + direction.z * hit.alongShot
     };
-    if (!hasLineOfSight({ from: origin, to: rewindTarget, obstacles })) {
+    if (!hasLineOfSight({ from: origin, to: shotPoint, obstacles })) {
       blockedByCover = true;
       continue;
     }
@@ -2704,7 +2744,6 @@ export const resolveBotAttackTarget = ({
   let selected: { id: string; distance: number } | undefined;
   for (const candidate of candidates) {
     if (candidate.id === bot.id || candidate.isBot || candidate.connectionState === "disconnected" || !candidate.isAlive || candidate.team === bot.team) continue;
-    if (Math.abs((candidate.y ?? 0) - botPosition.y) > 5.5) continue;
     const targetPosition = { x: candidate.x ?? 0, y: candidate.y ?? 0, z: candidate.z ?? 0 };
     const distance = Math.hypot(targetPosition.x - botPosition.x, targetPosition.z - botPosition.z);
     if (distance > range || !hasLineOfSight({ from: botPosition, to: targetPosition, obstacles })) continue;

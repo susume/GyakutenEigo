@@ -15,6 +15,8 @@ import {
   ZOMBIE_HUMAN_MAX_ENERGY,
   ARENA_LIMIT_X,
   ARENA_LIMIT_Z,
+  ARENA_MAX_AIM_PITCH,
+  ARENA_MIN_AIM_PITCH,
   ARENA_SCALE,
   ARENA_PLAYER_CROUCH_EYE_HEIGHT,
   ARENA_PLAYER_EYE_HEIGHT,
@@ -27,6 +29,7 @@ import {
   buildReportRows,
   buildScoreboardRows,
   clampArenaPosition,
+  clampArenaAimPitch,
   canStartRound,
   canPlayerFireInMode,
   canPlaceFlag,
@@ -375,6 +378,134 @@ test("resolveProjectileTarget finds bots and players along the swept snowball pa
     ok: true,
     targetId: "bot-1"
   });
+});
+
+test("pitch-aware projectiles hit between elevated and lower combat levels", () => {
+  const upperAttacker = makePlayer({
+    id: "upper-attacker",
+    team: "blue",
+    x: 0,
+    y: 22.21,
+    z: 0,
+    facing: -Math.PI / 2
+  });
+  const lowerTarget = makePlayer({
+    id: "lower-target",
+    team: "red",
+    x: 30,
+    y: ARENA_PLAYER_EYE_HEIGHT,
+    z: 0
+  });
+  const downwardPitch = Math.atan2(
+    Number(lowerTarget.y) - Number(upperAttacker.y),
+    30
+  );
+
+  assert.deepEqual(
+    resolveProjectileTarget({
+      attacker: upperAttacker,
+      candidates: [lowerTarget],
+      obstacles: [],
+      range: 40
+    }),
+    { ok: false, reason: "no_valid_target" }
+  );
+  assert.deepEqual(
+    resolveProjectileTarget({
+      attacker: upperAttacker,
+      candidates: [lowerTarget],
+      obstacles: [],
+      range: 40,
+      aimPitch: downwardPitch
+    }),
+    { ok: true, targetId: "lower-target" }
+  );
+
+  const lowerAttacker = makePlayer({
+    id: "lower-attacker",
+    team: "blue",
+    x: 0,
+    y: ARENA_PLAYER_EYE_HEIGHT,
+    z: 0,
+    facing: -Math.PI / 2
+  });
+  const upperTarget = makePlayer({
+    id: "upper-target",
+    team: "red",
+    x: 30,
+    y: 22.21,
+    z: 0
+  });
+  assert.deepEqual(
+    resolveProjectileTarget({
+      attacker: lowerAttacker,
+      candidates: [upperTarget],
+      obstacles: [],
+      range: 40,
+      aimPitch: Math.atan2(
+        Number(upperTarget.y) - Number(lowerAttacker.y),
+        30
+      )
+    }),
+    { ok: true, targetId: "upper-target" }
+  );
+});
+
+test("sloped projectile sightlines clear low cover but remain blocked by tall cover", () => {
+  const attacker = makePlayer({
+    id: "upper-attacker",
+    team: "blue",
+    x: 0,
+    y: 22.21,
+    z: 0,
+    facing: -Math.PI / 2
+  });
+  const target = makePlayer({
+    id: "lower-target",
+    team: "red",
+    x: 30,
+    y: ARENA_PLAYER_EYE_HEIGHT,
+    z: 0
+  });
+  const aimPitch = Math.atan2(Number(target.y) - Number(attacker.y), 30);
+  const lowCover = {
+    id: "low-cover",
+    kind: "rect" as const,
+    x: 15,
+    z: 0,
+    width: 2,
+    depth: 8,
+    minY: 0,
+    maxY: 10
+  };
+  const tallCover = { ...lowCover, id: "tall-cover", maxY: 16 };
+
+  assert.deepEqual(
+    resolveProjectileTarget({
+      attacker,
+      candidates: [target],
+      obstacles: [lowCover],
+      range: 40,
+      aimPitch
+    }),
+    { ok: true, targetId: "lower-target" }
+  );
+  assert.deepEqual(
+    resolveProjectileTarget({
+      attacker,
+      candidates: [target],
+      obstacles: [tallCover],
+      range: 40,
+      aimPitch
+    }),
+    { ok: false, reason: "blocked_by_cover" }
+  );
+});
+
+test("server aim pitch remains bounded to the playable camera range", () => {
+  assert.equal(clampArenaAimPitch(-99), ARENA_MIN_AIM_PITCH);
+  assert.equal(clampArenaAimPitch(99), ARENA_MAX_AIM_PITCH);
+  assert.equal(clampArenaAimPitch(Number.NaN), 0);
 });
 
 test("resolveProjectileTarget rewinds across a bot's last authoritative movement step", () => {

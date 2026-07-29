@@ -20,6 +20,7 @@ import {
   ZOMBIE_HUMAN_WALK_MAX_SPEED,
   awardZombieHumanEnergy,
   canPlayerFireInMode,
+  clampArenaAimPitch,
   clampArenaPosition,
   ARENA_SCALE,
   ARENA_PLAYER_CROUCH_EYE_HEIGHT,
@@ -1558,14 +1559,23 @@ const botFire = (
   });
   bot.facing = aim.facing;
   if (!aim.aligned) return false;
+  const botEyeY = bot.y
+    ?? getArenaEyeHeight(session.settings.mapId, bot.x ?? 0, bot.z ?? 0);
+  const targetEyeY = target.y
+    ?? getArenaEyeHeight(session.settings.mapId, target.x ?? 0, target.z ?? 0);
+  const aimPitch = clampArenaAimPitch(
+    Math.atan2(targetEyeY - botEyeY, Math.max(0.001, distance))
+  );
   const snowballUse = resolveSnowballUse(bot);
   if (!snowballUse.ok) return false;
   bot.snowballs = snowballUse.nextSnowballs;
   io.to(session.sessionCode).emit("remote_weapon_fire", {
     playerId: bot.id,
     x: bot.x ?? sessionSpawn(session, bot.team).x,
+    y: botEyeY,
     z: bot.z ?? sessionSpawn(session, bot.team).z,
     facing: bot.facing ?? sessionSpawn(session, bot.team).facing,
+    pitch: aimPitch,
     gearId: weaponId,
     scoped: weaponId === "power_blaster" && brain.role === "overwatch",
     zoomLevel: weaponId === "power_blaster" && brain.role === "overwatch" ? 1 : 0
@@ -1576,7 +1586,8 @@ const botFire = (
     requestedTargetId: target.id,
     range: getGearRange(weaponId),
     hitRadius: getGearHitRadius(weaponId, weaponId === "power_blaster" && brain.role === "overwatch" ? 1 : 0),
-    obstacles
+    obstacles,
+    aimPitch
   });
   const shotDelay = Math.max(
     getGearFireCooldownMs(weaponId),
@@ -3222,7 +3233,7 @@ io.on("connection", (socket) => {
     broadcastPlayerPosition(session, authoritativePosition);
   });
 
-  socket.on("fire_action", (payload: { code?: string; playerId?: string; playerToken?: string; requestId?: string; x?: number; z?: number; y?: number; facing?: number; targetId?: string; scoped?: boolean; zoomLevel?: number }) => {
+  socket.on("fire_action", (payload: { code?: string; playerId?: string; playerToken?: string; requestId?: string; x?: number; z?: number; y?: number; facing?: number; pitch?: number; targetId?: string; scoped?: boolean; zoomLevel?: number }) => {
     const session = getSessionByCode(String(payload.code ?? ""));
     const attacker = session?.players.find((candidate) => candidate.id === payload.playerId);
     if (!session || !attacker || !hasPlayerAccess(session, attacker, payload.playerToken)) return;
@@ -3259,12 +3270,19 @@ io.on("connection", (socket) => {
     }
     attacker.snowballs = snowballUse.nextSnowballs;
     const weaponId = getPlayerWeaponIdForMode(session.settings.gameMode, attacker);
+    const aimPitch = clampArenaAimPitch(payload.pitch);
     playerNextFireAt.set(attacker.id, currentMs + getGearFireCooldownMs(weaponId));
     socket.to(session.sessionCode).emit("remote_weapon_fire", {
       playerId: attacker.id,
       x: attacker.x ?? sessionSpawn(session, attacker.team).x,
+      y: attacker.y ?? getArenaEyeHeight(
+        session.settings.mapId,
+        attacker.x ?? sessionSpawn(session, attacker.team).x,
+        attacker.z ?? sessionSpawn(session, attacker.team).z
+      ),
       z: attacker.z ?? sessionSpawn(session, attacker.team).z,
       facing: attacker.facing ?? sessionSpawn(session, attacker.team).facing,
+      pitch: aimPitch,
       gearId: weaponId,
       scoped: payload.scoped === true,
       zoomLevel: payload.zoomLevel ?? 0
@@ -3276,7 +3294,8 @@ io.on("connection", (socket) => {
       requestedTargetId: typeof payload.targetId === "string" && payload.targetId.trim() ? payload.targetId : undefined,
       range: getGearRange(weaponId),
       hitRadius: getGearHitRadius(weaponId, typeof payload.zoomLevel === "number" ? payload.zoomLevel : payload.scoped === true),
-      obstacles: getArenaObstacles(session.settings.mapId)
+      obstacles: getArenaObstacles(session.settings.mapId),
+      aimPitch
     });
     if (!targetSelection.ok) {
       broadcastSession(session);
