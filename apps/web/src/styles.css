@@ -5492,6 +5492,28 @@ body .folder-row-actions .edit-set {
   font-size: 0.84rem;
 }
 
+.game-preferences-panel input[type="range"] {
+  accent-color: var(--color-action);
+}
+
+.game-preferences-panel input[type="range"]:disabled {
+  cursor: not-allowed;
+  opacity: 0.48;
+}
+
+.audio-credit {
+  margin: 0;
+  border-top: 1px solid var(--color-border);
+  padding-top: var(--space-3);
+  color: var(--color-text-muted);
+  font-size: 0.82rem;
+}
+
+.audio-credit a {
+  color: var(--color-action);
+  font-weight: 800;
+}
+
 .settings-help {
   margin: calc(var(--space-2) * -1) 0 0 30px;
 }

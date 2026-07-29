@@ -1,6 +1,7 @@
 import test from "node:test";
 import assert from "node:assert/strict";
 import {
+  BGM_ASSET,
   BGM_PATTERN,
   GAME_AUDIO_EVENT_CUES,
   GAME_AUDIO_ASSETS,
@@ -108,12 +109,13 @@ test("snowball fire cue is a deep whoosh instead of a sharp beep", () => {
 });
 
 test("background music pattern is a quiet looping phrase", () => {
+  assert.equal(BGM_ASSET, "/assets/audio/game/tank-metal.mp3");
   assert.ok(BGM_PATTERN.length >= 8);
   assert.ok(BGM_PATTERN.every((note) => note.frequency > 0 && note.durationMs > 0 && note.gain <= 0.04));
   assert.ok(BGM_PATTERN.every((note) => note.frequency <= 180), "the arena bed should stay low and unobtrusive");
 });
 
-test("core feedback cues use the bundled CC0 sample palette", () => {
+test("core feedback cues use the bundled sample palette", () => {
   const sampleCues: GameAudioCue[] = [
     "walk_step",
     "run_step",
@@ -139,4 +141,17 @@ test("core feedback cues use the bundled CC0 sample palette", () => {
     assert.ok(definition.files.length > 0, `${cue} should have at least one sample variation`);
     assert.ok(definition.gain > 0 && definition.gain <= 1, `${cue} should have a safe mix gain`);
   }
+});
+
+test("supplied weapon recordings replace the default and heavy fire samples", () => {
+  assert.deepEqual(GAME_AUDIO_ASSETS.fire?.files, ["/assets/audio/game/default-gun-sound.mp3"]);
+  assert.deepEqual(GAME_AUDIO_ASSETS.heavy_fire?.files, ["/assets/audio/game/heavy-gun-sound.mp3"]);
+});
+
+test("footstep sample levels are reduced by half", () => {
+  assert.equal(GAME_AUDIO_ASSETS.walk_step?.gain, 0.34);
+  assert.equal(GAME_AUDIO_ASSETS.run_step?.gain, 0.39);
+  assert.equal(GAME_AUDIO_ASSETS.crouch_step?.gain, 0.21);
+  assert.equal(GAME_AUDIO_ASSETS.surface_stone?.gain, 0.32);
+  assert.equal(GAME_AUDIO_ASSETS.surface_metal?.gain, 0.35);
 });

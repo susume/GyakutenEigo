@@ -51,9 +51,9 @@ type SampleDefinition = {
 type AudioSampleKey = GameAudioCue | `surface_${MovementSurface}`;
 
 export const GAME_AUDIO_CUES: Record<GameAudioCue, ToneDefinition> = {
-  walk_step: { frequency: 105, durationMs: 54, gain: 0.035, type: "sine", frequencyEnd: 72 },
-  run_step: { frequency: 132, durationMs: 48, gain: 0.045, type: "sine", frequencyEnd: 82 },
-  crouch_step: { frequency: 78, durationMs: 68, gain: 0.024, type: "sine", frequencyEnd: 56 },
+  walk_step: { frequency: 105, durationMs: 54, gain: 0.0175, type: "sine", frequencyEnd: 72 },
+  run_step: { frequency: 132, durationMs: 48, gain: 0.0225, type: "sine", frequencyEnd: 82 },
+  crouch_step: { frequency: 78, durationMs: 68, gain: 0.012, type: "sine", frequencyEnd: 56 },
   jump: { frequency: 210, durationMs: 120, gain: 0.045, type: "triangle", frequencyEnd: 340 },
   land: { frequency: 88, durationMs: 96, gain: 0.048, type: "sine", frequencyEnd: 48 },
   fire: { frequency: 150, durationMs: 260, gain: 0.06, type: "sine", frequencyEnd: 55, noise: true },
@@ -83,19 +83,22 @@ export const BGM_PATTERN: ToneDefinition[] = [
 
 const AUDIO_ROOT = "/assets/audio/kenney/";
 const file = (name: string) => `${AUDIO_ROOT}${name}`;
+export const BGM_ASSET = "/assets/audio/game/tank-metal.mp3";
+const DEFAULT_GUN_ASSET = "/assets/audio/game/default-gun-sound.mp3";
+const HEAVY_GUN_ASSET = "/assets/audio/game/heavy-gun-sound.mp3";
 
 /**
- * CC0 Kenney samples are deliberately kept in a small manifest so the game
- * can preload one coherent palette and fall back to the original synth cues
- * if a browser cannot decode OGG.
+ * Bundled samples are deliberately kept in a small manifest so the game can
+ * preload one coherent palette and fall back to synth cues if a browser cannot
+ * decode a recording.
  */
 export const GAME_AUDIO_ASSETS: Partial<Record<AudioSampleKey, SampleDefinition>> = {
-  walk_step: { files: ["footstep_snow_000.ogg", "footstep_snow_001.ogg", "footstep_snow_002.ogg", "footstep_snow_003.ogg", "footstep_snow_004.ogg"], gain: 0.68, playbackRate: 1, pitchVariance: 0.06, maxVoices: 3 },
-  run_step: { files: ["footstep_snow_000.ogg", "footstep_snow_001.ogg", "footstep_snow_002.ogg", "footstep_snow_003.ogg", "footstep_snow_004.ogg"], gain: 0.78, playbackRate: 1.14, pitchVariance: 0.07, maxVoices: 3 },
-  crouch_step: { files: ["footstep_snow_000.ogg", "footstep_snow_001.ogg", "footstep_snow_002.ogg", "footstep_snow_003.ogg", "footstep_snow_004.ogg"], gain: 0.42, playbackRate: 0.82, pitchVariance: 0.04, maxVoices: 2 },
+  walk_step: { files: ["footstep_snow_000.ogg", "footstep_snow_001.ogg", "footstep_snow_002.ogg", "footstep_snow_003.ogg", "footstep_snow_004.ogg"], gain: 0.34, playbackRate: 1, pitchVariance: 0.06, maxVoices: 3 },
+  run_step: { files: ["footstep_snow_000.ogg", "footstep_snow_001.ogg", "footstep_snow_002.ogg", "footstep_snow_003.ogg", "footstep_snow_004.ogg"], gain: 0.39, playbackRate: 1.14, pitchVariance: 0.07, maxVoices: 3 },
+  crouch_step: { files: ["footstep_snow_000.ogg", "footstep_snow_001.ogg", "footstep_snow_002.ogg", "footstep_snow_003.ogg", "footstep_snow_004.ogg"], gain: 0.21, playbackRate: 0.82, pitchVariance: 0.04, maxVoices: 2 },
   land: { files: ["impactSoft_medium_002.ogg"], gain: 0.5, playbackRate: 0.74, pitchVariance: 0.04, maxVoices: 2 },
-  fire: { files: ["impactSoft_medium_000.ogg", "impactSoft_medium_001.ogg", "impactSoft_medium_002.ogg"], gain: 0.46, playbackRate: 1.08, pitchVariance: 0.1, maxVoices: 3 },
-  heavy_fire: { files: ["impactMetal_heavy_000.ogg"], gain: 0.72, playbackRate: 0.82, pitchVariance: 0.04, maxVoices: 2 },
+  fire: { files: [DEFAULT_GUN_ASSET], gain: 0.68, playbackRate: 1, maxVoices: 6 },
+  heavy_fire: { files: [HEAVY_GUN_ASSET], gain: 0.78, playbackRate: 1, maxVoices: 3 },
   empty_fire: { files: ["switch12.ogg", "switch21.ogg"], gain: 0.54, playbackRate: 1, pitchVariance: 0.04, maxVoices: 2 },
   hit_confirm: { files: ["impactPunch_medium_000.ogg", "impactPunch_medium_001.ogg"], gain: 0.64, playbackRate: 1.08, pitchVariance: 0.08, maxVoices: 4 },
   player_tagged: { files: ["impactSoft_heavy_000.ogg"], gain: 0.58, playbackRate: 0.9, pitchVariance: 0.05, maxVoices: 3 },
@@ -109,11 +112,11 @@ export const GAME_AUDIO_ASSETS: Partial<Record<AudioSampleKey, SampleDefinition>
 };
 
 Object.assign(GAME_AUDIO_ASSETS, {
-  surface_wood: { files: ["footstep_wood_000.ogg", "footstep_wood_001.ogg", "footstep_wood_002.ogg"], gain: 0.58, playbackRate: 1, pitchVariance: 0.05, maxVoices: 3 },
-  surface_stone: { files: ["footstep_concrete_000.ogg", "footstep_concrete_001.ogg", "footstep_concrete_002.ogg"], gain: 0.64, playbackRate: 1, pitchVariance: 0.05, maxVoices: 3 },
-  surface_sand: { files: ["footstep_snow_000.ogg", "footstep_snow_001.ogg", "footstep_snow_002.ogg"], gain: 0.52, playbackRate: 0.94, pitchVariance: 0.05, maxVoices: 3 },
-  surface_metal: { files: ["footstep_concrete_000.ogg", "footstep_concrete_001.ogg", "footstep_concrete_002.ogg"], gain: 0.7, playbackRate: 1.12, pitchVariance: 0.05, maxVoices: 3 },
-  surface_water: { files: ["impactSoft_medium_000.ogg", "impactSoft_medium_001.ogg"], gain: 0.24, playbackRate: 1.1, pitchVariance: 0.08, maxVoices: 2 }
+  surface_wood: { files: ["footstep_wood_000.ogg", "footstep_wood_001.ogg", "footstep_wood_002.ogg"], gain: 0.29, playbackRate: 1, pitchVariance: 0.05, maxVoices: 3 },
+  surface_stone: { files: ["footstep_concrete_000.ogg", "footstep_concrete_001.ogg", "footstep_concrete_002.ogg"], gain: 0.32, playbackRate: 1, pitchVariance: 0.05, maxVoices: 3 },
+  surface_sand: { files: ["footstep_snow_000.ogg", "footstep_snow_001.ogg", "footstep_snow_002.ogg"], gain: 0.26, playbackRate: 0.94, pitchVariance: 0.05, maxVoices: 3 },
+  surface_metal: { files: ["footstep_concrete_000.ogg", "footstep_concrete_001.ogg", "footstep_concrete_002.ogg"], gain: 0.35, playbackRate: 1.12, pitchVariance: 0.05, maxVoices: 3 },
+  surface_water: { files: ["impactSoft_medium_000.ogg", "impactSoft_medium_001.ogg"], gain: 0.12, playbackRate: 1.1, pitchVariance: 0.08, maxVoices: 2 }
 } satisfies Partial<Record<AudioSampleKey, SampleDefinition>>);
 
 export type AudioEventCue =
@@ -321,11 +324,14 @@ class GameAudioController {
   private masterGain: GainNode | null = null;
   private sfxGain: GainNode | null = null;
   private musicGain: GainNode | null = null;
+  private bgmSource: AudioBufferSourceNode | null = null;
+  private bgmBufferPromise: Promise<AudioBuffer | null> | null = null;
   private bgmTimer: number | null = null;
   private bgmIndex = 0;
   private bgmActive = false;
   private lastStepAt = 0;
   private muted = false;
+  private sfxVolume = 0.86;
   private musicVolume = 0.16;
   private assetLoadPromise: Promise<void> | null = null;
   private assetLoadScheduled = false;
@@ -342,7 +348,7 @@ class GameAudioController {
       const audio = this.ensureAudio();
       if (audio?.state === "suspended") void audio.resume();
       if (audio) this.scheduleAssetLoad(audio);
-      if (this.bgmActive) this.scheduleBgm();
+      if (audio && this.bgmActive) void this.startBgmTrack(audio);
     } catch {
       // Browsers may block audio until a trusted user gesture.
     }
@@ -351,6 +357,7 @@ class GameAudioController {
   setBgmActive(active: boolean) {
     this.bgmActive = active;
     if (!active) {
+      this.stopBgmTrack();
       this.clearBgmTimer();
       return;
     }
@@ -369,6 +376,14 @@ class GameAudioController {
     this.musicVolume = nextVolume;
     if (this.audio && this.musicGain) {
       this.musicGain.gain.setTargetAtTime(nextVolume, this.audio.currentTime, 0.02);
+    }
+  }
+
+  setSfxVolume(volume: number) {
+    const nextVolume = Math.max(0, Math.min(1, Number.isFinite(volume) ? volume : 0.86));
+    this.sfxVolume = nextVolume;
+    if (this.audio && this.sfxGain) {
+      this.sfxGain.gain.setTargetAtTime(nextVolume, this.audio.currentTime, 0.02);
     }
   }
 
@@ -402,12 +417,10 @@ class GameAudioController {
     }
     if (cue === "weapon_fire_quick" || cue === "weapon_fire_quick_remote") {
       this.play("fire", spatial);
-      this.playTone(GAME_AUDIO_EVENT_CUES[cue], spatial);
       return;
     }
     if (cue === "weapon_fire_heavy_remote") {
       this.play("heavy_fire", spatial);
-      this.playTone(GAME_AUDIO_EVENT_CUES[cue], spatial);
       return;
     }
     const mappedSample: Partial<Record<AudioEventCue, GameAudioCue>> = {
@@ -431,9 +444,6 @@ class GameAudioController {
 
   playHeavyFire() {
     this.play("heavy_fire");
-    if (typeof window === "undefined") return;
-    window.setTimeout(() => this.playTone({ frequency: 58, durationMs: 520, gain: 0.035, type: "sine", frequencyEnd: 32, noise: true }), 140);
-    window.setTimeout(() => this.playTone({ frequency: 44, durationMs: 620, gain: 0.022, type: "sine", frequencyEnd: 26 }), 310);
   }
 
   playMovementStep(mode: MovementAudioMode, nowMs: number, surface: MovementSurface = "snow") {
@@ -480,7 +490,7 @@ class GameAudioController {
       this.musicGain = this.audio.createGain();
       this.noiseBuffer = null;
       this.masterGain.gain.setValueAtTime(this.muted ? 0 : 0.72, this.audio.currentTime);
-      this.sfxGain.gain.setValueAtTime(0.86, this.audio.currentTime);
+      this.sfxGain.gain.setValueAtTime(this.sfxVolume, this.audio.currentTime);
       this.musicGain.gain.setValueAtTime(this.musicVolume, this.audio.currentTime);
       this.sfxGain.connect(this.masterGain);
       this.musicGain.connect(this.masterGain);
@@ -519,7 +529,7 @@ class GameAudioController {
     if (existing) return existing;
     const loading = (async () => {
       try {
-        const response = await fetch(file(asset), { cache: "force-cache" });
+        const response = await fetch(asset.startsWith("/") ? asset : file(asset), { cache: "force-cache" });
         if (!response.ok) return null;
         return await audio.decodeAudioData(await response.arrayBuffer());
       } catch {
@@ -682,6 +692,41 @@ class GameAudioController {
       }, note.durationMs + 110);
     };
     playNext();
+  }
+
+  private async startBgmTrack(audio: AudioContext) {
+    if (this.bgmSource || !this.bgmActive) return;
+    this.bgmBufferPromise ??= this.loadAssetBuffer(audio, BGM_ASSET);
+    const buffer = await this.bgmBufferPromise;
+    if (!buffer) {
+      this.scheduleBgm();
+      return;
+    }
+    if (!this.bgmActive || this.bgmSource || !this.musicGain || this.audio !== audio) return;
+    this.clearBgmTimer();
+    const source = audio.createBufferSource();
+    source.buffer = buffer;
+    source.loop = true;
+    source.connect(this.musicGain);
+    source.onended = () => {
+      source.disconnect();
+      if (this.bgmSource === source) this.bgmSource = null;
+    };
+    this.bgmSource = source;
+    source.start();
+  }
+
+  private stopBgmTrack() {
+    const source = this.bgmSource;
+    this.bgmSource = null;
+    if (!source) return;
+    source.onended = null;
+    try {
+      source.stop();
+    } catch {
+      // The track may already have ended while the tab was being hidden.
+    }
+    source.disconnect();
   }
 
   private playMusicTone(definition: ToneDefinition) {
