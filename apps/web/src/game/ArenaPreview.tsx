@@ -723,7 +723,15 @@ export default function ArenaPreview({
     };
 
     const addBlockDetail = (block: (typeof arenaMap.blocks)[number]) => {
-      if (!block.style || qualityConfig.detail === 0) return;
+      if (
+        !block.style ||
+        (qualityConfig.detail === 0 &&
+          block.style !== "stair" &&
+          block.style !== "railcar" &&
+          block.style !== "trackbed")
+      ) {
+        return;
+      }
       const detail = new THREE.Group();
       detail.position.set(block.x, (block.y ?? block.h / 2) - block.h / 2, block.z);
       detail.rotation.y = block.rotationY ?? 0;
@@ -839,6 +847,51 @@ export default function ArenaPreview({
         }
       }
 
+      if (block.style === "stair") {
+        const alongX = block.w < block.d;
+        const nosing = addDecorativeMesh(
+          detail,
+          new THREE.BoxGeometry(
+            alongX ? block.w * 0.22 : block.w * 0.96,
+            0.12,
+            alongX ? block.d * 0.96 : block.d * 0.22
+          ),
+          "#d99a3b",
+          "accent"
+        );
+        nosing.position.set(
+          alongX ? block.w * 0.37 : 0,
+          block.h + 0.065,
+          alongX ? 0 : block.d * 0.37
+        );
+      }
+
+      if (block.style === "trackbed") {
+        for (const z of [-block.d * 0.28, block.d * 0.28]) {
+          const rail = addDecorativeMesh(
+            detail,
+            new THREE.BoxGeometry(block.w * 0.98, 0.2, 0.2),
+            "#adb2ad",
+            "metal"
+          );
+          rail.position.set(0, block.h + 0.18, z);
+        }
+        const tieCount = qualityConfig.detail === 0 ? 18 : 30;
+        for (let index = 0; index < tieCount; index += 1) {
+          const tie = addDecorativeMesh(
+            detail,
+            new THREE.BoxGeometry(0.34, 0.14, block.d * 0.88),
+            "#574337",
+            "wood"
+          );
+          tie.position.set(
+            -block.w * 0.47 + (block.w * 0.94 * index) / (tieCount - 1),
+            block.h + 0.07,
+            0
+          );
+        }
+      }
+
       if (block.style === "tower") {
         const battlementCount = Math.max(3, Math.min(6, Math.floor(block.w / 3.5)));
         for (let index = 0; index < battlementCount; index += 1) {
@@ -864,8 +917,19 @@ export default function ArenaPreview({
       }
 
       if (block.style === "railcar") {
-        const roof = addDecorativeMesh(detail, new THREE.BoxGeometry(block.w * 0.88, 0.28, block.d * 0.9), "#a85c3d", "metal");
-        roof.position.y = block.h + 0.2;
+        const isLocomotive = block.id.includes("locomotive");
+        const isBrakeVan = block.id.includes("damaged");
+        const chassis = addDecorativeMesh(detail, new THREE.BoxGeometry(block.w * 0.96, 0.52, block.d * 0.82), "#20282b", "metal");
+        chassis.position.y = 1.22;
+        const lowerSill = addDecorativeMesh(detail, new THREE.BoxGeometry(block.w * 0.94, 0.32, block.d * 1.02), "#303a3d", "metal");
+        lowerSill.position.y = 1.78;
+        const roof = addDecorativeMesh(
+          detail,
+          new THREE.BoxGeometry(block.w * 0.94, 0.34, block.d * 1.04),
+          isLocomotive ? "#273337" : "#6f4537",
+          "metal"
+        );
+        roof.position.y = block.h + 0.18;
         for (const x of [-block.w * 0.32, -block.w * 0.22, block.w * 0.22, block.w * 0.32]) {
           for (const z of [-block.d * 0.53, block.d * 0.53]) {
             const wheel = addDecorativeMesh(detail, new THREE.CylinderGeometry(0.82, 0.82, 0.32, 12), "#202729", "metal");
@@ -884,17 +948,46 @@ export default function ArenaPreview({
           bumper.rotation.z = Math.PI / 2;
           bumper.position.set(x + Math.sign(x) * 0.4, 1.25, 0);
         }
-        const door = addDecorativeMesh(detail, new THREE.BoxGeometry(block.w * 0.26, block.h * 0.58, 0.18), block.color, "metal");
-        door.position.set(0, block.h * 0.54, block.d * 0.51);
-        for (const x of [-block.w * 0.11, block.w * 0.11]) {
-          const ladder = addDecorativeMesh(detail, new THREE.BoxGeometry(0.16, block.h * 0.68, 0.16), "#d19a55", "metal");
-          ladder.position.set(x, block.h * 0.47, -block.d * 0.53);
+        if (!isLocomotive) {
+          const ribCount = Math.max(5, Math.min(9, Math.round(block.w / 5.5)));
+          for (let index = 0; index < ribCount; index += 1) {
+            const x = -block.w * 0.43 + (block.w * 0.86 * index) / Math.max(1, ribCount - 1);
+            if (Math.abs(x) < block.w * 0.17) continue;
+            for (const z of [-block.d * 0.515, block.d * 0.515]) {
+              const rib = addDecorativeMesh(detail, new THREE.BoxGeometry(0.16, block.h * 0.68, 0.18), "#313b3e", "metal");
+              rib.position.set(x, block.h * 0.56, z);
+            }
+          }
+          for (const z of [-block.d * 0.525, block.d * 0.525]) {
+            const door = addDecorativeMesh(detail, new THREE.BoxGeometry(block.w * 0.3, block.h * 0.64, 0.2), isBrakeVan ? "#6f3f32" : block.color, "metal");
+            door.position.set(0, block.h * 0.55, z);
+            const doorTrack = addDecorativeMesh(detail, new THREE.BoxGeometry(block.w * 0.38, 0.18, 0.25), "#252e31", "metal");
+            doorTrack.position.set(0, block.h * 0.88, z);
+            for (const x of [-block.w * 0.12, -block.w * 0.04, block.w * 0.04, block.w * 0.12]) {
+              const doorRib = addDecorativeMesh(detail, new THREE.BoxGeometry(0.11, block.h * 0.56, 0.24), "#394447", "metal");
+              doorRib.position.set(x, block.h * 0.54, z + Math.sign(z) * 0.02);
+            }
+          }
         }
-        if (block.id.includes("locomotive")) {
+        for (const x of [-block.w * 0.44, block.w * 0.44]) {
+          const endLadder = addDecorativeMesh(detail, new THREE.BoxGeometry(0.16, block.h * 0.62, 0.16), "#d19a55", "metal");
+          endLadder.position.set(x, block.h * 0.48, -block.d * 0.53);
+        }
+        if (isLocomotive) {
           const cab = addDecorativeMesh(detail, new THREE.BoxGeometry(block.w * 0.28, block.h * 0.78, block.d * 0.86), "#313d41", "metal");
           cab.position.set(block.w * 0.27, block.h * 0.54, 0);
           const nose = addDecorativeMesh(detail, new THREE.BoxGeometry(block.w * 0.2, block.h * 0.42, block.d * 0.72), "#744331", "metal");
           nose.position.set(block.w * 0.45, block.h * 0.3, 0);
+          for (const z of [-block.d * 0.44, block.d * 0.44]) {
+            const cabWindow = addDecorativeMesh(detail, new THREE.BoxGeometry(block.w * 0.1, block.h * 0.2, 0.14), "#8eb2b8", "accent");
+            cabWindow.position.set(block.w * 0.28, block.h * 0.68, z);
+          }
+          const exhaust = addDecorativeMesh(detail, new THREE.CylinderGeometry(0.42, 0.55, 2.2, 10), "#20282b", "metal");
+          exhaust.position.set(block.w * 0.08, block.h + 1.15, 0);
+        }
+        if (isBrakeVan) {
+          const lookout = addDecorativeMesh(detail, new THREE.BoxGeometry(block.w * 0.28, 1.6, block.d * 0.62), "#5d3930", "metal");
+          lookout.position.set(0, block.h + 0.95, 0);
         }
       }
 
@@ -945,7 +1038,7 @@ export default function ArenaPreview({
       group.position.set(block.x, block.y ?? block.h / 2, block.z);
       group.rotation.set(block.rotationX ?? 0, block.rotationY ?? 0, block.rotationZ ?? 0);
       scene.add(group);
-      const structural = ["wall", "ruin", "gate", "house", "tower", "shed", "machinery", "railcar", "gantry"].includes(block.style ?? "");
+      const structural = ["wall", "ruin", "gate", "house", "tower", "shed", "machinery", "gantry"].includes(block.style ?? "");
       if (qualityConfig.detail === 0 || !structural || block.material === "water") {
         const body = new THREE.Mesh(new THREE.BoxGeometry(block.w, block.h, block.d), materialFor(block.color, block.material ?? "stone"));
         if (block.material === "water") {

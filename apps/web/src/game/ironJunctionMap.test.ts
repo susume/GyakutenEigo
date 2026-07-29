@@ -6,6 +6,7 @@ import {
   ARENA_SCALE,
   IRON_JUNCTION_LOADING_LEVEL_Y,
   IRON_JUNCTION_OVERPASS_LEVEL_Y,
+  IRON_JUNCTION_STAIR_FLIGHTS,
   findBotNavigationPath,
   getArenaBounds,
   getArenaFloorSurfaces,
@@ -27,7 +28,7 @@ test("Iron Junction 2.0 expands the district and defines all six major areas", (
   assert.equal(IRON_JUNCTION.districts.length, 6);
   for (const id of [
     "warehouse-north-wall",
-    "depot-east-wall",
+    "depot-east-wall-south",
     "tunnel-roof-west",
     "junction-overpass",
     "dispatch-north-wall",
@@ -39,10 +40,28 @@ test("Iron Junction 2.0 expands the district and defines all six major areas", (
 
 test("Iron Junction uses four architectural trains and sparse props", () => {
   const trains = blocks.filter((block) => block.style === "railcar");
+  const trackBeds = blocks.filter((block) => block.style === "trackbed");
   assert.equal(trains.length, 4);
+  assert.equal(trackBeds.length, 4);
   assert.ok(trains.every((train) => train.w >= raw(42) && train.d >= raw(13)));
   assert.ok(props.length <= 18);
   assert.equal(props.filter((prop) => prop.kind === "crate").length, 1);
+});
+
+test("Iron Junction replaces every incline with authored station stairs", () => {
+  const stairBlocks = blocks.filter((block) => block.style === "stair");
+  assert.equal(
+    stairBlocks.length,
+    IRON_JUNCTION_STAIR_FLIGHTS.reduce((total, flight) => total + flight.steps, 0)
+  );
+  assert.ok(blocks.every((block) => !block.id.includes("ramp")));
+  for (const flight of IRON_JUNCTION_STAIR_FLIGHTS) {
+    assert.ok(stairBlocks.some((block) => block.id === `${flight.id}-step-1`));
+    assert.ok(stairBlocks.some((block) => block.id === `${flight.id}-step-${flight.steps}`));
+    assert.ok(blocks.some((block) => block.id === `${flight.id}-handrail-left`));
+    assert.ok(blocks.some((block) => block.id === `${flight.id}-handrail-right`));
+    assert.ok((flight.endY - flight.startY) / flight.steps <= 0.75);
+  }
 });
 
 test("Iron Junction teaches navigation without printed labels", () => {
@@ -130,8 +149,8 @@ test("Iron Junction loading objectives have two ground approaches", () => {
     facing: 0
   });
   for (const [label, from, to] of [
-    ["warehouse east ramp", ground(2, -57), loading(-50, -57)],
-    ["dispatch west ramp", ground(44, -70), loading(90, -70)]
+    ["warehouse east stairs", ground(2, -57), loading(-50, -57)],
+    ["dispatch west stairs", ground(44, -70), loading(90, -70)]
   ] as const) {
     assert.ok(
       findBotNavigationPath({ from, to, obstacles, mapId: "iron_junction" }).length > 0,
@@ -141,13 +160,62 @@ test("Iron Junction loading objectives have two ground approaches", () => {
   assert.ok(getCaptureZonesForMap("iron_junction").some((zone) => zone.id === "iron-dispatch-platform"));
 });
 
+test("the FPS and server movement model can climb every complete stair flight", () => {
+  const obstacles = getArenaObstacles("iron_junction");
+  for (const flight of IRON_JUNCTION_STAIR_FLIGHTS) {
+    const startAlong = (flight.axis === "x" ? flight.x : flight.z) - flight.direction * flight.length / 2;
+    let current = {
+      x: raw(flight.axis === "x" ? startAlong : flight.x),
+      y: flight.startY + ARENA_PLAYER_EYE_HEIGHT,
+      z: raw(flight.axis === "z" ? startAlong : flight.z),
+      facing: 0
+    };
+    let previousGroundY = flight.startY;
+    for (let step = 0; step < flight.steps; step += 1) {
+      const progress = (step + 0.5) / flight.steps;
+      const along = startAlong + flight.direction * flight.length * progress;
+      const requestedX = raw(flight.axis === "x" ? along : flight.x);
+      const requestedZ = raw(flight.axis === "z" ? along : flight.z);
+      const nextGroundY = getArenaGroundHeightForPlayer(
+        "iron_junction",
+        requestedX,
+        requestedZ,
+        current.y,
+        ARENA_PLAYER_EYE_HEIGHT
+      );
+      assert.ok(
+        nextGroundY - previousGroundY <= 0.8 + 1e-6,
+        `${flight.id} step ${step + 1} exceeds the FPS step limit`
+      );
+      const movement = resolveAuthoritativeMovement({
+        current,
+        requested: {
+          x: requestedX,
+          y: nextGroundY + ARENA_PLAYER_EYE_HEIGHT,
+          z: requestedZ,
+          facing: 0
+        },
+        elapsedMs: 200,
+        maxSpeed: 20,
+        obstacles,
+        groundY: nextGroundY,
+        mapId: "iron_junction"
+      });
+      assert.equal(movement.blocked, undefined, `${flight.id} is blocked at step ${step + 1}`);
+      current = { ...movement, y: nextGroundY + ARENA_PLAYER_EYE_HEIGHT };
+      previousGroundY = nextGroundY;
+    }
+    assert.equal(previousGroundY, flight.endY, `${flight.id} should reach its landing`);
+  }
+});
+
 test("Iron Junction upper connectors are not sealed by guardrails", () => {
   const obstacles = getArenaObstacles("iron_junction");
   const upperEyeY = IRON_JUNCTION_OVERPASS_LEVEL_Y + ARENA_PLAYER_EYE_HEIGHT;
   for (const [label, x, fromZ, toZ] of [
     ["warehouse link", -100, 14, 16],
     ["dispatch link", 117, 14, 16],
-    ["depot ramp", 80, 34, 36]
+    ["depot stairs", 80, 34, 36]
   ] as const) {
     const movement = resolveAuthoritativeMovement({
       current: { x: raw(x), y: upperEyeY, z: raw(fromZ), facing: 0 },
@@ -162,7 +230,7 @@ test("Iron Junction upper connectors are not sealed by guardrails", () => {
   }
 });
 
-test("Iron Junction warehouse upper ramp has a full-height roof opening", () => {
+test("Iron Junction warehouse upper stairs have a full-height roof opening", () => {
   const roofPieces = blocks.filter((block) => block.id.startsWith("warehouse-roof-"));
   assert.equal(roofPieces.length, 3);
   for (const z of [-105, -95, -86]) {
@@ -174,7 +242,7 @@ test("Iron Junction warehouse upper ramp has a full-height roof opening", () => 
         && raw(z) <= roof.z + roof.d / 2
       ),
       false,
-      `roof should not cover the upper ramp at z=${z}`
+      `roof should not cover the upper stairs at z=${z}`
     );
   }
 });

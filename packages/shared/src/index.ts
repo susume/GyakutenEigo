@@ -1142,6 +1142,37 @@ export const DESERT_CITADEL_ROOFTOP_LEVEL_Y = 24;
 // Kept as a compatibility alias for older clients and saved diagnostics.
 export const DESERT_CITADEL_CITADEL_LEVEL_Y = DESERT_CITADEL_ROOFTOP_LEVEL_Y;
 
+export type IronJunctionStairFlight = {
+  id: string;
+  x: number;
+  z: number;
+  width: number;
+  length: number;
+  axis: "x" | "z";
+  direction: 1 | -1;
+  startY: number;
+  endY: number;
+  steps: number;
+};
+
+/**
+ * Shared station stair definitions keep the visible flight, player floor
+ * resolver, server movement, and bot navigation on the same authored profile.
+ * Every riser is 0.75 units or lower so the FPS controller can climb without
+ * jumping while still reading as a real stair.
+ */
+export const IRON_JUNCTION_STAIR_FLIGHTS = [
+  { id: "warehouse-loading-west-stairs", x: -199, z: -57, width: 18, length: 38, axis: "x", direction: 1, startY: 0, endY: IRON_JUNCTION_LOADING_LEVEL_Y, steps: 12 },
+  { id: "warehouse-loading-east-stairs", x: -17, z: -57, width: 18, length: 38, axis: "x", direction: -1, startY: 0, endY: IRON_JUNCTION_LOADING_LEVEL_Y, steps: 12 },
+  { id: "dispatch-platform-east-stairs", x: 205, z: -70, width: 24, length: 30, axis: "x", direction: -1, startY: 0, endY: IRON_JUNCTION_LOADING_LEVEL_Y, steps: 12 },
+  { id: "dispatch-platform-west-stairs", x: 59, z: -70, width: 24, length: 30, axis: "x", direction: 1, startY: 0, endY: IRON_JUNCTION_LOADING_LEVEL_Y, steps: 12 },
+  { id: "depot-platform-east-stairs", x: 177, z: 106, width: 20, length: 28, axis: "x", direction: -1, startY: 0, endY: IRON_JUNCTION_LOADING_LEVEL_Y, steps: 12 },
+  { id: "junction-transfer-west-stairs", x: -35, z: 25, width: 20, length: 30, axis: "x", direction: 1, startY: 0, endY: IRON_JUNCTION_LOADING_LEVEL_Y, steps: 12 },
+  { id: "warehouse-footbridge-stairs", x: -105, z: -101, width: 20, length: 30, axis: "z", direction: 1, startY: IRON_JUNCTION_LOADING_LEVEL_Y, endY: IRON_JUNCTION_OVERPASS_LEVEL_Y, steps: 15 },
+  { id: "overpass-east-stairs", x: 150, z: 25, width: 20, length: 50, axis: "x", direction: -1, startY: 0, endY: IRON_JUNCTION_OVERPASS_LEVEL_Y, steps: 24 },
+  { id: "depot-footbridge-stairs", x: 80, z: 65, width: 20, length: 60, axis: "z", direction: -1, startY: IRON_JUNCTION_LOADING_LEVEL_Y, endY: IRON_JUNCTION_OVERPASS_LEVEL_Y, steps: 15 }
+] as const satisfies readonly IronJunctionStairFlight[];
+
 export type ArenaBounds = { limitX: number; limitZ: number };
 export const TEMPLE_RUNOFF_BOUNDS: ArenaBounds = {
   limitX: scaleArenaValue(235),
@@ -1201,33 +1232,25 @@ const templeRampHeight = (rawX: number, rawZ: number): number | undefined => {
   return undefined;
 };
 
-const ironRampHeight = (rawX: number, rawZ: number): number | undefined => {
-  if (rawZ >= -66 - 1e-6 && rawZ <= -48 + 1e-6 && rawX >= -218 && rawX <= -180) {
-    return Number((IRON_JUNCTION_LOADING_LEVEL_Y * ((rawX + 218) / 38)).toFixed(3));
-  }
-  if (rawZ >= -66 - 1e-6 && rawZ <= -48 + 1e-6 && rawX >= -36 && rawX <= 2) {
-    return Number((IRON_JUNCTION_LOADING_LEVEL_Y * ((2 - rawX) / 38)).toFixed(3));
-  }
-  if (rawZ >= -82 - 1e-6 && rawZ <= -58 + 1e-6 && rawX >= 190 && rawX <= 220) {
-    return Number((IRON_JUNCTION_LOADING_LEVEL_Y * ((220 - rawX) / 30)).toFixed(3));
-  }
-  if (rawZ >= -82 - 1e-6 && rawZ <= -58 + 1e-6 && rawX >= 44 && rawX <= 74) {
-    return Number((IRON_JUNCTION_LOADING_LEVEL_Y * ((rawX - 44) / 30)).toFixed(3));
-  }
-  if (rawZ >= 96 - 1e-6 && rawZ <= 116 + 1e-6 && rawX >= 163 && rawX <= 191) {
-    return Number((IRON_JUNCTION_LOADING_LEVEL_Y * ((191 - rawX) / 28)).toFixed(3));
-  }
-  if (rawZ >= 15 && rawZ <= 35 && rawX >= -50 && rawX <= -20) {
-    return Number((IRON_JUNCTION_LOADING_LEVEL_Y * ((rawX + 50) / 30)).toFixed(3));
-  }
-  if (rawX >= -115 && rawX <= -95 && rawZ >= -116 && rawZ <= -86) {
-    return Number((IRON_JUNCTION_LOADING_LEVEL_Y + 10 * ((rawZ + 116) / 30)).toFixed(3));
-  }
-  if (rawX >= 70 && rawX <= 90 && rawZ >= 35 && rawZ <= 95) {
-    return Number((IRON_JUNCTION_OVERPASS_LEVEL_Y - 10 * ((rawZ - 35) / 60)).toFixed(3));
-  }
-  if (rawZ >= 15 && rawZ <= 35 && rawX >= 125 && rawX <= 175) {
-    return Number((IRON_JUNCTION_OVERPASS_LEVEL_Y * ((175 - rawX) / 50)).toFixed(3));
+const ironStairHeight = (rawX: number, rawZ: number): number | undefined => {
+  for (const flight of IRON_JUNCTION_STAIR_FLIGHTS) {
+    const along = flight.axis === "x" ? rawX : rawZ;
+    const across = flight.axis === "x" ? rawZ : rawX;
+    const centerAlong = flight.axis === "x" ? flight.x : flight.z;
+    const centerAcross = flight.axis === "x" ? flight.z : flight.x;
+    if (Math.abs(across - centerAcross) > flight.width / 2 + 1e-6) continue;
+    const startAlong = centerAlong - flight.direction * flight.length / 2;
+    const progress = ((along - startAlong) * flight.direction) / flight.length;
+    if (progress < -1e-6 || progress > 1 + 1e-6) continue;
+    if (progress <= 1e-6) return flight.startY;
+    const stepIndex = Math.min(
+      flight.steps,
+      Math.max(1, Math.ceil(progress * flight.steps - 1e-6))
+    );
+    return Number((
+      flight.startY
+      + (flight.endY - flight.startY) * (stepIndex / flight.steps)
+    ).toFixed(3));
   }
   return undefined;
 };
@@ -1270,7 +1293,7 @@ export const getArenaFloorSurfaces = (
   const rawX = x / ARENA_SCALE;
   const rawZ = z / ARENA_SCALE;
   if (mapId === "iron_junction") {
-    const ramp = ironRampHeight(rawX, rawZ);
+    const stair = ironStairHeight(rawX, rawZ);
     const surfaces = [0];
     if (
       isInsideRawRect(rawX, rawZ, -190, -70, -179, -115)
@@ -1285,7 +1308,7 @@ export const getArenaFloorSurfaces = (
       || isInsideRawRect(rawX, rawZ, -115, -95, -86, 15)
       || isInsideRawRect(rawX, rawZ, 109, 129, -62, 15)
     ) surfaces.push(IRON_JUNCTION_OVERPASS_LEVEL_Y);
-    if (ramp !== undefined) surfaces.push(ramp);
+    if (stair !== undefined) surfaces.push(stair);
     return [...new Set(surfaces)].sort((a, b) => a - b);
   }
   if (mapId === "desert_citadel") {
@@ -2047,19 +2070,20 @@ export const IRON_JUNCTION_OBSTACLES: ArenaObstacle[] = [
   rectObstacle("iron-east-cliff", 276, 0, 8, 500, false, 0, 22),
 
   rectObstacle("blue-base-inner-north", -218, -92, 8, 42, false, 0, 14),
-  rectObstacle("blue-base-inner-midnorth", -218, -55, 8, 16, false, 0, 14),
+  rectObstacle("blue-warehouse-stair-gate-north", -218, -68.5, 8, 3, false, 0, 14),
+  rectObstacle("blue-warehouse-stair-gate-south", -218, -45, 8, 4, false, 0, 14),
   rectObstacle("blue-base-inner-center", -218, 0, 8, 38, false, 0, 14),
   rectObstacle("blue-base-inner-midsouth", -218, 55, 8, 16, false, 0, 14),
   rectObstacle("blue-base-inner-south", -218, 92, 8, 42, false, 0, 14),
-  rectObstacle("blue-base-sight-screen-north", -198, -58, 28, 7, false, 0, 9),
+  rectObstacle("blue-base-sight-screen-north", -198, -34, 28, 7, false, 0, 9),
   rectObstacle("blue-base-sight-screen-south", -198, 58, 28, 7, false, 0, 9),
   rectObstacle("blue-objective-booth", -247, 0, 28, 32, false, 0, 10),
-  rectObstacle("red-base-inner-north", 218, -92, 8, 42, false, 0, 14),
-  rectObstacle("red-base-inner-midnorth", 218, -55, 8, 16, false, 0, 14),
+  rectObstacle("red-base-inner-north", 218, -98, 8, 30, false, 0, 14),
+  rectObstacle("red-dispatch-stair-gate-south", 218, -51, 8, 8, false, 0, 14),
   rectObstacle("red-base-inner-center", 218, 0, 8, 38, false, 0, 14),
   rectObstacle("red-base-inner-midsouth", 218, 55, 8, 16, false, 0, 14),
   rectObstacle("red-base-inner-south", 218, 92, 8, 42, false, 0, 14),
-  rectObstacle("red-base-sight-screen-north", 198, -58, 28, 7, false, 0, 9),
+  rectObstacle("red-base-sight-screen-north", 198, -34, 28, 7, false, 0, 9),
   rectObstacle("red-base-sight-screen-south", 198, 58, 28, 7, false, 0, 9),
   rectObstacle("red-objective-booth", 247, 0, 28, 32, false, 0, 10),
 
@@ -2093,7 +2117,7 @@ export const IRON_JUNCTION_OBSTACLES: ArenaObstacle[] = [
   rectObstacle("yard-platform-west", -155, 20, 54, 17, false, 0, 2),
   rectObstacle("yard-platform-east", 157, 66, 48, 17, false, 0, 2),
 
-  rectObstacle("depot-east-wall", 190, 151, 8, 116, false, 0, 18),
+  rectObstacle("depot-east-wall-south", 190, 163.5, 8, 91, false, 0, 18),
   rectObstacle("depot-north-wall-west", 37, 96, 58, 8, false, 0, 17),
   rectObstacle("depot-north-wall-center", 106, 96, 38, 8, false, 0, 17),
   rectObstacle("depot-north-wall-east", 169, 96, 34, 8, false, 0, 17),

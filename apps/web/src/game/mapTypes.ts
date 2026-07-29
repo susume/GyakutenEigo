@@ -28,6 +28,8 @@ export type CitadelBlock = {
     | "shed"
     | "machinery"
     | "logstack"
+    | "stair"
+    | "trackbed"
     | "rock";
 };
 

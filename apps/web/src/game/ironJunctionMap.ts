@@ -1,8 +1,10 @@
 import {
   ARENA_SCALE,
   IRON_JUNCTION_LOADING_LEVEL_Y,
-  IRON_JUNCTION_OVERPASS_LEVEL_Y
+  IRON_JUNCTION_OVERPASS_LEVEL_Y,
+  IRON_JUNCTION_STAIR_FLIGHTS
 } from "@quizstrike/shared";
+import type { IronJunctionStairFlight } from "@quizstrike/shared";
 import type {
   ArenaMapDefinition,
   CitadelBlock,
@@ -19,7 +21,49 @@ const scaleCylinder = <T extends { x: number; z: number; radius: number }>(item:
   ({ ...item, x: scale(item.x), z: scale(item.z), radius: scale(item.radius) }) as T;
 const scalePoint = <T extends { x: number; z: number }>(item: T): T =>
   ({ ...item, x: scale(item.x), z: scale(item.z) }) as T;
-const rampAngle = (rise: number, rawRun: number) => Math.atan(rise / scale(rawRun));
+
+const makeIndustrialStairFlight = (flight: IronJunctionStairFlight): CitadelBlock[] => {
+  const steps: CitadelBlock[] = Array.from({ length: flight.steps }, (_, index) => {
+    const progress = (index + 1) / flight.steps;
+    const travel = (-0.5 + (index + 0.5) / flight.steps) * flight.length * flight.direction;
+    const topY = flight.startY + (flight.endY - flight.startY) * progress;
+    const height = topY - flight.startY;
+    return {
+      id: `${flight.id}-step-${index + 1}`,
+      x: flight.x + (flight.axis === "x" ? travel : 0),
+      z: flight.z + (flight.axis === "z" ? travel : 0),
+      w: flight.axis === "x" ? flight.length / flight.steps + 0.6 : flight.width,
+      d: flight.axis === "z" ? flight.length / flight.steps + 0.6 : flight.width,
+      h: height,
+      y: flight.startY + height / 2,
+      color: "#4b5659",
+      material: "metal",
+      style: "stair"
+    };
+  });
+
+  const rise = flight.endY - flight.startY;
+  const railAngle = Math.atan2(rise, scale(flight.length));
+  const railY = flight.startY + rise / 2 + 1.55;
+  const railInset = Math.max(0.5, flight.width / 2 - 0.65);
+  const rails = [-1, 1].map<CitadelBlock>((side) => ({
+    id: `${flight.id}-handrail-${side < 0 ? "left" : "right"}`,
+    x: flight.x + (flight.axis === "z" ? side * railInset : 0),
+    y: railY,
+    z: flight.z + (flight.axis === "x" ? side * railInset : 0),
+    w: flight.axis === "x" ? flight.length : 0.7,
+    h: 0.22,
+    d: flight.axis === "z" ? flight.length : 0.7,
+    rotationX:
+      flight.axis === "z" ? -flight.direction * railAngle : undefined,
+    rotationZ:
+      flight.axis === "x" ? flight.direction * railAngle : undefined,
+    color: warning,
+    material: "metal"
+  }));
+
+  return [...steps, ...rails];
+};
 
 export const IRON_JUNCTION: ArenaMapDefinition = {
   id: "iron_junction",
@@ -75,21 +119,22 @@ const rawBlocks: CitadelBlock[] = [
 
   // Blue base: a broad assembly yard with four protected exits.
   { id: "blue-base-inner-north", label: "Blue Assembly North", x: -218, z: -92, w: 8, d: 42, h: 14, color: weatheredSteel, material: "metal", style: "wall", collides: true },
-  { id: "blue-base-inner-midnorth", x: -218, z: -55, w: 8, d: 16, h: 14, color: weatheredSteel, material: "metal", style: "wall", collides: true },
+  { id: "blue-warehouse-stair-gate-north", x: -218, z: -68.5, w: 8, d: 3, h: 14, color: weatheredSteel, material: "metal", style: "wall", collides: true },
+  { id: "blue-warehouse-stair-gate-south", x: -218, z: -45, w: 8, d: 4, h: 14, color: weatheredSteel, material: "metal", style: "wall", collides: true },
   { id: "blue-base-inner-center", x: -218, z: 0, w: 8, d: 38, h: 14, color: weatheredSteel, material: "metal", style: "wall", collides: true },
   { id: "blue-base-inner-midsouth", x: -218, z: 55, w: 8, d: 16, h: 14, color: weatheredSteel, material: "metal", style: "wall", collides: true },
   { id: "blue-base-inner-south", x: -218, z: 92, w: 8, d: 42, h: 14, color: weatheredSteel, material: "metal", style: "wall", collides: true },
-  { id: "blue-base-sight-screen-north", x: -198, z: -58, w: 28, d: 7, h: 9, color: concrete, material: "stone", style: "wall", collides: true },
+  { id: "blue-base-sight-screen-north", x: -198, z: -34, w: 28, d: 7, h: 9, color: concrete, material: "stone", style: "wall", collides: true },
   { id: "blue-base-sight-screen-south", x: -198, z: 58, w: 28, d: 7, h: 9, color: concrete, material: "stone", style: "wall", collides: true },
   { id: "blue-objective-booth", label: "Blue Operations Room", x: -247, z: 0, w: 28, d: 32, h: 10, color: dirtyCream, material: "metal", style: "shed", collides: true },
 
   // Red base mirrors capacity, but not the approach geometry.
-  { id: "red-base-inner-north", label: "Red Assembly North", x: 218, z: -92, w: 8, d: 42, h: 14, color: weatheredSteel, material: "metal", style: "wall", collides: true },
-  { id: "red-base-inner-midnorth", x: 218, z: -55, w: 8, d: 16, h: 14, color: weatheredSteel, material: "metal", style: "wall", collides: true },
+  { id: "red-base-inner-north", label: "Red Assembly North", x: 218, z: -98, w: 8, d: 30, h: 14, color: weatheredSteel, material: "metal", style: "wall", collides: true },
+  { id: "red-dispatch-stair-gate-south", x: 218, z: -51, w: 8, d: 8, h: 14, color: weatheredSteel, material: "metal", style: "wall", collides: true },
   { id: "red-base-inner-center", x: 218, z: 0, w: 8, d: 38, h: 14, color: weatheredSteel, material: "metal", style: "wall", collides: true },
   { id: "red-base-inner-midsouth", x: 218, z: 55, w: 8, d: 16, h: 14, color: weatheredSteel, material: "metal", style: "wall", collides: true },
   { id: "red-base-inner-south", x: 218, z: 92, w: 8, d: 42, h: 14, color: weatheredSteel, material: "metal", style: "wall", collides: true },
-  { id: "red-base-sight-screen-north", x: 198, z: -58, w: 28, d: 7, h: 9, color: concrete, material: "stone", style: "wall", collides: true },
+  { id: "red-base-sight-screen-north", x: 198, z: -34, w: 28, d: 7, h: 9, color: concrete, material: "stone", style: "wall", collides: true },
   { id: "red-base-sight-screen-south", x: 198, z: 58, w: 28, d: 7, h: 9, color: concrete, material: "stone", style: "wall", collides: true },
   { id: "red-objective-booth", label: "Red Operations Room", x: 247, z: 0, w: 28, d: 32, h: 10, color: dirtyCream, material: "metal", style: "shed", collides: true },
 
@@ -105,14 +150,13 @@ const rawBlocks: CitadelBlock[] = [
   { id: "warehouse-conveyor", label: "Sorting Conveyor", x: -87, z: -132, w: 52, d: 9, h: 4, color: weatheredSteel, material: "metal", style: "machinery", collides: true },
   { id: "warehouse-pillar-a", x: -126, z: -98, w: 4, d: 4, h: 18, color: darkSteel, material: "metal", style: "tower", collides: true },
   { id: "warehouse-pillar-b", x: -72, z: -98, w: 4, d: 4, h: 18, color: darkSteel, material: "metal", style: "tower", collides: true },
-  // The south roof opening gives the upper ramp full player-height clearance.
+  // The south roof opening gives the upper stair full player-height clearance.
   { id: "warehouse-roof-west", x: -154.5, z: -130, w: 75, d: 120, h: 1, y: 20, color: weatheredSteel, material: "metal", style: "bridge" },
   { id: "warehouse-roof-east", x: -62.5, z: -130, w: 61, d: 120, h: 1, y: 20, color: weatheredSteel, material: "metal", style: "bridge" },
   { id: "warehouse-roof-north-link", x: -105, z: -154, w: 24, d: 72, h: 1, y: 20, color: weatheredSteel, material: "metal", style: "bridge" },
   { id: "warehouse-mezzanine", label: "WAREHOUSE MEZZANINE", x: -130, z: -147, w: 120, d: 64, h: 1.1, y: loadingDeckCenter, color: steel, material: "metal", style: "bridge" },
   { id: "warehouse-loading-dock", label: "FREIGHT LOADING PLATFORM", x: -108, z: -57, w: 144, d: 18, h: 1.1, y: loadingDeckCenter, color: concrete, material: "stone", style: "bridge" },
-  { id: "warehouse-loading-ramp", x: -199, z: -57, w: 38, d: 18, h: 1, y: 4, rotationZ: -rampAngle(IRON_JUNCTION_LOADING_LEVEL_Y, 38), color: steel, material: "metal", style: "bridge" },
-  { id: "warehouse-loading-east-ramp", x: -17, z: -57, w: 38, d: 18, h: 1, y: 4, rotationZ: rampAngle(IRON_JUNCTION_LOADING_LEVEL_Y, 38), color: steel, material: "metal", style: "bridge" },
+  { id: "warehouse-platform-edge", x: -108, z: -48.8, w: 140, d: 1.2, h: 0.12, y: IRON_JUNCTION_LOADING_LEVEL_Y + 0.06, color: warning, material: "accent" },
 
   // Area F: Dispatch station and its landmark control tower.
   { id: "dispatch-north-wall", label: "Old Dispatch Station", x: 135, z: -188, w: 142, d: 8, h: 16, color: brick, material: "stone", style: "wall", collides: true },
@@ -123,16 +167,15 @@ const rawBlocks: CitadelBlock[] = [
   { id: "dispatch-south-wall-east", x: 178, z: -86, w: 48, d: 8, h: 13, color: brick, material: "stone", style: "wall", collides: true },
   { id: "dispatch-operations-room", label: "Dispatch Operations", x: 161, z: -149, w: 54, d: 38, h: 10, color: dirtyCream, material: "metal", style: "shed", collides: true },
   { id: "dispatch-platform", label: "DISPATCH PLATFORM", x: 132, z: -70, w: 116, d: 24, h: 1.1, y: loadingDeckCenter, color: concrete, material: "stone", style: "bridge" },
-  { id: "dispatch-platform-ramp", x: 205, z: -70, w: 30, d: 24, h: 1, y: 4, rotationZ: rampAngle(IRON_JUNCTION_LOADING_LEVEL_Y, 30), color: steel, material: "metal", style: "bridge" },
-  { id: "dispatch-platform-west-ramp", x: 59, z: -70, w: 30, d: 24, h: 1, y: 4, rotationZ: -rampAngle(IRON_JUNCTION_LOADING_LEVEL_Y, 30), color: steel, material: "metal", style: "bridge" },
+  { id: "dispatch-platform-edge", x: 132, z: -58.8, w: 112, d: 1.2, h: 0.12, y: IRON_JUNCTION_LOADING_LEVEL_Y + 0.06, color: warning, material: "accent" },
   { id: "junction-control-lower", label: "Junction Control Tower", x: 58, z: -38, w: 34, d: 32, h: 9, color: concrete, material: "stone", style: "tower", collides: true },
   { id: "junction-control-upper", label: "JUNCTION CONTROL", x: 58, z: -38, w: 30, d: 28, h: 8, y: 14, color: dirtyCream, material: "metal", style: "tower", collides: true },
 
   // Area A: four wide rail corridors with four landmark trains.
-  { id: "yard-track-bed-a", x: 0, z: -42, w: 390, d: 10, h: 0.3, y: 0.03, color: gravel, material: "gravel" },
-  { id: "yard-track-bed-b", x: 0, z: 0, w: 390, d: 10, h: 0.3, y: 0.03, color: gravel, material: "gravel" },
-  { id: "yard-track-bed-c", x: 0, z: 42, w: 390, d: 10, h: 0.3, y: 0.03, color: gravel, material: "gravel" },
-  { id: "yard-track-bed-d", x: 0, z: 82, w: 390, d: 10, h: 0.3, y: 0.03, color: gravel, material: "gravel" },
+  { id: "yard-track-bed-a", x: 0, z: -42, w: 390, d: 10, h: 0.3, y: 0.03, color: gravel, material: "gravel", style: "trackbed" },
+  { id: "yard-track-bed-b", x: 0, z: 0, w: 390, d: 10, h: 0.3, y: 0.03, color: gravel, material: "gravel", style: "trackbed" },
+  { id: "yard-track-bed-c", x: 0, z: 42, w: 390, d: 10, h: 0.3, y: 0.03, color: gravel, material: "gravel", style: "trackbed" },
+  { id: "yard-track-bed-d", x: 0, z: 82, w: 390, d: 10, h: 0.3, y: 0.03, color: gravel, material: "gravel", style: "trackbed" },
   { id: "freight-train-west", label: "West Boxcar", x: -100, z: -42, w: 58, d: 13, h: 8, color: rust, material: "metal", style: "railcar", collides: true },
   { id: "junction-locomotive", label: "Iron Junction Locomotive", x: -8, z: 0, w: 70, d: 15, h: 10, color: darkSteel, material: "metal", style: "railcar", collides: true },
   { id: "freight-train-east", label: "Cream Freight Wagon", x: 105, z: 42, w: 60, d: 13, h: 8, color: dirtyCream, material: "metal", style: "railcar", collides: true },
@@ -142,7 +185,8 @@ const rawBlocks: CitadelBlock[] = [
   { id: "yard-platform-east", label: "East Transfer Platform", x: 157, z: 66, w: 48, d: 17, h: 2, color: concrete, material: "stone", style: "bridge", collides: true },
 
   // Area B: Maintenance depot with repair pits and broad equipment bays.
-  { id: "depot-east-wall", label: "Maintenance Depot", x: 190, z: 151, w: 8, d: 116, h: 18, color: weatheredSteel, material: "metal", style: "wall", collides: true },
+  // The platform stair occupies a real opening in the depot wall rather than clipping through it.
+  { id: "depot-east-wall-south", label: "Maintenance Depot", x: 190, z: 163.5, w: 8, d: 91, h: 18, color: weatheredSteel, material: "metal", style: "wall", collides: true },
   { id: "depot-north-wall-west", x: 37, z: 96, w: 58, d: 8, h: 17, color: weatheredSteel, material: "metal", style: "wall", collides: true },
   { id: "depot-north-wall-center", x: 106, z: 96, w: 38, d: 8, h: 17, color: weatheredSteel, material: "metal", style: "wall", collides: true },
   { id: "depot-north-wall-east", x: 169, z: 96, w: 34, d: 8, h: 17, color: weatheredSteel, material: "metal", style: "wall", collides: true },
@@ -154,7 +198,7 @@ const rawBlocks: CitadelBlock[] = [
   { id: "depot-machinery-bay", label: "Wheel Lathe", x: 48, z: 164, w: 31, d: 19, h: 6, color: warning, material: "metal", style: "machinery", collides: true },
   { id: "depot-repair-pit", label: "Maintenance Pit", x: 105, z: 151, w: 70, d: 8, h: 0.35, y: 0.02, color: darkSteel, material: "metal" },
   { id: "depot-walkway", label: "DEPOT WALKWAY", x: 94, z: 106, w: 142, d: 20, h: 1.1, y: loadingDeckCenter, color: steel, material: "metal", style: "bridge" },
-  { id: "depot-walkway-ramp", x: 177, z: 106, w: 28, d: 20, h: 1, y: 4, rotationZ: rampAngle(IRON_JUNCTION_LOADING_LEVEL_Y, 28), color: steel, material: "metal", style: "bridge" },
+  { id: "depot-platform-edge", x: 94, z: 96.8, w: 138, d: 1.2, h: 0.12, y: IRON_JUNCTION_LOADING_LEVEL_Y + 0.06, color: warning, material: "accent" },
   { id: "depot-roof", x: 98, z: 151, w: 180, d: 105, h: 1, y: 19, color: darkSteel, material: "metal", style: "bridge" },
 
   // Area D: a broad, broken-sightline mountain tunnel with multiple exits.
@@ -173,13 +217,9 @@ const rawBlocks: CitadelBlock[] = [
   // Area E: intentional upper route. It links landmarks but cannot see the whole district.
   { id: "junction-overpass", label: "JUNCTION OVERPASS", x: 10, z: 25, w: 230, d: 20, h: 1.2, y: overpassDeckCenter, color: steel, material: "metal", style: "bridge" },
   { id: "junction-mid-transfer", label: "MID TRANSFER DECK", x: 10, z: 25, w: 60, d: 20, h: 1.1, y: loadingDeckCenter, color: concrete, material: "stone", style: "bridge" },
-  { id: "junction-mid-transfer-ramp", x: -35, z: 25, w: 30, d: 20, h: 1, y: 4, rotationZ: -rampAngle(IRON_JUNCTION_LOADING_LEVEL_Y, 30), color: steel, material: "metal", style: "bridge" },
   { id: "signal-gantry-deck", label: "SIGNAL GANTRY", x: 0, z: -14, w: 142, d: 14, h: 1.2, y: overpassDeckCenter, color: warning, material: "metal", style: "bridge" },
   { id: "warehouse-upper-link", label: "Warehouse Upper Link", x: -105, z: -35.5, w: 20, d: 101, h: 1.2, y: overpassDeckCenter, color: steel, material: "metal", style: "bridge" },
   { id: "dispatch-upper-link", label: "Dispatch Upper Link", x: 119, z: -22, w: 20, d: 80, h: 1.2, y: overpassDeckCenter, color: steel, material: "metal", style: "bridge" },
-  { id: "warehouse-upper-ramp", x: -105, z: -101, w: 20, d: 30, h: 1, y: 13, rotationX: -rampAngle(IRON_JUNCTION_OVERPASS_LEVEL_Y - IRON_JUNCTION_LOADING_LEVEL_Y, 30), color: steel, material: "metal", style: "bridge" },
-  { id: "overpass-east-ramp", x: 150, z: 25, w: 50, d: 20, h: 1, y: 9, rotationZ: rampAngle(IRON_JUNCTION_OVERPASS_LEVEL_Y, 50), color: steel, material: "metal", style: "bridge" },
-  { id: "overpass-depot-ramp", x: 80, z: 65, w: 20, d: 60, h: 1, y: 13, rotationX: rampAngle(IRON_JUNCTION_OVERPASS_LEVEL_Y - IRON_JUNCTION_LOADING_LEVEL_Y, 60), color: steel, material: "metal", style: "bridge" },
   { id: "overpass-support-west", x: -78, z: 25, w: 6, d: 6, h: 18, y: 9, color: rust, material: "metal", style: "gantry", collides: true },
   { id: "overpass-support-center", x: 18, z: 25, w: 6, d: 6, h: 18, y: 9, color: rust, material: "metal", style: "gantry", collides: true },
   { id: "overpass-support-east", x: 92, z: 25, w: 6, d: 6, h: 18, y: 9, color: rust, material: "metal", style: "gantry", collides: true },
@@ -196,6 +236,7 @@ const rawBlocks: CitadelBlock[] = [
   ,{ id: "warehouse-link-east-rail", x: -95, z: -35.5, w: 1.2, d: 101, h: 2.5, y: 19.25, color: steel, material: "metal", collides: true }
   ,{ id: "dispatch-link-west-rail", x: 109, z: -22, w: 1.2, d: 80, h: 2.5, y: 19.25, color: steel, material: "metal", collides: true }
   ,{ id: "dispatch-link-east-rail", x: 129, z: -22, w: 1.2, d: 80, h: 2.5, y: 19.25, color: steel, material: "metal", collides: true }
+  ,...IRON_JUNCTION_STAIR_FLIGHTS.flatMap(makeIndustrialStairFlight)
 ];
 
 export const blocks: CitadelBlock[] = rawBlocks.map(({ label: _label, ...block }) => scaleRect(block));
