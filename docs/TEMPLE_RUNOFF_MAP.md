@@ -1,5 +1,82 @@
 # Temple Runoff 2.0
 
+## Refinement audit (completed before implementation)
+
+### A. Executive summary
+
+Temple Runoff 2.0 already solved the hardest technical problem: River, Main, and
+Upper are genuinely stacked walkable levels with working ramps, height-aware
+collision, projectiles, and bot navigation. The map therefore needs a major
+refinement, not a rebuild. The priority is to preserve that system while making
+the 40-player combat readable and defensible.
+
+### B. Scale and player capacity
+
+The 470 x 400 design-unit footprint is appropriate for 20-v-20. Twenty spawns per
+team are already distributed over four rows, but the rows share long east-west
+sightlines. The size is sufficient; protection and distribution are the issues.
+
+### C. Route structure
+
+The arena has more than the required three routes: two Main approaches, the River,
+the Sun Bridge, and outer ruin flanks. Eight river ramps and three upper
+connections prevent a single hard choke. However, the old bot patrol had only five
+serial goals, causing large teams to converge instead of committing to distinct
+route families.
+
+### D. Combat zones
+
+Jungle Ruins, Rain Court, Lower Waterway, Sun Bridge, and Temple Terrace are valid
+combat zones. Rain Court and Jungle Ruins have some local cover, but the broad
+Main slabs between them have few intermediate decisions or fallback positions.
+
+### E. Sightlines and cover
+
+This is the largest weakness. Every spawn row can look toward its opposing row,
+the Sun Bridge supports a nearly uninterrupted end-to-end duel, and the River has
+large gaps between its three cover pieces. Cover exists, but its spacing is not
+appropriate for forty simultaneous players.
+
+### F. Spawn safety
+
+Spawn coordinates are unique and correctly elevated, with nearby route choices.
+They are not embedded in collision. Their forward exits nevertheless lack hard
+visual screens, allowing suppressive fire to reach too close to the spawn rows.
+
+### G. Vertical gameplay
+
+Vertical gameplay is the map's strongest feature. The River at Y=0, Main at Y=8,
+and Upper at Y=17 have continuous ramps, stacked-floor selection, and enough
+clearance below the bridge. No connector should be removed or relocated during
+this refinement.
+
+### H. Bot and navigation readiness
+
+The navigation graph is height-aware and can route between Main and River.
+Obstacle parity is test-covered. The remaining weakness is tactical distribution:
+bots need persistent north, inner-north, river, inner-south, and south patrol
+families rather than one shared loop.
+
+### I. Visual hierarchy and atmosphere
+
+The Rain God, canal, Sun Bridge, sluices, waterfalls, and jungle vegetation create
+a coherent flooded-temple theme. From Main and Upper, though, broad empty slabs
+and repeated boxes weaken landmark hierarchy. New cover should read as broken
+gate screens, arcade piers, tablets, and altars instead of generic crates.
+
+### J. Performance
+
+The static batching and instanced vegetation are sound. River captures are within
+the 400-call target; exposed Main and Upper captures are approximately 600 calls.
+The refinement should use batched structural stone, avoid new discretionary props
+or dynamic lights, and re-profile all three levels after implementation.
+
+### K. Decision
+
+**Level 2 - Major Redesign.** Preserve footprint, floors, ramps, objectives,
+water, and art-pass landmarks. Add spawn shielding, staggered mid-route cover,
+River cover islands, offset bridge cover, and five persistent bot route families.
+
 ## Outcome
 
 Temple Runoff 2.0 is a symmetrical 20-v-20 battlefield with three simultaneously
@@ -15,6 +92,11 @@ walkable elevations:
 The source footprint is 470 × 400 design units, or approximately 291 × 248 world
 units. This increases playable plan area from 112,000 to 188,000 design units
 (+68.1%) while reducing discretionary prop count from 21 to 10 (-52.4%).
+
+The refinement adds eight broken-gate spawn screens, four staggered arcade piers,
+four River cover islands, and two offset Sun Bridge altars. These are structural,
+colliding pieces rather than discretionary prop clutter. They preserve the
+original floor footprints and every level connector.
 
 ## Under-platform teleport: cause and fix
 
@@ -88,26 +170,35 @@ Local Chrome-compatible browser captures used Medium quality and a generated
 
 For comparison, the previous overview capture recorded 64 FPS, 20.4 ms p95,
 398 calls, and 208,358 triangles. The new river view is comfortably inside the
-400-call target; exposed main and upper views are not. The map contains 68 block
-pieces, 6 cylinders, and 10 discretionary props (84 total authored objects).
-Its larger-area object density is approximately 37% lower than before even though
-ramps and split floor slabs increase structural piece count.
+400-call target; exposed main and upper views are not. The refined map contains
+86 block pieces, 6 cylinders, and 10 discretionary props (102 total authored
+objects). The renderer collapses 137 visible static facade sources into five
+material batches, so the new structural cover does not create a separate draw
+call for every piece.
+
+A 2026-07-30 diagnostic separated the remaining budget issue: the same Low-quality
+Main view measured 327 calls with 10 players and 1,209 calls with 40 players while
+retaining the same five static batches. The approximately 882-call delta is
+character rendering, not map geometry. Forty-player total rendering therefore
+still fails the 400-call hard gate and needs a separate character-instancing or
+character-atlas pass.
 
 ## Verification
 
-- 72 targeted shared/web map and art-pass tests pass.
+- All 247 shared/server/web tests pass, including 5 targeted map and art-pass tests.
 - A 600-frame regression holds a player beneath the bridge on the river floor.
 - Tests cover identical X/Z positions on lower and upper floors, all eight river
   ramps, all three upper connections, 20 safe spawns per team, 3D collision
-  parity, and a bot main-to-river route with vertical waypoints.
+  parity, no direct sightline between any paired opposing spawn row, and a bot
+  main-to-river route with vertical waypoints.
 - Live probes reported River Y=0, Main Y=8, and Upper Y=17 with no recovery event.
 - TypeScript checks and the production build pass.
 
 ## Remaining certification
 
 - Run a 10-minute physical Chromebook match with a real 20-v-20 network session.
-- Profile and reduce the approximately 600 calls in exposed main/upper views if
-  the 400-call budget is a hard ship gate.
+- Reduce 40-player character rendering enough to meet the 400-call hard ship gate;
+  the map facade itself remains consolidated into five batches.
 - Validate first-contact and base-to-base timing with classroom telemetry; current
   geometry is designed for roughly 10–18 second central contact and 20–30 second
   committed base routes, but those are design estimates rather than match data.

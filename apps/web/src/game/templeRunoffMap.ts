@@ -111,6 +111,8 @@ const rawBlocks: CitadelBlock[] = [
   { id: "sun-bridge-support-se", x: 14, z: 35, w: 7, d: 8, h: 17, y: 8.5, color: dampStone, material: "stone", style: "tower", collides: true },
   { id: "sun-parapet-west", x: -19, z: -18, w: 4, d: 44, h: 4, y: 19, color: sandstone, material: "stone", style: "ruin", collides: true },
   { id: "sun-parapet-east", x: 19, z: 17, w: 4, d: 46, h: 4, y: 19, color: mossStone, material: "stone", style: "ruin", collides: true },
+  { id: "sun-bridge-altar-north", x: -7, z: -16, w: 10, d: 9, h: 5, y: 19.5, color: mossStone, material: "stone", style: "ruin", collides: true },
+  { id: "sun-bridge-altar-south", x: 7, z: 16, w: 10, d: 9, h: 5, y: 19.5, color: sunStone, material: "stone", style: "ruin", collides: true },
 
   { id: "upper-jungle-terrace", label: "Jungle Walkway", x: -68, z: -66, w: 100, d: 28, h: 1.4, y: upperFloorCenter, color: mossStone, material: "stone", style: "bridge" },
   { id: "upper-temple-terrace", label: "Temple Terrace", x: 68, z: 66, w: 100, d: 28, h: 1.4, y: upperFloorCenter, color: sandstone, material: "stone", style: "bridge" },
@@ -124,16 +126,36 @@ const rawBlocks: CitadelBlock[] = [
   { id: "red-temple-gatehouse", label: "Red Temple Complex", x: 204, z: 92, w: 28, d: 42, h: 15, y: 15.5, color: sandstone, material: "stone", style: "gate", collides: true },
   { id: "red-temple-foundation", x: 204, z: -83, w: 30, d: 52, h: 12, y: 14, color: agedPlaster, material: "stone", style: "ruin", collides: true },
 
+  // Broken gate screens stop direct fire into the four 5-player spawn rows.
+  // Their alternating materials make each exit readable without changing the
+  // existing spawn coordinates or sealing the broad routes between them.
+  { id: "blue-jungle-spawn-screen", x: -174, z: -154, w: 8, d: 30, h: 9, y: 12.5, color: deepMoss, material: "stone", style: "ruin", collides: true },
+  { id: "blue-canal-spawn-screen", x: -174, z: -52, w: 8, d: 24, h: 8, y: 12, color: dampStone, material: "stone", style: "wall", collides: true },
+  { id: "blue-rain-spawn-screen", x: -174, z: 48, w: 8, d: 24, h: 8, y: 12, color: mossStone, material: "stone", style: "ruin", collides: true },
+  { id: "blue-temple-spawn-screen", x: -174, z: 154, w: 8, d: 30, h: 9, y: 12.5, color: agedPlaster, material: "stone", style: "wall", collides: true },
+  { id: "red-jungle-spawn-screen", x: 174, z: -154, w: 8, d: 30, h: 9, y: 12.5, color: dampStone, material: "stone", style: "wall", collides: true },
+  { id: "red-canal-spawn-screen", x: 174, z: -52, w: 8, d: 24, h: 8, y: 12, color: agedPlaster, material: "stone", style: "ruin", collides: true },
+  { id: "red-rain-spawn-screen", x: 174, z: 48, w: 8, d: 24, h: 8, y: 12, color: sandstone, material: "stone", style: "wall", collides: true },
+  { id: "red-temple-spawn-screen", x: 174, z: 154, w: 8, d: 30, h: 9, y: 12.5, color: mossStone, material: "stone", style: "ruin", collides: true },
+
   { id: "jungle-ruin-wall", label: "Jungle Ruins", x: -98, z: -132, w: 54, d: 8, h: 10, y: 13, color: deepMoss, material: "stone", style: "ruin", collides: true },
   { id: "jungle-root-cover", x: -42, z: -116, w: 22, d: 9, h: 5, y: 10.5, color: timber, material: "wood", style: "logstack", collides: true },
   { id: "north-collapsed-sanctum", x: 76, z: -132, w: 42, d: 16, h: 12, y: 14, color: dampStone, material: "stone", style: "ruin", collides: true },
+  { id: "jungle-arcade-pier-west", x: -68, z: -88, w: 10, d: 34, h: 8, y: 12, color: mossStone, material: "stone", style: "tower", collides: true },
+  { id: "jungle-arcade-pier-east", x: 28, z: -70, w: 10, d: 30, h: 8, y: 12, color: darkStone, material: "stone", style: "tower", collides: true },
   { id: "rain-court-wall-west", label: "Rain Court", x: -90, z: 112, w: 44, d: 8, h: 9, y: 12.5, color: sandstone, material: "stone", style: "ruin", collides: true },
   { id: "rain-court-wall-east", x: 82, z: 118, w: 48, d: 8, h: 9, y: 12.5, color: mossStone, material: "stone", style: "ruin", collides: true },
   { id: "rain-court-planter", x: 18, z: 125, w: 24, d: 12, h: 3.5, y: 9.75, color: agedPlaster, material: "stone", style: "ruin", collides: true },
+  { id: "rain-arcade-pier-west", x: -28, z: 70, w: 10, d: 30, h: 8, y: 12, color: agedPlaster, material: "stone", style: "tower", collides: true },
+  { id: "rain-arcade-pier-east", x: 68, z: 88, w: 10, d: 34, h: 8, y: 12, color: sandstone, material: "stone", style: "tower", collides: true },
 
   { id: "lower-broken-pillar", x: -72, z: 2, w: 10, d: 12, h: 5.5, y: 2.75, color: sandstone, material: "stone", style: "ruin", collides: true },
   { id: "lower-collapsed-wall", x: 58, z: 17, w: 24, d: 7, h: 4.5, y: 2.25, color: dampStone, material: "stone", style: "ruin", collides: true },
   { id: "lower-submerged-ruin", x: 150, z: 7, w: 20, d: 10, h: 3.2, y: 1.6, color: darkStone, material: "stone", style: "rock", collides: true },
+  { id: "lower-west-sluice-cover", x: -166, z: 10, w: 14, d: 8, h: 5, y: 2.5, color: darkStone, material: "stone", style: "ruin", collides: true },
+  { id: "lower-west-tablet-cover", x: -24, z: -12, w: 16, d: 8, h: 4.5, y: 2.25, color: mossStone, material: "stone", style: "ruin", collides: true },
+  { id: "lower-east-tablet-cover", x: 102, z: -11, w: 16, d: 8, h: 4.5, y: 2.25, color: sandstone, material: "stone", style: "ruin", collides: true },
+  { id: "lower-east-sluice-cover", x: 184, z: 11, w: 12, d: 8, h: 5, y: 2.5, color: dampStone, material: "stone", style: "ruin", collides: true },
   { id: "west-broken-ford-a", label: "Broken Ford", x: -145, z: -8, w: 20, d: 12, h: 0.7, y: 0.35, color: sunStone, material: "stone", style: "bridge" },
   { id: "west-broken-ford-b", x: -145, z: 10, w: 20, d: 10, h: 0.7, y: 0.35, color: mossStone, material: "stone", style: "bridge" },
   { id: "east-wood-crossing", label: "Timber Crossing", x: 126, z: 0, w: 20, d: 48, h: 0.8, y: 7.6, color: timber, material: "wood", style: "bridge" },

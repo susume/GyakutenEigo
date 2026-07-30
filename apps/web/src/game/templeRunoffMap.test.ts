@@ -4,9 +4,11 @@ import {
   ARENA_PLAYER_BODY_HEIGHT,
   ARENA_SCALE,
   TEMPLE_RUNOFF_MAIN_LEVEL_Y,
+  TEMPLE_RUNOFF_TEAM_SPAWNS,
   TEMPLE_RUNOFF_UPPER_LEVEL_Y,
   getArenaFloorSurfaces,
-  getArenaObstacles
+  getArenaObstacles,
+  hasLineOfSight
 } from "@quizstrike/shared";
 import { ARENA_MAPS } from "./arenaMaps";
 import { blocks, cylinders, floorMarks, props } from "./templeRunoffMap";
@@ -24,6 +26,34 @@ test("Temple Runoff 2.0 is a substantially larger three-level arena", () => {
   ]);
   assert.ok(map.routes.length >= 6);
   assert.ok(props.length <= 10, "new space must not be filled with discretionary props");
+});
+
+test("spawn exits, river, and upper bridge have structural sightline breaks", () => {
+  const collidingIds = new Set(blocks.filter((block) => block.collides).map((block) => block.id));
+  const spawnScreens = [...collidingIds].filter((id) => id.endsWith("-spawn-screen"));
+  const lowerCover = [...collidingIds].filter((id) => id.startsWith("lower-"));
+  const bridgeAltars = [...collidingIds].filter((id) => id.startsWith("sun-bridge-altar-"));
+
+  assert.equal(spawnScreens.length, 8, "each 5-player spawn row needs a protected exit");
+  assert.ok(lowerCover.length >= 7, "the river needs staggered cover across its full length");
+  assert.deepEqual(bridgeAltars.sort(), ["sun-bridge-altar-north", "sun-bridge-altar-south"]);
+  const obstacles = getArenaObstacles("temple_runoff");
+  TEMPLE_RUNOFF_TEAM_SPAWNS.blue.forEach((spawn, index) => {
+    assert.equal(
+      hasLineOfSight({
+        from: spawn,
+        to: TEMPLE_RUNOFF_TEAM_SPAWNS.red[index],
+        obstacles
+      }),
+      false,
+      `${spawn.label} must not see the opposing spawn row`
+    );
+  });
+  for (const id of bridgeAltars) {
+    const altar = blocks.find((block) => block.id === id);
+    assert.ok(altar);
+    assert.equal((altar.y ?? 0) - altar.h / 2, TEMPLE_RUNOFF_UPPER_LEVEL_Y);
+  }
 });
 
 test("Temple Runoff visual collision definitions mirror authoritative 3D proxies", () => {

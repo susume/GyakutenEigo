@@ -29,6 +29,7 @@ import {
   DESERT_CITADEL_ROOFTOP_LEVEL_Y,
   IRON_JUNCTION_LOADING_LEVEL_Y,
   IRON_JUNCTION_OVERPASS_LEVEL_Y,
+  TEMPLE_RUNOFF_MAIN_LEVEL_Y,
   DEFAULT_PLAYER_HEALTH,
   GEAR_ITEMS,
   getGearFireCooldownMs,
@@ -1409,14 +1410,20 @@ const getDesertCitadelPatrolPoints = (team: Team) => {
   return stages.flat();
 };
 
+const getTempleRunoffPatrolPoints = (team: Team) => {
+  const direction = team === "blue" ? 1 : -1;
+  const xStages = [-190, -108, -12, 92, 190].map((x) => x * direction);
+  return xStages.flatMap((x) => [
+    scaledLevelPoint(x, -154, TEMPLE_RUNOFF_MAIN_LEVEL_Y),
+    scaledLevelPoint(x, -86, TEMPLE_RUNOFF_MAIN_LEVEL_Y),
+    scaledLevelPoint(x, 0),
+    scaledLevelPoint(x, 86, TEMPLE_RUNOFF_MAIN_LEVEL_Y),
+    scaledLevelPoint(x, 154, TEMPLE_RUNOFF_MAIN_LEVEL_Y)
+  ]);
+};
+
 const getBotPatrolPoints = (team: Team, mapId?: string) => mapId === "temple_runoff"
-  ? [
-      scaledPoint(team === "blue" ? -136 : 136, -36),
-      scaledPoint(team === "blue" ? -82 : 82, 0),
-      scaledPoint(0, team === "blue" ? -118 : 118),
-      scaledPoint(team === "blue" ? 52 : -52, 0),
-      botBasePoint(team, mapId)
-    ]
+  ? getTempleRunoffPatrolPoints(team)
   : mapId === "iron_junction"
     ? getIronJunctionPatrolPoints(team)
   : mapId === "desert_citadel"
@@ -1831,7 +1838,11 @@ export const advanceBots = () => {
         hasTarget: Boolean(target),
         distanceToGoal: horizontalDistance(botPosition(bot), rawGoal)
       })) {
-        brain.routeIndex += session.settings.mapId === "iron_junction" || session.settings.mapId === "desert_citadel" ? 5 : 1;
+        brain.routeIndex += session.settings.mapId === "iron_junction"
+          || session.settings.mapId === "desert_citadel"
+          || session.settings.mapId === "temple_runoff"
+          ? 5
+          : 1;
         brain.navigationPath = undefined;
         goal = getBotObjectiveGoal(session, bot, brain, brain.state);
         rawGoal = clampArenaPosition({ ...goal, facing: bot.facing ?? 0 }, session.settings.mapId);
