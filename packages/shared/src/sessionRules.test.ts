@@ -31,17 +31,20 @@ import {
   getGearRange,
   getGearMoveSpeedMultiplier,
   getGearZoomFovMultiplier,
+  hasLineOfSight,
   getPlayerHealthMax,
   getPlayerMoveSpeedMultiplier,
   getPlayerPerks,
   getPlayerWeaponId,
   getRoundResetLoadout,
   getArenaObstacles,
+  getCaptureZonesForMap,
   getRoundRemainingSeconds,
   getZombieBestPlayers,
   resolveTeamRoundWinner,
   getTeamSpawn,
   getTeamSpawnForMap,
+  getTeamSpawnsForMap,
   selectTeamSpawn,
   TEAM_SPAWNS,
   isRoundActive,
@@ -828,6 +831,67 @@ test("Iron Junction uses its own map spawn labels and collision proxies", () => 
   assert.equal(ironObstacles.some((obstacle) => obstacle.id === "sorting-booth"), true);
   assert.notEqual(ironObstacles, getArenaObstacles("desert_citadel"));
   assert.equal(sanitizeSessionSettings({ mapId: "iron_junction" }).mapId, "iron_junction");
+});
+
+test("Temple Runoff provides 24 safe authoritative spawns per team", () => {
+  const templeSpawns = getTeamSpawnsForMap("temple_runoff");
+  const obstacles = getArenaObstacles("temple_runoff");
+
+  assert.equal(templeSpawns.blue.length, 24);
+  assert.equal(templeSpawns.red.length, 24);
+  assert.equal(templeSpawns.blue.every((spawn) => isInsideTeamBase("blue", spawn)), true);
+  assert.equal(templeSpawns.red.every((spawn) => isInsideTeamBase("red", spawn)), true);
+
+  const blocked = [...templeSpawns.blue, ...templeSpawns.red].filter((spawn) =>
+    resolveAuthoritativeMovement({
+      current: spawn,
+      requested: { ...spawn, z: spawn.z + 0.05 },
+      elapsedMs: 100,
+      maxSpeed: 1,
+      obstacles
+    }).blocked
+  );
+  assert.deepEqual(blocked, []);
+});
+
+test("Temple Runoff owns its collision, objectives, and three traversable macro routes", () => {
+  const obstacles = getArenaObstacles("temple_runoff");
+  const zones = getCaptureZonesForMap("temple_runoff");
+  const scale = (value: number) => value * ARENA_SCALE;
+
+  assert.equal(obstacles.some((obstacle) => obstacle.id === "sunken-altar"), true);
+  assert.equal(obstacles.some((obstacle) => obstacle.id === "cascade-altar"), true);
+  assert.equal(zones.some((zone) => zone.id === "temple-sunken-altar"), true);
+  assert.equal(sanitizeSessionSettings({ mapId: "temple_runoff" }).mapId, "temple_runoff");
+  assert.equal(hasLineOfSight({
+    from: { x: scale(-145), z: 0 },
+    to: { x: 0, z: 0 },
+    obstacles
+  }), false);
+  assert.equal(hasLineOfSight({
+    from: { x: scale(-145), z: 0 },
+    to: { x: scale(145), z: 0 },
+    obstacles
+  }), false);
+
+  const assertRoute = (rawWaypoints: Array<[number, number]>) => {
+    for (let index = 1; index < rawWaypoints.length; index += 1) {
+      const [fromX, fromZ] = rawWaypoints[index - 1];
+      const [toX, toZ] = rawWaypoints[index];
+      const movement = resolveAuthoritativeMovement({
+        current: { x: scale(fromX), z: scale(fromZ), facing: 0 },
+        requested: { x: scale(toX), z: scale(toZ), facing: 0 },
+        elapsedMs: 1000,
+        maxSpeed: 400,
+        obstacles
+      });
+      assert.equal(movement.blocked, undefined, `route segment ${fromX},${fromZ} -> ${toX},${toZ} was blocked`);
+    }
+  };
+
+  assertRoute([[-157, -45], [-130, -45], [-125, -76], [-104, -76], [-62, -74], [0, -72], [62, -74], [104, -76], [125, -76], [130, -45], [157, -45]]);
+  assertRoute([[-157, -9], [-123, -10], [-103, -14], [-84, -14], [-52, -14], [-16, -14], [16, -14], [52, -14], [84, -14], [103, -10], [123, -10], [157, -9]]);
+  assertRoute([[-157, 45], [-130, 45], [-125, 78], [-103, 78], [-55, 70], [0, 70], [55, 70], [103, 78], [125, 78], [130, 45], [157, 45]]);
 });
 
 test("selectTeamSpawn avoids nearby visible enemies when alternatives exist", () => {

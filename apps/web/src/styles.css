@@ -796,6 +796,10 @@ label.toggle-row input {
   fill: #465258;
 }
 
+.minimap-temple {
+  fill: #526a56;
+}
+
 .minimap-route {
   fill: rgba(104, 213, 224, 0.28);
 }
@@ -1241,6 +1245,11 @@ small {
 .map-selection-card.map-iron_junction {
   border-color: #a9b7b5;
   background: linear-gradient(135deg, #e7eceb, #f9f7f2);
+}
+
+.map-selection-card.map-temple_runoff {
+  border-color: #8eaa91;
+  background: linear-gradient(135deg, #e4f0e6, #f8fbf4);
 }
 
 .map-selection-card__eyebrow {

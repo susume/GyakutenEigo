@@ -37,6 +37,7 @@ import {
   GEAR_ITEMS,
   getPlayerPerks,
   getPlayerWeaponId,
+  getTeamSpawnForMap,
   RESPAWN_CORRECT_ANSWERS_REQUIRED,
   getRoundRemainingSeconds,
   isRoundBuyPhase,
@@ -712,10 +713,15 @@ function CharacterLab() {
   const [tick, setTick] = useState(0);
   const [labMapId, setLabMapId] = useState<ArenaMapId>("desert_citadel");
   const [labQuality, setLabQuality] = useState<ArenaQuality>("balanced");
+  const [labView, setLabView] = useState<"overview" | "fps">("overview");
   const session = useMemo(() => {
     const generated = createCharacterDebugSession({ count, tick });
     return { ...generated, settings: { ...generated.settings, mapId: labMapId } };
   }, [count, tick, labMapId]);
+  const debugPlayer = session.players.find((player) => player.isAlive) ?? session.players[0];
+  const labPlayer = debugPlayer
+    ? { ...debugPlayer, ...getTeamSpawnForMap(labMapId, debugPlayer.team, 10) }
+    : undefined;
   const summary = useMemo(() => summarizeCharacterDebugSession(session), [session]);
 
   useEffect(() => {
@@ -750,11 +756,16 @@ function CharacterLab() {
           <div className="button-row" aria-label="Character lab map">
             <button className={labMapId === "desert_citadel" ? "active" : ""} onClick={() => setLabMapId("desert_citadel")}>Desert Citadel</button>
             <button className={labMapId === "iron_junction" ? "active" : ""} onClick={() => setLabMapId("iron_junction")}>Iron Junction</button>
+            <button className={labMapId === "temple_runoff" ? "active" : ""} onClick={() => setLabMapId("temple_runoff")}>Temple Runoff</button>
           </div>
           <div className="button-row" aria-label="Character lab quality">
             <button className={labQuality === "performance" ? "active" : ""} onClick={() => setLabQuality("performance")}>Low</button>
             <button className={labQuality === "balanced" ? "active" : ""} onClick={() => setLabQuality("balanced")}>Medium</button>
             <button className={labQuality === "high" ? "active" : ""} onClick={() => setLabQuality("high")}>High</button>
+          </div>
+          <div className="button-row" aria-label="Character lab camera">
+            <button className={labView === "overview" ? "active" : ""} onClick={() => setLabView("overview")}>Overview</button>
+            <button className={labView === "fps" ? "active" : ""} onClick={() => setLabView("fps")}>First person</button>
           </div>
           <div className="lab-metrics">
             <span><strong>{summary.total}</strong>Total</span>
@@ -784,6 +795,9 @@ function CharacterLab() {
           <Suspense fallback={<ArenaLoading label="Loading character lab" />}>
             <ArenaPreview
               session={session}
+              currentPlayer={labView === "fps" ? labPlayer : undefined}
+              view={labView}
+              suppressHint={labView === "fps"}
               debugOverlay
               debugLabel={`${count}-player character stress`}
               quality={labQuality}
@@ -1875,6 +1889,7 @@ function SessionManager({
           <strong>{selectedMap.title}</strong>
           <span>{selectedMap.districts.slice(0, 3).join(" · ")}</span>
           {selectedMap.id === "iron_junction" && <small>Generated from the Iron Junction industrial railway brief · three lanes · balanced East/West spawns</small>}
+          {selectedMap.id === "temple_runoff" && <small>Purpose-built for 20v20 · three connected routes · 24 protected spawns per team</small>}
         </div>
         {settings.gameMode === "flag" && (
           <label>
@@ -2626,7 +2641,11 @@ function StudentExperience({ onExit }: { onExit: () => void }) {
               attacker: { x: position.x!, z: position.z! },
               target: { x: local.x!, z: local.z!, facing: local.facing ?? 0 }
             }),
-            lastVisualSession.settings.mapId === "iron_junction" ? "metal" : "sand"
+            lastVisualSession.settings.mapId === "iron_junction"
+              ? "metal"
+              : lastVisualSession.settings.mapId === "temple_runoff"
+                ? "stone"
+                : "sand"
           );
         }
         lastRemotePositions.set(position.playerId, { x: position.x!, z: position.z! });
