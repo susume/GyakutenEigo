@@ -1148,7 +1148,7 @@ export const DESERT_CITADEL_ROOFTOP_LEVEL_Y = 24;
 // Kept as a compatibility alias for older clients and saved diagnostics.
 export const DESERT_CITADEL_CITADEL_LEVEL_Y = DESERT_CITADEL_ROOFTOP_LEVEL_Y;
 
-export type IronJunctionStairFlight = {
+export type ArenaStairFlight = {
   id: string;
   x: number;
   z: number;
@@ -1160,6 +1160,7 @@ export type IronJunctionStairFlight = {
   endY: number;
   steps: number;
 };
+export type IronJunctionStairFlight = ArenaStairFlight;
 
 /**
  * Shared station stair definitions keep the visible flight, player floor
@@ -1178,6 +1179,22 @@ export const IRON_JUNCTION_STAIR_FLIGHTS = [
   { id: "overpass-east-stairs", x: 150, z: 25, width: 20, length: 50, axis: "x", direction: -1, startY: 0, endY: IRON_JUNCTION_OVERPASS_LEVEL_Y, steps: 24 },
   { id: "depot-footbridge-stairs", x: 80, z: 65, width: 20, length: 60, axis: "z", direction: -1, startY: IRON_JUNCTION_LOADING_LEVEL_Y, endY: IRON_JUNCTION_OVERPASS_LEVEL_Y, steps: 15 }
 ] as const satisfies readonly IronJunctionStairFlight[];
+
+/**
+ * Temple Runoff uses physical stone stairs for every level change. River
+ * flights rise 8 units over 12 steps; Upper flights rise 9 units over 14
+ * steps. Every riser stays below the controller's 0.8-unit step limit.
+ */
+export const TEMPLE_RUNOFF_STAIR_FLIGHTS = [
+  ...[-136, -52, 55, 136].flatMap((x): ArenaStairFlight[] => [
+    { id: `river-stairs-north-${x}`, x, z: -36, width: 28, length: 24, axis: "z", direction: -1, startY: 0, endY: TEMPLE_RUNOFF_MAIN_LEVEL_Y, steps: 12 },
+    { id: `river-stairs-south-${x}`, x, z: 36, width: 28, length: 24, axis: "z", direction: 1, startY: 0, endY: TEMPLE_RUNOFF_MAIN_LEVEL_Y, steps: 12 }
+  ]),
+  { id: "sun-bridge-stairs-north", x: 0, z: -70, width: 36, length: 24, axis: "z", direction: 1, startY: TEMPLE_RUNOFF_MAIN_LEVEL_Y, endY: TEMPLE_RUNOFF_UPPER_LEVEL_Y, steps: 14 },
+  { id: "sun-bridge-stairs-south", x: 0, z: 70, width: 36, length: 24, axis: "z", direction: -1, startY: TEMPLE_RUNOFF_MAIN_LEVEL_Y, endY: TEMPLE_RUNOFF_UPPER_LEVEL_Y, steps: 14 },
+  { id: "upper-jungle-stairs", x: -133, z: -66, width: 28, length: 30, axis: "x", direction: 1, startY: TEMPLE_RUNOFF_MAIN_LEVEL_Y, endY: TEMPLE_RUNOFF_UPPER_LEVEL_Y, steps: 14 },
+  { id: "upper-temple-stairs", x: 133, z: 66, width: 28, length: 30, axis: "x", direction: -1, startY: TEMPLE_RUNOFF_MAIN_LEVEL_Y, endY: TEMPLE_RUNOFF_UPPER_LEVEL_Y, steps: 14 }
+] as const satisfies readonly ArenaStairFlight[];
 
 export type ArenaBounds = { limitX: number; limitZ: number };
 export const TEMPLE_RUNOFF_BOUNDS: ArenaBounds = {
@@ -1211,35 +1228,12 @@ const isInsideRawRect = (
   maxZ: number
 ) => x >= minX - 1e-6 && x <= maxX + 1e-6 && z >= minZ - 1e-6 && z <= maxZ + 1e-6;
 
-const templeRampHeight = (rawX: number, rawZ: number): number | undefined => {
-  for (const centerX of [-136, -52, 55, 136]) {
-    if (Math.abs(rawX - centerX) > 14) continue;
-    if (rawZ >= -48 - 1e-6 && rawZ <= -24 + 1e-6) {
-      const progress = Math.max(0, Math.min(1, (-24 - rawZ) / 24));
-      return Number((TEMPLE_RUNOFF_MAIN_LEVEL_Y * progress).toFixed(3));
-    }
-    if (rawZ >= 24 - 1e-6 && rawZ <= 48 + 1e-6) {
-      const progress = Math.max(0, Math.min(1, (rawZ - 24) / 24));
-      return Number((TEMPLE_RUNOFF_MAIN_LEVEL_Y * progress).toFixed(3));
-    }
-  }
-  if (Math.abs(rawX) <= 18 && rawZ >= -82 && rawZ < -58) {
-    return Number((TEMPLE_RUNOFF_MAIN_LEVEL_Y + 9 * ((rawZ + 82) / 24)).toFixed(3));
-  }
-  if (Math.abs(rawX) <= 18 && rawZ > 58 && rawZ <= 82) {
-    return Number((TEMPLE_RUNOFF_MAIN_LEVEL_Y + 9 * ((82 - rawZ) / 24)).toFixed(3));
-  }
-  if (rawX >= -148 && rawX < -118 && rawZ >= -80 && rawZ <= -52) {
-    return Number((TEMPLE_RUNOFF_MAIN_LEVEL_Y + 9 * ((rawX + 148) / 30)).toFixed(3));
-  }
-  if (rawX > 118 && rawX <= 148 && rawZ >= 52 && rawZ <= 80) {
-    return Number((TEMPLE_RUNOFF_MAIN_LEVEL_Y + 9 * ((148 - rawX) / 30)).toFixed(3));
-  }
-  return undefined;
-};
-
-const ironStairHeight = (rawX: number, rawZ: number): number | undefined => {
-  for (const flight of IRON_JUNCTION_STAIR_FLIGHTS) {
+const stairFlightHeight = (
+  flights: readonly ArenaStairFlight[],
+  rawX: number,
+  rawZ: number
+): number | undefined => {
+  for (const flight of flights) {
     const along = flight.axis === "x" ? rawX : rawZ;
     const across = flight.axis === "x" ? rawZ : rawX;
     const centerAlong = flight.axis === "x" ? flight.x : flight.z;
@@ -1260,6 +1254,12 @@ const ironStairHeight = (rawX: number, rawZ: number): number | undefined => {
   }
   return undefined;
 };
+
+const templeStairHeight = (rawX: number, rawZ: number): number | undefined =>
+  stairFlightHeight(TEMPLE_RUNOFF_STAIR_FLIGHTS, rawX, rawZ);
+
+const ironStairHeight = (rawX: number, rawZ: number): number | undefined =>
+  stairFlightHeight(IRON_JUNCTION_STAIR_FLIGHTS, rawX, rawZ);
 
 const desertRampHeight = (rawX: number, rawZ: number): number | undefined => {
   // Four broad, orthogonal flights connect the ground to the citadel terrace.
@@ -1338,8 +1338,8 @@ export const getArenaFloorSurfaces = (
     if (onCitadelTerrace) return [DESERT_CITADEL_MAIN_LEVEL_Y];
     return [0];
   }
-  const ramp = templeRampHeight(rawX, rawZ);
-  if (ramp !== undefined) return [ramp];
+  const stair = templeStairHeight(rawX, rawZ);
+  if (stair !== undefined) return [stair];
 
   const inRiver = isInsideRawRect(rawX, rawZ, -202, 202, -24, 24);
   const surfaces = [inRiver ? 0 : TEMPLE_RUNOFF_MAIN_LEVEL_Y];
@@ -1354,8 +1354,8 @@ export const getArenaFloorSurfaces = (
 
 /**
  * Returns the walkable floor elevation at an arena position.
- * Temple Runoff has a lower river floor, two north ramps, two south ramps,
- * and a raised monument/courtyard tier everywhere else.
+ * Temple Runoff has a lower river floor, eight broad river stair flights,
+ * four Upper connections, and a raised monument/courtyard tier everywhere else.
  */
 export const getArenaGroundHeight = (
   mapId: ArenaMapId | string | undefined,

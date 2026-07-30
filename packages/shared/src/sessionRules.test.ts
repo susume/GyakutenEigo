@@ -21,6 +21,7 @@ import {
   ARENA_PLAYER_CROUCH_EYE_HEIGHT,
   ARENA_PLAYER_EYE_HEIGHT,
   TEMPLE_RUNOFF_MAIN_LEVEL_Y,
+  TEMPLE_RUNOFF_STAIR_FLIGHTS,
   TEMPLE_RUNOFF_UPPER_LEVEL_Y,
   STARTER_BLASTER_RANGE,
   FREE_FOR_ALL_SPAWNS,
@@ -1197,25 +1198,73 @@ test("Temple Runoff resolves stacked floors from player height instead of choosi
   }
 });
 
-test("Temple Runoff exposes eight continuous canal ramps and three upper-level connections", () => {
-  for (const rawX of [-136, -52, 55, 136]) {
-    assert.deepEqual(
-      [24, 36, 48].map((rawZ) => getArenaGroundHeight("temple_runoff", rawX * ARENA_SCALE, rawZ * ARENA_SCALE)),
-      [0, TEMPLE_RUNOFF_MAIN_LEVEL_Y / 2, TEMPLE_RUNOFF_MAIN_LEVEL_Y]
-    );
-    assert.deepEqual(
-      [-24, -36, -48].map((rawZ) => getArenaGroundHeight("temple_runoff", rawX * ARENA_SCALE, rawZ * ARENA_SCALE)),
-      [0, TEMPLE_RUNOFF_MAIN_LEVEL_Y / 2, TEMPLE_RUNOFF_MAIN_LEVEL_Y]
-    );
+test("Temple Runoff exposes eight River stairs and four Upper stair connections", () => {
+  assert.equal(TEMPLE_RUNOFF_STAIR_FLIGHTS.filter((flight) => flight.id.startsWith("river-stairs-")).length, 8);
+  assert.equal(TEMPLE_RUNOFF_STAIR_FLIGHTS.filter((flight) => !flight.id.startsWith("river-stairs-")).length, 4);
+  for (const flight of TEMPLE_RUNOFF_STAIR_FLIGHTS) {
+    const startAlong = (flight.axis === "x" ? flight.x : flight.z) - flight.direction * flight.length / 2;
+    const sampledGround = [0, 0.5, 1].map((progress) => {
+      const along = startAlong + flight.direction * flight.length * progress;
+      return getArenaGroundHeight(
+        "temple_runoff",
+        (flight.axis === "x" ? along : flight.x) * ARENA_SCALE,
+        (flight.axis === "z" ? along : flight.z) * ARENA_SCALE
+      );
+    });
+    assert.equal(sampledGround[0], flight.startY);
+    assert.equal(sampledGround[2], flight.endY);
+    assert.ok(sampledGround[1] > flight.startY && sampledGround[1] < flight.endY);
   }
-  assert.deepEqual(
-    [-82, -70, -58].map((rawZ) => getArenaGroundHeight("temple_runoff", 0, rawZ * ARENA_SCALE)),
-    [TEMPLE_RUNOFF_MAIN_LEVEL_Y, 12.5, TEMPLE_RUNOFF_UPPER_LEVEL_Y]
-  );
   assert.deepEqual(getArenaBounds("temple_runoff"), { limitX: 235 * ARENA_SCALE, limitZ: 200 * ARENA_SCALE });
 });
 
-test("Temple Runoff bot navigation keeps elevation and reaches the lower canal through a ramp", () => {
+test("Temple Runoff player and server movement can climb every complete stair flight", () => {
+  const obstacles = getArenaObstacles("temple_runoff");
+  for (const flight of TEMPLE_RUNOFF_STAIR_FLIGHTS) {
+    const startAlong = (flight.axis === "x" ? flight.x : flight.z) - flight.direction * flight.length / 2;
+    let current = {
+      x: (flight.axis === "x" ? startAlong : flight.x) * ARENA_SCALE,
+      y: flight.startY + ARENA_PLAYER_EYE_HEIGHT,
+      z: (flight.axis === "z" ? startAlong : flight.z) * ARENA_SCALE,
+      facing: 0
+    };
+    let previousGroundY = flight.startY;
+    for (let step = 0; step < flight.steps; step += 1) {
+      const progress = (step + 0.5) / flight.steps;
+      const along = startAlong + flight.direction * flight.length * progress;
+      const requestedX = (flight.axis === "x" ? along : flight.x) * ARENA_SCALE;
+      const requestedZ = (flight.axis === "z" ? along : flight.z) * ARENA_SCALE;
+      const nextGroundY = getArenaGroundHeightForPlayer(
+        "temple_runoff",
+        requestedX,
+        requestedZ,
+        current.y,
+        ARENA_PLAYER_EYE_HEIGHT
+      );
+      assert.ok(nextGroundY - previousGroundY <= 0.8 + 1e-6, `${flight.id} exceeds the FPS step limit`);
+      const movement = resolveAuthoritativeMovement({
+        current,
+        requested: {
+          x: requestedX,
+          y: nextGroundY + ARENA_PLAYER_EYE_HEIGHT,
+          z: requestedZ,
+          facing: 0
+        },
+        elapsedMs: 200,
+        maxSpeed: 20,
+        obstacles,
+        groundY: nextGroundY,
+        mapId: "temple_runoff"
+      });
+      assert.equal(movement.blocked, undefined, `${flight.id} is blocked at step ${step + 1}`);
+      current = { ...movement, y: nextGroundY + ARENA_PLAYER_EYE_HEIGHT };
+      previousGroundY = nextGroundY;
+    }
+    assert.equal(previousGroundY, flight.endY, `${flight.id} should reach its landing`);
+  }
+});
+
+test("Temple Runoff bot navigation keeps elevation and reaches the lower canal through stairs", () => {
   const path = findBotNavigationPath({
     from: { x: -80 * ARENA_SCALE, y: TEMPLE_RUNOFF_MAIN_LEVEL_Y + ARENA_PLAYER_EYE_HEIGHT, z: -70 * ARENA_SCALE, facing: 0 },
     to: { x: -90 * ARENA_SCALE, y: ARENA_PLAYER_EYE_HEIGHT, z: 0, facing: 0 },

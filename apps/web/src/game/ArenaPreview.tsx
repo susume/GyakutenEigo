@@ -1382,7 +1382,7 @@ export default function ArenaPreview({
         terminal.add(answerPad);
       }
       scene.add(terminal);
-      if (!isFps) {
+      if (!isFps && !isTempleRunoff) {
         const label = new THREE.Sprite(makeSpriteLabel(zone.label, "#fde68a"));
         label.position.set(zone.x, zoneY + 12, zone.z);
         label.scale.set(22, 7.5, 1);

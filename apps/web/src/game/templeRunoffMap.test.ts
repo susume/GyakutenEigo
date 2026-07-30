@@ -4,6 +4,7 @@ import {
   ARENA_PLAYER_BODY_HEIGHT,
   ARENA_SCALE,
   TEMPLE_RUNOFF_MAIN_LEVEL_Y,
+  TEMPLE_RUNOFF_STAIR_FLIGHTS,
   TEMPLE_RUNOFF_TEAM_SPAWNS,
   TEMPLE_RUNOFF_UPPER_LEVEL_Y,
   getArenaFloorSurfaces,
@@ -11,21 +12,34 @@ import {
   hasLineOfSight
 } from "@quizstrike/shared";
 import { ARENA_MAPS } from "./arenaMaps";
-import { blocks, cylinders, floorMarks, props } from "./templeRunoffMap";
+import { blocks, cylinders, floorMarks, props, signs } from "./templeRunoffMap";
 
 test("Temple Runoff 2.0 is a substantially larger three-level arena", () => {
   const map = ARENA_MAPS.find((candidate) => candidate.id === "temple_runoff");
   assert.ok(map);
   assert.equal(map.title, "Temple Runoff 2.0");
   assert.deepEqual(map.footprint, { width: 470 * ARENA_SCALE, depth: 400 * ARENA_SCALE });
-  assert.deepEqual(floorMarks.slice(0, 4).map((mark) => mark.label), [
-    "LOWER WATERWAY ↓",
-    "JUNGLE RUINS",
-    "RAIN COURT",
-    "SUN BRIDGE ↑"
-  ]);
+  assert.deepEqual(floorMarks, []);
+  assert.deepEqual(signs, []);
+  assert.ok(blocks.every((block) => block.label === undefined));
+  assert.ok(cylinders.every((cylinder) => cylinder.label === undefined));
   assert.ok(map.routes.length >= 6);
   assert.ok(props.length <= 10, "new space must not be filled with discretionary props");
+});
+
+test("Temple Runoff replaces every playable incline with authored stone stairs", () => {
+  const stairBlocks = blocks.filter((block) => block.style === "stair");
+  assert.equal(
+    stairBlocks.length,
+    TEMPLE_RUNOFF_STAIR_FLIGHTS.reduce((total, flight) => total + flight.steps, 0)
+  );
+  assert.ok(blocks.every((block) => !block.id.includes("ramp")));
+  assert.ok(blocks.every((block) => block.rotationX === undefined && block.rotationZ === undefined));
+  for (const flight of TEMPLE_RUNOFF_STAIR_FLIGHTS) {
+    assert.ok(stairBlocks.some((block) => block.id === `${flight.id}-step-1`));
+    assert.ok(stairBlocks.some((block) => block.id === `${flight.id}-step-${flight.steps}`));
+    assert.ok((flight.endY - flight.startY) / flight.steps <= 0.75);
+  }
 });
 
 test("spawn exits, river, and upper bridge have structural sightline breaks", () => {

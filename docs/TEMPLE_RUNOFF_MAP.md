@@ -5,7 +5,7 @@
 ### A. Executive summary
 
 Temple Runoff 2.0 already solved the hardest technical problem: River, Main, and
-Upper are genuinely stacked walkable levels with working ramps, height-aware
+Upper are genuinely stacked walkable levels with working connectors, height-aware
 collision, projectiles, and bot navigation. The map therefore needs a major
 refinement, not a rebuild. The priority is to preserve that system while making
 the 40-player combat readable and defensible.
@@ -19,7 +19,7 @@ sightlines. The size is sufficient; protection and distribution are the issues.
 ### C. Route structure
 
 The arena has more than the required three routes: two Main approaches, the River,
-the Sun Bridge, and outer ruin flanks. Eight river ramps and three upper
+the Sun Bridge, and outer ruin flanks. Eight River connectors and four Upper
 connections prevent a single hard choke. However, the old bot patrol had only five
 serial goals, causing large teams to converge instead of committing to distinct
 route families.
@@ -46,7 +46,7 @@ visual screens, allowing suppressive fire to reach too close to the spawn rows.
 ### G. Vertical gameplay
 
 Vertical gameplay is the map's strongest feature. The River at Y=0, Main at Y=8,
-and Upper at Y=17 have continuous ramps, stacked-floor selection, and enough
+and Upper at Y=17 have connected traversal, stacked-floor selection, and enough
 clearance below the bridge. No connector should be removed or relocated during
 this refinement.
 
@@ -73,7 +73,7 @@ or dynamic lights, and re-profile all three levels after implementation.
 
 ### K. Decision
 
-**Level 2 - Major Redesign.** Preserve footprint, floors, ramps, objectives,
+**Level 2 - Major Redesign.** Preserve footprint, floors, connectors, objectives,
 water, and art-pass landmarks. Add spawn shielding, staggered mid-route cover,
 River cover islands, offset bridge cover, and five persistent bot route families.
 
@@ -85,9 +85,9 @@ walkable elevations:
 - **River (Y=0):** a clear east-west canal beneath the central bridge, with sparse
   broken-ruin cover, waterfalls, a broken ford, and a timber crossing.
 - **Main (Y=8):** broad team approaches, Rain Court, jungle ruins, bases, and eight
-  river ramps.
+  River stair flights.
 - **Upper (Y=17):** the iconic north-south temple bridge, jungle terraces, broken
-  parapets, scaffolding, and three independent main-to-upper connections.
+  parapets, scaffolding, and four independent main-to-upper stair connections.
 
 The source footprint is 470 × 400 design units, or approximately 291 × 248 world
 units. This increases playable plan area from 112,000 to 188,000 design units
@@ -116,25 +116,25 @@ navigation builds separate nodes for each stacked floor.
 
 ```text
                    NORTH JUNGLE TERRACE — UPPER (Y=17)
-                              │ side ramp
+                              │ side stairs
  BLUE BASE — MAIN ── Rain Court / ruins ── RED BASE — MAIN (Y=8)
        │      ╲    ╲      ╲          ╱      ╱    ╱      │
-       │       four west river ramps + four east river ramps
+       │       four west River stairs + four east River stairs
        │                       │
        ├──── broken ford ── FLOODED CANAL (Y=0) ── timber crossing ────┤
        │                       │
        │             CENTRAL TEMPLE BRIDGE
        │             deck above canal (Y=17)
-       │              ╱ north ramp  south ramp ╲
+       │             ╱ north stairs  south stairs ╲
  BLUE BASE — MAIN ── jungle ruins / Rain Court ── RED BASE — MAIN (Y=8)
                    SOUTH JUNGLE TERRACE — UPPER (Y=17)
 ```
 
 The primary lanes are the lower flooded canal, two broad main-level approaches,
 the central upper bridge, outer jungle/ruin flanks, the broken ford, and the timber
-crossing. Eight river ramps prevent the lower level from collapsing into a single
-choke. Two central bridge ramps plus a side terrace ramp give the upper level three
-connections. The bridge has four tall supports and leaves a clean playable route
+crossing. Eight River stair flights prevent the lower level from collapsing into
+a single choke. Two central bridge stairs plus two side terrace stairs give the
+Upper level four connections. The bridge has four tall supports and leaves a clean playable route
 under its deck.
 
 Twenty unique spawns per team are distributed across four main-level rows near
@@ -144,18 +144,18 @@ map-specific and retain their authored elevation.
 ## Collision, navigation, and minimap
 
 - Client gravity and movement resolve the floor relative to current eye height,
-  including continuous ramp interpolation.
+  including authored step-by-step stair elevations.
 - Server movement, safe-position recovery, projectiles, and line of sight use
   matching 3D collision bounds.
 - Visual blocks and authoritative colliders have exact test-covered parity,
   including minimum and maximum Y.
 - Bot A* nodes are generated per floor surface. Height-constrained edges connect
-  the ramp sequence; a coordinate index avoids scanning the entire grid at every
+  the stair sequence; a coordinate index avoids scanning the entire grid at every
   expansion.
 - Bot patrol goals include river rotations, and waypoints retain Y.
-- The minimap uses the larger map bounds, map-specific bases/objectives, clear
-  Blue/Red/Jungle/River/Court labels, and level-aware dimming plus River/Main/Upper
-  status.
+- World-space route text and floating location labels are removed. The minimap
+  retains level-aware River/Main/Upper UI status without using text as world
+  geometry.
 
 ## Performance
 
@@ -171,8 +171,8 @@ Local Chrome-compatible browser captures used Medium quality and a generated
 For comparison, the previous overview capture recorded 64 FPS, 20.4 ms p95,
 398 calls, and 208,358 triangles. The new river view is comfortably inside the
 400-call target; exposed main and upper views are not. The refined map contains
-86 block pieces, 6 cylinders, and 10 discretionary props (102 total authored
-objects). The renderer collapses 137 visible static facade sources into five
+226 block pieces, 6 cylinders, and 10 discretionary props (242 total authored
+objects). The renderer collapses the visible static facade sources into five
 material batches, so the new structural cover does not create a separate draw
 call for every piece.
 
@@ -185,10 +185,11 @@ character-atlas pass.
 
 ## Verification
 
-- All 247 shared/server/web tests pass, including 5 targeted map and art-pass tests.
+- All 249 shared/server/web tests pass, including 12 Temple-focused movement, map,
+  collision, projectile, and art-pass tests.
 - A 600-frame regression holds a player beneath the bridge on the river floor.
-- Tests cover identical X/Z positions on lower and upper floors, all eight river
-  ramps, all three upper connections, 20 safe spawns per team, 3D collision
+- Tests cover identical X/Z positions on lower and upper floors, all eight River
+  stair flights, all four Upper connections, 20 safe spawns per team, 3D collision
   parity, no direct sightline between any paired opposing spawn row, and a bot
   main-to-river route with vertical waypoints.
 - Live probes reported River Y=0, Main Y=8, and Upper Y=17 with no recovery event.
