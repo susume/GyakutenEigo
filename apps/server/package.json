@@ -9,13 +9,14 @@
     "build": "tsc",
     "start": "node dist/start.js",
     "test": "tsx --test \"src/**/*.test.ts\"",
-    "test:load": "tsx --test --test-name-pattern=\"40 authenticated Socket.IO\" src/appearanceFlow.integration.test.ts",
+    "test:load": "tsx --test --test-name-pattern=\"40 authenticated Socket.IO|bot ticks|load matrix\" src/appearanceFlow.integration.test.ts",
     "typecheck": "tsc --noEmit"
   },
   "dependencies": {
     "@prisma/client": "^6.19.3",
     "@quizstrike/shared": "0.1.0",
     "bcryptjs": "^3.0.2",
+    "compression": "^1.8.1",
     "cors": "^2.8.5",
     "dotenv": "^17.0.1",
     "express": "^5.1.0",
@@ -23,6 +24,7 @@
     "socket.io": "^4.8.1"
   },
   "devDependencies": {
+    "@types/compression": "^1.8.1",
     "@types/cors": "^2.8.19",
     "@types/express": "^5.0.3",
     "@types/jsonwebtoken": "^9.0.10",

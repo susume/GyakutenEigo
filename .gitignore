@@ -20,6 +20,7 @@ Quiz-Strike/
 .env.*
 !.env.example
 !.env.production.example
+!.env.migration.example
 
 # Private local planning and handoff notes
 /architecture.md
@@ -29,6 +30,8 @@ Quiz-Strike/
 prisma/dev.db
 *.sqlite
 *.sqlite3
+database-backups/
+*.dump
 
 # Logs and OS/editor noise
 *.log

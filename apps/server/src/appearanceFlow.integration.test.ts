@@ -43,6 +43,7 @@ type JoinedPlayer = {
   session: SessionFixture;
   player: PlayerFixture;
   playerToken: string;
+  question?: { id: string };
 };
 
 const defaultAppearance: AppearanceFixture = {
@@ -282,7 +283,12 @@ test("real HTTP appearance flow enforces identity, room scope, locking, and clea
   );
   assert.equal(rateLimited.response.status, 429);
 
-  const publicState = await api<{ session: SessionFixture }>(`/api/sessions/${session.sessionCode}`);
+  const anonymousState = await api(`/api/sessions/${session.sessionCode}`);
+  assert.equal(anonymousState.response.status, 401);
+  const publicState = await api<{ session: SessionFixture }>(
+    `/api/sessions/${session.sessionCode}`,
+    { playerToken: alpha.playerToken }
+  );
   assert.equal(publicState.response.status, 200);
   assert.equal(
     publicState.body.session.players.find((player) => player.id === alpha.player.id)?.appearance?.decalAssetId,
@@ -366,7 +372,10 @@ test("a 40-student room keeps bounded appearance state and rejects student 41", 
   }));
   assert.ok(saves.every((save) => save.response.status === 200));
 
-  const state = await api<{ session: SessionFixture }>(`/api/sessions/${session.sessionCode}`);
+  const state = await api<{ session: SessionFixture }>(
+    `/api/sessions/${session.sessionCode}`,
+    { playerToken: students[0]!.playerToken }
+  );
   assert.equal(state.response.status, 200);
   assert.equal(state.body.session.players.length, 40);
   assert.ok(state.body.session.players.every((player) => player.appearance?.appearanceVersion === 1));
@@ -421,8 +430,23 @@ test("40 authenticated Socket.IO clients receive bounded room state and movement
     });
   });
   assert.equal(unauthorizedReceivedState, false);
+  unauthorized.emit("join_session_room", { code: session.sessionCode });
+  await new Promise((resolve) => setTimeout(resolve, 100));
+  assert.equal(unauthorizedReceivedState, false);
   unauthorized.disconnect();
 
+  const teacherSocket = createSocket(baseUrl, { autoConnect: false, transports: ["websocket"], reconnection: false });
+  const teacherInitialState = waitForSessionState(teacherSocket, () => true, 10_000);
+  teacherSocket.on("connect", () => {
+    teacherSocket.emit("join_session_room", { code: session.sessionCode, teacherToken: teacher.token });
+  });
+  teacherSocket.connect();
+  assert.equal((await teacherInitialState).players.length, 40);
+  let teacherMovementMessages = 0;
+  teacherSocket.on("player_position", () => { teacherMovementMessages += 1; });
+
+  const heapBefore = process.memoryUsage().heapUsed;
+  const cpuBefore = process.cpuUsage();
   const connectionStartedAt = performance.now();
   const connected = students.map((student) => connectStudentSocket(session.sessionCode, student));
   const initialStates = await Promise.all(connected.map((client) => client.initialState));
@@ -459,11 +483,7 @@ test("40 authenticated Socket.IO clients receive bounded room state and movement
     if (payload.playerId) movementSenders.add(payload.playerId);
   });
   for (let index = 1; index < connected.length; index += 1) {
-    const student = students[index]!;
     connected[index]!.socket.emit("player_position", {
-      code: session.sessionCode,
-      playerId: student.player.id,
-      playerToken: student.playerToken,
       x: index * 0.15,
       z: index * -0.1,
       facing: index * 0.05
@@ -474,12 +494,14 @@ test("40 authenticated Socket.IO clients receive bounded room state and movement
     await new Promise((resolve) => setTimeout(resolve, 20));
   }
   assert.ok(movementSenders.size >= 35, `Only ${movementSenders.size} movement senders reached the observer.`);
+  assert.equal(teacherMovementMessages, 0, "Teacher sockets must not receive gameplay movement.");
 
   const reconnectTarget = connected.at(-1)!;
   reconnectTarget.socket.disconnect();
   await new Promise((resolve) => setTimeout(resolve, 5200));
   const disconnectedState = await api<{ session: SessionFixture }>(
-    `/api/sessions/${session.sessionCode}`
+    `/api/sessions/${session.sessionCode}`,
+    { playerToken: students[0]!.playerToken }
   );
   assert.equal(
     disconnectedState.body.session.players.find((player) => player.id === students.at(-1)!.player.id)?.connectionState,
@@ -494,6 +516,7 @@ test("40 authenticated Socket.IO clients receive bounded room state and movement
     "connected"
   );
 
+  const cpuUsage = process.cpuUsage(cpuBefore);
   context.diagnostic(JSON.stringify({
     clients: connected.length,
     connectionMs: Math.round(connectionMs),
@@ -501,10 +524,152 @@ test("40 authenticated Socket.IO clients receive bounded room state and movement
     reconnectMs: Math.round(reconnectMs),
     largestInitialStateBytes,
     observedMovementSenders: movementSenders.size,
-    observedMovementPayloadBytes: movementPayloadBytes
+    observedMovementPayloadBytes: movementPayloadBytes,
+    cpuUserMs: Math.round(cpuUsage.user / 1000),
+    cpuSystemMs: Math.round(cpuUsage.system / 1000),
+    heapDeltaBytes: process.memoryUsage().heapUsed - heapBefore
   }));
 
+  teacherSocket.disconnect();
   connected.forEach(({ socket }) => socket.disconnect());
   reconnected.socket.disconnect();
   await api(`/api/sessions/${session.sessionCode}/end`, { method: "POST", teacherToken: teacher.token });
+});
+
+test("bot ticks send batched gameplay positions instead of full session snapshots", async (context) => {
+  const teacher = await createTeacherWithQuiz();
+  const session = await createSession(teacher, {
+    maxPlayers: 4,
+    gameMode: "classic",
+    roundDurationSeconds: 120
+  });
+  const student = await joinSession(session.sessionCode, "Bot Observer");
+  const addedBot = await api(`/api/sessions/${session.sessionCode}/bots`, {
+    method: "POST",
+    teacherToken: teacher.token
+  });
+  assert.equal(addedBot.response.status, 201);
+
+  const connected = connectStudentSocket(session.sessionCode, student);
+  await connected.initialState;
+  const activeState = waitForSessionState(connected.socket, (state) => state.status === "active");
+  const started = await api(`/api/sessions/${session.sessionCode}/start`, {
+    method: "POST",
+    teacherToken: teacher.token
+  });
+  assert.equal(started.response.status, 200);
+  await activeState;
+  await new Promise((resolve) => setTimeout(resolve, 100));
+
+  let fullSnapshots = 0;
+  connected.socket.on("session_state", () => { fullSnapshots += 1; });
+  const positions = new Promise<{ positions?: Array<{ playerId?: string }> }>((resolve, reject) => {
+    const timeout = setTimeout(() => reject(new Error("Timed out waiting for batched bot positions.")), 2000);
+    connected.socket.once("player_positions", (payload) => {
+      clearTimeout(timeout);
+      resolve(payload);
+    });
+  });
+
+  runtime.advanceBots();
+  const botUpdate = await positions;
+  assert.equal(botUpdate.positions?.length, 1);
+  await new Promise((resolve) => setTimeout(resolve, 100));
+  assert.equal(fullSnapshots, 0);
+
+  assert.ok(student.question?.id);
+  const playerState = new Promise<Record<string, unknown>>((resolve, reject) => {
+    const timeout = setTimeout(() => reject(new Error("Timed out waiting for focused player state.")), 2000);
+    connected.socket.once("player_state", (payload) => {
+      clearTimeout(timeout);
+      resolve(payload);
+    });
+  });
+  const answerAck = await connected.socket.emitWithAck("answer_question", {
+    questionId: student.question.id,
+    selectedChoice: "A"
+  }) as { ok?: boolean };
+  assert.equal(answerAck.ok, true);
+  const focusedState = await playerState;
+  context.diagnostic(JSON.stringify({
+    botCount: botUpdate.positions?.length ?? 0,
+    batchedPositionBytes: Buffer.byteLength(JSON.stringify(["player_positions", botUpdate])),
+    onePlayerStateBytes: Buffer.byteLength(JSON.stringify(["player_state", focusedState]))
+  }));
+
+  connected.socket.disconnect();
+  await api(`/api/sessions/${session.sessionCode}/end`, { method: "POST", teacherToken: teacher.token });
+});
+
+test("1, 10, and 20 client load matrix preserves room fan-out", { timeout: 30_000 }, async (context) => {
+  const rows: Array<Record<string, number>> = [];
+
+  for (const clientCount of [1, 10, 20]) {
+    const teacher = await createTeacherWithQuiz();
+    const session = await createSession(teacher, {
+      maxPlayers: Math.max(2, clientCount),
+      gameMode: "classic",
+      roundDurationSeconds: 120
+    });
+    const students = await Promise.all(
+      Array.from({ length: clientCount }, (_, index) => joinSession(session.sessionCode, `Load ${clientCount}-${index + 1}`))
+    );
+
+    const heapBefore = process.memoryUsage().heapUsed;
+    const cpuBefore = process.cpuUsage();
+    const connectionStartedAt = performance.now();
+    const connected = students.map((student) => connectStudentSocket(session.sessionCode, student));
+    await Promise.all(connected.map((client) => client.initialState));
+    const connectionMs = performance.now() - connectionStartedAt;
+
+    const activeSocketIds = new Set<string>();
+    connected.forEach(({ socket }) => {
+      socket.on("session_state", (state: SessionFixture & { status?: string }) => {
+        if (state.status === "active") activeSocketIds.add(socket.id ?? "missing-id");
+      });
+    });
+    const startSentAt = performance.now();
+    const started = await api(`/api/sessions/${session.sessionCode}/start`, {
+      method: "POST",
+      teacherToken: teacher.token
+    });
+    assert.equal(started.response.status, 200);
+    const activeDeadline = Date.now() + 5000;
+    while (activeSocketIds.size < clientCount && Date.now() < activeDeadline) {
+      await new Promise((resolve) => setTimeout(resolve, 10));
+    }
+    assert.equal(activeSocketIds.size, clientCount);
+    const startFanoutMs = performance.now() - startSentAt;
+
+    let observedPeerPositions = 0;
+    connected[0]!.socket.on("player_position", () => { observedPeerPositions += 1; });
+    for (let index = 1; index < connected.length; index += 1) {
+      connected[index]!.socket.emit("player_position", {
+        x: index * 0.15,
+        z: index * -0.1,
+        facing: index * 0.05
+      });
+    }
+    const movementDeadline = Date.now() + 2000;
+    while (observedPeerPositions < Math.max(0, clientCount - 1) && Date.now() < movementDeadline) {
+      await new Promise((resolve) => setTimeout(resolve, 10));
+    }
+    assert.equal(observedPeerPositions, Math.max(0, clientCount - 1));
+
+    const cpu = process.cpuUsage(cpuBefore);
+    rows.push({
+      clients: clientCount,
+      connectionMs: Math.round(connectionMs),
+      startFanoutMs: Math.round(startFanoutMs),
+      observedPeerPositions,
+      cpuUserMs: Math.round(cpu.user / 1000),
+      cpuSystemMs: Math.round(cpu.system / 1000),
+      heapDeltaBytes: process.memoryUsage().heapUsed - heapBefore
+    });
+
+    await api(`/api/sessions/${session.sessionCode}/end`, { method: "POST", teacherToken: teacher.token });
+    connected.forEach(({ socket }) => socket.disconnect());
+  }
+
+  context.diagnostic(JSON.stringify(rows));
 });

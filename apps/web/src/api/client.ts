@@ -61,6 +61,7 @@ const fetchApi = async (path: string, options?: RequestInit, policy: ApiRequestP
 };
 
 const getToken = () => localStorage.getItem("quizstrike_token");
+export const getTeacherToken = getToken;
 
 const playerHeaders = (playerToken: string) => ({ "X-Player-Token": playerToken });
 
@@ -213,7 +214,8 @@ export const studentApi = {
       headers: { ...playerHeaders(playerToken), "Content-Type": blob.type },
       body: blob
     }),
-  session: (code: string) => api(`/api/sessions/${code}`),
+  session: (code: string, playerToken: string) =>
+    api(`/api/sessions/${code}`, { headers: playerHeaders(playerToken) }),
   rejoin: (code: string, playerId: string, playerToken: string) =>
     api(`/api/sessions/${code}/players/${playerId}/rejoin`, { headers: playerHeaders(playerToken) }),
   question: (code: string, playerId: string, playerToken: string) =>

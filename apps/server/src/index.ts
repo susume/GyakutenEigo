@@ -1,5 +1,6 @@
 import "dotenv/config";
 import bcrypt from "bcryptjs";
+import compression from "compression";
 import cors from "cors";
 import express, { type NextFunction, type Request, type Response } from "express";
 import jwt from "jsonwebtoken";
@@ -11,6 +12,7 @@ import { resolveClientOrigins } from "./origins.js";
 import { getPausedRoundAction, planRoundConclusion } from "./roundFlow.js";
 import { inspectProcessedDecal } from "./appearanceSecurity.js";
 import { DecalStore, type StoredDecalMime } from "./decalStore.js";
+import { NetworkMetrics } from "./networkMetrics.js";
 import {
   APPEARANCE_UPDATE_COOLDOWN_MS,
   DECAL_MAX_PROCESSED_BYTES,
@@ -121,8 +123,13 @@ if (process.env.TRUST_PROXY === "true") {
 }
 
 export const io = new Server(server, {
-  cors: { origin: corsOrigin, credentials: true, maxAge: 86_400 }
+  cors: { origin: corsOrigin, credentials: true, maxAge: 86_400 },
+  // Engine.IO already compresses sufficiently large polling responses. Keep
+  // per-message WebSocket deflate off so tiny real-time packets do not add CPU.
+  httpCompression: { threshold: 1024 },
+  perMessageDeflate: false
 });
+const networkMetrics = new NetworkMetrics();
 
 const users = new Map<string, StoredUser>();
 const classes = new Map<string, ClassSummary & { teacherId: string }>();
@@ -150,6 +157,7 @@ const aiSkinProviderConfigured = false;
 
 type SocketPlayerBinding = { sessionCode: string; playerId: string };
 const playerSocketKey = (sessionCode: string, playerId: string) => `${sessionCode}:${playerId}`;
+const gameplayRoom = (sessionCode: string) => `${sessionCode}:players`;
 
 type PersistedRuntimeState = {
   users: StoredUser[];
@@ -271,6 +279,7 @@ const ROUND_START_ANNOUNCEMENT_MS = 2500;
 const GAME_OVER_ANNOUNCEMENT_MS = 7000;
 
 app.use(cors({ origin: corsOrigin, credentials: true, maxAge: 86_400 }));
+app.use(compression({ threshold: 1024 }));
 app.use("/api/sessions/:code/players/:playerId/decals", express.raw({ type: ["image/png", "image/webp"], limit: DECAL_MAX_PROCESSED_BYTES }));
 app.use(express.json({ limit: "1mb" }));
 
@@ -305,17 +314,20 @@ type PlayerTokenPayload = {
 const makePlayerToken = (session: GameSession, player: PlayerSession) =>
   jwt.sign({ sub: player.id, sessionCode: session.sessionCode, scope: "student" }, jwtSecret, { expiresIn: "8h" });
 
-const getBearerUser = (req: Request): TeacherUser | undefined => {
-  const header = req.header("authorization");
-  if (!header?.startsWith("Bearer ")) return undefined;
-
+const getTeacherFromToken = (token: string | undefined): TeacherUser | undefined => {
+  if (!token) return undefined;
   try {
-    const payload = jwt.verify(header.slice("Bearer ".length), jwtSecret) as { sub?: string };
+    const payload = jwt.verify(token, jwtSecret) as { sub?: string };
     const user = payload.sub ? users.get(payload.sub) : undefined;
     return user ? publicUser(user) : undefined;
   } catch {
     return undefined;
   }
+};
+
+const getBearerUser = (req: Request): TeacherUser | undefined => {
+  const header = req.header("authorization");
+  return header?.startsWith("Bearer ") ? getTeacherFromToken(header.slice("Bearer ".length)) : undefined;
 };
 
 const requireTeacher = (req: AuthedRequest, res: Response, next: () => void) => {
@@ -479,6 +491,25 @@ const flushSessionBroadcasts = () => {
 const broadcastSession = (session: GameSession) => {
   pendingSessionBroadcasts.set(session.sessionCode, session);
   sessionBroadcastTimer ??= setTimeout(flushSessionBroadcasts, SESSION_BROADCAST_WINDOW_MS);
+  schedulePersistence();
+};
+
+const broadcastPlayerState = (session: GameSession, players: PlayerSession[]) => {
+  const uniquePlayers = [...new Map(players.map((player) => [player.id, player])).values()];
+  io.to(session.sessionCode).emit("player_state", {
+    players: uniquePlayers,
+    flag: session.flag,
+    recentEvents: session.events?.slice(0, 2)
+  });
+  schedulePersistence();
+};
+
+const broadcastGameplayPositions = (
+  session: GameSession,
+  positions: Array<{ playerId: string; x: number; z: number; facing: number }>
+) => {
+  if (positions.length === 0) return;
+  io.to(gameplayRoom(session.sessionCode)).volatile.emit("player_positions", { positions });
   schedulePersistence();
 };
 
@@ -825,14 +856,14 @@ const applyValidatedDamage = (session: GameSession, attacker: PlayerSession, tar
       eliminated: false,
       moneyAwarded: 0
     });
-    io.to(session.sessionCode).emit("world_impact", {
+    io.to(gameplayRoom(session.sessionCode)).emit("world_impact", {
       attackerId: attacker.id,
       targetId: target.id,
       x: target.x ?? sessionSpawn(session, target.team).x,
       z: target.z ?? sessionSpawn(session, target.team).z,
       shield: true
     });
-    broadcastSession(session);
+    broadcastPlayerState(session, [attacker, target]);
     finishZombieMatchIfComplete(session);
     return { ok: true as const, damage: DEFAULT_PLAYER_HEALTH, nextHealth: DEFAULT_PLAYER_HEALTH, eliminated: false, moneyAwarded: 0, scoreDelta: 1 };
   }
@@ -871,7 +902,7 @@ const applyValidatedDamage = (session: GameSession, attacker: PlayerSession, tar
     team: attacker.team
   });
 
-  broadcastSession(session);
+  broadcastPlayerState(session, [attacker, target]);
   emitToPlayers(session, [attacker.id, target.id], "damage_result", {
     ok: true,
     attackerId: attacker.id,
@@ -887,7 +918,7 @@ const applyValidatedDamage = (session: GameSession, attacker: PlayerSession, tar
     eliminated: tagResult.eliminated,
     moneyAwarded: tagResult.moneyAwarded
   });
-  io.to(session.sessionCode).emit("world_impact", {
+  io.to(gameplayRoom(session.sessionCode)).emit("world_impact", {
     attackerId: attacker.id,
     targetId: target.id,
     x: target.x ?? sessionSpawn(session, target.team).x,
@@ -939,7 +970,7 @@ const applyAuthoritativePosition = (
   return position;
 };
 
-const advanceBots = () => {
+export const advanceBots = () => {
   const seconds = Date.now() / 1000;
   const currentMs = Date.now();
   for (const session of sessions.values()) {
@@ -978,7 +1009,8 @@ const advanceBots = () => {
       }
       continue;
     }
-    let moved = false;
+    const movedBots: Array<{ playerId: string; x: number; z: number; facing: number }> = [];
+    const stateChangedBots: PlayerSession[] = [];
     session.players.forEach((bot, index) => {
       if (!bot.isBot) return;
       if (!bot.isAlive) {
@@ -995,7 +1027,8 @@ const advanceBots = () => {
           bot.respawns = (bot.respawns ?? 0) + 1;
           botRespawnAt.delete(bot.id);
           appendEvent(session, { type: "respawn", message: `${bot.nickname} returned to the arena.`, playerId: bot.id, team: bot.team });
-          moved = true;
+          movedBots.push({ playerId: bot.id, x: bot.x!, z: bot.z!, facing: bot.facing! });
+          stateChangedBots.push(bot);
         }
         return;
       }
@@ -1023,7 +1056,7 @@ const advanceBots = () => {
       bot.z = next.z;
       bot.facing = Math.atan2(next.x - oldX, next.z - oldZ);
       bot.snowballs = bot.snowballs ?? session.settings.startingSnowballs;
-      moved = true;
+      movedBots.push({ playerId: bot.id, x: bot.x, z: bot.z, facing: bot.facing });
 
       if ((botNextAttackAt.get(bot.id) ?? 0) > currentMs) return;
       const attackTarget = resolveBotAttackTarget({ bot, candidates: session.players, obstacles: getArenaObstacles(session.settings.mapId) });
@@ -1035,9 +1068,11 @@ const advanceBots = () => {
       bot.snowballs = snowballUse.nextSnowballs;
       bot.facing = Math.atan2((bot.x ?? 0) - (target.x ?? 0), (bot.z ?? 0) - (target.z ?? 0));
       botNextAttackAt.set(bot.id, currentMs + Math.max(BOT_ATTACK_COOLDOWN_FLOOR_MS, getGearFireCooldownMs(getPlayerWeaponId(bot))));
+      stateChangedBots.push(bot);
       applyValidatedDamage(session, bot, target);
     });
-    if (moved) broadcastSession(session);
+    broadcastGameplayPositions(session, movedBots);
+    if (stateChangedBots.length > 0) broadcastPlayerState(session, stateChangedBots);
   }
 };
 
@@ -1397,6 +1432,15 @@ app.get("/api/sessions/:code", (req, res) => {
   const session = getSessionByCode(routeParam(req.params.code));
   if (!session) {
     res.status(404).json({ error: "Session not found." });
+    return;
+  }
+  const teacher = getBearerUser(req);
+  const playerToken = getPlayerToken(req);
+  const canRead =
+    teacher?.id === session.teacherId ||
+    session.players.some((player) => !player.isBot && hasPlayerAccess(session, player, playerToken));
+  if (!canRead) {
+    res.status(401).json({ error: "A teacher or student session token is required." });
     return;
   }
   res.json({ session: stampSession(session) });
@@ -1898,7 +1942,7 @@ const answerQuestion = (
     respawnProgress: respawn.respawned ? 0 : respawn.progress,
     respawnRequired: respawn.required
   };
-  broadcastSession(session);
+  broadcastPlayerState(session, [player]);
   return { ok: true, data: { result } };
 };
 
@@ -1940,7 +1984,7 @@ const buyGear = (session: GameSession, player: PlayerSession, gearId: unknown): 
   }
   if (purchase.nextHealth !== undefined) player.health = purchase.nextHealth;
   appendEvent(session, { type: "buy", message: `${player.nickname} equipped ${gear.name}.`, playerId: player.id, team: player.team });
-  broadcastSession(session);
+  broadcastPlayerState(session, [player]);
   return { ok: true, data: { player, gear, message: `${gear.name} equipped.` } };
 };
 
@@ -1965,7 +2009,7 @@ const buySnowballs = (session: GameSession, player: PlayerSession): StudentComma
     playerId: player.id,
     team: player.team
   });
-  broadcastSession(session);
+  broadcastPlayerState(session, [player]);
   return { ok: true, data: { player, message: `+${purchase.snowballsAdded} snowballs ready.` } };
 };
 
@@ -2039,12 +2083,14 @@ app.use((error: unknown, _req: Request, res: Response, next: NextFunction) => {
 });
 
 io.on("connection", (socket) => {
-  socket.on("join_session_room", (payload: string | { code?: string; playerId?: string; playerToken?: string }) => {
-    const code = typeof payload === "string" ? payload : String(payload.code ?? "");
+  networkMetrics.attach(socket);
+  socket.on("join_session_room", (payload: { code?: string; playerId?: string; playerToken?: string; teacherToken?: string } = {}) => {
+    if (!payload || typeof payload !== "object") return;
+    const code = String(payload.code ?? "");
     const session = getSessionByCode(code);
     if (!session) return;
 
-    if (typeof payload !== "string" && payload.playerId) {
+    if (payload.playerId) {
       const player = session.players.find((candidate) => candidate.id === payload.playerId);
       if (!player || !hasPlayerAccess(session, player, payload.playerToken)) return;
 
@@ -2064,8 +2110,11 @@ io.on("connection", (socket) => {
         appendEvent(session, { type: "timer", message: `${player.nickname} reconnected.`, playerId: player.id, team: player.team });
         broadcastSession(session);
       }
+      socket.join(gameplayRoom(session.sessionCode));
+    } else {
+      const teacher = getTeacherFromToken(payload.teacherToken);
+      if (!teacher || teacher.id !== session.teacherId) return;
     }
-
     socket.join(session.sessionCode);
     socket.emit("session_state", stampSession(session));
   });
@@ -2125,14 +2174,13 @@ io.on("connection", (socket) => {
     if (session && player) markPlayerDisconnected(session, player);
   });
 
-  socket.on("player_position", (payload: { code?: string; playerId?: string; playerToken?: string; x?: number; z?: number; y?: number; facing?: number }) => {
-    const code = String(payload.code ?? "");
-    const session = getSessionByCode(code);
-    const player = session?.players.find((candidate) => candidate.id === payload.playerId);
-    if (!session || !player || !hasPlayerAccess(session, player, payload.playerToken)) return;
+  socket.on("player_position", (payload: { x?: number; z?: number; y?: number; facing?: number } = {}) => {
+    const student = getBoundStudent(socket);
+    if (!student) return;
+    const { session, player } = student;
     if (!player.isAlive) return;
     const position = applyAuthoritativePosition(session, player, payload);
-    socket.to(session.sessionCode).volatile.emit("player_position", {
+    socket.to(gameplayRoom(session.sessionCode)).volatile.emit("player_position", {
       playerId: player.id,
       x: position.x,
       z: position.z,
@@ -2140,10 +2188,10 @@ io.on("connection", (socket) => {
     });
   });
 
-  socket.on("fire_action", (payload: { code?: string; playerId?: string; playerToken?: string; requestId?: string; x?: number; z?: number; y?: number; facing?: number; targetId?: string; scoped?: boolean; zoomLevel?: number }) => {
-    const session = getSessionByCode(String(payload.code ?? ""));
-    const attacker = session?.players.find((candidate) => candidate.id === payload.playerId);
-    if (!session || !attacker || !hasPlayerAccess(session, attacker, payload.playerToken)) return;
+  socket.on("fire_action", (payload: { requestId?: string; x?: number; z?: number; y?: number; facing?: number; targetId?: string; scoped?: boolean; zoomLevel?: number } = {}) => {
+    const student = getBoundStudent(socket);
+    if (!student) return;
+    const { session, player: attacker } = student;
     if (session.status !== "active") {
       socket.emit("error_message", { error: inactiveRoundMessage(session) });
       return;
@@ -2174,7 +2222,7 @@ io.on("connection", (socket) => {
     attacker.snowballs = snowballUse.nextSnowballs;
     const weaponId = getPlayerWeaponId(attacker);
     playerNextFireAt.set(attacker.id, currentMs + getGearFireCooldownMs(weaponId));
-    socket.to(session.sessionCode).emit("remote_weapon_fire", {
+    socket.to(gameplayRoom(session.sessionCode)).emit("remote_weapon_fire", {
       playerId: attacker.id,
       x: attacker.x ?? sessionSpawn(session, attacker.team).x,
       z: attacker.z ?? sessionSpawn(session, attacker.team).z,
@@ -2193,30 +2241,30 @@ io.on("connection", (socket) => {
       obstacles: getArenaObstacles(session.settings.mapId)
     });
     if (!targetSelection.ok) {
-      broadcastSession(session);
+      broadcastPlayerState(session, [attacker]);
       socket.emit("damage_result", { ok: false, reason: targetSelection.reason, snowballs: attacker.snowballs });
       return;
     }
 
     const target = session.players.find((candidate) => candidate.id === targetSelection.targetId);
     if (!target) {
-      broadcastSession(session);
+      broadcastPlayerState(session, [attacker]);
       socket.emit("damage_result", { ok: false, reason: "invalid_target", snowballs: attacker.snowballs });
       return;
     }
 
     const tagResult = applyValidatedDamage(session, attacker, target);
     if (!tagResult.ok) {
-      broadcastSession(session);
+      broadcastPlayerState(session, [attacker]);
       socket.emit("damage_result", { ok: false, reason: tagResult.reason, snowballs: attacker.snowballs });
       return;
     }
   });
 
-  socket.on("flag_action", (payload: { code?: string; playerId?: string; playerToken?: string; x?: number; z?: number; y?: number; facing?: number }) => {
-    const session = getSessionByCode(String(payload.code ?? ""));
-    const player = session?.players.find((candidate) => candidate.id === payload.playerId);
-    if (!session || !player || !hasPlayerAccess(session, player, payload.playerToken)) return;
+  socket.on("flag_action", (payload: { x?: number; z?: number; y?: number; facing?: number } = {}) => {
+    const student = getBoundStudent(socket);
+    if (!student) return;
+    const { session, player } = student;
     if (session.status !== "active" || session.settings.gameMode !== "flag" || !player.isAlive) return;
     const position = applyAuthoritativePosition(session, player, payload);
     const previousState = session.flag?.state;

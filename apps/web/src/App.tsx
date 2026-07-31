@@ -56,7 +56,7 @@ import {
   type Team,
   type TeacherUser
 } from "@quizstrike/shared";
-import { ApiError, authApi, fetchDecalAsset, getApiUrl, studentApi, teacherApi } from "./api/client";
+import { ApiError, authApi, fetchDecalAsset, getApiUrl, getTeacherToken, studentApi, teacherApi } from "./api/client";
 import { buildStudentJoinUrl, getJoinCodeFromSearch, modeForRoute, normalizeRoutePath, type AppMode } from "./navigation";
 import { groupScoreboardRows } from "./scoreboardGroups";
 import { getModeScoreSummary, getReadyRoomTitle, getSessionResultText, getZombieCounts } from "./sessionPresentation";
@@ -137,6 +137,32 @@ const readStoredAppearance = (): PlayerAppearance | null => {
 
 type QuestionDraft = typeof emptyQuestion;
 type ArenaPositionPayload = { x: number; z: number; y?: number; facing: number; scoped?: boolean; zoomLevel?: number };
+type PlayerPositionPayload = { playerId?: string; x?: number; z?: number; facing?: number };
+type PlayerStatePayload = {
+  players?: PlayerSession[];
+  flag?: GameSession["flag"];
+  recentEvents?: GameEvent[];
+};
+
+const mergePlayerState = (session: GameSession, payload: PlayerStatePayload): GameSession => {
+  const changedPlayers = new Map((payload.players ?? []).map((player) => [player.id, player]));
+  const recentEventIds = new Set((payload.recentEvents ?? []).map((event) => event.id));
+  return {
+    ...session,
+    players: session.players.map((player) => changedPlayers.get(player.id) ?? player),
+    ...(payload.recentEvents
+      ? { events: [...payload.recentEvents, ...(session.events ?? []).filter((event) => !recentEventIds.has(event.id))].slice(0, 40) }
+      : {}),
+    ...(payload.flag !== undefined ? { flag: payload.flag } : {})
+  };
+};
+
+const attachTransportDiagnostics = (socket: Socket, label: string) => {
+  if (!import.meta.env.DEV && import.meta.env.VITE_NETWORK_DEBUG !== "true") return;
+  const report = () => console.info(`[network] ${label} transport=${socket.io.engine.transport.name}`);
+  report();
+  socket.io.engine.on("upgrade", report);
+};
 type DamageResultPayload =
   | {
       ok: true;
@@ -1059,10 +1085,13 @@ function TeacherDashboard({ teacher, onLogout }: { teacher: TeacherUser; onLogou
   useEffect(() => {
     if (!selectedSession) return;
     const socket: Socket = io(getApiUrl());
-    socket.emit("join_session_room", selectedSession.sessionCode);
+    attachTransportDiagnostics(socket, "teacher");
     socket.on("connect", () => {
       setIsSocketReconnecting(false);
-      socket.emit("join_session_room", selectedSession.sessionCode);
+      socket.emit("join_session_room", {
+        code: selectedSession.sessionCode,
+        teacherToken: getTeacherToken()
+      });
     });
     socket.on("connect_error", () => setIsSocketReconnecting(true));
     socket.on("disconnect", () => setIsSocketReconnecting(true));
@@ -1072,6 +1101,15 @@ function TeacherDashboard({ teacher, onLogout }: { teacher: TeacherUser; onLogou
       setData((current) => ({
         ...current,
         sessions: current.sessions.map((item) => (item.id === session.id ? session : item))
+      }));
+    });
+    socket.on("player_state", (payload: PlayerStatePayload) => {
+      setSelectedSession((current) => current ? mergePlayerState(current, payload) : current);
+      setData((current) => ({
+        ...current,
+        sessions: current.sessions.map((session) =>
+          session.id === selectedSession.id ? mergePlayerState(session, payload) : session
+        )
       }));
     });
     return () => {
@@ -2471,6 +2509,7 @@ function StudentExperience({ onExit }: { onExit: () => void }) {
     const activePlayerId = player.id;
     const socket = io(getApiUrl());
     socketRef.current = socket;
+    attachTransportDiagnostics(socket, "student");
     const roomJoinPayload = { code: session.sessionCode, playerId: activePlayerId, playerToken };
     const pendingPositions = new Map<string, { x: number; z: number; facing: number }>();
     const lastRemotePositions = new Map<string, { x: number; z: number }>();
@@ -2498,7 +2537,6 @@ function StudentExperience({ onExit }: { onExit: () => void }) {
       const ownUpdate = updates.get(activePlayerId);
       if (ownUpdate) setPlayer((current) => current ? { ...current, ...ownUpdate } : current);
     };
-    socket.emit("join_session_room", roomJoinPayload);
     socket.on("connect", () => {
       setIsSocketReconnecting(false);
       socket.emit("join_session_room", roomJoinPayload);
@@ -2551,6 +2589,16 @@ function StudentExperience({ onExit }: { onExit: () => void }) {
       lastVisualSession = nextSession;
       setSession(nextSession);
       setPlayer((current) => nextSession.players.find((item) => item.id === (current?.id ?? activePlayerId)) ?? current);
+    });
+    socket.on("player_state", (payload: PlayerStatePayload) => {
+      setSession((current) => {
+        if (!current) return current;
+        const nextSession = mergePlayerState(current, payload);
+        lastVisualSession = nextSession;
+        return nextSession;
+      });
+      const ownState = payload.players?.find((candidate) => candidate.id === activePlayerId);
+      if (ownState) setPlayer(ownState);
     });
     socket.on("remote_weapon_fire", (payload: { playerId?: string; x?: number; z?: number; facing?: number; gearId?: string }) => {
       if (payload.playerId === activePlayerId || !Number.isFinite(payload.x) || !Number.isFinite(payload.z)) return;
@@ -2614,7 +2662,7 @@ function StudentExperience({ onExit }: { onExit: () => void }) {
         emitPlayerAnimation(localWon ? "victory" : "defeat", activePlayerId, player.team);
       }
     });
-    socket.on("player_position", (position: { playerId?: string; x?: number; z?: number; facing?: number }) => {
+    const queuePosition = (position: PlayerPositionPayload) => {
       if (!position.playerId || !Number.isFinite(position.x) || !Number.isFinite(position.z) || !Number.isFinite(position.facing)) return;
       if (position.playerId !== activePlayerId) {
         const previous = lastRemotePositions.get(position.playerId);
@@ -2637,6 +2685,10 @@ function StudentExperience({ onExit }: { onExit: () => void }) {
         facing: position.facing!
       });
       positionFlushTimer ??= window.setTimeout(flushPositions, 50);
+    };
+    socket.on("player_position", queuePosition);
+    socket.on("player_positions", (payload: { positions?: PlayerPositionPayload[] }) => {
+      for (const position of payload.positions ?? []) queuePosition(position);
     });
     socket.on("damage_result", (result: DamageResultPayload) => {
       if (typeof result.snowballs === "number" && (!result.ok || result.attackerId === activePlayerId)) {
@@ -2711,14 +2763,14 @@ function StudentExperience({ onExit }: { onExit: () => void }) {
   }, [session?.sessionCode, session?.settings.deadPlayersCanPractice, player?.id, playerToken, openRespawnPractice]);
 
   useEffect(() => {
-    if (!session || !player?.id || session.status !== "waiting") return;
+    if (!session || !player?.id || !playerToken || session.status !== "waiting" || !isSocketReconnecting) return;
     const sessionCode = session.sessionCode;
     const activePlayerId = player.id;
     let cancelled = false;
 
     const syncWaitingRoom = async () => {
       try {
-        const payload = (await studentApi.session(sessionCode)) as { session: GameSession };
+        const payload = (await studentApi.session(sessionCode, playerToken)) as { session: GameSession };
         if (cancelled) return;
         setSession(payload.session);
         setPlayer((current) => payload.session.players.find((item) => item.id === (current?.id ?? activePlayerId)) ?? current);
@@ -2727,12 +2779,13 @@ function StudentExperience({ onExit }: { onExit: () => void }) {
       }
     };
 
-    const interval = window.setInterval(() => void syncWaitingRoom(), 1000);
+    void syncWaitingRoom();
+    const interval = window.setInterval(() => void syncWaitingRoom(), 5000);
     return () => {
       cancelled = true;
       window.clearInterval(interval);
     };
-  }, [session?.sessionCode, session?.status, player?.id]);
+  }, [session?.sessionCode, session?.status, player?.id, playerToken, isSocketReconnecting]);
 
   useEffect(() => {
     if (flagBuyPhase && player?.isAlive) {
@@ -2776,12 +2829,7 @@ function StudentExperience({ onExit }: { onExit: () => void }) {
   const sendArenaPosition = useCallback(
     (position: ArenaPositionPayload) => {
       if (!session || !player || !playerToken) return;
-      socketRef.current?.volatile.emit("player_position", {
-        code: session.sessionCode,
-        playerId: player.id,
-        playerToken,
-        ...position
-      });
+      socketRef.current?.volatile.emit("player_position", position);
     },
     [session?.sessionCode, player?.id, playerToken]
   );
@@ -2791,9 +2839,6 @@ function StudentExperience({ onExit }: { onExit: () => void }) {
       if (!session || !player || !playerToken) return;
       const requestId = crypto.randomUUID?.() ?? `${Date.now()}-${Math.random().toString(36).slice(2)}`;
       socketRef.current?.emit("fire_action", {
-        code: session.sessionCode,
-        playerId: player.id,
-        playerToken,
         requestId,
         ...position
       });
@@ -2804,12 +2849,7 @@ function StudentExperience({ onExit }: { onExit: () => void }) {
   const sendFlagAction = useCallback(
     (position: ArenaPositionPayload) => {
       if (!session || !player || !playerToken || session.settings.gameMode !== "flag") return;
-      socketRef.current?.emit("flag_action", {
-        code: session.sessionCode,
-        playerId: player.id,
-        playerToken,
-        ...position
-      });
+      socketRef.current?.emit("flag_action", position);
     },
     [session?.sessionCode, session?.settings.gameMode, player?.id, playerToken]
   );

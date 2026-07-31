@@ -80,6 +80,7 @@ Client-to-server events:
 Server-to-client events:
 
 - `session_state`
+- `player_state`
 - `quiz_result`
 - `damage_result`
 - `elimination_update`
@@ -87,10 +88,18 @@ Server-to-client events:
 
 ## Current Socket.IO Mapping
 
-- `join_session_room` subscribes the browser arena to a session room.
+- `join_session_room` authenticates a teacher token or binds a student socket
+  with room code, player ID, and player token. Bound students also join a
+  student-only gameplay room.
 - `session_state` delivers the teacher roster, student roster, round state, scoreboard, and current player state.
-- `player_position` publishes a player's live arena position. The payload must include `code`, `playerId`, `playerToken`, `x`, `z`, and `facing`.
-- `fire_action` requests authoritative tag validation. The payload must include `code`, `playerId`, `playerToken`, `x`, `z`, and `facing`.
+- `player_state` delivers changed authoritative players, the current flag when
+  relevant, and recent events without retransmitting the full room.
+- `player_position` publishes a bound student's live arena position. After the
+  authenticated room join, the payload contains only `x`, `z`, optional `y`,
+  and `facing`.
+- `player_positions` batches server-owned bot positions at the bot tick rate.
+- `fire_action` requests authoritative tag validation from a bound student
+  socket. It includes a request ID, position, optional target, and scope state.
 - `quiz_result` includes answer correctness and authoritative player money.
 - `damage_result` reports validated tag damage.
 - `elimination_update` reports validated eliminations and tag bonus money.

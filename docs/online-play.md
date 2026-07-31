@@ -135,6 +135,7 @@ Commit or upload:
 - `.env.production.example`
 - `.gitignore`
 - `architecture.md`
+- `HANDOFF.md`
 - `AUDIT.md`
 - `docker-compose.yml`
 - `package.json`
@@ -156,10 +157,13 @@ The `.gitignore` is set up for these defaults.
 
 ## Current Online Limitations
 
-The current server uses in-memory storage. This is fine for a first hosted playtest, but it means:
+When `DATABASE_URL` is configured, the server mirrors teachers, classes, quiz sets, sessions, and answer logs into a PostgreSQL `RuntimeSnapshot` and restores it after a restart. Production startup applies committed Prisma migrations before accepting traffic. Without `DATABASE_URL`, this state remains memory-only and disappears on restart.
 
-- Teacher accounts, quiz sets, sessions, and reports disappear when the server restarts.
-- Multiple server instances will not share sessions.
-- A serious classroom deployment should move users, quiz sets, sessions, answers, and player tokens into the database before public use.
+The runtime still has important single-process limits:
 
-For a first private online test, run a single server instance and keep it awake during the lesson.
+- Socket bindings, active timers, bot loops, request throttles, and live simulation state are not coordinated across replicas.
+- Uploaded decal bytes are process-local, expire after eight hours, and are intentionally not stored in the runtime snapshot.
+- Persistence uses one JSON snapshot rather than the normalized Prisma classroom tables.
+- Horizontal scaling requires shared Socket.IO coordination, shared live state/timers, and shared decal/object storage.
+
+Run one server instance for hosted classroom play until those boundaries are externalized. See `architecture.md` and `HANDOFF.md` for the current persistence and scaling model.

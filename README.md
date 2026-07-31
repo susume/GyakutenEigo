@@ -117,7 +117,7 @@ npx playwright install chromium # first run only
 npm run test:e2e
 ```
 
-The current baseline is 62 shared tests, 15 server tests, and 59 web unit tests: 136 Node tests, plus one production-Chromium classroom scenario. The server suite includes real HTTP appearance/decal lifecycle coverage, a 40-student capacity scenario, and 40 authenticated Socket.IO clients. The Vite bundle warning for the Three.js chunk is expected and is not a build failure.
+The current baseline is 62 shared tests, 17 server tests, and 63 web unit tests: 142 Node tests, plus one production-Chromium classroom scenario. The server suite includes real HTTP appearance/decal lifecycle coverage, 1/10/20/40-client load scenarios, authenticated room isolation, focused bot/player deltas, and 40 authenticated Socket.IO clients. The Vite bundle warning for the Three.js chunk is expected and is not a build failure.
 
 ## Known Limits
 
@@ -130,6 +130,7 @@ The current baseline is 62 shared tests, 15 server tests, and 59 web unit tests:
 
 ## Documentation
 
+- [Development handoff](HANDOFF.md): current feature state, setup, verification, risks, and recommended next work.
 - [Lobby character customization audit](docs/character-customization-audit.md)
 - [Lobby character customization plan](docs/character-customization-plan.md)
 - [Character customization operations and test checklist](docs/character-customization-operations.md)
