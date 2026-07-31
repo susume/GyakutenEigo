@@ -296,7 +296,11 @@ const comparable = (inspection) => ({
   nonPublicTables: inspection.nonPublicTables,
   tables: inspection.tables.map(({ total_bytes, total_size, ...table }) => table),
   columns: inspection.columns,
-  constraints: inspection.constraints,
+  // PostgreSQL 18 exposes NOT NULL declarations as pg_constraint rows, while
+  // PostgreSQL 17 (Supabase) represents the same fact in information_schema
+  // column nullability. Column metadata above is the portable comparison;
+  // exclude only those internal NOT NULL rows from constraint comparison.
+  constraints: inspection.constraints.filter((constraint) => constraint.constraint_type !== "n"),
   indexes: inspection.indexes,
   triggers: inspection.triggers,
   enums: inspection.enums,
@@ -349,6 +353,23 @@ const printInspection = (inspection) => {
 };
 
 const main = async () => {
+  if (assertEmpty) {
+    requirePostgresUrl("DATABASE_URL", databaseUrl);
+    const inspection = await inspectDatabase("DATABASE AUDIT", databaseUrl);
+    printInspection(inspection);
+
+    if (inspection.nonPublicTables.length > 0) {
+      console.error("\nCUSTOM SCHEMA CHECK FAILED: classify and explicitly migrate non-public application tables before continuing.");
+      process.exitCode = 4;
+    } else if (inspection.tables.length > 0) {
+      console.error("\nTARGET IS NOT EMPTY: restore was stopped before making changes.");
+      process.exitCode = 3;
+    } else {
+      console.log("\nTARGET EMPTY CHECK PASSED: no application tables exist in public.");
+    }
+    return;
+  }
+
   if (sourceUrl || targetUrl) {
     requirePostgresUrl("SOURCE_DATABASE_URL", sourceUrl);
     requirePostgresUrl("TARGET_DATABASE_URL", targetUrl);
@@ -378,16 +399,6 @@ const main = async () => {
   requirePostgresUrl("DATABASE_URL", databaseUrl);
   const inspection = await inspectDatabase("DATABASE AUDIT", databaseUrl);
   printInspection(inspection);
-
-  if (inspection.nonPublicTables.length > 0) {
-    console.error("\nCUSTOM SCHEMA CHECK FAILED: classify and explicitly migrate non-public application tables before continuing.");
-    process.exitCode = 4;
-  } else if (assertEmpty && inspection.tables.length > 0) {
-    console.error("\nTARGET IS NOT EMPTY: restore was stopped before making changes.");
-    process.exitCode = 3;
-  } else if (assertEmpty) {
-    console.log("\nTARGET EMPTY CHECK PASSED: no application tables exist in public.");
-  }
 
   if (args.has("--json")) console.log(stringify(inspection));
 };

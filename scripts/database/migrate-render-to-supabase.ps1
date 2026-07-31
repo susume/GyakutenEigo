@@ -122,9 +122,9 @@ function Assert-InsideBackupDirectory {
 
   $resolvedAllowedDirectory = [System.IO.Path]::GetFullPath($backupDirectory)
   $resolvedPath = [System.IO.Path]::GetFullPath($Path)
-  $relativePath = [System.IO.Path]::GetRelativePath($resolvedAllowedDirectory, $resolvedPath)
-  if ([System.IO.Path]::IsPathRooted($relativePath) -or $relativePath -eq ".." -or $relativePath.StartsWith("..\",
-      [System.StringComparison]::Ordinal)) {
+  $allowedDirectoryWithSeparator = $resolvedAllowedDirectory.TrimEnd('\') + '\'
+  if ($resolvedPath -ne $resolvedAllowedDirectory -and
+      -not $resolvedPath.StartsWith($allowedDirectoryWithSeparator, [System.StringComparison]::OrdinalIgnoreCase)) {
     throw "Path must be inside $resolvedAllowedDirectory."
   }
   return $resolvedPath
@@ -210,6 +210,16 @@ switch ($Action) {
       throw "Backup not found: $resolvedBackupPath"
     }
 
+    $restoreListName = [System.IO.Path]::GetFileNameWithoutExtension($resolvedBackupPath) + ".restore.list"
+    $restoreListPath = Join-Path (Split-Path -Parent $resolvedBackupPath) $restoreListName
+    $restoreListEntries = @(& pg_restore --list $resolvedBackupPath | Where-Object {
+        $_ -notmatch "\sSCHEMA - public\s" -and $_ -notmatch "\sCOMMENT - SCHEMA public\s"
+      })
+    if ($LASTEXITCODE -ne 0) {
+      throw "pg_restore could not create a filtered restore list."
+    }
+    Set-Content -LiteralPath $restoreListPath -Value $restoreListEntries -Encoding ascii
+
     $previousUrl = $env:DATABASE_URL
     try {
       $env:DATABASE_URL = $env:TARGET_DATABASE_URL
@@ -225,6 +235,7 @@ switch ($Action) {
         --no-owner `
         --no-privileges `
         --dbname=$env:PGDATABASE `
+        --use-list=$restoreListPath `
         --verbose `
         $resolvedBackupPath
     }
