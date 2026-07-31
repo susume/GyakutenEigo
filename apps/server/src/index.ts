@@ -12,24 +12,44 @@ import { resolveClientOrigins } from "./origins.js";
 import { getPausedRoundAction, planRoundConclusion } from "./roundFlow.js";
 import { inspectProcessedDecal } from "./appearanceSecurity.js";
 import { DecalStore, type StoredDecalMime } from "./decalStore.js";
+import { PlayerPositionHistory } from "./playerPositionHistory.js";
 import { NetworkMetrics } from "./networkMetrics.js";
 import {
   APPEARANCE_UPDATE_COOLDOWN_MS,
   DECAL_MAX_PROCESSED_BYTES,
   DEFAULT_PLAYER_APPEARANCE,
+  ZOMBIE_HUMAN_MAX_ENERGY,
+  ZOMBIE_HUMAN_WALK_MAX_SPEED,
+  awardZombieHumanEnergy,
+  canPlayerFireInMode,
+  clampArenaAimPitch,
   clampArenaPosition,
   ARENA_SCALE,
+  ARENA_PLAYER_CROUCH_EYE_HEIGHT,
+  ARENA_PLAYER_EYE_HEIGHT,
+  DESERT_CITADEL_MAIN_LEVEL_Y,
+  DESERT_CITADEL_ROOFTOP_LEVEL_Y,
+  IRON_JUNCTION_LOADING_LEVEL_Y,
+  IRON_JUNCTION_OVERPASS_LEVEL_Y,
+  TEMPLE_RUNOFF_MAIN_LEVEL_Y,
   DEFAULT_PLAYER_HEALTH,
   GEAR_ITEMS,
   getGearFireCooldownMs,
   getGearHitRadius,
   getGearRange,
+  getCosmeticProgress,
+  getLockedAppearanceItems,
   getPlayerHealthMax,
   getPlayerMoveSpeedMultiplier,
   getPlayerPerks,
   getPlayerWeaponId,
+  getPlayerWeaponIdForMode,
   isWeaponGearId,
   getArenaObstacles,
+  getArenaEyeHeight,
+  getArenaGroundHeightForPlayer,
+  getArenaRecoveryGroundHeight,
+  findBotNavigationPath,
   getRoundRemainingSeconds,
   getRoundResetLoadout,
   getZombieBestPlayers,
@@ -44,10 +64,11 @@ import {
   isChoice,
   isMainRoundAnswer,
   isRoundActive,
-  isRoundBuyPhase,
-  isApprovedAppearancePreset,
+  isRoundPreparationPhase,
+  isZombieSelectionPhase,
   createInitialFlagState,
   randomizeBalancedTeams,
+  selectLateJoinTeam,
   resolveAnswerReward,
   resolveFlagCapture,
   resolveFlagCountdown,
@@ -57,8 +78,6 @@ import {
   resolveGearPurchase,
   resolvePracticeRespawn,
   resolveAuthoritativeMovement,
-  resolveBotAttackTarget,
-  resolveBotPursuitTarget,
   resolveBotRespawn,
   resolveBotRoamStep,
   resolveProjectileTarget,
@@ -66,12 +85,16 @@ import {
   resolveSnowballUse,
   resolveTagAction,
   resolveZombieConversion,
+  resolveZombieSprintEnergy,
   sanitizeSessionSettings,
   sanitizePlayerAppearance,
   sanitizeCharacterCustomizationSettings,
   getPlayerAppearanceError,
   selectInitialZombies,
   type AnswerLog,
+  hasLineOfSight,
+  type ArenaPosition,
+  type BotDifficulty,
   type Choice,
   type ClassSummary,
   type GameSession,
@@ -88,6 +111,24 @@ import {
   type TeacherUser,
   type Team
 } from "@quizstrike/shared";
+import {
+  BOT_DIFFICULTIES,
+  chooseBotRole,
+  chooseBotTarget,
+  createBotMemory,
+  getBotWeaponPreference,
+  isTargetInsideBotAwareness,
+  nextBotRandom,
+  randomBetween,
+  resolveBotAim,
+  resolveBotPerceptionFocus,
+  resolveBotSpacingGoal,
+  resolveBotState,
+  shouldAdvanceBotPatrolRoute,
+  shouldBotAttemptFlagInteraction,
+  type BotMemory,
+  type BotState
+} from "./botAI.js";
 
 interface StoredUser extends TeacherUser {
   passwordHash: string;
@@ -124,8 +165,6 @@ if (process.env.TRUST_PROXY === "true") {
 
 export const io = new Server(server, {
   cors: { origin: corsOrigin, credentials: true, maxAge: 86_400 },
-  // Engine.IO already compresses sufficiently large polling responses. Keep
-  // per-message WebSocket deflate off so tiny real-time packets do not add CPU.
   httpCompression: { threshold: 1024 },
   perMessageDeflate: false
 });
@@ -144,6 +183,9 @@ const playerMoveTimestamps = new Map<string, number>();
 const playerNextFireAt = new Map<string, number>();
 const botRespawnAt = new Map<string, number>();
 const botNextAttackAt = new Map<string, number>();
+const botMemoryById = new Map<string, BotMemory>();
+const botPreviousPositions = new Map<string, { x: number; y?: number; z: number }>();
+const playerPositionHistory = new PlayerPositionHistory(350);
 const appearanceUpdateTimestamps = new Map<string, number>();
 const playerSockets = new Map<string, Set<string>>();
 const playerDisconnectTimers = new Map<string, ReturnType<typeof setTimeout>>();
@@ -207,6 +249,9 @@ const hydrateRuntimeState = async () => {
     session.players = Array.isArray(session.players)
       ? session.players.map((player) => ({
           ...player,
+          cosmeticXp: Number.isFinite(player.cosmeticXp)
+            ? Math.max(0, Math.floor(player.cosmeticXp!))
+            : Math.max(0, player.correctAnswers ?? 0) * 100,
           appearance: { ...sanitizePlayerAppearance(player.appearance), decalAssetId: undefined }
         }))
       : [];
@@ -266,14 +311,22 @@ const blockedNicknameTerms = [
   "nazi",
   "hitler"
 ];
-const BOT_TICK_MS = 450;
+const BOT_TICK_MS = 300;
 const FIRE_REQUEST_TTL_MS = 30_000;
-const BOT_ATTACK_COOLDOWN_FLOOR_MS = 1700;
 const BOT_RESPAWN_MS = 8000;
+const BOT_DIFFICULTY: BotDifficulty = process.env.BOT_DIFFICULTY === "beginner" || process.env.BOT_DIFFICULTY === "advanced"
+  ? process.env.BOT_DIFFICULTY
+  : "standard";
 const PLAYER_MAX_SPEED = 22;
 const PLAYER_DISCONNECT_GRACE_MS = 5000;
 const ROUND_RESULT_ANNOUNCEMENT_MS = 4000;
-const FLAG_BUY_PHASE_MS = 6000;
+const testPhaseDuration = (name: string, fallback: number) => {
+  if (process.env.NODE_ENV !== "test") return fallback;
+  const configured = Number(process.env[name]);
+  return Number.isFinite(configured) ? Math.max(20, configured) : fallback;
+};
+const ROUND_PREPARATION_MS = testPhaseDuration("QUIZSTRIKE_TEST_ROUND_PREPARATION_MS", 35_000);
+const ZOMBIE_SELECTION_MS = testPhaseDuration("QUIZSTRIKE_TEST_ZOMBIE_SELECTION_MS", 20_000);
 const SESSION_BROADCAST_WINDOW_MS = 75;
 const ROUND_START_ANNOUNCEMENT_MS = 2500;
 const GAME_OVER_ANNOUNCEMENT_MS = 7000;
@@ -313,6 +366,25 @@ type PlayerTokenPayload = {
 
 const makePlayerToken = (session: GameSession, player: PlayerSession) =>
   jwt.sign({ sub: player.id, sessionCode: session.sessionCode, scope: "student" }, jwtSecret, { expiresIn: "8h" });
+
+const makeCosmeticProgressToken = (player: PlayerSession) =>
+  jwt.sign(
+    { scope: "cosmetic-progress", xp: Math.max(0, Math.floor(player.cosmeticXp ?? 0)) },
+    jwtSecret,
+    { expiresIn: "365d" }
+  );
+
+const readCosmeticProgressToken = (token: unknown) => {
+  if (typeof token !== "string" || token.length > 2_048) return 0;
+  try {
+    const payload = jwt.verify(token, jwtSecret) as { scope?: string; xp?: number };
+    return payload.scope === "cosmetic-progress" && Number.isFinite(payload.xp)
+      ? Math.min(1_000_000, Math.max(0, Math.floor(payload.xp!)))
+      : 0;
+  } catch {
+    return 0;
+  }
+};
 
 const getTeacherFromToken = (token: string | undefined): TeacherUser | undefined => {
   if (!token) return undefined;
@@ -479,6 +551,18 @@ const stampSession = (session: GameSession) => {
 
 const pendingSessionBroadcasts = new Map<string, GameSession>();
 let sessionBroadcastTimer: ReturnType<typeof setTimeout> | undefined;
+type LivePositionPayload = {
+  playerId: string;
+  x: number;
+  y?: number;
+  z: number;
+  facing: number;
+  energy?: number;
+  crouching?: boolean;
+  jumping?: boolean;
+};
+const pendingPositionBroadcasts = new Map<string, Map<string, LivePositionPayload>>();
+let positionBroadcastTimer: ReturnType<typeof setTimeout> | undefined;
 
 const flushSessionBroadcasts = () => {
   sessionBroadcastTimer = undefined;
@@ -501,15 +585,6 @@ const broadcastPlayerState = (session: GameSession, players: PlayerSession[]) =>
     flag: session.flag,
     recentEvents: session.events?.slice(0, 2)
   });
-  schedulePersistence();
-};
-
-const broadcastGameplayPositions = (
-  session: GameSession,
-  positions: Array<{ playerId: string; x: number; z: number; facing: number }>
-) => {
-  if (positions.length === 0) return;
-  io.to(gameplayRoom(session.sessionCode)).volatile.emit("player_positions", { positions });
   schedulePersistence();
 };
 
@@ -572,6 +647,14 @@ const finishSession = (
   session.endedAt = now();
   session.roundTransition = undefined;
   session.announcement = announcement;
+  for (const player of session.players) {
+    if (!player.isBot) continue;
+    botMemoryById.delete(player.id);
+    botNextAttackAt.delete(player.id);
+    botRespawnAt.delete(player.id);
+    botPreviousPositions.delete(player.id);
+  }
+  botAlertsBySession.delete(session.sessionCode);
   purgeSessionDecals(session);
   appendEvent(session, { type: "end", message });
   broadcastSession(session);
@@ -592,22 +675,37 @@ const finishZombieSession = (session: GameSession, outcome: string) => {
 const inactiveRoundMessage = (session: GameSession) =>
   session.status === "ended"
     ? "The round has ended. This action was not counted."
-    : isRoundBuyPhase(session)
-      ? "The buy phase is open. The round begins shortly."
+    : isRoundPreparationPhase(session)
+      ? "Preparation is open. Buy gear or answer questions before the round begins."
+    : isZombieSelectionPhase(session)
+      ? "Zombie selection is underway. Answer questions to build running energy."
     : session.status === "paused"
       ? "The round has ended. The next round is starting shortly."
       : "The teacher has not started the round yet.";
 
 const resetRoundPlayer = (session: GameSession, player: PlayerSession, index: number): PlayerSession => {
+  if (player.isBot) {
+    botMemoryById.delete(player.id);
+    botNextAttackAt.delete(player.id);
+    botRespawnAt.delete(player.id);
+    botPreviousPositions.delete(player.id);
+  }
   const spawn = player.isBot ? getBotSpawn(session, player.team, index) : selectSessionSpawn(session, player.team, index);
   const loadout = getRoundResetLoadout({ player, startingSnowballs: session.settings.startingSnowballs });
+  const isZombieHuman = session.settings.gameMode === "zombie" && player.role !== "zombie";
   return {
     ...player,
     ...spawn,
     role: session.settings.gameMode === "zombie" ? player.role ?? "human" : player.role,
     health: getPlayerHealthMax({ ...player, ...loadout }),
     ...loadout,
+    energy: session.settings.gameMode === "zombie"
+      ? player.role === "zombie" ? ZOMBIE_HUMAN_MAX_ENERGY : 0
+      : player.energy,
+    snowballs: isZombieHuman ? 0 : loadout.snowballs,
     isAlive: true,
+    crouching: false,
+    jumping: false,
     respawnCorrectAnswers: 0
   };
 };
@@ -619,7 +717,14 @@ const prepareModeStateForRound = (session: GameSession) => {
     }
     session.flag = createInitialFlagState(sessionSpawn(session, "red"));
   } else if (session.settings.gameMode === "zombie") {
-    session.players = selectInitialZombies(session.players, session.settings.initialZombieCount);
+    session.players = session.players.map((player) => ({
+      ...player,
+      role: "human",
+      team: "blue",
+      zombieConvertedAt: undefined,
+      energy: 0,
+      isAlive: true
+    }));
     session.flag = undefined;
   } else {
     session.flag = undefined;
@@ -633,8 +738,24 @@ const prepareRoundState = (session: GameSession, preserveStats = true) => {
     const wasOutForRound = !player.isAlive;
     const reset = resetRoundPlayer(session, player, index);
     return preserveStats
-      ? { ...reset, respawns: wasOutForRound ? (player.respawns ?? 0) + 1 : (player.respawns ?? 0) }
-      : { ...reset, score: 0, correctAnswers: 0, wrongAnswers: 0, tags: 0, respawns: 0 };
+      ? {
+          ...reset,
+          respawns: wasOutForRound ? (player.respawns ?? 0) + 1 : (player.respawns ?? 0),
+          roundTags: 0,
+          roundRespawns: 0,
+          roundQuizMoneyEarned: 0
+        }
+      : {
+          ...reset,
+          score: 0,
+          correctAnswers: 0,
+          wrongAnswers: 0,
+          tags: 0,
+          respawns: 0,
+          roundTags: 0,
+          roundRespawns: 0,
+          roundQuizMoneyEarned: 0
+        };
   });
 };
 
@@ -650,20 +771,54 @@ const startRoundState = (session: GameSession, preserveStats = true) => {
   activatePreparedRound(session);
 };
 
-const openFlagBuyPhase = (session: GameSession, preserveStats = true) => {
+const openRoundPreparation = (session: GameSession, preserveStats = true) => {
   prepareRoundState(session, preserveStats);
-  const startsAt = new Date(Date.now() + FLAG_BUY_PHASE_MS).toISOString();
+  const startsAt = new Date(Date.now() + ROUND_PREPARATION_MS).toISOString();
   session.status = "paused";
   session.startedAt = undefined;
   session.endsAt = undefined;
-  session.roundTransition = { nextRound: session.currentRound, startsAt, phase: "buy" };
+  session.roundTransition = { nextRound: session.currentRound, startsAt, phase: "preparation" };
   session.announcement = {
     ...makeAnnouncement(
-      "buy_phase",
-      "Buy Phase",
-      "Press B, then use number keys 1–5 to buy supplies and gear.",
-      `Round ${session.currentRound} begins in 6 seconds.`,
-      FLAG_BUY_PHASE_MS
+      "preparation",
+      "Preparation Time",
+      "Buy gear with B, or answer questions with Q to earn more money.",
+      `Round ${session.currentRound} begins in 35 seconds.`,
+      ROUND_PREPARATION_MS
+    ),
+    expiresAt: startsAt
+  };
+};
+
+const flushPositionBroadcasts = () => {
+  positionBroadcastTimer = undefined;
+  for (const [sessionCode, positions] of pendingPositionBroadcasts) {
+    io.to(gameplayRoom(sessionCode)).volatile.emit("player_positions", [...positions.values()]);
+  }
+  pendingPositionBroadcasts.clear();
+};
+
+const broadcastPlayerPosition = (session: GameSession, position: LivePositionPayload) => {
+  const positions = pendingPositionBroadcasts.get(session.sessionCode) ?? new Map<string, LivePositionPayload>();
+  positions.set(position.playerId, position);
+  pendingPositionBroadcasts.set(session.sessionCode, positions);
+  positionBroadcastTimer ??= setTimeout(flushPositionBroadcasts, 50);
+};
+
+const openZombieSelectionPhase = (session: GameSession, preserveStats = true) => {
+  prepareRoundState(session, preserveStats);
+  const startsAt = new Date(Date.now() + ZOMBIE_SELECTION_MS).toISOString();
+  session.status = "paused";
+  session.startedAt = undefined;
+  session.endsAt = undefined;
+  session.roundTransition = { nextRound: session.currentRound, startsAt, phase: "zombie_selection" };
+  session.announcement = {
+    ...makeAnnouncement(
+      "preparation",
+      "Everyone Starts Human",
+      "Answer questions now to charge your running energy. Zombies will be chosen at random.",
+      "Zombie selection in 20 seconds.",
+      ZOMBIE_SELECTION_MS
     ),
     expiresAt: startsAt
   };
@@ -697,8 +852,8 @@ const finishRound = (session: GameSession, winner: Team | undefined, reason: str
 
   const nextRound = conclusion.nextRound!;
   const resultTitle = winner ? `${teamName(winner)} wins Round ${session.currentRound}!` : `Round ${session.currentRound} is a draw`;
-  const resultMessage = session.settings.gameMode === "flag"
-    ? `${reason}. Round ${nextRound} buy phase begins shortly.`
+  const resultMessage = session.settings.gameMode === "flag" || session.settings.gameMode === "classic"
+    ? `${reason}. Round ${nextRound} preparation begins shortly.`
     : `${reason}. Round ${nextRound} begins shortly.`;
   const startsAt = new Date(Date.now() + ROUND_RESULT_ANNOUNCEMENT_MS).toISOString();
   session.status = "paused";
@@ -715,25 +870,42 @@ const startPendingRound = (session: GameSession) => {
   if (session.status !== "paused" || !session.roundTransition) return;
   const transition = session.roundTransition;
   session.currentRound = transition.nextRound;
-  if (getPausedRoundAction({ gameMode: session.settings.gameMode, phase: transition.phase }) === "open_buy_phase") {
-    openFlagBuyPhase(session);
-    appendEvent(session, { type: "start", message: `Round ${session.currentRound} buy phase opened.` });
+  if (getPausedRoundAction({ gameMode: session.settings.gameMode, phase: transition.phase }) === "open_preparation") {
+    openRoundPreparation(session);
+    appendEvent(session, { type: "start", message: `Round ${session.currentRound} preparation opened.` });
     broadcastSession(session);
     return;
   }
 
-  if (transition.phase === "buy") activatePreparedRound(session);
-  else startRoundState(session);
+  if (transition.phase === "zombie_selection") {
+    session.players = selectInitialZombies(session.players, session.settings.initialZombieCount).map((player) => (
+      player.role === "zombie"
+        ? { ...player, snowballs: session.settings.startingSnowballs }
+        : player
+    ));
+    activatePreparedRound(session);
+  } else if (transition.phase === "preparation" || transition.phase === "buy") {
+    activatePreparedRound(session);
+  } else {
+    startRoundState(session);
+  }
   session.announcement = makeAnnouncement(
     "round_start",
-    `Round ${session.currentRound} has begun!`,
+    session.settings.gameMode === "zombie" ? "Zombies Revealed!" : `Round ${session.currentRound} has begun!`,
     session.settings.gameMode === "flag"
       ? "Red carries and protects the flag. Blue defends and captures."
-      : "Answer questions, earn supplies, and tag the other team.",
+      : session.settings.gameMode === "zombie"
+        ? "Red Zombies hunt. Blue Humans use their stored energy to run and survive."
+        : "Most tags wins. Respawns, then quiz earnings break ties.",
     undefined,
     ROUND_START_ANNOUNCEMENT_MS
   );
-  appendEvent(session, { type: "start", message: `Round ${session.currentRound} started.` });
+  appendEvent(session, {
+    type: "start",
+    message: session.settings.gameMode === "zombie"
+      ? "Zombies were chosen at random. The survival round started."
+      : `Round ${session.currentRound} started.`
+  });
   broadcastSession(session);
 };
 
@@ -797,6 +969,50 @@ const markPlayerDisconnected = (session: GameSession, player: PlayerSession) => 
   schedulePlayerDisconnectResolution(session, player.id);
 };
 
+const removePlayerRuntimeState = (session: GameSession, player: PlayerSession) => {
+  clearPlayerDisconnectTimer(session, player.id);
+  playerQuestionHistory.delete(player.id);
+  playerQuestionGate.clear(player.id);
+  quizRateLimits.delete(player.id);
+  fireRequestIds.delete(player.id);
+  playerMoveTimestamps.delete(player.id);
+  playerNextFireAt.delete(player.id);
+  botRespawnAt.delete(player.id);
+  botNextAttackAt.delete(player.id);
+  botMemoryById.delete(player.id);
+  botPreviousPositions.delete(player.id);
+  playerPositionHistory.clear(player.id);
+  appearanceUpdateTimestamps.delete(player.id);
+  decalUploadTimestamps.delete(player.id);
+  decalStore.deletePlayer(session.id, player.id);
+
+  const alerts = botAlertsBySession.get(session.sessionCode);
+  if (alerts) {
+    for (const [team, alert] of alerts) {
+      if (alert.sourceId === player.id) alerts.delete(team);
+    }
+    if (alerts.size === 0) botAlertsBySession.delete(session.sessionCode);
+  }
+};
+
+const evictPlayerSockets = (session: GameSession, player: PlayerSession) => {
+  const key = playerSocketKey(session.sessionCode, player.id);
+  const socketIds = playerSockets.get(key) ?? new Set<string>();
+  for (const socketId of socketIds) {
+    const playerSocket = io.sockets.sockets.get(socketId);
+    if (!playerSocket) continue;
+    playerSocket.emit("player_removed", {
+      message: "Your teacher removed you from this game. You can return to the join screen."
+    });
+    playerSocket.leave(session.sessionCode);
+    const binding = playerSocket.data.playerBinding as SocketPlayerBinding | undefined;
+    if (binding?.sessionCode === session.sessionCode && binding.playerId === player.id) {
+      delete playerSocket.data.playerBinding;
+    }
+  }
+  playerSockets.delete(key);
+};
+
 const assertTeacherOwnsQuiz = (userId: string, quizSetId: string) => {
   const quiz = quizSets.get(quizSetId);
   return quiz?.teacherId === userId ? quiz : undefined;
@@ -827,12 +1043,24 @@ const getBotSpawn = (session: GameSession, team: Team, index: number) => {
 };
 
 const applyValidatedDamage = (session: GameSession, attacker: PlayerSession, target: PlayerSession) => {
-  if (session.settings.gameMode === "zombie" && attacker.role === "zombie") {
+  if (!canPlayerFireInMode(session.settings.gameMode, attacker.role)) {
+    return { ok: false as const, reason: "humans_cannot_fire" as const };
+  }
+  const zombieAttack = session.settings.gameMode === "zombie" && attacker.role === "zombie";
+  const combatAttacker = session.settings.gameMode === "zombie"
+    ? { ...attacker, gear: "starter_blaster", weapon: "starter_blaster" }
+    : attacker;
+  const tagResult = resolveTagAction({ attacker: combatAttacker, target });
+  if (!tagResult.ok) return tagResult;
+
+  target.health = tagResult.nextHealth;
+  if (zombieAttack && tagResult.eliminated) {
     const conversion = resolveZombieConversion({ attacker, target });
     if (!conversion.ok) return conversion;
     Object.assign(target, conversion.player);
     target.zombieConvertedAt = now();
     attacker.tags = (attacker.tags ?? attacker.score) + conversion.tagCredit;
+    attacker.roundTags = (attacker.roundTags ?? 0) + conversion.tagCredit;
     attacker.score += conversion.tagCredit;
     appendEvent(session, {
       type: "tag",
@@ -850,10 +1078,11 @@ const applyValidatedDamage = (session: GameSession, attacker: PlayerSession, tar
       targetX: target.x ?? sessionSpawn(session, target.team).x,
       targetZ: target.z ?? sessionSpawn(session, target.team).z,
       targetFacing: target.facing ?? sessionSpawn(session, target.team).facing,
-      damage: DEFAULT_PLAYER_HEALTH,
+      damage: tagResult.damage,
       health: target.health,
       snowballs: attacker.snowballs,
-      eliminated: false,
+      eliminated: true,
+      converted: true,
       moneyAwarded: 0
     });
     io.to(gameplayRoom(session.sessionCode)).emit("world_impact", {
@@ -861,17 +1090,12 @@ const applyValidatedDamage = (session: GameSession, attacker: PlayerSession, tar
       targetId: target.id,
       x: target.x ?? sessionSpawn(session, target.team).x,
       z: target.z ?? sessionSpawn(session, target.team).z,
-      shield: true
+      shield: false
     });
     broadcastPlayerState(session, [attacker, target]);
     finishZombieMatchIfComplete(session);
-    return { ok: true as const, damage: DEFAULT_PLAYER_HEALTH, nextHealth: DEFAULT_PLAYER_HEALTH, eliminated: false, moneyAwarded: 0, scoreDelta: 1 };
+    return { ok: true as const, damage: tagResult.damage, nextHealth: DEFAULT_PLAYER_HEALTH, eliminated: true, moneyAwarded: 0, scoreDelta: 1 };
   }
-
-  const tagResult = resolveTagAction({ attacker, target });
-  if (!tagResult.ok) return tagResult;
-
-  target.health = tagResult.nextHealth;
   if (tagResult.eliminated) {
     const knockedOutPosition = {
       x: target.x ?? sessionSpawn(session, target.team).x,
@@ -884,12 +1108,19 @@ const applyValidatedDamage = (session: GameSession, attacker: PlayerSession, tar
       session.flag = resolveFlagDropForPlayer(session.flag, target, knockedOutPosition);
     }
     target.x = baseSpawn.x;
+    target.y = baseSpawn.y;
     target.z = baseSpawn.z;
     target.facing = baseSpawn.facing;
-    if (target.isBot && session.settings.gameMode !== "flag") botRespawnAt.set(target.id, Date.now() + BOT_RESPAWN_MS);
+    target.crouching = false;
+    target.jumping = false;
+    if (target.isBot) {
+      botPreviousPositions.delete(target.id);
+      if (session.settings.gameMode !== "flag") botRespawnAt.set(target.id, Date.now() + BOT_RESPAWN_MS);
+    }
     attacker.money = Math.min(16000, attacker.money + tagResult.moneyAwarded);
     attacker.score += tagResult.scoreDelta;
     attacker.tags = (attacker.tags ?? 0) + 1;
+    attacker.roundTags = (attacker.roundTags ?? 0) + 1;
   }
 
   appendEvent(session, {
@@ -942,36 +1173,465 @@ const applyValidatedDamage = (session: GameSession, attacker: PlayerSession, tar
 const applyAuthoritativePosition = (
   session: GameSession,
   player: PlayerSession,
-  requested: { x?: number; z?: number; y?: number; facing?: number },
+  requested: {
+    x?: number;
+    z?: number;
+    y?: number;
+    facing?: number;
+    sprinting?: boolean;
+    crouching?: boolean;
+    jumping?: boolean;
+  },
   nowMs = Date.now()
 ) => {
   const fallback = sessionSpawn(session, player.team);
   const lastMoveAt = playerMoveTimestamps.get(player.id) ?? nowMs - BOT_TICK_MS;
+  const elapsedMs = nowMs - lastMoveAt;
+  const requestedX = Number.isFinite(Number(requested.x)) ? Number(requested.x) : player.x ?? fallback.x;
+  const requestedZ = Number.isFinite(Number(requested.z)) ? Number(requested.z) : player.z ?? fallback.z;
+  const currentX = player.x ?? fallback.x;
+  const currentZ = player.z ?? fallback.z;
+  const currentEyeHeight = player.crouching === true
+    ? ARENA_PLAYER_CROUCH_EYE_HEIGHT
+    : ARENA_PLAYER_EYE_HEIGHT;
+  const requestedCrouching = typeof requested.crouching === "boolean"
+    ? requested.crouching
+    : player.crouching === true;
+  const requestedEyeHeight = requestedCrouching
+    ? ARENA_PLAYER_CROUCH_EYE_HEIGHT
+    : ARENA_PLAYER_EYE_HEIGHT;
+  let currentEyeY = player.y ?? fallback.y ?? getArenaEyeHeight(session.settings.mapId, currentX, currentZ);
+  const recoveryGroundY = getArenaRecoveryGroundHeight(
+    session.settings.mapId,
+    currentX,
+    currentZ,
+    currentEyeY,
+    currentEyeHeight
+  );
+  if (recoveryGroundY !== undefined) {
+    currentEyeY = recoveryGroundY + currentEyeHeight;
+    player.y = currentEyeY;
+  }
+  const requestedEyeY = Number.isFinite(Number(requested.y)) ? Number(requested.y) : currentEyeY;
+  const requestedGroundY = getArenaGroundHeightForPlayer(
+    session.settings.mapId,
+    requestedX,
+    requestedZ,
+    requestedEyeY,
+    requestedEyeHeight
+  );
+  const requestedStandingY = requestedGroundY + requestedEyeHeight;
+  const requestedMovementY = Number.isFinite(Number(requested.y))
+    ? Math.min(requestedStandingY + 4.5, Math.max(requestedStandingY, Number(requested.y)))
+    : requestedStandingY;
+  const currentPosition = {
+    x: currentX,
+    y: currentEyeY,
+    z: currentZ,
+    facing: player.facing ?? fallback.facing
+  };
+  playerPositionHistory.record(player.id, currentPosition, lastMoveAt);
+  const sprintPolicy = resolveZombieSprintEnergy({
+    gameMode: session.settings.gameMode,
+    role: player.role,
+    sprinting: requested.sprinting === true,
+    currentEnergy: player.energy,
+    elapsedMs,
+    movedDistance: 0
+  });
+  const isZombieHuman = session.settings.gameMode === "zombie" && player.role !== "zombie";
+  const hasMovementEnergy = !isZombieHuman || (player.energy ?? 0) > 0;
   const position = resolveAuthoritativeMovement({
-    current: {
-      x: player.x ?? fallback.x,
-      z: player.z ?? fallback.z,
-      facing: player.facing ?? fallback.facing
-    },
+    current: currentPosition,
     requested: {
-      x: Number(requested.x),
-      z: Number(requested.z),
-      y: Number(requested.y),
+      x: requestedX,
+      z: requestedZ,
+      y: requestedMovementY,
       facing: Number(requested.facing)
     },
-    elapsedMs: nowMs - lastMoveAt,
-    maxSpeed: PLAYER_MAX_SPEED * getPlayerMoveSpeedMultiplier(player),
-    obstacles: getArenaObstacles(session.settings.mapId)
+    elapsedMs,
+    maxSpeed: (
+      !hasMovementEnergy
+        ? 0
+        : isZombieHuman && !sprintPolicy.canSprint
+          ? ZOMBIE_HUMAN_WALK_MAX_SPEED
+          : PLAYER_MAX_SPEED
+    ) * getPlayerMoveSpeedMultiplier(player),
+    obstacles: getArenaObstacles(session.settings.mapId),
+    groundY: requestedGroundY,
+    eyeHeight: requestedEyeHeight,
+    mapId: session.settings.mapId
   });
   playerMoveTimestamps.set(player.id, nowMs);
   player.x = position.x;
+  player.y = position.y ?? requestedStandingY;
   player.z = position.z;
   player.facing = position.facing;
+  player.crouching = requestedCrouching;
+  if (typeof requested.jumping === "boolean") {
+    player.jumping = requested.jumping && !requestedCrouching;
+  }
+  if (session.settings.gameMode === "zombie" && player.role !== "zombie") {
+    player.energy = resolveZombieSprintEnergy({
+      gameMode: session.settings.gameMode,
+      role: player.role,
+      sprinting: requested.sprinting === true,
+      currentEnergy: player.energy,
+      elapsedMs,
+      movedDistance: Math.hypot(position.x - currentPosition.x, position.z - currentPosition.z)
+    }).nextEnergy;
+  }
+  playerPositionHistory.record(player.id, {
+    x: player.x,
+    y: player.y,
+    z: player.z
+  }, nowMs);
   return position;
 };
 
+type BotAlert = { position: { x: number; z: number }; createdAtMs: number; sourceId: string };
+const botAlertsBySession = new Map<string, Map<Team, BotAlert>>();
+
+const getBotBrain = (bot: PlayerSession, index: number, nowMs: number) => {
+  let brain = botMemoryById.get(bot.id);
+  if (!brain) {
+    brain = createBotMemory(bot.id, index, nowMs);
+    botMemoryById.set(bot.id, brain);
+  }
+  return brain;
+};
+
+const botPosition = (player: PlayerSession): ArenaPosition => ({
+  x: player.x ?? 0,
+  y: player.y ?? 0,
+  z: player.z ?? 0,
+  facing: player.facing ?? 0
+});
+
+const playersWithRewind = (players: PlayerSession[], nowMs = Date.now()) => players.map((player) => {
+  const previous = player.isBot
+    ? botPreviousPositions.get(player.id)
+    : playerPositionHistory.rewind(player.id, nowMs);
+  return previous
+    ? { ...player, previousX: previous.x, previousY: previous.y, previousZ: previous.z }
+    : player;
+});
+
+const horizontalDistance = (a: ArenaPosition, b: ArenaPosition) => Math.hypot(a.x - b.x, a.z - b.z);
+
+const isBotEnemy = (session: GameSession, bot: PlayerSession, candidate: PlayerSession) => {
+  if (candidate.id === bot.id || candidate.connectionState === "disconnected" || !candidate.isAlive) return false;
+  if (session.settings.gameMode === "zombie") return candidate.role !== bot.role;
+  return candidate.team !== bot.team;
+};
+
+const isInsideBotFov = (from: PlayerSession, to: PlayerSession, halfAngle: number) => {
+  const fromPosition = botPosition(from);
+  const targetPosition = botPosition(to);
+  const distance = horizontalDistance(fromPosition, targetPosition);
+  if (distance <= 0.001) return true;
+  const forward = { x: -Math.sin(fromPosition.facing ?? 0), z: -Math.cos(fromPosition.facing ?? 0) };
+  const direction = { x: (targetPosition.x - fromPosition.x) / distance, z: (targetPosition.z - fromPosition.z) / distance };
+  return forward.x * direction.x + forward.z * direction.z >= Math.cos(halfAngle);
+};
+
+const canBotSee = (
+  session: GameSession,
+  bot: PlayerSession,
+  target: PlayerSession,
+  profile: (typeof BOT_DIFFICULTIES)[keyof typeof BOT_DIFFICULTIES],
+  obstacles: ReturnType<typeof getArenaObstacles>
+) => {
+  const distance = horizontalDistance(botPosition(bot), botPosition(target));
+  return distance <= profile.viewDistance
+    && Math.abs((target.y ?? 0) - (bot.y ?? 0)) <= 5.5
+    && isTargetInsideBotAwareness({
+      distance,
+      inFieldOfView: isInsideBotFov(bot, target, profile.viewHalfAngle)
+    })
+    && hasLineOfSight({ from: botPosition(bot), to: botPosition(target), obstacles });
+};
+
+const scaledPoint = (x: number, z: number) => ({ x: x * ARENA_SCALE, z: z * ARENA_SCALE });
+const scaledLevelPoint = (x: number, z: number, groundY = 0) => ({
+  x: x * ARENA_SCALE,
+  y: groundY + ARENA_PLAYER_EYE_HEIGHT,
+  z: z * ARENA_SCALE
+});
+
+const botBasePoint = (team: Team, mapId?: string) =>
+  mapId === "desert_citadel"
+    ? scaledPoint((team === "blue" ? -1 : 1) * 235, team === "blue" ? 58 : -58)
+    : scaledPoint(
+    (team === "blue" ? -1 : 1)
+      * (mapId === "temple_runoff" ? 205 : mapId === "iron_junction" ? 248 : 142),
+    0
+  );
+const botEnemyBasePoint = (team: Team, mapId?: string) =>
+  mapId === "desert_citadel"
+    ? scaledPoint((team === "blue" ? 1 : -1) * 235, team === "blue" ? -58 : 58)
+    : scaledPoint(
+    (team === "blue" ? 1 : -1)
+      * (mapId === "temple_runoff" ? 205 : mapId === "iron_junction" ? 248 : 142),
+    0
+  );
+
+const getIronJunctionPatrolPoints = (team: Team) => {
+  const direction = team === "blue" ? 1 : -1;
+  const longitudinal = [-185, -85, 65, 175].map((value) => value * direction);
+  const upper = team === "blue"
+    ? [
+        scaledLevelPoint(-205, -57),
+        scaledLevelPoint(-150, -57, IRON_JUNCTION_LOADING_LEVEL_Y),
+        scaledLevelPoint(-105, -94, IRON_JUNCTION_OVERPASS_LEVEL_Y),
+        scaledLevelPoint(20, 25, IRON_JUNCTION_OVERPASS_LEVEL_Y)
+      ]
+    : [
+        scaledLevelPoint(165, 25),
+        scaledLevelPoint(125, 25, IRON_JUNCTION_OVERPASS_LEVEL_Y),
+        scaledLevelPoint(80, 25, IRON_JUNCTION_OVERPASS_LEVEL_Y),
+        scaledLevelPoint(-20, 25, IRON_JUNCTION_OVERPASS_LEVEL_Y)
+      ];
+  const stages = longitudinal.map((x, stage) => [
+    scaledLevelPoint(x, stage % 2 === 0 ? 0 : 42),
+    scaledLevelPoint(x, -112 + stage * 8),
+    scaledLevelPoint(x, 112 + stage * 12),
+    scaledLevelPoint(x, 202 + stage * 5),
+    upper[stage]
+  ]);
+  return stages.flat();
+};
+
+const getDesertCitadelPatrolPoints = (team: Team) => {
+  const direction = team === "blue" ? 1 : -1;
+  const xStages = [-182, -108, -20, 96].map((x) => x * direction);
+  const upper = team === "blue"
+    ? [
+        scaledLevelPoint(-45, 0, DESERT_CITADEL_MAIN_LEVEL_Y),
+        scaledLevelPoint(-116, 76, DESERT_CITADEL_ROOFTOP_LEVEL_Y),
+        scaledLevelPoint(30, 40, DESERT_CITADEL_MAIN_LEVEL_Y),
+        scaledLevelPoint(90, 70, DESERT_CITADEL_ROOFTOP_LEVEL_Y)
+      ]
+    : [
+        scaledLevelPoint(90, 70, DESERT_CITADEL_ROOFTOP_LEVEL_Y),
+        scaledLevelPoint(30, 40, DESERT_CITADEL_MAIN_LEVEL_Y),
+        scaledLevelPoint(-116, 76, DESERT_CITADEL_ROOFTOP_LEVEL_Y),
+        scaledLevelPoint(-45, 0, DESERT_CITADEL_MAIN_LEVEL_Y)
+      ];
+  const stages = xStages.map((x, stage) => {
+    return [
+      scaledLevelPoint(x, 0),
+      scaledLevelPoint(x, stage < 3 ? 78 : 70),
+      scaledLevelPoint(x, -118),
+      scaledLevelPoint(x, stage === 0 || stage === 3 ? 133 : 60),
+      upper[stage]
+    ];
+  });
+  return stages.flat();
+};
+
+const getTempleRunoffPatrolPoints = (team: Team) => {
+  const direction = team === "blue" ? 1 : -1;
+  const xStages = [-190, -108, -12, 92, 190].map((x) => x * direction);
+  return xStages.flatMap((x) => [
+    scaledLevelPoint(x, -154, TEMPLE_RUNOFF_MAIN_LEVEL_Y),
+    scaledLevelPoint(x, -86, TEMPLE_RUNOFF_MAIN_LEVEL_Y),
+    scaledLevelPoint(x, 0),
+    scaledLevelPoint(x, 86, TEMPLE_RUNOFF_MAIN_LEVEL_Y),
+    scaledLevelPoint(x, 154, TEMPLE_RUNOFF_MAIN_LEVEL_Y)
+  ]);
+};
+
+const getBotPatrolPoints = (team: Team, mapId?: string) => mapId === "temple_runoff"
+  ? getTempleRunoffPatrolPoints(team)
+  : mapId === "iron_junction"
+    ? getIronJunctionPatrolPoints(team)
+  : mapId === "desert_citadel"
+    ? getDesertCitadelPatrolPoints(team)
+  : [
+      scaledPoint(0, -84),
+      scaledPoint(team === "blue" ? -42 : 42, -28),
+      scaledPoint(0, 28),
+      scaledPoint(team === "blue" ? 42 : -42, 84),
+      botBasePoint(team, mapId)
+    ];
+
+const findBotCover = (
+  session: GameSession,
+  bot: PlayerSession,
+  threat: PlayerSession | undefined,
+  obstacles: ReturnType<typeof getArenaObstacles>
+) => {
+  if (!threat) return undefined;
+  const origin = botPosition(bot);
+  const threatPosition = botPosition(threat);
+  const candidates: Array<{ x: number; z: number; score: number }> = [];
+  for (const obstacle of obstacles) {
+    const awayX = obstacle.x - threatPosition.x;
+    const awayZ = obstacle.z - threatPosition.z;
+    const awayDistance = Math.hypot(awayX, awayZ) || 1;
+    const padding = obstacle.kind === "circle" ? obstacle.radius + 4 : Math.max(obstacle.width, obstacle.depth) / 2 + 4;
+    const points = [
+      { x: obstacle.x + (awayX / awayDistance) * padding, z: obstacle.z + (awayZ / awayDistance) * padding },
+      { x: obstacle.x - (awayZ / awayDistance) * padding, z: obstacle.z + (awayX / awayDistance) * padding },
+      { x: obstacle.x + (awayZ / awayDistance) * padding, z: obstacle.z - (awayX / awayDistance) * padding }
+    ];
+    for (const point of points) {
+      const candidate = clampArenaPosition({ ...point, facing: origin.facing ?? 0 }, session.settings.mapId);
+      if (hasLineOfSight({ from: threatPosition, to: candidate, obstacles })) continue;
+      const score = horizontalDistance(origin, candidate) - horizontalDistance(threatPosition, candidate) * 0.25;
+      candidates.push({ ...candidate, score });
+    }
+  }
+  return candidates.sort((a, b) => a.score - b.score)[0];
+};
+
+const applyBotSpacing = (session: GameSession, bot: PlayerSession, desired: { x: number; y?: number; z: number }) => {
+  const spaced = resolveBotSpacingGoal({
+    botId: bot.id,
+    botPosition: botPosition(bot),
+    desired,
+    teammates: session.players.filter((player) => player.isAlive && player.team === bot.team)
+  });
+  return clampArenaPosition({ ...spaced, ...(Number.isFinite(desired.y) ? { y: desired.y } : {}), facing: bot.facing ?? 0 }, session.settings.mapId);
+};
+
+const getBotObjectiveGoal = (session: GameSession, bot: PlayerSession, brain: BotMemory, state: BotState) => {
+  const flag = session.flag;
+  const carrier = flag?.carrierId ? session.players.find((player) => player.id === flag.carrierId) : undefined;
+  if (flag?.state === "carried" && carrier?.id === bot.id) return botEnemyBasePoint(bot.team, session.settings.mapId);
+  if (state === "escort_flag_carrier" && carrier && carrier.team === bot.team) return { x: carrier.x ?? 0, z: (carrier.z ?? 0) + brain.strafeDirection * 8 };
+  if (state === "attack_flag_carrier" && carrier && carrier.team !== bot.team) return botPosition(carrier);
+  if (state === "defend_objective" && flag && ["placed", "being_captured"].includes(flag.state)) return flag.position;
+  if (state === "move_to_objective" || state === "defend_objective") {
+    if (flag && bot.team === "red" && ["available", "dropped"].includes(flag.state)) return flag.position;
+    if (flag && flag.state === "carried" && carrier) return botPosition(carrier);
+    return bot.team === "blue" ? botBasePoint(bot.team, session.settings.mapId) : botEnemyBasePoint(bot.team, session.settings.mapId);
+  }
+  if (state === "flank") {
+    if (session.settings.mapId === "desert_citadel") {
+      const lowerRoute = brain.routeIndex % 2 === 0;
+      return lowerRoute
+        ? scaledLevelPoint(brain.strafeDirection * 42, -118)
+        : scaledLevelPoint(brain.strafeDirection * 72, 78);
+    }
+    const side = brain.routeIndex % 2 === 0 ? -1 : 1;
+    return scaledPoint(side * 82, brain.strafeDirection * 72);
+  }
+  if (state === "search" && brain.lastSeenPosition) return brain.lastSeenPosition;
+  if (state === "retreat" || state === "regroup" || state === "take_cover") return botBasePoint(bot.team, session.settings.mapId);
+  const patrol = getBotPatrolPoints(bot.team, session.settings.mapId);
+  return patrol[brain.routeIndex % patrol.length];
+};
+
+const shouldBotObjectiveAction = (session: GameSession, bot: PlayerSession) => {
+  if (session.settings.gameMode !== "flag" || !session.flag) return false;
+  const previous = session.flag.state;
+  session.flag = resolveFlagPickup(session.flag, bot);
+  session.flag = resolveFlagPlacement({
+    flag: session.flag,
+    player: bot,
+    nowMs: Date.now(),
+    holdSeconds: session.settings.flagHoldSeconds
+  });
+  session.flag = resolveFlagCapture(session.flag, bot);
+  if (previous === session.flag.state) return false;
+  appendEvent(session, {
+    type: "timer",
+    message: session.flag.state === "carried"
+      ? `${bot.nickname} picked up the flag.`
+      : session.flag.state === "placed"
+        ? "The flag has been placed. Red must protect it."
+        : session.flag.state === "captured"
+          ? "Blue captured the flag."
+          : "Flag updated.",
+    playerId: bot.id,
+    team: bot.team
+  });
+  const countdown = resolveFlagCountdown(session.flag, Date.now());
+  if (countdown.winner) {
+    finishRound(
+      session,
+      countdown.winner,
+      countdown.reason === "flag_captured" ? "Blue Team captured the flag" : "Red Team protected the flag"
+    );
+  }
+  return true;
+};
+
+const botFire = (
+  session: GameSession,
+  bot: PlayerSession,
+  target: PlayerSession,
+  brain: BotMemory,
+  profile: (typeof BOT_DIFFICULTIES)[keyof typeof BOT_DIFFICULTIES],
+  currentMs: number,
+  obstacles: ReturnType<typeof getArenaObstacles>
+) => {
+  if (!canPlayerFireInMode(session.settings.gameMode, bot.role)) return false;
+  if ((botNextAttackAt.get(bot.id) ?? 0) > currentMs) return false;
+  const weaponId = getPlayerWeaponIdForMode(session.settings.gameMode, bot);
+  const preference = getBotWeaponPreference(weaponId);
+  const distance = horizontalDistance(botPosition(bot), botPosition(target));
+  if (distance > getGearRange(weaponId)) return false;
+  const aim = resolveBotAim({
+    memory: brain,
+    from: botPosition(bot),
+    target: botPosition(target),
+    currentFacing: bot.facing ?? 0,
+    profile,
+    movementPenalty: brain.state === "engage_enemy" ? 0.025 : 0.07,
+    distance,
+    nowMs: currentMs
+  });
+  bot.facing = aim.facing;
+  if (!aim.aligned) return false;
+  const botEyeY = bot.y
+    ?? getArenaEyeHeight(session.settings.mapId, bot.x ?? 0, bot.z ?? 0);
+  const targetEyeY = target.y
+    ?? getArenaEyeHeight(session.settings.mapId, target.x ?? 0, target.z ?? 0);
+  const aimPitch = clampArenaAimPitch(
+    Math.atan2(targetEyeY - botEyeY, Math.max(0.001, distance))
+  );
+  const snowballUse = resolveSnowballUse(bot);
+  if (!snowballUse.ok) return false;
+  bot.snowballs = snowballUse.nextSnowballs;
+  io.to(gameplayRoom(session.sessionCode)).emit("remote_weapon_fire", {
+    playerId: bot.id,
+    x: bot.x ?? sessionSpawn(session, bot.team).x,
+    y: botEyeY,
+    z: bot.z ?? sessionSpawn(session, bot.team).z,
+    facing: bot.facing ?? sessionSpawn(session, bot.team).facing,
+    pitch: aimPitch,
+    gearId: weaponId,
+    scoped: weaponId === "power_blaster" && brain.role === "overwatch",
+    zoomLevel: weaponId === "power_blaster" && brain.role === "overwatch" ? 1 : 0
+  });
+  const targetSelection = resolveProjectileTarget({
+    attacker: bot,
+    candidates: playersWithRewind(session.players),
+    requestedTargetId: target.id,
+    range: getGearRange(weaponId),
+    hitRadius: getGearHitRadius(weaponId, weaponId === "power_blaster" && brain.role === "overwatch" ? 1 : 0),
+    obstacles,
+    aimPitch
+  });
+  const shotDelay = Math.max(
+    getGearFireCooldownMs(weaponId),
+    weaponId === "quick_blaster" ? 360 : weaponId === "power_blaster" ? 1750 : 620
+  );
+  brain.burstShotsRemaining = brain.burstShotsRemaining > 1 ? brain.burstShotsRemaining - 1 : preference.burstSize;
+  botNextAttackAt.set(
+    bot.id,
+    currentMs + (brain.burstShotsRemaining > 1 ? shotDelay : shotDelay + profile.firePauseMs + randomBetween(brain, 0, 260))
+  );
+  if (!targetSelection.ok) return true;
+  const selectedTarget = session.players.find((player) => player.id === targetSelection.targetId);
+  if (selectedTarget) applyValidatedDamage(session, bot, selectedTarget);
+  return true;
+};
+
 export const advanceBots = () => {
-  const seconds = Date.now() / 1000;
   const currentMs = Date.now();
   for (const session of sessions.values()) {
     if (session.status === "paused") {
@@ -1005,12 +1665,17 @@ export const advanceBots = () => {
         finishZombieSession(session, "Humans survived until time expired.");
       } else {
         const winner = resolveTeamRoundWinner(session.players);
-        finishRound(session, winner, winner ? "Higher team score when time expired" : "Teams were tied when time expired");
+        finishRound(
+          session,
+          winner,
+          winner
+            ? "More tags, respawns, or quiz earnings when time expired"
+            : "Teams tied on tags, respawns, and quiz earnings when time expired"
+        );
       }
       continue;
     }
-    const movedBots: Array<{ playerId: string; x: number; z: number; facing: number }> = [];
-    const stateChangedBots: PlayerSession[] = [];
+    let moved = false;
     session.players.forEach((bot, index) => {
       if (!bot.isBot) return;
       if (!bot.isAlive) {
@@ -1025,54 +1690,293 @@ export const advanceBots = () => {
         if (respawn.respawned) {
           Object.assign(bot, respawn.player);
           bot.respawns = (bot.respawns ?? 0) + 1;
+          bot.roundRespawns = (bot.roundRespawns ?? 0) + 1;
           botRespawnAt.delete(bot.id);
+          botPreviousPositions.delete(bot.id);
           appendEvent(session, { type: "respawn", message: `${bot.nickname} returned to the arena.`, playerId: bot.id, team: bot.team });
-          movedBots.push({ playerId: bot.id, x: bot.x!, z: bot.z!, facing: bot.facing! });
-          stateChangedBots.push(bot);
+          moved = true;
         }
         return;
       }
+      const brain = getBotBrain(bot, index, currentMs);
+      const profile = BOT_DIFFICULTIES[session.settings.botDifficulty ?? BOT_DIFFICULTY];
+      const obstacles = getArenaObstacles(session.settings.mapId);
+      const isZombieHumanBot = session.settings.gameMode === "zombie" && bot.role !== "zombie";
+      if (isZombieHumanBot && (bot.energy ?? 0) <= 0) {
+        bot.energy = awardZombieHumanEnergy({
+          gameMode: "zombie",
+          role: "human",
+          isCorrect: true,
+          currentEnergy: bot.energy
+        });
+      }
+      const remainingSeconds = getRoundRemainingSeconds(session);
+      const aliveTeammates = session.players.filter((player) => player.isAlive && player.team === bot.team);
+      const nearbyAllies = aliveTeammates.filter((player) => player.id !== bot.id && horizontalDistance(botPosition(bot), botPosition(player)) < 30).length;
+      const enemyPlayers = session.players.filter((player) => isBotEnemy(session, bot, player));
+      const flagCarrier = session.flag?.carrierId ? session.players.find((player) => player.id === session.flag?.carrierId) : undefined;
+      const objectiveUrgent = session.settings.gameMode === "flag" && Boolean(
+        (bot.team === "red" && (session.flag?.state === "available" || session.flag?.state === "dropped"))
+        ||
+        (flagCarrier && flagCarrier.team !== bot.team)
+        || (session.flag?.state === "placed" && (session.flag.expiresAtMs ?? currentMs + 99_999) - currentMs < 12_000)
+        || remainingSeconds < 20
+      );
+
+      let visibleTargets: PlayerSession[] = [];
+      if (currentMs >= brain.nextThinkAtMs) {
+        brain.nextThinkAtMs = currentMs + profile.thinkIntervalMs + Math.floor(nextBotRandom(brain) * 120);
+        brain.role = chooseBotRole({
+          gameMode: session.settings.gameMode,
+          team: bot.team,
+          flagState: session.flag?.state,
+          flagCarrierTeam: flagCarrier?.team,
+          index,
+          teammateCount: aliveTeammates.length,
+          remainingSeconds,
+          personality: brain.personality
+        });
+        const perceivedTargets = enemyPlayers
+          .map((player) => ({ player, distance: horizontalDistance(botPosition(bot), botPosition(player)) }))
+          .sort((a, b) => a.distance - b.distance)
+          .slice(0, 8)
+          .filter((candidate) => canBotSee(session, bot, candidate.player, profile, obstacles));
+        const perception = resolveBotPerceptionFocus({
+          visibleTargetIds: perceivedTargets.map((candidate) => candidate.player.id),
+          currentTargetId: brain.visibleTargetId,
+          visibleSinceAtMs: brain.visibleSinceAtMs,
+          nowMs: currentMs,
+          reactionMs: profile.reactionMs
+        });
+        brain.visibleTargetId = perception.focusId;
+        brain.visibleSinceAtMs = perception.visibleSinceAtMs;
+        const focus = perceivedTargets.find((candidate) => candidate.player.id === perception.focusId)?.player;
+        if (focus) {
+          brain.lastSeenTargetId = focus.id;
+          brain.lastSeenPosition = { x: focus.x ?? 0, z: focus.z ?? 0 };
+          brain.lastSeenAtMs = currentMs;
+        }
+        if (perception.reacted) {
+          visibleTargets = perceivedTargets.map((candidate) => candidate.player);
+          const alerts = botAlertsBySession.get(session.sessionCode) ?? new Map<Team, BotAlert>();
+          alerts.set(bot.team, {
+            position: {
+              x: (focus?.x ?? 0) + randomBetween(brain, -6, 6),
+              z: (focus?.z ?? 0) + randomBetween(brain, -6, 6)
+            },
+            createdAtMs: currentMs,
+            sourceId: bot.id
+          });
+          botAlertsBySession.set(session.sessionCode, alerts);
+        }
+        if (perceivedTargets.length === 0) {
+          const alert = botAlertsBySession.get(session.sessionCode)?.get(bot.team);
+          if (alert && currentMs - alert.createdAtMs < profile.memoryMs * 0.65 && alert.sourceId !== bot.id) {
+            brain.lastSeenPosition = alert.position;
+            brain.lastSeenAtMs = alert.createdAtMs;
+          }
+        }
+        const targetChoice = chooseBotTarget({
+          candidates: visibleTargets.map((candidate) => ({
+            id: candidate.id,
+            distance: horizontalDistance(botPosition(bot), botPosition(candidate)),
+            health: candidate.health ?? DEFAULT_PLAYER_HEALTH,
+            visible: true,
+            isFlagCarrier: session.flag?.carrierId === candidate.id,
+            attackingObjective: session.settings.gameMode === "flag" && session.flag?.state === "carried" && candidate.team === "red",
+            alliesNearTarget: enemyPlayers.filter((ally) => horizontalDistance(botPosition(ally), botPosition(candidate)) < 14).length
+          })),
+          currentTargetId: brain.targetId,
+          nowMs: currentMs,
+          commitUntilMs: brain.targetCommitUntilMs,
+          role: brain.role,
+          personality: brain.personality,
+          weaponRange: getGearRange(getPlayerWeaponIdForMode(session.settings.gameMode, bot))
+        });
+        if (targetChoice) {
+          brain.targetId = targetChoice.id;
+          brain.targetCommitUntilMs = currentMs + profile.targetCommitMs;
+        } else if (!brain.lastSeenAtMs || currentMs - brain.lastSeenAtMs > profile.memoryMs) {
+          brain.targetId = undefined;
+          brain.lastSeenPosition = undefined;
+          brain.lastSeenTargetId = undefined;
+        }
+        const target = brain.targetId ? session.players.find((player) => player.id === brain.targetId && isBotEnemy(session, bot, player)) : undefined;
+        const targetVisible = Boolean(target && visibleTargets.some((player) => player.id === target.id));
+        brain.state = resolveBotState({
+          current: brain.state,
+          health: bot.health ?? DEFAULT_PLAYER_HEALTH,
+          maxHealth: getPlayerHealthMax(bot),
+          targetVisible,
+          hasLastKnownTarget: Boolean(brain.lastSeenPosition && brain.lastSeenAtMs && currentMs - brain.lastSeenAtMs <= profile.memoryMs),
+          objectiveUrgent,
+          role: brain.role,
+          personality: brain.personality,
+          alliesNearby: nearbyAllies,
+          enemiesVisible: visibleTargets.length,
+          flankAvailable: enemyPlayers.length > 0,
+          randomValue: nextBotRandom(brain)
+        });
+        if (session.flag?.state === "carried" && flagCarrier && flagCarrier.team !== bot.team && brain.role === "interceptor" && !targetVisible) {
+          brain.state = "attack_flag_carrier";
+          brain.targetId = flagCarrier.id;
+        }
+      }
+
+      const target = brain.targetId ? session.players.find((player) => player.id === brain.targetId && isBotEnemy(session, bot, player)) : undefined;
       const oldX = bot.x ?? sessionSpawn(session, bot.team).x;
+      const oldY = bot.y;
       const oldZ = bot.z ?? sessionSpawn(session, bot.team).z;
-      const pursuitTarget = resolveBotPursuitTarget({ bot, candidates: session.players });
-      const laneOffset = (index % 5) - 2;
-      const speed = 0.42 + (index % 3) * 0.07;
-      const angle = seconds * speed + index * 1.37;
-      const centerX = (bot.team === "blue" ? -48 : 48) * ARENA_SCALE;
-      const centerZ = (bot.team === "blue" ? -8 : 8) * ARENA_SCALE;
-      const desired = clampArenaPosition({
-        x: pursuitTarget?.x ?? centerX + Math.sin(angle) * ((52 + Math.abs(laneOffset) * 8) * ARENA_SCALE),
-        z: pursuitTarget?.z ?? centerZ + Math.cos(angle * 0.82) * ((64 - Math.abs(laneOffset) * 6) * ARENA_SCALE),
-        facing: Math.atan2(oldX - bot.x!, oldZ - bot.z!)
-      });
+      const oldFacing = bot.facing ?? 0;
+      const preference = getBotWeaponPreference(getPlayerWeaponIdForMode(session.settings.gameMode, bot));
+      let goal = getBotObjectiveGoal(session, bot, brain, brain.state);
+      if (target && ["engage_enemy", "flank", "take_cover"].includes(brain.state)) {
+        if (brain.state === "take_cover") {
+          goal = findBotCover(session, bot, target, obstacles) ?? goal;
+        } else if (brain.state === "engage_enemy" || brain.state === "flank") {
+          const targetPosition = botPosition(target);
+          const distance = horizontalDistance(botPosition(bot), targetPosition);
+          if (distance > preference.preferredDistance) {
+            const directionX = (targetPosition.x - oldX) / Math.max(distance, 1);
+            const directionZ = (targetPosition.z - oldZ) / Math.max(distance, 1);
+            goal = { x: targetPosition.x - directionX * preference.preferredDistance, z: targetPosition.z - directionZ * preference.preferredDistance };
+          } else if (distance < preference.minimumDistance) {
+            const directionX = (targetPosition.x - oldX) / Math.max(distance, 1);
+            const directionZ = (targetPosition.z - oldZ) / Math.max(distance, 1);
+            goal = { x: oldX - directionX * 8, z: oldZ - directionZ * 8 };
+          } else {
+            goal = {
+              x: targetPosition.x + (-(targetPosition.z - oldZ) / Math.max(distance, 1)) * brain.strafeDirection * 12,
+              z: targetPosition.z + ((targetPosition.x - oldX) / Math.max(distance, 1)) * brain.strafeDirection * 12
+            };
+          }
+        }
+      }
+      let rawGoal = clampArenaPosition({ ...goal, facing: bot.facing ?? 0 }, session.settings.mapId);
+      if (shouldAdvanceBotPatrolRoute({
+        state: brain.state,
+        hasTarget: Boolean(target),
+        distanceToGoal: horizontalDistance(botPosition(bot), rawGoal)
+      })) {
+        brain.routeIndex += session.settings.mapId === "iron_junction"
+          || session.settings.mapId === "desert_citadel"
+          || session.settings.mapId === "temple_runoff"
+          ? 5
+          : 1;
+        brain.navigationPath = undefined;
+        goal = getBotObjectiveGoal(session, bot, brain, brain.state);
+        rawGoal = clampArenaPosition({ ...goal, facing: bot.facing ?? 0 }, session.settings.mapId);
+      }
+      const navigationGoalChanged = !brain.navigationGoal
+        || horizontalDistance({ ...brain.navigationGoal, facing: 0 }, rawGoal) > 10;
+      if (navigationGoalChanged) brain.navigationPath = undefined;
+      brain.navigationGoal = { x: rawGoal.x, z: rawGoal.z };
+      while (brain.navigationPath?.length && horizontalDistance(botPosition(bot), { ...brain.navigationPath[0], facing: 0 }) < 3) {
+        brain.navigationPath.shift();
+      }
+      if (!hasLineOfSight({ from: botPosition(bot), to: rawGoal, obstacles, padding: 0.7 })) {
+        if (!brain.navigationPath?.length) {
+          brain.navigationPath = findBotNavigationPath({
+            from: botPosition(bot),
+            to: rawGoal,
+            obstacles,
+            mapId: session.settings.mapId
+          });
+        }
+        goal = brain.navigationPath?.[0] ?? rawGoal;
+      } else {
+        brain.navigationPath = undefined;
+        goal = rawGoal;
+      }
+      const desired = applyBotSpacing(session, bot, clampArenaPosition({ ...goal, facing: bot.facing ?? 0 }, session.settings.mapId));
+      desired.facing = Math.atan2(oldX - desired.x, oldZ - desired.z);
       const next = resolveBotRoamStep({
-        current: { x: oldX, z: oldZ, facing: bot.facing ?? desired.facing },
+        current: { x: oldX, y: oldY, z: oldZ, facing: bot.facing ?? desired.facing },
         desired,
         elapsedMs: BOT_TICK_MS,
-        speed: 24,
-        obstacles: getArenaObstacles(session.settings.mapId)
+        speed: (
+          isZombieHumanBot && (bot.energy ?? 0) <= 0
+            ? 0
+            : session.settings.gameMode === "zombie"
+              ? bot.role === "zombie" ? 14.8 : 10.8
+              : 19.5
+        ) * getPlayerMoveSpeedMultiplier(bot),
+        obstacles,
+        detourDirection: brain.strafeDirection,
+        mapId: session.settings.mapId
       });
+      botPreviousPositions.set(bot.id, { x: oldX, y: oldY, z: oldZ });
       bot.x = next.x;
+      const botGroundY = getArenaGroundHeightForPlayer(
+        session.settings.mapId,
+        next.x,
+        next.z,
+        oldY,
+        ARENA_PLAYER_EYE_HEIGHT,
+        1.4
+      );
+      bot.y = botGroundY + ARENA_PLAYER_EYE_HEIGHT;
       bot.z = next.z;
-      bot.facing = Math.atan2(next.x - oldX, next.z - oldZ);
+      const movedDistance = Math.hypot(next.x - oldX, next.z - oldZ);
+      if (isZombieHumanBot) {
+        bot.energy = resolveZombieSprintEnergy({
+          gameMode: "zombie",
+          role: "human",
+          sprinting: true,
+          currentEnergy: bot.energy,
+          elapsedMs: BOT_TICK_MS,
+          movedDistance
+        }).nextEnergy;
+      }
+      if (movedDistance > 0.1) bot.facing = Math.atan2(next.x - oldX, next.z - oldZ);
+      else bot.facing = next.facing;
+      if (movedDistance > 0.01 || Math.abs((bot.facing ?? 0) - oldFacing) > 0.01) {
+        broadcastPlayerPosition(session, {
+          playerId: bot.id,
+          x: bot.x,
+          y: bot.y,
+          z: bot.z,
+          facing: bot.facing
+        });
+      }
       bot.snowballs = bot.snowballs ?? session.settings.startingSnowballs;
-      movedBots.push({ playerId: bot.id, x: bot.x, z: bot.z, facing: bot.facing });
+      moved = moved || movedDistance > 0.1;
+      if (next.blocked || (horizontalDistance(botPosition(bot), { ...goal, y: bot.y }) > 5 && movedDistance < 0.1)) {
+        brain.blockedTicks += 1;
+        brain.noProgressTicks += 1;
+      } else {
+        brain.blockedTicks = 0;
+        brain.noProgressTicks = 0;
+      }
+      if (brain.blockedTicks >= 3 || brain.noProgressTicks >= 8) {
+        brain.state = "unstuck";
+        brain.routeIndex += 1;
+        brain.blockedTicks = 0;
+        brain.noProgressTicks = 0;
+        brain.nextThinkAtMs = currentMs;
+      } else if (brain.state === "unstuck" && movedDistance > 0.1) {
+        brain.state = "regroup";
+      }
 
-      if ((botNextAttackAt.get(bot.id) ?? 0) > currentMs) return;
-      const attackTarget = resolveBotAttackTarget({ bot, candidates: session.players, obstacles: getArenaObstacles(session.settings.mapId) });
-      if (!attackTarget.ok) return;
-      const target = session.players.find((player) => player.id === attackTarget.targetId);
-      if (!target) return;
-      const snowballUse = resolveSnowballUse(bot);
-      if (!snowballUse.ok) return;
-      bot.snowballs = snowballUse.nextSnowballs;
-      bot.facing = Math.atan2((bot.x ?? 0) - (target.x ?? 0), (bot.z ?? 0) - (target.z ?? 0));
-      botNextAttackAt.set(bot.id, currentMs + Math.max(BOT_ATTACK_COOLDOWN_FLOOR_MS, getGearFireCooldownMs(getPlayerWeaponId(bot))));
-      stateChangedBots.push(bot);
-      applyValidatedDamage(session, bot, target);
+      const currentTargetVisible = Boolean(target && canBotSee(session, bot, target, profile, obstacles));
+      if (target && currentTargetVisible && ["engage_enemy", "take_cover"].includes(brain.state)) {
+        botFire(session, bot, target, brain, profile, currentMs, obstacles);
+      }
+      if (session.settings.gameMode === "flag" && session.flag && shouldBotAttemptFlagInteraction({
+        flagState: session.flag.state,
+        carrierId: session.flag.carrierId,
+        botId: bot.id,
+        botPosition: botPosition(bot),
+        flagPosition: session.flag.position,
+        interactionRadius: 7,
+        placedAtMs: session.flag.placedAtMs,
+        nowMs: currentMs,
+        captureDelayMs: profile.objectiveCaptureDelayMs
+      })) {
+        moved = shouldBotObjectiveAction(session, bot) || moved;
+      }
     });
-    broadcastGameplayPositions(session, movedBots);
-    if (stateChangedBots.length > 0) broadcastPlayerState(session, stateChangedBots);
+    if (moved) broadcastSession(session);
   }
 };
 
@@ -1340,24 +2244,33 @@ app.post("/api/sessions/:code/start", requireTeacher, (req: AuthedRequest, res) 
   }
   session.currentRound = 1;
   session.roundWins = { blue: 0, red: 0 };
-  if (session.settings.gameMode === "flag") {
-    openFlagBuyPhase(session, false);
-    appendEvent(session, { type: "start", message: "Flag Mode round 1 buy phase opened." });
+  if (session.settings.gameMode === "flag" || session.settings.gameMode === "classic") {
+    openRoundPreparation(session, false);
+    appendEvent(session, {
+      type: "start",
+      message: `${session.settings.gameMode === "flag" ? "Flag Mode" : "Classic Tag"} round 1 preparation opened.`
+    });
+  } else if (session.settings.gameMode === "zombie") {
+    openZombieSelectionPhase(session, false);
+    appendEvent(session, {
+      type: "start",
+      message: "Zombie Mode preparation started. Everyone is Human for 20 seconds."
+    });
   } else {
     startRoundState(session, false);
     session.announcement = makeAnnouncement(
       "round_start",
       session.settings.gameMode === "zombie" ? "Zombie Mode has begun!" : `Round ${session.currentRound} has begun!`,
       session.settings.gameMode === "zombie"
-        ? "Zombies tag humans. Humans: survive as long as you can."
-        : "Answer questions, earn supplies, and tag the other team.",
+        ? "Red Zombies shoot to convert. Blue Humans answer correctly for running energy and survive without weapons."
+        : "Most tags wins. Respawns, then quiz earnings break ties.",
       undefined,
       ROUND_START_ANNOUNCEMENT_MS
     );
     appendEvent(session, {
       type: "start",
       message: session.settings.gameMode === "zombie"
-        ? "Zombie Mode started. Zombies tag humans with Snowball Launchers."
+        ? "Zombie Mode started. Only Red Zombies can shoot; Blue Humans answer questions for running energy."
         : `Round started. Answer ${RESPAWN_CORRECT_ANSWERS_REQUIRED} practice questions to respawn if frozen out.`
     });
   }
@@ -1379,53 +2292,149 @@ app.post("/api/sessions/:code/end", requireTeacher, (req: AuthedRequest, res) =>
   res.json({ report: makeReport(session) });
 });
 
+app.post("/api/sessions/:code/end-round", requireTeacher, (req: AuthedRequest, res) => {
+  const session = getSessionByCode(routeParam(req.params.code));
+  if (!session || session.teacherId !== req.user!.id) {
+    res.status(404).json({ error: "Session not found." });
+    return;
+  }
+  if (session.settings.gameMode === "zombie") {
+    res.status(400).json({ error: "Zombie Mode is a single survival round. Use End Game to stop it." });
+    return;
+  }
+  if (session.status !== "active") {
+    res.status(409).json({ error: "A round must be active before it can be ended early." });
+    return;
+  }
+  finishRound(session, undefined, "Teacher ended the round early");
+  const responseSession = stampSession(session);
+  res.json({
+    session: responseSession,
+    ...(responseSession.status === "ended" ? { report: makeReport(session) } : {})
+  });
+});
+
 app.post("/api/sessions/:code/bots", requireTeacher, (req: AuthedRequest, res) => {
   const session = getSessionByCode(routeParam(req.params.code));
   if (!session || session.teacherId !== req.user!.id) {
     res.status(404).json({ error: "Session not found." });
     return;
   }
-  if (session.players.length >= session.maxPlayers) {
+  if (session.status === "ended") {
+    res.status(400).json({ error: "This session has ended." });
+    return;
+  }
+  const remainingSlots = session.maxPlayers - session.players.length;
+  if (remainingSlots <= 0) {
     res.status(400).json({ error: "This session is full." });
     return;
   }
 
-  const blueCount = session.players.filter((player) => player.team === "blue").length;
-  const redCount = session.players.filter((player) => player.team === "red").length;
-  const team: Team = blueCount <= redCount ? "blue" : "red";
-  const botIndex = session.players.filter((player) => player.isBot).length;
-  const spawn = session.status === "active" ? getBotSpawn(session, team, botIndex) : selectSessionSpawn(session, team, botIndex);
-  const bot: PlayerSession = {
-    id: id(),
-    gameSessionId: session.id,
-    nickname: `${botNames[botIndex % botNames.length]} Bot ${botIndex + 1}`,
-    team,
-    money: session.settings.startingMoney,
-    isAlive: true,
-    isBot: true,
-    role: "human",
-    tags: 0,
-    respawns: 0,
-    connectionState: "connected",
-    health: DEFAULT_PLAYER_HEALTH,
-    snowballs: session.settings.startingSnowballs,
-    respawnCorrectAnswers: 0,
-    x: spawn.x,
-    z: spawn.z,
-    facing: spawn.facing,
-    score: 0,
-    correctAnswers: 0,
-    wrongAnswers: 0,
-    gear: "starter_blaster",
-    weapon: "starter_blaster",
-    perks: [],
-    appearance: { ...DEFAULT_PLAYER_APPEARANCE, characterPreset: "support" },
-    joinedAt: now()
-  };
-  session.players.push(bot);
-  appendEvent(session, { type: "join", message: `${bot.nickname} joined for testing.`, playerId: bot.id, team });
+  const requestedCount = req.body?.count === undefined ? 1 : Number(req.body.count);
+  if (!Number.isInteger(requestedCount) || requestedCount < 1) {
+    res.status(400).json({ error: "Choose at least one bot." });
+    return;
+  }
+  const difficulty: BotDifficulty = req.body?.difficulty === "beginner" || req.body?.difficulty === "advanced"
+    ? req.body.difficulty
+    : req.body?.difficulty === "standard"
+      ? "standard"
+      : session.settings.botDifficulty ?? BOT_DIFFICULTY;
+  const count = Math.min(requestedCount, remainingSlots);
+  session.settings.botDifficulty = difficulty;
+  const bots: PlayerSession[] = [];
+  const firstBotIndex = session.players.filter((player) => player.isBot).length;
+  for (let offset = 0; offset < count; offset += 1) {
+    const blueCount = session.players.filter((player) => player.team === "blue").length;
+    const redCount = session.players.filter((player) => player.team === "red").length;
+    const team: Team = blueCount <= redCount ? "blue" : "red";
+    const botIndex = firstBotIndex + offset;
+    const spawn = session.status === "active" ? getBotSpawn(session, team, botIndex) : selectSessionSpawn(session, team, botIndex);
+    const bot: PlayerSession = {
+      id: id(),
+      gameSessionId: session.id,
+      nickname: `${botNames[botIndex % botNames.length]} Bot ${botIndex + 1}`,
+      team,
+      money: session.settings.startingMoney,
+      quizMoneyEarned: 0,
+      roundQuizMoneyEarned: 0,
+      moneySpent: 0,
+      isAlive: true,
+      isBot: true,
+      role: "human",
+      tags: 0,
+      roundTags: 0,
+      respawns: 0,
+      roundRespawns: 0,
+      connectionState: "connected",
+      health: DEFAULT_PLAYER_HEALTH,
+      snowballs: session.settings.startingSnowballs,
+      respawnCorrectAnswers: 0,
+      x: spawn.x,
+      y: spawn.y,
+      z: spawn.z,
+      facing: spawn.facing,
+      score: 0,
+      correctAnswers: 0,
+      wrongAnswers: 0,
+      gear: "starter_blaster",
+      weapon: "starter_blaster",
+      perks: [],
+      appearance: { ...DEFAULT_PLAYER_APPEARANCE },
+      joinedAt: now()
+    };
+    session.players.push(bot);
+    bots.push(bot);
+  }
+  appendEvent(session, {
+    type: "join",
+    message: `${count} ${difficulty} test bot${count === 1 ? "" : "s"} added to the room.`,
+    team: undefined
+  });
   broadcastSession(session);
-  res.status(201).json({ session: stampSession(session), bot });
+  res.status(201).json({ session: stampSession(session), bots, difficulty });
+});
+
+app.delete("/api/sessions/:code/players/:playerId", requireTeacher, (req: AuthedRequest, res) => {
+  const session = getSessionByCode(routeParam(req.params.code));
+  if (!session || session.teacherId !== req.user!.id) {
+    res.status(404).json({ error: "Session not found." });
+    return;
+  }
+  if (session.status === "ended") {
+    res.status(400).json({ error: "Players cannot be removed after the session has ended." });
+    return;
+  }
+
+  const playerId = routeParam(req.params.playerId);
+  const playerIndex = session.players.findIndex((candidate) => candidate.id === playerId);
+  if (playerIndex < 0) {
+    res.status(404).json({ error: "Player not found." });
+    return;
+  }
+
+  const player = session.players[playerIndex]!;
+  if (session.flag?.carrierId === player.id) {
+    session.flag = resolveFlagDropForPlayer(session.flag, player, {
+      x: player.x ?? 0,
+      z: player.z ?? 0
+    });
+  }
+  evictPlayerSockets(session, player);
+  removePlayerRuntimeState(session, player);
+  session.players.splice(playerIndex, 1);
+  appendEvent(session, {
+    type: "timer",
+    message: `${player.nickname} was removed by the teacher.`,
+    team: player.team
+  });
+
+  const statusBeforeEvaluation = session.status;
+  evaluateFlagEliminationWin(session);
+  finishZombieMatchIfComplete(session);
+  if (session.status === statusBeforeEvaluation) broadcastSession(session);
+
+  res.json({ session: stampSession(session), removedPlayerId: player.id });
 });
 
 app.get("/api/sessions/:code", (req, res) => {
@@ -1436,9 +2445,8 @@ app.get("/api/sessions/:code", (req, res) => {
   }
   const teacher = getBearerUser(req);
   const playerToken = getPlayerToken(req);
-  const canRead =
-    teacher?.id === session.teacherId ||
-    session.players.some((player) => !player.isBot && hasPlayerAccess(session, player, playerToken));
+  const canRead = teacher?.id === session.teacherId
+    || session.players.some((player) => !player.isBot && hasPlayerAccess(session, player, playerToken));
   if (!canRead) {
     res.status(401).json({ error: "A teacher or student session token is required." });
     return;
@@ -1505,24 +2513,32 @@ app.post("/api/sessions/:code/join", (req, res) => {
       team: returningPlayer.team
     });
     broadcastSession(session);
-    res.status(200).json({ session: stampSession(session), player: returningPlayer, playerToken, question });
+    res.status(200).json({
+      session: stampSession(session),
+      player: returningPlayer,
+      playerToken,
+      cosmeticProgressToken: makeCosmeticProgressToken(returningPlayer),
+      question
+    });
     return;
   }
   if (returningPlayer) {
     res.status(409).json({ error: "That nickname is already taken in this session." });
     return;
   }
-  if (session.status === "active") {
-    res.status(409).json({ error: "This session has already started." });
-    return;
-  }
   if (session.players.length >= session.maxPlayers) {
     res.status(400).json({ error: "This session is full." });
     return;
   }
+  const isLateJoin = session.status !== "waiting";
   const blueCount = session.players.filter((player) => player.team === "blue").length;
   const redCount = session.players.filter((player) => player.team === "red").length;
-  const team: Team = blueCount <= redCount ? "blue" : "red";
+  const team: Team = isLateJoin
+    ? selectLateJoinTeam(session.players)
+    : blueCount <= redCount ? "blue" : "red";
+  const zombieRole = isLateJoin && session.settings.gameMode === "zombie"
+    ? team === "red" ? "zombie" : "human"
+    : "human";
   const spawn = selectSessionSpawn(session, team);
   const player: PlayerSession = {
     id: id(),
@@ -1530,15 +2546,27 @@ app.post("/api/sessions/:code/join", (req, res) => {
     nickname,
     team,
     money: session.settings.startingMoney,
+    quizMoneyEarned: 0,
+    roundQuizMoneyEarned: 0,
+    moneySpent: 0,
     isAlive: true,
-    role: "human",
+    role: zombieRole,
     tags: 0,
+    roundTags: 0,
     respawns: 0,
+    roundRespawns: 0,
+    cosmeticXp: readCosmeticProgressToken(req.body.cosmeticProgressToken),
     connectionState: "connected",
     health: DEFAULT_PLAYER_HEALTH,
-    snowballs: session.settings.startingSnowballs,
+    energy: isLateJoin && session.settings.gameMode === "zombie"
+      ? zombieRole === "zombie" ? ZOMBIE_HUMAN_MAX_ENERGY : 0
+      : undefined,
+    snowballs: isLateJoin && session.settings.gameMode === "zombie" && zombieRole === "human"
+      ? 0
+      : session.settings.startingSnowballs,
     respawnCorrectAnswers: 0,
     x: spawn.x,
+    y: spawn.y,
     z: spawn.z,
     facing: spawn.facing,
     score: 0,
@@ -1554,14 +2582,22 @@ app.post("/api/sessions/:code/join", (req, res) => {
   const playerToken = makePlayerToken(session, player);
   appendEvent(session, {
     type: "join",
-    message: session.settings.gameMode === "zombie"
+    message: isLateJoin
+      ? `${player.nickname} joined the live game on ${team === "blue" ? "Blue" : "Red"} Team.`
+      : session.settings.gameMode === "zombie"
       ? `${player.nickname} joined the Zombie Mode lobby.`
       : `${player.nickname} joined ${team === "blue" ? "Blue" : "Red"} Team.`,
     playerId: player.id,
     team
   });
   broadcastSession(session);
-  res.status(201).json({ session: stampSession(session), player, playerToken, question: issueNextQuestion(session, player.id) });
+  res.status(201).json({
+    session: stampSession(session),
+    player,
+    playerToken,
+    cosmeticProgressToken: makeCosmeticProgressToken(player),
+    question: issueNextQuestion(session, player.id)
+  });
 });
 
 app.get("/api/sessions/:code/players/:playerId/rejoin", (req, res) => {
@@ -1580,7 +2616,12 @@ app.get("/api/sessions/:code/players/:playerId/rejoin", (req, res) => {
       ? issueNextQuestion(session, player.id)
       : undefined;
   broadcastSession(session);
-  res.json({ session: stampSession(session), player, question });
+  res.json({
+    session: stampSession(session),
+    player,
+    cosmeticProgressToken: makeCosmeticProgressToken(player),
+    question
+  });
 });
 
 app.post("/api/sessions/:code/players/:playerId/team", (req, res) => {
@@ -1603,6 +2644,7 @@ app.post("/api/sessions/:code/players/:playerId/team", (req, res) => {
   player.team = requestedTeam;
   const spawn = selectSessionSpawn(session, player.team);
   player.x = spawn.x;
+  player.y = spawn.y;
   player.z = spawn.z;
   player.facing = spawn.facing;
   appendEvent(session, {
@@ -1640,8 +2682,9 @@ app.put("/api/sessions/:code/players/:playerId/appearance", (req, res) => {
     return;
   }
   const appearance = sanitizePlayerAppearance(input as Partial<PlayerAppearance>);
-  if (policy.presetsOnly && !isApprovedAppearancePreset(appearance)) {
-    res.status(400).json({ error: "This room is limited to approved appearance presets." });
+  const lockedItems = getLockedAppearanceItems(appearance, getCosmeticProgress(player).level);
+  if (lockedItems.length > 0) {
+    res.status(403).json({ error: `${lockedItems[0].name} unlocks at cosmetic level ${lockedItems[0].unlockLevel}.` });
     return;
   }
   if (appearance.decalAssetId) {
@@ -1850,8 +2893,8 @@ const answerQuestion = (
   session: GameSession,
   player: PlayerSession,
   body: { questionId?: unknown; selectedChoice?: unknown }
-): StudentCommandResult<{ result: QuizResult }> => {
-  if (session.status !== "active") {
+): StudentCommandResult<{ result: QuizResult; cosmeticProgressToken: string }> => {
+  if (session.status !== "active" && !isRoundPreparationPhase(session) && !isZombieSelectionPhase(session)) {
     return failStudentCommand(400, inactiveRoundMessage(session));
   }
   if (!player.isAlive && !session.settings.deadPlayersCanPractice) {
@@ -1876,9 +2919,20 @@ const answerQuestion = (
   const answerContext: AnswerLog["context"] = player.isAlive ? "main" : "practice";
   const reward = resolveAnswerReward({ player, settings: session.settings, isCorrect, responseTimeMs });
   player.money = reward.nextMoney;
+  player.quizMoneyEarned = (player.quizMoneyEarned ?? 0) + reward.moneyAwarded;
+  player.roundQuizMoneyEarned = (player.roundQuizMoneyEarned ?? 0) + reward.moneyAwarded;
   player.score += reward.scoreDelta;
   player.correctAnswers += reward.correctDelta;
   player.wrongAnswers += reward.wrongDelta;
+  const previousEnergy = player.energy ?? 0;
+  player.energy = awardZombieHumanEnergy({
+    gameMode: session.settings.gameMode,
+    role: player.role,
+    isCorrect,
+    currentEnergy: player.energy
+  });
+  const energyAwarded = Math.max(0, player.energy - previousEnergy);
+  if (reward.correctDelta > 0) player.cosmeticXp = Math.max(0, player.cosmeticXp ?? 0) + reward.correctDelta * 100;
   const respawn =
     session.settings.gameMode === "flag"
       ? {
@@ -1889,7 +2943,12 @@ const answerQuestion = (
         }
       : resolvePracticeRespawn({ player, settings: session.settings, isCorrect });
   Object.assign(player, respawn.player);
-  if (respawn.respawned) player.respawns = (player.respawns ?? 0) + 1;
+  if (respawn.respawned) {
+    player.respawns = (player.respawns ?? 0) + 1;
+    player.roundRespawns = (player.roundRespawns ?? 0) + 1;
+    player.crouching = false;
+    player.jumping = false;
+  }
 
   const answer: AnswerLog = {
     id: id(),
@@ -1908,6 +2967,8 @@ const answerQuestion = (
   const feedback = isCorrect
     ? respawn.respawned
       ? "Respawned! Three correct practice answers brought you back."
+      : energyAwarded > 0
+        ? `Correct! +${energyAwarded} running energy`
       : reward.moneyAwarded > 0
         ? `Correct! +$${reward.moneyAwarded}`
         : session.settings.gameMode === "flag" && !player.isAlive
@@ -1943,21 +3004,25 @@ const answerQuestion = (
     respawnRequired: respawn.required
   };
   broadcastPlayerState(session, [player]);
-  return { ok: true, data: { result } };
+  return { ok: true, data: { result, cosmeticProgressToken: makeCosmeticProgressToken(player) } };
 };
 
 const buyGear = (session: GameSession, player: PlayerSession, gearId: unknown): StudentCommandResult<GearPurchaseResponse> => {
   const gear = GEAR_ITEMS.find((item) => item.id === gearId);
-  if (!isRoundActive(session) && !isRoundBuyPhase(session)) {
+  if (!isRoundActive(session) && !isRoundPreparationPhase(session)) {
     return failStudentCommand(400, "The round has ended. Gear buying is closed.");
   }
   if (!gear) {
     return failStudentCommand(400, "That gear item does not exist.");
   }
+  if (session.settings.gameMode === "zombie" && isWeaponGearId(gear.id)) {
+    return failStudentCommand(400, "Zombie Mode only allows the Starter Snowball Launcher.");
+  }
   const purchase = resolveGearPurchase({
     player,
     gear,
-    requireBase: session.settings.gameMode === "flag"
+    requireBase: session.settings.gameMode === "flag" && !isRoundPreparationPhase(session),
+    mapId: session.settings.mapId
   });
   if (!purchase.ok) {
     return failStudentCommand(
@@ -1967,14 +3032,16 @@ const buyGear = (session: GameSession, player: PlayerSession, gearId: unknown): 
         : purchase.reason === "starter_weapon"
           ? "The Starter Snowball Launcher is your default weapon and cannot replace purchased gear."
         : purchase.reason === "outside_base"
-          ? "Return to your team base to buy gear."
+          ? "Return to your team base or one of your team's spawn points to buy gear."
           : "Not enough money for that gear."
     );
   }
   if (purchase.alreadyEquipped) {
     return { ok: true, data: { player, gear, message: `${gear.name} already equipped.` } };
   }
+  const moneySpent = player.money - purchase.nextMoney;
   player.money = purchase.nextMoney;
+  player.moneySpent = (player.moneySpent ?? 0) + moneySpent;
   if (isWeaponGearId(gear.id)) {
     player.weapon = gear.id;
     player.gear = gear.id;
@@ -1989,8 +3056,11 @@ const buyGear = (session: GameSession, player: PlayerSession, gearId: unknown): 
 };
 
 const buySnowballs = (session: GameSession, player: PlayerSession): StudentCommandResult<SnowballPurchaseResponse> => {
-  if (!isRoundActive(session) && !isRoundBuyPhase(session)) {
+  if (!isRoundActive(session) && !isRoundPreparationPhase(session)) {
     return failStudentCommand(400, "The round has ended. Snowball buying is closed.");
+  }
+  if (session.settings.gameMode === "zombie" && player.role !== "zombie") {
+    return failStudentCommand(400, "Humans cannot buy snowballs in Zombie Mode.");
   }
   const purchase = resolveSnowballPurchase({ player, settings: session.settings });
   if (!purchase.ok) {
@@ -2001,7 +3071,9 @@ const buySnowballs = (session: GameSession, player: PlayerSession): StudentComma
         : "Not enough money for snowballs."
     );
   }
+  const moneySpent = player.money - purchase.nextMoney;
   player.money = purchase.nextMoney;
+  player.moneySpent = (player.moneySpent ?? 0) + moneySpent;
   player.snowballs = purchase.nextSnowballs;
   appendEvent(session, {
     type: "buy",
@@ -2115,6 +3187,7 @@ io.on("connection", (socket) => {
       const teacher = getTeacherFromToken(payload.teacherToken);
       if (!teacher || teacher.id !== session.teacherId) return;
     }
+
     socket.join(session.sessionCode);
     socket.emit("session_state", stampSession(session));
   });
@@ -2174,26 +3247,43 @@ io.on("connection", (socket) => {
     if (session && player) markPlayerDisconnected(session, player);
   });
 
-  socket.on("player_position", (payload: { x?: number; z?: number; y?: number; facing?: number } = {}) => {
+  socket.on("player_position", (payload: {
+    x?: number;
+    z?: number;
+    y?: number;
+    facing?: number;
+    sprinting?: boolean;
+    crouching?: boolean;
+    jumping?: boolean;
+  } = {}) => {
     const student = getBoundStudent(socket);
     if (!student) return;
     const { session, player } = student;
     if (!player.isAlive) return;
     const position = applyAuthoritativePosition(session, player, payload);
-    socket.to(gameplayRoom(session.sessionCode)).volatile.emit("player_position", {
+    const authoritativePosition = {
       playerId: player.id,
       x: position.x,
+      y: player.y,
       z: position.z,
-      facing: position.facing
-    });
+      facing: position.facing,
+      energy: player.energy,
+      crouching: player.crouching === true,
+      jumping: player.jumping === true
+    };
+    broadcastPlayerPosition(session, authoritativePosition);
   });
 
-  socket.on("fire_action", (payload: { requestId?: string; x?: number; z?: number; y?: number; facing?: number; targetId?: string; scoped?: boolean; zoomLevel?: number } = {}) => {
+  socket.on("fire_action", (payload: { requestId?: string; x?: number; z?: number; y?: number; facing?: number; pitch?: number; targetId?: string; scoped?: boolean; zoomLevel?: number } = {}) => {
     const student = getBoundStudent(socket);
     if (!student) return;
     const { session, player: attacker } = student;
     if (session.status !== "active") {
       socket.emit("error_message", { error: inactiveRoundMessage(session) });
+      return;
+    }
+    if (!canPlayerFireInMode(session.settings.gameMode, attacker.role)) {
+      socket.emit("damage_result", { ok: false, reason: "humans_cannot_fire", snowballs: attacker.snowballs ?? 0 });
       return;
     }
 
@@ -2220,13 +3310,20 @@ io.on("connection", (socket) => {
       return;
     }
     attacker.snowballs = snowballUse.nextSnowballs;
-    const weaponId = getPlayerWeaponId(attacker);
+    const weaponId = getPlayerWeaponIdForMode(session.settings.gameMode, attacker);
+    const aimPitch = clampArenaAimPitch(payload.pitch);
     playerNextFireAt.set(attacker.id, currentMs + getGearFireCooldownMs(weaponId));
     socket.to(gameplayRoom(session.sessionCode)).emit("remote_weapon_fire", {
       playerId: attacker.id,
       x: attacker.x ?? sessionSpawn(session, attacker.team).x,
+      y: attacker.y ?? getArenaEyeHeight(
+        session.settings.mapId,
+        attacker.x ?? sessionSpawn(session, attacker.team).x,
+        attacker.z ?? sessionSpawn(session, attacker.team).z
+      ),
       z: attacker.z ?? sessionSpawn(session, attacker.team).z,
       facing: attacker.facing ?? sessionSpawn(session, attacker.team).facing,
+      pitch: aimPitch,
       gearId: weaponId,
       scoped: payload.scoped === true,
       zoomLevel: payload.zoomLevel ?? 0
@@ -2234,11 +3331,12 @@ io.on("connection", (socket) => {
 
     const targetSelection = resolveProjectileTarget({
       attacker,
-      candidates: session.players,
+      candidates: playersWithRewind(session.players, currentMs),
       requestedTargetId: typeof payload.targetId === "string" && payload.targetId.trim() ? payload.targetId : undefined,
       range: getGearRange(weaponId),
       hitRadius: getGearHitRadius(weaponId, typeof payload.zoomLevel === "number" ? payload.zoomLevel : payload.scoped === true),
-      obstacles: getArenaObstacles(session.settings.mapId)
+      obstacles: getArenaObstacles(session.settings.mapId),
+      aimPitch
     });
     if (!targetSelection.ok) {
       broadcastPlayerState(session, [attacker]);
@@ -2309,7 +3407,7 @@ io.on("connection", (socket) => {
             ? "Move next to the placed flag, then press E to capture it."
             : "Blue can capture after Red places the flag."
       });
-      socket.emit("player_position", { playerId: player.id, x: position.x, z: position.z, facing: position.facing });
+      socket.emit("player_position", { playerId: player.id, x: position.x, y: player.y, z: position.z, facing: position.facing });
     }
   });
 });

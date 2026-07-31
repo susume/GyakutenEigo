@@ -16,7 +16,11 @@ export const getPausedRoundAction = ({
 }: {
   gameMode: GameMode;
   phase?: RoundTransitionPhase;
-}) => gameMode === "flag" && phase !== "buy" ? "open_buy_phase" : "start_round";
+}) => (gameMode === "flag" || gameMode === "classic")
+  && phase !== "preparation"
+  && phase !== "buy"
+  ? "open_preparation"
+  : "start_round";
 
 export const planRoundConclusion = ({
   currentRound,

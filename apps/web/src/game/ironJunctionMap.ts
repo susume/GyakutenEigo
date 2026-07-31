@@ -1,5 +1,18 @@
-import { ARENA_SCALE } from "@quizstrike/shared";
-import type { ArenaMapDefinition, CitadelBlock, CitadelCylinder, CitadelFloorMark, CitadelProp, CitadelSign } from "./mapTypes";
+import {
+  ARENA_SCALE,
+  IRON_JUNCTION_LOADING_LEVEL_Y,
+  IRON_JUNCTION_OVERPASS_LEVEL_Y,
+  IRON_JUNCTION_STAIR_FLIGHTS
+} from "@quizstrike/shared";
+import type { IronJunctionStairFlight } from "@quizstrike/shared";
+import type {
+  ArenaMapDefinition,
+  CitadelBlock,
+  CitadelCylinder,
+  CitadelFloorMark,
+  CitadelProp,
+  CitadelSign
+} from "./mapTypes";
 
 const scale = (value: number) => Number((value * ARENA_SCALE).toFixed(2));
 const scaleRect = <T extends { x: number; z: number; w: number; d: number }>(item: T): T =>
@@ -9,151 +22,255 @@ const scaleCylinder = <T extends { x: number; z: number; radius: number }>(item:
 const scalePoint = <T extends { x: number; z: number }>(item: T): T =>
   ({ ...item, x: scale(item.x), z: scale(item.z) }) as T;
 
+const makeIndustrialStairFlight = (flight: IronJunctionStairFlight): CitadelBlock[] => {
+  const steps: CitadelBlock[] = Array.from({ length: flight.steps }, (_, index) => {
+    const progress = (index + 1) / flight.steps;
+    const travel = (-0.5 + (index + 0.5) / flight.steps) * flight.length * flight.direction;
+    const topY = flight.startY + (flight.endY - flight.startY) * progress;
+    const height = topY - flight.startY;
+    return {
+      id: `${flight.id}-step-${index + 1}`,
+      x: flight.x + (flight.axis === "x" ? travel : 0),
+      z: flight.z + (flight.axis === "z" ? travel : 0),
+      w: flight.axis === "x" ? flight.length / flight.steps + 0.6 : flight.width,
+      d: flight.axis === "z" ? flight.length / flight.steps + 0.6 : flight.width,
+      h: height,
+      y: flight.startY + height / 2,
+      color: "#4b5659",
+      material: "metal",
+      style: "stair"
+    };
+  });
+
+  const rise = flight.endY - flight.startY;
+  const railAngle = Math.atan2(rise, scale(flight.length));
+  const railY = flight.startY + rise / 2 + 1.55;
+  const railInset = Math.max(0.5, flight.width / 2 - 0.65);
+  const rails = [-1, 1].map<CitadelBlock>((side) => ({
+    id: `${flight.id}-handrail-${side < 0 ? "left" : "right"}`,
+    x: flight.x + (flight.axis === "z" ? side * railInset : 0),
+    y: railY,
+    z: flight.z + (flight.axis === "x" ? side * railInset : 0),
+    w: flight.axis === "x" ? flight.length : 0.7,
+    h: 0.22,
+    d: flight.axis === "z" ? flight.length : 0.7,
+    rotationX:
+      flight.axis === "z" ? -flight.direction * railAngle : undefined,
+    rotationZ:
+      flight.axis === "x" ? flight.direction * railAngle : undefined,
+    color: warning,
+    material: "metal"
+  }));
+
+  return [...steps, ...rails];
+};
+
 export const IRON_JUNCTION: ArenaMapDefinition = {
   id: "iron_junction",
   title: "The Iron Junction",
-  description: "A derelict mountain train yard turned smuggling depot, built around three readable combat lanes.",
-  footprint: { width: scale(350), depth: scale(320) },
+  description: "A sprawling autumn railway interchange where a grand yard links a depot, freight warehouse, mountain tunnel, dispatch station, and elevated steel route.",
+  footprint: { width: scale(560), depth: scale(500) },
   districts: [
-    "North Lane · Maintenance Depot",
-    "Mid Lane · Sorting Tracks and Gantry",
-    "South Lane · Timber Line and Gorge",
-    "Rear Service Tunnel",
-    "Central Rail Switch",
-    "Water Tower Sniper Pocket"
+    "Grand Rail Yard",
+    "Maintenance Depot",
+    "Freight Warehouse",
+    "Mountain Service Tunnel",
+    "Junction Control Overpass",
+    "Dispatch Station Complex"
   ],
   routes: [
-    "North Lane · Maintenance Depot",
-    "Mid Lane · Sorting Tracks and Gantry",
-    "South Lane · Timber Line and Gorge",
-    "Rear Service Tunnel · safe rotation",
-    "Central Rail Switch · fast contested rotation",
-    "Timber Drop-down · risky shortcut"
+    "Central Rail Yard · fastest contested route",
+    "Freight Warehouse · protected interior route",
+    "Maintenance and Tunnel · lower flank route",
+    "Loading Platforms · intermediate rotation",
+    "Control Overpass · limited upper route"
   ],
   palette: {
-    sky: "#687b86",
-    fog: "#718087",
-    floor: "#465056",
+    sky: "#718189",
+    fog: "#809096",
+    floor: "#4b5352",
     floorTexture: "floor",
-    accent: "#d58a45"
+    accent: "#c98242"
   }
 };
 
 const steel = "#39464b";
-const darkSteel = "#263237";
-const greenPaint = "#52645f";
-const rust = "#8b4f37";
-const concrete = "#6d7778";
-const gravel = "#4c5354";
-const timber = "#765038";
-const warning = "#d18a3f";
-const fogBlue = "#8da1a3";
+const darkSteel = "#253136";
+const weatheredSteel = "#53615f";
+const rust = "#884a33";
+const brick = "#705247";
+const concrete = "#737b78";
+const gravel = "#4d5452";
+const dirtyCream = "#b2aa91";
+const timber = "#72503a";
+const warning = "#cf873d";
+const blueStripe = "#3c7f9f";
+const redStripe = "#a94d42";
+
+const loadingDeckCenter = IRON_JUNCTION_LOADING_LEVEL_Y - 0.55;
+const overpassDeckCenter = IRON_JUNCTION_OVERPASS_LEVEL_Y - 0.6;
 
 const rawBlocks: CitadelBlock[] = [
-  { id: "iron-north-retaining-wall", label: "Mountain Retaining Wall", x: 0, z: -156, w: 350, d: 8, h: 14, color: concrete, material: "stone", style: "wall", collides: true },
-  { id: "iron-south-cliff-face", label: "Gorge Edge", x: 0, z: 156, w: 350, d: 8, h: 18, color: darkSteel, material: "stone", style: "wall", collides: true },
-  { id: "iron-west-embankment", label: "West Signal Embankment", x: -169, z: 0, w: 8, d: 142, h: 11, color: concrete, material: "stone", style: "wall", collides: true },
-  { id: "iron-east-embankment", label: "East Signal Embankment", x: 169, z: 0, w: 8, d: 142, h: 11, color: concrete, material: "stone", style: "wall", collides: true },
+  // Mountain gorge and outer retaining structure.
+  { id: "iron-north-cliff", label: "North Gorge Retaining Wall", x: 0, z: -246, w: 560, d: 8, h: 24, color: concrete, material: "stone", style: "wall", collides: true },
+  { id: "iron-south-cliff", label: "South Mountain Face", x: 0, z: 246, w: 560, d: 8, h: 30, color: darkSteel, material: "stone", style: "wall", collides: true },
+  { id: "iron-west-cliff", x: -276, z: 0, w: 8, d: 500, h: 22, color: concrete, material: "stone", style: "wall", collides: true },
+  { id: "iron-east-cliff", x: 276, z: 0, w: 8, d: 500, h: 22, color: concrete, material: "stone", style: "wall", collides: true },
 
-  { id: "west-signal-house", label: "West Signal House", x: -151, z: -64, w: 24, d: 20, h: 7, color: greenPaint, material: "metal", style: "shed", collides: true },
-  { id: "west-freight-office", label: "West Freight Office", x: -151, z: 64, w: 26, d: 18, h: 7, color: concrete, material: "stone", style: "shed", collides: true },
-  { id: "east-signal-house", label: "East Signal House", x: 151, z: -64, w: 24, d: 20, h: 7, color: greenPaint, material: "metal", style: "shed", collides: true },
-  { id: "east-freight-office", label: "East Freight Office", x: 151, z: 64, w: 26, d: 18, h: 7, color: concrete, material: "stone", style: "shed", collides: true },
+  // Blue base: a broad assembly yard with four protected exits.
+  { id: "blue-base-inner-north", label: "Blue Assembly North", x: -218, z: -92, w: 8, d: 42, h: 14, color: weatheredSteel, material: "metal", style: "wall", collides: true },
+  { id: "blue-warehouse-stair-gate-north", x: -218, z: -68.5, w: 8, d: 3, h: 14, color: weatheredSteel, material: "metal", style: "wall", collides: true },
+  { id: "blue-warehouse-stair-gate-south", x: -218, z: -45, w: 8, d: 4, h: 14, color: weatheredSteel, material: "metal", style: "wall", collides: true },
+  { id: "blue-base-inner-center", x: -218, z: 0, w: 8, d: 38, h: 14, color: weatheredSteel, material: "metal", style: "wall", collides: true },
+  { id: "blue-base-inner-midsouth", x: -218, z: 55, w: 8, d: 16, h: 14, color: weatheredSteel, material: "metal", style: "wall", collides: true },
+  { id: "blue-base-inner-south", x: -218, z: 92, w: 8, d: 42, h: 14, color: weatheredSteel, material: "metal", style: "wall", collides: true },
+  { id: "blue-base-sight-screen-north", x: -198, z: -34, w: 28, d: 7, h: 9, color: concrete, material: "stone", style: "wall", collides: true },
+  { id: "blue-base-sight-screen-south", x: -198, z: 58, w: 28, d: 7, h: 9, color: concrete, material: "stone", style: "wall", collides: true },
+  { id: "blue-objective-booth", label: "Blue Operations Room", x: -247, z: 0, w: 28, d: 32, h: 10, color: dirtyCream, material: "metal", style: "shed", collides: true },
 
-  { id: "depot-north-roof", label: "Maintenance Depot", x: 0, z: -151, w: 142, d: 6, h: 12, color: darkSteel, material: "metal", style: "wall", collides: true },
-  { id: "depot-south-wall-west", label: "Depot Service Corridor", x: -86, z: -88, w: 48, d: 7, h: 11, color: greenPaint, material: "metal", style: "wall", collides: true },
-  { id: "depot-south-wall-east", label: "Depot Emergency Exit", x: 76, z: -88, w: 46, d: 7, h: 11, color: greenPaint, material: "metal", style: "wall", collides: true },
-  { id: "depot-railcar-west", label: "Dismantled Train Car", x: -56, z: -119, w: 30, d: 10, h: 5, color: rust, material: "metal", style: "railcar", collides: true },
-  { id: "depot-railcar-east", label: "Half-raised Train Car", x: 35, z: -133, w: 34, d: 10, h: 5, color: rust, material: "metal", style: "railcar", collides: true },
-  { id: "depot-inspection-pit", label: "Inspection Pit", x: 0, z: -146, w: 34, d: 4, h: 0.35, y: 0.02, color: darkSteel, material: "metal" },
-  { id: "depot-control-booth", label: "Depot Control Room", x: 0, z: -99, w: 20, d: 13, h: 13, color: concrete, material: "stone", style: "tower", collides: true },
-  { id: "depot-east-workshop", label: "Tool Cage", x: 78, z: -118, w: 22, d: 24, h: 9, color: greenPaint, material: "metal", style: "shed", collides: true },
-  { id: "depot-west-tool-cage", label: "Welding Bay", x: -91, z: -113, w: 12, d: 16, h: 8, color: steel, material: "metal", style: "machinery", collides: true },
+  // Red base mirrors capacity, but not the approach geometry.
+  { id: "red-base-inner-north", label: "Red Assembly North", x: 218, z: -98, w: 8, d: 30, h: 14, color: weatheredSteel, material: "metal", style: "wall", collides: true },
+  { id: "red-dispatch-stair-gate-south", x: 218, z: -51, w: 8, d: 8, h: 14, color: weatheredSteel, material: "metal", style: "wall", collides: true },
+  { id: "red-base-inner-center", x: 218, z: 0, w: 8, d: 38, h: 14, color: weatheredSteel, material: "metal", style: "wall", collides: true },
+  { id: "red-base-inner-midsouth", x: 218, z: 55, w: 8, d: 16, h: 14, color: weatheredSteel, material: "metal", style: "wall", collides: true },
+  { id: "red-base-inner-south", x: 218, z: 92, w: 8, d: 42, h: 14, color: weatheredSteel, material: "metal", style: "wall", collides: true },
+  { id: "red-base-sight-screen-north", x: 198, z: -34, w: 28, d: 7, h: 9, color: concrete, material: "stone", style: "wall", collides: true },
+  { id: "red-base-sight-screen-south", x: 198, z: 58, w: 28, d: 7, h: 9, color: concrete, material: "stone", style: "wall", collides: true },
+  { id: "red-objective-booth", label: "Red Operations Room", x: 247, z: 0, w: 28, d: 32, h: 10, color: dirtyCream, material: "metal", style: "shed", collides: true },
 
-  { id: "north-track-bed", x: 0, z: -39, w: 300, d: 5, h: 0.35, y: 0.04, color: gravel, material: "gravel" },
-  { id: "mid-track-bed", label: "Sorting Tracks", x: 0, z: 0, w: 300, d: 5, h: 0.35, y: 0.04, color: gravel, material: "gravel" },
-  { id: "south-track-bed", x: 0, z: 39, w: 300, d: 5, h: 0.35, y: 0.04, color: gravel, material: "gravel" },
-  { id: "gantry-foot-west", label: "Gantry Crane", x: -28, z: -14, w: 9, d: 18, h: 20, color: rust, material: "metal", style: "gantry", collides: true },
-  { id: "gantry-foot-east", label: "Gantry Crane", x: 28, z: 14, w: 9, d: 18, h: 20, color: rust, material: "metal", style: "gantry", collides: true },
-  { id: "sorting-booth", label: "Sorting Booth", x: 0, z: 25, w: 21, d: 16, h: 14, color: greenPaint, material: "metal", style: "tower", collides: true },
-  { id: "mid-boxcar-north", label: "Blue Boxcar", x: -68, z: -22, w: 28, d: 10, h: 5, color: rust, material: "metal", style: "railcar", collides: true },
-  { id: "mid-boxcar-south", label: "Red Boxcar", x: 60, z: 30, w: 30, d: 10, h: 5, color: rust, material: "metal", style: "railcar", collides: true },
-  { id: "mid-flatbed-cover", label: "Overturned Flatbed", x: -20, z: 12, w: 22, d: 7, h: 2.4, color: timber, material: "wood", style: "railcar", collides: true },
-  { id: "switch-control-hut", label: "Switch Control Hut", x: 88, z: 0, w: 13, d: 14, h: 5, color: concrete, material: "stone", style: "shed", collides: true },
-  { id: "offset-cargo-container", label: "Opened Cargo Container", x: 18, z: -28, w: 14, d: 9, h: 5, color: greenPaint, material: "metal", style: "shed", collides: true },
+  // Area C: Freight Warehouse. Architecture, not crate stacks, shapes the interior.
+  { id: "warehouse-north-wall", label: "Freight Warehouse", x: -112, z: -190, w: 164, d: 8, h: 20, color: brick, material: "stone", style: "wall", collides: true },
+  { id: "warehouse-west-wall", x: -194, z: -130, w: 8, d: 128, h: 20, color: brick, material: "stone", style: "wall", collides: true },
+  { id: "warehouse-east-wall-north", x: -30, z: -164, w: 8, d: 44, h: 20, color: brick, material: "stone", style: "wall", collides: true },
+  { id: "warehouse-east-wall-south", x: -30, z: -94, w: 8, d: 34, h: 20, color: brick, material: "stone", style: "wall", collides: true },
+  { id: "warehouse-south-wall-west", x: -165, z: -66, w: 58, d: 8, h: 15, color: brick, material: "stone", style: "wall", collides: true },
+  { id: "warehouse-south-wall-center", x: -92, z: -66, w: 40, d: 8, h: 15, color: brick, material: "stone", style: "wall", collides: true },
+  { id: "warehouse-south-wall-east", x: -45, z: -66, w: 22, d: 8, h: 15, color: brick, material: "stone", style: "wall", collides: true },
+  { id: "warehouse-office", label: "Warehouse Office", x: -158, z: -157, w: 34, d: 26, h: 9, color: dirtyCream, material: "metal", style: "shed", collides: true },
+  { id: "warehouse-conveyor", label: "Sorting Conveyor", x: -87, z: -132, w: 52, d: 9, h: 4, color: weatheredSteel, material: "metal", style: "machinery", collides: true },
+  { id: "warehouse-pillar-a", x: -126, z: -98, w: 4, d: 4, h: 18, color: darkSteel, material: "metal", style: "tower", collides: true },
+  { id: "warehouse-pillar-b", x: -72, z: -98, w: 4, d: 4, h: 18, color: darkSteel, material: "metal", style: "tower", collides: true },
+  // The south roof opening gives the upper stair full player-height clearance.
+  { id: "warehouse-roof-west", x: -154.5, z: -130, w: 75, d: 120, h: 1, y: 20, color: weatheredSteel, material: "metal", style: "bridge" },
+  { id: "warehouse-roof-east", x: -62.5, z: -130, w: 61, d: 120, h: 1, y: 20, color: weatheredSteel, material: "metal", style: "bridge" },
+  { id: "warehouse-roof-north-link", x: -105, z: -154, w: 24, d: 72, h: 1, y: 20, color: weatheredSteel, material: "metal", style: "bridge" },
+  { id: "warehouse-mezzanine", label: "WAREHOUSE MEZZANINE", x: -130, z: -147, w: 120, d: 64, h: 1.1, y: loadingDeckCenter, color: steel, material: "metal", style: "bridge" },
+  { id: "warehouse-loading-dock", label: "FREIGHT LOADING PLATFORM", x: -108, z: -57, w: 144, d: 18, h: 1.1, y: loadingDeckCenter, color: concrete, material: "stone", style: "bridge" },
+  { id: "warehouse-platform-edge", x: -108, z: -48.8, w: 140, d: 1.2, h: 0.12, y: IRON_JUNCTION_LOADING_LEVEL_Y + 0.06, color: warning, material: "accent" },
 
-  { id: "timber-shelter-west", label: "Timber Processing Shed", x: -83, z: 90, w: 32, d: 18, h: 7, color: timber, material: "wood", style: "shed", collides: true },
-  { id: "timber-shelter-east", label: "Cable Winch Shelter", x: 85, z: 100, w: 28, d: 18, h: 8, color: greenPaint, material: "metal", style: "shed", collides: true },
-  { id: "log-stack-west", label: "Stable Log Stack", x: -50, z: 100, w: 24, d: 10, h: 5, color: timber, material: "wood", style: "logstack", collides: true },
-  { id: "log-stack-east", label: "Stable Log Stack", x: 42, z: 124, w: 26, d: 10, h: 6, color: timber, material: "wood", style: "logstack", collides: true },
-  { id: "loader-cabin", label: "Log Loader", x: -10, z: 105, w: 14, d: 13, h: 7, color: warning, material: "metal", style: "machinery", collides: true },
-  { id: "water-tower-base", label: "Water Tower", x: 82, z: 116, w: 16, d: 16, h: 14, color: timber, material: "wood", style: "tower", collides: true },
-  { id: "gorge-retaining-wall", label: "Gorge Guard Wall", x: 0, z: 151, w: 170, d: 7, h: 10, color: concrete, material: "stone", style: "wall", collides: true },
-  { id: "rock-outcrop-west", label: "Rock Barrier", x: -117, z: 120, w: 18, d: 16, h: 5, color: concrete, material: "stone", style: "rock", collides: true },
-  { id: "rock-outcrop-east", label: "Rock Barrier", x: 115, z: 88, w: 18, d: 14, h: 6, color: concrete, material: "stone", style: "rock", collides: true },
-  { id: "timber-drop-landing", label: "Timber Drop-down", x: 14, z: 82, w: 16, d: 8, h: 1.2, color: timber, material: "wood", style: "bridge", collides: true }
+  // Area F: Dispatch station and its landmark control tower.
+  { id: "dispatch-north-wall", label: "Old Dispatch Station", x: 135, z: -188, w: 142, d: 8, h: 16, color: brick, material: "stone", style: "wall", collides: true },
+  { id: "dispatch-east-wall", x: 206, z: -139, w: 8, d: 106, h: 16, color: brick, material: "stone", style: "wall", collides: true },
+  { id: "dispatch-west-wall-north", x: 64, z: -164, w: 8, d: 42, h: 16, color: brick, material: "stone", style: "wall", collides: true },
+  { id: "dispatch-west-wall-south", x: 64, z: -103, w: 8, d: 34, h: 16, color: brick, material: "stone", style: "wall", collides: true },
+  { id: "dispatch-south-wall-west", x: 91, z: -86, w: 46, d: 8, h: 13, color: brick, material: "stone", style: "wall", collides: true },
+  { id: "dispatch-south-wall-east", x: 178, z: -86, w: 48, d: 8, h: 13, color: brick, material: "stone", style: "wall", collides: true },
+  { id: "dispatch-operations-room", label: "Dispatch Operations", x: 161, z: -149, w: 54, d: 38, h: 10, color: dirtyCream, material: "metal", style: "shed", collides: true },
+  { id: "dispatch-platform", label: "DISPATCH PLATFORM", x: 132, z: -70, w: 116, d: 24, h: 1.1, y: loadingDeckCenter, color: concrete, material: "stone", style: "bridge" },
+  { id: "dispatch-platform-edge", x: 132, z: -58.8, w: 112, d: 1.2, h: 0.12, y: IRON_JUNCTION_LOADING_LEVEL_Y + 0.06, color: warning, material: "accent" },
+  { id: "junction-control-lower", label: "Junction Control Tower", x: 58, z: -38, w: 34, d: 32, h: 9, color: concrete, material: "stone", style: "tower", collides: true },
+  { id: "junction-control-upper", label: "JUNCTION CONTROL", x: 58, z: -38, w: 30, d: 28, h: 8, y: 14, color: dirtyCream, material: "metal", style: "tower", collides: true },
+
+  // Area A: four wide rail corridors with four landmark trains.
+  { id: "yard-track-bed-a", x: 0, z: -42, w: 390, d: 10, h: 0.3, y: 0.03, color: gravel, material: "gravel", style: "trackbed" },
+  { id: "yard-track-bed-b", x: 0, z: 0, w: 390, d: 10, h: 0.3, y: 0.03, color: gravel, material: "gravel", style: "trackbed" },
+  { id: "yard-track-bed-c", x: 0, z: 42, w: 390, d: 10, h: 0.3, y: 0.03, color: gravel, material: "gravel", style: "trackbed" },
+  { id: "yard-track-bed-d", x: 0, z: 82, w: 390, d: 10, h: 0.3, y: 0.03, color: gravel, material: "gravel", style: "trackbed" },
+  { id: "freight-train-west", label: "West Boxcar", x: -100, z: -42, w: 58, d: 13, h: 8, color: rust, material: "metal", style: "railcar", collides: true },
+  { id: "junction-locomotive", label: "Iron Junction Locomotive", x: -8, z: 0, w: 70, d: 15, h: 10, color: darkSteel, material: "metal", style: "railcar", collides: true },
+  { id: "freight-train-east", label: "Cream Freight Wagon", x: 105, z: 42, w: 60, d: 13, h: 8, color: dirtyCream, material: "metal", style: "railcar", collides: true },
+  { id: "damaged-railcar", label: "Damaged Brake Van", x: -48, z: 82, w: 42, d: 13, h: 7, color: rust, material: "metal", style: "railcar", collides: true },
+  { id: "yard-cover-signal-box", label: "Signal Relay Box", x: 112, z: -17, w: 20, d: 18, h: 7, color: weatheredSteel, material: "metal", style: "shed", collides: true },
+  { id: "yard-platform-west", label: "West Transfer Platform", x: -155, z: 20, w: 54, d: 17, h: 2, color: concrete, material: "stone", style: "bridge", collides: true },
+  { id: "yard-platform-east", label: "East Transfer Platform", x: 157, z: 66, w: 48, d: 17, h: 2, color: concrete, material: "stone", style: "bridge", collides: true },
+
+  // Area B: Maintenance depot with repair pits and broad equipment bays.
+  // The platform stair occupies a real opening in the depot wall rather than clipping through it.
+  { id: "depot-east-wall-south", label: "Maintenance Depot", x: 190, z: 163.5, w: 8, d: 91, h: 18, color: weatheredSteel, material: "metal", style: "wall", collides: true },
+  { id: "depot-north-wall-west", x: 37, z: 96, w: 58, d: 8, h: 17, color: weatheredSteel, material: "metal", style: "wall", collides: true },
+  { id: "depot-north-wall-center", x: 106, z: 96, w: 38, d: 8, h: 17, color: weatheredSteel, material: "metal", style: "wall", collides: true },
+  { id: "depot-north-wall-east", x: 169, z: 96, w: 34, d: 8, h: 17, color: weatheredSteel, material: "metal", style: "wall", collides: true },
+  { id: "depot-south-wall-west", x: 40, z: 205, w: 64, d: 8, h: 17, color: weatheredSteel, material: "metal", style: "wall", collides: true },
+  { id: "depot-south-wall-east", x: 157, z: 205, w: 66, d: 8, h: 17, color: weatheredSteel, material: "metal", style: "wall", collides: true },
+  { id: "depot-west-wall-north", x: 4, z: 120, w: 8, d: 42, h: 17, color: weatheredSteel, material: "metal", style: "wall", collides: true },
+  { id: "depot-west-wall-south", x: 4, z: 181, w: 8, d: 40, h: 17, color: weatheredSteel, material: "metal", style: "wall", collides: true },
+  { id: "depot-side-office", label: "Depot Tool Office", x: 157, z: 174, w: 42, d: 35, h: 9, color: dirtyCream, material: "metal", style: "shed", collides: true },
+  { id: "depot-machinery-bay", label: "Wheel Lathe", x: 48, z: 164, w: 31, d: 19, h: 6, color: warning, material: "metal", style: "machinery", collides: true },
+  { id: "depot-repair-pit", label: "Maintenance Pit", x: 105, z: 151, w: 70, d: 8, h: 0.35, y: 0.02, color: darkSteel, material: "metal" },
+  { id: "depot-walkway", label: "DEPOT WALKWAY", x: 94, z: 106, w: 142, d: 20, h: 1.1, y: loadingDeckCenter, color: steel, material: "metal", style: "bridge" },
+  { id: "depot-platform-edge", x: 94, z: 96.8, w: 138, d: 1.2, h: 0.12, y: IRON_JUNCTION_LOADING_LEVEL_Y + 0.06, color: warning, material: "accent" },
+  { id: "depot-roof", x: 98, z: 151, w: 180, d: 105, h: 1, y: 19, color: darkSteel, material: "metal", style: "bridge" },
+
+  // Area D: a broad, broken-sightline mountain tunnel with multiple exits.
+  { id: "tunnel-south-wall-west", label: "Mountain Service Tunnel", x: -145, z: 234, w: 142, d: 8, h: 15, color: darkSteel, material: "stone", style: "wall", collides: true },
+  { id: "tunnel-south-wall-east", x: 18, z: 238, w: 164, d: 8, h: 15, color: darkSteel, material: "stone", style: "wall", collides: true },
+  { id: "tunnel-north-wall-a", x: -177, z: 194, w: 70, d: 8, h: 13, color: concrete, material: "stone", style: "wall", collides: true },
+  { id: "tunnel-north-wall-b", x: -78, z: 198, w: 52, d: 8, h: 13, color: concrete, material: "stone", style: "wall", collides: true },
+  { id: "tunnel-north-wall-c", x: 16, z: 202, w: 70, d: 8, h: 13, color: concrete, material: "stone", style: "wall", collides: true },
+  { id: "tunnel-north-wall-d", x: 110, z: 206, w: 52, d: 8, h: 13, color: concrete, material: "stone", style: "wall", collides: true },
+  { id: "tunnel-sight-break-west", x: -104, z: 216, w: 12, d: 16, h: 8, color: concrete, material: "stone", style: "wall", collides: true },
+  { id: "tunnel-sight-break-east", x: 54, z: 220, w: 12, d: 16, h: 8, color: concrete, material: "stone", style: "wall", collides: true },
+  { id: "tunnel-roof-west", x: -115, z: 214, w: 210, d: 42, h: 1.2, y: 14, color: darkSteel, material: "stone", style: "bridge" },
+  { id: "tunnel-roof-east", x: 75, z: 220, w: 170, d: 38, h: 1.2, y: 14, color: darkSteel, material: "stone", style: "bridge" },
+  { id: "tunnel-drain", x: -15, z: 224, w: 260, d: 3, h: 0.18, y: 0.02, color: darkSteel, material: "metal" },
+
+  // Area E: intentional upper route. It links landmarks but cannot see the whole district.
+  { id: "junction-overpass", label: "JUNCTION OVERPASS", x: 10, z: 25, w: 230, d: 20, h: 1.2, y: overpassDeckCenter, color: steel, material: "metal", style: "bridge" },
+  { id: "junction-mid-transfer", label: "MID TRANSFER DECK", x: 10, z: 25, w: 60, d: 20, h: 1.1, y: loadingDeckCenter, color: concrete, material: "stone", style: "bridge" },
+  { id: "signal-gantry-deck", label: "SIGNAL GANTRY", x: 0, z: -14, w: 142, d: 14, h: 1.2, y: overpassDeckCenter, color: warning, material: "metal", style: "bridge" },
+  { id: "warehouse-upper-link", label: "Warehouse Upper Link", x: -105, z: -35.5, w: 20, d: 101, h: 1.2, y: overpassDeckCenter, color: steel, material: "metal", style: "bridge" },
+  { id: "dispatch-upper-link", label: "Dispatch Upper Link", x: 119, z: -22, w: 20, d: 80, h: 1.2, y: overpassDeckCenter, color: steel, material: "metal", style: "bridge" },
+  { id: "overpass-support-west", x: -78, z: 25, w: 6, d: 6, h: 18, y: 9, color: rust, material: "metal", style: "gantry", collides: true },
+  { id: "overpass-support-center", x: 18, z: 25, w: 6, d: 6, h: 18, y: 9, color: rust, material: "metal", style: "gantry", collides: true },
+  { id: "overpass-support-east", x: 92, z: 25, w: 6, d: 6, h: 18, y: 9, color: rust, material: "metal", style: "gantry", collides: true },
+  { id: "gantry-sight-screen", x: -6, z: 25, w: 36, d: 5, h: 7, y: 21, color: weatheredSteel, material: "metal", style: "wall", collides: true }
+  // Guardrails stop short of the three authored connectors instead of sealing them.
+  ,{ id: "overpass-north-rail-west", x: -72, z: 15, w: 44, d: 1.2, h: 2.5, y: 19.25, color: steel, material: "metal", collides: true }
+  ,{ id: "overpass-north-rail-center", x: 5, z: 15, w: 70, d: 1.2, h: 2.5, y: 19.25, color: steel, material: "metal", collides: true }
+  ,{ id: "overpass-north-rail-east", x: 83.5, z: 15, w: 47, d: 1.2, h: 2.5, y: 19.25, color: steel, material: "metal", collides: true }
+  ,{ id: "overpass-south-rail-west", x: -77.5, z: 35, w: 55, d: 1.2, h: 2.5, y: 19.25, color: steel, material: "metal", collides: true }
+  ,{ id: "overpass-south-rail-center", x: 5, z: 35, w: 70, d: 1.2, h: 2.5, y: 19.25, color: steel, material: "metal", collides: true }
+  ,{ id: "overpass-south-rail-depot-west", x: 64, z: 35, w: 8, d: 1.2, h: 2.5, y: 19.25, color: steel, material: "metal", collides: true }
+  ,{ id: "overpass-south-rail-depot-east", x: 108.5, z: 35, w: 33, d: 1.2, h: 2.5, y: 19.25, color: steel, material: "metal", collides: true }
+  ,{ id: "warehouse-link-west-rail", x: -115, z: -35.5, w: 1.2, d: 101, h: 2.5, y: 19.25, color: steel, material: "metal", collides: true }
+  ,{ id: "warehouse-link-east-rail", x: -95, z: -35.5, w: 1.2, d: 101, h: 2.5, y: 19.25, color: steel, material: "metal", collides: true }
+  ,{ id: "dispatch-link-west-rail", x: 109, z: -22, w: 1.2, d: 80, h: 2.5, y: 19.25, color: steel, material: "metal", collides: true }
+  ,{ id: "dispatch-link-east-rail", x: 129, z: -22, w: 1.2, d: 80, h: 2.5, y: 19.25, color: steel, material: "metal", collides: true }
+  ,...IRON_JUNCTION_STAIR_FLIGHTS.flatMap(makeIndustrialStairFlight)
 ];
 
-export const blocks = rawBlocks.map(scaleRect);
+export const blocks: CitadelBlock[] = rawBlocks.map(({ label: _label, ...block }) => scaleRect(block));
 
 const rawCylinders: CitadelCylinder[] = [
-  { id: "depot-hydraulic-west", label: "Hydraulic Lift", x: -72, z: -128, radius: 2, h: 7, color: warning, material: "metal", collides: true },
-  { id: "depot-hydraulic-east", label: "Hydraulic Lift", x: 51, z: -117, radius: 2, h: 7, color: warning, material: "metal", collides: true },
-  { id: "oil-drums-west", label: "Oil Drums", x: -100, z: -94, radius: 3, h: 3, color: rust, material: "metal", collides: true },
-  { id: "oil-drums-east", label: "Fuel Cans", x: 104, z: 64, radius: 3, h: 3, color: rust, material: "metal", collides: true },
-  { id: "water-tower-tank", label: "Water Tank", x: 82, z: 116, radius: 8, h: 5, y: 14, color: timber, material: "wood" },
-  { id: "gorge-winch", label: "Cable Winch", x: -4, z: 133, radius: 3, h: 4, color: warning, material: "metal", collides: true }
+  { id: "yard-signal-base-west", label: "Signal Mast", x: -150, z: -18, radius: 2.5, h: 10, color: rust, material: "metal", collides: true },
+  { id: "yard-signal-base-east", label: "Signal Mast", x: 150, z: 18, radius: 2.5, h: 10, color: rust, material: "metal", collides: true },
+  { id: "depot-hydraulic-lift", label: "Hydraulic Lift", x: 94, z: 172, radius: 3, h: 7, color: warning, material: "metal", collides: true },
+  { id: "dispatch-clock-column", label: "Broken Station Clock", x: 105, z: -130, radius: 2.5, h: 11, color: dirtyCream, material: "metal", collides: true }
 ];
+export const cylinders: CitadelCylinder[] = rawCylinders.map(({ label: _label, ...cylinder }) => scaleCylinder(cylinder));
 
-export const cylinders = rawCylinders.map(scaleCylinder);
-
-const rawFloorMarks: CitadelFloorMark[] = [
-  { id: "iron-route-north", label: "NORTH LANE · MAINTENANCE DEPOT", x: 0, z: -108, w: 90, d: 14, color: "#e3a45a" },
-  { id: "iron-route-mid", label: "MID LANE · SORTING TRACKS", x: 0, z: -2, w: 92, d: 14, color: "#d4d8d3" },
-  { id: "iron-route-south", label: "SOUTH LANE · TIMBER LINE", x: 0, z: 108, w: 88, d: 14, color: "#c78a55" },
-  { id: "iron-rail-switch", label: "CENTRAL RAIL SWITCH", x: 0, z: 0, w: 38, d: 11, color: "#e1a550" },
-  { id: "iron-rear-tunnel", label: "REAR SERVICE TUNNEL", x: 0, z: 70, w: 112, d: 10, color: "#91a6a1" },
-  { id: "iron-drop-route", label: "TIMBER DROP-DOWN", x: 30, z: 82, w: 38, d: 10, color: "#d68b4a" }
-];
-
-export const floorMarks = rawFloorMarks.map(scaleRect);
+// Architecture, rail colors, team banners, and landmarks carry navigation.
+// Printed route directions were visually noisy in both overview and FPS views.
+export const floorMarks: CitadelFloorMark[] = [];
 
 const rawProps: CitadelProp[] = [
-  { id: "rail-north-west", kind: "rail", x: -116, z: -39, size: 23, color: "#a8aaa2", material: "metal" },
-  { id: "rail-north-east", kind: "rail", x: 116, z: -39, size: 23, color: "#a8aaa2", material: "metal" },
-  { id: "rail-mid-west", kind: "rail", x: -116, z: 0, size: 23, color: "#a8aaa2", material: "metal" },
-  { id: "rail-mid-east", kind: "rail", x: 116, z: 0, size: 23, color: "#a8aaa2", material: "metal" },
-  { id: "rail-south-west", kind: "rail", x: -116, z: 39, size: 23, color: "#a8aaa2", material: "metal" },
-  { id: "rail-south-east", kind: "rail", x: 116, z: 39, size: 23, color: "#a8aaa2", material: "metal" },
-  { id: "gantry-crossbeam", kind: "cable", x: 0, z: 0, size: 70, h: 20, color: rust, material: "metal" },
-  { id: "gantry-hook", kind: "winch", x: 0, z: 0, size: 3, h: 17, color: warning, material: "metal" },
-  { id: "work-lamp-north", kind: "lamp", x: -22, z: -103, size: 2, h: 9, color: "#f1ad58", material: "accent" },
-  { id: "work-lamp-south", kind: "lamp", x: 58, z: -104, size: 2, h: 8, color: "#f1ad58", material: "accent" },
-  { id: "signal-west", kind: "signal", x: -104, z: -38, size: 2, h: 10, color: "#d85b45", material: "metal" },
-  { id: "signal-east", kind: "signal", x: 104, z: 38, size: 2, h: 10, color: "#63b4a2", material: "metal" },
-  { id: "pipe-depot", kind: "pipe", x: 70, z: -76, size: 3, h: 32, color: steel, material: "metal" },
-  { id: "steam-depot", kind: "steam", x: 74, z: -77, size: 4, h: 5, color: fogBlue, material: "accent" },
-  { id: "tree-west-north", kind: "tree", x: -132, z: -118, size: 7, h: 18, color: "#9b5c3c", material: "wood" },
-  { id: "tree-west-south", kind: "tree", x: -132, z: 115, size: 7, h: 18, color: "#a4633d", material: "wood" },
-  { id: "tree-east-north", kind: "tree", x: 132, z: -116, size: 7, h: 17, color: "#87513b", material: "wood" },
-  { id: "tree-east-south", kind: "tree", x: 132, z: 112, size: 7, h: 19, color: "#a05d35", material: "wood" },
-  { id: "winch-cable-west", kind: "cable", x: -52, z: 127, size: 28, h: 8, color: steel, material: "metal" },
-  { id: "winch-cable-east", kind: "cable", x: 56, z: 133, size: 24, h: 9, color: steel, material: "metal" },
-  { id: "tarpaulin-south", kind: "shade", x: 0, z: 82, size: 18, h: 5, color: "#495d62", material: "cloth" },
-  { id: "depot-debris", kind: "debris", x: 28, z: -104, size: 7, h: 2.2, color: rust, material: "metal" },
-  { id: "south-timber-debris", kind: "debris", x: -25, z: 132, size: 8, h: 2.1, color: timber, material: "wood" }
+  { id: "blue-route-banner", kind: "banner", x: -210, z: -28, size: 4, h: 10, color: blueStripe, material: "cloth" },
+  { id: "red-route-banner", kind: "banner", x: 210, z: 28, size: 4, h: 10, color: redStripe, material: "cloth" },
+  { id: "yard-signal-west", kind: "signal", x: -150, z: -18, size: 2, h: 10, color: "#d85b45", material: "metal" },
+  { id: "yard-signal-east", kind: "signal", x: 150, z: 18, size: 2, h: 10, color: "#62b29e", material: "metal" },
+  { id: "warehouse-lamp", kind: "lamp", x: -52, z: -80, size: 2, h: 8, color: "#ffd08a", material: "accent" },
+  { id: "dispatch-lamp", kind: "lamp", x: 78, z: -99, size: 2, h: 8, color: "#ffd08a", material: "accent" },
+  { id: "depot-lamp", kind: "lamp", x: 22, z: 116, size: 2, h: 8, color: "#ffb866", material: "accent" },
+  { id: "tunnel-emergency-west", kind: "lamp", x: -145, z: 218, size: 1.6, h: 6, color: "#e36a4f", material: "accent" },
+  { id: "tunnel-emergency-east", kind: "lamp", x: 22, z: 221, size: 1.6, h: 6, color: "#e36a4f", material: "accent" },
+  { id: "control-warning-lamp", kind: "lamp", x: 58, z: -38, size: 1.8, h: 7, y: IRON_JUNCTION_OVERPASS_LEVEL_Y, color: "#ffbd59", material: "accent" },
+  { id: "autumn-tree-nw", kind: "tree", x: -236, z: -205, size: 8, h: 20, color: "#7e4b32", material: "wood" },
+  { id: "autumn-tree-ne", kind: "tree", x: 235, z: -205, size: 8, h: 19, color: "#995333", material: "wood" },
+  { id: "autumn-tree-sw", kind: "tree", x: -235, z: 184, size: 8, h: 20, color: "#a15d33", material: "wood" },
+  { id: "autumn-tree-se", kind: "tree", x: 235, z: 195, size: 8, h: 18, color: "#875239", material: "wood" },
+  { id: "sparse-container-warehouse", kind: "crate", x: -54, z: -160, size: 6, h: 6, color: weatheredSteel, material: "metal" },
+  { id: "maintenance-tarp", kind: "shade", x: 144, z: 128, size: 10, h: 6, color: "#5e6756", material: "cloth" }
 ];
-
 export const props = rawProps.map(scalePoint);
 
-const rawSigns: CitadelSign[] = [
-  { id: "sign-depot", label: "MAINTENANCE DEPOT", x: -48, z: -87, color: "#f0b05b", rotationY: 0, y: 9 },
-  { id: "sign-gantry", label: "SORTING GANTRY", x: 0, z: -14, color: "#dce2dc", rotationY: Math.PI / 2, y: 16 },
-  { id: "sign-switch", label: "RAIL SWITCH 04", x: 86, z: -8, color: "#f0b05b", rotationY: Math.PI / 2, y: 7 },
-  { id: "sign-timber", label: "TIMBER LINE", x: -76, z: 86, color: "#e8a15e", rotationY: 0, y: 9 },
-  { id: "sign-gorge", label: "Gorge Edge · Guard Rail", x: 100, z: 144, color: "#c9d3cf", rotationY: Math.PI, y: 8 },
-  { id: "sign-west-spawn", label: "WEST YARD", x: -150, z: -48, color: "#7dd3fc", rotationY: Math.PI / 2, y: 7 },
-  { id: "sign-east-spawn", label: "EAST YARD", x: 150, z: 48, color: "#fb9a72", rotationY: -Math.PI / 2, y: 7 }
-];
-
-export const signs = rawSigns.map(scalePoint);
+export const signs: CitadelSign[] = [];

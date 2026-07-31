@@ -159,8 +159,12 @@ export const teacherApi = {
   createSession: (body: { quizSetId: string; classId?: string; settings?: Partial<SessionSettings> }) =>
     api("/api/sessions", { method: "POST", body: JSON.stringify(body) }),
   startSession: (code: string) => api(`/api/sessions/${code}/start`, { method: "POST" }),
+  endRound: (code: string) => api(`/api/sessions/${code}/end-round`, { method: "POST" }),
   endSession: (code: string) => api(`/api/sessions/${code}/end`, { method: "POST" }),
-  addBot: (code: string) => api(`/api/sessions/${code}/bots`, { method: "POST" }),
+  addBots: (code: string, body: { count: number; difficulty: "beginner" | "standard" | "advanced" }) =>
+    api(`/api/sessions/${code}/bots`, { method: "POST", body: JSON.stringify(body) }),
+  removePlayer: (code: string, playerId: string) =>
+    api(`/api/sessions/${code}/players/${playerId}`, { method: "DELETE" }),
   updateCustomization: (code: string, settings: CharacterCustomizationSettings) =>
     api(`/api/sessions/${code}/customization`, { method: "PUT", body: JSON.stringify(settings) }),
   clearPlayerAppearance: (code: string, playerId: string) =>
@@ -194,8 +198,11 @@ export const teacherApi = {
 };
 
 export const studentApi = {
-  join: (code: string, nickname: string) =>
-    api(`/api/sessions/${code}/join`, { method: "POST", body: JSON.stringify({ nickname }) }),
+  join: (code: string, nickname: string, cosmeticProgressToken?: string) =>
+    api(`/api/sessions/${code}/join`, {
+      method: "POST",
+      body: JSON.stringify({ nickname, ...(cosmeticProgressToken ? { cosmeticProgressToken } : {}) })
+    }),
   chooseTeam: (code: string, playerId: string, playerToken: string, team: "red" | "blue") =>
     api(`/api/sessions/${code}/players/${playerId}/team`, {
       method: "POST",

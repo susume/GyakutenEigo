@@ -1,7 +1,10 @@
 import { lazy, Suspense, useCallback, useEffect, useMemo, useRef, useState } from "react";
 import {
   BookOpen,
+  Bot,
   Check,
+  ChevronLeft,
+  ChevronRight,
   CircleDollarSign,
   ClipboardPaste,
   Copy,
@@ -21,28 +24,49 @@ import {
   Settings,
   Shield,
   ShoppingBag,
+  Snowflake,
   Target,
   Timer,
+  Trash2,
   Users,
   WifiOff,
-  WandSparkles
+  WandSparkles,
+  Zap
 } from "lucide-react";
 import { io, type Socket } from "socket.io-client";
 import { QRCodeSVG } from "qrcode.react";
 import {
   calculateAccuracy,
+  calculateClassAccuracy,
   canStartRound,
   DEFAULT_SESSION_SETTINGS,
   FLAG_MODE_DEFAULTS,
   GEAR_ITEMS,
+  ZOMBIE_HUMAN_CORRECT_ENERGY,
+  ZOMBIE_HUMAN_MAX_ENERGY,
+  canPlayerFireInMode,
+  getCosmeticProgress,
+  getArenaGroundHeight,
+  ARENA_PLAYER_EYE_HEIGHT,
+  ARENA_SCALE,
+  DESERT_CITADEL_MAIN_LEVEL_Y,
+  DESERT_CITADEL_ROOFTOP_LEVEL_Y,
+  IRON_JUNCTION_LOADING_LEVEL_Y,
+  IRON_JUNCTION_OVERPASS_LEVEL_Y,
+  TEMPLE_RUNOFF_MAIN_LEVEL_Y,
+  TEMPLE_RUNOFF_UPPER_LEVEL_Y,
   getPlayerPerks,
   getPlayerWeaponId,
+  getPlayerWeaponIdForMode,
+  isWeaponGearId,
   RESPAWN_CORRECT_ANSWERS_REQUIRED,
   getRoundRemainingSeconds,
-  isRoundBuyPhase,
+  isRoundPreparationPhase,
+  isZombieSelectionPhase,
   sanitizePlayerAppearance,
   type CharacterCustomizationSettings,
   type ArenaMapId,
+  type BotDifficulty,
   type Choice,
   type GameAnnouncement,
   type GameEvent,
@@ -59,7 +83,7 @@ import {
 import { ApiError, authApi, fetchDecalAsset, getApiUrl, getTeacherToken, studentApi, teacherApi } from "./api/client";
 import { buildStudentJoinUrl, getJoinCodeFromSearch, modeForRoute, normalizeRoutePath, type AppMode } from "./navigation";
 import { groupScoreboardRows } from "./scoreboardGroups";
-import { getModeScoreSummary, getReadyRoomTitle, getSessionResultText, getZombieCounts } from "./sessionPresentation";
+import { getModeScoreSummary, getSessionResultText, getZombieCounts } from "./sessionPresentation";
 import { formatStudentJoinError } from "./studentJoinErrors";
 import { getShopShortcut, getShopShortcutKey } from "./shopShortcuts";
 import { sendStudentCommand } from "./studentCommandTransport";
@@ -83,7 +107,7 @@ import {
 } from "./studentCombatFeedback";
 
 const ArenaPreview = lazy(() => import("./game/ArenaPreview"));
-const CharacterCreator = lazy(() => import("./ui/CharacterCreator"));
+const CharacterCreator = lazy(() => import("./ui/PremiumCharacterCreator"));
 
 type DashboardPayload = {
   classes: Array<{ id: string; name: string; description?: string; createdAt: string }>;
@@ -110,6 +134,7 @@ const choices: Choice[] = ["A", "B", "C", "D"];
 const publicAsset = (path: string) => `${import.meta.env.BASE_URL}${path.replace(/^\//, "")}`;
 const STUDENT_SESSION_STORAGE_KEY = "quizstrike_student_session";
 const STUDENT_APPEARANCE_STORAGE_KEY = "quizstrike_student_appearance_v1";
+const COSMETIC_PROGRESS_STORAGE_KEY = "quizstrike_cosmetic_progress_v1";
 
 const readStoredStudentSession = (): StoredStudentSession | null => {
   try {
@@ -126,6 +151,15 @@ const readStoredStudentSession = (): StoredStudentSession | null => {
 
 const clearStoredStudentSession = () => localStorage.removeItem(STUDENT_SESSION_STORAGE_KEY);
 
+const readCosmeticProgressToken = () => {
+  const token = localStorage.getItem(COSMETIC_PROGRESS_STORAGE_KEY);
+  return token && token.length <= 2_048 ? token : undefined;
+};
+
+const storeCosmeticProgressToken = (token?: string) => {
+  if (token && token.length <= 2_048) localStorage.setItem(COSMETIC_PROGRESS_STORAGE_KEY, token);
+};
+
 const readStoredAppearance = (): PlayerAppearance | null => {
   try {
     const raw = localStorage.getItem(STUDENT_APPEARANCE_STORAGE_KEY);
@@ -136,32 +170,17 @@ const readStoredAppearance = (): PlayerAppearance | null => {
 };
 
 type QuestionDraft = typeof emptyQuestion;
-type ArenaPositionPayload = { x: number; z: number; y?: number; facing: number; scoped?: boolean; zoomLevel?: number };
-type PlayerPositionPayload = { playerId?: string; x?: number; z?: number; facing?: number };
-type PlayerStatePayload = {
-  players?: PlayerSession[];
-  flag?: GameSession["flag"];
-  recentEvents?: GameEvent[];
-};
-
-const mergePlayerState = (session: GameSession, payload: PlayerStatePayload): GameSession => {
-  const changedPlayers = new Map((payload.players ?? []).map((player) => [player.id, player]));
-  const recentEventIds = new Set((payload.recentEvents ?? []).map((event) => event.id));
-  return {
-    ...session,
-    players: session.players.map((player) => changedPlayers.get(player.id) ?? player),
-    ...(payload.recentEvents
-      ? { events: [...payload.recentEvents, ...(session.events ?? []).filter((event) => !recentEventIds.has(event.id))].slice(0, 40) }
-      : {}),
-    ...(payload.flag !== undefined ? { flag: payload.flag } : {})
-  };
-};
-
-const attachTransportDiagnostics = (socket: Socket, label: string) => {
-  if (!import.meta.env.DEV && import.meta.env.VITE_NETWORK_DEBUG !== "true") return;
-  const report = () => console.info(`[network] ${label} transport=${socket.io.engine.transport.name}`);
-  report();
-  socket.io.engine.on("upgrade", report);
+type ArenaPositionPayload = {
+  x: number;
+  z: number;
+  y?: number;
+  facing: number;
+  pitch?: number;
+  scoped?: boolean;
+  zoomLevel?: number;
+  sprinting?: boolean;
+  crouching?: boolean;
+  jumping?: boolean;
 };
 type DamageResultPayload =
   | {
@@ -177,6 +196,7 @@ type DamageResultPayload =
       health: number;
       snowballs: number;
       eliminated: boolean;
+      converted?: boolean;
       moneyAwarded?: number;
     }
   | { ok: false; reason?: string; snowballs?: number };
@@ -209,7 +229,7 @@ const getNicknameError = (value: string) => {
 const sessionNumberFields = [
   { name: "roundCount", label: "Rounds", min: 1, max: 30, help: "Complete rounds before the session ends." },
   { name: "flagHoldSeconds", label: "Flag Hold Time", min: 5, max: 180, step: 5, unit: "seconds", help: "How long Red protects a placed flag." },
-  { name: "initialZombieCount", label: "Starting Zombies", min: 0, max: 20, help: "Students who begin as Zombies." },
+  { name: "initialZombieCount", label: "Zombies Chosen", min: 1, max: 20, help: "Students randomly revealed as Zombies after the 20-second energy period." },
   { name: "maxPlayers", label: "Max Players", min: 2, max: 40, unit: "students", help: "Maximum students and test bots in the room." },
   { name: "startingMoney", label: "Starting Money", min: 0, max: 16000, step: 100, unit: "dollars", help: "Money each student receives at the start." },
   { name: "correctAnswerReward", label: "Correct Answer Reward", min: 0, max: 5000, step: 100, unit: "dollars", help: "Money earned for each correct answer." },
@@ -396,11 +416,15 @@ const zombieStatusText = (session: GameSession, player?: PlayerSession | null) =
   if (session.settings.gameMode !== "zombie") return "";
   const humans = session.players.filter((item) => item.role !== "zombie").length;
   const zombies = session.players.filter((item) => item.role === "zombie").length;
-  return `Humans ${humans} | Zombies ${zombies} | Role ${player?.role === "zombie" ? "Zombie" : "Human"}`;
+  return player?.role === "zombie"
+    ? `Humans ${humans} | Zombies ${zombies} | Hunt the Blue humans`
+    : `Humans ${humans} | Zombies ${zombies} | Answer for energy and run`;
 };
 
 const getTopLearner = (players: PlayerSession[]) =>
-  [...players].sort((a, b) => b.correctAnswers - a.correctAnswers || b.score - a.score)[0];
+  [...players]
+    .filter((player) => !player.isBot && player.correctAnswers + player.wrongAnswers > 0)
+    .sort((a, b) => b.correctAnswers - a.correctAnswers || b.score - a.score)[0];
 
 const getTeamTotals = (players: PlayerSession[]) => ({
   blue: players.filter((player) => player.team === "blue").reduce((total, player) => total + player.score, 0),
@@ -415,7 +439,7 @@ const createPresetSettings = (overrides: Partial<SessionSettings>): SessionSetti
 const SESSION_PRESETS = [
   {
     name: "Quick Warmup",
-    description: "Short, low-pressure review for a starter activity.",
+    description: "Fast classroom activity.",
     settings: createPresetSettings({
       maxPlayers: 12,
       startingMoney: 300,
@@ -423,17 +447,18 @@ const SESSION_PRESETS = [
       startingSnowballs: 8,
       snowballPackPrice: 400,
       snowballsPerPack: 8,
-      roundDurationSeconds: 180
+      roundDurationSeconds: 90,
+      roundCount: 1
     })
   },
   {
     name: "Classic Class",
-    description: "Balanced round for whole-class play.",
+    description: "Recommended default.",
     settings: createPresetSettings({})
   },
   {
     name: "Review Rush",
-    description: "More time and rewards for longer study sessions.",
+    description: "Longer review session.",
     settings: createPresetSettings({
       maxPlayers: 30,
       startingMoney: 600,
@@ -446,10 +471,17 @@ const SESSION_PRESETS = [
   }
 ];
 
-const sessionSettingGroups: Array<{ title: string; description: string; fields: SessionNumberField[] }> = [
-  { title: "Classroom and timing", description: "Choose the room size and how long each activity runs.", fields: ["maxPlayers", "roundDurationSeconds", "roundCount", "flagHoldSeconds", "initialZombieCount"] },
-  { title: "Rewards and spending", description: "Set what correct answers earn and how much supplies cost.", fields: ["startingMoney", "correctAnswerReward", "wrongAnswerPenalty", "snowballPackPrice"] },
-  { title: "Starting supplies", description: "Set the ammunition students start with and receive in a pack.", fields: ["startingSnowballs", "snowballsPerPack"] }
+const getSessionPresetName = (settings: SessionSettings) =>
+  SESSION_PRESETS.find((preset) =>
+    sessionNumberFields.every((field) => preset.settings[field.name] === settings[field.name]) &&
+    preset.settings.deadPlayersCanPractice === settings.deadPlayersCanPractice &&
+    preset.settings.deadPlayersEarnMoney === settings.deadPlayersEarnMoney
+  )?.name ?? "Custom Game";
+
+const sessionSettingGroups: Array<{ title: string; fields: SessionNumberField[] }> = [
+  { title: "Game", fields: ["maxPlayers", "roundDurationSeconds", "roundCount", "flagHoldSeconds", "initialZombieCount"] },
+  { title: "Quiz Economy", fields: ["startingMoney", "correctAnswerReward", "wrongAnswerPenalty", "snowballPackPrice"] },
+  { title: "Weapons / Supplies", fields: ["startingSnowballs", "snowballsPerPack"] }
 ];
 
 const formatDuration = (seconds: number) => {
@@ -563,7 +595,7 @@ function GameAnnouncementOverlay({
   return (
     <div className={`game-announcement game-announcement-${announcement.kind}`} role="alert" aria-live="assertive" aria-atomic="true">
       <div className="game-announcement-card">
-        <span>{announcement.kind === "game_over" ? "Final result" : announcement.kind === "round_result" ? "Round complete" : announcement.kind === "buy_phase" ? "Shop open" : "Get ready"}</span>
+        <span>{announcement.kind === "game_over" ? "Final result" : announcement.kind === "round_result" ? "Round complete" : announcement.kind === "buy_phase" || announcement.kind === "preparation" ? "Prepare" : "Get ready"}</span>
         <h2>{announcement.title}</h2>
         <p>{announcement.message}</p>
         {announcement.detail && <strong>{announcement.detail}</strong>}
@@ -738,10 +770,33 @@ function CharacterLab() {
   const [tick, setTick] = useState(0);
   const [labMapId, setLabMapId] = useState<ArenaMapId>("desert_citadel");
   const [labQuality, setLabQuality] = useState<ArenaQuality>("balanced");
+  const [labView, setLabView] = useState<"overview" | "fps">("overview");
+  const [labLevel, setLabLevel] = useState<"lower" | "main" | "upper">("main");
   const session = useMemo(() => {
     const generated = createCharacterDebugSession({ count, tick });
-    return { ...generated, settings: { ...generated.settings, mapId: labMapId } };
-  }, [count, tick, labMapId]);
+    const testPositions = labMapId === "temple_runoff"
+      ? {
+          lower: { x: 0, y: ARENA_PLAYER_EYE_HEIGHT, z: 0, facing: -Math.PI / 2 },
+          main: { x: -52 * ARENA_SCALE, y: TEMPLE_RUNOFF_MAIN_LEVEL_Y + ARENA_PLAYER_EYE_HEIGHT, z: 100 * ARENA_SCALE, facing: 0 },
+          upper: { x: 0, y: TEMPLE_RUNOFF_UPPER_LEVEL_Y + ARENA_PLAYER_EYE_HEIGHT, z: 40 * ARENA_SCALE, facing: 0 }
+        }
+      : labMapId === "iron_junction"
+        ? {
+            lower: { x: 10 * ARENA_SCALE, y: ARENA_PLAYER_EYE_HEIGHT, z: 25 * ARENA_SCALE, facing: -Math.PI / 2 },
+            main: { x: -140 * ARENA_SCALE, y: IRON_JUNCTION_LOADING_LEVEL_Y + ARENA_PLAYER_EYE_HEIGHT, z: -57 * ARENA_SCALE, facing: Math.PI },
+            upper: { x: -40 * ARENA_SCALE, y: IRON_JUNCTION_OVERPASS_LEVEL_Y + ARENA_PLAYER_EYE_HEIGHT, z: 25 * ARENA_SCALE, facing: -Math.PI / 2 }
+          }
+        : {
+            lower: { x: -140 * ARENA_SCALE, y: ARENA_PLAYER_EYE_HEIGHT, z: 0, facing: -Math.PI / 2 },
+            main: { x: -45 * ARENA_SCALE, y: DESERT_CITADEL_MAIN_LEVEL_Y + ARENA_PLAYER_EYE_HEIGHT, z: 10 * ARENA_SCALE, facing: -Math.PI / 2 },
+            upper: { x: 138 * ARENA_SCALE, y: DESERT_CITADEL_ROOFTOP_LEVEL_Y + ARENA_PLAYER_EYE_HEIGHT, z: 81 * ARENA_SCALE, facing: Math.PI / 2 }
+          };
+    return {
+      ...generated,
+      settings: { ...generated.settings, mapId: labMapId },
+      players: generated.players.map((player, index) => index === 0 ? { ...player, ...testPositions[labLevel] } : player)
+    };
+  }, [count, tick, labMapId, labLevel]);
   const summary = useMemo(() => summarizeCharacterDebugSession(session), [session]);
 
   useEffect(() => {
@@ -776,12 +831,24 @@ function CharacterLab() {
           <div className="button-row" aria-label="Character lab map">
             <button className={labMapId === "desert_citadel" ? "active" : ""} onClick={() => setLabMapId("desert_citadel")}>Desert Citadel</button>
             <button className={labMapId === "iron_junction" ? "active" : ""} onClick={() => setLabMapId("iron_junction")}>Iron Junction</button>
+            <button className={labMapId === "temple_runoff" ? "active" : ""} onClick={() => setLabMapId("temple_runoff")}>Temple Runoff</button>
           </div>
           <div className="button-row" aria-label="Character lab quality">
             <button className={labQuality === "performance" ? "active" : ""} onClick={() => setLabQuality("performance")}>Low</button>
             <button className={labQuality === "balanced" ? "active" : ""} onClick={() => setLabQuality("balanced")}>Medium</button>
             <button className={labQuality === "high" ? "active" : ""} onClick={() => setLabQuality("high")}>High</button>
           </div>
+          <div className="button-row" aria-label="Character lab camera">
+            <button className={labView === "overview" ? "active" : ""} onClick={() => setLabView("overview")}>Overview</button>
+            <button className={labView === "fps" ? "active" : ""} onClick={() => setLabView("fps")}>Playable FPS</button>
+          </div>
+          {labView === "fps" && (
+            <div className="button-row" aria-label="Map test level">
+              <button className={labLevel === "lower" ? "active" : ""} onClick={() => setLabLevel("lower")}>{labMapId === "temple_runoff" ? "River ↓" : labMapId === "iron_junction" ? "Ground •" : "Ground •"}</button>
+              <button className={labLevel === "main" ? "active" : ""} onClick={() => setLabLevel("main")}>{labMapId === "temple_runoff" ? "Main •" : labMapId === "iron_junction" ? "Loading ↑" : "Citadel ↑"}</button>
+              <button className={labLevel === "upper" ? "active" : ""} onClick={() => setLabLevel("upper")}>{labMapId === "temple_runoff" ? "Bridge ↑" : labMapId === "iron_junction" ? "Overpass ↑" : "Lookout ↑↑"}</button>
+            </div>
+          )}
           <div className="lab-metrics">
             <span><strong>{summary.total}</strong>Total</span>
             <span><strong>{summary.alive}</strong>Alive</span>
@@ -809,7 +876,11 @@ function CharacterLab() {
         <div className="character-lab-arena">
           <Suspense fallback={<ArenaLoading label="Loading character lab" />}>
             <ArenaPreview
+              key={`${labMapId}:${labView}:${labLevel}`}
               session={session}
+              currentPlayer={labView === "fps" ? session.players[0] : undefined}
+              view={labView}
+              suppressHint={labView === "fps"}
               debugOverlay
               debugLabel={`${count}-player character stress`}
               quality={labQuality}
@@ -873,7 +944,7 @@ function GyakutenEigoHome({ onOpenGame, onJoinGame }: { onOpenGame: () => void; 
         </div>
         <div className="mode-card-grid">
           <article className="mode-card flag-mode-card"><span>01</span><h3>Flag Mode</h3><p>Red delivers and protects the flag. Blue defends and captures. The scoreboard keeps the objective visible.</p></article>
-          <article className="mode-card zombie-mode-card"><span>02</span><h3>Zombie Mode</h3><p>Humans hold the arena while conversions change the teams. Roles are visible in the game and scoreboards.</p></article>
+          <article className="mode-card zombie-mode-card"><span>02</span><h3>Zombie Mode</h3><p>Red Zombies shoot to convert. Blue Humans answer questions for running energy and survive without weapons.</p></article>
           <article className="mode-card classic-mode-card"><span>03</span><h3>Classic Practice</h3><p>A simple team round for introducing the controls, reviewing a set, or running a quick warmup.</p></article>
         </div>
       </section>
@@ -1058,12 +1129,45 @@ function TeacherAuth({
 }
 
 function TeacherDashboard({ teacher, onLogout }: { teacher: TeacherUser; onLogout: () => void }) {
-  const [tab, setTab] = useState<"home" | "quizzes" | "sessions" | "reports">("home");
+  const [tab, setTab] = useState<"home" | "quizzes" | "sessions" | "reports" | "settings">("home");
   const [data, setData] = useState<DashboardPayload>({ classes: [], quizSets: [], sessions: [] });
   const [selectedSession, setSelectedSession] = useState<GameSession | null>(null);
+  const [launchQuizId, setLaunchQuizId] = useState("");
   const [report, setReport] = useState<SessionReport | null>(null);
   const [isSocketReconnecting, setIsSocketReconnecting] = useState(false);
+  const [gamePreferences, setGamePreferences] = useState<GamePreferences>(() => readGamePreferences());
   const status = useAsyncMessage();
+
+  const updateGamePreferences = (update: Partial<GamePreferences>) => {
+    setGamePreferences((current) => {
+      const next = { ...current, ...update };
+      writeGamePreferences(next);
+      return next;
+    });
+  };
+
+  useEffect(() => {
+    gameAudio.setMuted(!gamePreferences.soundEnabled);
+    gameAudio.setSfxVolume(gamePreferences.sfxVolume);
+    gameAudio.setMusicVolume(gamePreferences.musicVolume);
+    if (gamePreferences.soundEnabled) gameAudio.warm();
+    return () => gameAudio.setMuted(false);
+  }, [gamePreferences.soundEnabled, gamePreferences.sfxVolume, gamePreferences.musicVolume]);
+
+  useEffect(() => {
+    const syncBgm = () => {
+      gameAudio.setBgmActive(Boolean(
+        (tab === "settings" || (tab === "sessions" && selectedSession?.status === "active"))
+        && document.visibilityState === "visible"
+      ));
+    };
+    syncBgm();
+    document.addEventListener("visibilitychange", syncBgm);
+    return () => {
+      document.removeEventListener("visibilitychange", syncBgm);
+      gameAudio.setBgmActive(false);
+    };
+  }, [tab, selectedSession?.id, selectedSession?.status]);
 
   const refresh = useCallback(async () => {
     try {
@@ -1085,13 +1189,10 @@ function TeacherDashboard({ teacher, onLogout }: { teacher: TeacherUser; onLogou
   useEffect(() => {
     if (!selectedSession) return;
     const socket: Socket = io(getApiUrl());
-    attachTransportDiagnostics(socket, "teacher");
+    const roomJoinPayload = { code: selectedSession.sessionCode, teacherToken: getTeacherToken() };
     socket.on("connect", () => {
       setIsSocketReconnecting(false);
-      socket.emit("join_session_room", {
-        code: selectedSession.sessionCode,
-        teacherToken: getTeacherToken()
-      });
+      socket.emit("join_session_room", roomJoinPayload);
     });
     socket.on("connect_error", () => setIsSocketReconnecting(true));
     socket.on("disconnect", () => setIsSocketReconnecting(true));
@@ -1103,18 +1204,19 @@ function TeacherDashboard({ teacher, onLogout }: { teacher: TeacherUser; onLogou
         sessions: current.sessions.map((item) => (item.id === session.id ? session : item))
       }));
     });
-    socket.on("player_state", (payload: PlayerStatePayload) => {
-      setSelectedSession((current) => current ? mergePlayerState(current, payload) : current);
-      setData((current) => ({
+    socket.on("player_state", (payload: { players?: PlayerSession[]; flag?: GameSession["flag"]; recentEvents?: GameSession["events"] }) => {
+      if (!Array.isArray(payload.players)) return;
+      setSelectedSession((current) => current ? {
         ...current,
-        sessions: current.sessions.map((session) =>
-          session.id === selectedSession.id ? mergePlayerState(session, payload) : session
-        )
-      }));
+        players: current.players.map((player) => payload.players?.find((next) => next.id === player.id) ?? player),
+        ...(payload.flag ? { flag: payload.flag } : {}),
+        ...(payload.recentEvents ? { events: payload.recentEvents } : {})
+      } : current);
     });
     return () => {
-      setIsSocketReconnecting(false);
+      socket.removeAllListeners();
       socket.disconnect();
+      setIsSocketReconnecting(false);
     };
   }, [selectedSession?.sessionCode]);
 
@@ -1132,6 +1234,10 @@ function TeacherDashboard({ teacher, onLogout }: { teacher: TeacherUser; onLogou
         </button>
         <button aria-current={tab === "reports" ? "page" : undefined} className={tab === "reports" ? "active" : ""} onClick={() => setTab("reports")}>
           Reports
+        </button>
+        <button aria-current={tab === "settings" ? "page" : undefined} className={tab === "settings" ? "active" : ""} onClick={() => setTab("settings")}>
+          <Settings size={17} aria-hidden="true" />
+          Settings
         </button>
       </aside>
 
@@ -1155,7 +1261,17 @@ function TeacherDashboard({ teacher, onLogout }: { teacher: TeacherUser; onLogou
           </p>
         )}
 
-        {tab === "home" && <TeacherFolders data={data} onTab={setTab} />}
+        {tab === "home" && (
+          <TeacherFolders
+            data={data}
+            onEditQuiz={() => setTab("quizzes")}
+            onPlayLive={(quizSetId) => {
+              setLaunchQuizId(quizSetId);
+              setSelectedSession(null);
+              setTab("sessions");
+            }}
+          />
+        )}
         {tab === "quizzes" && <QuizManager data={data} onRefresh={refresh} />}
         {tab === "sessions" && (
           <SessionManager
@@ -1165,10 +1281,18 @@ function TeacherDashboard({ teacher, onLogout }: { teacher: TeacherUser; onLogou
             onRefresh={refresh}
             onReport={setReport}
             onOpenReports={() => setTab("reports")}
+            initialQuizSetId={launchQuizId}
           />
         )}
         {tab === "reports" && (
           <ReportsPanel sessions={data.sessions} report={report} setReport={setReport} setTab={setTab} />
+        )}
+        {tab === "settings" && (
+          <GamePreferencesPanel
+            preferences={gamePreferences}
+            onChange={updateGamePreferences}
+            audioOnly
+          />
         )}
 
         {activeSessions.length > 0 && (
@@ -1179,6 +1303,7 @@ function TeacherDashboard({ teacher, onLogout }: { teacher: TeacherUser; onLogou
                 className={selectedSession?.id === session.id ? "active session-chip" : "session-chip"}
                 onClick={() => {
                   setSelectedSession(session);
+                  setLaunchQuizId(session.quizSetId);
                   setTab("sessions");
                 }}
               >
@@ -1193,12 +1318,20 @@ function TeacherDashboard({ teacher, onLogout }: { teacher: TeacherUser; onLogou
   );
 }
 
-function TeacherFolders({ data, onTab }: { data: DashboardPayload; onTab: (tab: "quizzes" | "sessions") => void }) {
+function TeacherFolders({
+  data,
+  onEditQuiz,
+  onPlayLive
+}: {
+  data: DashboardPayload;
+  onEditQuiz: () => void;
+  onPlayLive: (quizSetId: string) => void;
+}) {
   return (
     <section className="teacher-folders">
       <div className="folders-heading">
         <h2>Folders</h2>
-        <button className="folder-new" onClick={() => onTab("quizzes")}>New <Plus size={22} aria-hidden="true" /></button>
+        <button className="folder-new" onClick={onEditQuiz}>New <Plus size={22} aria-hidden="true" /></button>
       </div>
       <div className="folder-chips" aria-label="Quiz folders">
         <button className="active"><Folder size={15} aria-hidden="true" />All kits</button>
@@ -1211,13 +1344,13 @@ function TeacherFolders({ data, onTab }: { data: DashboardPayload; onTab: (tab: 
             <div className="quiz-cover"><BookOpen size={26} aria-hidden="true" /></div>
             <div><h3>{quiz.title}</h3><small>{quiz.questions.length} questions · Created {new Date(quiz.createdAt).toLocaleDateString()}</small></div>
             <div className="folder-row-actions">
-              <button className="play-live" onClick={() => onTab("sessions")}>Play Live</button>
-              <button className="edit-set" onClick={() => onTab("quizzes")}>Edit Set</button>
+              <button className="play-live" onClick={() => onPlayLive(quiz.id)}><Play size={17} aria-hidden="true" />Play Live</button>
+              <button className="edit-set" onClick={onEditQuiz}>Edit Set</button>
             </div>
           </article>
         ))}
         {data.quizSets.length === 0 && (
-          <div className="folder-empty"><BookOpen size={34} aria-hidden="true" /><h3>Your quiz sets will appear here</h3><p>Create the first set, then launch it live for your class.</p><button className="folder-new" onClick={() => onTab("quizzes")}>New Quiz <Plus size={18} aria-hidden="true" /></button></div>
+          <div className="folder-empty"><BookOpen size={34} aria-hidden="true" /><h3>Your quiz sets will appear here</h3><p>Create the first set, then launch it live for your class.</p><button className="folder-new" onClick={onEditQuiz}>New Quiz <Plus size={18} aria-hidden="true" /></button></div>
         )}
       </div>
     </section>
@@ -1529,7 +1662,8 @@ function SessionManager({
   setSelectedSession,
   onRefresh,
   onReport,
-  onOpenReports
+  onOpenReports,
+  initialQuizSetId
 }: {
   data: DashboardPayload;
   selectedSession: GameSession | null;
@@ -1537,8 +1671,9 @@ function SessionManager({
   onRefresh: () => Promise<void>;
   onReport: (report: SessionReport | null) => void;
   onOpenReports: () => void;
+  initialQuizSetId?: string;
 }) {
-  const [quizSetId, setQuizSetId] = useState(data.quizSets[0]?.id ?? "");
+  const [quizSetId, setQuizSetId] = useState(initialQuizSetId || data.quizSets[0]?.id || "");
   const [settings, setSettings] = useState<SessionSettings>(DEFAULT_SESSION_SETTINGS);
   const [settingInputs, setSettingInputs] = useState<Record<SessionNumberField, string>>(() =>
     createSessionSettingInputs(DEFAULT_SESSION_SETTINGS)
@@ -1546,11 +1681,16 @@ function SessionManager({
   const [invalidSettings, setInvalidSettings] = useState<Partial<Record<SessionNumberField, boolean>>>({});
   const [isCreatingSession, setIsCreatingSession] = useState(false);
   const [isStartingSession, setIsStartingSession] = useState(false);
+  const [isEndingRound, setIsEndingRound] = useState(false);
   const [isEndingSession, setIsEndingSession] = useState(false);
   const [isAddingBot, setIsAddingBot] = useState(false);
+  const [removingPlayerId, setRemovingPlayerId] = useState<string | null>(null);
+  const [botCount, setBotCount] = useState(4);
+  const [botDifficulty, setBotDifficulty] = useState<BotDifficulty>(DEFAULT_SESSION_SETTINGS.botDifficulty);
   const [isJoinLinkCopied, setIsJoinLinkCopied] = useState(false);
   const [isEndConfirmOpen, setIsEndConfirmOpen] = useState(false);
   const [isProjectorOpen, setIsProjectorOpen] = useState(false);
+  const [selectedPresetName, setSelectedPresetName] = useState("Classic Class");
   const endSessionTriggerRef = useRef<HTMLButtonElement>(null);
   const endSessionDialogRef = useRef<HTMLDivElement>(null);
   const keepSessionOpenRef = useRef<HTMLButtonElement>(null);
@@ -1559,6 +1699,11 @@ function SessionManager({
   const status = useAsyncMessage();
   const remainingSeconds = useRoundRemaining(selectedSession);
   const selectedMap = getArenaMap(settings.mapId);
+  const selectedQuiz = data.quizSets.find((quiz) => quiz.id === quizSetId);
+  const sessionQuiz = selectedSession
+    ? data.quizSets.find((quiz) => quiz.id === selectedSession.quizSetId)
+    : undefined;
+  const displayedPresetName = selectedSession ? getSessionPresetName(selectedSession.settings) : selectedPresetName;
   const studentJoinLink = selectedSession
     ? buildStudentJoinUrl(window.location.origin, selectedSession.sessionCode)
     : "";
@@ -1567,6 +1712,16 @@ function SessionManager({
   useEffect(() => {
     if (!quizSetId && data.quizSets[0]) setQuizSetId(data.quizSets[0].id);
   }, [data.quizSets, quizSetId]);
+
+  useEffect(() => {
+    if (selectedSession || !initialQuizSetId || !data.quizSets.some((quiz) => quiz.id === initialQuizSetId)) return;
+    setQuizSetId(initialQuizSetId);
+  }, [data.quizSets, initialQuizSetId, selectedSession]);
+
+  useEffect(() => {
+    if (!selectedSession) return;
+    setBotDifficulty(selectedSession.settings.botDifficulty ?? DEFAULT_SESSION_SETTINGS.botDifficulty);
+  }, [selectedSession?.id, selectedSession?.settings.botDifficulty]);
 
   useEffect(() => {
     if (!isEndConfirmOpen) return;
@@ -1645,14 +1800,22 @@ function SessionManager({
 
   const hasInvalidSettings = Object.values(invalidSettings).some(Boolean);
 
-  const applyPreset = (presetSettings: SessionSettings) => {
-    const nextSettings = { ...presetSettings, mapId: settings.mapId };
+  const applyPreset = (presetName: string, presetSettings: SessionSettings) => {
+    const nextSettings = {
+      ...presetSettings,
+      mapId: settings.mapId,
+      gameMode: settings.gameMode,
+      teamAssignment: settings.teamAssignment,
+      characterCustomization: settings.characterCustomization
+    };
     setSettings(nextSettings);
     setSettingInputs(createSessionSettingInputs(nextSettings));
     setInvalidSettings({});
+    setSelectedPresetName(presetName);
   };
 
   const updateNumberSetting = (field: SessionNumberField, rawValue: string) => {
+    setSelectedPresetName("Custom Game");
     setSettingInputs((current) => ({ ...current, [field]: rawValue }));
     const fieldConfig = sessionNumberFields.find((item) => item.name === field);
     const trimmedValue = rawValue.trim();
@@ -1702,7 +1865,13 @@ function SessionManager({
     if (!selectedSession || isStartingSession) return;
     const startCheck = canStartRound(selectedSession);
     if (!startCheck.ok) {
-      status.setError(startCheck.reason === "session_ended" ? "This session has ended." : "Add at least one student before starting.");
+      status.setError(
+        startCheck.reason === "session_ended"
+          ? "This session has ended."
+          : selectedSession.players.some((player) => player.isBot)
+            ? "Bots are ready for testing. Add at least one learner to begin."
+            : "Add at least one learner to begin."
+      );
       return;
     }
     status.clear();
@@ -1742,14 +1911,19 @@ function SessionManager({
   const teamTotals = selectedSession ? getTeamTotals(selectedSession.players) : { blue: 0, red: 0 };
   const zombieCounts = selectedSession ? getZombieCounts(selectedSession.players) : { humans: 0, zombies: 0 };
   const activePlayers = selectedSession?.players.filter((player) => player.connectionState !== "disconnected" && player.isAlive).length ?? 0;
+  const learnerPlayers = selectedSession?.players.filter((player) => !player.isBot) ?? [];
+  const botPlayers = selectedSession?.players.filter((player) => player.isBot) ?? [];
+  const activeLearners = learnerPlayers.filter((player) => player.connectionState !== "disconnected" && player.isAlive).length;
   const startCheck = selectedSession ? canStartRound(selectedSession) : undefined;
   const startBlockedReason =
     startCheck && !startCheck.ok
       ? startCheck.reason === "session_ended"
         ? "This session has ended."
-        : "Add at least one student before starting."
+        : botPlayers.length > 0
+          ? "Bots are ready for testing. Add at least one learner to begin."
+          : "Add at least one learner to begin."
       : "";
-  const shouldShowSetup = !selectedSession || selectedSession.status === "ended";
+  const shouldShowSetup = !selectedSession;
   const isSessionEnded = selectedSession?.status === "ended";
   const visibleNumberFields = sessionNumberFields.filter((field) => {
     if (settings.gameMode === "flag") return field.name !== "initialZombieCount";
@@ -1757,19 +1931,68 @@ function SessionManager({
     return field.name !== "flagHoldSeconds" && field.name !== "initialZombieCount";
   });
 
-  const addBot = async () => {
-    if (!selectedSession || isAddingBot) return;
+  const availableBotSlots = selectedSession ? Math.max(0, selectedSession.maxPlayers - selectedSession.players.length) : 0;
+
+  const addBots = async () => {
+    if (!selectedSession || isAddingBot || availableBotSlots <= 0) return;
+    const count = Math.max(1, Math.min(availableBotSlots, Math.floor(botCount)));
     status.clear();
     setIsAddingBot(true);
     try {
-      const payload = (await teacherApi.addBot(selectedSession.sessionCode)) as { session: GameSession };
+      const payload = (await teacherApi.addBots(selectedSession.sessionCode, { count, difficulty: botDifficulty })) as { session: GameSession; bots: PlayerSession[] };
       setSelectedSession(payload.session);
       await onRefresh();
-      status.setMessage("Bot added for testing.");
+      status.setMessage(`${payload.bots.length} ${botDifficulty} test bot${payload.bots.length === 1 ? "" : "s"} added.`);
     } catch (err) {
       status.report(err);
     } finally {
       setIsAddingBot(false);
+    }
+  };
+
+  const endRound = async () => {
+    if (!selectedSession || selectedSession.status !== "active" || selectedSession.settings.gameMode === "zombie" || isEndingRound) return;
+    if (!window.confirm("End this round early? The room will stay open and the next round preparation will begin.")) return;
+    status.clear();
+    setIsEndingRound(true);
+    try {
+      const payload = (await teacherApi.endRound(selectedSession.sessionCode)) as {
+        session: GameSession;
+        report?: SessionReport;
+      };
+      setSelectedSession(payload.session);
+      if (payload.report) onReport(payload.report);
+      await onRefresh();
+      status.setMessage(payload.session.status === "ended"
+        ? "Final round ended. The learning report is ready."
+        : "Round ended. The next preparation period will begin shortly.");
+    } catch (err) {
+      status.report(err);
+    } finally {
+      setIsEndingRound(false);
+    }
+  };
+
+  const removePlayer = async (playerId: string) => {
+    if (!selectedSession || removingPlayerId) return;
+    const player = selectedSession.players.find((candidate) => candidate.id === playerId);
+    if (!player) return;
+    const confirmed = window.confirm(
+      `Remove ${player.nickname} from this game? They can join again as a new player.`
+    );
+    if (!confirmed) return;
+
+    status.clear();
+    setRemovingPlayerId(playerId);
+    try {
+      const payload = await teacherApi.removePlayer(selectedSession.sessionCode, playerId) as { session: GameSession };
+      setSelectedSession(payload.session);
+      await onRefresh();
+      status.setMessage(`${player.nickname} removed from the game.`);
+    } catch (err) {
+      status.report(err);
+    } finally {
+      setRemovingPlayerId(null);
     }
   };
 
@@ -1859,154 +2082,176 @@ function SessionManager({
 
   return (
     <div className={shouldShowSetup ? "two-column session-grid" : "session-grid live-first-grid"}>
-      <form className={shouldShowSetup ? "panel form-panel" : "panel form-panel session-setup-minimized"} onSubmit={createSession}>
-        <h2>Create Session</h2>
-        {!shouldShowSetup && (
-          <p className="setup-lock-note">Live room is in focus. End this session before creating another room.</p>
+      <form className={shouldShowSetup ? "panel form-panel live-game-setup" : "panel form-panel session-setup-minimized"} onSubmit={createSession}>
+        {shouldShowSetup ? (
+          <>
+            <header className="setup-flow-header">
+              <span className="flow-step">Step 2 of 4</span>
+              <h2>Start a Live Game</h2>
+              <div className="setup-quiz-summary">
+                <BookOpen size={24} aria-hidden="true" />
+                <span>Quiz</span>
+                <strong>{selectedQuiz?.title ?? "Choose a quiz from Folders"}</strong>
+                <small>{selectedQuiz?.questions.length ?? 0} Questions</small>
+              </div>
+            </header>
+
+            <section className="setup-choice-section" aria-labelledby="preset-title">
+              <div className="setup-section-heading">
+                <span>1</span>
+                <div><h3 id="preset-title">Choose a game pace</h3><small>Classic Class is ready to go.</small></div>
+              </div>
+              <div className="preset-grid" aria-label="Game presets">
+                {SESSION_PRESETS.map((preset) => {
+                  const selected = selectedPresetName === preset.name;
+                  return (
+                    <button
+                      type="button"
+                      key={preset.name}
+                      className={selected ? "selected" : ""}
+                      aria-pressed={selected}
+                      onClick={() => applyPreset(preset.name, preset.settings)}
+                    >
+                      {selected && <span className="preset-check" aria-hidden="true"><Check size={18} /></span>}
+                      <strong>{preset.name}</strong>
+                      <small>{preset.description}</small>
+                      {preset.name === "Classic Class" && <em>Recommended</em>}
+                    </button>
+                  );
+                })}
+              </div>
+            </section>
+
+            <section className="setup-choice-section" aria-labelledby="arena-title">
+              <div className="setup-section-heading">
+                <span>2</span>
+                <div><h3 id="arena-title">Choose Arena</h3><small>Desert Citadel is selected by default.</small></div>
+              </div>
+              <div className="arena-choice-grid">
+                {ARENA_MAPS.map((map) => {
+                  const selected = settings.mapId === map.id;
+                  return (
+                    <button
+                      type="button"
+                      key={map.id}
+                      className={`arena-choice map-${map.id}${selected ? " selected" : ""}`}
+                      aria-pressed={selected}
+                      onClick={() => setSettings({ ...settings, mapId: map.id })}
+                    >
+                      <span className="arena-choice-art" aria-hidden="true"><Target size={28} /></span>
+                      <span><strong>{map.title}</strong><small>{map.districts.slice(0, 2).join(" · ")}</small></span>
+                      {selected && <Check className="arena-selected-check" size={20} aria-hidden="true" />}
+                    </button>
+                  );
+                })}
+              </div>
+            </section>
+
+            <details className="advanced-settings">
+              <summary><span><Settings size={19} aria-hidden="true" />Advanced Settings</span><small>Optional</small></summary>
+              <div className="advanced-settings-content">
+                <fieldset>
+                  <legend>Game Mode</legend>
+                  <label>
+                    <span>Mode</span>
+                    <select
+                      value={settings.gameMode}
+                      onChange={(event) => {
+                        const gameMode = event.target.value as SessionSettings["gameMode"];
+                        const nextSettings: SessionSettings = {
+                          ...settings,
+                          gameMode,
+                          roundDurationSeconds: gameMode === "flag" ? FLAG_MODE_DEFAULTS.roundDurationSeconds : settings.roundDurationSeconds
+                        };
+                        setSettings(nextSettings);
+                        setSettingInputs(createSessionSettingInputs(nextSettings));
+                      }}
+                    >
+                      <option value="flag">Flag Mode</option>
+                      <option value="zombie">Zombie Mode</option>
+                      <option value="classic">Classic Tag Practice</option>
+                    </select>
+                  </label>
+                </fieldset>
+
+                {settings.gameMode === "flag" && (
+                  <fieldset>
+                    <legend>Teams</legend>
+                    <label>
+                      <span>Team Assignment</span>
+                      <select
+                        value={settings.teamAssignment}
+                        onChange={(event) => setSettings({ ...settings, teamAssignment: event.target.value as SessionSettings["teamAssignment"] })}
+                      >
+                        <option value="players_choose">Players Choose</option>
+                        <option value="random">Random Teams</option>
+                      </select>
+                    </label>
+                  </fieldset>
+                )}
+
+                {sessionSettingGroups.map((group) => {
+                  const fields = group.fields
+                    .map((name) => sessionNumberFields.find((field) => field.name === name))
+                    .filter((field): field is (typeof sessionNumberFields)[number] => Boolean(field && visibleNumberFields.includes(field)));
+                  if (fields.length === 0) return null;
+                  return (
+                    <fieldset key={group.title}>
+                      <legend>{group.title}</legend>
+                      <div className="session-setting-grid">
+                        {fields.map((field) => {
+                          const errorId = `session-setting-${field.name}-error`;
+                          const unit = "unit" in field ? field.unit : undefined;
+                          return (
+                            <label key={field.name} title={field.help}>
+                              <span>{field.label}{unit ? ` (${unit})` : ""}</span>
+                              <input
+                                type="number"
+                                min={field.min}
+                                max={field.max}
+                                step={"step" in field ? field.step : undefined}
+                                inputMode="numeric"
+                                value={settingInputs[field.name]}
+                                aria-invalid={invalidSettings[field.name] ? "true" : undefined}
+                                aria-describedby={invalidSettings[field.name] ? errorId : undefined}
+                                onChange={(event) => updateNumberSetting(field.name, event.target.value)}
+                              />
+                              {invalidSettings[field.name] && <small id={errorId} className="field-error" role="alert">Use {field.min}–{field.max}{unit ? ` ${unit}` : ""}.</small>}
+                            </label>
+                          );
+                        })}
+                      </div>
+                    </fieldset>
+                  );
+                })}
+
+                <fieldset>
+                  <legend>Player Experience</legend>
+                  <label className="toggle-row"><input type="checkbox" checked={settings.deadPlayersCanPractice} onChange={(event) => setSettings({ ...settings, deadPlayersCanPractice: event.target.checked })} />Practice questions while out</label>
+                  <label className="toggle-row"><input type="checkbox" checked={settings.deadPlayersEarnMoney} onChange={(event) => setSettings({ ...settings, deadPlayersEarnMoney: event.target.checked })} />Earn money while out</label>
+                  <label className="toggle-row"><input type="checkbox" checked={settings.characterCustomization.enabled} onChange={(event) => setSettings({ ...settings, characterCustomization: { ...settings.characterCustomization, enabled: event.target.checked } })} />Character creator</label>
+                  <label className="toggle-row"><input type="checkbox" checked={settings.characterCustomization.uploadsEnabled} disabled={!settings.characterCustomization.enabled} onChange={(event) => setSettings({ ...settings, characterCustomization: { ...settings.characterCustomization, uploadsEnabled: event.target.checked } })} />Artwork stickers</label>
+                  <label className="toggle-row"><input type="checkbox" checked={settings.characterCustomization.persistAcrossSessions} disabled={!settings.characterCustomization.enabled} onChange={(event) => setSettings({ ...settings, characterCustomization: { ...settings.characterCustomization, persistAcrossSessions: event.target.checked } })} />Remember character choices</label>
+                </fieldset>
+              </div>
+            </details>
+
+            {hasInvalidSettings && <p className="error-text">Check the highlighted settings before creating the game.</p>}
+            <div className="setup-create-bar">
+              <span>{selectedPresetName} · {selectedMap.title}</span>
+              <button className="primary create-game-button" type="submit" disabled={!quizSetId || hasInvalidSettings || isCreatingSession}>
+                <Play size={20} aria-hidden="true" />
+                {isCreatingSession ? "Creating Game..." : "Create Game"}
+              </button>
+            </div>
+            <StatusMessages error={status.error} message={status.message} />
+          </>
+        ) : (
+          <p className="setup-lock-note">Live room in progress.</p>
         )}
-        <label>
-          Quiz Set
-          <select value={quizSetId} onChange={(event) => setQuizSetId(event.target.value)}>
-            {data.quizSets.map((quiz) => (
-              <option key={quiz.id} value={quiz.id}>
-                {quiz.title} ({quiz.questions.length})
-              </option>
-            ))}
-          </select>
-        </label>
-        <label>
-          Game Mode
-          <select
-            value={settings.gameMode}
-            onChange={(event) => {
-              const gameMode = event.target.value as SessionSettings["gameMode"];
-              const nextSettings: SessionSettings = {
-                ...settings,
-                gameMode,
-                roundDurationSeconds: gameMode === "flag" ? FLAG_MODE_DEFAULTS.roundDurationSeconds : settings.roundDurationSeconds
-              };
-              setSettings(nextSettings);
-              setSettingInputs(createSessionSettingInputs(nextSettings));
-            }}
-          >
-            <option value="flag">Flag Mode</option>
-            <option value="zombie">Zombie Mode</option>
-            <option value="classic">Classic Tag Practice</option>
-          </select>
-        </label>
-        <label>
-          Battlefield Map
-          <select
-            value={settings.mapId}
-            onChange={(event) => setSettings({ ...settings, mapId: event.target.value as ArenaMapId })}
-          >
-            {ARENA_MAPS.map((map) => (
-              <option key={map.id} value={map.id}>
-                {map.title}
-              </option>
-            ))}
-          </select>
-          <small className="field-help">{selectedMap.description}</small>
-        </label>
-        <div className={`map-selection-card map-${selectedMap.id}`} aria-live="polite">
-          <div className="map-selection-card__eyebrow">Selected battlefield</div>
-          <strong>{selectedMap.title}</strong>
-          <span>{selectedMap.districts.slice(0, 3).join(" · ")}</span>
-          {selectedMap.id === "iron_junction" && <small>Generated from the Iron Junction industrial railway brief · three lanes · balanced East/West spawns</small>}
-        </div>
-        {settings.gameMode === "flag" && (
-          <label>
-            Team Assignment
-            <select
-              value={settings.teamAssignment}
-              onChange={(event) => setSettings({ ...settings, teamAssignment: event.target.value as SessionSettings["teamAssignment"] })}
-            >
-              <option value="players_choose">Players Choose</option>
-              <option value="random">Randomize Teams</option>
-            </select>
-          </label>
-        )}
-        <div className="preset-grid" aria-label="Session presets">
-          {SESSION_PRESETS.map((preset) => (
-            <button type="button" key={preset.name} onClick={() => { applyPreset(preset.settings); status.setMessage(`${preset.name} applied: ${preset.description}`); }}>
-              <strong>{preset.name}</strong>
-              <small>{preset.description}</small>
-            </button>
-          ))}
-        </div>
-        <div className="session-setting-groups">
-          {sessionSettingGroups.map((group) => {
-            const fields = group.fields
-              .map((name) => sessionNumberFields.find((field) => field.name === name))
-              .filter((field): field is (typeof sessionNumberFields)[number] => Boolean(field && visibleNumberFields.includes(field)));
-            if (fields.length === 0) return null;
-            return (
-              <fieldset key={group.title}>
-                <legend>{group.title}</legend>
-                <p>{group.description}</p>
-                <div className="session-setting-grid">
-                  {fields.map((field) => {
-                    const errorId = `session-setting-${field.name}-error`;
-                    const unit = "unit" in field ? field.unit : undefined;
-                    return (
-                      <label key={field.name}>
-                        <span>{field.label}{unit ? ` (${unit})` : ""}</span>
-                        <input
-                          type="number"
-                          min={field.min}
-                          max={field.max}
-                          step={"step" in field ? field.step : undefined}
-                          inputMode="numeric"
-                          value={settingInputs[field.name]}
-                          aria-invalid={invalidSettings[field.name] ? "true" : undefined}
-                          aria-describedby={invalidSettings[field.name] ? errorId : undefined}
-                          onChange={(event) => updateNumberSetting(field.name, event.target.value)}
-                        />
-                        <small>{field.help}</small>
-                        {invalidSettings[field.name] && <small id={errorId} className="field-error" role="alert">Use a value from {field.min} to {field.max}{unit ? ` ${unit}` : ""}.</small>}
-                      </label>
-                    );
-                  })}
-                </div>
-              </fieldset>
-            );
-          })}
-        </div>
-        <label className="toggle-row">
-          <input
-            type="checkbox"
-            checked={settings.deadPlayersCanPractice}
-            onChange={(event) => setSettings({ ...settings, deadPlayersCanPractice: event.target.checked })}
-          />
-          Allow practice questions while out for the round
-        </label>
-        <label className="toggle-row">
-          <input
-            type="checkbox"
-            checked={settings.deadPlayersEarnMoney}
-            onChange={(event) => setSettings({ ...settings, deadPlayersEarnMoney: event.target.checked })}
-          />
-          Students out for the round can earn money
-        </label>
-        <fieldset className="customization-settings">
-          <legend>Lobby Characters</legend>
-          <p>School-safe presets are always available. Image uploads start off.</p>
-          <label className="toggle-row"><input type="checkbox" checked={settings.characterCustomization.enabled} onChange={(event) => setSettings({ ...settings, characterCustomization: { ...settings.characterCustomization, enabled: event.target.checked } })} />Enable character creator</label>
-          <label className="toggle-row"><input type="checkbox" checked={settings.characterCustomization.uploadsEnabled} disabled={!settings.characterCustomization.enabled} onChange={(event) => setSettings({ ...settings, characterCustomization: { ...settings.characterCustomization, uploadsEnabled: event.target.checked } })} />Allow processed artwork stickers</label>
-          <label className="toggle-row"><input type="checkbox" checked={settings.characterCustomization.presetsOnly} disabled={!settings.characterCustomization.enabled} onChange={(event) => setSettings({ ...settings, characterCustomization: { ...settings.characterCustomization, presetsOnly: event.target.checked } })} />Approved presets only</label>
-          <label className="toggle-row"><input type="checkbox" checked={settings.characterCustomization.persistAcrossSessions} disabled={!settings.characterCustomization.enabled} onChange={(event) => setSettings({ ...settings, characterCustomization: { ...settings.characterCustomization, persistAcrossSessions: event.target.checked } })} />Let this browser remember non-image choices</label>
-          <label className="toggle-row"><input type="checkbox" checked={false} disabled />AI designs (secure provider not configured)</label>
-        </fieldset>
-        {hasInvalidSettings && <p className="error-text">Check the number fields before starting a game.</p>}
-        <button className="primary" type="submit" disabled={!shouldShowSetup || !quizSetId || hasInvalidSettings || isCreatingSession}>
-          <Play size={18} aria-hidden="true" />
-          {isCreatingSession ? "Working..." : "Create Session"}
-        </button>
-        <StatusMessages error={status.error} message={status.message} />
       </form>
 
-      <div className={`panel live-session${selectedSession ? "" : " empty-live-session"}`}>
-        <h2>Live Session Control</h2>
+      <div className={`panel live-session${selectedSession ? "" : " empty-live-session"}${selectedSession?.status === "waiting" ? " waiting-room-panel" : ""}`}>
         {selectedSession && <GameAnnouncementOverlay announcement={selectedSession.announcement} serverTime={selectedSession.serverTime} />}
         {selectedSession ? isSessionEnded ? (
           <div className="session-ended-summary">
@@ -2014,181 +2259,219 @@ function SessionManager({
             <h3>{gameModeLabel(selectedSession.settings.gameMode)} has ended</h3>
             <p>The room is closed. Students can view their summary, and the full class learning report is ready.</p>
             <dl>
-              <div><dt>Final players</dt><dd>{selectedSession.players.length}</dd></div>
+              <div><dt>Final learners</dt><dd>{learnerPlayers.length}</dd></div>
+              <div><dt>Test bots</dt><dd>{botPlayers.length}</dd></div>
               <div><dt>Final outcome</dt><dd>{getModeScoreSummary(selectedSession)}</dd></div>
               <div><dt>Top learner</dt><dd>{topLearner?.nickname ?? "No answers recorded"}</dd></div>
             </dl>
             <div className="button-row">
               <button className="primary" onClick={onOpenReports}><Download size={18} aria-hidden="true" />View Learning Report</button>
-              <button onClick={() => setSelectedSession(null)}>Create Another Session</button>
+              <button onClick={() => setSelectedSession(null)}>Create Another Game</button>
+            </div>
+          </div>
+        ) : selectedSession.status === "waiting" ? (
+          <div className="teacher-waiting-room">
+            <header className="waiting-room-header">
+              <div>
+                <span className="flow-step">Step 3 of 4 · Invite Students</span>
+                <h2>{sessionQuiz?.title ?? "Live Game"}</h2>
+                <p>{arenaMapLabel(selectedSession.settings.mapId)} · {displayedPresetName} · {selectedSession.settings.roundCount} Rounds · {formatDuration(selectedSession.settings.roundDurationSeconds)} per round</p>
+              </div>
+              <div className="waiting-header-actions">
+                <details className="waiting-settings-summary">
+                  <summary>View Game Settings</summary>
+                  <dl>
+                    <div><dt>Mode</dt><dd>{gameModeLabel(selectedSession.settings.gameMode)}</dd></div>
+                    <div><dt>Teams</dt><dd>{selectedSession.settings.teamAssignment === "players_choose" ? "Players Choose" : "Random Teams"}</dd></div>
+                    <div><dt>Players</dt><dd>Up to {selectedSession.maxPlayers}</dd></div>
+                  </dl>
+                </details>
+                <button type="button" className="projector-button" onClick={() => setIsProjectorOpen(true)}>
+                  <Eye size={18} aria-hidden="true" />
+                  Projector View
+                </button>
+                <button ref={endSessionTriggerRef} className="text-button danger-text" onClick={() => setIsEndConfirmOpen(true)} disabled={isEndingSession}>End Game</button>
+              </div>
+            </header>
+
+            <section className="invite-students-panel" aria-labelledby="join-game-title">
+              <div className="invite-code-block">
+                <span id="join-game-title">Join Game</span>
+                <strong>{selectedSession.sessionCode}</strong>
+                <small>Enter this code at {new URL(studentJoinLink).host}/join</small>
+              </div>
+              <div className="invite-link-grid">
+                <div className="invite-link-copy">
+                  <span><Link2 size={17} aria-hidden="true" />Student Join Link</span>
+                  <p>{studentJoinLink.replace(/^https?:\/\//, "")}</p>
+                  <button type="button" onClick={copyStudentJoinLink} aria-label="Copy student join link" aria-live="polite">
+                    {isJoinLinkCopied ? <Check size={18} aria-hidden="true" /> : <Copy size={18} aria-hidden="true" />}
+                    {isJoinLinkCopied ? "✓ Link Copied" : "Copy Link"}
+                  </button>
+                </div>
+                <div className="invite-qr">
+                  <QRCodeSVG
+                    value={studentJoinLink}
+                    size={220}
+                    level="M"
+                    marginSize={2}
+                    title={`Join QuizStrike game ${selectedSession.sessionCode}`}
+                  />
+                  <span>Scan to join</span>
+                </div>
+              </div>
+            </section>
+
+            {isLocalOnlyJoinLink && (
+              <p className="network-share-warning" role="status">
+                This preview link works only on this computer. Use the classroom Wi-Fi address before sharing with students.
+              </p>
+            )}
+
+            <section className="waiting-student-roster" aria-labelledby="students-title" aria-live="polite">
+              <header>
+                <div><h3 id="students-title">Students</h3><span>{learnerPlayers.length} / {selectedSession.maxPlayers} joined</span></div>
+                {botPlayers.length > 0 && <small>{botPlayers.length} bot{botPlayers.length === 1 ? "" : "s"} added</small>}
+              </header>
+              {learnerPlayers.length > 0 ? (
+                <div className="waiting-student-grid">
+                  {learnerPlayers.map((learner) => (
+                    <article key={learner.id}>
+                      <span className={`readiness-dot ${learner.connectionState === "connected" ? "is-connected" : "is-away"}`} aria-hidden="true" />
+                      <strong>{learner.nickname}</strong>
+                      <em className={`team-label team-${learner.team}`}>{learner.team}</em>
+                    </article>
+                  ))}
+                </div>
+              ) : (
+                <p className="waiting-students-empty">Waiting for students…</p>
+              )}
+            </section>
+
+            <details className="waiting-optional-control bot-control-card">
+              <summary><Bot size={19} aria-hidden="true" /><span>+ Add Bots</span><small>{availableBotSlots} seats available</small></summary>
+              <div className="bot-control-fields">
+                <label><span>Number of bots</span><input type="number" min={1} max={Math.max(1, availableBotSlots)} value={botCount} disabled={availableBotSlots === 0 || isAddingBot} onChange={(event) => setBotCount(Math.max(1, Number(event.target.value) || 1))} /></label>
+                <label>
+                  <span>Difficulty</span>
+                  <select value={botDifficulty} disabled={isAddingBot} onChange={(event) => setBotDifficulty(event.target.value as BotDifficulty)}>
+                    <option value="beginner">Beginner</option>
+                    <option value="standard">Standard</option>
+                    <option value="advanced">Advanced</option>
+                  </select>
+                </label>
+                <button type="button" onClick={addBots} disabled={availableBotSlots === 0 || isAddingBot}>
+                  {isAddingBot ? "Adding..." : `Add ${Math.min(botCount, availableBotSlots)} Bot${Math.min(botCount, availableBotSlots) === 1 ? "" : "s"}`}
+                </button>
+              </div>
+            </details>
+
+            <details className="teacher-customization-controls" aria-label="Character customization controls" open={selectedSession.players.some((item) => !item.isBot && item.appearance?.decalAssetId)}>
+              <summary><span><strong>Lobby Characters</strong><small>Optional character and sticker controls</small></span><span className="details-summary-action">Manage</span></summary>
+              <div className="teacher-customization-toggles">
+                <label className="toggle-row"><input type="checkbox" checked={selectedSession.settings.characterCustomization.enabled} onChange={(event) => void updateLiveCustomization({ ...selectedSession.settings.characterCustomization, enabled: event.target.checked })} />Creator enabled</label>
+                <label className="toggle-row"><input type="checkbox" checked={selectedSession.settings.characterCustomization.uploadsEnabled} disabled={!selectedSession.settings.characterCustomization.enabled} onChange={(event) => void updateLiveCustomization({ ...selectedSession.settings.characterCustomization, uploadsEnabled: event.target.checked })} />Artwork uploads</label>
+                <label className="toggle-row"><input type="checkbox" checked={selectedSession.settings.characterCustomization.persistAcrossSessions} disabled={!selectedSession.settings.characterCustomization.enabled} onChange={(event) => void updateLiveCustomization({ ...selectedSession.settings.characterCustomization, persistAcrossSessions: event.target.checked })} />Remember choices</label>
+              </div>
+              <button type="button" onClick={() => void resetAllAppearances()}>Reset Everyone</button>
+              <div className="appearance-moderation-list">
+                {learnerPlayers.map((item) => (
+                  <div key={item.id}><span>{item.nickname}{item.appearance?.decalAssetId ? " · sticker submitted" : ""}</span><span>{item.appearance?.decalAssetId && <button type="button" onClick={() => void removePlayerDecal(item.id)}>Remove Sticker</button>}<button type="button" onClick={() => void clearPlayerAppearance(item.id)}>Clear Player</button></span></div>
+                ))}
+              </div>
+              <TeacherDecalGallery sessionCode={selectedSession.sessionCode} refreshKey={selectedSession.players.map((item) => `${item.id}:${item.appearance?.decalAssetId ?? "none"}`).join("|")} loadAsset={loadTeacherDecal} onRemove={removeDecalAsset} />
+            </details>
+
+            <StatusMessages error={status.error} message={status.message} />
+            <div className="waiting-start-bar">
+              <div>
+                <strong>{learnerPlayers.length > 0 ? `${learnerPlayers.length} student${learnerPlayers.length === 1 ? "" : "s"} ready` : "Waiting for students…"}</strong>
+                {learnerPlayers.length > 0 && <small>Everyone can join until the room is full.</small>}
+              </div>
+              <button className="primary" type="button" onClick={start} disabled={Boolean(startBlockedReason) || isStartingSession}>
+                <Play size={22} aria-hidden="true" />
+                {isStartingSession ? "Starting..." : "Start Game"}
+              </button>
             </div>
           </div>
         ) : (
           <>
+            <header className="live-control-heading">
+              <div><span className="flow-step">Step 4 of 4</span><h2>Live Game Control</h2></div>
+              <div className="button-row">
+                {selectedSession.settings.gameMode !== "zombie" && (
+                  <button
+                    type="button"
+                    onClick={() => void endRound()}
+                    disabled={selectedSession.status !== "active" || isEndingRound || isEndingSession}
+                  >
+                    {isEndingRound ? "Ending Round..." : "End Round"}
+                  </button>
+                )}
+                <button ref={endSessionTriggerRef} onClick={() => setIsEndConfirmOpen(true)} disabled={isEndingSession}>{isEndingSession ? "Working..." : "End Game"}</button>
+              </div>
+            </header>
             <div className="live-summary">
-              <span className={`status-pill status-${selectedSession.status}`}>{isRoundBuyPhase(selectedSession) ? "Buy Phase" : sessionStatusLabel(selectedSession.status)}</span>
+              <span className={`status-pill status-${selectedSession.status}`}>{isRoundPreparationPhase(selectedSession) ? "Preparation" : isZombieSelectionPhase(selectedSession) ? "Choosing Zombies" : sessionStatusLabel(selectedSession.status)}</span>
               <span>{gameModeLabel(selectedSession.settings.gameMode)}</span>
               <span>{arenaMapLabel(selectedSession.settings.mapId)}</span>
               {selectedSession.settings.gameMode === "flag" && <span>Round {selectedSession.currentRound}/{selectedSession.settings.roundCount}</span>}
               <span>Time {formatDuration(remainingSeconds)}</span>
               <span>{activePlayers}/{selectedSession.players.length || 0} active</span>
-              <span>
-                {selectedSession.settings.gameMode === "zombie"
-                  ? `Humans ${zombieCounts.humans} - Zombies ${zombieCounts.zombies}`
-                  : `Blue ${teamTotals.blue} - Red ${teamTotals.red}`}
-              </span>
-              <span>{topLearner ? `Top learner: ${topLearner.nickname}` : "No learners yet"}</span>
+              <span>{activeLearners} learner{activeLearners === 1 ? "" : "s"}</span>
+              {botPlayers.length > 0 && <span>{botPlayers.length} bot{botPlayers.length === 1 ? "" : "s"}</span>}
+              <span>{selectedSession.settings.gameMode === "zombie" ? `Humans ${zombieCounts.humans} - Zombies ${zombieCounts.zombies}` : `Blue ${teamTotals.blue} - Red ${teamTotals.red}`}</span>
             </div>
-            <div className="join-code">
-              <span>Join Code</span>
-              <strong>{selectedSession.sessionCode}</strong>
-            </div>
-            <div className="join-link-share">
-              <div className="join-link-content">
-                <span className="join-link-label"><Link2 size={16} aria-hidden="true" />Student Join Link</span>
-                <div className="join-link-url-row">
-                  <input
-                    aria-label="Student join link"
-                    value={studentJoinLink}
-                    readOnly
-                    onFocus={(event) => event.currentTarget.select()}
-                    onClick={(event) => event.currentTarget.select()}
-                  />
-                  <a href={studentJoinLink} target="_blank" rel="noreferrer" aria-label="Open student join link">Open</a>
-                </div>
-                <small>Students open this link and enter only their name.</small>
-              </div>
-              <button type="button" onClick={copyStudentJoinLink} aria-label="Copy student join link">
-                {isJoinLinkCopied ? <Check size={16} aria-hidden="true" /> : <Copy size={16} aria-hidden="true" />}
-                {isJoinLinkCopied ? "Copied" : "Copy Link"}
-              </button>
-            </div>
-            {isLocalOnlyJoinLink && (
-              <p className="network-share-warning" role="status">
-                This link works only on this computer. For student devices, open this teacher page using the Wi-Fi address shown by the app server, then share the new link.
-              </p>
-            )}
-            <p className="mini-copy">
-              If a player is frozen out, they can answer {RESPAWN_CORRECT_ANSWERS_REQUIRED} correct practice questions to respawn.
-            </p>
-            {selectedSession.status === "waiting" && startBlockedReason && <p className="mini-copy">{startBlockedReason}</p>}
-            <div className="button-row">
-              {selectedSession.status === "waiting" && (
-                <button type="button" className="projector-button" onClick={() => setIsProjectorOpen(true)}>
-                  <Eye size={18} aria-hidden="true" />
-                  Project Waiting Room
-                </button>
-              )}
-              {selectedSession.status === "active" ? (
-                <span className="status-pill status-active">Round Active</span>
-              ) : selectedSession.status === "paused" ? (
-                <span className="status-pill status-paused">{isRoundBuyPhase(selectedSession) ? "Buy phase..." : "Next round starting..."}</span>
-              ) : (
-                <button className="primary" onClick={start} disabled={selectedSession.status === "ended" || Boolean(startBlockedReason) || isStartingSession}>
-                  <Play size={18} aria-hidden="true" />
-                  {isStartingSession ? "Working..." : startBlockedReason ? "Waiting for Students" : "Begin Round"}
-                </button>
-              )}
-              <button ref={endSessionTriggerRef} onClick={() => setIsEndConfirmOpen(true)} disabled={selectedSession.status === "ended" || isEndingSession}>
-                {isEndingSession ? "Working..." : "End Session"}
-              </button>
-              <button onClick={addBot} disabled={selectedSession.players.length >= selectedSession.maxPlayers || isAddingBot}>
-                <Plus size={18} aria-hidden="true" />
-                {isAddingBot ? "Working..." : "Add Bot"}
-              </button>
-            </div>
-            <section className="teacher-customization-controls" aria-label="Character customization controls">
-                <div><h3>Lobby Characters</h3><p>Uploads are room-only and disabled unless you approve them.</p></div>
-                <div className="teacher-customization-toggles">
-                  <label className="toggle-row"><input type="checkbox" checked={selectedSession.settings.characterCustomization.enabled} disabled={selectedSession.status !== "waiting"} onChange={(event) => void updateLiveCustomization({ ...selectedSession.settings.characterCustomization, enabled: event.target.checked })} />Creator enabled</label>
-                  <label className="toggle-row"><input type="checkbox" checked={selectedSession.settings.characterCustomization.uploadsEnabled} disabled={selectedSession.status !== "waiting" || !selectedSession.settings.characterCustomization.enabled} onChange={(event) => void updateLiveCustomization({ ...selectedSession.settings.characterCustomization, uploadsEnabled: event.target.checked })} />Artwork uploads</label>
-                  <label className="toggle-row"><input type="checkbox" checked={selectedSession.settings.characterCustomization.presetsOnly} disabled={selectedSession.status !== "waiting" || !selectedSession.settings.characterCustomization.enabled} onChange={(event) => void updateLiveCustomization({ ...selectedSession.settings.characterCustomization, presetsOnly: event.target.checked })} />Presets only</label>
-                  <label className="toggle-row"><input type="checkbox" checked={selectedSession.settings.characterCustomization.persistAcrossSessions} disabled={selectedSession.status !== "waiting" || !selectedSession.settings.characterCustomization.enabled} onChange={(event) => void updateLiveCustomization({ ...selectedSession.settings.characterCustomization, persistAcrossSessions: event.target.checked })} />Remember choices</label>
-                  <label className="toggle-row"><input type="checkbox" checked={false} disabled />AI unavailable</label>
-                </div>
-                <button type="button" onClick={() => void resetAllAppearances()}>Reset Everyone</button>
-                <div className="appearance-moderation-list">
-                  {selectedSession.players.filter((item) => !item.isBot).map((item) => (
-                    <div key={item.id}><span>{item.nickname}{item.appearance?.decalAssetId ? " · sticker submitted" : ""}</span><span>{item.appearance?.decalAssetId && <button type="button" onClick={() => void removePlayerDecal(item.id)}>Remove Sticker</button>}<button type="button" onClick={() => void clearPlayerAppearance(item.id)}>Clear Player</button></span></div>
-                  ))}
-                </div>
-                <TeacherDecalGallery
-                  sessionCode={selectedSession.sessionCode}
-                  refreshKey={selectedSession.players.map((item) => `${item.id}:${item.appearance?.decalAssetId ?? "none"}`).join("|")}
-                  loadAsset={loadTeacherDecal}
-                  onRemove={removeDecalAsset}
-                />
-            </section>
             <Suspense fallback={<ArenaLoading label="Loading live arena" />}>
-              <ArenaPreview
-                key={`${selectedSession.id}:${selectedSession.startedAt ?? "waiting"}:overview`}
-                session={selectedSession}
-                loadDecalAsset={loadTeacherDecal}
-              />
+              <ArenaPreview key={`${selectedSession.id}:${selectedSession.startedAt ?? "waiting"}:overview`} session={selectedSession} loadDecalAsset={loadTeacherDecal} />
             </Suspense>
-            <Scoreboard players={selectedSession.players} gameMode={selectedSession.settings.gameMode} />
+            <Scoreboard players={selectedSession.players} gameMode={selectedSession.settings.gameMode} onRemovePlayer={(playerId) => void removePlayer(playerId)} removingPlayerId={removingPlayerId} />
             <EventFeed events={selectedSession.events ?? []} />
-            {isEndConfirmOpen && (
-              <div className="modal-backdrop" role="presentation">
-                <div ref={endSessionDialogRef} className="panel confirm-modal" role="dialog" aria-modal="true" aria-labelledby="end-session-title">
-                  <h2 id="end-session-title">End Session?</h2>
-                  <p>This will close the round and prepare the learning report. Students cannot rejoin this session.</p>
-                  <div className="button-row">
-                    <button className="primary" onClick={end} disabled={isEndingSession}>
-                      {isEndingSession ? "Working..." : "End and Create Report"}
-                    </button>
-                    <button ref={keepSessionOpenRef} onClick={() => setIsEndConfirmOpen(false)}>Keep Session Open</button>
-                  </div>
-                </div>
-              </div>
-            )}
-            {isProjectorOpen && selectedSession.status === "waiting" && (
-              <div className="projector-backdrop" role="presentation">
-                <section ref={projectorDialogRef} className="projector-waiting-room" role="dialog" aria-modal="true" aria-labelledby="projector-title">
-                  <header>
-                    <div>
-                      <span className="projector-kicker">QuizStrike classroom lobby</span>
-                      <h2 id="projector-title">Join the game</h2>
-                    </div>
-                    <button ref={projectorCloseRef} type="button" onClick={() => setIsProjectorOpen(false)} aria-label="Close projector waiting room">Close</button>
-                  </header>
-                  <div className="projector-content">
-                    <div className="projector-join-code">
-                      <span>Game code</span>
-                      <strong>{selectedSession.sessionCode}</strong>
-                      <small>{studentJoinLink.replace(/^https?:\/\//, "")}</small>
-                    </div>
-                    <div className="projector-qr">
-                      <QRCodeSVG
-                        value={studentJoinLink}
-                        size={260}
-                        level="M"
-                        marginSize={2}
-                        title={`Join QuizStrike session ${selectedSession.sessionCode}`}
-                      />
-                      <span>Scan to join</span>
-                    </div>
-                  </div>
-                  <div className="projector-roster" aria-live="polite">
-                    <strong>{selectedSession.players.filter((item) => !item.isBot).length} students joined</strong>
-                    <div>
-                      {selectedSession.players.filter((item) => !item.isBot).map((item) => <span key={item.id}>{item.nickname}</span>)}
-                      {selectedSession.players.every((item) => item.isBot) && <span>Waiting for the class...</span>}
-                    </div>
-                  </div>
-                  <footer>
-                    <button type="button" onClick={copyStudentJoinLink}><Copy size={20} aria-hidden="true" />Copy Link</button>
-                    <button className="primary" type="button" onClick={start} disabled={Boolean(startBlockedReason) || isStartingSession}>
-                      <Play size={22} aria-hidden="true" />
-                      {isStartingSession ? "Starting..." : startBlockedReason ? "Waiting for Students" : "Begin Round"}
-                    </button>
-                  </footer>
-                </section>
-              </div>
-            )}
           </>
         ) : (
-          <p>Create a session to see live student progress.</p>
+          <p>Create a game to invite students.</p>
+        )}
+
+        {selectedSession && isEndConfirmOpen && (
+          <div className="modal-backdrop" role="presentation">
+            <div ref={endSessionDialogRef} className="panel confirm-modal" role="dialog" aria-modal="true" aria-labelledby="end-session-title">
+              <h2 id="end-session-title">End Game?</h2>
+              <p>This closes the room and prepares the learning report. Students cannot rejoin afterward.</p>
+              <div className="button-row">
+                <button className="primary" onClick={end} disabled={isEndingSession}>{isEndingSession ? "Working..." : "End and Create Report"}</button>
+                <button ref={keepSessionOpenRef} onClick={() => setIsEndConfirmOpen(false)}>Keep Game Open</button>
+              </div>
+            </div>
+          </div>
+        )}
+
+        {selectedSession && isProjectorOpen && selectedSession.status === "waiting" && (
+          <div className="projector-backdrop" role="presentation">
+            <section ref={projectorDialogRef} className="projector-waiting-room" role="dialog" aria-modal="true" aria-labelledby="projector-title">
+              <header>
+                <div><span className="projector-kicker">{sessionQuiz?.title ?? "QuizStrike Classroom"}</span><h2 id="projector-title">Join the Game</h2></div>
+                <button ref={projectorCloseRef} type="button" onClick={() => setIsProjectorOpen(false)} aria-label="Close projector view">Close</button>
+              </header>
+              <div className="projector-content">
+                <div className="projector-join-code"><span>Game Code</span><strong>{selectedSession.sessionCode}</strong><small>{studentJoinLink.replace(/^https?:\/\//, "")}</small></div>
+                <div className="projector-qr">
+                  <QRCodeSVG value={studentJoinLink} size={260} level="M" marginSize={2} title={`Join QuizStrike game ${selectedSession.sessionCode}`} />
+                  <span>Scan to join</span>
+                </div>
+              </div>
+              <div className="projector-roster" aria-live="polite">
+                <strong>{learnerPlayers.length} student{learnerPlayers.length === 1 ? "" : "s"} joined</strong>
+                <div>
+                  {learnerPlayers.map((item) => <span key={item.id}>{item.nickname} · {item.team.toUpperCase()}</span>)}
+                  {learnerPlayers.length === 0 && <span>Waiting for students…</span>}
+                </div>
+              </div>
+              <footer>
+                <button type="button" onClick={copyStudentJoinLink}>{isJoinLinkCopied ? <Check size={20} aria-hidden="true" /> : <Copy size={20} aria-hidden="true" />}{isJoinLinkCopied ? "✓ Link Copied" : "Copy Link"}</button>
+                <button className="primary" type="button" onClick={start} disabled={Boolean(startBlockedReason) || isStartingSession}><Play size={22} aria-hidden="true" />{isStartingSession ? "Starting..." : "Start Game"}</button>
+              </footer>
+            </section>
+          </div>
         )}
       </div>
     </div>
@@ -2251,7 +2534,7 @@ function ReportsPanel({
       <div className="section-heading compact">
         <div>
           <h2>Session Results</h2>
-          <p>Review accuracy, money earned from quizzes, and missed questions.</p>
+          <p>Review answered questions, quiz rewards, and missed questions.</p>
         </div>
         <button onClick={() => setTab("sessions")}>Open Live Session</button>
       </div>
@@ -2275,24 +2558,29 @@ function ReportsPanel({
       <StatusMessages error={status.error} message={status.message} />
       {report && (
         <>
+          {(() => {
+            const classAccuracy = calculateClassAccuracy(report.rows);
+            const attemptedStudents = report.rows.filter((row) => row.correctAnswers + row.wrongAnswers > 0).length;
+            return (
           <div className="report-summary-grid">
             <div className="metric">
               <span>Class Accuracy</span>
-              <strong>
-                {report.rows.length
-                  ? Math.round(report.rows.reduce((total, row) => total + row.accuracy, 0) / report.rows.length)
-                  : 0}%
-              </strong>
+              <strong>{classAccuracy === null ? "—" : `${classAccuracy}%`}</strong>
+              <small>{attemptedStudents} of {report.rows.length} learners answered</small>
             </div>
             <div className="metric">
-              <span>Quiz Money Earned</span>
+              <span>Quiz Rewards</span>
               <strong>{formatMoney(report.rows.reduce((total, row) => total + row.quizMoney, 0))}</strong>
+              <small>Rewards from correct answers</small>
             </div>
             <div className="metric">
               <span>Reteach Signals</span>
               <strong>{report.missedQuestions.length}</strong>
+              <small>Questions missed by learners</small>
             </div>
           </div>
+            );
+          })()}
           <table className="report-table">
             <thead>
               <tr>
@@ -2301,7 +2589,7 @@ function ReportsPanel({
                 <th>Correct</th>
                 <th>Wrong</th>
                 <th>Accuracy</th>
-                <th>Quiz Money</th>
+                <th>Quiz Rewards</th>
                 <th>Score</th>
               </tr>
             </thead>
@@ -2312,8 +2600,8 @@ function ReportsPanel({
                   <td data-label="Team">{teamLabel(row.team)}</td>
                   <td data-label="Correct">{row.correctAnswers}</td>
                   <td data-label="Wrong">{row.wrongAnswers}</td>
-                  <td data-label="Accuracy">{row.accuracy}%</td>
-                  <td data-label="Quiz Money">{formatMoney(row.quizMoney)}</td>
+                  <td data-label="Accuracy">{row.correctAnswers + row.wrongAnswers > 0 ? `${row.accuracy}%` : "—"}</td>
+                  <td data-label="Quiz Rewards">{formatMoney(row.quizMoney)}</td>
                   <td data-label="Score">{row.score}</td>
                 </tr>
               ))}
@@ -2355,6 +2643,7 @@ function StudentExperience({ onExit }: { onExit: () => void }) {
   const [answeringChoice, setAnsweringChoice] = useState<Choice | null>(null);
   const [buyingGearId, setBuyingGearId] = useState<string | null>(null);
   const [isBuyingSnowballs, setIsBuyingSnowballs] = useState(false);
+  const [isSwitchingTeam, setIsSwitchingTeam] = useState(false);
   const [isRestoringStudentSession, setIsRestoringStudentSession] = useState(true);
   const [rewardPulse, setRewardPulse] = useState("");
   const [spectatorPlayerId, setSpectatorPlayerId] = useState("");
@@ -2362,18 +2651,21 @@ function StudentExperience({ onExit }: { onExit: () => void }) {
     id: number;
     direction: IncomingHitDirection;
     eliminated: boolean;
+    attackerName: string;
   } | null>(null);
   const status = useAsyncMessage();
   const remainingSeconds = useRoundRemaining(session);
-  const flagBuyPhase = Boolean(session && isRoundBuyPhase(session));
-  const buyPhaseRemainingSeconds = useDeadlineRemainingSeconds(
-    flagBuyPhase ? session?.roundTransition?.startsAt : undefined,
+  const roundPreparation = Boolean(session && isRoundPreparationPhase(session));
+  const zombieSelection = Boolean(session && isZombieSelectionPhase(session));
+  const preparationRemainingSeconds = useDeadlineRemainingSeconds(
+    roundPreparation || zombieSelection ? session?.roundTransition?.startsAt : undefined,
     session?.serverTime
   );
   const socketRef = useRef<Socket | null>(null);
   const previousAliveRef = useRef<boolean | null>(null);
-  const previousFlagBuyPhaseRef = useRef(false);
+  const previousPreparationRef = useRef(false);
   const lastCountdownCueRef = useRef("");
+  const lastTeamSwitchAtRef = useRef(0);
 
   const isCompactViewport = viewportWidth <= 780;
   const nicknameError = useMemo(() => getNicknameError(nickname), [nickname]);
@@ -2408,10 +2700,11 @@ function StudentExperience({ onExit }: { onExit: () => void }) {
 
   useEffect(() => {
     gameAudio.setMuted(!gamePreferences.soundEnabled);
+    gameAudio.setSfxVolume(gamePreferences.sfxVolume);
     gameAudio.setMusicVolume(gamePreferences.musicVolume);
     if (gamePreferences.soundEnabled) gameAudio.warm();
     return () => gameAudio.setMuted(false);
-  }, [gamePreferences.soundEnabled, gamePreferences.musicVolume]);
+  }, [gamePreferences.soundEnabled, gamePreferences.sfxVolume, gamePreferences.musicVolume]);
 
   useEffect(() => {
     const stored = readStoredStudentSession();
@@ -2430,9 +2723,15 @@ function StudentExperience({ onExit }: { onExit: () => void }) {
       .rejoin(stored.sessionCode, stored.playerId, stored.playerToken)
       .then((payload) => {
         if (cancelled) return;
-        const data = payload as { session: GameSession; player: PlayerSession; question?: PublicQuestion };
+        const data = payload as {
+          session: GameSession;
+          player: PlayerSession;
+          cosmeticProgressToken?: string;
+          question?: PublicQuestion;
+        };
         setSession(data.session);
         setPlayer(data.player);
+        storeCosmeticProgressToken(data.cosmeticProgressToken);
         setPlayerToken(stored.playerToken);
         setQuestion(data.question ?? null);
         setFeedback("Your student session was restored.");
@@ -2509,11 +2808,19 @@ function StudentExperience({ onExit }: { onExit: () => void }) {
     const activePlayerId = player.id;
     const socket = io(getApiUrl());
     socketRef.current = socket;
-    attachTransportDiagnostics(socket, "student");
     const roomJoinPayload = { code: session.sessionCode, playerId: activePlayerId, playerToken };
-    const pendingPositions = new Map<string, { x: number; z: number; facing: number }>();
-    const lastRemotePositions = new Map<string, { x: number; z: number }>();
+    const pendingPositions = new Map<string, {
+      x: number;
+      y?: number;
+      z: number;
+      facing: number;
+      energy?: number;
+      crouching?: boolean;
+      jumping?: boolean;
+    }>();
+    const lastRemotePositions = new Map<string, { x: number; y?: number; z: number }>();
     let lastVisualSession = session;
+    let removedByTeacher = false;
     const emitPlayerVfx = (kind: ArenaVfxKind, playerId = activePlayerId, source = lastVisualSession) => {
       const target = source.players.find((candidate) => candidate.id === playerId);
       emitArenaVfx({ kind, x: target?.x ?? 0, z: target?.z ?? 0, team: target?.team });
@@ -2542,7 +2849,9 @@ function StudentExperience({ onExit }: { onExit: () => void }) {
       socket.emit("join_session_room", roomJoinPayload);
     });
     socket.on("connect_error", () => setIsSocketReconnecting(true));
-    socket.on("disconnect", () => setIsSocketReconnecting(true));
+    socket.on("disconnect", () => {
+      if (!removedByTeacher) setIsSocketReconnecting(true);
+    });
     socket.on("session_state", (nextSession: GameSession) => {
       const previousSession = lastVisualSession;
       const previousLocal = previousSession.players.find((candidate) => candidate.id === activePlayerId);
@@ -2590,18 +2899,30 @@ function StudentExperience({ onExit }: { onExit: () => void }) {
       setSession(nextSession);
       setPlayer((current) => nextSession.players.find((item) => item.id === (current?.id ?? activePlayerId)) ?? current);
     });
-    socket.on("player_state", (payload: PlayerStatePayload) => {
-      setSession((current) => {
-        if (!current) return current;
-        const nextSession = mergePlayerState(current, payload);
-        lastVisualSession = nextSession;
-        return nextSession;
-      });
-      const ownState = payload.players?.find((candidate) => candidate.id === activePlayerId);
-      if (ownState) setPlayer(ownState);
+    socket.on("player_state", (payload: { players?: PlayerSession[]; flag?: GameSession["flag"]; recentEvents?: GameSession["events"] }) => {
+      if (!Array.isArray(payload.players)) return;
+      setSession((current) => current ? {
+        ...current,
+        players: current.players.map((candidate) => payload.players?.find((next) => next.id === candidate.id) ?? candidate),
+        ...(payload.flag ? { flag: payload.flag } : {}),
+        ...(payload.recentEvents ? { events: payload.recentEvents } : {})
+      } : current);
+      setPlayer((current) => current ? payload.players?.find((next) => next.id === current.id) ?? current : current);
     });
-    socket.on("remote_weapon_fire", (payload: { playerId?: string; x?: number; z?: number; facing?: number; gearId?: string }) => {
+    socket.on("remote_weapon_fire", (payload: { playerId?: string; x?: number; y?: number; z?: number; facing?: number; pitch?: number; gearId?: string }) => {
       if (payload.playerId === activePlayerId || !Number.isFinite(payload.x) || !Number.isFinite(payload.z)) return;
+      const attacker = lastVisualSession.players.find((candidate) => candidate.id === payload.playerId);
+      emitPlayerAnimation("fire", payload.playerId, attacker?.team);
+      emitArenaVfx({
+        kind: "weapon_fire",
+        x: payload.x!,
+        z: payload.z!,
+        y: Number.isFinite(payload.y)
+          ? Math.max(0.12, payload.y! - ARENA_PLAYER_EYE_HEIGHT + 1.15)
+          : 1.15,
+        team: attacker?.team,
+        playerId: payload.playerId
+      });
       const local = lastVisualSession.players.find((candidate) => candidate.id === activePlayerId);
       if (!local || !Number.isFinite(local.x) || !Number.isFinite(local.z)) return;
       const cue: AudioEventCue = payload.gearId === "power_blaster"
@@ -2662,7 +2983,17 @@ function StudentExperience({ onExit }: { onExit: () => void }) {
         emitPlayerAnimation(localWon ? "victory" : "defeat", activePlayerId, player.team);
       }
     });
-    const queuePosition = (position: PlayerPositionPayload) => {
+    type LivePositionUpdate = {
+      playerId?: string;
+      x?: number;
+      y?: number;
+      z?: number;
+      facing?: number;
+      energy?: number;
+      crouching?: boolean;
+      jumping?: boolean;
+    };
+    const receivePlayerPosition = (position: LivePositionUpdate) => {
       if (!position.playerId || !Number.isFinite(position.x) || !Number.isFinite(position.z) || !Number.isFinite(position.facing)) return;
       if (position.playerId !== activePlayerId) {
         const previous = lastRemotePositions.get(position.playerId);
@@ -2674,21 +3005,30 @@ function StudentExperience({ onExit }: { onExit: () => void }) {
               attacker: { x: position.x!, z: position.z! },
               target: { x: local.x!, z: local.z!, facing: local.facing ?? 0 }
             }),
-            lastVisualSession.settings.mapId === "iron_junction" ? "metal" : "sand"
+            lastVisualSession.settings.mapId === "iron_junction"
+              ? "metal"
+              : lastVisualSession.settings.mapId === "temple_runoff"
+                ? getArenaGroundHeight("temple_runoff", position.x!, position.z!) < 1 ? "water" : "stone"
+                : "sand"
           );
         }
-        lastRemotePositions.set(position.playerId, { x: position.x!, z: position.z! });
+        lastRemotePositions.set(position.playerId, { x: position.x!, y: position.y, z: position.z! });
       }
       pendingPositions.set(position.playerId, {
         x: position.x!,
+        y: Number.isFinite(position.y) ? position.y : undefined,
         z: position.z!,
-        facing: position.facing!
+        facing: position.facing!,
+        ...(Number.isFinite(position.energy) ? { energy: position.energy } : {}),
+        crouching: position.crouching === true,
+        jumping: position.jumping === true
       });
       positionFlushTimer ??= window.setTimeout(flushPositions, 50);
     };
-    socket.on("player_position", queuePosition);
-    socket.on("player_positions", (payload: { positions?: PlayerPositionPayload[] }) => {
-      for (const position of payload.positions ?? []) queuePosition(position);
+    socket.on("player_position", receivePlayerPosition);
+    socket.on("player_positions", (positions: LivePositionUpdate[]) => {
+      if (!Array.isArray(positions)) return;
+      positions.forEach(receivePlayerPosition);
     });
     socket.on("damage_result", (result: DamageResultPayload) => {
       if (typeof result.snowballs === "number" && (!result.ok || result.attackerId === activePlayerId)) {
@@ -2703,6 +3043,7 @@ function StudentExperience({ onExit }: { onExit: () => void }) {
           invalid_target: "That snowball target was no longer valid.",
           invalid_projectile: "That shot was rejected. Try firing again.",
           duplicate_projectile: "That shot was already counted.",
+          humans_cannot_fire: "Humans cannot shoot in Zombie Mode. Answer questions for running energy and escape.",
           fire_cooldown: "Launcher is cooling down."
         };
         queueFeedbackCue(result.reason === "no_valid_target" ? "warning" : "error");
@@ -2718,13 +3059,16 @@ function StudentExperience({ onExit }: { onExit: () => void }) {
       if (result.attackerId === activePlayerId) {
         gameAudio.play(result.eliminated ? "eliminated" : "hit_confirm");
         setFeedback(
-          result.eliminated
+          result.converted
+            ? "Human knocked out and converted to a Red Zombie!"
+            : result.eliminated
             ? `Freeze! Opponent out. ${result.moneyAwarded ? `+${formatMoney(result.moneyAwarded)} bonus.` : ""}`
             : `Hit for ${result.damage} warmth.`
         );
-        if (result.eliminated) setRewardPulse("Freeze!");
+        if (result.eliminated) setRewardPulse(result.converted ? "Converted!" : "Freeze!");
       }
       if (result.targetId === activePlayerId) {
+        const attackerName = lastVisualSession.players.find((candidate) => candidate.id === result.attackerId)?.nickname ?? "Opponent";
         const incomingSpatial = getCombatAudioSpatial({
           attacker: { x: result.attackerX, z: result.attackerZ },
           target: { x: result.targetX, z: result.targetZ, facing: result.targetFacing }
@@ -2738,10 +3082,17 @@ function StudentExperience({ onExit }: { onExit: () => void }) {
             attacker: { x: result.attackerX, z: result.attackerZ },
             target: { x: result.targetX, z: result.targetZ, facing: result.targetFacing }
           }),
-          eliminated: result.eliminated
+          eliminated: result.eliminated,
+          attackerName
         });
-        setFeedback(result.eliminated ? "Frozen out. Answer three practice questions to respawn." : `Tagged for ${result.damage} warmth.`);
-        if (result.eliminated && session.settings.deadPlayersCanPractice && session.settings.gameMode !== "flag") {
+        setFeedback(
+          result.converted
+            ? `${attackerName} knocked you out. You are now a Red Zombie—hunt the Blue humans!`
+            : result.eliminated
+            ? `${attackerName} froze you out. Answer three practice questions to respawn.`
+            : `${attackerName} tagged you for ${result.damage} warmth.`
+        );
+        if (result.eliminated && !result.converted && session.settings.deadPlayersCanPractice && session.settings.gameMode !== "flag") {
           openRespawnPractice();
         }
       }
@@ -2753,6 +3104,23 @@ function StudentExperience({ onExit }: { onExit: () => void }) {
     socket.on("error_message", (payload: { error?: string }) => {
       queueFeedbackCue("error");
       setFeedback(payload.error ?? "Action failed.");
+    });
+    socket.on("player_removed", (payload: { message?: string }) => {
+      removedByTeacher = true;
+      clearStoredStudentSession();
+      setSession(null);
+      setPlayer(null);
+      setPlayerToken("");
+      setQuestion(null);
+      setQuizOpen(false);
+      setBuyOpen(false);
+      setScoreboardOpen(false);
+      setSettingsOpen(false);
+      setAnsweringChoice(null);
+      setFeedback("");
+      setIsSocketReconnecting(false);
+      status.setError(payload.message ?? "Your teacher removed you from this game.");
+      socket.disconnect();
     });
     return () => {
       if (positionFlushTimer !== undefined) window.clearTimeout(positionFlushTimer);
@@ -2779,7 +3147,6 @@ function StudentExperience({ onExit }: { onExit: () => void }) {
       }
     };
 
-    void syncWaitingRoom();
     const interval = window.setInterval(() => void syncWaitingRoom(), 5000);
     return () => {
       cancelled = true;
@@ -2788,17 +3155,24 @@ function StudentExperience({ onExit }: { onExit: () => void }) {
   }, [session?.sessionCode, session?.status, player?.id, playerToken, isSocketReconnecting]);
 
   useEffect(() => {
-    if (flagBuyPhase && player?.isAlive) {
+    if (roundPreparation && player?.isAlive) {
       gameAudio.play("menu_toggle");
       setBuyOpen(true);
       setQuizOpen(false);
       setScoreboardOpen(false);
       setSettingsOpen(false);
-    } else if (previousFlagBuyPhaseRef.current) {
+    } else if (zombieSelection && player?.isAlive) {
+      gameAudio.playEvent("quiz_open");
+      setQuizOpen(true);
       setBuyOpen(false);
+      setScoreboardOpen(false);
+      setSettingsOpen(false);
+    } else if (previousPreparationRef.current) {
+      setBuyOpen(false);
+      setQuizOpen(false);
     }
-    previousFlagBuyPhaseRef.current = flagBuyPhase;
-  }, [flagBuyPhase, session?.roundTransition?.startsAt, player?.id, player?.isAlive]);
+    previousPreparationRef.current = roundPreparation || zombieSelection;
+  }, [roundPreparation, zombieSelection, session?.roundTransition?.startsAt, player?.id, player?.isAlive]);
 
   const panelsOpen = quizOpen || buyOpen || scoreboardOpen || settingsOpen;
   const gameplayInputPaused = quizOpen || buyOpen || settingsOpen;
@@ -2829,7 +3203,9 @@ function StudentExperience({ onExit }: { onExit: () => void }) {
   const sendArenaPosition = useCallback(
     (position: ArenaPositionPayload) => {
       if (!session || !player || !playerToken) return;
-      socketRef.current?.volatile.emit("player_position", position);
+      socketRef.current?.volatile.emit("player_position", {
+        ...position
+      });
     },
     [session?.sessionCode, player?.id, playerToken]
   );
@@ -2849,7 +3225,9 @@ function StudentExperience({ onExit }: { onExit: () => void }) {
   const sendFlagAction = useCallback(
     (position: ArenaPositionPayload) => {
       if (!session || !player || !playerToken || session.settings.gameMode !== "flag") return;
-      socketRef.current?.emit("flag_action", position);
+      socketRef.current?.emit("flag_action", {
+        ...position
+      });
     },
     [session?.sessionCode, session?.settings.gameMode, player?.id, playerToken]
   );
@@ -2867,10 +3245,15 @@ function StudentExperience({ onExit }: { onExit: () => void }) {
     }
     setIsJoining(true);
     try {
-      const payload = (await studentApi.join(joinCode.trim().toUpperCase(), nickname)) as {
+      const payload = (await studentApi.join(
+        joinCode.trim().toUpperCase(),
+        nickname,
+        readCosmeticProgressToken()
+      )) as {
         session: GameSession;
         player: PlayerSession;
         playerToken: string;
+        cosmeticProgressToken?: string;
         question?: PublicQuestion;
       };
       setSession(payload.session);
@@ -2882,6 +3265,7 @@ function StudentExperience({ onExit }: { onExit: () => void }) {
       setScoreboardOpen(false);
       setSettingsOpen(false);
       setAnsweringChoice(null);
+      storeCosmeticProgressToken(payload.cosmeticProgressToken);
       localStorage.setItem(STUDENT_SESSION_STORAGE_KEY, JSON.stringify({
         sessionCode: payload.session.sessionCode,
         playerId: payload.player.id,
@@ -2938,6 +3322,7 @@ function StudentExperience({ onExit }: { onExit: () => void }) {
     gameAudio.playEvent("quiz_lock");
     try {
       type AnswerPayload = {
+        cosmeticProgressToken?: string;
         result: {
           feedback: string;
           explanation?: string;
@@ -2953,6 +3338,7 @@ function StudentExperience({ onExit }: { onExit: () => void }) {
         command,
         () => studentApi.answer(session.sessionCode, player.id, playerToken, command) as Promise<AnswerPayload>
       );
+      storeCosmeticProgressToken(payload.cosmeticProgressToken);
       setPlayer(payload.result.player);
       setFeedback(`${payload.result.feedback}${payload.result.explanation ? ` ${payload.result.explanation}` : ""}`);
       const wasWrong = payload.result.player.wrongAnswers > player.wrongAnswers;
@@ -3103,7 +3489,11 @@ function StudentExperience({ onExit }: { onExit: () => void }) {
   ]);
 
   const chooseTeam = async (team: Team) => {
-    if (!session || !player || !playerToken || session.status !== "waiting") return;
+    if (!session || !player || !playerToken || session.status !== "waiting" || isSwitchingTeam || player.team === team) return;
+    const now = performance.now();
+    if (now - lastTeamSwitchAtRef.current < 900) return;
+    lastTeamSwitchAtRef.current = now;
+    setIsSwitchingTeam(true);
     status.clear();
     try {
       const payload = (await studentApi.chooseTeam(session.sessionCode, player.id, playerToken, team)) as {
@@ -3116,6 +3506,8 @@ function StudentExperience({ onExit }: { onExit: () => void }) {
       gameAudio.playEvent("team_select");
     } catch (err) {
       status.report(err);
+    } finally {
+      setIsSwitchingTeam(false);
     }
   };
 
@@ -3161,7 +3553,7 @@ function StudentExperience({ onExit }: { onExit: () => void }) {
           <p>Enter your teacher's private session code and a classroom nickname. No student email account is needed.</p>
           <div className="panel how-to-card">
             <h2>How to Play</h2>
-            <p>Answer questions to earn money, buy snowballs and gear, then tag the other team in the arena.</p>
+            <p>Answer questions to earn money, buy snowballs and gear, then tag the other team. Most tags wins; respawns, then quiz earnings break ties.</p>
             <p>Fast web arena: use WASD to move, arrow keys or a swipe on the arena to look around, F or left click to fire, and E for the flag. Press C or right click to cycle the Heavy Snowball Launcher through 2× scope, 4× scope, and normal view. Q opens quiz, B opens buy, number keys 1–5 purchase shop items, and hold Tab for the scoreboard.</p>
             <p>If you are frozen out, keep practicing. Three correct answers respawn you back into the round.</p>
           </div>
@@ -3195,6 +3587,10 @@ function StudentExperience({ onExit }: { onExit: () => void }) {
               <small id="join-code-help">Enter the 6-character code on your teacher's screen.</small>
             </label>
           )}
+          <details className="student-join-tips">
+            <summary>How to play</summary>
+            <p>Answer questions to earn money, buy snowballs, then use WASD and F or click to play in the arena.</p>
+          </details>
           <label className="join-field">
             <span className="join-field-label">Your name</span>
             <input placeholder="Student name" autoComplete="nickname" autoFocus={Boolean(joinCodeFromLink)} enterKeyHint="done" value={nickname} onChange={(event) => { setNickname(event.target.value); status.clearError(); }} maxLength={20} aria-invalid={Boolean(nicknameError)} aria-describedby={nicknameError ? "nickname-error nickname-help" : "nickname-help"} />
@@ -3210,28 +3606,44 @@ function StudentExperience({ onExit }: { onExit: () => void }) {
     );
   }
 
-  const gear = GEAR_ITEMS.find((item) => item.id === getPlayerWeaponId(player)) ?? GEAR_ITEMS[0];
+  const gear = GEAR_ITEMS.find((item) => item.id === getPlayerWeaponIdForMode(session.settings.gameMode, player)) ?? GEAR_ITEMS[0];
   const snowballs = player.snowballs ?? session.settings.startingSnowballs;
   const warmth = getPlayerWarmth(player);
-  const topLearner = getTopLearner(session.players);
+  const isZombieHuman = session.settings.gameMode === "zombie" && player.role !== "zombie";
+  const canFire = canPlayerFireInMode(session.settings.gameMode, player.role);
+  const runningEnergy = Math.round(Math.max(0, Math.min(ZOMBIE_HUMAN_MAX_ENERGY, player.energy ?? 0)));
+  const connectedPlayers = session.players.filter((candidate) => candidate.connectionState !== "disconnected");
+  const redTeamCount = connectedPlayers.filter((candidate) => candidate.team === "red").length;
+  const blueTeamCount = connectedPlayers.filter((candidate) => candidate.team === "blue").length;
   const respawnProgress = player.respawnCorrectAnswers ?? 0;
   const canPracticeToRespawn = !player.isAlive && session.settings.deadPlayersCanPractice && session.settings.gameMode !== "flag";
   const roundActive = session.status === "active";
   const roundEnded = session.status === "ended";
   const menuTitle = canPracticeToRespawn && quizOpen ? "Practice to Respawn" : quizOpen ? "Quiz" : buyOpen ? "Buy Menu" : settingsOpen ? "Game Settings" : "Scoreboard";
-  const roundTimeLabel = formatDuration(remainingSeconds);
+  const roundTimeLabel = formatDuration(roundPreparation || zombieSelection ? preparationRemainingSeconds : remainingSeconds);
   const roundCountdownClassName = [
     "round-countdown",
     roundActive ? "round-countdown-active" : "",
     roundActive && remainingSeconds <= 30 ? "round-countdown-low" : ""
   ].filter(Boolean).join(" ");
-  const objectiveText = session.settings.gameMode === "flag"
-    ? flagStatusText(session)
+  const objectiveText = roundPreparation
+    ? "Buy gear or answer questions for money before the round starts."
+    : zombieSelection
+      ? `Everyone is Human. Answer questions for energy; Zombies are chosen in ${preparationRemainingSeconds}s.`
+    : session.settings.gameMode === "flag"
+      ? flagStatusText(session)
     : session.settings.gameMode === "zombie"
       ? zombieStatusText(session, player)
-      : "Answer questions, earn supplies, and tag the other team.";
+      : "Most tags wins. Respawns, then quiz earnings break ties.";
   const sessionResult = getSessionResultText(session);
   const arenaPlayer = spectatorPlayer ?? player;
+  const isFlagSpectator = !player.isAlive && session.settings.gameMode === "flag";
+  const spectatorIndex = spectatorPlayer
+    ? spectatorCandidates.findIndex((candidate) => candidate.id === spectatorPlayer.id) + 1
+    : 0;
+  const spectatorGear = spectatorPlayer
+    ? GEAR_ITEMS.find((item) => item.id === getPlayerWeaponIdForMode(session.settings.gameMode, spectatorPlayer)) ?? GEAR_ITEMS[0]
+    : undefined;
   const cycleSpectator = (direction: -1 | 1) => {
     if (spectatorCandidates.length < 2) return;
     const currentIndex = Math.max(0, spectatorCandidates.findIndex((candidate) => candidate.id === arenaPlayer.id));
@@ -3240,11 +3652,21 @@ function StudentExperience({ onExit }: { onExit: () => void }) {
   };
 
   return (
-    <section className={isCompactViewport ? "game-layout compact-game-layout" : "game-layout"}>
+    <section className={[
+      "game-layout",
+      isCompactViewport ? "compact-game-layout" : "",
+      gamePreferences.highContrastHud ? "high-contrast-hud" : "",
+      session.status === "waiting" ? "waiting-game-layout" : ""
+    ].filter(Boolean).join(" ")}>
       <div className="game-stage">
-        <GameAnnouncementOverlay announcement={flagBuyPhase ? undefined : session.announcement} serverTime={session.serverTime} />
-        <div className="game-utility-bar">
-          <span>{gameModeLabel(session.settings.gameMode)}</span>
+        {session.status !== "waiting" && <GameAnnouncementOverlay announcement={roundPreparation || zombieSelection ? undefined : session.announcement} serverTime={session.serverTime} />}
+        <div className={`game-utility-bar${session.status === "waiting" ? " lobby-utility-bar" : ""}`}>
+          {session.status === "waiting" ? (
+            <div className="lobby-brand">
+              <strong>QuizStrike Classroom</strong>
+              <small>{gameModeLabel(session.settings.gameMode)} · Room {session.sessionCode}</small>
+            </div>
+          ) : <span>{gameModeLabel(session.settings.gameMode)}</span>}
           <button type="button" onClick={() => { setSettingsOpen(true); setQuizOpen(false); setBuyOpen(false); setScoreboardOpen(false); }}><Settings size={16} aria-hidden="true" />Settings</button>
           <button type="button" onClick={onExit}>Exit Game</button>
         </div>
@@ -3263,25 +3685,86 @@ function StudentExperience({ onExit }: { onExit: () => void }) {
               controlsDisabled={!roundActive || !player.isAlive}
               inputPaused={gameplayInputPaused}
               onMove={roundActive && player.isAlive ? sendArenaPosition : undefined}
-              onFire={roundActive && player.isAlive ? sendArenaFire : undefined}
+              onFire={roundActive && player.isAlive && canFire ? sendArenaFire : undefined}
               onInteract={roundActive && player.isAlive ? sendFlagAction : undefined}
               loadDecalAsset={loadStudentDecal}
             />
           </Suspense>
         )}
+        {session.status !== "waiting" && (<>
         <div className={roundCountdownClassName} role="timer" aria-label={`Round time remaining ${roundTimeLabel}`}>
           <Timer size={18} aria-hidden="true" />
-          <span>Round Timer</span>
+          <span>{roundPreparation ? "Preparation" : zombieSelection ? "Zombie Selection" : "Round Timer"}</span>
           <strong>{roundTimeLabel}</strong>
         </div>
         <div className="arena-objective-strip">
-          <span className={`status-pill status-${session.status}`}>{flagBuyPhase ? "Buy Phase" : sessionStatusLabel(session.status)}</span>
+          <span className={`status-pill status-${session.status}`}>{roundPreparation ? "Preparation" : zombieSelection ? "Choosing Zombies" : sessionStatusLabel(session.status)}</span>
           <span className="objective-primary">{objectiveText}</span>
           <span className={`mode-pill mode-${session.settings.gameMode}`}>
             {gameModeLabel(session.settings.gameMode)}
             {session.settings.gameMode === "flag" ? ` · Round ${session.currentRound}/${session.settings.roundCount}` : ""}
           </span>
         </div>
+        {isFlagSpectator ? (
+          <section className="spectator-dock" aria-label="Spectator controls" data-testid="spectator-dock">
+            <div className="spectator-state">
+              <span className="spectator-state-icon"><Snowflake size={20} aria-hidden="true" /></span>
+              <span>
+                <small>Frozen this round</small>
+                <strong>Back next round</strong>
+              </span>
+            </div>
+            <button
+              className="spectator-cycle-button"
+              type="button"
+              onClick={() => cycleSpectator(-1)}
+              disabled={spectatorCandidates.length < 2}
+              aria-label="Watch previous player"
+            >
+              <ChevronLeft size={22} aria-hidden="true" />
+              <span>Previous</span>
+            </button>
+            <div className="spectator-focus" aria-live="polite" aria-atomic="true">
+              <small><Eye size={15} aria-hidden="true" />Now watching{spectatorCandidates.length > 0 ? ` ${spectatorIndex} of ${spectatorCandidates.length}` : ""}</small>
+              <div>
+                <strong>{spectatorPlayer?.nickname ?? "Waiting for an active player"}</strong>
+                {spectatorPlayer && (
+                  <span className={`spectator-team spectator-team-${spectatorPlayer.team}`}>
+                    {spectatorPlayer.team === "blue" ? "Blue Team" : "Red Team"}
+                  </span>
+                )}
+              </div>
+            </div>
+            <button
+              className="spectator-cycle-button"
+              type="button"
+              onClick={() => cycleSpectator(1)}
+              disabled={spectatorCandidates.length < 2}
+              aria-label="Watch next player"
+            >
+              <span>Next</span>
+              <ChevronRight size={22} aria-hidden="true" />
+            </button>
+            {spectatorPlayer && spectatorGear ? (
+              <div className="spectator-player-stats" aria-label={`${spectatorPlayer.nickname} status`}>
+                <span>
+                  <HeartPulse size={16} aria-hidden="true" />
+                  <span><small>Warmth</small><strong>{getPlayerWarmth(spectatorPlayer)}</strong></span>
+                </span>
+                <span>
+                  <Target size={16} aria-hidden="true" />
+                  <span><small>Snowballs</small><strong>{spectatorPlayer.snowballs ?? session.settings.startingSnowballs}</strong></span>
+                </span>
+                <span className="spectator-gear">
+                  <Package size={16} aria-hidden="true" />
+                  <span><small>Gear</small><strong>{spectatorGear.name}</strong></span>
+                </span>
+              </div>
+            ) : (
+              <p className="spectator-waiting-copy">The camera will switch when a player is active.</p>
+            )}
+          </section>
+        ) : (
         <div className="hud player-status-hud">
           <span className={player.isAlive ? "hud-stat hud-warmth" : "hud-stat hud-warmth low"}>
             <HeartPulse size={18} aria-hidden="true" />
@@ -3290,20 +3773,50 @@ function StudentExperience({ onExit }: { onExit: () => void }) {
               <strong>{warmth}</strong>
             </span>
           </span>
-          <span className="hud-stat">
-            <CircleDollarSign size={18} aria-hidden="true" />
-            <span>
-              <small>Money</small>
-              <strong>${player.money}</strong>
+          {isZombieHuman ? (
+            <span className={`hud-stat hud-energy${runningEnergy <= 20 ? " low" : ""}`}>
+              <Zap size={18} aria-hidden="true" />
+              <span>
+                <small>Running energy</small>
+                <strong>{runningEnergy}/{ZOMBIE_HUMAN_MAX_ENERGY}</strong>
+              </span>
             </span>
-          </span>
+          ) : (
+            <span className="hud-stat">
+              <CircleDollarSign size={18} aria-hidden="true" />
+              <span>
+                <small>Money</small>
+                <strong>${player.money}</strong>
+              </span>
+            </span>
+          )}
           <span className={`hud-stat team-${player.team}`}>
-            <Users size={18} aria-hidden="true" />
+            {session.settings.gameMode === "zombie" && player.role === "zombie"
+              ? <img className="zombie-head-icon" src="/assets/zombie/zombie-head.png" alt="" aria-hidden="true" />
+              : <Users size={18} aria-hidden="true" />}
             <span>
-              <small>Team</small>
-              <strong>{session.settings.gameMode === "zombie" ? (player.role === "zombie" ? "Zombie" : "Human") : player.team === "blue" ? "Blue Team" : "Red Team"}</strong>
+              <small>{session.settings.gameMode === "zombie" ? "Role · attire" : "Team"}</small>
+              <strong>{session.settings.gameMode === "zombie" ? (player.role === "zombie" ? "Zombie · Red" : "Human · Blue") : player.team === "blue" ? "Blue Team" : "Red Team"}</strong>
             </span>
           </span>
+          {isZombieHuman ? (
+            <>
+              <span className="hud-stat weapon">
+                <BookOpen size={18} aria-hidden="true" />
+                <span>
+                  <small>Recharge</small>
+                  <strong>Correct answer = +{ZOMBIE_HUMAN_CORRECT_ENERGY}</strong>
+                </span>
+              </span>
+              <span className="hud-stat">
+                <Shield size={18} aria-hidden="true" />
+                <span>
+                  <small>Human objective</small>
+                  <strong>{runningEnergy > 0 ? "Run and survive" : "Answer to move"}</strong>
+                </span>
+              </span>
+            </>
+          ) : (<>
           <span className="hud-stat weapon">
             <Package size={18} aria-hidden="true" />
             <span>
@@ -3318,15 +3831,31 @@ function StudentExperience({ onExit }: { onExit: () => void }) {
               <strong>{snowballs}</strong>
             </span>
           </span>
+          </>)}
         </div>
+        )}
+        </>)}
         {incomingHitCue && (
           <div
             key={incomingHitCue.id}
             className={`incoming-hit-flash incoming-hit-flash-${incomingHitCue.direction}${incomingHitCue.eliminated ? " incoming-hit-flash-eliminated" : ""}`}
             data-testid="incoming-hit-flash"
-            aria-hidden="true"
+            role="status"
+            aria-live="assertive"
             onAnimationEnd={() => setIncomingHitCue(null)}
-          />
+          >
+            <span className="incoming-attacker-label">
+              <strong>{incomingHitCue.attackerName}</strong>
+              <small>
+                {incomingHitCue.eliminated ? "froze you" : "attacking"} from{" "}
+                {incomingHitCue.direction === "front"
+                  ? "ahead"
+                  : incomingHitCue.direction === "back"
+                    ? "behind"
+                    : incomingHitCue.direction}
+              </small>
+            </span>
+          </div>
         )}
         {rewardPulse && <div className="reward-toast" onAnimationEnd={() => setRewardPulse("")}>{rewardPulse}</div>}
         {panelsOpen && (
@@ -3362,38 +3891,59 @@ function StudentExperience({ onExit }: { onExit: () => void }) {
                 onBuySnowballs={buySnowballs}
                 buyingGearId={buyingGearId}
                 isBuyingSnowballs={isBuyingSnowballs}
-                buyPhaseSeconds={flagBuyPhase ? buyPhaseRemainingSeconds : undefined}
+                buyPhaseSeconds={roundPreparation ? preparationRemainingSeconds : undefined}
               />
             )}
             {scoreboardOpen && <Scoreboard players={session.players} localPlayerId={player.id} gameMode={session.settings.gameMode} />}
             {settingsOpen && <GamePreferencesPanel preferences={gamePreferences} onChange={updateGamePreferences} />}
           </div>
         )}
-        {(session.status === "waiting" || roundEnded || isSocketReconnecting || !player.isAlive || status.error || feedback) && (
+        {(session.status === "waiting" || roundEnded || isSocketReconnecting || (!player.isAlive && session.settings.gameMode !== "flag") || status.error || feedback) && (
           <div className={`student-alerts${session.status === "waiting" ? " has-character-creator" : ""}`} aria-live="polite">
             {session.status === "waiting" && (
               <div className="panel pre-round-card creator-ready-room">
-                <h2>{getReadyRoomTitle(session, player)}</h2>
-                <p>Wait for the teacher to start the round.</p>
-                {session.settings.gameMode === "flag" && session.settings.teamAssignment === "players_choose" && (
-                  <div className="button-row">
-                    <button className={player.team === "red" ? "active" : ""} onClick={() => chooseTeam("red")}>
-                      Red Team
-                    </button>
-                    <button className={player.team === "blue" ? "active" : ""} onClick={() => chooseTeam("blue")}>
-                      Blue Team
-                    </button>
+                <header className="lobby-selection-header">
+                  <div className="lobby-instruction">
+                    <span>Choose your team</span>
+                    <h2>Choose your team and wait for the teacher to start the game.</h2>
+                    <p className="lobby-ready-note">You are connected. Pick a team and customize your player while the class joins.</p>
+                    <div className="lobby-status-row">
+                      <span className="waiting-status"><span className="waiting-pulse" />Waiting for teacher…</span>
+                      <span className="lobby-player-count"><Users size={15} />{connectedPlayers.length} {connectedPlayers.length === 1 ? "player" : "players"} joined</span>
+                    </div>
                   </div>
-                )}
-                <div className="live-summary">
-                  <span>{session.players.length} joined</span>
-                  <span>Top learner: {topLearner?.nickname ?? "not yet"}</span>
-                </div>
+                  <div className="team-choice-grid" aria-label="Choose your team">
+                    <button
+                      type="button"
+                      className={`team-choice team-choice-red${player.team === "red" ? " selected" : ""}`}
+                      onClick={() => void chooseTeam("red")}
+                      disabled={isSwitchingTeam || session.settings.teamAssignment !== "players_choose" || session.settings.gameMode === "zombie"}
+                      aria-pressed={player.team === "red"}
+                    >
+                      <span className="team-choice-emblem"><Shield size={20} /></span>
+                      <span><small>Red team</small><strong>{redTeamCount} joined</strong></span>
+                      {player.team === "red" && <Check className="team-choice-check" size={18} />}
+                    </button>
+                    <button
+                      type="button"
+                      className={`team-choice team-choice-blue${player.team === "blue" ? " selected" : ""}`}
+                      onClick={() => void chooseTeam("blue")}
+                      disabled={isSwitchingTeam || session.settings.teamAssignment !== "players_choose" || session.settings.gameMode === "zombie"}
+                      aria-pressed={player.team === "blue"}
+                    >
+                      <span className="team-choice-emblem"><Shield size={20} /></span>
+                      <span><small>Blue team</small><strong>{blueTeamCount} joined</strong></span>
+                      {player.team === "blue" && <Check className="team-choice-check" size={18} />}
+                    </button>
+                    {session.settings.teamAssignment !== "players_choose" && <small className="team-lock-note">Teams are assigned by your teacher.</small>}
+                  </div>
+                </header>
                 <Suspense fallback={<ArenaLoading label="Loading character creator" />}>
                   <CharacterCreator
                     appearance={player.appearance}
                     team={player.team}
                     policy={session.settings.characterCustomization}
+                    progress={getCosmeticProgress(player)}
                     disabled={session.status !== "waiting" || isSocketReconnecting}
                     onSave={savePlayerAppearance}
                     onUploadDecal={uploadPlayerDecal}
@@ -3407,8 +3957,10 @@ function StudentExperience({ onExit }: { onExit: () => void }) {
                 <h2>Session Ended</h2>
                 <p>{sessionResult}</p>
                 <div className="student-summary-metrics">
-                  <span><strong>{accuracy(player)}%</strong> question accuracy</span>
-                  <span><strong>{formatMoney(player.money)}</strong> earned</span>
+                  <span><strong>{player.correctAnswers + player.wrongAnswers > 0 ? `${accuracy(player)}%` : "—"}</strong> question accuracy</span>
+                  <span><strong>{formatMoney(player.quizMoneyEarned ?? 0)}</strong> quiz rewards</span>
+                  <span><strong>{formatMoney(player.moneySpent ?? 0)}</strong> spent in shop</span>
+                  <span><strong>{formatMoney(player.money)}</strong> wallet balance</span>
                   <span><strong>{player.score}</strong> final score</span>
                 </div>
                 <div className="button-row">
@@ -3422,21 +3974,6 @@ function StudentExperience({ onExit }: { onExit: () => void }) {
                 <WifiOff size={16} aria-hidden="true" />
                 Reconnecting...
               </p>
-            )}
-            {!player.isAlive && session.settings.gameMode === "flag" && (
-              <div className="panel respawn-card">
-                <div className="panel-title">
-                  <h2>Frozen · Spectator Mode</h2>
-                  <span>{spectatorPlayer ? `Watching ${spectatorPlayer.nickname}` : "Waiting"}</span>
-                </div>
-                <p>You are frozen for this round. Watch another active student until time runs out; you will return at the start of the next round.</p>
-                {spectatorCandidates.length > 1 && (
-                  <div className="button-row">
-                    <button type="button" onClick={() => cycleSpectator(-1)}>Previous Player</button>
-                    <button type="button" onClick={() => cycleSpectator(1)}>Next Player</button>
-                  </div>
-                )}
-              </div>
             )}
             {!player.isAlive && session.settings.gameMode !== "flag" && (
               <div className="panel respawn-card">
@@ -3460,12 +3997,12 @@ function StudentExperience({ onExit }: { onExit: () => void }) {
           </div>
         )}
       </div>
-      <div className="action-bar control-prompts">
+      {session.status !== "waiting" && <div className="action-bar control-prompts">
         <button disabled={roundEnded} onClick={() => { gameAudio.playEvent(quizOpen ? "modal_close" : "quiz_open"); setQuizOpen(!quizOpen); setBuyOpen(false); setScoreboardOpen(false); }}>Q Quiz</button>
         <button disabled={roundEnded || !player.isAlive} onClick={() => { gameAudio.play("menu_toggle"); setBuyOpen(!buyOpen); setQuizOpen(false); setScoreboardOpen(false); }}>B Buy · 1-5</button>
         <button onMouseDown={() => { gameAudio.play("menu_toggle"); setScoreboardOpen(true); setQuizOpen(false); setBuyOpen(false); setSettingsOpen(false); }} onMouseUp={() => setScoreboardOpen(false)} onBlur={() => setScoreboardOpen(false)}>Hold Tab · Scoreboard</button>
         <button onClick={() => { gameAudio.play("menu_toggle"); setSettingsOpen((open) => !open); setQuizOpen(false); setBuyOpen(false); setScoreboardOpen(false); }}><Settings size={18} aria-hidden="true" />Settings</button>
-      </div>
+      </div>}
     </section>
   );
 }
@@ -3484,7 +4021,9 @@ function QuizPanel({
   answeringChoice: Choice | null;
 }) {
   if (!question) return <div className="panel"><p>No quiz question is available yet.</p></div>;
-  const reward = player.isAlive || session.settings.deadPlayersEarnMoney
+  const reward = session.settings.gameMode === "zombie" && player.role !== "zombie"
+    ? `+${ZOMBIE_HUMAN_CORRECT_ENERGY} running energy`
+    : player.isAlive || session.settings.deadPlayersEarnMoney
     ? `$${session.settings.correctAnswerReward}`
     : session.settings.deadPlayersCanPractice
       ? `Respawn ${player.respawnCorrectAnswers ?? 0}/${RESPAWN_CORRECT_ANSWERS_REQUIRED}`
@@ -3501,6 +4040,7 @@ function QuizPanel({
         <h2>Quiz Panel</h2>
         <span>{reward}</span>
       </div>
+      <p className="menu-timer-note">The round timer continues while this panel is open.</p>
       <p className="question-text">{question.prompt}</p>
       <div className="answer-grid">
         {choices.map((choice, index) => (
@@ -3541,6 +4081,8 @@ function BuyPanel({
   const snowballPrice = session.settings.snowballPackPrice;
   const snowballCount = session.settings.snowballsPerPack;
   const isBuyingGear = Boolean(buyingGearId);
+  const isZombieMode = session.settings.gameMode === "zombie";
+  const isZombieHuman = session.settings.gameMode === "zombie" && player.role !== "zombie";
   const gearLockReason = (cost: number) => {
     if (!player.isAlive) return "Round only";
     if (player.money < cost) return `Need ${formatMoney(cost - player.money)}`;
@@ -3549,22 +4091,25 @@ function BuyPanel({
   return (
     <div className="panel buy-panel">
       <div className="panel-title">
-        <h2>{buyPhaseSeconds === undefined ? "Buy Menu" : `Buy Phase · ${buyPhaseSeconds}s`}</h2>
+        <h2>{buyPhaseSeconds === undefined ? "Buy Menu" : `Preparation · ${buyPhaseSeconds}s`}</h2>
         <span>{formatMoney(player.money)}</span>
       </div>
+      <p className="menu-timer-note">{buyPhaseSeconds === undefined
+        ? "The round timer continues while this menu is open."
+        : "Press Q to answer questions for more money before the round starts."}</p>
       <p className="buy-shortcut-help">Press 1–5 to buy instantly. Press B to open or close this menu.</p>
       <button
         className="gear-row"
         onClick={onBuySnowballs}
         aria-keyshortcuts="1"
-        disabled={!player.isAlive || player.money < snowballPrice || isBuyingSnowballs || isBuyingGear}
+        disabled={isZombieHuman || !player.isAlive || player.money < snowballPrice || isBuyingSnowballs || isBuyingGear}
       >
         <kbd className="buy-shortcut-key">1</kbd>
         <GearGlyph gearId="snowballs" />
         <span>
           <strong>{isBuyingSnowballs ? "Working..." : `${snowballCount} Snowballs`}</strong>
           <small>Restock ammunition anywhere on the map.</small>
-          <small className="gear-status">{player.money < snowballPrice ? `Need ${formatMoney(snowballPrice - player.money)} more` : player.isAlive ? "Ready to buy" : "Available next round"}</small>
+          <small className="gear-status">{isZombieHuman ? "Zombies only" : player.money < snowballPrice ? `Need ${formatMoney(snowballPrice - player.money)} more` : player.isAlive ? "Ready to buy" : "Available next round"}</small>
         </span>
         <em>{formatMoney(snowballPrice)}</em>
       </button>
@@ -3574,14 +4119,14 @@ function BuyPanel({
           className="gear-row"
           onClick={() => onBuy(gear.id)}
           aria-keyshortcuts={getShopShortcutKey(gear.id)}
-          disabled={!player.isAlive || player.money < gear.cost || isBuyingSnowballs || isBuyingGear}
+          disabled={(isZombieMode && isWeaponGearId(gear.id)) || !player.isAlive || player.money < gear.cost || isBuyingSnowballs || isBuyingGear}
         >
           <kbd className="buy-shortcut-key">{getShopShortcutKey(gear.id)}</kbd>
           <GearGlyph gearId={gear.id} />
           <span>
             <strong>{buyingGearId === gear.id ? "Working..." : gear.name}</strong>
             <small>{gear.description}</small>
-            <small className="gear-status">{(getPlayerWeaponId(player) === gear.id || getPlayerPerks(player).includes(gear.id)) ? "Equipped" : player.money < gear.cost || !player.isAlive ? gearLockReason(gear.cost) : "Ready to buy"}</small>
+            <small className="gear-status">{isZombieMode && isWeaponGearId(gear.id) ? "Default launcher only" : (getPlayerWeaponId(player) === gear.id || getPlayerPerks(player).includes(gear.id)) ? "Equipped" : player.money < gear.cost || !player.isAlive ? gearLockReason(gear.cost) : "Ready to buy"}</small>
           </span>
           <em>{formatMoney(gear.cost)}</em>
         </button>
@@ -3592,10 +4137,12 @@ function BuyPanel({
 
 function GamePreferencesPanel({
   preferences,
-  onChange
+  onChange,
+  audioOnly = false
 }: {
   preferences: GamePreferences;
   onChange: (update: Partial<GamePreferences>) => void;
+  audioOnly?: boolean;
 }) {
   const [gamepadDetected, setGamepadDetected] = useState(() => Boolean(navigator.getGamepads?.().some((gamepad) => gamepad?.connected)));
 
@@ -3615,41 +4162,72 @@ function GamePreferencesPanel({
         <h2>Game Settings</h2>
         <span>Saved on this device</span>
       </div>
-      <label>
-        Graphics quality
-        <select value={preferences.arenaQuality} onChange={(event) => onChange({ arenaQuality: event.target.value as GamePreferences["arenaQuality"] })}>
-          <option value="auto">Auto (recommended)</option>
-          <option value="performance">Low — school device</option>
-          <option value="balanced">Medium — balanced</option>
-          <option value="high">High — full detail</option>
-        </select>
-        <small>Low reduces pixel density and decorative detail; team colors, objectives, and route landmarks remain visible.</small>
-      </label>
-      <label className="toggle-row">
-        <input type="checkbox" checked={preferences.gamepadEnabled} onChange={(event) => onChange({ gamepadEnabled: event.target.checked })} />
-        <span>Enable standard controller controls {gamepadDetected ? "(controller connected)" : "(connect a controller to use)"}</span>
-      </label>
-      <p className="settings-help">Controller: left stick moves, right stick looks, A or right trigger fires, and X interacts.</p>
+      {!audioOnly && (
+        <>
+          <label>
+            Graphics quality
+            <select value={preferences.arenaQuality} onChange={(event) => onChange({ arenaQuality: event.target.value as GamePreferences["arenaQuality"] })}>
+              <option value="auto">Auto (recommended)</option>
+              <option value="performance">Low — school device</option>
+              <option value="balanced">Medium — balanced</option>
+              <option value="high">High — full detail</option>
+            </select>
+            <small>Low reduces pixel density and decorative detail; team colors, objectives, and route landmarks remain visible.</small>
+          </label>
+          <label className="toggle-row">
+            <input type="checkbox" checked={preferences.highContrastHud} onChange={(event) => onChange({ highContrastHud: event.target.checked })} />
+            <span>High-contrast HUD</span>
+          </label>
+          <p className="settings-help">Adds stronger HUD borders, text contrast, and focus outlines for busy scenes or low-vision play.</p>
+          <label className="toggle-row">
+            <input type="checkbox" checked={preferences.gamepadEnabled} onChange={(event) => onChange({ gamepadEnabled: event.target.checked })} />
+            <span>Enable standard controller controls {gamepadDetected ? "(controller connected)" : "(connect a controller to use)"}</span>
+          </label>
+          <p className="settings-help">Controller: left stick moves, right stick looks, A or right trigger fires, and X interacts.</p>
+        </>
+      )}
       <label className="toggle-row">
         <input type="checkbox" checked={preferences.soundEnabled} onChange={(event) => onChange({ soundEnabled: event.target.checked })} />
-        <span>Sound effects and background audio</span>
+        <span>Enable game audio</span>
       </label>
       <label>
-        Music volume
+        SFX volume
         <input
           type="range"
           min="0"
-          max="0.4"
+          max="1"
+          step="0.01"
+          value={preferences.sfxVolume}
+          disabled={!preferences.soundEnabled}
+          onChange={(event) => onChange({ sfxVolume: Number(event.target.value) })}
+        />
+        <small>{Math.round(preferences.sfxVolume * 100)}% for weapons, footsteps, quiz feedback, and interface sounds.</small>
+      </label>
+      <label>
+        BGM volume
+        <input
+          type="range"
+          min="0"
+          max="1"
           step="0.01"
           value={preferences.musicVolume}
+          disabled={!preferences.soundEnabled}
           onChange={(event) => onChange({ musicVolume: Number(event.target.value) })}
         />
-        <small>{Math.round(preferences.musicVolume * 100)}% arena bed level. Music remains secondary to gameplay feedback.</small>
+        <small>{Math.round(preferences.musicVolume * 100)}% for the arena music track.</small>
       </label>
-      <label className="toggle-row">
-        <input type="checkbox" checked={preferences.vibrationEnabled} onChange={(event) => onChange({ vibrationEnabled: event.target.checked })} />
-        <span>Vibration feedback when available</span>
-      </label>
+      <p className="audio-credit">
+        BGM: Music by{" "}
+        <a href="https://pixabay.com/ja/users/hauntsync-38266323/?utm_source=link-attribution&utm_medium=referral&utm_campaign=music&utm_content=220562" target="_blank" rel="noreferrer">Nicholas Panek</a>
+        {" "}from{" "}
+        <a href="https://pixabay.com//?utm_source=link-attribution&utm_medium=referral&utm_campaign=music&utm_content=220562" target="_blank" rel="noreferrer">Pixabay</a>.
+      </p>
+      {!audioOnly && (
+        <label className="toggle-row">
+          <input type="checkbox" checked={preferences.vibrationEnabled} onChange={(event) => onChange({ vibrationEnabled: event.target.checked })} />
+          <span>Vibration feedback when available</span>
+        </label>
+      )}
     </div>
   );
 }
@@ -3684,11 +4262,15 @@ function ScoreboardLegacy({ players }: { players: PlayerSession[] }) {
 function Scoreboard({
   players,
   localPlayerId,
-  gameMode
+  gameMode,
+  onRemovePlayer,
+  removingPlayerId
 }: {
   players: PlayerSession[];
   localPlayerId?: string;
   gameMode: SessionSettings["gameMode"];
+  onRemovePlayer?: (playerId: string) => void;
+  removingPlayerId?: string | null;
 }) {
   const grouped = groupScoreboardRows(players, gameMode, localPlayerId);
   const totals = getTeamTotals(players);
@@ -3724,6 +4306,7 @@ function Scoreboard({
                   <th scope="col">Tags</th>
                   <th scope="col">Respawns</th>
                   <th scope="col">Question Accuracy</th>
+                  {onRemovePlayer && <th scope="col" className="scoreboard-actions-heading">Actions</th>}
                 </tr>
               </thead>
               <tbody>
@@ -3739,9 +4322,23 @@ function Scoreboard({
                   <td>{row.tags}</td>
                   <td>{row.respawns}</td>
                   <td>{row.questionAccuracy}</td>
+                  {onRemovePlayer && (
+                    <td className="scoreboard-actions">
+                      <button
+                        type="button"
+                        className="scoreboard-remove-player"
+                        onClick={() => onRemovePlayer(row.playerId)}
+                        disabled={Boolean(removingPlayerId)}
+                        aria-label={`Remove ${row.displayName} from the game`}
+                      >
+                        <Trash2 size={15} aria-hidden="true" />
+                        {removingPlayerId === row.playerId ? "Removing..." : "Remove"}
+                      </button>
+                    </td>
+                  )}
                 </tr>
               ))}
-              {group.rows.length === 0 && <tr><td colSpan={4}>No players in this group.</td></tr>}
+              {group.rows.length === 0 && <tr><td colSpan={onRemovePlayer ? 5 : 4}>No players in this group.</td></tr>}
               </tbody>
             </table>
           </div>

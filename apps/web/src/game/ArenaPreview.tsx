@@ -1,20 +1,26 @@
 import { useEffect, useRef, useState, type PointerEvent as ReactPointerEvent } from "react";
 import * as THREE from "three";
 import {
-  ARENA_LIMIT_X,
-  ARENA_LIMIT_Z,
+  ARENA_MAX_AIM_PITCH,
+  ARENA_MIN_AIM_PITCH,
   ARENA_SCALE,
-  CAPTURE_ZONES,
   FREE_FOR_ALL_SPAWNS,
-  SEARCH_RETRIEVE_DELIVERY_ZONES,
-  SEARCH_RETRIEVE_ITEMS,
-  TEAM_BASE_ZONES,
-  TEAM_SPAWNS,
+  TEMPLE_RUNOFF_MAIN_LEVEL_Y,
   getGearFireCooldownMs,
   getGearZoomFovMultiplier,
+  getArenaGroundHeight,
+  getArenaGroundHeightForPlayer,
+  getArenaRecoveryGroundHeight,
+  getArenaBounds,
+  getArenaLevelLabel,
   getPlayerMoveSpeedMultiplier,
   getPlayerWeaponId,
   getTeamSpawnForMap,
+  getTeamSpawnsForMap,
+  getTeamBaseZones,
+  getCaptureZonesForMap,
+  getSearchRetrieveItemsForMap,
+  getSearchRetrieveDeliveryZonesForMap,
   type ArenaMapId,
   isGearAutoFireEnabled,
   type GameSession,
@@ -23,9 +29,13 @@ import {
 import { getArenaMap } from "./arenaMaps";
 import {
   FPS_CROUCH_EYE_HEIGHT,
+  FPS_JUMP_GRAVITY,
+  FPS_JUMP_VELOCITY,
   FPS_STANDING_EYE_HEIGHT,
   canFpsBodyClearObstacle,
-  getFpsBodyVerticalBounds
+  findFpsSupportSurfaceY,
+  getFpsBodyVerticalBounds,
+  smoothFpsGroundedCameraY
 } from "./ArenaCamera.js";
 import { CharacterFactory } from "./characters/CharacterFactory";
 import { CharacterManager, type CharacterManagerStats } from "./characters/CharacterManager";
@@ -39,6 +49,7 @@ import { emitArenaAnimation, subscribeArenaAnimation } from "./ArenaAnimation";
 import { ArenaPerformanceCapture, type ArenaPerformanceSnapshot } from "./ArenaPerformance";
 import { addIronJunctionArtPass } from "./IronJunctionArtPass";
 import { addDesertCitadelVfx } from "./DesertCitadelVfx";
+import { addTempleRunoffArtPass } from "./TempleRunoffArtPass";
 import {
   readGamePreferences,
   resolveArenaQuality,
@@ -62,7 +73,18 @@ interface ArenaPreviewProps {
   loadDecalAsset?: (assetId: string) => Promise<Blob>;
 }
 
-type ArenaLivePosition = { x: number; z: number; y?: number; facing: number; scoped?: boolean; zoomLevel?: number };
+type ArenaLivePosition = {
+  x: number;
+  z: number;
+  y?: number;
+  facing: number;
+  pitch?: number;
+  scoped?: boolean;
+  zoomLevel?: number;
+  sprinting?: boolean;
+  crouching?: boolean;
+  jumping?: boolean;
+};
 
 const PLAYER_RADIUS = 0.45;
 const WALK_SPEED = 10.8;
@@ -84,18 +106,6 @@ const KEYBOARD_LOOK_SPEED = 1.9;
 const TOUCH_LOOK_SENSITIVITY = 0.006;
 const clamp = (value: number, min: number, max: number) => Math.min(max, Math.max(min, value));
 const isFiniteNumber = (value: unknown): value is number => typeof value === "number" && Number.isFinite(value);
-const serverToLocalX = (x: number) => clamp(x, -ARENA_LIMIT_X, ARENA_LIMIT_X);
-const serverToLocalZ = (z: number) => clamp(z, -ARENA_LIMIT_Z, ARENA_LIMIT_Z);
-const toMiniMapX = (x: number) => ((x + ARENA_LIMIT_X) / (ARENA_LIMIT_X * 2)) * MINIMAP_WIDTH;
-const toMiniMapY = (z: number) => ((z + ARENA_LIMIT_Z) / (ARENA_LIMIT_Z * 2)) * MINIMAP_HEIGHT;
-const toMiniMapW = (w: number) => (w / (ARENA_LIMIT_X * 2)) * MINIMAP_WIDTH;
-const toMiniMapH = (d: number) => (d / (ARENA_LIMIT_Z * 2)) * MINIMAP_HEIGHT;
-const localToServerPosition = (position: THREE.Vector3, facing: number): ArenaLivePosition => ({
-  x: clamp(position.x, -ARENA_LIMIT_X, ARENA_LIMIT_X),
-  z: clamp(position.z, -ARENA_LIMIT_Z, ARENA_LIMIT_Z),
-  y: Number(position.y.toFixed(2)),
-  facing
-});
 const scaleArenaValue = (value: number) => Number((value * ARENA_SCALE).toFixed(2));
 
 const playerAccuracy = (player: PlayerSession) => {
@@ -318,7 +328,28 @@ export default function ArenaPreview({
   const currentPlayerTeam = currentPlayer?.team ?? "blue";
   const arenaMapId: ArenaMapId = session?.settings.mapId ?? "desert_citadel";
   const arenaMap = getArenaMap(arenaMapId);
+  const isIronJunction = arenaMapId === "iron_junction";
+  const isDesertCitadel = arenaMapId === "desert_citadel";
+  const isTempleRunoff = arenaMapId === "temple_runoff";
+  const hasMultipleLevels = isIronJunction || isDesertCitadel || isTempleRunoff;
   const activeQuality = resolveArenaQuality(fallbackQuality ?? quality);
+  const arenaBounds = getArenaBounds(arenaMapId);
+  const teamBaseZones = getTeamBaseZones(arenaMapId);
+  const captureZones = getCaptureZonesForMap(arenaMapId);
+  const searchRetrieveItems = getSearchRetrieveItemsForMap(arenaMapId);
+  const searchRetrieveDeliveryZones = getSearchRetrieveDeliveryZonesForMap(arenaMapId);
+  const serverToLocalX = (x: number) => clamp(x, -arenaBounds.limitX, arenaBounds.limitX);
+  const serverToLocalZ = (z: number) => clamp(z, -arenaBounds.limitZ, arenaBounds.limitZ);
+  const toMiniMapX = (x: number) => ((x + arenaBounds.limitX) / (arenaBounds.limitX * 2)) * MINIMAP_WIDTH;
+  const toMiniMapY = (z: number) => ((z + arenaBounds.limitZ) / (arenaBounds.limitZ * 2)) * MINIMAP_HEIGHT;
+  const toMiniMapW = (w: number) => (w / (arenaBounds.limitX * 2)) * MINIMAP_WIDTH;
+  const toMiniMapH = (d: number) => (d / (arenaBounds.limitZ * 2)) * MINIMAP_HEIGHT;
+  const localToServerPosition = (position: THREE.Vector3, facing: number): ArenaLivePosition => ({
+    x: clamp(position.x, -arenaBounds.limitX, arenaBounds.limitX),
+    z: clamp(position.z, -arenaBounds.limitZ, arenaBounds.limitZ),
+    y: Number(position.y.toFixed(2)),
+    facing
+  });
 
   useEffect(() => {
     setFallbackQuality(null);
@@ -400,7 +431,6 @@ export default function ArenaPreview({
 
     const isFps = view === "fps";
     const isZombieMode = session?.settings.gameMode === "zombie";
-    const isIronJunction = arenaMapId === "iron_junction";
     const palette = arenaMap.palette;
     const scene = new THREE.Scene();
     scene.background = new THREE.Color(isZombieMode ? "#5d668a" : palette.sky);
@@ -410,7 +440,13 @@ export default function ArenaPreview({
     const fallbackSpawn = currentPlayer ? getTeamSpawnForMap(arenaMapId, currentPlayer.team) : getTeamSpawnForMap(arenaMapId, "blue");
     const initialServerX = isFiniteNumber(currentPlayer?.x) ? currentPlayer.x : fallbackSpawn.x;
     const initialServerZ = isFiniteNumber(currentPlayer?.z) ? currentPlayer.z : fallbackSpawn.z;
-    const playerPosition = new THREE.Vector3(serverToLocalX(initialServerX), FPS_STANDING_EYE_HEIGHT, serverToLocalZ(initialServerZ));
+    const initialGroundY = getArenaGroundHeight(arenaMapId, initialServerX, initialServerZ);
+    const initialServerY = isFiniteNumber(currentPlayer?.y) ? currentPlayer.y : fallbackSpawn.y;
+    const playerPosition = new THREE.Vector3(
+      serverToLocalX(initialServerX),
+      isFiniteNumber(initialServerY) ? initialServerY : initialGroundY + FPS_STANDING_EYE_HEIGHT,
+      serverToLocalZ(initialServerZ)
+    );
     let yaw = isFiniteNumber(currentPlayer?.facing) ? currentPlayer.facing : fallbackSpawn.facing;
     let pitch = -0.12;
     if (isFps) setMiniMapPosition(localToServerPosition(playerPosition, yaw));
@@ -440,7 +476,7 @@ export default function ArenaPreview({
     renderer.shadowMap.type = THREE.PCFSoftShadowMap;
     renderer.outputColorSpace = THREE.SRGBColorSpace;
     renderer.toneMapping = THREE.ACESFilmicToneMapping;
-    renderer.toneMappingExposure = isFps ? 0.86 : 0.98;
+    renderer.toneMappingExposure = isFps ? (isIronJunction ? 1.06 : 0.9) : 0.98;
     renderer.domElement.tabIndex = 0;
     renderer.domElement.className = "arena-webgl";
     renderer.domElement.dataset.quality = activeQuality;
@@ -452,9 +488,9 @@ export default function ArenaPreview({
         side: THREE.BackSide,
         fog: false,
         uniforms: {
-          topColor: { value: new THREE.Color(isZombieMode ? "#313b59" : isIronJunction ? "#53666d" : "#4c9ccc") },
+          topColor: { value: new THREE.Color(isZombieMode ? "#313b59" : isIronJunction ? "#53666d" : isTempleRunoff ? "#367b80" : "#4c9ccc") },
           horizonColor: { value: new THREE.Color(isZombieMode ? "#8f8395" : palette.sky) },
-          groundColor: { value: new THREE.Color(isZombieMode ? "#6b6174" : isIronJunction ? "#a9b7b2" : "#e6c88e") }
+          groundColor: { value: new THREE.Color(isZombieMode ? "#6b6174" : isIronJunction ? "#a9b7b2" : isTempleRunoff ? "#c79a62" : "#e6c88e") }
         },
         vertexShader: `varying vec3 vWorldPosition; void main(){ vec4 worldPosition = modelMatrix * vec4(position,1.0); vWorldPosition = worldPosition.xyz; gl_Position = projectionMatrix * modelViewMatrix * vec4(position,1.0); }`,
         fragmentShader: `uniform vec3 topColor; uniform vec3 horizonColor; uniform vec3 groundColor; varying vec3 vWorldPosition; void main(){ float h=normalize(vWorldPosition).y; vec3 lower=mix(groundColor,horizonColor,smoothstep(-0.22,0.08,h)); vec3 color=mix(lower,topColor,smoothstep(0.02,0.72,h)); gl_FragColor=vec4(color,1.0); }`
@@ -503,12 +539,12 @@ export default function ArenaPreview({
               : stoneTexture;
       const materialOptions: THREE.MeshStandardMaterialParameters = {
         color,
-        roughness: material === "water" ? 0.18 : material === "cloth" ? 0.84 : material === "metal" ? 0.42 : 0.68,
+        roughness: material === "water" ? (isTempleRunoff ? 0.32 : 0.18) : material === "cloth" ? 0.84 : material === "metal" ? 0.42 : 0.68,
         metalness: material === "water" ? 0.05 : material === "metal" ? 0.62 : 0.02,
         emissive: material === "water" || material === "accent" ? color : "#000000",
-        emissiveIntensity: material === "water" ? 0.28 : material === "accent" ? 0.16 : 0,
+        emissiveIntensity: material === "water" ? (isTempleRunoff ? 0.12 : 0.28) : material === "accent" ? 0.16 : 0,
         transparent: material === "water",
-        opacity: material === "water" ? 0.84 : 1
+        opacity: material === "water" ? (isTempleRunoff ? 0.78 : 0.84) : 1
       };
       if (material !== "cloth" && material !== "accent") {
         materialOptions.map = texture;
@@ -523,13 +559,13 @@ export default function ArenaPreview({
     };
 
     scene.add(new THREE.HemisphereLight(
-      isZombieMode ? "#d8ddff" : isIronJunction ? "#d9edf0" : "#fff6d8",
-      isZombieMode ? "#65556e" : isIronJunction ? "#354146" : "#8f7d6f",
+      isZombieMode ? "#d8ddff" : isIronJunction ? "#d9edf0" : isTempleRunoff ? "#e7f4d5" : "#fff6d8",
+      isZombieMode ? "#65556e" : isIronJunction ? "#354146" : isTempleRunoff ? "#334836" : "#8f7d6f",
       isFps ? 1.12 : 1.28
     ));
 
-    const keyLight = new THREE.DirectionalLight(isZombieMode ? "#d9e1ff" : isIronJunction ? "#d6edf0" : "#fff0ca", isFps ? 2.18 : isIronJunction ? 2.35 : 2.72);
-    keyLight.position.set(isIronJunction ? -120 : -85, 180, isIronJunction ? -60 : 95);
+    const keyLight = new THREE.DirectionalLight(isZombieMode ? "#d9e1ff" : isIronJunction ? "#d6edf0" : isTempleRunoff ? "#ffd798" : "#fff0ca", isFps ? 2.18 : isIronJunction ? 2.35 : isTempleRunoff ? 2.5 : 2.72);
+    keyLight.position.set(isIronJunction ? -120 : isTempleRunoff ? -105 : -85, 180, isIronJunction ? -60 : 95);
     keyLight.castShadow = !isFps;
     keyLight.shadow.mapSize.set(1024, 1024);
     keyLight.shadow.camera.left = -190;
@@ -538,18 +574,18 @@ export default function ArenaPreview({
     keyLight.shadow.camera.bottom = -175;
     scene.add(keyLight);
 
-    const fillLight = new THREE.DirectionalLight(isZombieMode ? "#b7a8de" : isIronJunction ? "#f3b47a" : "#ffe7bd", isFps ? 1.22 : 0.82);
+    const fillLight = new THREE.DirectionalLight(isZombieMode ? "#b7a8de" : isIronJunction ? "#f3b47a" : isTempleRunoff ? "#7ed9c8" : "#ffe7bd", isFps ? 1.22 : 0.82);
     fillLight.position.set(110, 80, -130);
     scene.add(fillLight);
 
     if (!isIronJunction) {
       const aqueductLight = new THREE.PointLight("#53e7ff", 42, 135, 2);
-      aqueductLight.position.set(0, 7, 0);
+      aqueductLight.position.set(0, 7, isTempleRunoff ? -27 : 0);
       scene.add(aqueductLight);
     }
 
     const addBaseBeacon = (team: "blue" | "red", color: string) => {
-      const base = TEAM_BASE_ZONES[team];
+      const base = teamBaseZones[team];
       const x = team === "blue" ? base.minX + 4.5 : base.maxX - 4.5;
       const z = (base.minZ + base.maxZ) / 2;
       const beacon = new THREE.Group();
@@ -590,11 +626,12 @@ export default function ArenaPreview({
           beacon.add(pylon);
         }
       }
-      beacon.position.set(x, 0, z);
+      const groundY = getArenaGroundHeight(arenaMapId, x, z);
+      beacon.position.set(x, groundY, z);
       scene.add(beacon);
       if (activeQuality !== "performance") {
         const accentLight = new THREE.PointLight(color, isFps ? 9 : 16, 42, 2);
-        accentLight.position.set(x, 7, z);
+        accentLight.position.set(x, groundY + 7, z);
         scene.add(accentLight);
       }
     };
@@ -648,19 +685,24 @@ export default function ArenaPreview({
       const flagGlow = new THREE.PointLight(markerColor, activeQuality === "performance" ? 0 : 18, 42, 2);
       flagGlow.position.y = 5;
       flagMarker.add(flagGlow);
-      flagMarker.position.set(markerX, 0, markerZ);
+      flagMarker.position.set(markerX, getArenaGroundHeight(arenaMapId, markerX, markerZ), markerZ);
       scene.add(flagMarker);
     }
 
     const floor = new THREE.Mesh(
-      new THREE.BoxGeometry(ARENA_LIMIT_X * 2, 0.3, ARENA_LIMIT_Z * 2),
+      new THREE.BoxGeometry(arenaBounds.limitX * 2, 0.3, arenaBounds.limitZ * 2),
       new THREE.MeshStandardMaterial({ map: floorTexture, color: palette.floor, roughness: 0.88, metalness: 0.01 })
     );
     floor.position.y = -0.2;
     floor.receiveShadow = true;
     scene.add(floor);
 
-    const grid = new THREE.GridHelper(ARENA_LIMIT_X * 2, 35, arenaMapId === "iron_junction" ? "#aeb8b5" : "#fff1c1", arenaMapId === "iron_junction" ? "#566266" : "#ad7b45");
+    const grid = new THREE.GridHelper(
+      arenaBounds.limitX * 2,
+      35,
+      isIronJunction ? "#aeb8b5" : isTempleRunoff ? "#b8d8ad" : "#fff1c1",
+      isIronJunction ? "#566266" : isTempleRunoff ? "#4f6f52" : "#ad7b45"
+    );
     grid.position.y = 0.012;
     grid.material.transparent = true;
     grid.material.opacity = 0.13;
@@ -669,7 +711,12 @@ export default function ArenaPreview({
     const coverBoxes: THREE.Box3[] = [];
     const collisionProxyMaterial = new THREE.MeshBasicMaterial({ visible: false, colorWrite: false, depthWrite: false });
     const colliderForObject = (object: THREE.Object3D, pad = 0.25) => {
-      coverBoxes.push(new THREE.Box3().setFromObject(object).expandByScalar(pad));
+      const box = new THREE.Box3().setFromObject(object);
+      box.min.x -= pad;
+      box.max.x += pad;
+      box.min.z -= pad;
+      box.max.z += pad;
+      coverBoxes.push(box);
     };
 
     const addDecorativeMesh = (parent: THREE.Object3D, geometry: THREE.BufferGeometry, color: string, material = "stone") => {
@@ -680,9 +727,17 @@ export default function ArenaPreview({
     };
 
     const addBlockDetail = (block: (typeof arenaMap.blocks)[number]) => {
-      if (!block.style || qualityConfig.detail === 0) return;
+      if (
+        !block.style ||
+        (qualityConfig.detail === 0 &&
+          block.style !== "stair" &&
+          block.style !== "railcar" &&
+          block.style !== "trackbed")
+      ) {
+        return;
+      }
       const detail = new THREE.Group();
-      detail.position.set(block.x, block.y ?? 0, block.z);
+      detail.position.set(block.x, (block.y ?? block.h / 2) - block.h / 2, block.z);
       detail.rotation.y = block.rotationY ?? 0;
       scene.add(detail);
       const stoneTone = block.material === "wood" ? block.color : paleStone;
@@ -796,6 +851,51 @@ export default function ArenaPreview({
         }
       }
 
+      if (block.style === "stair") {
+        const alongX = block.w < block.d;
+        const nosing = addDecorativeMesh(
+          detail,
+          new THREE.BoxGeometry(
+            alongX ? block.w * 0.22 : block.w * 0.96,
+            0.12,
+            alongX ? block.d * 0.96 : block.d * 0.22
+          ),
+          "#d99a3b",
+          "accent"
+        );
+        nosing.position.set(
+          alongX ? block.w * 0.37 : 0,
+          block.h + 0.065,
+          alongX ? 0 : block.d * 0.37
+        );
+      }
+
+      if (block.style === "trackbed") {
+        for (const z of [-block.d * 0.28, block.d * 0.28]) {
+          const rail = addDecorativeMesh(
+            detail,
+            new THREE.BoxGeometry(block.w * 0.98, 0.2, 0.2),
+            "#adb2ad",
+            "metal"
+          );
+          rail.position.set(0, block.h + 0.18, z);
+        }
+        const tieCount = qualityConfig.detail === 0 ? 18 : 30;
+        for (let index = 0; index < tieCount; index += 1) {
+          const tie = addDecorativeMesh(
+            detail,
+            new THREE.BoxGeometry(0.34, 0.14, block.d * 0.88),
+            "#574337",
+            "wood"
+          );
+          tie.position.set(
+            -block.w * 0.47 + (block.w * 0.94 * index) / (tieCount - 1),
+            block.h + 0.07,
+            0
+          );
+        }
+      }
+
       if (block.style === "tower") {
         const battlementCount = Math.max(3, Math.min(6, Math.floor(block.w / 3.5)));
         for (let index = 0; index < battlementCount; index += 1) {
@@ -821,12 +921,77 @@ export default function ArenaPreview({
       }
 
       if (block.style === "railcar") {
-        const roof = addDecorativeMesh(detail, new THREE.BoxGeometry(block.w * 0.88, 0.28, block.d * 0.9), "#a85c3d", "metal");
-        roof.position.y = block.h + 0.2;
-        for (const x of [-block.w * 0.28, block.w * 0.28]) {
-          const wheel = addDecorativeMesh(detail, new THREE.CylinderGeometry(0.85, 0.85, 0.35, 12), "#222b2d", "metal");
-          wheel.rotation.x = Math.PI / 2;
-          wheel.position.set(x, 0.7, block.d * 0.54);
+        const isLocomotive = block.id.includes("locomotive");
+        const isBrakeVan = block.id.includes("damaged");
+        const chassis = addDecorativeMesh(detail, new THREE.BoxGeometry(block.w * 0.96, 0.52, block.d * 0.82), "#20282b", "metal");
+        chassis.position.y = 1.22;
+        const lowerSill = addDecorativeMesh(detail, new THREE.BoxGeometry(block.w * 0.94, 0.32, block.d * 1.02), "#303a3d", "metal");
+        lowerSill.position.y = 1.78;
+        const roof = addDecorativeMesh(
+          detail,
+          new THREE.BoxGeometry(block.w * 0.94, 0.34, block.d * 1.04),
+          isLocomotive ? "#273337" : "#6f4537",
+          "metal"
+        );
+        roof.position.y = block.h + 0.18;
+        for (const x of [-block.w * 0.32, -block.w * 0.22, block.w * 0.22, block.w * 0.32]) {
+          for (const z of [-block.d * 0.53, block.d * 0.53]) {
+            const wheel = addDecorativeMesh(detail, new THREE.CylinderGeometry(0.82, 0.82, 0.32, 12), "#202729", "metal");
+            wheel.rotation.x = Math.PI / 2;
+            wheel.position.set(x, 0.72, z);
+          }
+        }
+        for (const x of [-block.w * 0.27, block.w * 0.27]) {
+          const bogie = addDecorativeMesh(detail, new THREE.BoxGeometry(block.w * 0.2, 0.75, block.d * 0.72), "#293235", "metal");
+          bogie.position.set(x, 1.05, 0);
+        }
+        for (const x of [-block.w * 0.51, block.w * 0.51]) {
+          const coupler = addDecorativeMesh(detail, new THREE.BoxGeometry(block.w * 0.07, 0.34, 0.34), "#202729", "metal");
+          coupler.position.set(x, 1.25, 0);
+          const bumper = addDecorativeMesh(detail, new THREE.CylinderGeometry(0.28, 0.28, 0.5, 10), "#202729", "metal");
+          bumper.rotation.z = Math.PI / 2;
+          bumper.position.set(x + Math.sign(x) * 0.4, 1.25, 0);
+        }
+        if (!isLocomotive) {
+          const ribCount = Math.max(5, Math.min(9, Math.round(block.w / 5.5)));
+          for (let index = 0; index < ribCount; index += 1) {
+            const x = -block.w * 0.43 + (block.w * 0.86 * index) / Math.max(1, ribCount - 1);
+            if (Math.abs(x) < block.w * 0.17) continue;
+            for (const z of [-block.d * 0.515, block.d * 0.515]) {
+              const rib = addDecorativeMesh(detail, new THREE.BoxGeometry(0.16, block.h * 0.68, 0.18), "#313b3e", "metal");
+              rib.position.set(x, block.h * 0.56, z);
+            }
+          }
+          for (const z of [-block.d * 0.525, block.d * 0.525]) {
+            const door = addDecorativeMesh(detail, new THREE.BoxGeometry(block.w * 0.3, block.h * 0.64, 0.2), isBrakeVan ? "#6f3f32" : block.color, "metal");
+            door.position.set(0, block.h * 0.55, z);
+            const doorTrack = addDecorativeMesh(detail, new THREE.BoxGeometry(block.w * 0.38, 0.18, 0.25), "#252e31", "metal");
+            doorTrack.position.set(0, block.h * 0.88, z);
+            for (const x of [-block.w * 0.12, -block.w * 0.04, block.w * 0.04, block.w * 0.12]) {
+              const doorRib = addDecorativeMesh(detail, new THREE.BoxGeometry(0.11, block.h * 0.56, 0.24), "#394447", "metal");
+              doorRib.position.set(x, block.h * 0.54, z + Math.sign(z) * 0.02);
+            }
+          }
+        }
+        for (const x of [-block.w * 0.44, block.w * 0.44]) {
+          const endLadder = addDecorativeMesh(detail, new THREE.BoxGeometry(0.16, block.h * 0.62, 0.16), "#d19a55", "metal");
+          endLadder.position.set(x, block.h * 0.48, -block.d * 0.53);
+        }
+        if (isLocomotive) {
+          const cab = addDecorativeMesh(detail, new THREE.BoxGeometry(block.w * 0.28, block.h * 0.78, block.d * 0.86), "#313d41", "metal");
+          cab.position.set(block.w * 0.27, block.h * 0.54, 0);
+          const nose = addDecorativeMesh(detail, new THREE.BoxGeometry(block.w * 0.2, block.h * 0.42, block.d * 0.72), "#744331", "metal");
+          nose.position.set(block.w * 0.45, block.h * 0.3, 0);
+          for (const z of [-block.d * 0.44, block.d * 0.44]) {
+            const cabWindow = addDecorativeMesh(detail, new THREE.BoxGeometry(block.w * 0.1, block.h * 0.2, 0.14), "#8eb2b8", "accent");
+            cabWindow.position.set(block.w * 0.28, block.h * 0.68, z);
+          }
+          const exhaust = addDecorativeMesh(detail, new THREE.CylinderGeometry(0.42, 0.55, 2.2, 10), "#20282b", "metal");
+          exhaust.position.set(block.w * 0.08, block.h + 1.15, 0);
+        }
+        if (isBrakeVan) {
+          const lookout = addDecorativeMesh(detail, new THREE.BoxGeometry(block.w * 0.28, 1.6, block.d * 0.62), "#5d3930", "metal");
+          lookout.position.set(0, block.h + 0.95, 0);
         }
       }
 
@@ -875,9 +1040,9 @@ export default function ArenaPreview({
       const group = new THREE.Group();
       group.name = `modular_${block.id}`;
       group.position.set(block.x, block.y ?? block.h / 2, block.z);
-      group.rotation.y = block.rotationY ?? 0;
+      group.rotation.set(block.rotationX ?? 0, block.rotationY ?? 0, block.rotationZ ?? 0);
       scene.add(group);
-      const structural = ["wall", "ruin", "gate", "house", "tower", "shed", "machinery", "railcar", "gantry"].includes(block.style ?? "");
+      const structural = ["wall", "ruin", "gate", "house", "tower", "shed", "machinery", "gantry"].includes(block.style ?? "");
       if (qualityConfig.detail === 0 || !structural || block.material === "water") {
         const body = new THREE.Mesh(new THREE.BoxGeometry(block.w, block.h, block.d), materialFor(block.color, block.material ?? "stone"));
         if (block.material === "water") {
@@ -923,23 +1088,24 @@ export default function ArenaPreview({
     };
 
     const addBlock = (block: (typeof arenaMap.blocks)[number]) => {
-      const proxy = new THREE.Mesh(new THREE.BoxGeometry(block.w, block.h, block.d), collisionProxyMaterial);
-      proxy.name = `collision_proxy_${block.id}`;
-      proxy.position.set(block.x, block.y ?? block.h / 2, block.z);
-      proxy.rotation.y = block.rotationY ?? 0;
-      proxy.visible = false;
-      proxy.userData.collisionProxy = true;
-      scene.add(proxy);
-      if (block.collides) colliderForObject(proxy, 0.25);
+      if (block.collides) {
+        const proxy = new THREE.Mesh(new THREE.BoxGeometry(block.w, block.h, block.d), collisionProxyMaterial);
+        proxy.name = `collision_proxy_${block.id}`;
+        proxy.position.set(block.x, block.y ?? block.h / 2, block.z);
+        proxy.rotation.set(block.rotationX ?? 0, block.rotationY ?? 0, block.rotationZ ?? 0);
+        proxy.visible = false;
+        proxy.userData.collisionProxy = true;
+        scene.add(proxy);
+        colliderForObject(proxy, 0.25);
+      }
       addModularBlockBody(block);
       addBlockDetail(block);
-      if (block.label && !isFps) {
+      if (block.label && !isFps && !isDesertCitadel) {
         const label = new THREE.Sprite(makeSpriteLabel(block.label, "#fef3c7"));
-        label.position.set(block.x, (block.y ?? block.h) + block.h / 2 + 6, block.z);
+        label.position.set(block.x, (block.y ?? block.h / 2) + block.h / 2 + 6, block.z);
         label.scale.set(22, 7.5, 1);
         scene.add(label);
       }
-      return proxy;
     };
     arenaMap.blocks.forEach(addBlock);
 
@@ -1138,15 +1304,15 @@ export default function ArenaPreview({
       if (cylinder.material !== "water") staticBatcher.prepare(mesh, cylinder.color, cylinder.material ?? "stone");
       scene.add(mesh);
       if (cylinder.collides) colliderForObject(mesh, 0.2);
-      if (cylinder.label && !isFps) {
+      if (cylinder.label && !isFps && !isDesertCitadel) {
         const label = new THREE.Sprite(makeSpriteLabel(cylinder.label, "#fef3c7"));
-        label.position.set(cylinder.x, (cylinder.y ?? cylinder.h) + cylinder.h / 2 + 5, cylinder.z);
+        label.position.set(cylinder.x, (cylinder.y ?? cylinder.h / 2) + cylinder.h / 2 + 5, cylinder.z);
         label.scale.set(22, 7.5, 1);
         scene.add(label);
       }
     });
 
-    const addFloorLabel = (label: string, x: number, z: number, width: number, depth: number, color: string, rotation = 0) => {
+    const addFloorLabel = (label: string, x: number, z: number, width: number, depth: number, color: string, rotation = 0, y?: number) => {
       const marker = new THREE.Mesh(
         new THREE.PlaneGeometry(width, depth),
         new THREE.MeshBasicMaterial({
@@ -1158,12 +1324,12 @@ export default function ArenaPreview({
       );
       marker.rotation.x = -Math.PI / 2;
       marker.rotation.z = rotation;
-      marker.position.set(x, 0.045, z);
+      marker.position.set(x, y ?? getArenaGroundHeight(arenaMapId, x, z) + 0.045, z);
       scene.add(marker);
       return marker;
     };
 
-    arenaMap.floorMarks.forEach((mark) => addFloorLabel(mark.label, mark.x, mark.z, mark.w, mark.d, mark.color, mark.rotation));
+    arenaMap.floorMarks.forEach((mark) => addFloorLabel(mark.label, mark.x, mark.z, mark.w, mark.d, mark.color, mark.rotation, mark.y));
 
     const addWallSign = (label: string, x: number, z: number, color: string, rotationY = 0, y = 7) => {
       const sign = new THREE.Mesh(
@@ -1183,21 +1349,22 @@ export default function ArenaPreview({
     // become misleading visual cover at first-person distance.
     if (!isFps) arenaMap.signs.forEach((sign) => addWallSign(sign.label, sign.x, sign.z, sign.color, sign.rotationY, sign.y));
 
-    const addCircle = (x: number, z: number, radius: number, color: string, opacity = 0.24) => {
+    const addCircle = (x: number, z: number, radius: number, color: string, opacity = 0.24, y?: number) => {
       const circle = new THREE.Mesh(
         new THREE.CircleGeometry(radius, 48),
         new THREE.MeshBasicMaterial({ color, transparent: true, opacity, depthWrite: false })
       );
       circle.rotation.x = -Math.PI / 2;
-      circle.position.set(x, 0.07, z);
+      circle.position.set(x, (y ?? getArenaGroundHeight(arenaMapId, x, z)) + 0.07, z);
       scene.add(circle);
       return circle;
     };
 
-    CAPTURE_ZONES.forEach((zone) => {
-      addCircle(zone.x, zone.z, zone.radius, "#facc15", 0.18);
+    captureZones.forEach((zone) => {
+      const zoneY = "y" in zone ? zone.y : getArenaGroundHeight(arenaMapId, zone.x, zone.z);
+      addCircle(zone.x, zone.z, zone.radius, "#facc15", 0.18, zoneY);
       const terminal = new THREE.Group();
-      terminal.position.set(zone.x, 0.085, zone.z);
+      terminal.position.set(zone.x, zoneY + 0.085, zone.z);
       const terminalRing = addDecorativeMesh(terminal, new THREE.TorusGeometry(Math.max(1.2, zone.radius * 0.18), 0.1, 6, 24), "#facc15", "accent");
       terminalRing.rotation.x = Math.PI / 2;
       for (let index = -1; index <= 1; index += 1) {
@@ -1215,30 +1382,31 @@ export default function ArenaPreview({
         terminal.add(answerPad);
       }
       scene.add(terminal);
-      if (!isFps) {
+      if (!isFps && !isTempleRunoff) {
         const label = new THREE.Sprite(makeSpriteLabel(zone.label, "#fde68a"));
-        label.position.set(zone.x, 12, zone.z);
+        label.position.set(zone.x, zoneY + 12, zone.z);
         label.scale.set(22, 7.5, 1);
         scene.add(label);
       }
     });
 
-    SEARCH_RETRIEVE_ITEMS.forEach((item) => {
+    searchRetrieveItems.forEach((item) => {
       const gem = new THREE.Mesh(
         new THREE.OctahedronGeometry(3.2),
         new THREE.MeshStandardMaterial({ color: "#f8fafc", emissive: "#67e8f9", emissiveIntensity: 0.52, roughness: 0.2 })
       );
-      gem.position.set(item.x, 4.2, item.z);
+      gem.position.set(item.x, ("y" in item ? item.y : getArenaGroundHeight(arenaMapId, item.x, item.z)) + 4.2, item.z);
       scene.add(gem);
     });
-    addCircle(SEARCH_RETRIEVE_DELIVERY_ZONES.blue.x, SEARCH_RETRIEVE_DELIVERY_ZONES.blue.z, SEARCH_RETRIEVE_DELIVERY_ZONES.blue.radius, "#38bdf8", 0.16);
-    addCircle(SEARCH_RETRIEVE_DELIVERY_ZONES.red.x, SEARCH_RETRIEVE_DELIVERY_ZONES.red.z, SEARCH_RETRIEVE_DELIVERY_ZONES.red.radius, "#fb7185", 0.16);
+    addCircle(searchRetrieveDeliveryZones.blue.x, searchRetrieveDeliveryZones.blue.z, searchRetrieveDeliveryZones.blue.radius, "#38bdf8", 0.16, "y" in searchRetrieveDeliveryZones.blue ? searchRetrieveDeliveryZones.blue.y : undefined);
+    addCircle(searchRetrieveDeliveryZones.red.x, searchRetrieveDeliveryZones.red.z, searchRetrieveDeliveryZones.red.radius, "#fb7185", 0.16, "y" in searchRetrieveDeliveryZones.red ? searchRetrieveDeliveryZones.red.y : undefined);
 
-    TEAM_SPAWNS.blue.forEach((spawn) => addCircle(spawn.x, spawn.z, 2.2, "#38bdf8", isFps ? 0.08 : 0.28));
-    TEAM_SPAWNS.red.forEach((spawn) => addCircle(spawn.x, spawn.z, 2.2, "#fb7185", isFps ? 0.08 : 0.28));
+    const visibleTeamSpawns = getTeamSpawnsForMap(arenaMapId);
+    visibleTeamSpawns.blue.forEach((spawn) => addCircle(spawn.x, spawn.z, 2.2, "#38bdf8", isFps ? 0.08 : 0.28, Number.isFinite(spawn.y) ? Number(spawn.y) - FPS_STANDING_EYE_HEIGHT : undefined));
+    visibleTeamSpawns.red.forEach((spawn) => addCircle(spawn.x, spawn.z, 2.2, "#fb7185", isFps ? 0.08 : 0.28, Number.isFinite(spawn.y) ? Number(spawn.y) - FPS_STANDING_EYE_HEIGHT : undefined));
     if (!isFps) FREE_FOR_ALL_SPAWNS.forEach((spawn) => addCircle(spawn.x, spawn.z, 1.3, "#ffffff", 0.18));
 
-    if (!isIronJunction) {
+    if (!isIronJunction && !isTempleRunoff) {
       for (const [x, z, sx, sz] of [
         [-120, -176, 58, 12],
         [116, -176, 48, 10],
@@ -1258,18 +1426,18 @@ export default function ArenaPreview({
     if (qualityConfig.detail === 2) {
       const rockCount = qualityConfig.detail === 2 ? 34 : 20;
       const rockGeometry = new THREE.IcosahedronGeometry(1, 0);
-      const rockInstances = new THREE.InstancedMesh(rockGeometry, materialFor("#8f704d", "stone"), rockCount);
+      const rockInstances = new THREE.InstancedMesh(rockGeometry, materialFor(isTempleRunoff ? "#56634b" : "#8f704d", "stone"), rockCount);
       const rockMatrix = new THREE.Matrix4();
       const rockPosition = new THREE.Vector3();
       const rockRotation = new THREE.Quaternion();
       const rockScale = new THREE.Vector3();
-      const random = seededRandom(arenaMapId === "iron_junction" ? 913 : 617);
+      const random = seededRandom(isIronJunction ? 913 : isTempleRunoff ? 74013 : 617);
       for (let index = 0; index < rockCount; index += 1) {
         const onHorizontalEdge = index % 2 === 0;
         rockPosition.set(
-          onHorizontalEdge ? (random() * 2 - 1) * (ARENA_LIMIT_X - 9) : (random() > 0.5 ? -1 : 1) * (ARENA_LIMIT_X - 5 - random() * 5),
+          onHorizontalEdge ? (random() * 2 - 1) * (arenaBounds.limitX - 9) : (random() > 0.5 ? -1 : 1) * (arenaBounds.limitX - 5 - random() * 5),
           0.28 + random() * 0.45,
-          onHorizontalEdge ? (random() > 0.5 ? -1 : 1) * (ARENA_LIMIT_Z - 5 - random() * 5) : (random() * 2 - 1) * (ARENA_LIMIT_Z - 9)
+          onHorizontalEdge ? (random() > 0.5 ? -1 : 1) * (arenaBounds.limitZ - 5 - random() * 5) : (random() * 2 - 1) * (arenaBounds.limitZ - 9)
         );
         rockRotation.setFromEuler(new THREE.Euler(random() * 0.4, random() * Math.PI, random() * 0.25));
         rockScale.set(0.4 + random() * 1.2, 0.32 + random() * 0.62, 0.45 + random() * 1.3);
@@ -1282,7 +1450,8 @@ export default function ArenaPreview({
     }
 
     if (isIronJunction) addIronJunctionArtPass(scene, addDecorativeMesh, qualityConfig.detail, isFps);
-    const desertCitadelVfx = isIronJunction ? null : addDesertCitadelVfx(scene, qualityConfig.detail);
+    const templeRunoffArt = isTempleRunoff ? addTempleRunoffArtPass(scene, addDecorativeMesh, qualityConfig.detail, isFps) : null;
+    const desertCitadelVfx = isIronJunction || isTempleRunoff ? null : addDesertCitadelVfx(scene, qualityConfig.detail);
     const staticBatchStats = staticBatcher.flush(scene);
     renderer.domElement.dataset.staticSources = String(staticBatchStats.sourceMeshes);
     renderer.domElement.dataset.staticBatches = String(staticBatchStats.batchMeshes);
@@ -1307,6 +1476,7 @@ export default function ArenaPreview({
     const characterManager = new CharacterManager(scene, characterFactory, {
       isFps,
       currentPlayerId,
+      showBadges: isFps || players.length <= 24,
       makeBadgeMaterial: (player) => new THREE.SpriteMaterial({
         map: makeLabelTexture(player.isBot ? "BOT" : `${playerAccuracy(player)}%`, player.team === "blue" ? "#7dd3fc" : "#fb923c"),
         transparent: true,
@@ -1314,7 +1484,17 @@ export default function ArenaPreview({
       })
     });
     const vfxPool = new ArenaVfxPool(scene, qualityConfig.detail);
-    const unsubscribeVfx = subscribeArenaVfx((event) => vfxPool.emit(event));
+    const unsubscribeVfx = subscribeArenaVfx((event) => {
+      const muzzlePosition = event.playerId
+        ? characterManager.getMuzzleWorldPosition(event.playerId)
+        : undefined;
+      vfxPool.emit(muzzlePosition ? {
+        ...event,
+        x: muzzlePosition.x,
+        y: muzzlePosition.y,
+        z: muzzlePosition.z
+      } : event);
+    });
     const unsubscribeAnimation = subscribeArenaAnimation((event) => characterManager.triggerAnimation(event));
     const performanceCapture = new ArenaPerformanceCapture(renderer, activeQuality);
     const knownAlive = new Map(players.map((player) => [player.id, player.isAlive]));
@@ -1327,8 +1507,17 @@ export default function ArenaPreview({
       const liveZ = player.z;
       const hasLivePosition = isFiniteNumber(liveX) && isFiniteNumber(liveZ);
       const fallback = getTeamSpawnForMap(arenaMapId, player.team, index);
+      const fallbackGroundY = getArenaGroundHeight(
+        arenaMapId,
+        hasLivePosition ? serverToLocalX(liveX) : fallback.x,
+        hasLivePosition ? serverToLocalZ(liveZ) : fallback.z
+      );
+      const replicatedEyeHeight = player.crouching
+        ? FPS_CROUCH_EYE_HEIGHT
+        : FPS_STANDING_EYE_HEIGHT;
       return {
         x: hasLivePosition ? serverToLocalX(liveX) : fallback.x,
+        y: isFiniteNumber(player.y) ? player.y - replicatedEyeHeight : fallbackGroundY,
         z: hasLivePosition ? serverToLocalZ(liveZ) : fallback.z,
         facing: isFiniteNumber(player.facing) ? player.facing : fallback.facing
       };
@@ -1419,7 +1608,9 @@ export default function ArenaPreview({
         const nextCarrier = nextFlag.carrierId
           ? nextPlayers.find((player) => player.id === nextFlag.carrierId)
           : undefined;
-        flagMarker.position.set(nextCarrier?.x ?? nextFlag.position.x, 0, nextCarrier?.z ?? nextFlag.position.z);
+        const nextX = nextCarrier?.x ?? nextFlag.position.x;
+        const nextZ = nextCarrier?.z ?? nextFlag.position.z;
+        flagMarker.position.set(nextX, getArenaGroundHeight(arenaMapId, nextX, nextZ), nextZ);
       }
     };
     syncPlayersRef.current(session, currentPlayer);
@@ -1431,6 +1622,14 @@ export default function ArenaPreview({
 
       const firstPersonModel = characterFactory.createFirstPersonViewModel(currentPlayerTeam, getPlayerWeaponId(currentPlayer ?? { gear: "starter_blaster" }));
       camera.add(firstPersonModel.root);
+      const firstPersonRootBaseY = firstPersonModel.root.position.y;
+      const firstPersonWeaponRotation = firstPersonModel.weapon.rotation.clone();
+      const fpsMuzzlePosition = new THREE.Vector3();
+      const syncFpsMuzzlePosition = () => {
+        camera.updateMatrixWorld(true);
+        firstPersonModel.muzzle.getWorldPosition(fpsMuzzlePosition);
+        camera.worldToLocal(fpsMuzzlePosition);
+      };
 
       const flashMaterial = new THREE.SpriteMaterial({
         map: puffTexture,
@@ -1440,13 +1639,11 @@ export default function ArenaPreview({
         depthWrite: false
       });
       const flash = new THREE.Sprite(flashMaterial);
-      flash.position.set(0.06, -0.36, -1.98);
       flash.scale.set(0.95, 0.5, 1);
       camera.add(flash);
 
       const muzzleRingMaterial = new THREE.MeshBasicMaterial({ color: "#9cecff", transparent: true, opacity: 0, depthTest: false, depthWrite: false });
       const muzzleRing = new THREE.Mesh(new THREE.TorusGeometry(0.17, 0.025, 6, 18), muzzleRingMaterial);
-      muzzleRing.position.set(0.06, -0.36, -1.96);
       camera.add(muzzleRing);
 
       const snowball = new THREE.Mesh(
@@ -1483,6 +1680,7 @@ export default function ArenaPreview({
       let cooldownTimeout: number | undefined;
       let wasGrounded = true;
       let landedAt = 0;
+      let cameraVisualY = playerPosition.y;
       let fireHeld = false;
       const getEquippedGearId = () => getPlayerWeaponId(currentPlayerRef.current ?? { gear: "starter_blaster" });
       const hasZoomGear = () => getGearZoomFovMultiplier(getEquippedGearId()) < 1;
@@ -1513,7 +1711,12 @@ export default function ArenaPreview({
           }
           return;
         }
-        const launchPosition = { ...localToServerPosition(playerPosition, yaw), scoped: activeZoomLevel > 0, zoomLevel: activeZoomLevel };
+        const launchPosition = {
+          ...localToServerPosition(playerPosition, yaw),
+          pitch,
+          scoped: activeZoomLevel > 0,
+          zoomLevel: activeZoomLevel
+        };
         const authoritativeSnowballs = currentPlayerRef.current?.snowballs;
         const availableSnowballs = isFiniteNumber(authoritativeSnowballs)
           ? Math.floor(authoritativeSnowballs) - pendingShotsRef.current
@@ -1595,7 +1798,7 @@ export default function ArenaPreview({
         gamepadMove.forward = -leftY;
         gamepadMove.right = leftX;
         yaw -= rightX * 0.055;
-        pitch = clamp(pitch - rightY * 0.042, -0.85, 0.62);
+        pitch = clamp(pitch - rightY * 0.042, ARENA_MIN_AIM_PITCH, ARENA_MAX_AIM_PITCH);
         const firePressed = Boolean(gamepad.buttons[7]?.pressed || gamepad.buttons[0]?.pressed);
         const interactPressed = Boolean(gamepad.buttons[2]?.pressed);
         if (firePressed && !gamepadFireWasPressed) fire();
@@ -1644,7 +1847,11 @@ export default function ArenaPreview({
       const onMouseMove = (event: MouseEvent) => {
         if (document.pointerLockElement !== renderer.domElement) return;
         yaw -= event.movementX * 0.0022;
-        pitch = clamp(pitch - event.movementY * 0.0018, -0.85, 0.62);
+        pitch = clamp(
+          pitch - event.movementY * 0.0018,
+          ARENA_MIN_AIM_PITCH,
+          ARENA_MAX_AIM_PITCH
+        );
       };
       const onPointerLockChange = () => {
         const locked = document.pointerLockElement === renderer.domElement;
@@ -1693,7 +1900,11 @@ export default function ArenaPreview({
       const onTouchPointerMove = (event: PointerEvent) => {
         if (event.pointerType !== "touch" || event.pointerId !== touchLookPointerId) return;
         yaw -= (event.clientX - touchLookX) * TOUCH_LOOK_SENSITIVITY;
-        pitch = clamp(pitch - (event.clientY - touchLookY) * TOUCH_LOOK_SENSITIVITY, -0.85, 0.62);
+        pitch = clamp(
+          pitch - (event.clientY - touchLookY) * TOUCH_LOOK_SENSITIVITY,
+          ARENA_MIN_AIM_PITCH,
+          ARENA_MAX_AIM_PITCH
+        );
         touchLookDistance = Math.max(touchLookDistance, Math.hypot(event.clientX - touchLookStartX, event.clientY - touchLookStartY));
         touchLookX = event.clientX;
         touchLookY = event.clientY;
@@ -1748,8 +1959,11 @@ export default function ArenaPreview({
         if (document.pointerLockElement === renderer.domElement) document.exitPointerLock();
       };
 
-      const updateCamera = () => {
-        cameraRig.position.set(playerPosition.x, playerPosition.y, playerPosition.z);
+      const updateCamera = (delta = 0) => {
+        cameraVisualY = wasGrounded
+          ? smoothFpsGroundedCameraY(cameraVisualY, playerPosition.y, delta)
+          : playerPosition.y;
+        cameraRig.position.set(playerPosition.x, cameraVisualY, playerPosition.z);
         camera.rotation.set(pitch, yaw, 0, "YXZ");
         renderer.domElement.dataset.playerX = playerPosition.x.toFixed(3);
         renderer.domElement.dataset.playerY = playerPosition.y.toFixed(3);
@@ -1762,8 +1976,16 @@ export default function ArenaPreview({
       let lastMoveEmitAt = 0;
       let lastMiniMapAt = 0;
       let lastDebugStatsAt = 0;
+      let isSprinting = false;
+      let isCrouching = false;
+      let isJumping = false;
+      let previousFloorEyeHeight = FPS_STANDING_EYE_HEIGHT;
       let performanceWindowAt = performance.now();
-      let lastSentPosition = localToServerPosition(playerPosition, yaw);
+      let lastSentPosition = {
+        ...localToServerPosition(playerPosition, yaw),
+        crouching: isCrouching,
+        jumping: isJumping
+      };
       const forwardVector = new THREE.Vector3();
       const rightVector = new THREE.Vector3();
       const movementVector = new THREE.Vector3();
@@ -1772,12 +1994,28 @@ export default function ArenaPreview({
       const bodyBox = new THREE.Box3();
       const bodyMin = new THREE.Vector3();
       const bodyMax = new THREE.Vector3();
+      const levelDebugEnabled = import.meta.env.DEV
+        && ["1", "true"].includes(
+          new URLSearchParams(window.location.search).get("debugArenaLevels")
+          ?? new URLSearchParams(window.location.search).get("debugTempleLevels")
+          ?? ""
+        );
+      let lastLevelDebugAt = 0;
+      let lastColliderName = "none";
       const maybeEmitPosition = (currentTime: number) => {
         if (currentTime - lastMoveEmitAt < 180) return;
-        const nextPosition = localToServerPosition(playerPosition, yaw);
+        const nextPosition = {
+          ...localToServerPosition(playerPosition, yaw),
+          sprinting: isSprinting,
+          crouching: isCrouching,
+          jumping: isJumping
+        };
         const moved = Math.hypot(nextPosition.x - lastSentPosition.x, nextPosition.z - lastSentPosition.z);
+        const movedVertically = Math.abs(Number(nextPosition.y) - Number(lastSentPosition.y));
         const turned = Math.abs(nextPosition.facing - lastSentPosition.facing);
-        if (moved < 0.3 && turned < 0.08) return;
+        const postureChanged = nextPosition.crouching !== lastSentPosition.crouching
+          || nextPosition.jumping !== lastSentPosition.jumping;
+        if (moved < 0.3 && movedVertically < 0.12 && turned < 0.08 && !postureChanged) return;
         lastMoveEmitAt = currentTime;
         lastSentPosition = nextPosition;
         if (controlsDisabledRef.current || inputPausedRef.current) return;
@@ -1789,7 +2027,34 @@ export default function ArenaPreview({
         bodyMin.set(next.x - PLAYER_RADIUS, verticalBounds.minY, next.z - PLAYER_RADIUS);
         bodyMax.set(next.x + PLAYER_RADIUS, verticalBounds.maxY, next.z + PLAYER_RADIUS);
         bodyBox.set(bodyMin, bodyMax);
-        return !coverBoxes.some((box) => box.intersectsBox(bodyBox) && !canFpsBodyClearObstacle(verticalBounds, box.max.y));
+        const blockingIndex = coverBoxes.findIndex((box) => box.intersectsBox(bodyBox) && !canFpsBodyClearObstacle(verticalBounds, box.max.y));
+        lastColliderName = blockingIndex >= 0 ? arenaMap.blocks.filter((block) => block.collides)[blockingIndex]?.id ?? "unknown" : "none";
+        return blockingIndex < 0;
+      };
+      const resolveSurfaceGroundY = (
+        x: number,
+        z: number,
+        eyeY: number,
+        floorEyeHeight: number
+      ) => {
+        const mappedGroundY = getArenaGroundHeightForPlayer(
+          arenaMapId,
+          x,
+          z,
+          eyeY,
+          floorEyeHeight
+        );
+        if (verticalVelocity > 0) return mappedGroundY;
+        const footY = eyeY - floorEyeHeight;
+        const supportY = findFpsSupportSurfaceY(
+          coverBoxes,
+          x,
+          z,
+          PLAYER_RADIUS,
+          footY,
+          footY
+        );
+        return supportY === undefined ? mappedGroundY : Math.max(mappedGroundY, supportY);
       };
 
       const animateFps = () => {
@@ -1799,6 +2064,7 @@ export default function ArenaPreview({
         performanceCapture.frame(currentTime);
         vfxPool.update(currentTime);
         desertCitadelVfx?.update(clock.elapsedTime);
+        templeRunoffArt?.update(clock.elapsedTime);
         if (currentTime - performanceWindowAt >= 1000) {
           const profile = performanceCapture.snapshot(currentTime);
           renderer.domElement.dataset.fps = String(profile.fps);
@@ -1815,13 +2081,21 @@ export default function ArenaPreview({
           if (isFiniteNumber(followedPlayer?.x) && isFiniteNumber(followedPlayer?.z)) {
             playerPosition.x += (serverToLocalX(followedPlayer.x) - playerPosition.x) * 0.24;
             playerPosition.z += (serverToLocalZ(followedPlayer.z) - playerPosition.z) * 0.24;
+            const followedEyeY = isFiniteNumber(followedPlayer.y)
+              ? followedPlayer.y
+              : getArenaGroundHeight(arenaMapId, followedPlayer.x, followedPlayer.z) + FPS_STANDING_EYE_HEIGHT;
+            playerPosition.y += (followedEyeY - playerPosition.y) * 0.24;
             if (isFiniteNumber(followedPlayer.facing)) yaw = followedPlayer.facing;
           }
         }
         const horizontalLook = Number(lookKeys.has("ArrowLeft")) - Number(lookKeys.has("ArrowRight"));
         const verticalLook = Number(lookKeys.has("ArrowUp")) - Number(lookKeys.has("ArrowDown"));
         yaw += horizontalLook * KEYBOARD_LOOK_SPEED * delta;
-        pitch = clamp(pitch + verticalLook * KEYBOARD_LOOK_SPEED * delta, -0.85, 0.62);
+        pitch = clamp(
+          pitch + verticalLook * KEYBOARD_LOOK_SPEED * delta,
+          ARENA_MIN_AIM_PITCH,
+          ARENA_MAX_AIM_PITCH
+        );
         if (inputPausedRef.current) {
           keys.clear();
           lookKeys.clear();
@@ -1830,17 +2104,83 @@ export default function ArenaPreview({
         applyGamepadInput();
         const crouching = keys.has("Control");
         const floorEyeHeight = crouching ? FPS_CROUCH_EYE_HEIGHT : FPS_STANDING_EYE_HEIGHT;
-        const grounded = playerPosition.y <= floorEyeHeight + 0.02 && Math.abs(verticalVelocity) < 0.01;
+        if (floorEyeHeight !== previousFloorEyeHeight) {
+          playerPosition.y += floorEyeHeight - previousFloorEyeHeight;
+          previousFloorEyeHeight = floorEyeHeight;
+        }
+        isCrouching = crouching;
+        const recoveryGroundY = getArenaRecoveryGroundHeight(
+          arenaMapId,
+          playerPosition.x,
+          playerPosition.z,
+          playerPosition.y,
+          floorEyeHeight
+        );
+        if (recoveryGroundY !== undefined) {
+          playerPosition.y = recoveryGroundY + floorEyeHeight;
+          verticalVelocity = 0;
+          wasGrounded = true;
+        }
+        let surfaceGroundY = resolveSurfaceGroundY(
+          playerPosition.x,
+          playerPosition.z,
+          playerPosition.y,
+          floorEyeHeight
+        );
+        let groundEyeY = surfaceGroundY + floorEyeHeight;
+        const currentLevel = getArenaLevelLabel(arenaMapId, surfaceGroundY);
+        renderer.domElement.dataset.playerGroundY = surfaceGroundY.toFixed(3);
+        renderer.domElement.dataset.detectedFloor = surfaceGroundY.toFixed(3);
+        renderer.domElement.dataset.currentNavRegion = `${arenaMapId}:${currentLevel}`;
+        renderer.domElement.dataset.recoveryTriggered = recoveryGroundY === undefined ? "no" : "yes";
+        renderer.domElement.dataset.recoveryReason = recoveryGroundY === undefined ? "none" : "solid_foundation";
+        renderer.domElement.dataset.recoveryDestination = recoveryGroundY === undefined ? "none" : recoveryGroundY.toFixed(3);
+        renderer.domElement.dataset.colliderName = lastColliderName;
+        renderer.domElement.dataset.currentLevel = currentLevel;
+        if (levelDebugEnabled && currentTime - lastLevelDebugAt >= 1000) {
+          console.debug("[Arena level diagnostics]", {
+            playerPosition: {
+              x: Number(playerPosition.x.toFixed(2)),
+              y: Number(playerPosition.y.toFixed(2)),
+              z: Number(playerPosition.z.toFixed(2))
+            },
+            playerGroundY: surfaceGroundY,
+            detectedFloor: surfaceGroundY,
+            currentNavRegion: `${arenaMapId}:${currentLevel}`,
+            recoveryTriggered: recoveryGroundY !== undefined,
+            recoveryReason: recoveryGroundY === undefined ? "none" : "solid_foundation",
+            recoveryDestination: recoveryGroundY ?? null,
+            colliderName: lastColliderName,
+            currentLevel
+          });
+          lastLevelDebugAt = currentTime;
+        }
+        const grounded = playerPosition.y <= groundEyeY + 0.02 && Math.abs(verticalVelocity) < 0.01;
         if (jumpQueued && grounded && !crouching) {
-          verticalVelocity = 5.8;
+          verticalVelocity = FPS_JUMP_VELOCITY;
           emitArenaAnimation({ kind: "jump", playerId: currentPlayerId, team: currentPlayerTeam });
           gameAudio.play("jump");
         }
         jumpQueued = false;
-        verticalVelocity -= 15.5 * delta;
+        const previousFootY = playerPosition.y - floorEyeHeight;
+        verticalVelocity -= FPS_JUMP_GRAVITY * delta;
         playerPosition.y += verticalVelocity * delta;
-        if (playerPosition.y < floorEyeHeight) {
-          playerPosition.y = floorEyeHeight;
+        if (verticalVelocity <= 0) {
+          const supportY = findFpsSupportSurfaceY(
+            coverBoxes,
+            playerPosition.x,
+            playerPosition.z,
+            PLAYER_RADIUS,
+            previousFootY,
+            playerPosition.y - floorEyeHeight
+          );
+          if (supportY !== undefined && supportY > surfaceGroundY) {
+            surfaceGroundY = supportY;
+            groundEyeY = supportY + floorEyeHeight;
+          }
+        }
+        if (playerPosition.y < groundEyeY) {
+          playerPosition.y = groundEyeY;
           verticalVelocity = 0;
           if (!wasGrounded) {
             landedAt = currentTime;
@@ -1849,14 +2189,22 @@ export default function ArenaPreview({
           }
           wasGrounded = true;
         } else if (crouching && verticalVelocity === 0) {
-          playerPosition.y += (floorEyeHeight - playerPosition.y) * 0.18;
+          playerPosition.y += (groundEyeY - playerPosition.y) * 0.18;
         } else {
           wasGrounded = false;
         }
+        isJumping = !wasGrounded;
 
-        const gearSpeedMultiplier = getPlayerMoveSpeedMultiplier(currentPlayerRef.current ?? { gear: "starter_blaster" });
-        const movementAudioMode: MovementAudioMode = crouching ? "crouch" : keys.has("Shift") ? "run" : "walk";
-        const moveSpeed = (crouching ? CROUCH_SPEED : keys.has("Shift") ? RUN_SPEED : WALK_SPEED) * gearSpeedMultiplier;
+        const activePlayer = currentPlayerRef.current;
+        const gearSpeedMultiplier = getPlayerMoveSpeedMultiplier(activePlayer ?? { gear: "starter_blaster" });
+        const isZombieHuman = session?.settings.gameMode === "zombie" && activePlayer?.role !== "zombie";
+        const hasMovementEnergy = !isZombieHuman || (activePlayer?.energy ?? 0) > 0;
+        const runRequested = keys.has("Shift");
+        const runAllowed = runRequested && hasMovementEnergy;
+        const movementAudioMode: MovementAudioMode = crouching ? "crouch" : runAllowed ? "run" : "walk";
+        const moveSpeed = hasMovementEnergy
+          ? (crouching ? CROUCH_SPEED : runAllowed ? RUN_SPEED : WALK_SPEED) * gearSpeedMultiplier
+          : 0;
         forwardVector.set(-Math.sin(yaw), 0, -Math.cos(yaw));
         rightVector.set(Math.cos(yaw), 0, -Math.sin(yaw));
         movementVector.set(0, 0, 0);
@@ -1873,19 +2221,57 @@ export default function ArenaPreview({
         if (gamepadMove.forward < -GAMEPAD_DEAD_ZONE) movementVector.sub(forwardVector);
         if (gamepadMove.right > GAMEPAD_DEAD_ZONE) movementVector.add(rightVector);
         if (gamepadMove.right < -GAMEPAD_DEAD_ZONE) movementVector.sub(rightVector);
+        isSprinting = runAllowed && movementVector.lengthSq() > 0;
 
         if (movementVector.lengthSq() > 0) {
-          if (wasGrounded) gameAudio.playMovementStep(movementAudioMode, currentTime, isIronJunction ? "metal" : "sand");
+          if (wasGrounded && moveSpeed > 0) gameAudio.playMovementStep(
+            movementAudioMode,
+            currentTime,
+            isIronJunction ? "metal" : isTempleRunoff ? (surfaceGroundY < 1 ? "water" : "stone") : "sand"
+          );
           movementVector.normalize().multiplyScalar(moveSpeed * delta);
           nextPosition.copy(playerPosition).add(movementVector);
-          nextPosition.x = clamp(nextPosition.x, -ARENA_LIMIT_X + PLAYER_RADIUS, ARENA_LIMIT_X - PLAYER_RADIUS);
-          nextPosition.z = clamp(nextPosition.z, -ARENA_LIMIT_Z + PLAYER_RADIUS, ARENA_LIMIT_Z - PLAYER_RADIUS);
+          nextPosition.x = clamp(nextPosition.x, -arenaBounds.limitX + PLAYER_RADIUS, arenaBounds.limitX - PLAYER_RADIUS);
+          nextPosition.z = clamp(nextPosition.z, -arenaBounds.limitZ + PLAYER_RADIUS, arenaBounds.limitZ - PLAYER_RADIUS);
           axisPosition.copy(playerPosition);
           axisPosition.x = nextPosition.x;
-          if (canOccupy(axisPosition, floorEyeHeight)) playerPosition.x = axisPosition.x;
+          const xGroundY = resolveSurfaceGroundY(
+            axisPosition.x,
+            axisPosition.z,
+            axisPosition.y,
+            floorEyeHeight
+          );
+          if (wasGrounded && Math.abs(xGroundY - surfaceGroundY) <= 0.8) axisPosition.y = xGroundY + floorEyeHeight;
+          if (canOccupy(axisPosition, floorEyeHeight)) {
+            playerPosition.x = axisPosition.x;
+            if (wasGrounded) playerPosition.y = axisPosition.y;
+          }
           axisPosition.copy(playerPosition);
           axisPosition.z = nextPosition.z;
-          if (canOccupy(axisPosition, floorEyeHeight)) playerPosition.z = axisPosition.z;
+          surfaceGroundY = resolveSurfaceGroundY(
+            playerPosition.x,
+            playerPosition.z,
+            playerPosition.y,
+            floorEyeHeight
+          );
+          const zGroundY = resolveSurfaceGroundY(
+            axisPosition.x,
+            axisPosition.z,
+            axisPosition.y,
+            floorEyeHeight
+          );
+          if (wasGrounded && Math.abs(zGroundY - surfaceGroundY) <= 0.8) axisPosition.y = zGroundY + floorEyeHeight;
+          if (canOccupy(axisPosition, floorEyeHeight)) {
+            playerPosition.z = axisPosition.z;
+            if (wasGrounded) playerPosition.y = axisPosition.y;
+          }
+          surfaceGroundY = resolveSurfaceGroundY(
+            playerPosition.x,
+            playerPosition.z,
+            playerPosition.y,
+            floorEyeHeight
+          );
+          groundEyeY = surfaceGroundY + floorEyeHeight;
         }
 
         if (fireHeld && hasAutoFireGear() && !inputPausedRef.current && !controlsDisabledRef.current) fire();
@@ -1904,7 +2290,7 @@ export default function ArenaPreview({
           camera.fov += (targetFov - camera.fov) * 0.18;
           camera.updateProjectionMatrix();
         }
-        updateCamera();
+        updateCamera(delta);
         if (currentTime - lastMiniMapAt > 220) {
           lastMiniMapAt = currentTime;
           setMiniMapPosition(localToServerPosition(playerPosition, yaw));
@@ -1920,26 +2306,39 @@ export default function ArenaPreview({
         muzzleRingMaterial.opacity = Math.max(0, muzzleRingMaterial.opacity - delta * 8.5);
         muzzleRing.scale.multiplyScalar(1 + delta * 3.2);
         const landingPulse = Math.max(0, 1 - (currentTime - landedAt) / 220);
-        const airborneLift = Math.max(0, playerPosition.y - floorEyeHeight) * 0.045;
-        firstPersonModel.root.position.y = -0.58 + Math.sin(currentTime * 0.006) * 0.012 + airborneLift - Math.sin(landingPulse * Math.PI) * 0.055;
-        firstPersonModel.weapon.rotation.x = -0.1 - flash.material.opacity * 0.035;
+        // The viewmodel is camera-relative. Never derive its offset from world
+        // elevation: a valid raised platform previously pushed the blue arm
+        // through the near plane as if the player were permanently airborne.
+        const airborneDip = wasGrounded ? 0 : -0.025;
+        firstPersonModel.root.position.y = firstPersonRootBaseY + Math.sin(currentTime * 0.006) * 0.012 + airborneDip - Math.sin(landingPulse * Math.PI) * 0.055;
+        firstPersonModel.weapon.rotation.x = firstPersonWeaponRotation.x - flash.material.opacity * 0.035;
+        syncFpsMuzzlePosition();
+        flash.position.copy(fpsMuzzlePosition);
+        muzzleRing.position.copy(fpsMuzzlePosition);
         if (snowballLaunchAt > 0) {
           const travel = clamp((currentTime - snowballLaunchAt) / 260, 0, 1);
           snowball.visible = travel < 1;
-          snowball.position.set(0.05, -0.36 - travel * 0.08, -1.55 - travel * 6.5);
+          snowball.position.set(
+            fpsMuzzlePosition.x,
+            fpsMuzzlePosition.y - travel * 0.08,
+            fpsMuzzlePosition.z - travel * 6.5
+          );
           projectileTrail.visible = travel < 0.96;
           projectileTrail.position.copy(snowball.position);
           projectileTrail.rotation.z = currentTime * 0.01;
           const scale = Math.max(0.38, 1 - travel * 0.62);
           snowball.scale.setScalar(scale);
           if (travel > 0.82) {
-            impactPuff.position.set(0.05, -0.44, -8.02);
+            impactPuff.position.set(fpsMuzzlePosition.x, fpsMuzzlePosition.y - 0.08, fpsMuzzlePosition.z - 6.5);
             impactMaterial.opacity = Math.max(0, (1 - travel) * 3.8);
             impactPuff.scale.setScalar(0.8 + (travel - 0.82) * 5.5);
           }
         }
         renderer.render(scene, camera);
       };
+      syncFpsMuzzlePosition();
+      flash.position.copy(fpsMuzzlePosition);
+      muzzleRing.position.copy(fpsMuzzlePosition);
       flash.material.opacity = 1;
       snowball.visible = true;
       characterManager.update(0, 0, camera);
@@ -1970,6 +2369,7 @@ export default function ArenaPreview({
         performanceCapture.dispose();
         vfxPool.dispose();
         desertCitadelVfx?.dispose();
+        templeRunoffArt?.dispose();
         fireControlRef.current = () => undefined;
         syncPlayersRef.current = () => undefined;
         if (cooldownTimeout) window.clearTimeout(cooldownTimeout);
@@ -2004,6 +2404,7 @@ export default function ArenaPreview({
       performanceCapture.frame(currentTime);
       vfxPool.update(currentTime);
       desertCitadelVfx?.update(elapsed);
+      templeRunoffArt?.update(elapsed);
       if (currentTime - performanceWindowAt >= 1000) {
         const profile = performanceCapture.snapshot(currentTime);
         renderer.domElement.dataset.fps = String(profile.fps);
@@ -2050,6 +2451,7 @@ export default function ArenaPreview({
       performanceCapture.dispose();
       vfxPool.dispose();
       desertCitadelVfx?.dispose();
+      templeRunoffArt?.dispose();
       syncPlayersRef.current = () => undefined;
       characterManager.dispose();
       disposeObject(scene);
@@ -2090,9 +2492,13 @@ export default function ArenaPreview({
   };
   const miniMapPlayer = miniMapPosition ?? (
     isFiniteNumber(currentPlayer?.x) && isFiniteNumber(currentPlayer?.z)
-      ? { x: currentPlayer.x, z: currentPlayer.z, facing: currentPlayer.facing ?? 0 }
+      ? { x: currentPlayer.x, y: currentPlayer.y, z: currentPlayer.z, facing: currentPlayer.facing ?? 0 }
       : null
   );
+  const miniMapPlayerGround = miniMapPlayer
+    ? getArenaGroundHeightForPlayer(arenaMapId, miniMapPlayer.x, miniMapPlayer.z, miniMapPlayer.y, FPS_STANDING_EYE_HEIGHT)
+    : 0;
+  const miniMapLevel = getArenaLevelLabel(arenaMapId, miniMapPlayerGround);
   const flagCarrier = session?.flag?.carrierId
     ? session.players.find((candidate) => candidate.id === session.flag?.carrierId)
     : undefined;
@@ -2136,11 +2542,11 @@ export default function ArenaPreview({
               <span key={weaponCooldown.startedAt} style={{ animationDuration: `${weaponCooldown.durationMs}ms` }} />
             </div>
           )}
-          <div className="fps-callout">{arenaMap.title}</div>
+          {!isDesertCitadel && !isIronJunction && <div className="fps-callout">{arenaMap.title}</div>}
           <div className="arena-minimap" aria-label={`${arenaMap.title} minimap`}>
             <div className="minimap-title">Map</div>
             <svg viewBox={`0 0 ${MINIMAP_WIDTH} ${MINIMAP_HEIGHT}`} role="img" aria-label={`${arenaMap.title} route overview`}>
-              <rect x="0" y="0" width={MINIMAP_WIDTH} height={MINIMAP_HEIGHT} rx="5" className={arenaMapId === "iron_junction" ? "minimap-iron" : "minimap-sand"} />
+              <rect x="0" y="0" width={MINIMAP_WIDTH} height={MINIMAP_HEIGHT} rx="5" className={isIronJunction ? "minimap-iron" : isTempleRunoff ? "minimap-temple" : "minimap-sand"} />
               {arenaMap.floorMarks.slice(0, 5).map((mark) => (
                 <rect
                   key={mark.id}
@@ -2149,6 +2555,7 @@ export default function ArenaPreview({
                   width={Math.max(1, toMiniMapW(mark.w))}
                   height={Math.max(1, toMiniMapH(mark.d))}
                   className="minimap-route"
+                  opacity={!hasMultipleLevels || getArenaLevelLabel(arenaMapId, mark.y ?? 0) === miniMapLevel ? 0.9 : 0.32}
                 />
               ))}
               {arenaMap.blocks.filter((block) => block.collides).map((block) => (
@@ -2159,26 +2566,27 @@ export default function ArenaPreview({
                   width={Math.max(0.7, toMiniMapW(block.w))}
                   height={Math.max(0.7, toMiniMapH(block.d))}
                   className={block.material === "wood" ? "minimap-wood" : "minimap-wall"}
+                  opacity={!hasMultipleLevels || getArenaLevelLabel(arenaMapId, (block.y ?? block.h / 2) - block.h / 2) === miniMapLevel ? 0.82 : 0.28}
                 />
               ))}
               <rect
-                x={toMiniMapX(TEAM_BASE_ZONES.blue.minX)}
-                y={toMiniMapY(TEAM_BASE_ZONES.blue.minZ)}
-                width={toMiniMapW(TEAM_BASE_ZONES.blue.maxX - TEAM_BASE_ZONES.blue.minX)}
-                height={toMiniMapH(TEAM_BASE_ZONES.blue.maxZ - TEAM_BASE_ZONES.blue.minZ)}
+                x={toMiniMapX(teamBaseZones.blue.minX)}
+                y={toMiniMapY(teamBaseZones.blue.minZ)}
+                width={toMiniMapW(teamBaseZones.blue.maxX - teamBaseZones.blue.minX)}
+                height={toMiniMapH(teamBaseZones.blue.maxZ - teamBaseZones.blue.minZ)}
                 className="minimap-blue-base"
               />
               <rect
-                x={toMiniMapX(TEAM_BASE_ZONES.red.minX)}
-                y={toMiniMapY(TEAM_BASE_ZONES.red.minZ)}
-                width={toMiniMapW(TEAM_BASE_ZONES.red.maxX - TEAM_BASE_ZONES.red.minX)}
-                height={toMiniMapH(TEAM_BASE_ZONES.red.maxZ - TEAM_BASE_ZONES.red.minZ)}
+                x={toMiniMapX(teamBaseZones.red.minX)}
+                y={toMiniMapY(teamBaseZones.red.minZ)}
+                width={toMiniMapW(teamBaseZones.red.maxX - teamBaseZones.red.minX)}
+                height={toMiniMapH(teamBaseZones.red.maxZ - teamBaseZones.red.minZ)}
                 className="minimap-red-base"
               />
-              {CAPTURE_ZONES.map((zone) => (
+              {captureZones.map((zone) => (
                 <circle key={zone.id} cx={toMiniMapX(zone.x)} cy={toMiniMapY(zone.z)} r="2.1" className="minimap-capture" />
               ))}
-              {SEARCH_RETRIEVE_ITEMS.map((item) => (
+              {searchRetrieveItems.map((item) => (
                 <rect key={item.id} x={toMiniMapX(item.x) - 1.4} y={toMiniMapY(item.z) - 1.4} width="2.8" height="2.8" className="minimap-item" />
               ))}
               {session?.settings.gameMode === "flag" && session.flag && displayedFlagPosition && (
@@ -2187,11 +2595,39 @@ export default function ArenaPreview({
                   <path d="M 0 -4 L 0 4 M 0 -4 L 4 -2 L 0 0" />
                 </g>
               )}
-              <text x={toMiniMapX(-140)} y={toMiniMapY(-78)} className="minimap-label">West</text>
-              <text x={toMiniMapX(122)} y={toMiniMapY(-78)} className="minimap-label">East</text>
-              <text x={toMiniMapX(0)} y={toMiniMapY(-128)} className="minimap-label">{arenaMapId === "iron_junction" ? "Depot" : "Ruins"}</text>
-              <text x={toMiniMapX(0)} y={toMiniMapY(-22)} className="minimap-label">{arenaMapId === "iron_junction" ? "Gantry" : "Market"}</text>
-              <text x={toMiniMapX(0)} y={toMiniMapY(118)} className="minimap-label">{arenaMapId === "iron_junction" ? "Timber" : "Homes"}</text>
+              {!isDesertCitadel && (
+                <>
+                  <text x={toMiniMapX(isIronJunction ? scaleArenaValue(-248) : scaleArenaValue(-205))} y={toMiniMapY(isIronJunction ? 0 : scaleArenaValue(-154))} className="minimap-label">Blue</text>
+                  <text x={toMiniMapX(isIronJunction ? scaleArenaValue(232) : scaleArenaValue(184))} y={toMiniMapY(isIronJunction ? 0 : scaleArenaValue(-154))} className="minimap-label">Red</text>
+                  <text x={toMiniMapX(isIronJunction ? scaleArenaValue(-112) : 0)} y={toMiniMapY(isIronJunction ? scaleArenaValue(-130) : scaleArenaValue(-164))} className="minimap-label">{isIronJunction ? "Warehouse" : "Jungle"}</text>
+                  <text x={toMiniMapX(isIronJunction ? scaleArenaValue(58) : 0)} y={toMiniMapY(isIronJunction ? scaleArenaValue(-38) : 0)} className="minimap-label">{isIronJunction ? "Control" : "River"}</text>
+                  <text x={toMiniMapX(isIronJunction ? scaleArenaValue(104) : 0)} y={toMiniMapY(isIronJunction ? scaleArenaValue(151) : scaleArenaValue(156))} className="minimap-label">{isIronJunction ? "Depot" : "Court"}</text>
+                </>
+              )}
+              {isDesertCitadel && [
+                [-86, 0], [0, -45], [0, 101], [185, 70], [-181, 76], [84, 81]
+              ].map(([x, z]) => (
+                <rect
+                  key={`citadel-stair-${x}-${z}`}
+                  x={toMiniMapX(scaleArenaValue(x)) - 1.6}
+                  y={toMiniMapY(scaleArenaValue(z)) - 1.6}
+                  width="3.2"
+                  height="3.2"
+                  rx="0.5"
+                  className="minimap-stair"
+                  transform={`rotate(45 ${toMiniMapX(scaleArenaValue(x))} ${toMiniMapY(scaleArenaValue(z))})`}
+                />
+              ))}
+              {isIronJunction && <text x={toMiniMapX(scaleArenaValue(-35))} y={toMiniMapY(scaleArenaValue(218))} className="minimap-label">Tunnel</text>}
+              {hasMultipleLevels && !isDesertCitadel && (
+                <text x={MINIMAP_WIDTH - 5} y={10} textAnchor="end" className="minimap-label">
+                  {isTempleRunoff
+                    ? miniMapLevel === "lower" ? "↓ LOWER" : miniMapLevel === "upper" ? "↑ UPPER" : "• MAIN"
+                    : isIronJunction
+                      ? miniMapLevel === "ground" ? "• GROUND" : miniMapLevel === "loading" ? "↑ LOADING" : "↑ OVERPASS"
+                      : miniMapLevel === "ground" ? "• GROUND" : miniMapLevel === "citadel" ? "↑ CITADEL" : "↑↑ LOOKOUT"}
+                </text>
+              )}
               {miniMapPlayer && (
                 <g
                   className="minimap-player"

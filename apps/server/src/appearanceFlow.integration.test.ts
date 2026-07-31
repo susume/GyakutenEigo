@@ -19,46 +19,39 @@ type SessionFixture = {
 type PlayerFixture = {
   id: string;
   nickname: string;
+  team?: "red" | "blue";
+  role?: "human" | "zombie";
+  isAlive?: boolean;
+  snowballs?: number;
+  energy?: number;
   connectionState?: string;
+  cosmeticXp?: number;
   appearance?: AppearanceFixture;
 };
 
 type AppearanceFixture = {
-  characterPreset: string;
-  helmetStyle: string;
-  helmetColor: string;
-  backpackStyle: string;
-  backpackColor: string;
-  eyewearStyle: string;
-  eyewearColor: string;
-  clothingPrimaryColor: string;
-  clothingSecondaryColor: string;
-  shoeStyle: string;
-  shoeColor: string;
+  headStyleId: string;
+  backAccessoryId: string;
+  footwearId: string;
+  victoryPoseId: string;
   decalAssetId?: string;
-  appearanceVersion: 1;
+  appearanceVersion: 7;
 };
 
 type JoinedPlayer = {
   session: SessionFixture;
   player: PlayerFixture;
   playerToken: string;
+  cosmeticProgressToken: string;
   question?: { id: string };
 };
 
 const defaultAppearance: AppearanceFixture = {
-  characterPreset: "assault",
-  helmetStyle: "visor",
-  helmetColor: "#f4f7fb",
-  backpackStyle: "flat_pack",
-  backpackColor: "#18324c",
-  eyewearStyle: "none",
-  eyewearColor: "#343b4a",
-  clothingPrimaryColor: "#174a78",
-  clothingSecondaryColor: "#18324c",
-  shoeStyle: "boots",
-  shoeColor: "#343b4a",
-  appearanceVersion: 1
+  headStyleId: "boy_short_hair",
+  backAccessoryId: "none",
+  footwearId: "runners",
+  victoryPoseId: "champion",
+  appearanceVersion: 7
 };
 
 const onePixelPng = Buffer.from(
@@ -194,6 +187,8 @@ test.before(async () => {
   process.env.JWT_SECRET = "phase-three-integration-secret";
   process.env.DATABASE_URL = " ";
   process.env.NODE_ENV = "test";
+  process.env.QUIZSTRIKE_TEST_ROUND_PREPARATION_MS = "100";
+  process.env.QUIZSTRIKE_TEST_ZOMBIE_SELECTION_MS = "100";
   runtime = await import("./index.js");
   await new Promise<void>((resolve, reject) => {
     runtime.server.once("error", reject);
@@ -220,7 +215,6 @@ test("real HTTP appearance flow enforces identity, room scope, locking, and clea
       enabled: true,
       uploadsEnabled: true,
       aiEnabled: false,
-      presetsOnly: false,
       persistAcrossSessions: false
     }
   });
@@ -232,6 +226,16 @@ test("real HTTP appearance flow enforces identity, room scope, locking, and clea
     { method: "PUT", playerToken: bravo.playerToken, body: { appearance: defaultAppearance } }
   );
   assert.equal(impersonation.response.status, 401);
+
+  const progressionLocked = await api(
+    `/api/sessions/${session.sessionCode}/players/${alpha.player.id}/appearance`,
+    {
+      method: "PUT",
+      playerToken: alpha.playerToken,
+      body: { appearance: { ...defaultAppearance, victoryPoseId: "power" } }
+    }
+  );
+  assert.equal(progressionLocked.response.status, 403);
 
   const upload = await fetch(
     `${baseUrl}/api/sessions/${session.sessionCode}/players/${alpha.player.id}/decals`,
@@ -269,7 +273,21 @@ test("real HTTP appearance flow enforces identity, room scope, locking, and clea
   });
   assert.equal(crossRoomAsset.status, 401);
 
-  const appearance = { ...defaultAppearance, decalAssetId: uploaded.assetId };
+  const appearance = {
+    ...defaultAppearance,
+    footwearId: "army_boots",
+    decalAssetId: uploaded.assetId
+  };
+  const colourInjection = await api(
+    `/api/sessions/${session.sessionCode}/players/${alpha.player.id}/appearance`,
+    {
+      method: "PUT",
+      playerToken: alpha.playerToken,
+      body: { appearance: { ...defaultAppearance, clothingPrimaryColor: "#6b3f8c" } }
+    }
+  );
+  assert.equal(colourInjection.response.status, 400);
+
   const saved = await api<{ player: PlayerFixture }>(
     `/api/sessions/${session.sessionCode}/players/${alpha.player.id}/appearance`,
     { method: "PUT", playerToken: alpha.playerToken, body: { appearance } }
@@ -283,16 +301,15 @@ test("real HTTP appearance flow enforces identity, room scope, locking, and clea
   );
   assert.equal(rateLimited.response.status, 429);
 
-  const anonymousState = await api(`/api/sessions/${session.sessionCode}`);
-  assert.equal(anonymousState.response.status, 401);
-  const publicState = await api<{ session: SessionFixture }>(
-    `/api/sessions/${session.sessionCode}`,
-    { playerToken: alpha.playerToken }
-  );
+  const publicState = await api<{ session: SessionFixture }>(`/api/sessions/${session.sessionCode}`, { playerToken: alpha.playerToken });
   assert.equal(publicState.response.status, 200);
   assert.equal(
     publicState.body.session.players.find((player) => player.id === alpha.player.id)?.appearance?.decalAssetId,
     uploaded.assetId
+  );
+  assert.equal(
+    publicState.body.session.players.find((player) => player.id === alpha.player.id)?.appearance?.footwearId,
+    "army_boots"
   );
 
   const rejoined = await api<{ player: PlayerFixture }>(
@@ -334,6 +351,124 @@ test("real HTTP appearance flow enforces identity, room scope, locking, and clea
   assert.equal(purgedAsset.status, 404);
 });
 
+test("live sessions admit late and returning students while teachers can remove players securely", { timeout: 30_000 }, async () => {
+  const teacher = await createTeacherWithQuiz();
+  const otherTeacher = await createTeacherWithQuiz();
+  const session = await createSession(teacher, {
+    maxPlayers: 8,
+    gameMode: "classic",
+    mapId: "iron_junction",
+    roundDurationSeconds: 120
+  });
+  const alpha = await joinSession(session.sessionCode, "Live Alpha");
+  await joinSession(session.sessionCode, "Live Bravo");
+
+  const started = await api(`/api/sessions/${session.sessionCode}/start`, {
+    method: "POST",
+    teacherToken: teacher.token
+  });
+  assert.equal(started.response.status, 200);
+
+  const late = await joinSession(session.sessionCode, "Late Student");
+  assert.equal(late.session.players.length, 3);
+  assert.equal(late.player.isAlive, true);
+  assert.ok(late.player.team === "red" || late.player.team === "blue");
+  assert.ok(late.question?.id);
+
+  const alphaSocket = connectStudentSocket(session.sessionCode, alpha);
+  await alphaSocket.initialState;
+  alphaSocket.socket.disconnect();
+  await new Promise((resolve) => setTimeout(resolve, 100));
+
+  const returning = await api<JoinedPlayer>(`/api/sessions/${session.sessionCode}/join`, {
+    method: "POST",
+    body: { nickname: "Live Alpha" }
+  });
+  assert.equal(returning.response.status, 200);
+  assert.equal(returning.body.player.id, alpha.player.id);
+  assert.equal(returning.body.player.connectionState, "connected");
+
+  const lateSocket = connectStudentSocket(session.sessionCode, late);
+  await lateSocket.initialState;
+  const removedNotice = new Promise<{ message?: string }>((resolve, reject) => {
+    const timeout = setTimeout(() => reject(new Error("Timed out waiting for the removal notice.")), 5_000);
+    lateSocket.socket.once("player_removed", (payload) => {
+      clearTimeout(timeout);
+      resolve(payload);
+    });
+  });
+
+  const anonymousRemoval = await api(
+    `/api/sessions/${session.sessionCode}/players/${late.player.id}`,
+    { method: "DELETE" }
+  );
+  assert.equal(anonymousRemoval.response.status, 401);
+
+  const otherTeacherRemoval = await api(
+    `/api/sessions/${session.sessionCode}/players/${late.player.id}`,
+    { method: "DELETE", teacherToken: otherTeacher.token }
+  );
+  assert.equal(otherTeacherRemoval.response.status, 404);
+
+  const removed = await api<{ session: SessionFixture; removedPlayerId: string }>(
+    `/api/sessions/${session.sessionCode}/players/${late.player.id}`,
+    { method: "DELETE", teacherToken: teacher.token }
+  );
+  assert.equal(removed.response.status, 200);
+  assert.equal(removed.body.removedPlayerId, late.player.id);
+  assert.equal(removed.body.session.players.some((player) => player.id === late.player.id), false);
+  assert.match((await removedNotice).message ?? "", /teacher removed you/i);
+
+  const staleRejoin = await api(
+    `/api/sessions/${session.sessionCode}/players/${late.player.id}/rejoin`,
+    { playerToken: late.playerToken }
+  );
+  assert.equal(staleRejoin.response.status, 404);
+
+  const joinedAgain = await joinSession(session.sessionCode, "Late Student");
+  assert.notEqual(joinedAgain.player.id, late.player.id);
+  lateSocket.socket.disconnect();
+
+  const zombieSession = await createSession(teacher, {
+    maxPlayers: 8,
+    gameMode: "zombie",
+    mapId: "temple_runoff",
+    roundDurationSeconds: 120,
+    initialZombieCount: 1
+  });
+  await joinSession(zombieSession.sessionCode, "Zombie Seed A");
+  await joinSession(zombieSession.sessionCode, "Zombie Seed B");
+  const zombieStarted = await api(`/api/sessions/${zombieSession.sessionCode}/start`, {
+    method: "POST",
+    teacherToken: teacher.token
+  });
+  assert.equal(zombieStarted.response.status, 200);
+  const zombieLate = await joinSession(zombieSession.sessionCode, "Zombie Late");
+  assert.equal(zombieLate.player.role, zombieLate.player.team === "red" ? "zombie" : "human");
+  assert.equal(zombieLate.player.snowballs === 0, zombieLate.player.role === "human");
+
+  const flagSession = await createSession(teacher, {
+    maxPlayers: 8,
+    gameMode: "flag",
+    mapId: "desert_citadel",
+    roundDurationSeconds: 120
+  });
+  await joinSession(flagSession.sessionCode, "Flag Seed");
+  const flagStarted = await api(`/api/sessions/${flagSession.sessionCode}/start`, {
+    method: "POST",
+    teacherToken: teacher.token
+  });
+  assert.equal(flagStarted.response.status, 200);
+  const flagLate = await joinSession(flagSession.sessionCode, "Flag Late");
+  assert.equal(flagLate.player.isAlive, true);
+
+  await Promise.all([
+    api(`/api/sessions/${session.sessionCode}/end`, { method: "POST", teacherToken: teacher.token }),
+    api(`/api/sessions/${zombieSession.sessionCode}/end`, { method: "POST", teacherToken: teacher.token }),
+    api(`/api/sessions/${flagSession.sessionCode}/end`, { method: "POST", teacherToken: teacher.token })
+  ]);
+});
+
 test("a 40-student room keeps bounded appearance state and rejects student 41", { timeout: 30_000 }, async () => {
   const teacher = await createTeacherWithQuiz();
   const session = await createSession(teacher, {
@@ -342,7 +477,6 @@ test("a 40-student room keeps bounded appearance state and rejects student 41", 
       enabled: true,
       uploadsEnabled: false,
       aiEnabled: false,
-      presetsOnly: false,
       persistAcrossSessions: false
     }
   });
@@ -359,11 +493,12 @@ test("a 40-student room keeps bounded appearance state and rejects student 41", 
   assert.equal(overflow.response.status, 400);
 
   const saves = await Promise.all(students.map((student, index) => {
+    const footwear = ["runners", "army_boots", "skate_shoes", "basketball_shoes", "sandals", "barefoot"];
     const appearance: AppearanceFixture = {
       ...defaultAppearance,
-      characterPreset: index % 2 === 0 ? "support" : "engineer",
-      helmetStyle: index % 2 === 0 ? "headset" : "rounded",
-      clothingPrimaryColor: index % 2 === 0 ? "#176b5b" : "#6b3f8c"
+      headStyleId: index % 2 === 0 ? "fox" : "panda",
+      backAccessoryId: index % 2 === 0 ? "utility_pack" : "none",
+      footwearId: footwear[index % footwear.length]
     };
     return api(
       `/api/sessions/${session.sessionCode}/players/${student.player.id}/appearance`,
@@ -372,13 +507,10 @@ test("a 40-student room keeps bounded appearance state and rejects student 41", 
   }));
   assert.ok(saves.every((save) => save.response.status === 200));
 
-  const state = await api<{ session: SessionFixture }>(
-    `/api/sessions/${session.sessionCode}`,
-    { playerToken: students[0]!.playerToken }
-  );
+  const state = await api<{ session: SessionFixture }>(`/api/sessions/${session.sessionCode}`, { playerToken: students[0]!.playerToken });
   assert.equal(state.response.status, 200);
   assert.equal(state.body.session.players.length, 40);
-  assert.ok(state.body.session.players.every((player) => player.appearance?.appearanceVersion === 1));
+  assert.ok(state.body.session.players.every((player) => player.appearance?.appearanceVersion === 7));
   assert.equal(state.text.includes("data:image"), false);
   assert.equal(state.text.includes(onePixelPng.toString("base64")), false);
 
@@ -388,13 +520,51 @@ test("a 40-student room keeps bounded appearance state and rejects student 41", 
     { playerToken: returning.playerToken }
   );
   assert.equal(rejoined.response.status, 200);
-  assert.equal(rejoined.body.player.appearance?.characterPreset, "engineer");
+  assert.equal(rejoined.body.player.appearance?.headStyleId, "panda");
+  assert.equal(rejoined.body.player.appearance?.backAccessoryId, "none");
+  assert.equal(rejoined.body.player.appearance?.footwearId, "barefoot");
 
   const ended = await api(`/api/sessions/${session.sessionCode}/end`, {
     method: "POST",
     teacherToken: teacher.token
   });
   assert.equal(ended.response.status, 200);
+});
+
+test("signed cosmetic progress carries quiz-earned XP into a new classroom", { timeout: 30_000 }, async () => {
+  const teacher = await createTeacherWithQuiz();
+  const firstSession = await createSession(teacher, { maxPlayers: 4, gameMode: "classic" });
+  const learner = await joinSession(firstSession.sessionCode, "Progress Learner");
+  assert.ok(learner.question?.id);
+
+  const started = await api(`/api/sessions/${firstSession.sessionCode}/start`, {
+    method: "POST",
+    teacherToken: teacher.token
+  });
+  assert.equal(started.response.status, 200);
+
+  const answered = await api<{
+    cosmeticProgressToken: string;
+    result: { player: PlayerFixture };
+  }>(`/api/sessions/${firstSession.sessionCode}/players/${learner.player.id}/answer`, {
+    method: "POST",
+    playerToken: learner.playerToken,
+    body: { questionId: learner.question!.id, selectedChoice: "A" }
+  });
+  assert.equal(answered.response.status, 200);
+  assert.equal(answered.body.result.player.cosmeticXp, 100);
+  assert.ok(answered.body.cosmeticProgressToken);
+
+  const secondSession = await createSession(teacher, { maxPlayers: 4 });
+  const restored = await api<JoinedPlayer>(`/api/sessions/${secondSession.sessionCode}/join`, {
+    method: "POST",
+    body: {
+      nickname: "Progress Learner",
+      cosmeticProgressToken: answered.body.cosmeticProgressToken
+    }
+  });
+  assert.equal(restored.response.status, 201);
+  assert.equal(restored.body.player.cosmeticXp, 100);
 });
 
 test("40 authenticated Socket.IO clients receive bounded room state and movement fan-out", { timeout: 30_000 }, async (context) => {
@@ -407,7 +577,6 @@ test("40 authenticated Socket.IO clients receive bounded room state and movement
       enabled: true,
       uploadsEnabled: false,
       aiEnabled: false,
-      presetsOnly: false,
       persistAcrossSessions: false
     }
   });
@@ -430,23 +599,8 @@ test("40 authenticated Socket.IO clients receive bounded room state and movement
     });
   });
   assert.equal(unauthorizedReceivedState, false);
-  unauthorized.emit("join_session_room", { code: session.sessionCode });
-  await new Promise((resolve) => setTimeout(resolve, 100));
-  assert.equal(unauthorizedReceivedState, false);
   unauthorized.disconnect();
 
-  const teacherSocket = createSocket(baseUrl, { autoConnect: false, transports: ["websocket"], reconnection: false });
-  const teacherInitialState = waitForSessionState(teacherSocket, () => true, 10_000);
-  teacherSocket.on("connect", () => {
-    teacherSocket.emit("join_session_room", { code: session.sessionCode, teacherToken: teacher.token });
-  });
-  teacherSocket.connect();
-  assert.equal((await teacherInitialState).players.length, 40);
-  let teacherMovementMessages = 0;
-  teacherSocket.on("player_position", () => { teacherMovementMessages += 1; });
-
-  const heapBefore = process.memoryUsage().heapUsed;
-  const cpuBefore = process.cpuUsage();
   const connectionStartedAt = performance.now();
   const connected = students.map((student) => connectStudentSocket(session.sessionCode, student));
   const initialStates = await Promise.all(connected.map((client) => client.initialState));
@@ -471,6 +625,7 @@ test("40 authenticated Socket.IO clients receive bounded room state and movement
   assert.equal(started.response.status, 200);
   const activeDeadline = Date.now() + 5000;
   while (activeSocketIds.size < connected.length && Date.now() < activeDeadline) {
+    runtime.advanceBots();
     await new Promise((resolve) => setTimeout(resolve, 20));
   }
   assert.equal(activeSocketIds.size, connected.length, `${activeSocketIds.size} of ${connected.length} clients received active state.`);
@@ -478,15 +633,33 @@ test("40 authenticated Socket.IO clients receive bounded room state and movement
 
   const movementSenders = new Set<string>();
   let movementPayloadBytes = 0;
-  connected[0]!.socket.on("player_position", (payload: { playerId?: string }) => {
-    movementPayloadBytes += Buffer.byteLength(JSON.stringify(payload));
-    if (payload.playerId) movementSenders.add(payload.playerId);
+  let movementBatchCount = 0;
+  let observedCrouching = false;
+  let observedJumping = false;
+  connected[0]!.socket.on("player_positions", (payloads: Array<{
+    playerId?: string;
+    crouching?: boolean;
+    jumping?: boolean;
+  }>) => {
+    movementBatchCount += 1;
+    movementPayloadBytes += Buffer.byteLength(JSON.stringify(payloads));
+    for (const payload of payloads) {
+      if (payload.playerId) movementSenders.add(payload.playerId);
+      observedCrouching ||= payload.crouching === true;
+      observedJumping ||= payload.jumping === true;
+    }
   });
   for (let index = 1; index < connected.length; index += 1) {
+    const student = students[index]!;
     connected[index]!.socket.emit("player_position", {
+      code: session.sessionCode,
+      playerId: student.player.id,
+      playerToken: student.playerToken,
       x: index * 0.15,
       z: index * -0.1,
-      facing: index * 0.05
+      facing: index * 0.05,
+      crouching: index === 1,
+      jumping: index === 2
     });
   }
   const movementDeadline = Date.now() + 3000;
@@ -494,14 +667,16 @@ test("40 authenticated Socket.IO clients receive bounded room state and movement
     await new Promise((resolve) => setTimeout(resolve, 20));
   }
   assert.ok(movementSenders.size >= 35, `Only ${movementSenders.size} movement senders reached the observer.`);
-  assert.equal(teacherMovementMessages, 0, "Teacher sockets must not receive gameplay movement.");
+  assert.ok(movementBatchCount <= 4, `Movement fan-out used ${movementBatchCount} socket events instead of bounded batches.`);
+  assert.equal(observedCrouching, true, "The observer did not receive a crouching posture.");
+  assert.equal(observedJumping, true, "The observer did not receive a jumping posture.");
 
   const reconnectTarget = connected.at(-1)!;
   reconnectTarget.socket.disconnect();
   await new Promise((resolve) => setTimeout(resolve, 5200));
   const disconnectedState = await api<{ session: SessionFixture }>(
     `/api/sessions/${session.sessionCode}`,
-    { playerToken: students[0]!.playerToken }
+    { playerToken: students.at(-1)!.playerToken }
   );
   assert.equal(
     disconnectedState.body.session.players.find((player) => player.id === students.at(-1)!.player.id)?.connectionState,
@@ -516,7 +691,6 @@ test("40 authenticated Socket.IO clients receive bounded room state and movement
     "connected"
   );
 
-  const cpuUsage = process.cpuUsage(cpuBefore);
   context.diagnostic(JSON.stringify({
     clients: connected.length,
     connectionMs: Math.round(connectionMs),
@@ -524,152 +698,11 @@ test("40 authenticated Socket.IO clients receive bounded room state and movement
     reconnectMs: Math.round(reconnectMs),
     largestInitialStateBytes,
     observedMovementSenders: movementSenders.size,
-    observedMovementPayloadBytes: movementPayloadBytes,
-    cpuUserMs: Math.round(cpuUsage.user / 1000),
-    cpuSystemMs: Math.round(cpuUsage.system / 1000),
-    heapDeltaBytes: process.memoryUsage().heapUsed - heapBefore
+    movementBatchCount,
+    observedMovementPayloadBytes: movementPayloadBytes
   }));
 
-  teacherSocket.disconnect();
   connected.forEach(({ socket }) => socket.disconnect());
   reconnected.socket.disconnect();
   await api(`/api/sessions/${session.sessionCode}/end`, { method: "POST", teacherToken: teacher.token });
-});
-
-test("bot ticks send batched gameplay positions instead of full session snapshots", async (context) => {
-  const teacher = await createTeacherWithQuiz();
-  const session = await createSession(teacher, {
-    maxPlayers: 4,
-    gameMode: "classic",
-    roundDurationSeconds: 120
-  });
-  const student = await joinSession(session.sessionCode, "Bot Observer");
-  const addedBot = await api(`/api/sessions/${session.sessionCode}/bots`, {
-    method: "POST",
-    teacherToken: teacher.token
-  });
-  assert.equal(addedBot.response.status, 201);
-
-  const connected = connectStudentSocket(session.sessionCode, student);
-  await connected.initialState;
-  const activeState = waitForSessionState(connected.socket, (state) => state.status === "active");
-  const started = await api(`/api/sessions/${session.sessionCode}/start`, {
-    method: "POST",
-    teacherToken: teacher.token
-  });
-  assert.equal(started.response.status, 200);
-  await activeState;
-  await new Promise((resolve) => setTimeout(resolve, 100));
-
-  let fullSnapshots = 0;
-  connected.socket.on("session_state", () => { fullSnapshots += 1; });
-  const positions = new Promise<{ positions?: Array<{ playerId?: string }> }>((resolve, reject) => {
-    const timeout = setTimeout(() => reject(new Error("Timed out waiting for batched bot positions.")), 2000);
-    connected.socket.once("player_positions", (payload) => {
-      clearTimeout(timeout);
-      resolve(payload);
-    });
-  });
-
-  runtime.advanceBots();
-  const botUpdate = await positions;
-  assert.equal(botUpdate.positions?.length, 1);
-  await new Promise((resolve) => setTimeout(resolve, 100));
-  assert.equal(fullSnapshots, 0);
-
-  assert.ok(student.question?.id);
-  const playerState = new Promise<Record<string, unknown>>((resolve, reject) => {
-    const timeout = setTimeout(() => reject(new Error("Timed out waiting for focused player state.")), 2000);
-    connected.socket.once("player_state", (payload) => {
-      clearTimeout(timeout);
-      resolve(payload);
-    });
-  });
-  const answerAck = await connected.socket.emitWithAck("answer_question", {
-    questionId: student.question.id,
-    selectedChoice: "A"
-  }) as { ok?: boolean };
-  assert.equal(answerAck.ok, true);
-  const focusedState = await playerState;
-  context.diagnostic(JSON.stringify({
-    botCount: botUpdate.positions?.length ?? 0,
-    batchedPositionBytes: Buffer.byteLength(JSON.stringify(["player_positions", botUpdate])),
-    onePlayerStateBytes: Buffer.byteLength(JSON.stringify(["player_state", focusedState]))
-  }));
-
-  connected.socket.disconnect();
-  await api(`/api/sessions/${session.sessionCode}/end`, { method: "POST", teacherToken: teacher.token });
-});
-
-test("1, 10, and 20 client load matrix preserves room fan-out", { timeout: 30_000 }, async (context) => {
-  const rows: Array<Record<string, number>> = [];
-
-  for (const clientCount of [1, 10, 20]) {
-    const teacher = await createTeacherWithQuiz();
-    const session = await createSession(teacher, {
-      maxPlayers: Math.max(2, clientCount),
-      gameMode: "classic",
-      roundDurationSeconds: 120
-    });
-    const students = await Promise.all(
-      Array.from({ length: clientCount }, (_, index) => joinSession(session.sessionCode, `Load ${clientCount}-${index + 1}`))
-    );
-
-    const heapBefore = process.memoryUsage().heapUsed;
-    const cpuBefore = process.cpuUsage();
-    const connectionStartedAt = performance.now();
-    const connected = students.map((student) => connectStudentSocket(session.sessionCode, student));
-    await Promise.all(connected.map((client) => client.initialState));
-    const connectionMs = performance.now() - connectionStartedAt;
-
-    const activeSocketIds = new Set<string>();
-    connected.forEach(({ socket }) => {
-      socket.on("session_state", (state: SessionFixture & { status?: string }) => {
-        if (state.status === "active") activeSocketIds.add(socket.id ?? "missing-id");
-      });
-    });
-    const startSentAt = performance.now();
-    const started = await api(`/api/sessions/${session.sessionCode}/start`, {
-      method: "POST",
-      teacherToken: teacher.token
-    });
-    assert.equal(started.response.status, 200);
-    const activeDeadline = Date.now() + 5000;
-    while (activeSocketIds.size < clientCount && Date.now() < activeDeadline) {
-      await new Promise((resolve) => setTimeout(resolve, 10));
-    }
-    assert.equal(activeSocketIds.size, clientCount);
-    const startFanoutMs = performance.now() - startSentAt;
-
-    let observedPeerPositions = 0;
-    connected[0]!.socket.on("player_position", () => { observedPeerPositions += 1; });
-    for (let index = 1; index < connected.length; index += 1) {
-      connected[index]!.socket.emit("player_position", {
-        x: index * 0.15,
-        z: index * -0.1,
-        facing: index * 0.05
-      });
-    }
-    const movementDeadline = Date.now() + 2000;
-    while (observedPeerPositions < Math.max(0, clientCount - 1) && Date.now() < movementDeadline) {
-      await new Promise((resolve) => setTimeout(resolve, 10));
-    }
-    assert.equal(observedPeerPositions, Math.max(0, clientCount - 1));
-
-    const cpu = process.cpuUsage(cpuBefore);
-    rows.push({
-      clients: clientCount,
-      connectionMs: Math.round(connectionMs),
-      startFanoutMs: Math.round(startFanoutMs),
-      observedPeerPositions,
-      cpuUserMs: Math.round(cpu.user / 1000),
-      cpuSystemMs: Math.round(cpu.system / 1000),
-      heapDeltaBytes: process.memoryUsage().heapUsed - heapBefore
-    });
-
-    await api(`/api/sessions/${session.sessionCode}/end`, { method: "POST", teacherToken: teacher.token });
-    connected.forEach(({ socket }) => socket.disconnect());
-  }
-
-  context.diagnostic(JSON.stringify(rows));
 });

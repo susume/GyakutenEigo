@@ -3,29 +3,86 @@ import assert from "node:assert/strict";
 import {
   DEFAULT_CHARACTER_CUSTOMIZATION_SETTINGS,
   DEFAULT_PLAYER_APPEARANCE,
-  SCHOOL_APPEARANCE_PRESETS,
+  getCosmeticProgress,
+  getLockedAppearanceItems,
   getPlayerAppearanceError,
-  isApprovedAppearancePreset,
   sanitizeCharacterCustomizationSettings,
   sanitizePlayerAppearance
 } from "./index.js";
 
 test("appearance sanitizer produces a complete safe default", () => {
   assert.deepEqual(sanitizePlayerAppearance(undefined), DEFAULT_PLAYER_APPEARANCE);
-  assert.equal(sanitizePlayerAppearance({ clothingPrimaryColor: "#ffffff" as never }).clothingPrimaryColor, DEFAULT_PLAYER_APPEARANCE.clothingPrimaryColor);
+  assert.equal(sanitizePlayerAppearance({ clothingPrimaryColor: "#ffffff" }).appearanceVersion, 7);
   assert.equal(sanitizePlayerAppearance({ decalAssetId: "https://example.com/student.jpg" }).decalAssetId, undefined);
 });
 
-test("appearance validation rejects arbitrary URLs, fields, colours, and versions", () => {
+test("appearance validation rejects arbitrary URLs, legacy colours, fields, and versions", () => {
   assert.match(getPlayerAppearanceError({ ...DEFAULT_PLAYER_APPEARANCE, decalAssetId: "https://example.com/a.png" }) ?? "", /decal/i);
   assert.match(getPlayerAppearanceError({ ...DEFAULT_PLAYER_APPEARANCE, textureUrl: "https://example.com/a.png" }) ?? "", /unsupported/i);
-  assert.match(getPlayerAppearanceError({ ...DEFAULT_PLAYER_APPEARANCE, helmetColor: "#000000" }) ?? "", /colour/i);
+  assert.match(getPlayerAppearanceError({ ...DEFAULT_PLAYER_APPEARANCE, clothingPrimaryColor: "#174a78" }) ?? "", /unsupported/i);
   assert.match(getPlayerAppearanceError({ ...DEFAULT_PLAYER_APPEARANCE, appearanceVersion: 99 }) ?? "", /version/i);
 });
 
-test("approved presets and customization policy remain deterministic", () => {
-  assert.equal(isApprovedAppearancePreset({ ...SCHOOL_APPEARANCE_PRESETS[1].appearance }), true);
-  assert.equal(isApprovedAppearancePreset({ ...DEFAULT_PLAYER_APPEARANCE, helmetStyle: "ridge" }), false);
+test("legacy Badge/accessory profiles migrate to Boy with default Runners", () => {
+  assert.deepEqual(sanitizePlayerAppearance({
+    characterPreset: "engineer",
+    helmetStyle: "headset",
+    backpackStyle: "radio_pack",
+    clothingPrimaryColor: "#6b3f8c",
+    appearanceVersion: 1
+  }), {
+    headStyleId: "boy_short_hair",
+    backAccessoryId: "utility_pack",
+    footwearId: "runners",
+    victoryPoseId: "champion",
+    appearanceVersion: 7
+  });
+  assert.equal(sanitizePlayerAppearance({
+    ...DEFAULT_PLAYER_APPEARANCE,
+    headStyleId: undefined,
+    headOption: "goggles",
+    appearanceVersion: 3
+  }).headStyleId, "boy_short_hair");
+  assert.equal(sanitizePlayerAppearance({
+    ...DEFAULT_PLAYER_APPEARANCE,
+    headStyleId: "human" as never,
+    appearanceVersion: 5
+  }).headStyleId, "boy_short_hair");
+  assert.equal(sanitizePlayerAppearance({
+    ...DEFAULT_PLAYER_APPEARANCE,
+    detailAccessoryId: "quiz_medal",
+    footwearId: undefined,
+    appearanceVersion: 6
+  } as never).footwearId, "runners");
+  assert.equal(sanitizePlayerAppearance({
+    ...DEFAULT_PLAYER_APPEARANCE,
+    footwearId: "sandals"
+  }).footwearId, "sandals");
+});
+
+test("retired preset policy sanitizes to mix-and-match customization", () => {
   assert.deepEqual(sanitizeCharacterCustomizationSettings(undefined), DEFAULT_CHARACTER_CUSTOMIZATION_SETTINGS);
   assert.equal(sanitizeCharacterCustomizationSettings({ uploadsEnabled: true }).uploadsEnabled, true);
+  assert.equal("presetsOnly" in sanitizeCharacterCustomizationSettings({ presetsOnly: true }), false);
+});
+
+test("cosmetic progression unlocks catalogue levels without changing gameplay stats", () => {
+  assert.deepEqual(
+    getCosmeticProgress({ correctAnswers: 0, tags: 0, cosmeticXp: 0 }),
+    {
+      xp: 0,
+      level: 1,
+      levelName: "Rookie",
+      levelStartXp: 0,
+      nextLevelXp: 300,
+      progressPercent: 0
+    }
+  );
+  assert.equal(getCosmeticProgress({ correctAnswers: 0, tags: 0, cosmeticXp: 700 }).level, 3);
+  const locked = getLockedAppearanceItems({
+    ...DEFAULT_PLAYER_APPEARANCE,
+    backAccessoryId: "boost_pack",
+    victoryPoseId: "power"
+  }, 2);
+  assert.deepEqual(locked.map((item) => item.id), ["power"]);
 });

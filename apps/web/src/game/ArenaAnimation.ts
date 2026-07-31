@@ -1,6 +1,7 @@
 import type { Team } from "@quizstrike/shared";
 
 export type ArenaAnimationCue =
+  | "fire"
   | "hit"
   | "respawn"
   | "jump"

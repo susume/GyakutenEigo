@@ -6,6 +6,7 @@ import type { ArenaAnimationCue, ArenaAnimationEvent } from "../ArenaAnimation.j
 
 export interface CharacterVisualState {
   x: number;
+  y?: number;
   z: number;
   facing: number;
 }
@@ -13,6 +14,7 @@ export interface CharacterVisualState {
 export interface CharacterManagerOptions {
   isFps: boolean;
   currentPlayerId?: string;
+  showBadges?: boolean;
   makeBadgeMaterial: (player: PlayerSession) => THREE.SpriteMaterial;
 }
 
@@ -24,6 +26,7 @@ type CharacterRecord = {
   badgeAlive: boolean;
   alive: boolean;
   team: PlayerSession["team"];
+  role?: PlayerSession["role"];
   appearanceSignature: string;
 };
 
@@ -57,7 +60,7 @@ export class CharacterManager {
       }
       if (!record) return;
       const appearanceSignature = JSON.stringify(player.appearance ?? null);
-      if (record.gear !== player.gear || record.team !== player.team || record.appearanceSignature !== appearanceSignature) {
+      if (record.gear !== player.gear || record.team !== player.team || record.role !== player.role || record.appearanceSignature !== appearanceSignature) {
         this.removeRecord(record);
         this.records.delete(player.id);
         this.add(player, state);
@@ -67,7 +70,9 @@ export class CharacterManager {
       if (!record.alive && player.isAlive) record.controller.triggerAnimation("respawn");
       record.alive = player.isAlive;
       record.team = player.team;
+      record.role = player.role;
       record.controller.carryingObjective = objectiveCarrierId === player.id;
+      record.controller.setPosture(player.crouching === true, player.jumping === true);
       if (!player.isAlive) {
         record.controller.model.root.visible = false;
         record.badge.visible = false;
@@ -84,9 +89,9 @@ export class CharacterManager {
         }
         record.badgeAlive = player.isAlive;
       }
-      record.controller.setTarget(state.x, state.z, state.facing, player.isAlive);
+      record.controller.setTarget(state.x, state.z, state.facing, player.isAlive, state.y ?? 0);
       record.controller.model.root.visible = true;
-      record.badge.visible = true;
+      record.badge.visible = this.options.showBadges !== false;
       if (record.ring) record.ring.visible = player.id === this.options.currentPlayerId;
     });
 
@@ -111,15 +116,20 @@ export class CharacterManager {
     this.records.get(playerId)?.controller.triggerAnimation(cue);
   }
 
+  getMuzzleWorldPosition(playerId: string) {
+    const record = this.records.get(playerId);
+    return record?.controller.model.getMuzzleWorldPosition();
+  }
+
   update(delta: number, elapsed: number, camera: THREE.Camera) {
     for (const record of this.records.values()) {
       if (!record.controller.model.root.visible) continue;
       record.controller.update(delta, elapsed, camera);
       const { current, alive } = record.controller;
-      record.badge.position.set(current.x, 6.2, current.z);
+      record.badge.position.set(current.x, current.y + 6.2, current.z);
       record.badge.scale.set(alive ? 8.2 : 7.2, alive ? 3 : 2.6, 1);
       record.badge.lookAt(camera.position);
-      if (record.ring) record.ring.position.set(current.x, 0.08, current.z);
+      if (record.ring) record.ring.position.set(current.x, current.y + 0.08, current.z);
     }
   }
 
@@ -144,13 +154,20 @@ export class CharacterManager {
   }
 
   private add(player: PlayerSession, state: CharacterVisualState) {
-    const model = this.factory.createCharacter({ playerId: player.id, team: player.team, gear: player.gear, appearance: player.appearance });
-    const controller = new CharacterController(model, state.x, state.z, state.facing, player.isAlive);
+    const model = this.factory.createCharacter({
+      playerId: player.id,
+      team: player.team,
+      role: player.role,
+      gear: player.gear,
+      appearance: player.appearance
+    });
+    const controller = new CharacterController(model, state.x, state.z, state.facing, player.isAlive, state.y ?? 0);
     this.scene.add(model.root);
 
     const badge = new THREE.Sprite(this.options.makeBadgeMaterial(player));
-    badge.position.set(state.x, 6.2, state.z);
+    badge.position.set(state.x, (state.y ?? 0) + 6.2, state.z);
     badge.scale.set(8.2, 3, 1);
+    badge.visible = this.options.showBadges !== false;
     this.scene.add(badge);
 
     let ring: THREE.Mesh | undefined;
@@ -160,7 +177,7 @@ export class CharacterManager {
         new THREE.MeshBasicMaterial({ color: "#172033" })
       );
       ring.rotation.x = Math.PI / 2;
-      ring.position.set(state.x, 0.08, state.z);
+      ring.position.set(state.x, (state.y ?? 0) + 0.08, state.z);
       this.scene.add(ring);
     }
 
@@ -172,6 +189,7 @@ export class CharacterManager {
       badgeAlive: player.isAlive,
       alive: player.isAlive,
       team: player.team,
+      role: player.role,
       appearanceSignature: JSON.stringify(player.appearance ?? null)
     });
   }

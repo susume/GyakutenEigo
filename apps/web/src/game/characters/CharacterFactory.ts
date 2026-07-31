@@ -1,7 +1,17 @@
 import * as THREE from "three";
-import type { PlayerAppearance, Team } from "@quizstrike/shared";
+import type { PlayerAppearance, PlayerRole, Team } from "@quizstrike/shared";
+import {
+  BACK_ACCESSORY_DEFINITIONS,
+  createBackAccessory,
+  type AccessorySocketName
+} from "./CharacterAccessories.js";
+import { createHeadStyle, createHeadStyleDebugEnvelope, createZombieHeadStyle } from "./CharacterHeadStyles.js";
 import { resolveCharacterAppearance, type CharacterAppearance } from "./CharacterAppearance.js";
-import { createBackpack, createWeaponSet, type CharacterMaterials } from "./CharacterEquipment.js";
+import {
+  createWeaponSet,
+  getWeaponMountTransform,
+  type CharacterMaterials
+} from "./CharacterEquipment.js";
 import { CharacterModel } from "./CharacterModel.js";
 import { createSharedSkinnedStudent } from "./SharedSkinnedStudent.js";
 
@@ -22,31 +32,23 @@ const makeMaterial = (color: string, roughness = 0.82, metalness = 0.03) =>
     color,
     roughness,
     metalness,
-    flatShading: true
+    flatShading: false
   });
 
 export class CharacterFactory {
   private readonly boxGeometry = new THREE.BoxGeometry(1, 1, 1);
-  private readonly headGeometry = new THREE.SphereGeometry(0.5, 12, 8);
-  private readonly helmetGeometry = new THREE.SphereGeometry(0.5, 10, 6, 0, Math.PI * 2, 0, Math.PI * 0.72);
-  private readonly torsoGeometry = new THREE.CylinderGeometry(0.42, 0.34, 0.78, 8);
   private readonly limbGeometry = new THREE.CylinderGeometry(0.13, 0.105, 0.62, 8);
   private readonly jointGeometry = new THREE.SphereGeometry(0.14, 8, 6);
   private readonly shadowGeometry = new THREE.CircleGeometry(0.52, 16);
-  private readonly roundEyewearGeometry = new THREE.TorusGeometry(0.105, 0.026, 6, 12);
   private readonly materialCache = new Map<string, THREE.MeshStandardMaterial>();
 
   constructor(private readonly options: CharacterFactoryOptions = {}) {}
 
   dispose() {
     this.boxGeometry.dispose();
-    this.headGeometry.dispose();
-    this.helmetGeometry.dispose();
-    this.torsoGeometry.dispose();
     this.limbGeometry.dispose();
     this.jointGeometry.dispose();
     this.shadowGeometry.dispose();
-    this.roundEyewearGeometry.dispose();
     this.materialCache.forEach((material) => material.dispose());
     this.materialCache.clear();
   }
@@ -61,6 +63,23 @@ export class CharacterFactory {
   }
 
   private materialsFor(appearance: CharacterAppearance): CharacterMaterials {
+    const flatGreySilhouette = typeof window !== "undefined"
+      && new URLSearchParams(window.location.search).get("characterSilhouette") === "1";
+    if (flatGreySilhouette) {
+      const silhouetteMaterial = this.material("#9aa3ad", 0.9);
+      return {
+        uniform: silhouetteMaterial,
+        armor: silhouetteMaterial,
+        cloth: silhouetteMaterial,
+        accent: silhouetteMaterial,
+        dark: silhouetteMaterial,
+        visor: silhouetteMaterial,
+        skin: silhouetteMaterial,
+        weaponArmor: silhouetteMaterial,
+        weaponDark: silhouetteMaterial,
+        weaponCold: silhouetteMaterial
+      };
+    }
     return {
       uniform: this.material(appearance.palette.uniform, 0.86),
       armor: this.material(appearance.palette.armor, 0.72, 0.04),
@@ -69,7 +88,9 @@ export class CharacterFactory {
       dark: this.material(appearance.palette.dark, 0.8, 0.06),
       visor: this.material(appearance.palette.visor, 0.38, 0.12),
       skin: this.material(appearance.palette.skin, 0.78),
-      backpack: this.material(appearance.customization.backpackColor, 0.9)
+      weaponArmor: this.material("#dfe4e5", 0.62, 0.08),
+      weaponDark: this.material("#101923", 0.68, 0.12),
+      weaponCold: this.material("#b9f4ff", 0.28, 0.08)
     };
   }
 
@@ -108,7 +129,7 @@ export class CharacterFactory {
     return mesh;
   }
 
-  createCharacter(input: { playerId: string; team: Team; gear?: string; appearance?: PlayerAppearance }) {
+  createCharacter(input: { playerId: string; team: Team; role?: PlayerRole; gear?: string; appearance?: PlayerAppearance }) {
     const appearance = resolveCharacterAppearance(input);
     const materials = this.materialsFor(appearance);
     const root = new THREE.Group();
@@ -128,52 +149,108 @@ export class CharacterFactory {
     root.add(contactShadow);
     const athlete = createSharedSkinnedStudent(appearance, materials);
     root.add(athlete.mesh);
-    const { torso, head, leftArm, rightArm, leftLeg, rightLeg } = athlete.bones;
+    const {
+      root: skeletonRoot,
+      torso,
+      head,
+      leftArm,
+      rightArm,
+      leftForearm,
+      rightForearm,
+      leftHand,
+      rightHand,
+      leftLeg,
+      rightLeg,
+      leftShin,
+      rightShin
+    } = athlete.bones;
 
-    // Small silhouette accessories remain bone-attached so every class shares the same
-    // body skin and animation rig without losing readable role identity.
-    if (appearance.silhouette.helmet === "hood") {
-      this.addShape(head, new THREE.TorusGeometry(0.38, 0.085, 7, 14), materials.cloth, [0, 0, 0.04], [1, 1.18, 1], [Math.PI / 2, 0, 0]).userData.disposeWithCharacterGeometry = true;
-    }
-    if (appearance.silhouette.helmet === "ridge") {
-      this.addShape(head, new THREE.ConeGeometry(0.16, 0.36, 7), materials.dark, [0, 0.29, 0.05], [1, 1, 1], [0.08, 0, -0.08]).userData.disposeWithCharacterGeometry = true;
-    }
-    if (appearance.silhouette.helmet === "headset") {
-      this.addShape(head, new THREE.TorusGeometry(0.37, 0.045, 6, 12, Math.PI), materials.dark, [0, 0.06, 0.02], [1, 1.1, 1], [0, 0, Math.PI / 2]).userData.disposeWithCharacterGeometry = true;
-    }
-    if (appearance.customization.eyewearStyle !== "none") {
-      const eyewearMaterial = this.material(appearance.customization.eyewearColor, 0.42, 0.12);
-      const lensGeometry = appearance.customization.eyewearStyle === "goggles" ? this.boxGeometry : this.roundEyewearGeometry;
-      const lensScale: [number, number, number] = appearance.customization.eyewearStyle === "goggles"
-        ? [0.23, 0.11, 0.035]
-        : [1, 1, 1];
-      for (const x of [-0.13, 0.13]) {
-        this.addShape(head, lensGeometry, eyewearMaterial, [x, 0, -0.35], lensScale, [0, 0, 0]);
-      }
-      this.addShape(head, this.boxGeometry, eyewearMaterial, [0, 0, -0.355], [0.08, 0.025, 0.02]);
-    }
+    const socketParents: Record<AccessorySocketName, THREE.Object3D> = {
+      HeadSocket: head,
+      FaceSocket: head,
+      BackSocket: torso,
+      UpperBackSocket: torso,
+      FullBackSocket: torso,
+      LowerBackSocket: torso,
+      PelvisRearSocket: skeletonRoot,
+      DiagonalBackSocket: torso,
+      ChestDecalSocket: torso,
+      HipSocket: skeletonRoot
+    };
+    const socketOffsets: Record<AccessorySocketName, [number, number, number]> = {
+      HeadSocket: [0, 0, 0],
+      FaceSocket: [0, 0.04, -0.3],
+      BackSocket: [0, 0.04, 0.28],
+      UpperBackSocket: [0, 0.12, 0.27],
+      FullBackSocket: [0, 0.02, 0.25],
+      LowerBackSocket: [0, -0.2, 0.26],
+      PelvisRearSocket: [0, 0.75, 0.18],
+      DiagonalBackSocket: [0, 0.02, 0.29],
+      ChestDecalSocket: [0, 0.12, -0.325],
+      HipSocket: [0.29, 0.8, 0]
+    };
+    const accessorySockets = {} as Record<AccessorySocketName, THREE.Group>;
+    (Object.keys(socketParents) as AccessorySocketName[]).forEach((name) => {
+      const socket = new THREE.Group();
+      socket.name = name;
+      socket.position.set(...socketOffsets[name]);
+      socketParents[name].add(socket);
+      accessorySockets[name] = socket;
+    });
 
-    const { weapon, muzzle } = createWeaponSet(materials, this.boxGeometry, input.gear);
-    weapon.position.set(0.2, 1.14, -0.5);
-    weapon.rotation.set(-0.24, Math.PI, -0.04);
-    weapon.scale.setScalar(0.72);
-    root.add(weapon);
+    const activeHeadStyle = input.role === "zombie"
+      ? createZombieHeadStyle(materials)
+      : createHeadStyle(appearance.customization.headStyleId, materials);
+    accessorySockets.HeadSocket.add(activeHeadStyle);
+    root.userData.activeHeadStyleId = activeHeadStyle.userData.headStyleId;
+    const accessories: THREE.Object3D[] = [];
+    const backDefinition = BACK_ACCESSORY_DEFINITIONS[appearance.customization.backAccessoryId];
+    const backAccessory = createBackAccessory(appearance.customization.backAccessoryId, materials);
+    if (backAccessory) {
+      accessorySockets[backDefinition.socket].add(backAccessory);
+      accessories.push(backAccessory);
+      root.userData.activeBackAccessoryId = appearance.customization.backAccessoryId;
+      root.userData.activeBackMount = backDefinition.mount;
+    }
+    const gearId = input.gear ?? "starter_blaster";
+    const {
+      weapon,
+      weaponDetails,
+      muzzle,
+      rearHandGrip,
+      leftHandSupport,
+      shoulderContact,
+      sight
+    } = createWeaponSet(materials, this.boxGeometry, gearId);
+    const mount = getWeaponMountTransform(gearId);
+    const weaponSocket = new THREE.Group();
+    weaponSocket.name = "RightHandWeaponSocket";
+    rightHand.add(weaponSocket);
+    weapon.position.set(...mount.position);
+    weapon.rotation.set(...mount.rotation);
+    weapon.scale.setScalar(mount.scale);
+    weapon.userData.mountPosition = [...mount.position];
+    weapon.userData.mountRotation = [...mount.rotation];
+    weaponSocket.add(weapon);
 
-    const backpack = createBackpack(appearance, materials, this.boxGeometry);
-    if (backpack) {
-      backpack.position.set(0, 1.16, 0.28);
-      root.add(backpack);
+    const showSockets = typeof window !== "undefined"
+      && new URLSearchParams(window.location.search).get("characterSockets") === "1";
+    if (showSockets) {
+      weaponSocket.add(new THREE.AxesHelper(0.22));
+      leftHandSupport.add(new THREE.AxesHelper(0.2));
+      rightHand.add(new THREE.AxesHelper(0.18));
+      Object.values(accessorySockets).forEach((socket) => socket.add(new THREE.AxesHelper(0.14)));
+      accessorySockets.HeadSocket.add(createHeadStyleDebugEnvelope());
     }
 
     if (appearance.customization.decalAssetId && this.options.loadDecalTexture) {
       const decalMaterial = new THREE.MeshBasicMaterial({ transparent: true, depthWrite: false, side: THREE.DoubleSide });
       const decal = new THREE.Mesh(new THREE.PlaneGeometry(0.32, 0.32), decalMaterial);
-      decal.position.set(0, 1.28, -0.385);
       decal.rotation.y = Math.PI;
       decal.visible = false;
       decal.userData.ownedDecalMaterial = true;
       decal.userData.disposeWithCharacterGeometry = true;
-      root.add(decal);
+      accessorySockets.ChestDecalSocket.add(decal);
       void this.options.loadDecalTexture(appearance.customization.decalAssetId).then((texture) => {
         if (!texture) return;
         if (root.userData.disposed) {
@@ -194,10 +271,27 @@ export class CharacterFactory {
       head,
       leftArm,
       rightArm,
+      leftForearm,
+      rightForearm,
+      leftHand,
       leftLeg,
       rightLeg,
+      leftShin,
+      rightShin,
       weapon,
-      equipment: { weapon, muzzle, backpack }
+      rearHandGrip,
+      equipment: {
+        weapon,
+        weaponDetails,
+        muzzle,
+        weaponSocket,
+        rearHandGrip,
+        leftHandSupport,
+        shoulderContact,
+        sight,
+        accessories
+      },
+      leftHandSupport
     });
   }
 
@@ -205,8 +299,8 @@ export class CharacterFactory {
     const appearance = resolveCharacterAppearance({ team, playerId: "local", gear, variant: "assault" });
     const materials = this.materialsFor(appearance);
     const root = new THREE.Group();
-    root.position.set(0.34, -0.58, -1.02);
-    root.rotation.set(-0.04, -0.08, 0);
+    root.position.set(0.28, -0.46, -0.7);
+    root.rotation.set(-0.025, -0.055, 0);
 
     this.addShape(root, this.limbGeometry, materials.uniform, [-0.28, -0.17, -0.18], [0.92, 0.72, 0.92], [-0.64, 0.12, 0.08]);
     this.addShape(root, this.limbGeometry, materials.uniform, [0.32, -0.13, -0.12], [0.92, 0.78, 0.92], [-0.7, -0.08, -0.04]);
@@ -214,9 +308,10 @@ export class CharacterFactory {
     this.addShape(root, this.jointGeometry, materials.dark, [0.36, -0.38, -0.38], [0.9, 0.9, 0.9]);
 
     const { weapon, muzzle } = createWeaponSet(materials, this.boxGeometry, gear);
-    weapon.position.set(0.06, -0.24, -0.62);
-    weapon.rotation.set(-0.1, Math.PI, 0);
-    weapon.scale.set(0.62, 0.62, 0.82);
+    const firstPerson = getWeaponMountTransform(gear).firstPerson;
+    weapon.position.set(...firstPerson.position);
+    weapon.rotation.set(...firstPerson.rotation);
+    weapon.scale.set(...firstPerson.scale);
     root.add(weapon);
     return { root, weapon, muzzle };
   }

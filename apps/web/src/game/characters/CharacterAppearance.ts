@@ -1,9 +1,15 @@
-import { sanitizePlayerAppearance, type PlayerAppearance, type Team } from "@quizstrike/shared";
+import {
+  sanitizePlayerAppearance,
+  type PlayerAppearance,
+  type PlayerBackAccessoryId,
+  type PlayerFootwearId,
+  type PlayerHeadStyleId,
+  type PlayerVictoryPoseId,
+  type Team
+} from "@quizstrike/shared";
 
 export type CharacterVariant = "assault" | "support" | "sniper" | "engineer" | "medic" | "heavy";
-export type HelmetStyle = "visor" | "rounded" | "hood" | "headset" | "ridge";
 export type VestStyle = "plate_carrier" | "compact_rig" | "long_rig" | "utility_rig";
-export type BackpackStyle = "radio_pack" | "flat_pack" | "bedroll" | "none";
 
 export interface CharacterAppearanceInput {
   team: Team;
@@ -28,74 +34,77 @@ export interface CharacterAppearance {
     skin: string;
   };
   silhouette: {
-    helmet: HelmetStyle;
     vest: VestStyle;
-    backpack: BackpackStyle;
     shoulderBulk: number;
     heightScale: number;
     widthScale: number;
   };
   customization: {
-    eyewearStyle: PlayerAppearance["eyewearStyle"];
-    eyewearColor: string;
-    shoeStyle: PlayerAppearance["shoeStyle"];
-    backpackColor: string;
+    headStyleId: PlayerHeadStyleId;
+    backAccessoryId: PlayerBackAccessoryId;
+    footwearId: PlayerFootwearId;
+    victoryPoseId: PlayerVictoryPoseId;
     decalAssetId?: string;
   };
 }
 
-export const TEAM_CHARACTER_CONFIGS = {
+export const TEAM_APPEARANCE = {
   blue: {
     teamName: "Team Alpha",
     palette: {
-      uniform: "#174a78",
-      armor: "#e9f2f7",
-      cloth: "#18324c",
-      accent: "#31b6ff",
+      uniform: "#1671bd",
+      armor: "#e8f0f4",
+      cloth: "#173250",
+      accent: "#49c8ff",
       accentName: "blue",
-      dark: "#102334",
-      visor: "#8ee8ff",
+      dark: "#0c1b2b",
+      visor: "#9be9ff",
       skin: "#c99f7c"
-    },
-    silhouette: {
-      helmet: "visor",
-      vest: "plate_carrier",
-      backpack: "radio_pack",
-      shoulderBulk: 1.18,
-      heightScale: 1.02,
-      widthScale: 1
     }
   },
   red: {
     teamName: "Team Bravo",
     palette: {
-      uniform: "#8d2f3f",
-      armor: "#fff0e6",
-      cloth: "#4b2632",
-      accent: "#ff6b46",
+      uniform: "#c93643",
+      armor: "#f1eee9",
+      cloth: "#532433",
+      accent: "#ff6a55",
       accentName: "orange",
-      dark: "#2f1b26",
-      visor: "#ffd09c",
+      dark: "#281923",
+      visor: "#ffd1bd",
       skin: "#b98766"
-    },
+    }
+  }
+} as const satisfies Record<Team, Pick<CharacterAppearance, "teamName" | "palette">>;
+
+export const TEAM_CHARACTER_CONFIGS = {
+  blue: {
+    ...TEAM_APPEARANCE.blue,
     silhouette: {
-      helmet: "ridge",
-      vest: "long_rig",
-      backpack: "bedroll",
-      shoulderBulk: 1.04,
-      heightScale: 0.98,
-      widthScale: 1.08
+      vest: "plate_carrier",
+      shoulderBulk: 1.1,
+      heightScale: 1,
+      widthScale: 1
+    }
+  },
+  red: {
+    ...TEAM_APPEARANCE.red,
+    silhouette: {
+      vest: "plate_carrier",
+      shoulderBulk: 1.1,
+      heightScale: 1,
+      widthScale: 1
     }
   }
 } as const satisfies Record<Team, Omit<CharacterAppearance, "team" | "variant" | "customization">>;
 
 export const CHARACTER_VARIANTS: Record<CharacterVariant, Partial<CharacterAppearance["silhouette"]>> = {
-  assault: { vest: "plate_carrier", backpack: "flat_pack", shoulderBulk: 1.1 },
-  support: { helmet: "headset", vest: "utility_rig", backpack: "radio_pack", shoulderBulk: 1.08 },
-  sniper: { helmet: "hood", vest: "compact_rig", backpack: "flat_pack", heightScale: 1.04, widthScale: 0.94 },
-  engineer: { helmet: "rounded", vest: "utility_rig", backpack: "radio_pack", shoulderBulk: 1.14 },
-  medic: { helmet: "rounded", vest: "compact_rig", backpack: "flat_pack", shoulderBulk: 1.02 },
-  heavy: { helmet: "visor", vest: "plate_carrier", backpack: "radio_pack", shoulderBulk: 1.26, widthScale: 1.12 }
+  assault: { vest: "plate_carrier", shoulderBulk: 1.1 },
+  support: { vest: "utility_rig", shoulderBulk: 1.08 },
+  sniper: { vest: "compact_rig", heightScale: 1.04, widthScale: 0.94 },
+  engineer: { vest: "utility_rig", shoulderBulk: 1.14 },
+  medic: { vest: "compact_rig", shoulderBulk: 1.02 },
+  heavy: { vest: "plate_carrier", shoulderBulk: 1.26, widthScale: 1.12 }
 };
 
 export const CHARACTER_LOD_LEVELS = [
@@ -115,55 +124,28 @@ export const CHARACTER_HITBOXES = {
   rightLeg: { damageMultiplier: 0.75, centerY: 0.38, radius: 0.17, height: 0.7 }
 } as const;
 
-const stableHash = (value: string) => {
-  let hash = 0;
-  for (let index = 0; index < value.length; index += 1) {
-    hash = (hash * 31 + value.charCodeAt(index)) >>> 0;
-  }
-  return hash;
-};
-
-const variantFromGear = (gear?: string): CharacterVariant | null => {
-  if (gear === "power_blaster") return "heavy";
-  if (gear === "quick_blaster" || gear === "speed_shoes") return "support";
-  if (gear === "shield_vest") return "engineer";
-  return null;
-};
-
-export const resolveCharacterVariant = ({ playerId, gear, variant }: CharacterAppearanceInput): CharacterVariant => {
-  if (variant) return variant;
-  const gearVariant = variantFromGear(gear);
-  if (gearVariant) return gearVariant;
-  const variants: CharacterVariant[] = ["assault", "support", "sniper", "engineer", "medic"];
-  return variants[stableHash(playerId) % variants.length];
-};
+export const resolveCharacterVariant = ({ variant }: CharacterAppearanceInput): CharacterVariant =>
+  variant ?? "assault";
 
 export const resolveCharacterAppearance = (input: CharacterAppearanceInput): CharacterAppearance => {
   const base = TEAM_CHARACTER_CONFIGS[input.team];
   const custom = input.appearance ? sanitizePlayerAppearance(input.appearance) : undefined;
-  const variant = custom?.characterPreset ?? resolveCharacterVariant(input);
+  const variant = resolveCharacterVariant(input);
   const variantSilhouette = CHARACTER_VARIANTS[variant];
   return {
     team: input.team,
     teamName: base.teamName,
     variant,
-    palette: custom ? {
-      ...base.palette,
-      uniform: custom.clothingPrimaryColor,
-      armor: custom.helmetColor,
-      cloth: custom.clothingSecondaryColor,
-      dark: custom.shoeColor
-    } : { ...base.palette },
+    palette: { ...base.palette },
     silhouette: {
       ...base.silhouette,
-      ...variantSilhouette,
-      ...(custom ? { helmet: custom.helmetStyle, backpack: custom.backpackStyle } : {})
+      ...variantSilhouette
     },
     customization: {
-      eyewearStyle: custom?.eyewearStyle ?? "none",
-      eyewearColor: custom?.eyewearColor ?? base.palette.dark,
-      shoeStyle: custom?.shoeStyle ?? "boots",
-      backpackColor: custom?.backpackColor ?? base.palette.cloth,
+      headStyleId: custom?.headStyleId ?? "boy_short_hair",
+      backAccessoryId: custom?.backAccessoryId ?? "none",
+      footwearId: custom?.footwearId ?? "runners",
+      victoryPoseId: custom?.victoryPoseId ?? "champion",
       ...(custom?.decalAssetId ? { decalAssetId: custom.decalAssetId } : {})
     }
   };
@@ -174,9 +156,11 @@ export const serializeCharacterAppearance = (input: CharacterAppearanceInput) =>
   return {
     team: appearance.team,
     variant: appearance.variant,
-    helmet: appearance.silhouette.helmet,
+    headStyleId: appearance.customization.headStyleId,
     vest: appearance.silhouette.vest,
-    backpack: appearance.silhouette.backpack,
+    backAccessoryId: appearance.customization.backAccessoryId,
+    footwearId: appearance.customization.footwearId,
+    victoryPoseId: appearance.customization.victoryPoseId,
     accent: appearance.palette.accentName
   };
 };

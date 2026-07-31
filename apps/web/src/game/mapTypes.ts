@@ -8,7 +8,9 @@ export type CitadelBlock = {
   h: number;
   color: string;
   y?: number;
+  rotationX?: number;
   rotationY?: number;
+  rotationZ?: number;
   collides?: boolean;
   material?: "stone" | "wood" | "cloth" | "sand" | "water" | "accent" | "metal" | "gravel";
   style?:
@@ -26,6 +28,8 @@ export type CitadelBlock = {
     | "shed"
     | "machinery"
     | "logstack"
+    | "stair"
+    | "trackbed"
     | "rock";
 };
 
@@ -61,6 +65,7 @@ export type CitadelFloorMark = {
   d: number;
   color: string;
   rotation?: number;
+  y?: number;
 };
 
 export type CitadelProp = {
@@ -93,7 +98,7 @@ export type CitadelProp = {
 };
 
 export type ArenaMapDefinition = {
-  id: "desert_citadel" | "iron_junction";
+  id: "desert_citadel" | "iron_junction" | "temple_runoff";
   title: string;
   description: string;
   districts: readonly string[];

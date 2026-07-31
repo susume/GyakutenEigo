@@ -7,16 +7,41 @@ import {
   serializeCharacterAppearance
 } from "./CharacterAppearance.js";
 
-test("resolveCharacterAppearance gives Alpha and Bravo distinct sports identities", () => {
-  const alpha = resolveCharacterAppearance({ team: "blue", playerId: "alpha-1", gear: "starter_blaster" });
-  const bravo = resolveCharacterAppearance({ team: "red", playerId: "bravo-1", gear: "starter_blaster" });
+test("resolveCharacterAppearance gives both teams one uniform silhouette with distinct palettes", () => {
+  const alpha = resolveCharacterAppearance({ team: "blue", playerId: "learner-1", gear: "starter_blaster" });
+  const bravo = resolveCharacterAppearance({ team: "red", playerId: "learner-1", gear: "starter_blaster" });
 
   assert.equal(alpha.teamName, "Team Alpha");
   assert.equal(bravo.teamName, "Team Bravo");
   assert.notEqual(alpha.palette.uniform, bravo.palette.uniform);
-  assert.notEqual(alpha.silhouette.helmet, bravo.silhouette.helmet);
-  assert.notEqual(alpha.silhouette.vest, bravo.silhouette.vest);
-  assert.notEqual(alpha.silhouette.backpack, bravo.silhouette.backpack);
+  assert.deepEqual(alpha.silhouette, bravo.silhouette);
+});
+
+test("team palette remains authoritative when legacy colour fields are injected", () => {
+  const injected = {
+    characterPreset: "captain",
+    headOption: "visor",
+    accessoryId: "none",
+    clothingPrimaryColor: "#00ff00",
+    clothingSecondaryColor: "#ff00ff",
+    appearanceVersion: 1
+  };
+
+  const alpha = resolveCharacterAppearance({
+    team: "blue",
+    playerId: "learner-7",
+    appearance: injected as never
+  });
+  const bravo = resolveCharacterAppearance({
+    team: "red",
+    playerId: "learner-7",
+    appearance: injected as never
+  });
+
+  assert.equal(alpha.palette.uniform, "#1671bd");
+  assert.equal(alpha.palette.accent, "#49c8ff");
+  assert.equal(bravo.palette.uniform, "#c93643");
+  assert.equal(bravo.palette.accent, "#ff6a55");
 });
 
 test("serializeCharacterAppearance returns compact multiplayer-safe appearance state", () => {
@@ -24,10 +49,12 @@ test("serializeCharacterAppearance returns compact multiplayer-safe appearance s
     serializeCharacterAppearance({ team: "blue", playerId: "learner-7", gear: "power_blaster" }),
     {
       team: "blue",
-      variant: "heavy",
-      helmet: "visor",
+      variant: "assault",
+      headStyleId: "boy_short_hair",
       vest: "plate_carrier",
-      backpack: "radio_pack",
+      backAccessoryId: "none",
+      footwearId: "runners",
+      victoryPoseId: "champion",
       accent: "blue"
     }
   );

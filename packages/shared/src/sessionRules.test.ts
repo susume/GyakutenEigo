@@ -11,18 +11,31 @@ import {
   QUICK_BLASTER_COOLDOWN_MS,
   QUICK_BLASTER_RANGE,
   RESPAWN_CORRECT_ANSWERS_REQUIRED,
+  ZOMBIE_HUMAN_CORRECT_ENERGY,
+  ZOMBIE_HUMAN_MAX_ENERGY,
   ARENA_LIMIT_X,
   ARENA_LIMIT_Z,
+  ARENA_MAX_AIM_PITCH,
+  ARENA_MIN_AIM_PITCH,
   ARENA_SCALE,
+  ARENA_PLAYER_CROUCH_EYE_HEIGHT,
+  ARENA_PLAYER_EYE_HEIGHT,
+  TEMPLE_RUNOFF_MAIN_LEVEL_Y,
+  TEMPLE_RUNOFF_STAIR_FLIGHTS,
+  TEMPLE_RUNOFF_UPPER_LEVEL_Y,
   STARTER_BLASTER_RANGE,
   FREE_FOR_ALL_SPAWNS,
   buildCsvReport,
+  calculateClassAccuracy,
   buildReportRows,
   buildScoreboardRows,
   clampArenaPosition,
+  clampArenaAimPitch,
   canStartRound,
+  canPlayerFireInMode,
   canPlaceFlag,
   createInitialFlagState,
+  awardZombieHumanEnergy,
   GEAR_ITEMS,
   getDefaultInitialZombieCount,
   getGearDamage,
@@ -35,20 +48,32 @@ import {
   getPlayerMoveSpeedMultiplier,
   getPlayerPerks,
   getPlayerWeaponId,
+  getPlayerWeaponIdForMode,
   getRoundResetLoadout,
   getArenaObstacles,
+  getArenaGroundHeight,
+  getArenaGroundHeightForPlayer,
+  getArenaFloorSurfaces,
+  getArenaBounds,
+  findBotNavigationPath,
   getRoundRemainingSeconds,
   getZombieBestPlayers,
   resolveTeamRoundWinner,
   getTeamSpawn,
   getTeamSpawnForMap,
+  getTeamSpawnsForMap,
   selectTeamSpawn,
+  selectTeamSpawnForMap,
   TEAM_SPAWNS,
   isRoundActive,
   isRoundBuyPhase,
+  isRoundPreparationPhase,
+  isZombieSelectionPhase,
   isInsideTeamBase,
+  isNearTeamSpawn,
   isGearAutoFireEnabled,
   randomizeBalancedTeams,
+  selectLateJoinTeam,
   resolveFlagCapture,
   resolveFlagCountdown,
   resolveFlagDropForPlayer,
@@ -67,6 +92,7 @@ import {
   resolveAnswerReward,
   resolveTagAction,
   resolveZombieConversion,
+  resolveZombieSprintEnergy,
   selectInitialZombies,
   sanitizeSessionSettings,
   type PlayerSession,
@@ -135,15 +161,26 @@ test("isRoundActive opens economy only during an active round", () => {
   assert.equal(isRoundActive(makeSession({ status: "ended" })), false);
 });
 
-test("isRoundBuyPhase only opens the Flag pre-round shop window", () => {
-  const transition = { nextRound: 2, startsAt: "2026-07-15T00:00:06.000Z", phase: "buy" as const };
+test("round preparation opens the Tag and Flag quiz-and-shop window", () => {
+  const transition = { nextRound: 2, startsAt: "2026-07-15T00:00:35.000Z", phase: "preparation" as const };
   assert.equal(isRoundBuyPhase(makeSession({ status: "paused", roundTransition: transition })), true);
+  assert.equal(isRoundPreparationPhase(makeSession({ status: "paused", roundTransition: transition })), true);
   assert.equal(isRoundBuyPhase(makeSession({ status: "active", roundTransition: transition })), false);
-  assert.equal(isRoundBuyPhase(makeSession({
+  assert.equal(isRoundPreparationPhase(makeSession({
     status: "paused",
     settings: { ...DEFAULT_SESSION_SETTINGS, gameMode: "classic" },
     roundTransition: transition
+  })), true);
+  assert.equal(isRoundPreparationPhase(makeSession({
+    status: "paused",
+    settings: { ...DEFAULT_SESSION_SETTINGS, gameMode: "zombie" },
+    roundTransition: { ...transition, phase: "zombie_selection" }
   })), false);
+  assert.equal(isZombieSelectionPhase(makeSession({
+    status: "paused",
+    settings: { ...DEFAULT_SESSION_SETTINGS, gameMode: "zombie" },
+    roundTransition: { ...transition, phase: "zombie_selection" }
+  })), true);
 });
 
 test("buildReportRows excludes bots and practice answers from class accuracy", () => {
@@ -170,6 +207,18 @@ test("buildReportRows excludes bots and practice answers from class accuracy", (
       score: realPlayer.score
     }
   ]);
+});
+
+test("calculateClassAccuracy weights attempted answers and ignores no-attempt learners", () => {
+  assert.equal(calculateClassAccuracy([
+    { correctAnswers: 1, wrongAnswers: 0 },
+    { correctAnswers: 0, wrongAnswers: 0 }
+  ]), 100);
+  assert.equal(calculateClassAccuracy([
+    { correctAnswers: 1, wrongAnswers: 0 },
+    { correctAnswers: 0, wrongAnswers: 1 }
+  ]), 50);
+  assert.equal(calculateClassAccuracy([{ correctAnswers: 0, wrongAnswers: 0 }]), null);
 });
 
 test("resolveAnswerReward caps correct-answer money and adds fast bonus only when allowed", () => {
@@ -214,7 +263,7 @@ test("resolvePracticeRespawn revives an eliminated player after three correct pr
   assert.equal(almostReady.player.snowballs, DEFAULT_SESSION_SETTINGS.startingSnowballs);
   assert.equal(almostReady.player.respawnCorrectAnswers, 0);
   assert.deepEqual(
-    { x: almostReady.player.x, z: almostReady.player.z, facing: almostReady.player.facing },
+    { x: almostReady.player.x, y: almostReady.player.y, z: almostReady.player.z, facing: almostReady.player.facing },
     getTeamSpawn("blue")
   );
 });
@@ -269,6 +318,7 @@ test("sanitizeSessionSettings keeps classroom settings inside safe bounds", () =
   assert.deepEqual(settings, {
     mapId: "desert_citadel",
     gameMode: "flag",
+    botDifficulty: "standard",
     roundCount: FLAG_MODE_DEFAULTS.roundCount,
     flagHoldSeconds: FLAG_MODE_DEFAULTS.flagHoldSeconds,
     teamAssignment: "players_choose",
@@ -325,9 +375,151 @@ test("resolveProjectileTarget finds bots and players along the swept snowball pa
   const bot = makePlayer({ id: "bot-1", team: "red", isBot: true, x: 12, z: 0, health: 100 });
   const player = makePlayer({ id: "player-2", team: "red", x: 16, z: 0.25, health: 100 });
 
-  assert.deepEqual(resolveProjectileTarget({ attacker, candidates: [player, bot] }), {
+  assert.deepEqual(resolveProjectileTarget({ attacker, candidates: [player, bot], obstacles: [] }), {
     ok: true,
     targetId: "bot-1"
+  });
+});
+
+test("pitch-aware projectiles hit between elevated and lower combat levels", () => {
+  const upperAttacker = makePlayer({
+    id: "upper-attacker",
+    team: "blue",
+    x: 0,
+    y: 22.21,
+    z: 0,
+    facing: -Math.PI / 2
+  });
+  const lowerTarget = makePlayer({
+    id: "lower-target",
+    team: "red",
+    x: 30,
+    y: ARENA_PLAYER_EYE_HEIGHT,
+    z: 0
+  });
+  const downwardPitch = Math.atan2(
+    Number(lowerTarget.y) - Number(upperAttacker.y),
+    30
+  );
+
+  assert.deepEqual(
+    resolveProjectileTarget({
+      attacker: upperAttacker,
+      candidates: [lowerTarget],
+      obstacles: [],
+      range: 40
+    }),
+    { ok: false, reason: "no_valid_target" }
+  );
+  assert.deepEqual(
+    resolveProjectileTarget({
+      attacker: upperAttacker,
+      candidates: [lowerTarget],
+      obstacles: [],
+      range: 40,
+      aimPitch: downwardPitch
+    }),
+    { ok: true, targetId: "lower-target" }
+  );
+
+  const lowerAttacker = makePlayer({
+    id: "lower-attacker",
+    team: "blue",
+    x: 0,
+    y: ARENA_PLAYER_EYE_HEIGHT,
+    z: 0,
+    facing: -Math.PI / 2
+  });
+  const upperTarget = makePlayer({
+    id: "upper-target",
+    team: "red",
+    x: 30,
+    y: 22.21,
+    z: 0
+  });
+  assert.deepEqual(
+    resolveProjectileTarget({
+      attacker: lowerAttacker,
+      candidates: [upperTarget],
+      obstacles: [],
+      range: 40,
+      aimPitch: Math.atan2(
+        Number(upperTarget.y) - Number(lowerAttacker.y),
+        30
+      )
+    }),
+    { ok: true, targetId: "upper-target" }
+  );
+});
+
+test("sloped projectile sightlines clear low cover but remain blocked by tall cover", () => {
+  const attacker = makePlayer({
+    id: "upper-attacker",
+    team: "blue",
+    x: 0,
+    y: 22.21,
+    z: 0,
+    facing: -Math.PI / 2
+  });
+  const target = makePlayer({
+    id: "lower-target",
+    team: "red",
+    x: 30,
+    y: ARENA_PLAYER_EYE_HEIGHT,
+    z: 0
+  });
+  const aimPitch = Math.atan2(Number(target.y) - Number(attacker.y), 30);
+  const lowCover = {
+    id: "low-cover",
+    kind: "rect" as const,
+    x: 15,
+    z: 0,
+    width: 2,
+    depth: 8,
+    minY: 0,
+    maxY: 10
+  };
+  const tallCover = { ...lowCover, id: "tall-cover", maxY: 16 };
+
+  assert.deepEqual(
+    resolveProjectileTarget({
+      attacker,
+      candidates: [target],
+      obstacles: [lowCover],
+      range: 40,
+      aimPitch
+    }),
+    { ok: true, targetId: "lower-target" }
+  );
+  assert.deepEqual(
+    resolveProjectileTarget({
+      attacker,
+      candidates: [target],
+      obstacles: [tallCover],
+      range: 40,
+      aimPitch
+    }),
+    { ok: false, reason: "blocked_by_cover" }
+  );
+});
+
+test("server aim pitch remains bounded to the playable camera range", () => {
+  assert.equal(clampArenaAimPitch(-99), ARENA_MIN_AIM_PITCH);
+  assert.equal(clampArenaAimPitch(99), ARENA_MAX_AIM_PITCH);
+  assert.equal(clampArenaAimPitch(Number.NaN), 0);
+});
+
+test("resolveProjectileTarget rewinds across a bot's last authoritative movement step", () => {
+  const attacker = makePlayer({ id: "attacker", team: "blue", x: 0, z: 0, facing: -Math.PI / 2 });
+  const bot = {
+    ...makePlayer({ id: "moving-bot", team: "red", isBot: true, x: 12, z: 4 }),
+    previousX: 12,
+    previousZ: 0
+  };
+
+  assert.deepEqual(resolveProjectileTarget({ attacker, candidates: [bot], obstacles: [] }), {
+    ok: true,
+    targetId: "moving-bot"
   });
 });
 
@@ -380,7 +572,8 @@ test("resolveAuthoritativeMovement clamps speed and rejects movement through cov
       current: { x: 0, z: 0, facing: 0 },
       requested: { x: 100, z: 0, facing: 1 },
       elapsedMs: 1000,
-      maxSpeed: 10
+      maxSpeed: 10,
+      obstacles: []
     }),
     { x: 10, z: 0, facing: 1, limited: true }
   );
@@ -394,6 +587,29 @@ test("resolveAuthoritativeMovement clamps speed and rejects movement through cov
       obstacles: [{ id: "wall", kind: "rect", x: 4, z: 0, width: 2, depth: 8 }]
     }),
     { x: 0, z: 0, facing: 1, blocked: true }
+  );
+});
+
+test("authoritative movement mirrors client axis sliding instead of getting stuck behind a corner", () => {
+  const obstacle = { id: "corner", kind: "rect" as const, x: 0, z: 0, width: 2, depth: 2 };
+  const result = resolveAuthoritativeMovement({
+    current: { x: -2, z: -2, facing: 0 },
+    requested: { x: 2, z: 2, facing: 1 },
+    elapsedMs: 1000,
+    maxSpeed: 10,
+    obstacles: [obstacle]
+  });
+
+  assert.deepEqual(result, { x: 2, z: 2, facing: 1, blocked: true });
+  assert.deepEqual(
+    resolveAuthoritativeMovement({
+      current: { x: -1.4, z: 0, facing: 0 },
+      requested: { x: -2.4, z: 0, facing: 0 },
+      elapsedMs: 100,
+      maxSpeed: 20,
+      obstacles: [obstacle]
+    }),
+    { x: -2.4, z: 0, facing: 0 }
   );
 });
 
@@ -423,6 +639,46 @@ test("resolveAuthoritativeMovement allows jump-height movement over jumpable low
   );
 });
 
+test("authoritative movement remains free while standing on top of an object", () => {
+  const objectTopY = 3;
+  const obstacle = [{
+    id: "viewing-crate",
+    kind: "rect" as const,
+    x: 0,
+    z: 0,
+    width: 4,
+    depth: 4,
+    minY: 0,
+    maxY: objectTopY
+  }];
+  const standingY = objectTopY + ARENA_PLAYER_EYE_HEIGHT;
+
+  const result = resolveAuthoritativeMovement({
+    current: { x: 0, y: standingY, z: 0, facing: 0 },
+    requested: { x: 0.5, y: standingY, z: 0, facing: 0 },
+    elapsedMs: 100,
+    maxSpeed: 22,
+    obstacles: obstacle,
+    groundY: 0
+  });
+
+  assert.equal(result.x, 0.5);
+  assert.equal(result.blocked, undefined);
+
+  const crouchedResult = resolveAuthoritativeMovement({
+    current: { x: 0, y: objectTopY + ARENA_PLAYER_CROUCH_EYE_HEIGHT, z: 0, facing: 0 },
+    requested: { x: 0.5, y: objectTopY + ARENA_PLAYER_CROUCH_EYE_HEIGHT, z: 0, facing: 0 },
+    elapsedMs: 100,
+    maxSpeed: 22,
+    obstacles: obstacle,
+    groundY: 0,
+    eyeHeight: ARENA_PLAYER_CROUCH_EYE_HEIGHT
+  });
+
+  assert.equal(crouchedResult.x, 0.5);
+  assert.equal(crouchedResult.blocked, undefined);
+});
+
 test("resolveBotAttackTarget chooses the nearest visible real opponent", () => {
   const bot = makePlayer({ id: "bot", isBot: true, team: "red", x: 0, z: 0 });
   const visible = makePlayer({ id: "visible", team: "blue", x: 0, z: 6 });
@@ -439,18 +695,22 @@ test("resolveBotAttackTarget chooses the nearest visible real opponent", () => {
   );
 });
 
-test("resolveTeamRoundWinner scores Classic Tag rounds and preserves draws", () => {
+test("resolveTeamRoundWinner ranks Classic Tag rounds by tags, respawns, then quiz earnings", () => {
   assert.equal(resolveTeamRoundWinner([
-    makePlayer({ team: "blue", score: 10, tags: 2 }),
-    makePlayer({ team: "red", score: 5, tags: 4 })
+    makePlayer({ team: "blue", score: 100, roundTags: 2, roundRespawns: 8, roundQuizMoneyEarned: 5000 }),
+    makePlayer({ team: "red", score: 5, roundTags: 4, roundRespawns: 0, roundQuizMoneyEarned: 0 })
+  ]), "red");
+  assert.equal(resolveTeamRoundWinner([
+    makePlayer({ team: "blue", roundTags: 3, roundRespawns: 2, roundQuizMoneyEarned: 100 }),
+    makePlayer({ team: "red", roundTags: 3, roundRespawns: 1, roundQuizMoneyEarned: 5000 })
   ]), "blue");
   assert.equal(resolveTeamRoundWinner([
-    makePlayer({ team: "blue", score: 5, tags: 3 }),
-    makePlayer({ team: "red", score: 5, tags: 2 })
+    makePlayer({ team: "blue", roundTags: 2, roundRespawns: 1, roundQuizMoneyEarned: 1200 }),
+    makePlayer({ team: "red", roundTags: 2, roundRespawns: 1, roundQuizMoneyEarned: 900 })
   ]), "blue");
   assert.equal(resolveTeamRoundWinner([
-    makePlayer({ team: "blue", score: 5, tags: 2 }),
-    makePlayer({ team: "red", score: 5, tags: 2 })
+    makePlayer({ team: "blue", roundTags: 2, roundRespawns: 1, roundQuizMoneyEarned: 900 }),
+    makePlayer({ team: "red", roundTags: 2, roundRespawns: 1, roundQuizMoneyEarned: 900 })
   ]), undefined);
 });
 
@@ -488,8 +748,40 @@ test("resolveBotRoamStep detours around cover instead of freezing in place", () 
   });
 
   assert.equal(result.blocked, undefined);
-  assert.equal(result.x, 0);
+  assert.ok(Math.abs(result.x) < 0.000001);
   assert.notEqual(result.z, 0);
+});
+
+test("bot roam routes escape every map spawn instead of wedging against base cover", () => {
+  for (const mapId of ["desert_citadel", "iron_junction", "temple_runoff"] as const) {
+    for (const team of ["blue", "red"] as const) {
+      const goal = {
+        x: (team === "red" ? -142 : 142) * ARENA_SCALE,
+        z: 0,
+        facing: 0
+      };
+      for (const [spawnIndex, spawn] of getTeamSpawnsForMap(mapId)[team].entries()) {
+        let current = { x: spawn.x, z: spawn.z, facing: spawn.facing };
+        const obstacles = getArenaObstacles(mapId);
+        const path = findBotNavigationPath({ from: current, to: goal, obstacles, mapId });
+        assert.ok(path.length > 0, `${mapId} ${team} spawn ${spawnIndex} had no route`);
+        for (const waypoint of path) {
+          for (let tick = 0; tick < 100 && Math.hypot(waypoint.x - current.x, waypoint.z - current.z) >= 2; tick += 1) {
+            current = resolveBotRoamStep({
+              current,
+              desired: { ...waypoint, facing: goal.facing },
+              elapsedMs: 300,
+              speed: 19.5,
+              obstacles,
+              detourDirection: spawnIndex % 2 === 0 ? 1 : -1,
+              mapId
+            });
+          }
+        }
+        assert.ok(Math.hypot(goal.x - current.x, goal.z - current.z) < 2, `${mapId} ${team} spawn ${spawnIndex} remained stuck`);
+      }
+    }
+  }
 });
 
 test("resolveBotRespawn revives bots only after the respawn time", () => {
@@ -714,6 +1006,18 @@ test("speed shoes increase server-authoritative movement distance", () => {
   assert.equal(Number(boosted.x.toFixed(2)), 25.3);
 });
 
+test("zero authoritative speed blocks position changes", () => {
+  const result = resolveAuthoritativeMovement({
+    current: { x: 5, z: -4, facing: 0 },
+    requested: { x: 80, z: 60, facing: 1 },
+    elapsedMs: 1000,
+    maxSpeed: 0,
+    obstacles: []
+  });
+
+  assert.deepEqual(result, { x: 5, z: -4, facing: 1, limited: true });
+});
+
 test("buildCsvReport escapes classroom report rows for spreadsheet export", () => {
   const report: SessionReport = {
     session: {
@@ -746,7 +1050,7 @@ test("buildCsvReport escapes classroom report rows for spreadsheet export", () =
   assert.equal(
     buildCsvReport(report),
     [
-      "Session Code,Student,Team,Correct,Wrong,Accuracy %,Current Money,Quiz Money,Score",
+      "Session Code,Student,Team,Correct,Wrong,Accuracy %,Wallet,Quiz Rewards,Score",
       "ABC123,\"Ada, A.\",blue,3,1,75,1200,1800,34",
       "",
       "Most Missed Question,Misses",
@@ -762,14 +1066,27 @@ test("isInsideTeamBase allows buying only in the player's own base zone", () => 
   assert.equal(isInsideTeamBase("red", { x: 0, z: 0 }), false);
 });
 
+test("team spawn shop zones extend just beyond the home-base boundary", () => {
+  const blueEdgeSpawn = TEAM_SPAWNS.blue.reduce((closest, spawn) => spawn.x > closest.x ? spawn : closest);
+  const spawnShopPosition = { x: blueEdgeSpawn.x + 9, z: blueEdgeSpawn.z };
+  assert.equal(isInsideTeamBase("blue", spawnShopPosition), false);
+  assert.equal(isNearTeamSpawn("blue", spawnShopPosition), true);
+  const weapon = GEAR_ITEMS.find((item) => item.id === "quick_blaster")!;
+  assert.equal(resolveGearPurchase({
+    player: makePlayer({ team: "blue", ...spawnShopPosition }),
+    gear: weapon,
+    requireBase: true
+  }).ok, true);
+});
+
 test("clampArenaPosition preserves the large classroom arena footprint", () => {
   assert.deepEqual(clampArenaPosition({ x: 999, z: -999, facing: 1.25 }), { x: ARENA_LIMIT_X, z: -ARENA_LIMIT_Z, facing: 1.25 });
   assert.deepEqual(clampArenaPosition({ x: -999, z: 999, facing: Number.NaN }), { x: -ARENA_LIMIT_X, z: ARENA_LIMIT_Z, facing: 0 });
 });
 
 test("Desert Citadel provides enough protected team and free-for-all spawns", () => {
-  assert.equal(TEAM_SPAWNS.blue.length, 24);
-  assert.equal(TEAM_SPAWNS.red.length, 24);
+  assert.equal(TEAM_SPAWNS.blue.length, 20);
+  assert.equal(TEAM_SPAWNS.red.length, 20);
   assert.equal(FREE_FOR_ALL_SPAWNS.length, 60);
   assert.equal(TEAM_SPAWNS.blue.every((spawn) => isInsideTeamBase("blue", spawn)), true);
   assert.equal(TEAM_SPAWNS.red.every((spawn) => isInsideTeamBase("red", spawn)), true);
@@ -810,7 +1127,9 @@ test("Desert Citadel spawn points begin on walkable ground", () => {
       current: spawn,
       requested: { ...spawn, x: spawn.x + 0.05, z: spawn.z + 0.05 },
       elapsedMs: 100,
-      maxSpeed: 1
+      maxSpeed: 1,
+      obstacles: getArenaObstacles("desert_citadel"),
+      mapId: "desert_citadel"
     });
     return firstStep.blocked ? [`${group}:${spawn.id}`] : [];
   });
@@ -825,9 +1144,143 @@ test("Iron Junction uses its own map spawn labels and collision proxies", () => 
 
   assert.equal(blueSpawn.x < 0, true);
   assert.equal(redSpawn.x > 0, true);
-  assert.equal(ironObstacles.some((obstacle) => obstacle.id === "sorting-booth"), true);
+  assert.equal(ironObstacles.some((obstacle) => obstacle.id === "junction-locomotive"), true);
   assert.notEqual(ironObstacles, getArenaObstacles("desert_citadel"));
   assert.equal(sanitizeSessionSettings({ mapId: "iron_junction" }).mapId, "iron_junction");
+});
+
+test("Temple Runoff supports 20 safe spawns per team and authoritative map selection", () => {
+  const spawns = getTeamSpawnsForMap("temple_runoff");
+  const obstacles = getArenaObstacles("temple_runoff");
+
+  assert.equal(spawns.blue.length, 20);
+  assert.equal(spawns.red.length, 20);
+  assert.equal(new Set(spawns.blue.map((spawn) => `${spawn.x}:${spawn.z}`)).size, 20);
+  assert.equal(new Set(spawns.red.map((spawn) => `${spawn.x}:${spawn.z}`)).size, 20);
+  assert.equal(new Set(spawns.blue.map((spawn) => spawn.label)).size, 4);
+  assert.equal(spawns.blue.filter((spawn) => spawn.y === TEMPLE_RUNOFF_MAIN_LEVEL_Y + ARENA_PLAYER_EYE_HEIGHT).length, 20);
+  assert.equal(obstacles.some((obstacle) => obstacle.id === "rain-god-statue"), true);
+  assert.equal(obstacles.some((obstacle) => obstacle.id === "blue-temple-gatehouse"), true);
+  assert.notEqual(obstacles, getArenaObstacles("desert_citadel"));
+  assert.equal(sanitizeSessionSettings({ mapId: "temple_runoff" }).mapId, "temple_runoff");
+  const safeLateJoinSpawn = selectTeamSpawnForMap("temple_runoff", "blue", [
+    makePlayer({ id: "existing-opponent", team: "red", x: spawns.blue[0].x, z: spawns.blue[0].z })
+  ]);
+  assert.equal(
+    safeLateJoinSpawn.y,
+    getArenaGroundHeight("temple_runoff", safeLateJoinSpawn.x, safeLateJoinSpawn.z) + ARENA_PLAYER_EYE_HEIGHT
+  );
+
+  for (const spawn of [...spawns.blue, ...spawns.red]) {
+    const firstStep = resolveAuthoritativeMovement({
+      current: spawn,
+      requested: { ...spawn, x: spawn.x + (spawn.x < 0 ? 0.05 : -0.05) },
+      elapsedMs: 100,
+      maxSpeed: 1,
+      obstacles,
+      mapId: "temple_runoff"
+    });
+    assert.equal(firstStep.blocked, undefined, `${spawn.id} should not overlap collision`);
+  }
+});
+
+test("Temple Runoff resolves stacked floors from player height instead of choosing the highest surface", () => {
+  const x = 0;
+  const z = 0;
+  assert.deepEqual(getArenaFloorSurfaces("temple_runoff", x, z), [0, TEMPLE_RUNOFF_UPPER_LEVEL_Y]);
+  assert.equal(getArenaGroundHeightForPlayer("temple_runoff", x, z, ARENA_PLAYER_EYE_HEIGHT), 0);
+  assert.equal(
+    getArenaGroundHeightForPlayer("temple_runoff", x, z, TEMPLE_RUNOFF_UPPER_LEVEL_Y + ARENA_PLAYER_EYE_HEIGHT),
+    TEMPLE_RUNOFF_UPPER_LEVEL_Y
+  );
+  for (let frame = 0; frame < 600; frame += 1) {
+    assert.equal(getArenaGroundHeightForPlayer("temple_runoff", x, z, ARENA_PLAYER_EYE_HEIGHT), 0);
+  }
+});
+
+test("Temple Runoff exposes eight River stairs and four Upper stair connections", () => {
+  assert.equal(TEMPLE_RUNOFF_STAIR_FLIGHTS.filter((flight) => flight.id.startsWith("river-stairs-")).length, 8);
+  assert.equal(TEMPLE_RUNOFF_STAIR_FLIGHTS.filter((flight) => !flight.id.startsWith("river-stairs-")).length, 4);
+  for (const flight of TEMPLE_RUNOFF_STAIR_FLIGHTS) {
+    const startAlong = (flight.axis === "x" ? flight.x : flight.z) - flight.direction * flight.length / 2;
+    const sampledGround = [0, 0.5, 1].map((progress) => {
+      const along = startAlong + flight.direction * flight.length * progress;
+      return getArenaGroundHeight(
+        "temple_runoff",
+        (flight.axis === "x" ? along : flight.x) * ARENA_SCALE,
+        (flight.axis === "z" ? along : flight.z) * ARENA_SCALE
+      );
+    });
+    assert.equal(sampledGround[0], flight.startY);
+    assert.equal(sampledGround[2], flight.endY);
+    assert.ok(sampledGround[1] > flight.startY && sampledGround[1] < flight.endY);
+  }
+  assert.deepEqual(getArenaBounds("temple_runoff"), { limitX: 235 * ARENA_SCALE, limitZ: 200 * ARENA_SCALE });
+});
+
+test("Temple Runoff player and server movement can climb every complete stair flight", () => {
+  const obstacles = getArenaObstacles("temple_runoff");
+  for (const flight of TEMPLE_RUNOFF_STAIR_FLIGHTS) {
+    const startAlong = (flight.axis === "x" ? flight.x : flight.z) - flight.direction * flight.length / 2;
+    let current = {
+      x: (flight.axis === "x" ? startAlong : flight.x) * ARENA_SCALE,
+      y: flight.startY + ARENA_PLAYER_EYE_HEIGHT,
+      z: (flight.axis === "z" ? startAlong : flight.z) * ARENA_SCALE,
+      facing: 0
+    };
+    let previousGroundY = flight.startY;
+    for (let step = 0; step < flight.steps; step += 1) {
+      const progress = (step + 0.5) / flight.steps;
+      const along = startAlong + flight.direction * flight.length * progress;
+      const requestedX = (flight.axis === "x" ? along : flight.x) * ARENA_SCALE;
+      const requestedZ = (flight.axis === "z" ? along : flight.z) * ARENA_SCALE;
+      const nextGroundY = getArenaGroundHeightForPlayer(
+        "temple_runoff",
+        requestedX,
+        requestedZ,
+        current.y,
+        ARENA_PLAYER_EYE_HEIGHT
+      );
+      assert.ok(nextGroundY - previousGroundY <= 0.8 + 1e-6, `${flight.id} exceeds the FPS step limit`);
+      const movement = resolveAuthoritativeMovement({
+        current,
+        requested: {
+          x: requestedX,
+          y: nextGroundY + ARENA_PLAYER_EYE_HEIGHT,
+          z: requestedZ,
+          facing: 0
+        },
+        elapsedMs: 200,
+        maxSpeed: 20,
+        obstacles,
+        groundY: nextGroundY,
+        mapId: "temple_runoff"
+      });
+      assert.equal(movement.blocked, undefined, `${flight.id} is blocked at step ${step + 1}`);
+      current = { ...movement, y: nextGroundY + ARENA_PLAYER_EYE_HEIGHT };
+      previousGroundY = nextGroundY;
+    }
+    assert.equal(previousGroundY, flight.endY, `${flight.id} should reach its landing`);
+  }
+});
+
+test("Temple Runoff bot navigation keeps elevation and reaches the lower canal through stairs", () => {
+  const path = findBotNavigationPath({
+    from: { x: -80 * ARENA_SCALE, y: TEMPLE_RUNOFF_MAIN_LEVEL_Y + ARENA_PLAYER_EYE_HEIGHT, z: -70 * ARENA_SCALE, facing: 0 },
+    to: { x: -90 * ARENA_SCALE, y: ARENA_PLAYER_EYE_HEIGHT, z: 0, facing: 0 },
+    obstacles: getArenaObstacles("temple_runoff"),
+    mapId: "temple_runoff"
+  });
+  assert.ok(path.length > 0);
+  assert.equal(path.at(-1)?.y, ARENA_PLAYER_EYE_HEIGHT);
+  assert.ok(path.some((point) => Number(point.y) < TEMPLE_RUNOFF_MAIN_LEVEL_Y + ARENA_PLAYER_EYE_HEIGHT));
+});
+
+test("projectiles do not tag players through Temple Runoff's vertical floor separation", () => {
+  const attacker = makePlayer({ id: "upper-attacker", team: "blue", x: 0, y: TEMPLE_RUNOFF_UPPER_LEVEL_Y + ARENA_PLAYER_EYE_HEIGHT, z: 0, facing: -Math.PI / 2 });
+  const lowerTarget = makePlayer({ id: "lower-target", team: "red", x: 8, y: ARENA_PLAYER_EYE_HEIGHT, z: 0 });
+  const result = resolveProjectileTarget({ attacker, candidates: [lowerTarget], obstacles: [] });
+  assert.deepEqual(result, { ok: false, reason: "no_valid_target" });
 });
 
 test("selectTeamSpawn avoids nearby visible enemies when alternatives exist", () => {
@@ -851,7 +1304,7 @@ test("resolveTagAction applies gear damage and eliminates only opponents in rang
     damage: HEAVY_GUN_DAMAGE,
     nextHealth: 0,
     eliminated: true,
-    moneyAwarded: 100,
+    moneyAwarded: 400,
     scoreDelta: 5
   });
 });
@@ -896,6 +1349,12 @@ test("randomizeBalancedTeams keeps teams balanced and authoritative", () => {
 
   assert.equal(Math.abs(red - blue) <= 1, true);
   assert.equal(assigned.map((player) => player.id).sort().join(","), players.map((player) => player.id).sort().join(","));
+});
+
+test("late join assignment fills the smaller team and randomizes ties", () => {
+  assert.equal(selectLateJoinTeam([{ team: "red" }, { team: "red" }, { team: "blue" }], 0.9), "blue");
+  assert.equal(selectLateJoinTeam([{ team: "red" }, { team: "blue" }], 0.1), "blue");
+  assert.equal(selectLateJoinTeam([{ team: "red" }, { team: "blue" }], 0.9), "red");
 });
 
 test("flag state supports pickup, placement, countdown, drop, and capture", () => {
@@ -980,8 +1439,13 @@ test("flag interactions require the student to be next to the flag", () => {
   assert.equal(resolveFlagCapture(placed, distantBlue).state, "placed");
 });
 
-test("zombie mode selects initial zombies and converts humans once", () => {
-  const players = Array.from({ length: 8 }, (_, index) => makePlayer({ id: `p-${index}`, team: "blue", role: "human" }));
+test("zombie mode selects initial zombies, preserves prepared human energy, and converts humans once", () => {
+  const players = Array.from({ length: 8 }, (_, index) => makePlayer({
+    id: `p-${index}`,
+    team: "blue",
+    role: "human",
+    energy: index + 10
+  }));
   assert.equal(getDefaultInitialZombieCount(2), 1);
   assert.equal(getDefaultInitialZombieCount(8), 2);
 
@@ -989,9 +1453,18 @@ test("zombie mode selects initial zombies and converts humans once", () => {
   assert.equal(selected.filter((player) => player.role === "zombie").length, 2);
   assert.equal(selected.filter((player) => player.role === "human").length, 6);
   assert.equal(selected.find((player) => player.role === "zombie")?.gear, "starter_blaster");
+  assert.equal(selected.every((player) => player.role === "zombie" ? player.team === "red" : player.team === "blue"), true);
+  assert.equal(selected.every((player) => player.role === "zombie"
+    ? player.energy === ZOMBIE_HUMAN_MAX_ENERGY
+    : player.energy === players.find((candidate) => candidate.id === player.id)?.energy), true);
 
   const zombie = makePlayer({ id: "zombie", team: "red", role: "zombie", gear: "starter_blaster", isAlive: true });
-  const human = makePlayer({ id: "human", team: "blue", role: "human", isAlive: true, respawns: 0 });
+  const standingHuman = makePlayer({ id: "human", team: "blue", role: "human", isAlive: true, health: 40, respawns: 0 });
+  assert.deepEqual(resolveZombieConversion({ attacker: zombie, target: standingHuman }), {
+    ok: false,
+    reason: "target_not_knocked_out"
+  });
+  const human = { ...standingHuman, health: 0 };
   const conversion = resolveZombieConversion({ attacker: zombie, target: human });
   assert.equal(conversion.ok, true);
   if (conversion.ok) {
@@ -999,11 +1472,67 @@ test("zombie mode selects initial zombies and converts humans once", () => {
     assert.equal(conversion.player.team, "red");
     assert.equal(conversion.player.respawns, 1);
     assert.equal(conversion.player.gear, "starter_blaster");
+    assert.equal(conversion.player.energy, ZOMBIE_HUMAN_MAX_ENERGY);
   }
   assert.deepEqual(resolveZombieConversion({ attacker: zombie, target: { ...human, role: "zombie" } }), {
     ok: false,
     reason: "target_not_human"
   });
+});
+
+test("Zombie Mode always resolves combat to the default launcher", () => {
+  const upgradedPlayer = makePlayer({
+    gear: "power_blaster",
+    weapon: "power_blaster",
+    perks: ["shield_vest"]
+  });
+
+  assert.equal(getPlayerWeaponIdForMode("zombie", upgradedPlayer), "starter_blaster");
+  assert.equal(getPlayerWeaponIdForMode("flag", upgradedPlayer), "power_blaster");
+  assert.equal(getPlayerWeaponIdForMode("classic", upgradedPlayer), "power_blaster");
+});
+
+test("zombie mode gives Humans question-powered running energy and reserves firing for Zombies", () => {
+  assert.equal(canPlayerFireInMode("zombie", "human"), false);
+  assert.equal(canPlayerFireInMode("zombie", "zombie"), true);
+  assert.equal(canPlayerFireInMode("flag", "human"), true);
+
+  const earnedEnergy = awardZombieHumanEnergy({
+    gameMode: "zombie",
+    role: "human",
+    isCorrect: true,
+    currentEnergy: 0
+  });
+  assert.equal(earnedEnergy, ZOMBIE_HUMAN_CORRECT_ENERGY);
+  assert.equal(awardZombieHumanEnergy({
+    gameMode: "zombie",
+    role: "human",
+    isCorrect: false,
+    currentEnergy: earnedEnergy
+  }), earnedEnergy);
+  assert.equal(awardZombieHumanEnergy({
+    gameMode: "zombie",
+    role: "human",
+    isCorrect: true,
+    currentEnergy: ZOMBIE_HUMAN_MAX_ENERGY
+  }), ZOMBIE_HUMAN_MAX_ENERGY);
+
+  assert.deepEqual(resolveZombieSprintEnergy({
+    gameMode: "zombie",
+    role: "human",
+    sprinting: true,
+    currentEnergy: 0,
+    elapsedMs: 500,
+    movedDistance: 5
+  }), { canSprint: false, nextEnergy: 0 });
+  assert.deepEqual(resolveZombieSprintEnergy({
+    gameMode: "zombie",
+    role: "human",
+    sprinting: true,
+    currentEnergy: earnedEnergy,
+    elapsedMs: 500,
+    movedDistance: 5
+  }), { canSprint: true, nextEnergy: earnedEnergy - 10 });
 });
 
 test("scoreboard rows expose tags, respawns, and readable question accuracy", () => {
