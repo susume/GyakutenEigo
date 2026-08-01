@@ -106,8 +106,7 @@ import { emitArenaVfx, type ArenaVfxKind } from "../../game/ArenaVfx";
 import { emitArenaAnimation, type ArenaAnimationCue } from "../../game/ArenaAnimation";
 import {
   getIncomingHitDirection,
-  shouldAutoOpenRespawnPractice,
-  type IncomingHitDirection
+  shouldAutoOpenRespawnPractice
 } from "../../studentCombatFeedback";
 import ArenaLoading from "./shared/ArenaLoading";
 import GameAnnouncementOverlay from "./shared/GameAnnouncementOverlay";
@@ -116,6 +115,7 @@ import EventFeed from "./student/EventFeed";
 import GamePreferencesPanel from "./student/GamePreferencesPanel";
 import QuizPanel from "./student/QuizPanel";
 import Scoreboard from "./student/Scoreboard";
+import { useStudentGameState } from "./student/useStudentGameState";
 
 const ArenaPreview = lazy(() => import("../../game/ArenaPreview"));
 const CharacterCreator = lazy(() => import("../../ui/PremiumCharacterCreator"));
@@ -2815,28 +2815,26 @@ function StudentExperience({ onExit }: { onExit: () => void }) {
   const [player, setPlayer] = useState<PlayerSession | null>(null);
   const [playerToken, setPlayerToken] = useState("");
   const [question, setQuestion] = useState<PublicQuestion | null>(null);
-  const [quizOpen, setQuizOpen] = useState(false);
-  const [buyOpen, setBuyOpen] = useState(false);
-  const [scoreboardOpen, setScoreboardOpen] = useState(false);
-  const [settingsOpen, setSettingsOpen] = useState(false);
-  const [gamePreferences, setGamePreferences] = useState<GamePreferences>(() => readGamePreferences());
-  const [feedback, setFeedback] = useState("");
+  const {
+    quizOpen, setQuizOpen,
+    buyOpen, setBuyOpen,
+    scoreboardOpen, setScoreboardOpen,
+    settingsOpen, setSettingsOpen,
+    gamePreferences, setGamePreferences,
+    feedback, setFeedback,
+    isSocketReconnecting, setIsSocketReconnecting,
+    isJoining, setIsJoining,
+    answeringChoice, setAnsweringChoice,
+    buyingGearId, setBuyingGearId,
+    isBuyingSnowballs, setIsBuyingSnowballs,
+    isSwitchingTeam, setIsSwitchingTeam,
+    isRestoringStudentSession, setIsRestoringStudentSession,
+    rewardPulse, setRewardPulse,
+    spectatorPlayerId, setSpectatorPlayerId,
+    incomingHitCue, setIncomingHitCue,
+    openRespawnPractice
+  } = useStudentGameState();
   const [viewportWidth, setViewportWidth] = useState(() => window.innerWidth);
-  const [isSocketReconnecting, setIsSocketReconnecting] = useState(false);
-  const [isJoining, setIsJoining] = useState(false);
-  const [answeringChoice, setAnsweringChoice] = useState<Choice | null>(null);
-  const [buyingGearId, setBuyingGearId] = useState<string | null>(null);
-  const [isBuyingSnowballs, setIsBuyingSnowballs] = useState(false);
-  const [isSwitchingTeam, setIsSwitchingTeam] = useState(false);
-  const [isRestoringStudentSession, setIsRestoringStudentSession] = useState(true);
-  const [rewardPulse, setRewardPulse] = useState("");
-  const [spectatorPlayerId, setSpectatorPlayerId] = useState("");
-  const [incomingHitCue, setIncomingHitCue] = useState<{
-    id: number;
-    direction: IncomingHitDirection;
-    eliminated: boolean;
-    attackerName: string;
-  } | null>(null);
   const status = useAsyncMessage();
   const remainingSeconds = useRoundRemaining(session);
   const flagRemainingSeconds = useFlagRemainingSeconds(session);
@@ -3008,12 +3006,6 @@ function StudentExperience({ onExit }: { onExit: () => void }) {
       gameAudio.setBgmActive(false);
     };
   }, [session?.id, session?.status, player?.id]);
-
-  const openRespawnPractice = useCallback(() => {
-    setQuizOpen(true);
-    setBuyOpen(false);
-    setScoreboardOpen(false);
-  }, []);
 
   useEffect(() => {
     if (!session || !player?.id || !playerToken) return;
