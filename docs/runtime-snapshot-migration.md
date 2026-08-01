@@ -26,5 +26,8 @@ normalized counts were 4 users, 0 classes, 0 folders, 8 quiz sets, 288 questions
 records. The legacy `RuntimeSnapshot` remained unchanged, count reconciliation
 passed, and Prisma reported no schema drift.
 
-This was a non-production rehearsal. The Render service remained pointed at its
-Render database throughout.
+This rehearsal was followed by the production cutover on 1 August 2026. The
+Render web service now uses the Supabase session pooler. Startup restored all 4
+teachers, 8 quiz sets, and 73 sessions; health and post-cutover count checks
+passed. The retired Render database was deleted only after its final checksum was
+matched to the validated local backup.

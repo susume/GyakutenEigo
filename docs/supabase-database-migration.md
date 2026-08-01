@@ -1,20 +1,18 @@
 # QuizStrike Render PostgreSQL to Supabase Migration
 
-Status: staging rehearsal completed 1 August 2026; production cutover pending.
-
-The 31 July record below reported a completed Supabase cutover. A live Render
-configuration recheck on 1 August found that `gyakuteneigo-api` currently points
-to Render PostgreSQL, not Supabase. Treat the Render database as production
-authority until a new controlled cutover is completed.
+Status: production cutover completed and verified 1 August 2026. Render hosts the
+web service; Supabase is the production PostgreSQL authority. The retired Render
+database was deleted after final backup and validation.
 
 ## Decision
 
-**STAGING REHEARSAL PASSED; PRODUCTION MIGRATION NOT YET COMPLETED**
+**PRODUCTION MIGRATION COMPLETED WITH LIVE VALIDATION**
 
 The code is compatible with Supabase PostgreSQL. A read-only audit, native
 backup, restore into an empty Supabase staging project, exact source/target
-verification, full normalized migration chain, backfill, idempotency rerun, and
-schema drift check all passed. Production was not modified during this rehearsal.
+verification, full normalized migration chain, backfill, idempotency rerun,
+schema drift check, production deployment, restart hydration, and post-cutover
+health/reconciliation checks all passed.
 
 ## Current architecture
 
@@ -57,10 +55,10 @@ recheck supersedes its claim about the current production connection.
 
 ### Live staging rehearsal (1 August 2026)
 
-- Current production authority: Render PostgreSQL 18.4. The live service
-  `DATABASE_URL` resolves to the Render database host.
-- Production retention risk: the Render database is scheduled to expire on
-  14 August 2026 unless upgraded.
+- At rehearsal time, production authority was Render PostgreSQL 18.4 and the
+  service `DATABASE_URL` still resolved to the Render database host.
+- At rehearsal time, that database was scheduled to expire on 14 August 2026;
+  the completed cutover and retirement below removed this risk.
 - Backup: `database-backups/quizstrike-render-20260801-224733.dump`, retained
   locally under the ignored backup directory and validated with PostgreSQL 18.4
   tools.
@@ -74,6 +72,25 @@ recheck supersedes its claim about the current production connection.
   classes, 0 folders, 8 quiz sets, 288 questions, 73 sessions, 522 players,
   5,246 answers, and 0 reports; no skips or validation failures.
 - Safety: production configuration and data were not modified.
+
+### Production cutover record (1 August 2026)
+
+- The Render web service was suspended to stop writes before the final backup.
+- Final source inventory and checksum matched the rehearsed snapshot exactly.
+- Backup: `database-backups/quizstrike-render-20260801-231819.dump`, validated
+  with PostgreSQL 18.4 tools and retained locally under the ignored directory.
+- The Supabase migration/backfill was rerun idempotently: 4 users, 8 quiz sets,
+  288 questions, 73 sessions, 522 players, and 5,246 answers, with zero skips or
+  failures and no Prisma schema drift.
+- Render deployment `89f4920` started against the Supabase session pooler,
+  reported four applied migrations, restored 4 teachers, 8 quiz sets, and 73
+  sessions, and became live successfully.
+- The public `/api/health` endpoint returned HTTP 200 with production PostgreSQL
+  storage. Direct post-cutover counts matched the final source inventory.
+- The old Render database showed zero remaining client connections and the final
+  snapshot checksum matched the backup. It was then permanently deleted.
+- The Supabase project was renamed `Quiz Strike Production`; its Data API remains
+  disabled because QuizStrike uses server-side Prisma only.
 
 ### Declared in Prisma but not used by the running repositories
 
@@ -240,9 +257,10 @@ The existing 40-client test covers authenticated Socket.IO joins and gameplay co
 
 The automated application tests above use in-memory persistence. Live validation additionally covered the native backup/restore, Prisma migration status against Supabase, and the production `/health` endpoint reporting PostgreSQL storage. A full teacher/student production smoke session and a post-cutover process-restart exercise remain recommended follow-ups.
 
-## Final production cutover (pending)
+## Final production cutover (completed 1 August 2026)
 
-Because QuizStrike has no dual-write or change-data-capture path, a maintenance window is required to prevent writes after the final dump. The following is the required production procedure, not a completed current-state record.
+Because QuizStrike has no dual-write or change-data-capture path, the service was
+suspended during the final dump and verification window.
 
 1. A reviewed native backup was created and the source was left untouched.
 2. The dump was restored into the empty Supabase project and verified byte-for-byte at the table/JSONB checksum level.
@@ -283,4 +301,5 @@ After migration, rotate any credential that was pasted into an insecure terminal
 - The committed migration history does not create the normalized Prisma models; the live database remains the authority.
 - The single JSONB snapshot has unbounded history and full-document rewrite amplification.
 - QuizStrike remains a single-server-instance architecture; this migration does not add distributed state.
-- A full teacher/student production smoke test and restart-hydration check are still recommended before deleting the Render database or local backup.
+- Keep the final local backup until Supabase backup/retention policy is reviewed
+  and at least one normal production cycle has completed.

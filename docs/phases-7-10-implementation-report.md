@@ -187,18 +187,26 @@ and network-debug variables remain unchanged.
   failures. The optimized real run took 140 seconds and the rerun 137.2 seconds.
 - Post-backfill reconciliation and Prisma schema drift check: pass. Production
   remained pointed at its Render database and was not changed.
+- Production cutover: pass. Render deployment `89f4920` connects to the Supabase
+  session pooler, applies all four migrations, restores 4 teachers, 8 quiz sets,
+  and 73 sessions, and reports healthy production PostgreSQL storage. Final
+  normalized counts match the frozen source inventory.
+- Retirement: the final Render PostgreSQL backup was validated, zero remaining
+  client connections were confirmed, and the old database was deleted. The
+  ignored local backup is retained.
 - Redis integration/multi-instance tests: not run; no Redis adapter is claimed.
 - Manual physical multiplayer/Chromebook test: not run. Automated Socket.IO load
   and Playwright classroom flows passed.
 
 ## 10. Deployment instructions
 
-1. Preserve the verified production backup and the rehearsed Supabase staging
-   project until production cutover is complete.
-2. Schedule a maintenance window and take a new final production backup.
-3. Restore/verify the final source state, deploy the rehearsed migrations, then
-   run dry-run, real backfill, count reconciliation, and an idempotency rerun.
-4. Deploy the compatibility server (v1 plus inferred-v0 adapter).
+1. Keep the final verified production backup through at least one normal
+   production cycle and review Supabase backup/retention policy.
+2. Monitor Supabase pooler/database usage and Render application errors after
+   cutover.
+3. Deploy future schema changes only through reviewed `prisma migrate deploy`
+   migrations rehearsed outside production.
+4. Continue deploying the compatibility server (v1 plus inferred-v0 adapter).
 5. Deploy the v1 browser and verify handshake/error/reconnect telemetry.
 6. Keep `RUNTIME_STORE=in-memory`; configure room-affine sticky routing.
 7. Validate teacher CRUD, report retention/history, 40-player movement, flag,
@@ -214,12 +222,9 @@ and network-debug variables remain unchanged.
   and failover recovery are untested and unsupported.
 - Sticky room affinity is required. In-memory leases cannot coordinate separate
   operating-system processes.
-- The staging rehearsal is complete, but the equivalent production migration and
-  backfill have not been run. A maintenance window is required because there is
-  no dual-write or change-data-capture path.
-- A live environment recheck on 1 August 2026 found the Render service still
-  points to Render PostgreSQL. That database is scheduled to expire on 14 August
-  2026 unless upgraded, so the production cutover remains time-sensitive.
+- The production migration/backfill and restart hydration are complete. The
+  retired Render database no longer exists; recovery now depends on Supabase and
+  the retained final local backup.
 - `runtime.ts` and `QuizStrikeApp.tsx` remain large feature implementations.
 - Vite warns that local Node 20.16 is below its preferred 20.19 and that two
   generated chunks exceed 500 KiB.
