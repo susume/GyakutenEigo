@@ -12,6 +12,7 @@ import { resolveClientOrigins } from "./origins.js";
 import { getPausedRoundAction, planRoundConclusion } from "./roundFlow.js";
 import { inspectProcessedDecal } from "./appearanceSecurity.js";
 import { DecalStore, type StoredDecalMime } from "./decalStore.js";
+import { CombatService } from "./combat.js";
 import { PersistenceScheduler } from "./persistence/persistenceScheduler.js";
 import { PlayerPositionHistory } from "./playerPositionHistory.js";
 import { NetworkMetrics } from "./networkMetrics.js";
@@ -112,8 +113,6 @@ import {
   resolveProjectileTarget,
   resolveSnowballPurchase,
   resolveSnowballUse,
-  resolveTagAction,
-  resolveZombieConversion,
   resolveZombieSprintEnergy,
   sanitizeSessionSettings,
   sanitizePlayerAppearance,
@@ -1177,138 +1176,24 @@ const getBotSpawn = (session: GameSession, team: Team, index: number) => {
   return sessionSpawn(session, team, index);
 };
 
-const applyValidatedDamage = (session: GameSession, attacker: PlayerSession, target: PlayerSession) => {
-  if (!canPlayerFireInMode(session.settings.gameMode, attacker.role)) {
-    return { ok: false as const, reason: "humans_cannot_fire" as const };
-  }
-  const zombieAttack = session.settings.gameMode === "zombie" && attacker.role === "zombie";
-  const combatAttacker = session.settings.gameMode === "zombie"
-    ? { ...attacker, gear: "starter_blaster", weapon: "starter_blaster" }
-    : attacker;
-  const tagResult = resolveTagAction({ attacker: combatAttacker, target });
-  if (!tagResult.ok) return tagResult;
-
-  target.health = tagResult.nextHealth;
-  // A validated hit interrupts the target's uninterrupted freeze streak. Only
-  // an authoritative elimination below advances the attacker's streak.
-  resetFreezeStreak(target);
-  if (zombieAttack && tagResult.eliminated) {
-    const conversion = resolveZombieConversion({ attacker, target });
-    if (!conversion.ok) return conversion;
-    Object.assign(target, conversion.player);
-    target.zombieConvertedAt = now();
-    attacker.tags = (attacker.tags ?? attacker.score) + conversion.tagCredit;
-    attacker.roundTags = (attacker.roundTags ?? 0) + conversion.tagCredit;
-    attacker.score += conversion.tagCredit;
-    recordValidatedFreeze(session, attacker, target);
-    appendEvent(session, {
-      type: "tag",
-      message: `${attacker.nickname} converted ${target.nickname} to Zombie Mode.`,
-      playerId: attacker.id,
-      targetId: target.id,
-      team: attacker.team
-    });
-    emitToPlayers(session, [attacker.id, target.id], "damage_result", {
-      ok: true,
-      attackerId: attacker.id,
-      targetId: target.id,
-      attackerX: attacker.x ?? sessionSpawn(session, attacker.team).x,
-      attackerZ: attacker.z ?? sessionSpawn(session, attacker.team).z,
-      targetX: target.x ?? sessionSpawn(session, target.team).x,
-      targetZ: target.z ?? sessionSpawn(session, target.team).z,
-      targetFacing: target.facing ?? sessionSpawn(session, target.team).facing,
-      damage: tagResult.damage,
-      health: target.health,
-      snowballs: attacker.snowballs,
-      eliminated: true,
-      converted: true,
-      moneyAwarded: 0
-    });
-    io.to(gameplayRoom(session.sessionCode)).emit("world_impact", {
-      attackerId: attacker.id,
-      targetId: target.id,
-      x: target.x ?? sessionSpawn(session, target.team).x,
-      z: target.z ?? sessionSpawn(session, target.team).z,
-      shield: false
-    });
-    broadcastPlayerState(session, [attacker, target]);
-    finishZombieMatchIfComplete(session);
-    return { ok: true as const, damage: tagResult.damage, nextHealth: DEFAULT_PLAYER_HEALTH, eliminated: true, moneyAwarded: 0, scoreDelta: 1 };
-  }
-  if (tagResult.eliminated) {
-    const knockedOutPosition = {
-      x: target.x ?? sessionSpawn(session, target.team).x,
-      z: target.z ?? sessionSpawn(session, target.team).z
-    };
-    const baseSpawn = sessionSpawn(session, target.team);
-    target.isAlive = false;
-    target.respawnCorrectAnswers = 0;
-    if (session.flag) {
-      session.flag = resolveFlagDropForPlayer(session.flag, target, knockedOutPosition);
-    }
-    target.x = baseSpawn.x;
-    target.y = baseSpawn.y;
-    target.z = baseSpawn.z;
-    target.facing = baseSpawn.facing;
-    target.crouching = false;
-    target.jumping = false;
-    if (target.isBot) {
-      botPreviousPositions.delete(target.id);
-      if (session.settings.gameMode !== "flag") botRespawnAt.set(target.id, Date.now() + BOT_RESPAWN_MS);
-    }
-    attacker.money = Math.min(16000, attacker.money + tagResult.moneyAwarded);
-    attacker.score += tagResult.scoreDelta;
-    attacker.tags = (attacker.tags ?? 0) + 1;
-    attacker.roundTags = (attacker.roundTags ?? 0) + 1;
-    recordValidatedFreeze(session, attacker, target);
-  }
-
-  appendEvent(session, {
-    type: tagResult.eliminated ? "elimination" : "tag",
-    message: tagResult.eliminated
-      ? `${attacker.nickname} has frozen ${target.nickname}.`
-      : `${attacker.nickname} tagged ${target.nickname} for ${tagResult.damage} warmth.`,
-    playerId: attacker.id,
-    targetId: target.id,
-    team: attacker.team
-  });
-
-  broadcastPlayerState(session, [attacker, target]);
-  emitToPlayers(session, [attacker.id, target.id], "damage_result", {
-    ok: true,
-    attackerId: attacker.id,
-    targetId: target.id,
-    attackerX: attacker.x ?? sessionSpawn(session, attacker.team).x,
-    attackerZ: attacker.z ?? sessionSpawn(session, attacker.team).z,
-    targetX: target.x ?? sessionSpawn(session, target.team).x,
-    targetZ: target.z ?? sessionSpawn(session, target.team).z,
-    targetFacing: target.facing ?? sessionSpawn(session, target.team).facing,
-    damage: tagResult.damage,
-    health: target.health,
-    snowballs: attacker.snowballs,
-    eliminated: tagResult.eliminated,
-    moneyAwarded: tagResult.moneyAwarded
-  });
-  io.to(gameplayRoom(session.sessionCode)).emit("world_impact", {
-    attackerId: attacker.id,
-    targetId: target.id,
-    x: target.x ?? sessionSpawn(session, target.team).x,
-    z: target.z ?? sessionSpawn(session, target.team).z,
-    shield: !tagResult.eliminated
-  });
-  if (tagResult.eliminated) {
-    emitToPlayers(session, [attacker.id, target.id], "elimination_update", {
-      attackerId: attacker.id,
-      targetId: target.id,
-      moneyAwarded: tagResult.moneyAwarded
-    });
-  }
-
-  evaluateFlagEliminationWin(session);
-  finishZombieMatchIfComplete(session);
-
-  return tagResult;
-};
+const combatService = new CombatService({
+  io,
+  gameplayRoom,
+  sessionSpawn: (session, team) => sessionSpawn(session, team),
+  appendEvent,
+  emitToPlayers,
+  broadcastPlayerState,
+  finishZombieMatchIfComplete,
+  evaluateFlagEliminationWin,
+  resetFreezeStreak,
+  recordValidatedFreeze,
+  botPreviousPositions,
+  botRespawnAt,
+  botRespawnMs: BOT_RESPAWN_MS,
+  now
+});
+const applyValidatedDamage = (session: GameSession, attacker: PlayerSession, target: PlayerSession) =>
+  combatService.applyValidatedDamage(session, attacker, target);
 
 const applyAuthoritativePosition = (
   session: GameSession,
