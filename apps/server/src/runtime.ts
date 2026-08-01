@@ -10,9 +10,10 @@ import { randomUUID } from "node:crypto";
 import { Server, type Socket } from "socket.io";
 import { resolveClientOrigins } from "./origins.js";
 import { getPausedRoundAction, planRoundConclusion } from "./roundFlow.js";
-import { inspectProcessedDecal } from "./appearanceSecurity.js";
+import { AppearanceSecurityService, inspectProcessedDecal } from "./appearanceSecurity.js";
 import { DecalStore, type StoredDecalMime } from "./decalStore.js";
 import { CombatService } from "./combat.js";
+import { ConnectionLifecycleService } from "./connectionLifecycle.js";
 import { PersistenceScheduler } from "./persistence/persistenceScheduler.js";
 import { PlayerPositionHistory } from "./playerPositionHistory.js";
 import { NetworkMetrics } from "./networkMetrics.js";
@@ -249,12 +250,9 @@ const botNextAttackAt = new Map<string, number>();
 const botMemoryById = new Map<string, BotMemory>();
 const botPreviousPositions = new Map<string, { x: number; y?: number; z: number }>();
 const playerPositionHistory = new PlayerPositionHistory(350);
-const appearanceUpdateTimestamps = new Map<string, number>();
 const playerSockets = new Map<string, Set<string>>();
 const playerDisconnectTimers = new Map<string, ReturnType<typeof setTimeout>>();
 
-const decalStore = new DecalStore();
-const decalUploadTimestamps = new Map<string, number[]>();
 // The provider boundary is documented in the web package, but no moderated server
 // adapter ships with this build. Keep the policy fail-closed even if an unrelated
 // environment variable is present.
@@ -584,46 +582,6 @@ const canReadRoomAsset = (req: Request, session: GameSession) => {
   return session.players.some((player) => !player.isBot && hasPlayerAccess(session, player, token));
 };
 
-const deleteDecal = (assetId: string | undefined) => {
-  decalStore.delete(assetId);
-};
-
-const clearPlayerAppearance = (session: GameSession, player: PlayerSession) => {
-  decalStore.deletePlayer(session.id, player.id);
-  player.appearance = { ...DEFAULT_PLAYER_APPEARANCE };
-};
-
-const purgeSessionDecals = (session: GameSession) => {
-  decalStore.deleteSession(session.id);
-  for (const player of session.players) {
-    if (player.appearance?.decalAssetId) player.appearance = { ...player.appearance, decalAssetId: undefined };
-    appearanceUpdateTimestamps.delete(player.id);
-    decalUploadTimestamps.delete(player.id);
-  }
-};
-
-const pruneExpiredDecals = () => {
-  const removed = decalStore.pruneExpired();
-  const touchedSessions = new Set<GameSession>();
-  for (const asset of removed) {
-    const session = sessions.get(asset.sessionId);
-    const player = session?.players.find((candidate) => candidate.id === asset.playerId);
-    if (!session || player?.appearance?.decalAssetId !== asset.id) continue;
-    player.appearance = { ...player.appearance, decalAssetId: undefined };
-    touchedSessions.add(session);
-  }
-  touchedSessions.forEach(broadcastSession);
-};
-
-const checkDecalUploadRate = (playerId: string) => {
-  const cutoff = Date.now() - 60_000;
-  const recent = (decalUploadTimestamps.get(playerId) ?? []).filter((timestamp) => timestamp >= cutoff);
-  if (recent.length >= 3) return false;
-  recent.push(Date.now());
-  decalUploadTimestamps.set(playerId, recent);
-  return true;
-};
-
 const selectNextQuestion = (session: GameSession, playerId: string): PublicQuestion | undefined => {
   const quiz = quizSets.get(session.quizSetId);
   if (!quiz || quiz.questions.length === 0) return undefined;
@@ -674,6 +632,19 @@ const roomBroadcaster = createRoomBroadcaster({
   sessionBroadcastWindowMs: SESSION_BROADCAST_WINDOW_MS
 });
 const { broadcastSession, broadcastPlayerState } = roomBroadcaster;
+const appearanceSecurity = new AppearanceSecurityService({
+  decalStore: new DecalStore(),
+  sessions,
+  broadcastSession
+});
+const decalStore = appearanceSecurity.decalStore;
+const appearanceUpdateTimestamps = appearanceSecurity.appearanceUpdateTimestamps;
+const decalUploadTimestamps = appearanceSecurity.decalUploadTimestamps;
+const deleteDecal = (assetId: string | undefined) => appearanceSecurity.deleteDecal(assetId);
+const clearPlayerAppearance = (session: GameSession, player: PlayerSession) => appearanceSecurity.clearPlayerAppearance(session, player);
+const purgeSessionDecals = (session: GameSession) => appearanceSecurity.purgeSessionDecals(session);
+const pruneExpiredDecals = () => appearanceSecurity.pruneExpiredDecals();
+const checkDecalUploadRate = (playerId: string) => appearanceSecurity.checkDecalUploadRate(playerId);
 
 const emitToPlayers = (
   session: GameSession,
@@ -1025,90 +996,6 @@ const evaluateFlagEliminationWin = (session: GameSession) => {
   }
 };
 
-const clearPlayerDisconnectTimer = (session: GameSession, playerId: string) => {
-  const key = playerSocketKey(session.sessionCode, playerId);
-  const timer = playerDisconnectTimers.get(key);
-  if (timer) clearTimeout(timer);
-  playerDisconnectTimers.delete(key);
-};
-
-const schedulePlayerDisconnectResolution = (session: GameSession, playerId: string) => {
-  const key = playerSocketKey(session.sessionCode, playerId);
-  clearPlayerDisconnectTimer(session, playerId);
-  const timer = setTimeout(() => {
-    playerDisconnectTimers.delete(key);
-    const player = session.players.find((candidate) => candidate.id === playerId);
-    if (!player || player.connectionState !== "disconnected") return;
-    resetFreezeStreak(player);
-    evaluateFlagEliminationWin(session);
-    finishZombieMatchIfComplete(session);
-  }, PLAYER_DISCONNECT_GRACE_MS);
-  playerDisconnectTimers.set(key, timer);
-};
-
-const markPlayerDisconnected = (session: GameSession, player: PlayerSession) => {
-  if (player.connectionState === "disconnected") return;
-  player.connectionState = "disconnected";
-  if (session.flag && player.id === session.flag.carrierId) {
-    session.flag = resolveFlagDropForPlayer(session.flag, player, {
-      x: player.x ?? 0,
-      z: player.z ?? 0
-    });
-  }
-  appendEvent(session, {
-    type: "timer",
-    message: `${player.nickname} went Offline.`,
-    playerId: player.id,
-    team: player.team
-  });
-  broadcastSession(session);
-  schedulePlayerDisconnectResolution(session, player.id);
-};
-
-const removePlayerRuntimeState = (session: GameSession, player: PlayerSession) => {
-  clearPlayerDisconnectTimer(session, player.id);
-  playerQuestionHistory.delete(player.id);
-  playerQuestionGate.clear(player.id);
-  quizRateLimits.delete(player.id);
-  fireRequestIds.delete(player.id);
-  playerMoveTimestamps.delete(player.id);
-  playerNextFireAt.delete(player.id);
-  botRespawnAt.delete(player.id);
-  botNextAttackAt.delete(player.id);
-  botMemoryById.delete(player.id);
-  botPreviousPositions.delete(player.id);
-  playerPositionHistory.clear(player.id);
-  appearanceUpdateTimestamps.delete(player.id);
-  decalUploadTimestamps.delete(player.id);
-  decalStore.deletePlayer(session.id, player.id);
-
-  const alerts = botAlertsBySession.get(session.sessionCode);
-  if (alerts) {
-    for (const [team, alert] of alerts) {
-      if (alert.sourceId === player.id) alerts.delete(team);
-    }
-    if (alerts.size === 0) botAlertsBySession.delete(session.sessionCode);
-  }
-};
-
-const evictPlayerSockets = (session: GameSession, player: PlayerSession) => {
-  const key = playerSocketKey(session.sessionCode, player.id);
-  const socketIds = playerSockets.get(key) ?? new Set<string>();
-  for (const socketId of socketIds) {
-    const playerSocket = io.sockets.sockets.get(socketId);
-    if (!playerSocket) continue;
-    playerSocket.emit("player_removed", {
-      message: "Your teacher removed you from this game. You can return to the join screen."
-    });
-    playerSocket.leave(session.sessionCode);
-    const binding = playerSocket.data.playerBinding as SocketPlayerBinding | undefined;
-    if (binding?.sessionCode === session.sessionCode && binding.playerId === player.id) {
-      delete playerSocket.data.playerBinding;
-    }
-  }
-  playerSockets.delete(key);
-};
-
 const assertTeacherOwnsQuiz = (userId: string, quizSetId: string) => {
   const quiz = quizSets.get(quizSetId);
   return quiz?.teacherId === userId ? quiz : undefined;
@@ -1316,6 +1203,38 @@ const applyAuthoritativePosition = (
 
 type BotAlert = { position: { x: number; z: number }; createdAtMs: number; sourceId: string };
 const botAlertsBySession = new Map<string, Map<Team, BotAlert>>();
+const connectionLifecycle = new ConnectionLifecycleService({
+  io,
+  playerSockets,
+  disconnectTimers: playerDisconnectTimers,
+  playerSocketKey,
+  getSessionByCode,
+  appendEvent,
+  broadcastSession,
+  evaluateFlagEliminationWin,
+  finishZombieMatchIfComplete,
+  resetFreezeStreak,
+  playerQuestionHistory,
+  playerQuestionGate,
+  quizRateLimits,
+  fireRequestIds,
+  playerMoveTimestamps,
+  playerNextFireAt,
+  botRespawnAt,
+  botNextAttackAt,
+  botMemoryById,
+  botPreviousPositions,
+  playerPositionHistory,
+  appearanceUpdateTimestamps,
+  decalUploadTimestamps,
+  deletePlayerDecals: (sessionId, playerId) => decalStore.deletePlayer(sessionId, playerId),
+  botAlertsBySession,
+  gracePeriodMs: PLAYER_DISCONNECT_GRACE_MS
+});
+const clearPlayerDisconnectTimer = (session: GameSession, playerId: string) => connectionLifecycle.clearPlayerDisconnectTimer(session, playerId);
+const markPlayerDisconnected = (session: GameSession, player: PlayerSession) => connectionLifecycle.markPlayerDisconnected(session, player);
+const removePlayerRuntimeState = (session: GameSession, player: PlayerSession) => connectionLifecycle.removePlayerRuntimeState(session, player);
+const evictPlayerSockets = (session: GameSession, player: PlayerSession) => connectionLifecycle.evictPlayerSockets(session, player);
 
 const getBotBrain = (bot: PlayerSession, index: number, nowMs: number) => {
   let brain = botMemoryById.get(bot.id);
@@ -3674,18 +3593,7 @@ io.on("connection", (socket) => {
 });
 
 function detachSocketBinding(socket: Socket) {
-  const binding = socket.data.playerBinding as SocketPlayerBinding | undefined;
-  if (!binding) return;
-  const key = playerSocketKey(binding.sessionCode, binding.playerId);
-  const sockets = playerSockets.get(key);
-  sockets?.delete(socket.id);
-  if (!sockets || sockets.size === 0) {
-    playerSockets.delete(key);
-    const session = getSessionByCode(binding.sessionCode);
-    const player = session?.players.find((candidate) => candidate.id === binding.playerId);
-    if (session && player) markPlayerDisconnected(session, player);
-  }
-  delete socket.data.playerBinding;
+  connectionLifecycle.detachSocketBinding(socket);
 }
 
 const startServer = async () => {
