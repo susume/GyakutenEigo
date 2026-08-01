@@ -116,6 +116,7 @@ import GamePreferencesPanel from "./student/GamePreferencesPanel";
 import QuizPanel from "./student/QuizPanel";
 import Scoreboard from "./student/Scoreboard";
 import { useStudentGameState } from "./student/useStudentGameState";
+import { useSessionControls } from "./teacher/useSessionControls";
 
 const ArenaPreview = lazy(() => import("../../game/ArenaPreview"));
 const CharacterCreator = lazy(() => import("../../ui/PremiumCharacterCreator"));
@@ -1804,24 +1805,24 @@ function SessionManager({
   onOpenReports: () => void;
   initialQuizSetId?: string;
 }) {
-  const [quizSetId, setQuizSetId] = useState(initialQuizSetId || data.quizSets[0]?.id || "");
-  const [settings, setSettings] = useState<SessionSettings>(DEFAULT_SESSION_SETTINGS);
-  const [settingInputs, setSettingInputs] = useState<Record<SessionNumberField, string>>(() =>
-    createSessionSettingInputs(DEFAULT_SESSION_SETTINGS)
-  );
-  const [invalidSettings, setInvalidSettings] = useState<Partial<Record<SessionNumberField, boolean>>>({});
-  const [isCreatingSession, setIsCreatingSession] = useState(false);
-  const [isStartingSession, setIsStartingSession] = useState(false);
-  const [isEndingRound, setIsEndingRound] = useState(false);
-  const [isEndingSession, setIsEndingSession] = useState(false);
-  const [isAddingBot, setIsAddingBot] = useState(false);
-  const [removingPlayerId, setRemovingPlayerId] = useState<string | null>(null);
-  const [botCount, setBotCount] = useState(4);
-  const [botDifficulty, setBotDifficulty] = useState<BotDifficulty>(DEFAULT_SESSION_SETTINGS.botDifficulty);
-  const [isJoinLinkCopied, setIsJoinLinkCopied] = useState(false);
-  const [isEndConfirmOpen, setIsEndConfirmOpen] = useState(false);
-  const [isProjectorOpen, setIsProjectorOpen] = useState(false);
-  const [selectedPresetName, setSelectedPresetName] = useState("Classic Class");
+  const {
+    quizSetId, setQuizSetId,
+    settings, setSettings,
+    settingInputs, setSettingInputs,
+    invalidSettings, setInvalidSettings,
+    isCreatingSession, setIsCreatingSession,
+    isStartingSession, setIsStartingSession,
+    isEndingRound, setIsEndingRound,
+    isEndingSession, setIsEndingSession,
+    isAddingBot, setIsAddingBot,
+    removingPlayerId, setRemovingPlayerId,
+    botCount, setBotCount,
+    botDifficulty, setBotDifficulty,
+    isJoinLinkCopied, setIsJoinLinkCopied,
+    isEndConfirmOpen, setIsEndConfirmOpen,
+    isProjectorOpen, setIsProjectorOpen,
+    selectedPresetName, setSelectedPresetName
+  } = useSessionControls({ initialQuizSetId, firstQuizSetId: data.quizSets[0]?.id });
   const endSessionTriggerRef = useRef<HTMLButtonElement>(null);
   const endSessionDialogRef = useRef<HTMLDivElement>(null);
   const keepSessionOpenRef = useRef<HTMLButtonElement>(null);
