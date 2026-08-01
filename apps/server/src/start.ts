@@ -1,8 +1,9 @@
 import { spawnSync } from "node:child_process";
 import { dirname, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
+import { loadServerConfig } from "./config.js";
 
-const databaseUrl = process.env.DATABASE_URL?.trim();
+const databaseUrl = loadServerConfig().databaseUrl;
 
 if (databaseUrl) {
   const schemaPath = resolve(dirname(fileURLToPath(import.meta.url)), "../../../prisma/schema.prisma");

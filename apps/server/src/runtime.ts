@@ -14,8 +14,23 @@ import { inspectProcessedDecal } from "./appearanceSecurity.js";
 import { DecalStore, type StoredDecalMime } from "./decalStore.js";
 import { PlayerPositionHistory } from "./playerPositionHistory.js";
 import { NetworkMetrics } from "./networkMetrics.js";
+import { loadServerConfig } from "./config.js";
 import { announcementForFreezeStreak, incrementFreezeStreak } from "./freezeStreaks.js";
 import { NormalizedLibrary } from "./persistence/normalizedLibrary.js";
+import {
+  parseSocketCommand,
+  registerProtocolHandshake,
+  sendProtocolError
+} from "./realtime/protocolGateway.js";
+import {
+  IdempotentEventConsumer,
+  InMemoryJoinCodeDirectory,
+  InMemoryRealtimeEventBus,
+  InMemoryRoomOwnershipStore,
+  InMemoryRoomStateStore,
+  LifecycleTimers,
+  type RoomOwnershipLease
+} from "./scaling/runtimeInfrastructure.js";
 import {
   MAX_SAVED_REPORTS,
   canMoveFolder,
@@ -106,7 +121,6 @@ import {
   hasLineOfSight,
   type ArenaPosition,
   type BotDifficulty,
-  type Choice,
   type ClassSummary,
   type GameSession,
   type GameAnnouncement,
@@ -155,27 +169,24 @@ interface AuthedRequest extends Request {
 
 export const app = express();
 export const server = createServer(app);
-const port = Number(process.env.PORT ?? 4000);
-const isProduction = process.env.NODE_ENV === "production";
-const jwtSecret = process.env.JWT_SECRET ?? "local-dev-only-change-me";
-const databaseUrl = process.env.DATABASE_URL?.trim();
+const config = loadServerConfig();
+const port = config.port;
+const isProduction = config.isProduction;
+const jwtSecret = config.jwtSecret;
+const databaseUrl = config.databaseUrl;
 const prisma = databaseUrl ? new PrismaClient() : undefined;
 const normalizedLibrary = prisma ? new NormalizedLibrary(prisma) : undefined;
 const clientOrigins = resolveClientOrigins({
-  configuredOrigins: process.env.CLIENT_ORIGIN ?? process.env.CORS_ORIGIN,
+  configuredOrigins: config.configuredOrigins,
   isProduction
 });
 const corsOrigin = clientOrigins.length > 0 ? clientOrigins : true;
-
-if (isProduction && jwtSecret === "local-dev-only-change-me") {
-  throw new Error("JWT_SECRET must be set before running QuizStrike online.");
-}
 
 if (isProduction && !databaseUrl) {
   console.warn("DATABASE_URL is not configured; QuizStrike is running online with in-memory storage.");
 }
 
-if (process.env.TRUST_PROXY === "true") {
+if (config.trustProxy) {
   app.set("trust proxy", 1);
 }
 
@@ -184,13 +195,70 @@ export const io = new Server(server, {
   httpCompression: { threshold: 1024 },
   perMessageDeflate: false
 });
-const networkMetrics = new NetworkMetrics();
+const networkMetrics = new NetworkMetrics({ enabled: config.networkDebug, intervalMs: config.networkReportIntervalMs });
+const lifecycleTimers = new LifecycleTimers();
+const roomOwnership = new InMemoryRoomOwnershipStore();
+const roomLeases = new Map<string, RoomOwnershipLease>();
+const realtimeEventBus = new InMemoryRealtimeEventBus();
+const distributedEventConsumer = new IdempotentEventConsumer();
+const ROOM_EVENTS_CHANNEL = "quizstrike:room-events";
+let unsubscribeRoomEvents: (() => void) | undefined;
+let isDraining = false;
+
+void realtimeEventBus.subscribe(ROOM_EVENTS_CHANNEL, async (event) => {
+  await distributedEventConsumer.consume(event, (accepted) => {
+    if (!accepted.roomId) return;
+    io.to(accepted.roomId).emit(accepted.eventType, accepted.payload);
+  });
+}).then((unsubscribe) => {
+  unsubscribeRoomEvents = unsubscribe;
+});
+
+const publishRoomEvent = (roomId: string, eventType: string, eventId: string, payload: unknown) => {
+  void realtimeEventBus.publish(ROOM_EVENTS_CHANNEL, {
+    eventId,
+    originInstanceId: config.instanceId,
+    roomId,
+    eventType,
+    occurredAt: Date.now(),
+    payload
+  }).catch((error: unknown) => {
+    console.error(`[event-bus] failed to publish ${eventType} for room ${roomId}`, error);
+  });
+};
+
+const acquireRoomAuthority = (roomId: string) => {
+  const lease = roomOwnership.acquire(roomId, config.instanceId, config.roomLeaseMs);
+  if (!lease) return false;
+  roomLeases.set(roomId, lease);
+  console.info(`[ownership] acquired room=${roomId} instance=${config.instanceId} fence=${lease.fencingToken}`);
+  return true;
+};
+
+const ownsRoom = (roomId: string) => {
+  const lease = roomLeases.get(roomId);
+  const owner = roomOwnership.owner(roomId);
+  return Boolean(lease && owner && owner.ownerInstanceId === config.instanceId && owner.fencingToken === lease.fencingToken);
+};
+
+const renewRoomAuthorities = () => {
+  for (const [roomId, lease] of roomLeases) {
+    const renewed = roomOwnership.renew(roomId, config.instanceId, lease.fencingToken, config.roomLeaseMs);
+    if (renewed) {
+      roomLeases.set(roomId, renewed);
+      continue;
+    }
+    roomLeases.delete(roomId);
+    console.error(`[ownership] lost room=${roomId} instance=${config.instanceId}; authoritative processing paused`);
+  }
+};
 
 const users = new Map<string, StoredUser>();
 const classes = new Map<string, ClassSummary & { teacherId: string }>();
 const quizSets = new Map<string, QuizSet>();
 const folders = new Map<string, QuizFolder>();
-const sessions = new Map<string, GameSession>();
+const sessions = new InMemoryRoomStateStore<GameSession>();
+const joinCodeDirectory = new InMemoryJoinCodeDirectory();
 const answers: AnswerLog[] = [];
 type StoredReport = ReportMetadata & { report: SessionReport };
 const reports = new Map<string, StoredReport>();
@@ -231,7 +299,7 @@ const emitFlagPlanted = (session: GameSession, player: PlayerSession) => {
     plantedAt: flag.placedAtMs,
     expiresAt: flag.expiresAtMs
   };
-  io.to(session.sessionCode).emit("flag_planted", event);
+  publishRoomEvent(session.sessionCode, "flag_planted", event.eventId, event);
 };
 
 const emitFreezeStreakAnnouncement = (session: GameSession, player: PlayerSession, streak: number) => {
@@ -246,7 +314,7 @@ const emitFreezeStreakAnnouncement = (session: GameSession, player: PlayerSessio
     announcementKey: announcement.key,
     occurredAt: Date.now()
   };
-  io.to(session.sessionCode).emit("freeze_streak_announcement", event);
+  publishRoomEvent(session.sessionCode, "freeze_streak_announcement", event.eventId, event);
 };
 
 const resetFreezeStreak = (player: PlayerSession) => {
@@ -261,10 +329,11 @@ const recordValidatedFreeze = (session: GameSession, attacker: PlayerSession, ta
 };
 
 type PersistedRuntimeState = {
-  users: StoredUser[];
-  classes: Array<ClassSummary & { teacherId: string }>;
-  quizSets: QuizSet[];
-  folders: QuizFolder[];
+  /** Legacy compatibility reads only; normalized tables own all new writes. */
+  users?: StoredUser[];
+  classes?: Array<ClassSummary & { teacherId: string }>;
+  quizSets?: QuizSet[];
+  folders?: QuizFolder[];
   sessions: GameSession[];
   answers: AnswerLog[];
   /** Legacy fallback only. New writes are stored in the normalized Report table. */
@@ -276,10 +345,6 @@ let persistenceQueue = Promise.resolve();
 let persistenceTimer: ReturnType<typeof setTimeout> | undefined;
 
 const getPersistedRuntimeState = (): PersistedRuntimeState => ({
-  users: [...users.values()],
-  classes: [...classes.values()],
-  quizSets: [...quizSets.values()],
-  folders: [...folders.values()],
   sessions: [...sessions.values()],
   answers: [...answers]
 });
@@ -287,10 +352,12 @@ const getPersistedRuntimeState = (): PersistedRuntimeState => ({
 const hydrateRuntimeState = async () => {
   if (!prisma) return;
 
-  const snapshot = await prisma.runtimeSnapshot.findUnique({ where: { id: runtimeSnapshotId } });
-  if (!snapshot) return;
+  const [snapshot, durable] = await Promise.all([
+    prisma.runtimeSnapshot.findUnique({ where: { id: runtimeSnapshotId } }),
+    normalizedLibrary!.loadTeacherData()
+  ]);
 
-  const state = snapshot.data as unknown as Partial<PersistedRuntimeState>;
+  const state = (snapshot?.data ?? {}) as unknown as Partial<PersistedRuntimeState>;
   const savedUsers = Array.isArray(state.users) ? state.users : [];
   const savedClasses = Array.isArray(state.classes) ? state.classes : [];
   const savedQuizSets = Array.isArray(state.quizSets) ? state.quizSets : [];
@@ -304,13 +371,21 @@ const hydrateRuntimeState = async () => {
   quizSets.clear();
   folders.clear();
   sessions.clear();
+  joinCodeDirectory.clear();
   answers.length = 0;
   reports.clear();
 
-  for (const user of savedUsers) if (user?.id) users.set(user.id, user);
-  for (const klass of savedClasses) if (klass?.id) classes.set(klass.id, klass);
-  for (const quiz of savedQuizSets) if (quiz?.id) quizSets.set(quiz.id, quiz);
-  for (const folder of savedFolders) if (folder?.id) folders.set(folder.id, folder);
+  // Normalized rows are authoritative for durable teacher data. Snapshot rows
+  // are a temporary compatibility fallback only when backfill has not created
+  // a corresponding normalized record yet.
+  for (const user of durable.users) users.set(user.id, user);
+  for (const klass of durable.classes) classes.set(klass.id, klass);
+  for (const quiz of durable.quizSets) quizSets.set(quiz.id, quiz);
+  for (const folder of durable.folders) folders.set(folder.id, folder);
+  for (const user of savedUsers) if (user?.id && !users.has(user.id)) users.set(user.id, user);
+  for (const klass of savedClasses) if (klass?.id && !classes.has(klass.id)) classes.set(klass.id, klass);
+  for (const quiz of savedQuizSets) if (quiz?.id && !quizSets.has(quiz.id)) quizSets.set(quiz.id, quiz);
+  for (const folder of savedFolders) if (folder?.id && !folders.has(folder.id)) folders.set(folder.id, folder);
   for (const session of savedSessions) {
     if (!session?.id) continue;
     session.settings = sanitizeSessionSettings(session.settings);
@@ -324,6 +399,12 @@ const hydrateRuntimeState = async () => {
         }))
       : [];
     sessions.set(session.id, session);
+    if (!joinCodeDirectory.reserve(session.sessionCode, session.id)) {
+      console.error(`[runtime] duplicate restored join code rejected for session ${session.id}`);
+      sessions.delete(session.id);
+    } else if (!acquireRoomAuthority(session.id)) {
+      console.error(`[ownership] restored room ${session.id} has another owner; simulation remains paused`);
+    }
   }
   answers.push(...savedAnswers.filter((answer) => answer?.id));
   // Read legacy report snapshots for backwards compatibility. New report writes
@@ -385,16 +466,16 @@ const blockedNicknameTerms = [
 const BOT_TICK_MS = 300;
 const FIRE_REQUEST_TTL_MS = 30_000;
 const BOT_RESPAWN_MS = 8000;
-const BOT_DIFFICULTY: BotDifficulty = process.env.BOT_DIFFICULTY === "beginner" || process.env.BOT_DIFFICULTY === "advanced"
-  ? process.env.BOT_DIFFICULTY
-  : "standard";
+const BOT_DIFFICULTY: BotDifficulty = config.botDifficulty;
 const PLAYER_MAX_SPEED = 22;
 const PLAYER_DISCONNECT_GRACE_MS = 5000;
 const ROUND_RESULT_ANNOUNCEMENT_MS = 4000;
 const testPhaseDuration = (name: string, fallback: number) => {
-  if (process.env.NODE_ENV !== "test") return fallback;
-  const configured = Number(process.env[name]);
-  return Number.isFinite(configured) ? Math.max(20, configured) : fallback;
+  if (config.environment !== "test") return fallback;
+  const configured = name === "QUIZSTRIKE_TEST_ROUND_PREPARATION_MS"
+    ? config.testRoundPreparationMs
+    : config.testZombieSelectionMs;
+  return configured ?? fallback;
 };
 const ROUND_PREPARATION_MS = testPhaseDuration("QUIZSTRIKE_TEST_ROUND_PREPARATION_MS", 35_000);
 const ZOMBIE_SELECTION_MS = testPhaseDuration("QUIZSTRIKE_TEST_ZOMBIE_SELECTION_MS", 20_000);
@@ -488,7 +569,7 @@ const generateSessionCode = () => {
   let code = "";
   do {
     code = Array.from({ length: 6 }, () => alphabet[Math.floor(Math.random() * alphabet.length)]).join("");
-  } while ([...sessions.values()].some((session) => session.sessionCode === code));
+  } while (joinCodeDirectory.resolve(code));
   return code;
 };
 
@@ -504,8 +585,10 @@ const sessionSpawn = (session: GameSession, team: Team, index = 0) =>
 const selectSessionSpawn = (session: GameSession, team: Team, preferredIndex = 0) =>
   selectTeamSpawnForMap(session.settings.mapId, team, session.players, preferredIndex);
 
-const getSessionByCode = (code: string) =>
-  [...sessions.values()].find((session) => session.sessionCode.toUpperCase() === code.toUpperCase());
+const getSessionByCode = (code: string) => {
+  const roomId = joinCodeDirectory.resolve(code);
+  return roomId ? sessions.get(roomId) : undefined;
+};
 
 const getQuizQuestion = (questionId: string) => {
   for (const quiz of quizSets.values()) {
@@ -728,6 +811,8 @@ const finishSession = (
   botAlertsBySession.delete(session.sessionCode);
   purgeSessionDecals(session);
   appendEvent(session, { type: "end", message });
+  const quizSetName = quizSets.get(session.quizSetId)?.title ?? "Quiz Set";
+  if (normalizedLibrary) mirrorNormalized(normalizedLibrary.saveSession(session, quizSetName), "completed session");
   saveSessionReport(session);
   broadcastSession(session);
 };
@@ -1756,6 +1841,7 @@ const botFire = (
 export const advanceBots = () => {
   const currentMs = Date.now();
   for (const session of sessions.values()) {
+    if (!ownsRoom(session.id)) continue;
     if (session.status === "paused") {
       const startsAtMs = session.roundTransition ? Date.parse(session.roundTransition.startsAt) : Number.NaN;
       if (Number.isFinite(startsAtMs) && currentMs >= startsAtMs) startPendingRound(session);
@@ -2139,7 +2225,7 @@ const registerFireRequest = (playerId: string, requestId: unknown) => {
 const healthPayload = () => ({
   ok: true,
   service: "quizstrike-server",
-  environment: process.env.NODE_ENV ?? "development",
+  environment: config.environment,
   storage: prisma ? "postgres" : "memory",
   time: now()
 });
@@ -2170,6 +2256,7 @@ app.post("/api/auth/signup", async (req, res) => {
     role: "teacher",
     passwordHash: await bcrypt.hash(password, 10)
   };
+  if (normalizedLibrary) await normalizedLibrary.saveUser(user);
   users.set(user.id, user);
   schedulePersistence();
   const teacher = publicUser(user);
@@ -2210,7 +2297,7 @@ app.get("/api/teacher/dashboard", requireTeacher, async (req: AuthedRequest, res
   }
 });
 
-app.post("/api/folders", requireTeacher, (req: AuthedRequest, res) => {
+app.post("/api/folders", requireTeacher, async (req: AuthedRequest, res) => {
   const teacherId = req.user!.id;
   const normalized = normalizeFolderName(req.body?.name);
   if (!normalized.ok) {
@@ -2231,13 +2318,13 @@ app.post("/api/folders", requireTeacher, (req: AuthedRequest, res) => {
   }
   const createdAt = now();
   const folder: QuizFolder = { id: id(), teacherId, parentId, name: normalized.name, createdAt, updatedAt: createdAt };
+  if (normalizedLibrary) await normalizedLibrary.saveFolderForTeacher(folder);
   folders.set(folder.id, folder);
-  if (normalizedLibrary) mirrorNormalized(normalizedLibrary.saveFolder(folder), "folder creation");
   schedulePersistence();
   res.status(201).json({ folder });
 });
 
-app.patch("/api/folders/:id", requireTeacher, (req: AuthedRequest, res) => {
+app.patch("/api/folders/:id", requireTeacher, async (req: AuthedRequest, res) => {
   const folder = folders.get(routeParam(req.params.id));
   if (!folder || folder.teacherId !== req.user!.id) {
     res.status(404).json({ error: "Folder not found." });
@@ -2263,12 +2350,12 @@ app.patch("/api/folders/:id", requireTeacher, (req: AuthedRequest, res) => {
   folder.name = normalized.name;
   folder.parentId = parentId;
   folder.updatedAt = now();
-  if (normalizedLibrary) mirrorNormalized(normalizedLibrary.saveFolder(folder), "folder update");
+  if (normalizedLibrary) await normalizedLibrary.saveFolderForTeacher(folder);
   schedulePersistence();
   res.json({ folder });
 });
 
-app.delete("/api/folders/:id", requireTeacher, (req: AuthedRequest, res) => {
+app.delete("/api/folders/:id", requireTeacher, async (req: AuthedRequest, res) => {
   const folder = folders.get(routeParam(req.params.id));
   if (!folder || folder.teacherId !== req.user!.id) {
     res.status(404).json({ error: "Folder not found." });
@@ -2280,13 +2367,13 @@ app.delete("/api/folders/:id", requireTeacher, (req: AuthedRequest, res) => {
     res.status(409).json({ error: "Move or delete the items inside this folder before deleting it." });
     return;
   }
+  if (normalizedLibrary) await normalizedLibrary.deleteFolder(folder.teacherId, folder.id);
   folders.delete(folder.id);
-  if (normalizedLibrary) mirrorNormalized(normalizedLibrary.deleteFolder(folder.teacherId, folder.id), "folder deletion");
   schedulePersistence();
   res.json({ deletedFolderId: folder.id });
 });
 
-app.patch("/api/quiz-sets/:id", requireTeacher, (req: AuthedRequest, res) => {
+app.patch("/api/quiz-sets/:id", requireTeacher, async (req: AuthedRequest, res) => {
   const quiz = assertTeacherOwnsQuiz(req.user!.id, routeParam(req.params.id));
   if (!quiz) {
     res.status(404).json({ error: "Quiz set not found." });
@@ -2299,12 +2386,12 @@ app.patch("/api/quiz-sets/:id", requireTeacher, (req: AuthedRequest, res) => {
   }
   quiz.title = title;
   quiz.updatedAt = now();
-  if (normalizedLibrary) mirrorNormalized(normalizedLibrary.updateQuizSetLibrary(quiz.teacherId, quiz.id, { title }), "quiz set rename");
+  if (normalizedLibrary) await normalizedLibrary.updateQuizSetLibrary(quiz.teacherId, quiz.id, { title });
   schedulePersistence();
   res.json({ quizSet: quiz });
 });
 
-app.post("/api/quiz-sets/:id/move", requireTeacher, (req: AuthedRequest, res) => {
+app.post("/api/quiz-sets/:id/move", requireTeacher, async (req: AuthedRequest, res) => {
   const quiz = assertTeacherOwnsQuiz(req.user!.id, routeParam(req.params.id));
   if (!quiz) {
     res.status(404).json({ error: "Quiz set not found." });
@@ -2320,12 +2407,12 @@ app.post("/api/quiz-sets/:id/move", requireTeacher, (req: AuthedRequest, res) =>
   }
   quiz.folderId = folderId;
   quiz.updatedAt = now();
-  if (normalizedLibrary) mirrorNormalized(normalizedLibrary.updateQuizSetLibrary(quiz.teacherId, quiz.id, { folderId: folderId ?? null }), "quiz set move");
+  if (normalizedLibrary) await normalizedLibrary.updateQuizSetLibrary(quiz.teacherId, quiz.id, { folderId: folderId ?? null });
   schedulePersistence();
   res.json({ quizSet: quiz });
 });
 
-app.delete("/api/quiz-sets/:id", requireTeacher, (req: AuthedRequest, res) => {
+app.delete("/api/quiz-sets/:id", requireTeacher, async (req: AuthedRequest, res) => {
   const quiz = assertTeacherOwnsQuiz(req.user!.id, routeParam(req.params.id));
   if (!quiz) {
     res.status(404).json({ error: "Quiz set not found." });
@@ -2336,8 +2423,8 @@ app.delete("/api/quiz-sets/:id", requireTeacher, (req: AuthedRequest, res) => {
     res.status(409).json({ error: "This quiz set is used by an active game and cannot be deleted yet." });
     return;
   }
+  if (normalizedLibrary) await normalizedLibrary.deleteQuizSet(quiz.teacherId, quiz.id);
   quizSets.delete(quiz.id);
-  if (normalizedLibrary) mirrorNormalized(normalizedLibrary.deleteQuizSet(quiz.teacherId, quiz.id), "quiz set deletion");
   schedulePersistence();
   res.json({ deletedQuizSetId: quiz.id });
 });
@@ -2371,7 +2458,7 @@ app.delete("/api/reports/:id", requireTeacher, async (req: AuthedRequest, res) =
   res.json({ deletedReportId: reportId });
 });
 
-app.post("/api/classes", requireTeacher, (req: AuthedRequest, res) => {
+app.post("/api/classes", requireTeacher, async (req: AuthedRequest, res) => {
   const name = String(req.body.name ?? "").trim();
   if (name.length < 2) {
     res.status(400).json({ error: "Class name is required." });
@@ -2384,13 +2471,13 @@ app.post("/api/classes", requireTeacher, (req: AuthedRequest, res) => {
     description: String(req.body.description ?? "").trim() || undefined,
     createdAt: now()
   };
+  if (normalizedLibrary) await normalizedLibrary.saveClass(klass);
   classes.set(klass.id, klass);
-  if (normalizedLibrary) mirrorNormalized(normalizedLibrary.saveClass(klass), "class creation");
   schedulePersistence();
   res.status(201).json({ class: klass });
 });
 
-app.post("/api/quiz-sets", requireTeacher, (req: AuthedRequest, res) => {
+app.post("/api/quiz-sets", requireTeacher, async (req: AuthedRequest, res) => {
   const title = String(req.body.title ?? "").trim();
   if (title.length < 2) {
     res.status(400).json({ error: "Quiz title is required." });
@@ -2406,8 +2493,8 @@ app.post("/api/quiz-sets", requireTeacher, (req: AuthedRequest, res) => {
     questions: [],
     createdAt: now()
   };
+  if (normalizedLibrary) await normalizedLibrary.saveQuizSet(quizSet);
   quizSets.set(quizSet.id, quizSet);
-  if (normalizedLibrary) mirrorNormalized(normalizedLibrary.saveQuizSet(quizSet), "quiz set creation");
   schedulePersistence();
   res.status(201).json({ quizSet });
 });
@@ -2421,7 +2508,7 @@ app.get("/api/quiz-sets/:id", requireTeacher, (req: AuthedRequest, res) => {
   res.json({ quizSet: quiz });
 });
 
-app.post("/api/quiz-sets/:id/questions", requireTeacher, (req: AuthedRequest, res) => {
+app.post("/api/quiz-sets/:id/questions", requireTeacher, async (req: AuthedRequest, res) => {
   const quiz = assertTeacherOwnsQuiz(req.user!.id, routeParam(req.params.id));
   if (!quiz) {
     res.status(404).json({ error: "Quiz set not found." });
@@ -2451,13 +2538,13 @@ app.post("/api/quiz-sets/:id/questions", requireTeacher, (req: AuthedRequest, re
     return;
   }
 
+  if (normalizedLibrary) await normalizedLibrary.saveQuestionForTeacher(quiz.teacherId, question);
   quiz.questions.push(question);
-  if (normalizedLibrary) mirrorNormalized(normalizedLibrary.saveQuestion(question), "question creation");
   schedulePersistence();
   res.status(201).json({ question, quizSet: quiz });
 });
 
-app.put("/api/questions/:id", requireTeacher, (req: AuthedRequest, res) => {
+app.put("/api/questions/:id", requireTeacher, async (req: AuthedRequest, res) => {
   const question = getQuizQuestion(routeParam(req.params.id));
   if (!question) {
     res.status(404).json({ error: "Question not found." });
@@ -2476,11 +2563,12 @@ app.put("/api/questions/:id", requireTeacher, (req: AuthedRequest, res) => {
   question.choiceD = String(req.body.choiceD ?? question.choiceD).trim();
   question.explanation = String(req.body.explanation ?? question.explanation ?? "").trim() || undefined;
   question.difficulty = String(req.body.difficulty ?? question.difficulty ?? "").trim() || undefined;
+  if (normalizedLibrary) await normalizedLibrary.updateQuestionForTeacher(quiz.teacherId, question);
   schedulePersistence();
   res.json({ question, quizSet: quiz });
 });
 
-app.delete("/api/questions/:id", requireTeacher, (req: AuthedRequest, res) => {
+app.delete("/api/questions/:id", requireTeacher, async (req: AuthedRequest, res) => {
   const question = getQuizQuestion(routeParam(req.params.id));
   if (!question) {
     res.status(404).json({ error: "Question not found." });
@@ -2491,12 +2579,17 @@ app.delete("/api/questions/:id", requireTeacher, (req: AuthedRequest, res) => {
     res.status(403).json({ error: "This question belongs to another teacher." });
     return;
   }
+  if (normalizedLibrary) await normalizedLibrary.deleteQuestionForTeacher(quiz.teacherId, question.id);
   quiz.questions = quiz.questions.filter((item) => item.id !== question.id);
   schedulePersistence();
   res.json({ quizSet: quiz });
 });
 
-app.post("/api/sessions", requireTeacher, (req: AuthedRequest, res) => {
+app.post("/api/sessions", requireTeacher, async (req: AuthedRequest, res) => {
+  if (isDraining) {
+    res.status(503).json({ error: "This server instance is draining. Try again shortly." });
+    return;
+  }
   const quiz = assertTeacherOwnsQuiz(req.user!.id, String(req.body.quizSetId ?? ""));
   if (!quiz || quiz.questions.length === 0) {
     res.status(400).json({ error: "Choose a quiz set with at least one question." });
@@ -2519,6 +2612,23 @@ app.post("/api/sessions", requireTeacher, (req: AuthedRequest, res) => {
   };
   appendEvent(session, { type: "join", message: `Session ${session.sessionCode} created.` });
   sessions.set(session.id, session);
+  joinCodeDirectory.reserve(session.sessionCode, session.id);
+  if (!acquireRoomAuthority(session.id)) {
+    sessions.delete(session.id);
+    joinCodeDirectory.release(session.sessionCode, session.id);
+    res.status(503).json({ error: "The game room could not acquire an authoritative owner. Try again." });
+    return;
+  }
+  try {
+    if (normalizedLibrary) await normalizedLibrary.saveSession(session, quiz.title);
+  } catch (error) {
+    const lease = roomLeases.get(session.id);
+    if (lease) roomOwnership.release(session.id, config.instanceId, lease.fencingToken);
+    roomLeases.delete(session.id);
+    sessions.delete(session.id);
+    joinCodeDirectory.release(session.sessionCode, session.id);
+    throw error;
+  }
   schedulePersistence();
   res.status(201).json({ session: stampSession(session) });
 });
@@ -2880,6 +2990,7 @@ app.post("/api/sessions/:code/join", (req, res) => {
     joinedAt: now()
   };
   session.players.push(player);
+  if (normalizedLibrary) mirrorNormalized(normalizedLibrary.savePlayer(player), "player join");
   const playerToken = makePlayerToken(session, player);
   appendEvent(session, {
     type: "join",
@@ -3265,6 +3376,10 @@ const answerQuestion = (
     context: answerContext
   };
   answers.push(answer);
+  if (normalizedLibrary) {
+    mirrorNormalized(normalizedLibrary.saveAnswer(answer, question), "answer history");
+    mirrorNormalized(normalizedLibrary.savePlayer(player), "player learning progress");
+  }
 
   const feedback = isCorrect
     ? respawn.respawned
@@ -3457,16 +3572,30 @@ app.use((error: unknown, _req: Request, res: Response, next: NextFunction) => {
 });
 
 io.on("connection", (socket) => {
+  if (isDraining) {
+    sendProtocolError(socket, "INVALID_STATE", "This server instance is restarting. Reconnect shortly.", true);
+    socket.disconnect(true);
+    return;
+  }
   networkMetrics.attach(socket);
-  socket.on("join_session_room", (payload: { code?: string; playerId?: string; playerToken?: string; teacherToken?: string } = {}) => {
-    if (!payload || typeof payload !== "object") return;
-    const code = String(payload.code ?? "");
+  registerProtocolHandshake(socket, {
+    serverVersion: "0.1.0",
+    onLegacyClient: (socketId) => console.warn(`[protocol] accepted temporary version-0 client ${socketId}`)
+  });
+  socket.on("join_session_room", (payload: unknown = {}) => {
+    const command = parseSocketCommand(socket, "join_session_room", payload);
+    if (!command) return;
+    const code = command.code;
     const session = getSessionByCode(code);
     if (!session) return;
+    if (!ownsRoom(session.id)) {
+      sendProtocolError(socket, "INVALID_STATE", "This instance is not authoritative for the requested room. Reconnect through the room-affine route.", true);
+      return;
+    }
 
-    if (payload.playerId) {
-      const player = session.players.find((candidate) => candidate.id === payload.playerId);
-      if (!player || !hasPlayerAccess(session, player, payload.playerToken)) return;
+    if (command.playerId) {
+      const player = session.players.find((candidate) => candidate.id === command.playerId);
+      if (!player || !hasPlayerAccess(session, player, command.playerToken)) return;
 
       const currentBinding = socket.data.playerBinding as SocketPlayerBinding | undefined;
       if (currentBinding && playerSocketKey(currentBinding.sessionCode, currentBinding.playerId) !== playerSocketKey(session.sessionCode, player.id)) {
@@ -3486,7 +3615,7 @@ io.on("connection", (socket) => {
       }
       socket.join(gameplayRoom(session.sessionCode));
     } else {
-      const teacher = getTeacherFromToken(payload.teacherToken);
+      const teacher = getTeacherFromToken(command.teacherToken);
       if (!teacher || teacher.id !== session.teacherId) return;
     }
 
@@ -3501,10 +3630,15 @@ io.on("connection", (socket) => {
       acknowledge: (response: StudentCommandAck<{ result: QuizResult }>) => void
     ) => {
       if (typeof acknowledge !== "function") return;
+      const command = parseSocketCommand(socket, "answer_question", payload);
+      if (!command) {
+        acknowledge({ ok: false, status: 400, error: "The answer command was invalid." });
+        return;
+      }
       const student = getBoundStudent(socket);
       acknowledge(
         student
-          ? commandAck(answerQuestion(student.session, student.player, payload ?? {}))
+          ? commandAck(answerQuestion(student.session, student.player, command))
           : { ok: false, status: 401, error: "Reconnect to the game before answering." }
       );
     }
@@ -3514,10 +3648,15 @@ io.on("connection", (socket) => {
     "buy_gear",
     (payload: { gearId?: unknown }, acknowledge: (response: StudentCommandAck<GearPurchaseResponse>) => void) => {
       if (typeof acknowledge !== "function") return;
+      const command = parseSocketCommand(socket, "buy_gear", payload);
+      if (!command) {
+        acknowledge({ ok: false, status: 400, error: "The purchase command was invalid." });
+        return;
+      }
       const student = getBoundStudent(socket);
       acknowledge(
         student
-          ? commandAck(buyGear(student.session, student.player, payload?.gearId))
+          ? commandAck(buyGear(student.session, student.player, command.gearId))
           : { ok: false, status: 401, error: "Reconnect to the game before buying gear." }
       );
     }
@@ -3525,8 +3664,12 @@ io.on("connection", (socket) => {
 
   socket.on(
     "buy_snowballs",
-    (_payload: Record<string, never>, acknowledge: (response: StudentCommandAck<SnowballPurchaseResponse>) => void) => {
+    (payload: Record<string, never>, acknowledge: (response: StudentCommandAck<SnowballPurchaseResponse>) => void) => {
       if (typeof acknowledge !== "function") return;
+      if (!parseSocketCommand(socket, "buy_snowballs", payload)) {
+        acknowledge({ ok: false, status: 400, error: "The purchase command was invalid." });
+        return;
+      }
       const student = getBoundStudent(socket);
       acknowledge(
         student
@@ -3549,20 +3692,14 @@ io.on("connection", (socket) => {
     if (session && player) markPlayerDisconnected(session, player);
   });
 
-  socket.on("player_position", (payload: {
-    x?: number;
-    z?: number;
-    y?: number;
-    facing?: number;
-    sprinting?: boolean;
-    crouching?: boolean;
-    jumping?: boolean;
-  } = {}) => {
+  socket.on("player_position", (payload: unknown = {}) => {
+    const command = parseSocketCommand(socket, "player_position", payload);
+    if (!command) return;
     const student = getBoundStudent(socket);
     if (!student) return;
     const { session, player } = student;
     if (!player.isAlive) return;
-    const position = applyAuthoritativePosition(session, player, payload);
+    const position = applyAuthoritativePosition(session, player, command);
     const authoritativePosition = {
       playerId: player.id,
       x: position.x,
@@ -3576,7 +3713,9 @@ io.on("connection", (socket) => {
     broadcastPlayerPosition(session, authoritativePosition);
   });
 
-  socket.on("fire_action", (payload: { requestId?: string; x?: number; z?: number; y?: number; facing?: number; pitch?: number; targetId?: string; scoped?: boolean; zoomLevel?: number } = {}) => {
+  socket.on("fire_action", (payload: unknown = {}) => {
+    const command = parseSocketCommand(socket, "fire_action", payload);
+    if (!command) return;
     const student = getBoundStudent(socket);
     if (!student) return;
     const { session, player: attacker } = student;
@@ -3589,14 +3728,14 @@ io.on("connection", (socket) => {
       return;
     }
 
-    const fireRequest = registerFireRequest(attacker.id, payload.requestId);
+    const fireRequest = registerFireRequest(attacker.id, command.requestId);
     if (!fireRequest.ok) {
       console.warn(`Rejected ${fireRequest.reason} from ${attacker.id}`);
       socket.emit("damage_result", { ok: false, reason: fireRequest.reason, snowballs: attacker.snowballs ?? 0 });
       return;
     }
 
-    applyAuthoritativePosition(session, attacker, payload);
+    applyAuthoritativePosition(session, attacker, command);
 
     const currentMs = Date.now();
     const nextAllowedFireAt = playerNextFireAt.get(attacker.id) ?? 0;
@@ -3613,7 +3752,7 @@ io.on("connection", (socket) => {
     }
     attacker.snowballs = snowballUse.nextSnowballs;
     const weaponId = getPlayerWeaponIdForMode(session.settings.gameMode, attacker);
-    const aimPitch = clampArenaAimPitch(payload.pitch);
+    const aimPitch = clampArenaAimPitch(command.pitch);
     playerNextFireAt.set(attacker.id, currentMs + getGearFireCooldownMs(weaponId));
     socket.to(gameplayRoom(session.sessionCode)).emit("remote_weapon_fire", {
       playerId: attacker.id,
@@ -3627,16 +3766,16 @@ io.on("connection", (socket) => {
       facing: attacker.facing ?? sessionSpawn(session, attacker.team).facing,
       pitch: aimPitch,
       gearId: weaponId,
-      scoped: payload.scoped === true,
-      zoomLevel: payload.zoomLevel ?? 0
+      scoped: command.scoped === true,
+      zoomLevel: command.zoomLevel ?? 0
     });
 
     const targetSelection = resolveProjectileTarget({
       attacker,
       candidates: playersWithRewind(session.players, currentMs),
-      requestedTargetId: typeof payload.targetId === "string" && payload.targetId.trim() ? payload.targetId : undefined,
+      requestedTargetId: command.targetId,
       range: getGearRange(weaponId),
-      hitRadius: getGearHitRadius(weaponId, typeof payload.zoomLevel === "number" ? payload.zoomLevel : payload.scoped === true),
+      hitRadius: getGearHitRadius(weaponId, command.zoomLevel ?? command.scoped === true),
       obstacles: getArenaObstacles(session.settings.mapId),
       aimPitch
     });
@@ -3661,12 +3800,14 @@ io.on("connection", (socket) => {
     }
   });
 
-  socket.on("flag_action", (payload: { x?: number; z?: number; y?: number; facing?: number } = {}) => {
+  socket.on("flag_action", (payload: unknown = {}) => {
+    const command = parseSocketCommand(socket, "flag_action", payload);
+    if (!command) return;
     const student = getBoundStudent(socket);
     if (!student) return;
     const { session, player } = student;
     if (session.status !== "active" || session.settings.gameMode !== "flag" || !player.isAlive) return;
-    const position = applyAuthoritativePosition(session, player, payload);
+    const position = applyAuthoritativePosition(session, player, command);
     const previousState = session.flag?.state;
     session.flag = resolveFlagPickup(session.flag ?? createInitialFlagState(sessionSpawn(session, "red")), player);
     session.flag = resolveFlagPlacement({
@@ -3733,10 +3874,12 @@ function detachSocketBinding(socket: Socket) {
 const startServer = async () => {
   try {
     await hydrateRuntimeState();
-    setInterval(advanceBots, BOT_TICK_MS);
-    setInterval(pruneExpiredDecals, 15 * 60 * 1000).unref();
+    lifecycleTimers.interval(advanceBots, BOT_TICK_MS);
+    lifecycleTimers.interval(pruneExpiredDecals, 15 * 60 * 1000, true);
+    lifecycleTimers.interval(renewRoomAuthorities, config.roomLeaseRenewMs, true);
     server.listen(port, () => {
       console.log(`QuizStrike Classroom server listening on http://localhost:${port}`);
+      console.info(`[runtime] instance=${config.instanceId} store=${config.runtimeStore} stickySessions=required`);
     });
   } catch (error) {
     console.error("QuizStrike could not restore durable classroom data.", error);
@@ -3748,17 +3891,40 @@ let isShuttingDown = false;
 const shutdown = (signal: string) => {
   if (isShuttingDown) return;
   isShuttingDown = true;
-  console.log(`Received ${signal}; saving classroom state before shutdown.`);
+  isDraining = true;
+  console.log(`[shutdown] received=${signal} instance=${config.instanceId}; draining and saving classroom state`);
+  lifecycleTimers.clearAll();
+  networkMetrics.close();
+  for (const timer of playerDisconnectTimers.values()) clearTimeout(timer);
+  playerDisconnectTimers.clear();
+  if (sessionBroadcastTimer) clearTimeout(sessionBroadcastTimer);
+  if (positionBroadcastTimer) clearTimeout(positionBroadcastTimer);
+  sessionBroadcastTimer = undefined;
+  positionBroadcastTimer = undefined;
+  const released = roomOwnership.releaseAll(config.instanceId);
+  roomLeases.clear();
+  console.info(`[shutdown] releasedRoomLeases=${released}`);
   flushPersistence();
-  void persistenceQueue.finally(() => {
-    server.close(() => {
-      const disconnect = prisma ? prisma.$disconnect() : Promise.resolve();
-      void disconnect.finally(() => process.exit(0));
+  const forceExit = setTimeout(() => {
+    console.error(`[shutdown] timeout after ${config.shutdownTimeoutMs}ms`);
+    process.exit(1);
+  }, config.shutdownTimeoutMs);
+  forceExit.unref();
+
+  void persistenceQueue.finally(async () => {
+    unsubscribeRoomEvents?.();
+    await realtimeEventBus.close().catch(() => undefined);
+    io.close();
+    server.close(async () => {
+      if (prisma) await prisma.$disconnect().catch(() => undefined);
+      clearTimeout(forceExit);
+      console.info("[shutdown] complete");
+      process.exit(0);
     });
   });
 };
 
-if (process.env.QUIZSTRIKE_NO_AUTOSTART !== "true") {
+if (config.autoStart) {
   void startServer();
   process.once("SIGTERM", () => shutdown("SIGTERM"));
   process.once("SIGINT", () => shutdown("SIGINT"));

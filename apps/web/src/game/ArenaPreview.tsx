@@ -5,7 +5,6 @@ import {
   ARENA_MIN_AIM_PITCH,
   ARENA_SCALE,
   FREE_FOR_ALL_SPAWNS,
-  TEMPLE_RUNOFF_MAIN_LEVEL_Y,
   getGearFireCooldownMs,
   getGearZoomFovMultiplier,
   getArenaGroundHeight,

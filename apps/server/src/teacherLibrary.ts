@@ -5,6 +5,8 @@ export const MAX_FOLDER_NAME_LENGTH = 80;
 export const MAX_EXPORT_FILENAME_LENGTH = 180;
 
 export const normalizeFolderName = (value: unknown) => {
+  // Control characters are intentionally removed from user-supplied names.
+  // eslint-disable-next-line no-control-regex
   const name = String(value ?? "").replace(/[\u0000-\u001f\u007f]/g, "").trim();
   if (!name) return { ok: false as const, error: "Folder name is required." };
   if (name.length > MAX_FOLDER_NAME_LENGTH) return { ok: false as const, error: `Folder names must be ${MAX_FOLDER_NAME_LENGTH} characters or fewer.` };
@@ -82,6 +84,8 @@ export const formatReportDisplayName = (
 
 export const sanitizeExportFilename = (value: string) => {
   const sanitized = value
+    // Control characters and characters forbidden by common filesystems are replaced.
+    // eslint-disable-next-line no-control-regex
     .replace(/[<>:"/\\|?*\u0000-\u001f\u007f]/g, "_")
     .replace(/\s+/g, " ")
     .trim()

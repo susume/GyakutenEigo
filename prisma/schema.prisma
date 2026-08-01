@@ -52,20 +52,22 @@ model Class {
 }
 
 model QuizSet {
-  id          String        @id @default(cuid())
-  teacherId   String
-  classId     String?
-  folderId    String?
-  teacher     User          @relation(fields: [teacherId], references: [id], onDelete: Cascade)
-  class       Class?        @relation(fields: [classId], references: [id], onDelete: SetNull)
-  folder      Folder?       @relation(fields: [folderId], references: [id], onDelete: SetNull)
-  title       String
-  description String?
-  questions   Question[]
-  sessions    GameSession[]
-  reports     Report[]
-  createdAt   DateTime      @default(now())
-  updatedAt   DateTime      @updatedAt
+  id           String        @id @default(cuid())
+  teacherId    String
+  classId      String?
+  folderId     String?
+  teacher      User          @relation(fields: [teacherId], references: [id], onDelete: Cascade)
+  class        Class?        @relation(fields: [classId], references: [id], onDelete: SetNull)
+  folder       Folder?       @relation(fields: [folderId], references: [id], onDelete: SetNull)
+  title        String
+  description  String?
+  /// Immutable-compatible authoring settings that are not relational columns.
+  settingsJson Json          @default("{}")
+  questions    Question[]
+  sessions     GameSession[]
+  reports      Report[]
+  createdAt    DateTime      @default(now())
+  updatedAt    DateTime      @updatedAt
 
   @@index([teacherId, folderId])
 }
@@ -75,14 +77,13 @@ model Folder {
   teacherId String
   parentId  String?
   teacher   User      @relation(fields: [teacherId], references: [id], onDelete: Cascade)
-  parent    Folder?   @relation("FolderHierarchy", fields: [parentId], references: [id], onDelete: Cascade)
+  parent    Folder?   @relation("FolderHierarchy", fields: [parentId], references: [id], onDelete: Restrict)
   children  Folder[]  @relation("FolderHierarchy")
   quizSets  QuizSet[]
   name      String
   createdAt DateTime  @default(now())
   updatedAt DateTime  @updatedAt
 
-  @@unique([teacherId, parentId, name])
   @@index([teacherId, parentId])
 }
 
@@ -107,10 +108,12 @@ model GameSession {
   id           String          @id @default(cuid())
   teacherId    String
   classId      String?
-  quizSetId    String
+  quizSetId    String?
   teacher      User            @relation(fields: [teacherId], references: [id], onDelete: Cascade)
   class        Class?          @relation(fields: [classId], references: [id], onDelete: SetNull)
-  quizSet      QuizSet         @relation(fields: [quizSetId], references: [id], onDelete: Cascade)
+  quizSet      QuizSet?        @relation(fields: [quizSetId], references: [id], onDelete: SetNull)
+  /// Historical label captured when the session is created.
+  quizSetName  String          @default("Quiz Set")
   sessionCode  String          @unique
   status       SessionStatus   @default(waiting)
   maxPlayers   Int             @default(20)
@@ -123,6 +126,8 @@ model GameSession {
   updatedAt    DateTime        @updatedAt
   startedAt    DateTime?
   endedAt      DateTime?
+
+  @@index([teacherId, status])
 }
 
 model PlayerSession {
@@ -149,10 +154,13 @@ model AnswerLog {
   id              String        @id @default(cuid())
   gameSessionId   String
   playerSessionId String
-  questionId      String
+  questionId      String?
   gameSession     GameSession   @relation(fields: [gameSessionId], references: [id], onDelete: Cascade)
   playerSession   PlayerSession @relation(fields: [playerSessionId], references: [id], onDelete: Cascade)
-  question        Question      @relation(fields: [questionId], references: [id], onDelete: Cascade)
+  question        Question?     @relation(fields: [questionId], references: [id], onDelete: SetNull)
+  /// Immutable question context retained if the authoring question changes.
+  questionPrompt  String        @default("")
+  correctChoice   String        @default("A")
   selectedChoice  String
   isCorrect       Boolean
   moneyAwarded    Int
@@ -185,14 +193,14 @@ model Report {
   teacher     User     @relation(fields: [teacherId], references: [id], onDelete: Cascade)
   quizSet     QuizSet? @relation(fields: [quizSetId], references: [id], onDelete: SetNull)
   createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
 
   @@unique([teacherId, sessionId])
-  @@index([teacherId, createdAt])
+  @@index([teacherId, createdAt, id])
 }
 
-/// Durable runtime state for the current lightweight game engine. The application
-/// keeps the existing in-memory model for fast real-time simulation, then mirrors
-/// it here so production restarts do not erase classroom data between releases.
+/// Recoverable active-session checkpoint plus legacy migration source. Durable
+/// teacher-library and historical data is authoritative in normalized models.
 model RuntimeSnapshot {
   id        String   @id
   data      Json

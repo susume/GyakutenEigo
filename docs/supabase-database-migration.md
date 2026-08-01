@@ -1,12 +1,20 @@
 # QuizStrike Render PostgreSQL to Supabase Migration
 
-Status: completed 31 July 2026. Render production now uses the Supabase session pooler; the original Render database and reviewed backup remain available for rollback.
+Status: staging rehearsal completed 1 August 2026; production cutover pending.
+
+The 31 July record below reported a completed Supabase cutover. A live Render
+configuration recheck on 1 August found that `gyakuteneigo-api` currently points
+to Render PostgreSQL, not Supabase. Treat the Render database as production
+authority until a new controlled cutover is completed.
 
 ## Decision
 
-**MIGRATION COMPLETED WITH LIVE VALIDATION**
+**STAGING REHEARSAL PASSED; PRODUCTION MIGRATION NOT YET COMPLETED**
 
-The code is compatible with Supabase PostgreSQL and no application rewrite was required. A read-only audit, native backup, restore into an empty Supabase project, exact source/target verification, Prisma migration status check, and production health check all passed.
+The code is compatible with Supabase PostgreSQL. A read-only audit, native
+backup, restore into an empty Supabase staging project, exact source/target
+verification, full normalized migration chain, backfill, idempotency rerun, and
+schema drift check all passed. Production was not modified during this rehearsal.
 
 ## Current architecture
 
@@ -38,11 +46,34 @@ The live source audit must determine whether any additional tables were created 
 
 ### Live migration record (31 July 2026)
 
+This subsection is a historical cutover record. The 1 August configuration
+recheck supersedes its claim about the current production connection.
+
 - Source: Render PostgreSQL 18.4, 2 application tables, 1 `RuntimeSnapshot` row, 5,056 answer records in the JSONB document, and no custom schemas, triggers, routines, enums, or sequences.
 - Backup: `database-backups/quizstrike-render-20260731-095245.dump` (custom-format dump, 392,083 bytes; retained locally under the ignored backup directory).
 - Target: Supabase PostgreSQL 17.6 in `ap-southeast-2`; restore completed in one transaction after excluding only the already-managed `public` schema header.
 - Verification: source and target table checksums, row counts, columns, indexes, portable constraints, migration ledger, and `RuntimeSnapshot.data` checksum matched. PostgreSQL 18 internal `NOT NULL` catalog rows are compared through portable column nullability because Supabase currently runs PostgreSQL 17.
 - Cutover: Render service `gyakuteneigo-api` `DATABASE_URL` was replaced with the tested Supabase session-pooler URL; existing build/start commands and other environment variables were left unchanged. The public health endpoint returned HTTP 200 with `storage: "postgres"` after redeploy.
+
+### Live staging rehearsal (1 August 2026)
+
+- Current production authority: Render PostgreSQL 18.4. The live service
+  `DATABASE_URL` resolves to the Render database host.
+- Production retention risk: the Render database is scheduled to expire on
+  14 August 2026 unless upgraded.
+- Backup: `database-backups/quizstrike-render-20260801-224733.dump`, retained
+  locally under the ignored backup directory and validated with PostgreSQL 18.4
+  tools.
+- Target: a separate free Supabase PostgreSQL 17.6 staging project in
+  `ap-southeast-2`; Data API exposure is disabled.
+- Clone verification: source/target metadata, rows, migration ledger, and logical
+  `RuntimeSnapshot` checksum matched exactly before normalization.
+- Migration: all four repository migrations applied. Prisma migration status is
+  current and the datamodel drift check reports no differences.
+- Backfill: dry run, real run, and idempotency rerun passed with 4 users, 0
+  classes, 0 folders, 8 quiz sets, 288 questions, 73 sessions, 522 players,
+  5,246 answers, and 0 reports; no skips or validation failures.
+- Safety: production configuration and data were not modified.
 
 ### Declared in Prisma but not used by the running repositories
 
@@ -209,9 +240,9 @@ The existing 40-client test covers authenticated Socket.IO joins and gameplay co
 
 The automated application tests above use in-memory persistence. Live validation additionally covered the native backup/restore, Prisma migration status against Supabase, and the production `/health` endpoint reporting PostgreSQL storage. A full teacher/student production smoke session and a post-cutover process-restart exercise remain recommended follow-ups.
 
-## Final production cutover (completed)
+## Final production cutover (pending)
 
-Because QuizStrike has no dual-write or change-data-capture path, a maintenance window is required to prevent writes after the final dump.
+Because QuizStrike has no dual-write or change-data-capture path, a maintenance window is required to prevent writes after the final dump. The following is the required production procedure, not a completed current-state record.
 
 1. A reviewed native backup was created and the source was left untouched.
 2. The dump was restored into the empty Supabase project and verified byte-for-byte at the table/JSONB checksum level.

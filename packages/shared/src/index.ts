@@ -1,4 +1,5 @@
 export type Team = "blue" | "red";
+export * from "./protocol/index.js";
 export type SessionStatus = "waiting" | "active" | "paused" | "ended";
 export type Choice = "A" | "B" | "C" | "D";
 export type GameMode = "flag" | "zombie" | "classic";

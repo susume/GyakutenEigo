@@ -45,7 +45,6 @@ const roundedUnit = new RoundedBoxGeometry(1, 1, 1, 2, 0.12);
 const cylinderUnit = new THREE.CylinderGeometry(0.5, 0.5, 1, 10);
 const coneUnit = new THREE.ConeGeometry(0.5, 1, 8);
 const sphereUnit = new THREE.SphereGeometry(0.5, 10, 7);
-const torusUnit = new THREE.TorusGeometry(0.5, 0.11, 7, 16);
 const createDoubleSidedGeometry = (front: number[]) => {
   const geometry = new THREE.BufferGeometry();
   const back: number[] = [];

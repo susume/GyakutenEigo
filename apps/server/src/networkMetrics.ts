@@ -17,8 +17,8 @@ const payloadBytes = (eventName: string, args: unknown[]) => {
 };
 
 export class NetworkMetrics {
-  private readonly enabled = process.env.NETWORK_DEBUG === "true";
-  private readonly intervalMs = Math.max(10_000, Number(process.env.NETWORK_REPORT_INTERVAL_MS) || 60_000);
+  private readonly enabled: boolean;
+  private readonly intervalMs: number;
   private windowStartedAt = Date.now();
   private readonly totals: Record<Direction, Map<string, EventTotals>> = {
     inbound: new Map(),
@@ -27,7 +27,9 @@ export class NetworkMetrics {
   private readonly transportObservations = new Map<string, number>();
   private reportTimer: ReturnType<typeof setInterval> | undefined;
 
-  constructor() {
+  constructor(options: { enabled?: boolean; intervalMs?: number } = {}) {
+    this.enabled = options.enabled === true;
+    this.intervalMs = Math.max(10_000, options.intervalMs ?? 60_000);
     if (!this.enabled) return;
     this.reportTimer = setInterval(() => this.report(), this.intervalMs);
     this.reportTimer.unref();
@@ -41,6 +43,11 @@ export class NetworkMetrics {
 
     this.recordTransport(socket.conn.transport.name);
     socket.conn.once("upgrade", (transport) => this.recordTransport(transport.name));
+  }
+
+  close() {
+    if (this.reportTimer) clearInterval(this.reportTimer);
+    this.reportTimer = undefined;
   }
 
   private record(direction: Direction, eventName: string, args: unknown[]) {

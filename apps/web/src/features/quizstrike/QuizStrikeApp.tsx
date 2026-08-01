@@ -33,7 +33,7 @@ import {
   WandSparkles,
   Zap
 } from "lucide-react";
-import { io, type Socket } from "socket.io-client";
+import type { Socket } from "socket.io-client";
 import { QRCodeSVG } from "qrcode.react";
 import {
   calculateAccuracy,
@@ -73,6 +73,9 @@ import {
   type FlagPlantedEvent,
   type FreezeStreakAnnouncementEvent,
   FREEZE_STREAK_ANNOUNCEMENTS,
+  FlagPlantedEventSchema,
+  FreezeStreakAnnouncementEventSchema,
+  validateSessionSnapshot,
   type GameSession,
   type PlayerSession,
   type PlayerAppearance,
@@ -85,7 +88,8 @@ import {
   type Team,
   type TeacherUser
 } from "@quizstrike/shared";
-import { ApiError, authApi, fetchDecalAsset, getApiUrl, getTeacherToken, studentApi, teacherApi } from "../../api/client";
+import { ApiError, authApi, fetchDecalAsset, getTeacherToken, studentApi, teacherApi } from "../../api/client";
+import { createMultiplayerSocket } from "../multiplayer/connection";
 import { buildStudentJoinUrl, getJoinCodeFromSearch, modeForRoute, normalizeRoutePath, type AppMode } from "../../navigation";
 import { groupScoreboardRows } from "../../scoreboardGroups";
 import { getModeScoreSummary, getSessionResultText, getZombieCounts } from "../../sessionPresentation";
@@ -139,7 +143,6 @@ const emptyQuestion = {
 };
 
 const choices: Choice[] = ["A", "B", "C", "D"];
-const publicAsset = (path: string) => `${import.meta.env.BASE_URL}${path.replace(/^\//, "")}`;
 const STUDENT_SESSION_STORAGE_KEY = "quizstrike_student_session";
 const STUDENT_APPEARANCE_STORAGE_KEY = "quizstrike_student_appearance_v1";
 const COSMETIC_PROGRESS_STORAGE_KEY = "quizstrike_cosmetic_progress_v1";
@@ -312,7 +315,7 @@ const splitStudyLine = (line: string) => {
 const createGeneratedQuestions = (rawText: string): QuestionDraft[] => {
   const entries = rawText
     .split(/\r?\n/)
-    .map((line) => line.trim().replace(/^\d+[\).]\s*/, ""))
+    .map((line) => line.trim().replace(/^\d+[).]\s*/, ""))
     .filter(Boolean)
     .map(splitStudyLine);
 
@@ -1218,15 +1221,19 @@ function TeacherDashboard({ teacher, onLogout }: { teacher: TeacherUser; onLogou
 
   useEffect(() => {
     if (!selectedSession) return;
-    const socket: Socket = io(getApiUrl());
-    const roomJoinPayload = { code: selectedSession.sessionCode, teacherToken: getTeacherToken() };
+    const teacherToken = getTeacherToken();
+    if (!teacherToken) return;
+    const roomJoinPayload = { code: selectedSession.sessionCode, teacherToken };
+    const socket: Socket = createMultiplayerSocket(roomJoinPayload);
     socket.on("connect", () => {
       setIsSocketReconnecting(false);
-      socket.emit("join_session_room", roomJoinPayload);
     });
     socket.on("connect_error", () => setIsSocketReconnecting(true));
     socket.on("disconnect", () => setIsSocketReconnecting(true));
-    socket.on("session_state", (session: GameSession) => {
+    socket.on("session_state", (payload: unknown) => {
+      const parsed = validateSessionSnapshot(payload);
+      if (!parsed.success) return;
+      const session = parsed.data;
       setIsSocketReconnecting(false);
       setSelectedSession(session);
       setData((current) => ({
@@ -1532,7 +1539,7 @@ function TeacherFolders({
   );
 }
 
-function DashboardHome({ data, onTab }: { data: DashboardPayload; onTab: (tab: "quizzes" | "sessions") => void }) {
+function _DashboardHome({ data, onTab }: { data: DashboardPayload; onTab: (tab: "quizzes" | "sessions") => void }) {
   const activeSession = data.sessions.find((session) => session.status !== "ended");
   const totalQuestions = data.quizSets.reduce((total, quiz) => total + quiz.questions.length, 0);
   const studentsConnected = data.sessions.reduce((total, session) => total + session.players.length, 0);
@@ -3062,9 +3069,11 @@ function StudentExperience({ onExit }: { onExit: () => void }) {
   useEffect(() => {
     if (!session || !player?.id || !playerToken) return;
     const activePlayerId = player.id;
-    const socket = io(getApiUrl());
-    socketRef.current = socket;
     const roomJoinPayload = { code: session.sessionCode, playerId: activePlayerId, playerToken };
+    const socket = createMultiplayerSocket(roomJoinPayload, {
+      onProtocolError: (error) => setFeedback(error.message)
+    });
+    socketRef.current = socket;
     const pendingPositions = new Map<string, {
       x: number;
       y?: number;
@@ -3102,20 +3111,25 @@ function StudentExperience({ onExit }: { onExit: () => void }) {
     };
     socket.on("connect", () => {
       setIsSocketReconnecting(false);
-      socket.emit("join_session_room", roomJoinPayload);
     });
     socket.on("connect_error", () => setIsSocketReconnecting(true));
     socket.on("disconnect", () => {
       if (!removedByTeacher) setIsSocketReconnecting(true);
     });
-    socket.on("flag_planted", (event: FlagPlantedEvent) => {
+    socket.on("flag_planted", (payload: unknown) => {
+      const parsed = FlagPlantedEventSchema.safeParse(payload);
+      if (!parsed.success) return;
+      const event: FlagPlantedEvent = parsed.data;
       gameplayAnnouncements.enqueue({
         eventId: event.eventId,
         announcementKey: "FLAG_PLANTED",
         occurredAt: event.plantedAt
       });
     });
-    socket.on("freeze_streak_announcement", (event: FreezeStreakAnnouncementEvent) => {
+    socket.on("freeze_streak_announcement", (payload: unknown) => {
+      const parsed = FreezeStreakAnnouncementEventSchema.safeParse(payload);
+      if (!parsed.success) return;
+      const event: FreezeStreakAnnouncementEvent = parsed.data;
       const definition = FREEZE_STREAK_ANNOUNCEMENTS[event.streak];
       gameplayAnnouncements.enqueue({
         eventId: event.eventId,
@@ -3125,7 +3139,13 @@ function StudentExperience({ onExit }: { onExit: () => void }) {
       });
       if (definition) setFeedback(`${event.playerName}: ${definition.phrase}`);
     });
-    socket.on("session_state", (nextSession: GameSession) => {
+    socket.on("session_state", (payload: unknown) => {
+      const parsed = validateSessionSnapshot(payload);
+      if (!parsed.success) {
+        setFeedback("The server sent an invalid session update. Reconnecting may help.");
+        return;
+      }
+      const nextSession = parsed.data;
       const previousSession = lastVisualSession;
       const previousLocal = previousSession.players.find((candidate) => candidate.id === activePlayerId);
       const nextLocal = nextSession.players.find((candidate) => candidate.id === activePlayerId);
@@ -4511,7 +4531,7 @@ function GamePreferencesPanel({
   );
 }
 
-function ScoreboardLegacy({ players }: { players: PlayerSession[] }) {
+function _ScoreboardLegacy({ players }: { players: PlayerSession[] }) {
   const sortedPlayers = [...players].sort((a, b) => b.score - a.score || b.correctAnswers - a.correctAnswers);
   const totals = getTeamTotals(players);
   return (

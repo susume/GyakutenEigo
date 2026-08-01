@@ -4,6 +4,8 @@ GyakutenEigo is a browser-based English learning site. Its first hosted game is 
 
 ## Local Setup
 
+Use Node.js 20.19+ or 22.13+. The repository's `.nvmrc` selects Node 22.13.
+
 1. Install dependencies:
 
    ```bash
@@ -29,6 +31,8 @@ GyakutenEigo is a browser-based English learning site. Its first hosted game is 
    ```bash
    npm run dev
    ```
+
+Run `npm run lint`, `npm run typecheck`, and `npm test` before submitting changes.
 
 The frontend runs on `http://localhost:5173` and the backend on `http://localhost:4000`. The public site is `/`, the Quiz Strike host page is `/quiz-strike`, student entry is `/join`, and the arena is `/game`.
 
@@ -61,7 +65,7 @@ See [docs/online-play.md](docs/online-play.md) for the GitHub Pages and Render d
 - Pooled combat, healing, objective, round, heavy-fire, zoom, cooldown, elimination, and results VFX with strict coverage caps
 - Live teacher roster, bots, practice respawn questions, server-validated purchases, and CSV reports
 - Independent weapon/perk loadout slots: buying Warm Vest or Speed Boots preserves the equipped launcher, including Heavy/AWP; living players retain the full loadout between rounds
-- PostgreSQL-backed runtime snapshots when `DATABASE_URL` is configured; in-memory fallback for local development
+- Normalized PostgreSQL teacher/report history plus recoverable session checkpoints when `DATABASE_URL` is configured; in-memory fallback for local development
 
 ## Arena Rendering Architecture
 
@@ -125,8 +129,8 @@ The current baseline is 62 shared tests, 17 server tests, and 63 web unit tests:
 - The environment and character set are code-authored and production-minded, not imported DCC-authored assets.
 - Rooftop and aqueduct routes are readable and collidable, but the player controller still uses mostly flat movement.
 - Free-for-all spawn metadata exists for future support; current live session flows remain team-based.
-- The server is single-instance. Process-local socket bindings, timers, and simulation state require a shared adapter before horizontal scaling.
-- Production persistence currently uses one PostgreSQL `RuntimeSnapshot`, not normalized repositories.
+- The production path remains single-instance/room-affine. Runtime-store, event-bus, join-directory, and fenced-ownership interfaces now isolate process-local state, but Redis-compatible adapters and two-instance tests are still required before horizontal scaling.
+- Durable teacher, quiz, folder, answer-history, session-history, and report data use normalized Prisma models. `RuntimeSnapshot` remains only for recoverable active-session checkpoints and legacy backfill reads.
 
 ## Documentation
 
@@ -138,6 +142,7 @@ The current baseline is 62 shared tests, 17 server tests, and 63 web unit tests:
 - [Character customization Phase 3 integration audit](docs/character-customization-phase-3-testing.md)
 - [Character customization Phase 4 browser and Socket.IO audit](docs/character-customization-phase-4-browser-load.md)
 - [architecture.md](architecture.md): system architecture, runtime ownership, deployment shape, and risks.
+- [Phases 7-10 architecture](docs/phases-7-10-architecture.md): protocol, normalized persistence, runtime-state inventory, scaling foundation, deployment order, and limitations.
 - [docs/art-pass/README.md](docs/art-pass/README.md): visual direction, before/after evidence, and quality counts.
 - [docs/performance/CHROMEBOOK_CERTIFICATION.md](docs/performance/CHROMEBOOK_CERTIFICATION.md): profiling baseline and physical certification matrix.
 

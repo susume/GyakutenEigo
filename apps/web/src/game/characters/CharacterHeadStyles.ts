@@ -300,7 +300,7 @@ const createNinja = (materials: CharacterMaterials) => {
   return group;
 };
 
-const createGreatWhite = (materials: CharacterMaterials) => {
+const createGreatWhite = (_materials: CharacterMaterials) => {
   const group = new THREE.Group();
   add(group, sphere, neutral.shark, [0, 0.02, -0.025], [0.67, 0.6, 0.69]);
   add(group, softSphere, neutral.shark, [0, -0.015, -0.3], [0.55, 0.4, 0.5]);

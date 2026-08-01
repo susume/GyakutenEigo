@@ -102,7 +102,6 @@ const brick = "#705247";
 const concrete = "#737b78";
 const gravel = "#4d5452";
 const dirtyCream = "#b2aa91";
-const timber = "#72503a";
 const warning = "#cf873d";
 const blueStripe = "#3c7f9f";
 const redStripe = "#a94d42";

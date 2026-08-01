@@ -2,10 +2,10 @@
 
 | Snapshot field | Phase 5 destination | Authority during rollout |
 | --- | --- | --- |
-| `users`, `classes`, `quizSets`, `questions` | Existing normalized Prisma models | Runtime cache mirrors normalized writes |
-| `folders` | `Folder` plus `QuizSet.folderId` | Normalized mutation service, runtime cache for active UI |
-| `reports` | `Report` metadata plus `detailJson` | Normalized report repository; legacy snapshot read fallback |
-| `sessions`, players, answers | Existing `GameSession`, `PlayerSession`, and `AnswerLog` models | Runtime state remains authoritative for live simulation |
+| `users`, `classes`, `quizSets`, `questions` | Existing normalized Prisma models | Prisma authority; legacy snapshot fallback read only |
+| `folders` | `Folder` plus `QuizSet.folderId` | Prisma authority; runtime cache for active UI |
+| `reports` | `Report` metadata plus `detailJson` | Normalized report repository; legacy snapshot read fallback only |
+| `sessions`, players, answers | Existing normalized history plus `RoomStateStore` | Room owner is authoritative live; checkpoint snapshot supports recovery |
 | round/objective state | Session runtime state | Not written every frame |
 | transforms, velocity, sockets, timers, streaks | Ephemeral runtime memory | Never persisted per frame |
 
@@ -13,4 +13,18 @@
 unknown snapshot fields by leaving `RuntimeSnapshot` untouched. It reports
 counts and skips malformed or cross-owner records instead of silently coercing
 them into another teacher's data. The migration is additive and does not reset
-or delete production data.
+or delete production data. New snapshot writes contain only recoverable session
+and answer compatibility data; durable teacher-library fields are not dual-written.
+
+## Staging rehearsal (1 August 2026)
+
+The migration was rehearsed on a separate Supabase PostgreSQL 17.6 project made
+from a verified native backup of the live Render PostgreSQL 18.4 database. The
+full migration chain, dry run, real backfill, and idempotency rerun passed. Final
+normalized counts were 4 users, 0 classes, 0 folders, 8 quiz sets, 288 questions,
+73 sessions, 522 players, 5,246 answers, and 0 reports, with no skipped or failed
+records. The legacy `RuntimeSnapshot` remained unchanged, count reconciliation
+passed, and Prisma reported no schema drift.
+
+This was a non-production rehearsal. The Render service remained pointed at its
+Render database throughout.

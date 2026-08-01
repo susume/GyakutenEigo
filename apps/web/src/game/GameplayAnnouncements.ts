@@ -1,5 +1,5 @@
 import { gameAudio, type AudioEventCue } from "./GameAudio.js";
-import type { GameplayAnnouncementKey } from "@quizstrike/shared";
+import { BoundedEventIdCache, type GameplayAnnouncementKey } from "@quizstrike/shared";
 
 export interface GameplayAnnouncementRequest {
   eventId: string;
@@ -120,7 +120,7 @@ export class GameplayAnnouncementManager {
   private readonly now: () => number;
   private readonly playAsset: (path: string, volume: number) => Promise<boolean>;
   private readonly playFallback: (cue: AudioEventCue, subtitle: string) => void | Promise<void>;
-  private readonly seenEventIds = new Set<string>();
+  private readonly seenEventIds: BoundedEventIdCache;
   private readonly queue: QueueItem[] = [];
   private currentAudio: HTMLAudioElement | undefined;
   private isPlaying = false;
@@ -130,6 +130,7 @@ export class GameplayAnnouncementManager {
   constructor(options: GameplayAnnouncementManagerOptions = {}) {
     this.maxQueueSize = Math.max(1, Math.floor(options.maxQueueSize ?? 4));
     this.now = options.now ?? (() => Date.now());
+    this.seenEventIds = new BoundedEventIdCache(128, 2 * 60_000, this.now);
     this.playAsset = options.playAsset ?? ((path, volume) => this.playBrowserAsset(path, volume));
     this.playFallback = options.playFallback ?? ((cue, subtitle) => {
       gameAudio.playEvent(cue);
@@ -156,13 +157,7 @@ export class GameplayAnnouncementManager {
   }
 
   enqueue(request: GameplayAnnouncementRequest) {
-    if (this.seenEventIds.has(request.eventId)) return false;
-    this.seenEventIds.add(request.eventId);
-    while (this.seenEventIds.size > 128) {
-      const oldest = this.seenEventIds.values().next().value as string | undefined;
-      if (!oldest) break;
-      this.seenEventIds.delete(oldest);
-    }
+    if (!this.seenEventIds.accept(request.eventId)) return false;
 
     const definition = GAMEPLAY_ANNOUNCEMENTS[request.announcementKey];
     if (!definition || this.now() - request.occurredAt > definition.maxAgeMs) return false;

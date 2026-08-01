@@ -294,7 +294,7 @@ const stringify = (value) =>
 
 const comparable = (inspection) => ({
   nonPublicTables: inspection.nonPublicTables,
-  tables: inspection.tables.map(({ total_bytes, total_size, ...table }) => table),
+  tables: inspection.tables.map(({ total_bytes: _totalBytes, total_size: _totalSize, ...table }) => table),
   columns: inspection.columns,
   // PostgreSQL 18 exposes NOT NULL declarations as pg_constraint rows, while
   // PostgreSQL 17 (Supabase) represents the same fact in information_schema
@@ -306,7 +306,7 @@ const comparable = (inspection) => ({
   enums: inspection.enums,
   routines: inspection.routines,
   sequences: inspection.sequences,
-  runtimeSnapshots: inspection.runtimeSnapshots.map(({ updated_at, ...snapshot }) => snapshot)
+  runtimeSnapshots: inspection.runtimeSnapshots.map(({ updated_at: _updatedAt, ...snapshot }) => snapshot)
 });
 
 const printInspection = (inspection) => {
