@@ -10,22 +10,18 @@ import {
   getArenaGroundHeight,
   getArenaGroundHeightForPlayer,
   getArenaRecoveryGroundHeight,
-  getArenaBounds,
   getArenaLevelLabel,
   getPlayerMoveSpeedMultiplier,
   getPlayerWeaponId,
   getTeamSpawnForMap,
   getTeamSpawnsForMap,
-  getTeamBaseZones,
-  getCaptureZonesForMap,
-  getSearchRetrieveItemsForMap,
-  getSearchRetrieveDeliveryZonesForMap,
   type ArenaMapId,
   isGearAutoFireEnabled,
   type GameSession,
   type PlayerSession
 } from "@quizstrike/shared";
-import { getArenaMap } from "./arenaMaps";
+import { attachArenaInputListeners } from "./inputHandling";
+import { loadArenaMapContext } from "./mapLoader";
 import {
   FPS_CROUCH_EYE_HEIGHT,
   FPS_JUMP_GRAVITY,
@@ -326,17 +322,19 @@ export default function ArenaPreview({
   const currentPlayerId = currentPlayer?.id ?? "";
   const currentPlayerTeam = currentPlayer?.team ?? "blue";
   const arenaMapId: ArenaMapId = session?.settings.mapId ?? "desert_citadel";
-  const arenaMap = getArenaMap(arenaMapId);
-  const isIronJunction = arenaMapId === "iron_junction";
-  const isDesertCitadel = arenaMapId === "desert_citadel";
-  const isTempleRunoff = arenaMapId === "temple_runoff";
-  const hasMultipleLevels = isIronJunction || isDesertCitadel || isTempleRunoff;
+  const {
+    arenaMap,
+    arenaBounds,
+    teamBaseZones,
+    captureZones,
+    searchRetrieveItems,
+    searchRetrieveDeliveryZones,
+    isIronJunction,
+    isDesertCitadel,
+    isTempleRunoff,
+    hasMultipleLevels
+  } = loadArenaMapContext(arenaMapId);
   const activeQuality = resolveArenaQuality(fallbackQuality ?? quality);
-  const arenaBounds = getArenaBounds(arenaMapId);
-  const teamBaseZones = getTeamBaseZones(arenaMapId);
-  const captureZones = getCaptureZonesForMap(arenaMapId);
-  const searchRetrieveItems = getSearchRetrieveItemsForMap(arenaMapId);
-  const searchRetrieveDeliveryZones = getSearchRetrieveDeliveryZonesForMap(arenaMapId);
   const serverToLocalX = (x: number) => clamp(x, -arenaBounds.limitX, arenaBounds.limitX);
   const serverToLocalZ = (z: number) => clamp(z, -arenaBounds.limitZ, arenaBounds.limitZ);
   const toMiniMapX = (x: number) => ((x + arenaBounds.limitX) / (arenaBounds.limitX * 2)) * MINIMAP_WIDTH;
@@ -1924,39 +1922,21 @@ export default function ArenaPreview({
         setZoomLevel(0);
         fireHeld = false;
       };
-      const verifyPointerLock = window.setInterval(() => {
-        setIsPointerLocked(document.pointerLockElement === renderer.domElement);
-      }, 300);
-
-      document.addEventListener("keydown", onKeyDown, true);
-      document.addEventListener("keyup", onKeyUp, true);
-      window.addEventListener("mousemove", onMouseMove);
-      window.addEventListener("blur", clearKeys);
-      document.addEventListener("pointerlockchange", onPointerLockChange);
-      document.addEventListener("pointerlockerror", onPointerLockError);
-      renderer.domElement.addEventListener("pointerdown", onPointerDown);
-      renderer.domElement.addEventListener("pointerup", onPointerUp);
-      window.addEventListener("pointermove", onTouchPointerMove, { passive: false });
-      window.addEventListener("pointerup", finishTouchPointer);
-      window.addEventListener("pointercancel", onTouchPointerCancel);
-      renderer.domElement.addEventListener("contextmenu", onContextMenu);
-
-      const cleanupControls = () => {
-        window.clearInterval(verifyPointerLock);
-        document.removeEventListener("keydown", onKeyDown, true);
-        document.removeEventListener("keyup", onKeyUp, true);
-        window.removeEventListener("mousemove", onMouseMove);
-        window.removeEventListener("blur", clearKeys);
-        document.removeEventListener("pointerlockchange", onPointerLockChange);
-        document.removeEventListener("pointerlockerror", onPointerLockError);
-        renderer.domElement.removeEventListener("pointerdown", onPointerDown);
-        renderer.domElement.removeEventListener("pointerup", onPointerUp);
-        window.removeEventListener("pointermove", onTouchPointerMove);
-        window.removeEventListener("pointerup", finishTouchPointer);
-        window.removeEventListener("pointercancel", onTouchPointerCancel);
-        renderer.domElement.removeEventListener("contextmenu", onContextMenu);
-        if (document.pointerLockElement === renderer.domElement) document.exitPointerLock();
-      };
+      const cleanupControls = attachArenaInputListeners({
+        rendererElement: renderer.domElement,
+        onKeyDown,
+        onKeyUp,
+        onMouseMove,
+        onBlur: clearKeys,
+        onPointerLockChange,
+        onPointerLockError,
+        onPointerDown,
+        onPointerUp,
+        onTouchPointerMove,
+        onTouchPointerUp: finishTouchPointer,
+        onTouchPointerCancel,
+        onContextMenu
+      });
 
       const updateCamera = (delta = 0) => {
         cameraVisualY = wasGrounded
