@@ -2612,7 +2612,7 @@ app.get("/api/sessions/:code/players/:playerId/rejoin", (req, res) => {
   clearPlayerDisconnectTimer(session, player.id);
   player.connectionState = "connected";
   const question =
-    session.status === "active" && (player.isAlive || session.settings.deadPlayersCanPractice)
+    session.status !== "ended" && (player.isAlive || session.settings.deadPlayersCanPractice)
       ? issueNextQuestion(session, player.id)
       : undefined;
   broadcastSession(session);

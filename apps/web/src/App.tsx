@@ -2786,6 +2786,26 @@ function StudentExperience({ onExit }: { onExit: () => void }) {
   }, [quizOpen, question?.id]);
 
   useEffect(() => {
+    if (!session || !player?.id || !playerToken || question) return;
+    const questionPhase = session.status === "waiting" || session.status === "active" || roundPreparation || zombieSelection;
+    if (!questionPhase || (!player.isAlive && !session.settings.deadPlayersCanPractice)) return;
+
+    let cancelled = false;
+    void studentApi
+      .question(session.sessionCode, player.id, playerToken)
+      .then((payload) => {
+        if (cancelled) return;
+        const data = payload as { question?: PublicQuestion };
+        setQuestion(data.question ?? null);
+      })
+      .catch(() => undefined);
+
+    return () => {
+      cancelled = true;
+    };
+  }, [session?.sessionCode, session?.status, session?.roundTransition?.phase, roundPreparation, zombieSelection, player?.id, player?.isAlive, playerToken, session?.settings.deadPlayersCanPractice, question?.id]);
+
+  useEffect(() => {
     const syncBgm = () => {
       gameAudio.setBgmActive(Boolean(session && player && session.status === "active" && document.visibilityState === "visible"));
     };
