@@ -8,7 +8,7 @@
   "scripts": {
     "dev": "tsc -w --preserveWatchOutput",
     "build": "tsc",
-    "test": "tsx --test \"src/**/*.test.ts\"",
+    "test": "node ../../scripts/run-tests.mjs src",
     "typecheck": "tsc --noEmit"
   },
   "devDependencies": {

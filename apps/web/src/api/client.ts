@@ -148,8 +148,18 @@ export const teacherApi = {
   dashboard: () => api("/api/teacher/dashboard"),
   createClass: (body: { name: string; description?: string }) =>
     api("/api/classes", { method: "POST", body: JSON.stringify(body) }),
-  createQuizSet: (body: { title: string; description?: string; classId?: string }) =>
+  createQuizSet: (body: { title: string; description?: string; classId?: string; folderId?: string }) =>
     api("/api/quiz-sets", { method: "POST", body: JSON.stringify(body) }),
+  renameQuizSet: (id: string, title: string) =>
+    api(`/api/quiz-sets/${id}`, { method: "PATCH", body: JSON.stringify({ title }) }),
+  moveQuizSet: (id: string, folderId?: string) =>
+    api(`/api/quiz-sets/${id}/move`, { method: "POST", body: JSON.stringify({ folderId: folderId ?? null }) }),
+  deleteQuizSet: (id: string) => api(`/api/quiz-sets/${id}`, { method: "DELETE" }),
+  createFolder: (body: { name: string; parentId?: string }) =>
+    api("/api/folders", { method: "POST", body: JSON.stringify(body) }),
+  updateFolder: (id: string, body: { name?: string; parentId?: string | null }) =>
+    api(`/api/folders/${id}`, { method: "PATCH", body: JSON.stringify(body) }),
+  deleteFolder: (id: string) => api(`/api/folders/${id}`, { method: "DELETE" }),
   getQuizSet: (id: string) => api(`/api/quiz-sets/${id}`),
   addQuestion: (quizSetId: string, body: Record<string, string>) =>
     api(`/api/quiz-sets/${quizSetId}/questions`, { method: "POST", body: JSON.stringify(body) }),
@@ -176,6 +186,9 @@ export const teacherApi = {
     api(`/api/sessions/${code}/decals/${assetId}`, { method: "DELETE" }),
   resetAppearances: (code: string) => api(`/api/sessions/${code}/appearance/reset`, { method: "POST" }),
   report: (code: string) => api(`/api/sessions/${code}/report`),
+  reports: () => api("/api/reports"),
+  reportById: (id: string) => api(`/api/reports/${id}`),
+  deleteReport: (id: string) => api(`/api/reports/${id}`, { method: "DELETE" }),
   reportCsv: async (code: string) => {
     const token = getToken();
     let response: Response;

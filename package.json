@@ -18,6 +18,7 @@
     "prisma:migrate": "prisma migrate dev",
     "prisma:deploy": "prisma migrate deploy",
     "prisma:studio": "prisma studio",
+    "db:backfill": "node scripts/database/backfill-runtime-snapshot.mjs",
     "db:audit:source": "powershell -NoProfile -ExecutionPolicy Bypass -File scripts/database/migrate-render-to-supabase.ps1 -Action AuditSource",
     "db:target:empty": "powershell -NoProfile -ExecutionPolicy Bypass -File scripts/database/migrate-render-to-supabase.ps1 -Action AssertTargetEmpty",
     "db:verify": "node scripts/database/audit-and-compare.mjs --checksums"

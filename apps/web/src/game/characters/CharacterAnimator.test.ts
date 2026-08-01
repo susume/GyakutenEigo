@@ -1,7 +1,12 @@
 import assert from "node:assert/strict";
 import test from "node:test";
 import * as THREE from "three";
-import { CharacterAnimator, type CharacterAnimationParts } from "./CharacterAnimator";
+import {
+  CharacterAnimator,
+  getLocomotionState,
+  horizontalSpeedFromVelocity,
+  type CharacterAnimationParts
+} from "./CharacterAnimator";
 
 const makeParts = (): CharacterAnimationParts => ({
   root: new THREE.Group(),
@@ -98,18 +103,39 @@ test("walk, sprint, crouch, and aim keep connected playable poses", () => {
   const sprint = new CharacterAnimator();
   const crouch = new CharacterAnimator();
   const aim = new CharacterAnimator();
+  let maxWalkLegSwing = 0;
+  let maxSprintLegSwing = 0;
   for (let frame = 0; frame < 45; frame += 1) {
     const elapsed = frame / 60;
     walk.update(walkParts, { delta: 1 / 60, elapsed, speed: 3.2, forwardSpeed: 3.2, alive: true });
-    sprint.update(sprintParts, { delta: 1 / 60, elapsed, speed: 5.4, forwardSpeed: 5.4, alive: true });
+    sprint.update(sprintParts, { delta: 1 / 60, elapsed, speed: 14.8, forwardSpeed: 14.8, alive: true });
     crouch.update(crouchParts, { delta: 1 / 60, elapsed, speed: 0, alive: true, crouching: true });
     aim.update(aimParts, { delta: 1 / 60, elapsed, speed: 0, alive: true, aimPitch: -0.24 });
+    maxWalkLegSwing = Math.max(maxWalkLegSwing, Math.abs(walkParts.leftLeg.rotation.x));
+    maxSprintLegSwing = Math.max(maxSprintLegSwing, Math.abs(sprintParts.leftLeg.rotation.x));
   }
-  assert.ok(Math.abs(walkParts.leftLeg.rotation.x) > 0.08);
-  assert.ok(Math.abs(sprintParts.leftLeg.rotation.x) >= Math.abs(walkParts.leftLeg.rotation.x));
+  assert.ok(maxWalkLegSwing > 0.04);
+  assert.ok(maxSprintLegSwing > 0.25, `sprint swing ${maxSprintLegSwing}`);
   assert.ok(crouchParts.root.position.y < -0.24);
   assert.ok(crouchParts.leftShin.rotation.x > 0.7);
   assert.ok(aimParts.head.rotation.x < -0.2);
+});
+
+test("locomotion state uses planar speed and ignores vertical velocity", () => {
+  assert.equal(horizontalSpeedFromVelocity(3, 4), 5);
+  assert.equal(getLocomotionState(0.1), "idle");
+  assert.equal(getLocomotionState(5.4), "walk");
+  assert.equal(getLocomotionState(14.8), "run");
+});
+
+test("gait phase advances with distance and stops while idle", () => {
+  const animator = new CharacterAnimator();
+  const parts = makeParts();
+  animator.update(parts, { delta: 0.1, elapsed: 10, speed: 5, velocityX: 5, velocityZ: 0, alive: true });
+  const movingPhase = animator.currentLocomotionPhase;
+  animator.update(parts, { delta: 0.1, elapsed: 100, speed: 0, velocityX: 0, velocityZ: 0, alive: true });
+  assert.ok(movingPhase > 0);
+  assert.equal(animator.currentLocomotionPhase, movingPhase);
 });
 
 test("jump and respawn cues preserve a readable connected silhouette", () => {

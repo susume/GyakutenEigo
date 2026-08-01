@@ -32,7 +32,9 @@ model User {
   role         UserRole      @default(teacher)
   classes      Class[]
   quizSets     QuizSet[]
+  folders      Folder[]
   sessions     GameSession[]
+  reports      Report[]
   createdAt    DateTime      @default(now())
   updatedAt    DateTime      @updatedAt
 }
@@ -53,31 +55,52 @@ model QuizSet {
   id          String        @id @default(cuid())
   teacherId   String
   classId     String?
+  folderId    String?
   teacher     User          @relation(fields: [teacherId], references: [id], onDelete: Cascade)
   class       Class?        @relation(fields: [classId], references: [id], onDelete: SetNull)
+  folder      Folder?       @relation(fields: [folderId], references: [id], onDelete: SetNull)
   title       String
   description String?
   questions   Question[]
   sessions    GameSession[]
+  reports     Report[]
   createdAt   DateTime      @default(now())
   updatedAt   DateTime      @updatedAt
+
+  @@index([teacherId, folderId])
+}
+
+model Folder {
+  id        String    @id @default(cuid())
+  teacherId String
+  parentId  String?
+  teacher   User      @relation(fields: [teacherId], references: [id], onDelete: Cascade)
+  parent    Folder?   @relation("FolderHierarchy", fields: [parentId], references: [id], onDelete: Cascade)
+  children  Folder[]  @relation("FolderHierarchy")
+  quizSets  QuizSet[]
+  name      String
+  createdAt DateTime  @default(now())
+  updatedAt DateTime  @updatedAt
+
+  @@unique([teacherId, parentId, name])
+  @@index([teacherId, parentId])
 }
 
 model Question {
-  id          String      @id @default(cuid())
-  quizSetId   String
-  quizSet     QuizSet     @relation(fields: [quizSetId], references: [id], onDelete: Cascade)
-  prompt      String
-  choiceA     String
-  choiceB     String
-  choiceC     String
-  choiceD     String
+  id            String      @id @default(cuid())
+  quizSetId     String
+  quizSet       QuizSet     @relation(fields: [quizSetId], references: [id], onDelete: Cascade)
+  prompt        String
+  choiceA       String
+  choiceB       String
+  choiceC       String
+  choiceD       String
   correctChoice String
-  explanation String?
-  difficulty  String?
-  answerLogs  AnswerLog[]
-  createdAt   DateTime    @default(now())
-  updatedAt   DateTime    @updatedAt
+  explanation   String?
+  difficulty    String?
+  answerLogs    AnswerLog[]
+  createdAt     DateTime    @default(now())
+  updatedAt     DateTime    @updatedAt
 }
 
 model GameSession {
@@ -103,19 +126,19 @@ model GameSession {
 }
 
 model PlayerSession {
-  id             String       @id @default(cuid())
+  id             String      @id @default(cuid())
   gameSessionId  String
-  gameSession    GameSession  @relation(fields: [gameSessionId], references: [id], onDelete: Cascade)
+  gameSession    GameSession @relation(fields: [gameSessionId], references: [id], onDelete: Cascade)
   nickname       String
   team           Team
-  money          Int          @default(0)
-  isAlive        Boolean      @default(true)
-  score          Int          @default(0)
-  correctAnswers Int          @default(0)
-  wrongAnswers   Int          @default(0)
+  money          Int         @default(0)
+  isAlive        Boolean     @default(true)
+  score          Int         @default(0)
+  correctAnswers Int         @default(0)
+  wrongAnswers   Int         @default(0)
   socketId       String?
-  gear           String       @default("starter_blaster")
-  joinedAt       DateTime     @default(now())
+  gear           String      @default("starter_blaster")
+  joinedAt       DateTime    @default(now())
   leftAt         DateTime?
   answerLogs     AnswerLog[]
 
@@ -138,13 +161,33 @@ model AnswerLog {
 }
 
 model RoundLog {
-  id            String       @id @default(cuid())
+  id            String      @id @default(cuid())
   gameSessionId String
-  gameSession   GameSession  @relation(fields: [gameSessionId], references: [id], onDelete: Cascade)
+  gameSession   GameSession @relation(fields: [gameSessionId], references: [id], onDelete: Cascade)
   roundNumber   Int
   winningTeam   Team?
-  startedAt     DateTime     @default(now())
+  startedAt     DateTime    @default(now())
   endedAt       DateTime?
+}
+
+/// Normalized teacher-facing report metadata and an immutable report detail snapshot.
+/// Keeping detailJson together makes report reads atomic while avoiding the runtime
+/// snapshot's unbounded teacher-library JSON blob.
+model Report {
+  id          String   @id @default(cuid())
+  teacherId   String
+  sessionId   String
+  sessionCode String
+  quizSetId   String?
+  quizSetName String
+  displayName String
+  detailJson  Json
+  teacher     User     @relation(fields: [teacherId], references: [id], onDelete: Cascade)
+  quizSet     QuizSet? @relation(fields: [quizSetId], references: [id], onDelete: SetNull)
+  createdAt   DateTime @default(now())
+
+  @@unique([teacherId, sessionId])
+  @@index([teacherId, createdAt])
 }
 
 /// Durable runtime state for the current lightweight game engine. The application

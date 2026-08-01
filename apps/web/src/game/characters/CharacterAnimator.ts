@@ -23,6 +23,9 @@ export interface CharacterAnimationState {
   delta?: number;
   elapsed: number;
   speed: number;
+  /** Raw planar velocity components, when available from interpolation. */
+  velocityX?: number;
+  velocityZ?: number;
   forwardSpeed?: number;
   strafeSpeed?: number;
   turnSpeed?: number;
@@ -34,6 +37,23 @@ export interface CharacterAnimationState {
 }
 
 export type CharacterAnimationCue = "fire" | "hit" | "respawn" | "jump" | "land" | "flag_plant" | "flag_capture" | "victory" | "defeat";
+
+export type LocomotionState = "idle" | "walk" | "run";
+
+export const horizontalSpeedFromVelocity = (velocityX: number, velocityZ: number) =>
+  Math.sqrt(velocityX * velocityX + velocityZ * velocityZ);
+
+export const getLocomotionState = (
+  horizontalSpeed: number,
+  thresholds: { idle?: number; run?: number } = {}
+): LocomotionState => {
+  const safeSpeed = Number.isFinite(horizontalSpeed) ? Math.max(0, horizontalSpeed) : 0;
+  const idleThreshold = thresholds.idle ?? 0.35;
+  const runThreshold = thresholds.run ?? 12.2;
+  if (safeSpeed < idleThreshold) return "idle";
+  if (safeSpeed >= runThreshold) return "run";
+  return "walk";
+};
 
 const cueDuration: Record<CharacterAnimationCue, number> = {
   fire: 0.24,
@@ -52,7 +72,9 @@ type ActiveCue = { kind: CharacterAnimationCue; remaining: number; duration: num
 export class CharacterAnimator {
   private fireKick = 0;
   private gaitBlend = 0;
+  private runBlend = 0;
   private crouchBlend = 0;
+  private locomotionPhase = 0;
   private cue?: ActiveCue;
   private readonly ikTarget = new THREE.Vector3();
   private readonly ikShoulder = new THREE.Vector3();
@@ -163,6 +185,10 @@ export class CharacterAnimator {
     return Boolean(this.cue);
   }
 
+  get currentLocomotionPhase() {
+    return this.locomotionPhase;
+  }
+
   trigger(kind: CharacterAnimationCue) {
     const duration = cueDuration[kind];
     this.cue = { kind, duration, remaining: duration };
@@ -196,28 +222,42 @@ export class CharacterAnimator {
 
     const delta = THREE.MathUtils.clamp(state.delta ?? 1 / 60, 1 / 240, 0.05);
     const locomotionResponse = 1 - Math.exp(-delta * 10);
+    const planarSpeed = horizontalSpeedFromVelocity(
+      state.velocityX ?? state.forwardSpeed ?? state.speed,
+      state.velocityZ ?? state.strafeSpeed ?? 0
+    );
+    const locomotionState = getLocomotionState(planarSpeed);
+    const gaitTarget = THREE.MathUtils.clamp((planarSpeed - 0.35) / 10.45, 0, 1);
+    const runTarget = locomotionState === "run"
+      ? THREE.MathUtils.clamp((planarSpeed - 12.2) / 2.6, 0, 1)
+      : 0;
     this.gaitBlend = THREE.MathUtils.lerp(
       this.gaitBlend,
-      THREE.MathUtils.clamp(Math.abs(state.speed) / 4.5, 0, 1),
+      gaitTarget,
       locomotionResponse
     );
+    this.runBlend = THREE.MathUtils.lerp(this.runBlend, runTarget, 1 - Math.exp(-delta * 8));
     this.crouchBlend = THREE.MathUtils.lerp(
       this.crouchBlend,
       state.crouching ? 1 : 0,
       1 - Math.exp(-delta * 14)
     );
+    // Advance the gait from distance travelled, rather than wall-clock time.
+    // This keeps remote feet planted when interpolation slows or packets arrive unevenly.
+    const strideLength = THREE.MathUtils.lerp(3.25, 4.05, this.runBlend);
+    this.locomotionPhase += (planarSpeed * delta / strideLength) * Math.PI * 2;
     const strafeLean = THREE.MathUtils.clamp((state.strafeSpeed ?? 0) * -0.028, -0.18, 0.18);
     const turnLean = THREE.MathUtils.clamp((state.turnSpeed ?? 0) * -0.045, -0.16, 0.16);
     const backwards = (state.forwardSpeed ?? state.speed) < -0.25 ? -1 : 1;
     parts.root.rotation.z = THREE.MathUtils.lerp(parts.root.rotation.z, strafeLean + turnLean, locomotionResponse);
-    const cycle = state.elapsed * THREE.MathUtils.lerp(2.1, 10.4, this.gaitBlend);
-    const gaitBob = Math.abs(Math.cos(cycle)) * 0.055 * this.gaitBlend;
+    const cycle = this.locomotionPhase;
+    const gaitBob = Math.abs(Math.cos(cycle)) * THREE.MathUtils.lerp(0.035, 0.075, this.runBlend) * this.gaitBlend;
     parts.root.position.y = THREE.MathUtils.lerp(
       parts.root.position.y,
       -0.3 * this.crouchBlend + gaitBob,
       1 - Math.exp(-delta * 12)
     );
-    const stride = Math.min(1.22, Math.abs(state.speed) * 0.145) * this.gaitBlend;
+    const stride = Math.min(1.22, planarSpeed * THREE.MathUtils.lerp(0.105, 0.14, this.runBlend)) * this.gaitBlend;
     const swing = Math.sin(cycle) * stride * backwards;
     const oppositeSwing = Math.sin(cycle + Math.PI);
     const breath = Math.sin(state.elapsed * 2.15) * 0.026 * (1 - this.gaitBlend * 0.7);
@@ -244,8 +284,8 @@ export class CharacterAnimator {
       THREE.MathUtils.lerp(Math.max(0, swing) * 0.76, 0.92, this.crouchBlend),
       0.2
     );
-    parts.leftLeg.position.y = 0.62 + Math.max(0, oppositeSwing) * Math.min(0.1, state.speed * 0.008);
-    parts.rightLeg.position.y = 0.62 + Math.max(0, -oppositeSwing) * Math.min(0.1, state.speed * 0.008);
+    parts.leftLeg.position.y = 0.62 + Math.max(0, oppositeSwing) * Math.min(0.1, planarSpeed * 0.008);
+    parts.rightLeg.position.y = 0.62 + Math.max(0, -oppositeSwing) * Math.min(0.1, planarSpeed * 0.008);
     parts.leftArm.rotation.x = THREE.MathUtils.lerp(
       parts.leftArm.rotation.x,
       state.carryingObjective ? -0.72 : 0.46 - swing * 0.08,
@@ -268,8 +308,8 @@ export class CharacterAnimator {
       0.18
     );
     parts.rightForearm.rotation.z = THREE.MathUtils.lerp(parts.rightForearm.rotation.z, -0.22, 0.18);
-    parts.torso.rotation.x = breath + this.gaitBlend * 0.075 + this.crouchBlend * 0.12;
-    parts.torso.rotation.z = Math.sin(cycle * 0.5) * 0.05 * this.gaitBlend;
+    parts.torso.rotation.x = breath + this.gaitBlend * THREE.MathUtils.lerp(0.055, 0.09, this.runBlend) + this.crouchBlend * 0.12;
+    parts.torso.rotation.z = Math.sin(cycle * 0.5) * THREE.MathUtils.lerp(0.035, 0.06, this.runBlend) * this.gaitBlend;
     const turnTwist = THREE.MathUtils.clamp((state.turnSpeed ?? 0) * 0.055, -0.2, 0.2);
     parts.torso.rotation.y = THREE.MathUtils.lerp(parts.torso.rotation.y, torsoTwist + turnTwist, locomotionResponse);
     parts.head.rotation.x = THREE.MathUtils.lerp(

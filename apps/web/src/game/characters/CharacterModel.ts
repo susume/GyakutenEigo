@@ -30,6 +30,8 @@ export interface CharacterModelUpdate {
   delta: number;
   elapsed: number;
   speed: number;
+  velocityX?: number;
+  velocityZ?: number;
   forwardSpeed?: number;
   strafeSpeed?: number;
   turnSpeed?: number;
@@ -158,11 +160,11 @@ export class CharacterModel {
     });
   }
 
-  update({ camera, delta, elapsed, speed, forwardSpeed, strafeSpeed, turnSpeed, alive, aimPitch, firing, crouching, carryingObjective }: CharacterModelUpdate) {
+  update({ camera, delta, elapsed, speed, velocityX, velocityZ, forwardSpeed, strafeSpeed, turnSpeed, alive, aimPitch, firing, crouching, carryingObjective }: CharacterModelUpdate) {
     const lodState = this.lod.update(this.root, camera);
     if (lodState.shouldAnimate || this.animator.hasActiveCue) {
       this.root.position.y = this.animatedLocalY;
-      this.animator.update(this.parts, { delta, elapsed, speed, forwardSpeed, strafeSpeed, turnSpeed, alive, aimPitch, firing, crouching, carryingObjective });
+      this.animator.update(this.parts, { delta, elapsed, speed, velocityX, velocityZ, forwardSpeed, strafeSpeed, turnSpeed, alive, aimPitch, firing, crouching, carryingObjective });
       this.animatedLocalY = this.root.position.y;
       this.audio.update(speed, delta);
     }

@@ -3459,6 +3459,37 @@ body:has(.waiting-game-layout) {
   }
 }
 
+/* Teacher library and saved report controls */
+.folders-heading p { margin:4px 0 0; color:#666; font-size:.9rem; }
+.folder-heading-actions { display:flex; flex-wrap:wrap; gap:8px; }
+.folder-heading-actions .folder-new { display:inline-flex; align-items:center; gap:6px; min-width:0; }
+.folder-breadcrumbs { display:flex; align-items:center; flex-wrap:wrap; gap:5px; margin:0 10px 12px; color:#666; }
+.folder-breadcrumbs span { display:inline-flex; align-items:center; gap:5px; }
+.folder-breadcrumbs button { display:inline-flex; align-items:center; gap:5px; min-height:28px; border:0; background:transparent; color:#444; padding:4px 7px; font-weight:700; }
+.folder-breadcrumbs button.active { border-radius:999px; background:#7448bb; color:#fff; }
+.folder-chip-item { display:flex; align-items:center; gap:2px; border-radius:999px; background:#e7e7e7; }
+.folder-chip-item > button:first-child { display:inline-flex; align-items:center; gap:5px; }
+.folder-chip-item .folder-chip-action { min-height:23px; border-radius:999px; background:#d5d5d5; padding:2px 7px; font-size:.68rem; }
+.folder-chip-item .folder-chip-action.danger { display:grid; place-items:center; padding:2px 6px; color:#9c2020; }
+.folder-library-note { color:#666; font-size:.82rem; }
+.folder-list-toolbar { display:flex; justify-content:space-between; align-items:center; gap:12px; margin:-12px 0 12px; color:#666; font-size:.8rem; }
+.folder-list-toolbar select { max-width:260px; }
+.folder-quiz-row.is-dragged { opacity:.55; border-style:dashed; }
+.folder-row-actions .delete-set { display:inline-flex; align-items:center; justify-content:center; gap:5px; background:#a62d2d; }
+.saved-reports { margin:20px 0; border:1px solid #e4e4e4; border-radius:8px; background:#fff; padding:16px; }
+.saved-reports .panel-title { display:flex; justify-content:space-between; align-items:center; gap:12px; }
+.saved-reports .panel-title h3 { margin:0; }
+.saved-report-row { display:flex; align-items:center; gap:8px; border-top:1px solid #eee; padding:9px 0; }
+.saved-report-row.active { background:#f7f2ff; }
+.saved-report-open { display:grid; flex:1; gap:3px; border:0; background:transparent; padding:5px; text-align:left; }
+.saved-report-open small { color:#666; }
+.saved-report-delete { display:grid; place-items:center; min-width:34px; min-height:34px; border:1px solid #a62d2d; background:#fff; color:#a62d2d; }
+@media (max-width:700px) {
+  .folders-heading { align-items:flex-start; flex-direction:column; gap:12px; }
+  .folder-heading-actions { width:100%; }
+  .folder-heading-actions button { flex:1; }
+}
+
 /* Final teacher-workspace cascade: keep the live-game redesign above legacy screenshot styles. */
 body .workspace {
   width: min(1180px, calc(100% - 40px));
@@ -6652,6 +6683,28 @@ body:has(.game-layout) .topbar {
 .arena-objective-strip .objective-primary {
   flex: 1 1 280px;
   white-space: normal;
+}
+
+.arena-objective-strip .flag-objective-countdown {
+  display: inline-flex;
+  flex: 0 0 auto;
+  align-items: center;
+  gap: 5px;
+  border-color: rgba(251, 191, 36, .58);
+  color: #fef3c7;
+  white-space: nowrap;
+}
+
+.arena-objective-strip .flag-objective-countdown.urgent {
+  border-color: rgba(251, 113, 133, .8);
+  background: rgba(127, 29, 29, .88);
+  color: #ffe4e6;
+  animation: flag-countdown-pulse 720ms ease-in-out infinite alternate;
+}
+
+@keyframes flag-countdown-pulse {
+  from { box-shadow: 0 0 0 rgba(251, 113, 133, 0); }
+  to { box-shadow: 0 0 18px rgba(251, 113, 133, .32); }
 }
 
 .arena-objective-strip .mode-pill {
