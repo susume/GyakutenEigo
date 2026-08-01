@@ -23,7 +23,6 @@ import {
   RefreshCw,
   Settings,
   Shield,
-  ShoppingBag,
   Snowflake,
   Target,
   Timer,
@@ -55,10 +54,7 @@ import {
   IRON_JUNCTION_OVERPASS_LEVEL_Y,
   TEMPLE_RUNOFF_MAIN_LEVEL_Y,
   TEMPLE_RUNOFF_UPPER_LEVEL_Y,
-  getPlayerPerks,
-  getPlayerWeaponId,
   getPlayerWeaponIdForMode,
-  isWeaponGearId,
   RESPAWN_CORRECT_ANSWERS_REQUIRED,
   getRoundRemainingSeconds,
   isRoundPreparationPhase,
@@ -68,7 +64,6 @@ import {
   type ArenaMapId,
   type BotDifficulty,
   type Choice,
-  type GameAnnouncement,
   type GameEvent,
   type FlagPlantedEvent,
   type FreezeStreakAnnouncementEvent,
@@ -91,10 +86,9 @@ import {
 import { ApiError, authApi, fetchDecalAsset, getTeacherToken, studentApi, teacherApi } from "../../api/client";
 import { createMultiplayerSocket } from "../multiplayer/connection";
 import { buildStudentJoinUrl, getJoinCodeFromSearch, modeForRoute, normalizeRoutePath, type AppMode } from "../../navigation";
-import { groupScoreboardRows } from "../../scoreboardGroups";
 import { getModeScoreSummary, getSessionResultText, getZombieCounts } from "../../sessionPresentation";
 import { formatStudentJoinError } from "../../studentJoinErrors";
-import { getShopShortcut, getShopShortcutKey } from "../../shopShortcuts";
+import { getShopShortcut } from "../../shopShortcuts";
 import { sendStudentCommand } from "../../studentCommandTransport";
 import { StatusMessages } from "../../ui/StatusMessages";
 import TeacherDecalGallery from "../../ui/TeacherDecalGallery";
@@ -115,6 +109,13 @@ import {
   shouldAutoOpenRespawnPractice,
   type IncomingHitDirection
 } from "../../studentCombatFeedback";
+import ArenaLoading from "./shared/ArenaLoading";
+import GameAnnouncementOverlay from "./shared/GameAnnouncementOverlay";
+import BuyPanel from "./student/BuyPanel";
+import EventFeed from "./student/EventFeed";
+import GamePreferencesPanel from "./student/GamePreferencesPanel";
+import QuizPanel from "./student/QuizPanel";
+import Scoreboard from "./student/Scoreboard";
 
 const ArenaPreview = lazy(() => import("../../game/ArenaPreview"));
 const CharacterCreator = lazy(() => import("../../ui/PremiumCharacterCreator"));
@@ -594,58 +595,6 @@ function useFlagRemainingSeconds(session: GameSession | null) {
 
   if (expiresAtMs === undefined) return 0;
   return Math.max(0, Math.ceil((expiresAtMs - (clientNowMs + serverOffsetMs)) / 1000));
-}
-
-function GameAnnouncementOverlay({
-  announcement,
-  serverTime
-}: {
-  announcement?: GameAnnouncement;
-  serverTime?: string;
-}) {
-  const [visible, setVisible] = useState(Boolean(announcement));
-
-  useEffect(() => {
-    if (!announcement) {
-      setVisible(false);
-      return;
-    }
-    if (!announcement.expiresAt) {
-      setVisible(true);
-      return;
-    }
-
-    const serverTimeMs = serverTime ? Date.parse(serverTime) : Number.NaN;
-    const serverOffsetMs = Number.isFinite(serverTimeMs) ? serverTimeMs - Date.now() : 0;
-    const remainingMs = Date.parse(announcement.expiresAt) - (Date.now() + serverOffsetMs);
-    setVisible(remainingMs > 0);
-    if (remainingMs <= 0) return;
-    const timeout = window.setTimeout(() => setVisible(false), remainingMs);
-    return () => window.clearTimeout(timeout);
-  }, [announcement?.id, announcement?.expiresAt, serverTime]);
-
-  if (!announcement || !visible) return null;
-  return (
-    <div className={`game-announcement game-announcement-${announcement.kind}`} role="alert" aria-live="assertive" aria-atomic="true">
-      <div className="game-announcement-card">
-        <span>{announcement.kind === "game_over" ? "Final result" : announcement.kind === "round_result" ? "Round complete" : announcement.kind === "buy_phase" || announcement.kind === "preparation" ? "Prepare" : "Get ready"}</span>
-        <h2>{announcement.title}</h2>
-        <p>{announcement.message}</p>
-        {announcement.detail && <strong>{announcement.detail}</strong>}
-      </div>
-    </div>
-  );
-}
-
-function ArenaLoading({ label = "Loading arena" }: { label?: string }) {
-  return (
-    <div className="arena-frame arena-loading" role="status" aria-live="polite">
-      <div className="arena-canvas">
-        <strong>{label}</strong>
-        <span>Preparing the fast web player...</span>
-      </div>
-    </div>
-  );
 }
 
 export default function App() {
@@ -4306,365 +4255,3 @@ function StudentExperience({ onExit }: { onExit: () => void }) {
   );
 }
 
-function QuizPanel({
-  question,
-  player,
-  session,
-  onAnswer,
-  answeringChoice
-}: {
-  question: PublicQuestion | null;
-  player: PlayerSession;
-  session: GameSession;
-  onAnswer: (choice: Choice) => void;
-  answeringChoice: Choice | null;
-}) {
-  if (!question) return <div className="panel"><p>No quiz question is available yet.</p></div>;
-  const reward = session.settings.gameMode === "zombie" && player.role !== "zombie"
-    ? `+${ZOMBIE_HUMAN_CORRECT_ENERGY} running energy`
-    : player.isAlive || session.settings.deadPlayersEarnMoney
-    ? `$${session.settings.correctAnswerReward}`
-    : session.settings.deadPlayersCanPractice
-      ? `Respawn ${player.respawnCorrectAnswers ?? 0}/${RESPAWN_CORRECT_ANSWERS_REQUIRED}`
-      : "Practice disabled";
-  const labels = {
-    A: question.choiceA,
-    B: question.choiceB,
-    C: question.choiceC,
-    D: question.choiceD
-  };
-  return (
-    <div className="panel quiz-panel">
-      <div className="panel-title">
-        <h2>Quiz Panel</h2>
-        <span>{reward}</span>
-      </div>
-      <p className="menu-timer-note">The round timer continues while this panel is open.</p>
-      <p className="question-text">{question.prompt}</p>
-      <div className="answer-grid">
-        {choices.map((choice, index) => (
-          <button key={choice} onClick={() => onAnswer(choice)} disabled={Boolean(answeringChoice)}>
-            <strong>{index + 1}</strong>
-            {answeringChoice === choice ? "Working..." : labels[choice]}
-          </button>
-        ))}
-      </div>
-    </div>
-  );
-}
-
-function BuyPanel({
-  player,
-  session,
-  onBuy,
-  onBuySnowballs,
-  buyingGearId,
-  isBuyingSnowballs,
-  buyPhaseSeconds
-}: {
-  player: PlayerSession;
-  session: GameSession;
-  onBuy: (gearId: string) => void;
-  onBuySnowballs: () => void;
-  buyingGearId: string | null;
-  isBuyingSnowballs: boolean;
-  buyPhaseSeconds?: number;
-}) {
-  const GearGlyph = ({ gearId }: { gearId: string }) => {
-    if (gearId === "starter_blaster") return <span className="gear-glyph launcher-starter" aria-hidden="true" />;
-    if (gearId === "quick_blaster") return <span className="gear-glyph launcher-quick" aria-hidden="true" />;
-    if (gearId === "power_blaster") return <span className="gear-glyph launcher-heavy" aria-hidden="true" />;
-    return <ShoppingBag size={18} aria-hidden="true" />;
-  };
-
-  const snowballPrice = session.settings.snowballPackPrice;
-  const snowballCount = session.settings.snowballsPerPack;
-  const isBuyingGear = Boolean(buyingGearId);
-  const isZombieMode = session.settings.gameMode === "zombie";
-  const isZombieHuman = session.settings.gameMode === "zombie" && player.role !== "zombie";
-  const gearLockReason = (cost: number) => {
-    if (!player.isAlive) return "Round only";
-    if (player.money < cost) return `Need ${formatMoney(cost - player.money)}`;
-    return "Base required";
-  };
-  return (
-    <div className="panel buy-panel">
-      <div className="panel-title">
-        <h2>{buyPhaseSeconds === undefined ? "Buy Menu" : `Preparation · ${buyPhaseSeconds}s`}</h2>
-        <span>{formatMoney(player.money)}</span>
-      </div>
-      <p className="menu-timer-note">{buyPhaseSeconds === undefined
-        ? "The round timer continues while this menu is open."
-        : "Press Q to answer questions for more money before the round starts."}</p>
-      <p className="buy-shortcut-help">Press 1–5 to buy instantly. Press B to open or close this menu.</p>
-      <button
-        className="gear-row"
-        onClick={onBuySnowballs}
-        aria-keyshortcuts="1"
-        disabled={isZombieHuman || !player.isAlive || player.money < snowballPrice || isBuyingSnowballs || isBuyingGear}
-      >
-        <kbd className="buy-shortcut-key">1</kbd>
-        <GearGlyph gearId="snowballs" />
-        <span>
-          <strong>{isBuyingSnowballs ? "Working..." : `${snowballCount} Snowballs`}</strong>
-          <small>Restock ammunition anywhere on the map.</small>
-          <small className="gear-status">{isZombieHuman ? "Zombies only" : player.money < snowballPrice ? `Need ${formatMoney(snowballPrice - player.money)} more` : player.isAlive ? "Ready to buy" : "Available next round"}</small>
-        </span>
-        <em>{formatMoney(snowballPrice)}</em>
-      </button>
-      {GEAR_ITEMS.filter((gear) => gear.id !== "starter_blaster").map((gear) => (
-        <button
-          key={gear.id}
-          className="gear-row"
-          onClick={() => onBuy(gear.id)}
-          aria-keyshortcuts={getShopShortcutKey(gear.id)}
-          disabled={(isZombieMode && isWeaponGearId(gear.id)) || !player.isAlive || player.money < gear.cost || isBuyingSnowballs || isBuyingGear}
-        >
-          <kbd className="buy-shortcut-key">{getShopShortcutKey(gear.id)}</kbd>
-          <GearGlyph gearId={gear.id} />
-          <span>
-            <strong>{buyingGearId === gear.id ? "Working..." : gear.name}</strong>
-            <small>{gear.description}</small>
-            <small className="gear-status">{isZombieMode && isWeaponGearId(gear.id) ? "Default launcher only" : (getPlayerWeaponId(player) === gear.id || getPlayerPerks(player).includes(gear.id)) ? "Equipped" : player.money < gear.cost || !player.isAlive ? gearLockReason(gear.cost) : "Ready to buy"}</small>
-          </span>
-          <em>{formatMoney(gear.cost)}</em>
-        </button>
-      ))}
-    </div>
-  );
-}
-
-function GamePreferencesPanel({
-  preferences,
-  onChange,
-  audioOnly = false
-}: {
-  preferences: GamePreferences;
-  onChange: (update: Partial<GamePreferences>) => void;
-  audioOnly?: boolean;
-}) {
-  const [gamepadDetected, setGamepadDetected] = useState(() => Boolean(navigator.getGamepads?.().some((gamepad) => gamepad?.connected)));
-
-  useEffect(() => {
-    const sync = () => setGamepadDetected(Boolean(navigator.getGamepads?.().some((gamepad) => gamepad?.connected)));
-    window.addEventListener("gamepadconnected", sync);
-    window.addEventListener("gamepaddisconnected", sync);
-    return () => {
-      window.removeEventListener("gamepadconnected", sync);
-      window.removeEventListener("gamepaddisconnected", sync);
-    };
-  }, []);
-
-  return (
-    <div className="panel game-preferences-panel">
-      <div className="panel-title">
-        <h2>Game Settings</h2>
-        <span>Saved on this device</span>
-      </div>
-      {!audioOnly && (
-        <>
-          <label>
-            Graphics quality
-            <select value={preferences.arenaQuality} onChange={(event) => onChange({ arenaQuality: event.target.value as GamePreferences["arenaQuality"] })}>
-              <option value="auto">Auto (recommended)</option>
-              <option value="performance">Low — school device</option>
-              <option value="balanced">Medium — balanced</option>
-              <option value="high">High — full detail</option>
-            </select>
-            <small>Low reduces pixel density and decorative detail; team colors, objectives, and route landmarks remain visible.</small>
-          </label>
-          <label className="toggle-row">
-            <input type="checkbox" checked={preferences.highContrastHud} onChange={(event) => onChange({ highContrastHud: event.target.checked })} />
-            <span>High-contrast HUD</span>
-          </label>
-          <p className="settings-help">Adds stronger HUD borders, text contrast, and focus outlines for busy scenes or low-vision play.</p>
-          <label className="toggle-row">
-            <input type="checkbox" checked={preferences.gamepadEnabled} onChange={(event) => onChange({ gamepadEnabled: event.target.checked })} />
-            <span>Enable standard controller controls {gamepadDetected ? "(controller connected)" : "(connect a controller to use)"}</span>
-          </label>
-          <p className="settings-help">Controller: left stick moves, right stick looks, A or right trigger fires, and X interacts.</p>
-        </>
-      )}
-      <label className="toggle-row">
-        <input type="checkbox" checked={preferences.soundEnabled} onChange={(event) => onChange({ soundEnabled: event.target.checked })} />
-        <span>Enable game audio</span>
-      </label>
-      <label>
-        SFX volume
-        <input
-          type="range"
-          min="0"
-          max="1"
-          step="0.01"
-          value={preferences.sfxVolume}
-          disabled={!preferences.soundEnabled}
-          onChange={(event) => onChange({ sfxVolume: Number(event.target.value) })}
-        />
-        <small>{Math.round(preferences.sfxVolume * 100)}% for weapons, footsteps, quiz feedback, and interface sounds.</small>
-      </label>
-      <label>
-        BGM volume
-        <input
-          type="range"
-          min="0"
-          max="1"
-          step="0.01"
-          value={preferences.musicVolume}
-          disabled={!preferences.soundEnabled}
-          onChange={(event) => onChange({ musicVolume: Number(event.target.value) })}
-        />
-        <small>{Math.round(preferences.musicVolume * 100)}% for the arena music track.</small>
-      </label>
-      <p className="audio-credit">
-        BGM: Music by{" "}
-        <a href="https://pixabay.com/ja/users/hauntsync-38266323/?utm_source=link-attribution&utm_medium=referral&utm_campaign=music&utm_content=220562" target="_blank" rel="noreferrer">Nicholas Panek</a>
-        {" "}from{" "}
-        <a href="https://pixabay.com//?utm_source=link-attribution&utm_medium=referral&utm_campaign=music&utm_content=220562" target="_blank" rel="noreferrer">Pixabay</a>.
-      </p>
-      {!audioOnly && (
-        <label className="toggle-row">
-          <input type="checkbox" checked={preferences.vibrationEnabled} onChange={(event) => onChange({ vibrationEnabled: event.target.checked })} />
-          <span>Vibration feedback when available</span>
-        </label>
-      )}
-    </div>
-  );
-}
-
-function _ScoreboardLegacy({ players }: { players: PlayerSession[] }) {
-  const sortedPlayers = [...players].sort((a, b) => b.score - a.score || b.correctAnswers - a.correctAnswers);
-  const totals = getTeamTotals(players);
-  return (
-    <div className="scoreboard">
-      <div className="panel-title">
-        <h2>Scoreboard</h2>
-        <span>{players.length} players</span>
-      </div>
-      <div className="team-score-row">
-        <span className="team-score blue-team">Blue {totals.blue}</span>
-        <span className="team-score red-team">Red {totals.red}</span>
-      </div>
-      <div className="score-card-list">
-        {sortedPlayers.map((player, index) => (
-          <div className={`score-card ${player.team}-team`} key={player.id}>
-            <strong>#{index + 1} {player.nickname}{player.isBot ? " Bot" : ""}</strong>
-            <span>{teamLabel(player.team)} · {player.isAlive ? "Active" : "Out for round"}</span>
-            <small>{player.correctAnswers} correct · {accuracy(player)}% · {formatMoney(player.money)} · Score {player.score}</small>
-          </div>
-        ))}
-        {players.length === 0 && <p>No students connected yet.</p>}
-      </div>
-    </div>
-  );
-}
-
-function Scoreboard({
-  players,
-  localPlayerId,
-  gameMode,
-  onRemovePlayer,
-  removingPlayerId
-}: {
-  players: PlayerSession[];
-  localPlayerId?: string;
-  gameMode: SessionSettings["gameMode"];
-  onRemovePlayer?: (playerId: string) => void;
-  removingPlayerId?: string | null;
-}) {
-  const grouped = groupScoreboardRows(players, gameMode, localPlayerId);
-  const totals = getTeamTotals(players);
-  const zombieCounts = getZombieCounts(players);
-  return (
-    <div className="scoreboard">
-      <div className="panel-title">
-        <h2>Scoreboard</h2>
-        <span>{players.length} players</span>
-      </div>
-      <div className="team-score-row">
-        {gameMode === "zombie" ? (
-          <>
-            <span className="team-score blue-team">Humans {zombieCounts.humans}</span>
-            <span className="team-score red-team">Zombies {zombieCounts.zombies}</span>
-          </>
-        ) : (
-          <>
-            <span className="team-score blue-team">Blue {totals.blue}</span>
-            <span className="team-score red-team">Red {totals.red}</span>
-          </>
-        )}
-      </div>
-      <div className="scoreboard-table-wrap">
-        {grouped.map((group) => (
-          <div className="scoreboard-group" key={group.id}>
-            <h3>{group.label} <span>{group.rows.length}</span></h3>
-            <table className="scoreboard-table">
-              <caption>{group.label} scoreboard</caption>
-              <thead>
-                <tr className="scoreboard-row scoreboard-head">
-                  <th scope="col">Player Name</th>
-                  <th scope="col">Tags</th>
-                  <th scope="col">Respawns</th>
-                  <th scope="col">Question Accuracy</th>
-                  {onRemovePlayer && <th scope="col" className="scoreboard-actions-heading">Actions</th>}
-                </tr>
-              </thead>
-              <tbody>
-              {group.rows.map((row) => (
-                <tr className={`scoreboard-row ${row.teamId}-team`} key={row.playerId}>
-                  <th scope="row" title={row.displayName}>
-                    {row.displayName}
-                    {row.isBot ? " Bot" : ""}
-                    {row.isLocalPlayer ? " You" : ""}
-                    {row.connectionState === "disconnected" ? " Offline" : ""}
-                    <small>{gameMode === "zombie" ? (row.role === "zombie" ? "Zombie" : "Human") : teamLabel(row.teamId)}</small>
-                  </th>
-                  <td>{row.tags}</td>
-                  <td>{row.respawns}</td>
-                  <td>{row.questionAccuracy}</td>
-                  {onRemovePlayer && (
-                    <td className="scoreboard-actions">
-                      <button
-                        type="button"
-                        className="scoreboard-remove-player"
-                        onClick={() => onRemovePlayer(row.playerId)}
-                        disabled={Boolean(removingPlayerId)}
-                        aria-label={`Remove ${row.displayName} from the game`}
-                      >
-                        <Trash2 size={15} aria-hidden="true" />
-                        {removingPlayerId === row.playerId ? "Removing..." : "Remove"}
-                      </button>
-                    </td>
-                  )}
-                </tr>
-              ))}
-              {group.rows.length === 0 && <tr><td colSpan={onRemovePlayer ? 5 : 4}>No players in this group.</td></tr>}
-              </tbody>
-            </table>
-          </div>
-        ))}
-      </div>
-    </div>
-  );
-}
-
-function EventFeed({ events }: { events: GameEvent[] }) {
-  const recentEvents = events.slice(0, 8);
-  return (
-    <div className="event-feed">
-      <div className="panel-title">
-        <h2>Live Feed</h2>
-        <span>{recentEvents.length ? "Latest actions" : "Waiting"}</span>
-      </div>
-      <div className="event-list" aria-live="polite">
-        {recentEvents.map((event) => (
-          <div className={`event-item event-${event.type}`} key={event.id}>
-            <strong>{event.type}</strong>
-            <span>{event.message}</span>
-            <small>{new Date(event.createdAt).toLocaleTimeString([], { hour: "numeric", minute: "2-digit" })}</small>
-          </div>
-        ))}
-        {recentEvents.length === 0 && <p>No live actions yet.</p>}
-      </div>
-    </div>
-  );
-}
