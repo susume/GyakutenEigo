@@ -1,4 +1,6 @@
-import type { Socket } from "socket.io";
+import type { Server, Socket } from "socket.io";
+import type { RealtimeEventBus } from "../scaling/runtimeInfrastructure.js";
+import type { GameSession, PlayerSession } from "@quizstrike/shared";
 import {
   CLIENT_COMMAND_TYPES,
   LEGACY_PROTOCOL_VERSION,
@@ -22,6 +24,75 @@ type ProtocolSocketData = {
 };
 
 const commandTypes = new Set<string>(CLIENT_COMMAND_TYPES);
+
+export interface RoomEventPublisherOptions {
+  eventBus: RealtimeEventBus;
+  channel: string;
+  instanceId: string;
+}
+
+/** Transport-facing room-event publication with the existing error behavior. */
+export const createRoomEventPublisher = ({ eventBus, channel, instanceId }: RoomEventPublisherOptions) => (
+  roomId: string,
+  eventType: string,
+  eventId: string,
+  payload: unknown
+) => {
+  void eventBus.publish(channel, {
+    eventId,
+    originInstanceId: instanceId,
+    roomId,
+    eventType,
+    occurredAt: Date.now(),
+    payload
+  }).catch((error: unknown) => {
+    console.error(`[event-bus] failed to publish ${eventType} for room ${roomId}`, error);
+  });
+};
+
+export interface RoomBroadcastOptions {
+  io: Server;
+  stampSession: (session: GameSession) => GameSession;
+  schedulePersistence: () => void;
+  sessionBroadcastWindowMs: number;
+}
+
+/** Owns room-scoped protocol formatting and coalesced state broadcasts. */
+export const createRoomBroadcaster = ({
+  io,
+  stampSession,
+  schedulePersistence,
+  sessionBroadcastWindowMs
+}: RoomBroadcastOptions) => {
+  const pendingSessions = new Map<string, GameSession>();
+  let sessionTimer: ReturnType<typeof setTimeout> | undefined;
+
+  const flushSessionBroadcasts = () => {
+    sessionTimer = undefined;
+    for (const session of pendingSessions.values()) {
+      io.to(session.sessionCode).emit("session_state", stampSession(session));
+    }
+    pendingSessions.clear();
+  };
+
+  const broadcastSession = (session: GameSession) => {
+    pendingSessions.set(session.sessionCode, session);
+    sessionTimer ??= setTimeout(flushSessionBroadcasts, sessionBroadcastWindowMs);
+    schedulePersistence();
+  };
+
+  const broadcastPlayerState = (session: GameSession, players: PlayerSession[]) => {
+    const uniquePlayers = [...new Map(players.map((player) => [player.id, player])).values()];
+    io.to(session.sessionCode).emit("player_state", {
+      players: uniquePlayers,
+      flag: session.flag,
+      recentEvents: session.events?.slice(0, 2)
+    });
+    schedulePersistence();
+  };
+
+  return { broadcastSession, broadcastPlayerState, flushSessionBroadcasts, clearTimer: () => { if (sessionTimer) clearTimeout(sessionTimer); sessionTimer = undefined; } };
+};
 
 export const resolveProtocolAdmission = (version: number) =>
   isSupportedProtocolVersion(version)

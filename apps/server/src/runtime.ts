@@ -4,7 +4,7 @@ import compression from "compression";
 import cors from "cors";
 import express, { type NextFunction, type Request, type Response } from "express";
 import jwt from "jsonwebtoken";
-import { Prisma, PrismaClient } from "@prisma/client";
+import { PrismaClient } from "@prisma/client";
 import { createServer } from "node:http";
 import { randomUUID } from "node:crypto";
 import { Server, type Socket } from "socket.io";
@@ -12,16 +12,20 @@ import { resolveClientOrigins } from "./origins.js";
 import { getPausedRoundAction, planRoundConclusion } from "./roundFlow.js";
 import { inspectProcessedDecal } from "./appearanceSecurity.js";
 import { DecalStore, type StoredDecalMime } from "./decalStore.js";
+import { PersistenceScheduler } from "./persistence/persistenceScheduler.js";
 import { PlayerPositionHistory } from "./playerPositionHistory.js";
 import { NetworkMetrics } from "./networkMetrics.js";
 import { loadServerConfig } from "./config.js";
 import { announcementForFreezeStreak, incrementFreezeStreak } from "./freezeStreaks.js";
 import { NormalizedLibrary } from "./persistence/normalizedLibrary.js";
 import {
+  createRoomEventPublisher,
+  createRoomBroadcaster,
   parseSocketCommand,
   registerProtocolHandshake,
   sendProtocolError
 } from "./realtime/protocolGateway.js";
+import { RoomAuthority } from "./realtime/roomAuthority.js";
 import {
   IdempotentEventConsumer,
   InMemoryJoinCodeDirectory,
@@ -29,7 +33,6 @@ import {
   InMemoryRoomOwnershipStore,
   InMemoryRoomStateStore,
   LifecycleTimers,
-  type RoomOwnershipLease
 } from "./scaling/runtimeInfrastructure.js";
 import {
   MAX_SAVED_REPORTS,
@@ -198,7 +201,11 @@ export const io = new Server(server, {
 const networkMetrics = new NetworkMetrics({ enabled: config.networkDebug, intervalMs: config.networkReportIntervalMs });
 const lifecycleTimers = new LifecycleTimers();
 const roomOwnership = new InMemoryRoomOwnershipStore();
-const roomLeases = new Map<string, RoomOwnershipLease>();
+const roomAuthority = new RoomAuthority({
+  ownership: roomOwnership,
+  instanceId: config.instanceId,
+  leaseMs: config.roomLeaseMs
+});
 const realtimeEventBus = new InMemoryRealtimeEventBus();
 const distributedEventConsumer = new IdempotentEventConsumer();
 const ROOM_EVENTS_CHANNEL = "quizstrike:room-events";
@@ -214,44 +221,14 @@ void realtimeEventBus.subscribe(ROOM_EVENTS_CHANNEL, async (event) => {
   unsubscribeRoomEvents = unsubscribe;
 });
 
-const publishRoomEvent = (roomId: string, eventType: string, eventId: string, payload: unknown) => {
-  void realtimeEventBus.publish(ROOM_EVENTS_CHANNEL, {
-    eventId,
-    originInstanceId: config.instanceId,
-    roomId,
-    eventType,
-    occurredAt: Date.now(),
-    payload
-  }).catch((error: unknown) => {
-    console.error(`[event-bus] failed to publish ${eventType} for room ${roomId}`, error);
-  });
-};
-
-const acquireRoomAuthority = (roomId: string) => {
-  const lease = roomOwnership.acquire(roomId, config.instanceId, config.roomLeaseMs);
-  if (!lease) return false;
-  roomLeases.set(roomId, lease);
-  console.info(`[ownership] acquired room=${roomId} instance=${config.instanceId} fence=${lease.fencingToken}`);
-  return true;
-};
-
-const ownsRoom = (roomId: string) => {
-  const lease = roomLeases.get(roomId);
-  const owner = roomOwnership.owner(roomId);
-  return Boolean(lease && owner && owner.ownerInstanceId === config.instanceId && owner.fencingToken === lease.fencingToken);
-};
-
-const renewRoomAuthorities = () => {
-  for (const [roomId, lease] of roomLeases) {
-    const renewed = roomOwnership.renew(roomId, config.instanceId, lease.fencingToken, config.roomLeaseMs);
-    if (renewed) {
-      roomLeases.set(roomId, renewed);
-      continue;
-    }
-    roomLeases.delete(roomId);
-    console.error(`[ownership] lost room=${roomId} instance=${config.instanceId}; authoritative processing paused`);
-  }
-};
+const publishRoomEvent = createRoomEventPublisher({
+  eventBus: realtimeEventBus,
+  channel: ROOM_EVENTS_CHANNEL,
+  instanceId: config.instanceId
+});
+const acquireRoomAuthority = (roomId: string) => roomAuthority.acquire(roomId);
+const ownsRoom = (roomId: string) => roomAuthority.owns(roomId);
+const renewRoomAuthorities = () => roomAuthority.renewAll();
 
 const users = new Map<string, StoredUser>();
 const classes = new Map<string, ClassSummary & { teacherId: string }>();
@@ -341,12 +318,16 @@ type PersistedRuntimeState = {
 };
 
 const runtimeSnapshotId = "primary";
-let persistenceQueue = Promise.resolve();
-let persistenceTimer: ReturnType<typeof setTimeout> | undefined;
 
 const getPersistedRuntimeState = (): PersistedRuntimeState => ({
   sessions: [...sessions.values()],
   answers: [...answers]
+});
+
+const persistenceScheduler = new PersistenceScheduler({
+  prisma,
+  runtimeSnapshotId,
+  getSnapshot: getPersistedRuntimeState
 });
 
 const hydrateRuntimeState = async () => {
@@ -414,37 +395,8 @@ const hydrateRuntimeState = async () => {
   console.log(`Restored ${users.size} teachers, ${quizSets.size} quiz sets, and ${sessions.size} sessions from PostgreSQL.`);
 };
 
-const persistRuntimeState = () => {
-  if (!prisma) return;
-  const data = getPersistedRuntimeState();
-  persistenceQueue = persistenceQueue
-    .catch(() => undefined)
-    .then(async () => {
-      const jsonData = data as unknown as Prisma.InputJsonValue;
-      await prisma.runtimeSnapshot.upsert({
-        where: { id: runtimeSnapshotId },
-        create: { id: runtimeSnapshotId, data: jsonData },
-        update: { data: jsonData }
-      });
-    })
-    .catch((error: unknown) => {
-      console.error("Failed to persist QuizStrike runtime state.", error);
-    });
-};
-
-const schedulePersistence = () => {
-  if (!prisma || persistenceTimer) return;
-  persistenceTimer = setTimeout(() => {
-    persistenceTimer = undefined;
-    persistRuntimeState();
-  }, 1000);
-};
-
-const flushPersistence = () => {
-  if (persistenceTimer) clearTimeout(persistenceTimer);
-  persistenceTimer = undefined;
-  persistRuntimeState();
-};
+const schedulePersistence = () => persistenceScheduler.schedule();
+const flushPersistence = () => persistenceScheduler.flush();
 
 const botNames = ["Atlas", "Nova", "Echo", "Pixel", "Orbit", "Scout", "Comet", "River"];
 const blockedNicknameTerms = [
@@ -703,8 +655,6 @@ const stampSession = (session: GameSession) => {
   return session;
 };
 
-const pendingSessionBroadcasts = new Map<string, GameSession>();
-let sessionBroadcastTimer: ReturnType<typeof setTimeout> | undefined;
 type LivePositionPayload = {
   playerId: string;
   x: number;
@@ -718,29 +668,13 @@ type LivePositionPayload = {
 const pendingPositionBroadcasts = new Map<string, Map<string, LivePositionPayload>>();
 let positionBroadcastTimer: ReturnType<typeof setTimeout> | undefined;
 
-const flushSessionBroadcasts = () => {
-  sessionBroadcastTimer = undefined;
-  for (const session of pendingSessionBroadcasts.values()) {
-    io.to(session.sessionCode).emit("session_state", stampSession(session));
-  }
-  pendingSessionBroadcasts.clear();
-};
-
-const broadcastSession = (session: GameSession) => {
-  pendingSessionBroadcasts.set(session.sessionCode, session);
-  sessionBroadcastTimer ??= setTimeout(flushSessionBroadcasts, SESSION_BROADCAST_WINDOW_MS);
-  schedulePersistence();
-};
-
-const broadcastPlayerState = (session: GameSession, players: PlayerSession[]) => {
-  const uniquePlayers = [...new Map(players.map((player) => [player.id, player])).values()];
-  io.to(session.sessionCode).emit("player_state", {
-    players: uniquePlayers,
-    flag: session.flag,
-    recentEvents: session.events?.slice(0, 2)
-  });
-  schedulePersistence();
-};
+const roomBroadcaster = createRoomBroadcaster({
+  io,
+  stampSession,
+  schedulePersistence,
+  sessionBroadcastWindowMs: SESSION_BROADCAST_WINDOW_MS
+});
+const { broadcastSession, broadcastPlayerState } = roomBroadcaster;
 
 const emitToPlayers = (
   session: GameSession,
@@ -2622,9 +2556,7 @@ app.post("/api/sessions", requireTeacher, async (req: AuthedRequest, res) => {
   try {
     if (normalizedLibrary) await normalizedLibrary.saveSession(session, quiz.title);
   } catch (error) {
-    const lease = roomLeases.get(session.id);
-    if (lease) roomOwnership.release(session.id, config.instanceId, lease.fencingToken);
-    roomLeases.delete(session.id);
+    roomAuthority.release(session.id);
     sessions.delete(session.id);
     joinCodeDirectory.release(session.sessionCode, session.id);
     throw error;
@@ -3897,12 +3829,10 @@ const shutdown = (signal: string) => {
   networkMetrics.close();
   for (const timer of playerDisconnectTimers.values()) clearTimeout(timer);
   playerDisconnectTimers.clear();
-  if (sessionBroadcastTimer) clearTimeout(sessionBroadcastTimer);
+  roomBroadcaster.clearTimer();
   if (positionBroadcastTimer) clearTimeout(positionBroadcastTimer);
-  sessionBroadcastTimer = undefined;
   positionBroadcastTimer = undefined;
-  const released = roomOwnership.releaseAll(config.instanceId);
-  roomLeases.clear();
+  const released = roomAuthority.releaseAll();
   console.info(`[shutdown] releasedRoomLeases=${released}`);
   flushPersistence();
   const forceExit = setTimeout(() => {
@@ -3911,7 +3841,7 @@ const shutdown = (signal: string) => {
   }, config.shutdownTimeoutMs);
   forceExit.unref();
 
-  void persistenceQueue.finally(async () => {
+  void persistenceScheduler.pending.finally(async () => {
     unsubscribeRoomEvents?.();
     await realtimeEventBus.close().catch(() => undefined);
     io.close();
