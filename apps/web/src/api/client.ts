@@ -144,6 +144,31 @@ export const authApi = {
   me: () => api("/api/me", {}, { attemptTimeoutMs: 10_000 })
 };
 
+export const competitionApi = {
+  list: (filters: Record<string, string> = {}) => {
+    const params = new URLSearchParams(Object.entries(filters).filter(([, value]) => value));
+    return api(`/api/competitions${params.toString() ? `?${params.toString()}` : ""}`);
+  },
+  detail: (slug: string) => api(`/api/competitions/${encodeURIComponent(slug)}`),
+  studyPack: (slug: string) => api(`/api/competitions/${encodeURIComponent(slug)}/study-pack`),
+  matches: (slug: string) => api(`/api/competitions/${encodeURIComponent(slug)}/matches`),
+  mine: () => api("/api/competitions/mine"),
+  registerTeam: (slug: string, body: Record<string, unknown>) =>
+    api(`/api/competitions/${encodeURIComponent(slug)}/teams`, { method: "POST", body: JSON.stringify(body) }),
+  checkIn: (teamId: string) => api(`/api/competition-teams/${encodeURIComponent(teamId)}/check-in`, { method: "POST" }),
+  matchRoom: (matchId: string) => api(`/api/competition-matches/${encodeURIComponent(matchId)}/room`),
+  create: (body: Record<string, unknown>) => api("/api/competitions", { method: "POST", body: JSON.stringify(body) }),
+  update: (id: string, body: Record<string, unknown>) => api(`/api/competitions/${encodeURIComponent(id)}`, { method: "PATCH", body: JSON.stringify(body) }),
+  publishAnnouncement: (id: string, body: { title: string; body: string; pinned?: boolean }) =>
+    api(`/api/competitions/${encodeURIComponent(id)}/announcements`, { method: "POST", body: JSON.stringify(body) }),
+  saveStudyPack: (id: string, body: Record<string, unknown>) =>
+    api(`/api/competitions/${encodeURIComponent(id)}/study-pack`, { method: "POST", body: JSON.stringify(body) }),
+  generateBracket: (id: string) => api(`/api/competitions/${encodeURIComponent(id)}/bracket`, { method: "POST" }),
+  attachMatchRoom: (matchId: string, sessionCode: string) => api(`/api/competition-matches/${encodeURIComponent(matchId)}/room`, { method: "POST", body: JSON.stringify({ sessionCode }) }),
+  confirmResult: (matchId: string, body: Record<string, unknown>) => api(`/api/competition-matches/${encodeURIComponent(matchId)}/result`, { method: "POST", body: JSON.stringify(body) }),
+  organizer: () => api("/api/organizer/competitions")
+};
+
 export const teacherApi = {
   dashboard: () => api("/api/teacher/dashboard"),
   createClass: (body: { name: string; description?: string }) =>

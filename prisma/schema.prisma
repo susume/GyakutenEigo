@@ -24,6 +24,62 @@ enum Team {
   red
 }
 
+enum CompetitionType {
+  SPONSORED
+  SCHOOL_VS_SCHOOL
+  CLAN_VS_CLASS
+}
+
+enum CompetitionStatus {
+  DRAFT
+  ANNOUNCED
+  REGISTRATION_OPEN
+  REGISTRATION_CLOSED
+  STUDY_PERIOD
+  CHECK_IN
+  LIVE
+  COMPLETED
+  CANCELLED
+}
+
+enum CompetitionVisibility {
+  PUBLIC
+  INVITATION_ONLY
+}
+
+enum CompetitionStreamingStatus {
+  OFF
+  APPROVAL_REQUIRED
+  APPROVED
+}
+
+enum CompetitionRegistrationStatus {
+  PENDING
+  APPROVED
+  REJECTED
+}
+
+enum CompetitionEligibilityStatus {
+  PENDING
+  ELIGIBLE
+  INELIGIBLE
+}
+
+enum CompetitionCheckInStatus {
+  NOT_OPEN
+  OPEN
+  CHECKED_IN
+  MISSED
+}
+
+enum CompetitionMatchStatus {
+  SCHEDULED
+  CHECK_IN
+  LIVE
+  CONFIRMED
+  DISPUTED
+}
+
 model User {
   id           String        @id @default(cuid())
   name         String
@@ -205,4 +261,153 @@ model RuntimeSnapshot {
   id        String   @id
   data      Json
   updatedAt DateTime @updatedAt
+}
+
+/// Official QuizStrike competition configuration. Roster and result snapshots
+/// remain available to the in-memory room authority while normalized records
+/// provide durable organizer data and auditability.
+model Competition {
+  id                      String                      @id @default(cuid())
+  slug                    String                      @unique
+  name                    String
+  description             String
+  coverImage              String
+  sponsorName             String?
+  sponsorArtwork          String?
+  type                    CompetitionType
+  organizerId             String
+  organizerName           String
+  status                  CompetitionStatus           @default(DRAFT)
+  registrationOpensAt     DateTime
+  registrationClosesAt    DateTime
+  rosterDeadline          DateTime
+  studyPackReleaseAt      DateTime
+  matchStartAt            DateTime
+  matchEndAt              DateTime
+  region                  String
+  timeZone                String
+  division                String
+  difficulty              String
+  activeTeamSize          Int
+  substituteLimit         Int
+  maximumTeams            Int
+  matchFormat             String
+  mapPoolJson             Json
+  gameMode                String
+  rulesVersion            String
+  prizeDescription        String
+  visibility              CompetitionVisibility      @default(PUBLIC)
+  registrationRequirements Json
+  streamingStatus         CompetitionStreamingStatus @default(OFF)
+  rulesSummary            Json
+  createdAt               DateTime                    @default(now())
+  updatedAt               DateTime                    @updatedAt
+  studyPack               CompetitionStudyPack?
+  announcements           CompetitionAnnouncement[]
+  teams                   CompetitionTeam[]
+  matches                 CompetitionMatch[]
+  notifications           CompetitionNotification[]
+  auditLogs               CompetitionAuditLog[]
+
+  @@index([status, registrationOpensAt])
+  @@index([type, division, region])
+}
+
+model CompetitionStudyPack {
+  id                   String      @id @default(cuid())
+  competitionId        String      @unique
+  version              String
+  releaseAt            DateTime
+  releasedAt           DateTime?
+  correctionVersion    Int         @default(0)
+  wordsJson            Json
+  correctionHistoryJson Json
+  createdAt            DateTime    @default(now())
+  updatedAt            DateTime    @updatedAt
+  competition          Competition @relation(fields: [competitionId], references: [id], onDelete: Cascade)
+}
+
+model CompetitionAnnouncement {
+  id             String      @id @default(cuid())
+  competitionId  String
+  title          String
+  body           String
+  publishedAt    DateTime
+  publishedByName String
+  pinned         Boolean     @default(false)
+  competition    Competition @relation(fields: [competitionId], references: [id], onDelete: Cascade)
+
+  @@index([competitionId, publishedAt])
+}
+
+model CompetitionTeam {
+  id                   String                         @id @default(cuid())
+  competitionId        String
+  teamName             String
+  affiliation          String
+  logoUrl              String?
+  captainUserId        String
+  captainName          String
+  coachUserId          String?
+  coachName            String?
+  activePlayersJson    Json
+  substitutePlayersJson Json
+  registrationStatus   CompetitionRegistrationStatus @default(PENDING)
+  eligibilityStatus    CompetitionEligibilityStatus @default(PENDING)
+  checkInStatus        CompetitionCheckInStatus      @default(NOT_OPEN)
+  seed                 Int?
+  division             String
+  invitationCode       String?
+  createdAt            DateTime                       @default(now())
+  updatedAt            DateTime                       @updatedAt
+  competition          Competition                    @relation(fields: [competitionId], references: [id], onDelete: Cascade)
+
+  @@index([competitionId, registrationStatus, eligibilityStatus])
+}
+
+model CompetitionMatch {
+  id              String                  @id @default(cuid())
+  competitionId   String
+  roundLabel      String
+  bracketPosition Int
+  homeTeamId      String?
+  awayTeamId      String?
+  scheduledAt     DateTime
+  checkInOpensAt  DateTime
+  map             String
+  gameMode        String
+  status          CompetitionMatchStatus  @default(SCHEDULED)
+  sessionCode     String?
+  refereeName     String?
+  resultJson      Json?
+  competition     Competition             @relation(fields: [competitionId], references: [id], onDelete: Cascade)
+
+  @@index([competitionId, scheduledAt])
+}
+
+model CompetitionNotification {
+  id             String      @id @default(cuid())
+  key            String      @unique
+  competitionId  String
+  recipientUserId String?
+  kind           String
+  title          String
+  body           String
+  createdAt      DateTime    @default(now())
+  competition    Competition @relation(fields: [competitionId], references: [id], onDelete: Cascade)
+
+  @@index([recipientUserId, createdAt])
+}
+
+model CompetitionAuditLog {
+  id            String      @id @default(cuid())
+  competitionId String
+  actorUserId   String
+  actorName     String
+  action        String
+  detail        String
+  createdAt     DateTime    @default(now())
+  competition   Competition @relation(fields: [competitionId], references: [id], onDelete: Cascade)
+
+  @@index([competitionId, createdAt])
 }

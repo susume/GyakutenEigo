@@ -42,6 +42,9 @@ import {
   sendProtocolError
 } from "./realtime/protocolGateway.js";
 import { RoomAuthority } from "./realtime/roomAuthority.js";
+import { createCompetitionState } from "./routes/competitionRoutes.js";
+import { registerCompetitionRoutes } from "./routes/competitionRoutes.js";
+import { scheduleCompetitionNotifications, type Competition, type CompetitionAuditLog, type CompetitionNotification } from "./competitionDomain.js";
 import {
   IdempotentEventConsumer,
   InMemoryJoinCodeDirectory,
@@ -221,6 +224,7 @@ const joinCodeDirectory = new InMemoryJoinCodeDirectory();
 const answers: AnswerLog[] = [];
 type StoredReport = ReportMetadata & { report: SessionReport };
 const reports = new Map<string, StoredReport>();
+const competitionState = createCompetitionState({ id: "official-quizstrike", name: "QuizStrike Classroom" });
 const playerQuestionHistory = new Map<string, Set<string>>();
 const playerQuestionGate = new PlayerQuestionGate();
 const quizRateLimits = new Map<string, number[]>();
@@ -295,13 +299,19 @@ type PersistedRuntimeState = {
   answers: AnswerLog[];
   /** Legacy fallback only. New writes are stored in the normalized Report table. */
   reports?: StoredReport[];
+  competitions?: Competition[];
+  competitionNotifications?: CompetitionNotification[];
+  competitionAuditLogs?: CompetitionAuditLog[];
 };
 
 const runtimeSnapshotId = "primary";
 
 const getPersistedRuntimeState = (): PersistedRuntimeState => ({
   sessions: [...sessions.values()],
-  answers: [...answers]
+  answers: [...answers],
+  competitions: [...competitionState.competitions.values()],
+  competitionNotifications: [...competitionState.notifications.values()],
+  competitionAuditLogs: [...competitionState.auditLogs]
 });
 
 const persistenceScheduler = new PersistenceScheduler({
@@ -326,6 +336,9 @@ const hydrateRuntimeState = async () => {
   const savedSessions = Array.isArray(state.sessions) ? state.sessions : [];
   const savedAnswers = Array.isArray(state.answers) ? state.answers : [];
   const savedReports = Array.isArray(state.reports) ? state.reports : [];
+  const savedCompetitions = Array.isArray(state.competitions) ? state.competitions : [];
+  const savedCompetitionNotifications = Array.isArray(state.competitionNotifications) ? state.competitionNotifications : [];
+  const savedCompetitionAuditLogs = Array.isArray(state.competitionAuditLogs) ? state.competitionAuditLogs : [];
 
   users.clear();
   classes.clear();
@@ -335,6 +348,14 @@ const hydrateRuntimeState = async () => {
   joinCodeDirectory.clear();
   answers.length = 0;
   reports.clear();
+  if (savedCompetitions.length > 0) {
+    competitionState.competitions.clear();
+    for (const competition of savedCompetitions) if (competition?.id && competition?.slug) competitionState.competitions.set(competition.id, competition);
+    competitionState.notifications.clear();
+    for (const notification of savedCompetitionNotifications) if (notification?.id && notification?.key) competitionState.notifications.set(notification.key, notification);
+    competitionState.auditLogs.length = 0;
+    competitionState.auditLogs.push(...savedCompetitionAuditLogs.filter((log) => log?.id && log?.competitionId));
+  }
 
   // Normalized rows are authoritative for durable teacher data. Snapshot rows
   // are a temporary compatibility fallback only when backfill has not created
@@ -1137,6 +1158,20 @@ registerAuthRoutes(app, {
   healthPayload
 });
 
+registerCompetitionRoutes(app, {
+  requireTeacher,
+  getBearerUser,
+  state: competitionState,
+  now,
+  schedulePersistence,
+  getSessionByCode,
+  getPlayerToken,
+  canReadOfficialSession: (code, token) => {
+    const session = getSessionByCode(code);
+    return session?.players.find((player) => !player.isBot && hasPlayerAccess(session, player, token))?.nickname;
+  }
+});
+
 const teacherLibraryRouteDependencies: TeacherLibraryRouteDependencies = {
   requireTeacher,
   classes,
@@ -1864,6 +1899,7 @@ const startServer = async () => {
     await hydrateRuntimeState();
     lifecycleTimers.interval(advanceRounds, ROUND_TICK_MS);
     lifecycleTimers.interval(advanceBots, BOT_TICK_MS);
+    lifecycleTimers.interval(() => scheduleCompetitionNotifications(competitionState, new Date()), 60_000, true);
     lifecycleTimers.interval(pruneExpiredDecals, 15 * 60 * 1000, true);
     lifecycleTimers.interval(renewRoomAuthorities, config.roomLeaseRenewMs, true);
     server.listen(port, () => {

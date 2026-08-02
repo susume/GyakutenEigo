@@ -93,6 +93,7 @@ import { sendStudentCommand } from "../../studentCommandTransport";
 import { StatusMessages } from "../../ui/StatusMessages";
 import QuizStrikeLogo from "../../ui/QuizStrikeLogo";
 import TeacherDecalGallery from "../../ui/TeacherDecalGallery";
+import CompetitionHub, { OrganizerWorkspace } from "./competition/CompetitionHub";
 import { ARENA_MAPS, getArenaMap } from "../../game/arenaMaps";
 import {
   CHARACTER_STRESS_COUNTS,
@@ -279,6 +280,8 @@ const sessionNumberFields = [
 
 type SessionNumberField = (typeof sessionNumberFields)[number]["name"];
 
+// Retained for the legacy session settings panel, which is currently hidden from the public route.
+// eslint-disable-next-line @typescript-eslint/no-unused-vars
 const createSessionSettingInputs = (settings: SessionSettings): Record<SessionNumberField, string> =>
   sessionNumberFields.reduce(
     (inputs, field) => ({
@@ -564,7 +567,7 @@ export default function App() {
   const [routePath, setRoutePath] = useState(() => normalizeRoutePath(window.location.pathname));
   const isJoinRoute = routePath === "/join";
   const isGameRoute = routePath === "/game";
-  const isQuizStrikeRoute = routePath === "/quiz-strike";
+  const isQuizStrikeRoute = routePath === "/quiz-strike" || routePath.startsWith("/quiz-strike/");
   const isCharacterLabRoute = routePath === "/character-lab";
   const isCharacterLabAvailable = import.meta.env.DEV;
   const [mode, setMode] = useState<AppMode>(() => modeForRoute(routePath));
@@ -620,7 +623,6 @@ export default function App() {
       .then((payload) => {
         const data = payload as { user: TeacherUser };
         setTeacher(data.user);
-        setMode("teacher");
       })
       .catch(() => localStorage.removeItem("quizstrike_token"));
   }, [isJoinRoute, isGameRoute, isQuizStrikeRoute, isCharacterLabRoute]);
@@ -687,7 +689,13 @@ export default function App() {
       </header>
 
       {mode === "home" && <GyakutenEigoHome onOpenGame={() => navigateTo("/quiz-strike", "quizStrike")} onJoinGame={() => navigateTo("/join", "student")} />}
-      {mode === "quizStrike" && <QuizStrikeLanding onTeacherLogin={() => { setTeacherAuthMode("login"); navigateTo("/quiz-strike", "teacher"); }} onTeacherSignup={() => { setTeacherAuthMode("signup"); navigateTo("/quiz-strike", "teacher"); }} onStudent={() => navigateTo("/join", "student")} />}
+      {mode === "quizStrike" && routePath === "/quiz-strike/organizer" && <OrganizerWorkspace teacher={teacher} onNavigate={navigateTo} />}
+      {mode === "quizStrike" && routePath !== "/quiz-strike/organizer" && <QuizStrikeLanding
+        teacher={teacher}
+        slug={routePath.startsWith("/quiz-strike/competitions/") ? decodeURIComponent(routePath.slice("/quiz-strike/competitions/".length)) : undefined}
+        onNavigate={navigateTo}
+        onTeacherLogin={() => { setTeacherAuthMode("login"); navigateTo("/quiz-strike", "teacher"); }}
+      />}
       {mode === "characterLab" && (isCharacterLabAvailable ? <CharacterLab /> : <InternalToolNotice onReturn={() => navigateTo("/quiz-strike", "quizStrike")} />)}
       {mode === "teacher" &&
         (teacher ? <TeacherDashboard teacher={teacher} onLogout={logout} /> : <TeacherAuth apiWakeState={apiWakeState} initialMode={teacherAuthMode} onAuthed={(user) => {
@@ -951,26 +959,8 @@ function GyakutenEigoHome({ onOpenGame, onJoinGame }: { onOpenGame: () => void; 
   );
 }
 
-function QuizStrikeLanding({ onTeacherLogin, onTeacherSignup, onStudent }: { onTeacherLogin: () => void; onTeacherSignup: () => void; onStudent: () => void }) {
-  return (
-    <div className="quizstrike-page">
-      <section className="landing-grid landing-story quizstrike-route-hero" aria-labelledby="quizstrike-route-title">
-        <div className="quizstrike-route-copy">
-          <span className="eyebrow">The esports-style learning game</span>
-          <h1 id="quizstrike-route-title">Your next lesson has a scoreboard.</h1>
-          <p>Build a question set, launch a live arena, and give every student a reason to stay in the game.</p>
-          <div className="button-row">
-            <button className="primary" onClick={onTeacherSignup}><GraduationCap size={18} aria-hidden="true" />Create the Matchup</button>
-            <button onClick={onStudent}><DoorOpen size={18} aria-hidden="true" />Join the Arena</button>
-            <button className="text-button" onClick={onTeacherLogin}>Already have a teacher account? Log in</button>
-          </div>
-        </div>
-        <div className="quizstrike-route-art">
-          <img src="/assets/quizstrike-classroom-cover.webp" alt="QuizStrike Classroom cover art showing a live question arena." width={1672} height={941} />
-        </div>
-      </section>
-    </div>
-  );
+function QuizStrikeLanding({ teacher, slug, onNavigate, onTeacherLogin }: { teacher?: TeacherUser | null; slug?: string; onNavigate: (path: string, mode?: "quizStrike" | "teacher") => void; onTeacherLogin: () => void }) {
+  return <CompetitionHub teacher={teacher} slug={slug} onNavigate={onNavigate} onTeacherLogin={onTeacherLogin} />;
 }
 
 function TeacherAuth({
@@ -3238,6 +3228,8 @@ function ReportsPanel({
   );
 }
 
+// Retained for the legacy report surface while the teacher workspace uses the normalized report panel.
+// eslint-disable-next-line @typescript-eslint/no-unused-vars
 function LegacyReportsPanel({
   sessions,
   reports,
