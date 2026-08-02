@@ -762,6 +762,38 @@ const durableReportMetadataForTeacher = async (teacherId: string) => {
   return durable.length > 0 ? durable : reportMetadataForTeacher(teacherId);
 };
 
+const deleteHistoryForTeacher = async (teacherId: string) => {
+  const endedSessions = [...sessions.values()].filter((session) => session.teacherId === teacherId && session.status === "ended");
+  const persistedCount = await normalizedLibrary?.deleteTeacherHistory(teacherId) ?? 0;
+  const endedSessionIds = new Set(endedSessions.map((session) => session.id));
+
+  for (const session of endedSessions) {
+    sessions.delete(session.id);
+    joinCodeDirectory.release(session.sessionCode, session.id);
+    roomAuthority.release(session.id);
+    purgeSessionDecals(session);
+    pendingPositionBroadcasts.delete(session.sessionCode);
+    botAlertsBySession.delete(session.id);
+    for (const player of session.players) {
+      playerQuestionHistory.delete(player.id);
+      const socketKey = playerSocketKey(session.sessionCode, player.id);
+      playerSockets.delete(socketKey);
+      const disconnectTimer = playerDisconnectTimers.get(socketKey);
+      if (disconnectTimer) clearTimeout(disconnectTimer);
+      playerDisconnectTimers.delete(socketKey);
+    }
+  }
+
+  for (const [reportId, report] of reports) {
+    if (report.teacherId === teacherId) reports.delete(reportId);
+  }
+  for (let index = answers.length - 1; index >= 0; index -= 1) {
+    if (endedSessionIds.has(answers[index]!.gameSessionId)) answers.splice(index, 1);
+  }
+  schedulePersistence();
+  return Math.max(persistedCount, endedSessions.length);
+};
+
 const getBotSpawn = (session: GameSession, team: Team, index: number) => {
   return sessionSpawn(session, team, index);
 };
@@ -1213,6 +1245,7 @@ const sessionRouteDependencies: SessionRouteDependencies = {
   },
   reportMetadataForTeacher,
   saveSessionReport,
+  deleteHistoryForTeacher,
   sanitizeExportFilename,
   buildCsvReport
 };

@@ -3,6 +3,7 @@ import {
   BookOpen,
   Bot,
   Check,
+  ChevronDown,
   ChevronLeft,
   ChevronRight,
   CircleDollarSign,
@@ -1279,6 +1280,7 @@ function TeacherDashboard({ teacher, onLogout }: { teacher: TeacherUser; onLogou
         {tab === "reports" && (
           <ReportsPanel
             sessions={data.sessions}
+            quizSets={data.quizSets}
             reports={data.reports}
             report={report}
             setReport={setReport}
@@ -1900,11 +1902,17 @@ function SessionManager({
     isEndConfirmOpen, setIsEndConfirmOpen,
     isProjectorOpen, setIsProjectorOpen
   } = useSessionControls({ initialQuizSetId, firstQuizSetId: data.quizSets[0]?.id });
+  const [isTeacherSpectatorOpen, setIsTeacherSpectatorOpen] = useState(false);
+  const [teacherSpectatorPlayerId, setTeacherSpectatorPlayerId] = useState("");
+  const [isTeacherSpectatorPickerOpen, setIsTeacherSpectatorPickerOpen] = useState(false);
   const endSessionTriggerRef = useRef<HTMLButtonElement>(null);
   const endSessionDialogRef = useRef<HTMLDivElement>(null);
   const keepSessionOpenRef = useRef<HTMLButtonElement>(null);
   const projectorDialogRef = useRef<HTMLElement>(null);
   const projectorCloseRef = useRef<HTMLButtonElement>(null);
+  const teacherSpectatorDialogRef = useRef<HTMLElement>(null);
+  const teacherSpectatorCloseRef = useRef<HTMLButtonElement>(null);
+  const teacherSpectatorPickerRef = useRef<HTMLDivElement>(null);
   const status = useAsyncMessage();
   const remainingSeconds = useRoundRemaining(selectedSession);
   const selectedMap = getArenaMap(settings.mapId);
@@ -1920,6 +1928,14 @@ function SessionManager({
   const hasSelectedSession = Boolean(selectedSession);
   const selectedSessionBotDifficulty = selectedSession?.settings.botDifficulty;
   const selectedSessionCode = selectedSession?.sessionCode;
+  const teacherSpectatorPlayers = useMemo(
+    () => selectedSession?.players
+      .filter((player) => !player.isBot && player.isAlive && player.connectionState !== "disconnected")
+      .sort((a, b) => a.nickname.localeCompare(b.nickname)) ?? [],
+    [selectedSession]
+  );
+  const teacherSpectatorPlayer = teacherSpectatorPlayers.find((player) => player.id === teacherSpectatorPlayerId)
+    ?? teacherSpectatorPlayers[0];
 
   useEffect(() => {
     if (!quizSetId && data.quizSets[0]) setQuizSetId(data.quizSets[0].id);
@@ -2009,6 +2025,75 @@ function SessionManager({
       previousFocus?.focus();
     };
   }, [isProjectorOpen, setIsProjectorOpen]);
+
+  useEffect(() => {
+    if (!teacherSpectatorPlayers.length) {
+      setTeacherSpectatorPlayerId("");
+      return;
+    }
+    if (!teacherSpectatorPlayers.some((player) => player.id === teacherSpectatorPlayerId)) {
+      setTeacherSpectatorPlayerId(teacherSpectatorPlayers[0].id);
+    }
+  }, [teacherSpectatorPlayerId, teacherSpectatorPlayers]);
+
+  useEffect(() => {
+    if (selectedSession?.status === "active" || selectedSession?.status === "paused") return;
+    setIsTeacherSpectatorOpen(false);
+    setIsTeacherSpectatorPickerOpen(false);
+  }, [selectedSession?.status]);
+
+  useEffect(() => {
+    if (!isTeacherSpectatorOpen) return;
+    const previousFocus = document.activeElement instanceof HTMLElement ? document.activeElement : null;
+    const previousOverflow = document.body.style.overflow;
+    document.body.style.overflow = "hidden";
+    window.setTimeout(() => teacherSpectatorCloseRef.current?.focus(), 0);
+
+    const handleSpectatorKeys = (event: KeyboardEvent) => {
+      if (event.key === "Escape") {
+        if (isTeacherSpectatorPickerOpen) {
+          setIsTeacherSpectatorPickerOpen(false);
+          return;
+        }
+        setIsTeacherSpectatorOpen(false);
+        return;
+      }
+      if (event.key !== "Tab") return;
+      const focusable = Array.from(
+        teacherSpectatorDialogRef.current?.querySelectorAll<HTMLElement>(
+          'button:not([disabled]), [href], input:not([disabled]), select:not([disabled]), textarea:not([disabled]), [tabindex]:not([tabindex="-1"])'
+        ) ?? []
+      );
+      if (focusable.length === 0) return;
+      const first = focusable[0];
+      const last = focusable[focusable.length - 1];
+      if (event.shiftKey && document.activeElement === first) {
+        event.preventDefault();
+        last.focus();
+      } else if (!event.shiftKey && document.activeElement === last) {
+        event.preventDefault();
+        first.focus();
+      }
+    };
+
+    document.addEventListener("keydown", handleSpectatorKeys);
+    return () => {
+      document.body.style.overflow = previousOverflow;
+      document.removeEventListener("keydown", handleSpectatorKeys);
+      previousFocus?.focus();
+    };
+  }, [isTeacherSpectatorOpen, isTeacherSpectatorPickerOpen]);
+
+  useEffect(() => {
+    if (!isTeacherSpectatorPickerOpen) return;
+    const closePicker = (event: PointerEvent) => {
+      const target = event.target;
+      if (target instanceof Node && teacherSpectatorPickerRef.current?.contains(target)) return;
+      setIsTeacherSpectatorPickerOpen(false);
+    };
+    document.addEventListener("pointerdown", closePicker);
+    return () => document.removeEventListener("pointerdown", closePicker);
+  }, [isTeacherSpectatorPickerOpen]);
 
   const hasInvalidSettings = Object.values(invalidSettings).some(Boolean);
 
@@ -2277,6 +2362,15 @@ function SessionManager({
     }
   };
 
+  const cycleTeacherSpectator = (direction: -1 | 1) => {
+    if (!teacherSpectatorPlayers.length) return;
+    setTeacherSpectatorPlayerId((currentId) => {
+      const currentIndex = Math.max(0, teacherSpectatorPlayers.findIndex((player) => player.id === currentId));
+      const nextIndex = (currentIndex + direction + teacherSpectatorPlayers.length) % teacherSpectatorPlayers.length;
+      return teacherSpectatorPlayers[nextIndex].id;
+    });
+  };
+
   return (
     <div className={shouldShowSetup ? "two-column session-grid" : "session-grid live-first-grid"}>
       <form className={shouldShowSetup ? "panel form-panel live-game-setup" : "panel form-panel session-setup-minimized"} onSubmit={createSession}>
@@ -2475,7 +2569,7 @@ function SessionManager({
               <div><dt>Top learner</dt><dd>{topLearner?.nickname ?? "No answers recorded"}</dd></div>
             </dl>
             <div className="button-row">
-              <button className="primary" onClick={onOpenReports}><Download size={18} aria-hidden="true" />View Learning Report</button>
+              <button className="primary teacher-report-button" onClick={onOpenReports}><Download size={18} aria-hidden="true" />View Learning Report</button>
               <button onClick={() => setSelectedSession(null)}>Create Another Game</button>
             </div>
           </div>
@@ -2609,16 +2703,30 @@ function SessionManager({
             <header className="live-control-heading">
               <div><span className="flow-step">Step 4 of 4</span><h2>Live Game Control</h2></div>
               <div className="button-row">
+                <button
+                  type="button"
+                  className="spectator-launch-button"
+                  onClick={() => {
+                    setIsTeacherSpectatorPickerOpen(false);
+                    setIsTeacherSpectatorOpen(true);
+                  }}
+                  disabled={!teacherSpectatorPlayers.length}
+                  title={teacherSpectatorPlayers.length ? "Watch the live game from a learner's point of view" : "A connected learner is needed to spectate"}
+                >
+                  <Eye size={18} aria-hidden="true" />
+                  Spectator View
+                </button>
                 {selectedSession.settings.gameMode !== "zombie" && (
                   <button
                     type="button"
+                    className="end-round-button"
                     onClick={() => void endRound()}
                     disabled={selectedSession.status !== "active" || isEndingRound || isEndingSession}
                   >
                     {isEndingRound ? "Ending Round..." : "End Round"}
                   </button>
                 )}
-                <button ref={endSessionTriggerRef} onClick={() => setIsEndConfirmOpen(true)} disabled={isEndingSession}>{isEndingSession ? "Working..." : "End Game"}</button>
+                <button ref={endSessionTriggerRef} className="end-game-button" onClick={() => setIsEndConfirmOpen(true)} disabled={isEndingSession}>{isEndingSession ? "Working..." : "End Game"}</button>
               </div>
             </header>
             <div className="live-summary">
@@ -2683,12 +2791,408 @@ function SessionManager({
             </section>
           </div>
         )}
+
+        {selectedSession && isTeacherSpectatorOpen && teacherSpectatorPlayer && (selectedSession.status === "active" || selectedSession.status === "paused") && (
+          <div className="teacher-spectator-backdrop" role="presentation">
+            <section ref={teacherSpectatorDialogRef} className="teacher-spectator-dialog" role="dialog" aria-modal="true" aria-labelledby="teacher-spectator-title">
+              <header className="teacher-spectator-header">
+                <div>
+                  <span className="teacher-spectator-kicker"><Eye size={15} aria-hidden="true" /> Read-only live view</span>
+                  <h2 id="teacher-spectator-title">Spectator Mode</h2>
+                  <p>{arenaMapLabel(selectedSession.settings.mapId)} <span aria-hidden="true">{"\u00B7"}</span> {gameModeLabel(selectedSession.settings.gameMode)} <span aria-hidden="true">{"\u00B7"}</span> Follow a learner</p>
+                </div>
+                <button
+                  ref={teacherSpectatorCloseRef}
+                  type="button"
+                  className="teacher-spectator-close"
+                  onClick={() => {
+                    setIsTeacherSpectatorPickerOpen(false);
+                    setIsTeacherSpectatorOpen(false);
+                  }}
+                  onKeyDown={(event) => {
+                    if (event.key !== "Enter" && event.key !== " ") return;
+                    event.preventDefault();
+                    setIsTeacherSpectatorPickerOpen(false);
+                    setIsTeacherSpectatorOpen(false);
+                  }}
+                >
+                  Close View
+                </button>
+              </header>
+              <div className="teacher-spectator-arena">
+                <Suspense fallback={<ArenaLoading label="Loading spectator view" />}>
+                  <ArenaPreview
+                    key={`${selectedSession.id}:${teacherSpectatorPlayer.id}:spectator`}
+                    session={selectedSession}
+                    currentPlayer={teacherSpectatorPlayer}
+                    view="fps"
+                    controlsDisabled
+                    inputPaused
+                    suppressHint
+                    loadDecalAsset={loadTeacherDecal}
+                  />
+                </Suspense>
+                <span className="teacher-spectator-readonly"><Eye size={15} aria-hidden="true" /> Teacher view {"\u00B7"} controls locked</span>
+              </div>
+              <footer className="teacher-spectator-footer">
+                <button
+                  type="button"
+                  onClick={() => cycleTeacherSpectator(-1)}
+                  onKeyDown={(event) => {
+                    if (event.key !== "Enter" && event.key !== " ") return;
+                    event.preventDefault();
+                    cycleTeacherSpectator(-1);
+                  }}
+                  disabled={teacherSpectatorPlayers.length < 2}
+                >
+                  <ChevronLeft size={18} aria-hidden="true" /> Previous player
+                </button>
+                <div className="teacher-spectator-target">
+                  <div ref={teacherSpectatorPickerRef} className="teacher-spectator-picker">
+                    <span className="teacher-spectator-picker-label">Select learner</span>
+                    <button
+                      type="button"
+                      className="teacher-spectator-picker-trigger"
+                      aria-haspopup="listbox"
+                      aria-expanded={isTeacherSpectatorPickerOpen}
+                      aria-controls="teacher-spectator-player-list"
+                      onClick={() => setIsTeacherSpectatorPickerOpen((open) => !open)}
+                      onKeyDown={(event) => {
+                        if (event.key === "Escape") {
+                          setIsTeacherSpectatorPickerOpen(false);
+                          return;
+                        }
+                        if (event.key !== "Enter" && event.key !== " " && event.key !== "ArrowDown") return;
+                        event.preventDefault();
+                        setIsTeacherSpectatorPickerOpen(true);
+                      }}
+                    >
+                      <span>{teacherSpectatorPlayer.nickname}</span>
+                      <ChevronDown size={17} aria-hidden="true" />
+                    </button>
+                    {isTeacherSpectatorPickerOpen && (
+                      <div id="teacher-spectator-player-list" className="teacher-spectator-picker-menu" role="listbox" aria-label="Learners available to spectate">
+                        {teacherSpectatorPlayers.map((player) => (
+                          <button
+                            key={player.id}
+                            type="button"
+                            role="option"
+                            aria-selected={player.id === teacherSpectatorPlayer.id}
+                            className={player.id === teacherSpectatorPlayer.id ? "is-selected" : undefined}
+                            onClick={() => {
+                              setTeacherSpectatorPlayerId(player.id);
+                              setIsTeacherSpectatorPickerOpen(false);
+                            }}
+                          >
+                            <span>{player.nickname}</span>
+                            <small>{player.team.toUpperCase()}</small>
+                          </button>
+                        ))}
+                      </div>
+                    )}
+                  </div>
+                  <small>{teacherSpectatorPlayer.team.toUpperCase()} team {"\u00B7"} choose a learner to follow</small>
+                </div>
+                <button
+                  type="button"
+                  onClick={() => cycleTeacherSpectator(1)}
+                  onKeyDown={(event) => {
+                    if (event.key !== "Enter" && event.key !== " ") return;
+                    event.preventDefault();
+                    cycleTeacherSpectator(1);
+                  }}
+                  disabled={teacherSpectatorPlayers.length < 2}
+                >
+                  Next player <ChevronRight size={18} aria-hidden="true" />
+                </button>
+              </footer>
+            </section>
+          </div>
+        )}
       </div>
     </div>
   );
 }
 
 function ReportsPanel({
+  sessions,
+  quizSets,
+  reports,
+  report,
+  setReport,
+  setTab,
+  onRefresh
+}: {
+  sessions: GameSession[];
+  quizSets: QuizSet[];
+  reports: ReportMetadata[];
+  report: SessionReport | null;
+  setReport: (report: SessionReport | null) => void;
+  setTab: (tab: "sessions") => void;
+  onRefresh: () => Promise<void>;
+}) {
+  const [code, setCode] = useState(reports[0]?.sessionCode ?? "");
+  const [selectedReportId, setSelectedReportId] = useState(reports[0]?.id ?? "");
+  const [isLoadingReport, setIsLoadingReport] = useState(false);
+  const [isExportingCsv, setIsExportingCsv] = useState(false);
+  const [isDeletingReport, setIsDeletingReport] = useState(false);
+  const [isClearingHistory, setIsClearingHistory] = useState(false);
+  const status = useAsyncMessage();
+
+  const endedSessions = useMemo(
+    () => sessions
+      .filter((session) => session.status === "ended")
+      .sort((left, right) => Date.parse(right.endedAt ?? right.createdAt) - Date.parse(left.endedAt ?? left.createdAt)),
+    [sessions]
+  );
+  const quizSetById = useMemo(() => new Map(quizSets.map((quiz) => [quiz.id, quiz])), [quizSets]);
+  const reportBySessionId = useMemo(() => new Map(reports.map((metadata) => [metadata.sessionId, metadata])), [reports]);
+  const endedSessionIds = useMemo(() => new Set(endedSessions.map((session) => session.id)), [endedSessions]);
+
+  useEffect(() => {
+    const hasCurrentCode = sessions.some((session) => session.sessionCode === code) || reports.some((metadata) => metadata.sessionCode === code);
+    if (!hasCurrentCode) setCode(reports[0]?.sessionCode ?? endedSessions[0]?.sessionCode ?? "");
+    if (!selectedReportId && reports[0]?.id) setSelectedReportId(reports[0].id);
+  }, [code, endedSessions, reports, selectedReportId, sessions]);
+
+  const selectedSession = sessions.find((session) => session.sessionCode === code) ?? report?.session;
+  const selectedMetadata = selectedSession
+    ? reportBySessionId.get(selectedSession.id)
+    : reports.find((metadata) => metadata.sessionCode === code);
+  const selectedQuizTitle = selectedMetadata?.quizSetName
+    ?? (selectedSession ? quizSetById.get(selectedSession.quizSetId)?.title : undefined)
+    ?? "Game report";
+
+  const load = async (requestedCode = code) => {
+    if (!requestedCode || isLoadingReport) return;
+    status.clear();
+    setCode(requestedCode);
+    const matchingMetadata = reports.find((metadata) => metadata.sessionCode === requestedCode);
+    setSelectedReportId(matchingMetadata?.id ?? "");
+    setIsLoadingReport(true);
+    try {
+      const payload = (await teacherApi.report(requestedCode)) as { report: SessionReport };
+      setReport(payload.report);
+      status.setMessage("Report loaded.");
+    } catch (err) {
+      status.report(err);
+    } finally {
+      setIsLoadingReport(false);
+    }
+  };
+
+  const loadSavedReport = async (metadata: ReportMetadata) => {
+    if (isLoadingReport) return;
+    status.clear();
+    setSelectedReportId(metadata.id);
+    setCode(metadata.sessionCode);
+    setIsLoadingReport(true);
+    try {
+      const payload = (await teacherApi.reportById(metadata.id)) as { report: SessionReport };
+      setReport(payload.report);
+      status.setMessage(`${metadata.displayName} loaded.`);
+    } catch (err) {
+      status.report(err);
+    } finally {
+      setIsLoadingReport(false);
+    }
+  };
+
+  const deleteSavedReport = async (metadata: ReportMetadata) => {
+    if (isDeletingReport || !window.confirm(`Delete report "${metadata.displayName}"?`)) return;
+    setIsDeletingReport(true);
+    status.clear();
+    try {
+      await teacherApi.deleteReport(metadata.id);
+      if (selectedReportId === metadata.id) {
+        setSelectedReportId("");
+        setReport(null);
+      }
+      await onRefresh();
+      status.setMessage("Saved report deleted.");
+    } catch (err) {
+      status.report(err);
+    } finally {
+      setIsDeletingReport(false);
+    }
+  };
+
+  const clearHistory = async () => {
+    if (isClearingHistory || endedSessions.length === 0) return;
+    const gameLabel = endedSessions.length === 1 ? "completed game" : "completed games";
+    if (!window.confirm(`Clear ${endedSessions.length} ${gameLabel} and their saved reports? This cannot be undone. Live games will not be affected.`)) return;
+    setIsClearingHistory(true);
+    status.clear();
+    try {
+      const payload = (await teacherApi.deleteSessionHistory()) as { deletedSessions?: number };
+      setCode("");
+      setSelectedReportId("");
+      setReport(null);
+      await onRefresh();
+      const deletedCount = payload.deletedSessions ?? endedSessions.length;
+      status.setMessage(`${deletedCount} completed ${deletedCount === 1 ? "game" : "games"} cleared.`);
+    } catch (err) {
+      status.report(err);
+    } finally {
+      setIsClearingHistory(false);
+    }
+  };
+
+  const exportCsv = async () => {
+    if (!code || isExportingCsv) return;
+    status.clear();
+    setIsExportingCsv(true);
+    try {
+      const blob = await teacherApi.reportCsv(code);
+      const url = URL.createObjectURL(blob);
+      const link = document.createElement("a");
+      link.href = url;
+      link.download = `quizstrike-${code}-report.csv`;
+      link.click();
+      URL.revokeObjectURL(url);
+      status.setMessage("CSV export started.");
+    } catch (err) {
+      status.report(err);
+    } finally {
+      setIsExportingCsv(false);
+    }
+  };
+
+  return (
+    <div className="report-panel reports-page">
+      <header className="reports-page-heading">
+        <div>
+          <span className="eyebrow">Teacher reports</span>
+          <h2>See what your class learned</h2>
+          <p>Review completed games, spot difficult questions, and plan the next lesson.</p>
+        </div>
+        <div className="reports-page-actions">
+          <span className="reports-count">{endedSessions.length} completed {endedSessions.length === 1 ? "game" : "games"}</span>
+          <button onClick={() => setTab("sessions")}>Open Live Session</button>
+        </div>
+      </header>
+      <StatusMessages error={status.error} message={status.message} />
+
+      <div className="reports-layout">
+        <section className="report-history-card" aria-label="Completed game history">
+          <div className="report-card-heading">
+            <div>
+              <span className="report-card-kicker">Game history</span>
+              <h3>Completed games</h3>
+            </div>
+            <button className="report-danger-button" onClick={() => void clearHistory()} disabled={isClearingHistory || endedSessions.length === 0}>
+              <Trash2 size={16} aria-hidden="true" />
+              {isClearingHistory ? "Clearing..." : "Clear history"}
+            </button>
+          </div>
+          <p className="report-card-note">Select a game to open its learning report. Live games are kept separate.</p>
+          <div className="report-history-list" role="listbox" aria-label="Completed games">
+            {endedSessions.map((session) => {
+              const metadata = reportBySessionId.get(session.id);
+              const quizTitle = metadata?.quizSetName ?? quizSetById.get(session.quizSetId)?.title ?? "Quiz set";
+              const date = new Date(session.endedAt ?? session.createdAt).toLocaleDateString();
+              const isSelected = code === session.sessionCode;
+              return (
+                <div className={`report-history-row${isSelected ? " selected" : ""}`} key={session.id}>
+                  <button
+                    className="report-history-item"
+                    role="option"
+                    aria-selected={isSelected}
+                    onClick={() => void load(session.sessionCode)}
+                    disabled={isLoadingReport}
+                  >
+                    <span className="report-history-status" aria-hidden="true" />
+                    <span className="report-history-copy">
+                      <strong>{quizTitle}</strong>
+                      <small>{session.sessionCode} · {date}</small>
+                    </span>
+                    <span className="report-history-meta">{metadata ? "Saved" : "Load"}</span>
+                  </button>
+                  {metadata && <button className="report-history-delete" aria-label={`Delete saved report ${metadata.displayName}`} onClick={() => void deleteSavedReport(metadata)} disabled={isDeletingReport}><Trash2 size={15} aria-hidden="true" /></button>}
+                </div>
+              );
+            })}
+            {reports.filter((metadata) => !endedSessionIds.has(metadata.sessionId)).map((metadata) => (
+              <div className={`report-history-row${selectedReportId === metadata.id ? " selected" : ""}`} key={metadata.id}>
+                <button className="report-history-item" role="option" aria-selected={selectedReportId === metadata.id} onClick={() => void loadSavedReport(metadata)} disabled={isLoadingReport}>
+                  <span className="report-history-status" aria-hidden="true" />
+                  <span className="report-history-copy"><strong>{metadata.quizSetName}</strong><small>{metadata.sessionCode} · Saved report</small></span>
+                  <span className="report-history-meta">Saved</span>
+                </button>
+                <button className="report-history-delete" aria-label={`Delete saved report ${metadata.displayName}`} onClick={() => void deleteSavedReport(metadata)} disabled={isDeletingReport}><Trash2 size={15} aria-hidden="true" /></button>
+              </div>
+            ))}
+          </div>
+          {endedSessions.length === 0 && reports.length === 0 && <div className="report-empty-state"><strong>No completed games yet</strong><span>Finish a live game and its report will appear here.</span></div>}
+          <div className="report-history-footer"><span>{reports.length}/15 saved reports retained</span><span>Completed game data can be cleared at any time.</span></div>
+        </section>
+
+        <section className="report-detail-card" aria-label="Selected game report">
+          <div className="report-detail-heading">
+            <div>
+              <span className="report-card-kicker">Selected game</span>
+              <h3>{selectedQuizTitle}</h3>
+              <p>{code ? `${code} · ${selectedSession ? new Date(selectedSession.endedAt ?? selectedSession.createdAt).toLocaleString() : "Saved report"}` : "Choose a completed game from the history panel."}</p>
+            </div>
+            <div className="report-detail-actions">
+              <button onClick={() => void load()} disabled={!code || isLoadingReport}>
+                <Download size={17} aria-hidden="true" />
+                {isLoadingReport ? "Loading..." : "Load report"}
+              </button>
+              <button onClick={exportCsv} disabled={!code || isExportingCsv}>
+                <Download size={17} aria-hidden="true" />
+                {isExportingCsv ? "Exporting..." : "Export CSV"}
+              </button>
+            </div>
+          </div>
+          {!report && <div className="report-empty-state report-detail-empty"><strong>Your report will appear here</strong><span>Select a completed game, then load the report to see class accuracy, rewards, and reteach signals.</span></div>}
+          {report && (
+            <>
+              {(() => {
+                const classAccuracy = calculateClassAccuracy(report.rows);
+                const attemptedStudents = report.rows.filter((row) => row.correctAnswers + row.wrongAnswers > 0).length;
+                return (
+                  <div className="report-summary-grid">
+                    <div className="metric"><span>Class Accuracy</span><strong>{classAccuracy === null ? "-" : `${classAccuracy}%`}</strong><small>{attemptedStudents} of {report.rows.length} learners answered</small></div>
+                    <div className="metric"><span>Quiz Rewards</span><strong>{formatMoney(report.rows.reduce((total, row) => total + row.quizMoney, 0))}</strong><small>Rewards from correct answers</small></div>
+                    <div className="metric"><span>Reteach Signals</span><strong>{report.missedQuestions.length}</strong><small>Questions missed by learners</small></div>
+                  </div>
+                );
+              })()}
+              <div className="report-table-wrap">
+                <table className="report-table">
+                  <thead><tr><th>Student</th><th>Team</th><th>Correct</th><th>Wrong</th><th>Accuracy</th><th>Quiz Rewards</th><th>Score</th></tr></thead>
+                  <tbody>
+                    {report.rows.map((row) => (
+                      <tr key={row.nickname}>
+                        <td data-label="Student">{row.nickname}</td>
+                        <td data-label="Team">{teamLabel(row.team)}</td>
+                        <td data-label="Correct">{row.correctAnswers}</td>
+                        <td data-label="Wrong">{row.wrongAnswers}</td>
+                        <td data-label="Accuracy">{row.correctAnswers + row.wrongAnswers > 0 ? `${row.accuracy}%` : "-"}</td>
+                        <td data-label="Quiz Rewards">{formatMoney(row.quizMoney)}</td>
+                        <td data-label="Score">{row.score}</td>
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+              </div>
+              <section className="report-reteach-section" aria-labelledby="reteach-title">
+                <div className="report-section-heading"><div><span className="report-card-kicker">Next lesson</span><h3 id="reteach-title">Reteach Queue</h3></div><span>{report.missedQuestions.length} signal{report.missedQuestions.length === 1 ? "" : "s"}</span></div>
+                <ul className="plain-list">
+                  {report.missedQuestions.map((item) => <li key={item.questionId}><span>{item.prompt}</span><small>{item.misses} misses</small></li>)}
+                  {report.missedQuestions.length === 0 && <li>No missed questions yet. This group is ready for the next challenge.</li>}
+                </ul>
+              </section>
+            </>
+          )}
+        </section>
+      </div>
+    </div>
+  );
+}
+
+function LegacyReportsPanel({
   sessions,
   reports,
   report,

@@ -145,6 +145,14 @@ export class NormalizedLibrary {
     return result.count > 0;
   }
 
+  async deleteTeacherHistory(teacherId: string) {
+    return this.prisma.$transaction(async (tx) => {
+      await tx.report.deleteMany({ where: { teacherId } });
+      const result = await tx.gameSession.deleteMany({ where: { teacherId, status: "ended" } });
+      return result.count;
+    });
+  }
+
   async saveFolderForTeacher(folder: QuizFolder) {
     await this.prisma.$transaction(async (tx) => {
       if (folder.parentId) {

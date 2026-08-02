@@ -63,6 +63,7 @@ export type SessionRouteDependencies = {
   getStoredSessionReport: (session: GameSession, teacherId: string) => Promise<{ metadata: ReportMetadata; report: SessionReport } | undefined>;
   reportMetadataForTeacher: (teacherId: string) => ReportMetadata[];
   saveSessionReport: (session: GameSession) => ReportMetadata & { report: SessionReport };
+  deleteHistoryForTeacher: (teacherId: string) => Promise<number>;
   sanitizeExportFilename: (value: string) => string;
   buildCsvReport: (report: SessionReport) => string;
 };
@@ -164,6 +165,11 @@ export const registerSessionRoutes = (app: Application, deps: SessionRouteDepend
     }
     deps.broadcastSession(session);
     res.json({ session: deps.stampSession(session) });
+  });
+
+  app.delete("/api/sessions/history", deps.requireTeacher, async (req: AuthedRequest, res) => {
+    const deletedSessions = await deps.deleteHistoryForTeacher(req.user!.id);
+    res.json({ deletedSessions });
   });
 
   app.post("/api/sessions/:code/end", deps.requireTeacher, (req: AuthedRequest, res) => {

@@ -189,6 +189,7 @@ export const teacherApi = {
   reports: () => api("/api/reports"),
   reportById: (id: string) => api(`/api/reports/${id}`),
   deleteReport: (id: string) => api(`/api/reports/${id}`, { method: "DELETE" }),
+  deleteSessionHistory: () => api("/api/sessions/history", { method: "DELETE" }),
   reportCsv: async (code: string) => {
     const token = getToken();
     let response: Response;

@@ -65,6 +65,64 @@
 
 final result: passed
 
+# QuizStrike Teacher Workspace - Spectator Interaction Resilience QA
+
+## Update
+
+- Reworked learner cycling to use the latest selected learner ID through a functional state update.
+- Kept Previous player, Next player, and Close View on the standard React click path, with keyboard activation for Enter and Space.
+- Replaced the native learner select with an accessible, scrollable in-app picker so learner selection uses the same reliable button interaction as the navigation controls.
+
+## Verification
+
+- `npm run typecheck --workspace @quizstrike/web`: passed.
+- `npm run build --workspace @quizstrike/web`: passed.
+- `git diff --check`: passed; only existing line-ending warnings remain.
+- The browser QA canvas became unresponsive during the final multi-tab interaction pass; a fresh interaction pass afterward confirmed Previous player and Next player update the selected learner and team.
+
+final result: needs fresh-browser confirmation
+
+# QuizStrike Teacher Workspace - Spectator Learner Selector QA
+
+## Update
+
+- Replaced the spectator footer's passive learner name with a labeled learner selector.
+- Limited the selector to connected, alive students and excluded test bots from the teacher-facing list.
+- Sorted learner names alphabetically and preserved Previous player / Next player as quick navigation controls.
+- Styled the selector to match the spectator dialog and kept the native list behavior so long classes can scroll through available learners.
+
+## Verification
+
+- Browser-tested Spectator View with three connected learners.
+- Confirmed all three learner names appear in the selector and the selected learner updates the spectator camera immediately.
+- Confirmed the selector has an accessible label and a visible keyboard focus state.
+- Browser console errors and warnings: none.
+- `npm run typecheck --workspace @quizstrike/web`: passed.
+- `npm run build --workspace @quizstrike/web`: passed.
+
+final result: passed
+
+# QuizStrike Teacher Workspace - Live Overlay and Result Card QA
+
+## Update
+
+- Rebalanced the spectator footer into a three-column layout so Previous player, the centered Watching target, and Next player stay aligned at the bottom of the arena.
+- Reduced the spectator arena height at desktop sizes so the footer remains visible without clipping or overlapping the map frame.
+- Restyled disabled spectator controls with readable navy, blue, and white contrast instead of low-opacity gray text.
+- Restyled the completed-session status, description, metric cards, and secondary action to match the dark teacher workspace.
+- Fixed bot spectator names so the separator renders as normal text rather than exposing JSX braces.
+
+## Verification
+
+- Browser-tested Spectator View with a connected learner and QA bots.
+- Confirmed the spectator footer stays aligned and the center learner label remains fully visible.
+- Confirmed the ended-session description, metrics, and both actions remain readable against the navy card.
+- Browser console errors and warnings: none.
+- `npm run typecheck --workspace @quizstrike/web`: passed.
+- `npm run build --workspace @quizstrike/web`: passed.
+
+final result: passed
+
 # Teacher Live Setup — Sticky Rail QA
 
 ## Update
@@ -80,6 +138,23 @@ final result: passed
 - Browser console errors and warnings: none.
 - `npm run typecheck -w @quizstrike/web`: passed.
 - `npm run build`: passed.
+
+final result: passed
+
+# Teacher Workspace — Persistent Navigation and Report CTA QA
+
+## Update
+
+- Restyled `View Learning Report` with the teacher workspace’s navy, cyan, and coral visual language.
+- Locked the regular teacher navigation rail in place on desktop while the main report panel scrolls.
+- Preserved the horizontal navigation behavior on smaller screens.
+
+## Verification
+
+- Sidebar computed style: `position: sticky`, `top: 84px`, viewport-height rail.
+- Browser console errors and warnings: none.
+- `npm run typecheck -w @quizstrike/web`: passed.
+- `npm run typecheck -w @quizstrike/server`: passed.
 
 final result: passed
 
@@ -220,5 +295,54 @@ final result: passed
 - Browser console errors and warnings: none.
 - `npm run typecheck -w @quizstrike/web`: passed.
 - `npm run build`: passed.
+
+final result: passed
+
+# Teacher Reports — History and Learning Report QA
+
+## Update
+
+- Reworked Reports into a completed-game history panel and a selected learning-report panel.
+- Replaced the oversized native session dropdown with a readable, keyboard-accessible history list.
+- Added a confirmation-protected `Clear history` action that removes completed games and saved reports while leaving live games untouched.
+- Kept individual saved-report deletion available from the history list.
+
+## Verification
+
+- Empty state clearly explains how reports appear after a completed game.
+- Clear history is disabled when there are no completed games.
+- Selected report actions remain disabled until a completed game is chosen.
+- Browser console errors and warnings: none.
+- `npm run typecheck -w @quizstrike/web`: passed.
+- `npm run typecheck -w @quizstrike/server`: passed.
+- `npm run build`: passed.
+
+final result: passed
+
+# QuizStrike Teacher Workspace - Live Control and Spectator QA
+
+## Visual target
+
+- User references: `C:\Users\hungb\OneDrive\Pictures\Screenshots\Screenshot 2026-08-02 155304.png` and `C:\Users\hungb\OneDrive\Pictures\Screenshots\Screenshot 2026-08-02 155312.png`
+- Target intent: bring live-game controls into the approved dark teacher workspace and let a teacher open a read-only learner-perspective view from the live screen.
+
+## Implemented
+
+- Restyled the live-control header, round summary, arena preview, scoreboard, and live feed with the shared navy, cyan, teal, and coral teacher theme.
+- Added a distinct `Spectator View` action beside the live-game controls.
+- Added a read-only spectator dialog that follows a connected learner in first-person view, keeps the arena map and minimap visible, and provides Previous player / Next player navigation when multiple learners are connected.
+- Locked spectator input, added a visible teacher-view badge, and preserved close, Escape, and focus-trap behavior.
+
+## Verification
+
+- Browser-tested the teacher live screen with a connected QA learner.
+- Opened and closed Spectator View from the live screen and confirmed the learner nickname, team, arena, map, and read-only state render correctly.
+- Browser-tested Next player and Previous player with two connected learners; the selected learner and team changed in both directions.
+- Replaced the native learner select with a scrollable in-app picker so selecting a learner uses the same reliable button interaction as the navigation controls.
+- Confirmed the live scoreboard and event feed no longer use the inherited white table/feed surfaces.
+- Ended the temporary QA room after verification so it does not remain active.
+- Browser console errors and warnings: none.
+- `npm run typecheck --workspace @quizstrike/web`: passed.
+- `npm run build --workspace @quizstrike/web`: passed. Existing environment warnings remain for Node 20.16 versus the repository's Vite requirement of Node 20.19+; Vite also reports the existing large-chunk advisory.
 
 final result: passed
