@@ -18,10 +18,10 @@ position broadcaster. Route bodies now live under `apps/server/src/routes/`:
 - `appearanceRoutes.ts` owns character/decal policy and appearance operations.
 
 `botRuntime.ts` owns bot state, decision ticks, movement, firing integration,
-and respawn scheduling. `roundRuntime.ts` owns round mutation, preparation and
-transition guards, pending-round execution, and round broadcasts. The runtime
-creates both through dependency objects, so there is one bot tick and one
-round-transition owner.
+and respawn scheduling. `roundRuntime.ts` owns round mutation, preparation,
+transition guards, pending-round execution, deadline evaluation, and round
+broadcasts. The runtime creates both through dependency objects, with separate
+bot and round-lifecycle schedulers so round timing does not depend on bot work.
 
 ## Client arena ownership
 
@@ -37,8 +37,9 @@ construction concern:
 
 The scene effect uses stable map helpers and live session/player refs. Socket
 updates therefore refresh synchronized gameplay state without remounting the
-WebGL scene. Cleanup stops the loop, removes listeners, unsubscribes VFX and
-animation handlers, disposes pooled and static resources, and removes the
+WebGL scene; objective marker movement is handled by character synchronization.
+Cleanup stops the loop, removes listeners, unsubscribes VFX and animation
+handlers, disposes character, pooled, and static resources, and removes the
 canvas. The smoke test observed one canvas before and after a reload.
 
 ## Hook cleanup
@@ -52,7 +53,7 @@ blanket lint suppression was added.
 ## Validation
 
 - `npm run typecheck`: pass for shared, server, web, and web e2e configs.
-- `npm run test`: pass — 89 shared, 47 server, and 141 web tests.
+- `npm run test`: pass — 89 shared, 49 server, and 141 web tests.
 - `npm run lint`: pass with zero errors and zero warnings.
 - `npm run build`: pass for shared, server, and web. The local Node 20.16
   runtime still reports the existing Vite engine warning; Vite also reports

@@ -396,6 +396,7 @@ const blockedNicknameTerms = [
   "hitler"
 ];
 const BOT_TICK_MS = 300;
+const ROUND_TICK_MS = 250;
 const FIRE_REQUEST_TTL_MS = 30_000;
 const BOT_RESPAWN_MS = 8000;
 const BOT_DIFFICULTY: BotDifficulty = config.botDifficulty;
@@ -767,6 +768,9 @@ const getBotSpawn = (session: GameSession, team: Team, index: number) => {
 
 const roundRuntimeDependencies: RoundRuntimeDependencies = {
   now,
+  nowMs: Date.now,
+  sessions,
+  ownsRoom,
   makeAnnouncement,
   appendEvent,
   broadcastSession,
@@ -799,7 +803,6 @@ const {
   openRoundPreparation,
   openZombieSelectionPhase,
   finishRound,
-  startPendingRound,
   finishZombieMatchIfComplete,
   evaluateFlagEliminationWin
 } = roundRuntime;
@@ -1019,9 +1022,7 @@ const botRuntimeDependencies: BotRuntimeDependencies = {
   gameplayRoom,
   sessions,
   ownsRoom,
-  startPendingRound,
   finishRound,
-  finishZombieSession,
   broadcastSession,
   appendEvent,
   broadcastPlayerPosition,
@@ -1046,6 +1047,7 @@ const botRuntimeDependencies: BotRuntimeDependencies = {
   botTickMs: BOT_TICK_MS
 };
 const botRuntime = createBotRuntime(botRuntimeDependencies);
+export const advanceRounds = () => roundRuntime.advanceRounds();
 export const advanceBots = () => botRuntime.advanceBots();
 
 
@@ -1827,6 +1829,7 @@ function detachSocketBinding(socket: Socket) {
 const startServer = async () => {
   try {
     await hydrateRuntimeState();
+    lifecycleTimers.interval(advanceRounds, ROUND_TICK_MS);
     lifecycleTimers.interval(advanceBots, BOT_TICK_MS);
     lifecycleTimers.interval(pruneExpiredDecals, 15 * 60 * 1000, true);
     lifecycleTimers.interval(renewRoomAuthorities, config.roomLeaseRenewMs, true);

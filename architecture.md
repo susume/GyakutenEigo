@@ -47,15 +47,16 @@ bot decisions, or round mutation logic.
 | `apps/server/src/routes/sessionRoutes.ts` | Session creation, start/end, and round commands |
 | `apps/server/src/routes/playerRoutes.ts` | Student join, teams, answers, purchases, and combat commands |
 | `apps/server/src/routes/appearanceRoutes.ts` | Appearance policy, decals, moderation, and player appearance operations |
-| `apps/server/src/botRuntime.ts` | Bot state, decisions, movement, firing, respawn, and the single bot tick |
-| `apps/server/src/roundRuntime.ts` | Round mutation, preparation, transition guards, pending rounds, and broadcasts |
+| `apps/server/src/botRuntime.ts` | Bot state, decisions, movement, firing, respawn, and the bot tick |
+| `apps/server/src/roundRuntime.ts` | Round mutation, preparation, transition guards, pending rounds, deadline evaluation, and broadcasts |
 | `apps/server/src/connectionLifecycle.ts` | Disconnect grace, socket cleanup, and player eviction |
 | `apps/server/src/persistence/normalizedLibrary.ts` | Durable teacher, quiz, question, folder, report, and history writes |
 | `apps/server/src/scaling/runtimeInfrastructure.ts` | In-memory room, ownership, leases, event bus, and lifecycle abstractions |
 
-There is one bot scheduling owner and one round-transition owner. Route modules
-receive explicit dependencies from the composition root so authorization and
-side effects stay testable without creating a second server runtime.
+There is one bot scheduling owner and one independent round-lifecycle scheduling
+owner. Route modules receive explicit dependencies from the composition root so
+authorization and side effects stay testable without creating a second server
+runtime.
 
 ## Client ownership
 
@@ -106,7 +107,7 @@ migration source; it is not the authority for new teacher-library writes.
 ## Lifecycle and failure behavior
 
 - Room ownership uses explicit leases and fencing tokens.
-- Only the room owner evaluates bot/timer conclusions.
+- Only the room owner evaluates bot decisions and round/timer conclusions.
 - Recoverable deadlines are absolute timestamps, not serialized timeout handles.
 - Disconnect grace and socket cleanup are connection-local.
 - Event IDs and bounded consumer caches protect one-time announcements from
@@ -134,7 +135,7 @@ implemented.
 ## Validation snapshot
 
 - `npm run typecheck`: passed for shared, server, web, and web e2e configs.
-- `npm run test`: 277 tests passed: 89 shared, 47 server, 141 web.
+- `npm run test`: 279 tests passed: 89 shared, 49 server, 141 web.
 - `npm run lint`: passed with zero errors and zero React Hook warnings.
 - `npm run build`: passed; local Node 20.16 and large Vite chunk warnings are
   non-fatal. Hosted builds should use the declared Node 20.19+ or 22.13+.

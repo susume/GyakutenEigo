@@ -4,4 +4,4 @@
  */
 import "./runtime.js";
 
-export { advanceBots, app, io, server } from "./runtime.js";
+export { advanceBots, advanceRounds, app, io, server } from "./runtime.js";

@@ -633,7 +633,7 @@ test("40 authenticated Socket.IO clients receive bounded room state and movement
   assert.equal(started.response.status, 200);
   const activeDeadline = Date.now() + 5000;
   while (activeSocketIds.size < connected.length && Date.now() < activeDeadline) {
-    runtime.advanceBots();
+    runtime.advanceRounds();
     await new Promise((resolve) => setTimeout(resolve, 20));
   }
   assert.equal(activeSocketIds.size, connected.length, `${activeSocketIds.size} of ${connected.length} clients received active state.`);

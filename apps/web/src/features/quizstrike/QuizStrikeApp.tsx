@@ -2877,6 +2877,7 @@ function StudentExperience({ onExit }: { onExit: () => void }) {
   const hasSession = Boolean(session);
   const hasActiveArenaConnection = Boolean(session && player && playerToken);
   const hasQuestion = Boolean(question);
+  const questionId = question?.id;
   const hasActiveStudentSession = Boolean(session && player && session.status === "active");
   const nicknameError = useMemo(() => getNicknameError(nickname), [nickname]);
   const spectatorCandidates = useMemo(() => {
@@ -2999,8 +3000,8 @@ function StudentExperience({ onExit }: { onExit: () => void }) {
   }, [hasSession, remainingSeconds, sessionCurrentRound, sessionStatus]);
 
   useEffect(() => {
-    if (quizOpen && hasQuestion) gameAudio.playEvent("quiz_timer_start");
-  }, [hasQuestion, quizOpen]);
+    if (quizOpen && questionId) gameAudio.playEvent("quiz_timer_start");
+  }, [questionId, quizOpen]);
 
   useEffect(() => {
     if (!sessionCode || !playerId || !playerToken || hasQuestion) return;

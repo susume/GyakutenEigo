@@ -27,8 +27,8 @@ URLs into this repository.
 | 'apps/web' | React/Vite application, teacher flows, student flows, Three.js arena |
 | 'apps/server' | Express API, Socket.IO gateway, authoritative simulation, persistence orchestration |
 | 'apps/server/src/routes' | Teacher, quiz, session, player, report, and appearance route modules |
-| 'apps/server/src/botRuntime.ts' | Bot decisions, firing, respawn, and the single bot tick |
-| 'apps/server/src/roundRuntime.ts' | Round mutation, transitions, deadlines, and round broadcasts |
+| 'apps/server/src/botRuntime.ts' | Bot decisions, firing, respawn, and bot tick |
+| 'apps/server/src/roundRuntime.ts' | Round mutation, transitions, deadline evaluation, and round broadcasts |
 | 'packages/shared' | Shared types, protocol schemas, validation, map data, deterministic game rules |
 | 'prisma' | PostgreSQL schema and committed migrations |
 | 'scripts/database' | Auditing, migration, backup, and idempotent snapshot backfill tools |
@@ -119,7 +119,8 @@ bot, round, and arena ownership boundaries are documented in
 The monolith extraction is complete on 'main': 'runtime.ts' and
 'ArenaPreview.tsx' remain composition points, while route bodies, bot
 orchestration, round flow, map construction, character synchronization,
-minimap rendering, and render-loop lifecycle each have focused owners. See
+minimap rendering, render-loop lifecycle, and independent round timing each
+have focused owners. See
 [docs/quizstrike-monolith-extraction.md](docs/quizstrike-monolith-extraction.md)
 for the handoff metrics and commit history.
 

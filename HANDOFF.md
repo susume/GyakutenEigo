@@ -48,8 +48,8 @@ or a committed environment file.
 | 'apps/server/src/index.ts' | Server integration/bootstrap |
 | 'apps/server/src/runtime.ts' | Composition root, authoritative wiring, lifecycle, and HTTP/socket orchestration |
 | 'apps/server/src/routes/' | Focused teacher, quiz, session, player, report, and appearance route modules |
-| 'apps/server/src/botRuntime.ts' | Bot decisions, firing, respawn, and single tick ownership |
-| 'apps/server/src/roundRuntime.ts' | Round mutations, transition guards, pending rounds, and broadcasts |
+| 'apps/server/src/botRuntime.ts' | Bot decisions, firing, respawn, and bot tick ownership |
+| 'apps/server/src/roundRuntime.ts' | Round mutations, transition guards, pending rounds, deadline evaluation, and broadcasts |
 | 'apps/server/src/persistence/normalizedLibrary.ts' | Normalized teacher/history/report repository |
 | 'apps/server/src/scaling/runtimeInfrastructure.ts' | In-memory store, ownership, event, lease, and lifecycle boundaries |
 | 'apps/server/src/appearanceSecurity.ts' | Decal processing and security limits |
@@ -101,7 +101,7 @@ npm run test:load
 npm run test:e2e
 ~~~
 
-The validated baseline is 277 unit tests, the authenticated 40-client load
+The validated baseline is 279 unit tests, the authenticated 40-client load
 scenario, the Playwright classroom scenario, and a live local WebGL smoke test.
 Lint exits zero with zero errors and zero React Hook dependency warnings. Vite
 may report large chunks; use the repository Node version so the Node/Vite
@@ -167,8 +167,9 @@ storage are not implemented.
 The server and arena monolith extraction is complete and is on `main`:
 
 - Route bodies are under `apps/server/src/routes/`.
-- `botRuntime.ts` owns bot decisions, firing, respawn, and the single bot tick.
-- `roundRuntime.ts` owns round mutation and transition execution.
+- `botRuntime.ts` owns bot decisions, firing, respawn, and the bot tick.
+- `roundRuntime.ts` owns round mutation, transition execution, and the independent
+  round deadline/announcement ticker.
 - `ArenaPreview.tsx` composes focused map, character, minimap, and loop modules.
 - The render loop has explicit start, stop, and cleanup behavior.
 - The React Hook warning baseline went from 38 warnings to zero.

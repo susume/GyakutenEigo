@@ -10,10 +10,13 @@ import {
   createInitialFlagState,
   getPlayerHealthMax,
   getRoundResetLoadout,
+  getRoundRemainingSeconds,
   getZombieBestPlayers,
   isRoundPreparationPhase,
   isZombieSelectionPhase,
   randomizeBalancedTeams,
+  resolveFlagCountdown,
+  resolveTeamRoundWinner,
   selectInitialZombies
 } from "@quizstrike/shared";
 import { planRoundConclusion, resolvePendingRoundAction } from "./roundFlow.js";
@@ -30,6 +33,9 @@ type RoundAnnouncementFactory = (
 
 export type RoundRuntimeDependencies = {
   now: () => string;
+  nowMs: () => number;
+  sessions: { values: () => Iterable<GameSession> };
+  ownsRoom: (roomId: string) => boolean;
   makeAnnouncement: RoundAnnouncementFactory;
   appendEvent: (session: GameSession, event: Omit<GameEvent, "id" | "createdAt">) => GameEvent;
   broadcastSession: (session: GameSession) => void;
@@ -57,6 +63,9 @@ export type RoundRuntimeDependencies = {
 export const createRoundRuntime = (deps: RoundRuntimeDependencies) => {
   const {
     now,
+    nowMs,
+    sessions,
+    ownsRoom,
     makeAnnouncement,
     appendEvent,
     broadcastSession,
@@ -368,6 +377,56 @@ const evaluateFlagEliminationWin = (session: GameSession) => {
   }
 };
 
+const advanceRounds = () => {
+  const currentMs = nowMs();
+  for (const session of sessions.values()) {
+    if (!ownsRoom(session.id)) continue;
+    if (session.status === "paused") {
+      const startsAtMs = session.roundTransition ? Date.parse(session.roundTransition.startsAt) : Number.NaN;
+      if (Number.isFinite(startsAtMs) && currentMs >= startsAtMs) startPendingRound(session);
+      continue;
+    }
+    if (session.status !== "active") continue;
+
+    const announcementExpiresAtMs = session.announcement?.expiresAt
+      ? Date.parse(session.announcement.expiresAt)
+      : Number.NaN;
+    if (Number.isFinite(announcementExpiresAtMs) && currentMs >= announcementExpiresAtMs) {
+      session.announcement = undefined;
+      broadcastSession(session);
+    }
+
+    if (session.settings.gameMode === "flag" && session.flag) {
+      const flagCountdown = resolveFlagCountdown(session.flag, currentMs);
+      if (flagCountdown.winner) {
+        finishRound(
+          session,
+          flagCountdown.winner,
+          flagCountdown.reason === "flag_captured" ? "Blue Team captured the flag" : "Red Team protected the flag"
+        );
+        continue;
+      }
+    }
+
+    if (getRoundRemainingSeconds(session) <= 0) {
+      if (session.settings.gameMode === "flag") {
+        finishRound(session, "blue", "Time expired before Red placed the flag");
+      } else if (session.settings.gameMode === "zombie") {
+        finishZombieSession(session, "Humans survived until time expired.");
+      } else {
+        const winner = resolveTeamRoundWinner(session.players);
+        finishRound(
+          session,
+          winner,
+          winner
+            ? "More tags, respawns, or quiz earnings when time expired"
+            : "Teams tied on tags, respawns, and quiz earnings when time expired"
+        );
+      }
+    }
+  }
+};
+
   return {
     finishSession,
     finishZombieSession,
@@ -379,6 +438,7 @@ const evaluateFlagEliminationWin = (session: GameSession) => {
     openZombieSelectionPhase,
     finishRound,
     startPendingRound,
+    advanceRounds,
     finishZombieMatchIfComplete,
     evaluateFlagEliminationWin
   };

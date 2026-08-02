@@ -1277,7 +1277,9 @@ export default function ArenaPreview({
         setZoomLevel(0);
         setWeaponCooldown(null);
         cleanupControls();
+        characterManager.dispose();
         disposeObject(scene);
+        characterFactory.dispose();
         staticBatcher.dispose();
         collisionProxyMaterial.dispose();
         materialCache.forEach((material) => material.dispose());
@@ -1364,7 +1366,7 @@ export default function ArenaPreview({
       renderer.dispose();
       mount.removeChild(renderer.domElement);
     };
-  }, [sceneSessionId, currentPlayerId, currentPlayerTeam, currentPlayer?.gear, currentPlayer?.weapon, view, debugOverlay, activeQuality, gamepadEnabled, arenaMapId, arenaMap, arenaBounds, teamBaseZones, captureZones, searchRetrieveItems, searchRetrieveDeliveryZones, isIronJunction, isDesertCitadel, isTempleRunoff, localToServerPosition, serverToLocalX, serverToLocalZ, session?.settings.gameMode, session?.flag?.state, session?.flag?.carrierId, session?.flag?.position.x, session?.flag?.position.z, loadDecalAsset]);
+  }, [sceneSessionId, currentPlayerId, currentPlayerTeam, currentPlayer?.gear, currentPlayer?.weapon, view, debugOverlay, activeQuality, gamepadEnabled, arenaMapId, arenaMap, arenaBounds, teamBaseZones, captureZones, searchRetrieveItems, searchRetrieveDeliveryZones, isIronJunction, isDesertCitadel, isTempleRunoff, localToServerPosition, serverToLocalX, serverToLocalZ, session?.settings.gameMode, loadDecalAsset]);
 
   const beginTouchMove = (event: ReactPointerEvent<HTMLButtonElement>) => {
     event.preventDefault();

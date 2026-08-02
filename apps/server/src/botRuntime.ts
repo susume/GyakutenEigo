@@ -35,7 +35,6 @@ import {
   resolveFlagPlacement,
   resolveProjectileTarget,
   resolveSnowballUse,
-  resolveTeamRoundWinner,
   resolveZombieSprintEnergy
 } from "@quizstrike/shared";
 import {
@@ -63,9 +62,7 @@ export type BotRuntimeDependencies = {
   gameplayRoom: (sessionCode: string) => string;
   sessions: { values: () => Iterable<GameSession> };
   ownsRoom: (roomId: string) => boolean;
-  startPendingRound: (session: GameSession) => void;
   finishRound: (session: GameSession, winner: Team | undefined, reason: string) => void;
-  finishZombieSession: (session: GameSession, outcome: string) => void;
   broadcastSession: (session: GameSession) => void;
   appendEvent: (session: GameSession, event: Omit<GameEvent, "id" | "createdAt">) => GameEvent;
   broadcastPlayerPosition: (session: GameSession, position: { playerId: string; x: number; y?: number; z: number; facing: number }) => void;
@@ -96,9 +93,7 @@ export const createBotRuntime = (deps: BotRuntimeDependencies) => {
     gameplayRoom,
     sessions,
     ownsRoom,
-    startPendingRound,
     finishRound,
-    finishZombieSession,
     broadcastSession,
     appendEvent,
     broadcastPlayerPosition,
@@ -235,47 +230,7 @@ const advanceBots = () => {
   const currentMs = Date.now();
   for (const session of sessions.values()) {
     if (!ownsRoom(session.id)) continue;
-    if (session.status === "paused") {
-      const startsAtMs = session.roundTransition ? Date.parse(session.roundTransition.startsAt) : Number.NaN;
-      if (Number.isFinite(startsAtMs) && currentMs >= startsAtMs) startPendingRound(session);
-      continue;
-    }
     if (session.status !== "active") continue;
-    const announcementExpiresAtMs = session.announcement?.expiresAt
-      ? Date.parse(session.announcement.expiresAt)
-      : Number.NaN;
-    if (Number.isFinite(announcementExpiresAtMs) && currentMs >= announcementExpiresAtMs) {
-      session.announcement = undefined;
-      broadcastSession(session);
-    }
-    if (session.settings.gameMode === "flag" && session.flag) {
-      const flagCountdown = resolveFlagCountdown(session.flag, currentMs);
-      if (flagCountdown.winner) {
-        finishRound(
-          session,
-          flagCountdown.winner,
-          flagCountdown.reason === "flag_captured" ? "Blue Team captured the flag" : "Red Team protected the flag"
-        );
-        continue;
-      }
-    }
-    if (getRoundRemainingSeconds(session) <= 0) {
-      if (session.settings.gameMode === "flag") {
-        finishRound(session, "blue", "Time expired before Red placed the flag");
-      } else if (session.settings.gameMode === "zombie") {
-        finishZombieSession(session, "Humans survived until time expired.");
-      } else {
-        const winner = resolveTeamRoundWinner(session.players);
-        finishRound(
-          session,
-          winner,
-          winner
-            ? "More tags, respawns, or quiz earnings when time expired"
-            : "Teams tied on tags, respawns, and quiz earnings when time expired"
-        );
-      }
-      continue;
-    }
     let moved = false;
     session.players.forEach((bot, index) => {
       if (!bot.isBot) return;
