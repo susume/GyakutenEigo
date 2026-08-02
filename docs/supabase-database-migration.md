@@ -47,7 +47,9 @@ The live source audit must determine whether any additional tables were created 
 This subsection is a historical cutover record. The 1 August configuration
 recheck supersedes its claim about the current production connection.
 
-- Source: Render PostgreSQL 18.4, 2 application tables, 1 `RuntimeSnapshot` row, 5,056 answer records in the JSONB document, and no custom schemas, triggers, routines, enums, or sequences.
+- Source at the frozen cutover: Render PostgreSQL 18.4, 2 application tables,
+  1 `RuntimeSnapshot` row, 5,246 answer records in the JSONB document, and no
+  application-defined schemas, triggers, routines, enums, or sequences.
 - Backup: `database-backups/quizstrike-render-20260731-095245.dump` (custom-format dump, 392,083 bytes; retained locally under the ignored backup directory).
 - Target: Supabase PostgreSQL 17.6 in `ap-southeast-2`; restore completed in one transaction after excluding only the already-managed `public` schema header.
 - Verification: source and target table checksums, row counts, columns, indexes, portable constraints, migration ledger, and `RuntimeSnapshot.data` checksum matched. PostgreSQL 18 internal `NOT NULL` catalog rows are compared through portable column nullability because Supabase currently runs PostgreSQL 17.
@@ -92,7 +94,7 @@ recheck supersedes its claim about the current production connection.
 - The Supabase project was renamed `Quiz Strike Production`; its Data API remains
   disabled because QuizStrike uses server-side Prisma only.
 
-### Declared in Prisma but not used by the running repositories
+### Normalized models used by the running repositories
 
 The schema also declares `User`, `Class`, `QuizSet`, `Question`, `GameSession`, `PlayerSession`, `AnswerLog`, and `RoundLog`, plus `UserRole`, `SessionStatus`, and `Team` enums. These normalized models include:
 
@@ -102,11 +104,19 @@ The schema also declares `User`, `Class`, `QuizSet`, `Question`, `GameSession`, 
 - JSONB for `GameSession.settingsJson`;
 - millisecond timestamps and application-generated CUID text IDs.
 
-There is no committed initial migration for these normalized models. Do not create or populate them as part of this provider migration unless the live source audit proves they already exist. The application reads and writes `RuntimeSnapshot`, not these models.
+The repository now contains the complete baseline and hardening migrations for
+these models. `NormalizedLibrary` loads durable teacher data from them and
+persists teacher, quiz, session, answer, folder, and report mutations to them.
+`RuntimeSnapshot` remains a recoverable active-session checkpoint and legacy
+fallback source.
 
 ### Extensions, functions, triggers, and sequences
 
-The committed migration requires no extension, stored procedure, trigger, enum, or sequence. `RuntimeSnapshot.id` is application-supplied text. The live audit script enumerates all of these because the source database may contain objects not represented in Git.
+The application migrations use ordinary PostgreSQL tables, enums, indexes,
+constraints, and a folder-cycle trigger. `RuntimeSnapshot.id` is
+application-supplied text. The live audit script still enumerates extensions,
+triggers, routines, enums, and sequences so provider-managed objects are visible
+before future changes.
 
 ## Compatibility assessment
 
@@ -233,7 +243,9 @@ ORDER BY n_live_tup DESC;
 
 ## Test deployment before production
 
-Create a non-production Render service or temporary deployment with the same build/start commands and the target `DATABASE_URL`. Keep production pointed at Render PostgreSQL.
+For future provider changes, create a non-production service or staging clone
+with the same build/start commands and target `DATABASE_URL`. Production is
+currently live on Supabase.
 
 Minimum checks:
 
@@ -267,19 +279,24 @@ suspended during the final dump and verification window.
 3. Only the Render server `DATABASE_URL` was changed to the tested Supabase session-pooler URL.
 4. `JWT_SECRET`, `CLIENT_ORIGIN`, `TRUST_PROXY`, `PORT`, and all Vite variables were left unchanged.
 5. Render redeployed successfully; the public health endpoint reports PostgreSQL storage.
-6. Keep `gyakuteneigo-db` and the local dump untouched until the recommended post-cutover smoke tests and retention window are complete.
+6. Keep the final local dump untouched through at least one normal production
+   cycle and a review of Supabase backup/retention policy.
 
 Do not run `prisma migrate dev`, `prisma db push`, or a hand-written normalized schema migration during cutover.
 
 ## Rollback
 
-Rollback is safe only while the old database is intentionally retained and before accepting material writes solely on Supabase.
+The old Render database has been permanently deleted, so rollback is now a
+restore procedure rather than a connection-string switch.
 
 1. Stop the Render web service to prevent more Supabase writes.
-2. In Render, restore `DATABASE_URL` to the saved Render PostgreSQL secret.
-3. Redeploy/restart.
-4. Confirm `/api/health`, teacher login/dashboard, student join, and a saved result.
-5. Leave Supabase untouched for diagnosis.
+2. Provision an approved replacement PostgreSQL target.
+3. Restore the retained native dump or a verified Supabase backup into that
+   target, apply the committed migrations, and reconcile counts/checksums.
+4. Update Render `DATABASE_URL` only through the provider secret UI, redeploy,
+   and confirm health, teacher login/dashboard, student join, and a saved result.
+5. Keep the current Supabase project untouched for diagnosis until the new target
+   is proven safe.
 
 If production writes occurred on Supabase after cutover, switching back creates data loss/split-brain. In that case, keep the service stopped and reconcile/export the new Supabase state before rollback.
 
@@ -298,7 +315,8 @@ After migration, rotate any credential that was pasted into an insecure terminal
 
 - The source is PostgreSQL 18.4 and Supabase is PostgreSQL 17.6; the migrated schema uses portable features, but future PostgreSQL-version-specific changes should be tested before deployment.
 - The target uses Supabase-managed extensions in addition to the application `plpgsql` extension; they were not required by QuizStrike and were excluded from application-schema equality.
-- The committed migration history does not create the normalized Prisma models; the live database remains the authority.
+- The normalized migration chain is now committed and production-applied; future
+  schema changes must be reviewed and rehearsed before deployment.
 - The single JSONB snapshot has unbounded history and full-document rewrite amplification.
 - QuizStrike remains a single-server-instance architecture; this migration does not add distributed state.
 - Keep the final local backup until Supabase backup/retention policy is reviewed

@@ -1,204 +1,196 @@
-# QuizStrike Development Handoff
+# Quiz Strike Development Handoff
 
-Handoff date: 2026-07-29  
-Source baseline: `main` at `8e19028` before this documentation update
+Last verified: 1 August 2026 (Asia/Tokyo)
+Repository: main at dd2f131 ('migration part 2')
+Production cutover validation: deployment 89f4920
 
-## Project at a glance
+## Executive status
 
-QuizStrike is a working browser classroom game inside GyakutenEigo. Teachers author multiple-choice quizzes, create private sessions, manage students and cosmetics, run live matches, and export reports. Students join by room code, answer questions for currency, buy equipment, and play a server-authoritative Three.js arena.
+Quiz Strike is a working classroom multiplayer product, not a UI-only prototype.
+The production web service is healthy and now uses Supabase PostgreSQL. Render
+hosts the Node process; the former Render PostgreSQL database has been deleted.
 
-This is no longer a small UI prototype. It has a real multiplayer authority boundary, two maps, three game modes, persistence, reconnect behavior, bots, character customization, touch/controller input, quality presets, audio/VFX, and automated classroom/load coverage.
+The production cutover is complete:
 
-Read `architecture.md` before changing networking, persistence, collision, combat, or appearance code.
+- Supabase project: Quiz Strike Production, Sydney region, PostgreSQL 17.6.
+- Render compute: service 'gyakuteneigo-api', one Node instance.
+- Production API: 'https://api.gyakuteneigo.com'.
+- Health: '/api/health' returns 'ok: true' and 'storage: postgres'.
+- Migrations: all four committed Prisma migrations applied.
+- Data: 4 users, 8 quiz sets, 288 questions, 73 sessions, 522 players,
+  5,246 answers, 0 reports.
+- Final backup: 'database-backups/quizstrike-render-20260801-231819.dump'.
+- Old Render database: deleted after zero remaining client connections and checksum
+  verification.
 
-## Current working slice
+Do not put production credentials in this file, chat, source, browser variables,
+or a committed environment file.
 
-- Teacher signup/login with JWT authentication.
-- Classes, quiz sets, question CRUD, text-to-question drafting, and dashboard folders.
-- Private session creation with join codes, QR/copy links, configurable modes, maps, rewards, economy, teams, and customization policy.
-- Student join/rejoin with classroom-safe nickname checks and private player tokens.
-- Flag Mode, Zombie Mode, and Classic Tag Practice.
-- Server-owned movement validation, ammo, cooldowns, damage, elimination, economy, objectives, bots, rounds, and results.
-- Desert Citadel and The Iron Junction.
-- Starter, Quick, and Heavy Snowball Launchers plus Warm Vest and Speed Boots.
-- Independent weapon/perk slots and loadout preservation for living players between rounds.
-- Quiz-to-earn loop, practice-to-respawn flow, shop shortcuts, scoreboard, minimap, spectator state, and reports.
-- Mouse/keyboard, touch, and standard gamepad support.
-- Shared skinned characters, procedural animation states, bounded VFX, audio, and Low/Medium/High rendering presets.
-- Student character presets, color controls, optional processed decals, teacher moderation/removal, and classroom-wide reset.
-- PostgreSQL-backed runtime snapshots when configured; memory-only local fallback.
+## Read first
 
-## Most recent changes
-
-The latest code on `main` improved the character creator and free-tier hosted login behavior:
-
-- clearer creator guidance and layout;
-- more resilient API warm-up, timeout, retry, and hosted fallback behavior;
-- expanded endpoint/retry tests;
-- preserved the previously added classroom customization lifecycle and 40-client browser/server coverage.
-
-Earlier recent changes fixed gameplay HUD overlap, movement/weapon stalls, audio event coverage, launcher/perk loadout preservation, animation/VFX state coverage, and arena art/performance.
+1. [README.md](README.md) for setup and commands.
+2. [architecture.md](architecture.md) for authority, persistence, protocol, and
+   scaling boundaries.
+3. [packages/shared/PROTOCOL.md](packages/shared/PROTOCOL.md) before changing
+   Socket.IO events or public/private projections.
+4. [docs/supabase-database-migration.md](docs/supabase-database-migration.md)
+   before touching production database operations.
 
 ## Repository map
 
-| Path | What to look for |
+| Path | Use |
 | --- | --- |
-| `README.md` | Product scope, setup, current slice, safety vocabulary, performance baseline |
-| `architecture.md` | Runtime boundaries, protocols, persistence, invariants, deployment |
-| `packages/shared/src/index.ts` | Canonical types, constants, sanitized settings, deterministic rules |
-| `apps/server/src/index.ts` | Express routes, Socket.IO, live state, bots, rounds, persistence calls |
-| `apps/server/src/roundFlow.ts` | Round conclusion planning |
-| `apps/server/src/appearanceSecurity.ts` | Processed PNG/WebP inspection |
-| `apps/server/src/decalStore.ts` | Expiring, bounded in-memory decal bytes |
-| `apps/web/src/App.tsx` | Main product UI and teacher/student orchestration |
-| `apps/web/src/api/client.ts` | API selection, auth/player headers, endpoint calls |
-| `apps/web/src/api/endpoints.ts` | URL candidate and timeout mechanics |
-| `apps/web/src/studentCommandTransport.ts` | Socket acknowledgement with HTTP fallback |
-| `apps/web/src/game/ArenaPreview.tsx` | Three.js arena, controls, prediction, collision, VFX |
-| `apps/web/src/game/characters/` | Character rendering, equipment, appearance, animation, LOD |
-| `apps/web/src/ui/CharacterCreator.tsx` | Student customization UI |
-| `apps/web/src/ui/TeacherDecalGallery.tsx` | Teacher decal review UI |
-| `prisma/schema.prisma` | Migrations plus current `RuntimeSnapshot` storage table |
+| 'packages/shared/src/index.ts' | Shared types, settings, map data, deterministic game rules |
+| 'packages/shared/src/protocol/' | Canonical versioned protocol schemas and adapters |
+| 'apps/server/src/start.ts' | Config load and migration-before-listen startup |
+| 'apps/server/src/index.ts' | Server integration/bootstrap |
+| 'apps/server/src/runtime.ts' | Authoritative room engine and HTTP/socket orchestration |
+| 'apps/server/src/persistence/normalizedLibrary.ts' | Normalized teacher/history/report repository |
+| 'apps/server/src/scaling/runtimeInfrastructure.ts' | In-memory store, ownership, event, lease, and lifecycle boundaries |
+| 'apps/server/src/appearanceSecurity.ts' | Decal processing and security limits |
+| 'apps/server/src/decalStore.ts' | Bounded process-local decal bytes |
+| 'apps/web/src/App.tsx' | Route and product composition |
+| 'apps/web/src/features/quizstrike/QuizStrikeApp.tsx' | Teacher/student application surface |
+| 'apps/web/src/features/multiplayer/connection.ts' | Socket construction and protocol handshake |
+| 'apps/web/src/api/client.ts' | API URL selection, auth headers, retries, fallback |
+| 'apps/web/src/game/ArenaPreview.tsx' | Three.js arena, controls, collision proxies, VFX |
+| 'prisma/schema.prisma' | Current normalized schema and RuntimeSnapshot model |
+| 'scripts/database/backfill-runtime-snapshot.mjs' | Idempotent snapshot-to-normalized backfill |
 
-## Getting started
+## Local development
 
-Requirements: a current Node/npm installation. PostgreSQL is optional for ordinary local development and required to verify durable state.
+Requirements: Node 20.19+ or 22.13+.
 
-```bash
+~~~powershell
 npm install
-copy .env.example .env
-docker compose up -d
+Copy-Item .env.example .env
 npm run prisma:generate
+docker compose up -d
 npm run prisma:migrate
 npm run dev
-```
+~~~
 
-Local services:
+URLs:
 
-- Web: `http://localhost:5173`
-- Server health: `http://localhost:4000/api/health`
-- Adminer: `http://localhost:8080`
-- Development-only Character Lab: `http://localhost:5173/character-lab`
+- Web: 'http://localhost:5173'
+- API: 'http://localhost:4000'
+- Health: 'http://localhost:4000/api/health'
+- Adminer: 'http://localhost:8080'
 
-The root `npm run dev` watches shared, server, and web workspaces together. If shared types appear stale, build `@quizstrike/shared` before debugging the consumers.
+The database is optional for UI/gameplay exploration but required to verify
+restart durability and normalized writes. Without 'DATABASE_URL', state is
+in-memory only.
 
-## Verification
+## Required verification
 
-Use this sequence before handing off a gameplay, networking, or persistence change:
-
-```bash
+~~~powershell
+npm run lint
 npm run typecheck
 npm test
 npm run build
 npm run test:load
 npm run test:e2e
-```
+~~~
 
-Playwright needs Chromium once per machine:
+The validated baseline is 276 unit tests, the authenticated 40-client load
+scenario, and the Playwright classroom scenario. Lint currently exits zero with
+31 existing React Hook dependency warnings. Vite may report large chunks; use
+the repository Node version so the Node/Vite warning is avoided.
 
-```bash
+For a focused change, run the narrow workspace tests first, then the full suite.
+Install Playwright Chromium once when needed:
+
+~~~powershell
 npx playwright install chromium
-```
+~~~
 
-Also perform focused manual checks when relevant:
+## Production operator runbook
 
-- Teacher: sign up/login, create a quiz, create room, add bot, start/end, download CSV.
-- Student: join, refresh/rejoin, answer, purchase, fire, eliminate/respawn, disconnect/reconnect.
-- Modes: complete one Flag round, one Zombie conversion/end, and one Classic respawn loop.
-- Rendering: both maps at Low/Medium/High, including minimap/collision alignment.
-- Customization: save preset/colors, upload processed sticker, teacher review/remove/reset, reconnect.
+### Health and deploy
 
-The load test is not a substitute for physical device certification. The current Chromebook/Edge/ten-minute soak matrix remains incomplete.
+1. In Render, inspect the active deployment logs.
+2. Require the datasource line to show the Supabase session-pooler host.
+3. Require 'No pending migrations to apply'.
+4. Require the restore line for teachers, quiz sets, and sessions.
+5. Call 'https://api.gyakuteneigo.com/api/health'.
+6. Confirm Supabase migration status, normalized row counts, and checkpoint
+   checksum when a database change was involved.
 
-## Non-negotiable design rules
+Render start command:
 
-1. The server owns all meaningful outcomes. Clients send intent and may predict presentation only.
-2. Shared rules live in `packages/shared`; do not duplicate economy, combat, objective, or sanitization logic in the UI.
-3. Rendered buildings and characters are not authoritative hit/collision geometry.
-4. Keep launcher and perk slots independent.
-5. Never expose correct quiz choices in student question payloads.
-6. Verify teacher ownership and player tokens on every private operation.
-7. Do not expose uploaded image bytes in room/session snapshots or unauthenticated moderation lists.
-8. Preserve the original school-safe terminology: snow tags, snowball launchers, warmth, gear, arena, Blue Team, and Red Team. Do not add realistic weapons, gore, public chat, public matchmaking, or copied Counter-Strike content.
+~~~text
+npm start -w @quizstrike/server
+~~~
 
-## Important implementation realities
+The startup path runs 'prisma migrate deploy' before listening. Never use
+'prisma db push' or 'prisma migrate dev' on production.
 
-### Persistence is a snapshot, not the normalized schema
+### Backups
 
-Although Prisma defines normalized classroom tables, the runtime serializes teachers, classes, quizzes, sessions, and answers into `RuntimeSnapshot("primary")`. Do not write a new feature directly to a normalized Prisma model and assume the running app will read it.
+The final local backup is ignored by Git and should be retained through at least
+one normal production cycle and a review of Supabase backup/retention policy.
+A new backup must be created before any future destructive schema or provider
+operation. Database credentials belong only in a protected temporary handoff or
+secret manager.
 
-No `DATABASE_URL` means no durable data. Production `start.ts` applies migrations before starting the server.
+### Production data model
 
-### The server is single-instance
+Normalized models are authoritative for new durable data:
 
-Live sessions, Socket.IO bindings, timers, bots, rate limits, and decals are held in one Node process. Multiple replicas will diverge and route players inconsistently. Add shared coordination before scaling horizontally.
+- User, Class, QuizSet, Question, Folder
+- GameSession, PlayerSession, AnswerLog, RoundLog
+- Report metadata and immutable detail JSON
 
-### Decal bytes are intentionally temporary
+'RuntimeSnapshot(primary)' is a recoverable session/answer checkpoint and a
+legacy migration source. It is intentionally preserved and must not be dropped
+until the compatibility and fallback removal milestone is approved.
 
-Clothing/preset choices can survive through the runtime snapshot. Uploaded decal bytes cannot:
+### Scaling
 
-- processed PNG/WebP only;
-- maximum 512 × 512 and 384 KiB after client processing;
-- 32 MiB room cap;
-- three uploads per player per minute;
-- eight-hour expiry;
-- process-local storage;
-- active decal references are stripped during server hydration.
-
-The AI skin integration is a disabled interface, not a shipped feature. Keep it fail-closed until there is an authenticated, moderated server adapter.
-
-### Navigation is custom
-
-Routes use `history.pushState` and a small `modeForRoute` helper. There is no React Router. Static hosting therefore needs SPA fallback/rewrite behavior for `/quiz-strike`, `/join`, and `/game`.
-
-### API fallback is network-oriented
-
-The client can move from a configured API URL to a hosted fallback after timeout/network failure. Ordinary HTTP errors still come from the active server and should be handled as application errors; do not indiscriminately retry non-idempotent requests.
-
-## Known risks and unfinished work
-
-- `apps/server/src/index.ts` and `apps/web/src/App.tsx` are large integration hubs and are becoming expensive to change safely.
-- HTTP and Socket.IO payload contracts are partly structural rather than centralized/versioned. `packages/shared/PROTOCOL.md` predates the acknowledged answer/purchase socket commands.
-- The current public session endpoint returns the room object directly. Review projections before adding any sensitive player field.
-- Normalized persistence, multi-instance play, external object storage, and distributed rate limits are not implemented.
-- Bot movement and objective play are functional but intentionally simple.
-- Flag interaction is one authoritative button action, not a timed progress interaction.
-- Free-for-all spawn metadata exists, but live modes are team-based.
-- General vertical traversal/pathfinding is not implemented.
-- Characters and environments are code-authored production placeholders; final artist-authored GLB/animation assets are still an art gate.
-- Physical Chromebook, explicit Edge, integrated-GPU, GPU-memory, and ten-minute soak certification remain pending.
-- Some historical implementation docs describe an earlier state. Prefer current code, `README.md`, this handoff, and `architecture.md` when they conflict.
-
-## Recommended next engineering steps
-
-1. Extract a versioned protocol module from the shared package for HTTP payloads, socket payloads, and public/private session projections.
-2. Split the server into transport, classroom repository, session engine, and realtime gateway modules without changing authority.
-3. Split `App.tsx` by route/product flow while preserving lazy loading and the current browser URLs.
-4. Decide whether production persistence should remain a documented snapshot model or migrate fully to normalized repositories.
-5. Complete the physical performance/cross-browser matrix before raising player-count or visual-quality claims.
-6. Only after the above, plan multi-instance state, Socket.IO adapter, shared object storage, and distributed timers/locks.
+Use one server instance and sticky room affinity. Do not add a second replica.
+The runtime interfaces are ready for future adapters, but Redis/shared live state,
+Socket.IO fan-out, distributed leases, reconnect routing, rate limits, and object
+storage are not implemented.
 
 ## Change guide
 
-| If changing... | Update/check... |
-| --- | --- |
-| Session or player shape | Shared type, sanitizer/defaults, hydration compatibility, client rendering, tests |
-| Game rule or gear value | Shared rule first, server application, UI copy, rule tests |
-| Socket event | Shared protocol type, server validation, reconnect behavior, HTTP fallback if needed, `PROTOCOL.md` |
-| Map geometry | Shared obstacles/spawns/bounds and client collision proxies before visual shell |
-| Persistence | Snapshot hydration, debounce/flush, migration/startup path, restart test |
-| Appearance | Shared allowlist, server policy, upload security, remote character rendering, teacher moderation |
-| Public/player data | Explicit projection and security tests |
-| Hosting | `VITE_*` build variables, server runtime variables, CORS, SPA rewrite, WebSockets |
+- Game rule or economy: update 'packages/shared' first, then server usage, UI
+  copy, and rule tests.
+- Socket event: update protocol schemas/types, server validation, client
+  handshake/command transport, compatibility behavior, and 'PROTOCOL.md'.
+- Persistence: update Prisma schema/migration, normalized repository, snapshot
+  hydration/fallback, backfill compatibility, and restart tests.
+- Map geometry: update shared bounds/obstacles/spawns and client collision proxies
+  before visual shells.
+- Appearance/decal: update shared allowlists, server processing/quota/policy,
+  store lifecycle, remote rendering, and moderation tests.
+- Public data: define an explicit projection and add security tests; never return
+  database rows directly.
+- Hosting: update Vite build variables, Render runtime variables, CORS origins,
+  WebSocket behavior, and this handoff.
 
-## Definition of done
+## Non-negotiable invariants
 
-A change is ready to hand off when:
+1. The server owns outcomes; browsers send intent.
+2. Teacher ownership and player-token scope are checked on private operations.
+3. Correct choices never appear in student question payloads.
+4. Rendered geometry is separate from gameplay collision.
+5. Launcher and perk slots remain independent.
+6. Decals stay processed, bounded, authenticated, expiring, and out of snapshots.
+7. Secrets stay server-only.
+8. School-safe terminology and content policy remain intact.
+9. A second authoritative instance requires a tested shared runtime design.
+10. Migrations are additive/reviewed and deployed with 'prisma migrate deploy'.
 
-- authority and security boundaries still hold;
-- typecheck, unit tests, and production build pass;
-- load/E2E tests pass when the affected surface warrants them;
-- the relevant two-browser or visual flow was manually checked;
-- environment/migration requirements are documented;
-- `README.md`, `architecture.md`, `HANDOFF.md`, or focused docs are updated if the operating model changed;
-- known limitations are stated rather than hidden behind optimistic UI.
+## Open work
+
+The production migration is finished. Remaining work is product/scale work:
+
+- complete physical Chromebook/Edge/integrated-GPU and ten-minute soak
+  certification;
+- continue decomposing the large server runtime and QuizStrike UI hub;
+- remove temporary protocol-v0 acceptance and snapshot fallback after a clean
+  production cycle;
+- implement and test Redis/shared runtime adapters before horizontal scaling;
+- decide the final artist-authored GLB/animation asset pipeline;
+- review retention, privacy, accessibility, and school operational policy.

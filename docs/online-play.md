@@ -1,169 +1,107 @@
-# Online Play Deployment
+# Online play and deployment runbook
 
-This guide prepares the GyakutenEigo site and its Quiz-Strike game page for a hosted multiplayer test.
+Last verified: 1 August 2026
 
-Example target domains:
+## Production topology
 
-- Web site: `https://www.gyakuteneigo.com`
-- Game API/socket server: `https://api.gyakuteneigo.com`
+- Static web bundle: GitHub Pages/custom domain from 'apps/web/dist'.
+- Node runtime: Render web service 'gyakuteneigo-api'.
+- Database: Supabase project 'Quiz Strike Production', Sydney, PostgreSQL 17.6.
+- API/socket URL: 'https://api.gyakuteneigo.com'.
+- Optional hosted fallback: 'https://gyakuteneigo-api.onrender.com'.
 
-## Recommended Hosting Shape
+The retired Render PostgreSQL database is not used. Render hosts compute only.
 
-Use two hosted services:
+## Build and start commands
 
-1. GyakutenEigo web app: a static Vite build from `apps/web`.
-2. Quiz-Strike game server: the Node server from `apps/server`.
-
-The browser connects to the game server through `VITE_API_URL`. The site home is `/`, the Quiz-Strike host page is `/quiz-strike`, and the student player is the React + Three.js/WebGL arena at `/join` and `/game`.
-
-GitHub Pages can host the web game, but it cannot run the live Node/Socket.IO server. Host the server on a Node-capable host such as Render, Railway, Fly.io, or a VPS.
-
-## Required Environment
-
-Server:
-
-```bash
-NODE_ENV=production
-PORT=4000
-JWT_SECRET=replace-with-a-long-random-production-secret
-CLIENT_ORIGIN=https://gyakuteneigo.com,https://www.gyakuteneigo.com,https://susume.github.io
-TRUST_PROXY=true
-```
-
-Web build:
-
-```bash
-VITE_API_URL=https://api.gyakuteneigo.com
-VITE_API_FALLBACK_URL=https://gyakuteneigo-api.onrender.com
-```
-
-Use `.env.production.example` as the template for hosted environments. If you test from the default GitHub Pages URL before a custom domain is ready, include that Pages URL in `CLIENT_ORIGIN`, or the browser will block account creation.
-
-## Build Commands
-
-Install and verify:
-
-```bash
+~~~powershell
 npm ci
-npm run typecheck
-npm test
-npm run build
-```
-
-Server:
-
-```bash
 npm run build -w @quizstrike/shared
 npm run build -w @quizstrike/server
-npm start -w @quizstrike/server
-```
-
-Web:
-
-```bash
 npm run build -w @quizstrike/web
-```
+~~~
 
-Deploy `apps/web/dist` as the static site output.
+Render start command:
 
-## GitHub Pages Web Deployment
+~~~text
+npm start -w @quizstrike/server
+~~~
 
-The repository includes `.github/workflows/deploy-web.yml`.
+The server startup command runs 'prisma migrate deploy' before listening. A
+migration failure must stop deployment.
 
-After the repository is pushed to GitHub:
+## Render environment
 
-1. Open the `susume/GyakutenEigo` GitHub repository.
-2. Go to Settings -> Pages.
-3. Under Build and deployment, choose GitHub Actions.
-4. In Settings -> Secrets and variables -> Actions -> Variables, set `VITE_API_URL` to the public server URL, for example `https://api.gyakuteneigo.com`.
-5. If you are using the default project Pages URL, leave `PAGE_CUSTOM_DOMAIN` blank. The workflow will build assets under `/<repo-name>/`. Keep `https://susume.github.io` in `CLIENT_ORIGIN` so alternate computers can use that address without a CORS failure.
-6. If you are using a custom domain, set `PAGE_CUSTOM_DOMAIN` to that domain, for example `www.gyakuteneigo.com`. The workflow will write the `CNAME` file and build assets for `/`.
-7. Go to Actions -> Deploy Web.
-8. Run the workflow, or push to `main`.
-9. If using a custom domain, enable Enforce HTTPS when GitHub makes it available.
+Set server-only values in Render:
 
-The workflow writes a `404.html` SPA fallback into the Pages artifact during deployment, and writes `CNAME` only when `PAGE_CUSTOM_DOMAIN` is set.
+~~~text
+NODE_ENV=production
+NODE_VERSION=22
+PORT=4000
+JWT_SECRET=<long random secret>
+DATABASE_URL=<Supabase session-pooler URL>
+CLIENT_ORIGIN=https://gyakuteneigo.com,https://www.gyakuteneigo.com,https://susume.github.io
+TRUST_PROXY=true
+RUNTIME_STORE=in-memory
+~~~
 
-## Domain DNS
+Do not put 'DATABASE_URL', 'JWT_SECRET', or Supabase keys in the web build.
 
-Recommended DNS records:
+Use the Supabase session pooler on port 5432 for this long-running Node process.
+Keep the URL private and server-only.
 
-| Host | Type | Value |
-| --- | --- | --- |
-| `www` | `CNAME` | `<your-github-username>.github.io` |
-| `@` | `A` | `185.199.108.153` |
-| `@` | `A` | `185.199.109.153` |
-| `@` | `A` | `185.199.110.153` |
-| `@` | `A` | `185.199.111.153` |
-| `api` | `CNAME` | the server host target, for example `<your-render-service>.onrender.com` |
+## Web build variables
 
-Use the exact `api` DNS value shown by your server host when you add `api.gyakuteneigo.com` as a custom domain.
+Set these as GitHub Actions variables or the equivalent static-host build
+environment:
 
-## Render Server Example
+~~~text
+VITE_API_URL=https://api.gyakuteneigo.com
+VITE_API_FALLBACK_URL=https://gyakuteneigo-api.onrender.com
+VITE_BASE_PATH=/
+~~~
 
-For a first online playtest, Render is a straightforward Node host:
+If the web app is hosted under a repository path rather than a custom domain,
+set 'VITE_BASE_PATH' to that path and configure the SPA fallback accordingly.
 
-1. Create a Render account.
-2. Click New -> Web Service.
-3. Connect the GitHub repository.
-4. Use these service settings:
-   - Runtime: Node
-   - Build command: `npm ci && npm run build -w @quizstrike/shared && npm run build -w @quizstrike/server`
-   - Start command: `npm start -w @quizstrike/server`
-5. Add environment variables:
-   - `NODE_ENV=production`
-   - `JWT_SECRET=<long-random-secret>`
-   - `CLIENT_ORIGIN=https://gyakuteneigo.com,https://www.gyakuteneigo.com,https://susume.github.io`
-   - `TRUST_PROXY=true`
-   - `NODE_VERSION=22`
-6. Deploy the service.
-7. Open the service URL and confirm `/api/health` responds.
-8. Add `api.gyakuteneigo.com` as a custom domain on the service.
-9. Add the DNS record that Render shows for `api.gyakuteneigo.com`.
-10. Wait for HTTPS verification to finish.
+## GitHub Pages
 
-## GitHub Upload Checklist
+The repository includes '.github/workflows/deploy-web.yml'. The workflow builds
+shared and web packages, creates SPA fallback copies, and publishes 'apps/web/dist'.
 
-Commit or upload:
+After enabling GitHub Pages with GitHub Actions:
 
-- `apps`
-- `docs`
-- `packages`
-- `prisma`
-- `.github`
-- `.env.example`
-- `.env.production.example`
-- `.gitignore`
-- `architecture.md`
-- `HANDOFF.md`
-- `AUDIT.md`
-- `docker-compose.yml`
-- `package.json`
-- `package-lock.json`
-- `README.md`
-- `tsconfig.base.json`
+1. Set 'VITE_API_URL' and, if needed, 'VITE_API_FALLBACK_URL'.
+2. Set 'PAGE_CUSTOM_DOMAIN' only when using a custom domain.
+3. Verify the generated 'CNAME' and base path.
+4. Confirm '/quiz-strike', '/join', and '/game' all resolve to the SPA.
+5. Confirm the API has the deployed web origin in 'CLIENT_ORIGIN'.
 
-Do not commit or upload:
+## Render deploy checklist
 
-- `.env` or any secrets
-- `node_modules`
-- `dist`
-- `.codex-run-logs`
-- `.tools`
-- `product-audit*`
-- local databases
+1. Confirm the branch/commit being deployed is intended.
+2. Confirm the service remains a single instance with sticky room affinity.
+3. Confirm 'DATABASE_URL' is the Supabase URL without printing it.
+4. Deploy and inspect logs for:
+   - Supabase pooler datasource;
+   - all expected migrations;
+   - 'No pending migrations to apply';
+   - normalized restore counts;
+   - 'Your service is live'.
+5. Call '/api/health' and require 'ok: true' and 'storage: postgres'.
+6. For schema/backfill changes, reconcile normalized counts, migration ledger,
+   and RuntimeSnapshot checksum.
+7. Retain the final backup through at least one production cycle.
 
-The `.gitignore` is set up for these defaults.
+## Safety and scaling limits
 
-## Current Online Limitations
+The server is authoritative and single-instance. Socket bindings, rooms, timers,
+bots, in-memory leases, rate limits, event consumers, and decal bytes are
+process-local. Redis/shared state adapters do not exist yet. Do not add replicas
+until shared state, Socket.IO fan-out, leases, reconnect routing, rate limits,
+and object storage are implemented and tested.
 
-When `DATABASE_URL` is configured, the server mirrors teachers, classes, quiz sets, sessions, and answer logs into a PostgreSQL `RuntimeSnapshot` and restores it after a restart. Production startup applies committed Prisma migrations before accepting traffic. Without `DATABASE_URL`, this state remains memory-only and disappears on restart.
-
-The runtime still has important single-process limits:
-
-- Socket bindings, active timers, bot loops, request throttles, and live simulation state are not coordinated across replicas.
-- Uploaded decal bytes are process-local, expire after eight hours, and are intentionally not stored in the runtime snapshot.
-- Persistence uses one JSON snapshot rather than the normalized Prisma classroom tables.
-- Horizontal scaling requires shared Socket.IO coordination, shared live state/timers, and shared decal/object storage.
-
-Run one server instance for hosted classroom play until those boundaries are externalized. See `architecture.md` and `HANDOFF.md` for the current persistence and scaling model.
+For the complete authority model, read [architecture.md](../architecture.md).
+For current operator state, read [HANDOFF.md](../HANDOFF.md).
+For the production migration record, read
+[supabase-database-migration.md](supabase-database-migration.md).
