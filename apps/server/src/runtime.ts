@@ -56,14 +56,8 @@ import {
   canPlayerFireInMode,
   clampArenaAimPitch,
   clampArenaPosition,
-  ARENA_SCALE,
   ARENA_PLAYER_CROUCH_EYE_HEIGHT,
   ARENA_PLAYER_EYE_HEIGHT,
-  DESERT_CITADEL_MAIN_LEVEL_Y,
-  DESERT_CITADEL_ROOFTOP_LEVEL_Y,
-  IRON_JUNCTION_LOADING_LEVEL_Y,
-  IRON_JUNCTION_OVERPASS_LEVEL_Y,
-  TEMPLE_RUNOFF_MAIN_LEVEL_Y,
   DEFAULT_PLAYER_HEALTH,
   GEAR_ITEMS,
   getGearFireCooldownMs,
@@ -1258,110 +1252,6 @@ const canBotSee = (
   return botNavigation.canBotSee(session, bot, target, profile, obstacles);
 };
 
-const scaledPoint = (x: number, z: number) => ({ x: x * ARENA_SCALE, z: z * ARENA_SCALE });
-const scaledLevelPoint = (x: number, z: number, groundY = 0) => ({
-  x: x * ARENA_SCALE,
-  y: groundY + ARENA_PLAYER_EYE_HEIGHT,
-  z: z * ARENA_SCALE
-});
-
-const botBasePoint = (team: Team, mapId?: string) =>
-  mapId === "desert_citadel"
-    ? scaledPoint((team === "blue" ? -1 : 1) * 235, team === "blue" ? 58 : -58)
-    : scaledPoint(
-    (team === "blue" ? -1 : 1)
-      * (mapId === "temple_runoff" ? 205 : mapId === "iron_junction" ? 248 : 142),
-    0
-  );
-const botEnemyBasePoint = (team: Team, mapId?: string) =>
-  mapId === "desert_citadel"
-    ? scaledPoint((team === "blue" ? 1 : -1) * 235, team === "blue" ? -58 : 58)
-    : scaledPoint(
-    (team === "blue" ? 1 : -1)
-      * (mapId === "temple_runoff" ? 205 : mapId === "iron_junction" ? 248 : 142),
-    0
-  );
-
-const getIronJunctionPatrolPoints = (team: Team) => {
-  const direction = team === "blue" ? 1 : -1;
-  const longitudinal = [-185, -85, 65, 175].map((value) => value * direction);
-  const upper = team === "blue"
-    ? [
-        scaledLevelPoint(-205, -57),
-        scaledLevelPoint(-150, -57, IRON_JUNCTION_LOADING_LEVEL_Y),
-        scaledLevelPoint(-105, -94, IRON_JUNCTION_OVERPASS_LEVEL_Y),
-        scaledLevelPoint(20, 25, IRON_JUNCTION_OVERPASS_LEVEL_Y)
-      ]
-    : [
-        scaledLevelPoint(165, 25),
-        scaledLevelPoint(125, 25, IRON_JUNCTION_OVERPASS_LEVEL_Y),
-        scaledLevelPoint(80, 25, IRON_JUNCTION_OVERPASS_LEVEL_Y),
-        scaledLevelPoint(-20, 25, IRON_JUNCTION_OVERPASS_LEVEL_Y)
-      ];
-  const stages = longitudinal.map((x, stage) => [
-    scaledLevelPoint(x, stage % 2 === 0 ? 0 : 42),
-    scaledLevelPoint(x, -112 + stage * 8),
-    scaledLevelPoint(x, 112 + stage * 12),
-    scaledLevelPoint(x, 202 + stage * 5),
-    upper[stage]
-  ]);
-  return stages.flat();
-};
-
-const getDesertCitadelPatrolPoints = (team: Team) => {
-  const direction = team === "blue" ? 1 : -1;
-  const xStages = [-182, -108, -20, 96].map((x) => x * direction);
-  const upper = team === "blue"
-    ? [
-        scaledLevelPoint(-45, 0, DESERT_CITADEL_MAIN_LEVEL_Y),
-        scaledLevelPoint(-116, 76, DESERT_CITADEL_ROOFTOP_LEVEL_Y),
-        scaledLevelPoint(30, 40, DESERT_CITADEL_MAIN_LEVEL_Y),
-        scaledLevelPoint(90, 70, DESERT_CITADEL_ROOFTOP_LEVEL_Y)
-      ]
-    : [
-        scaledLevelPoint(90, 70, DESERT_CITADEL_ROOFTOP_LEVEL_Y),
-        scaledLevelPoint(30, 40, DESERT_CITADEL_MAIN_LEVEL_Y),
-        scaledLevelPoint(-116, 76, DESERT_CITADEL_ROOFTOP_LEVEL_Y),
-        scaledLevelPoint(-45, 0, DESERT_CITADEL_MAIN_LEVEL_Y)
-      ];
-  const stages = xStages.map((x, stage) => {
-    return [
-      scaledLevelPoint(x, 0),
-      scaledLevelPoint(x, stage < 3 ? 78 : 70),
-      scaledLevelPoint(x, -118),
-      scaledLevelPoint(x, stage === 0 || stage === 3 ? 133 : 60),
-      upper[stage]
-    ];
-  });
-  return stages.flat();
-};
-
-const getTempleRunoffPatrolPoints = (team: Team) => {
-  const direction = team === "blue" ? 1 : -1;
-  const xStages = [-190, -108, -12, 92, 190].map((x) => x * direction);
-  return xStages.flatMap((x) => [
-    scaledLevelPoint(x, -154, TEMPLE_RUNOFF_MAIN_LEVEL_Y),
-    scaledLevelPoint(x, -86, TEMPLE_RUNOFF_MAIN_LEVEL_Y),
-    scaledLevelPoint(x, 0),
-    scaledLevelPoint(x, 86, TEMPLE_RUNOFF_MAIN_LEVEL_Y),
-    scaledLevelPoint(x, 154, TEMPLE_RUNOFF_MAIN_LEVEL_Y)
-  ]);
-};
-
-const getBotPatrolPoints = (team: Team, mapId?: string) => mapId === "temple_runoff"
-  ? getTempleRunoffPatrolPoints(team)
-  : mapId === "iron_junction"
-    ? getIronJunctionPatrolPoints(team)
-  : mapId === "desert_citadel"
-    ? getDesertCitadelPatrolPoints(team)
-  : [
-      scaledPoint(0, -84),
-      scaledPoint(team === "blue" ? -42 : 42, -28),
-      scaledPoint(0, 28),
-      scaledPoint(team === "blue" ? 42 : -42, 84),
-      botBasePoint(team, mapId)
-    ];
-
 const findBotCover = (
   session: GameSession,
   bot: PlayerSession,
@@ -1376,31 +1266,7 @@ const applyBotSpacing = (session: GameSession, bot: PlayerSession, desired: { x:
 };
 
 const getBotObjectiveGoal = (session: GameSession, bot: PlayerSession, brain: BotMemory, state: BotState) => {
-  const flag = session.flag;
-  const carrier = flag?.carrierId ? session.players.find((player) => player.id === flag.carrierId) : undefined;
-  if (flag?.state === "carried" && carrier?.id === bot.id) return botEnemyBasePoint(bot.team, session.settings.mapId);
-  if (state === "escort_flag_carrier" && carrier && carrier.team === bot.team) return { x: carrier.x ?? 0, z: (carrier.z ?? 0) + brain.strafeDirection * 8 };
-  if (state === "attack_flag_carrier" && carrier && carrier.team !== bot.team) return botPosition(carrier);
-  if (state === "defend_objective" && flag && ["placed", "being_captured"].includes(flag.state)) return flag.position;
-  if (state === "move_to_objective" || state === "defend_objective") {
-    if (flag && bot.team === "red" && ["available", "dropped"].includes(flag.state)) return flag.position;
-    if (flag && flag.state === "carried" && carrier) return botPosition(carrier);
-    return bot.team === "blue" ? botBasePoint(bot.team, session.settings.mapId) : botEnemyBasePoint(bot.team, session.settings.mapId);
-  }
-  if (state === "flank") {
-    if (session.settings.mapId === "desert_citadel") {
-      const lowerRoute = brain.routeIndex % 2 === 0;
-      return lowerRoute
-        ? scaledLevelPoint(brain.strafeDirection * 42, -118)
-        : scaledLevelPoint(brain.strafeDirection * 72, 78);
-    }
-    const side = brain.routeIndex % 2 === 0 ? -1 : 1;
-    return scaledPoint(side * 82, brain.strafeDirection * 72);
-  }
-  if (state === "search" && brain.lastSeenPosition) return brain.lastSeenPosition;
-  if (state === "retreat" || state === "regroup" || state === "take_cover") return botBasePoint(bot.team, session.settings.mapId);
-  const patrol = getBotPatrolPoints(bot.team, session.settings.mapId);
-  return patrol[brain.routeIndex % patrol.length];
+  return botNavigation.getBotObjectiveGoal(session, bot, brain, state);
 };
 
 const shouldBotObjectiveAction = (session: GameSession, bot: PlayerSession) => {
