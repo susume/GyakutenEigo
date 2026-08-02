@@ -1,4 +1,4 @@
-import { useEffect, useRef, useState, type PointerEvent as ReactPointerEvent } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState, type PointerEvent as ReactPointerEvent } from "react";
 import * as THREE from "three";
 import {
   ARENA_MAX_AIM_PITCH,
@@ -284,6 +284,7 @@ export default function ArenaPreview({
   const onFireRef = useRef(onFire);
   const onInteractRef = useRef(onInteract);
   const currentPlayerRef = useRef(currentPlayer);
+  const sessionRef = useRef(session);
   const pendingShotsRef = useRef(0);
   const inputPausedRef = useRef(inputPaused);
   const controlsDisabledRef = useRef(controlsDisabled);
@@ -304,6 +305,7 @@ export default function ArenaPreview({
   const sceneSessionId = session?.id ?? "training";
   const currentPlayerId = currentPlayer?.id ?? "";
   const currentPlayerTeam = currentPlayer?.team ?? "blue";
+  const currentWeaponId = currentPlayer ? getPlayerWeaponId(currentPlayer) : undefined;
   const arenaMapId: ArenaMapId = session?.settings.mapId ?? "desert_citadel";
   const {
     arenaMap,
@@ -316,16 +318,18 @@ export default function ArenaPreview({
     isDesertCitadel,
     isTempleRunoff,
     hasMultipleLevels
-  } = loadArenaMapContext(arenaMapId);
+  } = useMemo(() => loadArenaMapContext(arenaMapId), [arenaMapId]);
   const activeQuality = resolveArenaQuality(fallbackQuality ?? quality);
-  const serverToLocalX = (x: number) => clamp(x, -arenaBounds.limitX, arenaBounds.limitX);
-  const serverToLocalZ = (z: number) => clamp(z, -arenaBounds.limitZ, arenaBounds.limitZ);
-  const localToServerPosition = (position: THREE.Vector3, facing: number): ArenaLivePosition => ({
+  const serverToLocalX = useCallback((x: number) => clamp(x, -arenaBounds.limitX, arenaBounds.limitX), [arenaBounds.limitX]);
+  const serverToLocalZ = useCallback((z: number) => clamp(z, -arenaBounds.limitZ, arenaBounds.limitZ), [arenaBounds.limitZ]);
+  const localToServerPosition = useCallback((position: THREE.Vector3, facing: number): ArenaLivePosition => ({
     x: clamp(position.x, -arenaBounds.limitX, arenaBounds.limitX),
     z: clamp(position.z, -arenaBounds.limitZ, arenaBounds.limitZ),
     y: Number(position.y.toFixed(2)),
     facing
-  });
+  }), [arenaBounds.limitX, arenaBounds.limitZ]);
+  currentPlayerRef.current = currentPlayer;
+  sessionRef.current = session;
 
   useEffect(() => {
     setFallbackQuality(null);
@@ -379,16 +383,12 @@ export default function ArenaPreview({
   }, [controlsDisabled, inputPaused]);
 
   useEffect(() => {
-    currentPlayerRef.current = currentPlayer;
-  }, [currentPlayer]);
-
-  useEffect(() => {
-    if (!currentPlayer) return;
-    const weaponId = getPlayerWeaponId(currentPlayer);
+    if (!currentWeaponId) return;
+    const weaponId = currentWeaponId;
     if (previousWeaponRef.current === null) gameAudio.playEvent("weapon_equip");
     else if (previousWeaponRef.current !== weaponId) gameAudio.playEvent("weapon_switch");
     previousWeaponRef.current = weaponId;
-  }, [currentPlayer?.gear, currentPlayer?.weapon, currentPlayer?.perks]);
+  }, [currentWeaponId]);
 
   useEffect(() => {
     pendingShotsRef.current = 0;
@@ -400,6 +400,8 @@ export default function ArenaPreview({
 
   // Live session payloads replace array references, so only primitive scene-build inputs belong in this dependency list.
   useEffect(() => {
+    const session = sessionRef.current;
+    const currentPlayer = currentPlayerRef.current;
     const mount = mountRef.current;
     if (!mount) return;
     setRenderError("");
@@ -1362,7 +1364,7 @@ export default function ArenaPreview({
       renderer.dispose();
       mount.removeChild(renderer.domElement);
     };
-  }, [sceneSessionId, currentPlayerId, currentPlayerTeam, currentPlayer?.gear, currentPlayer?.weapon, view, debugOverlay, activeQuality, gamepadEnabled, arenaMapId, session?.settings.gameMode, session?.flag?.state, session?.flag?.carrierId, session?.flag?.position.x, session?.flag?.position.z, loadDecalAsset]);
+  }, [sceneSessionId, currentPlayerId, currentPlayerTeam, currentPlayer?.gear, currentPlayer?.weapon, view, debugOverlay, activeQuality, gamepadEnabled, arenaMapId, arenaMap, arenaBounds, teamBaseZones, captureZones, searchRetrieveItems, searchRetrieveDeliveryZones, isIronJunction, isDesertCitadel, isTempleRunoff, localToServerPosition, serverToLocalX, serverToLocalZ, session?.settings.gameMode, session?.flag?.state, session?.flag?.carrierId, session?.flag?.position.x, session?.flag?.position.z, loadDecalAsset]);
 
   const beginTouchMove = (event: ReactPointerEvent<HTMLButtonElement>) => {
     event.preventDefault();

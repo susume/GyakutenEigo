@@ -165,6 +165,8 @@ export function CharacterPreview({
   const loadRef = useRef(loadDecalAsset);
   loadRef.current = loadDecalAsset;
 
+  const appearanceKey = appearanceSignature(appearance);
+
   useEffect(() => {
     const mount = mountRef.current;
     if (!mount) return;
@@ -381,7 +383,7 @@ export function CharacterPreview({
       (platformRing.material as THREE.Material).dispose();
       renderer.domElement.remove();
     };
-  }, [appearanceSignature(appearance), team, localDecal, resetSignal, showVictoryPose, focusBack, focusFootwear]);
+  }, [appearance, appearanceKey, team, localDecal, resetSignal, showVictoryPose, focusBack, focusFootwear]);
 
   return (
     <div

@@ -27,7 +27,7 @@ export default function GameAnnouncementOverlay({
     if (remainingMs <= 0) return;
     const timeout = window.setTimeout(() => setVisible(false), remainingMs);
     return () => window.clearTimeout(timeout);
-  }, [announcement?.id, announcement?.expiresAt, serverTime]);
+  }, [announcement, serverTime]);
 
   if (!announcement || !visible) return null;
   return (

@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useRef, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import {
   APPEARANCE_UPDATE_COOLDOWN_MS,
   COSMETIC_CATALOG,
@@ -41,10 +41,7 @@ export default function PremiumCharacterCreator({
   onSave,
   loadDecalAsset
 }: PremiumCharacterCreatorProps) {
-  const initial = useMemo(
-    () => sanitizePlayerAppearance(appearance),
-    [appearanceSignature(sanitizePlayerAppearance(appearance))]
-  );
+  const initial = useMemo(() => sanitizePlayerAppearance(appearance), [appearance]);
   const [draft, setDraft] = useState<PlayerAppearance>(initial);
   const [savedSignature, setSavedSignature] = useState(appearanceSignature(initial));
   const [saving, setSaving] = useState(false);
@@ -63,11 +60,11 @@ export default function PremiumCharacterCreator({
         ? next
         : current;
     });
-  }, [appearanceSignature(sanitizePlayerAppearance(appearance))]);
+  }, [appearance, savedSignature]);
 
   const dirty = appearanceSignature(draft) !== savedSignature;
 
-  const save = async (next = draft) => {
+  const save = useCallback(async (next = draft) => {
     if (saving || disabled) return;
     const safeNext = sanitizePlayerAppearance(next);
     lastSubmittedSignature.current = appearanceSignature(safeNext);
@@ -94,13 +91,13 @@ export default function PremiumCharacterCreator({
 
     setError(finalError instanceof Error ? finalError.message : "Appearance could not be saved.");
     setSaving(false);
-  };
+  }, [disabled, draft, onSave, saving]);
 
   useEffect(() => {
     if (!dirty || disabled || saving || error) return;
     const timeout = window.setTimeout(() => void save(draft), 950);
     return () => window.clearTimeout(timeout);
-  }, [appearanceSignature(draft), disabled, saving, error]);
+  }, [dirty, draft, disabled, saving, error, save]);
 
   const updateDraft = (makeNext: (current: PlayerAppearance) => PlayerAppearance) => {
     setError("");

@@ -1120,6 +1120,7 @@ function TeacherDashboard({ teacher, onLogout }: { teacher: TeacherUser; onLogou
   const [isSocketReconnecting, setIsSocketReconnecting] = useState(false);
   const [gamePreferences, setGamePreferences] = useState<GamePreferences>(() => readGamePreferences());
   const status = useAsyncMessage();
+  const reportStatus = status.report;
 
   const updateGamePreferences = (update: Partial<GamePreferences>) => {
     setGamePreferences((current) => {
@@ -1161,19 +1162,20 @@ function TeacherDashboard({ teacher, onLogout }: { teacher: TeacherUser; onLogou
         return payload.sessions.find((session) => session.id === current.id) ?? payload.sessions[0] ?? null;
       });
     } catch (err) {
-      status.report(err);
+      reportStatus(err);
     }
-  }, [status.report]);
+  }, [reportStatus]);
 
   useEffect(() => {
     void refresh();
   }, [refresh]);
 
   useEffect(() => {
-    if (!selectedSession) return;
+    const selectedSessionCode = selectedSession?.sessionCode;
+    if (!selectedSessionCode) return;
     const teacherToken = getTeacherToken();
     if (!teacherToken) return;
-    const roomJoinPayload = { code: selectedSession.sessionCode, teacherToken };
+    const roomJoinPayload = { code: selectedSessionCode, teacherToken };
     const socket: Socket = createMultiplayerSocket(roomJoinPayload);
     socket.on("connect", () => {
       setIsSocketReconnecting(false);
@@ -1840,20 +1842,23 @@ function SessionManager({
     ? buildStudentJoinUrl(window.location.origin, selectedSession.sessionCode)
     : "";
   const isLocalOnlyJoinLink = window.location.hostname === "localhost" || window.location.hostname === "127.0.0.1";
+  const hasSelectedSession = Boolean(selectedSession);
+  const selectedSessionBotDifficulty = selectedSession?.settings.botDifficulty;
+  const selectedSessionCode = selectedSession?.sessionCode;
 
   useEffect(() => {
     if (!quizSetId && data.quizSets[0]) setQuizSetId(data.quizSets[0].id);
-  }, [data.quizSets, quizSetId]);
+  }, [data.quizSets, quizSetId, setQuizSetId]);
 
   useEffect(() => {
-    if (selectedSession || !initialQuizSetId || !data.quizSets.some((quiz) => quiz.id === initialQuizSetId)) return;
+    if (hasSelectedSession || !initialQuizSetId || !data.quizSets.some((quiz) => quiz.id === initialQuizSetId)) return;
     setQuizSetId(initialQuizSetId);
-  }, [data.quizSets, initialQuizSetId, selectedSession]);
+  }, [data.quizSets, hasSelectedSession, initialQuizSetId, setQuizSetId]);
 
   useEffect(() => {
-    if (!selectedSession) return;
-    setBotDifficulty(selectedSession.settings.botDifficulty ?? DEFAULT_SESSION_SETTINGS.botDifficulty);
-  }, [selectedSession?.id, selectedSession?.settings.botDifficulty]);
+    if (!hasSelectedSession) return;
+    setBotDifficulty(selectedSessionBotDifficulty ?? DEFAULT_SESSION_SETTINGS.botDifficulty);
+  }, [hasSelectedSession, selectedSessionBotDifficulty, setBotDifficulty]);
 
   useEffect(() => {
     if (!isEndConfirmOpen) return;
@@ -1892,7 +1897,7 @@ function SessionManager({
       document.removeEventListener("keydown", handleKeyDown);
       previousFocus?.focus();
     };
-  }, [isEndConfirmOpen]);
+  }, [isEndConfirmOpen, setIsEndConfirmOpen]);
 
   useEffect(() => {
     if (!isProjectorOpen) return;
@@ -1928,7 +1933,7 @@ function SessionManager({
       document.removeEventListener("keydown", handleProjectorKeys);
       previousFocus?.focus();
     };
-  }, [isProjectorOpen]);
+  }, [isProjectorOpen, setIsProjectorOpen]);
 
   const hasInvalidSettings = Object.values(invalidSettings).some(Boolean);
 
@@ -2181,10 +2186,10 @@ function SessionManager({
   };
 
   const loadTeacherDecal = useCallback(
-    (assetId: string) => selectedSession
-      ? fetchDecalAsset(selectedSession.sessionCode, assetId)
+    (assetId: string) => selectedSessionCode
+      ? fetchDecalAsset(selectedSessionCode, assetId)
       : Promise.reject(new Error("No active room.")),
-    [selectedSession?.sessionCode]
+    [selectedSessionCode]
   );
 
   const copyStudentJoinLink = async () => {
@@ -2850,15 +2855,36 @@ function StudentExperience({ onExit }: { onExit: () => void }) {
   const previousPreparationRef = useRef(false);
   const lastCountdownCueRef = useRef("");
   const lastTeamSwitchAtRef = useRef(0);
+  const currentSessionRef = useRef<GameSession | null>(session);
+  const currentPlayerRef = useRef<PlayerSession | null>(player);
+  const answerActionRef = useRef<(choice: Choice) => Promise<void>>(async () => undefined);
+  const buyActionRef = useRef<(gearId: string) => Promise<void>>(async () => undefined);
+  const buySnowballsActionRef = useRef<() => Promise<void>>(async () => undefined);
+  const setStatusError = status.setError;
+  currentSessionRef.current = session;
+  currentPlayerRef.current = player;
 
   const isCompactViewport = viewportWidth <= 780;
+  const sessionCode = session?.sessionCode;
+  const sessionId = session?.id;
+  const sessionCurrentRound = session?.currentRound;
+  const sessionStatus = session?.status;
+  const sessionDeadPlayersCanPractice = session?.settings.deadPlayersCanPractice;
+  const sessionGameMode = session?.settings.gameMode;
+  const playerId = player?.id;
+  const playerIsAlive = player?.isAlive;
+  const hasPlayer = Boolean(player);
+  const hasSession = Boolean(session);
+  const hasActiveArenaConnection = Boolean(session && player && playerToken);
+  const hasQuestion = Boolean(question);
+  const hasActiveStudentSession = Boolean(session && player && session.status === "active");
   const nicknameError = useMemo(() => getNicknameError(nickname), [nickname]);
   const spectatorCandidates = useMemo(() => {
     if (!session || !player || player.isAlive || session.settings.gameMode !== "flag") return [];
     return session.players
       .filter((candidate) => candidate.id !== player.id && candidate.isAlive && candidate.connectionState !== "disconnected")
       .sort((left, right) => Number(right.team === player.team) - Number(left.team === player.team));
-  }, [session?.players, session?.settings.gameMode, player?.id, player?.isAlive, player?.team]);
+  }, [session, player]);
   const spectatorPlayer = spectatorCandidates.find((candidate) => candidate.id === spectatorPlayerId) ?? spectatorCandidates[0];
 
   useEffect(() => {
@@ -2869,7 +2895,7 @@ function StudentExperience({ onExit }: { onExit: () => void }) {
     if (!spectatorCandidates.some((candidate) => candidate.id === spectatorPlayerId)) {
       setSpectatorPlayerId(spectatorCandidates[0].id);
     }
-  }, [spectatorCandidates, spectatorPlayerId]);
+  }, [spectatorCandidates, spectatorPlayerId, setSpectatorPlayerId]);
 
   const updateGamePreferences = (update: Partial<GamePreferences>) => {
     setGamePreferences((current) => {
@@ -2933,7 +2959,7 @@ function StudentExperience({ onExit }: { onExit: () => void }) {
           return;
         }
         setJoinCode(stored.sessionCode);
-        status.setError("Your connection dropped while restoring the game. Reconnect, then reload or join again with the same name.");
+        setStatusError("Your connection dropped while restoring the game. Reconnect, then reload or join again with the same name.");
       })
       .finally(() => {
         if (!cancelled) setIsRestoringStudentSession(false);
@@ -2942,7 +2968,7 @@ function StudentExperience({ onExit }: { onExit: () => void }) {
     return () => {
       cancelled = true;
     };
-  }, [joinCodeFromLink]);
+  }, [joinCodeFromLink, setFeedback, setIsRestoringStudentSession, setStatusError]);
 
   useEffect(() => {
     const updateViewportWidth = () => setViewportWidth(window.innerWidth);
@@ -2958,32 +2984,32 @@ function StudentExperience({ onExit }: { onExit: () => void }) {
     if (!feedback) return;
     const timeout = window.setTimeout(() => setFeedback(""), 4500);
     return () => window.clearTimeout(timeout);
-  }, [feedback]);
+  }, [feedback, setFeedback]);
 
   useEffect(() => {
-    if (!session || session.status !== "active") {
+    if (!hasSession || sessionStatus !== "active") {
       lastCountdownCueRef.current = "";
       return;
     }
-    const cueKey = `${session.currentRound}:${remainingSeconds}`;
+    const cueKey = `${sessionCurrentRound}:${remainingSeconds}`;
     if ([10, 5, 3, 2, 1].includes(remainingSeconds) && lastCountdownCueRef.current !== cueKey) {
       lastCountdownCueRef.current = cueKey;
       gameAudio.playEvent(remainingSeconds <= 5 ? "quiz_timer_warning" : "round_ending");
     }
-  }, [remainingSeconds, session?.currentRound, session?.status]);
+  }, [hasSession, remainingSeconds, sessionCurrentRound, sessionStatus]);
 
   useEffect(() => {
-    if (quizOpen && question) gameAudio.playEvent("quiz_timer_start");
-  }, [quizOpen, question?.id]);
+    if (quizOpen && hasQuestion) gameAudio.playEvent("quiz_timer_start");
+  }, [hasQuestion, quizOpen]);
 
   useEffect(() => {
-    if (!session || !player?.id || !playerToken || question) return;
-    const questionPhase = session.status === "waiting" || session.status === "active" || roundPreparation || zombieSelection;
-    if (!questionPhase || (!player.isAlive && !session.settings.deadPlayersCanPractice)) return;
+    if (!sessionCode || !playerId || !playerToken || hasQuestion) return;
+    const questionPhase = sessionStatus === "waiting" || sessionStatus === "active" || roundPreparation || zombieSelection;
+    if (!questionPhase || (!playerIsAlive && !sessionDeadPlayersCanPractice)) return;
 
     let cancelled = false;
     void studentApi
-      .question(session.sessionCode, player.id, playerToken)
+      .question(sessionCode, playerId, playerToken)
       .then((payload) => {
         if (cancelled) return;
         const data = payload as { question?: PublicQuestion };
@@ -2994,11 +3020,11 @@ function StudentExperience({ onExit }: { onExit: () => void }) {
     return () => {
       cancelled = true;
     };
-  }, [session?.sessionCode, session?.status, session?.roundTransition?.phase, roundPreparation, zombieSelection, player?.id, player?.isAlive, playerToken, session?.settings.deadPlayersCanPractice, question?.id]);
+  }, [sessionCode, sessionStatus, session?.roundTransition?.phase, roundPreparation, zombieSelection, playerId, playerIsAlive, playerToken, sessionDeadPlayersCanPractice, hasQuestion]);
 
   useEffect(() => {
     const syncBgm = () => {
-      gameAudio.setBgmActive(Boolean(session && player && session.status === "active" && document.visibilityState === "visible"));
+      gameAudio.setBgmActive(Boolean(hasActiveStudentSession && document.visibilityState === "visible"));
     };
     syncBgm();
     document.addEventListener("visibilitychange", syncBgm);
@@ -3006,12 +3032,14 @@ function StudentExperience({ onExit }: { onExit: () => void }) {
       document.removeEventListener("visibilitychange", syncBgm);
       gameAudio.setBgmActive(false);
     };
-  }, [session?.id, session?.status, player?.id]);
+  }, [hasActiveStudentSession]);
 
   useEffect(() => {
-    if (!session || !player?.id || !playerToken) return;
-    const activePlayerId = player.id;
-    const roomJoinPayload = { code: session.sessionCode, playerId: activePlayerId, playerToken };
+    const activeSession = currentSessionRef.current;
+    const activePlayer = currentPlayerRef.current;
+    if (!activeSession || !activePlayer?.id || !playerToken) return;
+    const activePlayerId = activePlayer.id;
+    const roomJoinPayload = { code: activeSession.sessionCode, playerId: activePlayerId, playerToken };
     const socket = createMultiplayerSocket(roomJoinPayload, {
       onProtocolError: (error) => setFeedback(error.message)
     });
@@ -3026,7 +3054,7 @@ function StudentExperience({ onExit }: { onExit: () => void }) {
       jumping?: boolean;
     }>();
     const lastRemotePositions = new Map<string, { x: number; y?: number; z: number }>();
-    let lastVisualSession = session;
+    let lastVisualSession = activeSession;
     let removedByTeacher = false;
     const emitPlayerVfx = (kind: ArenaVfxKind, playerId = activePlayerId, source = lastVisualSession) => {
       const target = source.players.find((candidate) => candidate.id === playerId);
@@ -3097,7 +3125,8 @@ function StudentExperience({ onExit }: { onExit: () => void }) {
       if (previousSession.status === "active" && nextSession.status === "paused") gameAudio.playEvent("round_ending");
       if (nextSession.status === "ended" && previousSession.status !== "ended") {
         const title = nextSession.announcement?.title?.toLowerCase() ?? "";
-        gameAudio.playEvent(title.includes("draw") ? "draw" : title.includes(player.team) ? "match_victory" : "match_defeat");
+        const currentTeam = currentPlayerRef.current?.team;
+        gameAudio.playEvent(title.includes("draw") ? "draw" : currentTeam && title.includes(currentTeam) ? "match_victory" : "match_defeat");
       }
       if ((previousLocal?.health ?? 100) > 25 && (nextLocal?.health ?? 100) <= 25 && nextLocal?.isAlive) gameAudio.playEvent("low_health");
       if (previousLocal?.isAlive === false && nextLocal?.isAlive) gameAudio.playEvent("temporary_invulnerability");
@@ -3113,7 +3142,7 @@ function StudentExperience({ onExit }: { onExit: () => void }) {
           : {};
         const carrier = nextSession.players.find((candidate) => candidate.id === nextSession.flag?.carrierId);
         const flagCue: AudioEventCue | undefined = nextFlagState === "carried"
-          ? carrier?.id === activePlayerId ? "flag_pickup" : carrier?.team === player.team ? "flag_teammate" : "flag_enemy"
+          ? carrier?.id === activePlayerId ? "flag_pickup" : carrier?.team === currentPlayerRef.current?.team ? "flag_teammate" : "flag_enemy"
           : nextFlagState === "dropped"
             ? "flag_drop"
             : nextFlagState === "placed"
@@ -3209,13 +3238,14 @@ function StudentExperience({ onExit }: { onExit: () => void }) {
       if (event.type === "end" && lastVisualSession.settings.gameMode === "zombie") {
         const humansWon = /humans survive/i.test(event.message);
         const zombiesWon = /zombie|converted/i.test(event.message) && !humansWon;
+        const currentPlayer = currentPlayerRef.current;
         const localWon = humansWon
-          ? player.role !== "zombie"
+          ? currentPlayer?.role !== "zombie"
           : zombiesWon
-            ? player.role === "zombie"
+            ? currentPlayer?.role === "zombie"
             : false;
         emitPlayerVfx(localWon ? "victory" : "defeat");
-        emitPlayerAnimation(localWon ? "victory" : "defeat", activePlayerId, player.team);
+        emitPlayerAnimation(localWon ? "victory" : "defeat", activePlayerId, currentPlayer?.team);
       }
     });
     type LivePositionUpdate = {
@@ -3286,7 +3316,7 @@ function StudentExperience({ onExit }: { onExit: () => void }) {
         setFeedback(messages[result.reason ?? ""] ?? "Snowball launched.");
         return;
       }
-      const targetTeam = session.players.find((candidate) => candidate.id === result.targetId)?.team;
+      const targetTeam = currentSessionRef.current?.players.find((candidate) => candidate.id === result.targetId)?.team;
       emitArenaVfx({ kind: "impact", x: result.targetX, z: result.targetZ, team: targetTeam });
       emitPlayerAnimation("hit", result.targetId, targetTeam);
       if (!result.eliminated) emitArenaVfx({ kind: "shield", x: result.targetX, z: result.targetZ, team: targetTeam });
@@ -3309,7 +3339,7 @@ function StudentExperience({ onExit }: { onExit: () => void }) {
           target: { x: result.targetX, z: result.targetZ, facing: result.targetFacing }
         });
         if (result.eliminated) gameAudio.play("eliminated", incomingSpatial);
-        else if (player.perks?.includes("shield_vest")) gameAudio.playEvent("shield_impact", incomingSpatial);
+        else if (currentPlayerRef.current?.perks?.includes("shield_vest")) gameAudio.playEvent("shield_impact", incomingSpatial);
         else gameAudio.play("player_tagged", incomingSpatial);
         setIncomingHitCue({
           id: Date.now(),
@@ -3327,7 +3357,8 @@ function StudentExperience({ onExit }: { onExit: () => void }) {
             ? `${attackerName} froze you out. Answer three practice questions to respawn.`
             : `${attackerName} tagged you for ${result.damage} warmth.`
         );
-        if (result.eliminated && !result.converted && session.settings.deadPlayersCanPractice && session.settings.gameMode !== "flag") {
+        const currentSession = currentSessionRef.current;
+        if (result.eliminated && !result.converted && currentSession?.settings.deadPlayersCanPractice && currentSession.settings.gameMode !== "flag") {
           openRespawnPractice();
         }
       }
@@ -3354,7 +3385,7 @@ function StudentExperience({ onExit }: { onExit: () => void }) {
       setAnsweringChoice(null);
       setFeedback("");
       setIsSocketReconnecting(false);
-      status.setError(payload.message ?? "Your teacher removed you from this game.");
+      setStatusError(payload.message ?? "Your teacher removed you from this game.");
       socket.disconnect();
     });
     return () => {
@@ -3363,12 +3394,11 @@ function StudentExperience({ onExit }: { onExit: () => void }) {
       if (socketRef.current === socket) socketRef.current = null;
       socket.disconnect();
     };
-  }, [session?.sessionCode, session?.settings.deadPlayersCanPractice, player?.id, playerToken, openRespawnPractice]);
+  }, [sessionCode, playerId, playerToken, openRespawnPractice, setAnsweringChoice, setBuyOpen, setFeedback, setIncomingHitCue, setIsSocketReconnecting, setQuizOpen, setRewardPulse, setScoreboardOpen, setSettingsOpen, setStatusError]);
 
   useEffect(() => {
-    if (!session || !player?.id || !playerToken || session.status !== "waiting" || !isSocketReconnecting) return;
-    const sessionCode = session.sessionCode;
-    const activePlayerId = player.id;
+    if (!sessionCode || !playerId || !playerToken || sessionStatus !== "waiting" || !isSocketReconnecting) return;
+    const activePlayerId = playerId;
     let cancelled = false;
 
     const syncWaitingRoom = async () => {
@@ -3387,16 +3417,16 @@ function StudentExperience({ onExit }: { onExit: () => void }) {
       cancelled = true;
       window.clearInterval(interval);
     };
-  }, [session?.sessionCode, session?.status, player?.id, playerToken, isSocketReconnecting]);
+  }, [sessionCode, sessionStatus, playerId, playerToken, isSocketReconnecting]);
 
   useEffect(() => {
-    if (roundPreparation && player?.isAlive) {
+    if (roundPreparation && playerIsAlive) {
       gameAudio.play("menu_toggle");
       setBuyOpen(true);
       setQuizOpen(false);
       setScoreboardOpen(false);
       setSettingsOpen(false);
-    } else if (zombieSelection && player?.isAlive) {
+    } else if (zombieSelection && playerIsAlive) {
       gameAudio.playEvent("quiz_open");
       setQuizOpen(true);
       setBuyOpen(false);
@@ -3407,7 +3437,7 @@ function StudentExperience({ onExit }: { onExit: () => void }) {
       setQuizOpen(false);
     }
     previousPreparationRef.current = roundPreparation || zombieSelection;
-  }, [roundPreparation, zombieSelection, session?.roundTransition?.startsAt, player?.id, player?.isAlive]);
+  }, [roundPreparation, zombieSelection, session?.roundTransition?.startsAt, playerId, playerIsAlive, setBuyOpen, setQuizOpen, setScoreboardOpen, setSettingsOpen]);
 
   const panelsOpen = quizOpen || buyOpen || scoreboardOpen || settingsOpen;
   const gameplayInputPaused = quizOpen || buyOpen || settingsOpen;
@@ -3418,53 +3448,53 @@ function StudentExperience({ onExit }: { onExit: () => void }) {
   }, [gameplayInputPaused]);
 
   useEffect(() => {
-    if (!player) {
+    if (!hasPlayer) {
       previousAliveRef.current = null;
       return;
     }
     if (
       shouldAutoOpenRespawnPractice({
         wasAlive: previousAliveRef.current,
-        isAlive: player.isAlive,
-        canPractice: Boolean(session?.settings.deadPlayersCanPractice)
-          && session?.settings.gameMode !== "flag"
+        isAlive: playerIsAlive ?? false,
+        canPractice: Boolean(sessionDeadPlayersCanPractice)
+          && sessionGameMode !== "flag"
       })
     ) {
       openRespawnPractice();
     }
-    previousAliveRef.current = player.isAlive;
-  }, [player?.id, player?.isAlive, session?.settings.deadPlayersCanPractice, session?.settings.gameMode, openRespawnPractice]);
+    previousAliveRef.current = playerIsAlive ?? false;
+  }, [hasPlayer, playerId, playerIsAlive, sessionDeadPlayersCanPractice, sessionGameMode, openRespawnPractice]);
 
   const sendArenaPosition = useCallback(
     (position: ArenaPositionPayload) => {
-      if (!session || !player || !playerToken) return;
+      if (!hasActiveArenaConnection) return;
       socketRef.current?.volatile.emit("player_position", {
         ...position
       });
     },
-    [session?.sessionCode, player?.id, playerToken]
+    [hasActiveArenaConnection]
   );
 
   const sendArenaFire = useCallback(
     (position: ArenaPositionPayload) => {
-      if (!session || !player || !playerToken) return;
+      if (!hasActiveArenaConnection) return;
       const requestId = crypto.randomUUID?.() ?? `${Date.now()}-${Math.random().toString(36).slice(2)}`;
       socketRef.current?.emit("fire_action", {
         requestId,
         ...position
       });
     },
-    [session?.sessionCode, player?.id, playerToken]
+    [hasActiveArenaConnection]
   );
 
   const sendFlagAction = useCallback(
     (position: ArenaPositionPayload) => {
-      if (!session || !player || !playerToken || session.settings.gameMode !== "flag") return;
+      if (!hasActiveArenaConnection || sessionGameMode !== "flag") return;
       socketRef.current?.emit("flag_action", {
         ...position
       });
     },
-    [session?.sessionCode, session?.settings.gameMode, player?.id, playerToken]
+    [hasActiveArenaConnection, sessionGameMode]
   );
 
   const join = async (event: React.FormEvent) => {
@@ -3598,14 +3628,14 @@ function StudentExperience({ onExit }: { onExit: () => void }) {
   };
 
   useEffect(() => {
-    if (!session || session.status !== "ended") return;
+    if (!hasSession || sessionStatus !== "ended") return;
     setQuizOpen(false);
     setBuyOpen(false);
     setScoreboardOpen(false);
     setSettingsOpen(false);
     setAnsweringChoice(null);
     if (document.pointerLockElement) document.exitPointerLock();
-  }, [session?.id, session?.status]);
+  }, [hasSession, sessionId, sessionStatus, setAnsweringChoice, setBuyOpen, setQuizOpen, setScoreboardOpen, setSettingsOpen]);
 
   const buy = async (gearId: string) => {
     if (!session || !player || !playerToken || buyingGearId || isBuyingSnowballs) return;
@@ -3655,6 +3685,10 @@ function StudentExperience({ onExit }: { onExit: () => void }) {
     }
   };
 
+  answerActionRef.current = answer;
+  buyActionRef.current = buy;
+  buySnowballsActionRef.current = buySnowballs;
+
   useEffect(() => {
     const isTypingTarget = (target: EventTarget | null) => {
       const element = target instanceof HTMLElement ? target : null;
@@ -3662,7 +3696,7 @@ function StudentExperience({ onExit }: { onExit: () => void }) {
       return ["INPUT", "TEXTAREA", "SELECT"].includes(element.tagName) || element.isContentEditable;
     };
     const onKeyDown = (event: KeyboardEvent) => {
-      if (!player || !session || isTypingTarget(event.target)) return;
+      if (!hasActiveArenaConnection || isTypingTarget(event.target)) return;
       if (event.key.toLowerCase() === "q") {
         gameAudio.playEvent(quizOpen ? "modal_close" : "quiz_open");
         setQuizOpen((open) => !open);
@@ -3688,19 +3722,19 @@ function StudentExperience({ onExit }: { onExit: () => void }) {
       const index = Number(event.key) - 1;
       if (quizOpen && question && index >= 0 && index < choices.length) {
         event.preventDefault();
-        void answer(choices[index]);
+        void answerActionRef.current(choices[index]);
         return;
       }
       if (buyOpen && !event.repeat) {
         const shortcut = getShopShortcut(event.key);
         if (!shortcut) return;
         event.preventDefault();
-        if (shortcut.item === "snowballs") void buySnowballs();
-        else void buy(shortcut.item);
+        if (shortcut.item === "snowballs") void buySnowballsActionRef.current();
+        else void buyActionRef.current(shortcut.item);
       }
     };
     const onKeyUp = (event: KeyboardEvent) => {
-      if (event.key !== "Tab" || !player || !session || isTypingTarget(event.target)) return;
+      if (event.key !== "Tab" || !hasActiveArenaConnection || isTypingTarget(event.target)) return;
       event.preventDefault();
       setScoreboardOpen(false);
     };
@@ -3711,8 +3745,7 @@ function StudentExperience({ onExit }: { onExit: () => void }) {
       window.removeEventListener("keyup", onKeyUp);
     };
   }, [
-    player,
-    session,
+    hasActiveArenaConnection,
     playerToken,
     quizOpen,
     buyOpen,
@@ -3720,7 +3753,12 @@ function StudentExperience({ onExit }: { onExit: () => void }) {
     scoreboardOpen,
     answeringChoice,
     buyingGearId,
-    isBuyingSnowballs
+    isBuyingSnowballs,
+    setBuyOpen,
+    setQuizOpen,
+    setScoreboardOpen,
+    setSettingsOpen,
+    setAnsweringChoice
   ]);
 
   const chooseTeam = async (team: Team) => {
@@ -3767,10 +3805,10 @@ function StudentExperience({ onExit }: { onExit: () => void }) {
   };
 
   const loadStudentDecal = useCallback(
-    (assetId: string) => session
-      ? fetchDecalAsset(session.sessionCode, assetId, playerToken)
+    (assetId: string) => sessionCode
+      ? fetchDecalAsset(sessionCode, assetId, playerToken)
       : Promise.reject(new Error("No active room.")),
-    [session?.sessionCode, playerToken]
+    [sessionCode, playerToken]
   );
 
   if (!session || !player) {
