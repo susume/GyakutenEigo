@@ -32,6 +32,8 @@ import {
   getFpsBodyVerticalBounds,
   smoothFpsGroundedCameraY
 } from "./ArenaCamera.js";
+import { createArenaSceneSetup, FPS_BASE_FOV } from "./sceneSetup";
+import { ArenaHudOverlay } from "./hudOverlay";
 import { CharacterFactory } from "./characters/CharacterFactory";
 import { CharacterManager, type CharacterManagerStats } from "./characters/CharacterManager";
 import { isFireKeyboardEvent, isScopeKeyboardEvent, resolveCombatPointerAction, shouldFireFromTouchGesture } from "./arenaInput";
@@ -85,7 +87,6 @@ const PLAYER_RADIUS = 0.45;
 const WALK_SPEED = 10.8;
 const RUN_SPEED = 14.8;
 const CROUCH_SPEED = 6.4;
-const FPS_BASE_FOV = 72;
 const paleStone = "#dec28a";
 const darkStone = "#846744";
 const wood = "#65462e";
@@ -429,11 +430,6 @@ export default function ArenaPreview({
     const isFps = view === "fps";
     const isZombieMode = session?.settings.gameMode === "zombie";
     const palette = arenaMap.palette;
-    const scene = new THREE.Scene();
-    scene.background = new THREE.Color(isZombieMode ? "#5d668a" : palette.sky);
-    scene.fog = new THREE.Fog(isZombieMode ? "#8f8395" : palette.fog, isFps ? 120 : 210, isFps ? 350 : 500);
-
-    const camera = new THREE.PerspectiveCamera(isFps ? FPS_BASE_FOV : 52, mount.clientWidth / Math.max(1, mount.clientHeight), 0.1, 620);
     const fallbackSpawn = currentPlayer ? getTeamSpawnForMap(arenaMapId, currentPlayer.team) : getTeamSpawnForMap(arenaMapId, "blue");
     const initialServerX = isFiniteNumber(currentPlayer?.x) ? currentPlayer.x : fallbackSpawn.x;
     const initialServerZ = isFiniteNumber(currentPlayer?.z) ? currentPlayer.z : fallbackSpawn.z;
@@ -448,36 +444,25 @@ export default function ArenaPreview({
     let pitch = -0.12;
     if (isFps) setMiniMapPosition(localToServerPosition(playerPosition, yaw));
 
+    const sceneSetup = createArenaSceneSetup({
+      mount,
+      arenaMap,
+      isFps,
+      isZombieMode,
+      isIronJunction,
+      activeQuality
+    });
+    if (!sceneSetup) {
+      setRenderError("WebGL is not available in this browser. Try updating the browser or enabling hardware acceleration.");
+      return;
+    }
+    const { scene, camera, renderer, qualityConfig } = sceneSetup;
     if (isFps) {
       camera.position.set(0, 0, 0);
     } else {
       camera.position.set(0, 238, 246);
       camera.lookAt(0, 0, 0);
     }
-
-    let renderer: THREE.WebGLRenderer;
-    try {
-      renderer = new THREE.WebGLRenderer({ antialias: activeQuality !== "performance", alpha: false, powerPreference: "high-performance" });
-    } catch {
-      setRenderError("WebGL is not available in this browser. Try updating the browser or enabling hardware acceleration.");
-      return;
-    }
-    const qualityConfig = activeQuality === "performance"
-      ? { pixelRatio: 1, shadows: false, anisotropy: 2, detail: 0 }
-      : activeQuality === "balanced"
-        ? { pixelRatio: 1.25, shadows: false, anisotropy: 4, detail: 1 }
-        : { pixelRatio: 1.75, shadows: true, anisotropy: 8, detail: 2 };
-    renderer.setPixelRatio(Math.min(window.devicePixelRatio, qualityConfig.pixelRatio));
-    renderer.setSize(mount.clientWidth, mount.clientHeight);
-    renderer.shadowMap.enabled = !isFps && qualityConfig.shadows;
-    renderer.shadowMap.type = THREE.PCFSoftShadowMap;
-    renderer.outputColorSpace = THREE.SRGBColorSpace;
-    renderer.toneMapping = THREE.ACESFilmicToneMapping;
-    renderer.toneMappingExposure = isFps ? (isIronJunction ? 1.06 : 0.9) : 0.98;
-    renderer.domElement.tabIndex = 0;
-    renderer.domElement.className = "arena-webgl";
-    renderer.domElement.dataset.quality = activeQuality;
-    mount.appendChild(renderer.domElement);
 
     const sky = new THREE.Mesh(
       new THREE.SphereGeometry(560, 20, 12),
@@ -2509,19 +2494,26 @@ export default function ArenaPreview({
       )}
       {view === "fps" && (
         <>
-          <div className={`${hitPulse % 2 === 0 ? "crosshair" : "crosshair fire"}${zoomLevel > 0 ? ` zoom zoom-level-${zoomLevel}` : ""}`} aria-hidden="true" />
+          <ArenaHudOverlay
+            hitPulse={hitPulse}
+            zoomLevel={zoomLevel}
+            weaponCooldown={weaponCooldown}
+            isDesertCitadel={isDesertCitadel}
+            isIronJunction={isIronJunction}
+            arenaTitle={arenaMap.title}
+            controlsDisabled={controlsDisabled}
+            isPointerLocked={isPointerLocked}
+            suppressHint={suppressHint}
+            joystickElementRef={joystickElementRef}
+            onBeginTouchMove={beginTouchMove}
+            onFireFromTouch={fireFromTouch}
+          />
           {zoomLevel > 0 && (
             <div key={`${zoomLevel}-${zoomPulse}`} className={`scope-overlay scope-level-${zoomLevel} scope-pulse`} aria-hidden="true">
               <span>Heavy Scope</span>
               <strong>{zoomLevel === 1 ? "2×" : "4×"}</strong>
             </div>
           )}
-          {weaponCooldown && (
-            <div className="weapon-cooldown" aria-label="Weapon cooldown">
-              <span key={weaponCooldown.startedAt} style={{ animationDuration: `${weaponCooldown.durationMs}ms` }} />
-            </div>
-          )}
-          {!isDesertCitadel && !isIronJunction && <div className="fps-callout">{arenaMap.title}</div>}
           <div className="arena-minimap" aria-label={`${arenaMap.title} minimap`}>
             <div className="minimap-title">Map</div>
             <svg viewBox={`0 0 ${MINIMAP_WIDTH} ${MINIMAP_HEIGHT}`} role="img" aria-label={`${arenaMap.title} route overview`}>
