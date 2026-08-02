@@ -2,7 +2,7 @@
 
 Last verified: 2 August 2026
 Current branch: `main`
-Validated commit: `f4ffd5c`
+Validated commit: `b1c8ee1`
 
 ## System boundary
 
