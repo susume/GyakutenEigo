@@ -8,7 +8,6 @@ import { createServer } from "node:http";
 import { randomUUID } from "node:crypto";
 import { Server, type Socket } from "socket.io";
 import { resolveClientOrigins } from "./origins.js";
-import { planRoundConclusion, resolvePendingRoundAction } from "./roundFlow.js";
 import { AppearanceSecurityService, inspectProcessedDecal } from "./appearanceSecurity.js";
 import { DecalStore } from "./decalStore.js";
 import { CombatService } from "./combat.js";
@@ -27,6 +26,7 @@ import { registerSessionRoutes, type SessionRouteDependencies } from "./routes/s
 import { registerPlayerRoutes, type PlayerRouteDependencies } from "./routes/playerRoutes.js";
 import { registerAppearanceRoutes, type AppearanceRouteDependencies } from "./routes/appearanceRoutes.js";
 import { createBotRuntime, type BotRuntimeDependencies } from "./botRuntime.js";
+import { createRoundRuntime, type RoundRuntimeDependencies } from "./roundRuntime.js";
 import { ConnectionLifecycleService } from "./connectionLifecycle.js";
 import { PersistenceScheduler } from "./persistence/persistenceScheduler.js";
 import { PlayerPositionHistory } from "./playerPositionHistory.js";
@@ -77,7 +77,6 @@ import {
   getGearRange,
   getCosmeticProgress,
   getLockedAppearanceItems,
-  getPlayerHealthMax,
   getPlayerMoveSpeedMultiplier,
   getPlayerPerks,
   getPlayerWeaponId,
@@ -87,8 +86,6 @@ import {
   getArenaEyeHeight,
   getArenaGroundHeightForPlayer,
   getArenaRecoveryGroundHeight,
-  getRoundResetLoadout,
-  getZombieBestPlayers,
   getTeamSpawnForMap,
   selectTeamSpawnForMap,
   PlayerQuestionGate,
@@ -102,7 +99,6 @@ import {
   isRoundPreparationPhase,
   isZombieSelectionPhase,
   createInitialFlagState,
-  randomizeBalancedTeams,
   selectLateJoinTeam,
   resolveAnswerReward,
   resolveFlagCapture,
@@ -121,7 +117,6 @@ import {
   sanitizePlayerAppearance,
   sanitizeCharacterCustomizationSettings,
   getPlayerAppearanceError,
-  selectInitialZombies,
   type AnswerLog,
   type ArenaPosition,
   type BotDifficulty,
@@ -681,167 +676,11 @@ const makeAnnouncement = (
   expiresAt: durationMs ? new Date(Date.now() + durationMs).toISOString() : undefined
 });
 
-const teamName = (team: Team) => team === "red" ? "Red Team" : "Blue Team";
-
-const finishSession = (
-  session: GameSession,
-  message = "Round ended. Report is ready.",
-  announcement = makeAnnouncement("game_over", "Game Over", message, undefined, GAME_OVER_ANNOUNCEMENT_MS)
-) => {
-  if (session.status === "ended") return;
-  session.status = "ended";
-  session.endedAt = now();
-  session.roundTransition = undefined;
-  session.announcement = announcement;
-  for (const player of session.players) {
-    if (!player.isBot) continue;
-    botMemoryById.delete(player.id);
-    botNextAttackAt.delete(player.id);
-    botRespawnAt.delete(player.id);
-    botPreviousPositions.delete(player.id);
-  }
-  botAlertsBySession.delete(session.sessionCode);
-  purgeSessionDecals(session);
-  appendEvent(session, { type: "end", message });
-  const quizSetName = quizSets.get(session.quizSetId)?.title ?? "Quiz Set";
-  if (normalizedLibrary) mirrorNormalized(normalizedLibrary.saveSession(session, quizSetName), "completed session");
-  saveSessionReport(session);
-  broadcastSession(session);
-};
+type BotAlert = { position: { x: number; z: number }; createdAtMs: number; sourceId: string };
+const botAlertsBySession = new Map<string, Map<Team, BotAlert>>();
 
 const mirrorNormalized = (operation: Promise<unknown>, label: string) => {
   void operation.catch((error: unknown) => console.error(`Failed to mirror ${label} into normalized storage.`, error));
-};
-
-const finishZombieSession = (session: GameSession, outcome: string) => {
-  const bestPlayers = getZombieBestPlayers(session.players, 6);
-  const detail = bestPlayers.length > 0
-    ? `Best players: ${bestPlayers.map((player) => player.nickname).join(", ")}`
-    : "No survivor ranking was available.";
-  finishSession(
-    session,
-    `${outcome} ${detail}`,
-    makeAnnouncement("game_over", "Game Over", outcome, detail, GAME_OVER_ANNOUNCEMENT_MS)
-  );
-};
-
-const inactiveRoundMessage = (session: GameSession) =>
-  session.status === "ended"
-    ? "The round has ended. This action was not counted."
-    : isRoundPreparationPhase(session)
-      ? "Preparation is open. Buy gear or answer questions before the round begins."
-    : isZombieSelectionPhase(session)
-      ? "Zombie selection is underway. Answer questions to build running energy."
-    : session.status === "paused"
-      ? "The round has ended. The next round is starting shortly."
-      : "The teacher has not started the round yet.";
-
-const resetRoundPlayer = (session: GameSession, player: PlayerSession, index: number): PlayerSession => {
-  if (player.isBot) {
-    botMemoryById.delete(player.id);
-    botNextAttackAt.delete(player.id);
-    botRespawnAt.delete(player.id);
-    botPreviousPositions.delete(player.id);
-  }
-  const spawn = player.isBot ? getBotSpawn(session, player.team, index) : selectSessionSpawn(session, player.team, index);
-  const loadout = getRoundResetLoadout({ player, startingSnowballs: session.settings.startingSnowballs });
-  const isZombieHuman = session.settings.gameMode === "zombie" && player.role !== "zombie";
-  return {
-    ...player,
-    ...spawn,
-    role: session.settings.gameMode === "zombie" ? player.role ?? "human" : player.role,
-    health: getPlayerHealthMax({ ...player, ...loadout }),
-    ...loadout,
-    energy: session.settings.gameMode === "zombie"
-      ? player.role === "zombie" ? ZOMBIE_HUMAN_MAX_ENERGY : 0
-      : player.energy,
-    snowballs: isZombieHuman ? 0 : loadout.snowballs,
-    isAlive: true,
-    crouching: false,
-    jumping: false,
-    freezeStreak: 0,
-    respawnCorrectAnswers: 0
-  };
-};
-
-const prepareModeStateForRound = (session: GameSession) => {
-  if (session.settings.gameMode === "flag") {
-    if (session.settings.teamAssignment === "random") {
-      session.players = randomizeBalancedTeams(session.players, Date.now());
-    }
-    session.flag = createInitialFlagState(sessionSpawn(session, "red"), `${session.id}:round:${session.currentRound}`);
-  } else if (session.settings.gameMode === "zombie") {
-    session.players = session.players.map((player) => ({
-      ...player,
-      role: "human",
-      team: "blue",
-      zombieConvertedAt: undefined,
-      energy: 0,
-      isAlive: true
-    }));
-    session.flag = undefined;
-  } else {
-    session.flag = undefined;
-  }
-};
-
-const prepareRoundState = (session: GameSession, preserveStats = true) => {
-  prepareModeStateForRound(session);
-  session.roundWins = session.roundWins ?? { blue: 0, red: 0 };
-  session.players = session.players.map((player, index) => {
-    const wasOutForRound = !player.isAlive;
-    const reset = resetRoundPlayer(session, player, index);
-    return preserveStats
-      ? {
-          ...reset,
-          respawns: wasOutForRound ? (player.respawns ?? 0) + 1 : (player.respawns ?? 0),
-          roundTags: 0,
-          roundRespawns: 0,
-          roundQuizMoneyEarned: 0
-        }
-      : {
-          ...reset,
-          score: 0,
-          correctAnswers: 0,
-          wrongAnswers: 0,
-          tags: 0,
-          respawns: 0,
-          roundTags: 0,
-          roundRespawns: 0,
-          roundQuizMoneyEarned: 0
-        };
-  });
-};
-
-const activatePreparedRound = (session: GameSession) => {
-  session.status = "active";
-  session.roundTransition = undefined;
-  session.startedAt = now();
-  session.endsAt = new Date(Date.now() + session.settings.roundDurationSeconds * 1000).toISOString();
-};
-
-const startRoundState = (session: GameSession, preserveStats = true) => {
-  prepareRoundState(session, preserveStats);
-  activatePreparedRound(session);
-};
-
-const openRoundPreparation = (session: GameSession, preserveStats = true) => {
-  prepareRoundState(session, preserveStats);
-  const startsAt = new Date(Date.now() + ROUND_PREPARATION_MS).toISOString();
-  session.status = "paused";
-  session.startedAt = undefined;
-  session.endsAt = undefined;
-  session.roundTransition = { nextRound: session.currentRound, startsAt, phase: "preparation" };
-  session.announcement = {
-    ...makeAnnouncement(
-      "preparation",
-      "Preparation Time",
-      "Buy gear with B, or answer questions with Q to earn more money.",
-      `Round ${session.currentRound} begins in 35 seconds.`,
-      ROUND_PREPARATION_MS
-    ),
-    expiresAt: startsAt
-  };
 };
 
 const flushPositionBroadcasts = () => {
@@ -857,132 +696,6 @@ const broadcastPlayerPosition = (session: GameSession, position: LivePositionPay
   positions.set(position.playerId, position);
   pendingPositionBroadcasts.set(session.sessionCode, positions);
   positionBroadcastTimer ??= setTimeout(flushPositionBroadcasts, 50);
-};
-
-const openZombieSelectionPhase = (session: GameSession, preserveStats = true) => {
-  prepareRoundState(session, preserveStats);
-  const startsAt = new Date(Date.now() + ZOMBIE_SELECTION_MS).toISOString();
-  session.status = "paused";
-  session.startedAt = undefined;
-  session.endsAt = undefined;
-  session.roundTransition = { nextRound: session.currentRound, startsAt, phase: "zombie_selection" };
-  session.announcement = {
-    ...makeAnnouncement(
-      "preparation",
-      "Everyone Starts Human",
-      "Answer questions now to charge your running energy. Zombies will be chosen at random.",
-      "Zombie selection in 20 seconds.",
-      ZOMBIE_SELECTION_MS
-    ),
-    expiresAt: startsAt
-  };
-};
-
-const finishRound = (session: GameSession, winner: Team | undefined, reason: string) => {
-  if (session.status !== "active") return;
-  const conclusion = planRoundConclusion({
-    currentRound: session.currentRound,
-    roundCount: session.settings.roundCount,
-    roundWins: session.roundWins ?? { blue: 0, red: 0 },
-    winner,
-    reason
-  });
-  session.roundWins = conclusion.roundWins;
-  appendEvent(session, {
-    type: "end",
-    message: conclusion.eventMessage,
-    team: winner
-  });
-
-  if (conclusion.matchResult) {
-    const title = conclusion.matchWinner ? `${teamName(conclusion.matchWinner)} wins!` : "The match is a draw";
-    finishSession(
-      session,
-      conclusion.matchResult,
-      makeAnnouncement("game_over", title, "Game Over", conclusion.matchResult, GAME_OVER_ANNOUNCEMENT_MS)
-    );
-    return;
-  }
-
-  const nextRound = conclusion.nextRound!;
-  const resultTitle = winner ? `${teamName(winner)} wins Round ${session.currentRound}!` : `Round ${session.currentRound} is a draw`;
-  const resultMessage = session.settings.gameMode === "flag" || session.settings.gameMode === "classic"
-    ? `${reason}. Round ${nextRound} preparation begins shortly.`
-    : `${reason}. Round ${nextRound} begins shortly.`;
-  const startsAt = new Date(Date.now() + ROUND_RESULT_ANNOUNCEMENT_MS).toISOString();
-  session.status = "paused";
-  session.endsAt = now();
-  session.announcement = {
-    ...makeAnnouncement("round_result", resultTitle, resultMessage, undefined, ROUND_RESULT_ANNOUNCEMENT_MS),
-    expiresAt: startsAt
-  };
-  session.roundTransition = { nextRound, startsAt, phase: "result" };
-  broadcastSession(session);
-};
-
-const startPendingRound = (session: GameSession) => {
-  if (session.status !== "paused" || !session.roundTransition) return;
-  const transition = session.roundTransition;
-  session.currentRound = transition.nextRound;
-  const pendingRoundAction = resolvePendingRoundAction({ gameMode: session.settings.gameMode, phase: transition.phase });
-  if (pendingRoundAction === "open_preparation") {
-    openRoundPreparation(session);
-    appendEvent(session, { type: "start", message: `Round ${session.currentRound} preparation opened.` });
-    broadcastSession(session);
-    return;
-  }
-
-  if (transition.phase === "zombie_selection") {
-    session.players = selectInitialZombies(session.players, session.settings.initialZombieCount).map((player) => (
-      player.role === "zombie"
-        ? { ...player, snowballs: session.settings.startingSnowballs }
-        : player
-    ));
-    activatePreparedRound(session);
-  } else if (transition.phase === "preparation" || transition.phase === "buy") {
-    activatePreparedRound(session);
-  } else {
-    startRoundState(session);
-  }
-  session.announcement = makeAnnouncement(
-    "round_start",
-    session.settings.gameMode === "zombie" ? "Zombies Revealed!" : `Round ${session.currentRound} has begun!`,
-    session.settings.gameMode === "flag"
-      ? "Red carries and protects the flag. Blue defends and captures."
-      : session.settings.gameMode === "zombie"
-        ? "Red Zombies hunt. Blue Humans use their stored energy to run and survive."
-        : "Most tags wins. Respawns, then quiz earnings break ties.",
-    undefined,
-    ROUND_START_ANNOUNCEMENT_MS
-  );
-  appendEvent(session, {
-    type: "start",
-    message: session.settings.gameMode === "zombie"
-      ? "Zombies were chosen at random. The survival round started."
-      : `Round ${session.currentRound} started.`
-  });
-  broadcastSession(session);
-};
-
-const finishZombieMatchIfComplete = (session: GameSession) => {
-  if (session.settings.gameMode !== "zombie" || session.status !== "active") return;
-  const humansRemaining = session.players.some(
-    (player) => player.connectionState !== "disconnected" && player.isAlive && player.role !== "zombie"
-  );
-  if (!humansRemaining) finishZombieSession(session, "Zombies converted everyone.");
-};
-
-const evaluateFlagEliminationWin = (session: GameSession) => {
-  if (session.settings.gameMode !== "flag" || session.status !== "active") return;
-  const redActive = session.players.some((player) => player.team === "red" && player.connectionState !== "disconnected" && player.isAlive);
-  const blueActive = session.players.some((player) => player.team === "blue" && player.connectionState !== "disconnected" && player.isAlive);
-  if (!blueActive) {
-    finishRound(session, "red", "Red Team knocked out Blue Team");
-    return;
-  }
-  if (!redActive && session.flag?.state !== "placed") {
-    finishRound(session, "blue", "Blue Team knocked out Red Team before the flag was placed");
-  }
 };
 
 const assertTeacherOwnsQuiz = (userId: string, quizSetId: string) => {
@@ -1051,6 +764,45 @@ const durableReportMetadataForTeacher = async (teacherId: string) => {
 const getBotSpawn = (session: GameSession, team: Team, index: number) => {
   return sessionSpawn(session, team, index);
 };
+
+const roundRuntimeDependencies: RoundRuntimeDependencies = {
+  now,
+  makeAnnouncement,
+  appendEvent,
+  broadcastSession,
+  sessionSpawn,
+  selectSessionSpawn,
+  getBotSpawn,
+  botMemoryById,
+  botNextAttackAt,
+  botRespawnAt,
+  botPreviousPositions,
+  botAlertsBySession,
+  purgeSessionDecals,
+  saveSession: normalizedLibrary ? (session, quizSetName) => normalizedLibrary.saveSession(session, quizSetName) : undefined,
+  getQuizSetName: (quizSetId) => quizSets.get(quizSetId)?.title ?? "Quiz Set",
+  mirrorNormalized,
+  saveSessionReport,
+  roundResultAnnouncementMs: ROUND_RESULT_ANNOUNCEMENT_MS,
+  gameOverAnnouncementMs: GAME_OVER_ANNOUNCEMENT_MS,
+  roundPreparationMs: ROUND_PREPARATION_MS,
+  zombieSelectionMs: ZOMBIE_SELECTION_MS,
+  zombieHumanMaxEnergy: ZOMBIE_HUMAN_MAX_ENERGY,
+  roundStartAnnouncementMs: ROUND_START_ANNOUNCEMENT_MS
+};
+const roundRuntime = createRoundRuntime(roundRuntimeDependencies);
+const {
+  finishSession,
+  finishZombieSession,
+  inactiveRoundMessage,
+  startRoundState,
+  openRoundPreparation,
+  openZombieSelectionPhase,
+  finishRound,
+  startPendingRound,
+  finishZombieMatchIfComplete,
+  evaluateFlagEliminationWin
+} = roundRuntime;
 
 const combatService = new CombatService({
   io,
@@ -1190,8 +942,6 @@ const applyAuthoritativePosition = (
   return position;
 };
 
-type BotAlert = { position: { x: number; z: number }; createdAtMs: number; sourceId: string };
-const botAlertsBySession = new Map<string, Map<Team, BotAlert>>();
 const connectionLifecycle = new ConnectionLifecycleService({
   io,
   playerSockets,
