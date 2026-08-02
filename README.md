@@ -81,14 +81,35 @@ hosts must serve 'index.html' for these paths.
 
 - Teacher signup/login, classes, quiz sets, question CRUD, folders, reports,
   session creation, join links, and classroom controls.
+- Teacher workspace navigation with Library, Reports, and Settings; completed
+  game history can be reviewed, exported, individually deleted, or cleared.
+- Three-step live setup with Zombie, Tag, and Flag modes, map selection, arena
+  rules, and advanced settings for tuning the experience to a class.
 - Student join/rejoin with private player tokens and classroom-safe nicknames.
-- Classic Tag Practice, Flag Mode, and Zombie Mode.
+- Tag Mode, Flag Mode, and Zombie Mode.
 - Server-authoritative movement, damage, health, economy, purchases, objectives,
   rounds, bots, answer rewards, and results.
 - Desert Citadel, The Iron Junction, and Temple Runoff maps.
 - Starter, Quick, and Heavy Snowball Launchers plus Warm Vest and Speed Boots.
 - Shared skinned characters, bounded decals, teacher moderation, touch/gamepad
   input, audio, minimap, VFX pools, and Low/Medium/High quality presets.
+
+### Teacher live-room flow
+
+1. Choose a quiz from Library and create a game using Game Mode, Arena, and
+   Advanced Settings.
+2. Share the join code or QR code from the waiting room, manage learners/bots,
+   then start the game with the green Start Game action.
+3. Use Live Game Control for round actions, scoreboard and event-feed review,
+   then open Spectator View when a read-only learner perspective is useful.
+4. In Spectator View, choose a connected, alive, non-bot learner from the
+   scrollable picker or use Previous/Next. This changes only the teacher's
+   camera target; it does not send movement, firing, answer, or room commands.
+5. End the game to create the learning report, then review it from Reports.
+
+The teacher workspace keeps its left navigation visible while the main panel
+scrolls. The current maps are Desert Citadel, The Iron Junction, and Temple
+Runoff, with the map artwork used in both setup cards and live previews.
 
 ## Architecture at a glance
 
@@ -169,10 +190,11 @@ npm run test:load
 npm run test:e2e
 ~~~
 
-The current validated baseline is 277 unit tests, plus the 40-client load
-harness and the Playwright classroom scenario. Lint exits cleanly with zero
-errors and zero React Hook dependency warnings. Build warnings about Node
-version or large Vite chunks are non-fatal; use the declared Node version for
+The current validated baseline is recorded in [architecture.md](architecture.md)
+and includes the unit-test suite, 40-client load harness, Playwright classroom
+scenario, and local WebGL smoke coverage. For the latest teacher-workspace
+change, web typecheck and production build pass; build warnings about Node
+version or large Vite chunks are non-fatal. Use the declared Node version for
 hosted builds.
 
 Database tools:

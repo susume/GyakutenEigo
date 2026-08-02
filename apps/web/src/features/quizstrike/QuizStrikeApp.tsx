@@ -91,6 +91,7 @@ import { formatStudentJoinError } from "../../studentJoinErrors";
 import { getShopShortcut } from "../../shopShortcuts";
 import { sendStudentCommand } from "../../studentCommandTransport";
 import { StatusMessages } from "../../ui/StatusMessages";
+import QuizStrikeLogo from "../../ui/QuizStrikeLogo";
 import TeacherDecalGallery from "../../ui/TeacherDecalGallery";
 import { ARENA_MAPS, getArenaMap } from "../../game/arenaMaps";
 import {
@@ -633,9 +634,9 @@ export default function App() {
   return (
     <main id="main-content" className="app-shell" tabIndex={-1}>
       <a className={`skip-link skip-link-${mode}`} href="#main-content">Skip to main content</a>
-      <header className={`topbar topbar-${mode}${teacher ? " teacher-authenticated" : ""}`}>
-        <button className="brand-button" onClick={() => navigateTo("/", "home")}>
-          <span>QuizStrike</span>
+        <header className={`topbar topbar-${mode}${teacher ? " teacher-authenticated" : ""}`}>
+        <button className="brand-button" type="button" aria-label="QuizStrike Classroom home" onClick={() => navigateTo("/", "home")}>
+          <QuizStrikeLogo />
         </button>
         <nav className="primary-nav" aria-label="Primary">
           <button
@@ -839,11 +840,12 @@ function CharacterLab() {
 function GyakutenEigoHome({ onOpenGame, onJoinGame }: { onOpenGame: () => void; onJoinGame: () => void }) {
   return (
     <div className="product-home rescued-home">
-      <section className="site-home">
+      <section className="site-home" aria-labelledby="quizstrike-home-title">
         <div className="site-home-copy">
-          <span className="eyebrow">GyakutenEigo · classroom game lab</span>
-          <h1>Make every answer change the match.</h1>
-          <p>Launch a private team arena where quiz progress powers the action.</p>
+          <span className="eyebrow">Live classroom team game</span>
+          <h1 id="quizstrike-home-title">Turn every answer into action.</h1>
+          <p>Create a private team arena where quiz progress powers the match. Students answer, earn advantages, and compete together in real time.</p>
+          <span className="hero-tagline">Answer. Earn. Compete.</span>
           <div className="hero-proof-row" aria-label="Product qualities">
             <span><Shield size={16} aria-hidden="true" />Private room codes</span>
             <span><BookOpen size={16} aria-hidden="true" />Teacher-made questions</span>
@@ -856,18 +858,20 @@ function GyakutenEigoHome({ onOpenGame, onJoinGame }: { onOpenGame: () => void; 
             </button>
             <button onClick={onJoinGame}>
               <DoorOpen size={18} aria-hidden="true" />
-              Student Join
+              Join a Game
             </button>
           </div>
         </div>
-        <article className="game-host-card">
-          <span className="game-host-card-label">Live classroom game · QuizStrike</span>
-          <div className="hero-arena-preview" aria-hidden="true">
-            <img className="game-host-card-art" src="/assets/quizstrike-classroom-hero.png" alt="" />
+        <article className="game-host-card" aria-label="QuizStrike Classroom game preview">
+          <div className="hero-arena-preview">
+            <img className="game-host-card-art" src="/assets/quizstrike-classroom-cover.webp" alt="QuizStrike Classroom cover art showing red and blue teams answering questions in a desert arena." width={1672} height={941} fetchPriority="high" />
+            <span className="game-host-card-label">Live classroom team game</span>
           </div>
-          <span className="game-preview-objective"><Target size={16} aria-hidden="true" />Answer · earn · capture</span>
-          <strong>Desert Citadel</strong>
-          <small>Ramparts. Waterworks. Caravan Quarter. Two gate courts.</small>
+          <div className="game-preview-meta">
+            <span className="game-preview-objective"><Target size={16} aria-hidden="true" />Answer · earn · capture</span>
+            <strong>Desert Citadel</strong>
+            <small>Ramparts. Waterworks. Caravan Quarter. Two gate courts.</small>
+          </div>
         </article>
       </section>
 
@@ -924,18 +928,23 @@ function GyakutenEigoHome({ onOpenGame, onJoinGame }: { onOpenGame: () => void; 
   );
 }
 
-function QuizStrikeLanding({ onTeacherSignup }: { onTeacherLogin: () => void; onTeacherSignup: () => void; onStudent: () => void }) {
+function QuizStrikeLanding({ onTeacherLogin, onTeacherSignup, onStudent }: { onTeacherLogin: () => void; onTeacherSignup: () => void; onStudent: () => void }) {
   return (
     <div className="quizstrike-page">
-      <section className="landing-grid landing-story">
-        <article className="founder-card">
-          <p>Hi! I’m Peter</p>
-          <p>I started <strong>QuizStrike</strong> because I wanted to bring esports and classroom learning together.</p>
-          <p>Esports taught me valuable skills that I never learned in school, and it opened my world to new experiences, communities, and opportunities. I also saw how games can keep students motivated, focused, and actively involved in the learning process.</p>
-          <p>That inspired me to build <strong>QuizStrike</strong>—a new bridge between esports and education, designed to make classroom learning more engaging, competitive, and fun.</p>
-          <p>I can’t wait for you to try it!</p>
-        </article>
-        <button className="landing-signup" onClick={onTeacherSignup}>Sign Up for Free</button>
+      <section className="landing-grid landing-story quizstrike-route-hero" aria-labelledby="quizstrike-route-title">
+        <div className="quizstrike-route-copy">
+          <span className="eyebrow">Teacher launchpad</span>
+          <h1 id="quizstrike-route-title">Build the quiz. Launch the match.</h1>
+          <p>Create quiz sets, open private sessions, and bring the room to life with real-time team play.</p>
+          <div className="button-row">
+            <button className="primary" onClick={onTeacherSignup}><GraduationCap size={18} aria-hidden="true" />Start as a Teacher</button>
+            <button onClick={onStudent}><DoorOpen size={18} aria-hidden="true" />Join a Game</button>
+            <button className="text-button" onClick={onTeacherLogin}>Already have an account? Log in</button>
+          </div>
+        </div>
+        <div className="quizstrike-route-art">
+          <img src="/assets/quizstrike-classroom-cover.webp" alt="QuizStrike Classroom cover art showing a live question arena." width={1672} height={941} />
+        </div>
       </section>
     </div>
   );
@@ -1017,21 +1026,34 @@ function TeacherAuth({
       : "Log In";
 
   return (
-    <section className="auth-layout">
-      <div>
-        <h1>{isSignup ? "Teacher Sign Up" : "Teacher Login"}</h1>
-        <p>Create quiz sets, start private sessions, and review student results from one calm classroom workspace.</p>
-      </div>
-      <form className="panel form-panel" onSubmit={submit}>
+    <section className="auth-layout quizstrike-auth-layout">
+      <aside className="auth-visual" aria-label="QuizStrike Classroom teacher workspace">
+        <img className="auth-visual-art" src="/assets/quizstrike-classroom-cover.webp" alt="" width={1672} height={941} fetchPriority="high" />
+        <div className="auth-visual-shade" aria-hidden="true" />
+        <div className="auth-visual-content">
+          <QuizStrikeLogo size="auth" />
+          <span className="auth-kicker">Teacher control deck</span>
+          <p className="auth-visual-title">Build the quiz.<br />Launch the match.</p>
+          <p>Create quiz sets, open private sessions, and review student results from one focused classroom workspace.</p>
+          <span className="auth-tagline">Answer. Earn. Compete.</span>
+        </div>
+      </aside>
+      <form className="panel form-panel auth-form-panel" onSubmit={submit}>
+        <div className="auth-form-heading">
+          <span className="auth-kicker">Secure teacher access</span>
+          <h1>{isSignup ? "Teacher Sign Up" : "Teacher Login"}</h1>
+          <p>{isSignup ? "Create your teacher workspace and start your first classroom round." : "Open your classroom workspace and get the next round moving."}</p>
+        </div>
         {isSignup && (
-          <label>
+          <label htmlFor="teacher-name">
             Name
-            <input autoComplete="name" value={form.name} onChange={(event) => { setForm({ ...form, name: event.target.value }); status.clearError(); }} />
+            <input id="teacher-name" autoComplete="name" value={form.name} onChange={(event) => { setForm({ ...form, name: event.target.value }); status.clearError(); }} />
           </label>
         )}
-        <label>
+        <label htmlFor="teacher-email">
           Email
           <input
+            id="teacher-email"
             type="email"
             autoComplete="email"
             inputMode="email"
@@ -1040,10 +1062,11 @@ function TeacherAuth({
             onChange={(event) => { setForm({ ...form, email: event.target.value }); status.clearError(); }}
           />
         </label>
-        <label>
+        <label htmlFor="teacher-password">
           Password
           <span className="password-field">
             <input
+              id="teacher-password"
               type={isPasswordVisible ? "text" : "password"}
               autoComplete={isSignup ? "new-password" : "current-password"}
               enterKeyHint="go"
@@ -1182,7 +1205,7 @@ function TeacherDashboard({ teacher, onLogout }: { teacher: TeacherUser; onLogou
   return (
     <section className="workspace">
       <div className="dashboard-brand-row">
-        <h1><Zap size={28} aria-hidden="true" />QuizStrike</h1>
+        <h1><QuizStrikeLogo size="dashboard" /></h1>
         <div><strong>{teacher.name}</strong><button onClick={onLogout}>Sign Out</button></div>
       </div>
       <aside className={`sidebar${isLiveSetup ? " setup-sidebar" : ""}`} aria-label={isLiveSetup ? "Live game setup sections" : "Teacher sections"}>
@@ -4400,6 +4423,8 @@ function StudentExperience({ onExit }: { onExit: () => void }) {
     return (
       <section className="auth-layout student-join-screen">
         <div className="student-join-help">
+          <QuizStrikeLogo size="auth" />
+          <span className="auth-kicker">Live classroom team game</span>
           <h1>Join Game</h1>
           <p>Enter your teacher's private session code and a classroom nickname. No student email account is needed.</p>
           <div className="panel how-to-card">
@@ -4514,7 +4539,7 @@ function StudentExperience({ onExit }: { onExit: () => void }) {
         <div className={`game-utility-bar${session.status === "waiting" ? " lobby-utility-bar" : ""}`}>
           {session.status === "waiting" ? (
             <div className="lobby-brand">
-              <strong>QuizStrike Classroom</strong>
+              <QuizStrikeLogo size="lobby" />
               <small>{gameModeLabel(session.settings.gameMode)} · Room {session.sessionCode}</small>
             </div>
           ) : <span>{gameModeLabel(session.settings.gameMode)}</span>}

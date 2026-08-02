@@ -23,6 +23,14 @@ The production cutover is complete:
 - Old Render database: deleted after zero remaining client connections and checksum
   verification.
 
+The teacher workspace has also received a focused interaction pass. The current
+local UI includes the three-step live setup (Game Mode, Arena, Advanced
+Settings), map artwork cards, report history controls, sticky teacher
+navigation, themed waiting/live screens, and a read-only Spectator View from
+Live Game Control. Spectator View uses a scrollable learner picker plus
+Previous/Next controls; it follows connected, alive, non-bot learners without
+sending gameplay commands.
+
 Do not put production credentials in this file, chat, source, browser variables,
 or a committed environment file.
 
@@ -56,6 +64,7 @@ or a committed environment file.
 | 'apps/server/src/decalStore.ts' | Bounded process-local decal bytes |
 | 'apps/web/src/App.tsx' | Route and product composition |
 | 'apps/web/src/features/quizstrike/QuizStrikeApp.tsx' | Teacher/student application surface |
+| 'apps/web/src/styles.css' | Shared teacher workspace, live-room, report, and spectator presentation rules |
 | 'apps/web/src/features/multiplayer/connection.ts' | Socket construction and protocol handshake |
 | 'apps/web/src/api/client.ts' | API URL selection, auth headers, retries, fallback |
 | 'apps/web/src/game/ArenaPreview.tsx' | Three.js scene composition, controls, collision, frame updates, and HUD wiring |
@@ -178,6 +187,33 @@ The server and arena monolith extraction is complete and is on `main`:
 The latest extraction evidence is in
 [docs/quizstrike-monolith-extraction.md](docs/quizstrike-monolith-extraction.md).
 
+## Current teacher-workspace state
+
+The teacher flow should be treated as a single workspace rather than a set of
+independent white cards:
+
+- **Library** is the entry point for quiz selection and live-game creation.
+- **Reports** exposes completed-game history, learning reports, CSV export,
+  individual deletion, and clear-history controls.
+- **Live setup** uses Game Mode, Arena, and Advanced Settings panels. The
+  supported mode labels are Zombie, Tag, and Flag; unused quick/classic/review
+  presets are not part of the setup flow.
+- **Waiting room** owns the join code, student roster, bot/lobby controls, and
+  the green Start Game action.
+- **Live Game Control** owns round actions, scoreboard/feed presentation, and
+  the Spectator View launch action.
+
+Spectator View is intentionally read-only. The picker is an in-app scrollable
+list of connected, alive, non-bot learners. Selecting a learner or using
+Previous/Next only changes the local `currentPlayer` passed to the spectator
+arena. Keep the `controlsDisabled` and `inputPaused` props in place so teacher
+spectating cannot move, fire, answer, or mutate the room.
+
+For this interaction, focused validation passed with
+`npm run typecheck --workspace @quizstrike/web` and
+`npm run build --workspace @quizstrike/web`. A two-learner live-room smoke test
+confirmed both navigation directions update the selected learner and team.
+
 ## Change guide
 
 - Game rule or economy: update 'packages/shared' first, then server usage, UI
@@ -194,6 +230,10 @@ The latest extraction evidence is in
   database rows directly.
 - Hosting: update Vite build variables, Render runtime variables, CORS origins,
   WebSocket behavior, and this handoff.
+- Teacher workspace or spectator UI: update the relevant flow copy and QA note;
+  verify one-learner and two-learner rooms, keyboard focus, Escape dismissal,
+  the scrollable picker, and that spectator input remains locked. No protocol
+  change is needed for local target selection.
 
 ## Non-negotiable invariants
 
@@ -221,4 +261,6 @@ Remaining work is product/scale work:
   production cycle;
 - implement and test Redis/shared runtime adapters before horizontal scaling;
 - decide the final artist-authored GLB/animation asset pipeline;
-- review retention, privacy, accessibility, and school operational policy.
+- review retention, privacy, accessibility, and school operational policy;
+- complete a fresh browser pass of the custom spectator picker on the target
+  Chromebook/Edge matrix after the arena renderer has fully loaded.

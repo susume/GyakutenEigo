@@ -346,3 +346,38 @@ final result: passed
 - `npm run build --workspace @quizstrike/web`: passed. Existing environment warnings remain for Node 20.16 versus the repository's Vite requirement of Node 20.19+; Vite also reports the existing large-chunk advisory.
 
 final result: passed
+
+# QuizStrike Classroom Public Surfaces — Branding QA
+
+## Visual target
+
+- User references: `C:\Users\hungb\OneDrive\Pictures\Screenshots\Screenshot 2026-08-02 205017.png` and `C:\Users\hungb\OneDrive\Pictures\Screenshots\Screenshot 2026-08-02 205026.png`
+- Brand assets: `C:\Users\hungb\Downloads\cover art.png` and `C:\Users\hungb\Downloads\logo.png`
+- Target intent: make the public home, QuizStrike landing route, teacher login, and student join entry feel like one dark, premium classroom game product.
+
+## Implemented
+
+- Added the supplied QuizStrike Classroom logo as a shared reusable logo component across public navigation, teacher auth, dashboard, lobby, and student join help.
+- Added an optimized WebP cover-art asset while preserving the source's 1672 × 941 ratio and composition.
+- Rebuilt the public home hero around “Turn every answer into action.” with the supplied cover art, dark navy game-card treatment, red/blue team cues, and classroom-focused CTAs.
+- Reworked the fallback `/quiz-strike` landing route and teacher auth into the same visual system, preserving existing route callbacks, auth status handling, password visibility, retry behavior, and signup/login state.
+- Updated the student entry surface to use the same visual language and responsive public navigation.
+
+## Verification
+
+- Browser-captured desktop home and teacher login at 1440 × 900.
+- Browser-captured mobile home/menu, teacher auth controls, and student join at 390 × 844.
+- Confirmed the mobile menu paints above the hero and Teacher Login is clickable after adding the public header stacking context.
+- Confirmed the password toggle changes from “Show password” to “Hide password”.
+- Confirmed public routes have no horizontal overflow at the tested viewports.
+- Confirmed all logo and cover-art images load with non-zero natural dimensions.
+- `npm run build`: passed. Existing Node 20.16/Vite 20.19+ advisory and large-chunk advisory remain.
+- `npm test`: passed — shared 89, server 141, web tests passed.
+- `git diff --check`: passed; existing line-ending warnings remain.
+
+## Findings
+
+- The supplied logo has a transparent 1536 × 1024 canvas, so it is rendered as a contained image rather than cropped; this preserves the original mark and keeps it readable across header, auth, and lobby contexts.
+- The cover art is loaded as a 16:9 image with `fetchPriority="high"` on the primary above-the-fold instances.
+
+final result: passed

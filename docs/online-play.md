@@ -1,6 +1,6 @@
 # Online play and deployment runbook
 
-Last verified: 1 August 2026
+Last verified: 2 August 2026
 
 ## Production topology
 
@@ -77,6 +77,29 @@ After enabling GitHub Pages with GitHub Actions:
 4. Confirm '/quiz-strike', '/join', and '/game' all resolve to the SPA.
 5. Confirm the API has the deployed web origin in 'CLIENT_ORIGIN'.
 
+## Classroom smoke test
+
+Run this after a web or API deployment, and again after changes to live-room
+UI, Socket.IO protocol, authentication, or the arena renderer:
+
+1. Sign in as a teacher at '/quiz-strike' and open Library.
+2. Choose a quiz, create a game with Zombie, Tag, or Flag mode, select an
+   arena, and review Advanced Settings before creating the room.
+3. Confirm the waiting room shows the join code/QR code, the student roster,
+   and a visible green Start Game action once a learner joins.
+4. Join with at least two learner browsers. Start the game and verify the Live
+   Game Control header, round actions, scoreboard, event feed, and arena preview.
+5. Open Spectator View. Confirm it is read-only, the learner picker opens as a
+   scrollable list, and selecting a learner or using Previous/Next changes the
+   followed learner and team without sending gameplay input.
+6. End the game and verify the learning report appears in Reports. Confirm the
+   report can be opened/exported and that history deletion remains teacher-only.
+
+Spectator mode is a client presentation feature. It does not require a new
+environment variable or Socket.IO command: the teacher receives the current
+session projection, selects an eligible learner locally, and renders an
+`ArenaPreview` with controls paused and disabled.
+
 ## Render deploy checklist
 
 1. Confirm the branch/commit being deployed is intended.
@@ -92,6 +115,10 @@ After enabling GitHub Pages with GitHub Actions:
 6. For schema/backfill changes, reconcile normalized counts, migration ledger,
    and RuntimeSnapshot checksum.
 7. Retain the final backup through at least one production cycle.
+
+After deployment, test both the custom-domain URL and the configured API origin
+from a real classroom network. Verify WebSocket upgrade, reconnect behavior,
+and the sticky single-instance room requirement before inviting a class.
 
 ## Safety and scaling limits
 

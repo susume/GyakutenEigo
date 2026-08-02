@@ -2,7 +2,7 @@
 
 Last verified: 2 August 2026
 Current branch: `main`
-Validated state: published on `main`
+Validated state: architecture and teacher-workspace documentation refreshed; production topology unchanged
 
 ## System boundary
 
@@ -77,6 +77,35 @@ focused modules:
 | `apps/web/src/game/inputHandling.ts` | Keyboard, pointer, touch, and gamepad listener wiring |
 | `apps/web/src/game/characters/CharacterManager.ts` | Remote/local character instances and animation updates |
 
+### Teacher workspace and spectator flow
+
+The `/quiz-strike` teacher workspace is organized around a persistent left
+navigation rail for Library, Reports, and Settings. Live setup is a three-part
+teacher flow:
+
+1. **Game Mode**: choose Zombie, Tag, or Flag.
+2. **Arena**: choose a map and apply mode-specific arena rules.
+3. **Advanced Settings**: tune round count, time, player limits, rewards, and
+   learner experience options.
+
+The live room then moves through waiting-room controls and Live Game Control.
+The teacher can open Spectator View without changing the authoritative room:
+
+- the eligible list contains connected, alive, non-bot learners and is sorted by
+  nickname;
+- Previous player and Next player update the local spectator target with a
+  functional state transition, while the scrollable learner picker selects an
+  exact target;
+- the spectator `ArenaPreview` receives `currentPlayer`, `controlsDisabled`,
+  and `inputPaused`, so it follows a learner without sending gameplay intent;
+- changing the target remounts only the spectator arena key, not the teacher
+  workspace or the live room itself.
+
+This is presentation state only. It does not add a Socket.IO command, mutate a
+player, or bypass the server's ownership and authority checks. If there is only
+one eligible learner, the picker remains available and Previous/Next are
+intentionally disabled.
+
 The scene setup has one render loop. Cleanup stops the loop, removes browser
 listeners, unsubscribes VFX and animation handlers, disposes pooled/static
 resources, disposes textures/materials, and removes the renderer canvas.
@@ -139,6 +168,10 @@ implemented.
 - `npm run lint`: passed with zero errors and zero React Hook warnings.
 - `npm run build`: passed; local Node 20.16 and large Vite chunk warnings are
   non-fatal. Hosted builds should use the declared Node 20.19+ or 22.13+.
+- Focused teacher-workspace verification: web typecheck and production build
+  passed; a two-learner live-room smoke test confirmed Previous player and Next
+  player update the selected learner and team. The scrollable picker is a local
+  UI control and does not require a protocol or deployment change.
 - `npm run test:e2e`: one Playwright classroom scenario passed.
 - Static relative-import cycle check: 105 production TypeScript modules, zero
   cycles.
