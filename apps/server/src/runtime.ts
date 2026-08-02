@@ -10,7 +10,7 @@ import { Server, type Socket } from "socket.io";
 import { resolveClientOrigins } from "./origins.js";
 import { planRoundConclusion, resolvePendingRoundAction } from "./roundFlow.js";
 import { AppearanceSecurityService, inspectProcessedDecal } from "./appearanceSecurity.js";
-import { DecalStore, type StoredDecalMime } from "./decalStore.js";
+import { DecalStore } from "./decalStore.js";
 import { CombatService } from "./combat.js";
 import { BotNavigationService } from "./botNavigation.js";
 import { registerAuthRoutes } from "./routes/authRoutes.js";
@@ -23,6 +23,9 @@ import {
 import { registerQuizSetCreationRoutes, registerQuizSetMutationRoutes, type QuizSetRouteDependencies } from "./routes/quizSets.js";
 import { registerQuestionRoutes, type QuestionRouteDependencies } from "./routes/questions.js";
 import { registerReportRoutes, type ReportRouteDependencies } from "./routes/reports.js";
+import { registerSessionRoutes, type SessionRouteDependencies } from "./routes/sessionRoutes.js";
+import { registerPlayerRoutes, type PlayerRouteDependencies } from "./routes/playerRoutes.js";
+import { registerAppearanceRoutes, type AppearanceRouteDependencies } from "./routes/appearanceRoutes.js";
 import { ConnectionLifecycleService } from "./connectionLifecycle.js";
 import { PersistenceScheduler } from "./persistence/persistenceScheduler.js";
 import { PlayerPositionHistory } from "./playerPositionHistory.js";
@@ -135,7 +138,6 @@ import {
   type FlagPlantedEvent,
   type FreezeStreakAnnouncementEvent,
   type PlayerSession,
-  type PlayerAppearance,
   type PublicQuestion,
   type Question,
   type QuizFolder,
@@ -1851,706 +1853,60 @@ registerClassRoute(app, teacherLibraryRouteDependencies);
 registerQuizSetCreationRoutes(app, quizSetRouteDependencies);
 registerQuestionRoutes(app, questionRouteDependencies);
 
-app.post("/api/sessions", requireTeacher, async (req: AuthedRequest, res) => {
-  if (isDraining) {
-    res.status(503).json({ error: "This server instance is draining. Try again shortly." });
-    return;
-  }
-  const quiz = assertTeacherOwnsQuiz(req.user!.id, String(req.body.quizSetId ?? ""));
-  if (!quiz || quiz.questions.length === 0) {
-    res.status(400).json({ error: "Choose a quiz set with at least one question." });
-    return;
-  }
-  const settings = createDefaultSettings(req.body.settings);
-  const session: GameSession = {
-    id: id(),
-    teacherId: req.user!.id,
-    classId: String(req.body.classId ?? "") || undefined,
-    quizSetId: quiz.id,
-    sessionCode: generateSessionCode(),
-    status: "waiting",
-    maxPlayers: settings.maxPlayers,
-    currentRound: 1,
-    settings,
-    players: [],
-    events: [],
-    createdAt: now()
-  };
-  appendEvent(session, { type: "join", message: `Session ${session.sessionCode} created.` });
-  sessions.set(session.id, session);
-  joinCodeDirectory.reserve(session.sessionCode, session.id);
-  if (!acquireRoomAuthority(session.id)) {
-    sessions.delete(session.id);
-    joinCodeDirectory.release(session.sessionCode, session.id);
-    res.status(503).json({ error: "The game room could not acquire an authoritative owner. Try again." });
-    return;
-  }
-  try {
-    if (normalizedLibrary) await normalizedLibrary.saveSession(session, quiz.title);
-  } catch (error) {
-    roomAuthority.release(session.id);
-    sessions.delete(session.id);
-    joinCodeDirectory.release(session.sessionCode, session.id);
-    throw error;
-  }
-  schedulePersistence();
-  res.status(201).json({ session: stampSession(session) });
-});
+const sessionRouteDependencies: SessionRouteDependencies = {
+  requireTeacher,
+  isDraining: () => isDraining,
+  assertTeacherOwnsQuiz,
+  createDefaultSettings,
+  id,
+  now,
+  generateSessionCode,
+  appendEvent,
+  sessions,
+  joinCodeDirectory,
+  acquireRoomAuthority,
+  releaseRoomAuthority: (roomId) => roomAuthority.release(roomId),
+  normalizedLibrary,
+  mirrorNormalized,
+  schedulePersistence,
+  stampSession,
+  getSessionByCode,
+  routeParam,
+  canStartRound,
+  openRoundPreparation,
+  openZombieSelectionPhase,
+  startRoundState,
+  makeAnnouncement,
+  roundStartAnnouncementMs: ROUND_START_ANNOUNCEMENT_MS,
+  respawnCorrectAnswersRequired: RESPAWN_CORRECT_ANSWERS_REQUIRED,
+  broadcastSession,
+  finishZombieSession,
+  finishSession,
+  finishRound,
+  makeReport,
+  getBotSpawn,
+  selectSessionSpawn,
+  botNames,
+  botDifficulty: BOT_DIFFICULTY,
+  defaultPlayerHealth: DEFAULT_PLAYER_HEALTH,
+  defaultPlayerAppearance: DEFAULT_PLAYER_APPEARANCE,
+  reportStore: reports,
+  getBearerUser,
+  getPlayerToken,
+  hasPlayerAccess,
+  getStoredSessionReport: async (session) => {
+    const durable = await normalizedLibrary?.getReportForSession(session.teacherId, session.id);
+    return durable ? { metadata: durable.metadata, report: durable.report } : undefined;
+  },
+  reportMetadataForTeacher,
+  saveSessionReport,
+  sanitizeExportFilename,
+  buildCsvReport
+};
 
-app.post("/api/sessions/:code/start", requireTeacher, (req: AuthedRequest, res) => {
-  const session = getSessionByCode(routeParam(req.params.code));
-  if (!session || session.teacherId !== req.user!.id) {
-    res.status(404).json({ error: "Session not found." });
-    return;
-  }
-  const startCheck = canStartRound(session);
-  if (!startCheck.ok) {
-    res
-      .status(400)
-      .json({ error: startCheck.reason === "session_ended" ? "This session has ended." : "Add at least one student before starting." });
-    return;
-  }
-  session.currentRound = 1;
-  session.roundWins = { blue: 0, red: 0 };
-  if (session.settings.gameMode === "flag" || session.settings.gameMode === "classic") {
-    openRoundPreparation(session, false);
-    appendEvent(session, {
-      type: "start",
-      message: `${session.settings.gameMode === "flag" ? "Flag Mode" : "Classic Tag"} round 1 preparation opened.`
-    });
-  } else if (session.settings.gameMode === "zombie") {
-    openZombieSelectionPhase(session, false);
-    appendEvent(session, {
-      type: "start",
-      message: "Zombie Mode preparation started. Everyone is Human for 20 seconds."
-    });
-  } else {
-    startRoundState(session, false);
-    session.announcement = makeAnnouncement(
-      "round_start",
-      session.settings.gameMode === "zombie" ? "Zombie Mode has begun!" : `Round ${session.currentRound} has begun!`,
-      session.settings.gameMode === "zombie"
-        ? "Red Zombies shoot to convert. Blue Humans answer correctly for running energy and survive without weapons."
-        : "Most tags wins. Respawns, then quiz earnings break ties.",
-      undefined,
-      ROUND_START_ANNOUNCEMENT_MS
-    );
-    appendEvent(session, {
-      type: "start",
-      message: session.settings.gameMode === "zombie"
-        ? "Zombie Mode started. Only Red Zombies can shoot; Blue Humans answer questions for running energy."
-        : `Round started. Answer ${RESPAWN_CORRECT_ANSWERS_REQUIRED} practice questions to respawn if frozen out.`
-    });
-  }
-  broadcastSession(session);
-  res.json({ session: stampSession(session) });
-});
+registerSessionRoutes(app, sessionRouteDependencies);
 
-app.post("/api/sessions/:code/end", requireTeacher, (req: AuthedRequest, res) => {
-  const session = getSessionByCode(routeParam(req.params.code));
-  if (!session || session.teacherId !== req.user!.id) {
-    res.status(404).json({ error: "Session not found." });
-    return;
-  }
-  if (session.settings.gameMode === "zombie") {
-    finishZombieSession(session, "The teacher ended Zombie Mode.");
-  } else {
-    finishSession(session, "Teacher ended the round. Report is ready.");
-  }
-  res.json({ report: makeReport(session) });
-});
 
-app.post("/api/sessions/:code/end-round", requireTeacher, (req: AuthedRequest, res) => {
-  const session = getSessionByCode(routeParam(req.params.code));
-  if (!session || session.teacherId !== req.user!.id) {
-    res.status(404).json({ error: "Session not found." });
-    return;
-  }
-  if (session.settings.gameMode === "zombie") {
-    res.status(400).json({ error: "Zombie Mode is a single survival round. Use End Game to stop it." });
-    return;
-  }
-  if (session.status !== "active") {
-    res.status(409).json({ error: "A round must be active before it can be ended early." });
-    return;
-  }
-  finishRound(session, undefined, "Teacher ended the round early");
-  const responseSession = stampSession(session);
-  res.json({
-    session: responseSession,
-    ...(responseSession.status === "ended" ? { report: makeReport(session) } : {})
-  });
-});
-
-app.post("/api/sessions/:code/bots", requireTeacher, (req: AuthedRequest, res) => {
-  const session = getSessionByCode(routeParam(req.params.code));
-  if (!session || session.teacherId !== req.user!.id) {
-    res.status(404).json({ error: "Session not found." });
-    return;
-  }
-  if (session.status === "ended") {
-    res.status(400).json({ error: "This session has ended." });
-    return;
-  }
-  const remainingSlots = session.maxPlayers - session.players.length;
-  if (remainingSlots <= 0) {
-    res.status(400).json({ error: "This session is full." });
-    return;
-  }
-
-  const requestedCount = req.body?.count === undefined ? 1 : Number(req.body.count);
-  if (!Number.isInteger(requestedCount) || requestedCount < 1) {
-    res.status(400).json({ error: "Choose at least one bot." });
-    return;
-  }
-  const difficulty: BotDifficulty = req.body?.difficulty === "beginner" || req.body?.difficulty === "advanced"
-    ? req.body.difficulty
-    : req.body?.difficulty === "standard"
-      ? "standard"
-      : session.settings.botDifficulty ?? BOT_DIFFICULTY;
-  const count = Math.min(requestedCount, remainingSlots);
-  session.settings.botDifficulty = difficulty;
-  const bots: PlayerSession[] = [];
-  const firstBotIndex = session.players.filter((player) => player.isBot).length;
-  for (let offset = 0; offset < count; offset += 1) {
-    const blueCount = session.players.filter((player) => player.team === "blue").length;
-    const redCount = session.players.filter((player) => player.team === "red").length;
-    const team: Team = blueCount <= redCount ? "blue" : "red";
-    const botIndex = firstBotIndex + offset;
-    const spawn = session.status === "active" ? getBotSpawn(session, team, botIndex) : selectSessionSpawn(session, team, botIndex);
-    const bot: PlayerSession = {
-      id: id(),
-      gameSessionId: session.id,
-      nickname: `${botNames[botIndex % botNames.length]} Bot ${botIndex + 1}`,
-      team,
-      money: session.settings.startingMoney,
-      quizMoneyEarned: 0,
-      roundQuizMoneyEarned: 0,
-      moneySpent: 0,
-      isAlive: true,
-      isBot: true,
-      role: "human",
-      tags: 0,
-      roundTags: 0,
-      respawns: 0,
-      roundRespawns: 0,
-      connectionState: "connected",
-      health: DEFAULT_PLAYER_HEALTH,
-      snowballs: session.settings.startingSnowballs,
-      respawnCorrectAnswers: 0,
-      x: spawn.x,
-      y: spawn.y,
-      z: spawn.z,
-      facing: spawn.facing,
-      score: 0,
-      correctAnswers: 0,
-      wrongAnswers: 0,
-      gear: "starter_blaster",
-      weapon: "starter_blaster",
-      perks: [],
-      appearance: { ...DEFAULT_PLAYER_APPEARANCE },
-      joinedAt: now()
-    };
-    session.players.push(bot);
-    bots.push(bot);
-  }
-  appendEvent(session, {
-    type: "join",
-    message: `${count} ${difficulty} test bot${count === 1 ? "" : "s"} added to the room.`,
-    team: undefined
-  });
-  broadcastSession(session);
-  res.status(201).json({ session: stampSession(session), bots, difficulty });
-});
-
-app.delete("/api/sessions/:code/players/:playerId", requireTeacher, (req: AuthedRequest, res) => {
-  const session = getSessionByCode(routeParam(req.params.code));
-  if (!session || session.teacherId !== req.user!.id) {
-    res.status(404).json({ error: "Session not found." });
-    return;
-  }
-  if (session.status === "ended") {
-    res.status(400).json({ error: "Players cannot be removed after the session has ended." });
-    return;
-  }
-
-  const playerId = routeParam(req.params.playerId);
-  const playerIndex = session.players.findIndex((candidate) => candidate.id === playerId);
-  if (playerIndex < 0) {
-    res.status(404).json({ error: "Player not found." });
-    return;
-  }
-
-  const player = session.players[playerIndex]!;
-  if (session.flag?.carrierId === player.id) {
-    session.flag = resolveFlagDropForPlayer(session.flag, player, {
-      x: player.x ?? 0,
-      z: player.z ?? 0
-    });
-  }
-  evictPlayerSockets(session, player);
-  removePlayerRuntimeState(session, player);
-  session.players.splice(playerIndex, 1);
-  appendEvent(session, {
-    type: "timer",
-    message: `${player.nickname} was removed by the teacher.`,
-    team: player.team
-  });
-
-  const statusBeforeEvaluation = session.status;
-  evaluateFlagEliminationWin(session);
-  finishZombieMatchIfComplete(session);
-  if (session.status === statusBeforeEvaluation) broadcastSession(session);
-
-  res.json({ session: stampSession(session), removedPlayerId: player.id });
-});
-
-app.get("/api/sessions/:code", (req, res) => {
-  const session = getSessionByCode(routeParam(req.params.code));
-  if (!session) {
-    res.status(404).json({ error: "Session not found." });
-    return;
-  }
-  const teacher = getBearerUser(req);
-  const playerToken = getPlayerToken(req);
-  const canRead = teacher?.id === session.teacherId
-    || session.players.some((player) => !player.isBot && hasPlayerAccess(session, player, playerToken));
-  if (!canRead) {
-    res.status(401).json({ error: "A teacher or student session token is required." });
-    return;
-  }
-  res.json({ session: stampSession(session) });
-});
-
-app.get("/api/sessions/:code/report", requireTeacher, async (req: AuthedRequest, res) => {
-  const session = getSessionByCode(routeParam(req.params.code));
-  if (!session || session.teacherId !== req.user!.id) {
-    res.status(404).json({ error: "Session not found." });
-    return;
-  }
-  const stored = [...reports.values()].find((candidate) => candidate.sessionId === session.id && candidate.teacherId === req.user!.id);
-  const durable = await normalizedLibrary?.getReportForSession(req.user!.id, session.id);
-  res.json({ report: durable?.report ?? stored?.report ?? makeReport(session), metadata: durable?.metadata ?? (stored ? reportMetadataForTeacher(req.user!.id).find((item) => item.id === stored.id) : undefined) });
-});
-
-app.get("/api/sessions/:code/report.csv", requireTeacher, async (req: AuthedRequest, res) => {
-  const session = getSessionByCode(routeParam(req.params.code));
-  if (!session || session.teacherId !== req.user!.id) {
-    res.status(404).json({ error: "Session not found." });
-    return;
-  }
-  const stored = [...reports.values()].find((candidate) => candidate.sessionId === session.id && candidate.teacherId === req.user!.id);
-  const durable = await normalizedLibrary?.getReportForSession(req.user!.id, session.id);
-  const fallbackStored = stored ?? saveSessionReport(session);
-  const metadata = durable?.metadata ?? fallbackStored;
-  const report = durable?.report ?? fallbackStored.report;
-  res
-    .status(200)
-    .type("text/csv")
-    .setHeader("Content-Disposition", `attachment; filename="${sanitizeExportFilename(metadata.displayName)}.csv"`)
-    .send(buildCsvReport(report));
-});
-
-app.post("/api/sessions/:code/join", (req, res) => {
-  const session = getSessionByCode(routeParam(req.params.code));
-  const nickname = String(req.body.nickname ?? "").trim();
-  if (!session) {
-    res.status(404).json({ error: "Session not found." });
-    return;
-  }
-  if (session.status === "ended") {
-    res.status(400).json({ error: "This session has ended." });
-    return;
-  }
-  if (nickname.length < 2 || nickname.length > 20) {
-    res.status(400).json({ error: "Nickname must be 2 to 20 characters." });
-    return;
-  }
-  const nicknameError = getNicknameError(nickname);
-  if (nicknameError) {
-    res.status(400).json({ error: nicknameError });
-    return;
-  }
-  const returningPlayer = session.players.find(
-    (player) => !player.isBot && player.nickname.toLowerCase() === nickname.toLowerCase()
-  );
-  if (returningPlayer?.connectionState === "disconnected") {
-    clearPlayerDisconnectTimer(session, returningPlayer.id);
-    returningPlayer.connectionState = "connected";
-    const playerToken = makePlayerToken(session, returningPlayer);
-    const question = returningPlayer.isAlive || session.settings.deadPlayersCanPractice
-      ? issueNextQuestion(session, returningPlayer.id)
-      : undefined;
-    appendEvent(session, {
-      type: "timer",
-      message: `${returningPlayer.nickname} rejoined the game.`,
-      playerId: returningPlayer.id,
-      team: returningPlayer.team
-    });
-    broadcastSession(session);
-    res.status(200).json({
-      session: stampSession(session),
-      player: returningPlayer,
-      playerToken,
-      cosmeticProgressToken: makeCosmeticProgressToken(returningPlayer),
-      question
-    });
-    return;
-  }
-  if (returningPlayer) {
-    res.status(409).json({ error: "That nickname is already taken in this session." });
-    return;
-  }
-  if (session.players.length >= session.maxPlayers) {
-    res.status(400).json({ error: "This session is full." });
-    return;
-  }
-  const isLateJoin = session.status !== "waiting";
-  const blueCount = session.players.filter((player) => player.team === "blue").length;
-  const redCount = session.players.filter((player) => player.team === "red").length;
-  const team: Team = isLateJoin
-    ? selectLateJoinTeam(session.players)
-    : blueCount <= redCount ? "blue" : "red";
-  const zombieRole = isLateJoin && session.settings.gameMode === "zombie"
-    ? team === "red" ? "zombie" : "human"
-    : "human";
-  const spawn = selectSessionSpawn(session, team);
-  const player: PlayerSession = {
-    id: id(),
-    gameSessionId: session.id,
-    nickname,
-    team,
-    money: session.settings.startingMoney,
-    quizMoneyEarned: 0,
-    roundQuizMoneyEarned: 0,
-    moneySpent: 0,
-    isAlive: true,
-    role: zombieRole,
-    tags: 0,
-    roundTags: 0,
-    respawns: 0,
-    roundRespawns: 0,
-    cosmeticXp: readCosmeticProgressToken(req.body.cosmeticProgressToken),
-    connectionState: "connected",
-    health: DEFAULT_PLAYER_HEALTH,
-    energy: isLateJoin && session.settings.gameMode === "zombie"
-      ? zombieRole === "zombie" ? ZOMBIE_HUMAN_MAX_ENERGY : 0
-      : undefined,
-    snowballs: isLateJoin && session.settings.gameMode === "zombie" && zombieRole === "human"
-      ? 0
-      : session.settings.startingSnowballs,
-    respawnCorrectAnswers: 0,
-    x: spawn.x,
-    y: spawn.y,
-    z: spawn.z,
-    facing: spawn.facing,
-    score: 0,
-    correctAnswers: 0,
-    wrongAnswers: 0,
-    gear: "starter_blaster",
-    weapon: "starter_blaster",
-    perks: [],
-    appearance: { ...DEFAULT_PLAYER_APPEARANCE },
-    joinedAt: now()
-  };
-  session.players.push(player);
-  if (normalizedLibrary) mirrorNormalized(normalizedLibrary.savePlayer(player), "player join");
-  const playerToken = makePlayerToken(session, player);
-  appendEvent(session, {
-    type: "join",
-    message: isLateJoin
-      ? `${player.nickname} joined the live game on ${team === "blue" ? "Blue" : "Red"} Team.`
-      : session.settings.gameMode === "zombie"
-      ? `${player.nickname} joined the Zombie Mode lobby.`
-      : `${player.nickname} joined ${team === "blue" ? "Blue" : "Red"} Team.`,
-    playerId: player.id,
-    team
-  });
-  broadcastSession(session);
-  res.status(201).json({
-    session: stampSession(session),
-    player,
-    playerToken,
-    cosmeticProgressToken: makeCosmeticProgressToken(player),
-    question: issueNextQuestion(session, player.id)
-  });
-});
-
-app.get("/api/sessions/:code/players/:playerId/rejoin", (req, res) => {
-  const session = getSessionByCode(routeParam(req.params.code));
-  const player = session?.players.find((candidate) => candidate.id === routeParam(req.params.playerId));
-  if (!session || !player || player.isBot) {
-    res.status(404).json({ error: "This student session is no longer available." });
-    return;
-  }
-  if (!requirePlayerAccess(req, res, session, player)) return;
-
-  clearPlayerDisconnectTimer(session, player.id);
-  player.connectionState = "connected";
-  const question =
-    session.status !== "ended" && (player.isAlive || session.settings.deadPlayersCanPractice)
-      ? issueNextQuestion(session, player.id)
-      : undefined;
-  broadcastSession(session);
-  res.json({
-    session: stampSession(session),
-    player,
-    cosmeticProgressToken: makeCosmeticProgressToken(player),
-    question
-  });
-});
-
-app.post("/api/sessions/:code/players/:playerId/team", (req, res) => {
-  const session = getSessionByCode(routeParam(req.params.code));
-  const player = session?.players.find((candidate) => candidate.id === routeParam(req.params.playerId));
-  const requestedTeam = req.body.team === "red" || req.body.team === "blue" ? req.body.team : undefined;
-  if (!session || !player) {
-    res.status(404).json({ error: "Player session not found." });
-    return;
-  }
-  if (!requirePlayerAccess(req, res, session, player)) return;
-  if (session.status !== "waiting" || session.settings.teamAssignment !== "players_choose") {
-    res.status(400).json({ error: "Team changes are closed for this round." });
-    return;
-  }
-  if (!requestedTeam) {
-    res.status(400).json({ error: "Choose Red Team or Blue Team." });
-    return;
-  }
-  if (player.team !== requestedTeam) resetFreezeStreak(player);
-  player.team = requestedTeam;
-  const spawn = selectSessionSpawn(session, player.team);
-  player.x = spawn.x;
-  player.y = spawn.y;
-  player.z = spawn.z;
-  player.facing = spawn.facing;
-  appendEvent(session, {
-    type: "join",
-    message: `${player.nickname} chose ${requestedTeam === "red" ? "Red Team" : "Blue Team"}.`,
-    playerId: player.id,
-    team: player.team
-  });
-  broadcastSession(session);
-  res.json({ session: stampSession(session), player });
-});
-
-app.put("/api/sessions/:code/players/:playerId/appearance", (req, res) => {
-  const session = getSessionByCode(routeParam(req.params.code));
-  const player = session?.players.find((candidate) => candidate.id === routeParam(req.params.playerId));
-  if (!session || !player || player.isBot) {
-    res.status(404).json({ error: "Player session not found." });
-    return;
-  }
-  if (!requirePlayerAccess(req, res, session, player)) return;
-  const policy = session.settings.characterCustomization;
-  if (session.status !== "waiting" || !policy.enabled) {
-    res.status(423).json({ error: "Character customization is locked." });
-    return;
-  }
-  const lastUpdate = appearanceUpdateTimestamps.get(player.id) ?? 0;
-  if (Date.now() - lastUpdate < APPEARANCE_UPDATE_COOLDOWN_MS) {
-    res.status(429).json({ error: "Please wait a moment before saving again." });
-    return;
-  }
-  const input = req.body?.appearance ?? req.body;
-  const validationError = getPlayerAppearanceError(input);
-  if (validationError) {
-    res.status(400).json({ error: validationError });
-    return;
-  }
-  const appearance = sanitizePlayerAppearance(input as Partial<PlayerAppearance>);
-  const lockedItems = getLockedAppearanceItems(appearance, getCosmeticProgress(player).level);
-  if (lockedItems.length > 0) {
-    res.status(403).json({ error: `${lockedItems[0].name} unlocks at cosmetic level ${lockedItems[0].unlockLevel}.` });
-    return;
-  }
-  if (appearance.decalAssetId) {
-    const decal = decalStore.get(appearance.decalAssetId);
-    if (!policy.uploadsEnabled || !decal || decal.sessionId !== session.id || decal.playerId !== player.id) {
-      res.status(400).json({ error: "That decal is not available for this player." });
-      return;
-    }
-  }
-  if (player.appearance?.decalAssetId !== appearance.decalAssetId) deleteDecal(player.appearance?.decalAssetId);
-  player.appearance = appearance;
-  appearanceUpdateTimestamps.set(player.id, Date.now());
-  broadcastSession(session);
-  res.json({ session: stampSession(session), player });
-});
-
-app.post("/api/sessions/:code/players/:playerId/decals", (req, res) => {
-  const session = getSessionByCode(routeParam(req.params.code));
-  const player = session?.players.find((candidate) => candidate.id === routeParam(req.params.playerId));
-  if (!session || !player || player.isBot) {
-    res.status(404).json({ error: "Player session not found." });
-    return;
-  }
-  if (!requirePlayerAccess(req, res, session, player)) return;
-  const policy = session.settings.characterCustomization;
-  if (session.status !== "waiting" || !policy.enabled || !policy.uploadsEnabled) {
-    res.status(423).json({ error: "Uploaded decals are not enabled for this room." });
-    return;
-  }
-  if (!checkDecalUploadRate(player.id)) {
-    res.status(429).json({ error: "Upload limit reached. Try again in one minute." });
-    return;
-  }
-  const bytes = Buffer.isBuffer(req.body) ? req.body : Buffer.alloc(0);
-  const mimeType = inspectProcessedDecal(bytes, req.header("content-type")?.split(";")[0]);
-  if (!mimeType || bytes.length === 0 || bytes.length > DECAL_MAX_PROCESSED_BYTES) {
-    res.status(415).json({ error: "Upload a processed PNG or WebP decal within the size limit." });
-    return;
-  }
-  const assetId = id();
-  const stored = decalStore.put(
-    { id: assetId, sessionId: session.id, playerId: player.id, mimeType: mimeType as StoredDecalMime, bytes, createdAt: Date.now() },
-    player.appearance?.decalAssetId
-  );
-  if (!stored.ok) {
-    res.status(413).json({ error: "This room's sticker storage is full. Ask your teacher to remove an older sticker." });
-    return;
-  }
-  res.status(201).json({ assetId, mimeType, bytes: bytes.length });
-});
-
-app.get("/api/sessions/:code/decals", requireTeacher, (req: AuthedRequest, res) => {
-  const session = getSessionByCode(routeParam(req.params.code));
-  if (!session || session.teacherId !== req.user!.id) {
-    res.status(404).json({ error: "Session not found." });
-    return;
-  }
-  const assets = decalStore.listSession(session.id).map((asset) => {
-    const player = session.players.find((candidate) => candidate.id === asset.playerId);
-    return {
-      ...asset,
-      nickname: player?.nickname ?? "Former player",
-      createdAt: new Date(asset.createdAt).toISOString(),
-      expiresAt: new Date(asset.expiresAt).toISOString(),
-      isActive: player?.appearance?.decalAssetId === asset.assetId
-    };
-  });
-  res.json({ assets, totalBytes: decalStore.getSessionBytes(session.id), maxBytes: decalStore.roomMaxBytes });
-});
-
-app.get("/api/sessions/:code/decals/:assetId", (req, res) => {
-  const session = getSessionByCode(routeParam(req.params.code));
-  const decal = decalStore.get(routeParam(req.params.assetId));
-  if (!session || !decal || decal.sessionId !== session.id) {
-    res.status(404).json({ error: "Decal not found." });
-    return;
-  }
-  if (!canReadRoomAsset(req, session)) {
-    res.status(401).json({ error: "Room access is required." });
-    return;
-  }
-  res.setHeader("Cache-Control", "private, max-age=3600, immutable");
-  res.setHeader("X-Content-Type-Options", "nosniff");
-  res.status(200).type(decal.mimeType).send(decal.bytes);
-});
-
-app.put("/api/sessions/:code/customization", requireTeacher, (req: AuthedRequest, res) => {
-  const session = getSessionByCode(routeParam(req.params.code));
-  if (!session || session.teacherId !== req.user!.id) {
-    res.status(404).json({ error: "Session not found." });
-    return;
-  }
-  if (session.status !== "waiting") {
-    res.status(423).json({ error: "Customization settings are locked after the match starts." });
-    return;
-  }
-  const requested = sanitizeCharacterCustomizationSettings(req.body);
-  if (requested.aiEnabled && !aiSkinProviderConfigured) {
-    res.status(400).json({ error: "AI designs require a configured secure server provider." });
-    return;
-  }
-  if (!requested.uploadsEnabled) {
-    for (const player of session.players) {
-      if (player.appearance?.decalAssetId) {
-        player.appearance = { ...player.appearance, decalAssetId: undefined };
-      }
-    }
-    decalStore.deleteSession(session.id);
-  }
-  session.settings.characterCustomization = requested;
-  broadcastSession(session);
-  res.json({ session: stampSession(session), aiProviderConfigured: aiSkinProviderConfigured });
-});
-
-app.delete("/api/sessions/:code/players/:playerId/appearance", requireTeacher, (req: AuthedRequest, res) => {
-  const session = getSessionByCode(routeParam(req.params.code));
-  const player = session?.players.find((candidate) => candidate.id === routeParam(req.params.playerId));
-  if (!session || session.teacherId !== req.user!.id || !player) {
-    res.status(404).json({ error: "Player session not found." });
-    return;
-  }
-  clearPlayerAppearance(session, player);
-  appendEvent(session, { type: "timer", message: `Teacher cleared ${player.nickname}'s custom appearance.`, playerId: player.id, team: player.team });
-  broadcastSession(session);
-  res.json({ session: stampSession(session), player });
-});
-
-app.delete("/api/sessions/:code/players/:playerId/decal", requireTeacher, (req: AuthedRequest, res) => {
-  const session = getSessionByCode(routeParam(req.params.code));
-  const player = session?.players.find((candidate) => candidate.id === routeParam(req.params.playerId));
-  if (!session || session.teacherId !== req.user!.id || !player) {
-    res.status(404).json({ error: "Player session not found." });
-    return;
-  }
-  decalStore.deletePlayer(session.id, player.id);
-  player.appearance = { ...sanitizePlayerAppearance(player.appearance), decalAssetId: undefined };
-  appendEvent(session, { type: "timer", message: `Teacher removed ${player.nickname}'s custom sticker.`, playerId: player.id, team: player.team });
-  broadcastSession(session);
-  res.json({ session: stampSession(session), player });
-});
-
-app.delete("/api/sessions/:code/decals/:assetId", requireTeacher, (req: AuthedRequest, res) => {
-  const session = getSessionByCode(routeParam(req.params.code));
-  const assetId = routeParam(req.params.assetId);
-  const decal = decalStore.get(assetId);
-  if (!session || session.teacherId !== req.user!.id || !decal || decal.sessionId !== session.id) {
-    res.status(404).json({ error: "Decal not found." });
-    return;
-  }
-  decalStore.delete(assetId);
-  const player = session.players.find((candidate) => candidate.id === decal.playerId);
-  if (player?.appearance?.decalAssetId === assetId) player.appearance = { ...player.appearance, decalAssetId: undefined };
-  appendEvent(session, { type: "timer", message: `Teacher removed ${player?.nickname ?? "a player's"} custom sticker.`, playerId: player?.id, team: player?.team });
-  broadcastSession(session);
-  res.json({ session: stampSession(session) });
-});
-
-app.post("/api/sessions/:code/appearance/reset", requireTeacher, (req: AuthedRequest, res) => {
-  const session = getSessionByCode(routeParam(req.params.code));
-  if (!session || session.teacherId !== req.user!.id) {
-    res.status(404).json({ error: "Session not found." });
-    return;
-  }
-  session.players.forEach((player) => clearPlayerAppearance(session, player));
-  decalStore.deleteSession(session.id);
-  appendEvent(session, { type: "timer", message: "Teacher reset all custom appearances." });
-  broadcastSession(session);
-  res.json({ session: stampSession(session) });
-});
-
-app.get("/api/sessions/:code/players/:playerId/question", (req, res) => {
-  const session = getSessionByCode(routeParam(req.params.code));
-  const player = session?.players.find((candidate) => candidate.id === routeParam(req.params.playerId));
-  if (!session || !player) {
-    res.status(404).json({ error: "Player session not found." });
-    return;
-  }
-  if (!requirePlayerAccess(req, res, session, player)) return;
-  if (!player.isAlive && !session.settings.deadPlayersCanPractice) {
-    res.status(400).json({ error: "Practice questions are disabled while out for the round." });
-    return;
-  }
-  const question = issueNextQuestion(session, player.id);
-  if (!question) {
-    res.status(404).json({ error: "No questions are available in this session." });
-    return;
-  }
-  res.json({ question });
-});
 
 type StudentCommandResult<T> =
   | { ok: true; data: T }
@@ -2789,38 +2145,71 @@ const getBoundStudent = (socket: Socket) => {
   return session && player ? { session, player } : undefined;
 };
 
-app.post("/api/sessions/:code/players/:playerId/answer", (req, res) => {
-  const session = getSessionByCode(routeParam(req.params.code));
-  const player = session?.players.find((candidate) => candidate.id === routeParam(req.params.playerId));
-  if (!session || !player) {
-    res.status(404).json({ error: "Player session not found." });
-    return;
-  }
-  if (!requirePlayerAccess(req, res, session, player)) return;
-  sendStudentCommand(res, answerQuestion(session, player, req.body));
-});
 
-app.post("/api/sessions/:code/players/:playerId/buy", (req, res) => {
-  const session = getSessionByCode(routeParam(req.params.code));
-  const player = session?.players.find((candidate) => candidate.id === routeParam(req.params.playerId));
-  if (!session || !player) {
-    res.status(404).json({ error: "Player session not found." });
-    return;
-  }
-  if (!requirePlayerAccess(req, res, session, player)) return;
-  sendStudentCommand(res, buyGear(session, player, req.body.gearId));
-});
+const playerRouteDependencies: PlayerRouteDependencies = {
+  requireTeacher,
+  getSessionByCode,
+  routeParam,
+  getNicknameError,
+  id,
+  now,
+  selectLateJoinTeam,
+  selectSessionSpawn,
+  defaultPlayerHealth: DEFAULT_PLAYER_HEALTH,
+  zombieHumanMaxEnergy: ZOMBIE_HUMAN_MAX_ENERGY,
+  defaultPlayerAppearance: DEFAULT_PLAYER_APPEARANCE,
+  readCosmeticProgressToken,
+  makePlayerToken,
+  makeCosmeticProgressToken,
+  clearPlayerDisconnectTimer,
+  issueNextQuestion,
+  appendEvent,
+  broadcastSession,
+  normalizedLibrary,
+  mirrorNormalized,
+  requirePlayerAccess,
+  stampSession,
+  evictPlayerSockets,
+  removePlayerRuntimeState,
+  resolveFlagDropForPlayer,
+  evaluateFlagEliminationWin,
+  finishZombieMatchIfComplete,
+  resetFreezeStreak,
+  sendStudentCommand,
+  answerQuestion,
+  buyGear,
+  buySnowballs
+};
 
-app.post("/api/sessions/:code/players/:playerId/buy-snowballs", (req, res) => {
-  const session = getSessionByCode(routeParam(req.params.code));
-  const player = session?.players.find((candidate) => candidate.id === routeParam(req.params.playerId));
-  if (!session || !player) {
-    res.status(404).json({ error: "Player session not found." });
-    return;
-  }
-  if (!requirePlayerAccess(req, res, session, player)) return;
-  sendStudentCommand(res, buySnowballs(session, player));
-});
+registerPlayerRoutes(app, playerRouteDependencies);
+
+const appearanceRouteDependencies: AppearanceRouteDependencies = {
+  getSessionByCode,
+  routeParam,
+  requireTeacher,
+  requirePlayerAccess,
+  appearanceUpdateTimestamps,
+  appearanceUpdateCooldownMs: APPEARANCE_UPDATE_COOLDOWN_MS,
+  getPlayerAppearanceError,
+  sanitizePlayerAppearance,
+  getLockedAppearanceItems,
+  getCosmeticProgress,
+  decalStore,
+  checkDecalUploadRate,
+  inspectProcessedDecal,
+  decalMaxProcessedBytes: DECAL_MAX_PROCESSED_BYTES,
+  id,
+  deleteDecal,
+  broadcastSession,
+  stampSession,
+  sanitizeCharacterCustomizationSettings: (input) => sanitizeCharacterCustomizationSettings(input as Parameters<typeof sanitizeCharacterCustomizationSettings>[0]),
+  aiSkinProviderConfigured,
+  clearPlayerAppearance,
+  appendEvent,
+  canReadRoomAsset
+};
+
+registerAppearanceRoutes(app, appearanceRouteDependencies);
 
 app.use((error: unknown, _req: Request, res: Response, next: NextFunction) => {
   const bodyError = error as { type?: string; status?: number };
