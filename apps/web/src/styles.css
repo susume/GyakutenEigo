@@ -3459,6 +3459,14 @@ body:has(.waiting-game-layout) {
   }
 }
 
+/* Generated game-mode art keeps Tag and Flag visually matched with Zombie. */
+body:has(.workspace .setup-sidebar) .mode-choice:not(.mode-zombie) .mode-choice-art img {
+  width: 96px;
+  height: 96px;
+  object-fit: contain;
+  filter: drop-shadow(0 0 1px rgba(121, 221, 255, .65)) drop-shadow(0 8px 10px rgba(2, 10, 28, .36));
+}
+
 /* Live setup map cards: preview first, map title beneath it. */
 body:has(.workspace .setup-sidebar) .arena-choice {
   display: grid;

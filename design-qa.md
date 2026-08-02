@@ -204,3 +204,21 @@ final result: passed
 - Tag and Flag retain their existing gameplay values (`classic` and `flag`) behind the scenes so the server behavior remains compatible while the teacher-facing labels match the approved product language.
 
 final result: passed
+
+# Teacher Live Setup — Generated Mode Icon QA
+
+## Update
+
+- Replaced the Lucide Tag and Flag glyphs with matched transparent low-poly game icons.
+- Kept Zombie’s existing `/assets/zombie/zombie-head.png` asset unchanged.
+- Added a shared cyan/coral accent treatment and subtle shadow at the live setup card size.
+
+## Verification
+
+- Tag and Flag load from `/assets/mode-icons/tag.png` and `/assets/mode-icons/flag.png`.
+- Selecting Tag and Flag updates the selected state and custom-game summary correctly.
+- Browser console errors and warnings: none.
+- `npm run typecheck -w @quizstrike/web`: passed.
+- `npm run build`: passed.
+
+final result: passed

@@ -12,7 +12,6 @@ import {
   Download,
   Eye,
   EyeOff,
-  Flag as FlagIcon,
   Folder,
   GraduationCap,
   HeartPulse,
@@ -25,7 +24,6 @@ import {
   Settings,
   Shield,
   Snowflake,
-  Tag as TagIcon,
   Target,
   Timer,
   Trash2,
@@ -2301,8 +2299,8 @@ function SessionManager({
                 <div className="mode-choice-grid" aria-label="Game modes">
                   {([
                     { id: "zombie", title: "Zombie", description: "One student is the zombie. Answer correctly to survive and turn others.", icon: <img src="/assets/zombie/zombie-head.png" alt="" /> },
-                    { id: "classic", title: "Tag", description: "Players tag others with the right answers. Avoid being tagged!", icon: <TagIcon size={48} aria-hidden="true" /> },
-                    { id: "flag", title: "Flag", description: "Teams compete to capture the flag by answering more questions.", icon: <FlagIcon size={48} aria-hidden="true" /> }
+                    { id: "classic", title: "Tag", description: "Players tag others with the right answers. Avoid being tagged!", icon: <img src="/assets/mode-icons/tag.png" alt="" /> },
+                    { id: "flag", title: "Flag", description: "Teams compete to capture the flag by answering more questions.", icon: <img src="/assets/mode-icons/flag.png" alt="" /> }
                   ] as const).map((mode) => {
                     const selected = settings.gameMode === mode.id;
                     return (
