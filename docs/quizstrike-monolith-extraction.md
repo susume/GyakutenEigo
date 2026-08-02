@@ -98,5 +98,5 @@ New local commits, in order:
 9. `caabc96` — extract arena render loop lifecycle
 10. `66339ca` — clean arena extraction boundaries
 
-The final hook/documentation changes are kept as the next focused local
-commit. No commit from this branch has been pushed.
+The final hook cleanup is in `6107768` and this documentation is in `4fb6e93`.
+The completed branch has been fast-forwarded into `main` and pushed to GitHub.
