@@ -64,3 +64,143 @@
 - Browser console errors: none.
 
 final result: passed
+
+# Teacher Live Setup — Sticky Rail QA
+
+## Update
+
+- Locked the desktop live setup rail in place while the right-side setup panel scrolls.
+- Kept the existing horizontal setup navigation behavior for smaller screens.
+- The rail uses the dashboard header offset so it remains visible beneath the QuizStrike header.
+
+## Verification
+
+- Advanced Settings scroll test confirmed the rail remains visible at the top of the viewport while the main panel moves.
+- Game Mode, Arena, Advanced Settings, and Back to Library remain visible and usable during the scroll.
+- Browser console errors and warnings: none.
+- `npm run typecheck -w @quizstrike/web`: passed.
+- `npm run build`: passed.
+
+final result: passed
+
+# Teacher Live Setup — Real Arena Map Assets QA
+
+## Update
+
+- Replaced the earlier generated map mockups with the supplied Desert Citadel, The Iron Junction, and Temple Runoff screenshots.
+- Removed the screenshots' outer backgrounds while preserving the original map pixels.
+- Added a subtle cyan edge/shadow so the transparent map silhouettes remain readable on the navy card surface.
+- Changed the teacher-facing card label from `Temple Runoff 2.0` to `Temple Runoff` without changing the authoritative game map name.
+
+## Verification
+
+- All three supplied map assets load successfully in the browser.
+- The visible labels are Desert Citadel, The Iron Junction, and Temple Runoff.
+- `Temple Runoff 2.0` is no longer present in the teacher map selector.
+- Browser console errors and warnings: none.
+- `npm run typecheck -w @quizstrike/web`: passed.
+- `npm run build`: passed.
+
+final result: passed
+
+# Teacher Live Setup — Arena Map Preview QA
+
+## Update
+
+- Replaced the target icons and flat map-color treatments with three map preview images.
+- Added consistent top-down previews for Desert Citadel, The Iron Junction, and Temple Runoff 2.0.
+- Moved each map name into a dedicated title row directly beneath its image.
+- Preserved selected-state styling, keyboard/button semantics, and map selection behavior.
+
+## Verification
+
+- All three map preview images loaded successfully in the browser.
+- Selecting The Iron Junction updates the selected map state correctly.
+- Arena Rules remains available below the map cards.
+- Browser console errors and warnings: none.
+- `npm run typecheck -w @quizstrike/web`: passed.
+- `npm run build`: passed.
+
+final result: passed
+
+# Teacher Live Setup — Arena Rules Grouping QA
+
+## Update
+
+- Moved `Team Assignment` into the Arena panel for Flag mode.
+- Moved `Flag Hold Time` into the Arena panel for Flag mode.
+- Moved `Zombies Chosen` into the Arena panel for Zombie mode.
+- Kept rounds, round time, player capacity, economy, supplies, and player experience in Advanced Settings.
+- Arena Rules appear only when the selected mode has arena-specific controls, so Tag stays clean.
+
+## Verification
+
+- Flag → Arena shows Team Assignment and Flag Hold Time.
+- Flag → Advanced Settings no longer shows Team Assignment or Flag Hold Time.
+- Zombie → Arena shows Zombies Chosen and keeps the existing zombie-head asset.
+- Advanced Settings still shows Quiz Economy, Weapons / Supplies, and Player Experience.
+- Browser console errors and warnings: none.
+- `npm run typecheck -w @quizstrike/web`: passed.
+
+final result: passed
+
+# Teacher Live Setup — Two-Pane Layout QA
+
+## Visual target
+
+- User reference: `C:\Users\hungb\OneDrive\Pictures\Screenshots\Screenshot 2026-08-02 134444.png`
+- User reference continuation: `C:\Users\hungb\OneDrive\Pictures\Screenshots\Screenshot 2026-08-02 134454.png`
+- Target intent: reclaim the empty left navigation column as a live setup rail; clicking Game Mode, Arena, or Advanced Settings swaps the right-side content panel.
+
+## Implemented
+
+- Live setup replaces the global Library / Reports / Settings rail with a focused three-item setup rail while the setup is active.
+- Game Mode, Arena, and Advanced Settings render as separate right-side panels and preserve the selected quiz and settings state.
+- Removed the redundant Step 2 caption, panel subtitles, mode-card descriptions, and arena-card captions from the visible layout.
+- Preserved accessible descriptions through `aria-label` values on the mode and arena controls.
+- Preserved the real Advanced Settings controls and the existing zombie-head asset.
+- Responsive behavior collapses the setup rail into a horizontal navigation bar on smaller screens.
+
+## Verification
+
+- Browser-tested the local teacher flow at `http://127.0.0.1:5173/quiz-strike`.
+- Clicked all three setup rail items and confirmed the right panel changes without a route reload.
+- Selected Zombie and confirmed `/assets/zombie/zombie-head.png` remains the rendered asset.
+- Confirmed Flag-only team settings and Advanced Settings controls remain available.
+- Browser console errors and warnings: none.
+- `npm run typecheck -w @quizstrike/web`: passed.
+- `npm run build`: passed. Existing environment warnings remain for Node 20.16 versus the repository's Vite requirement of Node 20.19+.
+
+final result: passed
+
+# QuizStrike Teacher Workspace — Design QA
+
+## Visual target
+
+- Approved dark/navy teacher dashboard direction: `C:\Users\hungb\.codex\generated_images\019fc061-564f-73e3-a7aa-4c8ddce7f2bd\exec-52b0da0c-ea4a-4db4-931d-e26500968bbf.png`
+- Live setup reference with expanded advanced settings: `C:\Users\hungb\.codex\generated_images\019fc061-564f-73e3-a7aa-4c8ddce7f2bd\exec-86b98505-4d16-4401-84d9-ead639d9cda1.png`
+- Zombie asset used in the implementation: `C:\Users\hungb\OneDrive\Documents\GitHub\GyakutenEigo\apps\web\public\assets\zombie\zombie-head.png`
+
+## Implemented surfaces
+
+- Dark teacher shell with persistent QuizStrike brand, Library / Reports / Settings navigation, coral primary actions, cyan selection states, and navy panels.
+- Quiz library with featured quiz, search, clear Play Live / Edit Set actions, folder breadcrumbs, and a lightweight drag-to-folder hint.
+- Quiz workspace with the selected quiz context, paste-to-quiz builder, manual question creation, question editing, question deletion, difficulty, and explanation metadata.
+- Live setup with exactly three visible game modes: Zombie, Tag, and Flag. Zombie uses the existing game zombie-head asset; Tag and Flag use the existing icon system.
+- Advanced Settings remains open with round/time/player settings, quiz economy, weapons/supplies, and player experience toggles; mode-dependent team and arena rules live in Arena.
+
+## Runtime verification
+
+- Local app verified at `http://127.0.0.1:5173/` in the in-app browser.
+- Exercised empty and populated library states, quiz creation, manual question creation, question edit mode, Edit Set routing, live setup, Zombie / Tag / Flag selection, and Flag-only team controls.
+- Confirmed the Zombie mode image source is `/assets/zombie/zombie-head.png`.
+- Confirmed no fake “time per question” or “question order” controls were introduced.
+- Browser console errors and warnings: none.
+
+## Findings
+
+- Fixed inherited legacy white surfaces in the dashboard refresh row, setup header, quiz creation form, and Advanced Settings content so the implemented flow stays visually consistent with the approved dark direction.
+- Advanced Settings groups are intentionally grouped rather than hidden behind presets; smaller screens collapse the groups into a readable single-column layout.
+- Tag and Flag retain their existing gameplay values (`classic` and `flag`) behind the scenes so the server behavior remains compatible while the teacher-facing labels match the approved product language.
+
+final result: passed

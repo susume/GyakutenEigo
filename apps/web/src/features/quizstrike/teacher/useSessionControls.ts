@@ -31,7 +31,6 @@ export function useSessionControls({ initialQuizSetId, firstQuizSetId }: { initi
   const [isJoinLinkCopied, setIsJoinLinkCopied] = useState(false);
   const [isEndConfirmOpen, setIsEndConfirmOpen] = useState(false);
   const [isProjectorOpen, setIsProjectorOpen] = useState(false);
-  const [selectedPresetName, setSelectedPresetName] = useState("Classic Class");
 
   return {
     quizSetId, setQuizSetId,
@@ -48,7 +47,6 @@ export function useSessionControls({ initialQuizSetId, firstQuizSetId }: { initi
     botDifficulty, setBotDifficulty,
     isJoinLinkCopied, setIsJoinLinkCopied,
     isEndConfirmOpen, setIsEndConfirmOpen,
-    isProjectorOpen, setIsProjectorOpen,
-    selectedPresetName, setSelectedPresetName
+    isProjectorOpen, setIsProjectorOpen
   };
 }

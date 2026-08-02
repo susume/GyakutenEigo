@@ -12,6 +12,7 @@ import {
   Download,
   Eye,
   EyeOff,
+  Flag as FlagIcon,
   Folder,
   GraduationCap,
   HeartPulse,
@@ -24,6 +25,7 @@ import {
   Settings,
   Shield,
   Snowflake,
+  Tag as TagIcon,
   Target,
   Timer,
   Trash2,
@@ -39,7 +41,6 @@ import {
   calculateClassAccuracy,
   canStartRound,
   DEFAULT_SESSION_SETTINGS,
-  FLAG_MODE_DEFAULTS,
   GEAR_ITEMS,
   ZOMBIE_HUMAN_CORRECT_ENERGY,
   ZOMBIE_HUMAN_MAX_ENERGY,
@@ -132,6 +133,7 @@ type DashboardPayload = {
 type AuthPayload = { user: TeacherUser; token: string };
 type StoredStudentSession = { sessionCode: string; playerId: string; playerToken: string };
 type ApiWakeState = "waking" | "ready" | "slow";
+type SetupSection = "mode" | "arena" | "advanced";
 
 const emptyQuestion = {
   prompt: "",
@@ -409,12 +411,19 @@ const sessionStatusLabel = (status: GameSession["status"]) => {
 };
 
 const gameModeLabel = (mode: SessionSettings["gameMode"]) => {
-  if (mode === "flag") return "Flag Mode";
-  if (mode === "zombie") return "Zombie Mode";
-  return "Classic Tag Practice";
+  if (mode === "flag") return "Flag";
+  if (mode === "zombie") return "Zombie";
+  return "Tag";
 };
 
 const arenaMapLabel = (mapId: ArenaMapId | string | undefined) => getArenaMap(mapId).title;
+const arenaMapDisplayTitle = (title: string) => title.replace(/\s2\.0$/, "");
+
+const ARENA_MAP_PREVIEW_ASSETS: Record<ArenaMapId, string> = {
+  desert_citadel: "/assets/arena-maps/desert-citadel.png",
+  iron_junction: "/assets/arena-maps/iron-junction.png",
+  temple_runoff: "/assets/arena-maps/temple-runoff.png"
+};
 
 const flagStatusText = (session: GameSession) => {
   if (session.settings.gameMode !== "flag") return "";
@@ -445,55 +454,8 @@ const getTeamTotals = (players: PlayerSession[]) => ({
   red: players.filter((player) => player.team === "red").reduce((total, player) => total + player.score, 0)
 });
 
-const createPresetSettings = (overrides: Partial<SessionSettings>): SessionSettings => ({
-  ...DEFAULT_SESSION_SETTINGS,
-  ...overrides
-});
-
-const SESSION_PRESETS = [
-  {
-    name: "Quick Warmup",
-    description: "Fast classroom activity.",
-    settings: createPresetSettings({
-      maxPlayers: 12,
-      startingMoney: 300,
-      correctAnswerReward: 300,
-      startingSnowballs: 8,
-      snowballPackPrice: 400,
-      snowballsPerPack: 8,
-      roundDurationSeconds: 90,
-      roundCount: 1
-    })
-  },
-  {
-    name: "Classic Class",
-    description: "Recommended default.",
-    settings: createPresetSettings({})
-  },
-  {
-    name: "Review Rush",
-    description: "Longer review session.",
-    settings: createPresetSettings({
-      maxPlayers: 30,
-      startingMoney: 600,
-      correctAnswerReward: 500,
-      startingSnowballs: 12,
-      snowballPackPrice: 600,
-      snowballsPerPack: 12,
-      roundDurationSeconds: 480
-    })
-  }
-];
-
-const getSessionPresetName = (settings: SessionSettings) =>
-  SESSION_PRESETS.find((preset) =>
-    sessionNumberFields.every((field) => preset.settings[field.name] === settings[field.name]) &&
-    preset.settings.deadPlayersCanPractice === settings.deadPlayersCanPractice &&
-    preset.settings.deadPlayersEarnMoney === settings.deadPlayersEarnMoney
-  )?.name ?? "Custom Game";
-
 const sessionSettingGroups: Array<{ title: string; fields: SessionNumberField[] }> = [
-  { title: "Game", fields: ["maxPlayers", "roundDurationSeconds", "roundCount", "flagHoldSeconds", "initialZombieCount"] },
+  { title: "Game", fields: ["roundCount", "roundDurationSeconds", "maxPlayers"] },
   { title: "Quiz Economy", fields: ["startingMoney", "correctAnswerReward", "wrongAnswerPenalty", "snowballPackPrice"] },
   { title: "Weapons / Supplies", fields: ["startingSnowballs", "snowballsPerPack"] }
 ];
@@ -1113,6 +1075,8 @@ function TeacherAuth({
 
 function TeacherDashboard({ teacher, onLogout }: { teacher: TeacherUser; onLogout: () => void }) {
   const [tab, setTab] = useState<"home" | "quizzes" | "sessions" | "reports" | "settings">("home");
+  const [activeSetupSection, setActiveSetupSection] = useState<SetupSection>("mode");
+  const [quizManagerRequest, setQuizManagerRequest] = useState<{ quizSetId?: string; mode: "create" | "edit" }>({ mode: "create" });
   const [data, setData] = useState<DashboardPayload>({ classes: [], quizSets: [], sessions: [], folders: [], reports: [] });
   const [selectedSession, setSelectedSession] = useState<GameSession | null>(null);
   const [launchQuizId, setLaunchQuizId] = useState("");
@@ -1210,31 +1174,61 @@ function TeacherDashboard({ teacher, onLogout }: { teacher: TeacherUser; onLogou
   }, [selectedSession?.sessionCode]);
 
   const activeSessions = data.sessions.filter((session) => session.status !== "ended");
+  const isLiveSetup = tab === "sessions" && !selectedSession;
+  const openQuizManager = (quizSetId?: string) => {
+    setQuizManagerRequest(quizSetId ? { quizSetId, mode: "edit" } : { mode: "create" });
+    setTab("quizzes");
+  };
 
   return (
     <section className="workspace">
       <div className="dashboard-brand-row">
-        <h1>Quiz Strike</h1>
+        <h1><Zap size={28} aria-hidden="true" />QuizStrike</h1>
         <div><strong>{teacher.name}</strong><button onClick={onLogout}>Sign Out</button></div>
       </div>
-      <aside className="sidebar" aria-label="Teacher sections">
-        <button aria-current={tab === "home" ? "page" : undefined} className={tab === "home" ? "active" : ""} onClick={() => setTab("home")}>
-          Folders
-        </button>
-        <button aria-current={tab === "reports" ? "page" : undefined} className={tab === "reports" ? "active" : ""} onClick={() => setTab("reports")}>
-          Reports
-        </button>
-        <button aria-current={tab === "settings" ? "page" : undefined} className={tab === "settings" ? "active" : ""} onClick={() => setTab("settings")}>
-          <Settings size={17} aria-hidden="true" />
-          Settings
-        </button>
+      <aside className={`sidebar${isLiveSetup ? " setup-sidebar" : ""}`} aria-label={isLiveSetup ? "Live game setup sections" : "Teacher sections"}>
+        {isLiveSetup ? (
+          <div className="setup-sidebar-menu">
+            <span className="setup-sidebar-kicker">Live game setup</span>
+            <button className={activeSetupSection === "mode" ? "active" : ""} aria-current={activeSetupSection === "mode" ? "step" : undefined} onClick={() => setActiveSetupSection("mode")}>
+              <span className="setup-sidebar-index">1</span>
+              <strong>Game Mode</strong>
+            </button>
+            <button className={activeSetupSection === "arena" ? "active" : ""} aria-current={activeSetupSection === "arena" ? "step" : undefined} onClick={() => setActiveSetupSection("arena")}>
+              <span className="setup-sidebar-index">2</span>
+              <strong>Arena</strong>
+            </button>
+            <button className={activeSetupSection === "advanced" ? "active" : ""} aria-current={activeSetupSection === "advanced" ? "step" : undefined} onClick={() => setActiveSetupSection("advanced")}>
+              <span className="setup-sidebar-index">3</span>
+              <Settings size={17} aria-hidden="true" />
+              <strong>Advanced Settings</strong>
+            </button>
+            <button className="setup-sidebar-back" onClick={() => setTab("home")}>
+              <ChevronLeft size={17} aria-hidden="true" />
+              Back to Library
+            </button>
+          </div>
+        ) : (
+          <>
+            <button aria-current={tab === "home" ? "page" : undefined} className={tab === "home" ? "active" : ""} onClick={() => setTab("home")}>
+              <BookOpen size={17} aria-hidden="true" />
+              Library
+            </button>
+            <button aria-current={tab === "reports" ? "page" : undefined} className={tab === "reports" ? "active" : ""} onClick={() => setTab("reports")}>
+              Reports
+            </button>
+            <button aria-current={tab === "settings" ? "page" : undefined} className={tab === "settings" ? "active" : ""} onClick={() => setTab("settings")}>
+              <Settings size={17} aria-hidden="true" />
+              Settings
+            </button>
+          </>
+        )}
       </aside>
 
       <div className="main-panel">
         <div className="section-heading dashboard-section-heading">
           <div>
             <span className="eyebrow">Teacher control center</span>
-            <h1>Classroom command center</h1>
             <p>Build, launch, and monitor every round.</p>
           </div>
           <button onClick={refresh}>
@@ -1253,16 +1247,25 @@ function TeacherDashboard({ teacher, onLogout }: { teacher: TeacherUser; onLogou
         {tab === "home" && (
           <TeacherFolders
             data={data}
-            onEditQuiz={() => setTab("quizzes")}
+            onEditQuiz={openQuizManager}
             onRefresh={refresh}
             onPlayLive={(quizSetId) => {
               setLaunchQuizId(quizSetId);
               setSelectedSession(null);
+              setActiveSetupSection("mode");
               setTab("sessions");
             }}
           />
         )}
-        {tab === "quizzes" && <QuizManager data={data} onRefresh={refresh} />}
+        {tab === "quizzes" && (
+          <QuizManager
+            key={`${quizManagerRequest.mode}:${quizManagerRequest.quizSetId ?? "new"}`}
+            data={data}
+            onRefresh={refresh}
+            initialQuizSetId={quizManagerRequest.quizSetId}
+            startInCreateMode={quizManagerRequest.mode === "create"}
+          />
+        )}
         {tab === "sessions" && (
           <SessionManager
             data={data}
@@ -1272,6 +1275,7 @@ function TeacherDashboard({ teacher, onLogout }: { teacher: TeacherUser; onLogou
             onReport={setReport}
             onOpenReports={() => setTab("reports")}
             initialQuizSetId={launchQuizId}
+            activeSetupSection={activeSetupSection}
           />
         )}
         {tab === "reports" && (
@@ -1322,12 +1326,13 @@ function TeacherFolders({
   onRefresh
 }: {
   data: DashboardPayload;
-  onEditQuiz: () => void;
+  onEditQuiz: (quizSetId?: string) => void;
   onPlayLive: (quizSetId: string) => void;
   onRefresh: () => Promise<void>;
 }) {
   const [selectedFolderId, setSelectedFolderId] = useState<string | undefined>(() => localStorage.getItem(TEACHER_FOLDER_SELECTION_STORAGE_KEY) || undefined);
   const [draggedQuizId, setDraggedQuizId] = useState<string | null>(null);
+  const [searchTerm, setSearchTerm] = useState("");
   const [isBusy, setIsBusy] = useState(false);
   const folderById = useMemo(() => new Map(data.folders.map((folder) => [folder.id, folder])), [data.folders]);
   const selectedFolder = selectedFolderId ? folderById.get(selectedFolderId) : undefined;
@@ -1339,6 +1344,11 @@ function TeacherFolders({
     () => data.quizSets.filter((quiz) => quiz.folderId === selectedFolderId).sort((left, right) => left.title.localeCompare(right.title)),
     [data.quizSets, selectedFolderId]
   );
+  const filteredQuizSets = useMemo(
+    () => visibleQuizSets.filter((quiz) => quiz.title.toLowerCase().includes(searchTerm.trim().toLowerCase())),
+    [searchTerm, visibleQuizSets]
+  );
+  const featuredQuiz = filteredQuizSets[0];
   useEffect(() => {
     if (selectedFolderId && !folderById.has(selectedFolderId)) {
       setSelectedFolderId(undefined);
@@ -1423,10 +1433,10 @@ function TeacherFolders({
   return (
     <section className="teacher-folders">
       <div className="folders-heading">
-        <div><h2>Quiz library</h2><p>Organize your sets, then launch one live for the class.</p></div>
+        <div><span className="teacher-eyebrow">Teacher control center</span><h2>Your quiz library</h2><p>Choose a set, then launch the right game for your class.</p></div>
         <div className="folder-heading-actions">
           <button className="folder-new" onClick={createFolder} disabled={isBusy}>New Folder <Plus size={18} aria-hidden="true" /></button>
-          <button className="folder-new" onClick={onEditQuiz}><BookOpen size={18} aria-hidden="true" />New Quiz</button>
+          <button className="folder-new" onClick={() => onEditQuiz()}><BookOpen size={18} aria-hidden="true" />Create Quiz</button>
         </div>
       </div>
       <div className="folder-breadcrumbs" aria-label="Folder path">
@@ -1442,20 +1452,25 @@ function TeacherFolders({
           <button className="folder-chip-action danger" aria-label={`Delete ${folder.name}`} onClick={() => deleteFolder(folder)}><Trash2 size={13} aria-hidden="true" /></button>
         </div>)}
       </div>
+      {featuredQuiz && (
+        <section className="teacher-featured-card" aria-labelledby="featured-quiz-title">
+          <div className="teacher-featured-art" aria-hidden="true"><Zap size={64} /></div>
+          <div className="teacher-featured-copy">
+            <span className="featured-badge">Featured set</span>
+            <h3 id="featured-quiz-title">{featuredQuiz.title}</h3>
+            <p>{featuredQuiz.description || "A ready-to-play question set for your next classroom challenge."}</p>
+            <div className="teacher-featured-meta"><span>{featuredQuiz.questions.length} questions</span><span>Last edited {new Date(featuredQuiz.createdAt).toLocaleDateString()}</span></div>
+          </div>
+          <div className="teacher-featured-action"><button className="play-live" onClick={() => onPlayLive(featuredQuiz.id)}><Play size={18} aria-hidden="true" />Play Live</button><small>Choose a mode next</small></div>
+        </section>
+      )}
       <div className="folder-quiz-list">
         {visibleQuizSets.length > 0 && <div className="folder-list-toolbar">
-          <span>{visibleQuizSets.length} quiz set{visibleQuizSets.length === 1 ? "" : "s"}</span>
-          <select aria-label="Move selected quiz set" defaultValue="" onChange={(event) => {
-            const quiz = visibleQuizSets.find((item) => item.id === draggedQuizId);
-            if (quiz) moveQuiz(quiz, event.target.value === "__root__" ? undefined : event.target.value || undefined);
-            event.currentTarget.value = "";
-          }} disabled={!draggedQuizId || isBusy}>
-            <option value="">Move selected…</option>
-            <option value="__root__">All kits (root)</option>
-            {data.folders.filter((folder) => folder.id !== selectedFolderId).map((folder) => <option key={folder.id} value={folder.id}>{folderPath(folder).map((item) => item.name).join(" / ")}</option>)}
-          </select>
+          <label className="quiz-search"><span className="sr-only">Search quiz sets</span><input value={searchTerm} onChange={(event) => setSearchTerm(event.target.value)} placeholder="Search quiz sets..." /></label>
+          <span>{filteredQuizSets.length} quiz set{filteredQuizSets.length === 1 ? "" : "s"}</span>
+          <small className="folder-list-hint">Drag a row to move it into a folder.</small>
         </div>}
-        {visibleQuizSets.map((quiz) => (
+        {filteredQuizSets.map((quiz) => (
           <article
             className={`folder-quiz-row${draggedQuizId === quiz.id ? " is-dragged" : ""}`}
             key={quiz.id}
@@ -1476,14 +1491,14 @@ function TeacherFolders({
             <div><h3>{quiz.title}</h3><small>{quiz.questions.length} questions · Created {new Date(quiz.createdAt).toLocaleDateString()}</small></div>
             <div className="folder-row-actions">
               <button className="play-live" onClick={() => onPlayLive(quiz.id)}><Play size={17} aria-hidden="true" />Play Live</button>
-              <button className="edit-set" onClick={onEditQuiz}>Edit Set</button>
+              <button className="edit-set" onClick={() => onEditQuiz(quiz.id)}>Edit Set</button>
               <button className="edit-set" onClick={() => renameQuiz(quiz)}>Rename</button>
               <button className="delete-set" onClick={() => deleteQuiz(quiz)}><Trash2 size={16} aria-hidden="true" />Delete</button>
             </div>
           </article>
         ))}
-        {visibleQuizSets.length === 0 && (
-          <div className="folder-empty"><BookOpen size={34} aria-hidden="true" /><h3>{data.quizSets.length === 0 ? "Your quiz sets will appear here" : "This folder is empty"}</h3><p>{data.quizSets.length === 0 ? "Create the first set, then launch it live for your class." : "Drag a quiz set here or create a new one in this folder."}</p><button className="folder-new" onClick={onEditQuiz}>New Quiz <Plus size={18} aria-hidden="true" /></button></div>
+        {filteredQuizSets.length === 0 && (
+          <div className="folder-empty"><BookOpen size={34} aria-hidden="true" /><h3>{data.quizSets.length === 0 ? "Your quiz sets will appear here" : "No matching quiz sets"}</h3><p>{data.quizSets.length === 0 ? "Create the first set, then launch it live for your class." : "Try another search or create a new quiz set."}</p><button className="folder-new" onClick={() => onEditQuiz()}>Create Quiz <Plus size={18} aria-hidden="true" /></button></div>
         )}
       </div>
       <p className="folder-library-note">Reports are saved automatically when a session ends. The library keeps the newest 15 reports per teacher.</p>
@@ -1548,10 +1563,11 @@ function _DashboardHome({ data, onTab }: { data: DashboardPayload; onTab: (tab: 
   );
 }
 
-function QuizManager({ data, onRefresh }: { data: DashboardPayload; onRefresh: () => Promise<void> }) {
-  const [selectedQuizId, setSelectedQuizId] = useState(data.quizSets[0]?.id ?? "");
+function QuizManager({ data, onRefresh, initialQuizSetId, startInCreateMode = false }: { data: DashboardPayload; onRefresh: () => Promise<void>; initialQuizSetId?: string; startInCreateMode?: boolean }) {
+  const [selectedQuizId, setSelectedQuizId] = useState(() => startInCreateMode ? "" : initialQuizSetId ?? data.quizSets[0]?.id ?? "");
   const [quizForm, setQuizForm] = useState({ title: "", description: "" });
   const [questionForm, setQuestionForm] = useState(emptyQuestion);
+  const [editingQuestionId, setEditingQuestionId] = useState<string | null>(null);
   const [bulkText, setBulkText] = useState("");
   const [isCreatingQuiz, setIsCreatingQuiz] = useState(false);
   const [isAddingQuestion, setIsAddingQuestion] = useState(false);
@@ -1559,8 +1575,12 @@ function QuizManager({ data, onRefresh }: { data: DashboardPayload; onRefresh: (
   const status = useAsyncMessage();
 
   useEffect(() => {
-    if (!selectedQuizId && data.quizSets[0]) setSelectedQuizId(data.quizSets[0].id);
-  }, [data.quizSets, selectedQuizId]);
+    if (initialQuizSetId) {
+      setSelectedQuizId(initialQuizSetId);
+      return;
+    }
+    if (!startInCreateMode && !selectedQuizId && data.quizSets[0]) setSelectedQuizId(data.quizSets[0].id);
+  }, [data.quizSets, initialQuizSetId, selectedQuizId, startInCreateMode]);
 
   const selectedQuiz = data.quizSets.find((quiz) => quiz.id === selectedQuizId);
   const generatedQuestions = useMemo(() => createGeneratedQuestions(bulkText).slice(0, 80), [bulkText]);
@@ -1590,14 +1610,46 @@ function QuizManager({ data, onRefresh }: { data: DashboardPayload; onRefresh: (
     status.clear();
     setIsAddingQuestion(true);
     try {
-      await teacherApi.addQuestion(selectedQuiz.id, questionForm);
+      if (editingQuestionId) await teacherApi.updateQuestion(editingQuestionId, questionForm);
+      else await teacherApi.addQuestion(selectedQuiz.id, questionForm);
       setQuestionForm(emptyQuestion);
+      setEditingQuestionId(null);
       await onRefresh();
-      status.setMessage("Question added.");
+      status.setMessage(editingQuestionId ? "Question updated." : "Question added.");
     } catch (err) {
       status.report(err);
     } finally {
       setIsAddingQuestion(false);
+    }
+  };
+
+  const beginEditingQuestion = (question: QuizSet["questions"][number]) => {
+    setEditingQuestionId(question.id);
+    setQuestionForm({
+      prompt: question.prompt,
+      choiceA: question.choiceA,
+      choiceB: question.choiceB,
+      choiceC: question.choiceC,
+      choiceD: question.choiceD,
+      correctChoice: question.correctChoice,
+      difficulty: question.difficulty ?? "",
+      explanation: question.explanation ?? ""
+    });
+  };
+
+  const deleteQuestion = async (questionId: string) => {
+    if (!window.confirm("Delete this question? This cannot be undone.")) return;
+    status.clear();
+    try {
+      await teacherApi.deleteQuestion(questionId);
+      if (editingQuestionId === questionId) {
+        setEditingQuestionId(null);
+        setQuestionForm(emptyQuestion);
+      }
+      await onRefresh();
+      status.setMessage("Question deleted.");
+    } catch (err) {
+      status.report(err);
     }
   };
 
@@ -1639,8 +1691,8 @@ function QuizManager({ data, onRefresh }: { data: DashboardPayload; onRefresh: (
   };
 
   return (
-    <div className="two-column">
-      <form className="panel form-panel" onSubmit={createQuiz}>
+    <div className={`two-column quiz-manager-shell ${startInCreateMode ? "quiz-create-mode" : "quiz-edit-mode"}`}>
+      {startInCreateMode ? <form className="panel form-panel" onSubmit={createQuiz}>
         <h2>Create Quiz Set</h2>
         <label>
           Title
@@ -1657,10 +1709,25 @@ function QuizManager({ data, onRefresh }: { data: DashboardPayload; onRefresh: (
           <Plus size={18} aria-hidden="true" />
           {isCreatingQuiz ? "Working..." : "Create Quiz Set"}
         </button>
-      </form>
+      </form> : (
+        <aside className="panel quiz-context-panel">
+          <span className="teacher-eyebrow">Quiz workspace</span>
+          <h2>{selectedQuiz ? `Editing: ${selectedQuiz.title}` : "Quiz workspace"}</h2>
+          <p>Keep the active quiz visible while you review questions and prepare the next live game.</p>
+          <div className="quiz-context-stat"><strong>{selectedQuiz?.questions.length ?? 0}</strong><span>questions in this set</span></div>
+          <div className="quiz-context-note"><Zap size={18} aria-hidden="true" /><span>When you are ready, host this quiz and choose Zombie, Tag, or Flag.</span></div>
+        </aside>
+      )}
 
-      <div className="panel">
-        <h2>Quiz Editor</h2>
+      <div className="panel quiz-editor-panel">
+        <div className="quiz-editor-heading">
+          <div>
+            <span className="teacher-eyebrow">Quiz workspace</span>
+            <h2>{selectedQuiz ? `Editing: ${selectedQuiz.title}` : "Create your next quiz"}</h2>
+            {selectedQuiz && <p>{selectedQuiz.questions.length} questions · Keep the active quiz in view while you build.</p>}
+          </div>
+          {selectedQuiz && <span className="quiz-save-status"><Check size={15} aria-hidden="true" />Ready to host</span>}
+        </div>
         <label>
           Quiz Sets
           <select value={selectedQuizId} onChange={(event) => setSelectedQuizId(event.target.value)}>
@@ -1766,16 +1833,25 @@ function QuizManager({ data, onRefresh }: { data: DashboardPayload; onRefresh: (
                   onChange={(event) => setQuestionForm({ ...questionForm, explanation: event.target.value })}
                 />
               </label>
-              <button className="primary" type="submit" disabled={isAddingQuestion}>
-                <Plus size={18} aria-hidden="true" />
-                {isAddingQuestion ? "Working..." : "Add Question"}
-              </button>
+              <div className="question-form-actions">
+                <button className="primary" type="submit" disabled={isAddingQuestion}>
+                  <Plus size={18} aria-hidden="true" />
+                  {isAddingQuestion ? "Working..." : editingQuestionId ? "Update Question" : "Add Question"}
+                </button>
+                {editingQuestionId && <button type="button" onClick={() => { setEditingQuestionId(null); setQuestionForm(emptyQuestion); }}>Cancel edit</button>}
+              </div>
             </form>
             <ul className="question-list">
               {selectedQuiz.questions.map((question, index) => (
                 <li key={question.id}>
-                  <strong>{index + 1}. {question.prompt}</strong>
-                  <span>Answer {question.correctChoice}</span>
+                  <div className="question-list-copy">
+                    <strong>{index + 1}. {question.prompt}</strong>
+                    <span>Correct answer: {question.correctChoice} · {question.difficulty || "Standard"} · {question.explanation ? "Explanation added" : "Explanation missing"}</span>
+                  </div>
+                  <div className="question-list-actions">
+                    <button type="button" onClick={() => beginEditingQuestion(question)}>Edit</button>
+                    <button type="button" className="danger-text" onClick={() => void deleteQuestion(question.id)}>Delete</button>
+                  </div>
                 </li>
               ))}
               {selectedQuiz.questions.length === 0 && <li>No questions yet.</li>}
@@ -1797,7 +1873,8 @@ function SessionManager({
   onRefresh,
   onReport,
   onOpenReports,
-  initialQuizSetId
+  initialQuizSetId,
+  activeSetupSection
 }: {
   data: DashboardPayload;
   selectedSession: GameSession | null;
@@ -1806,6 +1883,7 @@ function SessionManager({
   onReport: (report: SessionReport | null) => void;
   onOpenReports: () => void;
   initialQuizSetId?: string;
+  activeSetupSection: SetupSection;
 }) {
   const {
     quizSetId, setQuizSetId,
@@ -1822,8 +1900,7 @@ function SessionManager({
     botDifficulty, setBotDifficulty,
     isJoinLinkCopied, setIsJoinLinkCopied,
     isEndConfirmOpen, setIsEndConfirmOpen,
-    isProjectorOpen, setIsProjectorOpen,
-    selectedPresetName, setSelectedPresetName
+    isProjectorOpen, setIsProjectorOpen
   } = useSessionControls({ initialQuizSetId, firstQuizSetId: data.quizSets[0]?.id });
   const endSessionTriggerRef = useRef<HTMLButtonElement>(null);
   const endSessionDialogRef = useRef<HTMLDivElement>(null);
@@ -1837,7 +1914,7 @@ function SessionManager({
   const sessionQuiz = selectedSession
     ? data.quizSets.find((quiz) => quiz.id === selectedSession.quizSetId)
     : undefined;
-  const displayedPresetName = selectedSession ? getSessionPresetName(selectedSession.settings) : selectedPresetName;
+  const displayedPresetName = "Custom Game";
   const studentJoinLink = selectedSession
     ? buildStudentJoinUrl(window.location.origin, selectedSession.sessionCode)
     : "";
@@ -1937,22 +2014,7 @@ function SessionManager({
 
   const hasInvalidSettings = Object.values(invalidSettings).some(Boolean);
 
-  const applyPreset = (presetName: string, presetSettings: SessionSettings) => {
-    const nextSettings = {
-      ...presetSettings,
-      mapId: settings.mapId,
-      gameMode: settings.gameMode,
-      teamAssignment: settings.teamAssignment,
-      characterCustomization: settings.characterCustomization
-    };
-    setSettings(nextSettings);
-    setSettingInputs(createSessionSettingInputs(nextSettings));
-    setInvalidSettings({});
-    setSelectedPresetName(presetName);
-  };
-
   const updateNumberSetting = (field: SessionNumberField, rawValue: string) => {
-    setSelectedPresetName("Custom Game");
     setSettingInputs((current) => ({ ...current, [field]: rawValue }));
     const fieldConfig = sessionNumberFields.find((item) => item.name === field);
     const trimmedValue = rawValue.trim();
@@ -2223,110 +2285,122 @@ function SessionManager({
         {shouldShowSetup ? (
           <>
             <header className="setup-flow-header">
-              <span className="flow-step">Step 2 of 4</span>
-              <h2>Start a Live Game</h2>
+              <div className="setup-flow-title">
+                <h2>Start a Live Game</h2>
+              </div>
               <div className="setup-quiz-summary">
-                <BookOpen size={24} aria-hidden="true" />
-                <span>Quiz</span>
+                <BookOpen size={22} aria-hidden="true" />
                 <strong>{selectedQuiz?.title ?? "Choose a quiz from Folders"}</strong>
-                <small>{selectedQuiz?.questions.length ?? 0} Questions</small>
+                <small>{selectedQuiz?.questions.length ?? 0} questions</small>
               </div>
             </header>
 
-            <section className="setup-choice-section" aria-labelledby="preset-title">
-              <div className="setup-section-heading">
-                <span>1</span>
-                <div><h3 id="preset-title">Choose a game pace</h3><small>Classic Class is ready to go.</small></div>
-              </div>
-              <div className="preset-grid" aria-label="Game presets">
-                {SESSION_PRESETS.map((preset) => {
-                  const selected = selectedPresetName === preset.name;
-                  return (
-                    <button
-                      type="button"
-                      key={preset.name}
-                      className={selected ? "selected" : ""}
-                      aria-pressed={selected}
-                      onClick={() => applyPreset(preset.name, preset.settings)}
-                    >
-                      {selected && <span className="preset-check" aria-hidden="true"><Check size={18} /></span>}
-                      <strong>{preset.name}</strong>
-                      <small>{preset.description}</small>
-                      {preset.name === "Classic Class" && <em>Recommended</em>}
-                    </button>
-                  );
-                })}
-              </div>
-            </section>
-
-            <section className="setup-choice-section" aria-labelledby="arena-title">
-              <div className="setup-section-heading">
-                <span>2</span>
-                <div><h3 id="arena-title">Choose Arena</h3><small>Desert Citadel is selected by default.</small></div>
-              </div>
-              <div className="arena-choice-grid">
-                {ARENA_MAPS.map((map) => {
-                  const selected = settings.mapId === map.id;
-                  return (
-                    <button
-                      type="button"
-                      key={map.id}
-                      className={`arena-choice map-${map.id}${selected ? " selected" : ""}`}
-                      aria-pressed={selected}
-                      onClick={() => setSettings({ ...settings, mapId: map.id })}
-                    >
-                      <span className="arena-choice-art" aria-hidden="true"><Target size={28} /></span>
-                      <span><strong>{map.title}</strong><small>{map.districts.slice(0, 2).join(" · ")}</small></span>
-                      {selected && <Check className="arena-selected-check" size={20} aria-hidden="true" />}
-                    </button>
-                  );
-                })}
-              </div>
-            </section>
-
-            <details className="advanced-settings">
-              <summary><span><Settings size={19} aria-hidden="true" />Advanced Settings</span><small>Optional</small></summary>
-              <div className="advanced-settings-content">
-                <fieldset>
-                  <legend>Game Mode</legend>
-                  <label>
-                    <span>Mode</span>
-                    <select
-                      value={settings.gameMode}
-                      onChange={(event) => {
-                        const gameMode = event.target.value as SessionSettings["gameMode"];
-                        const nextSettings: SessionSettings = {
-                          ...settings,
-                          gameMode,
-                          roundDurationSeconds: gameMode === "flag" ? FLAG_MODE_DEFAULTS.roundDurationSeconds : settings.roundDurationSeconds
-                        };
-                        setSettings(nextSettings);
-                        setSettingInputs(createSessionSettingInputs(nextSettings));
-                      }}
-                    >
-                      <option value="flag">Flag Mode</option>
-                      <option value="zombie">Zombie Mode</option>
-                      <option value="classic">Classic Tag Practice</option>
-                    </select>
-                  </label>
-                </fieldset>
-
-                {settings.gameMode === "flag" && (
-                  <fieldset>
-                    <legend>Teams</legend>
-                    <label>
-                      <span>Team Assignment</span>
-                      <select
-                        value={settings.teamAssignment}
-                        onChange={(event) => setSettings({ ...settings, teamAssignment: event.target.value as SessionSettings["teamAssignment"] })}
+            {activeSetupSection === "mode" && (
+              <section className="setup-choice-section setup-panel-section mode-choice-section" aria-labelledby="mode-title">
+                <div className="setup-panel-heading"><h3 id="mode-title">Game Mode</h3></div>
+                <div className="mode-choice-grid" aria-label="Game modes">
+                  {([
+                    { id: "zombie", title: "Zombie", description: "One student is the zombie. Answer correctly to survive and turn others.", icon: <img src="/assets/zombie/zombie-head.png" alt="" /> },
+                    { id: "classic", title: "Tag", description: "Players tag others with the right answers. Avoid being tagged!", icon: <TagIcon size={48} aria-hidden="true" /> },
+                    { id: "flag", title: "Flag", description: "Teams compete to capture the flag by answering more questions.", icon: <FlagIcon size={48} aria-hidden="true" /> }
+                  ] as const).map((mode) => {
+                    const selected = settings.gameMode === mode.id;
+                    return (
+                      <button
+                        type="button"
+                        key={mode.id}
+                        className={`mode-choice mode-${mode.id}${selected ? " selected" : ""}`}
+                        aria-label={`${mode.title}: ${mode.description}`}
+                        aria-pressed={selected}
+                        onClick={() => setSettings({ ...settings, gameMode: mode.id })}
                       >
-                        <option value="players_choose">Players Choose</option>
-                        <option value="random">Random Teams</option>
-                      </select>
-                    </label>
-                  </fieldset>
-                )}
+                        <span className="mode-choice-art" aria-hidden="true">{mode.icon}</span>
+                        <strong>{mode.title}</strong>
+                        {selected && <span className="mode-choice-check" aria-hidden="true"><Check size={18} /></span>}
+                      </button>
+                    );
+                  })}
+                </div>
+              </section>
+            )}
 
+            {activeSetupSection === "arena" && (
+              <section className="setup-choice-section setup-panel-section" aria-labelledby="arena-title">
+                <div className="setup-panel-heading"><h3 id="arena-title">Arena</h3></div>
+                <div className="arena-choice-grid">
+                  {ARENA_MAPS.map((map) => {
+                    const selected = settings.mapId === map.id;
+                    const displayTitle = arenaMapDisplayTitle(map.title);
+                    return (
+                      <button
+                        type="button"
+                        key={map.id}
+                        className={`arena-choice map-${map.id}${selected ? " selected" : ""}`}
+                        aria-label={`${displayTitle}: ${map.districts.slice(0, 2).join(" · ")}`}
+                        aria-pressed={selected}
+                        onClick={() => setSettings({ ...settings, mapId: map.id })}
+                      >
+                        <img
+                          className="arena-choice-image"
+                          src={ARENA_MAP_PREVIEW_ASSETS[map.id]}
+                          alt={`Top-down preview of ${displayTitle}`}
+                          loading="lazy"
+                        />
+                        <span className="arena-choice-title"><strong>{displayTitle}</strong></span>
+                        {selected && <Check className="arena-selected-check" size={20} aria-hidden="true" />}
+                      </button>
+                    );
+                  })}
+                </div>
+                {(settings.gameMode === "flag" || settings.gameMode === "zombie") && (
+                  <div className="arena-rules-panel">
+                    <div className="arena-rules-heading"><h4>Arena Rules</h4><span>{gameModeLabel(settings.gameMode)} mode</span></div>
+                    <div className="arena-rules-grid">
+                      {settings.gameMode === "flag" && (
+                        <label>
+                          <span>Team Assignment</span>
+                          <select
+                            value={settings.teamAssignment}
+                            onChange={(event) => setSettings({ ...settings, teamAssignment: event.target.value as SessionSettings["teamAssignment"] })}
+                          >
+                            <option value="players_choose">Players Choose</option>
+                            <option value="random">Random Teams</option>
+                          </select>
+                        </label>
+                      )}
+                      {(["flagHoldSeconds", "initialZombieCount"] as const).map((name) => {
+                        const field = sessionNumberFields.find((item) => item.name === name);
+                        if (!field || !visibleNumberFields.some((item) => item.name === field.name)) return null;
+                        const errorId = `session-setting-${field.name}-error`;
+                        const unit = "unit" in field ? field.unit : undefined;
+                        return (
+                          <label key={field.name} title={field.help}>
+                            <span>{field.label}{unit ? ` (${unit})` : ""}</span>
+                            <input
+                              type="number"
+                              min={field.min}
+                              max={field.max}
+                              step={"step" in field ? field.step : undefined}
+                              inputMode="numeric"
+                              value={settingInputs[field.name]}
+                              aria-invalid={invalidSettings[field.name] ? "true" : undefined}
+                              aria-describedby={invalidSettings[field.name] ? errorId : undefined}
+                              onChange={(event) => updateNumberSetting(field.name, event.target.value)}
+                            />
+                            {invalidSettings[field.name] && <small id={errorId} className="field-error" role="alert">Use {field.min}–{field.max}{unit ? ` ${unit}` : ""}.</small>}
+                          </label>
+                        );
+                      })}
+                    </div>
+                  </div>
+                )}
+              </section>
+            )}
+
+            {activeSetupSection === "advanced" && (
+              <section className="setup-choice-section setup-panel-section setup-advanced-section" aria-labelledby="advanced-title">
+                <div className="setup-panel-heading"><h3 id="advanced-title">Advanced Settings</h3><span>Custom Game</span></div>
+                <div className="advanced-settings-content">
                 {sessionSettingGroups.map((group) => {
                   const fields = group.fields
                     .map((name) => sessionNumberFields.find((field) => field.name === name))
@@ -2370,12 +2444,13 @@ function SessionManager({
                   <label className="toggle-row"><input type="checkbox" checked={settings.characterCustomization.uploadsEnabled} disabled={!settings.characterCustomization.enabled} onChange={(event) => setSettings({ ...settings, characterCustomization: { ...settings.characterCustomization, uploadsEnabled: event.target.checked } })} />Artwork stickers</label>
                   <label className="toggle-row"><input type="checkbox" checked={settings.characterCustomization.persistAcrossSessions} disabled={!settings.characterCustomization.enabled} onChange={(event) => setSettings({ ...settings, characterCustomization: { ...settings.characterCustomization, persistAcrossSessions: event.target.checked } })} />Remember character choices</label>
                 </fieldset>
-              </div>
-            </details>
+                </div>
+              </section>
+            )}
 
             {hasInvalidSettings && <p className="error-text">Check the highlighted settings before creating the game.</p>}
             <div className="setup-create-bar">
-              <span>{selectedPresetName} · {selectedMap.title}</span>
+              <span><strong>Custom Game</strong><small>{selectedMap.title} · {gameModeLabel(settings.gameMode)} · advanced settings applied</small></span>
               <button className="primary create-game-button" type="submit" disabled={!quizSetId || hasInvalidSettings || isCreatingSession}>
                 <Play size={20} aria-hidden="true" />
                 {isCreatingSession ? "Creating Game..." : "Create Game"}
