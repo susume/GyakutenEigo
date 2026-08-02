@@ -840,89 +840,112 @@ function CharacterLab() {
 function GyakutenEigoHome({ onOpenGame, onJoinGame }: { onOpenGame: () => void; onJoinGame: () => void }) {
   return (
     <div className="product-home rescued-home">
-      <section className="site-home" aria-labelledby="quizstrike-home-title">
+      <section className="site-home site-home-esports" aria-labelledby="quizstrike-home-title">
         <div className="site-home-copy">
-          <span className="eyebrow">Live classroom team game</span>
-          <h1 id="quizstrike-home-title">Turn every answer into action.</h1>
-          <p>Create a private team arena where quiz progress powers the match. Students answer, earn advantages, and compete together in real time.</p>
-          <span className="hero-tagline">Answer. Earn. Compete.</span>
+          <span className="eyebrow">The classroom esports arena</span>
+          <h1 id="quizstrike-home-title">Make every correct answer a <span className="hero-highlight">game-changing play.</span></h1>
+          <p>QuizStrike turns review into live esports-style competition. Students answer, earn advantages, and make the play that swings the round while teachers stay in control.</p>
+          <span className="hero-tagline">Learn the play. Win the round.</span>
           <div className="hero-proof-row" aria-label="Product qualities">
-            <span><Shield size={16} aria-hidden="true" />Private room codes</span>
-            <span><BookOpen size={16} aria-hidden="true" />Teacher-made questions</span>
-            <span><Users size={16} aria-hidden="true" />Team competition</span>
+            <span><Users size={16} aria-hidden="true" />Class vs. class energy</span>
+            <span><Zap size={16} aria-hidden="true" />School vs. school spirit</span>
+            <span><Shield size={16} aria-hidden="true" />Teacher-controlled matches</span>
           </div>
           <div className="button-row">
             <button className="primary" onClick={onOpenGame}>
               <Play size={18} aria-hidden="true" />
-              Open Teacher Workspace
+              Start a Classroom Match
             </button>
             <button onClick={onJoinGame}>
               <DoorOpen size={18} aria-hidden="true" />
-              Join a Game
+              Join the Arena
             </button>
           </div>
         </div>
         <article className="game-host-card" aria-label="QuizStrike Classroom game preview">
           <div className="hero-arena-preview">
             <img className="game-host-card-art" src="/assets/quizstrike-classroom-cover.webp" alt="QuizStrike Classroom cover art showing red and blue teams answering questions in a desert arena." width={1672} height={941} fetchPriority="high" />
-            <span className="game-host-card-label">Live classroom team game</span>
+            <span className="game-host-card-label">Live match · Desert Citadel</span>
           </div>
           <div className="game-preview-meta">
+            <span className="game-preview-objective game-preview-objective-new"><Target size={16} aria-hidden="true" />Answer · earn · outplay</span>
             <span className="game-preview-objective"><Target size={16} aria-hidden="true" />Answer · earn · capture</span>
-            <strong>Desert Citadel</strong>
-            <small>Ramparts. Waterworks. Caravan Quarter. Two gate courts.</small>
+            <strong>Every question changes the scoreboard.</strong>
+            <small>Build momentum. Make the comeback. Take the round.</small>
+          </div>
+          <div className="game-preview-signal-row" aria-label="Match highlights">
+            <span><strong>2</strong><small>rival teams</small></span>
+            <span><strong>Live</strong><small>teacher-hosted</small></span>
+            <span><strong>All in</strong><small>student focus</small></span>
           </div>
         </article>
       </section>
 
-      <section className="landing-section product-intro" aria-labelledby="why-play-title">
-        <div className="section-kicker">Built for the classroom moment</div>
-        <h2 id="why-play-title">Fast to launch. Hard to tune out.</h2>
+      <section className="landing-section product-intro esports-proof-section" aria-labelledby="why-play-title">
+        <div className="section-kicker">Why students lean in</div>
+        <h2 id="why-play-title">Review that feels like game day.</h2>
+        <p className="section-lede">A correct answer is more than a point. It powers the next move, gives the team a reason to communicate, and keeps the whole class watching the scoreboard.</p>
         <div className="value-card-grid">
-          <article><BookOpen size={22} aria-hidden="true" /><h3>Fast setup</h3><p>Pick a quiz. Open a room.</p></article>
-          <article><Target size={22} aria-hidden="true" /><h3>Team energy</h3><p>Every learner affects the round.</p></article>
-          <article><Shield size={22} aria-hidden="true" /><h3>Clear control</h3><p>Run the match from one workspace.</p></article>
+          <article><Zap size={22} aria-hidden="true" /><h3>Every answer has impact</h3><p>Correct answers create momentum students can feel immediately.</p></article>
+          <article><Users size={22} aria-hidden="true" /><h3>Classroom rivalry, real teamwork</h3><p>Compete as a class, communicate under pressure, and celebrate the comeback together.</p></article>
+          <article><Shield size={22} aria-hidden="true" /><h3>Teachers run the match</h3><p>Choose the questions, rules, pace, and finish line from one focused workspace.</p></article>
+        </div>
+      </section>
+
+      <section className="landing-section founder-story-section" aria-labelledby="founder-story-title">
+        <div className="founder-story-intro">
+          <span className="eyebrow">The story behind QuizStrike</span>
+          <h2 id="founder-story-title">Where esports meets the classroom.</h2>
+          <span className="founder-story-signoff">Peter · Founder, QuizStrike</span>
+        </div>
+        <div className="founder-story-card">
+          <p className="founder-greeting">Hi! I’m Peter</p>
+          <p>I started <strong>QuizStrike</strong> because I wanted to bring esports and classroom learning together.</p>
+          <p>Esports taught me valuable skills that I never learned in school, and it opened my world to new experiences, communities, and opportunities. I also saw how games can keep students motivated, focused, and actively involved in the learning process.</p>
+          <p>That inspired me to build <strong>QuizStrike</strong> — a new bridge between esports and education, designed to make classroom learning more engaging, competitive, and fun.</p>
+          <p className="founder-closing">I can’t wait for you to try it!</p>
         </div>
       </section>
 
       <section className="landing-section mode-section" aria-labelledby="modes-title">
         <div>
-          <span className="eyebrow">More than a quiz screen</span>
-          <h2 id="modes-title">Three ways to turn review into a round.</h2>
+          <span className="eyebrow">Choose your matchup</span>
+          <h2 id="modes-title">One question can swing the whole round.</h2>
         </div>
         <div className="mode-card-grid">
-          <article className="mode-card flag-mode-card"><span>01</span><h3>Flag Mode</h3><p>Red delivers and protects the flag. Blue defends and captures. The scoreboard keeps the objective visible.</p></article>
-          <article className="mode-card zombie-mode-card"><span>02</span><h3>Zombie Mode</h3><p>Red Zombies shoot to convert. Blue Humans answer questions for running energy and survive without weapons.</p></article>
-          <article className="mode-card classic-mode-card"><span>03</span><h3>Classic Practice</h3><p>A simple team round for introducing the controls, reviewing a set, or running a quick warmup.</p></article>
+          <article className="mode-card flag-mode-card"><span>01</span><h3>Class vs. class tactics</h3><p>Push the objective, protect your lead, and make every answer count when the other team is closing in.</p></article>
+          <article className="mode-card zombie-mode-card"><span>02</span><h3>Team survival mode</h3><p>Answer quickly, keep your team moving, and turn a pressure-filled review into a shared mission.</p></article>
+          <article className="mode-card classic-mode-card"><span>03</span><h3>Quick start, full focus</h3><p>Run a clean warmup or a school-day showdown with a simple mode that gets everyone playing fast.</p></article>
         </div>
       </section>
 
       <section className="landing-section classroom-flow-section" aria-labelledby="classroom-flow-title">
         <div>
-          <span className="eyebrow">A simple classroom flow</span>
-          <h2 id="classroom-flow-title">From question set to game recap in four clear steps.</h2>
+          <span className="eyebrow">From lesson plan to leaderboard</span>
+          <h2 id="classroom-flow-title">Set the matchup in minutes.</h2>
         </div>
         <ol className="classroom-flow">
-          <li><span>1</span><strong>Create a quiz set</strong><p>Paste study terms or add your own multiple-choice questions.</p></li>
-          <li><span>2</span><strong>Open a private room</strong><p>Choose a mode, timing, rewards, and classroom settings.</p></li>
+          <li><span>1</span><strong>Load the questions</strong><p>Paste study terms or build a custom set for the lesson you are teaching.</p></li>
+          <li><span>2</span><strong>Choose the matchup</strong><p>Set the mode, pace, rewards, and rules for your classroom showdown.</p></li>
           <li><span>3</span><strong>Share the join code</strong><p>Students join from a browser with a nickname—no student email required.</p></li>
-          <li><span>4</span><strong>Review the round</strong><p>Use participation, accuracy, and missed-question data to guide the next lesson.</p></li>
+          <li><span>4</span><strong>Recap the result</strong><p>Use participation, accuracy, and missed-question data to plan the next play.</p></li>
         </ol>
       </section>
 
       <section className="landing-section faq-section" aria-labelledby="faq-title">
-        <div><span className="eyebrow">Teacher questions</span><h2 id="faq-title">Ready for a real classroom, not a demo carousel.</h2></div>
+        <div><span className="eyebrow">Built for the real classroom</span><h2 id="faq-title">Live competition. Lasting learning.</h2></div>
         <div className="faq-list">
-          <details open><summary>What do students need?</summary><p>A current desktop, Chromebook, or laptop browser and the private code from their teacher.</p></details>
-          <details><summary>Can a teacher control the room?</summary><p>Yes. Teachers create and start sessions, select modes and settings, monitor the roster, and end a session when the class is ready.</p></details>
-          <details><summary>What happens after the game?</summary><p>The teacher dashboard keeps a session report with participation and question-accuracy information for follow-up review.</p></details>
+          <details open><summary>Is this only for high-stakes competition?</summary><p>No. Use it for a five-minute warmup, a focused review, or a full class-vs-class event.</p></details>
+          <details><summary>Can teachers keep the game on track?</summary><p>Yes. Teachers create and start sessions, select modes and settings, monitor the roster, and end a match when the lesson is ready.</p></details>
+          <details><summary>What happens after the matchup?</summary><p>The teacher dashboard keeps participation and question-accuracy information ready for the next lesson and the next rematch.</p></details>
         </div>
       </section>
 
       <section className="landing-final-cta">
-        <span className="eyebrow">Start the next review round</span>
+        <span className="eyebrow">Ready for the next matchup?</span>
+        <h2 className="landing-final-cta-title">Turn your next review into the main event.</h2>
         <h2>Bring the questions. We’ll bring the game loop.</h2>
-        <div className="button-row"><button className="primary" onClick={onOpenGame}><Play size={18} aria-hidden="true" />Open Teacher Workspace</button></div>
+        <div className="button-row"><button className="primary" onClick={onOpenGame}><Play size={18} aria-hidden="true" />Start a Classroom Match</button></div>
       </section>
     </div>
   );
@@ -933,13 +956,13 @@ function QuizStrikeLanding({ onTeacherLogin, onTeacherSignup, onStudent }: { onT
     <div className="quizstrike-page">
       <section className="landing-grid landing-story quizstrike-route-hero" aria-labelledby="quizstrike-route-title">
         <div className="quizstrike-route-copy">
-          <span className="eyebrow">Teacher launchpad</span>
-          <h1 id="quizstrike-route-title">Build the quiz. Launch the match.</h1>
-          <p>Create quiz sets, open private sessions, and bring the room to life with real-time team play.</p>
+          <span className="eyebrow">The esports-style learning game</span>
+          <h1 id="quizstrike-route-title">Your next lesson has a scoreboard.</h1>
+          <p>Build a question set, launch a live arena, and give every student a reason to stay in the game.</p>
           <div className="button-row">
-            <button className="primary" onClick={onTeacherSignup}><GraduationCap size={18} aria-hidden="true" />Start as a Teacher</button>
-            <button onClick={onStudent}><DoorOpen size={18} aria-hidden="true" />Join a Game</button>
-            <button className="text-button" onClick={onTeacherLogin}>Already have an account? Log in</button>
+            <button className="primary" onClick={onTeacherSignup}><GraduationCap size={18} aria-hidden="true" />Create the Matchup</button>
+            <button onClick={onStudent}><DoorOpen size={18} aria-hidden="true" />Join the Arena</button>
+            <button className="text-button" onClick={onTeacherLogin}>Already have a teacher account? Log in</button>
           </div>
         </div>
         <div className="quizstrike-route-art">
@@ -1032,17 +1055,17 @@ function TeacherAuth({
         <div className="auth-visual-shade" aria-hidden="true" />
         <div className="auth-visual-content">
           <QuizStrikeLogo size="auth" />
-          <span className="auth-kicker">Teacher control deck</span>
-          <p className="auth-visual-title">Build the quiz.<br />Launch the match.</p>
-          <p>Create quiz sets, open private sessions, and review student results from one focused classroom workspace.</p>
-          <span className="auth-tagline">Answer. Earn. Compete.</span>
+          <span className="auth-kicker">The command center for your classroom</span>
+          <p className="auth-visual-title">Create the matchup.<br />Run the round.</p>
+          <p>Build question sets, launch esports-style team matches, and turn student focus into a shared win.</p>
+          <span className="auth-tagline">Learn the play. Win the round.</span>
         </div>
       </aside>
       <form className="panel form-panel auth-form-panel" onSubmit={submit}>
         <div className="auth-form-heading">
           <span className="auth-kicker">Secure teacher access</span>
           <h1>{isSignup ? "Teacher Sign Up" : "Teacher Login"}</h1>
-          <p>{isSignup ? "Create your teacher workspace and start your first classroom round." : "Open your classroom workspace and get the next round moving."}</p>
+          <p>{isSignup ? "Create your teacher workspace and host your first classroom matchup." : "Open your classroom arena and get the next matchup moving."}</p>
         </div>
         {isSignup && (
           <label htmlFor="teacher-name">
@@ -4424,9 +4447,9 @@ function StudentExperience({ onExit }: { onExit: () => void }) {
       <section className="auth-layout student-join-screen">
         <div className="student-join-help">
           <QuizStrikeLogo size="auth" />
-          <span className="auth-kicker">Live classroom team game</span>
-          <h1>Join Game</h1>
-          <p>Enter your teacher's private session code and a classroom nickname. No student email account is needed.</p>
+          <span className="auth-kicker">Enter the classroom arena</span>
+          <h1>Join the Matchup</h1>
+          <p>Enter your teacher's code, bring a classroom nickname, and help your class make the next game-changing play.</p>
           <div className="panel how-to-card">
             <h2>How to Play</h2>
             <p>Answer questions to earn money, buy snowballs and gear, then tag the other team. Most tags wins; respawns, then quiz earnings break ties.</p>

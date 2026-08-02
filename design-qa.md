@@ -354,14 +354,17 @@ final result: passed
 - User references: `C:\Users\hungb\OneDrive\Pictures\Screenshots\Screenshot 2026-08-02 205017.png` and `C:\Users\hungb\OneDrive\Pictures\Screenshots\Screenshot 2026-08-02 205026.png`
 - Brand assets: `C:\Users\hungb\Downloads\cover art.png` and `C:\Users\hungb\Downloads\logo.png`
 - Target intent: make the public home, QuizStrike landing route, teacher login, and student join entry feel like one dark, premium classroom game product.
+- Live reference cues: Blooket's direct promise and simple setup progression; Gimkit's “Next level” voice and Answer / Earn / strategy framing.
 
 ## Implemented
 
 - Added the supplied QuizStrike Classroom logo as a shared reusable logo component across public navigation, teacher auth, dashboard, lobby, and student join help.
 - Added an optimized WebP cover-art asset while preserving the source's 1672 × 941 ratio and composition.
-- Rebuilt the public home hero around “Turn every answer into action.” with the supplied cover art, dark navy game-card treatment, red/blue team cues, and classroom-focused CTAs.
+- Rebuilt the public home hero around “Make every correct answer a game-changing play.” with the supplied cover art, dark navy game-card treatment, esports-style language, and class-vs-class / school-vs-school energy.
 - Reworked the fallback `/quiz-strike` landing route and teacher auth into the same visual system, preserving existing route callbacks, auth status handling, password visibility, retry behavior, and signup/login state.
 - Updated the student entry surface to use the same visual language and responsive public navigation.
+- Added the esports-style messaging pass: “game-changing play,” class-vs-class energy, school-vs-school spirit, student momentum, match highlights, and a clearer lesson-to-leaderboard progression.
+- Added Peter’s founder story as a dedicated homepage section between the student-engagement proof and the game-mode progression.
 
 ## Verification
 
@@ -370,6 +373,8 @@ final result: passed
 - Confirmed the mobile menu paints above the hero and Teacher Login is clickable after adding the public header stacking context.
 - Confirmed the password toggle changes from “Show password” to “Hide password”.
 - Confirmed public routes have no horizontal overflow at the tested viewports.
+- Fixed the esports proof section's negative paragraph margin so the title and subtitle keep a visible gap on desktop and mobile.
+- Browser-captured the founder story at desktop and mobile sizes; confirmed the card stacks cleanly and introduces no horizontal overflow.
 - Confirmed all logo and cover-art images load with non-zero natural dimensions.
 - `npm run build`: passed. Existing Node 20.16/Vite 20.19+ advisory and large-chunk advisory remain.
 - `npm test`: passed — shared 89, server 141, web tests passed.
