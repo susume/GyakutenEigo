@@ -8,7 +8,7 @@ import { createServer } from "node:http";
 import { randomUUID } from "node:crypto";
 import { Server, type Socket } from "socket.io";
 import { resolveClientOrigins } from "./origins.js";
-import { getPausedRoundAction, planRoundConclusion } from "./roundFlow.js";
+import { planRoundConclusion, resolvePendingRoundAction } from "./roundFlow.js";
 import { AppearanceSecurityService, inspectProcessedDecal } from "./appearanceSecurity.js";
 import { DecalStore, type StoredDecalMime } from "./decalStore.js";
 import { CombatService } from "./combat.js";
@@ -935,7 +935,8 @@ const startPendingRound = (session: GameSession) => {
   if (session.status !== "paused" || !session.roundTransition) return;
   const transition = session.roundTransition;
   session.currentRound = transition.nextRound;
-  if (getPausedRoundAction({ gameMode: session.settings.gameMode, phase: transition.phase }) === "open_preparation") {
+  const pendingRoundAction = resolvePendingRoundAction({ gameMode: session.settings.gameMode, phase: transition.phase });
+  if (pendingRoundAction === "open_preparation") {
     openRoundPreparation(session);
     appendEvent(session, { type: "start", message: `Round ${session.currentRound} preparation opened.` });
     broadcastSession(session);
