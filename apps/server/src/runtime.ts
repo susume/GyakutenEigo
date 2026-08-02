@@ -20,6 +20,9 @@ import {
   registerTeacherDashboardRoute,
   type TeacherLibraryRouteDependencies
 } from "./routes/teacherLibrary.js";
+import { registerQuizSetCreationRoutes, registerQuizSetMutationRoutes, type QuizSetRouteDependencies } from "./routes/quizSets.js";
+import { registerQuestionRoutes, type QuestionRouteDependencies } from "./routes/questions.js";
+import { registerReportRoutes, type ReportRouteDependencies } from "./routes/reports.js";
 import { ConnectionLifecycleService } from "./connectionLifecycle.js";
 import { PersistenceScheduler } from "./persistence/persistenceScheduler.js";
 import { PlayerPositionHistory } from "./playerPositionHistory.js";
@@ -1808,200 +1811,45 @@ const teacherLibraryRouteDependencies: TeacherLibraryRouteDependencies = {
 registerTeacherDashboardRoute(app, teacherLibraryRouteDependencies);
 registerFolderRoutes(app, teacherLibraryRouteDependencies);
 
-app.patch("/api/quiz-sets/:id", requireTeacher, async (req: AuthedRequest, res) => {
-  const quiz = assertTeacherOwnsQuiz(req.user!.id, routeParam(req.params.id));
-  if (!quiz) {
-    res.status(404).json({ error: "Quiz set not found." });
-    return;
-  }
-  const title = String(req.body?.title ?? quiz.title).trim();
-  if (title.length < 2 || title.length > 160) {
-    res.status(400).json({ error: "Quiz title must be between 2 and 160 characters." });
-    return;
-  }
-  quiz.title = title;
-  quiz.updatedAt = now();
-  if (normalizedLibrary) await normalizedLibrary.updateQuizSetLibrary(quiz.teacherId, quiz.id, { title });
-  schedulePersistence();
-  res.json({ quizSet: quiz });
-});
+const quizSetRouteDependencies: QuizSetRouteDependencies = {
+  requireTeacher,
+  quizSets,
+  folders,
+  sessions,
+  normalizedLibrary,
+  assertTeacherOwnsQuiz,
+  routeParam,
+  isChoice,
+  now,
+  id,
+  schedulePersistence
+};
+const questionRouteDependencies: QuestionRouteDependencies = {
+  requireTeacher,
+  getQuizQuestion,
+  assertTeacherOwnsQuiz,
+  normalizedLibrary,
+  routeParam,
+  isChoice,
+  schedulePersistence
+};
+const reportRouteDependencies: ReportRouteDependencies = {
+  requireTeacher,
+  normalizedLibrary,
+  reports,
+  durableReportMetadataForTeacher,
+  reportMetadataForTeacher,
+  routeParam,
+  schedulePersistence
+};
 
-app.post("/api/quiz-sets/:id/move", requireTeacher, async (req: AuthedRequest, res) => {
-  const quiz = assertTeacherOwnsQuiz(req.user!.id, routeParam(req.params.id));
-  if (!quiz) {
-    res.status(404).json({ error: "Quiz set not found." });
-    return;
-  }
-  const folderId = typeof req.body?.folderId === "string" && req.body.folderId.trim() ? req.body.folderId.trim() : undefined;
-  if (folderId) {
-    const folder = folders.get(folderId);
-    if (!folder || folder.teacherId !== quiz.teacherId) {
-      res.status(400).json({ error: "Quiz sets can only move into one of your folders." });
-      return;
-    }
-  }
-  quiz.folderId = folderId;
-  quiz.updatedAt = now();
-  if (normalizedLibrary) await normalizedLibrary.updateQuizSetLibrary(quiz.teacherId, quiz.id, { folderId: folderId ?? null });
-  schedulePersistence();
-  res.json({ quizSet: quiz });
-});
-
-app.delete("/api/quiz-sets/:id", requireTeacher, async (req: AuthedRequest, res) => {
-  const quiz = assertTeacherOwnsQuiz(req.user!.id, routeParam(req.params.id));
-  if (!quiz) {
-    res.status(404).json({ error: "Quiz set not found." });
-    return;
-  }
-  const activeSession = [...sessions.values()].find((session) => session.quizSetId === quiz.id && session.status !== "ended");
-  if (activeSession) {
-    res.status(409).json({ error: "This quiz set is used by an active game and cannot be deleted yet." });
-    return;
-  }
-  if (normalizedLibrary) await normalizedLibrary.deleteQuizSet(quiz.teacherId, quiz.id);
-  quizSets.delete(quiz.id);
-  schedulePersistence();
-  res.json({ deletedQuizSetId: quiz.id });
-});
-
-app.get("/api/reports", requireTeacher, async (req: AuthedRequest, res) => {
-  res.json({ reports: await durableReportMetadataForTeacher(req.user!.id) });
-});
-
-app.get("/api/reports/:id", requireTeacher, async (req: AuthedRequest, res) => {
-  const reportId = routeParam(req.params.id);
-  const durable = await normalizedLibrary?.getReport(req.user!.id, reportId);
-  const report = durable ?? reports.get(reportId);
-  const reportTeacherId = durable?.metadata.teacherId ?? (report as StoredReport | undefined)?.teacherId;
-  if (!report || reportTeacherId !== req.user!.id) {
-    res.status(404).json({ error: "Report not found." });
-    return;
-  }
-  res.json({ report: report.report, metadata: durable?.metadata ?? reportMetadataForTeacher(req.user!.id).find((item) => item.id === reportId) });
-});
-
-app.delete("/api/reports/:id", requireTeacher, async (req: AuthedRequest, res) => {
-  const reportId = routeParam(req.params.id);
-  const deletedDurable = normalizedLibrary ? await normalizedLibrary.deleteReport(req.user!.id, reportId) : false;
-  const report = reports.get(reportId);
-  if (!deletedDurable && (!report || report.teacherId !== req.user!.id)) {
-    res.status(404).json({ error: "Report not found or already deleted." });
-    return;
-  }
-  reports.delete(reportId);
-  schedulePersistence();
-  res.json({ deletedReportId: reportId });
-});
+registerQuizSetMutationRoutes(app, quizSetRouteDependencies);
+registerReportRoutes(app, reportRouteDependencies);
 
 registerClassRoute(app, teacherLibraryRouteDependencies);
 
-app.post("/api/quiz-sets", requireTeacher, async (req: AuthedRequest, res) => {
-  const title = String(req.body.title ?? "").trim();
-  if (title.length < 2) {
-    res.status(400).json({ error: "Quiz title is required." });
-    return;
-  }
-  const quizSet: QuizSet = {
-    id: id(),
-    teacherId: req.user!.id,
-    classId: String(req.body.classId ?? "") || undefined,
-    folderId: String(req.body.folderId ?? "") || undefined,
-    title,
-    description: String(req.body.description ?? "").trim() || undefined,
-    questions: [],
-    createdAt: now()
-  };
-  if (normalizedLibrary) await normalizedLibrary.saveQuizSet(quizSet);
-  quizSets.set(quizSet.id, quizSet);
-  schedulePersistence();
-  res.status(201).json({ quizSet });
-});
-
-app.get("/api/quiz-sets/:id", requireTeacher, (req: AuthedRequest, res) => {
-  const quiz = assertTeacherOwnsQuiz(req.user!.id, routeParam(req.params.id));
-  if (!quiz) {
-    res.status(404).json({ error: "Quiz set not found." });
-    return;
-  }
-  res.json({ quizSet: quiz });
-});
-
-app.post("/api/quiz-sets/:id/questions", requireTeacher, async (req: AuthedRequest, res) => {
-  const quiz = assertTeacherOwnsQuiz(req.user!.id, routeParam(req.params.id));
-  if (!quiz) {
-    res.status(404).json({ error: "Quiz set not found." });
-    return;
-  }
-  if (!isChoice(req.body.correctChoice)) {
-    res.status(400).json({ error: "Correct choice must be A, B, C, or D." });
-    return;
-  }
-
-  const question: Question = {
-    id: id(),
-    quizSetId: quiz.id,
-    prompt: String(req.body.prompt ?? "").trim(),
-    choiceA: String(req.body.choiceA ?? "").trim(),
-    choiceB: String(req.body.choiceB ?? "").trim(),
-    choiceC: String(req.body.choiceC ?? "").trim(),
-    choiceD: String(req.body.choiceD ?? "").trim(),
-    correctChoice: req.body.correctChoice,
-    explanation: String(req.body.explanation ?? "").trim() || undefined,
-    difficulty: String(req.body.difficulty ?? "").trim() || undefined,
-    createdAt: now()
-  };
-
-  if (!question.prompt || !question.choiceA || !question.choiceB || !question.choiceC || !question.choiceD) {
-    res.status(400).json({ error: "Question prompt and four choices are required." });
-    return;
-  }
-
-  if (normalizedLibrary) await normalizedLibrary.saveQuestionForTeacher(quiz.teacherId, question);
-  quiz.questions.push(question);
-  schedulePersistence();
-  res.status(201).json({ question, quizSet: quiz });
-});
-
-app.put("/api/questions/:id", requireTeacher, async (req: AuthedRequest, res) => {
-  const question = getQuizQuestion(routeParam(req.params.id));
-  if (!question) {
-    res.status(404).json({ error: "Question not found." });
-    return;
-  }
-  const quiz = assertTeacherOwnsQuiz(req.user!.id, question.quizSetId);
-  if (!quiz) {
-    res.status(403).json({ error: "This question belongs to another teacher." });
-    return;
-  }
-  if (isChoice(req.body.correctChoice)) question.correctChoice = req.body.correctChoice;
-  question.prompt = String(req.body.prompt ?? question.prompt).trim();
-  question.choiceA = String(req.body.choiceA ?? question.choiceA).trim();
-  question.choiceB = String(req.body.choiceB ?? question.choiceB).trim();
-  question.choiceC = String(req.body.choiceC ?? question.choiceC).trim();
-  question.choiceD = String(req.body.choiceD ?? question.choiceD).trim();
-  question.explanation = String(req.body.explanation ?? question.explanation ?? "").trim() || undefined;
-  question.difficulty = String(req.body.difficulty ?? question.difficulty ?? "").trim() || undefined;
-  if (normalizedLibrary) await normalizedLibrary.updateQuestionForTeacher(quiz.teacherId, question);
-  schedulePersistence();
-  res.json({ question, quizSet: quiz });
-});
-
-app.delete("/api/questions/:id", requireTeacher, async (req: AuthedRequest, res) => {
-  const question = getQuizQuestion(routeParam(req.params.id));
-  if (!question) {
-    res.status(404).json({ error: "Question not found." });
-    return;
-  }
-  const quiz = assertTeacherOwnsQuiz(req.user!.id, question.quizSetId);
-  if (!quiz) {
-    res.status(403).json({ error: "This question belongs to another teacher." });
-    return;
-  }
-  if (normalizedLibrary) await normalizedLibrary.deleteQuestionForTeacher(quiz.teacherId, question.id);
-  quiz.questions = quiz.questions.filter((item) => item.id !== question.id);
-  schedulePersistence();
-  res.json({ quizSet: quiz });
-});
+registerQuizSetCreationRoutes(app, quizSetRouteDependencies);
+registerQuestionRoutes(app, questionRouteDependencies);
 
 app.post("/api/sessions", requireTeacher, async (req: AuthedRequest, res) => {
   if (isDraining) {
