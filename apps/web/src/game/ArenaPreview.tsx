@@ -4,7 +4,6 @@ import {
   ARENA_MAX_AIM_PITCH,
   ARENA_MIN_AIM_PITCH,
   ARENA_SCALE,
-  FREE_FOR_ALL_SPAWNS,
   getGearFireCooldownMs,
   getGearZoomFovMultiplier,
   getArenaGroundHeight,
@@ -14,7 +13,6 @@ import {
   getPlayerMoveSpeedMultiplier,
   getPlayerWeaponId,
   getTeamSpawnForMap,
-  getTeamSpawnsForMap,
   type ArenaMapId,
   isGearAutoFireEnabled,
   type GameSession,
@@ -43,13 +41,9 @@ import { isFireKeyboardEvent, isScopeKeyboardEvent, resolveCombatPointerAction, 
 import { gameAudio, type MovementAudioMode } from "./GameAudio";
 import { cycleHeavyGunZoom, getWeaponFov, shouldResetWeaponZoom } from "./weaponControls";
 import { resolveTouchJoystickVector } from "./touchJoystick";
-import { ArenaStaticBatcher, makeSurfaceAtlas } from "./ArenaStaticBatch";
 import { emitArenaVfx } from "./ArenaVfx";
 import { emitArenaAnimation } from "./ArenaAnimation";
 import { ArenaPerformanceCapture, type ArenaPerformanceSnapshot } from "./ArenaPerformance";
-import { addIronJunctionArtPass } from "./IronJunctionArtPass";
-import { addDesertCitadelVfx } from "./DesertCitadelVfx";
-import { addTempleRunoffArtPass } from "./TempleRunoffArtPass";
 import {
   readGamePreferences,
   resolveArenaQuality,
@@ -90,25 +84,12 @@ const PLAYER_RADIUS = 0.45;
 const WALK_SPEED = 10.8;
 const RUN_SPEED = 14.8;
 const CROUCH_SPEED = 6.4;
-const paleStone = "#dec28a";
-const darkStone = "#846744";
-const wood = "#65462e";
-const steel = "#39464b";
-const darkSteel = "#263237";
-const rust = "#8b4f37";
-const timber = "#765038";
-const warning = "#d18a3f";
 const GAMEPAD_DEAD_ZONE = 0.18;
 const KEYBOARD_LOOK_SPEED = 1.9;
 const TOUCH_LOOK_SENSITIVITY = 0.006;
 const clamp = (value: number, min: number, max: number) => Math.min(max, Math.max(min, value));
 const isFiniteNumber = (value: unknown): value is number => typeof value === "number" && Number.isFinite(value);
 const scaleArenaValue = (value: number) => Number((value * ARENA_SCALE).toFixed(2));
-
-const playerAccuracy = (player: PlayerSession) => {
-  const total = player.correctAnswers + player.wrongAnswers;
-  return total === 0 ? 0 : Math.round((player.correctAnswers / total) * 100);
-};
 
 const movementCode = (event: KeyboardEvent) => {
   const key = event.key.toLowerCase();
@@ -540,7 +521,6 @@ export default function ArenaPreview({
       scene,
       isFps,
       currentPlayerId,
-      currentPlayerTeam,
       players,
       currentPlayer,
       session,

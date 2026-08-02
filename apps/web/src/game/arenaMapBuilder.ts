@@ -1,6 +1,5 @@
 import * as THREE from "three";
 import {
-  ARENA_SCALE,
   FREE_FOR_ALL_SPAWNS,
   getArenaBounds,
   getArenaGroundHeight,

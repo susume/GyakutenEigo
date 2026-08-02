@@ -22,7 +22,6 @@ export type CharacterSyncDependencies = {
   scene: THREE.Scene;
   isFps: boolean;
   currentPlayerId: string;
-  currentPlayerTeam: "blue" | "red";
   players: PlayerSession[];
   currentPlayer?: PlayerSession;
   session?: GameSession;
@@ -47,7 +46,6 @@ export const createCharacterSync = (deps: CharacterSyncDependencies) => {
     scene,
     isFps,
     currentPlayerId,
-    currentPlayerTeam,
     players,
     currentPlayer,
     session,
