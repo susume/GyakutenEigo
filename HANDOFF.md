@@ -1,7 +1,7 @@
 # Quiz Strike Development Handoff
 
 Last verified: 2 August 2026 (Asia/Tokyo)
-Repository: main at b1c8ee1 ('refreshed architecture and handoff')
+Repository: `main` (architecture and handoff refreshed)
 Production cutover validation: deployment 89f4920
 
 ## Executive status
