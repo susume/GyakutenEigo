@@ -25,6 +25,7 @@ import { loadArenaMapContext } from "./mapLoader";
 import { buildArenaMapScene } from "./arenaMapBuilder";
 import { createCharacterSync } from "./characterSync";
 import { ArenaMinimap } from "./ArenaMinimap";
+import { createArenaRenderLoop } from "./arenaLoop";
 import {
   FPS_CROUCH_EYE_HEIGHT,
   FPS_JUMP_GRAVITY,
@@ -894,8 +895,6 @@ export default function ArenaPreview({
       };
       updateCamera();
 
-      const clock = new THREE.Clock();
-      let frame = 0;
       let lastMoveEmitAt = 0;
       let lastMiniMapAt = 0;
       let lastDebugStatsAt = 0;
@@ -980,14 +979,11 @@ export default function ArenaPreview({
         return supportY === undefined ? mappedGroundY : Math.max(mappedGroundY, supportY);
       };
 
-      const animateFps = () => {
-        frame = requestAnimationFrame(animateFps);
-        const delta = Math.min(clock.getDelta(), 0.035);
-        const currentTime = performance.now();
+      const fpsLoop = createArenaRenderLoop(({ delta, currentTime, elapsed }) => {
         performanceCapture.frame(currentTime);
         vfxPool.update(currentTime);
-        desertCitadelVfx?.update(clock.elapsedTime);
-        templeRunoffArt?.update(clock.elapsedTime);
+        desertCitadelVfx?.update(elapsed);
+        templeRunoffArt?.update(elapsed);
         if (currentTime - performanceWindowAt >= 1000) {
           const profile = performanceCapture.snapshot(currentTime);
           renderer.domElement.dataset.fps = String(profile.fps);
@@ -1220,7 +1216,7 @@ export default function ArenaPreview({
         }
         maybeEmitPosition(currentTime);
         billboardSprites.forEach((sprite) => sprite.lookAt(camera.position));
-        characterManager.update(delta, clock.elapsedTime, camera);
+        characterManager.update(delta, elapsed, camera);
         if (debugOverlay && currentTime - lastDebugStatsAt > 500) {
           lastDebugStatsAt = currentTime;
           setCharacterDebugStats(characterManager.getStats());
@@ -1258,7 +1254,7 @@ export default function ArenaPreview({
           }
         }
         renderer.render(scene, camera);
-      };
+      }, 0.035);
       syncFpsMuzzlePosition();
       flash.position.copy(fpsMuzzlePosition);
       muzzleRing.position.copy(fpsMuzzlePosition);
@@ -1273,7 +1269,7 @@ export default function ArenaPreview({
       renderer.render(scene, camera);
       renderer.domElement.dataset.drawCalls = String(renderer.info.render.calls);
       renderer.domElement.dataset.triangles = String(renderer.info.render.triangles);
-      animateFps();
+      fpsLoop.start();
 
       const resizeFps = () => {
         const width = mount.clientWidth;
@@ -1285,7 +1281,7 @@ export default function ArenaPreview({
       window.addEventListener("resize", resizeFps);
 
       return () => {
-        cancelAnimationFrame(frame);
+        fpsLoop.stop();
         window.removeEventListener("resize", resizeFps);
         unsubscribeVfx();
         unsubscribeAnimation();
@@ -1315,15 +1311,9 @@ export default function ArenaPreview({
       };
     }
 
-    const clock = new THREE.Clock();
-    let frame = 0;
     let lastDebugStatsAt = 0;
     let performanceWindowAt = performance.now();
-    const animateOverview = () => {
-      frame = requestAnimationFrame(animateOverview);
-      const delta = Math.min(clock.getDelta(), 0.05);
-      const elapsed = clock.elapsedTime;
-      const currentTime = performance.now();
+    const overviewLoop = createArenaRenderLoop(({ delta, elapsed, currentTime }) => {
       performanceCapture.frame(currentTime);
       vfxPool.update(currentTime);
       desertCitadelVfx?.update(elapsed);
@@ -1349,13 +1339,13 @@ export default function ArenaPreview({
         setCharacterDebugStats(characterManager.getStats());
       }
       renderer.render(scene, camera);
-    };
+    }, 0.05);
     characterManager.update(0, 0, camera);
     renderer.compile(scene, camera);
     renderer.render(scene, camera);
     renderer.domElement.dataset.drawCalls = String(renderer.info.render.calls);
     renderer.domElement.dataset.triangles = String(renderer.info.render.triangles);
-    animateOverview();
+    overviewLoop.start();
 
     const resize = () => {
       const width = mount.clientWidth;
@@ -1367,7 +1357,7 @@ export default function ArenaPreview({
     window.addEventListener("resize", resize);
 
     return () => {
-      cancelAnimationFrame(frame);
+      overviewLoop.stop();
       window.removeEventListener("resize", resize);
       unsubscribeVfx();
       unsubscribeAnimation();
