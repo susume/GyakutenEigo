@@ -13,6 +13,7 @@ import { getPausedRoundAction, planRoundConclusion } from "./roundFlow.js";
 import { AppearanceSecurityService, inspectProcessedDecal } from "./appearanceSecurity.js";
 import { DecalStore, type StoredDecalMime } from "./decalStore.js";
 import { CombatService } from "./combat.js";
+import { BotNavigationService } from "./botNavigation.js";
 import { ConnectionLifecycleService } from "./connectionLifecycle.js";
 import { PersistenceScheduler } from "./persistence/persistenceScheduler.js";
 import { PlayerPositionHistory } from "./playerPositionHistory.js";
@@ -147,14 +148,11 @@ import {
   BOT_DIFFICULTIES,
   chooseBotRole,
   chooseBotTarget,
-  createBotMemory,
   getBotWeaponPreference,
-  isTargetInsideBotAwareness,
   nextBotRandom,
   randomBetween,
   resolveBotAim,
   resolveBotPerceptionFocus,
-  resolveBotSpacingGoal,
   resolveBotState,
   shouldAdvanceBotPatrolRoute,
   shouldBotAttemptFlagInteraction,
@@ -250,6 +248,7 @@ const botNextAttackAt = new Map<string, number>();
 const botMemoryById = new Map<string, BotMemory>();
 const botPreviousPositions = new Map<string, { x: number; y?: number; z: number }>();
 const playerPositionHistory = new PlayerPositionHistory(350);
+const botNavigation = new BotNavigationService(botMemoryById, botPreviousPositions, playerPositionHistory);
 const playerSockets = new Map<string, Set<string>>();
 const playerDisconnectTimers = new Map<string, ReturnType<typeof setTimeout>>();
 
@@ -1237,47 +1236,16 @@ const removePlayerRuntimeState = (session: GameSession, player: PlayerSession) =
 const evictPlayerSockets = (session: GameSession, player: PlayerSession) => connectionLifecycle.evictPlayerSockets(session, player);
 
 const getBotBrain = (bot: PlayerSession, index: number, nowMs: number) => {
-  let brain = botMemoryById.get(bot.id);
-  if (!brain) {
-    brain = createBotMemory(bot.id, index, nowMs);
-    botMemoryById.set(bot.id, brain);
-  }
-  return brain;
+  return botNavigation.getBotBrain(bot, index, nowMs);
 };
 
-const botPosition = (player: PlayerSession): ArenaPosition => ({
-  x: player.x ?? 0,
-  y: player.y ?? 0,
-  z: player.z ?? 0,
-  facing: player.facing ?? 0
-});
+const botPosition = (player: PlayerSession): ArenaPosition => botNavigation.botPosition(player);
 
-const playersWithRewind = (players: PlayerSession[], nowMs = Date.now()) => players.map((player) => {
-  const previous = player.isBot
-    ? botPreviousPositions.get(player.id)
-    : playerPositionHistory.rewind(player.id, nowMs);
-  return previous
-    ? { ...player, previousX: previous.x, previousY: previous.y, previousZ: previous.z }
-    : player;
-});
+const playersWithRewind = (players: PlayerSession[], nowMs = Date.now()) => botNavigation.playersWithRewind(players, nowMs);
 
-const horizontalDistance = (a: ArenaPosition, b: ArenaPosition) => Math.hypot(a.x - b.x, a.z - b.z);
+const horizontalDistance = (a: ArenaPosition, b: ArenaPosition) => botNavigation.horizontalDistance(a, b);
 
-const isBotEnemy = (session: GameSession, bot: PlayerSession, candidate: PlayerSession) => {
-  if (candidate.id === bot.id || candidate.connectionState === "disconnected" || !candidate.isAlive) return false;
-  if (session.settings.gameMode === "zombie") return candidate.role !== bot.role;
-  return candidate.team !== bot.team;
-};
-
-const isInsideBotFov = (from: PlayerSession, to: PlayerSession, halfAngle: number) => {
-  const fromPosition = botPosition(from);
-  const targetPosition = botPosition(to);
-  const distance = horizontalDistance(fromPosition, targetPosition);
-  if (distance <= 0.001) return true;
-  const forward = { x: -Math.sin(fromPosition.facing ?? 0), z: -Math.cos(fromPosition.facing ?? 0) };
-  const direction = { x: (targetPosition.x - fromPosition.x) / distance, z: (targetPosition.z - fromPosition.z) / distance };
-  return forward.x * direction.x + forward.z * direction.z >= Math.cos(halfAngle);
-};
+const isBotEnemy = (session: GameSession, bot: PlayerSession, candidate: PlayerSession) => botNavigation.isBotEnemy(session, bot, candidate);
 
 const canBotSee = (
   session: GameSession,
@@ -1286,14 +1254,7 @@ const canBotSee = (
   profile: (typeof BOT_DIFFICULTIES)[keyof typeof BOT_DIFFICULTIES],
   obstacles: ReturnType<typeof getArenaObstacles>
 ) => {
-  const distance = horizontalDistance(botPosition(bot), botPosition(target));
-  return distance <= profile.viewDistance
-    && Math.abs((target.y ?? 0) - (bot.y ?? 0)) <= 5.5
-    && isTargetInsideBotAwareness({
-      distance,
-      inFieldOfView: isInsideBotFov(bot, target, profile.viewHalfAngle)
-    })
-    && hasLineOfSight({ from: botPosition(bot), to: botPosition(target), obstacles });
+  return botNavigation.canBotSee(session, bot, target, profile, obstacles);
 };
 
 const scaledPoint = (x: number, z: number) => ({ x: x * ARENA_SCALE, z: z * ARENA_SCALE });
@@ -1406,38 +1367,11 @@ const findBotCover = (
   threat: PlayerSession | undefined,
   obstacles: ReturnType<typeof getArenaObstacles>
 ) => {
-  if (!threat) return undefined;
-  const origin = botPosition(bot);
-  const threatPosition = botPosition(threat);
-  const candidates: Array<{ x: number; z: number; score: number }> = [];
-  for (const obstacle of obstacles) {
-    const awayX = obstacle.x - threatPosition.x;
-    const awayZ = obstacle.z - threatPosition.z;
-    const awayDistance = Math.hypot(awayX, awayZ) || 1;
-    const padding = obstacle.kind === "circle" ? obstacle.radius + 4 : Math.max(obstacle.width, obstacle.depth) / 2 + 4;
-    const points = [
-      { x: obstacle.x + (awayX / awayDistance) * padding, z: obstacle.z + (awayZ / awayDistance) * padding },
-      { x: obstacle.x - (awayZ / awayDistance) * padding, z: obstacle.z + (awayX / awayDistance) * padding },
-      { x: obstacle.x + (awayZ / awayDistance) * padding, z: obstacle.z - (awayX / awayDistance) * padding }
-    ];
-    for (const point of points) {
-      const candidate = clampArenaPosition({ ...point, facing: origin.facing ?? 0 }, session.settings.mapId);
-      if (hasLineOfSight({ from: threatPosition, to: candidate, obstacles })) continue;
-      const score = horizontalDistance(origin, candidate) - horizontalDistance(threatPosition, candidate) * 0.25;
-      candidates.push({ ...candidate, score });
-    }
-  }
-  return candidates.sort((a, b) => a.score - b.score)[0];
+  return botNavigation.findBotCover(session, bot, threat, obstacles);
 };
 
 const applyBotSpacing = (session: GameSession, bot: PlayerSession, desired: { x: number; y?: number; z: number }) => {
-  const spaced = resolveBotSpacingGoal({
-    botId: bot.id,
-    botPosition: botPosition(bot),
-    desired,
-    teammates: session.players.filter((player) => player.isAlive && player.team === bot.team)
-  });
-  return clampArenaPosition({ ...spaced, ...(Number.isFinite(desired.y) ? { y: desired.y } : {}), facing: bot.facing ?? 0 }, session.settings.mapId);
+  return botNavigation.applyBotSpacing(session, bot, desired);
 };
 
 const getBotObjectiveGoal = (session: GameSession, bot: PlayerSession, brain: BotMemory, state: BotState) => {
