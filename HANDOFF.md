@@ -1,7 +1,7 @@
 # Quiz Strike Development Handoff
 
-Last verified: 1 August 2026 (Asia/Tokyo)
-Repository: main at dd2f131 ('migration part 2')
+Last verified: 2 August 2026 (Asia/Tokyo)
+Repository: main at f4ffd5c ('published QuizStrike monolith extraction')
 Production cutover validation: deployment 89f4920
 
 ## Executive status
@@ -35,6 +35,8 @@ or a committed environment file.
    Socket.IO events or public/private projections.
 4. [docs/supabase-database-migration.md](docs/supabase-database-migration.md)
    before touching production database operations.
+5. [docs/quizstrike-monolith-extraction.md](docs/quizstrike-monolith-extraction.md)
+   for the completed extraction and validation evidence.
 
 ## Repository map
 
@@ -44,7 +46,10 @@ or a committed environment file.
 | 'packages/shared/src/protocol/' | Canonical versioned protocol schemas and adapters |
 | 'apps/server/src/start.ts' | Config load and migration-before-listen startup |
 | 'apps/server/src/index.ts' | Server integration/bootstrap |
-| 'apps/server/src/runtime.ts' | Authoritative room engine and HTTP/socket orchestration |
+| 'apps/server/src/runtime.ts' | Composition root, authoritative wiring, lifecycle, and HTTP/socket orchestration |
+| 'apps/server/src/routes/' | Focused teacher, quiz, session, player, report, and appearance route modules |
+| 'apps/server/src/botRuntime.ts' | Bot decisions, firing, respawn, and single tick ownership |
+| 'apps/server/src/roundRuntime.ts' | Round mutations, transition guards, pending rounds, and broadcasts |
 | 'apps/server/src/persistence/normalizedLibrary.ts' | Normalized teacher/history/report repository |
 | 'apps/server/src/scaling/runtimeInfrastructure.ts' | In-memory store, ownership, event, lease, and lifecycle boundaries |
 | 'apps/server/src/appearanceSecurity.ts' | Decal processing and security limits |
@@ -53,7 +58,11 @@ or a committed environment file.
 | 'apps/web/src/features/quizstrike/QuizStrikeApp.tsx' | Teacher/student application surface |
 | 'apps/web/src/features/multiplayer/connection.ts' | Socket construction and protocol handshake |
 | 'apps/web/src/api/client.ts' | API URL selection, auth headers, retries, fallback |
-| 'apps/web/src/game/ArenaPreview.tsx' | Three.js arena, controls, collision proxies, VFX |
+| 'apps/web/src/game/ArenaPreview.tsx' | Three.js scene composition, controls, collision, frame updates, and HUD wiring |
+| 'apps/web/src/game/arenaMapBuilder.ts' | Map materials, static geometry, collision proxies, and objective art |
+| 'apps/web/src/game/characterSync.ts' | Character lifecycle, player synchronization, VFX/animation subscriptions, and cleanup |
+| 'apps/web/src/game/ArenaMinimap.tsx' | Minimap rendering and coordinate presentation |
+| 'apps/web/src/game/arenaLoop.ts' | Explicit render-loop start/stop lifecycle |
 | 'prisma/schema.prisma' | Current normalized schema and RuntimeSnapshot model |
 | 'scripts/database/backfill-runtime-snapshot.mjs' | Idempotent snapshot-to-normalized backfill |
 
@@ -92,10 +101,11 @@ npm run test:load
 npm run test:e2e
 ~~~
 
-The validated baseline is 276 unit tests, the authenticated 40-client load
-scenario, and the Playwright classroom scenario. Lint currently exits zero with
-31 existing React Hook dependency warnings. Vite may report large chunks; use
-the repository Node version so the Node/Vite warning is avoided.
+The validated baseline is 277 unit tests, the authenticated 40-client load
+scenario, the Playwright classroom scenario, and a live local WebGL smoke test.
+Lint exits zero with zero errors and zero React Hook dependency warnings. Vite
+may report large chunks; use the repository Node version so the Node/Vite
+warning is avoided.
 
 For a focused change, run the narrow workspace tests first, then the full suite.
 Install Playwright Chromium once when needed:
@@ -152,6 +162,21 @@ The runtime interfaces are ready for future adapters, but Redis/shared live stat
 Socket.IO fan-out, distributed leases, reconnect routing, rate limits, and object
 storage are not implemented.
 
+## Current refactor state
+
+The server and arena monolith extraction is complete and is on `main`:
+
+- Route bodies are under `apps/server/src/routes/`.
+- `botRuntime.ts` owns bot decisions, firing, respawn, and the single bot tick.
+- `roundRuntime.ts` owns round mutation and transition execution.
+- `ArenaPreview.tsx` composes focused map, character, minimap, and loop modules.
+- The render loop has explicit start, stop, and cleanup behavior.
+- The React Hook warning baseline went from 38 warnings to zero.
+- `runtime.ts` is 1,882 lines; `ArenaPreview.tsx` is 1,479 lines.
+
+The latest extraction evidence is in
+[docs/quizstrike-monolith-extraction.md](docs/quizstrike-monolith-extraction.md).
+
 ## Change guide
 
 - Game rule or economy: update 'packages/shared' first, then server usage, UI
@@ -184,11 +209,13 @@ storage are not implemented.
 
 ## Open work
 
-The production migration is finished. Remaining work is product/scale work:
+The production migration and requested monolith extraction are finished.
+Remaining work is product/scale work:
 
 - complete physical Chromebook/Edge/integrated-GPU and ten-minute soak
   certification;
-- continue decomposing the large server runtime and QuizStrike UI hub;
+- continue decomposing the remaining large `QuizStrikeApp.tsx` UI hub when a
+  product boundary makes the next extraction low-risk;
 - remove temporary protocol-v0 acceptance and snapshot fallback after a clean
   production cycle;
 - implement and test Redis/shared runtime adapters before horizontal scaling;

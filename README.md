@@ -26,6 +26,9 @@ URLs into this repository.
 | --- | --- |
 | 'apps/web' | React/Vite application, teacher flows, student flows, Three.js arena |
 | 'apps/server' | Express API, Socket.IO gateway, authoritative simulation, persistence orchestration |
+| 'apps/server/src/routes' | Teacher, quiz, session, player, report, and appearance route modules |
+| 'apps/server/src/botRuntime.ts' | Bot decisions, firing, respawn, and the single bot tick |
+| 'apps/server/src/roundRuntime.ts' | Round mutation, transitions, deadlines, and round broadcasts |
 | 'packages/shared' | Shared types, protocol schemas, validation, map data, deterministic game rules |
 | 'prisma' | PostgreSQL schema and committed migrations |
 | 'scripts/database' | Auditing, migration, backup, and idempotent snapshot backfill tools |
@@ -109,7 +112,16 @@ backfill source; it is not the authority for new teacher-library writes.
 The current runtime is single-instance. Live sockets, room state, timers, bot
 memory, rate limits, and uploaded decal bytes are process-local. Keep one Render
 instance and require sticky room affinity. 'RUNTIME_STORE=redis' fails closed in
-this build because Redis adapters have not been implemented.
+this build because Redis adapters have not been implemented. The current route,
+bot, round, and arena ownership boundaries are documented in
+[architecture.md](architecture.md).
+
+The monolith extraction is complete on 'main': 'runtime.ts' and
+'ArenaPreview.tsx' remain composition points, while route bodies, bot
+orchestration, round flow, map construction, character synchronization,
+minimap rendering, and render-loop lifecycle each have focused owners. See
+[docs/quizstrike-monolith-extraction.md](docs/quizstrike-monolith-extraction.md)
+for the handoff metrics and commit history.
 
 Read [architecture.md](architecture.md) before changing persistence, networking,
 collision, combat, or scaling boundaries.
@@ -156,10 +168,11 @@ npm run test:load
 npm run test:e2e
 ~~~
 
-The current validated baseline is 276 unit tests, plus the 40-client load
-harness and the Playwright classroom scenario. Lint exits cleanly with existing
-React Hook dependency warnings. Build warnings about Node version or large Vite
-chunks are non-fatal; use the declared Node version for hosted builds.
+The current validated baseline is 277 unit tests, plus the 40-client load
+harness and the Playwright classroom scenario. Lint exits cleanly with zero
+errors and zero React Hook dependency warnings. Build warnings about Node
+version or large Vite chunks are non-fatal; use the declared Node version for
+hosted builds.
 
 Database tools:
 
@@ -190,6 +203,7 @@ The production cutover and backup record is documented in
 
 - [Architecture](architecture.md)
 - [Development handoff](HANDOFF.md)
+- [Monolith extraction report](docs/quizstrike-monolith-extraction.md)
 - [Production database migration](docs/supabase-database-migration.md)
 - [Runtime snapshot migration](docs/runtime-snapshot-migration.md)
 - [Teacher library and reports](docs/teacher-library.md)
