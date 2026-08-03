@@ -283,7 +283,7 @@ export default function PublicHomepage({
         <div className="final-scoreline" aria-hidden="true"><span>BLUE 00</span><i /><span>RED 00</span><small>LOBBY OPEN</small></div>
       </section>
 
-      <footer className="public-footer"><div className="footer-brand"><img src="/assets/quizstrike-logo.png" alt="QuizStrike Classroom" /></div><span>Teacher-controlled multiplayer review</span><div className="footer-links"><button onClick={onTeacherLogin}>Teacher Login</button><button onClick={onJoinGame}>Join Game</button></div></footer>
+      <footer className="public-footer"><div className="footer-brand"><img src="/assets/quizstrike-logo.png" alt="QuizStrike Classroom" /></div><span>Peter Hoang · All Rights Reserved</span><div className="footer-links"><button onClick={onTeacherLogin}>Teacher Login</button><button onClick={onJoinGame}>Join Game</button></div></footer>
     </div>
   );
 }

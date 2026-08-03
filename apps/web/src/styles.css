@@ -10417,7 +10417,7 @@ body[data-site="public"] .app-shell {
 }
 
 .topbar-home {
-  height: 76px;
+  height: 82px;
   padding: 0 clamp(20px, 4.5vw, 64px);
   border-bottom: 1px solid rgba(159, 197, 230, 0.17);
   background: rgba(7, 17, 31, 0.92);
@@ -10435,8 +10435,8 @@ body[data-site="public"] .app-shell {
 
 .topbar-home .brand-button img {
   display: block;
-  width: clamp(158px, 13vw, 202px);
-  height: 70px;
+  width: clamp(176px, 15vw, 224px);
+  height: 78px;
   object-fit: cover;
   object-position: 50% 35%;
 }
@@ -10859,7 +10859,7 @@ body[data-site="public"] .app-shell {
   gap: clamp(34px, 7vw, 112px);
   width: min(1240px, calc(100% - 48px));
   margin: 0 auto;
-  padding: clamp(88px, 12vw, 168px) 0;
+  padding: clamp(68px, 7vw, 108px) 0;
   scroll-margin-top: 76px;
 }
 
@@ -11051,7 +11051,7 @@ body[data-site="public"] .app-shell {
 .difference-row .difference-highlight { position: relative; font-weight: 850; }
 .difference-row .difference-highlight::before { display: inline-block; width: 5px; height: 5px; margin: 0 8px 2px 0; border-radius: 50%; content: ""; background: var(--public-green); }
 
-.public-founder-section { display: grid; grid-template-columns: 88px minmax(0, 740px); align-items: center; gap: 25px; width: min(1000px, calc(100% - 48px)); margin: 0 auto; padding: 58px 0 120px; border-top: 1px solid var(--public-line); }
+.public-founder-section { display: grid; grid-template-columns: 88px minmax(0, 740px); align-items: center; gap: 25px; width: min(1000px, calc(100% - 48px)); margin: 0 auto; padding: 58px 0 76px; border-top: 1px solid var(--public-line); }
 .founder-mark { display: grid; place-items: center; width: 73px; height: 73px; border: 1px solid var(--public-gold); border-radius: 50%; background: rgba(255, 202, 103, .12); color: var(--public-gold); font-family: Georgia, serif; font-size: 2rem; font-style: italic; }
 .public-founder-section h2 { max-width: 630px; margin-bottom: 13px; font-size: clamp(2rem, 3.4vw, 3.3rem); }
 .public-founder-section p:not(.public-section-label) { max-width: 680px; margin-bottom: 16px; font-size: .92rem; line-height: 1.65; }
@@ -11070,7 +11070,7 @@ body[data-site="public"] .app-shell {
 
 .public-footer { display: flex; align-items: center; justify-content: space-between; gap: 18px; width: min(1240px, calc(100% - 48px)); min-height: 86px; margin: 0 auto; border-top: 1px solid var(--public-line); color: #7693b1; font-size: .68rem; }
 .footer-brand { display: inline-flex; align-items: center; min-width: 0; color: #f4f8ff; font-size: .8rem; font-weight: 900; }
-.footer-brand img { display: block; width: clamp(158px, 15vw, 205px); height: 62px; object-fit: cover; object-position: 50% 35%; }
+.footer-brand img { display: block; width: clamp(190px, 17vw, 240px); height: 74px; object-fit: cover; object-position: 50% 35%; }
 .footer-brand > span:last-child { display: grid; gap: 2px; }
 .footer-brand small { color: var(--public-cyan); font-size: .45rem; letter-spacing: .17em; }
 .footer-links { display: flex; gap: 14px; }
@@ -11114,7 +11114,7 @@ body[data-site="public"] .app-shell {
 @media (max-width: 620px) {
   .topbar-home { padding: 0 14px; }
   .topbar-home .brand-button { font-size: .86rem; }
-  .topbar-home .brand-button img { width: 148px; height: 56px; }
+  .topbar-home .brand-button img { width: 164px; height: 62px; }
   .topbar-home .nav-menu-toggle { padding-inline: 11px; }
   .topbar-home .top-actions { right: 14px; left: 14px; }
   .public-hero, .public-section, .public-proof-strip, .public-final-cta, .public-footer { width: min(100% - 30px, 1240px); }
