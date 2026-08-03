@@ -12652,6 +12652,253 @@ body:has(.quizstrike-auth-layout) .topbar,
 body:has(.student-join-screen:not(.game-layout)) .topbar { position: relative; z-index: 20; }
 body:has(.product-home), body:has(.quizstrike-page), body:has(.quizstrike-auth-layout), body:has(.student-join-screen:not(.game-layout)) { background: var(--qs-page); color: var(--qs-ink); }
 body:has(.product-home) p, body:has(.quizstrike-page) p, body:has(.quizstrike-auth-layout) p, body:has(.student-join-screen:not(.game-layout)) p { color: var(--qs-muted); }
+
+/* Competition hub refresh. Keep this last so the public competition route has
+   the same dense, high-contrast rhythm as the refreshed classroom homepage. */
+body:has(.competition-hub-page),
+body:has(.competition-detail-page) {
+  background: var(--qs-page);
+  color: var(--qs-ink);
+}
+
+body:has(.competition-hub-page) p,
+body:has(.competition-detail-page) p {
+  color: var(--qs-muted);
+}
+
+body:has(.competition-hub-page) .topbar,
+body:has(.competition-detail-page) .topbar {
+  min-height: 84px;
+  background: rgba(5, 11, 27, 0.9);
+  backdrop-filter: blur(18px);
+}
+
+body:has(.competition-hub-page) .quizstrike-logo-header,
+body:has(.competition-detail-page) .quizstrike-logo-header {
+  width: clamp(168px, 14vw, 214px);
+}
+
+.competition-hub-page {
+  background:
+    linear-gradient(90deg, transparent 0 10%, rgba(111, 164, 228, 0.07) 10.05%, transparent 10.15% 100%),
+    radial-gradient(circle at 82% 4%, rgba(37, 120, 214, 0.2), transparent 32%),
+    radial-gradient(circle at 4% 80%, rgba(240, 90, 100, 0.08), transparent 27%),
+    var(--qs-page);
+}
+
+.competition-hub-hero {
+  width: min(1380px, calc(100% - 48px));
+  min-height: clamp(570px, calc(100vh - 84px), 720px);
+  gap: clamp(38px, 5vw, 76px);
+  padding: clamp(44px, 6vw, 78px) 0 clamp(42px, 5vw, 64px);
+}
+
+.competition-hub-hero-copy {
+  gap: 17px;
+}
+
+.competition-hub-hero-copy .quizstrike-logo {
+  width: clamp(198px, 18vw, 232px);
+  margin-top: 2px;
+}
+
+.competition-hub-hero h1 {
+  max-width: 670px;
+  font-size: clamp(3.25rem, 6.2vw, 6.1rem);
+  line-height: 0.89;
+}
+
+.competition-hub-hero-copy > p {
+  max-width: 600px;
+  line-height: 1.52;
+}
+
+.competition-hub-hero-art {
+  min-height: 430px;
+  border-color: rgba(84, 184, 255, 0.56);
+  border-radius: 20px;
+  box-shadow: 0 28px 72px rgba(0, 0, 0, 0.36), 0 0 0 1px rgba(240, 90, 100, 0.08);
+}
+
+.competition-hub-hero-art img {
+  min-height: 430px;
+}
+
+.competition-hub-content {
+  width: min(1380px, calc(100% - 48px));
+  padding-bottom: 76px;
+}
+
+.featured-competition-section,
+.my-competitions-section,
+.competition-browser-section {
+  padding-top: clamp(30px, 4vw, 52px);
+}
+
+.section-heading {
+  margin-bottom: 18px;
+}
+
+.featured-competition-card {
+  min-height: 348px;
+  border-color: rgba(84, 184, 255, 0.42);
+  background: linear-gradient(115deg, rgba(16, 42, 82, 0.98), rgba(7, 18, 40, 0.98) 72%);
+  box-shadow: 0 24px 58px rgba(0, 0, 0, 0.28), inset 0 1px 0 rgba(255, 255, 255, 0.05);
+}
+
+.featured-art {
+  min-height: 348px;
+  background: #071328;
+}
+
+.featured-copy {
+  padding: clamp(24px, 3.4vw, 40px);
+}
+
+.featured-copy h3 {
+  font-size: clamp(1.95rem, 3.4vw, 3.2rem);
+}
+
+.featured-details {
+  gap: 12px;
+  margin: 22px 0;
+  padding: 15px 0;
+}
+
+.competition-notice {
+  position: relative;
+  z-index: 1;
+}
+
+.competition-browser-section {
+  scroll-margin-top: 104px;
+}
+
+.competition-filter-bar {
+  margin-bottom: 15px;
+  border-color: rgba(84, 184, 255, 0.3);
+  background: rgba(7, 19, 42, 0.86);
+  box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.04);
+}
+
+.competition-card-grid-list {
+  gap: 16px;
+}
+
+.competition-card {
+  border-color: rgba(126, 166, 220, 0.34);
+  background: rgba(9, 24, 51, 0.94);
+  box-shadow: 0 16px 34px rgba(0, 0, 0, 0.2);
+}
+
+.competition-card-body {
+  padding: 18px;
+}
+
+.competition-loading,
+.empty-browser {
+  min-height: 180px;
+  border-color: rgba(84, 184, 255, 0.34);
+  background: linear-gradient(135deg, rgba(10, 29, 61, 0.82), rgba(5, 15, 34, 0.74));
+}
+
+.empty-browser {
+  flex-direction: column;
+  gap: 10px;
+  padding: 28px;
+  text-align: center;
+}
+
+.empty-browser > svg {
+  color: #8fcfff;
+}
+
+.empty-browser strong {
+  color: #f3f8ff;
+  font-size: 1rem;
+}
+
+.empty-browser .text-button {
+  min-height: 38px;
+  padding: 0 12px;
+  border: 1px solid rgba(84, 184, 255, 0.36);
+  border-radius: 9px;
+  background: rgba(37, 120, 214, 0.12);
+}
+
+.competition-guidance-grid {
+  gap: 16px;
+  padding-top: clamp(38px, 5vw, 58px);
+}
+
+.competition-guidance-grid article {
+  min-height: 198px;
+  border: 1px solid rgba(126, 166, 220, 0.22);
+  border-top: 2px solid rgba(84, 184, 255, 0.62);
+  border-radius: 14px;
+  padding: 20px;
+  background: rgba(9, 24, 51, 0.62);
+}
+
+.competition-guidance-grid article:nth-child(2) {
+  border-color: rgba(245, 184, 75, 0.26);
+  border-top-color: rgba(245, 184, 75, 0.72);
+}
+
+.competition-guidance-grid article:nth-child(3) {
+  border-color: rgba(84, 212, 154, 0.25);
+  border-top-color: rgba(84, 212, 154, 0.72);
+}
+
+.competition-guidance-grid .guidance-icon {
+  margin-bottom: 14px;
+}
+
+@media (max-width: 980px) {
+  .competition-hub-hero {
+    min-height: auto;
+    padding-top: 58px;
+  }
+
+  .competition-hub-hero-art,
+  .competition-hub-hero-art img {
+    min-height: 420px;
+  }
+}
+
+@media (max-width: 700px) {
+  body:has(.competition-hub-page) .quizstrike-logo-header,
+  body:has(.competition-detail-page) .quizstrike-logo-header {
+    width: 142px;
+  }
+
+  .competition-hub-hero,
+  .competition-hub-content {
+    width: min(100% - 32px, 620px);
+  }
+
+  .competition-hub-hero {
+    gap: 28px;
+    padding-top: 42px;
+  }
+
+  .competition-hub-hero-copy .quizstrike-logo {
+    width: 196px;
+  }
+
+  .competition-hub-hero-art,
+  .competition-hub-hero-art img {
+    min-height: 310px;
+  }
+
+  .featured-copy {
+    padding: 24px;
+  }
+
+  .competition-guidance-grid article {
+    min-height: auto;
+  }
+}
 .quizstrike-logo { display: block; flex: 0 0 auto; line-height: 0; }
 .quizstrike-logo img { display: block; width: 100%; height: auto; }
 .quizstrike-logo-header { width: clamp(112px, 10vw, 156px); }
