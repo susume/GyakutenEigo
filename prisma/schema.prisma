@@ -24,6 +24,62 @@ enum Team {
   red
 }
 
+enum CompetitionType {
+  SPONSORED
+  SCHOOL_VS_SCHOOL
+  CLAN_VS_CLASS
+}
+
+enum CompetitionStatus {
+  DRAFT
+  ANNOUNCED
+  REGISTRATION_OPEN
+  REGISTRATION_CLOSED
+  STUDY_PERIOD
+  CHECK_IN
+  LIVE
+  COMPLETED
+  CANCELLED
+}
+
+enum CompetitionVisibility {
+  PUBLIC
+  INVITATION_ONLY
+}
+
+enum CompetitionStreamingStatus {
+  OFF
+  APPROVAL_REQUIRED
+  APPROVED
+}
+
+enum CompetitionRegistrationStatus {
+  PENDING
+  APPROVED
+  REJECTED
+}
+
+enum CompetitionEligibilityStatus {
+  PENDING
+  ELIGIBLE
+  INELIGIBLE
+}
+
+enum CompetitionCheckInStatus {
+  NOT_OPEN
+  OPEN
+  CHECKED_IN
+  MISSED
+}
+
+enum CompetitionMatchStatus {
+  SCHEDULED
+  CHECK_IN
+  LIVE
+  CONFIRMED
+  DISPUTED
+}
+
 model User {
   id           String        @id @default(cuid())
   name         String
@@ -32,7 +88,9 @@ model User {
   role         UserRole      @default(teacher)
   classes      Class[]
   quizSets     QuizSet[]
+  folders      Folder[]
   sessions     GameSession[]
+  reports      Report[]
   createdAt    DateTime      @default(now())
   updatedAt    DateTime      @updatedAt
 }
@@ -50,44 +108,68 @@ model Class {
 }
 
 model QuizSet {
-  id          String        @id @default(cuid())
-  teacherId   String
-  classId     String?
-  teacher     User          @relation(fields: [teacherId], references: [id], onDelete: Cascade)
-  class       Class?        @relation(fields: [classId], references: [id], onDelete: SetNull)
-  title       String
-  description String?
-  questions   Question[]
-  sessions    GameSession[]
-  createdAt   DateTime      @default(now())
-  updatedAt   DateTime      @updatedAt
+  id           String        @id @default(cuid())
+  teacherId    String
+  classId      String?
+  folderId     String?
+  teacher      User          @relation(fields: [teacherId], references: [id], onDelete: Cascade)
+  class        Class?        @relation(fields: [classId], references: [id], onDelete: SetNull)
+  folder       Folder?       @relation(fields: [folderId], references: [id], onDelete: SetNull)
+  title        String
+  description  String?
+  /// Immutable-compatible authoring settings that are not relational columns.
+  settingsJson Json          @default("{}")
+  questions    Question[]
+  sessions     GameSession[]
+  reports      Report[]
+  createdAt    DateTime      @default(now())
+  updatedAt    DateTime      @updatedAt
+
+  @@index([teacherId, folderId])
+}
+
+model Folder {
+  id        String    @id @default(cuid())
+  teacherId String
+  parentId  String?
+  teacher   User      @relation(fields: [teacherId], references: [id], onDelete: Cascade)
+  parent    Folder?   @relation("FolderHierarchy", fields: [parentId], references: [id], onDelete: Restrict)
+  children  Folder[]  @relation("FolderHierarchy")
+  quizSets  QuizSet[]
+  name      String
+  createdAt DateTime  @default(now())
+  updatedAt DateTime  @updatedAt
+
+  @@index([teacherId, parentId])
 }
 
 model Question {
-  id          String      @id @default(cuid())
-  quizSetId   String
-  quizSet     QuizSet     @relation(fields: [quizSetId], references: [id], onDelete: Cascade)
-  prompt      String
-  choiceA     String
-  choiceB     String
-  choiceC     String
-  choiceD     String
+  id            String      @id @default(cuid())
+  quizSetId     String
+  quizSet       QuizSet     @relation(fields: [quizSetId], references: [id], onDelete: Cascade)
+  prompt        String
+  choiceA       String
+  choiceB       String
+  choiceC       String
+  choiceD       String
   correctChoice String
-  explanation String?
-  difficulty  String?
-  answerLogs  AnswerLog[]
-  createdAt   DateTime    @default(now())
-  updatedAt   DateTime    @updatedAt
+  explanation   String?
+  difficulty    String?
+  answerLogs    AnswerLog[]
+  createdAt     DateTime    @default(now())
+  updatedAt     DateTime    @updatedAt
 }
 
 model GameSession {
   id           String          @id @default(cuid())
   teacherId    String
   classId      String?
-  quizSetId    String
+  quizSetId    String?
   teacher      User            @relation(fields: [teacherId], references: [id], onDelete: Cascade)
   class        Class?          @relation(fields: [classId], references: [id], onDelete: SetNull)
-  quizSet      QuizSet         @relation(fields: [quizSetId], references: [id], onDelete: Cascade)
+  quizSet      QuizSet?        @relation(fields: [quizSetId], references: [id], onDelete: SetNull)
+  /// Historical label captured when the session is created.
+  quizSetName  String          @default("Quiz Set")
   sessionCode  String          @unique
   status       SessionStatus   @default(waiting)
   maxPlayers   Int             @default(20)
@@ -100,22 +182,24 @@ model GameSession {
   updatedAt    DateTime        @updatedAt
   startedAt    DateTime?
   endedAt      DateTime?
+
+  @@index([teacherId, status])
 }
 
 model PlayerSession {
-  id             String       @id @default(cuid())
+  id             String      @id @default(cuid())
   gameSessionId  String
-  gameSession    GameSession  @relation(fields: [gameSessionId], references: [id], onDelete: Cascade)
+  gameSession    GameSession @relation(fields: [gameSessionId], references: [id], onDelete: Cascade)
   nickname       String
   team           Team
-  money          Int          @default(0)
-  isAlive        Boolean      @default(true)
-  score          Int          @default(0)
-  correctAnswers Int          @default(0)
-  wrongAnswers   Int          @default(0)
+  money          Int         @default(0)
+  isAlive        Boolean     @default(true)
+  score          Int         @default(0)
+  correctAnswers Int         @default(0)
+  wrongAnswers   Int         @default(0)
   socketId       String?
-  gear           String       @default("starter_blaster")
-  joinedAt       DateTime     @default(now())
+  gear           String      @default("starter_blaster")
+  joinedAt       DateTime    @default(now())
   leftAt         DateTime?
   answerLogs     AnswerLog[]
 
@@ -126,10 +210,13 @@ model AnswerLog {
   id              String        @id @default(cuid())
   gameSessionId   String
   playerSessionId String
-  questionId      String
+  questionId      String?
   gameSession     GameSession   @relation(fields: [gameSessionId], references: [id], onDelete: Cascade)
   playerSession   PlayerSession @relation(fields: [playerSessionId], references: [id], onDelete: Cascade)
-  question        Question      @relation(fields: [questionId], references: [id], onDelete: Cascade)
+  question        Question?     @relation(fields: [questionId], references: [id], onDelete: SetNull)
+  /// Immutable question context retained if the authoring question changes.
+  questionPrompt  String        @default("")
+  correctChoice   String        @default("A")
   selectedChoice  String
   isCorrect       Boolean
   moneyAwarded    Int
@@ -138,20 +225,189 @@ model AnswerLog {
 }
 
 model RoundLog {
-  id            String       @id @default(cuid())
+  id            String      @id @default(cuid())
   gameSessionId String
-  gameSession   GameSession  @relation(fields: [gameSessionId], references: [id], onDelete: Cascade)
+  gameSession   GameSession @relation(fields: [gameSessionId], references: [id], onDelete: Cascade)
   roundNumber   Int
   winningTeam   Team?
-  startedAt     DateTime     @default(now())
+  startedAt     DateTime    @default(now())
   endedAt       DateTime?
 }
 
-/// Durable runtime state for the current lightweight game engine. The application
-/// keeps the existing in-memory model for fast real-time simulation, then mirrors
-/// it here so production restarts do not erase classroom data between releases.
+/// Normalized teacher-facing report metadata and an immutable report detail snapshot.
+/// Keeping detailJson together makes report reads atomic while avoiding the runtime
+/// snapshot's unbounded teacher-library JSON blob.
+model Report {
+  id          String   @id @default(cuid())
+  teacherId   String
+  sessionId   String
+  sessionCode String
+  quizSetId   String?
+  quizSetName String
+  displayName String
+  detailJson  Json
+  teacher     User     @relation(fields: [teacherId], references: [id], onDelete: Cascade)
+  quizSet     QuizSet? @relation(fields: [quizSetId], references: [id], onDelete: SetNull)
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+
+  @@unique([teacherId, sessionId])
+  @@index([teacherId, createdAt, id])
+}
+
+/// Recoverable active-session checkpoint plus legacy migration source. Durable
+/// teacher-library and historical data is authoritative in normalized models.
 model RuntimeSnapshot {
   id        String   @id
   data      Json
   updatedAt DateTime @updatedAt
+}
+
+/// Official QuizStrike competition configuration. Roster and result snapshots
+/// remain available to the in-memory room authority while normalized records
+/// provide durable organizer data and auditability.
+model Competition {
+  id                      String                      @id @default(cuid())
+  slug                    String                      @unique
+  name                    String
+  description             String
+  coverImage              String
+  sponsorName             String?
+  sponsorArtwork          String?
+  type                    CompetitionType
+  organizerId             String
+  organizerName           String
+  status                  CompetitionStatus           @default(DRAFT)
+  registrationOpensAt     DateTime
+  registrationClosesAt    DateTime
+  rosterDeadline          DateTime
+  studyPackReleaseAt      DateTime
+  matchStartAt            DateTime
+  matchEndAt              DateTime
+  region                  String
+  timeZone                String
+  division                String
+  difficulty              String
+  activeTeamSize          Int
+  substituteLimit         Int
+  maximumTeams            Int
+  matchFormat             String
+  mapPoolJson             Json
+  gameMode                String
+  rulesVersion            String
+  prizeDescription        String
+  visibility              CompetitionVisibility      @default(PUBLIC)
+  registrationRequirements Json
+  streamingStatus         CompetitionStreamingStatus @default(OFF)
+  rulesSummary            Json
+  createdAt               DateTime                    @default(now())
+  updatedAt               DateTime                    @updatedAt
+  studyPack               CompetitionStudyPack?
+  announcements           CompetitionAnnouncement[]
+  teams                   CompetitionTeam[]
+  matches                 CompetitionMatch[]
+  notifications           CompetitionNotification[]
+  auditLogs               CompetitionAuditLog[]
+
+  @@index([status, registrationOpensAt])
+  @@index([type, division, region])
+}
+
+model CompetitionStudyPack {
+  id                   String      @id @default(cuid())
+  competitionId        String      @unique
+  version              String
+  releaseAt            DateTime
+  releasedAt           DateTime?
+  correctionVersion    Int         @default(0)
+  wordsJson            Json
+  correctionHistoryJson Json
+  createdAt            DateTime    @default(now())
+  updatedAt            DateTime    @updatedAt
+  competition          Competition @relation(fields: [competitionId], references: [id], onDelete: Cascade)
+}
+
+model CompetitionAnnouncement {
+  id             String      @id @default(cuid())
+  competitionId  String
+  title          String
+  body           String
+  publishedAt    DateTime
+  publishedByName String
+  pinned         Boolean     @default(false)
+  competition    Competition @relation(fields: [competitionId], references: [id], onDelete: Cascade)
+
+  @@index([competitionId, publishedAt])
+}
+
+model CompetitionTeam {
+  id                   String                         @id @default(cuid())
+  competitionId        String
+  teamName             String
+  affiliation          String
+  logoUrl              String?
+  captainUserId        String
+  captainName          String
+  coachUserId          String?
+  coachName            String?
+  activePlayersJson    Json
+  substitutePlayersJson Json
+  registrationStatus   CompetitionRegistrationStatus @default(PENDING)
+  eligibilityStatus    CompetitionEligibilityStatus @default(PENDING)
+  checkInStatus        CompetitionCheckInStatus      @default(NOT_OPEN)
+  seed                 Int?
+  division             String
+  invitationCode       String?
+  createdAt            DateTime                       @default(now())
+  updatedAt            DateTime                       @updatedAt
+  competition          Competition                    @relation(fields: [competitionId], references: [id], onDelete: Cascade)
+
+  @@index([competitionId, registrationStatus, eligibilityStatus])
+}
+
+model CompetitionMatch {
+  id              String                  @id @default(cuid())
+  competitionId   String
+  roundLabel      String
+  bracketPosition Int
+  homeTeamId      String?
+  awayTeamId      String?
+  scheduledAt     DateTime
+  checkInOpensAt  DateTime
+  map             String
+  gameMode        String
+  status          CompetitionMatchStatus  @default(SCHEDULED)
+  sessionCode     String?
+  refereeName     String?
+  resultJson      Json?
+  competition     Competition             @relation(fields: [competitionId], references: [id], onDelete: Cascade)
+
+  @@index([competitionId, scheduledAt])
+}
+
+model CompetitionNotification {
+  id             String      @id @default(cuid())
+  key            String      @unique
+  competitionId  String
+  recipientUserId String?
+  kind           String
+  title          String
+  body           String
+  createdAt      DateTime    @default(now())
+  competition    Competition @relation(fields: [competitionId], references: [id], onDelete: Cascade)
+
+  @@index([recipientUserId, createdAt])
+}
+
+model CompetitionAuditLog {
+  id            String      @id @default(cuid())
+  competitionId String
+  actorUserId   String
+  actorName     String
+  action        String
+  detail        String
+  createdAt     DateTime    @default(now())
+  competition   Competition @relation(fields: [competitionId], references: [id], onDelete: Cascade)
+
+  @@index([competitionId, createdAt])
 }

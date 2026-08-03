@@ -1,4 +1,5 @@
 export type Team = "blue" | "red";
+export * from "./protocol/index.js";
 export type SessionStatus = "waiting" | "active" | "paused" | "ended";
 export type Choice = "A" | "B" | "C" | "D";
 export type GameMode = "flag" | "zombie" | "classic";
@@ -18,6 +19,48 @@ export type FlagStateName =
   | "captured"
   | "expired"
   | "resetting";
+
+export type GameplayAnnouncementKey =
+  | "FLAG_PLANTED"
+  | "STREAK_HEATING_UP"
+  | "STREAK_DOMINATING"
+  | "STREAK_UNSTOPPABLE"
+  | "STREAK_WICKED_SICK"
+  | "STREAK_MONSTER"
+  | "STREAK_GODLIKE";
+
+export type FreezeStreakAnnouncementKey = Exclude<GameplayAnnouncementKey, "FLAG_PLANTED">;
+
+export interface FlagPlantedEvent {
+  type: "flag_planted";
+  eventId: string;
+  objectiveId: string;
+  plantedByPlayerId: string;
+  plantedAt: number;
+  expiresAt: number;
+}
+
+export interface FreezeStreakAnnouncementEvent {
+  type: "freeze_streak_announcement";
+  eventId: string;
+  playerId: string;
+  playerName: string;
+  streak: number;
+  announcementKey: FreezeStreakAnnouncementKey;
+  occurredAt: number;
+}
+
+export const FREEZE_STREAK_ANNOUNCEMENTS: Record<
+  number,
+  { key: FreezeStreakAnnouncementKey; phrase: string }
+> = {
+  3: { key: "STREAK_HEATING_UP", phrase: "He's heating up!" },
+  4: { key: "STREAK_DOMINATING", phrase: "Dominating!" },
+  5: { key: "STREAK_UNSTOPPABLE", phrase: "Unstoppable!" },
+  6: { key: "STREAK_WICKED_SICK", phrase: "Wicked Sick!" },
+  7: { key: "STREAK_MONSTER", phrase: "Muh-Muh-Muh-Monster!" },
+  8: { key: "STREAK_GODLIKE", phrase: "Guh-Guh-Guh-Godlike!" }
+};
 export type GameEventType =
   | "join"
   | "start"
@@ -63,9 +106,31 @@ export interface QuizSet {
   id: string;
   teacherId: string;
   classId?: string;
+  folderId?: string;
   title: string;
   description?: string;
   questions: Question[];
+  createdAt: string;
+  updatedAt?: string;
+}
+
+export interface QuizFolder {
+  id: string;
+  teacherId: string;
+  parentId?: string;
+  name: string;
+  createdAt: string;
+  updatedAt: string;
+}
+
+export interface ReportMetadata {
+  id: string;
+  teacherId: string;
+  sessionId: string;
+  sessionCode: string;
+  quizSetId?: string;
+  quizSetName: string;
+  displayName: string;
   createdAt: string;
 }
 
@@ -479,6 +544,8 @@ export interface PlayerSession {
   crouching?: boolean;
   /** True between takeoff and landing for remote jump animation. */
   jumping?: boolean;
+  /** Server-owned uninterrupted freeze streak for the current round. */
+  freezeStreak?: number;
   score: number;
   correctAnswers: number;
   wrongAnswers: number;
@@ -591,6 +658,8 @@ export interface SessionReportRow {
 export interface FlagState {
   state: FlagStateName;
   teamId: Team;
+  /** Stable objective identity for authoritative events and late joiners. */
+  objectiveId?: string;
   position: ArenaPosition;
   carrierId?: string;
   placedById?: string;
@@ -3162,9 +3231,10 @@ export const selectLateJoinTeam = (
   return randomValue < 0.5 ? "blue" : "red";
 };
 
-export const createInitialFlagState = (position: ArenaPosition): FlagState => ({
+export const createInitialFlagState = (position: ArenaPosition, objectiveId = "red-flag"): FlagState => ({
   state: "available",
   teamId: "red",
+  objectiveId,
   position: { x: position.x, z: position.z, ...(position.y !== undefined ? { y: position.y } : {}) }
 });
 

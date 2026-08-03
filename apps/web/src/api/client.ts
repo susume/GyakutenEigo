@@ -144,12 +144,47 @@ export const authApi = {
   me: () => api("/api/me", {}, { attemptTimeoutMs: 10_000 })
 };
 
+export const competitionApi = {
+  list: (filters: Record<string, string> = {}) => {
+    const params = new URLSearchParams(Object.entries(filters).filter(([, value]) => value));
+    return api(`/api/competitions${params.toString() ? `?${params.toString()}` : ""}`);
+  },
+  detail: (slug: string) => api(`/api/competitions/${encodeURIComponent(slug)}`),
+  studyPack: (slug: string) => api(`/api/competitions/${encodeURIComponent(slug)}/study-pack`),
+  matches: (slug: string) => api(`/api/competitions/${encodeURIComponent(slug)}/matches`),
+  mine: () => api("/api/competitions/mine"),
+  registerTeam: (slug: string, body: Record<string, unknown>) =>
+    api(`/api/competitions/${encodeURIComponent(slug)}/teams`, { method: "POST", body: JSON.stringify(body) }),
+  checkIn: (teamId: string) => api(`/api/competition-teams/${encodeURIComponent(teamId)}/check-in`, { method: "POST" }),
+  matchRoom: (matchId: string) => api(`/api/competition-matches/${encodeURIComponent(matchId)}/room`),
+  create: (body: Record<string, unknown>) => api("/api/competitions", { method: "POST", body: JSON.stringify(body) }),
+  update: (id: string, body: Record<string, unknown>) => api(`/api/competitions/${encodeURIComponent(id)}`, { method: "PATCH", body: JSON.stringify(body) }),
+  publishAnnouncement: (id: string, body: { title: string; body: string; pinned?: boolean }) =>
+    api(`/api/competitions/${encodeURIComponent(id)}/announcements`, { method: "POST", body: JSON.stringify(body) }),
+  saveStudyPack: (id: string, body: Record<string, unknown>) =>
+    api(`/api/competitions/${encodeURIComponent(id)}/study-pack`, { method: "POST", body: JSON.stringify(body) }),
+  generateBracket: (id: string) => api(`/api/competitions/${encodeURIComponent(id)}/bracket`, { method: "POST" }),
+  attachMatchRoom: (matchId: string, sessionCode: string) => api(`/api/competition-matches/${encodeURIComponent(matchId)}/room`, { method: "POST", body: JSON.stringify({ sessionCode }) }),
+  confirmResult: (matchId: string, body: Record<string, unknown>) => api(`/api/competition-matches/${encodeURIComponent(matchId)}/result`, { method: "POST", body: JSON.stringify(body) }),
+  organizer: () => api("/api/organizer/competitions")
+};
+
 export const teacherApi = {
   dashboard: () => api("/api/teacher/dashboard"),
   createClass: (body: { name: string; description?: string }) =>
     api("/api/classes", { method: "POST", body: JSON.stringify(body) }),
-  createQuizSet: (body: { title: string; description?: string; classId?: string }) =>
+  createQuizSet: (body: { title: string; description?: string; classId?: string; folderId?: string }) =>
     api("/api/quiz-sets", { method: "POST", body: JSON.stringify(body) }),
+  renameQuizSet: (id: string, title: string) =>
+    api(`/api/quiz-sets/${id}`, { method: "PATCH", body: JSON.stringify({ title }) }),
+  moveQuizSet: (id: string, folderId?: string) =>
+    api(`/api/quiz-sets/${id}/move`, { method: "POST", body: JSON.stringify({ folderId: folderId ?? null }) }),
+  deleteQuizSet: (id: string) => api(`/api/quiz-sets/${id}`, { method: "DELETE" }),
+  createFolder: (body: { name: string; parentId?: string }) =>
+    api("/api/folders", { method: "POST", body: JSON.stringify(body) }),
+  updateFolder: (id: string, body: { name?: string; parentId?: string | null }) =>
+    api(`/api/folders/${id}`, { method: "PATCH", body: JSON.stringify(body) }),
+  deleteFolder: (id: string) => api(`/api/folders/${id}`, { method: "DELETE" }),
   getQuizSet: (id: string) => api(`/api/quiz-sets/${id}`),
   addQuestion: (quizSetId: string, body: Record<string, string>) =>
     api(`/api/quiz-sets/${quizSetId}/questions`, { method: "POST", body: JSON.stringify(body) }),
@@ -176,6 +211,10 @@ export const teacherApi = {
     api(`/api/sessions/${code}/decals/${assetId}`, { method: "DELETE" }),
   resetAppearances: (code: string) => api(`/api/sessions/${code}/appearance/reset`, { method: "POST" }),
   report: (code: string) => api(`/api/sessions/${code}/report`),
+  reports: () => api("/api/reports"),
+  reportById: (id: string) => api(`/api/reports/${id}`),
+  deleteReport: (id: string) => api(`/api/reports/${id}`, { method: "DELETE" }),
+  deleteSessionHistory: () => api("/api/sessions/history", { method: "DELETE" }),
   reportCsv: async (code: string) => {
     const token = getToken();
     let response: Response;

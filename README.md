@@ -1,148 +1,240 @@
-# GyakutenEigo
+# GyakutenEigo / Quiz Strike
 
-GyakutenEigo is a browser-based English learning site. Its first hosted game is Quiz Strike, a private classroom arena where teachers create quiz sets and sessions while students answer questions, earn in-game money, buy school-safe gear, and play live team modes.
+GyakutenEigo is a browser-based English-learning site. Quiz Strike is its live
+classroom game: teachers author quizzes and private rooms, while students join
+with a code, answer questions, earn in-game currency, and play school-safe team
+arena modes.
 
-## Local Setup
+## Current production state
 
-1. Install dependencies:
+The production web service is 'gyakuteneigo-api' on Render. Render hosts the
+Node.js/Express/Socket.IO process only; production PostgreSQL is the Supabase
+project **Quiz Strike Production** in Sydney ('ap-southeast-2'). The former
+Render PostgreSQL database was retired after the 1 August 2026 cutover and is no
+longer recoverable from Render.
 
-   ```bash
-   npm install
-   ```
+The final validated local backup is retained at:
 
-2. Copy environment defaults:
+    database-backups/quizstrike-render-20260801-231819.dump
 
-   ```bash
-   copy .env.example .env
-   ```
+The backup directory is ignored by Git. Do not move credentials or database
+URLs into this repository.
 
-3. Optional local database services, required for durable local data:
+## Repository layout
 
-   ```bash
-   docker compose up -d
-   npm run prisma:generate
-   npm run prisma:migrate
-   ```
+| Path | Responsibility |
+| --- | --- |
+| 'apps/web' | React/Vite application, teacher flows, student flows, Three.js arena |
+| 'apps/server' | Express API, Socket.IO gateway, authoritative simulation, persistence orchestration |
+| 'apps/server/src/routes' | Teacher, quiz, session, player, report, and appearance route modules |
+| 'apps/server/src/botRuntime.ts' | Bot decisions, firing, respawn, and bot tick |
+| 'apps/server/src/roundRuntime.ts' | Round mutation, transitions, deadline evaluation, and round broadcasts |
+| 'packages/shared' | Shared types, protocol schemas, validation, map data, deterministic game rules |
+| 'prisma' | PostgreSQL schema and committed migrations |
+| 'scripts/database' | Auditing, migration, backup, and idempotent snapshot backfill tools |
+| 'docs' | Focused feature, map, performance, and migration notes |
+| 'architecture.md' | Current system architecture and authority boundaries |
+| 'HANDOFF.md' | Current operator/developer handoff and next actions |
 
-4. Start the local app:
+## Local setup
 
-   ```bash
-   npm run dev
-   ```
+Use Node.js 20.19+ or 22.13+. '.nvmrc' selects Node 22.13.
 
-The frontend runs on `http://localhost:5173` and the backend on `http://localhost:4000`. The public site is `/`, the Quiz Strike host page is `/quiz-strike`, student entry is `/join`, and the arena is `/game`.
+~~~powershell
+npm install
+Copy-Item .env.example .env
+npm run prisma:generate
+npm run dev
+~~~
 
-The local-only Character Lab at `/character-lab` includes both maps, all three quality presets, and 10–60 player stress scenarios.
+The local app runs at:
 
-## Online Play
+- Web: 'http://localhost:5173'
+- API: 'http://localhost:4000'
+- Health: 'http://localhost:4000/api/health'
+- Development character/map lab: 'http://localhost:5173/character-lab'
 
-For a hosted playtest, deploy the web app and game server separately:
+For durable local data, start the included PostgreSQL container first:
 
-- Build `apps/web` and host `apps/web/dist`.
-- Build and run `apps/server` on a Node host with WebSocket support.
-- Set `VITE_API_URL` in the web build to the public server URL.
-- Set `CLIENT_ORIGIN` on the server to the public web origin.
-- Set a real `JWT_SECRET` before using `NODE_ENV=production`.
+~~~powershell
+docker compose up -d
+npm run prisma:migrate
+~~~
 
-See [docs/online-play.md](docs/online-play.md) for the GitHub Pages and Render deployment checklist.
+Without 'DATABASE_URL', the server intentionally uses in-memory persistence and
+all classroom data disappears on restart.
 
-## Current Vertical Slice
+## Routes
 
-- Teacher signup/login, class management, and multiple-choice quiz authoring
-- Private session creation with generated join codes and copyable join links
-- Student join by code and classroom-safe nickname
-- Flag Mode, Zombie Mode, and Classic Tag Practice with server-authoritative rules
-- Live Three.js FPS arena with movement, firing, objectives, minimap, HUD, quiz, shop, scoreboard, and touch controls
-- Desert Citadel and The Iron Junction with map-specific spawns, cover, landmarks, lighting, and minimap labels
-- Shared skinned student-athlete characters and modular launcher/equipment silhouettes
-- Invisible gameplay collision proxies with separate modular rendered structures
-- Atlas-batched static scenery and scalable Low/Medium/High quality presets
-- Directional locomotion plus event-driven hit, respawn, jump, landing, flag interaction, victory, and defeat animation states
-- Pooled combat, healing, objective, round, heavy-fire, zoom, cooldown, elimination, and results VFX with strict coverage caps
-- Live teacher roster, bots, practice respawn questions, server-validated purchases, and CSV reports
-- Independent weapon/perk loadout slots: buying Warm Vest or Speed Boots preserves the equipped launcher, including Heavy/AWP; living players retain the full loadout between rounds
-- PostgreSQL-backed runtime snapshots when `DATABASE_URL` is configured; in-memory fallback for local development
+| Route | Use |
+| --- | --- |
+| '/' | Public GyakutenEigo landing page |
+| '/quiz-strike' | Teacher authentication and dashboard |
+| '/join?code=ROOM' | Student room-code entry |
+| '/game' | Student arena |
+| '/character-lab' | Development-only rendering/performance harness |
 
-## Arena Rendering Architecture
+The app uses a small History API router; React Router is not installed. Static
+hosts must serve 'index.html' for these paths.
 
-Gameplay and presentation deliberately have separate sources of truth:
+## Game and product scope
 
-- `packages/shared` owns map IDs, arena bounds, spawn tables, objectives, buy zones, simplified server collision, projectile cover, validation, and deterministic rules.
-- `apps/server` owns authoritative movement, combat, economy, objectives, session lifecycle, bots, and results.
-- `apps/web` owns Three.js scene assembly, rendered map metadata, invisible client collision proxies, modular visuals, lighting, effects, UI, and diagnostics.
+- Teacher signup/login, classes, quiz sets, question CRUD, folders, reports,
+  session creation, join links, and classroom controls.
+- Teacher workspace navigation with Library, Reports, and Settings; completed
+  game history can be reviewed, exported, individually deleted, or cleared.
+- Three-step live setup with Zombie, Tag, and Flag modes, map selection, arena
+  rules, and advanced settings for tuning the experience to a class.
+- Student join/rejoin with private player tokens and classroom-safe nicknames.
+- Tag Mode, Flag Mode, and Zombie Mode.
+- Server-authoritative movement, damage, health, economy, purchases, objectives,
+  rounds, bots, answer rewards, and results.
+- Desert Citadel, The Iron Junction, and Temple Runoff maps.
+- Starter, Quick, and Heavy Snowball Launchers plus Warm Vest and Speed Boots.
+- Shared skinned characters, bounded decals, teacher moderation, touch/gamepad
+  input, audio, minimap, VFX pools, and Low/Medium/High quality presets.
 
-Rendered buildings no longer expose collider boxes as their visible bodies. `ArenaPreview` creates invisible box proxies for movement and cover, then assembles separate modular visual shells. Static decorative meshes are vertex-tinted through a shared 2K surface atlas and merged into six or fewer material batches per map.
+### Teacher live-room flow
 
-Characters use a shared `THREE.SkinnedMesh` skeleton with palette-cached geometry and a single-draw body. Equipment remains modular. Event effects are world-space, pooled, and limited to 6/12/16 active effects on Low/Medium/High to protect screen readability and frame time.
+1. Choose a quiz from Library and create a game using Game Mode, Arena, and
+   Advanced Settings.
+2. Share the join code or QR code from the waiting room, manage learners/bots,
+   then start the game with the green Start Game action.
+3. Use Live Game Control for round actions, scoreboard and event-feed review,
+   then open Spectator View when a read-only learner perspective is useful.
+4. In Spectator View, choose a connected, alive, non-bot learner from the
+   scrollable picker or use Previous/Next. This changes only the teacher's
+   camera target; it does not send movement, firing, answer, or room commands.
+5. End the game to create the learning report, then review it from Reports.
 
-Important files:
+The teacher workspace keeps its left navigation visible while the main panel
+scrolls. The current maps are Desert Citadel, The Iron Junction, and Temple
+Runoff, with the map artwork used in both setup cards and live previews.
 
-- `apps/web/src/game/ArenaPreview.tsx`: scene assembly, invisible client collision proxies, modular structures, FPS controls, minimap, VFX, and profiling integration.
-- `apps/web/src/game/arenaMaps.ts`: map catalog and lookup.
-- `apps/web/src/game/desertCitadelMap.ts`: Desert Citadel layout and landmarks.
-- `apps/web/src/game/ironJunctionMap.ts`: Iron Junction layout, routes, and industrial props.
-- `apps/web/src/game/IronJunctionArtPass.ts`: frost transitions, industrial lighting, crane landmark, and maintenance storytelling.
-- `apps/web/src/game/ArenaStaticBatch.ts`: shared surface atlas, vertex tinting, and static geometry batching.
-- `apps/web/src/game/characters/SharedSkinnedStudent.ts`: shared character skin, skeleton, and palette cache.
-- `apps/web/src/game/ArenaAnimation.ts`: typed event bus for gameplay-driven character animation cues.
-- `apps/web/src/game/ArenaVfx.ts`: typed event bus and bounded VFX pool.
-- `apps/web/src/game/ArenaPerformance.ts`: frame-time, long-task, renderer-memory, heap, and draw-count capture.
-- `packages/shared/src/index.ts`: shared game contracts, map constants, spawns, and deterministic rules.
-- `apps/server/src/index.ts`: authoritative HTTP, Socket.IO, and game simulation.
+## Architecture at a glance
 
-## Performance and Verification
+~~~mermaid
+flowchart LR
+  B[Teacher or student browser] -->|HTTPS / WSS| R[Render Node service]
+  R --> S[Authoritative in-memory room engine]
+  R --> P[Prisma normalized repositories]
+  P --> U[(Supabase PostgreSQL)]
+  R --> C[(RuntimeSnapshot checkpoint)]
+~~~
 
-The latest 40-player Medium baseline is:
+The server owns meaningful outcomes. The browser sends intent and may predict
+presentation, but it does not decide correctness, damage, money, eliminations,
+objectives, round results, or authoritative positions.
 
-| Map | Draw calls | Triangles | Local sample |
-| --- | ---: | ---: | --- |
-| Desert Citadel | 356 | 66,528 | 45 FPS, 29.4 ms p95 |
-| The Iron Junction | 338 | 63,236 | 55 FPS, 22.8 ms p95 after ~60 seconds |
+Durable teacher and history data are normalized Prisma models. 'RuntimeSnapshot'
+with id 'primary' remains a recoverable active-session checkpoint and a legacy
+backfill source; it is not the authority for new teacher-library writes.
 
-These measurements are useful regression baselines, not physical-device certification. Physical Chromebook, explicit Microsoft Edge, integrated-GPU desktop, GPU-memory, and ten-minute soak runs remain pending. See [docs/performance/CHROMEBOOK_CERTIFICATION.md](docs/performance/CHROMEBOOK_CERTIFICATION.md).
+The current runtime is single-instance. Live sockets, room state, timers, bot
+memory, rate limits, and uploaded decal bytes are process-local. Keep one Render
+instance and require sticky room affinity. 'RUNTIME_STORE=redis' fails closed in
+this build because Redis adapters have not been implemented. The current route,
+bot, round, and arena ownership boundaries are documented in
+[architecture.md](architecture.md).
 
-Run before pushing:
+The monolith extraction is complete on 'main': 'runtime.ts' and
+'ArenaPreview.tsx' remain composition points, while route bodies, bot
+orchestration, round flow, map construction, character synchronization,
+minimap rendering, render-loop lifecycle, and independent round timing each
+have focused owners. See
+[docs/quizstrike-monolith-extraction.md](docs/quizstrike-monolith-extraction.md)
+for the handoff metrics and commit history.
 
-```bash
+Read [architecture.md](architecture.md) before changing persistence, networking,
+collision, combat, or scaling boundaries.
+
+## Production configuration
+
+Server-only values:
+
+~~~text
+NODE_ENV=production
+NODE_VERSION=22
+JWT_SECRET=<long random secret>
+DATABASE_URL=<Supabase session-pooler URL>
+CLIENT_ORIGIN=https://gyakuteneigo.com,https://www.gyakuteneigo.com,https://susume.github.io
+TRUST_PROXY=true
+RUNTIME_STORE=in-memory
+~~~
+
+Build-time web values:
+
+~~~text
+VITE_API_URL=https://api.gyakuteneigo.com
+VITE_API_FALLBACK_URL=https://gyakuteneigo-api.onrender.com
+VITE_BASE_PATH=/
+~~~
+
+Never put 'DATABASE_URL', 'JWT_SECRET', Supabase keys, or private decal data in
+'VITE_*' variables or committed files.
+
+Render start-up runs 'prisma migrate deploy' before the server listens. The
+Supabase session pooler is used for the long-running Node process. Do not use
+'prisma db push' or 'prisma migrate dev' against production.
+
+## Verification commands
+
+Run from the repository root:
+
+~~~powershell
+npm run lint
 npm run typecheck
 npm test
 npm run build
-```
-
-Run the classroom harnesses after multiplayer, lobby, or rendering changes:
-
-```bash
 npm run test:load
-npx playwright install chromium # first run only
 npm run test:e2e
-```
+~~~
 
-The current baseline is 62 shared tests, 17 server tests, and 63 web unit tests: 142 Node tests, plus one production-Chromium classroom scenario. The server suite includes real HTTP appearance/decal lifecycle coverage, 1/10/20/40-client load scenarios, authenticated room isolation, focused bot/player deltas, and 40 authenticated Socket.IO clients. The Vite bundle warning for the Three.js chunk is expected and is not a build failure.
+The current validated baseline is recorded in [architecture.md](architecture.md)
+and includes the unit-test suite, 40-client load harness, Playwright classroom
+scenario, and local WebGL smoke coverage. For the latest teacher-workspace
+change, web typecheck and production build pass; build warnings about Node
+version or large Vite chunks are non-fatal. Use the declared Node version for
+hosted builds.
 
-## Known Limits
+Database tools:
 
-- Invisible collision proxies intentionally remain authoritative underneath modular visual meshes. Visual edits must not silently change server or client collision.
-- The environment and character set are code-authored and production-minded, not imported DCC-authored assets.
-- Rooftop and aqueduct routes are readable and collidable, but the player controller still uses mostly flat movement.
-- Free-for-all spawn metadata exists for future support; current live session flows remain team-based.
-- The server is single-instance. Process-local socket bindings, timers, and simulation state require a shared adapter before horizontal scaling.
-- Production persistence currently uses one PostgreSQL `RuntimeSnapshot`, not normalized repositories.
+~~~powershell
+npm run prisma:validate
+npm run prisma:deploy
+npm run db:backfill -- --dry-run
+npm run db:verify
+~~~
 
-## Documentation
+The production cutover and backup record is documented in
+[docs/supabase-database-migration.md](docs/supabase-database-migration.md).
 
-- [Development handoff](HANDOFF.md): current feature state, setup, verification, risks, and recommended next work.
-- [Lobby character customization audit](docs/character-customization-audit.md)
-- [Lobby character customization plan](docs/character-customization-plan.md)
-- [Character customization operations and test checklist](docs/character-customization-operations.md)
-- [Character customization post-implementation audit and Phase 2 decision](docs/character-customization-phase-2-audit.md)
-- [Character customization Phase 3 integration audit](docs/character-customization-phase-3-testing.md)
-- [Character customization Phase 4 browser and Socket.IO audit](docs/character-customization-phase-4-browser-load.md)
-- [architecture.md](architecture.md): system architecture, runtime ownership, deployment shape, and risks.
-- [docs/art-pass/README.md](docs/art-pass/README.md): visual direction, before/after evidence, and quality counts.
-- [docs/performance/CHROMEBOOK_CERTIFICATION.md](docs/performance/CHROMEBOOK_CERTIFICATION.md): profiling baseline and physical certification matrix.
+## Safety rules
 
-## Safety and Design Rules
+1. Keep game authority on the server and deterministic shared rules in
+   'packages/shared'.
+2. Keep rendered meshes separate from client/server collision proxies.
+3. Keep launcher and perk slots independent.
+4. Never include a question's correct choice in a student question payload.
+5. Check teacher ownership and player tokens on every private operation.
+6. Keep decal bytes bounded, authenticated, expiring, and out of snapshots.
+7. Use only school-safe language: snow tags, snowball launchers, warmth, gear,
+   arena, Blue Team, and Red Team. Do not add gore, realistic weapon branding,
+   public matchmaking, public chat, voice chat, or copied Counter-Strike content.
 
-This is an educational prototype. Schools should review privacy, safeguarding, accessibility, and local policy requirements before classroom deployment.
+## Documentation index
 
-Use original school-safe terminology only: snow tags, snowball launchers, warmth, gear, arena, Blue Team, and Red Team. Do not add Counter-Strike assets, names, maps, or sounds; realistic weapon names; blood or gore; public matchmaking; public chat; or voice chat.
+- [Architecture](architecture.md)
+- [Development handoff](HANDOFF.md)
+- [Monolith extraction report](docs/quizstrike-monolith-extraction.md)
+- [Production database migration](docs/supabase-database-migration.md)
+- [Runtime snapshot migration](docs/runtime-snapshot-migration.md)
+- [Teacher library and reports](docs/teacher-library.md)
+- [Online hosting runbook](docs/online-play.md)
+- [Protocol contract](packages/shared/PROTOCOL.md)
+- [Phases 7-10 implementation report](docs/phases-7-10-implementation-report.md)
+- [Chromebook certification matrix](docs/performance/CHROMEBOOK_CERTIFICATION.md)
+- [Security audit](AUDIT.md)
+
+Schools should review privacy, safeguarding, accessibility, retention, and local
+policy requirements before classroom deployment.

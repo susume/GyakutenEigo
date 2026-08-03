@@ -8,6 +8,8 @@ export type RoundConclusion = {
   matchResult?: string;
 };
 
+export type PendingRoundAction = "open_preparation" | "activate_prepared" | "start_round";
+
 const teamName = (team: Team) => team === "red" ? "Red Team" : "Blue Team";
 
 export const getPausedRoundAction = ({
@@ -21,6 +23,18 @@ export const getPausedRoundAction = ({
   && phase !== "buy"
   ? "open_preparation"
   : "start_round";
+
+export const resolvePendingRoundAction = ({
+  gameMode,
+  phase
+}: {
+  gameMode: GameMode;
+  phase?: RoundTransitionPhase;
+}): PendingRoundAction => {
+  if (getPausedRoundAction({ gameMode, phase }) === "open_preparation") return "open_preparation";
+  if (phase === "zombie_selection" || phase === "preparation" || phase === "buy") return "activate_prepared";
+  return "start_round";
+};
 
 export const planRoundConclusion = ({
   currentRound,

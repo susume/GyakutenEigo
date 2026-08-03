@@ -76,7 +76,7 @@ export default function TeacherDecalGallery({ sessionCode, refreshKey, loadAsset
       document.removeEventListener("keydown", onKeyDown);
       previousFocus?.focus();
     };
-  }, [preview?.assetId]);
+  }, [preview]);
 
   const remove = async (assetId: string) => {
     setError("");

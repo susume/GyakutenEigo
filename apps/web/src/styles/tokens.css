@@ -28,6 +28,18 @@
   --color-team-blue: #174a8b;
   --color-team-red: #9f1239;
 
+  --qs-ink: #f5f8ff;
+  --qs-muted: #9eb0c9;
+  --qs-page: #050b1b;
+  --qs-panel: #0b1630;
+  --qs-panel-strong: #101f3d;
+  --qs-border: rgba(126, 166, 220, 0.34);
+  --qs-blue: #54b8ff;
+  --qs-blue-strong: #2578d6;
+  --qs-red: #f05a64;
+  --qs-amber: #f5b84b;
+  --qs-success: #54d49a;
+
   --space-1: 4px;
   --space-2: 8px;
   --space-3: 12px;

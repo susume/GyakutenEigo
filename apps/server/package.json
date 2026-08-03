@@ -8,7 +8,7 @@
     "dev": "tsx watch src/index.ts",
     "build": "tsc",
     "start": "node dist/start.js",
-    "test": "tsx --test \"src/**/*.test.ts\"",
+    "test": "node ../../scripts/run-tests.mjs src",
     "test:load": "tsx --test --test-name-pattern=\"40 authenticated Socket.IO|bot ticks|load matrix\" src/appearanceFlow.integration.test.ts",
     "typecheck": "tsc --noEmit"
   },

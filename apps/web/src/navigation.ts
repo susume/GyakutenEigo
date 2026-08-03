@@ -13,6 +13,6 @@ export const modeForRoute = (routePath: string): AppMode =>
     ? "characterLab"
     : routePath === "/join" || routePath === "/game"
       ? "student"
-      : routePath === "/quiz-strike"
+      : routePath === "/quiz-strike" || routePath.startsWith("/quiz-strike/")
         ? "quizStrike"
         : "home";

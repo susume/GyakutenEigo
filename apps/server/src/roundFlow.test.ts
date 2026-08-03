@@ -1,6 +1,6 @@
 import assert from "node:assert/strict";
 import test from "node:test";
-import { getPausedRoundAction, planRoundConclusion } from "./roundFlow.js";
+import { getPausedRoundAction, planRoundConclusion, resolvePendingRoundAction } from "./roundFlow.js";
 
 test("Flag and Classic Tag open preparation before starting each round", () => {
   assert.equal(getPausedRoundAction({ gameMode: "flag", phase: "result" }), "open_preparation");
@@ -8,6 +8,14 @@ test("Flag and Classic Tag open preparation before starting each round", () => {
   assert.equal(getPausedRoundAction({ gameMode: "flag", phase: "preparation" }), "start_round");
   assert.equal(getPausedRoundAction({ gameMode: "flag", phase: "buy" }), "start_round");
   assert.equal(getPausedRoundAction({ gameMode: "zombie", phase: "zombie_selection" }), "start_round");
+});
+
+test("pending round transitions choose preparation, activation, or a fresh round", () => {
+  assert.equal(resolvePendingRoundAction({ gameMode: "flag", phase: "result" }), "open_preparation");
+  assert.equal(resolvePendingRoundAction({ gameMode: "flag", phase: "preparation" }), "activate_prepared");
+  assert.equal(resolvePendingRoundAction({ gameMode: "zombie", phase: "zombie_selection" }), "activate_prepared");
+  assert.equal(resolvePendingRoundAction({ gameMode: "classic", phase: undefined }), "open_preparation");
+  assert.equal(resolvePendingRoundAction({ gameMode: "zombie", phase: "result" }), "start_round");
 });
 
 test("Flag Mode plans a result intermission before the next round", () => {

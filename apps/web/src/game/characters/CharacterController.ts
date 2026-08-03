@@ -12,6 +12,8 @@ export class CharacterController {
   currentFacing = 0;
   alive = true;
   speed = 0;
+  velocityX = 0;
+  velocityZ = 0;
   forwardSpeed = 0;
   strafeSpeed = 0;
   turnSpeed = 0;
@@ -56,6 +58,8 @@ export class CharacterController {
     this.currentFacing += angleDelta(this.currentFacing, this.targetFacing) * Math.min(1, delta * 10);
     const velocityX = (this.current.x - previousX) / Math.max(delta, 0.001);
     const velocityZ = (this.current.z - previousZ) / Math.max(delta, 0.001);
+    this.velocityX = velocityX;
+    this.velocityZ = velocityZ;
     const motionResponse = 1 - Math.exp(-Math.max(delta, 0.001) * 12);
     this.speed = THREE.MathUtils.lerp(this.speed, Math.hypot(velocityX, velocityZ), motionResponse);
     const forwardX = -Math.sin(this.currentFacing);
@@ -81,6 +85,8 @@ export class CharacterController {
       delta,
       elapsed,
       speed: this.speed,
+      velocityX: this.velocityX,
+      velocityZ: this.velocityZ,
       forwardSpeed: this.forwardSpeed,
       strafeSpeed: this.strafeSpeed,
       turnSpeed: this.turnSpeed,

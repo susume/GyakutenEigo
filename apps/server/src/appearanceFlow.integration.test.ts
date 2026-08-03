@@ -312,18 +312,26 @@ test("real HTTP appearance flow enforces identity, room scope, locking, and clea
     "army_boots"
   );
 
-  const rejoined = await api<{ player: PlayerFixture }>(
+  const rejoined = await api<JoinedPlayer>(
     `/api/sessions/${session.sessionCode}/players/${alpha.player.id}/rejoin`,
     { playerToken: alpha.playerToken }
   );
   assert.equal(rejoined.response.status, 200);
   assert.deepEqual(rejoined.body.player.appearance, appearance);
+  assert.ok(rejoined.body.question?.id);
 
   const started = await api(`/api/sessions/${session.sessionCode}/start`, {
     method: "POST",
     teacherToken: teacher.token
   });
   assert.equal(started.response.status, 200);
+
+  const rejoinedDuringPreparation = await api<JoinedPlayer>(
+    `/api/sessions/${session.sessionCode}/players/${alpha.player.id}/rejoin`,
+    { playerToken: alpha.playerToken }
+  );
+  assert.equal(rejoinedDuringPreparation.response.status, 200);
+  assert.ok(rejoinedDuringPreparation.body.question?.id);
 
   const locked = await api(
     `/api/sessions/${session.sessionCode}/players/${alpha.player.id}/appearance`,
@@ -625,7 +633,7 @@ test("40 authenticated Socket.IO clients receive bounded room state and movement
   assert.equal(started.response.status, 200);
   const activeDeadline = Date.now() + 5000;
   while (activeSocketIds.size < connected.length && Date.now() < activeDeadline) {
-    runtime.advanceBots();
+    runtime.advanceRounds();
     await new Promise((resolve) => setTimeout(resolve, 20));
   }
   assert.equal(activeSocketIds.size, connected.length, `${activeSocketIds.size} of ${connected.length} clients received active state.`);

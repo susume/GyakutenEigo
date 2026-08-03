@@ -2,6 +2,9 @@
   "name": "gyakuten-eigo",
   "version": "0.1.0",
   "private": true,
+  "engines": {
+    "node": "^20.19.0 || >=22.13.0"
+  },
   "workspaces": [
     "apps/web",
     "apps/server",
@@ -13,18 +16,25 @@
     "test": "npm run test -w @quizstrike/shared && npm run test -w @quizstrike/server && npm run test -w @quizstrike/web",
     "test:e2e": "npm run build && npm run test:e2e -w @quizstrike/web",
     "test:load": "npm run test:load -w @quizstrike/server",
+    "lint": "eslint .",
     "typecheck": "npm run typecheck -w @quizstrike/shared && npm run build -w @quizstrike/shared && npm run typecheck -w @quizstrike/server && npm run typecheck -w @quizstrike/web",
     "prisma:generate": "prisma generate",
     "prisma:migrate": "prisma migrate dev",
     "prisma:deploy": "prisma migrate deploy",
     "prisma:studio": "prisma studio",
+    "db:backfill": "node scripts/database/backfill-runtime-snapshot.mjs",
     "db:audit:source": "powershell -NoProfile -ExecutionPolicy Bypass -File scripts/database/migrate-render-to-supabase.ps1 -Action AuditSource",
     "db:target:empty": "powershell -NoProfile -ExecutionPolicy Bypass -File scripts/database/migrate-render-to-supabase.ps1 -Action AssertTargetEmpty",
     "db:verify": "node scripts/database/audit-and-compare.mjs --checksums"
   },
   "devDependencies": {
+    "@eslint/js": "^9.39.5",
     "concurrently": "^9.2.1",
+    "eslint": "^9.39.5",
+    "eslint-plugin-react-hooks": "^6.1.1",
+    "globals": "^16.5.0",
     "prisma": "^6.11.1",
-    "typescript": "^5.8.3"
+    "typescript": "^5.8.3",
+    "typescript-eslint": "^8.65.0"
   }
 }

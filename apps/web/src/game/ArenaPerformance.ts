@@ -57,7 +57,7 @@ export class ArenaPerformanceCapture {
     this.frameCount = Math.min(FRAME_SAMPLE_LIMIT, this.frameCount + 1);
   }
 
-  snapshot(now = performance.now()): ArenaPerformanceSnapshot {
+  snapshot(_now = performance.now()): ArenaPerformanceSnapshot {
     const sorted = this.frameTimes.slice(0, this.frameCount).sort((a, b) => a - b);
     const seconds = Math.max(0.001, sorted.reduce((total, duration) => total + duration, 0) / 1000);
     const memory = performance as Performance & { memory?: { usedJSHeapSize: number } };

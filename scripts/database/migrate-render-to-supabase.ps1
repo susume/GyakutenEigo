@@ -145,7 +145,7 @@ switch ($Action) {
     $previousUrl = $env:DATABASE_URL
     try {
       $env:DATABASE_URL = $env:SOURCE_DATABASE_URL
-      Invoke-NodeAudit @()
+      Invoke-NodeAudit -Arguments @()
     } finally {
       $env:DATABASE_URL = $previousUrl
     }
@@ -189,7 +189,7 @@ switch ($Action) {
     $previousUrl = $env:DATABASE_URL
     try {
       $env:DATABASE_URL = $env:TARGET_DATABASE_URL
-      Invoke-NodeAudit @("--assert-empty")
+      Invoke-NodeAudit -Arguments @("--assert-empty")
     } finally {
       $env:DATABASE_URL = $previousUrl
     }
@@ -223,7 +223,7 @@ switch ($Action) {
     $previousUrl = $env:DATABASE_URL
     try {
       $env:DATABASE_URL = $env:TARGET_DATABASE_URL
-      Invoke-NodeAudit @("--assert-empty")
+      Invoke-NodeAudit -Arguments @("--assert-empty")
     } finally {
       $env:DATABASE_URL = $previousUrl
     }
@@ -245,6 +245,6 @@ switch ($Action) {
   "Verify" {
     Assert-PostgresUrl "SOURCE_DATABASE_URL" $env:SOURCE_DATABASE_URL
     Assert-PostgresUrl "TARGET_DATABASE_URL" $env:TARGET_DATABASE_URL
-    Invoke-NodeAudit @("--checksums")
+    Invoke-NodeAudit -Arguments @("--checksums")
   }
 }

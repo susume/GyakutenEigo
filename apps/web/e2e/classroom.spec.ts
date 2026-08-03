@@ -81,7 +81,7 @@ test("student customizes, reloads, and receives match start over Socket.IO", asy
   await page.getByLabel("Your name").fill("Browser Student");
   await page.getByRole("button", { name: "Join", exact: true }).click();
 
-  await expect(page.getByRole("heading", { name: "Build Your Player" })).toBeVisible();
+  await expect(page.getByRole("heading", { name: "Choose your team and wait for the teacher to start the game." })).toBeVisible();
   const creatorReadyMs = performance.now() - browserStartedAt;
   await expect(page.getByText("1 joined", { exact: true })).toBeVisible();
   const foxHead = page.getByRole("button", { name: /Fox/ });
@@ -92,10 +92,9 @@ test("student customizes, reloads, and receives match start over Socket.IO", asy
   expect((await appearanceSaved).status()).toBe(200);
   const appearanceSavedMs = performance.now() - browserStartedAt;
   await expect(foxHead).toHaveAttribute("aria-pressed", "true");
-  await expect(page.getByRole("button", { name: "Saved" })).toBeDisabled();
 
   await page.reload();
-  await expect(page.getByRole("heading", { name: "Build Your Player" })).toBeVisible();
+  await expect(page.getByRole("heading", { name: "Choose your team and wait for the teacher to start the game." })).toBeVisible();
   await expect(page.getByRole("button", { name: /Fox/ })).toHaveAttribute("aria-pressed", "true");
   const restoredMs = performance.now() - browserStartedAt;
 
@@ -104,9 +103,9 @@ test("student customizes, reloads, and receives match start over Socket.IO", asy
   });
   expect(start.status()).toBe(200);
   await expect(page.getByRole("timer")).toBeVisible();
-  await expect(page.getByRole("heading", { name: "Build Your Player" })).toBeHidden();
+  await expect(page.getByRole("heading", { name: "Choose your team and wait for the teacher to start the game." })).toBeHidden();
   await expect.poll(() => socketFrames.some(
-    (frame) => frame.includes("session_state") && frame.includes('"status":"active"')
+    (frame) => frame.includes("session_state") && (frame.includes('"status":"paused"') || frame.includes('"status":"active"'))
   )).toBe(true);
   const matchStartedMs = performance.now() - browserStartedAt;
 

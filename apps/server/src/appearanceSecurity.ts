@@ -1,4 +1,7 @@
 import { DECAL_MAX_DIMENSION, DECAL_MAX_PROCESSED_BYTES } from "@quizstrike/shared";
+import { DEFAULT_PLAYER_APPEARANCE, type GameSession, type PlayerSession } from "@quizstrike/shared";
+import { DecalStore } from "./decalStore.js";
+import type { MatchSessionStore } from "./scaling/runtimeInfrastructure.js";
 
 export type ProcessedImageMime = "image/png" | "image/webp";
 
@@ -34,3 +37,60 @@ export const inspectProcessedDecal = (bytes: Uint8Array, declaredMime: unknown):
     ? "image/webp"
     : undefined;
 };
+
+export interface AppearanceSecurityOptions {
+  decalStore?: DecalStore;
+  sessions: MatchSessionStore<GameSession>;
+  broadcastSession: (session: GameSession) => void;
+}
+
+/** Owns appearance/decal limits, cleanup, and the associated bounded timers/maps. */
+export class AppearanceSecurityService {
+  readonly decalStore: DecalStore;
+  readonly appearanceUpdateTimestamps = new Map<string, number>();
+  readonly decalUploadTimestamps = new Map<string, number[]>();
+
+  constructor(private readonly options: AppearanceSecurityOptions) {
+    this.decalStore = options.decalStore ?? new DecalStore();
+  }
+
+  deleteDecal(assetId: string | undefined) {
+    this.decalStore.delete(assetId);
+  }
+
+  clearPlayerAppearance(session: GameSession, player: PlayerSession) {
+    this.decalStore.deletePlayer(session.id, player.id);
+    player.appearance = { ...DEFAULT_PLAYER_APPEARANCE };
+  }
+
+  purgeSessionDecals(session: GameSession) {
+    this.decalStore.deleteSession(session.id);
+    for (const player of session.players) {
+      if (player.appearance?.decalAssetId) player.appearance = { ...player.appearance, decalAssetId: undefined };
+      this.appearanceUpdateTimestamps.delete(player.id);
+      this.decalUploadTimestamps.delete(player.id);
+    }
+  }
+
+  pruneExpiredDecals() {
+    const removed = this.decalStore.pruneExpired();
+    const touchedSessions = new Set<GameSession>();
+    for (const asset of removed) {
+      const session = this.options.sessions.get(asset.sessionId);
+      const player = session?.players.find((candidate) => candidate.id === asset.playerId);
+      if (!session || player?.appearance?.decalAssetId !== asset.id) continue;
+      player.appearance = { ...player.appearance, decalAssetId: undefined };
+      touchedSessions.add(session);
+    }
+    touchedSessions.forEach(this.options.broadcastSession);
+  }
+
+  checkDecalUploadRate(playerId: string) {
+    const cutoff = Date.now() - 60_000;
+    const recent = (this.decalUploadTimestamps.get(playerId) ?? []).filter((timestamp) => timestamp >= cutoff);
+    if (recent.length >= 3) return false;
+    recent.push(Date.now());
+    this.decalUploadTimestamps.set(playerId, recent);
+    return true;
+  }
+}
