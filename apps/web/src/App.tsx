@@ -89,6 +89,7 @@ import { getShopShortcut, getShopShortcutKey } from "./shopShortcuts";
 import { sendStudentCommand } from "./studentCommandTransport";
 import { StatusMessages } from "./ui/StatusMessages";
 import TeacherDecalGallery from "./ui/TeacherDecalGallery";
+import PublicHomepage from "./ui/PublicHomepage";
 import { ARENA_MAPS, getArenaMap } from "./game/arenaMaps";
 import {
   CHARACTER_STRESS_COUNTS,
@@ -636,6 +637,11 @@ export default function App() {
     setIsMobileNavOpen(false);
   }, []);
 
+  const scrollHomeSection = useCallback((sectionId: string) => {
+    document.getElementById(sectionId)?.scrollIntoView({ behavior: "smooth", block: "start" });
+    setIsMobileNavOpen(false);
+  }, []);
+
   useEffect(() => {
     const syncRouteFromHistory = () => {
       const nextRoutePath = normalizeRoutePath(window.location.pathname);
@@ -690,8 +696,8 @@ export default function App() {
     <main id="main-content" className="app-shell" tabIndex={-1}>
       <a className={`skip-link skip-link-${mode}`} href="#main-content">Skip to main content</a>
       <header className={`topbar topbar-${mode}${teacher ? " teacher-authenticated" : ""}`}>
-        <button className="brand-button" onClick={() => navigateTo("/", "home")}>
-          <span>QuizStrike</span>
+        <button className="brand-button" onClick={() => navigateTo("/", "home")} aria-label="QuizStrike Classroom home">
+          <img src="/assets/quizstrike-logo.png" alt="" aria-hidden="true" />
         </button>
         <nav className="primary-nav" aria-label="Primary">
           <button
@@ -704,7 +710,17 @@ export default function App() {
             Menu
           </button>
           <div id="primary-actions" className="top-actions" data-open={isMobileNavOpen ? "true" : "false"}>
-          {mode === "quizStrike" && !teacher ? (
+          {mode === "home" ? (
+            <>
+              <button className="top-nav-link" onClick={() => scrollHomeSection("how-it-works")}>How It Works</button>
+              <button className="top-nav-link" onClick={() => scrollHomeSection("for-teachers")}>For Teachers</button>
+              <button className="top-nav-link" onClick={() => scrollHomeSection("competitions")}>Competitions</button>
+              <button className="top-nav-link" onClick={() => scrollHomeSection("about")}>About</button>
+              <span className="top-action-divider" aria-hidden="true" />
+              <button className="top-action-secondary" onClick={() => navigateTo("/join", "student")}><DoorOpen size={16} aria-hidden="true" /> Join Game</button>
+              <button className="top-action-primary" onClick={() => { setTeacherAuthMode("login"); navigateTo("/quiz-strike", "teacher"); }}><GraduationCap size={16} aria-hidden="true" /> Teacher Login</button>
+            </>
+          ) : mode === "quizStrike" && !teacher ? (
             <>
               <button onClick={() => { setTeacherAuthMode("signup"); navigateTo("/quiz-strike", "teacher"); }}>Sign Up</button>
               <button onClick={() => navigateTo("/join", "student")}>Join Game</button>
@@ -741,7 +757,7 @@ export default function App() {
         </nav>
       </header>
 
-      {mode === "home" && <GyakutenEigoHome onOpenGame={() => navigateTo("/quiz-strike", "quizStrike")} onJoinGame={() => navigateTo("/join", "student")} />}
+      {mode === "home" && <PublicHomepage onCreateMatch={() => { setTeacherAuthMode("signup"); navigateTo("/quiz-strike", "teacher"); }} onJoinGame={() => navigateTo("/join", "student")} onTeacherLogin={() => { setTeacherAuthMode("login"); navigateTo("/quiz-strike", "teacher"); }} onOpenCompetitions={() => navigateTo("/quiz-strike", "quizStrike")} />}
       {mode === "quizStrike" && <QuizStrikeLanding onTeacherLogin={() => { setTeacherAuthMode("login"); navigateTo("/quiz-strike", "teacher"); }} onTeacherSignup={() => { setTeacherAuthMode("signup"); navigateTo("/quiz-strike", "teacher"); }} onStudent={() => navigateTo("/join", "student")} />}
       {mode === "characterLab" && (isCharacterLabAvailable ? <CharacterLab /> : <InternalToolNotice onReturn={() => navigateTo("/quiz-strike", "quizStrike")} />)}
       {mode === "teacher" &&

@@ -30,11 +30,11 @@ The fix keeps one shared pipeline:
 
 The old `power_blaster` is now the Heavy Snowball Launcher.
 
-- Damage: `HEAVY_GUN_DAMAGE = 100`
-- Purchase price: `$6000` (the default Starter launcher is not sold in the Buy Menu)
+- Damage: `HEAVY_GUN_DAMAGE = 80`
+- Purchase price: `$9000` (the default Starter launcher is not sold in the Buy Menu)
 - Cooldown: `HEAVY_GUN_COOLDOWN_MS = 1500`
-- Range: `HEAVY_GUN_RANGE = 120`
-- Scope: right-click cycle: normal (`72°`) → medium (`46°`) → deep (`30°`) → normal
+- Range: `HEAVY_GUN_RANGE = 150`
+- Scope: right-click cycle: normal (`72°`) → medium (`40°`) → deep (`20°`) → normal
 - Accuracy: unscoped (`0.52`) < medium scope (`0.82`) < deep scope (`0.98`) hit radius
 - Audio: procedural `heavy_fire` report plus delayed echo, with no external asset dependency
 
@@ -43,8 +43,8 @@ The Heavy launcher can fire at either zoom level. Its zoom exits on a weapon swi
 ## Launcher shop balance
 
 - Starter Snowball Launcher: default equipment, range `36`, not purchasable as a downgrade.
-- Quick Snowball Launcher: `$3000`, range `48`, damage `22`, cooldown `250 ms`, automatic fire.
-- Heavy Snowball Launcher: `$6000`, range `120`.
+- Quick Snowball Launcher: `$4000`, range `48`, damage `25`, cooldown `250 ms`, automatic fire.
+- Heavy Snowball Launcher: `$9000`, range `150`, damage `80`.
 
 Living players carry their equipped gear and remaining snowballs into the next round. A player who was knocked out is re-armed with the Starter launcher and the configured starting snowball count.
 

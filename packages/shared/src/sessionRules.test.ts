@@ -833,7 +833,7 @@ test("resolveGearPurchase is idempotent for currently equipped gear", () => {
 });
 
 test("resolveGearPurchase charges once for new gear in base", () => {
-  const player = makePlayer({ money: 3000, gear: "starter_blaster", ...getTeamSpawn("blue") });
+  const player = makePlayer({ money: 4000, gear: "starter_blaster", ...getTeamSpawn("blue") });
   const gear = GEAR_ITEMS.find((item) => item.id === "quick_blaster")!;
 
   assert.deepEqual(resolveGearPurchase({ player, gear }), {
@@ -846,7 +846,7 @@ test("resolveGearPurchase charges once for new gear in base", () => {
 });
 
 test("classic-style stores can allow weapon purchases away from a team base", () => {
-  const player = makePlayer({ money: 6000, gear: "starter_blaster", x: 0, z: 0 });
+  const player = makePlayer({ money: 9000, gear: "starter_blaster", x: 0, z: 0 });
   const gear = GEAR_ITEMS.find((item) => item.id === "power_blaster")!;
 
   assert.equal(resolveGearPurchase({ player, gear }).ok, false);
@@ -860,7 +860,7 @@ test("classic-style stores can allow weapon purchases away from a team base", ()
 });
 
 test("resolveGearPurchase cannot downgrade a purchased launcher to the default", () => {
-  const player = makePlayer({ money: 6000, gear: "power_blaster", ...getTeamSpawn("blue") });
+  const player = makePlayer({ money: 9000, gear: "power_blaster", ...getTeamSpawn("blue") });
   const starter = GEAR_ITEMS.find((item) => item.id === "starter_blaster")!;
   assert.deepEqual(resolveGearPurchase({ player, gear: starter }), { ok: false, reason: "starter_weapon" });
 });
@@ -876,8 +876,8 @@ test("warm vest adds 50 warmth when purchased in base", () => {
 });
 
 test("gear store items expose real combat and movement mechanics", () => {
-  assert.equal(GEAR_ITEMS.find((item) => item.id === "quick_blaster")?.cost, 3000);
-  assert.equal(GEAR_ITEMS.find((item) => item.id === "power_blaster")?.cost, 6000);
+  assert.equal(GEAR_ITEMS.find((item) => item.id === "quick_blaster")?.cost, 4000);
+  assert.equal(GEAR_ITEMS.find((item) => item.id === "power_blaster")?.cost, 9000);
   assert.equal(getGearRange("starter_blaster"), STARTER_BLASTER_RANGE);
   assert.equal(getGearRange("quick_blaster"), QUICK_BLASTER_RANGE);
   assert.equal(getGearRange("power_blaster"), HEAVY_GUN_RANGE);
@@ -889,8 +889,8 @@ test("gear store items expose real combat and movement mechanics", () => {
   assert.equal(isGearAutoFireEnabled("quick_blaster"), true);
   assert.equal(isGearAutoFireEnabled("starter_blaster"), false);
   assert.equal(getGearDamage("starter_blaster"), 15);
-  assert.equal(getGearDamage("quick_blaster"), 22);
-  assert.equal(getGearMoveSpeedMultiplier("speed_shoes"), 1.15);
+  assert.equal(getGearDamage("quick_blaster"), 25);
+  assert.equal(getGearMoveSpeedMultiplier("speed_shoes"), 1.3);
   assert.equal(getGearZoomFovMultiplier("power_blaster") < getGearZoomFovMultiplier("starter_blaster"), true);
   assert.equal(getGearMoveSpeedMultiplier("unknown_gear"), 1);
   assert.equal(getGearZoomFovMultiplier("unknown_gear"), 1);
@@ -906,7 +906,7 @@ test("heavy launcher uses named AWP-style combat settings", () => {
   assert.equal(DEFAULT_SESSION_SETTINGS.roundDurationSeconds, FLAG_MODE_DEFAULTS.roundDurationSeconds);
   assert.equal(DEFAULT_SESSION_SETTINGS.flagHoldSeconds, FLAG_MODE_DEFAULTS.flagHoldSeconds);
   assert.equal(getGearDamage("power_blaster"), HEAVY_GUN_DAMAGE);
-  assert.equal(getGearDamage("power_blaster"), 100);
+  assert.equal(getGearDamage("power_blaster"), 80);
   assert.equal(getGearFireCooldownMs("power_blaster"), HEAVY_GUN_COOLDOWN_MS);
   assert.equal(getGearFireCooldownMs("power_blaster") > 1200, true);
   assert.equal(getGearZoomFovMultiplier("power_blaster") < 1, true);
@@ -1003,7 +1003,7 @@ test("speed shoes increase server-authoritative movement distance", () => {
   });
 
   assert.equal(normal.x, 22);
-  assert.equal(Number(boosted.x.toFixed(2)), 25.3);
+  assert.equal(Number(boosted.x.toFixed(2)), 28.6);
 });
 
 test("zero authoritative speed blocks position changes", () => {
@@ -1403,8 +1403,8 @@ test("AWP damage does not freeze a player with a warm vest in one hit", () => {
   const result = resolveTagAction({ attacker, target: vestTarget });
   assert.deepEqual(result, {
     ok: true,
-    damage: 100,
-    nextHealth: 50,
+    damage: 80,
+    nextHealth: 70,
     eliminated: false,
     moneyAwarded: 0,
     scoreDelta: 0
@@ -1416,7 +1416,7 @@ test("weapon slot survives independent vest and shoe purchases", () => {
   assert.equal(getPlayerWeaponId(player), "power_blaster");
   assert.deepEqual(getPlayerPerks(player), ["shield_vest"]);
   assert.equal(getPlayerHealthMax(player), 150);
-  assert.equal(getPlayerMoveSpeedMultiplier({ ...player, perks: ["shield_vest", "speed_shoes"] }), 1.15);
+  assert.equal(getPlayerMoveSpeedMultiplier({ ...player, perks: ["shield_vest", "speed_shoes"] }), 1.3);
   const vest = GEAR_ITEMS.find((item) => item.id === "shield_vest")!;
   const shoes = GEAR_ITEMS.find((item) => item.id === "speed_shoes")!;
   const vestPurchase = resolveGearPurchase({ player, gear: vest, requireBase: false });

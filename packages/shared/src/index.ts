@@ -622,15 +622,15 @@ export const FLAG_MODE_DEFAULTS = {
   flagHoldSeconds: 30
 } as const;
 
-export const HEAVY_GUN_DAMAGE = 100;
+export const HEAVY_GUN_DAMAGE = 80;
 export const HEAVY_GUN_COOLDOWN_MS = 1500;
-export const HEAVY_GUN_RANGE = 120;
+export const HEAVY_GUN_RANGE = 150;
 export const HEAVY_GUN_UNSCOPED_HIT_RADIUS = 0.52;
 export const HEAVY_GUN_SCOPED_HIT_RADIUS = 0.82;
 export const HEAVY_GUN_DEEP_SCOPED_HIT_RADIUS = 0.98;
 export const HEAVY_GUN_ZOOM_LEVEL_0_FOV = 72;
-export const HEAVY_GUN_ZOOM_LEVEL_1_FOV = 46;
-export const HEAVY_GUN_ZOOM_LEVEL_2_FOV = 30;
+export const HEAVY_GUN_ZOOM_LEVEL_1_FOV = 40;
+export const HEAVY_GUN_ZOOM_LEVEL_2_FOV = 20;
 export const FLAG_INTERACTION_RADIUS = 7;
 export const QUICK_BLASTER_RANGE = 48;
 export const QUICK_BLASTER_COOLDOWN_MS = 250;
@@ -841,9 +841,9 @@ export const GEAR_ITEMS: GearItem[] = [
   {
     id: "quick_blaster",
     name: "Quick Snowball Launcher",
-    cost: 3000,
+    cost: 4000,
     description: "Automatic launcher with a controlled fire rhythm.",
-    damage: 22,
+    damage: 25,
     range: QUICK_BLASTER_RANGE,
     fireCooldownMs: QUICK_BLASTER_COOLDOWN_MS,
     autoFire: true
@@ -851,7 +851,7 @@ export const GEAR_ITEMS: GearItem[] = [
   {
     id: "power_blaster",
     name: "Heavy Snowball Launcher",
-    cost: 6000,
+    cost: 9000,
     description: "High-focus launcher with a deliberate rhythm, long reach, and C-key or right-click scope.",
     damage: HEAVY_GUN_DAMAGE,
     range: HEAVY_GUN_RANGE,
@@ -875,11 +875,11 @@ export const GEAR_ITEMS: GearItem[] = [
     id: "speed_shoes",
     name: "Speed Boots",
     cost: 1500,
-    description: "+15% walk, sprint, and crouch speed.",
+    description: "+30% walk, sprint, and crouch speed.",
     damage: 15,
     range: STARTER_BLASTER_RANGE,
     fireCooldownMs: 160,
-    speedBonus: 0.15
+    speedBonus: 0.3
   }
 ];
 
@@ -1925,7 +1925,7 @@ export const getPlayerHealthMax = (player: Pick<PlayerSession, "gear" | "perks">
   DEFAULT_PLAYER_HEALTH + (hasPlayerPerk(player, "shield_vest") ? 50 : 0);
 
 export const getPlayerMoveSpeedMultiplier = (player: Pick<PlayerSession, "gear" | "weapon" | "perks">): number =>
-  Number((getGearMoveSpeedMultiplier(getPlayerWeaponId(player)) * (hasPlayerPerk(player, "speed_shoes") ? 1.15 : 1)).toFixed(2));
+  Number((getGearMoveSpeedMultiplier(getPlayerWeaponId(player)) * (hasPlayerPerk(player, "speed_shoes") ? getGearMoveSpeedMultiplier("speed_shoes") : 1)).toFixed(2));
 
 export type ArenaObstacle =
   | { id: string; kind: "rect"; x: number; z: number; width: number; depth: number; jumpable?: boolean; minY?: number; maxY?: number }

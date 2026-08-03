@@ -326,6 +326,7 @@ export default function ArenaPreview({
   const sceneSessionId = session?.id ?? "training";
   const currentPlayerId = currentPlayer?.id ?? "";
   const currentPlayerTeam = currentPlayer?.team ?? "blue";
+  const currentWeaponId = currentPlayer ? getPlayerWeaponId(currentPlayer) : "starter_blaster";
   const arenaMapId: ArenaMapId = session?.settings.mapId ?? "desert_citadel";
   const arenaMap = getArenaMap(arenaMapId);
   const isIronJunction = arenaMapId === "iron_junction";
@@ -2530,7 +2531,9 @@ export default function ArenaPreview({
       )}
       {view === "fps" && (
         <>
-          <div className={`${hitPulse % 2 === 0 ? "crosshair" : "crosshair fire"}${zoomLevel > 0 ? ` zoom zoom-level-${zoomLevel}` : ""}`} aria-hidden="true" />
+          {(currentWeaponId !== "power_blaster" || zoomLevel > 0) && (
+            <div className={`${hitPulse % 2 === 0 ? "crosshair" : "crosshair fire"}${zoomLevel > 0 ? ` zoom zoom-level-${zoomLevel}` : ""}`} aria-hidden="true" />
+          )}
           {zoomLevel > 0 && (
             <div key={`${zoomLevel}-${zoomPulse}`} className={`scope-overlay scope-level-${zoomLevel} scope-pulse`} aria-hidden="true">
               <span>Heavy Scope</span>
