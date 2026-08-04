@@ -74,6 +74,22 @@ test("teacher creates and publishes a tournament study-first bracket", async ({ 
   await page.getByRole("button", { name: /Publish tournament/ }).click();
   await expect(page.getByText("Registration open")).toBeVisible();
 
+  const invitationResponse = await request.post(`/api/tournaments/${tournament.id}/invitations`, { headers: { Authorization: `Bearer ${fixture.token}` } });
+  expect(invitationResponse.status()).toBe(201);
+  const invitation = await invitationResponse.json() as { link: string };
+  await page.goto(invitation.link);
+  await expect(page.getByRole("heading", { name: title })).toBeVisible();
+  await page.getByLabel("Team name").fill("Invited Scholars");
+  await page.getByLabel("School name").fill("East School");
+  await page.getByLabel(/Roster display names/).fill("Yui, Hana");
+  await page.getByRole("button", { name: "Submit team registration" }).click();
+  await expect(page.getByText("Registration received")).toBeVisible();
+  await page.goto("/quiz-strike");
+  await expect(page.getByRole("button", { name: "Teacher Dashboard" })).toBeVisible();
+  await page.getByRole("button", { name: "Teacher Dashboard" }).click();
+  await page.getByRole("button", { name: "Tournaments", exact: true }).click();
+  await expect(page.getByRole("heading", { name: title })).toBeVisible();
+
   await page.getByRole("button", { name: "Study pack", exact: true }).click();
   await page.getByRole("button", { name: "Release now" }).click();
   await expect(page.getByText("Study pack released.")).toBeVisible();
@@ -84,18 +100,13 @@ test("teacher creates and publishes a tournament study-first bracket", async ({ 
   await page.getByPlaceholder(/Roster display names/).fill("Aki, Ren");
   await page.getByRole("button", { name: "Add team" }).click();
   await expect(page.getByText("Blue Scholars")).toBeVisible();
-  await page.getByPlaceholder("Team name").fill("Red Runners");
-  await page.getByPlaceholder("School name").fill("South School");
-  await page.getByPlaceholder(/Roster display names/).fill("Mio, Kai");
-  await page.getByRole("button", { name: "Add team" }).click();
-  await expect(page.getByText("Red Runners")).toBeVisible();
 
   await page.getByRole("button", { name: "Overview", exact: true }).click();
   await page.getByRole("button", { name: /Generate bracket/ }).click();
   await expect(page.getByText("Bracket is ready")).toBeVisible();
   await page.getByRole("button", { name: "Bracket", exact: true }).click();
   await expect(page.getByText("Single elimination")).toBeVisible();
-  await expect(page.getByRole("button", { name: "Blue Scholars - Red Runners" })).toBeVisible();
+  await expect(page.getByRole("button", { name: "Invited Scholars - Blue Scholars" })).toBeVisible();
 
   await page.goto(`/tournament-study/${tournament.id}`);
   await expect(page.getByText("Official study pack")).toBeVisible();

@@ -149,6 +149,7 @@ export type Tournament = {
   quizSetId: string;
   quizSetName: string;
   rules: OfficialMatchSettings;
+  invitationCodes?: string[];
   studyPack?: TournamentStudyPack;
   teams: TournamentTeam[];
   matches: TournamentMatch[];
@@ -214,7 +215,8 @@ export const sanitizeStudyItems = (value: unknown, nextId: () => string): Tourna
 };
 
 export const publicStudyPack = (pack: TournamentStudyPack | undefined, at = new Date()) => {
-  if (!pack || new Date(pack.releaseAt).getTime() > at.getTime()) return undefined;
+  const releaseAt = pack ? new Date(pack.releaseAt).getTime() : Number.NaN;
+  if (!pack || !Number.isFinite(releaseAt) || releaseAt > at.getTime()) return undefined;
   return {
     releaseAt: pack.releaseAt,
     releasedAt: pack.releasedAt,
@@ -222,6 +224,14 @@ export const publicStudyPack = (pack: TournamentStudyPack | undefined, at = new 
       id, term, pronunciation, meaning, example, note, sortOrder
     }))
   };
+};
+
+export const isStudyPackReleased = (tournament: Pick<Tournament, "status" | "studyPack">, at = new Date()) => {
+  const pack = tournament.studyPack;
+  if (!pack || tournament.status === "DRAFT" || tournament.status === "CANCELLED") return false;
+  if (pack.releasedAt) return true;
+  const releaseAt = new Date(pack.releaseAt).getTime();
+  return Number.isFinite(releaseAt) && releaseAt <= at.getTime();
 };
 
 export const publicTeam = (team: TournamentTeam) => ({
@@ -267,8 +277,12 @@ export const publicTournament = (tournament: Tournament, at = new Date()) => ({
     teamBName: tournament.teams.find((team) => team.id === match.teamBId)?.teamName,
     scheduledAt: match.scheduledAt,
     status: match.status,
-    sessionCode: match.sessionCode,
-    result: match.result,
+    result: match.result ? {
+      teamAScore: match.result.teamAScore,
+      teamBScore: match.result.teamBScore,
+      winnerTeamId: match.result.winnerTeamId,
+      learning: match.result.learning
+    } : undefined,
     winnerTeamId: match.winnerTeamId
   })),
   championTeamId: tournament.championTeamId,
@@ -305,6 +319,7 @@ const sourceMatch = (matches: TournamentMatch[], round: number, position: number
 const isResolved = (match: TournamentMatch) => Boolean(match.winnerTeamId) && (match.status === "BYE" || match.status === "COMPLETED" || match.status === "FORFEIT");
 
 const propagateKnownWinners = (tournament: Tournament) => {
+  const checkedIn = (teamId: string) => tournament.teams.some((team) => team.id === teamId && team.checkedIn);
   const maxRound = Math.max(...tournament.matches.map((match) => match.roundNumber));
   for (let round = 2; round <= maxRound; round += 1) {
     const matchesInRound = tournament.matches.filter((match) => match.roundNumber === round);
@@ -313,8 +328,14 @@ const propagateKnownWinners = (tournament: Tournament) => {
       const right = sourceMatch(tournament.matches, round - 1, match.bracketPosition * 2);
       const leftWinner = left && isResolved(left) ? left.winnerTeamId : undefined;
       const rightWinner = right && isResolved(right) ? right.winnerTeamId : undefined;
-      if (leftWinner) match.teamAId = leftWinner;
-      if (rightWinner) match.teamBId = rightWinner;
+      if (leftWinner) {
+        match.teamAId = leftWinner;
+        if (checkedIn(leftWinner) && !match.checkedInTeamIds.includes(leftWinner)) match.checkedInTeamIds.push(leftWinner);
+      }
+      if (rightWinner) {
+        match.teamBId = rightWinner;
+        if (checkedIn(rightWinner) && !match.checkedInTeamIds.includes(rightWinner)) match.checkedInTeamIds.push(rightWinner);
+      }
       if (match.teamAId && !match.teamBId && right && !right.teamAId && !right.teamBId && isResolved(left ?? { status: "SCHEDULED" } as TournamentMatch)) {
         match.status = "BYE";
         match.winnerTeamId = match.teamAId;
@@ -354,6 +375,7 @@ export const generateSingleEliminationBracket = (tournament: Tournament, at = ne
       if (round === 1) {
         match.teamAId = sortedTeams[(position - 1) * 2]?.id;
         match.teamBId = sortedTeams[(position - 1) * 2 + 1]?.id;
+        match.checkedInTeamIds = [match.teamAId, match.teamBId].filter((teamId): teamId is string => Boolean(teamId && tournament.teams.find((team) => team.id === teamId)?.checkedIn));
         if (match.teamAId && !match.teamBId) {
           match.status = "BYE";
           match.winnerTeamId = match.teamAId;
@@ -374,6 +396,7 @@ export const generateSingleEliminationBracket = (tournament: Tournament, at = ne
 export const advanceMatchWinner = (tournament: Tournament, match: TournamentMatch, winnerTeamId: string, at = new Date()) => {
   if (!match.teamAId || !match.teamBId || ![match.teamAId, match.teamBId].includes(winnerTeamId)) return { ok: false as const, error: "Winner must be one of the participating teams." };
   if (match.status === "COMPLETED" || match.status === "FORFEIT") return { ok: false as const, error: "This match already has a verified result." };
+  if (match.status === "BYE" || match.status === "CANCELLED") return { ok: false as const, error: "This match is not available for a played result." };
   match.winnerTeamId = winnerTeamId;
   match.status = "COMPLETED";
   match.updatedAt = at.toISOString();
@@ -406,8 +429,11 @@ export const verifySessionResult = ({
 }) => {
   if (session.status !== "ended") return { ok: false as const, error: "The official QuizStrike session has not ended yet." };
   if (!match.teamAId || !match.teamBId) return { ok: false as const, error: "Both match participants must be known before linking a result." };
-  const teamAScore = session.roundWins?.blue ?? session.players?.filter((player) => player.team === "blue").reduce((sum, player) => sum + player.score, 0) ?? 0;
-  const teamBScore = session.roundWins?.red ?? session.players?.filter((player) => player.team === "red").reduce((sum, player) => sum + player.score, 0) ?? 0;
+  const playerScoreA = session.players?.filter((player) => player.team === "blue").reduce((sum, player) => sum + player.score, 0) ?? 0;
+  const playerScoreB = session.players?.filter((player) => player.team === "red").reduce((sum, player) => sum + player.score, 0) ?? 0;
+  const hasDecisiveRoundWins = session.roundWins !== undefined && session.roundWins.blue !== session.roundWins.red;
+  const teamAScore = hasDecisiveRoundWins ? session.roundWins!.blue : playerScoreA;
+  const teamBScore = hasDecisiveRoundWins ? session.roundWins!.red : playerScoreB;
   if (teamAScore === teamBScore) return { ok: false as const, error: "The server result is tied; resolve the match through a supported game outcome before advancing." };
   const winnerTeamId = teamAScore > teamBScore ? match.teamAId : match.teamBId;
   const runnerUpTeamId = winnerTeamId === match.teamAId ? match.teamBId : match.teamAId;

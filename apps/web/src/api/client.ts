@@ -178,6 +178,7 @@ export const tournamentApi = {
   saveStudyPack: (id: string, body: Record<string, unknown>) => api(`/api/tournaments/${encodeURIComponent(id)}/study-pack`, { method: "POST", body: JSON.stringify(body) }),
   releaseStudyPack: (id: string) => api(`/api/tournaments/${encodeURIComponent(id)}/study-pack/release`, { method: "POST" }),
   createInvitation: (id: string) => api(`/api/tournaments/${encodeURIComponent(id)}/invitations`, { method: "POST" }),
+  invitationDetails: (id: string, code: string) => api(`/api/tournament-invitations/${encodeURIComponent(id)}?code=${encodeURIComponent(code)}`),
   addTeam: (id: string, body: Record<string, unknown>) => api(`/api/tournaments/${encodeURIComponent(id)}/teams`, { method: "POST", body: JSON.stringify(body) }),
   approveTeam: (id: string, teamId: string) => api(`/api/tournaments/${encodeURIComponent(id)}/teams/${encodeURIComponent(teamId)}/approve`, { method: "POST" }),
   checkInTeam: (id: string, teamId: string) => api(`/api/tournaments/${encodeURIComponent(id)}/teams/${encodeURIComponent(teamId)}/check-in`, { method: "POST" }),

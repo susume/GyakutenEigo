@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useMemo, useState, type FormEvent, type ReactNode } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState, type FormEvent, type ReactNode } from "react";
 import { QRCodeSVG } from "qrcode.react";
 import {
   ArrowLeft,
@@ -79,7 +79,7 @@ type Tournament = {
   sponsorMessage?: string;
   sponsorUrl?: string;
   rules: TournamentRules;
-  studyPack?: { id: string; releaseAt: string; items: StudyItem[]; releasedAt?: string };
+  studyPack?: { id: string; releaseAt: string; items: StudyItem[]; releasedAt?: string; updatedAt?: string };
   teams: Team[];
   matches: Match[];
   championTeamId?: string;
@@ -260,7 +260,18 @@ function TournamentDashboard({ tournament, auditEvents, quizSets, onBack, onRelo
   const [matchCode, setMatchCode] = useState<Record<string, string>>({});
   const [teamDraft, setTeamDraft] = useState({ teamName: "", schoolName: "", className: "", roster: "", substitutes: "" });
   const [studyDraft, setStudyDraft] = useState<StudyItem[]>(tournament.studyPack?.items ?? []);
+  const studyItemsRef = useRef<StudyItem[]>(tournament.studyPack?.items ?? []);
+  studyItemsRef.current = tournament.studyPack?.items ?? [];
   const teamById = useMemo(() => new Map<string, Team>(tournament.teams.map((team) => [team.id, team])), [tournament.teams]);
+  useEffect(() => {
+    setTab("overview");
+    setMessage("");
+    setError("");
+    setInvitation("");
+    setMatchCode({});
+    setTeamDraft({ teamName: "", schoolName: "", className: "", roster: "", substitutes: "" });
+    setStudyDraft(studyItemsRef.current);
+  }, [tournament.id, tournament.studyPack?.updatedAt]);
   const refresh = async () => { await onReload(); };
   const action = async (fn: () => Promise<unknown>, success: string) => {
     setBusy(true); setError(""); setMessage("");
@@ -285,6 +296,7 @@ function TournamentDashboard({ tournament, auditEvents, quizSets, onBack, onRelo
           roundCount: rules.roundCount,
           flagHoldSeconds: rules.flagHoldSeconds,
           teamAssignment: rules.teamAssignment,
+          initialZombieCount: rules.initialZombieCount,
           startingMoney: rules.startingMoney,
           startingSnowballs: rules.startingSnowballs,
           correctAnswerReward: rules.correctAnswerReward,

@@ -88,7 +88,7 @@ import {
 } from "@quizstrike/shared";
 import { ApiError, authApi, fetchDecalAsset, getTeacherToken, studentApi, teacherApi } from "../../api/client";
 import { createMultiplayerSocket } from "../multiplayer/connection";
-import { buildStudentJoinUrl, getJoinCodeFromSearch, modeForRoute, normalizeRoutePath, type AppMode } from "../../navigation";
+import { buildStudentJoinUrl, getJoinCodeFromSearch, getTournamentInvitationCodeFromSearch, modeForRoute, normalizeRoutePath, type AppMode } from "../../navigation";
 import { getModeScoreSummary, getSessionResultText, getZombieCounts } from "../../sessionPresentation";
 import { formatStudentJoinError } from "../../studentJoinErrors";
 import { getShopShortcut } from "../../shopShortcuts";
@@ -99,6 +99,7 @@ import QuizStrikeLogo from "../../ui/QuizStrikeLogo";
 import TeacherDecalGallery from "../../ui/TeacherDecalGallery";
 import CompetitionHub, { OrganizerWorkspace } from "./competition/CompetitionHub";
 import TournamentCenter from "./tournament/TournamentCenter";
+import TournamentRegistrationPage from "./tournament/TournamentRegistrationPage";
 import TournamentStudyPage from "./tournament/TournamentStudyPage";
 import { ARENA_MAPS, getArenaMap } from "../../game/arenaMaps";
 import {
@@ -159,6 +160,7 @@ const STUDENT_SESSION_STORAGE_KEY = "quizstrike_student_session";
 const STUDENT_APPEARANCE_STORAGE_KEY = "quizstrike_student_appearance_v1";
 const COSMETIC_PROGRESS_STORAGE_KEY = "quizstrike_cosmetic_progress_v1";
 const TEACHER_FOLDER_SELECTION_STORAGE_KEY = "quizstrike_teacher_folder_selection_v1";
+const TOURNAMENT_TEACHER_RETURN_KEY = "quizstrike_tournament_teacher_return";
 
 const readStoredStudentSession = (): StoredStudentSession | null => {
   try {
@@ -579,6 +581,8 @@ export default function App() {
   const isQuizStrikeRoute = routePath === "/quiz-strike" || routePath.startsWith("/quiz-strike/");
   const isCharacterLabRoute = routePath === "/character-lab";
   const isTournamentStudyRoute = routePath.startsWith("/tournament-study/");
+  const isTournamentRegistrationRoute = /^\/quiz-strike\/tournaments\/[^/]+\/register$/.test(routePath);
+  const tournamentRegistrationId = isTournamentRegistrationRoute ? routePath.split("/")[3] ?? "" : "";
   const isCharacterLabAvailable = import.meta.env.DEV;
   const [mode, setMode] = useState<AppMode>(() => modeForRoute(routePath));
   const [teacher, setTeacher] = useState<TeacherUser | null>(null);
@@ -586,11 +590,13 @@ export default function App() {
   const [isMobileNavOpen, setIsMobileNavOpen] = useState(false);
   const [apiWakeState, setApiWakeState] = useState<ApiWakeState>("waking");
 
-  const navigateTo = useCallback((nextPath: string, nextMode = modeForRoute(normalizeRoutePath(nextPath))) => {
-    const normalizedPath = normalizeRoutePath(nextPath);
-    if (window.location.pathname !== normalizedPath) window.history.pushState(null, "", normalizedPath);
+  const navigateTo = useCallback((nextPath: string, nextMode?: AppMode) => {
+    const target = new URL(nextPath, window.location.origin);
+    const normalizedPath = normalizeRoutePath(target.pathname);
+    const targetUrl = `${normalizedPath}${target.search}${target.hash}`;
+    if (window.location.pathname !== normalizedPath || window.location.search !== target.search || window.location.hash !== target.hash) window.history.pushState(null, "", targetUrl);
     setRoutePath(normalizedPath);
-    setMode(nextMode);
+    setMode(nextMode ?? modeForRoute(normalizedPath));
     setIsMobileNavOpen(false);
   }, []);
 
@@ -705,7 +711,13 @@ export default function App() {
         onOpenCompetitions={() => navigateTo("/quiz-strike", "quizStrike")}
       />}
       {mode === "quizStrike" && routePath === "/quiz-strike/organizer" && <OrganizerWorkspace teacher={teacher} onNavigate={navigateTo} />}
-      {mode === "quizStrike" && routePath !== "/quiz-strike/organizer" && <QuizStrikeLanding
+      {mode === "quizStrike" && isTournamentRegistrationRoute && <TournamentRegistrationPage
+        tournamentId={decodeURIComponent(tournamentRegistrationId)}
+        invitationCode={getTournamentInvitationCodeFromSearch(window.location.search)}
+        teacher={teacher}
+        onTeacherLogin={() => { sessionStorage.setItem(TOURNAMENT_TEACHER_RETURN_KEY, `${window.location.pathname}${window.location.search}`); setTeacherAuthMode("login"); navigateTo("/quiz-strike", "teacher"); }}
+      />}
+      {mode === "quizStrike" && routePath !== "/quiz-strike/organizer" && !isTournamentRegistrationRoute && <QuizStrikeLanding
         teacher={teacher}
         slug={routePath.startsWith("/quiz-strike/competitions/") ? decodeURIComponent(routePath.slice("/quiz-strike/competitions/".length)) : undefined}
         onNavigate={navigateTo}
@@ -716,7 +728,9 @@ export default function App() {
       {mode === "teacher" &&
         (teacher ? <TeacherDashboard teacher={teacher} onLogout={logout} /> : <TeacherAuth apiWakeState={apiWakeState} initialMode={teacherAuthMode} onAuthed={(user) => {
           setTeacher(user);
-          navigateTo("/quiz-strike", "teacher");
+          const returnTo = sessionStorage.getItem(TOURNAMENT_TEACHER_RETURN_KEY);
+          sessionStorage.removeItem(TOURNAMENT_TEACHER_RETURN_KEY);
+          navigateTo(returnTo ?? "/quiz-strike", returnTo ? "quizStrike" : "teacher");
         }} />)}
       {mode === "student" && <StudentExperience onExit={() => navigateTo("/quiz-strike", "quizStrike")} />}
     </main>

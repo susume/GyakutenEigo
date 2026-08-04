@@ -5,6 +5,9 @@ export const normalizeRoutePath = (path: string) => (path === "/" ? path : path.
 export const getJoinCodeFromSearch = (search: string) =>
   new URLSearchParams(search).get("code")?.trim().toUpperCase() ?? "";
 
+export const getTournamentInvitationCodeFromSearch = (search: string) =>
+  new URLSearchParams(search).get("code")?.trim().toUpperCase() ?? "";
+
 export const buildStudentJoinUrl = (origin: string, sessionCode: string) =>
   `${origin.replace(/\/$/, "")}/join?code=${encodeURIComponent(sessionCode.trim().toUpperCase())}`;
 

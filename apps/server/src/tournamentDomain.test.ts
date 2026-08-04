@@ -5,7 +5,9 @@ import {
   advanceMatchWinner,
   canManageTournament,
   generateSingleEliminationBracket,
+  isStudyPackReleased,
   nextBracketSize,
+  publicTournament,
   publicStudyPack,
   sanitizeSponsorUrl,
   sanitizeStudyItems,
@@ -102,6 +104,25 @@ test("study pack and sponsor URL are sanitized for public use", () => {
   assert.equal(sanitizeSponsorUrl("https://school.example/sponsor"), "https://school.example/sponsor");
 });
 
+test("scheduled study packs stay private until a published tournament reaches release", () => {
+  const pack = { id: "pack", releaseAt: new Date(now.getTime() - 60_000).toISOString(), items: [], updatedAt: now.toISOString() };
+  assert.equal(isStudyPackReleased({ status: "DRAFT", studyPack: pack }, now), false);
+  assert.equal(isStudyPackReleased({ status: "REGISTRATION_OPEN", studyPack: pack }, now), true);
+  assert.equal(isStudyPackReleased({ status: "CANCELLED", studyPack: pack }, now), false);
+});
+
+test("public tournament matches omit private room and report identifiers", () => {
+  const item = tournament([team("A"), team("B")]);
+  const [match] = generateSingleEliminationBracket(item, now);
+  assert.ok(match);
+  match.sessionCode = "SECRET";
+  match.result = { teamAScore: 3, teamBScore: 1, winnerTeamId: "A", sourceSessionId: "session-1", reportId: "report-1", verifiedAt: now.toISOString() };
+  const publicView = publicTournament(item, now);
+  assert.equal("sessionCode" in (publicView.matches[0] ?? {}), false);
+  assert.equal("reportId" in ((publicView.matches[0]?.result ?? {}) as Record<string, unknown>), false);
+  assert.equal("sourceSessionId" in ((publicView.matches[0]?.result ?? {}) as Record<string, unknown>), false);
+});
+
 test("status transitions and tournament ownership are explicit", () => {
   const item = tournament([]);
   assert.equal(validStatusTransition("DRAFT", "REGISTRATION_OPEN"), true);
@@ -120,4 +141,26 @@ test("verified result reads scores from the completed QuizStrike session", () =>
     assert.equal(verified.result.winnerTeamId, "A");
     assert.equal(verified.result.sourceSessionId, "session-1");
   }
+});
+
+test("verified result falls back to authoritative player scores when round wins are tied", () => {
+  const item = tournament([team("A"), team("B")]);
+  const [match] = generateSingleEliminationBracket(item, now);
+  assert.ok(match);
+  const verified = verifySessionResult({
+    tournament: item,
+    match,
+    session: {
+      id: "session-2",
+      status: "ended",
+      roundWins: { blue: 0, red: 0 },
+      players: [
+        { team: "blue", score: 12, correctAnswers: 1, wrongAnswers: 0 },
+        { team: "red", score: 4, correctAnswers: 1, wrongAnswers: 0 }
+      ]
+    },
+    at: now
+  });
+  assert.equal(verified.ok, true);
+  if (verified.ok) assert.equal(verified.result.winnerTeamId, "A");
 });
