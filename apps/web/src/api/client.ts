@@ -190,6 +190,12 @@ export const teacherApi = {
     api(`/api/quiz-sets/${quizSetId}/questions`, { method: "POST", body: JSON.stringify(body) }),
   updateQuestion: (questionId: string, body: Record<string, string>) =>
     api(`/api/questions/${questionId}`, { method: "PUT", body: JSON.stringify(body) }),
+  uploadQuestionAudio: (questionId: string, audio: Blob) =>
+    api(`/api/questions/${questionId}/audio`, {
+      method: "POST",
+      headers: { "Content-Type": audio.type || "audio/webm" },
+      body: audio
+    }),
   deleteQuestion: (questionId: string) => api(`/api/questions/${questionId}`, { method: "DELETE" }),
   createSession: (body: { quizSetId: string; classId?: string; settings?: Partial<SessionSettings> }) =>
     api("/api/sessions", { method: "POST", body: JSON.stringify(body) }),

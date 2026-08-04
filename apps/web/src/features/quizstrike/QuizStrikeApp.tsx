@@ -18,6 +18,7 @@ import {
   HeartPulse,
   LogOut,
   Link2,
+  Mic,
   Package,
   Play,
   Plus,
@@ -25,6 +26,7 @@ import {
   Settings,
   Shield,
   Snowflake,
+  Square,
   Target,
   Timer,
   Trash2,
@@ -1617,7 +1619,100 @@ function QuizManager({ data, onRefresh, initialQuizSetId, startInCreateMode = fa
   const [isCreatingQuiz, setIsCreatingQuiz] = useState(false);
   const [isAddingQuestion, setIsAddingQuestion] = useState(false);
   const [isImporting, setIsImporting] = useState(false);
+  const [recordingState, setRecordingState] = useState<"idle" | "recording" | "ready">("idle");
+  const [recordingSeconds, setRecordingSeconds] = useState(0);
+  const [recordingError, setRecordingError] = useState("");
+  const [recordedAudio, setRecordedAudio] = useState<{ blob: Blob; previewUrl: string } | null>(null);
+  const mediaRecorderRef = useRef<MediaRecorder | null>(null);
+  const recordingStreamRef = useRef<MediaStream | null>(null);
+  const recordingChunksRef = useRef<BlobPart[]>([]);
+  const recordingTimerRef = useRef<number | null>(null);
+  const recordingLimitTimerRef = useRef<number | null>(null);
   const status = useAsyncMessage();
+
+  const clearRecordingTimers = () => {
+    if (recordingTimerRef.current !== null) window.clearInterval(recordingTimerRef.current);
+    if (recordingLimitTimerRef.current !== null) window.clearTimeout(recordingLimitTimerRef.current);
+    recordingTimerRef.current = null;
+    recordingLimitTimerRef.current = null;
+  };
+
+  const discardRecordedAudio = () => {
+    setRecordedAudio((current) => {
+      if (current) URL.revokeObjectURL(current.previewUrl);
+      return null;
+    });
+    setRecordingState("idle");
+    setRecordingSeconds(0);
+  };
+
+  const stopVoiceRecording = () => {
+    const recorder = mediaRecorderRef.current;
+    if (!recorder || recorder.state === "inactive") return;
+    recorder.stop();
+  };
+
+  const startVoiceRecording = async () => {
+    if (recordingState === "recording") {
+      stopVoiceRecording();
+      return;
+    }
+    if (!navigator.mediaDevices?.getUserMedia || typeof MediaRecorder === "undefined") {
+      setRecordingError("Voice recording is not supported by this browser.");
+      return;
+    }
+
+    setRecordingError("");
+    discardRecordedAudio();
+    try {
+      const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
+      const mimeType = ["audio/webm;codecs=opus", "audio/webm", "audio/ogg;codecs=opus", "audio/mp4"]
+        .find((candidate) => MediaRecorder.isTypeSupported(candidate));
+      const recorder = new MediaRecorder(stream, mimeType ? { mimeType } : undefined);
+      recordingStreamRef.current = stream;
+      mediaRecorderRef.current = recorder;
+      recordingChunksRef.current = [];
+      recorder.ondataavailable = (event) => {
+        if (event.data.size > 0) recordingChunksRef.current.push(event.data);
+      };
+      recorder.onerror = () => {
+        setRecordingError("The browser could not finish this recording. Please try again.");
+      };
+      recorder.onstop = () => {
+        clearRecordingTimers();
+        recordingStreamRef.current?.getTracks().forEach((track) => track.stop());
+        recordingStreamRef.current = null;
+        mediaRecorderRef.current = null;
+        const chunks = recordingChunksRef.current;
+        recordingChunksRef.current = [];
+        if (chunks.length === 0) {
+          setRecordingState("idle");
+          return;
+        }
+        const blob = new Blob(chunks, { type: recorder.mimeType || mimeType || "audio/webm" });
+        setRecordedAudio({ blob, previewUrl: URL.createObjectURL(blob) });
+        setRecordingState("ready");
+      };
+      recorder.start();
+      setRecordingSeconds(0);
+      setRecordingState("recording");
+      recordingTimerRef.current = window.setInterval(() => setRecordingSeconds((seconds) => seconds + 1), 1_000);
+      recordingLimitTimerRef.current = window.setTimeout(stopVoiceRecording, 60_000);
+    } catch {
+      recordingStreamRef.current?.getTracks().forEach((track) => track.stop());
+      recordingStreamRef.current = null;
+      mediaRecorderRef.current = null;
+      setRecordingState("idle");
+      setRecordingError("Microphone access was denied or unavailable. Check the browser permission and try again.");
+    }
+  };
+
+  useEffect(() => () => {
+    clearRecordingTimers();
+    mediaRecorderRef.current?.stop();
+    recordingStreamRef.current?.getTracks().forEach((track) => track.stop());
+    if (recordedAudio) URL.revokeObjectURL(recordedAudio.previewUrl);
+  }, [recordedAudio]);
 
   useEffect(() => {
     if (initialQuizSetId) {
@@ -1655,12 +1750,23 @@ function QuizManager({ data, onRefresh, initialQuizSetId, startInCreateMode = fa
     status.clear();
     setIsAddingQuestion(true);
     try {
-      if (editingQuestionId) await teacherApi.updateQuestion(editingQuestionId, questionForm);
-      else await teacherApi.addQuestion(selectedQuiz.id, questionForm);
+      const wasEditing = Boolean(editingQuestionId);
+      const payload = wasEditing
+        ? await teacherApi.updateQuestion(editingQuestionId!, questionForm)
+        : await teacherApi.addQuestion(selectedQuiz.id, questionForm);
+      const savedQuestion = (payload as { question?: QuizSet["questions"][number] }).question;
+      if (recordedAudio && savedQuestion) {
+        // Saving the question first gives a new question a stable ID for its
+        // durable audio asset. If upload fails, leave the form and recording
+        // in place so the teacher can retry without losing the clip.
+        if (!wasEditing) setEditingQuestionId(savedQuestion.id);
+        await teacherApi.uploadQuestionAudio(savedQuestion.id, recordedAudio.blob);
+      }
       setQuestionForm(emptyQuestion);
       setEditingQuestionId(null);
+      discardRecordedAudio();
       await onRefresh();
-      status.setMessage(editingQuestionId ? "Question updated." : "Question added.");
+      status.setMessage(wasEditing ? "Question updated." : "Question added.");
     } catch (err) {
       status.report(err);
     } finally {
@@ -1669,6 +1775,8 @@ function QuizManager({ data, onRefresh, initialQuizSetId, startInCreateMode = fa
   };
 
   const beginEditingQuestion = (question: QuizSet["questions"][number]) => {
+    discardRecordedAudio();
+    setRecordingError("");
     setEditingQuestionId(question.id);
     setQuestionForm({
       prompt: question.prompt,
@@ -1691,6 +1799,7 @@ function QuizManager({ data, onRefresh, initialQuizSetId, startInCreateMode = fa
       if (editingQuestionId === questionId) {
         setEditingQuestionId(null);
         setQuestionForm(emptyQuestion);
+        discardRecordedAudio();
       }
       await onRefresh();
       status.setMessage("Question deleted.");
@@ -1882,18 +1991,41 @@ function QuizManager({ data, onRefresh, initialQuizSetId, startInCreateMode = fa
               <label>
                 Question Audio URL <small>(optional)</small>
                 <input
-                  type="url"
+                  type="text"
+                  inputMode="url"
                   value={questionForm.audioUrl}
                   onChange={(event) => setQuestionForm({ ...questionForm, audioUrl: event.target.value })}
-                  placeholder="https://example.com/question-audio.mp3"
+                  placeholder="https://example.com/question-audio.mp3 or /audio/question.mp3"
                 />
               </label>
+              <div className="question-audio-recorder">
+                <div className="question-audio-recorder-actions">
+                  <button
+                    type="button"
+                    className={recordingState === "recording" ? "recording-button" : ""}
+                    onClick={() => void startVoiceRecording()}
+                    disabled={isAddingQuestion || recordingState === "ready"}
+                  >
+                    {recordingState === "recording" ? <Square size={16} aria-hidden="true" /> : <Mic size={17} aria-hidden="true" />}
+                    {recordingState === "recording" ? `Stop recording (${String(Math.floor(recordingSeconds / 60)).padStart(2, "0")}:${String(recordingSeconds % 60).padStart(2, "0")})` : "Record voice"}
+                  </button>
+                  {recordedAudio && (
+                    <button type="button" onClick={discardRecordedAudio} disabled={isAddingQuestion}>
+                      <Trash2 size={16} aria-hidden="true" />
+                      Discard recording
+                    </button>
+                  )}
+                </div>
+                <small>Record up to 60 seconds. The clip uploads when you save the question and replaces its audio URL.</small>
+                {recordedAudio && <audio controls preload="metadata" src={recordedAudio.previewUrl} aria-label="Recorded question audio preview" />}
+                {recordingError && <span className="field-error">{recordingError}</span>}
+              </div>
               <div className="question-form-actions">
                 <button className="primary" type="submit" disabled={isAddingQuestion}>
                   <Plus size={18} aria-hidden="true" />
                   {isAddingQuestion ? "Working..." : editingQuestionId ? "Update Question" : "Add Question"}
                 </button>
-                {editingQuestionId && <button type="button" onClick={() => { setEditingQuestionId(null); setQuestionForm(emptyQuestion); }}>Cancel edit</button>}
+                {editingQuestionId && <button type="button" onClick={() => { setEditingQuestionId(null); setQuestionForm(emptyQuestion); discardRecordedAudio(); }}>Cancel edit</button>}
               </div>
             </form>
             <ul className="question-list">

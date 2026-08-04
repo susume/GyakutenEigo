@@ -228,6 +228,32 @@ export class NormalizedLibrary {
     if (result.count !== 1) throw new Error("Question ownership validation failed.");
   }
 
+  async saveQuestionAudioForTeacher(teacherId: string, questionId: string, mimeType: string, data: Buffer) {
+    const question = await this.prisma.question.findFirst({
+      where: { id: questionId, quizSet: { teacherId } },
+      select: { id: true }
+    });
+    const persistedData = Uint8Array.from(data);
+    if (!question) throw new Error("Question audio ownership validation failed.");
+    await this.prisma.questionAudio.upsert({
+      where: { questionId },
+      create: { questionId, mimeType, data: persistedData },
+      update: { mimeType, data: persistedData }
+    });
+  }
+
+  async getQuestionAudio(questionId: string): Promise<{ mimeType: string; data: Buffer } | undefined> {
+    const audio = await this.prisma.questionAudio.findUnique({
+      where: { questionId },
+      select: { mimeType: true, data: true }
+    });
+    return audio ? { mimeType: audio.mimeType, data: Buffer.from(audio.data) } : undefined;
+  }
+
+  async deleteQuestionAudio(questionId: string) {
+    await this.prisma.questionAudio.deleteMany({ where: { questionId } });
+  }
+
   async deleteQuestionForTeacher(teacherId: string, questionId: string) {
     const result = await this.prisma.question.deleteMany({
       where: { id: questionId, quizSet: { teacherId } }

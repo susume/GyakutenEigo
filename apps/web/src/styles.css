@@ -2097,6 +2097,42 @@ small {
   min-width: 220px;
 }
 
+.question-audio small {
+  color: #a43b2c;
+  font-weight: 700;
+}
+
+.question-audio-recorder {
+  display: grid;
+  gap: 8px;
+  margin: -4px 0 16px;
+  padding: 12px;
+  border: 1px solid #d7e3f2;
+  border-radius: 12px;
+  background: #f7fbff;
+}
+
+.question-audio-recorder-actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+}
+
+.question-audio-recorder audio {
+  width: min(100%, 420px);
+}
+
+.recording-button {
+  background: #fff0ed;
+  color: #a43b2c;
+  border-color: #efb1a8;
+}
+
+.field-error {
+  color: #a43b2c;
+  font-weight: 700;
+}
+
 .answer-grid {
   display: grid;
   gap: 10px;

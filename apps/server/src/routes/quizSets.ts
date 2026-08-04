@@ -22,6 +22,7 @@ export type QuizSetRouteDependencies = {
   now: () => string;
   id: () => string;
   schedulePersistence: () => void;
+  deleteQuestionAudio: (questionId: string) => Promise<void>;
 };
 
 export const registerQuizSetMutationRoutes = (app: Express, dependencies: QuizSetRouteDependencies) => {
@@ -33,7 +34,8 @@ export const registerQuizSetMutationRoutes = (app: Express, dependencies: QuizSe
     folders,
     sessions,
     schedulePersistence,
-    now
+    now,
+    deleteQuestionAudio
   } = dependencies;
 
   app.patch("/api/quiz-sets/:id", requireTeacher, async (req: AuthenticatedRequest, res) => {
@@ -87,6 +89,7 @@ export const registerQuizSetMutationRoutes = (app: Express, dependencies: QuizSe
       return;
     }
     if (normalizedLibrary) await normalizedLibrary.deleteQuizSet(quiz.teacherId, quiz.id);
+    await Promise.all(quiz.questions.map((question) => deleteQuestionAudio(question.id)));
     dependencies.quizSets.delete(quiz.id);
     schedulePersistence();
     res.json({ deletedQuizSetId: quiz.id });

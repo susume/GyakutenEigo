@@ -1,6 +1,8 @@
+import { useEffect, useState } from "react";
 import type { Choice, GameSession, PlayerSession, PublicQuestion } from "@quizstrike/shared";
 import { RESPAWN_CORRECT_ANSWERS_REQUIRED, ZOMBIE_HUMAN_CORRECT_ENERGY } from "@quizstrike/shared";
 import { Volume2 } from "lucide-react";
+import { getApiUrl } from "../../../api/client";
 
 const choices: Choice[] = ["A", "B", "C", "D"];
 
@@ -17,7 +19,13 @@ export default function QuizPanel({
   onAnswer: (choice: Choice) => void;
   answeringChoice: Choice | null;
 }) {
+  const [audioError, setAudioError] = useState(false);
+  useEffect(() => setAudioError(false), [question?.id, question?.audioUrl]);
+
   if (!question) return <div className="panel"><p>No quiz question is available yet.</p></div>;
+  const audioSource = question.audioUrl?.startsWith("/api/")
+    ? `${getApiUrl()}${question.audioUrl}`
+    : question.audioUrl;
   const reward = session.settings.gameMode === "zombie" && player.role !== "zombie"
     ? `+${ZOMBIE_HUMAN_CORRECT_ENERGY} running energy`
     : player.isAlive || session.settings.deadPlayersEarnMoney
@@ -43,7 +51,8 @@ export default function QuizPanel({
         <div className="question-audio">
           <Volume2 size={18} aria-hidden="true" />
           <span>Listen</span>
-          <audio controls preload="metadata" src={question.audioUrl} aria-label="Question audio" />
+          <audio controls preload="metadata" src={audioSource} aria-label="Question audio" onError={() => setAudioError(true)} />
+          {audioError && <small role="status">Audio is unavailable right now.</small>}
         </div>
       )}
       <div className="answer-grid">

@@ -20,7 +20,7 @@ import {
   type TeacherLibraryRouteDependencies
 } from "./routes/teacherLibrary.js";
 import { registerQuizSetCreationRoutes, registerQuizSetMutationRoutes, type QuizSetRouteDependencies } from "./routes/quizSets.js";
-import { registerQuestionRoutes, type QuestionRouteDependencies } from "./routes/questions.js";
+import { registerQuestionRoutes, type QuestionAudioAsset, type QuestionRouteDependencies } from "./routes/questions.js";
 import { registerReportRoutes, type ReportRouteDependencies } from "./routes/reports.js";
 import { registerSessionRoutes, type SessionRouteDependencies } from "./routes/sessionRoutes.js";
 import { registerPlayerRoutes, type PlayerRouteDependencies } from "./routes/playerRoutes.js";
@@ -218,6 +218,7 @@ const renewRoomAuthorities = () => roomAuthority.renewAll();
 const users = new Map<string, StoredUser>();
 const classes = new Map<string, ClassSummary & { teacherId: string }>();
 const quizSets = new Map<string, QuizSet>();
+const questionAudioAssets = new Map<string, QuestionAudioAsset>();
 const folders = new Map<string, QuizFolder>();
 const sessions = new InMemoryRoomStateStore<GameSession>();
 const joinCodeDirectory = new InMemoryJoinCodeDirectory();
@@ -1204,13 +1205,34 @@ const quizSetRouteDependencies: QuizSetRouteDependencies = {
   isChoice,
   now,
   id,
-  schedulePersistence
+  schedulePersistence,
+  deleteQuestionAudio: async (questionId) => {
+    questionAudioAssets.delete(questionId);
+    if (normalizedLibrary) await normalizedLibrary.deleteQuestionAudio(questionId);
+  }
 };
 const questionRouteDependencies: QuestionRouteDependencies = {
   requireTeacher,
   getQuizQuestion,
   assertTeacherOwnsQuiz,
   normalizedLibrary,
+  getQuestionAudio: async (questionId) => {
+    const inMemoryAudio = questionAudioAssets.get(questionId);
+    if (inMemoryAudio) return inMemoryAudio;
+    const durableAudio = normalizedLibrary ? await normalizedLibrary.getQuestionAudio(questionId) : undefined;
+    if (durableAudio) questionAudioAssets.set(questionId, durableAudio);
+    return durableAudio;
+  },
+  saveQuestionAudio: async (teacherId, questionId, asset) => {
+    if (normalizedLibrary) {
+      await normalizedLibrary.saveQuestionAudioForTeacher(teacherId, questionId, asset.mimeType, asset.data);
+    }
+    questionAudioAssets.set(questionId, asset);
+  },
+  deleteQuestionAudio: async (questionId) => {
+    questionAudioAssets.delete(questionId);
+    if (normalizedLibrary) await normalizedLibrary.deleteQuestionAudio(questionId);
+  },
   routeParam,
   isChoice,
   schedulePersistence
