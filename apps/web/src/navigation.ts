@@ -1,4 +1,4 @@
-export type AppMode = "home" | "quizStrike" | "teacher" | "student" | "characterLab";
+export type AppMode = "home" | "quizStrike" | "teacher" | "student" | "characterLab" | "tournamentStudy";
 
 export const normalizeRoutePath = (path: string) => (path === "/" ? path : path.replace(/\/$/, ""));
 
@@ -11,6 +11,8 @@ export const buildStudentJoinUrl = (origin: string, sessionCode: string) =>
 export const modeForRoute = (routePath: string): AppMode =>
   routePath === "/character-lab"
     ? "characterLab"
+    : routePath.startsWith("/tournament-study/")
+      ? "tournamentStudy"
     : routePath === "/join" || routePath === "/game"
       ? "student"
       : routePath === "/quiz-strike" || routePath.startsWith("/quiz-strike/")

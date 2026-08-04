@@ -45,6 +45,8 @@ bot decisions, or round mutation logic.
 | `apps/server/src/routes/questions.ts` | Question creation and updates |
 | `apps/server/src/routes/reports.ts` | Report retrieval, deletion, and export |
 | `apps/server/src/routes/sessionRoutes.ts` | Session creation, start/end, and round commands |
+| `apps/server/src/routes/tournamentRoutes.ts` | Teacher-owned tournament setup, study projections, teams, brackets, official room locking, and result linking |
+| `apps/server/src/tournamentDomain.ts` | Tournament statuses, sanitized study items, deterministic brackets, byes, advancement, and verified result rules |
 | `apps/server/src/routes/playerRoutes.ts` | Student join, teams, answers, purchases, and combat commands |
 | `apps/server/src/routes/appearanceRoutes.ts` | Appearance policy, decals, moderation, and player appearance operations |
 | `apps/server/src/botRuntime.ts` | Bot state, decisions, movement, firing, respawn, and the bot tick |
@@ -80,7 +82,7 @@ focused modules:
 ### Teacher workspace and spectator flow
 
 The `/quiz-strike` teacher workspace is organized around a persistent left
-navigation rail for Library, Reports, and Settings. Live setup is a three-part
+navigation rail for Library, Reports, Tournaments, and Settings. Live setup is a three-part
 teacher flow:
 
 1. **Game Mode**: choose Zombie, Tag, or Flag.
@@ -105,6 +107,14 @@ This is presentation state only. It does not add a Socket.IO command, mutate a
 player, or bypass the server's ownership and authority checks. If there is only
 one eligible learner, the picker remains available and Previous/Next are
 intentionally disabled.
+
+The Tournament Center is HTTP-driven and intentionally does not mount the
+Three.js arena or create another Socket.IO connection. A tournament references
+the existing quiz set and GameSession, records a per-match rules snapshot at
+official-room attachment, and derives results from completed server-owned
+session state. Public study pages use a sanitized projection and a server-side
+release check. The MVP bracket is single elimination with deterministic 2/4/8/16
+capacity and automatic byes.
 
 The scene setup has one render loop. Cleanup stops the loop, removes browser
 listeners, unsubscribes VFX and animation handlers, disposes pooled/static

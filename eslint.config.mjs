@@ -12,6 +12,7 @@ export default tseslint.config(
       "**/playwright-report/**",
       "**/test-results/**",
       "apps/web/public/**",
+      ".tools/**",
       "prisma/migrations/**",
     ],
   },

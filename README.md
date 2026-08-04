@@ -83,6 +83,9 @@ hosts must serve 'index.html' for these paths.
   session creation, join links, and classroom controls.
 - Teacher workspace navigation with Library, Reports, and Settings; completed
   game history can be reviewed, exported, individually deleted, or cleared.
+- Teacher-owned Tournament Center with study packs, QR/share links, team
+  approval, deterministic single-elimination brackets, official room locking,
+  and server-verified result linking.
 - Three-step live setup with Zombie, Tag, and Flag modes, map selection, arena
   rules, and advanced settings for tuning the experience to a class.
 - Student join/rejoin with private player tokens and classroom-safe nicknames.
@@ -230,6 +233,7 @@ The production cutover and backup record is documented in
 - [Production database migration](docs/supabase-database-migration.md)
 - [Runtime snapshot migration](docs/runtime-snapshot-migration.md)
 - [Teacher library and reports](docs/teacher-library.md)
+- [Tournament Center](docs/tournament-center.md)
 - [Online hosting runbook](docs/online-play.md)
 - [Protocol contract](packages/shared/PROTOCOL.md)
 - [Phases 7-10 implementation report](docs/phases-7-10-implementation-report.md)

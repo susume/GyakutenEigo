@@ -91,6 +91,7 @@ model User {
   folders      Folder[]
   sessions     GameSession[]
   reports      Report[]
+  tournaments  Tournament[]
   createdAt    DateTime      @default(now())
   updatedAt    DateTime      @updatedAt
 }
@@ -122,6 +123,7 @@ model QuizSet {
   questions    Question[]
   sessions     GameSession[]
   reports      Report[]
+  tournaments  Tournament[]
   createdAt    DateTime      @default(now())
   updatedAt    DateTime      @updatedAt
 
@@ -193,6 +195,7 @@ model GameSession {
   updatedAt    DateTime        @updatedAt
   startedAt    DateTime?
   endedAt      DateTime?
+  tournamentMatch TournamentMatch?
 
   @@index([teacherId, status])
 }
@@ -421,4 +424,161 @@ model CompetitionAuditLog {
   competition   Competition @relation(fields: [competitionId], references: [id], onDelete: Cascade)
 
   @@index([competitionId, createdAt])
+}
+
+enum TournamentStatus {
+  DRAFT
+  REGISTRATION_OPEN
+  STUDY_PACK_RELEASED
+  CHECK_IN
+  LIVE
+  COMPLETED
+  CANCELLED
+}
+
+enum TournamentLevel {
+  SCHOOL_VS_SCHOOL
+  CLASS_VS_CLASS
+  IN_SCHOOL
+  INVITATIONAL
+  SPONSORED
+}
+
+enum TournamentTeamStatus {
+  PENDING
+  APPROVED
+  REJECTED
+}
+
+enum TournamentMatchStatus {
+  SCHEDULED
+  CHECK_IN
+  LIVE
+  COMPLETED
+  BYE
+  FORFEIT
+  CANCELLED
+}
+
+model Tournament {
+  id                    String           @id @default(cuid())
+  slug                  String           @unique
+  ownerId               String
+  owner                 User             @relation(fields: [ownerId], references: [id], onDelete: Cascade)
+  title                 String
+  description           String           @default("")
+  sponsorName           String?
+  sponsorMessage        String?
+  sponsorUrl            String?
+  level                 TournamentLevel
+  status                TournamentStatus @default(DRAFT)
+  tournamentAt          DateTime
+  registrationDeadline  DateTime
+  timeZone              String           @default("Asia/Tokyo")
+  maximumTeams          Int
+  quizSetId             String?
+  quizSet               QuizSet?         @relation(fields: [quizSetId], references: [id], onDelete: SetNull)
+  quizSetName           String
+  rulesJson             Json
+  invitationCodesJson   Json             @default("[]")
+  championTeamId        String?
+  runnerUpTeamId        String?
+  publishedAt           DateTime?
+  createdAt             DateTime         @default(now())
+  updatedAt             DateTime         @updatedAt
+  studyPack             TournamentStudyPack?
+  teams                 TournamentTeam[]
+  matches               TournamentMatch[]
+  auditEvents           TournamentAuditEvent[]
+
+  @@index([ownerId, status])
+  @@index([status, tournamentAt])
+  @@index([registrationDeadline])
+}
+
+model TournamentStudyPack {
+  id           String                 @id @default(cuid())
+  tournamentId String                 @unique
+  tournament   Tournament             @relation(fields: [tournamentId], references: [id], onDelete: Cascade)
+  releaseAt    DateTime
+  releasedAt   DateTime?
+  createdAt    DateTime               @default(now())
+  updatedAt    DateTime               @updatedAt
+  items        TournamentStudyItem[]
+}
+
+model TournamentStudyItem {
+  id          String               @id @default(cuid())
+  studyPackId String
+  studyPack   TournamentStudyPack @relation(fields: [studyPackId], references: [id], onDelete: Cascade)
+  term        String
+  pronunciation String?
+  meaning     String?
+  example     String?
+  note        String?
+  sortOrder   Int
+
+  @@index([studyPackId, sortOrder])
+}
+
+model TournamentTeam {
+  id                   String                @id @default(cuid())
+  tournamentId         String
+  tournament            Tournament            @relation(fields: [tournamentId], references: [id], onDelete: Cascade)
+  teamName             String
+  schoolName           String
+  className            String?
+  managerUserId        String
+  managerName          String
+  schoolLocation       String?
+  rosterJson           Json
+  substitutesJson      Json
+  color                String                @default("blue")
+  registrationStatus   TournamentTeamStatus  @default(PENDING)
+  checkedIn            Boolean               @default(false)
+  createdAt            DateTime              @default(now())
+  updatedAt            DateTime              @updatedAt
+
+  @@index([tournamentId, registrationStatus])
+  @@index([managerUserId])
+}
+
+model TournamentMatch {
+  id                    String                 @id @default(cuid())
+  tournamentId          String
+  tournament             Tournament             @relation(fields: [tournamentId], references: [id], onDelete: Cascade)
+  roundNumber           Int
+  roundLabel            String
+  bracketPosition       Int
+  teamAId               String?
+  teamBId               String?
+  scheduledAt           DateTime
+  status                TournamentMatchStatus @default(SCHEDULED)
+  checkedInTeamIdsJson  Json                  @default("[]")
+  gameSessionId         String?                @unique
+  gameSession            GameSession?          @relation(fields: [gameSessionId], references: [id], onDelete: SetNull)
+  sessionCode           String?
+  settingsSnapshotJson  Json?
+  settingsLockedAt      DateTime?
+  resultJson            Json?
+  winnerTeamId          String?
+  createdAt             DateTime               @default(now())
+  updatedAt             DateTime               @updatedAt
+
+  @@index([tournamentId, roundNumber, bracketPosition])
+  @@index([tournamentId, scheduledAt])
+  @@index([sessionCode])
+}
+
+model TournamentAuditEvent {
+  id           String     @id @default(cuid())
+  tournamentId String
+  tournament   Tournament @relation(fields: [tournamentId], references: [id], onDelete: Cascade)
+  actorUserId  String
+  actorName    String
+  action       String
+  reason       String?
+  createdAt    DateTime   @default(now())
+
+  @@index([tournamentId, createdAt])
 }

@@ -45,6 +45,8 @@ import { RoomAuthority } from "./realtime/roomAuthority.js";
 import { createCompetitionState } from "./routes/competitionRoutes.js";
 import { registerCompetitionRoutes } from "./routes/competitionRoutes.js";
 import { scheduleCompetitionNotifications, type Competition, type CompetitionAuditLog, type CompetitionNotification } from "./competitionDomain.js";
+import { createTournamentState, type Tournament, type TournamentAuditEvent } from "./tournamentDomain.js";
+import { registerTournamentRoutes } from "./routes/tournamentRoutes.js";
 import {
   IdempotentEventConsumer,
   InMemoryJoinCodeDirectory,
@@ -226,6 +228,7 @@ const answers: AnswerLog[] = [];
 type StoredReport = ReportMetadata & { report: SessionReport };
 const reports = new Map<string, StoredReport>();
 const competitionState = createCompetitionState({ id: "official-quizstrike", name: "QuizStrike Classroom" });
+const tournamentState = createTournamentState();
 const playerQuestionHistory = new Map<string, Set<string>>();
 const playerQuestionGate = new PlayerQuestionGate();
 const quizRateLimits = new Map<string, number[]>();
@@ -303,6 +306,8 @@ type PersistedRuntimeState = {
   competitions?: Competition[];
   competitionNotifications?: CompetitionNotification[];
   competitionAuditLogs?: CompetitionAuditLog[];
+  tournaments?: Tournament[];
+  tournamentAuditEvents?: TournamentAuditEvent[];
 };
 
 const runtimeSnapshotId = "primary";
@@ -312,7 +317,9 @@ const getPersistedRuntimeState = (): PersistedRuntimeState => ({
   answers: [...answers],
   competitions: [...competitionState.competitions.values()],
   competitionNotifications: [...competitionState.notifications.values()],
-  competitionAuditLogs: [...competitionState.auditLogs]
+  competitionAuditLogs: [...competitionState.auditLogs],
+  tournaments: [...tournamentState.tournaments.values()],
+  tournamentAuditEvents: [...tournamentState.auditEvents]
 });
 
 const persistenceScheduler = new PersistenceScheduler({
@@ -340,6 +347,8 @@ const hydrateRuntimeState = async () => {
   const savedCompetitions = Array.isArray(state.competitions) ? state.competitions : [];
   const savedCompetitionNotifications = Array.isArray(state.competitionNotifications) ? state.competitionNotifications : [];
   const savedCompetitionAuditLogs = Array.isArray(state.competitionAuditLogs) ? state.competitionAuditLogs : [];
+  const savedTournaments = Array.isArray(state.tournaments) ? state.tournaments : [];
+  const savedTournamentAuditEvents = Array.isArray(state.tournamentAuditEvents) ? state.tournamentAuditEvents : [];
 
   users.clear();
   classes.clear();
@@ -349,6 +358,8 @@ const hydrateRuntimeState = async () => {
   joinCodeDirectory.clear();
   answers.length = 0;
   reports.clear();
+  tournamentState.tournaments.clear();
+  tournamentState.auditEvents.length = 0;
   if (savedCompetitions.length > 0) {
     competitionState.competitions.clear();
     for (const competition of savedCompetitions) if (competition?.id && competition?.slug) competitionState.competitions.set(competition.id, competition);
@@ -357,6 +368,8 @@ const hydrateRuntimeState = async () => {
     competitionState.auditLogs.length = 0;
     competitionState.auditLogs.push(...savedCompetitionAuditLogs.filter((log) => log?.id && log?.competitionId));
   }
+  for (const tournament of savedTournaments) if (tournament?.id && tournament?.slug) tournamentState.tournaments.set(tournament.id, tournament);
+  tournamentState.auditEvents.push(...savedTournamentAuditEvents.filter((event) => event?.id && event?.tournamentId));
 
   // Normalized rows are authoritative for durable teacher data. Snapshot rows
   // are a temporary compatibility fallback only when backfill has not created
@@ -1170,6 +1183,21 @@ registerCompetitionRoutes(app, {
   canReadOfficialSession: (code, token) => {
     const session = getSessionByCode(code);
     return session?.players.find((player) => !player.isBot && hasPlayerAccess(session, player, token))?.nickname;
+  }
+});
+
+registerTournamentRoutes(app, {
+  requireTeacher,
+  getBearerUser,
+  state: tournamentState,
+  now,
+  id,
+  schedulePersistence,
+  assertTeacherOwnsQuiz,
+  getSessionByCode,
+  getStoredSessionReport: async (session) => {
+    const durable = await normalizedLibrary?.getReportForSession(session.teacherId, session.id);
+    return durable ? { metadata: { id: durable.metadata.id }, report: durable.report } : undefined;
   }
 });
 

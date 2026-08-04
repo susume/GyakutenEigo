@@ -30,6 +30,7 @@ import {
   Target,
   Timer,
   Trash2,
+  Trophy,
   Users,
   WifiOff,
   WandSparkles,
@@ -97,6 +98,8 @@ import PublicHomepage from "../../ui/PublicHomepage";
 import QuizStrikeLogo from "../../ui/QuizStrikeLogo";
 import TeacherDecalGallery from "../../ui/TeacherDecalGallery";
 import CompetitionHub, { OrganizerWorkspace } from "./competition/CompetitionHub";
+import TournamentCenter from "./tournament/TournamentCenter";
+import TournamentStudyPage from "./tournament/TournamentStudyPage";
 import { ARENA_MAPS, getArenaMap } from "../../game/arenaMaps";
 import {
   CHARACTER_STRESS_COUNTS,
@@ -575,6 +578,7 @@ export default function App() {
   const isGameRoute = routePath === "/game";
   const isQuizStrikeRoute = routePath === "/quiz-strike" || routePath.startsWith("/quiz-strike/");
   const isCharacterLabRoute = routePath === "/character-lab";
+  const isTournamentStudyRoute = routePath.startsWith("/tournament-study/");
   const isCharacterLabAvailable = import.meta.env.DEV;
   const [mode, setMode] = useState<AppMode>(() => modeForRoute(routePath));
   const [teacher, setTeacher] = useState<TeacherUser | null>(null);
@@ -622,7 +626,7 @@ export default function App() {
   }, []);
 
   useEffect(() => {
-    if (isJoinRoute || isGameRoute || isCharacterLabRoute || !isQuizStrikeRoute) return;
+    if (isJoinRoute || isGameRoute || isCharacterLabRoute || isTournamentStudyRoute || !isQuizStrikeRoute) return;
     if (!localStorage.getItem("quizstrike_token")) return;
     authApi
       .me()
@@ -631,7 +635,7 @@ export default function App() {
         setTeacher(data.user);
       })
       .catch(() => localStorage.removeItem("quizstrike_token"));
-  }, [isJoinRoute, isGameRoute, isQuizStrikeRoute, isCharacterLabRoute]);
+  }, [isJoinRoute, isGameRoute, isQuizStrikeRoute, isCharacterLabRoute, isTournamentStudyRoute]);
 
   const logout = () => {
     localStorage.removeItem("quizstrike_token");
@@ -707,6 +711,7 @@ export default function App() {
         onNavigate={navigateTo}
         onTeacherLogin={() => { setTeacherAuthMode("login"); navigateTo("/quiz-strike", "teacher"); }}
       />}
+      {mode === "tournamentStudy" && <TournamentStudyPage tournamentId={decodeURIComponent(routePath.slice("/tournament-study/".length))} />}
       {mode === "characterLab" && (isCharacterLabAvailable ? <CharacterLab /> : <InternalToolNotice onReturn={() => navigateTo("/quiz-strike", "quizStrike")} />)}
       {mode === "teacher" &&
         (teacher ? <TeacherDashboard teacher={teacher} onLogout={logout} /> : <TeacherAuth apiWakeState={apiWakeState} initialMode={teacherAuthMode} onAuthed={(user) => {
@@ -856,7 +861,7 @@ function CharacterLab() {
   );
 }
 
-function GyakutenEigoHome({ onOpenGame, onJoinGame }: { onOpenGame: () => void; onJoinGame: () => void }) {
+export function GyakutenEigoHome({ onOpenGame, onJoinGame }: { onOpenGame: () => void; onJoinGame: () => void }) {
   return (
     <div className="product-home rescued-home">
       <section className="site-home site-home-esports" aria-labelledby="quizstrike-home-title">
@@ -1120,7 +1125,7 @@ function TeacherAuth({
 }
 
 function TeacherDashboard({ teacher, onLogout }: { teacher: TeacherUser; onLogout: () => void }) {
-  const [tab, setTab] = useState<"home" | "quizzes" | "sessions" | "reports" | "settings">("home");
+  const [tab, setTab] = useState<"home" | "quizzes" | "sessions" | "reports" | "settings" | "tournaments">("home");
   const [activeSetupSection, setActiveSetupSection] = useState<SetupSection>("mode");
   const [quizManagerRequest, setQuizManagerRequest] = useState<{ quizSetId?: string; mode: "create" | "edit" }>({ mode: "create" });
   const [data, setData] = useState<DashboardPayload>({ classes: [], quizSets: [], sessions: [], folders: [], reports: [] });
@@ -1263,6 +1268,10 @@ function TeacherDashboard({ teacher, onLogout }: { teacher: TeacherUser; onLogou
             <button aria-current={tab === "reports" ? "page" : undefined} className={tab === "reports" ? "active" : ""} onClick={() => setTab("reports")}>
               Reports
             </button>
+            <button aria-current={tab === "tournaments" ? "page" : undefined} className={tab === "tournaments" ? "active" : ""} onClick={() => setTab("tournaments")}>
+              <Trophy size={17} aria-hidden="true" />
+              Tournaments
+            </button>
             <button aria-current={tab === "settings" ? "page" : undefined} className={tab === "settings" ? "active" : ""} onClick={() => setTab("settings")}>
               <Settings size={17} aria-hidden="true" />
               Settings
@@ -1342,6 +1351,7 @@ function TeacherDashboard({ teacher, onLogout }: { teacher: TeacherUser; onLogou
             audioOnly
           />
         )}
+        {tab === "tournaments" && <TournamentCenter teacher={teacher} quizSets={data.quizSets.map((quiz) => ({ id: quiz.id, title: quiz.title }))} />}
 
         {activeSessions.length > 0 && (
           <div className="live-rail">

@@ -169,6 +169,24 @@ export const competitionApi = {
   organizer: () => api("/api/organizer/competitions")
 };
 
+export const tournamentApi = {
+  list: () => api("/api/tournaments"),
+  detail: (id: string) => api(`/api/tournaments/${encodeURIComponent(id)}`),
+  create: (body: Record<string, unknown>) => api("/api/tournaments", { method: "POST", body: JSON.stringify(body) }),
+  update: (id: string, body: Record<string, unknown>) => api(`/api/tournaments/${encodeURIComponent(id)}`, { method: "PATCH", body: JSON.stringify(body) }),
+  publish: (id: string) => api(`/api/tournaments/${encodeURIComponent(id)}/publish`, { method: "POST" }),
+  saveStudyPack: (id: string, body: Record<string, unknown>) => api(`/api/tournaments/${encodeURIComponent(id)}/study-pack`, { method: "POST", body: JSON.stringify(body) }),
+  releaseStudyPack: (id: string) => api(`/api/tournaments/${encodeURIComponent(id)}/study-pack/release`, { method: "POST" }),
+  createInvitation: (id: string) => api(`/api/tournaments/${encodeURIComponent(id)}/invitations`, { method: "POST" }),
+  addTeam: (id: string, body: Record<string, unknown>) => api(`/api/tournaments/${encodeURIComponent(id)}/teams`, { method: "POST", body: JSON.stringify(body) }),
+  approveTeam: (id: string, teamId: string) => api(`/api/tournaments/${encodeURIComponent(id)}/teams/${encodeURIComponent(teamId)}/approve`, { method: "POST" }),
+  checkInTeam: (id: string, teamId: string) => api(`/api/tournaments/${encodeURIComponent(id)}/teams/${encodeURIComponent(teamId)}/check-in`, { method: "POST" }),
+  generateBracket: (id: string) => api(`/api/tournaments/${encodeURIComponent(id)}/bracket`, { method: "POST" }),
+  launchMatch: (id: string, matchId: string, sessionCode: string) => api(`/api/tournaments/${encodeURIComponent(id)}/matches/${encodeURIComponent(matchId)}/launch`, { method: "POST", body: JSON.stringify({ sessionCode }) }),
+  linkResult: (id: string, matchId: string) => api(`/api/tournaments/${encodeURIComponent(id)}/matches/${encodeURIComponent(matchId)}/link-result`, { method: "POST" }),
+  cancelMatch: (id: string, matchId: string, reason: string) => api(`/api/tournaments/${encodeURIComponent(id)}/matches/${encodeURIComponent(matchId)}/cancel`, { method: "POST", body: JSON.stringify({ reason }) })
+};
+
 export const teacherApi = {
   dashboard: () => api("/api/teacher/dashboard"),
   createClass: (body: { name: string; description?: string }) =>

@@ -16,8 +16,7 @@ import {
   Target,
   Timer,
   Trophy,
-  Users,
-  Zap
+  Users
 } from "lucide-react";
 
 type PublicHomepageProps = {

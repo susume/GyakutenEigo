@@ -31,6 +31,13 @@ Live Game Control. Spectator View uses a scrollable learner picker plus
 Previous/Next controls; it follows connected, alive, non-bot learners without
 sending gameplay commands.
 
+The workspace now also includes the Tournament Center MVP. It is teacher-owned
+and supports draft/publish setup, sanitized study packs with QR links, team
+approval, 2/4/8/16 single-elimination brackets with byes, official room
+attachment through the existing session creation flow, settings snapshots, and
+server-derived result linking. See [docs/tournament-center.md](docs/tournament-center.md)
+for the workflow and known limitations.
+
 Do not put production credentials in this file, chat, source, browser variables,
 or a committed environment file.
 
