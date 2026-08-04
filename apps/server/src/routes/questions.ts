@@ -1,5 +1,5 @@
 import type { Express, Request, RequestHandler } from "express";
-import type { Question, QuizSet, TeacherUser } from "@quizstrike/shared";
+import { isValidQuestionAudioUrl, type Question, type QuizSet, type TeacherUser } from "@quizstrike/shared";
 
 type AuthenticatedRequest = Request & { user?: TeacherUser };
 
@@ -40,6 +40,14 @@ export const registerQuestionRoutes = (app: Express, dependencies: QuestionRoute
       res.status(403).json({ error: "This question belongs to another teacher." });
       return;
     }
+    if (
+      req.body.audioUrl !== undefined
+      && req.body.audioUrl !== ""
+      && !isValidQuestionAudioUrl(req.body.audioUrl)
+    ) {
+      res.status(400).json({ error: "Audio URL must be an http(s) URL or a path on this site." });
+      return;
+    }
     if (isChoice(req.body.correctChoice)) question.correctChoice = req.body.correctChoice;
     question.prompt = String(req.body.prompt ?? question.prompt).trim();
     question.choiceA = String(req.body.choiceA ?? question.choiceA).trim();
@@ -48,6 +56,7 @@ export const registerQuestionRoutes = (app: Express, dependencies: QuestionRoute
     question.choiceD = String(req.body.choiceD ?? question.choiceD).trim();
     question.explanation = String(req.body.explanation ?? question.explanation ?? "").trim() || undefined;
     question.difficulty = String(req.body.difficulty ?? question.difficulty ?? "").trim() || undefined;
+    if (req.body.audioUrl !== undefined) question.audioUrl = String(req.body.audioUrl).trim() || undefined;
     if (normalizedLibrary) await normalizedLibrary.updateQuestionForTeacher(quiz.teacherId, question);
     schedulePersistence();
     res.json({ question, quizSet: quiz });

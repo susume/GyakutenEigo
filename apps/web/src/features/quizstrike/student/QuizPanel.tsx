@@ -1,5 +1,6 @@
 import type { Choice, GameSession, PlayerSession, PublicQuestion } from "@quizstrike/shared";
 import { RESPAWN_CORRECT_ANSWERS_REQUIRED, ZOMBIE_HUMAN_CORRECT_ENERGY } from "@quizstrike/shared";
+import { Volume2 } from "lucide-react";
 
 const choices: Choice[] = ["A", "B", "C", "D"];
 
@@ -38,6 +39,13 @@ export default function QuizPanel({
       </div>
       <p className="menu-timer-note">The round timer continues while this panel is open.</p>
       <p className="question-text">{question.prompt}</p>
+      {question.audioUrl && (
+        <div className="question-audio">
+          <Volume2 size={18} aria-hidden="true" />
+          <span>Listen</span>
+          <audio controls preload="metadata" src={question.audioUrl} aria-label="Question audio" />
+        </div>
+      )}
       <div className="answer-grid">
         {choices.map((choice, index) => (
           <button key={choice} onClick={() => onAnswer(choice)} disabled={Boolean(answeringChoice)}>

@@ -5,6 +5,7 @@ import {
   DEFAULT_PLAYER_HEALTH,
   FLAG_MODE_DEFAULTS,
   HEAVY_GUN_DAMAGE,
+  HEAVY_GUN_COST,
   HEAVY_GUN_COOLDOWN_MS,
   HEAVY_GUN_DEEP_SCOPED_HIT_RADIUS,
   HEAVY_GUN_RANGE,
@@ -49,6 +50,7 @@ import {
   getPlayerPerks,
   getPlayerWeaponId,
   getPlayerWeaponIdForMode,
+  isValidQuestionAudioUrl,
   getRoundResetLoadout,
   getArenaObstacles,
   getArenaGroundHeight,
@@ -114,6 +116,13 @@ const makePlayer = (overrides: Partial<PlayerSession> = {}): PlayerSession => ({
   gear: "starter_blaster",
   joinedAt: "2026-07-03T00:00:00.000Z",
   ...overrides
+});
+
+test("question audio URLs allow safe web and same-site sources", () => {
+  assert.equal(isValidQuestionAudioUrl("https://cdn.example.com/question.mp3"), true);
+  assert.equal(isValidQuestionAudioUrl("/audio/question.ogg"), true);
+  assert.equal(isValidQuestionAudioUrl("javascript:alert(1)"), false);
+  assert.equal(isValidQuestionAudioUrl("//external.example.com/audio.mp3"), false);
 });
 
 const makeSession = (overrides: Partial<GameSession> = {}): GameSession => ({
@@ -859,20 +868,61 @@ test("classic-style stores can allow weapon purchases away from a team base", ()
   });
 });
 
+test("elevated shooters can aim steeply enough at nearby lower-floor players", () => {
+  const upperAttacker = makePlayer({
+    id: "roof-attacker",
+    team: "blue",
+    x: 0,
+    y: 24 + ARENA_PLAYER_EYE_HEIGHT,
+    z: 0,
+    facing: -Math.PI / 2
+  });
+  const lowerTarget = makePlayer({
+    id: "nearby-lower-target",
+    team: "red",
+    x: 18,
+    y: ARENA_PLAYER_EYE_HEIGHT,
+    z: 0
+  });
+  const aimPitch = Math.atan2(Number(lowerTarget.y) - Number(upperAttacker.y), 18);
+
+  assert.equal(aimPitch >= ARENA_MIN_AIM_PITCH, true);
+  assert.deepEqual(
+    resolveProjectileTarget({
+      attacker: upperAttacker,
+      candidates: [lowerTarget],
+      obstacles: [],
+      range: 30,
+      aimPitch
+    }),
+    { ok: true, targetId: "nearby-lower-target" }
+  );
+});
+
+test("heavy launcher purchase deducts the full 9000 cost", () => {
+  const player = makePlayer({ money: 10000, gear: "starter_blaster", ...getTeamSpawn("blue") });
+  const gear = GEAR_ITEMS.find((item) => item.id === "power_blaster")!;
+
+  assert.equal(gear.cost, HEAVY_GUN_COST);
+  const result = resolveGearPurchase({ player, gear });
+  assert.equal(result.ok, true);
+  if (result.ok) assert.equal(result.nextMoney, 1000);
+});
+
 test("resolveGearPurchase cannot downgrade a purchased launcher to the default", () => {
   const player = makePlayer({ money: 9000, gear: "power_blaster", ...getTeamSpawn("blue") });
   const starter = GEAR_ITEMS.find((item) => item.id === "starter_blaster")!;
   assert.deepEqual(resolveGearPurchase({ player, gear: starter }), { ok: false, reason: "starter_weapon" });
 });
 
-test("warm vest adds 50 warmth when purchased in base", () => {
+test("warm vest adds 70 warmth when purchased in base", () => {
   const player = makePlayer({ money: 1000, health: DEFAULT_PLAYER_HEALTH, gear: "starter_blaster", ...getTeamSpawn("blue") });
   const gear = GEAR_ITEMS.find((item) => item.id === "shield_vest")!;
 
-  assert.equal(gear.healthBonus, 50);
+  assert.equal(gear.healthBonus, 70);
   const result = resolveGearPurchase({ player, gear });
   assert.equal(result.ok, true);
-  if (result.ok) assert.equal(result.nextHealth, 150);
+  if (result.ok) assert.equal(result.nextHealth, 170);
 });
 
 test("gear store items expose real combat and movement mechanics", () => {
@@ -888,8 +938,9 @@ test("gear store items expose real combat and movement mechanics", () => {
   assert.equal(getGearFireCooldownMs("quick_blaster") >= 240, true);
   assert.equal(isGearAutoFireEnabled("quick_blaster"), true);
   assert.equal(isGearAutoFireEnabled("starter_blaster"), false);
-  assert.equal(getGearDamage("starter_blaster"), 15);
-  assert.equal(getGearDamage("quick_blaster"), 25);
+  assert.equal(getGearDamage("starter_blaster"), 20);
+  assert.equal(getGearDamage("quick_blaster"), 20);
+  assert.equal(GEAR_ITEMS.find((item) => item.id === "speed_shoes")?.healthBonus, 30);
   assert.equal(getGearMoveSpeedMultiplier("speed_shoes"), 1.3);
   assert.equal(getGearZoomFovMultiplier("power_blaster") < getGearZoomFovMultiplier("starter_blaster"), true);
   assert.equal(getGearMoveSpeedMultiplier("unknown_gear"), 1);
@@ -953,7 +1004,7 @@ test("quick, starter, and heavy launchers all share projectile targeting with ge
   );
 });
 
-test("starter snowball hits remove 15 warmth", () => {
+test("starter snowball hits remove 20 warmth", () => {
   const attacker = makePlayer({ id: "attacker", team: "blue", gear: "starter_blaster", x: -1, z: 0 });
   const target = makePlayer({ id: "target", team: "red", health: 100, x: 2, z: 0 });
 
@@ -961,8 +1012,8 @@ test("starter snowball hits remove 15 warmth", () => {
 
   assert.deepEqual(result, {
     ok: true,
-    damage: 15,
-    nextHealth: 85,
+    damage: 20,
+    nextHealth: 80,
     eliminated: false,
     moneyAwarded: 0,
     scoreDelta: 0
@@ -1415,7 +1466,8 @@ test("weapon slot survives independent vest and shoe purchases", () => {
   const player = makePlayer({ gear: "power_blaster", weapon: "power_blaster", perks: ["shield_vest"] });
   assert.equal(getPlayerWeaponId(player), "power_blaster");
   assert.deepEqual(getPlayerPerks(player), ["shield_vest"]);
-  assert.equal(getPlayerHealthMax(player), 150);
+  assert.equal(getPlayerHealthMax(player), 170);
+  assert.equal(getPlayerHealthMax({ ...player, perks: ["shield_vest", "speed_shoes"] }), 200);
   assert.equal(getPlayerMoveSpeedMultiplier({ ...player, perks: ["shield_vest", "speed_shoes"] }), 1.3);
   const vest = GEAR_ITEMS.find((item) => item.id === "shield_vest")!;
   const shoes = GEAR_ITEMS.find((item) => item.id === "speed_shoes")!;

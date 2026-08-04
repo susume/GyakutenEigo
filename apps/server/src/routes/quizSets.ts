@@ -1,5 +1,5 @@
 import type { Express, Request, RequestHandler } from "express";
-import type { GameSession, Question, QuizFolder, QuizSet, TeacherUser } from "@quizstrike/shared";
+import { isValidQuestionAudioUrl, type GameSession, type Question, type QuizFolder, type QuizSet, type TeacherUser } from "@quizstrike/shared";
 
 type AuthenticatedRequest = Request & { user?: TeacherUser };
 
@@ -147,6 +147,14 @@ export const registerQuizSetCreationRoutes = (app: Express, dependencies: QuizSe
       res.status(400).json({ error: "Correct choice must be A, B, C, or D." });
       return;
     }
+    if (
+      req.body.audioUrl !== undefined
+      && req.body.audioUrl !== ""
+      && !isValidQuestionAudioUrl(req.body.audioUrl)
+    ) {
+      res.status(400).json({ error: "Audio URL must be an http(s) URL or a path on this site." });
+      return;
+    }
 
     const question: Question = {
       id: id(),
@@ -159,6 +167,9 @@ export const registerQuizSetCreationRoutes = (app: Express, dependencies: QuizSe
       correctChoice: req.body.correctChoice,
       explanation: String(req.body.explanation ?? "").trim() || undefined,
       difficulty: String(req.body.difficulty ?? "").trim() || undefined,
+      ...(typeof req.body.audioUrl === "string" && req.body.audioUrl.trim()
+        ? { audioUrl: req.body.audioUrl.trim() }
+        : {}),
       createdAt: now()
     };
 

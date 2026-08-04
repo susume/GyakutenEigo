@@ -2083,6 +2083,20 @@ small {
   font-weight: 800;
 }
 
+.question-audio {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  margin: 12px 0 16px;
+  color: #174a8b;
+  font-weight: 800;
+}
+
+.question-audio audio {
+  width: min(100%, 360px);
+  min-width: 220px;
+}
+
 .answer-grid {
   display: grid;
   gap: 10px;

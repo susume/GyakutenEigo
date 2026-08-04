@@ -97,8 +97,25 @@ export interface Question {
   correctChoice: Choice;
   explanation?: string;
   difficulty?: string;
+  /** Optional teacher-provided audio for reading or pronouncing the question. */
+  audioUrl?: string;
   createdAt: string;
 }
+
+export const QUESTION_AUDIO_URL_MAX_LENGTH = 2_048;
+
+export const isValidQuestionAudioUrl = (value: unknown): value is string => {
+  if (typeof value !== "string") return false;
+  const trimmed = value.trim();
+  if (!trimmed || trimmed.length > QUESTION_AUDIO_URL_MAX_LENGTH) return false;
+  if (trimmed.startsWith("/") && !trimmed.startsWith("//")) return true;
+  try {
+    const parsed = new URL(trimmed);
+    return parsed.protocol === "http:" || parsed.protocol === "https:";
+  } catch {
+    return false;
+  }
+};
 
 export type PublicQuestion = Omit<Question, "correctChoice">;
 
@@ -691,6 +708,7 @@ export const FLAG_MODE_DEFAULTS = {
   flagHoldSeconds: 30
 } as const;
 
+export const HEAVY_GUN_COST = 9000;
 export const HEAVY_GUN_DAMAGE = 80;
 export const HEAVY_GUN_COOLDOWN_MS = 1500;
 export const HEAVY_GUN_RANGE = 150;
@@ -704,6 +722,10 @@ export const FLAG_INTERACTION_RADIUS = 7;
 export const QUICK_BLASTER_RANGE = 48;
 export const QUICK_BLASTER_COOLDOWN_MS = 250;
 export const STARTER_BLASTER_RANGE = 36;
+export const STARTER_BLASTER_DAMAGE = 20;
+export const QUICK_BLASTER_DAMAGE = 20;
+export const WARM_VEST_HEALTH_BONUS = 70;
+export const SPEED_SHOES_HEALTH_BONUS = 30;
 
 export const DEFAULT_SESSION_SETTINGS: SessionSettings = {
   mapId: "desert_citadel",
@@ -903,7 +925,7 @@ export const GEAR_ITEMS: GearItem[] = [
     name: "Starter Snowball Launcher",
     cost: 0,
     description: "Steady launcher for close snow tags.",
-    damage: 15,
+    damage: STARTER_BLASTER_DAMAGE,
     range: STARTER_BLASTER_RANGE,
     fireCooldownMs: 160
   },
@@ -912,7 +934,7 @@ export const GEAR_ITEMS: GearItem[] = [
     name: "Quick Snowball Launcher",
     cost: 4000,
     description: "Automatic launcher with a controlled fire rhythm.",
-    damage: 25,
+    damage: QUICK_BLASTER_DAMAGE,
     range: QUICK_BLASTER_RANGE,
     fireCooldownMs: QUICK_BLASTER_COOLDOWN_MS,
     autoFire: true
@@ -920,7 +942,7 @@ export const GEAR_ITEMS: GearItem[] = [
   {
     id: "power_blaster",
     name: "Heavy Snowball Launcher",
-    cost: 9000,
+    cost: HEAVY_GUN_COST,
     description: "High-focus launcher with a deliberate rhythm, long reach, and C-key or right-click scope.",
     damage: HEAVY_GUN_DAMAGE,
     range: HEAVY_GUN_RANGE,
@@ -934,21 +956,22 @@ export const GEAR_ITEMS: GearItem[] = [
     id: "shield_vest",
     name: "Warm Vest",
     cost: 1000,
-    description: "+50 warmth for the current round.",
-    damage: 15,
+    description: "+70 warmth for the current round.",
+    damage: STARTER_BLASTER_DAMAGE,
     range: STARTER_BLASTER_RANGE,
     fireCooldownMs: 160,
-    healthBonus: 50
+    healthBonus: WARM_VEST_HEALTH_BONUS
   },
   {
     id: "speed_shoes",
     name: "Speed Boots",
     cost: 1500,
-    description: "+30% walk, sprint, and crouch speed.",
-    damage: 15,
+    description: "+30 warmth and 30% walk, sprint, and crouch speed.",
+    damage: STARTER_BLASTER_DAMAGE,
     range: STARTER_BLASTER_RANGE,
     fireCooldownMs: 160,
-    speedBonus: 0.3
+    speedBonus: 0.3,
+    healthBonus: SPEED_SHOES_HEALTH_BONUS
   }
 ];
 
@@ -1135,8 +1158,10 @@ export const TAG_OPPONENT_BONUS = 400;
 export const TAG_SCORE_DELTA = 5;
 export const TAG_RANGE = 18;
 export const SNOWBALL_HIT_RADIUS = 1.25;
-export const ARENA_MIN_AIM_PITCH = -0.85;
-export const ARENA_MAX_AIM_PITCH = 0.62;
+// Raised platforms can sit more than 20 units above nearby ground targets.
+// Keep enough vertical aim range for close-range shots between those floors.
+export const ARENA_MIN_AIM_PITCH = -1.2;
+export const ARENA_MAX_AIM_PITCH = 1.2;
 export const clampArenaAimPitch = (pitch: number | undefined) =>
   Number.isFinite(pitch)
     ? Math.max(ARENA_MIN_AIM_PITCH, Math.min(ARENA_MAX_AIM_PITCH, Number(pitch)))
@@ -1991,7 +2016,8 @@ export const hasPlayerPerk = (player: Pick<PlayerSession, "gear" | "perks">, per
   getPlayerPerks(player).includes(perkId);
 
 export const getPlayerHealthMax = (player: Pick<PlayerSession, "gear" | "perks">): number =>
-  DEFAULT_PLAYER_HEALTH + (hasPlayerPerk(player, "shield_vest") ? 50 : 0);
+  DEFAULT_PLAYER_HEALTH + (hasPlayerPerk(player, "shield_vest") ? (getGearItem("shield_vest")?.healthBonus ?? 0) : 0)
+    + (hasPlayerPerk(player, "speed_shoes") ? (getGearItem("speed_shoes")?.healthBonus ?? 0) : 0);
 
 export const getPlayerMoveSpeedMultiplier = (player: Pick<PlayerSession, "gear" | "weapon" | "perks">): number =>
   Number((getGearMoveSpeedMultiplier(getPlayerWeaponId(player)) * (hasPlayerPerk(player, "speed_shoes") ? getGearMoveSpeedMultiplier("speed_shoes") : 1)).toFixed(2));
@@ -2388,8 +2414,12 @@ export const resolveGearPurchase = ({
     return { ok: false, reason: "outside_base" };
   }
   if (player.money < gear.cost) return { ok: false, reason: "not_enough_money" };
+  const nextPerks = isPerkGearId(gear.id) ? [...getPlayerPerks(player), gear.id] : getPlayerPerks(player);
   const nextHealth = gear.healthBonus
-    ? Math.min(DEFAULT_PLAYER_HEALTH + gear.healthBonus, (player.health ?? DEFAULT_PLAYER_HEALTH) + gear.healthBonus)
+    ? Math.min(
+        getPlayerHealthMax({ ...player, perks: nextPerks }),
+        (player.health ?? DEFAULT_PLAYER_HEALTH) + gear.healthBonus
+      )
     : player.health;
   return {
     ok: true,

@@ -145,7 +145,8 @@ const emptyQuestion = {
   choiceD: "",
   correctChoice: "A",
   explanation: "",
-  difficulty: ""
+  difficulty: "",
+  audioUrl: ""
 };
 
 const choices: Choice[] = ["A", "B", "C", "D"];
@@ -344,7 +345,8 @@ const createGeneratedQuestions = (rawText: string): QuestionDraft[] => {
         choiceD: generatedChoices[3],
         correctChoice: choices[correctIndex] ?? "A",
         explanation: entry.definition,
-        difficulty: "Imported"
+        difficulty: "Imported",
+        audioUrl: ""
       };
     });
   }
@@ -363,7 +365,8 @@ const createGeneratedQuestions = (rawText: string): QuestionDraft[] => {
       choiceD: generatedChoices[3],
       correctChoice: choices[correctIndex] ?? "A",
       explanation: `${term} was imported from the pasted list.`,
-      difficulty: "Imported"
+      difficulty: "Imported",
+      audioUrl: ""
     };
   });
 };
@@ -1675,7 +1678,8 @@ function QuizManager({ data, onRefresh, initialQuizSetId, startInCreateMode = fa
       choiceD: question.choiceD,
       correctChoice: question.correctChoice,
       difficulty: question.difficulty ?? "",
-      explanation: question.explanation ?? ""
+      explanation: question.explanation ?? "",
+      audioUrl: question.audioUrl ?? ""
     });
   };
 
@@ -1875,6 +1879,15 @@ function QuizManager({ data, onRefresh, initialQuizSetId, startInCreateMode = fa
                   onChange={(event) => setQuestionForm({ ...questionForm, explanation: event.target.value })}
                 />
               </label>
+              <label>
+                Question Audio URL <small>(optional)</small>
+                <input
+                  type="url"
+                  value={questionForm.audioUrl}
+                  onChange={(event) => setQuestionForm({ ...questionForm, audioUrl: event.target.value })}
+                  placeholder="https://example.com/question-audio.mp3"
+                />
+              </label>
               <div className="question-form-actions">
                 <button className="primary" type="submit" disabled={isAddingQuestion}>
                   <Plus size={18} aria-hidden="true" />
@@ -1888,7 +1901,7 @@ function QuizManager({ data, onRefresh, initialQuizSetId, startInCreateMode = fa
                 <li key={question.id}>
                   <div className="question-list-copy">
                     <strong>{index + 1}. {question.prompt}</strong>
-                    <span>Correct answer: {question.correctChoice} · {question.difficulty || "Standard"} · {question.explanation ? "Explanation added" : "Explanation missing"}</span>
+                    <span>Correct answer: {question.correctChoice} · {question.difficulty || "Standard"} · {question.explanation ? "Explanation added" : "Explanation missing"}{question.audioUrl ? " · Audio added" : ""}</span>
                   </div>
                   <div className="question-list-actions">
                     <button type="button" onClick={() => beginEditingQuestion(question)}>Edit</button>

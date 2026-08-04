@@ -87,6 +87,7 @@ export class NormalizedLibrary {
           correctChoice: question.correctChoice as Question["correctChoice"],
           ...(question.explanation ? { explanation: question.explanation } : {}),
           ...(question.difficulty ? { difficulty: question.difficulty } : {}),
+          ...(question.audioUrl ? { audioUrl: question.audioUrl } : {}),
           createdAt: question.createdAt.toISOString()
         })),
         createdAt: quiz.createdAt.toISOString(),
@@ -203,8 +204,8 @@ export class NormalizedLibrary {
       if (!quiz) throw new Error("Question quiz ownership validation failed.");
       await tx.question.upsert({
         where: { id: question.id },
-        create: { id: question.id, quizSetId: question.quizSetId, prompt: question.prompt, choiceA: question.choiceA, choiceB: question.choiceB, choiceC: question.choiceC, choiceD: question.choiceD, correctChoice: question.correctChoice, explanation: question.explanation ?? null, difficulty: question.difficulty ?? null, createdAt: new Date(question.createdAt), updatedAt: new Date(question.createdAt) },
-        update: { prompt: question.prompt, choiceA: question.choiceA, choiceB: question.choiceB, choiceC: question.choiceC, choiceD: question.choiceD, correctChoice: question.correctChoice, explanation: question.explanation ?? null, difficulty: question.difficulty ?? null }
+        create: { id: question.id, quizSetId: question.quizSetId, prompt: question.prompt, choiceA: question.choiceA, choiceB: question.choiceB, choiceC: question.choiceC, choiceD: question.choiceD, correctChoice: question.correctChoice, explanation: question.explanation ?? null, difficulty: question.difficulty ?? null, audioUrl: question.audioUrl ?? null, createdAt: new Date(question.createdAt), updatedAt: new Date(question.createdAt) },
+        update: { prompt: question.prompt, choiceA: question.choiceA, choiceB: question.choiceB, choiceC: question.choiceC, choiceD: question.choiceD, correctChoice: question.correctChoice, explanation: question.explanation ?? null, difficulty: question.difficulty ?? null, audioUrl: question.audioUrl ?? null }
       });
     });
   }
@@ -220,7 +221,8 @@ export class NormalizedLibrary {
         choiceD: question.choiceD,
         correctChoice: question.correctChoice,
         explanation: question.explanation ?? null,
-        difficulty: question.difficulty ?? null
+        difficulty: question.difficulty ?? null,
+        audioUrl: question.audioUrl ?? null
       }
     });
     if (result.count !== 1) throw new Error("Question ownership validation failed.");
