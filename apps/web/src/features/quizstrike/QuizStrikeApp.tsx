@@ -4620,12 +4620,19 @@ function StudentExperience({ onExit }: { onExit: () => void }) {
           <QuizStrikeLogo size="auth" />
           <span className="auth-kicker">Join your classroom game</span>
           <h1>Join with your code</h1>
-          <p>Enter the code from your teacher, choose a name your class will recognize, and get ready to play.</p>
-          <div className="panel how-to-card">
-            <h2>How the game works</h2>
-            <p>Answer questions to earn rewards, choose snowballs or gear, then help your team tag opponents or capture the flag.</p>
-            <p>Use WASD to move, arrow keys or a swipe to look around, and F or click to play. Press E for the flag. Press C or right click to change your launcher view. Q opens questions, B opens gear, 1–5 choose gear, and hold Tab to see the scoreboard.</p>
-            <p>If you’re frozen out, keep practicing. Three correct answers bring you back into the round.</p>
+          <p>Enter the classroom code and the name your teacher will recognize.</p>
+          <div className="panel how-to-card controls-card" aria-labelledby="student-controls-heading">
+            <div className="controls-card-heading"><h2 id="student-controls-heading">Controls</h2><span>Keyboard or touch</span></div>
+            <div className="student-controls-grid">
+              <div className="student-control"><kbd>WASD</kbd><span>Move</span></div>
+              <div className="student-control"><kbd>Arrow keys / swipe</kbd><span>Look around</span></div>
+              <div className="student-control"><kbd>F / click</kbd><span>Play</span></div>
+              <div className="student-control"><kbd>E</kbd><span>Carry the flag</span></div>
+              <div className="student-control"><kbd>C / right-click</kbd><span>Change launcher view</span></div>
+              <div className="student-control"><kbd>Q</kbd><span>Questions</span></div>
+              <div className="student-control"><kbd>B · 1–5</kbd><span>Open and choose gear</span></div>
+              <div className="student-control"><kbd>Tab</kbd><span>Scoreboard</span></div>
+            </div>
           </div>
         </div>
         <form className="panel form-panel student-join-form" onSubmit={join}>
@@ -4657,10 +4664,6 @@ function StudentExperience({ onExit }: { onExit: () => void }) {
               <small id="join-code-help">Enter the 6-character code on your teacher’s screen.</small>
             </label>
           )}
-          <details className="student-join-tips">
-            <summary>How to play</summary>
-            <p>Answer questions to earn rewards, choose your gear, then use WASD and F or click to play.</p>
-          </details>
           <label className="join-field">
             <span className="join-field-label">Your name</span>
             <input placeholder="Name your teacher will recognize" autoComplete="nickname" autoFocus={Boolean(joinCodeFromLink)} enterKeyHint="done" value={nickname} onChange={(event) => { setNickname(event.target.value); status.clearError(); }} maxLength={20} aria-invalid={Boolean(nicknameError)} aria-describedby={nicknameError ? "nickname-error nickname-help" : "nickname-help"} />
@@ -4684,7 +4687,7 @@ function StudentExperience({ onExit }: { onExit: () => void }) {
             </button>
           )}
           <button className="primary" type="submit" disabled={isJoining || Boolean(nicknameError)}>
-            {isJoining ? "Joining..." : "Join the game"}
+            {isJoining ? "Joining..." : "Join game"}
           </button>
         </form>
       </section>
