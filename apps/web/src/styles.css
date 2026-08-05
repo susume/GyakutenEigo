@@ -3677,10 +3677,34 @@ body:has(.workspace) .dashboard-brand-row h1 .quizstrike-logo { display: block; 
 .student-control { display: grid; grid-template-columns: max-content minmax(0, 1fr); align-items: center; gap: 9px; color: #cfe0f4; font-size: .84rem; line-height: 1.25; }
 .student-control kbd { display: inline-flex; min-height: 26px; align-items: center; justify-content: center; border: 1px solid rgba(126, 166, 220, .38); border-radius: 6px; padding: 4px 7px; background: rgba(4, 13, 31, .72); color: #eaf4ff; font-family: inherit; font-size: .68rem; font-weight: 900; white-space: nowrap; }
 .student-join-form button.primary { min-height: 58px; padding: 14px 20px; border: 1px solid #3bd39a; border-radius: 10px; font-size: 1rem; line-height: 1.2; font-weight: 900; letter-spacing: .03em; text-transform: none; }
+
+/* Game-first join layout: entry is primary, controls are supporting reference. */
+.game-join-screen { display: grid !important; grid-template-columns: minmax(0, 560px) minmax(300px, 360px) !important; align-items: start !important; justify-content: center; gap: 24px !important; width: min(1040px, calc(100% - 48px)) !important; min-height: calc(100vh - 80px) !important; padding: 56px 0 !important; background: transparent !important; }
+.game-join-screen .student-join-form { order: 1; align-self: start; width: 100% !important; max-width: none; gap: 16px; border: 1px solid rgba(126, 166, 220, .4); padding: 32px !important; }
+.game-join-screen .student-join-help { order: 2; display: block !important; width: 100% !important; max-width: none !important; }
+.game-join-form-heading { display: grid; gap: 8px; margin-bottom: 4px; padding-bottom: 20px; border-bottom: 1px solid rgba(126, 166, 220, .2); }
+.game-join-form-heading .auth-kicker { font-size: .76rem; letter-spacing: .08em; }
+.game-join-form-heading h1 { margin: 0; color: #fff; font-size: clamp(2.35rem, 4vw, 3.35rem); letter-spacing: -.055em; line-height: .96; }
+.game-join-form-heading p { max-width: 430px; margin: 0; color: #9fb4ce; font-size: .95rem; line-height: 1.5; }
+.game-join-screen .controls-card { margin: 0 !important; border: 1px solid rgba(126, 166, 220, .3); border-radius: 16px; padding: 24px; background: rgba(10, 23, 49, .72); box-shadow: none; }
+.game-join-screen .student-controls-grid { grid-template-columns: 1fr; gap: 0; margin-top: 14px; }
+.game-join-screen .student-control { min-height: 42px; grid-template-columns: 112px minmax(0, 1fr); border-bottom: 1px solid rgba(126, 166, 220, .13); font-size: .86rem; }
+.game-join-screen .student-control:last-child { border-bottom: 0; }
+.game-join-screen .student-control kbd { width: fit-content; min-width: 34px; }
 @media (max-width: 760px) {
   .student-join-help .controls-card { padding: 16px; }
   .student-controls-grid { grid-template-columns: 1fr; gap: 8px; }
   .student-join-form button.primary { min-height: 56px; }
+}
+@media (max-width: 980px) {
+  .game-join-screen { grid-template-columns: minmax(0, 1fr) !important; width: min(620px, calc(100% - 32px)) !important; gap: 16px !important; padding: 36px 0 54px !important; }
+  .game-join-screen .student-join-form,
+  .game-join-screen .student-join-help { width: 100% !important; }
+}
+@media (max-width: 600px) {
+  .game-join-screen .student-join-form { padding: 22px !important; }
+  .game-join-form-heading h1 { font-size: 2.35rem; }
+  .game-join-screen .controls-card { padding: 18px; }
 }
 
 /* Tournament Center */

@@ -5,7 +5,7 @@ type QuizStrikeLogoProps = {
 };
 
 export default function QuizStrikeLogo({
-  alt = "QuizStrike Classroom",
+  alt = "QuizStrike",
   className,
   size = "header"
 }: QuizStrikeLogoProps) {

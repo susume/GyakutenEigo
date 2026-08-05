@@ -98,7 +98,7 @@ export default function PublicHomepage({
         <div className="public-hero-gridline public-hero-gridline-one" aria-hidden="true" />
         <div className="public-hero-gridline public-hero-gridline-two" aria-hidden="true" />
         <div className="public-hero-copy">
-          <p className="public-overline"><span className="status-dot" /> QuizStrike Classroom <span className="overline-divider">/</span> a teacher-led team game</p>
+          <p className="public-overline"><span className="status-dot" /> QuizStrike <span className="overline-divider">/</span> a teacher-led team game</p>
           <h1 id="public-hero-title">Turn classroom questions into a <em>match students want to win.</em></h1>
           <p className="public-hero-lead">Students answer your questions, earn useful advantages, and play together in a live browser game you run from one teacher workspace.</p>
           <div className="public-hero-actions">
@@ -124,7 +124,7 @@ export default function PublicHomepage({
             <img
               className="public-hero-media"
               src="/assets/quizstrike-classroom-hero.png"
-              alt="QuizStrike Classroom arena with students answering a question in a team match"
+              alt="QuizStrike arena with students answering a question in a team match"
               fetchPriority="high"
             />
             <div className="hero-scoreboard" aria-label="Live team score">
@@ -277,12 +277,12 @@ export default function PublicHomepage({
       </section>
 
       <section className="public-final-cta" aria-labelledby="final-cta-title">
-        <div><p className="public-section-label">YOUR NEXT ROUND</p><h2 id="final-cta-title">Ready to run your first game?</h2><p>You create the room. Students join with the game link or classroom code.</p></div>
+        <div><p className="public-section-label">YOUR NEXT ROUND</p><h2 id="final-cta-title">Ready to run your first game?</h2><p>You create the room. Players join with the game link or game code.</p></div>
         <div className="public-final-actions"><button className="public-button public-button-primary" onClick={onCreateMatch}><GraduationCap size={18} aria-hidden="true" /> Create Your First Game <ArrowRight size={17} aria-hidden="true" /></button><button className="public-button public-button-quiet" onClick={onJoinGame}><DoorOpen size={18} aria-hidden="true" /> Join with Code</button></div>
         <div className="final-scoreline" aria-hidden="true"><span>BLUE 00</span><i /><span>RED 00</span><small>LOBBY OPEN</small></div>
       </section>
 
-      <footer className="public-footer"><div className="footer-brand"><img src="/assets/quizstrike-logo.png" alt="QuizStrike Classroom" /></div><span>Peter Hoang · All rights reserved</span><div className="footer-links"><button onClick={onTeacherLogin}>Teacher workspace</button><button onClick={onJoinGame}>Join with code</button></div></footer>
+      <footer className="public-footer"><div className="footer-brand"><img src="/assets/quizstrike-logo.png" alt="QuizStrike" /></div><span>Peter Hoang · All rights reserved</span><div className="footer-links"><button onClick={onTeacherLogin}>Teacher workspace</button><button onClick={onJoinGame}>Join with code</button></div></footer>
     </div>
   );
 }

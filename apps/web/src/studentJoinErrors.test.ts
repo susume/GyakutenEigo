@@ -10,18 +10,18 @@ test("student join errors provide cause-specific recovery guidance", () => {
   );
   assert.equal(
     formatStudentJoinError(new ApiError("This session is full.", 400)),
-    "This session is full. Ask your teacher to make space or share another room."
+    "This session is full. Ask the host to make space or share another room."
   );
   assert.equal(
     formatStudentJoinError(new ApiError("This session has already started.", 409)),
-    "This session has already started. Ask your teacher for the next room."
+    "This session has already started. Ask the host for the next room."
   );
 });
 
 test("student join errors retain code and connection recovery guidance", () => {
   assert.equal(
     formatStudentJoinError(new ApiError("Session not found.", 404)),
-    "Session not found. Check the classroom code with your teacher."
+    "Session not found. Check the game code with the host."
   );
   assert.equal(
     formatStudentJoinError(new ApiError("Could not reach the game server.", 0)),

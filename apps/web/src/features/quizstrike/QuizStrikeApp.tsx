@@ -249,7 +249,7 @@ const getNicknameError = (value: string) => {
   const normalized = value.toLowerCase().replace(/[^a-z0-9]/g, "");
   if (!normalized) return "";
   const blockedTerm = blockedNicknameTerms.find((term) => normalized.includes(term));
-  return blockedTerm ? "Choose a classroom-friendly name." : "";
+  return blockedTerm ? "Choose another player name." : "";
 };
 
 const sessionNumberFields = [
@@ -653,7 +653,7 @@ export default function App() {
     <main id="main-content" className="app-shell" tabIndex={-1}>
       <a className={`skip-link skip-link-${mode}`} href="#main-content">Skip to main content</a>
         <header className={`topbar topbar-${mode}${teacher ? " teacher-authenticated" : ""}`}>
-        <button className="brand-button" type="button" aria-label="QuizStrike Classroom home" onClick={() => navigateTo("/", "home")}>
+        <button className="brand-button" type="button" aria-label="QuizStrike home" onClick={() => navigateTo("/", "home")}>
           <QuizStrikeLogo />
         </button>
         <nav className="primary-nav" aria-label="Primary">
@@ -900,9 +900,9 @@ export function GyakutenEigoHome({ onOpenGame, onJoinGame }: { onOpenGame: () =>
             </button>
           </div>
         </div>
-        <article className="game-host-card" aria-label="QuizStrike Classroom game preview">
+        <article className="game-host-card" aria-label="QuizStrike game preview">
           <div className="hero-arena-preview">
-            <img className="game-host-card-art" src="/assets/quizstrike-classroom-cover.webp" alt="QuizStrike Classroom cover art showing red and blue teams answering questions in a desert arena." width={1672} height={941} fetchPriority="high" />
+            <img className="game-host-card-art" src="/assets/quizstrike-classroom-cover.webp" alt="QuizStrike cover art showing red and blue teams answering questions in a desert arena." width={1672} height={941} fetchPriority="high" />
             <span className="game-host-card-label">Live game · Desert Citadel</span>
           </div>
           <div className="game-preview-meta">
@@ -1070,7 +1070,7 @@ function TeacherAuth({
 
   return (
     <section className="auth-layout quizstrike-auth-layout">
-      <aside className="auth-visual" aria-label="QuizStrike Classroom teacher workspace">
+      <aside className="auth-visual" aria-label="QuizStrike teacher workspace">
         <img className="auth-visual-art" src="/assets/quizstrike-classroom-cover.webp" alt="" width={1672} height={941} fetchPriority="high" />
         <div className="auth-visual-shade" aria-hidden="true" />
         <div className="auth-visual-content">
@@ -1085,7 +1085,7 @@ function TeacherAuth({
         <div className="auth-form-heading">
           <span className="auth-kicker">Teacher workspace</span>
           <h1>{isSignup ? "Create your teacher workspace" : "Welcome back"}</h1>
-          <p>{isSignup ? "Set up your workspace and host your first classroom game." : "Sign in to open your question library and live rooms."}</p>
+          <p>{isSignup ? "Set up your workspace and host your first game." : "Sign in to open your question library and live rooms."}</p>
         </div>
         {isSignup && (
           <label htmlFor="teacher-name">
@@ -2589,7 +2589,7 @@ function SessionManager({
           <>
             <header className="setup-flow-header">
               <div className="setup-flow-title">
-                <h2>Set up a classroom game</h2>
+                <h2>Set up a game</h2>
               </div>
               <div className="setup-quiz-summary">
                 <BookOpen size={22} aria-hidden="true" />
@@ -2978,11 +2978,11 @@ function SessionManager({
           <div className="projector-backdrop" role="presentation">
             <section ref={projectorDialogRef} className="projector-waiting-room" role="dialog" aria-modal="true" aria-labelledby="projector-title">
               <header>
-                 <div><span className="projector-kicker">{sessionQuiz?.title ?? "QuizStrike Classroom"}</span><h2 id="projector-title">Join the game</h2></div>
+                 <div><span className="projector-kicker">{sessionQuiz?.title ?? "QuizStrike"}</span><h2 id="projector-title">Join the game</h2></div>
                 <button ref={projectorCloseRef} type="button" onClick={() => setIsProjectorOpen(false)} aria-label="Close projector view">Close</button>
               </header>
               <div className="projector-content">
-                 <div className="projector-join-code"><span>Classroom code</span><strong>{selectedSession.sessionCode}</strong><small>{studentJoinLink.replace(/^https?:\/\//, "")}</small></div>
+                 <div className="projector-join-code"><span>Game code</span><strong>{selectedSession.sessionCode}</strong><small>{studentJoinLink.replace(/^https?:\/\//, "")}</small></div>
                 <div className="projector-qr">
                   <QRCodeSVG value={studentJoinLink} size={260} level="M" marginSize={2} title={`Join QuizStrike game ${selectedSession.sessionCode}`} />
                   <span>Scan to join</span>
@@ -4179,7 +4179,7 @@ function StudentExperience({ onExit }: { onExit: () => void }) {
       setAnsweringChoice(null);
       setFeedback("");
       setIsSocketReconnecting(false);
-      setStatusError(payload.message ?? "Your teacher removed you from this game.");
+      setStatusError(payload.message ?? "The host removed you from this game.");
       socket.disconnect();
     });
     return () => {
@@ -4615,36 +4615,37 @@ function StudentExperience({ onExit }: { onExit: () => void }) {
       );
     }
     return (
-      <section className="auth-layout student-join-screen">
+      <section className="auth-layout student-join-screen game-join-screen">
         <div className="student-join-help">
-          <QuizStrikeLogo size="auth" />
-          <span className="auth-kicker">Join your classroom game</span>
-          <h1>Join with your code</h1>
-          <p>Enter the classroom code and the name your teacher will recognize.</p>
           <div className="panel how-to-card controls-card" aria-labelledby="student-controls-heading">
-            <div className="controls-card-heading"><h2 id="student-controls-heading">Controls</h2><span>Keyboard or touch</span></div>
+            <div className="controls-card-heading"><h2 id="student-controls-heading">Quick controls</h2><span>Keyboard + touch</span></div>
             <div className="student-controls-grid">
               <div className="student-control"><kbd>WASD</kbd><span>Move</span></div>
               <div className="student-control"><kbd>Arrow keys / swipe</kbd><span>Look around</span></div>
-              <div className="student-control"><kbd>F / click</kbd><span>Play</span></div>
-              <div className="student-control"><kbd>E</kbd><span>Carry the flag</span></div>
-              <div className="student-control"><kbd>C / right-click</kbd><span>Change launcher view</span></div>
+              <div className="student-control"><kbd>F</kbd><span>Fire</span></div>
+              <div className="student-control"><kbd>C</kbd><span>Zoom</span></div>
+              <div className="student-control"><kbd>E</kbd><span>Environment button</span></div>
               <div className="student-control"><kbd>Q</kbd><span>Questions</span></div>
-              <div className="student-control"><kbd>B · 1–5</kbd><span>Open and choose gear</span></div>
+              <div className="student-control"><kbd>B / 1-5</kbd><span>Open and choose gear</span></div>
               <div className="student-control"><kbd>Tab</kbd><span>Scoreboard</span></div>
             </div>
           </div>
         </div>
         <form className="panel form-panel student-join-form" onSubmit={join}>
+          <div className="game-join-form-heading">
+            <span className="auth-kicker">Player join</span>
+            <h1>Enter QuizStrike</h1>
+            <p>Use the game code from the host, then choose your player name.</p>
+          </div>
           {joinCodeFromLink ? (
             <div className="linked-join-code" aria-label={`Join session ${joinCode}`}>
               <span><Link2 size={17} aria-hidden="true" />Game link ready</span>
               <strong>{joinCode}</strong>
-              <small>Add your name below and you’re ready to join.</small>
+              <small>Add your player name below to join.</small>
             </div>
           ) : (
             <label className="join-field">
-              <span className="join-field-label">Classroom code</span>
+              <span className="join-field-label">Game code</span>
               <input
                 value={joinCode}
                 onChange={(event) => {
@@ -4661,13 +4662,13 @@ function StudentExperience({ onExit }: { onExit: () => void }) {
                 aria-describedby={status.error ? "join-error join-code-help" : "join-code-help"}
                 placeholder="ABC123"
               />
-              <small id="join-code-help">Enter the 6-character code on your teacher’s screen.</small>
+              <small id="join-code-help">Enter the 6-character code on the host's screen.</small>
             </label>
           )}
           <label className="join-field">
-            <span className="join-field-label">Your name</span>
-            <input placeholder="Name your teacher will recognize" autoComplete="nickname" autoFocus={Boolean(joinCodeFromLink)} enterKeyHint="done" value={nickname} onChange={(event) => { setNickname(event.target.value); status.clearError(); }} maxLength={20} aria-invalid={Boolean(nicknameError)} aria-describedby={nicknameError ? "nickname-error nickname-help" : "nickname-help"} />
-            <small id="nickname-help">Use the name your teacher expects to see.</small>
+            <span className="join-field-label">Player name</span>
+            <input placeholder="Player name" autoComplete="nickname" autoFocus={Boolean(joinCodeFromLink)} enterKeyHint="done" value={nickname} onChange={(event) => { setNickname(event.target.value); status.clearError(); }} maxLength={20} aria-invalid={Boolean(nicknameError)} aria-describedby={nicknameError ? "nickname-error nickname-help" : "nickname-help"} />
+            <small id="nickname-help">Use a name other players will recognize.</small>
           </label>
           {nicknameError && <p id="nickname-error" className="error-text" role="alert">{nicknameError}</p>}
           {status.error && <p id="join-error" className="error-text" role="alert">{status.error}</p>}
@@ -4999,10 +5000,10 @@ function StudentExperience({ onExit }: { onExit: () => void }) {
                 <header className="lobby-selection-header">
                   <div className="lobby-instruction">
                     <span>Before the game</span>
-                    <h2>Choose your team, then wait for the teacher to start.</h2>
-                    <p className="lobby-ready-note">You’re connected. Pick a team and style your player while the class joins.</p>
+                    <h2>Choose your team, then wait for the host to start.</h2>
+                    <p className="lobby-ready-note">You’re connected. Pick a team and style your player while the others join.</p>
                     <div className="lobby-status-row">
-                      <span className="waiting-status"><span className="waiting-pulse" />Waiting for teacher…</span>
+                      <span className="waiting-status"><span className="waiting-pulse" />Waiting for host…</span>
                       <span className="lobby-player-count"><Users size={15} />{connectedPlayers.length} {connectedPlayers.length === 1 ? "player" : "players"} joined</span>
                     </div>
                   </div>
@@ -5029,7 +5030,7 @@ function StudentExperience({ onExit }: { onExit: () => void }) {
                       <span><small>Blue team</small><strong>{blueTeamCount} playing</strong></span>
                       {player.team === "blue" && <Check className="team-choice-check" size={18} />}
                     </button>
-                    {session.settings.teamAssignment !== "players_choose" && <small className="team-lock-note">Your teacher is assigning the teams.</small>}
+                    {session.settings.teamAssignment !== "players_choose" && <small className="team-lock-note">The host is assigning the teams.</small>}
                   </div>
                 </header>
                 <Suspense fallback={<ArenaLoading label="Loading character creator" />}>
