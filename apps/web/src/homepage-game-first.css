@@ -1,0 +1,27 @@
+/* Game-first public homepage refinements. Loaded after the legacy stylesheet. */
+.public-wordmark {
+  color: #f5f8ff;
+  font-size: 1.05rem;
+  font-weight: 950;
+  letter-spacing: -.04em;
+}
+.public-hero { grid-template-columns: minmax(380px, .9fr) minmax(520px, 1.1fr); gap: clamp(36px, 4.5vw, 72px); width: min(1240px, calc(100% - 48px)); min-height: min(700px, calc(100vh - 76px)); padding: clamp(54px, 6vw, 82px) 0; }
+.public-hero h1 { max-width: 590px; font-size: clamp(3.65rem, 5.8vw, 5.9rem); line-height: .91; }
+.public-hero-stage { border-radius: 16px; box-shadow: 0 24px 70px rgba(1, 8, 18, .42); }
+.public-hero-media-wrap { border-radius: 10px; }
+.public-proof-strip { width: min(1240px, calc(100% - 48px)); }
+.public-section { padding: clamp(60px, 6vw, 88px) 0; }
+.public-footer .footer-brand { display: grid; gap: 2px; }
+.public-footer .footer-brand strong { color: #f5f8ff; font-size: 1.15rem; letter-spacing: -.035em; }
+.public-footer .footer-brand small { color: var(--public-cyan); font-size: .58rem; font-weight: 800; letter-spacing: .12em; text-transform: uppercase; }
+
+@media (max-width: 980px) {
+  .public-hero { grid-template-columns: 1fr; width: min(100% - 36px, 760px); min-height: auto; }
+  .public-hero-copy { max-width: 660px; }
+}
+
+@media (max-width: 600px) {
+  .public-hero { width: min(100% - 30px, 760px); padding-top: 48px; }
+  .public-hero h1 { font-size: clamp(3.1rem, 15vw, 4.4rem); }
+  .public-hero-media { object-position: right center; }
+}

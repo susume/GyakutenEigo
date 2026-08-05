@@ -654,7 +654,7 @@ export default function App() {
       <a className={`skip-link skip-link-${mode}`} href="#main-content">Skip to main content</a>
         <header className={`topbar topbar-${mode}${teacher ? " teacher-authenticated" : ""}`}>
         <button className="brand-button" type="button" aria-label="QuizStrike home" onClick={() => navigateTo("/", "home")}>
-          <QuizStrikeLogo />
+          {mode === "home" ? <span className="public-wordmark">QuizStrike</span> : <QuizStrikeLogo />}
         </button>
         <nav className="primary-nav" aria-label="Primary">
           <button
