@@ -21,49 +21,49 @@ export const GAMEPLAY_ANNOUNCEMENTS: Record<GameplayAnnouncementKey, GameplayAnn
     assetPath: "/assets/audio/announcements/flag-planted.mp3",
     priority: 80,
     maxAgeMs: 30_000,
-    subtitle: "The flag has been planted.",
+    subtitle: "The flag is in place.",
     fallbackCue: "flag_planted"
   },
   STREAK_HEATING_UP: {
     assetPath: "/assets/audio/announcements/streak-heating-up.mp3",
     priority: 50,
     maxAgeMs: 8_000,
-    subtitle: "He's heating up!",
+    subtitle: "That streak is building!",
     fallbackCue: "streak"
   },
   STREAK_DOMINATING: {
     assetPath: "/assets/audio/announcements/streak-dominating.mp3",
     priority: 50,
     maxAgeMs: 8_000,
-    subtitle: "Dominating!",
+    subtitle: "Great run!",
     fallbackCue: "streak"
   },
   STREAK_UNSTOPPABLE: {
     assetPath: "/assets/audio/announcements/streak-unstoppable.mp3",
     priority: 50,
     maxAgeMs: 8_000,
-    subtitle: "Unstoppable!",
+    subtitle: "What a streak!",
     fallbackCue: "streak"
   },
   STREAK_WICKED_SICK: {
     assetPath: "/assets/audio/announcements/streak-wicked-sick.mp3",
     priority: 50,
     maxAgeMs: 8_000,
-    subtitle: "Wicked Sick!",
+    subtitle: "Brilliant streak!",
     fallbackCue: "streak"
   },
   STREAK_MONSTER: {
     assetPath: "/assets/audio/announcements/streak-monster.mp3",
     priority: 50,
     maxAgeMs: 8_000,
-    subtitle: "Muh-Muh-Muh-Monster!",
+    subtitle: "Monster streak!",
     fallbackCue: "streak"
   },
   STREAK_GODLIKE: {
     assetPath: "/assets/audio/announcements/streak-godlike.mp3",
     priority: 50,
     maxAgeMs: 8_000,
-    subtitle: "Guh-Guh-Guh-Godlike!",
+    subtitle: "Incredible streak!",
     fallbackCue: "streak"
   }
 };

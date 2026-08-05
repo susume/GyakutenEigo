@@ -231,23 +231,23 @@ export interface FootwearCatalogItem {
 }
 
 export const HEAD_STYLE_CATALOG = [
-  { id: "boy_short_hair", name: "Boy", description: "Cool anime contender", unlockLevel: 1 },
-  { id: "girl_mid_hair", name: "Girl", description: "Cute anime heroine", unlockLevel: 1 },
+  { id: "boy_short_hair", name: "Short Hair", description: "A classic starting style", unlockLevel: 1 },
+  { id: "girl_mid_hair", name: "Mid-Length Hair", description: "A classic starting style", unlockLevel: 1 },
   { id: "fox", name: "Fox", description: "Bright, quick and confident", unlockLevel: 1 },
   { id: "panda", name: "Panda", description: "Calm mascot energy", unlockLevel: 1 },
   { id: "bear", name: "Bear", description: "Bold and dependable", unlockLevel: 1 },
   { id: "rabbit", name: "Rabbit", description: "Alert and arena-ready", unlockLevel: 1 },
-  { id: "great_white", name: "Great White", description: "Ocean arena predator", unlockLevel: 1 },
-  { id: "robot", name: "Robot", description: "Friendly future fighter", unlockLevel: 1 },
-  { id: "samurai", name: "Samurai", description: "Arena warrior", unlockLevel: 1 },
-  { id: "ninja", name: "Ninja", description: "Silent arena rival", unlockLevel: 1 }
+  { id: "great_white", name: "Great White", description: "Calm, bold, and hard to miss", unlockLevel: 1 },
+  { id: "robot", name: "Robot", description: "A friendly future style", unlockLevel: 1 },
+  { id: "samurai", name: "Samurai", description: "A focused warrior style", unlockLevel: 1 },
+  { id: "ninja", name: "Ninja", description: "A quiet, quick style", unlockLevel: 1 }
 ] as const satisfies ReadonlyArray<HeadStyleCatalogItem>;
 
 export const FOOTWEAR_CATALOG = [
   {
     id: "runners",
     name: "Runners",
-    description: "Light athletic shoes",
+    description: "Light and ready to move",
     visualType: "runners",
     scale: [1, 1, 1],
     offset: [0, 0, 0],
@@ -258,7 +258,7 @@ export const FOOTWEAR_CATALOG = [
   {
     id: "army_boots",
     name: "Army Boots",
-    description: "Heavy-duty style",
+    description: "A sturdy, grounded style",
     visualType: "army_boots",
     scale: [1, 1, 1],
     offset: [0, 0, 0],
@@ -269,7 +269,7 @@ export const FOOTWEAR_CATALOG = [
   {
     id: "skate_shoes",
     name: "Skate Shoes",
-    description: "Classic street style",
+    description: "A relaxed street style",
     visualType: "skate_shoes",
     scale: [1, 1, 1],
     offset: [0, 0, 0],
@@ -280,7 +280,7 @@ export const FOOTWEAR_CATALOG = [
   {
     id: "basketball_shoes",
     name: "Basketball Shoes",
-    description: "Court-ready high tops",
+    description: "A bright court style",
     visualType: "basketball_shoes",
     scale: [1, 1, 1],
     offset: [0, 0, 0],
@@ -291,7 +291,7 @@ export const FOOTWEAR_CATALOG = [
   {
     id: "sandals",
     name: "Sandals",
-    description: "Relaxed arena style",
+    description: "An easygoing summer style",
     visualType: "sandals",
     scale: [1, 1, 1],
     offset: [0, 0, 0],
@@ -302,7 +302,7 @@ export const FOOTWEAR_CATALOG = [
   {
     id: "barefoot",
     name: "Barefoot",
-    description: "No shoes",
+    description: "A simple, barefoot look",
     visualType: "barefoot",
     scale: [1, 1, 1],
     offset: [0, 0, 0],
@@ -314,19 +314,19 @@ export const FOOTWEAR_CATALOG = [
 
 export const COSMETIC_CATALOG = [
   ...HEAD_STYLE_CATALOG.map((style) => ({ ...style, slot: "head" as const })),
-  { id: "none", slot: "back", name: "No Back Gear", description: "Clean arena kit", unlockLevel: 1 },
+  { id: "none", slot: "back", name: "No Back Gear", description: "Keep it simple", unlockLevel: 1 },
   { id: "utility_pack", slot: "back", name: "Utility Pack", description: "Classic field pack", unlockLevel: 1 },
   { id: "angel_wings", slot: "back", name: "Angel Wings", description: "Take flight", unlockLevel: 1 },
-  { id: "demon_wings", slot: "back", name: "Demon Wings", description: "Dark arena style", unlockLevel: 1 },
+  { id: "demon_wings", slot: "back", name: "Demon Wings", description: "A bold, dramatic look", unlockLevel: 1 },
   { id: "devil_tail", slot: "back", name: "Devil Tail", description: "Mischievous style", unlockLevel: 1 },
   { id: "samurai_sword", slot: "back", name: "Samurai Sword", description: "Warrior style", unlockLevel: 1 },
   { id: "twin_swords", slot: "back", name: "Twin Swords", description: "Double warrior style", unlockLevel: 1 },
   { id: "boost_pack", slot: "back", name: "Boost Pack", description: "Ready for launch", unlockLevel: 1 },
-  { id: "arena_cape", slot: "back", name: "Arena Cape", description: "Champion style", unlockLevel: 1 },
+  { id: "arena_cape", slot: "back", name: "Arena Cape", description: "A champion’s finish", unlockLevel: 1 },
   { id: "snowboard", slot: "back", name: "Snowboard", description: "Slope ready", unlockLevel: 1 },
   ...FOOTWEAR_CATALOG.map((footwear) => ({ ...footwear, slot: "footwear" as const })),
   { id: "champion", slot: "pose", name: "Champion", description: "Two-arm celebration", unlockLevel: 1 },
-  { id: "wave", slot: "pose", name: "Friendly Wave", description: "Classroom hello", unlockLevel: 1 },
+  { id: "wave", slot: "pose", name: "Friendly Wave", description: "A friendly hello", unlockLevel: 1 },
   { id: "salute", slot: "pose", name: "Team Salute", description: "Ready for the round", unlockLevel: 2 },
   { id: "power", slot: "pose", name: "Power Pose", description: "Confident finish", unlockLevel: 3 }
 ] as const satisfies ReadonlyArray<CosmeticCatalogItem>;

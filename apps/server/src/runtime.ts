@@ -471,7 +471,7 @@ const getNicknameError = (value: string) => {
   const normalized = value.toLowerCase().replace(/[^a-z0-9]/g, "");
   if (!normalized) return "";
   return blockedNicknameTerms.some((term) => normalized.includes(term))
-    ? "Please choose a classroom-friendly nickname."
+    ? "Choose a classroom-friendly name."
     : "";
 };
 
@@ -1446,14 +1446,14 @@ const answerQuestion = (
 
   appendEvent(session, {
     type: "answer",
-    message: `${player.nickname} answered ${isCorrect ? "correctly" : "incorrectly"}${respawn.respawned ? " and respawned" : ""}.`,
+    message: `${player.nickname} answered ${isCorrect ? "correctly" : "incorrectly"}${respawn.respawned ? " and returned to the round" : ""}.`,
     playerId: player.id,
     team: player.team
   });
   if (respawn.respawned) {
     appendEvent(session, {
       type: "respawn",
-      message: `${player.nickname} respawned after ${RESPAWN_CORRECT_ANSWERS_REQUIRED} correct practice answers.`,
+      message: `${player.nickname} returned after ${RESPAWN_CORRECT_ANSWERS_REQUIRED} correct practice answers.`,
       playerId: player.id,
       team: player.team
     });
@@ -1505,7 +1505,7 @@ const buyGear = (session: GameSession, player: PlayerSession, gearId: unknown): 
     );
   }
   if (purchase.alreadyEquipped) {
-    return { ok: true, data: { player, gear, message: `${gear.name} already equipped.` } };
+    return { ok: true, data: { player, gear, message: `${gear.name} is already equipped.` } };
   }
   const moneySpent = player.money - purchase.nextMoney;
   player.money = purchase.nextMoney;
@@ -1520,7 +1520,7 @@ const buyGear = (session: GameSession, player: PlayerSession, gearId: unknown): 
   if (purchase.nextHealth !== undefined) player.health = purchase.nextHealth;
   appendEvent(session, { type: "buy", message: `${player.nickname} equipped ${gear.name}.`, playerId: player.id, team: player.team });
   broadcastPlayerState(session, [player]);
-  return { ok: true, data: { player, gear, message: `${gear.name} equipped.` } };
+  return { ok: true, data: { player, gear, message: `${gear.name} equipped. Ready for the next play.` } };
 };
 
 const buySnowballs = (session: GameSession, player: PlayerSession): StudentCommandResult<SnowballPurchaseResponse> => {
@@ -1550,7 +1550,7 @@ const buySnowballs = (session: GameSession, player: PlayerSession): StudentComma
     team: player.team
   });
   broadcastPlayerState(session, [player]);
-  return { ok: true, data: { player, message: `+${purchase.snowballsAdded} snowballs ready.` } };
+  return { ok: true, data: { player, message: `+${purchase.snowballsAdded} snowballs ready to use.` } };
 };
 
 const sendStudentCommand = <T>(res: Response, result: StudentCommandResult<T>) => {

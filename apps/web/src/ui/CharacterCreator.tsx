@@ -78,16 +78,16 @@ export const BACK_ACCESSORY_OPTIONS: ReadonlyArray<{
   Icon: LucideIcon;
   thumbnail: string;
 }> = ([
-  { value: "none", label: "None", detail: "Clean kit", Icon: X },
+  { value: "none", label: "None", detail: "Keep it simple", Icon: X },
   { value: "utility_pack", label: "Utility Pack", detail: "Classic field pack", Icon: Backpack },
-  { value: "angel_wings", label: "Angel Wings", detail: "Take flight", Icon: Feather },
-  { value: "demon_wings", label: "Demon Wings", detail: "Dark arena style", Icon: Flame },
-  { value: "devil_tail", label: "Devil Tail", detail: "Mischievous style", Icon: Flame },
+  { value: "angel_wings", label: "Angel Wings", detail: "A light, bright look", Icon: Feather },
+  { value: "demon_wings", label: "Demon Wings", detail: "A bold, dramatic look", Icon: Flame },
+  { value: "devil_tail", label: "Devil Tail", detail: "A playful twist", Icon: Flame },
   { value: "samurai_sword", label: "Samurai Sword", detail: "Warrior style", Icon: Sword },
   { value: "twin_swords", label: "Twin Swords", detail: "Double warrior style", Icon: Sword },
-  { value: "boost_pack", label: "Boost Pack", detail: "Ready for launch", Icon: Rocket },
-  { value: "arena_cape", label: "Arena Cape", detail: "Champion style", Icon: Shield },
-  { value: "snowboard", label: "Snowboard", detail: "Slope ready", Icon: Snowflake }
+  { value: "boost_pack", label: "Boost Pack", detail: "Ready to go", Icon: Rocket },
+  { value: "arena_cape", label: "Arena Cape", detail: "A champion’s finish", Icon: Shield },
+  { value: "snowboard", label: "Snowboard", detail: "A relaxed winter look", Icon: Snowflake }
 ] satisfies ReadonlyArray<{
   value: PlayerBackAccessoryId;
   label: string;
@@ -128,10 +128,10 @@ export const VICTORY_POSE_OPTIONS: ReadonlyArray<{
   Icon: LucideIcon;
   thumbnail: string;
 }> = ([
-  { value: "champion", label: "Champion", detail: "Two-arm cheer", Icon: Crown },
-  { value: "wave", label: "Wave", detail: "Friendly hello", Icon: Waves },
-  { value: "salute", label: "Salute", detail: "Team ready", Icon: ShieldCheck },
-  { value: "power", label: "Power pose", detail: "Strong finish", Icon: Rotate3d }
+  { value: "champion", label: "Champion", detail: "Celebrate the win", Icon: Crown },
+  { value: "wave", label: "Friendly wave", detail: "Say hello", Icon: Waves },
+  { value: "salute", label: "Team salute", detail: "Ready for the round", Icon: ShieldCheck },
+  { value: "power", label: "Power pose", detail: "Finish with confidence", Icon: Rotate3d }
 ] satisfies ReadonlyArray<{
   value: PlayerVictoryPoseId;
   label: string;
@@ -390,7 +390,7 @@ export function CharacterPreview({
       ref={mountRef}
       className={`character-preview team-${team}`}
       role="img"
-      aria-label="Live 3D preview. Drag to rotate and scroll to zoom."
+      aria-label="Live player preview. Drag to rotate and scroll to zoom."
     />
   );
 }

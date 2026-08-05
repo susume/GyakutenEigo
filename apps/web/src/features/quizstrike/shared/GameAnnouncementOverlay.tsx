@@ -33,7 +33,7 @@ export default function GameAnnouncementOverlay({
   return (
     <div className={`game-announcement game-announcement-${announcement.kind}`} role="alert" aria-live="assertive" aria-atomic="true">
       <div className="game-announcement-card">
-        <span>{announcement.kind === "game_over" ? "Final result" : announcement.kind === "round_result" ? "Round complete" : announcement.kind === "buy_phase" || announcement.kind === "preparation" ? "Prepare" : "Get ready"}</span>
+        <span>{announcement.kind === "game_over" ? "Final result" : announcement.kind === "round_result" ? "Round complete" : announcement.kind === "buy_phase" || announcement.kind === "preparation" ? "Get ready" : "Next up"}</span>
         <h2>{announcement.title}</h2>
         <p>{announcement.message}</p>
         {announcement.detail && <strong>{announcement.detail}</strong>}

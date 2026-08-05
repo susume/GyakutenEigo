@@ -22,7 +22,7 @@ export default function QuizPanel({
   const [audioError, setAudioError] = useState(false);
   useEffect(() => setAudioError(false), [question?.id, question?.audioUrl]);
 
-  if (!question) return <div className="panel"><p>No quiz question is available yet.</p></div>;
+  if (!question) return <div className="panel"><p>Your next question will appear here.</p></div>;
   const audioSource = question.audioUrl?.startsWith("/api/")
     ? `${getApiUrl()}${question.audioUrl}`
     : question.audioUrl;
@@ -32,7 +32,7 @@ export default function QuizPanel({
     ? `$${session.settings.correctAnswerReward}`
     : session.settings.deadPlayersCanPractice
       ? `Respawn ${player.respawnCorrectAnswers ?? 0}/${RESPAWN_CORRECT_ANSWERS_REQUIRED}`
-      : "Practice disabled";
+      : "Practice is off";
   const labels = {
     A: question.choiceA,
     B: question.choiceB,
@@ -42,24 +42,24 @@ export default function QuizPanel({
   return (
     <div className="panel quiz-panel">
       <div className="panel-title">
-        <h2>Quiz Panel</h2>
+        <h2>Question</h2>
         <span>{reward}</span>
       </div>
-      <p className="menu-timer-note">The round timer continues while this panel is open.</p>
+      <p className="menu-timer-note">The round clock keeps running while you answer.</p>
       <p className="question-text">{question.prompt}</p>
       {question.audioUrl && (
         <div className="question-audio">
           <Volume2 size={18} aria-hidden="true" />
-          <span>Listen</span>
+          <span>Listen to the question</span>
           <audio controls preload="metadata" src={audioSource} aria-label="Question audio" onError={() => setAudioError(true)} />
-          {audioError && <small role="status">Audio is unavailable right now.</small>}
+          {audioError && <small role="status">The audio couldn’t load. You can still answer below.</small>}
         </div>
       )}
       <div className="answer-grid">
         {choices.map((choice, index) => (
           <button key={choice} onClick={() => onAnswer(choice)} disabled={Boolean(answeringChoice)}>
             <strong>{index + 1}</strong>
-            {answeringChoice === choice ? "Working..." : labels[choice]}
+            {answeringChoice === choice ? "Checking..." : labels[choice]}
           </button>
         ))}
       </div>

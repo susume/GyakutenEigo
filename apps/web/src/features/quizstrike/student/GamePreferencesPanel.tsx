@@ -25,46 +25,46 @@ export default function GamePreferencesPanel({
   return (
     <div className="panel game-preferences-panel">
       <div className="panel-title">
-        <h2>Game Settings</h2>
+        <h2>Game settings</h2>
         <span>Saved on this device</span>
       </div>
       {!audioOnly && (
         <>
           <label>
-            Graphics quality
+            Graphics detail
             <select value={preferences.arenaQuality} onChange={(event) => onChange({ arenaQuality: event.target.value as GamePreferences["arenaQuality"] })}>
               <option value="auto">Auto (recommended)</option>
               <option value="performance">Low — school device</option>
               <option value="balanced">Medium — balanced</option>
-              <option value="high">High — full detail</option>
+              <option value="high">High — more detail</option>
             </select>
-            <small>Low reduces pixel density and decorative detail; team colors, objectives, and route landmarks remain visible.</small>
+            <small>Low uses less power while keeping team colors, objectives, and route landmarks clear.</small>
           </label>
           <label className="toggle-row">
             <input type="checkbox" checked={preferences.highContrastHud} onChange={(event) => onChange({ highContrastHud: event.target.checked })} />
-            <span>High-contrast HUD</span>
+            <span>High-contrast game display</span>
           </label>
-          <p className="settings-help">Adds stronger HUD borders, text contrast, and focus outlines for busy scenes or low-vision play.</p>
+          <p className="settings-help">Makes game borders, text, and focus outlines easier to see.</p>
           <label className="toggle-row">
             <input type="checkbox" checked={preferences.gamepadEnabled} onChange={(event) => onChange({ gamepadEnabled: event.target.checked })} />
-            <span>Enable standard controller controls {gamepadDetected ? "(controller connected)" : "(connect a controller to use)"}</span>
+            <span>Use a controller {gamepadDetected ? "(controller connected)" : "(connect one to use)"}</span>
           </label>
-          <p className="settings-help">Controller: left stick moves, right stick looks, A or right trigger fires, and X interacts.</p>
+          <p className="settings-help">Left stick moves, right stick looks, A or the right trigger plays, and X interacts.</p>
         </>
       )}
       <label className="toggle-row">
         <input type="checkbox" checked={preferences.soundEnabled} onChange={(event) => onChange({ soundEnabled: event.target.checked })} />
-        <span>Enable game audio</span>
+        <span>Game sounds</span>
       </label>
       <label>
         SFX volume
         <input type="range" min="0" max="1" step="0.01" value={preferences.sfxVolume} disabled={!preferences.soundEnabled} onChange={(event) => onChange({ sfxVolume: Number(event.target.value) })} />
-        <small>{Math.round(preferences.sfxVolume * 100)}% for weapons, footsteps, quiz feedback, and interface sounds.</small>
+        <small>{Math.round(preferences.sfxVolume * 100)}% for game sounds, answer feedback, and interface sounds.</small>
       </label>
       <label>
         BGM volume
         <input type="range" min="0" max="1" step="0.01" value={preferences.musicVolume} disabled={!preferences.soundEnabled} onChange={(event) => onChange({ musicVolume: Number(event.target.value) })} />
-        <small>{Math.round(preferences.musicVolume * 100)}% for the arena music track.</small>
+        <small>{Math.round(preferences.musicVolume * 100)}% for the game music.</small>
       </label>
       <p className="audio-credit">
         BGM: Music by{" "}
@@ -75,7 +75,7 @@ export default function GamePreferencesPanel({
       {!audioOnly && (
         <label className="toggle-row">
           <input type="checkbox" checked={preferences.vibrationEnabled} onChange={(event) => onChange({ vibrationEnabled: event.target.checked })} />
-          <span>Vibration feedback when available</span>
+          <span>Vibration when available</span>
         </label>
       )}
     </div>

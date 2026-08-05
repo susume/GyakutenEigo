@@ -113,10 +113,10 @@ type WizardForm = {
 const labels: Record<string, string> = {
   DRAFT: "Draft",
   REGISTRATION_OPEN: "Registration open",
-  STUDY_PACK_RELEASED: "Study pack released",
+  STUDY_PACK_RELEASED: "Study pack ready",
   CHECK_IN: "Check-in",
   LIVE: "Live",
-  COMPLETED: "Completed",
+  COMPLETED: "Complete",
   CANCELLED: "Cancelled"
 };
 const levelLabels: Record<string, string> = {
@@ -127,7 +127,7 @@ const levelLabels: Record<string, string> = {
   SPONSORED: "Sponsored"
 };
 const mapLabels: Record<string, string> = { desert_citadel: "Desert Citadel", iron_junction: "The Iron Junction", temple_runoff: "Temple Runoff" };
-const modeLabels: Record<string, string> = { zombie: "Zombie", classic: "Tag", flag: "Flag" };
+const modeLabels: Record<string, string> = { zombie: "Zombie Survival", classic: "Team Tag", flag: "Capture the Flag" };
 const formatDate = (value: string | undefined, timeZone = "Asia/Tokyo", withTime = false) => {
   if (!value) return "Not set";
   const date = new Date(value);
@@ -135,7 +135,7 @@ const formatDate = (value: string | undefined, timeZone = "Asia/Tokyo", withTime
   return new Intl.DateTimeFormat(undefined, { month: "short", day: "numeric", year: "numeric", ...(withTime ? { hour: "numeric", minute: "2-digit" } : {}), timeZone }).format(date);
 };
 const formatStatus = (status: string) => labels[status] ?? status.replaceAll("_", " ");
-const errorMessage = (error: unknown) => error instanceof ApiError || error instanceof Error ? error.message : "Tournament action failed.";
+const errorMessage = (error: unknown) => error instanceof ApiError || error instanceof Error ? error.message : "We couldn’t complete that competition action. Try again.";
 const nowInput = (days: number, hour: number) => {
   const date = new Date(Date.now() + days * 86_400_000);
   date.setHours(hour, 0, 0, 0);
@@ -279,10 +279,10 @@ function TournamentDashboard({ tournament, auditEvents, quizSets, onBack, onRelo
   };
   const addTeam = async (event: FormEvent) => {
     event.preventDefault();
-    await action(() => tournamentApi.addTeam(tournament.id, { teamName: teamDraft.teamName, schoolName: teamDraft.schoolName, className: teamDraft.className, roster: teamDraft.roster.split(",").map((displayName) => ({ displayName: displayName.trim() })).filter((item) => item.displayName), substitutes: teamDraft.substitutes.split(",").map((displayName) => ({ displayName: displayName.trim() })).filter((item) => item.displayName) }), "Team added and approved.");
+    await action(() => tournamentApi.addTeam(tournament.id, { teamName: teamDraft.teamName, schoolName: teamDraft.schoolName, className: teamDraft.className, roster: teamDraft.roster.split(",").map((displayName) => ({ displayName: displayName.trim() })).filter((item) => item.displayName), substitutes: teamDraft.substitutes.split(",").map((displayName) => ({ displayName: displayName.trim() })).filter((item) => item.displayName) }), "Team added and ready for review.");
     setTeamDraft({ teamName: "", schoolName: "", className: "", roster: "", substitutes: "" });
   };
-  const saveStudy = async () => action(() => tournamentApi.saveStudyPack(tournament.id, { releaseAt: tournament.studyPack?.releaseAt ?? new Date().toISOString(), items: studyDraft.map((item, index) => ({ ...item, sortOrder: index })) }), "Study pack saved.");
+  const saveStudy = async () => action(() => tournamentApi.saveStudyPack(tournament.id, { releaseAt: tournament.studyPack?.releaseAt ?? new Date().toISOString(), items: studyDraft.map((item, index) => ({ ...item, sortOrder: index })) }), "Study pack saved. It’s ready to share.");
   const createRoom = async (match: Match) => {
     const rules = tournament.rules;
     try {
@@ -314,19 +314,19 @@ function TournamentDashboard({ tournament, auditEvents, quizSets, onBack, onRelo
         sessionCode = (created as { session: { sessionCode: string } }).session.sessionCode;
       }
       await tournamentApi.launchMatch(tournament.id, match.id, sessionCode);
-      setMessage(`Official room ${sessionCode} is ready. Settings are locked.`);
+      setMessage(`Official game room ${sessionCode} is ready. Settings are locked.`);
       await refresh();
     } catch (err) { setError(errorMessage(err)); } finally { setBusy(false); }
   };
   const copy = async (value: string, success = "Copied to clipboard.") => {
-    try { await navigator.clipboard.writeText(value); setMessage(success); } catch { setError("Copy is unavailable in this browser. Select the link manually."); }
+    try { await navigator.clipboard.writeText(value); setMessage(success); } catch { setError("We couldn’t copy that here. Select the link and copy it manually."); }
   };
   const studyLink = `${window.location.origin}/tournament-study/${tournament.id}`;
   const champion = tournament.championTeamId ? teamById.get(tournament.championTeamId) : undefined;
   const runnerUp = tournament.runnerUpTeamId ? teamById.get(tournament.runnerUpTeamId) : undefined;
   const tabs = [{ id: "overview", label: "Overview" }, { id: "study", label: "Study pack" }, { id: "teams", label: "Teams" }, { id: "bracket", label: "Bracket" }, { id: "matches", label: "Matches" }, { id: "results", label: "Results" }, { id: "settings", label: "Settings" }] as const;
   return <section className="tournament-dashboard panel">
-    <div className="tournament-dashboard-top"><button className="back-link" onClick={onBack}><ArrowLeft size={16} />All tournaments</button><button className="secondary-button" onClick={() => void refresh()} disabled={busy}><RefreshCw size={15} />Refresh</button></div>
+    <div className="tournament-dashboard-top"><button className="back-link" onClick={onBack}><ArrowLeft size={16} />All competitions</button><button className="secondary-button" onClick={() => void refresh()} disabled={busy}><RefreshCw size={15} />Refresh</button></div>
     <div className="tournament-dashboard-hero"><div><div className="tournament-title-line"><StatusPill status={tournament.status} /><span>{levelLabels[tournament.level] ?? tournament.level}</span></div><h2>{tournament.title}</h2><p>{tournament.description}</p>{tournament.sponsorName && <small className="tournament-sponsor-line">Presented by {tournament.sponsorName}{tournament.sponsorMessage ? ` · ${tournament.sponsorMessage}` : ""}</small>}</div><div className="tournament-hero-date"><CalendarDays size={18} /><small>Tournament date</small><strong>{formatDate(tournament.tournamentAt, tournament.timeZone, true)}</strong></div></div>
     {(message || error) && <div className={`tournament-alert ${error ? "error" : ""}`} role={error ? "alert" : "status"}>{error ? <X size={17} /> : <CheckCircle2 size={17} />}{error || message}<button aria-label="Dismiss message" onClick={() => { setError(""); setMessage(""); }}>×</button></div>}
     <nav className="tournament-tabs" aria-label="Tournament sections">{tabs.map((item) => <button key={item.id} className={tab === item.id ? "active" : ""} onClick={() => setTab(item.id)}>{item.label}</button>)}</nav>

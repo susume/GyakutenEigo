@@ -89,7 +89,7 @@ export default function PremiumCharacterCreator({
       }
     }
 
-    setError(finalError instanceof Error ? finalError.message : "Appearance could not be saved.");
+    setError(finalError instanceof Error ? finalError.message : "We couldn’t save your player style. Try again.");
     setSaving(false);
   }, [disabled, draft, onSave, saving]);
 
@@ -128,13 +128,13 @@ export default function PremiumCharacterCreator({
     return (
       <div className="customization-locked">
         <Check size={20} />
-        <span>Your teacher has locked character customization. Your safe default is ready.</span>
+        <span>Your teacher has turned off player styling. Your default player is ready.</span>
       </div>
     );
   }
 
   return (
-    <section className="character-creator premium-character-creator" aria-label="Character creator">
+    <section className="character-creator premium-character-creator" aria-label="Player style">
       <div className="character-creator-preview-column">
         <div className="preview-heading">
           <div>
@@ -145,10 +145,10 @@ export default function PremiumCharacterCreator({
             className="icon-action"
             type="button"
             onClick={() => setCameraResetSignal((value) => value + 1)}
-            aria-label="Reset preview camera"
+            aria-label="Reset player preview"
           >
             <RotateCcw size={16} />
-            Reset view
+            Reset preview
           </button>
         </div>
         <CharacterPreview
@@ -172,15 +172,15 @@ export default function PremiumCharacterCreator({
           <div className="cosmetic-progress" aria-label={`${progress.xp} cosmetic experience`}>
             <span style={{ width: `${progress.progressPercent}%` }} />
           </div>
-          <p>{progress.nextLevelXp === undefined ? "All cosmetics unlocked" : `${progress.nextLevelXp - progress.xp} XP to the next cosmetic level`}</p>
+          <p>{progress.nextLevelXp === undefined ? "Every style is unlocked" : `${progress.nextLevelXp - progress.xp} XP to unlock the next style`}</p>
         </div>
         <div className="creator-controls-scroll">
-          <div className="cosmetic-category-tabs" role="tablist" aria-label="Cosmetic categories">
+          <div className="cosmetic-category-tabs" role="tablist" aria-label="Player style categories">
                 {([
                   { id: "head", label: "Head", Icon: UserRound },
                   { id: "back", label: "Back", Icon: Backpack },
                   { id: "footwear", label: "Footwear", Icon: Footprints },
-                  { id: "pose", label: "Victory", Icon: Smile }
+                  { id: "pose", label: "Victory pose", Icon: Smile }
                 ] as const).map((category) => (
                   <button
                     type="button"
@@ -198,7 +198,7 @@ export default function PremiumCharacterCreator({
               {activeCategory === "head" && (
                 <fieldset className="creator-option-section accessory-options cosmetic-catalog-grid">
                   <legend>Head style</legend>
-                  <p className="creator-option-help">Choose your character&apos;s complete head.</p>
+                  <p className="creator-option-help">Choose the look your player wears in the game.</p>
                   <div className="accessory-card-grid">
                     {HEAD_STYLE_OPTIONS.map((option) => {
                       const level = unlockLevel("head", option.id);
@@ -211,13 +211,13 @@ export default function PremiumCharacterCreator({
                           onClick={() => updateDraft((current) => ({ ...current, headStyleId: option.id }))}
                           aria-pressed={draft.headStyleId === option.id}
                           disabled={disabled || locked}
-                          title={locked ? `Unlocks at level ${level}` : option.label}
+                          title={locked ? `Unlocks at style level ${level}` : option.label}
                         >
                           <span className="cosmetic-card-icon cosmetic-image-preview">
                             <option.Icon className="cosmetic-image-fallback" size={21} />
                             <img src={option.thumbnail} alt="" aria-hidden="true" />
                           </span>
-                          <span><strong>{option.label}</strong><small>{locked ? `Level ${level}` : option.description}</small></span>
+                          <span><strong>{option.label}</strong><small>{locked ? `Style level ${level}` : option.description}</small></span>
                           {locked && <Lock className="cosmetic-lock" size={12} />}
                           {!locked && draft.headStyleId === option.id && <Check className="cosmetic-check" size={13} />}
                         </button>
@@ -229,7 +229,7 @@ export default function PremiumCharacterCreator({
 
               {activeCategory === "back" && (
                 <fieldset className="creator-option-section accessory-options cosmetic-catalog-grid">
-                  <legend>Back gear · equip one</legend>
+                  <legend>Back gear · choose one</legend>
                   <div className="accessory-card-grid">
                     {BACK_ACCESSORY_OPTIONS.map((option) => {
                       const level = unlockLevel("back", option.value);
@@ -242,13 +242,13 @@ export default function PremiumCharacterCreator({
                           onClick={() => updateDraft((current) => ({ ...current, backAccessoryId: option.value }))}
                           aria-pressed={draft.backAccessoryId === option.value}
                           disabled={disabled || locked}
-                          title={locked ? `Unlocks at level ${level}` : option.detail}
+                          title={locked ? `Unlocks at style level ${level}` : option.detail}
                         >
                           <span className="cosmetic-card-icon cosmetic-image-preview">
                             <option.Icon className="cosmetic-image-fallback" size={21} />
                             <img src={option.thumbnail} alt="" aria-hidden="true" />
                           </span>
-                          <span><strong>{option.label}</strong><small>{locked ? `Level ${level}` : option.detail}</small></span>
+                          <span><strong>{option.label}</strong><small>{locked ? `Style level ${level}` : option.detail}</small></span>
                           {locked && <Lock className="cosmetic-lock" size={12} />}
                           {!locked && draft.backAccessoryId === option.value && <Check className="cosmetic-check" size={13} />}
                         </button>
@@ -260,8 +260,8 @@ export default function PremiumCharacterCreator({
 
               {activeCategory === "footwear" && (
                 <fieldset className="creator-option-section accessory-options cosmetic-catalog-grid footwear-options">
-                  <legend>Footwear · equip one</legend>
-                  <p className="creator-option-help">Cosmetic only · movement and hitboxes stay the same.</p>
+                  <legend>Footwear · choose one</legend>
+                  <p className="creator-option-help">Style only · movement and game rules stay the same.</p>
                   <div className="accessory-card-grid footwear-card-grid">
                     {FOOTWEAR_OPTIONS.map((option) => {
                       const level = unlockLevel("footwear", option.value);
@@ -274,13 +274,13 @@ export default function PremiumCharacterCreator({
                           onClick={() => updateDraft((current) => ({ ...current, footwearId: option.value }))}
                           aria-pressed={draft.footwearId === option.value}
                           disabled={disabled || locked}
-                          title={locked ? `Unlocks at level ${level}` : option.detail}
+                          title={locked ? `Unlocks at style level ${level}` : option.detail}
                         >
                           <span className="cosmetic-card-icon cosmetic-image-preview footwear-card-preview">
                             <option.Icon className="cosmetic-image-fallback" size={28} />
                             <img src={option.thumbnail} alt="" aria-hidden="true" />
                           </span>
-                          <span><strong>{option.label}</strong><small>{locked ? `Level ${level}` : option.detail}</small></span>
+                          <span><strong>{option.label}</strong><small>{locked ? `Style level ${level}` : option.detail}</small></span>
                           {locked && <Lock className="cosmetic-lock" size={12} />}
                           {!locked && draft.footwearId === option.value && <Check className="cosmetic-check" size={13} />}
                         </button>
@@ -292,7 +292,7 @@ export default function PremiumCharacterCreator({
 
               {activeCategory === "pose" && (
                 <fieldset className="creator-option-section accessory-options cosmetic-catalog-grid">
-                  <legend>Victory animation</legend>
+                  <legend>Victory pose</legend>
                   <div className="accessory-card-grid">
                     {VICTORY_POSE_OPTIONS.map((option) => {
                       const level = unlockLevel("pose", option.value);
@@ -305,13 +305,13 @@ export default function PremiumCharacterCreator({
                           onClick={() => updateDraft((current) => ({ ...current, victoryPoseId: option.value }))}
                           aria-pressed={draft.victoryPoseId === option.value}
                           disabled={disabled || locked}
-                          title={locked ? `Unlocks at level ${level}` : option.detail}
+                          title={locked ? `Unlocks at style level ${level}` : option.detail}
                         >
                           <span className="cosmetic-card-icon cosmetic-image-preview">
                             <option.Icon className="cosmetic-image-fallback" size={21} />
                             <img src={option.thumbnail} alt="" aria-hidden="true" />
                           </span>
-                          <span><strong>{option.label}</strong><small>{locked ? `Level ${level}` : option.detail}</small></span>
+                          <span><strong>{option.label}</strong><small>{locked ? `Style level ${level}` : option.detail}</small></span>
                           {locked && <Lock className="cosmetic-lock" size={12} />}
                           {!locked && draft.victoryPoseId === option.value && <Check className="cosmetic-check" size={13} />}
                         </button>
@@ -325,14 +325,14 @@ export default function PremiumCharacterCreator({
 
       <footer className="creator-footer">
         <div className="creator-actions">
-          <button type="button" onClick={randomize} disabled={disabled}><Dice5 size={16} />Randomize</button>
+          <button type="button" onClick={randomize} disabled={disabled}><Dice5 size={16} />Surprise me</button>
           <button
             type="button"
             onClick={() => updateDraft(() => ({ ...DEFAULT_PLAYER_APPEARANCE }))}
             disabled={disabled}
           >
             <RotateCcw size={16} />
-            Reset character
+            Reset player
           </button>
         </div>
         <div className="save-cluster">
@@ -344,10 +344,10 @@ export default function PremiumCharacterCreator({
               {error
                 ? <><X size={15} />Couldn’t save</>
                 : saving
-                  ? <><span className="saving-dot" />Saving appearance…</>
+                  ? <><span className="saving-dot" />Saving player style…</>
                   : dirty
                     ? "Unsaved changes"
-                    : <><Check size={15} />Appearance saved</>}
+                    : <><Check size={15} />Player style saved</>}
             </div>
             {error && <small className="save-error-detail">{error}</small>}
           </div>
@@ -358,7 +358,7 @@ export default function PremiumCharacterCreator({
               onClick={() => void save()}
               disabled={disabled || saving}
             >
-              {error ? "Try again" : "Save now"}
+              {error ? "Try again" : "Save style"}
             </button>
           )}
         </div>

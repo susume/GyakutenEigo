@@ -74,12 +74,12 @@ const getSessionPath = (deps: SessionRouteDependencies, req: Request) =>
 export const registerSessionRoutes = (app: Application, deps: SessionRouteDependencies) => {
   app.post("/api/sessions", deps.requireTeacher, async (req: AuthedRequest, res) => {
     if (deps.isDraining()) {
-      res.status(503).json({ error: "This server instance is draining. Try again shortly." });
+      res.status(503).json({ error: "This game service is finishing another task. Try again in a moment." });
       return;
     }
     const quiz = deps.assertTeacherOwnsQuiz(req.user!.id, String(req.body.quizSetId ?? ""));
     if (!quiz || quiz.questions.length === 0) {
-      res.status(400).json({ error: "Choose a quiz set with at least one question." });
+      res.status(400).json({ error: "Choose a question set with at least one question." });
       return;
     }
     const settings = deps.createDefaultSettings(req.body.settings);
@@ -128,7 +128,7 @@ export const registerSessionRoutes = (app: Application, deps: SessionRouteDepend
     if (!startCheck.ok) {
       res
         .status(400)
-        .json({ error: startCheck.reason === "session_ended" ? "This session has ended." : "Add at least one student before starting." });
+        .json({ error: startCheck.reason === "session_ended" ? "This game has ended." : "Add at least one student before starting." });
       return;
     }
     session.currentRound = 1;
@@ -137,13 +137,13 @@ export const registerSessionRoutes = (app: Application, deps: SessionRouteDepend
       deps.openRoundPreparation(session, false);
       deps.appendEvent(session, {
         type: "start",
-        message: `${session.settings.gameMode === "flag" ? "Flag Mode" : "Classic Tag"} round 1 preparation opened.`
+        message: `${session.settings.gameMode === "flag" ? "Capture the Flag" : "Team Tag"} round 1 is ready to prepare.`
       });
     } else if (session.settings.gameMode === "zombie") {
       deps.openZombieSelectionPhase(session, false);
       deps.appendEvent(session, {
         type: "start",
-        message: "Zombie Mode preparation started. Everyone is Human for 20 seconds."
+        message: "Zombie Survival is getting ready. Everyone is Human for 20 seconds."
       });
     } else {
       deps.startRoundState(session, false);
@@ -193,7 +193,7 @@ export const registerSessionRoutes = (app: Application, deps: SessionRouteDepend
       return;
     }
     if (session.settings.gameMode === "zombie") {
-      res.status(400).json({ error: "Zombie Mode is a single survival round. Use End Game to stop it." });
+      res.status(400).json({ error: "Zombie Survival is one survival round. Use End game to stop it." });
       return;
     }
     if (session.status !== "active") {

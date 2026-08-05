@@ -79,7 +79,7 @@ export async function api<T>(path: string, options: RequestInit = {}, policy: Ap
     }, policy);
   } catch {
     throw new ApiError(
-      "QuizStrike could not connect to the game server. Reload the page and try again. If this only happens on the school network, ask school IT to allow api.gyakuteneigo.com and gyakuteneigo-api.onrender.com.",
+      "QuizStrike couldn’t reach the game server. Check your connection, then try again. If this keeps happening at school, ask school IT for help.",
       0
     );
   }
@@ -249,7 +249,7 @@ export const teacherApi = {
       });
     } catch {
       throw new ApiError(
-        "QuizStrike could not connect to the game server. Reload the page and try again. If this only happens on the school network, ask school IT to allow api.gyakuteneigo.com and gyakuteneigo-api.onrender.com.",
+        "QuizStrike couldn’t reach the game server. Check your connection, then try again. If this keeps happening at school, ask school IT for help.",
         0
       );
     }

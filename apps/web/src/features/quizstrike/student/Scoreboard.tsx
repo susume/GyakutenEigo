@@ -29,18 +29,18 @@ export default function Scoreboard({
     <div className="scoreboard">
       <div className="panel-title">
         <h2>Scoreboard</h2>
-        <span>{players.length} players</span>
+        <span>{players.length} {players.length === 1 ? "player" : "players"}</span>
       </div>
       <div className="team-score-row">
         {gameMode === "zombie" ? (
           <>
-            <span className="team-score blue-team">Humans {zombieCounts.humans}</span>
-            <span className="team-score red-team">Zombies {zombieCounts.zombies}</span>
+          <span className="team-score blue-team">Humans · {zombieCounts.humans}</span>
+          <span className="team-score red-team">Zombies · {zombieCounts.zombies}</span>
           </>
         ) : (
           <>
-            <span className="team-score blue-team">Blue {totals.blue}</span>
-            <span className="team-score red-team">Red {totals.red}</span>
+          <span className="team-score blue-team">Blue · {totals.blue}</span>
+          <span className="team-score red-team">Red · {totals.red}</span>
           </>
         )}
       </div>
@@ -52,10 +52,10 @@ export default function Scoreboard({
               <caption>{group.label} scoreboard</caption>
               <thead>
                 <tr className="scoreboard-row scoreboard-head">
-                  <th scope="col">Player Name</th>
+                  <th scope="col">Player</th>
                   <th scope="col">Tags</th>
                   <th scope="col">Respawns</th>
-                  <th scope="col">Question Accuracy</th>
+                  <th scope="col">Answer accuracy</th>
                   {onRemovePlayer && <th scope="col" className="scoreboard-actions-heading">Actions</th>}
                 </tr>
               </thead>
@@ -64,9 +64,9 @@ export default function Scoreboard({
                 <tr className={`scoreboard-row ${row.teamId}-team`} key={row.playerId}>
                   <th scope="row" title={row.displayName}>
                     {row.displayName}
-                    {row.isBot ? " Bot" : ""}
-                    {row.isLocalPlayer ? " You" : ""}
-                    {row.connectionState === "disconnected" ? " Offline" : ""}
+                    {row.isBot ? " · test player" : ""}
+                    {row.isLocalPlayer ? " · you" : ""}
+                    {row.connectionState === "disconnected" ? " · away" : ""}
                     <small>{gameMode === "zombie" ? (row.role === "zombie" ? "Zombie" : "Human") : teamLabel(row.teamId)}</small>
                   </th>
                   <td>{row.tags}</td>
@@ -82,7 +82,7 @@ export default function Scoreboard({
                   )}
                 </tr>
               ))}
-              {group.rows.length === 0 && <tr><td colSpan={onRemovePlayer ? 5 : 4}>No players in this group.</td></tr>}
+              {group.rows.length === 0 && <tr><td colSpan={onRemovePlayer ? 5 : 4}>No players here yet.</td></tr>}
               </tbody>
             </table>
           </div>

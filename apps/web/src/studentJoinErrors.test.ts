@@ -6,25 +6,25 @@ import { formatStudentJoinError } from "./studentJoinErrors";
 test("student join errors provide cause-specific recovery guidance", () => {
   assert.equal(
     formatStudentJoinError(new ApiError("That nickname is already taken in this session.", 409)),
-    "That nickname is already taken in this session. Choose a different nickname."
+    "That nickname is already taken in this session. Choose a different name."
   );
   assert.equal(
     formatStudentJoinError(new ApiError("This session is full.", 400)),
-    "This session is full. Ask the teacher to make space or join a different room."
+    "This session is full. Ask your teacher to make space or share another room."
   );
   assert.equal(
     formatStudentJoinError(new ApiError("This session has already started.", 409)),
-    "This session has already started. Ask the teacher for the next room."
+    "This session has already started. Ask your teacher for the next room."
   );
 });
 
 test("student join errors retain code and connection recovery guidance", () => {
   assert.equal(
     formatStudentJoinError(new ApiError("Session not found.", 404)),
-    "Session not found. Check the code with your teacher and try again."
+    "Session not found. Check the classroom code with your teacher."
   );
   assert.equal(
     formatStudentJoinError(new ApiError("Could not reach the game server.", 0)),
-    "Could not reach the game server. Check your connection and try again."
+    "Could not reach the game server. Check your connection, then try again."
   );
 });

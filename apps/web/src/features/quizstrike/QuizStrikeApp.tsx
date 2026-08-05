@@ -249,21 +249,21 @@ const getNicknameError = (value: string) => {
   const normalized = value.toLowerCase().replace(/[^a-z0-9]/g, "");
   if (!normalized) return "";
   const blockedTerm = blockedNicknameTerms.find((term) => normalized.includes(term));
-  return blockedTerm ? "Please choose a classroom-friendly nickname." : "";
+  return blockedTerm ? "Choose a classroom-friendly name." : "";
 };
 
 const sessionNumberFields = [
-  { name: "roundCount", label: "Rounds", min: 1, max: 30, help: "Complete rounds before the session ends." },
-  { name: "flagHoldSeconds", label: "Flag Hold Time", min: 5, max: 180, step: 5, unit: "seconds", help: "How long Red protects a placed flag." },
-  { name: "initialZombieCount", label: "Zombies Chosen", min: 1, max: 20, help: "Students randomly revealed as Zombies after the 20-second energy period." },
-  { name: "maxPlayers", label: "Max Players", min: 2, max: 40, unit: "students", help: "Maximum students and test bots in the room." },
-  { name: "startingMoney", label: "Starting Money", min: 0, max: 16000, step: 100, unit: "dollars", help: "Money each student receives at the start." },
-  { name: "correctAnswerReward", label: "Correct Answer Reward", min: 0, max: 5000, step: 100, unit: "dollars", help: "Money earned for each correct answer." },
-  { name: "startingSnowballs", label: "Starting Snowballs", min: 1, max: 99, unit: "snowballs", help: "Starting ammunition for each student." },
-  { name: "snowballPackPrice", label: "Snowball Pack Price", min: 0, max: 5000, step: 50, unit: "dollars", help: "Cost of one snowball pack." },
-  { name: "snowballsPerPack", label: "Snowballs Per Pack", min: 1, max: 50, unit: "snowballs", help: "Ammunition in each purchased pack." },
-  { name: "wrongAnswerPenalty", label: "Wrong Answer Penalty", min: 0, max: 16000, step: 100, unit: "dollars", help: "Money removed for an incorrect answer." },
-  { name: "roundDurationSeconds", label: "Round Time Limit", min: 60, max: 3600, step: 30, unit: "seconds", help: "Time available in each round." }
+  { name: "roundCount", label: "Number of rounds", min: 1, max: 30, help: "How many rounds the class will play." },
+  { name: "flagHoldSeconds", label: "Flag hold time", min: 5, max: 180, step: 5, unit: "seconds", help: "How long Red protects a placed flag." },
+  { name: "initialZombieCount", label: "Starting Zombies", min: 1, max: 20, help: "How many students become Zombies after the energy period." },
+  { name: "maxPlayers", label: "Student limit", min: 2, max: 40, unit: "students", help: "The largest class size this room can hold, including test bots." },
+  { name: "startingMoney", label: "Starting rewards", min: 0, max: 16000, step: 100, unit: "dollars", help: "Rewards each student starts with." },
+  { name: "correctAnswerReward", label: "Reward per correct answer", min: 0, max: 5000, step: 100, unit: "dollars", help: "Rewards earned for each correct answer." },
+  { name: "startingSnowballs", label: "Starting snowballs", min: 1, max: 99, unit: "snowballs", help: "Ammunition each student starts with." },
+  { name: "snowballPackPrice", label: "Snowball pack price", min: 0, max: 5000, step: 50, unit: "dollars", help: "Cost of one snowball pack." },
+  { name: "snowballsPerPack", label: "Snowballs per pack", min: 1, max: 50, unit: "snowballs", help: "Ammunition in each pack." },
+  { name: "wrongAnswerPenalty", label: "Wrong answer penalty", min: 0, max: 16000, step: 100, unit: "dollars", help: "Rewards removed for an incorrect answer." },
+  { name: "roundDurationSeconds", label: "Round time", min: 60, max: 3600, step: 30, unit: "seconds", help: "Time available for each round." }
 ] as const satisfies ReadonlyArray<{
   name: keyof Pick<
     SessionSettings,
@@ -342,7 +342,7 @@ const createGeneratedQuestions = (rawText: string): QuestionDraft[] => {
         .slice(0, 3)
         .map((candidate) => candidate.definition);
       const generatedChoices = shuffle([entry.definition, ...distractors]).slice(0, 4);
-      while (generatedChoices.length < 4) generatedChoices.push("Review this item again");
+      while (generatedChoices.length < 4) generatedChoices.push("Review this term again");
       const correctIndex = generatedChoices.indexOf(entry.definition);
       return {
         prompt: `What matches "${entry.term}"?`,
@@ -362,7 +362,7 @@ const createGeneratedQuestions = (rawText: string): QuestionDraft[] => {
   return terms.map((term) => {
     const distractors = shuffle(terms.filter((candidate) => candidate !== term)).slice(0, 3);
     const generatedChoices = shuffle([term, ...distractors]).slice(0, 4);
-    while (generatedChoices.length < 4) generatedChoices.push("Not in this study list");
+    while (generatedChoices.length < 4) generatedChoices.push("Not in this list");
     const correctIndex = generatedChoices.indexOf(term);
     return {
       prompt: "Which item was included in this study list?",
@@ -397,7 +397,7 @@ function useAsyncMessage() {
   }, []);
   const report = useCallback((err: unknown) => {
     setMessage("");
-    setError(err instanceof ApiError || err instanceof Error ? err.message : "Something went wrong.");
+    setError(err instanceof ApiError || err instanceof Error ? err.message : "We couldn't complete that. Try again.");
   }, []);
 
   useEffect(() => {
@@ -418,16 +418,16 @@ const formatMoney = (value: number) => `$${Math.round(value)}`;
 const teamLabel = (team: PlayerSession["team"]) => (team === "blue" ? "Blue Team" : "Red Team");
 
 const sessionStatusLabel = (status: GameSession["status"]) => {
-  if (status === "active") return "Round Active";
-  if (status === "paused") return "Round Results";
-  if (status === "ended") return "Session Ended";
-  return "Waiting Room";
+  if (status === "active") return "Round live";
+  if (status === "paused") return "Round results";
+  if (status === "ended") return "Game over";
+  return "Waiting for players";
 };
 
 const gameModeLabel = (mode: SessionSettings["gameMode"]) => {
-  if (mode === "flag") return "Flag";
-  if (mode === "zombie") return "Zombie";
-  return "Tag";
+  if (mode === "flag") return "Capture the Flag";
+  if (mode === "zombie") return "Zombie Survival";
+  return "Team Tag";
 };
 
 const arenaMapLabel = (mapId: ArenaMapId | string | undefined) => getArenaMap(mapId).title;
@@ -441,12 +441,12 @@ const ARENA_MAP_PREVIEW_ASSETS: Record<ArenaMapId, string> = {
 
 const flagStatusText = (session: GameSession) => {
   if (session.settings.gameMode !== "flag") return "";
-  if (!session.flag) return "Flag available at Red base";
-  if (session.flag.state === "carried") return "Flag carried by Red";
-  if (session.flag.state === "dropped") return "The flag has been dropped";
-  if (session.flag.state === "placed") return "Flag placed. Red protects, Blue captures.";
+  if (!session.flag) return "Flag ready at Red base";
+  if (session.flag.state === "carried") return "Red is carrying the flag";
+  if (session.flag.state === "dropped") return "The flag is down";
+  if (session.flag.state === "placed") return "Flag placed. Red protects. Blue captures.";
   if (session.flag.state === "captured") return "Blue captured the flag";
-  return "Flag available";
+  return "Flag ready";
 };
 
 const zombieStatusText = (session: GameSession, player?: PlayerSession | null) => {
@@ -454,8 +454,8 @@ const zombieStatusText = (session: GameSession, player?: PlayerSession | null) =
   const humans = session.players.filter((item) => item.role !== "zombie").length;
   const zombies = session.players.filter((item) => item.role === "zombie").length;
   return player?.role === "zombie"
-    ? `Humans ${humans} | Zombies ${zombies} | Hunt the Blue humans`
-    : `Humans ${humans} | Zombies ${zombies} | Answer for energy and run`;
+    ? `Humans ${humans} · Zombies ${zombies} · Find the Blue humans`
+    : `Humans ${humans} · Zombies ${zombies} · Answer for energy, then run`;
 };
 
 const getTopLearner = (players: PlayerSession[]) =>
@@ -669,34 +669,34 @@ export default function App() {
           <div id="primary-actions" className="top-actions" data-open={isMobileNavOpen ? "true" : "false"}>
           {mode === "quizStrike" && !teacher ? (
             <>
-              <button onClick={() => { setTeacherAuthMode("signup"); navigateTo("/quiz-strike", "teacher"); }}>Sign Up</button>
-              <button onClick={() => navigateTo("/join", "student")}>Join Game</button>
-              <button className="nav-login" onClick={() => { setTeacherAuthMode("login"); navigateTo("/quiz-strike", "teacher"); }}>Login</button>
+              <button onClick={() => { setTeacherAuthMode("signup"); navigateTo("/quiz-strike", "teacher"); }}>Create a teacher account</button>
+              <button onClick={() => navigateTo("/join", "student")}>Join with code</button>
+              <button className="nav-login" onClick={() => { setTeacherAuthMode("login"); navigateTo("/quiz-strike", "teacher"); }}>Teacher login</button>
             </>
           ) : <>
           <button className={mode === "quizStrike" ? "active" : ""} onClick={() => navigateTo("/quiz-strike", "quizStrike")}>
             <Play size={18} aria-hidden="true" />
-            Quiz-Strike
+            QuizStrike
           </button>
           <button className={mode === "student" ? "active" : ""} onClick={() => navigateTo("/join", "student")}>
             <DoorOpen size={18} aria-hidden="true" />
-            Join Game
+            Join with code
           </button>
           {teacher ? (
             <>
               <button className={mode === "teacher" ? "active" : ""} onClick={() => navigateTo("/quiz-strike", "teacher")}>
                 <GraduationCap size={18} aria-hidden="true" />
-                Teacher Dashboard
+                Teacher workspace
               </button>
               <button onClick={logout}>
                 <LogOut size={18} aria-hidden="true" />
-                Sign Out
+                Sign out
               </button>
             </>
           ) : (
             <button className={mode === "teacher" ? "active" : ""} onClick={() => { setTeacherAuthMode("login"); navigateTo("/quiz-strike", "teacher"); }}>
               <GraduationCap size={18} aria-hidden="true" />
-              Teacher Login
+              Teacher login
             </button>
           )}
           </>}
@@ -880,10 +880,10 @@ export function GyakutenEigoHome({ onOpenGame, onJoinGame }: { onOpenGame: () =>
     <div className="product-home rescued-home">
       <section className="site-home site-home-esports" aria-labelledby="quizstrike-home-title">
         <div className="site-home-copy">
-          <span className="eyebrow">The classroom esports arena</span>
-          <h1 id="quizstrike-home-title">Make every correct answer a <span className="hero-highlight">game-changing play.</span></h1>
-          <p>QuizStrike turns review into live esports-style competition. Students answer, earn advantages, and make the play that swings the round while teachers stay in control.</p>
-          <span className="hero-tagline">Learn the play. Win the round.</span>
+          <span className="eyebrow">A teacher-led classroom game</span>
+          <h1 id="quizstrike-home-title">Make every correct answer matter.</h1>
+          <p>QuizStrike turns review into a live team game. Students answer questions, make choices, and help their team while teachers stay in control.</p>
+          <span className="hero-tagline">Learn together. Play together.</span>
           <div className="hero-proof-row" aria-label="Product qualities">
             <span><Users size={16} aria-hidden="true" />Class vs. class energy</span>
             <span><Zap size={16} aria-hidden="true" />School vs. school spirit</span>
@@ -892,18 +892,18 @@ export function GyakutenEigoHome({ onOpenGame, onJoinGame }: { onOpenGame: () =>
           <div className="button-row">
             <button className="primary" onClick={onOpenGame}>
               <Play size={18} aria-hidden="true" />
-              Start a Classroom Match
+              Create your first game
             </button>
             <button onClick={onJoinGame}>
               <DoorOpen size={18} aria-hidden="true" />
-              Join the Arena
+              Join with a code
             </button>
           </div>
         </div>
         <article className="game-host-card" aria-label="QuizStrike Classroom game preview">
           <div className="hero-arena-preview">
             <img className="game-host-card-art" src="/assets/quizstrike-classroom-cover.webp" alt="QuizStrike Classroom cover art showing red and blue teams answering questions in a desert arena." width={1672} height={941} fetchPriority="high" />
-            <span className="game-host-card-label">Live match · Desert Citadel</span>
+            <span className="game-host-card-label">Live game · Desert Citadel</span>
           </div>
           <div className="game-preview-meta">
             <span className="game-preview-objective game-preview-objective-new"><Target size={16} aria-hidden="true" />Answer · earn · outplay</span>
@@ -933,15 +933,15 @@ export function GyakutenEigoHome({ onOpenGame, onJoinGame }: { onOpenGame: () =>
       <section className="landing-section founder-story-section" aria-labelledby="founder-story-title">
         <div className="founder-story-intro">
           <span className="eyebrow">The story behind QuizStrike</span>
-          <h2 id="founder-story-title">Where esports meets the classroom.</h2>
+          <h2 id="founder-story-title">Built for real classroom time.</h2>
           <span className="founder-story-signoff">Peter · Founder, QuizStrike</span>
         </div>
         <div className="founder-story-card">
-          <p className="founder-greeting">Hi! I’m Peter</p>
-          <p>I started <strong>QuizStrike</strong> because I wanted to bring esports and classroom learning together.</p>
-          <p>Esports taught me valuable skills that I never learned in school, and it opened my world to new experiences, communities, and opportunities. I also saw how games can keep students motivated, focused, and actively involved in the learning process.</p>
-          <p>That inspired me to build <strong>QuizStrike</strong> — a new bridge between esports and education, designed to make classroom learning more engaging, competitive, and fun.</p>
-          <p className="founder-closing">I can’t wait for you to try it!</p>
+          <p className="founder-greeting">Hi! I’m Peter.</p>
+          <p>I started <strong>QuizStrike</strong> because I wanted review to feel active, social, and worth showing up for.</p>
+          <p>Teachers need a game they can start quickly, guide clearly, and connect back to learning. Students need a reason to talk, think, and try again.</p>
+          <p>That is what <strong>QuizStrike</strong> is for: a classroom game where every answer helps the team make its next move.</p>
+          <p className="founder-closing">I hope it gives your next lesson a little more energy.</p>
         </div>
       </section>
 
@@ -974,7 +974,7 @@ export function GyakutenEigoHome({ onOpenGame, onJoinGame }: { onOpenGame: () =>
         <div><span className="eyebrow">Built for the real classroom</span><h2 id="faq-title">Live competition. Lasting learning.</h2></div>
         <div className="faq-list">
           <details open><summary>Is this only for high-stakes competition?</summary><p>No. Use it for a five-minute warmup, a focused review, or a full class-vs-class event.</p></details>
-          <details><summary>Can teachers keep the game on track?</summary><p>Yes. Teachers create and start sessions, select modes and settings, monitor the roster, and end a match when the lesson is ready.</p></details>
+           <details><summary>Can teachers keep the game on track?</summary><p>Yes. Teachers create and start games, choose the mode and settings, watch the roster, and end the game when the lesson is ready.</p></details>
           <details><summary>What happens after the matchup?</summary><p>The teacher dashboard keeps participation and question-accuracy information ready for the next lesson and the next rematch.</p></details>
         </div>
       </section>
@@ -983,7 +983,7 @@ export function GyakutenEigoHome({ onOpenGame, onJoinGame }: { onOpenGame: () =>
         <span className="eyebrow">Ready for the next matchup?</span>
         <h2 className="landing-final-cta-title">Turn your next review into the main event.</h2>
         <h2>Bring the questions. We’ll bring the game loop.</h2>
-        <div className="button-row"><button className="primary" onClick={onOpenGame}><Play size={18} aria-hidden="true" />Start a Classroom Match</button></div>
+         <div className="button-row"><button className="primary" onClick={onOpenGame}><Play size={18} aria-hidden="true" />Create your first game</button></div>
       </section>
     </div>
   );
@@ -1035,38 +1035,38 @@ function TeacherAuth({
   const wakeDisplay = authProgress === "retrying"
     ? {
         tone: "waking",
-        title: "Server is waking up",
-        detail: "The first attempt timed out. Retrying your login automatically..."
+        title: "Getting the classroom ready",
+        detail: "That took a moment. We’ll try again automatically."
       }
     : apiWakeState === "ready"
       ? {
           tone: "ready",
-          title: "Server ready",
-          detail: "Login should complete normally."
+          title: "Ready to sign in",
+          detail: "Your teacher workspace is ready."
         }
       : apiWakeState === "slow"
         ? {
             tone: "slow",
-            title: "Server is taking longer than usual",
-            detail: "You can still log in; one automatic retry is included."
+            title: "Taking a little longer",
+            detail: "You can keep going. We’ll retry once if needed."
           }
         : {
             tone: "waking",
-            title: "Server is waking up",
-            detail: "Enter your details while the free game server gets ready."
+            title: "Getting the classroom ready",
+            detail: "Enter your details while your teacher workspace starts."
           };
 
   const submitLabel = isSubmitting
     ? authProgress === "retrying"
-      ? "Retrying login..."
+      ? "Trying again..."
       : isSignup
-        ? "Creating account..."
+        ? "Creating your workspace..."
         : apiWakeState === "ready"
-          ? "Logging in..."
-          : "Waking server..."
+          ? "Signing in..."
+          : "Getting things ready..."
     : isSignup
-      ? "Create Account"
-      : "Log In";
+      ? "Create teacher workspace"
+      : "Sign in";
 
   return (
     <section className="auth-layout quizstrike-auth-layout">
@@ -1075,26 +1075,26 @@ function TeacherAuth({
         <div className="auth-visual-shade" aria-hidden="true" />
         <div className="auth-visual-content">
           <QuizStrikeLogo size="auth" />
-          <span className="auth-kicker">The command center for your classroom</span>
-          <p className="auth-visual-title">Create the matchup.<br />Run the round.</p>
-          <p>Build question sets, launch esports-style team matches, and turn student focus into a shared win.</p>
-          <span className="auth-tagline">Learn the play. Win the round.</span>
+          <span className="auth-kicker">A clear home for your next class game</span>
+          <p className="auth-visual-title">Choose the questions.<br />Start the game.</p>
+          <p>Build a question set, open a private room, and keep the class focused from one simple workspace.</p>
+          <span className="auth-tagline">Ready in minutes. Built for classrooms.</span>
         </div>
       </aside>
       <form className="panel form-panel auth-form-panel" onSubmit={submit}>
         <div className="auth-form-heading">
-          <span className="auth-kicker">Secure teacher access</span>
-          <h1>{isSignup ? "Teacher Sign Up" : "Teacher Login"}</h1>
-          <p>{isSignup ? "Create your teacher workspace and host your first classroom matchup." : "Open your classroom arena and get the next matchup moving."}</p>
+          <span className="auth-kicker">Teacher workspace</span>
+          <h1>{isSignup ? "Create your teacher workspace" : "Welcome back"}</h1>
+          <p>{isSignup ? "Set up your workspace and host your first classroom game." : "Sign in to open your question library and live rooms."}</p>
         </div>
         {isSignup && (
           <label htmlFor="teacher-name">
-            Name
+            Your name
             <input id="teacher-name" autoComplete="name" value={form.name} onChange={(event) => { setForm({ ...form, name: event.target.value }); status.clearError(); }} />
           </label>
         )}
         <label htmlFor="teacher-email">
-          Email
+          School email
           <input
             id="teacher-email"
             type="email"
@@ -1131,7 +1131,7 @@ function TeacherAuth({
           {submitLabel}
         </button>
         <button className="text-button" type="button" onClick={() => setIsSignup(!isSignup)} disabled={isSubmitting}>
-          {isSignup ? "Use existing account" : "Create a teacher account"}
+          {isSignup ? "I already have an account" : "Create a teacher workspace"}
         </button>
       </form>
     </section>
@@ -1266,25 +1266,25 @@ function TeacherDashboard({ teacher, onLogout }: { teacher: TeacherUser; onLogou
             <button className={activeSetupSection === "advanced" ? "active" : ""} aria-current={activeSetupSection === "advanced" ? "step" : undefined} onClick={() => setActiveSetupSection("advanced")}>
               <span className="setup-sidebar-index">3</span>
               <Settings size={17} aria-hidden="true" />
-              <strong>Advanced Settings</strong>
+              <strong>Game details</strong>
             </button>
             <button className="setup-sidebar-back" onClick={() => setTab("home")}>
               <ChevronLeft size={17} aria-hidden="true" />
-              Back to Library
+              Back to question library
             </button>
           </div>
         ) : (
           <>
             <button aria-current={tab === "home" ? "page" : undefined} className={tab === "home" ? "active" : ""} onClick={() => setTab("home")}>
               <BookOpen size={17} aria-hidden="true" />
-              Library
+              Question library
             </button>
             <button aria-current={tab === "reports" ? "page" : undefined} className={tab === "reports" ? "active" : ""} onClick={() => setTab("reports")}>
               Reports
             </button>
             <button aria-current={tab === "tournaments" ? "page" : undefined} className={tab === "tournaments" ? "active" : ""} onClick={() => setTab("tournaments")}>
               <Trophy size={17} aria-hidden="true" />
-              Tournaments
+              Competitions
             </button>
             <button aria-current={tab === "settings" ? "page" : undefined} className={tab === "settings" ? "active" : ""} onClick={() => setTab("settings")}>
               <Settings size={17} aria-hidden="true" />
@@ -1297,19 +1297,19 @@ function TeacherDashboard({ teacher, onLogout }: { teacher: TeacherUser; onLogou
       <div className="main-panel">
         <div className="section-heading dashboard-section-heading">
           <div>
-            <span className="eyebrow">Teacher control center</span>
-            <p>Build, launch, and monitor every round.</p>
+            <span className="eyebrow">Teacher workspace</span>
+            <p>Prepare the questions, start the game, and see what to revisit.</p>
           </div>
           <button onClick={refresh}>
             <RefreshCw size={18} aria-hidden="true" />
-            Refresh
+            Refresh data
           </button>
         </div>
         <StatusMessages error={status.error} message={status.message} />
         {isSocketReconnecting && (
           <p className="connection-banner">
             <WifiOff size={16} aria-hidden="true" />
-            Reconnecting...
+            Connection paused · trying again...
           </p>
         )}
 
@@ -1450,18 +1450,18 @@ function TeacherFolders({
     }
   };
   const createFolder = () => {
-    const name = window.prompt("Folder name", "New folder")?.trim();
+    const name = window.prompt("Name this folder", "New folder")?.trim();
     if (!name) return;
     void runAction(() => teacherApi.createFolder({ name, ...(selectedFolderId ? { parentId: selectedFolderId } : {}) }));
   };
   const renameFolder = (folder: QuizFolder) => {
-    const name = window.prompt("Rename folder", folder.name)?.trim();
+    const name = window.prompt("Rename this folder", folder.name)?.trim();
     if (!name || name === folder.name) return;
     void runAction(() => teacherApi.updateFolder(folder.id, { name }));
   };
   const moveFolder = (folder: QuizFolder) => {
     const destinations = [
-      { id: "", label: "All kits (root)" },
+      { id: "", label: "All question sets" },
       ...data.folders
         .filter((candidate) => candidate.id !== folder.id && !folderPath(candidate).some((ancestor) => ancestor.id === folder.id))
         .map((candidate) => ({ id: candidate.id, label: folderPath(candidate).map((item) => item.name).join(" / ") }))
@@ -1470,7 +1470,7 @@ function TeacherFolders({
     if (choice === null) return;
     const destination = destinations[Number(choice) - 1];
     if (!destination) {
-      window.alert("Choose one of the listed folder numbers.");
+      window.alert("Choose one of the folder numbers listed.");
       return;
     }
     void runAction(() => teacherApi.updateFolder(folder.id, { parentId: destination.id || null }));
@@ -1493,7 +1493,7 @@ function TeacherFolders({
     setDraggedQuizId(null);
   };
   const renameQuiz = (quiz: QuizSet) => {
-    const title = window.prompt("Rename quiz set", quiz.title)?.trim();
+    const title = window.prompt("Rename this question set", quiz.title)?.trim();
     if (!title || title === quiz.title) return;
     void runAction(() => teacherApi.renameQuizSet(quiz.id, title));
   };
@@ -1504,18 +1504,18 @@ function TeacherFolders({
   return (
     <section className="teacher-folders">
       <div className="folders-heading">
-        <div><span className="teacher-eyebrow">Teacher control center</span><h2>Your quiz library</h2><p>Choose a set, then launch the right game for your class.</p></div>
+        <div><span className="teacher-eyebrow">Question library</span><h2>Keep your best questions close</h2><p>Choose a set, then start the right game for your class.</p></div>
         <div className="folder-heading-actions">
-          <button className="folder-new" onClick={createFolder} disabled={isBusy}>New Folder <Plus size={18} aria-hidden="true" /></button>
-          <button className="folder-new" onClick={() => onEditQuiz()}><BookOpen size={18} aria-hidden="true" />Create Quiz</button>
+          <button className="folder-new" onClick={createFolder} disabled={isBusy}>New folder <Plus size={18} aria-hidden="true" /></button>
+          <button className="folder-new" onClick={() => onEditQuiz()}><BookOpen size={18} aria-hidden="true" />Create question set</button>
         </div>
       </div>
       <div className="folder-breadcrumbs" aria-label="Folder path">
-        <button className={!selectedFolderId ? "active" : ""} onClick={() => setSelectedFolderId(undefined)} onDragOver={(event) => event.preventDefault()} onDrop={(event) => { event.preventDefault(); dropQuizIntoFolder(draggedQuizId, undefined); }}><Folder size={15} aria-hidden="true" />All kits</button>
+        <button className={!selectedFolderId ? "active" : ""} onClick={() => setSelectedFolderId(undefined)} onDragOver={(event) => event.preventDefault()} onDrop={(event) => { event.preventDefault(); dropQuizIntoFolder(draggedQuizId, undefined); }}><Folder size={15} aria-hidden="true" />All question sets</button>
         {(selectedFolder ? folderPath(selectedFolder) : []).map((folder) => <span key={folder.id}><ChevronRight size={14} aria-hidden="true" /><button className={folder.id === selectedFolderId ? "active" : ""} onClick={() => setSelectedFolderId(folder.id)} onDragOver={(event) => event.preventDefault()} onDrop={(event) => { event.preventDefault(); dropQuizIntoFolder(draggedQuizId, folder.id); }}>{folder.name}</button></span>)}
       </div>
       <div className="folder-chips" aria-label="Quiz folders">
-        {data.folders.length === 0 && <span className="folder-library-note">No folders yet. Create one to start organizing your quiz sets.</span>}
+        {data.folders.length === 0 && <span className="folder-library-note">No folders yet. Add one when your question library starts to grow.</span>}
         {childFolders.map((folder) => <div className="folder-chip-item" key={folder.id} onDragOver={(event) => event.preventDefault()} onDrop={(event) => { event.preventDefault(); dropQuizIntoFolder(draggedQuizId, folder.id); }}>
           <button onClick={() => setSelectedFolderId(folder.id)}><Folder size={15} aria-hidden="true" />{folder.name}</button>
           <button className="folder-chip-action" onClick={() => renameFolder(folder)}>Rename</button>
@@ -1529,16 +1529,16 @@ function TeacherFolders({
           <div className="teacher-featured-copy">
             <span className="featured-badge">Featured set</span>
             <h3 id="featured-quiz-title">{featuredQuiz.title}</h3>
-            <p>{featuredQuiz.description || "A ready-to-play question set for your next classroom challenge."}</p>
+            <p>{featuredQuiz.description || "A ready-to-play question set for your next class game."}</p>
             <div className="teacher-featured-meta"><span>{featuredQuiz.questions.length} questions</span><span>Last edited {new Date(featuredQuiz.createdAt).toLocaleDateString()}</span></div>
           </div>
-          <div className="teacher-featured-action"><button className="play-live" onClick={() => onPlayLive(featuredQuiz.id)}><Play size={18} aria-hidden="true" />Play Live</button><small>Choose a mode next</small></div>
+          <div className="teacher-featured-action"><button className="play-live" onClick={() => onPlayLive(featuredQuiz.id)}><Play size={18} aria-hidden="true" />Start a game</button><small>Choose the mode next</small></div>
         </section>
       )}
       <div className="folder-quiz-list">
         {visibleQuizSets.length > 0 && <div className="folder-list-toolbar">
-          <label className="quiz-search"><span className="sr-only">Search quiz sets</span><input value={searchTerm} onChange={(event) => setSearchTerm(event.target.value)} placeholder="Search quiz sets..." /></label>
-          <span>{filteredQuizSets.length} quiz set{filteredQuizSets.length === 1 ? "" : "s"}</span>
+          <label className="quiz-search"><span className="sr-only">Search question sets</span><input value={searchTerm} onChange={(event) => setSearchTerm(event.target.value)} placeholder="Search question sets..." /></label>
+          <span>{filteredQuizSets.length} question set{filteredQuizSets.length === 1 ? "" : "s"}</span>
           <small className="folder-list-hint">Drag a row to move it into a folder.</small>
         </div>}
         {filteredQuizSets.map((quiz) => (
@@ -1561,18 +1561,18 @@ function TeacherFolders({
             <div className="quiz-cover"><BookOpen size={26} aria-hidden="true" /></div>
             <div><h3>{quiz.title}</h3><small>{quiz.questions.length} questions · Created {new Date(quiz.createdAt).toLocaleDateString()}</small></div>
             <div className="folder-row-actions">
-              <button className="play-live" onClick={() => onPlayLive(quiz.id)}><Play size={17} aria-hidden="true" />Play Live</button>
-              <button className="edit-set" onClick={() => onEditQuiz(quiz.id)}>Edit Set</button>
+              <button className="play-live" onClick={() => onPlayLive(quiz.id)}><Play size={17} aria-hidden="true" />Start a game</button>
+              <button className="edit-set" onClick={() => onEditQuiz(quiz.id)}>Edit set</button>
               <button className="edit-set" onClick={() => renameQuiz(quiz)}>Rename</button>
-              <button className="delete-set" onClick={() => deleteQuiz(quiz)}><Trash2 size={16} aria-hidden="true" />Delete</button>
+              <button className="delete-set" onClick={() => deleteQuiz(quiz)}><Trash2 size={16} aria-hidden="true" />Delete set</button>
             </div>
           </article>
         ))}
         {filteredQuizSets.length === 0 && (
-          <div className="folder-empty"><BookOpen size={34} aria-hidden="true" /><h3>{data.quizSets.length === 0 ? "Your quiz sets will appear here" : "No matching quiz sets"}</h3><p>{data.quizSets.length === 0 ? "Create the first set, then launch it live for your class." : "Try another search or create a new quiz set."}</p><button className="folder-new" onClick={() => onEditQuiz()}>Create Quiz <Plus size={18} aria-hidden="true" /></button></div>
+          <div className="folder-empty"><BookOpen size={34} aria-hidden="true" /><h3>{data.quizSets.length === 0 ? "Your question sets will appear here" : "No question sets match that search"}</h3><p>{data.quizSets.length === 0 ? "Create your first set, then start a game for your class." : "Try another search or create a new set."}</p><button className="folder-new" onClick={() => onEditQuiz()}>Create question set <Plus size={18} aria-hidden="true" /></button></div>
         )}
       </div>
-      <p className="folder-library-note">Reports are saved automatically when a session ends. The library keeps the newest 15 reports per teacher.</p>
+      <p className="folder-library-note">Reports save automatically when a game ends. We keep your 15 newest reports.</p>
     </section>
   );
 }
@@ -1616,10 +1616,10 @@ function _DashboardHome({ data, onTab }: { data: DashboardPayload; onTab: (tab: 
       </section>
 
       <section className="panel dashboard-list-card">
-        <div className="panel-title"><h2>Recent sessions</h2><span>{recentSessions.length ? `${recentSessions.length} available` : "No sessions yet"}</span></div>
+        <div className="panel-title"><h2>Recent games</h2><span>{recentSessions.length ? `${recentSessions.length} available` : "No games yet"}</span></div>
         <ul className="dashboard-session-list">
           {recentSessions.map((session) => <li key={session.id}><div><strong>{session.sessionCode}</strong><small>{gameModeLabel(session.settings.gameMode)} · {arenaMapLabel(session.settings.mapId)} · {session.players.length} joined</small></div><span className={`status-pill status-${session.status}`}>{sessionStatusLabel(session.status)}</span></li>)}
-          {recentSessions.length === 0 && <li className="dashboard-empty-state"><Target size={22} aria-hidden="true" /><div><strong>No sessions yet</strong><small>Your first private room will appear here after you create one.</small></div></li>}
+          {recentSessions.length === 0 && <li className="dashboard-empty-state"><Target size={22} aria-hidden="true" /><div><strong>No games yet</strong><small>Your first private room will appear here after you create one.</small></div></li>}
         </ul>
       </section>
 
@@ -1627,7 +1627,7 @@ function _DashboardHome({ data, onTab }: { data: DashboardPayload; onTab: (tab: 
         <div className="panel-title"><h2>Ready quiz sets</h2><span>{data.quizSets.length} saved</span></div>
         <ul className="dashboard-session-list">
           {data.quizSets.slice(0, 4).map((quiz) => <li key={quiz.id}><div><strong>{quiz.title}</strong><small>{quiz.questions.length} questions{quiz.description ? ` · ${quiz.description}` : ""}</small></div><button onClick={() => onTab("sessions")}>Host</button></li>)}
-          {data.quizSets.length === 0 && <li className="dashboard-empty-state"><BookOpen size={22} aria-hidden="true" /><div><strong>No quiz sets yet</strong><small>Create a set first, then turn it into a game room.</small></div></li>}
+          {data.quizSets.length === 0 && <li className="dashboard-empty-state"><BookOpen size={22} aria-hidden="true" /><div><strong>No question sets yet</strong><small>Create a set first, then turn it into a game room.</small></div></li>}
         </ul>
       </section>
     </div>
@@ -1760,7 +1760,7 @@ function QuizManager({ data, onRefresh, initialQuizSetId, startInCreateMode = fa
       setSelectedQuizId(payload.quizSet.id);
       setQuizForm({ title: "", description: "" });
       await onRefresh();
-      status.setMessage("Quiz set created.");
+      status.setMessage("Question set created. It’s ready for questions.");
     } catch (err) {
       status.report(err);
     } finally {
@@ -1836,7 +1836,7 @@ function QuizManager({ data, onRefresh, initialQuizSetId, startInCreateMode = fa
     if (!selectedQuiz || isImporting) return;
     status.clear();
     if (generatedQuestions.length === 0) {
-      status.setError("Paste at least two study items first.");
+      status.setError("Paste at least two study items to build questions.");
       return;
     }
 
@@ -1847,7 +1847,7 @@ function QuizManager({ data, onRefresh, initialQuizSetId, startInCreateMode = fa
       }
       setBulkText("");
       await onRefresh();
-      status.setMessage(`${generatedQuestions.length} questions generated from pasted study items.`);
+      status.setMessage(`${generatedQuestions.length} questions are ready to review.`);
     } catch (err) {
       status.report(err);
     } finally {
@@ -1861,7 +1861,7 @@ function QuizManager({ data, onRefresh, initialQuizSetId, startInCreateMode = fa
     status.clear();
     try {
       setBulkText(await file.text());
-      status.setMessage(`${file.name} loaded. Review the preview, then generate questions.`);
+      status.setMessage(`${file.name} is ready. Review the preview, then add the questions.`);
     } catch (err) {
       status.report(err);
     } finally {
@@ -1872,13 +1872,13 @@ function QuizManager({ data, onRefresh, initialQuizSetId, startInCreateMode = fa
   return (
     <div className={`two-column quiz-manager-shell ${startInCreateMode ? "quiz-create-mode" : "quiz-edit-mode"}`}>
       {startInCreateMode ? <form className="panel form-panel" onSubmit={createQuiz}>
-        <h2>Create Quiz Set</h2>
+        <h2>Create a question set</h2>
         <label>
-          Title
+          Set name
           <input value={quizForm.title} onChange={(event) => setQuizForm({ ...quizForm, title: event.target.value })} />
         </label>
         <label>
-          Description
+          What will students practice?
           <textarea
             value={quizForm.description}
             onChange={(event) => setQuizForm({ ...quizForm, description: event.target.value })}
@@ -1886,29 +1886,29 @@ function QuizManager({ data, onRefresh, initialQuizSetId, startInCreateMode = fa
         </label>
         <button className="primary" type="submit" disabled={isCreatingQuiz}>
           <Plus size={18} aria-hidden="true" />
-          {isCreatingQuiz ? "Working..." : "Create Quiz Set"}
+          {isCreatingQuiz ? "Creating..." : "Create question set"}
         </button>
       </form> : (
         <aside className="panel quiz-context-panel">
-          <span className="teacher-eyebrow">Quiz workspace</span>
+          <span className="teacher-eyebrow">Question workspace</span>
           <h2>{selectedQuiz ? `Editing: ${selectedQuiz.title}` : "Quiz workspace"}</h2>
-          <p>Keep the active quiz visible while you review questions and prepare the next live game.</p>
+          <p>Keep the set in view while you review questions and prepare the next class game.</p>
           <div className="quiz-context-stat"><strong>{selectedQuiz?.questions.length ?? 0}</strong><span>questions in this set</span></div>
-          <div className="quiz-context-note"><Zap size={18} aria-hidden="true" /><span>When you are ready, host this quiz and choose Zombie, Tag, or Flag.</span></div>
+          <div className="quiz-context-note"><Zap size={18} aria-hidden="true" /><span>When you are ready, host this set and choose Capture the Flag, Zombie Survival, or Team Tag.</span></div>
         </aside>
       )}
 
       <div className="panel quiz-editor-panel">
         <div className="quiz-editor-heading">
           <div>
-            <span className="teacher-eyebrow">Quiz workspace</span>
-            <h2>{selectedQuiz ? `Editing: ${selectedQuiz.title}` : "Create your next quiz"}</h2>
-            {selectedQuiz && <p>{selectedQuiz.questions.length} questions · Keep the active quiz in view while you build.</p>}
+            <span className="teacher-eyebrow">Question workspace</span>
+            <h2>{selectedQuiz ? `Editing: ${selectedQuiz.title}` : "Create your next question set"}</h2>
+            {selectedQuiz && <p>{selectedQuiz.questions.length} questions · Keep the active set in view while you build.</p>}
           </div>
           {selectedQuiz && <span className="quiz-save-status"><Check size={15} aria-hidden="true" />Ready to host</span>}
         </div>
         <label>
-          Quiz Sets
+          Question sets
           <select value={selectedQuizId} onChange={(event) => setSelectedQuizId(event.target.value)}>
             {data.quizSets.map((quiz) => (
               <option key={quiz.id} value={quiz.id}>
@@ -1921,11 +1921,11 @@ function QuizManager({ data, onRefresh, initialQuizSetId, startInCreateMode = fa
           <>
             <div className="import-builder">
               <div className="panel-title">
-                <h3>Paste-to-Quiz Builder</h3>
+                <h3>Build from a study list</h3>
                 <span>{importBadge}</span>
               </div>
               <p>
-                Paste terms, vocabulary, or term-definition pairs. Each line can use a dash, colon, vertical bar, or tab.
+                Paste terms, vocabulary, or term-definition pairs. Put one item on each line. Use a dash, colon, vertical bar, or tab between a term and its meaning.
               </p>
               <textarea
                 className="bulk-textarea"
@@ -1937,25 +1937,25 @@ function QuizManager({ data, onRefresh, initialQuizSetId, startInCreateMode = fa
                 <label className="file-import-button">
                   <input type="file" accept=".txt,.csv,.tsv,text/plain,text/csv" onChange={importStudyFile} />
                   <ClipboardPaste size={18} aria-hidden="true" />
-                  Upload File
+                  Upload a study list
                 </label>
                 <button type="button" onClick={() => setBulkText(sampleImportText)}>
                   <ClipboardPaste size={18} aria-hidden="true" />
-                  Use Sample
+                  Try a sample
                 </button>
                 <button className="primary" type="button" onClick={importQuestions} disabled={isImporting}>
                   <WandSparkles size={18} aria-hidden="true" />
-                  {isImporting ? "Working..." : "Generate Questions"}
+                  {isImporting ? "Building..." : "Build questions"}
                 </button>
               </div>
               {generatedQuestions.length > 0 && (
                 <div className="import-preview">
-                  <strong>Preview {Math.min(5, generatedQuestions.length)} generated cards</strong>
+                  <strong>Preview {Math.min(5, generatedQuestions.length)} questions</strong>
                   <div className="import-preview-list">
                     {generatedQuestions.slice(0, 5).map((draft, index) => (
                       <div key={`${draft.prompt}-${index}`} className="import-preview-item">
                         <span>{index + 1}. {draft.prompt}</span>
-                        <small>Correct answer: {getDraftChoiceText(draft)}</small>
+                        <small>Answer: {getDraftChoiceText(draft)}</small>
                       </div>
                     ))}
                   </div>
@@ -1966,7 +1966,7 @@ function QuizManager({ data, onRefresh, initialQuizSetId, startInCreateMode = fa
 
             <form className="question-form" onSubmit={addQuestion}>
               <label>
-                Question Prompt
+                Question
                 <textarea
                   value={questionForm.prompt}
                   onChange={(event) => setQuestionForm({ ...questionForm, prompt: event.target.value })}
@@ -1975,7 +1975,7 @@ function QuizManager({ data, onRefresh, initialQuizSetId, startInCreateMode = fa
               <div className="choice-grid">
                 {choices.map((choice) => (
                   <label key={choice}>
-                    Choice {choice}
+                    Answer {choice}
                     <input
                       value={questionForm[`choice${choice}` as keyof typeof questionForm]}
                       onChange={(event) => setQuestionForm({ ...questionForm, [`choice${choice}`]: event.target.value })}
@@ -1985,7 +1985,7 @@ function QuizManager({ data, onRefresh, initialQuizSetId, startInCreateMode = fa
               </div>
               <div className="choice-grid">
                 <label>
-                  Correct Answer
+                  Correct answer
                   <select
                     value={questionForm.correctChoice}
                     onChange={(event) => setQuestionForm({ ...questionForm, correctChoice: event.target.value })}
@@ -2013,13 +2013,13 @@ function QuizManager({ data, onRefresh, initialQuizSetId, startInCreateMode = fa
                 />
               </label>
               <label>
-                Question Audio URL <small>(optional)</small>
+                  Question audio <small>(optional)</small>
                 <input
                   type="text"
                   inputMode="url"
                   value={questionForm.audioUrl}
                   onChange={(event) => setQuestionForm({ ...questionForm, audioUrl: event.target.value })}
-                  placeholder="https://example.com/question-audio.mp3 or /audio/question.mp3"
+                  placeholder="Paste an audio link, or leave this blank"
                 />
               </label>
               <div className="question-audio-recorder">
@@ -2031,25 +2031,25 @@ function QuizManager({ data, onRefresh, initialQuizSetId, startInCreateMode = fa
                     disabled={isAddingQuestion || recordingState === "ready"}
                   >
                     {recordingState === "recording" ? <Square size={16} aria-hidden="true" /> : <Mic size={17} aria-hidden="true" />}
-                    {recordingState === "recording" ? `Stop recording (${String(Math.floor(recordingSeconds / 60)).padStart(2, "0")}:${String(recordingSeconds % 60).padStart(2, "0")})` : "Record voice"}
+                    {recordingState === "recording" ? `Stop recording (${String(Math.floor(recordingSeconds / 60)).padStart(2, "0")}:${String(recordingSeconds % 60).padStart(2, "0")})` : "Record the question"}
                   </button>
                   {recordedAudio && (
                     <button type="button" onClick={discardRecordedAudio} disabled={isAddingQuestion}>
                       <Trash2 size={16} aria-hidden="true" />
-                      Discard recording
+                      Remove recording
                     </button>
                   )}
                 </div>
-                <small>Record up to 60 seconds. The clip uploads when you save the question and replaces its audio URL.</small>
+                <small>Record up to 60 seconds. The clip saves with the question.</small>
                 {recordedAudio && <audio controls preload="metadata" src={recordedAudio.previewUrl} aria-label="Recorded question audio preview" />}
                 {recordingError && <span className="field-error">{recordingError}</span>}
               </div>
               <div className="question-form-actions">
                 <button className="primary" type="submit" disabled={isAddingQuestion}>
                   <Plus size={18} aria-hidden="true" />
-                  {isAddingQuestion ? "Working..." : editingQuestionId ? "Update Question" : "Add Question"}
+                  {isAddingQuestion ? "Saving..." : editingQuestionId ? "Save question" : "Add question"}
                 </button>
-                {editingQuestionId && <button type="button" onClick={() => { setEditingQuestionId(null); setQuestionForm(emptyQuestion); discardRecordedAudio(); }}>Cancel edit</button>}
+                {editingQuestionId && <button type="button" onClick={() => { setEditingQuestionId(null); setQuestionForm(emptyQuestion); discardRecordedAudio(); }}>Cancel</button>}
               </div>
             </form>
             <ul className="question-list">
@@ -2057,7 +2057,7 @@ function QuizManager({ data, onRefresh, initialQuizSetId, startInCreateMode = fa
                 <li key={question.id}>
                   <div className="question-list-copy">
                     <strong>{index + 1}. {question.prompt}</strong>
-                    <span>Correct answer: {question.correctChoice} · {question.difficulty || "Standard"} · {question.explanation ? "Explanation added" : "Explanation missing"}{question.audioUrl ? " · Audio added" : ""}</span>
+                    <span>Answer {question.correctChoice} · {question.difficulty || "Standard"} · {question.explanation ? "Explanation added" : "No explanation yet"}{question.audioUrl ? " · Audio added" : ""}</span>
                   </div>
                   <div className="question-list-actions">
                     <button type="button" onClick={() => beginEditingQuestion(question)}>Edit</button>
@@ -2069,7 +2069,7 @@ function QuizManager({ data, onRefresh, initialQuizSetId, startInCreateMode = fa
             </ul>
           </>
         ) : (
-          <p>Create a quiz set to begin adding questions.</p>
+          <p>Create a question set to start adding questions.</p>
         )}
         <StatusMessages error={status.error} message={status.message} />
       </div>
@@ -2131,7 +2131,7 @@ function SessionManager({
   const sessionQuiz = selectedSession
     ? data.quizSets.find((quiz) => quiz.id === selectedSession.quizSetId)
     : undefined;
-  const displayedPresetName = "Custom Game";
+  const displayedPresetName = "Classroom game";
   const studentJoinLink = selectedSession
     ? buildStudentJoinUrl(window.location.origin, selectedSession.sessionCode)
     : "";
@@ -2346,7 +2346,7 @@ function SessionManager({
       })) as { session: GameSession };
       setSelectedSession(payload.session);
       await onRefresh();
-      status.setMessage(`Session ${payload.session.sessionCode} created.`);
+      status.setMessage(`Game room ${payload.session.sessionCode} is ready. Share the code with your class.`);
     } catch (err) {
       status.report(err);
     } finally {
@@ -2360,10 +2360,10 @@ function SessionManager({
     if (!startCheck.ok) {
       status.setError(
         startCheck.reason === "session_ended"
-          ? "This session has ended."
+          ? "This game has ended."
           : selectedSession.players.some((player) => player.isBot)
-            ? "Bots are ready for testing. Add at least one learner to begin."
-            : "Add at least one learner to begin."
+            ? "Test players are ready. Add at least one student to begin."
+            : "Add at least one student to begin."
       );
       return;
     }
@@ -2374,7 +2374,7 @@ function SessionManager({
       setSelectedSession(payload.session);
       setIsProjectorOpen(false);
       await onRefresh();
-      status.setMessage("Round started.");
+      status.setMessage("The round is live.");
     } catch (err) {
       status.report(err);
     } finally {
@@ -2392,7 +2392,7 @@ function SessionManager({
       onReport(payload.report);
       setSelectedSession(payload.report.session);
       await onRefresh();
-      status.setMessage("Session ended. Report is ready.");
+      status.setMessage("Game finished. Your learning report is ready.");
     } catch (err) {
       status.report(err);
     } finally {
@@ -2411,10 +2411,10 @@ function SessionManager({
   const startBlockedReason =
     startCheck && !startCheck.ok
       ? startCheck.reason === "session_ended"
-        ? "This session has ended."
+        ? "This game has ended."
         : botPlayers.length > 0
-          ? "Bots are ready for testing. Add at least one learner to begin."
-          : "Add at least one learner to begin."
+          ? "Test players are ready. Add at least one student to begin."
+          : "Add at least one student to begin."
       : "";
   const shouldShowSetup = !selectedSession;
   const isSessionEnded = selectedSession?.status === "ended";
@@ -2435,7 +2435,7 @@ function SessionManager({
       const payload = (await teacherApi.addBots(selectedSession.sessionCode, { count, difficulty: botDifficulty })) as { session: GameSession; bots: PlayerSession[] };
       setSelectedSession(payload.session);
       await onRefresh();
-      status.setMessage(`${payload.bots.length} ${botDifficulty} test bot${payload.bots.length === 1 ? "" : "s"} added.`);
+      status.setMessage(`${payload.bots.length} ${botDifficulty} test player${payload.bots.length === 1 ? "" : "s"} added.`);
     } catch (err) {
       status.report(err);
     } finally {
@@ -2445,7 +2445,7 @@ function SessionManager({
 
   const endRound = async () => {
     if (!selectedSession || selectedSession.status !== "active" || selectedSession.settings.gameMode === "zombie" || isEndingRound) return;
-    if (!window.confirm("End this round early? The room will stay open and the next round preparation will begin.")) return;
+    if (!window.confirm("Finish this round early? The room will stay open and the next round will prepare.")) return;
     status.clear();
     setIsEndingRound(true);
     try {
@@ -2457,8 +2457,8 @@ function SessionManager({
       if (payload.report) onReport(payload.report);
       await onRefresh();
       status.setMessage(payload.session.status === "ended"
-        ? "Final round ended. The learning report is ready."
-        : "Round ended. The next preparation period will begin shortly.");
+        ? "Final round finished. The learning report is ready."
+        : "Round finished. The next round will prepare shortly.");
     } catch (err) {
       status.report(err);
     } finally {
@@ -2471,7 +2471,7 @@ function SessionManager({
     const player = selectedSession.players.find((candidate) => candidate.id === playerId);
     if (!player) return;
     const confirmed = window.confirm(
-      `Remove ${player.nickname} from this game? They can join again as a new player.`
+      `Remove ${player.nickname} from this game? They can join again with a new name.`
     );
     if (!confirmed) return;
 
@@ -2481,7 +2481,7 @@ function SessionManager({
       const payload = await teacherApi.removePlayer(selectedSession.sessionCode, playerId) as { session: GameSession };
       setSelectedSession(payload.session);
       await onRefresh();
-      status.setMessage(`${player.nickname} removed from the game.`);
+      status.setMessage(`${player.nickname} was removed from the game.`);
     } catch (err) {
       status.report(err);
     } finally {
@@ -2495,7 +2495,7 @@ function SessionManager({
     try {
       const payload = await teacherApi.updateCustomization(selectedSession.sessionCode, next) as { session: GameSession };
       setSelectedSession(payload.session);
-      status.setMessage("Character rules updated.");
+      status.setMessage("Player style settings updated.");
     } catch (err) {
       status.report(err);
     }
@@ -2506,7 +2506,7 @@ function SessionManager({
     try {
       const payload = await teacherApi.clearPlayerAppearance(selectedSession.sessionCode, playerId) as { session: GameSession };
       setSelectedSession(payload.session);
-      status.setMessage("Player appearance reset.");
+      status.setMessage("Player style reset.");
     } catch (err) {
       status.report(err);
     }
@@ -2517,7 +2517,7 @@ function SessionManager({
     try {
       const payload = await teacherApi.resetAppearances(selectedSession.sessionCode) as { session: GameSession };
       setSelectedSession(payload.session);
-      status.setMessage("All player appearances reset.");
+      status.setMessage("All player styles reset.");
     } catch (err) {
       status.report(err);
     }
@@ -2538,13 +2538,13 @@ function SessionManager({
     if (!selectedSession) return;
     const payload = await teacherApi.removeDecalAsset(selectedSession.sessionCode, assetId) as { session: GameSession };
     setSelectedSession(payload.session);
-    status.setMessage("Sticker removed from the room.");
+    status.setMessage("Sticker removed from this game.");
   };
 
   const loadTeacherDecal = useCallback(
     (assetId: string) => selectedSessionCode
       ? fetchDecalAsset(selectedSessionCode, assetId)
-      : Promise.reject(new Error("No active room.")),
+      : Promise.reject(new Error("There is no active game room.")),
     [selectedSessionCode]
   );
 
@@ -2567,9 +2567,9 @@ function SessionManager({
       }
       setIsJoinLinkCopied(true);
       window.setTimeout(() => setIsJoinLinkCopied(false), 2200);
-      status.setMessage("Student join link copied.");
+      status.setMessage("Join link copied. Share it with your class.");
     } catch {
-      status.setError("Copy was not available. Select the link and copy it manually.");
+      status.setError("We couldn’t copy the link. Select it and copy it manually.");
     }
   };
 
@@ -2589,23 +2589,23 @@ function SessionManager({
           <>
             <header className="setup-flow-header">
               <div className="setup-flow-title">
-                <h2>Start a Live Game</h2>
+                <h2>Set up a classroom game</h2>
               </div>
               <div className="setup-quiz-summary">
                 <BookOpen size={22} aria-hidden="true" />
-                <strong>{selectedQuiz?.title ?? "Choose a quiz from Folders"}</strong>
+                <strong>{selectedQuiz?.title ?? "Choose a question set"}</strong>
                 <small>{selectedQuiz?.questions.length ?? 0} questions</small>
               </div>
             </header>
 
             {activeSetupSection === "mode" && (
               <section className="setup-choice-section setup-panel-section mode-choice-section" aria-labelledby="mode-title">
-                <div className="setup-panel-heading"><h3 id="mode-title">Game Mode</h3></div>
+                <div className="setup-panel-heading"><h3 id="mode-title">Choose the game</h3></div>
                 <div className="mode-choice-grid" aria-label="Game modes">
                   {([
-                    { id: "zombie", title: "Zombie", description: "One student is the zombie. Answer correctly to survive and turn others.", icon: <img src="/assets/zombie/zombie-head.png" alt="" /> },
-                    { id: "classic", title: "Tag", description: "Players tag others with the right answers. Avoid being tagged!", icon: <img src="/assets/mode-icons/tag.png" alt="" /> },
-                    { id: "flag", title: "Flag", description: "Teams compete to capture the flag by answering more questions.", icon: <img src="/assets/mode-icons/flag.png" alt="" /> }
+                    { id: "zombie", title: "Zombie Survival", description: "Answer for energy, stay alive, and keep the team moving.", icon: <img src="/assets/zombie/zombie-head.png" alt="" /> },
+                    { id: "classic", title: "Team Tag", description: "Answer questions, move through the arena, and tag the other team.", icon: <img src="/assets/mode-icons/tag.png" alt="" /> },
+                    { id: "flag", title: "Capture the Flag", description: "Answer to earn an advantage, then capture the flag as a team.", icon: <img src="/assets/mode-icons/flag.png" alt="" /> }
                   ] as const).map((mode) => {
                     const selected = settings.gameMode === mode.id;
                     return (
@@ -2629,7 +2629,7 @@ function SessionManager({
 
             {activeSetupSection === "arena" && (
               <section className="setup-choice-section setup-panel-section" aria-labelledby="arena-title">
-                <div className="setup-panel-heading"><h3 id="arena-title">Arena</h3></div>
+                <div className="setup-panel-heading"><h3 id="arena-title">Choose a map</h3></div>
                 <div className="arena-choice-grid">
                   {ARENA_MAPS.map((map) => {
                     const selected = settings.mapId === map.id;
@@ -2657,17 +2657,17 @@ function SessionManager({
                 </div>
                 {(settings.gameMode === "flag" || settings.gameMode === "zombie") && (
                   <div className="arena-rules-panel">
-                    <div className="arena-rules-heading"><h4>Arena Rules</h4><span>{gameModeLabel(settings.gameMode)} mode</span></div>
+                    <div className="arena-rules-heading"><h4>Game rules</h4><span>{gameModeLabel(settings.gameMode)}</span></div>
                     <div className="arena-rules-grid">
                       {settings.gameMode === "flag" && (
                         <label>
-                          <span>Team Assignment</span>
+                          <span>How teams are chosen</span>
                           <select
                             value={settings.teamAssignment}
                             onChange={(event) => setSettings({ ...settings, teamAssignment: event.target.value as SessionSettings["teamAssignment"] })}
                           >
-                            <option value="players_choose">Players Choose</option>
-                            <option value="random">Random Teams</option>
+                            <option value="players_choose">Students choose</option>
+                            <option value="random">Assign randomly</option>
                           </select>
                         </label>
                       )}
@@ -2702,7 +2702,7 @@ function SessionManager({
 
             {activeSetupSection === "advanced" && (
               <section className="setup-choice-section setup-panel-section setup-advanced-section" aria-labelledby="advanced-title">
-                <div className="setup-panel-heading"><h3 id="advanced-title">Advanced Settings</h3><span>Custom Game</span></div>
+                <div className="setup-panel-heading"><h3 id="advanced-title">Game details</h3><span>Optional</span></div>
                 <div className="advanced-settings-content">
                 {sessionSettingGroups.map((group) => {
                   const fields = group.fields
@@ -2740,12 +2740,12 @@ function SessionManager({
                 })}
 
                 <fieldset>
-                  <legend>Player Experience</legend>
-                  <label className="toggle-row"><input type="checkbox" checked={settings.deadPlayersCanPractice} onChange={(event) => setSettings({ ...settings, deadPlayersCanPractice: event.target.checked })} />Practice questions while out</label>
-                  <label className="toggle-row"><input type="checkbox" checked={settings.deadPlayersEarnMoney} onChange={(event) => setSettings({ ...settings, deadPlayersEarnMoney: event.target.checked })} />Earn money while out</label>
-                  <label className="toggle-row"><input type="checkbox" checked={settings.characterCustomization.enabled} onChange={(event) => setSettings({ ...settings, characterCustomization: { ...settings.characterCustomization, enabled: event.target.checked } })} />Character creator</label>
-                  <label className="toggle-row"><input type="checkbox" checked={settings.characterCustomization.uploadsEnabled} disabled={!settings.characterCustomization.enabled} onChange={(event) => setSettings({ ...settings, characterCustomization: { ...settings.characterCustomization, uploadsEnabled: event.target.checked } })} />Artwork stickers</label>
-                  <label className="toggle-row"><input type="checkbox" checked={settings.characterCustomization.persistAcrossSessions} disabled={!settings.characterCustomization.enabled} onChange={(event) => setSettings({ ...settings, characterCustomization: { ...settings.characterCustomization, persistAcrossSessions: event.target.checked } })} />Remember character choices</label>
+                  <legend>Make the game welcoming</legend>
+                  <label className="toggle-row"><input type="checkbox" checked={settings.deadPlayersCanPractice} onChange={(event) => setSettings({ ...settings, deadPlayersCanPractice: event.target.checked })} />Let students practice while out</label>
+                  <label className="toggle-row"><input type="checkbox" checked={settings.deadPlayersEarnMoney} onChange={(event) => setSettings({ ...settings, deadPlayersEarnMoney: event.target.checked })} />Keep rewards going while out</label>
+                  <label className="toggle-row"><input type="checkbox" checked={settings.characterCustomization.enabled} onChange={(event) => setSettings({ ...settings, characterCustomization: { ...settings.characterCustomization, enabled: event.target.checked } })} />Let students style their players</label>
+                  <label className="toggle-row"><input type="checkbox" checked={settings.characterCustomization.uploadsEnabled} disabled={!settings.characterCustomization.enabled} onChange={(event) => setSettings({ ...settings, characterCustomization: { ...settings.characterCustomization, uploadsEnabled: event.target.checked } })} />Allow student stickers</label>
+                  <label className="toggle-row"><input type="checkbox" checked={settings.characterCustomization.persistAcrossSessions} disabled={!settings.characterCustomization.enabled} onChange={(event) => setSettings({ ...settings, characterCustomization: { ...settings.characterCustomization, persistAcrossSessions: event.target.checked } })} />Remember player choices</label>
                 </fieldset>
                 </div>
               </section>
@@ -2753,16 +2753,16 @@ function SessionManager({
 
             {hasInvalidSettings && <p className="error-text">Check the highlighted settings before creating the game.</p>}
             <div className="setup-create-bar">
-              <span><strong>Custom Game</strong><small>{selectedMap.title} · {gameModeLabel(settings.gameMode)} · advanced settings applied</small></span>
+              <span><strong>Ready to create</strong><small>{selectedMap.title} · {gameModeLabel(settings.gameMode)} · your settings are saved with this room</small></span>
               <button className="primary create-game-button" type="submit" disabled={!quizSetId || hasInvalidSettings || isCreatingSession}>
                 <Play size={20} aria-hidden="true" />
-                {isCreatingSession ? "Creating Game..." : "Create Game"}
+                {isCreatingSession ? "Creating game..." : "Create game"}
               </button>
             </div>
             <StatusMessages error={status.error} message={status.message} />
           </>
         ) : (
-          <p className="setup-lock-note">Live room in progress.</p>
+          <p className="setup-lock-note">This room is live. Use the controls beside it to keep the game moving.</p>
         )}
       </form>
 
@@ -2770,7 +2770,7 @@ function SessionManager({
         {selectedSession && <GameAnnouncementOverlay announcement={selectedSession.announcement} serverTime={selectedSession.serverTime} />}
         {selectedSession ? isSessionEnded ? (
           <div className="session-ended-summary">
-            <span className="status-pill status-ended">Session complete</span>
+            <span className="status-pill status-ended">Game complete</span>
             <h3>{gameModeLabel(selectedSession.settings.gameMode)} has ended</h3>
             <p>The room is closed. Students can view their summary, and the full class learning report is ready.</p>
             <dl>
@@ -2780,21 +2780,21 @@ function SessionManager({
               <div><dt>Top learner</dt><dd>{topLearner?.nickname ?? "No answers recorded"}</dd></div>
             </dl>
             <div className="button-row">
-              <button className="primary teacher-report-button" onClick={onOpenReports}><Download size={18} aria-hidden="true" />View Learning Report</button>
-              <button onClick={() => setSelectedSession(null)}>Create Another Game</button>
+              <button className="primary teacher-report-button" onClick={onOpenReports}><Download size={18} aria-hidden="true" />See the learning report</button>
+              <button onClick={() => setSelectedSession(null)}>Start another game</button>
             </div>
           </div>
         ) : selectedSession.status === "waiting" ? (
           <div className="teacher-waiting-room">
             <header className="waiting-room-header">
               <div>
-                <span className="flow-step">Step 3 of 4 · Invite Students</span>
+                <span className="flow-step">Step 3 of 4 · Invite students</span>
                 <h2>{sessionQuiz?.title ?? "Live Game"}</h2>
                 <p>{arenaMapLabel(selectedSession.settings.mapId)} · {displayedPresetName} · {selectedSession.settings.roundCount} Rounds · {formatDuration(selectedSession.settings.roundDurationSeconds)} per round</p>
               </div>
               <div className="waiting-header-actions">
                 <details className="waiting-settings-summary">
-                  <summary>View Game Settings</summary>
+                  <summary>View game details</summary>
                   <dl>
                     <div><dt>Mode</dt><dd>{gameModeLabel(selectedSession.settings.gameMode)}</dd></div>
                     <div><dt>Teams</dt><dd>{selectedSession.settings.teamAssignment === "players_choose" ? "Players Choose" : "Random Teams"}</dd></div>
@@ -2805,13 +2805,13 @@ function SessionManager({
                   <Eye size={18} aria-hidden="true" />
                   Projector View
                 </button>
-                <button ref={endSessionTriggerRef} className="text-button danger-text" onClick={() => setIsEndConfirmOpen(true)} disabled={isEndingSession}>End Game</button>
+                <button ref={endSessionTriggerRef} className="text-button danger-text" onClick={() => setIsEndConfirmOpen(true)} disabled={isEndingSession}>End game</button>
               </div>
             </header>
 
             <section className="invite-students-panel" aria-labelledby="join-game-title">
               <div className="invite-code-block">
-                <span id="join-game-title">Join Game</span>
+                <span id="join-game-title">Invite students</span>
                 <strong>{selectedSession.sessionCode}</strong>
                 <small>Enter this code at {new URL(studentJoinLink).host}/join</small>
               </div>
@@ -2821,7 +2821,7 @@ function SessionManager({
                   <p>{studentJoinLink.replace(/^https?:\/\//, "")}</p>
                   <button type="button" onClick={copyStudentJoinLink} aria-label="Copy student join link" aria-live="polite">
                     {isJoinLinkCopied ? <Check size={18} aria-hidden="true" /> : <Copy size={18} aria-hidden="true" />}
-                    {isJoinLinkCopied ? "✓ Link Copied" : "Copy Link"}
+                    {isJoinLinkCopied ? "✓ Link copied" : "Copy join link"}
                   </button>
                 </div>
                 <div className="invite-qr">
@@ -2859,12 +2859,12 @@ function SessionManager({
                   ))}
                 </div>
               ) : (
-                <p className="waiting-students-empty">Waiting for students…</p>
+                <p className="waiting-students-empty">Students will appear here as they join.</p>
               )}
             </section>
 
             <details className="waiting-optional-control bot-control-card">
-              <summary><Bot size={19} aria-hidden="true" /><span>+ Add Bots</span><small>{availableBotSlots} seats available</small></summary>
+              <summary><Bot size={19} aria-hidden="true" /><span>+ Add test players</span><small>{availableBotSlots} seats available</small></summary>
               <div className="bot-control-fields">
                 <label><span>Number of bots</span><input type="number" min={1} max={Math.max(1, availableBotSlots)} value={botCount} disabled={availableBotSlots === 0 || isAddingBot} onChange={(event) => setBotCount(Math.max(1, Number(event.target.value) || 1))} /></label>
                 <label>
@@ -2882,13 +2882,13 @@ function SessionManager({
             </details>
 
             <details className="teacher-customization-controls" aria-label="Character customization controls" open={selectedSession.players.some((item) => !item.isBot && item.appearance?.decalAssetId)}>
-              <summary><span><strong>Lobby Characters</strong><small>Optional character and sticker controls</small></span><span className="details-summary-action">Manage</span></summary>
+              <summary><span><strong>Player style</strong><small>Optional character and sticker controls</small></span><span className="details-summary-action">Manage</span></summary>
               <div className="teacher-customization-toggles">
                 <label className="toggle-row"><input type="checkbox" checked={selectedSession.settings.characterCustomization.enabled} onChange={(event) => void updateLiveCustomization({ ...selectedSession.settings.characterCustomization, enabled: event.target.checked })} />Creator enabled</label>
                 <label className="toggle-row"><input type="checkbox" checked={selectedSession.settings.characterCustomization.uploadsEnabled} disabled={!selectedSession.settings.characterCustomization.enabled} onChange={(event) => void updateLiveCustomization({ ...selectedSession.settings.characterCustomization, uploadsEnabled: event.target.checked })} />Artwork uploads</label>
                 <label className="toggle-row"><input type="checkbox" checked={selectedSession.settings.characterCustomization.persistAcrossSessions} disabled={!selectedSession.settings.characterCustomization.enabled} onChange={(event) => void updateLiveCustomization({ ...selectedSession.settings.characterCustomization, persistAcrossSessions: event.target.checked })} />Remember choices</label>
               </div>
-              <button type="button" onClick={() => void resetAllAppearances()}>Reset Everyone</button>
+              <button type="button" onClick={() => void resetAllAppearances()}>Reset everyone</button>
               <div className="appearance-moderation-list">
                 {learnerPlayers.map((item) => (
                   <div key={item.id}><span>{item.nickname}{item.appearance?.decalAssetId ? " · sticker submitted" : ""}</span><span>{item.appearance?.decalAssetId && <button type="button" onClick={() => void removePlayerDecal(item.id)}>Remove Sticker</button>}<button type="button" onClick={() => void clearPlayerAppearance(item.id)}>Clear Player</button></span></div>
@@ -2905,14 +2905,14 @@ function SessionManager({
               </div>
               <button className="primary" type="button" onClick={start} disabled={Boolean(startBlockedReason) || isStartingSession}>
                 <Play size={22} aria-hidden="true" />
-                {isStartingSession ? "Starting..." : "Start Game"}
+                {isStartingSession ? "Starting…" : "Start game"}
               </button>
             </div>
           </div>
         ) : (
           <>
             <header className="live-control-heading">
-              <div><span className="flow-step">Step 4 of 4</span><h2>Live Game Control</h2></div>
+              <div><span className="flow-step">Step 4 of 4</span><h2>Run the live game</h2></div>
               <div className="button-row">
                 <button
                   type="button"
@@ -2937,7 +2937,7 @@ function SessionManager({
                     {isEndingRound ? "Ending Round..." : "End Round"}
                   </button>
                 )}
-                <button ref={endSessionTriggerRef} className="end-game-button" onClick={() => setIsEndConfirmOpen(true)} disabled={isEndingSession}>{isEndingSession ? "Working..." : "End Game"}</button>
+                <button ref={endSessionTriggerRef} className="end-game-button" onClick={() => setIsEndConfirmOpen(true)} disabled={isEndingSession}>{isEndingSession ? "Finishing…" : "End game"}</button>
               </div>
             </header>
             <div className="live-summary">
@@ -2964,11 +2964,11 @@ function SessionManager({
         {selectedSession && isEndConfirmOpen && (
           <div className="modal-backdrop" role="presentation">
             <div ref={endSessionDialogRef} className="panel confirm-modal" role="dialog" aria-modal="true" aria-labelledby="end-session-title">
-              <h2 id="end-session-title">End Game?</h2>
-              <p>This closes the room and prepares the learning report. Students cannot rejoin afterward.</p>
+              <h2 id="end-session-title">Finish this game?</h2>
+              <p>This closes the room and prepares the learning report. Students won’t be able to rejoin afterward.</p>
               <div className="button-row">
-                <button className="primary" onClick={end} disabled={isEndingSession}>{isEndingSession ? "Working..." : "End and Create Report"}</button>
-                <button ref={keepSessionOpenRef} onClick={() => setIsEndConfirmOpen(false)}>Keep Game Open</button>
+                <button className="primary" onClick={end} disabled={isEndingSession}>{isEndingSession ? "Finishing..." : "Finish and see report"}</button>
+                <button ref={keepSessionOpenRef} onClick={() => setIsEndConfirmOpen(false)}>Keep game open</button>
               </div>
             </div>
           </div>
@@ -2978,11 +2978,11 @@ function SessionManager({
           <div className="projector-backdrop" role="presentation">
             <section ref={projectorDialogRef} className="projector-waiting-room" role="dialog" aria-modal="true" aria-labelledby="projector-title">
               <header>
-                <div><span className="projector-kicker">{sessionQuiz?.title ?? "QuizStrike Classroom"}</span><h2 id="projector-title">Join the Game</h2></div>
+                 <div><span className="projector-kicker">{sessionQuiz?.title ?? "QuizStrike Classroom"}</span><h2 id="projector-title">Join the game</h2></div>
                 <button ref={projectorCloseRef} type="button" onClick={() => setIsProjectorOpen(false)} aria-label="Close projector view">Close</button>
               </header>
               <div className="projector-content">
-                <div className="projector-join-code"><span>Game Code</span><strong>{selectedSession.sessionCode}</strong><small>{studentJoinLink.replace(/^https?:\/\//, "")}</small></div>
+                 <div className="projector-join-code"><span>Classroom code</span><strong>{selectedSession.sessionCode}</strong><small>{studentJoinLink.replace(/^https?:\/\//, "")}</small></div>
                 <div className="projector-qr">
                   <QRCodeSVG value={studentJoinLink} size={260} level="M" marginSize={2} title={`Join QuizStrike game ${selectedSession.sessionCode}`} />
                   <span>Scan to join</span>
@@ -2992,12 +2992,12 @@ function SessionManager({
                 <strong>{learnerPlayers.length} student{learnerPlayers.length === 1 ? "" : "s"} joined</strong>
                 <div>
                   {learnerPlayers.map((item) => <span key={item.id}>{item.nickname} · {item.team.toUpperCase()}</span>)}
-                  {learnerPlayers.length === 0 && <span>Waiting for students…</span>}
+                   {learnerPlayers.length === 0 && <span>Students will appear as they join.</span>}
                 </div>
               </div>
               <footer>
-                <button type="button" onClick={copyStudentJoinLink}>{isJoinLinkCopied ? <Check size={20} aria-hidden="true" /> : <Copy size={20} aria-hidden="true" />}{isJoinLinkCopied ? "✓ Link Copied" : "Copy Link"}</button>
-                <button className="primary" type="button" onClick={start} disabled={Boolean(startBlockedReason) || isStartingSession}><Play size={22} aria-hidden="true" />{isStartingSession ? "Starting..." : "Start Game"}</button>
+                 <button type="button" onClick={copyStudentJoinLink}>{isJoinLinkCopied ? <Check size={20} aria-hidden="true" /> : <Copy size={20} aria-hidden="true" />}{isJoinLinkCopied ? "✓ Link copied" : "Copy join link"}</button>
+                 <button className="primary" type="button" onClick={start} disabled={Boolean(startBlockedReason) || isStartingSession}><Play size={22} aria-hidden="true" />{isStartingSession ? "Starting…" : "Start game"}</button>
               </footer>
             </section>
           </div>
@@ -3009,7 +3009,7 @@ function SessionManager({
               <header className="teacher-spectator-header">
                 <div>
                   <span className="teacher-spectator-kicker"><Eye size={15} aria-hidden="true" /> Read-only live view</span>
-                  <h2 id="teacher-spectator-title">Spectator Mode</h2>
+                  <h2 id="teacher-spectator-title">Watch the game</h2>
                   <p>{arenaMapLabel(selectedSession.settings.mapId)} <span aria-hidden="true">{"\u00B7"}</span> {gameModeLabel(selectedSession.settings.gameMode)} <span aria-hidden="true">{"\u00B7"}</span> Follow a learner</p>
                 </div>
                 <button
@@ -3184,7 +3184,7 @@ function ReportsPanel({
     try {
       const payload = (await teacherApi.report(requestedCode)) as { report: SessionReport };
       setReport(payload.report);
-      status.setMessage("Report loaded.");
+      status.setMessage("Learning report loaded.");
     } catch (err) {
       status.report(err);
     } finally {
@@ -3201,7 +3201,7 @@ function ReportsPanel({
     try {
       const payload = (await teacherApi.reportById(metadata.id)) as { report: SessionReport };
       setReport(payload.report);
-      status.setMessage(`${metadata.displayName} loaded.`);
+      status.setMessage(`${metadata.displayName} is ready to review.`);
     } catch (err) {
       status.report(err);
     } finally {
@@ -3231,7 +3231,7 @@ function ReportsPanel({
   const clearHistory = async () => {
     if (isClearingHistory || endedSessions.length === 0) return;
     const gameLabel = endedSessions.length === 1 ? "completed game" : "completed games";
-    if (!window.confirm(`Clear ${endedSessions.length} ${gameLabel} and their saved reports? This cannot be undone. Live games will not be affected.`)) return;
+    if (!window.confirm(`Clear ${endedSessions.length} ${gameLabel} and their saved reports? You can’t undo this. Live games won’t be affected.`)) return;
     setIsClearingHistory(true);
     status.clear();
     try {
@@ -3241,7 +3241,7 @@ function ReportsPanel({
       setReport(null);
       await onRefresh();
       const deletedCount = payload.deletedSessions ?? endedSessions.length;
-      status.setMessage(`${deletedCount} completed ${deletedCount === 1 ? "game" : "games"} cleared.`);
+      status.setMessage(`${deletedCount} completed ${deletedCount === 1 ? "game" : "games"} cleared from history.`);
     } catch (err) {
       status.report(err);
     } finally {
@@ -3273,13 +3273,13 @@ function ReportsPanel({
     <div className="report-panel reports-page">
       <header className="reports-page-heading">
         <div>
-          <span className="eyebrow">Teacher reports</span>
-          <h2>See what your class learned</h2>
-          <p>Review completed games, spot difficult questions, and plan the next lesson.</p>
+          <span className="eyebrow">Learning reports</span>
+          <h2>See what to teach next</h2>
+          <p>Review completed games, spot difficult questions, and plan the next lesson with less guesswork.</p>
         </div>
         <div className="reports-page-actions">
           <span className="reports-count">{endedSessions.length} completed {endedSessions.length === 1 ? "game" : "games"}</span>
-          <button onClick={() => setTab("sessions")}>Open Live Session</button>
+          <button onClick={() => setTab("sessions")}>Open live games</button>
         </div>
       </header>
       <StatusMessages error={status.error} message={status.message} />
@@ -3289,14 +3289,14 @@ function ReportsPanel({
           <div className="report-card-heading">
             <div>
               <span className="report-card-kicker">Game history</span>
-              <h3>Completed games</h3>
+              <h3>Finished games</h3>
             </div>
             <button className="report-danger-button" onClick={() => void clearHistory()} disabled={isClearingHistory || endedSessions.length === 0}>
               <Trash2 size={16} aria-hidden="true" />
               {isClearingHistory ? "Clearing..." : "Clear history"}
             </button>
           </div>
-          <p className="report-card-note">Select a game to open its learning report. Live games are kept separate.</p>
+          <p className="report-card-note">Select a game to open its learning report. Live games stay separate.</p>
           <div className="report-history-list" role="listbox" aria-label="Completed games">
             {endedSessions.map((session) => {
               const metadata = reportBySessionId.get(session.id);
@@ -3317,7 +3317,7 @@ function ReportsPanel({
                       <strong>{quizTitle}</strong>
                       <small>{session.sessionCode} · {date}</small>
                     </span>
-                    <span className="report-history-meta">{metadata ? "Saved" : "Load"}</span>
+                    <span className="report-history-meta">{metadata ? "Saved" : "Open"}</span>
                   </button>
                   {metadata && <button className="report-history-delete" aria-label={`Delete saved report ${metadata.displayName}`} onClick={() => void deleteSavedReport(metadata)} disabled={isDeletingReport}><Trash2 size={15} aria-hidden="true" /></button>}
                 </div>
@@ -3334,7 +3334,7 @@ function ReportsPanel({
               </div>
             ))}
           </div>
-          {endedSessions.length === 0 && reports.length === 0 && <div className="report-empty-state"><strong>No completed games yet</strong><span>Finish a live game and its report will appear here.</span></div>}
+          {endedSessions.length === 0 && reports.length === 0 && <div className="report-empty-state"><strong>No finished games yet</strong><span>Finish a live game and its report will appear here.</span></div>}
           <div className="report-history-footer"><span>{reports.length}/15 saved reports retained</span><span>Completed game data can be cleared at any time.</span></div>
         </section>
 
@@ -3343,12 +3343,12 @@ function ReportsPanel({
             <div>
               <span className="report-card-kicker">Selected game</span>
               <h3>{selectedQuizTitle}</h3>
-              <p>{code ? `${code} · ${selectedSession ? new Date(selectedSession.endedAt ?? selectedSession.createdAt).toLocaleString() : "Saved report"}` : "Choose a completed game from the history panel."}</p>
+              <p>{code ? `${code} · ${selectedSession ? new Date(selectedSession.endedAt ?? selectedSession.createdAt).toLocaleString() : "Saved report"}` : "Choose a finished game from the history panel."}</p>
             </div>
             <div className="report-detail-actions">
               <button onClick={() => void load()} disabled={!code || isLoadingReport}>
                 <Download size={17} aria-hidden="true" />
-                {isLoadingReport ? "Loading..." : "Load report"}
+                {isLoadingReport ? "Loading..." : "Open report"}
               </button>
               <button onClick={exportCsv} disabled={!code || isExportingCsv}>
                 <Download size={17} aria-hidden="true" />
@@ -3356,7 +3356,7 @@ function ReportsPanel({
               </button>
             </div>
           </div>
-          {!report && <div className="report-empty-state report-detail-empty"><strong>Your report will appear here</strong><span>Select a completed game, then load the report to see class accuracy, rewards, and reteach signals.</span></div>}
+          {!report && <div className="report-empty-state report-detail-empty"><strong>Your report will appear here</strong><span>Select a finished game, then open the report to see class accuracy, rewards, and questions to revisit.</span></div>}
           {report && (
             <>
               {(() => {
@@ -3364,9 +3364,9 @@ function ReportsPanel({
                 const attemptedStudents = report.rows.filter((row) => row.correctAnswers + row.wrongAnswers > 0).length;
                 return (
                   <div className="report-summary-grid">
-                    <div className="metric"><span>Class Accuracy</span><strong>{classAccuracy === null ? "-" : `${classAccuracy}%`}</strong><small>{attemptedStudents} of {report.rows.length} learners answered</small></div>
-                    <div className="metric"><span>Quiz Rewards</span><strong>{formatMoney(report.rows.reduce((total, row) => total + row.quizMoney, 0))}</strong><small>Rewards from correct answers</small></div>
-                    <div className="metric"><span>Reteach Signals</span><strong>{report.missedQuestions.length}</strong><small>Questions missed by learners</small></div>
+                    <div className="metric"><span>Class accuracy</span><strong>{classAccuracy === null ? "-" : `${classAccuracy}%`}</strong><small>{attemptedStudents} of {report.rows.length} students answered</small></div>
+                    <div className="metric"><span>Rewards earned</span><strong>{formatMoney(report.rows.reduce((total, row) => total + row.quizMoney, 0))}</strong><small>Rewards from correct answers</small></div>
+                    <div className="metric"><span>Questions to revisit</span><strong>{report.missedQuestions.length}</strong><small>Questions missed by students</small></div>
                   </div>
                 );
               })()}
@@ -3389,10 +3389,10 @@ function ReportsPanel({
                 </table>
               </div>
               <section className="report-reteach-section" aria-labelledby="reteach-title">
-                <div className="report-section-heading"><div><span className="report-card-kicker">Next lesson</span><h3 id="reteach-title">Reteach Queue</h3></div><span>{report.missedQuestions.length} signal{report.missedQuestions.length === 1 ? "" : "s"}</span></div>
+                <div className="report-section-heading"><div><span className="report-card-kicker">Next lesson</span><h3 id="reteach-title">Questions to revisit</h3></div><span>{report.missedQuestions.length} item{report.missedQuestions.length === 1 ? "" : "s"}</span></div>
                 <ul className="plain-list">
                   {report.missedQuestions.map((item) => <li key={item.questionId}><span>{item.prompt}</span><small>{item.misses} misses</small></li>)}
-                  {report.missedQuestions.length === 0 && <li>No missed questions yet. This group is ready for the next challenge.</li>}
+                  {report.missedQuestions.length === 0 && <li>No questions to revisit yet. This group is ready for the next challenge.</li>}
                 </ul>
               </section>
             </>
@@ -3502,10 +3502,10 @@ function LegacyReportsPanel({
     <div className="panel report-panel">
       <div className="section-heading compact">
         <div>
-          <h2>Session Results</h2>
-          <p>Review answered questions, quiz rewards, and missed questions.</p>
+          <h2>Game report</h2>
+          <p>Review answers, rewards, and the questions students should revisit.</p>
         </div>
-        <button onClick={() => setTab("sessions")}>Open Live Session</button>
+        <button onClick={() => setTab("sessions")}>Open live games</button>
       </div>
       <div className="inline-form">
         <select value={code} onChange={(event) => setCode(event.target.value)}>
@@ -3517,11 +3517,11 @@ function LegacyReportsPanel({
         </select>
         <button onClick={load} disabled={!code || isLoadingReport}>
           <Download size={18} aria-hidden="true" />
-          {isLoadingReport ? "Working..." : "Load Report"}
+          {isLoadingReport ? "Loading…" : "Load report"}
         </button>
         <button onClick={exportCsv} disabled={!code || isExportingCsv}>
           <Download size={18} aria-hidden="true" />
-          {isExportingCsv ? "Working..." : "Export CSV"}
+          {isExportingCsv ? "Exporting…" : "Export CSV"}
         </button>
       </div>
       <StatusMessages error={status.error} message={status.message} />
@@ -3544,17 +3544,17 @@ function LegacyReportsPanel({
             return (
           <div className="report-summary-grid">
             <div className="metric">
-              <span>Class Accuracy</span>
+              <span>Class accuracy</span>
               <strong>{classAccuracy === null ? "—" : `${classAccuracy}%`}</strong>
               <small>{attemptedStudents} of {report.rows.length} learners answered</small>
             </div>
             <div className="metric">
-              <span>Quiz Rewards</span>
+              <span>Rewards earned</span>
               <strong>{formatMoney(report.rows.reduce((total, row) => total + row.quizMoney, 0))}</strong>
               <small>Rewards from correct answers</small>
             </div>
             <div className="metric">
-              <span>Reteach Signals</span>
+              <span>Questions to revisit</span>
               <strong>{report.missedQuestions.length}</strong>
               <small>Questions missed by learners</small>
             </div>
@@ -3569,7 +3569,7 @@ function LegacyReportsPanel({
                 <th>Correct</th>
                 <th>Wrong</th>
                 <th>Accuracy</th>
-                <th>Quiz Rewards</th>
+                <th>Rewards</th>
                 <th>Score</th>
               </tr>
             </thead>
@@ -3587,7 +3587,7 @@ function LegacyReportsPanel({
               ))}
             </tbody>
           </table>
-          <h3>Reteach Queue</h3>
+          <h3>Questions to revisit</h3>
           <ul className="plain-list">
             {report.missedQuestions.map((item) => (
               <li key={item.questionId}>
@@ -3595,7 +3595,7 @@ function LegacyReportsPanel({
                 <small>{item.misses} misses</small>
               </li>
             ))}
-            {report.missedQuestions.length === 0 && <li>No missed questions yet. This group is ready for the next challenge.</li>}
+            {report.missedQuestions.length === 0 && <li>No questions to revisit yet. This group is ready for the next challenge.</li>}
           </ul>
         </>
       )}
@@ -3742,7 +3742,7 @@ function StudentExperience({ onExit }: { onExit: () => void }) {
         storeCosmeticProgressToken(data.cosmeticProgressToken);
         setPlayerToken(stored.playerToken);
         setQuestion(data.question ?? null);
-        setFeedback("Your student session was restored.");
+        setFeedback("You’re back in the game.");
       })
       .catch((error: unknown) => {
         if (error instanceof ApiError && (error.status === 401 || error.status === 404)) {
@@ -3750,7 +3750,7 @@ function StudentExperience({ onExit }: { onExit: () => void }) {
           return;
         }
         setJoinCode(stored.sessionCode);
-        setStatusError("Your connection dropped while restoring the game. Reconnect, then reload or join again with the same name.");
+        setStatusError("Your connection dropped while we reopened the game. Check your connection, then join again with the same name.");
       })
       .finally(() => {
         if (!cancelled) setIsRestoringStudentSession(false);
@@ -4342,7 +4342,7 @@ function StudentExperience({ onExit }: { onExit: () => void }) {
           setPlayer(result.player);
         }).catch(() => undefined);
       }
-      setFeedback("Joined. Click the arena to aim, or use the touch controls on smaller screens.");
+      setFeedback("You’re in. Click the game to look around, or use touch controls on a smaller screen.");
       gameAudio.playEvent("room_joined");
     } catch (err) {
       status.setError(formatStudentJoinError(err));
@@ -4372,7 +4372,7 @@ function StudentExperience({ onExit }: { onExit: () => void }) {
   const answer = async (choice: Choice) => {
     if (!session || !player || !question || !playerToken || answeringChoice) return;
     status.clear();
-    setFeedback("Answer selected...");
+    setFeedback("Answer locked in...");
     setAnsweringChoice(choice);
     gameAudio.playEvent("quiz_select");
     gameAudio.playEvent("quiz_lock");
@@ -4431,7 +4431,7 @@ function StudentExperience({ onExit }: { onExit: () => void }) {
   const buy = async (gearId: string) => {
     if (!session || !player || !playerToken || buyingGearId || isBuyingSnowballs) return;
     status.clear();
-    setFeedback("Purchasing gear...");
+    setFeedback("Choosing gear...");
     setBuyingGearId(gearId);
     try {
       type BuyPayload = { player: PlayerSession; message: string };
@@ -4455,7 +4455,7 @@ function StudentExperience({ onExit }: { onExit: () => void }) {
   const buySnowballs = async () => {
     if (!session || !player || !playerToken || isBuyingSnowballs || buyingGearId) return;
     status.clear();
-    setFeedback("Purchasing snowballs...");
+    setFeedback("Restocking snowballs...");
     setIsBuyingSnowballs(true);
     try {
       type BuySnowballsPayload = { player: PlayerSession; message: string };
@@ -4598,7 +4598,7 @@ function StudentExperience({ onExit }: { onExit: () => void }) {
   const loadStudentDecal = useCallback(
     (assetId: string) => sessionCode
       ? fetchDecalAsset(sessionCode, assetId, playerToken)
-      : Promise.reject(new Error("No active room.")),
+      : Promise.reject(new Error("There is no active game room.")),
     [sessionCode, playerToken]
   );
 
@@ -4614,26 +4614,26 @@ function StudentExperience({ onExit }: { onExit: () => void }) {
       <section className="auth-layout student-join-screen">
         <div className="student-join-help">
           <QuizStrikeLogo size="auth" />
-          <span className="auth-kicker">Enter the classroom arena</span>
-          <h1>Join the Matchup</h1>
-          <p>Enter your teacher's code, bring a classroom nickname, and help your class make the next game-changing play.</p>
+          <span className="auth-kicker">Join your classroom game</span>
+          <h1>Join with your code</h1>
+          <p>Enter the code from your teacher, choose a name your class will recognize, and get ready to play.</p>
           <div className="panel how-to-card">
-            <h2>How to Play</h2>
-            <p>Answer questions to earn money, buy snowballs and gear, then tag the other team. Most tags wins; respawns, then quiz earnings break ties.</p>
-            <p>Fast web arena: use WASD to move, arrow keys or a swipe on the arena to look around, F or left click to fire, and E for the flag. Press C or right click to cycle the Heavy Snowball Launcher through 2× scope, 4× scope, and normal view. Q opens quiz, B opens buy, number keys 1–5 purchase shop items, and hold Tab for the scoreboard.</p>
-            <p>If you are frozen out, keep practicing. Three correct answers respawn you back into the round.</p>
+            <h2>How the game works</h2>
+            <p>Answer questions to earn rewards, choose snowballs or gear, then help your team tag opponents or capture the flag.</p>
+            <p>Use WASD to move, arrow keys or a swipe to look around, and F or click to play. Press E for the flag. Press C or right click to change your launcher view. Q opens questions, B opens gear, 1–5 choose gear, and hold Tab to see the scoreboard.</p>
+            <p>If you’re frozen out, keep practicing. Three correct answers bring you back into the round.</p>
           </div>
         </div>
         <form className="panel form-panel student-join-form" onSubmit={join}>
           {joinCodeFromLink ? (
             <div className="linked-join-code" aria-label={`Join session ${joinCode}`}>
-              <span><Link2 size={17} aria-hidden="true" />Session link ready</span>
+              <span><Link2 size={17} aria-hidden="true" />Game link ready</span>
               <strong>{joinCode}</strong>
-              <small>Enter your name below to join.</small>
+              <small>Add your name below and you’re ready to join.</small>
             </div>
           ) : (
             <label className="join-field">
-              <span className="join-field-label">Game code</span>
+              <span className="join-field-label">Classroom code</span>
               <input
                 value={joinCode}
                 onChange={(event) => {
@@ -4650,22 +4650,22 @@ function StudentExperience({ onExit }: { onExit: () => void }) {
                 aria-describedby={status.error ? "join-error join-code-help" : "join-code-help"}
                 placeholder="ABC123"
               />
-              <small id="join-code-help">Enter the 6-character code on your teacher's screen.</small>
+              <small id="join-code-help">Enter the 6-character code on your teacher’s screen.</small>
             </label>
           )}
           <details className="student-join-tips">
             <summary>How to play</summary>
-            <p>Answer questions to earn money, buy snowballs, then use WASD and F or click to play in the arena.</p>
+            <p>Answer questions to earn rewards, choose your gear, then use WASD and F or click to play.</p>
           </details>
           <label className="join-field">
             <span className="join-field-label">Your name</span>
-            <input placeholder="Student name" autoComplete="nickname" autoFocus={Boolean(joinCodeFromLink)} enterKeyHint="done" value={nickname} onChange={(event) => { setNickname(event.target.value); status.clearError(); }} maxLength={20} aria-invalid={Boolean(nicknameError)} aria-describedby={nicknameError ? "nickname-error nickname-help" : "nickname-help"} />
-            <small id="nickname-help">Use the classroom name your teacher will recognize.</small>
+            <input placeholder="Name your teacher will recognize" autoComplete="nickname" autoFocus={Boolean(joinCodeFromLink)} enterKeyHint="done" value={nickname} onChange={(event) => { setNickname(event.target.value); status.clearError(); }} maxLength={20} aria-invalid={Boolean(nicknameError)} aria-describedby={nicknameError ? "nickname-error nickname-help" : "nickname-help"} />
+            <small id="nickname-help">Use the name your teacher expects to see.</small>
           </label>
           {nicknameError && <p id="nickname-error" className="error-text" role="alert">{nicknameError}</p>}
           {status.error && <p id="join-error" className="error-text" role="alert">{status.error}</p>}
           <button className="primary" type="submit" disabled={isJoining || Boolean(nicknameError)}>
-            {isJoining ? "Working..." : "Join"}
+            {isJoining ? "Joining..." : "Join the game"}
           </button>
         </form>
       </section>
@@ -4685,7 +4685,7 @@ function StudentExperience({ onExit }: { onExit: () => void }) {
   const canPracticeToRespawn = !player.isAlive && session.settings.deadPlayersCanPractice && session.settings.gameMode !== "flag";
   const roundActive = session.status === "active";
   const roundEnded = session.status === "ended";
-  const menuTitle = canPracticeToRespawn && quizOpen ? "Practice to Respawn" : quizOpen ? "Quiz" : buyOpen ? "Buy Menu" : settingsOpen ? "Game Settings" : "Scoreboard";
+  const menuTitle = canPracticeToRespawn && quizOpen ? "Practice to return" : quizOpen ? "Questions" : buyOpen ? "Choose gear" : settingsOpen ? "Game settings" : "Scoreboard";
   const roundTimeLabel = formatDuration(roundPreparation || zombieSelection ? preparationRemainingSeconds : remainingSeconds);
   const roundCountdownClassName = [
     "round-countdown",
@@ -4693,14 +4693,14 @@ function StudentExperience({ onExit }: { onExit: () => void }) {
     roundActive && remainingSeconds <= 30 ? "round-countdown-low" : ""
   ].filter(Boolean).join(" ");
   const objectiveText = roundPreparation
-    ? "Buy gear or answer questions for money before the round starts."
+    ? "Choose gear or answer questions for rewards before the round starts."
     : zombieSelection
       ? `Everyone is Human. Answer questions for energy; Zombies are chosen in ${preparationRemainingSeconds}s.`
     : session.settings.gameMode === "flag"
       ? flagStatusText(session)
     : session.settings.gameMode === "zombie"
       ? zombieStatusText(session, player)
-      : "Most tags wins. Respawns, then quiz earnings break ties.";
+      : "Most tags wins. Respawns come next, then answer accuracy breaks ties.";
   const sessionResult = getSessionResultText(session);
   const arenaPlayer = spectatorPlayer ?? player;
   const isFlagSpectator = !player.isAlive && session.settings.gameMode === "flag";
@@ -4734,7 +4734,7 @@ function StudentExperience({ onExit }: { onExit: () => void }) {
             </div>
           ) : <span>{gameModeLabel(session.settings.gameMode)}</span>}
           <button type="button" onClick={() => { setSettingsOpen(true); setQuizOpen(false); setBuyOpen(false); setScoreboardOpen(false); }}><Settings size={16} aria-hidden="true" />Settings</button>
-          <button type="button" onClick={onExit}>Exit Game</button>
+          <button type="button" onClick={onExit}>Leave game</button>
         </div>
         {session.status === "waiting" ? (
           <div className="arena-waiting-surface" aria-hidden="true" />
@@ -4760,11 +4760,11 @@ function StudentExperience({ onExit }: { onExit: () => void }) {
         {session.status !== "waiting" && (<>
         <div className={roundCountdownClassName} role="timer" aria-label={`Round time remaining ${roundTimeLabel}`}>
           <Timer size={18} aria-hidden="true" />
-          <span>{roundPreparation ? "Preparation" : zombieSelection ? "Zombie Selection" : "Round Timer"}</span>
+          <span>{roundPreparation ? "Get ready" : zombieSelection ? "Choose Zombies" : "Time left"}</span>
           <strong>{roundTimeLabel}</strong>
         </div>
         <div className="arena-objective-strip">
-          <span className={`status-pill status-${session.status}`}>{roundPreparation ? "Preparation" : zombieSelection ? "Choosing Zombies" : sessionStatusLabel(session.status)}</span>
+          <span className={`status-pill status-${session.status}`}>{roundPreparation ? "Get ready" : zombieSelection ? "Choosing Zombies" : sessionStatusLabel(session.status)}</span>
           <span className="objective-primary">{objectiveText}</span>
           {session.settings.gameMode === "flag" && session.flag?.state === "placed" && (
             <span className={`flag-objective-countdown${flagRemainingSeconds <= 10 ? " urgent" : ""}`} role="timer" aria-label={`Active flag time remaining ${formatDuration(flagRemainingSeconds)}`}>
@@ -4782,8 +4782,8 @@ function StudentExperience({ onExit }: { onExit: () => void }) {
             <div className="spectator-state">
               <span className="spectator-state-icon"><Snowflake size={20} aria-hidden="true" /></span>
               <span>
-                <small>Frozen this round</small>
-                <strong>Back next round</strong>
+                <small>Frozen for this round</small>
+                <strong>Back in the next round</strong>
               </span>
             </div>
             <button
@@ -4791,13 +4791,13 @@ function StudentExperience({ onExit }: { onExit: () => void }) {
               type="button"
               onClick={() => cycleSpectator(-1)}
               disabled={spectatorCandidates.length < 2}
-              aria-label="Watch previous player"
+              aria-label="Watch the previous player"
             >
               <ChevronLeft size={22} aria-hidden="true" />
               <span>Previous</span>
             </button>
             <div className="spectator-focus" aria-live="polite" aria-atomic="true">
-              <small><Eye size={15} aria-hidden="true" />Now watching{spectatorCandidates.length > 0 ? ` ${spectatorIndex} of ${spectatorCandidates.length}` : ""}</small>
+              <small><Eye size={15} aria-hidden="true" />Watching{spectatorCandidates.length > 0 ? ` ${spectatorIndex} of ${spectatorCandidates.length}` : ""}</small>
               <div>
                 <strong>{spectatorPlayer?.nickname ?? "Waiting for an active player"}</strong>
                 {spectatorPlayer && (
@@ -4812,7 +4812,7 @@ function StudentExperience({ onExit }: { onExit: () => void }) {
               type="button"
               onClick={() => cycleSpectator(1)}
               disabled={spectatorCandidates.length < 2}
-              aria-label="Watch next player"
+              aria-label="Watch the next player"
             >
               <span>Next</span>
               <ChevronRight size={22} aria-hidden="true" />
@@ -4821,7 +4821,7 @@ function StudentExperience({ onExit }: { onExit: () => void }) {
               <div className="spectator-player-stats" aria-label={`${spectatorPlayer.nickname} status`}>
                 <span>
                   <HeartPulse size={16} aria-hidden="true" />
-                  <span><small>Warmth</small><strong>{getPlayerWarmth(spectatorPlayer)}</strong></span>
+                  <span><small>Health</small><strong>{getPlayerWarmth(spectatorPlayer)}</strong></span>
                 </span>
                 <span>
                   <Target size={16} aria-hidden="true" />
@@ -4833,7 +4833,7 @@ function StudentExperience({ onExit }: { onExit: () => void }) {
                 </span>
               </div>
             ) : (
-              <p className="spectator-waiting-copy">The camera will switch when a player is active.</p>
+              <p className="spectator-waiting-copy">The camera will switch when a student is active.</p>
             )}
           </section>
         ) : (
@@ -4841,7 +4841,7 @@ function StudentExperience({ onExit }: { onExit: () => void }) {
           <span className={player.isAlive ? "hud-stat hud-warmth" : "hud-stat hud-warmth low"}>
             <HeartPulse size={18} aria-hidden="true" />
             <span>
-              <small>Warmth</small>
+              <small>Health</small>
               <strong>{warmth}</strong>
             </span>
           </span>
@@ -4849,7 +4849,7 @@ function StudentExperience({ onExit }: { onExit: () => void }) {
             <span className={`hud-stat hud-energy${runningEnergy <= 20 ? " low" : ""}`}>
               <Zap size={18} aria-hidden="true" />
               <span>
-                <small>Running energy</small>
+                <small>Energy</small>
                 <strong>{runningEnergy}/{ZOMBIE_HUMAN_MAX_ENERGY}</strong>
               </span>
             </span>
@@ -4867,7 +4867,7 @@ function StudentExperience({ onExit }: { onExit: () => void }) {
               ? <img className="zombie-head-icon" src="/assets/zombie/zombie-head.png" alt="" aria-hidden="true" />
               : <Users size={18} aria-hidden="true" />}
             <span>
-              <small>{session.settings.gameMode === "zombie" ? "Role · attire" : "Team"}</small>
+              <small>{session.settings.gameMode === "zombie" ? "Role and look" : "Team"}</small>
               <strong>{session.settings.gameMode === "zombie" ? (player.role === "zombie" ? "Zombie · Red" : "Human · Blue") : player.team === "blue" ? "Blue Team" : "Red Team"}</strong>
             </span>
           </span>
@@ -4883,7 +4883,7 @@ function StudentExperience({ onExit }: { onExit: () => void }) {
               <span className="hud-stat">
                 <Shield size={18} aria-hidden="true" />
                 <span>
-                  <small>Human objective</small>
+                  <small>Human goal</small>
                   <strong>{runningEnergy > 0 ? "Run and survive" : "Answer to move"}</strong>
                 </span>
               </span>
@@ -4899,7 +4899,7 @@ function StudentExperience({ onExit }: { onExit: () => void }) {
           <span className="hud-stat">
             <Target size={18} aria-hidden="true" />
             <span>
-              <small>Snowballs</small>
+              <small>Snowballs left</small>
               <strong>{snowballs}</strong>
             </span>
           </span>
@@ -4935,7 +4935,7 @@ function StudentExperience({ onExit }: { onExit: () => void }) {
             <div className="game-menu-bar">
               <strong>{menuTitle}</strong>
               <button type="button" onClick={() => { gameAudio.play("menu_toggle"); setQuizOpen(false); setBuyOpen(false); setScoreboardOpen(false); setSettingsOpen(false); }}>
-                Return to Arena
+                Back to the game
               </button>
             </div>
             {quizOpen && (
@@ -4943,13 +4943,13 @@ function StudentExperience({ onExit }: { onExit: () => void }) {
                 {canPracticeToRespawn && (
                   <div className="panel respawn-card respawn-card-overlay">
                     <div className="panel-title">
-                      <h2>Answer 3 to Respawn</h2>
+                      <h2>Answer 3 to return</h2>
                       <span>{respawnProgress}/{RESPAWN_CORRECT_ANSWERS_REQUIRED}</span>
                     </div>
                     <div className="respawn-meter" aria-label="Respawn progress">
                       <span style={{ width: `${Math.min(100, (respawnProgress / RESPAWN_CORRECT_ANSWERS_REQUIRED) * 100)}%` }} />
                     </div>
-                    <p>Get three practice answers correct to return with full warmth and fresh snowballs.</p>
+                    <p>Get three practice answers correct to return with full health and fresh snowballs.</p>
                   </div>
                 )}
                 <QuizPanel question={question} player={player} session={session} onAnswer={answer} answeringChoice={answeringChoice} />
@@ -4976,9 +4976,9 @@ function StudentExperience({ onExit }: { onExit: () => void }) {
               <div className="panel pre-round-card creator-ready-room">
                 <header className="lobby-selection-header">
                   <div className="lobby-instruction">
-                    <span>Choose your team</span>
-                    <h2>Choose your team and wait for the teacher to start the game.</h2>
-                    <p className="lobby-ready-note">You are connected. Pick a team and customize your player while the class joins.</p>
+                    <span>Before the game</span>
+                    <h2>Choose your team, then wait for the teacher to start.</h2>
+                    <p className="lobby-ready-note">You’re connected. Pick a team and style your player while the class joins.</p>
                     <div className="lobby-status-row">
                       <span className="waiting-status"><span className="waiting-pulse" />Waiting for teacher…</span>
                       <span className="lobby-player-count"><Users size={15} />{connectedPlayers.length} {connectedPlayers.length === 1 ? "player" : "players"} joined</span>
@@ -4993,7 +4993,7 @@ function StudentExperience({ onExit }: { onExit: () => void }) {
                       aria-pressed={player.team === "red"}
                     >
                       <span className="team-choice-emblem"><Shield size={20} /></span>
-                      <span><small>Red team</small><strong>{redTeamCount} joined</strong></span>
+                      <span><small>Red team</small><strong>{redTeamCount} playing</strong></span>
                       {player.team === "red" && <Check className="team-choice-check" size={18} />}
                     </button>
                     <button
@@ -5004,10 +5004,10 @@ function StudentExperience({ onExit }: { onExit: () => void }) {
                       aria-pressed={player.team === "blue"}
                     >
                       <span className="team-choice-emblem"><Shield size={20} /></span>
-                      <span><small>Blue team</small><strong>{blueTeamCount} joined</strong></span>
+                      <span><small>Blue team</small><strong>{blueTeamCount} playing</strong></span>
                       {player.team === "blue" && <Check className="team-choice-check" size={18} />}
                     </button>
-                    {session.settings.teamAssignment !== "players_choose" && <small className="team-lock-note">Teams are assigned by your teacher.</small>}
+                    {session.settings.teamAssignment !== "players_choose" && <small className="team-lock-note">Your teacher is assigning the teams.</small>}
                   </div>
                 </header>
                 <Suspense fallback={<ArenaLoading label="Loading character creator" />}>
@@ -5026,18 +5026,18 @@ function StudentExperience({ onExit }: { onExit: () => void }) {
             )}
             {roundEnded && (
               <div className="panel pre-round-card student-end-summary">
-                <h2>Session Ended</h2>
+                <h2>Game over</h2>
                 <p>{sessionResult}</p>
                 <div className="student-summary-metrics">
-                  <span><strong>{player.correctAnswers + player.wrongAnswers > 0 ? `${accuracy(player)}%` : "—"}</strong> question accuracy</span>
-                  <span><strong>{formatMoney(player.quizMoneyEarned ?? 0)}</strong> quiz rewards</span>
-                  <span><strong>{formatMoney(player.moneySpent ?? 0)}</strong> spent in shop</span>
-                  <span><strong>{formatMoney(player.money)}</strong> wallet balance</span>
+                  <span><strong>{player.correctAnswers + player.wrongAnswers > 0 ? `${accuracy(player)}%` : "—"}</strong> answer accuracy</span>
+                  <span><strong>{formatMoney(player.quizMoneyEarned ?? 0)}</strong> rewards earned</span>
+                  <span><strong>{formatMoney(player.moneySpent ?? 0)}</strong> spent on gear</span>
+                  <span><strong>{formatMoney(player.money)}</strong> rewards left</span>
                   <span><strong>{player.score}</strong> final score</span>
                 </div>
                 <div className="button-row">
-                  <button className="primary" onClick={returnToJoin}>Join Another Game</button>
-                  <button onClick={onExit}>Return to Quiz-Strike</button>
+                  <button className="primary" onClick={returnToJoin}>Join another game</button>
+                  <button onClick={onExit}>Back to QuizStrike</button>
                 </div>
               </div>
             )}
@@ -5050,15 +5050,15 @@ function StudentExperience({ onExit }: { onExit: () => void }) {
             {!player.isAlive && session.settings.gameMode !== "flag" && (
               <div className="panel respawn-card">
                 <div className="panel-title">
-                  <h2>{canPracticeToRespawn ? "Practice to Respawn" : "Waiting for Next Round"}</h2>
+                  <h2>{canPracticeToRespawn ? "Practice to return" : "Waiting for the next round"}</h2>
                   <span>{respawnProgress}/{RESPAWN_CORRECT_ANSWERS_REQUIRED}</span>
                 </div>
                 <div className="respawn-meter" aria-label="Respawn progress">
                   <span style={{ width: `${Math.min(100, (respawnProgress / RESPAWN_CORRECT_ANSWERS_REQUIRED) * 100)}%` }} />
                 </div>
                 <p>{canPracticeToRespawn
-                  ? `Answer ${Math.max(0, RESPAWN_CORRECT_ANSWERS_REQUIRED - respawnProgress)} more correctly to rejoin at your team base with full warmth and fresh snowballs.`
-                  : "Practice questions are off for this session, so watch the scoreboard and get ready for the next round."}</p>
+                  ? `Answer ${Math.max(0, RESPAWN_CORRECT_ANSWERS_REQUIRED - respawnProgress)} more correctly to return at your team base with full health and fresh snowballs.`
+                  : "Practice questions are off for this game. Watch the scoreboard and get ready for the next round."}</p>
               </div>
             )}
           </div>
@@ -5070,8 +5070,8 @@ function StudentExperience({ onExit }: { onExit: () => void }) {
         )}
       </div>
       {session.status !== "waiting" && <div className="action-bar control-prompts">
-        <button disabled={roundEnded} onClick={() => { gameAudio.playEvent(quizOpen ? "modal_close" : "quiz_open"); setQuizOpen(!quizOpen); setBuyOpen(false); setScoreboardOpen(false); }}>Q Quiz</button>
-        <button disabled={roundEnded || !player.isAlive} onClick={() => { gameAudio.play("menu_toggle"); setBuyOpen(!buyOpen); setQuizOpen(false); setScoreboardOpen(false); }}>B Buy · 1-5</button>
+        <button disabled={roundEnded} onClick={() => { gameAudio.playEvent(quizOpen ? "modal_close" : "quiz_open"); setQuizOpen(!quizOpen); setBuyOpen(false); setScoreboardOpen(false); }}>Q Questions</button>
+        <button disabled={roundEnded || !player.isAlive} onClick={() => { gameAudio.play("menu_toggle"); setBuyOpen(!buyOpen); setQuizOpen(false); setScoreboardOpen(false); }}>B Gear · 1–5 choose</button>
         <button onMouseDown={() => { gameAudio.play("menu_toggle"); setScoreboardOpen(true); setQuizOpen(false); setBuyOpen(false); setSettingsOpen(false); }} onMouseUp={() => setScoreboardOpen(false)} onBlur={() => setScoreboardOpen(false)}>Hold Tab · Scoreboard</button>
         <button onClick={() => { gameAudio.play("menu_toggle"); setSettingsOpen((open) => !open); setQuizOpen(false); setBuyOpen(false); setScoreboardOpen(false); }}><Settings size={18} aria-hidden="true" />Settings</button>
       </div>}

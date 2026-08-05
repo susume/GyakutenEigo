@@ -62,18 +62,18 @@ export const registerPlayerRoutes = (app: Application, deps: PlayerRouteDependen
   app.delete("/api/sessions/:code/players/:playerId", deps.requireTeacher, (req: AuthedRequest, res) => {
     const session = deps.getSessionByCode(deps.routeParam(req.params.code));
     if (!session || session.teacherId !== req.user!.id) {
-      res.status(404).json({ error: "Session not found." });
+      res.status(404).json({ error: "We couldn’t find that game room." });
       return;
     }
     if (session.status === "ended") {
-      res.status(400).json({ error: "Players cannot be removed after the session has ended." });
+      res.status(400).json({ error: "Players can’t be removed after the game ends." });
       return;
     }
 
     const playerId = deps.routeParam(req.params.playerId);
     const playerIndex = session.players.findIndex((candidate) => candidate.id === playerId);
     if (playerIndex < 0) {
-      res.status(404).json({ error: "Player not found." });
+      res.status(404).json({ error: "We couldn’t find that player." });
       return;
     }
 
@@ -105,15 +105,15 @@ export const registerPlayerRoutes = (app: Application, deps: PlayerRouteDependen
     const session = deps.getSessionByCode(deps.routeParam(req.params.code));
     const nickname = String(req.body.nickname ?? "").trim();
     if (!session) {
-      res.status(404).json({ error: "Session not found." });
+      res.status(404).json({ error: "We couldn’t find that game room." });
       return;
     }
     if (session.status === "ended") {
-      res.status(400).json({ error: "This session has ended." });
+      res.status(400).json({ error: "This game has ended." });
       return;
     }
     if (nickname.length < 2 || nickname.length > 20) {
-      res.status(400).json({ error: "Nickname must be 2 to 20 characters." });
+      res.status(400).json({ error: "Your name must be 2 to 20 characters." });
       return;
     }
     const nicknameError = deps.getNicknameError(nickname);
@@ -148,11 +148,11 @@ export const registerPlayerRoutes = (app: Application, deps: PlayerRouteDependen
       return;
     }
     if (returningPlayer) {
-      res.status(409).json({ error: "That nickname is already taken in this session." });
+      res.status(409).json({ error: "That name is already in use in this game. Choose another." });
       return;
     }
     if (session.players.length >= session.maxPlayers) {
-      res.status(400).json({ error: "This session is full." });
+      res.status(400).json({ error: "This game is full. Ask your teacher to make space." });
       return;
     }
     const isLateJoin = session.status !== "waiting";
@@ -229,7 +229,7 @@ export const registerPlayerRoutes = (app: Application, deps: PlayerRouteDependen
   app.get("/api/sessions/:code/players/:playerId/rejoin", (req, res) => {
     const { session, player } = findPlayer(deps, req);
     if (!session || !player || player.isBot) {
-      res.status(404).json({ error: "This student session is no longer available." });
+      res.status(404).json({ error: "This player session is no longer available. Join again with the classroom code." });
       return;
     }
     if (!deps.requirePlayerAccess(req, res, session, player)) return;
@@ -290,12 +290,12 @@ export const registerPlayerRoutes = (app: Application, deps: PlayerRouteDependen
     }
     if (!deps.requirePlayerAccess(req, res, session, player)) return;
     if (!player.isAlive && !session.settings.deadPlayersCanPractice) {
-      res.status(400).json({ error: "Practice questions are disabled while out for the round." });
+      res.status(400).json({ error: "Practice questions are off while you’re out this round." });
       return;
     }
     const question = deps.issueNextQuestion(session, player.id);
     if (!question) {
-      res.status(404).json({ error: "No questions are available in this session." });
+      res.status(404).json({ error: "No questions are available in this game yet." });
       return;
     }
     res.json({ question });

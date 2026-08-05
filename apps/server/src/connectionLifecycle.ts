@@ -66,7 +66,7 @@ export class ConnectionLifecycleService {
     }
     this.deps.appendEvent(session, {
       type: "timer",
-      message: `${player.nickname} went Offline.`,
+      message: `${player.nickname} is away.`,
       playerId: player.id,
       team: player.team
     });
@@ -107,7 +107,7 @@ export class ConnectionLifecycleService {
       const playerSocket = this.deps.io.sockets.sockets.get(socketId);
       if (!playerSocket) continue;
       playerSocket.emit("player_removed", {
-        message: "Your teacher removed you from this game. You can return to the join screen."
+      message: "Your teacher removed you from this game. You can return to the join screen and join another room."
       });
       playerSocket.leave(session.sessionCode);
       const binding = playerSocket.data.playerBinding as { sessionCode?: string; playerId?: string } | undefined;

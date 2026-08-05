@@ -39,12 +39,12 @@ export const registerAuthRoutes = (
     const password = String(req.body.password ?? "");
 
     if (name.length < 2 || !email.includes("@") || password.length < 8) {
-      res.status(400).json({ error: "Enter a name, valid email, and password of at least 8 characters." });
+      res.status(400).json({ error: "Enter your name, a valid email, and a password with at least 8 characters." });
       return;
     }
 
     if ([...users.values()].some((user) => user.email === email)) {
-      res.status(409).json({ error: "A teacher with that email already exists." });
+      res.status(409).json({ error: "A teacher workspace already uses that email. Try signing in instead." });
       return;
     }
 
@@ -68,7 +68,7 @@ export const registerAuthRoutes = (
     const user = [...users.values()].find((candidate) => candidate.email === email);
 
     if (!user || !(await bcrypt.compare(password, user.passwordHash))) {
-      res.status(401).json({ error: "Email or password was not recognized." });
+      res.status(401).json({ error: "That email and password don’t match. Check them and try again." });
       return;
     }
 

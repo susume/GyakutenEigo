@@ -6,9 +6,9 @@ import {
 } from "./GameplayAnnouncements";
 
 test("gameplay announcement manifest contains the required phrases and asset paths", () => {
-  assert.equal(GAMEPLAY_ANNOUNCEMENTS.FLAG_PLANTED.subtitle, "The flag has been planted.");
-  assert.equal(GAMEPLAY_ANNOUNCEMENTS.STREAK_MONSTER.subtitle, "Muh-Muh-Muh-Monster!");
-  assert.equal(GAMEPLAY_ANNOUNCEMENTS.STREAK_GODLIKE.subtitle, "Guh-Guh-Guh-Godlike!");
+  assert.equal(GAMEPLAY_ANNOUNCEMENTS.FLAG_PLANTED.subtitle, "The flag is in place.");
+  assert.equal(GAMEPLAY_ANNOUNCEMENTS.STREAK_MONSTER.subtitle, "Monster streak!");
+  assert.equal(GAMEPLAY_ANNOUNCEMENTS.STREAK_GODLIKE.subtitle, "Incredible streak!");
   assert.ok(GAMEPLAY_ANNOUNCEMENTS.FLAG_PLANTED.assetPath.endsWith("flag-planted.mp3"));
 });
 

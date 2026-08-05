@@ -27,12 +27,12 @@ export async function sendStudentCommand<T>(
   } catch {
     // A timed-out command may already have reached the server. Do not retry a
     // purchase over HTTP because that could charge the student twice.
-    throw new StudentCommandTransportError("The game connection is delayed. Your action may still complete; please wait a moment.");
+    throw new StudentCommandTransportError("The game connection is taking a moment. Your action may still finish; wait a little, then check again.");
   }
 
   if (!response || response.ok !== true) {
     throw new StudentCommandTransportError(
-      response?.error ?? "The game server could not complete that action.",
+      response?.error ?? "We couldn’t complete that action. Try again.",
       response?.status ?? 0
     );
   }

@@ -44,14 +44,14 @@ export const ArenaHudOverlay = ({
       </div>
     )}
     {!isDesertCitadel && !isIronJunction && <div className="fps-callout">{arenaTitle}</div>}
-    {!controlsDisabled && !isPointerLocked && !suppressHint && <div className="control-lock">WASD moves. Arrow keys or swipe the arena to look around. Click the arena for mouse aim. F or left click launches. C scopes the Heavy Launcher. E interacts with the flag.</div>}
+    {!controlsDisabled && !isPointerLocked && !suppressHint && <div className="control-lock">WASD moves. Use the arrow keys or swipe to look around. Click the game to aim. F or left click plays. C changes Heavy Launcher zoom. E interacts with the flag.</div>}
     <div className="touch-controls" aria-label="Touch controls">
       <button ref={joystickElementRef} type="button" className="touch-joystick" aria-label="Movement joystick" disabled={controlsDisabled} onPointerDown={onBeginTouchMove}>
         <span aria-hidden="true" />
       </button>
       <div className="touch-action-group">
-        <span>Swipe to look · Tap arena to fire</span>
-        <button type="button" className="touch-fire" disabled={controlsDisabled} onPointerDown={onFireFromTouch}>Fire</button>
+        <span>Swipe to look · Tap the game to play</span>
+        <button type="button" className="touch-fire" disabled={controlsDisabled} onPointerDown={onFireFromTouch}>Play</button>
       </div>
     </div>
   </>

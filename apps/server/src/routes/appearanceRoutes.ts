@@ -53,12 +53,12 @@ export const registerAppearanceRoutes = (app: Application, deps: AppearanceRoute
     if (!deps.requirePlayerAccess(req, res, session, player)) return;
     const policy = session.settings.characterCustomization;
     if (session.status !== "waiting" || !policy.enabled) {
-      res.status(423).json({ error: "Character customization is locked." });
+      res.status(423).json({ error: "Player styling is locked for this game." });
       return;
     }
     const lastUpdate = deps.appearanceUpdateTimestamps.get(player.id) ?? 0;
     if (Date.now() - lastUpdate < deps.appearanceUpdateCooldownMs) {
-      res.status(429).json({ error: "Please wait a moment before saving again." });
+      res.status(429).json({ error: "Wait a moment before saving again." });
       return;
     }
     const input = req.body?.appearance ?? req.body;
@@ -70,13 +70,13 @@ export const registerAppearanceRoutes = (app: Application, deps: AppearanceRoute
     const appearance = deps.sanitizePlayerAppearance(input as Partial<PlayerAppearance>);
     const lockedItems = deps.getLockedAppearanceItems(appearance, deps.getCosmeticProgress(player).level);
     if (lockedItems.length > 0) {
-      res.status(403).json({ error: `${lockedItems[0].name} unlocks at cosmetic level ${lockedItems[0].unlockLevel}.` });
+      res.status(403).json({ error: `${lockedItems[0].name} unlocks at style level ${lockedItems[0].unlockLevel}.` });
       return;
     }
     if (appearance.decalAssetId) {
       const decal = deps.decalStore.get(appearance.decalAssetId);
       if (!policy.uploadsEnabled || !decal || decal.sessionId !== session.id || decal.playerId !== player.id) {
-        res.status(400).json({ error: "That decal is not available for this player." });
+        res.status(400).json({ error: "That sticker is not available for this player." });
         return;
       }
     }
@@ -96,17 +96,17 @@ export const registerAppearanceRoutes = (app: Application, deps: AppearanceRoute
     if (!deps.requirePlayerAccess(req, res, session, player)) return;
     const policy = session.settings.characterCustomization;
     if (session.status !== "waiting" || !policy.enabled || !policy.uploadsEnabled) {
-      res.status(423).json({ error: "Uploaded decals are not enabled for this room." });
+      res.status(423).json({ error: "Sticker uploads are not enabled for this game." });
       return;
     }
     if (!deps.checkDecalUploadRate(player.id)) {
-      res.status(429).json({ error: "Upload limit reached. Try again in one minute." });
+      res.status(429).json({ error: "Upload limit reached. Try again in a minute." });
       return;
     }
     const bytes = Buffer.isBuffer(req.body) ? req.body : Buffer.alloc(0);
     const mimeType = deps.inspectProcessedDecal(bytes, req.header("content-type")?.split(";")[0]);
     if (!mimeType || bytes.length === 0 || bytes.length > deps.decalMaxProcessedBytes) {
-      res.status(415).json({ error: "Upload a processed PNG or WebP decal within the size limit." });
+      res.status(415).json({ error: "Upload a processed PNG or WebP sticker within the size limit." });
       return;
     }
     const assetId = deps.id();
@@ -115,7 +115,7 @@ export const registerAppearanceRoutes = (app: Application, deps: AppearanceRoute
       player.appearance?.decalAssetId
     );
     if (!stored.ok) {
-      res.status(413).json({ error: "This room's sticker storage is full. Ask your teacher to remove an older sticker." });
+      res.status(413).json({ error: "This game’s sticker storage is full. Ask your teacher to remove an older sticker." });
       return;
     }
     res.status(201).json({ assetId, mimeType, bytes: bytes.length });
@@ -144,11 +144,11 @@ export const registerAppearanceRoutes = (app: Application, deps: AppearanceRoute
     const session = deps.getSessionByCode(deps.routeParam(req.params.code));
     const decal = deps.decalStore.get(deps.routeParam(req.params.assetId));
     if (!session || !decal || decal.sessionId !== session.id) {
-      res.status(404).json({ error: "Decal not found." });
+      res.status(404).json({ error: "Sticker not found." });
       return;
     }
     if (!deps.canReadRoomAsset(req, session)) {
-      res.status(401).json({ error: "Room access is required." });
+      res.status(401).json({ error: "Game access is required." });
       return;
     }
     res.setHeader("Cache-Control", "private, max-age=3600, immutable");
@@ -163,12 +163,12 @@ export const registerAppearanceRoutes = (app: Application, deps: AppearanceRoute
       return;
     }
     if (session.status !== "waiting") {
-      res.status(423).json({ error: "Customization settings are locked after the match starts." });
+      res.status(423).json({ error: "Player styling is locked after the game starts." });
       return;
     }
     const requested = deps.sanitizeCharacterCustomizationSettings(req.body);
     if (requested.aiEnabled && !deps.aiSkinProviderConfigured) {
-      res.status(400).json({ error: "AI designs require a configured secure server provider." });
+      res.status(400).json({ error: "AI styles are not available right now. You can still use a regular sticker." });
       return;
     }
     if (!requested.uploadsEnabled) {
@@ -191,7 +191,7 @@ export const registerAppearanceRoutes = (app: Application, deps: AppearanceRoute
       return;
     }
     deps.clearPlayerAppearance(session, player);
-    deps.appendEvent(session, { type: "timer", message: `Teacher cleared ${player.nickname}'s custom appearance.`, playerId: player.id, team: player.team });
+    deps.appendEvent(session, { type: "timer", message: `Teacher reset ${player.nickname}'s player style.`, playerId: player.id, team: player.team });
     deps.broadcastSession(session);
     res.json({ session: deps.stampSession(session), player });
   });
@@ -233,7 +233,7 @@ export const registerAppearanceRoutes = (app: Application, deps: AppearanceRoute
     }
     session.players.forEach((player) => deps.clearPlayerAppearance(session, player));
     deps.decalStore.deleteSession(session.id);
-    deps.appendEvent(session, { type: "timer", message: "Teacher reset all custom appearances." });
+    deps.appendEvent(session, { type: "timer", message: "Teacher reset all player styles." });
     deps.broadcastSession(session);
     res.json({ session: deps.stampSession(session) });
   });

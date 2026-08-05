@@ -41,20 +41,20 @@ export default function BuyPanel({
   const isZombieMode = session.settings.gameMode === "zombie";
   const isZombieHuman = session.settings.gameMode === "zombie" && player.role !== "zombie";
   const gearLockReason = (cost: number) => {
-    if (!player.isAlive) return "Round only";
-    if (player.money < cost) return `Need ${formatMoney(cost - player.money)}`;
-    return "Base required";
+    if (!player.isAlive) return "Available next round";
+    if (player.money < cost) return `Need ${formatMoney(cost - player.money)} more`;
+    return "Return to base to buy";
   };
   return (
     <div className="panel buy-panel">
       <div className="panel-title">
-        <h2>{buyPhaseSeconds === undefined ? "Buy Menu" : `Preparation · ${buyPhaseSeconds}s`}</h2>
+        <h2>{buyPhaseSeconds === undefined ? "Choose gear" : `Get ready · ${buyPhaseSeconds}s`}</h2>
         <span>{formatMoney(player.money)}</span>
       </div>
       <p className="menu-timer-note">{buyPhaseSeconds === undefined
-        ? "The round timer continues while this menu is open."
-        : "Press Q to answer questions for more money before the round starts."}</p>
-      <p className="buy-shortcut-help">Press 1–5 to buy instantly. Press B to open or close this menu.</p>
+        ? "The round clock keeps running while this menu is open."
+        : "Press Q to answer questions for more rewards before the round starts."}</p>
+      <p className="buy-shortcut-help">Press 1–5 to choose quickly. Press B to open or close this menu.</p>
       <button
         className="gear-row"
         onClick={onBuySnowballs}
@@ -64,9 +64,9 @@ export default function BuyPanel({
         <kbd className="buy-shortcut-key">1</kbd>
         <GearGlyph gearId="snowballs" />
         <span>
-          <strong>{isBuyingSnowballs ? "Working..." : `${snowballCount} Snowballs`}</strong>
-          <small>Restock ammunition anywhere on the map.</small>
-          <small className="gear-status">{isZombieHuman ? "Zombies only" : player.money < snowballPrice ? `Need ${formatMoney(snowballPrice - player.money)} more` : player.isAlive ? "Ready to buy" : "Available next round"}</small>
+          <strong>{isBuyingSnowballs ? "Adding..." : `${snowballCount} snowballs`}</strong>
+          <small>Restock your ammunition anywhere on the map.</small>
+          <small className="gear-status">{isZombieHuman ? "Humans only" : player.money < snowballPrice ? `Need ${formatMoney(snowballPrice - player.money)} more` : player.isAlive ? "Ready to choose" : "Available next round"}</small>
         </span>
         <em>{formatMoney(snowballPrice)}</em>
       </button>
@@ -81,9 +81,9 @@ export default function BuyPanel({
           <kbd className="buy-shortcut-key">{getShopShortcutKey(gear.id)}</kbd>
           <GearGlyph gearId={gear.id} />
           <span>
-            <strong>{buyingGearId === gear.id ? "Working..." : gear.name}</strong>
+            <strong>{buyingGearId === gear.id ? "Adding..." : gear.name}</strong>
             <small>{gear.description}</small>
-            <small className="gear-status">{isZombieMode && isWeaponGearId(gear.id) ? "Default launcher only" : (getPlayerWeaponId(player) === gear.id || getPlayerPerks(player).includes(gear.id)) ? "Equipped" : player.money < gear.cost || !player.isAlive ? gearLockReason(gear.cost) : "Ready to buy"}</small>
+            <small className="gear-status">{isZombieMode && isWeaponGearId(gear.id) ? "Default launcher only" : (getPlayerWeaponId(player) === gear.id || getPlayerPerks(player).includes(gear.id)) ? "Equipped" : player.money < gear.cost || !player.isAlive ? gearLockReason(gear.cost) : "Ready to choose"}</small>
           </span>
           <em>{formatMoney(gear.cost)}</em>
         </button>
