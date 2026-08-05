@@ -57,9 +57,9 @@ const loopSteps = [
 ] as const;
 
 const confirmedModes = [
-  { label: "Flag Mode", detail: "Deliver. Protect. Capture.", color: "blue" },
-  { label: "Zombie Mode", detail: "Answer for energy. Survive the round.", color: "red" },
-  { label: "Classic Practice", detail: "A focused team warmup.", color: "gold" }
+  { label: "Capture the Flag", detail: "Deliver. Protect. Capture.", color: "blue" },
+  { label: "Zombie Survival", detail: "Answer for energy. Survive the round.", color: "red" },
+  { label: "Team Tag", detail: "A focused team warmup.", color: "gold" }
 ] as const;
 
 export default function PublicHomepage({
@@ -187,19 +187,19 @@ export default function PublicHomepage({
           <div className="loop-visual-content">
             {activeStep.visual === "question" && (
               <figure className="loop-screenshot-card">
-                <img src="/assets/quizstrike-actual-quiz.png" alt="Actual QuizStrike quiz panel showing a live question, answer choices, money reward, and round timer" loading="lazy" decoding="async" />
+                <img src="/assets/quizstrike-actual-quiz.png" alt="Actual QuizStrike quiz panel showing a live question, answer choices, reward, and round timer" loading="lazy" decoding="async" />
                 <figcaption><strong>Answer while the round is live.</strong></figcaption>
               </figure>
             )}
             {activeStep.visual === "reward" && (
               <figure className="loop-screenshot-card">
-                <img src="/assets/quizstrike-actual-preparation.png" alt="Actual QuizStrike preparation screen showing money, snowballs, launchers, vest, and speed boots available before the round" loading="lazy" decoding="async" />
+                <img src="/assets/quizstrike-actual-preparation.png" alt="Actual QuizStrike preparation screen showing rewards, snowballs, launchers, vest, and speed boots available before the round" loading="lazy" decoding="async" />
                 <figcaption><strong>Earn a reward. Choose the next advantage.</strong></figcaption>
               </figure>
             )}
             {activeStep.visual === "arena" && (
               <figure className="loop-screenshot-card">
-                <img src="/assets/quizstrike-actual-gameplay.png" alt="Actual QuizStrike gameplay view with arena buildings, player weapon, minimap, timer, team, money, gear, and snowball HUD" loading="lazy" decoding="async" />
+                <img src="/assets/quizstrike-actual-gameplay.png" alt="Actual QuizStrike gameplay view with arena buildings, player weapon, minimap, timer, team, rewards, gear, and snowball HUD" loading="lazy" decoding="async" />
                 <figcaption><strong>Use the advantage with your team.</strong></figcaption>
               </figure>
             )}
@@ -214,9 +214,9 @@ export default function PublicHomepage({
           <div className="console-body">
             <aside className="console-sidebar" aria-label="Teacher workspace sections"><span className="console-nav-active"><BookOpen size={15} aria-hidden="true" /> Folders</span><span><Trophy size={15} aria-hidden="true" /> Reports</span><span><Settings2 size={15} aria-hidden="true" /> Settings</span></aside>
             <div className="console-main">
-              <div className="console-heading"><div><span className="console-eyebrow">Next classroom action</span><h3>Create a room when your quiz is ready.</h3><p>Start with a quiz set, then choose the game mode and share one private code.</p></div><button className="console-action"><Play size={13} aria-hidden="true" /> Create Session</button></div>
+              <div className="console-heading"><div><span className="console-eyebrow">Next classroom action</span><h3>Create a room when your quiz is ready.</h3><p>Start with a quiz set, then choose the game mode and share one private code.</p></div><button className="console-action"><Play size={13} aria-hidden="true" /> Create game</button></div>
               <div className="console-quiz-row"><div className="console-quiz-icon"><BookOpen size={17} aria-hidden="true" /></div><div><strong>Week 04 · Forces & motion</strong><small>12 questions · ready to play</small></div><button className="console-play"><Play size={13} aria-hidden="true" /> Play Live</button></div>
-              <div className="console-controls"><span><Users size={14} aria-hidden="true" /> 24 students joined</span><span><Flag size={14} aria-hidden="true" /> Flag Mode</span><span><Timer size={14} aria-hidden="true" /> 02:00 round</span></div>
+              <div className="console-controls"><span><Users size={14} aria-hidden="true" /> 24 students joined</span><span><Flag size={14} aria-hidden="true" /> Capture the Flag</span><span><Timer size={14} aria-hidden="true" /> 02:00 round</span></div>
             </div>
           </div>
         </div>

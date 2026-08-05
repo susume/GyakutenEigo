@@ -257,12 +257,12 @@ const sessionNumberFields = [
   { name: "flagHoldSeconds", label: "Flag hold time", min: 5, max: 180, step: 5, unit: "seconds", help: "How long Red protects a placed flag." },
   { name: "initialZombieCount", label: "Starting Zombies", min: 1, max: 20, help: "How many students become Zombies after the energy period." },
   { name: "maxPlayers", label: "Student limit", min: 2, max: 40, unit: "students", help: "The largest class size this room can hold, including test bots." },
-  { name: "startingMoney", label: "Starting rewards", min: 0, max: 16000, step: 100, unit: "dollars", help: "Rewards each student starts with." },
-  { name: "correctAnswerReward", label: "Reward per correct answer", min: 0, max: 5000, step: 100, unit: "dollars", help: "Rewards earned for each correct answer." },
+  { name: "startingMoney", label: "Starting rewards", min: 0, max: 16000, step: 100, unit: "rewards", help: "Rewards each student starts with." },
+  { name: "correctAnswerReward", label: "Reward per correct answer", min: 0, max: 5000, step: 100, unit: "rewards", help: "Rewards earned for each correct answer." },
   { name: "startingSnowballs", label: "Starting snowballs", min: 1, max: 99, unit: "snowballs", help: "Ammunition each student starts with." },
-  { name: "snowballPackPrice", label: "Snowball pack price", min: 0, max: 5000, step: 50, unit: "dollars", help: "Cost of one snowball pack." },
+  { name: "snowballPackPrice", label: "Snowball pack price", min: 0, max: 5000, step: 50, unit: "rewards", help: "Reward cost of one snowball pack." },
   { name: "snowballsPerPack", label: "Snowballs per pack", min: 1, max: 50, unit: "snowballs", help: "Ammunition in each pack." },
-  { name: "wrongAnswerPenalty", label: "Wrong answer penalty", min: 0, max: 16000, step: 100, unit: "dollars", help: "Rewards removed for an incorrect answer." },
+  { name: "wrongAnswerPenalty", label: "Wrong answer penalty", min: 0, max: 16000, step: 100, unit: "rewards", help: "Rewards removed for an incorrect answer." },
   { name: "roundDurationSeconds", label: "Round time", min: 60, max: 3600, step: 30, unit: "seconds", help: "Time available for each round." }
 ] as const satisfies ReadonlyArray<{
   name: keyof Pick<
@@ -413,7 +413,7 @@ function accuracy(player: PlayerSession) {
   return calculateAccuracy(player.correctAnswers, player.wrongAnswers);
 }
 
-const formatMoney = (value: number) => `$${Math.round(value)}`;
+const formatRewards = (value: number) => `${Math.round(value)} rewards`;
 
 const teamLabel = (team: PlayerSession["team"]) => (team === "blue" ? "Blue Team" : "Red Team");
 
@@ -975,7 +975,7 @@ export function GyakutenEigoHome({ onOpenGame, onJoinGame }: { onOpenGame: () =>
         <div className="faq-list">
           <details open><summary>Is this only for high-stakes competition?</summary><p>No. Use it for a five-minute warmup, a focused review, or a full class-vs-class event.</p></details>
            <details><summary>Can teachers keep the game on track?</summary><p>Yes. Teachers create and start games, choose the mode and settings, watch the roster, and end the game when the lesson is ready.</p></details>
-          <details><summary>What happens after the matchup?</summary><p>The teacher dashboard keeps participation and question-accuracy information ready for the next lesson and the next rematch.</p></details>
+          <details><summary>What happens after the matchup?</summary><p>The teacher workspace keeps participation and question-accuracy information ready for the next lesson and the next rematch.</p></details>
         </div>
       </section>
 
@@ -1596,7 +1596,7 @@ function _DashboardHome({ data, onTab }: { data: DashboardPayload; onTab: (tab: 
             {activeSession ? <Play size={18} aria-hidden="true" /> : <Plus size={18} aria-hidden="true" />}
             {activeSession ? "Open Live Control" : "Create New Quiz"}
           </button>
-          {!activeSession && <button onClick={() => onTab("sessions")}><Target size={18} aria-hidden="true" />Create Session</button>}
+          {!activeSession && <button onClick={() => onTab("sessions")}><Target size={18} aria-hidden="true" />Create game</button>}
         </div>
       </section>
 
@@ -3365,14 +3365,14 @@ function ReportsPanel({
                 return (
                   <div className="report-summary-grid">
                     <div className="metric"><span>Class accuracy</span><strong>{classAccuracy === null ? "-" : `${classAccuracy}%`}</strong><small>{attemptedStudents} of {report.rows.length} students answered</small></div>
-                    <div className="metric"><span>Rewards earned</span><strong>{formatMoney(report.rows.reduce((total, row) => total + row.quizMoney, 0))}</strong><small>Rewards from correct answers</small></div>
+                    <div className="metric"><span>Rewards earned</span><strong>{formatRewards(report.rows.reduce((total, row) => total + row.quizMoney, 0))}</strong><small>Rewards from correct answers</small></div>
                     <div className="metric"><span>Questions to revisit</span><strong>{report.missedQuestions.length}</strong><small>Questions missed by students</small></div>
                   </div>
                 );
               })()}
               <div className="report-table-wrap">
                 <table className="report-table">
-                  <thead><tr><th>Student</th><th>Team</th><th>Correct</th><th>Wrong</th><th>Accuracy</th><th>Quiz Rewards</th><th>Score</th></tr></thead>
+                  <thead><tr><th>Student</th><th>Team</th><th>Correct</th><th>Wrong</th><th>Accuracy</th><th>Rewards</th><th>Score</th></tr></thead>
                   <tbody>
                     {report.rows.map((row) => (
                       <tr key={row.nickname}>
@@ -3381,7 +3381,7 @@ function ReportsPanel({
                         <td data-label="Correct">{row.correctAnswers}</td>
                         <td data-label="Wrong">{row.wrongAnswers}</td>
                         <td data-label="Accuracy">{row.correctAnswers + row.wrongAnswers > 0 ? `${row.accuracy}%` : "-"}</td>
-                        <td data-label="Quiz Rewards">{formatMoney(row.quizMoney)}</td>
+                        <td data-label="Rewards">{formatRewards(row.quizMoney)}</td>
                         <td data-label="Score">{row.score}</td>
                       </tr>
                     ))}
@@ -3550,7 +3550,7 @@ function LegacyReportsPanel({
             </div>
             <div className="metric">
               <span>Rewards earned</span>
-              <strong>{formatMoney(report.rows.reduce((total, row) => total + row.quizMoney, 0))}</strong>
+              <strong>{formatRewards(report.rows.reduce((total, row) => total + row.quizMoney, 0))}</strong>
               <small>Rewards from correct answers</small>
             </div>
             <div className="metric">
@@ -3581,7 +3581,7 @@ function LegacyReportsPanel({
                   <td data-label="Correct">{row.correctAnswers}</td>
                   <td data-label="Wrong">{row.wrongAnswers}</td>
                   <td data-label="Accuracy">{row.correctAnswers + row.wrongAnswers > 0 ? `${row.accuracy}%` : "—"}</td>
-                  <td data-label="Quiz Rewards">{formatMoney(row.quizMoney)}</td>
+                  <td data-label="Rewards">{formatRewards(row.quizMoney)}</td>
                   <td data-label="Score">{row.score}</td>
                 </tr>
               ))}
@@ -3610,6 +3610,7 @@ function StudentExperience({ onExit }: { onExit: () => void }) {
   const [session, setSession] = useState<GameSession | null>(null);
   const [player, setPlayer] = useState<PlayerSession | null>(null);
   const [playerToken, setPlayerToken] = useState("");
+  const [restoreFailed, setRestoreFailed] = useState(false);
   const [question, setQuestion] = useState<PublicQuestion | null>(null);
   const {
     quizOpen, setQuizOpen,
@@ -3737,6 +3738,7 @@ function StudentExperience({ onExit }: { onExit: () => void }) {
           cosmeticProgressToken?: string;
           question?: PublicQuestion;
         };
+        setRestoreFailed(false);
         setSession(data.session);
         setPlayer(data.player);
         storeCosmeticProgressToken(data.cosmeticProgressToken);
@@ -3750,7 +3752,8 @@ function StudentExperience({ onExit }: { onExit: () => void }) {
           return;
         }
         setJoinCode(stored.sessionCode);
-        setStatusError("Your connection dropped while we reopened the game. Check your connection, then join again with the same name.");
+        setRestoreFailed(true);
+        setStatusError("We couldn’t reopen your previous game. Check your connection, then join again with the same name.");
       })
       .finally(() => {
         if (!cancelled) setIsRestoringStudentSession(false);
@@ -4099,7 +4102,7 @@ function StudentExperience({ onExit }: { onExit: () => void }) {
           invalid_target: "That snowball target was no longer valid.",
           invalid_projectile: "That shot was rejected. Try firing again.",
           duplicate_projectile: "That shot was already counted.",
-          humans_cannot_fire: "Humans cannot shoot in Zombie Mode. Answer questions for running energy and escape.",
+          humans_cannot_fire: "Humans cannot shoot in Zombie Survival. Answer questions for running energy and escape.",
           fire_cooldown: "Launcher is cooling down."
         };
         queueFeedbackCue(result.reason === "no_valid_target" ? "warning" : "error");
@@ -4118,7 +4121,7 @@ function StudentExperience({ onExit }: { onExit: () => void }) {
           result.converted
             ? "Human knocked out and converted to a Red Zombie!"
             : result.eliminated
-            ? `Freeze! Opponent out. ${result.moneyAwarded ? `+${formatMoney(result.moneyAwarded)} bonus.` : ""}`
+            ? `Freeze! Opponent out. ${result.moneyAwarded ? `+${formatRewards(result.moneyAwarded)} bonus.` : ""}`
             : `Hit for ${result.damage} warmth.`
         );
         if (result.eliminated) setRewardPulse(result.converted ? "Converted!" : "Freeze!");
@@ -4155,7 +4158,7 @@ function StudentExperience({ onExit }: { onExit: () => void }) {
       }
     });
     socket.on("elimination_update", (event: EliminationPayload) => {
-      if (event.attackerId === activePlayerId) setRewardPulse(event.moneyAwarded ? `+${formatMoney(event.moneyAwarded)}` : "Freeze!");
+      if (event.attackerId === activePlayerId) setRewardPulse(event.moneyAwarded ? `+${formatRewards(event.moneyAwarded)}` : "Freeze!");
       if (event.targetId === activePlayerId) setRewardPulse("Frozen");
     });
     socket.on("error_message", (payload: { error?: string }) => {
@@ -4312,6 +4315,7 @@ function StudentExperience({ onExit }: { onExit: () => void }) {
         cosmeticProgressToken?: string;
         question?: PublicQuestion;
       };
+      setRestoreFailed(false);
       setSession(payload.session);
       setPlayer(payload.player);
       setPlayerToken(payload.playerToken);
@@ -4408,7 +4412,7 @@ function StudentExperience({ onExit }: { onExit: () => void }) {
         setRewardPulse("Respawned!");
         setQuizOpen(false);
       } else if (payload.result.player.money > player.money) {
-        setRewardPulse(`+${formatMoney(payload.result.player.money - player.money)}`);
+        setRewardPulse(`+${formatRewards(payload.result.player.money - player.money)}`);
       }
       setQuestion(payload.result.nextQuestion ?? null);
     } catch (err) {
@@ -4664,6 +4668,21 @@ function StudentExperience({ onExit }: { onExit: () => void }) {
           </label>
           {nicknameError && <p id="nickname-error" className="error-text" role="alert">{nicknameError}</p>}
           {status.error && <p id="join-error" className="error-text" role="alert">{status.error}</p>}
+          {restoreFailed && (
+            <button
+              className="text-button join-recovery-button"
+              type="button"
+              onClick={() => {
+                clearStoredStudentSession();
+                setRestoreFailed(false);
+                setJoinCode(joinCodeFromLink);
+                setNickname("");
+                status.clear();
+              }}
+            >
+              Start over with a new join
+            </button>
+          )}
           <button className="primary" type="submit" disabled={isJoining || Boolean(nicknameError)}>
             {isJoining ? "Joining..." : "Join the game"}
           </button>
@@ -5030,9 +5049,9 @@ function StudentExperience({ onExit }: { onExit: () => void }) {
                 <p>{sessionResult}</p>
                 <div className="student-summary-metrics">
                   <span><strong>{player.correctAnswers + player.wrongAnswers > 0 ? `${accuracy(player)}%` : "—"}</strong> answer accuracy</span>
-                  <span><strong>{formatMoney(player.quizMoneyEarned ?? 0)}</strong> rewards earned</span>
-                  <span><strong>{formatMoney(player.moneySpent ?? 0)}</strong> spent on gear</span>
-                  <span><strong>{formatMoney(player.money)}</strong> rewards left</span>
+                  <span><strong>{Math.round(player.quizMoneyEarned ?? 0)}</strong> rewards earned</span>
+                  <span><strong>{formatRewards(player.moneySpent ?? 0)}</strong> spent on gear</span>
+                  <span><strong>{Math.round(player.money)}</strong> rewards left</span>
                   <span><strong>{player.score}</strong> final score</span>
                 </div>
                 <div className="button-row">

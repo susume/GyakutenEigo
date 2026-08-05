@@ -48,5 +48,5 @@ test("Zombie presentation falls back to conversion result when no Humans remain"
 
 test("Zombie waiting room does not expose team terminology", () => {
   const session = zombieSession({ status: "waiting" });
-  assert.equal(getReadyRoomTitle(session, session.players[0]), "Zombie Mode Ready Room");
+  assert.equal(getReadyRoomTitle(session, session.players[0]), "Zombie Survival Ready Room");
 });

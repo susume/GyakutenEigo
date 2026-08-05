@@ -35,5 +35,5 @@ export const getSessionResultText = (session: GameSession) => {
 
 export const getReadyRoomTitle = (session: GameSession, player: PlayerSession) =>
   session.settings.gameMode === "zombie"
-    ? "Zombie Mode Ready Room"
+    ? "Zombie Survival Ready Room"
     : `${player.team === "blue" ? "Blue Team" : "Red Team"} Ready Room`;

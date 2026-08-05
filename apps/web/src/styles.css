@@ -3512,6 +3512,7 @@ body:has(.waiting-game-layout) {
 /* Last-pass public theme. */
 body:has(.product-home), body:has(.quizstrike-page), body:has(.quizstrike-auth-layout), body:has(.student-join-screen:not(.game-layout)) { background: var(--qs-page); color: var(--qs-ink); }
 body:has(.product-home) p, body:has(.quizstrike-page) p, body:has(.quizstrike-auth-layout) p, body:has(.student-join-screen:not(.game-layout)) p { color: var(--qs-muted); }
+
 .quizstrike-logo { display: block; flex: 0 0 auto; line-height: 0; }
 .quizstrike-logo img { display: block; width: 100%; height: auto; }
 .quizstrike-logo-header { width: clamp(112px, 10vw, 156px); }
@@ -3649,6 +3650,19 @@ body:has(.workspace) .dashboard-brand-row h1 .quizstrike-logo { display: block; 
   .student-join-help h1 { font-size: clamp(3rem, 14vw, 4.7rem); }
 }
 @media (prefers-reduced-motion: reduce) { body:has(.product-home) *, body:has(.quizstrike-page) *, body:has(.quizstrike-auth-layout) *, body:has(.student-join-screen:not(.game-layout)) * { scroll-behavior: auto !important; transition-duration: 0.01ms !important; animation-duration: 0.01ms !important; animation-iteration-count: 1 !important; } }
+
+/* Final join-layout guard for tablet widths. */
+.student-join-screen,
+.student-join-form,
+.student-join-form .join-field,
+.student-join-form input { min-width: 0; }
+.student-join-form input { width: 100%; }
+.join-recovery-button { width: 100%; justify-content: center; }
+@media (max-width: 980px) {
+  .student-join-screen { grid-template-columns: minmax(0, 1fr) !important; }
+  .student-join-help,
+  .student-join-form { width: min(620px, 100%); max-width: 100%; justify-self: center; }
+}
 
 /* Tournament Center */
 .tournament-center-page, .tournament-dashboard, .tournament-wizard { display: grid; gap: 22px; }
