@@ -896,7 +896,7 @@ label.toggle-row input {
   left: 16px;
   right: 16px;
   bottom: 16px;
-  z-index: 5;
+  z-index: var(--z-hud, 20);
   display: none;
   align-items: end;
   justify-content: space-between;
@@ -943,10 +943,16 @@ label.toggle-row input {
   grid-row: 2;
 }
 
-.touch-fire {
-  min-width: 86px;
-  background: #146c43;
-  border-color: #bbf7d0;
+.touch-zoom {
+  min-width: 92px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 7px;
+  border-color: rgba(125, 211, 252, 0.92) !important;
+  background: rgba(8, 47, 73, 0.92) !important;
+  color: #e0f2fe !important;
+  font-weight: 950;
 }
 
 .touch-joystick {
@@ -978,6 +984,9 @@ label.toggle-row input {
 }
 
 .touch-action-group {
+  position: absolute;
+  right: 0;
+  bottom: clamp(116px, 18vh, 160px);
   display: grid;
   justify-items: end;
   gap: 8px;
@@ -11798,6 +11807,7 @@ body:has(.game-layout) .topbar {
   --z-menu: 40;
   --z-modal: 50;
   width: 100vw;
+  position: relative;
   height: 100vh;
   height: 100dvh;
   min-height: 100vh;
@@ -11951,10 +11961,12 @@ body:has(.game-layout) .topbar {
 
 .game-stage > .player-status-hud {
   position: absolute;
-  left: 50%;
-  bottom: clamp(12px, 2vh, 24px);
+  left: var(--hud-safe-edge);
+  right: calc(clamp(190px, 15vw, 270px) + var(--hud-safe-edge) + 14px);
+  top: calc(var(--hud-safe-top) + 48px);
+  bottom: auto;
   z-index: var(--z-hud);
-  width: min(1060px, calc(100% - 32px));
+  width: auto;
   min-height: var(--player-hud-height);
   display: grid;
   grid-template-columns:
@@ -11966,7 +11978,7 @@ body:has(.game-layout) .topbar {
   align-items: stretch;
   gap: clamp(5px, 0.7vw, 8px);
   padding: clamp(7px, 1vw, 10px);
-  transform: translateX(-50%);
+  transform: none;
   pointer-events: none;
 }
 
@@ -12365,7 +12377,8 @@ body:has(.game-layout) .topbar {
   }
 
   .game-stage > .player-status-hud {
-    width: min(1010px, calc(100% - 24px));
+    right: calc(clamp(176px, 14.5vw, 210px) + var(--hud-safe-edge) + 12px);
+    width: auto;
     grid-template-columns:
       minmax(84px, 0.75fr)
       minmax(96px, 0.82fr)
@@ -12377,7 +12390,10 @@ body:has(.game-layout) .topbar {
 
 @media (max-width: 1120px) {
   .round-countdown {
-    top: calc(var(--hud-safe-top) + 44px);
+    top: var(--hud-safe-top);
+    left: auto;
+    right: calc(clamp(176px, 14.5vw, 210px) + var(--hud-safe-edge) + 12px);
+    transform: none;
   }
 
   .arena-objective-strip {
@@ -12389,7 +12405,7 @@ body:has(.game-layout) .topbar {
   }
 
   .game-stage > .player-status-hud .hud-stat.weapon {
-    grid-column: span 2;
+    grid-column: span 1;
   }
 
   .game-stage > .player-status-hud .hud-stat:last-child {
@@ -12417,11 +12433,21 @@ body:has(.game-layout) .topbar {
   }
 
   .arena-objective-strip .objective-primary {
-    display: none;
+    display: none !important;
+  }
+
+  .arena-objective-strip .mode-pill {
+    display: none !important;
+  }
+
+  .arena-objective-strip {
+    width: auto;
+    max-width: none;
   }
 
   .round-countdown {
-    top: calc(var(--hud-safe-top) + 40px);
+    top: var(--hud-safe-top);
+    right: 176px;
   }
 
   .game-stage .arena-minimap {
@@ -12432,12 +12458,14 @@ body:has(.game-layout) .topbar {
   .compact-game-layout .hud,
   .game-stage > .hud {
     position: absolute;
-    left: 50%;
-    bottom: 10px;
-    width: calc(100% - 20px);
+    left: 10px;
+    right: 176px;
+    top: 58px;
+    bottom: auto;
+    width: auto;
     display: grid;
-    grid-template-columns: repeat(3, minmax(0, 1fr));
-    transform: translateX(-50%);
+    grid-template-columns: repeat(5, minmax(0, 1fr));
+    transform: none;
   }
 
   .game-stage > .player-status-hud .hud-stat.weapon,
@@ -12500,6 +12528,51 @@ body:has(.game-layout) .topbar {
     inset-inline: 8px;
   }
 
+}
+
+@media (hover: none), (pointer: coarse) {
+  .game-layout:not(.waiting-game-layout) {
+    grid-template-rows: minmax(0, 1fr);
+  }
+
+  .game-layout:not(.waiting-game-layout) > .action-bar {
+    position: absolute;
+    right: max(12px, env(safe-area-inset-right));
+    bottom: max(12px, env(safe-area-inset-bottom));
+    width: auto;
+    height: auto;
+    display: grid;
+    grid-template-columns: repeat(4, 54px);
+    gap: 7px;
+    padding: 0;
+    border: 0;
+    background: transparent;
+    box-shadow: none;
+  }
+
+  .game-layout:not(.waiting-game-layout) > .action-bar button {
+    width: 54px;
+    height: 54px;
+    min-height: 54px;
+    padding: 0;
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    border: 1px solid rgba(186, 230, 253, 0.52);
+    border-radius: 12px;
+    background: rgba(8, 28, 45, 0.9);
+    color: #f8fafc;
+    box-shadow: 0 10px 24px rgba(2, 10, 20, 0.32);
+    backdrop-filter: blur(8px);
+  }
+
+  .game-layout:not(.waiting-game-layout) > .action-bar button > span {
+    position: absolute;
+    width: 1px;
+    height: 1px;
+    overflow: hidden;
+    clip: rect(0 0 0 0);
+  }
 }
 
 @media (max-width: 520px) {

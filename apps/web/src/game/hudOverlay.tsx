@@ -18,7 +18,7 @@ export const ArenaHudOverlay = ({
   suppressHint,
   joystickElementRef,
   onBeginTouchMove,
-  onFireFromTouch
+  onZoomFromTouch
 }: {
   hitPulse: number;
   zoomLevel: number;
@@ -32,7 +32,7 @@ export const ArenaHudOverlay = ({
   suppressHint: boolean;
   joystickElementRef: RefObject<HTMLButtonElement | null>;
   onBeginTouchMove: (event: React.PointerEvent<HTMLButtonElement>) => void;
-  onFireFromTouch: (event: React.PointerEvent<HTMLButtonElement>) => void;
+  onZoomFromTouch: (event: React.PointerEvent<HTMLButtonElement>) => void;
 }) => (
   <>
     {(currentWeaponId !== "power_blaster" || zoomLevel > 0) && (
@@ -49,10 +49,14 @@ export const ArenaHudOverlay = ({
       <button ref={joystickElementRef} type="button" className="touch-joystick" aria-label="Movement joystick" disabled={controlsDisabled} onPointerDown={onBeginTouchMove}>
         <span aria-hidden="true" />
       </button>
-      <div className="touch-action-group">
-        <span>Swipe to look · Tap the game to play</span>
-        <button type="button" className="touch-fire" disabled={controlsDisabled} onPointerDown={onFireFromTouch}>Play</button>
-      </div>
+      {currentWeaponId === "power_blaster" && (
+        <div className="touch-action-group">
+          <button type="button" className="touch-zoom" disabled={controlsDisabled} onPointerDown={onZoomFromTouch}>
+            <span aria-hidden="true">⌖</span>
+            Zoom{zoomLevel > 0 ? ` ${zoomLevel === 1 ? "2×" : "4×"}` : ""}
+          </button>
+        </div>
+      )}
     </div>
   </>
 );

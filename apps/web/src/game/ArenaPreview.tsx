@@ -280,6 +280,7 @@ export default function ArenaPreview({
   const mountRef = useRef<HTMLDivElement | null>(null);
   const touchMoveRef = useRef({ forward: 0, right: 0 });
   const fireControlRef = useRef<() => void>(() => undefined);
+  const zoomControlRef = useRef<() => void>(() => undefined);
   const onMoveRef = useRef(onMove);
   const onFireRef = useRef(onFire);
   const onInteractRef = useRef(onInteract);
@@ -621,6 +622,10 @@ export default function ArenaPreview({
         if (next > 0) emitArenaVfx({ kind: "zoom", x: playerPosition.x, z: playerPosition.z, y: 0.9, team: currentPlayerTeam });
         if (hasHeavyGun()) gameAudio.playEvent("heavy_scope");
         else gameAudio.play(next > 0 ? "zoom_in" : "zoom_out");
+      };
+      zoomControlRef.current = () => {
+        if (controlsDisabledRef.current || inputPausedRef.current || !hasHeavyGun()) return;
+        setZoomLevel(cycleHeavyGunZoom(activeZoomLevel));
       };
       const fire = () => {
         if (controlsDisabledRef.current || inputPausedRef.current || !onFireRef.current) return;
@@ -1272,6 +1277,7 @@ export default function ArenaPreview({
         desertCitadelVfx?.dispose();
         templeRunoffArt?.dispose();
         fireControlRef.current = () => undefined;
+        zoomControlRef.current = () => undefined;
         syncPlayersRef.current = () => undefined;
         if (cooldownTimeout) window.clearTimeout(cooldownTimeout);
         setZoomLevel(0);
@@ -1382,10 +1388,10 @@ export default function ArenaPreview({
       // Window-level tracking keeps the joystick working when pointer capture is unavailable.
     }
   };
-  const fireFromTouch = (event: ReactPointerEvent<HTMLButtonElement>) => {
+  const zoomFromTouch = (event: ReactPointerEvent<HTMLButtonElement>) => {
     event.preventDefault();
     if (controlsDisabled || inputPausedRef.current) return;
-    fireControlRef.current();
+    zoomControlRef.current();
   };
   const miniMapPlayer = miniMapPosition ?? (
     isFiniteNumber(currentPlayer?.x) && isFiniteNumber(currentPlayer?.z)
@@ -1440,7 +1446,7 @@ export default function ArenaPreview({
             suppressHint={suppressHint}
             joystickElementRef={joystickElementRef}
             onBeginTouchMove={beginTouchMove}
-            onFireFromTouch={fireFromTouch}
+            onZoomFromTouch={zoomFromTouch}
           />
           {zoomLevel > 0 && (
             <div key={`${zoomLevel}-${zoomPulse}`} className={`scope-overlay scope-level-${zoomLevel} scope-pulse`} aria-hidden="true">
@@ -1465,16 +1471,6 @@ export default function ArenaPreview({
             session={session}
             scaleArenaValue={scaleArenaValue}
           />
-          {!controlsDisabled && !isPointerLocked && !suppressHint && <div className="control-lock">WASD moves. Arrow keys or swipe the arena to look around. Click the arena for mouse aim. F or left click launches. C scopes the Heavy Launcher. E interacts with the flag.</div>}
-          <div className="touch-controls" aria-label="Touch controls">
-            <button ref={joystickElementRef} type="button" className="touch-joystick" aria-label="Movement joystick" disabled={controlsDisabled} onPointerDown={beginTouchMove}>
-              <span aria-hidden="true" />
-            </button>
-            <div className="touch-action-group">
-              <span>Swipe to look · Tap arena to fire</span>
-              <button type="button" className="touch-fire" disabled={controlsDisabled} onPointerDown={fireFromTouch}>Fire</button>
-            </div>
-          </div>
         </>
       )}
     </div>

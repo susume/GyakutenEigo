@@ -374,3 +374,39 @@ final result: passed
 - The cover art is loaded as a 16:9 image with `fetchPriority="high"` on the primary above-the-fold instances.
 
 final result: passed
+
+# QuizStrike In-Game iPad Layout Redesign QA
+
+## Visual truth
+
+- Selected target: `C:\Users\hungb\.codex\generated_images\019fd12c-23d1-7571-a7ac-29b7c331d7ad\exec-559eff33-66fc-4953-ac87-3c1de44a93a7.png`
+- Side-by-side comparison: `C:\Users\hungb\OneDrive\Documents\GitHub\GyakutenEigo\audit\ipad-layout-redesign\04-reference-comparison.png`
+- Landscape implementation: `C:\Users\hungb\OneDrive\Documents\GitHub\GyakutenEigo\audit\ipad-layout-redesign\02-heavy-landscape.png`
+- Portrait implementation: `C:\Users\hungb\OneDrive\Documents\GitHub\GyakutenEigo\audit\ipad-layout-redesign\03-heavy-portrait.png`
+
+## Viewports and state
+
+- Tested at 1024 × 768 and 768 × 1024 CSS px with coarse pointer and touch emulation.
+- Captured a connected student during round preparation after purchasing the Heavy Snowball Launcher.
+- Verified the Starter Snowball Launcher state separately before purchase.
+
+## Fidelity and responsive checks
+
+- The five player status cards are relocated to the top and remain on one row in both tested orientations.
+- The minimap remains top-right, the joystick remains bottom-left, and the four existing utility actions are compact touch targets at bottom-right.
+- The Fire button and duplicate touch-control layer were removed; tapping the arena remains the fire interaction.
+- Starter state renders zero Zoom buttons. Heavy Launcher state renders exactly one Zoom button.
+- Zoom sits above the utility cluster and has no geometric overlap with Questions, Buy Gear, Scoreboard, or Settings in either orientation.
+- Portrait hides secondary objective and mode copy so the timer and status ribbon do not compete for the same space.
+- No horizontal or vertical document overflow was detected at either viewport.
+
+## Verification
+
+- `npm run typecheck -w @quizstrike/web`: passed.
+- `npm run build -w @quizstrike/web`: passed with existing Node-version and chunk-size advisories.
+- `npm run test -w @quizstrike/web`: passed, 141/141 tests.
+- `git diff --check`: passed; existing line-ending warnings remain.
+
+No remaining P0, P1, or P2 visual mismatch was found for the requested iPad layout behavior.
+
+final result: passed

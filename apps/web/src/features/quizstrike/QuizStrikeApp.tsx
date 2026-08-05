@@ -4944,8 +4944,8 @@ function StudentExperience({ onExit }: { onExit: () => void }) {
           <span className="hud-stat weapon">
             <Package size={18} aria-hidden="true" />
             <span>
-              <small>Gear · {((gear.fireCooldownMs ?? 160) / 1000).toFixed(2)}s cadence</small>
-              <strong>{gear.name}</strong>
+              <small>Gear</small>
+              <strong>{gear.id === "power_blaster" ? "Heavy Launcher" : gear.name}</strong>
             </span>
           </span>
           <span className="hud-stat">
@@ -5122,10 +5122,10 @@ function StudentExperience({ onExit }: { onExit: () => void }) {
         )}
       </div>
       {session.status !== "waiting" && <div className="action-bar control-prompts">
-        <button disabled={roundEnded} onClick={() => { gameAudio.playEvent(quizOpen ? "modal_close" : "quiz_open"); setQuizOpen(!quizOpen); setBuyOpen(false); setScoreboardOpen(false); }}>Q Questions</button>
-        <button disabled={roundEnded || !player.isAlive} onClick={() => { gameAudio.play("menu_toggle"); setBuyOpen(!buyOpen); setQuizOpen(false); setScoreboardOpen(false); }}>B Gear · 1–5 choose</button>
-        <button onMouseDown={() => { gameAudio.play("menu_toggle"); setScoreboardOpen(true); setQuizOpen(false); setBuyOpen(false); setSettingsOpen(false); }} onMouseUp={() => setScoreboardOpen(false)} onBlur={() => setScoreboardOpen(false)}>Hold Tab · Scoreboard</button>
-        <button onClick={() => { gameAudio.play("menu_toggle"); setSettingsOpen((open) => !open); setQuizOpen(false); setBuyOpen(false); setScoreboardOpen(false); }}><Settings size={18} aria-hidden="true" />Settings</button>
+        <button aria-label="Questions" disabled={roundEnded} onClick={() => { gameAudio.playEvent(quizOpen ? "modal_close" : "quiz_open"); setQuizOpen(!quizOpen); setBuyOpen(false); setScoreboardOpen(false); }}><BookOpen size={19} aria-hidden="true" /><span>Q Questions</span></button>
+        <button aria-label="Buy gear" disabled={roundEnded || !player.isAlive} onClick={() => { gameAudio.play("menu_toggle"); setBuyOpen(!buyOpen); setQuizOpen(false); setScoreboardOpen(false); }}><Package size={19} aria-hidden="true" /><span>B Gear · 1–5 choose</span></button>
+        <button aria-label="Scoreboard" onPointerDown={() => { gameAudio.play("menu_toggle"); setScoreboardOpen(true); setQuizOpen(false); setBuyOpen(false); setSettingsOpen(false); }} onPointerUp={() => setScoreboardOpen(false)} onPointerCancel={() => setScoreboardOpen(false)} onBlur={() => setScoreboardOpen(false)}><Trophy size={19} aria-hidden="true" /><span>Hold Tab · Scoreboard</span></button>
+        <button aria-label="Settings" onClick={() => { gameAudio.play("menu_toggle"); setSettingsOpen((open) => !open); setQuizOpen(false); setBuyOpen(false); setScoreboardOpen(false); }}><Settings size={19} aria-hidden="true" /><span>Settings</span></button>
       </div>}
     </section>
   );
