@@ -1,40 +1,77 @@
 # Online play and deployment runbook
 
-Last verified: 2 August 2026
+Last verified: 5 August 2026
+
+This runbook covers the current hosted QuizStrike system: a static React/Vite
+client on GitHub Pages, one Render Node/Express/Socket.IO service, and a
+server-only Prisma connection to Supabase PostgreSQL.
 
 ## Production topology
 
-- Static web bundle: GitHub Pages/custom domain from 'apps/web/dist'.
-- Node runtime: Render web service 'gyakuteneigo-api'.
-- Database: Supabase project 'Quiz Strike Production', Sydney, PostgreSQL 17.6.
-- API/socket URL: 'https://api.gyakuteneigo.com'.
-- Optional hosted fallback: 'https://gyakuteneigo-api.onrender.com'.
+```mermaid
+flowchart LR
+  Student[Student browser] -->|HTTPS / WSS| API[Render: gyakuteneigo-api]
+  Teacher[Teacher browser] -->|HTTPS / WSS| API
+  Pages[GitHub Pages / custom domain] --> Student
+  Pages --> Teacher
+  API -->|Prisma session-pooler connection| DB[(Supabase PostgreSQL)]
+```
 
-The retired Render PostgreSQL database is not used. Render hosts compute only.
+| Component | Production value |
+| --- | --- |
+| Web artifact | `apps/web/dist` |
+| Static host | GitHub Pages, optionally `www.gyakuteneigo.com` and aliases |
+| API/Socket.IO | `https://api.gyakuteneigo.com` |
+| Render fallback | `https://gyakuteneigo-api.onrender.com` |
+| Render service | `gyakuteneigo-api`, one Node instance |
+| Database | Supabase project `Quiz Strike Production`, Sydney (`ap-southeast-2`) |
+| Database access | Private PostgreSQL session pooler through Prisma |
+| Live state | Process-local authoritative room runtime |
 
-## Build and start commands
+The old Render PostgreSQL database is retired and must not be used. Supabase is
+not used as a browser database, auth provider, realtime transport, or object
+store. The browser communicates with the Render API only.
 
-~~~powershell
+## Release prerequisites
+
+- Use Node 20.19+ or 22.13+; CI and GitHub Pages use Node 22.
+- Confirm the intended `main` commit is deployed.
+- Confirm `DATABASE_URL` and `JWT_SECRET` are set only in Render/server
+  configuration.
+- Confirm `CLIENT_ORIGIN` includes every real web origin that will open the
+  game, including custom-domain aliases used by the class.
+- Keep exactly one Render instance and preserve room affinity.
+- Have a recent database backup before schema or persistence changes.
+
+## Build and start
+
+Build from the repository root:
+
+```powershell
 npm ci
 npm run build -w @quizstrike/shared
 npm run build -w @quizstrike/server
 npm run build -w @quizstrike/web
-~~~
+```
 
-Render start command:
+Render starts the API with:
 
-~~~text
+```text
 npm start -w @quizstrike/server
-~~~
+```
 
-The server startup command runs 'prisma migrate deploy' before listening. A
-migration failure must stop deployment.
+When `DATABASE_URL` is present, `apps/server/src/start.ts` runs
+`prisma migrate deploy` before importing the server runtime. If migration
+application fails, the process exits and the deployment must be treated as
+failed.
+
+Do not use `prisma db push` or `prisma migrate dev` against production.
 
 ## Render environment
 
-Set server-only values in Render:
+Set these server-only values in Render:
 
-~~~text
+```text
 NODE_ENV=production
 NODE_VERSION=22
 PORT=4000
@@ -43,92 +80,193 @@ DATABASE_URL=<Supabase session-pooler URL>
 CLIENT_ORIGIN=https://gyakuteneigo.com,https://www.gyakuteneigo.com,https://susume.github.io
 TRUST_PROXY=true
 RUNTIME_STORE=in-memory
-~~~
+```
 
-Do not put 'DATABASE_URL', 'JWT_SECRET', or Supabase keys in the web build.
+Optional operational values include `INSTANCE_ID`, `NETWORK_DEBUG`,
+`NETWORK_REPORT_INTERVAL_MS`, `ROOM_LEASE_MS`, `ROOM_LEASE_RENEW_MS`, and
+`SHUTDOWN_TIMEOUT_MS`. Leave `NETWORK_DEBUG` off unless actively diagnosing a
+network issue.
 
-Use the Supabase session pooler on port 5432 for this long-running Node process.
-Keep the URL private and server-only.
+Use the Supabase session pooler on port 5432 for the long-running Node
+process. Never print the full URL in logs or paste it into a client build.
 
-## Web build variables
+## Web build and GitHub Pages
 
-Set these as GitHub Actions variables or the equivalent static-host build
-environment:
+Set these as GitHub Actions variables or equivalent static-host build values:
 
-~~~text
+```text
 VITE_API_URL=https://api.gyakuteneigo.com
 VITE_API_FALLBACK_URL=https://gyakuteneigo-api.onrender.com
 VITE_BASE_PATH=/
-~~~
+PAGE_CUSTOM_DOMAIN=www.gyakuteneigo.com
+```
 
-If the web app is hosted under a repository path rather than a custom domain,
-set 'VITE_BASE_PATH' to that path and configure the SPA fallback accordingly.
+`.github/workflows/deploy-web.yml` runs on `main` pushes or manual dispatch and:
 
-## GitHub Pages
+1. installs dependencies with `npm ci`;
+2. builds `@quizstrike/shared` and `@quizstrike/web`;
+3. injects the public `VITE_*` values;
+4. copies `index.html` to `404.html` and creates fallback entry points for
+   `/quiz-strike`, `/join`, and `/game`;
+5. writes `CNAME` when `PAGE_CUSTOM_DOMAIN` is present;
+6. uploads and deploys `apps/web/dist` through GitHub Pages.
 
-The repository includes '.github/workflows/deploy-web.yml'. The workflow builds
-shared and web packages, creates SPA fallback copies, and publishes 'apps/web/dist'.
+After a Pages deployment, open each of these paths directly in a fresh browser
+tab, not only through the home page:
 
-After enabling GitHub Pages with GitHub Actions:
+- `/`;
+- `/quiz-strike`;
+- `/join`;
+- `/game`;
+- `/tournament-study/<released-id>` when applicable.
 
-1. Set 'VITE_API_URL' and, if needed, 'VITE_API_FALLBACK_URL'.
-2. Set 'PAGE_CUSTOM_DOMAIN' only when using a custom domain.
-3. Verify the generated 'CNAME' and base path.
-4. Confirm '/quiz-strike', '/join', and '/game' all resolve to the SPA.
-5. Confirm the API has the deployed web origin in 'CLIENT_ORIGIN'.
+If the site is hosted below a repository path, set `VITE_BASE_PATH` to that
+path and make sure the SPA fallback copies still resolve there.
+
+## Database migrations and RLS
+
+The application uses Prisma migrations in `prisma/migrations/`. The current
+schema includes teacher/library data, question audio, sessions, players,
+answers, round logs, reports, `RuntimeSnapshot`, Competition, and Tournament
+Center models.
+
+The migration
+`20260805000000_harden_public_tables_rls` enables RLS on application tables
+that exist and revokes `anon`/`authenticated` table privileges when those
+Supabase roles exist. It is compatible with the local PostgreSQL setup because
+it checks for table/role existence. The intended access path remains the
+protected Prisma connection from Render.
+
+After a migration deploy, verify:
+
+1. Render logs show the migration completed before the server listened;
+2. `/api/health` reports the expected PostgreSQL storage;
+3. teacher login, quiz-library reads/writes, room creation, student join, and
+   report creation work;
+4. the Supabase project has no unintended public table access or advisor
+   warning for the application tables;
+5. `RuntimeSnapshot` and normalized rows remain consistent for any migration
+   that changes persistence or backfill behavior.
+
+Use `npx prisma validate` for schema validation. Use `npx prisma migrate deploy`
+only through the controlled server startup/release path for production.
 
 ## Classroom smoke test
 
-Run this after a web or API deployment, and again after changes to live-room
-UI, Socket.IO protocol, authentication, or the arena renderer:
+Run this after a web/API release and after changes to the arena, protocol,
+authentication, live-room controls, or persistence:
 
-1. Sign in as a teacher at '/quiz-strike' and open Library.
-2. Choose a quiz, create a game with Zombie, Tag, or Flag mode, select an
-   arena, and review Advanced Settings before creating the room.
-3. Confirm the waiting room shows the join code/QR code, the student roster,
-   and a visible green Start Game action once a learner joins.
-4. Join with at least two learner browsers. Start the game and verify the Live
-   Game Control header, round actions, scoreboard, event feed, and arena preview.
-5. Open Spectator View. Confirm it is read-only, the learner picker opens as a
-   scrollable list, and selecting a learner or using Previous/Next changes the
-   followed learner and team without sending gameplay input.
-6. End the game and verify the learning report appears in Reports. Confirm the
-   report can be opened/exported and that history deletion remains teacher-only.
+1. Sign in as a teacher at `/quiz-strike` and open the Library.
+2. Select a quiz and create a room. Exercise the current setup stages: game
+   mode, arena/rules, and advanced settings.
+3. Confirm the waiting room has a join URL, QR code, roster, bot controls,
+   appearance controls, and a visible Start Game action.
+4. Join with two learner browsers. Confirm the Socket.IO handshake, room
+   snapshot, question assignment, answer result, money, scoreboard, and event
+   feed.
+5. Start a Flag game and verify Red flag pickup/placement, Blue capture,
+   server countdown/result, and carrier disconnect drop.
+6. Run a short Zombie game and verify the selection phase, energy, human-to-
+   zombie conversion, and end condition.
+7. Run a short Classic Tag game and verify team tags, respawns, and round
+   resolution.
+8. Exercise the shop with Quick/Heavy launcher and a perk; verify the server
+   balance, snowballs, cooldowns, and independent weapon/perk slots.
+9. Reload or disconnect one learner, rejoin with the stored token, and confirm
+   the authoritative snapshot restores the room state.
+10. Open teacher Spectator View, choose a connected learner, and use
+    Previous/Next. Confirm it is read-only and does not emit gameplay commands.
+11. End the game, open the learning report, export it, and confirm history
+    deletion remains teacher-scoped.
 
-Spectator mode is a client presentation feature. It does not require a new
-environment variable or Socket.IO command: the teacher receives the current
-session projection, selects an eligible learner locally, and renders an
-`ArenaPreview` with controls paused and disabled.
+Repeat at least one test on the target classroom network. Confirm HTTPS,
+WebSocket upgrade, reconnect behavior, and the deployed custom-domain origin.
 
-## Render deploy checklist
+## Health and deployment verification
 
-1. Confirm the branch/commit being deployed is intended.
-2. Confirm the service remains a single instance with sticky room affinity.
-3. Confirm 'DATABASE_URL' is the Supabase URL without printing it.
-4. Deploy and inspect logs for:
-   - Supabase pooler datasource;
-   - all expected migrations;
-   - 'No pending migrations to apply';
-   - normalized restore counts;
-   - 'Your service is live'.
-5. Call '/api/health' and require 'ok: true' and 'storage: postgres'.
-6. For schema/backfill changes, reconcile normalized counts, migration ledger,
-   and RuntimeSnapshot checksum.
-7. Retain the final backup through at least one production cycle.
+```powershell
+Invoke-RestMethod https://api.gyakuteneigo.com/api/health
+```
 
-After deployment, test both the custom-domain URL and the configured API origin
-from a real classroom network. Verify WebSocket upgrade, reconnect behavior,
-and the sticky single-instance room requirement before inviting a class.
+Require `ok: true` and the expected `storage: postgres` result. Inspect Render
+logs for:
 
-## Safety and scaling limits
+- successful migration application / no pending migrations;
+- normalized state restore counts;
+- no CORS/origin mismatch;
+- no repeated Socket.IO disconnect or room-affinity errors;
+- the service reporting ready/listening.
 
-The server is authoritative and single-instance. Socket bindings, rooms, timers,
-bots, in-memory leases, rate limits, event consumers, and decal bytes are
-process-local. Redis/shared state adapters do not exist yet. Do not add replicas
-until shared state, Socket.IO fan-out, leases, reconnect routing, rate limits,
-and object storage are implemented and tested.
+Do not log or expose JWTs, player tokens, passwords, `DATABASE_URL`, private
+decal bytes, or raw answer correctness to student clients.
 
-For the complete authority model, read [architecture.md](../architecture.md).
-For current operator state, read [HANDOFF.md](../HANDOFF.md).
-For the production migration record, read
-[supabase-database-migration.md](supabase-database-migration.md).
+## Reconnect and failure behavior
+
+The browser connects to Socket.IO, sends `client_hello`, receives
+`server_hello`, then sends `join_session_room` with either the teacher JWT or a
+scoped player token. Reconnect repeats this sequence and receives a complete
+`session_state` snapshot.
+
+The room owner alone evaluates bot ticks, deadlines, round conclusions, and
+live mutations. Disconnect grace protects temporary network loss; a carrier
+drops the Flag objective immediately. Process restart does not provide a
+zero-downtime match handoff for sockets, bot memory, rate limits, or decals.
+
+The API client can try the configured fallback API origin for HTTP/API wake-up,
+but fallback selection does not make live room state multi-instance-safe.
+
+## Scaling limit
+
+Do not add Render replicas. The following are currently in-memory:
+
+- room state and join-code directory;
+- room leases and fencing tokens;
+- Socket.IO bindings and room broadcasts;
+- bot state, timers, and disconnect grace;
+- answer/fire/request rate limits and dedupe caches;
+- ephemeral character/decal bytes.
+
+Before horizontal scaling, implement and test a shared room store, distributed
+ownership/takeover, Socket.IO adapter/fan-out, owner-aware reconnect routing,
+distributed rate limits/deduplication, and object-backed decal storage. The
+server intentionally fails closed if `RUNTIME_STORE` is set to an unsupported
+value such as `redis`.
+
+## Rollback guidance
+
+For a web-only regression, redeploy the previous Pages artifact/commit while
+leaving the API unchanged. For an API regression:
+
+1. stop inviting new rooms;
+2. identify whether the change is web-only, server-only, or a database
+   migration/protocol change;
+3. roll back the API and web to a compatible commit together when protocol or
+   shared types changed;
+4. do not reverse a production migration by hand;
+5. restore from the approved database backup only through an explicit recovery
+   procedure;
+6. verify health, teacher login, student join, a short game, and report writes.
+
+The application has a temporary protocol-v0 compatibility adapter, but it is a
+rollout aid, not a general rollback strategy. Deploy a compatible server before
+the matching v1 browser when changing protocol contracts.
+
+## Release checklist
+
+- [ ] Run `npm run lint`.
+- [ ] Run `npm run typecheck`.
+- [ ] Run `npm test`.
+- [ ] Run `npm run build`.
+- [ ] Run `npm run test:load` for live transport/server changes.
+- [ ] Run `npm run test:e2e` for classroom-flow changes.
+- [ ] Run `npx prisma validate` and review migration order for schema changes.
+- [ ] Confirm one Render instance, sticky room affinity, and correct origins.
+- [ ] Confirm server secrets are not in `VITE_*` or committed files.
+- [ ] Deploy API/migrations and inspect logs.
+- [ ] Deploy Pages and verify direct SPA routes.
+- [ ] Run the classroom smoke test, including at least one current mode and
+      one reconnect.
+
+For the authority model and code ownership, read
+[`../architecture.md`](../architecture.md). For current development status and
+next work, read [`../HANDOFF.md`](../HANDOFF.md).
