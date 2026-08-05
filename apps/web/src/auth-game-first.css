@@ -1,0 +1,115 @@
+/* Focused teacher sign-in layout. Loaded after the legacy stylesheet. */
+.auth-game-first {
+  grid-template-columns: minmax(0, 560px) minmax(380px, 440px);
+  align-items: center;
+  justify-content: center;
+  gap: 24px;
+  width: min(1120px, calc(100% - 48px));
+  min-height: calc(100vh - 80px);
+  padding: 44px 0;
+}
+
+.auth-game-first .auth-visual {
+  align-self: center;
+  width: 100%;
+  min-height: min(600px, calc(100vh - 168px));
+  border-radius: 18px;
+}
+
+.auth-game-first .auth-visual-art {
+  object-position: right center;
+}
+
+.auth-game-first .auth-visual-shade {
+  background: linear-gradient(90deg, rgba(4, 11, 28, .94), rgba(4, 11, 28, .62) 58%, rgba(4, 11, 28, .16)), linear-gradient(0deg, rgba(4, 11, 28, .82), transparent 68%);
+}
+
+.auth-game-first .auth-visual-content {
+  max-width: 500px;
+  padding: 38px;
+}
+
+.auth-game-wordmark {
+  margin-bottom: auto;
+  color: #fff;
+  font-size: 1.15rem;
+  font-weight: 950;
+  letter-spacing: -.045em;
+}
+
+.auth-game-first .auth-visual-title {
+  margin: 12px 0;
+  font-size: clamp(3.25rem, 4.6vw, 4.5rem);
+  line-height: .91;
+}
+
+.auth-game-first .auth-visual-content > p:not(.auth-visual-title) {
+  max-width: 430px;
+  margin-bottom: 18px;
+  font-size: .95rem;
+}
+
+.auth-game-first .auth-form-panel {
+  width: 100%;
+  max-width: 440px;
+  gap: 15px;
+  padding: 32px;
+  border-radius: 16px;
+  box-shadow: 0 22px 60px rgba(0, 0, 0, .26);
+}
+
+.auth-game-first .auth-form-heading {
+  gap: 8px;
+  margin-bottom: 8px;
+}
+
+.auth-game-first .auth-form-heading h1 {
+  max-width: 360px;
+  font-size: clamp(2.6rem, 4vw, 3.45rem);
+  line-height: .94;
+}
+
+.auth-game-first .auth-form-panel input {
+  min-height: 52px;
+}
+
+.auth-game-first .server-wake-status {
+  min-height: 50px;
+  padding: 8px 10px;
+}
+
+.auth-game-first .auth-form-panel > button.primary {
+  min-height: 52px;
+  border-radius: 9px;
+}
+
+@media (max-width: 900px) {
+  .auth-game-first {
+    grid-template-columns: minmax(0, 520px);
+    width: min(100% - 32px, 520px);
+    padding: 36px 0 52px;
+  }
+
+  .auth-game-first .auth-visual {
+    display: none;
+  }
+
+  .auth-game-first .auth-form-panel {
+    max-width: none;
+  }
+}
+
+@media (max-width: 600px) {
+  .auth-game-first {
+    width: min(100% - 24px, 520px);
+    padding-top: 24px;
+  }
+
+  .auth-game-first .auth-form-panel {
+    padding: 22px;
+  }
+
+  .auth-game-first .auth-form-heading h1 {
+    font-size: 2.55rem;
+  }
+}

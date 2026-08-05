@@ -654,7 +654,7 @@ export default function App() {
       <a className={`skip-link skip-link-${mode}`} href="#main-content">Skip to main content</a>
         <header className={`topbar topbar-${mode}${teacher ? " teacher-authenticated" : ""}`}>
         <button className="brand-button" type="button" aria-label="QuizStrike home" onClick={() => navigateTo("/", "home")}>
-          {mode === "home" ? <span className="public-wordmark">QuizStrike</span> : <QuizStrikeLogo />}
+          {mode === "home" || mode === "teacher" ? <span className="public-wordmark">QuizStrike</span> : <QuizStrikeLogo />}
         </button>
         <nav className="primary-nav" aria-label="Primary">
           <button
@@ -1042,7 +1042,7 @@ function TeacherAuth({
       ? {
           tone: "ready",
           title: "Ready to sign in",
-          detail: "Your teacher workspace is ready."
+            detail: "Your host workspace is ready."
         }
       : apiWakeState === "slow"
         ? {
@@ -1052,40 +1052,40 @@ function TeacherAuth({
           }
         : {
             tone: "waking",
-            title: "Getting the classroom ready",
-            detail: "Enter your details while your teacher workspace starts."
+            title: "Getting your workspace ready",
+            detail: "Enter your details while the host tools start."
           };
 
   const submitLabel = isSubmitting
     ? authProgress === "retrying"
       ? "Trying again..."
       : isSignup
-        ? "Creating your workspace..."
+        ? "Creating your account..."
         : apiWakeState === "ready"
           ? "Signing in..."
           : "Getting things ready..."
     : isSignup
-      ? "Create teacher workspace"
+      ? "Create account"
       : "Sign in";
 
   return (
-    <section className="auth-layout quizstrike-auth-layout">
+    <section className="auth-layout quizstrike-auth-layout auth-game-first">
       <aside className="auth-visual" aria-label="QuizStrike teacher workspace">
-        <img className="auth-visual-art" src="/assets/quizstrike-classroom-cover.webp" alt="" width={1672} height={941} fetchPriority="high" />
+        <img className="auth-visual-art" src="/assets/quizstrike-game-hero.png" alt="" width={1672} height={941} fetchPriority="high" />
         <div className="auth-visual-shade" aria-hidden="true" />
         <div className="auth-visual-content">
-          <QuizStrikeLogo size="auth" />
-          <span className="auth-kicker">A clear home for your next class game</span>
-          <p className="auth-visual-title">Choose the questions.<br />Start the game.</p>
-          <p>Build a question set, open a private room, and keep the class focused from one simple workspace.</p>
-          <span className="auth-tagline">Ready in minutes. Built for classrooms.</span>
+          <span className="auth-game-wordmark">QuizStrike</span>
+          <span className="auth-kicker">Host workspace</span>
+          <p className="auth-visual-title">Build the round.<br />Run the match.</p>
+          <p>Choose the questions, open a game room, and control the match from one focused workspace.</p>
+          <span className="auth-tagline">Questions ready. Game on.</span>
         </div>
       </aside>
       <form className="panel form-panel auth-form-panel" onSubmit={submit}>
         <div className="auth-form-heading">
-          <span className="auth-kicker">Teacher workspace</span>
-          <h1>{isSignup ? "Create your teacher workspace" : "Welcome back"}</h1>
-          <p>{isSignup ? "Set up your workspace and host your first game." : "Sign in to open your question library and live rooms."}</p>
+          <span className="auth-kicker">Teacher account</span>
+          <h1>{isSignup ? "Create your account" : "Sign in to QuizStrike"}</h1>
+          <p>{isSignup ? "Set up your host workspace and start your first game." : "Open your question library, game rooms, and match reports."}</p>
         </div>
         {isSignup && (
           <label htmlFor="teacher-name">
@@ -1094,7 +1094,7 @@ function TeacherAuth({
           </label>
         )}
         <label htmlFor="teacher-email">
-          School email
+          Email
           <input
             id="teacher-email"
             type="email"
@@ -1131,7 +1131,7 @@ function TeacherAuth({
           {submitLabel}
         </button>
         <button className="text-button" type="button" onClick={() => setIsSignup(!isSignup)} disabled={isSubmitting}>
-          {isSignup ? "I already have an account" : "Create a teacher workspace"}
+          {isSignup ? "I already have an account" : "Create a teacher account"}
         </button>
       </form>
     </section>
@@ -1248,7 +1248,7 @@ function TeacherDashboard({ teacher, onLogout }: { teacher: TeacherUser; onLogou
   return (
     <section className="workspace">
       <div className="dashboard-brand-row">
-        <h1><QuizStrikeLogo size="dashboard" /></h1>
+        <h1><span className="dashboard-wordmark">QuizStrike</span></h1>
         <div><strong>{teacher.name}</strong><button onClick={onLogout}>Sign Out</button></div>
       </div>
       <aside className={`sidebar${isLiveSetup ? " setup-sidebar" : ""}`} aria-label={isLiveSetup ? "Live game setup sections" : "Teacher sections"}>
@@ -1639,6 +1639,7 @@ function QuizManager({ data, onRefresh, initialQuizSetId, startInCreateMode = fa
   const [quizForm, setQuizForm] = useState({ title: "", description: "" });
   const [questionForm, setQuestionForm] = useState(emptyQuestion);
   const [editingQuestionId, setEditingQuestionId] = useState<string | null>(null);
+  const [questionBuilderMode, setQuestionBuilderMode] = useState<"bulk" | "manual">("bulk");
   const [bulkText, setBulkText] = useState("");
   const [isCreatingQuiz, setIsCreatingQuiz] = useState(false);
   const [isAddingQuestion, setIsAddingQuestion] = useState(false);
@@ -1802,6 +1803,7 @@ function QuizManager({ data, onRefresh, initialQuizSetId, startInCreateMode = fa
     discardRecordedAudio();
     setRecordingError("");
     setEditingQuestionId(question.id);
+    setQuestionBuilderMode("manual");
     setQuestionForm({
       prompt: question.prompt,
       choiceA: question.choiceA,
@@ -1871,28 +1873,31 @@ function QuizManager({ data, onRefresh, initialQuizSetId, startInCreateMode = fa
 
   return (
     <div className={`two-column quiz-manager-shell ${startInCreateMode ? "quiz-create-mode" : "quiz-edit-mode"}`}>
-      {startInCreateMode ? <form className="panel form-panel" onSubmit={createQuiz}>
-        <h2>Create a question set</h2>
+      {startInCreateMode ? <form className="panel form-panel quiz-create-panel" onSubmit={createQuiz}>
+        <span className="teacher-eyebrow">New question set</span>
+        <h2>Create a set</h2>
+        <p>Give this set a clear name. You can add questions next.</p>
         <label>
           Set name
-          <input value={quizForm.title} onChange={(event) => setQuizForm({ ...quizForm, title: event.target.value })} />
+          <input placeholder="e.g. Unit 3 review" value={quizForm.title} onChange={(event) => setQuizForm({ ...quizForm, title: event.target.value })} />
         </label>
         <label>
-          What will students practice?
+          Description <small>(optional)</small>
           <textarea
+            placeholder="What does this set cover?"
             value={quizForm.description}
             onChange={(event) => setQuizForm({ ...quizForm, description: event.target.value })}
           />
         </label>
         <button className="primary" type="submit" disabled={isCreatingQuiz}>
           <Plus size={18} aria-hidden="true" />
-          {isCreatingQuiz ? "Creating..." : "Create question set"}
+          {isCreatingQuiz ? "Creating..." : "Create set"}
         </button>
       </form> : (
         <aside className="panel quiz-context-panel">
           <span className="teacher-eyebrow">Question workspace</span>
-          <h2>{selectedQuiz ? `Editing: ${selectedQuiz.title}` : "Quiz workspace"}</h2>
-          <p>Keep the set in view while you review questions and prepare the next class game.</p>
+          <h2>{selectedQuiz?.title ?? "Question sets"}</h2>
+          <p>Build, review, and prepare this set for its next game.</p>
           <div className="quiz-context-stat"><strong>{selectedQuiz?.questions.length ?? 0}</strong><span>questions in this set</span></div>
           <div className="quiz-context-note"><Zap size={18} aria-hidden="true" /><span>When you are ready, host this set and choose Capture the Flag, Zombie Survival, or Team Tag.</span></div>
         </aside>
@@ -1901,14 +1906,19 @@ function QuizManager({ data, onRefresh, initialQuizSetId, startInCreateMode = fa
       <div className="panel quiz-editor-panel">
         <div className="quiz-editor-heading">
           <div>
-            <span className="teacher-eyebrow">Question workspace</span>
-            <h2>{selectedQuiz ? `Editing: ${selectedQuiz.title}` : "Create your next question set"}</h2>
-            {selectedQuiz && <p>{selectedQuiz.questions.length} questions · Keep the active set in view while you build.</p>}
+            <span className="teacher-eyebrow">Active question set</span>
+            <h2>{selectedQuiz?.title ?? "Choose a question set"}</h2>
+            {selectedQuiz && <p>{selectedQuiz.questions.length} {selectedQuiz.questions.length === 1 ? "question" : "questions"} · Build in bulk or add questions one at a time.</p>}
           </div>
-          {selectedQuiz && <span className="quiz-save-status"><Check size={15} aria-hidden="true" />Ready to host</span>}
+          {selectedQuiz && (
+            <span className={`quiz-save-status${selectedQuiz.questions.length === 0 ? " is-draft" : ""}`}>
+              {selectedQuiz.questions.length > 0 && <Check size={15} aria-hidden="true" />}
+              {selectedQuiz.questions.length > 0 ? "Ready to host" : "Draft"}
+            </span>
+          )}
         </div>
-        <label>
-          Question sets
+        <label className="quiz-set-picker">
+          Switch question set
           <select value={selectedQuizId} onChange={(event) => setSelectedQuizId(event.target.value)}>
             {data.quizSets.map((quiz) => (
               <option key={quiz.id} value={quiz.id}>
@@ -1919,13 +1929,21 @@ function QuizManager({ data, onRefresh, initialQuizSetId, startInCreateMode = fa
         </label>
         {selectedQuiz ? (
           <>
-            <div className="import-builder">
+            <div className="question-builder-tabs" role="tablist" aria-label="Choose how to add questions">
+              <button type="button" role="tab" aria-selected={questionBuilderMode === "bulk"} className={questionBuilderMode === "bulk" ? "active" : ""} onClick={() => setQuestionBuilderMode("bulk")}>From a study list</button>
+              <button type="button" role="tab" aria-selected={questionBuilderMode === "manual"} className={questionBuilderMode === "manual" ? "active" : ""} onClick={() => setQuestionBuilderMode("manual")}>One question</button>
+            </div>
+
+            {questionBuilderMode === "bulk" ? <div className="import-builder" role="tabpanel">
               <div className="panel-title">
-                <h3>Build from a study list</h3>
+                <div>
+                  <span className="teacher-eyebrow">Fastest way to build</span>
+                  <h3>Turn a study list into questions</h3>
+                </div>
                 <span>{importBadge}</span>
               </div>
               <p>
-                Paste terms, vocabulary, or term-definition pairs. Put one item on each line. Use a dash, colon, vertical bar, or tab between a term and its meaning.
+                Paste one term and definition per line. We’ll create questions for you to review.
               </p>
               <textarea
                 className="bulk-textarea"
@@ -1937,15 +1955,15 @@ function QuizManager({ data, onRefresh, initialQuizSetId, startInCreateMode = fa
                 <label className="file-import-button">
                   <input type="file" accept=".txt,.csv,.tsv,text/plain,text/csv" onChange={importStudyFile} />
                   <ClipboardPaste size={18} aria-hidden="true" />
-                  Upload a study list
+                  Upload file
                 </label>
                 <button type="button" onClick={() => setBulkText(sampleImportText)}>
                   <ClipboardPaste size={18} aria-hidden="true" />
-                  Try a sample
+                  Use example
                 </button>
                 <button className="primary" type="button" onClick={importQuestions} disabled={isImporting}>
                   <WandSparkles size={18} aria-hidden="true" />
-                  {isImporting ? "Building..." : "Build questions"}
+                  {isImporting ? "Creating..." : "Create questions"}
                 </button>
               </div>
               {generatedQuestions.length > 0 && (
@@ -1962,12 +1980,18 @@ function QuizManager({ data, onRefresh, initialQuizSetId, startInCreateMode = fa
                   <small>{generatedQuestions.length} questions will be added to this quiz.</small>
                 </div>
               )}
-            </div>
+            </div> : (
 
-            <form className="question-form" onSubmit={addQuestion}>
+            <form className="question-form" role="tabpanel" onSubmit={addQuestion}>
+              <div className="question-form-heading">
+                <span className="teacher-eyebrow">Manual editor</span>
+                <h3>{editingQuestionId ? "Edit question" : "Add one question"}</h3>
+                <p>Write the prompt, four choices, and the correct answer.</p>
+              </div>
               <label>
-                Question
+                Question prompt
                 <textarea
+                  placeholder="What do you want players to answer?"
                   value={questionForm.prompt}
                   onChange={(event) => setQuestionForm({ ...questionForm, prompt: event.target.value })}
                 />
@@ -2052,6 +2076,11 @@ function QuizManager({ data, onRefresh, initialQuizSetId, startInCreateMode = fa
                 {editingQuestionId && <button type="button" onClick={() => { setEditingQuestionId(null); setQuestionForm(emptyQuestion); discardRecordedAudio(); }}>Cancel</button>}
               </div>
             </form>
+            )}
+            <div className="question-list-heading">
+              <div><span className="teacher-eyebrow">Set contents</span><h3>Questions</h3></div>
+              <span>{selectedQuiz.questions.length}</span>
+            </div>
             <ul className="question-list">
               {selectedQuiz.questions.map((question, index) => (
                 <li key={question.id}>
@@ -2065,7 +2094,7 @@ function QuizManager({ data, onRefresh, initialQuizSetId, startInCreateMode = fa
                   </div>
                 </li>
               ))}
-              {selectedQuiz.questions.length === 0 && <li>No questions yet.</li>}
+              {selectedQuiz.questions.length === 0 && <li className="question-list-empty"><div><strong>No questions yet</strong><span>Paste a study list or add the first question manually.</span></div></li>}
             </ul>
           </>
         ) : (
