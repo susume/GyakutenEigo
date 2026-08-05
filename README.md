@@ -235,6 +235,7 @@ The production cutover and backup record is documented in
 - [Teacher library and reports](docs/teacher-library.md)
 - [Tournament Center](docs/tournament-center.md)
 - [Online hosting runbook](docs/online-play.md)
+- [Game rules for students](docs/game-rules.md)
 - [Protocol contract](packages/shared/PROTOCOL.md)
 - [Phases 7-10 implementation report](docs/phases-7-10-implementation-report.md)
 - [Chromebook certification matrix](docs/performance/CHROMEBOOK_CERTIFICATION.md)
