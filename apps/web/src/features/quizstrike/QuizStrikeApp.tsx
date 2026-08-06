@@ -748,6 +748,7 @@ function InternalToolNotice({ onReturn }: { onReturn: () => void }) {
 }
 
 function CharacterLab() {
+  const cleanPreview = new URLSearchParams(window.location.search).get("cleanPreview") === "1";
   const [count, setCount] = useState<CharacterStressCount>(40);
   const [isMoving, setIsMoving] = useState(true);
   const [tick, setTick] = useState(0);
@@ -770,9 +771,9 @@ function CharacterLab() {
             upper: { x: -40 * ARENA_SCALE, y: IRON_JUNCTION_OVERPASS_LEVEL_Y + ARENA_PLAYER_EYE_HEIGHT, z: 25 * ARENA_SCALE, facing: -Math.PI / 2 }
           }
         : {
-            lower: { x: -140 * ARENA_SCALE, y: ARENA_PLAYER_EYE_HEIGHT, z: 0, facing: -Math.PI / 2 },
-            main: { x: -45 * ARENA_SCALE, y: DESERT_CITADEL_MAIN_LEVEL_Y + ARENA_PLAYER_EYE_HEIGHT, z: 10 * ARENA_SCALE, facing: -Math.PI / 2 },
-            upper: { x: 0, y: DESERT_CITADEL_ROOFTOP_LEVEL_Y + ARENA_PLAYER_EYE_HEIGHT, z: 78 * ARENA_SCALE, facing: Math.PI / 2 }
+            lower: { x: -60 * ARENA_SCALE, y: ARENA_PLAYER_EYE_HEIGHT, z: 120 * ARENA_SCALE, facing: -Math.PI / 2 },
+            main: { x: -80 * ARENA_SCALE, y: DESERT_CITADEL_MAIN_LEVEL_Y + ARENA_PLAYER_EYE_HEIGHT, z: 0, facing: -Math.PI / 2 },
+            upper: { x: 30 * ARENA_SCALE, y: DESERT_CITADEL_ROOFTOP_LEVEL_Y + ARENA_PLAYER_EYE_HEIGHT, z: -156 * ARENA_SCALE, facing: Math.PI / 2 }
           };
     return {
       ...generated,
@@ -864,7 +865,7 @@ function CharacterLab() {
               currentPlayer={labView === "fps" ? session.players[0] : undefined}
               view={labView}
               suppressHint={labView === "fps"}
-              debugOverlay
+              debugOverlay={!cleanPreview}
               debugLabel={`${count}-player character stress`}
               quality={labQuality}
             />

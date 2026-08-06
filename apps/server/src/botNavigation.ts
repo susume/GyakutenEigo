@@ -156,18 +156,15 @@ export class BotNavigationService {
 
   private getDesertCitadelPatrolPoints(team: Team) {
     const direction = team === "blue" ? 1 : -1;
-    const xStages = [-180, -108, 0, 108, 180].map((x) => x * direction);
-    const upper = [
-      this.scaledLevelPoint(-120, 78, DESERT_CITADEL_ROOFTOP_LEVEL_Y),
-      this.scaledLevelPoint(0, 78, DESERT_CITADEL_ROOFTOP_LEVEL_Y),
-      this.scaledLevelPoint(120, 78, DESERT_CITADEL_ROOFTOP_LEVEL_Y)
-    ];
+    const xStages = [-180, -105, 0, 105, 180].map((x) => x * direction);
     return xStages.flatMap((x, stage) => [
-      this.scaledLevelPoint(x, -118),
-      this.scaledLevelPoint(x, 0),
-      this.scaledLevelPoint(x, 133),
-      this.scaledLevelPoint(x, stage % 2 === 0 ? 18 : 78, stage % 2 === 0 ? DESERT_CITADEL_MAIN_LEVEL_Y : 0),
-      upper[stage % upper.length]
+      this.scaledLevelPoint(x, -112),
+      Math.abs(x) <= 118
+        ? this.scaledLevelPoint(x, 0, DESERT_CITADEL_MAIN_LEVEL_Y)
+        : this.scaledLevelPoint(x, 0),
+      this.scaledLevelPoint(x, 120),
+      this.scaledLevelPoint(Math.max(-160, Math.min(160, x)), -160, DESERT_CITADEL_ROOFTOP_LEVEL_Y),
+      this.scaledLevelPoint(stage % 2 === 0 ? -58 : 58, stage % 2 === 0 ? -78 : 78)
     ]);
   }
 
@@ -255,8 +252,8 @@ export class BotNavigationService {
       if (session.settings.mapId === "desert_citadel") {
         const lowerRoute = brain.routeIndex % 2 === 0;
         return lowerRoute
-          ? this.scaledLevelPoint(brain.strafeDirection * 96, 133)
-          : this.scaledLevelPoint(brain.strafeDirection * 120, 78, DESERT_CITADEL_ROOFTOP_LEVEL_Y);
+          ? this.scaledLevelPoint(brain.strafeDirection * 110, 120)
+          : this.scaledLevelPoint(brain.strafeDirection * 120, -160, DESERT_CITADEL_ROOFTOP_LEVEL_Y);
       }
       const side = brain.routeIndex % 2 === 0 ? -1 : 1;
       return this.scaledPoint(side * 82, brain.strafeDirection * 72);

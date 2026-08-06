@@ -1237,8 +1237,8 @@ export const IRON_JUNCTION_OVERPASS_LEVEL_Y = 18;
 // Compatibility aliases for older clients and saved diagnostics.
 export const IRON_JUNCTION_HIGHLINE_LEVEL_Y = IRON_JUNCTION_LOADING_LEVEL_Y;
 export const IRON_JUNCTION_CATWALK_LEVEL_Y = IRON_JUNCTION_OVERPASS_LEVEL_Y;
-export const DESERT_CITADEL_MAIN_LEVEL_Y = 10;
-export const DESERT_CITADEL_ROOFTOP_LEVEL_Y = 24;
+export const DESERT_CITADEL_MAIN_LEVEL_Y = 8;
+export const DESERT_CITADEL_ROOFTOP_LEVEL_Y = 20;
 // Kept as a compatibility alias for older clients and saved diagnostics.
 export const DESERT_CITADEL_CITADEL_LEVEL_Y = DESERT_CITADEL_ROOFTOP_LEVEL_Y;
 
@@ -1291,18 +1291,22 @@ export const TEMPLE_RUNOFF_STAIR_FLIGHTS = [
 ] as const satisfies readonly ArenaStairFlight[];
 
 /**
- * Desert Citadel uses six authored stair flights for the three playable
- * layers.  Keeping these profiles shared prevents a client-only ramp from
- * becoming a server-only shortcut.  Every riser is at or below 0.75 units,
- * which is inside the FPS controller's 0.8-unit step tolerance.
+ * Split Crown Desert Citadel uses ten authored flights across three playable
+ * layers. Keeping these profiles shared prevents a client-only stair from
+ * becoming a server-only shortcut. Every riser is at or below 0.75 units,
+ * inside the FPS controller's 0.8-unit step tolerance.
  */
 export const DESERT_CITADEL_STAIR_FLIGHTS = [
-  { id: "citadel-west-main-stairs", x: -86, z: 0, width: 30, length: 40, axis: "x", direction: 1, startY: 0, endY: DESERT_CITADEL_MAIN_LEVEL_Y, steps: 14 },
-  { id: "citadel-east-main-stairs", x: 86, z: 0, width: 30, length: 40, axis: "x", direction: -1, startY: 0, endY: DESERT_CITADEL_MAIN_LEVEL_Y, steps: 14 },
-  { id: "citadel-north-main-stairs", x: 0, z: -55, width: 30, length: 34, axis: "z", direction: 1, startY: 0, endY: DESERT_CITADEL_MAIN_LEVEL_Y, steps: 14 },
-  { id: "citadel-south-main-stairs", x: 0, z: 100, width: 30, length: 34, axis: "z", direction: -1, startY: 0, endY: DESERT_CITADEL_MAIN_LEVEL_Y, steps: 14 },
-  { id: "west-market-roof-stairs", x: -180, z: 78, width: 22, length: 96, axis: "x", direction: 1, startY: 0, endY: DESERT_CITADEL_ROOFTOP_LEVEL_Y, steps: 40 },
-  { id: "east-market-roof-stairs", x: 180, z: 78, width: 22, length: 96, axis: "x", direction: -1, startY: 0, endY: DESERT_CITADEL_ROOFTOP_LEVEL_Y, steps: 40 }
+  { id: "blue-royal-stairs", x: -150, z: 0, width: 36, length: 64, axis: "x", direction: 1, startY: 0, endY: DESERT_CITADEL_MAIN_LEVEL_Y, steps: 12 },
+  { id: "red-royal-stairs", x: 150, z: 0, width: 36, length: 64, axis: "x", direction: -1, startY: 0, endY: DESERT_CITADEL_MAIN_LEVEL_Y, steps: 12 },
+  { id: "royal-north-west-stairs", x: -58, z: -50, width: 24, length: 36, axis: "z", direction: 1, startY: 0, endY: DESERT_CITADEL_MAIN_LEVEL_Y, steps: 12 },
+  { id: "royal-north-east-stairs", x: 58, z: -50, width: 24, length: 36, axis: "z", direction: 1, startY: 0, endY: DESERT_CITADEL_MAIN_LEVEL_Y, steps: 12 },
+  { id: "royal-south-west-stairs", x: -58, z: 50, width: 24, length: 36, axis: "z", direction: -1, startY: 0, endY: DESERT_CITADEL_MAIN_LEVEL_Y, steps: 12 },
+  { id: "royal-south-east-stairs", x: 58, z: 50, width: 24, length: 36, axis: "z", direction: -1, startY: 0, endY: DESERT_CITADEL_MAIN_LEVEL_Y, steps: 12 },
+  { id: "blue-crown-stairs", x: -205, z: -160, width: 24, length: 56, axis: "x", direction: 1, startY: 0, endY: DESERT_CITADEL_ROOFTOP_LEVEL_Y, steps: 28 },
+  { id: "red-crown-stairs", x: 205, z: -160, width: 24, length: 56, axis: "x", direction: -1, startY: 0, endY: DESERT_CITADEL_ROOFTOP_LEVEL_Y, steps: 28 },
+  { id: "crown-west-field-stairs", x: -52, z: -121, width: 22, length: 46, axis: "z", direction: -1, startY: 0, endY: DESERT_CITADEL_ROOFTOP_LEVEL_Y, steps: 28 },
+  { id: "crown-east-field-stairs", x: 52, z: -121, width: 22, length: 46, axis: "z", direction: -1, startY: 0, endY: DESERT_CITADEL_ROOFTOP_LEVEL_Y, steps: 28 }
 ] as const satisfies readonly ArenaStairFlight[];
 
 export type ArenaBounds = { limitX: number; limitZ: number };
@@ -1315,8 +1319,8 @@ export const IRON_JUNCTION_BOUNDS: ArenaBounds = {
   limitZ: scaleArenaValue(250)
 };
 export const DESERT_CITADEL_BOUNDS: ArenaBounds = {
-  limitX: scaleArenaValue(250),
-  limitZ: scaleArenaValue(180)
+  limitX: scaleArenaValue(260),
+  limitZ: scaleArenaValue(200)
 };
 
 export const getArenaBounds = (mapId: ArenaMapId | string | undefined): ArenaBounds =>
@@ -1413,12 +1417,10 @@ export const getArenaFloorSurfaces = (
   if (mapId === "desert_citadel") {
     const ramp = desertRampHeight(rawX, rawZ);
     if (ramp !== undefined) return [ramp];
-    const onCitadelTerrace = isInsideRawRect(rawX, rawZ, -66, 66, -35, 86);
-    const onWestMarketRooftop = isInsideRawRect(rawX, rawZ, -150, -90, 60, 96);
-    const onEastMarketRooftop = isInsideRawRect(rawX, rawZ, 90, 150, 60, 96);
-    const onCitadelSkywalk = isInsideRawRect(rawX, rawZ, -90, 90, 68, 88);
-    if (onWestMarketRooftop || onEastMarketRooftop || onCitadelSkywalk) return [DESERT_CITADEL_ROOFTOP_LEVEL_Y];
-    if (onCitadelTerrace) return [DESERT_CITADEL_MAIN_LEVEL_Y];
+    const onRoyalCauseway = isInsideRawRect(rawX, rawZ, -118, 118, -32, 32);
+    const onCrownRampart = isInsideRawRect(rawX, rawZ, -177, 177, -176, -144);
+    if (onCrownRampart) return [DESERT_CITADEL_ROOFTOP_LEVEL_Y];
+    if (onRoyalCauseway) return [DESERT_CITADEL_MAIN_LEVEL_Y];
     return [0];
   }
   const stair = templeStairHeight(rawX, rawZ);
@@ -1505,19 +1507,19 @@ export type SpawnPoint = GroundArenaPosition & {
 };
 
 const RAW_TEAM_SPAWNS: Record<Team, SpawnPoint[]> = {
-  blue: [-32, -16, 0, 16, 32].flatMap((z, row) =>
-    [-232, -223, -214, -205].map((x, column) => ({
+  blue: [-48, -24, 0, 24, 48].flatMap((z, row) =>
+    [-242, -232, -222, -212].map((x, column) => ({
       id: `blue-citadel-${row + 1}-${column + 1}`,
-      label: "Blue Assembly Court",
+      label: "Blue Assembly Bastion",
       x,
       z,
       facing: -Math.PI / 2
     }))
   ),
-  red: [-32, -16, 0, 16, 32].flatMap((z, row) =>
-    [232, 223, 214, 205].map((x, column) => ({
+  red: [-48, -24, 0, 24, 48].flatMap((z, row) =>
+    [242, 232, 222, 212].map((x, column) => ({
       id: `red-citadel-${row + 1}-${column + 1}`,
-      label: "Red Assembly Court",
+      label: "Red Assembly Bastion",
       x,
       z,
       facing: Math.PI / 2
@@ -1608,66 +1610,66 @@ export const getTeamSpawnsForMap = (mapId: ArenaMapId | string | undefined) =>
 const teamSpawnsForMap = getTeamSpawnsForMap;
 
 const RAW_FREE_FOR_ALL_SPAWNS: SpawnPoint[] = [
-  { id: "ffa-west-outer-1", label: "West Outer Wall", x: -146, z: -78, facing: -0.9 },
-  { id: "ffa-west-outer-2", label: "Bazaar Lookout", x: -146, z: 78, y: DESERT_CITADEL_ROOFTOP_LEVEL_Y + ARENA_PLAYER_EYE_HEIGHT, facing: -2.25 },
-  { id: "ffa-west-gate-1", label: "West Gate", x: -116, z: -48, facing: -1.3 },
-  { id: "ffa-west-gate-2", label: "West Gate", x: -116, z: 32, facing: -1.85 },
-  { id: "ffa-west-wall-1", label: "West Wall Walk", x: -118, z: -4, facing: -1.57 },
-  { id: "ffa-west-wall-2", label: "West Wall Walk", x: -126, z: 23, facing: -1.57 },
-  { id: "ffa-fort-court-1", label: "Armoury Court", x: -138, z: -22, facing: -1.4 },
-  { id: "ffa-fort-court-2", label: "Armoury Court", x: -139, z: 20, facing: -1.7 },
-  { id: "ffa-fort-tunnel-1", label: "West Ruins Ramp", x: -100, z: -85, facing: -2.4 },
-  { id: "ffa-fort-tower-1", label: "Western Watchtower", x: -96, z: -82, facing: -0.7 },
-  { id: "ffa-north-ruins-1", label: "North Ruins", x: -84, z: -116, facing: -0.6 },
-  { id: "ffa-north-ruins-2", label: "North Ruins", x: -48, z: -136, facing: -0.25 },
-  { id: "ffa-north-ruins-3", label: "Dry Riverbed", x: -12, z: -124, facing: 0.15 },
-  { id: "ffa-north-ruins-4", label: "Dry Riverbed", x: 28, z: -136, facing: 0.35 },
-  { id: "ffa-north-ruins-5", label: "Broken Bridge", x: 64, z: -124, facing: 0.62 },
-  { id: "ffa-north-ruins-6", label: "Ruined Watchtower", x: 112, z: -100, facing: 0.9 },
-  { id: "ffa-market-1", label: "Central Market", x: -42, z: -42, facing: -0.6 },
-  { id: "ffa-market-2", label: "Central Market", x: -12, z: -70, facing: -0.2 },
-  { id: "ffa-market-3", label: "Old Well", x: 24, z: -48, facing: 0.2 },
-  { id: "ffa-market-4", label: "Blue Canopy", x: 46, z: -38, facing: 0.58 },
-  { id: "ffa-market-5", label: "Citadel Terrace", x: -58, z: -8, y: DESERT_CITADEL_MAIN_LEVEL_Y + ARENA_PLAYER_EYE_HEIGHT, facing: -1.15 },
-  { id: "ffa-market-6", label: "Citadel Terrace", x: -16, z: -20, y: DESERT_CITADEL_MAIN_LEVEL_Y + ARENA_PLAYER_EYE_HEIGHT, facing: -0.4 },
-  { id: "ffa-market-7", label: "Citadel Terrace", x: 16, z: -20, y: DESERT_CITADEL_MAIN_LEVEL_Y + ARENA_PLAYER_EYE_HEIGHT, facing: 0.4 },
-  { id: "ffa-market-8", label: "Citadel Terrace", x: 50, z: -8, y: DESERT_CITADEL_MAIN_LEVEL_Y + ARENA_PLAYER_EYE_HEIGHT, facing: 1.15 },
-  { id: "ffa-market-9", label: "Fountain Court", x: -38, z: 26, y: DESERT_CITADEL_MAIN_LEVEL_Y + ARENA_PLAYER_EYE_HEIGHT, facing: -1.85 },
-  { id: "ffa-market-10", label: "Fountain Court", x: -4, z: 38, y: DESERT_CITADEL_MAIN_LEVEL_Y + ARENA_PLAYER_EYE_HEIGHT, facing: Math.PI },
-  { id: "ffa-market-11", label: "Fountain Court", x: 28, z: 42, y: DESERT_CITADEL_MAIN_LEVEL_Y + ARENA_PLAYER_EYE_HEIGHT, facing: 2.6 },
-  { id: "ffa-market-12", label: "Sun Hall Court", x: 62, z: 28, y: DESERT_CITADEL_MAIN_LEVEL_Y + ARENA_PLAYER_EYE_HEIGHT, facing: 2.2 },
-  { id: "ffa-south-homes-1", label: "South Homes", x: -50, z: 100, facing: -2.4 },
-  { id: "ffa-south-homes-2", label: "Yard Approach", x: -30, z: 105, facing: -2.8 },
-  { id: "ffa-south-homes-3", label: "Caravan Road", x: -50, z: 158, facing: Math.PI },
-  { id: "ffa-south-homes-4", label: "South Courtyard", x: 24, z: 104, facing: 2.8 },
-  { id: "ffa-south-homes-5", label: "Yard Approach", x: 52, z: 130, facing: 2.4 },
-  { id: "ffa-south-homes-6", label: "South Homes", x: 104, z: 118, facing: 2.2 },
-  { id: "ffa-rooftop-1", label: "Fountain Terrace", x: -58, z: 66, y: DESERT_CITADEL_MAIN_LEVEL_Y + ARENA_PLAYER_EYE_HEIGHT, facing: -2.15 },
-  { id: "ffa-rooftop-2", label: "Fountain Terrace", x: -26, z: 70, y: DESERT_CITADEL_MAIN_LEVEL_Y + ARENA_PLAYER_EYE_HEIGHT, facing: -2.9 },
-  { id: "ffa-rooftop-3", label: "Fountain Terrace", x: 20, z: 70, y: DESERT_CITADEL_MAIN_LEVEL_Y + ARENA_PLAYER_EYE_HEIGHT, facing: 2.9 },
-  { id: "ffa-rooftop-4", label: "Sun Hall Terrace", x: 54, z: 70, y: DESERT_CITADEL_MAIN_LEVEL_Y + ARENA_PLAYER_EYE_HEIGHT, facing: 2.15 },
-  { id: "ffa-aqueduct-1", label: "West Stair Court", x: -120, z: 0, facing: -1.57 },
-  { id: "ffa-aqueduct-2", label: "West Stair Court", x: -112, z: 28, facing: -1.57 },
-  { id: "ffa-aqueduct-3", label: "Citadel Court", x: -36, z: 0, y: DESERT_CITADEL_MAIN_LEVEL_Y + ARENA_PLAYER_EYE_HEIGHT, facing: -1.57 },
-  { id: "ffa-aqueduct-4", label: "South Terrace", x: 0, z: 55, y: DESERT_CITADEL_MAIN_LEVEL_Y + ARENA_PLAYER_EYE_HEIGHT, facing: 0 },
-  { id: "ffa-aqueduct-5", label: "Citadel Court", x: 36, z: 0, y: DESERT_CITADEL_MAIN_LEVEL_Y + ARENA_PLAYER_EYE_HEIGHT, facing: 1.57 },
-  { id: "ffa-aqueduct-6", label: "South Yard East", x: 72, z: 0, facing: 1.57 },
-  { id: "ffa-aqueduct-7", label: "South Yard East", x: 104, z: 0, facing: 1.57 },
-  { id: "ffa-east-gate-1", label: "Eastern Gate", x: 116, z: -48, facing: 1.3 },
-  { id: "ffa-east-gate-2", label: "Sun Hall Roof", x: 138, z: 58, y: DESERT_CITADEL_ROOFTOP_LEVEL_Y + ARENA_PLAYER_EYE_HEIGHT, facing: 1.85 },
-  { id: "ffa-east-wall-1", label: "Eastern Wall", x: 128, z: -4, facing: 1.57 },
-  { id: "ffa-east-wall-2", label: "Eastern Wall", x: 126, z: 23, facing: 1.57 },
-  { id: "ffa-camp-court-1", label: "Caravan Camp", x: 138, z: -22, facing: 1.4 },
-  { id: "ffa-camp-court-2", label: "Caravan Camp", x: 139, z: 20, facing: 1.7 },
-  { id: "ffa-east-tunnel-1", label: "East Ruins Ramp", x: 100, z: -85, facing: 2.4 },
-  { id: "ffa-east-camp-outer-1", label: "East Camp Outer", x: 146, z: -78, facing: 0.9 },
-  { id: "ffa-east-camp-outer-2", label: "Sun Hall Roof", x: 146, z: 78, y: DESERT_CITADEL_ROOFTOP_LEVEL_Y + ARENA_PLAYER_EYE_HEIGHT, facing: 2.25 },
-  { id: "ffa-citadel-1", label: "Citadel Terrace", x: -18, z: 54, y: DESERT_CITADEL_MAIN_LEVEL_Y + ARENA_PLAYER_EYE_HEIGHT, facing: -2.6 },
-  { id: "ffa-citadel-2", label: "Citadel Terrace", x: 18, z: 54, y: DESERT_CITADEL_MAIN_LEVEL_Y + ARENA_PLAYER_EYE_HEIGHT, facing: 2.6 },
-  { id: "ffa-statue-1", label: "Buried Statue", x: -92, z: 126, facing: -2.25 },
-  { id: "ffa-bridge-1", label: "Broken Bridge", x: 94, z: -116, facing: 0.75 },
-  { id: "ffa-north-alley-1", label: "North Alley", x: -104, z: -44, facing: -1.05 },
-  { id: "ffa-north-alley-2", label: "North Alley", x: 104, z: -44, facing: 1.05 }
+  { id: "ffa-outer-1", label: "West Souk Gate", x: -186, z: -118, facing: -1.1 },
+  { id: "ffa-outer-2", label: "East Souk Gate", x: 186, z: -118, facing: 1.1 },
+  { id: "ffa-outer-3", label: "West Cistern Gate", x: -186, z: 118, facing: -2.05 },
+  { id: "ffa-outer-4", label: "East Cistern Gate", x: 186, z: 118, facing: 2.05 },
+  { id: "ffa-outer-5", label: "West North Alley", x: -150, z: -88, facing: -1.2 },
+  { id: "ffa-outer-6", label: "East North Alley", x: 150, z: -88, facing: 1.2 },
+  { id: "ffa-outer-7", label: "West South Alley", x: -150, z: 150, facing: -2.2 },
+  { id: "ffa-outer-8", label: "East South Alley", x: 150, z: 150, facing: 2.2 },
+  { id: "ffa-souk-1", label: "Shaded Souk", x: -160, z: -105, facing: -0.8 },
+  { id: "ffa-souk-2", label: "Shaded Souk", x: -120, z: -138, facing: -0.4 },
+  { id: "ffa-souk-3", label: "Shaded Souk", x: -70, z: -135, facing: -0.2 },
+  { id: "ffa-souk-4", label: "Falcon Approach", x: -45, z: -105, facing: 0 },
+  { id: "ffa-souk-5", label: "Falcon Approach", x: 45, z: -105, facing: Math.PI },
+  { id: "ffa-souk-6", label: "Shaded Souk", x: 70, z: -138, facing: 0.2 },
+  { id: "ffa-souk-7", label: "Shaded Souk", x: 120, z: -105, facing: 0.4 },
+  { id: "ffa-souk-8", label: "Shaded Souk", x: 160, z: -138, facing: 0.8 },
+  { id: "ffa-cistern-1", label: "Dry Cistern", x: -165, z: 100, facing: -2.4 },
+  { id: "ffa-cistern-2", label: "Dry Cistern", x: -140, z: 140, facing: -2.2 },
+  { id: "ffa-cistern-3", label: "Dry Cistern", x: -105, z: 105, facing: -2 },
+  { id: "ffa-cistern-4", label: "Dry Cistern", x: -70, z: 150, facing: -2.8 },
+  { id: "ffa-cistern-5", label: "Cistern Well", x: -45, z: 125, facing: -1.8 },
+  { id: "ffa-cistern-6", label: "Cistern Well", x: -18, z: 150, facing: Math.PI },
+  { id: "ffa-cistern-7", label: "Cistern Well", x: 18, z: 150, facing: Math.PI },
+  { id: "ffa-cistern-8", label: "Cistern Well", x: 45, z: 125, facing: 1.8 },
+  { id: "ffa-cistern-9", label: "Dry Cistern", x: 70, z: 95, facing: 2.8 },
+  { id: "ffa-cistern-10", label: "Dry Cistern", x: 105, z: 135, facing: 2 },
+  { id: "ffa-cistern-11", label: "Dry Cistern", x: 140, z: 95, facing: 2.2 },
+  { id: "ffa-cistern-12", label: "Dry Cistern", x: 165, z: 140, facing: 2.4 },
+  { id: "ffa-cistern-13", label: "West Cistern Alley", x: -190, z: 65, facing: -1.5 },
+  { id: "ffa-cistern-14", label: "East Cistern Alley", x: 190, z: 65, facing: 1.5 },
+  { id: "ffa-cistern-15", label: "West Cistern Alley", x: -190, z: 150, facing: -2.2 },
+  { id: "ffa-cistern-16", label: "East Cistern Alley", x: 190, z: 150, facing: 2.2 },
+  { id: "ffa-royal-1", label: "Royal Causeway", x: -105, z: -16, y: DESERT_CITADEL_MAIN_LEVEL_Y + ARENA_PLAYER_EYE_HEIGHT, facing: -1.4 },
+  { id: "ffa-royal-2", label: "Royal Causeway", x: -90, z: 16, y: DESERT_CITADEL_MAIN_LEVEL_Y + ARENA_PLAYER_EYE_HEIGHT, facing: -1.2 },
+  { id: "ffa-royal-3", label: "Royal Causeway", x: -72, z: 0, y: DESERT_CITADEL_MAIN_LEVEL_Y + ARENA_PLAYER_EYE_HEIGHT, facing: -1 },
+  { id: "ffa-royal-4", label: "Royal Causeway", x: -56, z: 18, y: DESERT_CITADEL_MAIN_LEVEL_Y + ARENA_PLAYER_EYE_HEIGHT, facing: -0.8 },
+  { id: "ffa-royal-5", label: "Royal Causeway", x: -28, z: -18, y: DESERT_CITADEL_MAIN_LEVEL_Y + ARENA_PLAYER_EYE_HEIGHT, facing: -0.4 },
+  { id: "ffa-royal-6", label: "Royal Sundial", x: -16, z: 18, y: DESERT_CITADEL_MAIN_LEVEL_Y + ARENA_PLAYER_EYE_HEIGHT, facing: -0.2 },
+  { id: "ffa-royal-7", label: "Royal Sundial", x: 16, z: -18, y: DESERT_CITADEL_MAIN_LEVEL_Y + ARENA_PLAYER_EYE_HEIGHT, facing: 0.2 },
+  { id: "ffa-royal-8", label: "Royal Causeway", x: 28, z: 18, y: DESERT_CITADEL_MAIN_LEVEL_Y + ARENA_PLAYER_EYE_HEIGHT, facing: 0.4 },
+  { id: "ffa-royal-9", label: "Royal Causeway", x: 56, z: -18, y: DESERT_CITADEL_MAIN_LEVEL_Y + ARENA_PLAYER_EYE_HEIGHT, facing: 0.8 },
+  { id: "ffa-royal-10", label: "Royal Causeway", x: 72, z: 0, y: DESERT_CITADEL_MAIN_LEVEL_Y + ARENA_PLAYER_EYE_HEIGHT, facing: 1 },
+  { id: "ffa-royal-11", label: "Royal Causeway", x: 90, z: -16, y: DESERT_CITADEL_MAIN_LEVEL_Y + ARENA_PLAYER_EYE_HEIGHT, facing: 1.2 },
+  { id: "ffa-royal-12", label: "Royal Causeway", x: 105, z: 16, y: DESERT_CITADEL_MAIN_LEVEL_Y + ARENA_PLAYER_EYE_HEIGHT, facing: 1.4 },
+  { id: "ffa-royal-13", label: "West Royal Landing", x: -108, z: 25, y: DESERT_CITADEL_MAIN_LEVEL_Y + ARENA_PLAYER_EYE_HEIGHT, facing: -1.3 },
+  { id: "ffa-royal-14", label: "East Royal Landing", x: 108, z: -25, y: DESERT_CITADEL_MAIN_LEVEL_Y + ARENA_PLAYER_EYE_HEIGHT, facing: 1.3 },
+  { id: "ffa-royal-15", label: "North Royal Landing", x: -78, z: -24, y: DESERT_CITADEL_MAIN_LEVEL_Y + ARENA_PLAYER_EYE_HEIGHT, facing: -0.9 },
+  { id: "ffa-royal-16", label: "South Royal Landing", x: 78, z: 24, y: DESERT_CITADEL_MAIN_LEVEL_Y + ARENA_PLAYER_EYE_HEIGHT, facing: 0.9 },
+  { id: "ffa-crown-1", label: "Crown Rampart", x: -160, z: -164, y: DESERT_CITADEL_ROOFTOP_LEVEL_Y + ARENA_PLAYER_EYE_HEIGHT, facing: -1.2 },
+  { id: "ffa-crown-2", label: "Crown Rampart", x: -140, z: -156, y: DESERT_CITADEL_ROOFTOP_LEVEL_Y + ARENA_PLAYER_EYE_HEIGHT, facing: -1 },
+  { id: "ffa-crown-3", label: "Crown Rampart", x: -116, z: -164, y: DESERT_CITADEL_ROOFTOP_LEVEL_Y + ARENA_PLAYER_EYE_HEIGHT, facing: -0.8 },
+  { id: "ffa-crown-4", label: "Crown Rampart", x: -66, z: -156, y: DESERT_CITADEL_ROOFTOP_LEVEL_Y + ARENA_PLAYER_EYE_HEIGHT, facing: -0.5 },
+  { id: "ffa-crown-5", label: "Crown Rampart", x: -36, z: -164, y: DESERT_CITADEL_ROOFTOP_LEVEL_Y + ARENA_PLAYER_EYE_HEIGHT, facing: -0.3 },
+  { id: "ffa-crown-6", label: "Crown Rampart", x: -18, z: -156, y: DESERT_CITADEL_ROOFTOP_LEVEL_Y + ARENA_PLAYER_EYE_HEIGHT, facing: -0.1 },
+  { id: "ffa-crown-7", label: "Crown Rampart", x: 18, z: -156, y: DESERT_CITADEL_ROOFTOP_LEVEL_Y + ARENA_PLAYER_EYE_HEIGHT, facing: 0.1 },
+  { id: "ffa-crown-8", label: "Crown Rampart", x: 36, z: -164, y: DESERT_CITADEL_ROOFTOP_LEVEL_Y + ARENA_PLAYER_EYE_HEIGHT, facing: 0.3 },
+  { id: "ffa-crown-9", label: "Crown Rampart", x: 66, z: -156, y: DESERT_CITADEL_ROOFTOP_LEVEL_Y + ARENA_PLAYER_EYE_HEIGHT, facing: 0.5 },
+  { id: "ffa-crown-10", label: "Crown Rampart", x: 116, z: -164, y: DESERT_CITADEL_ROOFTOP_LEVEL_Y + ARENA_PLAYER_EYE_HEIGHT, facing: 0.8 },
+  { id: "ffa-crown-11", label: "Crown Rampart", x: 140, z: -156, y: DESERT_CITADEL_ROOFTOP_LEVEL_Y + ARENA_PLAYER_EYE_HEIGHT, facing: 1 },
+  { id: "ffa-crown-12", label: "Crown Rampart", x: 160, z: -164, y: DESERT_CITADEL_ROOFTOP_LEVEL_Y + ARENA_PLAYER_EYE_HEIGHT, facing: 1.2 }
 ];
 
 export const FREE_FOR_ALL_SPAWNS: SpawnPoint[] = RAW_FREE_FOR_ALL_SPAWNS.map(scaleArenaPosition);
@@ -1699,12 +1701,12 @@ export const IRON_JUNCTION_CAPTURE_ZONES = [
 ] as const;
 
 export const DESERT_CITADEL_CAPTURE_ZONES = [
-  { id: "desert-fountain-court", label: "Fountain Court", x: 0, z: scaleArenaValue(18), radius: scaleArenaValue(25), y: DESERT_CITADEL_MAIN_LEVEL_Y },
-  { id: "desert-west-market", label: "West Market", x: scaleArenaValue(-120), z: scaleArenaValue(78), radius: scaleArenaValue(20), y: 0 },
-  { id: "desert-east-market", label: "East Market", x: scaleArenaValue(120), z: scaleArenaValue(78), radius: scaleArenaValue(20), y: 0 },
-  { id: "desert-south-caravan-yard", label: "South Caravan Yard", x: 0, z: scaleArenaValue(133), radius: scaleArenaValue(24), y: 0 },
-  { id: "desert-palm-ruins", label: "Palm Ruins", x: 0, z: scaleArenaValue(-118), radius: scaleArenaValue(24), y: 0 },
-  { id: "desert-citadel-skywalk", label: "Citadel Skywalk", x: 0, z: scaleArenaValue(78), radius: scaleArenaValue(24), y: DESERT_CITADEL_ROOFTOP_LEVEL_Y }
+  { id: "desert-shaded-souk", label: "Shaded Souk", x: 0, z: scaleArenaValue(-112), radius: scaleArenaValue(24), y: 0 },
+  { id: "desert-royal-causeway", label: "Royal Causeway", x: 0, z: 0, radius: scaleArenaValue(24), y: DESERT_CITADEL_MAIN_LEVEL_Y },
+  { id: "desert-dry-cistern", label: "Dry Cistern", x: 0, z: scaleArenaValue(120), radius: scaleArenaValue(24), y: 0 },
+  { id: "desert-west-gate-court", label: "West Gate Court", x: scaleArenaValue(-172), z: scaleArenaValue(80), radius: scaleArenaValue(18), y: 0 },
+  { id: "desert-east-gate-court", label: "East Gate Court", x: scaleArenaValue(172), z: scaleArenaValue(80), radius: scaleArenaValue(18), y: 0 },
+  { id: "desert-crown-rampart", label: "Crown Rampart", x: 0, z: scaleArenaValue(-160), radius: scaleArenaValue(24), y: DESERT_CITADEL_ROOFTOP_LEVEL_Y }
 ] as const;
 
 export const getCaptureZonesForMap = (mapId: ArenaMapId | string | undefined) =>
@@ -1736,9 +1738,9 @@ export const IRON_JUNCTION_SEARCH_RETRIEVE_ITEMS = [
 ] as const;
 
 export const DESERT_CITADEL_SEARCH_RETRIEVE_ITEMS = [
-  { id: "desert-fountain-scroll", label: "Fountain Scroll", x: 0, z: scaleArenaValue(18), y: DESERT_CITADEL_MAIN_LEVEL_Y + 1.4 },
-  { id: "desert-caravan-contract", label: "Caravan Contract", x: 0, z: scaleArenaValue(133), y: 1.4 },
-  { id: "desert-rooftop-seal", label: "Rooftop Seal", x: 0, z: scaleArenaValue(78), y: DESERT_CITADEL_ROOFTOP_LEVEL_Y + 1.4 }
+  { id: "desert-falcon-seal", label: "Falcon Seal", x: scaleArenaValue(-22), z: scaleArenaValue(-112), y: 1.4 },
+  { id: "desert-royal-tablet", label: "Royal Tablet", x: 0, z: scaleArenaValue(18), y: DESERT_CITADEL_MAIN_LEVEL_Y + 1.4 },
+  { id: "desert-cistern-ledger", label: "Cistern Ledger", x: scaleArenaValue(24), z: scaleArenaValue(120), y: 1.4 }
 ] as const;
 
 export const getSearchRetrieveItemsForMap = (mapId: ArenaMapId | string | undefined) =>
@@ -1768,8 +1770,8 @@ export const IRON_JUNCTION_SEARCH_RETRIEVE_DELIVERY_ZONES = {
   red: { id: "red-iron-delivery", label: "Red Assembly Delivery", x: scaleArenaValue(248), z: 0, radius: scaleArenaValue(24), y: 0 }
 } as const;
 export const DESERT_CITADEL_SEARCH_RETRIEVE_DELIVERY_ZONES = {
-  blue: { id: "blue-desert-delivery", label: "Blue Assembly Delivery", x: scaleArenaValue(-235), z: 0, radius: scaleArenaValue(12), y: 0 },
-  red: { id: "red-desert-delivery", label: "Red Assembly Delivery", x: scaleArenaValue(235), z: 0, radius: scaleArenaValue(12), y: 0 }
+  blue: { id: "blue-desert-delivery", label: "Blue Bastion Delivery", x: scaleArenaValue(-228), z: 0, radius: scaleArenaValue(15), y: 0 },
+  red: { id: "red-desert-delivery", label: "Red Bastion Delivery", x: scaleArenaValue(228), z: 0, radius: scaleArenaValue(15), y: 0 }
 } as const;
 
 export const getSearchRetrieveDeliveryZonesForMap = (mapId: ArenaMapId | string | undefined) =>
@@ -1885,8 +1887,8 @@ export const selectFreeForAllSpawn = (
 };
 
 export const TEAM_BASE_ZONES: Record<Team, { minX: number; maxX: number; minZ: number; maxZ: number }> = {
-  blue: { minX: scaleArenaValue(-246), maxX: scaleArenaValue(-194), minZ: scaleArenaValue(-75), maxZ: scaleArenaValue(75) },
-  red: { minX: scaleArenaValue(194), maxX: scaleArenaValue(246), minZ: scaleArenaValue(-75), maxZ: scaleArenaValue(75) }
+  blue: { minX: scaleArenaValue(-250), maxX: scaleArenaValue(-202), minZ: scaleArenaValue(-84), maxZ: scaleArenaValue(84) },
+  red: { minX: scaleArenaValue(202), maxX: scaleArenaValue(250), minZ: scaleArenaValue(-84), maxZ: scaleArenaValue(84) }
 };
 
 export const TEMPLE_RUNOFF_TEAM_BASE_ZONES: typeof TEAM_BASE_ZONES = {
@@ -2033,62 +2035,68 @@ const circleObstacle = (
 });
 
 export const ARENA_OBSTACLES: ArenaObstacle[] = [
-  // Perimeter architecture remains a readable, escape-proof silhouette.
-  rectObstacle("north-cliff-west", -150, -178, 200, 8, false, 0, 11),
-  rectObstacle("north-cliff-east", 150, -178, 200, 8, false, 0, 13),
-  rectObstacle("south-wall-west", -150, 178, 200, 8, false, 0, 12),
-  rectObstacle("south-wall-east", 150, 178, 200, 8, false, 0, 12),
-  rectObstacle("west-city-wall-north", -248, -112, 8, 124, false, 0, 15),
-  rectObstacle("west-city-wall-south", -248, 112, 8, 124, false, 0, 15),
-  rectObstacle("east-city-wall-north", 248, -112, 8, 124, false, 0, 15),
-  rectObstacle("east-city-wall-south", 248, 112, 8, 124, false, 0, 15),
+  // Four edge-touching perimeter pieces close the rebuilt footprint.
+  rectObstacle("citadel-north-wall", 0, -196, 512, 8, false, 0, 14),
+  rectObstacle("citadel-south-wall", 0, 196, 512, 8, false, 0, 14),
+  rectObstacle("citadel-west-wall", -256, 0, 8, 384, false, 0, 16),
+  rectObstacle("citadel-east-wall", 256, 0, 8, 384, false, 0, 16),
 
-  // Assembly courts have a back wall, side returns, and short spawn-safety covers.
-  rectObstacle("blue-base-back", -240, 0, 5, 126, false, 0, 13),
-  rectObstacle("blue-base-north", -232, -74, 24, 5, false, 0, 10),
-  rectObstacle("blue-base-south", -232, 74, 24, 5, false, 0, 10),
-  rectObstacle("red-base-back", 240, 0, 5, 126, false, 0, 13),
-  rectObstacle("red-base-north", 232, -74, 24, 5, false, 0, 10),
-  rectObstacle("red-base-south", 232, 74, 24, 5, false, 0, 10),
+  // Three broad Assembly exits are protected by offset authored baffles.
+  rectObstacle("blue-assembly-north-wall", -228, -90, 48, 6, false, 0, 12),
+  rectObstacle("blue-assembly-south-wall", -228, 90, 48, 6, false, 0, 12),
+  rectObstacle("red-assembly-north-wall", 228, -90, 48, 6, false, 0, 12),
+  rectObstacle("red-assembly-south-wall", 228, 90, 48, 6, false, 0, 12),
+  rectObstacle("blue-screen-north-outer", -198, -80, 8, 32, false, 0, 12),
+  rectObstacle("blue-screen-north-inner", -198, -32, 8, 20, false, 0, 12),
+  rectObstacle("blue-screen-south-inner", -198, 32, 8, 20, false, 0, 12),
+  rectObstacle("blue-screen-south-outer", -198, 80, 8, 32, false, 0, 12),
+  rectObstacle("red-screen-north-outer", 198, -80, 8, 32, false, 0, 12),
+  rectObstacle("red-screen-north-inner", 198, -32, 8, 20, false, 0, 12),
+  rectObstacle("red-screen-south-inner", 198, 32, 8, 20, false, 0, 12),
+  rectObstacle("red-screen-south-outer", 198, 80, 8, 32, false, 0, 12),
+  rectObstacle("blue-baffle-north", -166, -53, 8, 18, false, 0, 9),
+  rectObstacle("blue-baffle-center", -166, 28, 8, 20, false, 0, 9),
+  rectObstacle("blue-baffle-south", -166, 53, 8, 18, false, 0, 9),
+  rectObstacle("red-baffle-north", 166, -53, 8, 18, false, 0, 9),
+  rectObstacle("red-baffle-center", 166, 28, 8, 20, false, 0, 9),
+  rectObstacle("red-baffle-south", 166, 53, 8, 18, false, 0, 9),
 
-  // Mirrored gates frame the three approaches without collapsing them into one choke.
-  rectObstacle("lion-gate-north-pier", -86, -26, 10, 12, false, 0, 17),
-  rectObstacle("lion-gate-south-pier", -86, 26, 10, 12, false, 0, 17),
-  rectObstacle("lion-gate-lintel", -86, 0, 10, 40, false, 14, 18),
-  rectObstacle("sun-gate-north-pier", 86, -26, 10, 12, false, 0, 17),
-  rectObstacle("sun-gate-south-pier", 86, 26, 10, 12, false, 0, 17),
-  rectObstacle("sun-gate-lintel", 86, 0, 10, 40, false, 14, 18),
+  // Raised foundations and their level-specific cover match visual footprints.
+  rectObstacle("royal-causeway-foundation", 0, 0, 236, 64, false, 0, DESERT_CITADEL_MAIN_LEVEL_Y - 1),
+  rectObstacle("royal-parapet-north-west", -94, -30.5, 48, 3, false, DESERT_CITADEL_MAIN_LEVEL_Y, DESERT_CITADEL_MAIN_LEVEL_Y + 3),
+  rectObstacle("royal-parapet-north-center", 0, -30.5, 92, 3, false, DESERT_CITADEL_MAIN_LEVEL_Y, DESERT_CITADEL_MAIN_LEVEL_Y + 3),
+  rectObstacle("royal-parapet-north-east", 94, -30.5, 48, 3, false, DESERT_CITADEL_MAIN_LEVEL_Y, DESERT_CITADEL_MAIN_LEVEL_Y + 3),
+  rectObstacle("royal-parapet-south-west", -94, 30.5, 48, 3, false, DESERT_CITADEL_MAIN_LEVEL_Y, DESERT_CITADEL_MAIN_LEVEL_Y + 3),
+  rectObstacle("royal-parapet-south-center", 0, 30.5, 92, 3, false, DESERT_CITADEL_MAIN_LEVEL_Y, DESERT_CITADEL_MAIN_LEVEL_Y + 3),
+  rectObstacle("royal-parapet-south-east", 94, 30.5, 48, 3, false, DESERT_CITADEL_MAIN_LEVEL_Y, DESERT_CITADEL_MAIN_LEVEL_Y + 3),
+  rectObstacle("royal-cover-west", -42, 0, 14, 12, false, DESERT_CITADEL_MAIN_LEVEL_Y, DESERT_CITADEL_MAIN_LEVEL_Y + 5),
+  rectObstacle("royal-cover-east", 42, 0, 14, 12, false, DESERT_CITADEL_MAIN_LEVEL_Y, DESERT_CITADEL_MAIN_LEVEL_Y + 5),
+  circleObstacle("royal-sundial-ring", 0, 0, 10, false, DESERT_CITADEL_MAIN_LEVEL_Y, DESERT_CITADEL_MAIN_LEVEL_Y + 2),
 
-  // Main citadel terrace and its four stair landings.
-  rectObstacle("court-foundation", 0, 24, 132, 120, false, 0, 9.35),
-  rectObstacle("court-parapet-north-west", -44, -36.5, 44, 3, false, DESERT_CITADEL_MAIN_LEVEL_Y, 13),
-  rectObstacle("court-parapet-north-east", 44, -36.5, 44, 3, false, DESERT_CITADEL_MAIN_LEVEL_Y, 13),
-  rectObstacle("court-parapet-south-west", -44, 86.5, 44, 3, false, DESERT_CITADEL_MAIN_LEVEL_Y, 13),
-  rectObstacle("court-parapet-south-east", 44, 86.5, 44, 3, false, DESERT_CITADEL_MAIN_LEVEL_Y, 13),
-  rectObstacle("court-monument", 0, 28, 10, 12, false, DESERT_CITADEL_MAIN_LEVEL_Y, 17),
-  circleObstacle("blue-fountain-rim", 0, 0, 12, false, DESERT_CITADEL_MAIN_LEVEL_Y, 12.4),
+  rectObstacle("crown-rampart-foundation", 0, -160, 354, 32, false, 0, DESERT_CITADEL_ROOFTOP_LEVEL_Y - 1),
+  rectObstacle("crown-rail-north", 0, -174.5, 354, 3, false, DESERT_CITADEL_ROOFTOP_LEVEL_Y, DESERT_CITADEL_ROOFTOP_LEVEL_Y + 3),
+  rectObstacle("crown-rail-south-west", -120, -145.5, 114, 3, false, DESERT_CITADEL_ROOFTOP_LEVEL_Y, DESERT_CITADEL_ROOFTOP_LEVEL_Y + 3),
+  rectObstacle("crown-rail-south-center", 0, -145.5, 82, 3, false, DESERT_CITADEL_ROOFTOP_LEVEL_Y, DESERT_CITADEL_ROOFTOP_LEVEL_Y + 3),
+  rectObstacle("crown-rail-south-east", 120, -145.5, 114, 3, false, DESERT_CITADEL_ROOFTOP_LEVEL_Y, DESERT_CITADEL_ROOFTOP_LEVEL_Y + 3),
+  rectObstacle("crown-cover-west", -88, -160, 22, 6, false, DESERT_CITADEL_ROOFTOP_LEVEL_Y, DESERT_CITADEL_ROOFTOP_LEVEL_Y + 5),
+  rectObstacle("crown-cover-center", 0, -160, 22, 6, false, DESERT_CITADEL_ROOFTOP_LEVEL_Y, DESERT_CITADEL_ROOFTOP_LEVEL_Y + 5),
+  rectObstacle("crown-cover-east", 88, -160, 22, 6, false, DESERT_CITADEL_ROOFTOP_LEVEL_Y, DESERT_CITADEL_ROOFTOP_LEVEL_Y + 5),
 
-  // Matched market masses create equal-risk west and east combat districts.
-  rectObstacle("west-market-mass-north", -120, 64, 58, 6, false, 0, 23.4),
-  rectObstacle("west-market-mass-south", -120, 92, 58, 6, false, 0, 23.4),
-  rectObstacle("east-market-mass-north", 120, 64, 58, 6, false, 0, 23.4),
-  rectObstacle("east-market-mass-south", 120, 92, 58, 6, false, 0, 23.4),
-  rectObstacle("west-market-roof-rail-north", -120, 61.5, 58, 3, false, DESERT_CITADEL_ROOFTOP_LEVEL_Y, 27),
-  rectObstacle("west-market-roof-rail-south", -120, 94.5, 58, 3, false, DESERT_CITADEL_ROOFTOP_LEVEL_Y, 27),
-  rectObstacle("east-market-roof-rail-north", 120, 61.5, 58, 3, false, DESERT_CITADEL_ROOFTOP_LEVEL_Y, 27),
-  rectObstacle("east-market-roof-rail-south", 120, 94.5, 58, 3, false, DESERT_CITADEL_ROOFTOP_LEVEL_Y, 27),
-  rectObstacle("citadel-skywalk-rail-north", 0, 68, 180, 3, false, DESERT_CITADEL_ROOFTOP_LEVEL_Y, 27),
-  rectObstacle("citadel-skywalk-rail-south", 0, 88, 180, 3, false, DESERT_CITADEL_ROOFTOP_LEVEL_Y, 27),
-
-  // Palm Ruins break the long north sightline into readable duels.
-  rectObstacle("ruins-wall-west", -150, -116, 48, 7, false, 0, 6),
-  rectObstacle("ruins-wall-east", 150, -116, 48, 7, false, 0, 6),
-  rectObstacle("ruins-obelisk", 0, -128, 16, 16, false, 0, 16),
-
-  // Dry caravan-yard cover keeps the lower route readable without a river.
-  rectObstacle("caravan-yard-cover-north-west", -155, 119, 90, 5, false, 0, 5),
-  rectObstacle("caravan-yard-cover-north-center", 0, 119, 80, 5, false, 0, 5),
-  rectObstacle("caravan-yard-cover-north-east", 155, 119, 90, 5, false, 0, 5)
+  // North and south lane cover remains low, mirrored, and deliberately staggered.
+  rectObstacle("souk-stall-west-outer", -145, -126, 34, 8, false, 0, 6),
+  rectObstacle("souk-stall-west-inner", -88, -104, 30, 8, false, 0, 6),
+  rectObstacle("souk-stall-center-west", -30, -130, 24, 8, false, 0, 6),
+  rectObstacle("souk-stall-center-east", 30, -130, 24, 8, false, 0, 6),
+  rectObstacle("souk-stall-east-inner", 88, -104, 30, 8, false, 0, 6),
+  rectObstacle("souk-stall-east-outer", 145, -126, 34, 8, false, 0, 6),
+  rectObstacle("falcon-obelisk", 0, -112, 14, 14, false, 0, 16),
+  rectObstacle("cistern-cover-west-outer", -145, 104, 34, 8, false, 0, 5),
+  rectObstacle("cistern-cover-west-inner", -88, 132, 30, 8, false, 0, 5),
+  rectObstacle("cistern-cover-center-west", -30, 104, 24, 8, false, 0, 5),
+  rectObstacle("cistern-cover-center-east", 30, 104, 24, 8, false, 0, 5),
+  rectObstacle("cistern-cover-east-inner", 88, 132, 30, 8, false, 0, 5),
+  rectObstacle("cistern-cover-east-outer", 145, 104, 34, 8, false, 0, 5),
+  circleObstacle("cistern-well-rim", 0, 120, 12, false, 0, 2.4)
 ];
 
 /** Simplified collision proxies for the Iron Junction props and architecture. */

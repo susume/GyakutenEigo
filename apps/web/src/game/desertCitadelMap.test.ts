@@ -6,12 +6,15 @@ import {
   DESERT_CITADEL_MAIN_LEVEL_Y,
   DESERT_CITADEL_ROOFTOP_LEVEL_Y,
   DESERT_CITADEL_STAIR_FLIGHTS,
+  FREE_FOR_ALL_SPAWNS,
   findBotNavigationPath,
   getArenaBounds,
   getArenaFloorSurfaces,
   getArenaGroundHeightForPlayer,
   getArenaLevelLabel,
   getArenaObstacles,
+  getCaptureZonesForMap,
+  getSearchRetrieveItemsForMap,
   getTeamSpawnsForMap,
   hasLineOfSight,
   resolveAuthoritativeMovement
@@ -41,81 +44,46 @@ const pathLength = (
   return distance;
 };
 
-test("Desert Citadel is a deliberately authored three-lane 40-player arena", () => {
-  assert.deepEqual(DESERT_CITADEL.footprint, { width: 500 * ARENA_SCALE, depth: 360 * ARENA_SCALE });
-  assert.ok(blocks.length >= 150, "architecture and stair risers should define the city before decoration");
-  assert.ok(props.length <= 12, "small decoration must remain deliberately sparse");
-  assert.equal(props.filter((prop) => prop.kind === "arch").length, 0, "decorative arches must not obstruct route reads");
-  assert.ok(props.some((prop) => prop.id === "blue-base-banner") && props.some((prop) => prop.id === "red-base-banner"), "team orientation must survive the simplification");
-  const rawProps = props.map((prop) => ({ ...prop, x: prop.x / ARENA_SCALE, z: prop.z / ARENA_SCALE }));
-  assert.equal(
-    rawProps.some((prop) => Math.abs(prop.z) <= 15 && (prop.x >= -110 && prop.x <= -62 || prop.x >= 62 && prop.x <= 110)),
-    false,
-    "both team stair mouths must remain visually clear"
-  );
-  const removedClutterIds = [
-    "blue-objective-pavilion",
-    "red-objective-pavilion",
-    "blue-base-screen-north",
-    "blue-base-screen-south",
-    "red-base-screen-north",
-    "red-base-screen-south",
-    "blue-base-spawn-cover-north",
-    "blue-base-spawn-cover-south",
-    "red-base-spawn-cover-north",
-    "red-base-spawn-cover-south",
-    "court-broken-wall-west",
-    "court-broken-wall-east",
-    "court-planter",
-    "west-market-roof-screen",
-    "east-market-roof-screen",
-    "ruins-foundation-west",
-    "ruins-foundation-east",
-    "ruins-arch-center-west",
-    "ruins-arch-center-east",
-    "caravan-yard-cover-south-west",
-    "caravan-yard-cover-south-center",
-    "caravan-yard-cover-south-east"
-  ];
-  assert.equal(removedClutterIds.some((id) => blocks.some((block) => block.id === id)), false, "non-purpose walls must stay out of the player routes");
-  assert.ok(props.filter((prop) => prop.kind === "crate").length <= 1);
-  assert.ok(cylinders.length <= 10);
-  assert.deepEqual(floorMarks, [], "printed floor directions add visual noise");
-  assert.deepEqual(signs, [], "architecture should replace floating map labels");
+test("Split Crown is a purpose-built three-lane 40-player rebuild", () => {
+  assert.deepEqual(DESERT_CITADEL.footprint, { width: 520 * ARENA_SCALE, depth: 400 * ARENA_SCALE });
+  assert.ok(blocks.length >= 220, "authored architecture and exact stair risers should define the rebuilt fortress");
   assert.equal(DESERT_CITADEL.routes.filter((route) => route.includes("Lane")).length, 3);
-  assert.equal(DESERT_CITADEL_STAIR_FLIGHTS.length, 6);
+  assert.equal(DESERT_CITADEL_STAIR_FLIGHTS.length, 10);
   assert.ok(DESERT_CITADEL_STAIR_FLIGHTS.every((flight) => (flight.endY - flight.startY) / flight.steps <= 0.75));
-  assert.equal(blocks.some((block) => block.id.startsWith("canal-")), false, "the lower route should not render a river");
-  assert.equal(cylinders.some((cylinder) => cylinder.id.startsWith("canal-")), false, "the lower route should not render river pools");
-  assert.ok(blocks.some((block) => block.id === "caravan-yard-cover-north-center"), "the dry lower route still needs readable cover");
+  assert.deepEqual(floorMarks, []);
+  assert.deepEqual(signs, []);
+  assert.equal(props.length, 12);
+  assert.equal(props.some((prop) => prop.kind === "arch"), false);
+  assert.ok(props.some((prop) => prop.id === "blue-bastion-banner"));
+  assert.ok(props.some((prop) => prop.id === "red-bastion-banner"));
+  assert.deepEqual(
+    ["court-floor", "citadel-skywalk", "west-market-roof", "east-market-roof"].filter((id) => blocks.some((block) => block.id === id)),
+    [],
+    "the retired Fountain Court and market-roof layout must not survive the rebuild"
+  );
 });
 
-test("Desert Citadel geometry sanity has complete manifest traceability and clean joins", () => {
+test("geometry sanity enforces the Phase 3 manifest, bounds, support, and clean joins", () => {
   const expectedStructureIds = new Set(DESERT_CITADEL_PHASE3_MANIFEST.structureBlockIds);
   const expectedStairIds = new Set(
-    DESERT_CITADEL_PHASE3_MANIFEST.stairFlightIds.flatMap((flightId) =>
-      DESERT_CITADEL_STAIR_FLIGHTS.find((flight) => flight.id === flightId)
-        ? blocks.filter((block) => block.id.startsWith(`${flightId}-step-`)).map((block) => block.id)
-        : []
-    )
+    DESERT_CITADEL_PHASE3_MANIFEST.stairFlightIds.flatMap((flightId) => {
+      const flight = DESERT_CITADEL_STAIR_FLIGHTS.find((candidate) => candidate.id === flightId);
+      return flight ? Array.from({ length: flight.steps }, (_, index) => `${flightId}-step-${index + 1}`) : [];
+    })
   );
   const expectedBlockIds = new Set([...expectedStructureIds, ...expectedStairIds]);
-  assert.equal(blocks.length, expectedBlockIds.size, "every visible block must be in the Phase 3 manifest");
-  assert.deepEqual(
-    blocks.map((block) => block.id).filter((id) => !expectedBlockIds.has(id)),
-    [],
-    "no unplanned block may enter the map"
-  );
-  for (const id of expectedBlockIds) assert.ok(blocks.some((block) => block.id === id), `${id} is missing from the authored map`);
+  assert.equal(blocks.length, expectedBlockIds.size);
+  assert.deepEqual(blocks.map((block) => block.id).filter((id) => !expectedBlockIds.has(id)), []);
+  for (const id of expectedBlockIds) assert.ok(blocks.some((block) => block.id === id), `${id} is missing`);
   assert.deepEqual([...new Set(props.map((prop) => prop.id))].sort(), [...DESERT_CITADEL_PHASE3_MANIFEST.propIds].sort());
   assert.deepEqual([...new Set(cylinders.map((cylinder) => cylinder.id))].sort(), [...DESERT_CITADEL_PHASE3_MANIFEST.cylinderIds].sort());
 
   const bounds = getArenaBounds(MAP_ID);
   for (const block of blocks) {
-    assert.ok([block.x, block.z, block.w, block.d, block.h, block.y ?? 0].every(Number.isFinite), `${block.id} has non-finite geometry`);
+    assert.ok([block.x, block.z, block.w, block.d, block.h, block.y ?? 0].every(Number.isFinite), `${block.id} has invalid geometry`);
     assert.ok(block.w > 0 && block.d > 0 && block.h > 0, `${block.id} has non-positive dimensions`);
-    assert.ok(block.x - block.w / 2 >= -bounds.limitX - 1.3 && block.x + block.w / 2 <= bounds.limitX + 1.3, `${block.id} exceeds X bounds`);
-    assert.ok(block.z - block.d / 2 >= -bounds.limitZ - 1.3 && block.z + block.d / 2 <= bounds.limitZ + 1.3, `${block.id} exceeds Z bounds`);
+    assert.ok(block.x - block.w / 2 >= -bounds.limitX - 0.01 && block.x + block.w / 2 <= bounds.limitX + 0.01, `${block.id} exceeds X bounds`);
+    assert.ok(block.z - block.d / 2 >= -bounds.limitZ - 0.01 && block.z + block.d / 2 <= bounds.limitZ + 0.01, `${block.id} exceeds Z bounds`);
   }
 
   const colliders = blocks.filter((block) => block.collides);
@@ -132,48 +100,40 @@ test("Desert Citadel geometry sanity has complete manifest traceability and clea
     }
   }
 
-  const authoredElevatedObjects = blocks.filter((block) => (block.y ?? 0) > 0 && block.style !== "stair");
-  assert.deepEqual(
-    authoredElevatedObjects.map((block) => block.id).sort(),
-    [
-      "citadel-skywalk", "citadel-skywalk-rail-north", "citadel-skywalk-rail-south", "court-floor", "court-foundation",
-      "court-monument", "court-parapet-north-east", "court-parapet-north-west", "court-parapet-south-east",
-      "court-parapet-south-west", "east-market-mass-north", "east-market-mass-south",
-      "east-market-roof", "east-market-roof-rail-north", "east-market-roof-rail-south", "lion-gate-lintel",
-      "ruins-obelisk-crown", "sun-gate-lintel", "west-market-mass-north", "west-market-mass-south", "west-market-roof",
-      "west-market-roof-rail-north", "west-market-roof-rail-south"
-    ].sort(),
-    "elevated geometry must stay within the authored support manifest"
-  );
+  const blockById = new Map(blocks.map((block) => [block.id, block]));
+  const top = (id: string) => {
+    const block = blockById.get(id)!;
+    return (block.y ?? block.h / 2) + block.h / 2;
+  };
+  const bottom = (id: string) => {
+    const block = blockById.get(id)!;
+    return (block.y ?? block.h / 2) - block.h / 2;
+  };
+  assert.ok(Math.abs(top("royal-causeway-foundation") - bottom("royal-causeway-floor")) < 0.001);
+  assert.ok(Math.abs(top("crown-rampart-foundation") - bottom("crown-rampart-floor")) < 0.001);
+  assert.ok(Math.abs(top("falcon-obelisk") - bottom("falcon-obelisk-crown")) < 0.001);
+  for (const prop of props.filter((candidate) => Number(candidate.y ?? 0) > 0)) {
+    assert.equal(prop.y, DESERT_CITADEL_ROOFTOP_LEVEL_Y, `${prop.id} must sit on the Crown Rampart`);
+    assert.deepEqual(getArenaFloorSurfaces(MAP_ID, prop.x, prop.z), [DESERT_CITADEL_ROOFTOP_LEVEL_Y]);
+  }
 });
 
-test("Desert Citadel exposes lower, main, and upper surfaces without accidental stacked floors", () => {
-  assert.deepEqual(getArenaFloorSurfaces(MAP_ID, -150 * ARENA_SCALE, -116 * ARENA_SCALE), [0]);
-  assert.deepEqual(getArenaFloorSurfaces(MAP_ID, 0, 24 * ARENA_SCALE), [DESERT_CITADEL_MAIN_LEVEL_Y]);
-  assert.deepEqual(getArenaFloorSurfaces(MAP_ID, -120 * ARENA_SCALE, 78 * ARENA_SCALE), [DESERT_CITADEL_ROOFTOP_LEVEL_Y]);
-  assert.deepEqual(getArenaFloorSurfaces(MAP_ID, 120 * ARENA_SCALE, 78 * ARENA_SCALE), [DESERT_CITADEL_ROOFTOP_LEVEL_Y]);
-  assert.deepEqual(getArenaFloorSurfaces(MAP_ID, 0, 78 * ARENA_SCALE), [DESERT_CITADEL_ROOFTOP_LEVEL_Y]);
+test("lower, main, and upper surfaces have no accidental elevation recovery", () => {
+  assert.deepEqual(getArenaFloorSurfaces(MAP_ID, 20 * ARENA_SCALE, -112 * ARENA_SCALE), [0]);
+  assert.deepEqual(getArenaFloorSurfaces(MAP_ID, 0, 18 * ARENA_SCALE), [DESERT_CITADEL_MAIN_LEVEL_Y]);
+  assert.deepEqual(getArenaFloorSurfaces(MAP_ID, 30 * ARENA_SCALE, -156 * ARENA_SCALE), [DESERT_CITADEL_ROOFTOP_LEVEL_Y]);
   assert.equal(getArenaLevelLabel(MAP_ID, 0), "lower");
   assert.equal(getArenaLevelLabel(MAP_ID, DESERT_CITADEL_MAIN_LEVEL_Y), "main");
   assert.equal(getArenaLevelLabel(MAP_ID, DESERT_CITADEL_ROOFTOP_LEVEL_Y), "upper");
-  assert.equal(getArenaGroundHeightForPlayer(MAP_ID, 0, 24 * ARENA_SCALE, ARENA_PLAYER_EYE_HEIGHT), 0);
+  assert.equal(getArenaGroundHeightForPlayer(MAP_ID, 0, 18 * ARENA_SCALE, ARENA_PLAYER_EYE_HEIGHT), 0);
+  assert.equal(getArenaGroundHeightForPlayer(MAP_ID, 30 * ARENA_SCALE, -156 * ARENA_SCALE, ARENA_PLAYER_EYE_HEIGHT), 0);
   assert.equal(
-    getArenaGroundHeightForPlayer(MAP_ID, -120 * ARENA_SCALE, 78 * ARENA_SCALE, ARENA_PLAYER_EYE_HEIGHT),
-    0,
-    "a lower player under a market roof must stay on the lower floor"
-  );
-  assert.equal(
-    getArenaGroundHeightForPlayer(MAP_ID, 0, 78 * ARENA_SCALE, ARENA_PLAYER_EYE_HEIGHT),
-    0,
-    "a lower player under the Skywalk must not be lifted to the roof"
-  );
-  assert.equal(
-    getArenaGroundHeightForPlayer(MAP_ID, 0, 24 * ARENA_SCALE, DESERT_CITADEL_MAIN_LEVEL_Y + ARENA_PLAYER_EYE_HEIGHT),
+    getArenaGroundHeightForPlayer(MAP_ID, 0, 18 * ARENA_SCALE, DESERT_CITADEL_MAIN_LEVEL_Y + ARENA_PLAYER_EYE_HEIGHT),
     DESERT_CITADEL_MAIN_LEVEL_Y
   );
 });
 
-test("every authored Desert Citadel stair flight climbs continuously on the shared floor resolver", () => {
+test("all ten stair flights climb continuously within the controller step limit", () => {
   for (const flight of DESERT_CITADEL_STAIR_FLIGHTS) {
     let previous = flight.startY;
     for (let index = 0; index <= flight.steps; index += 1) {
@@ -190,21 +150,22 @@ test("every authored Desert Citadel stair flight climbs continuously on the shar
         z * ARENA_SCALE,
         previous + ARENA_PLAYER_EYE_HEIGHT,
         ARENA_PLAYER_EYE_HEIGHT,
-        2.5
+        1.4
       );
-      assert.ok(next >= previous - 0.001, `${flight.id} dropped at step ${index}`);
+      assert.ok(next >= previous - 0.001, `${flight.id} drops at step ${index}`);
+      assert.ok(next - previous <= 0.75 + 0.001, `${flight.id} exceeds the step limit`);
       previous = next;
     }
-    assert.ok(Math.abs(previous - flight.endY) < 0.01, `${flight.id} did not reach its authored landing`);
+    assert.ok(Math.abs(previous - flight.endY) < 0.01, `${flight.id} misses its landing`);
   }
 });
 
-test("solid foundations reject invalid level shortcuts while base exits stay open", () => {
+test("solid foundations reject shortcuts while all three spawn exits remain usable", () => {
   const obstacles = getArenaObstacles(MAP_ID);
-  const foundationStart = { ...raw(-76, 0), facing: 0 };
+  const foundationStart = { ...raw(0, 40), facing: 0 };
   const foundation = resolveAuthoritativeMovement({
     current: foundationStart,
-    requested: { ...foundationStart, x: -64 * ARENA_SCALE },
+    requested: { ...foundationStart, z: 30 * ARENA_SCALE },
     elapsedMs: 1000,
     maxSpeed: 20,
     obstacles,
@@ -212,25 +173,27 @@ test("solid foundations reject invalid level shortcuts while base exits stay ope
     mapId: MAP_ID
   });
   assert.equal(foundation.blocked, true);
-  const baseExitStart = { ...raw(205, 0), facing: Math.PI / 2 };
-  const baseExit = resolveAuthoritativeMovement({
-    current: baseExitStart,
-    requested: { ...baseExitStart, x: 188 * ARENA_SCALE },
-    elapsedMs: 1000,
-    maxSpeed: 20,
-    obstacles,
-    groundY: 0,
-    mapId: MAP_ID
-  });
-  assert.notEqual(baseExit.blocked, true);
+
+  for (const z of [-53, 0, 53]) {
+    const start = { ...raw(-212, z), facing: -Math.PI / 2 };
+    const firstMove = resolveAuthoritativeMovement({
+      current: start,
+      requested: { ...start, x: -188 * ARENA_SCALE },
+      elapsedMs: 2000,
+      maxSpeed: 20,
+      obstacles,
+      groundY: 0,
+      mapId: MAP_ID
+    });
+    assert.notEqual(firstMove.blocked, true, `Blue exit ${z} is blocked at the spawn screen`);
+  }
 });
 
-test("visual and authoritative Desert Citadel colliders share the same footprints", () => {
+test("visual and authoritative collider footprints are identical", () => {
   const obstacles = new Map(getArenaObstacles(MAP_ID).map((obstacle) => [obstacle.id, obstacle]));
   for (const block of blocks.filter((candidate) => candidate.collides)) {
-    assert.equal(block.rotationY ?? 0, 0, `${block.id} has a rotated client-only footprint`);
     const obstacle = obstacles.get(block.id);
-    assert.ok(obstacle && obstacle.kind === "rect", `${block.id} is missing an authoritative rectangle`);
+    assert.ok(obstacle && obstacle.kind === "rect", `${block.id} lacks an authoritative rectangle`);
     if (!obstacle || obstacle.kind !== "rect") continue;
     assert.ok(Math.abs(obstacle.x - block.x) < 0.011, `${block.id} x mismatch`);
     assert.ok(Math.abs(obstacle.z - block.z) < 0.011, `${block.id} z mismatch`);
@@ -239,23 +202,28 @@ test("visual and authoritative Desert Citadel colliders share the same footprint
   }
   for (const cylinder of cylinders.filter((candidate) => candidate.collides)) {
     const obstacle = obstacles.get(cylinder.id);
-    assert.ok(obstacle && obstacle.kind === "circle", `${cylinder.id} is missing an authoritative circle`);
+    assert.ok(obstacle && obstacle.kind === "circle", `${cylinder.id} lacks an authoritative circle`);
     if (!obstacle || obstacle.kind !== "circle") continue;
-    assert.ok(Math.abs(obstacle.x - cylinder.x) < 0.011, `${cylinder.id} x mismatch`);
-    assert.ok(Math.abs(obstacle.z - cylinder.z) < 0.011, `${cylinder.id} z mismatch`);
-    assert.ok(Math.abs(obstacle.radius - cylinder.radius) < 0.011, `${cylinder.id} radius mismatch`);
+    assert.ok(Math.abs(obstacle.x - cylinder.x) < 0.011);
+    assert.ok(Math.abs(obstacle.z - cylinder.z) < 0.011);
+    assert.ok(Math.abs(obstacle.radius - cylinder.radius) < 0.011);
   }
 });
 
-test("Desert Citadel provides 20 clear spawns per team with protected first frames", () => {
+test("twenty-player spawn waves are clear, protected, and evenly spaced", () => {
   const spawns = getTeamSpawnsForMap(MAP_ID);
   const obstacles = getArenaObstacles(MAP_ID);
   assert.equal(spawns.blue.length, 20);
   assert.equal(spawns.red.length, 20);
-  assert.equal(new Set(spawns.blue.map((spawn) => `${spawn.x}:${spawn.z}`)).size, 20);
-  assert.equal(new Set(spawns.red.map((spawn) => `${spawn.x}:${spawn.z}`)).size, 20);
+  for (const team of [spawns.blue, spawns.red]) {
+    assert.equal(new Set(team.map((spawn) => `${spawn.x}:${spawn.z}`)).size, 20);
+    for (let first = 0; first < team.length; first += 1) {
+      for (let second = first + 1; second < team.length; second += 1) {
+        assert.ok(Math.hypot(team[first].x - team[second].x, team[first].z - team[second].z) >= 5.5, "spawn wave is too tightly packed");
+      }
+    }
+  }
   for (const spawn of [...spawns.blue, ...spawns.red]) {
-    assert.equal(spawn.y, ARENA_PLAYER_EYE_HEIGHT);
     const overlaps = obstacles.filter((obstacle) => {
       if ((obstacle.minY ?? -Infinity) > 0.1 || (obstacle.maxY ?? Infinity) < 0) return false;
       if (obstacle.kind === "circle") return Math.hypot(spawn.x - obstacle.x, spawn.z - obstacle.z) <= obstacle.radius + 0.45;
@@ -273,68 +241,84 @@ test("Desert Citadel provides 20 clear spawns per team with protected first fram
   }
 });
 
-test("bots can reach all three lanes, both market approaches, and the shared roof route", () => {
+test("FFA spawns and redistributed objectives start on their authored levels", () => {
+  assert.equal(FREE_FOR_ALL_SPAWNS.length, 60);
   const obstacles = getArenaObstacles(MAP_ID);
-  const start = getTeamSpawnsForMap(MAP_ID).blue[0];
+  for (const spawn of FREE_FOR_ALL_SPAWNS) {
+    const requested = { ...spawn, x: spawn.x + 0.05, z: spawn.z + 0.05 };
+    const movement = resolveAuthoritativeMovement({ current: spawn, requested, elapsedMs: 100, maxSpeed: 1, obstacles, mapId: MAP_ID });
+    assert.notEqual(movement.blocked, true, `${spawn.id} starts blocked`);
+  }
+  for (const objective of [...getCaptureZonesForMap(MAP_ID), ...getSearchRetrieveItemsForMap(MAP_ID)]) {
+    const surfaces = getArenaFloorSurfaces(MAP_ID, objective.x, objective.z);
+    const expectedGround = "radius" in objective ? objective.y : Number(objective.y) - 1.4;
+    assert.ok(surfaces.some((surface) => Math.abs(surface - expectedGround) < 0.01), `${objective.id} is not on an authored floor`);
+  }
+});
+
+test("bots can reach all lanes, gate courts, and the four-entry Crown Rampart", () => {
+  const obstacles = getArenaObstacles(MAP_ID);
+  const start = getTeamSpawnsForMap(MAP_ID).blue[10];
   const goals = [
-    ["north lane", raw(0, -118)],
-    ["center fountain", raw(0, 18, DESERT_CITADEL_MAIN_LEVEL_Y)],
-    ["south caravan yard", raw(0, 133)],
-    ["west market approach", raw(-160, 78)],
-    ["east market approach", raw(160, 78)],
-    ["citadel skywalk", raw(0, 78, DESERT_CITADEL_ROOFTOP_LEVEL_Y)]
+    ["Shaded Souk", raw(20, -112)],
+    ["Royal Causeway", raw(0, 18, DESERT_CITADEL_MAIN_LEVEL_Y)],
+    ["Dry Cistern", raw(24, 120)],
+    ["West Gate Court", raw(-172, 80)],
+    ["East Gate Court", raw(172, 80)],
+    ["Crown Rampart", raw(30, -156, DESERT_CITADEL_ROOFTOP_LEVEL_Y)]
   ] as const;
   for (const [label, goal] of goals) {
     const path = findBotNavigationPath({ from: start, to: goal, obstacles, mapId: MAP_ID });
-    assert.ok(path.length > 0, `${label} should have a navigation path`);
-    assert.ok(Math.abs(Number(path.at(-1)?.y) - goal.y) < 0.1, `${label} should finish on the requested level`);
+    assert.ok(path.length > 0, `${label} has no bot path`);
+    assert.ok(Math.abs(Number(path.at(-1)?.y) - goal.y) < 0.1, `${label} ends on the wrong level`);
   }
-  const roofCrossing = findBotNavigationPath({
-    from: raw(-120, 78, DESERT_CITADEL_ROOFTOP_LEVEL_Y),
-    to: raw(120, 78, DESERT_CITADEL_ROOFTOP_LEVEL_Y),
+  const crossing = findBotNavigationPath({
+    from: raw(-150, -156, DESERT_CITADEL_ROOFTOP_LEVEL_Y),
+    to: raw(150, -156, DESERT_CITADEL_ROOFTOP_LEVEL_Y),
     obstacles,
     mapId: MAP_ID
   });
-  assert.ok(roofCrossing.length > 0, "the upper route should rotate between mirrored roofs");
+  assert.ok(crossing.length > 0, "Crown Rampart cannot rotate end to end");
 });
 
-test("lane travel times are symmetric enough for 20v20 opening flow", () => {
+test("mirrored opening routes stay within the 20v20 timing and fairness envelope", () => {
   const obstacles = getArenaObstacles(MAP_ID);
   const spawns = getTeamSpawnsForMap(MAP_ID);
-  const laneGoals = [raw(0, -118), raw(0, 18, DESERT_CITADEL_MAIN_LEVEL_Y), raw(0, 133)];
-  const routeLengths = (team: "blue" | "red") => laneGoals.map((goal) => {
-    const path = findBotNavigationPath({ from: spawns[team][0], to: goal, obstacles, mapId: MAP_ID });
-    assert.ok(path.length > 0, `${team} could not enter a primary lane`);
-    return pathLength(spawns[team][0], path);
+  const goals = [raw(20, -112), raw(0, 18, DESERT_CITADEL_MAIN_LEVEL_Y), raw(0, 150)];
+  const starts = { blue: spawns.blue[10], red: spawns.red[10] };
+  const distances = (team: "blue" | "red") => goals.map((goal) => {
+    const path = findBotNavigationPath({ from: starts[team], to: goal, obstacles, mapId: MAP_ID });
+    assert.ok(path.length > 0, `${team} cannot enter a primary lane`);
+    return pathLength(starts[team], path);
   });
-  const blue = routeLengths("blue");
-  const red = routeLengths("red");
+  const blue = distances("blue");
+  const red = distances("red");
   blue.forEach((distance, index) => {
     const average = (distance + red[index]) / 2;
-    assert.ok(Math.abs(distance - red[index]) / average < 0.15, `lane ${index} is too asymmetric`);
-    assert.ok(distance / 14.8 > 7 && distance / 14.8 < 18, `blue lane ${index} is outside opening timing`);
-    assert.ok(red[index] / 14.8 > 7 && red[index] / 14.8 < 18, `red lane ${index} is outside opening timing`);
+    assert.ok(Math.abs(distance - red[index]) / average < 0.15, `lane ${index} is more than 15% asymmetric`);
+    assert.ok(distance / 14.8 > 7 && distance / 14.8 < 18, `Blue lane ${index} timing is outside 7–18 seconds`);
+    assert.ok(red[index] / 14.8 > 7 && red[index] / 14.8 < 18, `Red lane ${index} timing is outside 7–18 seconds`);
   });
-  const westApproach = raw(-160, 78);
-  const eastApproach = raw(160, 78);
-  const blueToEast = findBotNavigationPath({ from: spawns.blue[0], to: eastApproach, obstacles, mapId: MAP_ID });
-  const redToWest = findBotNavigationPath({ from: spawns.red[0], to: westApproach, obstacles, mapId: MAP_ID });
-  const mirroredAverage = (pathLength(spawns.blue[0], blueToEast) + pathLength(spawns.red[0], redToWest)) / 2;
-  assert.ok(Math.abs(pathLength(spawns.blue[0], blueToEast) - pathLength(spawns.red[0], redToWest)) / mirroredAverage < 0.15);
 });
 
-test("opening roster can distribute 40 players across three primary lanes", () => {
+test("forty opening players can split 6/7/5/2 per team across four fronts", () => {
   const obstacles = getArenaObstacles(MAP_ID);
   const spawns = getTeamSpawnsForMap(MAP_ID);
-  const lanes = [raw(0, -118), raw(0, 18, DESERT_CITADEL_MAIN_LEVEL_Y), raw(0, 133)];
-  const counts = [0, 0, 0];
+  const goals = [
+    raw(20, -112),
+    raw(0, 18, DESERT_CITADEL_MAIN_LEVEL_Y),
+    raw(0, 150),
+    raw(30, -156, DESERT_CITADEL_ROOFTOP_LEVEL_Y)
+  ];
+  const assignments = [0, 0, 0, 0, 0, 0, 1, 1, 1, 1, 1, 1, 1, 2, 2, 2, 2, 2, 3, 3];
+  const counts = [0, 0, 0, 0];
   for (const team of ["blue", "red"] as const) {
     spawns[team].forEach((spawn, index) => {
-      const lane = index % lanes.length;
-      counts[lane] += 1;
-      const path = findBotNavigationPath({ from: spawn, to: lanes[lane], obstacles, mapId: MAP_ID });
-      assert.ok(path.length > 0, `${team} player ${index + 1} could not enter lane ${lane}`);
+      const front = assignments[index];
+      counts[front] += 1;
+      const path = findBotNavigationPath({ from: spawn, to: goals[front], obstacles, mapId: MAP_ID });
+      assert.ok(path.length > 0, `${team} player ${index + 1} cannot reach front ${front}`);
     });
   }
-  assert.deepEqual(counts, [14, 14, 12]);
+  assert.deepEqual(counts, [12, 14, 10, 4]);
 });

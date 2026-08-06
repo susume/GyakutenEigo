@@ -30,24 +30,22 @@ const scaleCylinder = <T extends { x: number; z: number; radius: number }>(item:
 export const DESERT_CITADEL: ArenaMapDefinition = {
   title: "Desert Citadel",
   id: "desert_citadel",
-  description: "A fortified desert trade city split by a fountain citadel, a palm-lined north road, and a dry caravan yard below the market roofs.",
-  footprint: { width: scaleArenaValue(500), depth: scaleArenaValue(360) },
+  description: "A siege-broken desert fortress fought across the Shaded Souk, raised Royal Causeway, Dry Cistern, and the exposed Crown Rampart.",
+  footprint: { width: scaleArenaValue(520), depth: scaleArenaValue(400) },
   districts: [
-    "West Assembly Court — Blue spawn and Lion Gate",
-    "East Assembly Court — Red spawn and Sun Gate",
-    "Palm Ruins — north long-range lane",
-    "Fountain Court — raised main battle space",
-    "West Market — bazaar-side combat district",
-    "East Market — caravan-side combat district",
-    "South Caravan Yard — lower rotation lane",
-    "Citadel Skywalk — shared upper counter-route"
+    "West Assembly Bastion — Blue spawn",
+    "East Assembly Bastion — Red spawn",
+    "Shaded Souk — northern lower combat",
+    "Royal Causeway — raised central contest",
+    "Dry Cistern — southern lower flank",
+    "Crown Rampart — northern upper route"
   ],
   routes: [
-    "North Lane — palm ruins and obelisk cover",
-    "Center Lane — gates, fountain court, and terrace stairs",
-    "South Lane — markets, caravan yard, and low cover",
-    "Rotations — west/east main stairs plus the open south yard",
-    "Upper Route — mirrored market stairs and the Citadel Skywalk"
+    "North Lane — Shaded Souk and Falcon Obelisk",
+    "Center Lane — six-way Royal Causeway",
+    "South Lane — Dry Cistern and well cover",
+    "Rotations — outer alleys and four Causeway side stairs",
+    "Upper Route — four-entry Crown Rampart"
   ],
   palette: {
     sky: "#8fc9df",
@@ -92,122 +90,129 @@ const makeStairFlight = (flight: (typeof DESERT_CITADEL_STAIR_FLIGHTS)[number], 
     };
   });
 
-// Navigation is taught by repeated architecture, color, and silhouette rather than floating labels.
+// Navigation is taught by silhouette, elevation, cloth color, and landmarks.
 export const floorMarks: CitadelFloorMark[] = [];
 
 const rawBlocks: CitadelBlock[] = [
-  // Perimeter walls keep the skyline memorable and make all escapes deterministic.
-  { id: "north-cliff-west", x: -150, z: -178, w: 200, d: 8, h: 11, color: darkStone, collides: true, style: "ruin" },
-  { id: "north-cliff-east", x: 150, z: -178, w: 200, d: 8, h: 13, color: darkStone, collides: true, style: "ruin" },
-  { id: "south-wall-west", x: -150, z: 178, w: 200, d: 8, h: 12, color: darkStone, collides: true, style: "wall" },
-  { id: "south-wall-east", x: 150, z: 178, w: 200, d: 8, h: 12, color: darkStone, collides: true, style: "wall" },
-  { id: "west-city-wall-north", x: -248, z: -112, w: 8, d: 124, h: 15, color: darkStone, collides: true, style: "wall" },
-  { id: "west-city-wall-south", x: -248, z: 112, w: 8, d: 124, h: 15, color: darkStone, collides: true, style: "wall" },
-  { id: "east-city-wall-north", x: 248, z: -112, w: 8, d: 124, h: 15, color: darkStone, collides: true, style: "wall" },
-  { id: "east-city-wall-south", x: 248, z: 112, w: 8, d: 124, h: 15, color: darkStone, collides: true, style: "wall" },
+  // Edge-touching shell: no corner overlap and no boundary escape.
+  { id: "citadel-north-wall", x: 0, z: -196, w: 512, d: 8, h: 14, color: darkStone, collides: true, style: "wall" },
+  { id: "citadel-south-wall", x: 0, z: 196, w: 512, d: 8, h: 14, color: darkStone, collides: true, style: "wall" },
+  { id: "citadel-west-wall", x: -256, z: 0, w: 8, d: 384, h: 16, color: darkStone, collides: true, style: "wall" },
+  { id: "citadel-east-wall", x: 256, z: 0, w: 8, d: 384, h: 16, color: darkStone, collides: true, style: "wall" },
 
-  // Lower plane paving and the raised Fountain Court.
-  { id: "north-lane-paving", x: 0, z: -108, w: 444, d: 58, h: 0.3, y: -0.15, color: warmStone, material: "stone", style: "bridge" },
-  { id: "south-lane-paving", x: 0, z: 126, w: 444, d: 56, h: 0.3, y: -0.15, color: goldStone, material: "stone", style: "bridge" },
-  { id: "court-floor", x: 0, z: 24, w: 132, d: 120, h: 1, y: mainY - 0.5, color: paleStone, material: "stone", style: "bridge" },
-  { id: "court-foundation", x: 0, z: 24, w: 132, d: 120, h: 9.35, y: 4.675, color: darkStone, collides: true, style: "wall" },
+  // Lower, main, and upper authored surfaces.
+  { id: "blue-assembly-paving", x: -226, z: 0, w: 52, d: 174, h: 0.3, y: -0.15, color: warmStone, material: "stone", style: "bridge" },
+  { id: "red-assembly-paving", x: 226, z: 0, w: 52, d: 174, h: 0.3, y: -0.15, color: goldStone, material: "stone", style: "bridge" },
+  { id: "shaded-souk-paving", x: 0, z: -118, w: 392, d: 72, h: 0.3, y: -0.15, color: warmStone, material: "stone", style: "bridge" },
+  { id: "dry-cistern-paving", x: 0, z: 118, w: 392, d: 72, h: 0.3, y: -0.15, color: goldStone, material: "stone", style: "bridge" },
+  { id: "royal-causeway-floor", x: 0, z: 0, w: 236, d: 64, h: 1, y: mainY - 0.5, color: paleStone, material: "stone", style: "bridge" },
+  { id: "royal-causeway-foundation", x: 0, z: 0, w: 236, d: 64, h: mainY - 1, y: (mainY - 1) / 2, color: darkStone, collides: true, style: "wall" },
+  { id: "crown-rampart-floor", x: 0, z: -160, w: 354, d: 32, h: 1, y: roofY - 0.5, color: paleStone, material: "stone", style: "bridge" },
+  { id: "crown-rampart-foundation", x: 0, z: -160, w: 354, d: 32, h: roofY - 1, y: (roofY - 1) / 2, color: darkStone, collides: true, style: "wall" },
 
-  // Four wide main-level connectors. The gate blocks frame the approach; the stair mouths stay open.
-  ...DESERT_CITADEL_STAIR_FLIGHTS.slice(0, 4).flatMap((flight) => makeStairFlight(flight, paleStone)),
+  // Twenty-player Assembly Bastions with three independently baffled exits.
+  { id: "blue-assembly-north-wall", x: -228, z: -90, w: 48, d: 6, h: 12, color: warmStone, collides: true, style: "wall" },
+  { id: "blue-assembly-south-wall", x: -228, z: 90, w: 48, d: 6, h: 12, color: warmStone, collides: true, style: "wall" },
+  { id: "red-assembly-north-wall", x: 228, z: -90, w: 48, d: 6, h: 12, color: goldStone, collides: true, style: "wall" },
+  { id: "red-assembly-south-wall", x: 228, z: 90, w: 48, d: 6, h: 12, color: goldStone, collides: true, style: "wall" },
+  { id: "blue-screen-north-outer", x: -198, z: -80, w: 8, d: 32, h: 12, color: darkStone, collides: true, style: "wall" },
+  { id: "blue-screen-north-inner", x: -198, z: -32, w: 8, d: 20, h: 12, color: darkStone, collides: true, style: "wall" },
+  { id: "blue-screen-south-inner", x: -198, z: 32, w: 8, d: 20, h: 12, color: darkStone, collides: true, style: "wall" },
+  { id: "blue-screen-south-outer", x: -198, z: 80, w: 8, d: 32, h: 12, color: darkStone, collides: true, style: "wall" },
+  { id: "red-screen-north-outer", x: 198, z: -80, w: 8, d: 32, h: 12, color: darkStone, collides: true, style: "wall" },
+  { id: "red-screen-north-inner", x: 198, z: -32, w: 8, d: 20, h: 12, color: darkStone, collides: true, style: "wall" },
+  { id: "red-screen-south-inner", x: 198, z: 32, w: 8, d: 20, h: 12, color: darkStone, collides: true, style: "wall" },
+  { id: "red-screen-south-outer", x: 198, z: 80, w: 8, d: 32, h: 12, color: darkStone, collides: true, style: "wall" },
+  { id: "blue-baffle-north", x: -166, z: -53, w: 8, d: 18, h: 9, color: blue, collides: true, style: "wall" },
+  { id: "blue-baffle-center", x: -166, z: 28, w: 8, d: 20, h: 9, color: blue, collides: true, style: "wall" },
+  { id: "blue-baffle-south", x: -166, z: 53, w: 8, d: 18, h: 9, color: blue, collides: true, style: "wall" },
+  { id: "red-baffle-north", x: 166, z: -53, w: 8, d: 18, h: 9, color: red, collides: true, style: "wall" },
+  { id: "red-baffle-center", x: 166, z: 28, w: 8, d: 20, h: 9, color: red, collides: true, style: "wall" },
+  { id: "red-baffle-south", x: 166, z: 53, w: 8, d: 18, h: 9, color: red, collides: true, style: "wall" },
 
-  // Spawn courts are broad enough for twenty players; the exit stays open so
-  // the first movement decision is made by the lane layout, not a screen wall.
-  { id: "blue-base-back", x: -240, z: 0, w: 5, d: 126, h: 13, color: darkStone, collides: true, style: "wall" },
-  { id: "blue-base-north", x: -232, z: -74, w: 24, d: 5, h: 10, color: warmStone, collides: true, style: "wall" },
-  { id: "blue-base-south", x: -232, z: 74, w: 24, d: 5, h: 10, color: warmStone, collides: true, style: "wall" },
-  { id: "red-base-back", x: 240, z: 0, w: 5, d: 126, h: 13, color: darkStone, collides: true, style: "wall" },
-  { id: "red-base-north", x: 232, z: -74, w: 24, d: 5, h: 10, color: goldStone, collides: true, style: "wall" },
-  { id: "red-base-south", x: 232, z: 74, w: 24, d: 5, h: 10, color: goldStone, collides: true, style: "wall" },
+  // Ten shared flights define every legitimate elevation change.
+  ...DESERT_CITADEL_STAIR_FLIGHTS.slice(0, 6).flatMap((flight) => makeStairFlight(flight, paleStone)),
+  ...DESERT_CITADEL_STAIR_FLIGHTS.slice(6).flatMap((flight) => makeStairFlight(flight, goldStone)),
 
-  // Lion Gate and Sun Gate mark the center-lane transition without sealing it.
-  { id: "lion-gate-north-pier", label: "Lion Gate", x: -86, z: -26, w: 10, d: 12, h: 17, color: ochre, collides: true, style: "tower" },
-  { id: "lion-gate-south-pier", x: -86, z: 26, w: 10, d: 12, h: 17, color: ochre, collides: true, style: "tower" },
-  { id: "lion-gate-lintel", x: -86, z: 0, w: 10, d: 40, h: 4, y: 16, color: paleStone, collides: true, style: "gate" },
-  { id: "sun-gate-north-pier", label: "Sun Gate", x: 86, z: -26, w: 10, d: 12, h: 17, color: ochre, collides: true, style: "tower" },
-  { id: "sun-gate-south-pier", x: 86, z: 26, w: 10, d: 12, h: 17, color: ochre, collides: true, style: "tower" },
-  { id: "sun-gate-lintel", x: 86, z: 0, w: 10, d: 40, h: 4, y: 16, color: paleStone, collides: true, style: "gate" },
+  // Main-level edge protection leaves exact openings for the four side stairs.
+  { id: "royal-parapet-north-west", x: -94, z: -30.5, w: 48, d: 3, h: 3, y: centerAt(mainY, 3), color: darkStone, collides: true, style: "wall" },
+  { id: "royal-parapet-north-center", x: 0, z: -30.5, w: 92, d: 3, h: 3, y: centerAt(mainY, 3), color: darkStone, collides: true, style: "wall" },
+  { id: "royal-parapet-north-east", x: 94, z: -30.5, w: 48, d: 3, h: 3, y: centerAt(mainY, 3), color: darkStone, collides: true, style: "wall" },
+  { id: "royal-parapet-south-west", x: -94, z: 30.5, w: 48, d: 3, h: 3, y: centerAt(mainY, 3), color: darkStone, collides: true, style: "wall" },
+  { id: "royal-parapet-south-center", x: 0, z: 30.5, w: 92, d: 3, h: 3, y: centerAt(mainY, 3), color: darkStone, collides: true, style: "wall" },
+  { id: "royal-parapet-south-east", x: 94, z: 30.5, w: 48, d: 3, h: 3, y: centerAt(mainY, 3), color: darkStone, collides: true, style: "wall" },
+  { id: "royal-cover-west", x: -42, z: 0, w: 14, d: 12, h: 5, y: centerAt(mainY, 5), color: terracotta, collides: true, style: "tower" },
+  { id: "royal-cover-east", x: 42, z: 0, w: 14, d: 12, h: 5, y: centerAt(mainY, 5), color: terracotta, collides: true, style: "tower" },
 
-  // Main-level Fountain Court cover hierarchy: low walls, a monument, and one central readable landmark.
-  { id: "court-parapet-north-west", x: -44, z: -36.5, w: 44, d: 3, h: 3, y: centerAt(mainY, 3), color: darkStone, collides: true },
-  { id: "court-parapet-north-east", x: 44, z: -36.5, w: 44, d: 3, h: 3, y: centerAt(mainY, 3), color: darkStone, collides: true },
-  { id: "court-parapet-south-west", x: -44, z: 86.5, w: 44, d: 3, h: 3, y: centerAt(mainY, 3), color: warmStone, collides: true },
-  { id: "court-parapet-south-east", x: 44, z: 86.5, w: 44, d: 3, h: 3, y: centerAt(mainY, 3), color: warmStone, collides: true },
-  { id: "court-monument", label: "Sun Dial Monument", x: 0, z: 28, w: 10, d: 12, h: 7, y: centerAt(mainY, 7), color: terracotta, collides: true, style: "tower" },
+  // Upper Rampart has four entries, open stair mouths, and lateral counterplay.
+  { id: "crown-rail-north", x: 0, z: -174.5, w: 354, d: 3, h: 3, y: centerAt(roofY, 3), color: darkStone, collides: true, style: "wall" },
+  { id: "crown-rail-south-west", x: -120, z: -145.5, w: 114, d: 3, h: 3, y: centerAt(roofY, 3), color: darkStone, collides: true, style: "wall" },
+  { id: "crown-rail-south-center", x: 0, z: -145.5, w: 82, d: 3, h: 3, y: centerAt(roofY, 3), color: darkStone, collides: true, style: "wall" },
+  { id: "crown-rail-south-east", x: 120, z: -145.5, w: 114, d: 3, h: 3, y: centerAt(roofY, 3), color: darkStone, collides: true, style: "wall" },
+  { id: "crown-cover-west", x: -88, z: -160, w: 22, d: 6, h: 5, y: centerAt(roofY, 5), color: ochre, collides: true, style: "wall" },
+  { id: "crown-cover-center", x: 0, z: -160, w: 22, d: 6, h: 5, y: centerAt(roofY, 5), color: paleStone, collides: true, style: "wall" },
+  { id: "crown-cover-east", x: 88, z: -160, w: 22, d: 6, h: 5, y: centerAt(roofY, 5), color: ochre, collides: true, style: "wall" },
 
-  // Mirrored markets frame an open stair court, so the upper route has a
-  // believable architectural entrance instead of a stair clipping through a
-  // solid building proxy.
-  { id: "west-market-mass-north", label: "West Market", x: -120, z: 64, w: 58, d: 6, h: 23.4, y: 11.7, color: terracotta, collides: true, style: "house" },
-  { id: "west-market-mass-south", x: -120, z: 92, w: 58, d: 6, h: 23.4, y: 11.7, color: terracotta, collides: true, style: "house" },
-  { id: "east-market-mass-north", label: "East Market", x: 120, z: 64, w: 58, d: 6, h: 23.4, y: 11.7, color: goldStone, collides: true, style: "house" },
-  { id: "east-market-mass-south", x: 120, z: 92, w: 58, d: 6, h: 23.4, y: 11.7, color: goldStone, collides: true, style: "house" },
-  { id: "west-market-roof", x: -120, z: 78, w: 58, d: 34, h: 1, y: roofY - 0.5, color: terracotta, material: "stone", style: "bridge" },
-  { id: "east-market-roof", x: 120, z: 78, w: 58, d: 34, h: 1, y: roofY - 0.5, color: paleStone, material: "stone", style: "bridge" },
-  { id: "west-market-roof-rail-north", x: -120, z: 61.5, w: 58, d: 3, h: 3, y: centerAt(roofY, 3), color: darkStone, collides: true, style: "wall" },
-  { id: "west-market-roof-rail-south", x: -120, z: 94.5, w: 58, d: 3, h: 3, y: centerAt(roofY, 3), color: darkStone, collides: true, style: "wall" },
-  { id: "east-market-roof-rail-north", x: 120, z: 61.5, w: 58, d: 3, h: 3, y: centerAt(roofY, 3), color: darkStone, collides: true, style: "wall" },
-  { id: "east-market-roof-rail-south", x: 120, z: 94.5, w: 58, d: 3, h: 3, y: centerAt(roofY, 3), color: darkStone, collides: true, style: "wall" },
-  { id: "citadel-skywalk", label: "Citadel Skywalk", x: 0, z: 78, w: 180, d: 20, h: 1, y: roofY - 0.5, color: paleStone, material: "stone", style: "bridge" },
-  { id: "citadel-skywalk-rail-north", x: 0, z: 68, w: 180, d: 3, h: 3, y: centerAt(roofY, 3), color: darkStone, collides: true, style: "wall" },
-  { id: "citadel-skywalk-rail-south", x: 0, z: 88, w: 180, d: 3, h: 3, y: centerAt(roofY, 3), color: darkStone, collides: true, style: "wall" },
-  ...DESERT_CITADEL_STAIR_FLIGHTS.slice(4).flatMap((flight) => makeStairFlight(flight, goldStone)),
+  // Shaded Souk: mirrored, staggered cover with a central skyline landmark.
+  { id: "souk-stall-west-outer", x: -145, z: -126, w: 34, d: 8, h: 6, color: terracotta, collides: true, style: "stall" },
+  { id: "souk-stall-west-inner", x: -88, z: -104, w: 30, d: 8, h: 6, color: warmStone, collides: true, style: "stall" },
+  { id: "souk-stall-center-west", x: -30, z: -130, w: 24, d: 8, h: 6, color: terracotta, collides: true, style: "stall" },
+  { id: "souk-stall-center-east", x: 30, z: -130, w: 24, d: 8, h: 6, color: terracotta, collides: true, style: "stall" },
+  { id: "souk-stall-east-inner", x: 88, z: -104, w: 30, d: 8, h: 6, color: warmStone, collides: true, style: "stall" },
+  { id: "souk-stall-east-outer", x: 145, z: -126, w: 34, d: 8, h: 6, color: terracotta, collides: true, style: "stall" },
+  { id: "falcon-obelisk", label: "Falcon Obelisk", x: 0, z: -112, w: 14, d: 14, h: 16, color: darkStone, collides: true, style: "tower" },
+  { id: "falcon-obelisk-crown", x: 0, z: -112, w: 9, d: 9, h: 6, y: 19, color: paleStone, style: "tower" },
 
-  // North lane cover breaks heavy sightlines into small, readable duels.
-  { id: "ruins-wall-west", label: "Palm Ruins", x: -150, z: -116, w: 48, d: 7, h: 6, color: ochre, collides: true, style: "ruin" },
-  { id: "ruins-wall-east", x: 150, z: -116, w: 48, d: 7, h: 6, color: darkStone, collides: true, style: "ruin" },
-  { id: "ruins-obelisk", label: "Dawn Obelisk", x: 0, z: -128, w: 16, d: 16, h: 16, color: darkStone, collides: true, style: "tower" },
-  { id: "ruins-obelisk-crown", x: 0, z: -128, w: 11, d: 11, h: 8, y: 20, color: paleStone, style: "tower" },
-
-  // Dry caravan-yard cover keeps the lower route readable without a misplaced river.
-  { id: "caravan-yard-cover-north-west", x: -155, z: 119, w: 90, d: 5, h: 5, color: darkStone, collides: true },
-  { id: "caravan-yard-cover-north-center", x: 0, z: 119, w: 80, d: 5, h: 5, color: darkStone, collides: true },
-  { id: "caravan-yard-cover-north-east", x: 155, z: 119, w: 90, d: 5, h: 5, color: darkStone, collides: true }
+  // Dry Cistern: low staggered cover keeps both sides of the route live.
+  { id: "cistern-cover-west-outer", x: -145, z: 104, w: 34, d: 8, h: 5, color: darkStone, collides: true, style: "ruin" },
+  { id: "cistern-cover-west-inner", x: -88, z: 132, w: 30, d: 8, h: 5, color: ochre, collides: true, style: "ruin" },
+  { id: "cistern-cover-center-west", x: -30, z: 104, w: 24, d: 8, h: 5, color: darkStone, collides: true, style: "ruin" },
+  { id: "cistern-cover-center-east", x: 30, z: 104, w: 24, d: 8, h: 5, color: darkStone, collides: true, style: "ruin" },
+  { id: "cistern-cover-east-inner", x: 88, z: 132, w: 30, d: 8, h: 5, color: ochre, collides: true, style: "ruin" },
+  { id: "cistern-cover-east-outer", x: 145, z: 104, w: 34, d: 8, h: 5, color: darkStone, collides: true, style: "ruin" }
 ];
 
-/**
- * Phase 3 traceability manifest. Keeping this list beside the authored map
- * makes the no-speculative-geometry rule executable in the map regression.
- * Stair pieces are covered by their shared flight IDs and exact step counts.
- */
 export const DESERT_CITADEL_PHASE3_MANIFEST = {
   structureBlockIds: [
-    "north-cliff-west", "north-cliff-east", "south-wall-west", "south-wall-east",
-    "west-city-wall-north", "west-city-wall-south", "east-city-wall-north", "east-city-wall-south",
-    "north-lane-paving", "south-lane-paving", "court-floor", "court-foundation",
-    "blue-base-back", "blue-base-north", "blue-base-south", "red-base-back", "red-base-north", "red-base-south",
-    "lion-gate-north-pier", "lion-gate-south-pier", "lion-gate-lintel", "sun-gate-north-pier", "sun-gate-south-pier", "sun-gate-lintel",
-    "court-parapet-north-west", "court-parapet-north-east", "court-parapet-south-west", "court-parapet-south-east", "court-monument",
-    "west-market-mass-north", "west-market-mass-south", "east-market-mass-north", "east-market-mass-south",
-    "west-market-roof", "east-market-roof", "west-market-roof-rail-north", "west-market-roof-rail-south",
-    "east-market-roof-rail-north", "east-market-roof-rail-south", "citadel-skywalk", "citadel-skywalk-rail-north", "citadel-skywalk-rail-south",
-    "ruins-wall-west", "ruins-wall-east", "ruins-obelisk", "ruins-obelisk-crown",
-    "caravan-yard-cover-north-west", "caravan-yard-cover-north-center", "caravan-yard-cover-north-east"
+    "citadel-north-wall", "citadel-south-wall", "citadel-west-wall", "citadel-east-wall",
+    "blue-assembly-paving", "red-assembly-paving", "shaded-souk-paving", "dry-cistern-paving",
+    "royal-causeway-floor", "royal-causeway-foundation", "crown-rampart-floor", "crown-rampart-foundation",
+    "blue-assembly-north-wall", "blue-assembly-south-wall", "red-assembly-north-wall", "red-assembly-south-wall",
+    "blue-screen-north-outer", "blue-screen-north-inner", "blue-screen-south-inner", "blue-screen-south-outer",
+    "red-screen-north-outer", "red-screen-north-inner", "red-screen-south-inner", "red-screen-south-outer",
+    "blue-baffle-north", "blue-baffle-center", "blue-baffle-south", "red-baffle-north", "red-baffle-center", "red-baffle-south",
+    "royal-parapet-north-west", "royal-parapet-north-center", "royal-parapet-north-east",
+    "royal-parapet-south-west", "royal-parapet-south-center", "royal-parapet-south-east",
+    "royal-cover-west", "royal-cover-east", "crown-rail-north", "crown-rail-south-west", "crown-rail-south-center", "crown-rail-south-east",
+    "crown-cover-west", "crown-cover-center", "crown-cover-east",
+    "souk-stall-west-outer", "souk-stall-west-inner", "souk-stall-center-west", "souk-stall-center-east", "souk-stall-east-inner", "souk-stall-east-outer",
+    "falcon-obelisk", "falcon-obelisk-crown",
+    "cistern-cover-west-outer", "cistern-cover-west-inner", "cistern-cover-center-west", "cistern-cover-center-east", "cistern-cover-east-inner", "cistern-cover-east-outer"
   ],
   stairFlightIds: DESERT_CITADEL_STAIR_FLIGHTS.map((flight) => flight.id),
   propIds: [
-    "west-market-canopy", "east-market-canopy", "north-palm-west", "north-palm-east",
-    "caravan-yard-palm-west", "caravan-yard-palm-east", "blue-base-banner", "red-base-banner", "obelisk-banner"
+    "blue-bastion-banner", "red-bastion-banner", "souk-canopy-west", "souk-canopy-east",
+    "souk-palm-west", "souk-palm-east", "cistern-palm-west", "cistern-palm-east",
+    "cistern-cart-west", "cistern-cart-east", "crown-banner-west", "crown-banner-east"
   ],
-  cylinderIds: ["blue-fountain-rim", "blue-fountain-water", "caravan-yard-marker-west", "caravan-yard-marker-east"]
+  cylinderIds: ["royal-sundial-ring", "royal-sundial-core", "cistern-well-rim", "cistern-well-water"]
 } as const;
 
 export const blocks: CitadelBlock[] = rawBlocks.map(scaleRect);
 
 const rawProps: CitadelProp[] = [
-  { id: "west-market-canopy", kind: "shade", x: -145, z: 78, size: 18, h: 6, y: 0, color: blue, material: "cloth" },
-  { id: "east-market-canopy", kind: "shade", x: 145, z: 78, size: 18, h: 6, y: 0, color: red, material: "cloth" },
-  { id: "north-palm-west", kind: "palm", x: -70, z: -145, size: 6, h: 17, color: palmGreen, material: "wood" },
-  { id: "north-palm-east", kind: "palm", x: 70, z: -145, size: 6, h: 17, color: palmGreen, material: "wood" },
-  { id: "caravan-yard-palm-west", kind: "palm", x: -210, z: 154, size: 5, h: 15, color: palmGreen, material: "wood" },
-  { id: "caravan-yard-palm-east", kind: "palm", x: 210, z: 154, size: 5, h: 15, color: palmGreen, material: "wood" },
-  { id: "blue-base-banner", kind: "banner", x: -235, z: -54, size: 4, h: 11, y: 0, color: blue, material: "cloth" },
-  { id: "red-base-banner", kind: "banner", x: 235, z: 54, size: 4, h: 11, y: 0, color: red, material: "cloth" },
-  { id: "obelisk-banner", kind: "banner", x: 0, z: -128, size: 5, h: 15, y: 16, color: "#e4b64f", material: "cloth" }
+  { id: "blue-bastion-banner", kind: "banner", x: -220, z: 0, size: 5, h: 13, color: blue, material: "cloth" },
+  { id: "red-bastion-banner", kind: "banner", x: 220, z: 0, size: 5, h: 13, color: red, material: "cloth" },
+  { id: "souk-canopy-west", kind: "shade", x: -115, z: -118, size: 19, h: 7, color: blue, material: "cloth" },
+  { id: "souk-canopy-east", kind: "shade", x: 115, z: -118, size: 19, h: 7, color: red, material: "cloth" },
+  { id: "souk-palm-west", kind: "palm", x: -20, z: -88, size: 6, h: 17, color: palmGreen, material: "wood" },
+  { id: "souk-palm-east", kind: "palm", x: 20, z: -88, size: 6, h: 17, color: palmGreen, material: "wood" },
+  { id: "cistern-palm-west", kind: "palm", x: -180, z: 150, size: 6, h: 17, color: palmGreen, material: "wood" },
+  { id: "cistern-palm-east", kind: "palm", x: 180, z: 150, size: 6, h: 17, color: palmGreen, material: "wood" },
+  { id: "cistern-cart-west", kind: "cart", x: -115, z: 150, size: 8, h: 5, rotationY: 0.15, color: ochre, material: "wood" },
+  { id: "cistern-cart-east", kind: "cart", x: 115, z: 150, size: 8, h: 5, rotationY: -0.15, color: ochre, material: "wood" },
+  { id: "crown-banner-west", kind: "banner", x: -88, z: -160, size: 4, h: 10, y: roofY, color: blue, material: "cloth" },
+  { id: "crown-banner-east", kind: "banner", x: 88, z: -160, size: 4, h: 10, y: roofY, color: red, material: "cloth" }
 ];
 
 export const props: CitadelProp[] = rawProps.map((item) => ({
@@ -218,11 +223,11 @@ export const props: CitadelProp[] = rawProps.map((item) => ({
 }));
 
 const rawCylinders: CitadelCylinder[] = [
-  { id: "blue-fountain-rim", label: "Blue Fountain", x: 0, z: 0, radius: 12, h: 2.4, y: mainY + 1.2, color: paleStone, collides: true },
-  { id: "blue-fountain-water", x: 0, z: 0, radius: 8, h: 0.25, y: mainY + 1.32, color: turquoise, material: "water" },
-  { id: "caravan-yard-marker-west", x: -205, z: 133, radius: 2.8, h: 0.5, y: 0.25, color: ochre, material: "stone" },
-  { id: "caravan-yard-marker-east", x: 205, z: 133, radius: 2.8, h: 0.5, y: 0.25, color: ochre, material: "stone" }
+  { id: "royal-sundial-ring", label: "Royal Sundial", x: 0, z: 0, radius: 10, h: 2, y: mainY + 1, color: paleStone, collides: true, material: "stone" },
+  { id: "royal-sundial-core", x: 0, z: 0, radius: 5, h: 4, y: mainY + 4, color: terracotta, material: "accent" },
+  { id: "cistern-well-rim", label: "Dry Cistern", x: 0, z: 120, radius: 12, h: 2.4, y: 1.2, color: paleStone, collides: true, material: "stone" },
+  { id: "cistern-well-water", x: 0, z: 120, radius: 8, h: 0.25, y: 2.525, color: turquoise, material: "water" }
 ];
-export const cylinders: CitadelCylinder[] = rawCylinders.map(scaleCylinder);
 
+export const cylinders: CitadelCylinder[] = rawCylinders.map(scaleCylinder);
 export const signs: CitadelSign[] = [];
