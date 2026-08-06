@@ -671,7 +671,10 @@ const addBlock = (block: (typeof arenaMap.blocks)[number]) => {
     proxy.visible = false;
     proxy.userData.collisionProxy = true;
     scene.add(proxy);
-    colliderForObject(proxy, 0.25);
+    // Desert Citadel's shared obstacle proxies already use the player radius
+    // during authoritative movement. Keep the client footprint exact so a
+    // stair landing or market doorway cannot disagree by an extra 0.25u.
+    colliderForObject(proxy, isDesertCitadel ? 0 : 0.25);
   }
   addModularBlockBody(block);
   addBlockDetail(block);
@@ -878,7 +881,7 @@ arenaMap.cylinders.forEach((cylinder) => {
   mesh.receiveShadow = true;
   if (cylinder.material !== "water") staticBatcher.prepare(mesh, cylinder.color, cylinder.material ?? "stone");
   scene.add(mesh);
-  if (cylinder.collides) colliderForObject(mesh, 0.2);
+  if (cylinder.collides) colliderForObject(mesh, isDesertCitadel ? 0 : 0.2);
   if (cylinder.label && !isFps && !isDesertCitadel) {
     const label = new THREE.Sprite(makeSpriteLabel(cylinder.label, "#fef3c7"));
     label.position.set(cylinder.x, (cylinder.y ?? cylinder.h / 2) + cylinder.h / 2 + 5, cylinder.z);

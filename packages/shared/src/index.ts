@@ -1290,6 +1290,21 @@ export const TEMPLE_RUNOFF_STAIR_FLIGHTS = [
   { id: "upper-temple-stairs", x: 133, z: 66, width: 28, length: 30, axis: "x", direction: -1, startY: TEMPLE_RUNOFF_MAIN_LEVEL_Y, endY: TEMPLE_RUNOFF_UPPER_LEVEL_Y, steps: 14 }
 ] as const satisfies readonly ArenaStairFlight[];
 
+/**
+ * Desert Citadel uses six authored stair flights for the three playable
+ * layers.  Keeping these profiles shared prevents a client-only ramp from
+ * becoming a server-only shortcut.  Every riser is at or below 0.75 units,
+ * which is inside the FPS controller's 0.8-unit step tolerance.
+ */
+export const DESERT_CITADEL_STAIR_FLIGHTS = [
+  { id: "citadel-west-main-stairs", x: -86, z: 0, width: 30, length: 40, axis: "x", direction: 1, startY: 0, endY: DESERT_CITADEL_MAIN_LEVEL_Y, steps: 14 },
+  { id: "citadel-east-main-stairs", x: 86, z: 0, width: 30, length: 40, axis: "x", direction: -1, startY: 0, endY: DESERT_CITADEL_MAIN_LEVEL_Y, steps: 14 },
+  { id: "citadel-north-main-stairs", x: 0, z: -55, width: 30, length: 34, axis: "z", direction: 1, startY: 0, endY: DESERT_CITADEL_MAIN_LEVEL_Y, steps: 14 },
+  { id: "citadel-south-main-stairs", x: 0, z: 100, width: 30, length: 34, axis: "z", direction: -1, startY: 0, endY: DESERT_CITADEL_MAIN_LEVEL_Y, steps: 14 },
+  { id: "west-market-roof-stairs", x: -180, z: 78, width: 22, length: 96, axis: "x", direction: 1, startY: 0, endY: DESERT_CITADEL_ROOFTOP_LEVEL_Y, steps: 40 },
+  { id: "east-market-roof-stairs", x: 180, z: 78, width: 22, length: 96, axis: "x", direction: -1, startY: 0, endY: DESERT_CITADEL_ROOFTOP_LEVEL_Y, steps: 40 }
+] as const satisfies readonly ArenaStairFlight[];
+
 export type ArenaBounds = { limitX: number; limitZ: number };
 export const TEMPLE_RUNOFF_BOUNDS: ArenaBounds = {
   limitX: scaleArenaValue(235),
@@ -1355,30 +1370,8 @@ const templeStairHeight = (rawX: number, rawZ: number): number | undefined =>
 const ironStairHeight = (rawX: number, rawZ: number): number | undefined =>
   stairFlightHeight(IRON_JUNCTION_STAIR_FLIGHTS, rawX, rawZ);
 
-const desertRampHeight = (rawX: number, rawZ: number): number | undefined => {
-  // Four broad, orthogonal flights connect the ground to the citadel terrace.
-  if (rawX >= -106 && rawX <= -66 && Math.abs(rawZ) <= 15) {
-    return Number((DESERT_CITADEL_MAIN_LEVEL_Y * ((rawX + 106) / 40)).toFixed(3));
-  }
-  if (Math.abs(rawX) <= 15 && rawZ >= -59 && rawZ <= -31) {
-    return Number((DESERT_CITADEL_MAIN_LEVEL_Y * ((rawZ + 59) / 28)).toFixed(3));
-  }
-  if (Math.abs(rawX) <= 15 && rawZ >= 87 && rawZ <= 115) {
-    return Number((DESERT_CITADEL_MAIN_LEVEL_Y * ((115 - rawZ) / 28)).toFixed(3));
-  }
-  if (rawX >= 167 && rawX <= 203 && rawZ >= 55 && rawZ <= 85) {
-    return Number((DESERT_CITADEL_MAIN_LEVEL_Y * ((203 - rawX) / 36)).toFixed(3));
-  }
-  // The bazaar lookout rises directly from the market; the Sun Hall roof rises from the terrace.
-  if (rawX >= -216 && rawX <= -146 && rawZ >= 64 && rawZ <= 88) {
-    return Number((DESERT_CITADEL_ROOFTOP_LEVEL_Y * ((rawX + 216) / 70)).toFixed(3));
-  }
-  if (rawX >= 62 && rawX <= 106 && rawZ >= 70 && rawZ <= 92) {
-    return Number((DESERT_CITADEL_MAIN_LEVEL_Y + (DESERT_CITADEL_ROOFTOP_LEVEL_Y - DESERT_CITADEL_MAIN_LEVEL_Y)
-      * ((rawX - 62) / 44)).toFixed(3));
-  }
-  return undefined;
-};
+const desertRampHeight = (rawX: number, rawZ: number): number | undefined =>
+  stairFlightHeight(DESERT_CITADEL_STAIR_FLIGHTS, rawX, rawZ);
 
 /**
  * Returns every legitimate walkable surface at an X/Z coordinate, low to high.
@@ -1420,15 +1413,11 @@ export const getArenaFloorSurfaces = (
   if (mapId === "desert_citadel") {
     const ramp = desertRampHeight(rawX, rawZ);
     if (ramp !== undefined) return [ramp];
-    const onCitadelTerrace =
-      isInsideRawRect(rawX, rawZ, -66, 66, -31, 87)
-      || isInsideRawRect(rawX, rawZ, 49, 167, 26, 114);
-    const onBazaarRooftop = isInsideRawRect(rawX, rawZ, -146, -86, 60, 92);
-    const onSunHallRooftop = isInsideRawRect(rawX, rawZ, 68, 156, 48, 92);
-    // The courtyard and bazaar lookout are solid masses, not playable undercrofts.
-    // Sun Hall deliberately retains its main-floor interior beneath the roof.
-    if (onBazaarRooftop) return [DESERT_CITADEL_ROOFTOP_LEVEL_Y];
-    if (onSunHallRooftop) return [DESERT_CITADEL_MAIN_LEVEL_Y, DESERT_CITADEL_ROOFTOP_LEVEL_Y];
+    const onCitadelTerrace = isInsideRawRect(rawX, rawZ, -66, 66, -35, 86);
+    const onWestMarketRooftop = isInsideRawRect(rawX, rawZ, -150, -90, 60, 96);
+    const onEastMarketRooftop = isInsideRawRect(rawX, rawZ, 90, 150, 60, 96);
+    const onCitadelSkywalk = isInsideRawRect(rawX, rawZ, -90, 90, 68, 88);
+    if (onWestMarketRooftop || onEastMarketRooftop || onCitadelSkywalk) return [DESERT_CITADEL_ROOFTOP_LEVEL_Y];
     if (onCitadelTerrace) return [DESERT_CITADEL_MAIN_LEVEL_Y];
     return [0];
   }
@@ -1520,7 +1509,7 @@ export const getArenaLevelLabel = (
   if (mapId === "desert_citadel") {
     return groundY >= DESERT_CITADEL_ROOFTOP_LEVEL_Y - 1
       ? "upper"
-      : groundY >= DESERT_CITADEL_MAIN_LEVEL_Y - 1 ? "citadel" : "ground";
+      : groundY >= DESERT_CITADEL_MAIN_LEVEL_Y - 1 ? "main" : "lower";
   }
   return "main";
 };
@@ -1652,7 +1641,7 @@ const RAW_FREE_FOR_ALL_SPAWNS: SpawnPoint[] = [
   { id: "ffa-fort-court-2", label: "Armoury Court", x: -139, z: 20, facing: -1.7 },
   { id: "ffa-fort-tunnel-1", label: "West Ruins Ramp", x: -100, z: -85, facing: -2.4 },
   { id: "ffa-fort-tower-1", label: "Western Watchtower", x: -96, z: -82, facing: -0.7 },
-  { id: "ffa-north-ruins-1", label: "North Ruins", x: -84, z: -128, facing: -0.6 },
+  { id: "ffa-north-ruins-1", label: "North Ruins", x: -84, z: -116, facing: -0.6 },
   { id: "ffa-north-ruins-2", label: "North Ruins", x: -48, z: -136, facing: -0.25 },
   { id: "ffa-north-ruins-3", label: "Dry Riverbed", x: -12, z: -124, facing: 0.15 },
   { id: "ffa-north-ruins-4", label: "Dry Riverbed", x: 28, z: -136, facing: 0.35 },
@@ -1667,7 +1656,7 @@ const RAW_FREE_FOR_ALL_SPAWNS: SpawnPoint[] = [
   { id: "ffa-market-7", label: "Citadel Terrace", x: 16, z: -20, y: DESERT_CITADEL_MAIN_LEVEL_Y + ARENA_PLAYER_EYE_HEIGHT, facing: 0.4 },
   { id: "ffa-market-8", label: "Citadel Terrace", x: 50, z: -8, y: DESERT_CITADEL_MAIN_LEVEL_Y + ARENA_PLAYER_EYE_HEIGHT, facing: 1.15 },
   { id: "ffa-market-9", label: "Fountain Court", x: -38, z: 26, y: DESERT_CITADEL_MAIN_LEVEL_Y + ARENA_PLAYER_EYE_HEIGHT, facing: -1.85 },
-  { id: "ffa-market-10", label: "Fountain Court", x: -4, z: 30, y: DESERT_CITADEL_MAIN_LEVEL_Y + ARENA_PLAYER_EYE_HEIGHT, facing: Math.PI },
+  { id: "ffa-market-10", label: "Fountain Court", x: -4, z: 38, y: DESERT_CITADEL_MAIN_LEVEL_Y + ARENA_PLAYER_EYE_HEIGHT, facing: Math.PI },
   { id: "ffa-market-11", label: "Fountain Court", x: 28, z: 42, y: DESERT_CITADEL_MAIN_LEVEL_Y + ARENA_PLAYER_EYE_HEIGHT, facing: 2.6 },
   { id: "ffa-market-12", label: "Sun Hall Court", x: 62, z: 28, y: DESERT_CITADEL_MAIN_LEVEL_Y + ARENA_PLAYER_EYE_HEIGHT, facing: 2.2 },
   { id: "ffa-south-homes-1", label: "South Homes", x: -50, z: 100, facing: -2.4 },
@@ -1679,7 +1668,7 @@ const RAW_FREE_FOR_ALL_SPAWNS: SpawnPoint[] = [
   { id: "ffa-rooftop-1", label: "Fountain Terrace", x: -58, z: 66, y: DESERT_CITADEL_MAIN_LEVEL_Y + ARENA_PLAYER_EYE_HEIGHT, facing: -2.15 },
   { id: "ffa-rooftop-2", label: "Fountain Terrace", x: -26, z: 70, y: DESERT_CITADEL_MAIN_LEVEL_Y + ARENA_PLAYER_EYE_HEIGHT, facing: -2.9 },
   { id: "ffa-rooftop-3", label: "Fountain Terrace", x: 20, z: 70, y: DESERT_CITADEL_MAIN_LEVEL_Y + ARENA_PLAYER_EYE_HEIGHT, facing: 2.9 },
-  { id: "ffa-rooftop-4", label: "Sun Hall Terrace", x: 64, z: 66, y: DESERT_CITADEL_MAIN_LEVEL_Y + ARENA_PLAYER_EYE_HEIGHT, facing: 2.15 },
+  { id: "ffa-rooftop-4", label: "Sun Hall Terrace", x: 54, z: 70, y: DESERT_CITADEL_MAIN_LEVEL_Y + ARENA_PLAYER_EYE_HEIGHT, facing: 2.15 },
   { id: "ffa-aqueduct-1", label: "West Stair Court", x: -120, z: 0, facing: -1.57 },
   { id: "ffa-aqueduct-2", label: "West Stair Court", x: -112, z: 28, facing: -1.57 },
   { id: "ffa-aqueduct-3", label: "Citadel Court", x: -36, z: 0, y: DESERT_CITADEL_MAIN_LEVEL_Y + ARENA_PLAYER_EYE_HEIGHT, facing: -1.57 },
@@ -1699,7 +1688,7 @@ const RAW_FREE_FOR_ALL_SPAWNS: SpawnPoint[] = [
   { id: "ffa-citadel-1", label: "Citadel Terrace", x: -18, z: 54, y: DESERT_CITADEL_MAIN_LEVEL_Y + ARENA_PLAYER_EYE_HEIGHT, facing: -2.6 },
   { id: "ffa-citadel-2", label: "Citadel Terrace", x: 18, z: 54, y: DESERT_CITADEL_MAIN_LEVEL_Y + ARENA_PLAYER_EYE_HEIGHT, facing: 2.6 },
   { id: "ffa-statue-1", label: "Buried Statue", x: -92, z: 126, facing: -2.25 },
-  { id: "ffa-bridge-1", label: "Broken Bridge", x: 94, z: -128, facing: 0.75 },
+  { id: "ffa-bridge-1", label: "Broken Bridge", x: 94, z: -116, facing: 0.75 },
   { id: "ffa-north-alley-1", label: "North Alley", x: -104, z: -44, facing: -1.05 },
   { id: "ffa-north-alley-2", label: "North Alley", x: 104, z: -44, facing: 1.05 }
 ];
@@ -1733,12 +1722,12 @@ export const IRON_JUNCTION_CAPTURE_ZONES = [
 ] as const;
 
 export const DESERT_CITADEL_CAPTURE_ZONES = [
-  { id: "desert-blue-fountain", label: "Blue Fountain Court", x: 0, z: scaleArenaValue(18), radius: scaleArenaValue(25), y: DESERT_CITADEL_MAIN_LEVEL_Y },
-  { id: "desert-grand-bazaar", label: "Grand Bazaar", x: scaleArenaValue(-76), z: scaleArenaValue(78), radius: scaleArenaValue(16), y: 0 },
-  { id: "desert-sun-hall", label: "Sun Hall", x: scaleArenaValue(108), z: scaleArenaValue(72), radius: scaleArenaValue(22), y: DESERT_CITADEL_MAIN_LEVEL_Y },
+  { id: "desert-fountain-court", label: "Fountain Court", x: 0, z: scaleArenaValue(18), radius: scaleArenaValue(25), y: DESERT_CITADEL_MAIN_LEVEL_Y },
+  { id: "desert-west-market", label: "West Market", x: scaleArenaValue(-120), z: scaleArenaValue(78), radius: scaleArenaValue(20), y: 0 },
+  { id: "desert-east-market", label: "East Market", x: scaleArenaValue(120), z: scaleArenaValue(78), radius: scaleArenaValue(20), y: 0 },
   { id: "desert-broken-aqueduct", label: "Broken Aqueduct", x: 0, z: scaleArenaValue(133), radius: scaleArenaValue(24), y: 0 },
   { id: "desert-palm-ruins", label: "Palm Ruins", x: 0, z: scaleArenaValue(-118), radius: scaleArenaValue(24), y: 0 },
-  { id: "desert-rooftops", label: "Bazaar Rooftops", x: scaleArenaValue(-105), z: scaleArenaValue(76), radius: scaleArenaValue(18), y: DESERT_CITADEL_ROOFTOP_LEVEL_Y }
+  { id: "desert-citadel-skywalk", label: "Citadel Skywalk", x: 0, z: scaleArenaValue(78), radius: scaleArenaValue(24), y: DESERT_CITADEL_ROOFTOP_LEVEL_Y }
 ] as const;
 
 export const getCaptureZonesForMap = (mapId: ArenaMapId | string | undefined) =>
@@ -1772,7 +1761,7 @@ export const IRON_JUNCTION_SEARCH_RETRIEVE_ITEMS = [
 export const DESERT_CITADEL_SEARCH_RETRIEVE_ITEMS = [
   { id: "desert-fountain-scroll", label: "Fountain Scroll", x: 0, z: scaleArenaValue(18), y: DESERT_CITADEL_MAIN_LEVEL_Y + 1.4 },
   { id: "desert-aqueduct-tablet", label: "Aqueduct Tablet", x: 0, z: scaleArenaValue(133), y: 1.4 },
-  { id: "desert-rooftop-seal", label: "Rooftop Seal", x: scaleArenaValue(-105), z: scaleArenaValue(76), y: DESERT_CITADEL_ROOFTOP_LEVEL_Y + 1.4 }
+  { id: "desert-rooftop-seal", label: "Rooftop Seal", x: 0, z: scaleArenaValue(78), y: DESERT_CITADEL_ROOFTOP_LEVEL_Y + 1.4 }
 ] as const;
 
 export const getSearchRetrieveItemsForMap = (mapId: ArenaMapId | string | undefined) =>
@@ -1802,8 +1791,8 @@ export const IRON_JUNCTION_SEARCH_RETRIEVE_DELIVERY_ZONES = {
   red: { id: "red-iron-delivery", label: "Red Assembly Delivery", x: scaleArenaValue(248), z: 0, radius: scaleArenaValue(24), y: 0 }
 } as const;
 export const DESERT_CITADEL_SEARCH_RETRIEVE_DELIVERY_ZONES = {
-  blue: { id: "blue-desert-delivery", label: "Blue Assembly Delivery", x: scaleArenaValue(-235), z: scaleArenaValue(58), radius: scaleArenaValue(10), y: 0 },
-  red: { id: "red-desert-delivery", label: "Red Assembly Delivery", x: scaleArenaValue(235), z: scaleArenaValue(-58), radius: scaleArenaValue(10), y: 0 }
+  blue: { id: "blue-desert-delivery", label: "Blue Assembly Delivery", x: scaleArenaValue(-235), z: 0, radius: scaleArenaValue(12), y: 0 },
+  red: { id: "red-desert-delivery", label: "Red Assembly Delivery", x: scaleArenaValue(235), z: 0, radius: scaleArenaValue(12), y: 0 }
 } as const;
 
 export const getSearchRetrieveDeliveryZonesForMap = (mapId: ArenaMapId | string | undefined) =>
@@ -2067,7 +2056,7 @@ const circleObstacle = (
 });
 
 export const ARENA_OBSTACLES: ArenaObstacle[] = [
-  // Perimeter architecture.
+  // Perimeter architecture remains a readable, escape-proof silhouette.
   rectObstacle("north-cliff-west", -150, -178, 200, 8, false, 0, 11),
   rectObstacle("north-cliff-east", 150, -178, 200, 8, false, 0, 13),
   rectObstacle("south-wall-west", -150, 178, 200, 8, false, 0, 12),
@@ -2077,96 +2066,76 @@ export const ARENA_OBSTACLES: ArenaObstacle[] = [
   rectObstacle("east-city-wall-north", 248, -112, 8, 132, false, 0, 15),
   rectObstacle("east-city-wall-south", 248, 112, 8, 132, false, 0, 15),
 
-  // Blue and Red assembly courts remain on the ground plane.
+  // Assembly courts have a back wall, side returns, and a central objective screen.
   rectObstacle("blue-base-back", -240, 0, 5, 126, false, 0, 13),
   rectObstacle("blue-base-north", -233, -74, 26, 5, false, 0, 10),
   rectObstacle("blue-base-south", -233, 74, 26, 5, false, 0, 10),
   rectObstacle("blue-objective-pavilion", -226, 0, 20, 28, false, 0, 8),
-  rectObstacle("blue-base-cover", -185, -56, 22, 5, false, 0, 7),
+  rectObstacle("blue-base-screen-north", -194, -50, 6, 30, false, 0, 9),
+  rectObstacle("blue-base-screen-south", -194, 50, 6, 30, false, 0, 9),
   rectObstacle("red-base-back", 240, 0, 5, 126, false, 0, 13),
   rectObstacle("red-base-north", 233, -74, 26, 5, false, 0, 10),
   rectObstacle("red-base-south", 233, 74, 26, 5, false, 0, 10),
   rectObstacle("red-objective-pavilion", 226, 0, 20, 28, false, 0, 8),
-  rectObstacle("red-base-cover", 185, 56, 22, 5, false, 0, 7),
+  rectObstacle("red-base-screen-north", 194, -50, 6, 30, false, 0, 9),
+  rectObstacle("red-base-screen-south", 194, 50, 6, 30, false, 0, 9),
 
-  // Landmark gates and the main courtyard.
-  rectObstacle("lion-gate-north-pier", -174, -26, 10, 12, false, 0, 17),
-  rectObstacle("lion-gate-south-pier", -174, 26, 10, 12, false, 0, 17),
-  rectObstacle("lion-gate-lintel", -174, 0, 10, 40, false, 14, 18),
-  rectObstacle("sun-gate-north-pier", 174, -26, 10, 12, false, 0, 17),
-  rectObstacle("sun-gate-south-pier", 174, 26, 10, 12, false, 0, 17),
-  rectObstacle("sun-gate-lintel", 174, 0, 10, 40, false, 14, 18),
-  rectObstacle("court-foundation", 0, 28, 132, 118, false, 0, 9.35),
-  rectObstacle("hall-foundation", 108, 70, 118, 88, false, 0, 9.35),
-  rectObstacle("court-parapet-north-west", -40.5, -29.5, 51, 3, false, DESERT_CITADEL_MAIN_LEVEL_Y, 13),
-  rectObstacle("court-parapet-north-east", 40.5, -29.5, 51, 3, false, DESERT_CITADEL_MAIN_LEVEL_Y, 13),
-  rectObstacle("court-parapet-west-north", -64.5, -23, 3, 16, false, DESERT_CITADEL_MAIN_LEVEL_Y, 13),
-  rectObstacle("court-parapet-west-south", -64.5, 51, 3, 72, false, DESERT_CITADEL_MAIN_LEVEL_Y, 13),
-  rectObstacle("court-parapet-south-west", -40.5, 85.5, 51, 3, false, DESERT_CITADEL_MAIN_LEVEL_Y, 13),
-  rectObstacle("court-parapet-south-east", 32, 85.5, 34, 3, false, DESERT_CITADEL_MAIN_LEVEL_Y, 13),
-  rectObstacle("citadel-west-guide-north", -86, -16.5, 40, 3, false, 0, 13),
-  rectObstacle("citadel-west-guide-south", -86, 16.5, 40, 3, false, 0, 13),
-  rectObstacle("citadel-north-guide-west", -16.5, -45, 3, 28, false, 0, 13),
-  rectObstacle("citadel-north-guide-east", 16.5, -45, 3, 28, false, 0, 13),
-  rectObstacle("citadel-south-guide-west", -16.5, 101, 3, 28, false, 0, 13),
-  rectObstacle("citadel-south-guide-east", 16.5, 101, 3, 28, false, 0, 13),
-  rectObstacle("citadel-east-guide-north", 185, 53.5, 36, 3, false, 0, 13),
-  rectObstacle("citadel-east-guide-south", 185, 86.5, 36, 3, false, 0, 13),
-  rectObstacle("bazaar-lookout-guide-north", -181, 62.5, 70, 3, false, 0, 26),
-  rectObstacle("bazaar-lookout-guide-south", -181, 89.5, 70, 3, false, 0, 26),
-  rectObstacle("sun-hall-roof-guide-north", 84, 68.5, 44, 3, false, DESERT_CITADEL_MAIN_LEVEL_Y, 26),
-  rectObstacle("sun-hall-roof-guide-south", 84, 93.5, 44, 3, false, DESERT_CITADEL_MAIN_LEVEL_Y, 26),
-  rectObstacle("court-broken-wall-west", -55, 18, 6, 23, true, DESERT_CITADEL_MAIN_LEVEL_Y, 15),
-  rectObstacle("court-broken-wall-east", 55, -18, 6, 23, true, DESERT_CITADEL_MAIN_LEVEL_Y, 15),
-  rectObstacle("court-monument", 25, 26, 9, 14, false, DESERT_CITADEL_MAIN_LEVEL_Y, 17),
-  rectObstacle("court-planter", -27, -24, 15, 9, true, DESERT_CITADEL_MAIN_LEVEL_Y, 13),
+  // Mirrored gates frame the three approaches without collapsing them into one choke.
+  rectObstacle("lion-gate-north-pier", -86, -26, 10, 12, false, 0, 17),
+  rectObstacle("lion-gate-south-pier", -86, 26, 10, 12, false, 0, 17),
+  rectObstacle("lion-gate-lintel", -86, 0, 10, 40, false, 14, 18),
+  rectObstacle("sun-gate-north-pier", 86, -26, 10, 12, false, 0, 17),
+  rectObstacle("sun-gate-south-pier", 86, 26, 10, 12, false, 0, 17),
+  rectObstacle("sun-gate-lintel", 86, 0, 10, 40, false, 14, 18),
+
+  // Main citadel terrace and its four stair landings.
+  rectObstacle("court-foundation", 0, 24, 132, 120, false, 0, 9.35),
+  rectObstacle("court-parapet-north-west", -44, -36.5, 44, 3, false, DESERT_CITADEL_MAIN_LEVEL_Y, 13),
+  rectObstacle("court-parapet-north-east", 44, -36.5, 44, 3, false, DESERT_CITADEL_MAIN_LEVEL_Y, 13),
+  rectObstacle("court-parapet-south-west", -44, 86.5, 44, 3, false, DESERT_CITADEL_MAIN_LEVEL_Y, 13),
+  rectObstacle("court-parapet-south-east", 44, 86.5, 44, 3, false, DESERT_CITADEL_MAIN_LEVEL_Y, 13),
+  rectObstacle("court-parapet-west-north", -64.5, -26, 3, 12, false, DESERT_CITADEL_MAIN_LEVEL_Y, 13),
+  rectObstacle("court-parapet-west-south", -64.5, 48, 3, 48, false, DESERT_CITADEL_MAIN_LEVEL_Y, 13),
+  rectObstacle("court-parapet-east-north", 64.5, -26, 3, 12, false, DESERT_CITADEL_MAIN_LEVEL_Y, 13),
+  rectObstacle("court-parapet-east-south", 64.5, 48, 3, 48, false, DESERT_CITADEL_MAIN_LEVEL_Y, 13),
+  rectObstacle("court-broken-wall-west", -34, 20, 6, 24, true, DESERT_CITADEL_MAIN_LEVEL_Y, 15),
+  rectObstacle("court-broken-wall-east", 34, 20, 6, 24, true, DESERT_CITADEL_MAIN_LEVEL_Y, 15),
+  rectObstacle("court-monument", 0, 28, 10, 12, false, DESERT_CITADEL_MAIN_LEVEL_Y, 17),
+  rectObstacle("court-planter", 0, -12, 14, 8, true, DESERT_CITADEL_MAIN_LEVEL_Y, 13),
   circleObstacle("blue-fountain-rim", 0, 0, 12, false, DESERT_CITADEL_MAIN_LEVEL_Y, 12.4),
+  circleObstacle("court-column-west", -24, 48, 3, false, DESERT_CITADEL_MAIN_LEVEL_Y, 23),
+  circleObstacle("court-column-east", 24, 48, 3, false, DESERT_CITADEL_MAIN_LEVEL_Y, 23),
 
-  // Bazaar and fortress interiors.
-  rectObstacle("bazaar-north-shops-west", -145, 49, 50, 12, false, 0, 10),
-  rectObstacle("bazaar-north-shops-east", -114, 49, 40, 12, false, 0, 9),
-  rectObstacle("bazaar-south-shops-west", -145, 105, 50, 12, false, 0, 9),
-  rectObstacle("bazaar-south-shops-east", -114, 105, 40, 12, false, 0, 10),
-  rectObstacle("bazaar-stall-west", -150, 80, 15, 6, true, 0, 3),
-  rectObstacle("bazaar-stall-east", -62, 96, 15, 6, true, 0, 3),
-  rectObstacle("bazaar-lookout-mass", -116, 76, 60, 32, false, 0, 23.4),
-  rectObstacle("sun-hall-north-west", 85, 28, 38, 5, false, DESERT_CITADEL_MAIN_LEVEL_Y, 25),
-  rectObstacle("sun-hall-north-east", 143.5, 28, 47, 5, false, DESERT_CITADEL_MAIN_LEVEL_Y, 25),
-  rectObstacle("sun-hall-south-west", 82, 110, 34, 7, false, DESERT_CITADEL_MAIN_LEVEL_Y, 24),
-  rectObstacle("sun-hall-south-east", 145, 110, 27, 7, false, DESERT_CITADEL_MAIN_LEVEL_Y, 24),
-  rectObstacle("sun-hall-east-north", 164, 40, 7, 28, false, DESERT_CITADEL_MAIN_LEVEL_Y, 24),
-  rectObstacle("sun-hall-east-south", 164, 100, 7, 28, false, DESERT_CITADEL_MAIN_LEVEL_Y, 24),
-  rectObstacle("sun-hall-guard-room", 124, 76, 24, 20, false, DESERT_CITADEL_MAIN_LEVEL_Y, 18),
-  rectObstacle("sun-tower-base", 63, -35, 19, 19, false, DESERT_CITADEL_MAIN_LEVEL_Y, 30),
-  circleObstacle("sun-hall-column-west", 96, 58, 3, false, DESERT_CITADEL_MAIN_LEVEL_Y, 23),
-  circleObstacle("sun-hall-column-east", 142, 91, 3, false, DESERT_CITADEL_MAIN_LEVEL_Y, 23),
+  // Matched market masses create equal-risk west and east combat districts.
+  rectObstacle("west-market-mass-north", -120, 64, 58, 6, false, 0, 23.4),
+  rectObstacle("west-market-mass-south", -120, 92, 58, 6, false, 0, 23.4),
+  rectObstacle("east-market-mass-north", 120, 64, 58, 6, false, 0, 23.4),
+  rectObstacle("east-market-mass-south", 120, 92, 58, 6, false, 0, 23.4),
+  rectObstacle("west-market-roof-screen", -108, 78, 8, 8, false, DESERT_CITADEL_ROOFTOP_LEVEL_Y, DESERT_CITADEL_ROOFTOP_LEVEL_Y + 5),
+  rectObstacle("east-market-roof-screen", 108, 78, 8, 8, false, DESERT_CITADEL_ROOFTOP_LEVEL_Y, DESERT_CITADEL_ROOFTOP_LEVEL_Y + 5),
+  rectObstacle("west-market-roof-rail-north", -120, 61.5, 58, 3, false, DESERT_CITADEL_ROOFTOP_LEVEL_Y, 27),
+  rectObstacle("west-market-roof-rail-south", -120, 94.5, 58, 3, false, DESERT_CITADEL_ROOFTOP_LEVEL_Y, 27),
+  rectObstacle("east-market-roof-rail-north", 120, 61.5, 58, 3, false, DESERT_CITADEL_ROOFTOP_LEVEL_Y, 27),
+  rectObstacle("east-market-roof-rail-south", 120, 94.5, 58, 3, false, DESERT_CITADEL_ROOFTOP_LEVEL_Y, 27),
+  rectObstacle("citadel-skywalk-rail-north", 0, 68, 180, 3, false, DESERT_CITADEL_ROOFTOP_LEVEL_Y, 27),
+  rectObstacle("citadel-skywalk-rail-south", 0, 88, 180, 3, false, DESERT_CITADEL_ROOFTOP_LEVEL_Y, 27),
 
-  // Palm Ruins use low cover and short sightline blockers.
-  rectObstacle("ruins-wall-west", -155, -123, 48, 7, false, 0, 6),
-  rectObstacle("ruins-foundation-west", -92, -99, 34, 18, true, 0, 3),
-  rectObstacle("ruins-arch-center-west", -34, -132, 20, 8, false, 0, 7),
-  rectObstacle("ruins-wall-center", 26, -105, 44, 7, true, 0, 5),
-  rectObstacle("ruins-foundation-east", 92, -139, 32, 20, true, 0, 3),
-  rectObstacle("ruins-wall-east", 154, -110, 44, 7, false, 0, 6),
-  rectObstacle("ruins-broken-tower", 205, -122, 18, 18, false, 0, 18),
+  // Palm Ruins break the long north sightline into readable duels.
+  rectObstacle("ruins-wall-west", -150, -116, 48, 7, false, 0, 6),
+  rectObstacle("ruins-wall-east", 150, -116, 48, 7, false, 0, 6),
+  rectObstacle("ruins-foundation-west", -92, -136, 34, 18, true, 0, 3),
+  rectObstacle("ruins-foundation-east", 92, -136, 34, 18, true, 0, 3),
+  rectObstacle("ruins-arch-center-west", -42, -110, 18, 8, false, 0, 7),
+  rectObstacle("ruins-arch-center-east", 42, -110, 18, 8, false, 0, 7),
+  rectObstacle("ruins-obelisk", 0, -128, 16, 16, false, 0, 16),
 
-  // Canal and Founders' Passage remain ground-level route families.
+  // Lower aqueduct route with three broad crossings and cover on both banks.
   rectObstacle("canal-north-bank-west", -155, 119, 90, 5, false, 0, 5),
   rectObstacle("canal-north-bank-center", 0, 119, 80, 5, false, 0, 5),
   rectObstacle("canal-north-bank-east", 155, 119, 90, 5, false, 0, 5),
   rectObstacle("canal-south-bank-west", -155, 147, 90, 5, false, 0, 5),
   rectObstacle("canal-south-bank-center", 0, 147, 80, 5, false, 0, 5),
-  rectObstacle("canal-south-bank-east", 155, 147, 90, 5, false, 0, 5),
-  // Upper-level counterplay screens and parapets.
-  rectObstacle("bazaar-roof-screen", -92, 76, 8, 18, false, DESERT_CITADEL_ROOFTOP_LEVEL_Y, DESERT_CITADEL_ROOFTOP_LEVEL_Y + 5),
-  rectObstacle("sun-hall-roof-screen", 132, 68, 8, 16, false, DESERT_CITADEL_ROOFTOP_LEVEL_Y, DESERT_CITADEL_ROOFTOP_LEVEL_Y + 5),
-  rectObstacle("bazaar-roof-rail-north", -116, 61.5, 60, 3, false, DESERT_CITADEL_ROOFTOP_LEVEL_Y, 27),
-  rectObstacle("bazaar-roof-rail-south", -116, 90.5, 60, 3, false, DESERT_CITADEL_ROOFTOP_LEVEL_Y, 27),
-  rectObstacle("bazaar-roof-rail-east", -87.5, 76, 3, 32, false, DESERT_CITADEL_ROOFTOP_LEVEL_Y, 27),
-  rectObstacle("sun-roof-rail-north", 112, 49.5, 88, 3, false, DESERT_CITADEL_ROOFTOP_LEVEL_Y, 27),
-  rectObstacle("sun-roof-rail-south", 132, 90.5, 48, 3, false, DESERT_CITADEL_ROOFTOP_LEVEL_Y, 27),
-  rectObstacle("sun-roof-rail-east", 154.5, 70, 3, 44, false, DESERT_CITADEL_ROOFTOP_LEVEL_Y, 27),
-  rectObstacle("sun-roof-rail-west-north", 69.5, 59, 3, 22, false, DESERT_CITADEL_ROOFTOP_LEVEL_Y, 27)
+  rectObstacle("canal-south-bank-east", 155, 147, 90, 5, false, 0, 5)
 ];
 
 /** Simplified collision proxies for the Iron Junction props and architecture. */
@@ -2923,7 +2892,13 @@ export const findBotNavigationPath = ({
     return [{ x: goal.x, y: goal.y, z: goal.z }];
   }
 
-  const safeCellSize = Math.max(4, cellSize);
+  // Desert Citadel has a deliberately narrow, authored stairwell between each
+  // market wing. A five-unit sample keeps the shared bot grid on that stair
+  // centerline on school hardware without changing the resolution of the
+  // other maps.
+  const safeCellSize = mapId === "desert_citadel"
+    ? Math.min(5, Math.max(4, cellSize))
+    : Math.max(4, cellSize);
   const bounds = getArenaBounds(mapId);
   const minX = -bounds.limitX + padding;
   const minZ = -bounds.limitZ + padding;

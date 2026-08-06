@@ -110,7 +110,7 @@ export class BotNavigationService {
 
   private botBasePoint(team: Team, mapId?: string) {
     return mapId === "desert_citadel"
-      ? this.scaledPoint((team === "blue" ? -1 : 1) * 235, team === "blue" ? 58 : -58)
+      ? this.scaledPoint((team === "blue" ? -1 : 1) * 235, 0)
       : this.scaledPoint(
         (team === "blue" ? -1 : 1)
           * (mapId === "temple_runoff" ? 205 : mapId === "iron_junction" ? 248 : 142),
@@ -120,7 +120,7 @@ export class BotNavigationService {
 
   private botEnemyBasePoint(team: Team, mapId?: string) {
     return mapId === "desert_citadel"
-      ? this.scaledPoint((team === "blue" ? 1 : -1) * 235, team === "blue" ? -58 : 58)
+      ? this.scaledPoint((team === "blue" ? 1 : -1) * 235, 0)
       : this.scaledPoint(
         (team === "blue" ? 1 : -1)
           * (mapId === "temple_runoff" ? 205 : mapId === "iron_junction" ? 248 : 142),
@@ -156,28 +156,19 @@ export class BotNavigationService {
 
   private getDesertCitadelPatrolPoints(team: Team) {
     const direction = team === "blue" ? 1 : -1;
-    const xStages = [-182, -108, -20, 96].map((x) => x * direction);
-    const upper = team === "blue"
-      ? [
-          this.scaledLevelPoint(-45, 0, DESERT_CITADEL_MAIN_LEVEL_Y),
-          this.scaledLevelPoint(-116, 76, DESERT_CITADEL_ROOFTOP_LEVEL_Y),
-          this.scaledLevelPoint(30, 40, DESERT_CITADEL_MAIN_LEVEL_Y),
-          this.scaledLevelPoint(90, 70, DESERT_CITADEL_ROOFTOP_LEVEL_Y)
-        ]
-      : [
-          this.scaledLevelPoint(90, 70, DESERT_CITADEL_ROOFTOP_LEVEL_Y),
-          this.scaledLevelPoint(30, 40, DESERT_CITADEL_MAIN_LEVEL_Y),
-          this.scaledLevelPoint(-116, 76, DESERT_CITADEL_ROOFTOP_LEVEL_Y),
-          this.scaledLevelPoint(-45, 0, DESERT_CITADEL_MAIN_LEVEL_Y)
-        ];
-    const stages = xStages.map((x, stage) => [
-      this.scaledLevelPoint(x, 0),
-      this.scaledLevelPoint(x, stage < 3 ? 78 : 70),
+    const xStages = [-180, -108, 0, 108, 180].map((x) => x * direction);
+    const upper = [
+      this.scaledLevelPoint(-120, 78, DESERT_CITADEL_ROOFTOP_LEVEL_Y),
+      this.scaledLevelPoint(0, 78, DESERT_CITADEL_ROOFTOP_LEVEL_Y),
+      this.scaledLevelPoint(120, 78, DESERT_CITADEL_ROOFTOP_LEVEL_Y)
+    ];
+    return xStages.flatMap((x, stage) => [
       this.scaledLevelPoint(x, -118),
-      this.scaledLevelPoint(x, stage === 0 || stage === 3 ? 133 : 60),
-      upper[stage]
+      this.scaledLevelPoint(x, 0),
+      this.scaledLevelPoint(x, 133),
+      this.scaledLevelPoint(x, stage % 2 === 0 ? 18 : 78, stage % 2 === 0 ? DESERT_CITADEL_MAIN_LEVEL_Y : 0),
+      upper[stage % upper.length]
     ]);
-    return stages.flat();
   }
 
   private getTempleRunoffPatrolPoints(team: Team) {
@@ -264,8 +255,8 @@ export class BotNavigationService {
       if (session.settings.mapId === "desert_citadel") {
         const lowerRoute = brain.routeIndex % 2 === 0;
         return lowerRoute
-          ? this.scaledLevelPoint(brain.strafeDirection * 42, -118)
-          : this.scaledLevelPoint(brain.strafeDirection * 72, 78);
+          ? this.scaledLevelPoint(brain.strafeDirection * 96, 133)
+          : this.scaledLevelPoint(brain.strafeDirection * 120, 78, DESERT_CITADEL_ROOFTOP_LEVEL_Y);
       }
       const side = brain.routeIndex % 2 === 0 ? -1 : 1;
       return this.scaledPoint(side * 82, brain.strafeDirection * 72);
