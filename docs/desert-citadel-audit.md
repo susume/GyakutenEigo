@@ -5,16 +5,16 @@ Target: 40 players, normally 20 Blue vs 20 Red, on school desktops and Chromeboo
 
 ## Final classification
 
-**LEVEL 2 - Major redesign.** The prototype had reusable map registration, a recognizable desert palette, a fountain/citadel idea, an aqueduct idea, and working shared movement rules. It did not have a fair 40-player route graph: its asymmetric side objectives measured approximately 117 vs 262 world units from the two team starts to one side objective, and approximately 229 vs 103 to the other. The result was a major layout and collision redesign, not a small polish pass. A full rebuild was unnecessary because the shared controller, renderer, map loader, and server authority were serviceable and were retained.
+**LEVEL 2 - Major redesign.** The prototype had reusable map registration, a recognizable desert palette, a fountain/citadel idea, and working shared movement rules. It did not have a fair 40-player route graph: its asymmetric side objectives measured approximately 117 vs 262 world units from the two team starts to one side objective, and approximately 229 vs 103 to the other. The result was a major layout and collision redesign, not a small polish pass. A full rebuild was unnecessary because the shared controller, renderer, map loader, and server authority were serviceable and were retained.
 
 ## Reference study
 
 | Reference | Principle | QuizStrike adaptation | Reason |
 |---|---|---|---|
 | Counter-Strike lane-based bomb sites | Clear lane hierarchy, controlled sightlines, and contestable chokepoints | Three readable north, center, and south approaches converge on Fountain Court, with side gates and cover breaks instead of one central funnel | 20v20 needs several simultaneous fights; lane identity lets students understand where pressure is forming | No copied bomb-site layout, map name, props, or branded textures |
-| Counter-Strike rotation play | Rotations should cost time and expose the mover without becoming a dead end | Three aqueduct crossings, four main terrace stairs, and mirrored market routes create visible but usable rotations | Players can leave a losing lane and still contribute before the next engagement | No copied callout system or recognizable geometry |
-| Fortnite multi-POI arenas | Memorable points of interest, strong silhouettes, and small decisions within a larger route | Palm Ruins, Fountain Court, West/East Markets, Broken Aqueduct, and Citadel Skywalk each have a distinct silhouette and material accent | Middle-school players benefit from visual memory instead of floating labels | No copied POI shape, branded asset, or color identity |
-| Battlefield desert/urban spaces | Believable large-scale setting, macro and micro cover, and varied engagement distances | A fortified trade city frames a long north lane, raised central court, market combat pockets, and an exposed lower aqueduct | Supports long, mid, and close engagements while keeping the battlefield legible | No copied set piece, map layout, or military branding |
+| Counter-Strike rotation play | Rotations should cost time and expose the mover without becoming a dead end | Four main terrace stairs, a dry south-yard cut, and mirrored market routes create visible but usable rotations | Players can leave a losing lane and still contribute before the next engagement | No copied callout system or recognizable geometry |
+| Fortnite multi-POI arenas | Memorable points of interest, strong silhouettes, and small decisions within a larger route | Palm Ruins, Fountain Court, West/East Markets, South Caravan Yard, and Citadel Skywalk each have a distinct silhouette and material accent | Middle-school players benefit from visual memory instead of floating labels | No copied POI shape, branded asset, or color identity |
+| Battlefield desert/urban spaces | Believable large-scale setting, macro and micro cover, and varied engagement distances | A fortified trade city frames a long north lane, raised central court, market combat pockets, and an exposed lower caravan yard | Supports long, mid, and close engagements while keeping the battlefield legible | No copied set piece, map layout, or military branding |
 | Halo arena vertical layering | Upper positions should create angles and counterplay rather than automatic dominance | Market stairs feed the shared Skywalk; roof rails, roof screens, and multiple ground approaches keep the height useful but contestable | A single upper route adds decision-making without requiring complex traversal or expensive simulation | No copied arena footprint or signature structure |
 
 ## Evidence-backed audit
@@ -27,13 +27,14 @@ Target: 40 players, normally 20 Blue vs 20 Red, on school desktops and Chromeboo
 | A4 | Travel fairness was hidden by route geometry rather than measured | Baseline side-objective timings differed by roughly 9.7 seconds in one comparison | Critical | Mirror side districts and use shared run-speed path measurements | Current north 10.20/10.57 s, center 10.79/10.47 s, south 15.07/14.45 s at 14.8 units/s |
 | A5 | Vertical movement and collision data were duplicated or vulnerable to drift | Client map blocks and shared floor/obstacle data were separate; roof stair sampling also exposed bot-grid aliasing | Critical | Author six shared stair flights, use the same floor resolver for client/server/bots, and use a Desert-specific 5-unit nav sample | Stair continuity, movement blockers, collider parity, and bot route tests pass |
 | A6 | Upper movement had no reliable lower-to-upper connection | The prototype's upper geometry was not a complete route from both teams | High | Add mirrored market stair flights and a shared Skywalk with roof rails and approach cover | Bots reach both roof approaches and Skywalk; roof crossing test passes |
-| A7 | Combat spaces lacked a cover hierarchy | Long sightlines and repeated low-value cover made the central fight too uniform | High | Use low parapets, broken walls, fountain rim, monument, columns, ruin foundations, and canal banks | Static obstacle audit and approach-path tests pass; real-player peeking test remains required |
-| A8 | Lower-level movement was not a meaningful route | The aqueduct did not previously carry enough traffic or rotations | Medium | Add three broad bridges, paired banks, water pools, and south stairs | South-lane and aqueduct path tests pass |
+| A7 | Combat spaces lacked a cover hierarchy | Long sightlines and repeated low-value cover made the central fight too uniform | High | Use low parapets, broken walls, fountain rim, monument, columns, ruin foundations, and caravan-yard cover | Static obstacle audit and approach-path tests pass; real-player peeking test remains required |
+| A8 | The lower route was visually noisy and the river sat at the map's far edge without a strong gameplay reason | The supplied first-person screenshots showed the lower water feature reading as a detached strip rather than a useful combat space | Medium | Remove the river, bridges, and water pools; retain a dry South Caravan Yard with low cover and the same lower-floor rotation | Focused map test confirms no canal water/pool geometry and the south-yard path remains reachable |
 | A9 | Navigation depended on labels rather than architecture | Prototype contained map-specific labels/markers in places where silhouette could do the job | Medium | Remove floor marks and signs; use repeated gates, market colors, palms, obelisk, and arch silhouettes | `floorMarks` and `signs` are empty; no floating navigation labels added |
 | A10 | Visual and authoritative collider footprints could diverge | Client collision proxies used extra padding while shared server obstacles used the player radius directly | Critical | Use zero extra proxy padding for Desert Citadel, leaving the shared 0.45-unit player footprint authoritative | Visual/shared collider footprint test passes |
-| A11 | Bot goals and patrols were not aligned with the redesigned regions | `apps/server/src/botNavigation.ts` still referenced old diagonal bases and old side-region assumptions | High | Use mirrored base goals, symmetric patrol stages, market approaches, lower aqueduct goals, and Skywalk goals | Bot route tests cover all three lanes, both markets, and the upper route |
-| A12 | Performance risk came from decorative repetition rather than gameplay geometry | Renderer already supports static batching, material reuse, quality levels, shadow gating, LOD, and disposal; map needed a bounded art pass | Medium | Keep 211 blocks, 26 props, 7 cylinders, no floor marks/signs, and reuse the existing batcher/material/quality paths | Build and tests pass; actual Chromebook FPS still needs device measurement |
+| A11 | Bot goals and patrols were not aligned with the redesigned regions | `apps/server/src/botNavigation.ts` still referenced old diagonal bases and old side-region assumptions | High | Use mirrored base goals, symmetric patrol stages, market approaches, lower caravan-yard goals, and Skywalk goals | Bot route tests cover all three lanes, both markets, and the upper route |
+| A12 | Performance risk came from decorative repetition rather than gameplay geometry | Renderer already supports static batching, material reuse, quality levels, shadow gating, LOD, and disposal; map needed a bounded art pass | Medium | Keep a bounded block/prop budget, no floor marks/signs, and reuse the existing batcher/material/quality paths | Build and tests pass; actual Chromebook FPS still needs device measurement |
 | A13 | Boundary escapes and hidden shortcut surfaces were not proven | Multi-level geometry can create floor shortcuts or out-of-bounds hiding spots | High | Add deterministic bounds, perimeter walls, foundation/parapet/roof-screen blockers, and stair-only elevation changes | Shortcut, bounds, and level-surface tests pass; physical 40-client soak remains recommended |
+| A14 | Lower players could be lifted onto the upper route from below a roof footprint | `getArenaRecoveryGroundHeight` treated any lower player under a market roof or Skywalk as embedded in a raised structure and set Y directly to 24 | Critical | Remove automatic Y recovery; normal floor resolution and collision rejection now keep lower players on Y=0 | Regression tests cover a lower player below a market roof and below the Skywalk; client/server recovery writes were removed |
 
 ## Redesign proposal
 
@@ -42,17 +43,17 @@ Target: 40 players, normally 20 Blue vs 20 Red, on school desktops and Chromeboo
 - Blue starts in the west Assembly Court; Red starts in the mirrored east Assembly Court. Each court has 20 positions across five rows and two screened exits.
 - **North Lane - Palm Ruins:** long-range route with the Dawn Obelisk, paired ruin walls, palms, and broken sightlines.
 - **Center Lane - Fountain Court:** the main raised court, Lion Gate/Sun Gate pair, fountain rim, Sun Dial Monument, and low parapets. It is the fastest contest route but not a single doorway.
-- **South Lane - Broken Aqueduct:** lower, exposed route with three bridge crossings, water, banks, and south terrace stairs. It is the safest rotation from a losing center fight but has less cover.
+- **South Lane - South Caravan Yard:** lower, exposed route with dry paving, paired cover rows, palms, and south terrace stairs. It is the safest rotation from a losing center fight but has less cover.
 - **Upper Route - Citadel Skywalk:** mirrored market stairs lead to roof fighting and a shared upper crossing. Roof rails and screens make the height useful without making it a free win.
 
-Cross-lane rotations are the three aqueduct bridges, the four main-level stair flights, and the open market courts. Side districts are mirrored so each team has one near-side market and one contestable far-side market with the same architecture.
+Cross-lane rotations are the four main-level stair flights, the open South Caravan Yard, and the market courts. Side districts are mirrored so each team has one near-side market and one contestable far-side market with the same architecture.
 
 ### Combat zones and objectives
 
 1. Palm Ruins: long sightlines and medium cover.
 2. Fountain Court: primary contest space with multiple gates and approaches.
 3. West Market and East Market: mirrored close/mid combat districts with stair courts.
-4. Broken Aqueduct: lower-level exposed rotation and bridge fights.
+4. South Caravan Yard: lower-level exposed rotation and dry cover fights.
 5. Citadel Skywalk: upper cross-map counter-route.
 
 Capture zones and search/retrieve locations are distributed across these spaces. Delivery zones remain deep and mirrored at the west/east boundary rather than forcing a team through the same center doorway.
@@ -66,26 +67,26 @@ Capture zones and search/retrieve locations are distributed across these spaces.
           |  \            /   |   \            /  |
           |   [West Market] [South Stairs] [East Market]   |
           |        \          |          /        |
-          +--------- [Broken Aqueduct / 3 Bridges] --------+
+          +--------- [South Caravan Yard / dry cover] ------+
                          |              |
                     [Market Stairs] -- [Citadel Skywalk]
 ```
 
-The graph is intentionally architectural: players read gates, palms, water, market canopies, and roof arches instead of world-space instructional labels.
+The graph is intentionally architectural: players read gates, palms, dry yard cover, market canopies, and roof arches instead of world-space instructional labels.
 
 ## Implementation summary
 
-- `apps/web/src/game/desertCitadelMap.ts` was rebuilt around mirrored Assembly Courts, three lanes, Fountain Court, Palm Ruins, West/East Markets, Broken Aqueduct, and Citadel Skywalk. Decorative props are sparse and purposeful rather than a crate wall.
-- `packages/shared/src/index.ts` now owns the six Desert Citadel stair profiles, lower/main/upper floor surfaces, mirrored objectives and search/retrieve points, deterministic obstacle proxies, map bounds, and a Desert-specific navigation-grid sample size.
-- `apps/server/src/botNavigation.ts` now patrols and targets the same mirrored regions as the map, including market approaches, lower aqueduct positions, and roof positions.
-- `apps/web/src/game/desertCitadelMap.test.ts` now checks route authorship, floor levels, stair continuity, collider parity, spawn safety, bot reachability, lane timing, upper-route rotation, and a 40-player lane distribution.
+- `apps/web/src/game/desertCitadelMap.ts` was rebuilt around mirrored Assembly Courts, three lanes, Fountain Court, Palm Ruins, West/East Markets, South Caravan Yard, and Citadel Skywalk. Decorative props are sparse and purposeful rather than a crate wall.
+- `packages/shared/src/index.ts` now owns the six Desert Citadel stair profiles, lower/main/upper floor surfaces, mirrored objectives and search/retrieve points, deterministic obstacle proxies, map bounds, and a Desert-specific navigation-grid sample size. It no longer performs the faulty automatic raised-floor recovery.
+- `apps/server/src/botNavigation.ts` now patrols and targets the same mirrored regions as the map, including market approaches, lower caravan-yard positions, and roof positions.
+- `apps/web/src/game/desertCitadelMap.test.ts` now checks route authorship, dry lower-route geometry, under-roof floor behavior, floor levels, stair continuity, collider parity, spawn safety, bot reachability, lane timing, upper-route rotation, and a 40-player lane distribution.
 - `apps/web/src/game/arenaMapBuilder.ts` uses no extra visual-collider padding for Desert Citadel, matching the shared player footprint and preventing client/server edge disagreement.
 
 ## Measured current snapshot
 
 - World footprint: 310 x 223.2 units, bounds +/-155 x +/-111.6.
 - Spawns: 20 Blue and 20 Red, all on the lower floor; no tested overlap and no tested direct cross-team spawn line of sight.
-- Geometry budget: 211 blocks, 26 props, 7 cylinders; 64 colliding blocks plus 3 colliding cylinders represented by 67 shared obstacle proxies.
+- Geometry budget after the river removal: 207 blocks, 26 props, 7 cylinders; 64 colliding blocks plus 3 colliding cylinders represented by 67 shared obstacle proxies.
 - Lane route lengths from the first Blue/Red spawn at run speed 14.8: north 150.9/156.5, center 159.7/155.0, south 223.0/213.9 units.
 - Opening travel estimates: north 10.20/10.57 s, center 10.79/10.47 s, south 15.07/14.45 s. The automated acceptance limit is under 15% asymmetry and 7-18 seconds; all three pass.
 - Opposite-market approach: Blue to East 282.9 units and Red to West 280.1 units, under 1% difference.
@@ -97,27 +98,27 @@ The graph is intentionally architectural: players read gates, palms, water, mark
 ### Completed
 
 - Baseline before redesign: existing test suite, typecheck, and production build passed. The build already reported large Vite chunks (about 538 kB Three.js and 645 kB application chunk); this remains a packaging risk rather than a map-geometry failure.
-- Final repository checks: `npm test` passed all 299 tests (shared 92, server 66, web 141); `npm run typecheck` passed shared/server/web/e2e TypeScript checks; `npm run lint` passed; and `npm run build` passed for shared/server/web. The production build still reports large chunks: Three.js 537.71 kB, application 640.22 kB, and CSS 334.91 kB.
+- Final repository checks: `npm test` passed all 299 tests (shared 92, server 66, web 141); `npm run typecheck` passed shared/server/web/e2e TypeScript checks; `npm run lint` passed; and `npm run build` passed for shared/server/web. The production build still reports large chunks: Three.js 537.71 kB, application 639.75 kB, and CSS 334.91 kB.
 - `npm run build -w @quizstrike/shared`: passed after the redesign.
 - `npm run test -w @quizstrike/web -- --test-name-pattern='Desert Citadel'`: passed, 141 tests passed in the focused run. The run includes all Desert Citadel route, movement, spawn, collider, and performance-quality checks.
-- `npm run test:load`: passed with 40 authenticated Socket.IO clients: connection 166 ms, start fanout 211 ms, reconnect 5 ms, largest initial state 38,535 bytes, 39 observed movement senders, one movement batch, and 5,966-byte observed movement payload.
+- `npm run test:load`: passed with 40 authenticated Socket.IO clients: connection 208 ms, start fanout 314 ms, reconnect 8 ms, largest initial state 38,535 bytes, 39 observed movement senders, one movement batch, and 5,966-byte observed movement payload.
 - Shared floor resolver checks: all six flights climb continuously and finish at their authored landing values; no accidental stacked floors were introduced.
 - Geometry-based bot checks: all three lanes, both market approaches, the shared Skywalk, and roof-to-roof rotation are reachable.
 - Movement checks: foundation, parapet, and roof-screen shortcuts reject; visual and authoritative collider footprints match.
 - Spawn checks: 20+20 positions are clear in the static test and protected from direct spawn-to-spawn fire in the tested first frame.
-- Browser visual check: the local teacher flow selected Desert Citadel, created a Capture the Flag room, joined a student, started Round 1, and reached the live first-person arena. The captured view shows the Blue spawn court, teal gate, stairs, market massing, HUD, and Desert Citadel minimap. Artifacts: `C:/Users/admin/.codex/visualizations/2026/08/06/019fd479-b520-7922-8896-8229c5f3f0a4/desert-citadel-arena-preview.jpg` and `C:/Users/admin/.codex/visualizations/2026/08/06/019fd479-b520-7922-8896-8229c5f3f0a4/desert-citadel-live-game.jpg`.
+- Browser visual check: the local teacher flow selected Desert Citadel, created a Capture the Flag room, joined a student, started Round 1, and reached the live first-person arena. The supplied Team Tag screenshots were also reviewed; they show the upper route composition and the misplaced lower water strip that triggered this audit. A new post-fix screenshot sweep is still recommended. Existing artifacts: `C:/Users/admin/.codex/visualizations/2026/08/06/019fd479-b520-7922-8896-8229c5f3f0a4/desert-citadel-arena-preview.jpg` and `C:/Users/admin/.codex/visualizations/2026/08/06/019fd479-b520-7922-8896-8229c5f3f0a4/desert-citadel-live-game.jpg`.
 
 ### Not yet proven by this repository run
 
 - No physical 40-client classroom match was available. The 40-player flow result is bot/geometry-based inference, not a real-player playtest.
 - No Chromebook hardware was available for a measured low-quality FPS/draw-call profile. The map is bounded and uses the existing static batcher, material cache, LOD, quality gating, and disposal paths, but a device profile must still be recorded.
 - `npm run test:e2e` was attempted after a successful production build but failed in two existing classroom-flow selectors before a map-specific assertion: `apps/web/e2e/classroom.spec.ts:63` waited for accessible label `Your name` while the rendered join control is labeled `Player name`, and `apps/web/e2e/tournament.spec.ts:43` waited for `Teacher Dashboard` while the rendered public landing control is `TEACHER WORKSPACE`. Failure screenshots were captured at `apps/web/test-results/classroom-student-customiz-be451--match-start-over-Socket-IO/test-failed-1.png` and `apps/web/test-results/tournament-teacher-creates-7feb2-rnament-study-first-bracket/test-failed-1.png`. These are UI-selector mismatches, not evidence of a Desert Citadel geometry failure.
-- The browser first-person capture covered the live Blue spawn court only; upper, lower, market, aqueduct, and roof viewpoints still need a full screenshot sweep. The browser run used one real student plus a local visual-test room, not a 40-player match.
+- The browser first-person capture covered the live Blue spawn court only; upper, lower, market, caravan-yard, and roof viewpoints still need a full post-fix screenshot sweep. The browser run used one real student plus a local visual-test room, not a 40-player match.
 
 ## Recommended playtests and remaining risks
 
 1. Run two 20-player teams through three rounds, recording first-contact timestamps by lane, deaths in the first 20 seconds, market/skywalk occupancy, and spawn pressure.
 2. Test the low-quality preset on a school Chromebook and record one-minute median FPS, 1% low FPS, renderer draw calls, triangle count, and long-task count with 40 players or bot proxies.
-3. Probe every stair, bridge edge, roof rail, market stairwell, perimeter wall, and spawn screen with a real client plus a server-side spectator. Pay special attention to stepping off the market stairs and landing on roof slabs.
+3. Probe every stair, dry-yard cover edge, roof rail, market stairwell, perimeter wall, and spawn screen with a real client plus a server-side spectator. Pay special attention to stepping off the market stairs and landing on roof slabs.
 4. Run a boundary and prop sweep with crouch, jump, sprint, and respawn to find hiding spots that the static obstacle tests cannot discover.
 5. Check the center monument and upper Skywalk with actual weapon fire. If either position controls too many lanes, lower or perforate the cover rather than adding more clutter.

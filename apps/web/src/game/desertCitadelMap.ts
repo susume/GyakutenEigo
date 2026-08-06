@@ -30,7 +30,7 @@ const scaleCylinder = <T extends { x: number; z: number; radius: number }>(item:
 export const DESERT_CITADEL: ArenaMapDefinition = {
   title: "Desert Citadel",
   id: "desert_citadel",
-  description: "A fortified desert trade city split by a fountain citadel, a palm-lined north road, and a broken aqueduct below the market roofs.",
+  description: "A fortified desert trade city split by a fountain citadel, a palm-lined north road, and a dry caravan yard below the market roofs.",
   footprint: { width: scaleArenaValue(500), depth: scaleArenaValue(360) },
   districts: [
     "West Assembly Court — Blue spawn and Lion Gate",
@@ -39,14 +39,14 @@ export const DESERT_CITADEL: ArenaMapDefinition = {
     "Fountain Court — raised main battle space",
     "West Market — bazaar-side combat district",
     "East Market — caravan-side combat district",
-    "Broken Aqueduct — lower rotation lane",
+    "South Caravan Yard — lower rotation lane",
     "Citadel Skywalk — shared upper counter-route"
   ],
   routes: [
     "North Lane — palm ruins and obelisk cover",
     "Center Lane — gates, fountain court, and terrace stairs",
-    "South Lane — markets, aqueduct banks, and bridge crossings",
-    "Rotations — west/east main stairs plus three aqueduct crossings",
+    "South Lane — markets, caravan yard, and low cover",
+    "Rotations — west/east main stairs plus the open south yard",
     "Upper Route — mirrored market stairs and the Citadel Skywalk"
   ],
   palette: {
@@ -67,7 +67,6 @@ const terracotta = "#a95f43";
 const blue = "#287daf";
 const red = "#ae4545";
 const turquoise = "#2ca6af";
-const water = "#249eb3";
 const palmGreen = "#5e7f54";
 const mainY = DESERT_CITADEL_MAIN_LEVEL_Y;
 const roofY = DESERT_CITADEL_ROOFTOP_LEVEL_Y;
@@ -112,10 +111,6 @@ const rawBlocks: CitadelBlock[] = [
   { id: "south-lane-paving", x: 0, z: 126, w: 444, d: 56, h: 0.3, y: -0.15, color: goldStone, material: "stone", style: "bridge" },
   { id: "court-floor", x: 0, z: 24, w: 132, d: 120, h: 1, y: mainY - 0.5, color: paleStone, material: "stone", style: "bridge" },
   { id: "court-foundation", x: 0, z: 24, w: 132, d: 120, h: 9.35, y: 4.675, color: darkStone, collides: true, style: "wall" },
-  { id: "canal-water", label: "Broken Aqueduct", x: 0, z: 133, w: 410, d: 15, h: 0.22, y: 0.08, color: water, material: "water", style: "channel" },
-  { id: "canal-bridge-west", x: -120, z: 133, w: 28, d: 35, h: 0.8, y: 0.45, color: paleStone, material: "stone", style: "bridge" },
-  { id: "canal-bridge-center", x: 0, z: 133, w: 30, d: 35, h: 0.8, y: 0.45, color: paleStone, material: "stone", style: "bridge" },
-  { id: "canal-bridge-east", x: 120, z: 133, w: 28, d: 35, h: 0.8, y: 0.45, color: paleStone, material: "stone", style: "bridge" },
 
   // Four wide main-level connectors. Each landing is framed by a real arch.
   ...DESERT_CITADEL_STAIR_FLIGHTS.slice(0, 4).flatMap((flight) => makeStairFlight(flight, paleStone)),
@@ -186,13 +181,13 @@ const rawBlocks: CitadelBlock[] = [
   { id: "ruins-obelisk", label: "Dawn Obelisk", x: 0, z: -128, w: 16, d: 16, h: 16, color: darkStone, collides: true, style: "tower" },
   { id: "ruins-obelisk-crown", x: 0, z: -128, w: 11, d: 11, h: 8, y: 20, color: paleStone, style: "tower" },
 
-  // Lower aqueduct banks and bridges provide a safe but exposed rotation route.
-  { id: "canal-north-bank-west", x: -155, z: 119, w: 90, d: 5, h: 5, color: darkStone, collides: true, style: "channel" },
-  { id: "canal-north-bank-center", x: 0, z: 119, w: 80, d: 5, h: 5, color: darkStone, collides: true, style: "channel" },
-  { id: "canal-north-bank-east", x: 155, z: 119, w: 90, d: 5, h: 5, color: darkStone, collides: true, style: "channel" },
-  { id: "canal-south-bank-west", x: -155, z: 147, w: 90, d: 5, h: 5, color: darkStone, collides: true, style: "channel" },
-  { id: "canal-south-bank-center", x: 0, z: 147, w: 80, d: 5, h: 5, color: darkStone, collides: true, style: "channel" },
-  { id: "canal-south-bank-east", x: 155, z: 147, w: 90, d: 5, h: 5, color: darkStone, collides: true, style: "channel" }
+  // Dry caravan-yard cover keeps the lower route readable without a misplaced river.
+  { id: "caravan-yard-cover-north-west", x: -155, z: 119, w: 90, d: 5, h: 5, color: darkStone, collides: true, style: "wall" },
+  { id: "caravan-yard-cover-north-center", x: 0, z: 119, w: 80, d: 5, h: 5, color: darkStone, collides: true, style: "wall" },
+  { id: "caravan-yard-cover-north-east", x: 155, z: 119, w: 90, d: 5, h: 5, color: darkStone, collides: true, style: "wall" },
+  { id: "caravan-yard-cover-south-west", x: -155, z: 147, w: 90, d: 5, h: 5, color: darkStone, collides: true, style: "wall" },
+  { id: "caravan-yard-cover-south-center", x: 0, z: 147, w: 80, d: 5, h: 5, color: darkStone, collides: true, style: "wall" },
+  { id: "caravan-yard-cover-south-east", x: 155, z: 147, w: 90, d: 5, h: 5, color: darkStone, collides: true, style: "wall" }
 ];
 
 export const blocks: CitadelBlock[] = rawBlocks.map(scaleRect);
@@ -217,8 +212,8 @@ const rawProps: CitadelProp[] = [
   { id: "east-market-canopy", kind: "shade", x: 145, z: 78, size: 18, h: 6, y: 0, color: red, material: "cloth" },
   { id: "north-palm-west", kind: "palm", x: -70, z: -145, size: 6, h: 17, color: palmGreen, material: "wood" },
   { id: "north-palm-east", kind: "palm", x: 70, z: -145, size: 6, h: 17, color: palmGreen, material: "wood" },
-  { id: "canal-palm-west", kind: "palm", x: -210, z: 154, size: 5, h: 15, color: palmGreen, material: "wood" },
-  { id: "canal-palm-east", kind: "palm", x: 210, z: 154, size: 5, h: 15, color: palmGreen, material: "wood" },
+  { id: "caravan-yard-palm-west", kind: "palm", x: -210, z: 154, size: 5, h: 15, color: palmGreen, material: "wood" },
+  { id: "caravan-yard-palm-east", kind: "palm", x: 210, z: 154, size: 5, h: 15, color: palmGreen, material: "wood" },
   { id: "ruins-arch-west", kind: "arch", x: -118, z: -112, size: 15, h: 10, color: paleStone, rotationY: 0.12 },
   { id: "ruins-arch-east", kind: "arch", x: 118, z: -112, size: 15, h: 10, color: warmStone, rotationY: Math.PI - 0.12 },
   { id: "blue-base-banner", kind: "banner", x: -235, z: -54, size: 4, h: 11, y: 0, color: blue, material: "cloth" },
@@ -239,8 +234,8 @@ const rawCylinders: CitadelCylinder[] = [
   { id: "court-planter-palm", x: 0, z: -12, radius: 2.5, h: 5, y: mainY + 2.5, color: palmGreen },
   { id: "court-column-west", x: -24, z: 48, radius: 3, h: 13, y: mainY + 6.5, color: paleStone, collides: true },
   { id: "court-column-east", x: 24, z: 48, radius: 3, h: 13, y: mainY + 6.5, color: paleStone, collides: true },
-  { id: "canal-pool-west", x: -205, z: 133, radius: 13, h: 0.2, y: 0.12, color: water, material: "water" },
-  { id: "canal-pool-east", x: 205, z: 133, radius: 13, h: 0.2, y: 0.12, color: water, material: "water" }
+  { id: "caravan-yard-marker-west", x: -205, z: 133, radius: 2.8, h: 0.5, y: 0.25, color: ochre, material: "stone" },
+  { id: "caravan-yard-marker-east", x: 205, z: 133, radius: 2.8, h: 0.5, y: 0.25, color: ochre, material: "stone" }
 ];
 export const cylinders: CitadelCylinder[] = rawCylinders.map(scaleCylinder);
 

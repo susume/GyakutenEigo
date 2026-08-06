@@ -8,7 +8,6 @@ import {
   getGearZoomFovMultiplier,
   getArenaGroundHeight,
   getArenaGroundHeightForPlayer,
-  getArenaRecoveryGroundHeight,
   getArenaLevelLabel,
   getPlayerMoveSpeedMultiplier,
   getPlayerWeaponId,
@@ -1015,18 +1014,6 @@ export default function ArenaPreview({
           previousFloorEyeHeight = floorEyeHeight;
         }
         isCrouching = crouching;
-        const recoveryGroundY = getArenaRecoveryGroundHeight(
-          arenaMapId,
-          playerPosition.x,
-          playerPosition.z,
-          playerPosition.y,
-          floorEyeHeight
-        );
-        if (recoveryGroundY !== undefined) {
-          playerPosition.y = recoveryGroundY + floorEyeHeight;
-          verticalVelocity = 0;
-          wasGrounded = true;
-        }
         let surfaceGroundY = resolveSurfaceGroundY(
           playerPosition.x,
           playerPosition.z,
@@ -1038,9 +1025,6 @@ export default function ArenaPreview({
         renderer.domElement.dataset.playerGroundY = surfaceGroundY.toFixed(3);
         renderer.domElement.dataset.detectedFloor = surfaceGroundY.toFixed(3);
         renderer.domElement.dataset.currentNavRegion = `${arenaMapId}:${currentLevel}`;
-        renderer.domElement.dataset.recoveryTriggered = recoveryGroundY === undefined ? "no" : "yes";
-        renderer.domElement.dataset.recoveryReason = recoveryGroundY === undefined ? "none" : "solid_foundation";
-        renderer.domElement.dataset.recoveryDestination = recoveryGroundY === undefined ? "none" : recoveryGroundY.toFixed(3);
         renderer.domElement.dataset.colliderName = lastColliderName;
         renderer.domElement.dataset.currentLevel = currentLevel;
         if (levelDebugEnabled && currentTime - lastLevelDebugAt >= 1000) {
@@ -1053,9 +1037,6 @@ export default function ArenaPreview({
             playerGroundY: surfaceGroundY,
             detectedFloor: surfaceGroundY,
             currentNavRegion: `${arenaMapId}:${currentLevel}`,
-            recoveryTriggered: recoveryGroundY !== undefined,
-            recoveryReason: recoveryGroundY === undefined ? "none" : "solid_foundation",
-            recoveryDestination: recoveryGroundY ?? null,
             colliderName: lastColliderName,
             currentLevel
           });

@@ -51,6 +51,9 @@ test("Desert Citadel is a deliberately authored three-lane 40-player arena", () 
   assert.equal(DESERT_CITADEL.routes.filter((route) => route.includes("Lane")).length, 3);
   assert.equal(DESERT_CITADEL_STAIR_FLIGHTS.length, 6);
   assert.ok(DESERT_CITADEL_STAIR_FLIGHTS.every((flight) => (flight.endY - flight.startY) / flight.steps <= 0.75));
+  assert.equal(blocks.some((block) => block.id.startsWith("canal-")), false, "the lower route should not render a river");
+  assert.equal(cylinders.some((cylinder) => cylinder.id.startsWith("canal-")), false, "the lower route should not render river pools");
+  assert.ok(blocks.some((block) => block.id === "caravan-yard-cover-north-center"), "the dry lower route still needs readable cover");
 });
 
 test("Desert Citadel exposes lower, main, and upper surfaces without accidental stacked floors", () => {
@@ -63,6 +66,16 @@ test("Desert Citadel exposes lower, main, and upper surfaces without accidental 
   assert.equal(getArenaLevelLabel(MAP_ID, DESERT_CITADEL_MAIN_LEVEL_Y), "main");
   assert.equal(getArenaLevelLabel(MAP_ID, DESERT_CITADEL_ROOFTOP_LEVEL_Y), "upper");
   assert.equal(getArenaGroundHeightForPlayer(MAP_ID, 0, 24 * ARENA_SCALE, ARENA_PLAYER_EYE_HEIGHT), 0);
+  assert.equal(
+    getArenaGroundHeightForPlayer(MAP_ID, -120 * ARENA_SCALE, 78 * ARENA_SCALE, ARENA_PLAYER_EYE_HEIGHT),
+    0,
+    "a lower player under a market roof must stay on the lower floor"
+  );
+  assert.equal(
+    getArenaGroundHeightForPlayer(MAP_ID, 0, 78 * ARENA_SCALE, ARENA_PLAYER_EYE_HEIGHT),
+    0,
+    "a lower player under the Skywalk must not be lifted to the roof"
+  );
   assert.equal(
     getArenaGroundHeightForPlayer(MAP_ID, 0, 24 * ARENA_SCALE, DESERT_CITADEL_MAIN_LEVEL_Y + ARENA_PLAYER_EYE_HEIGHT),
     DESERT_CITADEL_MAIN_LEVEL_Y
@@ -186,7 +199,7 @@ test("bots can reach all three lanes, both market approaches, and the shared roo
   const goals = [
     ["north lane", raw(0, -118)],
     ["center fountain", raw(0, 18, DESERT_CITADEL_MAIN_LEVEL_Y)],
-    ["south aqueduct", raw(0, 133)],
+    ["south caravan yard", raw(0, 133)],
     ["west market approach", raw(-160, 78)],
     ["east market approach", raw(160, 78)],
     ["citadel skywalk", raw(0, 78, DESERT_CITADEL_ROOFTOP_LEVEL_Y)]

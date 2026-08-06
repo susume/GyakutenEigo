@@ -90,7 +90,6 @@ import {
   getArenaObstacles,
   getArenaEyeHeight,
   getArenaGroundHeightForPlayer,
-  getArenaRecoveryGroundHeight,
   getTeamSpawnForMap,
   selectTeamSpawnForMap,
   PlayerQuestionGate,
@@ -914,27 +913,13 @@ const applyAuthoritativePosition = (
   const requestedZ = Number.isFinite(Number(requested.z)) ? Number(requested.z) : player.z ?? fallback.z;
   const currentX = player.x ?? fallback.x;
   const currentZ = player.z ?? fallback.z;
-  const currentEyeHeight = player.crouching === true
-    ? ARENA_PLAYER_CROUCH_EYE_HEIGHT
-    : ARENA_PLAYER_EYE_HEIGHT;
   const requestedCrouching = typeof requested.crouching === "boolean"
     ? requested.crouching
     : player.crouching === true;
   const requestedEyeHeight = requestedCrouching
     ? ARENA_PLAYER_CROUCH_EYE_HEIGHT
     : ARENA_PLAYER_EYE_HEIGHT;
-  let currentEyeY = player.y ?? fallback.y ?? getArenaEyeHeight(session.settings.mapId, currentX, currentZ);
-  const recoveryGroundY = getArenaRecoveryGroundHeight(
-    session.settings.mapId,
-    currentX,
-    currentZ,
-    currentEyeY,
-    currentEyeHeight
-  );
-  if (recoveryGroundY !== undefined) {
-    currentEyeY = recoveryGroundY + currentEyeHeight;
-    player.y = currentEyeY;
-  }
+  const currentEyeY = player.y ?? fallback.y ?? getArenaEyeHeight(session.settings.mapId, currentX, currentZ);
   const requestedEyeY = Number.isFinite(Number(requested.y)) ? Number(requested.y) : currentEyeY;
   const requestedGroundY = getArenaGroundHeightForPlayer(
     session.settings.mapId,

@@ -1469,29 +1469,6 @@ export const getArenaGroundHeightForPlayer = (
   return surfaces[0] ?? 0;
 };
 
-/**
- * Finds a safe floor only when a Desert Citadel player is already inside a
- * solid raised structure below its lowest legitimate surface. This is recovery,
- * not traversal: callers should apply it to the last accepted position.
- */
-export const getArenaRecoveryGroundHeight = (
-  mapId: ArenaMapId | string | undefined,
-  x: number,
-  z: number,
-  eyeY: number | undefined,
-  eyeHeight = ARENA_PLAYER_EYE_HEIGHT
-): number | undefined => {
-  if (mapId !== "desert_citadel" || !Number.isFinite(eyeY)) return undefined;
-  const surfaces = getArenaFloorSurfaces(mapId, x, z);
-  const lowest = surfaces[0] ?? 0;
-  const footY = Number(eyeY) - eyeHeight;
-  if (
-    (lowest === DESERT_CITADEL_MAIN_LEVEL_Y || lowest === DESERT_CITADEL_ROOFTOP_LEVEL_Y)
-    && footY < lowest - 1.5
-  ) return lowest;
-  return undefined;
-};
-
 export const getArenaLevelLabel = (
   mapId: ArenaMapId | string | undefined,
   groundY: number
@@ -1660,10 +1637,10 @@ const RAW_FREE_FOR_ALL_SPAWNS: SpawnPoint[] = [
   { id: "ffa-market-11", label: "Fountain Court", x: 28, z: 42, y: DESERT_CITADEL_MAIN_LEVEL_Y + ARENA_PLAYER_EYE_HEIGHT, facing: 2.6 },
   { id: "ffa-market-12", label: "Sun Hall Court", x: 62, z: 28, y: DESERT_CITADEL_MAIN_LEVEL_Y + ARENA_PLAYER_EYE_HEIGHT, facing: 2.2 },
   { id: "ffa-south-homes-1", label: "South Homes", x: -50, z: 100, facing: -2.4 },
-  { id: "ffa-south-homes-2", label: "Canal Approach", x: -30, z: 105, facing: -2.8 },
-  { id: "ffa-south-homes-3", label: "Canal Road", x: -50, z: 158, facing: Math.PI },
+  { id: "ffa-south-homes-2", label: "Yard Approach", x: -30, z: 105, facing: -2.8 },
+  { id: "ffa-south-homes-3", label: "Caravan Road", x: -50, z: 158, facing: Math.PI },
   { id: "ffa-south-homes-4", label: "South Courtyard", x: 24, z: 104, facing: 2.8 },
-  { id: "ffa-south-homes-5", label: "Canal Approach", x: 52, z: 130, facing: 2.4 },
+  { id: "ffa-south-homes-5", label: "Yard Approach", x: 52, z: 130, facing: 2.4 },
   { id: "ffa-south-homes-6", label: "South Homes", x: 104, z: 118, facing: 2.2 },
   { id: "ffa-rooftop-1", label: "Fountain Terrace", x: -58, z: 66, y: DESERT_CITADEL_MAIN_LEVEL_Y + ARENA_PLAYER_EYE_HEIGHT, facing: -2.15 },
   { id: "ffa-rooftop-2", label: "Fountain Terrace", x: -26, z: 70, y: DESERT_CITADEL_MAIN_LEVEL_Y + ARENA_PLAYER_EYE_HEIGHT, facing: -2.9 },
@@ -1674,8 +1651,8 @@ const RAW_FREE_FOR_ALL_SPAWNS: SpawnPoint[] = [
   { id: "ffa-aqueduct-3", label: "Citadel Court", x: -36, z: 0, y: DESERT_CITADEL_MAIN_LEVEL_Y + ARENA_PLAYER_EYE_HEIGHT, facing: -1.57 },
   { id: "ffa-aqueduct-4", label: "South Terrace", x: 0, z: 55, y: DESERT_CITADEL_MAIN_LEVEL_Y + ARENA_PLAYER_EYE_HEIGHT, facing: 0 },
   { id: "ffa-aqueduct-5", label: "Citadel Court", x: 36, z: 0, y: DESERT_CITADEL_MAIN_LEVEL_Y + ARENA_PLAYER_EYE_HEIGHT, facing: 1.57 },
-  { id: "ffa-aqueduct-6", label: "Aqueduct East", x: 72, z: 0, facing: 1.57 },
-  { id: "ffa-aqueduct-7", label: "Aqueduct East", x: 104, z: 0, facing: 1.57 },
+  { id: "ffa-aqueduct-6", label: "South Yard East", x: 72, z: 0, facing: 1.57 },
+  { id: "ffa-aqueduct-7", label: "South Yard East", x: 104, z: 0, facing: 1.57 },
   { id: "ffa-east-gate-1", label: "Eastern Gate", x: 116, z: -48, facing: 1.3 },
   { id: "ffa-east-gate-2", label: "Sun Hall Roof", x: 138, z: 58, y: DESERT_CITADEL_ROOFTOP_LEVEL_Y + ARENA_PLAYER_EYE_HEIGHT, facing: 1.85 },
   { id: "ffa-east-wall-1", label: "Eastern Wall", x: 128, z: -4, facing: 1.57 },
@@ -1725,7 +1702,7 @@ export const DESERT_CITADEL_CAPTURE_ZONES = [
   { id: "desert-fountain-court", label: "Fountain Court", x: 0, z: scaleArenaValue(18), radius: scaleArenaValue(25), y: DESERT_CITADEL_MAIN_LEVEL_Y },
   { id: "desert-west-market", label: "West Market", x: scaleArenaValue(-120), z: scaleArenaValue(78), radius: scaleArenaValue(20), y: 0 },
   { id: "desert-east-market", label: "East Market", x: scaleArenaValue(120), z: scaleArenaValue(78), radius: scaleArenaValue(20), y: 0 },
-  { id: "desert-broken-aqueduct", label: "Broken Aqueduct", x: 0, z: scaleArenaValue(133), radius: scaleArenaValue(24), y: 0 },
+  { id: "desert-south-caravan-yard", label: "South Caravan Yard", x: 0, z: scaleArenaValue(133), radius: scaleArenaValue(24), y: 0 },
   { id: "desert-palm-ruins", label: "Palm Ruins", x: 0, z: scaleArenaValue(-118), radius: scaleArenaValue(24), y: 0 },
   { id: "desert-citadel-skywalk", label: "Citadel Skywalk", x: 0, z: scaleArenaValue(78), radius: scaleArenaValue(24), y: DESERT_CITADEL_ROOFTOP_LEVEL_Y }
 ] as const;
@@ -1760,7 +1737,7 @@ export const IRON_JUNCTION_SEARCH_RETRIEVE_ITEMS = [
 
 export const DESERT_CITADEL_SEARCH_RETRIEVE_ITEMS = [
   { id: "desert-fountain-scroll", label: "Fountain Scroll", x: 0, z: scaleArenaValue(18), y: DESERT_CITADEL_MAIN_LEVEL_Y + 1.4 },
-  { id: "desert-aqueduct-tablet", label: "Aqueduct Tablet", x: 0, z: scaleArenaValue(133), y: 1.4 },
+  { id: "desert-caravan-contract", label: "Caravan Contract", x: 0, z: scaleArenaValue(133), y: 1.4 },
   { id: "desert-rooftop-seal", label: "Rooftop Seal", x: 0, z: scaleArenaValue(78), y: DESERT_CITADEL_ROOFTOP_LEVEL_Y + 1.4 }
 ] as const;
 
@@ -2129,13 +2106,13 @@ export const ARENA_OBSTACLES: ArenaObstacle[] = [
   rectObstacle("ruins-arch-center-east", 42, -110, 18, 8, false, 0, 7),
   rectObstacle("ruins-obelisk", 0, -128, 16, 16, false, 0, 16),
 
-  // Lower aqueduct route with three broad crossings and cover on both banks.
-  rectObstacle("canal-north-bank-west", -155, 119, 90, 5, false, 0, 5),
-  rectObstacle("canal-north-bank-center", 0, 119, 80, 5, false, 0, 5),
-  rectObstacle("canal-north-bank-east", 155, 119, 90, 5, false, 0, 5),
-  rectObstacle("canal-south-bank-west", -155, 147, 90, 5, false, 0, 5),
-  rectObstacle("canal-south-bank-center", 0, 147, 80, 5, false, 0, 5),
-  rectObstacle("canal-south-bank-east", 155, 147, 90, 5, false, 0, 5)
+  // Dry caravan-yard cover keeps the lower route readable without a river.
+  rectObstacle("caravan-yard-cover-north-west", -155, 119, 90, 5, false, 0, 5),
+  rectObstacle("caravan-yard-cover-north-center", 0, 119, 80, 5, false, 0, 5),
+  rectObstacle("caravan-yard-cover-north-east", 155, 119, 90, 5, false, 0, 5),
+  rectObstacle("caravan-yard-cover-south-west", -155, 147, 90, 5, false, 0, 5),
+  rectObstacle("caravan-yard-cover-south-center", 0, 147, 80, 5, false, 0, 5),
+  rectObstacle("caravan-yard-cover-south-east", 155, 147, 90, 5, false, 0, 5)
 ];
 
 /** Simplified collision proxies for the Iron Junction props and architecture. */
