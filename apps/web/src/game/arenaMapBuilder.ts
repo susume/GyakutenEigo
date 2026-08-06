@@ -23,6 +23,8 @@ import { FPS_STANDING_EYE_HEIGHT } from "./ArenaCamera";
 type ActiveArenaQuality = Exclude<ArenaQuality, "auto">;
 type TextureKind = "floor" | "stone" | "wood" | "water" | "sand" | "metal";
 
+export const shouldScatterEdgeRocks = (detail: number, isDesertCitadel: boolean) => detail === 2 && !isDesertCitadel;
+
 type MapBuilderDependencies = {
   scene: THREE.Scene;
   renderer: THREE.WebGLRenderer;
@@ -1001,7 +1003,10 @@ if (!isIronJunction && !isTempleRunoff) {
   }
 }
 
-if (qualityConfig.detail === 2) {
+// Desert Citadel keeps all visible geometry traceable to its authored map
+// manifest. Its edge rocks are intentionally omitted here; the other maps
+// retain their seeded decorative scatter because this branch is map-scoped.
+if (shouldScatterEdgeRocks(qualityConfig.detail, isDesertCitadel)) {
   const rockCount = qualityConfig.detail === 2 ? 34 : 20;
   const rockGeometry = new THREE.IcosahedronGeometry(1, 0);
   const rockInstances = new THREE.InstancedMesh(rockGeometry, materialFor(isTempleRunoff ? "#56634b" : "#8f704d", "stone"), rockCount);

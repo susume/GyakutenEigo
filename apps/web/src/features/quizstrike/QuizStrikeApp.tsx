@@ -772,7 +772,7 @@ function CharacterLab() {
         : {
             lower: { x: -140 * ARENA_SCALE, y: ARENA_PLAYER_EYE_HEIGHT, z: 0, facing: -Math.PI / 2 },
             main: { x: -45 * ARENA_SCALE, y: DESERT_CITADEL_MAIN_LEVEL_Y + ARENA_PLAYER_EYE_HEIGHT, z: 10 * ARENA_SCALE, facing: -Math.PI / 2 },
-            upper: { x: 138 * ARENA_SCALE, y: DESERT_CITADEL_ROOFTOP_LEVEL_Y + ARENA_PLAYER_EYE_HEIGHT, z: 81 * ARENA_SCALE, facing: Math.PI / 2 }
+            upper: { x: 0, y: DESERT_CITADEL_ROOFTOP_LEVEL_Y + ARENA_PLAYER_EYE_HEIGHT, z: 78 * ARENA_SCALE, facing: Math.PI / 2 }
           };
     return {
       ...generated,

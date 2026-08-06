@@ -1505,7 +1505,7 @@ export type SpawnPoint = GroundArenaPosition & {
 };
 
 const RAW_TEAM_SPAWNS: Record<Team, SpawnPoint[]> = {
-  blue: [-58, -42, -26, 26, 42].flatMap((z, row) =>
+  blue: [-32, -16, 0, 16, 32].flatMap((z, row) =>
     [-232, -223, -214, -205].map((x, column) => ({
       id: `blue-citadel-${row + 1}-${column + 1}`,
       label: "Blue Assembly Court",
@@ -1514,7 +1514,7 @@ const RAW_TEAM_SPAWNS: Record<Team, SpawnPoint[]> = {
       facing: -Math.PI / 2
     }))
   ),
-  red: [-42, -26, 26, 42, 58].flatMap((z, row) =>
+  red: [-32, -16, 0, 16, 32].flatMap((z, row) =>
     [232, 223, 214, 205].map((x, column) => ({
       id: `red-citadel-${row + 1}-${column + 1}`,
       label: "Red Assembly Court",
@@ -2038,24 +2038,18 @@ export const ARENA_OBSTACLES: ArenaObstacle[] = [
   rectObstacle("north-cliff-east", 150, -178, 200, 8, false, 0, 13),
   rectObstacle("south-wall-west", -150, 178, 200, 8, false, 0, 12),
   rectObstacle("south-wall-east", 150, 178, 200, 8, false, 0, 12),
-  rectObstacle("west-city-wall-north", -248, -112, 8, 132, false, 0, 15),
-  rectObstacle("west-city-wall-south", -248, 112, 8, 132, false, 0, 15),
-  rectObstacle("east-city-wall-north", 248, -112, 8, 132, false, 0, 15),
-  rectObstacle("east-city-wall-south", 248, 112, 8, 132, false, 0, 15),
+  rectObstacle("west-city-wall-north", -248, -112, 8, 124, false, 0, 15),
+  rectObstacle("west-city-wall-south", -248, 112, 8, 124, false, 0, 15),
+  rectObstacle("east-city-wall-north", 248, -112, 8, 124, false, 0, 15),
+  rectObstacle("east-city-wall-south", 248, 112, 8, 124, false, 0, 15),
 
-  // Assembly courts have a back wall, side returns, and a central objective screen.
+  // Assembly courts have a back wall, side returns, and short spawn-safety covers.
   rectObstacle("blue-base-back", -240, 0, 5, 126, false, 0, 13),
-  rectObstacle("blue-base-north", -233, -74, 26, 5, false, 0, 10),
-  rectObstacle("blue-base-south", -233, 74, 26, 5, false, 0, 10),
-  rectObstacle("blue-objective-pavilion", -226, 0, 20, 28, false, 0, 8),
-  rectObstacle("blue-base-screen-north", -194, -50, 6, 30, false, 0, 9),
-  rectObstacle("blue-base-screen-south", -194, 50, 6, 30, false, 0, 9),
+  rectObstacle("blue-base-north", -232, -74, 24, 5, false, 0, 10),
+  rectObstacle("blue-base-south", -232, 74, 24, 5, false, 0, 10),
   rectObstacle("red-base-back", 240, 0, 5, 126, false, 0, 13),
-  rectObstacle("red-base-north", 233, -74, 26, 5, false, 0, 10),
-  rectObstacle("red-base-south", 233, 74, 26, 5, false, 0, 10),
-  rectObstacle("red-objective-pavilion", 226, 0, 20, 28, false, 0, 8),
-  rectObstacle("red-base-screen-north", 194, -50, 6, 30, false, 0, 9),
-  rectObstacle("red-base-screen-south", 194, 50, 6, 30, false, 0, 9),
+  rectObstacle("red-base-north", 232, -74, 24, 5, false, 0, 10),
+  rectObstacle("red-base-south", 232, 74, 24, 5, false, 0, 10),
 
   // Mirrored gates frame the three approaches without collapsing them into one choke.
   rectObstacle("lion-gate-north-pier", -86, -26, 10, 12, false, 0, 17),
@@ -2071,25 +2065,14 @@ export const ARENA_OBSTACLES: ArenaObstacle[] = [
   rectObstacle("court-parapet-north-east", 44, -36.5, 44, 3, false, DESERT_CITADEL_MAIN_LEVEL_Y, 13),
   rectObstacle("court-parapet-south-west", -44, 86.5, 44, 3, false, DESERT_CITADEL_MAIN_LEVEL_Y, 13),
   rectObstacle("court-parapet-south-east", 44, 86.5, 44, 3, false, DESERT_CITADEL_MAIN_LEVEL_Y, 13),
-  rectObstacle("court-parapet-west-north", -64.5, -26, 3, 12, false, DESERT_CITADEL_MAIN_LEVEL_Y, 13),
-  rectObstacle("court-parapet-west-south", -64.5, 48, 3, 48, false, DESERT_CITADEL_MAIN_LEVEL_Y, 13),
-  rectObstacle("court-parapet-east-north", 64.5, -26, 3, 12, false, DESERT_CITADEL_MAIN_LEVEL_Y, 13),
-  rectObstacle("court-parapet-east-south", 64.5, 48, 3, 48, false, DESERT_CITADEL_MAIN_LEVEL_Y, 13),
-  rectObstacle("court-broken-wall-west", -34, 20, 6, 24, true, DESERT_CITADEL_MAIN_LEVEL_Y, 15),
-  rectObstacle("court-broken-wall-east", 34, 20, 6, 24, true, DESERT_CITADEL_MAIN_LEVEL_Y, 15),
   rectObstacle("court-monument", 0, 28, 10, 12, false, DESERT_CITADEL_MAIN_LEVEL_Y, 17),
-  rectObstacle("court-planter", 0, -12, 14, 8, true, DESERT_CITADEL_MAIN_LEVEL_Y, 13),
   circleObstacle("blue-fountain-rim", 0, 0, 12, false, DESERT_CITADEL_MAIN_LEVEL_Y, 12.4),
-  circleObstacle("court-column-west", -24, 48, 3, false, DESERT_CITADEL_MAIN_LEVEL_Y, 23),
-  circleObstacle("court-column-east", 24, 48, 3, false, DESERT_CITADEL_MAIN_LEVEL_Y, 23),
 
   // Matched market masses create equal-risk west and east combat districts.
   rectObstacle("west-market-mass-north", -120, 64, 58, 6, false, 0, 23.4),
   rectObstacle("west-market-mass-south", -120, 92, 58, 6, false, 0, 23.4),
   rectObstacle("east-market-mass-north", 120, 64, 58, 6, false, 0, 23.4),
   rectObstacle("east-market-mass-south", 120, 92, 58, 6, false, 0, 23.4),
-  rectObstacle("west-market-roof-screen", -108, 78, 8, 8, false, DESERT_CITADEL_ROOFTOP_LEVEL_Y, DESERT_CITADEL_ROOFTOP_LEVEL_Y + 5),
-  rectObstacle("east-market-roof-screen", 108, 78, 8, 8, false, DESERT_CITADEL_ROOFTOP_LEVEL_Y, DESERT_CITADEL_ROOFTOP_LEVEL_Y + 5),
   rectObstacle("west-market-roof-rail-north", -120, 61.5, 58, 3, false, DESERT_CITADEL_ROOFTOP_LEVEL_Y, 27),
   rectObstacle("west-market-roof-rail-south", -120, 94.5, 58, 3, false, DESERT_CITADEL_ROOFTOP_LEVEL_Y, 27),
   rectObstacle("east-market-roof-rail-north", 120, 61.5, 58, 3, false, DESERT_CITADEL_ROOFTOP_LEVEL_Y, 27),
@@ -2100,19 +2083,12 @@ export const ARENA_OBSTACLES: ArenaObstacle[] = [
   // Palm Ruins break the long north sightline into readable duels.
   rectObstacle("ruins-wall-west", -150, -116, 48, 7, false, 0, 6),
   rectObstacle("ruins-wall-east", 150, -116, 48, 7, false, 0, 6),
-  rectObstacle("ruins-foundation-west", -92, -136, 34, 18, true, 0, 3),
-  rectObstacle("ruins-foundation-east", 92, -136, 34, 18, true, 0, 3),
-  rectObstacle("ruins-arch-center-west", -42, -110, 18, 8, false, 0, 7),
-  rectObstacle("ruins-arch-center-east", 42, -110, 18, 8, false, 0, 7),
   rectObstacle("ruins-obelisk", 0, -128, 16, 16, false, 0, 16),
 
   // Dry caravan-yard cover keeps the lower route readable without a river.
   rectObstacle("caravan-yard-cover-north-west", -155, 119, 90, 5, false, 0, 5),
   rectObstacle("caravan-yard-cover-north-center", 0, 119, 80, 5, false, 0, 5),
-  rectObstacle("caravan-yard-cover-north-east", 155, 119, 90, 5, false, 0, 5),
-  rectObstacle("caravan-yard-cover-south-west", -155, 147, 90, 5, false, 0, 5),
-  rectObstacle("caravan-yard-cover-south-center", 0, 147, 80, 5, false, 0, 5),
-  rectObstacle("caravan-yard-cover-south-east", 155, 147, 90, 5, false, 0, 5)
+  rectObstacle("caravan-yard-cover-north-east", 155, 119, 90, 5, false, 0, 5)
 ];
 
 /** Simplified collision proxies for the Iron Junction props and architecture. */
