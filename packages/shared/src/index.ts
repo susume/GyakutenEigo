@@ -3169,6 +3169,8 @@ export const resolveBotRoamStep = ({
     Math.PI / 6,
     Math.PI * 5 / 6
   ].map((angle) => angle * detourDirection);
+  let bestDetour: AuthoritativeMovementResult | undefined;
+  let bestRemainingDistance = Number.POSITIVE_INFINITY;
   for (const angleOffset of [
     ...preferredOffsets,
     ...preferredOffsets.map((angle) => -angle),
@@ -3186,10 +3188,18 @@ export const resolveBotRoamStep = ({
       obstacles,
       mapId
     });
-    if (!detour.blocked) return detour;
+    if (detour.blocked) continue;
+    const remainingDistance = Math.hypot(
+      terrainDesired.x - detour.x,
+      terrainDesired.z - detour.z
+    );
+    if (remainingDistance < bestRemainingDistance - 0.000001) {
+      bestDetour = detour;
+      bestRemainingDistance = remainingDistance;
+    }
   }
 
-  return direct;
+  return bestDetour ?? direct;
 };
 
 export const resolveBotRespawn = ({

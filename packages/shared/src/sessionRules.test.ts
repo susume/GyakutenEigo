@@ -761,6 +761,26 @@ test("resolveBotRoamStep detours around cover instead of freezing in place", () 
   assert.notEqual(result.z, 0);
 });
 
+test("resolveBotRoamStep chooses a detour that advances toward the waypoint", () => {
+  const current = { x: 104, y: ARENA_PLAYER_EYE_HEIGHT, z: 25.7, facing: 0 };
+  const desired = { x: 79.1, y: ARENA_PLAYER_EYE_HEIGHT, z: 19.7, facing: 0 };
+  const result = resolveBotRoamStep({
+    current,
+    desired,
+    elapsedMs: 300,
+    speed: 19.5,
+    obstacles: getArenaObstacles("iron_junction"),
+    detourDirection: -1,
+    mapId: "iron_junction"
+  });
+
+  assert.equal(result.blocked, undefined);
+  assert.ok(
+    Math.hypot(desired.x - result.x, desired.z - result.z)
+      < Math.hypot(desired.x - current.x, desired.z - current.z)
+  );
+});
+
 test("bot roam routes escape every map spawn instead of wedging against base cover", () => {
   for (const mapId of ["desert_citadel", "iron_junction", "temple_runoff"] as const) {
     for (const team of ["blue", "red"] as const) {
