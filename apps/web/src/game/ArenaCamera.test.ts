@@ -1,10 +1,17 @@
 import test from "node:test";
 import assert from "node:assert/strict";
 import {
+  DESERT_CITADEL_STAIR_FLIGHTS,
+  IRON_JUNCTION_STAIR_FLIGHTS,
+  TEMPLE_RUNOFF_STAIR_FLIGHTS
+} from "@quizstrike/shared";
+import {
   FPS_CROUCH_EYE_HEIGHT,
   FPS_JUMP_AIRTIME_SECONDS,
   FPS_JUMP_APEX_HEIGHT,
+  FPS_MAX_AUTO_STEP_HEIGHT,
   FPS_STANDING_EYE_HEIGHT,
+  canFpsBodyAutoStepOnto,
   canFpsBodyClearObstacle,
   findFpsSupportSurfaceY,
   getFpsBodyVerticalBounds,
@@ -58,6 +65,35 @@ test("FPS body collider can move while its feet rest on an object", () => {
 
   assert.equal(canFpsBodyClearObstacle(supported, objectTopY), true);
   assert.equal(canFpsBodyClearObstacle(embedded, objectTopY), false);
+});
+
+test("grounded FPS body walks onto authored stair risers but not regular cover", () => {
+  const grounded = getFpsBodyVerticalBounds(FPS_STANDING_EYE_HEIGHT, FPS_STANDING_EYE_HEIGHT);
+
+  assert.equal(canFpsBodyAutoStepOnto(grounded, 0.67), true);
+  assert.equal(canFpsBodyAutoStepOnto(grounded, FPS_MAX_AUTO_STEP_HEIGHT + 0.09), false);
+  assert.equal(canFpsBodyAutoStepOnto(grounded, 3), false);
+});
+
+test("every authored map stair rise fits the FPS automatic step allowance", () => {
+  const flights = [
+    ...DESERT_CITADEL_STAIR_FLIGHTS,
+    ...IRON_JUNCTION_STAIR_FLIGHTS,
+    ...TEMPLE_RUNOFF_STAIR_FLIGHTS
+  ];
+
+  for (const flight of flights) {
+    const rise = Math.abs(flight.endY - flight.startY) / flight.steps;
+    const body = getFpsBodyVerticalBounds(
+      Math.min(flight.startY, flight.endY) + FPS_STANDING_EYE_HEIGHT,
+      FPS_STANDING_EYE_HEIGHT
+    );
+    assert.equal(
+      canFpsBodyAutoStepOnto(body, Math.min(flight.startY, flight.endY) + rise),
+      true,
+      `${flight.id} rise ${rise.toFixed(3)} must remain walkable`
+    );
+  }
 });
 
 test("FPS falling movement lands on the highest crossed object surface", () => {

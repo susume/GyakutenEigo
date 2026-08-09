@@ -46,6 +46,8 @@ test("Iron Junction uses four architectural trains and sparse props", () => {
   assert.ok(trains.every((train) => train.w >= raw(42) && train.d >= raw(13)));
   assert.ok(props.length <= 18);
   assert.equal(props.filter((prop) => prop.kind === "crate").length, 1);
+  assert.equal(props.some((prop) => prop.id === "blue-route-banner"), false);
+  assert.ok(props.some((prop) => prop.id === "red-route-banner"));
 });
 
 test("Iron Junction replaces every incline with authored station stairs", () => {
@@ -64,9 +66,9 @@ test("Iron Junction replaces every incline with authored station stairs", () => 
   }
 });
 
-test("Iron Junction teaches navigation without printed labels", () => {
-  assert.deepEqual(floorMarks, []);
-  assert.deepEqual(signs, []);
+test("Iron Junction teaches navigation with sparse authored cues", () => {
+  assert.equal(floorMarks.length, 0);
+  assert.equal(signs.length, 0);
   assert.ok(blocks.every((block) => block.label === undefined));
   assert.ok(cylinders.every((cylinder) => cylinder.label === undefined));
 });

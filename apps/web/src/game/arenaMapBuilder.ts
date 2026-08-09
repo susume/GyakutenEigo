@@ -3,9 +3,9 @@ import {
   FREE_FOR_ALL_SPAWNS,
   getArenaBounds,
   getArenaGroundHeight,
+  getArenaObjectiveGroundY,
   getCaptureZonesForMap,
   getSearchRetrieveDeliveryZonesForMap,
-  getSearchRetrieveItemsForMap,
   getTeamSpawnsForMap,
   getTeamBaseZones,
   type ArenaMapId,
@@ -18,7 +18,7 @@ import { addIronJunctionArtPass } from "./IronJunctionArtPass";
 import { addTempleRunoffArtPass } from "./TempleRunoffArtPass";
 import type { ArenaQuality } from "./gamePreferences";
 import type { ArenaQualityConfig } from "./sceneSetup";
-import { FPS_STANDING_EYE_HEIGHT } from "./ArenaCamera";
+import { FPS_CROUCH_EYE_HEIGHT, FPS_STANDING_EYE_HEIGHT } from "./ArenaCamera";
 
 type ActiveArenaQuality = Exclude<ArenaQuality, "auto">;
 type TextureKind = "floor" | "stone" | "wood" | "water" | "sand" | "metal";
@@ -34,7 +34,6 @@ type MapBuilderDependencies = {
   arenaBounds: ReturnType<typeof getArenaBounds>;
   teamBaseZones: ReturnType<typeof getTeamBaseZones>;
   captureZones: ReturnType<typeof getCaptureZonesForMap>;
-  searchRetrieveItems: ReturnType<typeof getSearchRetrieveItemsForMap>;
   searchRetrieveDeliveryZones: ReturnType<typeof getSearchRetrieveDeliveryZonesForMap>;
   isIronJunction: boolean;
   isDesertCitadel: boolean;
@@ -44,8 +43,6 @@ type MapBuilderDependencies = {
   activeQuality: ActiveArenaQuality;
   qualityConfig: ArenaQualityConfig;
   makeCanvasTexture: (kind: TextureKind, accent?: string) => THREE.CanvasTexture;
-  makeLabelTexture: (label: string, color: string, background?: string) => THREE.CanvasTexture;
-  makeSpriteLabel: (label: string, color: string) => THREE.SpriteMaterial;
   seededRandom: (seed: number) => () => number;
   scaleArenaValue: (value: number) => number;
 };
@@ -60,7 +57,6 @@ export const buildArenaMapScene = (deps: MapBuilderDependencies) => {
     arenaBounds,
     teamBaseZones,
     captureZones,
-    searchRetrieveItems,
     searchRetrieveDeliveryZones,
     isIronJunction,
     isDesertCitadel,
@@ -70,8 +66,6 @@ export const buildArenaMapScene = (deps: MapBuilderDependencies) => {
     activeQuality,
     qualityConfig,
     makeCanvasTexture,
-    makeLabelTexture,
-    makeSpriteLabel,
     seededRandom,
     scaleArenaValue
   } = deps;
@@ -185,12 +179,6 @@ const addBaseBeacon = (team: "blue" | "red", color: string) => {
   ring.rotation.x = Math.PI / 2;
   ring.position.y = 0.16;
   beacon.add(ring);
-  const crown = new THREE.Mesh(
-    new THREE.OctahedronGeometry(0.95, 0),
-    new THREE.MeshStandardMaterial({ color: "#f3fbff", emissive: color, emissiveIntensity: 0.85, roughness: 0.22 })
-  );
-  crown.position.y = 8.9;
-  beacon.add(crown);
   if (qualityConfig.detail === 2) {
     for (let index = 0; index < 4; index += 1) {
       const angle = (index / 4) * Math.PI * 2 + Math.PI / 4;
@@ -220,6 +208,13 @@ if (session?.settings.gameMode === "flag" && session.flag) {
   const carrier = session.flag.carrierId ? session.players.find((player) => player.id === session.flag?.carrierId) : undefined;
   const markerX = carrier?.x ?? session.flag.position.x;
   const markerZ = carrier?.z ?? session.flag.position.z;
+  const markerY = carrier
+    ? getArenaObjectiveGroundY(
+        arenaMapId,
+        { x: markerX, y: carrier.y, z: markerZ },
+        carrier.crouching ? FPS_CROUCH_EYE_HEIGHT : FPS_STANDING_EYE_HEIGHT
+      )
+    : getArenaObjectiveGroundY(arenaMapId, session.flag.position, FPS_STANDING_EYE_HEIGHT);
   flagMarker = new THREE.Group();
   const markerColor = session.flag.state === "placed" ? "#facc15" : "#fb7185";
   const pole = new THREE.Mesh(
@@ -228,41 +223,69 @@ if (session?.settings.gameMode === "flag" && session.flag) {
   );
   pole.position.y = 4.4;
   flagMarker.add(pole);
-  if (isFps) {
-    const objectiveCore = new THREE.Mesh(
-      new THREE.OctahedronGeometry(0.72, 0),
-      new THREE.MeshStandardMaterial({ color: "#fff7ed", emissive: markerColor, emissiveIntensity: 0.9, roughness: 0.24 })
-    );
-    objectiveCore.position.y = 7.6;
-    flagMarker.add(objectiveCore);
-  } else {
-    const fabric = new THREE.Mesh(
-      new THREE.PlaneGeometry(3.2, 1.55, 2, 1),
-      new THREE.MeshStandardMaterial({
-        color: markerColor,
-        emissive: markerColor,
-        emissiveIntensity: 0.22,
-        roughness: 0.82,
-        transparent: true,
-        opacity: 0.9,
-        side: THREE.DoubleSide
-      })
-    );
-    fabric.position.set(1.55, 6.5, 0);
-    fabric.rotation.y = Math.PI / 2;
-    flagMarker.add(fabric);
-  }
+  const flagWidth = isFps ? 2.65 : 3.35;
+  const flagHeight = isFps ? 1.35 : 1.7;
+  const flagShape = new THREE.Shape();
+  flagShape.moveTo(0, 0);
+  flagShape.lineTo(flagWidth, 0.22);
+  flagShape.lineTo(flagWidth, flagHeight - 0.16);
+  flagShape.lineTo(flagWidth * 0.78, flagHeight);
+  flagShape.lineTo(0, flagHeight * 0.82);
+  flagShape.closePath();
+  const fabricGeometry = new THREE.ShapeGeometry(flagShape);
+  const fabric = new THREE.Mesh(
+    fabricGeometry,
+    new THREE.MeshStandardMaterial({
+      color: markerColor,
+      emissive: markerColor,
+      emissiveIntensity: 0.16,
+      roughness: 0.74,
+      metalness: 0.02,
+      transparent: true,
+      opacity: 0.94,
+      side: THREE.DoubleSide
+    })
+  );
+  fabric.position.set(0.16, isFps ? 5.95 : 5.75, 0);
+  fabric.rotation.y = Math.PI / 2;
+  flagMarker.add(fabric);
+  const fabricOutline = new THREE.LineSegments(
+    new THREE.EdgesGeometry(fabricGeometry),
+    new THREE.LineBasicMaterial({ color: "#fff7ed", transparent: true, opacity: 0.76 })
+  );
+  fabricOutline.position.copy(fabric.position);
+  fabricOutline.rotation.copy(fabric.rotation);
+  flagMarker.add(fabricOutline);
+  const emblem = new THREE.Mesh(
+    new THREE.CircleGeometry(isFps ? 0.18 : 0.23, 16),
+    new THREE.MeshBasicMaterial({ color: "#fff7ed", transparent: true, opacity: 0.8, side: THREE.DoubleSide })
+  );
+  emblem.position.set(flagWidth * 0.5, (isFps ? 5.95 : 5.75) + flagHeight * 0.48, -0.035);
+  emblem.rotation.y = Math.PI / 2;
+  flagMarker.add(emblem);
+  const finial = new THREE.Mesh(
+    new THREE.SphereGeometry(0.28, 16, 10),
+    new THREE.MeshStandardMaterial({ color: "#f5d38a", metalness: 0.7, roughness: 0.3, emissive: "#5a3b1a", emissiveIntensity: 0.12 })
+  );
+  finial.position.y = 8.86;
+  flagMarker.add(finial);
   const objectiveRing = new THREE.Mesh(
-    new THREE.TorusGeometry(4.8, 0.2, 8, 32),
-    new THREE.MeshBasicMaterial({ color: markerColor, transparent: true, opacity: 0.72 })
+    new THREE.TorusGeometry(4.35, 0.14, 8, 32),
+    new THREE.MeshBasicMaterial({ color: markerColor, transparent: true, opacity: 0.62 })
   );
   objectiveRing.position.y = 0.23;
   objectiveRing.rotation.x = Math.PI / 2;
   flagMarker.add(objectiveRing);
+  const base = new THREE.Mesh(
+    new THREE.CylinderGeometry(1.05, 1.25, 0.18, 16),
+    new THREE.MeshStandardMaterial({ color: "#f8fafc", metalness: 0.5, roughness: 0.32, emissive: markerColor, emissiveIntensity: 0.12 })
+  );
+  base.position.y = 0.1;
+  flagMarker.add(base);
   const flagGlow = new THREE.PointLight(markerColor, activeQuality === "performance" ? 0 : 18, 42, 2);
   flagGlow.position.y = 5;
   flagMarker.add(flagGlow);
-  flagMarker.position.set(markerX, getArenaGroundHeight(arenaMapId, markerX, markerZ), markerZ);
+  flagMarker.position.set(markerX, markerY, markerZ);
   scene.add(flagMarker);
 }
 
@@ -680,12 +703,6 @@ const addBlock = (block: (typeof arenaMap.blocks)[number]) => {
   }
   addModularBlockBody(block);
   addBlockDetail(block);
-  if (block.label && !isFps && !isDesertCitadel) {
-    const label = new THREE.Sprite(makeSpriteLabel(block.label, "#fef3c7"));
-    label.position.set(block.x, (block.y ?? block.h / 2) + block.h / 2 + 6, block.z);
-    label.scale.set(22, 7.5, 1);
-    scene.add(label);
-  }
 };
 arenaMap.blocks.forEach(addBlock);
 
@@ -884,50 +901,7 @@ arenaMap.cylinders.forEach((cylinder) => {
   if (cylinder.material !== "water") staticBatcher.prepare(mesh, cylinder.color, cylinder.material ?? "stone");
   scene.add(mesh);
   if (cylinder.collides) colliderForObject(mesh, isDesertCitadel ? 0 : 0.2);
-  if (cylinder.label && !isFps && !isDesertCitadel) {
-    const label = new THREE.Sprite(makeSpriteLabel(cylinder.label, "#fef3c7"));
-    label.position.set(cylinder.x, (cylinder.y ?? cylinder.h / 2) + cylinder.h / 2 + 5, cylinder.z);
-    label.scale.set(22, 7.5, 1);
-    scene.add(label);
-  }
 });
-
-const addFloorLabel = (label: string, x: number, z: number, width: number, depth: number, color: string, rotation = 0, y?: number) => {
-  const marker = new THREE.Mesh(
-    new THREE.PlaneGeometry(width, depth),
-    new THREE.MeshBasicMaterial({
-      map: makeLabelTexture(label, color, "rgba(53, 35, 16, 0.66)"),
-      transparent: true,
-      opacity: 0.88,
-      depthWrite: false
-    })
-  );
-  marker.rotation.x = -Math.PI / 2;
-  marker.rotation.z = rotation;
-  marker.position.set(x, y ?? getArenaGroundHeight(arenaMapId, x, z) + 0.045, z);
-  scene.add(marker);
-  return marker;
-};
-
-arenaMap.floorMarks.forEach((mark) => addFloorLabel(mark.label, mark.x, mark.z, mark.w, mark.d, mark.color, mark.rotation, mark.y));
-
-const addWallSign = (label: string, x: number, z: number, color: string, rotationY = 0, y = 7) => {
-  const sign = new THREE.Mesh(
-    new THREE.PlaneGeometry(24, 8),
-    new THREE.MeshBasicMaterial({
-      map: makeLabelTexture(label, color),
-      transparent: true,
-      opacity: 0.94,
-      depthWrite: false
-    })
-  );
-  sign.position.set(x, y, z);
-  sign.rotation.y = rotationY;
-  scene.add(sign);
-};
-// Overview labels help teachers orient to the map, but billboard-scale signs would
-// become misleading visual cover at first-person distance.
-if (!isFps) arenaMap.signs.forEach((sign) => addWallSign(sign.label, sign.x, sign.z, sign.color, sign.rotationY, sign.y));
 
 const addCircle = (x: number, z: number, radius: number, color: string, opacity = 0.24, y?: number) => {
   const circle = new THREE.Mesh(
@@ -962,22 +936,10 @@ captureZones.forEach((zone) => {
     terminal.add(answerPad);
   }
   scene.add(terminal);
-  if (!isFps && !isTempleRunoff) {
-    const label = new THREE.Sprite(makeSpriteLabel(zone.label, "#fde68a"));
-    label.position.set(zone.x, zoneY + 12, zone.z);
-    label.scale.set(22, 7.5, 1);
-    scene.add(label);
-  }
 });
-
-searchRetrieveItems.forEach((item) => {
-  const gem = new THREE.Mesh(
-    new THREE.OctahedronGeometry(3.2),
-    new THREE.MeshStandardMaterial({ color: "#f8fafc", emissive: "#67e8f9", emissiveIntensity: 0.52, roughness: 0.2 })
-  );
-  gem.position.set(item.x, ("y" in item ? item.y : getArenaGroundHeight(arenaMapId, item.x, item.z)) + 4.2, item.z);
-  scene.add(gem);
-});
+// Search/retrieve items remain authoritative and visible on the minimap, but
+// do not get a floating diamond in the 3D arena. The large marker obscured
+// sightlines without adding a gameplay interaction.
 addCircle(searchRetrieveDeliveryZones.blue.x, searchRetrieveDeliveryZones.blue.z, searchRetrieveDeliveryZones.blue.radius, "#38bdf8", 0.16, "y" in searchRetrieveDeliveryZones.blue ? searchRetrieveDeliveryZones.blue.y : undefined);
 addCircle(searchRetrieveDeliveryZones.red.x, searchRetrieveDeliveryZones.red.z, searchRetrieveDeliveryZones.red.radius, "#fb7185", 0.16, "y" in searchRetrieveDeliveryZones.red ? searchRetrieveDeliveryZones.red.y : undefined);
 
@@ -1054,6 +1016,5 @@ renderer.domElement.dataset.staticBatches = String(staticBatchStats.batchMeshes)
     flagMarker,
     templeRunoffArt,
     desertCitadelVfx,
-    makeLabelTexture
   };
 };

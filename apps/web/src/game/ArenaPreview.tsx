@@ -28,6 +28,7 @@ import {
   FPS_JUMP_GRAVITY,
   FPS_JUMP_VELOCITY,
   FPS_STANDING_EYE_HEIGHT,
+  canFpsBodyAutoStepOnto,
   canFpsBodyClearObstacle,
   findFpsSupportSurfaceY,
   getFpsBodyVerticalBounds,
@@ -242,13 +243,6 @@ const makeLabelTexture = (label: string, color: string, background = "rgba(41, 2
   return texture;
 };
 
-const makeSpriteLabel = (label: string, color: string) =>
-  new THREE.SpriteMaterial({
-    map: makeLabelTexture(label, color, "rgba(21, 15, 9, 0.86)"),
-    transparent: true,
-    depthWrite: false
-  });
-
 const disposeObject = (object: THREE.Object3D) => {
   object.traverse((child) => {
     const mesh = child as THREE.Mesh;
@@ -409,7 +403,6 @@ export default function ArenaPreview({
 
     const isFps = view === "fps";
     const isZombieMode = session?.settings.gameMode === "zombie";
-    const palette = arenaMap.palette;
     const fallbackSpawn = currentPlayer ? getTeamSpawnForMap(arenaMapId, currentPlayer.team) : getTeamSpawnForMap(arenaMapId, "blue");
     const initialServerX = isFiniteNumber(currentPlayer?.x) ? currentPlayer.x : fallbackSpawn.x;
     const initialServerZ = isFiniteNumber(currentPlayer?.z) ? currentPlayer.z : fallbackSpawn.z;
@@ -444,23 +437,6 @@ export default function ArenaPreview({
       camera.lookAt(0, 0, 0);
     }
 
-    const sky = new THREE.Mesh(
-      new THREE.SphereGeometry(560, 20, 12),
-      new THREE.ShaderMaterial({
-        side: THREE.BackSide,
-        fog: false,
-        uniforms: {
-          topColor: { value: new THREE.Color(isZombieMode ? "#313b59" : isIronJunction ? "#53666d" : isTempleRunoff ? "#367b80" : "#4c9ccc") },
-          horizonColor: { value: new THREE.Color(isZombieMode ? "#8f8395" : palette.sky) },
-          groundColor: { value: new THREE.Color(isZombieMode ? "#6b6174" : isIronJunction ? "#a9b7b2" : isTempleRunoff ? "#c79a62" : "#e6c88e") }
-        },
-        vertexShader: `varying vec3 vWorldPosition; void main(){ vec4 worldPosition = modelMatrix * vec4(position,1.0); vWorldPosition = worldPosition.xyz; gl_Position = projectionMatrix * modelViewMatrix * vec4(position,1.0); }`,
-        fragmentShader: `uniform vec3 topColor; uniform vec3 horizonColor; uniform vec3 groundColor; varying vec3 vWorldPosition; void main(){ float h=normalize(vWorldPosition).y; vec3 lower=mix(groundColor,horizonColor,smoothstep(-0.22,0.08,h)); vec3 color=mix(lower,topColor,smoothstep(0.02,0.72,h)); gl_FragColor=vec4(color,1.0); }`
-      })
-    );
-    sky.position.y = -88;
-    scene.add(sky);
-
     const textureLoader = new THREE.TextureLoader();
     const loadTexture = (path: string) => {
       const url = `${import.meta.env.BASE_URL}${path.replace(/^\//, "")}`;
@@ -493,7 +469,6 @@ export default function ArenaPreview({
       arenaBounds,
       teamBaseZones,
       captureZones,
-      searchRetrieveItems,
       searchRetrieveDeliveryZones,
       isIronJunction,
       isDesertCitadel,
@@ -503,8 +478,6 @@ export default function ArenaPreview({
       activeQuality,
       qualityConfig,
       makeCanvasTexture,
-      makeLabelTexture,
-      makeSpriteLabel,
       seededRandom,
       scaleArenaValue
     });
@@ -601,14 +574,15 @@ export default function ArenaPreview({
       let lastLocalFireAt = 0;
       let lastCooldownFxAt = 0;
       let activeZoomLevel = 0;
+      let hadPointerLock = false;
       let cooldownTimeout: number | undefined;
       let wasGrounded = true;
       let landedAt = 0;
       let cameraVisualY = playerPosition.y;
       let fireHeld = false;
       const getEquippedGearId = () => getPlayerWeaponId(currentPlayerRef.current ?? { gear: "starter_blaster" });
-      const hasZoomGear = () => getGearZoomFovMultiplier(getEquippedGearId()) < 1;
-      const hasHeavyGun = () => getEquippedGearId() === "power_blaster";
+      const hasHeavyGun = () => currentWeaponId === "power_blaster";
+      const hasZoomGear = () => hasHeavyGun() || getGearZoomFovMultiplier(getEquippedGearId()) < 1;
       const hasAutoFireGear = () => isGearAutoFireEnabled(getEquippedGearId());
       const setZoomLevel = (nextLevel: number) => {
         const maxLevel = hasHeavyGun() ? 2 : hasZoomGear() ? 1 : 0;
@@ -784,7 +758,11 @@ export default function ArenaPreview({
       const onPointerLockChange = () => {
         const locked = document.pointerLockElement === renderer.domElement;
         setIsPointerLocked(locked);
-        if (!locked) setZoomLevel(0);
+        if (locked) hadPointerLock = true;
+        else if (hadPointerLock) {
+          hadPointerLock = false;
+          setZoomLevel(0);
+        }
       };
       const onPointerLockError = () => setIsPointerLocked(false);
       const onPointerDown = (event: PointerEvent) => {
@@ -902,6 +880,7 @@ export default function ArenaPreview({
       const bodyBox = new THREE.Box3();
       const bodyMin = new THREE.Vector3();
       const bodyMax = new THREE.Vector3();
+      const collidingBlocks = arenaMap.blocks.filter((block) => block.collides);
       const levelDebugEnabled = import.meta.env.DEV
         && ["1", "true"].includes(
           new URLSearchParams(window.location.search).get("debugArenaLevels")
@@ -935,8 +914,12 @@ export default function ArenaPreview({
         bodyMin.set(next.x - PLAYER_RADIUS, verticalBounds.minY, next.z - PLAYER_RADIUS);
         bodyMax.set(next.x + PLAYER_RADIUS, verticalBounds.maxY, next.z + PLAYER_RADIUS);
         bodyBox.set(bodyMin, bodyMax);
-        const blockingIndex = coverBoxes.findIndex((box) => box.intersectsBox(bodyBox) && !canFpsBodyClearObstacle(verticalBounds, box.max.y));
-        lastColliderName = blockingIndex >= 0 ? arenaMap.blocks.filter((block) => block.collides)[blockingIndex]?.id ?? "unknown" : "none";
+        const blockingIndex = coverBoxes.findIndex((box, index) => {
+          if (!box.intersectsBox(bodyBox) || canFpsBodyClearObstacle(verticalBounds, box.max.y)) return false;
+          return collidingBlocks[index]?.style !== "stair"
+            || !canFpsBodyAutoStepOnto(verticalBounds, box.max.y);
+        });
+        lastColliderName = blockingIndex >= 0 ? collidingBlocks[blockingIndex]?.id ?? "unknown" : "none";
         return blockingIndex < 0;
       };
       const resolveSurfaceGroundY = (
@@ -1353,7 +1336,7 @@ export default function ArenaPreview({
       renderer.dispose();
       mount.removeChild(renderer.domElement);
     };
-  }, [sceneSessionId, currentPlayerId, currentPlayerTeam, currentPlayer?.gear, currentPlayer?.weapon, view, debugOverlay, activeQuality, gamepadEnabled, arenaMapId, arenaMap, arenaBounds, teamBaseZones, captureZones, searchRetrieveItems, searchRetrieveDeliveryZones, isIronJunction, isDesertCitadel, isTempleRunoff, localToServerPosition, serverToLocalX, serverToLocalZ, session?.settings.gameMode, loadDecalAsset]);
+  }, [sceneSessionId, currentPlayerId, currentPlayerTeam, currentWeaponId, currentPlayer?.gear, currentPlayer?.weapon, view, debugOverlay, activeQuality, gamepadEnabled, arenaMapId, arenaMap, arenaBounds, teamBaseZones, captureZones, searchRetrieveItems, searchRetrieveDeliveryZones, isIronJunction, isDesertCitadel, isTempleRunoff, localToServerPosition, serverToLocalX, serverToLocalZ, session?.settings.gameMode, loadDecalAsset]);
 
   const beginTouchMove = (event: ReactPointerEvent<HTMLButtonElement>) => {
     event.preventDefault();
@@ -1387,11 +1370,19 @@ export default function ArenaPreview({
     ? session.players.find((candidate) => candidate.id === session.flag?.carrierId)
     : undefined;
   const displayedFlagPosition = session?.flag
-    ? { x: flagCarrier?.x ?? session.flag.position.x, z: flagCarrier?.z ?? session.flag.position.z }
+    ? {
+      x: flagCarrier?.x ?? session.flag.position.x,
+      y: flagCarrier?.y ?? session.flag.position.y,
+      z: flagCarrier?.z ?? session.flag.position.z
+    }
     : undefined;
 
   return (
-    <div className={view === "fps" ? "arena-frame fps-view" : "arena-frame"}>
+    <div
+      className={view === "fps" ? "arena-frame fps-view" : "arena-frame"}
+      data-weapon-id={currentWeaponId ?? "starter_blaster"}
+      data-zoom-level={zoomLevel}
+    >
       <div className="arena-canvas" ref={mountRef} aria-label={`${arenaMap.title} arena`} />
       {renderError && <div className="arena-error" role="alert"><strong>Arena unavailable</strong><span>{renderError}</span><button type="button" onClick={() => { setFallbackQuality("performance"); setRenderError(""); }}>Retry in performance mode</button></div>}
       {debugOverlay && characterDebugStats && (
@@ -1418,10 +1409,8 @@ export default function ArenaPreview({
             hitPulse={hitPulse}
             zoomLevel={zoomLevel}
             currentWeaponId={currentWeaponId}
+            snowballs={currentPlayer?.snowballs ?? session?.settings.startingSnowballs ?? 0}
             weaponCooldown={weaponCooldown}
-            isDesertCitadel={isDesertCitadel}
-            isIronJunction={isIronJunction}
-            arenaTitle={arenaMap.title}
             controlsDisabled={controlsDisabled}
             isPointerLocked={isPointerLocked}
             suppressHint={suppressHint}
@@ -1442,15 +1431,12 @@ export default function ArenaPreview({
             teamBaseZones={teamBaseZones}
             captureZones={captureZones}
             searchRetrieveItems={searchRetrieveItems}
-            isIronJunction={isIronJunction}
-            isDesertCitadel={isDesertCitadel}
-            isTempleRunoff={isTempleRunoff}
+            searchRetrieveDeliveryZones={searchRetrieveDeliveryZones}
             hasMultipleLevels={hasMultipleLevels}
             miniMapLevel={miniMapLevel}
             miniMapPlayer={miniMapPlayer}
             displayedFlagPosition={displayedFlagPosition}
             session={session}
-            scaleArenaValue={scaleArenaValue}
           />
         </>
       )}

@@ -9,6 +9,7 @@ import { CharacterFactory } from "./characters/CharacterFactory";
 import { CharacterManager } from "./characters/CharacterManager";
 import {
   getArenaGroundHeight,
+  getArenaObjectiveGroundY,
   getTeamSpawnForMap,
   type ArenaMapId,
   type GameSession,
@@ -207,7 +208,14 @@ export const createCharacterSync = (deps: CharacterSyncDependencies) => {
         : undefined;
       const nextX = nextCarrier?.x ?? nextFlag.position.x;
       const nextZ = nextCarrier?.z ?? nextFlag.position.z;
-      flagMarker.position.set(nextX, getArenaGroundHeight(arenaMapId, nextX, nextZ), nextZ);
+      const nextY = nextCarrier
+        ? getArenaObjectiveGroundY(
+            arenaMapId,
+            { x: nextX, y: nextCarrier.y, z: nextZ },
+            nextCarrier.crouching ? FPS_CROUCH_EYE_HEIGHT : FPS_STANDING_EYE_HEIGHT
+          )
+        : getArenaObjectiveGroundY(arenaMapId, nextFlag.position, FPS_STANDING_EYE_HEIGHT);
+      flagMarker.position.set(nextX, nextY, nextZ);
     }
   };
 

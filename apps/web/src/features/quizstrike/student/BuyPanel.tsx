@@ -9,7 +9,14 @@ import {
 } from "@quizstrike/shared";
 import { getShopShortcutKey } from "../../../shopShortcuts";
 
-const formatRewards = (value: number) => `${Math.round(value)} rewards`;
+const formatMoney = (value: number) => `$${Math.round(value)}`;
+
+const gearSubtitle = (gearId: string) => {
+  if (gearId === "shield_vest") return "Adds 70 HP";
+  if (gearId === "speed_shoes") return "Adds 30 HP and 30 speed";
+  if (gearId === "power_blaster") return "Press C to zoom";
+  return "";
+};
 
 export default function BuyPanel({
   player,
@@ -42,19 +49,19 @@ export default function BuyPanel({
   const isZombieHuman = session.settings.gameMode === "zombie" && player.role !== "zombie";
   const gearLockReason = (cost: number) => {
     if (!player.isAlive) return "Available next round";
-    if (player.money < cost) return `Need ${Math.round(cost - player.money)} more rewards`;
+    if (player.money < cost) return `Need ${formatMoney(cost - player.money)} more`;
     return "Return to base to buy";
   };
   return (
     <div className="panel buy-panel">
       <div className="panel-title">
         <h2>{buyPhaseSeconds === undefined ? "Choose gear" : `Get ready · ${buyPhaseSeconds}s`}</h2>
-        <span>{formatRewards(player.money)}</span>
+        <span className="buy-balance">Balance {formatMoney(player.money)}</span>
       </div>
       <p className="menu-timer-note">{buyPhaseSeconds === undefined
         ? "The round clock keeps running while this menu is open."
-        : "Press Q to answer questions for more rewards before the round starts."}</p>
-      <p className="buy-shortcut-help">Press 1–5 to choose quickly. Press B to open or close this menu.</p>
+        : "Press Q to answer questions before the round starts."}</p>
+      <p className="buy-shortcut-help">Press 1–5 to choose quickly · B to close</p>
       <button
         className="gear-row"
         onClick={onBuySnowballs}
@@ -65,10 +72,9 @@ export default function BuyPanel({
         <GearGlyph gearId="snowballs" />
         <span>
           <strong>{isBuyingSnowballs ? "Adding..." : `${snowballCount} snowballs`}</strong>
-          <small>Restock your ammunition anywhere on the map.</small>
-          <small className="gear-status">{isZombieHuman ? "Humans only" : player.money < snowballPrice ? `Need ${Math.round(snowballPrice - player.money)} more rewards` : player.isAlive ? "Ready to choose" : "Available next round"}</small>
+          <small className="gear-status">{isZombieHuman ? "Humans only" : player.money < snowballPrice ? `Need ${formatMoney(snowballPrice - player.money)} more` : player.isAlive ? "Ready to choose" : "Available next round"}</small>
         </span>
-        <em>{formatRewards(snowballPrice)}</em>
+        <em>{formatMoney(snowballPrice)}</em>
       </button>
       {GEAR_ITEMS.filter((gear) => gear.id !== "starter_blaster").map((gear) => (
         <button
@@ -82,10 +88,10 @@ export default function BuyPanel({
           <GearGlyph gearId={gear.id} />
           <span>
             <strong>{buyingGearId === gear.id ? "Adding..." : gear.name}</strong>
-            <small>{gear.description}</small>
+            {gearSubtitle(gear.id) && <small className="gear-subtitle">{gearSubtitle(gear.id)}</small>}
             <small className="gear-status">{isZombieMode && isWeaponGearId(gear.id) ? "Default launcher only" : (getPlayerWeaponId(player) === gear.id || getPlayerPerks(player).includes(gear.id)) ? "Equipped" : player.money < gear.cost || !player.isAlive ? gearLockReason(gear.cost) : "Ready to choose"}</small>
           </span>
-          <em>{formatRewards(gear.cost)}</em>
+          <em>{formatMoney(gear.cost)}</em>
         </button>
       ))}
     </div>

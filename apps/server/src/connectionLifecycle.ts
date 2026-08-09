@@ -61,6 +61,7 @@ export class ConnectionLifecycleService {
     if (session.flag && player.id === session.flag.carrierId) {
       session.flag = resolveFlagDropForPlayer(session.flag, player, {
         x: player.x ?? 0,
+        y: player.y,
         z: player.z ?? 0
       });
     }

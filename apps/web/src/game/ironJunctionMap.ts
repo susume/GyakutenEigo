@@ -32,13 +32,14 @@ const makeIndustrialStairFlight = (flight: IronJunctionStairFlight): CitadelBloc
       id: `${flight.id}-step-${index + 1}`,
       x: flight.x + (flight.axis === "x" ? travel : 0),
       z: flight.z + (flight.axis === "z" ? travel : 0),
-      w: flight.axis === "x" ? flight.length / flight.steps + 0.6 : flight.width,
-      d: flight.axis === "z" ? flight.length / flight.steps + 0.6 : flight.width,
+      w: flight.axis === "x" ? flight.length / flight.steps : flight.width,
+      d: flight.axis === "z" ? flight.length / flight.steps : flight.width,
       h: height,
       y: flight.startY + height / 2,
       color: "#4b5659",
       material: "metal",
-      style: "stair"
+      style: "stair",
+      collides: true
     };
   });
 
@@ -103,7 +104,6 @@ const concrete = "#737b78";
 const gravel = "#4d5452";
 const dirtyCream = "#b2aa91";
 const warning = "#cf873d";
-const blueStripe = "#3c7f9f";
 const redStripe = "#a94d42";
 
 const loadingDeckCenter = IRON_JUNCTION_LOADING_LEVEL_Y - 0.55;
@@ -248,12 +248,11 @@ const rawCylinders: CitadelCylinder[] = [
 ];
 export const cylinders: CitadelCylinder[] = rawCylinders.map(({ label: _label, ...cylinder }) => scaleCylinder(cylinder));
 
-// Architecture, rail colors, team banners, and landmarks carry navigation.
-// Printed route directions were visually noisy in both overview and FPS views.
+// Architecture, rail colors, and the red objective banner carry navigation
+// without decorative minimap marks or printed labels.
 export const floorMarks: CitadelFloorMark[] = [];
 
 const rawProps: CitadelProp[] = [
-  { id: "blue-route-banner", kind: "banner", x: -210, z: -28, size: 4, h: 10, color: blueStripe, material: "cloth" },
   { id: "red-route-banner", kind: "banner", x: 210, z: 28, size: 4, h: 10, color: redStripe, material: "cloth" },
   { id: "yard-signal-west", kind: "signal", x: -150, z: -18, size: 2, h: 10, color: "#d85b45", material: "metal" },
   { id: "yard-signal-east", kind: "signal", x: 150, z: 18, size: 2, h: 10, color: "#62b29e", material: "metal" },
@@ -271,5 +270,4 @@ const rawProps: CitadelProp[] = [
   { id: "maintenance-tarp", kind: "shade", x: 144, z: 128, size: 10, h: 6, color: "#5e6756", material: "cloth" }
 ];
 export const props = rawProps.map(scalePoint);
-
 export const signs: CitadelSign[] = [];

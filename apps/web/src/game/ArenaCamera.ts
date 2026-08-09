@@ -16,6 +16,11 @@ export const FPS_JUMP_AIRTIME_SECONDS = Number(
   ((FPS_JUMP_VELOCITY * 2) / FPS_JUMP_GRAVITY).toFixed(3)
 );
 export const FPS_GROUNDED_CAMERA_RESPONSE = 18;
+// Physical stair treads remain collision surfaces, but the body reaches the
+// next riser slightly before its center crosses onto that tread. This allowance
+// lets authored stairs behave like stairs without making ordinary cover
+// automatically climbable.
+export const FPS_MAX_AUTO_STEP_HEIGHT = 0.8;
 
 /**
  * Smooths only the rendered eye height while grounded. Collision and server
@@ -47,6 +52,12 @@ export const canFpsBodyClearObstacle = (
   obstacleTopY: number,
   clearance = 0.04
 ) => body.minY >= obstacleTopY + clearance;
+
+export const canFpsBodyAutoStepOnto = (
+  body: ReturnType<typeof getFpsBodyVerticalBounds>,
+  obstacleTopY: number,
+  maximumStepHeight = FPS_MAX_AUTO_STEP_HEIGHT
+) => obstacleTopY - body.minY <= maximumStepHeight;
 
 export type FpsSupportSurface = {
   min: { x: number; z: number };

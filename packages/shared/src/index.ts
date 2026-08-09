@@ -709,9 +709,9 @@ export const FLAG_MODE_DEFAULTS = {
 } as const;
 
 export const HEAVY_GUN_COST = 9000;
-export const HEAVY_GUN_DAMAGE = 80;
+export const HEAVY_GUN_DAMAGE = 100;
 export const HEAVY_GUN_COOLDOWN_MS = 1500;
-export const HEAVY_GUN_RANGE = 150;
+export const HEAVY_GUN_RANGE = 240;
 export const HEAVY_GUN_UNSCOPED_HIT_RADIUS = 0.52;
 export const HEAVY_GUN_SCOPED_HIT_RADIUS = 0.82;
 export const HEAVY_GUN_DEEP_SCOPED_HIT_RADIUS = 0.98;
@@ -1218,7 +1218,7 @@ export const resolveZombieSprintEnergy = ({
   };
 };
 export const ARENA_SCALE = 0.62;
-const scaleArenaValue = (value: number) => Number((value * ARENA_SCALE).toFixed(2));
+export const scaleArenaValue = (value: number) => Number((value * ARENA_SCALE).toFixed(2));
 const scaleArenaPosition = <T extends { x: number; z: number }>(position: T): T =>
   ({ ...position, x: scaleArenaValue(position.x), z: scaleArenaValue(position.z) }) as T;
 const scaleArenaRadius = <T extends { x: number; z: number; radius: number }>(position: T): T =>
@@ -1308,6 +1308,15 @@ export const DESERT_CITADEL_STAIR_FLIGHTS = [
   { id: "crown-west-field-stairs", x: -52, z: -121, width: 22, length: 46, axis: "z", direction: -1, startY: 0, endY: DESERT_CITADEL_ROOFTOP_LEVEL_Y, steps: 28 },
   { id: "crown-east-field-stairs", x: 52, z: -121, width: 22, length: 46, axis: "z", direction: -1, startY: 0, endY: DESERT_CITADEL_ROOFTOP_LEVEL_Y, steps: 28 }
 ] as const satisfies readonly ArenaStairFlight[];
+
+export const getArenaStairFlightsForMap = (
+  mapId: ArenaMapId | string | undefined
+): readonly ArenaStairFlight[] =>
+  mapId === "temple_runoff"
+    ? TEMPLE_RUNOFF_STAIR_FLIGHTS
+    : mapId === "iron_junction"
+      ? IRON_JUNCTION_STAIR_FLIGHTS
+      : DESERT_CITADEL_STAIR_FLIGHTS;
 
 export type ArenaBounds = { limitX: number; limitZ: number };
 export const TEMPLE_RUNOFF_BOUNDS: ArenaBounds = {
@@ -1493,6 +1502,33 @@ export const getArenaLevelLabel = (
   return "main";
 };
 
+/**
+ * Resolves an objective marker back to the nearest authoritative walkable
+ * surface. Capture zones store floor Y, search items store their mesh Y, and
+ * flag positions store player eye Y, so callers provide the corresponding
+ * vertical offset instead of guessing a map-specific level.
+ */
+export const getArenaObjectiveGroundY = (
+  mapId: ArenaMapId | string | undefined,
+  position: Pick<ArenaPosition, "x" | "z"> & { y?: number },
+  verticalOffset = 0
+) => {
+  const fallback = getArenaGroundHeight(mapId, position.x, position.z);
+  if (!Number.isFinite(position.y)) return fallback;
+  const surfaces = getArenaFloorSurfaces(mapId, position.x, position.z);
+  if (surfaces.length === 0) return fallback;
+  const targetY = Number(position.y) - verticalOffset;
+  return surfaces.reduce((closest, surface) =>
+    Math.abs(surface - targetY) < Math.abs(closest - targetY) ? surface : closest
+  , surfaces[0]!);
+};
+
+export const getArenaObjectiveLevelLabel = (
+  mapId: ArenaMapId | string | undefined,
+  position: Pick<ArenaPosition, "x" | "z"> & { y?: number },
+  verticalOffset = 0
+) => getArenaLevelLabel(mapId, getArenaObjectiveGroundY(mapId, position, verticalOffset));
+
 export const getArenaEyeHeight = (
   mapId: ArenaMapId | string | undefined,
   x: number,
@@ -1672,7 +1708,12 @@ const RAW_FREE_FOR_ALL_SPAWNS: SpawnPoint[] = [
   { id: "ffa-crown-12", label: "Crown Rampart", x: 160, z: -164, y: DESERT_CITADEL_ROOFTOP_LEVEL_Y + ARENA_PLAYER_EYE_HEIGHT, facing: 1.2 }
 ];
 
-export const FREE_FOR_ALL_SPAWNS: SpawnPoint[] = RAW_FREE_FOR_ALL_SPAWNS.map(scaleArenaPosition);
+export const FREE_FOR_ALL_SPAWNS: SpawnPoint[] = RAW_FREE_FOR_ALL_SPAWNS.map((spawn) => {
+  const scaled = scaleArenaPosition(spawn);
+  return Number.isFinite(scaled.y)
+    ? scaled
+    : { ...scaled, y: getArenaGroundHeight("desert_citadel", scaled.x, scaled.z) + ARENA_PLAYER_EYE_HEIGHT };
+});
 
 const RAW_CAPTURE_ZONES = [
   { id: "western-watchtower", label: "Western Watchtower", x: -118, z: -82, radius: 17 },
@@ -1991,7 +2032,7 @@ export const getPlayerMoveSpeedMultiplier = (player: Pick<PlayerSession, "gear" 
   Number((getGearMoveSpeedMultiplier(getPlayerWeaponId(player)) * (hasPlayerPerk(player, "speed_shoes") ? getGearMoveSpeedMultiplier("speed_shoes") : 1)).toFixed(2));
 
 export type ArenaObstacle =
-  | { id: string; kind: "rect"; x: number; z: number; width: number; depth: number; jumpable?: boolean; minY?: number; maxY?: number }
+  | { id: string; kind: "rect"; x: number; z: number; width: number; depth: number; jumpable?: boolean; minY?: number; maxY?: number; stair?: boolean }
   | { id: string; kind: "circle"; x: number; z: number; radius: number; jumpable?: boolean; minY?: number; maxY?: number };
 
 const rectObstacle = (
@@ -2034,7 +2075,29 @@ const circleObstacle = (
   ...(Number.isFinite(maxY) ? { maxY } : {})
 });
 
+const stairObstaclesForFlights = (
+  flights: readonly ArenaStairFlight[],
+  minimumHeight = 0
+): ArenaObstacle[] => flights.flatMap((flight) => Array.from({ length: flight.steps }, (_, index) => {
+  const progress = (index + 1) / flight.steps;
+  const travel = (-0.5 + (index + 0.5) / flight.steps) * flight.length * flight.direction;
+  const topY = flight.startY + (flight.endY - flight.startY) * progress;
+  const height = Math.max(minimumHeight, topY - flight.startY);
+  const obstacle = rectObstacle(
+    `${flight.id}-step-${index + 1}`,
+    flight.x + (flight.axis === "x" ? travel : 0),
+    flight.z + (flight.axis === "z" ? travel : 0),
+    flight.axis === "x" ? flight.length / flight.steps : flight.width,
+    flight.axis === "z" ? flight.length / flight.steps : flight.width,
+    false,
+    flight.startY + height / 2 - height / 2,
+    flight.startY + height / 2 + height / 2
+  );
+  return { ...obstacle, stair: true };
+}));
+
 export const ARENA_OBSTACLES: ArenaObstacle[] = [
+  ...stairObstaclesForFlights(DESERT_CITADEL_STAIR_FLIGHTS, 0.65),
   // Four edge-touching perimeter pieces close the rebuilt footprint.
   rectObstacle("citadel-north-wall", 0, -196, 512, 8, false, 0, 14),
   rectObstacle("citadel-south-wall", 0, 196, 512, 8, false, 0, 14),
@@ -2101,6 +2164,7 @@ export const ARENA_OBSTACLES: ArenaObstacle[] = [
 
 /** Simplified collision proxies for the Iron Junction props and architecture. */
 export const IRON_JUNCTION_OBSTACLES: ArenaObstacle[] = [
+  ...stairObstaclesForFlights(IRON_JUNCTION_STAIR_FLIGHTS),
   rectObstacle("iron-north-cliff", 0, -246, 560, 8, false, 0, 24),
   rectObstacle("iron-south-cliff", 0, 246, 560, 8, false, 0, 30),
   rectObstacle("iron-west-cliff", -276, 0, 8, 500, false, 0, 22),
@@ -2198,6 +2262,7 @@ export const IRON_JUNCTION_OBSTACLES: ArenaObstacle[] = [
 
 /** Ground-plane collision proxies for Temple Runoff's playable architecture. */
 export const TEMPLE_RUNOFF_OBSTACLES: ArenaObstacle[] = [
+  ...stairObstaclesForFlights(TEMPLE_RUNOFF_STAIR_FLIGHTS),
   rectObstacle("temple-north-cliff", 0, -196, 470, 8, false, 0, 28),
   rectObstacle("temple-south-cliff", 0, 196, 470, 8, false, 0, 28),
   rectObstacle("temple-west-cliff", -231, 0, 8, 400, false, 0, 28),
@@ -2251,6 +2316,8 @@ export const TEMPLE_RUNOFF_OBSTACLES: ArenaObstacle[] = [
   rectObstacle("lower-west-tablet-cover", -24, -12, 16, 8, true, 0, 4.5),
   rectObstacle("lower-east-tablet-cover", 102, -11, 16, 8, true, 0, 4.5),
   rectObstacle("lower-east-sluice-cover", 184, 11, 12, 8, false, 0, 5),
+  rectObstacle("west-sluice-mouth", -190, 0, 12, 28, false, 0, 12),
+  rectObstacle("east-sluice-mouth", 190, 0, 12, 28, false, 0, 12),
   circleObstacle("rain-god-statue", 0, 126, 7, false, 8, 25),
   circleObstacle("jungle-column-west", -126, -104, 4, false, 8, 20),
   circleObstacle("temple-column-east", 122, 111, 4, false, 8, 20),
@@ -2830,8 +2897,9 @@ export const findBotNavigationPath = ({
   goal.y = Number.isFinite(goal.y)
     ? goal.y
     : getArenaGroundHeightForPlayer(mapId, goal.x, goal.z, start.y, ARENA_PLAYER_EYE_HEIGHT, 1.4) + ARENA_PLAYER_EYE_HEIGHT;
+  const navigationObstacles = obstacles.filter((obstacle) => obstacle.kind !== "rect" || obstacle.stair !== true);
   const hasNavigationClearance = (from: ArenaPosition, to: ArenaPosition) => {
-    if (!hasLineOfSight({ from, to, obstacles, padding })) return false;
+    if (!hasLineOfSight({ from, to, obstacles: navigationObstacles, padding })) return false;
     if (!Number.isFinite(from.y) || !Number.isFinite(to.y)) return true;
     const distance = Math.hypot(to.x - from.x, to.z - from.z);
     const sampleCount = Math.max(1, Math.ceil(distance / 3));
@@ -2845,7 +2913,7 @@ export const findBotNavigationPath = ({
       };
       // Eye-level line-of-sight above catches tall and overhead architecture;
       // this foot sample adds the low cover that would stop the player's body.
-      if (obstacles.some((obstacle) => pointInsideObstacle({ ...point, y: footY + 0.08 }, obstacle, padding))) return false;
+      if (navigationObstacles.some((obstacle) => pointInsideObstacle({ ...point, y: footY + 0.08 }, obstacle, padding))) return false;
     }
     return true;
   };
@@ -3062,9 +3130,24 @@ export const resolveBotRoamStep = ({
   detourDirection?: -1 | 1;
   mapId?: ArenaMapId | string;
 }): AuthoritativeMovementResult => {
+  const terrainAwarePosition = (position: ArenaPosition, referenceEyeY?: number): ArenaPosition => {
+    if (!mapId) return position;
+    const eyeY = Number.isFinite(position.y) ? Number(position.y) : referenceEyeY;
+    const groundY = getArenaGroundHeightForPlayer(
+      mapId,
+      position.x,
+      position.z,
+      eyeY,
+      ARENA_PLAYER_EYE_HEIGHT,
+      1.4
+    );
+    return { ...position, y: groundY + ARENA_PLAYER_EYE_HEIGHT };
+  };
+  const terrainCurrent = terrainAwarePosition(current);
+  const terrainDesired = terrainAwarePosition(desired, terrainCurrent.y);
   const direct = resolveAuthoritativeMovement({
-    current,
-    requested: desired,
+    current: terrainCurrent,
+    requested: terrainDesired,
     elapsedMs,
     maxSpeed: speed,
     obstacles,
@@ -3072,8 +3155,8 @@ export const resolveBotRoamStep = ({
   });
   if (!direct.blocked) return direct;
 
-  const dx = desired.x - current.x;
-  const dz = desired.z - current.z;
+  const dx = terrainDesired.x - terrainCurrent.x;
+  const dz = terrainDesired.z - terrainCurrent.z;
   const distance = Math.hypot(dx, dz);
   const detourDistance = Math.min(distance, Math.max(0, speed * (elapsedMs / 1000)));
   if (distance === 0 || detourDistance === 0) return direct;
@@ -3092,12 +3175,12 @@ export const resolveBotRoamStep = ({
     Math.PI
   ]) {
     const detour = resolveAuthoritativeMovement({
-      current,
-      requested: {
-        x: current.x + Math.cos(heading + angleOffset) * detourDistance,
-        z: current.z + Math.sin(heading + angleOffset) * detourDistance,
-        facing: desired.facing
-      },
+        current: terrainCurrent,
+        requested: terrainAwarePosition({
+          x: terrainCurrent.x + Math.cos(heading + angleOffset) * detourDistance,
+          z: terrainCurrent.z + Math.sin(heading + angleOffset) * detourDistance,
+          facing: terrainDesired.facing
+        }, terrainCurrent.y),
       elapsedMs,
       maxSpeed: speed,
       obstacles,
@@ -3251,11 +3334,15 @@ export const resolveFlagPlacement = ({
   holdSeconds
 }: {
   flag: FlagState;
-  player: Pick<PlayerSession, "id" | "team" | "isAlive" | "x" | "z">;
+  player: Pick<PlayerSession, "id" | "team" | "isAlive" | "x" | "y" | "z">;
   nowMs: number;
   holdSeconds: number;
 }): FlagState => {
-  const position = { x: player.x ?? flag.position.x, z: player.z ?? flag.position.z };
+  const position = {
+    x: player.x ?? flag.position.x,
+    z: player.z ?? flag.position.z,
+    ...(Number.isFinite(player.y) ? { y: player.y } : {})
+  };
   if (!canPlaceFlag(player, flag, position)) return flag;
   return {
     ...flag,

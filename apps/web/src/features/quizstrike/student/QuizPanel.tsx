@@ -42,11 +42,15 @@ export default function QuizPanel({
   return (
     <div className="panel quiz-panel">
       <div className="panel-title">
-        <h2>Question</h2>
-        <span>{reward}</span>
+        <div>
+          <span className="menu-eyebrow">Live question</span>
+          <h2>Answer to earn</h2>
+        </div>
+        <span className="question-reward">{reward}</span>
       </div>
-      <p className="menu-timer-note">The round clock keeps running while you answer.</p>
-      <p className="question-text">{question.prompt}</p>
+      <div className="question-prompt-card">
+        <p className="question-text">{question.prompt}</p>
+      </div>
       {question.audioUrl && (
         <div className="question-audio">
           <Volume2 size={18} aria-hidden="true" />
@@ -57,9 +61,9 @@ export default function QuizPanel({
       )}
       <div className="answer-grid">
         {choices.map((choice, index) => (
-          <button key={choice} onClick={() => onAnswer(choice)} disabled={Boolean(answeringChoice)}>
+          <button key={choice} onClick={() => onAnswer(choice)} disabled={Boolean(answeringChoice)} aria-label={`Answer ${choice}: ${labels[choice]}`}>
             <strong>{index + 1}</strong>
-            {answeringChoice === choice ? "Checking..." : labels[choice]}
+            <span>{answeringChoice === choice ? "Checking..." : labels[choice]}</span>
           </button>
         ))}
       </div>

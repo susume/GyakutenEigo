@@ -53,9 +53,10 @@ Rampart contest.
        +---------- [Dry Cistern — lower] ------------+
 ```
 
-No floating labels or route arrows are used. Blue/red bastion cloth, the Falcon
-Obelisk, raised gold Causeway, northern crenellated Rampart, and turquoise
-Cistern well provide orientation.
+No floating labels, floor text, or route signs are used. The minimap keeps
+color-only route bands and objective icons; in the world, the Falcon Obelisk,
+raised gold Causeway, northern crenellated Rampart, turquoise Cistern well, and
+the remaining Red objective cloth provide orientation.
 
 ## Authoritative Phase 3 geometry manifest
 
@@ -77,7 +78,7 @@ unless this manifest is updated first.
 | Crown Rampart cover | `crown-cover-west`, `crown-cover-center`, `crown-cover-east` | Create three contestable upper positions with lateral counterfire. |
 | Shaded Souk combat architecture | `souk-stall-west-outer`, `souk-stall-west-inner`, `souk-stall-center-west`, `souk-stall-center-east`, `souk-stall-east-inner`, `souk-stall-east-outer`, `falcon-obelisk`, `falcon-obelisk-crown` | Stagger the north lane into multiple close/mid engagements and provide its landmark. |
 | Dry Cistern cover | `cistern-cover-west-outer`, `cistern-cover-west-inner`, `cistern-cover-center-west`, `cistern-cover-center-east`, `cistern-cover-east-inner`, `cistern-cover-east-outer` | Shape the lower flank into alternating two-sided peeks without closing the lane. |
-| Major props | `blue-bastion-banner`, `red-bastion-banner`, `souk-canopy-west`, `souk-canopy-east`, `souk-palm-west`, `souk-palm-east`, `cistern-palm-west`, `cistern-palm-east`, `cistern-cart-west`, `cistern-cart-east`, `crown-banner-west`, `crown-banner-east` | Communicate team side, lane identity, and desert atmosphere without collision. |
+| Major props | `red-bastion-banner`, `souk-canopy-west`, `souk-canopy-east`, `souk-palm-west`, `souk-palm-east`, `cistern-palm-west`, `cistern-palm-east`, `cistern-cart-west`, `cistern-cart-east`, `crown-banner-east` | Keep the Red objective cue and desert atmosphere without adding a Blue placement flag or extra signage. |
 | Major cylinders | `royal-sundial-ring`, `royal-sundial-core`, `cistern-well-rim`, `cistern-well-water` | Create the central main-level landmark and the southern water landmark; only the two outer rings collide. |
 
 ## Objective distribution

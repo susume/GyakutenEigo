@@ -14,17 +14,19 @@ import {
 import { ARENA_MAPS } from "./arenaMaps";
 import { blocks, cylinders, floorMarks, props, signs } from "./templeRunoffMap";
 
-test("Temple Runoff 2.0 is a substantially larger three-level arena", () => {
+test("Temple Runoff is a substantially larger three-level arena", () => {
   const map = ARENA_MAPS.find((candidate) => candidate.id === "temple_runoff");
   assert.ok(map);
-  assert.equal(map.title, "Temple Runoff 2.0");
+  assert.equal(map.title, "Temple Runoff");
   assert.deepEqual(map.footprint, { width: 470 * ARENA_SCALE, depth: 400 * ARENA_SCALE });
-  assert.deepEqual(floorMarks, []);
-  assert.deepEqual(signs, []);
+  assert.equal(floorMarks.length, 0);
+  assert.equal(signs.length, 0);
   assert.ok(blocks.every((block) => block.label === undefined));
   assert.ok(cylinders.every((cylinder) => cylinder.label === undefined));
   assert.ok(map.routes.length >= 6);
   assert.ok(props.length <= 10, "new space must not be filled with discretionary props");
+  assert.equal(props.some((prop) => prop.id === "blue-standard"), false);
+  assert.ok(props.some((prop) => prop.id === "red-standard"));
 });
 
 test("Temple Runoff replaces every playable incline with authored stone stairs", () => {

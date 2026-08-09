@@ -23,7 +23,9 @@ and deck markers so each prop communicates route identity or combat intent.
 
 The shared floor resolver, server movement, line-of-sight, and bot A* all preserve
 Y. A player at the same X/Z can remain on the Yard while another player occupies
-the Highline or Catwalk above. Minimap labels show Yard, Highline, and Catwalk.
+the Highline or Catwalk above. The FPS world uses no printed route labels or
+signs; the minimap uses color bands, stair markers, objective icons, and base
+zones from shared map data.
 
 Local 40-player Medium captures reported approximately 47–80 FPS depending on
 camera, with 441–620 draw calls and 209k–237k triangles. The exposed Highline is

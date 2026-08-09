@@ -108,6 +108,7 @@ export class CombatService {
     if (tagResult.eliminated) {
       const knockedOutPosition = {
         x: target.x ?? sessionSpawn(session, target.team).x,
+        y: target.y,
         z: target.z ?? sessionSpawn(session, target.team).z
       };
       const baseSpawn = sessionSpawn(session, target.team);

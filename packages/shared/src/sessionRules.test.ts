@@ -957,7 +957,7 @@ test("heavy launcher uses named AWP-style combat settings", () => {
   assert.equal(DEFAULT_SESSION_SETTINGS.roundDurationSeconds, FLAG_MODE_DEFAULTS.roundDurationSeconds);
   assert.equal(DEFAULT_SESSION_SETTINGS.flagHoldSeconds, FLAG_MODE_DEFAULTS.flagHoldSeconds);
   assert.equal(getGearDamage("power_blaster"), HEAVY_GUN_DAMAGE);
-  assert.equal(getGearDamage("power_blaster"), 80);
+  assert.equal(getGearDamage("power_blaster"), 100);
   assert.equal(getGearFireCooldownMs("power_blaster"), HEAVY_GUN_COOLDOWN_MS);
   assert.equal(getGearFireCooldownMs("power_blaster") > 1200, true);
   assert.equal(getGearZoomFovMultiplier("power_blaster") < 1, true);
@@ -1426,15 +1426,16 @@ test("flag state supports pickup, placement, countdown, drop, and capture", () =
   });
   assert.equal(placed.state, "placed");
   assert.equal(placed.expiresAtMs, 31_000);
+  assert.equal(placed.position.y, getTeamSpawn("blue").y);
   assert.deepEqual(resolveFlagCountdown(placed, 31_000), { winner: "red", reason: "flag_protected" });
 
   const captured = resolveFlagCapture(placed, { ...blue, ...placed.position });
   assert.equal(captured.state, "captured");
   assert.equal(captured.capturedById, "blue");
 
-  const dropped = resolveFlagDropForPlayer(carried, red, { x: 5, z: 6 });
+  const dropped = resolveFlagDropForPlayer(carried, red, { x: 5, y: 12.21, z: 6 });
   assert.equal(dropped.state, "dropped");
-  assert.deepEqual(dropped.position, { x: 5, z: 6 });
+  assert.deepEqual(dropped.position, { x: 5, y: 12.21, z: 6 });
 });
 
 test("round reset preserves living loadouts and re-arms knocked-out players", () => {
@@ -1454,8 +1455,8 @@ test("AWP damage does not freeze a player with a warm vest in one hit", () => {
   const result = resolveTagAction({ attacker, target: vestTarget });
   assert.deepEqual(result, {
     ok: true,
-    damage: 80,
-    nextHealth: 70,
+    damage: 100,
+    nextHealth: 50,
     eliminated: false,
     moneyAwarded: 0,
     scoreDelta: 0

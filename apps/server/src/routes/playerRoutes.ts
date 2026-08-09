@@ -42,7 +42,7 @@ export type PlayerRouteDependencies = {
   stampSession: (session: GameSession) => GameSession;
   evictPlayerSockets: (session: GameSession, player: PlayerSession) => void;
   removePlayerRuntimeState: (session: GameSession, player: PlayerSession) => void;
-  resolveFlagDropForPlayer: (flag: FlagState, player: PlayerSession, position: { x: number; z: number }) => FlagState;
+  resolveFlagDropForPlayer: (flag: FlagState, player: PlayerSession, position: { x: number; y?: number; z: number }) => FlagState;
   evaluateFlagEliminationWin: (session: GameSession) => void;
   finishZombieMatchIfComplete: (session: GameSession) => void;
   resetFreezeStreak: (player: PlayerSession) => void;
@@ -81,6 +81,7 @@ export const registerPlayerRoutes = (app: Application, deps: PlayerRouteDependen
     if (session.flag?.carrierId === player.id) {
       session.flag = deps.resolveFlagDropForPlayer(session.flag, player, {
         x: player.x ?? 0,
+        y: player.y,
         z: player.z ?? 0
       });
     }

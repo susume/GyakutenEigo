@@ -80,17 +80,19 @@ const makeStairFlight = (flight: (typeof DESERT_CITADEL_STAIR_FLIGHTS)[number], 
       id: `${flight.id}-step-${index + 1}`,
       x: flight.x + (flight.axis === "x" ? travel : 0),
       z: flight.z + (flight.axis === "z" ? travel : 0),
-      w: flight.axis === "x" ? flight.length / flight.steps + 0.8 : flight.width,
-      d: flight.axis === "z" ? flight.length / flight.steps + 0.8 : flight.width,
+      w: flight.axis === "x" ? flight.length / flight.steps : flight.width,
+      d: flight.axis === "z" ? flight.length / flight.steps : flight.width,
       h: height,
       y: flight.startY + height / 2,
       color,
       material: "stone",
-      style: "stair"
+      style: "stair",
+      collides: true
     };
   });
 
-// Navigation is taught by silhouette, elevation, cloth color, and landmarks.
+// The arena remains visually uncluttered; navigation comes from geometry,
+// objectives, and the player marker rather than decorative route marks.
 export const floorMarks: CitadelFloorMark[] = [];
 
 const rawBlocks: CitadelBlock[] = [
@@ -191,9 +193,9 @@ export const DESERT_CITADEL_PHASE3_MANIFEST = {
   ],
   stairFlightIds: DESERT_CITADEL_STAIR_FLIGHTS.map((flight) => flight.id),
   propIds: [
-    "blue-bastion-banner", "red-bastion-banner", "souk-canopy-west", "souk-canopy-east",
+    "red-bastion-banner", "souk-canopy-west", "souk-canopy-east",
     "souk-palm-west", "souk-palm-east", "cistern-palm-west", "cistern-palm-east",
-    "cistern-cart-west", "cistern-cart-east", "crown-banner-west", "crown-banner-east"
+    "cistern-cart-west", "cistern-cart-east", "crown-banner-east"
   ],
   cylinderIds: ["royal-sundial-ring", "royal-sundial-core", "cistern-well-rim", "cistern-well-water"]
 } as const;
@@ -201,7 +203,6 @@ export const DESERT_CITADEL_PHASE3_MANIFEST = {
 export const blocks: CitadelBlock[] = rawBlocks.map(scaleRect);
 
 const rawProps: CitadelProp[] = [
-  { id: "blue-bastion-banner", kind: "banner", x: -220, z: 0, size: 5, h: 13, color: blue, material: "cloth" },
   { id: "red-bastion-banner", kind: "banner", x: 220, z: 0, size: 5, h: 13, color: red, material: "cloth" },
   { id: "souk-canopy-west", kind: "shade", x: -115, z: -118, size: 19, h: 7, color: blue, material: "cloth" },
   { id: "souk-canopy-east", kind: "shade", x: 115, z: -118, size: 19, h: 7, color: red, material: "cloth" },
@@ -211,7 +212,6 @@ const rawProps: CitadelProp[] = [
   { id: "cistern-palm-east", kind: "palm", x: 180, z: 150, size: 6, h: 17, color: palmGreen, material: "wood" },
   { id: "cistern-cart-west", kind: "cart", x: -115, z: 150, size: 8, h: 5, rotationY: 0.15, color: ochre, material: "wood" },
   { id: "cistern-cart-east", kind: "cart", x: 115, z: 150, size: 8, h: 5, rotationY: -0.15, color: ochre, material: "wood" },
-  { id: "crown-banner-west", kind: "banner", x: -88, z: -160, size: 4, h: 10, y: roofY, color: blue, material: "cloth" },
   { id: "crown-banner-east", kind: "banner", x: 88, z: -160, size: 4, h: 10, y: roofY, color: red, material: "cloth" }
 ];
 

@@ -30,10 +30,10 @@ The fix keeps one shared pipeline:
 
 The old `power_blaster` is now the Heavy Snowball Launcher.
 
-- Damage: `HEAVY_GUN_DAMAGE = 80`
+- Damage: `HEAVY_GUN_DAMAGE = 100`
 - Purchase price: `$9000` (the default Starter launcher is not sold in the Buy Menu)
 - Cooldown: `HEAVY_GUN_COOLDOWN_MS = 1500`
-- Range: `HEAVY_GUN_RANGE = 150`
+- Range: `HEAVY_GUN_RANGE = 240`
 - Scope: right-click cycle: normal (`72°`) → medium (`40°`) → deep (`20°`) → normal
 - Accuracy: unscoped (`0.52`) < medium scope (`0.82`) < deep scope (`0.98`) hit radius
 - Audio: procedural `heavy_fire` report plus delayed echo, with no external asset dependency

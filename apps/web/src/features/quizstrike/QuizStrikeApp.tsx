@@ -2406,7 +2406,13 @@ function SessionManager({
       await onRefresh();
       status.setMessage("The round is live.");
     } catch (err) {
-      status.report(err);
+      if (err instanceof ApiError && err.status === 404) {
+        setSelectedSession(null);
+        await onRefresh();
+        status.setError("This local room expired when the game server restarted. Create a new room, then have players join with its new code.");
+      } else {
+        status.report(err);
+      }
     } finally {
       setIsStartingSession(false);
     }
@@ -4221,7 +4227,7 @@ function StudentExperience({ onExit }: { onExit: () => void }) {
   }, [sessionCode, playerId, playerToken, openRespawnPractice, setAnsweringChoice, setBuyOpen, setFeedback, setIncomingHitCue, setIsSocketReconnecting, setQuizOpen, setRewardPulse, setScoreboardOpen, setSettingsOpen, setStatusError]);
 
   useEffect(() => {
-    if (!sessionCode || !playerId || !playerToken || sessionStatus !== "waiting" || !isSocketReconnecting) return;
+    if (!sessionCode || !playerId || !playerToken || sessionStatus !== "waiting") return;
     const activePlayerId = playerId;
     let cancelled = false;
 
@@ -4231,17 +4237,28 @@ function StudentExperience({ onExit }: { onExit: () => void }) {
         if (cancelled) return;
         setSession(payload.session);
         setPlayer((current) => payload.session.players.find((item) => item.id === (current?.id ?? activePlayerId)) ?? current);
-      } catch {
+      } catch (error) {
+        if (error instanceof ApiError && error.status === 404) {
+          clearStoredStudentSession();
+          setJoinCode(sessionCode);
+          setSession(null);
+          setPlayer(null);
+          setPlayerToken("");
+          setQuestion(null);
+          setIsSocketReconnecting(false);
+          setStatusError("This local room expired when the game server restarted. Ask the host to create a new room, then join with its new code.");
+        }
         // The socket remains the primary transport; the next poll retries transient failures.
       }
     };
 
+    void syncWaitingRoom();
     const interval = window.setInterval(() => void syncWaitingRoom(), 5000);
     return () => {
       cancelled = true;
       window.clearInterval(interval);
     };
-  }, [sessionCode, sessionStatus, playerId, playerToken, isSocketReconnecting]);
+  }, [sessionCode, sessionStatus, playerId, playerToken, setIsSocketReconnecting, setStatusError]);
 
   useEffect(() => {
     if (roundPreparation && playerIsAlive) {
@@ -4611,15 +4628,29 @@ function StudentExperience({ onExit }: { onExit: () => void }) {
 
   const savePlayerAppearance = async (appearance: PlayerAppearance) => {
     if (!session || !player || !playerToken) throw new Error("Reconnect before saving your character.");
-    const payload = await studentApi.saveAppearance(session.sessionCode, player.id, playerToken, appearance) as {
-      session: GameSession;
-      player: PlayerSession;
-    };
-    setSession(payload.session);
-    setPlayer(payload.player);
-    if (session.settings.characterCustomization.persistAcrossSessions) {
-      const stored = { ...appearance, decalAssetId: undefined };
-      localStorage.setItem(STUDENT_APPEARANCE_STORAGE_KEY, JSON.stringify(stored));
+    try {
+      const payload = await studentApi.saveAppearance(session.sessionCode, player.id, playerToken, appearance) as {
+        session: GameSession;
+        player: PlayerSession;
+      };
+      setSession(payload.session);
+      setPlayer(payload.player);
+      if (session.settings.characterCustomization.persistAcrossSessions) {
+        const stored = { ...appearance, decalAssetId: undefined };
+        localStorage.setItem(STUDENT_APPEARANCE_STORAGE_KEY, JSON.stringify(stored));
+      }
+    } catch (error) {
+      if (error instanceof ApiError && error.status === 404) {
+        clearStoredStudentSession();
+        setJoinCode(session.sessionCode);
+        setSession(null);
+        setPlayer(null);
+        setPlayerToken("");
+        setQuestion(null);
+        setIsSocketReconnecting(false);
+        setStatusError("This local room expired when the game server restarted. Ask the host to create a new room, then join with its new code.");
+      }
+      throw error;
     }
   };
 
@@ -4725,7 +4756,6 @@ function StudentExperience({ onExit }: { onExit: () => void }) {
     );
   }
 
-  const gear = GEAR_ITEMS.find((item) => item.id === getPlayerWeaponIdForMode(session.settings.gameMode, player)) ?? GEAR_ITEMS[0];
   const snowballs = player.snowballs ?? session.settings.startingSnowballs;
   const warmth = getPlayerWarmth(player);
   const isZombieHuman = session.settings.gameMode === "zombie" && player.role !== "zombie";
@@ -4915,15 +4945,6 @@ function StudentExperience({ onExit }: { onExit: () => void }) {
               </span>
             </span>
           )}
-          <span className={`hud-stat team-${player.team}`}>
-            {session.settings.gameMode === "zombie" && player.role === "zombie"
-              ? <img className="zombie-head-icon" src="/assets/zombie/zombie-head.png" alt="" aria-hidden="true" />
-              : <Users size={18} aria-hidden="true" />}
-            <span>
-              <small>{session.settings.gameMode === "zombie" ? "Role and look" : "Team"}</small>
-              <strong>{session.settings.gameMode === "zombie" ? (player.role === "zombie" ? "Zombie · Red" : "Human · Blue") : player.team === "blue" ? "Blue Team" : "Red Team"}</strong>
-            </span>
-          </span>
           {isZombieHuman ? (
             <>
               <span className="hud-stat weapon">
@@ -4942,13 +4963,6 @@ function StudentExperience({ onExit }: { onExit: () => void }) {
               </span>
             </>
           ) : (<>
-          <span className="hud-stat weapon">
-            <Package size={18} aria-hidden="true" />
-            <span>
-              <small>Gear</small>
-              <strong>{gear.id === "power_blaster" ? "Heavy Launcher" : gear.name}</strong>
-            </span>
-          </span>
           <span className="hud-stat">
             <Target size={18} aria-hidden="true" />
             <span>

@@ -24,7 +24,7 @@ const scalePoint = <T extends { x: number; z: number }>(item: T): T =>
 
 export const TEMPLE_RUNOFF: ArenaMapDefinition = {
   id: "temple_runoff",
-  title: "Temple Runoff 2.0",
+  title: "Temple Runoff",
   description: "A flooded jungle city built as three stacked combat layers around a clear ceremonial canal and its high central bridge.",
   footprint: { width: scale(470), depth: scale(400) },
   districts: [
@@ -76,13 +76,14 @@ const makeTempleStairFlight = (flight: ArenaStairFlight): CitadelBlock[] =>
       id: `${flight.id}-step-${index + 1}`,
       x: flight.x + (flight.axis === "x" ? travel : 0),
       z: flight.z + (flight.axis === "z" ? travel : 0),
-      w: flight.axis === "x" ? flight.length / flight.steps + 0.6 : flight.width,
-      d: flight.axis === "z" ? flight.length / flight.steps + 0.6 : flight.width,
+      w: flight.axis === "x" ? flight.length / flight.steps : flight.width,
+      d: flight.axis === "z" ? flight.length / flight.steps : flight.width,
       h: height,
       y: flight.startY + height / 2,
       color: jungleSide ? dampStone : sandstone,
       material: "stone",
-      style: "stair"
+      style: "stair",
+      collides: true
     };
   });
 
@@ -172,8 +173,8 @@ const rawBlocks: CitadelBlock[] = [
   { id: "west-broken-ford-b", x: -145, z: 10, w: 20, d: 10, h: 0.7, y: 0.35, color: mossStone, material: "stone", style: "bridge" },
   { id: "east-wood-crossing", label: "Timber Crossing", x: 126, z: 0, w: 20, d: 48, h: 0.8, y: 7.6, color: timber, material: "wood", style: "bridge" },
 
-  { id: "west-sluice-mouth", label: "West Sluice", x: -190, z: 0, w: 12, d: 28, h: 12, y: 6, color: darkStone, material: "stone", style: "gate", rotationY: Math.PI / 2 },
-  { id: "east-sluice-mouth", label: "East Sluice", x: 190, z: 0, w: 12, d: 28, h: 12, y: 6, color: dampStone, material: "stone", style: "gate", rotationY: Math.PI / 2 }
+  { id: "west-sluice-mouth", label: "West Sluice", x: -190, z: 0, w: 12, d: 28, h: 12, y: 6, color: darkStone, material: "stone", style: "gate", collides: true },
+  { id: "east-sluice-mouth", label: "East Sluice", x: 190, z: 0, w: 12, d: 28, h: 12, y: 6, color: dampStone, material: "stone", style: "gate", collides: true }
 ];
 
 export const blocks = rawBlocks.map(({ label: _label, ...block }) => scaleRect(block));
@@ -189,19 +190,9 @@ const rawCylinders: CitadelCylinder[] = [
 
 export const cylinders = rawCylinders.map(({ label: _label, ...cylinder }) => scaleCylinder(cylinder));
 
-const rawFloorMarks: CitadelFloorMark[] = [
-  { id: "temple-route-river", label: "LOWER WATERWAY ↓", x: 0, z: 0, w: 116, d: 16, color: "#78d4cc", y: 0.09 },
-  { id: "temple-route-jungle", label: "JUNGLE RUINS", x: -88, z: -151, w: 68, d: 14, color: "#a6cf87", y: TEMPLE_RUNOFF_MAIN_LEVEL_Y + 0.05 },
-  { id: "temple-route-court", label: "RAIN COURT", x: 0, z: 126, w: 74, d: 14, color: "#e3c687", y: TEMPLE_RUNOFF_MAIN_LEVEL_Y + 0.05 },
-  { id: "temple-route-bridge", label: "SUN BRIDGE ↑", x: 0, z: 0, w: 30, d: 52, color: "#f1d47c", y: TEMPLE_RUNOFF_UPPER_LEVEL_Y + 0.05 },
-  { id: "temple-route-blue", label: "BLUE TEMPLE", x: -192, z: 0, w: 54, d: 14, color: "#7dd3fc", y: TEMPLE_RUNOFF_MAIN_LEVEL_Y + 0.05 },
-  { id: "temple-route-red", label: "RED TEMPLE", x: 192, z: 0, w: 54, d: 14, color: "#fb9a72", y: TEMPLE_RUNOFF_MAIN_LEVEL_Y + 0.05 }
-];
-
-export const floorMarks: CitadelFloorMark[] = rawFloorMarks.slice(0, 0);
+export const floorMarks: CitadelFloorMark[] = [];
 
 const rawProps: CitadelProp[] = [
-  { id: "blue-standard", kind: "banner", x: -214, z: 0, size: 3.5, h: 12, y: TEMPLE_RUNOFF_MAIN_LEVEL_Y, color: "#38bdf8", material: "cloth" },
   { id: "red-standard", kind: "banner", x: 214, z: 0, size: 3.5, h: 12, y: TEMPLE_RUNOFF_MAIN_LEVEL_Y, color: "#fb7185", material: "cloth" },
   { id: "jungle-tree-west", kind: "palm", x: -158, z: -152, size: 8, h: 22, y: TEMPLE_RUNOFF_MAIN_LEVEL_Y, color: timber, material: "wood" },
   { id: "jungle-tree-mid", kind: "tree", x: -22, z: -162, size: 8, h: 24, y: TEMPLE_RUNOFF_MAIN_LEVEL_Y, color: timber, material: "wood" },
@@ -214,14 +205,4 @@ const rawProps: CitadelProp[] = [
 ];
 
 export const props = rawProps.map(scalePoint);
-
-const rawSigns: CitadelSign[] = [
-  { id: "sign-river", label: "LOWER WATERWAY ↓", x: -34, z: -28, color: "#83ded5", y: 7 },
-  { id: "sign-bridge", label: "SUN BRIDGE ↑", x: 0, z: -86, color: "#f2d77f", y: TEMPLE_RUNOFF_MAIN_LEVEL_Y + 8 },
-  { id: "sign-jungle", label: "JUNGLE RUINS", x: -88, z: -174, color: "#a7d08d", y: TEMPLE_RUNOFF_MAIN_LEVEL_Y + 8 },
-  { id: "sign-court", label: "RAIN COURT", x: 0, z: 160, color: "#e8cb8a", rotationY: Math.PI, y: TEMPLE_RUNOFF_MAIN_LEVEL_Y + 8 },
-  { id: "sign-blue", label: "BLUE TEMPLE", x: -219, z: 48, color: "#7dd3fc", rotationY: Math.PI / 2, y: TEMPLE_RUNOFF_MAIN_LEVEL_Y + 8 },
-  { id: "sign-red", label: "RED TEMPLE", x: 219, z: -48, color: "#fb9a72", rotationY: -Math.PI / 2, y: TEMPLE_RUNOFF_MAIN_LEVEL_Y + 8 }
-];
-
-export const signs: CitadelSign[] = rawSigns.slice(0, 0);
+export const signs: CitadelSign[] = [];

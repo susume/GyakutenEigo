@@ -1,10 +1,10 @@
-# Temple Runoff 2.0
+# Temple Runoff
 
 ## Refinement audit (completed before implementation)
 
 ### A. Executive summary
 
-Temple Runoff 2.0 already solved the hardest technical problem: River, Main, and
+Temple Runoff already solved the hardest technical problem: River, Main, and
 Upper are genuinely stacked walkable levels with working connectors, height-aware
 collision, projectiles, and bot navigation. The map therefore needs a major
 refinement, not a rebuild. The priority is to preserve that system while making
@@ -79,7 +79,7 @@ River cover islands, offset bridge cover, and five persistent bot route families
 
 ## Outcome
 
-Temple Runoff 2.0 is a symmetrical 20-v-20 battlefield with three simultaneously
+Temple Runoff is a symmetrical 20-v-20 battlefield with three simultaneously
 walkable elevations:
 
 - **River (Y=0):** a clear east-west canal beneath the central bridge, with sparse
@@ -153,9 +153,9 @@ map-specific and retain their authored elevation.
   the stair sequence; a coordinate index avoids scanning the entire grid at every
   expansion.
 - Bot patrol goals include river rotations, and waypoints retain Y.
-- World-space route text and floating location labels are removed. The minimap
-  retains level-aware River/Main/Upper UI status without using text as world
-  geometry.
+- Printed floor plates, wall signs, and the floating map-name callout are
+  removed from overview and FPS views. The minimap stays label-free and uses
+  color bands, stair markers, objective icons, and shared elevation data.
 
 ## Performance
 

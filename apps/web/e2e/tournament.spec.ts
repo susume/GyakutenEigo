@@ -46,10 +46,10 @@ test("teacher creates and publishes a tournament study-first bracket", async ({ 
 
   await page.addInitScript((token) => localStorage.setItem("quizstrike_token", token), fixture.token);
   await page.goto("/quiz-strike");
-  await expect(page.getByRole("button", { name: "Teacher Dashboard" })).toBeVisible();
-  await page.getByRole("button", { name: "Teacher Dashboard" }).click();
-  await expect(page.getByRole("button", { name: "Tournaments", exact: true })).toBeVisible();
-  await page.getByRole("button", { name: "Tournaments", exact: true }).click();
+  await expect(page.getByRole("button", { name: "Teacher Workspace" })).toBeVisible();
+  await page.getByRole("button", { name: "Teacher Workspace" }).click();
+  await expect(page.getByRole("button", { name: "Competitions", exact: true })).toBeVisible();
+  await page.getByRole("button", { name: "Competitions", exact: true }).click();
   await expect(page.getByText("Your tournament calendar is empty")).toBeVisible();
 
   await page.getByRole("button", { name: "Create tournament" }).click();
@@ -81,13 +81,13 @@ test("teacher creates and publishes a tournament study-first bracket", async ({ 
   await expect(page.getByRole("heading", { name: title })).toBeVisible();
   await page.getByLabel("Team name").fill("Invited Scholars");
   await page.getByLabel("School name").fill("East School");
-  await page.getByLabel(/Roster display names/).fill("Yui, Hana");
-  await page.getByRole("button", { name: "Submit team registration" }).click();
-  await expect(page.getByText("Registration received")).toBeVisible();
+  await page.getByLabel(/Player names/).fill("Yui, Hana");
+  await page.getByRole("button", { name: "Send team for review" }).click();
+  await expect(page.getByText("Team sent for review")).toBeVisible();
   await page.goto("/quiz-strike");
-  await expect(page.getByRole("button", { name: "Teacher Dashboard" })).toBeVisible();
-  await page.getByRole("button", { name: "Teacher Dashboard" }).click();
-  await page.getByRole("button", { name: "Tournaments", exact: true }).click();
+  await expect(page.getByRole("button", { name: "Teacher Workspace" })).toBeVisible();
+  await page.getByRole("button", { name: "Teacher Workspace" }).click();
+  await page.getByRole("button", { name: "Competitions", exact: true }).click();
   await expect(page.getByRole("heading", { name: title })).toBeVisible();
 
   await page.getByRole("button", { name: "Study pack", exact: true }).click();
