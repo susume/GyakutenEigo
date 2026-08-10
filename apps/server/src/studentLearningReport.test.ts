@@ -93,6 +93,42 @@ test("student history excludes previous games, other students, and unrelated que
   assert.deepEqual(attempts.map((attempt) => attempt.id), ["current-game"]);
 });
 
+test("quiz-set isolation uses the containing set even when an imported question has a stale quizSetId", () => {
+  const staleImportedSet: QuizSet = {
+    ...unrelatedQuizSet,
+    questions: [{
+      ...unrelatedQuizSet.questions[0]!,
+      id: "stale-imported-question",
+      quizSetId: quizSet.id
+    }]
+  };
+  const attempts = buildStudentLearningAttempts({
+    gameSessionId: "game-a",
+    playerSessionId: "student-a",
+    gameQuizSet: quizSet,
+    allQuizSets: [quizSet, staleImportedSet],
+    answers: [makeAnswer({ id: "stale-import", questionId: "stale-imported-question" })]
+  });
+
+  assert.deepEqual(attempts, []);
+});
+
+test("a duplicate question id in another set cannot hide a current-game question", () => {
+  const duplicateIdSet: QuizSet = {
+    ...unrelatedQuizSet,
+    questions: [{ ...unrelatedQuizSet.questions[0]!, id: "question-a" }]
+  };
+  const attempts = buildStudentLearningAttempts({
+    gameSessionId: "game-a",
+    playerSessionId: "student-a",
+    gameQuizSet: quizSet,
+    allQuizSets: [quizSet, duplicateIdSet],
+    answers: [makeAnswer({ id: "current-question-with-duplicate", questionId: "question-a" })]
+  });
+
+  assert.deepEqual(attempts.map((attempt) => attempt.id), ["current-question-with-duplicate"]);
+});
+
 test("historical correctChoice snapshots survive question edits and reconnect ordering", () => {
   const attempts = buildStudentLearningAttempts({
     gameSessionId: "game-a",

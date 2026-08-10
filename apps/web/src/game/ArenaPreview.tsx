@@ -729,6 +729,7 @@ export default function ArenaPreview({
           return;
         }
         if (isScopeKeyboardEvent(event) && hasHeavyGun()) {
+          // Keyboard repeat must not spin through every scope level while C is held.
           setZoomLevel(cycleHeavyGunZoom(activeZoomLevel));
           event.preventDefault();
           return;

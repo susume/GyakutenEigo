@@ -1,7 +1,6 @@
 import type {
   AnswerLog,
   Choice,
-  PlayerSession,
   QuizSet,
   StudentAnswerAttempt
 } from "@quizstrike/shared";
@@ -37,7 +36,9 @@ export const buildStudentLearningAttempts = ({
   const questionsById = new Map(gameQuizSet?.questions.map((question) => [question.id, question]) ?? []);
   const questionSetByQuestionId = new Map(
     [...(allQuizSets ?? (gameQuizSet ? [gameQuizSet] : []))]
-      .flatMap((quiz) => quiz.questions.map((question) => [question.id, question.quizSetId] as const))
+      // The containing set is authoritative. Imported question rows can carry
+      // a stale quizSetId, and trusting that field would weaken set isolation.
+      .flatMap((quiz) => quiz.questions.map((question) => [question.id, quiz.id] as const))
   );
   const seenAnswerIds = new Set<string>();
 
@@ -52,7 +53,9 @@ export const buildStudentLearningAttempts = ({
     .map((answer): StudentAnswerAttempt | undefined => {
       const question = questionsById.get(answer.questionId);
       const sourceQuizSetId = questionSetByQuestionId.get(answer.questionId);
-      if (sourceQuizSetId && sourceQuizSetId !== gameQuizSet?.id) return undefined;
+      // A question in the current game set wins if another imported set reused
+      // the same id. Unknown questions are rejected when another set owns them.
+      if (!question && sourceQuizSetId && sourceQuizSetId !== gameQuizSet?.id) return undefined;
       const correctChoice = isChoice(answer.correctChoice)
         ? answer.correctChoice
         : question?.correctChoice;
@@ -70,5 +73,3 @@ export const buildStudentLearningAttempts = ({
     })
     .filter((answer): answer is StudentAnswerAttempt => Boolean(answer));
 };
-
-export type StudentLearningPlayer = Pick<PlayerSession, "id" | "nickname">;

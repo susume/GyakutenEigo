@@ -509,6 +509,7 @@ export default function StudentExperience({ onExit }: { onExit: () => void }) {
 
   useEffect(() => () => {
     if (answerFeedbackTimerRef.current !== undefined) window.clearTimeout(answerFeedbackTimerRef.current);
+    answerSubmissionLockRef.current = false;
   }, []);
 
   useEffect(() => {
@@ -594,6 +595,7 @@ export default function StudentExperience({ onExit }: { onExit: () => void }) {
     let disposed = false;
     let socket: Socket | null = null;
     let positionFlushTimer: number | undefined;
+    let hasConnected = false;
     const setupSocket = async () => {
       const { createMultiplayerSocket } = await import("../../multiplayer/connection");
       if (disposed) return;
@@ -637,6 +639,20 @@ export default function StudentExperience({ onExit }: { onExit: () => void }) {
       if (ownUpdate) setPlayer((current) => current ? { ...current, ...ownUpdate } : current);
     };
     connectedSocket.on("connect", () => {
+      if (hasConnected) {
+        // A timed-out acknowledgement may still have advanced the server's
+        // question gate. Drop stale local feedback/question state so the
+        // existing question-fetch effect requests a fresh assignment.
+        if (answerFeedbackTimerRef.current !== undefined) {
+          window.clearTimeout(answerFeedbackTimerRef.current);
+          answerFeedbackTimerRef.current = undefined;
+        }
+        answerSubmissionLockRef.current = false;
+        setAnsweringChoice(null);
+        setAnswerFeedback(null);
+        setQuestion(null);
+      }
+      hasConnected = true;
       setIsSocketReconnecting(false);
     });
     connectedSocket.on("connect_error", () => setIsSocketReconnecting(true));
@@ -950,6 +966,7 @@ export default function StudentExperience({ onExit }: { onExit: () => void }) {
       setScoreboardOpen(false);
       setSettingsOpen(false);
       setAnsweringChoice(null);
+      answerSubmissionLockRef.current = false;
       setFeedback("");
       setIsSocketReconnecting(false);
       setStatusError(payload.message ?? "The host removed you from this game.");
@@ -1129,6 +1146,7 @@ export default function StudentExperience({ onExit }: { onExit: () => void }) {
       setScoreboardOpen(false);
       setSettingsOpen(false);
       setAnsweringChoice(null);
+      answerSubmissionLockRef.current = false;
       storeCosmeticProgressToken(payload.cosmeticProgressToken);
       storeStudentSession({
         sessionCode: payload.session.sessionCode,
@@ -1191,6 +1209,7 @@ export default function StudentExperience({ onExit }: { onExit: () => void }) {
     setScoreboardOpen(false);
     setSettingsOpen(false);
     setAnsweringChoice(null);
+    answerSubmissionLockRef.current = false;
     setFeedback("");
     status.clear();
   };
@@ -1271,6 +1290,7 @@ export default function StudentExperience({ onExit }: { onExit: () => void }) {
       if (answerFeedbackTimerRef.current !== undefined) window.clearTimeout(answerFeedbackTimerRef.current);
       answerFeedbackTimerRef.current = window.setTimeout(() => {
         answerFeedbackTimerRef.current = undefined;
+        answerSubmissionLockRef.current = false;
         setAnswerFeedback(null);
         setQuestion(payload.result.nextQuestion ?? null);
         if (payload.result.respawned) setQuizOpen(false);
@@ -1282,9 +1302,9 @@ export default function StudentExperience({ onExit }: { onExit: () => void }) {
         supportingText
       }));
     } catch (err) {
+      answerSubmissionLockRef.current = false;
       status.report(err);
     } finally {
-      answerSubmissionLockRef.current = false;
       setAnsweringChoice(null);
     }
   };
@@ -1301,6 +1321,7 @@ export default function StudentExperience({ onExit }: { onExit: () => void }) {
     setScoreboardOpen(false);
     setSettingsOpen(false);
     setAnsweringChoice(null);
+    answerSubmissionLockRef.current = false;
     if (document.pointerLockElement) document.exitPointerLock();
   }, [hasSession, sessionId, sessionStatus, setAnsweringChoice, setBuyOpen, setQuizOpen, setScoreboardOpen, setSettingsOpen]);
 

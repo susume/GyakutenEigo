@@ -21,6 +21,7 @@ test("F is the keyboard fire shortcut", () => {
 
 test("C is the keyboard scope shortcut", () => {
   assert.equal(isScopeKeyboardEvent({ code: "KeyC", key: "c" }), true);
+  assert.equal(isScopeKeyboardEvent({ code: "KeyC", key: "c", repeat: true }), false);
   assert.equal(isScopeKeyboardEvent({ code: "KeyE", key: "e" }), false);
 });
 
