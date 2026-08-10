@@ -6,7 +6,10 @@ type ClassroomFixture = {
   teacherToken: string;
 };
 
-const createClassroom = async (request: APIRequestContext): Promise<ClassroomFixture> => {
+const createClassroom = async (
+  request: APIRequestContext,
+  { persistAcrossSessions = false }: { persistAcrossSessions?: boolean } = {}
+): Promise<ClassroomFixture> => {
   const suffix = `${Date.now()}-${Math.random().toString(16).slice(2)}`;
   const signup = await request.post("/api/auth/signup", {
     data: {
@@ -56,7 +59,7 @@ const createClassroom = async (request: APIRequestContext): Promise<ClassroomFix
           enabled: true,
           uploadsEnabled: false,
           aiEnabled: false,
-          persistAcrossSessions: false
+          persistAcrossSessions
         }
       }
     }
@@ -69,11 +72,15 @@ const createClassroom = async (request: APIRequestContext): Promise<ClassroomFix
 test("student customizes, reloads, and receives match start over Socket.IO", async ({ page, request }, testInfo) => {
   const classroom = await createClassroom(request);
   const browserStartedAt = performance.now();
+  const initialScriptRequests: string[] = [];
   const socketFrameSizes: number[] = [];
   const socketFrames: string[] = [];
   const pageErrors: string[] = [];
 
   page.on("pageerror", (error) => pageErrors.push(error.message));
+  page.on("request", (browserRequest) => {
+    if (browserRequest.resourceType() === "script") initialScriptRequests.push(browserRequest.url());
+  });
   page.on("websocket", (webSocket) => {
     if (!webSocket.url().includes("socket.io")) return;
     webSocket.on("framereceived", ({ payload }) => {
@@ -84,6 +91,8 @@ test("student customizes, reloads, and receives match start over Socket.IO", asy
   });
 
   await page.goto(`/join?code=${classroom.code}`);
+  await expect(page.getByPlaceholder("Player name")).toBeVisible();
+  expect(initialScriptRequests.some((url) => /\/assets\/(?:App|StudentExperience|ArenaPreview|three)-/u.test(url))).toBe(false);
   await page.getByPlaceholder("Player name").fill("Browser Student");
   await page.getByRole("button", { name: "Join game", exact: true }).click();
 
@@ -243,4 +252,36 @@ test("student customizes, reloads, and receives match start over Socket.IO", asy
     contentType: "application/json"
   });
   await page.goto("about:blank");
+});
+
+test("fresh joins replay remembered appearance without growing restore history", async ({ page, request }) => {
+  const firstClassroom = await createClassroom(request, { persistAcrossSessions: true });
+  await page.goto(`/join?code=${firstClassroom.code}`);
+  await page.getByPlaceholder("Player name").fill("First Session Student");
+  await page.getByRole("button", { name: "Join game", exact: true }).click();
+  await expect(page.getByRole("heading", { name: "Choose your team, then wait for the host to start." })).toBeVisible();
+
+  const firstAppearanceSaved = page.waitForResponse(
+    (response) => response.request().method() === "PUT" && response.url().includes("/appearance")
+  );
+  await page.getByRole("button", { name: /Fox/ }).click();
+  expect((await firstAppearanceSaved).status()).toBe(200);
+
+  const secondClassroom = await createClassroom(request, { persistAcrossSessions: true });
+  await page.goto(`/join?code=${secondClassroom.code}`);
+  await page.getByPlaceholder("Player name").fill("Second Session Student");
+  const rememberedAppearanceApplied = page.waitForResponse(
+    (response) => response.request().method() === "PUT" && response.url().includes("/appearance")
+  );
+  await page.getByRole("button", { name: "Join game", exact: true }).click();
+  expect((await rememberedAppearanceApplied).status()).toBe(200);
+  await expect(page.getByRole("heading", { name: "Choose your team, then wait for the host to start." })).toBeVisible();
+  await expect(page.getByRole("button", { name: /Fox/ })).toHaveAttribute("aria-pressed", "true");
+
+  const historyLengthBeforeRestore = await page.evaluate(() => window.history.length);
+  await page.goto("/join");
+  await expect(page).toHaveURL(/\/game$/u);
+  await expect(page.getByRole("heading", { name: "Choose your team, then wait for the host to start." })).toBeVisible();
+  const historyLengthAfterRestore = await page.evaluate(() => window.history.length);
+  expect(historyLengthAfterRestore).toBe(historyLengthBeforeRestore + 1);
 });
