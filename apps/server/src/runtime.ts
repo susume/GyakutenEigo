@@ -138,7 +138,6 @@ import {
   type QuizSet,
   type ReportMetadata,
   type SessionReport,
-  type StudentAnswerAttempt,
   type StudentLearningReport,
   type SessionSettings,
   type TeacherUser,
@@ -149,6 +148,7 @@ import {
   type BotMemory,
   type BotState
 } from "./botAI.js";
+import { buildStudentLearningAttempts } from "./studentLearningReport.js";
 
 interface StoredUser extends TeacherUser {
   passwordHash: string;
@@ -766,26 +766,13 @@ const makeReport = (session: GameSession): SessionReport => {
 
 const makeStudentLearningReport = (session: GameSession, player: PlayerSession): StudentLearningReport => {
   const quiz = quizSets.get(session.quizSetId);
-  const sessionAttempts = answers
-    .filter((answer) => answer.gameSessionId === session.id && answer.playerSessionId === player.id)
-    .map((answer): StudentAnswerAttempt | undefined => {
-      // Historical answer rows may predate the stored correctChoice snapshot.
-      // Only resolve those rows from this match's set; a global question lookup
-      // could accidentally attach a stale or unrelated question after edits.
-      const question = quiz?.questions.find((candidate) => candidate.id === answer.questionId);
-      const correctChoice = answer.correctChoice ?? question?.correctChoice;
-      if (!correctChoice) return undefined;
-      return {
-        id: answer.id,
-        questionId: answer.questionId,
-        quizSetId: session.quizSetId,
-        selectedChoice: answer.selectedChoice,
-        correctChoice,
-        isCorrect: answer.isCorrect,
-        answeredAt: answer.answeredAt
-      };
-    })
-    .filter((answer): answer is StudentAnswerAttempt => Boolean(answer));
+  const sessionAttempts = buildStudentLearningAttempts({
+    gameSessionId: session.id,
+    playerSessionId: player.id,
+    gameQuizSet: quiz,
+    allQuizSets: quizSets.values(),
+    answers
+  });
 
   return {
     sessionId: session.id,
@@ -1459,6 +1446,9 @@ const answerQuestion = (
     context: answerContext
   };
   answers.push(answer);
+  // Keep the authoritative game history recoverable if a student reconnects
+  // during a later round or the process is restarted before game end.
+  schedulePersistence();
   if (normalizedLibrary) {
     mirrorNormalized(normalizedLibrary.saveAnswer(answer, question), "answer history");
     mirrorNormalized(normalizedLibrary.savePlayer(player), "player learning progress");

@@ -1421,7 +1421,7 @@ export default function ArenaPreview({
           {zoomLevel > 0 && (
             <div key={`${zoomLevel}-${zoomPulse}`} className={`scope-overlay scope-level-${zoomLevel} scope-pulse`} aria-hidden="true">
               <span>Heavy Scope</span>
-              <strong>{zoomLevel === 1 ? "2×" : "4×"}</strong>
+              <strong>{zoomLevel === 1 ? "3×" : "7×"}</strong>
             </div>
           )}
           <ArenaMinimap

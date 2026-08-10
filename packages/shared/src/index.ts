@@ -759,8 +759,14 @@ export const HEAVY_GUN_UNSCOPED_HIT_RADIUS = 0.52;
 export const HEAVY_GUN_SCOPED_HIT_RADIUS = 0.82;
 export const HEAVY_GUN_DEEP_SCOPED_HIT_RADIUS = 0.98;
 export const HEAVY_GUN_ZOOM_LEVEL_0_FOV = 72;
-export const HEAVY_GUN_ZOOM_LEVEL_1_FOV = 40;
-export const HEAVY_GUN_ZOOM_LEVEL_2_FOV = 20;
+/**
+ * Perspective-camera FOV for true 3x/7x magnification. Magnification is
+ * based on the camera's angular focal-length relationship, not FOV / n.
+ */
+const fovForMagnification = (baseFov: number, magnification: number) =>
+  2 * Math.atan(Math.tan((baseFov * Math.PI) / 360) / magnification) * (180 / Math.PI);
+export const HEAVY_GUN_ZOOM_LEVEL_1_FOV = fovForMagnification(HEAVY_GUN_ZOOM_LEVEL_0_FOV, 3);
+export const HEAVY_GUN_ZOOM_LEVEL_2_FOV = fovForMagnification(HEAVY_GUN_ZOOM_LEVEL_0_FOV, 7);
 export const FLAG_INTERACTION_RADIUS = 7;
 export const QUICK_BLASTER_RANGE = 48;
 export const QUICK_BLASTER_COOLDOWN_MS = 250;

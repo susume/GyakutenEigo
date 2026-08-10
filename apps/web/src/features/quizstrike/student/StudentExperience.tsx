@@ -342,6 +342,9 @@ export default function StudentExperience({ onExit }: { onExit: () => void }) {
   const previousPreparationRef = useRef(false);
   const lastCountdownCueRef = useRef("");
   const answerFeedbackTimerRef = useRef<number | undefined>(undefined);
+  // State updates are asynchronous; this synchronous guard closes the small
+  // keyboard/pointer window before `answeringChoice` re-renders.
+  const answerSubmissionLockRef = useRef(false);
   const learningReportRequestKeyRef = useRef("");
   const lastTeamSwitchAtRef = useRef(0);
   const currentSessionRef = useRef<GameSession | null>(session);
@@ -1026,7 +1029,7 @@ export default function StudentExperience({ onExit }: { onExit: () => void }) {
   }, [roundPreparation, zombieSelection, session?.roundTransition?.startsAt, playerId, playerIsAlive, setBuyOpen, setQuizOpen, setScoreboardOpen, setSettingsOpen]);
 
   const panelsOpen = quizOpen || buyOpen || scoreboardOpen || settingsOpen;
-  const gameplayInputPaused = quizOpen || buyOpen || settingsOpen;
+  const gameplayInputPaused = quizOpen || buyOpen || settingsOpen || isSocketReconnecting;
 
   useEffect(() => {
     if (!gameplayInputPaused || !document.pointerLockElement) return;
@@ -1193,7 +1196,8 @@ export default function StudentExperience({ onExit }: { onExit: () => void }) {
   };
 
   const answer = async (choice: Choice) => {
-    if (!session || !player || !question || !playerToken || answeringChoice || answerFeedback) return;
+    if (!session || !player || !question || !playerToken || answeringChoice || answerFeedback || answerSubmissionLockRef.current) return;
+    answerSubmissionLockRef.current = true;
     const answeredQuestion = question;
     const answeringPlayer = player;
     status.clear();
@@ -1271,6 +1275,7 @@ export default function StudentExperience({ onExit }: { onExit: () => void }) {
         setQuestion(payload.result.nextQuestion ?? null);
         if (payload.result.respawned) setQuizOpen(false);
       }, getAnswerFeedbackDurationMs({
+        isCorrect: payload.result.isCorrect,
         selectedText: answeredQuestion[`choice${choice}`],
         correctText: answeredQuestion[`choice${payload.result.correctChoice}`],
         explanation: payload.result.explanation,
@@ -1279,6 +1284,7 @@ export default function StudentExperience({ onExit }: { onExit: () => void }) {
     } catch (err) {
       status.report(err);
     } finally {
+      answerSubmissionLockRef.current = false;
       setAnsweringChoice(null);
     }
   };

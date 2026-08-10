@@ -169,6 +169,7 @@ test("student customizes, reloads, and receives match start over Socket.IO", asy
   await page.setViewportSize({ width: 1920, height: 1080 });
   await page.getByRole("button", { name: "Questions", exact: true }).click();
   await expect(page.getByText("Choose an answer", { exact: true })).toBeVisible();
+  const correctAnswerStartedAt = performance.now();
   await page.getByRole("button", { name: "Answer A: This one", exact: true }).click();
   await expect(page.locator(".question-feedback-result")).toContainText("CORRECT");
   const feedbackScreenshotPath = testInfo.outputPath("answer-feedback-1920.png");
@@ -179,7 +180,9 @@ test("student customizes, reloads, and receives match start over Socket.IO", asy
   });
 
   await expect(page.getByText("Choose an answer", { exact: true })).toBeVisible();
+  expect(performance.now() - correctAnswerStartedAt).toBeLessThan(1_000);
   await page.setViewportSize({ width: 1366, height: 768 });
+  const incorrectAnswerStartedAt = performance.now();
   await page.getByRole("button", { name: "Answer B: Not this one", exact: true }).click();
   const incorrectFeedback = page.locator(".question-feedback-result.is-incorrect");
   await expect(incorrectFeedback).toContainText("INCORRECT");
@@ -192,6 +195,9 @@ test("student customizes, reloads, and receives match start over Socket.IO", asy
   const incorrectFeedbackBox = await incorrectFeedback.boundingBox();
   expect(incorrectFeedbackBox).not.toBeNull();
   expect(incorrectFeedbackBox!.y + incorrectFeedbackBox!.height).toBeLessThanOrEqual(768);
+  await page.waitForTimeout(500);
+  await expect(page.locator(".question-feedback-result.is-incorrect")).toBeVisible();
+  expect(performance.now() - incorrectAnswerStartedAt).toBeGreaterThanOrEqual(500);
   const incorrectScreenshotPath = testInfo.outputPath("incorrect-feedback-1366.png");
   await page.screenshot({ path: incorrectScreenshotPath });
   await testInfo.attach("incorrect-feedback-1366.png", {

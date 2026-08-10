@@ -51,7 +51,7 @@ export const ArenaHudOverlay = ({
         <div className="touch-action-group">
           <button type="button" className="touch-zoom" disabled={controlsDisabled} onPointerDown={onZoomFromTouch}>
             <span aria-hidden="true">⌖</span>
-            Zoom{zoomLevel > 0 ? ` ${zoomLevel === 1 ? "2×" : "4×"}` : ""}
+            Zoom{zoomLevel > 0 ? ` ${zoomLevel === 1 ? "3×" : "7×"}` : ""}
           </button>
         </div>
       )}

@@ -128,6 +128,26 @@ test("practice ranking is deterministic for repeated, mixed, single, and clean h
   );
 });
 
+test("repeated mistakes across game rounds stay at the top of the final worksheet", () => {
+  const questions = [makeQuestion("early-mistake"), makeQuestion("late-review"), makeQuestion("filler")];
+  const attempts = [
+    makeAttempt({ id: "round-1-wrong", questionId: "early-mistake", isCorrect: false, selectedChoice: "A" }),
+    makeAttempt({ id: "round-2-wrong", questionId: "early-mistake", isCorrect: false, selectedChoice: "D", answeredAt: "2026-08-10T00:01:00.000Z" }),
+    makeAttempt({ id: "round-3-correct", questionId: "early-mistake", answeredAt: "2026-08-10T00:02:00.000Z" }),
+    makeAttempt({ id: "round-3-other", questionId: "late-review", isCorrect: false, selectedChoice: "A", answeredAt: "2026-08-10T00:03:00.000Z" })
+  ];
+  const summary = buildStudentLearningSummary(attempts);
+
+  assert.equal(summary.totalAttempts, 4);
+  assert.equal(summary.correctAttempts, 1);
+  assert.equal(summary.incorrectAttempts, 3);
+  assert.equal(summary.repeatedMistakes, 1);
+  assert.deepEqual(
+    buildStudentPracticeQuestions({ attempts, questions, maxQuestions: 3, seed: "full-game" }).map((question) => question.id),
+    ["early-mistake", "late-review", "filler"]
+  );
+});
+
 test("public filler questions shuffle without acquiring private answer keys", () => {
   const {
     correctChoice: _correctChoice,
