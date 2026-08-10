@@ -678,7 +678,8 @@ export interface StudentAnswerAttempt {
   correctChoice: Choice;
   isCorrect: boolean;
   answeredAt: string;
-  moneyAwarded: number;
+  /** Optional in the student report; the client keeps it locally for session UI only. */
+  moneyAwarded?: number;
   responseTimeMs?: number;
   context?: "main" | "practice";
 }

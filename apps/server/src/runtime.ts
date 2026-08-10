@@ -769,8 +769,10 @@ const makeStudentLearningReport = (session: GameSession, player: PlayerSession):
   const sessionAttempts = answers
     .filter((answer) => answer.gameSessionId === session.id && answer.playerSessionId === player.id)
     .map((answer): StudentAnswerAttempt | undefined => {
-      const question = quiz?.questions.find((candidate) => candidate.id === answer.questionId)
-        ?? getQuizQuestion(answer.questionId);
+      // Historical answer rows may predate the stored correctChoice snapshot.
+      // Only resolve those rows from this match's set; a global question lookup
+      // could accidentally attach a stale or unrelated question after edits.
+      const question = quiz?.questions.find((candidate) => candidate.id === answer.questionId);
       const correctChoice = answer.correctChoice ?? question?.correctChoice;
       if (!correctChoice) return undefined;
       return {
@@ -780,10 +782,7 @@ const makeStudentLearningReport = (session: GameSession, player: PlayerSession):
         selectedChoice: answer.selectedChoice,
         correctChoice,
         isCorrect: answer.isCorrect,
-        answeredAt: answer.answeredAt,
-        moneyAwarded: answer.moneyAwarded,
-        ...(answer.responseTimeMs === undefined ? {} : { responseTimeMs: answer.responseTimeMs }),
-        ...(answer.context ? { context: answer.context } : {})
+        answeredAt: answer.answeredAt
       };
     })
     .filter((answer): answer is StudentAnswerAttempt => Boolean(answer));

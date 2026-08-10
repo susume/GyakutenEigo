@@ -11,7 +11,7 @@ const COLUMN_GAP = 42;
 const PAGE_MARGIN = 68;
 const HEADER_BOTTOM = 344;
 const FOOTER_Y = WORKSHEET_CANVAS_HEIGHT - PAGE_MARGIN;
-const FONT_STACK = '"Noto Sans JP", "BIZ UDPGothic", "Yu Gothic", Meiryo, Arial, sans-serif';
+const FONT_STACK = '"Noto Sans JP", "Noto Sans CJK JP", "Noto Sans CJK", "BIZ UDPGothic", "Yu Gothic", Meiryo, Arial, sans-serif';
 
 export type WorksheetMeasureText = (text: string) => number;
 
@@ -33,6 +33,7 @@ export interface WorksheetQuestionLayout {
   question: StudentPracticeQuestion;
   number: number;
   column: 0 | 1;
+  fullWidth?: boolean;
   x: number;
   y: number;
   width: number;
@@ -150,7 +151,12 @@ export const createDefaultWorksheetLayoutOptions = (): WorksheetLayoutOptions =>
   measureOption: defaultMeasure(19)
 });
 
-/** Packs complete question blocks into two columns and drops anything that cannot fit. */
+/**
+ * Packs complete question blocks into two columns. The input is already ordered
+ * by educational priority, so once a question cannot fit, lower-priority
+ * questions are not allowed to displace it. A block that is too tall for a
+ * column gets one full-width fallback attempt before packing stops.
+ */
 export const layoutWorksheetQuestions = (
   questions: readonly StudentPracticeQuestion[],
   options: WorksheetLayoutOptions = createDefaultWorksheetLayoutOptions()
@@ -158,15 +164,23 @@ export const layoutWorksheetQuestions = (
   const contentWidth = Math.max(1, options.width - options.pageMargin * 2);
   const columnWidth = Math.max(1, (contentWidth - options.columnGap) / 2);
   const placed: WorksheetQuestionLayout[] = [];
-  let column: 0 | 1 = 0;
-  let y = options.headerBottom;
-  let omittedQuestions = 0;
+  const columnY: [number, number] = [options.headerBottom, options.headerBottom];
+  const columnCapacity = Math.max(0, options.footerY - options.headerBottom);
+  let nextColumn: 0 | 1 = 0;
 
-  for (const question of questions) {
-    const promptLines = wrapWorksheetText(`${placed.length + 1}. ${question.prompt}`, columnWidth, options.measurePrompt);
+  const measureBlock = (
+    question: StudentPracticeQuestion,
+    number: number,
+    width: number,
+    x: number,
+    y: number,
+    column: 0 | 1,
+    fullWidth = false
+  ): WorksheetQuestionLayout => {
+    const promptLines = wrapWorksheetText(`${number}. ${question.prompt}`, width, options.measurePrompt);
     const optionLines = getQuestionOptions(question).map(([label, text]) => ({
       label,
-      lines: wrapWorksheetText(`${label}. ${text}`, columnWidth, options.measureOption)
+      lines: wrapWorksheetText(`${label}. ${text}`, width, options.measureOption)
     }));
     const height = promptLines.length * options.questionLineHeight
       + 8
@@ -174,36 +188,84 @@ export const layoutWorksheetQuestions = (
       + 12
       + options.optionLineHeight
       + options.blockGap;
-
-    if (height > options.footerY - options.headerBottom) {
-      omittedQuestions += 1;
-      continue;
-    }
-    if (y + height > options.footerY) {
-      if (column === 0) {
-        column = 1;
-        y = options.headerBottom;
-      } else {
-        omittedQuestions += 1;
-        continue;
-      }
-    }
-
-    placed.push({
+    return {
       question,
-      number: placed.length + 1,
+      number,
       column,
-      x: options.pageMargin + column * (columnWidth + options.columnGap),
+      ...(fullWidth ? { fullWidth: true } : {}),
+      x,
       y,
-      width: columnWidth,
+      width,
       height,
       promptLines,
       optionLines
-    });
-    y += height;
+    };
+  };
+
+  for (const question of questions) {
+    const number = placed.length + 1;
+    const standardBlock = measureBlock(
+      question,
+      number,
+      columnWidth,
+      options.pageMargin + nextColumn * (columnWidth + options.columnGap),
+      columnY[nextColumn],
+      nextColumn
+    );
+    let block: WorksheetQuestionLayout | undefined;
+    let placedColumn: 0 | 1 | undefined;
+
+    if (standardBlock.height <= columnCapacity) {
+      if (columnY[nextColumn] + standardBlock.height <= options.footerY) {
+        block = standardBlock;
+        placedColumn = nextColumn;
+      } else if (nextColumn === 0 && columnY[1] + standardBlock.height <= options.footerY) {
+        nextColumn = 1;
+        block = measureBlock(
+          question,
+          number,
+          columnWidth,
+          options.pageMargin + columnWidth + options.columnGap,
+          columnY[1],
+          1
+        );
+        placedColumn = 1;
+      }
+    }
+
+    if (!block) {
+      const fullWidthY = Math.max(columnY[0], columnY[1]);
+      const fullWidthBlock = measureBlock(
+        question,
+        number,
+        contentWidth,
+        options.pageMargin,
+        fullWidthY,
+        0,
+        true
+      );
+      if (fullWidthBlock.height <= columnCapacity && fullWidthY + fullWidthBlock.height <= options.footerY) {
+        block = fullWidthBlock;
+        columnY[0] = fullWidthY + fullWidthBlock.height;
+        columnY[1] = fullWidthY + fullWidthBlock.height;
+        nextColumn = 0;
+      } else {
+        break;
+      }
+    }
+
+    if (placedColumn !== undefined) {
+      columnY[placedColumn] = block.y + block.height;
+      nextColumn = placedColumn;
+    }
+    placed.push(block);
   }
 
-  return { questions: placed, omittedQuestions, columnWidth };
+  return {
+    questions: placed,
+    omittedQuestions: Math.max(0, questions.length - placed.length),
+    columnWidth
+  };
 };
 
 export interface PracticeWorksheetPdfInput {
@@ -368,15 +430,17 @@ export async function generatePracticeWorksheetPdf({
     measureOption: optionMeasure
   });
 
-  drawRule(
-    context,
-    PAGE_MARGIN + layout.columnWidth + COLUMN_GAP / 2,
-    HEADER_BOTTOM,
-    PAGE_MARGIN + layout.columnWidth + COLUMN_GAP / 2,
-    FOOTER_Y,
-    "#d5dbe0",
-    1
-  );
+  if (!layout.questions.some((question) => question.fullWidth)) {
+    drawRule(
+      context,
+      PAGE_MARGIN + layout.columnWidth + COLUMN_GAP / 2,
+      HEADER_BOTTOM,
+      PAGE_MARGIN + layout.columnWidth + COLUMN_GAP / 2,
+      FOOTER_Y,
+      "#d5dbe0",
+      1
+    );
+  }
 
   if (layout.questions.length === 0) {
     setCanvasFont(context, 24, 700);

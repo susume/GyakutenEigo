@@ -111,6 +111,23 @@ test("practice selection prioritizes repeated mistakes, fills from the set, and 
   assert.deepEqual(sourceQuestions[1], makeQuestion("q-2"));
 });
 
+test("practice ranking is deterministic for repeated, mixed, single, and clean histories", () => {
+  const questions = ["A", "B", "C", "D"].map((id) => makeQuestion(`q-${id}`));
+  const attempts = [
+    ...Array.from({ length: 3 }, (_, index) => makeAttempt({ id: `a-wrong-${index}`, questionId: "q-A", isCorrect: false, selectedChoice: "A" })),
+    makeAttempt({ id: "b-wrong", questionId: "q-B", isCorrect: false, selectedChoice: "A" }),
+    makeAttempt({ id: "c-correct-1", questionId: "q-C", isCorrect: true }),
+    makeAttempt({ id: "c-correct-2", questionId: "q-C", isCorrect: true }),
+    makeAttempt({ id: "d-wrong", questionId: "q-D", isCorrect: false, selectedChoice: "A" }),
+    makeAttempt({ id: "d-correct", questionId: "q-D", isCorrect: true })
+  ];
+
+  assert.deepEqual(
+    buildStudentPracticeQuestions({ attempts, questions, maxQuestions: 4, seed: "priority" }).map((question) => question.id),
+    ["q-A", "q-D", "q-B", "q-C"]
+  );
+});
+
 test("public filler questions shuffle without acquiring private answer keys", () => {
   const {
     correctChoice: _correctChoice,
@@ -130,6 +147,30 @@ test("public filler questions shuffle without acquiring private answer keys", ()
   assert.deepEqual(source, publicQuestion);
 });
 
+test("choice shuffling preserves a serialized correct choice with duplicate distractor text", () => {
+  const source: Question = {
+    ...makeQuestion("q-duplicates"),
+    choiceA: "same text",
+    choiceB: "the correct text",
+    choiceC: "same text",
+    choiceD: "same text",
+    correctChoice: "B"
+  };
+  const sourceSnapshot = { ...source };
+  const serialized = JSON.parse(JSON.stringify(source)) as StudentPracticeQuestion;
+  const result = buildStudentPracticeQuestions({
+    attempts: [],
+    questions: [serialized],
+    maxQuestions: 1,
+    seed: "duplicate-choices"
+  });
+  const shuffled = result[0]!;
+
+  assert.equal(shuffled[`choice${shuffled.correctChoice!}`], "the correct text");
+  assert.equal(serialized.correctChoice, "B");
+  assert.deepEqual(source, sourceSnapshot);
+});
+
 test("practice selection supports 100% and 0% scores without duplicating questions", () => {
   const questions = [makeQuestion("q-1"), makeQuestion("q-2"), makeQuestion("q-3")];
   const perfect = buildStudentPracticeQuestions({
@@ -147,6 +188,15 @@ test("practice selection supports 100% and 0% scores without duplicating questio
   assert.deepEqual(perfect.map((question) => question.id), ["q-1", "q-2", "q-3"]);
   assert.deepEqual(zero.map((question) => question.id), ["q-1", "q-2", "q-3"]);
   assert.equal(new Set(zero.map((question) => question.id)).size, zero.length);
+});
+
+test("missing current-set question data fails gracefully", () => {
+  const result = buildStudentPracticeQuestions({
+    attempts: [makeAttempt({ questionId: "deleted-question", isCorrect: false, selectedChoice: "A" })],
+    questions: [],
+    maxQuestions: 16
+  });
+  assert.deepEqual(result, []);
 });
 
 test("worksheet filenames use a safe display name and never expose internal ids", () => {

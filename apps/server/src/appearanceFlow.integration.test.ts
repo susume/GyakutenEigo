@@ -542,11 +542,46 @@ test("a 40-student room keeps bounded appearance state and rejects student 41", 
 
 test("signed cosmetic progress carries quiz-earned XP into a new classroom", { timeout: 30_000 }, async () => {
   const teacher = await createTeacherWithQuiz();
+  const unrelatedQuiz = await api<{ quizSet: { id: string } }>("/api/quiz-sets", {
+    method: "POST",
+    teacherToken: teacher.token,
+    body: { title: "Unrelated quiz set" }
+  });
+  assert.equal(unrelatedQuiz.response.status, 201);
+  const unrelatedQuestion = await api<{ question: { id: string } }>(`/api/quiz-sets/${unrelatedQuiz.body.quizSet.id}/questions`, {
+    method: "POST",
+    teacherToken: teacher.token,
+    body: {
+      prompt: "This question belongs to another set.",
+      choiceA: "A",
+      choiceB: "B",
+      choiceC: "C",
+      choiceD: "D",
+      correctChoice: "A"
+    }
+  });
+  assert.equal(unrelatedQuestion.response.status, 201);
   const firstSession = await createSession(teacher, { maxPlayers: 4, gameMode: "classic" });
   const learner = await joinSession(firstSession.sessionCode, "Progress Learner");
+  const otherLearner = await joinSession(firstSession.sessionCode, "Other Learner");
   assert.ok(learner.question?.id);
   assert.equal("correctChoice" in learner.question, false);
   assert.equal("explanation" in learner.question, false);
+
+  const unauthenticatedReport = await api(
+    `/api/sessions/${firstSession.sessionCode}/players/${learner.player.id}/learning-report`
+  );
+  assert.equal(unauthenticatedReport.response.status, 401);
+  const teacherReport = await api(
+    `/api/sessions/${firstSession.sessionCode}/players/${learner.player.id}/learning-report`,
+    { teacherToken: teacher.token }
+  );
+  assert.equal(teacherReport.response.status, 401);
+  const impersonatedReport = await api(
+    `/api/sessions/${firstSession.sessionCode}/players/${learner.player.id}/learning-report`,
+    { playerToken: otherLearner.playerToken }
+  );
+  assert.equal(impersonatedReport.response.status, 401);
 
   const prematureReport = await api(
     `/api/sessions/${firstSession.sessionCode}/players/${learner.player.id}/learning-report`,
@@ -587,7 +622,9 @@ test("signed cosmetic progress carries quiz-earned XP into a new classroom", { t
   const learningReport = await api<{
     learningReport: {
       studentName: string;
-      quizSet?: { title: string; questions: Array<Record<string, unknown>> };
+      sessionId: string;
+      playerId: string;
+      quizSet?: { id: string; title: string; questions: Array<Record<string, unknown>> };
       attempts: Array<{
         questionId: string;
         selectedChoice: string;
@@ -600,7 +637,14 @@ test("signed cosmetic progress carries quiz-earned XP into a new classroom", { t
   });
   assert.equal(learningReport.response.status, 200);
   assert.equal(learningReport.body.learningReport.studentName, "Progress Learner");
+  assert.equal(learningReport.body.learningReport.sessionId, firstSession.id);
+  assert.equal(learningReport.body.learningReport.playerId, learner.player.id);
+  assert.equal(learningReport.body.learningReport.quizSet?.id, teacher.quizSetId);
   assert.equal(learningReport.body.learningReport.quizSet?.questions.length, 1);
+  assert.equal(
+    learningReport.body.learningReport.quizSet?.questions.some((question) => question.id === unrelatedQuestion.body.question.id),
+    false
+  );
   assert.equal("correctChoice" in learningReport.body.learningReport.quizSet!.questions[0]!, false);
   assert.equal("explanation" in learningReport.body.learningReport.quizSet!.questions[0]!, false);
   assert.equal(learningReport.body.learningReport.attempts.length, 1);
@@ -608,6 +652,9 @@ test("signed cosmetic progress carries quiz-earned XP into a new classroom", { t
   assert.equal(learningReport.body.learningReport.attempts[0]?.selectedChoice, "A");
   assert.equal(learningReport.body.learningReport.attempts[0]?.correctChoice, "A");
   assert.equal(learningReport.body.learningReport.attempts[0]?.isCorrect, true);
+  assert.equal("moneyAwarded" in learningReport.body.learningReport.attempts[0]!, false);
+  assert.equal("responseTimeMs" in learningReport.body.learningReport.attempts[0]!, false);
+  assert.equal("context" in learningReport.body.learningReport.attempts[0]!, false);
 
   const secondSession = await createSession(teacher, { maxPlayers: 4 });
   const restored = await api<JoinedPlayer>(`/api/sessions/${secondSession.sessionCode}/join`, {
@@ -619,6 +666,32 @@ test("signed cosmetic progress carries quiz-earned XP into a new classroom", { t
   });
   assert.equal(restored.response.status, 201);
   assert.equal(restored.body.player.cosmeticXp, 100);
+
+  const crossSessionImpersonation = await api(
+    `/api/sessions/${secondSession.sessionCode}/players/${restored.body.player.id}/learning-report`,
+    { playerToken: learner.playerToken }
+  );
+  assert.equal(crossSessionImpersonation.response.status, 401);
+  const secondEnded = await api(`/api/sessions/${secondSession.sessionCode}/end`, {
+    method: "POST",
+    teacherToken: teacher.token
+  });
+  assert.equal(secondEnded.response.status, 200);
+  const secondReport = await api<{
+    learningReport: {
+      sessionId: string;
+      playerId: string;
+      attempts: unknown[];
+      quizSet?: { id: string; questions: unknown[] };
+    };
+  }>(`/api/sessions/${secondSession.sessionCode}/players/${restored.body.player.id}/learning-report`, {
+    playerToken: restored.body.playerToken
+  });
+  assert.equal(secondReport.response.status, 200);
+  assert.equal(secondReport.body.learningReport.sessionId, secondSession.id);
+  assert.equal(secondReport.body.learningReport.playerId, restored.body.player.id);
+  assert.deepEqual(secondReport.body.learningReport.attempts, []);
+  assert.equal(secondReport.body.learningReport.quizSet?.id, teacher.quizSetId);
 });
 
 test("40 authenticated Socket.IO clients receive bounded room state and movement fan-out", { timeout: 30_000 }, async (context) => {

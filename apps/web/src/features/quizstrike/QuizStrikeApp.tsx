@@ -133,6 +133,7 @@ import Scoreboard from "./student/Scoreboard";
 import { useStudentGameState } from "./student/useStudentGameState";
 import { useSessionControls } from "./teacher/useSessionControls";
 import { generatePracticeWorksheetPdf } from "../../practiceWorksheet";
+import { getAnswerFeedbackDurationMs } from "./student/feedback";
 
 const ArenaPreview = lazy(() => import("../../game/ArenaPreview"));
 const CharacterCreator = lazy(() => import("../../ui/PremiumCharacterCreator"));
@@ -168,7 +169,6 @@ const STUDENT_APPEARANCE_STORAGE_KEY = "quizstrike_student_appearance_v1";
 const COSMETIC_PROGRESS_STORAGE_KEY = "quizstrike_cosmetic_progress_v1";
 const TEACHER_FOLDER_SELECTION_STORAGE_KEY = "quizstrike_teacher_folder_selection_v1";
 const TOURNAMENT_TEACHER_RETURN_KEY = "quizstrike_tournament_teacher_return";
-const ANSWER_FEEDBACK_DURATION_MS = 1800;
 
 const readStoredStudentSession = (): StoredStudentSession | null => {
   try {
@@ -4568,7 +4568,12 @@ function StudentExperience({ onExit }: { onExit: () => void }) {
         setAnswerFeedback(null);
         setQuestion(payload.result.nextQuestion ?? null);
         if (payload.result.respawned) setQuizOpen(false);
-      }, ANSWER_FEEDBACK_DURATION_MS);
+      }, getAnswerFeedbackDurationMs({
+        selectedText: answeredQuestion[`choice${choice}`],
+        correctText: answeredQuestion[`choice${payload.result.correctChoice}`],
+        explanation: payload.result.explanation,
+        supportingText
+      }));
     } catch (err) {
       status.report(err);
     } finally {
@@ -4781,11 +4786,17 @@ function StudentExperience({ onExit }: { onExit: () => void }) {
 
   const learningData = useMemo(() => {
     const localAttempts = answerHistory.map(({ question: _question, ...attempt }) => attempt);
-    const attempts = learningReport && learningReport.attempts.length >= localAttempts.length
-      ? learningReport.attempts
+    const reportForCurrentPlayer = learningReport
+      && learningReport.sessionId === sessionId
+      && learningReport.sessionCode === sessionCode
+      && learningReport.playerId === playerId
+      ? learningReport
+      : null;
+    const attempts = reportForCurrentPlayer && reportForCurrentPlayer.attempts.length >= localAttempts.length
+      ? reportForCurrentPlayer.attempts
       : localAttempts;
     const questionsById = new Map<string, StudentPracticeQuestion>();
-    for (const source of learningReport?.quizSet?.questions ?? []) questionsById.set(source.id, source);
+    for (const source of reportForCurrentPlayer?.quizSet?.questions ?? []) questionsById.set(source.id, source);
     for (const snapshot of answerHistory) {
       questionsById.set(snapshot.question.id, snapshot.question);
     }
@@ -4799,9 +4810,9 @@ function StudentExperience({ onExit }: { onExit: () => void }) {
         maxQuestions: 20,
         seed: `${sessionId ?? "no-session"}:${playerId ?? "no-player"}`
       }),
-      worksheetSetName: learningReport?.quizSet?.title ?? "QuizStrike question set"
+      worksheetSetName: reportForCurrentPlayer?.quizSet?.title ?? "QuizStrike question set"
     };
-  }, [answerHistory, learningReport, playerId, sessionId]);
+  }, [answerHistory, learningReport, playerId, sessionCode, sessionId]);
 
   if (!session || !player) {
     if (isRestoringStudentSession) {

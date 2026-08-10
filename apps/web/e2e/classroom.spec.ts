@@ -38,7 +38,7 @@ const createClassroom = async (request: APIRequestContext): Promise<ClassroomFix
         choiceC: "Still no",
         choiceD: "Nope",
         correctChoice: "A",
-        explanation: "A is the teacher-provided correct answer."
+        explanation: "正解は A です。これは答えを確認するための長めの日本語解説です。".repeat(5)
       }
     });
     expect(question.status()).toBe(201);
@@ -136,7 +136,10 @@ test("student customizes, reloads, and receives match start over Socket.IO", asy
   await expect(incorrectFeedback).toContainText("Not this one");
   await expect(incorrectFeedback).toContainText("Correct answer");
   await expect(incorrectFeedback).toContainText("This one");
-  await expect(incorrectFeedback).toContainText("A is the teacher-provided correct answer.");
+  await expect(incorrectFeedback).toContainText("正解は A です。");
+  const incorrectFeedbackBox = await incorrectFeedback.boundingBox();
+  expect(incorrectFeedbackBox).not.toBeNull();
+  expect(incorrectFeedbackBox!.y + incorrectFeedbackBox!.height).toBeLessThanOrEqual(768);
   const incorrectScreenshotPath = testInfo.outputPath("incorrect-feedback-1366.png");
   await page.screenshot({ path: incorrectScreenshotPath });
   await testInfo.attach("incorrect-feedback-1366.png", {
@@ -164,6 +167,23 @@ test("student customizes, reloads, and receives match start over Socket.IO", asy
   const worksheetStructure = worksheetBytes.subarray(0, 1024).toString("latin1");
   expect(worksheetStructure).toContain("/Count 1");
   expect(worksheetStructure).toContain("/MediaBox [0 0 595.28 841.89]");
+  const japaneseCanvasRendering = await page.evaluate(async () => {
+    await document.fonts.ready;
+    const canvas = document.createElement("canvas");
+    canvas.width = 500;
+    canvas.height = 80;
+    const context = canvas.getContext("2d");
+    if (!context) return { width: 0, inkPixels: 0 };
+    context.font = '19px "Noto Sans JP", "Noto Sans CJK JP", "Noto Sans CJK", "BIZ UDPGothic", "Yu Gothic", Meiryo, Arial, sans-serif';
+    context.fillStyle = "#101820";
+    context.fillText("鎌倉幕府を開いた人物は誰ですか。", 4, 32);
+    const pixels = context.getImageData(0, 0, canvas.width, canvas.height).data;
+    let inkPixels = 0;
+    for (let index = 3; index < pixels.length; index += 4) if (pixels[index] > 0) inkPixels += 1;
+    return { width: context.measureText("鎌倉幕府").width, inkPixels };
+  });
+  expect(japaneseCanvasRendering.width).toBeGreaterThan(0);
+  expect(japaneseCanvasRendering.inkPixels).toBeGreaterThan(0);
   await testInfo.attach("browser-practice-worksheet.pdf", {
     path: worksheetPath,
     contentType: "application/pdf"

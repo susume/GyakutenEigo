@@ -62,3 +62,85 @@ test("worksheet layout never splits a question block and enforces the two-column
   assert.ok(layout.questions.some((question) => question.column === 0));
   assert.ok(layout.questions.some((question) => question.column === 1));
 });
+
+test("a long high-priority question is retained with a clean full-width fallback", () => {
+  const options = {
+    ...createDefaultWorksheetLayoutOptions(),
+    width: 500,
+    height: 520,
+    pageMargin: 20,
+    headerBottom: 20,
+    footerY: 480,
+    columnGap: 20,
+    questionLineHeight: 10,
+    optionLineHeight: 10,
+    blockGap: 4,
+    measurePrompt: (value: string) => value.length * 4,
+    measureOption: (value: string) => value.length
+  };
+  const longQuestion = makeQuestion("priority-mistake", "学".repeat(2300));
+  const layout = layoutWorksheetQuestions(
+    [longQuestion, makeQuestion("filler-1", "A short filler"), makeQuestion("filler-2", "Another short filler")],
+    options
+  );
+
+  assert.equal(layout.questions[0]?.question.id, "priority-mistake");
+  assert.equal(layout.questions[0]?.fullWidth, true);
+  assert.ok(layout.questions[0]!.width > layout.columnWidth);
+  assert.ok(layout.questions[0]!.x + layout.questions[0]!.width <= options.width - options.pageMargin);
+  assert.ok(layout.questions.every((question) => question.y + question.height <= options.footerY));
+});
+
+test("lower-priority filler is not placed after a higher-priority block reaches the page boundary", () => {
+  const options = {
+    ...createDefaultWorksheetLayoutOptions(),
+    width: 500,
+    height: 260,
+    pageMargin: 20,
+    headerBottom: 20,
+    footerY: 220,
+    columnGap: 20,
+    questionLineHeight: 10,
+    optionLineHeight: 10,
+    blockGap: 0,
+    measurePrompt: (value: string) => value.length * 4,
+    measureOption: (value: string) => value.length
+  };
+  const nearlyFull = (id: string) => makeQuestion(id, "x".repeat(650));
+  const layout = layoutWorksheetQuestions([
+    nearlyFull("higher-1"),
+    nearlyFull("higher-2"),
+    makeQuestion("missed-longer", "x".repeat(200)),
+    makeQuestion("lower-filler", "short")
+  ], options);
+
+  assert.deepEqual(layout.questions.map((question) => question.question.id), ["higher-1", "higher-2"]);
+  assert.equal(layout.omittedQuestions, 2);
+});
+
+test("worksheet blocks do not overlap, overflow, or require a second page", () => {
+  const options = createDefaultWorksheetLayoutOptions();
+  const questions = Array.from({ length: 40 }, (_, index) => makeQuestion(
+    `q-${index}`,
+    index === 0 ? "日本語の質問。".repeat(120) : `Question ${index + 1}`
+  ));
+  const layout = layoutWorksheetQuestions(questions, options);
+
+  for (const question of layout.questions) {
+    assert.ok(question.x >= options.pageMargin);
+    assert.ok(question.x + question.width <= options.width - options.pageMargin);
+    assert.ok(question.y >= options.headerBottom);
+    assert.ok(question.y + question.height <= options.footerY);
+  }
+  for (let leftIndex = 0; leftIndex < layout.questions.length; leftIndex += 1) {
+    for (let rightIndex = leftIndex + 1; rightIndex < layout.questions.length; rightIndex += 1) {
+      const left = layout.questions[leftIndex]!;
+      const right = layout.questions[rightIndex]!;
+      const overlaps = left.x < right.x + right.width
+        && right.x < left.x + left.width
+        && left.y < right.y + right.height
+        && right.y < left.y + left.height;
+      assert.equal(overlaps, false, `${left.question.id} overlaps ${right.question.id}`);
+    }
+  }
+});
