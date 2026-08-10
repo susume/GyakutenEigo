@@ -43,7 +43,7 @@ type JoinedPlayer = {
   player: PlayerFixture;
   playerToken: string;
   cosmeticProgressToken: string;
-  question?: { id: string };
+  question?: { id: string; correctChoice?: string; explanation?: string };
 };
 
 const defaultAppearance: AppearanceFixture = {
@@ -113,7 +113,8 @@ const createTeacherWithQuiz = async (): Promise<TeacherFixture> => {
       choiceB: "Not this one",
       choiceC: "Still no",
       choiceD: "Nope",
-      correctChoice: "A"
+      correctChoice: "A",
+      explanation: "Teacher-only explanation"
     }
   });
   assert.equal(question.response.status, 201);
@@ -544,6 +545,14 @@ test("signed cosmetic progress carries quiz-earned XP into a new classroom", { t
   const firstSession = await createSession(teacher, { maxPlayers: 4, gameMode: "classic" });
   const learner = await joinSession(firstSession.sessionCode, "Progress Learner");
   assert.ok(learner.question?.id);
+  assert.equal("correctChoice" in learner.question, false);
+  assert.equal("explanation" in learner.question, false);
+
+  const prematureReport = await api(
+    `/api/sessions/${firstSession.sessionCode}/players/${learner.player.id}/learning-report`,
+    { playerToken: learner.playerToken }
+  );
+  assert.equal(prematureReport.response.status, 409);
 
   const started = await api(`/api/sessions/${firstSession.sessionCode}/start`, {
     method: "POST",
@@ -562,6 +571,43 @@ test("signed cosmetic progress carries quiz-earned XP into a new classroom", { t
   assert.equal(answered.response.status, 200);
   assert.equal(answered.body.result.player.cosmeticXp, 100);
   assert.ok(answered.body.cosmeticProgressToken);
+
+  const editedQuestion = await api(`/api/questions/${learner.question!.id}`, {
+    method: "PUT",
+    teacherToken: teacher.token,
+    body: { correctChoice: "B", explanation: "Edited after the answer" }
+  });
+  assert.equal(editedQuestion.response.status, 200);
+
+  const ended = await api(`/api/sessions/${firstSession.sessionCode}/end`, {
+    method: "POST",
+    teacherToken: teacher.token
+  });
+  assert.equal(ended.response.status, 200);
+  const learningReport = await api<{
+    learningReport: {
+      studentName: string;
+      quizSet?: { title: string; questions: Array<Record<string, unknown>> };
+      attempts: Array<{
+        questionId: string;
+        selectedChoice: string;
+        correctChoice: string;
+        isCorrect: boolean;
+      }>;
+    };
+  }>(`/api/sessions/${firstSession.sessionCode}/players/${learner.player.id}/learning-report`, {
+    playerToken: learner.playerToken
+  });
+  assert.equal(learningReport.response.status, 200);
+  assert.equal(learningReport.body.learningReport.studentName, "Progress Learner");
+  assert.equal(learningReport.body.learningReport.quizSet?.questions.length, 1);
+  assert.equal("correctChoice" in learningReport.body.learningReport.quizSet!.questions[0]!, false);
+  assert.equal("explanation" in learningReport.body.learningReport.quizSet!.questions[0]!, false);
+  assert.equal(learningReport.body.learningReport.attempts.length, 1);
+  assert.equal(learningReport.body.learningReport.attempts[0]?.questionId, learner.question!.id);
+  assert.equal(learningReport.body.learningReport.attempts[0]?.selectedChoice, "A");
+  assert.equal(learningReport.body.learningReport.attempts[0]?.correctChoice, "A");
+  assert.equal(learningReport.body.learningReport.attempts[0]?.isCorrect, true);
 
   const secondSession = await createSession(teacher, { maxPlayers: 4 });
   const restored = await api<JoinedPlayer>(`/api/sessions/${secondSession.sessionCode}/join`, {

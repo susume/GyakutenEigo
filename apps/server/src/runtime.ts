@@ -138,6 +138,8 @@ import {
   type QuizSet,
   type ReportMetadata,
   type SessionReport,
+  type StudentAnswerAttempt,
+  type StudentLearningReport,
   type SessionSettings,
   type TeacherUser,
   type Team
@@ -566,7 +568,11 @@ const getQuizQuestion = (questionId: string) => {
 };
 
 const publicQuestion = (question: Question): PublicQuestion => {
-  const { correctChoice: _correctChoice, ...safeQuestion } = question;
+  const {
+    correctChoice: _correctChoice,
+    explanation: _explanation,
+    ...safeQuestion
+  } = question;
   return safeQuestion;
 };
 
@@ -756,6 +762,47 @@ const makeReport = (session: GameSession): SessionReport => {
     .sort((a, b) => b.misses - a.misses);
 
   return { session, rows, missedQuestions };
+};
+
+const makeStudentLearningReport = (session: GameSession, player: PlayerSession): StudentLearningReport => {
+  const quiz = quizSets.get(session.quizSetId);
+  const sessionAttempts = answers
+    .filter((answer) => answer.gameSessionId === session.id && answer.playerSessionId === player.id)
+    .map((answer): StudentAnswerAttempt | undefined => {
+      const question = quiz?.questions.find((candidate) => candidate.id === answer.questionId)
+        ?? getQuizQuestion(answer.questionId);
+      const correctChoice = answer.correctChoice ?? question?.correctChoice;
+      if (!correctChoice) return undefined;
+      return {
+        id: answer.id,
+        questionId: answer.questionId,
+        quizSetId: session.quizSetId,
+        selectedChoice: answer.selectedChoice,
+        correctChoice,
+        isCorrect: answer.isCorrect,
+        answeredAt: answer.answeredAt,
+        moneyAwarded: answer.moneyAwarded,
+        ...(answer.responseTimeMs === undefined ? {} : { responseTimeMs: answer.responseTimeMs }),
+        ...(answer.context ? { context: answer.context } : {})
+      };
+    })
+    .filter((answer): answer is StudentAnswerAttempt => Boolean(answer));
+
+  return {
+    sessionId: session.id,
+    sessionCode: session.sessionCode,
+    playerId: player.id,
+    studentName: player.nickname,
+    ...(quiz ? {
+      quizSet: {
+        id: quiz.id,
+        title: quiz.title,
+        ...(quiz.description ? { description: quiz.description } : {}),
+        questions: quiz.questions.map(publicQuestion)
+      }
+    } : {}),
+    attempts: sessionAttempts
+  };
 };
 
 const saveSessionReport = (session: GameSession) => {
@@ -1405,6 +1452,7 @@ const answerQuestion = (
     playerSessionId: player.id,
     questionId: question.id,
     selectedChoice,
+    correctChoice: question.correctChoice,
     isCorrect,
     moneyAwarded: reward.moneyAwarded,
     answeredAt: now(),
@@ -1428,6 +1476,13 @@ const answerQuestion = (
           ? "Correct practice answer. You will return when the next round begins."
         : `Correct practice answer. Respawn progress ${respawn.progress}/${respawn.required}.`
     : "Incorrect. Try another question.";
+  const rewardLabel = isCorrect
+    ? reward.moneyAwarded > 0
+      ? `+$${reward.moneyAwarded}`
+      : energyAwarded > 0
+        ? `+${energyAwarded} running energy`
+        : undefined
+    : undefined;
 
   appendEvent(session, {
     type: "answer",
@@ -1448,6 +1503,7 @@ const answerQuestion = (
     isCorrect,
     correctChoice: question.correctChoice,
     moneyAwarded: reward.moneyAwarded,
+    rewardLabel,
     feedback,
     explanation: question.explanation,
     player,
@@ -1593,6 +1649,7 @@ const playerRouteDependencies: PlayerRouteDependencies = {
   resetFreezeStreak,
   sendStudentCommand,
   answerQuestion,
+  makeStudentLearningReport,
   buyGear,
   buySnowballs
 };

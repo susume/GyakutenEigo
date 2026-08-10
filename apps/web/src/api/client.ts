@@ -289,6 +289,8 @@ export const studentApi = {
     api(`/api/sessions/${code}`, { headers: playerHeaders(playerToken) }),
   rejoin: (code: string, playerId: string, playerToken: string) =>
     api(`/api/sessions/${code}/players/${playerId}/rejoin`, { headers: playerHeaders(playerToken) }),
+  learningReport: (code: string, playerId: string, playerToken: string) =>
+    api(`/api/sessions/${code}/players/${playerId}/learning-report`, { headers: playerHeaders(playerToken) }),
   question: (code: string, playerId: string, playerToken: string) =>
     api(`/api/sessions/${code}/players/${playerId}/question`, { headers: playerHeaders(playerToken) }),
   answer: (

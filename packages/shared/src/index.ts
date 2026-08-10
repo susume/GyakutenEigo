@@ -117,7 +117,11 @@ export const isValidQuestionAudioUrl = (value: unknown): value is string => {
   }
 };
 
-export type PublicQuestion = Omit<Question, "correctChoice">;
+/** Question data safe to send before a student answers. */
+export type PublicQuestion = Omit<Question, "correctChoice" | "explanation">;
+
+/** Worksheet-safe question data. Correctness is present only for attempted items. */
+export type StudentPracticeQuestion = PublicQuestion & { correctChoice?: Choice };
 
 export interface QuizSet {
   id: string;
@@ -631,6 +635,8 @@ export interface AnswerLog {
   playerSessionId: string;
   questionId: string;
   selectedChoice: Choice;
+  /** Stored at answer time so later quiz edits cannot change the historical result. */
+  correctChoice?: Choice;
   isCorrect: boolean;
   moneyAwarded: number;
   answeredAt: string;
@@ -642,6 +648,8 @@ export interface QuizResult {
   isCorrect: boolean;
   correctChoice: Choice;
   moneyAwarded: number;
+  /** Human-readable reward text for feedback surfaces that are not tied to money. */
+  rewardLabel?: string;
   feedback: string;
   explanation?: string;
   player: PlayerSession;
@@ -661,6 +669,38 @@ export interface SessionReport {
   }>;
 }
 
+/** The compact, subject-neutral answer record used by a student's personal report. */
+export interface StudentAnswerAttempt {
+  id: string;
+  questionId: string;
+  quizSetId: string;
+  selectedChoice: Choice;
+  correctChoice: Choice;
+  isCorrect: boolean;
+  answeredAt: string;
+  moneyAwarded: number;
+  responseTimeMs?: number;
+  context?: "main" | "practice";
+}
+
+export interface StudentLearningQuestionSet {
+  id: string;
+  title: string;
+  description?: string;
+  /** Filler questions never expose their answer key or teacher explanation. */
+  questions: PublicQuestion[];
+}
+
+/** Student-visible report data. Attempted answers retain their own correct choice. */
+export interface StudentLearningReport {
+  sessionId: string;
+  sessionCode: string;
+  playerId: string;
+  studentName: string;
+  quizSet?: StudentLearningQuestionSet;
+  attempts: StudentAnswerAttempt[];
+}
+
 export interface SessionReportRow {
   nickname: string;
   team: Team;
@@ -671,6 +711,8 @@ export interface SessionReportRow {
   quizMoney: number;
   score: number;
 }
+
+export * from "./studentLearning.js";
 
 export interface FlagState {
   state: FlagStateName;

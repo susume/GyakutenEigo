@@ -39,8 +39,10 @@ import {
 import type { Socket } from "socket.io-client";
 import { QRCodeSVG } from "qrcode.react";
 import {
-  calculateAccuracy,
   calculateClassAccuracy,
+  buildPracticeWorksheetFilename,
+  buildStudentLearningSummary,
+  buildStudentPracticeQuestions,
   canStartRound,
   DEFAULT_SESSION_SETTINGS,
   GEAR_ITEMS,
@@ -83,6 +85,9 @@ import {
   type ReportMetadata,
   type SessionReport,
   type SessionSettings,
+  type StudentAnswerAttempt,
+  type StudentLearningReport,
+  type StudentPracticeQuestion,
   type Team,
   type TeacherUser
 } from "@quizstrike/shared";
@@ -123,9 +128,11 @@ import BuyPanel from "./student/BuyPanel";
 import EventFeed from "./student/EventFeed";
 import GamePreferencesPanel from "./student/GamePreferencesPanel";
 import QuizPanel from "./student/QuizPanel";
+import type { QuizAnswerFeedback } from "./student/QuizPanel";
 import Scoreboard from "./student/Scoreboard";
 import { useStudentGameState } from "./student/useStudentGameState";
 import { useSessionControls } from "./teacher/useSessionControls";
+import { generatePracticeWorksheetPdf } from "../../practiceWorksheet";
 
 const ArenaPreview = lazy(() => import("../../game/ArenaPreview"));
 const CharacterCreator = lazy(() => import("../../ui/PremiumCharacterCreator"));
@@ -161,6 +168,7 @@ const STUDENT_APPEARANCE_STORAGE_KEY = "quizstrike_student_appearance_v1";
 const COSMETIC_PROGRESS_STORAGE_KEY = "quizstrike_cosmetic_progress_v1";
 const TEACHER_FOLDER_SELECTION_STORAGE_KEY = "quizstrike_teacher_folder_selection_v1";
 const TOURNAMENT_TEACHER_RETURN_KEY = "quizstrike_tournament_teacher_return";
+const ANSWER_FEEDBACK_DURATION_MS = 1800;
 
 const readStoredStudentSession = (): StoredStudentSession | null => {
   try {
@@ -196,6 +204,7 @@ const readStoredAppearance = (): PlayerAppearance | null => {
 };
 
 type QuestionDraft = typeof emptyQuestion;
+type StudentAttemptSnapshot = StudentAnswerAttempt & { question: StudentPracticeQuestion };
 type ArenaPositionPayload = {
   x: number;
   z: number;
@@ -407,10 +416,6 @@ function useAsyncMessage() {
   }, [message]);
 
   return useMemo(() => ({ message, error, setMessage, setError, clear, clearError: () => setError(""), report }), [message, error, clear, report]);
-}
-
-function accuracy(player: PlayerSession) {
-  return calculateAccuracy(player.correctAnswers, player.wrongAnswers);
 }
 
 const formatRewards = (value: number) => `${Math.round(value)} rewards`;
@@ -3648,6 +3653,12 @@ function StudentExperience({ onExit }: { onExit: () => void }) {
   const [playerToken, setPlayerToken] = useState("");
   const [restoreFailed, setRestoreFailed] = useState(false);
   const [question, setQuestion] = useState<PublicQuestion | null>(null);
+  const [answerHistory, setAnswerHistory] = useState<StudentAttemptSnapshot[]>([]);
+  const [answerFeedback, setAnswerFeedback] = useState<QuizAnswerFeedback | null>(null);
+  const [learningReport, setLearningReport] = useState<StudentLearningReport | null>(null);
+  const [isLearningReportLoading, setIsLearningReportLoading] = useState(false);
+  const [learningReportError, setLearningReportError] = useState("");
+  const [isDownloadingWorksheet, setIsDownloadingWorksheet] = useState(false);
   const {
     quizOpen, setQuizOpen,
     buyOpen, setBuyOpen,
@@ -3681,6 +3692,8 @@ function StudentExperience({ onExit }: { onExit: () => void }) {
   const previousAliveRef = useRef<boolean | null>(null);
   const previousPreparationRef = useRef(false);
   const lastCountdownCueRef = useRef("");
+  const answerFeedbackTimerRef = useRef<number | undefined>(undefined);
+  const learningReportRequestKeyRef = useRef("");
   const lastTeamSwitchAtRef = useRef(0);
   const currentSessionRef = useRef<GameSession | null>(session);
   const currentPlayerRef = useRef<PlayerSession | null>(player);
@@ -3815,6 +3828,36 @@ function StudentExperience({ onExit }: { onExit: () => void }) {
     const timeout = window.setTimeout(() => setFeedback(""), 4500);
     return () => window.clearTimeout(timeout);
   }, [feedback, setFeedback]);
+
+  useEffect(() => () => {
+    if (answerFeedbackTimerRef.current !== undefined) window.clearTimeout(answerFeedbackTimerRef.current);
+  }, []);
+
+  useEffect(() => {
+    if (!sessionCode || !playerId || !playerToken || sessionStatus !== "ended") return;
+    const requestKey = `${sessionId ?? sessionCode}:${playerId}`;
+    if (learningReportRequestKeyRef.current === requestKey) return;
+    learningReportRequestKeyRef.current = requestKey;
+    let cancelled = false;
+    setIsLearningReportLoading(true);
+    setLearningReportError("");
+    void studentApi.learningReport(sessionCode, playerId, playerToken)
+      .then((payload) => {
+        if (cancelled) return;
+        const data = payload as { learningReport?: StudentLearningReport };
+        setLearningReport(data.learningReport ?? null);
+      })
+      .catch((error: unknown) => {
+        if (cancelled) return;
+        setLearningReportError(error instanceof Error ? error.message : "The learning report could not be loaded yet.");
+      })
+      .finally(() => {
+        if (!cancelled) setIsLearningReportLoading(false);
+      });
+    return () => {
+      cancelled = true;
+    };
+  }, [playerId, playerToken, sessionCode, sessionId, sessionStatus]);
 
   useEffect(() => {
     if (!hasSession || sessionStatus !== "active") {
@@ -4203,11 +4246,20 @@ function StudentExperience({ onExit }: { onExit: () => void }) {
     });
     socket.on("player_removed", (payload: { message?: string }) => {
       removedByTeacher = true;
+      if (answerFeedbackTimerRef.current !== undefined) {
+        window.clearTimeout(answerFeedbackTimerRef.current);
+        answerFeedbackTimerRef.current = undefined;
+      }
       clearStoredStudentSession();
       setSession(null);
       setPlayer(null);
       setPlayerToken("");
       setQuestion(null);
+      setAnswerHistory([]);
+      setAnswerFeedback(null);
+      setLearningReport(null);
+      setLearningReportError("");
+      learningReportRequestKeyRef.current = "";
       setQuizOpen(false);
       setBuyOpen(false);
       setScoreboardOpen(false);
@@ -4367,6 +4419,15 @@ function StudentExperience({ onExit }: { onExit: () => void }) {
       setPlayer(payload.player);
       setPlayerToken(payload.playerToken);
       setQuestion(payload.question ?? null);
+      if (answerFeedbackTimerRef.current !== undefined) {
+        window.clearTimeout(answerFeedbackTimerRef.current);
+        answerFeedbackTimerRef.current = undefined;
+      }
+      setAnswerHistory([]);
+      setAnswerFeedback(null);
+      setLearningReport(null);
+      setLearningReportError("");
+      learningReportRequestKeyRef.current = "";
       setQuizOpen(false);
       setBuyOpen(false);
       setScoreboardOpen(false);
@@ -4411,6 +4472,15 @@ function StudentExperience({ onExit }: { onExit: () => void }) {
     setPlayer(null);
     setPlayerToken("");
     setQuestion(null);
+    if (answerFeedbackTimerRef.current !== undefined) {
+      window.clearTimeout(answerFeedbackTimerRef.current);
+      answerFeedbackTimerRef.current = undefined;
+    }
+    setAnswerHistory([]);
+    setAnswerFeedback(null);
+    setLearningReport(null);
+    setLearningReportError("");
+    learningReportRequestKeyRef.current = "";
     setQuizOpen(false);
     setBuyOpen(false);
     setScoreboardOpen(false);
@@ -4421,9 +4491,11 @@ function StudentExperience({ onExit }: { onExit: () => void }) {
   };
 
   const answer = async (choice: Choice) => {
-    if (!session || !player || !question || !playerToken || answeringChoice) return;
+    if (!session || !player || !question || !playerToken || answeringChoice || answerFeedback) return;
+    const answeredQuestion = question;
+    const answeringPlayer = player;
     status.clear();
-    setFeedback("Answer locked in...");
+    setFeedback("");
     setAnsweringChoice(choice);
     gameAudio.playEvent("quiz_select");
     gameAudio.playEvent("quiz_lock");
@@ -4433,6 +4505,10 @@ function StudentExperience({ onExit }: { onExit: () => void }) {
         result: {
           feedback: string;
           explanation?: string;
+          isCorrect: boolean;
+          correctChoice: Choice;
+          moneyAwarded: number;
+          rewardLabel?: string;
           player: PlayerSession;
           nextQuestion?: PublicQuestion;
           respawned?: boolean;
@@ -4447,21 +4523,52 @@ function StudentExperience({ onExit }: { onExit: () => void }) {
       );
       storeCosmeticProgressToken(payload.cosmeticProgressToken);
       setPlayer(payload.result.player);
-      setFeedback(`${payload.result.feedback}${payload.result.explanation ? ` ${payload.result.explanation}` : ""}`);
-      const wasWrong = payload.result.player.wrongAnswers > player.wrongAnswers;
+      const wasWrong = !payload.result.isCorrect;
+      const answeredAt = new Date().toISOString();
+      const questionSnapshot = {
+        ...answeredQuestion,
+        correctChoice: payload.result.correctChoice
+      } satisfies StudentPracticeQuestion;
+      setAnswerHistory((current) => [...current, {
+        id: `${answeredQuestion.id}:${answeredAt}:${current.length}`,
+        questionId: answeredQuestion.id,
+        quizSetId: session.quizSetId,
+        selectedChoice: choice,
+        correctChoice: payload.result.correctChoice,
+        isCorrect: payload.result.isCorrect,
+        answeredAt,
+        moneyAwarded: payload.result.moneyAwarded,
+        context: answeringPlayer.isAlive ? "main" : "practice",
+        question: questionSnapshot
+      }]);
+      const supportingText = payload.result.feedback
+        .replace(/^(Correct!|Incorrect\.)\s*/i, "")
+        .trim();
+      setAnswerFeedback({
+        selectedChoice: choice,
+        correctChoice: payload.result.correctChoice,
+        isCorrect: payload.result.isCorrect,
+        rewardLabel: payload.result.rewardLabel,
+        explanation: payload.result.explanation,
+        supportingText: payload.result.isCorrect && supportingText && supportingText !== payload.result.rewardLabel
+          ? supportingText
+          : undefined
+      });
       gameAudio.play(wasWrong ? "quiz_wrong" : "quiz_correct");
       gameAudio.playEvent("answer_reveal");
-      if (!wasWrong && payload.result.player.money > player.money) gameAudio.playEvent("score_awarded");
+      if (!wasWrong && payload.result.moneyAwarded > 0) gameAudio.playEvent("score_awarded");
       if (payload.result.respawned) {
         emitArenaVfx({ kind: "healing", x: payload.result.player.x ?? 0, z: payload.result.player.z ?? 0, team: payload.result.player.team });
         emitArenaVfx({ kind: "spawn", x: payload.result.player.x ?? 0, z: payload.result.player.z ?? 0, team: payload.result.player.team });
         emitArenaAnimation({ kind: "respawn", playerId: payload.result.player.id, team: payload.result.player.team });
-        setRewardPulse("Respawned!");
-        setQuizOpen(false);
-      } else if (payload.result.player.money > player.money) {
-        setRewardPulse(`+${formatRewards(payload.result.player.money - player.money)}`);
       }
-      setQuestion(payload.result.nextQuestion ?? null);
+      if (answerFeedbackTimerRef.current !== undefined) window.clearTimeout(answerFeedbackTimerRef.current);
+      answerFeedbackTimerRef.current = window.setTimeout(() => {
+        answerFeedbackTimerRef.current = undefined;
+        setAnswerFeedback(null);
+        setQuestion(payload.result.nextQuestion ?? null);
+        if (payload.result.respawned) setQuizOpen(false);
+      }, ANSWER_FEEDBACK_DURATION_MS);
     } catch (err) {
       status.report(err);
     } finally {
@@ -4471,6 +4578,11 @@ function StudentExperience({ onExit }: { onExit: () => void }) {
 
   useEffect(() => {
     if (!hasSession || sessionStatus !== "ended") return;
+    if (answerFeedbackTimerRef.current !== undefined) {
+      window.clearTimeout(answerFeedbackTimerRef.current);
+      answerFeedbackTimerRef.current = undefined;
+    }
+    setAnswerFeedback(null);
     setQuizOpen(false);
     setBuyOpen(false);
     setScoreboardOpen(false);
@@ -4667,6 +4779,30 @@ function StudentExperience({ onExit }: { onExit: () => void }) {
     [sessionCode, playerToken]
   );
 
+  const learningData = useMemo(() => {
+    const localAttempts = answerHistory.map(({ question: _question, ...attempt }) => attempt);
+    const attempts = learningReport && learningReport.attempts.length >= localAttempts.length
+      ? learningReport.attempts
+      : localAttempts;
+    const questionsById = new Map<string, StudentPracticeQuestion>();
+    for (const source of learningReport?.quizSet?.questions ?? []) questionsById.set(source.id, source);
+    for (const snapshot of answerHistory) {
+      questionsById.set(snapshot.question.id, snapshot.question);
+    }
+    const questions = [...questionsById.values()];
+    const summary = buildStudentLearningSummary(attempts);
+    return {
+      summary,
+      practiceQuestions: buildStudentPracticeQuestions({
+        attempts,
+        questions,
+        maxQuestions: 20,
+        seed: `${sessionId ?? "no-session"}:${playerId ?? "no-player"}`
+      }),
+      worksheetSetName: learningReport?.quizSet?.title ?? "QuizStrike question set"
+    };
+  }, [answerHistory, learningReport, playerId, sessionId]);
+
   if (!session || !player) {
     if (isRestoringStudentSession) {
       return (
@@ -4756,6 +4892,11 @@ function StudentExperience({ onExit }: { onExit: () => void }) {
     );
   }
 
+  const {
+    summary: learningSummary,
+    practiceQuestions,
+    worksheetSetName
+  } = learningData;
   const snowballs = player.snowballs ?? session.settings.startingSnowballs;
   const warmth = getPlayerWarmth(player);
   const isZombieHuman = session.settings.gameMode === "zombie" && player.role !== "zombie";
@@ -4800,6 +4941,32 @@ function StudentExperience({ onExit }: { onExit: () => void }) {
     setSpectatorPlayerId(spectatorCandidates[nextIndex].id);
   };
 
+  const downloadWorksheet = async () => {
+    if (isDownloadingWorksheet || practiceQuestions.length === 0) return;
+    setIsDownloadingWorksheet(true);
+    try {
+      const blob = await generatePracticeWorksheetPdf({
+        studentName: player.nickname,
+        setName: worksheetSetName,
+        summary: learningSummary,
+        practiceQuestions
+      });
+      const url = URL.createObjectURL(blob);
+      const link = document.createElement("a");
+      link.href = url;
+      link.download = buildPracticeWorksheetFilename(player.nickname);
+      document.body.appendChild(link);
+      link.click();
+      link.remove();
+      window.setTimeout(() => URL.revokeObjectURL(url), 0);
+    } catch (error) {
+      const message = error instanceof Error ? error.message : "The practice worksheet could not be created.";
+      status.setError(message);
+    } finally {
+      setIsDownloadingWorksheet(false);
+    }
+  };
+
   return (
     <section className={[
       "game-layout",
@@ -4808,7 +4975,7 @@ function StudentExperience({ onExit }: { onExit: () => void }) {
       session.status === "waiting" ? "waiting-game-layout" : ""
     ].filter(Boolean).join(" ")}>
       <div className="game-stage">
-        {session.status !== "waiting" && <GameAnnouncementOverlay announcement={roundPreparation || zombieSelection ? undefined : session.announcement} serverTime={session.serverTime} />}
+        {session.status !== "waiting" && <GameAnnouncementOverlay announcement={roundPreparation || zombieSelection || roundEnded ? undefined : session.announcement} serverTime={session.serverTime} />}
         <div className={`game-utility-bar${session.status === "waiting" ? " lobby-utility-bar" : ""}`}>
           {session.status === "waiting" ? (
             <div className="lobby-brand">
@@ -5019,7 +5186,14 @@ function StudentExperience({ onExit }: { onExit: () => void }) {
                     <p>Get three practice answers correct to return with full health and fresh snowballs.</p>
                   </div>
                 )}
-                <QuizPanel question={question} player={player} session={session} onAnswer={answer} answeringChoice={answeringChoice} />
+                <QuizPanel
+                  question={question}
+                  player={player}
+                  session={session}
+                  onAnswer={answer}
+                  answeringChoice={answeringChoice}
+                  answerFeedback={answerFeedback}
+                />
               </>
             )}
             {buyOpen && (
@@ -5092,16 +5266,51 @@ function StudentExperience({ onExit }: { onExit: () => void }) {
               </div>
             )}
             {roundEnded && (
-              <div className="panel pre-round-card student-end-summary">
-                <h2>Game over</h2>
-                <p>{sessionResult}</p>
-                <div className="student-summary-metrics">
-                  <span><strong>{player.correctAnswers + player.wrongAnswers > 0 ? `${accuracy(player)}%` : "—"}</strong> answer accuracy</span>
-                  <span><strong>{Math.round(player.quizMoneyEarned ?? 0)}</strong> rewards earned</span>
-                  <span><strong>{formatRewards(player.moneySpent ?? 0)}</strong> spent on gear</span>
-                  <span><strong>{Math.round(player.money)}</strong> rewards left</span>
-                  <span><strong>{player.score}</strong> final score</span>
+              <div className="panel pre-round-card student-end-summary student-learning-report">
+                <div className="student-learning-report-heading">
+                  <div>
+                    <span className="menu-eyebrow">Your learning report</span>
+                    <h2>Game over</h2>
+                  </div>
+                  <span className="student-match-result">{sessionResult}</span>
                 </div>
+                <p className="student-learning-report-intro">Here is what your answers say about what to practise next.</p>
+                {isLearningReportLoading ? (
+                  <p className="student-learning-report-loading" role="status">Preparing your personal summary...</p>
+                ) : (
+                  <>
+                    <div className="student-summary-metrics student-learning-metrics" aria-label="Your learning results">
+                      <span><strong>{learningSummary.totalAttempts}</strong> Questions answered</span>
+                      <span><strong>{learningSummary.correctAttempts}</strong> Correct</span>
+                      <span><strong>{learningSummary.incorrectAttempts}</strong> Incorrect</span>
+                      <span><strong>{learningSummary.accuracy === null ? "—" : `${learningSummary.accuracy}%`}</strong> Accuracy</span>
+                      <span><strong>{learningSummary.questionsToReview}</strong> Questions to review</span>
+                    </div>
+                    {learningSummary.totalAttempts === 0 ? (
+                      <p className="student-learning-report-note">No questions answered this game.</p>
+                    ) : (
+                      <p className="student-learning-report-note">
+                        {learningSummary.questionsToReview === 0
+                          ? "Great job. A short review sheet is ready for reinforcement."
+                          : `${learningSummary.questionsToReview} question${learningSummary.questionsToReview === 1 ? "" : "s"} ${learningSummary.questionsToReview === 1 ? "is" : "are"} ready to review.`}
+                      </p>
+                    )}
+                    <div className="student-worksheet-actions">
+                      <button className="primary" type="button" onClick={() => void downloadWorksheet()} disabled={isDownloadingWorksheet || practiceQuestions.length === 0}>
+                        <Download size={18} aria-hidden="true" />
+                        {isDownloadingWorksheet ? "Creating worksheet..." : "Download Practice Worksheet"}
+                      </button>
+                      {practiceQuestions.length === 0 && <small>No question-set data is available for a worksheet yet.</small>}
+                      {learningReportError && <small className="student-learning-report-sync-note">Your on-screen summary is based on the answers available in this session.</small>}
+                    </div>
+                    <div className="student-competition-summary" aria-label="Match results">
+                      <span><strong>{Math.round(player.quizMoneyEarned ?? 0)}</strong> rewards earned</span>
+                      <span><strong>{formatRewards(player.moneySpent ?? 0)}</strong> spent on gear</span>
+                      <span><strong>{Math.round(player.money)}</strong> rewards left</span>
+                      <span><strong>{player.score}</strong> final score</span>
+                    </div>
+                  </>
+                )}
                 <div className="button-row">
                   <button className="primary" onClick={returnToJoin}>Join another game</button>
                   <button onClick={onExit}>Back to QuizStrike</button>

@@ -6,6 +6,7 @@ import type {
   PlayerAppearance,
   PlayerSession,
   PublicQuestion,
+  StudentLearningReport,
   Team,
   TeacherUser,
   FlagState
@@ -48,6 +49,7 @@ export type PlayerRouteDependencies = {
   resetFreezeStreak: (player: PlayerSession) => void;
   sendStudentCommand: <T>(res: Response, result: StudentCommandResult<T>) => void;
   answerQuestion: (session: GameSession, player: PlayerSession, body: { questionId?: unknown; selectedChoice?: unknown }) => StudentCommandResult<unknown>;
+  makeStudentLearningReport: (session: GameSession, player: PlayerSession) => StudentLearningReport;
   buyGear: (session: GameSession, player: PlayerSession, gearId: unknown) => StudentCommandResult<unknown>;
   buySnowballs: (session: GameSession, player: PlayerSession) => StudentCommandResult<unknown>;
 };
@@ -300,6 +302,20 @@ export const registerPlayerRoutes = (app: Application, deps: PlayerRouteDependen
       return;
     }
     res.json({ question });
+  });
+
+  app.get("/api/sessions/:code/players/:playerId/learning-report", (req, res) => {
+    const { session, player } = findPlayer(deps, req);
+    if (!session || !player || player.isBot) {
+      res.status(404).json({ error: "Student learning report not found." });
+      return;
+    }
+    if (!deps.requirePlayerAccess(req, res, session, player)) return;
+    if (session.status !== "ended") {
+      res.status(409).json({ error: "The personal learning report is ready when the game ends." });
+      return;
+    }
+    res.json({ learningReport: deps.makeStudentLearningReport(session, player) });
   });
 
   app.post("/api/sessions/:code/players/:playerId/answer", (req, res) => {
