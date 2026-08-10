@@ -12902,6 +12902,7 @@ body:has(.game-layout) .topbar {
   width: min(720px, 100%);
   max-height: min(100%, 720px);
   overflow: auto;
+  background: #f8fbff;
 }
 
 .student-learning-report-heading {
@@ -12938,6 +12939,10 @@ body:has(.game-layout) .topbar {
 
 .student-learning-metrics span {
   min-height: 62px;
+}
+
+.student-learning-metrics {
+  grid-template-columns: repeat(5, minmax(0, 1fr));
 }
 
 .student-learning-metrics strong {
@@ -12998,6 +13003,14 @@ body:has(.game-layout) .topbar {
 
   .student-learning-report-heading {
     display: grid;
+  }
+
+  .student-learning-metrics {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+
+  .student-learning-metrics span:last-child {
+    grid-column: 1 / -1;
   }
 
   .student-match-result {

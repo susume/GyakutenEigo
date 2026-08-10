@@ -4092,9 +4092,10 @@ function StudentExperience({ onExit }: { onExit: () => void }) {
       if (event.type === "join") gameAudio.playEvent("player_join");
       if (event.type === "start") gameAudio.playEvent("round_start");
       if (event.type === "buy") gameAudio.playEvent("results_confirm");
-      if (event.type === "answer") gameAudio.playEvent("answer_reveal");
+      const isLocalAnswerEvent = event.type === "answer" && event.playerId === activePlayerId;
+      if (event.type === "answer" && !isLocalAnswerEvent) gameAudio.playEvent("answer_reveal");
       if (event.type === "timer") gameAudio.playEvent("objective_countdown");
-      if (event.type === "elimination" || event.playerId === activePlayerId || event.targetId === activePlayerId) {
+      if (!isLocalAnswerEvent && (event.type === "elimination" || event.playerId === activePlayerId || event.targetId === activePlayerId)) {
         setFeedback(event.message);
       }
       if (event.type === "respawn") {
@@ -5277,16 +5278,21 @@ function StudentExperience({ onExit }: { onExit: () => void }) {
               </div>
             )}
             {roundEnded && (
-              <div className="panel pre-round-card student-end-summary student-learning-report">
+              <div
+                className="panel pre-round-card student-end-summary student-learning-report"
+                role="region"
+                aria-labelledby="student-learning-report-title"
+                aria-busy={isLearningReportLoading}
+              >
                 <div className="student-learning-report-heading">
                   <div>
                     <span className="menu-eyebrow">Your learning report</span>
-                    <h2>Game over</h2>
+                    <h2 id="student-learning-report-title">Game over</h2>
                   </div>
                   <span className="student-match-result">{sessionResult}</span>
                 </div>
                 <p className="student-learning-report-intro">Here is what your answers say about what to practise next.</p>
-                {isLearningReportLoading ? (
+                {isLearningReportLoading && learningSummary.totalAttempts === 0 ? (
                   <p className="student-learning-report-loading" role="status">Preparing your personal summary...</p>
                 ) : (
                   <>
@@ -5311,6 +5317,7 @@ function StudentExperience({ onExit }: { onExit: () => void }) {
                         <Download size={18} aria-hidden="true" />
                         {isDownloadingWorksheet ? "Creating worksheet..." : "Download Practice Worksheet"}
                       </button>
+                      {isLearningReportLoading && <small className="student-learning-report-sync-note" role="status">Syncing your saved answers...</small>}
                       {practiceQuestions.length === 0 && <small>No question-set data is available for a worksheet yet.</small>}
                       {learningReportError && <small className="student-learning-report-sync-note">Your on-screen summary is based on the answers available in this session.</small>}
                     </div>

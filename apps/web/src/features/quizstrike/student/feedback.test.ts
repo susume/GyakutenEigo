@@ -21,6 +21,14 @@ test("explanations and long Japanese answers receive readable feedback time", ()
     getAnswerFeedbackDurationMs({
       selectedText: "x".repeat(180),
       correctText: "y"
-    }) > ANSWER_FEEDBACK_DURATION_MS
+    }) >= 3400
+  );
+  assert.equal(
+    getAnswerFeedbackDurationMs({
+      selectedText: "A short answer",
+      correctText: "The correct answer",
+      explanation: "長い日本語の説明です。".repeat(30)
+    }),
+    4200
   );
 });

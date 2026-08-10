@@ -137,6 +137,7 @@ test("student customizes, reloads, and receives match start over Socket.IO", asy
   await expect(incorrectFeedback).toContainText("Correct answer");
   await expect(incorrectFeedback).toContainText("This one");
   await expect(incorrectFeedback).toContainText("正解は A です。");
+  await expect(page.getByText("Browser Student answered incorrectly.", { exact: true })).toBeHidden();
   const incorrectFeedbackBox = await incorrectFeedback.boundingBox();
   expect(incorrectFeedbackBox).not.toBeNull();
   expect(incorrectFeedbackBox!.y + incorrectFeedbackBox!.height).toBeLessThanOrEqual(768);
@@ -147,12 +148,30 @@ test("student customizes, reloads, and receives match start over Socket.IO", asy
     contentType: "image/png"
   });
 
+  let releaseLearningReport!: () => void;
+  const learningReportGate = new Promise<void>((resolve) => {
+    releaseLearningReport = resolve;
+  });
+  await page.route("**/learning-report", async (route) => {
+    await learningReportGate;
+    await route.continue();
+  });
+
   const finish = await request.post(`/api/sessions/${classroom.code}/end`, {
     headers: { Authorization: `Bearer ${classroom.teacherToken}` }
   });
   expect(finish.status()).toBe(200);
   await expect(page.getByText("Your learning report", { exact: true })).toBeVisible();
   await expect(page.locator(".student-learning-metrics")).toContainText("50%");
+  const learningMetricBoxes = await page.locator(".student-learning-metrics > span").evaluateAll((metrics) => metrics.map((metric) => {
+    const box = metric.getBoundingClientRect();
+    return { top: Math.round(box.top), right: box.right };
+  }));
+  expect(new Set(learningMetricBoxes.map((box) => box.top)).size).toBe(1);
+  expect(learningMetricBoxes.every((box) => box.right <= 1366)).toBe(true);
+  await expect(page.getByText("Syncing your saved answers...", { exact: true })).toBeVisible();
+  releaseLearningReport();
+  await expect(page.getByText("Syncing your saved answers...", { exact: true })).toBeHidden();
   const worksheetButton = page.getByRole("button", { name: "Download Practice Worksheet", exact: true });
   await expect(worksheetButton).toBeEnabled();
   const downloadPromise = page.waitForEvent("download");
