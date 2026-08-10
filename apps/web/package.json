@@ -5,8 +5,9 @@
   "type": "module",
   "scripts": {
     "dev": "vite --host 0.0.0.0",
-    "build": "tsc && vite build",
-    "analyze": "vite build --mode analyze",
+    "build": "node scripts/check-join-css.mjs && tsc && vite build",
+    "analyze": "node scripts/check-join-css.mjs && vite build --mode analyze",
+    "sync:join-css": "node scripts/check-join-css.mjs --write",
     "test": "node ../../scripts/run-tests.mjs src",
     "test:e2e": "playwright test",
     "preview": "vite preview --host 0.0.0.0",
@@ -27,6 +28,7 @@
     "@types/react": "^19.1.8",
     "@types/react-dom": "^19.1.6",
     "@types/three": "^0.178.1",
+    "postcss": "^8.5.25",
     "rollup-plugin-visualizer": "^5.14.0",
     "typescript": "^5.8.3",
     "vite": "^7.0.0"

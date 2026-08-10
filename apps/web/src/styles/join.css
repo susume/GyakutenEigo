@@ -1,0 +1,451 @@
+/* Order-preserving /join subset extracted from styles.css. Keep selector order aligned with the source cascade. */
+
+.linked-join-code {
+  display: grid;
+  gap: 5px;
+  padding: 14px;
+  border: 1px solid #b9dfc5;
+  border-radius: 10px;
+  background: #eef8f1;
+}
+
+.linked-join-code span {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  color: #40634b;
+  font-weight: 850;
+}
+
+.linked-join-code strong {
+  font-size: 1.55rem;
+  letter-spacing: 0.12em;
+}
+
+.linked-join-code small {
+  color: #54705b;
+}
+@media (min-width: 701px) {
+  .student-join-screen {
+    align-items: center;
+    padding: clamp(24px, 7vh, 72px) 28px 28px;
+  }
+}
+body:has(.product-home), body:has(.quizstrike-page), body:has(.quizstrike-auth-layout), body:has(.student-join-screen:not(.game-layout)) { background: var(--qs-page); color: var(--qs-ink); }
+body:has(.product-home) p, body:has(.quizstrike-page) p, body:has(.quizstrike-auth-layout) p, body:has(.student-join-screen:not(.game-layout)) p { color: var(--qs-muted); }
+body:has(.product-home) .topbar, body:has(.quizstrike-page) .topbar, body:has(.quizstrike-auth-layout) .topbar, body:has(.student-join-screen:not(.game-layout)) .topbar { min-height: 80px; height: auto; padding: 8px clamp(18px, 4vw, 52px); border-bottom: 1px solid rgba(122, 166, 221, 0.24); background: rgba(5, 11, 27, 0.94); color: var(--qs-ink); box-shadow: 0 12px 30px rgba(0, 0, 0, 0.18); }
+body:has(.product-home) .brand-button, body:has(.quizstrike-page) .brand-button, body:has(.quizstrike-auth-layout) .brand-button, body:has(.student-join-screen:not(.game-layout)) .brand-button { min-width: 128px; min-height: 62px; padding: 0; border: 0; background: transparent; }
+body:has(.product-home) .top-actions button, body:has(.quizstrike-page) .top-actions button, body:has(.quizstrike-auth-layout) .top-actions button, body:has(.student-join-screen:not(.game-layout)) .top-actions button { min-height: 48px; border: 1px solid var(--qs-border); border-radius: 10px; padding-inline: 18px; background: rgba(12, 28, 58, 0.72); color: var(--qs-ink); font-size: 0.92rem; font-weight: 850; }
+body:has(.product-home) .top-actions button:hover, body:has(.quizstrike-page) .top-actions button:hover, body:has(.quizstrike-auth-layout) .top-actions button:hover, body:has(.student-join-screen:not(.game-layout)) .top-actions button:hover, body:has(.product-home) .top-actions button:focus-visible, body:has(.quizstrike-page) .top-actions button:focus-visible, body:has(.quizstrike-auth-layout) .top-actions button:focus-visible { border-color: var(--qs-blue); background: rgba(35, 91, 162, 0.55); color: #ffffff; }
+body:has(.product-home) button.primary, body:has(.quizstrike-page) button.primary, body:has(.quizstrike-auth-layout) button.primary, body:has(.student-join-screen:not(.game-layout)) button.primary { border-color: #3bd39a; background: #14825a; color: #ffffff; }
+.auth-kicker { width: fit-content; color: #72d8ff; font-weight: 900; text-transform: uppercase; }
+.student-join-screen { min-height: calc(100vh - 80px); width: min(1180px, calc(100% - 48px)); margin: 0 auto; align-items: center; gap: clamp(24px, 7vw, 90px); padding: clamp(38px, 7vh, 86px) 0; background: transparent; }
+.student-join-help { display: grid; align-content: center; gap: 16px; max-width: 550px; }
+.student-join-help .quizstrike-logo { margin-bottom: 12px; }
+.student-join-help h1 { margin: 0; color: #ffffff; font-size: clamp(3.2rem, 6vw, 5.8rem); letter-spacing: -0.06em; }
+.student-join-help > p { margin: 0; font-size: 1.08rem; line-height: 1.55; }
+.student-join-form { align-self: center; width: min(480px, 100%); gap: 16px; border: 1px solid rgba(126, 166, 220, 0.38); border-radius: 18px; padding: clamp(22px, 3vw, 34px); background: rgba(10, 23, 49, 0.92); box-shadow: 0 24px 68px rgba(0, 0, 0, 0.3); }
+.student-join-form .join-field-label { color: #d7e6fa; font-size: 0.82rem; }
+.student-join-form input { min-height: 58px; border: 1px solid rgba(126, 166, 220, 0.44); border-radius: 10px; background: rgba(4, 13, 31, 0.88); color: #ffffff; font-size: 1.2rem; text-align: left; }
+.student-join-form input::placeholder { color: #7589a5; }
+.student-join-form .join-field small, .student-join-tips p { color: #8fa6c0; }
+.student-join-tips { border-color: rgba(126, 166, 220, 0.28); background: rgba(15, 35, 70, 0.55); }
+.student-join-tips summary { color: #bce5ff; }
+
+@media (max-width: 980px) {
+  .student-join-screen { grid-template-columns: 1fr; }
+  .student-join-help { max-width: 700px; }
+  .student-join-form { width: min(620px, 100%); justify-self: center; }
+}
+@media (max-width: 760px) {
+  body:has(.product-home) .topbar, body:has(.quizstrike-page) .topbar, body:has(.quizstrike-auth-layout) .topbar, body:has(.student-join-screen:not(.game-layout)) .topbar { min-height: 72px; padding-inline: 14px; }
+  body:has(.product-home) .brand-button, body:has(.quizstrike-page) .brand-button, body:has(.quizstrike-auth-layout) .brand-button, body:has(.student-join-screen:not(.game-layout)) .brand-button { min-width: 100px; min-height: 56px; }
+  body:has(.product-home) .top-actions, body:has(.quizstrike-page) .top-actions, body:has(.quizstrike-auth-layout) .top-actions, body:has(.student-join-screen:not(.game-layout)) .top-actions { position: absolute; top: calc(100% + 8px); right: 0; z-index: 12; display: none; min-width: 190px; padding: 8px; border: 1px solid var(--qs-border); border-radius: 12px; background: rgba(5, 14, 31, 0.98); }
+  body:has(.product-home) .top-actions[data-open="true"], body:has(.quizstrike-page) .top-actions[data-open="true"], body:has(.quizstrike-auth-layout) .top-actions[data-open="true"], body:has(.student-join-screen:not(.game-layout)) .top-actions[data-open="true"] { display: grid; }
+  body:has(.product-home) .top-actions button, body:has(.quizstrike-page) .top-actions button, body:has(.quizstrike-auth-layout) .top-actions button, body:has(.student-join-screen:not(.game-layout)) .top-actions button { width: 100%; justify-content: flex-start; }
+  .site-home, .landing-section, .landing-final-cta, .quizstrike-route-hero, .quizstrike-auth-layout, .student-join-screen { width: min(100% - 32px, 700px); }
+  .student-join-screen { min-height: auto; padding: 36px 0 54px; }
+  .student-join-help h1 { font-size: clamp(3rem, 14vw, 4.7rem); }
+}
+@media (prefers-reduced-motion: reduce) { body:has(.product-home) *, body:has(.quizstrike-page) *, body:has(.quizstrike-auth-layout) *, body:has(.student-join-screen:not(.game-layout)) * { scroll-behavior: auto !important; transition-duration: 0.01ms !important; animation-duration: 0.01ms !important; animation-iteration-count: 1 !important; } }
+.student-join-form button.primary { min-height: 58px !important; padding: 14px 20px; border-width: 1px; border-radius: 10px; font-size: 1rem !important; line-height: 1.2; font-weight: 900; letter-spacing: .03em; text-transform: none !important; }
+@media (max-width: 760px) { .student-join-form button.primary { min-height: 56px; } }
+.student-join-screen,
+.student-join-form,
+.student-join-form .join-field,
+.student-join-form input { min-width: 0; }
+.student-join-form input { width: 100%; }
+@media (max-width: 980px) {
+  .student-join-screen { display: grid !important; grid-template-columns: minmax(0, 1fr) !important; }
+  .student-join-help,
+  .student-join-form { width: min(620px, 100%); max-width: 100%; justify-self: center; }
+}
+.student-join-help .controls-card { margin-top: 10px; padding: 20px; }
+.controls-card-heading { display: flex; align-items: baseline; justify-content: space-between; gap: 12px; }
+.controls-card-heading h2 { margin: 0; color: #f5f9ff; font-size: 1.35rem; }
+.controls-card-heading span { color: #8fa6c0; font-size: .76rem; font-weight: 800; }
+.student-controls-grid { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 10px 16px; margin-top: 16px; }
+.student-control { display: grid; grid-template-columns: max-content minmax(0, 1fr); align-items: center; gap: 9px; color: #cfe0f4; font-size: .84rem; line-height: 1.25; }
+.student-control kbd { display: inline-flex; min-height: 26px; align-items: center; justify-content: center; border: 1px solid rgba(126, 166, 220, .38); border-radius: 6px; padding: 4px 7px; background: rgba(4, 13, 31, .72); color: #eaf4ff; font-family: inherit; font-size: .68rem; font-weight: 900; white-space: nowrap; }
+.student-join-form button.primary { min-height: 58px; padding: 14px 20px; border: 1px solid #3bd39a; border-radius: 10px; font-size: 1rem; line-height: 1.2; font-weight: 900; letter-spacing: .03em; text-transform: none; }
+.game-join-screen { display: grid !important; grid-template-columns: minmax(0, 560px) minmax(300px, 360px) !important; align-items: start !important; justify-content: center; gap: 24px !important; width: min(1040px, calc(100% - 48px)) !important; min-height: calc(100vh - 80px) !important; padding: 56px 0 !important; background: transparent !important; }
+.game-join-screen .student-join-form { order: 1; align-self: start; width: 100% !important; max-width: none; gap: 16px; border: 1px solid rgba(126, 166, 220, .4); padding: 32px !important; }
+.game-join-screen .student-join-help { order: 2; display: block !important; width: 100% !important; max-width: none !important; }
+.game-join-form-heading { display: grid; gap: 8px; margin-bottom: 4px; padding-bottom: 20px; border-bottom: 1px solid rgba(126, 166, 220, .2); }
+.game-join-form-heading .auth-kicker { font-size: .76rem; letter-spacing: .08em; }
+.game-join-form-heading h1 { margin: 0; color: #fff; font-size: clamp(2.35rem, 4vw, 3.35rem); letter-spacing: -.055em; line-height: .96; }
+.game-join-form-heading p { max-width: 430px; margin: 0; color: #9fb4ce; font-size: .95rem; line-height: 1.5; }
+.game-join-screen .controls-card { margin: 0 !important; border: 1px solid rgba(126, 166, 220, .3); border-radius: 16px; padding: 24px; background: rgba(10, 23, 49, .72); box-shadow: none; }
+.game-join-screen .student-controls-grid { grid-template-columns: 1fr; gap: 0; margin-top: 14px; }
+.game-join-screen .student-control { min-height: 42px; grid-template-columns: 112px minmax(0, 1fr); border-bottom: 1px solid rgba(126, 166, 220, .13); font-size: .86rem; }
+.game-join-screen .student-control:last-child { border-bottom: 0; }
+.game-join-screen .student-control kbd { width: fit-content; min-width: 34px; }
+@media (max-width: 760px) {
+  .student-join-help .controls-card { padding: 16px; }
+  .student-controls-grid { grid-template-columns: 1fr; gap: 8px; }
+  .student-join-form button.primary { min-height: 56px; }
+}
+@media (max-width: 980px) {
+  .game-join-screen { grid-template-columns: minmax(0, 1fr) !important; width: min(620px, calc(100% - 32px)) !important; gap: 16px !important; padding: 36px 0 54px !important; }
+  .game-join-screen .student-join-form,
+  .game-join-screen .student-join-help { width: 100% !important; }
+}
+@media (max-width: 600px) {
+  .game-join-screen .student-join-form { padding: 22px !important; }
+  .game-join-form-heading h1 { font-size: 2.35rem; }
+  .game-join-screen .controls-card { padding: 18px; }
+}
+body:has(.product-home),
+body:has(.quizstrike-page),
+body:has(.quizstrike-auth-layout),
+body:has(.student-join-screen:not(.game-layout)) { background: var(--qs-page); color: var(--qs-ink); }
+
+body:has(.product-home) p,
+body:has(.quizstrike-page) p,
+body:has(.quizstrike-auth-layout) p,
+body:has(.student-join-screen:not(.game-layout)) p { color: var(--qs-muted); }
+
+body:has(.product-home) .topbar,
+body:has(.quizstrike-page) .topbar,
+body:has(.quizstrike-auth-layout) .topbar,
+body:has(.student-join-screen:not(.game-layout)) .topbar { min-height: 80px; height: auto; padding: 8px clamp(18px, 4vw, 52px); border-bottom: 1px solid rgba(122, 166, 221, 0.24); background: rgba(5, 11, 27, 0.94); color: var(--qs-ink); box-shadow: 0 12px 30px rgba(0, 0, 0, 0.18); }
+body:has(.product-home) .brand-button,
+body:has(.quizstrike-page) .brand-button,
+body:has(.quizstrike-auth-layout) .brand-button,
+body:has(.student-join-screen:not(.game-layout)) .brand-button { min-width: 128px; min-height: 62px; padding: 0; border: 0; background: transparent; }
+
+body:has(.product-home) .top-actions button,
+body:has(.quizstrike-page) .top-actions button,
+body:has(.quizstrike-auth-layout) .top-actions button,
+body:has(.student-join-screen:not(.game-layout)) .top-actions button { min-height: 48px; border: 1px solid var(--qs-border); border-radius: 10px; padding-inline: 18px; background: rgba(12, 28, 58, 0.72); color: var(--qs-ink); font-size: 0.92rem; font-weight: 850; }
+body:has(.product-home) .top-actions button:hover,
+body:has(.quizstrike-page) .top-actions button:hover,
+body:has(.quizstrike-auth-layout) .top-actions button:hover,
+body:has(.student-join-screen:not(.game-layout)) .top-actions button:hover,
+body:has(.product-home) .top-actions button:focus-visible,
+body:has(.quizstrike-page) .top-actions button:focus-visible,
+body:has(.quizstrike-auth-layout) .top-actions button:focus-visible,
+body:has(.student-join-screen:not(.game-layout)) .top-actions button:focus-visible { border-color: var(--qs-blue); background: rgba(35, 91, 162, 0.55); color: #ffffff; box-shadow: 0 0 0 3px rgba(84, 184, 255, 0.18); }
+body:has(.product-home) button.primary, body:has(.quizstrike-page) button.primary, body:has(.quizstrike-auth-layout) button.primary, body:has(.student-join-screen:not(.game-layout)) button.primary { border-color: #3bd39a; background: #14825a; color: #ffffff; box-shadow: 0 10px 26px rgba(20, 130, 90, 0.2); }
+.auth-kicker { width: fit-content; color: #72d8ff; font-weight: 900; text-transform: uppercase; }
+.student-join-screen { min-height: calc(100vh - 80px); width: min(1180px, calc(100% - 48px)); margin: 0 auto; align-items: center; gap: clamp(24px, 7vw, 90px); padding: clamp(38px, 7vh, 86px) 0; background: transparent; }
+.student-join-help { display: grid; align-content: center; gap: 16px; max-width: 550px; }
+.student-join-help .quizstrike-logo { margin-bottom: 12px; }
+.student-join-help h1 { margin: 0; color: #ffffff; font-size: clamp(3.2rem, 6vw, 5.8rem); letter-spacing: -0.06em; }
+.student-join-help > p { margin: 0; font-size: 1.08rem; line-height: 1.55; }
+.student-join-form { align-self: center; width: min(480px, 100%); gap: 16px; border: 1px solid rgba(126, 166, 220, 0.38); border-radius: 18px; padding: clamp(22px, 3vw, 34px); background: rgba(10, 23, 49, 0.92); box-shadow: 0 24px 68px rgba(0, 0, 0, 0.3); }
+.student-join-form .join-field-label { color: #d7e6fa; font-size: 0.82rem; }
+.student-join-form input { min-height: 58px; border: 1px solid rgba(126, 166, 220, 0.44); border-radius: 10px; background: rgba(4, 13, 31, 0.88); color: #ffffff; font-size: 1.2rem; text-align: left; }
+.student-join-form input::placeholder { color: #7589a5; }
+.student-join-form .join-field small, .student-join-tips p { color: #8fa6c0; }
+.student-join-tips { border-color: rgba(126, 166, 220, 0.28); background: rgba(15, 35, 70, 0.55); }
+.student-join-tips summary { color: #bce5ff; }
+
+body:has(.product-home),
+body:has(.quizstrike-page),
+body:has(.quizstrike-auth-layout),
+body:has(.student-join-screen:not(.game-layout)) {
+  background:
+    radial-gradient(circle at 78% 14%, rgba(37, 120, 214, 0.18), transparent 34%),
+    radial-gradient(circle at 8% 92%, rgba(240, 90, 100, 0.1), transparent 28%),
+    var(--qs-page);
+  color: var(--qs-ink);
+}
+
+body:has(.product-home) p,
+body:has(.quizstrike-page) p,
+body:has(.quizstrike-auth-layout) p,
+body:has(.student-join-screen:not(.game-layout)) p {
+  color: var(--qs-muted);
+}
+
+body:has(.product-home) .topbar,
+body:has(.quizstrike-page) .topbar,
+body:has(.quizstrike-auth-layout) .topbar,
+body:has(.student-join-screen:not(.game-layout)) .topbar {
+  min-height: 80px;
+  height: auto;
+  padding: 8px clamp(18px, 4vw, 52px);
+  border-bottom: 1px solid rgba(122, 166, 221, 0.24);
+  background: rgba(5, 11, 27, 0.82);
+  color: var(--qs-ink);
+  box-shadow: 0 12px 30px rgba(0, 0, 0, 0.18);
+  backdrop-filter: blur(18px);
+}
+
+body:has(.product-home) .brand-button,
+body:has(.quizstrike-page) .brand-button,
+body:has(.quizstrike-auth-layout) .brand-button,
+body:has(.student-join-screen:not(.game-layout)) .brand-button {
+  min-width: 128px;
+  min-height: 62px;
+  padding: 0;
+  border: 0;
+  background: transparent;
+}
+
+body:has(.product-home) .top-actions,
+body:has(.quizstrike-page) .top-actions,
+body:has(.quizstrike-auth-layout) .top-actions,
+body:has(.student-join-screen:not(.game-layout)) .top-actions {
+  gap: 10px;
+}
+
+body:has(.product-home) .top-actions button,
+body:has(.quizstrike-page) .top-actions button,
+body:has(.quizstrike-auth-layout) .top-actions button,
+body:has(.student-join-screen:not(.game-layout)) .top-actions button {
+  min-height: 48px;
+  border: 1px solid var(--qs-border);
+  border-radius: 10px;
+  padding-inline: 18px;
+  background: rgba(12, 28, 58, 0.72);
+  color: var(--qs-ink);
+  font-size: 0.92rem;
+  font-weight: 850;
+  letter-spacing: 0.01em;
+}
+
+body:has(.product-home) .top-actions button:hover,
+body:has(.quizstrike-page) .top-actions button:hover,
+body:has(.quizstrike-auth-layout) .top-actions button:hover,
+body:has(.student-join-screen:not(.game-layout)) .top-actions button:hover,
+body:has(.product-home) .top-actions button:focus-visible,
+body:has(.quizstrike-page) .top-actions button:focus-visible,
+body:has(.quizstrike-auth-layout) .top-actions button:focus-visible,
+body:has(.student-join-screen:not(.game-layout)) .top-actions button:focus-visible {
+  border-color: var(--qs-blue);
+  background: rgba(35, 91, 162, 0.55);
+  color: #ffffff;
+  box-shadow: 0 0 0 3px rgba(84, 184, 255, 0.18);
+}
+
+.eyebrow,
+.auth-kicker {
+  border-color: rgba(84, 184, 255, 0.52);
+  border-radius: 999px;
+  background: rgba(20, 64, 120, 0.28);
+  color: #9bd7ff;
+  font-size: 0.72rem;
+  letter-spacing: 0.12em;
+}
+
+body:has(.product-home) button.primary,
+body:has(.quizstrike-page) button.primary,
+body:has(.quizstrike-auth-layout) button.primary,
+body:has(.student-join-screen:not(.game-layout)) button.primary { border-color: #3bd39a; background: #14825a; color: #ffffff; box-shadow: 0 10px 26px rgba(20, 130, 90, 0.2); }
+
+body:has(.product-home) button.primary:hover,
+body:has(.quizstrike-page) button.primary:hover,
+body:has(.quizstrike-auth-layout) button.primary:hover,
+body:has(.student-join-screen:not(.game-layout)) button.primary:hover { border-color: #79f1bd; background: #199969; box-shadow: 0 14px 32px rgba(20, 130, 90, 0.3); transform: translateY(-2px); }
+.auth-kicker { width: fit-content; border: 0; padding: 0; background: transparent; font-weight: 900; text-transform: uppercase; }
+.auth-visual-content .auth-kicker { margin-top: auto; color: #72d8ff; }
+.student-join-screen { min-height: calc(100vh - 80px); width: min(1180px, calc(100% - 48px)); margin: 0 auto; align-items: center; gap: clamp(24px, 7vw, 90px); padding: clamp(38px, 7vh, 86px) 0; background: transparent; }
+.student-join-help { display: grid; align-content: center; gap: 16px; max-width: 550px; }
+.student-join-help .quizstrike-logo { margin-bottom: 12px; }
+.student-join-help h1 { margin: 0; color: #ffffff; font-size: clamp(3.2rem, 6vw, 5.8rem); letter-spacing: -0.06em; }
+.student-join-help > p { margin: 0; font-size: 1.08rem; line-height: 1.55; }
+.student-join-help .how-to-card { border-color: rgba(126, 166, 220, 0.3); background: rgba(10, 25, 52, 0.66); }
+.student-join-form { align-self: center; width: min(480px, 100%); gap: 16px; border: 1px solid rgba(126, 166, 220, 0.38); border-radius: 18px; padding: clamp(22px, 3vw, 34px); background: rgba(10, 23, 49, 0.92); box-shadow: 0 24px 68px rgba(0, 0, 0, 0.3); }
+.student-join-form .join-field-label { color: #d7e6fa; font-size: 0.82rem; }
+.student-join-form input { min-height: 58px; border: 1px solid rgba(126, 166, 220, 0.44); border-radius: 10px; background: rgba(4, 13, 31, 0.88); color: #ffffff; font-size: 1.2rem; text-align: left; }
+.student-join-form input::placeholder { color: #7589a5; }
+.student-join-form .join-field small, .student-join-tips p { color: #8fa6c0; }
+.student-join-tips { border-color: rgba(126, 166, 220, 0.28); background: rgba(15, 35, 70, 0.55); }
+.student-join-tips summary { color: #bce5ff; }
+.linked-join-code { border-color: rgba(84, 184, 255, 0.42); background: rgba(21, 73, 122, 0.24); color: #d9efff; }
+
+@media (max-width: 980px) {
+  .student-join-screen { grid-template-columns: 1fr; }
+  .student-join-help { max-width: 700px; }
+  .student-join-form { width: min(620px, 100%); justify-self: center; }
+}
+
+@media (max-width: 760px) {
+  body:has(.product-home) .topbar,
+  body:has(.quizstrike-page) .topbar,
+  body:has(.quizstrike-auth-layout) .topbar,
+  body:has(.student-join-screen:not(.game-layout)) .topbar { min-height: 72px; padding-inline: 14px; }
+  body:has(.product-home) .brand-button,
+  body:has(.quizstrike-page) .brand-button,
+  body:has(.quizstrike-auth-layout) .brand-button,
+  body:has(.student-join-screen:not(.game-layout)) .brand-button { min-width: 100px; min-height: 56px; }
+  body:has(.product-home) .top-actions,
+  body:has(.quizstrike-page) .top-actions,
+  body:has(.quizstrike-auth-layout) .top-actions,
+  body:has(.student-join-screen:not(.game-layout)) .top-actions { position: absolute; top: calc(100% + 8px); right: 0; z-index: 12; display: none; min-width: 190px; padding: 8px; border: 1px solid var(--qs-border); border-radius: 12px; background: rgba(5, 14, 31, 0.98); box-shadow: 0 20px 40px rgba(0, 0, 0, 0.35); }
+  body:has(.product-home) .top-actions[data-open="true"],
+  body:has(.quizstrike-page) .top-actions[data-open="true"],
+  body:has(.quizstrike-auth-layout) .top-actions[data-open="true"],
+  body:has(.student-join-screen:not(.game-layout)) .top-actions[data-open="true"] { display: grid; }
+  body:has(.product-home) .top-actions button,
+  body:has(.quizstrike-page) .top-actions button,
+  body:has(.quizstrike-auth-layout) .top-actions button,
+  body:has(.student-join-screen:not(.game-layout)) .top-actions button { width: 100%; justify-content: flex-start; }
+  .site-home,
+  .landing-section,
+  .landing-final-cta,
+  .quizstrike-route-hero,
+  .quizstrike-auth-layout,
+  .student-join-screen { width: min(100% - 32px, 700px); }
+  .student-join-screen { min-height: auto; padding: 36px 0 54px; }
+  .student-join-help h1 { font-size: clamp(3rem, 14vw, 4.7rem); }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  body:has(.product-home) *,
+  body:has(.quizstrike-page) *,
+  body:has(.quizstrike-auth-layout) *,
+  body:has(.student-join-screen:not(.game-layout)) * { scroll-behavior: auto !important; transition-duration: 0.01ms !important; animation-duration: 0.01ms !important; animation-iteration-count: 1 !important; }
+}
+
+@media (min-width: 701px) {
+  .student-join-screen {
+    align-items: center;
+    padding: clamp(24px, 10vh, 96px) 28px 28px;
+  }
+}
+.student-join-screen { min-height:100vh; display:flex; align-items:flex-start; justify-content:center; padding:42vh 28px 28px; background-color:rgba(255,255,255,.76); background-image:url('/assets/quizstrike-classroom-hero.png'); background-size:cover; background-position:center; background-blend-mode:screen; }
+.student-join-help { display:none; }
+.student-join-form { width:min(460px,calc(100vw - 36px)); display:grid; gap:12px; border:0; border-radius:0; background:transparent; box-shadow:none; padding:0; }
+.student-join-form input { min-height:116px; border:4px solid #080808; border-radius:2px; background:rgba(255,255,255,.96); color:#111; font-size:clamp(2rem,5vw,3.8rem); font-weight:850; text-align:center; text-transform:uppercase; }
+.student-join-form input::placeholder { color:#999; opacity:1; }
+.student-join-form button.primary { min-height:120px; border:6px solid #080808; border-radius:5px; background:#fff900; color:#050505; font-size:clamp(2.2rem,6vw,4rem); font-weight:950; text-transform:uppercase; }
+@media (max-width:700px) {
+  .student-join-screen { align-items:center; padding:18px; }
+  .student-join-form input { min-height:92px; }
+  .student-join-form button.primary { min-height:94px; }
+}
+
+.student-join-form {
+  gap: 16px;
+  border: 4px solid #080808;
+  border-radius: 10px;
+  padding: 18px;
+  background: rgba(255,255,255,.96);
+  box-shadow: 0 22px 60px rgba(4,12,24,.24);
+}
+
+.student-join-form .join-field {
+  display: grid;
+  gap: 7px;
+}
+
+.join-field-label {
+  color: #111;
+  font-size: .86rem;
+  font-weight: 950;
+  letter-spacing: .08em;
+  text-transform: uppercase;
+}
+
+.student-join-form .join-field small {
+  color: #4f5d69;
+  font-size: .78rem;
+  font-weight: 700;
+  line-height: 1.35;
+}
+
+.student-join-form input {
+  min-height: 84px;
+  border-width: 3px;
+  font-size: clamp(1.65rem, 4vw, 2.6rem);
+}
+
+.student-join-form button.primary {
+  min-height: 92px;
+  border-width: 4px;
+  font-size: clamp(1.9rem, 5vw, 3rem);
+}
+
+.student-join-tips {
+  border: 1px solid #cfe0ef;
+  border-radius: 8px;
+  padding: 8px 10px;
+  background: #f6fbff;
+}
+
+.student-join-tips summary {
+  cursor: pointer;
+  color: #164a70;
+  font-size: .82rem;
+  font-weight: 900;
+}
+
+.student-join-tips p {
+  margin: 7px 0 0;
+  color: #4f5d69;
+  font-size: .8rem;
+  line-height: 1.35;
+}
+
+@media (max-width: 780px) {
+
+  .student-join-screen { padding: 24px 18px; }
+  .student-join-form { width: min(500px, 100%); }
+  .student-join-form input { min-height: 70px; }
+  .student-join-form button.primary { min-height: 76px; }
+}
+@media (min-width: 701px) {
+  .student-join-screen {
+    align-items: center;
+    padding: clamp(24px, 7vh, 72px) 28px 28px;
+  }
+}
+body:has(.product-home) .topbar,
+body:has(.quizstrike-page) .topbar,
+body:has(.quizstrike-auth-layout) .topbar,
+body:has(.student-join-screen:not(.game-layout)) .topbar { flex-direction: row; align-items: center; }
+body:has(.product-home) .brand-button,
+body:has(.quizstrike-page) .brand-button,
+body:has(.quizstrike-auth-layout) .brand-button,
+body:has(.student-join-screen:not(.game-layout)) .brand-button { width: auto; flex: 0 0 auto; justify-content: center; }
+body:has(.product-home) .topbar,
+body:has(.quizstrike-page) .topbar,
+body:has(.quizstrike-auth-layout) .topbar,
+body:has(.student-join-screen:not(.game-layout)) .topbar { position: relative; z-index: 20; }
+body:has(.product-home), body:has(.quizstrike-page), body:has(.quizstrike-auth-layout), body:has(.student-join-screen:not(.game-layout)) { background: var(--qs-page); color: var(--qs-ink); }
+body:has(.product-home) p, body:has(.quizstrike-page) p, body:has(.quizstrike-auth-layout) p, body:has(.student-join-screen:not(.game-layout)) p { color: var(--qs-muted); }
+body:has(.product-home) .topbar, body:has(.quizstrike-page) .topbar, body:has(.quizstrike-auth-layout) .topbar, body:has(.student-join-screen:not(.game-layout)) .topbar { min-height: 80px; height: auto; padding: 8px clamp(18px, 4vw, 52px); border-bottom: 1px solid rgba(122, 166, 221, 0.24); background: rgba(5, 11, 27, 0.94); color: var(--qs-ink); box-shadow: 0 12px 30px rgba(0, 0, 0, 0.18); }
+body:has(.product-home) .brand-button, body:has(.quizstrike-page) .brand-button, body:has(.quizstrike-auth-layout) .brand-button, body:has(.student-join-screen:not(.game-layout)) .brand-button { min-width: 128px; min-height: 62px; padding: 0; border: 0; background: transparent; }
+body:has(.product-home) .top-actions button, body:has(.quizstrike-page) .top-actions button, body:has(.quizstrike-auth-layout) .top-actions button, body:has(.student-join-screen:not(.game-layout)) .top-actions button { min-height: 48px; border: 1px solid var(--qs-border); border-radius: 10px; padding-inline: 18px; background: rgba(12, 28, 58, 0.72); color: var(--qs-ink); font-size: 0.92rem; font-weight: 850; }
+body:has(.product-home) .top-actions button:hover, body:has(.quizstrike-page) .top-actions button:hover, body:has(.quizstrike-auth-layout) .top-actions button:hover, body:has(.student-join-screen:not(.game-layout)) .top-actions button:hover, body:has(.product-home) .top-actions button:focus-visible, body:has(.quizstrike-page) .top-actions button:focus-visible, body:has(.quizstrike-auth-layout) .top-actions button:focus-visible { border-color: var(--qs-blue); background: rgba(35, 91, 162, 0.55); color: #ffffff; }
+body:has(.product-home) button.primary, body:has(.quizstrike-page) button.primary, body:has(.quizstrike-auth-layout) button.primary, body:has(.student-join-screen:not(.game-layout)) button.primary { border-color: #3bd39a; background: #14825a; color: #ffffff; }
+.auth-kicker { width: fit-content; color: #72d8ff; font-weight: 900; text-transform: uppercase; }
+.student-join-screen { min-height: calc(100vh - 80px); width: min(1180px, calc(100% - 48px)); margin: 0 auto; align-items: center; gap: clamp(24px, 7vw, 90px); padding: clamp(38px, 7vh, 86px) 0; background: transparent; }
+.student-join-help { display: grid; align-content: center; gap: 16px; max-width: 550px; }
+.student-join-help .quizstrike-logo { margin-bottom: 12px; }
+.student-join-help h1 { margin: 0; color: #ffffff; font-size: clamp(3.2rem, 6vw, 5.8rem); letter-spacing: -0.06em; }
+.student-join-help > p { margin: 0; font-size: 1.08rem; line-height: 1.55; }
+.student-join-form { align-self: center; width: min(480px, 100%); gap: 16px; border: 1px solid rgba(126, 166, 220, 0.38); border-radius: 18px; padding: clamp(22px, 3vw, 34px); background: rgba(10, 23, 49, 0.92); box-shadow: 0 24px 68px rgba(0, 0, 0, 0.3); }
+.student-join-form .join-field-label { color: #d7e6fa; font-size: 0.82rem; }
+.student-join-form input { min-height: 58px; border: 1px solid rgba(126, 166, 220, 0.44); border-radius: 10px; background: rgba(4, 13, 31, 0.88); color: #ffffff; font-size: 1.2rem; text-align: left; }
+.student-join-form input::placeholder { color: #7589a5; }
+.student-join-form .join-field small, .student-join-tips p { color: #8fa6c0; }
+.student-join-tips { border-color: rgba(126, 166, 220, 0.28); background: rgba(15, 35, 70, 0.55); }
+.student-join-tips summary { color: #bce5ff; }
+@media (max-width: 980px) { .student-join-screen { grid-template-columns: 1fr; } .student-join-help { max-width: 700px; } .student-join-form { width: min(620px, 100%); justify-self: center; } }
+@media (max-width: 760px) { body:has(.product-home) .topbar, body:has(.quizstrike-page) .topbar, body:has(.quizstrike-auth-layout) .topbar, body:has(.student-join-screen:not(.game-layout)) .topbar { min-height: 72px; padding-inline: 14px; } body:has(.product-home) .brand-button, body:has(.quizstrike-page) .brand-button, body:has(.quizstrike-auth-layout) .brand-button, body:has(.student-join-screen:not(.game-layout)) .brand-button { min-width: 100px; min-height: 56px; } body:has(.product-home) .top-actions, body:has(.quizstrike-page) .top-actions, body:has(.quizstrike-auth-layout) .top-actions, body:has(.student-join-screen:not(.game-layout)) .top-actions { position: absolute; top: calc(100% + 8px); right: 0; z-index: 12; display: none; min-width: 190px; padding: 8px; border: 1px solid var(--qs-border); border-radius: 12px; background: rgba(5, 14, 31, 0.98); } body:has(.product-home) .top-actions[data-open="true"], body:has(.quizstrike-page) .top-actions[data-open="true"], body:has(.quizstrike-auth-layout) .top-actions[data-open="true"], body:has(.student-join-screen:not(.game-layout)) .top-actions[data-open="true"] { display: grid; } body:has(.product-home) .top-actions button, body:has(.quizstrike-page) .top-actions button, body:has(.quizstrike-auth-layout) .top-actions button, body:has(.student-join-screen:not(.game-layout)) .top-actions button { width: 100%; justify-content: flex-start; } .site-home, .landing-section, .landing-final-cta, .quizstrike-route-hero, .quizstrike-auth-layout, .student-join-screen { width: min(100% - 32px, 700px); } .student-join-screen { min-height: auto; padding: 36px 0 54px; } .student-join-help h1 { font-size: clamp(3rem, 14vw, 4.7rem); } }
+@media (prefers-reduced-motion: reduce) { body:has(.product-home) *, body:has(.quizstrike-page) *, body:has(.quizstrike-auth-layout) *, body:has(.student-join-screen:not(.game-layout)) * { scroll-behavior: auto !important; transition-duration: 0.01ms !important; animation-duration: 0.01ms !important; animation-iteration-count: 1 !important; } }
+

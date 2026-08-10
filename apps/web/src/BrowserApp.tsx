@@ -2,10 +2,10 @@ import { lazy, Suspense, useCallback, useEffect, useState } from "react";
 import StudentJoinScreen from "./features/quizstrike/student/StudentJoinScreen";
 import { normalizeRoutePath } from "./navigation";
 
-const QuizStrikeApp = lazy(() => import("./App"));
+const QuizStrikeApp = lazy(() => import("./QuizStrikeAppEntry"));
 
 const loadingFallback = (
-  <section className="auth-layout student-join-screen" aria-live="polite">
+  <section className="app-loading-screen" aria-live="polite">
     <div className="panel form-panel"><p>Loading QuizStrike…</p></div>
   </section>
 );

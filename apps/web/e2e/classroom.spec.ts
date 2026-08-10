@@ -69,6 +69,48 @@ const createClassroom = async (
   return { code: session.sessionCode, teacherToken: token };
 };
 
+test("join route stays within the viewport and does not load app CSS", async ({ page }) => {
+  for (const viewport of [
+    { width: 1920, height: 1080 },
+    { width: 1366, height: 768 },
+    { width: 1280, height: 800 }
+  ]) {
+    await page.setViewportSize(viewport);
+    await page.goto("/join");
+    await expect(page.getByPlaceholder("Player name")).toBeVisible();
+    const metrics = await page.evaluate(() => {
+      const screen = document.querySelector<HTMLElement>(".game-join-screen")!;
+      const form = document.querySelector<HTMLElement>(".student-join-form")!;
+      const input = form.querySelector<HTMLInputElement>("input")!;
+      const button = form.querySelector<HTMLButtonElement>("button.primary")!;
+      const screenBox = screen.getBoundingClientRect();
+      return {
+        viewportWidth: window.innerWidth,
+        documentWidth: document.documentElement.scrollWidth,
+        screenBox: { left: screenBox.left, width: screenBox.width },
+        formBackground: getComputedStyle(form).backgroundColor,
+        inputBackground: getComputedStyle(input).backgroundColor,
+        inputMinHeight: getComputedStyle(input).minHeight,
+        buttonBackground: getComputedStyle(button).backgroundColor,
+        buttonBorderRadius: getComputedStyle(button).borderRadius,
+        stylesheets: [...document.styleSheets]
+          .map((sheet) => sheet.href)
+          .filter((href): href is string => Boolean(href))
+          .map((href) => new URL(href).pathname)
+      };
+    });
+    expect(metrics.documentWidth).toBeLessThanOrEqual(metrics.viewportWidth + 1);
+    expect(metrics.screenBox.left).toBeCloseTo((metrics.viewportWidth - metrics.screenBox.width) / 2, 0);
+    expect(metrics.formBackground).toBe("rgba(10, 23, 49, 0.92)");
+    expect(metrics.inputBackground).toBe("rgba(4, 13, 31, 0.88)");
+    expect(metrics.inputMinHeight).toBe("58px");
+    expect(metrics.buttonBackground).toBe("rgb(20, 130, 90)");
+    expect(metrics.buttonBorderRadius).toBe("5px");
+    expect(metrics.stylesheets).toHaveLength(1);
+    expect(metrics.stylesheets[0]).toMatch(/^\/assets\/index-[^/]+\.css$/u);
+  }
+});
+
 test("student customizes, reloads, and receives match start over Socket.IO", async ({ page, request }, testInfo) => {
   const classroom = await createClassroom(request);
   const browserStartedAt = performance.now();
