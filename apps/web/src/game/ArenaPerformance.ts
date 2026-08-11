@@ -86,3 +86,76 @@ export class ArenaPerformanceCapture {
     this.observer?.disconnect();
   }
 }
+
+export type AdaptiveArenaQuality = "performance" | "balanced" | "high";
+export type QualityAdjustmentDirection = "lower" | "raise";
+export type QualityAdjustment = {
+  quality: AdaptiveArenaQuality;
+  direction: QualityAdjustmentDirection;
+};
+
+const QUALITY_ORDER: AdaptiveArenaQuality[] = ["performance", "balanced", "high"];
+
+/**
+ * Uses sustained in-game frame samples with hysteresis. It deliberately does
+ * not react to one slow frame or one loading spike.
+ */
+export class AutoGraphicsQualityController {
+  private poorSamples = 0;
+  private excellentSamples = 0;
+  private lastChangeAt = Number.NEGATIVE_INFINITY;
+
+  constructor(
+    private currentQuality: AdaptiveArenaQuality,
+    private readonly options: {
+      poorSampleCount?: number;
+      excellentSampleCount?: number;
+      cooldownMs?: number;
+      poorFps?: number;
+      poorP95Ms?: number;
+      excellentFps?: number;
+      excellentP95Ms?: number;
+    } = {}
+  ) {}
+
+  get quality() {
+    return this.currentQuality;
+  }
+
+  update(snapshot: Pick<ArenaPerformanceSnapshot, "frames" | "sampleSeconds" | "fps" | "frameMsP95">, nowMs = performance.now()): QualityAdjustment | undefined {
+    if (
+      snapshot.frames < 30
+      || snapshot.sampleSeconds < 0.75
+      || !Number.isFinite(snapshot.fps)
+      || !Number.isFinite(snapshot.frameMsP95)
+    ) return undefined;
+
+    const poor = snapshot.fps < (this.options.poorFps ?? 38) || snapshot.frameMsP95 > (this.options.poorP95Ms ?? 28);
+    const excellent = snapshot.fps >= (this.options.excellentFps ?? 57) && snapshot.frameMsP95 <= (this.options.excellentP95Ms ?? 18);
+    this.poorSamples = poor ? this.poorSamples + 1 : 0;
+    this.excellentSamples = excellent ? this.excellentSamples + 1 : 0;
+    if (nowMs - this.lastChangeAt < (this.options.cooldownMs ?? 20_000)) return undefined;
+
+    if (this.poorSamples >= (this.options.poorSampleCount ?? 3)) {
+      const index = QUALITY_ORDER.indexOf(this.currentQuality);
+      if (index > 0) {
+        this.currentQuality = QUALITY_ORDER[index - 1]!;
+        this.lastChangeAt = nowMs;
+        this.poorSamples = 0;
+        this.excellentSamples = 0;
+        return { quality: this.currentQuality, direction: "lower" };
+      }
+    }
+    if (this.excellentSamples >= (this.options.excellentSampleCount ?? 8)) {
+      const index = QUALITY_ORDER.indexOf(this.currentQuality);
+      if (index < QUALITY_ORDER.length - 1) {
+        this.currentQuality = QUALITY_ORDER[index + 1]!;
+        this.lastChangeAt = nowMs;
+        this.poorSamples = 0;
+        this.excellentSamples = 0;
+        return { quality: this.currentQuality, direction: "raise" };
+      }
+    }
+    return undefined;
+  }
+}

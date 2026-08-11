@@ -30,6 +30,8 @@ import { createRoundRuntime, type RoundRuntimeDependencies } from "./roundRuntim
 import { ConnectionLifecycleService } from "./connectionLifecycle.js";
 import { PersistenceScheduler } from "./persistence/persistenceScheduler.js";
 import { PlayerPositionHistory } from "./playerPositionHistory.js";
+import { pauseSessionForTeacher, resumeSessionForTeacher } from "./teacherPause.js";
+import { shiftTeacherPauseRuntimeTimers } from "./teacherPauseRuntime.js";
 import { NetworkMetrics } from "./networkMetrics.js";
 import { loadServerConfig } from "./config.js";
 import { announcementForFreezeStreak, incrementFreezeStreak } from "./freezeStreaks.js";
@@ -121,6 +123,8 @@ import {
   sanitizePlayerAppearance,
   sanitizeCharacterCustomizationSettings,
   getPlayerAppearanceError,
+  buildLearningPulse,
+  isTeacherPaused,
   type AnswerLog,
   type ArenaPosition,
   type BotDifficulty,
@@ -140,6 +144,7 @@ import {
   type SessionReport,
   type StudentLearningReport,
   type SessionSettings,
+  type LearningPulse,
   type TeacherUser,
   type Team
 } from "@quizstrike/shared";
@@ -253,6 +258,7 @@ const aiSkinProviderConfigured = false;
 type SocketPlayerBinding = { sessionCode: string; playerId: string };
 const playerSocketKey = (sessionCode: string, playerId: string) => `${sessionCode}:${playerId}`;
 const gameplayRoom = (sessionCode: string) => `${sessionCode}:players`;
+const teacherRoom = (sessionCode: string) => `${sessionCode}:teachers`;
 
 const emitFlagPlanted = (session: GameSession, player: PlayerSession) => {
   const flag = session.flag;
@@ -314,7 +320,10 @@ type PersistedRuntimeState = {
 const runtimeSnapshotId = "primary";
 
 const getPersistedRuntimeState = (): PersistedRuntimeState => ({
-  sessions: [...sessions.values()],
+  sessions: [...sessions.values()].map((session) => {
+    const { learningPulse: _learningPulse, serverTime: _serverTime, ...persistedSession } = session;
+    return persistedSession as GameSession;
+  }),
   answers: [...answers],
   competitions: [...competitionState.competitions.values()],
   competitionNotifications: [...competitionState.notifications.values()],
@@ -385,6 +394,8 @@ const hydrateRuntimeState = async () => {
   for (const folder of savedFolders) if (folder?.id && !folders.has(folder.id)) folders.set(folder.id, folder);
   for (const session of savedSessions) {
     if (!session?.id) continue;
+    session.learningPulse = undefined;
+    session.serverTime = undefined;
     session.settings = sanitizeSessionSettings(session.settings);
     session.players = Array.isArray(session.players)
       ? session.players.map((player) => ({
@@ -631,10 +642,35 @@ const issueNextQuestion = (session: GameSession, playerId: string): PublicQuesti
   return question;
 };
 
-const stampSession = (session: GameSession) => {
-  session.serverTime = now();
-  return session;
+const learningPulseCache = new Map<string, { sourceSignature: string; pulse: LearningPulse }>();
+
+const getLearningPulse = (session: GameSession): LearningPulse => {
+  const questions = quizSets.get(session.quizSetId)?.questions ?? [];
+  const sourceSignature = JSON.stringify({
+    questions: questions.map((question) => [question.id, question.prompt]),
+    botIds: session.players.filter((player) => player.isBot).map((player) => player.id).sort()
+  });
+  const cached = learningPulseCache.get(session.id);
+  if (cached?.sourceSignature === sourceSignature) return cached.pulse;
+  const pulse = buildLearningPulse({
+    sessionId: session.id,
+    players: session.players,
+    answers,
+    questions
+  });
+  learningPulseCache.set(session.id, { sourceSignature, pulse });
+  return pulse;
 };
+
+const stampSession = (session: GameSession): GameSession => {
+  const { learningPulse: _learningPulse, ...publicSession } = session;
+  return { ...publicSession, serverTime: now() };
+};
+
+const stampTeacherSession = (session: GameSession): GameSession => ({
+  ...stampSession(session),
+  learningPulse: getLearningPulse(session)
+});
 
 type LivePositionPayload = {
   playerId: string;
@@ -652,6 +688,9 @@ let positionBroadcastTimer: ReturnType<typeof setTimeout> | undefined;
 const roomBroadcaster = createRoomBroadcaster({
   io,
   stampSession,
+  stampTeacherSession,
+  getLearningPulse,
+  teacherRoom,
   schedulePersistence,
   sessionBroadcastWindowMs: SESSION_BROADCAST_WINDOW_MS
 });
@@ -840,7 +879,8 @@ const deleteHistoryForTeacher = async (teacherId: string) => {
     roomAuthority.release(session.id);
     purgeSessionDecals(session);
     pendingPositionBroadcasts.delete(session.sessionCode);
-    botAlertsBySession.delete(session.id);
+    botAlertsBySession.delete(session.sessionCode);
+    learningPulseCache.delete(session.id);
     for (const player of session.players) {
       playerQuestionHistory.delete(player.id);
       const socketKey = playerSocketKey(session.sessionCode, player.id);
@@ -905,6 +945,26 @@ const {
   finishZombieMatchIfComplete,
   evaluateFlagEliminationWin
 } = roundRuntime;
+
+const pauseSession = (session: GameSession) => pauseSessionForTeacher(session);
+const resumeSession = (session: GameSession) => {
+  const result = resumeSessionForTeacher(session);
+  if (result.ok && result.changed) {
+    shiftTeacherPauseRuntimeTimers({
+      session,
+      deltaMs: result.pausedDurationMs ?? 0,
+      playerMoveTimestamps,
+      playerNextFireAt,
+      botRespawnAt,
+      botNextAttackAt,
+      playerQuestionGate,
+      playerPositionHistory,
+      botMemoryById,
+      botAlertsBySession
+    });
+  }
+  return result;
+};
 
 const combatService = new CombatService({
   io,
@@ -1234,7 +1294,7 @@ const teacherLibraryRouteDependencies: TeacherLibraryRouteDependencies = {
   now,
   id,
   schedulePersistence,
-  stampSession
+  stampSession: stampTeacherSession
 };
 
 registerTeacherDashboardRoute(app, teacherLibraryRouteDependencies);
@@ -1317,13 +1377,16 @@ const sessionRouteDependencies: SessionRouteDependencies = {
   normalizedLibrary,
   mirrorNormalized,
   schedulePersistence,
-  stampSession,
+  stampSession: stampTeacherSession,
+  stampPublicSession: stampSession,
   getSessionByCode,
   routeParam,
   canStartRound,
   openRoundPreparation,
   openZombieSelectionPhase,
   startRoundState,
+  pauseSession,
+  resumeSession,
   makeAnnouncement,
   roundStartAnnouncementMs: ROUND_START_ANNOUNCEMENT_MS,
   respawnCorrectAnswersRequired: RESPAWN_CORRECT_ANSWERS_REQUIRED,
@@ -1376,6 +1439,9 @@ const answerQuestion = (
   player: PlayerSession,
   body: { questionId?: unknown; selectedChoice?: unknown }
 ): StudentCommandResult<{ result: QuizResult; cosmeticProgressToken: string }> => {
+  if (isTeacherPaused(session)) {
+    return failStudentCommand(409, "The game is paused by the teacher. Wait for the game to resume.");
+  }
   if (session.status !== "active" && !isRoundPreparationPhase(session) && !isZombieSelectionPhase(session)) {
     return failStudentCommand(400, inactiveRoundMessage(session));
   }
@@ -1446,6 +1512,7 @@ const answerQuestion = (
     context: answerContext
   };
   answers.push(answer);
+  learningPulseCache.delete(session.id);
   // Keep the authoritative game history recoverable if a student reconnects
   // during a later round or the process is restarted before game end.
   schedulePersistence();
@@ -1506,6 +1573,9 @@ const answerQuestion = (
 };
 
 const buyGear = (session: GameSession, player: PlayerSession, gearId: unknown): StudentCommandResult<GearPurchaseResponse> => {
+  if (isTeacherPaused(session)) {
+    return failStudentCommand(409, "The game is paused by the teacher. Wait for the game to resume.");
+  }
   const gear = GEAR_ITEMS.find((item) => item.id === gearId);
   if (!isRoundActive(session) && !isRoundPreparationPhase(session)) {
     return failStudentCommand(400, "The round has ended. Gear buying is closed.");
@@ -1554,6 +1624,9 @@ const buyGear = (session: GameSession, player: PlayerSession, gearId: unknown): 
 };
 
 const buySnowballs = (session: GameSession, player: PlayerSession): StudentCommandResult<SnowballPurchaseResponse> => {
+  if (isTeacherPaused(session)) {
+    return failStudentCommand(409, "The game is paused by the teacher. Wait for the game to resume.");
+  }
   if (!isRoundActive(session) && !isRoundPreparationPhase(session)) {
     return failStudentCommand(400, "The round has ended. Snowball buying is closed.");
   }
@@ -1732,6 +1805,9 @@ io.on("connection", (socket) => {
     } else {
       const teacher = getTeacherFromToken(command.teacherToken);
       if (!teacher || teacher.id !== session.teacherId) return;
+      socket.join(teacherRoom(session.sessionCode));
+      socket.emit("session_state", stampTeacherSession(session));
+      return;
     }
 
     socket.join(session.sessionCode);
@@ -1813,7 +1889,7 @@ io.on("connection", (socket) => {
     const student = getBoundStudent(socket);
     if (!student) return;
     const { session, player } = student;
-    if (!player.isAlive) return;
+    if (isTeacherPaused(session) || !player.isAlive) return;
     const position = applyAuthoritativePosition(session, player, command);
     const authoritativePosition = {
       playerId: player.id,
@@ -1834,6 +1910,10 @@ io.on("connection", (socket) => {
     const student = getBoundStudent(socket);
     if (!student) return;
     const { session, player: attacker } = student;
+    if (isTeacherPaused(session)) {
+      socket.emit("error_message", { error: "The game is paused by the teacher. Wait for the game to resume." });
+      return;
+    }
     if (session.status !== "active") {
       socket.emit("error_message", { error: inactiveRoundMessage(session) });
       return;
@@ -1921,7 +2001,7 @@ io.on("connection", (socket) => {
     const student = getBoundStudent(socket);
     if (!student) return;
     const { session, player } = student;
-    if (session.status !== "active" || session.settings.gameMode !== "flag" || !player.isAlive) return;
+    if (isTeacherPaused(session) || session.status !== "active" || session.settings.gameMode !== "flag" || !player.isAlive) return;
     const position = applyAuthoritativePosition(session, player, command);
     const previousState = session.flag?.state;
     session.flag = resolveFlagPickup(session.flag ?? createInitialFlagState(sessionSpawn(session, "red")), player);

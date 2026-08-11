@@ -14,6 +14,10 @@ type SessionFixture = {
   id: string;
   sessionCode: string;
   players: PlayerFixture[];
+  status?: "waiting" | "active" | "paused" | "ended";
+  controlState?: "running" | "teacher_paused";
+  teacherPausedAt?: string;
+  learningPulse?: unknown;
 };
 
 type PlayerFixture = {
@@ -26,6 +30,10 @@ type PlayerFixture = {
   energy?: number;
   connectionState?: string;
   cosmeticXp?: number;
+  x?: number;
+  y?: number;
+  z?: number;
+  facing?: number;
   appearance?: AppearanceFixture;
 };
 
@@ -178,6 +186,19 @@ const connectStudentSocket = (
       playerId: student.player.id,
       playerToken: student.playerToken
     });
+  });
+  socket.connect();
+  return { socket, initialState };
+};
+
+const connectTeacherSocket = (
+  sessionCode: string,
+  teacherToken: string
+): { socket: ClientSocket; initialState: Promise<SessionFixture> } => {
+  const socket = createSocket(baseUrl, { autoConnect: false, transports: ["websocket"], reconnection: false });
+  const initialState = waitForSessionState(socket, () => true, 10_000);
+  socket.on("connect", () => {
+    socket.emit("join_session_room", { code: sessionCode, teacherToken });
   });
   socket.connect();
   return { socket, initialState };
@@ -476,6 +497,140 @@ test("live sessions admit late and returning students while teachers can remove 
     api(`/api/sessions/${zombieSession.sessionCode}/end`, { method: "POST", teacherToken: teacher.token }),
     api(`/api/sessions/${flagSession.sessionCode}/end`, { method: "POST", teacherToken: teacher.token })
   ]);
+});
+
+test("teacher pause is owner-only, blocks student commands, and is authoritative on reconnect", { timeout: 30_000 }, async () => {
+  const teacher = await createTeacherWithQuiz();
+  const otherTeacher = await createTeacherWithQuiz();
+  const session = await createSession(teacher, {
+    maxPlayers: 4,
+    gameMode: "classic",
+    roundDurationSeconds: 120
+  });
+  const student = await joinSession(session.sessionCode, "Pause Student");
+
+  const connected = connectStudentSocket(session.sessionCode, student);
+  const teacherConnection = connectTeacherSocket(session.sessionCode, teacher.token);
+  await connected.initialState;
+  const teacherInitialState = await teacherConnection.initialState;
+  assert.equal("learningPulse" in teacherInitialState, true);
+  const started = await api(`/api/sessions/${session.sessionCode}/start`, {
+    method: "POST",
+    teacherToken: teacher.token
+  });
+  assert.equal(started.response.status, 200);
+
+  const anonymousPause = await api(`/api/sessions/${session.sessionCode}/pause`, { method: "POST" });
+  assert.equal(anonymousPause.response.status, 401);
+  const otherTeacherPause = await api(`/api/sessions/${session.sessionCode}/pause`, {
+    method: "POST",
+    teacherToken: otherTeacher.token
+  });
+  assert.equal(otherTeacherPause.response.status, 404);
+
+  const paused = await api<{ session: SessionFixture; changed: boolean }>(`/api/sessions/${session.sessionCode}/pause`, {
+    method: "POST",
+    teacherToken: teacher.token
+  });
+  assert.equal(paused.response.status, 200);
+  assert.equal(paused.body.changed, true);
+  assert.equal(paused.body.session.controlState, "teacher_paused");
+  assert.ok(paused.body.session.teacherPausedAt);
+
+  const repeatedPause = await api<{ changed: boolean }>(`/api/sessions/${session.sessionCode}/pause`, {
+    method: "POST",
+    teacherToken: teacher.token
+  });
+  assert.equal(repeatedPause.response.status, 200);
+  assert.equal(repeatedPause.body.changed, false);
+
+  const beforePlayer = paused.body.session.players.find((player) => player.id === student.player.id)!;
+  connected.socket.emit("player_position", {
+    x: (beforePlayer.x ?? 0) + 20,
+    y: beforePlayer.y,
+    z: beforePlayer.z ?? 0,
+    facing: beforePlayer.facing ?? 0
+  });
+  const pausedFireError = new Promise<{ error?: string }>((resolve, reject) => {
+    const timeout = setTimeout(() => reject(new Error("Timed out waiting for paused fire rejection.")), 5_000);
+    connected.socket.once("error_message", (payload) => {
+      clearTimeout(timeout);
+      resolve(payload);
+    });
+  });
+  connected.socket.emit("fire_action", {
+    requestId: `paused-fire-${Date.now()}`,
+    x: beforePlayer.x ?? 0,
+    y: beforePlayer.y,
+    z: beforePlayer.z ?? 0,
+    facing: beforePlayer.facing ?? 0
+  });
+  assert.match((await pausedFireError).error ?? "", /paused by the teacher/i);
+
+  const blockedAnswer = await api(`/api/sessions/${session.sessionCode}/players/${student.player.id}/answer`, {
+    method: "POST",
+    playerToken: student.playerToken,
+    body: { questionId: student.question?.id, selectedChoice: "A" }
+  });
+  assert.equal(blockedAnswer.response.status, 409);
+  const blockedPurchase = await api(`/api/sessions/${session.sessionCode}/players/${student.player.id}/buy`, {
+    method: "POST",
+    playerToken: student.playerToken,
+    body: { gearId: "starter_blaster" }
+  });
+  assert.equal(blockedPurchase.response.status, 409);
+
+  await new Promise((resolve) => setTimeout(resolve, 100));
+  const studentSnapshot = await api<{ session: SessionFixture }>(`/api/sessions/${session.sessionCode}`, {
+    playerToken: student.playerToken
+  });
+  assert.equal(studentSnapshot.response.status, 200);
+  const afterPlayer = studentSnapshot.body.session.players.find((player) => player.id === student.player.id)!;
+  assert.equal(afterPlayer.x, beforePlayer.x);
+  assert.equal(afterPlayer.z, beforePlayer.z);
+  assert.equal("learningPulse" in studentSnapshot.body.session, false);
+
+  connected.socket.disconnect();
+  const reconnected = connectStudentSocket(session.sessionCode, student);
+  const reconnectState = await reconnected.initialState;
+  assert.equal(reconnectState.controlState, "teacher_paused");
+  assert.equal("learningPulse" in reconnectState, false);
+
+  const resumed = await api<{ session: SessionFixture; changed: boolean }>(`/api/sessions/${session.sessionCode}/resume`, {
+    method: "POST",
+    teacherToken: teacher.token
+  });
+  assert.equal(resumed.response.status, 200);
+  assert.equal(resumed.body.changed, true);
+  assert.equal(resumed.body.session.controlState, "running");
+  assert.equal(resumed.body.session.teacherPausedAt, undefined);
+
+  const publicPlayerState = new Promise<Record<string, unknown>>((resolve, reject) => {
+    const timeout = setTimeout(() => reject(new Error("Timed out waiting for public player state.")), 5_000);
+    reconnected.socket.once("player_state", (payload) => {
+      clearTimeout(timeout);
+      resolve(payload);
+    });
+  });
+  const teacherPlayerState = new Promise<{ learningPulse?: { answersSubmitted?: number } }>((resolve, reject) => {
+    const timeout = setTimeout(() => reject(new Error("Timed out waiting for teacher learning pulse.")), 5_000);
+    teacherConnection.socket.once("player_state", (payload) => {
+      clearTimeout(timeout);
+      resolve(payload);
+    });
+  });
+  const acceptedAnswer = await api(`/api/sessions/${session.sessionCode}/players/${student.player.id}/answer`, {
+    method: "POST",
+    playerToken: student.playerToken,
+    body: { questionId: student.question?.id, selectedChoice: "A" }
+  });
+  assert.equal(acceptedAnswer.response.status, 200);
+  assert.equal("learningPulse" in await publicPlayerState, false);
+  assert.equal((await teacherPlayerState).learningPulse?.answersSubmitted, 1);
+  reconnected.socket.disconnect();
+  teacherConnection.socket.disconnect();
+
+  await api(`/api/sessions/${session.sessionCode}/end`, { method: "POST", teacherToken: teacher.token });
 });
 
 test("a 40-student room keeps bounded appearance state and rejects student 41", { timeout: 30_000 }, async () => {

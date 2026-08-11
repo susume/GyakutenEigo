@@ -37,6 +37,7 @@ import {
   resolveSnowballUse,
   resolveZombieSprintEnergy
 } from "@quizstrike/shared";
+import { isTeacherPaused } from "@quizstrike/shared";
 import {
   BOT_DIFFICULTIES,
   chooseBotRole,
@@ -230,6 +231,7 @@ const advanceBots = () => {
   const currentMs = Date.now();
   for (const session of sessions.values()) {
     if (!ownsRoom(session.id)) continue;
+    if (isTeacherPaused(session)) continue;
     if (session.status !== "active") continue;
     let moved = false;
     session.players.forEach((bot, index) => {

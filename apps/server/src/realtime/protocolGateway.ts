@@ -1,6 +1,6 @@
 import type { Server, Socket } from "socket.io";
 import type { RealtimeEventBus } from "../scaling/runtimeInfrastructure.js";
-import type { GameSession, PlayerSession } from "@quizstrike/shared";
+import type { GameSession, LearningPulse, PlayerSession } from "@quizstrike/shared";
 import {
   CLIENT_COMMAND_TYPES,
   LEGACY_PROTOCOL_VERSION,
@@ -53,6 +53,9 @@ export const createRoomEventPublisher = ({ eventBus, channel, instanceId }: Room
 export interface RoomBroadcastOptions {
   io: Server;
   stampSession: (session: GameSession) => GameSession;
+  stampTeacherSession: (session: GameSession) => GameSession;
+  getLearningPulse: (session: GameSession) => LearningPulse;
+  teacherRoom: (sessionCode: string) => string;
   schedulePersistence: () => void;
   sessionBroadcastWindowMs: number;
 }
@@ -61,6 +64,9 @@ export interface RoomBroadcastOptions {
 export const createRoomBroadcaster = ({
   io,
   stampSession,
+  stampTeacherSession,
+  getLearningPulse,
+  teacherRoom,
   schedulePersistence,
   sessionBroadcastWindowMs
 }: RoomBroadcastOptions) => {
@@ -71,6 +77,7 @@ export const createRoomBroadcaster = ({
     sessionTimer = undefined;
     for (const session of pendingSessions.values()) {
       io.to(session.sessionCode).emit("session_state", stampSession(session));
+      io.to(teacherRoom(session.sessionCode)).emit("session_state", stampTeacherSession(session));
     }
     pendingSessions.clear();
   };
@@ -83,10 +90,15 @@ export const createRoomBroadcaster = ({
 
   const broadcastPlayerState = (session: GameSession, players: PlayerSession[]) => {
     const uniquePlayers = [...new Map(players.map((player) => [player.id, player])).values()];
-    io.to(session.sessionCode).emit("player_state", {
+    const publicState = {
       players: uniquePlayers,
       flag: session.flag,
       recentEvents: session.events?.slice(0, 2)
+    };
+    io.to(session.sessionCode).emit("player_state", publicState);
+    io.to(teacherRoom(session.sessionCode)).emit("player_state", {
+      ...publicState,
+      learningPulse: getLearningPulse(session)
     });
     schedulePersistence();
   };

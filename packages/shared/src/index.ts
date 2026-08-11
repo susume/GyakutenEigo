@@ -1,6 +1,9 @@
+import type { LearningPulse } from "./learningPulse.js";
+
 export type Team = "blue" | "red";
 export * from "./protocol/index.js";
 export type SessionStatus = "waiting" | "active" | "paused" | "ended";
+export type SessionControlState = "running" | "teacher_paused";
 export type Choice = "A" | "B" | "C" | "D";
 export type GameMode = "flag" | "zombie" | "classic";
 export type ArenaMapId = "desert_citadel" | "iron_junction" | "temple_runoff";
@@ -612,6 +615,10 @@ export interface GameSession {
   quizSetId: string;
   sessionCode: string;
   status: SessionStatus;
+  /** Explicit teacher attention state. This is separate from round-result/inter-round `status: "paused"`. */
+  controlState?: SessionControlState;
+  /** Server ISO timestamp captured when the teacher paused the room. */
+  teacherPausedAt?: string;
   maxPlayers: number;
   currentRound: number;
   settings: SessionSettings;
@@ -625,6 +632,8 @@ export interface GameSession {
   startedAt?: string;
   endsAt?: string;
   endedAt?: string;
+  /** Server-derived, class-level academic overview for the current game. */
+  learningPulse?: LearningPulse;
   /** Server clock captured when this session snapshot was sent to a client. */
   serverTime?: string;
 }
@@ -668,6 +677,9 @@ export interface SessionReport {
     misses: number;
   }>;
 }
+
+export const isTeacherPaused = (session: Pick<GameSession, "controlState">) =>
+  session.controlState === "teacher_paused";
 
 /** The compact, subject-neutral answer record used by a student's personal report. */
 export interface StudentAnswerAttempt {
@@ -714,6 +726,7 @@ export interface SessionReportRow {
 }
 
 export * from "./studentLearning.js";
+export * from "./learningPulse.js";
 
 export interface FlagState {
   state: FlagStateName;
@@ -965,6 +978,17 @@ export class PlayerQuestionGate {
 
   clear(playerId: string) {
     this.activeQuestions.delete(playerId);
+  }
+
+  /** Freeze response-time accounting across a teacher pause. */
+  shiftTimestamps(deltaMs: number, playerIds?: Iterable<string>) {
+    if (!Number.isFinite(deltaMs) || deltaMs <= 0) return;
+    const includedPlayers = playerIds ? new Set(playerIds) : undefined;
+    for (const [playerId, active] of this.activeQuestions) {
+      if (includedPlayers && !includedPlayers.has(playerId)) continue;
+      active.servedAtMs += deltaMs;
+      this.activeQuestions.set(playerId, active);
+    }
   }
 }
 

@@ -43,7 +43,7 @@ import { cycleHeavyGunZoom, getWeaponFov, shouldResetWeaponZoom } from "./weapon
 import { resolveTouchJoystickVector } from "./touchJoystick";
 import { emitArenaVfx } from "./ArenaVfx";
 import { emitArenaAnimation } from "./ArenaAnimation";
-import { ArenaPerformanceCapture, type ArenaPerformanceSnapshot } from "./ArenaPerformance";
+import { ArenaPerformanceCapture, AutoGraphicsQualityController, type ArenaPerformanceSnapshot } from "./ArenaPerformance";
 import {
   readGamePreferences,
   resolveArenaQuality,
@@ -292,7 +292,11 @@ export default function ArenaPreview({
   const [weaponCooldown, setWeaponCooldown] = useState<{ startedAt: number; durationMs: number } | null>(null);
   const [miniMapPosition, setMiniMapPosition] = useState<ArenaLivePosition | null>(null);
   const [renderError, setRenderError] = useState("");
-  const [fallbackQuality, setFallbackQuality] = useState<ArenaQuality | null>(null);
+  const [fallbackQuality, setFallbackQuality] = useState<Exclude<ArenaQuality, "auto"> | null>(null);
+  const [autoResolvedQuality, setAutoResolvedQuality] = useState<Exclude<ArenaQuality, "auto">>(() => resolveArenaQuality("auto"));
+  const [autoQualityNotice, setAutoQualityNotice] = useState(false);
+  const autoQualityControllerRef = useRef<AutoGraphicsQualityController | null>(null);
+  const autoQualityNoticeShownRef = useRef(false);
   const [characterDebugStats, setCharacterDebugStats] = useState<CharacterManagerStats | null>(null);
   const [performanceSnapshot, setPerformanceSnapshot] = useState<ArenaPerformanceSnapshot | null>(null);
   const previousWeaponRef = useRef<string | null>(null);
@@ -313,7 +317,8 @@ export default function ArenaPreview({
     isTempleRunoff,
     hasMultipleLevels
   } = useMemo(() => loadArenaMapContext(arenaMapId), [arenaMapId]);
-  const activeQuality = resolveArenaQuality(fallbackQuality ?? quality);
+  const activeQuality = fallbackQuality
+    ?? (quality === "auto" ? autoResolvedQuality : quality);
   const serverToLocalX = useCallback((x: number) => clamp(x, -arenaBounds.limitX, arenaBounds.limitX), [arenaBounds.limitX]);
   const serverToLocalZ = useCallback((z: number) => clamp(z, -arenaBounds.limitZ, arenaBounds.limitZ), [arenaBounds.limitZ]);
   const localToServerPosition = useCallback((position: THREE.Vector3, facing: number): ArenaLivePosition => ({
@@ -327,7 +332,20 @@ export default function ArenaPreview({
 
   useEffect(() => {
     setFallbackQuality(null);
+    const initialAutoQuality = resolveArenaQuality("auto");
+    setAutoResolvedQuality(initialAutoQuality);
+    autoQualityControllerRef.current = quality === "auto"
+      ? new AutoGraphicsQualityController(initialAutoQuality)
+      : null;
+    autoQualityNoticeShownRef.current = false;
+    setAutoQualityNotice(false);
   }, [quality]);
+
+  useEffect(() => {
+    if (!autoQualityNotice) return;
+    const timeout = window.setTimeout(() => setAutoQualityNotice(false), 4_500);
+    return () => window.clearTimeout(timeout);
+  }, [autoQualityNotice]);
 
   useEffect(() => {
     onMoveRef.current = onMove;
@@ -430,6 +448,9 @@ export default function ArenaPreview({
       return;
     }
     const { scene, camera, renderer, qualityConfig } = sceneSetup;
+    const autoQualityController = quality === "auto" && !fallbackQuality
+      ? autoQualityControllerRef.current ?? undefined
+      : undefined;
     if (isFps) {
       camera.position.set(0, 0, 0);
     } else {
@@ -956,6 +977,14 @@ export default function ArenaPreview({
         templeRunoffArt?.update(elapsed);
         if (currentTime - performanceWindowAt >= 1000) {
           const profile = performanceCapture.snapshot(currentTime);
+          const adjustment = autoQualityController?.update(profile, currentTime);
+          if (adjustment) {
+            if (adjustment.direction === "lower" && !autoQualityNoticeShownRef.current) {
+              autoQualityNoticeShownRef.current = true;
+              setAutoQualityNotice(true);
+            }
+            setAutoResolvedQuality(adjustment.quality);
+          }
           renderer.domElement.dataset.fps = String(profile.fps);
           renderer.domElement.dataset.frameP95 = String(profile.frameMsP95);
           renderer.domElement.dataset.drawCalls = String(profile.drawCalls);
@@ -1275,6 +1304,14 @@ export default function ArenaPreview({
       templeRunoffArt?.update(elapsed);
       if (currentTime - performanceWindowAt >= 1000) {
         const profile = performanceCapture.snapshot(currentTime);
+        const adjustment = autoQualityController?.update(profile, currentTime);
+        if (adjustment) {
+          if (adjustment.direction === "lower" && !autoQualityNoticeShownRef.current) {
+            autoQualityNoticeShownRef.current = true;
+            setAutoQualityNotice(true);
+          }
+          setAutoResolvedQuality(adjustment.quality);
+        }
         renderer.domElement.dataset.fps = String(profile.fps);
         renderer.domElement.dataset.frameP95 = String(profile.frameMsP95);
         renderer.domElement.dataset.drawCalls = String(profile.drawCalls);
@@ -1337,7 +1374,7 @@ export default function ArenaPreview({
       renderer.dispose();
       mount.removeChild(renderer.domElement);
     };
-  }, [sceneSessionId, currentPlayerId, currentPlayerTeam, currentWeaponId, currentPlayer?.gear, currentPlayer?.weapon, view, debugOverlay, activeQuality, gamepadEnabled, arenaMapId, arenaMap, arenaBounds, teamBaseZones, captureZones, searchRetrieveItems, searchRetrieveDeliveryZones, isIronJunction, isDesertCitadel, isTempleRunoff, localToServerPosition, serverToLocalX, serverToLocalZ, session?.settings.gameMode, loadDecalAsset]);
+  }, [sceneSessionId, currentPlayerId, currentPlayerTeam, currentWeaponId, currentPlayer?.gear, currentPlayer?.weapon, view, debugOverlay, quality, fallbackQuality, activeQuality, gamepadEnabled, arenaMapId, arenaMap, arenaBounds, teamBaseZones, captureZones, searchRetrieveItems, searchRetrieveDeliveryZones, isIronJunction, isDesertCitadel, isTempleRunoff, localToServerPosition, serverToLocalX, serverToLocalZ, session?.settings.gameMode, loadDecalAsset]);
 
   const beginTouchMove = (event: ReactPointerEvent<HTMLButtonElement>) => {
     event.preventDefault();
@@ -1385,6 +1422,11 @@ export default function ArenaPreview({
       data-zoom-level={zoomLevel}
     >
       <div className="arena-canvas" ref={mountRef} aria-label={`${arenaMap.title} arena`} />
+      {autoQualityNotice && quality === "auto" && !fallbackQuality && (
+        <div className="arena-quality-notice" role="status" aria-live="polite">
+          Graphics adjusted for smoother gameplay
+        </div>
+      )}
       {renderError && <div className="arena-error" role="alert"><strong>Arena unavailable</strong><span>{renderError}</span><button type="button" onClick={() => { setFallbackQuality("performance"); setRenderError(""); }}>Retry in performance mode</button></div>}
       {debugOverlay && characterDebugStats && (
         <div className="character-debug-overlay" aria-label="Character debug stats">

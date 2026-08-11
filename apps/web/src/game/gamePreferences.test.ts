@@ -6,8 +6,8 @@ import {
   resolveArenaQuality
 } from "./gamePreferences";
 
-test("auto quality protects frame rate while preserving the medium art pass", () => {
-  assert.equal(resolveArenaQuality("auto", 2), "performance");
+test("auto quality starts from a measured middle setting", () => {
+  assert.equal(resolveArenaQuality("auto", 2), "balanced");
   assert.equal(resolveArenaQuality("auto", 1), "balanced");
 });
 

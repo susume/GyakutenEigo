@@ -38,6 +38,8 @@ import GameAnnouncementOverlay from "../shared/GameAnnouncementOverlay";
 import EventFeed from "../student/EventFeed";
 import GamePreferencesPanel from "../student/GamePreferencesPanel";
 import Scoreboard from "../student/Scoreboard";
+import LearningPulse from "./LearningPulse";
+import TeacherPauseControls from "./TeacherPauseControls";
 import { useSessionControls } from "./useSessionControls";
 const ArenaPreview = lazy(() => import("../../../game/ArenaPreview"));
 const TournamentCenter = lazy(() => import("../tournament/TournamentCenter"));
@@ -152,12 +154,16 @@ function useRoundRemaining(session: GameSession | null) {
     setServerOffsetMs(Number.isFinite(serverTimeMs) ? serverTimeMs - Date.now() : 0);
   }, [session?.serverTime]);
   useEffect(() => {
-    if (session?.status !== "active") { setClientNowMs(Date.now()); return; }
+    setClientNowMs(Date.now());
+    if (session?.status !== "active" || session.controlState === "teacher_paused") return;
     const interval = window.setInterval(() => setClientNowMs(Date.now()), 1000);
     return () => window.clearInterval(interval);
-  }, [session?.status, session?.startedAt, session?.endsAt]);
+  }, [session?.status, session?.controlState, session?.teacherPausedAt, session?.startedAt, session?.endsAt]);
   if (!session || session.status === "ended" || session.status === "paused") return 0;
-  return getRoundRemainingSeconds(session, new Date(clientNowMs + serverOffsetMs).toISOString());
+  const at = session.controlState === "teacher_paused"
+    ? session.teacherPausedAt ?? session.serverTime
+    : new Date(clientNowMs + serverOffsetMs).toISOString();
+  return at ? getRoundRemainingSeconds(session, at) : 0;
 }
 
 function TeacherAuth({
@@ -338,6 +344,7 @@ function TeacherDashboard({ teacher, onLogout }: { teacher: TeacherUser; onLogou
     const syncBgm = () => {
       gameAudio.setBgmActive(Boolean(
         (tab === "settings" || (tab === "sessions" && selectedSession?.status === "active"))
+        && selectedSession?.controlState !== "teacher_paused"
         && document.visibilityState === "visible"
       ));
     };
@@ -347,7 +354,7 @@ function TeacherDashboard({ teacher, onLogout }: { teacher: TeacherUser; onLogou
       document.removeEventListener("visibilitychange", syncBgm);
       gameAudio.setBgmActive(false);
     };
-  }, [tab, selectedSession?.id, selectedSession?.status]);
+  }, [tab, selectedSession?.id, selectedSession?.status, selectedSession?.controlState]);
 
   const refresh = useCallback(async () => {
     try {
@@ -389,13 +396,14 @@ function TeacherDashboard({ teacher, onLogout }: { teacher: TeacherUser; onLogou
         sessions: current.sessions.map((item) => (item.id === session.id ? session : item))
       }));
     });
-    socket.on("player_state", (payload: { players?: PlayerSession[]; flag?: GameSession["flag"]; recentEvents?: GameSession["events"] }) => {
+    socket.on("player_state", (payload: { players?: PlayerSession[]; flag?: GameSession["flag"]; recentEvents?: GameSession["events"]; learningPulse?: GameSession["learningPulse"] }) => {
       if (!Array.isArray(payload.players)) return;
       setSelectedSession((current) => current ? {
         ...current,
         players: current.players.map((player) => payload.players?.find((next) => next.id === player.id) ?? player),
         ...(payload.flag ? { flag: payload.flag } : {}),
-        ...(payload.recentEvents ? { events: payload.recentEvents } : {})
+        ...(payload.recentEvents ? { events: payload.recentEvents } : {}),
+        ...(payload.learningPulse ? { learningPulse: payload.learningPulse } : {})
       } : current);
     });
     return () => {
@@ -1309,6 +1317,7 @@ function SessionManager({
     isEndConfirmOpen, setIsEndConfirmOpen,
     isProjectorOpen, setIsProjectorOpen
   } = useSessionControls({ initialQuizSetId, firstQuizSetId: data.quizSets[0]?.id });
+  const [isChangingPause, setIsChangingPause] = useState(false);
   const [isTeacherSpectatorOpen, setIsTeacherSpectatorOpen] = useState(false);
   const [teacherSpectatorPlayerId, setTeacherSpectatorPlayerId] = useState("");
   const [isTeacherSpectatorPickerOpen, setIsTeacherSpectatorPickerOpen] = useState(false);
@@ -1665,6 +1674,25 @@ function SessionManager({
       status.report(err);
     } finally {
       setIsEndingRound(false);
+    }
+  };
+
+  const toggleTeacherPause = async () => {
+    if (!selectedSession || selectedSession.status === "waiting" || selectedSession.status === "ended" || isChangingPause) return;
+    status.clear();
+    setIsChangingPause(true);
+    const paused = selectedSession.controlState === "teacher_paused";
+    try {
+      const payload = (await (paused
+        ? teacherApi.resumeSession(selectedSession.sessionCode)
+        : teacherApi.pauseSession(selectedSession.sessionCode))) as { session: GameSession };
+      setSelectedSession(payload.session);
+      await onRefresh();
+      status.setMessage(paused ? "Game resumed. The match is live again." : "Game paused. Students can listen now.");
+    } catch (err) {
+      status.report(err);
+    } finally {
+      setIsChangingPause(false);
     }
   };
 
@@ -2116,6 +2144,12 @@ function SessionManager({
             <header className="live-control-heading">
               <div><span className="flow-step">Step 4 of 4</span><h2>Run the live game</h2></div>
               <div className="button-row">
+                <TeacherPauseControls
+                  paused={selectedSession.controlState === "teacher_paused"}
+                  busy={isChangingPause}
+                  disabled={selectedSession.status === "ended" || isEndingRound || isEndingSession}
+                  onToggle={() => void toggleTeacherPause()}
+                />
                 <button
                   type="button"
                   className="spectator-launch-button"
@@ -2134,7 +2168,7 @@ function SessionManager({
                     type="button"
                     className="end-round-button"
                     onClick={() => void endRound()}
-                    disabled={selectedSession.status !== "active" || isEndingRound || isEndingSession}
+                    disabled={selectedSession.status !== "active" || selectedSession.controlState === "teacher_paused" || isEndingRound || isEndingSession}
                   >
                     {isEndingRound ? "Ending Round..." : "End Round"}
                   </button>
@@ -2143,7 +2177,7 @@ function SessionManager({
               </div>
             </header>
             <div className="live-summary">
-              <span className={`status-pill status-${selectedSession.status}`}>{isRoundPreparationPhase(selectedSession) ? "Preparation" : isZombieSelectionPhase(selectedSession) ? "Choosing Zombies" : sessionStatusLabel(selectedSession.status)}</span>
+              <span className={`status-pill status-${selectedSession.status}${selectedSession.controlState === "teacher_paused" ? " teacher-paused-status" : ""}`}>{selectedSession.controlState === "teacher_paused" ? "Game paused" : isRoundPreparationPhase(selectedSession) ? "Preparation" : isZombieSelectionPhase(selectedSession) ? "Choosing Zombies" : sessionStatusLabel(selectedSession.status)}</span>
               <span>{gameModeLabel(selectedSession.settings.gameMode)}</span>
               <span>{arenaMapLabel(selectedSession.settings.mapId)}</span>
               {selectedSession.settings.gameMode === "flag" && <span>Round {selectedSession.currentRound}/{selectedSession.settings.roundCount}</span>}
@@ -2156,6 +2190,7 @@ function SessionManager({
             <Suspense fallback={<ArenaLoading label="Loading live arena" />}>
               <ArenaPreview key={`${selectedSession.id}:${selectedSession.startedAt ?? "waiting"}:overview`} session={selectedSession} loadDecalAsset={loadTeacherDecal} />
             </Suspense>
+            <LearningPulse pulse={selectedSession.learningPulse} />
             <Scoreboard players={selectedSession.players} gameMode={selectedSession.settings.gameMode} onRemovePlayer={(playerId) => void removePlayer(playerId)} removingPlayerId={removingPlayerId} />
             <EventFeed events={selectedSession.events ?? []} />
           </>

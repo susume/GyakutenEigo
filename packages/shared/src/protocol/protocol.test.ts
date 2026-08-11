@@ -86,6 +86,18 @@ test("reconnect snapshots receive structural runtime validation", () => {
     createdAt: new Date(0).toISOString()
   };
   assert.equal(validateSessionSnapshot(snapshot).success, true);
+  assert.equal(validateSessionSnapshot({
+    ...snapshot,
+    learningPulse: {
+      classAccuracy: 75,
+      answersSubmitted: 8,
+      studentsNeedingReview: 1,
+      difficultQuestion: { questionId: "q1", prompt: "Question", correct: 3, attempts: 4, accuracy: 75 }
+    }
+  }).success, true);
+  assert.equal(validateSessionSnapshot({
+    ...snapshot,
+    learningPulse: { classAccuracy: 150, answersSubmitted: -1, studentsNeedingReview: 0 }
+  }).success, false);
   assert.equal(validateSessionSnapshot({ ...snapshot, players: "invalid" }).success, false);
 });
-

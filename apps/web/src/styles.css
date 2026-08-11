@@ -3773,6 +3773,45 @@ body:has(.workspace) .dashboard-brand-row h1 .quizstrike-logo { display: block; 
 }
 @media (prefers-reduced-motion: reduce) { body:has(.product-home) *, body:has(.quizstrike-page) *, body:has(.quizstrike-auth-layout) *, body:has(.student-join-screen:not(.game-layout)) * { scroll-behavior: auto !important; transition-duration: 0.01ms !important; animation-duration: 0.01ms !important; animation-iteration-count: 1 !important; } }
 
+/* Classroom attention mode, live learning pulse, and measured quality feedback. */
+.teacher-pause-overlay { position: absolute; inset: 0; z-index: 40; display: grid; place-items: center; padding: 24px; background: rgba(3, 10, 25, 0.92); }
+.teacher-pause-overlay-card { width: min(520px, 100%); display: grid; justify-items: center; gap: 12px; padding: clamp(28px, 5vw, 54px); border: 1px solid rgba(120, 211, 255, 0.56); border-radius: 20px; background: linear-gradient(145deg, rgba(12, 38, 72, 0.98), rgba(8, 19, 43, 0.98)); box-shadow: 0 24px 100px rgba(0, 0, 0, 0.5); text-align: center; }
+.teacher-pause-icon { display: grid; place-items: center; width: 58px; height: 58px; border-radius: 50%; background: rgba(245, 184, 75, 0.18); color: #ffd98c; }
+.teacher-pause-overlay-card .menu-eyebrow { color: #9de3ff; }
+.teacher-pause-overlay-card h1 { margin: 0; color: #ffffff; font-size: clamp(2.4rem, 8vw, 5rem); letter-spacing: 0.04em; line-height: 0.92; }
+.teacher-pause-overlay-card p { display: inline-flex; align-items: center; gap: 8px; margin: 0; color: #ffd98c; font-size: clamp(1.1rem, 2vw, 1.5rem); font-weight: 900; }
+.teacher-pause-overlay-card small { max-width: 360px; color: #bed0e5; line-height: 1.5; }
+.arena-quality-notice { position: absolute; left: 18px; bottom: 18px; z-index: 15; max-width: min(330px, calc(100% - 36px)); padding: 10px 13px; border: 1px solid rgba(94, 213, 167, 0.46); border-radius: 9px; background: rgba(8, 45, 40, 0.92); color: #baf5dd; font-size: 0.78rem; font-weight: 800; box-shadow: 0 10px 26px rgba(0, 0, 0, 0.24); }
+body:has(.workspace) .teacher-pause-controls { display: flex; align-items: center; gap: 10px; }
+body:has(.workspace) .teacher-pause-controls button { display: inline-flex; align-items: center; gap: 8px; min-height: 44px; padding: 0 15px; border: 1px solid rgba(245, 184, 75, 0.62); border-radius: 8px; background: rgba(112, 72, 23, 0.22); color: #ffd98c; font-weight: 900; }
+body:has(.workspace) .teacher-pause-controls button:hover:not(:disabled) { border-color: #ffd98c; background: rgba(145, 91, 26, 0.38); }
+body:has(.workspace) .teacher-pause-controls .teacher-resume-button { border-color: rgba(83, 221, 165, 0.8); background: #14885f; color: #ffffff; }
+body:has(.workspace) .teacher-pause-controls > span { max-width: 190px; color: #9fb5ce; font-size: 0.72rem; line-height: 1.3; }
+body:has(.workspace) .teacher-paused-status { border-color: rgba(245, 184, 75, 0.7); background: rgba(122, 77, 22, 0.35); color: #ffd98c; }
+body:has(.workspace) .learning-pulse-card { display: grid; gap: 14px; margin-top: 18px; padding: 18px; border: 1px solid rgba(79, 156, 217, 0.36); border-radius: 12px; background: linear-gradient(145deg, rgba(13, 34, 67, 0.96), rgba(8, 21, 45, 0.94)); }
+body:has(.workspace) .learning-pulse-card > header { display: flex; align-items: start; justify-content: space-between; gap: 16px; }
+.learning-pulse-card header > div { display: grid; gap: 5px; }
+.learning-pulse-card .menu-eyebrow { display: inline-flex; align-items: center; gap: 6px; color: #8ddaff; font-size: 0.7rem; }
+.learning-pulse-card h3 { margin: 0; color: #ffffff; font-size: 1.2rem; }
+.learning-pulse-note { color: #88a6c5; font-size: 0.72rem; }
+.learning-pulse-metrics { display: grid; grid-template-columns: repeat(3, 1fr); gap: 10px; }
+.learning-pulse-metrics span { display: grid; gap: 3px; min-width: 0; padding: 12px; border: 1px solid rgba(113, 163, 210, 0.2); border-radius: 9px; background: rgba(24, 52, 91, 0.56); }
+.learning-pulse-metrics strong { color: #ffffff; font-size: 1.55rem; line-height: 1; }
+.learning-pulse-metrics small { color: #a8c0d9; font-size: 0.72rem; }
+.learning-pulse-questions { display: grid; grid-template-columns: repeat(2, 1fr); gap: 12px; }
+.learning-pulse-questions > div { display: grid; gap: 8px; min-width: 0; padding-top: 12px; border-top: 1px solid rgba(113, 163, 210, 0.22); }
+.learning-pulse-questions > div > span { display: inline-flex; align-items: center; gap: 6px; color: #b8d8f4; font-size: 0.76rem; font-weight: 900; }
+.learning-pulse-questions p { display: grid; gap: 4px; margin: 0; color: #ffffff; font-size: 0.84rem; line-height: 1.35; }
+.learning-pulse-questions q { quotes: "“" "”"; }
+.learning-pulse-questions p small { color: #91dcbf; font-size: 0.73rem; font-weight: 800; }
+.learning-pulse-empty { color: #88a1bd !important; font-size: 0.78rem !important; }
+@media (max-width: 760px) {
+  body:has(.workspace) .teacher-pause-controls { width: 100%; align-items: stretch; flex-direction: column; }
+  body:has(.workspace) .teacher-pause-controls button { justify-content: center; width: 100%; }
+  body:has(.workspace) .teacher-pause-controls > span { max-width: none; text-align: center; }
+  .learning-pulse-metrics, .learning-pulse-questions { grid-template-columns: 1fr; }
+}
+
 /* Final student join action sizing. */
 .student-join-form button.primary { min-height: 58px !important; padding: 14px 20px; border-width: 1px; border-radius: 10px; font-size: 1rem !important; line-height: 1.2; font-weight: 900; letter-spacing: .03em; text-transform: none !important; }
 @media (max-width: 760px) { .student-join-form button.primary { min-height: 56px; } }

@@ -109,3 +109,22 @@ test("round lifecycle expires a bot-free active round", () => {
   assert.equal(session.announcement?.kind, "round_result");
   assert.equal(broadcasts.length, 1);
 });
+
+test("round lifecycle leaves teacher-paused sessions untouched", () => {
+  const currentMs = Date.parse("2026-08-02T00:10:00.000Z");
+  const endsAt = new Date(currentMs - 1).toISOString();
+  const session = makeSession({
+    controlState: "teacher_paused",
+    teacherPausedAt: new Date(currentMs - 5_000).toISOString(),
+    startedAt: new Date(currentMs - 10_000).toISOString(),
+    endsAt
+  });
+  const { runtime, broadcasts } = makeRuntime(session, currentMs);
+
+  runtime.advanceRounds();
+
+  assert.equal(session.status, "active");
+  assert.equal(session.endsAt, endsAt);
+  assert.equal(session.roundTransition, undefined);
+  assert.equal(broadcasts.length, 0);
+});

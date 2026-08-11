@@ -56,8 +56,10 @@ export const writeGamePreferences = (preferences: GamePreferences) => {
 
 export const resolveArenaQuality = (
   quality: ArenaQuality,
-  devicePixelRatio = typeof window === "undefined" ? 1 : window.devicePixelRatio,
+  _devicePixelRatio = typeof window === "undefined" ? 1 : window.devicePixelRatio,
 ) => {
   if (quality !== "auto") return quality;
-  return devicePixelRatio >= 1.75 ? "performance" : "balanced";
+  // Auto starts at the fair middle setting and then adapts from measured
+  // gameplay frames. Device pixel ratio is intentionally not the decision.
+  return "balanced";
 };

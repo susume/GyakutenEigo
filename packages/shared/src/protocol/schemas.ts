@@ -2,7 +2,9 @@ import { z } from "zod";
 import type {
   FlagPlantedEvent,
   FreezeStreakAnnouncementEvent,
-  GameSession
+  GameSession,
+  LearningPulse,
+  LearningPulseQuestion
 } from "../index.js";
 import {
   MAX_PROTOCOL_MESSAGE_BYTES,
@@ -230,12 +232,32 @@ export const FreezeStreakAnnouncementEventSchema: z.ZodType<FreezeStreakAnnounce
   occurredAt: z.number().int().nonnegative()
 }).strict();
 
+const LearningPulseQuestionSchema: z.ZodType<LearningPulseQuestion> = z.object({
+  questionId: boundedId,
+  prompt: z.string().trim().min(1).max(140),
+  correct: z.number().int().nonnegative(),
+  attempts: z.number().int().positive(),
+  accuracy: z.number().int().min(0).max(100)
+}).strict().refine((question) => question.correct <= question.attempts, {
+  message: "Correct answers cannot exceed attempts."
+});
+
+const LearningPulseSchema: z.ZodType<LearningPulse> = z.object({
+  classAccuracy: z.number().int().min(0).max(100).nullable(),
+  answersSubmitted: z.number().int().nonnegative(),
+  studentsNeedingReview: z.number().int().nonnegative(),
+  difficultQuestion: LearningPulseQuestionSchema.optional(),
+  strongestQuestion: LearningPulseQuestionSchema.optional()
+}).strict();
+
 const SessionSnapshotSchema: z.ZodType<GameSession> = z.object({
   id: boundedId,
   teacherId: boundedId,
   quizSetId: boundedId,
   sessionCode: z.string().trim().min(4).max(12),
   status: z.enum(["waiting", "active", "paused", "ended"]),
+  controlState: z.enum(["running", "teacher_paused"]).optional(),
+  teacherPausedAt: z.string().min(1).max(64).optional(),
   maxPlayers: z.number().int().min(1).max(100),
   currentRound: z.number().int().min(1),
   settings: z.object({}).passthrough(),
@@ -252,6 +274,7 @@ const SessionSnapshotSchema: z.ZodType<GameSession> = z.object({
     gear: z.string().min(1).max(64),
     joinedAt: z.string().min(1).max(64)
   }).passthrough()).max(100),
+  learningPulse: LearningPulseSchema.optional(),
   createdAt: z.string().min(1).max(64)
 }).passthrough() as unknown as z.ZodType<GameSession>;
 

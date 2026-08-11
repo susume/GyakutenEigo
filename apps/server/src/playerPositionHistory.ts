@@ -34,4 +34,13 @@ export class PlayerPositionHistory {
   clear(playerId: string) {
     this.samples.delete(playerId);
   }
+
+  shiftTimestamps(deltaMs: number, playerIds?: Iterable<string>) {
+    if (!Number.isFinite(deltaMs) || deltaMs <= 0) return;
+    const includedPlayers = playerIds ? new Set(playerIds) : undefined;
+    for (const [playerId, samples] of this.samples) {
+      if (includedPlayers && !includedPlayers.has(playerId)) continue;
+      this.samples.set(playerId, samples.map((sample) => ({ ...sample, atMs: sample.atMs + deltaMs })));
+    }
+  }
 }

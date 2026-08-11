@@ -27,7 +27,7 @@ export type SessionRouteDependencies = {
   id: () => string;
   now: () => string;
   generateSessionCode: () => string;
-  appendEvent: (session: GameSession, event: { type: "join" | "start"; message: string; team?: Team }) => unknown;
+  appendEvent: (session: GameSession, event: { type: "join" | "start" | "timer"; message: string; team?: Team }) => unknown;
   sessions: { set: (id: string, session: GameSession) => void; delete: (id: string) => void };
   joinCodeDirectory: JoinCodeDirectory;
   acquireRoomAuthority: (roomId: string) => boolean;
@@ -36,12 +36,15 @@ export type SessionRouteDependencies = {
   mirrorNormalized: (operation: Promise<unknown>, label: string) => void;
   schedulePersistence: () => void;
   stampSession: (session: GameSession) => GameSession;
+  stampPublicSession: (session: GameSession) => GameSession;
   getSessionByCode: (code: string) => GameSession | undefined;
   routeParam: (value: string | string[] | undefined) => string;
   canStartRound: (session: GameSession) => { ok: boolean; reason?: string };
   openRoundPreparation: (session: GameSession, preserveStats?: boolean) => void;
   openZombieSelectionPhase: (session: GameSession, preserveStats?: boolean) => void;
   startRoundState: (session: GameSession, preserveStats?: boolean) => void;
+  pauseSession: (session: GameSession) => { ok: boolean; changed?: boolean; reason?: string };
+  resumeSession: (session: GameSession) => { ok: boolean; changed?: boolean; reason?: string };
   makeAnnouncement: (kind: "round_start" | "game_over", title: string, message: string, detail?: string, durationMs?: number) => GameSession["announcement"];
   roundStartAnnouncementMs: number;
   respawnCorrectAnswersRequired: number;
@@ -90,6 +93,7 @@ export const registerSessionRoutes = (app: Application, deps: SessionRouteDepend
       quizSetId: quiz.id,
       sessionCode: deps.generateSessionCode(),
       status: "waiting",
+      controlState: "running",
       maxPlayers: settings.maxPlayers,
       currentRound: 1,
       settings,
@@ -165,6 +169,42 @@ export const registerSessionRoutes = (app: Application, deps: SessionRouteDepend
     }
     deps.broadcastSession(session);
     res.json({ session: deps.stampSession(session) });
+  });
+
+  app.post("/api/sessions/:code/pause", deps.requireTeacher, (req: AuthedRequest, res) => {
+    const session = getSessionPath(deps, req);
+    if (!session || session.teacherId !== req.user!.id) {
+      res.status(404).json({ error: "Session not found." });
+      return;
+    }
+    const result = deps.pauseSession(session);
+    if (!result.ok) {
+      res.status(409).json({ error: result.reason === "not_pausable" ? "A waiting or ended game cannot be paused." : "The game could not be paused." });
+      return;
+    }
+    if (result.changed) {
+      deps.appendEvent(session, { type: "timer", message: "The teacher paused the game." });
+      deps.broadcastSession(session);
+    }
+    res.json({ session: deps.stampSession(session), changed: result.changed });
+  });
+
+  app.post("/api/sessions/:code/resume", deps.requireTeacher, (req: AuthedRequest, res) => {
+    const session = getSessionPath(deps, req);
+    if (!session || session.teacherId !== req.user!.id) {
+      res.status(404).json({ error: "Session not found." });
+      return;
+    }
+    const result = deps.resumeSession(session);
+    if (!result.ok) {
+      res.status(409).json({ error: "The game could not be resumed. Reconnect and try again." });
+      return;
+    }
+    if (result.changed) {
+      deps.appendEvent(session, { type: "timer", message: "The teacher resumed the game." });
+      deps.broadcastSession(session);
+    }
+    res.json({ session: deps.stampSession(session), changed: result.changed });
   });
 
   app.delete("/api/sessions/history", deps.requireTeacher, async (req: AuthedRequest, res) => {
@@ -297,13 +337,14 @@ export const registerSessionRoutes = (app: Application, deps: SessionRouteDepend
     }
     const teacher = deps.getBearerUser(req);
     const playerToken = deps.getPlayerToken(req);
-    const canRead = teacher?.id === session.teacherId
+    const teacherOwnsSession = teacher?.id === session.teacherId;
+    const canRead = teacherOwnsSession
       || session.players.some((player) => !player.isBot && deps.hasPlayerAccess(session, player, playerToken));
     if (!canRead) {
       res.status(401).json({ error: "A teacher or student session token is required." });
       return;
     }
-    res.json({ session: deps.stampSession(session) });
+    res.json({ session: teacherOwnsSession ? deps.stampSession(session) : deps.stampPublicSession(session) });
   });
 
   app.get("/api/sessions/:code/report", deps.requireTeacher, async (req: AuthedRequest, res) => {

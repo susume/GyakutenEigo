@@ -77,6 +77,7 @@ import BuyPanel from "./BuyPanel";
 import GamePreferencesPanel from "./GamePreferencesPanel";
 import QuizPanel, { type QuizAnswerFeedback } from "./QuizPanel";
 import Scoreboard from "./Scoreboard";
+import TeacherPauseOverlay from "./TeacherPauseOverlay";
 import { useStudentGameState } from "./useStudentGameState";
 import { getAnswerFeedbackDurationMs } from "./feedback";
 import {
@@ -238,20 +239,23 @@ function useRoundRemaining(session: GameSession | null) {
   }, [session?.serverTime]);
 
   useEffect(() => {
-    if (session?.status !== "active") {
-      setClientNowMs(Date.now());
+    setClientNowMs(Date.now());
+    if (session?.status !== "active" || session.controlState === "teacher_paused") {
       return;
     }
 
     const interval = window.setInterval(() => setClientNowMs(Date.now()), 1000);
     return () => window.clearInterval(interval);
-  }, [session?.status, session?.startedAt, session?.endsAt]);
+  }, [session?.status, session?.controlState, session?.teacherPausedAt, session?.startedAt, session?.endsAt]);
 
   if (!session || session.status === "ended" || session.status === "paused") return 0;
-  return getRoundRemainingSeconds(session, new Date(clientNowMs + serverOffsetMs).toISOString());
+  const at = session.controlState === "teacher_paused"
+    ? session.teacherPausedAt ?? session.serverTime
+    : new Date(clientNowMs + serverOffsetMs).toISOString();
+  return at ? getRoundRemainingSeconds(session, at) : 0;
 }
 
-function useDeadlineRemainingSeconds(deadline?: string, serverTime?: string) {
+function useDeadlineRemainingSeconds(deadline?: string, serverTime?: string, pausedAt?: string) {
   const [clientNowMs, setClientNowMs] = useState(() => Date.now());
   const [serverOffsetMs, setServerOffsetMs] = useState(0);
 
@@ -262,13 +266,14 @@ function useDeadlineRemainingSeconds(deadline?: string, serverTime?: string) {
 
   useEffect(() => {
     setClientNowMs(Date.now());
-    if (!deadline) return;
+    if (!deadline || pausedAt) return;
     const interval = window.setInterval(() => setClientNowMs(Date.now()), 250);
     return () => window.clearInterval(interval);
-  }, [deadline, serverTime]);
+  }, [deadline, serverTime, pausedAt]);
 
   if (!deadline) return 0;
-  return Math.max(0, Math.ceil((Date.parse(deadline) - (clientNowMs + serverOffsetMs)) / 1000));
+  const nowMs = pausedAt ? Date.parse(pausedAt) : clientNowMs + serverOffsetMs;
+  return Math.max(0, Math.ceil((Date.parse(deadline) - nowMs) / 1000));
 }
 
 function useFlagRemainingSeconds(session: GameSession | null) {
@@ -283,13 +288,16 @@ function useFlagRemainingSeconds(session: GameSession | null) {
 
   useEffect(() => {
     setClientNowMs(Date.now());
-    if (expiresAtMs === undefined) return;
+    if (expiresAtMs === undefined || session?.controlState === "teacher_paused") return;
     const interval = window.setInterval(() => setClientNowMs(Date.now()), 250);
     return () => window.clearInterval(interval);
-  }, [expiresAtMs, session?.serverTime]);
+  }, [expiresAtMs, session?.serverTime, session?.controlState, session?.teacherPausedAt]);
 
   if (expiresAtMs === undefined) return 0;
-  return Math.max(0, Math.ceil((expiresAtMs - (clientNowMs + serverOffsetMs)) / 1000));
+  const nowMs = session?.controlState === "teacher_paused" && session.teacherPausedAt
+    ? Date.parse(session.teacherPausedAt)
+    : clientNowMs + serverOffsetMs;
+  return Math.max(0, Math.ceil((expiresAtMs - nowMs) / 1000));
 }
 
 
@@ -335,7 +343,8 @@ export default function StudentExperience({ onExit }: { onExit: () => void }) {
   const zombieSelection = Boolean(session && isZombieSelectionPhase(session));
   const preparationRemainingSeconds = useDeadlineRemainingSeconds(
     roundPreparation || zombieSelection ? session?.roundTransition?.startsAt : undefined,
-    session?.serverTime
+    session?.serverTime,
+    session?.controlState === "teacher_paused" ? session.teacherPausedAt : undefined
   );
   const socketRef = useRef<Socket | null>(null);
   const previousAliveRef = useRef<boolean | null>(null);
@@ -371,6 +380,7 @@ export default function StudentExperience({ onExit }: { onExit: () => void }) {
   const hasQuestion = Boolean(question);
   const questionId = question?.id;
   const hasActiveStudentSession = Boolean(session && player && session.status === "active");
+  const teacherPaused = session?.controlState === "teacher_paused";
   const nicknameError = useMemo(() => getNicknameError(nickname), [nickname]);
   const spectatorCandidates = useMemo(() => {
     if (!session || !player || player.isAlive || session.settings.gameMode !== "flag") return [];
@@ -576,7 +586,7 @@ export default function StudentExperience({ onExit }: { onExit: () => void }) {
 
   useEffect(() => {
     const syncBgm = () => {
-      gameAudio.setBgmActive(Boolean(hasActiveStudentSession && document.visibilityState === "visible"));
+      gameAudio.setBgmActive(Boolean(hasActiveStudentSession && !teacherPaused && document.visibilityState === "visible"));
     };
     syncBgm();
     document.addEventListener("visibilitychange", syncBgm);
@@ -584,7 +594,7 @@ export default function StudentExperience({ onExit }: { onExit: () => void }) {
       document.removeEventListener("visibilitychange", syncBgm);
       gameAudio.setBgmActive(false);
     };
-  }, [hasActiveStudentSession]);
+  }, [hasActiveStudentSession, teacherPaused]);
 
   useEffect(() => {
     const activeSession = currentSessionRef.current;
@@ -1046,7 +1056,15 @@ export default function StudentExperience({ onExit }: { onExit: () => void }) {
   }, [roundPreparation, zombieSelection, session?.roundTransition?.startsAt, playerId, playerIsAlive, setBuyOpen, setQuizOpen, setScoreboardOpen, setSettingsOpen]);
 
   const panelsOpen = quizOpen || buyOpen || scoreboardOpen || settingsOpen;
-  const gameplayInputPaused = quizOpen || buyOpen || settingsOpen || isSocketReconnecting;
+  const gameplayInputPaused = quizOpen || buyOpen || settingsOpen || isSocketReconnecting || teacherPaused;
+
+  useEffect(() => {
+    if (!teacherPaused) return;
+    setQuizOpen(false);
+    setBuyOpen(false);
+    setScoreboardOpen(false);
+    setSettingsOpen(false);
+  }, [teacherPaused, setBuyOpen, setQuizOpen, setScoreboardOpen, setSettingsOpen]);
 
   useEffect(() => {
     if (!gameplayInputPaused || !document.pointerLockElement) return;
@@ -1215,7 +1233,7 @@ export default function StudentExperience({ onExit }: { onExit: () => void }) {
   };
 
   const answer = async (choice: Choice) => {
-    if (!session || !player || !question || !playerToken || answeringChoice || answerFeedback || answerSubmissionLockRef.current) return;
+    if (teacherPaused || !session || !player || !question || !playerToken || answeringChoice || answerFeedback || answerSubmissionLockRef.current) return;
     answerSubmissionLockRef.current = true;
     const answeredQuestion = question;
     const answeringPlayer = player;
@@ -1326,7 +1344,7 @@ export default function StudentExperience({ onExit }: { onExit: () => void }) {
   }, [hasSession, sessionId, sessionStatus, setAnsweringChoice, setBuyOpen, setQuizOpen, setScoreboardOpen, setSettingsOpen]);
 
   const buy = async (gearId: string) => {
-    if (!session || !player || !playerToken || buyingGearId || isBuyingSnowballs) return;
+    if (teacherPaused || !session || !player || !playerToken || buyingGearId || isBuyingSnowballs) return;
     status.clear();
     setFeedback("Choosing gear...");
     setBuyingGearId(gearId);
@@ -1350,7 +1368,7 @@ export default function StudentExperience({ onExit }: { onExit: () => void }) {
   };
 
   const buySnowballs = async () => {
-    if (!session || !player || !playerToken || isBuyingSnowballs || buyingGearId) return;
+    if (teacherPaused || !session || !player || !playerToken || isBuyingSnowballs || buyingGearId) return;
     status.clear();
     setFeedback("Restocking snowballs...");
     setIsBuyingSnowballs(true);
@@ -1648,7 +1666,7 @@ export default function StudentExperience({ onExit }: { onExit: () => void }) {
   const blueTeamCount = connectedPlayers.filter((candidate) => candidate.team === "blue").length;
   const respawnProgress = player.respawnCorrectAnswers ?? 0;
   const canPracticeToRespawn = !player.isAlive && session.settings.deadPlayersCanPractice && session.settings.gameMode !== "flag";
-  const roundActive = session.status === "active";
+  const roundActive = session.status === "active" && !teacherPaused;
   const roundEnded = session.status === "ended";
   const menuTitle = canPracticeToRespawn && quizOpen ? "Practice to return" : quizOpen ? "Questions" : buyOpen ? "Choose gear" : settingsOpen ? "Game settings" : "Scoreboard";
   const roundTimeLabel = formatDuration(roundPreparation || zombieSelection ? preparationRemainingSeconds : remainingSeconds);
@@ -1717,7 +1735,7 @@ export default function StudentExperience({ onExit }: { onExit: () => void }) {
       session.status === "waiting" ? "waiting-game-layout" : ""
     ].filter(Boolean).join(" ")}>
       <div className="game-stage">
-        {session.status !== "waiting" && <GameAnnouncementOverlay announcement={roundPreparation || zombieSelection || roundEnded ? undefined : session.announcement} serverTime={session.serverTime} />}
+        {session.status !== "waiting" && !teacherPaused && <GameAnnouncementOverlay announcement={roundPreparation || zombieSelection || roundEnded ? undefined : session.announcement} serverTime={session.serverTime} />}
         <div className={`game-utility-bar${session.status === "waiting" ? " lobby-utility-bar" : ""}`}>
           {session.status === "waiting" ? (
             <div className="lobby-brand">
@@ -1725,7 +1743,7 @@ export default function StudentExperience({ onExit }: { onExit: () => void }) {
               <small>{gameModeLabel(session.settings.gameMode)} · Room {session.sessionCode}</small>
             </div>
           ) : <span>{gameModeLabel(session.settings.gameMode)}</span>}
-          <button type="button" onClick={() => { setSettingsOpen(true); setQuizOpen(false); setBuyOpen(false); setScoreboardOpen(false); }}><Settings size={16} aria-hidden="true" />Settings</button>
+          <button type="button" disabled={teacherPaused} onClick={() => { setSettingsOpen(true); setQuizOpen(false); setBuyOpen(false); setScoreboardOpen(false); }}><Settings size={16} aria-hidden="true" />Settings</button>
           <button type="button" onClick={onExit}>Leave game</button>
         </div>
         {session.status === "waiting" ? (
@@ -1749,6 +1767,7 @@ export default function StudentExperience({ onExit }: { onExit: () => void }) {
             />
           </Suspense>
         )}
+        {teacherPaused && <TeacherPauseOverlay />}
         {session.status !== "waiting" && (<>
         <div className={roundCountdownClassName} role="timer" aria-label={`Round time remaining ${roundTimeLabel}`}>
           <Timer size={18} aria-hidden="true" />
@@ -2094,10 +2113,10 @@ export default function StudentExperience({ onExit }: { onExit: () => void }) {
         )}
       </div>
       {session.status !== "waiting" && <div className="action-bar control-prompts">
-        <button aria-label="Questions" disabled={roundEnded} onClick={() => { gameAudio.playEvent(quizOpen ? "modal_close" : "quiz_open"); setQuizOpen(!quizOpen); setBuyOpen(false); setScoreboardOpen(false); }}><BookOpen size={19} aria-hidden="true" /><span>Q Questions</span></button>
-        <button aria-label="Buy gear" disabled={roundEnded || !player.isAlive} onClick={() => { gameAudio.play("menu_toggle"); setBuyOpen(!buyOpen); setQuizOpen(false); setScoreboardOpen(false); }}><Package size={19} aria-hidden="true" /><span>B Gear · 1–5 choose</span></button>
-        <button aria-label="Scoreboard" onPointerDown={() => { gameAudio.play("menu_toggle"); setScoreboardOpen(true); setQuizOpen(false); setBuyOpen(false); setSettingsOpen(false); }} onPointerUp={() => setScoreboardOpen(false)} onPointerCancel={() => setScoreboardOpen(false)} onBlur={() => setScoreboardOpen(false)}><Trophy size={19} aria-hidden="true" /><span>Hold Tab · Scoreboard</span></button>
-        <button aria-label="Settings" onClick={() => { gameAudio.play("menu_toggle"); setSettingsOpen((open) => !open); setQuizOpen(false); setBuyOpen(false); setScoreboardOpen(false); }}><Settings size={19} aria-hidden="true" /><span>Settings</span></button>
+        <button aria-label="Questions" disabled={roundEnded || teacherPaused} onClick={() => { gameAudio.playEvent(quizOpen ? "modal_close" : "quiz_open"); setQuizOpen(!quizOpen); setBuyOpen(false); setScoreboardOpen(false); }}><BookOpen size={19} aria-hidden="true" /><span>Q Questions</span></button>
+        <button aria-label="Buy gear" disabled={roundEnded || teacherPaused || !player.isAlive} onClick={() => { gameAudio.play("menu_toggle"); setBuyOpen(!buyOpen); setQuizOpen(false); setScoreboardOpen(false); }}><Package size={19} aria-hidden="true" /><span>B Gear · 1–5 choose</span></button>
+        <button aria-label="Scoreboard" disabled={teacherPaused} onPointerDown={() => { gameAudio.play("menu_toggle"); setScoreboardOpen(true); setQuizOpen(false); setBuyOpen(false); setSettingsOpen(false); }} onPointerUp={() => setScoreboardOpen(false)} onPointerCancel={() => setScoreboardOpen(false)} onBlur={() => setScoreboardOpen(false)}><Trophy size={19} aria-hidden="true" /><span>Hold Tab · Scoreboard</span></button>
+        <button aria-label="Settings" disabled={teacherPaused} onClick={() => { gameAudio.play("menu_toggle"); setSettingsOpen((open) => !open); setQuizOpen(false); setBuyOpen(false); setScoreboardOpen(false); }}><Settings size={19} aria-hidden="true" /><span>Settings</span></button>
       </div>}
     </section>
   );

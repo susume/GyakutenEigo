@@ -119,8 +119,14 @@ KiB are rejected. Invalid input does not enter gameplay or database services.
 
 `session_state` includes room/match lifecycle, round state, quiz settings,
 players, scoreboard values, active flag state, announcements, deadlines, recent
-events, and `serverTime`. Quiz answer correctness remains in the acknowledged
-answer result and is never trusted from the client.
+events, `controlState`, the teacher pause timestamp when present, and
+`serverTime`. Authenticated teacher snapshots additionally include the compact
+`learningPulse`; student snapshots do not. Quiz answer correctness remains in
+the acknowledged answer result and is never trusted from the client. Teacher
+pause/resume uses the authenticated HTTP actions
+`POST /api/sessions/:code/pause` and `POST /api/sessions/:code/resume`; those
+actions preserve the existing round `status` and shift absolute deadlines by
+the paused duration on resume.
 
 ## Flag lifecycle and late join
 

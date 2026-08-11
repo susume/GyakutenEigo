@@ -302,6 +302,73 @@ test("student customizes, reloads, and receives match start over Socket.IO", asy
   await page.goto("about:blank");
 });
 
+test("teacher pause survives a student reconnect and live learning pulse updates", async ({ page, request, browser }) => {
+  const classroom = await createClassroom(request);
+
+  await page.goto(`/join?code=${classroom.code}`);
+  await page.getByPlaceholder("Player name").fill("Pause Test Student");
+  await page.getByRole("button", { name: "Join game", exact: true }).click();
+  await expect(page.getByRole("heading", { name: "Choose your team, then wait for the host to start." })).toBeVisible();
+
+  const start = await request.post(`/api/sessions/${classroom.code}/start`, {
+    headers: { Authorization: `Bearer ${classroom.teacherToken}` }
+  });
+  expect(start.status()).toBe(200);
+  await expect(page.getByRole("timer")).toBeVisible();
+  await page.getByRole("button", { name: "Questions", exact: true }).click();
+  await expect(page.getByText("Choose an answer", { exact: true })).toBeVisible();
+
+  const teacherContext = await browser.newContext();
+  await teacherContext.addInitScript((token) => {
+    window.localStorage.setItem("quizstrike_token", token);
+  }, classroom.teacherToken);
+  const teacherPage = await teacherContext.newPage();
+  await teacherPage.goto("/quiz-strike");
+  await teacherPage.getByRole("button", { name: "Teacher workspace", exact: true }).click();
+  const liveSessionButton = teacherPage.getByRole("button", { name: new RegExp(`${classroom.code}\\s+1 players`, "u") });
+  await expect(liveSessionButton).toBeVisible();
+  await liveSessionButton.click();
+  const pauseButton = teacherPage.getByRole("button", { name: "Pause Game", exact: true });
+  await expect(pauseButton).toBeVisible();
+  await pauseButton.click();
+  await expect(teacherPage.getByRole("button", { name: "Resume Game", exact: true })).toBeVisible();
+  await expect(teacherPage.getByText("Game paused", { exact: true }).first()).toBeVisible();
+
+  const pausedSnapshot = await request.get(`/api/sessions/${classroom.code}`, {
+    headers: { Authorization: `Bearer ${classroom.teacherToken}` }
+  });
+  expect(pausedSnapshot.status()).toBe(200);
+  expect((await pausedSnapshot.json()).session.controlState).toBe("teacher_paused");
+  await expect(page.getByTestId("teacher-pause-overlay")).toBeVisible();
+
+  await page.reload();
+  await expect(page.getByTestId("teacher-pause-overlay")).toBeVisible();
+  await expect(page.getByText("Look at the teacher.", { exact: true })).toBeVisible();
+
+  await teacherPage.getByRole("button", { name: "Resume Game", exact: true }).click();
+  await expect(teacherPage.getByRole("button", { name: "Pause Game", exact: true })).toBeVisible();
+  await expect(page.getByTestId("teacher-pause-overlay")).toBeHidden();
+
+  await page.getByRole("button", { name: "Questions", exact: true }).click();
+  await expect(page.getByText("Choose an answer", { exact: true })).toBeVisible();
+  await page.getByRole("button", { name: "Answer A: This one", exact: true }).click();
+  await expect(page.locator(".question-feedback-result")).toContainText("CORRECT");
+  const learningPulse = teacherPage.getByTestId("learning-pulse");
+  await expect(learningPulse.locator(".learning-pulse-metrics > span").nth(0)).toContainText("100%");
+  await expect(learningPulse.locator(".learning-pulse-metrics > span").nth(1)).toContainText("1");
+
+  await expect.poll(async () => {
+    const dashboard = await request.get("/api/teacher/dashboard", {
+      headers: { Authorization: `Bearer ${classroom.teacherToken}` }
+    });
+    expect(dashboard.status()).toBe(200);
+    const payload = await dashboard.json() as { sessions: Array<{ sessionCode: string; learningPulse?: { answersSubmitted: number; classAccuracy: number | null } }> };
+    const pulse = payload.sessions.find((session) => session.sessionCode === classroom.code)?.learningPulse;
+    return pulse ? { answersSubmitted: pulse.answersSubmitted, classAccuracy: pulse.classAccuracy } : null;
+  }).toEqual({ answersSubmitted: 1, classAccuracy: 100 });
+  await teacherContext.close();
+});
+
 test("fresh joins replay remembered appearance without growing restore history", async ({ page, request }) => {
   const firstClassroom = await createClassroom(request, { persistAcrossSessions: true });
   await page.goto(`/join?code=${firstClassroom.code}`);

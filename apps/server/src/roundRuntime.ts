@@ -19,6 +19,7 @@ import {
   resolveTeamRoundWinner,
   selectInitialZombies
 } from "@quizstrike/shared";
+import { isTeacherPaused } from "@quizstrike/shared";
 import { planRoundConclusion, resolvePendingRoundAction } from "./roundFlow.js";
 
 type BotMap = Map<string, unknown>;
@@ -99,6 +100,8 @@ const finishSession = (
 ) => {
   if (session.status === "ended") return;
   session.status = "ended";
+  session.controlState = "running";
+  session.teacherPausedAt = undefined;
   session.endedAt = now();
   session.roundTransition = undefined;
   session.announcement = announcement;
@@ -134,6 +137,8 @@ const finishZombieSession = (session: GameSession, outcome: string) => {
 const inactiveRoundMessage = (session: GameSession) =>
   session.status === "ended"
     ? "The round has ended. This action was not counted."
+    : isTeacherPaused(session)
+      ? "The game is paused by the teacher. Wait for the game to resume."
     : isRoundPreparationPhase(session)
       ? "Preparation is open. Buy gear or answer questions before the round begins."
     : isZombieSelectionPhase(session)
@@ -271,7 +276,7 @@ const openZombieSelectionPhase = (session: GameSession, preserveStats = true) =>
 };
 
 const finishRound = (session: GameSession, winner: Team | undefined, reason: string) => {
-  if (session.status !== "active") return;
+  if (session.status !== "active" || isTeacherPaused(session)) return;
   const conclusion = planRoundConclusion({
     currentRound: session.currentRound,
     roundCount: session.settings.roundCount,
@@ -357,7 +362,7 @@ const startPendingRound = (session: GameSession) => {
 };
 
 const finishZombieMatchIfComplete = (session: GameSession) => {
-  if (session.settings.gameMode !== "zombie" || session.status !== "active") return;
+  if (session.settings.gameMode !== "zombie" || session.status !== "active" || isTeacherPaused(session)) return;
   const humansRemaining = session.players.some(
     (player) => player.connectionState !== "disconnected" && player.isAlive && player.role !== "zombie"
   );
@@ -365,7 +370,7 @@ const finishZombieMatchIfComplete = (session: GameSession) => {
 };
 
 const evaluateFlagEliminationWin = (session: GameSession) => {
-  if (session.settings.gameMode !== "flag" || session.status !== "active") return;
+  if (session.settings.gameMode !== "flag" || session.status !== "active" || isTeacherPaused(session)) return;
   const redActive = session.players.some((player) => player.team === "red" && player.connectionState !== "disconnected" && player.isAlive);
   const blueActive = session.players.some((player) => player.team === "blue" && player.connectionState !== "disconnected" && player.isAlive);
   if (!blueActive) {
@@ -381,6 +386,7 @@ const advanceRounds = () => {
   const currentMs = nowMs();
   for (const session of sessions.values()) {
     if (!ownsRoom(session.id)) continue;
+    if (isTeacherPaused(session)) continue;
     if (session.status === "paused") {
       const startsAtMs = session.roundTransition ? Date.parse(session.roundTransition.startsAt) : Number.NaN;
       if (Number.isFinite(startsAtMs) && currentMs >= startsAtMs) startPendingRound(session);
