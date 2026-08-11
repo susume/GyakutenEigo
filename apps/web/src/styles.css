@@ -11117,6 +11117,37 @@ body[data-site="public"] .app-shell {
   object-position: center;
 }
 
+.hero-video-toggle {
+  position: absolute;
+  bottom: 14px;
+  left: 14px;
+  z-index: 4;
+  display: inline-flex;
+  align-items: center;
+  gap: 7px;
+  min-height: 34px;
+  padding: 0 11px 0 9px;
+  border: 1px solid rgba(116, 217, 255, .58);
+  border-radius: 999px;
+  background: rgba(5, 14, 31, .82);
+  box-shadow: 0 8px 22px rgba(1, 8, 18, .28);
+  color: #f5f8ff;
+  font-size: .63rem;
+  font-weight: 850;
+  letter-spacing: .08em;
+  text-transform: uppercase;
+  backdrop-filter: blur(8px);
+  transition: border-color .2s ease, background .2s ease, transform .2s ease;
+}
+
+.hero-video-toggle svg { color: var(--public-green); }
+.hero-video-toggle:hover,
+.hero-video-toggle:focus-visible {
+  border-color: var(--public-green);
+  background: rgba(12, 43, 59, .92);
+  transform: translateY(-1px);
+}
+
 .hero-scoreboard {
   position: absolute;
   top: 14px;

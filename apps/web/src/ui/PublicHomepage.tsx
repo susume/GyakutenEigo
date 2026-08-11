@@ -1,4 +1,4 @@
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import {
   ArrowRight,
   BookOpen,
@@ -8,6 +8,7 @@ import {
   Flag,
   GraduationCap,
   Keyboard,
+  Pause,
   Play,
   Radio,
   ScanLine,
@@ -69,6 +70,8 @@ export default function PublicHomepage({
   onOpenCompetitions
 }: PublicHomepageProps) {
   const [activeLoopStep, setActiveLoopStep] = useState(0);
+  const [isHeroVideoPlaying, setIsHeroVideoPlaying] = useState(true);
+  const heroVideoRef = useRef<HTMLVideoElement>(null);
 
   useEffect(() => {
     document.body.dataset.site = "public";
@@ -91,6 +94,17 @@ export default function PublicHomepage({
 
   const activeStep = loopSteps[activeLoopStep];
   const ActiveStepIcon = activeStep.icon;
+
+  const toggleHeroVideo = () => {
+    const video = heroVideoRef.current;
+    if (!video) return;
+
+    if (video.paused) {
+      void video.play().catch(() => setIsHeroVideoPlaying(false));
+    } else {
+      video.pause();
+    }
+  };
 
   return (
     <div className="public-home">
@@ -122,6 +136,7 @@ export default function PublicHomepage({
           </div>
           <div className="public-hero-media-wrap">
             <video
+              ref={heroVideoRef}
               className="public-hero-media"
               autoPlay
               loop
@@ -130,10 +145,22 @@ export default function PublicHomepage({
               preload="metadata"
               poster="/assets/quizstrike-game-hero.png"
               aria-label="QuizStrike teams competing in an arena around a live question"
+              onPlay={() => setIsHeroVideoPlaying(true)}
+              onPause={() => setIsHeroVideoPlaying(false)}
             >
               <source src="/assets/quizstrike-promo-15s-v2.mp4" type="video/mp4" />
               Your browser does not support the QuizStrike gameplay preview video.
             </video>
+            <button
+              type="button"
+              className="hero-video-toggle"
+              onClick={toggleHeroVideo}
+              aria-label={isHeroVideoPlaying ? "Pause gameplay preview" : "Play gameplay preview"}
+              title={isHeroVideoPlaying ? "Pause gameplay preview" : "Play gameplay preview"}
+            >
+              {isHeroVideoPlaying ? <Pause size={14} aria-hidden="true" /> : <Play size={14} aria-hidden="true" />}
+              <span>{isHeroVideoPlaying ? "Pause" : "Play"}</span>
+            </button>
             <div className="hero-scoreboard" aria-label="Live team score">
               <div className="hero-team hero-team-blue"><span>BLUE</span><strong>03</strong></div>
               <div className="hero-score-divider">:</div>
