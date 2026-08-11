@@ -9,11 +9,33 @@ coverage/
 apps/web/.vite/
 apps/web/playwright-report/
 apps/web/test-results/
+playwright-report/
+test-results/
+**/playwright-report/
+**/test-results/
 .tools/
 .codex-run-logs/
+.codex-local-logs/
+.codex-logs/
+.codex-map-preview/
+tmp/
 product-audit*/
 audits/
 Quiz-Strike/
+
+# Local video capture and editing artifacts
+tools/onboarding/output/build-temp-*/
+tools/onboarding/output/validation/
+tools/onboarding/output/validation-v2/
+tools/onboarding/output/validation-v3/
+tools/onboarding/output/*.png
+tools/onboarding/output/*-validation.json
+tools/onboarding/raw/page@*.webm
+tools/onboarding/raw/.playwright/
+tools/promo/build-temp/
+tools/promo/preview/
+tools/promo-v2/build-temp/
+tools/promo-v2/preview/
 
 # Local environment and secrets
 .env

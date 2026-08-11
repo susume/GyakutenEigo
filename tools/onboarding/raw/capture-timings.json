@@ -1,0 +1,47 @@
+{
+  "capturedAt": "2026-08-11T07:51:26.375Z",
+  "viewport": {
+    "width": 1920,
+    "height": 1080
+  },
+  "terminology": {
+    "account": "Create account",
+    "library": "Question library",
+    "quiz": "Create question set / Create set",
+    "questions": "From a study list / Create questions",
+    "game": "Set up a game / Create game",
+    "lobby": "Invite students",
+    "joinMethods": [
+      "Game code",
+      "Student Join Link",
+      "Scan to join"
+    ],
+    "start": "Start game"
+  },
+  "clips": {
+    "01-account": {
+      "path": "C:\\Users\\hungb\\OneDrive\\Documents\\GitHub\\GyakutenEigo\\tools\\onboarding\\raw\\01-account.webm",
+      "durationMs": 5394
+    },
+    "02-make-quiz": {
+      "path": "C:\\Users\\hungb\\OneDrive\\Documents\\GitHub\\GyakutenEigo\\tools\\onboarding\\raw\\02-make-quiz.webm",
+      "durationMs": 4686
+    },
+    "03-create-game": {
+      "path": "C:\\Users\\hungb\\OneDrive\\Documents\\GitHub\\GyakutenEigo\\tools\\onboarding\\raw\\03-create-game.webm",
+      "durationMs": 5338
+    },
+    "04-invite-students": {
+      "path": "C:\\Users\\hungb\\OneDrive\\Documents\\GitHub\\GyakutenEigo\\tools\\onboarding\\raw\\04-invite-students.webm",
+      "durationMs": 15567
+    },
+    "student-join": {
+      "path": "C:\\Users\\hungb\\OneDrive\\Documents\\GitHub\\GyakutenEigo\\tools\\onboarding\\raw\\student-join.webm",
+      "durationMs": 16334
+    },
+    "05-start-game": {
+      "path": "C:\\Users\\hungb\\OneDrive\\Documents\\GitHub\\GyakutenEigo\\tools\\onboarding\\raw\\05-start-game.webm",
+      "durationMs": 11334
+    }
+  }
+}

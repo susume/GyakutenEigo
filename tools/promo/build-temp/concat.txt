@@ -1,8 +1,0 @@
-file 'C:/Users/hungb/OneDrive/Documents/GitHub/GyakutenEigo/tools/promo/build-temp/01-enter.mp4'
-file 'C:/Users/hungb/OneDrive/Documents/GitHub/GyakutenEigo/tools/promo/build-temp/02-answer.mp4'
-file 'C:/Users/hungb/OneDrive/Documents/GitHub/GyakutenEigo/tools/promo/build-temp/03-earn.mp4'
-file 'C:/Users/hungb/OneDrive/Documents/GitHub/GyakutenEigo/tools/promo/build-temp/04-play-impact.mp4'
-file 'C:/Users/hungb/OneDrive/Documents/GitHub/GyakutenEigo/tools/promo/build-temp/05-play-arena.mp4'
-file 'C:/Users/hungb/OneDrive/Documents/GitHub/GyakutenEigo/tools/promo/build-temp/06-play-opponent.mp4'
-file 'C:/Users/hungb/OneDrive/Documents/GitHub/GyakutenEigo/tools/promo/build-temp/07-compete.mp4'
-file 'C:/Users/hungb/OneDrive/Documents/GitHub/GyakutenEigo/tools/promo/build-temp/08-hero.mp4'

@@ -1,0 +1,164 @@
+﻿{
+    "output":  "C:\\Users\\hungb\\OneDrive\\Documents\\GitHub\\GyakutenEigo\\quizstrike-teacher-onboarding.mp4",
+    "outputCopy":  "C:\\Users\\hungb\\OneDrive\\Documents\\GitHub\\GyakutenEigo\\tools\\onboarding\\output\\quizstrike-teacher-onboarding.mp4",
+    "durationSeconds":  45.025,
+    "video":  {
+                  "codec":  "h264",
+                  "width":  1920,
+                  "height":  1080,
+                  "frameRate":  "30/1",
+                  "pixelFormat":  "yuv420p"
+              },
+    "audio":  {
+                  "codec":  "aac",
+                  "channels":  2,
+                  "sampleRate":  48000
+              },
+    "scenes":  [
+                   {
+                       "name":  "00-intro",
+                       "startSeconds":  0,
+                       "durationSeconds":  4,
+                       "title":  "GET YOUR CLASS PLAYING IN MINUTES"
+                   },
+                   {
+                       "name":  "01-account-card",
+                       "startSeconds":  4,
+                       "durationSeconds":  2.5,
+                       "title":  "1 / 4  CREATE YOUR ACCOUNT"
+                   },
+                   {
+                       "name":  "02-account",
+                       "startSeconds":  6.5,
+                       "durationSeconds":  1.967,
+                       "title":  "Create a teacher account"
+                   },
+                   {
+                       "name":  "03-quiz-card",
+                       "startSeconds":  8.467,
+                       "durationSeconds":  2.5,
+                       "title":  "2 / 4  MAKE A QUIZ"
+                   },
+                   {
+                       "name":  "04-quiz",
+                       "startSeconds":  10.967,
+                       "durationSeconds":  2,
+                       "title":  "Create a question set"
+                   },
+                   {
+                       "name":  "05-game-card",
+                       "startSeconds":  12.967,
+                       "durationSeconds":  2.5,
+                       "title":  "3 / 4  CREATE A GAME"
+                   },
+                   {
+                       "name":  "06-game",
+                       "startSeconds":  15.467,
+                       "durationSeconds":  2.667,
+                       "title":  "Set up a game"
+                   },
+                   {
+                       "name":  "07-student",
+                       "startSeconds":  18.134,
+                       "durationSeconds":  3.967,
+                       "title":  "Students choose a team"
+                   },
+                   {
+                       "name":  "08-invite-card",
+                       "startSeconds":  22.101,
+                       "durationSeconds":  2.5,
+                       "title":  "INVITE STUDENTS"
+                   },
+                   {
+                       "name":  "09-invite",
+                       "startSeconds":  24.601,
+                       "durationSeconds":  5.967,
+                       "title":  "Share the room"
+                   },
+                   {
+                       "name":  "10-start-card",
+                       "startSeconds":  30.568,
+                       "durationSeconds":  2.5,
+                       "title":  "4 / 4  START THE GAME"
+                   },
+                   {
+                       "name":  "11-start",
+                       "startSeconds":  33.068,
+                       "durationSeconds":  7.934,
+                       "title":  "Start the live game"
+                   },
+                   {
+                       "name":  "12-outro",
+                       "startSeconds":  41.002,
+                       "durationSeconds":  4,
+                       "title":  "YOU ARE READY TO PLAY"
+                   }
+               ],
+    "validationFrames":  [
+                             {
+                                 "Name":  "00-intro",
+                                 "AtSeconds":  1.6,
+                                 "Path":  "C:\\Users\\hungb\\OneDrive\\Documents\\GitHub\\GyakutenEigo\\tools\\onboarding\\output\\validation\\00-intro.png"
+                             },
+                             {
+                                 "Name":  "01-account-card",
+                                 "AtSeconds":  5.25,
+                                 "Path":  "C:\\Users\\hungb\\OneDrive\\Documents\\GitHub\\GyakutenEigo\\tools\\onboarding\\output\\validation\\01-account-card.png"
+                             },
+                             {
+                                 "Name":  "02-account",
+                                 "AtSeconds":  7.484,
+                                 "Path":  "C:\\Users\\hungb\\OneDrive\\Documents\\GitHub\\GyakutenEigo\\tools\\onboarding\\output\\validation\\02-account.png"
+                             },
+                             {
+                                 "Name":  "03-quiz-card",
+                                 "AtSeconds":  9.717,
+                                 "Path":  "C:\\Users\\hungb\\OneDrive\\Documents\\GitHub\\GyakutenEigo\\tools\\onboarding\\output\\validation\\03-quiz-card.png"
+                             },
+                             {
+                                 "Name":  "04-quiz",
+                                 "AtSeconds":  11.967,
+                                 "Path":  "C:\\Users\\hungb\\OneDrive\\Documents\\GitHub\\GyakutenEigo\\tools\\onboarding\\output\\validation\\04-quiz.png"
+                             },
+                             {
+                                 "Name":  "05-game-card",
+                                 "AtSeconds":  14.217,
+                                 "Path":  "C:\\Users\\hungb\\OneDrive\\Documents\\GitHub\\GyakutenEigo\\tools\\onboarding\\output\\validation\\05-game-card.png"
+                             },
+                             {
+                                 "Name":  "06-game",
+                                 "AtSeconds":  16.8,
+                                 "Path":  "C:\\Users\\hungb\\OneDrive\\Documents\\GitHub\\GyakutenEigo\\tools\\onboarding\\output\\validation\\06-game.png"
+                             },
+                             {
+                                 "Name":  "07-student",
+                                 "AtSeconds":  19.734,
+                                 "Path":  "C:\\Users\\hungb\\OneDrive\\Documents\\GitHub\\GyakutenEigo\\tools\\onboarding\\output\\validation\\07-student.png"
+                             },
+                             {
+                                 "Name":  "08-invite-card",
+                                 "AtSeconds":  23.351,
+                                 "Path":  "C:\\Users\\hungb\\OneDrive\\Documents\\GitHub\\GyakutenEigo\\tools\\onboarding\\output\\validation\\08-invite-card.png"
+                             },
+                             {
+                                 "Name":  "09-invite",
+                                 "AtSeconds":  26.201,
+                                 "Path":  "C:\\Users\\hungb\\OneDrive\\Documents\\GitHub\\GyakutenEigo\\tools\\onboarding\\output\\validation\\09-invite.png"
+                             },
+                             {
+                                 "Name":  "10-start-card",
+                                 "AtSeconds":  31.818,
+                                 "Path":  "C:\\Users\\hungb\\OneDrive\\Documents\\GitHub\\GyakutenEigo\\tools\\onboarding\\output\\validation\\10-start-card.png"
+                             },
+                             {
+                                 "Name":  "11-start",
+                                 "AtSeconds":  34.668,
+                                 "Path":  "C:\\Users\\hungb\\OneDrive\\Documents\\GitHub\\GyakutenEigo\\tools\\onboarding\\output\\validation\\11-start.png"
+                             },
+                             {
+                                 "Name":  "12-outro",
+                                 "AtSeconds":  42.602,
+                                 "Path":  "C:\\Users\\hungb\\OneDrive\\Documents\\GitHub\\GyakutenEigo\\tools\\onboarding\\output\\validation\\12-outro.png"
+                             }
+                         ]
+}
