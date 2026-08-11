@@ -1,0 +1,530 @@
+{
+  "capturedAt": "2026-08-11T06:43:39.785Z",
+  "viewport": {
+    "width": 1920,
+    "height": 1080
+  },
+  "multiplayer_blue_character": {
+    "atMs": 3590,
+    "playerId": "c0280b08-9a3b-49ef-b43e-83dd2d5cccb2"
+  },
+  "multiplayer_red_joined": {
+    "atMs": 5971,
+    "playerId": "0fedeecf-be8f-4c8d-8e57-ddbebbdfaf50"
+  },
+  "bots_ready": {
+    "atMs": 5971,
+    "count": 0
+  },
+  "preparation_started": {
+    "atMs": 5980
+  },
+  "answer_question_visible": {
+    "atMs": 8478
+  },
+  "answer_correct_cash_awarded": {
+    "atMs": 8767
+  },
+  "buy_panel_cash_visible": {
+    "atMs": 9620
+  },
+  "warm_vest_equipped": {
+    "atMs": 10044
+  },
+  "round_live": {
+    "atMs": 19881,
+    "blue": {
+      "x": -141.36,
+      "z": -14.88,
+      "y": 4.21,
+      "facing": -1.5707963267948966,
+      "isAlive": true,
+      "health": 170
+    },
+    "red": {
+      "x": 141.36,
+      "z": -14.88,
+      "y": 4.21,
+      "facing": 1.5707963267948966,
+      "isAlive": true,
+      "health": 100
+    }
+  },
+  "staged_encounter_lane": {
+    "atMs": 48578,
+    "mainRoute": [
+      {
+        "index": 0,
+        "waypoint": {
+          "x": -120,
+          "z": -14.88
+        },
+        "position": {
+          "x": -132.5688,
+          "z": -14.88,
+          "y": 4.21,
+          "facing": -1.5707963267948966,
+          "isAlive": true,
+          "health": 170
+        }
+      },
+      {
+        "index": 1,
+        "waypoint": {
+          "x": -120,
+          "z": 10
+        },
+        "position": {
+          "x": -119.472469071204,
+          "z": -8.646852143301663,
+          "y": 4.21,
+          "facing": -2.0150163269307955,
+          "isAlive": true,
+          "health": 170
+        }
+      },
+      {
+        "index": 2,
+        "waypoint": {
+          "x": 110,
+          "z": 10
+        },
+        "position": {
+          "x": -19.63194373341406,
+          "z": 34.55699344053598,
+          "y": 4.21,
+          "facing": -2.0150163269307955,
+          "isAlive": true,
+          "health": 170
+        }
+      }
+    ],
+    "redRoute": [
+      {
+        "index": 0,
+        "waypoint": {
+          "x": 120,
+          "z": -14.88
+        },
+        "position": {
+          "x": 132.554,
+          "z": -14.88,
+          "y": 4.21,
+          "facing": 1.5707963267948966,
+          "isAlive": true,
+          "health": 100
+        }
+      },
+      {
+        "index": 1,
+        "waypoint": {
+          "x": 120,
+          "z": 10
+        },
+        "position": {
+          "x": 119.13038222335067,
+          "z": -8.13708002521004,
+          "y": 4.21,
+          "facing": 2.0362963267948966,
+          "isAlive": true,
+          "health": 100
+        }
+      },
+      {
+        "index": 2,
+        "waypoint": {
+          "x": 116,
+          "z": 10
+        },
+        "position": {
+          "x": 102.8284877301399,
+          "z": 0.05164911131238298,
+          "y": 4.21,
+          "facing": 2.0362963267948966,
+          "isAlive": true,
+          "health": 100
+        }
+      }
+    ],
+    "roundBlue": {
+      "x": -141.36,
+      "z": -14.88,
+      "y": 4.21,
+      "facing": -1.5707963267948966,
+      "isAlive": true,
+      "health": 170
+    },
+    "roundRed": {
+      "x": 141.36,
+      "z": -14.88,
+      "y": 4.21,
+      "facing": 1.5707963267948966,
+      "isAlive": true,
+      "health": 100
+    },
+    "mainLocal": {
+      "x": 108.069,
+      "z": 5.934
+    },
+    "redLocal": {
+      "x": 112.918,
+      "z": 15.782
+    }
+  },
+  "opponent_in_sight": {
+    "atMs": 49660,
+    "main": {
+      "x": 108.06925139887709,
+      "z": 5.934198338663547,
+      "y": 4.21,
+      "facing": -2.5751363270666947,
+      "isAlive": true,
+      "health": 170
+    },
+    "red": {
+      "x": 112.91776619733405,
+      "z": 15.781653334828718,
+      "y": 4.21,
+      "facing": 3.751996326341901,
+      "isAlive": true,
+      "health": 100
+    },
+    "mainLocal": {
+      "x": 108.069,
+      "z": 5.934
+    },
+    "redLocal": {
+      "x": 112.918,
+      "z": 15.782
+    }
+  },
+  "encounter_fire_burst": {
+    "atMs": 51634
+  },
+  "freeze_reward_score_event": {
+    "atMs": 51774,
+    "red": {
+      "id": "0fedeecf-be8f-4c8d-8e57-ddbebbdfaf50",
+      "gameSessionId": "effb0949-a0ea-4611-ab3f-1899b11cc1f7",
+      "nickname": "V2 Red Rival",
+      "team": "red",
+      "money": 0,
+      "quizMoneyEarned": 0,
+      "roundQuizMoneyEarned": 0,
+      "moneySpent": 0,
+      "isAlive": false,
+      "role": "human",
+      "tags": 0,
+      "roundTags": 0,
+      "respawns": 0,
+      "roundRespawns": 0,
+      "cosmeticXp": 0,
+      "connectionState": "connected",
+      "health": 0,
+      "snowballs": 24,
+      "respawnCorrectAnswers": 0,
+      "x": 161.2,
+      "y": 4.21,
+      "z": -44.64,
+      "facing": 1.5707963267948966,
+      "score": 0,
+      "correctAnswers": 0,
+      "wrongAnswers": 0,
+      "gear": "starter_blaster",
+      "weapon": "starter_blaster",
+      "perks": [],
+      "appearance": {
+        "headStyleId": "boy_short_hair",
+        "backAccessoryId": "none",
+        "footwearId": "runners",
+        "victoryPoseId": "champion",
+        "appearanceVersion": 7
+      },
+      "joinedAt": "2026-08-11T06:43:44.005Z",
+      "crouching": false,
+      "jumping": false,
+      "freezeStreak": 0
+    },
+    "blue": {
+      "id": "c0280b08-9a3b-49ef-b43e-83dd2d5cccb2",
+      "gameSessionId": "effb0949-a0ea-4611-ab3f-1899b11cc1f7",
+      "nickname": "V2 Blue Anchor",
+      "team": "blue",
+      "money": 900,
+      "quizMoneyEarned": 1500,
+      "roundQuizMoneyEarned": 1500,
+      "moneySpent": 1000,
+      "isAlive": true,
+      "role": "human",
+      "tags": 1,
+      "roundTags": 1,
+      "respawns": 0,
+      "roundRespawns": 0,
+      "cosmeticXp": 100,
+      "connectionState": "connected",
+      "health": 170,
+      "energy": 0,
+      "snowballs": 19,
+      "respawnCorrectAnswers": 0,
+      "x": 108.06925139887709,
+      "y": 4.21,
+      "z": 5.934198338663547,
+      "facing": -2.5751363270666947,
+      "score": 17,
+      "correctAnswers": 1,
+      "wrongAnswers": 0,
+      "gear": "starter_blaster",
+      "weapon": "starter_blaster",
+      "perks": [
+        "shield_vest"
+      ],
+      "appearance": {
+        "headStyleId": "boy_short_hair",
+        "backAccessoryId": "none",
+        "footwearId": "runners",
+        "victoryPoseId": "champion",
+        "appearanceVersion": 7
+      },
+      "joinedAt": "2026-08-11T06:43:40.968Z",
+      "crouching": false,
+      "jumping": false,
+      "freezeStreak": 1
+    }
+  },
+  "scoreboard_result_flash": {
+    "atMs": 52855
+  },
+  "hero_source_hold": {
+    "atMs": 53634
+  },
+  "finalSession": {
+    "id": "effb0949-a0ea-4611-ab3f-1899b11cc1f7",
+    "teacherId": "7b9666dd-2b09-4e95-8170-4f6e04763239",
+    "quizSetId": "4b29e45d-8d75-44b8-83c7-c9e1191d7a12",
+    "sessionCode": "NNYXX5",
+    "status": "active",
+    "controlState": "running",
+    "maxPlayers": 10,
+    "currentRound": 1,
+    "settings": {
+      "mapId": "iron_junction",
+      "gameMode": "classic",
+      "botDifficulty": "advanced",
+      "roundCount": 1,
+      "flagHoldSeconds": 30,
+      "teamAssignment": "players_choose",
+      "startingMoney": 0,
+      "startingSnowballs": 24,
+      "correctAnswerReward": 1500,
+      "fastAnswerBonus": 0,
+      "fastAnswerThresholdMs": 7000,
+      "wrongAnswerPenalty": 0,
+      "snowballPackPrice": 300,
+      "snowballsPerPack": 10,
+      "roundDurationSeconds": 120,
+      "maxPlayers": 10,
+      "deadPlayersCanPractice": true,
+      "deadPlayersEarnMoney": false,
+      "characterCustomization": {
+        "enabled": true,
+        "uploadsEnabled": false,
+        "aiEnabled": false,
+        "persistAcrossSessions": false
+      }
+    },
+    "players": [
+      {
+        "id": "c0280b08-9a3b-49ef-b43e-83dd2d5cccb2",
+        "gameSessionId": "effb0949-a0ea-4611-ab3f-1899b11cc1f7",
+        "nickname": "V2 Blue Anchor",
+        "team": "blue",
+        "money": 900,
+        "quizMoneyEarned": 1500,
+        "roundQuizMoneyEarned": 1500,
+        "moneySpent": 1000,
+        "isAlive": true,
+        "role": "human",
+        "tags": 1,
+        "roundTags": 1,
+        "respawns": 0,
+        "roundRespawns": 0,
+        "cosmeticXp": 100,
+        "connectionState": "connected",
+        "health": 170,
+        "energy": 0,
+        "snowballs": 19,
+        "respawnCorrectAnswers": 0,
+        "x": 108.06925139887709,
+        "y": 4.21,
+        "z": 5.934198338663547,
+        "facing": -2.5751363270666947,
+        "score": 17,
+        "correctAnswers": 1,
+        "wrongAnswers": 0,
+        "gear": "starter_blaster",
+        "weapon": "starter_blaster",
+        "perks": [
+          "shield_vest"
+        ],
+        "appearance": {
+          "headStyleId": "boy_short_hair",
+          "backAccessoryId": "none",
+          "footwearId": "runners",
+          "victoryPoseId": "champion",
+          "appearanceVersion": 7
+        },
+        "joinedAt": "2026-08-11T06:43:40.968Z",
+        "crouching": false,
+        "jumping": false,
+        "freezeStreak": 1
+      },
+      {
+        "id": "0fedeecf-be8f-4c8d-8e57-ddbebbdfaf50",
+        "gameSessionId": "effb0949-a0ea-4611-ab3f-1899b11cc1f7",
+        "nickname": "V2 Red Rival",
+        "team": "red",
+        "money": 0,
+        "quizMoneyEarned": 0,
+        "roundQuizMoneyEarned": 0,
+        "moneySpent": 0,
+        "isAlive": false,
+        "role": "human",
+        "tags": 0,
+        "roundTags": 0,
+        "respawns": 0,
+        "roundRespawns": 0,
+        "cosmeticXp": 0,
+        "connectionState": "connected",
+        "health": 0,
+        "snowballs": 24,
+        "respawnCorrectAnswers": 0,
+        "x": 161.2,
+        "y": 4.21,
+        "z": -44.64,
+        "facing": 1.5707963267948966,
+        "score": 0,
+        "correctAnswers": 0,
+        "wrongAnswers": 0,
+        "gear": "starter_blaster",
+        "weapon": "starter_blaster",
+        "perks": [],
+        "appearance": {
+          "headStyleId": "boy_short_hair",
+          "backAccessoryId": "none",
+          "footwearId": "runners",
+          "victoryPoseId": "champion",
+          "appearanceVersion": 7
+        },
+        "joinedAt": "2026-08-11T06:43:44.005Z",
+        "crouching": false,
+        "jumping": false,
+        "freezeStreak": 0
+      }
+    ],
+    "events": [
+      {
+        "id": "8adedd44-83fc-48c1-9227-39c65f6dd009",
+        "createdAt": "2026-08-11T06:44:31.211Z",
+        "type": "elimination",
+        "message": "V2 Blue Anchor has frozen V2 Red Rival.",
+        "playerId": "c0280b08-9a3b-49ef-b43e-83dd2d5cccb2",
+        "targetId": "0fedeecf-be8f-4c8d-8e57-ddbebbdfaf50",
+        "team": "blue"
+      },
+      {
+        "id": "689baed1-bb65-4341-8be4-46cdfeb51a61",
+        "createdAt": "2026-08-11T06:44:30.872Z",
+        "type": "tag",
+        "message": "V2 Blue Anchor tagged V2 Red Rival for 20 warmth.",
+        "playerId": "c0280b08-9a3b-49ef-b43e-83dd2d5cccb2",
+        "targetId": "0fedeecf-be8f-4c8d-8e57-ddbebbdfaf50",
+        "team": "blue"
+      },
+      {
+        "id": "b3f7f551-3dd1-4a6f-8472-927938c0e8e3",
+        "createdAt": "2026-08-11T06:44:30.540Z",
+        "type": "tag",
+        "message": "V2 Blue Anchor tagged V2 Red Rival for 20 warmth.",
+        "playerId": "c0280b08-9a3b-49ef-b43e-83dd2d5cccb2",
+        "targetId": "0fedeecf-be8f-4c8d-8e57-ddbebbdfaf50",
+        "team": "blue"
+      },
+      {
+        "id": "578e02ad-5e56-4dbd-ae10-f998e726d767",
+        "createdAt": "2026-08-11T06:44:30.198Z",
+        "type": "tag",
+        "message": "V2 Blue Anchor tagged V2 Red Rival for 20 warmth.",
+        "playerId": "c0280b08-9a3b-49ef-b43e-83dd2d5cccb2",
+        "targetId": "0fedeecf-be8f-4c8d-8e57-ddbebbdfaf50",
+        "team": "blue"
+      },
+      {
+        "id": "79582745-a6f6-4d94-8808-e2b8b475f170",
+        "createdAt": "2026-08-11T06:44:29.805Z",
+        "type": "tag",
+        "message": "V2 Blue Anchor tagged V2 Red Rival for 20 warmth.",
+        "playerId": "c0280b08-9a3b-49ef-b43e-83dd2d5cccb2",
+        "targetId": "0fedeecf-be8f-4c8d-8e57-ddbebbdfaf50",
+        "team": "blue"
+      },
+      {
+        "id": "135d96cc-4140-4126-a80f-00916d1076c6",
+        "createdAt": "2026-08-11T06:43:57.774Z",
+        "type": "start",
+        "message": "Round 1 started."
+      },
+      {
+        "id": "4a0b1fd4-8839-4ed2-bf0f-1678adc32dd3",
+        "createdAt": "2026-08-11T06:43:49.480Z",
+        "type": "buy",
+        "message": "V2 Blue Anchor equipped Warm Vest.",
+        "playerId": "c0280b08-9a3b-49ef-b43e-83dd2d5cccb2",
+        "team": "blue"
+      },
+      {
+        "id": "e397e909-bad7-449b-8fb8-857c015a0b66",
+        "createdAt": "2026-08-11T06:43:48.413Z",
+        "type": "answer",
+        "message": "V2 Blue Anchor answered correctly.",
+        "playerId": "c0280b08-9a3b-49ef-b43e-83dd2d5cccb2",
+        "team": "blue"
+      },
+      {
+        "id": "a5219874-0790-4cb9-b949-80a0f74c817a",
+        "createdAt": "2026-08-11T06:43:45.759Z",
+        "type": "start",
+        "message": "Team Tag round 1 is ready to prepare."
+      },
+      {
+        "id": "1b433dac-4be0-42d6-96fb-986cce15806e",
+        "createdAt": "2026-08-11T06:43:44.007Z",
+        "type": "join",
+        "message": "V2 Red Rival joined Red Team.",
+        "playerId": "0fedeecf-be8f-4c8d-8e57-ddbebbdfaf50",
+        "team": "red"
+      },
+      {
+        "id": "346ad9ef-b0c5-4039-af3b-f73495ee7077",
+        "createdAt": "2026-08-11T06:43:40.970Z",
+        "type": "join",
+        "message": "V2 Blue Anchor joined Blue Team.",
+        "playerId": "c0280b08-9a3b-49ef-b43e-83dd2d5cccb2",
+        "team": "blue"
+      },
+      {
+        "id": "dd2c0173-e88b-49c1-b6d5-5ce4e3f3fbed",
+        "createdAt": "2026-08-11T06:43:40.097Z",
+        "type": "join",
+        "message": "Session NNYXX5 created."
+      }
+    ],
+    "createdAt": "2026-08-11T06:43:40.097Z",
+    "roundWins": {
+      "blue": 0,
+      "red": 0
+    },
+    "startedAt": "2026-08-11T06:43:57.774Z",
+    "endsAt": "2026-08-11T06:45:57.774Z",
+    "serverTime": "2026-08-11T06:44:35.651Z"
+  }
+}

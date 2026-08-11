@@ -1,0 +1,48 @@
+﻿Input #0, mov,mp4,m4a,3gp,3g2,mj2, from 'quizstrike-promo-15s.mp4':
+  Metadata:
+    major_brand     : isom
+    minor_version   : 512
+    compatible_brands: isomiso2avc1mp41
+    encoder         : Lavf58.39.101
+  Duration: 00:00:15.02, start: 0.000000, bitrate: 4825 kb/s
+    Stream #0:0(und): Video: h264 (Main) (avc1 / 0x31637661), yuv420p, 1920x1080 [SAR 1:1 DAR 16:9], 4662 kb/s, 30 fps, 30 tbr, 15360 tbn, 60 tbc (default)
+    Metadata:
+      handler_name    : VideoHandler
+    Stream #0:1(und): Audio: aac (LC) (mp4a / 0x6134706D), 48000 Hz, stereo, fltp, 162 kb/s (default)
+    Metadata:
+      handler_name    : SoundHandler
+Stream mapping:
+  Stream #0:0 -> #0:0 (h264 (native) -> wrapped_avframe (native))
+  Stream #0:1 -> #0:1 (aac (native) -> pcm_s16le (native))
+Press [q] to stop, [?] for help
+Output #0, null, to 'NUL':
+  Metadata:
+    major_brand     : isom
+    minor_version   : 512
+    compatible_brands: isomiso2avc1mp41
+    encoder         : Lavf58.39.101
+    Stream #0:0(und): Video: wrapped_avframe, yuv420p, 1920x1080 [SAR 1:1 DAR 16:9], q=2-31, 200 kb/s, 30 fps, 30 tbn, 30 tbc (default)
+    Metadata:
+      handler_name    : VideoHandler
+      encoder         : Lavc58.73.102 wrapped_avframe
+    Stream #0:1(und): Audio: pcm_s16le, 192000 Hz, stereo, s16, 6144 kb/s (default)
+    Metadata:
+      handler_name    : SoundHandler
+      encoder         : Lavc58.73.102 pcm_s16le
+frame=  193 fps=0.0 q=-0.0 size=N/A time=00:00:06.43 bitrate=N/A speed=12.9x    
+frame=  376 fps=374 q=-0.0 size=N/A time=00:00:12.53 bitrate=N/A speed=12.5x    
+frame=  450 fps=345 q=-0.0 Lsize=N/A time=00:00:15.01 bitrate=N/A speed=11.5x    
+video:236kB audio:11264kB subtitle:0kB other streams:0kB global headers:0kB muxing overhead: unknown
+[Parsed_loudnorm_0 @ 000001f516d92ec0] 
+{
+	"input_i" : "-38.37",
+	"input_tp" : "-14.87",
+	"input_lra" : "10.70",
+	"input_thresh" : "-48.66",
+	"output_i" : "-14.12",
+	"output_tp" : "-1.50",
+	"output_lra" : "4.80",
+	"output_thresh" : "-24.12",
+	"normalization_type" : "dynamic",
+	"target_offset" : "-1.88"
+}

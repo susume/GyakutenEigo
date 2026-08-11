@@ -1,0 +1,19 @@
+{
+  "capturedAt": "2026-08-11T05:23:07.135Z",
+  "viewport": {
+    "width": 1920,
+    "height": 1080
+  },
+  "stages": {
+    "join_screen": 610,
+    "lobby_team": 3190,
+    "preparation": 5729,
+    "question": 6968,
+    "correct_feedback": 7226,
+    "round_active": 41608,
+    "sprint": 44057,
+    "combat": 46077,
+    "scoreboard": 51025,
+    "hero": 53574
+  }
+}

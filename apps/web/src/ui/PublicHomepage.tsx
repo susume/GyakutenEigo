@@ -121,12 +121,19 @@ export default function PublicHomepage({
             <span>DESERT CITADEL <span className="hero-stage-slash">/</span> ROUND 02</span>
           </div>
           <div className="public-hero-media-wrap">
-            <img
+            <video
               className="public-hero-media"
-              src="/assets/quizstrike-game-hero.png"
-              alt="QuizStrike teams competing in an arena around a live question"
-              fetchPriority="high"
-            />
+              autoPlay
+              loop
+              muted
+              playsInline
+              preload="metadata"
+              poster="/assets/quizstrike-game-hero.png"
+              aria-label="QuizStrike teams competing in an arena around a live question"
+            >
+              <source src="/assets/quizstrike-promo-15s-v2.mp4" type="video/mp4" />
+              Your browser does not support the QuizStrike gameplay preview video.
+            </video>
             <div className="hero-scoreboard" aria-label="Live team score">
               <div className="hero-team hero-team-blue"><span>BLUE</span><strong>03</strong></div>
               <div className="hero-score-divider">:</div>
