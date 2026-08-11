@@ -28,9 +28,12 @@ adapter in the next intentional protocol-major release.
 4. Server emits `server_hello`, including its clock and connection ID.
 5. Browser emits `join_session_room` exactly once for that connection ID.
 6. Server authenticates either the teacher JWT or student player token.
-7. Server joins the socket to the session room and emits `session_state`.
+7. Server joins the socket to a role-scoped room and emits `session_state`.
+   Students join the public gameplay room; authenticated teachers join the
+   teacher-only room.
 8. Reconnect repeats the handshake and authenticated room join. The returned
-   snapshot is authoritative and structurally validated by the browser.
+   snapshot is authoritative, role-scoped, and structurally validated by the
+   browser.
 
 ### Handshake example
 
@@ -79,6 +82,12 @@ Exactly one credential form is allowed. Join codes are case-insensitive. In the
 current in-memory runtime-store mode, the load balancer must preserve room
 affinity because the directory is process-local.
 
+Teacher and student sockets receive separate projections. Public room snapshots
+and `player_state` payloads are safe for students; teacher-room snapshots and
+`player_state` payloads may include the derived `learningPulse`. The browser
+must not infer teacher privileges from a payload; authorization is established
+by the server-side credential used during room binding.
+
 ## Client commands
 
 | Event / canonical `type` | Payload | Authentication | Notes |
@@ -121,9 +130,11 @@ KiB are rejected. Invalid input does not enter gameplay or database services.
 players, scoreboard values, active flag state, announcements, deadlines, recent
 events, `controlState`, the teacher pause timestamp when present, and
 `serverTime`. Authenticated teacher snapshots additionally include the compact
-`learningPulse`; student snapshots do not. Quiz answer correctness remains in
-the acknowledged answer result and is never trusted from the client. Teacher
-pause/resume uses the authenticated HTTP actions
+`learningPulse`; student snapshots do not. Learning Pulse is derived from
+authoritative current-session answer logs, excludes bots, and is not persisted
+inside `RuntimeSnapshot`. Quiz answer correctness remains in the acknowledged
+answer result and is never trusted from the client. Teacher pause/resume uses
+the authenticated HTTP actions
 `POST /api/sessions/:code/pause` and `POST /api/sessions/:code/resume`; those
 actions preserve the existing round `status` and shift absolute deadlines by
 the paused duration on resume.

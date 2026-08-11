@@ -1,13 +1,14 @@
 # QuizStrike architecture
 
-Last verified: 5 August 2026
+Last verified: 11 August 2026
 Current branch: `main`
 
 This is the current-state architecture for GyakutenEigo / QuizStrike. The
 browser game has moved beyond a quiz room with a simple tag loop: it now has
 three server-authoritative modes, three authored arena maps, combat equipment,
 an answer-driven economy, reconnect handling, character customization,
-teacher spectator view, and two organizer-facing competition surfaces.
+teacher attention controls, a teacher-only Learning Pulse, teacher spectator
+view, and two organizer-facing competition surfaces.
 
 ## System boundary
 
@@ -52,8 +53,9 @@ The teacher flow is now four practical stages: choose the game mode, choose the
 arena and mode rules, tune advanced settings, then invite students from the
 waiting room. The waiting room provides a join code, QR code, roster, bot
 controls, moderation, character-customization controls, and the Start Game
-action. During play, Live Game Control exposes round actions and a read-only
-Spectator View.
+action. During play, Live Game Control exposes round actions, an explicit
+Pause Game / Resume Game attention control, a teacher-only Learning Pulse, and
+a read-only Spectator View.
 
 ## Server composition
 
@@ -124,6 +126,8 @@ second source of collision or combat truth.
 | Active room lifecycle, players, timers, combat, bots, objectives, announcements | Room authority on the server | Process memory; checkpointed when required |
 | Reports, answer logs, round logs, player/session history | Server persistence boundary | Normalized PostgreSQL models |
 | `RuntimeSnapshot` row `primary` | Recovery checkpoint / legacy migration source | PostgreSQL JSON; not the source of truth for new library writes |
+| Teacher pause state | Server room runtime plus checkpoint fields | `controlState` and `teacherPausedAt` are authoritative; deadlines shift on resume |
+| Learning Pulse | Server-derived aggregation cache | Teacher projection only; computed from current-session answers and excluded from student snapshots and runtime checkpoints |
 | Socket bindings, disconnect grace, question gates, rate limits, request dedupe, decals | Server process | Process memory; cleaned on room/player end |
 | Camera, animation, VFX, audio, minimap, local target selection, muted state | Browser | Presentation state only |
 
@@ -156,7 +160,7 @@ sequenceDiagram
   T->>G: client_hello (protocol v1)
   G-->>T: server_hello (clock + connection id)
   T->>G: join_session_room (teacher JWT or player token)
-  G->>R: Bind socket to room/player
+  G->>R: Bind socket to role-scoped room/player
   R-->>T: session_state snapshot
   T->>G: Answer, position, fire, buy, or flag intent
   G->>R: Validate phase, identity, bounds, cooldown, and ownership
@@ -168,6 +172,11 @@ Socket.IO is the primary live transport. Student answer/purchase commands also
 have HTTP routes, and the browser transport chooses Socket.IO acknowledgements
 when connected with an HTTP fallback. Purchases must not be retried through two
 transports for the same action because that could charge twice.
+
+The server maintains separate public and teacher projections. Students receive
+the public gameplay room and public `player_state`; authenticated teachers
+receive a teacher-only room with the same authoritative room state plus the
+derived Learning Pulse. Student sockets never receive Learning Pulse data.
 
 The canonical protocol is version 1. The server temporarily recognizes an
 unversioned legacy client as inferred version 0 for rollout compatibility; an
@@ -192,6 +201,22 @@ is enabled, but dead players do not earn money by default. Three correct
 practice answers are required for the configured respawn path. Round deadlines
 and absolute timestamps are server-owned; clients estimate display time from
 the latest server clock and render local countdowns.
+
+### Teacher attention pause
+
+`controlState: "teacher_paused"` is an explicit control state layered over the
+existing round `status`. It does not turn an active round into a round-result
+pause or reset the current phase. While it is active, the server rejects or
+ignores movement, firing, flag actions, answers, and purchases; bot ticks and
+countdown displays also stop. The browser shows an attention overlay and
+disables conflicting controls, but the server state remains authoritative.
+
+`POST /api/sessions/:code/pause` and `/resume` require the owning teacher.
+Resume shifts all absolute deadlines and room-owned ephemeral timers by the
+recorded pause duration. The operation is idempotent, scoped to one room, and
+survives reconnect through the authoritative snapshot. Teacher pause fields
+are checkpointed, while the derived Learning Pulse remains ephemeral and is
+recomputed from answer logs.
 
 ### Modes
 
@@ -285,6 +310,12 @@ room appearance policy.
   numeric bounds, and are capped at 16 KiB.
 - Reports and history deletion are teacher-scoped; public competition and
   tournament projections omit private roster or answer data.
+- Learning Pulse is a teacher-only, class-level derived projection. It excludes
+  bots and unrelated sessions, deduplicates authoritative answer records, and
+  is not included in student HTTP/socket snapshots or persisted runtime state.
+- Teacher pause is owner-only and cannot be activated for waiting or ended
+  sessions. Its timers and commands are scoped to the target room so one
+  classroom cannot alter another classroom's deadlines.
 - `DATABASE_URL` and `JWT_SECRET` are server-only. `VITE_*` variables are
   public build inputs and must never contain database credentials or Supabase
   secrets.
@@ -295,10 +326,10 @@ room appearance policy.
 
 Room ownership currently uses in-memory leases and fencing tokens. Only the
 owner evaluates bot ticks, deadlines, round conclusions, and live mutation.
-Reconnects perform a fresh protocol handshake and receive a complete
-authoritative snapshot. Absolute deadlines survive a process checkpoint, but
-process-local sockets, timers, bots, rate limits, and decals do not survive a
-restart without rejoin/reconstruction.
+Reconnects perform a fresh protocol handshake and receive a complete,
+role-scoped authoritative snapshot. Absolute deadlines and teacher pause state
+survive a process checkpoint, but process-local sockets, timers, bots, rate
+limits, and decals do not survive a restart without rejoin/reconstruction.
 
 Do not add Render replicas until all of the following are implemented and
 integration-tested together:
@@ -334,8 +365,12 @@ integration-tested together:
 
 The current local validation record for this documentation refresh is:
 
+- `npm run lint` passed;
+- `npm run typecheck` passed;
 - `npm test` passed;
 - `npm run build` passed;
+- `npm run test:load` passed for the 40-client Socket.IO matrix;
+- `npm run test:e2e` passed for all five browser journeys;
 - `npx prisma validate` passed with a local/dummy `DATABASE_URL`;
 - `git diff --check` passed.
 

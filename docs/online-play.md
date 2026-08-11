@@ -1,10 +1,12 @@
 # Online play and deployment runbook
 
-Last verified: 5 August 2026
+Last verified: 11 August 2026
 
 This runbook covers the current hosted QuizStrike system: a static React/Vite
 client on GitHub Pages, one Render Node/Express/Socket.IO service, and a
-server-only Prisma connection to Supabase PostgreSQL.
+server-only Prisma connection to Supabase PostgreSQL. It also defines the
+single-room authority, reconnect, teacher-pause, and teacher-only Learning
+Pulse behavior that must remain true during deployment.
 
 ## Production topology
 
@@ -41,6 +43,8 @@ store. The browser communicates with the Render API only.
 - Confirm `CLIENT_ORIGIN` includes every real web origin that will open the
   game, including custom-domain aliases used by the class.
 - Keep exactly one Render instance and preserve room affinity.
+- Treat server and browser protocol changes as one compatible release; deploy
+  the compatibility server before the matching browser when contracts change.
 - Have a recent database backup before schema or persistence changes.
 
 ## Build and start
@@ -59,6 +63,12 @@ Render starts the API with:
 ```text
 npm start -w @quizstrike/server
 ```
+
+For local testing, run `npm run dev` from the repository root. It starts the
+Vite client on `http://localhost:5173` and the API on
+`http://localhost:4000`. Without `DATABASE_URL`, the API intentionally uses
+in-memory storage; this is suitable for UI and classroom-flow testing, but
+users, rooms, answers, and reports disappear when the process restarts.
 
 When `DATABASE_URL` is present, `apps/server/src/start.ts` runs
 `prisma migrate deploy` before importing the server runtime. If migration
@@ -174,9 +184,16 @@ authentication, live-room controls, or persistence:
    balance, snowballs, cooldowns, and independent weapon/perk slots.
 9. Reload or disconnect one learner, rejoin with the stored token, and confirm
    the authoritative snapshot restores the room state.
-10. Open teacher Spectator View, choose a connected learner, and use
+10. Press Pause Game as the owning teacher. Confirm students see the attention
+    overlay, countdowns and BGM stop, movement/firing/answers/purchases are
+    blocked, and the pause remains after a student reconnects.
+11. Press Resume Game. Confirm the same round resumes with its deadlines
+    shifted by the pause duration and student actions work again.
+12. Confirm the teacher sees Learning Pulse accuracy and answer totals while a
+    student snapshot and public `player_state` contain no Learning Pulse.
+13. Open teacher Spectator View, choose a connected learner, and use
     Previous/Next. Confirm it is read-only and does not emit gameplay commands.
-11. End the game, open the learning report, export it, and confirm history
+14. End the game, open the learning report, export it, and confirm history
     deletion remains teacher-scoped.
 
 Repeat at least one test on the target classroom network. Confirm HTTPS,
@@ -204,13 +221,22 @@ decal bytes, or raw answer correctness to student clients.
 
 The browser connects to Socket.IO, sends `client_hello`, receives
 `server_hello`, then sends `join_session_room` with either the teacher JWT or a
-scoped player token. Reconnect repeats this sequence and receives a complete
-`session_state` snapshot.
+scoped player token. Reconnect repeats this sequence and receives a complete,
+role-scoped `session_state` snapshot. Student sockets join the public gameplay
+room; teacher sockets join the teacher-only room. Teacher snapshots include
+the derived Learning Pulse, while student snapshots do not.
 
 The room owner alone evaluates bot ticks, deadlines, round conclusions, and
 live mutations. Disconnect grace protects temporary network loss; a carrier
 drops the Flag objective immediately. Process restart does not provide a
 zero-downtime match handoff for sockets, bot memory, rate limits, or decals.
+
+Teacher pause is a control state separate from the round-result `status`. The
+owner-only pause/resume HTTP actions freeze gameplay commands and bot/deadline
+progress, then shift room-owned absolute timers on resume. The state is
+included in reconnect snapshots and checkpoint fields; the Learning Pulse is
+recomputed from authoritative answer logs instead of being stored in a
+snapshot.
 
 The API client can try the configured fallback API origin for HTTP/API wake-up,
 but fallback selection does not make live room state multi-instance-safe.

@@ -92,6 +92,11 @@ hosts must serve 'index.html' for these paths.
 - Tag Mode, Flag Mode, and Zombie Mode.
 - Server-authoritative movement, damage, health, economy, purchases, objectives,
   rounds, bots, answer rewards, and results.
+- Owner-only teacher attention pause/resume that freezes gameplay commands and
+  shifts room deadlines without changing the current round phase.
+- Teacher-only Learning Pulse with cached class accuracy, answer totals,
+  review signals, and difficult/strongest-question patterns; student snapshots
+  never include it.
 - Desert Citadel, The Iron Junction, and Temple Runoff maps.
 - Starter, Quick, and Heavy Snowball Launchers plus Warm Vest and Speed Boots.
 - Shared skinned characters, bounded decals, teacher moderation, touch/gamepad
@@ -203,13 +208,14 @@ hosted builds.
 Database tools:
 
 ~~~powershell
-npm run prisma:validate
+npx prisma validate
 npm run prisma:deploy
 npm run db:backfill -- --dry-run
 npm run db:verify
 ~~~
 
-The production cutover and backup record is documented in
+Use `npx prisma validate` for schema validation; `npm run prisma:validate` is
+not a repository script. The production cutover and backup record is documented in
 [docs/supabase-database-migration.md](docs/supabase-database-migration.md).
 
 ## Safety rules
@@ -221,7 +227,11 @@ The production cutover and backup record is documented in
 4. Never include a question's correct choice in a student question payload.
 5. Check teacher ownership and player tokens on every private operation.
 6. Keep decal bytes bounded, authenticated, expiring, and out of snapshots.
-7. Use only school-safe language: snow tags, snowball launchers, warmth, gear,
+7. Keep `controlState: "teacher_paused"` separate from round-result `status`;
+   pause/resume must remain owner-only, room-scoped, and deadline-safe.
+8. Keep Learning Pulse teacher-only, derived from authoritative answers, and
+   absent from student snapshots and runtime checkpoints.
+9. Use only school-safe language: snow tags, snowball launchers, warmth, gear,
    arena, Blue Team, and Red Team. Do not add gore, realistic weapon branding,
    public matchmaking, public chat, voice chat, or copied Counter-Strike content.
 
@@ -235,6 +245,7 @@ The production cutover and backup record is documented in
 - [Teacher library and reports](docs/teacher-library.md)
 - [Tournament Center](docs/tournament-center.md)
 - [Online hosting runbook](docs/online-play.md)
+- [System handoff](HANDOFF.md)
 - [Game rules for students](docs/game-rules.md)
 - [Protocol contract](packages/shared/PROTOCOL.md)
 - [Phases 7-10 implementation report](docs/phases-7-10-implementation-report.md)

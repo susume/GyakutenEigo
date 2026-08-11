@@ -1,6 +1,6 @@
 # QuizStrike development and operations handoff
 
-Last verified: 5 August 2026
+Last verified: 11 August 2026
 Repository: `C:\Users\hungb\OneDrive\Documents\GitHub\GyakutenEigo`
 Branch: `main`
 
@@ -25,6 +25,10 @@ QuizStrike is a live classroom browser game with:
 - shared character models, accessories, footwear, poses, bounded decals, audio,
   VFX, minimap, touch/gamepad input, and quality settings;
 - teacher read-only Spectator View that changes the local camera target only;
+- owner-only teacher attention pause/resume with room-scoped timer shifting and
+  reconnect-safe state;
+- teacher-only Learning Pulse derived from authoritative current-session
+  answers, with bot exclusion, deduplication, caching, and no student exposure;
 - a public Competition platform and a teacher-owned Tournament Center with
   study packs, invitations, approval/check-in, brackets, official room locking,
   and server-verified result linking;
@@ -140,6 +144,12 @@ not a missing configuration.
 6. The teacher can end the session or let the configured rounds finish. The
    server writes the session/report data and the teacher reviews it in Reports.
 
+At any active phase, the owning teacher may enter `controlState:
+"teacher_paused"` for classroom attention. This is separate from the round
+result `status`: it freezes student commands, bot ticks, and countdown display
+without resetting the round. Resume shifts deadlines and room-owned timers by
+the pause duration. Waiting and ended rooms cannot be paused.
+
 Reconnect is a fresh handshake plus `join_session_room`; the snapshot is the
 authority. A disconnected player has a grace period. A flag carrier drops the
 flag on disconnect, and runtime-only per-player state is cleared when the
@@ -178,6 +188,10 @@ eliminations. Clients may display them but cannot submit or increment a streak.
 - Socket commands are protocol-validated, bounded, rate-limited where needed,
   deduplicated by request/event ID, and rejected when the socket has no room
   binding.
+- Teacher sockets receive a separate room projection with Learning Pulse data;
+  student sockets receive only public gameplay state. Learning Pulse is derived
+  and cached from authoritative answer logs, excludes bots and unrelated
+  sessions, and is stripped from runtime checkpoints.
 - Prisma is the only database client. Supabase Data API, Realtime, Storage,
   and browser-side database access are out of scope.
 - `prisma/migrations/20260805000000_harden_public_tables_rls/` enables RLS and
@@ -236,7 +250,12 @@ Use a teacher browser plus two student browsers or devices:
 7. Open teacher Spectator View. Select a learner from the picker and use
    Previous/Next. Confirm the camera target changes but no movement, firing,
    answer, or room command is sent.
-8. End the room and open/export the learning report. Confirm history actions
+8. Pause the game, confirm the student attention overlay and blocked commands,
+   reconnect a student, resume the game, and verify deadlines continue from
+   their shifted values.
+9. Confirm the teacher Learning Pulse updates after an answer while the
+   student snapshot contains no Learning Pulse data.
+10. End the room and open/export the learning report. Confirm history actions
    remain teacher-only.
 
 ## Verification commands
@@ -260,8 +279,9 @@ classroom scenario. WebGL smoke checks are local browser checks and should be
 repeated when changing scene setup, character lifecycle, map geometry, input,
 or cleanup.
 
-The latest local documentation-refresh checks passed: `npm test`,
-`npm run build`, `npx prisma validate`, and `git diff --check`.
+The latest local documentation-refresh checks passed: `npm run lint`,
+`npm run typecheck`, `npm test`, `npm run build`, `npm run test:load`,
+`npm run test:e2e`, `npx prisma validate`, and `git diff --check`.
 
 ## Known limitations and next work
 
