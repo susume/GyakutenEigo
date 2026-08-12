@@ -44,6 +44,7 @@ import TeacherPauseControls from "./TeacherPauseControls";
 import StudySetLibrary from "./StudySetLibrary";
 import StudySetDetail from "./StudySetDetail";
 import TeacherHome from "./TeacherHome";
+import StudySetEditor from "./StudySetEditor";
 import { useSessionControls } from "./useSessionControls";
 const ArenaPreview = lazy(() => import("../../../game/ArenaPreview"));
 const TournamentCenter = lazy(() => import("../tournament/TournamentCenter"));
@@ -346,8 +347,9 @@ function TeacherDashboard({ teacher, onLogout, initialPath, onNavigate }: { teac
   const [report, setReport] = useState<SessionReport | null>(null);
   const [isSocketReconnecting, setIsSocketReconnecting] = useState(false);
   const [gamePreferences, setGamePreferences] = useState<GamePreferences>(() => readGamePreferences());
+  const [isDashboardLoading, setIsDashboardLoading] = useState(true);
+  const [dashboardError, setDashboardError] = useState("");
   const status = useAsyncMessage();
-  const reportStatus = status.report;
 
   const updateGamePreferences = (update: Partial<GamePreferences>) => {
     setGamePreferences((current) => {
@@ -382,23 +384,33 @@ function TeacherDashboard({ teacher, onLogout, initialPath, onNavigate }: { teac
   }, [tab, selectedSession?.id, selectedSession?.status, selectedSession?.controlState]);
 
   const refresh = useCallback(async () => {
+    setIsDashboardLoading(true);
+    setDashboardError("");
     try {
-      const [dashboardPayload, recognitionPayload] = await Promise.all([
-        teacherApi.dashboard(),
-        teacherApi.recognition()
-      ]);
+      const dashboardPayload = await teacherApi.dashboard();
       const payload = dashboardPayload as DashboardPayload;
-      const recognition = (recognitionPayload as { recognition?: RecognitionSummary }).recognition;
-      const nextData = { ...payload, ...(recognition ? { recognition } : {}) };
+      const nextData = { ...payload };
       setData(nextData);
       setSelectedSession((current) => {
         if (!current) return nextData.sessions[0] ?? null;
         return nextData.sessions.find((session) => session.id === current.id) ?? nextData.sessions[0] ?? null;
       });
+      try {
+        const recognitionPayload = await teacherApi.recognition();
+        const recognition = (recognitionPayload as { recognition?: RecognitionSummary }).recognition;
+        if (recognition) setData((current) => ({ ...current, recognition }));
+      } catch (recognitionError) {
+        // Recognition is additive. Older API deployments must not hide the
+        // teacher's valid legacy dashboard/library payload.
+        if (import.meta.env.DEV) console.warn("Recognition could not be loaded.", recognitionError);
+      }
     } catch (err) {
-      reportStatus(err);
+      if (import.meta.env.DEV) console.error("Teacher dashboard could not be loaded.", err);
+      setDashboardError("We couldn't load your Study Sets. Try again.");
+    } finally {
+      setIsDashboardLoading(false);
     }
-  }, [reportStatus]);
+  }, []);
 
   useEffect(() => {
     void refresh();
@@ -518,13 +530,6 @@ function TeacherDashboard({ teacher, onLogout, initialPath, onNavigate }: { teac
       </aside>
 
       <div className="main-panel">
-        <div className="section-heading dashboard-section-heading">
-          <div><span className="eyebrow">{tab === "home" ? "Teacher home" : tab === "discover" ? "Discover" : tab === "library" ? "Library" : tab === "sessions" ? "Host a game" : "Teacher workspace"}</span><p>Content first. Game second.</p></div>
-          <button onClick={refresh}>
-            <RefreshCw size={18} aria-hidden="true" />
-            Refresh data
-          </button>
-        </div>
         <StatusMessages error={status.error} message={status.message} />
         {isSocketReconnecting && (
           <p className="connection-banner">
@@ -535,7 +540,7 @@ function TeacherDashboard({ teacher, onLogout, initialPath, onNavigate }: { teac
 
         {tab === "home" && <TeacherHome teacher={teacher} quizSets={data.quizSets} sessions={data.sessions} recognition={data.recognition} onCreate={() => openQuizManager()} onDiscover={() => navigateTeacherTab("discover")} onLibrary={() => navigateTeacherTab("library")} onReports={() => navigateTeacherTab("reports")} onHost={(quizSetId) => void openStudySetForGame(quizSetId)} onOpenSet={openStudySet} />}
         {tab === "quizzes" && (
-          <QuizManager
+          <StudySetEditor
             key={`${quizManagerRequest.mode}:${quizManagerRequest.quizSetId ?? "new"}`}
             data={data}
             onRefresh={refresh}
@@ -543,8 +548,8 @@ function TeacherDashboard({ teacher, onLogout, initialPath, onNavigate }: { teac
             startInCreateMode={quizManagerRequest.mode === "create"}
           />
         )}
-        {tab === "discover" && <StudySetLibrary data={data} scope="public" onRefresh={refresh} onEditQuiz={openQuizManager} onPlayLive={openStudySetForGame} onOpenStudySet={openStudySet} />}
-        {tab === "library" && <StudySetLibrary data={data} scope="mine" onRefresh={refresh} onEditQuiz={openQuizManager} onPlayLive={openStudySetForGame} onOpenStudySet={openStudySet} />}
+        {tab === "discover" && <StudySetLibrary data={data} scope="public" dashboardLoading={isDashboardLoading} dashboardError={dashboardError} onRefresh={refresh} onEditQuiz={openQuizManager} onPlayLive={openStudySetForGame} onOpenStudySet={openStudySet} />}
+        {tab === "library" && <StudySetLibrary data={data} scope="mine" dashboardLoading={isDashboardLoading} dashboardError={dashboardError} onRefresh={refresh} onEditQuiz={openQuizManager} onPlayLive={openStudySetForGame} onOpenStudySet={openStudySet} />}
         {tab === "detail" && detailStudySetId && <StudySetDetail studySetId={detailStudySetId} isOwner={data.quizSets.some((quiz) => quiz.id === detailStudySetId)} onBack={() => navigateTeacherTab(data.quizSets.some((quiz) => quiz.id === detailStudySetId) ? "library" : "discover")} onHost={(quizSetId) => void openStudySetForGame(quizSetId)} onEdit={openQuizManager} onCopy={async (quizSetId) => { try { await teacherApi.duplicateStudySet(quizSetId); await refresh(); navigateTeacherTab("library"); } catch (error) { status.report(error); } }} />}
         {tab === "sessions" && (
           <SessionManager

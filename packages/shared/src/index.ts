@@ -102,6 +102,8 @@ export interface Question {
   difficulty?: string;
   /** Optional teacher-provided audio for reading or pronouncing the question. */
   audioUrl?: string;
+  /** Stable zero-based authoring order within a Study Set. */
+  position?: number;
   createdAt: string;
 }
 

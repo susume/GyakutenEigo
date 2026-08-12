@@ -37,15 +37,18 @@ test("teacher creates continuously, opens a detail page, and hosts the same Stud
   await expect(page.getByRole("heading", { name: /Welcome back/ })).toBeVisible();
 
   await page.getByRole("button", { name: "Create", exact: true }).click();
-  await page.getByLabel("Set name").fill("Eiken Pre-2 Starter");
-  await page.getByLabel("Subject").fill("English");
-  await page.getByLabel("Grade / level").fill("Eiken Pre-2");
-  await page.getByRole("button", { name: "Create set", exact: true }).click();
-  await expect(page.getByRole("heading", { name: "Eiken Pre-2 Starter", exact: true }).first()).toBeVisible();
+  await expect(page.getByRole("heading", { name: "Create Study Set", exact: true })).toBeVisible();
+  await page.getByLabel("Study Set title").fill("Eiken Pre-2 Starter");
+  await page.getByText("Details and visibility", { exact: true }).click();
+  await page.getByLabel("Subject", { exact: true }).fill("English");
+  await page.getByLabel("Level", { exact: true }).fill("Eiken Pre-2");
+  await page.getByRole("button", { name: "Import questions", exact: true }).click();
 
   await page.locator("textarea.bulk-textarea").fill("apple - りんご\nbook - 本");
-  await page.getByRole("button", { name: "Create questions", exact: true }).click();
-  await expect(page.getByText("2 questions are ready to review.", { exact: true })).toBeVisible();
+  await page.getByRole("button", { name: "Add imported questions", exact: true }).click();
+  await expect(page.locator("article.study-set-question-card")).toHaveCount(2);
+  await page.getByRole("button", { name: "Save Study Set", exact: true }).first().click();
+  await expect(page.getByText("Saved privately to your Library.", { exact: true })).toBeVisible();
 
   await page.getByRole("button", { name: "Library", exact: true }).click();
   const card = page.locator("article.study-set-card").filter({ hasText: "Eiken Pre-2 Starter" });
@@ -69,7 +72,7 @@ test("a new teacher can Discover and host public content without copying it firs
   await page.goto("/quiz-strike/teacher/discover");
   const card = page.locator("article.study-set-card").filter({ hasText: title });
   await expect(card).toBeVisible();
-  await card.getByRole("button", { name: "Open", exact: true }).click();
+  await card.getByRole("button", { name: "Preview", exact: true }).click();
   await expect(page.getByText(`Created by Community Set Creator`, { exact: false })).toBeVisible();
   await page.getByRole("button", { name: "Host", exact: true }).click();
   await expect(page).toHaveURL(new RegExp(`/quiz-strike/teacher/host/${publicSet.quizSetId}$`, "u"));

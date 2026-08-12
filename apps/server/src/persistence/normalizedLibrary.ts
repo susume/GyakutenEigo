@@ -60,7 +60,7 @@ export class NormalizedLibrary {
     const [userRows, classRows, quizRows, folderRows] = await Promise.all([
       this.prisma.user.findMany(),
       this.prisma.class.findMany(),
-      this.prisma.quizSet.findMany({ include: { questions: { orderBy: { createdAt: "asc" } } } }),
+      this.prisma.quizSet.findMany({ include: { questions: { orderBy: [{ position: "asc" }, { createdAt: "asc" }, { id: "asc" }] } } }),
       this.prisma.folder.findMany({ orderBy: [{ createdAt: "asc" }, { id: "asc" }] })
     ]);
     return {
@@ -85,14 +85,14 @@ export class NormalizedLibrary {
         ...(quiz.folderId ? { folderId: quiz.folderId } : {}),
         title: quiz.title,
         ...(quiz.description ? { description: quiz.description } : {}),
-        visibility: quiz.visibility,
+        visibility: quiz.visibility ?? "PRIVATE",
         ...(quiz.subject ? { subject: quiz.subject } : {}),
         ...(quiz.topic ? { topic: quiz.topic } : {}),
         ...(quiz.gradeLevel ? { gradeLevel: quiz.gradeLevel } : {}),
         ...(quiz.language ? { language: quiz.language } : {}),
         tags: Array.isArray(quiz.tagsJson) ? quiz.tagsJson.filter((tag): tag is string => typeof tag === "string") : [],
         ...(quiz.publishedAt ? { publishedAt: quiz.publishedAt.toISOString() } : {}),
-        status: quiz.status,
+        status: quiz.status ?? "ACTIVE",
         ...(quiz.originalSetId ? { originalSetId: quiz.originalSetId } : {}),
         ...(quiz.originalCreatorId ? { originalCreatorId: quiz.originalCreatorId } : {}),
         usageCount: quiz.usageCount,
@@ -110,6 +110,7 @@ export class NormalizedLibrary {
           ...(question.explanation ? { explanation: question.explanation } : {}),
           ...(question.difficulty ? { difficulty: question.difficulty } : {}),
           ...(question.audioUrl ? { audioUrl: question.audioUrl } : {}),
+          position: question.position,
           createdAt: question.createdAt.toISOString()
         })),
         createdAt: quiz.createdAt.toISOString(),
@@ -266,8 +267,8 @@ export class NormalizedLibrary {
       if (!quiz) throw new Error("Question quiz ownership validation failed.");
       await tx.question.upsert({
         where: { id: question.id },
-        create: { id: question.id, quizSetId: question.quizSetId, prompt: question.prompt, choiceA: question.choiceA, choiceB: question.choiceB, choiceC: question.choiceC, choiceD: question.choiceD, correctChoice: question.correctChoice, explanation: question.explanation ?? null, difficulty: question.difficulty ?? null, audioUrl: question.audioUrl ?? null, createdAt: new Date(question.createdAt), updatedAt: new Date(question.createdAt) },
-        update: { prompt: question.prompt, choiceA: question.choiceA, choiceB: question.choiceB, choiceC: question.choiceC, choiceD: question.choiceD, correctChoice: question.correctChoice, explanation: question.explanation ?? null, difficulty: question.difficulty ?? null, audioUrl: question.audioUrl ?? null }
+        create: { id: question.id, quizSetId: question.quizSetId, prompt: question.prompt, choiceA: question.choiceA, choiceB: question.choiceB, choiceC: question.choiceC, choiceD: question.choiceD, correctChoice: question.correctChoice, explanation: question.explanation ?? null, difficulty: question.difficulty ?? null, audioUrl: question.audioUrl ?? null, position: question.position ?? 0, createdAt: new Date(question.createdAt), updatedAt: new Date(question.createdAt) },
+        update: { prompt: question.prompt, choiceA: question.choiceA, choiceB: question.choiceB, choiceC: question.choiceC, choiceD: question.choiceD, correctChoice: question.correctChoice, explanation: question.explanation ?? null, difficulty: question.difficulty ?? null, audioUrl: question.audioUrl ?? null, position: question.position ?? 0 }
       });
     });
   }
@@ -284,7 +285,8 @@ export class NormalizedLibrary {
         correctChoice: question.correctChoice,
         explanation: question.explanation ?? null,
         difficulty: question.difficulty ?? null,
-        audioUrl: question.audioUrl ?? null
+        audioUrl: question.audioUrl ?? null,
+        position: question.position ?? 0
       }
     });
     if (result.count !== 1) throw new Error("Question ownership validation failed.");

@@ -164,6 +164,9 @@ export const registerQuestionRoutes = (app: Express, dependencies: QuestionRoute
       choiceD: String(req.body.choiceD ?? question.choiceD).trim(),
       explanation: String(req.body.explanation ?? question.explanation ?? "").trim() || undefined,
       difficulty: String(req.body.difficulty ?? question.difficulty ?? "").trim() || undefined,
+      position: Number.isSafeInteger(req.body.position) && req.body.position >= 0
+        ? Math.min(req.body.position, 10_000)
+        : question.position,
       ...(req.body.audioUrl !== undefined ? { audioUrl: String(req.body.audioUrl).trim() || undefined } : {})
     };
     if (!updatedQuestion.prompt || !updatedQuestion.choiceA || !updatedQuestion.choiceB || !updatedQuestion.choiceC || !updatedQuestion.choiceD) {
@@ -186,6 +189,11 @@ export const registerQuestionRoutes = (app: Express, dependencies: QuestionRoute
     }
     if (normalizedLibrary) await normalizedLibrary.updateQuestionForTeacher(quiz.teacherId, updatedQuestion);
     Object.assign(question, updatedQuestion);
+    quiz.questions.sort((left, right) =>
+      (left.position ?? 0) - (right.position ?? 0)
+      || left.createdAt.localeCompare(right.createdAt)
+      || left.id.localeCompare(right.id)
+    );
     if (contribution) recordContribution?.(contribution.recordStudySetCreated(quiz), "Study Set creation recognition");
     if (
       previousAudioUrl

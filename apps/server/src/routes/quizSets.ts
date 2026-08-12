@@ -191,6 +191,9 @@ export const registerQuizSetCreationRoutes = (app: Express, dependencies: QuizSe
       ...(typeof req.body.audioUrl === "string" && req.body.audioUrl.trim()
         ? { audioUrl: req.body.audioUrl.trim() }
         : {}),
+      position: Number.isSafeInteger(req.body.position) && req.body.position >= 0
+        ? Math.min(req.body.position, 10_000)
+        : quiz.questions.length,
       createdAt: now()
     };
 
@@ -201,6 +204,7 @@ export const registerQuizSetCreationRoutes = (app: Express, dependencies: QuizSe
 
     if (normalizedLibrary) await normalizedLibrary.saveQuestionForTeacher(quiz.teacherId, question);
     quiz.questions.push(question);
+    quiz.questions.sort((left, right) => (left.position ?? 0) - (right.position ?? 0));
     if (dependencies.contribution) dependencies.recordContribution?.(dependencies.contribution.recordStudySetCreated(quiz), "Study Set creation recognition");
     schedulePersistence();
     res.status(201).json({ question, quizSet: quiz });

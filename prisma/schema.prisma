@@ -204,10 +204,13 @@ model Question {
   explanation   String?
   difficulty    String?
   audioUrl      String?
+  position      Int            @default(0)
   audioAsset    QuestionAudio?
   answerLogs    AnswerLog[]
   createdAt     DateTime       @default(now())
   updatedAt     DateTime       @updatedAt
+
+  @@index([quizSetId, position, createdAt])
 }
 
 model QuestionAudio {

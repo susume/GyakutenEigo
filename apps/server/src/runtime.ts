@@ -50,6 +50,7 @@ import { scheduleCompetitionNotifications, type Competition, type CompetitionAud
 import { createTournamentState, type Tournament, type TournamentAuditEvent } from "./tournamentDomain.js";
 import { registerTournamentRoutes } from "./routes/tournamentRoutes.js";
 import { canTeacherUseStudySet, registerStudySetRoutes } from "./routes/studySets.js";
+import { normalizeLegacyStudySet } from "./studySetCompatibility.js";
 import {
   IdempotentEventConsumer,
   InMemoryJoinCodeDirectory,
@@ -389,11 +390,11 @@ const hydrateRuntimeState = async () => {
   // a corresponding normalized record yet.
   for (const user of durable.users) users.set(user.id, user);
   for (const klass of durable.classes) classes.set(klass.id, klass);
-  for (const quiz of durable.quizSets) quizSets.set(quiz.id, quiz);
+  for (const quiz of durable.quizSets) quizSets.set(quiz.id, normalizeLegacyStudySet(quiz));
   for (const folder of durable.folders) folders.set(folder.id, folder);
   for (const user of savedUsers) if (user?.id && !users.has(user.id)) users.set(user.id, user);
   for (const klass of savedClasses) if (klass?.id && !classes.has(klass.id)) classes.set(klass.id, klass);
-  for (const quiz of savedQuizSets) if (quiz?.id && !quizSets.has(quiz.id)) quizSets.set(quiz.id, quiz);
+  for (const quiz of savedQuizSets) if (quiz?.id && !quizSets.has(quiz.id)) quizSets.set(quiz.id, normalizeLegacyStudySet(quiz));
   for (const folder of savedFolders) if (folder?.id && !folders.has(folder.id)) folders.set(folder.id, folder);
   for (const session of savedSessions) {
     if (!session?.id) continue;
@@ -1814,7 +1815,12 @@ app.use((error: unknown, _req: Request, res: Response, next: NextFunction) => {
     res.status(400).json({ error: "The request could not be read. Check the file or form and try again." });
     return;
   }
-  next(error);
+  if (res.headersSent) {
+    next(error);
+    return;
+  }
+  console.error("[api] Unhandled request failure.", error);
+  res.status(500).json({ error: "QuizStrike couldn't complete that request. Try again." });
 });
 
 io.on("connection", (socket) => {

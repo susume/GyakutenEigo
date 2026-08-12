@@ -84,9 +84,16 @@ export async function api<T>(path: string, options: RequestInit = {}, policy: Ap
     );
   }
 
-  const payload = (await response.json().catch(() => ({}))) as { error?: string };
+  const responseText = await response.text();
+  let payload: { error?: string } = {};
+  if (responseText) {
+    try { payload = JSON.parse(responseText) as { error?: string }; } catch { /* A proxy or old server may return HTML. */ }
+  }
   if (!response.ok) {
-    throw new ApiError(payload.error ?? "Request failed.", response.status);
+    if (import.meta.env.DEV) {
+      console.error(`[api] ${options.method ?? "GET"} ${path} failed with ${response.status}`, payload.error ?? responseText.slice(0, 300));
+    }
+    throw new ApiError(payload.error ?? "QuizStrike couldn't complete that request. Try again.", response.status);
   }
   return payload as T;
 }
@@ -213,9 +220,9 @@ export const teacherApi = {
     api(`/api/folders/${id}`, { method: "PATCH", body: JSON.stringify(body) }),
   deleteFolder: (id: string) => api(`/api/folders/${id}`, { method: "DELETE" }),
   getQuizSet: (id: string) => api(`/api/quiz-sets/${id}`),
-  addQuestion: (quizSetId: string, body: Record<string, string>) =>
+  addQuestion: (quizSetId: string, body: Record<string, unknown>) =>
     api(`/api/quiz-sets/${quizSetId}/questions`, { method: "POST", body: JSON.stringify(body) }),
-  updateQuestion: (questionId: string, body: Record<string, string>) =>
+  updateQuestion: (questionId: string, body: Record<string, unknown>) =>
     api(`/api/questions/${questionId}`, { method: "PUT", body: JSON.stringify(body) }),
   uploadQuestionAudio: (questionId: string, audio: Blob) =>
     api(`/api/questions/${questionId}/audio`, {
