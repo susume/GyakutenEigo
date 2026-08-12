@@ -1,7 +1,11 @@
 import type { Express, Request, RequestHandler } from "express";
 import { isValidQuestionAudioUrl, type GameSession, type Question, type QuizFolder, type QuizSet, type TeacherUser } from "@quizstrike/shared";
+import type { ContributionService } from "../contributionService.js";
 
 type AuthenticatedRequest = Request & { user?: TeacherUser };
+
+// eslint-disable-next-line no-control-regex
+const cleanStudySetText = (value: unknown, maxLength: number) => String(value ?? "").replace(/[\u0000-\u001f\u007f]/g, "").trim().slice(0, maxLength);
 
 type NormalizedLibrary = {
   updateQuizSetLibrary(teacherId: string, quizSetId: string, patch: { title?: string; folderId?: string | null }): Promise<unknown>;
@@ -16,6 +20,8 @@ export type QuizSetRouteDependencies = {
   folders: Map<string, QuizFolder>;
   sessions: { values(): Iterable<GameSession> };
   normalizedLibrary?: NormalizedLibrary;
+  contribution?: ContributionService;
+  recordContribution?: (operation: Promise<unknown>, label: string) => void;
   assertTeacherOwnsQuiz: (userId: string, quizSetId: string) => QuizSet | undefined;
   routeParam: (value: string | string[] | undefined) => string;
   isChoice: (value: unknown) => value is Question["correctChoice"];
@@ -110,9 +116,13 @@ export const registerQuizSetCreationRoutes = (app: Express, dependencies: QuizSe
   } = dependencies;
 
   app.post("/api/quiz-sets", requireTeacher, async (req: AuthenticatedRequest, res) => {
-    const title = String(req.body.title ?? "").trim();
+    const title = cleanStudySetText(req.body.title, 160);
     if (title.length < 2) {
       res.status(400).json({ error: "Quiz title is required." });
+      return;
+    }
+    if (req.body.visibility === "PUBLIC") {
+      res.status(400).json({ error: "Create the Study Set privately, add at least two complete questions, then publish it." });
       return;
     }
     const quizSet: QuizSet = {
@@ -121,12 +131,20 @@ export const registerQuizSetCreationRoutes = (app: Express, dependencies: QuizSe
       classId: String(req.body.classId ?? "") || undefined,
       folderId: String(req.body.folderId ?? "") || undefined,
       title,
-      description: String(req.body.description ?? "").trim() || undefined,
+      description: cleanStudySetText(req.body.description, 500) || undefined,
+      visibility: req.body.visibility === "PUBLIC" ? "PUBLIC" : "PRIVATE",
+      subject: cleanStudySetText(req.body.subject, 80) || undefined,
+      topic: cleanStudySetText(req.body.topic, 120) || undefined,
+      gradeLevel: cleanStudySetText(req.body.gradeLevel, 80) || undefined,
+      language: cleanStudySetText(req.body.language, 80) || undefined,
+      tags: (Array.isArray(req.body.tags) ? [...new Set(req.body.tags.map((tag: unknown) => cleanStudySetText(tag, 40)).filter(Boolean))].slice(0, 12) : []) as string[],
+      status: "ACTIVE",
       questions: [],
       createdAt: now()
     };
     if (normalizedLibrary) await normalizedLibrary.saveQuizSet(quizSet);
     quizSets.set(quizSet.id, quizSet);
+    if (dependencies.contribution) dependencies.recordContribution?.(dependencies.contribution.recordStudySetCreated(quizSet), "Study Set creation recognition");
     schedulePersistence();
     res.status(201).json({ quizSet });
   });
@@ -183,6 +201,7 @@ export const registerQuizSetCreationRoutes = (app: Express, dependencies: QuizSe
 
     if (normalizedLibrary) await normalizedLibrary.saveQuestionForTeacher(quiz.teacherId, question);
     quiz.questions.push(question);
+    if (dependencies.contribution) dependencies.recordContribution?.(dependencies.contribution.recordStudySetCreated(quiz), "Study Set creation recognition");
     schedulePersistence();
     res.status(201).json({ question, quizSet: quiz });
   });

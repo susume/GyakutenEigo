@@ -1,4 +1,4 @@
-import { expect, test, type APIRequestContext, type Browser, type Page } from "@playwright/test";
+import { expect, test, type APIRequestContext, type Page } from "@playwright/test";
 import { copyFile, mkdir, writeFile } from "node:fs/promises";
 import { join } from "node:path";
 
@@ -217,12 +217,6 @@ const moveAlongPath = async (
     onWaypoint?.(position, waypoint, index);
   }
   return position;
-};
-
-const holdKeys = async (page: Page, keys: string[], durationMs: number) => {
-  for (const key of keys) await page.keyboard.down(key);
-  await page.waitForTimeout(durationMs);
-  for (const key of [...keys].reverse()) await page.keyboard.up(key);
 };
 
 const getLocalCanvasPosition = async (student: StudentFixture) => student.page.locator(".arena-canvas canvas").evaluate((element) => ({

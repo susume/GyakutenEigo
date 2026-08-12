@@ -1,5 +1,7 @@
 import express, { type Express, type Request, type RequestHandler } from "express";
 import { isValidQuestionAudioUrl, type Question, type QuizSet, type TeacherUser } from "@quizstrike/shared";
+import type { ContributionService } from "../contributionService.js";
+import { isMeaningfulStudySet } from "../recognition.js";
 
 type AuthenticatedRequest = Request & { user?: TeacherUser };
 
@@ -33,8 +35,12 @@ type NormalizedLibrary = {
 export type QuestionRouteDependencies = {
   requireTeacher: RequestHandler;
   getQuizQuestion: (questionId: string) => Question | undefined;
+  canReadQuestionAudio: (req: Request, questionId: string) => boolean;
+  isQuestionAudioUsedByActiveSession: (questionId: string) => boolean;
   assertTeacherOwnsQuiz: (userId: string, quizSetId: string) => QuizSet | undefined;
   normalizedLibrary?: NormalizedLibrary;
+  contribution?: ContributionService;
+  recordContribution?: (operation: Promise<unknown>, label: string) => void;
   getQuestionAudio: (questionId: string) => Promise<QuestionAudioAsset | undefined>;
   saveQuestionAudio: (teacherId: string, questionId: string, asset: QuestionAudioAsset) => Promise<void>;
   deleteQuestionAudio: (questionId: string) => Promise<void>;
@@ -47,8 +53,12 @@ export const registerQuestionRoutes = (app: Express, dependencies: QuestionRoute
   const {
     requireTeacher,
     getQuizQuestion,
+    canReadQuestionAudio,
+    isQuestionAudioUsedByActiveSession,
     assertTeacherOwnsQuiz,
     normalizedLibrary,
+    contribution,
+    recordContribution,
     getQuestionAudio,
     saveQuestionAudio,
     deleteQuestionAudio,
@@ -58,7 +68,12 @@ export const registerQuestionRoutes = (app: Express, dependencies: QuestionRoute
   } = dependencies;
 
   app.get("/api/question-audio/:id", async (req, res) => {
-    const audio = await getQuestionAudio(routeParam(req.params.id));
+    const questionId = routeParam(req.params.id);
+    if (!canReadQuestionAudio(req, questionId)) {
+      res.status(404).json({ error: "Question audio not found." });
+      return;
+    }
+    const audio = await getQuestionAudio(questionId);
     if (!audio) {
       res.status(404).json({ error: "Question audio not found." });
       return;
@@ -89,6 +104,10 @@ export const registerQuestionRoutes = (app: Express, dependencies: QuestionRoute
         res.status(403).json({ error: "This question belongs to another teacher." });
         return;
       }
+      if (question.audioUrl?.startsWith(QUESTION_AUDIO_URL_PREFIX) && isQuestionAudioUsedByActiveSession(question.id)) {
+        res.status(409).json({ error: "This recording is in use by an active game and cannot be replaced yet." });
+        return;
+      }
       if (!Buffer.isBuffer(req.body) || req.body.length === 0) {
         res.status(400).json({ error: "Record some audio before uploading it." });
         return;
@@ -105,6 +124,7 @@ export const registerQuestionRoutes = (app: Express, dependencies: QuestionRoute
       question.audioUrl = questionAudioUrl(question.id);
       try {
         if (normalizedLibrary) await normalizedLibrary.updateQuestionForTeacher(quiz.teacherId, question);
+        if (contribution) recordContribution?.(contribution.recordStudySetCreated(quiz), "Study Set creation recognition");
         schedulePersistence();
       } catch (error) {
         question.audioUrl = previousAudioUrl;
@@ -126,7 +146,6 @@ export const registerQuestionRoutes = (app: Express, dependencies: QuestionRoute
       res.status(403).json({ error: "This question belongs to another teacher." });
       return;
     }
-    const previousAudioUrl = question.audioUrl;
     if (
       req.body.audioUrl !== undefined
       && req.body.audioUrl !== ""
@@ -135,16 +154,39 @@ export const registerQuestionRoutes = (app: Express, dependencies: QuestionRoute
       res.status(400).json({ error: "Audio URL must be an http(s) URL or a path on this site." });
       return;
     }
-    if (isChoice(req.body.correctChoice)) question.correctChoice = req.body.correctChoice;
-    question.prompt = String(req.body.prompt ?? question.prompt).trim();
-    question.choiceA = String(req.body.choiceA ?? question.choiceA).trim();
-    question.choiceB = String(req.body.choiceB ?? question.choiceB).trim();
-    question.choiceC = String(req.body.choiceC ?? question.choiceC).trim();
-    question.choiceD = String(req.body.choiceD ?? question.choiceD).trim();
-    question.explanation = String(req.body.explanation ?? question.explanation ?? "").trim() || undefined;
-    question.difficulty = String(req.body.difficulty ?? question.difficulty ?? "").trim() || undefined;
-    if (req.body.audioUrl !== undefined) question.audioUrl = String(req.body.audioUrl).trim() || undefined;
-    if (normalizedLibrary) await normalizedLibrary.updateQuestionForTeacher(quiz.teacherId, question);
+    const updatedQuestion: Question = {
+      ...question,
+      correctChoice: isChoice(req.body.correctChoice) ? req.body.correctChoice : question.correctChoice,
+      prompt: String(req.body.prompt ?? question.prompt).trim(),
+      choiceA: String(req.body.choiceA ?? question.choiceA).trim(),
+      choiceB: String(req.body.choiceB ?? question.choiceB).trim(),
+      choiceC: String(req.body.choiceC ?? question.choiceC).trim(),
+      choiceD: String(req.body.choiceD ?? question.choiceD).trim(),
+      explanation: String(req.body.explanation ?? question.explanation ?? "").trim() || undefined,
+      difficulty: String(req.body.difficulty ?? question.difficulty ?? "").trim() || undefined,
+      ...(req.body.audioUrl !== undefined ? { audioUrl: String(req.body.audioUrl).trim() || undefined } : {})
+    };
+    if (!updatedQuestion.prompt || !updatedQuestion.choiceA || !updatedQuestion.choiceB || !updatedQuestion.choiceC || !updatedQuestion.choiceD) {
+      res.status(400).json({ error: "Question prompt and four choices are required." });
+      return;
+    }
+    const updatedQuestions = quiz.questions.map((item) => item.id === question.id ? updatedQuestion : item);
+    if (quiz.visibility === "PUBLIC" && !isMeaningfulStudySet({ ...quiz, questions: updatedQuestions })) {
+      res.status(400).json({ error: "Public Study Sets must keep at least two complete questions." });
+      return;
+    }
+    const previousAudioUrl = question.audioUrl;
+    if (
+      previousAudioUrl?.startsWith(QUESTION_AUDIO_URL_PREFIX)
+      && previousAudioUrl !== updatedQuestion.audioUrl
+      && isQuestionAudioUsedByActiveSession(question.id)
+    ) {
+      res.status(409).json({ error: "This recording is in use by an active game and cannot be changed yet." });
+      return;
+    }
+    if (normalizedLibrary) await normalizedLibrary.updateQuestionForTeacher(quiz.teacherId, updatedQuestion);
+    Object.assign(question, updatedQuestion);
+    if (contribution) recordContribution?.(contribution.recordStudySetCreated(quiz), "Study Set creation recognition");
     if (
       previousAudioUrl
       && previousAudioUrl !== question.audioUrl
@@ -165,6 +207,15 @@ export const registerQuestionRoutes = (app: Express, dependencies: QuestionRoute
     const quiz = assertTeacherOwnsQuiz(req.user!.id, question.quizSetId);
     if (!quiz) {
       res.status(403).json({ error: "This question belongs to another teacher." });
+      return;
+    }
+    const remainingQuestions = quiz.questions.filter((item) => item.id !== question.id);
+    if (quiz.visibility === "PUBLIC" && !isMeaningfulStudySet({ ...quiz, questions: remainingQuestions })) {
+      res.status(409).json({ error: "Make this Study Set private before deleting a question required for publication." });
+      return;
+    }
+    if (question.audioUrl?.startsWith(QUESTION_AUDIO_URL_PREFIX) && isQuestionAudioUsedByActiveSession(question.id)) {
+      res.status(409).json({ error: "This question's recording is in use by an active game and cannot be deleted yet." });
       return;
     }
     if (normalizedLibrary) await normalizedLibrary.deleteQuestionForTeacher(quiz.teacherId, question.id);

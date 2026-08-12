@@ -133,9 +133,70 @@ export interface QuizSet {
   folderId?: string;
   title: string;
   description?: string;
+  /** Quiz sets are the persisted Study Set model used by the teacher workflow. */
+  visibility?: StudySetVisibility;
+  subject?: string;
+  topic?: string;
+  gradeLevel?: string;
+  language?: string;
+  tags?: string[];
+  publishedAt?: string;
+  status?: StudySetStatus;
+  originalSetId?: string;
+  originalCreatorId?: string;
+  usageCount?: number;
+  uniqueTeacherUsageCount?: number;
+  remixCount?: number;
   questions: Question[];
   createdAt: string;
   updatedAt?: string;
+}
+
+export type StudySetVisibility = "PRIVATE" | "PUBLIC";
+export type StudySetStatus = "DRAFT" | "ACTIVE" | "ARCHIVED";
+
+export interface StudySetSummary {
+  id: string;
+  title: string;
+  description?: string;
+  subject?: string;
+  topic?: string;
+  gradeLevel?: string;
+  language?: string;
+  tags?: string[];
+  visibility: StudySetVisibility;
+  questionCount: number;
+  createdAt: string;
+  updatedAt?: string;
+  publishedAt?: string;
+  usageCount: number;
+  uniqueTeacherUsageCount: number;
+  remixCount: number;
+  ownerTeacherId?: string;
+  creator: { id: string; name: string; recognitionLevel?: string };
+  originalSetId?: string;
+  originalCreatorId?: string;
+}
+
+export interface RecognitionBadge {
+  id: string;
+  name: string;
+  description: string;
+  earnedAt: string;
+}
+
+export interface RecognitionSummary {
+  points: number;
+  level: string;
+  nextLevel?: string;
+  nextLevelPoints?: number;
+  studySetsCreated: number;
+  publicSetsShared: number;
+  gamesHosted: number;
+  studentsReached: number;
+  teachersUsingSets: number;
+  totalSetUses: number;
+  badges: RecognitionBadge[];
 }
 
 export interface QuizFolder {
@@ -613,6 +674,8 @@ export interface GameSession {
   teacherId: string;
   classId?: string;
   quizSetId: string;
+  /** Immutable Study Set question snapshot captured when the room is created. */
+  questionSnapshot?: Question[];
   sessionCode: string;
   status: SessionStatus;
   /** Explicit teacher attention state. This is separate from round-result/inter-round `status: "paused"`. */

@@ -1951,6 +1951,7 @@ export default function StudentExperience({ onExit }: { onExit: () => void }) {
                   question={question}
                   player={player}
                   session={session}
+                  playerToken={playerToken}
                   onAnswer={answer}
                   answeringChoice={answeringChoice}
                   answerFeedback={answerFeedback}

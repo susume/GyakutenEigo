@@ -1,4 +1,4 @@
-import type { CharacterCustomizationSettings, Choice, PlayerAppearance, SessionSettings } from "@quizstrike/shared";
+import type { CharacterCustomizationSettings, Choice, PlayerAppearance, SessionSettings, StudySetSummary } from "@quizstrike/shared";
 import { ApiError } from "./errors";
 import { buildApiUrlCandidates, fetchFromApiCandidates } from "./endpoints.js";
 import { retryOnce } from "./retry.js";
@@ -190,9 +190,17 @@ export const tournamentApi = {
 
 export const teacherApi = {
   dashboard: () => api("/api/teacher/dashboard"),
+  recognition: () => api("/api/teacher/recognition"),
+  studySets: (filters: Record<string, string> = {}) => {
+    const params = new URLSearchParams(Object.entries(filters).filter(([, value]) => value));
+    return api(`/api/study-sets${params.toString() ? `?${params.toString()}` : ""}`) as Promise<{ items: StudySetSummary[]; page: number; pageSize: number; total: number }>;
+  },
+  studySet: (id: string) => api(`/api/study-sets/${encodeURIComponent(id)}`),
+  updateStudySet: (id: string, body: Record<string, unknown>) => api(`/api/study-sets/${encodeURIComponent(id)}`, { method: "PATCH", body: JSON.stringify(body) }),
+  duplicateStudySet: (id: string, title?: string) => api(`/api/study-sets/${encodeURIComponent(id)}/duplicate`, { method: "POST", body: JSON.stringify(title ? { title } : {}) }),
   createClass: (body: { name: string; description?: string }) =>
     api("/api/classes", { method: "POST", body: JSON.stringify(body) }),
-  createQuizSet: (body: { title: string; description?: string; classId?: string; folderId?: string }) =>
+  createQuizSet: (body: { title: string; description?: string; classId?: string; folderId?: string; visibility?: "PRIVATE" | "PUBLIC"; subject?: string; topic?: string; gradeLevel?: string; language?: string; tags?: string[] }) =>
     api("/api/quiz-sets", { method: "POST", body: JSON.stringify(body) }),
   renameQuizSet: (id: string, title: string) =>
     api(`/api/quiz-sets/${id}`, { method: "PATCH", body: JSON.stringify({ title }) }),

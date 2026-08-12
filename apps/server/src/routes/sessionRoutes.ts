@@ -4,6 +4,7 @@ import type {
   BotDifficulty,
   GameSession,
   PlayerSession,
+  Question,
   ReportMetadata,
   SessionReport,
   SessionSettings,
@@ -11,6 +12,7 @@ import type {
   Team,
   PlayerAppearance
 } from "@quizstrike/shared";
+import type { StudySetUseResult } from "../contributionService.js";
 
 type AuthedRequest = Request & { user?: TeacherUser };
 
@@ -22,7 +24,9 @@ type JoinCodeDirectory = {
 export type SessionRouteDependencies = {
   requireTeacher: (req: AuthedRequest, res: Response, next: () => void) => void;
   isDraining: () => boolean;
-  assertTeacherOwnsQuiz: (userId: string, quizSetId: string) => { id: string; title: string; questions: unknown[] } | undefined;
+  getQuizSetForUse: (userId: string, quizSetId: string) => { id: string; title: string; teacherId: string; questions: Question[] } | undefined;
+  recordStudySetUse?: (input: { studySetId: string; ownerTeacherId: string; consumerTeacherId: string; sessionId: string }) => Promise<StudySetUseResult>;
+  updateStudySetUsageCounters?: (quizSetId: string, result: StudySetUseResult) => void;
   createDefaultSettings: (input: Partial<SessionSettings>) => SessionSettings;
   id: () => string;
   now: () => string;
@@ -71,6 +75,10 @@ export type SessionRouteDependencies = {
   buildCsvReport: (report: SessionReport) => string;
 };
 
+/** Detaches a game from mutable authoring objects while preserving question IDs for reporting. */
+export const createQuestionSnapshot = (questions: readonly Question[]): Question[] =>
+  questions.map((question) => ({ ...question }));
+
 const getSessionPath = (deps: SessionRouteDependencies, req: Request) =>
   deps.getSessionByCode(deps.routeParam(req.params.code));
 
@@ -80,7 +88,7 @@ export const registerSessionRoutes = (app: Application, deps: SessionRouteDepend
       res.status(503).json({ error: "This game service is finishing another task. Try again in a moment." });
       return;
     }
-    const quiz = deps.assertTeacherOwnsQuiz(req.user!.id, String(req.body.quizSetId ?? ""));
+    const quiz = deps.getQuizSetForUse(req.user!.id, String(req.body.quizSetId ?? ""));
     if (!quiz || quiz.questions.length === 0) {
       res.status(400).json({ error: "Choose a question set with at least one question." });
       return;
@@ -91,6 +99,7 @@ export const registerSessionRoutes = (app: Application, deps: SessionRouteDepend
       teacherId: req.user!.id,
       classId: String(req.body.classId ?? "") || undefined,
       quizSetId: quiz.id,
+      questionSnapshot: createQuestionSnapshot(quiz.questions),
       sessionCode: deps.generateSessionCode(),
       status: "waiting",
       controlState: "running",
@@ -117,6 +126,13 @@ export const registerSessionRoutes = (app: Application, deps: SessionRouteDepend
       deps.sessions.delete(session.id);
       deps.joinCodeDirectory.release(session.sessionCode, session.id);
       throw error;
+    }
+    if (deps.recordStudySetUse) {
+      deps.mirrorNormalized(
+        deps.recordStudySetUse({ studySetId: quiz.id, ownerTeacherId: quiz.teacherId, consumerTeacherId: req.user!.id, sessionId: session.id })
+          .then((usage) => deps.updateStudySetUsageCounters?.(quiz.id, usage)),
+        "Study Set usage"
+      );
     }
     deps.schedulePersistence();
     res.status(201).json({ session: deps.stampSession(session) });

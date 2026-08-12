@@ -1,5 +1,5 @@
 import { lazy, Suspense, useCallback, useEffect, useMemo, useRef, useState } from "react";
-import { BookOpen, Bot, Check, ChevronDown, ChevronLeft, ChevronRight, ClipboardPaste, Copy, Download, Eye, EyeOff, Folder, GraduationCap, Link2, Mic, Play, Plus, RefreshCw, Settings, Square, Target, Trash2, Trophy, WifiOff, WandSparkles, Zap } from "lucide-react";
+import { BookOpen, Bot, Check, ChevronDown, ChevronLeft, ChevronRight, ClipboardPaste, Copy, Download, Eye, EyeOff, Folder, Globe2, GraduationCap, Link2, LockKeyhole, Mic, Play, Plus, RefreshCw, Settings, Sparkles, Square, Target, Trash2, Trophy, WifiOff, WandSparkles, Zap } from "lucide-react";
 import { QRCodeSVG } from "qrcode.react";
 import {
   calculateClassAccuracy,
@@ -17,6 +17,7 @@ import {
   type PlayerSession,
   type QuizFolder,
   type QuizSet,
+  type RecognitionSummary,
   type ReportMetadata,
   type SessionReport,
   type SessionSettings,
@@ -40,6 +41,7 @@ import GamePreferencesPanel from "../student/GamePreferencesPanel";
 import Scoreboard from "../student/Scoreboard";
 import LearningPulse from "./LearningPulse";
 import TeacherPauseControls from "./TeacherPauseControls";
+import StudySetLibrary from "./StudySetLibrary";
 import { useSessionControls } from "./useSessionControls";
 const ArenaPreview = lazy(() => import("../../../game/ArenaPreview"));
 const TournamentCenter = lazy(() => import("../tournament/TournamentCenter"));
@@ -51,6 +53,7 @@ type DashboardPayload = {
   sessions: GameSession[];
   folders: QuizFolder[];
   reports: ReportMetadata[];
+  recognition?: RecognitionSummary;
 };
 type AuthPayload = { user: TeacherUser; token: string };
 export type ApiWakeState = "waking" | "ready" | "slow";
@@ -312,12 +315,13 @@ function TeacherAuth({
 }
 
 function TeacherDashboard({ teacher, onLogout }: { teacher: TeacherUser; onLogout: () => void }) {
-  const [tab, setTab] = useState<"home" | "quizzes" | "sessions" | "reports" | "settings" | "tournaments">("home");
+  const [tab, setTab] = useState<"home" | "studySets" | "quizzes" | "sessions" | "reports" | "settings" | "tournaments">("home");
   const [activeSetupSection, setActiveSetupSection] = useState<SetupSection>("mode");
   const [quizManagerRequest, setQuizManagerRequest] = useState<{ quizSetId?: string; mode: "create" | "edit" }>({ mode: "create" });
   const [data, setData] = useState<DashboardPayload>({ classes: [], quizSets: [], sessions: [], folders: [], reports: [] });
   const [selectedSession, setSelectedSession] = useState<GameSession | null>(null);
   const [launchQuizId, setLaunchQuizId] = useState("");
+  const [borrowedStudySet, setBorrowedStudySet] = useState<QuizSet | null>(null);
   const [report, setReport] = useState<SessionReport | null>(null);
   const [isSocketReconnecting, setIsSocketReconnecting] = useState(false);
   const [gamePreferences, setGamePreferences] = useState<GamePreferences>(() => readGamePreferences());
@@ -358,11 +362,17 @@ function TeacherDashboard({ teacher, onLogout }: { teacher: TeacherUser; onLogou
 
   const refresh = useCallback(async () => {
     try {
-      const payload = (await teacherApi.dashboard()) as DashboardPayload;
-      setData(payload);
+      const [dashboardPayload, recognitionPayload] = await Promise.all([
+        teacherApi.dashboard(),
+        teacherApi.recognition()
+      ]);
+      const payload = dashboardPayload as DashboardPayload;
+      const recognition = (recognitionPayload as { recognition?: RecognitionSummary }).recognition;
+      const nextData = { ...payload, ...(recognition ? { recognition } : {}) };
+      setData(nextData);
       setSelectedSession((current) => {
-        if (!current) return payload.sessions[0] ?? null;
-        return payload.sessions.find((session) => session.id === current.id) ?? payload.sessions[0] ?? null;
+        if (!current) return nextData.sessions[0] ?? null;
+        return nextData.sessions.find((session) => session.id === current.id) ?? nextData.sessions[0] ?? null;
       });
     } catch (err) {
       reportStatus(err);
@@ -414,10 +424,32 @@ function TeacherDashboard({ teacher, onLogout }: { teacher: TeacherUser; onLogou
   }, [selectedSession?.sessionCode]);
 
   const activeSessions = data.sessions.filter((session) => session.status !== "ended");
+  const availableStudySets = useMemo(
+    () => borrowedStudySet && !data.quizSets.some((quiz) => quiz.id === borrowedStudySet.id)
+      ? [...data.quizSets, borrowedStudySet]
+      : data.quizSets,
+    [borrowedStudySet, data.quizSets]
+  );
   const isLiveSetup = tab === "sessions" && !selectedSession;
   const openQuizManager = (quizSetId?: string) => {
     setQuizManagerRequest(quizSetId ? { quizSetId, mode: "edit" } : { mode: "create" });
     setTab("quizzes");
+  };
+
+  const openStudySetForGame = async (quizSetId: string) => {
+    try {
+      if (!data.quizSets.some((quiz) => quiz.id === quizSetId)) {
+        const payload = await teacherApi.studySet(quizSetId) as { studySet?: QuizSet };
+        if (!payload.studySet) throw new Error("Study Set could not be loaded.");
+        setBorrowedStudySet(payload.studySet);
+      } else setBorrowedStudySet(null);
+      setLaunchQuizId(quizSetId);
+      setSelectedSession(null);
+      setActiveSetupSection("mode");
+      setTab("sessions");
+    } catch (error) {
+      status.report(error);
+    }
   };
 
   return (
@@ -453,6 +485,10 @@ function TeacherDashboard({ teacher, onLogout }: { teacher: TeacherUser; onLogou
             <button aria-current={tab === "home" ? "page" : undefined} className={tab === "home" ? "active" : ""} onClick={() => setTab("home")}>
               <BookOpen size={17} aria-hidden="true" />
               Question library
+            </button>
+            <button aria-current={tab === "studySets" ? "page" : undefined} className={tab === "studySets" ? "active" : ""} onClick={() => setTab("studySets")}>
+              <Sparkles size={17} aria-hidden="true" />
+              Study Sets
             </button>
             <button aria-current={tab === "reports" ? "page" : undefined} className={tab === "reports" ? "active" : ""} onClick={() => setTab("reports")}>
               Reports
@@ -510,14 +546,17 @@ function TeacherDashboard({ teacher, onLogout }: { teacher: TeacherUser; onLogou
             startInCreateMode={quizManagerRequest.mode === "create"}
           />
         )}
+        {tab === "studySets" && <StudySetLibrary data={data} onRefresh={refresh} onEditQuiz={openQuizManager} onPlayLive={openStudySetForGame} />}
         {tab === "sessions" && (
           <SessionManager
             data={data}
+            availableStudySets={availableStudySets}
             selectedSession={selectedSession}
             setSelectedSession={setSelectedSession}
             onRefresh={refresh}
             onReport={setReport}
             onOpenReports={() => setTab("reports")}
+            onBrowseStudySets={() => setTab("studySets")}
             initialQuizSetId={launchQuizId}
             activeSetupSection={activeSetupSection}
           />
@@ -685,6 +724,7 @@ function TeacherFolders({
           <button className="folder-new" onClick={() => onEditQuiz()}><BookOpen size={18} aria-hidden="true" />Create question set</button>
         </div>
       </div>
+      {data.recognition && <section className="dashboard-recognition-panel" aria-labelledby="dashboard-recognition-title"><div><span className="teacher-eyebrow">Your QuizStrike contribution</span><h3 id="dashboard-recognition-title">{data.recognition.level}</h3><p>{data.recognition.nextLevelPoints ? `${Math.max(0, data.recognition.nextLevelPoints - data.recognition.points)} points until ${data.recognition.nextLevel}.` : "Highest recognition level reached."}</p></div><div className="dashboard-recognition-numbers"><strong>{data.recognition.points}<small>points</small></strong><strong>{data.recognition.teachersUsingSets}<small>teachers used your sets</small></strong><strong>{data.recognition.badges.length}<small>achievements</small></strong></div></section>}
       <div className="folder-breadcrumbs" aria-label="Folder path">
         <button className={!selectedFolderId ? "active" : ""} onClick={() => setSelectedFolderId(undefined)} onDragOver={(event) => event.preventDefault()} onDrop={(event) => { event.preventDefault(); dropQuizIntoFolder(draggedQuizId, undefined); }}><Folder size={15} aria-hidden="true" />All question sets</button>
         {(selectedFolder ? folderPath(selectedFolder) : []).map((folder) => <span key={folder.id}><ChevronRight size={14} aria-hidden="true" /><button className={folder.id === selectedFolderId ? "active" : ""} onClick={() => setSelectedFolderId(folder.id)} onDragOver={(event) => event.preventDefault()} onDrop={(event) => { event.preventDefault(); dropQuizIntoFolder(draggedQuizId, folder.id); }}>{folder.name}</button></span>)}
@@ -811,7 +851,7 @@ function _DashboardHome({ data, onTab }: { data: DashboardPayload; onTab: (tab: 
 
 function QuizManager({ data, onRefresh, initialQuizSetId, startInCreateMode = false }: { data: DashboardPayload; onRefresh: () => Promise<void>; initialQuizSetId?: string; startInCreateMode?: boolean }) {
   const [selectedQuizId, setSelectedQuizId] = useState(() => startInCreateMode ? "" : initialQuizSetId ?? data.quizSets[0]?.id ?? "");
-  const [quizForm, setQuizForm] = useState({ title: "", description: "" });
+  const [quizForm, setQuizForm] = useState({ title: "", description: "", subject: "", topic: "", gradeLevel: "", language: "English", visibility: "PRIVATE" as "PRIVATE" | "PUBLIC" });
   const [questionForm, setQuestionForm] = useState(emptyQuestion);
   const [editingQuestionId, setEditingQuestionId] = useState<string | null>(null);
   const [questionBuilderMode, setQuestionBuilderMode] = useState<"bulk" | "manual">("bulk");
@@ -823,6 +863,7 @@ function QuizManager({ data, onRefresh, initialQuizSetId, startInCreateMode = fa
   const [recordingSeconds, setRecordingSeconds] = useState(0);
   const [recordingError, setRecordingError] = useState("");
   const [recordedAudio, setRecordedAudio] = useState<{ blob: Blob; previewUrl: string } | null>(null);
+  const [isSavingDetails, setIsSavingDetails] = useState(false);
   const mediaRecorderRef = useRef<MediaRecorder | null>(null);
   const recordingStreamRef = useRef<MediaStream | null>(null);
   const recordingChunksRef = useRef<BlobPart[]>([]);
@@ -923,6 +964,19 @@ function QuizManager({ data, onRefresh, initialQuizSetId, startInCreateMode = fa
   }, [data.quizSets, initialQuizSetId, selectedQuizId, startInCreateMode]);
 
   const selectedQuiz = data.quizSets.find((quiz) => quiz.id === selectedQuizId);
+  useEffect(() => {
+    const quiz = data.quizSets.find((item) => item.id === selectedQuizId);
+    if (!quiz || startInCreateMode) return;
+    setQuizForm({
+      title: quiz.title,
+      description: quiz.description ?? "",
+      subject: quiz.subject ?? "",
+      topic: quiz.topic ?? "",
+      gradeLevel: quiz.gradeLevel ?? "",
+      language: quiz.language ?? "English",
+      visibility: quiz.visibility ?? "PRIVATE"
+    });
+  }, [data.quizSets, selectedQuizId, startInCreateMode]);
   const generatedQuestions = useMemo(() => createGeneratedQuestions(bulkText).slice(0, 80), [bulkText]);
   const importBadge = bulkText.trim() ? `${generatedQuestions.length} ready` : `${selectedQuiz?.questions.length ?? 0} in quiz`;
 
@@ -934,13 +988,29 @@ function QuizManager({ data, onRefresh, initialQuizSetId, startInCreateMode = fa
     try {
       const payload = (await teacherApi.createQuizSet(quizForm)) as { quizSet: QuizSet };
       setSelectedQuizId(payload.quizSet.id);
-      setQuizForm({ title: "", description: "" });
+      setQuizForm({ title: "", description: "", subject: "", topic: "", gradeLevel: "", language: "English", visibility: "PRIVATE" });
       await onRefresh();
       status.setMessage("Question set created. It’s ready for questions.");
     } catch (err) {
       status.report(err);
     } finally {
       setIsCreatingQuiz(false);
+    }
+  };
+
+  const saveStudySetDetails = async (event: React.FormEvent) => {
+    event.preventDefault();
+    if (!selectedQuiz || isSavingDetails) return;
+    setIsSavingDetails(true);
+    status.clear();
+    try {
+      await teacherApi.updateStudySet(selectedQuiz.id, quizForm);
+      await onRefresh();
+      status.setMessage("Study Set details saved.");
+    } catch (err) {
+      status.report(err);
+    } finally {
+      setIsSavingDetails(false);
     }
   };
 
@@ -1064,6 +1134,8 @@ function QuizManager({ data, onRefresh, initialQuizSetId, startInCreateMode = fa
             onChange={(event) => setQuizForm({ ...quizForm, description: event.target.value })}
           />
         </label>
+        <div className="study-set-form-grid"><label>Subject<input placeholder="e.g. English" value={quizForm.subject} onChange={(event) => setQuizForm({ ...quizForm, subject: event.target.value })} /></label><label>Grade / level<input placeholder="e.g. Eiken Pre-2" value={quizForm.gradeLevel} onChange={(event) => setQuizForm({ ...quizForm, gradeLevel: event.target.value })} /></label><label>Topic<input placeholder="e.g. Vocabulary" value={quizForm.topic} onChange={(event) => setQuizForm({ ...quizForm, topic: event.target.value })} /></label><label>Language<input value={quizForm.language} onChange={(event) => setQuizForm({ ...quizForm, language: event.target.value })} /></label></div>
+        <div className="study-set-visibility-fieldset"><strong>New Study Sets start private</strong><span><LockKeyhole size={14} aria-hidden="true" /> Add questions first, then publish intentionally from the Study Set editor.</span></div>
         <button className="primary" type="submit" disabled={isCreatingQuiz}>
           <Plus size={18} aria-hidden="true" />
           {isCreatingQuiz ? "Creating..." : "Create set"}
@@ -1079,7 +1151,7 @@ function QuizManager({ data, onRefresh, initialQuizSetId, startInCreateMode = fa
       )}
 
       <div className="panel quiz-editor-panel">
-        <div className="quiz-editor-heading">
+          <div className="quiz-editor-heading">
           <div>
             <span className="teacher-eyebrow">Active question set</span>
             <h2>{selectedQuiz?.title ?? "Choose a question set"}</h2>
@@ -1091,8 +1163,9 @@ function QuizManager({ data, onRefresh, initialQuizSetId, startInCreateMode = fa
               {selectedQuiz.questions.length > 0 ? "Ready to host" : "Draft"}
             </span>
           )}
-        </div>
-        <label className="quiz-set-picker">
+          </div>
+          {selectedQuiz && <form className="study-set-details-form" onSubmit={saveStudySetDetails}><div className="study-set-details-heading"><div><span className="teacher-eyebrow">Study Set details</span><p>Private is the default. Publishing requires at least two complete questions.</p></div><button className="secondary-button small-button" type="submit" disabled={isSavingDetails}>{isSavingDetails ? "Saving…" : "Save details"}</button></div><div className="study-set-form-grid"><label>Title<input value={quizForm.title} onChange={(event) => setQuizForm({ ...quizForm, title: event.target.value })} /></label><label>Subject<input value={quizForm.subject} onChange={(event) => setQuizForm({ ...quizForm, subject: event.target.value })} /></label><label>Grade / level<input value={quizForm.gradeLevel} onChange={(event) => setQuizForm({ ...quizForm, gradeLevel: event.target.value })} /></label><label>Topic<input value={quizForm.topic} onChange={(event) => setQuizForm({ ...quizForm, topic: event.target.value })} /></label><label>Language<input value={quizForm.language} onChange={(event) => setQuizForm({ ...quizForm, language: event.target.value })} /></label></div><label>Description<textarea value={quizForm.description} onChange={(event) => setQuizForm({ ...quizForm, description: event.target.value })} /></label><fieldset className="study-set-visibility-fieldset"><legend>Visibility</legend><label><input type="radio" name={`study-set-visibility-${selectedQuiz.id}`} checked={quizForm.visibility === "PRIVATE"} onChange={() => setQuizForm({ ...quizForm, visibility: "PRIVATE" })} /> <LockKeyhole size={14} aria-hidden="true" /> Private — only you</label><label><input type="radio" name={`study-set-visibility-${selectedQuiz.id}`} checked={quizForm.visibility === "PUBLIC"} onChange={() => setQuizForm({ ...quizForm, visibility: "PUBLIC" })} /> <Globe2 size={14} aria-hidden="true" /> Public — other teachers can find and use it</label></fieldset></form>}
+          <label className="quiz-set-picker">
           Switch question set
           <select value={selectedQuizId} onChange={(event) => setSelectedQuizId(event.target.value)}>
             {data.quizSets.map((quiz) => (
@@ -1283,20 +1356,24 @@ function QuizManager({ data, onRefresh, initialQuizSetId, startInCreateMode = fa
 
 function SessionManager({
   data,
+  availableStudySets,
   selectedSession,
   setSelectedSession,
   onRefresh,
   onReport,
   onOpenReports,
+  onBrowseStudySets,
   initialQuizSetId,
   activeSetupSection
 }: {
   data: DashboardPayload;
+  availableStudySets: QuizSet[];
   selectedSession: GameSession | null;
   setSelectedSession: (session: GameSession | null) => void;
   onRefresh: () => Promise<void>;
   onReport: (report: SessionReport | null) => void;
   onOpenReports: () => void;
+  onBrowseStudySets: () => void;
   initialQuizSetId?: string;
   activeSetupSection: SetupSection;
 }) {
@@ -1316,7 +1393,7 @@ function SessionManager({
     isJoinLinkCopied, setIsJoinLinkCopied,
     isEndConfirmOpen, setIsEndConfirmOpen,
     isProjectorOpen, setIsProjectorOpen
-  } = useSessionControls({ initialQuizSetId, firstQuizSetId: data.quizSets[0]?.id });
+  } = useSessionControls({ initialQuizSetId, firstQuizSetId: availableStudySets[0]?.id });
   const [isChangingPause, setIsChangingPause] = useState(false);
   const [isTeacherSpectatorOpen, setIsTeacherSpectatorOpen] = useState(false);
   const [teacherSpectatorPlayerId, setTeacherSpectatorPlayerId] = useState("");
@@ -1332,9 +1409,9 @@ function SessionManager({
   const status = useAsyncMessage();
   const remainingSeconds = useRoundRemaining(selectedSession);
   const selectedMap = getArenaMap(settings.mapId);
-  const selectedQuiz = data.quizSets.find((quiz) => quiz.id === quizSetId);
+  const selectedQuiz = availableStudySets.find((quiz) => quiz.id === quizSetId);
   const sessionQuiz = selectedSession
-    ? data.quizSets.find((quiz) => quiz.id === selectedSession.quizSetId)
+    ? availableStudySets.find((quiz) => quiz.id === selectedSession.quizSetId)
     : undefined;
   const displayedPresetName = "Classroom game";
   const studentJoinLink = selectedSession
@@ -1354,13 +1431,13 @@ function SessionManager({
     ?? teacherSpectatorPlayers[0];
 
   useEffect(() => {
-    if (!quizSetId && data.quizSets[0]) setQuizSetId(data.quizSets[0].id);
-  }, [data.quizSets, quizSetId, setQuizSetId]);
+    if (!quizSetId && availableStudySets[0]) setQuizSetId(availableStudySets[0].id);
+  }, [availableStudySets, quizSetId, setQuizSetId]);
 
   useEffect(() => {
-    if (hasSelectedSession || !initialQuizSetId || !data.quizSets.some((quiz) => quiz.id === initialQuizSetId)) return;
+    if (hasSelectedSession || !initialQuizSetId || !availableStudySets.some((quiz) => quiz.id === initialQuizSetId)) return;
     setQuizSetId(initialQuizSetId);
-  }, [data.quizSets, hasSelectedSession, initialQuizSetId, setQuizSetId]);
+  }, [availableStudySets, hasSelectedSession, initialQuizSetId, setQuizSetId]);
 
   useEffect(() => {
     if (!hasSelectedSession) return;
@@ -1827,6 +1904,32 @@ function SessionManager({
                 <small>{selectedQuiz?.questions.length ?? 0} questions</small>
               </div>
             </header>
+
+            <section className="setup-study-set-picker" aria-labelledby="study-set-picker-title">
+              <div>
+                <span className="eyebrow">Study Set</span>
+                <h3 id="study-set-picker-title">Choose what your class will practice</h3>
+                <p>Use one of your sets or browse the public library for a ready-to-play set.</p>
+              </div>
+              <div className="setup-study-set-controls">
+                <label htmlFor="session-study-set">Question set</label>
+                <select
+                  id="session-study-set"
+                  value={quizSetId}
+                  onChange={(event) => setQuizSetId(event.target.value)}
+                  disabled={hasSelectedSession || availableStudySets.length === 0}
+                >
+                  <option value="">Choose a question set</option>
+                  {availableStudySets.map((quiz) => (
+                    <option key={quiz.id} value={quiz.id}>{quiz.title} ({quiz.questions.length} questions){data.quizSets.some((owned) => owned.id === quiz.id) ? "" : " · Public Library"}</option>
+                  ))}
+                </select>
+                <button type="button" className="secondary setup-study-set-browse" onClick={onBrowseStudySets} disabled={hasSelectedSession}>
+                  <Globe2 size={17} aria-hidden="true" />
+                  Browse Study Sets
+                </button>
+              </div>
+            </section>
 
             {activeSetupSection === "mode" && (
               <section className="setup-choice-section setup-panel-section mode-choice-section" aria-labelledby="mode-title">

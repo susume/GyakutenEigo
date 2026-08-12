@@ -53,6 +53,7 @@ export type RoundRuntimeDependencies = {
   getQuizSetName: (quizSetId: string) => string;
   mirrorNormalized: (operation: Promise<unknown>, label: string) => void;
   saveSessionReport: (session: GameSession) => unknown;
+  recordGameCompleted?: (session: GameSession) => Promise<unknown>;
   roundResultAnnouncementMs: number;
   gameOverAnnouncementMs: number;
   roundPreparationMs: number;
@@ -83,6 +84,7 @@ export const createRoundRuntime = (deps: RoundRuntimeDependencies) => {
     getQuizSetName,
     mirrorNormalized,
     saveSessionReport,
+    recordGameCompleted,
     roundResultAnnouncementMs,
     gameOverAnnouncementMs,
     roundPreparationMs,
@@ -117,6 +119,7 @@ const finishSession = (
   appendEvent(session, { type: "end", message });
   const quizSetName = getQuizSetName(session.quizSetId);
   if (saveSession) mirrorNormalized(saveSession(session, quizSetName), "completed session");
+  if (recordGameCompleted) mirrorNormalized(recordGameCompleted(session), "teacher recognition");
   saveSessionReport(session);
   broadcastSession(session);
 };

@@ -49,6 +49,7 @@ import { registerCompetitionRoutes } from "./routes/competitionRoutes.js";
 import { scheduleCompetitionNotifications, type Competition, type CompetitionAuditLog, type CompetitionNotification } from "./competitionDomain.js";
 import { createTournamentState, type Tournament, type TournamentAuditEvent } from "./tournamentDomain.js";
 import { registerTournamentRoutes } from "./routes/tournamentRoutes.js";
+import { canTeacherUseStudySet, registerStudySetRoutes } from "./routes/studySets.js";
 import {
   IdempotentEventConsumer,
   InMemoryJoinCodeDirectory,
@@ -154,6 +155,7 @@ import {
   type BotState
 } from "./botAI.js";
 import { buildStudentLearningAttempts } from "./studentLearningReport.js";
+import { ContributionService } from "./contributionService.js";
 
 interface StoredUser extends TeacherUser {
   passwordHash: string;
@@ -226,6 +228,7 @@ const renewRoomAuthorities = () => roomAuthority.renewAll();
 const users = new Map<string, StoredUser>();
 const classes = new Map<string, ClassSummary & { teacherId: string }>();
 const quizSets = new Map<string, QuizSet>();
+const contribution = new ContributionService(() => quizSets.values(), normalizedLibrary);
 const questionAudioAssets = new Map<string, QuestionAudioAsset>();
 const folders = new Map<string, QuizFolder>();
 const sessions = new InMemoryRoomStateStore<GameSession>();
@@ -587,6 +590,9 @@ const publicQuestion = (question: Question): PublicQuestion => {
   return safeQuestion;
 };
 
+const getSessionQuestions = (session: GameSession) => session.questionSnapshot ?? quizSets.get(session.quizSetId)?.questions ?? [];
+const getSessionQuestion = (session: GameSession, questionId: string) => getSessionQuestions(session).find((question) => question.id === questionId);
+
 const getPlayerToken = (req: Request) => {
   const headerToken = req.header("x-player-token");
   if (headerToken) return headerToken;
@@ -618,8 +624,8 @@ const canReadRoomAsset = (req: Request, session: GameSession) => {
 };
 
 const selectNextQuestion = (session: GameSession, playerId: string): PublicQuestion | undefined => {
-  const quiz = quizSets.get(session.quizSetId);
-  if (!quiz || quiz.questions.length === 0) return undefined;
+  const questions = getSessionQuestions(session);
+  if (questions.length === 0) return undefined;
 
   let attempted = playerQuestionHistory.get(playerId);
   if (!attempted) {
@@ -627,10 +633,10 @@ const selectNextQuestion = (session: GameSession, playerId: string): PublicQuest
     playerQuestionHistory.set(playerId, attempted);
   }
 
-  if (attempted.size >= quiz.questions.length) attempted.clear();
+  if (attempted.size >= questions.length) attempted.clear();
 
-  const unattempted = quiz.questions.filter((question) => !attempted.has(question.id));
-  const pool = unattempted.length > 0 ? unattempted : quiz.questions;
+  const unattempted = questions.filter((question) => !attempted.has(question.id));
+  const pool = unattempted.length > 0 ? unattempted : questions;
   const question = pool[Math.floor(Math.random() * pool.length)];
   attempted.add(question.id);
   return publicQuestion(question);
@@ -642,10 +648,24 @@ const issueNextQuestion = (session: GameSession, playerId: string): PublicQuesti
   return question;
 };
 
+const canReadQuestionAudio = (req: Request, questionId: string) => {
+  const teacher = getBearerUser(req);
+  const sourceQuiz = [...quizSets.values()].find((quiz) => quiz.questions.some((question) => question.id === questionId));
+  if (teacher && sourceQuiz && (
+    sourceQuiz.teacherId === teacher.id
+    || (sourceQuiz.visibility === "PUBLIC" && sourceQuiz.status !== "ARCHIVED")
+  )) return true;
+  return [...sessions.values()].some((session) => getSessionQuestions(session).some((item) => item.id === questionId) && canReadRoomAsset(req, session));
+};
+const isQuestionAudioUsedByActiveSession = (questionId: string) => [...sessions.values()].some((session) => (
+  session.status !== "ended"
+  && getSessionQuestions(session).some((question) => question.id === questionId && question.audioUrl?.startsWith("/api/question-audio/"))
+));
+
 const learningPulseCache = new Map<string, { sourceSignature: string; pulse: LearningPulse }>();
 
 const getLearningPulse = (session: GameSession): LearningPulse => {
-  const questions = quizSets.get(session.quizSetId)?.questions ?? [];
+  const questions = getSessionQuestions(session);
   const sourceSignature = JSON.stringify({
     questions: questions.map((question) => [question.id, question.prompt]),
     botIds: session.players.filter((player) => player.isBot).map((player) => player.id).sort()
@@ -663,7 +683,7 @@ const getLearningPulse = (session: GameSession): LearningPulse => {
 };
 
 const stampSession = (session: GameSession): GameSession => {
-  const { learningPulse: _learningPulse, ...publicSession } = session;
+  const { learningPulse: _learningPulse, questionSnapshot: _questionSnapshot, ...publicSession } = session;
   return { ...publicSession, serverTime: now() };
 };
 
@@ -783,6 +803,11 @@ const assertTeacherOwnsQuiz = (userId: string, quizSetId: string) => {
   return quiz?.teacherId === userId ? quiz : undefined;
 };
 
+const getQuizSetForUse = (userId: string, quizSetId: string) => {
+  const quiz = quizSets.get(quizSetId);
+  return canTeacherUseStudySet(quiz, userId) ? quiz : undefined;
+};
+
 const makeReport = (session: GameSession): SessionReport => {
   const sessionAnswers = answers.filter((answer) => answer.gameSessionId === session.id);
   const reportAnswers = sessionAnswers.filter(isMainRoundAnswer);
@@ -795,7 +820,7 @@ const makeReport = (session: GameSession): SessionReport => {
 
   const missedQuestions = [...missedCounts.entries()]
     .map(([questionId, misses]) => {
-      const question = getQuizQuestion(questionId);
+      const question = getSessionQuestion(session, questionId);
       return { questionId, prompt: question?.prompt ?? "Unknown question", misses };
     })
     .sort((a, b) => b.misses - a.misses);
@@ -805,10 +830,11 @@ const makeReport = (session: GameSession): SessionReport => {
 
 const makeStudentLearningReport = (session: GameSession, player: PlayerSession): StudentLearningReport => {
   const quiz = quizSets.get(session.quizSetId);
+  const sessionQuestions = getSessionQuestions(session);
   const sessionAttempts = buildStudentLearningAttempts({
     gameSessionId: session.id,
     playerSessionId: player.id,
-    gameQuizSet: quiz,
+    gameQuizSet: quiz ? { ...quiz, questions: sessionQuestions } : undefined,
     allQuizSets: quizSets.values(),
     answers
   });
@@ -823,7 +849,7 @@ const makeStudentLearningReport = (session: GameSession, player: PlayerSession):
         id: quiz.id,
         title: quiz.title,
         ...(quiz.description ? { description: quiz.description } : {}),
-        questions: quiz.questions.map(publicQuestion)
+        questions: sessionQuestions.map(publicQuestion)
       }
     } : {}),
     attempts: sessionAttempts
@@ -926,6 +952,7 @@ const roundRuntimeDependencies: RoundRuntimeDependencies = {
   getQuizSetName: (quizSetId) => quizSets.get(quizSetId)?.title ?? "Quiz Set",
   mirrorNormalized,
   saveSessionReport,
+  recordGameCompleted: (session) => contribution.recordGameCompleted(session),
   roundResultAnnouncementMs: ROUND_RESULT_ANNOUNCEMENT_MS,
   gameOverAnnouncementMs: GAME_OVER_ANNOUNCEMENT_MS,
   roundPreparationMs: ROUND_PREPARATION_MS,
@@ -1306,6 +1333,8 @@ const quizSetRouteDependencies: QuizSetRouteDependencies = {
   folders,
   sessions,
   normalizedLibrary,
+  contribution,
+  recordContribution: mirrorNormalized,
   assertTeacherOwnsQuiz,
   routeParam,
   isChoice,
@@ -1320,8 +1349,12 @@ const quizSetRouteDependencies: QuizSetRouteDependencies = {
 const questionRouteDependencies: QuestionRouteDependencies = {
   requireTeacher,
   getQuizQuestion,
+  canReadQuestionAudio,
+  isQuestionAudioUsedByActiveSession,
   assertTeacherOwnsQuiz,
   normalizedLibrary,
+  contribution,
+  recordContribution: mirrorNormalized,
   getQuestionAudio: async (questionId) => {
     const inMemoryAudio = questionAudioAssets.get(questionId);
     if (inMemoryAudio) return inMemoryAudio;
@@ -1360,11 +1393,36 @@ registerClassRoute(app, teacherLibraryRouteDependencies);
 
 registerQuizSetCreationRoutes(app, quizSetRouteDependencies);
 registerQuestionRoutes(app, questionRouteDependencies);
+registerStudySetRoutes(app, {
+  requireTeacher,
+  quizSets,
+  sessions,
+  users,
+  normalizedLibrary,
+  contribution,
+  recordContribution: mirrorNormalized,
+  getRecognitionSummary: (teacherId) => contribution.getSummary(teacherId),
+  getQuestionAudio: questionRouteDependencies.getQuestionAudio,
+  saveQuestionAudio: questionRouteDependencies.saveQuestionAudio,
+  deleteQuestionAudio: questionRouteDependencies.deleteQuestionAudio,
+  routeParam,
+  now,
+  id,
+  schedulePersistence
+});
 
 const sessionRouteDependencies: SessionRouteDependencies = {
   requireTeacher,
   isDraining: () => isDraining,
-  assertTeacherOwnsQuiz,
+  getQuizSetForUse,
+  recordStudySetUse: (input) => contribution.recordStudySetUse(input),
+  updateStudySetUsageCounters: (quizSetId, result) => {
+    if (!result.added) return;
+    const quizSet = quizSets.get(quizSetId);
+    if (!quizSet) return;
+    quizSet.usageCount = (quizSet.usageCount ?? 0) + 1;
+    if (result.externalTeacherAdded) quizSet.uniqueTeacherUsageCount = result.uniqueTeacherCount;
+  },
   createDefaultSettings,
   id,
   now,
@@ -1451,7 +1509,7 @@ const answerQuestion = (
   if (!checkQuizRateLimit(player.id)) {
     return failStudentCommand(429, "Slow down before answering another question.");
   }
-  const question = getQuizQuestion(String(body.questionId ?? ""));
+  const question = getSessionQuestion(session, String(body.questionId ?? ""));
   const selectedChoice = body.selectedChoice;
   if (!question || question.quizSetId !== session.quizSetId || !isChoice(selectedChoice)) {
     return failStudentCommand(400, "Question or answer choice is invalid.");

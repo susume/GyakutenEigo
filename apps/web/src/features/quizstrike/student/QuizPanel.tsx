@@ -19,6 +19,7 @@ export default function QuizPanel({
   question,
   player,
   session,
+  playerToken,
   onAnswer,
   answeringChoice,
   answerFeedback
@@ -26,17 +27,48 @@ export default function QuizPanel({
   question: PublicQuestion | null;
   player: PlayerSession;
   session: GameSession;
+  playerToken: string;
   onAnswer: (choice: Choice) => void;
   answeringChoice: Choice | null;
   answerFeedback: QuizAnswerFeedback | null;
 }) {
   const [audioError, setAudioError] = useState(false);
+  const [audioSource, setAudioSource] = useState<string | undefined>();
   useEffect(() => setAudioError(false), [question?.id, question?.audioUrl]);
 
+  useEffect(() => {
+    const source = question?.audioUrl;
+    if (!source) {
+      setAudioSource(undefined);
+      return;
+    }
+    if (!source.startsWith("/api/")) {
+      setAudioSource(source);
+      return;
+    }
+    const controller = new AbortController();
+    let active = true;
+    let objectUrl: string | undefined;
+    setAudioSource(undefined);
+    void fetch(`${getApiUrl()}${source}`, {
+      headers: { "X-Player-Token": playerToken },
+      signal: controller.signal
+    }).then(async (response) => {
+      if (!response.ok) throw new Error("Question audio could not be loaded.");
+      objectUrl = URL.createObjectURL(await response.blob());
+      if (active) setAudioSource(objectUrl);
+      else URL.revokeObjectURL(objectUrl);
+    }).catch((error: unknown) => {
+      if (active && !(error instanceof DOMException && error.name === "AbortError")) setAudioError(true);
+    });
+    return () => {
+      active = false;
+      controller.abort();
+      if (objectUrl) URL.revokeObjectURL(objectUrl);
+    };
+  }, [playerToken, question?.audioUrl, question?.id]);
+
   if (!question) return <div className="panel"><p>Your next question will appear here.</p></div>;
-  const audioSource = question.audioUrl?.startsWith("/api/")
-    ? `${getApiUrl()}${question.audioUrl}`
-    : question.audioUrl;
   const reward = session.settings.gameMode === "zombie" && player.role !== "zombie"
     ? `+${ZOMBIE_HUMAN_CORRECT_ENERGY} running energy`
     : player.isAlive || session.settings.deadPlayersEarnMoney
@@ -66,7 +98,7 @@ export default function QuizPanel({
         <div className="question-audio">
           <Volume2 size={18} aria-hidden="true" />
           <span>Listen to the question</span>
-          <audio controls preload="metadata" src={audioSource} aria-label="Question audio" onError={() => setAudioError(true)} />
+          {audioSource && <audio controls preload="metadata" src={audioSource} aria-label="Question audio" onError={() => setAudioError(true)} />}
           {audioError && <small role="status">The audio couldn’t load. You can still answer below.</small>}
         </div>
       )}

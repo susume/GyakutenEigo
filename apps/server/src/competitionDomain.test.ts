@@ -48,7 +48,8 @@ test("roster limits and duplicate player prevention are enforced", () => {
       { id: "p1", displayName: "Mika", playerKey: "student-1" },
       { id: "p2", displayName: "Ren", playerKey: "student-2" }
     ],
-    substitutePlayers: []
+    substitutePlayers: [],
+    at: date
   });
   assert.equal(first.ok, true);
   item.teams.push({
@@ -72,7 +73,8 @@ test("roster limits and duplicate player prevention are enforced", () => {
     teamName: "South Stars",
     affiliation: "South School",
     activePlayers: [{ id: "p3", displayName: "Mika", playerKey: "student-1" }],
-    substitutePlayers: []
+    substitutePlayers: [],
+    at: date
   });
   assert.equal(duplicate.ok, false);
 });
