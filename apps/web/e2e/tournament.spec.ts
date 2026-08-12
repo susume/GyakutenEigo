@@ -50,7 +50,9 @@ test("teacher creates and publishes a tournament study-first bracket", async ({ 
   await page.getByRole("button", { name: "Teacher Workspace" }).click();
   await expect(page.getByRole("button", { name: "Competitions", exact: true })).toBeVisible();
   await page.getByRole("button", { name: "Competitions", exact: true }).click();
-  await expect(page.getByText("Your tournament calendar is empty")).toBeVisible();
+  // The local in-memory server may be reused between browser runs, so the
+  // stable contract here is that the tournament center is ready to create.
+  await expect(page.getByRole("button", { name: "Create tournament", exact: true })).toBeVisible();
 
   await page.getByRole("button", { name: "Create tournament" }).click();
   await page.getByLabel("Tournament name").fill(title);

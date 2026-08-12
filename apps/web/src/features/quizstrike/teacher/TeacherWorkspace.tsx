@@ -42,6 +42,8 @@ import Scoreboard from "../student/Scoreboard";
 import LearningPulse from "./LearningPulse";
 import TeacherPauseControls from "./TeacherPauseControls";
 import StudySetLibrary from "./StudySetLibrary";
+import StudySetDetail from "./StudySetDetail";
+import TeacherHome from "./TeacherHome";
 import { useSessionControls } from "./useSessionControls";
 const ArenaPreview = lazy(() => import("../../../game/ArenaPreview"));
 const TournamentCenter = lazy(() => import("../tournament/TournamentCenter"));
@@ -61,6 +63,23 @@ type SetupSection = "mode" | "arena" | "advanced";
 const emptyQuestion = { prompt: "", choiceA: "", choiceB: "", choiceC: "", choiceD: "", correctChoice: "A", explanation: "", difficulty: "", audioUrl: "" };
 const choices: Choice[] = ["A", "B", "C", "D"];
 const TEACHER_FOLDER_SELECTION_STORAGE_KEY = "quizstrike_teacher_folder_selection_v1";
+type TeacherTab = "home" | "discover" | "library" | "detail" | "quizzes" | "sessions" | "reports" | "settings" | "tournaments";
+type TeacherRouteState = { tab: TeacherTab; studySetId?: string };
+const teacherRouteState = (path: string): TeacherRouteState => {
+  const segments = path.split("/").filter(Boolean).map((segment) => decodeURIComponent(segment));
+  const section = segments[2];
+  if (section === "discover") return { tab: "discover" };
+  if (section === "library") return { tab: "library" };
+  if (section === "reports") return { tab: "reports" };
+  if (section === "settings") return { tab: "settings" };
+  if (section === "competitions") return { tab: "tournaments" };
+  if (section === "create") return { tab: "quizzes" };
+  if (section === "host") return { tab: "sessions", studySetId: segments[3] };
+  if (section === "sets" && segments[3]) return { tab: segments[4] === "edit" ? "quizzes" : "detail", studySetId: segments[3] };
+  return { tab: "home" };
+};
+const teacherTabPath = (tab: Exclude<TeacherTab, "detail" | "quizzes" | "sessions">) =>
+  `/quiz-strike/teacher/${tab === "tournaments" ? "competitions" : tab}`;
 type QuestionDraft = typeof emptyQuestion;
 const sessionNumberFields = [
   { name: "roundCount", label: "Number of rounds", min: 1, max: 30, help: "How many rounds the class will play." },
@@ -314,14 +333,16 @@ function TeacherAuth({
   );
 }
 
-function TeacherDashboard({ teacher, onLogout }: { teacher: TeacherUser; onLogout: () => void }) {
-  const [tab, setTab] = useState<"home" | "studySets" | "quizzes" | "sessions" | "reports" | "settings" | "tournaments">("home");
+function TeacherDashboard({ teacher, onLogout, initialPath, onNavigate }: { teacher: TeacherUser; onLogout: () => void; initialPath: string; onNavigate: (path: string, mode?: "quizStrike" | "teacher") => void }) {
+  const initialRoute = useMemo(() => teacherRouteState(initialPath), [initialPath]);
+  const [tab, setTab] = useState<TeacherTab>(initialRoute.tab);
   const [activeSetupSection, setActiveSetupSection] = useState<SetupSection>("mode");
   const [quizManagerRequest, setQuizManagerRequest] = useState<{ quizSetId?: string; mode: "create" | "edit" }>({ mode: "create" });
   const [data, setData] = useState<DashboardPayload>({ classes: [], quizSets: [], sessions: [], folders: [], reports: [] });
   const [selectedSession, setSelectedSession] = useState<GameSession | null>(null);
   const [launchQuizId, setLaunchQuizId] = useState("");
   const [borrowedStudySet, setBorrowedStudySet] = useState<QuizSet | null>(null);
+  const [detailStudySetId, setDetailStudySetId] = useState<string | undefined>(initialRoute.studySetId);
   const [report, setReport] = useState<SessionReport | null>(null);
   const [isSocketReconnecting, setIsSocketReconnecting] = useState(false);
   const [gamePreferences, setGamePreferences] = useState<GamePreferences>(() => readGamePreferences());
@@ -431,9 +452,23 @@ function TeacherDashboard({ teacher, onLogout }: { teacher: TeacherUser; onLogou
     [borrowedStudySet, data.quizSets]
   );
   const isLiveSetup = tab === "sessions" && !selectedSession;
+  useEffect(() => {
+    setTab(initialRoute.tab);
+    setDetailStudySetId(initialRoute.studySetId);
+    if (initialRoute.studySetId && initialRoute.tab === "sessions") setLaunchQuizId(initialRoute.studySetId);
+  }, [initialRoute]);
+  const navigateTeacherTab = (nextTab: Exclude<TeacherTab, "detail" | "quizzes" | "sessions">) => {
+    setTab(nextTab);
+    onNavigate(teacherTabPath(nextTab), "teacher");
+  };
+  const openStudySet = (quizSetId: string) => {
+    setDetailStudySetId(quizSetId);
+    onNavigate(`/quiz-strike/teacher/sets/${encodeURIComponent(quizSetId)}`, "teacher");
+  };
   const openQuizManager = (quizSetId?: string) => {
     setQuizManagerRequest(quizSetId ? { quizSetId, mode: "edit" } : { mode: "create" });
     setTab("quizzes");
+    onNavigate(quizSetId ? `/quiz-strike/teacher/sets/${encodeURIComponent(quizSetId)}/edit` : "/quiz-strike/teacher/create", "teacher");
   };
 
   const openStudySetForGame = async (quizSetId: string) => {
@@ -447,6 +482,7 @@ function TeacherDashboard({ teacher, onLogout }: { teacher: TeacherUser; onLogou
       setSelectedSession(null);
       setActiveSetupSection("mode");
       setTab("sessions");
+      onNavigate(`/quiz-strike/teacher/host/${encodeURIComponent(quizSetId)}`, "teacher");
     } catch (error) {
       status.report(error);
     }
@@ -455,62 +491,35 @@ function TeacherDashboard({ teacher, onLogout }: { teacher: TeacherUser; onLogou
   return (
     <section className="workspace">
       <div className="dashboard-brand-row">
-        <h1><span className="dashboard-wordmark">QuizStrike</span></h1>
+        <h1><span className="dashboard-wordmark">QuizStrike</span><small>Teacher workspace</small></h1>
         <div><strong>{teacher.name}</strong><button onClick={onLogout}>Sign Out</button></div>
       </div>
       <aside className={`sidebar${isLiveSetup ? " setup-sidebar" : ""}`} aria-label={isLiveSetup ? "Live game setup sections" : "Teacher sections"}>
         {isLiveSetup ? (
           <div className="setup-sidebar-menu">
-            <span className="setup-sidebar-kicker">Live game setup</span>
-            <button className={activeSetupSection === "mode" ? "active" : ""} aria-current={activeSetupSection === "mode" ? "step" : undefined} onClick={() => setActiveSetupSection("mode")}>
-              <span className="setup-sidebar-index">1</span>
-              <strong>Game Mode</strong>
-            </button>
-            <button className={activeSetupSection === "arena" ? "active" : ""} aria-current={activeSetupSection === "arena" ? "step" : undefined} onClick={() => setActiveSetupSection("arena")}>
-              <span className="setup-sidebar-index">2</span>
-              <strong>Arena</strong>
-            </button>
-            <button className={activeSetupSection === "advanced" ? "active" : ""} aria-current={activeSetupSection === "advanced" ? "step" : undefined} onClick={() => setActiveSetupSection("advanced")}>
-              <span className="setup-sidebar-index">3</span>
-              <Settings size={17} aria-hidden="true" />
-              <strong>Game details</strong>
-            </button>
-            <button className="setup-sidebar-back" onClick={() => setTab("home")}>
-              <ChevronLeft size={17} aria-hidden="true" />
-              Back to question library
-            </button>
+            <span className="setup-sidebar-kicker">Host this Study Set</span>
+            <button className={activeSetupSection === "mode" ? "active" : ""} aria-current={activeSetupSection === "mode" ? "step" : undefined} onClick={() => setActiveSetupSection("mode")}><strong>Game Mode</strong></button>
+            <button className={activeSetupSection === "arena" ? "active" : ""} aria-current={activeSetupSection === "arena" ? "step" : undefined} onClick={() => setActiveSetupSection("arena")}><strong>Arena</strong></button>
+            <button className={activeSetupSection === "advanced" ? "active" : ""} aria-current={activeSetupSection === "advanced" ? "step" : undefined} onClick={() => setActiveSetupSection("advanced")}><Settings size={17} aria-hidden="true" /><strong>Advanced</strong></button>
+            <button className="setup-sidebar-back" onClick={() => navigateTeacherTab("library")}><ChevronLeft size={17} aria-hidden="true" />Back to Library</button>
           </div>
         ) : (
           <>
-            <button aria-current={tab === "home" ? "page" : undefined} className={tab === "home" ? "active" : ""} onClick={() => setTab("home")}>
-              <BookOpen size={17} aria-hidden="true" />
-              Question library
-            </button>
-            <button aria-current={tab === "studySets" ? "page" : undefined} className={tab === "studySets" ? "active" : ""} onClick={() => setTab("studySets")}>
-              <Sparkles size={17} aria-hidden="true" />
-              Study Sets
-            </button>
-            <button aria-current={tab === "reports" ? "page" : undefined} className={tab === "reports" ? "active" : ""} onClick={() => setTab("reports")}>
-              Reports
-            </button>
-            <button aria-current={tab === "tournaments" ? "page" : undefined} className={tab === "tournaments" ? "active" : ""} onClick={() => setTab("tournaments")}>
-              <Trophy size={17} aria-hidden="true" />
-              Competitions
-            </button>
-            <button aria-current={tab === "settings" ? "page" : undefined} className={tab === "settings" ? "active" : ""} onClick={() => setTab("settings")}>
-              <Settings size={17} aria-hidden="true" />
-              Settings
-            </button>
+            <button aria-current={tab === "home" ? "page" : undefined} className={tab === "home" ? "active" : ""} onClick={() => navigateTeacherTab("home")}><BookOpen size={17} aria-hidden="true" />Home</button>
+            <button aria-current={tab === "discover" ? "page" : undefined} className={tab === "discover" ? "active" : ""} onClick={() => navigateTeacherTab("discover")}><Globe2 size={17} aria-hidden="true" />Discover</button>
+            <button aria-current={tab === "library" ? "page" : undefined} className={tab === "library" ? "active" : ""} onClick={() => navigateTeacherTab("library")}><Sparkles size={17} aria-hidden="true" />Library</button>
+            <button aria-current={tab === "reports" ? "page" : undefined} className={tab === "reports" ? "active" : ""} onClick={() => navigateTeacherTab("reports")}>Reports</button>
+            <button className="sidebar-create-button" onClick={() => openQuizManager()}><Plus size={17} aria-hidden="true" />Create</button>
+            <span className="sidebar-divider" />
+            <button aria-current={tab === "tournaments" ? "page" : undefined} className={tab === "tournaments" ? "active" : ""} onClick={() => navigateTeacherTab("tournaments")}><Trophy size={17} aria-hidden="true" />Competitions</button>
+            <button aria-current={tab === "settings" ? "page" : undefined} className={tab === "settings" ? "active" : ""} onClick={() => navigateTeacherTab("settings")}><Settings size={17} aria-hidden="true" />Settings</button>
           </>
         )}
       </aside>
 
       <div className="main-panel">
         <div className="section-heading dashboard-section-heading">
-          <div>
-            <span className="eyebrow">Teacher workspace</span>
-            <p>Prepare the questions, start the game, and see what to revisit.</p>
-          </div>
+          <div><span className="eyebrow">{tab === "home" ? "Teacher home" : tab === "discover" ? "Discover" : tab === "library" ? "Library" : tab === "sessions" ? "Host a game" : "Teacher workspace"}</span><p>Content first. Game second.</p></div>
           <button onClick={refresh}>
             <RefreshCw size={18} aria-hidden="true" />
             Refresh data
@@ -524,19 +533,7 @@ function TeacherDashboard({ teacher, onLogout }: { teacher: TeacherUser; onLogou
           </p>
         )}
 
-        {tab === "home" && (
-          <TeacherFolders
-            data={data}
-            onEditQuiz={openQuizManager}
-            onRefresh={refresh}
-            onPlayLive={(quizSetId) => {
-              setLaunchQuizId(quizSetId);
-              setSelectedSession(null);
-              setActiveSetupSection("mode");
-              setTab("sessions");
-            }}
-          />
-        )}
+        {tab === "home" && <TeacherHome teacher={teacher} quizSets={data.quizSets} sessions={data.sessions} recognition={data.recognition} onCreate={() => openQuizManager()} onDiscover={() => navigateTeacherTab("discover")} onLibrary={() => navigateTeacherTab("library")} onReports={() => navigateTeacherTab("reports")} onHost={(quizSetId) => void openStudySetForGame(quizSetId)} onOpenSet={openStudySet} />}
         {tab === "quizzes" && (
           <QuizManager
             key={`${quizManagerRequest.mode}:${quizManagerRequest.quizSetId ?? "new"}`}
@@ -546,7 +543,9 @@ function TeacherDashboard({ teacher, onLogout }: { teacher: TeacherUser; onLogou
             startInCreateMode={quizManagerRequest.mode === "create"}
           />
         )}
-        {tab === "studySets" && <StudySetLibrary data={data} onRefresh={refresh} onEditQuiz={openQuizManager} onPlayLive={openStudySetForGame} />}
+        {tab === "discover" && <StudySetLibrary data={data} scope="public" onRefresh={refresh} onEditQuiz={openQuizManager} onPlayLive={openStudySetForGame} onOpenStudySet={openStudySet} />}
+        {tab === "library" && <StudySetLibrary data={data} scope="mine" onRefresh={refresh} onEditQuiz={openQuizManager} onPlayLive={openStudySetForGame} onOpenStudySet={openStudySet} />}
+        {tab === "detail" && detailStudySetId && <StudySetDetail studySetId={detailStudySetId} isOwner={data.quizSets.some((quiz) => quiz.id === detailStudySetId)} onBack={() => navigateTeacherTab(data.quizSets.some((quiz) => quiz.id === detailStudySetId) ? "library" : "discover")} onHost={(quizSetId) => void openStudySetForGame(quizSetId)} onEdit={openQuizManager} onCopy={async (quizSetId) => { try { await teacherApi.duplicateStudySet(quizSetId); await refresh(); navigateTeacherTab("library"); } catch (error) { status.report(error); } }} />}
         {tab === "sessions" && (
           <SessionManager
             data={data}
@@ -555,8 +554,8 @@ function TeacherDashboard({ teacher, onLogout }: { teacher: TeacherUser; onLogou
             setSelectedSession={setSelectedSession}
             onRefresh={refresh}
             onReport={setReport}
-            onOpenReports={() => setTab("reports")}
-            onBrowseStudySets={() => setTab("studySets")}
+            onOpenReports={() => navigateTeacherTab("reports")}
+            onBrowseStudySets={() => navigateTeacherTab("discover")}
             initialQuizSetId={launchQuizId}
             activeSetupSection={activeSetupSection}
           />
@@ -591,6 +590,7 @@ function TeacherDashboard({ teacher, onLogout }: { teacher: TeacherUser; onLogou
                   setSelectedSession(session);
                   setLaunchQuizId(session.quizSetId);
                   setTab("sessions");
+                  onNavigate(`/quiz-strike/teacher/host/${encodeURIComponent(session.quizSetId)}`, "teacher");
                 }}
               >
                 <span>{session.sessionCode}</span>
@@ -604,6 +604,8 @@ function TeacherDashboard({ teacher, onLogout }: { teacher: TeacherUser; onLogou
   );
 }
 
+// Retained for the legacy folder-management surface; the new teacher shell uses Library instead.
+// eslint-disable-next-line @typescript-eslint/no-unused-vars
 function TeacherFolders({
   data,
   onEditQuiz,
@@ -1118,7 +1120,7 @@ function QuizManager({ data, onRefresh, initialQuizSetId, startInCreateMode = fa
 
   return (
     <div className={`two-column quiz-manager-shell ${startInCreateMode ? "quiz-create-mode" : "quiz-edit-mode"}`}>
-      {startInCreateMode ? <form className="panel form-panel quiz-create-panel" onSubmit={createQuiz}>
+      {startInCreateMode && !selectedQuiz ? <form className="panel form-panel quiz-create-panel" onSubmit={createQuiz}>
         <span className="teacher-eyebrow">New question set</span>
         <h2>Create a set</h2>
         <p>Give this set a clear name. You can add questions next.</p>
@@ -1144,7 +1146,7 @@ function QuizManager({ data, onRefresh, initialQuizSetId, startInCreateMode = fa
         <aside className="panel quiz-context-panel">
           <span className="teacher-eyebrow">Question workspace</span>
           <h2>{selectedQuiz?.title ?? "Question sets"}</h2>
-          <p>Build, review, and prepare this set for its next game.</p>
+          <p>{selectedQuiz ? "Add questions here, then host this set when it is ready." : "Build, review, and prepare this set for its next game."}</p>
           <div className="quiz-context-stat"><strong>{selectedQuiz?.questions.length ?? 0}</strong><span>questions in this set</span></div>
           <div className="quiz-context-note"><Zap size={18} aria-hidden="true" /><span>When you are ready, host this set and choose Capture the Flag, Zombie Survival, or Team Tag.</span></div>
         </aside>
@@ -1165,16 +1167,12 @@ function QuizManager({ data, onRefresh, initialQuizSetId, startInCreateMode = fa
           )}
           </div>
           {selectedQuiz && <form className="study-set-details-form" onSubmit={saveStudySetDetails}><div className="study-set-details-heading"><div><span className="teacher-eyebrow">Study Set details</span><p>Private is the default. Publishing requires at least two complete questions.</p></div><button className="secondary-button small-button" type="submit" disabled={isSavingDetails}>{isSavingDetails ? "Saving…" : "Save details"}</button></div><div className="study-set-form-grid"><label>Title<input value={quizForm.title} onChange={(event) => setQuizForm({ ...quizForm, title: event.target.value })} /></label><label>Subject<input value={quizForm.subject} onChange={(event) => setQuizForm({ ...quizForm, subject: event.target.value })} /></label><label>Grade / level<input value={quizForm.gradeLevel} onChange={(event) => setQuizForm({ ...quizForm, gradeLevel: event.target.value })} /></label><label>Topic<input value={quizForm.topic} onChange={(event) => setQuizForm({ ...quizForm, topic: event.target.value })} /></label><label>Language<input value={quizForm.language} onChange={(event) => setQuizForm({ ...quizForm, language: event.target.value })} /></label></div><label>Description<textarea value={quizForm.description} onChange={(event) => setQuizForm({ ...quizForm, description: event.target.value })} /></label><fieldset className="study-set-visibility-fieldset"><legend>Visibility</legend><label><input type="radio" name={`study-set-visibility-${selectedQuiz.id}`} checked={quizForm.visibility === "PRIVATE"} onChange={() => setQuizForm({ ...quizForm, visibility: "PRIVATE" })} /> <LockKeyhole size={14} aria-hidden="true" /> Private — only you</label><label><input type="radio" name={`study-set-visibility-${selectedQuiz.id}`} checked={quizForm.visibility === "PUBLIC"} onChange={() => setQuizForm({ ...quizForm, visibility: "PUBLIC" })} /> <Globe2 size={14} aria-hidden="true" /> Public — other teachers can find and use it</label></fieldset></form>}
-          <label className="quiz-set-picker">
-          Switch question set
-          <select value={selectedQuizId} onChange={(event) => setSelectedQuizId(event.target.value)}>
-            {data.quizSets.map((quiz) => (
-              <option key={quiz.id} value={quiz.id}>
-                {quiz.title}
-              </option>
-            ))}
-          </select>
-        </label>
+          {!startInCreateMode && <label className="quiz-set-picker">
+            Switch question set
+            <select value={selectedQuizId} onChange={(event) => setSelectedQuizId(event.target.value)}>
+              {data.quizSets.map((quiz) => <option key={quiz.id} value={quiz.id}>{quiz.title}</option>)}
+            </select>
+          </label>}
         {selectedQuiz ? (
           <>
             <div className="question-builder-tabs" role="tablist" aria-label="Choose how to add questions">
@@ -1896,7 +1894,7 @@ function SessionManager({
           <>
             <header className="setup-flow-header">
               <div className="setup-flow-title">
-                <h2>Set up a game</h2>
+                <h2>Choose a game mode</h2>
               </div>
               <div className="setup-quiz-summary">
                 <BookOpen size={22} aria-hidden="true" />
@@ -1905,7 +1903,10 @@ function SessionManager({
               </div>
             </header>
 
-            <section className="setup-study-set-picker" aria-labelledby="study-set-picker-title">
+            {initialQuizSetId && selectedQuiz ? <section className="setup-study-set-lock" aria-labelledby="study-set-lock-title">
+              <div><span className="eyebrow">Study Set</span><h3 id="study-set-lock-title">{selectedQuiz.title}</h3><p>{selectedQuiz.questions.length} questions · ready to host</p></div>
+              <span className="study-set-lock-note">Selected from your content library</span>
+            </section> : <section className="setup-study-set-picker" aria-labelledby="study-set-picker-title">
               <div>
                 <span className="eyebrow">Study Set</span>
                 <h3 id="study-set-picker-title">Choose what your class will practice</h3>
@@ -1929,11 +1930,11 @@ function SessionManager({
                   Browse Study Sets
                 </button>
               </div>
-            </section>
+            </section>}
 
             {activeSetupSection === "mode" && (
               <section className="setup-choice-section setup-panel-section mode-choice-section" aria-labelledby="mode-title">
-                <div className="setup-panel-heading"><h3 id="mode-title">Choose the game</h3></div>
+              <div className="setup-panel-heading"><h3 id="mode-title">Choose the game</h3><span>Pick a mode to continue</span></div>
                 <div className="mode-choice-grid" aria-label="Game modes">
                   {([
                     { id: "zombie", title: "Zombie Survival", description: "Answer for energy, stay alive, and keep the team moving.", icon: <img src="/assets/zombie/zombie-head.png" alt="" /> },
@@ -1962,7 +1963,7 @@ function SessionManager({
 
             {activeSetupSection === "arena" && (
               <section className="setup-choice-section setup-panel-section" aria-labelledby="arena-title">
-                <div className="setup-panel-heading"><h3 id="arena-title">Choose a map</h3></div>
+              <div className="setup-panel-heading"><h3 id="arena-title">Game options</h3><span>Map and team rules</span></div>
                 <div className="arena-choice-grid">
                   {ARENA_MAPS.map((map) => {
                     const selected = settings.mapId === map.id;
@@ -2035,7 +2036,7 @@ function SessionManager({
 
             {activeSetupSection === "advanced" && (
               <section className="setup-choice-section setup-panel-section setup-advanced-section" aria-labelledby="advanced-title">
-                <div className="setup-panel-heading"><h3 id="advanced-title">Game details</h3><span>Optional</span></div>
+              <div className="setup-panel-heading"><h3 id="advanced-title">Advanced settings</h3><span>Optional</span></div>
                 <div className="advanced-settings-content">
                 {sessionSettingGroups.map((group) => {
                   const fields = group.fields
@@ -2089,7 +2090,7 @@ function SessionManager({
               <span><strong>Ready to create</strong><small>{selectedMap.title} · {gameModeLabel(settings.gameMode)} · your settings are saved with this room</small></span>
               <button className="primary create-game-button" type="submit" disabled={!quizSetId || hasInvalidSettings || isCreatingSession}>
                 <Play size={20} aria-hidden="true" />
-                {isCreatingSession ? "Creating game..." : "Create game"}
+                {isCreatingSession ? "Creating lobby..." : "Continue to Lobby"}
               </button>
             </div>
             <StatusMessages error={status.error} message={status.message} />
@@ -2121,7 +2122,7 @@ function SessionManager({
           <div className="teacher-waiting-room">
             <header className="waiting-room-header">
               <div>
-                <span className="flow-step">Step 3 of 4 · Invite students</span>
+                <span className="flow-step">Lobby · Invite students</span>
                 <h2>{sessionQuiz?.title ?? "Live Game"}</h2>
                 <p>{arenaMapLabel(selectedSession.settings.mapId)} · {displayedPresetName} · {selectedSession.settings.roundCount} Rounds · {formatDuration(selectedSession.settings.roundDurationSeconds)} per round</p>
               </div>
@@ -2245,7 +2246,7 @@ function SessionManager({
         ) : (
           <>
             <header className="live-control-heading">
-              <div><span className="flow-step">Step 4 of 4</span><h2>Run the live game</h2></div>
+              <div><span className="flow-step">Live game</span><h2>Run the live game</h2></div>
               <div className="button-row">
                 <TeacherPauseControls
                   paused={selectedSession.controlState === "teacher_paused"}
@@ -2748,14 +2749,18 @@ export default function TeacherWorkspace({
   teacher,
   apiWakeState,
   initialMode,
+  initialPath,
+  onNavigate,
   onLogout,
   onAuthed
 }: {
   teacher: TeacherUser | null;
   apiWakeState: ApiWakeState;
   initialMode: "login" | "signup";
+  initialPath: string;
+  onNavigate: (path: string, mode?: "quizStrike" | "teacher") => void;
   onLogout: () => void;
   onAuthed: (user: TeacherUser) => void;
 }) {
-  return teacher ? <TeacherDashboard teacher={teacher} onLogout={onLogout} /> : <TeacherAuth apiWakeState={apiWakeState} initialMode={initialMode} onAuthed={onAuthed} />;
+  return teacher ? <TeacherDashboard teacher={teacher} initialPath={initialPath} onNavigate={onNavigate} onLogout={onLogout} /> : <TeacherAuth apiWakeState={apiWakeState} initialMode={initialMode} onAuthed={onAuthed} />;
 }

@@ -141,9 +141,9 @@ export default function App() {
           <div id="primary-actions" className="top-actions" data-open={isMobileNavOpen ? "true" : "false"}>
           {mode === "quizStrike" && !teacher ? (
             <>
-              <button onClick={() => { setTeacherAuthMode("signup"); navigateTo("/quiz-strike", "teacher"); }}>Create a teacher account</button>
+              <button onClick={() => { setTeacherAuthMode("signup"); navigateTo("/quiz-strike/teacher/home", "teacher"); }}>Create a teacher account</button>
               <button onClick={() => navigateTo("/join", "student")}>Join with code</button>
-              <button className="nav-login" onClick={() => { setTeacherAuthMode("login"); navigateTo("/quiz-strike", "teacher"); }}>Teacher login</button>
+              <button className="nav-login" onClick={() => { setTeacherAuthMode("login"); navigateTo("/quiz-strike/teacher/home", "teacher"); }}>Teacher login</button>
             </>
           ) : <>
           <button className={mode === "quizStrike" ? "active" : ""} onClick={() => navigateTo("/quiz-strike", "quizStrike")}>
@@ -156,7 +156,7 @@ export default function App() {
           </button>
           {teacher ? (
             <>
-              <button className={mode === "teacher" ? "active" : ""} onClick={() => navigateTo("/quiz-strike", "teacher")}>
+              <button className={mode === "teacher" ? "active" : ""} onClick={() => navigateTo("/quiz-strike/teacher/home", "teacher")}>
                 <GraduationCap size={18} aria-hidden="true" />
                 Teacher workspace
               </button>
@@ -166,7 +166,7 @@ export default function App() {
               </button>
             </>
           ) : (
-            <button className={mode === "teacher" ? "active" : ""} onClick={() => { setTeacherAuthMode("login"); navigateTo("/quiz-strike", "teacher"); }}>
+            <button className={mode === "teacher" ? "active" : ""} onClick={() => { setTeacherAuthMode("login"); navigateTo("/quiz-strike/teacher/home", "teacher"); }}>
               <GraduationCap size={18} aria-hidden="true" />
               Teacher login
             </button>
@@ -177,9 +177,9 @@ export default function App() {
       </header>
 
       {mode === "home" && <PublicHomepage
-        onCreateMatch={() => { setTeacherAuthMode("signup"); navigateTo("/quiz-strike", "teacher"); }}
+        onCreateMatch={() => { setTeacherAuthMode("signup"); navigateTo("/quiz-strike/teacher/home", "teacher"); }}
         onJoinGame={() => navigateTo("/join", "student")}
-        onTeacherLogin={() => { setTeacherAuthMode("login"); navigateTo("/quiz-strike", "teacher"); }}
+        onTeacherLogin={() => { setTeacherAuthMode("login"); navigateTo("/quiz-strike/teacher/home", "teacher"); }}
         onOpenCompetitions={() => navigateTo("/quiz-strike", "quizStrike")}
       />}
       {mode === "quizStrike" && routePath === "/quiz-strike/organizer" && <Suspense fallback={<FeatureLoading label="Loading organizer workspace" />}><OrganizerWorkspace teacher={teacher} onNavigate={navigateTo} /></Suspense>}
@@ -193,15 +193,15 @@ export default function App() {
         teacher={teacher}
         slug={routePath.startsWith("/quiz-strike/competitions/") ? decodeURIComponent(routePath.slice("/quiz-strike/competitions/".length)) : undefined}
         onNavigate={navigateTo}
-        onTeacherLogin={() => { setTeacherAuthMode("login"); navigateTo("/quiz-strike", "teacher"); }}
+        onTeacherLogin={() => { setTeacherAuthMode("login"); navigateTo("/quiz-strike/teacher/home", "teacher"); }}
       />}
       {mode === "tournamentStudy" && <Suspense fallback={<FeatureLoading label="Loading tournament study" />}><TournamentStudyPage tournamentId={decodeURIComponent(routePath.slice("/tournament-study/".length))} /></Suspense>}
       {mode === "characterLab" && (isCharacterLabAvailable ? <CharacterLab /> : <InternalToolNotice onReturn={() => navigateTo("/quiz-strike", "quizStrike")} />)}
-      {mode === "teacher" && <Suspense fallback={<FeatureLoading label="Loading teacher workspace" />}><TeacherWorkspace teacher={teacher} apiWakeState={apiWakeState} initialMode={teacherAuthMode} onLogout={logout} onAuthed={(user) => {
+      {mode === "teacher" && <Suspense fallback={<FeatureLoading label="Loading teacher workspace" />}><TeacherWorkspace teacher={teacher} apiWakeState={apiWakeState} initialMode={teacherAuthMode} initialPath={routePath} onNavigate={navigateTo} onLogout={logout} onAuthed={(user) => {
           setTeacher(user);
           const returnTo = sessionStorage.getItem(TOURNAMENT_TEACHER_RETURN_KEY);
           sessionStorage.removeItem(TOURNAMENT_TEACHER_RETURN_KEY);
-          navigateTo(returnTo ?? "/quiz-strike", returnTo ? "quizStrike" : "teacher");
+          navigateTo(returnTo ?? "/quiz-strike/teacher/home", returnTo ? "quizStrike" : "teacher");
         }} /></Suspense>}
       {mode === "student" && <Suspense fallback={<FeatureLoading label="Loading game" />}><StudentExperience onExit={() => navigateTo("/quiz-strike", "quizStrike")} /></Suspense>}
     </main>
