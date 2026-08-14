@@ -1,5 +1,5 @@
 import * as THREE from "three";
-import { ARENA_SCALE, TEMPLE_RUNOFF_MAIN_LEVEL_Y, TEMPLE_RUNOFF_UPPER_LEVEL_Y } from "@quizstrike/shared";
+import { ARENA_SCALE, TEMPLE_RUNOFF_MAIN_LEVEL_Y } from "@quizstrike/shared";
 
 type AddStaticMesh = (
   parent: THREE.Object3D,
@@ -31,45 +31,6 @@ export const addTempleRunoffArtPass = (
   detail: number,
   isFps: boolean
 ): TempleRunoffArtHandle => {
-  const landmark = new THREE.Group();
-  landmark.name = "temple_runoff_rain_god_landmark";
-  landmark.position.set(0, TEMPLE_RUNOFF_MAIN_LEVEL_Y, scaled(126));
-  scene.add(landmark);
-
-  const body = addStaticMesh(landmark, new THREE.BoxGeometry(8.4, 9.6, 5.6), "#586447", "stone");
-  body.position.y = 8.2;
-  const head = addStaticMesh(landmark, new THREE.BoxGeometry(6.2, 5.2, 5.8), "#73805a", "stone");
-  head.position.y = 15.2;
-  for (const side of [-1, 1]) {
-    const arm = addStaticMesh(landmark, new THREE.BoxGeometry(5.6, 2.2, 2.4), "#68734f", "stone");
-    arm.position.set(side * 5.8, 10.8, 0);
-    arm.rotation.z = side * -0.26;
-    const crown = addStaticMesh(landmark, new THREE.ConeGeometry(1.25, 4.8, 4), "#b99c5e", "stone");
-    crown.position.set(side * 2.15, 20.2, 0);
-    crown.rotation.y = Math.PI / 4;
-  }
-  const mouth = addStaticMesh(landmark, new THREE.BoxGeometry(2.8, 0.7, 0.55), "#2e4741", "accent");
-  mouth.position.set(0, 14.2, -3.05);
-  const basin = addStaticMesh(landmark, new THREE.CylinderGeometry(8.8, 9.5, 1.2, 12), "#90784e", "stone");
-  basin.position.y = 0.65;
-
-  const bridgeStory = new THREE.Group();
-  bridgeStory.name = "temple_runoff_sun_bridge_scaffolding";
-  scene.add(bridgeStory);
-  for (const z of [-35, 35].map(scaled)) {
-    for (const x of [-14, 14].map(scaled)) {
-      const support = addStaticMesh(bridgeStory, new THREE.CylinderGeometry(0.34, 0.5, 13, 7), "#68472f", "wood");
-      support.position.set(x, 8.2, z);
-    }
-    const crossBrace = addStaticMesh(bridgeStory, new THREE.BoxGeometry(18, 0.55, 0.7), "#765033", "wood");
-    crossBrace.position.set(0, 11.5, z);
-  }
-  for (const z of [-36, 4, 39].map(scaled)) {
-    const repairPlank = addStaticMesh(bridgeStory, new THREE.BoxGeometry(13, 0.34, 1.25), "#93613a", "wood");
-    repairPlank.position.set(0, TEMPLE_RUNOFF_UPPER_LEVEL_Y + 0.72, z);
-    repairPlank.rotation.y = z > 0 ? 0.08 : -0.06;
-  }
-
   const tunnelStory = new THREE.Group();
   tunnelStory.name = "temple_runoff_sluice_story";
   scene.add(tunnelStory);
@@ -188,7 +149,7 @@ export const addTempleRunoffArtPass = (
       });
     },
     dispose() {
-      scene.remove(landmark, bridgeStory, tunnelStory, connectorStory, waterGroup, vegetationGroup);
+      scene.remove(tunnelStory, connectorStory, waterGroup, vegetationGroup);
       disposable.forEach((resource) => resource.dispose());
     }
   };

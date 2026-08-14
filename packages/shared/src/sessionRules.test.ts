@@ -1335,6 +1335,46 @@ test("Temple Runoff player and server movement can climb every complete stair fl
   }
 });
 
+test("Temple Runoff can continuously cross the Sun Bridge from one main-level landing to the other", () => {
+  const obstacles = getArenaObstacles("temple_runoff");
+  let current = {
+    x: 0,
+    y: TEMPLE_RUNOFF_MAIN_LEVEL_Y + ARENA_PLAYER_EYE_HEIGHT,
+    z: -82 * ARENA_SCALE,
+    facing: Math.PI
+  };
+
+  for (let rawZ = -81.75; rawZ <= 82; rawZ += 0.25) {
+    const requestedZ = rawZ * ARENA_SCALE;
+    const groundY = getArenaGroundHeightForPlayer(
+      "temple_runoff",
+      0,
+      requestedZ,
+      current.y,
+      ARENA_PLAYER_EYE_HEIGHT
+    );
+    const movement = resolveAuthoritativeMovement({
+      current,
+      requested: {
+        x: 0,
+        y: groundY + ARENA_PLAYER_EYE_HEIGHT,
+        z: requestedZ,
+        facing: Math.PI
+      },
+      elapsedMs: 50,
+      maxSpeed: 20,
+      obstacles,
+      groundY,
+      mapId: "temple_runoff"
+    });
+    assert.equal(movement.blocked, undefined, `Sun Bridge traversal blocked near z=${rawZ.toFixed(2)}`);
+    current = { ...movement, y: groundY + ARENA_PLAYER_EYE_HEIGHT };
+  }
+
+  assert.ok(current.z >= 82 * ARENA_SCALE - 0.01);
+  assert.equal(current.y, TEMPLE_RUNOFF_MAIN_LEVEL_Y + ARENA_PLAYER_EYE_HEIGHT);
+});
+
 test("Temple Runoff bot navigation keeps elevation and reaches the lower canal through stairs", () => {
   const path = findBotNavigationPath({
     from: { x: -80 * ARENA_SCALE, y: TEMPLE_RUNOFF_MAIN_LEVEL_Y + ARENA_PLAYER_EYE_HEIGHT, z: -70 * ARENA_SCALE, facing: 0 },

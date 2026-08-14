@@ -15,7 +15,7 @@ test("Temple Runoff scales instanced vegetation by quality and cleans up its art
   const art = addTempleRunoffArtPass(scene, addStaticMesh, 2, true);
 
   assert.equal(art.instancedDraws, 3);
-  assert.ok(scene.getObjectByName("temple_runoff_rain_god_landmark"));
+  assert.equal(scene.getObjectByName("temple_runoff_rain_god_landmark"), undefined, "the Rain God visual now belongs to the GLB layer");
   assert.equal(scene.getObjectByName("temple_runoff_instanced_vegetation")?.children.length, 3);
   art.update(1.2);
   art.dispose();

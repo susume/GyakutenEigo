@@ -1368,6 +1368,7 @@ export const ARENA_LIMIT_Z = scaleArenaValue(160);
 export const ARENA_PLAYER_EYE_HEIGHT = 4.21;
 export const ARENA_PLAYER_CROUCH_EYE_HEIGHT = 2.65;
 export const ARENA_PLAYER_BODY_HEIGHT = 5.02;
+export const ARENA_MAX_AUTO_STEP_HEIGHT = 0.8;
 export const TEMPLE_RUNOFF_MAIN_LEVEL_Y = 8;
 export const TEMPLE_RUNOFF_UPPER_LEVEL_Y = 17;
 export const IRON_JUNCTION_LOADING_LEVEL_Y = 8;
@@ -2420,16 +2421,12 @@ export const TEMPLE_RUNOFF_OBSTACLES: ArenaObstacle[] = [
   rectObstacle("sun-bridge-support-ne", 14, -35, 7, 8, false, 0, 17),
   rectObstacle("sun-bridge-support-sw", -14, 35, 7, 8, false, 0, 17),
   rectObstacle("sun-bridge-support-se", 14, 35, 7, 8, false, 0, 17),
-  rectObstacle("sun-parapet-west", -19, -18, 4, 44, false, 17, 21),
-  rectObstacle("sun-parapet-east", 19, 17, 4, 46, false, 17, 21),
-  rectObstacle("sun-bridge-altar-north", -7, -16, 10, 9, true, 17, 22),
-  rectObstacle("sun-bridge-altar-south", 7, 16, 10, 9, true, 17, 22),
+  rectObstacle("sun-parapet-west", -17, 0, 2, 108, false, 17, 19.4),
+  rectObstacle("sun-parapet-east", 17, 0, 2, 108, false, 17, 19.4),
   rectObstacle("upper-jungle-balustrade", -75, -82, 56, 4, false, 17, 21),
   rectObstacle("upper-temple-balustrade", 75, 82, 56, 4, false, 17, 21),
   rectObstacle("blue-temple-gatehouse", -204, -92, 28, 42, false, 8, 23),
-  rectObstacle("blue-temple-foundation", -204, 83, 30, 52, false, 8, 20),
   rectObstacle("red-temple-gatehouse", 204, 92, 28, 42, false, 8, 23),
-  rectObstacle("red-temple-foundation", 204, -83, 30, 52, false, 8, 20),
   rectObstacle("blue-jungle-spawn-screen", -174, -154, 8, 30, false, 8, 17),
   rectObstacle("blue-canal-spawn-screen", -174, -52, 8, 24, false, 8, 16),
   rectObstacle("blue-rain-spawn-screen", -174, 48, 8, 24, false, 8, 16),
@@ -2441,28 +2438,15 @@ export const TEMPLE_RUNOFF_OBSTACLES: ArenaObstacle[] = [
   rectObstacle("jungle-ruin-wall", -98, -132, 54, 8, false, 8, 18),
   rectObstacle("jungle-root-cover", -42, -116, 22, 9, true, 8, 13),
   rectObstacle("north-collapsed-sanctum", 76, -132, 42, 16, false, 8, 20),
-  rectObstacle("jungle-arcade-pier-west", -68, -88, 10, 34, false, 8, 16),
-  rectObstacle("jungle-arcade-pier-east", 28, -70, 10, 30, false, 8, 16),
   rectObstacle("rain-court-wall-west", -90, 112, 44, 8, false, 8, 17),
   rectObstacle("rain-court-wall-east", 82, 118, 48, 8, false, 8, 17),
   rectObstacle("rain-court-planter", 18, 125, 24, 12, true, 8, 11.5),
-  rectObstacle("rain-arcade-pier-west", -28, 70, 10, 30, false, 8, 16),
-  rectObstacle("rain-arcade-pier-east", 68, 88, 10, 34, false, 8, 16),
-  rectObstacle("lower-broken-pillar", -72, 2, 10, 12, false, 0, 5.5),
-  rectObstacle("lower-collapsed-wall", 58, 17, 24, 7, true, 0, 4.5),
-  rectObstacle("lower-submerged-ruin", 150, 7, 20, 10, true, 0, 3.2),
-  rectObstacle("lower-west-sluice-cover", -166, 10, 14, 8, false, 0, 5),
-  rectObstacle("lower-west-tablet-cover", -24, -12, 16, 8, true, 0, 4.5),
-  rectObstacle("lower-east-tablet-cover", 102, -11, 16, 8, true, 0, 4.5),
-  rectObstacle("lower-east-sluice-cover", 184, 11, 12, 8, false, 0, 5),
+  rectObstacle("lower-floodwall-west", -94, -10, 24, 6, false, 0, 4.5),
+  rectObstacle("lower-floodwall-center", 0, 10, 24, 6, false, 0, 4.5),
+  rectObstacle("lower-floodwall-east", 94, -10, 24, 6, false, 0, 4.5),
   rectObstacle("west-sluice-mouth", -190, 0, 12, 28, false, 0, 12),
   rectObstacle("east-sluice-mouth", 190, 0, 12, 28, false, 0, 12),
-  circleObstacle("rain-god-statue", 0, 126, 7, false, 8, 25),
-  circleObstacle("jungle-column-west", -126, -104, 4, false, 8, 20),
-  circleObstacle("temple-column-east", 122, 111, 4, false, 8, 20),
-  circleObstacle("canal-rock", 18, 12, 5, true, 0, 4.2),
-  circleObstacle("upper-jungle-column", -94, -66, 3, false, 17, 25),
-  circleObstacle("upper-temple-column", 96, 66, 3, false, 17, 25)
+  circleObstacle("rain-god-statue", 0, 126, 7, false, 8, 25)
 ];
 
 const ARENA_OBSTACLES_BY_MAP: Record<ArenaMapId, ArenaObstacle[]> = {
@@ -2894,6 +2878,15 @@ export const resolveAuthoritativeMovement = ({
     const verticalContactTolerance = 0.1;
     if (Number.isFinite(obstacle.minY) && bodyMaxY <= Number(obstacle.minY) + verticalContactTolerance) return false;
     if (Number.isFinite(obstacle.maxY) && bodyMinY >= Number(obstacle.maxY) - verticalContactTolerance) return false;
+    // The player's radius overlaps the next stair tread before their center
+    // reaches it. Treat that adjacent tread as walkable when its rise is within
+    // the same automatic-step allowance used by the FPS controller.
+    if (
+      obstacle.kind === "rect"
+      && obstacle.stair === true
+      && Number.isFinite(obstacle.maxY)
+      && Number(obstacle.maxY) <= groundY + ARENA_MAX_AUTO_STEP_HEIGHT + verticalContactTolerance
+    ) return false;
     const horizontalStart = { ...start, y: undefined };
     const horizontalEnd = { ...end, y: undefined };
     if (canClearJumpable(obstacle) || !segmentIntersectsObstacle(horizontalStart, horizontalEnd, obstacle, radius)) return false;

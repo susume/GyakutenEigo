@@ -856,7 +856,7 @@ function _DashboardHome({ data, onTab }: { data: DashboardPayload; onTab: (tab: 
   );
 }
 
-function QuizManager({ data, onRefresh, initialQuizSetId, startInCreateMode = false }: { data: DashboardPayload; onRefresh: () => Promise<void>; initialQuizSetId?: string; startInCreateMode?: boolean }) {
+export function QuizManager({ data, onRefresh, initialQuizSetId, startInCreateMode = false }: { data: DashboardPayload; onRefresh: () => Promise<void>; initialQuizSetId?: string; startInCreateMode?: boolean }) {
   const [selectedQuizId, setSelectedQuizId] = useState(() => startInCreateMode ? "" : initialQuizSetId ?? data.quizSets[0]?.id ?? "");
   const [quizForm, setQuizForm] = useState({ title: "", description: "", subject: "", topic: "", gradeLevel: "", language: "English", visibility: "PRIVATE" as "PRIVATE" | "PUBLIC" });
   const [questionForm, setQuestionForm] = useState(emptyQuestion);

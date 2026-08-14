@@ -46,6 +46,8 @@ import { emitArenaAnimation } from "./ArenaAnimation";
 import { ArenaPerformanceCapture, AutoGraphicsQualityController, type ArenaPerformanceSnapshot } from "./ArenaPerformance";
 import { mountIronJunctionImportedAssets } from "./ironJunctionImportedAssets";
 import { mountDesertCitadelImportedAssets } from "./desertCitadelImportedAssets";
+import { mountTempleRunoffImportedAssets } from "./templeRunoffImportedAssets";
+import { getTempleRunoffReviewViewpoint } from "./templeRunoffReviewViewpoints";
 import {
   readGamePreferences,
   resolveArenaQuality,
@@ -424,17 +426,20 @@ export default function ArenaPreview({
     const isFps = view === "fps";
     const isZombieMode = session?.settings.gameMode === "zombie";
     const fallbackSpawn = currentPlayer ? getTeamSpawnForMap(arenaMapId, currentPlayer.team) : getTeamSpawnForMap(arenaMapId, "blue");
-    const initialServerX = isFiniteNumber(currentPlayer?.x) ? currentPlayer.x : fallbackSpawn.x;
-    const initialServerZ = isFiniteNumber(currentPlayer?.z) ? currentPlayer.z : fallbackSpawn.z;
+    const templeReviewViewpoint = debugOverlay && isFps && isTempleRunoff
+      ? getTempleRunoffReviewViewpoint(new URLSearchParams(window.location.search).get("templeView"))
+      : undefined;
+    const initialServerX = templeReviewViewpoint?.position[0] ?? (isFiniteNumber(currentPlayer?.x) ? currentPlayer.x : fallbackSpawn.x);
+    const initialServerZ = templeReviewViewpoint?.position[2] ?? (isFiniteNumber(currentPlayer?.z) ? currentPlayer.z : fallbackSpawn.z);
     const initialGroundY = getArenaGroundHeight(arenaMapId, initialServerX, initialServerZ);
-    const initialServerY = isFiniteNumber(currentPlayer?.y) ? currentPlayer.y : fallbackSpawn.y;
+    const initialServerY = templeReviewViewpoint?.position[1] ?? (isFiniteNumber(currentPlayer?.y) ? currentPlayer.y : fallbackSpawn.y);
     const playerPosition = new THREE.Vector3(
       serverToLocalX(initialServerX),
       isFiniteNumber(initialServerY) ? initialServerY : initialGroundY + FPS_STANDING_EYE_HEIGHT,
       serverToLocalZ(initialServerZ)
     );
-    let yaw = isFiniteNumber(currentPlayer?.facing) ? currentPlayer.facing : fallbackSpawn.facing;
-    let pitch = -0.12;
+    let yaw = templeReviewViewpoint?.yaw ?? (isFiniteNumber(currentPlayer?.facing) ? currentPlayer.facing : fallbackSpawn.facing);
+    let pitch = templeReviewViewpoint?.pitch ?? -0.12;
     if (isFps) setMiniMapPosition(localToServerPosition(playerPosition, yaw));
 
     const sceneSetup = createArenaSceneSetup({
@@ -511,6 +516,9 @@ export default function ArenaPreview({
       : Promise.resolve(null);
     const desertCitadelAssetsPromise = isDesertCitadel
       ? mountDesertCitadelImportedAssets({ scene, isFps })
+      : Promise.resolve(null);
+    const templeRunoffAssetsPromise = isTempleRunoff
+      ? mountTempleRunoffImportedAssets({ scene, isFps })
       : Promise.resolve(null);
 
 
@@ -1376,6 +1384,7 @@ export default function ArenaPreview({
       templeRunoffArt?.dispose();
       void ironJunctionAssetsPromise.then((assets) => assets?.dispose());
       void desertCitadelAssetsPromise.then((assets) => assets?.dispose());
+      void templeRunoffAssetsPromise.then((assets) => assets?.dispose());
       syncPlayersRef.current = () => undefined;
       characterManager.dispose();
       disposeObject(scene);

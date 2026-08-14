@@ -7,8 +7,11 @@ import {
   TEMPLE_RUNOFF_STAIR_FLIGHTS,
   TEMPLE_RUNOFF_TEAM_SPAWNS,
   TEMPLE_RUNOFF_UPPER_LEVEL_Y,
+  ARENA_PLAYER_EYE_HEIGHT,
+  findBotNavigationPath,
   getArenaFloorSurfaces,
   getArenaObstacles,
+  getTeamSpawnsForMap,
   hasLineOfSight
 } from "@quizstrike/shared";
 import { ARENA_MAPS } from "./arenaMaps";
@@ -26,7 +29,12 @@ test("Temple Runoff is a substantially larger three-level arena", () => {
   assert.ok(map.routes.length >= 6);
   assert.ok(props.length <= 10, "new space must not be filled with discretionary props");
   assert.equal(props.some((prop) => prop.id === "blue-standard"), false);
-  assert.ok(props.some((prop) => prop.id === "red-standard"));
+  assert.equal(props.some((prop) => prop.id === "red-standard"), false);
+  assert.deepEqual(
+    cylinders.map((cylinder) => cylinder.id),
+    ["rain-god-statue"],
+    "isolated decorative columns and rocks should not clutter the playable map"
+  );
 });
 
 test("Temple Runoff replaces every playable incline with authored stone stairs", () => {
@@ -44,15 +52,19 @@ test("Temple Runoff replaces every playable incline with authored stone stairs",
   }
 });
 
-test("spawn exits, river, and upper bridge have structural sightline breaks", () => {
+test("spawn exits, river, and upper bridge use deliberate readable cover", () => {
   const collidingIds = new Set(blocks.filter((block) => block.collides).map((block) => block.id));
   const spawnScreens = [...collidingIds].filter((id) => id.endsWith("-spawn-screen"));
   const lowerCover = [...collidingIds].filter((id) => id.startsWith("lower-"));
-  const bridgeAltars = [...collidingIds].filter((id) => id.startsWith("sun-bridge-altar-"));
+  const bridgeRails = [...collidingIds].filter((id) => id.startsWith("sun-parapet-"));
 
   assert.equal(spawnScreens.length, 8, "each 5-player spawn row needs a protected exit");
-  assert.ok(lowerCover.length >= 7, "the river needs staggered cover across its full length");
-  assert.deepEqual(bridgeAltars.sort(), ["sun-bridge-altar-north", "sun-bridge-altar-south"]);
+  assert.deepEqual(
+    lowerCover.sort(),
+    ["lower-floodwall-center", "lower-floodwall-east", "lower-floodwall-west"],
+    "the river should use three deliberate floodwalls instead of scattered rubble"
+  );
+  assert.deepEqual(bridgeRails.sort(), ["sun-parapet-east", "sun-parapet-west"]);
   const obstacles = getArenaObstacles("temple_runoff");
   TEMPLE_RUNOFF_TEAM_SPAWNS.blue.forEach((spawn, index) => {
     assert.equal(
@@ -65,10 +77,11 @@ test("spawn exits, river, and upper bridge have structural sightline breaks", ()
       `${spawn.label} must not see the opposing spawn row`
     );
   });
-  for (const id of bridgeAltars) {
-    const altar = blocks.find((block) => block.id === id);
-    assert.ok(altar);
-    assert.equal((altar.y ?? 0) - altar.h / 2, TEMPLE_RUNOFF_UPPER_LEVEL_Y);
+  for (const id of bridgeRails) {
+    const rail = blocks.find((block) => block.id === id);
+    assert.ok(rail);
+    assert.equal((rail.y ?? 0) - rail.h / 2, TEMPLE_RUNOFF_UPPER_LEVEL_Y);
+    assert.equal(rail.d, 108 * ARENA_SCALE);
   }
 });
 
@@ -113,4 +126,27 @@ test("the canal remains playable under the raised central bridge", () => {
   assert.equal((bridge.y ?? 0) + bridge.h / 2, TEMPLE_RUNOFF_UPPER_LEVEL_Y);
   assert.deepEqual(getArenaFloorSurfaces("temple_runoff", 0, 0), [0, TEMPLE_RUNOFF_UPPER_LEVEL_Y]);
   assert.ok(TEMPLE_RUNOFF_UPPER_LEVEL_Y / ARENA_PLAYER_BODY_HEIGHT > 3.2);
+});
+
+test("bots retain routes to every Temple Runoff combat layer and landmark", () => {
+  const obstacles = getArenaObstacles("temple_runoff");
+  const start = getTeamSpawnsForMap("temple_runoff").blue[10];
+  const raw = (x: number, z: number, groundY: number) => ({
+    x: x * ARENA_SCALE,
+    z: z * ARENA_SCALE,
+    y: groundY + ARENA_PLAYER_EYE_HEIGHT
+  });
+  const goals = [
+    ["Lower Waterway", raw(-96, 0, 0)],
+    ["Rain Court", raw(0, 112, TEMPLE_RUNOFF_MAIN_LEVEL_Y)],
+    ["Jungle Ruins", raw(-112, -118, TEMPLE_RUNOFF_MAIN_LEVEL_Y)],
+    ["Sun Bridge", raw(0, -18, TEMPLE_RUNOFF_UPPER_LEVEL_Y)],
+    ["Upper Terrace", raw(84, 66, TEMPLE_RUNOFF_UPPER_LEVEL_Y)],
+    ["West Sluice", raw(-162, 0, 0)]
+  ] as const;
+  for (const [label, goal] of goals) {
+    const path = findBotNavigationPath({ from: start, to: goal, obstacles, mapId: "temple_runoff" });
+    assert.ok(path.length > 0, `${label} has no bot route`);
+    assert.ok(Math.abs(Number(path.at(-1)?.y) - goal.y) < 0.1, `${label} ends on the wrong level`);
+  }
 });

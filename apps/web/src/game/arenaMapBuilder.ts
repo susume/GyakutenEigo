@@ -24,8 +24,9 @@ import { FPS_CROUCH_EYE_HEIGHT, FPS_STANDING_EYE_HEIGHT } from "./ArenaCamera";
 type ActiveArenaQuality = Exclude<ArenaQuality, "auto">;
 type TextureKind = "floor" | "stone" | "wood" | "water" | "sand" | "metal";
 
-export const shouldScatterEdgeRocks = (detail: number, isDesertCitadel: boolean) => detail === 2 && !isDesertCitadel;
-export const shouldAddBaseBeacons = (mapId: string) => mapId !== "desert_citadel";
+export const shouldScatterEdgeRocks = (detail: number, mapId: ArenaMapId) =>
+  detail === 2 && mapId === "iron_junction";
+export const shouldAddBaseBeacons = (mapId: string) => mapId === "iron_junction";
 
 type MapBuilderDependencies = {
   scene: THREE.Scene;
@@ -68,8 +69,7 @@ export const buildArenaMapScene = (deps: MapBuilderDependencies) => {
     activeQuality,
     qualityConfig,
     makeCanvasTexture,
-    seededRandom,
-    scaleArenaValue
+    seededRandom
   } = deps;
   const palette = arenaMap.palette;
   const paleStone = "#dec28a";
@@ -961,12 +961,24 @@ arenaMap.cylinders.forEach((cylinder) => {
     new THREE.CylinderGeometry(cylinder.radius * 0.88, cylinder.radius, cylinder.h, 24),
     materialFor(cylinder.color, cylinder.material ?? "stone")
   );
+  mesh.name = `cylinder_visual_${cylinder.id}`;
   mesh.position.set(cylinder.x, cylinder.y ?? cylinder.h / 2, cylinder.z);
   mesh.castShadow = !isFps;
   mesh.receiveShadow = true;
-  if (cylinder.material !== "water") staticBatcher.prepare(mesh, cylinder.color, cylinder.material ?? "stone");
-  scene.add(mesh);
-  if (cylinder.collides) colliderForObject(mesh, isDesertCitadel ? 0 : 0.2);
+  if (cylinder.visual !== false) {
+    if (cylinder.material !== "water") staticBatcher.prepare(mesh, cylinder.color, cylinder.material ?? "stone");
+    scene.add(mesh);
+  }
+  if (cylinder.collides) {
+    const proxy: THREE.Mesh = cylinder.visual === false ? mesh : mesh.clone();
+    proxy.name = `collision_proxy_${cylinder.id}`;
+    proxy.material = collisionProxyMaterial;
+    proxy.visible = false;
+    proxy.userData.collisionProxy = true;
+    if (cylinder.visual !== false) scene.add(proxy);
+    else scene.add(mesh);
+    colliderForObject(proxy, isDesertCitadel ? 0 : 0.2);
+  }
 });
 
 const addCircle = (x: number, z: number, radius: number, color: string, opacity = 0.24, y?: number) => {
@@ -1017,7 +1029,7 @@ if (!isFps) FREE_FOR_ALL_SPAWNS.forEach((spawn) => addCircle(spawn.x, spawn.z, 1
 // Desert Citadel keeps all visible geometry traceable to its authored map
 // manifest. Its edge rocks are intentionally omitted here; the other maps
 // retain their seeded decorative scatter because this branch is map-scoped.
-if (shouldScatterEdgeRocks(qualityConfig.detail, isDesertCitadel)) {
+if (shouldScatterEdgeRocks(qualityConfig.detail, arenaMapId)) {
   const rockCount = qualityConfig.detail === 2 ? 34 : 20;
   const rockGeometry = new THREE.IcosahedronGeometry(1, 0);
   const rockInstances = new THREE.InstancedMesh(rockGeometry, materialFor(isTempleRunoff ? "#56634b" : "#8f704d", "stone"), rockCount);

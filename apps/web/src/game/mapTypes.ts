@@ -45,6 +45,8 @@ export type CitadelCylinder = {
   color: string;
   y?: number;
   collides?: boolean;
+  /** Keep the authoritative/simple collider but let a GLB own the visual. */
+  visual?: boolean;
   material?: "stone" | "wood" | "water" | "accent" | "metal";
 };
 
