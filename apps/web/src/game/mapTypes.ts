@@ -12,6 +12,8 @@ export type CitadelBlock = {
   rotationY?: number;
   rotationZ?: number;
   collides?: boolean;
+  /** Keep the authoritative/simple collider but let a GLB own the visual. */
+  visual?: boolean;
   material?: "stone" | "wood" | "cloth" | "sand" | "water" | "accent" | "metal" | "gravel";
   style?:
     | "wall"

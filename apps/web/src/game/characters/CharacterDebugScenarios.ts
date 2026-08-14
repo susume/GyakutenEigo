@@ -83,6 +83,11 @@ export const createCharacterDebugSession = ({
       maxPlayers: stressCount
     },
     players: Array.from({ length: stressCount }, (_, index) => createDebugPlayer(index, stressCount, tick)),
+    flag: {
+      state: "placed",
+      teamId: "red",
+      position: { x: 0, y: 0, z: 0 }
+    },
     events: [],
     createdAt: "2026-07-08T00:00:00.000Z",
     startedAt: "2026-07-08T00:00:00.000Z"

@@ -12,6 +12,11 @@ test("createCharacterDebugSession creates balanced stress-test players inside th
   assert.equal(session.players.length, 40);
   assert.equal(session.players.filter((player) => player.team === "blue").length, 20);
   assert.equal(session.players.filter((player) => player.team === "red").length, 20);
+  assert.deepEqual(session.flag, {
+    state: "placed",
+    teamId: "red",
+    position: { x: 0, y: 0, z: 0 }
+  });
   assert.ok(session.players.every((player) => Number.isFinite(player.x) && Number.isFinite(player.z)));
   assert.ok(session.players.every((player) => Number.isFinite(player.facing)));
 });

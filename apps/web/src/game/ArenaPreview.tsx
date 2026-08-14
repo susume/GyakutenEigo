@@ -45,6 +45,7 @@ import { emitArenaVfx } from "./ArenaVfx";
 import { emitArenaAnimation } from "./ArenaAnimation";
 import { ArenaPerformanceCapture, AutoGraphicsQualityController, type ArenaPerformanceSnapshot } from "./ArenaPerformance";
 import { mountIronJunctionImportedAssets } from "./ironJunctionImportedAssets";
+import { mountDesertCitadelImportedAssets } from "./desertCitadelImportedAssets";
 import {
   readGamePreferences,
   resolveArenaQuality,
@@ -507,6 +508,9 @@ export default function ArenaPreview({
     });
     const ironJunctionAssetsPromise = isIronJunction
       ? mountIronJunctionImportedAssets({ scene, detail: qualityConfig.detail, isFps })
+      : Promise.resolve(null);
+    const desertCitadelAssetsPromise = isDesertCitadel
+      ? mountDesertCitadelImportedAssets({ scene, isFps })
       : Promise.resolve(null);
 
 
@@ -1278,6 +1282,7 @@ export default function ArenaPreview({
         desertCitadelVfx?.dispose();
         templeRunoffArt?.dispose();
         void ironJunctionAssetsPromise.then((assets) => assets?.dispose());
+        void desertCitadelAssetsPromise.then((assets) => assets?.dispose());
         fireControlRef.current = () => undefined;
         zoomControlRef.current = () => undefined;
         syncPlayersRef.current = () => undefined;
@@ -1370,6 +1375,7 @@ export default function ArenaPreview({
       desertCitadelVfx?.dispose();
       templeRunoffArt?.dispose();
       void ironJunctionAssetsPromise.then((assets) => assets?.dispose());
+      void desertCitadelAssetsPromise.then((assets) => assets?.dispose());
       syncPlayersRef.current = () => undefined;
       characterManager.dispose();
       disposeObject(scene);

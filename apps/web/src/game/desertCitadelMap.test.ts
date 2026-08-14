@@ -20,6 +20,11 @@ import {
   resolveAuthoritativeMovement
 } from "@quizstrike/shared";
 import { DESERT_CITADEL, DESERT_CITADEL_PHASE3_MANIFEST, blocks, cylinders, floorMarks, props, signs } from "./desertCitadelMap.js";
+import {
+  DESERT_CITADEL_IMPORTED_ASSETS,
+  DESERT_CITADEL_PROP_SCALE,
+  DESERT_CITADEL_STALL_SCALE
+} from "./desertCitadelImportedAssets.js";
 
 const MAP_ID = "desert_citadel" as const;
 const raw = (x: number, z: number, y = 0) => ({
@@ -54,11 +59,33 @@ test("Split Crown is a purpose-built three-lane 40-player rebuild", () => {
   assert.equal(signs.length, 0);
   assert.ok(blocks.every((block) => block.label === undefined), "3D block labels must remain disabled");
   assert.ok(cylinders.every((cylinder) => cylinder.label === undefined), "3D cylinder labels must remain disabled");
-  assert.equal(props.length, 10);
+  assert.equal(props.length, 0);
   assert.equal(props.some((prop) => prop.kind === "arch"), false);
+  assert.equal(props.some((prop) => ["cart", "palm", "shade"].includes(prop.kind)), false);
   assert.equal(props.some((prop) => prop.id === "blue-bastion-banner"), false);
   assert.equal(props.some((prop) => prop.id === "crown-banner-west"), false);
-  assert.ok(props.some((prop) => prop.id === "red-bastion-banner"));
+  assert.equal(props.some((prop) => prop.id === "crown-banner-east"), false);
+  assert.equal(props.some((prop) => prop.id === "red-bastion-banner"), false);
+  assert.equal(blocks.some((block) => block.id === "blue-assembly-north-wall"), false);
+  assert.equal(blocks.some((block) => block.id === "red-assembly-north-wall"), false);
+  assert.equal(DESERT_CITADEL_IMPORTED_ASSETS.filter((asset) => asset.path.endsWith("covered-service-car.glb")).length, 1);
+  assert.equal(DESERT_CITADEL_IMPORTED_ASSETS.filter((asset) => asset.path.endsWith("street-lamp.glb")).length, 4);
+  const importedStalls = DESERT_CITADEL_IMPORTED_ASSETS.filter((asset) => asset.path.endsWith("bazaar-stall.glb"));
+  assert.equal(importedStalls.length, 6);
+  assert.equal(DESERT_CITADEL_PROP_SCALE, 3.25);
+  assert.equal(DESERT_CITADEL_STALL_SCALE, 4);
+  assert.deepEqual(importedStalls.map((stall) => stall.position[0]), [-140, -84, -28, 28, 84, 140]);
+  assert.ok(importedStalls.every((stall) => stall.position[2] === -131));
+  assert.ok(importedStalls.every((stall) => stall.scale === DESERT_CITADEL_STALL_SCALE && stall.rotationY === 0));
+  assert.ok(
+    blocks.filter((block) => block.id.startsWith("souk-stall-") || block.id === "cistern-service-car").every((block) => block.visual === false),
+    "imported props must not render their geometric collision proxies"
+  );
+  assert.ok(
+    blocks.filter((block) => block.id.startsWith("souk-stall-")).every((block) => block.collides === false),
+    "decorative stalls must remain pass-through navigation space"
+  );
+  assert.equal(blocks.find((block) => block.id === "cistern-service-car")?.collides, true);
   const sundialCore = cylinders.find((cylinder) => cylinder.id === "royal-sundial-core");
   assert.ok(
     sundialCore && Math.abs(sundialCore.radius - 1.25 * ARENA_SCALE) < 0.011,
@@ -69,6 +96,57 @@ test("Split Crown is a purpose-built three-lane 40-player rebuild", () => {
     [],
     "the retired Fountain Court and market-roof layout must not survive the rebuild"
   );
+});
+
+test("Desert Citadel stalls are walk-in spaces with counter-only collision and solid car cover", () => {
+  const obstacles = getArenaObstacles("desert_citadel");
+  assert.equal(obstacles.some((obstacle) => obstacle.id.startsWith("souk-stall-")), false);
+  assert.equal(obstacles.filter((obstacle) => obstacle.id.startsWith("souk-table-")).length, 6);
+  const tables = obstacles.filter((obstacle) => obstacle.id.startsWith("souk-table-") && obstacle.kind === "rect");
+  assert.ok(tables.every((table) => Math.abs(table.width - 5.05 * DESERT_CITADEL_STALL_SCALE) < 0.3));
+  assert.ok(tables.every((table) => Math.abs(table.depth - 1.05 * DESERT_CITADEL_STALL_SCALE) < 0.3));
+  assert.ok(tables.every((table) => table.z === raw(0, -131).z && table.maxY === 3.64));
+
+  const walkInStart = { ...raw(-158, -112), facing: 0 };
+  const walkIn = resolveAuthoritativeMovement({
+    current: walkInStart,
+    requested: { ...walkInStart, z: -136 * ARENA_SCALE },
+    elapsedMs: 1000,
+    maxSpeed: 20,
+    obstacles,
+    groundY: 0,
+    mapId: MAP_ID
+  });
+  assert.notEqual(walkIn.blocked, true, "players must be able to enter beside the central counter");
+
+  const counterStart = { ...raw(-140, -116), facing: 0 };
+  const counterHit = resolveAuthoritativeMovement({
+    current: counterStart,
+    requested: { ...counterStart, z: -130 * ARENA_SCALE },
+    elapsedMs: 1000,
+    maxSpeed: 20,
+    obstacles,
+    groundY: 0,
+    mapId: MAP_ID
+  });
+  assert.equal(counterHit.blocked, true, "the central counter must stop the player");
+
+  const counterEdgeStart = { ...raw(-155, -116), facing: 0 };
+  const counterEdgeHit = resolveAuthoritativeMovement({
+    current: counterEdgeStart,
+    requested: { ...counterEdgeStart, z: -131 * ARENA_SCALE },
+    elapsedMs: 1000,
+    maxSpeed: 20,
+    obstacles,
+    groundY: 0,
+    mapId: MAP_ID
+  });
+  assert.equal(counterEdgeHit.blocked, true, "the collider must cover the visible counter edge");
+
+  const car = obstacles.find((obstacle) => obstacle.id === "cistern-service-car");
+  assert.ok(car && car.kind === "rect");
+  assert.equal(car.maxY, 4.61);
+  assert.ok(car.width > car.depth, "the rotated car collider must follow its visible long axis");
 });
 
 test("geometry sanity enforces the Phase 3 manifest, bounds, support, and clean joins", () => {
@@ -198,6 +276,20 @@ test("solid foundations reject shortcuts while all three spawn exits remain usab
       mapId: MAP_ID
     });
     assert.notEqual(firstMove.blocked, true, `Blue exit ${z} is blocked at the spawn screen`);
+  }
+
+  for (const x of [-228, 228]) {
+    const start = { ...raw(x, -82), facing: 0 };
+    const stairShortcut = resolveAuthoritativeMovement({
+      current: start,
+      requested: { ...start, z: -102 * ARENA_SCALE },
+      elapsedMs: 1000,
+      maxSpeed: 20,
+      obstacles,
+      groundY: 0,
+      mapId: MAP_ID
+    });
+    assert.notEqual(stairShortcut.blocked, true, `${x < 0 ? "Blue" : "Red"} north stair access is blocked`);
   }
 });
 

@@ -226,15 +226,18 @@ function CharacterLab() {
   const [labMapId, setLabMapId] = useState<ArenaMapId>("desert_citadel");
   const [labQuality, setLabQuality] = useState<ArenaQuality>("balanced");
   const [labView, setLabView] = useState<"overview" | "fps">("overview");
-  const [labLevel, setLabLevel] = useState<"lower" | "main" | "upper">("main");
+  const [labLevel, setLabLevel] = useState<"lower" | "market" | "cistern" | "flag" | "main" | "upper">("main");
   const session = useMemo(() => {
     const generated = createCharacterDebugSession({ count, tick });
-    const testPositions = labMapId === "temple_runoff"
+    const standardLabLevel = labLevel === "market" || labLevel === "cistern"
+      ? "lower"
+      : labLevel === "flag" ? "main" : labLevel;
+    const testPosition = labMapId === "temple_runoff"
       ? {
           lower: { x: 0, y: ARENA_PLAYER_EYE_HEIGHT, z: 0, facing: -Math.PI / 2 },
           main: { x: -52 * ARENA_SCALE, y: TEMPLE_RUNOFF_MAIN_LEVEL_Y + ARENA_PLAYER_EYE_HEIGHT, z: 100 * ARENA_SCALE, facing: 0 },
           upper: { x: 0, y: TEMPLE_RUNOFF_UPPER_LEVEL_Y + ARENA_PLAYER_EYE_HEIGHT, z: 40 * ARENA_SCALE, facing: 0 }
-        }
+        }[standardLabLevel]
       : labMapId === "iron_junction"
         ? {
             // Give the local visual-audit camera a clear, collision-safe
@@ -242,16 +245,19 @@ function CharacterLab() {
             lower: { x: 60 * ARENA_SCALE, y: ARENA_PLAYER_EYE_HEIGHT, z: 0, facing: Math.PI / 2 },
             main: { x: -140 * ARENA_SCALE, y: IRON_JUNCTION_LOADING_LEVEL_Y + ARENA_PLAYER_EYE_HEIGHT, z: -57 * ARENA_SCALE, facing: Math.PI },
             upper: { x: -40 * ARENA_SCALE, y: IRON_JUNCTION_OVERPASS_LEVEL_Y + ARENA_PLAYER_EYE_HEIGHT, z: 25 * ARENA_SCALE, facing: -Math.PI / 2 }
-          }
+          }[standardLabLevel]
         : {
             lower: { x: -60 * ARENA_SCALE, y: ARENA_PLAYER_EYE_HEIGHT, z: 120 * ARENA_SCALE, facing: -Math.PI / 2 },
+            market: { x: -175 * ARENA_SCALE, y: ARENA_PLAYER_EYE_HEIGHT, z: -92 * ARENA_SCALE, facing: -1.35 },
+            cistern: { x: -115 * ARENA_SCALE, y: ARENA_PLAYER_EYE_HEIGHT, z: 120 * ARENA_SCALE, facing: Math.PI },
+            flag: { x: 0, y: DESERT_CITADEL_MAIN_LEVEL_Y + ARENA_PLAYER_EYE_HEIGHT, z: 20 * ARENA_SCALE, facing: 0 },
             main: { x: -80 * ARENA_SCALE, y: DESERT_CITADEL_MAIN_LEVEL_Y + ARENA_PLAYER_EYE_HEIGHT, z: 0, facing: -Math.PI / 2 },
             upper: { x: 30 * ARENA_SCALE, y: DESERT_CITADEL_ROOFTOP_LEVEL_Y + ARENA_PLAYER_EYE_HEIGHT, z: -156 * ARENA_SCALE, facing: Math.PI / 2 }
-          };
+          }[labLevel];
     return {
       ...generated,
       settings: { ...generated.settings, mapId: labMapId },
-      players: generated.players.map((player, index) => index === 0 ? { ...player, ...testPositions[labLevel] } : player)
+      players: generated.players.map((player, index) => index === 0 ? { ...player, ...testPosition } : player)
     };
   }, [count, tick, labMapId, labLevel]);
   const summary = useMemo(() => summarizeCharacterDebugSession(session), [session]);
@@ -302,6 +308,9 @@ function CharacterLab() {
           {labView === "fps" && (
             <div className="button-row" aria-label="Map test level">
               <button className={labLevel === "lower" ? "active" : ""} onClick={() => setLabLevel("lower")}>{labMapId === "temple_runoff" ? "River ↓" : labMapId === "iron_junction" ? "Ground •" : "Ground •"}</button>
+              {labMapId === "desert_citadel" && <button className={labLevel === "market" ? "active" : ""} onClick={() => setLabLevel("market")}>Market •</button>}
+              {labMapId === "desert_citadel" && <button className={labLevel === "cistern" ? "active" : ""} onClick={() => setLabLevel("cistern")}>Cistern •</button>}
+              {labMapId === "desert_citadel" && <button className={labLevel === "flag" ? "active" : ""} onClick={() => setLabLevel("flag")}>Flag ⚑</button>}
               <button className={labLevel === "main" ? "active" : ""} onClick={() => setLabLevel("main")}>{labMapId === "temple_runoff" ? "Main •" : labMapId === "iron_junction" ? "Loading ↑" : "Citadel ↑"}</button>
               <button className={labLevel === "upper" ? "active" : ""} onClick={() => setLabLevel("upper")}>{labMapId === "temple_runoff" ? "Bridge ↑" : labMapId === "iron_junction" ? "Overpass ↑" : "Lookout ↑↑"}</button>
             </div>

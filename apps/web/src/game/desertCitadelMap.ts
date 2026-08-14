@@ -67,7 +67,6 @@ const terracotta = "#b96b4b";
 const blue = "#287daf";
 const red = "#ae4545";
 const turquoise = "#2ca6af";
-const palmGreen = "#5e7f54";
 const mainY = DESERT_CITADEL_MAIN_LEVEL_Y;
 const roofY = DESERT_CITADEL_ROOFTOP_LEVEL_Y;
 const centerAt = (floorY: number, height: number) => floorY + height / 2;
@@ -114,10 +113,9 @@ const rawBlocks: CitadelBlock[] = [
   { id: "crown-rampart-floor", x: 0, z: -160, w: 354, d: 32, h: 1, y: roofY - 0.5, color: paleStone, material: "stone", style: "bridge" },
   { id: "crown-rampart-foundation", x: 0, z: -160, w: 354, d: 32, h: roofY - 1, y: (roofY - 1) / 2, color: darkStone, collides: true, style: "wall" },
 
-  // Twenty-player Assembly Bastions with three independently baffled exits.
-  { id: "blue-assembly-north-wall", x: -228, z: -90, w: 48, d: 6, h: 12, color: warmStone, collides: true, style: "wall" },
+  // Twenty-player Assembly Bastions retain their south protection while the
+  // north sides stay open for immediate access to each Crown stair flight.
   { id: "blue-assembly-south-wall", x: -228, z: 90, w: 48, d: 6, h: 12, color: warmStone, collides: true, style: "wall" },
-  { id: "red-assembly-north-wall", x: 228, z: -90, w: 48, d: 6, h: 12, color: goldStone, collides: true, style: "wall" },
   { id: "red-assembly-south-wall", x: 228, z: 90, w: 48, d: 6, h: 12, color: goldStone, collides: true, style: "wall" },
   { id: "blue-screen-north-outer", x: -198, z: -80, w: 8, d: 32, h: 12, color: darkStone, collides: true, style: "wall" },
   { id: "blue-screen-north-inner", x: -198, z: -32, w: 8, d: 20, h: 12, color: darkStone, collides: true, style: "wall" },
@@ -157,13 +155,26 @@ const rawBlocks: CitadelBlock[] = [
   { id: "crown-cover-center", x: 0, z: -160, w: 22, d: 6, h: 5, y: centerAt(roofY, 5), color: paleStone, collides: true, style: "wall" },
   { id: "crown-cover-east", x: 88, z: -160, w: 22, d: 6, h: 5, y: centerAt(roofY, 5), color: ochre, collides: true, style: "wall" },
 
-  // Shaded Souk: mirrored, staggered cover with a central skyline landmark.
-  { id: "souk-stall-west-outer", x: -145, z: -126, w: 34, d: 8, h: 6, color: terracotta, collides: true, style: "stall" },
-  { id: "souk-stall-west-inner", x: -88, z: -104, w: 30, d: 8, h: 6, color: warmStone, collides: true, style: "stall" },
-  { id: "souk-stall-center-west", x: -30, z: -130, w: 24, d: 8, h: 6, color: terracotta, collides: true, style: "stall" },
-  { id: "souk-stall-center-east", x: 30, z: -130, w: 24, d: 8, h: 6, color: terracotta, collides: true, style: "stall" },
-  { id: "souk-stall-east-inner", x: 88, z: -104, w: 30, d: 8, h: 6, color: warmStone, collides: true, style: "stall" },
-  { id: "souk-stall-east-outer", x: 145, z: -126, w: 34, d: 8, h: 6, color: terracotta, collides: true, style: "stall" },
+  // Shaded Souk: one evenly spaced, wall-aligned row of pass-through stalls.
+  // Decorative market cover is intentionally non-colliding: players can run
+  // through the stalls and use the surrounding architecture/car for cover.
+  { id: "souk-stall-west-outer", x: -140, z: -131, w: 38, d: 27, h: 12.77, color: terracotta, collides: false, visual: false, style: "stall" },
+  { id: "souk-stall-west-inner", x: -84, z: -131, w: 38, d: 27, h: 12.77, color: warmStone, collides: false, visual: false, style: "stall" },
+  { id: "souk-stall-center-west", x: -28, z: -131, w: 38, d: 27, h: 12.77, color: terracotta, collides: false, visual: false, style: "stall" },
+  { id: "souk-stall-center-east", x: 28, z: -131, w: 38, d: 27, h: 12.77, color: terracotta, collides: false, visual: false, style: "stall" },
+  { id: "souk-stall-east-inner", x: 84, z: -131, w: 38, d: 27, h: 12.77, color: warmStone, collides: false, visual: false, style: "stall" },
+  { id: "souk-stall-east-outer", x: 140, z: -131, w: 38, d: 27, h: 12.77, color: terracotta, collides: false, visual: false, style: "stall" },
+  // Only the central counters are solid. Canopies, posts, and the remaining
+  // stall interior stay traversable so players can enter and circulate.
+  // Imported meshes are not multiplied by ARENA_SCALE. These authored raw
+  // dimensions therefore compensate for that scale so the resulting 20.46 x
+  // 4.34 world-unit proxy fully covers the visible 20.2 x 4.2 counter.
+  { id: "souk-table-west-outer", x: -140, z: -131, w: 33, d: 7, h: 3.64, color: terracotta, collides: true, visual: false, style: "stall" },
+  { id: "souk-table-west-inner", x: -84, z: -131, w: 33, d: 7, h: 3.64, color: warmStone, collides: true, visual: false, style: "stall" },
+  { id: "souk-table-center-west", x: -28, z: -131, w: 33, d: 7, h: 3.64, color: terracotta, collides: true, visual: false, style: "stall" },
+  { id: "souk-table-center-east", x: 28, z: -131, w: 33, d: 7, h: 3.64, color: terracotta, collides: true, visual: false, style: "stall" },
+  { id: "souk-table-east-inner", x: 84, z: -131, w: 33, d: 7, h: 3.64, color: warmStone, collides: true, visual: false, style: "stall" },
+  { id: "souk-table-east-outer", x: 140, z: -131, w: 33, d: 7, h: 3.64, color: terracotta, collides: true, visual: false, style: "stall" },
   { id: "falcon-obelisk", x: 0, z: -112, w: 14, d: 14, h: 16, color: darkStone, collides: true, style: "tower" },
   { id: "falcon-obelisk-crown", x: 0, z: -112, w: 9, d: 9, h: 6, y: 19, color: paleStone, style: "tower" },
 
@@ -173,7 +184,11 @@ const rawBlocks: CitadelBlock[] = [
   { id: "cistern-cover-center-west", x: -30, z: 104, w: 24, d: 8, h: 5, color: darkStone, collides: true, style: "ruin" },
   { id: "cistern-cover-center-east", x: 30, z: 104, w: 24, d: 8, h: 5, color: darkStone, collides: true, style: "ruin" },
   { id: "cistern-cover-east-inner", x: 88, z: 132, w: 30, d: 8, h: 5, color: ochre, collides: true, style: "ruin" },
-  { id: "cistern-cover-east-outer", x: 145, z: 104, w: 34, d: 8, h: 5, color: darkStone, collides: true, style: "ruin" }
+  { id: "cistern-cover-east-outer", x: 145, z: 104, w: 34, d: 8, h: 5, color: darkStone, collides: true, style: "ruin" },
+
+  // Simple authoritative collision and a load-failure fallback for the
+  // Blender-processed covered service vehicle.
+  { id: "cistern-service-car", x: -115, z: 150, w: 23, d: 10, h: 4.61, color: ochre, collides: true, visual: false, material: "metal", style: "machinery" }
 ];
 
 export const DESERT_CITADEL_PHASE3_MANIFEST = {
@@ -181,7 +196,7 @@ export const DESERT_CITADEL_PHASE3_MANIFEST = {
     "citadel-north-wall", "citadel-south-wall", "citadel-west-wall", "citadel-east-wall",
     "blue-assembly-paving", "red-assembly-paving", "shaded-souk-paving", "dry-cistern-paving",
     "royal-causeway-floor", "royal-causeway-foundation", "crown-rampart-floor", "crown-rampart-foundation",
-    "blue-assembly-north-wall", "blue-assembly-south-wall", "red-assembly-north-wall", "red-assembly-south-wall",
+    "blue-assembly-south-wall", "red-assembly-south-wall",
     "blue-screen-north-outer", "blue-screen-north-inner", "blue-screen-south-inner", "blue-screen-south-outer",
     "red-screen-north-outer", "red-screen-north-inner", "red-screen-south-inner", "red-screen-south-outer",
     "blue-baffle-north", "blue-baffle-center", "blue-baffle-south", "red-baffle-north", "red-baffle-center", "red-baffle-south",
@@ -190,32 +205,19 @@ export const DESERT_CITADEL_PHASE3_MANIFEST = {
     "royal-cover-west", "royal-cover-east", "crown-rail-north", "crown-rail-south-west", "crown-rail-south-center", "crown-rail-south-east",
     "crown-cover-west", "crown-cover-center", "crown-cover-east",
     "souk-stall-west-outer", "souk-stall-west-inner", "souk-stall-center-west", "souk-stall-center-east", "souk-stall-east-inner", "souk-stall-east-outer",
+    "souk-table-west-outer", "souk-table-west-inner", "souk-table-center-west", "souk-table-center-east", "souk-table-east-inner", "souk-table-east-outer",
     "falcon-obelisk", "falcon-obelisk-crown",
-    "cistern-cover-west-outer", "cistern-cover-west-inner", "cistern-cover-center-west", "cistern-cover-center-east", "cistern-cover-east-inner", "cistern-cover-east-outer"
+    "cistern-cover-west-outer", "cistern-cover-west-inner", "cistern-cover-center-west", "cistern-cover-center-east", "cistern-cover-east-inner", "cistern-cover-east-outer",
+    "cistern-service-car"
   ],
   stairFlightIds: DESERT_CITADEL_STAIR_FLIGHTS.map((flight) => flight.id),
-  propIds: [
-    "red-bastion-banner", "souk-canopy-west", "souk-canopy-east",
-    "souk-palm-west", "souk-palm-east", "cistern-palm-west", "cistern-palm-east",
-    "cistern-cart-west", "cistern-cart-east", "crown-banner-east"
-  ],
+  propIds: [],
   cylinderIds: ["royal-sundial-ring", "royal-sundial-core", "cistern-well-rim", "cistern-well-water"]
 } as const;
 
 export const blocks: CitadelBlock[] = rawBlocks.map(scaleRect);
 
-const rawProps: CitadelProp[] = [
-  { id: "red-bastion-banner", kind: "banner", x: 220, z: 0, size: 5, h: 13, color: red, material: "cloth" },
-  { id: "souk-canopy-west", kind: "shade", x: -115, z: -118, size: 19, h: 7, color: blue, material: "cloth" },
-  { id: "souk-canopy-east", kind: "shade", x: 115, z: -118, size: 19, h: 7, color: red, material: "cloth" },
-  { id: "souk-palm-west", kind: "palm", x: -20, z: -88, size: 6, h: 17, color: palmGreen, material: "wood" },
-  { id: "souk-palm-east", kind: "palm", x: 20, z: -88, size: 6, h: 17, color: palmGreen, material: "wood" },
-  { id: "cistern-palm-west", kind: "palm", x: -180, z: 150, size: 6, h: 17, color: palmGreen, material: "wood" },
-  { id: "cistern-palm-east", kind: "palm", x: 180, z: 150, size: 6, h: 17, color: palmGreen, material: "wood" },
-  { id: "cistern-cart-west", kind: "cart", x: -115, z: 150, size: 8, h: 5, rotationY: 0.15, color: ochre, material: "wood" },
-  { id: "cistern-cart-east", kind: "cart", x: 115, z: 150, size: 8, h: 5, rotationY: -0.15, color: ochre, material: "wood" },
-  { id: "crown-banner-east", kind: "banner", x: 88, z: -160, size: 4, h: 10, y: roofY, color: red, material: "cloth" }
-];
+const rawProps: CitadelProp[] = [];
 
 export const props: CitadelProp[] = rawProps.map((item) => ({
   ...item,

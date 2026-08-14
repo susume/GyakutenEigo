@@ -25,6 +25,7 @@ type ActiveArenaQuality = Exclude<ArenaQuality, "auto">;
 type TextureKind = "floor" | "stone" | "wood" | "water" | "sand" | "metal";
 
 export const shouldScatterEdgeRocks = (detail: number, isDesertCitadel: boolean) => detail === 2 && !isDesertCitadel;
+export const shouldAddBaseBeacons = (mapId: string) => mapId !== "desert_citadel";
 
 type MapBuilderDependencies = {
   scene: THREE.Scene;
@@ -150,6 +151,33 @@ const materialFor = (color: string, material = "stone") => {
   return next;
 };
 
+const createFlagClothGeometry = (width: number, height: number, segments = 12) => {
+  const positions: number[] = [];
+  const uvs: number[] = [];
+  const indices: number[] = [];
+  for (let row = 0; row <= 1; row += 1) {
+    for (let column = 0; column <= segments; column += 1) {
+      const progress = column / segments;
+      const wave = Math.sin(progress * Math.PI * 2.4 + row * 0.65) * 0.075 * progress;
+      positions.push(progress * width, -row * height, wave);
+      uvs.push(progress, 1 - row);
+    }
+  }
+  for (let column = 0; column < segments; column += 1) {
+    const topLeft = column;
+    const topRight = column + 1;
+    const bottomLeft = segments + 1 + column;
+    const bottomRight = bottomLeft + 1;
+    indices.push(topLeft, bottomLeft, topRight, topRight, bottomLeft, bottomRight);
+  }
+  const geometry = new THREE.BufferGeometry();
+  geometry.setAttribute("position", new THREE.Float32BufferAttribute(positions, 3));
+  geometry.setAttribute("uv", new THREE.Float32BufferAttribute(uvs, 2));
+  geometry.setIndex(indices);
+  geometry.computeVertexNormals();
+  return geometry;
+};
+
 scene.add(new THREE.HemisphereLight(
   isZombieMode ? "#d8ddff" : isIronJunction ? "#d9edf0" : isTempleRunoff ? "#e7f4d5" : "#fff6d8",
   isZombieMode ? "#65556e" : isIronJunction ? "#354146" : isTempleRunoff ? "#334836" : "#8f7d6f",
@@ -221,8 +249,10 @@ const addBaseBeacon = (team: "blue" | "red", color: string) => {
     scene.add(accentLight);
   }
 };
-addBaseBeacon("blue", "#38bdf8");
-addBaseBeacon("red", isZombieMode ? "#c084fc" : "#fb7185");
+if (shouldAddBaseBeacons(arenaMapId)) {
+  addBaseBeacon("blue", "#38bdf8");
+  addBaseBeacon("red", isZombieMode ? "#c084fc" : "#fb7185");
+}
 
 let flagMarker: THREE.Group | undefined;
 if (session?.settings.gameMode === "flag" && session.flag) {
@@ -246,14 +276,7 @@ if (session?.settings.gameMode === "flag" && session.flag) {
   flagMarker.add(pole);
   const flagWidth = isFps ? 2.65 : 3.35;
   const flagHeight = isFps ? 1.35 : 1.7;
-  const flagShape = new THREE.Shape();
-  flagShape.moveTo(0, 0);
-  flagShape.lineTo(flagWidth, 0.22);
-  flagShape.lineTo(flagWidth, flagHeight - 0.16);
-  flagShape.lineTo(flagWidth * 0.78, flagHeight);
-  flagShape.lineTo(0, flagHeight * 0.82);
-  flagShape.closePath();
-  const fabricGeometry = new THREE.ShapeGeometry(flagShape);
+  const fabricGeometry = createFlagClothGeometry(flagWidth, flagHeight, isFps ? 14 : 10);
   const fabric = new THREE.Mesh(
     fabricGeometry,
     new THREE.MeshStandardMaterial({
@@ -267,22 +290,20 @@ if (session?.settings.gameMode === "flag" && session.flag) {
       side: THREE.DoubleSide
     })
   );
-  fabric.position.set(0.16, isFps ? 5.95 : 5.75, 0);
-  fabric.rotation.y = Math.PI / 2;
+  const flagTopY = isFps ? 7.8 : 7.55;
+  fabric.position.set(0.16, flagTopY, 0);
   flagMarker.add(fabric);
   const fabricOutline = new THREE.LineSegments(
     new THREE.EdgesGeometry(fabricGeometry),
     new THREE.LineBasicMaterial({ color: "#fff7ed", transparent: true, opacity: 0.76 })
   );
   fabricOutline.position.copy(fabric.position);
-  fabricOutline.rotation.copy(fabric.rotation);
   flagMarker.add(fabricOutline);
   const emblem = new THREE.Mesh(
     new THREE.CircleGeometry(isFps ? 0.18 : 0.23, 16),
     new THREE.MeshBasicMaterial({ color: "#fff7ed", transparent: true, opacity: 0.8, side: THREE.DoubleSide })
   );
-  emblem.position.set(flagWidth * 0.5, (isFps ? 5.95 : 5.75) + flagHeight * 0.48, -0.035);
-  emblem.rotation.y = Math.PI / 2;
+  emblem.position.set(flagWidth * 0.46, flagTopY - flagHeight * 0.5, 0.04);
   flagMarker.add(emblem);
   const finial = new THREE.Mesh(
     new THREE.SphereGeometry(0.28, 16, 10),
@@ -368,6 +389,7 @@ const addBlockDetail = (block: (typeof arenaMap.blocks)[number]) => {
     return;
   }
   const detail = new THREE.Group();
+  detail.name = `detail_${block.id}`;
   detail.position.set(block.x, (block.y ?? block.h / 2) - block.h / 2, block.z);
   detail.rotation.y = block.rotationY ?? 0;
   scene.add(detail);
@@ -732,8 +754,10 @@ const addBlock = (block: (typeof arenaMap.blocks)[number]) => {
     // stair landing or market doorway cannot disagree by an extra 0.25u.
     colliderForObject(proxy, isDesertCitadel ? 0 : 0.25);
   }
-  addModularBlockBody(block);
-  addBlockDetail(block);
+  if (block.visual !== false) {
+    addModularBlockBody(block);
+    addBlockDetail(block);
+  }
 };
 arenaMap.blocks.forEach(addBlock);
 
@@ -767,12 +791,23 @@ const addProp = (prop: (typeof arenaMap.props)[number]) => {
   if (prop.kind === "banner") {
     const pole = addDecorativeMesh(group, new THREE.CylinderGeometry(0.1, 0.14, height, 8), "#c49a5b", "wood");
     pole.position.y = height / 2;
-    const fabric = addDecorativeMesh(group, new THREE.PlaneGeometry(prop.size * 1.3, prop.size * 1.7), prop.color, "cloth");
-    fabric.position.set(prop.size * 0.62, height * 0.7, 0);
-    fabric.rotation.y = Math.PI / 2;
-    const crossbar = addDecorativeMesh(group, new THREE.CylinderGeometry(0.08, 0.08, prop.size * 1.45, 8), "#c49a5b", "wood");
-    crossbar.rotation.z = Math.PI / 2;
-    crossbar.position.set(prop.size * 0.58, height * 0.92, 0);
+    const flagWidth = Math.max(1.8, prop.size * 2.35);
+    const flagHeight = flagWidth * 0.58;
+    const flagTopY = height - 0.45;
+    const fabric = new THREE.Mesh(
+      createFlagClothGeometry(flagWidth, flagHeight, 10),
+      new THREE.MeshStandardMaterial({
+        color: prop.color,
+        roughness: 0.88,
+        metalness: 0,
+        side: THREE.DoubleSide
+      })
+    );
+    fabric.position.set(0.15, flagTopY, 0);
+    fabric.castShadow = !isFps;
+    group.add(fabric);
+    const finial = addDecorativeMesh(group, new THREE.SphereGeometry(0.18, 12, 8), "#d8b66f", "metal");
+    finial.position.y = height + 0.08;
   }
 
   if (prop.kind === "column") {
@@ -978,23 +1013,6 @@ const visibleTeamSpawns = getTeamSpawnsForMap(arenaMapId);
 visibleTeamSpawns.blue.forEach((spawn) => addCircle(spawn.x, spawn.z, 2.2, "#38bdf8", isFps ? 0.08 : 0.28, Number.isFinite(spawn.y) ? Number(spawn.y) - FPS_STANDING_EYE_HEIGHT : undefined));
 visibleTeamSpawns.red.forEach((spawn) => addCircle(spawn.x, spawn.z, 2.2, "#fb7185", isFps ? 0.08 : 0.28, Number.isFinite(spawn.y) ? Number(spawn.y) - FPS_STANDING_EYE_HEIGHT : undefined));
 if (!isFps) FREE_FOR_ALL_SPAWNS.forEach((spawn) => addCircle(spawn.x, spawn.z, 1.3, "#ffffff", 0.18));
-
-if (!isIronJunction && !isTempleRunoff) {
-  for (const [x, z, sx, sz] of [
-    [-120, -176, 58, 12],
-    [116, -176, 48, 10],
-    [-142, 174, 42, 10],
-    [112, 176, 58, 12],
-    [-190, -42, 16, 70],
-    [190, 38, 16, 70]
-  ] as const) {
-    const dune = new THREE.Mesh(new THREE.SphereGeometry(1, 24, 10), materialFor("#c99d5a", "sand"));
-    dune.position.set(scaleArenaValue(x), -0.05, scaleArenaValue(z));
-    dune.scale.set(scaleArenaValue(sx), 2.1, scaleArenaValue(sz));
-    dune.receiveShadow = true;
-    scene.add(dune);
-  }
-}
 
 // Desert Citadel keeps all visible geometry traceable to its authored map
 // manifest. Its edge rocks are intentionally omitted here; the other maps

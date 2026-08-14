@@ -1794,7 +1794,7 @@ const RAW_FREE_FOR_ALL_SPAWNS: SpawnPoint[] = [
   { id: "ffa-outer-8", label: "East South Alley", x: 150, z: 150, facing: 2.2 },
   { id: "ffa-souk-1", label: "Shaded Souk", x: -160, z: -105, facing: -0.8 },
   { id: "ffa-souk-2", label: "Shaded Souk", x: -120, z: -138, facing: -0.4 },
-  { id: "ffa-souk-3", label: "Shaded Souk", x: -70, z: -135, facing: -0.2 },
+  { id: "ffa-souk-3", label: "Shaded Souk", x: -70, z: -138, facing: -0.2 },
   { id: "ffa-souk-4", label: "Falcon Approach", x: -45, z: -105, facing: 0 },
   { id: "ffa-souk-5", label: "Falcon Approach", x: 45, z: -105, facing: Math.PI },
   { id: "ffa-souk-6", label: "Shaded Souk", x: 70, z: -138, facing: 0.2 },
@@ -2242,10 +2242,8 @@ export const ARENA_OBSTACLES: ArenaObstacle[] = [
   rectObstacle("citadel-west-wall", -256, 0, 8, 384, false, 0, 16),
   rectObstacle("citadel-east-wall", 256, 0, 8, 384, false, 0, 16),
 
-  // Three broad Assembly exits are protected by offset authored baffles.
-  rectObstacle("blue-assembly-north-wall", -228, -90, 48, 6, false, 0, 12),
+  // South protection remains; both north sides open directly toward the Crown stairs.
   rectObstacle("blue-assembly-south-wall", -228, 90, 48, 6, false, 0, 12),
-  rectObstacle("red-assembly-north-wall", 228, -90, 48, 6, false, 0, 12),
   rectObstacle("red-assembly-south-wall", 228, 90, 48, 6, false, 0, 12),
   rectObstacle("blue-screen-north-outer", -198, -80, 8, 32, false, 0, 12),
   rectObstacle("blue-screen-north-inner", -198, -32, 8, 20, false, 0, 12),
@@ -2284,12 +2282,14 @@ export const ARENA_OBSTACLES: ArenaObstacle[] = [
   rectObstacle("crown-cover-east", 88, -160, 22, 6, false, DESERT_CITADEL_ROOFTOP_LEVEL_Y, DESERT_CITADEL_ROOFTOP_LEVEL_Y + 5),
 
   // North and south lane cover remains low, mirrored, and deliberately staggered.
-  rectObstacle("souk-stall-west-outer", -145, -126, 34, 8, false, 0, 6),
-  rectObstacle("souk-stall-west-inner", -88, -104, 30, 8, false, 0, 6),
-  rectObstacle("souk-stall-center-west", -30, -130, 24, 8, false, 0, 6),
-  rectObstacle("souk-stall-center-east", 30, -130, 24, 8, false, 0, 6),
-  rectObstacle("souk-stall-east-inner", 88, -104, 30, 8, false, 0, 6),
-  rectObstacle("souk-stall-east-outer", 145, -126, 34, 8, false, 0, 6),
+  // Stalls are visual landmarks, not blockers. Players can pass through them;
+  // only their central counters participate in movement and projectile cover.
+  rectObstacle("souk-table-west-outer", -140, -131, 33, 7, false, 0, 3.64),
+  rectObstacle("souk-table-west-inner", -84, -131, 33, 7, false, 0, 3.64),
+  rectObstacle("souk-table-center-west", -28, -131, 33, 7, false, 0, 3.64),
+  rectObstacle("souk-table-center-east", 28, -131, 33, 7, false, 0, 3.64),
+  rectObstacle("souk-table-east-inner", 84, -131, 33, 7, false, 0, 3.64),
+  rectObstacle("souk-table-east-outer", 140, -131, 33, 7, false, 0, 3.64),
   rectObstacle("falcon-obelisk", 0, -112, 14, 14, false, 0, 16),
   rectObstacle("cistern-cover-west-outer", -145, 104, 34, 8, false, 0, 5),
   rectObstacle("cistern-cover-west-inner", -88, 132, 30, 8, false, 0, 5),
@@ -2297,6 +2297,7 @@ export const ARENA_OBSTACLES: ArenaObstacle[] = [
   rectObstacle("cistern-cover-center-east", 30, 104, 24, 8, false, 0, 5),
   rectObstacle("cistern-cover-east-inner", 88, 132, 30, 8, false, 0, 5),
   rectObstacle("cistern-cover-east-outer", 145, 104, 34, 8, false, 0, 5),
+  rectObstacle("cistern-service-car", -115, 150, 23, 10, false, 0, 4.61),
   circleObstacle("cistern-well-rim", 0, 120, 12, false, 0, 2.4)
 ];
 
