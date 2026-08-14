@@ -52,11 +52,18 @@ test("Split Crown is a purpose-built three-lane 40-player rebuild", () => {
   assert.ok(DESERT_CITADEL_STAIR_FLIGHTS.every((flight) => (flight.endY - flight.startY) / flight.steps <= 0.75));
   assert.equal(floorMarks.length, 0);
   assert.equal(signs.length, 0);
+  assert.ok(blocks.every((block) => block.label === undefined), "3D block labels must remain disabled");
+  assert.ok(cylinders.every((cylinder) => cylinder.label === undefined), "3D cylinder labels must remain disabled");
   assert.equal(props.length, 10);
   assert.equal(props.some((prop) => prop.kind === "arch"), false);
   assert.equal(props.some((prop) => prop.id === "blue-bastion-banner"), false);
   assert.equal(props.some((prop) => prop.id === "crown-banner-west"), false);
   assert.ok(props.some((prop) => prop.id === "red-bastion-banner"));
+  const sundialCore = cylinders.find((cylinder) => cylinder.id === "royal-sundial-core");
+  assert.ok(
+    sundialCore && Math.abs(sundialCore.radius - 1.25 * ARENA_SCALE) < 0.011,
+    "the sundial core must not become a sightline-blocking silo"
+  );
   assert.deepEqual(
     ["court-floor", "citadel-skywalk", "west-market-roof", "east-market-roof"].filter((id) => blocks.some((block) => block.id === id)),
     [],

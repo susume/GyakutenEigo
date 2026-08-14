@@ -475,12 +475,14 @@ export default function ArenaPreview({
       waterTexture,
       sandTexture,
       metalTexture,
+      desertCitadelPbrTextures,
       materialCache,
       staticBatcher,
       collisionProxyMaterial,
       coverBoxes,
       flagMarker,
       templeRunoffArt,
+      desertCitadelArt,
       desertCitadelVfx
     } = buildArenaMapScene({
       scene,
@@ -1272,6 +1274,7 @@ export default function ArenaPreview({
         unsubscribeAnimation();
         performanceCapture.dispose();
         vfxPool.dispose();
+        desertCitadelArt?.dispose();
         desertCitadelVfx?.dispose();
         templeRunoffArt?.dispose();
         void ironJunctionAssetsPromise.then((assets) => assets?.dispose());
@@ -1294,6 +1297,9 @@ export default function ArenaPreview({
         waterTexture.dispose();
         sandTexture.dispose();
         metalTexture.dispose();
+        desertCitadelPbrTextures?.map.dispose();
+        desertCitadelPbrTextures?.normalMap.dispose();
+        desertCitadelPbrTextures?.roughnessMap.dispose();
         puffTexture.dispose();
         renderer.dispose();
         mount.removeChild(renderer.domElement);
@@ -1360,6 +1366,7 @@ export default function ArenaPreview({
       unsubscribeAnimation();
       performanceCapture.dispose();
       vfxPool.dispose();
+      desertCitadelArt?.dispose();
       desertCitadelVfx?.dispose();
       templeRunoffArt?.dispose();
       void ironJunctionAssetsPromise.then((assets) => assets?.dispose());
@@ -1376,6 +1383,9 @@ export default function ArenaPreview({
       waterTexture.dispose();
       sandTexture.dispose();
       metalTexture.dispose();
+      desertCitadelPbrTextures?.map.dispose();
+      desertCitadelPbrTextures?.normalMap.dispose();
+      desertCitadelPbrTextures?.roughnessMap.dispose();
       puffTexture.dispose();
       renderer.dispose();
       mount.removeChild(renderer.domElement);

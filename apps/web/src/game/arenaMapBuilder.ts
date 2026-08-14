@@ -14,6 +14,7 @@ import {
 import type { ArenaMapData } from "./arenaMaps";
 import { ArenaStaticBatcher, makeSurfaceAtlas } from "./ArenaStaticBatch";
 import { addDesertCitadelVfx } from "./DesertCitadelVfx";
+import { addDesertCitadelArtPass } from "./desertCitadelArtPass";
 import { addIronJunctionArtPass } from "./IronJunctionArtPass";
 import { addTempleRunoffArtPass } from "./TempleRunoffArtPass";
 import type { ArenaQuality } from "./gamePreferences";
@@ -88,6 +89,26 @@ const metalTexture = makeCanvasTexture("metal", "#93a6ad");
 [floorTexture, stoneTexture, woodTexture, waterTexture, sandTexture, metalTexture].forEach((texture) => {
   texture.anisotropy = qualityConfig.anisotropy;
 });
+const desertCitadelPbrTextures = isDesertCitadel && qualityConfig.detail > 0
+  ? (() => {
+      const loader = new THREE.TextureLoader();
+      const publicUrl = (path: string) => `${import.meta.env.BASE_URL}${path.replace(/^\/+/, "")}`;
+      const load = (path: string, color = false) => {
+        const texture = loader.load(publicUrl(path));
+        texture.wrapS = THREE.RepeatWrapping;
+        texture.wrapT = THREE.RepeatWrapping;
+        texture.repeat.set(48, 36);
+        texture.anisotropy = qualityConfig.anisotropy;
+        if (color) texture.colorSpace = THREE.SRGBColorSpace;
+        return texture;
+      };
+      return {
+        map: load("/assets/arena/desert-citadel/polyhaven-sand-03/sand_03_diff_1k.jpg", true),
+        normalMap: load("/assets/arena/desert-citadel/polyhaven-sand-03/sand_03_nor_gl_1k.jpg"),
+        roughnessMap: load("/assets/arena/desert-citadel/polyhaven-sand-03/sand_03_rough_1k.jpg")
+      };
+    })()
+  : null;
 const surfaceAtlas = makeSurfaceAtlas({ stone: stoneTexture, wood: woodTexture, metal: metalTexture, sand: sandTexture });
 surfaceAtlas.anisotropy = qualityConfig.anisotropy;
 const staticBatcher = new ArenaStaticBatcher(surfaceAtlas, !isFps && qualityConfig.shadows);
@@ -289,10 +310,20 @@ if (session?.settings.gameMode === "flag" && session.flag) {
   scene.add(flagMarker);
 }
 
-const floor = new THREE.Mesh(
-  new THREE.BoxGeometry(arenaBounds.limitX * 2, 0.3, arenaBounds.limitZ * 2),
-  new THREE.MeshStandardMaterial({ map: floorTexture, color: palette.floor, roughness: 0.88, metalness: 0.01 })
-);
+const floorMaterial = new THREE.MeshStandardMaterial({
+  map: desertCitadelPbrTextures?.map ?? floorTexture,
+  ...(desertCitadelPbrTextures
+    ? {
+        normalMap: desertCitadelPbrTextures.normalMap,
+        roughnessMap: desertCitadelPbrTextures.roughnessMap
+      }
+    : {}),
+  color: palette.floor,
+  roughness: 0.9,
+  metalness: 0.01,
+  normalScale: new THREE.Vector2(0.32, 0.32)
+});
+const floor = new THREE.Mesh(new THREE.BoxGeometry(arenaBounds.limitX * 2, 0.3, arenaBounds.limitZ * 2), floorMaterial);
 floor.position.y = -0.2;
 floor.receiveShadow = true;
 scene.add(floor);
@@ -996,6 +1027,7 @@ if (shouldScatterEdgeRocks(qualityConfig.detail, isDesertCitadel)) {
 
 if (isIronJunction) addIronJunctionArtPass(scene, addDecorativeMesh, qualityConfig.detail, isFps);
 const templeRunoffArt = isTempleRunoff ? addTempleRunoffArtPass(scene, addDecorativeMesh, qualityConfig.detail, isFps) : null;
+const desertCitadelArt = isDesertCitadel ? addDesertCitadelArtPass(scene, addDecorativeMesh, qualityConfig.detail, isFps) : null;
 const desertCitadelVfx = isIronJunction || isTempleRunoff ? null : addDesertCitadelVfx(scene, qualityConfig.detail);
 const staticBatchStats = staticBatcher.flush(scene);
 renderer.domElement.dataset.staticSources = String(staticBatchStats.sourceMeshes);
@@ -1009,12 +1041,14 @@ renderer.domElement.dataset.staticBatches = String(staticBatchStats.batchMeshes)
     waterTexture,
     sandTexture,
     metalTexture,
+    desertCitadelPbrTextures,
     materialCache,
     staticBatcher,
     collisionProxyMaterial,
     coverBoxes,
     flagMarker,
     templeRunoffArt,
+    desertCitadelArt,
     desertCitadelVfx,
   };
 };

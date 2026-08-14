@@ -56,12 +56,14 @@ export const DESERT_CITADEL: ArenaMapDefinition = {
   }
 };
 
-const warmStone = "#c89a5d";
-const paleStone = "#dec187";
-const goldStone = "#d2a45f";
-const ochre = "#ad7546";
-const darkStone = "#765238";
-const terracotta = "#a95f43";
+// Keep the adobe value range sunlit enough for player silhouettes to read;
+// shaded contrast comes from geometry and lighting rather than near-black tint.
+const warmStone = "#d4a56c";
+const paleStone = "#e7cb91";
+const goldStone = "#d8aa69";
+const ochre = "#bf8150";
+const darkStone = "#a06f4d";
+const terracotta = "#b96b4b";
 const blue = "#287daf";
 const red = "#ae4545";
 const turquoise = "#2ca6af";
@@ -162,7 +164,7 @@ const rawBlocks: CitadelBlock[] = [
   { id: "souk-stall-center-east", x: 30, z: -130, w: 24, d: 8, h: 6, color: terracotta, collides: true, style: "stall" },
   { id: "souk-stall-east-inner", x: 88, z: -104, w: 30, d: 8, h: 6, color: warmStone, collides: true, style: "stall" },
   { id: "souk-stall-east-outer", x: 145, z: -126, w: 34, d: 8, h: 6, color: terracotta, collides: true, style: "stall" },
-  { id: "falcon-obelisk", label: "Falcon Obelisk", x: 0, z: -112, w: 14, d: 14, h: 16, color: darkStone, collides: true, style: "tower" },
+  { id: "falcon-obelisk", x: 0, z: -112, w: 14, d: 14, h: 16, color: darkStone, collides: true, style: "tower" },
   { id: "falcon-obelisk-crown", x: 0, z: -112, w: 9, d: 9, h: 6, y: 19, color: paleStone, style: "tower" },
 
   // Dry Cistern: low staggered cover keeps both sides of the route live.
@@ -223,9 +225,9 @@ export const props: CitadelProp[] = rawProps.map((item) => ({
 }));
 
 const rawCylinders: CitadelCylinder[] = [
-  { id: "royal-sundial-ring", label: "Royal Sundial", x: 0, z: 0, radius: 10, h: 2, y: mainY + 1, color: paleStone, collides: true, material: "stone" },
-  { id: "royal-sundial-core", x: 0, z: 0, radius: 5, h: 4, y: mainY + 4, color: terracotta, material: "accent" },
-  { id: "cistern-well-rim", label: "Dry Cistern", x: 0, z: 120, radius: 12, h: 2.4, y: 1.2, color: paleStone, collides: true, material: "stone" },
+  { id: "royal-sundial-ring", x: 0, z: 0, radius: 10, h: 2, y: mainY + 1, color: paleStone, collides: true, material: "stone" },
+  { id: "royal-sundial-core", x: 0, z: 0, radius: 1.25, h: 3, y: mainY + 3.5, color: ochre, material: "stone" },
+  { id: "cistern-well-rim", x: 0, z: 120, radius: 12, h: 2.4, y: 1.2, color: paleStone, collides: true, material: "stone" },
   { id: "cistern-well-water", x: 0, z: 120, radius: 8, h: 0.25, y: 2.525, color: turquoise, material: "water" }
 ];
 
