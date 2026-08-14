@@ -44,6 +44,7 @@ import { resolveTouchJoystickVector } from "./touchJoystick";
 import { emitArenaVfx } from "./ArenaVfx";
 import { emitArenaAnimation } from "./ArenaAnimation";
 import { ArenaPerformanceCapture, AutoGraphicsQualityController, type ArenaPerformanceSnapshot } from "./ArenaPerformance";
+import { mountIronJunctionImportedAssets } from "./ironJunctionImportedAssets";
 import {
   readGamePreferences,
   resolveArenaQuality,
@@ -502,6 +503,9 @@ export default function ArenaPreview({
       seededRandom,
       scaleArenaValue
     });
+    const ironJunctionAssetsPromise = isIronJunction
+      ? mountIronJunctionImportedAssets({ scene, detail: qualityConfig.detail, isFps })
+      : Promise.resolve(null);
 
 
     const players = session?.players.length ? session.players : currentPlayer ? [currentPlayer] : [];
@@ -1270,6 +1274,7 @@ export default function ArenaPreview({
         vfxPool.dispose();
         desertCitadelVfx?.dispose();
         templeRunoffArt?.dispose();
+        void ironJunctionAssetsPromise.then((assets) => assets?.dispose());
         fireControlRef.current = () => undefined;
         zoomControlRef.current = () => undefined;
         syncPlayersRef.current = () => undefined;
@@ -1357,6 +1362,7 @@ export default function ArenaPreview({
       vfxPool.dispose();
       desertCitadelVfx?.dispose();
       templeRunoffArt?.dispose();
+      void ironJunctionAssetsPromise.then((assets) => assets?.dispose());
       syncPlayersRef.current = () => undefined;
       characterManager.dispose();
       disposeObject(scene);

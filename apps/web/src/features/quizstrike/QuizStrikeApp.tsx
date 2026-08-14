@@ -237,7 +237,9 @@ function CharacterLab() {
         }
       : labMapId === "iron_junction"
         ? {
-            lower: { x: 10 * ARENA_SCALE, y: ARENA_PLAYER_EYE_HEIGHT, z: 25 * ARENA_SCALE, facing: -Math.PI / 2 },
+            // Give the local visual-audit camera a clear, collision-safe
+            // approach to the new central train landmark.
+            lower: { x: 60 * ARENA_SCALE, y: ARENA_PLAYER_EYE_HEIGHT, z: 0, facing: Math.PI / 2 },
             main: { x: -140 * ARENA_SCALE, y: IRON_JUNCTION_LOADING_LEVEL_Y + ARENA_PLAYER_EYE_HEIGHT, z: -57 * ARENA_SCALE, facing: Math.PI },
             upper: { x: -40 * ARENA_SCALE, y: IRON_JUNCTION_OVERPASS_LEVEL_Y + ARENA_PLAYER_EYE_HEIGHT, z: 25 * ARENA_SCALE, facing: -Math.PI / 2 }
           }
