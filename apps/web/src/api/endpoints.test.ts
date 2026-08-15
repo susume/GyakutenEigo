@@ -24,6 +24,17 @@ test("development builds can explicitly target a local API origin", () => {
   );
 });
 
+test("an explicit rollout override can temporarily target the hosted API", () => {
+  assert.equal(
+    resolveApiOrigin({
+      pageOrigin: "https://gyakuteneigo.com",
+      configuredOrigin: "https://gyakuteneigo-api.onrender.com",
+      allowConfiguredOrigin: true
+    }),
+    "https://gyakuteneigo-api.onrender.com"
+  );
+});
+
 test("buildApiUrlCandidates normalizes and de-duplicates hosted endpoints", () => {
   assert.deepEqual(
     buildApiUrlCandidates("https://api.example.com/", "https://api.example.com", "https://fallback.example.com"),

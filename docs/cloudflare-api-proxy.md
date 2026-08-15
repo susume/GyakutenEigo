@@ -1,5 +1,9 @@
 # Cloudflare same-origin API and Socket.IO setup
 
+> Rollout safety: deploy and verify the Worker routes before disabling
+> `VITE_ALLOW_PRODUCTION_API_OVERRIDE`. If DNS does not use Cloudflare yet,
+> `/api/*` reaches GitHub Pages and returns 404 instead of reaching Render.
+
 This repository keeps GitHub Pages as the static frontend and Render as the
 Node/Express/Socket.IO backend. The Worker in
 `infrastructure/cloudflare/src/index.ts` exposes only these live paths on the

@@ -110,11 +110,14 @@ Set these as GitHub Actions variables or equivalent static-host build values:
 ```text
 VITE_BASE_PATH=/
 PAGE_CUSTOM_DOMAIN=www.gyakuteneigo.com
+VITE_API_URL=https://gyakuteneigo-api.onrender.com
+VITE_ALLOW_PRODUCTION_API_OVERRIDE=true
 ```
 
-Do not set `VITE_API_URL` or `VITE_API_FALLBACK_URL` for the production Pages
-build. The browser resolves API and Socket.IO traffic from
-`window.location.origin`; local/test builds may set those variables explicitly.
+The API override is temporary while DNS still points directly to GitHub Pages.
+After Cloudflare owns the domain and both Worker routes pass live checks, remove
+`VITE_API_URL` and set `VITE_ALLOW_PRODUCTION_API_OVERRIDE=false`. The browser
+will then resolve API and Socket.IO traffic from `window.location.origin`.
 
 `.github/workflows/deploy-web.yml` runs on `main` pushes or manual dispatch and:
 
@@ -244,10 +247,11 @@ included in reconnect snapshots and checkpoint fields; the Learning Pulse is
 recomputed from authoritative answer logs instead of being stored in a
 snapshot.
 
-The production API client has no alternate browser-visible Render fallback. Its
-only API candidate is the current website origin; infrastructure failover, if
-needed, belongs in Cloudflare or the backend deployment rather than in student
-browser code.
+During rollout the production client uses one explicitly configured Render
+origin because the same-origin routes do not exist until Cloudflare DNS is
+active. This is not an automatic fallback. After cutover, disable the override;
+the current website origin becomes the only browser API candidate and any
+infrastructure failover belongs behind Cloudflare.
 
 ## Scaling limit
 

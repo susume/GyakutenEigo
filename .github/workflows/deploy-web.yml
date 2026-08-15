@@ -38,10 +38,25 @@ jobs:
       - name: Build shared package
         run: npm run build -w @quizstrike/shared
 
+      - name: Guard same-origin API cutover
+        shell: bash
+        env:
+          PAGE_CUSTOM_DOMAIN: ${{ vars.PAGE_CUSTOM_DOMAIN || 'www.gyakuteneigo.com' }}
+          VITE_ALLOW_PRODUCTION_API_OVERRIDE: ${{ vars.VITE_ALLOW_PRODUCTION_API_OVERRIDE || 'true' }}
+        run: |
+          if [[ "$VITE_ALLOW_PRODUCTION_API_OVERRIDE" != "true" ]]; then
+            curl --fail --silent --show-error --max-time 30 "https://$PAGE_CUSTOM_DOMAIN/api/health" \
+              | grep --quiet '"ok":true'
+          fi
+
       - name: Build web app
         run: npm run build -w @quizstrike/web
         env:
           VITE_BASE_PATH: ${{ vars.VITE_BASE_PATH || '/' }}
+          # Temporary until Cloudflare owns the domain and both Worker routes
+          # pass live checks. Set the override to "false" after cutover.
+          VITE_API_URL: ${{ vars.VITE_API_URL || 'https://gyakuteneigo-api.onrender.com' }}
+          VITE_ALLOW_PRODUCTION_API_OVERRIDE: ${{ vars.VITE_ALLOW_PRODUCTION_API_OVERRIDE || 'true' }}
 
       - name: Configure SPA fallback and optional custom domain
         shell: bash

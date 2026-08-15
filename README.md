@@ -176,10 +176,11 @@ Build-time web values:
 VITE_BASE_PATH=/
 ~~~
 
-Production browser API and Socket.IO traffic stays on the current
-`gyakuteneigo.com` origin. Cloudflare routes `/api/*` and `/socket.io/*` to the
-Render service; see [the Cloudflare setup runbook](docs/cloudflare-api-proxy.md).
-`VITE_API_URL` and `VITE_API_FALLBACK_URL` are development/test-only overrides.
+The target production path keeps API and Socket.IO traffic on the current
+`gyakuteneigo.com` origin through Cloudflare. Until that DNS/Worker cutover is
+live, the deployment uses an explicit Render compatibility origin so login and
+classroom play remain operational. See the rollout order in
+[the Cloudflare setup runbook](docs/cloudflare-api-proxy.md).
 
 Never put 'DATABASE_URL', 'JWT_SECRET', Supabase keys, or private decal data in
 'VITE_*' variables or committed files.

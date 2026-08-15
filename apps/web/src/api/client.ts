@@ -27,10 +27,14 @@ const cleanUrl = (value: string | undefined) => {
   return trimmed ? trimmed.replace(/\/$/, "") : undefined;
 };
 
-// The production browser must stay on the public website origin. External
-// origins are intentionally limited to local/test overrides so a blocked
-// Render/API hostname is never exposed as a student-facing fallback.
-const allowConfiguredApiOrigin = Boolean(import.meta.env.DEV || import.meta.env.MODE === "test");
+// Production normally stays on the website origin. The explicit rollout flag
+// temporarily preserves the existing Render connection until Cloudflare owns
+// the domain and its /api and /socket.io routes are verified live.
+const allowConfiguredApiOrigin = Boolean(
+  import.meta.env.DEV
+  || import.meta.env.MODE === "test"
+  || import.meta.env.VITE_ALLOW_PRODUCTION_API_OVERRIDE === "true"
+);
 const API_URL = resolveApiOrigin({
   pageOrigin: window.location.origin,
   configuredOrigin: cleanUrl(import.meta.env.VITE_API_URL as string | undefined),
