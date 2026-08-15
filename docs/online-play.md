@@ -8,6 +8,13 @@ service, and a server-only Prisma connection to Supabase PostgreSQL. It also def
 single-room authority, reconnect, teacher-pause, and teacher-only Learning
 Pulse behavior that must remain true during deployment.
 
+## Rollout status
+
+Cloudflare is the intended edge, but it is not yet the live DNS edge. During the
+transition, the Pages build uses the explicit Render compatibility origin so
+teacher login and classroom play remain available. The same-origin Worker path
+must be verified before setting `VITE_ALLOW_PRODUCTION_API_OVERRIDE=false`.
+
 ## Production topology
 
 ```mermaid
@@ -25,8 +32,9 @@ flowchart LR
 | --- | --- |
 | Web artifact | `apps/web/dist` |
 | Static host | GitHub Pages, optionally `www.gyakuteneigo.com` and aliases |
-| Browser API/Socket.IO | `https://gyakuteneigo.com/api/*` and `https://gyakuteneigo.com/socket.io/*` |
-| Backend origin | `https://gyakuteneigo-api.onrender.com` (Worker-only) |
+| Browser API/Socket.IO after cutover | `https://gyakuteneigo.com/api/*` and `https://gyakuteneigo.com/socket.io/*` |
+| Temporary browser API/Socket.IO | `https://gyakuteneigo-api.onrender.com` via explicit build override |
+| Worker backend origin | `https://gyakuteneigo-api.onrender.com` |
 | Proxy implementation | `infrastructure/cloudflare/src/index.ts` |
 | Render service | `gyakuteneigo-api`, one Node instance |
 | Database | Supabase project `Quiz Strike Production`, Sydney (`ap-southeast-2`) |
@@ -35,7 +43,9 @@ flowchart LR
 
 The old Render PostgreSQL database is retired and must not be used. Supabase is
 not used as a browser database, auth provider, realtime transport, or object
-store. The browser communicates with the Render API through Cloudflare only.
+store. After cutover, the browser communicates with the Render API through
+Cloudflare only; during the compatibility window it uses the explicit Render
+origin described above.
 
 ## Release prerequisites
 
@@ -128,6 +138,10 @@ will then resolve API and Socket.IO traffic from `window.location.origin`.
    `/quiz-strike`, `/join`, `/game`, `/check`, and `/diagnostics`;
 5. writes `CNAME` when `PAGE_CUSTOM_DOMAIN` is present;
 6. uploads and deploys `apps/web/dist` through GitHub Pages.
+
+When the override is set to `false`, the workflow first calls the public
+`/api/health` route and fails the build unless it returns healthy JSON. This
+prevents a same-origin frontend from being deployed before the Worker exists.
 
 After a Pages deployment, open each of these paths directly in a fresh browser
 tab, not only through the home page:
