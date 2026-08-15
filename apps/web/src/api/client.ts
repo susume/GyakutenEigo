@@ -1,6 +1,6 @@
 import type { CharacterCustomizationSettings, Choice, PlayerAppearance, SessionSettings, StudySetSummary } from "@quizstrike/shared";
 import { ApiError } from "./errors";
-import { buildApiUrlCandidates, fetchFromApiCandidates } from "./endpoints.js";
+import { ApiRequestTimeoutError, buildApiUrlCandidates, fetchFromApiCandidates, resolveApiOrigin } from "./endpoints.js";
 import { retryOnce } from "./retry.js";
 
 export { ApiError } from "./errors";
@@ -27,14 +27,18 @@ const cleanUrl = (value: string | undefined) => {
   return trimmed ? trimmed.replace(/\/$/, "") : undefined;
 };
 
-const API_URL =
-  cleanUrl(import.meta.env.VITE_API_URL as string | undefined) ??
-  window.location.origin;
-const DEFAULT_HOSTED_FALLBACK = "https://gyakuteneigo-api.onrender.com";
+// The production browser must stay on the public website origin. External
+// origins are intentionally limited to local/test overrides so a blocked
+// Render/API hostname is never exposed as a student-facing fallback.
+const allowConfiguredApiOrigin = Boolean(import.meta.env.DEV || import.meta.env.MODE === "test");
+const API_URL = resolveApiOrigin({
+  pageOrigin: window.location.origin,
+  configuredOrigin: cleanUrl(import.meta.env.VITE_API_URL as string | undefined),
+  allowConfiguredOrigin: allowConfiguredApiOrigin
+});
 const API_URLS = buildApiUrlCandidates(
   API_URL,
-  cleanUrl(import.meta.env.VITE_API_FALLBACK_URL as string | undefined) ??
-    (API_URL === "https://api.gyakuteneigo.com" ? DEFAULT_HOSTED_FALLBACK : undefined)
+  allowConfiguredApiOrigin ? cleanUrl(import.meta.env.VITE_API_FALLBACK_URL as string | undefined) : undefined
 );
 let activeApiUrl = API_URLS[0] ?? API_URL;
 
@@ -54,7 +58,7 @@ const fetchApi = async (path: string, options?: RequestInit, policy: ApiRequestP
     activeUrl: activeApiUrl,
     path,
     options,
-    attemptTimeoutMs: policy.attemptTimeoutMs
+    attemptTimeoutMs: policy.attemptTimeoutMs ?? 12_000
   });
   activeApiUrl = result.url;
   return result.response;
@@ -77,10 +81,14 @@ export async function api<T>(path: string, options: RequestInit = {}, policy: Ap
       ...options,
       headers
     }, policy);
-  } catch {
+  } catch (error) {
+    const timedOut = error instanceof ApiRequestTimeoutError;
     throw new ApiError(
-      "QuizStrike couldn’t reach the game server. Check your connection, then try again. If this keeps happening at school, ask school IT for help.",
-      0
+      timedOut
+        ? "The game server took too long to respond. It may be waking up; wait a few seconds and try again."
+        : "We can open QuizStrike, but this network cannot reach the game server. Try again, or ask your teacher for help.",
+      0,
+      { kind: timedOut ? "timeout" : "network", cause: error }
     );
   }
 
@@ -93,7 +101,9 @@ export async function api<T>(path: string, options: RequestInit = {}, policy: Ap
     if (import.meta.env.DEV) {
       console.error(`[api] ${options.method ?? "GET"} ${path} failed with ${response.status}`, payload.error ?? responseText.slice(0, 300));
     }
-    throw new ApiError(payload.error ?? "QuizStrike couldn't complete that request. Try again.", response.status);
+    throw new ApiError(payload.error ?? "QuizStrike couldn't complete that request. Try again.", response.status, {
+      kind: response.status >= 500 ? "server" : "http"
+    });
   }
   return payload as T;
 }
@@ -264,10 +274,14 @@ export const teacherApi = {
       response = await fetchApi(`/api/sessions/${code}/report.csv`, {
         headers: token ? { Authorization: `Bearer ${token}` } : undefined
       });
-    } catch {
+    } catch (error) {
+      const timedOut = error instanceof ApiRequestTimeoutError;
       throw new ApiError(
-        "QuizStrike couldn’t reach the game server. Check your connection, then try again. If this keeps happening at school, ask school IT for help.",
-        0
+        timedOut
+          ? "The game server took too long to respond. It may be waking up; wait a few seconds and try again."
+          : "We can open QuizStrike, but this network cannot reach the game server. Try again, or ask your teacher for help.",
+        0,
+        { kind: timedOut ? "timeout" : "network", cause: error }
       );
     }
     if (!response.ok) {

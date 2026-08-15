@@ -3,6 +3,7 @@ import StudentJoinScreen from "./features/quizstrike/student/StudentJoinScreen";
 import { normalizeRoutePath } from "./navigation";
 
 const QuizStrikeApp = lazy(() => import("./QuizStrikeAppEntry"));
+const NetworkDiagnosticsPage = lazy(() => import("./features/quizstrike/NetworkDiagnosticsPage"));
 
 const loadingFallback = (
   <section className="app-loading-screen" aria-live="polite">
@@ -25,6 +26,9 @@ export default function BrowserApp() {
   }, []);
 
   if (pathname === "/join") return <StudentJoinScreen onJoined={openGame} />;
+  if (pathname === "/check" || pathname === "/diagnostics") {
+    return <Suspense fallback={loadingFallback}><NetworkDiagnosticsPage /></Suspense>;
+  }
 
   return <Suspense fallback={loadingFallback}><QuizStrikeApp /></Suspense>;
 }

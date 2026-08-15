@@ -1,6 +1,28 @@
 import test from "node:test";
 import assert from "node:assert/strict";
-import { ApiRequestTimeoutError, buildApiUrlCandidates, fetchFromApiCandidates } from "./endpoints.js";
+import { ApiRequestTimeoutError, buildApiUrlCandidates, fetchFromApiCandidates, resolveApiOrigin } from "./endpoints.js";
+
+test("production-like builds prefer the page origin even when an external override is present", () => {
+  assert.equal(
+    resolveApiOrigin({
+      pageOrigin: "https://gyakuteneigo.com/",
+      configuredOrigin: "https://gyakuteneigo-api.onrender.com",
+      allowConfiguredOrigin: false
+    }),
+    "https://gyakuteneigo.com"
+  );
+});
+
+test("development builds can explicitly target a local API origin", () => {
+  assert.equal(
+    resolveApiOrigin({
+      pageOrigin: "http://localhost:5173",
+      configuredOrigin: "http://localhost:4000/",
+      allowConfiguredOrigin: true
+    }),
+    "http://localhost:4000"
+  );
+});
 
 test("buildApiUrlCandidates normalizes and de-duplicates hosted endpoints", () => {
   assert.deepEqual(

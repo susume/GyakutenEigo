@@ -173,10 +173,13 @@ RUNTIME_STORE=in-memory
 Build-time web values:
 
 ~~~text
-VITE_API_URL=https://api.gyakuteneigo.com
-VITE_API_FALLBACK_URL=https://gyakuteneigo-api.onrender.com
 VITE_BASE_PATH=/
 ~~~
+
+Production browser API and Socket.IO traffic stays on the current
+`gyakuteneigo.com` origin. Cloudflare routes `/api/*` and `/socket.io/*` to the
+Render service; see [the Cloudflare setup runbook](docs/cloudflare-api-proxy.md).
+`VITE_API_URL` and `VITE_API_FALLBACK_URL` are development/test-only overrides.
 
 Never put 'DATABASE_URL', 'JWT_SECRET', Supabase keys, or private decal data in
 'VITE_*' variables or committed files.
@@ -196,6 +199,7 @@ npm test
 npm run build
 npm run test:load
 npm run test:e2e
+npm run test:proxy
 ~~~
 
 The current validated baseline is recorded in [architecture.md](architecture.md)

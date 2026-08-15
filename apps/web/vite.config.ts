@@ -3,6 +3,13 @@ import { visualizer } from "rollup-plugin-visualizer";
 import { defineConfig } from "vite";
 
 const configuredBase = process.env.VITE_BASE_PATH?.trim();
+const localApiProxy = {
+  "/api": "http://localhost:4000",
+  "/socket.io": {
+    target: "http://localhost:4000",
+    ws: true
+  }
+};
 
 export default defineConfig(({ mode }) => ({
   base: configuredBase || "/",
@@ -13,13 +20,13 @@ export default defineConfig(({ mode }) => ({
       : [])
   ],
   server: {
-    proxy: {
-      "/api": "http://localhost:4000",
-      "/socket.io": {
-        target: "http://localhost:4000",
-        ws: true
-      }
-    }
+    proxy: localApiProxy
+  },
+  // Keep production-like `vite preview` tests same-origin while still using
+  // the local Express server. This is a local-only proxy; GitHub Pages does
+  // not run Vite and uses the Cloudflare Worker routes instead.
+  preview: {
+    proxy: localApiProxy
   },
   build: {
     cssCodeSplit: true,

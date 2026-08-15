@@ -455,6 +455,16 @@ export default function ArenaPreview({
       return;
     }
     const { scene, camera, renderer, qualityConfig } = sceneSetup;
+    const onWebglContextLost = (event: Event) => {
+      event.preventDefault();
+      setRenderError("The 3D renderer paused on this device. Retry in performance mode, then re-enter the game if needed.");
+    };
+    const onWebglContextRestored = () => {
+      setFallbackQuality("performance");
+      setRenderError("");
+    };
+    renderer.domElement.addEventListener("webglcontextlost", onWebglContextLost, false);
+    renderer.domElement.addEventListener("webglcontextrestored", onWebglContextRestored, false);
     const autoQualityController = quality === "auto" && !fallbackQuality
       ? autoQualityControllerRef.current ?? undefined
       : undefined;
@@ -1282,6 +1292,8 @@ export default function ArenaPreview({
       return () => {
         fpsLoop.stop();
         window.removeEventListener("resize", resizeFps);
+        renderer.domElement.removeEventListener("webglcontextlost", onWebglContextLost);
+        renderer.domElement.removeEventListener("webglcontextrestored", onWebglContextRestored);
         unsubscribeVfx();
         unsubscribeAnimation();
         performanceCapture.dispose();
@@ -1375,6 +1387,8 @@ export default function ArenaPreview({
     return () => {
       overviewLoop.stop();
       window.removeEventListener("resize", resize);
+      renderer.domElement.removeEventListener("webglcontextlost", onWebglContextLost);
+      renderer.domElement.removeEventListener("webglcontextrestored", onWebglContextRestored);
       unsubscribeVfx();
       unsubscribeAnimation();
       performanceCapture.dispose();

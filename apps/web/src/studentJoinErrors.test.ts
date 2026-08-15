@@ -21,10 +21,18 @@ test("student join errors provide cause-specific recovery guidance", () => {
 test("student join errors retain code and connection recovery guidance", () => {
   assert.equal(
     formatStudentJoinError(new ApiError("Session not found.", 404)),
-    "Session not found. Check the game code with the host."
+    "That game code was not found. Check the code with your teacher, then try again."
   );
   assert.equal(
     formatStudentJoinError(new ApiError("Could not reach the game server.", 0)),
-    "Could not reach the game server. Check your connection, then try again."
+    "We can open QuizStrike, but this network cannot reach the game server. Try again, or ask your teacher for help."
+  );
+  assert.equal(
+    formatStudentJoinError(new ApiError("The request timed out.", 0, { kind: "timeout" })),
+    "The game server is taking too long to respond. It may be waking up. Wait a few seconds, then try again."
+  );
+  assert.equal(
+    formatStudentJoinError(new ApiError("Bad gateway", 502, { kind: "server" })),
+    "The game server is waking up or temporarily unavailable. Wait a few seconds, then try again."
   );
 });

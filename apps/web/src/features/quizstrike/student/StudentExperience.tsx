@@ -606,6 +606,7 @@ export default function StudentExperience({ onExit }: { onExit: () => void }) {
     let socket: Socket | null = null;
     let positionFlushTimer: number | undefined;
     let hasConnected = false;
+    let removePageRestoreListeners: (() => void) | undefined;
     const setupSocket = async () => {
       const { createMultiplayerSocket } = await import("../../multiplayer/connection");
       if (disposed) return;
@@ -626,6 +627,19 @@ export default function StudentExperience({ onExit }: { onExit: () => void }) {
     const lastRemotePositions = new Map<string, { x: number; y?: number; z: number }>();
     let lastVisualSession = activeSession;
     let removedByTeacher = false;
+    const reconnectAfterPageRestore = () => {
+      if (disposed || removedByTeacher || document.visibilityState === "hidden") return;
+      if (!connectedSocket.connected) {
+        setIsSocketReconnecting(true);
+        connectedSocket.connect();
+      }
+    };
+    window.addEventListener("pageshow", reconnectAfterPageRestore);
+    document.addEventListener("visibilitychange", reconnectAfterPageRestore);
+    removePageRestoreListeners = () => {
+      window.removeEventListener("pageshow", reconnectAfterPageRestore);
+      document.removeEventListener("visibilitychange", reconnectAfterPageRestore);
+    };
     const emitPlayerVfx = (kind: ArenaVfxKind, playerId = activePlayerId, source = lastVisualSession) => {
       const target = source.players.find((candidate) => candidate.id === playerId);
       emitArenaVfx({ kind, x: target?.x ?? 0, z: target?.z ?? 0, team: target?.team });
@@ -987,6 +1001,7 @@ export default function StudentExperience({ onExit }: { onExit: () => void }) {
     void setupSocket();
     return () => {
       disposed = true;
+      removePageRestoreListeners?.();
       if (positionFlushTimer !== undefined) window.clearTimeout(positionFlushTimer);
       setIsSocketReconnecting(false);
       if (socketRef.current === socket) socketRef.current = null;
@@ -2086,9 +2101,9 @@ export default function StudentExperience({ onExit }: { onExit: () => void }) {
               </div>
             )}
             {isSocketReconnecting && (
-              <p className="connection-banner">
+              <p className="connection-banner" data-testid="student-realtime-reconnecting">
                 <WifiOff size={16} aria-hidden="true" />
-                Reconnecting...
+                Live game connection lost. Trying to reconnect...
               </p>
             )}
             {!player.isAlive && session.settings.gameMode !== "flag" && (

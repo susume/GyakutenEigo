@@ -1,10 +1,10 @@
 # Online play and deployment runbook
 
-Last verified: 11 August 2026
+Last verified: 15 August 2026
 
 This runbook covers the current hosted QuizStrike system: a static React/Vite
-client on GitHub Pages, one Render Node/Express/Socket.IO service, and a
-server-only Prisma connection to Supabase PostgreSQL. It also defines the
+client on GitHub Pages, Cloudflare path routes, one Render Node/Express/Socket.IO
+service, and a server-only Prisma connection to Supabase PostgreSQL. It also defines the
 single-room authority, reconnect, teacher-pause, and teacher-only Learning
 Pulse behavior that must remain true during deployment.
 
@@ -12,10 +12,12 @@ Pulse behavior that must remain true during deployment.
 
 ```mermaid
 flowchart LR
-  Student[Student browser] -->|HTTPS / WSS| API[Render: gyakuteneigo-api]
-  Teacher[Teacher browser] -->|HTTPS / WSS| API
+  Student[Student browser] -->|HTTPS / WSS same origin| Edge[Cloudflare routes]
+  Teacher[Teacher browser] -->|HTTPS / WSS same origin| Edge
+  Edge -->|/api/* and /socket.io/*| API[Render: gyakuteneigo-api]
   Pages[GitHub Pages / custom domain] --> Student
   Pages --> Teacher
+  Edge -.-> Pages
   API -->|Prisma session-pooler connection| DB[(Supabase PostgreSQL)]
 ```
 
@@ -23,8 +25,9 @@ flowchart LR
 | --- | --- |
 | Web artifact | `apps/web/dist` |
 | Static host | GitHub Pages, optionally `www.gyakuteneigo.com` and aliases |
-| API/Socket.IO | `https://api.gyakuteneigo.com` |
-| Render fallback | `https://gyakuteneigo-api.onrender.com` |
+| Browser API/Socket.IO | `https://gyakuteneigo.com/api/*` and `https://gyakuteneigo.com/socket.io/*` |
+| Backend origin | `https://gyakuteneigo-api.onrender.com` (Worker-only) |
+| Proxy implementation | `infrastructure/cloudflare/src/index.ts` |
 | Render service | `gyakuteneigo-api`, one Node instance |
 | Database | Supabase project `Quiz Strike Production`, Sydney (`ap-southeast-2`) |
 | Database access | Private PostgreSQL session pooler through Prisma |
@@ -32,7 +35,7 @@ flowchart LR
 
 The old Render PostgreSQL database is retired and must not be used. Supabase is
 not used as a browser database, auth provider, realtime transport, or object
-store. The browser communicates with the Render API only.
+store. The browser communicates with the Render API through Cloudflare only.
 
 ## Release prerequisites
 
@@ -105,11 +108,13 @@ process. Never print the full URL in logs or paste it into a client build.
 Set these as GitHub Actions variables or equivalent static-host build values:
 
 ```text
-VITE_API_URL=https://api.gyakuteneigo.com
-VITE_API_FALLBACK_URL=https://gyakuteneigo-api.onrender.com
 VITE_BASE_PATH=/
 PAGE_CUSTOM_DOMAIN=www.gyakuteneigo.com
 ```
+
+Do not set `VITE_API_URL` or `VITE_API_FALLBACK_URL` for the production Pages
+build. The browser resolves API and Socket.IO traffic from
+`window.location.origin`; local/test builds may set those variables explicitly.
 
 `.github/workflows/deploy-web.yml` runs on `main` pushes or manual dispatch and:
 
@@ -117,7 +122,7 @@ PAGE_CUSTOM_DOMAIN=www.gyakuteneigo.com
 2. builds `@quizstrike/shared` and `@quizstrike/web`;
 3. injects the public `VITE_*` values;
 4. copies `index.html` to `404.html` and creates fallback entry points for
-   `/quiz-strike`, `/join`, and `/game`;
+   `/quiz-strike`, `/join`, `/game`, `/check`, and `/diagnostics`;
 5. writes `CNAME` when `PAGE_CUSTOM_DOMAIN` is present;
 6. uploads and deploys `apps/web/dist` through GitHub Pages.
 
@@ -128,6 +133,7 @@ tab, not only through the home page:
 - `/quiz-strike`;
 - `/join`;
 - `/game`;
+- `/check`;
 - `/tournament-study/<released-id>` when applicable.
 
 If the site is hosted below a repository path, set `VITE_BASE_PATH` to that
@@ -202,7 +208,7 @@ WebSocket upgrade, reconnect behavior, and the deployed custom-domain origin.
 ## Health and deployment verification
 
 ```powershell
-Invoke-RestMethod https://api.gyakuteneigo.com/api/health
+Invoke-RestMethod https://gyakuteneigo.com/api/health
 ```
 
 Require `ok: true` and the expected `storage: postgres` result. Inspect Render
@@ -238,8 +244,10 @@ included in reconnect snapshots and checkpoint fields; the Learning Pulse is
 recomputed from authoritative answer logs instead of being stored in a
 snapshot.
 
-The API client can try the configured fallback API origin for HTTP/API wake-up,
-but fallback selection does not make live room state multi-instance-safe.
+The production API client has no alternate browser-visible Render fallback. Its
+only API candidate is the current website origin; infrastructure failover, if
+needed, belongs in Cloudflare or the backend deployment rather than in student
+browser code.
 
 ## Scaling limit
 

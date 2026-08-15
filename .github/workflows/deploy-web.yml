@@ -41,8 +41,6 @@ jobs:
       - name: Build web app
         run: npm run build -w @quizstrike/web
         env:
-          VITE_API_URL: ${{ vars.VITE_API_URL || 'https://api.gyakuteneigo.com' }}
-          VITE_API_FALLBACK_URL: ${{ vars.VITE_API_FALLBACK_URL || 'https://gyakuteneigo-api.onrender.com' }}
           VITE_BASE_PATH: ${{ vars.VITE_BASE_PATH || '/' }}
 
       - name: Configure SPA fallback and optional custom domain
@@ -51,7 +49,7 @@ jobs:
           PAGE_CUSTOM_DOMAIN: ${{ vars.PAGE_CUSTOM_DOMAIN || 'www.gyakuteneigo.com' }}
         run: |
           cp apps/web/dist/index.html apps/web/dist/404.html
-          for route in quiz-strike join game; do
+          for route in quiz-strike join game check diagnostics; do
             mkdir -p "apps/web/dist/$route"
             cp apps/web/dist/index.html "apps/web/dist/$route/index.html"
           done

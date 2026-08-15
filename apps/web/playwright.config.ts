@@ -18,15 +18,35 @@ export default defineConfig({
   timeout: 90_000,
   expect: { timeout: 10_000 },
   reporter: process.env.CI === "true" ? [["line"], ["html", { open: "never" }]] : "line",
-  use: {
-    ...devices["Desktop Chrome"],
-    ...(installedChromePath ? { launchOptions: { executablePath: installedChromePath } } : {}),
-    baseURL: "http://127.0.0.1:4173",
-    contextOptions: { reducedMotion: "reduce" },
-    trace: "retain-on-failure",
-    screenshot: "only-on-failure",
-    video: process.env.CI === "true" ? "retain-on-failure" : "off"
-  },
+  projects: [
+    {
+      name: "desktop-chrome",
+      testIgnore: /ipad\.spec\.ts$/u,
+      use: {
+        ...devices["Desktop Chrome"],
+        ...(installedChromePath ? { launchOptions: { executablePath: installedChromePath } } : {}),
+        baseURL: "http://127.0.0.1:4173",
+        contextOptions: { reducedMotion: "reduce" },
+        trace: "retain-on-failure",
+        screenshot: "only-on-failure",
+        video: process.env.CI === "true" ? "retain-on-failure" : "off"
+      }
+    },
+    {
+      name: "ipad-like",
+      testMatch: /ipad\.spec\.ts$/u,
+      use: {
+        ...devices["iPad (gen 7)"],
+        browserName: "chromium",
+        ...(installedChromePath ? { launchOptions: { executablePath: installedChromePath } } : {}),
+        baseURL: "http://127.0.0.1:4173",
+        contextOptions: { reducedMotion: "reduce" },
+        trace: "retain-on-failure",
+        screenshot: "only-on-failure",
+        video: process.env.CI === "true" ? "retain-on-failure" : "off"
+      }
+    }
+  ],
   webServer: [
     {
       command: "npm run start -w @quizstrike/server",

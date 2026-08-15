@@ -1,0 +1,29 @@
+name = "quizstrike-api-proxy"
+main = "src/index.ts"
+compatibility_date = "2026-08-15"
+workers_dev = false
+
+# This is a public origin, not a secret. Change it in the Cloudflare Worker
+# environment if the Render service name changes; never put credentials here.
+[vars]
+BACKEND_ORIGIN = "https://gyakuteneigo-api.onrender.com"
+
+# Routes are intentionally limited to live backend paths. GitHub Pages keeps
+# serving every other path on the public domain. If the site is currently
+# canonical on www, keep the www entries and configure the apex entries only
+# after the apex is serving the Pages site through Cloudflare.
+[[routes]]
+pattern = "gyakuteneigo.com/api/*"
+zone_name = "gyakuteneigo.com"
+
+[[routes]]
+pattern = "gyakuteneigo.com/socket.io/*"
+zone_name = "gyakuteneigo.com"
+
+[[routes]]
+pattern = "www.gyakuteneigo.com/api/*"
+zone_name = "gyakuteneigo.com"
+
+[[routes]]
+pattern = "www.gyakuteneigo.com/socket.io/*"
+zone_name = "gyakuteneigo.com"

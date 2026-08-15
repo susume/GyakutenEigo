@@ -13,6 +13,8 @@ export interface MultiplayerConnectionOptions {
   onProtocolError?: (error: ProtocolErrorEvent) => void;
 }
 
+export const SOCKET_IO_PATH = "/socket.io/";
+
 /**
  * Owns socket construction and the protocol handshake. Feature code receives
  * the connected Socket.IO transport only after this layer has installed its
@@ -22,7 +24,18 @@ export const createMultiplayerSocket = (
   roomJoin: RoomJoinPayload,
   options: MultiplayerConnectionOptions = {}
 ): Socket => {
-  const socket = io(getApiUrl(), { autoConnect: false });
+  const socket = io(getApiUrl(), {
+    autoConnect: false,
+    path: SOCKET_IO_PATH,
+    // Start with long polling and let Engine.IO upgrade to WebSocket. Some
+    // school networks allow polling but block WebSocket upgrades.
+    transports: ["polling", "websocket"],
+    upgrade: true,
+    timeout: 10_000,
+    reconnection: true,
+    reconnectionDelay: 1_000,
+    reconnectionDelayMax: 5_000
+  });
   let joinedConnectionId: string | undefined;
 
   socket.on("connect", () => {
@@ -43,4 +56,3 @@ export const createMultiplayerSocket = (
   socket.connect();
   return socket;
 };
-

@@ -1,5 +1,23 @@
+export const normalizeApiOrigin = (value: string | undefined) => {
+  const trimmed = value?.trim();
+  return trimmed ? trimmed.replace(/\/$/, "") : undefined;
+};
+
+export const resolveApiOrigin = ({
+  pageOrigin,
+  configuredOrigin,
+  allowConfiguredOrigin
+}: {
+  pageOrigin: string;
+  configuredOrigin?: string;
+  allowConfiguredOrigin: boolean;
+}) =>
+  allowConfiguredOrigin
+    ? normalizeApiOrigin(configuredOrigin) ?? normalizeApiOrigin(pageOrigin) ?? pageOrigin
+    : normalizeApiOrigin(pageOrigin) ?? pageOrigin;
+
 export const buildApiUrlCandidates = (...values: Array<string | undefined>) =>
-  [...new Set(values.map((value) => value?.trim().replace(/\/$/, "")).filter((value): value is string => Boolean(value)))];
+  [...new Set(values.map(normalizeApiOrigin).filter((value): value is string => Boolean(value)))];
 
 export class ApiRequestTimeoutError extends Error {
   constructor(public timeoutMs: number) {
