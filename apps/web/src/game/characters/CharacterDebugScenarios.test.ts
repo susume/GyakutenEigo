@@ -35,3 +35,12 @@ test("summarizeCharacterDebugSession reports team, alive, and gear coverage", ()
   assert.equal(summary.alive, 18);
   assert.ok(summary.gearTypes >= 4);
 });
+
+test("character lab stress data presents the complete mixed streak ladder across both teams", () => {
+  const players = createCharacterDebugSession({ count: 20 }).players;
+  const streaks = new Set(players.map((player) => player.freezeStreak));
+
+  for (let streak = 0; streak <= 15; streak += 1) assert.ok(streaks.has(streak));
+  assert.ok(players.some((player) => player.team === "blue" && (player.freezeStreak ?? 0) >= 8));
+  assert.ok(players.some((player) => player.team === "red" && (player.freezeStreak ?? 0) >= 8));
+});

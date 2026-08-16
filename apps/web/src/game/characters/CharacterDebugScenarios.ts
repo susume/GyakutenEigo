@@ -57,6 +57,9 @@ const createDebugPlayer = (index: number, count: CharacterStressCount, tick: num
     score: Math.max(0, 30 - index),
     correctAnswers: 10 + (index % 6),
     wrongAnswers: index % 3,
+    // Spread the full aura ladder through Character Lab so visual and
+    // classroom-scale performance checks exercise the authoritative field.
+    freezeStreak: index % 16,
     gear: DEBUG_GEARS[index % DEBUG_GEARS.length],
     joinedAt: "2026-07-08T00:00:00.000Z"
   };

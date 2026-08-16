@@ -90,7 +90,12 @@ export const createCharacterSync = (deps: CharacterSyncDependencies) => {
       map: makeLabelTexture(player.isBot ? "BOT" : `${playerAccuracy(player)}%`, player.team === "blue" ? "#7dd3fc" : "#fb923c"),
       transparent: true,
       depthWrite: false
-    })
+    }),
+    streakAuraTextures: {
+      magic: deps.vfxTextures?.magic,
+      circle: deps.vfxTextures?.circle
+    },
+    streakAuraDetail: deps.activeQuality === "performance" ? 0 : activeQuality === "balanced" ? 1 : 2
   });
   const vfxPool = new ArenaVfxPool(
     scene,

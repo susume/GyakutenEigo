@@ -3,6 +3,7 @@ import type { PlayerSession } from "@quizstrike/shared";
 import { CharacterController } from "./CharacterController.js";
 import { CharacterFactory } from "./CharacterFactory.js";
 import type { ArenaAnimationCue, ArenaAnimationEvent } from "../ArenaAnimation.js";
+import { StreakAura, type StreakAuraTextures } from "../vfx/StreakAura.js";
 
 export interface CharacterVisualState {
   x: number;
@@ -16,10 +17,13 @@ export interface CharacterManagerOptions {
   currentPlayerId?: string;
   showBadges?: boolean;
   makeBadgeMaterial: (player: PlayerSession) => THREE.SpriteMaterial;
+  streakAuraTextures?: StreakAuraTextures;
+  streakAuraDetail?: number;
 }
 
 type CharacterRecord = {
   controller: CharacterController;
+  streakAura: StreakAura;
   badge: THREE.Sprite;
   ring?: THREE.Mesh;
   gear: string;
@@ -71,6 +75,7 @@ export class CharacterManager {
       record.alive = player.isAlive;
       record.team = player.team;
       record.role = player.role;
+      record.streakAura.setStreak(player.isAlive ? player.freezeStreak ?? 0 : 0);
       record.controller.carryingObjective = objectiveCarrierId === player.id;
       record.controller.setPosture(player.crouching === true, player.jumping === true);
       if (!player.isAlive) {
@@ -135,13 +140,17 @@ export class CharacterManager {
 
   update(delta: number, elapsed: number, camera: THREE.Camera) {
     for (const record of this.records.values()) {
-      if (!record.controller.model.root.visible) continue;
-      record.controller.update(delta, elapsed, camera);
-      const { current, alive } = record.controller;
-      record.badge.position.set(current.x, current.y + 6.2, current.z);
-      record.badge.scale.set(alive ? 8.2 : 7.2, alive ? 3 : 2.6, 1);
-      record.badge.lookAt(camera.position);
-      if (record.ring) record.ring.position.set(current.x, current.y + 0.08, current.z);
+      if (record.controller.model.root.visible) {
+        record.controller.update(delta, elapsed, camera);
+        const { current, alive } = record.controller;
+        record.badge.position.set(current.x, current.y + 6.2, current.z);
+        record.badge.scale.set(alive ? 8.2 : 7.2, alive ? 3 : 2.6, 1);
+        record.badge.lookAt(camera.position);
+        if (record.ring) record.ring.position.set(current.x, current.y + 0.08, current.z);
+      }
+      // Shutdown VFX intentionally continues for a short window after a
+      // character is hidden so the collapse remains visible at the hit point.
+      record.streakAura.update(delta, elapsed, camera);
     }
   }
 
@@ -175,6 +184,14 @@ export class CharacterManager {
     });
     const controller = new CharacterController(model, state.x, state.z, state.facing, player.isAlive, state.y ?? 0);
     this.scene.add(model.root);
+    const streakAura = new StreakAura({
+      scene: this.scene,
+      target: model.root,
+      textures: this.options.streakAuraTextures,
+      detail: this.options.streakAuraDetail,
+      seed: player.id,
+      initialStreak: player.isAlive ? player.freezeStreak ?? 0 : 0
+    });
 
     const badge = new THREE.Sprite(this.options.makeBadgeMaterial(player));
     badge.position.set(state.x, (state.y ?? 0) + 6.2, state.z);
@@ -195,6 +212,7 @@ export class CharacterManager {
 
     this.records.set(player.id, {
       controller,
+      streakAura,
       badge,
       ring,
       gear: player.gear,
@@ -212,6 +230,7 @@ export class CharacterManager {
   }
 
   private removeRecord(record: CharacterRecord) {
+    record.streakAura.dispose();
     record.controller.model.dispose();
     this.scene.remove(record.controller.model.root);
     this.scene.remove(record.badge);
