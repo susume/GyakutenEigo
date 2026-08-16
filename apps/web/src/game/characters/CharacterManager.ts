@@ -121,6 +121,18 @@ export class CharacterManager {
     return record?.controller.model.getMuzzleWorldPosition();
   }
 
+  getGroundWorldPosition(playerId: string) {
+    return this.records.get(playerId)?.controller.model.getGroundWorldPosition();
+  }
+
+  getTorsoWorldPosition(playerId: string) {
+    return this.records.get(playerId)?.controller.model.getTorsoWorldPosition();
+  }
+
+  getHeadWorldPosition(playerId: string) {
+    return this.records.get(playerId)?.controller.model.getHeadWorldPosition();
+  }
+
   update(delta: number, elapsed: number, camera: THREE.Camera) {
     for (const record of this.records.values()) {
       if (!record.controller.model.root.visible) continue;

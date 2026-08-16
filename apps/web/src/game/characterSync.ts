@@ -1,9 +1,16 @@
 import * as THREE from "three";
 import {
+  CHARACTER_VISUAL_SCALE,
   FPS_CROUCH_EYE_HEIGHT,
   FPS_STANDING_EYE_HEIGHT
 } from "./ArenaCamera";
-import { ArenaVfxPool, subscribeArenaVfx, type ArenaVfxTextures } from "./ArenaVfx";
+import {
+  ArenaVfxPool,
+  getArenaVfxAnchor,
+  subscribeArenaVfx,
+  type ArenaVfxEvent,
+  type ArenaVfxTextures
+} from "./ArenaVfx";
 import { subscribeArenaAnimation } from "./ArenaAnimation";
 import { CharacterFactory } from "./characters/CharacterFactory";
 import { CharacterManager } from "./characters/CharacterManager";
@@ -90,17 +97,6 @@ export const createCharacterSync = (deps: CharacterSyncDependencies) => {
     deps.activeQuality === "performance" ? 0 : activeQuality === "balanced" ? 1 : 2,
     deps.vfxTextures
   );
-  const unsubscribeVfx = subscribeArenaVfx((event) => {
-    const muzzlePosition = event.playerId
-      ? characterManager.getMuzzleWorldPosition(event.playerId)
-      : undefined;
-    vfxPool.emit(muzzlePosition ? {
-      ...event,
-      x: muzzlePosition.x,
-      y: muzzlePosition.y,
-      z: muzzlePosition.z
-    } : event);
-  });
   const unsubscribeAnimation = subscribeArenaAnimation((event) => characterManager.triggerAnimation(event));
   const knownAlive = new Map(players.map((player) => [player.id, player.isAlive]));
   let knownFlagState = session?.flag?.state;
@@ -127,6 +123,50 @@ export const createCharacterSync = (deps: CharacterSyncDependencies) => {
       facing: isFiniteNumber(player.facing) ? player.facing : fallback.facing
     };
   };
+
+  let latestPlayers = players;
+  const resolvePlayerAnchor = (event: ArenaVfxEvent) => {
+    const anchor = getArenaVfxAnchor(event);
+    if (anchor === "world") return event;
+    const modelPosition = event.playerId
+      ? anchor === "muzzle"
+        ? characterManager.getMuzzleWorldPosition(event.playerId)
+        : anchor === "head"
+          ? characterManager.getHeadWorldPosition(event.playerId)
+          : anchor === "torso"
+            ? characterManager.getTorsoWorldPosition(event.playerId)
+            : characterManager.getGroundWorldPosition(event.playerId)
+      : undefined;
+    if (modelPosition) {
+      return { ...event, x: modelPosition.x, y: modelPosition.y, z: modelPosition.z };
+    }
+    if (event.playerId) {
+      const playerIndex = latestPlayers.findIndex((candidate) => candidate.id === event.playerId);
+      const player = latestPlayers[playerIndex];
+      if (player) {
+        const visual = getVisualPosition(player, Math.max(0, playerIndex));
+        const groundY = visual.y ?? 0;
+        const fallbackY = anchor === "head"
+          ? groundY + 1.68 * CHARACTER_VISUAL_SCALE
+          : anchor === "torso"
+            ? groundY + 1.18 * CHARACTER_VISUAL_SCALE
+            : anchor === "muzzle"
+              ? groundY + 1.24 * CHARACTER_VISUAL_SCALE
+              : groundY;
+        return { ...event, x: visual.x, y: fallbackY, z: visual.z };
+      }
+    }
+    if (isFiniteNumber(event.y)) return event;
+    const groundY = getArenaGroundHeight(arenaMapId, event.x, event.z);
+    const fallbackY = anchor === "head"
+      ? groundY + 1.68 * CHARACTER_VISUAL_SCALE
+      : anchor === "torso" || anchor === "muzzle"
+        ? groundY + 1.18 * CHARACTER_VISUAL_SCALE
+        : groundY;
+    return { ...event, y: fallbackY };
+  };
+  const emitVfx = (event: ArenaVfxEvent) => vfxPool.emit(resolvePlayerAnchor(event));
+  const unsubscribeVfx = subscribeArenaVfx(emitVfx);
 
   const makeTrainingPlayers = () => [
     { ...(currentPlayer ?? {
@@ -162,14 +202,15 @@ export const createCharacterSync = (deps: CharacterSyncDependencies) => {
 
   const syncPlayers = (nextSession?: GameSession, nextCurrentPlayer?: PlayerSession) => {
     const nextPlayers = nextSession?.players.length ? nextSession.players : nextCurrentPlayer ? [nextCurrentPlayer] : [];
+    latestPlayers = nextPlayers;
     nextPlayers.forEach((nextPlayer, index) => {
       const wasAlive = knownAlive.get(nextPlayer.id);
       const visualPosition = getVisualPosition(nextPlayer, index);
       if (wasAlive === false && nextPlayer.isAlive) {
-        vfxPool.emit({ kind: "spawn", x: visualPosition.x, y: visualPosition.y, z: visualPosition.z, team: nextPlayer.team, local: nextPlayer.id === currentPlayerId });
+        emitVfx({ kind: "spawn", x: visualPosition.x, y: visualPosition.y, z: visualPosition.z, playerId: nextPlayer.id, team: nextPlayer.team, local: nextPlayer.id === currentPlayerId });
       }
       if (wasAlive === true && !nextPlayer.isAlive) {
-        vfxPool.emit({ kind: "elimination", x: visualPosition.x, y: visualPosition.y, z: visualPosition.z, team: nextPlayer.team, local: nextPlayer.id === currentPlayerId });
+        emitVfx({ kind: "elimination", x: visualPosition.x, y: visualPosition.y, z: visualPosition.z, playerId: nextPlayer.id, team: nextPlayer.team, local: nextPlayer.id === currentPlayerId });
       }
       knownAlive.set(nextPlayer.id, nextPlayer.isAlive);
     });
@@ -179,19 +220,30 @@ export const createCharacterSync = (deps: CharacterSyncDependencies) => {
       const objectivePlayerId = nextFlag.interactionPlayerId ?? nextFlag.capturedById ?? nextFlag.placedById ?? nextFlag.carrierId;
       const objectivePlayer = nextPlayers.find((candidate) => candidate.id === objectivePlayerId);
       const objectivePosition = objectivePlayer && nextFlag.state === "carried"
-        ? { x: objectivePlayer.x ?? nextFlag.position.x, z: objectivePlayer.z ?? nextFlag.position.z }
-        : nextFlag.position;
+        ? {
+            x: objectivePlayer.x ?? nextFlag.position.x,
+            y: getArenaObjectiveGroundY(
+              arenaMapId,
+              { x: objectivePlayer.x ?? nextFlag.position.x, y: objectivePlayer.y, z: objectivePlayer.z ?? nextFlag.position.z },
+              objectivePlayer.crouching ? FPS_CROUCH_EYE_HEIGHT : FPS_STANDING_EYE_HEIGHT
+            ),
+            z: objectivePlayer.z ?? nextFlag.position.z
+          }
+        : {
+            ...nextFlag.position,
+            y: getArenaObjectiveGroundY(arenaMapId, nextFlag.position, FPS_STANDING_EYE_HEIGHT)
+          };
       if (nextFlag.state === "being_placed" || nextFlag.state === "being_captured") {
-        vfxPool.emit({ kind: "objective_progress", ...objectivePosition, team: objectivePlayer?.team, local: objectivePlayer?.id === currentPlayerId });
+        emitVfx({ kind: "objective_progress", ...objectivePosition, team: objectivePlayer?.team, local: objectivePlayer?.id === currentPlayerId });
         if (objectivePlayerId) characterManager.triggerPlayerAnimation(objectivePlayerId, "flag_plant");
       } else if (nextFlag.state === "placed") {
-        vfxPool.emit({ kind: "flag_plant", ...objectivePosition, team: objectivePlayer?.team, local: objectivePlayer?.id === currentPlayerId });
+        emitVfx({ kind: "flag_plant", ...objectivePosition, team: objectivePlayer?.team, local: objectivePlayer?.id === currentPlayerId });
         if (objectivePlayerId) characterManager.triggerPlayerAnimation(objectivePlayerId, "flag_plant");
       } else if (nextFlag.state === "captured") {
-        vfxPool.emit({ kind: "flag_capture", ...objectivePosition, team: objectivePlayer?.team, local: objectivePlayer?.id === currentPlayerId });
+        emitVfx({ kind: "flag_capture", ...objectivePosition, team: objectivePlayer?.team, local: objectivePlayer?.id === currentPlayerId });
         if (objectivePlayerId) characterManager.triggerPlayerAnimation(objectivePlayerId, "flag_capture");
       } else if (nextFlag.state === "carried") {
-        vfxPool.emit({
+        emitVfx({
           kind: knownFlagState === "available" || knownFlagState === "dropped" ? "flag_pickup" : "objective",
           ...objectivePosition,
           team: objectivePlayer?.team,
@@ -205,14 +257,14 @@ export const createCharacterSync = (deps: CharacterSyncDependencies) => {
     if (announcement?.id && knownAnnouncementId !== announcement.id) {
       const anchor = nextCurrentPlayer ?? nextPlayers[0];
       if (announcement.kind === "round_start") {
-        vfxPool.emit({ kind: "round_start", x: anchor?.x ?? 0, z: anchor?.z ?? 0, team: anchor?.team, local: anchor?.id === currentPlayerId });
+        emitVfx({ kind: "round_start", x: anchor?.x ?? 0, z: anchor?.z ?? 0, playerId: anchor?.id, team: anchor?.team, local: anchor?.id === currentPlayerId });
         characterManager.triggerAnimation({ kind: "respawn" });
       } else if (announcement.kind === "round_result" || announcement.kind === "game_over") {
         const winningTeam = /blue/i.test(announcement.title) ? "blue" : /red/i.test(announcement.title) ? "red" : undefined;
         const localResultKind = winningTeam && anchor?.id === currentPlayerId
           ? anchor.team === winningTeam ? "victory" : "defeat"
           : "round_end";
-        vfxPool.emit({ kind: localResultKind, x: anchor?.x ?? 0, z: anchor?.z ?? 0, team: anchor?.team, local: anchor?.id === currentPlayerId });
+        emitVfx({ kind: localResultKind, x: anchor?.x ?? 0, z: anchor?.z ?? 0, playerId: anchor?.id, team: anchor?.team, local: anchor?.id === currentPlayerId });
         if (winningTeam) {
           characterManager.triggerAnimation({ kind: "victory", team: winningTeam });
           characterManager.triggerAnimation({ kind: "defeat", team: winningTeam === "blue" ? "red" : "blue" });

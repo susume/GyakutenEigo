@@ -646,7 +646,7 @@ export default function StudentExperience({ onExit }: { onExit: () => void }) {
     };
     const emitPlayerVfx = (kind: ArenaVfxKind, playerId = activePlayerId, source = lastVisualSession) => {
       const target = source.players.find((candidate) => candidate.id === playerId);
-      emitArenaVfx({ kind, x: target?.x ?? 0, y: target?.y, z: target?.z ?? 0, team: target?.team, local: playerId === activePlayerId });
+      emitArenaVfx({ kind, x: target?.x ?? 0, y: target?.y, z: target?.z ?? 0, playerId, team: target?.team, local: playerId === activePlayerId });
     };
     const emitPlayerAnimation = (kind: ArenaAnimationCue, playerId?: string, team?: Team) => {
       emitArenaAnimation({ kind, playerId, team });
@@ -812,9 +812,9 @@ export default function StudentExperience({ onExit }: { onExit: () => void }) {
       const local = lastVisualSession.players.find((candidate) => candidate.id === activePlayerId);
       if (!local || !Number.isFinite(local.x) || !Number.isFinite(local.z)) return;
       const targetTeam = lastVisualSession.players.find((candidate) => candidate.id === payload.targetId)?.team;
-      emitArenaVfx({ kind: "snowball_impact", x: payload.x!, z: payload.z!, team: targetTeam, surface: "snow", intensity: 0.72 });
-      emitArenaVfx({ kind: "player_hit", x: payload.x!, z: payload.z!, team: targetTeam, surface: "player", intensity: 0.72 });
-      if (payload.shield) emitArenaVfx({ kind: "shield", x: payload.x!, z: payload.z!, team: targetTeam, intensity: 0.66 });
+      emitArenaVfx({ kind: "snowball_impact", x: payload.x!, z: payload.z!, playerId: payload.targetId, team: targetTeam, surface: "snow", intensity: 0.72 });
+      emitArenaVfx({ kind: "player_hit", x: payload.x!, z: payload.z!, playerId: payload.targetId, team: targetTeam, surface: "player", intensity: 0.72 });
+      if (payload.shield) emitArenaVfx({ kind: "shield", x: payload.x!, z: payload.z!, playerId: payload.targetId, team: targetTeam, intensity: 0.66 });
       gameAudio.playEvent(payload.shield ? "shield_impact" : "world_impact", getCombatAudioSpatial({
         attacker: { x: payload.x!, z: payload.z! },
         target: { x: local.x!, z: local.z!, facing: local.facing ?? 0 }
@@ -918,20 +918,18 @@ export default function StudentExperience({ onExit }: { onExit: () => void }) {
           fire_cooldown: "Launcher is cooling down."
         };
         queueFeedbackCue(result.reason === "no_valid_target" ? "warning" : "error");
-        if (result.reason === "fire_cooldown") emitPlayerVfx("cooldown");
         setFeedback(messages[result.reason ?? ""] ?? "Snowball launched.");
         return;
       }
       const targetTeam = currentSessionRef.current?.players.find((candidate) => candidate.id === result.targetId)?.team;
       const combatCueIsLocal = result.attackerId === activePlayerId || result.targetId === activePlayerId;
-      emitArenaVfx({ kind: "snowball_impact", x: result.targetX, z: result.targetZ, team: targetTeam, surface: "snow", local: combatCueIsLocal });
-      emitArenaVfx({ kind: "player_hit", x: result.targetX, z: result.targetZ, team: targetTeam, surface: "player", local: combatCueIsLocal });
+      emitArenaVfx({ kind: "snowball_impact", x: result.targetX, z: result.targetZ, playerId: result.targetId, team: targetTeam, surface: "snow", local: combatCueIsLocal });
+      emitArenaVfx({ kind: "player_hit", x: result.targetX, z: result.targetZ, playerId: result.targetId, team: targetTeam, surface: "player", local: combatCueIsLocal });
       emitPlayerAnimation("hit", result.targetId, targetTeam);
-      if (!result.eliminated) emitArenaVfx({ kind: "shield", x: result.targetX, z: result.targetZ, team: targetTeam });
-      if (result.eliminated) emitArenaVfx({ kind: "elimination", x: result.targetX, z: result.targetZ, team: targetTeam });
+      if (!result.eliminated) emitArenaVfx({ kind: "shield", x: result.targetX, z: result.targetZ, playerId: result.targetId, team: targetTeam });
+      if (result.eliminated) emitArenaVfx({ kind: "elimination", x: result.targetX, z: result.targetZ, playerId: result.targetId, team: targetTeam });
       if (result.attackerId === activePlayerId) {
         setHitConfirmPulse((value) => value + 1);
-        emitArenaVfx({ kind: "hit_confirm", x: result.targetX, y: 1.1, z: result.targetZ, team: targetTeam, local: true });
         gameAudio.play(result.eliminated ? "eliminated" : "hit_confirm");
         setFeedback(
           result.converted
@@ -943,7 +941,6 @@ export default function StudentExperience({ onExit }: { onExit: () => void }) {
         if (result.eliminated) setRewardPulse(result.converted ? "Converted!" : "Freeze!");
       }
       if (result.targetId === activePlayerId) {
-        emitArenaVfx({ kind: "damage_taken", x: result.targetX, y: 1.1, z: result.targetZ, team: currentPlayerRef.current?.team, local: true });
         const attackerName = lastVisualSession.players.find((candidate) => candidate.id === result.attackerId)?.nickname ?? "Opponent";
         const incomingSpatial = getCombatAudioSpatial({
           attacker: { x: result.attackerX, z: result.attackerZ },
@@ -1329,9 +1326,7 @@ export default function StudentExperience({ onExit }: { onExit: () => void }) {
       gameAudio.playEvent("answer_reveal");
       if (!wasWrong && payload.result.moneyAwarded > 0) gameAudio.playEvent("score_awarded");
       const answerPosition = payload.result.player;
-      if (wasWrong) {
-        emitArenaVfx({ kind: "answer_incorrect", x: answerPosition.x ?? 0, y: answerPosition.y, z: answerPosition.z ?? 0, team: answerPosition.team, local: true });
-      } else {
+      if (!wasWrong) {
         setCurrencyPulse((value) => value + 1);
         setRewardVfx({
           id: Date.now(),
@@ -1344,6 +1339,7 @@ export default function StudentExperience({ onExit }: { onExit: () => void }) {
           x: answerPosition.x ?? 0,
           y: answerPosition.y,
           z: answerPosition.z ?? 0,
+          playerId: answerPosition.id,
           team: answerPosition.team,
           local: true,
           intensity: payload.result.moneyAwarded > 0 ? 1.15 : 0.95,
@@ -1351,8 +1347,8 @@ export default function StudentExperience({ onExit }: { onExit: () => void }) {
         });
       }
       if (payload.result.respawned) {
-        emitArenaVfx({ kind: "healing", x: payload.result.player.x ?? 0, z: payload.result.player.z ?? 0, team: payload.result.player.team });
-        emitArenaVfx({ kind: "spawn", x: payload.result.player.x ?? 0, z: payload.result.player.z ?? 0, team: payload.result.player.team });
+        emitArenaVfx({ kind: "healing", x: payload.result.player.x ?? 0, z: payload.result.player.z ?? 0, playerId: payload.result.player.id, team: payload.result.player.team });
+        emitArenaVfx({ kind: "spawn", x: payload.result.player.x ?? 0, z: payload.result.player.z ?? 0, playerId: payload.result.player.id, team: payload.result.player.team });
         emitArenaAnimation({ kind: "respawn", playerId: payload.result.player.id, team: payload.result.player.team });
       }
       if (answerFeedbackTimerRef.current !== undefined) window.clearTimeout(answerFeedbackTimerRef.current);
@@ -1410,7 +1406,7 @@ export default function StudentExperience({ onExit }: { onExit: () => void }) {
       setFeedback(payload.message);
       setRewardPulse(payload.message);
       setRewardVfx({ id: Date.now(), label: "Purchase ready", kind: "purchase" });
-      emitArenaVfx({ kind: "purchase", x: payload.player.x ?? 0, y: payload.player.y, z: payload.player.z ?? 0, team: payload.player.team, local: true });
+      emitArenaVfx({ kind: "purchase", x: payload.player.x ?? 0, y: payload.player.y, z: payload.player.z ?? 0, playerId: payload.player.id, team: payload.player.team, local: true });
       gameAudio.playEvent(gearId.endsWith("_blaster") ? "weapon_equip" : "results_confirm");
     } catch (err) {
       status.report(err);
@@ -1436,7 +1432,7 @@ export default function StudentExperience({ onExit }: { onExit: () => void }) {
       setFeedback(payload.message);
       setRewardPulse(payload.message);
       setRewardVfx({ id: Date.now(), label: "Snowballs restocked", kind: "purchase" });
-      emitArenaVfx({ kind: "purchase", x: payload.player.x ?? 0, y: payload.player.y, z: payload.player.z ?? 0, team: payload.player.team, local: true });
+      emitArenaVfx({ kind: "purchase", x: payload.player.x ?? 0, y: payload.player.y, z: payload.player.z ?? 0, playerId: payload.player.id, team: payload.player.team, local: true });
       gameAudio.play("buy");
     } catch (err) {
       status.report(err);

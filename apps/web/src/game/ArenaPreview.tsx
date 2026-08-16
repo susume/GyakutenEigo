@@ -41,7 +41,7 @@ import { isFireKeyboardEvent, isScopeKeyboardEvent, resolveCombatPointerAction, 
 import { gameAudio, type MovementAudioMode } from "./GameAudio";
 import { cycleHeavyGunZoom, getWeaponFov, shouldResetWeaponZoom } from "./weaponControls";
 import { resolveTouchJoystickVector } from "./touchJoystick";
-import { emitArenaVfx, type ArenaVfxStats } from "./ArenaVfx";
+import { emitArenaVfx, getArenaVfxAnchor, type ArenaVfxStats } from "./ArenaVfx";
 import { emitArenaAnimation } from "./ArenaAnimation";
 import { ArenaPerformanceCapture, AutoGraphicsQualityController, type ArenaPerformanceSnapshot } from "./ArenaPerformance";
 import { mountIronJunctionImportedAssets } from "./ironJunctionImportedAssets";
@@ -503,13 +503,13 @@ export default function ArenaPreview({
 
     const puffTexture = loadTexture("/assets/snowball-puff.svg");
     const vfxTextures = {
-      muzzle: loadTexture("/assets/vfx/kenney/muzzle_03.png"),
-      trace: loadTexture("/assets/vfx/kenney/trace_03.png"),
-      spark: loadTexture("/assets/vfx/kenney/spark_03.png"),
+      muzzle: loadTexture("/assets/vfx/kenney/muzzle_03.png?v=2"),
+      trace: loadTexture("/assets/vfx/kenney/trace_03.png?v=2"),
+      spark: loadTexture("/assets/vfx/kenney/spark_03.png?v=2"),
       smoke: loadTexture("/assets/vfx/kenney/smoke_03.png"),
       circle: loadTexture("/assets/vfx/kenney/circle_03.png"),
-      star: loadTexture("/assets/vfx/kenney/star_03.png"),
-      magic: loadTexture("/assets/vfx/kenney/magic_03.png"),
+      star: loadTexture("/assets/vfx/kenney/star_03.png?v=2"),
+      magic: loadTexture("/assets/vfx/kenney/magic_03.png?v=2"),
       snow: puffTexture
     };
     const {
@@ -685,7 +685,6 @@ export default function ArenaPreview({
         renderer.domElement.dataset.zoomLevel = String(next);
         setZoomLevelState(next);
         setZoomPulse((value) => value + 1);
-        if (next > 0) emitArenaVfx({ kind: "zoom", x: playerPosition.x, z: playerPosition.z, y: 0.9, team: currentPlayerTeam });
         if (hasHeavyGun()) gameAudio.playEvent("heavy_scope");
         else gameAudio.play(next > 0 ? "zoom_in" : "zoom_out");
       };
@@ -701,7 +700,6 @@ export default function ArenaPreview({
         if (currentTime - lastLocalFireAt < getGearFireCooldownMs(equippedGearId)) {
           if (currentTime - lastCooldownFxAt > 280) {
             lastCooldownFxAt = currentTime;
-            emitArenaVfx({ kind: "cooldown", x: playerPosition.x, z: playerPosition.z, y: 0.8, team: currentPlayerTeam });
             if (equippedGearId === "quick_blaster") gameAudio.playEvent("cooldown_tick");
           }
           return;
@@ -1038,7 +1036,13 @@ export default function ArenaPreview({
 
       const fpsLoop = createArenaRenderLoop(({ delta, currentTime, elapsed }) => {
         performanceCapture.frame(currentTime);
-        debugVfxPositionRef.current = { x: playerPosition.x, y: playerPosition.y, z: playerPosition.z };
+        // Put target/body previews downrange on the aim line. The former close,
+        // side-offset point made them read like HUD clutter beside the weapon.
+        debugVfxPositionRef.current = {
+          x: playerPosition.x - Math.sin(yaw) * 4.2,
+          y: playerPosition.y - FPS_STANDING_EYE_HEIGHT + 0.08,
+          z: playerPosition.z - Math.cos(yaw) * 4.2
+        };
         vfxPool.setViewPosition(playerPosition);
         vfxPool.update(currentTime);
         desertCitadelVfx?.update(elapsed);
@@ -1399,7 +1403,8 @@ export default function ArenaPreview({
     let performanceWindowAt = performance.now();
     const overviewLoop = createArenaRenderLoop(({ delta, elapsed, currentTime }) => {
       performanceCapture.frame(currentTime);
-      debugVfxPositionRef.current = { x: camera.position.x, y: camera.position.y, z: camera.position.z };
+      // Keep overview previews on the arena floor, not at the orbit camera.
+      debugVfxPositionRef.current = { x: 0, y: 0.12, z: -6 };
       vfxPool.setViewPosition(camera.position);
       vfxPool.update(currentTime);
       desertCitadelVfx?.update(elapsed);
@@ -1534,11 +1539,18 @@ export default function ArenaPreview({
   const vfxDebugEnabled = import.meta.env.DEV && debugOverlay && new URLSearchParams(window.location.search).get("vfxDebug") === "1";
   const triggerDebugVfx = (kind: (typeof VFX_DEBUG_CUES)[number][1]) => {
     const position = debugVfxPositionRef.current;
+    const anchor = getArenaVfxAnchor({ kind });
+    const anchorY = anchor === "head"
+      ? position.y + 4.12
+      : anchor === "torso" || anchor === "muzzle"
+        ? position.y + 2.9
+        : position.y;
     emitArenaVfx({
       kind,
       x: position.x,
-      y: position.y,
+      y: anchorY,
       z: position.z,
+      anchor,
       team: currentPlayerTeam,
       local: true,
       surface: kind === "impact" ? "metal" : kind === "snowball_impact" ? "snow" : undefined

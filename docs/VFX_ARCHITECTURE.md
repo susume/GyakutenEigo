@@ -23,6 +23,13 @@ Three.js version and measured VFX demand exceeds this pool.
 semantic event
       |
       v
+anchor resolver
+  - muzzle: weapon fire / tracer
+  - torso: hits / snow impacts / shields
+  - ground: spawn / healing / rewards / objectives / round cues
+  - world: exact surface impacts
+      |
+      v
 ArenaVfxPool
   - admission priority
   - distance culling
@@ -38,27 +45,40 @@ ArenaVfxPool
       +-- Environment: localized footstep dust/water/metal accents
 ```
 
-Gameplay code emits `emitArenaVfx({ kind, x, y, z, team, surface, local })`; it
-does not construct a mesh, sprite, or particle emitter itself. The network
-transports gameplay events only. Each client generates cosmetic VFX locally and
-never synchronizes particle state.
+Gameplay code emits `emitArenaVfx({ kind, x, y, z, playerId, team, surface,
+local })`; it does not construct a mesh, sprite, or particle emitter itself.
+When `playerId` is present, character sync resolves the semantic anchor against
+the animated model. First-person players, whose third-person model is hidden,
+use the replicated player position plus the same character-scale anchor
+heights. Exact world impacts preserve their collision coordinate. The network
+transports gameplay events only. Each client generates cosmetic VFX locally
+and never synchronizes particle state.
 
 ## Performance policy
 
-- Performance / Low: 6 active effects, up to 6 pooled sprites, one sprite
-  layer per slot, 120-unit
-  remote view range, no expensive distortion or soft particles.
-- Balanced / Medium: 12 active effects, up to 24 pooled sprites, two sprite
-  layers per slot, 200-unit remote view range.
-- High: 16 active effects, up to 48 pooled sprites, three sprite layers per
-  slot, 280-unit remote view range.
+- Performance / Low: 6 active effects, up to 6 visible pooled sprites globally,
+  120-unit remote view range, no expensive distortion or soft particles.
+- Balanced / Medium: 12 active effects, up to 24 visible pooled sprites
+  globally, 200-unit remote view range.
+- High: 16 active effects, up to 48 visible pooled sprites globally, 280-unit
+  remote view range.
 - Local feedback bypasses distance culling and receives higher admission
   priority. Major objective/round cues displace low-priority ambient cues.
-- Each effect is recycled; no per-event geometry is allocated. Shared torus,
-  octahedron, sphere, and beam geometry is disposed once with the pool.
+- Each effect is recycled; no per-event geometry is allocated. Shared ground
+  ring and narrow beam geometry is disposed once with the pool. Screen-filling
+  sphere and wireframe geometry is intentionally prohibited.
 - Remote cues are reduced by distance and are dropped when the global pool is
   full. Active effect, sprite, emitted, and dropped counts are exposed through
   `data-vfx-*` attributes and the development debug overlay.
+
+## Authored effect profiles
+
+The pool shares allocation and materials, not motion. Muzzle plumes, tracers,
+surface impacts, powdery snow hits, player-hit flashes, rewards, purchases,
+shields, objectives, spawn convergence, elimination bursts, healing spirals,
+and round celebrations each use a distinct size, trajectory, gravity, delay,
+fade, and ring/beam treatment. This prevents semantic events from reading as
+recolored versions of one generic effect.
 
 ## Accessibility and readability
 
@@ -73,5 +93,7 @@ or full-screen red overlay is used.
 In a development build, open Character Lab with `?vfxDebug=1` to show the
 developer-only VFX trigger panel. It exercises representative combat, reward,
 player, objective, and round events and reports the current pool budget and
-dropped count. The panel is gated by `import.meta.env.DEV` and cannot appear in
-production gameplay.
+dropped count. FPS target cues are placed downrange on the aim line; ground cues
+remain at floor level. Debug events use their real gameplay timing so motion and
+readability can be judged honestly. The panel is gated by `import.meta.env.DEV`
+and cannot appear in production gameplay.

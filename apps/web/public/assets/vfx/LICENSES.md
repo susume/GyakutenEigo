@@ -27,13 +27,13 @@ later replaced.
 
 | Runtime file | Source asset | Creator | License | Source URL | Date obtained | Modified? | Modification | QuizStrike usage |
 | --- | --- | --- | --- | --- | --- | --- | --- | --- |
-| `kenney/muzzle_03.png` | `PNG (Transparent)/muzzle_03.png` | Kenney Vleugels | CC0 1.0 | https://kenney.nl/assets/particle-pack | 2026-08-16 | No | Runtime tint, scale, rotation, and fade only | Remote and pooled launcher muzzle flash |
-| `kenney/trace_03.png` | `PNG (Transparent)/trace_03.png` | Kenney Vleugels | CC0 1.0 | https://kenney.nl/assets/particle-pack | 2026-08-16 | No | Runtime tint, scale, rotation, and fade only | Lightweight tracer accent and local first-person projectile trail |
-| `kenney/spark_03.png` | `PNG (Transparent)/spark_03.png` | Kenney Vleugels | CC0 1.0 | https://kenney.nl/assets/particle-pack | 2026-08-16 | No | Runtime tint, scale, rotation, and fade only | Snow/player/metal impact accents |
+| `kenney/muzzle_03.png` | `PNG (Transparent)/muzzle_01.png` | Kenney Vleugels | CC0 1.0 | https://kenney.nl/assets/particle-pack | 2026-08-16 | Yes | Renamed to preserve the stable runtime URL; source pixels are unchanged. Runtime tint, scale, rotation, and fade. | Snow-launcher muzzle plume |
+| `kenney/trace_03.png` | `PNG (Transparent)/flare_01.png` | Kenney Vleugels | CC0 1.0 | https://kenney.nl/assets/particle-pack | 2026-08-16 | Yes | Renamed to preserve the stable runtime URL; source pixels are unchanged. Runtime tint, scale, rotation, and fade. | Lightweight projectile glint |
+| `kenney/spark_03.png` | `PNG (Transparent)/star_06.png` | Kenney Vleugels | CC0 1.0 | https://kenney.nl/assets/particle-pack | 2026-08-16 | Yes | Renamed to preserve the stable runtime URL; source pixels are unchanged. Runtime tint, scale, rotation, and fade. | Player and surface impact accents |
 | `kenney/smoke_03.png` | `PNG (Transparent)/smoke_03.png` | Kenney Vleugels | CC0 1.0 | https://kenney.nl/assets/particle-pack | 2026-08-16 | No | Runtime tint, scale, rotation, and fade only | Sand, stone, and footstep dust/smoke |
 | `kenney/circle_03.png` | `PNG (Transparent)/circle_03.png` | Kenney Vleugels | CC0 1.0 | https://kenney.nl/assets/particle-pack | 2026-08-16 | No | Runtime tint, scale, rotation, and fade only | Ground rings, shields, purchase and objective accents |
-| `kenney/star_03.png` | `PNG (Transparent)/star_03.png` | Kenney Vleugels | CC0 1.0 | https://kenney.nl/assets/particle-pack | 2026-08-16 | No | Runtime tint, scale, rotation, and fade only | Reward, capture, victory and hit confirmation accents |
-| `kenney/magic_03.png` | `PNG (Transparent)/magic_03.png` | Kenney Vleugels | CC0 1.0 | https://kenney.nl/assets/particle-pack | 2026-08-16 | No | Runtime tint, scale, rotation, and fade only | Correct-answer energy, spawn and objective activation |
+| `kenney/star_03.png` | `PNG (Transparent)/star_07.png` | Kenney Vleugels | CC0 1.0 | https://kenney.nl/assets/particle-pack | 2026-08-16 | Yes | Renamed to preserve the stable runtime URL; source pixels are unchanged. Runtime tint, scale, rotation, and fade. | Reward, capture, victory and hit-confirmation sparkle |
+| `kenney/magic_03.png` | `PNG (Transparent)/magic_05.png` | Kenney Vleugels | CC0 1.0 | https://kenney.nl/assets/particle-pack | 2026-08-16 | Yes | Renamed to preserve the stable runtime URL; source pixels are unchanged. Runtime tint, scale, rotation, and fade. | Correct-answer glint, spawn and objective activation |
 
 ## Project-authored fallback
 
