@@ -383,28 +383,28 @@ const getSeedPhase = (seed = "") => {
 const clamp01 = (value: number) => Math.max(0, Math.min(1, value));
 const smoothStep = (value: number) => value * value * (3 - 2 * value);
 const mix = (from: number, to: number, amount: number) => from + (to - from) * amount;
+const CURRENT_COLOR_HSL = { h: 0, s: 0, l: 0 };
+const TARGET_COLOR_HSL = { h: 0, s: 0, l: 0 };
 
 const lerpColor = (current: THREE.Color, target: THREE.Color, amount: number) => {
-  const currentHsl = { h: 0, s: 0, l: 0 };
-  const targetHsl = { h: 0, s: 0, l: 0 };
-  current.getHSL(currentHsl);
-  target.getHSL(targetHsl);
+  current.getHSL(CURRENT_COLOR_HSL);
+  target.getHSL(TARGET_COLOR_HSL);
 
   // Keep white and pale-gold core transitions neutral; use a short HSL hue
   // path for saturated tier colors so cyan → violet and magenta → gold do not
   // spend the transition in a muddy gray midpoint.
-  if (currentHsl.s < 0.08 || targetHsl.s < 0.08) {
+  if (CURRENT_COLOR_HSL.s < 0.08 || TARGET_COLOR_HSL.s < 0.08) {
     current.lerp(target, amount);
     return;
   }
 
-  let hueDelta = targetHsl.h - currentHsl.h;
+  let hueDelta = TARGET_COLOR_HSL.h - CURRENT_COLOR_HSL.h;
   if (hueDelta > 0.5) hueDelta -= 1;
   if (hueDelta < -0.5) hueDelta += 1;
   current.setHSL(
-    (currentHsl.h + hueDelta * amount + 1) % 1,
-    mix(currentHsl.s, targetHsl.s, amount),
-    mix(currentHsl.l, targetHsl.l, amount)
+    (CURRENT_COLOR_HSL.h + hueDelta * amount + 1) % 1,
+    mix(CURRENT_COLOR_HSL.s, TARGET_COLOR_HSL.s, amount),
+    mix(CURRENT_COLOR_HSL.l, TARGET_COLOR_HSL.l, amount)
   );
 };
 

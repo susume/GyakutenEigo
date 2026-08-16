@@ -254,12 +254,33 @@ function CharacterLab() {
             main: { x: -80 * ARENA_SCALE, y: DESERT_CITADEL_MAIN_LEVEL_Y + ARENA_PLAYER_EYE_HEIGHT, z: 0, facing: -Math.PI / 2 },
             upper: { x: 30 * ARENA_SCALE, y: DESERT_CITADEL_ROOFTOP_LEVEL_Y + ARENA_PLAYER_EYE_HEIGHT, z: -156 * ARENA_SCALE, facing: Math.PI / 2 }
           }[labLevel];
+    const players = generated.players.map((player, index) => {
+      if (index === 0) return { ...player, ...testPosition };
+      if (labView !== "fps" || count !== 10 || index > 8) return player;
+
+      // Keep the focused aura ladder in a compact, camera-relative formation
+      // so all eight active tiers can be compared without moving the player.
+      const slot = index - 1;
+      const lateral = (slot - 3.5) * 5.2;
+      const distance = 18 + Math.abs(lateral) * 0.08;
+      const forwardX = -Math.sin(testPosition.facing);
+      const forwardZ = -Math.cos(testPosition.facing);
+      const rightX = Math.cos(testPosition.facing);
+      const rightZ = -Math.sin(testPosition.facing);
+      return {
+        ...player,
+        x: testPosition.x + forwardX * distance + rightX * lateral,
+        y: testPosition.y,
+        z: testPosition.z + forwardZ * distance + rightZ * lateral,
+        facing: testPosition.facing + Math.PI
+      };
+    });
     return {
       ...generated,
       settings: { ...generated.settings, mapId: labMapId },
-      players: generated.players.map((player, index) => index === 0 ? { ...player, ...testPosition } : player)
+      players
     };
-  }, [count, tick, labMapId, labLevel]);
+  }, [count, tick, labMapId, labLevel, labView]);
   const summary = useMemo(() => summarizeCharacterDebugSession(session), [session]);
 
   useEffect(() => {
@@ -280,6 +301,7 @@ function CharacterLab() {
             <button
               key={preset}
               className={count === preset ? "active" : ""}
+              aria-pressed={count === preset}
               onClick={() => setCount(preset)}
             >
               {preset} players
@@ -292,27 +314,27 @@ function CharacterLab() {
         <div className="panel character-lab-controls">
           <h2>Scenario</h2>
           <div className="button-row" aria-label="Character lab map">
-            <button className={labMapId === "desert_citadel" ? "active" : ""} onClick={() => setLabMapId("desert_citadel")}>Desert Citadel</button>
-            <button className={labMapId === "iron_junction" ? "active" : ""} onClick={() => setLabMapId("iron_junction")}>Iron Junction</button>
-            <button className={labMapId === "temple_runoff" ? "active" : ""} onClick={() => setLabMapId("temple_runoff")}>Temple Runoff</button>
+            <button className={labMapId === "desert_citadel" ? "active" : ""} aria-pressed={labMapId === "desert_citadel"} onClick={() => setLabMapId("desert_citadel")}>Desert Citadel</button>
+            <button className={labMapId === "iron_junction" ? "active" : ""} aria-pressed={labMapId === "iron_junction"} onClick={() => setLabMapId("iron_junction")}>Iron Junction</button>
+            <button className={labMapId === "temple_runoff" ? "active" : ""} aria-pressed={labMapId === "temple_runoff"} onClick={() => setLabMapId("temple_runoff")}>Temple Runoff</button>
           </div>
           <div className="button-row" aria-label="Character lab quality">
-            <button className={labQuality === "performance" ? "active" : ""} onClick={() => setLabQuality("performance")}>Low</button>
-            <button className={labQuality === "balanced" ? "active" : ""} onClick={() => setLabQuality("balanced")}>Medium</button>
-            <button className={labQuality === "high" ? "active" : ""} onClick={() => setLabQuality("high")}>High</button>
+            <button className={labQuality === "performance" ? "active" : ""} aria-pressed={labQuality === "performance"} onClick={() => setLabQuality("performance")}>Low</button>
+            <button className={labQuality === "balanced" ? "active" : ""} aria-pressed={labQuality === "balanced"} onClick={() => setLabQuality("balanced")}>Medium</button>
+            <button className={labQuality === "high" ? "active" : ""} aria-pressed={labQuality === "high"} onClick={() => setLabQuality("high")}>High</button>
           </div>
           <div className="button-row" aria-label="Character lab camera">
-            <button className={labView === "overview" ? "active" : ""} onClick={() => setLabView("overview")}>Overview</button>
-            <button className={labView === "fps" ? "active" : ""} onClick={() => setLabView("fps")}>Playable FPS</button>
+            <button className={labView === "overview" ? "active" : ""} aria-pressed={labView === "overview"} onClick={() => setLabView("overview")}>Overview</button>
+            <button className={labView === "fps" ? "active" : ""} aria-pressed={labView === "fps"} onClick={() => setLabView("fps")}>Playable FPS</button>
           </div>
           {labView === "fps" && (
             <div className="button-row" aria-label="Map test level">
-              <button className={labLevel === "lower" ? "active" : ""} onClick={() => setLabLevel("lower")}>{labMapId === "temple_runoff" ? "River ↓" : labMapId === "iron_junction" ? "Ground •" : "Ground •"}</button>
-              {labMapId === "desert_citadel" && <button className={labLevel === "market" ? "active" : ""} onClick={() => setLabLevel("market")}>Market •</button>}
-              {labMapId === "desert_citadel" && <button className={labLevel === "cistern" ? "active" : ""} onClick={() => setLabLevel("cistern")}>Cistern •</button>}
-              {labMapId === "desert_citadel" && <button className={labLevel === "flag" ? "active" : ""} onClick={() => setLabLevel("flag")}>Flag ⚑</button>}
-              <button className={labLevel === "main" ? "active" : ""} onClick={() => setLabLevel("main")}>{labMapId === "temple_runoff" ? "Main •" : labMapId === "iron_junction" ? "Loading ↑" : "Citadel ↑"}</button>
-              <button className={labLevel === "upper" ? "active" : ""} onClick={() => setLabLevel("upper")}>{labMapId === "temple_runoff" ? "Bridge ↑" : labMapId === "iron_junction" ? "Overpass ↑" : "Lookout ↑↑"}</button>
+              <button className={labLevel === "lower" ? "active" : ""} aria-pressed={labLevel === "lower"} onClick={() => setLabLevel("lower")}>{labMapId === "temple_runoff" ? "River ↓" : labMapId === "iron_junction" ? "Ground •" : "Ground •"}</button>
+              {labMapId === "desert_citadel" && <button className={labLevel === "market" ? "active" : ""} aria-pressed={labLevel === "market"} onClick={() => setLabLevel("market")}>Market •</button>}
+              {labMapId === "desert_citadel" && <button className={labLevel === "cistern" ? "active" : ""} aria-pressed={labLevel === "cistern"} onClick={() => setLabLevel("cistern")}>Cistern •</button>}
+              {labMapId === "desert_citadel" && <button className={labLevel === "flag" ? "active" : ""} aria-pressed={labLevel === "flag"} onClick={() => setLabLevel("flag")}>Flag ⚑</button>}
+              <button className={labLevel === "main" ? "active" : ""} aria-pressed={labLevel === "main"} onClick={() => setLabLevel("main")}>{labMapId === "temple_runoff" ? "Main •" : labMapId === "iron_junction" ? "Loading ↑" : "Citadel ↑"}</button>
+              <button className={labLevel === "upper" ? "active" : ""} aria-pressed={labLevel === "upper"} onClick={() => setLabLevel("upper")}>{labMapId === "temple_runoff" ? "Bridge ↑" : labMapId === "iron_junction" ? "Overpass ↑" : "Lookout ↑↑"}</button>
             </div>
           )}
           <div className="lab-metrics">

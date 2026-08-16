@@ -44,3 +44,17 @@ test("character lab stress data presents the complete mixed streak ladder across
   assert.ok(players.some((player) => player.team === "blue" && (player.freezeStreak ?? 0) >= 8));
   assert.ok(players.some((player) => player.team === "red" && (player.freezeStreak ?? 0) >= 8));
 });
+
+test("the focused 10-player preset keeps the local player alive and shows tiers three through ten remotely", () => {
+  const players = createCharacterDebugSession({ count: 10 }).players;
+
+  assert.equal(players[0]?.isAlive, true);
+  assert.deepEqual(
+    players
+      .slice(1)
+      .filter((player) => player.isAlive)
+      .map((player) => player.freezeStreak)
+      .sort((left, right) => (left ?? 0) - (right ?? 0)),
+    [3, 4, 5, 6, 7, 8, 9, 10]
+  );
+});

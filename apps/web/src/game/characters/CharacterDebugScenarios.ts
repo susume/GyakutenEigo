@@ -18,6 +18,10 @@ const DEBUG_GEARS = [
   "speed_shoes"
 ] as const;
 
+// The 10-player preset puts tiers 3-10 on the eight visible remote players.
+// Larger presets continue through every supported debug value from 0-15.
+const DEBUG_STREAKS = [0, 3, 4, 5, 6, 7, 8, 9, 10, 2, 11, 12, 13, 14, 15, 1] as const;
+
 const clampStressCount = (count: number): CharacterStressCount => {
   if (count <= 10) return 10;
   if (count <= 20) return 20;
@@ -39,7 +43,7 @@ const createDebugPlayer = (index: number, count: CharacterStressCount, tick: num
   const x = Math.max(-ARENA_LIMIT_X + 8, Math.min(ARENA_LIMIT_X - 8, baseX + wave(index, tick, 2.8)));
   const z = Math.max(-ARENA_LIMIT_Z + 8, Math.min(ARENA_LIMIT_Z - 8, baseZ + wave(index + 7, tick, 3.1)));
   const facing = Math.atan2(-x, -z) + wave(index + 2, tick, 0.18);
-  const isAlive = index % 11 !== 0;
+  const isAlive = (index + 1) % 10 !== 0;
 
   return {
     id: `debug-${team}-${index}`,
@@ -57,9 +61,7 @@ const createDebugPlayer = (index: number, count: CharacterStressCount, tick: num
     score: Math.max(0, 30 - index),
     correctAnswers: 10 + (index % 6),
     wrongAnswers: index % 3,
-    // Spread the full aura ladder through Character Lab so visual and
-    // classroom-scale performance checks exercise the authoritative field.
-    freezeStreak: index % 16,
+    freezeStreak: DEBUG_STREAKS[index % DEBUG_STREAKS.length],
     gear: DEBUG_GEARS[index % DEBUG_GEARS.length],
     joinedAt: "2026-07-08T00:00:00.000Z"
   };
