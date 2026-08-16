@@ -3,7 +3,7 @@ import type { Team } from "@quizstrike/shared";
 
 /** Gameplay emits semantic cues; the renderer owns their visual treatment. */
 export type ArenaVfxKind =
-  | "weapon_fire" | "tracer" | "impact" | "snowball_impact" | "player_hit"
+  | "weapon_fire" | "quick_fire" | "tracer" | "impact" | "snowball_impact" | "player_hit"
   | "hit_confirm" | "damage_taken" | "footstep" | "answer_incorrect"
   | "reward_burst" | "purchase" | "shield" | "objective" | "flag_pickup"
   | "spawn" | "elimination" | "victory" | "defeat" | "healing"
@@ -52,7 +52,7 @@ export interface ArenaVfxTextures {
 
 type ArenaVfxCategory = "ambient" | "micro" | "player" | "objective" | "round";
 type ArenaVfxTextureKey = keyof ArenaVfxTextures;
-export type ArenaVfxProfile = "muzzle" | "tracer" | "impact" | "snow" | "hit" | "dust" | "feedback" | "reward" | "purchase" | "shield" | "objective" | "spawn" | "elimination" | "celebration" | "healing";
+export type ArenaVfxProfile = "muzzle" | "quick_muzzle" | "tracer" | "impact" | "snow" | "hit" | "dust" | "feedback" | "reward" | "purchase" | "shield" | "objective" | "spawn" | "elimination" | "celebration" | "healing";
 
 export interface ArenaVfxStyle {
   lifetime: number;
@@ -72,6 +72,7 @@ export interface ArenaVfxStyle {
 
 const vfxStyles: Record<ArenaVfxKind, ArenaVfxStyle> = {
   weapon_fire: { lifetime: 90, radius: 0.72, ringOpacity: 0, haloOpacity: 0, rise: 0.22, category: "micro", priority: 1, maxDistance: 92, spriteCount: 2, spriteKey: "muzzle", secondarySpriteKey: "smoke", profile: "muzzle" },
+  quick_fire: { lifetime: 75, radius: 0.58, ringOpacity: 0, haloOpacity: 0, rise: 0.18, category: "micro", priority: 1, maxDistance: 92, spriteCount: 2, spriteKey: "muzzle", secondarySpriteKey: "spark", profile: "quick_muzzle" },
   tracer: { lifetime: 100, radius: 0.58, ringOpacity: 0, haloOpacity: 0, rise: 0.12, category: "micro", priority: 1, maxDistance: 110, spriteCount: 1, spriteKey: "trace", profile: "tracer" },
   impact: { lifetime: 300, radius: 1, ringOpacity: 0.2, haloOpacity: 0, rise: 0.62, category: "micro", priority: 2, maxDistance: 110, spriteCount: 4, spriteKey: "spark", secondarySpriteKey: "smoke", profile: "impact" },
   snowball_impact: { lifetime: 440, radius: 1.2, ringOpacity: 0.18, haloOpacity: 0.1, rise: 0.82, category: "micro", priority: 2, maxDistance: 110, spriteCount: 6, spriteKey: "snow", secondarySpriteKey: "spark", profile: "snow" },
@@ -102,9 +103,12 @@ const vfxStyles: Record<ArenaVfxKind, ArenaVfxStyle> = {
 
 export const getArenaVfxStyle = (kind: ArenaVfxKind) => vfxStyles[kind];
 
+export const getArenaWeaponVfxKind = (gearId?: string): "weapon_fire" | "quick_fire" | "heavy_fire" =>
+  gearId === "power_blaster" ? "heavy_fire" : gearId === "quick_blaster" ? "quick_fire" : "weapon_fire";
+
 /** Keeps gameplay code semantic: character sync resolves these to animated world positions. */
 export const getArenaVfxAnchor = (event: Pick<ArenaVfxEvent, "kind" | "anchor">): ArenaVfxAnchor => event.anchor ?? (
-  event.kind === "weapon_fire" || event.kind === "heavy_fire" || event.kind === "tracer" ? "muzzle"
+  event.kind === "weapon_fire" || event.kind === "quick_fire" || event.kind === "heavy_fire" || event.kind === "tracer" ? "muzzle"
     : event.kind === "impact" ? "world"
       : event.kind === "snowball_impact" || event.kind === "player_hit" || event.kind === "hit_confirm" || event.kind === "damage_taken" || event.kind === "shield" || event.kind === "answer_incorrect" || event.kind === "zoom" || event.kind === "cooldown" ? "torso"
         : "ground"
@@ -113,6 +117,7 @@ const teamColor = (team?: Team) => team === "red" ? "#fb7185" : "#38bdf8";
 
 export const getArenaVfxColor = (event: ArenaVfxEvent) => event.color ?? (
   event.kind === "weapon_fire" || event.kind === "heavy_fire" || event.kind === "tracer" ? "#b9f4ff"
+    : event.kind === "quick_fire" ? "#fef08a"
     : event.kind === "defeat" || event.kind === "damage_taken" || event.kind === "answer_incorrect" ? "#fb7185"
     : event.kind === "reward_burst" || event.kind === "purchase" || event.kind === "round_end" ? "#facc15"
     : event.kind === "victory" ? (event.team ? teamColor(event.team) : "#facc15")
@@ -418,6 +423,10 @@ export class ArenaVfxPool {
         if (index === 0) Object.assign(particle, { motion: "flash", originY: 0, startSize: 0.12, endSize: radius * 0.82, stretchX: 1.18, stretchY: 0.86, opacity: 0.92, spin: 1.8 });
         else Object.assign(particle, { motion: "rise", originY: 0, velocityX: radialX * 0.12, velocityY: 0.8, velocityZ: radialZ * 0.12, startSize: 0.18, endSize: 0.42, delay: 0.08, opacity: 0.3, spin: 0.45 });
         break;
+      case "quick_muzzle":
+        if (index === 0) Object.assign(particle, { motion: "flash", originY: 0, startSize: 0.08, endSize: radius * 0.62, stretchX: 1.45, stretchY: 0.72, opacity: 0.98, spin: -2.2 });
+        else Object.assign(particle, { motion: "rise", originY: 0, velocityX: radialX * 0.16, velocityY: 0.56, velocityZ: radialZ * 0.16, startSize: 0.12, endSize: 0.26, delay: 0.04, opacity: 0.42, spin: -0.8 });
+        break;
       case "tracer":
         Object.assign(particle, { motion: "flash", originY: 0, startSize: 0.08, endSize: radius, stretchX: 0.15, stretchY: 1.5, opacity: 0.8, spin: 0 });
         break;
@@ -463,7 +472,7 @@ export class ArenaVfxPool {
         Object.assign(particle, { motion: "orbit", originY: 0.35 + index * 0.2, orbitRadius: radius * (0.38 + jitter * 0.14), velocityY: 3.1, startSize: 0.18, endSize: 0.08, delay: index * 0.045, opacity: 0.68, spin: index % 2 === 0 ? 2.4 : -2.4 });
         break;
     }
-    const sizeMultiplier = profile === "muzzle" || profile === "tracer" ? 2
+    const sizeMultiplier = profile === "muzzle" || profile === "quick_muzzle" || profile === "tracer" ? 2
       : profile === "dust" ? 2.2
         : profile === "impact" || profile === "snow" || profile === "hit" ? 4
           : profile === "elimination" || profile === "celebration" ? 3.5

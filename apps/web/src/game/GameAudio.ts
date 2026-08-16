@@ -51,9 +51,9 @@ type SampleDefinition = {
 type AudioSampleKey = GameAudioCue | `surface_${MovementSurface}`;
 
 export const GAME_AUDIO_CUES: Record<GameAudioCue, ToneDefinition> = {
-  walk_step: { frequency: 105, durationMs: 54, gain: 0.0175, type: "sine", frequencyEnd: 72 },
-  run_step: { frequency: 132, durationMs: 48, gain: 0.0225, type: "sine", frequencyEnd: 82 },
-  crouch_step: { frequency: 78, durationMs: 68, gain: 0.012, type: "sine", frequencyEnd: 56 },
+  walk_step: { frequency: 105, durationMs: 54, gain: 0.00875, type: "sine", frequencyEnd: 72 },
+  run_step: { frequency: 132, durationMs: 48, gain: 0.01125, type: "sine", frequencyEnd: 82 },
+  crouch_step: { frequency: 78, durationMs: 68, gain: 0.006, type: "sine", frequencyEnd: 56 },
   jump: { frequency: 210, durationMs: 120, gain: 0.045, type: "triangle", frequencyEnd: 340 },
   land: { frequency: 88, durationMs: 96, gain: 0.048, type: "sine", frequencyEnd: 48 },
   fire: { frequency: 150, durationMs: 260, gain: 0.06, type: "sine", frequencyEnd: 55, noise: true },
@@ -93,9 +93,9 @@ const HEAVY_GUN_ASSET = "/assets/audio/game/heavy-gun-sound.mp3";
  * decode a recording.
  */
 export const GAME_AUDIO_ASSETS: Partial<Record<AudioSampleKey, SampleDefinition>> = {
-  walk_step: { files: ["footstep_snow_000.ogg", "footstep_snow_001.ogg", "footstep_snow_002.ogg", "footstep_snow_003.ogg", "footstep_snow_004.ogg"], gain: 0.34, playbackRate: 1, pitchVariance: 0.06, maxVoices: 3 },
-  run_step: { files: ["footstep_snow_000.ogg", "footstep_snow_001.ogg", "footstep_snow_002.ogg", "footstep_snow_003.ogg", "footstep_snow_004.ogg"], gain: 0.39, playbackRate: 1.14, pitchVariance: 0.07, maxVoices: 3 },
-  crouch_step: { files: ["footstep_snow_000.ogg", "footstep_snow_001.ogg", "footstep_snow_002.ogg", "footstep_snow_003.ogg", "footstep_snow_004.ogg"], gain: 0.21, playbackRate: 0.82, pitchVariance: 0.04, maxVoices: 2 },
+  walk_step: { files: ["footstep_snow_000.ogg", "footstep_snow_001.ogg", "footstep_snow_002.ogg", "footstep_snow_003.ogg", "footstep_snow_004.ogg"], gain: 0.17, playbackRate: 1, pitchVariance: 0.06, maxVoices: 3 },
+  run_step: { files: ["footstep_snow_000.ogg", "footstep_snow_001.ogg", "footstep_snow_002.ogg", "footstep_snow_003.ogg", "footstep_snow_004.ogg"], gain: 0.195, playbackRate: 1.14, pitchVariance: 0.07, maxVoices: 3 },
+  crouch_step: { files: ["footstep_snow_000.ogg", "footstep_snow_001.ogg", "footstep_snow_002.ogg", "footstep_snow_003.ogg", "footstep_snow_004.ogg"], gain: 0.105, playbackRate: 0.82, pitchVariance: 0.04, maxVoices: 2 },
   land: { files: ["impactSoft_medium_002.ogg"], gain: 0.5, playbackRate: 0.74, pitchVariance: 0.04, maxVoices: 2 },
   fire: { files: [DEFAULT_GUN_ASSET], gain: 0.68, playbackRate: 1, maxVoices: 6 },
   heavy_fire: { files: [HEAVY_GUN_ASSET], gain: 0.78, playbackRate: 1, maxVoices: 3 },
@@ -112,11 +112,11 @@ export const GAME_AUDIO_ASSETS: Partial<Record<AudioSampleKey, SampleDefinition>
 };
 
 Object.assign(GAME_AUDIO_ASSETS, {
-  surface_wood: { files: ["footstep_wood_000.ogg", "footstep_wood_001.ogg", "footstep_wood_002.ogg"], gain: 0.29, playbackRate: 1, pitchVariance: 0.05, maxVoices: 3 },
-  surface_stone: { files: ["footstep_concrete_000.ogg", "footstep_concrete_001.ogg", "footstep_concrete_002.ogg"], gain: 0.32, playbackRate: 1, pitchVariance: 0.05, maxVoices: 3 },
-  surface_sand: { files: ["footstep_snow_000.ogg", "footstep_snow_001.ogg", "footstep_snow_002.ogg"], gain: 0.26, playbackRate: 0.94, pitchVariance: 0.05, maxVoices: 3 },
-  surface_metal: { files: ["footstep_concrete_000.ogg", "footstep_concrete_001.ogg", "footstep_concrete_002.ogg"], gain: 0.35, playbackRate: 1.12, pitchVariance: 0.05, maxVoices: 3 },
-  surface_water: { files: ["impactSoft_medium_000.ogg", "impactSoft_medium_001.ogg"], gain: 0.12, playbackRate: 1.1, pitchVariance: 0.08, maxVoices: 2 }
+  surface_wood: { files: ["footstep_wood_000.ogg", "footstep_wood_001.ogg", "footstep_wood_002.ogg"], gain: 0.145, playbackRate: 1, pitchVariance: 0.05, maxVoices: 3 },
+  surface_stone: { files: ["footstep_concrete_000.ogg", "footstep_concrete_001.ogg", "footstep_concrete_002.ogg"], gain: 0.16, playbackRate: 1, pitchVariance: 0.05, maxVoices: 3 },
+  surface_sand: { files: ["footstep_snow_000.ogg", "footstep_snow_001.ogg", "footstep_snow_002.ogg"], gain: 0.13, playbackRate: 0.94, pitchVariance: 0.05, maxVoices: 3 },
+  surface_metal: { files: ["footstep_concrete_000.ogg", "footstep_concrete_001.ogg", "footstep_concrete_002.ogg"], gain: 0.175, playbackRate: 1.12, pitchVariance: 0.05, maxVoices: 3 },
+  surface_water: { files: ["impactSoft_medium_000.ogg", "impactSoft_medium_001.ogg"], gain: 0.06, playbackRate: 1.1, pitchVariance: 0.08, maxVoices: 2 }
 } satisfies Partial<Record<AudioSampleKey, SampleDefinition>>);
 
 export type AudioEventCue =

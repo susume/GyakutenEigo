@@ -60,6 +60,17 @@ export class CombatService {
     const tagResult = resolveTagAction({ attacker: combatAttacker, target });
     if (!tagResult.ok) return tagResult;
 
+    // Capture the hit location before an elimination moves the target back to
+    // spawn. Both the attacker/target result and the observer broadcast need
+    // the actual combat location so moving players see the effect where the
+    // hit happened, not where the respawn was assigned.
+    const targetSpawn = sessionSpawn(session, target.team);
+    const impactPosition = {
+      x: target.x ?? targetSpawn.x,
+      y: target.y,
+      z: target.z ?? targetSpawn.z
+    };
+    const impactFacing = target.facing ?? targetSpawn.facing;
     target.health = tagResult.nextHealth;
     resetFreezeStreak(target);
     if (zombieAttack && tagResult.eliminated) {
@@ -84,9 +95,9 @@ export class CombatService {
         targetId: target.id,
         attackerX: attacker.x ?? sessionSpawn(session, attacker.team).x,
         attackerZ: attacker.z ?? sessionSpawn(session, attacker.team).z,
-        targetX: target.x ?? sessionSpawn(session, target.team).x,
-        targetZ: target.z ?? sessionSpawn(session, target.team).z,
-        targetFacing: target.facing ?? sessionSpawn(session, target.team).facing,
+        targetX: impactPosition.x,
+        targetZ: impactPosition.z,
+        targetFacing: impactFacing,
         damage: tagResult.damage,
         health: target.health,
         snowballs: attacker.snowballs,
@@ -97,20 +108,17 @@ export class CombatService {
       io.to(gameplayRoom(session.sessionCode)).emit("world_impact", {
         attackerId: attacker.id,
         targetId: target.id,
-        x: target.x ?? sessionSpawn(session, target.team).x,
-        z: target.z ?? sessionSpawn(session, target.team).z,
-        shield: false
+        x: impactPosition.x,
+        z: impactPosition.z,
+        shield: false,
+        eliminated: true
       });
       broadcastPlayerState(session, [attacker, target]);
       finishZombieMatchIfComplete(session);
       return { ok: true as const, damage: tagResult.damage, nextHealth: DEFAULT_PLAYER_HEALTH, eliminated: true, moneyAwarded: 0, scoreDelta: 1 };
     }
     if (tagResult.eliminated) {
-      const knockedOutPosition = {
-        x: target.x ?? sessionSpawn(session, target.team).x,
-        y: target.y,
-        z: target.z ?? sessionSpawn(session, target.team).z
-      };
+      const knockedOutPosition = impactPosition;
       const baseSpawn = sessionSpawn(session, target.team);
       target.isAlive = false;
       target.respawnCorrectAnswers = 0;
@@ -151,9 +159,9 @@ export class CombatService {
       targetId: target.id,
       attackerX: attacker.x ?? sessionSpawn(session, attacker.team).x,
       attackerZ: attacker.z ?? sessionSpawn(session, attacker.team).z,
-      targetX: target.x ?? sessionSpawn(session, target.team).x,
-      targetZ: target.z ?? sessionSpawn(session, target.team).z,
-      targetFacing: target.facing ?? sessionSpawn(session, target.team).facing,
+      targetX: impactPosition.x,
+      targetZ: impactPosition.z,
+      targetFacing: impactFacing,
       damage: tagResult.damage,
       health: target.health,
       snowballs: attacker.snowballs,
@@ -163,9 +171,10 @@ export class CombatService {
     io.to(gameplayRoom(session.sessionCode)).emit("world_impact", {
       attackerId: attacker.id,
       targetId: target.id,
-      x: target.x ?? sessionSpawn(session, target.team).x,
-      z: target.z ?? sessionSpawn(session, target.team).z,
-      shield: !tagResult.eliminated
+      x: impactPosition.x,
+      z: impactPosition.z,
+      shield: !tagResult.eliminated,
+      eliminated: tagResult.eliminated
     });
     if (tagResult.eliminated) {
       emitToPlayers(session, [attacker.id, target.id], "elimination_update", {

@@ -1,7 +1,7 @@
 import assert from "node:assert/strict";
 import test from "node:test";
 import * as THREE from "three";
-import { ArenaVfxPool, emitArenaVfx, getArenaVfxAnchor, getArenaVfxBudget, getArenaVfxColor, getArenaVfxStyle, getArenaVfxTextureKeys, subscribeArenaVfx, type ArenaVfxKind } from "./ArenaVfx";
+import { ArenaVfxPool, emitArenaVfx, getArenaVfxAnchor, getArenaVfxBudget, getArenaVfxColor, getArenaVfxStyle, getArenaVfxTextureKeys, getArenaWeaponVfxKind, subscribeArenaVfx, type ArenaVfxKind } from "./ArenaVfx";
 
 test("arena VFX events are delivered until the listener unsubscribes", () => {
   const received: unknown[] = [];
@@ -57,8 +57,16 @@ test("semantic cues use distinct authored motion profiles", () => {
 
 test("moving-FPS weapon cues clear within a few rendered frames", () => {
   assert.equal(getArenaVfxStyle("weapon_fire").lifetime, 90);
+  assert.equal(getArenaVfxStyle("quick_fire").lifetime, 75);
   assert.equal(getArenaVfxStyle("tracer").lifetime, 100);
   assert.equal(getArenaVfxStyle("heavy_fire").lifetime, 115);
+});
+
+test("every supported launcher selects a weapon-specific VFX cue", () => {
+  assert.equal(getArenaWeaponVfxKind("starter_blaster"), "weapon_fire");
+  assert.equal(getArenaWeaponVfxKind("quick_blaster"), "quick_fire");
+  assert.equal(getArenaWeaponVfxKind("power_blaster"), "heavy_fire");
+  assert.equal(getArenaWeaponVfxKind("unknown_weapon"), "weapon_fire");
 });
 
 test("semantic cues resolve to the scene feature they visually belong to", () => {

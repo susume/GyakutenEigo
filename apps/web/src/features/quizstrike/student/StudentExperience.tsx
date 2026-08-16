@@ -779,7 +779,7 @@ export default function StudentExperience({ onExit }: { onExit: () => void }) {
       const attacker = lastVisualSession.players.find((candidate) => candidate.id === payload.playerId);
       emitPlayerAnimation("fire", payload.playerId, attacker?.team);
       emitArenaVfx({
-        kind: payload.gearId === "power_blaster" ? "heavy_fire" : "weapon_fire",
+        kind: payload.gearId === "power_blaster" ? "heavy_fire" : payload.gearId === "quick_blaster" ? "quick_fire" : "weapon_fire",
         x: payload.x!,
         z: payload.z!,
         y: Number.isFinite(payload.y)
@@ -807,14 +807,21 @@ export default function StudentExperience({ onExit }: { onExit: () => void }) {
         window.setTimeout(() => gameAudio.playEvent("projectile_pass", spatial), 160);
       }
     });
-    connectedSocket.on("world_impact", (payload: { attackerId?: string; targetId?: string; x?: number; z?: number; shield?: boolean }) => {
+    connectedSocket.on("world_impact", (payload: { attackerId?: string; targetId?: string; x?: number; z?: number; shield?: boolean; eliminated?: boolean }) => {
       if (payload.attackerId === activePlayerId || payload.targetId === activePlayerId || !Number.isFinite(payload.x) || !Number.isFinite(payload.z)) return;
       const local = lastVisualSession.players.find((candidate) => candidate.id === activePlayerId);
       if (!local || !Number.isFinite(local.x) || !Number.isFinite(local.z)) return;
       const targetTeam = lastVisualSession.players.find((candidate) => candidate.id === payload.targetId)?.team;
-      emitArenaVfx({ kind: "snowball_impact", x: payload.x!, z: payload.z!, playerId: payload.targetId, team: targetTeam, surface: "snow", intensity: 0.72 });
-      emitArenaVfx({ kind: "player_hit", x: payload.x!, z: payload.z!, playerId: payload.targetId, team: targetTeam, surface: "player", intensity: 0.72 });
-      if (payload.shield) emitArenaVfx({ kind: "shield", x: payload.x!, z: payload.z!, playerId: payload.targetId, team: targetTeam, intensity: 0.66 });
+      // This is already an authoritative world-space impact. Do not re-anchor
+      // it to the target's current animated model: a moving target may have
+      // left the hit location, and an eliminated target has already respawned.
+      emitArenaVfx({ kind: "snowball_impact", x: payload.x!, z: payload.z!, team: targetTeam, surface: "snow", intensity: 0.72 });
+      emitArenaVfx({ kind: "player_hit", x: payload.x!, z: payload.z!, team: targetTeam, surface: "player", intensity: 0.72 });
+      if (payload.shield) emitArenaVfx({ kind: "shield", x: payload.x!, z: payload.z!, team: targetTeam, intensity: 0.66 });
+      if (payload.eliminated) {
+        emitArenaVfx({ kind: "elimination", x: payload.x!, z: payload.z!, team: targetTeam, intensity: 0.92 });
+        emitPlayerAnimation("defeat", payload.targetId, targetTeam);
+      }
       gameAudio.playEvent(payload.shield ? "shield_impact" : "world_impact", getCombatAudioSpatial({
         attacker: { x: payload.x!, z: payload.z! },
         target: { x: local.x!, z: local.z!, facing: local.facing ?? 0 }
@@ -923,11 +930,12 @@ export default function StudentExperience({ onExit }: { onExit: () => void }) {
       }
       const targetTeam = currentSessionRef.current?.players.find((candidate) => candidate.id === result.targetId)?.team;
       const combatCueIsLocal = result.attackerId === activePlayerId || result.targetId === activePlayerId;
-      emitArenaVfx({ kind: "snowball_impact", x: result.targetX, z: result.targetZ, playerId: result.targetId, team: targetTeam, surface: "snow", local: combatCueIsLocal });
-      emitArenaVfx({ kind: "player_hit", x: result.targetX, z: result.targetZ, playerId: result.targetId, team: targetTeam, surface: "player", local: combatCueIsLocal });
+      const impactPlayerId = result.eliminated ? undefined : result.targetId;
+      emitArenaVfx({ kind: "snowball_impact", x: result.targetX, z: result.targetZ, playerId: impactPlayerId, team: targetTeam, surface: "snow", local: combatCueIsLocal });
+      emitArenaVfx({ kind: "player_hit", x: result.targetX, z: result.targetZ, playerId: impactPlayerId, team: targetTeam, surface: "player", local: combatCueIsLocal });
       emitPlayerAnimation("hit", result.targetId, targetTeam);
       if (!result.eliminated) emitArenaVfx({ kind: "shield", x: result.targetX, z: result.targetZ, playerId: result.targetId, team: targetTeam });
-      if (result.eliminated) emitArenaVfx({ kind: "elimination", x: result.targetX, z: result.targetZ, playerId: result.targetId, team: targetTeam });
+      if (result.eliminated) emitArenaVfx({ kind: "elimination", x: result.targetX, z: result.targetZ, team: targetTeam, local: combatCueIsLocal });
       if (result.attackerId === activePlayerId) {
         setHitConfirmPulse((value) => value + 1);
         gameAudio.play(result.eliminated ? "eliminated" : "hit_confirm");

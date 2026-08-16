@@ -34,7 +34,7 @@ import { pauseSessionForTeacher, resumeSessionForTeacher } from "./teacherPause.
 import { shiftTeacherPauseRuntimeTimers } from "./teacherPauseRuntime.js";
 import { NetworkMetrics } from "./networkMetrics.js";
 import { loadServerConfig } from "./config.js";
-import { announcementForFreezeStreak, incrementFreezeStreak } from "./freezeStreaks.js";
+import { announcementForFreezeStreak, incrementFreezeStreak, MAX_FREEZE_STREAK_ANNOUNCEMENT } from "./freezeStreaks.js";
 import { NormalizedLibrary } from "./persistence/normalizedLibrary.js";
 import {
   createRoomEventPublisher,
@@ -286,7 +286,9 @@ const emitFreezeStreakAnnouncement = (session: GameSession, player: PlayerSessio
     eventId: id(),
     playerId: player.id,
     playerName: player.nickname,
-    streak,
+    // The server keeps counting the uninterrupted streak, but the announcer
+    // stays on the highest rank until the player is tagged.
+    streak: Math.min(MAX_FREEZE_STREAK_ANNOUNCEMENT, Math.max(0, Math.floor(streak))),
     announcementKey: announcement.key,
     occurredAt: Date.now()
   };

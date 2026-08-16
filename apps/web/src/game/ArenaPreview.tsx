@@ -41,7 +41,7 @@ import { isFireKeyboardEvent, isScopeKeyboardEvent, resolveCombatPointerAction, 
 import { gameAudio, type MovementAudioMode } from "./GameAudio";
 import { cycleHeavyGunZoom, getWeaponFov, shouldResetWeaponZoom } from "./weaponControls";
 import { resolveTouchJoystickVector } from "./touchJoystick";
-import { emitArenaVfx, getArenaVfxAnchor, type ArenaVfxStats } from "./ArenaVfx";
+import { emitArenaVfx, getArenaVfxAnchor, getArenaWeaponVfxKind, type ArenaVfxStats } from "./ArenaVfx";
 import { emitArenaAnimation } from "./ArenaAnimation";
 import { ArenaPerformanceCapture, AutoGraphicsQualityController, type ArenaPerformanceSnapshot } from "./ArenaPerformance";
 import { mountIronJunctionImportedAssets } from "./ironJunctionImportedAssets";
@@ -97,6 +97,8 @@ const isFiniteNumber = (value: unknown): value is number => typeof value === "nu
 const scaleArenaValue = (value: number) => Number((value * ARENA_SCALE).toFixed(2));
 const VFX_DEBUG_CUES = [
   ["Weapon fire", "weapon_fire"],
+  ["Quick fire", "quick_fire"],
+  ["Heavy fire", "heavy_fire"],
   ["Wall hit", "impact"],
   ["Player hit", "player_hit"],
   ["Snow hit", "snowball_impact"],
@@ -600,9 +602,11 @@ export default function ArenaPreview({
       const firstPersonRootBaseY = firstPersonModel.root.position.y;
       const firstPersonWeaponRotation = firstPersonModel.weapon.rotation.clone();
       const fpsMuzzlePosition = new THREE.Vector3();
+      const fpsMuzzleWorldPosition = new THREE.Vector3();
       const syncFpsMuzzlePosition = () => {
         camera.updateMatrixWorld(true);
-        firstPersonModel.muzzle.getWorldPosition(fpsMuzzlePosition);
+        firstPersonModel.muzzle.getWorldPosition(fpsMuzzleWorldPosition);
+        fpsMuzzlePosition.copy(fpsMuzzleWorldPosition);
         camera.worldToLocal(fpsMuzzlePosition);
       };
 
@@ -733,7 +737,14 @@ export default function ArenaPreview({
         pendingShotsRef.current += 1;
         flashUntil = performance.now() + 95;
         snowballLaunchAt = currentTime;
-        vfxPool.emit({ kind: equippedGearId === "power_blaster" ? "heavy_fire" : "weapon_fire", x: playerPosition.x, y: playerPosition.y - 0.45, z: playerPosition.z, team: currentPlayerTeam, local: true });
+        vfxPool.emit({
+          kind: getArenaWeaponVfxKind(equippedGearId),
+          x: fpsMuzzleWorldPosition.x,
+          y: fpsMuzzleWorldPosition.y,
+          z: fpsMuzzleWorldPosition.z,
+          team: currentPlayerTeam,
+          local: true
+        });
         flash.material.opacity = 1;
         muzzleRingMaterial.opacity = 0.88;
         muzzleRing.scale.setScalar(0.72);

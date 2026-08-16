@@ -209,9 +209,11 @@ export const createCharacterSync = (deps: CharacterSyncDependencies) => {
       if (wasAlive === false && nextPlayer.isAlive) {
         emitVfx({ kind: "spawn", x: visualPosition.x, y: visualPosition.y, z: visualPosition.z, playerId: nextPlayer.id, team: nextPlayer.team, local: nextPlayer.id === currentPlayerId });
       }
-      if (wasAlive === true && !nextPlayer.isAlive) {
-        emitVfx({ kind: "elimination", x: visualPosition.x, y: visualPosition.y, z: visualPosition.z, playerId: nextPlayer.id, team: nextPlayer.team, local: nextPlayer.id === currentPlayerId });
-      }
+      // Combat broadcasts the authoritative knockout impact separately. Do
+      // not infer an elimination effect from the replicated state here: the
+      // target has already been moved to its respawn point by the time this
+      // snapshot arrives, which would place the effect at the wrong location
+      // and duplicate the combat VFX for observers.
       knownAlive.set(nextPlayer.id, nextPlayer.isAlive);
     });
     const nextFlag = nextSession?.flag;
