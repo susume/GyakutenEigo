@@ -10,7 +10,7 @@ The centralized `GameplayAnnouncementManager` loads these exact voiceover paths:
 - `/assets/audio/announcements/streak-monster.mp3` — “Muh-Muh-Muh-Monster!”
 - `/assets/audio/announcements/streak-godlike.mp3` — “Guh-Guh-Guh-Godlike!”
 
-These files are not currently bundled in `apps/web/public/assets/audio`. The
+These files are bundled in `apps/web/public/assets/audio/announcements`. The
 manager preloads them when sound is enabled and falls back to the existing
 synthetic `GameAudio` cue if a file is missing, blocked by autoplay policy, or
 fails to decode. Queue size is bounded at four items; flag planting has higher
