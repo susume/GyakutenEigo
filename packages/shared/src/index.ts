@@ -5,6 +5,7 @@ export * from "./protocol/index.js";
 export type SessionStatus = "waiting" | "active" | "paused" | "ended";
 export type SessionControlState = "running" | "teacher_paused";
 export type Choice = "A" | "B" | "C" | "D";
+export type SnowballPackSize = "standard" | "large";
 export type GameMode = "flag" | "zombie" | "classic";
 export type ArenaMapId = "desert_citadel" | "iron_junction" | "temple_runoff";
 export type TeamAssignment = "players_choose" | "random";
@@ -846,6 +847,8 @@ const fovForMagnification = (baseFov: number, magnification: number) =>
 export const HEAVY_GUN_ZOOM_LEVEL_1_FOV = fovForMagnification(HEAVY_GUN_ZOOM_LEVEL_0_FOV, 3);
 export const HEAVY_GUN_ZOOM_LEVEL_2_FOV = fovForMagnification(HEAVY_GUN_ZOOM_LEVEL_0_FOV, 7);
 export const FLAG_INTERACTION_RADIUS = 7;
+export const LARGE_SNOWBALL_PACK_COUNT = 50;
+export const LARGE_SNOWBALL_PACK_PRICE_MULTIPLIER = 5;
 export const QUICK_BLASTER_RANGE = 48;
 export const QUICK_BLASTER_COOLDOWN_MS = 250;
 export const STARTER_BLASTER_RANGE = 36;
@@ -2477,18 +2480,24 @@ export type SnowballPurchaseResult =
 
 export const resolveSnowballPurchase = ({
   player,
-  settings
+  settings,
+  packSize = "standard"
 }: {
   player: Pick<PlayerSession, "isAlive" | "money" | "snowballs">;
   settings: Pick<SessionSettings, "snowballPackPrice" | "snowballsPerPack" | "startingSnowballs">;
+  packSize?: SnowballPackSize;
 }): SnowballPurchaseResult => {
   if (!player.isAlive) return { ok: false, reason: "player_eliminated" };
-  if (player.money < settings.snowballPackPrice) return { ok: false, reason: "not_enough_money" };
+  const price = packSize === "large"
+    ? settings.snowballPackPrice * LARGE_SNOWBALL_PACK_PRICE_MULTIPLIER
+    : settings.snowballPackPrice;
+  const snowballsAdded = packSize === "large" ? LARGE_SNOWBALL_PACK_COUNT : settings.snowballsPerPack;
+  if (player.money < price) return { ok: false, reason: "not_enough_money" };
   return {
     ok: true,
-    nextMoney: player.money - settings.snowballPackPrice,
-    nextSnowballs: (player.snowballs ?? settings.startingSnowballs) + settings.snowballsPerPack,
-    snowballsAdded: settings.snowballsPerPack
+    nextMoney: player.money - price,
+    nextSnowballs: (player.snowballs ?? settings.startingSnowballs) + snowballsAdded,
+    snowballsAdded
   };
 };
 

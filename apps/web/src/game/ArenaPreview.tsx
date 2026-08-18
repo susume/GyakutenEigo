@@ -278,6 +278,7 @@ export default function ArenaPreview({
   const touchMoveRef = useRef({ forward: 0, right: 0 });
   const fireControlRef = useRef<() => void>(() => undefined);
   const zoomControlRef = useRef<() => void>(() => undefined);
+  const interactControlRef = useRef<() => void>(() => undefined);
   const onMoveRef = useRef(onMove);
   const onFireRef = useRef(onFire);
   const onInteractRef = useRef(onInteract);
@@ -717,6 +718,10 @@ export default function ArenaPreview({
         }, 0);
       };
       fireControlRef.current = fire;
+      interactControlRef.current = () => {
+        if (controlsDisabledRef.current || inputPausedRef.current) return;
+        onInteractRef.current?.(localToServerPosition(playerPosition, yaw));
+      };
 
       const keys = new Set<string>();
       const lookKeys = new Set<string>();
@@ -1305,6 +1310,7 @@ export default function ArenaPreview({
         void desertCitadelAssetsPromise.then((assets) => assets?.dispose());
         fireControlRef.current = () => undefined;
         zoomControlRef.current = () => undefined;
+        interactControlRef.current = () => undefined;
         syncPlayersRef.current = () => undefined;
         if (cooldownTimeout) window.clearTimeout(cooldownTimeout);
         setZoomLevel(0);
@@ -1399,6 +1405,7 @@ export default function ArenaPreview({
       void ironJunctionAssetsPromise.then((assets) => assets?.dispose());
       void desertCitadelAssetsPromise.then((assets) => assets?.dispose());
       void templeRunoffAssetsPromise.then((assets) => assets?.dispose());
+      interactControlRef.current = () => undefined;
       syncPlayersRef.current = () => undefined;
       characterManager.dispose();
       disposeObject(scene);
@@ -1439,6 +1446,9 @@ export default function ArenaPreview({
     event.preventDefault();
     if (controlsDisabled || inputPausedRef.current) return;
     zoomControlRef.current();
+  };
+  const interactFromTouch = () => {
+    interactControlRef.current();
   };
   const miniMapPlayer = miniMapPosition ?? (
     isFiniteNumber(currentPlayer?.x) && isFiniteNumber(currentPlayer?.z)
@@ -1499,12 +1509,13 @@ export default function ArenaPreview({
             currentWeaponId={currentWeaponId}
             snowballs={currentPlayer?.snowballs ?? session?.settings.startingSnowballs ?? 0}
             weaponCooldown={weaponCooldown}
-            controlsDisabled={controlsDisabled}
+            controlsDisabled={controlsDisabled || inputPaused}
             isPointerLocked={isPointerLocked}
             suppressHint={suppressHint}
             joystickElementRef={joystickElementRef}
             onBeginTouchMove={beginTouchMove}
             onZoomFromTouch={zoomFromTouch}
+            onInteractFromTouch={onInteract ? interactFromTouch : undefined}
           />
           {zoomLevel > 0 && (
             <div key={`${zoomLevel}-${zoomPulse}`} className={`scope-overlay scope-level-${zoomLevel} scope-pulse`} aria-hidden="true">

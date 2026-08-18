@@ -1,11 +1,14 @@
 import { ShoppingBag } from "lucide-react";
 import {
   GEAR_ITEMS,
+  LARGE_SNOWBALL_PACK_COUNT,
+  LARGE_SNOWBALL_PACK_PRICE_MULTIPLIER,
   getPlayerPerks,
   getPlayerWeaponId,
   isWeaponGearId,
   type GameSession,
-  type PlayerSession
+  type PlayerSession,
+  type SnowballPackSize
 } from "@quizstrike/shared";
 import { getShopShortcutKey } from "../../../shopShortcuts";
 
@@ -30,7 +33,7 @@ export default function BuyPanel({
   player: PlayerSession;
   session: GameSession;
   onBuy: (gearId: string) => void;
-  onBuySnowballs: () => void;
+  onBuySnowballs: (packSize: SnowballPackSize) => void;
   buyingGearId: string | null;
   isBuyingSnowballs: boolean;
   buyPhaseSeconds?: number;
@@ -44,6 +47,7 @@ export default function BuyPanel({
 
   const snowballPrice = session.settings.snowballPackPrice;
   const snowballCount = session.settings.snowballsPerPack;
+  const largeSnowballPrice = snowballPrice * LARGE_SNOWBALL_PACK_PRICE_MULTIPLIER;
   const isBuyingGear = Boolean(buyingGearId);
   const isZombieMode = session.settings.gameMode === "zombie";
   const isZombieHuman = session.settings.gameMode === "zombie" && player.role !== "zombie";
@@ -61,10 +65,10 @@ export default function BuyPanel({
       <p className="menu-timer-note">{buyPhaseSeconds === undefined
         ? "The round clock keeps running while this menu is open."
         : "Press Q to answer questions before the round starts."}</p>
-      <p className="buy-shortcut-help">Press 1–5 to choose quickly · B to close</p>
+      <p className="buy-shortcut-help">Press 1–6 to choose quickly · B to close</p>
       <button
         className="gear-row"
-        onClick={onBuySnowballs}
+        onClick={() => onBuySnowballs("standard")}
         aria-keyshortcuts="1"
         disabled={isZombieHuman || !player.isAlive || player.money < snowballPrice || isBuyingSnowballs || isBuyingGear}
       >
@@ -75,6 +79,21 @@ export default function BuyPanel({
           <small className="gear-status">{isZombieHuman ? "Humans only" : player.money < snowballPrice ? `Need ${formatMoney(snowballPrice - player.money)} more` : player.isAlive ? "Ready to choose" : "Available next round"}</small>
         </span>
         <em>{formatMoney(snowballPrice)}</em>
+      </button>
+      <button
+        className="gear-row snowball-bulk-row"
+        onClick={() => onBuySnowballs("large")}
+        aria-keyshortcuts="6"
+        disabled={isZombieHuman || !player.isAlive || player.money < largeSnowballPrice || isBuyingSnowballs || isBuyingGear}
+      >
+        <kbd className="buy-shortcut-key buy-shortcut-key-bulk">6</kbd>
+        <GearGlyph gearId="snowballs" />
+        <span>
+          <strong>{isBuyingSnowballs ? "Adding..." : `${LARGE_SNOWBALL_PACK_COUNT} snowballs`}</strong>
+          <small className="gear-subtitle">Bulk refill for the Quick Launcher</small>
+          <small className="gear-status">{isZombieHuman ? "Humans only" : player.money < largeSnowballPrice ? `Need ${formatMoney(largeSnowballPrice - player.money)} more` : player.isAlive ? "Ready to choose" : "Available next round"}</small>
+        </span>
+        <em>{formatMoney(largeSnowballPrice)}</em>
       </button>
       {GEAR_ITEMS.filter((gear) => gear.id !== "starter_blaster").map((gear) => (
         <button

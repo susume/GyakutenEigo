@@ -27,6 +27,7 @@ import {
   buildStudentLearningSummary,
   buildStudentPracticeQuestions,
   GEAR_ITEMS,
+  type SnowballPackSize,
   ZOMBIE_HUMAN_CORRECT_ENERGY,
   ZOMBIE_HUMAN_MAX_ENERGY,
   canPlayerFireInMode,
@@ -354,16 +355,55 @@ export default function StudentExperience({ onExit }: { onExit: () => void }) {
   // State updates are asynchronous; this synchronous guard closes the small
   // keyboard/pointer window before `answeringChoice` re-renders.
   const answerSubmissionLockRef = useRef(false);
+  const answerOperationRef = useRef(0);
+  const purchaseOperationRef = useRef(0);
+  const purchaseLockRef = useRef(false);
+  const roundScopedUiKeyRef = useRef("");
   const learningReportRequestKeyRef = useRef("");
   const lastTeamSwitchAtRef = useRef(0);
   const currentSessionRef = useRef<GameSession | null>(session);
   const currentPlayerRef = useRef<PlayerSession | null>(player);
   const answerActionRef = useRef<(choice: Choice) => Promise<void>>(async () => undefined);
   const buyActionRef = useRef<(gearId: string) => Promise<void>>(async () => undefined);
-  const buySnowballsActionRef = useRef<() => Promise<void>>(async () => undefined);
+  const buySnowballsActionRef = useRef<(packSize: SnowballPackSize) => Promise<void>>(async () => undefined);
   const setStatusError = status.setError;
+  const roundScopedUiKey = session ? `${session.id}:${session.currentRound}` : "";
   currentSessionRef.current = session;
   currentPlayerRef.current = player;
+
+  const resetRoundScopedStudentUi = useCallback(() => {
+    if (answerFeedbackTimerRef.current !== undefined) {
+      window.clearTimeout(answerFeedbackTimerRef.current);
+      answerFeedbackTimerRef.current = undefined;
+    }
+    answerSubmissionLockRef.current = false;
+    answerOperationRef.current += 1;
+    purchaseOperationRef.current += 1;
+    purchaseLockRef.current = false;
+    setAnsweringChoice(null);
+    setAnswerFeedback(null);
+    setQuestion(null);
+    setBuyingGearId(null);
+    setIsBuyingSnowballs(false);
+    setQuizOpen(false);
+    setBuyOpen(false);
+    setScoreboardOpen(false);
+    setSettingsOpen(false);
+  }, [setAnsweringChoice, setBuyingGearId, setBuyOpen, setIsBuyingSnowballs, setQuizOpen, setScoreboardOpen, setSettingsOpen]);
+
+  useEffect(() => {
+    if (!roundScopedUiKey) {
+      roundScopedUiKeyRef.current = "";
+      return;
+    }
+    if (roundScopedUiKeyRef.current && roundScopedUiKeyRef.current !== roundScopedUiKey) {
+      // A student can spend the result/preparation pause with a suspended tab.
+      // Clear answer locks and stale feedback before the next round's question
+      // fetch so touch menus do not reopen in a dead state after iPad resume.
+      resetRoundScopedStudentUi();
+    }
+    roundScopedUiKeyRef.current = roundScopedUiKey;
+  }, [roundScopedUiKey, resetRoundScopedStudentUi]);
 
   const isCompactViewport = viewportWidth <= 780;
   const sessionCode = session?.sessionCode;
@@ -627,12 +667,34 @@ export default function StudentExperience({ onExit }: { onExit: () => void }) {
     const lastRemotePositions = new Map<string, { x: number; y?: number; z: number }>();
     let lastVisualSession = activeSession;
     let removedByTeacher = false;
+    let pageRestoreSyncInFlight = false;
     const reconnectAfterPageRestore = () => {
       if (disposed || removedByTeacher || document.visibilityState === "hidden") return;
       if (!connectedSocket.connected) {
         setIsSocketReconnecting(true);
         connectedSocket.connect();
+        return;
       }
+      if (pageRestoreSyncInFlight) return;
+      pageRestoreSyncInFlight = true;
+      void studentApi.session(activeSession.sessionCode, playerToken)
+        .then((payload) => {
+          if (disposed || removedByTeacher) return;
+          const refreshedSession = (payload as { session: GameSession }).session;
+          lastVisualSession = refreshedSession;
+          setSession(refreshedSession);
+          setPlayer((current) => refreshedSession.players.find((item) => item.id === (current?.id ?? activePlayerId)) ?? current);
+          setIsSocketReconnecting(false);
+        })
+        .catch(() => {
+          if (disposed || removedByTeacher) return;
+          setIsSocketReconnecting(true);
+          if (connectedSocket.connected) connectedSocket.disconnect();
+          connectedSocket.connect();
+        })
+        .finally(() => {
+          pageRestoreSyncInFlight = false;
+        });
     };
     window.addEventListener("pageshow", reconnectAfterPageRestore);
     document.addEventListener("visibilitychange", reconnectAfterPageRestore);
@@ -672,9 +734,14 @@ export default function StudentExperience({ onExit }: { onExit: () => void }) {
           answerFeedbackTimerRef.current = undefined;
         }
         answerSubmissionLockRef.current = false;
+        answerOperationRef.current += 1;
+        purchaseOperationRef.current += 1;
+        purchaseLockRef.current = false;
         setAnsweringChoice(null);
         setAnswerFeedback(null);
         setQuestion(null);
+        setBuyingGearId(null);
+        setIsBuyingSnowballs(false);
       }
       hasConnected = true;
       setIsSocketReconnecting(false);
@@ -991,6 +1058,11 @@ export default function StudentExperience({ onExit }: { onExit: () => void }) {
       setSettingsOpen(false);
       setAnsweringChoice(null);
       answerSubmissionLockRef.current = false;
+      answerOperationRef.current += 1;
+      purchaseOperationRef.current += 1;
+      purchaseLockRef.current = false;
+      setBuyingGearId(null);
+      setIsBuyingSnowballs(false);
       setFeedback("");
       setIsSocketReconnecting(false);
       setStatusError(payload.message ?? "The host removed you from this game.");
@@ -1007,7 +1079,7 @@ export default function StudentExperience({ onExit }: { onExit: () => void }) {
       if (socketRef.current === socket) socketRef.current = null;
       socket?.disconnect();
     };
-  }, [sessionCode, playerId, playerToken, openRespawnPractice, setAnsweringChoice, setBuyOpen, setFeedback, setIncomingHitCue, setIsSocketReconnecting, setQuizOpen, setRewardPulse, setScoreboardOpen, setSettingsOpen, setStatusError]);
+  }, [sessionCode, playerId, playerToken, openRespawnPractice, setAnsweringChoice, setBuyingGearId, setBuyOpen, setFeedback, setIncomingHitCue, setIsBuyingSnowballs, setIsSocketReconnecting, setQuizOpen, setRewardPulse, setScoreboardOpen, setSettingsOpen, setStatusError]);
 
   useEffect(() => {
     if (!sessionCode || !playerId || !playerToken || sessionStatus !== "waiting") return;
@@ -1243,12 +1315,19 @@ export default function StudentExperience({ onExit }: { onExit: () => void }) {
     setSettingsOpen(false);
     setAnsweringChoice(null);
     answerSubmissionLockRef.current = false;
+    answerOperationRef.current += 1;
+    purchaseOperationRef.current += 1;
+    purchaseLockRef.current = false;
+    setBuyingGearId(null);
+    setIsBuyingSnowballs(false);
     setFeedback("");
     status.clear();
   };
 
   const answer = async (choice: Choice) => {
     if (teacherPaused || !session || !player || !question || !playerToken || answeringChoice || answerFeedback || answerSubmissionLockRef.current) return;
+    const operationId = answerOperationRef.current + 1;
+    answerOperationRef.current = operationId;
     answerSubmissionLockRef.current = true;
     const answeredQuestion = question;
     const answeringPlayer = player;
@@ -1279,6 +1358,7 @@ export default function StudentExperience({ onExit }: { onExit: () => void }) {
         command,
         () => studentApi.answer(session.sessionCode, player.id, playerToken, command) as Promise<AnswerPayload>
       );
+      if (answerOperationRef.current !== operationId) return;
       storeCosmeticProgressToken(payload.cosmeticProgressToken);
       setPlayer(payload.result.player);
       const wasWrong = !payload.result.isCorrect;
@@ -1322,6 +1402,7 @@ export default function StudentExperience({ onExit }: { onExit: () => void }) {
       }
       if (answerFeedbackTimerRef.current !== undefined) window.clearTimeout(answerFeedbackTimerRef.current);
       answerFeedbackTimerRef.current = window.setTimeout(() => {
+        if (answerOperationRef.current !== operationId) return;
         answerFeedbackTimerRef.current = undefined;
         answerSubmissionLockRef.current = false;
         setAnswerFeedback(null);
@@ -1335,10 +1416,12 @@ export default function StudentExperience({ onExit }: { onExit: () => void }) {
         supportingText
       }));
     } catch (err) {
-      answerSubmissionLockRef.current = false;
-      status.report(err);
+      if (answerOperationRef.current === operationId) {
+        answerSubmissionLockRef.current = false;
+        status.report(err);
+      }
     } finally {
-      setAnsweringChoice(null);
+      if (answerOperationRef.current === operationId) setAnsweringChoice(null);
     }
   };
 
@@ -1355,11 +1438,19 @@ export default function StudentExperience({ onExit }: { onExit: () => void }) {
     setSettingsOpen(false);
     setAnsweringChoice(null);
     answerSubmissionLockRef.current = false;
+    answerOperationRef.current += 1;
+    purchaseOperationRef.current += 1;
+    purchaseLockRef.current = false;
+    setBuyingGearId(null);
+    setIsBuyingSnowballs(false);
     if (document.pointerLockElement) document.exitPointerLock();
-  }, [hasSession, sessionId, sessionStatus, setAnsweringChoice, setBuyOpen, setQuizOpen, setScoreboardOpen, setSettingsOpen]);
+  }, [hasSession, sessionId, sessionStatus, setAnsweringChoice, setBuyingGearId, setBuyOpen, setIsBuyingSnowballs, setQuizOpen, setScoreboardOpen, setSettingsOpen]);
 
   const buy = async (gearId: string) => {
-    if (teacherPaused || !session || !player || !playerToken || buyingGearId || isBuyingSnowballs) return;
+    if (teacherPaused || !session || !player || !playerToken || buyingGearId || isBuyingSnowballs || purchaseLockRef.current) return;
+    const operationId = purchaseOperationRef.current + 1;
+    purchaseOperationRef.current = operationId;
+    purchaseLockRef.current = true;
     status.clear();
     setFeedback("Choosing gear...");
     setBuyingGearId(gearId);
@@ -1371,19 +1462,26 @@ export default function StudentExperience({ onExit }: { onExit: () => void }) {
         { gearId },
         () => studentApi.buy(session.sessionCode, player.id, playerToken, gearId) as Promise<BuyPayload>
       );
+      if (purchaseOperationRef.current !== operationId) return;
       setPlayer(payload.player);
       setFeedback(payload.message);
       setRewardPulse(payload.message);
       gameAudio.playEvent(gearId.endsWith("_blaster") ? "weapon_equip" : "results_confirm");
     } catch (err) {
-      status.report(err);
+      if (purchaseOperationRef.current === operationId) status.report(err);
     } finally {
-      setBuyingGearId(null);
+      if (purchaseOperationRef.current === operationId) {
+        purchaseLockRef.current = false;
+        setBuyingGearId(null);
+      }
     }
   };
 
-  const buySnowballs = async () => {
-    if (teacherPaused || !session || !player || !playerToken || isBuyingSnowballs || buyingGearId) return;
+  const buySnowballs = async (packSize: SnowballPackSize) => {
+    if (teacherPaused || !session || !player || !playerToken || isBuyingSnowballs || buyingGearId || purchaseLockRef.current) return;
+    const operationId = purchaseOperationRef.current + 1;
+    purchaseOperationRef.current = operationId;
+    purchaseLockRef.current = true;
     status.clear();
     setFeedback("Restocking snowballs...");
     setIsBuyingSnowballs(true);
@@ -1392,17 +1490,21 @@ export default function StudentExperience({ onExit }: { onExit: () => void }) {
       const payload = await sendStudentCommand<BuySnowballsPayload>(
         socketRef.current,
         "buy_snowballs",
-        {},
-        () => studentApi.buySnowballs(session.sessionCode, player.id, playerToken) as Promise<BuySnowballsPayload>
+        { packSize },
+        () => studentApi.buySnowballs(session.sessionCode, player.id, playerToken, packSize) as Promise<BuySnowballsPayload>
       );
+      if (purchaseOperationRef.current !== operationId) return;
       setPlayer(payload.player);
       setFeedback(payload.message);
       setRewardPulse(payload.message);
       gameAudio.play("buy");
     } catch (err) {
-      status.report(err);
+      if (purchaseOperationRef.current === operationId) status.report(err);
     } finally {
-      setIsBuyingSnowballs(false);
+      if (purchaseOperationRef.current === operationId) {
+        purchaseLockRef.current = false;
+        setIsBuyingSnowballs(false);
+      }
     }
   };
 
@@ -1450,7 +1552,8 @@ export default function StudentExperience({ onExit }: { onExit: () => void }) {
         const shortcut = getShopShortcut(event.key);
         if (!shortcut) return;
         event.preventDefault();
-        if (shortcut.item === "snowballs") void buySnowballsActionRef.current();
+        if (shortcut.item === "snowballs") void buySnowballsActionRef.current("standard");
+        else if (shortcut.item === "snowballs_large") void buySnowballsActionRef.current("large");
         else void buyActionRef.current(shortcut.item);
       }
     };
@@ -1596,7 +1699,7 @@ export default function StudentExperience({ onExit }: { onExit: () => void }) {
               <div className="student-control"><kbd>C</kbd><span>Zoom</span></div>
               <div className="student-control"><kbd>E</kbd><span>Environment button</span></div>
               <div className="student-control"><kbd>Q</kbd><span>Questions</span></div>
-              <div className="student-control"><kbd>B / 1-5</kbd><span>Open and choose gear</span></div>
+              <div className="student-control"><kbd>B / 1-6</kbd><span>Open and choose gear</span></div>
               <div className="student-control"><kbd>Tab</kbd><span>Scoreboard</span></div>
             </div>
           </div>
@@ -1777,7 +1880,7 @@ export default function StudentExperience({ onExit }: { onExit: () => void }) {
               inputPaused={gameplayInputPaused}
               onMove={roundActive && player.isAlive ? sendArenaPosition : undefined}
               onFire={roundActive && player.isAlive && canFire ? sendArenaFire : undefined}
-              onInteract={roundActive && player.isAlive ? sendFlagAction : undefined}
+              onInteract={session.settings.gameMode === "flag" && roundActive && player.isAlive ? sendFlagAction : undefined}
               loadDecalAsset={loadStudentDecal}
             />
           </Suspense>
@@ -2130,7 +2233,7 @@ export default function StudentExperience({ onExit }: { onExit: () => void }) {
       </div>
       {session.status !== "waiting" && <div className="action-bar control-prompts">
         <button aria-label="Questions" disabled={roundEnded || teacherPaused} onClick={() => { gameAudio.playEvent(quizOpen ? "modal_close" : "quiz_open"); setQuizOpen(!quizOpen); setBuyOpen(false); setScoreboardOpen(false); }}><BookOpen size={19} aria-hidden="true" /><span>Q Questions</span></button>
-        <button aria-label="Buy gear" disabled={roundEnded || teacherPaused || !player.isAlive} onClick={() => { gameAudio.play("menu_toggle"); setBuyOpen(!buyOpen); setQuizOpen(false); setScoreboardOpen(false); }}><Package size={19} aria-hidden="true" /><span>B Gear · 1–5 choose</span></button>
+        <button aria-label="Buy gear" disabled={roundEnded || teacherPaused || !player.isAlive} onClick={() => { gameAudio.play("menu_toggle"); setBuyOpen(!buyOpen); setQuizOpen(false); setScoreboardOpen(false); }}><Package size={19} aria-hidden="true" /><span>B Gear · 1–6 choose</span></button>
         <button aria-label="Scoreboard" disabled={teacherPaused} onPointerDown={() => { gameAudio.play("menu_toggle"); setScoreboardOpen(true); setQuizOpen(false); setBuyOpen(false); setSettingsOpen(false); }} onPointerUp={() => setScoreboardOpen(false)} onPointerCancel={() => setScoreboardOpen(false)} onBlur={() => setScoreboardOpen(false)}><Trophy size={19} aria-hidden="true" /><span>Hold Tab · Scoreboard</span></button>
         <button aria-label="Settings" disabled={teacherPaused} onClick={() => { gameAudio.play("menu_toggle"); setSettingsOpen((open) => !open); setQuizOpen(false); setBuyOpen(false); setScoreboardOpen(false); }}><Settings size={19} aria-hidden="true" /><span>Settings</span></button>
       </div>}

@@ -3,7 +3,8 @@ export const SHOP_SHORTCUTS = [
   { key: "2", item: "quick_blaster" },
   { key: "3", item: "power_blaster" },
   { key: "4", item: "shield_vest" },
-  { key: "5", item: "speed_shoes" }
+  { key: "5", item: "speed_shoes" },
+  { key: "6", item: "snowballs_large" }
 ] as const;
 
 export const getShopShortcut = (key: string) => SHOP_SHORTCUTS.find((shortcut) => shortcut.key === key);

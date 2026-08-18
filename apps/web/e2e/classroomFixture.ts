@@ -1,6 +1,9 @@
 import type { APIRequestContext } from "@playwright/test";
 
-export const createClassroom = async (request: APIRequestContext) => {
+export const createClassroom = async (
+  request: APIRequestContext,
+  { gameMode = "classic" }: { gameMode?: "classic" | "flag" } = {}
+) => {
   const suffix = `${Date.now()}-${Math.random().toString(16).slice(2)}`;
   const signup = await request.post("/api/auth/signup", {
     data: {
@@ -36,7 +39,7 @@ export const createClassroom = async (request: APIRequestContext) => {
     headers: authorization,
     data: {
       quizSetId: quizSet.id,
-      settings: { gameMode: "classic", maxPlayers: 2, roundDurationSeconds: 60 }
+      settings: { gameMode, maxPlayers: 2, roundDurationSeconds: 60 }
     }
   });
   if (created.status() !== 201) throw new Error(`Session creation failed with ${created.status()}.`);

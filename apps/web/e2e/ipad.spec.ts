@@ -2,7 +2,7 @@ import { expect, test } from "@playwright/test";
 import { createClassroom } from "./classroomFixture";
 
 test("iPad-like profile joins, starts, renders the arena shell, and accepts touch controls", async ({ page, request }) => {
-  const classroom = await createClassroom(request);
+  const classroom = await createClassroom(request, { gameMode: "flag" });
 
   await page.goto(`/join?code=${classroom.code}`);
   await expect(page.getByPlaceholder("Player name")).toBeVisible();
@@ -20,6 +20,33 @@ test("iPad-like profile joins, starts, renders the arena shell, and accepts touc
   const joystick = page.getByRole("button", { name: "Movement joystick" });
   await expect(joystick).toBeVisible();
   await joystick.tap();
+  const interact = page.getByRole("button", { name: "Interact with environment" });
+  await expect(interact).toBeVisible();
+  await interact.tap();
   await page.getByRole("button", { name: "Questions", exact: true }).tap();
   await expect(page.getByText("Choose an answer", { exact: true })).toBeVisible();
+  await page.locator(".answer-grid button").first().tap();
+  await expect(page.locator(".question-feedback-result")).toBeVisible();
+
+  await page.context().setOffline(true);
+  const endRound = await request.post(`/api/sessions/${classroom.code}/end-round`, {
+    headers: { Authorization: `Bearer ${classroom.teacherToken}` }
+  });
+  expect(endRound.status()).toBe(200);
+
+  await expect.poll(async () => {
+    const response = await request.get(`/api/sessions/${classroom.code}`, {
+      headers: { Authorization: `Bearer ${classroom.teacherToken}` }
+    });
+    const body = await response.json() as { session: { currentRound: number } };
+    return body.session.currentRound;
+  }, { timeout: 15_000 }).toBe(2);
+
+  await page.context().setOffline(false);
+  await page.evaluate(() => window.dispatchEvent(new PageTransitionEvent("pageshow")));
+
+  await expect(page.locator(".mode-pill")).toContainText("Round 2/", { timeout: 15_000 });
+  await page.getByRole("button", { name: "Questions", exact: true }).tap();
+  await expect(page.getByText("Choose an answer", { exact: true })).toBeVisible();
+  await expect(page.locator(".answer-grid button").first()).toBeEnabled();
 });

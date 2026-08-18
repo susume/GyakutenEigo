@@ -51,7 +51,7 @@ export type PlayerRouteDependencies = {
   answerQuestion: (session: GameSession, player: PlayerSession, body: { questionId?: unknown; selectedChoice?: unknown }) => StudentCommandResult<unknown>;
   makeStudentLearningReport: (session: GameSession, player: PlayerSession) => StudentLearningReport;
   buyGear: (session: GameSession, player: PlayerSession, gearId: unknown) => StudentCommandResult<unknown>;
-  buySnowballs: (session: GameSession, player: PlayerSession) => StudentCommandResult<unknown>;
+  buySnowballs: (session: GameSession, player: PlayerSession, packSize?: unknown) => StudentCommandResult<unknown>;
 };
 
 const findPlayer = (deps: PlayerRouteDependencies, req: Request) => {
@@ -345,6 +345,6 @@ export const registerPlayerRoutes = (app: Application, deps: PlayerRouteDependen
       return;
     }
     if (!deps.requirePlayerAccess(req, res, session, player)) return;
-    deps.sendStudentCommand(res, deps.buySnowballs(session, player));
+    deps.sendStudentCommand(res, deps.buySnowballs(session, player, req.body?.packSize));
   });
 };

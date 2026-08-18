@@ -146,6 +146,7 @@ import {
   type SessionReport,
   type StudentLearningReport,
   type SessionSettings,
+  type SnowballPackSize,
   type LearningPulse,
   type TeacherUser,
   type Team
@@ -1682,7 +1683,7 @@ const buyGear = (session: GameSession, player: PlayerSession, gearId: unknown): 
   return { ok: true, data: { player, gear, message: `${gear.name} equipped. Ready for the next play.` } };
 };
 
-const buySnowballs = (session: GameSession, player: PlayerSession): StudentCommandResult<SnowballPurchaseResponse> => {
+const buySnowballs = (session: GameSession, player: PlayerSession, requestedPackSize?: unknown): StudentCommandResult<SnowballPurchaseResponse> => {
   if (isTeacherPaused(session)) {
     return failStudentCommand(409, "The game is paused by the teacher. Wait for the game to resume.");
   }
@@ -1692,7 +1693,11 @@ const buySnowballs = (session: GameSession, player: PlayerSession): StudentComma
   if (session.settings.gameMode === "zombie" && player.role !== "zombie") {
     return failStudentCommand(400, "Humans cannot buy snowballs in Zombie Mode.");
   }
-  const purchase = resolveSnowballPurchase({ player, settings: session.settings });
+  if (requestedPackSize !== undefined && requestedPackSize !== "standard" && requestedPackSize !== "large") {
+    return failStudentCommand(400, "Choose a valid snowball pack.");
+  }
+  const packSize: SnowballPackSize = requestedPackSize ?? "standard";
+  const purchase = resolveSnowballPurchase({ player, settings: session.settings, packSize });
   if (!purchase.ok) {
     return failStudentCommand(
       400,
@@ -1919,16 +1924,17 @@ io.on("connection", (socket) => {
 
   socket.on(
     "buy_snowballs",
-    (payload: Record<string, never>, acknowledge: (response: StudentCommandAck<SnowballPurchaseResponse>) => void) => {
+    (payload: { packSize?: unknown }, acknowledge: (response: StudentCommandAck<SnowballPurchaseResponse>) => void) => {
       if (typeof acknowledge !== "function") return;
-      if (!parseSocketCommand(socket, "buy_snowballs", payload)) {
+      const command = parseSocketCommand(socket, "buy_snowballs", payload);
+      if (!command) {
         acknowledge({ ok: false, status: 400, error: "The purchase command was invalid." });
         return;
       }
       const student = getBoundStudent(socket);
       acknowledge(
         student
-          ? commandAck(buySnowballs(student.session, student.player))
+          ? commandAck(buySnowballs(student.session, student.player, command.packSize))
           : { ok: false, status: 401, error: "Reconnect to the game before buying snowballs." }
       );
     }

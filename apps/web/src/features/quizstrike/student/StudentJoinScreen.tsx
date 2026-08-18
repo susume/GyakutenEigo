@@ -76,7 +76,7 @@ export default function StudentJoinScreen({ onJoined }: { onJoined: (options?: {
             <div className="student-control"><kbd>C</kbd><span>Zoom</span></div>
             <div className="student-control"><kbd>E</kbd><span>Environment button</span></div>
             <div className="student-control"><kbd>Q</kbd><span>Questions</span></div>
-            <div className="student-control"><kbd>B / 1-5</kbd><span>Open and choose gear</span></div>
+            <div className="student-control"><kbd>B / 1-6</kbd><span>Open and choose gear</span></div>
             <div className="student-control"><kbd>Tab</kbd><span>Scoreboard</span></div>
           </div>
         </div>

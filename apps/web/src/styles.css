@@ -932,6 +932,31 @@ label.toggle-row input {
   font-weight: 950;
 }
 
+.touch-interact {
+  min-width: 108px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 7px;
+  border-color: rgba(253, 224, 71, 0.94) !important;
+  background: rgba(101, 71, 7, 0.94) !important;
+  color: #fef9c3 !important;
+  font-weight: 950;
+}
+
+.touch-interact kbd {
+  display: inline-grid;
+  min-width: 24px;
+  min-height: 24px;
+  place-items: center;
+  border: 1px solid rgba(254, 249, 195, 0.72);
+  border-radius: 5px;
+  background: rgba(255, 255, 255, 0.12);
+  color: inherit;
+  font: inherit;
+  font-size: 0.72rem;
+}
+
 .touch-joystick {
   --stick-x: 0px;
   --stick-y: 0px;
@@ -2243,6 +2268,17 @@ small {
   transform: translateY(-1px);
 }
 
+.snowball-bulk-row {
+  border-color: #b7a2dd;
+  background: linear-gradient(100deg, rgba(248, 245, 255, 0.96), rgba(239, 232, 255, 0.88));
+}
+
+.snowball-bulk-row:hover:not(:disabled),
+.snowball-bulk-row:focus-visible:not(:disabled) {
+  border-color: #8257c9;
+  background: #ffffff;
+}
+
 .buy-shortcut-help {
   margin: -2px 0 0;
   color: #526278;
@@ -2276,6 +2312,13 @@ small {
   font: inherit;
   font-weight: 1000;
   box-shadow: 0 2px 0 #bfd7f5;
+}
+
+.buy-shortcut-key-bulk {
+  border-color: #8b6bc1;
+  background: #f0eaff;
+  color: #6b46a1;
+  box-shadow: 0 2px 0 #d4c4f3;
 }
 
 .gear-row:disabled .buy-shortcut-key {

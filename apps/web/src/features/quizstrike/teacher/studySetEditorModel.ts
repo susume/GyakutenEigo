@@ -86,7 +86,23 @@ const splitStudyLine = (line: string) => {
   return undefined;
 };
 
-export const questionsFromStudyList = (text: string): EditorQuestion[] => {
+const shuffle = <T,>(items: T[], random: () => number) => {
+  const shuffled = [...items];
+  for (let index = shuffled.length - 1; index > 0; index -= 1) {
+    const randomValue = Math.min(Math.max(random(), 0), 1 - Number.EPSILON);
+    const swapIndex = Math.floor(randomValue * (index + 1));
+    [shuffled[index], shuffled[swapIndex]] = [shuffled[swapIndex]!, shuffled[index]!];
+  }
+  return shuffled;
+};
+
+const fallbackAnswers = [
+  "Review this term again",
+  "No matching definition",
+  "Not one of the imported definitions"
+];
+
+export const questionsFromStudyList = (text: string, random: () => number = Math.random): EditorQuestion[] => {
   const entries = text.split(/\r?\n/)
     .map((line) => line.trim().replace(/^\d+[).]\s*/, ""))
     .filter(Boolean)
@@ -94,10 +110,22 @@ export const questionsFromStudyList = (text: string): EditorQuestion[] => {
     .filter((entry): entry is { term: string; definition: string } => Boolean(entry));
   if (entries.length < 2) return [];
   return entries.slice(0, 80).map((entry, index) => {
-    const distractors = [1, 2, 3].map((offset) => entries[(index + offset) % entries.length]?.definition)
-      .filter((value): value is string => Boolean(value) && value !== entry.definition);
-    const answers = [entry.definition, ...distractors];
-    while (answers.length < 4) answers.push("Review this term again");
+    const distractors = [...new Set(
+      [1, 2, 3]
+        .map((offset) => entries[(index + offset) % entries.length]?.definition)
+        .filter((value): value is string => Boolean(value) && value !== entry.definition)
+    )];
+    const unshuffledAnswers = [entry.definition, ...distractors];
+    let fallbackIndex = 0;
+    while (unshuffledAnswers.length < 4) {
+      const base = fallbackAnswers[fallbackIndex % fallbackAnswers.length]!;
+      const cycle = Math.floor(fallbackIndex / fallbackAnswers.length);
+      const fallback = cycle === 0 ? base : `${base} ${cycle + 1}`;
+      fallbackIndex += 1;
+      if (!unshuffledAnswers.includes(fallback)) unshuffledAnswers.push(fallback);
+    }
+    const answers = shuffle(unshuffledAnswers.slice(0, 4), random);
+    const correctChoice = (["A", "B", "C", "D"] as const)[answers.indexOf(entry.definition)] ?? "A";
     return {
       ...emptyEditorQuestion(),
       prompt: `What matches “${entry.term}”?`,
@@ -105,7 +133,7 @@ export const questionsFromStudyList = (text: string): EditorQuestion[] => {
       choiceB: answers[1],
       choiceC: answers[2],
       choiceD: answers[3],
-      correctChoice: "A",
+      correctChoice,
       explanation: entry.definition,
       difficulty: "Imported"
     };

@@ -1,4 +1,4 @@
-import type { CharacterCustomizationSettings, Choice, PlayerAppearance, SessionSettings, StudySetSummary } from "@quizstrike/shared";
+import type { CharacterCustomizationSettings, Choice, PlayerAppearance, SessionSettings, SnowballPackSize, StudySetSummary } from "@quizstrike/shared";
 import { ApiError } from "./errors";
 import { ApiRequestTimeoutError, buildApiUrlCandidates, fetchFromApiCandidates, resolveApiOrigin } from "./endpoints.js";
 import { retryOnce } from "./retry.js";
@@ -345,10 +345,11 @@ export const studentApi = {
       headers: playerHeaders(playerToken),
       body: JSON.stringify({ gearId })
     }),
-  buySnowballs: (code: string, playerId: string, playerToken: string) =>
+  buySnowballs: (code: string, playerId: string, playerToken: string, packSize?: SnowballPackSize) =>
     api(`/api/sessions/${code}/players/${playerId}/buy-snowballs`, {
       method: "POST",
-      headers: playerHeaders(playerToken)
+      headers: playerHeaders(playerToken),
+      ...(packSize ? { body: JSON.stringify({ packSize }) } : {})
     })
 };
 

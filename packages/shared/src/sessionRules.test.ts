@@ -848,6 +848,25 @@ test("resolveSnowballPurchase exchanges money for a teacher-priced snowball pack
   );
 });
 
+test("resolveSnowballPurchase supports a 50-snowball bulk pack at five times the normal price", () => {
+  assert.deepEqual(
+    resolveSnowballPurchase({
+      player: makePlayer({ money: 3000, snowballs: 2 }),
+      settings: { ...DEFAULT_SESSION_SETTINGS, snowballPackPrice: 600, snowballsPerPack: 10 },
+      packSize: "large"
+    }),
+    { ok: true, nextMoney: 0, nextSnowballs: 52, snowballsAdded: 50 }
+  );
+  assert.deepEqual(
+    resolveSnowballPurchase({
+      player: makePlayer({ money: 2999, snowballs: 2 }),
+      settings: { ...DEFAULT_SESSION_SETTINGS, snowballPackPrice: 600, snowballsPerPack: 10 },
+      packSize: "large"
+    }),
+    { ok: false, reason: "not_enough_money" }
+  );
+});
+
 test("resolveGearPurchase is idempotent for currently equipped gear", () => {
   const player = makePlayer({ money: 1200, gear: "quick_blaster" });
   const gear = GEAR_ITEMS.find((item) => item.id === "quick_blaster")!;

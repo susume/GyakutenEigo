@@ -23,6 +23,11 @@ test("canonical client messages validate and retain their discriminator", () => 
     sprinting: true
   });
   assert.equal(movement.success, true);
+
+  const bulkSnowballs = validateClientCommand("buy_snowballs", { packSize: "large" });
+  assert.equal(bulkSnowballs.success, true);
+  assert.equal(validateClientCommand("buy_snowballs", {}).success, true);
+  assert.equal(validateClientCommand("buy_snowballs", { packSize: "oversized" }).success, false);
 });
 
 test("unknown, missing, out-of-range, and oversized client messages fail safely", () => {

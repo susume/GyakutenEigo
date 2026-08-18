@@ -54,7 +54,8 @@ export const BuyGearCommandSchema = z.object({
 }).strict();
 
 export const BuySnowballsCommandSchema = z.object({
-  type: z.literal("buy_snowballs")
+  type: z.literal("buy_snowballs"),
+  packSize: z.enum(["standard", "large"]).optional()
 }).strict();
 
 const positionFields = {

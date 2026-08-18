@@ -16,7 +16,8 @@ export const ArenaHudOverlay = ({
   suppressHint,
   joystickElementRef,
   onBeginTouchMove,
-  onZoomFromTouch
+  onZoomFromTouch,
+  onInteractFromTouch
 }: {
   hitPulse: number;
   zoomLevel: number;
@@ -29,6 +30,7 @@ export const ArenaHudOverlay = ({
   joystickElementRef: RefObject<HTMLButtonElement | null>;
   onBeginTouchMove: (event: React.PointerEvent<HTMLButtonElement>) => void;
   onZoomFromTouch: (event: React.PointerEvent<HTMLButtonElement>) => void;
+  onInteractFromTouch: (() => void) | undefined;
 }) => (
   <>
     {(currentWeaponId !== "power_blaster" || zoomLevel > 0) && (
@@ -47,12 +49,27 @@ export const ArenaHudOverlay = ({
       <button ref={joystickElementRef} type="button" className="touch-joystick" aria-label="Movement joystick" disabled={controlsDisabled} onPointerDown={onBeginTouchMove}>
         <span aria-hidden="true" />
       </button>
-      {currentWeaponId === "power_blaster" && (
+      {(currentWeaponId === "power_blaster" || onInteractFromTouch) && (
         <div className="touch-action-group">
-          <button type="button" className="touch-zoom" disabled={controlsDisabled} onPointerDown={onZoomFromTouch}>
-            <span aria-hidden="true">⌖</span>
-            Zoom{zoomLevel > 0 ? ` ${zoomLevel === 1 ? "3×" : "7×"}` : ""}
-          </button>
+          {onInteractFromTouch && (
+            <button
+              type="button"
+              className="touch-interact"
+              disabled={controlsDisabled}
+              aria-label="Interact with environment"
+              aria-keyshortcuts="E"
+              onClick={onInteractFromTouch}
+            >
+              <kbd aria-hidden="true">E</kbd>
+              Interact
+            </button>
+          )}
+          {currentWeaponId === "power_blaster" && (
+            <button type="button" className="touch-zoom" disabled={controlsDisabled} onPointerDown={onZoomFromTouch}>
+              <span aria-hidden="true">⌖</span>
+              Zoom{zoomLevel > 0 ? ` ${zoomLevel === 1 ? "3×" : "7×"}` : ""}
+            </button>
+          )}
         </div>
       )}
     </div>
