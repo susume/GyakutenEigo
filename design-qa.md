@@ -410,3 +410,93 @@ final result: passed
 No remaining P0, P1, or P2 visual mismatch was found for the requested iPad layout behavior.
 
 final result: passed
+
+# QuizStrike Streak Aura VFX — image-to-code QA (2026-08-16)
+
+## Visual truth
+
+- Primary reference: `C:\Users\hungb\Downloads\hqdefault.jpg` — the white/ice-blue half was used as the universal aura direction; the yellow half was intentionally not treated as a team-color requirement.
+- Secondary reference: `C:\Users\hungb\Downloads\flyff021.jpg` — the aura should envelop the full character silhouette with a bright white core and cyan-blue outer energy.
+- Implementation capture: `C:\Users\hungb\OneDrive\Documents\GitHub\GyakutenEigo\design-qa-assets\streak-aura-character-lab-high.png`
+
+## Viewport and state
+
+- Captured at 1280 × 720 CSS px, device pixel ratio 1.25.
+- Character Lab, Playable FPS, Desert Citadel Market, 10-player roster, high quality, simulated network movement, and the debug 0–15 freeze-streak ladder.
+- Camera was aligned toward the remote roster so the persistent aura could be checked around living characters without adding a camera overlay.
+
+## Fidelity evidence
+
+- Full-view: the implementation preserves the reference’s white inner glow, ice-blue/cyan shell, upward wisps, and soft ground energy while keeping character silhouettes, nameplates, and team colors readable.
+- Focused region: the remote-character region at the left side of the implementation canvas shows the layered aura around the character body; the reference images are in-game art direction rather than a UI layout to pixel-match.
+- Geometry/material behavior: the aura uses occluded scene geometry with additive translucent layers, animated wisps, sprites, rings, and threshold bursts. No screen-filling overlay, wireframe, or placeholder sphere was introduced.
+- Required ladder: 3 Heating Up, 4 Dominating, 5 Wicked Sick, 6 Monster, 7 Tier 7, 8 Unstoppable, 9 Godlike, 10+ Maximum.
+
+## Runtime and interaction checks
+
+- Character Lab quality presets (low, balanced, high), 10-player and 40-player rosters, map selection, and camera interaction were exercised in the in-app browser.
+- Low-quality 40-player observation: 43 FPS, 1322 calls, 826,105 triangles, 0 dropped transient VFX in this local browser session.
+- High-quality 10-player observation: 57 FPS, 429 calls, 338,313 triangles in the captured session.
+- Browser console: no errors or warnings.
+- `npm run typecheck -w @quizstrike/web`: passed.
+- `npm run lint -- --quiet`: passed.
+- `npm run test -w @quizstrike/web`: passed, 198/198 tests.
+- `npm run build -w @quizstrike/web`: passed with existing Vite chunk-size advisory.
+
+## Scope note
+
+- The aura’s requested visual ladder is implemented independently from the existing shared announcer/audio labels. The canonical voice-announcer mapping was left unchanged to avoid an unrelated gameplay/audio regression.
+
+No actionable P0, P1, or P2 visual mismatch was found for the requested persistent streak-aura behavior.
+
+final result: passed
+
+# QuizStrike Streak Aura Color Progression QA (2026-08-16)
+
+## Visual truth and scope
+
+- Existing visual references: `C:\Users\hungb\Downloads\hqdefault.jpg` for the white/ice-blue MMORPG energy direction and `C:\Users\hungb\Downloads\flyff021.jpg` for the full-character aura silhouette.
+- Implementation capture: `C:\Users\hungb\OneDrive\Documents\GitHub\GyakutenEigo\design-qa-assets\streak-aura-color-character-lab-high.png`
+- The existing scene-level aura, capsule shells, wisps, sprites, ground ring, burst ring, shared geometry, occlusion, lifecycle, and distance/quality LOD were preserved.
+
+## Final color mapping
+
+- 0–2: no aura.
+- 3 Heating Up: white core → Ice Blue `#79E7FF`.
+- 4 Dominating: white core → Electric Cyan `#20CFFF`.
+- 5 Wicked Sick: white core → Violet `#A86CFF`.
+- 6 Monster: white core → Strong Purple `#854DFF`.
+- 7: white core → Magenta-Violet `#D44CFF`.
+- 8 Unstoppable: white core → magical Gold `#FFD84A`.
+- 9 Godlike: White-Gold core `#FFF4C2` → Gold `#FFD24A`.
+- 10+ Maximum: Brilliant White core → Gold `#FFD43B` with restrained Violet accent `#B85CFF`; the tier remains capped.
+
+## Self-audit
+
+- Core energy remains bright through a separate inner shell and core sprite; the player model and Red/Blue uniforms are not recolored.
+- Tier transitions use a short 460 ms destination-colored burst with a white flash, then smooth HSL-aware color interpolation over the existing 280 ms visual response.
+- Shutdown captures the current inner/outer/accent palette before contraction, so Gold, Purple, and Maximum auras collapse using their own colors.
+- The existing size, height, pulse, flow, wisp count, ring, and burst-intensity ladder remains active, so color is tier identity while motion/scale communicate strength.
+- Character Lab exercises the complete 0–15 ladder across alternating Red and Blue debug players; Desert Citadel, Iron Junction, and Temple Runoff were checked with no browser errors or warnings.
+- No bounty plates, streak labels, nameplate recoloring, gameplay values, announcement thresholds, or team rules were changed.
+
+## Performance and material impact
+
+- Prior local 40-player low-quality observation: 43 FPS, 1322 calls, 826,105 triangles.
+- Colorized 40-player low-quality observation after stabilization: 41 FPS, 1319 calls, 825,623 triangles, 0 dropped VFX.
+- Colorized 10-player high-quality observation: 46 FPS, 427 calls, 343,597 triangles.
+- No new geometry or material instances were added. Existing shared Capsule/Plane/Torus geometry and existing per-aura shader/sprite/ring materials are reused; color changes are uniform/material-color updates only.
+- The small FPS variance is renderer/browser workload-dependent; draw calls and triangles did not increase.
+
+## Verification
+
+- `npm run typecheck -w @quizstrike/web`: passed.
+- `npm run lint -- --quiet`: passed.
+- `npm run test -w @quizstrike/web`: passed, 202/202 tests.
+- `npm run build -w @quizstrike/web`: passed with the existing Vite chunk-size advisory.
+- Browser console: no errors or warnings.
+- Aura materials retain `depthTest: true` and `depthWrite: false`; no wall-occlusion regression was found in the renderer checks.
+
+No actionable P0, P1, or P2 issue was found in the color progression self-audit.
+
+final result: passed

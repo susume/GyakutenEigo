@@ -149,9 +149,15 @@ test("supplied weapon recordings replace the default and heavy fire samples", ()
 });
 
 test("footstep sample levels are reduced by half", () => {
-  assert.equal(GAME_AUDIO_ASSETS.walk_step?.gain, 0.34);
-  assert.equal(GAME_AUDIO_ASSETS.run_step?.gain, 0.39);
-  assert.equal(GAME_AUDIO_ASSETS.crouch_step?.gain, 0.21);
-  assert.equal(GAME_AUDIO_ASSETS.surface_stone?.gain, 0.32);
-  assert.equal(GAME_AUDIO_ASSETS.surface_metal?.gain, 0.35);
+  assert.equal(GAME_AUDIO_ASSETS.walk_step?.gain, 0.17);
+  assert.equal(GAME_AUDIO_ASSETS.run_step?.gain, 0.195);
+  assert.equal(GAME_AUDIO_ASSETS.crouch_step?.gain, 0.105);
+  assert.equal(GAME_AUDIO_ASSETS.surface_wood?.gain, 0.145);
+  assert.equal(GAME_AUDIO_ASSETS.surface_stone?.gain, 0.16);
+  assert.equal(GAME_AUDIO_ASSETS.surface_sand?.gain, 0.13);
+  assert.equal(GAME_AUDIO_ASSETS.surface_metal?.gain, 0.175);
+  assert.equal(GAME_AUDIO_ASSETS.surface_water?.gain, 0.06);
+  assert.equal(GAME_AUDIO_CUES.walk_step.gain, 0.00875);
+  assert.equal(GAME_AUDIO_CUES.run_step.gain, 0.01125);
+  assert.equal(GAME_AUDIO_CUES.crouch_step.gain, 0.006);
 });

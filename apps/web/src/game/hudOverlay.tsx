@@ -7,6 +7,7 @@ type WeaponCooldown = {
 
 export const ArenaHudOverlay = ({
   hitPulse,
+  hitConfirmPulse,
   zoomLevel,
   currentWeaponId,
   snowballs,
@@ -20,6 +21,7 @@ export const ArenaHudOverlay = ({
   onInteractFromTouch
 }: {
   hitPulse: number;
+  hitConfirmPulse: number;
   zoomLevel: number;
   currentWeaponId?: string;
   snowballs: number;
@@ -34,8 +36,12 @@ export const ArenaHudOverlay = ({
 }) => (
   <>
     {(currentWeaponId !== "power_blaster" || zoomLevel > 0) && (
-      <div className={`${hitPulse % 2 === 0 ? "crosshair" : "crosshair fire"}${zoomLevel > 0 ? ` zoom zoom-level-${zoomLevel}` : ""}`} aria-hidden="true" />
+      <div
+        className={`${hitPulse % 2 === 0 ? "crosshair" : "crosshair fire"}${zoomLevel > 0 ? ` zoom zoom-level-${zoomLevel}` : ""}`}
+        aria-hidden="true"
+      />
     )}
+    {hitConfirmPulse > 0 && <div key={`hit-confirm-${hitConfirmPulse}`} className="hit-confirm-marker" aria-hidden="true" />}
     <div className="fps-ammo-counter" data-testid="fps-ammo-counter" aria-label={`${snowballs} snowballs left`}>
       <strong>{Math.max(0, Math.floor(snowballs))}</strong>
     </div>

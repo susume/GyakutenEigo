@@ -84,6 +84,21 @@ export class CharacterModel {
     return this.parts.equipment.muzzle.getWorldPosition(target);
   }
 
+  getGroundWorldPosition(target = new THREE.Vector3()) {
+    this.root.updateMatrixWorld(true);
+    return this.root.getWorldPosition(target);
+  }
+
+  getTorsoWorldPosition(target = new THREE.Vector3()) {
+    this.root.updateMatrixWorld(true);
+    return this.parts.torso.getWorldPosition(target);
+  }
+
+  getHeadWorldPosition(target = new THREE.Vector3()) {
+    this.root.updateMatrixWorld(true);
+    return this.parts.head.getWorldPosition(target);
+  }
+
   private updateCosmeticMotion(elapsed: number, speed: number) {
     const pace = Math.min(1, speed / 5);
     for (const accessory of this.parts.equipment.accessories) {

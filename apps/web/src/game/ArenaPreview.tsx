@@ -41,7 +41,7 @@ import { isFireKeyboardEvent, isScopeKeyboardEvent, resolveCombatPointerAction, 
 import { gameAudio, type MovementAudioMode } from "./GameAudio";
 import { cycleHeavyGunZoom, getWeaponFov, shouldResetWeaponZoom } from "./weaponControls";
 import { resolveTouchJoystickVector } from "./touchJoystick";
-import { emitArenaVfx } from "./ArenaVfx";
+import { emitArenaVfx, getArenaVfxAnchor, getArenaWeaponVfxKind, type ArenaVfxStats } from "./ArenaVfx";
 import { emitArenaAnimation } from "./ArenaAnimation";
 import { ArenaPerformanceCapture, AutoGraphicsQualityController, type ArenaPerformanceSnapshot } from "./ArenaPerformance";
 import { mountIronJunctionImportedAssets } from "./ironJunctionImportedAssets";
@@ -63,6 +63,7 @@ interface ArenaPreviewProps {
   inputPaused?: boolean;
   debugOverlay?: boolean;
   debugLabel?: string;
+  hitConfirmPulse?: number;
   quality?: ArenaQuality;
   gamepadEnabled?: boolean;
   onMove?: (position: ArenaLivePosition) => void;
@@ -94,6 +95,20 @@ const TOUCH_LOOK_SENSITIVITY = 0.006;
 const clamp = (value: number, min: number, max: number) => Math.min(max, Math.max(min, value));
 const isFiniteNumber = (value: unknown): value is number => typeof value === "number" && Number.isFinite(value);
 const scaleArenaValue = (value: number) => Number((value * ARENA_SCALE).toFixed(2));
+const VFX_DEBUG_CUES = [
+  ["Weapon fire", "weapon_fire"],
+  ["Quick fire", "quick_fire"],
+  ["Heavy fire", "heavy_fire"],
+  ["Wall hit", "impact"],
+  ["Player hit", "player_hit"],
+  ["Snow hit", "snowball_impact"],
+  ["Correct answer", "reward_burst"],
+  ["Purchase", "purchase"],
+  ["Elimination", "elimination"],
+  ["Spawn", "spawn"],
+  ["Flag capture", "flag_capture"],
+  ["Round win", "victory"]
+] as const;
 
 const movementCode = (event: KeyboardEvent) => {
   const key = event.key.toLowerCase();
@@ -267,6 +282,7 @@ export default function ArenaPreview({
   inputPaused = false,
   debugOverlay = false,
   debugLabel = "Character debug",
+  hitConfirmPulse = 0,
   quality = "auto",
   gamepadEnabled = true,
   onMove,
@@ -304,6 +320,8 @@ export default function ArenaPreview({
   const autoQualityNoticeShownRef = useRef(false);
   const [characterDebugStats, setCharacterDebugStats] = useState<CharacterManagerStats | null>(null);
   const [performanceSnapshot, setPerformanceSnapshot] = useState<ArenaPerformanceSnapshot | null>(null);
+  const [vfxDebugStats, setVfxDebugStats] = useState<ArenaVfxStats | null>(null);
+  const debugVfxPositionRef = useRef({ x: 0, y: 0.12, z: 0 });
   const previousWeaponRef = useRef<string | null>(null);
   const sceneSessionId = session?.id ?? "training";
   const currentPlayerId = currentPlayer?.id ?? "";
@@ -423,6 +441,7 @@ export default function ArenaPreview({
     if (!mount) return;
     setRenderError("");
     setPerformanceSnapshot(null);
+    setVfxDebugStats(null);
 
     const isFps = view === "fps";
     const isZombieMode = session?.settings.gameMode === "zombie";
@@ -439,6 +458,7 @@ export default function ArenaPreview({
       isFiniteNumber(initialServerY) ? initialServerY : initialGroundY + FPS_STANDING_EYE_HEIGHT,
       serverToLocalZ(initialServerZ)
     );
+    debugVfxPositionRef.current = { x: playerPosition.x, y: playerPosition.y, z: playerPosition.z };
     let yaw = templeReviewViewpoint?.yaw ?? (isFiniteNumber(currentPlayer?.facing) ? currentPlayer.facing : fallbackSpawn.facing);
     let pitch = templeReviewViewpoint?.pitch ?? -0.12;
     if (isFps) setMiniMapPosition(localToServerPosition(playerPosition, yaw));
@@ -485,6 +505,16 @@ export default function ArenaPreview({
     };
 
     const puffTexture = loadTexture("/assets/snowball-puff.svg");
+    const vfxTextures = {
+      muzzle: loadTexture("/assets/vfx/kenney/muzzle_03.png?v=2"),
+      trace: loadTexture("/assets/vfx/kenney/trace_03.png?v=2"),
+      spark: loadTexture("/assets/vfx/kenney/spark_03.png?v=2"),
+      smoke: loadTexture("/assets/vfx/kenney/smoke_03.png"),
+      circle: loadTexture("/assets/vfx/kenney/circle_03.png"),
+      star: loadTexture("/assets/vfx/kenney/star_03.png?v=2"),
+      magic: loadTexture("/assets/vfx/kenney/magic_03.png?v=2"),
+      snow: puffTexture
+    };
     const {
       floorTexture,
       stoneTexture,
@@ -552,6 +582,7 @@ export default function ArenaPreview({
       arenaMapId,
       activeQuality,
       loadDecalAsset,
+      vfxTextures,
       makeLabelTexture,
       serverToLocalX,
       serverToLocalZ,
@@ -572,21 +603,23 @@ export default function ArenaPreview({
       const firstPersonRootBaseY = firstPersonModel.root.position.y;
       const firstPersonWeaponRotation = firstPersonModel.weapon.rotation.clone();
       const fpsMuzzlePosition = new THREE.Vector3();
+      const fpsMuzzleWorldPosition = new THREE.Vector3();
       const syncFpsMuzzlePosition = () => {
         camera.updateMatrixWorld(true);
-        firstPersonModel.muzzle.getWorldPosition(fpsMuzzlePosition);
+        firstPersonModel.muzzle.getWorldPosition(fpsMuzzleWorldPosition);
+        fpsMuzzlePosition.copy(fpsMuzzleWorldPosition);
         camera.worldToLocal(fpsMuzzlePosition);
       };
 
       const flashMaterial = new THREE.SpriteMaterial({
-        map: puffTexture,
+        map: vfxTextures.muzzle,
         transparent: true,
         opacity: 0,
         depthTest: false,
         depthWrite: false
       });
       const flash = new THREE.Sprite(flashMaterial);
-      flash.scale.set(0.95, 0.5, 1);
+      flash.scale.set(0.62, 0.78, 1);
       camera.add(flash);
 
       const muzzleRingMaterial = new THREE.MeshBasicMaterial({ color: "#9cecff", transparent: true, opacity: 0, depthTest: false, depthWrite: false });
@@ -611,7 +644,21 @@ export default function ArenaPreview({
       projectileTrail.visible = false;
       camera.add(projectileTrail);
 
-      const impactMaterial = new THREE.SpriteMaterial({ map: puffTexture, color: "#b9f4ff", transparent: true, opacity: 0, depthTest: false, depthWrite: false });
+      const tracerMaterial = new THREE.SpriteMaterial({
+        map: vfxTextures.trace,
+        color: "#b9f4ff",
+        transparent: true,
+        opacity: 0,
+        depthTest: false,
+        depthWrite: false,
+        blending: THREE.AdditiveBlending
+      });
+      const tracer = new THREE.Sprite(tracerMaterial);
+      tracer.scale.set(0.09, 0.72, 1);
+      tracer.visible = false;
+      camera.add(tracer);
+
+      const impactMaterial = new THREE.SpriteMaterial({ map: puffTexture, color: "#b9f4ff", transparent: true, opacity: 0, depthTest: false, depthWrite: false, blending: THREE.AdditiveBlending });
       const impactPuff = new THREE.Sprite(impactMaterial);
       impactPuff.scale.set(0.8, 0.8, 1);
       camera.add(impactPuff);
@@ -623,6 +670,7 @@ export default function ArenaPreview({
       let lastEmptyFireRequestAt = 0;
       let lastLocalFireAt = 0;
       let lastCooldownFxAt = 0;
+      let lastFootstepVfxAt = 0;
       let activeZoomLevel = 0;
       let hadPointerLock = false;
       let cooldownTimeout: number | undefined;
@@ -642,7 +690,6 @@ export default function ArenaPreview({
         renderer.domElement.dataset.zoomLevel = String(next);
         setZoomLevelState(next);
         setZoomPulse((value) => value + 1);
-        if (next > 0) emitArenaVfx({ kind: "zoom", x: playerPosition.x, z: playerPosition.z, y: 0.9, team: currentPlayerTeam });
         if (hasHeavyGun()) gameAudio.playEvent("heavy_scope");
         else gameAudio.play(next > 0 ? "zoom_in" : "zoom_out");
       };
@@ -658,7 +705,6 @@ export default function ArenaPreview({
         if (currentTime - lastLocalFireAt < getGearFireCooldownMs(equippedGearId)) {
           if (currentTime - lastCooldownFxAt > 280) {
             lastCooldownFxAt = currentTime;
-            emitArenaVfx({ kind: "cooldown", x: playerPosition.x, z: playerPosition.z, y: 0.8, team: currentPlayerTeam });
             if (equippedGearId === "quick_blaster") gameAudio.playEvent("cooldown_tick");
           }
           return;
@@ -692,6 +738,14 @@ export default function ArenaPreview({
         pendingShotsRef.current += 1;
         flashUntil = performance.now() + 95;
         snowballLaunchAt = currentTime;
+        vfxPool.emit({
+          kind: getArenaWeaponVfxKind(equippedGearId),
+          x: fpsMuzzleWorldPosition.x,
+          y: fpsMuzzleWorldPosition.y,
+          z: fpsMuzzleWorldPosition.z,
+          team: currentPlayerTeam,
+          local: true
+        });
         flash.material.opacity = 1;
         muzzleRingMaterial.opacity = 0.88;
         muzzleRing.scale.setScalar(0.72);
@@ -701,13 +755,6 @@ export default function ArenaPreview({
         setHitPulse((value) => value + 1);
         if (equippedGearId === "power_blaster") {
           gameAudio.playEvent("weapon_fire_heavy_local");
-          emitArenaVfx({
-            kind: "heavy_fire",
-            x: playerPosition.x - Math.sin(yaw) * 2.2,
-            z: playerPosition.z - Math.cos(yaw) * 2.2,
-            y: 1.1,
-            team: currentPlayerTeam
-          });
         }
         else gameAudio.playEvent(equippedGearId === "quick_blaster" ? "weapon_fire_quick" : "weapon_fire_basic");
         window.setTimeout(() => {
@@ -1005,6 +1052,14 @@ export default function ArenaPreview({
 
       const fpsLoop = createArenaRenderLoop(({ delta, currentTime, elapsed }) => {
         performanceCapture.frame(currentTime);
+        // Put target/body previews downrange on the aim line. The former close,
+        // side-offset point made them read like HUD clutter beside the weapon.
+        debugVfxPositionRef.current = {
+          x: playerPosition.x - Math.sin(yaw) * 4.2,
+          y: playerPosition.y - FPS_STANDING_EYE_HEIGHT + 0.08,
+          z: playerPosition.z - Math.cos(yaw) * 4.2
+        };
+        vfxPool.setViewPosition(playerPosition);
         vfxPool.update(currentTime);
         desertCitadelVfx?.update(elapsed);
         templeRunoffArt?.update(elapsed);
@@ -1024,7 +1079,10 @@ export default function ArenaPreview({
           renderer.domElement.dataset.triangles = String(profile.triangles);
           renderer.domElement.dataset.longTasks = String(profile.longTasks);
           renderer.domElement.dataset.vfxActive = String(vfxPool.activeCount);
+          renderer.domElement.dataset.vfxSprites = String(vfxPool.particleCount);
+          renderer.domElement.dataset.vfxDropped = String(vfxPool.getStats().dropped);
           if (debugOverlay) setPerformanceSnapshot(profile);
+          if (debugOverlay) setVfxDebugStats(vfxPool.getStats());
           performanceWindowAt = currentTime;
         }
         if (controlsDisabledRef.current) {
@@ -1157,11 +1215,23 @@ export default function ArenaPreview({
         isSprinting = runAllowed && movementVector.lengthSq() > 0;
 
         if (movementVector.lengthSq() > 0) {
-          if (wasGrounded && moveSpeed > 0) gameAudio.playMovementStep(
-            movementAudioMode,
-            currentTime,
-            isIronJunction ? "metal" : isTempleRunoff ? (surfaceGroundY < 1 ? "water" : "stone") : "sand"
-          );
+          const movementSurface: "metal" | "water" | "stone" | "sand" = isIronJunction ? "metal" : isTempleRunoff ? (surfaceGroundY < 1 ? "water" : "stone") : "sand";
+          if (wasGrounded && moveSpeed > 0) {
+            gameAudio.playMovementStep(movementAudioMode, currentTime, movementSurface);
+            const footstepInterval = isSprinting ? 240 : 360;
+            if (currentTime - lastFootstepVfxAt >= footstepInterval) {
+              lastFootstepVfxAt = currentTime;
+              vfxPool.emit({
+                kind: "footstep",
+                x: playerPosition.x,
+                y: surfaceGroundY + 0.03,
+                z: playerPosition.z,
+                surface: movementSurface === "metal" ? "metal" : movementSurface === "water" ? "water" : movementSurface === "stone" ? "stone" : "sand",
+                local: true,
+                intensity: isSprinting ? 0.9 : 0.62
+              });
+            }
+          }
           movementVector.normalize().multiplyScalar(moveSpeed * delta);
           nextPosition.copy(playerPosition).add(movementVector);
           nextPosition.x = clamp(nextPosition.x, -arenaBounds.limitX + PLAYER_RADIUS, arenaBounds.limitX - PLAYER_RADIUS);
@@ -1259,6 +1329,11 @@ export default function ArenaPreview({
           projectileTrail.visible = travel < 0.96;
           projectileTrail.position.copy(snowball.position);
           projectileTrail.rotation.z = currentTime * 0.01;
+          tracer.visible = travel < 0.92;
+          tracer.position.copy(snowball.position);
+          tracerMaterial.rotation = currentTime * 0.008;
+          tracerMaterial.opacity = tracer.visible ? (1 - travel) * 0.72 : 0;
+          tracer.scale.set(0.06 + (1 - travel) * 0.04, 0.42 + (1 - travel) * 0.42, 1);
           const scale = Math.max(0.38, 1 - travel * 0.62);
           snowball.scale.setScalar(scale);
           if (travel > 0.82) {
@@ -1280,6 +1355,7 @@ export default function ArenaPreview({
       flash.material.opacity = 0;
       snowball.visible = false;
       projectileTrail.visible = false;
+      tracer.visible = false;
       renderer.render(scene, camera);
       renderer.domElement.dataset.drawCalls = String(renderer.info.render.calls);
       renderer.domElement.dataset.triangles = String(renderer.info.render.triangles);
@@ -1332,6 +1408,9 @@ export default function ArenaPreview({
         desertCitadelPbrTextures?.normalMap.dispose();
         desertCitadelPbrTextures?.roughnessMap.dispose();
         puffTexture.dispose();
+        Object.values(vfxTextures).forEach((texture) => {
+          if (texture !== puffTexture) texture.dispose();
+        });
         renderer.dispose();
         mount.removeChild(renderer.domElement);
       };
@@ -1341,6 +1420,9 @@ export default function ArenaPreview({
     let performanceWindowAt = performance.now();
     const overviewLoop = createArenaRenderLoop(({ delta, elapsed, currentTime }) => {
       performanceCapture.frame(currentTime);
+      // Keep overview previews on the arena floor, not at the orbit camera.
+      debugVfxPositionRef.current = { x: 0, y: 0.12, z: -6 };
+      vfxPool.setViewPosition(camera.position);
       vfxPool.update(currentTime);
       desertCitadelVfx?.update(elapsed);
       templeRunoffArt?.update(elapsed);
@@ -1360,7 +1442,10 @@ export default function ArenaPreview({
         renderer.domElement.dataset.triangles = String(profile.triangles);
         renderer.domElement.dataset.longTasks = String(profile.longTasks);
         renderer.domElement.dataset.vfxActive = String(vfxPool.activeCount);
+        renderer.domElement.dataset.vfxSprites = String(vfxPool.particleCount);
+        renderer.domElement.dataset.vfxDropped = String(vfxPool.getStats().dropped);
         if (debugOverlay) setPerformanceSnapshot(profile);
+        if (debugOverlay) setVfxDebugStats(vfxPool.getStats());
         performanceWindowAt = currentTime;
       }
       camera.position.x = Math.sin(elapsed * 0.04) * 24;
@@ -1423,6 +1508,9 @@ export default function ArenaPreview({
       desertCitadelPbrTextures?.normalMap.dispose();
       desertCitadelPbrTextures?.roughnessMap.dispose();
       puffTexture.dispose();
+      Object.values(vfxTextures).forEach((texture) => {
+        if (texture !== puffTexture) texture.dispose();
+      });
       renderer.dispose();
       mount.removeChild(renderer.domElement);
     };
@@ -1469,6 +1557,26 @@ export default function ArenaPreview({
       z: flagCarrier?.z ?? session.flag.position.z
     }
     : undefined;
+  const vfxDebugEnabled = import.meta.env.DEV && debugOverlay && new URLSearchParams(window.location.search).get("vfxDebug") === "1";
+  const triggerDebugVfx = (kind: (typeof VFX_DEBUG_CUES)[number][1]) => {
+    const position = debugVfxPositionRef.current;
+    const anchor = getArenaVfxAnchor({ kind });
+    const anchorY = anchor === "head"
+      ? position.y + 4.12
+      : anchor === "torso" || anchor === "muzzle"
+        ? position.y + 2.9
+        : position.y;
+    emitArenaVfx({
+      kind,
+      x: position.x,
+      y: anchorY,
+      z: position.z,
+      anchor,
+      team: currentPlayerTeam,
+      local: true,
+      surface: kind === "impact" ? "metal" : kind === "snowball_impact" ? "snow" : undefined
+    });
+  };
 
   return (
     <div
@@ -1499,12 +1607,26 @@ export default function ArenaPreview({
               <span>{performanceSnapshot.longTasks} long tasks · {performanceSnapshot.heapMb ?? "n/a"} MB heap</span>
             </>
           )}
+          {vfxDebugStats && (
+            <span>VFX {vfxDebugStats.active}/{vfxDebugStats.budget.maxActive} · {vfxDebugStats.sprites} sprites · {vfxDebugStats.dropped} dropped</span>
+          )}
+        </div>
+      )}
+      {vfxDebugEnabled && (
+        <div className="vfx-debug-panel" aria-label="VFX debug controls">
+          <strong>VFX Debug</strong>
+          <div>
+            {VFX_DEBUG_CUES.map(([label, kind]) => (
+              <button key={kind} type="button" onClick={() => triggerDebugVfx(kind)}>{label}</button>
+            ))}
+          </div>
         </div>
       )}
       {view === "fps" && (
         <>
           <ArenaHudOverlay
             hitPulse={hitPulse}
+            hitConfirmPulse={hitConfirmPulse}
             zoomLevel={zoomLevel}
             currentWeaponId={currentWeaponId}
             snowballs={currentPlayer?.snowballs ?? session?.settings.startingSnowballs ?? 0}

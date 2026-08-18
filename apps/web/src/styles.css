@@ -13935,6 +13935,222 @@ body:has(.workspace) .study-set-load-error svg { color: #b85a61; }
   body:has(.workspace) .study-set-editor-footer { bottom: 6px; }
 }
 
+/* QuizStrike VFX feedback: short, readable accents with no persistent overlay. */
+.hit-confirm-marker {
+  position: absolute;
+  left: 50%;
+  top: 50%;
+  z-index: 4;
+  width: 30px;
+  height: 30px;
+  border: 2px solid #fef08a;
+  border-radius: 50%;
+  box-shadow: 0 0 0 2px rgba(23, 32, 51, .68), 0 0 18px rgba(250, 204, 21, .82);
+  pointer-events: none;
+  animation: hit-confirm-pop 220ms cubic-bezier(.2,.8,.2,1) both;
+}
+
+@keyframes hit-confirm-pop {
+  0% { opacity: 0; transform: translate(-50%, -50%) scale(.52); filter: brightness(1.1); }
+  34% { opacity: 1; transform: translate(-50%, -50%) scale(.9); filter: brightness(1.8); }
+  100% { opacity: 0; transform: translate(-50%, -50%) scale(1.55); filter: brightness(1); }
+}
+
+.hud-value-pulse {
+  animation: hud-value-pulse 520ms ease-out both;
+}
+
+@keyframes hud-value-pulse {
+  0% { transform: scale(1); box-shadow: inset 0 -3px 0 rgba(250, 204, 21, .35); }
+  42% { transform: scale(1.035); box-shadow: 0 0 0 3px rgba(250, 204, 21, .2), inset 0 -3px 0 rgba(250, 204, 21, .92); }
+  100% { transform: scale(1); box-shadow: inset 0 -3px 0 rgba(250, 204, 21, .35); }
+}
+
+.reward-vfx-overlay {
+  position: absolute;
+  inset: 0;
+  z-index: 5;
+  overflow: hidden;
+  pointer-events: none;
+}
+
+.reward-vfx-burst,
+.reward-vfx-burst::before,
+.reward-vfx-burst::after {
+  position: absolute;
+  left: 50%;
+  top: 45%;
+  width: 54px;
+  height: 54px;
+  border: 2px solid rgba(250, 204, 21, .82);
+  border-radius: 50%;
+  content: "";
+  transform: translate(-50%, -50%);
+}
+
+.reward-vfx-burst {
+  animation: reward-burst-ring 620ms ease-out both;
+}
+
+.reward-vfx-burst::before,
+.reward-vfx-burst::after {
+  width: 22px;
+  height: 22px;
+  border-color: rgba(94, 234, 212, .76);
+  animation: reward-burst-spark 620ms ease-out both;
+}
+
+.reward-vfx-burst::after {
+  width: 10px;
+  height: 10px;
+  border-color: rgba(255, 255, 255, .95);
+  animation-delay: 55ms;
+}
+
+.reward-vfx-label,
+.reward-vfx-fly-token {
+  position: absolute;
+  left: 50%;
+  top: 39%;
+  color: #fff7c2;
+  font-family: var(--font-mono);
+  font-size: clamp(.78rem, 1.5vw, 1.05rem);
+  font-weight: 1000;
+  letter-spacing: .04em;
+  text-shadow: 0 2px 6px rgba(4, 22, 31, .88), 0 0 14px rgba(250, 204, 21, .44);
+  transform: translate(-50%, -50%);
+}
+
+.reward-vfx-label {
+  animation: reward-label-rise 620ms ease-out both;
+}
+
+.reward-vfx-trail {
+  position: absolute;
+  left: 50%;
+  top: 45%;
+  width: 1px;
+  height: 1px;
+  transform: translate(-50%, -50%);
+}
+
+.reward-vfx-trail i {
+  position: absolute;
+  width: 7px;
+  height: 7px;
+  border-radius: 50%;
+  background: #fef08a;
+  box-shadow: 0 0 12px rgba(250, 204, 21, .84);
+  animation: reward-trail-fly 680ms ease-out both;
+}
+
+.reward-vfx-trail i:nth-child(1) { animation-delay: 80ms; }
+.reward-vfx-trail i:nth-child(2) { animation-delay: 135ms; transform: scale(.75); }
+.reward-vfx-trail i:nth-child(3) { animation-delay: 190ms; transform: scale(.55); }
+
+.reward-vfx-fly-token {
+  top: 45%;
+  min-width: 30px;
+  color: #fef08a;
+  animation: reward-fly-to-currency 720ms 70ms cubic-bezier(.18,.76,.24,1) both;
+}
+
+.reward-vfx-purchase .reward-vfx-burst,
+.reward-vfx-purchase .reward-vfx-burst::before,
+.reward-vfx-purchase .reward-vfx-burst::after {
+  border-color: rgba(103, 232, 249, .78);
+}
+
+.reward-vfx-purchase .reward-vfx-fly-token {
+  color: #a5f3fc;
+  animation-name: reward-purchase-pop;
+}
+
+@keyframes reward-burst-ring {
+  0% { opacity: 0; transform: translate(-50%, -50%) scale(.35); }
+  24% { opacity: 1; }
+  100% { opacity: 0; transform: translate(-50%, -50%) scale(2.25); }
+}
+
+@keyframes reward-burst-spark {
+  0% { opacity: 0; transform: translate(-50%, -50%) rotate(0) scale(.2); }
+  34% { opacity: 1; }
+  100% { opacity: 0; transform: translate(-50%, -50%) rotate(110deg) scale(4.8); }
+}
+
+@keyframes reward-label-rise {
+  0% { opacity: 0; transform: translate(-50%, -30%) scale(.76); }
+  25% { opacity: 1; }
+  100% { opacity: 0; transform: translate(-50%, -160%) scale(1.04); }
+}
+
+@keyframes reward-trail-fly {
+  0% { opacity: 0; transform: translate(0, 0) scale(.4); }
+  20% { opacity: 1; }
+  100% { opacity: 0; transform: translate(calc(-18vw + 30px), calc(-24vh + 30px)) scale(.15); }
+}
+
+@keyframes reward-fly-to-currency {
+  0% { opacity: 0; transform: translate(-50%, -50%) scale(.6); }
+  16% { opacity: 1; transform: translate(-50%, -50%) scale(1.08); }
+  100% { opacity: 0; transform: translate(calc(-50% - min(37vw, 360px)), calc(-50% - min(28vh, 190px))) scale(.28); }
+}
+
+@keyframes reward-purchase-pop {
+  0% { opacity: 0; transform: translate(-50%, -50%) scale(.6); }
+  35% { opacity: 1; transform: translate(-50%, -50%) scale(1.06); }
+  100% { opacity: 0; transform: translate(-50%, -50%) scale(1.32); }
+}
+
+.vfx-debug-panel {
+  position: absolute;
+  right: 14px;
+  bottom: 14px;
+  z-index: 12;
+  display: grid;
+  gap: 7px;
+  width: min(240px, calc(100% - 28px));
+  padding: 10px;
+  border: 1px solid rgba(125, 211, 252, .45);
+  border-radius: 10px;
+  background: rgba(5, 18, 31, .9);
+  box-shadow: 0 12px 28px rgba(0, 0, 0, .28);
+  color: #e0f2fe;
+  font: 700 .66rem/1.2 var(--font-mono);
+}
+
+.vfx-debug-panel > div {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 5px;
+}
+
+.vfx-debug-panel button {
+  min-height: 28px;
+  border: 1px solid rgba(148, 163, 184, .32);
+  border-radius: 6px;
+  padding: 4px 5px;
+  background: rgba(30, 64, 87, .7);
+  color: #e0f2fe;
+  cursor: pointer;
+  font: inherit;
+}
+
+.vfx-debug-panel button:hover,
+.vfx-debug-panel button:focus-visible {
+  border-color: #67e8f9;
+  background: rgba(14, 116, 144, .72);
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .hit-confirm-marker,
+  .hud-value-pulse,
+  .reward-vfx-overlay * {
+    animation-duration: 1ms !important;
+    animation-iteration-count: 1 !important;
+  }
+}
+
 /* Content-first teacher workspace redesign. Keep live-game styling above intact. */
 body:has(.workspace) { background: #f5f8fc; color: #14233d; }
 body:has(.workspace) .topbar-teacher { display: none; }

@@ -77,6 +77,7 @@ import GameAnnouncementOverlay from "../shared/GameAnnouncementOverlay";
 import BuyPanel from "./BuyPanel";
 import GamePreferencesPanel from "./GamePreferencesPanel";
 import QuizPanel, { type QuizAnswerFeedback } from "./QuizPanel";
+import RewardVfxOverlay, { type RewardVfxCue } from "./RewardVfxOverlay";
 import Scoreboard from "./Scoreboard";
 import TeacherPauseOverlay from "./TeacherPauseOverlay";
 import { useStudentGameState } from "./useStudentGameState";
@@ -313,6 +314,9 @@ export default function StudentExperience({ onExit }: { onExit: () => void }) {
   const [question, setQuestion] = useState<PublicQuestion | null>(null);
   const [answerHistory, setAnswerHistory] = useState<StudentAttemptSnapshot[]>([]);
   const [answerFeedback, setAnswerFeedback] = useState<QuizAnswerFeedback | null>(null);
+  const [rewardVfx, setRewardVfx] = useState<RewardVfxCue | null>(null);
+  const [currencyPulse, setCurrencyPulse] = useState(0);
+  const [hitConfirmPulse, setHitConfirmPulse] = useState(0);
   const [learningReport, setLearningReport] = useState<StudentLearningReport | null>(null);
   const [isLearningReportLoading, setIsLearningReportLoading] = useState(false);
   const [learningReportError, setLearningReportError] = useState("");
@@ -704,7 +708,7 @@ export default function StudentExperience({ onExit }: { onExit: () => void }) {
     };
     const emitPlayerVfx = (kind: ArenaVfxKind, playerId = activePlayerId, source = lastVisualSession) => {
       const target = source.players.find((candidate) => candidate.id === playerId);
-      emitArenaVfx({ kind, x: target?.x ?? 0, z: target?.z ?? 0, team: target?.team });
+      emitArenaVfx({ kind, x: target?.x ?? 0, y: target?.y, z: target?.z ?? 0, playerId, team: target?.team, local: playerId === activePlayerId });
     };
     const emitPlayerAnimation = (kind: ArenaAnimationCue, playerId?: string, team?: Team) => {
       emitArenaAnimation({ kind, playerId, team });
@@ -842,7 +846,7 @@ export default function StudentExperience({ onExit }: { onExit: () => void }) {
       const attacker = lastVisualSession.players.find((candidate) => candidate.id === payload.playerId);
       emitPlayerAnimation("fire", payload.playerId, attacker?.team);
       emitArenaVfx({
-        kind: "weapon_fire",
+        kind: payload.gearId === "power_blaster" ? "heavy_fire" : payload.gearId === "quick_blaster" ? "quick_fire" : "weapon_fire",
         x: payload.x!,
         z: payload.z!,
         y: Number.isFinite(payload.y)
@@ -870,10 +874,21 @@ export default function StudentExperience({ onExit }: { onExit: () => void }) {
         window.setTimeout(() => gameAudio.playEvent("projectile_pass", spatial), 160);
       }
     });
-    connectedSocket.on("world_impact", (payload: { attackerId?: string; targetId?: string; x?: number; z?: number; shield?: boolean }) => {
+    connectedSocket.on("world_impact", (payload: { attackerId?: string; targetId?: string; x?: number; z?: number; shield?: boolean; eliminated?: boolean }) => {
       if (payload.attackerId === activePlayerId || payload.targetId === activePlayerId || !Number.isFinite(payload.x) || !Number.isFinite(payload.z)) return;
       const local = lastVisualSession.players.find((candidate) => candidate.id === activePlayerId);
       if (!local || !Number.isFinite(local.x) || !Number.isFinite(local.z)) return;
+      const targetTeam = lastVisualSession.players.find((candidate) => candidate.id === payload.targetId)?.team;
+      // This is already an authoritative world-space impact. Do not re-anchor
+      // it to the target's current animated model: a moving target may have
+      // left the hit location, and an eliminated target has already respawned.
+      emitArenaVfx({ kind: "snowball_impact", x: payload.x!, z: payload.z!, team: targetTeam, surface: "snow", intensity: 0.72 });
+      emitArenaVfx({ kind: "player_hit", x: payload.x!, z: payload.z!, team: targetTeam, surface: "player", intensity: 0.72 });
+      if (payload.shield) emitArenaVfx({ kind: "shield", x: payload.x!, z: payload.z!, team: targetTeam, intensity: 0.66 });
+      if (payload.eliminated) {
+        emitArenaVfx({ kind: "elimination", x: payload.x!, z: payload.z!, team: targetTeam, intensity: 0.92 });
+        emitPlayerAnimation("defeat", payload.targetId, targetTeam);
+      }
       gameAudio.playEvent(payload.shield ? "shield_impact" : "world_impact", getCombatAudioSpatial({
         attacker: { x: payload.x!, z: payload.z! },
         target: { x: local.x!, z: local.z!, facing: local.facing ?? 0 }
@@ -977,16 +992,19 @@ export default function StudentExperience({ onExit }: { onExit: () => void }) {
           fire_cooldown: "Launcher is cooling down."
         };
         queueFeedbackCue(result.reason === "no_valid_target" ? "warning" : "error");
-        if (result.reason === "fire_cooldown") emitPlayerVfx("cooldown");
         setFeedback(messages[result.reason ?? ""] ?? "Snowball launched.");
         return;
       }
       const targetTeam = currentSessionRef.current?.players.find((candidate) => candidate.id === result.targetId)?.team;
-      emitArenaVfx({ kind: "impact", x: result.targetX, z: result.targetZ, team: targetTeam });
+      const combatCueIsLocal = result.attackerId === activePlayerId || result.targetId === activePlayerId;
+      const impactPlayerId = result.eliminated ? undefined : result.targetId;
+      emitArenaVfx({ kind: "snowball_impact", x: result.targetX, z: result.targetZ, playerId: impactPlayerId, team: targetTeam, surface: "snow", local: combatCueIsLocal });
+      emitArenaVfx({ kind: "player_hit", x: result.targetX, z: result.targetZ, playerId: impactPlayerId, team: targetTeam, surface: "player", local: combatCueIsLocal });
       emitPlayerAnimation("hit", result.targetId, targetTeam);
-      if (!result.eliminated) emitArenaVfx({ kind: "shield", x: result.targetX, z: result.targetZ, team: targetTeam });
-      if (result.eliminated) emitArenaVfx({ kind: "elimination", x: result.targetX, z: result.targetZ, team: targetTeam });
+      if (!result.eliminated) emitArenaVfx({ kind: "shield", x: result.targetX, z: result.targetZ, playerId: result.targetId, team: targetTeam });
+      if (result.eliminated) emitArenaVfx({ kind: "elimination", x: result.targetX, z: result.targetZ, team: targetTeam, local: combatCueIsLocal });
       if (result.attackerId === activePlayerId) {
+        setHitConfirmPulse((value) => value + 1);
         gameAudio.play(result.eliminated ? "eliminated" : "hit_confirm");
         setFeedback(
           result.converted
@@ -1395,9 +1413,30 @@ export default function StudentExperience({ onExit }: { onExit: () => void }) {
       gameAudio.play(wasWrong ? "quiz_wrong" : "quiz_correct");
       gameAudio.playEvent("answer_reveal");
       if (!wasWrong && payload.result.moneyAwarded > 0) gameAudio.playEvent("score_awarded");
+      const answerPosition = payload.result.player;
+      if (!wasWrong) {
+        setCurrencyPulse((value) => value + 1);
+        setRewardVfx({
+          id: Date.now(),
+          amount: payload.result.moneyAwarded > 0 ? payload.result.moneyAwarded : undefined,
+          label: payload.result.rewardLabel ?? (payload.result.moneyAwarded > 0 ? `+$${payload.result.moneyAwarded}` : "Correct answer"),
+          kind: "correct"
+        });
+        emitArenaVfx({
+          kind: "reward_burst",
+          x: answerPosition.x ?? 0,
+          y: answerPosition.y,
+          z: answerPosition.z ?? 0,
+          playerId: answerPosition.id,
+          team: answerPosition.team,
+          local: true,
+          intensity: payload.result.moneyAwarded > 0 ? 1.15 : 0.95,
+          amount: payload.result.moneyAwarded
+        });
+      }
       if (payload.result.respawned) {
-        emitArenaVfx({ kind: "healing", x: payload.result.player.x ?? 0, z: payload.result.player.z ?? 0, team: payload.result.player.team });
-        emitArenaVfx({ kind: "spawn", x: payload.result.player.x ?? 0, z: payload.result.player.z ?? 0, team: payload.result.player.team });
+        emitArenaVfx({ kind: "healing", x: payload.result.player.x ?? 0, z: payload.result.player.z ?? 0, playerId: payload.result.player.id, team: payload.result.player.team });
+        emitArenaVfx({ kind: "spawn", x: payload.result.player.x ?? 0, z: payload.result.player.z ?? 0, playerId: payload.result.player.id, team: payload.result.player.team });
         emitArenaAnimation({ kind: "respawn", playerId: payload.result.player.id, team: payload.result.player.team });
       }
       if (answerFeedbackTimerRef.current !== undefined) window.clearTimeout(answerFeedbackTimerRef.current);
@@ -1466,6 +1505,8 @@ export default function StudentExperience({ onExit }: { onExit: () => void }) {
       setPlayer(payload.player);
       setFeedback(payload.message);
       setRewardPulse(payload.message);
+      setRewardVfx({ id: Date.now(), label: "Purchase ready", kind: "purchase" });
+      emitArenaVfx({ kind: "purchase", x: payload.player.x ?? 0, y: payload.player.y, z: payload.player.z ?? 0, playerId: payload.player.id, team: payload.player.team, local: true });
       gameAudio.playEvent(gearId.endsWith("_blaster") ? "weapon_equip" : "results_confirm");
     } catch (err) {
       if (purchaseOperationRef.current === operationId) status.report(err);
@@ -1497,6 +1538,8 @@ export default function StudentExperience({ onExit }: { onExit: () => void }) {
       setPlayer(payload.player);
       setFeedback(payload.message);
       setRewardPulse(payload.message);
+      setRewardVfx({ id: Date.now(), label: "Snowballs restocked", kind: "purchase" });
+      emitArenaVfx({ kind: "purchase", x: payload.player.x ?? 0, y: payload.player.y, z: payload.player.z ?? 0, playerId: payload.player.id, team: payload.player.team, local: true });
       gameAudio.play("buy");
     } catch (err) {
       if (purchaseOperationRef.current === operationId) status.report(err);
@@ -1878,6 +1921,7 @@ export default function StudentExperience({ onExit }: { onExit: () => void }) {
               gamepadEnabled={gamePreferences.gamepadEnabled}
               controlsDisabled={!roundActive || !player.isAlive}
               inputPaused={gameplayInputPaused}
+              hitConfirmPulse={hitConfirmPulse}
               onMove={roundActive && player.isAlive ? sendArenaPosition : undefined}
               onFire={roundActive && player.isAlive && canFire ? sendArenaFire : undefined}
               onInteract={session.settings.gameMode === "flag" && roundActive && player.isAlive ? sendFlagAction : undefined}
@@ -1885,6 +1929,7 @@ export default function StudentExperience({ onExit }: { onExit: () => void }) {
             />
           </Suspense>
         )}
+        <RewardVfxOverlay cue={rewardVfx} onComplete={() => setRewardVfx(null)} />
         {teacherPaused && <TeacherPauseOverlay />}
         {session.status !== "waiting" && (<>
         <div className={roundCountdownClassName} role="timer" aria-label={`Round time remaining ${roundTimeLabel}`}>
@@ -1975,7 +2020,7 @@ export default function StudentExperience({ onExit }: { onExit: () => void }) {
             </span>
           </span>
           {isZombieHuman ? (
-            <span className={`hud-stat hud-energy${runningEnergy <= 20 ? " low" : ""}`}>
+            <span key={`energy-${currencyPulse}`} className={`hud-stat hud-energy${runningEnergy <= 20 ? " low" : ""}${currencyPulse ? " hud-value-pulse" : ""}`}>
               <Zap size={18} aria-hidden="true" />
               <span>
                 <small>Energy</small>
@@ -1983,7 +2028,7 @@ export default function StudentExperience({ onExit }: { onExit: () => void }) {
               </span>
             </span>
           ) : (
-            <span className="hud-stat">
+            <span key={`currency-${currencyPulse}`} className={`hud-stat hud-currency${currencyPulse ? " hud-value-pulse" : ""}`}>
               <CircleDollarSign size={18} aria-hidden="true" />
               <span>
                 <small>Money</small>

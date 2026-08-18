@@ -6,8 +6,17 @@ import { ArenaHudOverlay } from "./hudOverlay.js";
 
 (globalThis as typeof globalThis & { React: typeof React }).React = React;
 
-const renderHud = (onInteractFromTouch: (() => void) | undefined) => renderToStaticMarkup(React.createElement(ArenaHudOverlay, {
-  hitPulse: 0,
+const renderHud = ({
+  hitPulse = 0,
+  hitConfirmPulse = 0,
+  onInteractFromTouch
+}: {
+  hitPulse?: number;
+  hitConfirmPulse?: number;
+  onInteractFromTouch?: () => void;
+} = {}) => renderToStaticMarkup(React.createElement(ArenaHudOverlay, {
+  hitPulse,
+  hitConfirmPulse,
   zoomLevel: 0,
   currentWeaponId: "starter_blaster",
   snowballs: 10,
@@ -22,12 +31,22 @@ const renderHud = (onInteractFromTouch: (() => void) | undefined) => renderToSta
 }));
 
 test("touch HUD exposes an accessible environment interaction control when flag interaction is available", () => {
-  const html = renderHud(() => undefined);
+  const html = renderHud({ onInteractFromTouch: () => undefined });
   assert.match(html, /aria-label="Interact with environment"/);
   assert.match(html, /aria-keyshortcuts="E"/);
   assert.match(html, />Interact<\/button>/);
 });
 
 test("touch HUD hides the interaction control outside interactive game modes", () => {
-  assert.doesNotMatch(renderHud(undefined), /Interact with environment/);
+  assert.doesNotMatch(renderHud(), /Interact with environment/);
+});
+
+test("hit confirmation is a transient marker separate from the fire reticle", () => {
+  const beforeHit = renderHud();
+  assert.doesNotMatch(beforeHit, /hit-confirm-marker/u);
+
+  const afterHitAndAnotherShot = renderHud({ hitPulse: 1, hitConfirmPulse: 1 });
+  assert.match(afterHitAndAnotherShot, /class="crosshair fire"/u);
+  assert.match(afterHitAndAnotherShot, /class="hit-confirm-marker"/u);
+  assert.doesNotMatch(afterHitAndAnotherShot, /crosshair fire hit-confirm/u);
 });
