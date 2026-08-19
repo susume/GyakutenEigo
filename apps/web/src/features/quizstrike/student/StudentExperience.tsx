@@ -92,6 +92,7 @@ import {
   type StoredStudentSession
 } from "./studentSessionStorage";
 import { getNicknameError, validateStudentJoin } from "./studentJoinValidation";
+import { buildSnowballPurchaseCommand } from "./snowballPurchaseCommand";
 
 const ArenaPreview = lazy(() => import("../../../game/ArenaPreview"));
 const CharacterCreator = lazy(() => import("../../../ui/PremiumCharacterCreator"));
@@ -1528,11 +1529,20 @@ export default function StudentExperience({ onExit }: { onExit: () => void }) {
     setIsBuyingSnowballs(true);
     try {
       type BuySnowballsPayload = { player: PlayerSession; message: string };
+      // Keep the long-standing 10-pack wire shape compatible with servers
+      // that were deployed before bulk packs added the optional field. The
+      // large pack still opts into the newer command contract explicitly.
+      const command = buildSnowballPurchaseCommand(packSize);
       const payload = await sendStudentCommand<BuySnowballsPayload>(
         socketRef.current,
         "buy_snowballs",
-        { packSize },
-        () => studentApi.buySnowballs(session.sessionCode, player.id, playerToken, packSize) as Promise<BuySnowballsPayload>
+        command,
+        () => studentApi.buySnowballs(
+          session.sessionCode,
+          player.id,
+          playerToken,
+          packSize === "large" ? packSize : undefined
+        ) as Promise<BuySnowballsPayload>
       );
       if (purchaseOperationRef.current !== operationId) return;
       setPlayer(payload.player);

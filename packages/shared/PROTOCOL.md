@@ -96,7 +96,7 @@ by the server-side credential used during room binding.
 | `join_session_room` | code + teacher or student credentials | token | Establishes room binding |
 | `answer_question` | `questionId`, `selectedChoice` | bound student | Acknowledged command |
 | `buy_gear` | `gearId` | bound student | Acknowledged command |
-| `buy_snowballs` | empty object | bound student | Acknowledged command |
+| `buy_snowballs` | optional `packSize` (`standard` or `large`) | bound student | Acknowledged command; omit `packSize` for the backward-compatible standard pack |
 | `player_position` | x/z, optional y/facing and posture flags | bound student | Volatile, range validated |
 | `fire_action` | request ID, position/aim, optional target/zoom | bound student | Request ID deduplicated |
 | `flag_action` | authoritative-position hint | bound student | Server resolves objective result |
