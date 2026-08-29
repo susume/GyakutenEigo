@@ -1957,7 +1957,7 @@ function SessionManager({
                     { id: "zombie", title: "Zombie Survival", description: "Answer for energy, stay alive, and keep the team moving.", icon: <img src="/assets/zombie/zombie-head.png" alt="" /> },
                     { id: "classic", title: "Team Tag", description: "Answer questions, move through the arena, and tag the other team.", icon: <img src="/assets/mode-icons/tag.png" alt="" /> },
                     { id: "flag", title: "Capture the Flag", description: "Answer to earn an advantage, then capture the flag as a team.", icon: <img src="/assets/mode-icons/flag.png" alt="" /> },
-                    { id: "athletics", title: "Athletics Race", description: "Run a first-person stadium course. Answer at each checkpoint to unlock the next gate.", icon: <Footprints className="mode-choice-icon-athletics" size={22} aria-hidden="true" /> }
+                    { id: "athletics", title: "Athletics Race", description: "Run a first-person amusement-park course. Answer anytime to refill movement energy.", icon: <Footprints className="mode-choice-icon-athletics" size={22} aria-hidden="true" /> }
                   ] as const).map((mode) => {
                     const selected = settings.gameMode === mode.id;
                     return (
@@ -1986,16 +1986,16 @@ function SessionManager({
                   <div className="athletics-course-card">
                     <div className="athletics-course-card-heading">
                       <div><span className="eyebrow">Selected course</span><h4>{ATHLETICS_STADIUM_COURSE.title}</h4><p>{ATHLETICS_STADIUM_COURSE.subtitle}</p></div>
-                      <span className="athletics-course-badge">7 sections</span>
+                      <span className="athletics-course-badge">{ATHLETICS_STADIUM_COURSE.sections.length} zones · {ATHLETICS_STADIUM_COURSE.checkpoints.length} checkpoints</span>
                     </div>
-                    <div className="athletics-course-sections" aria-label="Stadium Loop sections">
+                    <div className="athletics-course-sections" aria-label="Skyline Adventure Park zones">
                       {ATHLETICS_STADIUM_COURSE.sections.map((section, index) => (
                         <div key={section.id} className={`athletics-course-section athletics-accent-${section.accent}`}>
                           <span>{String(index + 1).padStart(2, "0")}</span><strong>{section.label}</strong><small>{section.description}</small>
                         </div>
                       ))}
                     </div>
-                    <p className="athletics-course-note"><Trophy size={15} aria-hidden="true" />Correct answer opens the next gate. Wrong answers pause the runner briefly; a fall returns them to their last safe checkpoint.</p>
+                    <p className="athletics-course-note"><Trophy size={15} aria-hidden="true" />Correct answers refill movement energy. Wrong answers cost no energy; a fall returns the runner to their last safe checkpoint.</p>
                   </div>
                 ) : <div className="arena-choice-grid">
                   {ARENA_MAPS.map((map) => {
@@ -2159,7 +2159,7 @@ function SessionManager({
             </dl>
             {selectedSession.settings.gameMode === "athletics" && (
               <section className="athletics-teacher-results" aria-label="Athletics race results">
-                <div className="athletics-teacher-results-heading"><Trophy size={18} aria-hidden="true" /><strong>Stadium Loop finishers</strong></div>
+                <div className="athletics-teacher-results-heading"><Trophy size={18} aria-hidden="true" /><strong>Skyline Adventure Park finishers</strong></div>
                 <ol>
                   {resolveAthleticsStandings(selectedSession.players).slice(0, 3).map((standing) => {
                     const racer = selectedSession.players.find((player) => player.id === standing.playerId);
@@ -2341,7 +2341,7 @@ function SessionManager({
               <span>{gameModeLabel(selectedSession.settings.gameMode)}</span>
               <span>{selectedSession.settings.gameMode === "athletics" ? ATHLETICS_STADIUM_COURSE.title : arenaMapLabel(selectedSession.settings.mapId)}</span>
               {selectedSession.settings.gameMode === "flag" && <span>Round {selectedSession.currentRound}/{selectedSession.settings.roundCount}</span>}
-              <span>{selectedSession.settings.gameMode === "athletics" ? "Race · 1 continuous course" : `Time ${formatDuration(remainingSeconds)}`}</span>
+              <span>{selectedSession.settings.gameMode === "athletics" ? `Race · ${selectedSession.athletics?.requiredLaps ?? selectedSession.settings.athleticsCourseLaps ?? 1} ${(selectedSession.athletics?.requiredLaps ?? selectedSession.settings.athleticsCourseLaps ?? 1) === 1 ? "lap" : "laps"} · continuous course` : `Time ${formatDuration(remainingSeconds)}`}</span>
               <span>{activePlayers}/{selectedSession.players.length || 0} active</span>
               <span>{activeLearners} learner{activeLearners === 1 ? "" : "s"}</span>
               {botPlayers.length > 0 && <span>{botPlayers.length} bot{botPlayers.length === 1 ? "" : "s"}</span>}

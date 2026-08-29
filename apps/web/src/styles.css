@@ -14357,7 +14357,12 @@ body:has(.workspace) .study-set-audio-recorder audio { width: min(100%, 440px); 
   body:has(.workspace) .study-set-editor .study-set-info-card { padding: 16px; }
 }
 
-/* Athletics Race: route-first HUD, stadium setup, and touch recovery controls. */
+/* Athletics Race: route-first HUD, Skyline course setup, and touch recovery controls. */
+.athletics-game-layout .arena-objective-strip,
+.athletics-game-layout > .game-stage > .round-countdown {
+  display: none;
+}
+
 .fps-view .athletics-hud {
   position: absolute;
   left: var(--hud-safe-edge, 16px);
@@ -14383,6 +14388,93 @@ body:has(.workspace) .study-set-audio-recorder audio { width: min(100%, 440px); 
   align-items: center;
   justify-content: space-between;
   gap: 12px;
+}
+
+.athletics-hud-objective {
+  overflow: hidden;
+  color: #b9d8e7;
+  font-size: .68rem;
+  font-weight: 800;
+  line-height: 1.3;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.athletics-energy-meter {
+  display: grid;
+  gap: 6px;
+  padding: 8px 9px 9px;
+  border: 1px solid rgba(181, 239, 113, .24);
+  border-radius: 9px;
+  background: rgba(181, 239, 113, .08);
+}
+
+.athletics-energy-meter.is-critical {
+  border-color: rgba(255, 127, 180, .72);
+  background: rgba(255, 127, 180, .12);
+  animation: athletics-energy-pulse 1.4s ease-in-out infinite;
+}
+
+.athletics-energy-heading {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 10px;
+  color: #d9f6bb;
+  font-size: .67rem;
+  font-weight: 900;
+}
+
+.athletics-energy-heading > span:first-child { display: inline-flex; align-items: center; gap: 5px; }
+.athletics-energy-heading > span:first-child > span { color: #ffe36e; font-size: .9rem; }
+.athletics-energy-heading strong { color: #ffffff; font-size: .72rem; font-variant-numeric: tabular-nums; }
+
+.athletics-energy-track {
+  height: 8px;
+  overflow: hidden;
+  border-radius: 99px;
+  background: rgba(1, 15, 24, .7);
+}
+
+.athletics-energy-track > span {
+  display: block;
+  height: 100%;
+  min-width: 2px;
+  border-radius: inherit;
+  background: linear-gradient(90deg, #ff7fb4, #ffd66e 34%, #b5ef71 78%, #40d9ff);
+  box-shadow: 0 0 13px rgba(181, 239, 113, .62);
+  transition: width .2s ease-out;
+}
+
+.athletics-answer-button {
+  display: grid;
+  grid-template-columns: 34px minmax(0, 1fr) auto;
+  align-items: center;
+  gap: 9px;
+  width: 100%;
+  min-height: 52px;
+  padding: 7px 9px;
+  border: 1px solid rgba(255, 214, 110, .82);
+  border-radius: 10px;
+  background: linear-gradient(135deg, rgba(255, 174, 75, .97), rgba(255, 116, 145, .94));
+  color: #23152c;
+  box-shadow: 0 9px 22px rgba(255, 127, 180, .22), inset 0 1px 0 rgba(255,255,255,.45);
+  pointer-events: auto;
+  text-align: left;
+  cursor: pointer;
+}
+
+.athletics-answer-button:hover:not(:disabled) { filter: brightness(1.08); transform: translateY(-1px); }
+.athletics-answer-button:disabled { cursor: not-allowed; filter: saturate(.35); opacity: .58; }
+.athletics-answer-button > span:nth-child(2) { display: grid; gap: 2px; min-width: 0; }
+.athletics-answer-button strong { font-size: .83rem; font-weight: 950; text-transform: uppercase; }
+.athletics-answer-button small { overflow: hidden; font-size: .62rem; font-weight: 800; text-overflow: ellipsis; white-space: nowrap; }
+.athletics-answer-button kbd { border-color: rgba(35, 21, 44, .34); background: rgba(255,255,255,.28); color: #23152c; }
+.athletics-answer-icon { display: grid; place-items: center; width: 30px; height: 30px; border: 2px solid currentColor; border-radius: 50%; font-size: 1.05rem; font-weight: 950; }
+
+@keyframes athletics-energy-pulse {
+  0%, 100% { box-shadow: 0 0 0 rgba(255, 127, 180, 0); }
+  50% { box-shadow: 0 0 22px rgba(255, 127, 180, .18); }
 }
 
 .course-laps-setting {
@@ -14548,6 +14640,22 @@ body:has(.workspace) .study-set-audio-recorder audio { width: min(100%, 440px); 
   font-size: .58rem;
 }
 
+.athletics-touch-controls .touch-question {
+  display: grid;
+  place-items: center;
+  gap: 2px;
+  min-width: 82px;
+  min-height: 82px;
+  border-color: rgba(255, 127, 180, .88) !important;
+  background: linear-gradient(145deg, rgba(245, 117, 153, .96), rgba(180, 69, 125, .95)) !important;
+  color: #fff7df !important;
+  font-size: .75rem;
+  font-weight: 950;
+  text-transform: uppercase;
+}
+
+.athletics-touch-controls .touch-question > span { display: grid; place-items: center; width: 27px; height: 27px; border: 2px solid currentColor; border-radius: 50%; font-size: 1rem; }
+
 .athletics-lobby-card,
 .athletics-course-card,
 .athletics-result-card,
@@ -14698,7 +14806,7 @@ body:has(.workspace) .athletics-teacher-results {
 .athletics-teacher-results li small { color: #a8c9d8; font-size: .58rem; font-weight: 900; }
 
 .spectator-team-athletics { background: rgba(181,239,113,.12); color: #d5f7a0; }
-.athletics-spectator-stats { grid-template-columns: repeat(3, minmax(0, 1fr)); }
+.athletics-spectator-stats { grid-template-columns: repeat(4, minmax(0, 1fr)); }
 
 @media (max-width: 850px) {
   .athletics-course-sections { grid-template-columns: repeat(2, minmax(0, 1fr)); }
@@ -14716,4 +14824,6 @@ body:has(.workspace) .athletics-teacher-results {
   .athletics-control-lock { bottom: 138px; max-width: calc(100% - 24px); white-space: normal; text-align: center; }
   .athletics-touch-controls .touch-joystick { width: 104px; height: 104px; min-width: 104px; min-height: 104px; }
   .athletics-touch-controls .touch-jump { min-width: 92px; min-height: 74px; }
+  .athletics-touch-controls .touch-question { min-width: 82px; min-height: 74px; }
+  .athletics-answer-button { min-height: 56px; }
 }

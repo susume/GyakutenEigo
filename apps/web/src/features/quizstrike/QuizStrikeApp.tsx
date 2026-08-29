@@ -13,6 +13,13 @@ import {
 import {
   ARENA_PLAYER_EYE_HEIGHT,
   ARENA_SCALE,
+  ATHLETICS_CHECKPOINT_COUNT,
+  ATHLETICS_CRITICAL_ENERGY,
+  ATHLETICS_MAX_ENERGY,
+  ATHLETICS_PLAYER_EYE_HEIGHT,
+  ATHLETICS_STADIUM_COURSE,
+  getAthleticsPointAtProgress,
+  getAthleticsRouteTangent,
   DESERT_CITADEL_MAIN_LEVEL_Y,
   DESERT_CITADEL_ROOFTOP_LEVEL_Y,
   IRON_JUNCTION_LOADING_LEVEL_Y,
@@ -33,6 +40,7 @@ import {
   type CharacterStressCount
 } from "../../game/characters/CharacterDebugScenarios";
 import type { ArenaQuality } from "../../game/gamePreferences";
+import type { AthleticsHudState } from "../../game/hudOverlay";
 import ArenaLoading from "./shared/ArenaLoading";
 
 const ArenaPreview = lazy(() => import("../../game/ArenaPreview"));
@@ -223,16 +231,31 @@ function CharacterLab() {
   const [count, setCount] = useState<CharacterStressCount>(40);
   const [isMoving, setIsMoving] = useState(true);
   const [tick, setTick] = useState(0);
+  const [athleticsLab, setAthleticsLab] = useState(false);
   const [labMapId, setLabMapId] = useState<ArenaMapId>("desert_citadel");
   const [labQuality, setLabQuality] = useState<ArenaQuality>("balanced");
   const [labView, setLabView] = useState<"overview" | "fps">("overview");
   const [labLevel, setLabLevel] = useState<"lower" | "market" | "cistern" | "flag" | "main" | "upper">("main");
+  const athleticsProgressParam = Number(new URLSearchParams(window.location.search).get("athleticsProgress"));
+  const athleticsProgress = Number.isFinite(athleticsProgressParam)
+    ? Math.min(0.96, Math.max(0.02, athleticsProgressParam))
+    : 0.08;
   const session = useMemo(() => {
     const generated = createCharacterDebugSession({ count, tick });
     const standardLabLevel = labLevel === "market" || labLevel === "cistern"
       ? "lower"
       : labLevel === "flag" ? "main" : labLevel;
-    const testPosition = labMapId === "temple_runoff"
+    const athleticsPoint = getAthleticsPointAtProgress(athleticsProgress);
+    const athleticsTangent = getAthleticsRouteTangent(athleticsProgress);
+    const athleticsTestPosition = {
+      x: athleticsPoint.x,
+      y: athleticsPoint.y + ATHLETICS_PLAYER_EYE_HEIGHT,
+      z: athleticsPoint.z,
+      facing: Math.atan2(-athleticsTangent.x, -athleticsTangent.z)
+    };
+    const testPosition = athleticsLab
+      ? athleticsTestPosition
+      : labMapId === "temple_runoff"
       ? {
           lower: { x: 0, y: ARENA_PLAYER_EYE_HEIGHT, z: 0, facing: -Math.PI / 2 },
           main: { x: -52 * ARENA_SCALE, y: TEMPLE_RUNOFF_MAIN_LEVEL_Y + ARENA_PLAYER_EYE_HEIGHT, z: 100 * ARENA_SCALE, facing: 0 },
@@ -255,6 +278,42 @@ function CharacterLab() {
             upper: { x: 30 * ARENA_SCALE, y: DESERT_CITADEL_ROOFTOP_LEVEL_Y + ARENA_PLAYER_EYE_HEIGHT, z: -156 * ARENA_SCALE, facing: Math.PI / 2 }
           }[labLevel];
     const players = generated.players.map((player, index) => {
+      if (athleticsLab) {
+        const progress = labView === "fps" && index === 0
+          ? athleticsProgress
+          : labView === "overview"
+            ? Math.min(0.97, 0.04 + (index / Math.max(1, count - 1)) * 0.9)
+            : Math.min(0.97, Math.max(0.02, athleticsProgress - Math.max(1, index) * 0.014));
+        const point = getAthleticsPointAtProgress(progress);
+        const tangent = getAthleticsRouteTangent(progress);
+        const lateral = labView === "overview" ? ((index % 5) - 2) * 3.2 : (index - 4) * 3.4;
+        const completedLaps = labView === "overview" ? Math.min(2, Math.floor(index / 16)) : index % 3;
+        const checkpointIndex = Math.min(ATHLETICS_CHECKPOINT_COUNT, Math.floor(progress * ATHLETICS_CHECKPOINT_COUNT));
+        const athletics = {
+          questionIndex: Math.min(12, completedLaps * 4 + (index % 5)),
+          checkpointIndex,
+          routeProgress: progress,
+          gateOpen: true,
+          falls: index % 11 === 0 ? 1 : 0,
+          lastSafeCheckpointIndex: checkpointIndex,
+          checkpointSplitsMs: [],
+          completedLaps,
+          lapSplitsMs: [],
+          status: "racing" as const
+        };
+        return {
+          ...player,
+          isAlive: true,
+          health: 100,
+          role: "human" as const,
+          energy: Math.max(100, ATHLETICS_MAX_ENERGY - (index % 8) * 92),
+          x: index === 0 && labView === "fps" ? testPosition.x : point.x - tangent.z * lateral,
+          y: index === 0 && labView === "fps" ? testPosition.y : point.y + ATHLETICS_PLAYER_EYE_HEIGHT,
+          z: index === 0 && labView === "fps" ? testPosition.z : point.z + tangent.x * lateral,
+          facing: index === 0 && labView === "fps" ? testPosition.facing : Math.atan2(-tangent.x, -tangent.z),
+          athletics
+        };
+      }
       if (index === 0) return { ...player, ...testPosition };
       if (labView !== "fps" || count !== 10 || index > 8) return player;
 
@@ -277,11 +336,34 @@ function CharacterLab() {
     });
     return {
       ...generated,
-      settings: { ...generated.settings, mapId: labMapId },
+      settings: { ...generated.settings, mapId: labMapId, gameMode: athleticsLab ? "athletics" : generated.settings.gameMode },
       players
     };
-  }, [count, tick, labMapId, labLevel, labView]);
+  }, [athleticsLab, athleticsProgress, count, tick, labMapId, labLevel, labView]);
   const summary = useMemo(() => summarizeCharacterDebugSession(session), [session]);
+  const athleticsPlayer = session.players[0]?.athletics;
+  const athleticsHud: AthleticsHudState | undefined = athleticsLab && labView === "fps" ? {
+    startRemainingSeconds: 0,
+    remainingSeconds: 420,
+    questionIndex: athleticsPlayer?.questionIndex ?? 0,
+    questionCount: 12,
+    questionsPerLap: 4,
+    checkpointIndex: athleticsPlayer?.checkpointIndex ?? 0,
+    checkpointCount: ATHLETICS_CHECKPOINT_COUNT,
+    completedLaps: athleticsPlayer?.completedLaps ?? 0,
+    requiredLaps: 3,
+    routeProgress: athleticsPlayer?.routeProgress ?? athleticsProgress,
+    rank: 1,
+    totalRacers: count,
+    energy: session.players[0]?.energy ?? ATHLETICS_MAX_ENERGY,
+    maxEnergy: ATHLETICS_MAX_ENERGY,
+    criticalEnergy: ATHLETICS_CRITICAL_ENERGY,
+    canAnswer: true,
+    gateOpen: true,
+    status: "racing",
+    sectionLabel: ATHLETICS_STADIUM_COURSE.sections.find((section) => athleticsProgress <= section.endProgress)?.label ?? "Skyline Adventure Park",
+    objectiveText: "Answer anytime to refuel. Run, jump, and keep climbing."
+  } : undefined;
 
   useEffect(() => {
     if (!isMoving) return;
@@ -314,9 +396,10 @@ function CharacterLab() {
         <div className="panel character-lab-controls">
           <h2>Scenario</h2>
           <div className="button-row" aria-label="Character lab map">
-            <button className={labMapId === "desert_citadel" ? "active" : ""} aria-pressed={labMapId === "desert_citadel"} onClick={() => setLabMapId("desert_citadel")}>Desert Citadel</button>
-            <button className={labMapId === "iron_junction" ? "active" : ""} aria-pressed={labMapId === "iron_junction"} onClick={() => setLabMapId("iron_junction")}>Iron Junction</button>
-            <button className={labMapId === "temple_runoff" ? "active" : ""} aria-pressed={labMapId === "temple_runoff"} onClick={() => setLabMapId("temple_runoff")}>Temple Runoff</button>
+            <button className={athleticsLab ? "active" : ""} aria-pressed={athleticsLab} onClick={() => { setAthleticsLab(true); setLabMapId("desert_citadel"); }}>Skyline Adventure Park</button>
+            <button className={!athleticsLab && labMapId === "desert_citadel" ? "active" : ""} aria-pressed={!athleticsLab && labMapId === "desert_citadel"} onClick={() => { setAthleticsLab(false); setLabMapId("desert_citadel"); }}>Desert Citadel</button>
+            <button className={!athleticsLab && labMapId === "iron_junction" ? "active" : ""} aria-pressed={!athleticsLab && labMapId === "iron_junction"} onClick={() => { setAthleticsLab(false); setLabMapId("iron_junction"); }}>Iron Junction</button>
+            <button className={!athleticsLab && labMapId === "temple_runoff" ? "active" : ""} aria-pressed={!athleticsLab && labMapId === "temple_runoff"} onClick={() => { setAthleticsLab(false); setLabMapId("temple_runoff"); }}>Temple Runoff</button>
           </div>
           <div className="button-row" aria-label="Character lab quality">
             <button className={labQuality === "performance" ? "active" : ""} aria-pressed={labQuality === "performance"} onClick={() => setLabQuality("performance")}>Low</button>
@@ -327,16 +410,21 @@ function CharacterLab() {
             <button className={labView === "overview" ? "active" : ""} aria-pressed={labView === "overview"} onClick={() => setLabView("overview")}>Overview</button>
             <button className={labView === "fps" ? "active" : ""} aria-pressed={labView === "fps"} onClick={() => setLabView("fps")}>Playable FPS</button>
           </div>
-          {labView === "fps" && (
+          {labView === "fps" && (athleticsLab ? (
+            <div className="button-row" aria-label="Athletics diagnostic view">
+              <span className="mini-copy">Course focus: {Math.round(athleticsProgress * 100)}% route progress · use the URL to stage another level</span>
+            </div>
+          ) : (
             <div className="button-row" aria-label="Map test level">
-              <button className={labLevel === "lower" ? "active" : ""} aria-pressed={labLevel === "lower"} onClick={() => setLabLevel("lower")}>{labMapId === "temple_runoff" ? "River ↓" : labMapId === "iron_junction" ? "Ground •" : "Ground •"}</button>
+              <button className={labLevel === "lower" ? "active" : ""} aria-pressed={labLevel === "lower"} onClick={() => setLabLevel("lower")}>{labMapId === "temple_runoff" ? "River ↓" : "Ground •"}</button>
               {labMapId === "desert_citadel" && <button className={labLevel === "market" ? "active" : ""} aria-pressed={labLevel === "market"} onClick={() => setLabLevel("market")}>Market •</button>}
               {labMapId === "desert_citadel" && <button className={labLevel === "cistern" ? "active" : ""} aria-pressed={labLevel === "cistern"} onClick={() => setLabLevel("cistern")}>Cistern •</button>}
               {labMapId === "desert_citadel" && <button className={labLevel === "flag" ? "active" : ""} aria-pressed={labLevel === "flag"} onClick={() => setLabLevel("flag")}>Flag ⚑</button>}
               <button className={labLevel === "main" ? "active" : ""} aria-pressed={labLevel === "main"} onClick={() => setLabLevel("main")}>{labMapId === "temple_runoff" ? "Main •" : labMapId === "iron_junction" ? "Loading ↑" : "Citadel ↑"}</button>
               <button className={labLevel === "upper" ? "active" : ""} aria-pressed={labLevel === "upper"} onClick={() => setLabLevel("upper")}>{labMapId === "temple_runoff" ? "Bridge ↑" : labMapId === "iron_junction" ? "Overpass ↑" : "Lookout ↑↑"}</button>
             </div>
-          )}
+          ))}
+          {athleticsLab && <p className="mini-copy">Use <code>?athleticsProgress=0.08</code> through <code>0.96</code> in the URL to inspect different elevations.</p>}
           <div className="lab-metrics">
             <span><strong>{summary.total}</strong>Total</span>
             <span><strong>{summary.alive}</strong>Alive</span>
@@ -370,8 +458,10 @@ function CharacterLab() {
               view={labView}
               suppressHint={labView === "fps"}
               debugOverlay={!cleanPreview}
-              debugLabel={`${count}-player character stress`}
+              debugLabel={athleticsLab ? `${count}-racer Skyline Park stress` : `${count}-player character stress`}
               quality={labQuality}
+              athleticsHud={athleticsHud}
+              onOpenQuestion={athleticsLab ? () => undefined : undefined}
             />
           </Suspense>
         </div>

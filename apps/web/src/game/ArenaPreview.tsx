@@ -4,6 +4,9 @@ import {
   ARENA_MAX_AIM_PITCH,
   ARENA_MIN_AIM_PITCH,
   ARENA_SCALE,
+  ATHLETICS_COURSE_BOUNDS,
+  ATHLETICS_JUMP_ENERGY_COST,
+  ATHLETICS_STADIUM_COURSE,
   getAthleticsObstacles,
   getAthleticsStartPosition,
   getGearFireCooldownMs,
@@ -71,6 +74,7 @@ interface ArenaPreviewProps {
   onMove?: (position: ArenaLivePosition) => void;
   onFire?: (position: ArenaLivePosition) => void;
   onInteract?: (position: ArenaLivePosition) => void;
+  onOpenQuestion?: () => void;
   athleticsHud?: AthleticsHudState;
   loadDecalAsset?: (assetId: string) => Promise<Blob>;
 }
@@ -291,6 +295,7 @@ export default function ArenaPreview({
   onMove,
   onFire,
   onInteract,
+  onOpenQuestion,
   athleticsHud,
   loadDecalAsset
 }: ArenaPreviewProps) {
@@ -300,9 +305,11 @@ export default function ArenaPreview({
   const zoomControlRef = useRef<() => void>(() => undefined);
   const interactControlRef = useRef<() => void>(() => undefined);
   const jumpControlRef = useRef<() => void>(() => undefined);
+  const questionControlRef = useRef<() => void>(() => undefined);
   const onMoveRef = useRef(onMove);
   const onFireRef = useRef(onFire);
   const onInteractRef = useRef(onInteract);
+  const onOpenQuestionRef = useRef(onOpenQuestion);
   const currentPlayerRef = useRef(currentPlayer);
   const sessionRef = useRef(session);
   const pendingShotsRef = useRef(0);
@@ -357,14 +364,16 @@ export default function ArenaPreview({
   } = useMemo(() => loadArenaMapContext(arenaMapId), [arenaMapId]);
   const activeQuality = fallbackQuality
     ?? (quality === "auto" ? autoResolvedQuality : quality);
-  const serverToLocalX = useCallback((x: number) => clamp(x, -arenaBounds.limitX, arenaBounds.limitX), [arenaBounds.limitX]);
-  const serverToLocalZ = useCallback((z: number) => clamp(z, -arenaBounds.limitZ, arenaBounds.limitZ), [arenaBounds.limitZ]);
+  const movementLimitX = isAthleticsMode ? ATHLETICS_COURSE_BOUNDS.limitX : arenaBounds.limitX;
+  const movementLimitZ = isAthleticsMode ? ATHLETICS_COURSE_BOUNDS.limitZ : arenaBounds.limitZ;
+  const serverToLocalX = useCallback((x: number) => clamp(x, -movementLimitX, movementLimitX), [movementLimitX]);
+  const serverToLocalZ = useCallback((z: number) => clamp(z, -movementLimitZ, movementLimitZ), [movementLimitZ]);
   const localToServerPosition = useCallback((position: THREE.Vector3, facing: number): ArenaLivePosition => ({
-    x: clamp(position.x, -arenaBounds.limitX, arenaBounds.limitX),
-    z: clamp(position.z, -arenaBounds.limitZ, arenaBounds.limitZ),
+    x: clamp(position.x, -movementLimitX, movementLimitX),
+    z: clamp(position.z, -movementLimitZ, movementLimitZ),
     y: Number(position.y.toFixed(2)),
     facing
-  }), [arenaBounds.limitX, arenaBounds.limitZ]);
+  }), [movementLimitX, movementLimitZ]);
   currentPlayerRef.current = currentPlayer;
   sessionRef.current = session;
 
@@ -389,9 +398,10 @@ export default function ArenaPreview({
     onMoveRef.current = onMove;
     onFireRef.current = onFire;
     onInteractRef.current = onInteract;
+    onOpenQuestionRef.current = onOpenQuestion;
     inputPausedRef.current = inputPaused;
     controlsDisabledRef.current = controlsDisabled;
-  }, [onMove, onFire, onInteract, inputPaused, controlsDisabled]);
+  }, [onMove, onFire, onInteract, onOpenQuestion, inputPaused, controlsDisabled]);
 
   useEffect(() => {
     const resetJoystick = () => {
@@ -522,7 +532,7 @@ export default function ArenaPreview({
       return texture;
     };
 
-    const emptyVfxTexture = new THREE.Texture();
+    const emptyVfxTexture = new THREE.DataTexture(new Uint8Array([255, 255, 255, 0]), 1, 1, THREE.RGBAFormat);
     emptyVfxTexture.needsUpdate = true;
     const puffTexture = isAthleticsMode ? emptyVfxTexture : loadTexture("/assets/snowball-puff.svg");
     const vfxTextures = isAthleticsMode ? {
@@ -569,7 +579,9 @@ export default function ArenaPreview({
           qualityConfig,
           makeCanvasTexture,
           makeLabelTexture,
-          questionsPerLap: session?.athletics?.questionsPerLap
+          questionsPerLap: session?.athletics?.questionsPerLap,
+          serverTime: session?.serverTime,
+          debugOverlay
         })
       : buildArenaMapScene({
       scene,
@@ -722,9 +734,17 @@ export default function ArenaPreview({
       let landedAt = 0;
       let cameraVisualY = playerPosition.y;
       let fireHeld = false;
+      let questionHoldPosition: THREE.Vector3 | null = null;
       jumpControlRef.current = () => {
         if (controlsDisabledRef.current || inputPausedRef.current) return;
+        if (isAthleticsMode && (currentPlayerRef.current?.energy ?? 0) < ATHLETICS_JUMP_ENERGY_COST) return;
         jumpQueuedAt = performance.now();
+      };
+      questionControlRef.current = () => {
+        if (controlsDisabledRef.current || inputPausedRef.current || !isAthleticsMode) return;
+        if (!wasGrounded || isJumping) return;
+        questionHoldPosition = playerPosition.clone();
+        onOpenQuestionRef.current?.();
       };
       const getEquippedGearId = () => getPlayerWeaponId(currentPlayerRef.current ?? { gear: "starter_blaster" });
       const hasHeavyGun = () => currentWeaponId === "power_blaster";
@@ -1114,7 +1134,12 @@ export default function ArenaPreview({
         };
         vfxPool.setViewPosition(playerPosition);
         vfxPool.update(currentTime);
-        athleticsUpdate?.(elapsed);
+        const platformCarry = athleticsUpdate?.(elapsed, playerPosition, wasGrounded);
+        if (isAthleticsMode && platformCarry && !inputPausedRef.current && !controlsDisabledRef.current) {
+          playerPosition.x += platformCarry.x;
+          playerPosition.y += platformCarry.y;
+          playerPosition.z += platformCarry.z;
+        }
         desertCitadelVfx?.update(elapsed);
         templeRunoffArt?.update(elapsed);
         if (currentTime - performanceWindowAt >= 1000) {
@@ -1166,6 +1191,9 @@ export default function ArenaPreview({
           keys.clear();
           lookKeys.clear();
           if (activeZoomLevel > 0) setZoomLevel(0);
+          if (isAthleticsMode && !questionHoldPosition && wasGrounded) questionHoldPosition = playerPosition.clone();
+        } else {
+          questionHoldPosition = null;
         }
         applyGamepadInput();
         const crouching = keys.has("Control");
@@ -1182,8 +1210,8 @@ export default function ArenaPreview({
           floorEyeHeight
         );
         let groundEyeY = surfaceGroundY + floorEyeHeight;
-        const currentLevel = isAthleticsMode ? "stadium" : getArenaLevelLabel(arenaMapId, surfaceGroundY);
-        const currentNavRegion = isAthleticsMode ? "stadium_loop:stadium" : `${arenaMapId}:${currentLevel}`;
+        const currentLevel = isAthleticsMode ? "skyline_adventure_park" : getArenaLevelLabel(arenaMapId, surfaceGroundY);
+        const currentNavRegion = isAthleticsMode ? "stadium_loop:skyline_adventure_park" : `${arenaMapId}:${currentLevel}`;
         renderer.domElement.dataset.playerGroundY = surfaceGroundY.toFixed(3);
         renderer.domElement.dataset.detectedFloor = surfaceGroundY.toFixed(3);
         renderer.domElement.dataset.currentNavRegion = currentNavRegion;
@@ -1251,7 +1279,9 @@ export default function ArenaPreview({
         const activePlayer = currentPlayerRef.current;
         const gearSpeedMultiplier = getPlayerMoveSpeedMultiplier(activePlayer ?? { gear: "starter_blaster" });
         const isZombieHuman = session?.settings.gameMode === "zombie" && activePlayer?.role !== "zombie";
-        const hasMovementEnergy = !isZombieHuman || (activePlayer?.energy ?? 0) > 0;
+        const hasMovementEnergy = isAthleticsMode || isZombieHuman
+          ? (activePlayer?.energy ?? 0) > 0
+          : true;
         const runRequested = keys.has("Shift");
         const runAllowed = runRequested && hasMovementEnergy;
         const movementAudioMode: MovementAudioMode = crouching ? "crouch" : runAllowed ? "run" : "walk";
@@ -1296,8 +1326,8 @@ export default function ArenaPreview({
           }
           movementVector.normalize().multiplyScalar(moveSpeed * delta);
           nextPosition.copy(playerPosition).add(movementVector);
-          nextPosition.x = clamp(nextPosition.x, -arenaBounds.limitX + PLAYER_RADIUS, arenaBounds.limitX - PLAYER_RADIUS);
-          nextPosition.z = clamp(nextPosition.z, -arenaBounds.limitZ + PLAYER_RADIUS, arenaBounds.limitZ - PLAYER_RADIUS);
+          nextPosition.x = clamp(nextPosition.x, -movementLimitX + PLAYER_RADIUS, movementLimitX - PLAYER_RADIUS);
+          nextPosition.z = clamp(nextPosition.z, -movementLimitZ + PLAYER_RADIUS, movementLimitZ - PLAYER_RADIUS);
           axisPosition.copy(playerPosition);
           axisPosition.x = nextPosition.x;
           const xGroundY = resolveSurfaceGroundY(
@@ -1340,6 +1370,14 @@ export default function ArenaPreview({
         }
 
         if (fireHeld && hasAutoFireGear() && !inputPausedRef.current && !controlsDisabledRef.current) fire();
+
+        if (isAthleticsMode && inputPausedRef.current && questionHoldPosition) {
+          playerPosition.copy(questionHoldPosition);
+          verticalVelocity = 0;
+          jumpQueuedAt = 0;
+          wasGrounded = true;
+          isJumping = false;
+        }
 
         const equippedGearId = getEquippedGearId();
         if (!hasZoomGear() && activeZoomLevel > 0) setZoomLevel(0);
@@ -1450,6 +1488,7 @@ export default function ArenaPreview({
         zoomControlRef.current = () => undefined;
         interactControlRef.current = () => undefined;
         jumpControlRef.current = () => undefined;
+        questionControlRef.current = () => undefined;
         syncPlayersRef.current = () => undefined;
         if (cooldownTimeout) window.clearTimeout(cooldownTimeout);
         setZoomLevel(0);
@@ -1556,6 +1595,7 @@ export default function ArenaPreview({
       void templeRunoffAssetsPromise.then((assets) => assets?.dispose());
       interactControlRef.current = () => undefined;
       jumpControlRef.current = () => undefined;
+      questionControlRef.current = () => undefined;
       syncPlayersRef.current = () => undefined;
       characterManager.dispose();
       disposeObject(scene);
@@ -1579,7 +1619,7 @@ export default function ArenaPreview({
       renderer.dispose();
       mount.removeChild(renderer.domElement);
     };
-  }, [sceneSessionId, currentPlayerId, currentPlayerTeam, currentWeaponId, currentPlayer?.gear, currentPlayer?.weapon, view, debugOverlay, quality, fallbackQuality, activeQuality, gamepadEnabled, arenaMapId, arenaMap, arenaBounds, teamBaseZones, captureZones, searchRetrieveItems, searchRetrieveDeliveryZones, isIronJunction, isDesertCitadel, isTempleRunoff, isAthleticsMode, athleticsSceneBuilder, localToServerPosition, serverToLocalX, serverToLocalZ, session?.settings.gameMode, loadDecalAsset]);
+  }, [sceneSessionId, currentPlayerId, currentPlayerTeam, currentWeaponId, currentPlayer?.gear, currentPlayer?.weapon, view, debugOverlay, quality, fallbackQuality, activeQuality, gamepadEnabled, arenaMapId, arenaMap, arenaBounds, teamBaseZones, captureZones, searchRetrieveItems, searchRetrieveDeliveryZones, isIronJunction, isDesertCitadel, isTempleRunoff, isAthleticsMode, athleticsSceneBuilder, localToServerPosition, serverToLocalX, serverToLocalZ, movementLimitX, movementLimitZ, session?.settings.gameMode, session?.serverTime, loadDecalAsset]);
 
   const beginTouchMove = (event: ReactPointerEvent<HTMLButtonElement>) => {
     event.preventDefault();
@@ -1605,6 +1645,9 @@ export default function ArenaPreview({
   };
   const jumpFromTouch = () => {
     jumpControlRef.current();
+  };
+  const questionFromTouch = () => {
+    questionControlRef.current();
   };
   const miniMapPlayer = miniMapPosition ?? (
     isFiniteNumber(currentPlayer?.x) && isFiniteNumber(currentPlayer?.z)
@@ -1652,7 +1695,7 @@ export default function ArenaPreview({
       data-weapon-id={isAthleticsMode ? "none" : currentWeaponId ?? "starter_blaster"}
       data-zoom-level={zoomLevel}
     >
-      <div className="arena-canvas" ref={mountRef} aria-label={isAthleticsMode ? "Stadium Loop athletics course" : `${arenaMap.title} arena`} />
+      <div className="arena-canvas" ref={mountRef} aria-label={isAthleticsMode ? "Skyline Adventure Park athletics course" : `${arenaMap.title} arena`} />
       {autoQualityNotice && quality === "auto" && !fallbackQuality && (
         <div className="arena-quality-notice" role="status" aria-live="polite">
           Graphics adjusted for smoother gameplay
@@ -1668,6 +1711,14 @@ export default function ArenaPreview({
           <span>
             LOD {characterDebugStats.lod.LOD0}/{characterDebugStats.lod.LOD1}/{characterDebugStats.lod.LOD2}/{characterDebugStats.lod.LOD3}
           </span>
+          {isAthleticsMode && currentPlayer?.athletics && (
+            <>
+              <span>Course {Math.round(currentPlayer.athletics.routeProgress * 100)}% · checkpoint {currentPlayer.athletics.checkpointIndex}/{ATHLETICS_STADIUM_COURSE.checkpoints.length}</span>
+              <span>Lap {(currentPlayer.athletics.completedLaps ?? 0) + 1}/{session?.athletics?.requiredLaps ?? 1} · energy {Math.round(currentPlayer.energy ?? 0)}</span>
+              <span>Ground normal 0,1,0 · fall boundary y &lt; 0.5 · {ATHLETICS_STADIUM_COURSE.movingObstacles.length} moving colliders</span>
+              <span>Course bounds ±{ATHLETICS_COURSE_BOUNDS.limitX} × ±{ATHLETICS_COURSE_BOUNDS.limitZ}</span>
+            </>
+          )}
           {performanceSnapshot && (
             <>
               <span>{performanceSnapshot.fps} FPS · p95 {performanceSnapshot.frameMsP95} ms</span>
@@ -1707,6 +1758,7 @@ export default function ArenaPreview({
             onZoomFromTouch={zoomFromTouch}
             onInteractFromTouch={onInteract ? interactFromTouch : undefined}
             onJumpFromTouch={isAthleticsMode ? jumpFromTouch : undefined}
+            onQuestionFromTouch={isAthleticsMode ? questionFromTouch : undefined}
             athleticsHud={isAthleticsMode ? athleticsHud : undefined}
           />
           {!isAthleticsMode && zoomLevel > 0 && (

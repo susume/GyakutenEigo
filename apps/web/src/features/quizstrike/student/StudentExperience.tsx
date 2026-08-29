@@ -31,6 +31,9 @@ import {
   type SnowballPackSize,
   ZOMBIE_HUMAN_CORRECT_ENERGY,
   ZOMBIE_HUMAN_MAX_ENERGY,
+  ATHLETICS_CHECKPOINT_COUNT,
+  ATHLETICS_CRITICAL_ENERGY,
+  ATHLETICS_MAX_ENERGY,
   canPlayerFireInMode,
   getCosmeticProgress,
   getArenaGroundHeight,
@@ -388,6 +391,7 @@ export default function StudentExperience({ onExit }: { onExit: () => void }) {
   const lastTeamSwitchAtRef = useRef(0);
   const currentSessionRef = useRef<GameSession | null>(session);
   const currentPlayerRef = useRef<PlayerSession | null>(player);
+  const questionFetchInFlightRef = useRef(false);
   const answerActionRef = useRef<(choice: Choice) => Promise<void>>(async () => undefined);
   const buyActionRef = useRef<(gearId: string) => Promise<void>>(async () => undefined);
   const buySnowballsActionRef = useRef<(packSize: SnowballPackSize) => Promise<void>>(async () => undefined);
@@ -797,17 +801,13 @@ export default function StudentExperience({ onExit }: { onExit: () => void }) {
       message?: string;
     }) => {
       if (lastVisualSession.settings.gameMode !== "athletics") return;
-      setQuestion(payload.question ?? null);
+      if (payload.question) setQuestion(payload.question);
       setAnswerFeedback(null);
       setBuyOpen(false);
       setScoreboardOpen(false);
       setSettingsOpen(false);
-      if (payload.question) {
-        setQuizOpen(true);
-        gameAudio.playEvent("athletics_checkpoint");
-        gameAudio.playEvent("quiz_open");
-      }
-      setFeedback(payload.message ?? "Checkpoint reached. Answer to open the next gate.");
+      gameAudio.playEvent("athletics_checkpoint");
+      setFeedback(payload.message ?? "Checkpoint reached. Answer anytime to refill movement energy.");
     });
     connectedSocket.on("athletics_respawn", (payload: {
       falls?: number;
@@ -858,7 +858,7 @@ export default function StudentExperience({ onExit }: { onExit: () => void }) {
           checkpointIndex: 0,
           lastSafeCheckpointIndex: 0,
           routeProgress: 0,
-          gateOpen: false,
+          gateOpen: true,
           lapTransitionUntil: payload.transitionUntil
         } : current.athletics
       } : current);
@@ -866,12 +866,9 @@ export default function StudentExperience({ onExit }: { onExit: () => void }) {
     connectedSocket.on("athletics_lap_start", (payload: { question?: PublicQuestion }) => {
       if (lastVisualSession.settings.gameMode !== "athletics") return;
       setPlayer((current) => current?.athletics ? { ...current, athletics: { ...current.athletics, lapTransitionUntil: undefined } } : current);
-      setQuestion(payload.question ?? null);
+      if (payload.question) setQuestion(payload.question);
       setAnswerFeedback(null);
-      if (payload.question) {
-        setQuizOpen(true);
-        gameAudio.playEvent("quiz_open");
-      }
+      setFeedback("New lap ready. Answer anytime to refill movement energy.");
     });
     connectedSocket.on("athletics_finish", (payload: { finishPosition?: number; finishTimeMs?: number }) => {
       if (lastVisualSession.settings.gameMode !== "athletics") return;
@@ -1482,6 +1479,50 @@ export default function StudentExperience({ onExit }: { onExit: () => void }) {
     status.clear();
   };
 
+  const openAthleticsQuestion = useCallback(() => {
+    if (!athleticsRace || teacherPaused || !session || !player || !playerToken) return;
+    if (quizOpen) {
+      gameAudio.playEvent("modal_close");
+      setQuizOpen(false);
+      return;
+    }
+    if (player.athletics?.status !== "racing") return;
+    if (player.jumping) {
+      setFeedback("Land on a platform before opening a question.");
+      return;
+    }
+    setBuyOpen(false);
+    setScoreboardOpen(false);
+    setSettingsOpen(false);
+    setQuizOpen(true);
+    gameAudio.playEvent("quiz_open");
+    if (question || questionFetchInFlightRef.current) return;
+    questionFetchInFlightRef.current = true;
+    void studentApi.question(session.sessionCode, player.id, playerToken)
+      .then((payload) => {
+        const data = payload as { question?: PublicQuestion };
+        setQuestion(data.question ?? null);
+      })
+      .catch((error) => status.report(error))
+      .finally(() => {
+        questionFetchInFlightRef.current = false;
+      });
+  }, [
+    athleticsRace,
+    player,
+    playerToken,
+    question,
+    quizOpen,
+    session,
+    setBuyOpen,
+    setFeedback,
+    setQuizOpen,
+    setScoreboardOpen,
+    setSettingsOpen,
+    status,
+    teacherPaused
+  ]);
+
   const answer = async (choice: Choice) => {
     if (teacherPaused || !session || !player || !question || !playerToken || answeringChoice || answerFeedback || answerSubmissionLockRef.current) return;
     const operationId = answerOperationRef.current + 1;
@@ -1713,11 +1754,15 @@ export default function StudentExperience({ onExit }: { onExit: () => void }) {
     const onKeyDown = (event: KeyboardEvent) => {
       if (!hasActiveArenaConnection || isTypingTarget(event.target)) return;
       if (event.key.toLowerCase() === "q") {
-        gameAudio.playEvent(quizOpen ? "modal_close" : "quiz_open");
-        setQuizOpen((open) => !open);
-        setBuyOpen(false);
-        setScoreboardOpen(false);
-        setSettingsOpen(false);
+        if (athleticsRace) {
+          openAthleticsQuestion();
+        } else {
+          gameAudio.playEvent(quizOpen ? "modal_close" : "quiz_open");
+          setQuizOpen((open) => !open);
+          setBuyOpen(false);
+          setScoreboardOpen(false);
+          setSettingsOpen(false);
+        }
       }
       if (event.key.toLowerCase() === "b") {
         gameAudio.play("menu_toggle");
@@ -1762,6 +1807,8 @@ export default function StudentExperience({ onExit }: { onExit: () => void }) {
     };
   }, [
     hasActiveArenaConnection,
+    athleticsRace,
+    openAthleticsQuestion,
     playerToken,
     quizOpen,
     buyOpen,
@@ -1983,6 +2030,7 @@ export default function StudentExperience({ onExit }: { onExit: () => void }) {
   const isZombieHuman = session.settings.gameMode === "zombie" && player.role !== "zombie";
   const canFire = canPlayerFireInMode(session.settings.gameMode, player.role);
   const runningEnergy = Math.round(Math.max(0, Math.min(ZOMBIE_HUMAN_MAX_ENERGY, player.energy ?? 0)));
+  const athleticsEnergy = Math.round(Math.max(0, Math.min(ATHLETICS_MAX_ENERGY, player.energy ?? 0)));
   const connectedPlayers = session.players.filter((candidate) => candidate.connectionState !== "disconnected");
   const redTeamCount = connectedPlayers.filter((candidate) => candidate.team === "red").length;
   const blueTeamCount = connectedPlayers.filter((candidate) => candidate.team === "blue").length;
@@ -2006,9 +2054,11 @@ export default function StudentExperience({ onExit }: { onExit: () => void }) {
     : athleticsRace
       ? athleticsPlayer?.status === "finished"
         ? `Finished in ${formatDuration((athleticsPlayer.finishTimeMs ?? 0) / 1000)}. Watch the remaining racers.`
-        : athleticsPlayer?.gateOpen
-          ? "Run to the next safe checkpoint before the gate closes."
-          : "Answer the checkpoint question to unlock the next section."
+        : athleticsPlayer?.lapTransitionUntil && Date.now() < Date.parse(athleticsPlayer.lapTransitionUntil)
+          ? `Lap ${athleticsPlayer.completedLaps} complete. The next lap is getting ready.`
+        : athleticsEnergy <= ATHLETICS_CRITICAL_ENERGY
+          ? "Energy is low. Answer on a safe platform to refuel, then keep climbing."
+          : "Run, jump, and answer anytime to refill movement energy."
     : session.settings.gameMode === "flag"
       ? flagStatusText(session)
     : session.settings.gameMode === "zombie"
@@ -2037,14 +2087,20 @@ export default function StudentExperience({ onExit }: { onExit: () => void }) {
     questionCount: athleticsQuestionCount,
     questionsPerLap: athleticsQuestionsPerLap,
     checkpointIndex: athleticsPlayer.checkpointIndex,
+    checkpointCount: ATHLETICS_CHECKPOINT_COUNT,
     completedLaps: athleticsPlayer.completedLaps ?? 0,
     requiredLaps: athleticsRequiredLaps,
     routeProgress: athleticsPlayer.routeProgress,
     rank: athleticsStanding?.rank ?? athleticsStandings.length,
     totalRacers: Math.max(1, athleticsStandings.length),
+    energy: athleticsEnergy,
+    maxEnergy: ATHLETICS_MAX_ENERGY,
+    criticalEnergy: ATHLETICS_CRITICAL_ENERGY,
+    canAnswer: Boolean(playerToken) && !isSocketReconnecting && !teacherPaused,
     gateOpen: athleticsPlayer.gateOpen,
     status: athleticsPlayer.status,
-    sectionLabel: athleticsSection?.label ?? "Stadium Loop"
+    sectionLabel: athleticsSection?.label ?? "Skyline Adventure Park",
+    objectiveText
   } : undefined;
   const athleticsMovementLocked = athleticsRace && (
     athleticsStartRemainingSeconds > 0
@@ -2083,6 +2139,7 @@ export default function StudentExperience({ onExit }: { onExit: () => void }) {
     <section className={[
       "game-layout",
       isCompactViewport ? "compact-game-layout" : "",
+      athleticsRace ? "athletics-game-layout" : "",
       gamePreferences.highContrastHud ? "high-contrast-hud" : "",
       session.status === "waiting" ? "waiting-game-layout" : ""
     ].filter(Boolean).join(" ")}>
@@ -2116,6 +2173,7 @@ export default function StudentExperience({ onExit }: { onExit: () => void }) {
               onMove={roundActive && player.isAlive && !isFlagSpectator && !isAthleticsSpectator && !athleticsMovementLocked ? sendArenaPosition : undefined}
               onFire={roundActive && player.isAlive && canFire && !athleticsRace ? sendArenaFire : undefined}
               onInteract={session.settings.gameMode === "flag" && roundActive && player.isAlive ? sendFlagAction : undefined}
+              onOpenQuestion={athleticsRace ? openAthleticsQuestion : undefined}
               athleticsHud={athleticsHud}
               loadDecalAsset={loadStudentDecal}
             />
@@ -2168,7 +2226,7 @@ export default function StudentExperience({ onExit }: { onExit: () => void }) {
                 <strong>{spectatorPlayer?.nickname ?? "Waiting for an active player"}</strong>
                 {spectatorPlayer && (
                   isAthleticsSpectator
-                    ? <span className="spectator-team spectator-team-athletics">{athleticsSpectatorStanding ? `${Math.round(athleticsSpectatorStanding.routeProgress * 100)}% complete` : "Racing"}</span>
+                    ? <span className="spectator-team spectator-team-athletics">{athleticsSpectatorStanding ? `Lap ${Math.min(athleticsRequiredLaps, athleticsSpectatorStanding.completedLaps + 1)}/${athleticsRequiredLaps} · ${Math.round(athleticsSpectatorStanding.routeProgress * 100)}%` : "Racing"}</span>
                     : <span className={`spectator-team spectator-team-${spectatorPlayer.team}`}>
                       {spectatorPlayer.team === "blue" ? "Blue Team" : "Red Team"}
                     </span>
@@ -2187,6 +2245,10 @@ export default function StudentExperience({ onExit }: { onExit: () => void }) {
             </button>
             {isAthleticsSpectator && spectatorPlayer ? (
               <div className="spectator-player-stats athletics-spectator-stats" aria-label={`${spectatorPlayer.nickname} race status`}>
+                <span>
+                  <Footprints size={16} aria-hidden="true" />
+                  <span><small>Lap</small><strong>{Math.min(athleticsRequiredLaps, (athleticsSpectatorStanding?.completedLaps ?? spectatorPlayer.athletics?.completedLaps ?? 0) + 1)}/{athleticsRequiredLaps}</strong></span>
+                </span>
                 <span>
                   <Target size={16} aria-hidden="true" />
                   <span><small>Checkpoint</small><strong>{athleticsSpectatorStanding?.checkpointIndex ?? spectatorPlayer.athletics?.checkpointIndex ?? 0}</strong></span>
@@ -2362,7 +2424,7 @@ export default function StudentExperience({ onExit }: { onExit: () => void }) {
                   {athleticsRace ? (
                     <div className="athletics-lobby-card" role="note">
                       <Footprints className="athletics-lobby-mark" size={22} aria-hidden="true" />
-                      <span><strong>Stadium Loop</strong><small>7 sections · {athleticsRequiredLaps} {athleticsRequiredLaps === 1 ? "lap" : "laps"} · questions unlock each gate</small></span>
+                      <span><strong>Skyline Adventure Park</strong><small>{ATHLETICS_STADIUM_COURSE.sections.length} zones · {ATHLETICS_STADIUM_COURSE.checkpoints.length} checkpoints · answer anytime for energy</small></span>
                     </div>
                   ) : <div className="team-choice-grid" aria-label="Choose your team">
                     <button
@@ -2422,7 +2484,7 @@ export default function StudentExperience({ onExit }: { onExit: () => void }) {
                 <p className="student-learning-report-intro">Here is what your answers say about what to practise next.</p>
                 {athleticsRace && (
                   <section className="athletics-result-card" aria-label="Your race result">
-                    <div className="athletics-result-kicker"><Trophy size={18} aria-hidden="true" /> Stadium Loop result</div>
+                    <div className="athletics-result-kicker"><Trophy size={18} aria-hidden="true" /> Skyline Adventure Park result</div>
                     <div className="athletics-result-grid">
                       <span><small>Place</small><strong>{athleticsPlayer?.status === "finished" && athleticsStanding?.rank ? `#${athleticsStanding.rank}` : "DNF"}</strong></span>
                       <span><small>Time</small><strong>{athleticsPlayer?.finishTimeMs === undefined ? "DNF" : formatDuration(athleticsPlayer.finishTimeMs / 1000)}</strong></span>
@@ -2504,7 +2566,15 @@ export default function StudentExperience({ onExit }: { onExit: () => void }) {
         )}
       </div>
       {session.status !== "waiting" && <div className="action-bar control-prompts">
-        <button aria-label="Questions" disabled={roundEnded || teacherPaused} onClick={() => { gameAudio.playEvent(quizOpen ? "modal_close" : "quiz_open"); setQuizOpen(!quizOpen); setBuyOpen(false); setScoreboardOpen(false); }}><BookOpen size={19} aria-hidden="true" /><span>Q Questions</span></button>
+        <button aria-label={athleticsRace ? "Answer movement energy question" : "Questions"} disabled={roundEnded || teacherPaused} onClick={() => {
+          if (athleticsRace) openAthleticsQuestion();
+          else {
+            gameAudio.playEvent(quizOpen ? "modal_close" : "quiz_open");
+            setQuizOpen(!quizOpen);
+            setBuyOpen(false);
+            setScoreboardOpen(false);
+          }
+        }}><BookOpen size={19} aria-hidden="true" /><span>{athleticsRace ? "Answer Question" : "Q Questions"}</span></button>
         {!athleticsRace && <button aria-label="Buy gear" disabled={roundEnded || teacherPaused || !player.isAlive} onClick={() => { gameAudio.play("menu_toggle"); setBuyOpen(!buyOpen); setQuizOpen(false); setScoreboardOpen(false); }}><Package size={19} aria-hidden="true" /><span>B Gear · 1–6 choose</span></button>}
         <button aria-label="Scoreboard" disabled={teacherPaused} onPointerDown={() => { gameAudio.play("menu_toggle"); setScoreboardOpen(true); setQuizOpen(false); setBuyOpen(false); setSettingsOpen(false); }} onPointerUp={() => setScoreboardOpen(false)} onPointerCancel={() => setScoreboardOpen(false)} onBlur={() => setScoreboardOpen(false)}><Trophy size={19} aria-hidden="true" /><span>Hold Tab · Scoreboard</span></button>
         <button aria-label="Settings" disabled={teacherPaused} onClick={() => { gameAudio.play("menu_toggle"); setSettingsOpen((open) => !open); setQuizOpen(false); setBuyOpen(false); setScoreboardOpen(false); }}><Settings size={19} aria-hidden="true" /><span>Settings</span></button>

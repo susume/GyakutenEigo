@@ -12,14 +12,20 @@ export type AthleticsHudState = {
   questionCount: number;
   questionsPerLap: number;
   checkpointIndex: number;
+  checkpointCount: number;
   completedLaps: number;
   requiredLaps: number;
   routeProgress: number;
   rank: number;
   totalRacers: number;
+  energy: number;
+  maxEnergy: number;
+  criticalEnergy: number;
+  canAnswer: boolean;
   gateOpen: boolean;
   status: "racing" | "finished" | "dnf";
   sectionLabel: string;
+  objectiveText: string;
 };
 
 const formatRaceTime = (seconds: number) => {
@@ -42,6 +48,7 @@ export const ArenaHudOverlay = ({
   onZoomFromTouch,
   onInteractFromTouch,
   onJumpFromTouch,
+  onQuestionFromTouch,
   athleticsHud
 }: {
   hitPulse: number;
@@ -58,18 +65,40 @@ export const ArenaHudOverlay = ({
   onZoomFromTouch: (event: React.PointerEvent<HTMLButtonElement>) => void;
   onInteractFromTouch: (() => void) | undefined;
   onJumpFromTouch: (() => void) | undefined;
+  onQuestionFromTouch: (() => void) | undefined;
   athleticsHud?: AthleticsHudState;
 }) => athleticsHud ? (
   <>
     <div className="athletics-hud" aria-label="Athletics race status">
       <div className="athletics-hud-topline">
-        <span className="athletics-hud-kicker">Stadium Loop</span>
+        <span className="athletics-hud-kicker">Skyline Adventure Park</span>
         <strong>{athleticsHud.startRemainingSeconds > 0 ? `GO in ${athleticsHud.startRemainingSeconds}` : formatRaceTime(athleticsHud.remainingSeconds)}</strong>
       </div>
       <div className="athletics-hud-mainline">
-        <strong>{athleticsHud.status === "finished" ? `Finished #${athleticsHud.rank}` : athleticsHud.gateOpen ? "Gate open" : "Answer to unlock"}</strong>
+        <strong>{athleticsHud.status === "finished" ? `Finished #${athleticsHud.rank}` : athleticsHud.energy <= athleticsHud.criticalEnergy ? "Energy low" : "Keep climbing"}</strong>
         <span>{athleticsHud.sectionLabel}</span>
       </div>
+      <span className="athletics-hud-objective">{athleticsHud.objectiveText}</span>
+      <div className={`athletics-energy-meter${athleticsHud.energy <= athleticsHud.criticalEnergy ? " is-critical" : ""}`} aria-label={`${Math.round(athleticsHud.energy)} of ${athleticsHud.maxEnergy} movement energy`}>
+        <div className="athletics-energy-heading">
+          <span><span aria-hidden="true">⚡</span> Movement energy</span>
+          <strong>{Math.round(athleticsHud.energy)} / {athleticsHud.maxEnergy}</strong>
+        </div>
+        <div className="athletics-energy-track"><span style={{ width: `${Math.round(Math.min(1, Math.max(0, athleticsHud.energy / Math.max(1, athleticsHud.maxEnergy))) * 100)}%` }} /></div>
+      </div>
+      {onQuestionFromTouch && (
+        <button
+          type="button"
+          className="athletics-answer-button"
+          disabled={controlsDisabled || !athleticsHud.canAnswer || athleticsHud.status !== "racing"}
+          onClick={onQuestionFromTouch}
+          aria-keyshortcuts="Q"
+        >
+          <span className="athletics-answer-icon" aria-hidden="true">?</span>
+          <span><strong>Answer Question</strong><small>Correct answers add +250 energy</small></span>
+          <kbd>Q</kbd>
+        </button>
+      )}
       <div className="athletics-progress-track" aria-label={`${Math.round(athleticsHud.routeProgress * 100)} percent course progress`}>
         <span style={{ width: `${Math.round(Math.min(1, Math.max(0, athleticsHud.routeProgress)) * 100)}%` }} />
       </div>
@@ -77,7 +106,7 @@ export const ArenaHudOverlay = ({
         <span><small>Place</small><strong>{athleticsHud.rank}/{athleticsHud.totalRacers}</strong></span>
         <span><small>Lap</small><strong>{Math.min(athleticsHud.requiredLaps, athleticsHud.completedLaps + (athleticsHud.status === "finished" ? 0 : 1))}/{athleticsHud.requiredLaps}</strong></span>
         <span><small>Questions</small><strong>{athleticsHud.questionIndex}/{athleticsHud.questionCount}</strong></span>
-        <span><small>Checkpoints</small><strong>{athleticsHud.checkpointIndex}/{Math.max(0, athleticsHud.questionsPerLap - 1)}</strong></span>
+        <span><small>Checkpoints</small><strong>{athleticsHud.checkpointIndex}/{athleticsHud.checkpointCount}</strong></span>
       </div>
     </div>
     {!controlsDisabled && !isPointerLocked && !suppressHint && <div className="control-lock athletics-control-lock">WASD moves · Space jumps · Arrow keys or swipe looks · touch players can use the jump button</div>}
@@ -85,6 +114,18 @@ export const ArenaHudOverlay = ({
       <button ref={joystickElementRef} type="button" className="touch-joystick" aria-label="Movement joystick" disabled={controlsDisabled} onPointerDown={onBeginTouchMove}>
         <span aria-hidden="true" />
       </button>
+      {onQuestionFromTouch && (
+        <button
+          type="button"
+          className="touch-question"
+          disabled={controlsDisabled || !athleticsHud.canAnswer || athleticsHud.status !== "racing"}
+          aria-label="Answer a movement energy question"
+          onPointerDown={(event) => { event.preventDefault(); onQuestionFromTouch(); }}
+        >
+          <span aria-hidden="true">?</span>
+          Answer
+        </button>
+      )}
       {onJumpFromTouch && (
         <div className="touch-action-group">
           <button type="button" className="touch-jump" disabled={controlsDisabled} aria-label="Jump" onPointerDown={(event) => { event.preventDefault(); onJumpFromTouch(); }}>

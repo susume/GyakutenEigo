@@ -1,7 +1,11 @@
 import test from "node:test";
 import assert from "node:assert/strict";
 import {
+  ATHLETICS_CHECKPOINT_COUNT,
+  ATHLETICS_CORRECT_ENERGY,
+  ATHLETICS_MAX_ENERGY,
   ATHLETICS_STADIUM_COURSE,
+  awardAthleticsEnergy,
   getAthleticsQuestionPoolIndex,
   getAthleticsQuestionsPerLap,
   getAthleticsTotalQuestionCount,
@@ -12,14 +16,20 @@ import {
   getAthleticsRouteProgress,
   getAthleticsStartPosition,
   isAthleticsFinish,
+  isAthleticsCourseFinish,
   isAthleticsOnRoute,
+  resolveAthleticsMovementEnergy,
   resolveAthleticsStandings
 } from "./athleticsRace.js";
 import { resolveAnswerReward, sanitizeSessionSettings } from "./index.js";
 
-test("Stadium Loop exposes a readable sectioned route and safe checkpoint gates", () => {
+test("Skyline Adventure Park exposes a large vertical route and independent checkpoints", () => {
   assert.equal(ATHLETICS_STADIUM_COURSE.id, "stadium_loop");
-  assert.equal(ATHLETICS_STADIUM_COURSE.sections.length, 7);
+  assert.equal(ATHLETICS_STADIUM_COURSE.sections.length, 10);
+  assert.equal(ATHLETICS_STADIUM_COURSE.checkpoints.length, ATHLETICS_CHECKPOINT_COUNT);
+  assert.ok(ATHLETICS_STADIUM_COURSE.route.at(-1)!.y > ATHLETICS_STADIUM_COURSE.route[0]!.y);
+  assert.ok(ATHLETICS_STADIUM_COURSE.surfaces.length >= 90);
+  assert.ok(ATHLETICS_STADIUM_COURSE.movingObstacles.length >= 5);
   assert.equal(getAthleticsCheckpointProgress(0, 7), 0);
   assert.equal(getAthleticsCheckpointProgress(7, 7), 1);
   assert.equal(getAthleticsNextGateProgress({ questionIndex: 0, checkpointIndex: 0 }, 7), 1 / 7);
@@ -37,7 +47,10 @@ test("route projection is monotonic for authored points and rejects off-course s
     assert.ok(progress >= (progressSamples[index - 1] ?? 0) - 0.001);
   });
   assert.ok(isAthleticsOnRoute(getAthleticsPointAtProgress(0.6)));
-  assert.equal(isAthleticsOnRoute({ x: 45, z: 0 }), false);
+  assert.equal(isAthleticsOnRoute({ x: 220, z: 220 }), false);
+  const summitApproach = getAthleticsPointAtProgress(0.96);
+  assert.equal(isAthleticsOnRoute({ ...summitApproach, y: summitApproach.y + 4.21 }), true);
+  assert.equal(isAthleticsOnRoute({ ...summitApproach, y: 0 }), false);
 });
 
 test("start lanes stay on the route and respawns land just behind the last safe checkpoint", () => {
@@ -59,10 +72,28 @@ test("forty-player Athletics starts never overlap", () => {
   starts.forEach((start) => assert.ok(isAthleticsOnRoute(start)));
 });
 
-test("finish requires every question and the finish line", () => {
+test("finish is earned by reaching the summit, while the legacy predicate remains compatible", () => {
+  assert.equal(isAthleticsCourseFinish(getAthleticsPointAtProgress(0.99)), true);
+  assert.equal(isAthleticsCourseFinish(getAthleticsPointAtProgress(0.8)), false);
   assert.equal(isAthleticsFinish(getAthleticsPointAtProgress(0.99), 6, 7), false);
-  assert.equal(isAthleticsFinish(getAthleticsPointAtProgress(0.8), 7, 7), false);
   assert.equal(isAthleticsFinish(getAthleticsPointAtProgress(0.99), 7, 7), true);
+});
+
+test("Athletics answers refill movement energy and movement/jumps spend it", () => {
+  assert.equal(awardAthleticsEnergy({ isCorrect: true, currentEnergy: 0 }), ATHLETICS_CORRECT_ENERGY);
+  assert.equal(awardAthleticsEnergy({ isCorrect: false, currentEnergy: 420 }), 420);
+  assert.equal(awardAthleticsEnergy({ isCorrect: true, currentEnergy: ATHLETICS_MAX_ENERGY }), ATHLETICS_MAX_ENERGY);
+  const resolution = resolveAthleticsMovementEnergy({
+    currentEnergy: 300,
+    elapsedMs: 500,
+    movedDistance: 6,
+    sprinting: true,
+    jumped: true
+  });
+  assert.equal(resolution.canMove, true);
+  assert.equal(resolution.jumpCost > 0, true);
+  assert.ok(resolution.nextEnergy < 300);
+  assert.equal(resolveAthleticsMovementEnergy({ currentEnergy: 0, elapsedMs: 500, movedDistance: 0, sprinting: false, jumped: false }).canMove, false);
 });
 
 test("standings order finishers first, then active progress, then DNF", () => {

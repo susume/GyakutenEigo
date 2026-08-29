@@ -1,6 +1,7 @@
 import type { LearningPulse } from "./learningPulse.js";
 import {
-  ATHLETICS_COLLISION_PROXIES,
+  getAthleticsObstacles as getAuthoredAthleticsObstacles,
+  ATHLETICS_COURSE_BOUNDS,
   ATHLETICS_DEFAULT_COURSE_LAPS,
   sanitizeAthleticsCourseLaps
 } from "./athleticsRace.js";
@@ -1525,7 +1526,9 @@ export const DESERT_CITADEL_BOUNDS: ArenaBounds = {
 };
 
 export const getArenaBounds = (mapId: ArenaMapId | string | undefined): ArenaBounds =>
-  mapId === "temple_runoff"
+  mapId === "athletics_park"
+    ? ATHLETICS_COURSE_BOUNDS
+    : mapId === "temple_runoff"
     ? TEMPLE_RUNOFF_BOUNDS
     : mapId === "iron_junction"
       ? IRON_JUNCTION_BOUNDS
@@ -2513,7 +2516,7 @@ export const getArenaObstacles = (mapId: ArenaMapId | string | undefined): Arena
 
 /** Athletics has its own compact collision course even though it reuses the
  * existing ArenaMapId for persistence compatibility with older clients. */
-export const getAthleticsObstacles = (): ArenaObstacle[] => ATHLETICS_COLLISION_PROXIES.map((obstacle) => ({ ...obstacle }));
+export const getAthleticsObstacles = (nowMs = Date.now()): ArenaObstacle[] => getAuthoredAthleticsObstacles(nowMs).map((obstacle) => ({ ...obstacle }));
 
 export type SnowballUseResult =
   | { ok: true; nextSnowballs: number }
@@ -2948,7 +2951,7 @@ export const resolveAuthoritativeMovement = ({
       obstacle.kind === "rect"
       && obstacle.stair === true
       && Number.isFinite(obstacle.maxY)
-      && Number(obstacle.maxY) <= groundY + ARENA_MAX_AUTO_STEP_HEIGHT + verticalContactTolerance
+      && Number(obstacle.maxY) <= bodyMinY + ARENA_MAX_AUTO_STEP_HEIGHT + verticalContactTolerance
     ) return false;
     const horizontalStart = { ...start, y: undefined };
     const horizontalEnd = { ...end, y: undefined };

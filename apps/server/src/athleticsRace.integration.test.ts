@@ -30,6 +30,7 @@ type PlayerFixture = {
     completedLaps: number;
     lapTransitionUntil?: string;
   };
+  energy?: number;
 };
 type JoinedPlayer = {
   session: SessionFixture;
@@ -157,6 +158,9 @@ test.before(async () => {
   process.env.JWT_SECRET = "athletics-integration-secret";
   process.env.DATABASE_URL = " ";
   process.env.NODE_ENV = "test";
+  // Manual lifecycle advancement disables the production renewal interval;
+  // keep the test room owned for the full multi-lap acceptance window.
+  process.env.ROOM_LEASE_MS = "120000";
   runtime = await import("./index.js");
   await new Promise<void>((resolve, reject) => {
     runtime.server.once("error", reject);
@@ -326,12 +330,58 @@ test("two-lap race keeps players independent, preserves the timer, and finishes 
   assert.equal(rejoined.response.status, 200);
   assert.equal(rejoined.body.player.athletics?.completedLaps, 0);
 
+  let lastSnapshot: SessionFixture | undefined;
   const afterFinish = await waitUntil(
-    async () => (await api<{ session: SessionFixture }>(`/api/sessions/${session.sessionCode}`, { playerToken: human.playerToken })).body.session,
-    (snapshot) => snapshot.players.find((player) => player.id === botId)?.athletics?.status === "finished"
-  );
+    async () => {
+      lastSnapshot = (await api<{ session: SessionFixture }>(`/api/sessions/${session.sessionCode}`, { playerToken: human.playerToken })).body.session;
+      return lastSnapshot;
+    },
+    (snapshot) => snapshot.players.find((player) => player.id === botId)?.athletics?.status === "finished",
+    30_000
+  ).catch((error: unknown) => {
+    const bot = lastSnapshot?.players.find((player) => player.id === botId);
+    throw new Error(`${error instanceof Error ? error.message : "Athletics race progress failed."} Last bot state: ${JSON.stringify({ bot, athletics: lastSnapshot?.athletics, status: lastSnapshot?.status })}`);
+  });
   const finishedBot = afterFinish.players.find((player) => player.id === botId)!;
   assert.equal(finishedBot.athletics?.completedLaps, 2);
   assert.equal(afterFinish.athletics?.finishOrder.filter((playerId) => playerId === botId).length, 1);
   assert.ok(Date.now() >= officialStartAt);
+});
+
+test("three-lap race completes every lap without duplicating or underflowing energy", { timeout: 75_000 }, async () => {
+  const teacher = await createTeacherWithQuiz();
+  const session = await createSession(teacher, 3);
+  const human = await joinSession(session.sessionCode, "Three Lap Observer");
+  const bots = await api<{ bots: PlayerFixture[] }>(`/api/sessions/${session.sessionCode}/bots`, {
+    method: "POST",
+    teacherToken: teacher.token,
+    body: { count: 1, difficulty: "advanced" }
+  });
+  assert.equal(bots.response.status, 201);
+  const botId = bots.body.bots[0]!.id;
+
+  const started = await api<{ session: SessionFixture }>(`/api/sessions/${session.sessionCode}/start`, {
+    method: "POST",
+    teacherToken: teacher.token
+  });
+  assert.equal(started.response.status, 200);
+  assert.equal(started.body.session.athletics?.requiredLaps, 3);
+  assert.equal(started.body.session.athletics?.questionsPerLap, 1);
+
+  let lastSnapshot: SessionFixture | undefined;
+  const afterFinish = await waitUntil(
+    async () => {
+      lastSnapshot = (await api<{ session: SessionFixture }>(`/api/sessions/${session.sessionCode}`, { playerToken: human.playerToken })).body.session;
+      return lastSnapshot;
+    },
+    (snapshot) => snapshot.players.find((player) => player.id === botId)?.athletics?.status === "finished",
+    30_000
+  ).catch((error: unknown) => {
+    const bot = lastSnapshot?.players.find((player) => player.id === botId);
+    throw new Error(`${error instanceof Error ? error.message : "Athletics race progress failed."} Last bot state: ${JSON.stringify({ bot, athletics: lastSnapshot?.athletics, status: lastSnapshot?.status })}`);
+  });
+  const finishedBot = afterFinish.players.find((player) => player.id === botId)!;
+  assert.equal(finishedBot.athletics?.completedLaps, 3);
+  assert.equal(afterFinish.athletics?.finishOrder.filter((playerId) => playerId === botId).length, 1);
+  assert.ok((finishedBot.energy ?? -1) >= 0);
 });
