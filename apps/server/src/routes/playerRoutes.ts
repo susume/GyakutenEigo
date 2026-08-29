@@ -212,9 +212,13 @@ export const registerPlayerRoutes = (app: Application, deps: PlayerRouteDependen
     deps.appendEvent(session, {
       type: "join",
       message: isLateJoin
-        ? `${player.nickname} joined the live game on ${team === "blue" ? "Blue" : "Red"} Team.`
+        ? session.settings.gameMode === "athletics"
+          ? `${player.nickname} joined the live Athletics Race.`
+          : `${player.nickname} joined the live game on ${team === "blue" ? "Blue" : "Red"} Team.`
         : session.settings.gameMode === "zombie"
         ? `${player.nickname} joined the Zombie Mode lobby.`
+        : session.settings.gameMode === "athletics"
+        ? `${player.nickname} joined the Athletics Race lobby.`
         : `${player.nickname} joined ${team === "blue" ? "Blue" : "Red"} Team.`,
       playerId: player.id,
       team
@@ -260,6 +264,10 @@ export const registerPlayerRoutes = (app: Application, deps: PlayerRouteDependen
       return;
     }
     if (!deps.requirePlayerAccess(req, res, session, player)) return;
+    if (session.settings.gameMode === "athletics") {
+      res.status(400).json({ error: "Athletics Race does not use teams." });
+      return;
+    }
     if (session.status !== "waiting" || session.settings.teamAssignment !== "players_choose") {
       res.status(400).json({ error: "Team changes are closed for this round." });
       return;

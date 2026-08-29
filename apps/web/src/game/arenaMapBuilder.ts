@@ -1080,5 +1080,6 @@ renderer.domElement.dataset.staticBatches = String(staticBatchStats.batchMeshes)
     templeRunoffArt,
     desertCitadelArt,
     desertCitadelVfx,
+    athleticsUpdate: undefined,
   };
 };

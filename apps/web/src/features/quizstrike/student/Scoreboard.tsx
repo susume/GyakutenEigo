@@ -1,5 +1,5 @@
 import { Trash2 } from "lucide-react";
-import type { PlayerSession, SessionSettings, Team } from "@quizstrike/shared";
+import { resolveAthleticsStandings, type PlayerSession, type SessionSettings, type Team } from "@quizstrike/shared";
 import { groupScoreboardRows } from "../../../scoreboardGroups";
 import { getZombieCounts } from "../../../sessionPresentation";
 
@@ -13,15 +13,73 @@ export default function Scoreboard({
   players,
   localPlayerId,
   gameMode,
+  athleticsRequiredLaps = 1,
   onRemovePlayer,
   removingPlayerId
 }: {
   players: PlayerSession[];
   localPlayerId?: string;
   gameMode: SessionSettings["gameMode"];
+  athleticsRequiredLaps?: number;
   onRemovePlayer?: (playerId: string) => void;
   removingPlayerId?: string | null;
 }) {
+  if (gameMode === "athletics") {
+    const standings = resolveAthleticsStandings(players);
+    return (
+      <div className="scoreboard athletics-scoreboard">
+        <div className="panel-title">
+          <h2>Race standings</h2>
+          <span>{players.length} {players.length === 1 ? "racer" : "racers"}</span>
+        </div>
+        <p className="scoreboard-mode-note">Finish order leads. Progress breaks ties until the tape.</p>
+        <div className="scoreboard-table-wrap">
+          <table className="scoreboard-table">
+            <caption>Athletics Race standings</caption>
+            <thead>
+              <tr className="scoreboard-row scoreboard-head">
+                <th scope="col">Place</th>
+                <th scope="col">Racer</th>
+                <th scope="col">Laps</th>
+                <th scope="col">Checkpoint</th>
+                <th scope="col">Progress</th>
+                <th scope="col">Falls</th>
+                <th scope="col">Status</th>
+                {onRemovePlayer && <th scope="col" className="scoreboard-actions-heading">Actions</th>}
+              </tr>
+            </thead>
+            <tbody>
+              {standings.map((standing) => {
+                const racer = players.find((player) => player.id === standing.playerId);
+                if (!racer) return null;
+                const athletics = racer.athletics;
+                return (
+                  <tr className="scoreboard-row athletics-scoreboard-row" key={racer.id}>
+                    <th scope="row">{standing.status === "finished" ? `#${standing.rank}` : standing.rank}</th>
+                    <td>{racer.nickname}{racer.isBot ? " · test player" : ""}{racer.id === localPlayerId ? " · you" : ""}</td>
+                    <td>{standing.completedLaps}/{athleticsRequiredLaps}</td>
+                    <td>{standing.checkpointIndex}</td>
+                    <td>{Math.round(standing.routeProgress * 100)}%</td>
+                    <td>{athletics?.falls ?? 0}</td>
+                    <td>{standing.status === "finished" ? "Finished" : standing.status === "dnf" ? "DNF" : "Racing"}</td>
+                    {onRemovePlayer && (
+                      <td className="scoreboard-actions">
+                        <button type="button" className="scoreboard-remove-player" onClick={() => onRemovePlayer(racer.id)} disabled={Boolean(removingPlayerId)} aria-label={`Remove ${racer.nickname} from the game`}>
+                          <Trash2 size={15} aria-hidden="true" />
+                          {removingPlayerId === racer.id ? "Removing..." : "Remove"}
+                        </button>
+                      </td>
+                    )}
+                  </tr>
+                );
+              })}
+              {standings.length === 0 && <tr><td colSpan={onRemovePlayer ? 8 : 7}>No racers here yet.</td></tr>}
+            </tbody>
+          </table>
+        </div>
+      </div>
+    );
+  }
   const grouped = groupScoreboardRows(players, gameMode, localPlayerId);
   const totals = getTeamTotals(players);
   const zombieCounts = getZombieCounts(players);

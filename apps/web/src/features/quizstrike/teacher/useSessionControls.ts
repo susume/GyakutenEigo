@@ -5,7 +5,7 @@ import {
   type SessionSettings
 } from "@quizstrike/shared";
 
-type SessionNumberField = "maxPlayers" | "roundCount" | "flagHoldSeconds" | "initialZombieCount" | "startingMoney" | "correctAnswerReward" | "startingSnowballs" | "snowballPackPrice" | "snowballsPerPack" | "wrongAnswerPenalty" | "roundDurationSeconds";
+type SessionNumberField = "maxPlayers" | "roundCount" | "flagHoldSeconds" | "initialZombieCount" | "startingMoney" | "correctAnswerReward" | "startingSnowballs" | "snowballPackPrice" | "snowballsPerPack" | "wrongAnswerPenalty" | "roundDurationSeconds" | "athleticsCourseLaps";
 
 /** Keeps live-session control state together while SessionManager remains the layout/composition layer. */
 export function useSessionControls({ initialQuizSetId, firstQuizSetId }: { initialQuizSetId?: string; firstQuizSetId?: string }) {
@@ -15,7 +15,7 @@ export function useSessionControls({ initialQuizSetId, firstQuizSetId }: { initi
     const fields: SessionNumberField[] = [
       "maxPlayers", "roundCount", "flagHoldSeconds", "initialZombieCount", "startingMoney",
       "correctAnswerReward", "startingSnowballs", "snowballPackPrice", "snowballsPerPack",
-      "wrongAnswerPenalty", "roundDurationSeconds"
+      "wrongAnswerPenalty", "roundDurationSeconds", "athleticsCourseLaps"
     ];
     return fields.reduce((inputs, field) => ({ ...inputs, [field]: String(DEFAULT_SESSION_SETTINGS[field] ?? "") }), {} as Record<SessionNumberField, string>);
   });

@@ -16,6 +16,7 @@ export interface CharacterManagerOptions {
   isFps: boolean;
   currentPlayerId?: string;
   showBadges?: boolean;
+  showWeapons?: boolean;
   makeBadgeMaterial: (player: PlayerSession) => THREE.SpriteMaterial;
   streakAuraTextures?: StreakAuraTextures;
   streakAuraDetail?: number;
@@ -180,7 +181,8 @@ export class CharacterManager {
       team: player.team,
       role: player.role,
       gear: player.gear,
-      appearance: player.appearance
+      appearance: player.appearance,
+      showWeapon: this.options.showWeapons
     });
     const controller = new CharacterController(model, state.x, state.z, state.facing, player.isAlive, state.y ?? 0);
     this.scene.add(model.root);

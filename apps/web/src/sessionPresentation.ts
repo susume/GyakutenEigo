@@ -1,4 +1,4 @@
-import type { GameSession, PlayerSession } from "@quizstrike/shared";
+import { resolveAthleticsStandings, type GameSession, type PlayerSession } from "@quizstrike/shared";
 
 export const getZombieCounts = (players: PlayerSession[]) => ({
   humans: players.filter((player) => player.role !== "zombie").length,
@@ -11,6 +11,12 @@ const getTeamTotals = (players: PlayerSession[]) => ({
 });
 
 export const getModeScoreSummary = (session: GameSession) => {
+  if (session.settings.gameMode === "athletics") {
+    const standings = resolveAthleticsStandings(session.players);
+    const finished = standings.filter((standing) => standing.status === "finished").length;
+    const dnfs = standings.filter((standing) => standing.status === "dnf").length;
+    return `${finished} finished · ${dnfs} DNF`;
+  }
   if (session.settings.gameMode === "zombie") {
     const { humans, zombies } = getZombieCounts(session.players);
     return `Humans ${humans} – Zombies ${zombies}`;
@@ -20,6 +26,12 @@ export const getModeScoreSummary = (session: GameSession) => {
 };
 
 export const getSessionResultText = (session: GameSession) => {
+  if (session.settings.gameMode === "athletics") {
+    const standings = resolveAthleticsStandings(session.players);
+    const winner = standings.find((standing) => standing.status === "finished");
+    const winnerName = winner ? session.players.find((player) => player.id === winner.playerId)?.nickname : undefined;
+    return winnerName ? `${winnerName} crossed the finish line first.` : "The race ended before anyone crossed the finish line.";
+  }
   if (session.settings.gameMode === "zombie") {
     const authoritativeEndMessage = session.events?.find((event) => event.type === "end")?.message;
     if (authoritativeEndMessage) return authoritativeEndMessage;
@@ -36,4 +48,6 @@ export const getSessionResultText = (session: GameSession) => {
 export const getReadyRoomTitle = (session: GameSession, player: PlayerSession) =>
   session.settings.gameMode === "zombie"
     ? "Zombie Survival Ready Room"
+    : session.settings.gameMode === "athletics"
+      ? "Athletics Race Ready Room"
     : `${player.team === "blue" ? "Blue Team" : "Red Team"} Ready Room`;

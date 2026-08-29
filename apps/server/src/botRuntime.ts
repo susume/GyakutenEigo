@@ -78,6 +78,7 @@ export type BotRuntimeDependencies = {
   findBotCover: (session: GameSession, bot: PlayerSession, threat: PlayerSession | undefined, obstacles: ReturnType<typeof getArenaObstacles>) => BotGoal | undefined;
   applyBotSpacing: (session: GameSession, bot: PlayerSession, desired: BotGoal) => GroundArenaPosition;
   getBotObjectiveGoal: (session: GameSession, bot: PlayerSession, brain: BotMemory, state: BotState) => BotGoal;
+  advanceAthleticsBot?: (session: GameSession, bot: PlayerSession, index: number, nowMs: number) => boolean;
   emitFlagPlanted: (session: GameSession, player: PlayerSession) => void;
   applyValidatedDamage: (session: GameSession, attacker: PlayerSession, target: PlayerSession) => unknown;
   botNextAttackAt: Map<string, number>;
@@ -109,6 +110,7 @@ export const createBotRuntime = (deps: BotRuntimeDependencies) => {
     findBotCover,
     applyBotSpacing,
     getBotObjectiveGoal,
+    advanceAthleticsBot,
     emitFlagPlanted,
     applyValidatedDamage,
     botNextAttackAt,
@@ -233,6 +235,15 @@ const advanceBots = () => {
     if (!ownsRoom(session.id)) continue;
     if (isTeacherPaused(session)) continue;
     if (session.status !== "active") continue;
+    if (session.settings.gameMode === "athletics") {
+      let raceMoved = false;
+      session.players.forEach((bot, index) => {
+        if (!bot.isBot) return;
+        raceMoved = advanceAthleticsBot?.(session, bot, index, currentMs) || raceMoved;
+      });
+      if (raceMoved) broadcastSession(session);
+      continue;
+    }
     let moved = false;
     session.players.forEach((bot, index) => {
       if (!bot.isBot) return;

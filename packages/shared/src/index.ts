@@ -1,12 +1,23 @@
 import type { LearningPulse } from "./learningPulse.js";
+import {
+  ATHLETICS_COLLISION_PROXIES,
+  ATHLETICS_DEFAULT_COURSE_LAPS,
+  sanitizeAthleticsCourseLaps
+} from "./athleticsRace.js";
+import type {
+  AthleticsCourseId,
+  AthleticsPlayerState,
+  AthleticsRaceState
+} from "./athleticsRace.js";
 
 export type Team = "blue" | "red";
 export * from "./protocol/index.js";
+export * from "./athleticsRace.js";
 export type SessionStatus = "waiting" | "active" | "paused" | "ended";
 export type SessionControlState = "running" | "teacher_paused";
 export type Choice = "A" | "B" | "C" | "D";
 export type SnowballPackSize = "standard" | "large";
-export type GameMode = "flag" | "zombie" | "classic";
+export type GameMode = "flag" | "zombie" | "classic" | "athletics";
 export type ArenaMapId = "desert_citadel" | "iron_junction" | "temple_runoff";
 export type TeamAssignment = "players_choose" | "random";
 export type PlayerRole = "human" | "zombie";
@@ -556,6 +567,9 @@ export const getPlayerAppearanceError = (input: unknown): string | undefined => 
 export interface SessionSettings {
   mapId: ArenaMapId;
   gameMode: GameMode;
+  athleticsCourseId?: AthleticsCourseId;
+  /** Athletics only. Missing legacy values resolve to one lap. */
+  athleticsCourseLaps?: number;
   botDifficulty: BotDifficulty;
   roundCount: number;
   flagHoldSeconds: number;
@@ -643,6 +657,8 @@ export interface PlayerSession {
   /** Independently equipped non-weapon gear such as the vest and shoes. */
   perks?: string[];
   appearance?: PlayerAppearance;
+  /** Server-owned progress and result state for Athletics Race. */
+  athletics?: AthleticsPlayerState;
   joinedAt: string;
 }
 
@@ -689,6 +705,8 @@ export interface GameSession {
   currentRound: number;
   settings: SessionSettings;
   players: PlayerSession[];
+  /** Present only for the additive first-person Athletics Race mode. */
+  athletics?: AthleticsRaceState;
   roundWins?: Record<Team, number>;
   flag?: FlagState;
   events?: GameEvent[];
@@ -732,6 +750,15 @@ export interface QuizResult {
   respawned?: boolean;
   respawnProgress?: number;
   respawnRequired?: number;
+  athletics?: {
+    questionIndex: number;
+    checkpointIndex: number;
+    routeProgress: number;
+    gateOpen: boolean;
+    status: "racing" | "finished" | "dnf";
+    completedLaps: number;
+    finishPosition?: number;
+  };
 }
 
 export interface SessionReport {
@@ -789,6 +816,13 @@ export interface SessionReportRow {
   money: number;
   quizMoney: number;
   score: number;
+  racePlace?: number;
+  raceTimeMs?: number;
+  raceStatus?: "finished" | "dnf";
+  raceFalls?: number;
+  raceCheckpoint?: number;
+  raceLapsCompleted?: number;
+  raceLapsRequired?: number;
 }
 
 export * from "./studentLearning.js";
@@ -860,6 +894,7 @@ export const SPEED_SHOES_HEALTH_BONUS = 30;
 export const DEFAULT_SESSION_SETTINGS: SessionSettings = {
   mapId: "desert_citadel",
   gameMode: "flag",
+  athleticsCourseLaps: ATHLETICS_DEFAULT_COURSE_LAPS,
   botDifficulty: "standard",
   roundCount: FLAG_MODE_DEFAULTS.roundCount,
   flagHoldSeconds: FLAG_MODE_DEFAULTS.flagHoldSeconds,
@@ -888,7 +923,7 @@ const clampNumber = (value: unknown, fallback: number, min: number, max: number)
 };
 
 const sanitizeGameMode = (value: unknown): GameMode =>
-  value === "zombie" || value === "classic" || value === "flag" ? value : DEFAULT_SESSION_SETTINGS.gameMode;
+  value === "zombie" || value === "classic" || value === "flag" || value === "athletics" ? value : DEFAULT_SESSION_SETTINGS.gameMode;
 
 const sanitizeArenaMap = (value: unknown): ArenaMapId =>
   value === "iron_junction" || value === "temple_runoff" ? value : DEFAULT_SESSION_SETTINGS.mapId;
@@ -899,9 +934,15 @@ const sanitizeTeamAssignment = (value: unknown): TeamAssignment =>
 const sanitizeBotDifficulty = (value: unknown): BotDifficulty =>
   value === "beginner" || value === "advanced" || value === "standard" ? value : DEFAULT_SESSION_SETTINGS.botDifficulty;
 
-export const sanitizeSessionSettings = (input: Partial<SessionSettings> = {}): SessionSettings => ({
+export const sanitizeSessionSettings = (input: Partial<SessionSettings> = {}): SessionSettings => {
+  const gameMode = sanitizeGameMode(input.gameMode);
+  return {
   mapId: sanitizeArenaMap(input.mapId),
-  gameMode: sanitizeGameMode(input.gameMode),
+  gameMode,
+  ...(gameMode === "athletics" ? {
+    athleticsCourseId: input.athleticsCourseId === "stadium_loop" ? input.athleticsCourseId : "stadium_loop" as const,
+    athleticsCourseLaps: sanitizeAthleticsCourseLaps(input.athleticsCourseLaps)
+  } : {}),
   botDifficulty: sanitizeBotDifficulty(input.botDifficulty),
   roundCount: clampNumber(input.roundCount, DEFAULT_SESSION_SETTINGS.roundCount, 1, 30),
   flagHoldSeconds: clampNumber(input.flagHoldSeconds, DEFAULT_SESSION_SETTINGS.flagHoldSeconds, 5, 180),
@@ -934,7 +975,8 @@ export const sanitizeSessionSettings = (input: Partial<SessionSettings> = {}): S
       ? input.deadPlayersEarnMoney
       : DEFAULT_SESSION_SETTINGS.deadPlayersEarnMoney,
   characterCustomization: sanitizeCharacterCustomizationSettings(input.characterCustomization)
-});
+  };
+};
 
 export interface AnswerRewardInput {
   player: Pick<PlayerSession, "money" | "isAlive">;
@@ -957,6 +999,15 @@ export const resolveAnswerReward = ({
   isCorrect,
   responseTimeMs
 }: AnswerRewardInput): AnswerRewardResult => {
+  if (settings.gameMode === "athletics") {
+    return {
+      moneyAwarded: 0,
+      nextMoney: player.money,
+      scoreDelta: 0,
+      correctDelta: isCorrect ? 1 : 0,
+      wrongDelta: isCorrect ? 0 : 1
+    };
+  }
   const fastBonus =
     responseTimeMs !== undefined &&
     Number.isFinite(responseTimeMs) &&
@@ -999,18 +1050,17 @@ const csvCell = (value: string | number) => {
 };
 
 export const buildCsvReport = (report: SessionReport) => {
+  const isAthletics = report.session.settings.gameMode === "athletics";
   const rows = [
-    ["Session Code", "Student", "Team", "Correct", "Wrong", "Accuracy %", "Wallet", "Quiz Rewards", "Score"],
+    isAthletics
+      ? ["Session Code", "Student", "Place", "Race Time (ms)", "Status", "Falls", "Laps Completed", "Laps Required", "Checkpoint", "Correct", "Wrong", "Accuracy %"]
+      : ["Session Code", "Student", "Team", "Correct", "Wrong", "Accuracy %", "Wallet", "Quiz Rewards", "Score"],
     ...report.rows.map((row) => [
       report.session.sessionCode,
       row.nickname,
-      row.team,
-      row.correctAnswers,
-      row.wrongAnswers,
-      row.accuracy,
-      row.money,
-      row.quizMoney,
-      row.score
+      ...(isAthletics
+        ? [row.racePlace ?? "", row.raceTimeMs ?? "", row.raceStatus ?? "dnf", row.raceFalls ?? 0, row.raceLapsCompleted ?? 0, row.raceLapsRequired ?? 1, row.raceCheckpoint ?? 0, row.correctAnswers, row.wrongAnswers, row.accuracy]
+        : [row.team, row.correctAnswers, row.wrongAnswers, row.accuracy, row.money, row.quizMoney, row.score])
     ]),
     [],
     ["Most Missed Question", "Misses"],
@@ -1313,7 +1363,7 @@ export const ZOMBIE_HUMAN_SPRINT_DRAIN_PER_SECOND = 20;
 export const ZOMBIE_HUMAN_WALK_MAX_SPEED = 13;
 
 export const canPlayerFireInMode = (gameMode: GameMode, role: PlayerRole | undefined) =>
-  gameMode !== "zombie" || role === "zombie";
+  gameMode !== "athletics" && (gameMode !== "zombie" || role === "zombie");
 
 export const awardZombieHumanEnergy = ({
   gameMode,
@@ -2460,6 +2510,10 @@ const ARENA_OBSTACLES_BY_MAP: Record<ArenaMapId, ArenaObstacle[]> = {
 
 export const getArenaObstacles = (mapId: ArenaMapId | string | undefined): ArenaObstacle[] =>
   ARENA_OBSTACLES_BY_MAP[mapId === "iron_junction" || mapId === "temple_runoff" ? mapId : "desert_citadel"];
+
+/** Athletics has its own compact collision course even though it reuses the
+ * existing ArenaMapId for persistence compatibility with older clients. */
+export const getAthleticsObstacles = (): ArenaObstacle[] => ATHLETICS_COLLISION_PROXIES.map((obstacle) => ({ ...obstacle }));
 
 export type SnowballUseResult =
   | { ok: true; nextSnowballs: number }

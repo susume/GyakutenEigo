@@ -150,7 +150,8 @@ export function CharacterPreview({
   resetSignal = 0,
   showVictoryPose = false,
   focusBack = false,
-  focusFootwear = false
+  focusFootwear = false,
+  showWeapon = true
 }: {
   appearance: PlayerAppearance;
   team: Team;
@@ -160,6 +161,7 @@ export function CharacterPreview({
   showVictoryPose?: boolean;
   focusBack?: boolean;
   focusFootwear?: boolean;
+  showWeapon?: boolean;
 }) {
   const mountRef = useRef<HTMLDivElement>(null);
   const loadRef = useRef(loadDecalAsset);
@@ -239,7 +241,8 @@ export function CharacterPreview({
       playerId: "lobby-preview",
       team,
       appearance: previewAppearance,
-      gear: "starter_blaster"
+      gear: "starter_blaster",
+      showWeapon
     });
     const previewParams = new URLSearchParams(window.location.search);
     const previewView = previewParams.get("characterView");
@@ -383,7 +386,7 @@ export function CharacterPreview({
       (platformRing.material as THREE.Material).dispose();
       renderer.domElement.remove();
     };
-  }, [appearance, appearanceKey, team, localDecal, resetSignal, showVictoryPose, focusBack, focusFootwear]);
+  }, [appearance, appearanceKey, team, localDecal, resetSignal, showVictoryPose, focusBack, focusFootwear, showWeapon]);
 
   return (
     <div

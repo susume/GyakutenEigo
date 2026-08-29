@@ -47,6 +47,7 @@ export type SessionRouteDependencies = {
   openRoundPreparation: (session: GameSession, preserveStats?: boolean) => void;
   openZombieSelectionPhase: (session: GameSession, preserveStats?: boolean) => void;
   startRoundState: (session: GameSession, preserveStats?: boolean) => void;
+  startAthleticsRace: (session: GameSession) => void;
   pauseSession: (session: GameSession) => { ok: boolean; changed?: boolean; reason?: string };
   resumeSession: (session: GameSession) => { ok: boolean; changed?: boolean; reason?: string };
   makeAnnouncement: (kind: "round_start" | "game_over", title: string, message: string, detail?: string, durationMs?: number) => GameSession["announcement"];
@@ -165,6 +166,12 @@ export const registerSessionRoutes = (app: Application, deps: SessionRouteDepend
         type: "start",
         message: "Zombie Survival is getting ready. Everyone is Human for 20 seconds."
       });
+    } else if (session.settings.gameMode === "athletics") {
+      deps.startAthleticsRace(session);
+      deps.appendEvent(session, {
+        type: "start",
+        message: "Athletics Race is ready. Answer the start-line question, then run when GO appears."
+      });
     } else {
       deps.startRoundState(session, false);
       session.announcement = deps.makeAnnouncement(
@@ -250,6 +257,10 @@ export const registerSessionRoutes = (app: Application, deps: SessionRouteDepend
     }
     if (session.settings.gameMode === "zombie") {
       res.status(400).json({ error: "Zombie Survival is one survival round. Use End game to stop it." });
+      return;
+    }
+    if (session.settings.gameMode === "athletics") {
+      res.status(400).json({ error: "Athletics Race is one continuous course. Use End game to stop it." });
       return;
     }
     if (session.status !== "active") {

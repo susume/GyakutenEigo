@@ -129,7 +129,7 @@ export class CharacterFactory {
     return mesh;
   }
 
-  createCharacter(input: { playerId: string; team: Team; role?: PlayerRole; gear?: string; appearance?: PlayerAppearance }) {
+  createCharacter(input: { playerId: string; team: Team; role?: PlayerRole; gear?: string; appearance?: PlayerAppearance; showWeapon?: boolean }) {
     const appearance = resolveCharacterAppearance(input);
     const materials = this.materialsFor(appearance);
     const root = new THREE.Group();
@@ -204,12 +204,16 @@ export class CharacterFactory {
     accessorySockets.HeadSocket.add(activeHeadStyle);
     root.userData.activeHeadStyleId = activeHeadStyle.userData.headStyleId;
     const accessories: THREE.Object3D[] = [];
-    const backDefinition = BACK_ACCESSORY_DEFINITIONS[appearance.customization.backAccessoryId];
-    const backAccessory = createBackAccessory(appearance.customization.backAccessoryId, materials);
+    const activeBackAccessoryId = input.showWeapon === false && (
+      appearance.customization.backAccessoryId === "samurai_sword"
+      || appearance.customization.backAccessoryId === "twin_swords"
+    ) ? "none" : appearance.customization.backAccessoryId;
+    const backDefinition = BACK_ACCESSORY_DEFINITIONS[activeBackAccessoryId];
+    const backAccessory = createBackAccessory(activeBackAccessoryId, materials);
     if (backAccessory) {
       accessorySockets[backDefinition.socket].add(backAccessory);
       accessories.push(backAccessory);
-      root.userData.activeBackAccessoryId = appearance.customization.backAccessoryId;
+      root.userData.activeBackAccessoryId = activeBackAccessoryId;
       root.userData.activeBackMount = backDefinition.mount;
     }
     const gearId = input.gear ?? "starter_blaster";
@@ -292,7 +296,7 @@ export class CharacterFactory {
         accessories
       },
       leftHandSupport
-    });
+    }, { showWeapon: input.showWeapon });
   }
 
   createFirstPersonViewModel(team: Team, gear = "starter_blaster"): FirstPersonViewModel {

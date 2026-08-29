@@ -4,6 +4,8 @@ import {
   ARENA_MAX_AIM_PITCH,
   ARENA_MIN_AIM_PITCH,
   ARENA_SCALE,
+  getAthleticsObstacles,
+  getAthleticsStartPosition,
   getGearFireCooldownMs,
   getGearZoomFovMultiplier,
   getArenaGroundHeight,
@@ -35,7 +37,7 @@ import {
   smoothFpsGroundedCameraY
 } from "./ArenaCamera.js";
 import { createArenaSceneSetup, FPS_BASE_FOV } from "./sceneSetup";
-import { ArenaHudOverlay } from "./hudOverlay";
+import { ArenaHudOverlay, type AthleticsHudState } from "./hudOverlay";
 import { type CharacterManagerStats } from "./characters/CharacterManager";
 import { isFireKeyboardEvent, isScopeKeyboardEvent, resolveCombatPointerAction, shouldFireFromTouchGesture } from "./arenaInput";
 import { gameAudio, type MovementAudioMode } from "./GameAudio";
@@ -69,6 +71,7 @@ interface ArenaPreviewProps {
   onMove?: (position: ArenaLivePosition) => void;
   onFire?: (position: ArenaLivePosition) => void;
   onInteract?: (position: ArenaLivePosition) => void;
+  athleticsHud?: AthleticsHudState;
   loadDecalAsset?: (assetId: string) => Promise<Blob>;
 }
 
@@ -241,7 +244,7 @@ const makeCanvasTexture = (kind: "floor" | "stone" | "wood" | "water" | "sand" |
   return texture;
 };
 
-const makeLabelTexture = (label: string, color: string, background = "rgba(41, 28, 16, 0.78)") => {
+const makeLabelTexture = (label: string, color = "#ffffff", background = "rgba(41, 28, 16, 0.78)") => {
   const canvas = document.createElement("canvas");
   canvas.width = 768;
   canvas.height = 256;
@@ -288,6 +291,7 @@ export default function ArenaPreview({
   onMove,
   onFire,
   onInteract,
+  athleticsHud,
   loadDecalAsset
 }: ArenaPreviewProps) {
   const mountRef = useRef<HTMLDivElement | null>(null);
@@ -295,6 +299,7 @@ export default function ArenaPreview({
   const fireControlRef = useRef<() => void>(() => undefined);
   const zoomControlRef = useRef<() => void>(() => undefined);
   const interactControlRef = useRef<() => void>(() => undefined);
+  const jumpControlRef = useRef<() => void>(() => undefined);
   const onMoveRef = useRef(onMove);
   const onFireRef = useRef(onFire);
   const onInteractRef = useRef(onInteract);
@@ -321,12 +326,22 @@ export default function ArenaPreview({
   const [characterDebugStats, setCharacterDebugStats] = useState<CharacterManagerStats | null>(null);
   const [performanceSnapshot, setPerformanceSnapshot] = useState<ArenaPerformanceSnapshot | null>(null);
   const [vfxDebugStats, setVfxDebugStats] = useState<ArenaVfxStats | null>(null);
+  const [athleticsSceneBuilder, setAthleticsSceneBuilder] = useState<typeof import("./athleticsStadiumBuilder")["buildAthleticsStadiumScene"] | null>(null);
   const debugVfxPositionRef = useRef({ x: 0, y: 0.12, z: 0 });
   const previousWeaponRef = useRef<string | null>(null);
   const sceneSessionId = session?.id ?? "training";
   const currentPlayerId = currentPlayer?.id ?? "";
   const currentPlayerTeam = currentPlayer?.team ?? "blue";
   const currentWeaponId = currentPlayer ? getPlayerWeaponId(currentPlayer) : undefined;
+  const isAthleticsMode = session?.settings.gameMode === "athletics";
+  useEffect(() => {
+    if (!isAthleticsMode || athleticsSceneBuilder) return;
+    let active = true;
+    void import("./athleticsStadiumBuilder").then((module) => {
+      if (active) setAthleticsSceneBuilder(() => module.buildAthleticsStadiumScene);
+    });
+    return () => { active = false; };
+  }, [athleticsSceneBuilder, isAthleticsMode]);
   const arenaMapId: ArenaMapId = session?.settings.mapId ?? "desert_citadel";
   const {
     arenaMap,
@@ -418,12 +433,12 @@ export default function ArenaPreview({
   }, [controlsDisabled, inputPaused]);
 
   useEffect(() => {
-    if (!currentWeaponId) return;
+    if (isAthleticsMode || !currentWeaponId) return;
     const weaponId = currentWeaponId;
     if (previousWeaponRef.current === null) gameAudio.playEvent("weapon_equip");
     else if (previousWeaponRef.current !== weaponId) gameAudio.playEvent("weapon_switch");
     previousWeaponRef.current = weaponId;
-  }, [currentWeaponId]);
+  }, [currentWeaponId, isAthleticsMode]);
 
   useEffect(() => {
     pendingShotsRef.current = 0;
@@ -439,19 +454,22 @@ export default function ArenaPreview({
     const currentPlayer = currentPlayerRef.current;
     const mount = mountRef.current;
     if (!mount) return;
+    if (isAthleticsMode && !athleticsSceneBuilder) return;
     setRenderError("");
     setPerformanceSnapshot(null);
     setVfxDebugStats(null);
 
     const isFps = view === "fps";
     const isZombieMode = session?.settings.gameMode === "zombie";
-    const fallbackSpawn = currentPlayer ? getTeamSpawnForMap(arenaMapId, currentPlayer.team) : getTeamSpawnForMap(arenaMapId, "blue");
+    const fallbackSpawn = isAthleticsMode
+      ? getAthleticsStartPosition(0, Math.max(1, session?.players.length ?? 1))
+      : currentPlayer ? getTeamSpawnForMap(arenaMapId, currentPlayer.team) : getTeamSpawnForMap(arenaMapId, "blue");
     const templeReviewViewpoint = debugOverlay && isFps && isTempleRunoff
       ? getTempleRunoffReviewViewpoint(new URLSearchParams(window.location.search).get("templeView"))
       : undefined;
     const initialServerX = templeReviewViewpoint?.position[0] ?? (isFiniteNumber(currentPlayer?.x) ? currentPlayer.x : fallbackSpawn.x);
     const initialServerZ = templeReviewViewpoint?.position[2] ?? (isFiniteNumber(currentPlayer?.z) ? currentPlayer.z : fallbackSpawn.z);
-    const initialGroundY = getArenaGroundHeight(arenaMapId, initialServerX, initialServerZ);
+    const initialGroundY = isAthleticsMode ? 0 : getArenaGroundHeight(arenaMapId, initialServerX, initialServerZ);
     const initialServerY = templeReviewViewpoint?.position[1] ?? (isFiniteNumber(currentPlayer?.y) ? currentPlayer.y : fallbackSpawn.y);
     const playerPosition = new THREE.Vector3(
       serverToLocalX(initialServerX),
@@ -504,8 +522,19 @@ export default function ArenaPreview({
       return texture;
     };
 
-    const puffTexture = loadTexture("/assets/snowball-puff.svg");
-    const vfxTextures = {
+    const emptyVfxTexture = new THREE.Texture();
+    emptyVfxTexture.needsUpdate = true;
+    const puffTexture = isAthleticsMode ? emptyVfxTexture : loadTexture("/assets/snowball-puff.svg");
+    const vfxTextures = isAthleticsMode ? {
+      muzzle: emptyVfxTexture,
+      trace: emptyVfxTexture,
+      spark: emptyVfxTexture,
+      smoke: emptyVfxTexture,
+      circle: emptyVfxTexture,
+      star: emptyVfxTexture,
+      magic: emptyVfxTexture,
+      snow: emptyVfxTexture
+    } : {
       muzzle: loadTexture("/assets/vfx/kenney/muzzle_03.png?v=2"),
       trace: loadTexture("/assets/vfx/kenney/trace_03.png?v=2"),
       spark: loadTexture("/assets/vfx/kenney/spark_03.png?v=2"),
@@ -530,8 +559,19 @@ export default function ArenaPreview({
       flagMarker,
       templeRunoffArt,
       desertCitadelArt,
-      desertCitadelVfx
-    } = buildArenaMapScene({
+      desertCitadelVfx,
+      athleticsUpdate
+    } = isAthleticsMode
+      ? athleticsSceneBuilder!({
+          scene,
+          renderer,
+          activeQuality,
+          qualityConfig,
+          makeCanvasTexture,
+          makeLabelTexture,
+          questionsPerLap: session?.athletics?.questionsPerLap
+        })
+      : buildArenaMapScene({
       scene,
       renderer,
       arenaMap,
@@ -552,13 +592,13 @@ export default function ArenaPreview({
       seededRandom,
       scaleArenaValue
     });
-    const ironJunctionAssetsPromise = isIronJunction
+    const ironJunctionAssetsPromise = !isAthleticsMode && isIronJunction
       ? mountIronJunctionImportedAssets({ scene, detail: qualityConfig.detail, isFps })
       : Promise.resolve(null);
-    const desertCitadelAssetsPromise = isDesertCitadel
+    const desertCitadelAssetsPromise = !isAthleticsMode && isDesertCitadel
       ? mountDesertCitadelImportedAssets({ scene, isFps })
       : Promise.resolve(null);
-    const templeRunoffAssetsPromise = isTempleRunoff
+    const templeRunoffAssetsPromise = !isAthleticsMode && isTempleRunoff
       ? mountTempleRunoffImportedAssets({ scene, isFps })
       : Promise.resolve(null);
 
@@ -599,6 +639,7 @@ export default function ArenaPreview({
       cameraRig.add(camera);
 
       const firstPersonModel = characterFactory.createFirstPersonViewModel(currentPlayerTeam, getPlayerWeaponId(currentPlayer ?? { gear: "starter_blaster" }));
+      if (isAthleticsMode) firstPersonModel.root.visible = false;
       camera.add(firstPersonModel.root);
       const firstPersonRootBaseY = firstPersonModel.root.position.y;
       const firstPersonWeaponRotation = firstPersonModel.weapon.rotation.clone();
@@ -666,7 +707,10 @@ export default function ArenaPreview({
       let flashUntil = 0;
       let snowballLaunchAt = 0;
       let verticalVelocity = 0;
-      let jumpQueued = false;
+      let jumpQueuedAt = 0;
+      let lastGroundedAt = performance.now();
+      const jumpBufferMs = 150;
+      const coyoteTimeMs = 110;
       let lastEmptyFireRequestAt = 0;
       let lastLocalFireAt = 0;
       let lastCooldownFxAt = 0;
@@ -678,6 +722,10 @@ export default function ArenaPreview({
       let landedAt = 0;
       let cameraVisualY = playerPosition.y;
       let fireHeld = false;
+      jumpControlRef.current = () => {
+        if (controlsDisabledRef.current || inputPausedRef.current) return;
+        jumpQueuedAt = performance.now();
+      };
       const getEquippedGearId = () => getPlayerWeaponId(currentPlayerRef.current ?? { gear: "starter_blaster" });
       const hasHeavyGun = () => currentWeaponId === "power_blaster";
       const hasZoomGear = () => hasHeavyGun() || getGearZoomFovMultiplier(getEquippedGearId()) < 1;
@@ -824,7 +872,7 @@ export default function ArenaPreview({
         }
         const code = movementCode(event);
         if (code) {
-          if (code === "Space" && !keys.has("Space")) jumpQueued = true;
+          if (code === "Space" && !keys.has("Space")) jumpQueuedAt = performance.now();
           keys.add(code);
           event.preventDefault();
           return;
@@ -979,10 +1027,12 @@ export default function ArenaPreview({
       const movementVector = new THREE.Vector3();
       const nextPosition = new THREE.Vector3();
       const axisPosition = new THREE.Vector3();
-      const bodyBox = new THREE.Box3();
-      const bodyMin = new THREE.Vector3();
-      const bodyMax = new THREE.Vector3();
-      const collidingBlocks = arenaMap.blocks.filter((block) => block.collides);
+        const bodyBox = new THREE.Box3();
+        const bodyMin = new THREE.Vector3();
+        const bodyMax = new THREE.Vector3();
+      const collisionSources = isAthleticsMode
+        ? getAthleticsObstacles()
+        : arenaMap.blocks.filter((block) => block.collides);
       const levelDebugEnabled = import.meta.env.DEV
         && ["1", "true"].includes(
           new URLSearchParams(window.location.search).get("debugArenaLevels")
@@ -1018,10 +1068,11 @@ export default function ArenaPreview({
         bodyBox.set(bodyMin, bodyMax);
         const blockingIndex = coverBoxes.findIndex((box, index) => {
           if (!box.intersectsBox(bodyBox) || canFpsBodyClearObstacle(verticalBounds, box.max.y)) return false;
-          return collidingBlocks[index]?.style !== "stair"
-            || !canFpsBodyAutoStepOnto(verticalBounds, box.max.y);
+          const source = collisionSources[index] as { style?: string; stair?: boolean } | undefined;
+          const isStair = source?.style === "stair" || source?.stair === true;
+          return !isStair || !canFpsBodyAutoStepOnto(verticalBounds, box.max.y);
         });
-        lastColliderName = blockingIndex >= 0 ? collidingBlocks[blockingIndex]?.id ?? "unknown" : "none";
+        lastColliderName = blockingIndex >= 0 ? collisionSources[blockingIndex]?.id ?? "unknown" : "none";
         return blockingIndex < 0;
       };
       const resolveSurfaceGroundY = (
@@ -1030,13 +1081,15 @@ export default function ArenaPreview({
         eyeY: number,
         floorEyeHeight: number
       ) => {
-        const mappedGroundY = getArenaGroundHeightForPlayer(
-          arenaMapId,
-          x,
-          z,
-          eyeY,
-          floorEyeHeight
-        );
+        const mappedGroundY = isAthleticsMode
+          ? 0
+          : getArenaGroundHeightForPlayer(
+            arenaMapId,
+            x,
+            z,
+            eyeY,
+            floorEyeHeight
+          );
         if (verticalVelocity > 0) return mappedGroundY;
         const footY = eyeY - floorEyeHeight;
         const supportY = findFpsSupportSurfaceY(
@@ -1061,6 +1114,7 @@ export default function ArenaPreview({
         };
         vfxPool.setViewPosition(playerPosition);
         vfxPool.update(currentTime);
+        athleticsUpdate?.(elapsed);
         desertCitadelVfx?.update(elapsed);
         templeRunoffArt?.update(elapsed);
         if (currentTime - performanceWindowAt >= 1000) {
@@ -1086,13 +1140,16 @@ export default function ArenaPreview({
           performanceWindowAt = currentTime;
         }
         if (controlsDisabledRef.current) {
+          verticalVelocity = 0;
+          jumpQueuedAt = 0;
+          keys.clear();
           const followedPlayer = currentPlayerRef.current;
           if (isFiniteNumber(followedPlayer?.x) && isFiniteNumber(followedPlayer?.z)) {
             playerPosition.x += (serverToLocalX(followedPlayer.x) - playerPosition.x) * 0.24;
             playerPosition.z += (serverToLocalZ(followedPlayer.z) - playerPosition.z) * 0.24;
             const followedEyeY = isFiniteNumber(followedPlayer.y)
               ? followedPlayer.y
-              : getArenaGroundHeight(arenaMapId, followedPlayer.x, followedPlayer.z) + FPS_STANDING_EYE_HEIGHT;
+              : (isAthleticsMode ? 0 : getArenaGroundHeight(arenaMapId, followedPlayer.x, followedPlayer.z)) + FPS_STANDING_EYE_HEIGHT;
             playerPosition.y += (followedEyeY - playerPosition.y) * 0.24;
             if (isFiniteNumber(followedPlayer.facing)) yaw = followedPlayer.facing;
           }
@@ -1125,10 +1182,11 @@ export default function ArenaPreview({
           floorEyeHeight
         );
         let groundEyeY = surfaceGroundY + floorEyeHeight;
-        const currentLevel = getArenaLevelLabel(arenaMapId, surfaceGroundY);
+        const currentLevel = isAthleticsMode ? "stadium" : getArenaLevelLabel(arenaMapId, surfaceGroundY);
+        const currentNavRegion = isAthleticsMode ? "stadium_loop:stadium" : `${arenaMapId}:${currentLevel}`;
         renderer.domElement.dataset.playerGroundY = surfaceGroundY.toFixed(3);
         renderer.domElement.dataset.detectedFloor = surfaceGroundY.toFixed(3);
-        renderer.domElement.dataset.currentNavRegion = `${arenaMapId}:${currentLevel}`;
+        renderer.domElement.dataset.currentNavRegion = currentNavRegion;
         renderer.domElement.dataset.colliderName = lastColliderName;
         renderer.domElement.dataset.currentLevel = currentLevel;
         if (levelDebugEnabled && currentTime - lastLevelDebugAt >= 1000) {
@@ -1140,19 +1198,23 @@ export default function ArenaPreview({
             },
             playerGroundY: surfaceGroundY,
             detectedFloor: surfaceGroundY,
-            currentNavRegion: `${arenaMapId}:${currentLevel}`,
+            currentNavRegion,
             colliderName: lastColliderName,
             currentLevel
           });
           lastLevelDebugAt = currentTime;
         }
         const grounded = playerPosition.y <= groundEyeY + 0.02 && Math.abs(verticalVelocity) < 0.01;
-        if (jumpQueued && grounded && !crouching) {
+        if (grounded) lastGroundedAt = currentTime;
+        const bufferedJump = jumpQueuedAt > 0 && currentTime - jumpQueuedAt <= jumpBufferMs;
+        const canUseCoyoteTime = grounded || currentTime - lastGroundedAt <= coyoteTimeMs;
+        if (bufferedJump && canUseCoyoteTime && !crouching) {
           verticalVelocity = FPS_JUMP_VELOCITY;
+          jumpQueuedAt = 0;
           emitArenaAnimation({ kind: "jump", playerId: currentPlayerId, team: currentPlayerTeam });
           gameAudio.play("jump");
         }
-        jumpQueued = false;
+        if (jumpQueuedAt > 0 && currentTime - jumpQueuedAt > jumpBufferMs) jumpQueuedAt = 0;
         const previousFootY = playerPosition.y - floorEyeHeight;
         verticalVelocity -= FPS_JUMP_GRAVITY * delta;
         playerPosition.y += verticalVelocity * delta;
@@ -1215,7 +1277,7 @@ export default function ArenaPreview({
         isSprinting = runAllowed && movementVector.lengthSq() > 0;
 
         if (movementVector.lengthSq() > 0) {
-          const movementSurface: "metal" | "water" | "stone" | "sand" = isIronJunction ? "metal" : isTempleRunoff ? (surfaceGroundY < 1 ? "water" : "stone") : "sand";
+          const movementSurface: "metal" | "water" | "stone" | "sand" = isAthleticsMode ? "stone" : isIronJunction ? "metal" : isTempleRunoff ? (surfaceGroundY < 1 ? "water" : "stone") : "sand";
           if (wasGrounded && moveSpeed > 0) {
             gameAudio.playMovementStep(movementAudioMode, currentTime, movementSurface);
             const footstepInterval = isSprinting ? 240 : 360;
@@ -1387,6 +1449,7 @@ export default function ArenaPreview({
         fireControlRef.current = () => undefined;
         zoomControlRef.current = () => undefined;
         interactControlRef.current = () => undefined;
+        jumpControlRef.current = () => undefined;
         syncPlayersRef.current = () => undefined;
         if (cooldownTimeout) window.clearTimeout(cooldownTimeout);
         setZoomLevel(0);
@@ -1424,6 +1487,7 @@ export default function ArenaPreview({
       debugVfxPositionRef.current = { x: 0, y: 0.12, z: -6 };
       vfxPool.setViewPosition(camera.position);
       vfxPool.update(currentTime);
+      athleticsUpdate?.(elapsed);
       desertCitadelVfx?.update(elapsed);
       templeRunoffArt?.update(elapsed);
       if (currentTime - performanceWindowAt >= 1000) {
@@ -1491,6 +1555,7 @@ export default function ArenaPreview({
       void desertCitadelAssetsPromise.then((assets) => assets?.dispose());
       void templeRunoffAssetsPromise.then((assets) => assets?.dispose());
       interactControlRef.current = () => undefined;
+      jumpControlRef.current = () => undefined;
       syncPlayersRef.current = () => undefined;
       characterManager.dispose();
       disposeObject(scene);
@@ -1514,7 +1579,7 @@ export default function ArenaPreview({
       renderer.dispose();
       mount.removeChild(renderer.domElement);
     };
-  }, [sceneSessionId, currentPlayerId, currentPlayerTeam, currentWeaponId, currentPlayer?.gear, currentPlayer?.weapon, view, debugOverlay, quality, fallbackQuality, activeQuality, gamepadEnabled, arenaMapId, arenaMap, arenaBounds, teamBaseZones, captureZones, searchRetrieveItems, searchRetrieveDeliveryZones, isIronJunction, isDesertCitadel, isTempleRunoff, localToServerPosition, serverToLocalX, serverToLocalZ, session?.settings.gameMode, loadDecalAsset]);
+  }, [sceneSessionId, currentPlayerId, currentPlayerTeam, currentWeaponId, currentPlayer?.gear, currentPlayer?.weapon, view, debugOverlay, quality, fallbackQuality, activeQuality, gamepadEnabled, arenaMapId, arenaMap, arenaBounds, teamBaseZones, captureZones, searchRetrieveItems, searchRetrieveDeliveryZones, isIronJunction, isDesertCitadel, isTempleRunoff, isAthleticsMode, athleticsSceneBuilder, localToServerPosition, serverToLocalX, serverToLocalZ, session?.settings.gameMode, loadDecalAsset]);
 
   const beginTouchMove = (event: ReactPointerEvent<HTMLButtonElement>) => {
     event.preventDefault();
@@ -1538,13 +1603,16 @@ export default function ArenaPreview({
   const interactFromTouch = () => {
     interactControlRef.current();
   };
+  const jumpFromTouch = () => {
+    jumpControlRef.current();
+  };
   const miniMapPlayer = miniMapPosition ?? (
     isFiniteNumber(currentPlayer?.x) && isFiniteNumber(currentPlayer?.z)
       ? { x: currentPlayer.x, y: currentPlayer.y, z: currentPlayer.z, facing: currentPlayer.facing ?? 0 }
       : null
   );
   const miniMapPlayerGround = miniMapPlayer
-    ? getArenaGroundHeightForPlayer(arenaMapId, miniMapPlayer.x, miniMapPlayer.z, miniMapPlayer.y, FPS_STANDING_EYE_HEIGHT)
+    ? isAthleticsMode ? 0 : getArenaGroundHeightForPlayer(arenaMapId, miniMapPlayer.x, miniMapPlayer.z, miniMapPlayer.y, FPS_STANDING_EYE_HEIGHT)
     : 0;
   const miniMapLevel = getArenaLevelLabel(arenaMapId, miniMapPlayerGround);
   const flagCarrier = session?.flag?.carrierId
@@ -1581,10 +1649,10 @@ export default function ArenaPreview({
   return (
     <div
       className={view === "fps" ? "arena-frame fps-view" : "arena-frame"}
-      data-weapon-id={currentWeaponId ?? "starter_blaster"}
+      data-weapon-id={isAthleticsMode ? "none" : currentWeaponId ?? "starter_blaster"}
       data-zoom-level={zoomLevel}
     >
-      <div className="arena-canvas" ref={mountRef} aria-label={`${arenaMap.title} arena`} />
+      <div className="arena-canvas" ref={mountRef} aria-label={isAthleticsMode ? "Stadium Loop athletics course" : `${arenaMap.title} arena`} />
       {autoQualityNotice && quality === "auto" && !fallbackQuality && (
         <div className="arena-quality-notice" role="status" aria-live="polite">
           Graphics adjusted for smoother gameplay
@@ -1638,14 +1706,16 @@ export default function ArenaPreview({
             onBeginTouchMove={beginTouchMove}
             onZoomFromTouch={zoomFromTouch}
             onInteractFromTouch={onInteract ? interactFromTouch : undefined}
+            onJumpFromTouch={isAthleticsMode ? jumpFromTouch : undefined}
+            athleticsHud={isAthleticsMode ? athleticsHud : undefined}
           />
-          {zoomLevel > 0 && (
+          {!isAthleticsMode && zoomLevel > 0 && (
             <div key={`${zoomLevel}-${zoomPulse}`} className={`scope-overlay scope-level-${zoomLevel} scope-pulse`} aria-hidden="true">
               <span>Heavy Scope</span>
               <strong>{zoomLevel === 1 ? "3×" : "7×"}</strong>
             </div>
           )}
-          <ArenaMinimap
+          {!isAthleticsMode && <ArenaMinimap
             arenaMap={arenaMap}
             arenaMapId={arenaMapId}
             arenaBounds={arenaBounds}
@@ -1658,7 +1728,7 @@ export default function ArenaPreview({
             miniMapPlayer={miniMapPlayer}
             displayedFlagPosition={displayedFlagPosition}
             session={session}
-          />
+          />}
         </>
       )}
     </div>

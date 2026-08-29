@@ -92,6 +92,7 @@ import {
   getPlayerWeaponIdForMode,
   isWeaponGearId,
   getArenaObstacles,
+  getAthleticsObstacles,
   getArenaEyeHeight,
   getArenaGroundHeightForPlayer,
   getTeamSpawnForMap,
@@ -150,6 +151,29 @@ import {
   type LearningPulse,
   type TeacherUser,
   type Team
+} from "@quizstrike/shared";
+import {
+  ATHLETICS_DEFAULT_TIME_LIMIT_SECONDS,
+  ATHLETICS_STADIUM_COURSE,
+  ATHLETICS_LAP_TRANSITION_MS,
+  ATHLETICS_RESPAWN_PENALTY_MS,
+  ATHLETICS_START_COUNTDOWN_MS,
+  ATHLETICS_WRONG_ANSWER_PENALTY_MS,
+  getAthleticsCheckpointProgress,
+  getAthleticsQuestionPoolIndex,
+  getAthleticsQuestionsPerLap,
+  getAthleticsNextGateProgress,
+  getAthleticsPointAtProgress,
+  getAthleticsRespawnPosition,
+  getAthleticsRouteTangent,
+  getAthleticsRouteProgress,
+  getAthleticsRouteDistance,
+  isAthleticsOnRoute,
+  getAthleticsStartPosition,
+  getAthleticsTotalQuestionCount,
+  isAthleticsFinish,
+  resolveAthleticsStandings,
+  type AthleticsPlayerState
 } from "@quizstrike/shared";
 import {
   BOT_DIFFICULTIES,
@@ -566,11 +590,18 @@ const createDefaultSettings = (input: Partial<SessionSettings> = {}): SessionSet
   return settings;
 };
 
+const athleticsLaneIndex = (session: GameSession, preferredIndex: number) =>
+  preferredIndex === 0 && session.players.length > 0 ? session.players.length : preferredIndex;
+
 const sessionSpawn = (session: GameSession, team: Team, index = 0) =>
-  getTeamSpawnForMap(session.settings.mapId, team, index);
+  session.settings.gameMode === "athletics"
+    ? getAthleticsStartPosition(index, Math.max(1, session.maxPlayers))
+    : getTeamSpawnForMap(session.settings.mapId, team, index);
 
 const selectSessionSpawn = (session: GameSession, team: Team, preferredIndex = 0) =>
-  selectTeamSpawnForMap(session.settings.mapId, team, session.players, preferredIndex);
+  session.settings.gameMode === "athletics"
+    ? getAthleticsStartPosition(athleticsLaneIndex(session, preferredIndex), Math.max(1, session.maxPlayers))
+    : selectTeamSpawnForMap(session.settings.mapId, team, session.players, preferredIndex);
 
 const getSessionByCode = (code: string) => {
   const roomId = joinCodeDirectory.resolve(code);
@@ -596,6 +627,48 @@ const publicQuestion = (question: Question): PublicQuestion => {
 
 const getSessionQuestions = (session: GameSession) => session.questionSnapshot ?? quizSets.get(session.quizSetId)?.questions ?? [];
 const getSessionQuestion = (session: GameSession, questionId: string) => getSessionQuestions(session).find((question) => question.id === questionId);
+
+const makeAthleticsPlayerState = (laneIndex = 0): AthleticsPlayerState => ({
+  questionIndex: 0,
+  checkpointIndex: 0,
+  routeProgress: 0,
+  gateOpen: false,
+  falls: 0,
+  lastSafeCheckpointIndex: 0,
+  checkpointSplitsMs: [],
+  completedLaps: 0,
+  lapSplitsMs: [],
+  laneIndex,
+  status: "racing"
+});
+
+const ensureAthleticsPlayerState = (
+  session: GameSession,
+  player: PlayerSession,
+  laneIndex?: number
+) => {
+  if (session.settings.gameMode !== "athletics") return undefined;
+  if (!player.athletics) player.athletics = makeAthleticsPlayerState(laneIndex ?? session.players.indexOf(player));
+  player.athletics.completedLaps ??= 0;
+  player.athletics.lapSplitsMs ??= [];
+  if (laneIndex !== undefined && player.athletics.laneIndex === undefined) player.athletics.laneIndex = laneIndex;
+  return player.athletics;
+};
+
+const getAthleticsRaceConfig = (session: GameSession) => {
+  const questionPoolSize = Math.max(1, getSessionQuestions(session).length);
+  const requiredLaps = session.athletics?.requiredLaps ?? session.settings.athleticsCourseLaps ?? 1;
+  const questionsPerLap = session.athletics?.questionsPerLap
+    ?? (requiredLaps === 1 && session.athletics?.questionCount
+      ? session.athletics.questionCount
+      : getAthleticsQuestionsPerLap(questionPoolSize, requiredLaps));
+  return {
+    questionPoolSize,
+    requiredLaps,
+    questionsPerLap,
+    questionCount: session.athletics?.questionCount ?? questionsPerLap * requiredLaps
+  };
+};
 
 const getPlayerToken = (req: Request) => {
   const headerToken = req.header("x-player-token");
@@ -647,6 +720,18 @@ const selectNextQuestion = (session: GameSession, playerId: string): PublicQuest
 };
 
 const issueNextQuestion = (session: GameSession, playerId: string): PublicQuestion | undefined => {
+  if (session.settings.gameMode === "athletics") {
+    const player = session.players.find((candidate) => candidate.id === playerId);
+    const athletics = player ? ensureAthleticsPlayerState(session, player) : undefined;
+    const questions = getSessionQuestions(session);
+    if (!player || !athletics || athletics.status !== "racing" || athletics.gateOpen) return undefined;
+    const race = getAthleticsRaceConfig(session);
+    if (athletics.questionIndex >= race.questionCount || athletics.lapTransitionUntil) return undefined;
+    const question = questions[getAthleticsQuestionPoolIndex(athletics.questionIndex, questions.length)];
+    if (!question) return undefined;
+    playerQuestionGate.issue(player.id, question.id);
+    return publicQuestion(question);
+  }
   const question = selectNextQuestion(session, playerId);
   if (question) playerQuestionGate.issue(playerId, question.id);
   return question;
@@ -815,7 +900,29 @@ const getQuizSetForUse = (userId: string, quizSetId: string) => {
 const makeReport = (session: GameSession): SessionReport => {
   const sessionAnswers = answers.filter((answer) => answer.gameSessionId === session.id);
   const reportAnswers = sessionAnswers.filter(isMainRoundAnswer);
-  const rows = buildReportRows({ players: session.players, answers: reportAnswers });
+  const raceStandings = session.settings.gameMode === "athletics"
+    ? resolveAthleticsStandings(session.players.map((player) => {
+        ensureAthleticsPlayerState(session, player);
+        return player;
+      }))
+    : [];
+  const raceStandingByPlayerId = new Map(raceStandings.map((standing) => [standing.playerId, standing]));
+  const rows = buildReportRows({ players: session.players, answers: reportAnswers }).map((row, playerIndex) => {
+    if (session.settings.gameMode !== "athletics") return row;
+    const player = session.players[playerIndex];
+    const athletics = player?.athletics;
+    const standing = player ? raceStandingByPlayerId.get(player.id) : undefined;
+    return {
+      ...row,
+      ...(standing && athletics?.status === "finished" ? { racePlace: player?.athletics?.finishPosition ?? standing.rank } : {}),
+      ...(athletics?.finishTimeMs === undefined ? {} : { raceTimeMs: athletics.finishTimeMs }),
+      raceStatus: athletics?.status === "finished" ? "finished" as const : "dnf" as const,
+      raceFalls: athletics?.falls ?? 0,
+      raceCheckpoint: athletics?.checkpointIndex ?? 0,
+      raceLapsCompleted: athletics?.completedLaps ?? 0,
+      raceLapsRequired: getAthleticsRaceConfig(session).requiredLaps
+    };
+  });
 
   const missedCounts = new Map<string, number>();
   for (const answer of reportAnswers) {
@@ -977,6 +1084,228 @@ const {
   evaluateFlagEliminationWin
 } = roundRuntime;
 
+const startAthleticsRace = (session: GameSession) => {
+  const questionPoolSize = Math.max(1, getSessionQuestions(session).length);
+  const requiredLaps = session.settings.athleticsCourseLaps ?? 1;
+  const questionsPerLap = getAthleticsQuestionsPerLap(questionPoolSize, requiredLaps);
+  const questionCount = getAthleticsTotalQuestionCount(questionPoolSize, requiredLaps);
+  const startAtMs = Date.now() + ATHLETICS_START_COUNTDOWN_MS;
+  const startAt = new Date(startAtMs).toISOString();
+  const timeLimitSeconds = Math.max(
+    60,
+    Number.isFinite(session.settings.roundDurationSeconds)
+      ? session.settings.roundDurationSeconds
+      : ATHLETICS_DEFAULT_TIME_LIMIT_SECONDS
+  );
+  session.status = "active";
+  session.controlState = "running";
+  session.teacherPausedAt = undefined;
+  session.startedAt = startAt;
+  session.endsAt = new Date(startAtMs + timeLimitSeconds * 1000).toISOString();
+  session.roundTransition = undefined;
+  session.flag = undefined;
+  session.athletics = {
+    courseId: session.settings.athleticsCourseId ?? "stadium_loop",
+    questionsPerLap,
+    questionCount,
+    requiredLaps,
+    status: "countdown",
+    startAt,
+    finishOrder: []
+  };
+  const playerCount = Math.max(1, session.players.length);
+  session.players = session.players.map((player, index) => {
+    const spawn = getAthleticsStartPosition(index, playerCount);
+    playerQuestionGate.clear(player.id);
+    const athletics = makeAthleticsPlayerState(index);
+    return {
+      ...player,
+      ...spawn,
+      isAlive: true,
+      health: DEFAULT_PLAYER_HEALTH,
+      crouching: false,
+      jumping: false,
+      athletics
+    };
+  });
+  for (const player of session.players) {
+    if (!player.isBot) {
+      const question = getSessionQuestions(session)[player.athletics?.questionIndex ?? 0];
+      if (question) playerQuestionGate.issue(player.id, question.id);
+    }
+  }
+  session.announcement = {
+    ...makeAnnouncement(
+      "round_start",
+      "Get set",
+      "Answer at the start line, then run the Stadium Loop.",
+      `${Math.ceil(ATHLETICS_START_COUNTDOWN_MS / 1000)} seconds until GO · ${requiredLaps} ${requiredLaps === 1 ? "lap" : "laps"} · ${questionsPerLap} checkpoint questions per lap`,
+      ATHLETICS_START_COUNTDOWN_MS
+    ),
+    expiresAt: startAt
+  };
+};
+
+const markAthleticsFinished = (session: GameSession, player: PlayerSession, nowMs: number) => {
+  const athletics = ensureAthleticsPlayerState(session, player);
+  if (!athletics || athletics.status !== "racing") return false;
+  athletics.status = "finished";
+  athletics.finishedAt = new Date(nowMs).toISOString();
+  athletics.finishTimeMs = Math.max(0, nowMs - Date.parse(session.athletics?.startAt ?? new Date(nowMs).toISOString()));
+  athletics.finishPosition = (session.athletics?.finishOrder.length ?? 0) + 1;
+  player.isAlive = false;
+  player.jumping = false;
+  if (session.athletics) session.athletics.finishOrder.push(player.id);
+  appendEvent(session, {
+    type: "end",
+    message: `${player.nickname} crossed the Athletics finish line in place ${athletics.finishPosition}.`,
+    playerId: player.id,
+    team: player.team
+  });
+  emitToPlayers(session, [player.id], "athletics_finish", {
+    playerId: player.id,
+    finishPosition: athletics.finishPosition,
+    finishTimeMs: athletics.finishTimeMs
+  });
+  return true;
+};
+
+const startNextAthleticsLap = (session: GameSession, player: PlayerSession, nowMs: number) => {
+  const athletics = ensureAthleticsPlayerState(session, player);
+  if (!athletics?.lapTransitionUntil || nowMs < Date.parse(athletics.lapTransitionUntil)) return false;
+  athletics.lapTransitionUntil = undefined;
+  const question = player.isBot ? undefined : issueNextQuestion(session, player.id);
+  emitToPlayers(session, [player.id], "athletics_lap_start", {
+    completedLaps: athletics.completedLaps,
+    requiredLaps: getAthleticsRaceConfig(session).requiredLaps,
+    question
+  });
+  return true;
+};
+
+const completeAthleticsLap = (session: GameSession, player: PlayerSession, nowMs: number) => {
+  const race = session.athletics;
+  const athletics = ensureAthleticsPlayerState(session, player);
+  if (!race || !athletics || athletics.status !== "racing" || athletics.lapTransitionUntil) return false;
+  const { requiredLaps } = getAthleticsRaceConfig(session);
+  athletics.completedLaps = Math.min(requiredLaps, athletics.completedLaps + 1);
+  athletics.lapSplitsMs.push(Math.max(0, nowMs - Date.parse(race.startAt)));
+  if (athletics.completedLaps >= requiredLaps) return markAthleticsFinished(session, player, nowMs);
+
+  const spawn = getAthleticsStartPosition(athletics.laneIndex ?? 0, Math.max(1, session.maxPlayers));
+  Object.assign(player, spawn, { jumping: false, crouching: false });
+  athletics.checkpointIndex = 0;
+  athletics.lastSafeCheckpointIndex = 0;
+  athletics.routeProgress = 0;
+  athletics.gateOpen = false;
+  athletics.wrongAnswerPenaltyUntil = undefined;
+  athletics.lapTransitionUntil = new Date(nowMs + ATHLETICS_LAP_TRANSITION_MS).toISOString();
+  playerQuestionGate.clear(player.id);
+  emitToPlayers(session, [player.id], "athletics_lap_complete", {
+    completedLaps: athletics.completedLaps,
+    requiredLaps,
+    splitTimeMs: athletics.lapSplitsMs.at(-1),
+    position: spawn,
+    transitionUntil: athletics.lapTransitionUntil,
+    transitionMs: ATHLETICS_LAP_TRANSITION_MS
+  });
+  appendEvent(session, {
+    type: "timer",
+    message: `${player.nickname} completed lap ${athletics.completedLaps}/${requiredLaps}.`,
+    playerId: player.id,
+    team: player.team
+  });
+  return true;
+};
+
+const updateAthleticsRace = (session: GameSession, player: PlayerSession, nowMs: number) => {
+  if (session.settings.gameMode !== "athletics") return;
+  const race = session.athletics;
+  const athletics = ensureAthleticsPlayerState(session, player);
+  if (!race || !athletics) return;
+  if (race.status === "countdown" && nowMs >= Date.parse(race.startAt)) {
+    race.status = "running";
+    session.announcement = makeAnnouncement("round_start", "GO", "Run the route. The next gate opens after each correct answer.", undefined, 2_000);
+    appendEvent(session, { type: "start", message: "Athletics Race is live." });
+    broadcastSession(session);
+  }
+  if (race.status !== "running" || athletics.status !== "racing") return;
+  if (startNextAthleticsLap(session, player, nowMs)) {
+    broadcastPlayerState(session, [player]);
+    broadcastSession(session);
+  }
+  if (athletics.lapTransitionUntil) return;
+
+  const currentPosition = { x: player.x ?? 0, z: player.z ?? 0 };
+  const measuredProgress = getAthleticsRouteProgress(currentPosition);
+  athletics.routeProgress = Math.max(athletics.routeProgress, measuredProgress);
+  const { questionsPerLap } = getAthleticsRaceConfig(session);
+  const questionIndexInLap = athletics.questionIndex - athletics.completedLaps * questionsPerLap;
+  const lapGateState = { checkpointIndex: athletics.checkpointIndex, questionIndex: questionIndexInLap };
+  const nextGateProgress = getAthleticsNextGateProgress(lapGateState, questionsPerLap);
+  const isAtNextGate = athletics.gateOpen
+    && questionIndexInLap < questionsPerLap
+    && athletics.checkpointIndex < questionIndexInLap
+    && athletics.routeProgress >= nextGateProgress - 0.025
+    && !player.jumping;
+  if (isAtNextGate) {
+    athletics.checkpointIndex = Math.min(questionIndexInLap, questionsPerLap - 1);
+    athletics.lastSafeCheckpointIndex = athletics.checkpointIndex;
+    athletics.gateOpen = false;
+    athletics.checkpointSplitsMs.push(Math.max(0, nowMs - Date.parse(race.startAt)));
+    const question = issueNextQuestion(session, player.id);
+    emitToPlayers(session, [player.id], "athletics_checkpoint", {
+      checkpointIndex: athletics.checkpointIndex,
+      questionIndex: athletics.questionIndex,
+      question,
+      routeProgress: athletics.routeProgress,
+      completedLaps: athletics.completedLaps,
+      requiredLaps: race.requiredLaps,
+      nextGateProgress: getAthleticsNextGateProgress({ checkpointIndex: athletics.checkpointIndex, questionIndex: questionIndexInLap }, questionsPerLap),
+      message: question ? "Checkpoint reached. Answer to unlock the next section." : "Final gate reached. Make the last sprint."
+    });
+    appendEvent(session, {
+      type: "timer",
+      message: `${player.nickname} reached lap ${athletics.completedLaps + 1} checkpoint ${athletics.checkpointIndex}/${questionsPerLap}.`,
+      playerId: player.id,
+      team: player.team
+    });
+    broadcastPlayerState(session, [player]);
+    broadcastSession(session);
+  }
+
+  if (isAthleticsFinish(currentPosition, questionIndexInLap, questionsPerLap)) {
+    if (completeAthleticsLap(session, player, nowMs)) {
+      broadcastPlayerState(session, [player]);
+      broadcastSession(session);
+    }
+  }
+};
+
+const advanceAthleticsRaces = () => {
+  const currentMs = Date.now();
+  for (const session of sessions.values()) {
+    if (!ownsRoom(session.id) || session.settings.gameMode !== "athletics" || session.status !== "active") continue;
+    if (isTeacherPaused(session)) continue;
+    if (!session.athletics) continue;
+    for (const player of session.players) updateAthleticsRace(session, player, currentMs);
+    const realRacers = session.players.filter((player) => !player.isBot);
+    if (realRacers.length > 0 && realRacers.every((player) => player.athletics?.status === "finished")) {
+      session.athletics.status = "finished";
+      finishSession(session, "Every racer crossed the line. Athletics results are ready.");
+      continue;
+    }
+    const remaining = session.endsAt ? Date.parse(session.endsAt) - currentMs : 1;
+    if (remaining > 0) continue;
+    session.athletics.status = "expired";
+    for (const player of session.players) {
+      const athletics = ensureAthleticsPlayerState(session, player);
+      if (athletics?.status === "racing") athletics.status = "dnf";
+    }
+    finishSession(session, "Athletics Race time expired. Results are ready.");
+  }
+};
+
 const pauseSession = (session: GameSession) => pauseSessionForTeacher(session);
 const resumeSession = (session: GameSession) => {
   const result = resumeSessionForTeacher(session);
@@ -1016,6 +1345,29 @@ const combatService = new CombatService({
 const applyValidatedDamage = (session: GameSession, attacker: PlayerSession, target: PlayerSession) =>
   combatService.applyValidatedDamage(session, attacker, target);
 
+const respawnAthleticsPlayer = (session: GameSession, player: PlayerSession, athletics: AthleticsPlayerState, nowMs: number) => {
+  const { questionsPerLap } = getAthleticsRaceConfig(session);
+  athletics.falls += 1;
+  const respawn = getAthleticsRespawnPosition(
+    athletics.lastSafeCheckpointIndex,
+    questionsPerLap,
+    athletics.laneIndex ?? 0
+  );
+  Object.assign(player, respawn, { jumping: false, crouching: false });
+  athletics.routeProgress = getAthleticsCheckpointProgress(athletics.lastSafeCheckpointIndex, questionsPerLap);
+  athletics.respawnPenaltyUntil = new Date(nowMs + ATHLETICS_RESPAWN_PENALTY_MS).toISOString();
+  playerMoveTimestamps.set(player.id, nowMs);
+  emitToPlayers(session, [player.id], "athletics_respawn", {
+    falls: athletics.falls,
+    checkpointIndex: athletics.lastSafeCheckpointIndex,
+    completedLaps: athletics.completedLaps,
+    position: respawn,
+    penaltyUntil: athletics.respawnPenaltyUntil,
+    delayMs: ATHLETICS_RESPAWN_PENALTY_MS
+  });
+  return { ...respawn };
+};
+
 const applyAuthoritativePosition = (
   session: GameSession,
   player: PlayerSession,
@@ -1030,6 +1382,8 @@ const applyAuthoritativePosition = (
   },
   nowMs = Date.now()
 ) => {
+  const isAthletics = session.settings.gameMode === "athletics";
+  const athletics = isAthletics ? ensureAthleticsPlayerState(session, player) : undefined;
   const fallback = sessionSpawn(session, player.team);
   const lastMoveAt = playerMoveTimestamps.get(player.id) ?? nowMs - BOT_TICK_MS;
   const elapsedMs = nowMs - lastMoveAt;
@@ -1045,23 +1399,41 @@ const applyAuthoritativePosition = (
     : ARENA_PLAYER_EYE_HEIGHT;
   const currentEyeY = player.y ?? fallback.y ?? getArenaEyeHeight(session.settings.mapId, currentX, currentZ);
   const requestedEyeY = Number.isFinite(Number(requested.y)) ? Number(requested.y) : currentEyeY;
-  const requestedGroundY = getArenaGroundHeightForPlayer(
-    session.settings.mapId,
-    requestedX,
-    requestedZ,
-    requestedEyeY,
-    requestedEyeHeight
-  );
-  const requestedStandingY = requestedGroundY + requestedEyeHeight;
-  const requestedMovementY = Number.isFinite(Number(requested.y))
-    ? Math.min(requestedStandingY + 4.5, Math.max(requestedStandingY, Number(requested.y)))
-    : requestedStandingY;
   const currentPosition = {
     x: currentX,
     y: currentEyeY,
     z: currentZ,
     facing: player.facing ?? fallback.facing
   };
+  const requestedFacing = Number.isFinite(Number(requested.facing)) ? Number(requested.facing) : currentPosition.facing;
+  if (isAthletics && athletics && (
+    athletics.status !== "racing"
+    || !athletics.gateOpen
+    || Boolean(athletics.lapTransitionUntil)
+    || (athletics.respawnPenaltyUntil && nowMs < Date.parse(athletics.respawnPenaltyUntil))
+    || (athletics.wrongAnswerPenaltyUntil && nowMs < Date.parse(athletics.wrongAnswerPenaltyUntil))
+    || (session.athletics && nowMs < Date.parse(session.athletics.startAt))
+  )) {
+    playerMoveTimestamps.set(player.id, nowMs);
+    player.facing = requestedFacing;
+    return { ...currentPosition, facing: requestedFacing };
+  }
+  if (isAthletics && athletics && Number.isFinite(Number(requested.y)) && Number(requested.y) < 0.5) {
+    return respawnAthleticsPlayer(session, player, athletics, nowMs);
+  }
+  const requestedGroundY = isAthletics
+    ? 0
+    : getArenaGroundHeightForPlayer(
+      session.settings.mapId,
+      requestedX,
+      requestedZ,
+      requestedEyeY,
+      requestedEyeHeight
+    );
+  const requestedStandingY = requestedGroundY + requestedEyeHeight;
+  const requestedMovementY = Number.isFinite(Number(requested.y))
+    ? Math.min(requestedStandingY + 4.5, Math.max(requestedStandingY, Number(requested.y)))
+    : requestedStandingY;
   playerPositionHistory.record(player.id, currentPosition, lastMoveAt);
   const sprintPolicy = resolveZombieSprintEnergy({
     gameMode: session.settings.gameMode,
@@ -1089,11 +1461,23 @@ const applyAuthoritativePosition = (
           ? ZOMBIE_HUMAN_WALK_MAX_SPEED
           : PLAYER_MAX_SPEED
     ) * getPlayerMoveSpeedMultiplier(player),
-    obstacles: getArenaObstacles(session.settings.mapId),
+    obstacles: isAthletics ? getAthleticsObstacles() : getArenaObstacles(session.settings.mapId),
     groundY: requestedGroundY,
     eyeHeight: requestedEyeHeight,
-    mapId: session.settings.mapId
+    mapId: isAthletics ? undefined : session.settings.mapId
   });
+  if (isAthletics && athletics) {
+    const measuredProgress = getAthleticsRouteProgress(position);
+    if (getAthleticsRouteDistance(position) > ATHLETICS_STADIUM_COURSE.routeWidth + 2.5) {
+      return respawnAthleticsPlayer(session, player, athletics, nowMs);
+    }
+    if (measuredProgress < athletics.routeProgress - 0.03 || !isAthleticsOnRoute(position)) {
+      position.x = currentPosition.x;
+      position.y = currentPosition.y;
+      position.z = currentPosition.z;
+      position.facing = requestedFacing;
+    }
+  }
   playerMoveTimestamps.set(player.id, nowMs);
   player.x = position.x;
   player.y = position.y ?? requestedStandingY;
@@ -1193,6 +1577,41 @@ const getBotObjectiveGoal = (session: GameSession, bot: PlayerSession, brain: Bo
   return botNavigation.getBotObjectiveGoal(session, bot, brain, state);
 };
 
+const advanceAthleticsBot = (session: GameSession, bot: PlayerSession, index: number, nowMs: number) => {
+  const race = session.athletics;
+  const athletics = ensureAthleticsPlayerState(session, bot, index);
+  if (!race || !athletics || race.status !== "running" || athletics.status !== "racing") return false;
+  if (athletics.lapTransitionUntil) {
+    updateAthleticsRace(session, bot, nowMs);
+    return true;
+  }
+  const { questionsPerLap, questionCount } = getAthleticsRaceConfig(session);
+  const questionIndexInLap = athletics.questionIndex - athletics.completedLaps * questionsPerLap;
+  if (!athletics.gateOpen && questionIndexInLap <= athletics.checkpointIndex) {
+    // Bots use the same checkpoint sequence but answer on a small, readable
+    // cadence so a teacher can use them to preview the complete course.
+    athletics.questionIndex = Math.min(questionCount, athletics.questionIndex + 1);
+    athletics.gateOpen = true;
+  }
+  const currentProgress = Math.max(athletics.routeProgress, getAthleticsRouteProgress({ x: bot.x ?? 0, z: bot.z ?? 0 }));
+  const updatedQuestionIndexInLap = athletics.questionIndex - athletics.completedLaps * questionsPerLap;
+  const targetProgress = updatedQuestionIndexInLap >= questionsPerLap
+    ? 1
+    : getAthleticsNextGateProgress({ checkpointIndex: athletics.checkpointIndex, questionIndex: updatedQuestionIndexInLap }, questionsPerLap);
+  const nextProgress = Math.min(targetProgress, currentProgress + 0.05);
+  const nextPoint = getAthleticsPointAtProgress(nextProgress);
+  const tangent = getAthleticsRouteTangent(nextProgress);
+  const laneOffset = ((athletics.laneIndex ?? index) % 5 - 2) * 0.75;
+  bot.x = nextPoint.x - tangent.z * laneOffset;
+  bot.y = 4.21;
+  bot.z = nextPoint.z + tangent.x * laneOffset;
+  bot.facing = Math.atan2(-tangent.x, -tangent.z);
+  athletics.routeProgress = nextProgress;
+  updateAthleticsRace(session, bot, nowMs);
+  broadcastPlayerPosition(session, { playerId: bot.id, x: bot.x, y: bot.y, z: bot.z, facing: bot.facing });
+  return true;
+};
+
 const botRuntimeDependencies: BotRuntimeDependencies = {
   io,
   gameplayRoom,
@@ -1213,6 +1632,7 @@ const botRuntimeDependencies: BotRuntimeDependencies = {
   findBotCover,
   applyBotSpacing,
   getBotObjectiveGoal,
+  advanceAthleticsBot,
   emitFlagPlanted,
   applyValidatedDamage,
   botNextAttackAt,
@@ -1223,7 +1643,10 @@ const botRuntimeDependencies: BotRuntimeDependencies = {
   botTickMs: BOT_TICK_MS
 };
 const botRuntime = createBotRuntime(botRuntimeDependencies);
-export const advanceRounds = () => roundRuntime.advanceRounds();
+export const advanceRounds = () => {
+  roundRuntime.advanceRounds();
+  advanceAthleticsRaces();
+};
 export const advanceBots = () => botRuntime.advanceBots();
 
 
@@ -1447,6 +1870,7 @@ const sessionRouteDependencies: SessionRouteDependencies = {
   openRoundPreparation,
   openZombieSelectionPhase,
   startRoundState,
+  startAthleticsRace,
   pauseSession,
   resumeSession,
   makeAnnouncement,
@@ -1501,11 +1925,22 @@ const answerQuestion = (
   player: PlayerSession,
   body: { questionId?: unknown; selectedChoice?: unknown }
 ): StudentCommandResult<{ result: QuizResult; cosmeticProgressToken: string }> => {
+  const isAthletics = session.settings.gameMode === "athletics";
+  const athletics = isAthletics ? ensureAthleticsPlayerState(session, player) : undefined;
   if (isTeacherPaused(session)) {
     return failStudentCommand(409, "The game is paused by the teacher. Wait for the game to resume.");
   }
   if (session.status !== "active" && !isRoundPreparationPhase(session) && !isZombieSelectionPhase(session)) {
     return failStudentCommand(400, inactiveRoundMessage(session));
+  }
+  if (isAthletics && (!athletics || athletics.status !== "racing")) {
+    return failStudentCommand(400, "This racer has already finished. Watch the live results.");
+  }
+  if (isAthletics && athletics?.wrongAnswerPenaltyUntil && Date.now() < Date.parse(athletics.wrongAnswerPenaltyUntil)) {
+    return failStudentCommand(409, "Take a short breath, then try the same checkpoint again.");
+  }
+  if (isAthletics && athletics?.lapTransitionUntil) {
+    return failStudentCommand(409, "The next lap is getting ready. Hold at the start line.");
   }
   if (!player.isAlive && !session.settings.deadPlayersCanPractice) {
     return failStudentCommand(400, "Practice questions are disabled while out for the round.");
@@ -1517,6 +1952,13 @@ const answerQuestion = (
   const selectedChoice = body.selectedChoice;
   if (!question || question.quizSetId !== session.quizSetId || !isChoice(selectedChoice)) {
     return failStudentCommand(400, "Question or answer choice is invalid.");
+  }
+  const athleticsQuestions = isAthletics ? getSessionQuestions(session) : [];
+  const athleticsExpectedQuestion = isAthletics && athleticsQuestions.length > 0
+    ? athleticsQuestions[getAthleticsQuestionPoolIndex(athletics?.questionIndex ?? 0, athleticsQuestions.length)]
+    : undefined;
+  if (isAthletics && question.id !== athleticsExpectedQuestion?.id) {
+    return failStudentCommand(409, "Answer the current checkpoint question before moving on.");
   }
 
   const gatedQuestion = playerQuestionGate.consume(player.id, question.id);
@@ -1544,7 +1986,7 @@ const answerQuestion = (
   const energyAwarded = Math.max(0, player.energy - previousEnergy);
   if (reward.correctDelta > 0) player.cosmeticXp = Math.max(0, player.cosmeticXp ?? 0) + reward.correctDelta * 100;
   const respawn =
-    session.settings.gameMode === "flag"
+    session.settings.gameMode === "flag" || isAthletics
       ? {
           player,
           respawned: false,
@@ -1558,6 +2000,17 @@ const answerQuestion = (
     player.roundRespawns = (player.roundRespawns ?? 0) + 1;
     player.crouching = false;
     player.jumping = false;
+  }
+
+  if (isAthletics && athletics) {
+    if (isCorrect) {
+      athletics.questionIndex = Math.min(getAthleticsRaceConfig(session).questionCount, athletics.questionIndex + 1);
+      athletics.gateOpen = true;
+      athletics.wrongAnswerPenaltyUntil = undefined;
+    } else {
+      athletics.wrongAnswerPenaltyUntil = new Date(Date.now() + ATHLETICS_WRONG_ANSWER_PENALTY_MS).toISOString();
+      playerQuestionGate.issue(player.id, question.id, Date.now() + ATHLETICS_WRONG_ANSWER_PENALTY_MS);
+    }
   }
 
   const answer: AnswerLog = {
@@ -1583,7 +2036,11 @@ const answerQuestion = (
     mirrorNormalized(normalizedLibrary.savePlayer(player), "player learning progress");
   }
 
-  const feedback = isCorrect
+  const feedback = isAthletics
+    ? isCorrect
+      ? "Correct! Gate open — run to the next checkpoint."
+      : "Not quite. The gate stays closed; try the same question again."
+    : isCorrect
     ? respawn.respawned
       ? "Respawned! Three correct practice answers brought you back."
       : energyAwarded > 0
@@ -1625,18 +2082,33 @@ const answerQuestion = (
     feedback,
     explanation: question.explanation,
     player,
-    nextQuestion: issueNextQuestion(session, player.id),
+    nextQuestion: isAthletics ? isCorrect ? undefined : publicQuestion(question) : issueNextQuestion(session, player.id),
     respawned: respawn.respawned,
     respawnProgress: respawn.respawned ? 0 : respawn.progress,
-    respawnRequired: respawn.required
+    respawnRequired: respawn.required,
+    ...(isAthletics && athletics ? {
+      athletics: {
+        questionIndex: athletics.questionIndex,
+        checkpointIndex: athletics.checkpointIndex,
+        routeProgress: athletics.routeProgress,
+        gateOpen: athletics.gateOpen,
+        status: athletics.status,
+        completedLaps: athletics.completedLaps,
+        ...(athletics.finishPosition === undefined ? {} : { finishPosition: athletics.finishPosition })
+      }
+    } : {})
   };
   broadcastPlayerState(session, [player]);
+  if (isAthletics) broadcastSession(session);
   return { ok: true, data: { result, cosmeticProgressToken: makeCosmeticProgressToken(player) } };
 };
 
 const buyGear = (session: GameSession, player: PlayerSession, gearId: unknown): StudentCommandResult<GearPurchaseResponse> => {
   if (isTeacherPaused(session)) {
     return failStudentCommand(409, "The game is paused by the teacher. Wait for the game to resume.");
+  }
+  if (session.settings.gameMode === "athletics") {
+    return failStudentCommand(400, "Athletics Race has no weapons or shop. Use the course and checkpoint questions.");
   }
   const gear = GEAR_ITEMS.find((item) => item.id === gearId);
   if (!isRoundActive(session) && !isRoundPreparationPhase(session)) {
@@ -1688,6 +2160,9 @@ const buyGear = (session: GameSession, player: PlayerSession, gearId: unknown): 
 const buySnowballs = (session: GameSession, player: PlayerSession, requestedPackSize?: unknown): StudentCommandResult<SnowballPurchaseResponse> => {
   if (isTeacherPaused(session)) {
     return failStudentCommand(409, "The game is paused by the teacher. Wait for the game to resume.");
+  }
+  if (session.settings.gameMode === "athletics") {
+    return failStudentCommand(400, "Athletics Race has no weapons or shop. Use the course and checkpoint questions.");
   }
   if (!isRoundActive(session) && !isRoundPreparationPhase(session)) {
     return failStudentCommand(400, "The round has ended. Snowball buying is closed.");
@@ -1963,6 +2438,7 @@ io.on("connection", (socket) => {
     const { session, player } = student;
     if (isTeacherPaused(session) || !player.isAlive) return;
     const position = applyAuthoritativePosition(session, player, command);
+    updateAthleticsRace(session, player, Date.now());
     const authoritativePosition = {
       playerId: player.id,
       x: position.x,

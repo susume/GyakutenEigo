@@ -50,13 +50,15 @@ export class CharacterModel {
   readonly audio = new CharacterAudio();
   private readonly animator: CharacterAnimator;
   private readonly parts: CharacterModelParts;
+  private readonly showWeapon: boolean;
   private readonly cosmeticMotionNodes: THREE.Object3D[] = [];
   private worldY = 0;
   private animatedLocalY = 0;
 
-  constructor(appearance: CharacterAppearance, parts: CharacterModelParts) {
+  constructor(appearance: CharacterAppearance, parts: CharacterModelParts, options: { showWeapon?: boolean } = {}) {
     this.appearance = appearance;
     this.parts = parts;
+    this.showWeapon = options.showWeapon !== false;
     this.root = parts.root;
     this.animator = new CharacterAnimator(appearance.customization.victoryPoseId);
     this.root.userData.characterAppearance = appearance;
@@ -184,8 +186,8 @@ export class CharacterModel {
       this.audio.update(speed, delta);
     }
     this.root.position.y = this.worldY + this.animatedLocalY;
-    this.parts.equipment.weapon.visible = alive && lodState.level.equipment !== "minimal";
-    this.parts.equipment.weaponDetails.visible = alive && lodState.level.equipment === "full";
+    this.parts.equipment.weapon.visible = this.showWeapon && alive && lodState.level.equipment !== "minimal";
+    this.parts.equipment.weaponDetails.visible = this.showWeapon && alive && lodState.level.equipment === "full";
     this.parts.equipment.accessories.forEach((accessory) => {
       const isBackGear = accessory.userData.accessorySlot === "back";
       accessory.visible = alive && (

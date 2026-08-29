@@ -25,6 +25,7 @@ type PremiumCharacterCreatorProps = {
   policy: CharacterCustomizationSettings;
   progress: CosmeticProgress;
   disabled?: boolean;
+  nonCombat?: boolean;
   onSave: (appearance: PlayerAppearance) => Promise<void>;
   onUploadDecal: (blob: Blob) => Promise<string>;
   loadDecalAsset: (assetId: string) => Promise<Blob>;
@@ -36,6 +37,7 @@ export default function PremiumCharacterCreator({
   appearance,
   team,
   policy,
+  nonCombat = false,
   progress,
   disabled,
   onSave,
@@ -48,6 +50,12 @@ export default function PremiumCharacterCreator({
   const [error, setError] = useState("");
   const [cameraResetSignal, setCameraResetSignal] = useState(0);
   const [activeCategory, setActiveCategory] = useState<CosmeticSlot>("head");
+  const availableBackAccessories = useMemo(
+    () => nonCombat
+      ? BACK_ACCESSORY_OPTIONS.filter((option) => option.value !== "samurai_sword" && option.value !== "twin_swords")
+      : BACK_ACCESSORY_OPTIONS,
+    [nonCombat]
+  );
   const lastSubmittedSignature = useRef("");
 
   useEffect(() => {
@@ -111,7 +119,7 @@ export default function PremiumCharacterCreator({
   const randomize = () => {
     const pick = <T,>(values: readonly T[]) => values[Math.floor(Math.random() * values.length)];
     const head = pick(HEAD_STYLE_OPTIONS.filter((option) => isUnlocked("head", option.id)));
-    const back = pick(BACK_ACCESSORY_OPTIONS.filter((option) => isUnlocked("back", option.value)));
+    const back = pick(availableBackAccessories.filter((option) => isUnlocked("back", option.value)));
     const footwear = pick(FOOTWEAR_OPTIONS.filter((option) => isUnlocked("footwear", option.value)));
     const pose = pick(VICTORY_POSE_OPTIONS.filter((option) => isUnlocked("pose", option.value)));
     updateDraft((current) => ({
@@ -138,7 +146,7 @@ export default function PremiumCharacterCreator({
       <div className="character-creator-preview-column">
         <div className="preview-heading">
           <div>
-            <span className={`team-marker team-${team}`}>{team === "blue" ? "Blue team" : "Red team"}</span>
+            <span className={`team-marker team-${team}`}>{nonCombat ? "Runner" : team === "blue" ? "Blue team" : "Red team"}</span>
             <h3>Your player</h3>
           </div>
           <button
@@ -159,6 +167,7 @@ export default function PremiumCharacterCreator({
           showVictoryPose={activeCategory === "pose"}
           focusBack={activeCategory === "back"}
           focusFootwear={activeCategory === "footwear"}
+          showWeapon={!nonCombat}
         />
         <p className="preview-hint"><RotateCcw size={13} />Drag to rotate <span /> Scroll to zoom</p>
       </div>
@@ -231,7 +240,7 @@ export default function PremiumCharacterCreator({
                 <fieldset className="creator-option-section accessory-options cosmetic-catalog-grid">
                   <legend>Back gear · choose one</legend>
                   <div className="accessory-card-grid">
-                    {BACK_ACCESSORY_OPTIONS.map((option) => {
+                    {availableBackAccessories.map((option) => {
                       const level = unlockLevel("back", option.value);
                       const locked = level > progress.level;
                       return (

@@ -86,6 +86,7 @@ export const createCharacterSync = (deps: CharacterSyncDependencies) => {
     isFps,
     currentPlayerId,
     showBadges: isFps || players.length <= 24,
+    showWeapons: session?.settings.gameMode !== "athletics",
     makeBadgeMaterial: (player) => new THREE.SpriteMaterial({
       map: makeLabelTexture(player.isBot ? "BOT" : `${playerAccuracy(player)}%`, player.team === "blue" ? "#7dd3fc" : "#fb923c"),
       transparent: true,

@@ -176,6 +176,11 @@ export type AudioEventCue =
   | "round_win"
   | "round_loss"
   | "draw"
+  | "athletics_countdown"
+  | "athletics_start"
+  | "athletics_checkpoint"
+  | "athletics_fall"
+  | "athletics_finish"
   | "match_victory"
   | "match_defeat"
   | "scoreboard_open"
@@ -266,6 +271,11 @@ export const GAME_AUDIO_EVENT_CUES: Record<AudioEventCue, ToneDefinition> = {
   round_win: eventTone(520, 260, 0.03, "triangle", 860),
   round_loss: eventTone(230, 250, 0.026, "sine", 120),
   draw: eventTone(330, 250, 0.02, "sine", 260),
+  athletics_countdown: eventTone(270, 105, 0.024, "sine", 230),
+  athletics_start: eventTone(480, 220, 0.032, "triangle", 920),
+  athletics_checkpoint: eventTone(620, 190, 0.03, "triangle", 1040),
+  athletics_fall: eventTone(170, 180, 0.024, "sine", 92),
+  athletics_finish: eventTone(540, 460, 0.038, "triangle", 1180),
   match_victory: eventTone(500, 420, 0.034, "triangle", 980),
   match_defeat: eventTone(210, 360, 0.026, "sine", 100),
   scoreboard_open: eventTone(390, 105, 0.018, "sine", 520),

@@ -40,7 +40,7 @@ export default function TeacherHome({ teacher, quizSets, sessions, recognition, 
           <div>
             <span className="teacher-eyebrow">Active game</span>
             <h3 id="active-game-title">{activeSession.sessionCode} is waiting for your class</h3>
-            <p>{activeSession.players.length} joined · {activeSession.settings.gameMode === "flag" ? "Capture the Flag" : activeSession.settings.gameMode === "zombie" ? "Zombie Survival" : "Team Tag"}</p>
+            <p>{activeSession.players.length} joined · {activeSession.settings.gameMode === "flag" ? "Capture the Flag" : activeSession.settings.gameMode === "zombie" ? "Zombie Survival" : activeSession.settings.gameMode === "athletics" ? "Athletics Race" : "Team Tag"}</p>
           </div>
           <button className="primary" onClick={() => onHost(activeSession.quizSetId)}><Play size={17} aria-hidden="true" />Open lobby</button>
         </section>

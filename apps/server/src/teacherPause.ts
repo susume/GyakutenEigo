@@ -31,6 +31,12 @@ export const resumeSessionForTeacher = (session: GameSession, nowMs = Date.now()
   const pausedDurationMs = Math.max(0, nowMs - pausedAtMs);
   session.startedAt = shiftIso(session.startedAt, pausedDurationMs);
   session.endsAt = shiftIso(session.endsAt, pausedDurationMs);
+  if (session.athletics) {
+    session.athletics = {
+      ...session.athletics,
+      startAt: shiftIso(session.athletics.startAt, pausedDurationMs)!
+    };
+  }
   if (session.roundTransition) {
     session.roundTransition = {
       ...session.roundTransition,

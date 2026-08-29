@@ -107,6 +107,12 @@ const finishSession = (
   session.endedAt = now();
   session.roundTransition = undefined;
   session.announcement = announcement;
+  if (session.settings.gameMode === "athletics" && session.athletics) {
+    session.athletics.status = session.athletics.status === "expired" ? "expired" : "finished";
+    for (const player of session.players) {
+      if (player.athletics?.status === "racing") player.athletics.status = "dnf";
+    }
+  }
   for (const player of session.players) {
     if (!player.isBot) continue;
     botMemoryById.delete(player.id);
@@ -396,6 +402,11 @@ const advanceRounds = () => {
       continue;
     }
     if (session.status !== "active") continue;
+
+    // Athletics Race owns its own continuous timer and finish order. Keep it
+    // out of team-round conclusion logic so a race cannot be scored as a tag
+    // draw when its clock expires.
+    if (session.settings.gameMode === "athletics") continue;
 
     const announcementExpiresAtMs = session.announcement?.expiresAt
       ? Date.parse(session.announcement.expiresAt)
