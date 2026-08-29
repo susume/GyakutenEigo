@@ -3,7 +3,6 @@ import {
   getArenaGroundHeight,
   getArenaLevelLabel,
   getArenaObjectiveGroundY,
-  type ArenaMapId,
   type ArenaBounds,
   type GameSession,
   getCaptureZonesForMap,
@@ -11,6 +10,7 @@ import {
   getSearchRetrieveItemsForMap,
   getTeamBaseZones
 } from "@quizstrike/shared";
+import type { SessionMapId } from "@quizstrike/shared";
 import type { ArenaMapData } from "./arenaMaps";
 
 export const MINIMAP_WIDTH = 120;
@@ -25,7 +25,7 @@ export type ArenaMinimapPlayer = {
 
 type ArenaMinimapProps = {
   arenaMap: ArenaMapData;
-  arenaMapId: ArenaMapId;
+  arenaMapId: SessionMapId;
   arenaBounds: ArenaBounds;
   teamBaseZones: ReturnType<typeof getTeamBaseZones>;
   captureZones: ReturnType<typeof getCaptureZonesForMap>;

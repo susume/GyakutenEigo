@@ -93,6 +93,7 @@ import {
   isWeaponGearId,
   getArenaObstacles,
   getAthleticsObstacles,
+  ATHLETICS_ARENA_MAP_ID,
   getArenaEyeHeight,
   getArenaGroundHeightForPlayer,
   getTeamSpawnForMap,
@@ -1480,7 +1481,7 @@ const applyAuthoritativePosition = (
     obstacles: isAthletics ? getAthleticsObstacles(nowMs) : getArenaObstacles(session.settings.mapId),
     groundY: requestedGroundY,
     eyeHeight: requestedEyeHeight,
-    mapId: isAthletics ? "athletics_park" : session.settings.mapId
+    mapId: isAthletics ? ATHLETICS_ARENA_MAP_ID : session.settings.mapId
   });
   if (isAthletics && athletics) {
     const measuredProgress = getAthleticsRouteProgress(position);

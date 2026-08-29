@@ -8,7 +8,7 @@ import {
   getSearchRetrieveDeliveryZonesForMap,
   getTeamSpawnsForMap,
   getTeamBaseZones,
-  type ArenaMapId,
+  type SessionMapId,
   type GameSession
 } from "@quizstrike/shared";
 import type { ArenaMapData } from "./arenaMaps";
@@ -24,7 +24,7 @@ import { FPS_CROUCH_EYE_HEIGHT, FPS_STANDING_EYE_HEIGHT } from "./ArenaCamera";
 type ActiveArenaQuality = Exclude<ArenaQuality, "auto">;
 type TextureKind = "floor" | "stone" | "wood" | "water" | "sand" | "metal";
 
-export const shouldScatterEdgeRocks = (detail: number, mapId: ArenaMapId) =>
+export const shouldScatterEdgeRocks = (detail: number, mapId: SessionMapId) =>
   detail === 2 && mapId === "iron_junction";
 export const shouldAddBaseBeacons = (mapId: string) => mapId === "iron_junction";
 
@@ -32,7 +32,7 @@ type MapBuilderDependencies = {
   scene: THREE.Scene;
   renderer: THREE.WebGLRenderer;
   arenaMap: ArenaMapData;
-  arenaMapId: ArenaMapId;
+  arenaMapId: SessionMapId;
   session?: GameSession;
   arenaBounds: ReturnType<typeof getArenaBounds>;
   teamBaseZones: ReturnType<typeof getTeamBaseZones>;

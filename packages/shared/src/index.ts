@@ -20,6 +20,8 @@ export type Choice = "A" | "B" | "C" | "D";
 export type SnowballPackSize = "standard" | "large";
 export type GameMode = "flag" | "zombie" | "classic" | "athletics";
 export type ArenaMapId = "desert_citadel" | "iron_junction" | "temple_runoff";
+export const ATHLETICS_ARENA_MAP_ID = "athletics_park" as const;
+export type SessionMapId = ArenaMapId | typeof ATHLETICS_ARENA_MAP_ID;
 export type TeamAssignment = "players_choose" | "random";
 export type PlayerRole = "human" | "zombie";
 export type BotDifficulty = "beginner" | "standard" | "advanced";
@@ -566,7 +568,7 @@ export const getPlayerAppearanceError = (input: unknown): string | undefined => 
 };
 
 export interface SessionSettings {
-  mapId: ArenaMapId;
+  mapId: SessionMapId;
   gameMode: GameMode;
   athleticsCourseId?: AthleticsCourseId;
   /** Athletics only. Missing legacy values resolve to one lap. */
@@ -927,7 +929,9 @@ const sanitizeGameMode = (value: unknown): GameMode =>
   value === "zombie" || value === "classic" || value === "flag" || value === "athletics" ? value : DEFAULT_SESSION_SETTINGS.gameMode;
 
 const sanitizeArenaMap = (value: unknown): ArenaMapId =>
-  value === "iron_junction" || value === "temple_runoff" ? value : DEFAULT_SESSION_SETTINGS.mapId;
+  value === "desert_citadel" || value === "iron_junction" || value === "temple_runoff"
+    ? value
+    : "desert_citadel";
 
 const sanitizeTeamAssignment = (value: unknown): TeamAssignment =>
   value === "random" || value === "players_choose" ? value : DEFAULT_SESSION_SETTINGS.teamAssignment;
@@ -938,7 +942,7 @@ const sanitizeBotDifficulty = (value: unknown): BotDifficulty =>
 export const sanitizeSessionSettings = (input: Partial<SessionSettings> = {}): SessionSettings => {
   const gameMode = sanitizeGameMode(input.gameMode);
   return {
-  mapId: sanitizeArenaMap(input.mapId),
+  mapId: gameMode === "athletics" ? ATHLETICS_ARENA_MAP_ID : sanitizeArenaMap(input.mapId),
   gameMode,
   ...(gameMode === "athletics" ? {
     athleticsCourseId: input.athleticsCourseId === "stadium_loop" ? input.athleticsCourseId : "stadium_loop" as const,
@@ -1505,11 +1509,13 @@ export const DESERT_CITADEL_STAIR_FLIGHTS = [
 export const getArenaStairFlightsForMap = (
   mapId: ArenaMapId | string | undefined
 ): readonly ArenaStairFlight[] =>
-  mapId === "temple_runoff"
-    ? TEMPLE_RUNOFF_STAIR_FLIGHTS
-    : mapId === "iron_junction"
-      ? IRON_JUNCTION_STAIR_FLIGHTS
-      : DESERT_CITADEL_STAIR_FLIGHTS;
+  mapId === ATHLETICS_ARENA_MAP_ID
+    ? []
+    : mapId === "temple_runoff"
+      ? TEMPLE_RUNOFF_STAIR_FLIGHTS
+      : mapId === "iron_junction"
+        ? IRON_JUNCTION_STAIR_FLIGHTS
+        : DESERT_CITADEL_STAIR_FLIGHTS;
 
 export type ArenaBounds = { limitX: number; limitZ: number };
 export const TEMPLE_RUNOFF_BOUNDS: ArenaBounds = {
@@ -1526,7 +1532,7 @@ export const DESERT_CITADEL_BOUNDS: ArenaBounds = {
 };
 
 export const getArenaBounds = (mapId: ArenaMapId | string | undefined): ArenaBounds =>
-  mapId === "athletics_park"
+  mapId === ATHLETICS_ARENA_MAP_ID
     ? ATHLETICS_COURSE_BOUNDS
     : mapId === "temple_runoff"
     ? TEMPLE_RUNOFF_BOUNDS

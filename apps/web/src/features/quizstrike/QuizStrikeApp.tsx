@@ -13,6 +13,7 @@ import {
 import {
   ARENA_PLAYER_EYE_HEIGHT,
   ARENA_SCALE,
+  ATHLETICS_ARENA_MAP_ID,
   ATHLETICS_CHECKPOINT_COUNT,
   ATHLETICS_CRITICAL_ENERGY,
   ATHLETICS_MAX_ENERGY,
@@ -336,7 +337,11 @@ function CharacterLab() {
     });
     return {
       ...generated,
-      settings: { ...generated.settings, mapId: labMapId, gameMode: athleticsLab ? "athletics" : generated.settings.gameMode },
+      settings: {
+        ...generated.settings,
+        mapId: athleticsLab ? ATHLETICS_ARENA_MAP_ID : labMapId,
+        gameMode: athleticsLab ? "athletics" : generated.settings.gameMode
+      },
       players
     };
   }, [athleticsLab, athleticsProgress, count, tick, labMapId, labLevel, labView]);
@@ -396,7 +401,7 @@ function CharacterLab() {
         <div className="panel character-lab-controls">
           <h2>Scenario</h2>
           <div className="button-row" aria-label="Character lab map">
-            <button className={athleticsLab ? "active" : ""} aria-pressed={athleticsLab} onClick={() => { setAthleticsLab(true); setLabMapId("desert_citadel"); }}>Skyline Adventure Park</button>
+            <button className={athleticsLab ? "active" : ""} aria-pressed={athleticsLab} onClick={() => setAthleticsLab(true)}>Skyline Adventure Park</button>
             <button className={!athleticsLab && labMapId === "desert_citadel" ? "active" : ""} aria-pressed={!athleticsLab && labMapId === "desert_citadel"} onClick={() => { setAthleticsLab(false); setLabMapId("desert_citadel"); }}>Desert Citadel</button>
             <button className={!athleticsLab && labMapId === "iron_junction" ? "active" : ""} aria-pressed={!athleticsLab && labMapId === "iron_junction"} onClick={() => { setAthleticsLab(false); setLabMapId("iron_junction"); }}>Iron Junction</button>
             <button className={!athleticsLab && labMapId === "temple_runoff" ? "active" : ""} aria-pressed={!athleticsLab && labMapId === "temple_runoff"} onClick={() => { setAthleticsLab(false); setLabMapId("temple_runoff"); }}>Temple Runoff</button>
@@ -452,7 +457,7 @@ function CharacterLab() {
         <div className="character-lab-arena">
           <Suspense fallback={<ArenaLoading label="Loading character lab" />}>
             <ArenaPreview
-              key={`${labMapId}:${labView}:${labLevel}`}
+              key={`${athleticsLab ? ATHLETICS_ARENA_MAP_ID : labMapId}:${labView}:${labLevel}`}
               session={session}
               currentPlayer={labView === "fps" ? session.players[0] : undefined}
               view={labView}

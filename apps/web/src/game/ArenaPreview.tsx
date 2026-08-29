@@ -17,7 +17,7 @@ import {
   getPlayerMoveSpeedMultiplier,
   getPlayerWeaponId,
   getTeamSpawnForMap,
-  type ArenaMapId,
+  type SessionMapId,
   isGearAutoFireEnabled,
   type GameSession,
   type PlayerSession
@@ -349,7 +349,7 @@ export default function ArenaPreview({
     });
     return () => { active = false; };
   }, [athleticsSceneBuilder, isAthleticsMode]);
-  const arenaMapId: ArenaMapId = session?.settings.mapId ?? "desert_citadel";
+  const arenaMapId: SessionMapId = session?.settings.mapId ?? "desert_citadel";
   const {
     arenaMap,
     arenaBounds,

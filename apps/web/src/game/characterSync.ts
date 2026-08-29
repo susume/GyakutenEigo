@@ -18,7 +18,7 @@ import {
   getArenaGroundHeight,
   getArenaObjectiveGroundY,
   getTeamSpawnForMap,
-  type ArenaMapId,
+  type SessionMapId,
   type GameSession,
   type PlayerSession
 } from "@quizstrike/shared";
@@ -33,7 +33,7 @@ export type CharacterSyncDependencies = {
   players: PlayerSession[];
   currentPlayer?: PlayerSession;
   session?: GameSession;
-  arenaMapId: ArenaMapId;
+  arenaMapId: SessionMapId;
   activeQuality: Exclude<ArenaQuality, "auto">;
   vfxTextures?: ArenaVfxTextures;
   loadDecalAsset?: (assetId: string) => Promise<Blob>;

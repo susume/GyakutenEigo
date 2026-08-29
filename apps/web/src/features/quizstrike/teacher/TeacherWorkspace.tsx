@@ -8,6 +8,7 @@ import {
   getRoundRemainingSeconds,
   isRoundPreparationPhase,
   isZombieSelectionPhase,
+  ATHLETICS_ARENA_MAP_ID,
   ATHLETICS_STADIUM_COURSE,
   resolveAthleticsStandings,
   validateSessionSnapshot,
@@ -1967,7 +1968,15 @@ function SessionManager({
                         className={`mode-choice mode-${mode.id}${selected ? " selected" : ""}`}
                         aria-label={`${mode.title}: ${mode.description}`}
                         aria-pressed={selected}
-                        onClick={() => setSettings({ ...settings, gameMode: mode.id })}
+                        onClick={() => setSettings({
+                          ...settings,
+                          gameMode: mode.id,
+                          mapId: mode.id === "athletics"
+                            ? ATHLETICS_ARENA_MAP_ID
+                            : settings.mapId === ATHLETICS_ARENA_MAP_ID
+                              ? "desert_citadel"
+                              : settings.mapId
+                        })}
                       >
                         <span className="mode-choice-art" aria-hidden="true">{mode.icon}</span>
                         <strong>{mode.title}</strong>

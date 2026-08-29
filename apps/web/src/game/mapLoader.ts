@@ -4,11 +4,11 @@ import {
   getSearchRetrieveDeliveryZonesForMap,
   getSearchRetrieveItemsForMap,
   getTeamBaseZones,
-  type ArenaMapId
+  type SessionMapId
 } from "@quizstrike/shared";
 import { getArenaMap } from "./arenaMaps";
 
-export const loadArenaMapContext = (arenaMapId: ArenaMapId) => {
+export const loadArenaMapContext = (arenaMapId: SessionMapId) => {
   const arenaMap = getArenaMap(arenaMapId);
   return {
     arenaMap,

@@ -21,7 +21,7 @@ import {
   resolveAthleticsMovementEnergy,
   resolveAthleticsStandings
 } from "./athleticsRace.js";
-import { resolveAnswerReward, sanitizeSessionSettings } from "./index.js";
+import { ATHLETICS_ARENA_MAP_ID, resolveAnswerReward, sanitizeSessionSettings } from "./index.js";
 
 test("Skyline Adventure Park exposes a large vertical route and independent checkpoints", () => {
   assert.equal(ATHLETICS_STADIUM_COURSE.id, "stadium_loop");
@@ -150,9 +150,12 @@ test("multi-lap questions distribute then cycle predictably without soft-locking
 });
 
 test("Course Laps defaults safely and rejects out-of-range or non-integer input", () => {
-  assert.equal(sanitizeSessionSettings({ gameMode: "athletics" }).athleticsCourseLaps, 1);
+  const athleticsSettings = sanitizeSessionSettings({ gameMode: "athletics", mapId: "iron_junction" });
+  assert.equal(athleticsSettings.mapId, ATHLETICS_ARENA_MAP_ID);
+  assert.equal(athleticsSettings.athleticsCourseLaps, 1);
   assert.equal(sanitizeSessionSettings({ gameMode: "athletics", athleticsCourseLaps: 2 }).athleticsCourseLaps, 2);
   assert.equal(sanitizeSessionSettings({ gameMode: "athletics", athleticsCourseLaps: 10 }).athleticsCourseLaps, 10);
+  assert.equal(sanitizeSessionSettings({ gameMode: "classic", mapId: ATHLETICS_ARENA_MAP_ID }).mapId, "desert_citadel");
   for (const value of [0, -1, 11, 1.5, Number.NaN, Number.POSITIVE_INFINITY]) {
     assert.equal(sanitizeSessionSettings({ gameMode: "athletics", athleticsCourseLaps: value }).athleticsCourseLaps, 1);
   }

@@ -9,7 +9,7 @@ type SessionFixture = {
   id: string;
   sessionCode: string;
   status: "waiting" | "active" | "paused" | "ended";
-  settings: { gameMode: string; athleticsCourseId?: string; athleticsCourseLaps?: number };
+  settings: { mapId: string; gameMode: string; athleticsCourseId?: string; athleticsCourseLaps?: number };
   players: PlayerFixture[];
   athletics?: { status: string; questionCount: number; questionsPerLap: number; requiredLaps: number; startAt: string; finishOrder: string[] };
 };
@@ -181,6 +181,7 @@ test("Athletics creation, start gate, wrong-answer retry, skip prevention, and D
   const teacher = await createTeacherWithQuiz();
   const session = await createSession(teacher);
   assert.equal(session.settings.gameMode, "athletics");
+  assert.equal(session.settings.mapId, "athletics_park");
   assert.equal(session.settings.athleticsCourseId, "stadium_loop");
   assert.equal(session.settings.athleticsCourseLaps, 1);
 

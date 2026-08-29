@@ -2,7 +2,7 @@ import type { APIRequestContext } from "@playwright/test";
 
 export const createClassroom = async (
   request: APIRequestContext,
-  { gameMode = "classic" }: { gameMode?: "classic" | "flag" } = {}
+  { gameMode = "classic" }: { gameMode?: "classic" | "flag" | "athletics" } = {}
 ) => {
   const suffix = `${Date.now()}-${Math.random().toString(16).slice(2)}`;
   const signup = await request.post("/api/auth/signup", {
