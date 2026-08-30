@@ -34,6 +34,10 @@ type PlayerFixture = {
     recoveryCorrectAnswers?: number;
     recoveryRequiredAnswers?: number;
     recoverySurfaceId?: string;
+    recoveryReason?: string;
+    currentSupportedSurfaceIndex?: number;
+    movementEpoch?: number;
+    lastAcceptedMovementSequence?: number;
     lapTransitionUntil?: string;
   };
   energy?: number;
@@ -273,6 +277,7 @@ test("Athletics creation, start gate, wrong-answer retry, skip prevention, and D
   assert.equal(recoveryPlayer.isAlive, false);
   assert.equal(recoveryPlayer.athletics?.recoveryCorrectAnswers, 0);
   assert.equal(recoveryPlayer.athletics?.recoveryRequiredAnswers, 3);
+  assert.equal(recoveryPlayer.athletics?.recoveryReason, "park_floor");
   assert.ok((recoveryPlayer.athletics?.routeProgress ?? 0) <= progressBeforeFall);
 
   socketConnection.socket.emit("player_position", {
@@ -340,10 +345,41 @@ test("Athletics creation, start gate, wrong-answer retry, skip prevention, and D
   assert.ok(Math.abs((recoveredPlayer.z ?? 0) - expectedRecoveryPosition.z) < 0.01);
   assert.ok(Math.abs((recoveredPlayer.facing ?? 0) - expectedRecoveryPosition.facing) < 0.01);
   assert.ok((recoveredPlayer.athletics?.routeProgress ?? 0) <= progressBeforeFall);
+  const startTangent = getAthleticsRouteTangent(0);
+
+  // A packet from the pre-recovery epoch must not be able to undo the exact
+  // respawn after the player is alive again. A current-epoch packet remains
+  // valid, proving that the guard protects recovery without freezing input.
+  const recoveredEpoch = recoveredPlayer.athletics?.movementEpoch ?? 0;
+  socketConnection.socket.emit("player_position", {
+    x: (recoveredPlayer.x ?? 0) + startTangent.x * 1.5,
+    y: recoveredPlayer.y,
+    z: (recoveredPlayer.z ?? 0) + startTangent.z * 1.5,
+    facing: recoveredPlayer.facing ?? 0,
+    movementSequence: 100,
+    movementEpoch: recoveredEpoch
+  });
+  await delay(120);
+  const beforeStaleSnapshot = await api<{ session: SessionFixture }>(`/api/sessions/${session.sessionCode}`, { playerToken: alpha.playerToken });
+  const beforeStalePlayer = beforeStaleSnapshot.body.session.players.find((player) => player.id === alpha.player.id)!;
+  socketConnection.socket.emit("player_position", {
+    x: beforeStalePlayer.x ?? 0,
+    y: -2,
+    z: beforeStalePlayer.z ?? 0,
+    facing: beforeStalePlayer.facing ?? 0,
+    movementSequence: 99,
+    movementEpoch: Math.max(0, recoveredEpoch - 1)
+  });
+  await delay(120);
+  const afterStaleSnapshot = await api<{ session: SessionFixture }>(`/api/sessions/${session.sessionCode}`, { playerToken: alpha.playerToken });
+  const afterStalePlayer = afterStaleSnapshot.body.session.players.find((player) => player.id === alpha.player.id)!;
+  assert.equal(afterStalePlayer.athletics?.recoveryActive, false);
+  assert.equal(afterStalePlayer.athletics?.falls, beforeStalePlayer.athletics?.falls);
+  assert.equal(afterStalePlayer.isAlive, true);
+  assert.equal(afterStalePlayer.athletics?.movementEpoch, recoveredEpoch);
 
   // A recovered racer can immediately move and spend the bounded retry fuel.
   await delay(300);
-  const startTangent = getAthleticsRouteTangent(0);
   socketConnection.socket.emit("player_position", {
     x: (recoveredPlayer.x ?? 0) + startTangent.x * 2,
     y: recoveredPlayer.y,
@@ -393,6 +429,20 @@ test("Athletics creation, start gate, wrong-answer retry, skip prevention, and D
   assert.equal(rejoined.response.status, 200);
   assert.equal(rejoined.body.player.athletics?.questionIndex, 1);
   assert.equal(rejoined.body.player.athletics?.gateOpen, true);
+
+  // Reconnect while the recovery challenge is still active. The room must
+  // preserve the lock, recovery count, and movement epoch on the new socket.
+  const recoveryReconnect = connectStudentSocket(session.sessionCode, {
+    session: rejoined.body.session,
+    player: rejoined.body.player,
+    playerToken: alpha.playerToken
+  });
+  const reconnectedSession = await recoveryReconnect.initialState;
+  const reconnectedPlayer = reconnectedSession.players.find((player) => player.id === alpha.player.id)!;
+  assert.equal(reconnectedPlayer.athletics?.recoveryActive, true);
+  assert.equal(reconnectedPlayer.athletics?.recoveryCorrectAnswers, 0);
+  assert.equal(reconnectedPlayer.athletics?.movementEpoch, secondRecoveryPlayer.athletics?.movementEpoch);
+  recoveryReconnect.socket.disconnect();
 
   const ended = await api<{ report: { rows: Array<{ nickname: string; raceStatus?: string; raceCheckpoint?: number; raceFalls?: number }> } }>(
     `/api/sessions/${session.sessionCode}/end`,

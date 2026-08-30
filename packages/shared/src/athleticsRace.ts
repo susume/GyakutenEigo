@@ -5,6 +5,21 @@ export type AthleticsCourseId = "stadium_loop";
 export type AthleticsRaceStatus = "countdown" | "running" | "finished" | "expired";
 export type AthleticsPlayerStatus = "racing" | "finished" | "dnf";
 
+/** Physical support categories used by the server-owned fall classifier. */
+export type AthleticsPhysicalSupportKind =
+  | "main_surface"
+  | "shortcut_surface"
+  | "moving_platform"
+  | "park_floor"
+  | "airborne";
+
+/** Stable reason codes make fall decisions inspectable in development/tests. */
+export type AthleticsRecoveryReason =
+  | "below_world"
+  | "park_floor"
+  | "outside_route_bounds"
+  | "below_recoverable_height";
+
 export interface AthleticsRaceState {
   courseId: AthleticsCourseId;
   /** Number of question credits available on every lap. Questions are fuel, not gates. */
@@ -31,12 +46,23 @@ export interface AthleticsPlayerState {
   lastSafeCheckpointIndex: number;
   /** Last stable main-route landing accepted by the server. */
   lastSafeSurfaceIndex?: number;
+  /** Current physical support; this is intentionally separate from routeProgress. */
+  currentSupportedSurfaceIndex?: number;
+  currentSupportKind?: AthleticsPhysicalSupportKind;
+  /** Server timestamps are diagnostic/transient and are not used as route progress. */
+  lastSupportedAtMs?: number;
   /** True while the racer is frozen in the three-correct recovery challenge. */
   recoveryActive?: boolean;
   recoveryCorrectAnswers?: number;
   recoveryRequiredAnswers?: number;
   recoverySurfaceId?: string;
   recoveryRouteProgress?: number;
+  recoveryReason?: AthleticsRecoveryReason;
+  /** Incremented whenever recovery invalidates in-flight movement packets. */
+  movementEpoch?: number;
+  lastAcceptedMovementSequence?: number;
+  /** Short guard that protects the exact respawn from queued pre-recovery packets. */
+  recoverySettleUntil?: string;
   checkpointSplitsMs: number[];
   completedLaps: number;
   lapSplitsMs: number[];
@@ -177,6 +203,8 @@ export const ATHLETICS_CRITICAL_ENERGY = 150;
 export const ATHLETICS_RECOVERY_CORRECT_ANSWERS_REQUIRED = 3;
 /** A completed recovery always leaves enough fuel for one immediate retry. */
 export const ATHLETICS_RECOVERY_MIN_ENERGY = ATHLETICS_CORRECT_ENERGY;
+/** Keep queued fall packets from immediately undoing an exact recovery respawn. */
+export const ATHLETICS_RECOVERY_SETTLE_MS = 400;
 
 const clamp01 = (value: number) => Math.min(1, Math.max(0, Number.isFinite(value) ? value : 0));
 const safeNumber = (value: unknown, fallback = 0) => Number.isFinite(Number(value)) ? Number(value) : fallback;
@@ -232,14 +260,14 @@ const ATHLETICS_ROUTE: readonly AthleticsRoutePoint[] = [
   // Park Entrance: low, forgiving tutorial landings with two similar-height
   // jumps before the route begins to weave through the park.
   { x: 0, z: 123, y: 0 },
-  { x: -4, z: 106, y: 0 },
-  { x: 10, z: 91, y: 1.5 },
-  { x: -5, z: 76, y: 0.5 },
-  { x: 13, z: 61, y: 2.5 },
-  { x: 2, z: 48, y: 2.5 },
-  { x: 17, z: 33, y: 4 },
-  { x: 3, z: 20, y: 3 },
-  { x: -14, z: 6, y: 5 },
+  { x: -4.1, z: 105.8, y: 0 },
+  { x: 10.2, z: 90.8, y: 1.5 },
+  { x: -3, z: 78, y: 0.5 },
+  { x: 10.8, z: 62.9, y: 2.5 },
+  { x: 0, z: 46, y: 2.5 },
+  { x: 16.5, z: 33.5, y: 4 },
+  { x: 2, z: 20, y: 3 },
+  { x: -12, z: 8, y: 5 },
   { x: 0, z: -9, y: 5 },
   { x: -17, z: -22, y: 6 },
   // Midway Mayhem: lateral movement around the low midway, with small rises
@@ -261,7 +289,7 @@ const ATHLETICS_ROUTE: readonly AthleticsRoutePoint[] = [
   { x: 42, z: -32, y: 11 },
   { x: 27, z: -40, y: 12 },
   { x: 12, z: -26, y: 12 },
-  { x: 27, z: -9, y: 13 },
+  { x: 25, z: -8, y: 13 },
   { x: 44, z: 3, y: 13 },
   { x: 58, z: 19, y: 13 },
   { x: 44, z: 36, y: 14 },
@@ -277,7 +305,7 @@ const ATHLETICS_ROUTE: readonly AthleticsRoutePoint[] = [
   { x: -86, z: 15, y: 24 },
   { x: -96, z: 31, y: 27 },
   { x: -85, z: 48, y: 30 },
-  { x: -67, z: 60, y: 29 },
+  { x: -67.5, z: 59.5, y: 29 },
   { x: -48, z: 52, y: 32 },
   { x: -30, z: 44, y: 34 },
   { x: -17, z: 58, y: 34 },
@@ -287,9 +315,9 @@ const ATHLETICS_ROUTE: readonly AthleticsRoutePoint[] = [
   { x: 14, z: 31, y: 36 },
   { x: 30, z: 44, y: 38 },
   { x: 47, z: 30, y: 38 },
-  { x: 63, z: 15, y: 40 },
+  { x: 62.5, z: 14.5, y: 40 },
   { x: 49, z: -1, y: 40 },
-  { x: 32, z: -16, y: 40 },
+  { x: 32.5, z: -15.5, y: 40 },
   { x: 16, z: -1, y: 55 },
   { x: 1, z: -15, y: 58 },
   { x: -18, z: -4, y: 60 },
@@ -302,8 +330,8 @@ const ATHLETICS_ROUTE: readonly AthleticsRoutePoint[] = [
   { x: -103, z: -20, y: 67 },
   { x: -92, z: -2, y: 69 },
   { x: -74, z: 8, y: 71 },
-  { x: -54, z: -5, y: 74 },
-  { x: -36, z: 9, y: 77 },
+  { x: -54, z: -4.5, y: 74 },
+  { x: -35, z: 7, y: 77 },
   { x: -17, z: -3, y: 80 },
   { x: 2, z: 12, y: 110 }
 ];
@@ -1111,8 +1139,131 @@ export const getAthleticsObstacles = (nowMs = Date.now()): AthleticsObstacle[] =
   ...ATHLETICS_MOVING_OBSTACLES.map((obstacle) => movingObstacleToObstacle(obstacle, nowMs))
 ];
 
+export interface AthleticsPhysicalSupport {
+  kind: AthleticsPhysicalSupportKind;
+  supportY: number;
+  surfaceIndex?: number;
+  surfaceId?: string;
+  obstacleId?: string;
+}
+
+type AthleticsSupportCandidate = AthleticsPhysicalSupport & {
+  verticalDistance: number;
+  horizontalDistance: number;
+  priority: number;
+};
+
+const chooseAthleticsSupport = (candidates: AthleticsSupportCandidate[]) => {
+  if (candidates.length === 0) return { kind: "airborne", supportY: 0 } satisfies AthleticsPhysicalSupport;
+  candidates.sort((left, right) => {
+    const distance = left.verticalDistance * 2 + left.horizontalDistance * 0.01
+      - (right.verticalDistance * 2 + right.horizontalDistance * 0.01);
+    return Math.abs(distance) > 0.001 ? distance : left.priority - right.priority;
+  });
+  const { verticalDistance: _verticalDistance, horizontalDistance: _horizontalDistance, priority: _priority, ...support } = candidates[0]!;
+  return support;
+};
+
+/**
+ * Classifies the surface physically under the player at a specific time.
+ *
+ * Main-route and shortcut slabs use the authored interior footprint; moving
+ * platforms use their deterministic time-sampled proxy; the park floor is a
+ * deliberate recovery surface rather than a playable landing. Route
+ * projection is intentionally absent from this helper.
+ */
+export const getAthleticsPhysicalSupport = (
+  position: Pick<ArenaPosition, "x" | "z"> & { y?: number },
+  course: AthleticsCourseDefinition = ATHLETICS_STADIUM_COURSE,
+  eyeHeight = ATHLETICS_PLAYER_EYE_HEIGHT,
+  nowMs = Date.now()
+): AthleticsPhysicalSupport => {
+  if (![position.x, position.z, position.y].every((value) => Number.isFinite(value))) {
+    return { kind: "airborne", supportY: 0 };
+  }
+
+  const footY = Number(position.y) - eyeHeight;
+  const candidates: AthleticsSupportCandidate[] = [];
+  const addSurfaceCandidate = (
+    surface: AthleticsCourseSurface,
+    kind: "main_surface" | "shortcut_surface",
+    surfaceIndex?: number,
+    priority = kind === "main_surface" ? 0 : 1
+  ) => {
+    const obstacle = surfaceToObstacle(surface);
+    if (obstacle.kind !== "rect" || !isPointInsideAthleticsRect(position, obstacle, -0.85)) return;
+    const verticalDistance = Math.abs(footY - surface.y);
+    if (verticalDistance > 1.25) return;
+    candidates.push({
+      kind,
+      supportY: surface.y,
+      surfaceIndex,
+      surfaceId: surface.id,
+      verticalDistance,
+      horizontalDistance: Math.hypot(position.x - surface.x, position.z - surface.z),
+      priority
+    });
+  };
+
+  course.surfaces.forEach((surface, index) => addSurfaceCandidate(surface, "main_surface", index));
+  for (const shortcut of course.shortcuts) {
+    for (const surface of shortcut.surfaces) addSurfaceCandidate(surface, "shortcut_surface");
+  }
+
+  for (const moving of course.movingObstacles) {
+    if (moving.kind === "barrier" || moving.jumpable === false) continue;
+    const obstacle = movingObstacleToObstacle(moving, nowMs);
+    if (obstacle.kind !== "rect" || !isPointInsideAthleticsRect(position, obstacle, -0.85)) continue;
+    const supportY = Number(obstacle.maxY ?? 0);
+    const verticalDistance = Math.abs(footY - supportY);
+    if (verticalDistance > 1.25) continue;
+    candidates.push({
+      kind: "moving_platform",
+      supportY,
+      obstacleId: moving.id,
+      verticalDistance,
+      horizontalDistance: Math.hypot(position.x - obstacle.x, position.z - obstacle.z),
+      priority: 2
+    });
+  }
+
+  const insideParkFloor = Math.abs(position.x) <= course.bounds.limitX - 2
+    && Math.abs(position.z) <= course.bounds.limitZ - 2;
+  const floorDistance = Math.abs(footY);
+  if (insideParkFloor && floorDistance <= 1.25) {
+    candidates.push({
+      kind: "park_floor",
+      supportY: 0,
+      verticalDistance: floorDistance,
+      horizontalDistance: Math.hypot(position.x, position.z),
+      priority: 3
+    });
+  }
+
+  return chooseAthleticsSupport(candidates);
+};
+
 export const getAthleticsCheckpointProgress = (checkpointIndex: number, checkpointCount: number) =>
   checkpointCount <= 0 ? 1 : clamp01(checkpointIndex / checkpointCount);
+
+/** Returns the authored main-route landing that physically represents a checkpoint. */
+export const getAthleticsCheckpointSurfaceIndex = (
+  checkpointIndex: number,
+  course: AthleticsCourseDefinition = ATHLETICS_STADIUM_COURSE
+) => {
+  const checkpoint = course.checkpoints[Math.max(0, Math.floor(checkpointIndex))];
+  if (checkpoint === undefined) return undefined;
+  let bestIndex: number | undefined;
+  let bestDistance = Number.POSITIVE_INFINITY;
+  course.surfaces.forEach((_, index) => {
+    const distance = Math.abs(getAthleticsSurfaceRouteProgress(index, course) - checkpoint);
+    if (distance < bestDistance) {
+      bestDistance = distance;
+      bestIndex = index;
+    }
+  });
+  return bestIndex;
+};
 
 /** Progress of a reached checkpoint on the authored main route. */
 export const getAthleticsCheckpointRouteProgress = (

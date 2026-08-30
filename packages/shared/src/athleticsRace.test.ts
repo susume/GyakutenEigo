@@ -20,9 +20,11 @@ import {
   getAthleticsTotalQuestionCount,
   getAthleticsCheckpointProgress,
   getAthleticsCheckpointRouteProgress,
+  getAthleticsCheckpointSurfaceIndex,
   getAthleticsNextGateProgress,
   getAthleticsPointAtProgress,
   getAthleticsMovingObstaclePosition,
+  getAthleticsPhysicalSupport,
   getAthleticsPreviousSafeSurfaceIndex,
   getAthleticsRecoveryPosition,
   getAthleticsRespawnPosition,
@@ -88,8 +90,9 @@ test("Athletics transition authoring proves real air gaps and intentional except
   assert.ok(metrics.jumpTransitionPercentage >= 75);
   assert.ok(metrics.medianAirGap >= 4);
   assert.ok(metrics.averageAirGap >= 4);
-  assert.ok(metrics.maximumNormalRouteGap <= 10);
-  assert.ok(metrics.maximumShortcutGap >= 7 && metrics.maximumShortcutGap <= 10);
+  assert.ok(metrics.maximumNormalRouteGap <= 9);
+  assert.ok(metrics.maximumShortcutGap >= 9 && metrics.maximumShortcutGap <= 10);
+  assert.ok(metrics.maximumShortcutGap > metrics.maximumNormalRouteGap, "shortcut ceiling should be harder than the normal route ceiling");
   assert.equal(metrics.connectedNonJumpTransitionCount, 7);
   assert.equal(metrics.movingPlatformTransitionCount, 6);
   assert.ok(metrics.averagePlatformWidth < 16);
@@ -125,6 +128,11 @@ test("Athletics transition authoring proves real air gaps and intentional except
       assert.ok(course.movingObstacles.some((obstacle) => obstacle.id === transition.movingObstacleId));
     }
   }
+
+  const tutorialGaps = course.transitions.slice(0, 3).map((transition) => getAthleticsTransitionAirGap(transition, course));
+  assert.ok(tutorialGaps.every((gap) => gap >= 3 && gap <= 4.5), `first three tutorial gaps must be 3–4.5: ${tutorialGaps.join(", ")}`);
+  const remainingTutorialGaps = course.transitions.slice(3, 9).map((transition) => getAthleticsTransitionAirGap(transition, course));
+  assert.ok(remainingTutorialGaps.every((gap) => gap >= 4 && gap <= 6), `remaining tutorial gaps must be 4–6: ${remainingTutorialGaps.join(", ")}`);
 
   for (const shortcut of course.shortcuts) {
     for (const transition of shortcut.transitions) {
@@ -260,6 +268,45 @@ test("authored shortcuts and moving platforms remain collision-backed and route-
   assert.ok(movingProxy);
   assert.equal(movingProxy?.kind, "rect");
   assert.equal(movingProxy?.maxY, quarterPeriod.y + moving.height);
+});
+
+test("physical support classification covers main, shortcut, moving, crouch, and checkpoint occupancy", () => {
+  const course = ATHLETICS_STADIUM_COURSE;
+  for (const [index, surface] of course.surfaces.entries()) {
+    const standing = getAthleticsPhysicalSupport({
+      x: surface.x,
+      y: surface.y + ATHLETICS_PLAYER_EYE_HEIGHT,
+      z: surface.z
+    }, course, ATHLETICS_PLAYER_EYE_HEIGHT, 0);
+    assert.equal(standing.kind, "main_surface", `${surface.id} should be a main support`);
+    assert.equal(standing.surfaceIndex, index);
+
+    const crouchingEyeHeight = 2.65;
+    const crouching = getAthleticsPhysicalSupport({
+      x: surface.x,
+      y: surface.y + crouchingEyeHeight,
+      z: surface.z
+    }, course, crouchingEyeHeight, 0);
+    assert.equal(crouching.kind, "main_surface", `${surface.id} crouch support should remain valid`);
+    assert.equal(crouching.surfaceIndex, index);
+  }
+
+  for (const shortcut of course.shortcuts) {
+    for (const surface of shortcut.surfaces) {
+      const support = getAthleticsPhysicalSupport({
+        x: surface.x,
+        y: surface.y + ATHLETICS_PLAYER_EYE_HEIGHT,
+        z: surface.z
+      }, course, ATHLETICS_PLAYER_EYE_HEIGHT, 0);
+      assert.equal(support.kind, "shortcut_surface", `${surface.id} should be a shortcut support`);
+      assert.equal(support.surfaceId, surface.id);
+    }
+  }
+
+  assert.deepEqual(
+    course.checkpoints.map((_, index) => getAthleticsCheckpointSurfaceIndex(index, course)),
+    [10, 21, 32, 43, 54, 64]
+  );
 });
 
 test("start lanes stay on the route and respawns land just behind the last safe checkpoint", () => {

@@ -69,7 +69,11 @@ export const PlayerPositionCommandSchema = z.object({
   type: z.literal("player_position"),
   ...positionFields,
   crouching: z.boolean().optional(),
-  jumping: z.boolean().optional()
+  jumping: z.boolean().optional(),
+  /** Optional ordering metadata; legacy clients remain valid. */
+  movementSequence: z.number().int().nonnegative().max(2_147_483_647).optional(),
+  /** Server-owned recovery epoch; packets from before a recovery are stale. */
+  movementEpoch: z.number().int().nonnegative().max(2_147_483_647).optional()
 }).strict();
 
 export const FireActionCommandSchema = z.object({

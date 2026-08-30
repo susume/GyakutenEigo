@@ -20,9 +20,16 @@ test("canonical client messages validate and retain their discriminator", () => 
     y: 2,
     z: -8,
     facing: Math.PI,
-    crouching: true
+    crouching: true,
+    movementSequence: 17,
+    movementEpoch: 2
   });
   assert.equal(movement.success, true);
+  if (movement.success) {
+    assert.equal(movement.data.type, "player_position");
+    assert.equal(movement.data.movementSequence, 17);
+    assert.equal(movement.data.movementEpoch, 2);
+  }
   assert.equal(validateClientCommand("player_position", {
     x: 12,
     z: -8,

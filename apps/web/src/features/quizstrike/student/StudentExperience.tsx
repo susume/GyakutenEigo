@@ -50,6 +50,7 @@ import {
   sanitizePlayerAppearance,
   validateSessionSnapshot,
   type Choice,
+  type AthleticsRecoveryReason,
   type GameEvent,
   type FlagPlantedEvent,
   type FreezeStreakAnnouncementEvent,
@@ -130,6 +131,8 @@ type ArenaPositionPayload = {
   zoomLevel?: number;
   crouching?: boolean;
   jumping?: boolean;
+  movementSequence?: number;
+  movementEpoch?: number;
 };
 type DamageResultPayload =
   | {
@@ -387,6 +390,8 @@ export default function StudentExperience({ onExit }: { onExit: () => void }) {
   const roundScopedUiKeyRef = useRef("");
   const learningReportRequestKeyRef = useRef("");
   const lastTeamSwitchAtRef = useRef(0);
+  const movementSequenceRef = useRef(0);
+  const athleticsMovementEpochRef = useRef(0);
   const currentSessionRef = useRef<GameSession | null>(session);
   const currentPlayerRef = useRef<PlayerSession | null>(player);
   const questionFetchInFlightRef = useRef(false);
@@ -450,6 +455,14 @@ export default function StudentExperience({ onExit }: { onExit: () => void }) {
   const hasActiveStudentSession = Boolean(session && player && session.status === "active");
   const teacherPaused = session?.controlState === "teacher_paused";
   const nicknameError = useMemo(() => getNicknameError(nickname), [nickname]);
+
+  useEffect(() => {
+    movementSequenceRef.current = 0;
+  }, [sessionId, playerId]);
+
+  useEffect(() => {
+    athleticsMovementEpochRef.current = player?.athletics?.movementEpoch ?? 0;
+  }, [player?.athletics?.movementEpoch, sessionId, playerId]);
   const spectatorCandidates = useMemo(() => {
     const isAthleticsFinished = session?.settings.gameMode === "athletics" && player?.athletics?.status === "finished";
     if (!session || !player || (player.isAlive && !isAthleticsFinished) || (session.settings.gameMode !== "flag" && !isAthleticsFinished)) return [];
@@ -838,10 +851,13 @@ export default function StudentExperience({ onExit }: { onExit: () => void }) {
       recoveryCorrectAnswers?: number;
       recoveryRequiredAnswers?: number;
       recoverySurfaceId?: string;
+      recoveryReason?: AthleticsRecoveryReason;
+      movementEpoch?: number;
       question?: PublicQuestion;
       message?: string;
     }) => {
       if (lastVisualSession.settings.gameMode !== "athletics") return;
+      if (payload.movementEpoch !== undefined) athleticsMovementEpochRef.current = payload.movementEpoch;
       setQuestion(payload.question ?? null);
       setAnswerFeedback(null);
       setBuyOpen(false);
@@ -861,19 +877,25 @@ export default function StudentExperience({ onExit }: { onExit: () => void }) {
           recoveryActive: true,
           recoveryCorrectAnswers: payload.recoveryCorrectAnswers ?? 0,
           recoveryRequiredAnswers: payload.recoveryRequiredAnswers ?? 3,
-          recoverySurfaceId: payload.recoverySurfaceId ?? current.athletics.recoverySurfaceId
+          recoverySurfaceId: payload.recoverySurfaceId ?? current.athletics.recoverySurfaceId,
+          recoveryReason: payload.recoveryReason ?? current.athletics.recoveryReason,
+          movementEpoch: payload.movementEpoch ?? current.athletics.movementEpoch
         }
       } : current);
     });
     connectedSocket.on("athletics_recovery_complete", (payload: {
       position?: { x?: number; y?: number; z?: number; facing?: number };
       checkpointIndex?: number;
+      currentSupportedSurfaceIndex?: number;
       routeProgress?: number;
       energy?: number;
+      recoveryReason?: AthleticsRecoveryReason;
+      movementEpoch?: number;
       question?: PublicQuestion;
       message?: string;
     }) => {
       if (lastVisualSession.settings.gameMode !== "athletics") return;
+      if (payload.movementEpoch !== undefined) athleticsMovementEpochRef.current = payload.movementEpoch;
       if (payload.question) setQuestion(payload.question);
       setFeedback(payload.message ?? "Recovery complete! Back to the course.");
       gameAudio.playEvent("athletics_checkpoint");
@@ -889,7 +911,11 @@ export default function StudentExperience({ onExit }: { onExit: () => void }) {
         athletics: {
           ...current.athletics,
           checkpointIndex: payload.checkpointIndex ?? current.athletics.checkpointIndex,
+          currentSupportedSurfaceIndex: payload.currentSupportedSurfaceIndex ?? current.athletics.currentSupportedSurfaceIndex,
+          currentSupportKind: "main_surface",
           routeProgress: Math.min(current.athletics.routeProgress, payload.routeProgress ?? current.athletics.routeProgress),
+          recoveryReason: payload.recoveryReason ?? current.athletics.recoveryReason,
+          movementEpoch: payload.movementEpoch ?? current.athletics.movementEpoch,
           recoveryActive: false,
           recoveryCorrectAnswers: 0,
           recoveryRequiredAnswers: 3,
@@ -902,9 +928,11 @@ export default function StudentExperience({ onExit }: { onExit: () => void }) {
       completedLaps?: number;
       requiredLaps?: number;
       position?: { x?: number; y?: number; z?: number; facing?: number };
+      movementEpoch?: number;
       transitionUntil?: string;
     }) => {
       if (lastVisualSession.settings.gameMode !== "athletics") return;
+      if (payload.movementEpoch !== undefined) athleticsMovementEpochRef.current = payload.movementEpoch;
       setQuestion(null);
       setQuizOpen(false);
       const completedLaps = payload.completedLaps ?? 0;
@@ -922,6 +950,9 @@ export default function StudentExperience({ onExit }: { onExit: () => void }) {
           completedLaps,
           checkpointIndex: 0,
           lastSafeCheckpointIndex: 0,
+          currentSupportedSurfaceIndex: 0,
+          currentSupportKind: "main_surface",
+          movementEpoch: payload.movementEpoch ?? current.athletics.movementEpoch,
           routeProgress: 0,
           gateOpen: true,
           lapTransitionUntil: payload.transitionUntil
@@ -978,6 +1009,9 @@ export default function StudentExperience({ onExit }: { onExit: () => void }) {
       const previousSession = lastVisualSession;
       const previousLocal = previousSession.players.find((candidate) => candidate.id === activePlayerId);
       const nextLocal = nextSession.players.find((candidate) => candidate.id === activePlayerId);
+      if (nextLocal?.athletics?.movementEpoch !== undefined) {
+        athleticsMovementEpochRef.current = nextLocal.athletics.movementEpoch;
+      }
       if (nextSession.players.length > previousSession.players.length) gameAudio.playEvent("player_join");
       if (nextSession.players.length < previousSession.players.length) gameAudio.playEvent("player_leave");
       if (previousSession.status !== "active" && nextSession.status === "active") {
@@ -1031,6 +1065,10 @@ export default function StudentExperience({ onExit }: { onExit: () => void }) {
     });
     connectedSocket.on("player_state", (payload: { players?: PlayerSession[]; flag?: GameSession["flag"]; recentEvents?: GameSession["events"] }) => {
       if (!Array.isArray(payload.players)) return;
+      const ownUpdate = payload.players.find((next) => next.id === activePlayerId);
+      if (ownUpdate?.athletics?.movementEpoch !== undefined) {
+        athleticsMovementEpochRef.current = ownUpdate.athletics.movementEpoch;
+      }
       setSession((current) => current ? {
         ...current,
         players: current.players.map((candidate) => payload.players?.find((next) => next.id === candidate.id) ?? candidate),
@@ -1408,8 +1446,11 @@ export default function StudentExperience({ onExit }: { onExit: () => void }) {
   const sendArenaPosition = useCallback(
     (position: ArenaPositionPayload) => {
       if (!hasActiveArenaConnection) return;
+      movementSequenceRef.current += 1;
       socketRef.current?.volatile.emit("player_position", {
-        ...position
+        ...position,
+        movementSequence: movementSequenceRef.current,
+        movementEpoch: athleticsMovementEpochRef.current
       });
     },
     [hasActiveArenaConnection]

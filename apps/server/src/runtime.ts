@@ -165,8 +165,11 @@ import {
   ATHLETICS_PLAYER_EYE_HEIGHT,
   ATHLETICS_RECOVERY_CORRECT_ANSWERS_REQUIRED,
   ATHLETICS_RECOVERY_MIN_ENERGY,
+  ATHLETICS_RECOVERY_SETTLE_MS,
   awardAthleticsEnergy,
   getAthleticsGroundHeight,
+  getAthleticsPhysicalSupport,
+  getAthleticsCheckpointSurfaceIndex,
   getAthleticsQuestionPoolIndex,
   getAthleticsQuestionsPerLap,
   getAthleticsPointAtProgress,
@@ -175,18 +178,25 @@ import {
   getAthleticsRouteTangent,
   getAthleticsRouteProgress,
   getAthleticsRouteDistance,
-  getAthleticsSurfaceIndexAtPosition,
+  getAthleticsRouteHeight,
   getAthleticsSurfaceRouteProgress,
   isAthleticsBelowRecoverableRoute,
   isAthleticsOnRoute,
   getAthleticsStartPosition,
   getAthleticsTotalQuestionCount,
-  isAthleticsCourseFinish,
   normalizeAthleticsEnergy,
   resolveAthleticsMovementEnergy,
   resolveAthleticsStandings,
-  type AthleticsPlayerState
+  type AthleticsPlayerState,
+  type AthleticsPhysicalSupport,
+  type AthleticsRecoveryReason
 } from "@quizstrike/shared";
+import {
+  decideAthleticsFall,
+  isAthleticsCheckpointOccupied,
+  isAthleticsFinishOccupied,
+  isAthleticsPlayableSupport
+} from "./athleticsAuthority.js";
 import {
   BOT_DIFFICULTIES,
   type BotMemory,
@@ -650,9 +660,13 @@ const makeAthleticsPlayerState = (laneIndex = 0): AthleticsPlayerState => ({
   falls: 0,
   lastSafeCheckpointIndex: 0,
   lastSafeSurfaceIndex: 0,
+  currentSupportedSurfaceIndex: 0,
+  currentSupportKind: "main_surface",
+  lastSupportedAtMs: Date.now(),
   recoveryActive: false,
   recoveryCorrectAnswers: 0,
   recoveryRequiredAnswers: ATHLETICS_RECOVERY_CORRECT_ANSWERS_REQUIRED,
+  movementEpoch: 0,
   checkpointSplitsMs: [],
   completedLaps: 0,
   lapSplitsMs: [],
@@ -670,9 +684,17 @@ const ensureAthleticsPlayerState = (
   player.athletics.completedLaps ??= 0;
   player.athletics.lapSplitsMs ??= [];
   player.athletics.lastSafeSurfaceIndex ??= 0;
+  player.athletics.movementEpoch ??= 0;
   player.athletics.recoveryCorrectAnswers ??= 0;
   player.athletics.recoveryRequiredAnswers ??= ATHLETICS_RECOVERY_CORRECT_ANSWERS_REQUIRED;
   player.athletics.recoveryActive ??= false;
+  if (player.athletics.recoveryActive) {
+    player.athletics.currentSupportedSurfaceIndex = undefined;
+    player.athletics.currentSupportKind = "airborne";
+  } else {
+    player.athletics.currentSupportedSurfaceIndex ??= player.athletics.lastSafeSurfaceIndex;
+    player.athletics.currentSupportKind ??= "main_surface";
+  }
   if (laneIndex !== undefined && player.athletics.laneIndex === undefined) player.athletics.laneIndex = laneIndex;
   return player.athletics;
 };
@@ -1238,6 +1260,12 @@ const completeAthleticsLap = (session: GameSession, player: PlayerSession, nowMs
   athletics.lastSafeCheckpointIndex = 0;
   athletics.routeProgress = 0;
   athletics.lastSafeSurfaceIndex = 0;
+  athletics.currentSupportedSurfaceIndex = 0;
+  athletics.currentSupportKind = "main_surface";
+  athletics.lastSupportedAtMs = nowMs;
+  athletics.movementEpoch = (athletics.movementEpoch ?? 0) + 1;
+  athletics.recoverySettleUntil = undefined;
+  athletics.recoveryReason = undefined;
   // Energy carries across laps. A lap transition must not duplicate or erase
   // earned fuel, and the start platform remains safe for the next answer.
   athletics.gateOpen = true;
@@ -1249,6 +1277,7 @@ const completeAthleticsLap = (session: GameSession, player: PlayerSession, nowMs
     requiredLaps,
     splitTimeMs: athletics.lapSplitsMs.at(-1),
     position: spawn,
+    movementEpoch: athletics.movementEpoch,
     transitionUntil: athletics.lapTransitionUntil,
     transitionMs: ATHLETICS_LAP_TRANSITION_MS
   });
@@ -1280,11 +1309,36 @@ const updateAthleticsRace = (session: GameSession, player: PlayerSession, nowMs:
   if (athletics.lapTransitionUntil && nowMs < Date.parse(athletics.lapTransitionUntil)) return;
 
   const currentPosition = { x: player.x ?? 0, y: player.y ?? 0, z: player.z ?? 0 };
-  const measuredProgress = getAthleticsRouteProgress(currentPosition);
-  athletics.routeProgress = Math.max(athletics.routeProgress, measuredProgress);
-  const nextCheckpointProgress = ATHLETICS_STADIUM_COURSE.checkpoints[athletics.checkpointIndex];
-  const isAtNextCheckpoint = nextCheckpointProgress !== undefined
-    && athletics.routeProgress >= nextCheckpointProgress - 0.02
+  const support = getAthleticsPhysicalSupport(
+    currentPosition,
+    ATHLETICS_STADIUM_COURSE,
+    player.crouching === true ? ARENA_PLAYER_CROUCH_EYE_HEIGHT : ATHLETICS_PLAYER_EYE_HEIGHT,
+    nowMs
+  );
+  athletics.currentSupportedSurfaceIndex = support.kind === "main_surface" ? support.surfaceIndex : undefined;
+  athletics.currentSupportKind = support.kind;
+  if (isAthleticsPlayableSupport(support)) athletics.lastSupportedAtMs = nowMs;
+  if (support.kind === "main_surface" && support.surfaceIndex !== undefined && !player.jumping) {
+    if (support.surfaceIndex >= (athletics.lastSafeSurfaceIndex ?? 0)) {
+      athletics.lastSafeSurfaceIndex = support.surfaceIndex;
+    }
+    // A physically occupied authored landing is the canonical progress signal.
+    athletics.routeProgress = Math.max(
+      athletics.routeProgress,
+      getAthleticsSurfaceRouteProgress(support.surfaceIndex, ATHLETICS_STADIUM_COURSE)
+    );
+  } else if (support.kind === "shortcut_surface") {
+    athletics.routeProgress = Math.max(athletics.routeProgress, getAthleticsRouteProgress(currentPosition));
+  } else if (support.kind !== "park_floor") {
+    // Projection remains useful for standings while airborne, but it cannot
+    // confirm a checkpoint or replace a physical landing for fall authority.
+    athletics.routeProgress = Math.max(athletics.routeProgress, getAthleticsRouteProgress(currentPosition));
+  }
+  const nextCheckpointSurfaceIndex = getAthleticsCheckpointSurfaceIndex(
+    athletics.checkpointIndex,
+    ATHLETICS_STADIUM_COURSE
+  );
+  const isAtNextCheckpoint = isAthleticsCheckpointOccupied(support, nextCheckpointSurfaceIndex)
     && !player.jumping;
   if (isAtNextCheckpoint) {
     athletics.checkpointIndex = Math.min(ATHLETICS_CHECKPOINT_COUNT, athletics.checkpointIndex + 1);
@@ -1312,7 +1366,12 @@ const updateAthleticsRace = (session: GameSession, player: PlayerSession, nowMs:
     broadcastSession(session);
   }
 
-  if (isAthleticsCourseFinish(currentPosition)) {
+  const isAtFinishSurface = isAthleticsFinishOccupied(
+    support,
+    ATHLETICS_STADIUM_COURSE.surfaces.length - 1
+  )
+    && !player.jumping;
+  if (isAtFinishSurface) {
     if (completeAthleticsLap(session, player, nowMs)) {
       broadcastPlayerState(session, [player]);
       broadcastSession(session);
@@ -1383,7 +1442,14 @@ const combatService = new CombatService({
 const applyValidatedDamage = (session: GameSession, attacker: PlayerSession, target: PlayerSession) =>
   combatService.applyValidatedDamage(session, attacker, target);
 
-const beginAthleticsRecovery = (session: GameSession, player: PlayerSession, athletics: AthleticsPlayerState, nowMs: number) => {
+const beginAthleticsRecovery = (
+  session: GameSession,
+  player: PlayerSession,
+  athletics: AthleticsPlayerState,
+  nowMs: number,
+  reason: AthleticsRecoveryReason = "below_world",
+  diagnostic?: { position: { x: number; y: number; z: number }; support?: AthleticsPhysicalSupport }
+) => {
   const currentPosition = {
     x: player.x ?? 0,
     y: player.y ?? ATHLETICS_PLAYER_EYE_HEIGHT,
@@ -1392,6 +1458,7 @@ const beginAthleticsRecovery = (session: GameSession, player: PlayerSession, ath
   };
   if (athletics.recoveryActive) return currentPosition;
 
+  const routeProgressBeforeRecovery = athletics.routeProgress;
   const progressSafeIndex = getAthleticsPreviousSafeSurfaceIndex(athletics.routeProgress, ATHLETICS_STADIUM_COURSE);
   const trackedSafeIndex = Number.isInteger(athletics.lastSafeSurfaceIndex)
     ? Math.max(0, athletics.lastSafeSurfaceIndex ?? 0)
@@ -1408,6 +1475,11 @@ const beginAthleticsRecovery = (session: GameSession, player: PlayerSession, ath
   athletics.recoveryRequiredAnswers = requiredAnswers;
   athletics.recoverySurfaceId = ATHLETICS_STADIUM_COURSE.surfaces[safeSurfaceIndex]?.id;
   athletics.recoveryRouteProgress = safeProgress;
+  athletics.recoveryReason = reason;
+  athletics.currentSupportedSurfaceIndex = undefined;
+  athletics.currentSupportKind = "airborne";
+  athletics.movementEpoch = (athletics.movementEpoch ?? 0) + 1;
+  athletics.recoverySettleUntil = undefined;
   // A failed jump may have been measured in the air beyond the last landing.
   // Rewind only to the server-tracked landing; never advance progress here.
   athletics.routeProgress = Math.min(athletics.routeProgress, safeProgress);
@@ -1419,6 +1491,32 @@ const beginAthleticsRecovery = (session: GameSession, player: PlayerSession, ath
   player.jumping = false;
   player.crouching = false;
   playerMoveTimestamps.set(player.id, nowMs);
+  if (!isProduction) {
+    const diagnosticPosition = diagnostic?.position ?? currentPosition;
+    const diagnosticSupport = diagnostic?.support ?? getAthleticsPhysicalSupport(
+      diagnosticPosition,
+      ATHLETICS_STADIUM_COURSE,
+      ATHLETICS_PLAYER_EYE_HEIGHT,
+      nowMs
+    );
+    console.info(`[athletics] recovery ${JSON.stringify({
+      playerId: player.id,
+      reason,
+      authoritativePosition: diagnosticPosition,
+      routeProgressBeforeRecovery,
+      routeExpectedY: getAthleticsRouteHeight(routeProgressBeforeRecovery, ATHLETICS_STADIUM_COURSE),
+      supportedSurfaceId: diagnosticSupport.surfaceId,
+      supportedSurfaceIndex: diagnosticSupport.surfaceIndex,
+      supportKind: diagnosticSupport.kind,
+      physicalSupportY: diagnosticSupport.supportY,
+      checkpointIndex: athletics.checkpointIndex,
+      safeSurfaceIndex,
+      safeSurfaceId: athletics.recoverySurfaceId,
+      safeRouteProgress: safeProgress,
+      falls: athletics.falls,
+      movementEpoch: athletics.movementEpoch
+    })}`);
+  }
   const question = issueAthleticsRecoveryQuestion(session, player, athletics);
   emitToPlayers(session, [player.id], "athletics_recovery_start", {
     falls: athletics.falls,
@@ -1427,6 +1525,8 @@ const beginAthleticsRecovery = (session: GameSession, player: PlayerSession, ath
     recoveryCorrectAnswers: athletics.recoveryCorrectAnswers,
     recoveryRequiredAnswers: requiredAnswers,
     recoverySurfaceId: athletics.recoverySurfaceId,
+    recoveryReason: reason,
+    movementEpoch: athletics.movementEpoch,
     question,
     message: "You fell! Answer 3 questions to get back on the course."
   });
@@ -1471,6 +1571,9 @@ const completeAthleticsRecovery = (
   player.roundRespawns = (player.roundRespawns ?? 0) + 1;
   player.energy = Math.max(normalizeAthleticsEnergy(player.energy), ATHLETICS_RECOVERY_MIN_ENERGY);
   athletics.lastSafeSurfaceIndex = safeSurfaceIndex;
+  athletics.currentSupportedSurfaceIndex = safeSurfaceIndex;
+  athletics.currentSupportKind = "main_surface";
+  athletics.lastSupportedAtMs = nowMs;
   athletics.routeProgress = Math.min(athletics.routeProgress, safeProgress);
   athletics.checkpointIndex = Math.min(athletics.checkpointIndex, safeCheckpointIndex);
   athletics.lastSafeCheckpointIndex = Math.min(athletics.lastSafeCheckpointIndex, athletics.checkpointIndex);
@@ -1481,15 +1584,21 @@ const completeAthleticsRecovery = (
   athletics.recoveryRouteProgress = undefined;
   athletics.respawnPenaltyUntil = undefined;
   athletics.wrongAnswerPenaltyUntil = undefined;
+  athletics.recoverySettleUntil = new Date(nowMs + ATHLETICS_RECOVERY_SETTLE_MS).toISOString();
   playerMoveTimestamps.set(player.id, nowMs);
+  playerPositionHistory.clear(player.id);
+  playerPositionHistory.record(player.id, respawn, nowMs);
   playerQuestionGate.clear(player.id);
   const question = issueNextQuestion(session, player.id);
   emitToPlayers(session, [player.id], "athletics_recovery_complete", {
     position: respawn,
     checkpointIndex: athletics.checkpointIndex,
+    currentSupportedSurfaceIndex: safeSurfaceIndex,
     routeProgress: athletics.routeProgress,
     completedLaps: athletics.completedLaps,
     energy: player.energy,
+    recoveryReason: athletics.recoveryReason,
+    movementEpoch: athletics.movementEpoch,
     question,
     message: "Recovery complete! Back to the course."
   });
@@ -1506,6 +1615,8 @@ const applyAuthoritativePosition = (
     facing?: number;
     crouching?: boolean;
     jumping?: boolean;
+    movementSequence?: number;
+    movementEpoch?: number;
   },
   nowMs = Date.now()
 ) => {
@@ -1533,6 +1644,25 @@ const applyAuthoritativePosition = (
     facing: player.facing ?? fallback.facing
   };
   const requestedFacing = Number.isFinite(Number(requested.facing)) ? Number(requested.facing) : currentPosition.facing;
+  if (isAthletics && athletics) {
+    const requestedEpoch = Number(requested.movementEpoch);
+    const currentEpoch = athletics.movementEpoch ?? 0;
+    const hasEpoch = Number.isInteger(requestedEpoch) && requestedEpoch >= 0;
+    const requestedSequence = Number(requested.movementSequence);
+    const hasSequence = Number.isInteger(requestedSequence) && requestedSequence >= 0;
+    const staleSequence = hasSequence
+      && athletics.lastAcceptedMovementSequence !== undefined
+      && requestedSequence <= athletics.lastAcceptedMovementSequence;
+    const staleEpoch = hasEpoch && requestedEpoch !== currentEpoch;
+    if (staleSequence || staleEpoch) {
+      // Do not advance the movement clock for a packet that has already been
+      // superseded; otherwise the next valid packet could receive an
+      // artificial speed burst.
+      playerMoveTimestamps.set(player.id, nowMs);
+      return { ...currentPosition, facing: requestedFacing };
+    }
+    if (hasSequence) athletics.lastAcceptedMovementSequence = requestedSequence;
+  }
   if (isAthletics && athletics && (
     athletics.status !== "racing"
     || athletics.recoveryActive
@@ -1545,8 +1675,17 @@ const applyAuthoritativePosition = (
     player.facing = requestedFacing;
     return { ...currentPosition, facing: requestedFacing };
   }
-  if (isAthletics && athletics && Number.isFinite(Number(requested.y)) && Number(requested.y) < 0.5) {
-    return beginAthleticsRecovery(session, player, athletics, nowMs);
+  if (isAthletics && athletics
+    && Number.isFinite(Number(requested.y))
+    && Number(requested.y) < 0.5
+    && !(athletics.recoverySettleUntil && nowMs < Date.parse(athletics.recoverySettleUntil))) {
+    // Older clients use a below-world y marker while retaining their last
+    // x/z. It remains an explicit fall signal, but only after packet epoch
+    // validation and the short exact-respawn settle guard above.
+    return beginAthleticsRecovery(session, player, athletics, nowMs, "below_world", {
+      position: { ...currentPosition, y: Number(requested.y) },
+      support: { kind: "airborne", supportY: 0 }
+    });
   }
   const requestedGroundY = isAthletics
     ? getAthleticsGroundHeight({ x: requestedX, y: requestedEyeY, z: requestedZ }, nowMs)
@@ -1596,18 +1735,56 @@ const applyAuthoritativePosition = (
     mapId: isAthletics ? ATHLETICS_ARENA_MAP_ID : session.settings.mapId
   });
   if (isAthletics && athletics) {
-    const measuredProgress = getAthleticsRouteProgress(position);
-    if (getAthleticsRouteDistance(position) > ATHLETICS_STADIUM_COURSE.routeWidth + 2.5) {
-      return beginAthleticsRecovery(session, player, athletics, nowMs);
+    const resolvedPosition = {
+      x: position.x,
+      y: position.y ?? requestedStandingY,
+      z: position.z
+    };
+    const physicalSupport = getAthleticsPhysicalSupport(
+      resolvedPosition,
+      ATHLETICS_STADIUM_COURSE,
+      requestedEyeHeight,
+      nowMs
+    );
+    const resolvedJumping = athleticsCanJump
+      && requested.jumping === true
+      && !requestedCrouching;
+    const airborne = physicalSupport.kind === "airborne"
+      && (
+        resolvedJumping
+        || player.jumping === true
+        || resolvedPosition.y > requestedGroundY + requestedEyeHeight + 0.45
+      );
+    const settleGuardActive = Boolean(
+      athletics.recoverySettleUntil
+      && nowMs < Date.parse(athletics.recoverySettleUntil)
+    );
+    const fallDecision = decideAthleticsFall({
+      support: physicalSupport,
+      airborne,
+      requestedY: requested.y,
+      routeDistance: getAthleticsRouteDistance(resolvedPosition),
+      routeWidth: ATHLETICS_STADIUM_COURSE.routeWidth,
+      onRoute: isAthleticsOnRoute(resolvedPosition),
+      belowRecoverableRoute: isAthleticsBelowRecoverableRoute(resolvedPosition, athletics.routeProgress),
+      settleGuardActive
+    });
+    if (fallDecision.recover) {
+      return beginAthleticsRecovery(session, player, athletics, nowMs, fallDecision.reason, {
+        position: resolvedPosition,
+        support: physicalSupport
+      });
     }
-    if (measuredProgress < athletics.routeProgress - 0.03 || !isAthleticsOnRoute(position)) {
+    const routeProgress = getAthleticsRouteProgress(resolvedPosition);
+    // Out-of-route packets are rejected only when they do not have a valid
+    // physical landing. This keeps elevated, rotated, shortcut, and moving
+    // supports authoritative even when their route projection is imperfect.
+    if (!isAthleticsPlayableSupport(physicalSupport)
+      && (routeProgress < athletics.routeProgress - 0.03 || !isAthleticsOnRoute(resolvedPosition))) {
       position.x = currentPosition.x;
       position.y = currentPosition.y;
       position.z = currentPosition.z;
       position.facing = requestedFacing;
-    }
-    if (isAthleticsBelowRecoverableRoute(position, athletics.routeProgress)) {
-      return beginAthleticsRecovery(session, player, athletics, nowMs);
     }
   }
   playerMoveTimestamps.set(player.id, nowMs);
@@ -1620,21 +1797,29 @@ const applyAuthoritativePosition = (
     player.jumping = athleticsCanJump && requested.jumping && !requestedCrouching;
   }
   if (isAthletics && athletics) {
-    if (!player.jumping) {
-      const surfaceIndex = getAthleticsSurfaceIndexAtPosition({
-        x: player.x ?? 0,
-        y: player.y,
-        z: player.z ?? 0
-      }, ATHLETICS_STADIUM_COURSE, requestedEyeHeight);
-      if (surfaceIndex !== undefined && surfaceIndex >= (athletics.lastSafeSurfaceIndex ?? 0)) {
-        athletics.lastSafeSurfaceIndex = surfaceIndex;
+    const support = getAthleticsPhysicalSupport({
+      x: player.x ?? 0,
+      y: player.y,
+      z: player.z ?? 0
+    }, ATHLETICS_STADIUM_COURSE, requestedEyeHeight, nowMs);
+    athletics.currentSupportedSurfaceIndex = support.kind === "main_surface" ? support.surfaceIndex : undefined;
+    athletics.currentSupportKind = support.kind;
+    if (isAthleticsPlayableSupport(support)) athletics.lastSupportedAtMs = nowMs;
+    if (support.kind === "main_surface" && support.surfaceIndex !== undefined && !player.jumping) {
+      if (support.surfaceIndex >= (athletics.lastSafeSurfaceIndex ?? 0)) {
+        athletics.lastSafeSurfaceIndex = support.surfaceIndex;
       }
-      // The park floor is a valid visual safety net, but it is not a playable
-      // Athletics landing. Move a racer into recovery as soon as they settle
-      // on that floor so they can never start a long move back to the route.
-      if (surfaceIndex === undefined && (player.y ?? 0) <= ATHLETICS_PLAYER_EYE_HEIGHT + 0.18) {
-        return beginAthleticsRecovery(session, player, athletics, nowMs);
-      }
+      athletics.routeProgress = Math.max(
+        athletics.routeProgress,
+        getAthleticsSurfaceRouteProgress(support.surfaceIndex, ATHLETICS_STADIUM_COURSE)
+      );
+    } else if (support.kind !== "park_floor") {
+      // Route progress is a separate, monotonic positional signal. It can be
+      // useful in the air for standings, but never confirms a landing.
+      athletics.routeProgress = Math.max(
+        athletics.routeProgress,
+        getAthleticsRouteProgress({ x: player.x ?? 0, y: player.y, z: player.z ?? 0 })
+      );
     }
     player.energy = resolveAthleticsMovementEnergy({
       currentEnergy: athleticsEnergy,
@@ -2550,6 +2735,14 @@ io.on("connection", (socket) => {
       const sockets = playerSockets.get(key) ?? new Set<string>();
       sockets.add(socket.id);
       playerSockets.set(key, sockets);
+      // Movement sequence numbers are scoped to a live socket. Recovery uses
+      // movementEpoch for cross-reconnect invalidation, so a fresh connection
+      // can safely begin its sequence at zero without inheriting a stale
+      // counter from a previous tablet/browser session.
+      if (session.settings.gameMode === "athletics") {
+        const athletics = ensureAthleticsPlayerState(session, player);
+        if (athletics) athletics.lastAcceptedMovementSequence = undefined;
+      }
       socket.data.playerBinding = { sessionCode: session.sessionCode, playerId: player.id } satisfies SocketPlayerBinding;
       clearPlayerDisconnectTimer(session, player.id);
       if (player.connectionState === "disconnected") {
