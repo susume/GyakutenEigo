@@ -2057,8 +2057,8 @@ export default function StudentExperience({ onExit }: { onExit: () => void }) {
         : athleticsPlayer?.lapTransitionUntil && Date.now() < Date.parse(athleticsPlayer.lapTransitionUntil)
           ? `Lap ${athleticsPlayer.completedLaps} complete. The next lap is getting ready.`
         : athleticsEnergy <= ATHLETICS_CRITICAL_ENERGY
-          ? "Energy is low. Answer on a safe platform to refuel, then keep climbing."
-          : "Run, jump, and answer anytime to refill movement energy."
+          ? "Energy is low. Answer on a platform, then keep climbing."
+          : "Jump from platform to platform. Answer anytime to refill energy."
     : session.settings.gameMode === "flag"
       ? flagStatusText(session)
     : session.settings.gameMode === "zombie"
@@ -2424,7 +2424,7 @@ export default function StudentExperience({ onExit }: { onExit: () => void }) {
                   {athleticsRace ? (
                     <div className="athletics-lobby-card" role="note">
                       <Footprints className="athletics-lobby-mark" size={22} aria-hidden="true" />
-                      <span><strong>Skyline Adventure Park</strong><small>{ATHLETICS_STADIUM_COURSE.sections.length} zones · {ATHLETICS_STADIUM_COURSE.checkpoints.length} checkpoints · answer anytime for energy</small></span>
+                      <span><strong>Skyline Adventure Park</strong><small>{ATHLETICS_STADIUM_COURSE.sections.length} chapters · {ATHLETICS_STADIUM_COURSE.checkpoints.length} checkpoints · answer anytime for energy</small></span>
                     </div>
                   ) : <div className="team-choice-grid" aria-label="Choose your team">
                     <button

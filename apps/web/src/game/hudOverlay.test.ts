@@ -10,11 +10,13 @@ const renderHud = ({
   hitPulse = 0,
   hitConfirmPulse = 0,
   onInteractFromTouch,
+  onJumpFromTouch,
   athleticsHud
 }: {
   hitPulse?: number;
   hitConfirmPulse?: number;
   onInteractFromTouch?: () => void;
+  onJumpFromTouch?: () => void;
   athleticsHud?: AthleticsHudState;
 } = {}) => renderToStaticMarkup(React.createElement(ArenaHudOverlay, {
   hitPulse,
@@ -30,6 +32,7 @@ const renderHud = ({
   onBeginTouchMove: () => undefined,
   onZoomFromTouch: () => undefined,
   onInteractFromTouch,
+  onJumpFromTouch,
   athleticsHud
 }));
 
@@ -63,7 +66,7 @@ test("athletics HUD explains where to start the course", () => {
       questionCount: 12,
       questionsPerLap: 4,
       checkpointIndex: 0,
-      checkpointCount: 9,
+      checkpointCount: 6,
       completedLaps: 0,
       requiredLaps: 3,
       routeProgress: 0,
@@ -76,10 +79,71 @@ test("athletics HUD explains where to start the course", () => {
       gateOpen: true,
       status: "racing",
       sectionLabel: "Park Entrance",
-      objectiveText: "Run, jump, and keep climbing."
+      objectiveText: "Jump from platform to platform."
     }
   });
   assert.match(html, /aria-label="Course route guide"/u);
-  assert.match(html, /GO — run through the cyan gate/u);
-  assert.match(html, /Follow the lane arrows to Checkpoint 1/u);
+  assert.match(html, /Jump to the first platform/u);
+  assert.match(html, /JUMP ONTO THE GLOWING PLATFORMS/u);
+  assert.match(html, /SPACE — JUMP/u);
+});
+
+test("athletics touch controls expose the jump action", () => {
+  const html = renderHud({
+    onJumpFromTouch: () => undefined,
+    athleticsHud: {
+      startRemainingSeconds: 0,
+      remainingSeconds: 240,
+      questionIndex: 0,
+      questionCount: 8,
+      questionsPerLap: 8,
+      checkpointIndex: 0,
+      checkpointCount: 6,
+      completedLaps: 0,
+      requiredLaps: 1,
+      routeProgress: 0,
+      rank: 1,
+      totalRacers: 1,
+      energy: 1000,
+      maxEnergy: 1000,
+      criticalEnergy: 150,
+      canAnswer: true,
+      gateOpen: true,
+      status: "racing",
+      sectionLabel: "Park Entrance",
+      objectiveText: "Jump from platform to platform."
+    }
+  });
+  assert.match(html, /class="touch-jump"/u);
+  assert.match(html, /aria-label="Jump"/u);
+  assert.match(html, />Jump<\/button>/u);
+  assert.match(html, />SPACE<\/kbd>/u);
+});
+
+test("athletics onboarding fades after the opening jump sequence", () => {
+  const html = renderHud({
+    athleticsHud: {
+      startRemainingSeconds: 0,
+      remainingSeconds: 230,
+      questionIndex: 0,
+      questionCount: 8,
+      questionsPerLap: 8,
+      checkpointIndex: 0,
+      checkpointCount: 6,
+      completedLaps: 0,
+      requiredLaps: 1,
+      routeProgress: 0.06,
+      rank: 1,
+      totalRacers: 1,
+      energy: 800,
+      maxEnergy: 1000,
+      criticalEnergy: 150,
+      canAnswer: true,
+      gateOpen: true,
+      status: "racing",
+      sectionLabel: "Park Entrance",
+      objectiveText: "Jump from platform to platform."
+    }
+  });
+  assert.doesNotMatch(html, /JUMP ONTO THE GLOWING PLATFORMS/u);
 });

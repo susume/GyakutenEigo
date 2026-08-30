@@ -3,6 +3,7 @@ import {
   getAthleticsObstacles as getAuthoredAthleticsObstacles,
   ATHLETICS_COURSE_BOUNDS,
   ATHLETICS_DEFAULT_COURSE_LAPS,
+  ATHLETICS_DEFAULT_TIME_LIMIT_SECONDS,
   sanitizeAthleticsCourseLaps
 } from "./athleticsRace.js";
 import type {
@@ -969,7 +970,12 @@ export const sanitizeSessionSettings = (input: Partial<SessionSettings> = {}): S
   wrongAnswerPenalty: clampNumber(input.wrongAnswerPenalty, DEFAULT_SESSION_SETTINGS.wrongAnswerPenalty, 0, 16000),
   snowballPackPrice: clampNumber(input.snowballPackPrice, DEFAULT_SESSION_SETTINGS.snowballPackPrice, 0, 5000),
   snowballsPerPack: clampNumber(input.snowballsPerPack, DEFAULT_SESSION_SETTINGS.snowballsPerPack, 1, 50),
-  roundDurationSeconds: clampNumber(input.roundDurationSeconds, DEFAULT_SESSION_SETTINGS.roundDurationSeconds, 60, 3600),
+  roundDurationSeconds: clampNumber(
+    input.roundDurationSeconds,
+    gameMode === "athletics" ? ATHLETICS_DEFAULT_TIME_LIMIT_SECONDS : DEFAULT_SESSION_SETTINGS.roundDurationSeconds,
+    60,
+    3600
+  ),
   maxPlayers: clampNumber(input.maxPlayers, DEFAULT_SESSION_SETTINGS.maxPlayers, 2, 40),
   deadPlayersCanPractice:
     typeof input.deadPlayersCanPractice === "boolean"

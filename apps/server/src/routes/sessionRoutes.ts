@@ -170,7 +170,7 @@ export const registerSessionRoutes = (app: Application, deps: SessionRouteDepend
       deps.startAthleticsRace(session);
       deps.appendEvent(session, {
         type: "start",
-        message: "Athletics Race is ready. Answer the start-line question, then run when GO appears."
+        message: "Athletics Race is ready. When GO appears, jump to the first glowing platform."
       });
     } else {
       deps.startRoundState(session, false);
@@ -260,7 +260,7 @@ export const registerSessionRoutes = (app: Application, deps: SessionRouteDepend
       return;
     }
     if (session.settings.gameMode === "athletics") {
-      res.status(400).json({ error: "Athletics Race is one continuous course. Use End game to stop it." });
+      res.status(400).json({ error: "Athletics Race is one summit challenge. Use End game to stop it." });
       return;
     }
     if (session.status !== "active") {

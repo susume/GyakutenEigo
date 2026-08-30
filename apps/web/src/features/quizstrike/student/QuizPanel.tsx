@@ -71,7 +71,7 @@ export default function QuizPanel({
   if (!question) return <div className="panel"><p>Your next question will appear here.</p></div>;
   const isAthletics = session.settings.gameMode === "athletics";
   const reward = isAthletics
-    ? "Next gate"
+    ? "+220 movement energy"
     : session.settings.gameMode === "zombie" && player.role !== "zombie"
     ? `+${ZOMBIE_HUMAN_CORRECT_ENERGY} running energy`
     : player.isAlive || session.settings.deadPlayersEarnMoney
@@ -90,7 +90,7 @@ export default function QuizPanel({
       <div className="panel-title">
         <div>
           <span className="menu-eyebrow">Live question</span>
-          <h2>{isAthletics ? "Unlock the gate" : "Answer to earn"}</h2>
+          <h2>{isAthletics ? "Refuel movement" : "Answer to earn"}</h2>
         </div>
         <span className="question-reward">{reward}</span>
       </div>

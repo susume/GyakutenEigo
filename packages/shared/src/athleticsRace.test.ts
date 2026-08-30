@@ -2,7 +2,10 @@ import test from "node:test";
 import assert from "node:assert/strict";
 import {
   ATHLETICS_CHECKPOINT_COUNT,
+  ATHLETICS_COLLISION_PROXIES,
+  ATHLETICS_COURSE_BOUNDS,
   ATHLETICS_CORRECT_ENERGY,
+  ATHLETICS_DEFAULT_TIME_LIMIT_SECONDS,
   ATHLETICS_PLAYER_EYE_HEIGHT,
   ATHLETICS_MAX_ENERGY,
   ATHLETICS_STADIUM_COURSE,
@@ -12,10 +15,13 @@ import {
   getAthleticsQuestionsPerLap,
   getAthleticsTotalQuestionCount,
   getAthleticsCheckpointProgress,
+  getAthleticsCheckpointRouteProgress,
   getAthleticsNextGateProgress,
   getAthleticsPointAtProgress,
+  getAthleticsMovingObstaclePosition,
   getAthleticsRespawnPosition,
   getAthleticsRouteProgress,
+  getAthleticsRouteLength,
   getAthleticsRouteTangent,
   getAthleticsStartPosition,
   isAthleticsFinish,
@@ -27,13 +33,29 @@ import {
 } from "./athleticsRace.js";
 import { ATHLETICS_ARENA_MAP_ID, resolveAnswerReward, resolveAuthoritativeMovement, sanitizeSessionSettings } from "./index.js";
 
-test("Skyline Adventure Park exposes a large vertical route and independent checkpoints", () => {
+test("Skyline Adventure Park exposes a compact authored vertical route", () => {
   assert.equal(ATHLETICS_STADIUM_COURSE.id, "stadium_loop");
-  assert.equal(ATHLETICS_STADIUM_COURSE.sections.length, 10);
+  assert.equal(ATHLETICS_STADIUM_COURSE.sections.length, 6);
   assert.equal(ATHLETICS_STADIUM_COURSE.checkpoints.length, ATHLETICS_CHECKPOINT_COUNT);
   assert.ok(ATHLETICS_STADIUM_COURSE.route.at(-1)!.y > ATHLETICS_STADIUM_COURSE.route[0]!.y);
-  assert.ok(ATHLETICS_STADIUM_COURSE.surfaces.length >= 90);
-  assert.ok(ATHLETICS_STADIUM_COURSE.movingObstacles.length >= 5);
+  assert.equal(ATHLETICS_STADIUM_COURSE.route.length, 65);
+  assert.ok(getAthleticsRouteLength() >= 1100 && getAthleticsRouteLength() <= 1400);
+  assert.ok(ATHLETICS_STADIUM_COURSE.surfaces.length >= 60 && ATHLETICS_STADIUM_COURSE.surfaces.length <= 80);
+  assert.equal(ATHLETICS_STADIUM_COURSE.shortcuts.length, 3);
+  assert.equal(ATHLETICS_STADIUM_COURSE.movingObstacles.length, 6);
+  for (const point of ATHLETICS_STADIUM_COURSE.route) {
+    assert.ok(Math.abs(point.x) <= ATHLETICS_COURSE_BOUNDS.limitX);
+    assert.ok(Math.abs(point.z) <= ATHLETICS_COURSE_BOUNDS.limitZ);
+  }
+  ATHLETICS_STADIUM_COURSE.checkpoints.forEach((progress, index, checkpoints) => {
+    assert.ok(progress > (checkpoints[index - 1] ?? -1));
+    assert.equal(progress, getAthleticsCheckpointRouteProgress(index + 1));
+  });
+  for (const shortcut of ATHLETICS_STADIUM_COURSE.shortcuts) {
+    assert.ok(shortcut.startProgress < shortcut.endProgress);
+    assert.ok(shortcut.surfaces.length >= 1 && shortcut.surfaces.length <= 4);
+  }
+  assert.equal(ATHLETICS_DEFAULT_TIME_LIMIT_SECONDS, 270);
   assert.equal(getAthleticsCheckpointProgress(0, 7), 0);
   assert.equal(getAthleticsCheckpointProgress(7, 7), 1);
   assert.equal(getAthleticsNextGateProgress({ questionIndex: 0, checkpointIndex: 0 }, 7), 1 / 7);
@@ -92,6 +114,30 @@ test("route projection is monotonic for authored points and rejects off-course s
   assert.equal(isAthleticsOnRoute({ ...summitApproach, y: 0 }), false);
 });
 
+test("authored shortcuts and moving platforms remain collision-backed and route-bounded", () => {
+  const shortcut = ATHLETICS_STADIUM_COURSE.shortcuts[1]!;
+  const shortcutPoint = shortcut.route[2]!;
+  const shortcutProgress = getAthleticsRouteProgress(shortcutPoint);
+  assert.ok(shortcutProgress >= shortcut.startProgress && shortcutProgress <= shortcut.endProgress);
+  assert.ok(isAthleticsOnRoute(shortcutPoint));
+  assert.equal(isAthleticsOnRoute({ ...shortcutPoint, y: shortcutPoint.y + 20 }), false);
+
+  const expectedStaticProxyCount = 4
+    + ATHLETICS_STADIUM_COURSE.surfaces.length
+    + ATHLETICS_STADIUM_COURSE.shortcuts.reduce((total, branch) => total + branch.surfaces.length, 0);
+  assert.equal(ATHLETICS_COLLISION_PROXIES.length, expectedStaticProxyCount);
+
+  const moving = ATHLETICS_STADIUM_COURSE.movingObstacles[0]!;
+  const initial = getAthleticsMovingObstaclePosition(moving, 0);
+  const quarterPeriod = getAthleticsMovingObstaclePosition(moving, moving.periodMs / 4);
+  assert.notEqual(`${initial.x}:${initial.y}:${initial.z}`, `${quarterPeriod.x}:${quarterPeriod.y}:${quarterPeriod.z}`);
+  const runtimeObstacles = getAthleticsObstacles(moving.periodMs / 4);
+  const movingProxy = runtimeObstacles.find((obstacle) => obstacle.id === moving.id);
+  assert.ok(movingProxy);
+  assert.equal(movingProxy?.kind, "rect");
+  assert.equal(movingProxy?.maxY, quarterPeriod.y + moving.height);
+});
+
 test("start lanes stay on the route and respawns land just behind the last safe checkpoint", () => {
   const left = getAthleticsStartPosition(0, 3);
   const right = getAthleticsStartPosition(2, 3);
@@ -103,6 +149,10 @@ test("start lanes stay on the route and respawns land just behind the last safe 
   assert.ok(isAthleticsOnRoute(respawn));
   assert.ok(getAthleticsRouteProgress(respawn) < getAthleticsCheckpointProgress(3, 7));
   assert.ok(getAthleticsRouteProgress(respawn) > getAthleticsCheckpointProgress(2, 7));
+
+  const authoredRespawn = getAthleticsRespawnPosition(3);
+  assert.ok(getAthleticsRouteProgress(authoredRespawn) < ATHLETICS_STADIUM_COURSE.checkpoints[2]!);
+  assert.ok(getAthleticsRouteProgress(authoredRespawn) > ATHLETICS_STADIUM_COURSE.checkpoints[1]!);
 });
 
 test("forty-player Athletics starts never overlap", () => {

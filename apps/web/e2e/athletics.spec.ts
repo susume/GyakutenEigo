@@ -19,9 +19,9 @@ test("Athletics sessions render Skyline Adventure Park instead of a combat map",
   await expect(page.locator(".arena-canvas")).toHaveAttribute("aria-label", "Skyline Adventure Park athletics course");
   const canvas = page.locator(".arena-canvas canvas");
   await expect(canvas).toHaveAttribute("data-player-x", "0.000");
-  await expect(canvas).toHaveAttribute("data-player-z", "214.000");
+  await expect(canvas).toHaveAttribute("data-player-z", "123.000");
   await expect(canvas).toHaveAttribute("data-player-ground-y", "0.000");
   await expect(page.locator(".athletics-hud")).toBeVisible({ timeout: 30_000 });
   await expect(page.getByLabel("Course route guide")).toBeVisible();
-  await expect(page.getByLabel("Course route guide")).toContainText(/Ready on the start line|GO — run through the cyan gate/u);
+  await expect(page.getByLabel("Course route guide")).toContainText(/Ready on the start pad|Jump to the first platform/u);
 });

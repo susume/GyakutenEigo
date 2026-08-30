@@ -52,6 +52,7 @@ import { ArenaPerformanceCapture, AutoGraphicsQualityController, type ArenaPerfo
 import { mountIronJunctionImportedAssets } from "./ironJunctionImportedAssets";
 import { mountDesertCitadelImportedAssets } from "./desertCitadelImportedAssets";
 import { mountTempleRunoffImportedAssets } from "./templeRunoffImportedAssets";
+import { mountAthleticsImportedAssets } from "./athleticsImportedAssets";
 import { getTempleRunoffReviewViewpoint } from "./templeRunoffReviewViewpoints";
 import {
   readGamePreferences,
@@ -612,6 +613,9 @@ export default function ArenaPreview({
       : Promise.resolve(null);
     const templeRunoffAssetsPromise = !isAthleticsMode && isTempleRunoff
       ? mountTempleRunoffImportedAssets({ scene, isFps })
+      : Promise.resolve(null);
+    const athleticsAssetsPromise = isAthleticsMode
+      ? mountAthleticsImportedAssets({ scene, detail: qualityConfig.detail, isFps })
       : Promise.resolve(null);
 
 
@@ -1484,6 +1488,7 @@ export default function ArenaPreview({
         templeRunoffArt?.dispose();
         void ironJunctionAssetsPromise.then((assets) => assets?.dispose());
         void desertCitadelAssetsPromise.then((assets) => assets?.dispose());
+        void athleticsAssetsPromise.then((assets) => assets?.dispose());
         fireControlRef.current = () => undefined;
         zoomControlRef.current = () => undefined;
         interactControlRef.current = () => undefined;
@@ -1593,6 +1598,7 @@ export default function ArenaPreview({
       void ironJunctionAssetsPromise.then((assets) => assets?.dispose());
       void desertCitadelAssetsPromise.then((assets) => assets?.dispose());
       void templeRunoffAssetsPromise.then((assets) => assets?.dispose());
+      void athleticsAssetsPromise.then((assets) => assets?.dispose());
       interactControlRef.current = () => undefined;
       jumpControlRef.current = () => undefined;
       questionControlRef.current = () => undefined;

@@ -166,7 +166,7 @@ import {
   ATHLETICS_MAX_ENERGY,
   ATHLETICS_PLAYER_EYE_HEIGHT,
   awardAthleticsEnergy,
-  getAthleticsCheckpointProgress,
+  getAthleticsCheckpointRouteProgress,
   getAthleticsGroundHeight,
   getAthleticsQuestionPoolIndex,
   getAthleticsQuestionsPerLap,
@@ -1154,7 +1154,7 @@ const startAthleticsRace = (session: GameSession) => {
     ...makeAnnouncement(
       "round_start",
       "Get set",
-      "Run the parkour course. Answer anytime to refill movement energy.",
+      "Jump from platform to platform. Answer anytime to refill movement energy.",
       `${Math.ceil(ATHLETICS_START_COUNTDOWN_MS / 1000)} seconds until GO · ${requiredLaps} ${requiredLaps === 1 ? "lap" : "laps"} · ${questionsPerLap} checkpoint ${questionsPerLap === 1 ? "question" : "questions"} per lap`,
       ATHLETICS_START_COUNTDOWN_MS
     ),
@@ -1243,7 +1243,7 @@ const updateAthleticsRace = (session: GameSession, player: PlayerSession, nowMs:
   if (!race || !athletics) return;
   if (race.status === "countdown" && nowMs >= Date.parse(race.startAt)) {
     race.status = "running";
-    session.announcement = makeAnnouncement("round_start", "GO", "Run the route. Answer anytime to refill movement energy.", undefined, 2_000);
+    session.announcement = makeAnnouncement("round_start", "GO", "Jump to the next platform. Answer anytime to refill movement energy.", undefined, 2_000);
     appendEvent(session, { type: "start", message: "Athletics Race is live." });
     broadcastSession(session);
   }
@@ -1366,7 +1366,7 @@ const respawnAthleticsPlayer = (session: GameSession, player: PlayerSession, ath
     athletics.laneIndex ?? 0
   );
   Object.assign(player, respawn, { jumping: false, crouching: false });
-  athletics.routeProgress = getAthleticsCheckpointProgress(athletics.lastSafeCheckpointIndex, ATHLETICS_CHECKPOINT_COUNT);
+  athletics.routeProgress = getAthleticsCheckpointRouteProgress(athletics.lastSafeCheckpointIndex);
   athletics.respawnPenaltyUntil = new Date(nowMs + ATHLETICS_RESPAWN_PENALTY_MS).toISOString();
   playerMoveTimestamps.set(player.id, nowMs);
   emitToPlayers(session, [player.id], "athletics_respawn", {

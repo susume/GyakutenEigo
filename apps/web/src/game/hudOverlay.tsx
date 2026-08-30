@@ -33,6 +33,8 @@ const formatRaceTime = (seconds: number) => {
   return `${Math.floor(safeSeconds / 60)}:${String(safeSeconds % 60).padStart(2, "0")}`;
 };
 
+const ATHLETICS_ONBOARDING_MAX_PROGRESS = 0.05;
+
 export const ArenaHudOverlay = ({
   hitPulse,
   hitConfirmPulse,
@@ -69,34 +71,40 @@ export const ArenaHudOverlay = ({
   athleticsHud?: AthleticsHudState;
 }) => athleticsHud ? (
   <>
+    {athleticsHud.status === "racing" && athleticsHud.checkpointIndex === 0 && athleticsHud.routeProgress < ATHLETICS_ONBOARDING_MAX_PROGRESS && (
+      <div className="athletics-onboarding" aria-label="Jump tutorial">
+        <strong>JUMP ONTO THE GLOWING PLATFORMS</strong>
+        <span>SPACE — JUMP · Tablet: tap JUMP</span>
+      </div>
+    )}
     <div className="athletics-hud" aria-label="Athletics race status">
       <div className="athletics-hud-topline">
         <span className="athletics-hud-kicker">Skyline Adventure Park</span>
         <strong>{athleticsHud.startRemainingSeconds > 0 ? `GO in ${athleticsHud.startRemainingSeconds}` : formatRaceTime(athleticsHud.remainingSeconds)}</strong>
       </div>
       <div className="athletics-hud-mainline">
-        <strong>{athleticsHud.status === "finished" ? `Finished #${athleticsHud.rank}` : athleticsHud.energy <= athleticsHud.criticalEnergy ? "Energy low" : "Keep climbing"}</strong>
+        <strong>{athleticsHud.status === "finished" ? `Finished #${athleticsHud.rank}` : athleticsHud.energy <= athleticsHud.criticalEnergy ? "Energy low" : "Jump forward"}</strong>
         <span>{athleticsHud.sectionLabel}</span>
       </div>
       <span className="athletics-hud-objective">{athleticsHud.objectiveText}</span>
       <div className="athletics-route-guide" aria-label="Course route guide">
         <span className="athletics-route-guide-icon" aria-hidden="true">
-          {athleticsHud.status === "finished" ? "★" : athleticsHud.routeProgress <= 0.03 && athleticsHud.checkpointIndex === 0 ? "▶" : "→"}
+          {athleticsHud.status === "finished" ? "★" : athleticsHud.routeProgress < 0.075 && athleticsHud.checkpointIndex === 0 ? "↑" : "→"}
         </span>
         <span>
           <strong>
             {athleticsHud.status === "finished"
               ? "Summit finish reached"
-              : athleticsHud.routeProgress <= 0.03 && athleticsHud.checkpointIndex === 0
-                ? athleticsHud.startRemainingSeconds > 0 ? "Ready on the start line" : "GO — run through the cyan gate"
-                : `Next: Checkpoint ${Math.min(athleticsHud.checkpointCount, athleticsHud.checkpointIndex + 1)}`}
+              : athleticsHud.routeProgress < 0.075 && athleticsHud.checkpointIndex === 0
+                ? athleticsHud.startRemainingSeconds > 0 ? "Ready on the start pad" : "Jump to the first platform"
+                : `Next landing · Checkpoint ${Math.min(athleticsHud.checkpointCount, athleticsHud.checkpointIndex + 1)}`}
           </strong>
           <small>
             {athleticsHud.status === "finished"
               ? "Race complete"
-              : athleticsHud.routeProgress <= 0.03 && athleticsHud.checkpointIndex === 0
-                ? athleticsHud.startRemainingSeconds > 0 ? "Face the arrows and wait for GO" : "Follow the lane arrows to Checkpoint 1"
-                : "Follow the glowing chevrons to keep climbing"}
+              : athleticsHud.routeProgress < 0.075 && athleticsHud.checkpointIndex === 0
+                ? athleticsHud.startRemainingSeconds > 0 ? "Wait for GO, then tap JUMP" : "Use the glowing edge and land safely"
+                : "Read the next glowing edge; answer on any safe platform"}
           </small>
         </span>
       </div>
@@ -116,7 +124,7 @@ export const ArenaHudOverlay = ({
           aria-keyshortcuts="Q"
         >
           <span className="athletics-answer-icon" aria-hidden="true">?</span>
-          <span><strong>Answer Question</strong><small>Correct answers add +250 energy</small></span>
+          <span><strong>Answer Question</strong><small>Correct answers add +220 energy</small></span>
           <kbd>Q</kbd>
         </button>
       )}
@@ -150,7 +158,7 @@ export const ArenaHudOverlay = ({
       {onJumpFromTouch && (
         <div className="touch-action-group">
           <button type="button" className="touch-jump" disabled={controlsDisabled} aria-label="Jump" onPointerDown={(event) => { event.preventDefault(); onJumpFromTouch(); }}>
-            <kbd aria-hidden="true">Space</kbd>
+            <kbd aria-hidden="true">SPACE</kbd>
             Jump
           </button>
         </div>

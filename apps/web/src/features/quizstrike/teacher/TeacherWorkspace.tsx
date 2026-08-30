@@ -5,6 +5,7 @@ import {
   calculateClassAccuracy,
   canStartRound,
   DEFAULT_SESSION_SETTINGS,
+  ATHLETICS_DEFAULT_TIME_LIMIT_SECONDS,
   getRoundRemainingSeconds,
   isRoundPreparationPhase,
   isZombieSelectionPhase,
@@ -1958,7 +1959,7 @@ function SessionManager({
                     { id: "zombie", title: "Zombie Survival", description: "Answer for energy, stay alive, and keep the team moving.", icon: <img src="/assets/zombie/zombie-head.png" alt="" /> },
                     { id: "classic", title: "Team Tag", description: "Answer questions, move through the arena, and tag the other team.", icon: <img src="/assets/mode-icons/tag.png" alt="" /> },
                     { id: "flag", title: "Capture the Flag", description: "Answer to earn an advantage, then capture the flag as a team.", icon: <img src="/assets/mode-icons/flag.png" alt="" /> },
-                    { id: "athletics", title: "Athletics Race", description: "Run a first-person amusement-park course. Answer anytime to refill movement energy.", icon: <Footprints className="mode-choice-icon-athletics" size={22} aria-hidden="true" /> }
+                    { id: "athletics", title: "Athletics Race", description: "Jump through a vertical amusement park. Answer anytime to refill movement energy.", icon: <Footprints className="mode-choice-icon-athletics" size={22} aria-hidden="true" /> }
                   ] as const).map((mode) => {
                     const selected = settings.gameMode === mode.id;
                     return (
@@ -1968,15 +1969,25 @@ function SessionManager({
                         className={`mode-choice mode-${mode.id}${selected ? " selected" : ""}`}
                         aria-label={`${mode.title}: ${mode.description}`}
                         aria-pressed={selected}
-                        onClick={() => setSettings({
-                          ...settings,
-                          gameMode: mode.id,
-                          mapId: mode.id === "athletics"
-                            ? ATHLETICS_ARENA_MAP_ID
-                            : settings.mapId === ATHLETICS_ARENA_MAP_ID
-                              ? "desert_citadel"
-                              : settings.mapId
-                        })}
+                        onClick={() => {
+                          const switchingToAthletics = mode.id === "athletics" && settings.gameMode !== "athletics";
+                          setSettings({
+                            ...settings,
+                            gameMode: mode.id,
+                            mapId: mode.id === "athletics"
+                              ? ATHLETICS_ARENA_MAP_ID
+                              : settings.mapId === ATHLETICS_ARENA_MAP_ID
+                                ? "desert_citadel"
+                                : settings.mapId,
+                            roundDurationSeconds: switchingToAthletics
+                              ? ATHLETICS_DEFAULT_TIME_LIMIT_SECONDS
+                              : settings.roundDurationSeconds
+                          });
+                          if (switchingToAthletics) {
+                            setSettingInputs((current) => ({ ...current, roundDurationSeconds: String(ATHLETICS_DEFAULT_TIME_LIMIT_SECONDS) }));
+                            setInvalidSettings((current) => ({ ...current, roundDurationSeconds: false }));
+                          }
+                        }}
                       >
                         <span className="mode-choice-art" aria-hidden="true">{mode.icon}</span>
                         <strong>{mode.title}</strong>
@@ -1995,9 +2006,9 @@ function SessionManager({
                   <div className="athletics-course-card">
                     <div className="athletics-course-card-heading">
                       <div><span className="eyebrow">Selected course</span><h4>{ATHLETICS_STADIUM_COURSE.title}</h4><p>{ATHLETICS_STADIUM_COURSE.subtitle}</p></div>
-                      <span className="athletics-course-badge">{ATHLETICS_STADIUM_COURSE.sections.length} zones · {ATHLETICS_STADIUM_COURSE.checkpoints.length} checkpoints</span>
+                      <span className="athletics-course-badge">{ATHLETICS_STADIUM_COURSE.sections.length} chapters · {ATHLETICS_STADIUM_COURSE.checkpoints.length} checkpoints · {ATHLETICS_STADIUM_COURSE.shortcuts.length} shortcuts</span>
                     </div>
-                    <div className="athletics-course-sections" aria-label="Skyline Adventure Park zones">
+                    <div className="athletics-course-sections" aria-label="Skyline Adventure Park chapters">
                       {ATHLETICS_STADIUM_COURSE.sections.map((section, index) => (
                         <div key={section.id} className={`athletics-course-section athletics-accent-${section.accent}`}>
                           <span>{String(index + 1).padStart(2, "0")}</span><strong>{section.label}</strong><small>{section.description}</small>
@@ -2350,7 +2361,7 @@ function SessionManager({
               <span>{gameModeLabel(selectedSession.settings.gameMode)}</span>
               <span>{selectedSession.settings.gameMode === "athletics" ? ATHLETICS_STADIUM_COURSE.title : arenaMapLabel(selectedSession.settings.mapId)}</span>
               {selectedSession.settings.gameMode === "flag" && <span>Round {selectedSession.currentRound}/{selectedSession.settings.roundCount}</span>}
-              <span>{selectedSession.settings.gameMode === "athletics" ? `Race · ${selectedSession.athletics?.requiredLaps ?? selectedSession.settings.athleticsCourseLaps ?? 1} ${(selectedSession.athletics?.requiredLaps ?? selectedSession.settings.athleticsCourseLaps ?? 1) === 1 ? "lap" : "laps"} · continuous course` : `Time ${formatDuration(remainingSeconds)}`}</span>
+              <span>{selectedSession.settings.gameMode === "athletics" ? `Race · ${selectedSession.athletics?.requiredLaps ?? selectedSession.settings.athleticsCourseLaps ?? 1} ${(selectedSession.athletics?.requiredLaps ?? selectedSession.settings.athleticsCourseLaps ?? 1) === 1 ? "lap" : "laps"} · ${ATHLETICS_STADIUM_COURSE.sections.length} chapters` : `Time ${formatDuration(remainingSeconds)}`}</span>
               <span>{activePlayers}/{selectedSession.players.length || 0} active</span>
               <span>{activeLearners} learner{activeLearners === 1 ? "" : "s"}</span>
               {botPlayers.length > 0 && <span>{botPlayers.length} bot{botPlayers.length === 1 ? "" : "s"}</span>}

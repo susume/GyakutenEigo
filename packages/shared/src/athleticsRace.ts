@@ -77,6 +77,17 @@ export interface AthleticsCourseSurface {
   material?: "wood" | "metal" | "stone" | "accent" | "cloth";
 }
 
+/** Optional authored branch that rejoins the main line later. */
+export interface AthleticsCourseShortcut {
+  id: string;
+  label: string;
+  startProgress: number;
+  endProgress: number;
+  route: readonly AthleticsRoutePoint[];
+  surfaces: readonly AthleticsCourseSurface[];
+  routeWidth?: number;
+}
+
 export type AthleticsMovingAxis = "x" | "y" | "z";
 
 export interface AthleticsMovingObstacle {
@@ -104,16 +115,17 @@ export interface AthleticsCourseDefinition {
   sections: readonly AthleticsCourseSection[];
   checkpoints: readonly number[];
   surfaces: readonly AthleticsCourseSurface[];
+  shortcuts: readonly AthleticsCourseShortcut[];
   movingObstacles: readonly AthleticsMovingObstacle[];
   routeWidth: number;
   finishThreshold: number;
   bounds: { limitX: number; limitZ: number };
 }
 
-/** The park is intentionally much larger than the combat arenas. */
-export const ATHLETICS_COURSE_BOUNDS = { limitX: 228, limitZ: 226 } as const;
+/** Compact vertical footprint: the playable course stays inside a 280 x 280 park. */
+export const ATHLETICS_COURSE_BOUNDS = { limitX: 140, limitZ: 140 } as const;
 export const ATHLETICS_PLAYER_EYE_HEIGHT = 4.21;
-export const ATHLETICS_CHECKPOINT_COUNT = 9;
+export const ATHLETICS_CHECKPOINT_COUNT = 6;
 export const ATHLETICS_GROUND_SURFACE_SLAB_HEIGHT = 0.55;
 export const ATHLETICS_SURFACE_SLAB_HEIGHT = 1.1;
 /** Falls farther below the authored lane than a normal jump can recover from. */
@@ -124,10 +136,10 @@ export const ATHLETICS_MAX_RECOVERABLE_ROUTE_DROP = 1.75;
  * server-owned answer validation and question history with Zombie Mode.
  */
 export const ATHLETICS_MAX_ENERGY = 1000;
-export const ATHLETICS_CORRECT_ENERGY = 250;
+export const ATHLETICS_CORRECT_ENERGY = 220;
 export const ATHLETICS_WALK_DRAIN_PER_SECOND = 2.2;
-export const ATHLETICS_RUN_DRAIN_PER_SECOND = 7.2;
-export const ATHLETICS_JUMP_ENERGY_COST = 36;
+export const ATHLETICS_RUN_DRAIN_PER_SECOND = 6.4;
+export const ATHLETICS_JUMP_ENERGY_COST = 30;
 export const ATHLETICS_CRITICAL_ENERGY = 150;
 
 const clamp01 = (value: number) => Math.min(1, Math.max(0, Number.isFinite(value) ? value : 0));
@@ -182,53 +194,83 @@ const routeNormalAtProgress = (progress: number, route: readonly AthleticsRouteP
 };
 
 /**
- * The route is a long, visible switchback through the park. It deliberately
- * revisits the same x/z neighbourhood at different y values around the
- * Ferris wheel; route projection uses y when the caller supplies it so those
- * crossings cannot become ranking shortcuts.
+ * Six dense, hand-authored parkour chapters climb through the park. The route
+ * revisits a few attraction sightlines at different heights, so projection
+ * uses y when the caller supplies it and cannot turn a visual crossing into a
+ * ranking shortcut.
  */
 const ATHLETICS_ROUTE: readonly AthleticsRoutePoint[] = [
-  { x: 0, z: 214, y: 0 },
-  { x: -28, z: 184, y: 0 },
-  { x: 28, z: 152, y: 0 },
-  { x: -34, z: 120, y: 0 },
-  { x: 0, z: 90, y: 0 },
-  { x: 70, z: 72, y: 4 },
-  { x: 140, z: 66, y: 7 },
-  { x: 190, z: 34, y: 10 },
-  { x: 150, z: 0, y: 10 },
-  { x: 95, z: -18, y: 13 },
-  { x: 40, z: -45, y: 16 },
-  { x: -30, z: -32, y: 19 },
-  { x: -90, z: -60, y: 21 },
-  { x: -160, z: -10, y: 25 },
-  { x: -180, z: 45, y: 28 },
-  { x: -128, z: 80, y: 32 },
-  { x: -60, z: 60, y: 34 },
-  { x: -10, z: 95, y: 37 },
-  { x: 70, z: 100, y: 40 },
-  { x: 150, z: 130, y: 43 },
-  { x: 190, z: 165, y: 46 },
-  { x: 140, z: 195, y: 49 },
-  { x: 70, z: 178, y: 52 },
-  { x: 20, z: 214, y: 56 },
-  { x: -30, z: 190, y: 58 },
-  { x: -80, z: 150, y: 61 },
-  { x: -150, z: 170, y: 64 },
-  { x: -205, z: 125, y: 67 },
-  { x: -180, z: 70, y: 70 },
-  { x: -120, z: 30, y: 73 },
-  { x: -80, z: -20, y: 76 },
-  { x: -120, z: -80, y: 80 },
-  { x: -180, z: -105, y: 83 },
-  { x: -140, z: -150, y: 86 },
-  { x: -60, z: -175, y: 89 },
-  { x: 20, z: -155, y: 92 },
-  { x: 100, z: -175, y: 95 },
-  { x: 155, z: -135, y: 99 },
-  { x: 175, z: -70, y: 102 },
-  { x: 120, z: -30, y: 106 },
-  { x: 60, z: -10, y: 110 }
+  // Park Entrance: 0-10
+  { x: 0, z: 123, y: 0 },
+  { x: -8, z: 109, y: 1 },
+  { x: 10, z: 96, y: 3 },
+  { x: -3, z: 83, y: 5 },
+  { x: 13, z: 69, y: 7 },
+  { x: 0, z: 56, y: 9 },
+  { x: 17, z: 43, y: 11 },
+  { x: 4, z: 31, y: 13 },
+  { x: -13, z: 19, y: 15 },
+  { x: 0, z: 8, y: 17 },
+  { x: -19, z: -8, y: 19 },
+  // Midway Mayhem: 11-21
+  { x: -33, z: -21, y: 21 },
+  { x: -17, z: -35, y: 23 },
+  { x: 2, z: -29, y: 25 },
+  { x: 19, z: -40, y: 27 },
+  { x: 33, z: -56, y: 29 },
+  { x: 15, z: -69, y: 31 },
+  { x: -6, z: -61, y: 33 },
+  { x: -23, z: -75, y: 35 },
+  { x: -42, z: -63, y: 37 },
+  { x: -52, z: -48, y: 39 },
+  // Ride District: 22-32
+  { x: -38, z: -33, y: 41 },
+  { x: -21, z: -19, y: 43 },
+  { x: -4, z: -29, y: 45 },
+  { x: 15, z: -17, y: 47 },
+  { x: 33, z: -4, y: 49 },
+  { x: 50, z: 10, y: 51 },
+  { x: 40, z: 27, y: 53 },
+  { x: 23, z: 38, y: 55 },
+  { x: 4, z: 31, y: 57 },
+  { x: -13, z: 44, y: 59 },
+  { x: -29, z: 60, y: 61 },
+  // Ferris & Coaster: 33-43
+  { x: -48, z: 48, y: 63 },
+  { x: -63, z: 35, y: 65 },
+  { x: -79, z: 19, y: 67 },
+  { x: -69, z: 2, y: 69 },
+  { x: -84, z: -13, y: 71 },
+  { x: -100, z: 0, y: 73 },
+  { x: -88, z: 19, y: 75 },
+  { x: -71, z: 33, y: 77 },
+  { x: -54, z: 21, y: 79 },
+  { x: -38, z: 6, y: 81 },
+  { x: -21, z: -8, y: 83 },
+  // Drop Tower: 44-54
+  { x: -4, z: -23, y: 85 },
+  { x: 13, z: -36, y: 86.5 },
+  { x: 31, z: -25, y: 88 },
+  { x: 46, z: -40, y: 89.5 },
+  { x: 61, z: -56, y: 91 },
+  { x: 48, z: -73, y: 92.5 },
+  { x: 29, z: -84, y: 94 },
+  { x: 10, z: -75, y: 95.5 },
+  { x: -8, z: -90, y: 97 },
+  { x: -27, z: -104, y: 98.5 },
+  { x: -46, z: -92, y: 100 },
+  // Sky Park Summit: 55-64
+  { x: -61, z: -108, y: 101 },
+  { x: -81, z: -94, y: 102 },
+  { x: -98, z: -109, y: 103 },
+  { x: -113, z: -94, y: 104 },
+  { x: -104, z: -75, y: 105 },
+  { x: -84, z: -65, y: 106 },
+  { x: -65, z: -77, y: 107 },
+  { x: -46, z: -61, y: 108 },
+  { x: -27, z: -73, y: 109 },
+  { x: -8, z: -58, y: 109.5 },
+  { x: 13, z: -44, y: 110 }
 ];
 
 const sectionAt = (startIndex: number, endIndex: number, id: string, label: string, description: string, accent: AthleticsAccent, landmark: string): AthleticsCourseSection => ({
@@ -242,68 +284,173 @@ const sectionAt = (startIndex: number, endIndex: number, id: string, label: stri
 });
 
 const ATHLETICS_SECTIONS: readonly AthleticsCourseSection[] = [
-  sectionAt(0, 4, "park-entrance", "Park Entrance", "Start in the plaza, learn the rhythm, and jump the ticket line.", "cyan", "Grand entrance arch"),
-  sectionAt(4, 8, "sunset-midway", "Sunset Midway", "Stalls, awnings, and bright platforms pull you above the midway.", "orange", "Carnival stalls"),
-  sectionAt(8, 12, "bumper-car-arena", "Bumper-Car Arena", "Thread the padded barriers and climb the lighting rig.", "lime", "Bumper-car bowl"),
-  sectionAt(12, 16, "mirror-funhouse", "Mirror Funhouse", "Bounce, zig-zag, and read the next platform through the color.", "violet", "Mirror funhouse"),
-  sectionAt(16, 20, "ride-pier", "Ride Pier", "Cross the ride supports and catch the rising service platforms.", "pink", "Swing-ride pier"),
-  sectionAt(20, 24, "ferris-wheel", "Ferris Wheel", "Use the wheel's maintenance decks for a dramatic skyline view.", "gold", "Ferris wheel landmark"),
-  sectionAt(24, 28, "coaster-yard", "Roller-Coaster Yard", "Run trackside, take the wide turns, and keep climbing.", "cyan", "Coaster maintenance loop"),
-  sectionAt(28, 32, "drop-tower", "Drop Tower", "A tall spiral of platforms turns the fall below into a view.", "orange", "Drop tower"),
-  sectionAt(32, 36, "sky-park", "Sky Park", "Balloons, rooftop bridges, and open air frame the final push.", "lime", "Sky bridges"),
-  sectionAt(36, 40, "finish-tower", "Finish Tower", "Make the final jumps and sprint beneath the summit flags.", "gold", "Summit finish tower")
+  sectionAt(0, 10, "park-entrance", "Park Entrance", "Learn the jump rhythm on wide ticket-plaza landings.", "cyan", "Grand entrance"),
+  sectionAt(10, 21, "midway-mayhem", "Midway Mayhem", "Thread awnings and stalls while the gaps start to tighten.", "orange", "Food stalls"),
+  sectionAt(21, 32, "ride-district", "Ride District", "Use the ride decks and a moving lift to gain the skyline.", "lime", "Ride decks"),
+  sectionAt(32, 43, "ferris-coaster", "Ferris & Coaster", "Make the hero jump from the Ferris deck to the coaster maintenance line.", "gold", "Ferris wheel and coaster"),
+  sectionAt(43, 54, "drop-tower", "Drop Tower", "Climb the tower service line with forgiving, readable landings.", "violet", "Drop tower"),
+  sectionAt(54, 64, "sky-park-summit", "Sky Park Summit", "Cross the final rooftop chain and finish above the whole park.", "pink", "Summit flags")
 ];
 
-const makeRouteSurfaces = (route: readonly AthleticsRoutePoint[]) => {
-  const surfaces: AthleticsCourseSurface[] = [];
-  const { total } = routeLengths({ route });
-  // A platform every ~18 world units keeps the long route active. Every
-  // third landing is deliberately shorter so a clean lap contains dozens
-  // of readable jumps without turning the course into a precision platformer.
-  const spacing = 18;
-  let distance = 0;
-  let sampleIndex = 0;
-  while (distance <= total + 0.01) {
-    const point = routePointAtDistance(distance, route);
-    const progress = total <= 0 ? 0 : distance / total;
-    const section = ATHLETICS_SECTIONS.find((candidate) => progress <= candidate.endProgress) ?? ATHLETICS_SECTIONS.at(-1)!;
-    const isSafe = sampleIndex % 12 === 0 || sampleIndex === 0;
-    const isGap = sampleIndex > 0 && sampleIndex % 3 === 0;
-    const width = isSafe ? 25 : isGap ? 17 : 20;
-    const depth = isSafe ? 24 : isGap ? 13 : 18;
-    const kind: AthleticsSurfaceKind = sampleIndex % 10 === 3
-      ? "checkpoint"
-      : sampleIndex % 9 === 4
-        ? "stair"
-        : "platform";
-    const tangent = routeNormalAtProgress(progress, route);
-    surfaces.push({
-      id: `route-platform-${String(sampleIndex + 1).padStart(3, "0")}`,
-      kind,
-      x: Number(point.x.toFixed(2)),
-      z: Number(point.z.toFixed(2)),
-      y: Number(point.y.toFixed(2)),
-      width,
-      depth,
-      rotationY: Math.atan2(tangent.z, tangent.x) + Math.PI / 2,
-      safe: isSafe,
-      material: section.accent === "gold" || section.accent === "orange" ? "wood" : "metal"
-    });
-    sampleIndex += 1;
-    distance += spacing;
-  }
-  return surfaces;
+type AuthoredSurfaceSpec = Pick<AthleticsCourseSurface, "kind" | "width" | "depth" | "safe" | "material">;
+
+/** Explicit surface tuning; there is no modulo-based sampling or auto-fill. */
+const ATHLETICS_SURFACE_SPECS: readonly AuthoredSurfaceSpec[] = [
+  // Park Entrance: wide, forgiving teaching landings.
+  { kind: "platform", width: 28, depth: 22, safe: true, material: "stone" },
+  { kind: "platform", width: 21, depth: 17, safe: false, material: "stone" },
+  { kind: "platform", width: 20, depth: 17, safe: false, material: "stone" },
+  { kind: "platform", width: 19, depth: 16, safe: false, material: "accent" },
+  { kind: "stair", width: 21, depth: 15, safe: true, material: "accent" },
+  { kind: "platform", width: 19, depth: 16, safe: false, material: "accent" },
+  { kind: "platform", width: 20, depth: 16, safe: false, material: "accent" },
+  { kind: "ramp", width: 21, depth: 17, safe: false, material: "accent" },
+  { kind: "platform", width: 19, depth: 16, safe: false, material: "metal" },
+  { kind: "platform", width: 21, depth: 17, safe: false, material: "metal" },
+  { kind: "checkpoint", width: 28, depth: 22, safe: true, material: "accent" },
+  // Midway Mayhem.
+  { kind: "platform", width: 20, depth: 16, safe: false, material: "wood" },
+  { kind: "platform", width: 18, depth: 15, safe: false, material: "wood" },
+  { kind: "platform", width: 19, depth: 15, safe: false, material: "metal" },
+  { kind: "stair", width: 22, depth: 17, safe: true, material: "wood" },
+  { kind: "platform", width: 18, depth: 15, safe: false, material: "wood" },
+  { kind: "platform", width: 18, depth: 15, safe: false, material: "metal" },
+  { kind: "platform", width: 18, depth: 15, safe: false, material: "wood" },
+  { kind: "ramp", width: 20, depth: 15, safe: false, material: "wood" },
+  { kind: "platform", width: 18, depth: 15, safe: false, material: "metal" },
+  { kind: "platform", width: 20, depth: 16, safe: false, material: "wood" },
+  { kind: "checkpoint", width: 28, depth: 22, safe: true, material: "accent" },
+  // Ride District.
+  { kind: "platform", width: 19, depth: 16, safe: false, material: "metal" },
+  { kind: "platform", width: 18, depth: 15, safe: false, material: "metal" },
+  { kind: "platform", width: 18, depth: 15, safe: false, material: "metal" },
+  { kind: "stair", width: 20, depth: 15, safe: true, material: "metal" },
+  { kind: "platform", width: 19, depth: 15, safe: false, material: "accent" },
+  { kind: "platform", width: 18, depth: 15, safe: false, material: "metal" },
+  { kind: "ramp", width: 21, depth: 16, safe: false, material: "accent" },
+  { kind: "platform", width: 18, depth: 15, safe: false, material: "metal" },
+  { kind: "platform", width: 19, depth: 15, safe: false, material: "accent" },
+  { kind: "platform", width: 20, depth: 16, safe: false, material: "metal" },
+  { kind: "checkpoint", width: 28, depth: 22, safe: true, material: "accent" },
+  // Ferris & Coaster.
+  { kind: "platform", width: 20, depth: 16, safe: false, material: "metal" },
+  { kind: "platform", width: 18, depth: 15, safe: false, material: "metal" },
+  { kind: "stair", width: 20, depth: 16, safe: true, material: "metal" },
+  { kind: "platform", width: 18, depth: 15, safe: false, material: "accent" },
+  { kind: "platform", width: 18, depth: 15, safe: false, material: "metal" },
+  { kind: "ramp", width: 21, depth: 16, safe: false, material: "accent" },
+  { kind: "platform", width: 18, depth: 15, safe: false, material: "metal" },
+  { kind: "platform", width: 19, depth: 15, safe: false, material: "metal" },
+  { kind: "stair", width: 20, depth: 15, safe: true, material: "metal" },
+  { kind: "platform", width: 19, depth: 16, safe: false, material: "accent" },
+  { kind: "checkpoint", width: 28, depth: 22, safe: true, material: "accent" },
+  // Drop Tower.
+  { kind: "platform", width: 20, depth: 16, safe: false, material: "metal" },
+  { kind: "platform", width: 18, depth: 15, safe: false, material: "metal" },
+  { kind: "ramp", width: 20, depth: 16, safe: false, material: "accent" },
+  { kind: "platform", width: 18, depth: 15, safe: false, material: "metal" },
+  { kind: "stair", width: 20, depth: 16, safe: true, material: "metal" },
+  { kind: "platform", width: 18, depth: 15, safe: false, material: "accent" },
+  { kind: "platform", width: 18, depth: 15, safe: false, material: "metal" },
+  { kind: "platform", width: 19, depth: 16, safe: false, material: "accent" },
+  { kind: "platform", width: 18, depth: 15, safe: false, material: "metal" },
+  { kind: "stair", width: 20, depth: 16, safe: true, material: "metal" },
+  { kind: "checkpoint", width: 28, depth: 22, safe: true, material: "accent" },
+  // Sky Park Summit.
+  { kind: "platform", width: 20, depth: 16, safe: false, material: "accent" },
+  { kind: "platform", width: 18, depth: 15, safe: false, material: "metal" },
+  { kind: "platform", width: 18, depth: 15, safe: false, material: "accent" },
+  { kind: "stair", width: 20, depth: 16, safe: true, material: "accent" },
+  { kind: "platform", width: 18, depth: 15, safe: false, material: "metal" },
+  { kind: "ramp", width: 21, depth: 16, safe: false, material: "accent" },
+  { kind: "platform", width: 18, depth: 15, safe: false, material: "metal" },
+  { kind: "platform", width: 19, depth: 15, safe: false, material: "accent" },
+  { kind: "platform", width: 20, depth: 16, safe: false, material: "metal" },
+  { kind: "checkpoint", width: 30, depth: 24, safe: true, material: "accent" }
+];
+
+const makeAuthoredSurfaces = (route: readonly AthleticsRoutePoint[], specs: readonly AuthoredSurfaceSpec[]) => {
+  if (route.length !== specs.length) throw new Error(`Athletics route/surface authoring mismatch: ${route.length} route points, ${specs.length} specs`);
+  return route.map((point, index) => ({
+    ...specs[index]!,
+    id: `route-platform-${String(index + 1).padStart(3, "0")}`,
+    x: point.x,
+    z: point.z,
+    y: point.y
+  } satisfies AthleticsCourseSurface));
 };
 
-const ATHLETICS_SURFACES = makeRouteSurfaces(ATHLETICS_ROUTE);
+const ATHLETICS_SURFACES = makeAuthoredSurfaces(ATHLETICS_ROUTE, ATHLETICS_SURFACE_SPECS);
+const ATHLETICS_CHECKPOINTS = [10, 21, 32, 43, 54, 64].map((index) => routeProgressAtIndex(ATHLETICS_ROUTE, index));
+
+const shortcutSurface = (
+  id: string,
+  kind: AthleticsSurfaceKind,
+  x: number,
+  z: number,
+  y: number,
+  width: number,
+  depth: number,
+  material: AthleticsCourseSurface["material"] = "accent"
+): AthleticsCourseSurface => ({ id, kind, x, z, y, width, depth, safe: false, material });
+
+const ATHLETICS_SHORTCUTS: readonly AthleticsCourseShortcut[] = [
+  {
+    id: "midway-service-cut",
+    label: "Midway service cut",
+    startProgress: routeProgressAtIndex(ATHLETICS_ROUTE, 12),
+    endProgress: routeProgressAtIndex(ATHLETICS_ROUTE, 16),
+    route: [ATHLETICS_ROUTE[12]!, { x: -1, z: -48, y: 26 }, ATHLETICS_ROUTE[16]!],
+    surfaces: [shortcutSurface("shortcut-midway-service-01", "platform", -1, -48, 26, 17, 13, "wood")],
+    routeWidth: 12
+  },
+  {
+    id: "ferris-maintenance-cut",
+    label: "Ferris maintenance cut",
+    startProgress: routeProgressAtIndex(ATHLETICS_ROUTE, 34),
+    endProgress: routeProgressAtIndex(ATHLETICS_ROUTE, 39),
+    route: [
+      ATHLETICS_ROUTE[34]!,
+      { x: -82, z: 45, y: 68 },
+      { x: -101, z: 30, y: 71 },
+      { x: -108, z: 9, y: 73 },
+      ATHLETICS_ROUTE[39]!
+    ],
+    surfaces: [
+      shortcutSurface("shortcut-ferris-maintenance-01", "platform", -82, 45, 68, 16, 13, "metal"),
+      shortcutSurface("shortcut-ferris-maintenance-02", "stair", -101, 30, 71, 17, 13, "accent"),
+      shortcutSurface("shortcut-ferris-maintenance-03", "platform", -108, 9, 73, 16, 13, "metal")
+    ],
+    routeWidth: 12
+  },
+  {
+    id: "drop-tower-rooftop-cut",
+    label: "Drop tower rooftop cut",
+    startProgress: routeProgressAtIndex(ATHLETICS_ROUTE, 47),
+    endProgress: routeProgressAtIndex(ATHLETICS_ROUTE, 52),
+    route: [
+      ATHLETICS_ROUTE[47]!,
+      { x: 79, z: -70, y: 93 },
+      { x: 61, z: -91, y: 96 },
+      { x: 24, z: -101, y: 98 },
+      ATHLETICS_ROUTE[52]!
+    ],
+    surfaces: [
+      shortcutSurface("shortcut-drop-rooftop-01", "platform", 79, -70, 93, 17, 13, "accent"),
+      shortcutSurface("shortcut-drop-rooftop-02", "ramp", 61, -91, 96, 18, 13, "metal"),
+      shortcutSurface("shortcut-drop-rooftop-03", "platform", 24, -101, 98, 17, 13, "accent")
+    ],
+    routeWidth: 12
+  }
+];
 
 const ATHLETICS_MOVING_OBSTACLES: readonly AthleticsMovingObstacle[] = [
-  { id: "midway-sun-platform", kind: "platform", x: 118, z: 38, y: 8, width: 16, depth: 14, height: 1.2, axis: "x", amplitude: 16, periodMs: 5200, phaseMs: 300, material: "wood", jumpable: true },
-  { id: "bumper-lighting-bridge", kind: "barrier", x: -8, z: -48, y: 19, width: 18, depth: 4, height: 1.2, axis: "z", amplitude: 10, periodMs: 4300, phaseMs: 1100, material: "accent", jumpable: true },
-  { id: "funhouse-lift", kind: "elevator", x: -145, z: 28, y: 27, width: 18, depth: 16, height: 1.2, axis: "y", amplitude: 8, periodMs: 6200, phaseMs: 900, material: "metal", jumpable: true },
-  { id: "ride-pier-ferry", kind: "platform", x: 112, z: 113, y: 42, width: 17, depth: 14, height: 1.2, axis: "x", amplitude: 14, periodMs: 4700, phaseMs: 1500, material: "wood", jumpable: true },
-  { id: "coaster-service-lift", kind: "elevator", x: -144, z: 145, y: 63, width: 18, depth: 15, height: 1.2, axis: "y", amplitude: 7, periodMs: 5800, phaseMs: 200, material: "metal", jumpable: true },
-  { id: "sky-park-crossing", kind: "platform", x: 38, z: -164, y: 93, width: 20, depth: 13, height: 1.2, axis: "z", amplitude: 14, periodMs: 5100, phaseMs: 700, material: "accent", jumpable: true }
+  { id: "midway-swing-platform", kind: "platform", x: 20, z: -49, y: 27.5, width: 15, depth: 13, height: 1.2, axis: "x", amplitude: 7, periodMs: 4200, phaseMs: 300, material: "wood", jumpable: true },
+  { id: "ride-district-lift", kind: "elevator", x: 41, z: 24, y: 50, width: 16, depth: 13, height: 1.2, axis: "y", amplitude: 5, periodMs: 5600, phaseMs: 900, material: "metal", jumpable: true },
+  { id: "ferris-gondola-crossing", kind: "barrier", x: -79, z: 17, y: 68, width: 14, depth: 4, height: 1.4, axis: "z", amplitude: 7, periodMs: 3900, phaseMs: 1100, material: "accent", jumpable: true },
+  { id: "coaster-maintenance-cart", kind: "barrier", x: -56, z: 13, y: 78.5, width: 13, depth: 4, height: 1.4, axis: "x", amplitude: 8, periodMs: 4700, phaseMs: 1500, material: "metal", jumpable: true },
+  { id: "drop-tower-lift", kind: "elevator", x: 45, z: -52, y: 90, width: 16, depth: 13, height: 1.2, axis: "y", amplitude: 5.5, periodMs: 6000, phaseMs: 200, material: "metal", jumpable: true },
+  { id: "summit-crossing-platform", kind: "platform", x: -59, z: -72, y: 106, width: 17, depth: 13, height: 1.2, axis: "z", amplitude: 6, periodMs: 5100, phaseMs: 700, material: "accent", jumpable: true }
 ];
 
 export const ATHLETICS_STADIUM_COURSE: AthleticsCourseDefinition = {
@@ -312,10 +459,11 @@ export const ATHLETICS_STADIUM_COURSE: AthleticsCourseDefinition = {
   subtitle: "Answer for energy. Jump the attractions. Reach the summit.",
   route: ATHLETICS_ROUTE,
   sections: ATHLETICS_SECTIONS,
-  checkpoints: Array.from({ length: ATHLETICS_CHECKPOINT_COUNT }, (_, index) => (index + 1) / (ATHLETICS_CHECKPOINT_COUNT + 1)),
+  checkpoints: ATHLETICS_CHECKPOINTS,
   surfaces: ATHLETICS_SURFACES,
+  shortcuts: ATHLETICS_SHORTCUTS,
   movingObstacles: ATHLETICS_MOVING_OBSTACLES,
-  routeWidth: 25,
+  routeWidth: 14,
   finishThreshold: 0.982,
   bounds: ATHLETICS_COURSE_BOUNDS
 };
@@ -324,7 +472,7 @@ export const ATHLETICS_START_COUNTDOWN_MS = 4_000;
 export const ATHLETICS_WRONG_ANSWER_PENALTY_MS = 900;
 export const ATHLETICS_RESPAWN_PENALTY_MS = 1_200;
 export const ATHLETICS_LAP_TRANSITION_MS = 1_500;
-export const ATHLETICS_DEFAULT_TIME_LIMIT_SECONDS = 480;
+export const ATHLETICS_DEFAULT_TIME_LIMIT_SECONDS = 270;
 export const ATHLETICS_DEFAULT_COURSE_LAPS = 1;
 export const ATHLETICS_MAX_COURSE_LAPS = 10;
 export const ATHLETICS_MAX_QUESTIONS_PER_LAP = 8;
@@ -433,16 +581,21 @@ const movingObstacleToObstacle = (obstacle: AthleticsMovingObstacle, nowMs: numb
 };
 
 const parkBoundaryObstacles: readonly AthleticsObstacle[] = [
-  { id: "park-west-boundary", kind: "rect", x: -226, z: 0, width: 4, depth: 438, minY: 0, maxY: 18 },
-  { id: "park-east-boundary", kind: "rect", x: 226, z: 0, width: 4, depth: 438, minY: 0, maxY: 18 },
-  { id: "park-north-boundary", kind: "rect", x: 0, z: 224, width: 448, depth: 4, minY: 0, maxY: 18 },
-  { id: "park-south-boundary", kind: "rect", x: 0, z: -224, width: 448, depth: 4, minY: 0, maxY: 18 }
+  { id: "park-west-boundary", kind: "rect", x: -140, z: 0, width: 4, depth: 276, minY: 0, maxY: 18 },
+  { id: "park-east-boundary", kind: "rect", x: 140, z: 0, width: 4, depth: 276, minY: 0, maxY: 18 },
+  { id: "park-north-boundary", kind: "rect", x: 0, z: 140, width: 276, depth: 4, minY: 0, maxY: 18 },
+  { id: "park-south-boundary", kind: "rect", x: 0, z: -140, width: 276, depth: 4, minY: 0, maxY: 18 }
+];
+
+const ATHLETICS_ALL_SURFACES: readonly AthleticsCourseSurface[] = [
+  ...ATHLETICS_SURFACES,
+  ...ATHLETICS_SHORTCUTS.flatMap((shortcut) => shortcut.surfaces)
 ];
 
 /** Static collision proxies shared by server movement and the client scene. */
 export const ATHLETICS_COLLISION_PROXIES: readonly AthleticsObstacle[] = [
   ...parkBoundaryObstacles,
-  ...ATHLETICS_SURFACES.map(surfaceToObstacle)
+  ...ATHLETICS_ALL_SURFACES.map(surfaceToObstacle)
 ];
 
 /** Collision includes the same deterministic moving transforms used by the renderer. */
@@ -453,6 +606,16 @@ export const getAthleticsObstacles = (nowMs = Date.now()): AthleticsObstacle[] =
 
 export const getAthleticsCheckpointProgress = (checkpointIndex: number, checkpointCount: number) =>
   checkpointCount <= 0 ? 1 : clamp01(checkpointIndex / checkpointCount);
+
+/** Progress of a reached checkpoint on the authored main route. */
+export const getAthleticsCheckpointRouteProgress = (
+  checkpointIndex: number,
+  course: AthleticsCourseDefinition = ATHLETICS_STADIUM_COURSE
+) => {
+  const reached = Math.max(0, Math.floor(checkpointIndex));
+  if (reached <= 0) return 0;
+  return course.checkpoints[Math.min(reached, course.checkpoints.length) - 1] ?? 1;
+};
 
 /** Compatibility helper for older HUD/tests; course movement no longer calls this as a gate. */
 export const getAthleticsNextGateProgress = (player: Pick<AthleticsPlayerState, "checkpointIndex" | "questionIndex">, questionCount: number) =>
@@ -489,18 +652,27 @@ export const getAthleticsRouteTangent = (
   return { x: (ahead.x - point.x) / length, z: (ahead.z - point.z) / length };
 };
 
-export const getAthleticsRouteProgress = (
+type AthleticsRouteProjection = {
+  progress: number;
+  distance: number;
+  routeWidth: number;
+};
+
+const projectAthleticsRoute = (
   position: Pick<ArenaPosition, "x" | "z"> & { y?: number },
-  course: AthleticsCourseDefinition = ATHLETICS_STADIUM_COURSE
-) => {
-  const { lengths, total } = routeLengths(course);
-  let distanceBefore = 0;
-  let bestProgress = 0;
-  let bestDistance = Number.POSITIVE_INFINITY;
+  route: readonly AthleticsRoutePoint[],
+  startProgress: number,
+  endProgress: number,
+  routeWidth: number
+): AthleticsRouteProjection => {
+  const { lengths, total } = routeLengths({ route });
   const useVerticalProjection = Number.isFinite(position.y);
+  let distanceBefore = 0;
+  let bestProgress = startProgress;
+  let bestDistance = Number.POSITIVE_INFINITY;
   for (let index = 0; index < lengths.length; index += 1) {
-    const start = course.route[index]!;
-    const end = course.route[index + 1]!;
+    const start = route[index]!;
+    const end = route[index + 1]!;
     const dx = end.x - start.x;
     const dy = end.y - start.y;
     const dz = end.z - start.z;
@@ -517,28 +689,58 @@ export const getAthleticsRouteProgress = (
     const distance = Math.hypot(position.x - nearestX, position.z - nearestZ, ...(useVerticalProjection ? [Number(position.y) - nearestY] : []));
     if (distance < bestDistance) {
       bestDistance = distance;
-      bestProgress = (distanceBefore + lengths[index]! * part) / total;
+      bestProgress = startProgress + ((distanceBefore + lengths[index]! * part) / total) * (endProgress - startProgress);
     }
     distanceBefore += lengths[index]!;
   }
-  return clamp01(bestProgress);
+  if (!Number.isFinite(bestDistance)) {
+    const point = route[0] ?? { x: 0, y: 0, z: 0 };
+    bestDistance = Number.isFinite(position.y)
+      ? Math.hypot(position.x - point.x, Number(position.y) - point.y, position.z - point.z)
+      : Math.hypot(position.x - point.x, position.z - point.z);
+  }
+  return { progress: clamp01(bestProgress), distance: bestDistance, routeWidth };
 };
+
+const getAthleticsRouteProjection = (
+  position: Pick<ArenaPosition, "x" | "z"> & { y?: number },
+  course: AthleticsCourseDefinition
+) => {
+  let best = projectAthleticsRoute(position, course.route, 0, 1, course.routeWidth);
+  for (const shortcut of course.shortcuts) {
+    const candidate = projectAthleticsRoute(
+      position,
+      shortcut.route,
+      shortcut.startProgress,
+      shortcut.endProgress,
+      shortcut.routeWidth ?? course.routeWidth
+    );
+    if (candidate.distance < best.distance) best = candidate;
+  }
+  return best;
+};
+
+export const getAthleticsRouteLength = (
+  course: AthleticsCourseDefinition = ATHLETICS_STADIUM_COURSE
+) => routeLengths(course).total;
+
+export const getAthleticsRouteProgress = (
+  position: Pick<ArenaPosition, "x" | "z"> & { y?: number },
+  course: AthleticsCourseDefinition = ATHLETICS_STADIUM_COURSE
+) => getAthleticsRouteProjection(position, course).progress;
 
 export const getAthleticsRouteDistance = (
   position: Pick<ArenaPosition, "x" | "z"> & { y?: number },
   course: AthleticsCourseDefinition = ATHLETICS_STADIUM_COURSE
-) => {
-  const progress = getAthleticsRouteProgress(position, course);
-  const point = getAthleticsPointAtProgress(progress, course);
-  return Number.isFinite(position.y)
-    ? Math.hypot(position.x - point.x, Number(position.y) - point.y, position.z - point.z)
-    : Math.hypot(position.x - point.x, position.z - point.z);
-};
+) => getAthleticsRouteProjection(position, course).distance;
 
 export const isAthleticsOnRoute = (
   position: Pick<ArenaPosition, "x" | "z"> & { y?: number },
   course: AthleticsCourseDefinition = ATHLETICS_STADIUM_COURSE
-) => getAthleticsRouteDistance(position, course) <= course.routeWidth;
+) => {
+  const projection = getAthleticsRouteProjection(position, course);
+  return projection.distance <= projection.routeWidth;
+};
 
 export const getAthleticsStartPosition = (
   laneIndex = 0,
@@ -566,7 +768,9 @@ export const getAthleticsCheckpointPosition = (
   laneOffset = 0,
   course: AthleticsCourseDefinition = ATHLETICS_STADIUM_COURSE
 ) => {
-  const progress = getAthleticsCheckpointProgress(checkpointIndex, checkpointCount);
+  const progress = checkpointCount === course.checkpoints.length
+    ? getAthleticsCheckpointRouteProgress(checkpointIndex, course)
+    : getAthleticsCheckpointProgress(checkpointIndex, checkpointCount);
   const point = getAthleticsPointAtProgress(progress, course);
   const tangent = getAthleticsRouteTangent(progress, course);
   const normal = { x: -tangent.z, z: tangent.x };
@@ -584,7 +788,10 @@ export const getAthleticsRespawnPosition = (
   laneIndex = 0,
   course: AthleticsCourseDefinition = ATHLETICS_STADIUM_COURSE
 ) => {
-  const progress = Math.max(0, getAthleticsCheckpointProgress(checkpointIndex, checkpointCount) - 0.014);
+  const checkpointProgress = checkpointCount === course.checkpoints.length
+    ? getAthleticsCheckpointRouteProgress(checkpointIndex, course)
+    : getAthleticsCheckpointProgress(checkpointIndex, checkpointCount);
+  const progress = Math.max(0, checkpointProgress - 0.014);
   const point = getAthleticsPointAtProgress(progress, course);
   const tangent = getAthleticsRouteTangent(progress, course);
   const normal = { x: -tangent.z, z: tangent.x };

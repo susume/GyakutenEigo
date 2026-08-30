@@ -371,7 +371,7 @@ function CharacterLab() {
     gateOpen: true,
     status: "racing",
     sectionLabel: ATHLETICS_STADIUM_COURSE.sections.find((section) => athleticsProgress <= section.endProgress)?.label ?? "Skyline Adventure Park",
-    objectiveText: "Answer anytime to refuel. Run, jump, and keep climbing."
+    objectiveText: "Jump from platform to platform. Answer anytime to refill energy."
   } : undefined;
 
   useEffect(() => {
