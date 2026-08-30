@@ -79,6 +79,27 @@ export const ArenaHudOverlay = ({
         <span>{athleticsHud.sectionLabel}</span>
       </div>
       <span className="athletics-hud-objective">{athleticsHud.objectiveText}</span>
+      <div className="athletics-route-guide" aria-label="Course route guide">
+        <span className="athletics-route-guide-icon" aria-hidden="true">
+          {athleticsHud.status === "finished" ? "★" : athleticsHud.routeProgress <= 0.03 && athleticsHud.checkpointIndex === 0 ? "▶" : "→"}
+        </span>
+        <span>
+          <strong>
+            {athleticsHud.status === "finished"
+              ? "Summit finish reached"
+              : athleticsHud.routeProgress <= 0.03 && athleticsHud.checkpointIndex === 0
+                ? athleticsHud.startRemainingSeconds > 0 ? "Ready on the start line" : "GO — run through the cyan gate"
+                : `Next: Checkpoint ${Math.min(athleticsHud.checkpointCount, athleticsHud.checkpointIndex + 1)}`}
+          </strong>
+          <small>
+            {athleticsHud.status === "finished"
+              ? "Race complete"
+              : athleticsHud.routeProgress <= 0.03 && athleticsHud.checkpointIndex === 0
+                ? athleticsHud.startRemainingSeconds > 0 ? "Face the arrows and wait for GO" : "Follow the lane arrows to Checkpoint 1"
+                : "Follow the glowing chevrons to keep climbing"}
+          </small>
+        </span>
+      </div>
       <div className={`athletics-energy-meter${athleticsHud.energy <= athleticsHud.criticalEnergy ? " is-critical" : ""}`} aria-label={`${Math.round(athleticsHud.energy)} of ${athleticsHud.maxEnergy} movement energy`}>
         <div className="athletics-energy-heading">
           <span><span aria-hidden="true">⚡</span> Movement energy</span>

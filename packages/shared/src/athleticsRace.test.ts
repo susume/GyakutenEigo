@@ -3,9 +3,11 @@ import assert from "node:assert/strict";
 import {
   ATHLETICS_CHECKPOINT_COUNT,
   ATHLETICS_CORRECT_ENERGY,
+  ATHLETICS_PLAYER_EYE_HEIGHT,
   ATHLETICS_MAX_ENERGY,
   ATHLETICS_STADIUM_COURSE,
   awardAthleticsEnergy,
+  getAthleticsObstacles,
   getAthleticsQuestionPoolIndex,
   getAthleticsQuestionsPerLap,
   getAthleticsTotalQuestionCount,
@@ -14,14 +16,16 @@ import {
   getAthleticsPointAtProgress,
   getAthleticsRespawnPosition,
   getAthleticsRouteProgress,
+  getAthleticsRouteTangent,
   getAthleticsStartPosition,
   isAthleticsFinish,
+  isAthleticsBelowRecoverableRoute,
   isAthleticsCourseFinish,
   isAthleticsOnRoute,
   resolveAthleticsMovementEnergy,
   resolveAthleticsStandings
 } from "./athleticsRace.js";
-import { ATHLETICS_ARENA_MAP_ID, resolveAnswerReward, sanitizeSessionSettings } from "./index.js";
+import { ATHLETICS_ARENA_MAP_ID, resolveAnswerReward, resolveAuthoritativeMovement, sanitizeSessionSettings } from "./index.js";
 
 test("Skyline Adventure Park exposes a large vertical route and independent checkpoints", () => {
   assert.equal(ATHLETICS_STADIUM_COURSE.id, "stadium_loop");
@@ -36,6 +40,41 @@ test("Skyline Adventure Park exposes a large vertical route and independent chec
   assert.equal(getAthleticsNextGateProgress({ questionIndex: 1, checkpointIndex: 0 }, 7), 1 / 7);
   assert.equal(getAthleticsNextGateProgress({ questionIndex: 1, checkpointIndex: 1 }, 7), 2 / 7);
   assert.equal(getAthleticsNextGateProgress({ questionIndex: 7, checkpointIndex: 6 }, 7), 1);
+});
+
+test("Athletics ground spawn can move out from underneath elevated switchbacks", () => {
+  const start = getAthleticsStartPosition(0, 1);
+  const tangent = getAthleticsRouteTangent(0);
+  const directions = [
+    ["forward", tangent.x, tangent.z],
+    ["back", -tangent.x, -tangent.z],
+    ["right", -tangent.z, tangent.x],
+    ["left", tangent.z, -tangent.x]
+  ] as const;
+
+  for (const [label, x, z] of directions) {
+    const result = resolveAuthoritativeMovement({
+      current: start,
+      requested: { x: start.x + x * 2, y: start.y, z: start.z + z * 2, facing: start.facing },
+      elapsedMs: 200,
+      maxSpeed: 22,
+      obstacles: getAthleticsObstacles(),
+      groundY: 0,
+      eyeHeight: ATHLETICS_PLAYER_EYE_HEIGHT,
+      mapId: ATHLETICS_ARENA_MAP_ID
+    });
+
+    assert.notEqual(`${result.x}:${result.z}`, `${start.x}:${start.z}`, `${label} movement should not be blocked at the ground spawn`);
+  }
+});
+
+test("Athletics recovers racers stranded below a raised route", () => {
+  const raisedProgress = 0.1;
+  const routePoint = getAthleticsPointAtProgress(raisedProgress);
+  assert.ok(routePoint.y > 2);
+  assert.equal(isAthleticsBelowRecoverableRoute({ y: ATHLETICS_PLAYER_EYE_HEIGHT }, raisedProgress), true);
+  assert.equal(isAthleticsBelowRecoverableRoute({ y: routePoint.y + ATHLETICS_PLAYER_EYE_HEIGHT }, raisedProgress), false);
+  assert.equal(isAthleticsBelowRecoverableRoute({ y: routePoint.y + ATHLETICS_PLAYER_EYE_HEIGHT - 1.5 }, raisedProgress), false);
 });
 
 test("route projection is monotonic for authored points and rejects off-course shortcuts", () => {

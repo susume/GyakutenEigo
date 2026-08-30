@@ -2,7 +2,7 @@ import assert from "node:assert/strict";
 import type { AddressInfo } from "node:net";
 import test from "node:test";
 import { io as createSocket, type Socket as ClientSocket } from "socket.io-client";
-import { getAthleticsPointAtProgress } from "@quizstrike/shared";
+import { getAthleticsPointAtProgress, getAthleticsRouteTangent } from "@quizstrike/shared";
 
 type ServerRuntime = typeof import("./index.js");
 type SessionFixture = {
@@ -262,6 +262,21 @@ test("Athletics creation, start gate, wrong-answer retry, skip prevention, and D
   // Wait out the short recovery lock so a large client jump is still limited
   // to one ordinary movement step.
   await delay(1_300);
+  const startTangent = getAthleticsRouteTangent(0);
+  socketConnection.socket.emit("player_position", {
+    x: (respawnedPlayer.x ?? 0) + startTangent.x * 2,
+    y: respawnedPlayer.y,
+    z: (respawnedPlayer.z ?? 0) + startTangent.z * 2,
+    facing: 0
+  });
+  await delay(150);
+  const movedSnapshot = await api<{ session: SessionFixture }>(`/api/sessions/${session.sessionCode}`, { playerToken: alpha.playerToken });
+  const movedPlayer = movedSnapshot.body.session.players.find((player) => player.id === alpha.player.id)!;
+  assert.ok(
+    `${movedPlayer.x}:${movedPlayer.z}` !== `${respawnedPlayer.x}:${respawnedPlayer.z}`,
+    "the Athletics player should be able to move away from the ground spawn after GO"
+  );
+
   socketConnection.socket.emit("player_position", {
     x: (beforeGo.x ?? 0) + 30,
     y: beforeGo.y,

@@ -1,8 +1,10 @@
 import * as THREE from "three";
 import {
   ATHLETICS_COLLISION_PROXIES,
+  ATHLETICS_GROUND_SURFACE_SLAB_HEIGHT,
   ATHLETICS_PLAYER_EYE_HEIGHT,
   ATHLETICS_STADIUM_COURSE,
+  ATHLETICS_SURFACE_SLAB_HEIGHT,
   getAthleticsMovingObstaclePosition,
   getAthleticsPointAtProgress,
   getAthleticsRouteTangent,
@@ -105,6 +107,38 @@ const addRouteRibbon = (
   );
   mesh.castShadow = false;
   return mesh;
+};
+
+const addRouteChevron = (
+  parent: THREE.Object3D,
+  material: THREE.Material,
+  point: { x: number; y: number; z: number },
+  progress: number,
+  scale = 1
+) => {
+  const tangent = getAthleticsRouteTangent(progress);
+  const chevron = new THREE.Group();
+  chevron.name = `route-guide-chevron-${Math.round(progress * 1000)}`;
+  chevron.position.set(point.x, point.y + 0.52, point.z);
+  chevron.rotation.y = Math.atan2(tangent.x, tangent.z);
+
+  const addArm = (x: number, rotation: number) => {
+    const arm = addBox(
+      chevron,
+      material,
+      [0.72 * scale, 0.16, 5.8 * scale],
+      [x * scale, 0, 1.8 * scale],
+      [0, rotation, 0]
+    );
+    arm.castShadow = false;
+    arm.receiveShadow = false;
+  };
+
+  // The two arms form a large V whose point faces along the authored route.
+  addArm(-2, Math.PI / 4);
+  addArm(2, -Math.PI / 4);
+  parent.add(chevron);
+  return chevron;
 };
 
 const addArch = (
@@ -305,11 +339,11 @@ export const buildAthleticsStadiumScene = ({
     surface: "stone" | "wood" | "metal" | "sand" | "accent" = "stone"
   ) => staticBatcher.prepare(addBox(park, material, size, position, rotation), `#${material.color.getHexString()}`, surface);
 
-  // A broad fairground floor and perimeter establish scale before the player
-  // reaches the first raised platform.
+  // Keep the rendered park floor aligned with authoritative y=0. The former
+  // raised turf buried the ground-level route ribbon and start markings.
   addBox(park, turf, [460, 1, 460], [0, -0.52, 0]);
-  addBatchedBox(cream, [452, 0.7, 452], [0, 0.02, 0], [0, 0, 0], "sand");
-  addBox(park, turf, [438, 0.28, 438], [0, 0.48, 0]);
+  addBatchedBox(cream, [452, 0.7, 452], [0, -0.37, 0], [0, 0, 0], "sand");
+  addBox(park, turf, [438, 0.28, 438], [0, -0.14, 0]);
   for (const side of [-1, 1]) {
     addBatchedBox(dark, [4, 10, 438], [side * 224, 5, 0], [0, 0, 0], "stone");
     for (let z = -196; z <= 196; z += 28) {
@@ -320,25 +354,65 @@ export const buildAthleticsStadiumScene = ({
   for (const z of [-224, 224]) addBatchedBox(dark, [448, 10, 4], [0, 5, z], [0, 0, 0], "stone");
 
   const course = ATHLETICS_STADIUM_COURSE;
+  const routeLength = course.route.slice(1).reduce((total, point, index) => {
+    const previous = course.route[index]!;
+    return total + Math.hypot(point.x - previous.x, point.z - previous.z);
+  }, 0) || 1;
+  const start = getAthleticsPointAtProgress(0);
+  const finish = getAthleticsPointAtProgress(1);
+  const startTangent = getAthleticsRouteTangent(0);
+  const startAngle = Math.atan2(startTangent.x, startTangent.z);
   for (let index = 0; index < course.route.length - 1; index += 1) {
     const start = course.route[index]!;
     const end = course.route[index + 1]!;
-    addRouteRibbon(park, path, start, end, course.routeWidth * 1.95, 0.16);
-    addRouteRibbon(park, lane, start, end, 0.26, 0.27);
+    addRouteRibbon(park, path, start, end, course.routeWidth * 0.72, 0.08);
+    addRouteRibbon(park, lane, start, end, 0.34, 0.13);
     if (index % 2 === 0) {
       const section = course.sections[Math.min(course.sections.length - 1, Math.floor(index / 4))]!;
-      addRouteRibbon(park, accentMaterials[section.accent], start, end, 0.08, 0.31);
+      addRouteRibbon(park, accentMaterials[section.accent], start, end, 0.12, 0.16);
     }
   }
 
+  // Every race and local playable preview begins on this stripe, facing an
+  // immediate floor arrow and the first gate.
+  addBatchedBox(cream, [22, 0.1, 1.15], [start.x, start.y + 0.21, start.z], [0, startAngle, 0], "sand");
+  for (const rowDistance of [2.2, 4.4, 6.6]) {
+    addBox(
+      park,
+      accentMaterials.cyan,
+      [22, 0.055, 0.2],
+      [start.x - startTangent.x * rowDistance, start.y + 0.27, start.z - startTangent.z * rowDistance],
+      [0, startAngle, 0]
+    );
+  }
+
+  // Repeated chevrons make the route legible from the playable camera, where
+  // the overview-only landmarks and the thin center line are easy to miss.
+  const guideSpacing = activeQuality === "performance" ? 72 : 48;
+  const guideStep = guideSpacing / routeLength;
+  for (let progress = 4 / routeLength; progress < 0.98; progress += guideStep) {
+    const point = getAthleticsPointAtProgress(progress);
+    const section = course.sections.find((candidate) => progress <= candidate.endProgress) ?? course.sections.at(-1)!;
+    addRouteChevron(park, accentMaterials[section.accent], point, progress, progress < 0.12 ? 1.24 : 0.9);
+  }
+
   const supportColumn = (surface: AthleticsCourseSurface, material: THREE.MeshStandardMaterial, index: number) => {
-    if (surface.y < 3) return;
+    if (surface.y < 3 || index % 4 !== 0) return;
     const height = surface.y - 0.8;
     const tangent = getAthleticsRouteTangent(index / Math.max(1, course.surfaces.length - 1));
     const normal = { x: -tangent.z, z: tangent.x };
-    const inset = Math.min(surface.width, surface.depth) * 0.34;
+    const inset = Math.min(surface.width, surface.depth) * 0.4;
     for (const side of [-1, 1]) {
-      addBatchedBox(material, [2.4, height, 2.4], [surface.x + normal.x * inset * side, height / 2, surface.z + normal.z * inset * side], [0, 0, 0], "metal");
+      const x = surface.x + normal.x * inset * side;
+      const z = surface.z + normal.z * inset * side;
+      const crossesLowerLane = course.surfaces.some((lowerSurface) => (
+        lowerSurface.y <= surface.y - 4
+        && Math.abs(x - lowerSurface.x) <= lowerSurface.width / 2 + 2.5
+        && Math.abs(z - lowerSurface.z) <= lowerSurface.depth / 2 + 2.5
+      ));
+      const crowdsStartGrid = Math.hypot(x - start.x, z - start.z) < 34;
+      if (crossesLowerLane || crowdsStartGrid) continue;
+      addBatchedBox(material, [1.45, height, 1.45], [x, height / 2, z], [0, 0, 0], "metal");
     }
   };
 
@@ -346,7 +420,7 @@ export const buildAthleticsStadiumScene = ({
     const progress = index / Math.max(1, course.surfaces.length - 1);
     const accent = course.sections.find((section) => progress <= section.endProgress)?.accent ?? "cyan";
     const platformMaterial = surface.material === "wood" ? wood : surface.material === "accent" ? accentMaterials[accent] : metal;
-    const slabHeight = surface.y <= 0 ? 0.55 : 1.1;
+    const slabHeight = surface.y <= 0 ? ATHLETICS_GROUND_SURFACE_SLAB_HEIGHT : ATHLETICS_SURFACE_SLAB_HEIGHT;
     addBatchedBox(
       platformMaterial,
       [surface.width, slabHeight, surface.depth],
@@ -385,11 +459,11 @@ export const buildAthleticsStadiumScene = ({
   // Entrance, midway and ride landmarks make each section readable from the
   // overview camera. They are generated geometry, so the course has no asset
   // dependency or attribution burden at runtime.
-  const start = getAthleticsPointAtProgress(0);
-  const finish = getAthleticsPointAtProgress(1);
-  addArch(park, accentMaterials.cyan, start, 0, 28, 11);
+  const startGateProgress = 6 / routeLength;
+  const startGate = getAthleticsPointAtProgress(startGateProgress);
+  addArch(park, accentMaterials.cyan, startGate, startGateProgress, 28, 11);
   addArch(park, accentMaterials.gold, finish, 1, 30, 13);
-  const startLabel = makeLabelTexture(`START · +${questionsPerLap > 0 ? "250" : "ENERGY"} ENERGY`, "#0e1a2d", "#7bf0ff");
+  const startLabel = makeLabelTexture(`START → RUN THROUGH THIS GATE · +${questionsPerLap > 0 ? "250" : "ENERGY"} ENERGY`, "#0e1a2d", "#7bf0ff");
   const finishLabel = makeLabelTexture("SUMMIT FINISH", "#2b1731", "#ffd66e");
   const labelMaterial = (key: string, texture: THREE.Texture) => makeMaterial(materialCache, key, "#ffffff", {
     map: texture,
@@ -397,9 +471,9 @@ export const buildAthleticsStadiumScene = ({
     emissiveMap: texture,
     emissiveIntensity: 0.38
   });
-  addBox(park, labelMaterial("start-label", startLabel), [16, 2.1, 0.08], [start.x, start.y + 8.1, start.z - 0.4]);
+  addBox(park, labelMaterial("start-label", startLabel), [18, 2.1, 0.08], [startGate.x, startGate.y + 8.1, startGate.z], [0, startAngle, 0]);
   addBox(park, labelMaterial("finish-label", finishLabel), [13, 2.1, 0.08], [finish.x, finish.y + 10.1, finish.z + 0.4]);
-  addBunting(park, accentMaterials.orange, { x: start.x - 18, y: start.y + 8, z: start.z + 3 }, { x: start.x + 18, y: start.y + 8, z: start.z + 3 });
+  addBunting(park, accentMaterials.orange, { x: startGate.x - 18, y: startGate.y + 8, z: startGate.z + 3 }, { x: startGate.x + 18, y: startGate.y + 8, z: startGate.z + 3 });
   addBunting(park, accentMaterials.gold, { x: finish.x - 19, y: finish.y + 10, z: finish.z - 3 }, { x: finish.x + 19, y: finish.y + 10, z: finish.z - 3 });
 
   const midway = getAthleticsPointAtProgress(0.15);

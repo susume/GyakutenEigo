@@ -14400,6 +14400,57 @@ body:has(.workspace) .study-set-audio-recorder audio { width: min(100%, 440px); 
   white-space: nowrap;
 }
 
+.athletics-route-guide {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  min-width: 0;
+  padding: 7px 9px;
+  border: 1px solid rgba(68, 219, 255, .32);
+  border-radius: 9px;
+  background: rgba(64, 217, 255, .09);
+  color: #e9fbff;
+}
+
+.athletics-route-guide-icon {
+  display: grid;
+  place-items: center;
+  flex: 0 0 auto;
+  width: 24px;
+  height: 24px;
+  border-radius: 50%;
+  background: rgba(64, 217, 255, .2);
+  color: #74e4ff;
+  font-size: 1.05rem;
+  font-weight: 950;
+  line-height: 1;
+}
+
+.athletics-route-guide > span:last-child {
+  display: grid;
+  gap: 1px;
+  min-width: 0;
+}
+
+.athletics-route-guide strong {
+  overflow: hidden;
+  color: #f4fdff;
+  font-size: .68rem;
+  font-weight: 950;
+  text-overflow: ellipsis;
+  text-transform: uppercase;
+  white-space: nowrap;
+}
+
+.athletics-route-guide small {
+  overflow: hidden;
+  color: #b9d8e7;
+  font-size: .58rem;
+  font-weight: 800;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
 .athletics-energy-meter {
   display: grid;
   gap: 6px;

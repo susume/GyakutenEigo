@@ -114,6 +114,10 @@ export interface AthleticsCourseDefinition {
 export const ATHLETICS_COURSE_BOUNDS = { limitX: 228, limitZ: 226 } as const;
 export const ATHLETICS_PLAYER_EYE_HEIGHT = 4.21;
 export const ATHLETICS_CHECKPOINT_COUNT = 9;
+export const ATHLETICS_GROUND_SURFACE_SLAB_HEIGHT = 0.55;
+export const ATHLETICS_SURFACE_SLAB_HEIGHT = 1.1;
+/** Falls farther below the authored lane than a normal jump can recover from. */
+export const ATHLETICS_MAX_RECOVERABLE_ROUTE_DROP = 1.75;
 
 /**
  * Athletics uses its own movement economy while sharing the same safe,
@@ -356,18 +360,25 @@ export type AthleticsObstacle =
   | { id: string; kind: "rect"; x: number; z: number; width: number; depth: number; jumpable?: boolean; minY?: number; maxY?: number; stair?: boolean }
   | { id: string; kind: "circle"; x: number; z: number; radius: number; jumpable?: boolean; minY?: number; maxY?: number };
 
-const surfaceToObstacle = (surface: AthleticsCourseSurface): AthleticsObstacle => ({
-  id: surface.id,
-  kind: "rect",
-  x: surface.x,
-  z: surface.z,
-  width: surface.width,
-  depth: surface.depth,
-  jumpable: true,
-  minY: 0,
-  maxY: Math.max(0, surface.y),
-  stair: surface.kind === "stair"
-});
+const surfaceToObstacle = (surface: AthleticsCourseSurface): AthleticsObstacle => {
+  const topY = Math.max(0, surface.y);
+  const slabHeight = topY <= 0 ? ATHLETICS_GROUND_SURFACE_SLAB_HEIGHT : ATHLETICS_SURFACE_SLAB_HEIGHT;
+  return {
+    id: surface.id,
+    kind: "rect",
+    x: surface.x,
+    z: surface.z,
+    width: surface.width,
+    depth: surface.depth,
+    jumpable: true,
+    // Keep the collision volume aligned with the rendered slab. Elevated
+    // switchbacks must remain passable underneath; modeling them from y=0
+    // turns a high platform into a solid tower around the ground spawn.
+    minY: Math.max(0, topY - slabHeight),
+    maxY: topY,
+    stair: surface.kind === "stair"
+  };
+};
 
 const dynamicObstacleOffset = (obstacle: AthleticsMovingObstacle, nowMs: number) => {
   const period = Math.max(1, obstacle.periodMs);
@@ -458,6 +469,15 @@ export const getAthleticsRouteHeight = (
   progress: number,
   course: AthleticsCourseDefinition = ATHLETICS_STADIUM_COURSE
 ) => getAthleticsPointAtProgress(progress, course).y;
+
+export const isAthleticsBelowRecoverableRoute = (
+  position: { y?: number },
+  progress: number,
+  course: AthleticsCourseDefinition = ATHLETICS_STADIUM_COURSE
+) => Number.isFinite(position.y)
+  && Number(position.y) < getAthleticsRouteHeight(progress, course)
+    + ATHLETICS_PLAYER_EYE_HEIGHT
+    - ATHLETICS_MAX_RECOVERABLE_ROUTE_DROP;
 
 export const getAthleticsRouteTangent = (
   progress: number,

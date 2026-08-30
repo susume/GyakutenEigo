@@ -172,10 +172,10 @@ import {
   getAthleticsQuestionsPerLap,
   getAthleticsPointAtProgress,
   getAthleticsRespawnPosition,
-  getAthleticsRouteHeight,
   getAthleticsRouteTangent,
   getAthleticsRouteProgress,
   getAthleticsRouteDistance,
+  isAthleticsBelowRecoverableRoute,
   isAthleticsOnRoute,
   getAthleticsStartPosition,
   getAthleticsTotalQuestionCount,
@@ -1494,8 +1494,7 @@ const applyAuthoritativePosition = (
       position.z = currentPosition.z;
       position.facing = requestedFacing;
     }
-    const routeGroundY = getAthleticsRouteHeight(athletics.routeProgress);
-    if (position.y !== undefined && position.y < routeGroundY + ATHLETICS_PLAYER_EYE_HEIGHT - 6) {
+    if (isAthleticsBelowRecoverableRoute(position, athletics.routeProgress)) {
       return respawnAthleticsPlayer(session, player, athletics, nowMs);
     }
   }

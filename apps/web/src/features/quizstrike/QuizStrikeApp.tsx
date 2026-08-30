@@ -228,7 +228,10 @@ function InternalToolNotice({ onReturn }: { onReturn: () => void }) {
 }
 
 function CharacterLab() {
-  const cleanPreview = new URLSearchParams(window.location.search).get("cleanPreview") === "1";
+  const previewParams = new URLSearchParams(window.location.search);
+  // The lab is also used to inspect the playable camera. Keep diagnostics
+  // opt-in so collision boxes and performance text cannot cover the course.
+  const showDebugOverlay = previewParams.get("debugOverlay") === "1" && previewParams.get("cleanPreview") !== "1";
   const [count, setCount] = useState<CharacterStressCount>(40);
   const [isMoving, setIsMoving] = useState(true);
   const [tick, setTick] = useState(0);
@@ -237,10 +240,11 @@ function CharacterLab() {
   const [labQuality, setLabQuality] = useState<ArenaQuality>("balanced");
   const [labView, setLabView] = useState<"overview" | "fps">("overview");
   const [labLevel, setLabLevel] = useState<"lower" | "market" | "cistern" | "flag" | "main" | "upper">("main");
-  const athleticsProgressParam = Number(new URLSearchParams(window.location.search).get("athleticsProgress"));
+  const athleticsProgressValue = previewParams.get("athleticsProgress");
+  const athleticsProgressParam = athleticsProgressValue === null ? 0 : Number(athleticsProgressValue);
   const athleticsProgress = Number.isFinite(athleticsProgressParam)
-    ? Math.min(0.96, Math.max(0.02, athleticsProgressParam))
-    : 0.08;
+    ? Math.min(0.96, Math.max(0, athleticsProgressParam))
+    : 0;
   const session = useMemo(() => {
     const generated = createCharacterDebugSession({ count, tick });
     const standardLabLevel = labLevel === "market" || labLevel === "cistern"
@@ -284,7 +288,7 @@ function CharacterLab() {
           ? athleticsProgress
           : labView === "overview"
             ? Math.min(0.97, 0.04 + (index / Math.max(1, count - 1)) * 0.9)
-            : Math.min(0.97, Math.max(0.02, athleticsProgress - Math.max(1, index) * 0.014));
+            : Math.min(0.97, Math.max(0, athleticsProgress - Math.max(1, index) * 0.014));
         const point = getAthleticsPointAtProgress(progress);
         const tangent = getAthleticsRouteTangent(progress);
         const lateral = labView === "overview" ? ((index % 5) - 2) * 3.2 : (index - 4) * 3.4;
@@ -429,7 +433,7 @@ function CharacterLab() {
               <button className={labLevel === "upper" ? "active" : ""} aria-pressed={labLevel === "upper"} onClick={() => setLabLevel("upper")}>{labMapId === "temple_runoff" ? "Bridge ↑" : labMapId === "iron_junction" ? "Overpass ↑" : "Lookout ↑↑"}</button>
             </div>
           ))}
-          {athleticsLab && <p className="mini-copy">Use <code>?athleticsProgress=0.08</code> through <code>0.96</code> in the URL to inspect different elevations.</p>}
+          {athleticsLab && <p className="mini-copy">The default playable view starts on the race grid. Use <code>?athleticsProgress=0.08</code> through <code>0.96</code> to inspect later elevations.</p>}
           <div className="lab-metrics">
             <span><strong>{summary.total}</strong>Total</span>
             <span><strong>{summary.alive}</strong>Alive</span>
@@ -462,7 +466,7 @@ function CharacterLab() {
               currentPlayer={labView === "fps" ? session.players[0] : undefined}
               view={labView}
               suppressHint={labView === "fps"}
-              debugOverlay={!cleanPreview}
+              debugOverlay={showDebugOverlay}
               debugLabel={athleticsLab ? `${count}-racer Skyline Park stress` : `${count}-player character stress`}
               quality={labQuality}
               athleticsHud={athleticsHud}
