@@ -78,16 +78,12 @@ test("hit confirmation is a transient marker separate from the fire reticle", ()
   assert.doesNotMatch(afterHitAndAnotherShot, /crosshair fire hit-confirm/u);
 });
 
-test("athletics HUD explains where to start the course", () => {
+test("athletics HUD keeps only the four active-race metrics", () => {
   const html = renderHud({
     athleticsHud: {
       startRemainingSeconds: 0,
       remainingSeconds: 420,
-      questionIndex: 0,
-      questionCount: 12,
-      questionsPerLap: 4,
       checkpointIndex: 0,
-      checkpointCount: 6,
       completedLaps: 0,
       requiredLaps: 3,
       routeProgress: 0,
@@ -97,16 +93,18 @@ test("athletics HUD explains where to start the course", () => {
       maxEnergy: 1000,
       criticalEnergy: 150,
       canAnswer: true,
-      gateOpen: true,
-      status: "racing",
-      sectionLabel: "Park Entrance",
-      objectiveText: "Jump from platform to platform."
+      status: "racing"
     }
   });
-  assert.match(html, /aria-label="Course route guide"/u);
-  assert.match(html, /Jump to the first platform/u);
+  assert.match(html, /data-testid="athletics-compact-hud"/u);
+  assert.match(html, /Movement energy/u);
+  assert.match(html, /1000 \/ 1000/u);
+  assert.match(html, /1st \/ 1/u);
+  assert.match(html, /1 \/ 3/u);
+  assert.match(html, /7:00/u);
   assert.match(html, /JUMP ONTO THE GLOWING PLATFORMS/u);
   assert.match(html, /SPACE — JUMP/u);
+  assert.doesNotMatch(html, /Course route guide|Jump to the first platform|Skyline Adventure Park|Park Entrance|Jump forward|Questions|Checkpoints|Answer Question|Correct answers add/u);
 });
 
 test("athletics touch controls expose the jump action", () => {
@@ -115,11 +113,7 @@ test("athletics touch controls expose the jump action", () => {
     athleticsHud: {
       startRemainingSeconds: 0,
       remainingSeconds: 240,
-      questionIndex: 0,
-      questionCount: 8,
-      questionsPerLap: 8,
       checkpointIndex: 0,
-      checkpointCount: 6,
       completedLaps: 0,
       requiredLaps: 1,
       routeProgress: 0,
@@ -129,10 +123,7 @@ test("athletics touch controls expose the jump action", () => {
       maxEnergy: 1000,
       criticalEnergy: 150,
       canAnswer: true,
-      gateOpen: true,
-      status: "racing",
-      sectionLabel: "Park Entrance",
-      objectiveText: "Jump from platform to platform."
+      status: "racing"
     }
   });
   assert.match(html, /class="touch-jump"/u);
@@ -149,11 +140,7 @@ test("athletics touch controls expose a crouch toggle", () => {
     athleticsHud: {
       startRemainingSeconds: 0,
       remainingSeconds: 240,
-      questionIndex: 0,
-      questionCount: 8,
-      questionsPerLap: 8,
       checkpointIndex: 0,
-      checkpointCount: 6,
       completedLaps: 0,
       requiredLaps: 1,
       routeProgress: 0.2,
@@ -163,10 +150,7 @@ test("athletics touch controls expose a crouch toggle", () => {
       maxEnergy: 1000,
       criticalEnergy: 150,
       canAnswer: true,
-      gateOpen: true,
-      status: "racing",
-      sectionLabel: "Midway Mayhem",
-      objectiveText: "Jump from platform to platform."
+      status: "racing"
     }
   });
   assert.match(html, /class="touch-crouch"/u);
@@ -182,11 +166,7 @@ test("Athletics control hint matches full-speed movement and Shift crouch", () =
     athleticsHud: {
       startRemainingSeconds: 0,
       remainingSeconds: 240,
-      questionIndex: 0,
-      questionCount: 8,
-      questionsPerLap: 8,
       checkpointIndex: 0,
-      checkpointCount: 6,
       completedLaps: 0,
       requiredLaps: 1,
       routeProgress: 0.2,
@@ -196,10 +176,7 @@ test("Athletics control hint matches full-speed movement and Shift crouch", () =
       maxEnergy: 1000,
       criticalEnergy: 150,
       canAnswer: true,
-      gateOpen: true,
-      status: "racing",
-      sectionLabel: "Midway Mayhem",
-      objectiveText: "Jump from platform to platform."
+      status: "racing"
     }
   });
   assert.match(html, /WASD moves at full speed/iu);
@@ -213,11 +190,7 @@ test("athletics onboarding fades after the opening jump sequence", () => {
     athleticsHud: {
       startRemainingSeconds: 0,
       remainingSeconds: 230,
-      questionIndex: 0,
-      questionCount: 8,
-      questionsPerLap: 8,
       checkpointIndex: 0,
-      checkpointCount: 6,
       completedLaps: 0,
       requiredLaps: 1,
       routeProgress: 0.06,
@@ -227,10 +200,7 @@ test("athletics onboarding fades after the opening jump sequence", () => {
       maxEnergy: 1000,
       criticalEnergy: 150,
       canAnswer: true,
-      gateOpen: true,
-      status: "racing",
-      sectionLabel: "Park Entrance",
-      objectiveText: "Jump from platform to platform."
+      status: "racing"
     }
   });
   assert.doesNotMatch(html, /JUMP ONTO THE GLOWING PLATFORMS/u);

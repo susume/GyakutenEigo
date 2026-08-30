@@ -31,7 +31,6 @@ import {
   type SnowballPackSize,
   ZOMBIE_HUMAN_CORRECT_ENERGY,
   ZOMBIE_HUMAN_MAX_ENERGY,
-  ATHLETICS_CHECKPOINT_COUNT,
   ATHLETICS_CRITICAL_ENERGY,
   ATHLETICS_MAX_ENERGY,
   canPlayerFireInMode,
@@ -2107,15 +2106,10 @@ export default function StudentExperience({ onExit }: { onExit: () => void }) {
   const athleticsPlayer = player.athletics;
   const athleticsQuestionCount = Math.max(1, session.athletics?.questionCount ?? athleticsPlayer?.questionIndex ?? 1);
   const athleticsRequiredLaps = Math.max(1, session.athletics?.requiredLaps ?? session.settings.athleticsCourseLaps ?? 1);
-  const athleticsQuestionsPerLap = Math.max(1, session.athletics?.questionsPerLap ?? athleticsQuestionCount);
   const athleticsStanding = athleticsStandings.find((standing) => standing.playerId === player.id);
   const athleticsSpectatorStanding = spectatorPlayer
     ? athleticsStandings.find((standing) => standing.playerId === spectatorPlayer.id)
     : undefined;
-  const athleticsSection = athleticsPlayer
-    ? ATHLETICS_STADIUM_COURSE.sections.find((section) => athleticsPlayer.routeProgress >= section.startProgress && athleticsPlayer.routeProgress <= section.endProgress)
-      ?? ATHLETICS_STADIUM_COURSE.sections[ATHLETICS_STADIUM_COURSE.sections.length - 1]
-    : ATHLETICS_STADIUM_COURSE.sections[0];
   const isZombieHuman = session.settings.gameMode === "zombie" && player.role !== "zombie";
   const canFire = canPlayerFireInMode(session.settings.gameMode, player.role);
   const movementEnergy = Math.round(Math.max(0, Math.min(ZOMBIE_HUMAN_MAX_ENERGY, player.energy ?? 0)));
@@ -2178,11 +2172,7 @@ export default function StudentExperience({ onExit }: { onExit: () => void }) {
   const athleticsHud = athleticsRace && athleticsPlayer ? {
     startRemainingSeconds: athleticsStartRemainingSeconds,
     remainingSeconds: athleticsRemainingSeconds,
-    questionIndex: athleticsPlayer.questionIndex,
-    questionCount: athleticsQuestionCount,
-    questionsPerLap: athleticsQuestionsPerLap,
     checkpointIndex: athleticsPlayer.checkpointIndex,
-    checkpointCount: ATHLETICS_CHECKPOINT_COUNT,
     completedLaps: athleticsPlayer.completedLaps ?? 0,
     requiredLaps: athleticsRequiredLaps,
     routeProgress: athleticsPlayer.routeProgress,
@@ -2192,13 +2182,10 @@ export default function StudentExperience({ onExit }: { onExit: () => void }) {
     maxEnergy: ATHLETICS_MAX_ENERGY,
     criticalEnergy: ATHLETICS_CRITICAL_ENERGY,
     canAnswer: Boolean(playerToken) && !isSocketReconnecting && !teacherPaused,
-    gateOpen: athleticsPlayer.gateOpen,
     status: athleticsPlayer.status,
     recoveryActive: athleticsRecoveryActive,
     recoveryCorrectAnswers: athleticsPlayer.recoveryCorrectAnswers ?? 0,
-    recoveryRequiredAnswers: athleticsPlayer.recoveryRequiredAnswers ?? 3,
-    sectionLabel: athleticsSection?.label ?? "Skyline Adventure Park",
-    objectiveText
+    recoveryRequiredAnswers: athleticsPlayer.recoveryRequiredAnswers ?? 3
   } : undefined;
   const athleticsMovementLocked = athleticsRace && (
     athleticsStartRemainingSeconds > 0
@@ -2679,8 +2666,8 @@ export default function StudentExperience({ onExit }: { onExit: () => void }) {
           </div>
         )}
       </div>
-      {session.status !== "waiting" && <div className="action-bar control-prompts">
-        <button aria-label={athleticsRace ? "Answer movement energy question" : "Questions"} disabled={roundEnded || teacherPaused} onClick={() => {
+      {session.status !== "waiting" && <div className={`action-bar control-prompts${athleticsRace ? " athletics-action-bar" : ""}`}>
+        <button aria-label={athleticsRace ? "Answer movement energy question" : "Questions"} title={athleticsRace ? "Answer question · Q" : "Questions · Q"} disabled={roundEnded || teacherPaused} onClick={() => {
           if (athleticsRace) openAthleticsQuestion();
           else {
             gameAudio.playEvent(quizOpen ? "modal_close" : "quiz_open");
@@ -2688,10 +2675,10 @@ export default function StudentExperience({ onExit }: { onExit: () => void }) {
             setBuyOpen(false);
             setScoreboardOpen(false);
           }
-        }}><BookOpen size={19} aria-hidden="true" /><span>{athleticsRace ? "Answer Question" : "Q Questions"}</span></button>
+        }}><BookOpen size={19} aria-hidden="true" /><span>{athleticsRace ? "Question" : "Q Questions"}</span></button>
         {!athleticsRace && <button aria-label="Buy gear" disabled={roundEnded || teacherPaused || !player.isAlive} onClick={() => { gameAudio.play("menu_toggle"); setBuyOpen(!buyOpen); setQuizOpen(false); setScoreboardOpen(false); }}><Package size={19} aria-hidden="true" /><span>B Gear · 1–6 choose</span></button>}
-        <button aria-label="Scoreboard" disabled={teacherPaused} onPointerDown={() => { gameAudio.play("menu_toggle"); setScoreboardOpen(true); setQuizOpen(false); setBuyOpen(false); setSettingsOpen(false); }} onPointerUp={() => setScoreboardOpen(false)} onPointerCancel={() => setScoreboardOpen(false)} onBlur={() => setScoreboardOpen(false)}><Trophy size={19} aria-hidden="true" /><span>Hold Tab · Scoreboard</span></button>
-        <button aria-label="Settings" disabled={teacherPaused} onClick={() => { gameAudio.play("menu_toggle"); setSettingsOpen((open) => !open); setQuizOpen(false); setBuyOpen(false); setScoreboardOpen(false); }}><Settings size={19} aria-hidden="true" /><span>Settings</span></button>
+        <button aria-label="Scoreboard" title="Scoreboard · hold Tab" disabled={teacherPaused} onPointerDown={() => { gameAudio.play("menu_toggle"); setScoreboardOpen(true); setQuizOpen(false); setBuyOpen(false); setSettingsOpen(false); }} onPointerUp={() => setScoreboardOpen(false)} onPointerCancel={() => setScoreboardOpen(false)} onBlur={() => setScoreboardOpen(false)}><Trophy size={19} aria-hidden="true" /><span>Scoreboard</span></button>
+        <button aria-label="Settings" title="Settings" disabled={teacherPaused} onClick={() => { gameAudio.play("menu_toggle"); setSettingsOpen((open) => !open); setQuizOpen(false); setBuyOpen(false); setScoreboardOpen(false); }}><Settings size={19} aria-hidden="true" /><span>Settings</span></button>
       </div>}
     </section>
   );

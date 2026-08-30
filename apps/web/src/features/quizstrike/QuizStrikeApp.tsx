@@ -18,7 +18,6 @@ import {
   ATHLETICS_CRITICAL_ENERGY,
   ATHLETICS_MAX_ENERGY,
   ATHLETICS_PLAYER_EYE_HEIGHT,
-  ATHLETICS_STADIUM_COURSE,
   getAthleticsPointAtProgress,
   getAthleticsRouteTangent,
   DESERT_CITADEL_MAIN_LEVEL_Y,
@@ -354,11 +353,7 @@ function CharacterLab() {
   const athleticsHud: AthleticsHudState | undefined = athleticsLab && labView === "fps" ? {
     startRemainingSeconds: 0,
     remainingSeconds: 420,
-    questionIndex: athleticsPlayer?.questionIndex ?? 0,
-    questionCount: 12,
-    questionsPerLap: 4,
     checkpointIndex: athleticsPlayer?.checkpointIndex ?? 0,
-    checkpointCount: ATHLETICS_CHECKPOINT_COUNT,
     completedLaps: athleticsPlayer?.completedLaps ?? 0,
     requiredLaps: 3,
     routeProgress: athleticsPlayer?.routeProgress ?? athleticsProgress,
@@ -368,10 +363,7 @@ function CharacterLab() {
     maxEnergy: ATHLETICS_MAX_ENERGY,
     criticalEnergy: ATHLETICS_CRITICAL_ENERGY,
     canAnswer: true,
-    gateOpen: true,
     status: "racing",
-    sectionLabel: ATHLETICS_STADIUM_COURSE.sections.find((section) => athleticsProgress <= section.endProgress)?.label ?? "Skyline Adventure Park",
-    objectiveText: "Jump from platform to platform. Answer anytime to refill energy."
   } : undefined;
 
   useEffect(() => {

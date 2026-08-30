@@ -1,4 +1,4 @@
-import type { RefObject } from "react";
+import { useEffect, useState, type RefObject } from "react";
 
 type WeaponCooldown = {
   startedAt: number;
@@ -8,11 +8,7 @@ type WeaponCooldown = {
 export type AthleticsHudState = {
   startRemainingSeconds: number;
   remainingSeconds: number;
-  questionIndex: number;
-  questionCount: number;
-  questionsPerLap: number;
   checkpointIndex: number;
-  checkpointCount: number;
   completedLaps: number;
   requiredLaps: number;
   routeProgress: number;
@@ -22,13 +18,10 @@ export type AthleticsHudState = {
   maxEnergy: number;
   criticalEnergy: number;
   canAnswer: boolean;
-  gateOpen: boolean;
   status: "racing" | "finished" | "dnf";
   recoveryActive?: boolean;
   recoveryCorrectAnswers?: number;
   recoveryRequiredAnswers?: number;
-  sectionLabel: string;
-  objectiveText: string;
 };
 
 const formatRaceTime = (seconds: number) => {
@@ -37,6 +30,22 @@ const formatRaceTime = (seconds: number) => {
 };
 
 const ATHLETICS_ONBOARDING_MAX_PROGRESS = 0.05;
+const ATHLETICS_ONBOARDING_DURATION_MS = 4200;
+
+const formatPlace = (rank: number) => {
+  const safeRank = Math.max(1, Math.round(rank));
+  const lastTwoDigits = safeRank % 100;
+  const suffix = lastTwoDigits >= 11 && lastTwoDigits <= 13
+    ? "th"
+    : safeRank % 10 === 1
+      ? "st"
+      : safeRank % 10 === 2
+        ? "nd"
+        : safeRank % 10 === 3
+          ? "rd"
+          : "th";
+  return `${safeRank}${suffix}`;
+};
 
 export const ArenaHudOverlay = ({
   hitPulse,
@@ -76,129 +85,120 @@ export const ArenaHudOverlay = ({
   onToggleCrouchFromTouch: (() => void) | undefined;
   touchCrouchEnabled?: boolean;
   athleticsHud?: AthleticsHudState;
-}) => athleticsHud ? (
-  <>
-    {athleticsHud.status === "racing" && athleticsHud.checkpointIndex === 0 && athleticsHud.routeProgress < ATHLETICS_ONBOARDING_MAX_PROGRESS && (
-      <div className="athletics-onboarding" aria-label="Jump tutorial">
-        <strong>JUMP ONTO THE GLOWING PLATFORMS</strong>
-        <span>SPACE — JUMP · Tablet: tap JUMP</span>
-      </div>
-    )}
-    {athleticsHud.recoveryActive && (
-      <div className="athletics-recovery-banner" role="status" aria-live="assertive">
-        <strong>You fell!</strong>
-        <span>Answer 3 questions to get back on the course.</span>
-        <b>Recovery Questions {athleticsHud.recoveryCorrectAnswers ?? 0} / {athleticsHud.recoveryRequiredAnswers ?? 3}</b>
-      </div>
-    )}
-    <div className="athletics-hud" aria-label="Athletics race status">
-      <div className="athletics-hud-topline">
-        <span className="athletics-hud-kicker">Skyline Adventure Park</span>
-        <strong>{athleticsHud.startRemainingSeconds > 0 ? `GO in ${athleticsHud.startRemainingSeconds}` : formatRaceTime(athleticsHud.remainingSeconds)}</strong>
-      </div>
-      <div className="athletics-hud-mainline">
-          <strong>{athleticsHud.recoveryActive ? "Recovery challenge" : athleticsHud.status === "finished" ? `Finished #${athleticsHud.rank}` : athleticsHud.energy <= athleticsHud.criticalEnergy ? "Energy low" : "Jump forward"}</strong>
-        <span>{athleticsHud.sectionLabel}</span>
-      </div>
-      <span className="athletics-hud-objective">{athleticsHud.objectiveText}</span>
-      <div className="athletics-route-guide" aria-label="Course route guide">
-        <span className="athletics-route-guide-icon" aria-hidden="true">
-          {athleticsHud.status === "finished" ? "★" : athleticsHud.routeProgress < 0.075 && athleticsHud.checkpointIndex === 0 ? "↑" : "→"}
-        </span>
-        <span>
-          <strong>
-            {athleticsHud.status === "finished"
-              ? "Summit finish reached"
-              : athleticsHud.routeProgress < 0.075 && athleticsHud.checkpointIndex === 0
-                ? athleticsHud.startRemainingSeconds > 0 ? "Ready on the start pad" : "Jump to the first platform"
-                : `Next landing · Checkpoint ${Math.min(athleticsHud.checkpointCount, athleticsHud.checkpointIndex + 1)}`}
-          </strong>
-          <small>
-            {athleticsHud.status === "finished"
-              ? "Race complete"
-              : athleticsHud.routeProgress < 0.075 && athleticsHud.checkpointIndex === 0
-                ? athleticsHud.startRemainingSeconds > 0 ? "Wait for GO, then tap JUMP" : "Use the glowing edge and land safely"
-                : "Read the next glowing edge; answer on any safe platform"}
-          </small>
-        </span>
-      </div>
-      <div className={`athletics-energy-meter${athleticsHud.energy <= athleticsHud.criticalEnergy ? " is-critical" : ""}`} aria-label={`${Math.round(athleticsHud.energy)} of ${athleticsHud.maxEnergy} movement energy`}>
-        <div className="athletics-energy-heading">
-          <span><span aria-hidden="true">⚡</span> Movement energy</span>
-          <strong>{Math.round(athleticsHud.energy)} / {athleticsHud.maxEnergy}</strong>
+}) => {
+  const athleticsOnboardingEligible = Boolean(
+    athleticsHud
+    && athleticsHud.status === "racing"
+    && !athleticsHud.recoveryActive
+    && athleticsHud.checkpointIndex === 0
+    && athleticsHud.routeProgress < ATHLETICS_ONBOARDING_MAX_PROGRESS
+  );
+  const hasAthleticsHud = Boolean(athleticsHud);
+  const [athleticsOnboardingDismissed, setAthleticsOnboardingDismissed] = useState(false);
+
+  useEffect(() => {
+    if (!hasAthleticsHud) return;
+    if (!athleticsOnboardingEligible) {
+      setAthleticsOnboardingDismissed(true);
+      return;
+    }
+    setAthleticsOnboardingDismissed(false);
+    const timeout = window.setTimeout(() => setAthleticsOnboardingDismissed(true), ATHLETICS_ONBOARDING_DURATION_MS);
+    return () => window.clearTimeout(timeout);
+  }, [athleticsOnboardingEligible, hasAthleticsHud]);
+
+  if (athleticsHud) {
+    const energyPercent = Math.round(Math.min(1, Math.max(0, athleticsHud.energy / Math.max(1, athleticsHud.maxEnergy))) * 100);
+    const lap = Math.min(athleticsHud.requiredLaps, athleticsHud.completedLaps + (athleticsHud.status === "finished" ? 0 : 1));
+
+    return (
+      <>
+        {athleticsOnboardingEligible && !athleticsOnboardingDismissed && (
+          <div className="athletics-onboarding" aria-label="Jump tutorial">
+            <strong>JUMP ONTO THE GLOWING PLATFORMS</strong>
+            <span>SPACE — JUMP · Tablet: tap JUMP</span>
+          </div>
+        )}
+        {athleticsHud.recoveryActive && (
+          <div className="athletics-recovery-banner" role="status" aria-live="assertive">
+            <strong>You fell!</strong>
+            <span>Answer 3 questions to get back on the course.</span>
+            <b>Recovery Questions {athleticsHud.recoveryCorrectAnswers ?? 0} / {athleticsHud.recoveryRequiredAnswers ?? 3}</b>
+          </div>
+        )}
+        <div className="athletics-hud" data-testid="athletics-compact-hud" aria-label="Athletics race status">
+          <div className="athletics-hud-header">
+            <div className="athletics-energy-label">
+              <span className="athletics-energy-icon" aria-hidden="true">⚡</span>
+              <span>Movement energy</span>
+            </div>
+            <div className={`athletics-hud-time${athleticsHud.startRemainingSeconds > 0 ? " is-countdown" : ""}`} role="timer" aria-label={`Race time remaining ${formatRaceTime(athleticsHud.remainingSeconds)}`}>
+              <span>Time</span>
+              <strong>{athleticsHud.startRemainingSeconds > 0 ? `GO in ${athleticsHud.startRemainingSeconds}` : formatRaceTime(athleticsHud.remainingSeconds)}</strong>
+            </div>
+          </div>
+          <div className={`athletics-energy-meter${athleticsHud.energy <= athleticsHud.criticalEnergy ? " is-critical" : ""}`} role="meter" aria-label={`${Math.round(athleticsHud.energy)} of ${athleticsHud.maxEnergy} movement energy`} aria-valuemin={0} aria-valuemax={athleticsHud.maxEnergy} aria-valuenow={Math.round(athleticsHud.energy)}>
+            <div className="athletics-energy-track"><span style={{ width: `${energyPercent}%` }} /></div>
+            <strong>{Math.round(athleticsHud.energy)} / {athleticsHud.maxEnergy}</strong>
+          </div>
+          <div className="athletics-hud-stats">
+            <span>
+              <span className="athletics-stat-icon" aria-hidden="true">🏆</span>
+              <span><small>Place</small><strong>{formatPlace(athleticsHud.rank)} / {athleticsHud.totalRacers}</strong></span>
+            </span>
+            <span>
+              <span className="athletics-stat-icon athletics-stat-icon-lap" aria-hidden="true">↻</span>
+              <span><small>Lap</small><strong>{lap} / {athleticsHud.requiredLaps}</strong></span>
+            </span>
+          </div>
         </div>
-        <div className="athletics-energy-track"><span style={{ width: `${Math.round(Math.min(1, Math.max(0, athleticsHud.energy / Math.max(1, athleticsHud.maxEnergy))) * 100)}%` }} /></div>
-      </div>
-      {onQuestionFromTouch && (
-        <button
-          type="button"
-          className="athletics-answer-button"
-          disabled={controlsDisabled || !athleticsHud.canAnswer || athleticsHud.status !== "racing"}
-          onClick={onQuestionFromTouch}
-          aria-keyshortcuts="Q"
-        >
-          <span className="athletics-answer-icon" aria-hidden="true">?</span>
-          <span>
-            <strong>{athleticsHud.recoveryActive ? "Recovery Question" : "Answer Question"}</strong>
-            <small>{athleticsHud.recoveryActive ? "Only correct answers count · 3 to return" : "Correct answers add +220 energy"}</small>
-          </span>
-          <kbd>Q</kbd>
-        </button>
-      )}
-      <div className="athletics-progress-track" aria-label={`${Math.round(athleticsHud.routeProgress * 100)} percent course progress`}>
-        <span style={{ width: `${Math.round(Math.min(1, Math.max(0, athleticsHud.routeProgress)) * 100)}%` }} />
-      </div>
-      <div className="athletics-hud-stats">
-        <span><small>Place</small><strong>{athleticsHud.rank}/{athleticsHud.totalRacers}</strong></span>
-        <span><small>Lap</small><strong>{Math.min(athleticsHud.requiredLaps, athleticsHud.completedLaps + (athleticsHud.status === "finished" ? 0 : 1))}/{athleticsHud.requiredLaps}</strong></span>
-        <span><small>Questions</small><strong>{athleticsHud.questionIndex}/{athleticsHud.questionCount}</strong></span>
-        <span><small>Checkpoints</small><strong>{athleticsHud.checkpointIndex}/{athleticsHud.checkpointCount}</strong></span>
-      </div>
-    </div>
-    {!controlsDisabled && !isPointerLocked && !suppressHint && <div className="control-lock athletics-control-lock">WASD moves at full speed · Shift crouches · Space jumps · Arrow keys or swipe looks · touch players can use Crouch + Jump</div>}
-    <div className="touch-controls athletics-touch-controls" aria-label="Touch controls">
-      <button ref={joystickElementRef} type="button" className="touch-joystick" aria-label="Movement joystick" disabled={controlsDisabled} onPointerDown={onBeginTouchMove}>
-        <span aria-hidden="true" />
-      </button>
-      {onQuestionFromTouch && (
-        <button
-          type="button"
-          className="touch-question"
-          disabled={controlsDisabled || !athleticsHud.canAnswer || athleticsHud.status !== "racing"}
-          aria-label="Answer a movement energy question"
-          onPointerDown={(event) => { event.preventDefault(); onQuestionFromTouch(); }}
-        >
-          <span aria-hidden="true">?</span>
-          Answer
-        </button>
-      )}
-      {(onJumpFromTouch || onToggleCrouchFromTouch) && (
-        <div className="touch-action-group">
-          {onToggleCrouchFromTouch && (
+        {!controlsDisabled && !isPointerLocked && !suppressHint && <div className="control-lock athletics-control-lock">WASD moves at full speed · Shift crouches · Space jumps · Arrow keys or swipe looks · touch players can use Crouch + Jump</div>}
+        <div className="touch-controls athletics-touch-controls" aria-label="Touch controls">
+          <button ref={joystickElementRef} type="button" className="touch-joystick" aria-label="Movement joystick" disabled={controlsDisabled} onPointerDown={onBeginTouchMove}>
+            <span aria-hidden="true" />
+          </button>
+          {onQuestionFromTouch && (
             <button
               type="button"
-              className="touch-crouch"
-              disabled={controlsDisabled}
-              aria-label="Crouch"
-              aria-keyshortcuts="Shift"
-              aria-pressed={touchCrouchEnabled === true}
-              onClick={onToggleCrouchFromTouch}
+              className="touch-question"
+              disabled={controlsDisabled || !athleticsHud.canAnswer || athleticsHud.status !== "racing"}
+              aria-label="Answer a movement energy question"
+              onPointerDown={(event) => { event.preventDefault(); onQuestionFromTouch(); }}
             >
-              <kbd aria-hidden="true">SHIFT</kbd>
-              Crouch
+              <span aria-hidden="true">?</span>
+              Answer
             </button>
           )}
-          {onJumpFromTouch && (
-            <button type="button" className="touch-jump" disabled={controlsDisabled} aria-label="Jump" aria-keyshortcuts="Space" onPointerDown={(event) => { event.preventDefault(); onJumpFromTouch(); }}>
-              <kbd aria-hidden="true">SPACE</kbd>
-              Jump
-            </button>
+          {(onJumpFromTouch || onToggleCrouchFromTouch) && (
+            <div className="touch-action-group">
+              {onToggleCrouchFromTouch && (
+                <button
+                  type="button"
+                  className="touch-crouch"
+                  disabled={controlsDisabled}
+                  aria-label="Crouch"
+                  aria-keyshortcuts="Shift"
+                  aria-pressed={touchCrouchEnabled === true}
+                  onClick={onToggleCrouchFromTouch}
+                >
+                  <kbd aria-hidden="true">SHIFT</kbd>
+                  Crouch
+                </button>
+              )}
+              {onJumpFromTouch && (
+                <button type="button" className="touch-jump" disabled={controlsDisabled} aria-label="Jump" aria-keyshortcuts="Space" onPointerDown={(event) => { event.preventDefault(); onJumpFromTouch(); }}>
+                  <kbd aria-hidden="true">SPACE</kbd>
+                  Jump
+                </button>
+              )}
+            </div>
           )}
         </div>
-      )}
-    </div>
-  </>
-) : (
+      </>
+    );
+  }
+
+  return (
   <>
     {(currentWeaponId !== "power_blaster" || zoomLevel > 0) && (
       <div
@@ -266,3 +266,4 @@ export const ArenaHudOverlay = ({
     </div>
   </>
 );
+};
