@@ -1,4 +1,4 @@
-# Athletics Air-Gap Parkour + Environmental Realism Pass
+# Athletics Movement, Recovery, Air-Gap Parkour + Environmental Realism Pass
 
 Updated 2026-08-30 against the audited `main` branch (`38234b3 made the map smaller`).
 
@@ -7,26 +7,35 @@ Updated 2026-08-30 against the audited `main` branch (`38234b3 made the map smal
 Skyline Adventure Park remains a compact 65-landing, six-chapter classroom
 race. The route now has authored transition types, exact rotated-rectangle
 edge-gap measurement, shared collision footprints, and regression checks for
-air separation and solid-volume overlap.
+air separation and solid-volume overlap. Athletics movement is full speed by
+default: WASD never requires a sprint modifier, Shift crouches, and Space
+jumps. Zombie’s separate sprint-energy loop remains isolated so the other
+mode is not changed by the Athletics control pass.
 
 The final geometry audit reports no issues. There are 57 typed jump
 transitions, all with positive measured air, and the only overlapping solid
 landing pair is an intentional checkpoint entry (`checkpoint_entry`).
 
+Falls now enter a server-authoritative recovery challenge instead of dropping
+students to the park floor. Movement freezes immediately, three correct
+questions are required, and the racer returns to the last stable main-route
+landing with enough fuel to retry. Wrong answers do not advance recovery, and
+recovery answers continue through the existing learning-history pipeline.
+
 ## Before vs. after
 
 | Measure | Latest branch before pass | After pass |
 | --- | ---: | ---: |
-| Route length | ~1,371.14 | 1,345.67 |
+| Route length | ~1,371.14 | 1,334.24 |
 | Main-route platforms | 65 | 65 |
 | Average platform footprint (W × D) | ~20.19 × 16.28 | 14.97 × 12.77 |
 | Main transitions | not typed | 64 |
 | Genuine jump transitions | not instrumented | 57 |
 | Positive air gaps among typed jumps | not instrumented | 57/57 (100%) |
 | Jump-typed share of non-checkpoint transitions | not instrumented | 57/58 (98.3%) |
-| Median jump air gap | not instrumented | 7.46 |
-| Average jump air gap | not instrumented | 7.12 |
-| Maximum normal-route gap | not instrumented | 11.34 |
+| Median jump air gap | not instrumented | 7.29 |
+| Average jump air gap | not instrumented | 6.85 |
+| Maximum normal-route gap | not instrumented | 9.64 |
 | Maximum shortcut gap | not instrumented | 9.63 |
 | Intentional connected/non-jump transitions | not instrumented | 7 |
 | Moving-platform transitions | 6 moving obstacles, not typed | 6 |
@@ -36,9 +45,38 @@ landing pair is an intentional checkpoint entry (`checkpoint_entry`).
 
 Air gaps are horizontal edge-to-edge distances between the actual rotated
 landing rectangles, not centre-to-centre distances. The current jump set also
-fits the authored sprint-air envelope used by the tests (`14.8 × 0.861 =
+fits the authored full-speed air envelope used by the tests (`14.8 × 0.861 =
 12.74` world units). The largest values are intentionally late-course or
 moving/attraction challenges; the normal route remains within that envelope.
+
+## Movement and fall recovery
+
+Athletics has one normal movement speed (`14.8` world units per second); the
+client and server no longer distinguish walking from running for this mode.
+Shift changes posture to crouch and uses the crouch movement speed, while it
+never activates a sprint modifier. Space is the jump action. Touch players
+get matching Crouch and Jump buttons. Classic/Flag retain their legacy
+movement behavior, and Zombie retains its intentional human sprint-energy
+mechanic, because those modes use the distinction as part of their existing
+gameplay.
+
+The recovery loop is deliberately short:
+
+1. A below-course position, out-of-route position, or unrecoverable fall is
+   detected by the server.
+2. The racer is marked inactive and all movement commands are ignored while
+   `recoveryActive` is true.
+3. The existing question gate issues the recovery questions. Only correct
+   answers increment `Recovery Questions 1 / 3`, `2 / 3`, and `3 / 3`.
+4. Completion restores at least `220` movement energy, never awards recovery
+   energy per answer, and teleports to a safe interior slot on the previous
+   authored main-route landing facing the next route tangent.
+
+The server clamps the recovery target to both the tracked last landing and
+the prior route progress. Shortcut surfaces and moving hazards are not safe
+landing candidates, so a recovery cannot move a player forward or create a
+shortcut exploit. The next normal position command is accepted immediately
+after completion; there is no extra countdown or long respawn penalty.
 
 ## Transition and overlap rules
 
@@ -70,10 +108,10 @@ the largest non-checkpoint main-route edge gap in that chapter.
 | Chapter | Route points / elevation | Jump types | Biggest gap | Moving obstacle | Attraction interaction | Checkpoint |
 | --- | --- | --- | ---: | --- | --- | --- |
 | Park Entrance | 0–10 / y=0–6 | `easy_jump` | 8.56 | None | Wide ticket-plaza landings and entrance silhouette | 1 at point 10 |
-| Midway Mayhem | 11–21 / y=6–10 | `jump`, `moving_jump` | 9.64 | `midway-swing-platform` | Grounded food/drink stalls and bumper-car bowl | 2 at point 21 |
-| Ride District | 22–32 / y=11–16 | `jump`, `moving_jump`, `elevator` | 10.76 | `ride-district-lift` | Ride decks and a maintenance lift create the vertical beat | 3 at point 32 |
+| Midway Mayhem | 11–21 / y=6–10 | `jump`, `moving_jump` | 7.93 | `midway-swing-platform` | Grounded food/drink stalls and bumper-car bowl | 2 at point 21 |
+| Ride District | 22–32 / y=11–16 | `jump`, `moving_jump`, `elevator` | 9.49 | `ride-district-lift` | Ride decks and a maintenance lift create the vertical beat | 3 at point 32 |
 | Ferris & Coaster | 33–43 / y=16–34 | `jump`, `moving_jump`, `attraction` | 9.00 | Ferris gondola crossing; coaster maintenance cart | Grounded Ferris support decks and supported coaster line | 4 at point 43 |
-| Drop Tower | 44–54 / y=36–62 | `jump`, `hard_jump`, `moving_jump` | 11.34 | `drop-tower-lift` | Tower service decks, lift, and rooftop shortcut | 5 at point 54 |
+| Drop Tower | 44–54 / y=36–62 | `jump`, `hard_jump`, `moving_jump` | 9.45 | `drop-tower-lift` | Tower service decks, lift, and rooftop shortcut | 5 at point 54 |
 | Sky Park Summit | 55–64 / y=62–110 | `jump`, `hard_jump` | 9.64 | `summit-finish-lift` | Exposed high traverse and sharp final summit ascent | 6 at point 64 |
 
 The elevation rhythm is intentionally not a per-platform staircase: the
@@ -177,43 +215,49 @@ Automated checks added or updated cover:
   checkpoints, start lanes, respawn, finish, route progress, and energy;
 * oriented client/server collision parity;
 * Ferris/coaster transforms and optional fallback hiding;
-* Athletics onboarding, touch jump, and tablet Sprint + Jump controls.
+* Athletics onboarding, full-speed movement, Shift crouch, Space jump, and
+  tablet Crouch + Jump controls;
+* server-authoritative fall detection, three-correct recovery, safe-platform
+  respawn, route/checkpoint integrity, bounded recovery energy, repeated falls,
+  and learning-history persistence.
 
 Results:
 
-* shared tests: 125/125 passed after the final geometry changes;
-* focused web camera/asset/HUD tests: 19/19 passed;
-* iPad-like Athletics E2E: 2/2 passed, including Sprint + Jump together;
-* TypeScript typecheck: passed;
+* shared tests: 126/126 passed after the movement/recovery geometry changes;
+* server tests: 92/92 passed, including the Athletics integration flow;
+* web tests: 219/219 passed;
+* Athletics server integration: 3/3 passed, including repeated recovery,
+  wrong-answer retry, safe respawn, no-skip enforcement, standings, and
+  multi-lap behavior;
+* TypeScript typecheck: passed across shared, server, web, and the Cloudflare
+  proxy;
 * production build: passed;
 * lint: passed;
-* the broader web suite: 216/217 passed in the observed full-suite run. The
-  single failure was the existing `CharacterFactory.performance.test.ts`
-  construction-time threshold under full-suite load; its isolated rerun
-  passed at approximately 385 ms. The Athletics tests in that suite passed;
-* the broader 15-test E2E run: 14/15 passed. The one failure was the existing
-  classroom speed assertion (`classroom.spec.ts`) under local timing load;
-  the Athletics desktop flow passed.
+* iPad-like Athletics controls: 1/1 passed after covering the crouch eye-height
+  regression; Crouch and Jump are both visible and usable on the touch profile;
+* the local browser playthrough covered the start HUD, full-speed WASD movement,
+  Shift/touch crouch, an intentional opening fall, frozen recovery UI, a wrong
+  answer that remained at 0/3, three correct recovery answers, safe-platform
+  respawn facing the next jump, restored controls, and immediate retry movement.
 
-For first-person review, the hosted Athletics start screen was checked with
+For first-person review, the local Athletics start screen was checked with
 the onboarding prompt, visible first gap, next-landing marker, energy loop,
 checkpoint HUD, Ferris/coaster skyline, and no old sky filler. The Character
 Lab was also staged at approximately 8%, 23%, 39%, 56%, 74%, and 91% course
-progress to inspect each chapter from the FPS camera. The browser automation
-environment did not complete a literal human-controlled traversal of all 65
-landings; a real tablet playthrough remains the final experiential check,
-especially for diagonal movement, moving-platform timing, and repeated
-late-course jumps.
+progress to inspect each chapter from the FPS camera. The automated browser
+check did not complete a literal human-controlled traversal of all 65 landings;
+diagonal movement, moving-platform timing, and repeated late-course jumps
+remain the final physical-device experiential check.
 
 ## Remaining concerns
 
-The design is materially air-gap-driven now, but a few later main-route gaps
-are intentionally near the sprint envelope (maximum 11.34 versus 12.74
-available in the current movement model). They should be rechecked by a human
-on a tablet rather than tuned only from keyboard geometry. The imported Ferris
-mesh itself was not re-exported because Blender was unavailable, so a future
-Blender pass could still improve its pivot/material cleanup. The current
-runtime support treatment and bounds-grounding are in place.
+The design is materially air-gap-driven now, with the hardest normal-route gap
+at 9.64 units and the hardest shortcut at 9.63 units. They should still be
+rechecked by a human on a tablet rather than tuned only from keyboard geometry.
+The imported Ferris mesh itself was not re-exported because Blender was
+unavailable, so a future Blender pass could still improve its pivot/material
+cleanup. The current runtime support treatment and bounds-grounding are in
+place.
 
 ## Student-perspective answers
 

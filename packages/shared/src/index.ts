@@ -761,6 +761,9 @@ export interface QuizResult {
     gateOpen: boolean;
     status: "racing" | "finished" | "dnf";
     completedLaps: number;
+    recoveryActive?: boolean;
+    recoveryCorrectAnswers?: number;
+    recoveryRequiredAnswers?: number;
     finishPosition?: number;
   };
 }

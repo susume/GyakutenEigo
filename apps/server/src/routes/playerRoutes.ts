@@ -131,7 +131,7 @@ export const registerPlayerRoutes = (app: Application, deps: PlayerRouteDependen
       deps.clearPlayerDisconnectTimer(session, returningPlayer.id);
       returningPlayer.connectionState = "connected";
       const playerToken = deps.makePlayerToken(session, returningPlayer);
-      const question = returningPlayer.isAlive || session.settings.deadPlayersCanPractice
+      const question = returningPlayer.isAlive || session.settings.deadPlayersCanPractice || returningPlayer.athletics?.recoveryActive
         ? deps.issueNextQuestion(session, returningPlayer.id)
         : undefined;
       deps.appendEvent(session, {
@@ -244,7 +244,7 @@ export const registerPlayerRoutes = (app: Application, deps: PlayerRouteDependen
     deps.clearPlayerDisconnectTimer(session, player.id);
     player.connectionState = "connected";
     const question =
-      session.status !== "ended" && (player.isAlive || session.settings.deadPlayersCanPractice)
+      session.status !== "ended" && (player.isAlive || session.settings.deadPlayersCanPractice || player.athletics?.recoveryActive)
         ? deps.issueNextQuestion(session, player.id)
         : undefined;
     deps.broadcastSession(session);
@@ -300,7 +300,7 @@ export const registerPlayerRoutes = (app: Application, deps: PlayerRouteDependen
       return;
     }
     if (!deps.requirePlayerAccess(req, res, session, player)) return;
-    if (!player.isAlive && !session.settings.deadPlayersCanPractice) {
+    if (!player.isAlive && !session.settings.deadPlayersCanPractice && !player.athletics?.recoveryActive) {
       res.status(400).json({ error: "Practice questions are off while you’re out this round." });
       return;
     }

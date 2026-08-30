@@ -11,17 +11,19 @@ const renderHud = ({
   hitConfirmPulse = 0,
   onInteractFromTouch,
   onJumpFromTouch,
-  onToggleSprintFromTouch,
-  touchSprintEnabled = false,
-  athleticsHud
+  onToggleCrouchFromTouch,
+  touchCrouchEnabled = false,
+  athleticsHud,
+  suppressHint = true
 }: {
   hitPulse?: number;
   hitConfirmPulse?: number;
   onInteractFromTouch?: () => void;
   onJumpFromTouch?: () => void;
-  onToggleSprintFromTouch?: () => void;
-  touchSprintEnabled?: boolean;
+  onToggleCrouchFromTouch?: () => void;
+  touchCrouchEnabled?: boolean;
   athleticsHud?: AthleticsHudState;
+  suppressHint?: boolean;
 } = {}) => renderToStaticMarkup(React.createElement(ArenaHudOverlay, {
   hitPulse,
   hitConfirmPulse,
@@ -31,14 +33,14 @@ const renderHud = ({
   weaponCooldown: null,
   controlsDisabled: false,
   isPointerLocked: false,
-  suppressHint: true,
+  suppressHint,
   joystickElementRef: React.createRef<HTMLButtonElement>(),
   onBeginTouchMove: () => undefined,
   onZoomFromTouch: () => undefined,
   onInteractFromTouch,
   onJumpFromTouch,
-  onToggleSprintFromTouch,
-  touchSprintEnabled,
+  onToggleCrouchFromTouch,
+  touchCrouchEnabled,
   athleticsHud
 }));
 
@@ -126,11 +128,11 @@ test("athletics touch controls expose the jump action", () => {
   assert.match(html, />SPACE<\/kbd>/u);
 });
 
-test("athletics touch controls expose a sprint toggle for long jumps", () => {
+test("athletics touch controls expose a crouch toggle", () => {
   const html = renderHud({
     onJumpFromTouch: () => undefined,
-    onToggleSprintFromTouch: () => undefined,
-    touchSprintEnabled: true,
+    onToggleCrouchFromTouch: () => undefined,
+    touchCrouchEnabled: true,
     athleticsHud: {
       startRemainingSeconds: 0,
       remainingSeconds: 240,
@@ -154,11 +156,43 @@ test("athletics touch controls expose a sprint toggle for long jumps", () => {
       objectiveText: "Jump from platform to platform."
     }
   });
-  assert.match(html, /class="touch-sprint"/u);
-  assert.match(html, /aria-label="Sprint"/u);
+  assert.match(html, /class="touch-crouch"/u);
+  assert.match(html, /aria-label="Crouch"/u);
   assert.match(html, /aria-keyshortcuts="Shift"/u);
   assert.match(html, /aria-pressed="true"/u);
-  assert.match(html, />Sprint<\/button>/u);
+  assert.match(html, />Crouch<\/button>/u);
+});
+
+test("Athletics control hint matches full-speed movement and Shift crouch", () => {
+  const html = renderHud({
+    suppressHint: false,
+    athleticsHud: {
+      startRemainingSeconds: 0,
+      remainingSeconds: 240,
+      questionIndex: 0,
+      questionCount: 8,
+      questionsPerLap: 8,
+      checkpointIndex: 0,
+      checkpointCount: 6,
+      completedLaps: 0,
+      requiredLaps: 1,
+      routeProgress: 0.2,
+      rank: 1,
+      totalRacers: 1,
+      energy: 1000,
+      maxEnergy: 1000,
+      criticalEnergy: 150,
+      canAnswer: true,
+      gateOpen: true,
+      status: "racing",
+      sectionLabel: "Midway Mayhem",
+      objectiveText: "Jump from platform to platform."
+    }
+  });
+  assert.match(html, /WASD moves at full speed/iu);
+  assert.match(html, /Shift crouches/iu);
+  assert.match(html, /Space jumps/iu);
+  assert.doesNotMatch(html, /Shift sprints/iu);
 });
 
 test("athletics onboarding fades after the opening jump sequence", () => {

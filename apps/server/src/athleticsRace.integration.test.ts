@@ -2,7 +2,7 @@ import assert from "node:assert/strict";
 import type { AddressInfo } from "node:net";
 import test from "node:test";
 import { io as createSocket, type Socket as ClientSocket } from "socket.io-client";
-import { getAthleticsPointAtProgress, getAthleticsRouteTangent } from "@quizstrike/shared";
+import { getAthleticsPointAtProgress, getAthleticsRecoveryPosition, getAthleticsRouteTangent } from "@quizstrike/shared";
 
 type ServerRuntime = typeof import("./index.js");
 type SessionFixture = {
@@ -16,9 +16,11 @@ type SessionFixture = {
 type PlayerFixture = {
   id: string;
   nickname: string;
+  isAlive?: boolean;
   x?: number;
   y?: number;
   z?: number;
+  facing?: number;
   questionIndex?: number;
   athletics?: {
     questionIndex: number;
@@ -28,9 +30,14 @@ type PlayerFixture = {
     status: string;
     falls: number;
     completedLaps: number;
+    recoveryActive?: boolean;
+    recoveryCorrectAnswers?: number;
+    recoveryRequiredAnswers?: number;
+    recoverySurfaceId?: string;
     lapTransitionUntil?: string;
   };
   energy?: number;
+  respawns?: number;
 };
 type JoinedPlayer = {
   session: SessionFixture;
@@ -247,51 +254,139 @@ test("Athletics creation, start gate, wrong-answer retry, skip prevention, and D
   });
   assert.equal(noWeapons.response.status, 400);
 
+  const progressBeforeFall = beforeGo.athletics?.routeProgress ?? 0;
+  // Settling on the visible park floor between the first two landings must
+  // enter recovery too; a student must never have to walk back from ground.
   socketConnection.socket.emit("player_position", {
-    x: beforeGo.x ?? 0,
-    y: -2,
-    z: beforeGo.z ?? 0,
+    x: -2,
+    y: 4.21,
+    z: 113,
     facing: 0
   });
-  await delay(150);
-  const respawned = await api<{ session: SessionFixture }>(`/api/sessions/${session.sessionCode}`, { playerToken: alpha.playerToken });
-  const respawnedPlayer = respawned.body.session.players.find((player) => player.id === alpha.player.id)!;
-  assert.equal(respawnedPlayer.athletics?.falls, 1);
-  assert.ok((respawnedPlayer.y ?? 0) > 0);
+  const recoverySnapshot = await waitUntil(
+    async () => (await api<{ session: SessionFixture }>(`/api/sessions/${session.sessionCode}`, { playerToken: alpha.playerToken })).body.session,
+    (snapshot) => snapshot.players.find((player) => player.id === alpha.player.id)?.athletics?.recoveryActive === true,
+    5_000
+  );
+  const recoveryPlayer = recoverySnapshot.players.find((player) => player.id === alpha.player.id)!;
+  assert.equal(recoveryPlayer.athletics?.falls, 1);
+  assert.equal(recoveryPlayer.isAlive, false);
+  assert.equal(recoveryPlayer.athletics?.recoveryCorrectAnswers, 0);
+  assert.equal(recoveryPlayer.athletics?.recoveryRequiredAnswers, 3);
+  assert.ok((recoveryPlayer.athletics?.routeProgress ?? 0) <= progressBeforeFall);
 
-  // Wait out the short recovery lock so a large client jump is still limited
-  // to one ordinary movement step.
-  await delay(1_300);
+  socketConnection.socket.emit("player_position", {
+    x: (recoveryPlayer.x ?? 0) + 100,
+    y: recoveryPlayer.y,
+    z: (recoveryPlayer.z ?? 0) + 100,
+    facing: 1
+  });
+  await delay(150);
+  const frozenSnapshot = await api<{ session: SessionFixture }>(`/api/sessions/${session.sessionCode}`, { playerToken: alpha.playerToken });
+  const frozenPlayer = frozenSnapshot.body.session.players.find((player) => player.id === alpha.player.id)!;
+  assert.equal(frozenPlayer.x, recoveryPlayer.x);
+  assert.equal(frozenPlayer.z, recoveryPlayer.z);
+  assert.equal(frozenPlayer.athletics?.recoveryCorrectAnswers, 0);
+
+  // Let the pre-recovery answer-window limiter expire so this test can issue
+  // one wrong answer plus the three required correct answers as a single loop.
+  await delay(2_600);
+  const recoveryQuestion = await api<{ question: { id: string } }>(
+    `/api/sessions/${session.sessionCode}/players/${alpha.player.id}/question`,
+    { playerToken: alpha.playerToken }
+  );
+  assert.equal(recoveryQuestion.response.status, 200);
+  let recoveryQuestionId = recoveryQuestion.body.question.id;
+  const wrongRecovery = await api<{ result: { isCorrect: boolean; nextQuestion?: { id: string }; player: PlayerFixture; respawnProgress?: number; feedback?: string } }>(
+    `/api/sessions/${session.sessionCode}/players/${alpha.player.id}/answer`,
+    { method: "POST", playerToken: alpha.playerToken, body: { questionId: recoveryQuestionId, selectedChoice: "B" } }
+  );
+  assert.equal(wrongRecovery.response.status, 200);
+  assert.equal(wrongRecovery.body.result.isCorrect, false);
+  assert.equal(wrongRecovery.body.result.player.athletics?.recoveryCorrectAnswers, 0);
+  assert.equal(wrongRecovery.body.result.respawnProgress, 0);
+  assert.match(wrongRecovery.body.result.feedback ?? "", /only correct answers count/i);
+  assert.equal(wrongRecovery.body.result.nextQuestion?.id, recoveryQuestionId);
+
+  for (let correctCount = 1; correctCount <= 3; correctCount += 1) {
+    const recoveryAnswer = await api<{ result: { isCorrect: boolean; nextQuestion?: { id: string }; player: PlayerFixture; respawned?: boolean; respawnProgress?: number; respawnRequired?: number; rewardLabel?: string } }>(
+      `/api/sessions/${session.sessionCode}/players/${alpha.player.id}/answer`,
+      { method: "POST", playerToken: alpha.playerToken, body: { questionId: recoveryQuestionId, selectedChoice: "A" } }
+    );
+    assert.equal(recoveryAnswer.response.status, 200);
+    assert.equal(recoveryAnswer.body.result.isCorrect, true);
+    assert.equal(recoveryAnswer.body.result.respawnProgress, correctCount);
+    if (correctCount < 3) {
+      assert.equal(recoveryAnswer.body.result.player.athletics?.recoveryActive, true);
+      assert.equal(recoveryAnswer.body.result.player.athletics?.recoveryCorrectAnswers, correctCount);
+      assert.equal(recoveryAnswer.body.result.respawned, false);
+      assert.ok(recoveryAnswer.body.result.nextQuestion?.id);
+      recoveryQuestionId = recoveryAnswer.body.result.nextQuestion!.id;
+    } else {
+      assert.equal(recoveryAnswer.body.result.respawned, true);
+      assert.equal(recoveryAnswer.body.result.respawnRequired, 3);
+      assert.match(recoveryAnswer.body.result.rewardLabel ?? "", /Recovery Questions 3 \/ 3/i);
+      assert.equal(recoveryAnswer.body.result.player.isAlive, true);
+      assert.equal(recoveryAnswer.body.result.player.athletics?.recoveryActive, false);
+      assert.ok((recoveryAnswer.body.result.player.energy ?? 0) >= 220);
+    }
+    await delay(80);
+  }
+
+  const recoveredSnapshot = await api<{ session: SessionFixture }>(`/api/sessions/${session.sessionCode}`, { playerToken: alpha.playerToken });
+  const recoveredPlayer = recoveredSnapshot.body.session.players.find((player) => player.id === alpha.player.id)!;
+  const expectedRecoveryPosition = getAthleticsRecoveryPosition(0, 0);
+  assert.ok(Math.abs((recoveredPlayer.x ?? 0) - expectedRecoveryPosition.x) < 0.01);
+  assert.ok(Math.abs((recoveredPlayer.z ?? 0) - expectedRecoveryPosition.z) < 0.01);
+  assert.ok(Math.abs((recoveredPlayer.facing ?? 0) - expectedRecoveryPosition.facing) < 0.01);
+  assert.ok((recoveredPlayer.athletics?.routeProgress ?? 0) <= progressBeforeFall);
+
+  // A recovered racer can immediately move and spend the bounded retry fuel.
+  await delay(300);
   const startTangent = getAthleticsRouteTangent(0);
   socketConnection.socket.emit("player_position", {
-    x: (respawnedPlayer.x ?? 0) + startTangent.x * 2,
-    y: respawnedPlayer.y,
-    z: (respawnedPlayer.z ?? 0) + startTangent.z * 2,
-    facing: 0
+    x: (recoveredPlayer.x ?? 0) + startTangent.x * 2,
+    y: recoveredPlayer.y,
+    z: (recoveredPlayer.z ?? 0) + startTangent.z * 2,
+    facing: recoveredPlayer.facing ?? 0
   });
   await delay(150);
   const movedSnapshot = await api<{ session: SessionFixture }>(`/api/sessions/${session.sessionCode}`, { playerToken: alpha.playerToken });
   const movedPlayer = movedSnapshot.body.session.players.find((player) => player.id === alpha.player.id)!;
-  assert.ok(
-    `${movedPlayer.x}:${movedPlayer.z}` !== `${respawnedPlayer.x}:${respawnedPlayer.z}`,
-    "the Athletics player should be able to move away from the ground spawn after GO"
-  );
+  assert.notEqual(`${movedPlayer.x}:${movedPlayer.z}`, `${recoveredPlayer.x}:${recoveredPlayer.z}`);
+  assert.ok((movedPlayer.energy ?? 0) <= (recoveredPlayer.energy ?? 0));
 
-  socketConnection.socket.emit("player_position", {
-    x: (beforeGo.x ?? 0) + 30,
-    y: beforeGo.y,
-    z: beforeGo.z ?? 0,
-    facing: 0
-  });
-  await delay(350);
+  // A client-supplied summit position cannot advance the route or checkpoint.
   const skipPoint = getAthleticsPointAtProgress(0.8);
   socketConnection.socket.emit("player_position", { ...skipPoint, y: 4.21, facing: 0 });
   await delay(150);
   const noSkip = await api<{ session: SessionFixture }>(`/api/sessions/${session.sessionCode}`, { playerToken: alpha.playerToken });
   const noSkipPlayer = noSkip.body.session.players.find((player) => player.id === alpha.player.id)!;
   assert.equal(noSkipPlayer.athletics?.questionIndex, 1);
-  assert.equal(noSkipPlayer.athletics?.checkpointIndex, 0);
-  assert.ok((noSkipPlayer.athletics?.routeProgress ?? 0) < 0.3);
+  assert.ok((noSkipPlayer.athletics?.checkpointIndex ?? 0) <= (movedPlayer.athletics?.checkpointIndex ?? 0));
+  assert.ok((noSkipPlayer.athletics?.routeProgress ?? 0) < 0.1, "a summit position must not skip the opening section");
+
+  // A second fall re-enters the same short flow instead of granting another
+  // refill or leaving the racer at ground level.
+  const energyBeforeSecondFall = noSkipPlayer.energy ?? 0;
+  socketConnection.socket.emit("player_position", {
+    x: noSkipPlayer.x ?? 0,
+    y: -2,
+    z: noSkipPlayer.z ?? 0,
+    facing: noSkipPlayer.facing ?? 0
+  });
+  const secondRecoverySnapshot = await waitUntil(
+    async () => (await api<{ session: SessionFixture }>(`/api/sessions/${session.sessionCode}`, { playerToken: alpha.playerToken })).body.session,
+    (snapshot) => {
+      const player = snapshot.players.find((candidate) => candidate.id === alpha.player.id);
+      return player?.athletics?.recoveryActive === true && (player.athletics?.falls ?? 0) >= 2;
+    },
+    5_000
+  );
+  const secondRecoveryPlayer = secondRecoverySnapshot.players.find((player) => player.id === alpha.player.id)!;
+  assert.equal(secondRecoveryPlayer.athletics?.recoveryCorrectAnswers, 0);
+  assert.ok((secondRecoveryPlayer.energy ?? 0) <= energyBeforeSecondFall);
+  assert.ok((secondRecoveryPlayer.athletics?.routeProgress ?? 0) <= (noSkipPlayer.athletics?.routeProgress ?? 0) + 0.001);
 
   socketConnection.socket.disconnect();
   const rejoined = await api<JoinedPlayer>(`/api/sessions/${session.sessionCode}/players/${alpha.player.id}/rejoin`, { playerToken: alpha.playerToken });

@@ -29,6 +29,14 @@ export interface AthleticsPlayerState {
   gateOpen: boolean;
   falls: number;
   lastSafeCheckpointIndex: number;
+  /** Last stable main-route landing accepted by the server. */
+  lastSafeSurfaceIndex?: number;
+  /** True while the racer is frozen in the three-correct recovery challenge. */
+  recoveryActive?: boolean;
+  recoveryCorrectAnswers?: number;
+  recoveryRequiredAnswers?: number;
+  recoverySurfaceId?: string;
+  recoveryRouteProgress?: number;
   checkpointSplitsMs: number[];
   completedLaps: number;
   lapSplitsMs: number[];
@@ -162,10 +170,16 @@ export const ATHLETICS_MAX_RECOVERABLE_ROUTE_DROP = 1.75;
  */
 export const ATHLETICS_MAX_ENERGY = 1000;
 export const ATHLETICS_CORRECT_ENERGY = 220;
-export const ATHLETICS_WALK_DRAIN_PER_SECOND = 2.2;
-export const ATHLETICS_RUN_DRAIN_PER_SECOND = 6.4;
+/** Athletics has one normal movement speed: the former running speed. */
+export const ATHLETICS_MOVEMENT_DRAIN_PER_SECOND = 6.4;
+export const ATHLETICS_RUN_DRAIN_PER_SECOND = ATHLETICS_MOVEMENT_DRAIN_PER_SECOND;
+/** @deprecated Kept as a wire/test compatibility alias; Athletics no longer walks. */
+export const ATHLETICS_WALK_DRAIN_PER_SECOND = ATHLETICS_MOVEMENT_DRAIN_PER_SECOND;
 export const ATHLETICS_JUMP_ENERGY_COST = 30;
 export const ATHLETICS_CRITICAL_ENERGY = 150;
+export const ATHLETICS_RECOVERY_CORRECT_ANSWERS_REQUIRED = 3;
+/** A completed recovery always leaves enough fuel for one immediate retry. */
+export const ATHLETICS_RECOVERY_MIN_ENERGY = ATHLETICS_CORRECT_ENERGY;
 
 const clamp01 = (value: number) => Math.min(1, Math.max(0, Number.isFinite(value) ? value : 0));
 const safeNumber = (value: unknown, fallback = 0) => Number.isFinite(Number(value)) ? Number(value) : fallback;
@@ -238,7 +252,7 @@ const ATHLETICS_ROUTE: readonly AthleticsRoutePoint[] = [
   { x: -63, z: -33, y: 6 },
   { x: -79, z: -46, y: 8 },
   { x: -64, z: -62, y: 8 },
-  { x: -44, z: -74, y: 7 },
+  { x: -47, z: -71, y: 7 },
   { x: -27, z: -63, y: 9 },
   { x: -11, z: -78, y: 8 },
   { x: 7, z: -67, y: 10 },
@@ -252,10 +266,10 @@ const ATHLETICS_ROUTE: readonly AthleticsRoutePoint[] = [
   { x: 12, z: -26, y: 12 },
   { x: 27, z: -9, y: 13 },
   { x: 44, z: 3, y: 13 },
-  { x: 60, z: 21, y: 13 },
+  { x: 58, z: 19, y: 13 },
   { x: 44, z: 36, y: 14 },
-  { x: 27, z: 25, y: 13 },
-  { x: 9, z: 40, y: 16 },
+  { x: 29, z: 26, y: 13 },
+  { x: 11, z: 39, y: 16 },
   { x: -8, z: 28, y: 16 },
   // Ferris & Coaster: approach the grounded wheel's lower deck, cross its
   // moving gondola line, then climb to the supported coaster maintenance run.
@@ -280,7 +294,7 @@ const ATHLETICS_ROUTE: readonly AthleticsRoutePoint[] = [
   { x: 49, z: -1, y: 40 },
   { x: 32, z: -16, y: 40 },
   { x: 16, z: -1, y: 55 },
-  { x: -1, z: -18, y: 58 },
+  { x: 1, z: -15, y: 58 },
   { x: -18, z: -4, y: 60 },
   { x: -35, z: -19, y: 62 },
   // Sky Park Summit: exposed lateral traversal at a stable high level before
@@ -511,7 +525,7 @@ const ATHLETICS_SHORTCUTS: readonly AthleticsCourseShortcut[] = [
       shortcutSurface("shortcut-drop-rooftop-03", "platform", 33, -12, 51, 12, 11, "accent", Math.atan2(-17, 11))
     ],
     transitions: [
-      { id: "drop-tower-rooftop-cut-01", fromSurfaceId: routeSurfaceId(47), toSurfaceId: "shortcut-drop-rooftop-01", type: "shortcut_jump", note: "Sprint from the tower deck to the rooftop line." },
+      { id: "drop-tower-rooftop-cut-01", fromSurfaceId: routeSurfaceId(47), toSurfaceId: "shortcut-drop-rooftop-01", type: "shortcut_jump", note: "Leap from the tower deck to the rooftop line." },
       { id: "drop-tower-rooftop-cut-02", fromSurfaceId: "shortcut-drop-rooftop-01", toSurfaceId: "shortcut-drop-rooftop-02", type: "shortcut_jump" },
       { id: "drop-tower-rooftop-cut-03", fromSurfaceId: "shortcut-drop-rooftop-02", toSurfaceId: "shortcut-drop-rooftop-03", type: "shortcut_jump" },
       { id: "drop-tower-rooftop-cut-04", fromSurfaceId: "shortcut-drop-rooftop-03", toSurfaceId: routeSurfaceId(51), type: "shortcut_jump", note: "Drop onto the high service landing." }
@@ -1014,6 +1028,53 @@ export const getAthleticsGroundHeight = (
   return supportY;
 };
 
+/** Progress at the centre of an authored main-route landing. */
+export const getAthleticsSurfaceRouteProgress = (
+  surfaceIndex: number,
+  course: AthleticsCourseDefinition = ATHLETICS_STADIUM_COURSE
+) => routeProgressAtIndex(course.route, Math.max(0, Math.min(course.route.length - 1, Math.floor(surfaceIndex))));
+
+/**
+ * Returns the last stable main-route landing at or before a progress value.
+ * Shortcut surfaces and moving obstacles are intentionally not candidates.
+ */
+export const getAthleticsPreviousSafeSurfaceIndex = (
+  progress: number,
+  course: AthleticsCourseDefinition = ATHLETICS_STADIUM_COURSE
+) => {
+  const safeProgress = clamp01(progress);
+  let candidate = 0;
+  course.surfaces.forEach((surface, index) => {
+    if (getAthleticsSurfaceRouteProgress(index, course) <= safeProgress + 0.002) candidate = index;
+  });
+  return candidate;
+};
+
+/**
+ * Finds a stable authored landing under a racer. This helper only
+ * considers main-route slabs with a generous interior margin, so a fall near
+ * a shortcut or a moving hazard cannot make that surface the recovery target.
+ */
+export const getAthleticsSurfaceIndexAtPosition = (
+  position: Pick<ArenaPosition, "x" | "z"> & { y?: number },
+  course: AthleticsCourseDefinition = ATHLETICS_STADIUM_COURSE,
+  eyeHeight = ATHLETICS_PLAYER_EYE_HEIGHT
+) => {
+  if (!Number.isFinite(position.y)) return undefined;
+  const footY = Number(position.y) - eyeHeight;
+  let best: { index: number; distance: number } | undefined;
+  course.surfaces.forEach((surface, index) => {
+    const obstacle = surfaceToObstacle(surface);
+    if (obstacle.kind !== "rect") return;
+    if (!isPointInsideAthleticsRect(position, obstacle, -0.85)) return;
+    const verticalDistance = Math.abs(footY - surface.y);
+    if (verticalDistance > 1.25) return;
+    const distance = Math.hypot(position.x - surface.x, position.z - surface.z, verticalDistance * 1.5);
+    if (!best || distance < best.distance) best = { index, distance };
+  });
+  return best?.index;
+};
+
 const movingObstacleToObstacle = (obstacle: AthleticsMovingObstacle, nowMs: number): AthleticsObstacle => {
   const position = getAthleticsMovingObstaclePosition(obstacle, nowMs);
   return {
@@ -1253,6 +1314,32 @@ export const getAthleticsRespawnPosition = (
   };
 };
 
+/**
+ * Safe, interior respawn on the last authored main-route landing. The lane
+ * offset is clamped away from every edge and the facing points at the next
+ * main-route jump rather than back toward the failed section.
+ */
+export const getAthleticsRecoveryPosition = (
+  surfaceIndex: number,
+  laneIndex = 0,
+  course: AthleticsCourseDefinition = ATHLETICS_STADIUM_COURSE
+) => {
+  const safeIndex = Math.max(0, Math.min(course.surfaces.length - 1, Math.floor(surfaceIndex)));
+  const surface = course.surfaces[safeIndex] ?? course.surfaces[0]!;
+  const progress = getAthleticsSurfaceRouteProgress(safeIndex, course);
+  const tangent = getAthleticsRouteTangent(Math.min(1, progress + 0.004), course);
+  const normal = { x: -tangent.z, z: tangent.x };
+  const laneSlot = (Math.max(0, Math.floor(laneIndex)) % 3) - 1;
+  const safeOffset = Math.max(0, Math.min(surface.width, surface.depth) / 2 - 2.25);
+  const laneOffset = Math.max(-safeOffset, Math.min(safeOffset, laneSlot * 1.15));
+  return {
+    x: surface.x + normal.x * laneOffset,
+    y: surface.y + ATHLETICS_PLAYER_EYE_HEIGHT,
+    z: surface.z + normal.z * laneOffset,
+    facing: Math.atan2(-tangent.x, -tangent.z)
+  };
+};
+
 /** New course finish predicate: reaching the summit is never gated by question count. */
 export const isAthleticsCourseFinish = (
   position: Pick<ArenaPosition, "x" | "z"> & { y?: number },
@@ -1344,18 +1431,18 @@ export const resolveAthleticsMovementEnergy = ({
   currentEnergy,
   elapsedMs,
   movedDistance,
-  sprinting,
   jumped
 }: {
   currentEnergy: number | undefined;
   elapsedMs: number;
   movedDistance: number;
-  sprinting: boolean;
+  /** @deprecated Athletics ignores sprint state; normal movement is already fast. */
+  sprinting?: boolean;
   jumped: boolean;
 }): AthleticsEnergyResolution => {
   const safeEnergy = normalizeAthleticsEnergy(currentEnergy);
   const movementCost = movedDistance > 0.05
-    ? Math.max(0, Math.min(0.65, Math.max(0, elapsedMs) / 1000)) * (sprinting ? ATHLETICS_RUN_DRAIN_PER_SECOND : ATHLETICS_WALK_DRAIN_PER_SECOND)
+    ? Math.max(0, Math.min(0.65, Math.max(0, elapsedMs) / 1000)) * ATHLETICS_MOVEMENT_DRAIN_PER_SECOND
     : 0;
   const jumpCost = jumped ? ATHLETICS_JUMP_ENERGY_COST : 0;
   const nextEnergy = Math.max(0, safeEnergy - movementCost - jumpCost);

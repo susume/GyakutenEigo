@@ -443,6 +443,7 @@ export default function StudentExperience({ onExit }: { onExit: () => void }) {
   const sessionGameMode = session?.settings.gameMode;
   const playerId = player?.id;
   const playerIsAlive = player?.isAlive;
+  const athleticsRecoveryActive = athleticsRace && player?.athletics?.recoveryActive === true;
   const hasPlayer = Boolean(player);
   const hasSession = Boolean(session);
   const hasActiveArenaConnection = Boolean(session && player && playerToken);
@@ -651,7 +652,7 @@ export default function StudentExperience({ onExit }: { onExit: () => void }) {
   useEffect(() => {
     if (!sessionCode || !playerId || !playerToken || hasQuestion) return;
     const questionPhase = sessionStatus === "waiting" || sessionStatus === "active" || roundPreparation || zombieSelection;
-    if (!questionPhase || (!playerIsAlive && !sessionDeadPlayersCanPractice)) return;
+    if (!questionPhase || (!playerIsAlive && !sessionDeadPlayersCanPractice && !athleticsRecoveryActive)) return;
 
     let cancelled = false;
     void studentApi
@@ -666,7 +667,7 @@ export default function StudentExperience({ onExit }: { onExit: () => void }) {
     return () => {
       cancelled = true;
     };
-  }, [sessionCode, sessionStatus, session?.roundTransition?.phase, roundPreparation, zombieSelection, playerId, playerIsAlive, playerToken, sessionDeadPlayersCanPractice, hasQuestion]);
+  }, [sessionCode, sessionStatus, session?.roundTransition?.phase, roundPreparation, zombieSelection, playerId, playerIsAlive, playerToken, sessionDeadPlayersCanPractice, athleticsRecoveryActive, hasQuestion]);
 
   useEffect(() => {
     const syncBgm = () => {
@@ -832,6 +833,72 @@ export default function StudentExperience({ onExit }: { onExit: () => void }) {
             : current.athletics
         } : current);
       }
+    });
+    connectedSocket.on("athletics_recovery_start", (payload: {
+      falls?: number;
+      checkpointIndex?: number;
+      recoveryCorrectAnswers?: number;
+      recoveryRequiredAnswers?: number;
+      recoverySurfaceId?: string;
+      question?: PublicQuestion;
+      message?: string;
+    }) => {
+      if (lastVisualSession.settings.gameMode !== "athletics") return;
+      setQuestion(payload.question ?? null);
+      setAnswerFeedback(null);
+      setBuyOpen(false);
+      setScoreboardOpen(false);
+      setSettingsOpen(false);
+      setQuizOpen(true);
+      setFeedback(payload.message ?? "You fell! Answer 3 questions to get back on the course.");
+      gameAudio.playEvent("athletics_fall");
+      setPlayer((current) => current?.athletics ? {
+        ...current,
+        isAlive: false,
+        health: 0,
+        athletics: {
+          ...current.athletics,
+          falls: payload.falls ?? current.athletics.falls,
+          checkpointIndex: payload.checkpointIndex ?? current.athletics.checkpointIndex,
+          recoveryActive: true,
+          recoveryCorrectAnswers: payload.recoveryCorrectAnswers ?? 0,
+          recoveryRequiredAnswers: payload.recoveryRequiredAnswers ?? 3,
+          recoverySurfaceId: payload.recoverySurfaceId ?? current.athletics.recoverySurfaceId
+        }
+      } : current);
+    });
+    connectedSocket.on("athletics_recovery_complete", (payload: {
+      position?: { x?: number; y?: number; z?: number; facing?: number };
+      checkpointIndex?: number;
+      routeProgress?: number;
+      energy?: number;
+      question?: PublicQuestion;
+      message?: string;
+    }) => {
+      if (lastVisualSession.settings.gameMode !== "athletics") return;
+      if (payload.question) setQuestion(payload.question);
+      setFeedback(payload.message ?? "Recovery complete! Back to the course.");
+      gameAudio.playEvent("athletics_checkpoint");
+      const position = payload.position;
+      setPlayer((current) => current?.athletics ? {
+        ...current,
+        ...(position ?? {}),
+        isAlive: true,
+        health: 100,
+        energy: payload.energy ?? current.energy,
+        jumping: false,
+        crouching: false,
+        athletics: {
+          ...current.athletics,
+          checkpointIndex: payload.checkpointIndex ?? current.athletics.checkpointIndex,
+          routeProgress: Math.min(current.athletics.routeProgress, payload.routeProgress ?? current.athletics.routeProgress),
+          recoveryActive: false,
+          recoveryCorrectAnswers: 0,
+          recoveryRequiredAnswers: 3,
+          recoverySurfaceId: undefined,
+          recoveryRouteProgress: undefined
+        }
+      } : current);
     });
     connectedSocket.on("athletics_lap_complete", (payload: {
       completedLaps?: number;
@@ -1331,6 +1398,15 @@ export default function StudentExperience({ onExit }: { onExit: () => void }) {
     previousAliveRef.current = playerIsAlive ?? false;
   }, [hasPlayer, playerId, playerIsAlive, sessionDeadPlayersCanPractice, sessionGameMode, openRespawnPractice]);
 
+  useEffect(() => {
+    if (!athleticsRecoveryActive) return;
+    setQuizOpen(true);
+    setBuyOpen(false);
+    setScoreboardOpen(false);
+    setSettingsOpen(false);
+    if (document.pointerLockElement) document.exitPointerLock();
+  }, [athleticsRecoveryActive, setBuyOpen, setQuizOpen, setScoreboardOpen, setSettingsOpen]);
+
   const sendArenaPosition = useCallback(
     (position: ArenaPositionPayload) => {
       if (!hasActiveArenaConnection) return;
@@ -1481,6 +1557,15 @@ export default function StudentExperience({ onExit }: { onExit: () => void }) {
 
   const openAthleticsQuestion = useCallback(() => {
     if (!athleticsRace || teacherPaused || !session || !player || !playerToken) return;
+    if (player.athletics?.recoveryActive) {
+      if (!quizOpen) {
+        setBuyOpen(false);
+        setScoreboardOpen(false);
+        setSettingsOpen(false);
+        setQuizOpen(true);
+      }
+      return;
+    }
     if (quizOpen) {
       gameAudio.playEvent("modal_close");
       setQuizOpen(false);
@@ -1560,6 +1645,9 @@ export default function StudentExperience({ onExit }: { onExit: () => void }) {
       if (answerOperationRef.current !== operationId) return;
       storeCosmeticProgressToken(payload.cosmeticProgressToken);
       setPlayer(payload.result.player);
+      if (payload.result.respawned && answeringPlayer.athletics?.recoveryActive === true) {
+        setFeedback("Recovery complete! Back to the course with enough energy to retry.");
+      }
       const wasWrong = !payload.result.isCorrect;
       const answeredAt = new Date().toISOString();
       const questionSnapshot = {
@@ -1932,7 +2020,9 @@ export default function StudentExperience({ onExit }: { onExit: () => void }) {
           <div className="panel how-to-card controls-card" aria-labelledby="student-controls-heading">
             <div className="controls-card-heading"><h2 id="student-controls-heading">Quick controls</h2><span>Keyboard + touch</span></div>
             <div className="student-controls-grid">
-              <div className="student-control"><kbd>WASD</kbd><span>Move</span></div>
+              <div className="student-control"><kbd>WASD</kbd><span>Move at full speed (Athletics)</span></div>
+              <div className="student-control"><kbd>Shift</kbd><span>Crouch (Athletics)</span></div>
+              <div className="student-control"><kbd>Space</kbd><span>Jump (Athletics)</span></div>
               <div className="student-control"><kbd>Arrow keys / swipe</kbd><span>Look around</span></div>
               <div className="student-control"><kbd>F</kbd><span>Fire</span></div>
               <div className="student-control"><kbd>C</kbd><span>Zoom</span></div>
@@ -2038,7 +2128,11 @@ export default function StudentExperience({ onExit }: { onExit: () => void }) {
   const canPracticeToRespawn = !player.isAlive && session.settings.deadPlayersCanPractice && session.settings.gameMode !== "flag" && !athleticsRace;
   const roundActive = session.status === "active" && !teacherPaused;
   const roundEnded = session.status === "ended";
-  const menuTitle = canPracticeToRespawn && quizOpen ? "Practice to return" : quizOpen ? "Questions" : buyOpen ? "Choose gear" : settingsOpen ? "Game settings" : "Scoreboard";
+  const menuTitle = athleticsRecoveryActive && quizOpen
+    ? "Recover after fall"
+    : canPracticeToRespawn && quizOpen
+      ? "Practice to return"
+      : quizOpen ? "Questions" : buyOpen ? "Choose gear" : settingsOpen ? "Game settings" : "Scoreboard";
   const roundTimeLabel = athleticsRace
     ? formatDuration(athleticsRemainingSeconds)
     : formatDuration(roundPreparation || zombieSelection ? preparationRemainingSeconds : remainingSeconds);
@@ -2052,7 +2146,9 @@ export default function StudentExperience({ onExit }: { onExit: () => void }) {
     : zombieSelection
       ? `Everyone is Human. Answer questions for energy; Zombies are chosen in ${preparationRemainingSeconds}s.`
     : athleticsRace
-      ? athleticsPlayer?.status === "finished"
+      ? athleticsRecoveryActive
+        ? "You fell! Answer 3 questions to get back on the course."
+        : athleticsPlayer?.status === "finished"
         ? `Finished in ${formatDuration((athleticsPlayer.finishTimeMs ?? 0) / 1000)}. Watch the remaining racers.`
         : athleticsPlayer?.lapTransitionUntil && Date.now() < Date.parse(athleticsPlayer.lapTransitionUntil)
           ? `Lap ${athleticsPlayer.completedLaps} complete. The next lap is getting ready.`
@@ -2099,6 +2195,9 @@ export default function StudentExperience({ onExit }: { onExit: () => void }) {
     canAnswer: Boolean(playerToken) && !isSocketReconnecting && !teacherPaused,
     gateOpen: athleticsPlayer.gateOpen,
     status: athleticsPlayer.status,
+    recoveryActive: athleticsRecoveryActive,
+    recoveryCorrectAnswers: athleticsPlayer.recoveryCorrectAnswers ?? 0,
+    recoveryRequiredAnswers: athleticsPlayer.recoveryRequiredAnswers ?? 3,
     sectionLabel: athleticsSection?.label ?? "Skyline Adventure Park",
     objectiveText
   } : undefined;
@@ -2106,6 +2205,7 @@ export default function StudentExperience({ onExit }: { onExit: () => void }) {
     athleticsStartRemainingSeconds > 0
     || Boolean(athleticsPlayer?.lapTransitionUntil && Date.now() < Date.parse(athleticsPlayer.lapTransitionUntil))
     || Boolean(athleticsPlayer?.respawnPenaltyUntil && Date.now() < Date.parse(athleticsPlayer.respawnPenaltyUntil))
+    || Boolean(athleticsPlayer?.recoveryActive)
   );
 
   const downloadWorksheet = async () => {
@@ -2369,6 +2469,21 @@ export default function StudentExperience({ onExit }: { onExit: () => void }) {
             </div>
             {quizOpen && (
               <>
+                {athleticsRecoveryActive && (
+                  <div className="panel respawn-card respawn-card-overlay athletics-recovery-card" role="status" aria-live="polite">
+                    <div className="panel-title">
+                      <div>
+                        <span className="menu-eyebrow">Fall recovery</span>
+                        <h2>You fell! Answer 3 questions to get back on the course.</h2>
+                      </div>
+                      <span>{athleticsPlayer?.recoveryCorrectAnswers ?? 0}/{athleticsPlayer?.recoveryRequiredAnswers ?? 3}</span>
+                    </div>
+                    <div className="respawn-meter" aria-label="Recovery question progress">
+                      <span style={{ width: `${Math.min(100, ((athleticsPlayer?.recoveryCorrectAnswers ?? 0) / Math.max(1, athleticsPlayer?.recoveryRequiredAnswers ?? 3)) * 100)}%` }} />
+                    </div>
+                    <p>Recovery Questions {athleticsPlayer?.recoveryCorrectAnswers ?? 0} / {athleticsPlayer?.recoveryRequiredAnswers ?? 3} · only correct answers count. You’ll return to the previous safe platform.</p>
+                  </div>
+                )}
                 {canPracticeToRespawn && (
                   <div className="panel respawn-card respawn-card-overlay">
                     <div className="panel-title">

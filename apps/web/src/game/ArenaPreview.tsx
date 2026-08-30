@@ -43,7 +43,16 @@ import {
 import { createArenaSceneSetup, FPS_BASE_FOV } from "./sceneSetup";
 import { ArenaHudOverlay, type AthleticsHudState } from "./hudOverlay";
 import { type CharacterManagerStats } from "./characters/CharacterManager";
-import { isFireKeyboardEvent, isScopeKeyboardEvent, resolveCombatPointerAction, shouldFireFromTouchGesture } from "./arenaInput";
+import {
+  ATHLETICS_CROUCH_SPEED,
+  ATHLETICS_RUN_SPEED,
+  isFireKeyboardEvent,
+  isScopeKeyboardEvent,
+  resolveAthleticsCrouching,
+  resolveAthleticsMovementSpeed,
+  resolveCombatPointerAction,
+  shouldFireFromTouchGesture
+} from "./arenaInput";
 import { gameAudio, type MovementAudioMode } from "./GameAudio";
 import { cycleHeavyGunZoom, getWeaponFov, shouldResetWeaponZoom } from "./weaponControls";
 import { resolveTouchJoystickVector } from "./touchJoystick";
@@ -96,8 +105,8 @@ type ArenaLivePosition = {
 
 const PLAYER_RADIUS = 0.45;
 const WALK_SPEED = 10.8;
-const RUN_SPEED = 14.8;
-const CROUCH_SPEED = 6.4;
+const RUN_SPEED = ATHLETICS_RUN_SPEED;
+const CROUCH_SPEED = ATHLETICS_CROUCH_SPEED;
 const GAMEPAD_DEAD_ZONE = 0.18;
 const KEYBOARD_LOOK_SPEED = 1.9;
 const TOUCH_LOOK_SENSITIVITY = 0.006;
@@ -303,12 +312,12 @@ export default function ArenaPreview({
 }: ArenaPreviewProps) {
   const mountRef = useRef<HTMLDivElement | null>(null);
   const touchMoveRef = useRef({ forward: 0, right: 0 });
-  const touchSprintRef = useRef(false);
+  const touchCrouchRef = useRef(false);
   const fireControlRef = useRef<() => void>(() => undefined);
   const zoomControlRef = useRef<() => void>(() => undefined);
   const interactControlRef = useRef<() => void>(() => undefined);
   const jumpControlRef = useRef<() => void>(() => undefined);
-  const questionControlRef = useRef<() => void>(() => undefined);
+      const questionControlRef = useRef<() => void>(() => undefined);
   const onMoveRef = useRef(onMove);
   const onFireRef = useRef(onFire);
   const onInteractRef = useRef(onInteract);
@@ -322,7 +331,7 @@ export default function ArenaPreview({
   const joystickElementRef = useRef<HTMLButtonElement | null>(null);
   const syncPlayersRef = useRef<(session?: GameSession, currentPlayer?: PlayerSession) => void>(() => undefined);
   const [isPointerLocked, setIsPointerLocked] = useState(false);
-  const [touchSprintEnabled, setTouchSprintEnabled] = useState(false);
+  const [touchCrouchEnabled, setTouchCrouchEnabled] = useState(false);
   const [hitPulse, setHitPulse] = useState(0);
   const [zoomLevel, setZoomLevelState] = useState(0);
   const [zoomPulse, setZoomPulse] = useState(0);
@@ -442,16 +451,16 @@ export default function ArenaPreview({
     if (!controlsDisabled && !inputPaused) return;
     joystickPointerRef.current = null;
     touchMoveRef.current = { forward: 0, right: 0 };
-    touchSprintRef.current = false;
-    setTouchSprintEnabled(false);
+    touchCrouchRef.current = false;
+    setTouchCrouchEnabled(false);
     joystickElementRef.current?.style.setProperty("--stick-x", "0px");
     joystickElementRef.current?.style.setProperty("--stick-y", "0px");
   }, [controlsDisabled, inputPaused]);
 
   useEffect(() => {
     if (isAthleticsMode) return;
-    touchSprintRef.current = false;
-    setTouchSprintEnabled(false);
+    touchCrouchRef.current = false;
+    setTouchCrouchEnabled(false);
   }, [isAthleticsMode]);
 
   useEffect(() => {
@@ -750,6 +759,7 @@ export default function ArenaPreview({
       let cameraVisualY = playerPosition.y;
       let fireHeld = false;
       let questionHoldPosition: THREE.Vector3 | null = null;
+      let previousControlsDisabled = controlsDisabledRef.current;
       jumpControlRef.current = () => {
         if (controlsDisabledRef.current || inputPausedRef.current) return;
         if (isAthleticsMode && (currentPlayerRef.current?.energy ?? 0) < ATHLETICS_JUMP_ENERGY_COST) return;
@@ -1015,8 +1025,8 @@ export default function ArenaPreview({
         lookKeys.clear();
         setZoomLevel(0);
         fireHeld = false;
-        touchSprintRef.current = false;
-        setTouchSprintEnabled(false);
+        touchCrouchRef.current = false;
+        setTouchCrouchEnabled(false);
       };
       const cleanupControls = attachArenaInputListeners({
         rendererElement: renderer.domElement,
@@ -1082,7 +1092,9 @@ export default function ArenaPreview({
         if (currentTime - lastMoveEmitAt < 180) return;
         const nextPosition = {
           ...localToServerPosition(playerPosition, yaw),
-          sprinting: isSprinting,
+          // Athletics has no sprint modifier; keep the legacy field false for
+          // other clients while preserving Zombie Mode's server contract.
+          sprinting: isAthleticsMode ? false : isSprinting,
           crouching: isCrouching,
           jumping: isJumping
         };
@@ -1181,7 +1193,8 @@ export default function ArenaPreview({
           if (debugOverlay) setVfxDebugStats(vfxPool.getStats());
           performanceWindowAt = currentTime;
         }
-        if (controlsDisabledRef.current) {
+        const controlsLocked = controlsDisabledRef.current;
+        if (controlsLocked) {
           verticalVelocity = 0;
           jumpQueuedAt = 0;
           keys.clear();
@@ -1195,7 +1208,26 @@ export default function ArenaPreview({
             playerPosition.y += (followedEyeY - playerPosition.y) * 0.24;
             if (isFiniteNumber(followedPlayer.facing)) yaw = followedPlayer.facing;
           }
+        } else if (previousControlsDisabled) {
+          // A recovery completion can teleport the authoritative player while
+          // the same renderer instance remains mounted. Snap the local camera
+          // to that safe landing before accepting retry input.
+          const followedPlayer = currentPlayerRef.current;
+          if (isFiniteNumber(followedPlayer?.x) && isFiniteNumber(followedPlayer?.z)) {
+            playerPosition.x = serverToLocalX(followedPlayer.x);
+            playerPosition.z = serverToLocalZ(followedPlayer.z);
+            playerPosition.y = isFiniteNumber(followedPlayer.y)
+              ? followedPlayer.y
+              : (isAthleticsMode ? 0 : getArenaGroundHeight(arenaMapId, followedPlayer.x, followedPlayer.z)) + FPS_STANDING_EYE_HEIGHT;
+            if (isFiniteNumber(followedPlayer.facing)) yaw = followedPlayer.facing;
+            verticalVelocity = 0;
+            jumpQueuedAt = 0;
+            wasGrounded = true;
+            isJumping = false;
+            questionHoldPosition = null;
+          }
         }
+        previousControlsDisabled = controlsLocked;
         const horizontalLook = Number(lookKeys.has("ArrowLeft")) - Number(lookKeys.has("ArrowRight"));
         const verticalLook = Number(lookKeys.has("ArrowUp")) - Number(lookKeys.has("ArrowDown"));
         yaw += horizontalLook * KEYBOARD_LOOK_SPEED * delta;
@@ -1208,12 +1240,19 @@ export default function ArenaPreview({
           keys.clear();
           lookKeys.clear();
           if (activeZoomLevel > 0) setZoomLevel(0);
-          if (isAthleticsMode && !questionHoldPosition && wasGrounded) questionHoldPosition = playerPosition.clone();
+          if (isAthleticsMode
+            && !questionHoldPosition
+            && wasGrounded
+            && currentPlayerRef.current?.athletics?.recoveryActive !== true) {
+            questionHoldPosition = playerPosition.clone();
+          }
         } else {
           questionHoldPosition = null;
         }
         applyGamepadInput();
-        const crouching = keys.has("Control");
+        const crouching = isAthleticsMode
+          ? resolveAthleticsCrouching({ shiftPressed: keys.has("Shift"), touchCrouch: touchCrouchRef.current })
+          : keys.has("Control");
         const floorEyeHeight = crouching ? FPS_CROUCH_EYE_HEIGHT : FPS_STANDING_EYE_HEIGHT;
         if (floorEyeHeight !== previousFloorEyeHeight) {
           playerPosition.y += floorEyeHeight - previousFloorEyeHeight;
@@ -1299,12 +1338,13 @@ export default function ArenaPreview({
         const hasMovementEnergy = isAthleticsMode || isZombieHuman
           ? (activePlayer?.energy ?? 0) > 0
           : true;
-        const runRequested = keys.has("Shift") || touchSprintRef.current;
-        const runAllowed = runRequested && hasMovementEnergy;
-        const movementAudioMode: MovementAudioMode = crouching ? "crouch" : runAllowed ? "run" : "walk";
-        const moveSpeed = hasMovementEnergy
-          ? (crouching ? CROUCH_SPEED : runAllowed ? RUN_SPEED : WALK_SPEED) * gearSpeedMultiplier
-          : 0;
+        const runAllowed = !isAthleticsMode && keys.has("Shift") && hasMovementEnergy;
+        const movementAudioMode: MovementAudioMode = crouching ? "crouch" : isAthleticsMode || runAllowed ? "run" : "walk";
+        const moveSpeed = isAthleticsMode
+          ? resolveAthleticsMovementSpeed({ crouching, hasMovementEnergy, gearSpeedMultiplier })
+          : hasMovementEnergy
+            ? (crouching ? CROUCH_SPEED : runAllowed ? RUN_SPEED : WALK_SPEED) * gearSpeedMultiplier
+            : 0;
         forwardVector.set(-Math.sin(yaw), 0, -Math.cos(yaw));
         rightVector.set(Math.cos(yaw), 0, -Math.sin(yaw));
         movementVector.set(0, 0, 0);
@@ -1321,7 +1361,7 @@ export default function ArenaPreview({
         if (gamepadMove.forward < -GAMEPAD_DEAD_ZONE) movementVector.sub(forwardVector);
         if (gamepadMove.right > GAMEPAD_DEAD_ZONE) movementVector.add(rightVector);
         if (gamepadMove.right < -GAMEPAD_DEAD_ZONE) movementVector.sub(rightVector);
-        isSprinting = runAllowed && movementVector.lengthSq() > 0;
+        isSprinting = !crouching && (isAthleticsMode || runAllowed) && movementVector.lengthSq() > 0;
 
         if (movementVector.lengthSq() > 0) {
           const movementSurface: "metal" | "water" | "stone" | "sand" = isAthleticsMode ? "stone" : isIronJunction ? "metal" : isTempleRunoff ? (surfaceGroundY < 1 ? "water" : "stone") : "sand";
@@ -1659,11 +1699,11 @@ export default function ArenaPreview({
     if (controlsDisabled || inputPausedRef.current) return;
     zoomControlRef.current();
   };
-  const toggleSprintFromTouch = () => {
+  const toggleCrouchFromTouch = () => {
     if (controlsDisabled || inputPausedRef.current) return;
-    const enabled = !touchSprintRef.current;
-    touchSprintRef.current = enabled;
-    setTouchSprintEnabled(enabled);
+    const enabled = !touchCrouchRef.current;
+    touchCrouchRef.current = enabled;
+    setTouchCrouchEnabled(enabled);
   };
   const interactFromTouch = () => {
     interactControlRef.current();
@@ -1784,8 +1824,8 @@ export default function ArenaPreview({
             onInteractFromTouch={onInteract ? interactFromTouch : undefined}
             onJumpFromTouch={isAthleticsMode ? jumpFromTouch : undefined}
             onQuestionFromTouch={isAthleticsMode ? questionFromTouch : undefined}
-            onToggleSprintFromTouch={isAthleticsMode ? toggleSprintFromTouch : undefined}
-            touchSprintEnabled={isAthleticsMode && touchSprintEnabled}
+            onToggleCrouchFromTouch={isAthleticsMode ? toggleCrouchFromTouch : undefined}
+            touchCrouchEnabled={isAthleticsMode && touchCrouchEnabled}
             athleticsHud={isAthleticsMode ? athleticsHud : undefined}
           />
           {!isAthleticsMode && zoomLevel > 0 && (

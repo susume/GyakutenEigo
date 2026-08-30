@@ -70,7 +70,9 @@ export default function StudentJoinScreen({ onJoined }: { onJoined: (options?: {
         <div className="panel how-to-card controls-card" aria-labelledby="student-controls-heading">
           <div className="controls-card-heading"><h2 id="student-controls-heading">Quick controls</h2><span>Keyboard + touch</span></div>
           <div className="student-controls-grid">
-            <div className="student-control"><kbd>WASD</kbd><span>Move</span></div>
+            <div className="student-control"><kbd>WASD</kbd><span>Move at full speed (Athletics)</span></div>
+            <div className="student-control"><kbd>Shift</kbd><span>Crouch (Athletics)</span></div>
+            <div className="student-control"><kbd>Space</kbd><span>Jump (Athletics)</span></div>
             <div className="student-control"><kbd>Arrow keys / swipe</kbd><span>Look around</span></div>
             <div className="student-control"><kbd>F</kbd><span>Fire</span></div>
             <div className="student-control"><kbd>C</kbd><span>Zoom</span></div>

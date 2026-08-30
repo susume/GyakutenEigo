@@ -1,5 +1,29 @@
 export type CombatPointerAction = "fire" | "scope" | "none";
 
+export const ATHLETICS_RUN_SPEED = 14.8;
+export const ATHLETICS_CROUCH_SPEED = 6.4;
+
+/** Athletics has one normal movement speed; Shift changes posture, not speed. */
+export const resolveAthleticsMovementSpeed = ({
+  crouching,
+  hasMovementEnergy,
+  gearSpeedMultiplier = 1
+}: {
+  crouching: boolean;
+  hasMovementEnergy: boolean;
+  gearSpeedMultiplier?: number;
+}) => !hasMovementEnergy
+  ? 0
+  : (crouching ? ATHLETICS_CROUCH_SPEED : ATHLETICS_RUN_SPEED) * gearSpeedMultiplier;
+
+export const resolveAthleticsCrouching = ({
+  shiftPressed,
+  touchCrouch = false
+}: {
+  shiftPressed: boolean;
+  touchCrouch?: boolean;
+}) => shiftPressed || touchCrouch;
+
 export const isFireKeyboardEvent = ({ code, key }: { code: string; key: string }) =>
   code === "KeyF" || key.toLowerCase() === "f";
 

@@ -158,23 +158,26 @@ import {
   ATHLETICS_STADIUM_COURSE,
   ATHLETICS_CHECKPOINT_COUNT,
   ATHLETICS_LAP_TRANSITION_MS,
-  ATHLETICS_RESPAWN_PENALTY_MS,
   ATHLETICS_START_COUNTDOWN_MS,
   ATHLETICS_WRONG_ANSWER_PENALTY_MS,
   ATHLETICS_CORRECT_ENERGY,
   ATHLETICS_JUMP_ENERGY_COST,
   ATHLETICS_MAX_ENERGY,
   ATHLETICS_PLAYER_EYE_HEIGHT,
+  ATHLETICS_RECOVERY_CORRECT_ANSWERS_REQUIRED,
+  ATHLETICS_RECOVERY_MIN_ENERGY,
   awardAthleticsEnergy,
-  getAthleticsCheckpointRouteProgress,
   getAthleticsGroundHeight,
   getAthleticsQuestionPoolIndex,
   getAthleticsQuestionsPerLap,
   getAthleticsPointAtProgress,
-  getAthleticsRespawnPosition,
+  getAthleticsRecoveryPosition,
+  getAthleticsPreviousSafeSurfaceIndex,
   getAthleticsRouteTangent,
   getAthleticsRouteProgress,
   getAthleticsRouteDistance,
+  getAthleticsSurfaceIndexAtPosition,
+  getAthleticsSurfaceRouteProgress,
   isAthleticsBelowRecoverableRoute,
   isAthleticsOnRoute,
   getAthleticsStartPosition,
@@ -647,6 +650,10 @@ const makeAthleticsPlayerState = (laneIndex = 0): AthleticsPlayerState => ({
   gateOpen: true,
   falls: 0,
   lastSafeCheckpointIndex: 0,
+  lastSafeSurfaceIndex: 0,
+  recoveryActive: false,
+  recoveryCorrectAnswers: 0,
+  recoveryRequiredAnswers: ATHLETICS_RECOVERY_CORRECT_ANSWERS_REQUIRED,
   checkpointSplitsMs: [],
   completedLaps: 0,
   lapSplitsMs: [],
@@ -663,6 +670,10 @@ const ensureAthleticsPlayerState = (
   if (!player.athletics) player.athletics = makeAthleticsPlayerState(laneIndex ?? session.players.indexOf(player));
   player.athletics.completedLaps ??= 0;
   player.athletics.lapSplitsMs ??= [];
+  player.athletics.lastSafeSurfaceIndex ??= 0;
+  player.athletics.recoveryCorrectAnswers ??= 0;
+  player.athletics.recoveryRequiredAnswers ??= ATHLETICS_RECOVERY_CORRECT_ANSWERS_REQUIRED;
+  player.athletics.recoveryActive ??= false;
   if (laneIndex !== undefined && player.athletics.laneIndex === undefined) player.athletics.laneIndex = laneIndex;
   return player.athletics;
 };
@@ -732,12 +743,26 @@ const selectNextQuestion = (session: GameSession, playerId: string): PublicQuest
   return publicQuestion(question);
 };
 
+const issueAthleticsRecoveryQuestion = (session: GameSession, player: PlayerSession, athletics: AthleticsPlayerState) => {
+  const questions = getSessionQuestions(session);
+  if (questions.length === 0) return undefined;
+  const recoveryIndex = getAthleticsQuestionPoolIndex(
+    athletics.questionIndex + (athletics.recoveryCorrectAnswers ?? 0),
+    questions.length
+  );
+  const question = questions[recoveryIndex];
+  if (!question) return undefined;
+  playerQuestionGate.issue(player.id, question.id);
+  return publicQuestion(question);
+};
+
 const issueNextQuestion = (session: GameSession, playerId: string): PublicQuestion | undefined => {
   if (session.settings.gameMode === "athletics") {
     const player = session.players.find((candidate) => candidate.id === playerId);
     const athletics = player ? ensureAthleticsPlayerState(session, player) : undefined;
     const questions = getSessionQuestions(session);
     if (!player || !athletics || athletics.status !== "racing") return undefined;
+    if (athletics.recoveryActive) return issueAthleticsRecoveryQuestion(session, player, athletics);
     const race = getAthleticsRaceConfig(session);
     if (athletics.questionIndex >= race.questionCount || athletics.lapTransitionUntil) return undefined;
     const question = questions[getAthleticsQuestionPoolIndex(athletics.questionIndex, questions.length)];
@@ -1213,6 +1238,7 @@ const completeAthleticsLap = (session: GameSession, player: PlayerSession, nowMs
   athletics.checkpointIndex = 0;
   athletics.lastSafeCheckpointIndex = 0;
   athletics.routeProgress = 0;
+  athletics.lastSafeSurfaceIndex = 0;
   // Energy carries across laps. A lap transition must not duplicate or erase
   // earned fuel, and the start platform remains safe for the next answer.
   athletics.gateOpen = true;
@@ -1247,7 +1273,7 @@ const updateAthleticsRace = (session: GameSession, player: PlayerSession, nowMs:
     appendEvent(session, { type: "start", message: "Athletics Race is live." });
     broadcastSession(session);
   }
-  if (race.status !== "running" || athletics.status !== "racing") return;
+  if (race.status !== "running" || athletics.status !== "racing" || athletics.recoveryActive) return;
   if (startNextAthleticsLap(session, player, nowMs)) {
     broadcastPlayerState(session, [player]);
     broadcastSession(session);
@@ -1358,26 +1384,117 @@ const combatService = new CombatService({
 const applyValidatedDamage = (session: GameSession, attacker: PlayerSession, target: PlayerSession) =>
   combatService.applyValidatedDamage(session, attacker, target);
 
-const respawnAthleticsPlayer = (session: GameSession, player: PlayerSession, athletics: AthleticsPlayerState, nowMs: number) => {
+const beginAthleticsRecovery = (session: GameSession, player: PlayerSession, athletics: AthleticsPlayerState, nowMs: number) => {
+  const currentPosition = {
+    x: player.x ?? 0,
+    y: player.y ?? ATHLETICS_PLAYER_EYE_HEIGHT,
+    z: player.z ?? 0,
+    facing: player.facing ?? 0
+  };
+  if (athletics.recoveryActive) return currentPosition;
+
+  const progressSafeIndex = getAthleticsPreviousSafeSurfaceIndex(athletics.routeProgress, ATHLETICS_STADIUM_COURSE);
+  const trackedSafeIndex = Number.isInteger(athletics.lastSafeSurfaceIndex)
+    ? Math.max(0, athletics.lastSafeSurfaceIndex ?? 0)
+    : progressSafeIndex;
+  const safeSurfaceIndex = Math.max(0, Math.min(trackedSafeIndex, progressSafeIndex));
+  const safeProgress = getAthleticsSurfaceRouteProgress(safeSurfaceIndex, ATHLETICS_STADIUM_COURSE);
+  const safeCheckpointIndex = ATHLETICS_STADIUM_COURSE.checkpoints.filter((progress) => progress <= safeProgress + 0.02).length;
+  const requiredAnswers = athletics.recoveryRequiredAnswers ?? ATHLETICS_RECOVERY_CORRECT_ANSWERS_REQUIRED;
+
   athletics.falls += 1;
-  const respawn = getAthleticsRespawnPosition(
-    athletics.lastSafeCheckpointIndex,
-    ATHLETICS_CHECKPOINT_COUNT,
-    athletics.laneIndex ?? 0
-  );
-  Object.assign(player, respawn, { jumping: false, crouching: false });
-  athletics.routeProgress = getAthleticsCheckpointRouteProgress(athletics.lastSafeCheckpointIndex);
-  athletics.respawnPenaltyUntil = new Date(nowMs + ATHLETICS_RESPAWN_PENALTY_MS).toISOString();
+  athletics.lastSafeSurfaceIndex = safeSurfaceIndex;
+  athletics.recoveryActive = true;
+  athletics.recoveryCorrectAnswers = 0;
+  athletics.recoveryRequiredAnswers = requiredAnswers;
+  athletics.recoverySurfaceId = ATHLETICS_STADIUM_COURSE.surfaces[safeSurfaceIndex]?.id;
+  athletics.recoveryRouteProgress = safeProgress;
+  // A failed jump may have been measured in the air beyond the last landing.
+  // Rewind only to the server-tracked landing; never advance progress here.
+  athletics.routeProgress = Math.min(athletics.routeProgress, safeProgress);
+  athletics.checkpointIndex = Math.min(athletics.checkpointIndex, safeCheckpointIndex);
+  athletics.lastSafeCheckpointIndex = Math.min(athletics.lastSafeCheckpointIndex, athletics.checkpointIndex);
+  athletics.respawnPenaltyUntil = undefined;
+  player.isAlive = false;
+  player.health = 0;
+  player.jumping = false;
+  player.crouching = false;
   playerMoveTimestamps.set(player.id, nowMs);
-  emitToPlayers(session, [player.id], "athletics_respawn", {
+  const question = issueAthleticsRecoveryQuestion(session, player, athletics);
+  emitToPlayers(session, [player.id], "athletics_recovery_start", {
     falls: athletics.falls,
-    checkpointIndex: athletics.lastSafeCheckpointIndex,
+    checkpointIndex: athletics.checkpointIndex,
     completedLaps: athletics.completedLaps,
-    position: respawn,
-    penaltyUntil: athletics.respawnPenaltyUntil,
-    delayMs: ATHLETICS_RESPAWN_PENALTY_MS
+    recoveryCorrectAnswers: athletics.recoveryCorrectAnswers,
+    recoveryRequiredAnswers: requiredAnswers,
+    recoverySurfaceId: athletics.recoverySurfaceId,
+    question,
+    message: "You fell! Answer 3 questions to get back on the course."
   });
-  return { ...respawn };
+  appendEvent(session, {
+    type: "respawn",
+    message: `${player.nickname} fell and entered the Athletics recovery challenge.`,
+    playerId: player.id,
+    team: player.team
+  });
+  broadcastPlayerState(session, [player]);
+  broadcastSession(session);
+  return currentPosition;
+};
+
+const completeAthleticsRecovery = (
+  session: GameSession,
+  player: PlayerSession,
+  athletics: AthleticsPlayerState,
+  nowMs: number
+) => {
+  const storedIndex = athletics.recoverySurfaceId
+    ? ATHLETICS_STADIUM_COURSE.surfaces.findIndex((surface) => surface.id === athletics.recoverySurfaceId)
+    : -1;
+  const safeSurfaceIndex = storedIndex >= 0
+    ? storedIndex
+    : Math.max(0, Math.floor(athletics.lastSafeSurfaceIndex ?? 0));
+  const safeProgress = athletics.recoveryRouteProgress
+    ?? getAthleticsSurfaceRouteProgress(safeSurfaceIndex, ATHLETICS_STADIUM_COURSE);
+  const respawn = getAthleticsRecoveryPosition(
+    safeSurfaceIndex,
+    athletics.laneIndex ?? 0,
+    ATHLETICS_STADIUM_COURSE
+  );
+  const safeCheckpointIndex = ATHLETICS_STADIUM_COURSE.checkpoints.filter((progress) => progress <= safeProgress + 0.02).length;
+  Object.assign(player, respawn, {
+    isAlive: true,
+    health: DEFAULT_PLAYER_HEALTH,
+    jumping: false,
+    crouching: false
+  });
+  player.respawns = (player.respawns ?? 0) + 1;
+  player.roundRespawns = (player.roundRespawns ?? 0) + 1;
+  player.energy = Math.max(normalizeAthleticsEnergy(player.energy), ATHLETICS_RECOVERY_MIN_ENERGY);
+  athletics.lastSafeSurfaceIndex = safeSurfaceIndex;
+  athletics.routeProgress = Math.min(athletics.routeProgress, safeProgress);
+  athletics.checkpointIndex = Math.min(athletics.checkpointIndex, safeCheckpointIndex);
+  athletics.lastSafeCheckpointIndex = Math.min(athletics.lastSafeCheckpointIndex, athletics.checkpointIndex);
+  athletics.recoveryActive = false;
+  athletics.recoveryCorrectAnswers = 0;
+  athletics.recoveryRequiredAnswers = ATHLETICS_RECOVERY_CORRECT_ANSWERS_REQUIRED;
+  athletics.recoverySurfaceId = undefined;
+  athletics.recoveryRouteProgress = undefined;
+  athletics.respawnPenaltyUntil = undefined;
+  athletics.wrongAnswerPenaltyUntil = undefined;
+  playerMoveTimestamps.set(player.id, nowMs);
+  playerQuestionGate.clear(player.id);
+  const question = issueNextQuestion(session, player.id);
+  emitToPlayers(session, [player.id], "athletics_recovery_complete", {
+    position: respawn,
+    checkpointIndex: athletics.checkpointIndex,
+    routeProgress: athletics.routeProgress,
+    completedLaps: athletics.completedLaps,
+    energy: player.energy,
+    question,
+    message: "Recovery complete! Back to the course."
+  });
+  return { position: respawn, question };
 };
 
 const applyAuthoritativePosition = (
@@ -1420,6 +1537,7 @@ const applyAuthoritativePosition = (
   const requestedFacing = Number.isFinite(Number(requested.facing)) ? Number(requested.facing) : currentPosition.facing;
   if (isAthletics && athletics && (
     athletics.status !== "racing"
+    || athletics.recoveryActive
     || Boolean(athletics.lapTransitionUntil && nowMs < Date.parse(athletics.lapTransitionUntil))
     || (athletics.respawnPenaltyUntil && nowMs < Date.parse(athletics.respawnPenaltyUntil))
     || (athletics.wrongAnswerPenaltyUntil && nowMs < Date.parse(athletics.wrongAnswerPenaltyUntil))
@@ -1430,7 +1548,7 @@ const applyAuthoritativePosition = (
     return { ...currentPosition, facing: requestedFacing };
   }
   if (isAthletics && athletics && Number.isFinite(Number(requested.y)) && Number(requested.y) < 0.5) {
-    return respawnAthleticsPlayer(session, player, athletics, nowMs);
+    return beginAthleticsRecovery(session, player, athletics, nowMs);
   }
   const requestedGroundY = isAthletics
     ? getAthleticsGroundHeight({ x: requestedX, y: requestedEyeY, z: requestedZ }, nowMs)
@@ -1486,7 +1604,7 @@ const applyAuthoritativePosition = (
   if (isAthletics && athletics) {
     const measuredProgress = getAthleticsRouteProgress(position);
     if (getAthleticsRouteDistance(position) > ATHLETICS_STADIUM_COURSE.routeWidth + 2.5) {
-      return respawnAthleticsPlayer(session, player, athletics, nowMs);
+      return beginAthleticsRecovery(session, player, athletics, nowMs);
     }
     if (measuredProgress < athletics.routeProgress - 0.03 || !isAthleticsOnRoute(position)) {
       position.x = currentPosition.x;
@@ -1495,7 +1613,7 @@ const applyAuthoritativePosition = (
       position.facing = requestedFacing;
     }
     if (isAthleticsBelowRecoverableRoute(position, athletics.routeProgress)) {
-      return respawnAthleticsPlayer(session, player, athletics, nowMs);
+      return beginAthleticsRecovery(session, player, athletics, nowMs);
     }
   }
   playerMoveTimestamps.set(player.id, nowMs);
@@ -1508,6 +1626,22 @@ const applyAuthoritativePosition = (
     player.jumping = athleticsCanJump && requested.jumping && !requestedCrouching;
   }
   if (isAthletics && athletics) {
+    if (!player.jumping) {
+      const surfaceIndex = getAthleticsSurfaceIndexAtPosition({
+        x: player.x ?? 0,
+        y: player.y,
+        z: player.z ?? 0
+      }, ATHLETICS_STADIUM_COURSE, requestedEyeHeight);
+      if (surfaceIndex !== undefined && surfaceIndex >= (athletics.lastSafeSurfaceIndex ?? 0)) {
+        athletics.lastSafeSurfaceIndex = surfaceIndex;
+      }
+      // The park floor is a valid visual safety net, but it is not a playable
+      // Athletics landing. Move a racer into recovery as soon as they settle
+      // on that floor so they can never start a long walk back to the route.
+      if (surfaceIndex === undefined && (player.y ?? 0) <= ATHLETICS_PLAYER_EYE_HEIGHT + 0.18) {
+        return beginAthleticsRecovery(session, player, athletics, nowMs);
+      }
+    }
     player.energy = resolveAthleticsMovementEnergy({
       currentEnergy: athleticsEnergy,
       elapsedMs,
@@ -1955,6 +2089,7 @@ const answerQuestion = (
 ): StudentCommandResult<{ result: QuizResult; cosmeticProgressToken: string }> => {
   const isAthletics = session.settings.gameMode === "athletics";
   const athletics = isAthletics ? ensureAthleticsPlayerState(session, player) : undefined;
+  const athleticsRecoveryActive = isAthletics && athletics?.recoveryActive === true;
   if (isTeacherPaused(session)) {
     return failStudentCommand(409, "The game is paused by the teacher. Wait for the game to resume.");
   }
@@ -1964,13 +2099,13 @@ const answerQuestion = (
   if (isAthletics && (!athletics || athletics.status !== "racing")) {
     return failStudentCommand(400, "This racer has already finished. Watch the live results.");
   }
-  if (isAthletics && athletics?.wrongAnswerPenaltyUntil && Date.now() < Date.parse(athletics.wrongAnswerPenaltyUntil)) {
+  if (isAthletics && !athleticsRecoveryActive && athletics?.wrongAnswerPenaltyUntil && Date.now() < Date.parse(athletics.wrongAnswerPenaltyUntil)) {
     return failStudentCommand(409, "Take a short breath, then try the same checkpoint again.");
   }
-  if (isAthletics && athletics?.lapTransitionUntil && Date.now() < Date.parse(athletics.lapTransitionUntil)) {
+  if (isAthletics && !athleticsRecoveryActive && athletics?.lapTransitionUntil && Date.now() < Date.parse(athletics.lapTransitionUntil)) {
     return failStudentCommand(409, "The next lap is getting ready. Hold at the start line.");
   }
-  if (!player.isAlive && !session.settings.deadPlayersCanPractice) {
+  if (!player.isAlive && !session.settings.deadPlayersCanPractice && !athleticsRecoveryActive) {
     return failStudentCommand(400, "Practice questions are disabled while out for the round.");
   }
   if (!checkQuizRateLimit(player.id)) {
@@ -1983,10 +2118,15 @@ const answerQuestion = (
   }
   const athleticsQuestions = isAthletics ? getSessionQuestions(session) : [];
   const athleticsExpectedQuestion = isAthletics && athleticsQuestions.length > 0
-    ? athleticsQuestions[getAthleticsQuestionPoolIndex(athletics?.questionIndex ?? 0, athleticsQuestions.length)]
+    ? athleticsQuestions[getAthleticsQuestionPoolIndex(
+        (athletics?.questionIndex ?? 0) + (athleticsRecoveryActive ? (athletics?.recoveryCorrectAnswers ?? 0) : 0),
+        athleticsQuestions.length
+      )]
     : undefined;
   if (isAthletics && question.id !== athleticsExpectedQuestion?.id) {
-    return failStudentCommand(409, "Answer the current course question before submitting.");
+    return failStudentCommand(409, athleticsRecoveryActive
+      ? "Answer the current recovery question before submitting."
+      : "Answer the current course question before submitting.");
   }
 
   const gatedQuestion = playerQuestionGate.consume(player.id, question.id);
@@ -1996,7 +2136,7 @@ const answerQuestion = (
 
   const responseTimeMs = gatedQuestion.responseTimeMs;
   const isCorrect = question.correctChoice === selectedChoice;
-  const answerContext: AnswerLog["context"] = player.isAlive ? "main" : "practice";
+  const answerContext: AnswerLog["context"] = player.isAlive && !athleticsRecoveryActive ? "main" : "practice";
   const reward = resolveAnswerReward({ player, settings: session.settings, isCorrect, responseTimeMs });
   player.money = reward.nextMoney;
   player.quizMoneyEarned = (player.quizMoneyEarned ?? 0) + reward.moneyAwarded;
@@ -2005,9 +2145,11 @@ const answerQuestion = (
   player.correctAnswers += reward.correctDelta;
   player.wrongAnswers += reward.wrongDelta;
   const previousEnergy = player.energy ?? 0;
-  player.energy = isAthletics
+  player.energy = isAthletics && !athleticsRecoveryActive
     ? awardAthleticsEnergy({ isCorrect, currentEnergy: player.energy })
-    : awardZombieHumanEnergy({
+    : isAthletics
+      ? normalizeAthleticsEnergy(player.energy)
+      : awardZombieHumanEnergy({
         gameMode: session.settings.gameMode,
         role: player.role,
         isCorrect,
@@ -2015,8 +2157,14 @@ const answerQuestion = (
       });
   const energyAwarded = Math.max(0, player.energy - previousEnergy);
   if (reward.correctDelta > 0) player.cosmeticXp = Math.max(0, player.cosmeticXp ?? 0) + reward.correctDelta * 100;
-  const respawn =
-    session.settings.gameMode === "flag" || isAthletics
+  let respawn = athleticsRecoveryActive
+    ? {
+        player,
+        respawned: false,
+        progress: athletics?.recoveryCorrectAnswers ?? 0,
+        required: athletics?.recoveryRequiredAnswers ?? ATHLETICS_RECOVERY_CORRECT_ANSWERS_REQUIRED
+      }
+    : session.settings.gameMode === "flag" || isAthletics
       ? {
           player,
           respawned: false,
@@ -2025,6 +2173,7 @@ const answerQuestion = (
         }
       : resolvePracticeRespawn({ player, settings: session.settings, isCorrect });
   Object.assign(player, respawn.player);
+  let recoveryNextQuestion: PublicQuestion | undefined;
   if (respawn.respawned) {
     player.respawns = (player.respawns ?? 0) + 1;
     player.roundRespawns = (player.roundRespawns ?? 0) + 1;
@@ -2033,7 +2182,27 @@ const answerQuestion = (
   }
 
   if (isAthletics && athletics) {
-    if (isCorrect) {
+    if (athleticsRecoveryActive) {
+      if (isCorrect) {
+        const requiredAnswers = athletics.recoveryRequiredAnswers ?? ATHLETICS_RECOVERY_CORRECT_ANSWERS_REQUIRED;
+        athletics.recoveryCorrectAnswers = Math.min(requiredAnswers, (athletics.recoveryCorrectAnswers ?? 0) + 1);
+        respawn.progress = athletics.recoveryCorrectAnswers;
+        if (athletics.recoveryCorrectAnswers >= requiredAnswers) {
+          const completion = completeAthleticsRecovery(session, player, athletics, Date.now());
+          recoveryNextQuestion = completion.question;
+          respawn = {
+            player,
+            respawned: true,
+            progress: requiredAnswers,
+            required: requiredAnswers
+          };
+        }
+      } else {
+        // Wrong answers never advance recovery. Re-issue the same gated
+        // question so a client cannot skip to the next recovery item.
+        playerQuestionGate.issue(player.id, question.id);
+      }
+    } else if (isCorrect) {
       athletics.questionIndex = Math.min(getAthleticsRaceConfig(session).questionCount, athletics.questionIndex + 1);
       athletics.gateOpen = true;
       athletics.wrongAnswerPenaltyUntil = undefined;
@@ -2067,11 +2236,17 @@ const answerQuestion = (
   }
 
   const feedback = isAthletics
-    ? isCorrect
-      ? energyAwarded > 0
-        ? `Correct! +${energyAwarded} movement energy. Keep climbing.`
-        : "Correct! Movement energy is full. Keep climbing."
-      : "Not quite. No movement energy gained; try again when you are ready."
+    ? athleticsRecoveryActive
+      ? isCorrect
+        ? respawn.respawned
+          ? "Recovery complete! Back to the course with enough energy to retry."
+          : `Recovery Questions ${respawn.progress} / ${respawn.required}`
+        : `Incorrect. Recovery Questions ${respawn.progress} / ${respawn.required}. Only correct answers count.`
+      : isCorrect
+        ? energyAwarded > 0
+          ? `Correct! +${energyAwarded} movement energy. Keep climbing.`
+          : "Correct! Movement energy is full. Keep climbing."
+        : "Not quite. No movement energy gained; try again when you are ready."
     : isCorrect
     ? respawn.respawned
       ? "Respawned! Three correct practice answers brought you back."
@@ -2084,11 +2259,15 @@ const answerQuestion = (
         : `Correct practice answer. Respawn progress ${respawn.progress}/${respawn.required}.`
     : "Incorrect. Try another question.";
   const rewardLabel = isCorrect
-    ? reward.moneyAwarded > 0
-      ? `+$${reward.moneyAwarded}`
-      : energyAwarded > 0
-        ? `+${energyAwarded} movement energy`
-        : undefined
+    ? athleticsRecoveryActive
+      ? respawn.respawned
+        ? `Recovery Questions ${respawn.required} / ${respawn.required} — Back to the course!`
+        : `Recovery Questions ${respawn.progress} / ${respawn.required}`
+      : reward.moneyAwarded > 0
+        ? `+$${reward.moneyAwarded}`
+        : energyAwarded > 0
+          ? `+${energyAwarded} movement energy`
+          : undefined
     : undefined;
 
   appendEvent(session, {
@@ -2100,7 +2279,7 @@ const answerQuestion = (
   if (respawn.respawned) {
     appendEvent(session, {
       type: "respawn",
-      message: `${player.nickname} returned after ${RESPAWN_CORRECT_ANSWERS_REQUIRED} correct practice answers.`,
+      message: `${player.nickname} returned after ${respawn.required} correct practice answers.`,
       playerId: player.id,
       team: player.team
     });
@@ -2114,9 +2293,13 @@ const answerQuestion = (
     feedback,
     explanation: question.explanation,
     player,
-    nextQuestion: isAthletics ? isCorrect ? issueNextQuestion(session, player.id) : publicQuestion(question) : issueNextQuestion(session, player.id),
+    nextQuestion: isAthletics
+      ? isCorrect
+        ? recoveryNextQuestion ?? issueNextQuestion(session, player.id)
+        : publicQuestion(question)
+      : issueNextQuestion(session, player.id),
     respawned: respawn.respawned,
-    respawnProgress: respawn.respawned ? 0 : respawn.progress,
+    respawnProgress: respawn.respawned && !athleticsRecoveryActive ? 0 : respawn.progress,
     respawnRequired: respawn.required,
     ...(isAthletics && athletics ? {
       athletics: {
@@ -2126,6 +2309,9 @@ const answerQuestion = (
         gateOpen: athletics.gateOpen,
         status: athletics.status,
         completedLaps: athletics.completedLaps,
+        recoveryActive: athletics.recoveryActive,
+        recoveryCorrectAnswers: athletics.recoveryCorrectAnswers,
+        recoveryRequiredAnswers: athletics.recoveryRequiredAnswers,
         ...(athletics.finishPosition === undefined ? {} : { finishPosition: athletics.finishPosition })
       }
     } : {})

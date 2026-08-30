@@ -24,6 +24,9 @@ export type AthleticsHudState = {
   canAnswer: boolean;
   gateOpen: boolean;
   status: "racing" | "finished" | "dnf";
+  recoveryActive?: boolean;
+  recoveryCorrectAnswers?: number;
+  recoveryRequiredAnswers?: number;
   sectionLabel: string;
   objectiveText: string;
 };
@@ -51,8 +54,8 @@ export const ArenaHudOverlay = ({
   onInteractFromTouch,
   onJumpFromTouch,
   onQuestionFromTouch,
-  onToggleSprintFromTouch,
-  touchSprintEnabled,
+  onToggleCrouchFromTouch,
+  touchCrouchEnabled,
   athleticsHud
 }: {
   hitPulse: number;
@@ -70,8 +73,8 @@ export const ArenaHudOverlay = ({
   onInteractFromTouch: (() => void) | undefined;
   onJumpFromTouch: (() => void) | undefined;
   onQuestionFromTouch: (() => void) | undefined;
-  onToggleSprintFromTouch: (() => void) | undefined;
-  touchSprintEnabled?: boolean;
+  onToggleCrouchFromTouch: (() => void) | undefined;
+  touchCrouchEnabled?: boolean;
   athleticsHud?: AthleticsHudState;
 }) => athleticsHud ? (
   <>
@@ -81,13 +84,20 @@ export const ArenaHudOverlay = ({
         <span>SPACE — JUMP · Tablet: tap JUMP</span>
       </div>
     )}
+    {athleticsHud.recoveryActive && (
+      <div className="athletics-recovery-banner" role="status" aria-live="assertive">
+        <strong>You fell!</strong>
+        <span>Answer 3 questions to get back on the course.</span>
+        <b>Recovery Questions {athleticsHud.recoveryCorrectAnswers ?? 0} / {athleticsHud.recoveryRequiredAnswers ?? 3}</b>
+      </div>
+    )}
     <div className="athletics-hud" aria-label="Athletics race status">
       <div className="athletics-hud-topline">
         <span className="athletics-hud-kicker">Skyline Adventure Park</span>
         <strong>{athleticsHud.startRemainingSeconds > 0 ? `GO in ${athleticsHud.startRemainingSeconds}` : formatRaceTime(athleticsHud.remainingSeconds)}</strong>
       </div>
       <div className="athletics-hud-mainline">
-        <strong>{athleticsHud.status === "finished" ? `Finished #${athleticsHud.rank}` : athleticsHud.energy <= athleticsHud.criticalEnergy ? "Energy low" : "Jump forward"}</strong>
+          <strong>{athleticsHud.recoveryActive ? "Recovery challenge" : athleticsHud.status === "finished" ? `Finished #${athleticsHud.rank}` : athleticsHud.energy <= athleticsHud.criticalEnergy ? "Energy low" : "Jump forward"}</strong>
         <span>{athleticsHud.sectionLabel}</span>
       </div>
       <span className="athletics-hud-objective">{athleticsHud.objectiveText}</span>
@@ -128,7 +138,10 @@ export const ArenaHudOverlay = ({
           aria-keyshortcuts="Q"
         >
           <span className="athletics-answer-icon" aria-hidden="true">?</span>
-          <span><strong>Answer Question</strong><small>Correct answers add +220 energy</small></span>
+          <span>
+            <strong>{athleticsHud.recoveryActive ? "Recovery Question" : "Answer Question"}</strong>
+            <small>{athleticsHud.recoveryActive ? "Only correct answers count · 3 to return" : "Correct answers add +220 energy"}</small>
+          </span>
           <kbd>Q</kbd>
         </button>
       )}
@@ -142,7 +155,7 @@ export const ArenaHudOverlay = ({
         <span><small>Checkpoints</small><strong>{athleticsHud.checkpointIndex}/{athleticsHud.checkpointCount}</strong></span>
       </div>
     </div>
-    {!controlsDisabled && !isPointerLocked && !suppressHint && <div className="control-lock athletics-control-lock">WASD moves · Shift sprints · Space jumps · Arrow keys or swipe looks · touch players can use Sprint + Jump</div>}
+    {!controlsDisabled && !isPointerLocked && !suppressHint && <div className="control-lock athletics-control-lock">WASD moves at full speed · Shift crouches · Space jumps · Arrow keys or swipe looks · touch players can use Crouch + Jump</div>}
     <div className="touch-controls athletics-touch-controls" aria-label="Touch controls">
       <button ref={joystickElementRef} type="button" className="touch-joystick" aria-label="Movement joystick" disabled={controlsDisabled} onPointerDown={onBeginTouchMove}>
         <span aria-hidden="true" />
@@ -159,20 +172,20 @@ export const ArenaHudOverlay = ({
           Answer
         </button>
       )}
-      {(onJumpFromTouch || onToggleSprintFromTouch) && (
+      {(onJumpFromTouch || onToggleCrouchFromTouch) && (
         <div className="touch-action-group">
-          {onToggleSprintFromTouch && (
+          {onToggleCrouchFromTouch && (
             <button
               type="button"
-              className="touch-sprint"
+              className="touch-crouch"
               disabled={controlsDisabled}
-              aria-label="Sprint"
+              aria-label="Crouch"
               aria-keyshortcuts="Shift"
-              aria-pressed={touchSprintEnabled === true}
-              onClick={onToggleSprintFromTouch}
+              aria-pressed={touchCrouchEnabled === true}
+              onClick={onToggleCrouchFromTouch}
             >
               <kbd aria-hidden="true">SHIFT</kbd>
-              Sprint
+              Crouch
             </button>
           )}
           {onJumpFromTouch && (

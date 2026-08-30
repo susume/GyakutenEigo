@@ -14398,6 +14398,40 @@ body:has(.workspace) .study-set-audio-recorder audio { width: min(100%, 440px); 
   text-transform: uppercase;
 }
 
+.fps-view .athletics-recovery-banner {
+  position: absolute;
+  top: var(--hud-safe-top, 16px);
+  right: var(--hud-safe-edge, 16px);
+  z-index: calc(var(--z-hud, 20) + 1);
+  width: min(430px, calc(100% - 32px));
+  display: grid;
+  gap: 4px;
+  padding: 12px 16px 13px;
+  border: 2px solid rgba(255, 127, 180, .9);
+  border-radius: 13px;
+  background: linear-gradient(145deg, rgba(78, 25, 65, .97), rgba(28, 26, 47, .96));
+  box-shadow: 0 16px 32px rgba(20, 14, 8, .36), 0 0 26px rgba(255, 127, 180, .22), inset 0 1px 0 rgba(255,255,255,.22);
+  color: #fff7df;
+  text-align: center;
+  pointer-events: none;
+}
+
+.athletics-recovery-banner strong {
+  color: #ffd2e5;
+  font-size: clamp(.82rem, 1.2vw, .98rem);
+  font-weight: 950;
+  letter-spacing: .04em;
+  line-height: 1.15;
+}
+
+.athletics-recovery-banner span,
+.athletics-recovery-banner b {
+  font-size: .7rem;
+  font-weight: 900;
+}
+
+.athletics-recovery-banner b { color: #fff0a8; }
+
 @keyframes athletics-onboarding-enter {
   from { opacity: 0; transform: translateY(-8px); }
   to { opacity: 1; transform: translateY(0); }
@@ -14726,7 +14760,7 @@ body:has(.workspace) .study-set-audio-recorder audio { width: min(100%, 440px); 
   text-transform: uppercase;
 }
 
-.athletics-touch-controls .touch-sprint {
+.athletics-touch-controls .touch-crouch {
   min-width: 102px;
   min-height: 58px;
   display: grid;
@@ -14740,14 +14774,14 @@ body:has(.workspace) .study-set-audio-recorder audio { width: min(100%, 440px); 
   text-transform: uppercase;
 }
 
-.athletics-touch-controls .touch-sprint[aria-pressed="true"] {
+.athletics-touch-controls .touch-crouch[aria-pressed="true"] {
   border-color: #fff4a8 !important;
   background: linear-gradient(145deg, rgba(102, 109, 33, .98), rgba(69, 74, 20, .98)) !important;
   box-shadow: 0 0 18px rgba(181, 239, 113, .42) !important;
   color: #fff4a8 !important;
 }
 
-.athletics-touch-controls .touch-sprint kbd {
+.athletics-touch-controls .touch-crouch kbd {
   color: #b5ef71;
   font-size: .55rem;
 }
@@ -14941,7 +14975,7 @@ body:has(.workspace) .athletics-teacher-results {
   .athletics-control-lock { bottom: 138px; max-width: calc(100% - 24px); white-space: normal; text-align: center; }
   .athletics-touch-controls .touch-joystick { width: 104px; height: 104px; min-width: 104px; min-height: 104px; }
   .athletics-touch-controls .touch-jump { min-width: 92px; min-height: 74px; }
-  .athletics-touch-controls .touch-sprint { min-width: 92px; min-height: 58px; }
+  .athletics-touch-controls .touch-crouch { min-width: 92px; min-height: 58px; }
   .athletics-touch-controls .touch-question { min-width: 82px; min-height: 74px; }
   .athletics-answer-button { min-height: 56px; }
 }

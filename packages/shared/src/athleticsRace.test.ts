@@ -6,6 +6,7 @@ import {
   ATHLETICS_COURSE_BOUNDS,
   ATHLETICS_CORRECT_ENERGY,
   ATHLETICS_DEFAULT_TIME_LIMIT_SECONDS,
+  ATHLETICS_MOVEMENT_DRAIN_PER_SECOND,
   ATHLETICS_PLAYER_EYE_HEIGHT,
   ATHLETICS_MAX_ENERGY,
   ATHLETICS_STADIUM_COURSE,
@@ -22,12 +23,16 @@ import {
   getAthleticsNextGateProgress,
   getAthleticsPointAtProgress,
   getAthleticsMovingObstaclePosition,
+  getAthleticsPreviousSafeSurfaceIndex,
+  getAthleticsRecoveryPosition,
   getAthleticsRespawnPosition,
   getAthleticsRouteProgress,
   getAthleticsRouteLength,
   getAthleticsRouteTangent,
   getAthleticsStartPosition,
   getAthleticsSurfaceAirGap,
+  getAthleticsSurfaceIndexAtPosition,
+  getAthleticsSurfaceRouteProgress,
   getAthleticsSurfaceVolumeOverlap,
   getAthleticsTransitionAirGap,
   isAthleticsJumpTransition,
@@ -83,7 +88,7 @@ test("Athletics transition authoring proves real air gaps and intentional except
   assert.ok(metrics.jumpTransitionPercentage >= 75);
   assert.ok(metrics.medianAirGap >= 4);
   assert.ok(metrics.averageAirGap >= 4);
-  assert.ok(metrics.maximumNormalRouteGap <= 12);
+  assert.ok(metrics.maximumNormalRouteGap <= 10);
   assert.ok(metrics.maximumShortcutGap >= 7 && metrics.maximumShortcutGap <= 10);
   assert.equal(metrics.connectedNonJumpTransitionCount, 7);
   assert.equal(metrics.movingPlatformTransitionCount, 6);
@@ -92,10 +97,10 @@ test("Athletics transition authoring proves real air gaps and intentional except
 
   // Keep static rises inside the current 15.5 velocity / 36 gravity jump
   // envelope (3.34-unit apex). The two larger rises must be carried by a
-  // named vertical lift, and no authored jump may exceed a full sprint's
+  // named vertical lift, and no authored jump may exceed the full-speed
   // 14.8 * 0.861-second airborne travel budget.
   const maximumStaticJumpRise = 3.34;
-  const maximumSprintAirDistance = 14.8 * 0.861;
+  const maximumFullSpeedAirDistance = 14.8 * 0.861;
   for (const [index, transition] of course.transitions.entries()) {
     const fromSurface = course.surfaces[index]!;
     const toSurface = course.surfaces[index + 1]!;
@@ -105,7 +110,7 @@ test("Athletics transition authoring proves real air gaps and intentional except
     assert.ok(Number.isFinite(gap));
     if (isAthleticsJumpTransition(transition.type)) {
       assert.ok(gap >= ATHLETICS_TRANSITION_AIR_GAP_TARGETS[transition.type], `${transition.id} needs a typed air gap`);
-      assert.ok(gap <= maximumSprintAirDistance, `${transition.id} exceeds the sprint jump envelope`);
+      assert.ok(gap <= maximumFullSpeedAirDistance, `${transition.id} exceeds the full-speed jump envelope`);
     } else if (gap <= 0.001) {
       assert.ok(["connected", "checkpoint_entry", "elevator", "bridge"].includes(transition.type));
     }
@@ -194,6 +199,30 @@ test("Athletics recovers racers stranded below a raised route", () => {
   assert.equal(isAthleticsBelowRecoverableRoute({ y: routePoint.y + ATHLETICS_PLAYER_EYE_HEIGHT - 1.5 }, raisedProgress), false);
 });
 
+test("Athletics recovery respawns inside the previous authored landing and faces the next jump", () => {
+  const safeSurfaceIndex = 12;
+  const safeProgress = getAthleticsSurfaceRouteProgress(safeSurfaceIndex);
+  const respawn = getAthleticsRecoveryPosition(safeSurfaceIndex, 0);
+  const surface = ATHLETICS_STADIUM_COURSE.surfaces[safeSurfaceIndex]!;
+  const distanceFromCentre = Math.hypot(respawn.x - surface.x, respawn.z - surface.z);
+
+  assert.equal(getAthleticsPreviousSafeSurfaceIndex(safeProgress + 0.001), safeSurfaceIndex);
+  assert.ok(distanceFromCentre < Math.min(surface.width, surface.depth) / 2 - 1.5);
+  assert.equal(respawn.y, surface.y + ATHLETICS_PLAYER_EYE_HEIGHT);
+  assert.equal(getAthleticsSurfaceIndexAtPosition(respawn), safeSurfaceIndex);
+  const crouchEyeHeight = 2.65;
+  assert.equal(
+    getAthleticsSurfaceIndexAtPosition(
+      { x: surface.x, y: surface.y + crouchEyeHeight, z: surface.z },
+      ATHLETICS_STADIUM_COURSE,
+      crouchEyeHeight
+    ),
+    safeSurfaceIndex,
+    "crouching on a safe platform must remain a safe landing"
+  );
+  assert.ok(getAthleticsSurfaceRouteProgress(safeSurfaceIndex + 1) > safeProgress);
+});
+
 test("route projection is monotonic for authored points and rejects off-course shortcuts", () => {
   const progressSamples = [0, 0.14, 0.28, 0.43, 0.58, 0.72, 0.84, 1].map((progress) => {
     const point = getAthleticsPointAtProgress(progress);
@@ -274,9 +303,18 @@ test("Athletics answers refill movement energy and movement/jumps spend it", () 
     sprinting: true,
     jumped: true
   });
+  const noSprintFlagResolution = resolveAthleticsMovementEnergy({
+    currentEnergy: 300,
+    elapsedMs: 500,
+    movedDistance: 6,
+    sprinting: false,
+    jumped: true
+  });
   assert.equal(resolution.canMove, true);
   assert.equal(resolution.jumpCost > 0, true);
   assert.ok(resolution.nextEnergy < 300);
+  assert.equal(resolution.movementCost, noSprintFlagResolution.movementCost);
+  assert.equal(resolution.movementCost, ATHLETICS_MOVEMENT_DRAIN_PER_SECOND * 0.5);
   assert.equal(resolveAthleticsMovementEnergy({ currentEnergy: 0, elapsedMs: 500, movedDistance: 0, sprinting: false, jumped: false }).canMove, false);
 });
 
