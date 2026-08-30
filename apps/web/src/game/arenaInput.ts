@@ -1,10 +1,10 @@
 export type CombatPointerAction = "fire" | "scope" | "none";
 
-export const ATHLETICS_RUN_SPEED = 14.8;
-export const ATHLETICS_CROUCH_SPEED = 6.4;
+export const PLAYER_FULL_SPEED = 14.8;
+export const PLAYER_CROUCH_SPEED = 6.4;
 
-/** Athletics has one normal movement speed; Shift changes posture, not speed. */
-export const resolveAthleticsMovementSpeed = ({
+/** Every game mode has one normal movement speed; Shift changes posture. */
+export const resolveMovementSpeed = ({
   crouching,
   hasMovementEnergy,
   gearSpeedMultiplier = 1
@@ -14,9 +14,9 @@ export const resolveAthleticsMovementSpeed = ({
   gearSpeedMultiplier?: number;
 }) => !hasMovementEnergy
   ? 0
-  : (crouching ? ATHLETICS_CROUCH_SPEED : ATHLETICS_RUN_SPEED) * gearSpeedMultiplier;
+  : (crouching ? PLAYER_CROUCH_SPEED : PLAYER_FULL_SPEED) * gearSpeedMultiplier;
 
-export const resolveAthleticsCrouching = ({
+export const resolveCrouching = ({
   shiftPressed,
   touchCrouch = false
 }: {

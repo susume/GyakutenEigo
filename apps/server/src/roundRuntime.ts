@@ -151,7 +151,7 @@ const inactiveRoundMessage = (session: GameSession) =>
     : isRoundPreparationPhase(session)
       ? "Preparation is open. Buy gear or answer questions before the round begins."
     : isZombieSelectionPhase(session)
-      ? "Zombie selection is underway. Answer questions to build running energy."
+      ? "Zombie selection is underway. Answer questions to build movement energy."
     : session.status === "paused"
       ? "The round has ended. The next round is starting shortly."
       : "The teacher has not started the round yet.";
@@ -276,7 +276,7 @@ const openZombieSelectionPhase = (session: GameSession, preserveStats = true) =>
     ...makeAnnouncement(
       "preparation",
       "Everyone Starts Human",
-      "Answer questions now to charge your running energy. Zombies will be chosen at random.",
+      "Answer questions now to charge your movement energy. Zombies will be chosen at random.",
       "Zombie selection in 20 seconds.",
       zombieSelectionMs
     ),
@@ -356,7 +356,7 @@ const startPendingRound = (session: GameSession) => {
     session.settings.gameMode === "flag"
       ? "Red carries and protects the flag. Blue defends and captures."
       : session.settings.gameMode === "zombie"
-        ? "Red Zombies hunt. Blue Humans use their stored energy to run and survive."
+        ? "Red Zombies hunt. Blue Humans use their stored energy to move and survive."
         : "Most tags wins. Respawns, then quiz earnings break ties.",
     undefined,
     roundStartAnnouncementMs

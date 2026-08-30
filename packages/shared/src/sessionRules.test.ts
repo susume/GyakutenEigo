@@ -94,7 +94,7 @@ import {
   resolveAnswerReward,
   resolveTagAction,
   resolveZombieConversion,
-  resolveZombieSprintEnergy,
+  resolveZombieMovementEnergy,
   selectInitialZombies,
   sanitizeSessionSettings,
   type PlayerSession,
@@ -1624,7 +1624,7 @@ test("Zombie Mode always resolves combat to the default launcher", () => {
   assert.equal(getPlayerWeaponIdForMode("classic", upgradedPlayer), "power_blaster");
 });
 
-test("zombie mode gives Humans question-powered running energy and reserves firing for Zombies", () => {
+test("zombie mode gives Humans question-powered movement energy and reserves firing for Zombies", () => {
   assert.equal(canPlayerFireInMode("zombie", "human"), false);
   assert.equal(canPlayerFireInMode("zombie", "zombie"), true);
   assert.equal(canPlayerFireInMode("flag", "human"), true);
@@ -1649,22 +1649,20 @@ test("zombie mode gives Humans question-powered running energy and reserves firi
     currentEnergy: ZOMBIE_HUMAN_MAX_ENERGY
   }), ZOMBIE_HUMAN_MAX_ENERGY);
 
-  assert.deepEqual(resolveZombieSprintEnergy({
+  assert.deepEqual(resolveZombieMovementEnergy({
     gameMode: "zombie",
     role: "human",
-    sprinting: true,
     currentEnergy: 0,
     elapsedMs: 500,
     movedDistance: 5
-  }), { canSprint: false, nextEnergy: 0 });
-  assert.deepEqual(resolveZombieSprintEnergy({
+  }), { canMove: false, nextEnergy: 0 });
+  assert.deepEqual(resolveZombieMovementEnergy({
     gameMode: "zombie",
     role: "human",
-    sprinting: true,
     currentEnergy: earnedEnergy,
     elapsedMs: 500,
     movedDistance: 5
-  }), { canSprint: true, nextEnergy: earnedEnergy - 10 });
+  }), { canMove: true, nextEnergy: earnedEnergy - 10 });
 });
 
 test("scoreboard rows expose tags, respawns, and readable question accuracy", () => {

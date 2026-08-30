@@ -170,11 +170,8 @@ export const ATHLETICS_MAX_RECOVERABLE_ROUTE_DROP = 1.75;
  */
 export const ATHLETICS_MAX_ENERGY = 1000;
 export const ATHLETICS_CORRECT_ENERGY = 220;
-/** Athletics has one normal movement speed: the former running speed. */
+/** Athletics has one normal movement speed. */
 export const ATHLETICS_MOVEMENT_DRAIN_PER_SECOND = 6.4;
-export const ATHLETICS_RUN_DRAIN_PER_SECOND = ATHLETICS_MOVEMENT_DRAIN_PER_SECOND;
-/** @deprecated Kept as a wire/test compatibility alias; Athletics no longer walks. */
-export const ATHLETICS_WALK_DRAIN_PER_SECOND = ATHLETICS_MOVEMENT_DRAIN_PER_SECOND;
 export const ATHLETICS_JUMP_ENERGY_COST = 30;
 export const ATHLETICS_CRITICAL_ENERGY = 150;
 export const ATHLETICS_RECOVERY_CORRECT_ANSWERS_REQUIRED = 3;
@@ -1436,8 +1433,6 @@ export const resolveAthleticsMovementEnergy = ({
   currentEnergy: number | undefined;
   elapsedMs: number;
   movedDistance: number;
-  /** @deprecated Athletics ignores sprint state; normal movement is already fast. */
-  sprinting?: boolean;
   jumped: boolean;
 }): AthleticsEnergyResolution => {
   const safeEnergy = normalizeAthleticsEnergy(currentEnergy);

@@ -35,7 +35,7 @@ import {
   resolveFlagPlacement,
   resolveProjectileTarget,
   resolveSnowballUse,
-  resolveZombieSprintEnergy
+  resolveZombieMovementEnergy
 } from "@quizstrike/shared";
 import { isTeacherPaused } from "@quizstrike/shared";
 import {
@@ -467,7 +467,7 @@ const advanceBots = () => {
           isZombieHumanBot && (bot.energy ?? 0) <= 0
             ? 0
             : session.settings.gameMode === "zombie"
-              ? bot.role === "zombie" ? 14.8 : 10.8
+              ? 14.8
               : 19.5
         ) * getPlayerMoveSpeedMultiplier(bot),
         obstacles,
@@ -488,10 +488,9 @@ const advanceBots = () => {
       bot.z = next.z;
       const movedDistance = Math.hypot(next.x - oldX, next.z - oldZ);
       if (isZombieHumanBot) {
-        bot.energy = resolveZombieSprintEnergy({
+        bot.energy = resolveZombieMovementEnergy({
           gameMode: "zombie",
           role: "human",
-          sprinting: true,
           currentEnergy: bot.energy,
           elapsedMs: botTickMs,
           movedDistance

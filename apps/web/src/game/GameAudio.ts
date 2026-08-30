@@ -1,8 +1,7 @@
-export type MovementAudioMode = "walk" | "run" | "crouch";
+export type MovementAudioMode = "run" | "crouch";
 export type MovementSurface = "snow" | "wood" | "stone" | "sand" | "metal" | "water";
 
 export type GameAudioCue =
-  | "walk_step"
   | "run_step"
   | "crouch_step"
   | "jump"
@@ -51,7 +50,6 @@ type SampleDefinition = {
 type AudioSampleKey = GameAudioCue | `surface_${MovementSurface}`;
 
 export const GAME_AUDIO_CUES: Record<GameAudioCue, ToneDefinition> = {
-  walk_step: { frequency: 105, durationMs: 54, gain: 0.00875, type: "sine", frequencyEnd: 72 },
   run_step: { frequency: 132, durationMs: 48, gain: 0.01125, type: "sine", frequencyEnd: 82 },
   crouch_step: { frequency: 78, durationMs: 68, gain: 0.006, type: "sine", frequencyEnd: 56 },
   jump: { frequency: 210, durationMs: 120, gain: 0.045, type: "triangle", frequencyEnd: 340 },
@@ -93,7 +91,6 @@ const HEAVY_GUN_ASSET = "/assets/audio/game/heavy-gun-sound.mp3";
  * decode a recording.
  */
 export const GAME_AUDIO_ASSETS: Partial<Record<AudioSampleKey, SampleDefinition>> = {
-  walk_step: { files: ["footstep_snow_000.ogg", "footstep_snow_001.ogg", "footstep_snow_002.ogg", "footstep_snow_003.ogg", "footstep_snow_004.ogg"], gain: 0.17, playbackRate: 1, pitchVariance: 0.06, maxVoices: 3 },
   run_step: { files: ["footstep_snow_000.ogg", "footstep_snow_001.ogg", "footstep_snow_002.ogg", "footstep_snow_003.ogg", "footstep_snow_004.ogg"], gain: 0.195, playbackRate: 1.14, pitchVariance: 0.07, maxVoices: 3 },
   crouch_step: { files: ["footstep_snow_000.ogg", "footstep_snow_001.ogg", "footstep_snow_002.ogg", "footstep_snow_003.ogg", "footstep_snow_004.ogg"], gain: 0.105, playbackRate: 0.82, pitchVariance: 0.04, maxVoices: 2 },
   land: { files: ["impactSoft_medium_002.ogg"], gain: 0.5, playbackRate: 0.74, pitchVariance: 0.04, maxVoices: 2 },
@@ -303,8 +300,7 @@ export const GAME_AUDIO_EVENT_CUES: Record<AudioEventCue, ToneDefinition> = {
 
 export const getMovementStepIntervalMs = (mode: MovementAudioMode) => {
   if (mode === "run") return 270;
-  if (mode === "crouch") return 620;
-  return 410;
+  return 620;
 };
 
 export const getCombatAudioSpatial = ({
@@ -325,8 +321,7 @@ export const getCombatAudioSpatial = ({
 
 const cueForMovementMode = (mode: MovementAudioMode): GameAudioCue => {
   if (mode === "run") return "run_step";
-  if (mode === "crouch") return "crouch_step";
-  return "walk_step";
+  return "crouch_step";
 };
 
 class GameAudioController {
@@ -471,7 +466,7 @@ class GameAudioController {
       this.play(cue);
       return;
     }
-    const modeRate = mode === "run" ? 1.14 : mode === "crouch" ? 0.82 : 1;
+    const modeRate = mode === "run" ? 1.14 : 0.82;
     this.playSample(surfaceKey, buffers, {}, modeRate);
   }
 
@@ -480,13 +475,13 @@ class GameAudioController {
     if (nowMs - (this.remoteStepAt.get(sourceId) ?? -Infinity) < 380) return;
     this.remoteStepAt.set(sourceId, nowMs);
     if (surface === "snow") {
-      this.play("walk_step", spatial);
+      this.play("run_step", spatial);
       return;
     }
     const surfaceKey: AudioSampleKey = `surface_${surface}`;
     const buffers = this.buffers.get(surfaceKey);
     if (buffers?.length) this.playSample(surfaceKey, buffers, spatial);
-    else this.play("walk_step", spatial);
+    else this.play("run_step", spatial);
   }
 
   private ensureAudio() {

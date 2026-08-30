@@ -76,7 +76,7 @@ export default function QuizPanel({
       ? `Recovery Questions ${player.athletics?.recoveryCorrectAnswers ?? 0} / ${player.athletics?.recoveryRequiredAnswers ?? 3}`
       : "+220 movement energy"
     : session.settings.gameMode === "zombie" && player.role !== "zombie"
-    ? `+${ZOMBIE_HUMAN_CORRECT_ENERGY} running energy`
+    ? `+${ZOMBIE_HUMAN_CORRECT_ENERGY} movement energy`
     : player.isAlive || session.settings.deadPlayersEarnMoney
     ? `$${session.settings.correctAnswerReward}`
     : session.settings.deadPlayersCanPractice

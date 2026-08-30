@@ -91,9 +91,9 @@ least one Human safe until time runs out.
 
 1. At the start, the game secretly chooses some players to become Zombies.
 2. Zombies are on the Red side. Humans are on the Blue side.
-3. Humans answer questions to get running energy. A correct answer gives back
+3. Humans answer questions to get movement energy. A correct answer gives back
    some energy.
-4. Humans use their energy to run away and stay safe.
+4. Humans use their energy to move away and stay safe.
 5. Zombies chase Humans and can use snowballs to catch them.
 6. When a Human is caught, that player becomes a Zombie and joins the Red side.
 
@@ -115,5 +115,5 @@ Once a Human becomes a Zombie, they stay a Zombie for the rest of the game.
 - Stay close to your team's important places.
 - In Capture the Flag, protect the flag after Red places it.
 - In Team Tag, help teammates who are being chased.
-- In Zombie Survival, Humans should spread out and keep some running energy.
+- In Zombie Survival, Humans should spread out and keep some movement energy.
 - In every game, learning is more important than winning.

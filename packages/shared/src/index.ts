@@ -625,7 +625,7 @@ export interface PlayerSession {
   moneySpent?: number;
   isAlive: boolean;
   health?: number;
-  /** Zombie Mode running energy. Humans spend it while sprinting; correct answers restore it. */
+  /** Zombie Mode movement energy. Humans spend it while moving; correct answers restore it. */
   energy?: number;
   snowballs?: number;
   respawnCorrectAnswers?: number;
@@ -1171,7 +1171,7 @@ export const GEAR_ITEMS: GearItem[] = [
     id: "speed_shoes",
     name: "Speed Boots",
     cost: 1500,
-    description: "+30 warmth and 30% walk, sprint, and crouch speed.",
+    description: "+30 warmth and 30% movement speed, including crouch.",
     damage: STARTER_BLASTER_DAMAGE,
     range: STARTER_BLASTER_RANGE,
     fireCooldownMs: 160,
@@ -1373,8 +1373,7 @@ export const clampArenaAimPitch = (pitch: number | undefined) =>
     : 0;
 export const ZOMBIE_HUMAN_MAX_ENERGY = 1000;
 export const ZOMBIE_HUMAN_CORRECT_ENERGY = 100;
-export const ZOMBIE_HUMAN_SPRINT_DRAIN_PER_SECOND = 20;
-export const ZOMBIE_HUMAN_WALK_MAX_SPEED = 13;
+export const ZOMBIE_HUMAN_MOVEMENT_DRAIN_PER_SECOND = 20;
 
 export const canPlayerFireInMode = (gameMode: GameMode, role: PlayerRole | undefined) =>
   gameMode !== "athletics" && (gameMode !== "zombie" || role === "zombie");
@@ -1395,31 +1394,29 @@ export const awardZombieHumanEnergy = ({
   return Math.min(ZOMBIE_HUMAN_MAX_ENERGY, safeEnergy + ZOMBIE_HUMAN_CORRECT_ENERGY);
 };
 
-export const resolveZombieSprintEnergy = ({
+export const resolveZombieMovementEnergy = ({
   gameMode,
   role,
-  sprinting,
   currentEnergy,
   elapsedMs,
   movedDistance
 }: {
   gameMode: GameMode;
   role: PlayerRole | undefined;
-  sprinting: boolean;
   currentEnergy: number | undefined;
   elapsedMs: number;
   movedDistance: number;
 }) => {
   const safeEnergy = Math.min(ZOMBIE_HUMAN_MAX_ENERGY, Math.max(0, Number(currentEnergy) || 0));
   if (gameMode !== "zombie" || role === "zombie") {
-    return { canSprint: true, nextEnergy: safeEnergy };
+    return { canMove: true, nextEnergy: safeEnergy };
   }
-  const canSprint = sprinting && safeEnergy > 0;
-  if (!canSprint || movedDistance <= 0.05) return { canSprint, nextEnergy: safeEnergy };
+  const canMove = safeEnergy > 0;
+  if (!canMove || movedDistance <= 0.05) return { canMove, nextEnergy: safeEnergy };
   const elapsedSeconds = Math.max(0, Math.min(1, elapsedMs / 1000));
   return {
-    canSprint,
-    nextEnergy: Math.max(0, safeEnergy - ZOMBIE_HUMAN_SPRINT_DRAIN_PER_SECOND * elapsedSeconds)
+    canMove,
+    nextEnergy: Math.max(0, safeEnergy - ZOMBIE_HUMAN_MOVEMENT_DRAIN_PER_SECOND * elapsedSeconds)
   };
 };
 export const ARENA_SCALE = 0.62;

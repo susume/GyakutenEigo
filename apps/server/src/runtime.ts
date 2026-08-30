@@ -73,7 +73,6 @@ import {
   DECAL_MAX_PROCESSED_BYTES,
   DEFAULT_PLAYER_APPEARANCE,
   ZOMBIE_HUMAN_MAX_ENERGY,
-  ZOMBIE_HUMAN_WALK_MAX_SPEED,
   awardZombieHumanEnergy,
   canPlayerFireInMode,
   clampArenaAimPitch,
@@ -122,7 +121,7 @@ import {
   resolveProjectileTarget,
   resolveSnowballPurchase,
   resolveSnowballUse,
-  resolveZombieSprintEnergy,
+  resolveZombieMovementEnergy,
   sanitizeSessionSettings,
   sanitizePlayerAppearance,
   sanitizeCharacterCustomizationSettings,
@@ -1505,7 +1504,6 @@ const applyAuthoritativePosition = (
     z?: number;
     y?: number;
     facing?: number;
-    sprinting?: boolean;
     crouching?: boolean;
     jumping?: boolean;
   },
@@ -1567,19 +1565,17 @@ const applyAuthoritativePosition = (
     ? Math.min(requestedStandingY + 4.5, Math.max(requestedStandingY, Number(acceptedRequestedY)))
     : requestedStandingY;
   playerPositionHistory.record(player.id, currentPosition, lastMoveAt);
-  const sprintPolicy = resolveZombieSprintEnergy({
+  const movementEnergy = resolveZombieMovementEnergy({
     gameMode: session.settings.gameMode,
     role: player.role,
-    sprinting: requested.sprinting === true,
     currentEnergy: player.energy,
     elapsedMs,
     movedDistance: 0
   });
-  const isZombieHuman = session.settings.gameMode === "zombie" && player.role !== "zombie";
   const athleticsEnergy = normalizeAthleticsEnergy(player.energy);
   const hasMovementEnergy = isAthletics
     ? athleticsEnergy > 0
-    : !isZombieHuman || (player.energy ?? 0) > 0;
+    : movementEnergy.canMove;
   const position = resolveAuthoritativeMovement({
     current: currentPosition,
     requested: {
@@ -1592,9 +1588,7 @@ const applyAuthoritativePosition = (
     maxSpeed: (
       !hasMovementEnergy
         ? 0
-        : isZombieHuman && !sprintPolicy.canSprint
-          ? ZOMBIE_HUMAN_WALK_MAX_SPEED
-          : PLAYER_MAX_SPEED
+        : PLAYER_MAX_SPEED
     ) * getPlayerMoveSpeedMultiplier(player),
     obstacles: isAthletics ? getAthleticsObstacles(nowMs) : getArenaObstacles(session.settings.mapId),
     groundY: requestedGroundY,
@@ -1637,7 +1631,7 @@ const applyAuthoritativePosition = (
       }
       // The park floor is a valid visual safety net, but it is not a playable
       // Athletics landing. Move a racer into recovery as soon as they settle
-      // on that floor so they can never start a long walk back to the route.
+      // on that floor so they can never start a long move back to the route.
       if (surfaceIndex === undefined && (player.y ?? 0) <= ATHLETICS_PLAYER_EYE_HEIGHT + 0.18) {
         return beginAthleticsRecovery(session, player, athletics, nowMs);
       }
@@ -1646,14 +1640,12 @@ const applyAuthoritativePosition = (
       currentEnergy: athleticsEnergy,
       elapsedMs,
       movedDistance: Math.hypot(position.x - currentPosition.x, position.z - currentPosition.z),
-      sprinting: requested.sprinting === true,
       jumped: jumpStarted && athleticsCanJump
     }).nextEnergy;
   } else if (session.settings.gameMode === "zombie" && player.role !== "zombie") {
-    player.energy = resolveZombieSprintEnergy({
+    player.energy = resolveZombieMovementEnergy({
       gameMode: session.settings.gameMode,
       role: player.role,
-      sprinting: requested.sprinting === true,
       currentEnergy: player.energy,
       elapsedMs,
       movedDistance: Math.hypot(position.x - currentPosition.x, position.z - currentPosition.z)
@@ -2251,7 +2243,7 @@ const answerQuestion = (
     ? respawn.respawned
       ? "Respawned! Three correct practice answers brought you back."
       : energyAwarded > 0
-        ? `Correct! +${energyAwarded} running energy`
+        ? `Correct! +${energyAwarded} movement energy`
       : reward.moneyAwarded > 0
         ? `Correct! +$${reward.moneyAwarded}`
         : session.settings.gameMode === "flag" && !player.isAlive

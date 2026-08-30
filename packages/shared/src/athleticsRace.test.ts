@@ -300,14 +300,12 @@ test("Athletics answers refill movement energy and movement/jumps spend it", () 
     currentEnergy: 300,
     elapsedMs: 500,
     movedDistance: 6,
-    sprinting: true,
     jumped: true
   });
   const noSprintFlagResolution = resolveAthleticsMovementEnergy({
     currentEnergy: 300,
     elapsedMs: 500,
     movedDistance: 6,
-    sprinting: false,
     jumped: true
   });
   assert.equal(resolution.canMove, true);
@@ -315,7 +313,7 @@ test("Athletics answers refill movement energy and movement/jumps spend it", () 
   assert.ok(resolution.nextEnergy < 300);
   assert.equal(resolution.movementCost, noSprintFlagResolution.movementCost);
   assert.equal(resolution.movementCost, ATHLETICS_MOVEMENT_DRAIN_PER_SECOND * 0.5);
-  assert.equal(resolveAthleticsMovementEnergy({ currentEnergy: 0, elapsedMs: 500, movedDistance: 0, sprinting: false, jumped: false }).canMove, false);
+  assert.equal(resolveAthleticsMovementEnergy({ currentEnergy: 0, elapsedMs: 500, movedDistance: 0, jumped: false }).canMove, false);
 });
 
 test("standings order finishers first, then active progress, then DNF", () => {

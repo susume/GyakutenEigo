@@ -189,7 +189,7 @@ export const ArenaHudOverlay = ({
             </button>
           )}
           {onJumpFromTouch && (
-            <button type="button" className="touch-jump" disabled={controlsDisabled} aria-label="Jump" onPointerDown={(event) => { event.preventDefault(); onJumpFromTouch(); }}>
+            <button type="button" className="touch-jump" disabled={controlsDisabled} aria-label="Jump" aria-keyshortcuts="Space" onPointerDown={(event) => { event.preventDefault(); onJumpFromTouch(); }}>
               <kbd aria-hidden="true">SPACE</kbd>
               Jump
             </button>
@@ -215,13 +215,33 @@ export const ArenaHudOverlay = ({
         <span key={weaponCooldown.startedAt} style={{ animationDuration: `${weaponCooldown.durationMs}ms` }} />
       </div>
     )}
-    {!controlsDisabled && !isPointerLocked && !suppressHint && <div className="control-lock">WASD moves. Use the arrow keys or swipe to look around. Click the game to aim. F or left click plays. C changes Heavy Launcher zoom. E interacts with the flag.</div>}
+    {!controlsDisabled && !isPointerLocked && !suppressHint && <div className="control-lock">WASD moves at full speed · Shift crouches · Space jumps · Arrow keys or swipe look · click to aim · F fires · C zooms · E interacts</div>}
     <div className="touch-controls" aria-label="Touch controls">
       <button ref={joystickElementRef} type="button" className="touch-joystick" aria-label="Movement joystick" disabled={controlsDisabled} onPointerDown={onBeginTouchMove}>
         <span aria-hidden="true" />
       </button>
-      {(currentWeaponId === "power_blaster" || onInteractFromTouch) && (
+      {(currentWeaponId === "power_blaster" || onInteractFromTouch || onJumpFromTouch || onToggleCrouchFromTouch) && (
         <div className="touch-action-group">
+          {onToggleCrouchFromTouch && (
+            <button
+              type="button"
+              className="touch-crouch"
+              disabled={controlsDisabled}
+              aria-label="Crouch"
+              aria-keyshortcuts="Shift"
+              aria-pressed={touchCrouchEnabled === true}
+              onClick={onToggleCrouchFromTouch}
+            >
+              <kbd aria-hidden="true">SHIFT</kbd>
+              Crouch
+            </button>
+          )}
+          {onJumpFromTouch && (
+            <button type="button" className="touch-jump" disabled={controlsDisabled} aria-label="Jump" aria-keyshortcuts="Space" onPointerDown={(event) => { event.preventDefault(); onJumpFromTouch(); }}>
+              <kbd aria-hidden="true">SPACE</kbd>
+              Jump
+            </button>
+          )}
           {onInteractFromTouch && (
             <button
               type="button"

@@ -178,7 +178,7 @@ export const registerSessionRoutes = (app: Application, deps: SessionRouteDepend
         "round_start",
         session.settings.gameMode === "zombie" ? "Zombie Mode has begun!" : `Round ${session.currentRound} has begun!`,
         session.settings.gameMode === "zombie"
-          ? "Red Zombies shoot to convert. Blue Humans answer correctly for running energy and survive without weapons."
+          ? "Red Zombies shoot to convert. Blue Humans answer correctly for movement energy and survive without weapons."
           : "Most tags wins. Respawns, then quiz earnings break ties.",
         undefined,
         deps.roundStartAnnouncementMs
@@ -186,7 +186,7 @@ export const registerSessionRoutes = (app: Application, deps: SessionRouteDepend
       deps.appendEvent(session, {
         type: "start",
         message: session.settings.gameMode === "zombie"
-          ? "Zombie Mode started. Only Red Zombies can shoot; Blue Humans answer questions for running energy and survive without weapons."
+          ? "Zombie Mode started. Only Red Zombies can shoot; Blue Humans answer questions for movement energy and survive without weapons."
           : `Round started. Answer ${deps.respawnCorrectAnswersRequired} practice questions to respawn if frozen out.`
       });
     }

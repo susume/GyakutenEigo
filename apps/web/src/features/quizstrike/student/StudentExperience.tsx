@@ -129,7 +129,6 @@ type ArenaPositionPayload = {
   pitch?: number;
   scoped?: boolean;
   zoomLevel?: number;
-  sprinting?: boolean;
   crouching?: boolean;
   jumping?: boolean;
 };
@@ -234,7 +233,7 @@ const zombieStatusText = (session: GameSession, player?: PlayerSession | null) =
   const zombies = session.players.filter((item) => item.role === "zombie").length;
   return player?.role === "zombie"
     ? `Humans ${humans} · Zombies ${zombies} · Find the Blue humans`
-    : `Humans ${humans} · Zombies ${zombies} · Answer for energy, then run`;
+    : `Humans ${humans} · Zombies ${zombies} · Answer for energy, then move`;
 };
 
 
@@ -1191,7 +1190,7 @@ export default function StudentExperience({ onExit }: { onExit: () => void }) {
           invalid_target: "That snowball target was no longer valid.",
           invalid_projectile: "That shot was rejected. Try firing again.",
           duplicate_projectile: "That shot was already counted.",
-          humans_cannot_fire: "Humans cannot shoot in Zombie Survival. Answer questions for running energy and escape.",
+          humans_cannot_fire: "Humans cannot shoot in Zombie Survival. Answer questions for movement energy and escape.",
           fire_cooldown: "Launcher is cooling down."
         };
         queueFeedbackCue(result.reason === "no_valid_target" ? "warning" : "error");
@@ -2020,9 +2019,9 @@ export default function StudentExperience({ onExit }: { onExit: () => void }) {
           <div className="panel how-to-card controls-card" aria-labelledby="student-controls-heading">
             <div className="controls-card-heading"><h2 id="student-controls-heading">Quick controls</h2><span>Keyboard + touch</span></div>
             <div className="student-controls-grid">
-              <div className="student-control"><kbd>WASD</kbd><span>Move at full speed (Athletics)</span></div>
-              <div className="student-control"><kbd>Shift</kbd><span>Crouch (Athletics)</span></div>
-              <div className="student-control"><kbd>Space</kbd><span>Jump (Athletics)</span></div>
+              <div className="student-control"><kbd>WASD</kbd><span>Move at full speed</span></div>
+              <div className="student-control"><kbd>Shift</kbd><span>Crouch</span></div>
+              <div className="student-control"><kbd>Space</kbd><span>Jump</span></div>
               <div className="student-control"><kbd>Arrow keys / swipe</kbd><span>Look around</span></div>
               <div className="student-control"><kbd>F</kbd><span>Fire</span></div>
               <div className="student-control"><kbd>C</kbd><span>Zoom</span></div>
@@ -2119,7 +2118,7 @@ export default function StudentExperience({ onExit }: { onExit: () => void }) {
     : ATHLETICS_STADIUM_COURSE.sections[0];
   const isZombieHuman = session.settings.gameMode === "zombie" && player.role !== "zombie";
   const canFire = canPlayerFireInMode(session.settings.gameMode, player.role);
-  const runningEnergy = Math.round(Math.max(0, Math.min(ZOMBIE_HUMAN_MAX_ENERGY, player.energy ?? 0)));
+  const movementEnergy = Math.round(Math.max(0, Math.min(ZOMBIE_HUMAN_MAX_ENERGY, player.energy ?? 0)));
   const athleticsEnergy = Math.round(Math.max(0, Math.min(ATHLETICS_MAX_ENERGY, player.energy ?? 0)));
   const connectedPlayers = session.players.filter((candidate) => candidate.connectionState !== "disconnected");
   const redTeamCount = connectedPlayers.filter((candidate) => candidate.team === "red").length;
@@ -2391,11 +2390,11 @@ export default function StudentExperience({ onExit }: { onExit: () => void }) {
             </span>
           </span>
           {isZombieHuman ? (
-            <span key={`energy-${currencyPulse}`} className={`hud-stat hud-energy${runningEnergy <= 20 ? " low" : ""}${currencyPulse ? " hud-value-pulse" : ""}`}>
+            <span key={`energy-${currencyPulse}`} className={`hud-stat hud-energy${movementEnergy <= 20 ? " low" : ""}${currencyPulse ? " hud-value-pulse" : ""}`}>
               <Zap size={18} aria-hidden="true" />
               <span>
                 <small>Energy</small>
-                <strong>{runningEnergy}/{ZOMBIE_HUMAN_MAX_ENERGY}</strong>
+                <strong>{movementEnergy}/{ZOMBIE_HUMAN_MAX_ENERGY}</strong>
               </span>
             </span>
           ) : (
@@ -2420,7 +2419,7 @@ export default function StudentExperience({ onExit }: { onExit: () => void }) {
                 <Shield size={18} aria-hidden="true" />
                 <span>
                   <small>Human goal</small>
-                  <strong>{runningEnergy > 0 ? "Run and survive" : "Answer to move"}</strong>
+                  <strong>{movementEnergy > 0 ? "Move and survive" : "Answer to move"}</strong>
                 </span>
               </span>
             </>

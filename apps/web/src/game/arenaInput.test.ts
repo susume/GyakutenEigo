@@ -1,12 +1,12 @@
 import test from "node:test";
 import assert from "node:assert/strict";
 import {
-  ATHLETICS_CROUCH_SPEED,
-  ATHLETICS_RUN_SPEED,
+  PLAYER_CROUCH_SPEED,
+  PLAYER_FULL_SPEED,
   isFireKeyboardEvent,
   isScopeKeyboardEvent,
-  resolveAthleticsCrouching,
-  resolveAthleticsMovementSpeed,
+  resolveCrouching,
+  resolveMovementSpeed,
   resolveCombatPointerAction,
   shouldFireFromTouchGesture
 } from "./arenaInput.js";
@@ -39,12 +39,12 @@ test("a short touch tap fires while a look swipe does not", () => {
   assert.equal(shouldFireFromTouchGesture({ distance: 42, durationMs: 180 }), false);
 });
 
-test("Athletics moves at full speed by default and Shift only changes posture", () => {
-  assert.equal(resolveAthleticsMovementSpeed({ crouching: false, hasMovementEnergy: true }), ATHLETICS_RUN_SPEED);
-  assert.equal(resolveAthleticsMovementSpeed({ crouching: true, hasMovementEnergy: true }), ATHLETICS_CROUCH_SPEED);
-  assert.equal(resolveAthleticsMovementSpeed({ crouching: false, hasMovementEnergy: true, gearSpeedMultiplier: 1.2 }), ATHLETICS_RUN_SPEED * 1.2);
-  assert.equal(resolveAthleticsCrouching({ shiftPressed: false }), false);
-  assert.equal(resolveAthleticsCrouching({ shiftPressed: true }), true);
-  assert.equal(resolveAthleticsCrouching({ shiftPressed: false, touchCrouch: true }), true);
-  assert.equal(resolveAthleticsMovementSpeed({ crouching: false, hasMovementEnergy: false }), 0);
+test("every mode moves at full speed by default and Shift only changes posture", () => {
+  assert.equal(resolveMovementSpeed({ crouching: false, hasMovementEnergy: true }), PLAYER_FULL_SPEED);
+  assert.equal(resolveMovementSpeed({ crouching: true, hasMovementEnergy: true }), PLAYER_CROUCH_SPEED);
+  assert.equal(resolveMovementSpeed({ crouching: false, hasMovementEnergy: true, gearSpeedMultiplier: 1.2 }), PLAYER_FULL_SPEED * 1.2);
+  assert.equal(resolveCrouching({ shiftPressed: false }), false);
+  assert.equal(resolveCrouching({ shiftPressed: true }), true);
+  assert.equal(resolveCrouching({ shiftPressed: false, touchCrouch: true }), true);
+  assert.equal(resolveMovementSpeed({ crouching: false, hasMovementEnergy: false }), 0);
 });

@@ -944,6 +944,49 @@ label.toggle-row input {
   font-weight: 950;
 }
 
+.touch-crouch,
+.touch-jump {
+  min-width: 96px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 6px;
+  font-weight: 950;
+}
+
+.touch-crouch {
+  border-color: rgba(181, 239, 113, 0.88) !important;
+  background: rgba(35, 79, 43, 0.94) !important;
+  color: #eaffc7 !important;
+}
+
+.touch-crouch[aria-pressed="true"] {
+  border-color: #fff4a8 !important;
+  background: rgba(102, 109, 33, 0.98) !important;
+  box-shadow: 0 0 18px rgba(181, 239, 113, 0.42) !important;
+  color: #fff4a8 !important;
+}
+
+.touch-crouch kbd,
+.touch-jump kbd {
+  display: inline-grid;
+  min-width: 24px;
+  min-height: 24px;
+  place-items: center;
+  border: 1px solid currentColor;
+  border-radius: 5px;
+  background: rgba(255, 255, 255, 0.12);
+  color: inherit;
+  font: inherit;
+  font-size: 0.62rem;
+}
+
+.touch-jump {
+  border-color: rgba(255, 214, 110, 0.88) !important;
+  background: rgba(101, 71, 7, 0.94) !important;
+  color: #fff0bf !important;
+}
+
 .touch-interact kbd {
   display: inline-grid;
   min-width: 24px;

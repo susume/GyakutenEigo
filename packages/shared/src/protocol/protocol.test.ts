@@ -20,9 +20,15 @@ test("canonical client messages validate and retain their discriminator", () => 
     y: 2,
     z: -8,
     facing: Math.PI,
-    sprinting: true
+    crouching: true
   });
   assert.equal(movement.success, true);
+  assert.equal(validateClientCommand("player_position", {
+    x: 12,
+    z: -8,
+    facing: Math.PI,
+    sprinting: true
+  }).success, false, "the removed sprinting field should no longer be accepted");
 
   const bulkSnowballs = validateClientCommand("buy_snowballs", { packSize: "large" });
   assert.equal(bulkSnowballs.success, true);

@@ -19,6 +19,14 @@ test("iPad-like profile joins, starts, renders the arena shell, and accepts touc
   await expect(page.locator(".arena-canvas")).toBeVisible({ timeout: 30_000 });
   const joystick = page.getByRole("button", { name: "Movement joystick" });
   await expect(joystick).toBeVisible();
+  const crouch = page.getByRole("button", { name: "Crouch", exact: true });
+  const jump = page.getByRole("button", { name: "Jump", exact: true });
+  await expect(crouch).toBeVisible();
+  await expect(jump).toBeVisible();
+  await crouch.tap();
+  await expect(crouch).toHaveAttribute("aria-pressed", "true");
+  await crouch.tap();
+  await jump.tap();
   await joystick.tap();
   const interact = page.getByRole("button", { name: "Interact with environment" });
   await expect(interact).toBeVisible();

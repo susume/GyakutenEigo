@@ -68,7 +68,6 @@ const positionFields = {
 export const PlayerPositionCommandSchema = z.object({
   type: z.literal("player_position"),
   ...positionFields,
-  sprinting: z.boolean().optional(),
   crouching: z.boolean().optional(),
   jumping: z.boolean().optional()
 }).strict();

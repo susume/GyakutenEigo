@@ -7,10 +7,11 @@ Updated 2026-08-30 against the audited `main` branch (`38234b3 made the map smal
 Skyline Adventure Park remains a compact 65-landing, six-chapter classroom
 race. The route now has authored transition types, exact rotated-rectangle
 edge-gap measurement, shared collision footprints, and regression checks for
-air separation and solid-volume overlap. Athletics movement is full speed by
-default: WASD never requires a sprint modifier, Shift crouches, and Space
-jumps. Zombie’s separate sprint-energy loop remains isolated so the other
-mode is not changed by the Athletics control pass.
+air separation and solid-volume overlap. All game modes now use full movement
+speed by default: WASD never requires a movement-speed modifier, Shift crouches,
+and Space jumps. The Zombie human energy loop remains in place, but it now
+limits movement availability and drains while moving rather than acting as a
+sprint toggle.
 
 The final geometry audit reports no issues. There are 57 typed jump
 transitions, all with positive measured air, and the only overlapping solid
@@ -51,14 +52,12 @@ moving/attraction challenges; the normal route remains within that envelope.
 
 ## Movement and fall recovery
 
-Athletics has one normal movement speed (`14.8` world units per second); the
-client and server no longer distinguish walking from running for this mode.
-Shift changes posture to crouch and uses the crouch movement speed, while it
-never activates a sprint modifier. Space is the jump action. Touch players
-get matching Crouch and Jump buttons. Classic/Flag retain their legacy
-movement behavior, and Zombie retains its intentional human sprint-energy
-mechanic, because those modes use the distinction as part of their existing
-gameplay.
+All modes have one normal movement speed (`14.8` world units per second on the
+client); the client and server no longer distinguish walking from running.
+Shift changes posture to crouch and uses the crouch movement speed. Space is
+the jump action. Touch players get matching Crouch and Jump buttons on every
+map. Zombie humans still answer questions for movement energy, but that
+energy gates and drains normal movement rather than enabling a sprint state.
 
 The recovery loop is deliberately short:
 

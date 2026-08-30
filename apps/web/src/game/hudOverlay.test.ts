@@ -55,6 +55,19 @@ test("touch HUD hides the interaction control outside interactive game modes", (
   assert.doesNotMatch(renderHud(), /Interact with environment/);
 });
 
+test("touch HUD exposes global crouch and jump controls outside Athletics", () => {
+  const html = renderHud({
+    onJumpFromTouch: () => undefined,
+    onToggleCrouchFromTouch: () => undefined,
+    touchCrouchEnabled: true
+  });
+  assert.match(html, /class="touch-crouch"/u);
+  assert.match(html, /aria-label="Crouch"/u);
+  assert.match(html, /aria-keyshortcuts="Shift"/u);
+  assert.match(html, /class="touch-jump"/u);
+  assert.match(html, /aria-keyshortcuts="Space"/u);
+});
+
 test("hit confirmation is a transient marker separate from the fire reticle", () => {
   const beforeHit = renderHud();
   assert.doesNotMatch(beforeHit, /hit-confirm-marker/u);

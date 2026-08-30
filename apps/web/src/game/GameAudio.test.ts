@@ -13,7 +13,6 @@ import {
 
 test("game audio defines cues for core movement and action feedback", () => {
   const requiredCues: GameAudioCue[] = [
-    "walk_step",
     "run_step",
     "crouch_step",
     "land",
@@ -97,8 +96,7 @@ test("movement surface palette includes distinct material groups", () => {
 });
 
 test("movement footsteps get faster as player movement becomes louder", () => {
-  assert.ok(getMovementStepIntervalMs("run") < getMovementStepIntervalMs("walk"));
-  assert.ok(getMovementStepIntervalMs("walk") < getMovementStepIntervalMs("crouch"));
+  assert.ok(getMovementStepIntervalMs("run") < getMovementStepIntervalMs("crouch"));
 });
 
 test("snowball fire cue is a deep whoosh instead of a sharp beep", () => {
@@ -117,7 +115,6 @@ test("background music pattern is a quiet looping phrase", () => {
 
 test("core feedback cues use the bundled sample palette", () => {
   const sampleCues: GameAudioCue[] = [
-    "walk_step",
     "run_step",
     "crouch_step",
     "land",
@@ -149,7 +146,6 @@ test("supplied weapon recordings replace the default and heavy fire samples", ()
 });
 
 test("footstep sample levels are reduced by half", () => {
-  assert.equal(GAME_AUDIO_ASSETS.walk_step?.gain, 0.17);
   assert.equal(GAME_AUDIO_ASSETS.run_step?.gain, 0.195);
   assert.equal(GAME_AUDIO_ASSETS.crouch_step?.gain, 0.105);
   assert.equal(GAME_AUDIO_ASSETS.surface_wood?.gain, 0.145);
@@ -157,7 +153,6 @@ test("footstep sample levels are reduced by half", () => {
   assert.equal(GAME_AUDIO_ASSETS.surface_sand?.gain, 0.13);
   assert.equal(GAME_AUDIO_ASSETS.surface_metal?.gain, 0.175);
   assert.equal(GAME_AUDIO_ASSETS.surface_water?.gain, 0.06);
-  assert.equal(GAME_AUDIO_CUES.walk_step.gain, 0.00875);
   assert.equal(GAME_AUDIO_CUES.run_step.gain, 0.01125);
   assert.equal(GAME_AUDIO_CUES.crouch_step.gain, 0.006);
 });
