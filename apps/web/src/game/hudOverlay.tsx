@@ -51,6 +51,8 @@ export const ArenaHudOverlay = ({
   onInteractFromTouch,
   onJumpFromTouch,
   onQuestionFromTouch,
+  onToggleSprintFromTouch,
+  touchSprintEnabled,
   athleticsHud
 }: {
   hitPulse: number;
@@ -68,6 +70,8 @@ export const ArenaHudOverlay = ({
   onInteractFromTouch: (() => void) | undefined;
   onJumpFromTouch: (() => void) | undefined;
   onQuestionFromTouch: (() => void) | undefined;
+  onToggleSprintFromTouch: (() => void) | undefined;
+  touchSprintEnabled?: boolean;
   athleticsHud?: AthleticsHudState;
 }) => athleticsHud ? (
   <>
@@ -138,7 +142,7 @@ export const ArenaHudOverlay = ({
         <span><small>Checkpoints</small><strong>{athleticsHud.checkpointIndex}/{athleticsHud.checkpointCount}</strong></span>
       </div>
     </div>
-    {!controlsDisabled && !isPointerLocked && !suppressHint && <div className="control-lock athletics-control-lock">WASD moves · Space jumps · Arrow keys or swipe looks · touch players can use the jump button</div>}
+    {!controlsDisabled && !isPointerLocked && !suppressHint && <div className="control-lock athletics-control-lock">WASD moves · Shift sprints · Space jumps · Arrow keys or swipe looks · touch players can use Sprint + Jump</div>}
     <div className="touch-controls athletics-touch-controls" aria-label="Touch controls">
       <button ref={joystickElementRef} type="button" className="touch-joystick" aria-label="Movement joystick" disabled={controlsDisabled} onPointerDown={onBeginTouchMove}>
         <span aria-hidden="true" />
@@ -155,12 +159,28 @@ export const ArenaHudOverlay = ({
           Answer
         </button>
       )}
-      {onJumpFromTouch && (
+      {(onJumpFromTouch || onToggleSprintFromTouch) && (
         <div className="touch-action-group">
-          <button type="button" className="touch-jump" disabled={controlsDisabled} aria-label="Jump" onPointerDown={(event) => { event.preventDefault(); onJumpFromTouch(); }}>
-            <kbd aria-hidden="true">SPACE</kbd>
-            Jump
-          </button>
+          {onToggleSprintFromTouch && (
+            <button
+              type="button"
+              className="touch-sprint"
+              disabled={controlsDisabled}
+              aria-label="Sprint"
+              aria-keyshortcuts="Shift"
+              aria-pressed={touchSprintEnabled === true}
+              onClick={onToggleSprintFromTouch}
+            >
+              <kbd aria-hidden="true">SHIFT</kbd>
+              Sprint
+            </button>
+          )}
+          {onJumpFromTouch && (
+            <button type="button" className="touch-jump" disabled={controlsDisabled} aria-label="Jump" onPointerDown={(event) => { event.preventDefault(); onJumpFromTouch(); }}>
+              <kbd aria-hidden="true">SPACE</kbd>
+              Jump
+            </button>
+          )}
         </div>
       )}
     </div>

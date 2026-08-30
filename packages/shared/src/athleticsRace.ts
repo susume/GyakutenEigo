@@ -60,6 +60,29 @@ export interface AthleticsCourseSection {
   landmark: string;
 }
 
+/** Authored vocabulary for the way a player moves between two landings. */
+export type AthleticsTransitionType =
+  | "jump"
+  | "easy_jump"
+  | "hard_jump"
+  | "shortcut_jump"
+  | "connected"
+  | "checkpoint_entry"
+  | "moving_jump"
+  | "elevator"
+  | "bridge"
+  | "attraction";
+
+export interface AthleticsCourseTransition {
+  id: string;
+  fromSurfaceId: string;
+  toSurfaceId: string;
+  type: AthleticsTransitionType;
+  /** Optional note for level review and future route tooling. */
+  note?: string;
+  movingObstacleId?: string;
+}
+
 export type AthleticsSurfaceKind = "platform" | "ramp" | "stair" | "checkpoint";
 
 /** Authored walkable surface used by both the scene and authoritative collision. */
@@ -85,6 +108,7 @@ export interface AthleticsCourseShortcut {
   endProgress: number;
   route: readonly AthleticsRoutePoint[];
   surfaces: readonly AthleticsCourseSurface[];
+  transitions: readonly AthleticsCourseTransition[];
   routeWidth?: number;
 }
 
@@ -115,6 +139,7 @@ export interface AthleticsCourseDefinition {
   sections: readonly AthleticsCourseSection[];
   checkpoints: readonly number[];
   surfaces: readonly AthleticsCourseSurface[];
+  transitions: readonly AthleticsCourseTransition[];
   shortcuts: readonly AthleticsCourseShortcut[];
   movingObstacles: readonly AthleticsMovingObstacle[];
   routeWidth: number;
@@ -186,91 +211,90 @@ const routePointAtProgressUnchecked = (progress: number, route: readonly Athleti
   return routePointAtDistance(clamp01(progress) * total, route);
 };
 
-const routeNormalAtProgress = (progress: number, route: readonly AthleticsRoutePoint[]) => {
-  const point = routePointAtProgressUnchecked(progress, route);
-  const ahead = routePointAtProgressUnchecked(Math.min(1, progress + 0.002), route);
-  const length = Math.hypot(ahead.x - point.x, ahead.z - point.z) || 1;
-  return { x: -(ahead.z - point.z) / length, z: (ahead.x - point.x) / length };
-};
-
 /**
- * Six dense, hand-authored parkour chapters climb through the park. The route
- * revisits a few attraction sightlines at different heights, so projection
- * uses y when the caller supplies it and cannot turn a visual crossing into a
- * ranking shortcut.
+ * Six compact, hand-authored parkour chapters climb through the park. Each
+ * point is a landing centre, not a piece of a continuous runway: the authored
+ * surface dimensions and transition table below decide whether the next move
+ * is a jump, lift, bridge, or checkpoint entry.
  */
 const ATHLETICS_ROUTE: readonly AthleticsRoutePoint[] = [
-  // Park Entrance: 0-10
+  // Park Entrance: low, forgiving tutorial landings with two similar-height
+  // jumps before the route begins to weave through the park.
   { x: 0, z: 123, y: 0 },
-  { x: -8, z: 109, y: 1 },
-  { x: 10, z: 96, y: 3 },
-  { x: -3, z: 83, y: 5 },
-  { x: 13, z: 69, y: 7 },
-  { x: 0, z: 56, y: 9 },
-  { x: 17, z: 43, y: 11 },
-  { x: 4, z: 31, y: 13 },
-  { x: -13, z: 19, y: 15 },
-  { x: 0, z: 8, y: 17 },
-  { x: -19, z: -8, y: 19 },
-  // Midway Mayhem: 11-21
-  { x: -33, z: -21, y: 21 },
-  { x: -17, z: -35, y: 23 },
-  { x: 2, z: -29, y: 25 },
-  { x: 19, z: -40, y: 27 },
-  { x: 33, z: -56, y: 29 },
-  { x: 15, z: -69, y: 31 },
-  { x: -6, z: -61, y: 33 },
-  { x: -23, z: -75, y: 35 },
-  { x: -42, z: -63, y: 37 },
-  { x: -52, z: -48, y: 39 },
-  // Ride District: 22-32
-  { x: -38, z: -33, y: 41 },
-  { x: -21, z: -19, y: 43 },
-  { x: -4, z: -29, y: 45 },
-  { x: 15, z: -17, y: 47 },
-  { x: 33, z: -4, y: 49 },
-  { x: 50, z: 10, y: 51 },
-  { x: 40, z: 27, y: 53 },
-  { x: 23, z: 38, y: 55 },
-  { x: 4, z: 31, y: 57 },
-  { x: -13, z: 44, y: 59 },
-  { x: -29, z: 60, y: 61 },
-  // Ferris & Coaster: 33-43
-  { x: -48, z: 48, y: 63 },
-  { x: -63, z: 35, y: 65 },
-  { x: -79, z: 19, y: 67 },
-  { x: -69, z: 2, y: 69 },
-  { x: -84, z: -13, y: 71 },
-  { x: -100, z: 0, y: 73 },
-  { x: -88, z: 19, y: 75 },
-  { x: -71, z: 33, y: 77 },
-  { x: -54, z: 21, y: 79 },
-  { x: -38, z: 6, y: 81 },
-  { x: -21, z: -8, y: 83 },
-  // Drop Tower: 44-54
-  { x: -4, z: -23, y: 85 },
-  { x: 13, z: -36, y: 86.5 },
-  { x: 31, z: -25, y: 88 },
-  { x: 46, z: -40, y: 89.5 },
-  { x: 61, z: -56, y: 91 },
-  { x: 48, z: -73, y: 92.5 },
-  { x: 29, z: -84, y: 94 },
-  { x: 10, z: -75, y: 95.5 },
-  { x: -8, z: -90, y: 97 },
-  { x: -27, z: -104, y: 98.5 },
-  { x: -46, z: -92, y: 100 },
-  // Sky Park Summit: 55-64
-  { x: -61, z: -108, y: 101 },
-  { x: -81, z: -94, y: 102 },
-  { x: -98, z: -109, y: 103 },
-  { x: -113, z: -94, y: 104 },
-  { x: -104, z: -75, y: 105 },
-  { x: -84, z: -65, y: 106 },
-  { x: -65, z: -77, y: 107 },
-  { x: -46, z: -61, y: 108 },
-  { x: -27, z: -73, y: 109 },
-  { x: -8, z: -58, y: 109.5 },
-  { x: 13, z: -44, y: 110 }
+  { x: -4, z: 106, y: 0 },
+  { x: 10, z: 91, y: 1.5 },
+  { x: -5, z: 76, y: 0.5 },
+  { x: 13, z: 61, y: 2.5 },
+  { x: 2, z: 48, y: 2.5 },
+  { x: 17, z: 33, y: 4 },
+  { x: 3, z: 20, y: 3 },
+  { x: -14, z: 6, y: 5 },
+  { x: 0, z: -9, y: 5 },
+  { x: -17, z: -22, y: 6 },
+  // Midway Mayhem: lateral movement around the low midway, with small rises
+  // and drops rather than a vertical staircase.
+  { x: -35, z: -33, y: 6 },
+  { x: -49, z: -21, y: 7 },
+  { x: -63, z: -33, y: 6 },
+  { x: -79, z: -46, y: 8 },
+  { x: -64, z: -62, y: 8 },
+  { x: -44, z: -74, y: 7 },
+  { x: -27, z: -63, y: 9 },
+  { x: -11, z: -78, y: 8 },
+  { x: 7, z: -67, y: 10 },
+  { x: 24, z: -78, y: 9 },
+  { x: 41, z: -66, y: 10 },
+  // Ride District: a long lateral ride deck, then a distinct lift-assisted
+  // climb into the attraction skyline.
+  { x: 54, z: -47, y: 11 },
+  { x: 42, z: -32, y: 11 },
+  { x: 27, z: -40, y: 12 },
+  { x: 12, z: -26, y: 12 },
+  { x: 27, z: -9, y: 13 },
+  { x: 44, z: 3, y: 13 },
+  { x: 60, z: 21, y: 13 },
+  { x: 44, z: 36, y: 14 },
+  { x: 27, z: 25, y: 13 },
+  { x: 9, z: 40, y: 16 },
+  { x: -8, z: 28, y: 16 },
+  // Ferris & Coaster: approach the grounded wheel's lower deck, cross its
+  // moving gondola line, then climb to the supported coaster maintenance run.
+  { x: -24, z: 17, y: 16 },
+  { x: -40, z: 28, y: 18 },
+  { x: -56, z: 39, y: 18 },
+  { x: -72, z: 28, y: 21 },
+  { x: -86, z: 15, y: 24 },
+  { x: -96, z: 31, y: 27 },
+  { x: -85, z: 48, y: 30 },
+  { x: -67, z: 60, y: 29 },
+  { x: -48, z: 52, y: 32 },
+  { x: -30, z: 44, y: 34 },
+  { x: -17, z: 58, y: 34 },
+  // Drop Tower: three service-deck jumps, a sharp lift, then a dropping
+  // diagonal that turns toward the next checkpoint.
+  { x: -3, z: 44, y: 36 },
+  { x: 14, z: 31, y: 36 },
+  { x: 30, z: 44, y: 38 },
+  { x: 47, z: 30, y: 38 },
+  { x: 63, z: 15, y: 40 },
+  { x: 49, z: -1, y: 40 },
+  { x: 32, z: -16, y: 40 },
+  { x: 16, z: -1, y: 55 },
+  { x: -1, z: -18, y: 58 },
+  { x: -18, z: -4, y: 60 },
+  { x: -35, z: -19, y: 62 },
+  // Sky Park Summit: exposed lateral traversal at a stable high level before
+  // the final sharp ascent above the whole park.
+  { x: -52, z: -33, y: 62 },
+  { x: -70, z: -20, y: 65 },
+  { x: -86, z: -34, y: 65 },
+  { x: -103, z: -20, y: 67 },
+  { x: -92, z: -2, y: 69 },
+  { x: -74, z: 8, y: 71 },
+  { x: -54, z: -5, y: 74 },
+  { x: -36, z: 9, y: 77 },
+  { x: -17, z: -3, y: 80 },
+  { x: 2, z: 12, y: 110 }
 ];
 
 const sectionAt = (startIndex: number, endIndex: number, id: string, label: string, description: string, accent: AthleticsAccent, landmark: string): AthleticsCourseSection => ({
@@ -284,90 +308,109 @@ const sectionAt = (startIndex: number, endIndex: number, id: string, label: stri
 });
 
 const ATHLETICS_SECTIONS: readonly AthleticsCourseSection[] = [
-  sectionAt(0, 10, "park-entrance", "Park Entrance", "Learn the jump rhythm on wide ticket-plaza landings.", "cyan", "Grand entrance"),
-  sectionAt(10, 21, "midway-mayhem", "Midway Mayhem", "Thread awnings and stalls while the gaps start to tighten.", "orange", "Food stalls"),
-  sectionAt(21, 32, "ride-district", "Ride District", "Use the ride decks and a moving lift to gain the skyline.", "lime", "Ride decks"),
-  sectionAt(32, 43, "ferris-coaster", "Ferris & Coaster", "Make the hero jump from the Ferris deck to the coaster maintenance line.", "gold", "Ferris wheel and coaster"),
-  sectionAt(43, 54, "drop-tower", "Drop Tower", "Climb the tower service line with forgiving, readable landings.", "violet", "Drop tower"),
-  sectionAt(54, 64, "sky-park-summit", "Sky Park Summit", "Cross the final rooftop chain and finish above the whole park.", "pink", "Summit flags")
+  sectionAt(0, 10, "park-entrance", "Park Entrance", "Learn the jump rhythm on wide, low ticket-plaza landings.", "cyan", "Grand entrance"),
+  sectionAt(10, 21, "midway-mayhem", "Midway Mayhem", "Thread the midway laterally while small rises and drops keep the rhythm alive.", "orange", "Food stalls and bumper cars"),
+  sectionAt(21, 32, "ride-district", "Ride District", "Cross ride decks, time the lift, and gain height in one deliberate attraction beat.", "lime", "Ride decks and maintenance lift"),
+  sectionAt(32, 43, "ferris-coaster", "Ferris & Coaster", "Use the grounded Ferris support decks and a supported coaster line as real landmarks.", "gold", "Ferris wheel and coaster"),
+  sectionAt(43, 54, "drop-tower", "Drop Tower", "Climb in service-deck chunks, ride the tower lift, and drop into the next checkpoint.", "violet", "Drop tower"),
+  sectionAt(54, 64, "sky-park-summit", "Sky Park Summit", "Stay exposed across the high traverse, then make the sharp final ascent above the park.", "pink", "Summit flags")
 ];
 
-type AuthoredSurfaceSpec = Pick<AthleticsCourseSurface, "kind" | "width" | "depth" | "safe" | "material">;
+type AuthoredSurfaceSpec = Pick<AthleticsCourseSurface, "kind" | "width" | "depth" | "safe" | "material" | "rotationY">;
+
+const surfaceSpec = (
+  kind: AthleticsSurfaceKind,
+  width: number,
+  depth: number,
+  material: AthleticsCourseSurface["material"],
+  safe = false,
+  rotationY?: number
+): AuthoredSurfaceSpec => ({ kind, width, depth, material, safe, ...(rotationY === undefined ? {} : { rotationY }) });
 
 /** Explicit surface tuning; there is no modulo-based sampling or auto-fill. */
 const ATHLETICS_SURFACE_SPECS: readonly AuthoredSurfaceSpec[] = [
   // Park Entrance: wide, forgiving teaching landings.
-  { kind: "platform", width: 28, depth: 22, safe: true, material: "stone" },
-  { kind: "platform", width: 21, depth: 17, safe: false, material: "stone" },
-  { kind: "platform", width: 20, depth: 17, safe: false, material: "stone" },
-  { kind: "platform", width: 19, depth: 16, safe: false, material: "accent" },
-  { kind: "stair", width: 21, depth: 15, safe: true, material: "accent" },
-  { kind: "platform", width: 19, depth: 16, safe: false, material: "accent" },
-  { kind: "platform", width: 20, depth: 16, safe: false, material: "accent" },
-  { kind: "ramp", width: 21, depth: 17, safe: false, material: "accent" },
-  { kind: "platform", width: 19, depth: 16, safe: false, material: "metal" },
-  { kind: "platform", width: 21, depth: 17, safe: false, material: "metal" },
-  { kind: "checkpoint", width: 28, depth: 22, safe: true, material: "accent" },
-  // Midway Mayhem.
-  { kind: "platform", width: 20, depth: 16, safe: false, material: "wood" },
-  { kind: "platform", width: 18, depth: 15, safe: false, material: "wood" },
-  { kind: "platform", width: 19, depth: 15, safe: false, material: "metal" },
-  { kind: "stair", width: 22, depth: 17, safe: true, material: "wood" },
-  { kind: "platform", width: 18, depth: 15, safe: false, material: "wood" },
-  { kind: "platform", width: 18, depth: 15, safe: false, material: "metal" },
-  { kind: "platform", width: 18, depth: 15, safe: false, material: "wood" },
-  { kind: "ramp", width: 20, depth: 15, safe: false, material: "wood" },
-  { kind: "platform", width: 18, depth: 15, safe: false, material: "metal" },
-  { kind: "platform", width: 20, depth: 16, safe: false, material: "wood" },
-  { kind: "checkpoint", width: 28, depth: 22, safe: true, material: "accent" },
-  // Ride District.
-  { kind: "platform", width: 19, depth: 16, safe: false, material: "metal" },
-  { kind: "platform", width: 18, depth: 15, safe: false, material: "metal" },
-  { kind: "platform", width: 18, depth: 15, safe: false, material: "metal" },
-  { kind: "stair", width: 20, depth: 15, safe: true, material: "metal" },
-  { kind: "platform", width: 19, depth: 15, safe: false, material: "accent" },
-  { kind: "platform", width: 18, depth: 15, safe: false, material: "metal" },
-  { kind: "ramp", width: 21, depth: 16, safe: false, material: "accent" },
-  { kind: "platform", width: 18, depth: 15, safe: false, material: "metal" },
-  { kind: "platform", width: 19, depth: 15, safe: false, material: "accent" },
-  { kind: "platform", width: 20, depth: 16, safe: false, material: "metal" },
-  { kind: "checkpoint", width: 28, depth: 22, safe: true, material: "accent" },
-  // Ferris & Coaster.
-  { kind: "platform", width: 20, depth: 16, safe: false, material: "metal" },
-  { kind: "platform", width: 18, depth: 15, safe: false, material: "metal" },
-  { kind: "stair", width: 20, depth: 16, safe: true, material: "metal" },
-  { kind: "platform", width: 18, depth: 15, safe: false, material: "accent" },
-  { kind: "platform", width: 18, depth: 15, safe: false, material: "metal" },
-  { kind: "ramp", width: 21, depth: 16, safe: false, material: "accent" },
-  { kind: "platform", width: 18, depth: 15, safe: false, material: "metal" },
-  { kind: "platform", width: 19, depth: 15, safe: false, material: "metal" },
-  { kind: "stair", width: 20, depth: 15, safe: true, material: "metal" },
-  { kind: "platform", width: 19, depth: 16, safe: false, material: "accent" },
-  { kind: "checkpoint", width: 28, depth: 22, safe: true, material: "accent" },
-  // Drop Tower.
-  { kind: "platform", width: 20, depth: 16, safe: false, material: "metal" },
-  { kind: "platform", width: 18, depth: 15, safe: false, material: "metal" },
-  { kind: "ramp", width: 20, depth: 16, safe: false, material: "accent" },
-  { kind: "platform", width: 18, depth: 15, safe: false, material: "metal" },
-  { kind: "stair", width: 20, depth: 16, safe: true, material: "metal" },
-  { kind: "platform", width: 18, depth: 15, safe: false, material: "accent" },
-  { kind: "platform", width: 18, depth: 15, safe: false, material: "metal" },
-  { kind: "platform", width: 19, depth: 16, safe: false, material: "accent" },
-  { kind: "platform", width: 18, depth: 15, safe: false, material: "metal" },
-  { kind: "stair", width: 20, depth: 16, safe: true, material: "metal" },
-  { kind: "checkpoint", width: 28, depth: 22, safe: true, material: "accent" },
-  // Sky Park Summit.
-  { kind: "platform", width: 20, depth: 16, safe: false, material: "accent" },
-  { kind: "platform", width: 18, depth: 15, safe: false, material: "metal" },
-  { kind: "platform", width: 18, depth: 15, safe: false, material: "accent" },
-  { kind: "stair", width: 20, depth: 16, safe: true, material: "accent" },
-  { kind: "platform", width: 18, depth: 15, safe: false, material: "metal" },
-  { kind: "ramp", width: 21, depth: 16, safe: false, material: "accent" },
-  { kind: "platform", width: 18, depth: 15, safe: false, material: "metal" },
-  { kind: "platform", width: 19, depth: 15, safe: false, material: "accent" },
-  { kind: "platform", width: 20, depth: 16, safe: false, material: "metal" },
-  { kind: "checkpoint", width: 30, depth: 24, safe: true, material: "accent" }
+  surfaceSpec("platform", 20, 16, "stone", true),
+  surfaceSpec("platform", 18, 13, "stone"),
+  surfaceSpec("platform", 17, 13, "stone"),
+  surfaceSpec("platform", 16, 13, "accent"),
+  surfaceSpec("platform", 17, 13, "accent"),
+  surfaceSpec("platform", 16, 11, "accent"),
+  surfaceSpec("platform", 16, 13, "accent"),
+  surfaceSpec("ramp", 16, 13, "accent"),
+  surfaceSpec("platform", 16, 13, "metal"),
+  surfaceSpec("platform", 16, 13, "metal"),
+  surfaceSpec("checkpoint", 26, 18, "accent", true),
+  // Midway Mayhem: smaller lateral landings around grounded stalls.
+  surfaceSpec("platform", 15, 12, "wood"),
+  surfaceSpec("platform", 14, 10, "wood"),
+  surfaceSpec("platform", 14, 11, "metal"),
+  surfaceSpec("platform", 16, 14, "wood"),
+  surfaceSpec("platform", 14, 12, "wood"),
+  surfaceSpec("platform", 13, 12, "metal"),
+  surfaceSpec("platform", 14, 12, "wood"),
+  surfaceSpec("ramp", 13, 12, "wood"),
+  surfaceSpec("platform", 14, 12, "metal"),
+  surfaceSpec("platform", 15, 13, "wood"),
+  surfaceSpec("checkpoint", 26, 18, "accent", true),
+  // Ride District: ride decks use a tighter but still comfortable footprint.
+  surfaceSpec("platform", 14, 12, "metal"),
+  surfaceSpec("platform", 13, 12, "metal"),
+  surfaceSpec("platform", 13, 11, "metal"),
+  surfaceSpec("platform", 15, 13, "metal", true),
+  surfaceSpec("platform", 13, 11, "accent"),
+  surfaceSpec("platform", 13, 12, "metal"),
+  surfaceSpec("ramp", 14, 12, "accent"),
+  surfaceSpec("platform", 13, 11, "metal"),
+  surfaceSpec("platform", 14, 12, "accent"),
+  surfaceSpec("platform", 13, 11, "metal"),
+  surfaceSpec("checkpoint", 26, 18, "accent", true),
+  // Ferris & Coaster: support decks and gondola landings.
+  surfaceSpec("platform", 14, 12, "metal"),
+  surfaceSpec("platform", 13, 11, "metal"),
+  surfaceSpec("platform", 14, 12, "metal", true),
+  surfaceSpec("platform", 12, 11, "accent"),
+  surfaceSpec("platform", 13, 11, "metal"),
+  surfaceSpec("ramp", 12, 11, "accent"),
+  surfaceSpec("platform", 13, 11, "metal"),
+  surfaceSpec("platform", 12, 10, "accent"),
+  surfaceSpec("platform", 13, 11, "metal"),
+  surfaceSpec("platform", 13, 12, "metal"),
+  surfaceSpec("checkpoint", 28, 18, "accent", true),
+  // Drop Tower: service decks are intentionally varied and never a repeated stair flight.
+  surfaceSpec("platform", 13, 13, "metal"),
+  surfaceSpec("platform", 12, 13, "metal"),
+  surfaceSpec("ramp", 13, 13, "accent"),
+  surfaceSpec("platform", 12, 12, "metal"),
+  surfaceSpec("platform", 13, 13, "metal"),
+  surfaceSpec("platform", 12, 12, "accent"),
+  surfaceSpec("platform", 13, 13, "metal"),
+  surfaceSpec("platform", 12, 13, "metal"),
+  surfaceSpec("platform", 13, 13, "accent"),
+  surfaceSpec("platform", 12, 12, "metal"),
+  surfaceSpec("checkpoint", 28, 18, "accent", true),
+  // Sky Park Summit: exposed high landings with a generous final finish pad.
+  surfaceSpec("platform", 13, 13, "accent"),
+  surfaceSpec("platform", 12, 12, "metal"),
+  surfaceSpec("platform", 12, 12, "accent"),
+  surfaceSpec("platform", 13, 13, "metal"),
+  surfaceSpec("platform", 12, 12, "accent"),
+  surfaceSpec("platform", 13, 13, "metal"),
+  surfaceSpec("platform", 11, 12, "accent"),
+  surfaceSpec("platform", 12, 12, "metal"),
+  surfaceSpec("platform", 12, 12, "accent"),
+  surfaceSpec("checkpoint", 30, 22, "accent", true)
 ];
+
+const routeHeadingAtIndex = (route: readonly AthleticsRoutePoint[], index: number) => {
+  const point = route[index]!;
+  const previous = route[index - 1];
+  if (!previous) {
+    const next = route[index + 1] ?? point;
+    return Math.atan2(next.x - point.x, next.z - point.z);
+  }
+  return Math.atan2(point.x - previous.x, point.z - previous.z);
+};
 
 const makeAuthoredSurfaces = (route: readonly AthleticsRoutePoint[], specs: readonly AuthoredSurfaceSpec[]) => {
   if (route.length !== specs.length) throw new Error(`Athletics route/surface authoring mismatch: ${route.length} route points, ${specs.length} specs`);
@@ -376,12 +419,19 @@ const makeAuthoredSurfaces = (route: readonly AthleticsRoutePoint[], specs: read
     id: `route-platform-${String(index + 1).padStart(3, "0")}`,
     x: point.x,
     z: point.z,
-    y: point.y
+    y: point.y,
+    // Normal landings face the jump they receive; checkpoint pads face their
+    // exit so the large safe surface also communicates the next direction.
+    rotationY: specs[index]?.rotationY ?? (specs[index]?.kind === "checkpoint" && route[index + 1]
+      ? Math.atan2(route[index + 1]!.x - point.x, route[index + 1]!.z - point.z)
+      : routeHeadingAtIndex(route, index))
   } satisfies AthleticsCourseSurface));
 };
 
 const ATHLETICS_SURFACES = makeAuthoredSurfaces(ATHLETICS_ROUTE, ATHLETICS_SURFACE_SPECS);
 const ATHLETICS_CHECKPOINTS = [10, 21, 32, 43, 54, 64].map((index) => routeProgressAtIndex(ATHLETICS_ROUTE, index));
+
+const routeSurfaceId = (index: number) => `route-platform-${String(index + 1).padStart(3, "0")}`;
 
 const shortcutSurface = (
   id: string,
@@ -391,17 +441,31 @@ const shortcutSurface = (
   y: number,
   width: number,
   depth: number,
-  material: AthleticsCourseSurface["material"] = "accent"
-): AthleticsCourseSurface => ({ id, kind, x, z, y, width, depth, safe: false, material });
+  material: AthleticsCourseSurface["material"] = "accent",
+  rotationY = 0
+): AthleticsCourseSurface => ({ id, kind, x, z, y, width, depth, safe: false, material, rotationY });
 
 const ATHLETICS_SHORTCUTS: readonly AthleticsCourseShortcut[] = [
   {
     id: "midway-service-cut",
     label: "Midway service cut",
     startProgress: routeProgressAtIndex(ATHLETICS_ROUTE, 12),
-    endProgress: routeProgressAtIndex(ATHLETICS_ROUTE, 16),
-    route: [ATHLETICS_ROUTE[12]!, { x: -1, z: -48, y: 26 }, ATHLETICS_ROUTE[16]!],
-    surfaces: [shortcutSurface("shortcut-midway-service-01", "platform", -1, -48, 26, 17, 13, "wood")],
+    endProgress: routeProgressAtIndex(ATHLETICS_ROUTE, 15),
+    route: [
+      ATHLETICS_ROUTE[12]!,
+      { x: -48, z: -40, y: 7 },
+      { x: -44, z: -56, y: 7 },
+      ATHLETICS_ROUTE[15]!
+    ],
+    surfaces: [
+      shortcutSurface("shortcut-midway-service-01", "platform", -48, -40, 7, 9, 8, "wood", Math.atan2(4, -16)),
+      shortcutSurface("shortcut-midway-service-02", "platform", -44, -56, 7, 9, 8, "metal", Math.atan2(-20, -6))
+    ],
+    transitions: [
+      { id: "midway-service-cut-01", fromSurfaceId: routeSurfaceId(12), toSurfaceId: "shortcut-midway-service-01", type: "shortcut_jump", note: "Clear the service gap from the midway awning." },
+      { id: "midway-service-cut-02", fromSurfaceId: "shortcut-midway-service-01", toSurfaceId: "shortcut-midway-service-02", type: "shortcut_jump" },
+      { id: "midway-service-cut-03", fromSurfaceId: "shortcut-midway-service-02", toSurfaceId: routeSurfaceId(15), type: "shortcut_jump", note: "Land on the far midway deck." }
+    ],
     routeWidth: 12
   },
   {
@@ -411,15 +475,21 @@ const ATHLETICS_SHORTCUTS: readonly AthleticsCourseShortcut[] = [
     endProgress: routeProgressAtIndex(ATHLETICS_ROUTE, 39),
     route: [
       ATHLETICS_ROUTE[34]!,
-      { x: -82, z: 45, y: 68 },
-      { x: -101, z: 30, y: 71 },
-      { x: -108, z: 9, y: 73 },
+      { x: -51, z: 12, y: 18 },
+      { x: -65, z: 18, y: 20 },
+      { x: -80, z: 30, y: 24 },
       ATHLETICS_ROUTE[39]!
     ],
     surfaces: [
-      shortcutSurface("shortcut-ferris-maintenance-01", "platform", -82, 45, 68, 16, 13, "metal"),
-      shortcutSurface("shortcut-ferris-maintenance-02", "stair", -101, 30, 71, 17, 13, "accent"),
-      shortcutSurface("shortcut-ferris-maintenance-03", "platform", -108, 9, 73, 16, 13, "metal")
+      shortcutSurface("shortcut-ferris-maintenance-01", "platform", -51, 12, 18, 8, 7, "metal", Math.atan2(-14, 6)),
+      shortcutSurface("shortcut-ferris-maintenance-02", "platform", -65, 18, 20, 8, 8, "accent", Math.atan2(-15, 12)),
+      shortcutSurface("shortcut-ferris-maintenance-03", "platform", -80, 30, 24, 8, 8, "metal", Math.atan2(-5, 18))
+    ],
+    transitions: [
+      { id: "ferris-maintenance-cut-01", fromSurfaceId: routeSurfaceId(34), toSurfaceId: "shortcut-ferris-maintenance-01", type: "shortcut_jump", note: "Skip across the lower wheel service rail." },
+      { id: "ferris-maintenance-cut-02", fromSurfaceId: "shortcut-ferris-maintenance-01", toSurfaceId: "shortcut-ferris-maintenance-02", type: "shortcut_jump" },
+      { id: "ferris-maintenance-cut-03", fromSurfaceId: "shortcut-ferris-maintenance-02", toSurfaceId: "shortcut-ferris-maintenance-03", type: "shortcut_jump" },
+      { id: "ferris-maintenance-cut-04", fromSurfaceId: "shortcut-ferris-maintenance-03", toSurfaceId: routeSurfaceId(39), type: "shortcut_jump", note: "Rejoin above the coaster approach." }
     ],
     routeWidth: 12
   },
@@ -427,30 +497,83 @@ const ATHLETICS_SHORTCUTS: readonly AthleticsCourseShortcut[] = [
     id: "drop-tower-rooftop-cut",
     label: "Drop tower rooftop cut",
     startProgress: routeProgressAtIndex(ATHLETICS_ROUTE, 47),
-    endProgress: routeProgressAtIndex(ATHLETICS_ROUTE, 52),
+    endProgress: routeProgressAtIndex(ATHLETICS_ROUTE, 51),
     route: [
       ATHLETICS_ROUTE[47]!,
-      { x: 79, z: -70, y: 93 },
-      { x: 61, z: -91, y: 96 },
-      { x: 24, z: -101, y: 98 },
-      ATHLETICS_ROUTE[52]!
+      { x: 60, z: 16, y: 42 },
+      { x: 49, z: 0, y: 47 },
+      { x: 33, z: -12, y: 51 },
+      ATHLETICS_ROUTE[51]!
     ],
     surfaces: [
-      shortcutSurface("shortcut-drop-rooftop-01", "platform", 79, -70, 93, 17, 13, "accent"),
-      shortcutSurface("shortcut-drop-rooftop-02", "ramp", 61, -91, 96, 18, 13, "metal"),
-      shortcutSurface("shortcut-drop-rooftop-03", "platform", 24, -101, 98, 17, 13, "accent")
+      shortcutSurface("shortcut-drop-rooftop-01", "platform", 60, 16, 42, 12, 11, "accent", Math.atan2(-11, -16)),
+      shortcutSurface("shortcut-drop-rooftop-02", "ramp", 49, 0, 47, 12, 11, "metal", Math.atan2(-16, -12)),
+      shortcutSurface("shortcut-drop-rooftop-03", "platform", 33, -12, 51, 12, 11, "accent", Math.atan2(-17, 11))
+    ],
+    transitions: [
+      { id: "drop-tower-rooftop-cut-01", fromSurfaceId: routeSurfaceId(47), toSurfaceId: "shortcut-drop-rooftop-01", type: "shortcut_jump", note: "Sprint from the tower deck to the rooftop line." },
+      { id: "drop-tower-rooftop-cut-02", fromSurfaceId: "shortcut-drop-rooftop-01", toSurfaceId: "shortcut-drop-rooftop-02", type: "shortcut_jump" },
+      { id: "drop-tower-rooftop-cut-03", fromSurfaceId: "shortcut-drop-rooftop-02", toSurfaceId: "shortcut-drop-rooftop-03", type: "shortcut_jump" },
+      { id: "drop-tower-rooftop-cut-04", fromSurfaceId: "shortcut-drop-rooftop-03", toSurfaceId: routeSurfaceId(51), type: "shortcut_jump", note: "Drop onto the high service landing." }
     ],
     routeWidth: 12
   }
 ];
 
+const mainTransition = (
+  index: number,
+  type: AthleticsTransitionType,
+  note?: string,
+  movingObstacleId?: string
+): AthleticsCourseTransition => ({
+  id: `main-transition-${String(index + 1).padStart(3, "0")}`,
+  fromSurfaceId: routeSurfaceId(index),
+  toSurfaceId: routeSurfaceId(index + 1),
+  type,
+  ...(note ? { note } : {}),
+  ...(movingObstacleId ? { movingObstacleId } : {})
+});
+
+/**
+ * Main-route transition authoring. Checkpoint entries and the ride elevator are
+ * deliberately named non-jump interactions; all other transitions are
+ * required to clear a gap, with six moving interactions called out for QA and
+ * future tooling.
+ */
+const ATHLETICS_TRANSITIONS: readonly AthleticsCourseTransition[] = ATHLETICS_ROUTE.slice(0, -1).map((_, index) => {
+  const moving: Record<number, [string, string]> = {
+    13: ["midway-swing-platform", "Time the swing from the midway deck."],
+    24: ["ride-district-lift", "Use the maintenance lift to gain the ride-deck height."],
+    35: ["ferris-gondola-crossing", "Cross the Ferris gondola line."],
+    39: ["coaster-maintenance-cart", "Clear the coaster maintenance cart."],
+    50: ["drop-tower-lift", "Ride the Drop Tower lift into the upper service line."],
+    63: ["summit-finish-lift", "Ride the final summit lift into the finish platform."]
+  };
+  const checkpointEntry = new Set([9, 20, 31, 42, 53, 63]).has(index);
+  const movingTransition = moving[index];
+  if (checkpointEntry) {
+    return mainTransition(
+      index,
+      "checkpoint_entry",
+      movingTransition?.[1] ?? "Wide recovery platform and checkpoint arch.",
+      movingTransition?.[0]
+    );
+  }
+  if (movingTransition) return mainTransition(index, "moving_jump", movingTransition[1], movingTransition[0]);
+  if (index === 26) return mainTransition(index, "elevator", "The route changes level at the ride maintenance elevator.");
+  if ([33, 36, 38, 40].includes(index)) return mainTransition(index, "attraction", "The landing is authored against a recognizable attraction structure.");
+  if ([51, 57, 60, 61, 62].includes(index)) return mainTransition(index, "hard_jump", "Long exposed late-course jump with a readable landing.");
+  if (index < 9) return mainTransition(index, "easy_jump", "Forgiving tutorial air gap.");
+  return mainTransition(index, "jump");
+});
+
 const ATHLETICS_MOVING_OBSTACLES: readonly AthleticsMovingObstacle[] = [
-  { id: "midway-swing-platform", kind: "platform", x: 20, z: -49, y: 27.5, width: 15, depth: 13, height: 1.2, axis: "x", amplitude: 7, periodMs: 4200, phaseMs: 300, material: "wood", jumpable: true },
-  { id: "ride-district-lift", kind: "elevator", x: 41, z: 24, y: 50, width: 16, depth: 13, height: 1.2, axis: "y", amplitude: 5, periodMs: 5600, phaseMs: 900, material: "metal", jumpable: true },
-  { id: "ferris-gondola-crossing", kind: "barrier", x: -79, z: 17, y: 68, width: 14, depth: 4, height: 1.4, axis: "z", amplitude: 7, periodMs: 3900, phaseMs: 1100, material: "accent", jumpable: true },
-  { id: "coaster-maintenance-cart", kind: "barrier", x: -56, z: 13, y: 78.5, width: 13, depth: 4, height: 1.4, axis: "x", amplitude: 8, periodMs: 4700, phaseMs: 1500, material: "metal", jumpable: true },
-  { id: "drop-tower-lift", kind: "elevator", x: 45, z: -52, y: 90, width: 16, depth: 13, height: 1.2, axis: "y", amplitude: 5.5, periodMs: 6000, phaseMs: 200, material: "metal", jumpable: true },
-  { id: "summit-crossing-platform", kind: "platform", x: -59, z: -72, y: 106, width: 17, depth: 13, height: 1.2, axis: "z", amplitude: 6, periodMs: 5100, phaseMs: 700, material: "accent", jumpable: true }
+  { id: "midway-swing-platform", kind: "platform", x: -63, z: -39, y: 7, width: 11, depth: 8, height: 1.2, axis: "x", amplitude: 6, periodMs: 4200, phaseMs: 300, material: "wood", jumpable: true },
+  { id: "ride-district-lift", kind: "elevator", x: 39, z: -17, y: 13, width: 11, depth: 10, height: 1.2, axis: "y", amplitude: 5, periodMs: 5600, phaseMs: 900, material: "metal", jumpable: true },
+  { id: "ferris-gondola-crossing", kind: "platform", x: -72, z: 28, y: 21, width: 10, depth: 7, height: 1.2, axis: "z", amplitude: 5, periodMs: 3900, phaseMs: 1100, material: "accent", jumpable: true },
+  { id: "coaster-maintenance-cart", kind: "barrier", x: -67, z: 55, y: 31, width: 9, depth: 3, height: 1.4, axis: "x", amplitude: 6, periodMs: 4700, phaseMs: 1500, material: "metal", jumpable: true },
+  { id: "drop-tower-lift", kind: "elevator", x: 35, z: -9, y: 43, width: 11, depth: 10, height: 1.2, axis: "y", amplitude: 12, periodMs: 6000, phaseMs: 200, material: "metal", jumpable: true },
+  { id: "summit-finish-lift", kind: "elevator", x: -8, z: 5, y: 95, width: 11, depth: 10, height: 1.2, axis: "y", amplitude: 15, periodMs: 6600, phaseMs: 700, material: "accent", jumpable: true }
 ];
 
 export const ATHLETICS_STADIUM_COURSE: AthleticsCourseDefinition = {
@@ -461,11 +584,321 @@ export const ATHLETICS_STADIUM_COURSE: AthleticsCourseDefinition = {
   sections: ATHLETICS_SECTIONS,
   checkpoints: ATHLETICS_CHECKPOINTS,
   surfaces: ATHLETICS_SURFACES,
+  transitions: ATHLETICS_TRANSITIONS,
   shortcuts: ATHLETICS_SHORTCUTS,
   movingObstacles: ATHLETICS_MOVING_OBSTACLES,
   routeWidth: 14,
   finishThreshold: 0.982,
   bounds: ATHLETICS_COURSE_BOUNDS
+};
+
+/** Minimum authored edge-to-edge air for each transition vocabulary item. */
+export const ATHLETICS_TRANSITION_AIR_GAP_TARGETS: Readonly<Record<AthleticsTransitionType, number>> = {
+  jump: 4,
+  easy_jump: 2.5,
+  hard_jump: 6,
+  shortcut_jump: 3,
+  moving_jump: 3,
+  attraction: 4,
+  connected: 0,
+  checkpoint_entry: 0,
+  elevator: 0,
+  bridge: 0
+};
+
+const ATHLETICS_JUMP_TRANSITION_TYPES: readonly AthleticsTransitionType[] = [
+  "jump",
+  "easy_jump",
+  "hard_jump",
+  "shortcut_jump",
+  "moving_jump",
+  "attraction"
+];
+
+const ATHLETICS_INTENTIONAL_NON_JUMP_TYPES: readonly AthleticsTransitionType[] = [
+  "connected",
+  "checkpoint_entry",
+  "elevator",
+  "bridge"
+];
+
+export const isAthleticsJumpTransition = (type: AthleticsTransitionType) =>
+  ATHLETICS_JUMP_TRANSITION_TYPES.includes(type);
+
+type AthleticsFootprintPoint = { x: number; z: number };
+
+const footprintCorners = (surface: Pick<AthleticsCourseSurface, "x" | "z" | "width" | "depth" | "rotationY">): AthleticsFootprintPoint[] => {
+  const angle = surface.rotationY ?? 0;
+  const cosine = Math.cos(angle);
+  const sine = Math.sin(angle);
+  return ([
+    [-surface.width / 2, -surface.depth / 2],
+    [surface.width / 2, -surface.depth / 2],
+    [surface.width / 2, surface.depth / 2],
+    [-surface.width / 2, surface.depth / 2]
+  ] as const).map(([localX, localZ]) => ({
+    x: surface.x + cosine * localX + sine * localZ,
+    z: surface.z - sine * localX + cosine * localZ
+  }));
+};
+
+const crossFootprint = (first: AthleticsFootprintPoint, second: AthleticsFootprintPoint, third: AthleticsFootprintPoint) =>
+  (second.x - first.x) * (third.z - first.z) - (second.z - first.z) * (third.x - first.x);
+
+const pointOnFootprintSegment = (point: AthleticsFootprintPoint, start: AthleticsFootprintPoint, end: AthleticsFootprintPoint) =>
+  Math.abs(crossFootprint(start, end, point)) <= 0.000001
+  && point.x >= Math.min(start.x, end.x) - 0.000001
+  && point.x <= Math.max(start.x, end.x) + 0.000001
+  && point.z >= Math.min(start.z, end.z) - 0.000001
+  && point.z <= Math.max(start.z, end.z) + 0.000001;
+
+const footprintSegmentsIntersect = (
+  firstStart: AthleticsFootprintPoint,
+  firstEnd: AthleticsFootprintPoint,
+  secondStart: AthleticsFootprintPoint,
+  secondEnd: AthleticsFootprintPoint
+) => {
+  const firstTurn = crossFootprint(firstStart, firstEnd, secondStart);
+  const secondTurn = crossFootprint(firstStart, firstEnd, secondEnd);
+  const thirdTurn = crossFootprint(secondStart, secondEnd, firstStart);
+  const fourthTurn = crossFootprint(secondStart, secondEnd, firstEnd);
+  const straddles = ((firstTurn > 0 && secondTurn < 0) || (firstTurn < 0 && secondTurn > 0))
+    && ((thirdTurn > 0 && fourthTurn < 0) || (thirdTurn < 0 && fourthTurn > 0));
+  return straddles
+    || (Math.abs(firstTurn) <= 0.000001 && pointOnFootprintSegment(secondStart, firstStart, firstEnd))
+    || (Math.abs(secondTurn) <= 0.000001 && pointOnFootprintSegment(secondEnd, firstStart, firstEnd))
+    || (Math.abs(thirdTurn) <= 0.000001 && pointOnFootprintSegment(firstStart, secondStart, secondEnd))
+    || (Math.abs(fourthTurn) <= 0.000001 && pointOnFootprintSegment(firstEnd, secondStart, secondEnd));
+};
+
+const pointInsideFootprint = (point: AthleticsFootprintPoint, polygon: readonly AthleticsFootprintPoint[]) => {
+  let inside = false;
+  for (let index = 0, previous = polygon.length - 1; index < polygon.length; previous = index, index += 1) {
+    const current = polygon[index]!;
+    const prior = polygon[previous]!;
+    const intersects = ((current.z > point.z) !== (prior.z > point.z))
+      && point.x < ((prior.x - current.x) * (point.z - current.z)) / (prior.z - current.z) + current.x;
+    if (intersects) inside = !inside;
+  }
+  return inside;
+};
+
+const distanceToFootprintSegment = (point: AthleticsFootprintPoint, start: AthleticsFootprintPoint, end: AthleticsFootprintPoint) => {
+  const dx = end.x - start.x;
+  const dz = end.z - start.z;
+  const lengthSquared = dx * dx + dz * dz;
+  const part = lengthSquared <= Number.EPSILON
+    ? 0
+    : Math.min(1, Math.max(0, ((point.x - start.x) * dx + (point.z - start.z) * dz) / lengthSquared));
+  return Math.hypot(point.x - (start.x + dx * part), point.z - (start.z + dz * part));
+};
+
+/**
+ * Returns the true horizontal edge-to-edge distance between two landing
+ * rectangles. Touching or intersecting rectangles return zero; this is not a
+ * centre-to-centre measurement and it respects authored rotationY.
+ */
+export const getAthleticsSurfaceAirGap = (
+  first: Pick<AthleticsCourseSurface, "x" | "z" | "width" | "depth" | "rotationY">,
+  second: Pick<AthleticsCourseSurface, "x" | "z" | "width" | "depth" | "rotationY">
+) => {
+  const firstCorners = footprintCorners(first);
+  const secondCorners = footprintCorners(second);
+  for (let firstIndex = 0; firstIndex < firstCorners.length; firstIndex += 1) {
+    const firstStart = firstCorners[firstIndex]!;
+    const firstEnd = firstCorners[(firstIndex + 1) % firstCorners.length]!;
+    for (let secondIndex = 0; secondIndex < secondCorners.length; secondIndex += 1) {
+      const secondStart = secondCorners[secondIndex]!;
+      const secondEnd = secondCorners[(secondIndex + 1) % secondCorners.length]!;
+      if (footprintSegmentsIntersect(firstStart, firstEnd, secondStart, secondEnd)) return 0;
+    }
+  }
+  if (pointInsideFootprint(firstCorners[0]!, secondCorners) || pointInsideFootprint(secondCorners[0]!, firstCorners)) return 0;
+  let closest = Number.POSITIVE_INFINITY;
+  for (const point of firstCorners) {
+    for (let index = 0; index < secondCorners.length; index += 1) {
+      closest = Math.min(closest, distanceToFootprintSegment(point, secondCorners[index]!, secondCorners[(index + 1) % secondCorners.length]!));
+    }
+  }
+  for (const point of secondCorners) {
+    for (let index = 0; index < firstCorners.length; index += 1) {
+      closest = Math.min(closest, distanceToFootprintSegment(point, firstCorners[index]!, firstCorners[(index + 1) % firstCorners.length]!));
+    }
+  }
+  return Number.isFinite(closest) ? closest : 0;
+};
+
+/**
+ * Returns whether two authored landing slabs occupy the same solid volume.
+ * Horizontal crossings at different heights are allowed for the compact
+ * park, but a same-height crossing is a design error unless its transition is
+ * explicitly authored as a non-jump interaction.
+ */
+export const getAthleticsSurfaceVolumeOverlap = (
+  first: Pick<AthleticsCourseSurface, "x" | "z" | "y" | "width" | "depth" | "rotationY">,
+  second: Pick<AthleticsCourseSurface, "x" | "z" | "y" | "width" | "depth" | "rotationY">
+) => {
+  const firstBottom = first.y - (first.y <= 0 ? ATHLETICS_GROUND_SURFACE_SLAB_HEIGHT : ATHLETICS_SURFACE_SLAB_HEIGHT);
+  const secondBottom = second.y - (second.y <= 0 ? ATHLETICS_GROUND_SURFACE_SLAB_HEIGHT : ATHLETICS_SURFACE_SLAB_HEIGHT);
+  const verticalOverlap = Math.min(first.y, second.y) - Math.max(firstBottom, secondBottom);
+  return verticalOverlap > 0.001 && getAthleticsSurfaceAirGap(first, second) <= 0.001;
+};
+
+const allAthleticsSurfaces = (course: AthleticsCourseDefinition) => [
+  ...course.surfaces,
+  ...course.shortcuts.flatMap((shortcut) => shortcut.surfaces)
+];
+
+const surfaceById = (course: AthleticsCourseDefinition, id: string) => allAthleticsSurfaces(course).find((surface) => surface.id === id);
+
+export const getAthleticsTransitionAirGap = (
+  transition: AthleticsCourseTransition,
+  course: AthleticsCourseDefinition = ATHLETICS_STADIUM_COURSE
+) => {
+  const first = surfaceById(course, transition.fromSurfaceId);
+  const second = surfaceById(course, transition.toSurfaceId);
+  return first && second ? getAthleticsSurfaceAirGap(first, second) : Number.NaN;
+};
+
+export interface AthleticsCourseGeometryMetrics {
+  mainRoutePlatformCount: number;
+  transitionCount: number;
+  nonCheckpointTransitionCount: number;
+  checkpointTransitionCount: number;
+  genuineJumpTransitionCount: number;
+  positiveAirGapJumpCount: number;
+  jumpTransitionAirGapPercentage: number;
+  jumpTransitionPercentage: number;
+  medianAirGap: number;
+  averageAirGap: number;
+  maximumNormalRouteGap: number;
+  maximumShortcutGap: number;
+  connectedNonJumpTransitionCount: number;
+  movingPlatformTransitionCount: number;
+  averagePlatformWidth: number;
+  averagePlatformDepth: number;
+}
+
+const median = (values: readonly number[]) => {
+  if (values.length === 0) return 0;
+  const sorted = [...values].sort((left, right) => left - right);
+  const middle = Math.floor(sorted.length / 2);
+  return sorted.length % 2 === 0 ? (sorted[middle - 1]! + sorted[middle]!) / 2 : sorted[middle]!;
+};
+
+export const getAthleticsCourseGeometryMetrics = (
+  course: AthleticsCourseDefinition = ATHLETICS_STADIUM_COURSE
+): AthleticsCourseGeometryMetrics => {
+  const mainAirGaps = course.transitions.map((transition) => getAthleticsTransitionAirGap(transition, course));
+  const jumpGaps = course.transitions
+    .filter((transition) => isAthleticsJumpTransition(transition.type))
+    .map((transition) => getAthleticsTransitionAirGap(transition, course))
+    .filter((gap): gap is number => Number.isFinite(gap));
+  const shortcutGaps = course.shortcuts.flatMap((shortcut) => shortcut.transitions.map((transition) => getAthleticsTransitionAirGap(transition, course)))
+    .filter((gap): gap is number => Number.isFinite(gap));
+  const nonCheckpointTransitions = course.transitions.filter((transition) => transition.type !== "checkpoint_entry");
+  const positiveAirGapJumpCount = jumpGaps.filter((gap) => gap > 0.001).length;
+  const average = jumpGaps.length === 0 ? 0 : jumpGaps.reduce((sum, gap) => sum + gap, 0) / jumpGaps.length;
+  const routeGaps = mainAirGaps.filter((gap, index) => Number.isFinite(gap) && course.transitions[index]!.type !== "checkpoint_entry") as number[];
+  const surfaces = course.surfaces;
+  return {
+    mainRoutePlatformCount: course.surfaces.length,
+    transitionCount: course.transitions.length,
+    nonCheckpointTransitionCount: nonCheckpointTransitions.length,
+    checkpointTransitionCount: course.transitions.length - nonCheckpointTransitions.length,
+    genuineJumpTransitionCount: jumpGaps.length,
+    positiveAirGapJumpCount,
+    jumpTransitionAirGapPercentage: jumpGaps.length === 0 ? 0 : (positiveAirGapJumpCount / jumpGaps.length) * 100,
+    jumpTransitionPercentage: nonCheckpointTransitions.length === 0 ? 0 : (jumpGaps.length / nonCheckpointTransitions.length) * 100,
+    medianAirGap: median(jumpGaps),
+    averageAirGap: average,
+    maximumNormalRouteGap: routeGaps.length === 0 ? 0 : Math.max(...routeGaps),
+    maximumShortcutGap: shortcutGaps.length === 0 ? 0 : Math.max(...shortcutGaps),
+    connectedNonJumpTransitionCount: course.transitions.filter((transition) => ATHLETICS_INTENTIONAL_NON_JUMP_TYPES.includes(transition.type)).length,
+    movingPlatformTransitionCount: course.transitions.filter((transition) => transition.movingObstacleId !== undefined).length,
+    averagePlatformWidth: surfaces.reduce((sum, surface) => sum + surface.width, 0) / Math.max(1, surfaces.length),
+    averagePlatformDepth: surfaces.reduce((sum, surface) => sum + surface.depth, 0) / Math.max(1, surfaces.length)
+  };
+};
+
+export const getAthleticsCourseGeometryIssues = (
+  course: AthleticsCourseDefinition = ATHLETICS_STADIUM_COURSE
+) => {
+  const issues: string[] = [];
+  const movingObstacleIds = new Set(course.movingObstacles.map((obstacle) => obstacle.id));
+  const checkMovingReference = (transition: AthleticsCourseTransition, label: string) => {
+    if (transition.type === "moving_jump" && !transition.movingObstacleId) {
+      issues.push(`${label} moving_jump has no moving obstacle reference`);
+    }
+    if (transition.movingObstacleId && !movingObstacleIds.has(transition.movingObstacleId)) {
+      issues.push(`${label} references missing moving obstacle ${transition.movingObstacleId}`);
+    }
+  };
+  if (course.transitions.length !== Math.max(0, course.surfaces.length - 1)) {
+    issues.push(`main transition count ${course.transitions.length} does not match ${course.surfaces.length - 1} surface transitions`);
+  }
+  course.transitions.forEach((transition, index) => {
+    checkMovingReference(transition, transition.id);
+    const expectedFrom = course.surfaces[index]?.id;
+    const expectedTo = course.surfaces[index + 1]?.id;
+    if (transition.fromSurfaceId !== expectedFrom || transition.toSurfaceId !== expectedTo) {
+      issues.push(`${transition.id} is not adjacent to main route surfaces ${index} and ${index + 1}`);
+    }
+    const gap = getAthleticsTransitionAirGap(transition, course);
+    const minimum = ATHLETICS_TRANSITION_AIR_GAP_TARGETS[transition.type];
+    if (!Number.isFinite(gap)) issues.push(`${transition.id} references a missing surface`);
+    if (isAthleticsJumpTransition(transition.type) && Number.isFinite(gap) && gap < minimum) {
+      issues.push(`${transition.id} ${transition.type} air gap ${gap.toFixed(2)} is below ${minimum.toFixed(2)}`);
+    }
+    if (Number.isFinite(gap) && gap <= 0.001 && isAthleticsJumpTransition(transition.type)) {
+      issues.push(`${transition.id} has accidental platform overlap but is typed as ${transition.type}`);
+    }
+    if (!isAthleticsJumpTransition(transition.type) && !ATHLETICS_INTENTIONAL_NON_JUMP_TYPES.includes(transition.type)) {
+      issues.push(`${transition.id} uses an unknown non-jump transition type`);
+    }
+  });
+  for (const shortcut of course.shortcuts) {
+    for (const transition of shortcut.transitions) {
+      checkMovingReference(transition, `${shortcut.id}/${transition.id}`);
+      const gap = getAthleticsTransitionAirGap(transition, course);
+      const minimum = ATHLETICS_TRANSITION_AIR_GAP_TARGETS[transition.type];
+      if (!Number.isFinite(gap)) issues.push(`${shortcut.id}/${transition.id} references a missing surface`);
+      if (isAthleticsJumpTransition(transition.type) && Number.isFinite(gap) && gap < minimum) {
+        issues.push(`${shortcut.id}/${transition.id} air gap ${gap.toFixed(2)} is below ${minimum.toFixed(2)}`);
+      }
+      if (Number.isFinite(gap) && gap <= 0.001 && isAthleticsJumpTransition(transition.type)) {
+        issues.push(`${shortcut.id}/${transition.id} has accidental platform overlap but is typed as ${transition.type}`);
+      }
+      if (!isAthleticsJumpTransition(transition.type) && !ATHLETICS_INTENTIONAL_NON_JUMP_TYPES.includes(transition.type)) {
+        issues.push(`${shortcut.id}/${transition.id} uses an unknown non-jump transition type`);
+      }
+    }
+  }
+  const intentionalNonJumpPairs = new Set(
+    course.transitions
+      .filter((transition) => ATHLETICS_INTENTIONAL_NON_JUMP_TYPES.includes(transition.type))
+      .map((transition) => `${transition.fromSurfaceId}|${transition.toSurfaceId}`)
+  );
+  const allSurfaces = [
+    ...course.surfaces,
+    ...course.shortcuts.flatMap((shortcut) => shortcut.surfaces)
+  ];
+  for (let firstIndex = 0; firstIndex < allSurfaces.length; firstIndex += 1) {
+    for (let secondIndex = firstIndex + 1; secondIndex < allSurfaces.length; secondIndex += 1) {
+      const first = allSurfaces[firstIndex]!;
+      const second = allSurfaces[secondIndex]!;
+      if (!getAthleticsSurfaceVolumeOverlap(first, second)) continue;
+      const pair = `${first.id}|${second.id}`;
+      const reversePair = `${second.id}|${first.id}`;
+      if (intentionalNonJumpPairs.has(pair) || intentionalNonJumpPairs.has(reversePair)) continue;
+      issues.push(`${first.id} and ${second.id} occupy the same authored solid volume`);
+    }
+  }
+  const metrics = getAthleticsCourseGeometryMetrics(course);
+  if (metrics.jumpTransitionPercentage < 75) {
+    issues.push(`only ${metrics.jumpTransitionPercentage.toFixed(1)}% of non-checkpoint transitions are authored jumps`);
+  }
+  return issues;
 };
 
 export const ATHLETICS_START_COUNTDOWN_MS = 4_000;
@@ -505,7 +938,7 @@ export const getAthleticsQuestionIndexInLap = (questionIndex: number, questionsP
   Math.max(0, Math.floor(questionIndex)) % Math.max(1, Math.floor(questionsPerLap));
 
 export type AthleticsObstacle =
-  | { id: string; kind: "rect"; x: number; z: number; width: number; depth: number; jumpable?: boolean; minY?: number; maxY?: number; stair?: boolean }
+  | { id: string; kind: "rect"; x: number; z: number; width: number; depth: number; rotationY?: number; jumpable?: boolean; minY?: number; maxY?: number; stair?: boolean }
   | { id: string; kind: "circle"; x: number; z: number; radius: number; jumpable?: boolean; minY?: number; maxY?: number };
 
 const surfaceToObstacle = (surface: AthleticsCourseSurface): AthleticsObstacle => {
@@ -518,6 +951,7 @@ const surfaceToObstacle = (surface: AthleticsCourseSurface): AthleticsObstacle =
     z: surface.z,
     width: surface.width,
     depth: surface.depth,
+    rotationY: surface.rotationY,
     jumpable: true,
     // Keep the collision volume aligned with the rendered slab. Elevated
     // switchbacks must remain passable underneath; modeling them from y=0
@@ -543,6 +977,22 @@ export const getAthleticsMovingObstaclePosition = (obstacle: AthleticsMovingObst
   };
 };
 
+const isPointInsideAthleticsRect = (
+  point: Pick<ArenaPosition, "x" | "z">,
+  obstacle: Extract<AthleticsObstacle, { kind: "rect" }>,
+  padding = 0
+) => {
+  const angle = obstacle.rotationY ?? 0;
+  const cosine = Math.cos(angle);
+  const sine = Math.sin(angle);
+  const offsetX = point.x - obstacle.x;
+  const offsetZ = point.z - obstacle.z;
+  const localX = cosine * offsetX - sine * offsetZ;
+  const localZ = sine * offsetX + cosine * offsetZ;
+  return Math.abs(localX) <= obstacle.width / 2 + padding
+    && Math.abs(localZ) <= obstacle.depth / 2 + padding;
+};
+
 /**
  * Finds the walkable floor below/at the player's current eye height. The
  * server uses this to keep elevated movement bounded without trusting a
@@ -557,8 +1007,7 @@ export const getAthleticsGroundHeight = (
   let supportY = 0;
   for (const obstacle of getAthleticsObstacles(nowMs)) {
     if (obstacle.kind !== "rect") continue;
-    if (Math.abs(position.x - obstacle.x) > obstacle.width / 2 + 0.45) continue;
-    if (Math.abs(position.z - obstacle.z) > obstacle.depth / 2 + 0.45) continue;
+    if (!isPointInsideAthleticsRect(position, obstacle, 0.45)) continue;
     const topY = Number(obstacle.maxY ?? 0);
     if (topY <= footY + 1.05 && topY > supportY) supportY = topY;
   }

@@ -60,8 +60,43 @@ export const canFpsBodyAutoStepOnto = (
 ) => obstacleTopY - body.minY <= maximumStepHeight;
 
 export type FpsSupportSurface = {
-  min: { x: number; z: number };
+  min: { x: number; y?: number; z: number };
   max: { x: number; y: number; z: number };
+  /** Optional exact footprint for an Athletics platform; map boxes stay AABB. */
+  footprint?: { x: number; z: number; width: number; depth: number; rotationY?: number };
+};
+
+const isPointWithinFpsSurface = (
+  surface: FpsSupportSurface,
+  x: number,
+  z: number,
+  radius: number
+) => {
+  if (!surface.footprint) {
+    return !(x + radius < surface.min.x
+      || x - radius > surface.max.x
+      || z + radius < surface.min.z
+      || z - radius > surface.max.z);
+  }
+  const angle = surface.footprint.rotationY ?? 0;
+  const cosine = Math.cos(angle);
+  const sine = Math.sin(angle);
+  const offsetX = x - surface.footprint.x;
+  const offsetZ = z - surface.footprint.z;
+  const localX = cosine * offsetX - sine * offsetZ;
+  const localZ = sine * offsetX + cosine * offsetZ;
+  return Math.abs(localX) <= surface.footprint.width / 2 + radius
+    && Math.abs(localZ) <= surface.footprint.depth / 2 + radius;
+};
+
+/** Exact oriented-footprint overlap used by the Athletics client collider. */
+export const intersectsFpsBody = (
+  surface: FpsSupportSurface,
+  bodyBox: { min: { x: number; y: number; z: number }; max: { x: number; y: number; z: number } }
+) => {
+  if (bodyBox.max.y < (surface.min.y ?? Number.NEGATIVE_INFINITY) || bodyBox.min.y > surface.max.y) return false;
+  const radius = Math.max((bodyBox.max.x - bodyBox.min.x) / 2, (bodyBox.max.z - bodyBox.min.z) / 2);
+  return isPointWithinFpsSurface(surface, (bodyBox.min.x + bodyBox.max.x) / 2, (bodyBox.min.z + bodyBox.max.z) / 2, radius);
 };
 
 /**
@@ -83,12 +118,7 @@ export const findFpsSupportSurfaceY = (
   let supportY: number | undefined;
 
   for (const surface of surfaces) {
-    if (
-      x + radius < surface.min.x
-      || x - radius > surface.max.x
-      || z + radius < surface.min.z
-      || z - radius > surface.max.z
-    ) continue;
+    if (!isPointWithinFpsSurface(surface, x, z, radius)) continue;
     const topY = surface.max.y;
     if (topY < lowerY || topY > upperY) continue;
     if (supportY === undefined || topY > supportY) supportY = topY;

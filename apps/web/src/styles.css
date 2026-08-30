@@ -14726,6 +14726,32 @@ body:has(.workspace) .study-set-audio-recorder audio { width: min(100%, 440px); 
   text-transform: uppercase;
 }
 
+.athletics-touch-controls .touch-sprint {
+  min-width: 102px;
+  min-height: 58px;
+  display: grid;
+  place-items: center;
+  gap: 2px;
+  border-color: rgba(181, 239, 113, .88) !important;
+  background: linear-gradient(145deg, rgba(47, 91, 48, .96), rgba(25, 58, 40, .96)) !important;
+  color: #eaffc7 !important;
+  font-size: .72rem;
+  font-weight: 950;
+  text-transform: uppercase;
+}
+
+.athletics-touch-controls .touch-sprint[aria-pressed="true"] {
+  border-color: #fff4a8 !important;
+  background: linear-gradient(145deg, rgba(102, 109, 33, .98), rgba(69, 74, 20, .98)) !important;
+  box-shadow: 0 0 18px rgba(181, 239, 113, .42) !important;
+  color: #fff4a8 !important;
+}
+
+.athletics-touch-controls .touch-sprint kbd {
+  color: #b5ef71;
+  font-size: .55rem;
+}
+
 .athletics-touch-controls .touch-jump kbd {
   color: #ffd66e;
   font-size: .58rem;
@@ -14915,6 +14941,7 @@ body:has(.workspace) .athletics-teacher-results {
   .athletics-control-lock { bottom: 138px; max-width: calc(100% - 24px); white-space: normal; text-align: center; }
   .athletics-touch-controls .touch-joystick { width: 104px; height: 104px; min-width: 104px; min-height: 104px; }
   .athletics-touch-controls .touch-jump { min-width: 92px; min-height: 74px; }
+  .athletics-touch-controls .touch-sprint { min-width: 92px; min-height: 58px; }
   .athletics-touch-controls .touch-question { min-width: 82px; min-height: 74px; }
   .athletics-answer-button { min-height: 56px; }
 }

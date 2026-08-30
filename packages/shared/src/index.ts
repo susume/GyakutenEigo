@@ -2239,7 +2239,7 @@ export const getPlayerMoveSpeedMultiplier = (player: Pick<PlayerSession, "gear" 
   Number((getGearMoveSpeedMultiplier(getPlayerWeaponId(player)) * (hasPlayerPerk(player, "speed_shoes") ? getGearMoveSpeedMultiplier("speed_shoes") : 1)).toFixed(2));
 
 export type ArenaObstacle =
-  | { id: string; kind: "rect"; x: number; z: number; width: number; depth: number; jumpable?: boolean; minY?: number; maxY?: number; stair?: boolean }
+  | { id: string; kind: "rect"; x: number; z: number; width: number; depth: number; rotationY?: number; jumpable?: boolean; minY?: number; maxY?: number; stair?: boolean }
   | { id: string; kind: "circle"; x: number; z: number; radius: number; jumpable?: boolean; minY?: number; maxY?: number };
 
 const rectObstacle = (
@@ -2633,11 +2633,26 @@ export type ProjectileTargetResult =
   | { ok: false; reason: "attacker_eliminated" | "invalid_target" | "blocked_by_cover" | "no_valid_target" };
 
 const expandRect = (obstacle: Extract<ArenaObstacle, { kind: "rect" }>, padding: number) => ({
-  minX: obstacle.x - obstacle.width / 2 - padding,
-  maxX: obstacle.x + obstacle.width / 2 + padding,
-  minZ: obstacle.z - obstacle.depth / 2 - padding,
-  maxZ: obstacle.z + obstacle.depth / 2 + padding
+  minX: -obstacle.width / 2 - padding,
+  maxX: obstacle.width / 2 + padding,
+  minZ: -obstacle.depth / 2 - padding,
+  maxZ: obstacle.depth / 2 + padding
 });
+
+const toRectLocal = (
+  point: Pick<ArenaPosition, "x" | "z">,
+  obstacle: Extract<ArenaObstacle, { kind: "rect" }>
+) => {
+  const angle = obstacle.rotationY ?? 0;
+  const cosine = Math.cos(angle);
+  const sine = Math.sin(angle);
+  const offsetX = point.x - obstacle.x;
+  const offsetZ = point.z - obstacle.z;
+  return {
+    x: cosine * offsetX - sine * offsetZ,
+    z: sine * offsetX + cosine * offsetZ
+  };
+};
 
 const pointInsideObstacle = (point: ArenaPosition, obstacle: ArenaObstacle, padding = 0) => {
   if (
@@ -2651,7 +2666,8 @@ const pointInsideObstacle = (point: ArenaPosition, obstacle: ArenaObstacle, padd
     return Math.hypot(point.x - obstacle.x, point.z - obstacle.z) <= obstacle.radius + padding;
   }
   const rect = expandRect(obstacle, padding);
-  return point.x >= rect.minX && point.x <= rect.maxX && point.z >= rect.minZ && point.z <= rect.maxZ;
+  const local = toRectLocal(point, obstacle);
+  return local.x >= rect.minX && local.x <= rect.maxX && local.z >= rect.minZ && local.z <= rect.maxZ;
 };
 
 const segmentRectIntersectionInterval = (
@@ -2661,13 +2677,15 @@ const segmentRectIntersectionInterval = (
   padding = 0
 ): [number, number] | undefined => {
   const rect = expandRect(obstacle, padding);
-  const dx = end.x - start.x;
-  const dz = end.z - start.z;
+  const localStart = toRectLocal(start, obstacle);
+  const localEnd = toRectLocal(end, obstacle);
+  const dx = localEnd.x - localStart.x;
+  const dz = localEnd.z - localStart.z;
   let tMin = 0;
   let tMax = 1;
   for (const [origin, delta, min, max] of [
-    [start.x, dx, rect.minX, rect.maxX],
-    [start.z, dz, rect.minZ, rect.maxZ]
+    [localStart.x, dx, rect.minX, rect.maxX],
+    [localStart.z, dz, rect.minZ, rect.maxZ]
   ] as const) {
     if (Math.abs(delta) < 0.0001) {
       if (origin < min || origin > max) return undefined;

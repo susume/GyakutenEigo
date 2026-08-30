@@ -15,6 +15,7 @@ import {
   canFpsBodyClearObstacle,
   findFpsSupportSurfaceY,
   getFpsBodyVerticalBounds,
+  intersectsFpsBody,
   smoothFpsGroundedCameraY
 } from "./ArenaCamera.js";
 
@@ -104,4 +105,19 @@ test("FPS falling movement lands on the highest crossed object surface", () => {
 
   assert.equal(findFpsSupportSurfaceY(surfaces, 0, 0, 0.45, 3.3, 2.8), 3);
   assert.equal(findFpsSupportSurfaceY(surfaces, 2.6, 0, 0.45, 3.3, 2.8), undefined);
+});
+
+test("rotated Athletics footprints keep client support and body collision aligned", () => {
+  const surface = {
+    min: { x: -5, y: 0, z: -5 },
+    max: { x: 5, y: 1, z: 5 },
+    footprint: { x: 0, z: 0, width: 10, depth: 2, rotationY: Math.PI / 4 }
+  };
+  const bodyOnLongAxis = { min: { x: 1.6, y: 0.2, z: -2.4 }, max: { x: 2.4, y: 0.9, z: -1.6 } };
+  const bodyOutsideRotatedFootprint = { min: { x: 2.8, y: 0.2, z: -0.4 }, max: { x: 3.6, y: 0.9, z: 0.4 } };
+
+  assert.equal(intersectsFpsBody(surface, bodyOnLongAxis), true);
+  assert.equal(intersectsFpsBody(surface, bodyOutsideRotatedFootprint), false);
+  assert.equal(findFpsSupportSurfaceY([surface], 2, -2, 0.45, 0.7, 1.1), 1);
+  assert.equal(findFpsSupportSurfaceY([surface], 3.2, 0, 0.45, 0.7, 1.1), undefined);
 });

@@ -11,12 +11,16 @@ const renderHud = ({
   hitConfirmPulse = 0,
   onInteractFromTouch,
   onJumpFromTouch,
+  onToggleSprintFromTouch,
+  touchSprintEnabled = false,
   athleticsHud
 }: {
   hitPulse?: number;
   hitConfirmPulse?: number;
   onInteractFromTouch?: () => void;
   onJumpFromTouch?: () => void;
+  onToggleSprintFromTouch?: () => void;
+  touchSprintEnabled?: boolean;
   athleticsHud?: AthleticsHudState;
 } = {}) => renderToStaticMarkup(React.createElement(ArenaHudOverlay, {
   hitPulse,
@@ -33,6 +37,8 @@ const renderHud = ({
   onZoomFromTouch: () => undefined,
   onInteractFromTouch,
   onJumpFromTouch,
+  onToggleSprintFromTouch,
+  touchSprintEnabled,
   athleticsHud
 }));
 
@@ -118,6 +124,41 @@ test("athletics touch controls expose the jump action", () => {
   assert.match(html, /aria-label="Jump"/u);
   assert.match(html, />Jump<\/button>/u);
   assert.match(html, />SPACE<\/kbd>/u);
+});
+
+test("athletics touch controls expose a sprint toggle for long jumps", () => {
+  const html = renderHud({
+    onJumpFromTouch: () => undefined,
+    onToggleSprintFromTouch: () => undefined,
+    touchSprintEnabled: true,
+    athleticsHud: {
+      startRemainingSeconds: 0,
+      remainingSeconds: 240,
+      questionIndex: 0,
+      questionCount: 8,
+      questionsPerLap: 8,
+      checkpointIndex: 0,
+      checkpointCount: 6,
+      completedLaps: 0,
+      requiredLaps: 1,
+      routeProgress: 0.2,
+      rank: 1,
+      totalRacers: 1,
+      energy: 1000,
+      maxEnergy: 1000,
+      criticalEnergy: 150,
+      canAnswer: true,
+      gateOpen: true,
+      status: "racing",
+      sectionLabel: "Midway Mayhem",
+      objectiveText: "Jump from platform to platform."
+    }
+  });
+  assert.match(html, /class="touch-sprint"/u);
+  assert.match(html, /aria-label="Sprint"/u);
+  assert.match(html, /aria-keyshortcuts="Shift"/u);
+  assert.match(html, /aria-pressed="true"/u);
+  assert.match(html, />Sprint<\/button>/u);
 });
 
 test("athletics onboarding fades after the opening jump sequence", () => {

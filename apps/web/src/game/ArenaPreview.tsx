@@ -37,6 +37,7 @@ import {
   canFpsBodyClearObstacle,
   findFpsSupportSurfaceY,
   getFpsBodyVerticalBounds,
+  intersectsFpsBody,
   smoothFpsGroundedCameraY
 } from "./ArenaCamera.js";
 import { createArenaSceneSetup, FPS_BASE_FOV } from "./sceneSetup";
@@ -302,6 +303,7 @@ export default function ArenaPreview({
 }: ArenaPreviewProps) {
   const mountRef = useRef<HTMLDivElement | null>(null);
   const touchMoveRef = useRef({ forward: 0, right: 0 });
+  const touchSprintRef = useRef(false);
   const fireControlRef = useRef<() => void>(() => undefined);
   const zoomControlRef = useRef<() => void>(() => undefined);
   const interactControlRef = useRef<() => void>(() => undefined);
@@ -320,6 +322,7 @@ export default function ArenaPreview({
   const joystickElementRef = useRef<HTMLButtonElement | null>(null);
   const syncPlayersRef = useRef<(session?: GameSession, currentPlayer?: PlayerSession) => void>(() => undefined);
   const [isPointerLocked, setIsPointerLocked] = useState(false);
+  const [touchSprintEnabled, setTouchSprintEnabled] = useState(false);
   const [hitPulse, setHitPulse] = useState(0);
   const [zoomLevel, setZoomLevelState] = useState(0);
   const [zoomPulse, setZoomPulse] = useState(0);
@@ -439,9 +442,17 @@ export default function ArenaPreview({
     if (!controlsDisabled && !inputPaused) return;
     joystickPointerRef.current = null;
     touchMoveRef.current = { forward: 0, right: 0 };
+    touchSprintRef.current = false;
+    setTouchSprintEnabled(false);
     joystickElementRef.current?.style.setProperty("--stick-x", "0px");
     joystickElementRef.current?.style.setProperty("--stick-y", "0px");
   }, [controlsDisabled, inputPaused]);
+
+  useEffect(() => {
+    if (isAthleticsMode) return;
+    touchSprintRef.current = false;
+    setTouchSprintEnabled(false);
+  }, [isAthleticsMode]);
 
   useEffect(() => {
     if (isAthleticsMode || !currentWeaponId) return;
@@ -1004,6 +1015,8 @@ export default function ArenaPreview({
         lookKeys.clear();
         setZoomLevel(0);
         fireHeld = false;
+        touchSprintRef.current = false;
+        setTouchSprintEnabled(false);
       };
       const cleanupControls = attachArenaInputListeners({
         rendererElement: renderer.domElement,
@@ -1091,7 +1104,7 @@ export default function ArenaPreview({
         bodyMax.set(next.x + PLAYER_RADIUS, verticalBounds.maxY, next.z + PLAYER_RADIUS);
         bodyBox.set(bodyMin, bodyMax);
         const blockingIndex = coverBoxes.findIndex((box, index) => {
-          if (!box.intersectsBox(bodyBox) || canFpsBodyClearObstacle(verticalBounds, box.max.y)) return false;
+          if (!intersectsFpsBody(box, bodyBox) || canFpsBodyClearObstacle(verticalBounds, box.max.y)) return false;
           const source = collisionSources[index] as { style?: string; stair?: boolean } | undefined;
           const isStair = source?.style === "stair" || source?.stair === true;
           return !isStair || !canFpsBodyAutoStepOnto(verticalBounds, box.max.y);
@@ -1286,7 +1299,7 @@ export default function ArenaPreview({
         const hasMovementEnergy = isAthleticsMode || isZombieHuman
           ? (activePlayer?.energy ?? 0) > 0
           : true;
-        const runRequested = keys.has("Shift");
+        const runRequested = keys.has("Shift") || touchSprintRef.current;
         const runAllowed = runRequested && hasMovementEnergy;
         const movementAudioMode: MovementAudioMode = crouching ? "crouch" : runAllowed ? "run" : "walk";
         const moveSpeed = hasMovementEnergy
@@ -1646,6 +1659,12 @@ export default function ArenaPreview({
     if (controlsDisabled || inputPausedRef.current) return;
     zoomControlRef.current();
   };
+  const toggleSprintFromTouch = () => {
+    if (controlsDisabled || inputPausedRef.current) return;
+    const enabled = !touchSprintRef.current;
+    touchSprintRef.current = enabled;
+    setTouchSprintEnabled(enabled);
+  };
   const interactFromTouch = () => {
     interactControlRef.current();
   };
@@ -1765,6 +1784,8 @@ export default function ArenaPreview({
             onInteractFromTouch={onInteract ? interactFromTouch : undefined}
             onJumpFromTouch={isAthleticsMode ? jumpFromTouch : undefined}
             onQuestionFromTouch={isAthleticsMode ? questionFromTouch : undefined}
+            onToggleSprintFromTouch={isAthleticsMode ? toggleSprintFromTouch : undefined}
+            touchSprintEnabled={isAthleticsMode && touchSprintEnabled}
             athleticsHud={isAthleticsMode ? athleticsHud : undefined}
           />
           {!isAthleticsMode && zoomLevel > 0 && (

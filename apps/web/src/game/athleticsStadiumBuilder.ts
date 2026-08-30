@@ -106,28 +106,6 @@ const addArch = (
   addBox(parent, material, [width + 0.78, 0.78, 0.78], [point.x, point.y + height, point.z], [0, angle, 0]);
 };
 
-const addBunting = (
-  parent: THREE.Object3D,
-  material: THREE.Material,
-  start: { x: number; y: number; z: number },
-  end: { x: number; y: number; z: number },
-  count = 7
-) => {
-  for (let index = 0; index <= count; index += 1) {
-    const part = index / count;
-    addMesh(
-      parent,
-      new THREE.SphereGeometry(0.3, 8, 6),
-      material,
-      [
-        start.x + (end.x - start.x) * part,
-        start.y + (end.y - start.y) * part - Math.sin(part * Math.PI) * 1.4,
-        start.z + (end.z - start.z) * part
-      ]
-    );
-  }
-};
-
 const addFairgroundStallFallback = (
   parent: THREE.Object3D,
   materials: { wall: THREE.Material; roof: THREE.Material; trim: THREE.Material },
@@ -157,9 +135,15 @@ const addFallbackFerrisWheel = (
     addBox(fallback, metal, [0.38, 56, 0.38], [0, 0, 0], [0, 0, angle / 2]);
     addBox(fallback, gondola, [4.1, 2.8, 2.7], [Math.cos(angle) * 29, Math.sin(angle) * 29, 0]);
   }
-  addBox(parent, metal, [2.6, 42, 2.6], [center.x - 15, center.y - 22, center.z]);
-  addBox(parent, metal, [2.6, 42, 2.6], [center.x + 15, center.y - 22, center.z]);
-  addBox(parent, metal, [40, 2.2, 2.6], [center.x, center.y - 43, center.z]);
+  // The structural foundation is intentionally separate from the fallback
+  // wheel silhouette so a successful GLB load still leaves a grounded ride.
+  const supports = new THREE.Group();
+  supports.name = "athletics-ferris-supports";
+  parent.add(supports);
+  addBox(supports, metal, [3.2, center.y, 3.2], [center.x - 15, center.y / 2, center.z]);
+  addBox(supports, metal, [3.2, center.y, 3.2], [center.x + 15, center.y / 2, center.z]);
+  addBox(supports, metal, [40, 2.4, 4.2], [center.x, 1.2, center.z]);
+  addBox(supports, metal, [34, 1.1, 2.8], [center.x, center.y - 1.2, center.z]);
   return fallback;
 };
 
@@ -172,14 +156,18 @@ const addFallbackCoaster = (
   const fallback = new THREE.Group();
   fallback.name = "athletics-fallback-coaster";
   parent.add(fallback);
+  const supports = new THREE.Group();
+  supports.name = "athletics-coaster-supports";
+  parent.add(supports);
   for (let index = 0; index < 7; index += 1) {
     const x = center.x + index * 9;
     const z = center.z + Math.sin(index * 0.9) * 10;
     const y = center.y + (index % 2) * 4;
-    addBox(fallback, accent, [8.8, 0.55, 1.1], [x, y, z], [0, Math.sin(index * 0.9) * 0.2, 0]);
-    addBox(fallback, metal, [1, Math.max(8, y - 1), 1], [x, (y - 1) / 2, z]);
+    const trackRotation: [number, number, number] = [0, Math.sin(index * 0.9) * 0.2, 0];
+    addBox(fallback, accent, [8.8, 0.55, 1.1], [x, y, z], trackRotation);
+    addBox(supports, metal, [1.4, Math.max(5, y), 1.4], [x, y / 2, z]);
+    if (index < 6) addBox(supports, metal, [9.4, 0.7, 0.7], [x + 4.5, y * 0.42, z], trackRotation);
   }
-  addBox(fallback, metal, [70, 1.4, 4], [center.x + 27, center.y - 8, center.z + 12]);
   return fallback;
 };
 
@@ -203,11 +191,34 @@ const addDropTower = (
   addBox(tower, metal, [20, 1.4, 20], [center.x, center.y + 0.7, center.z]);
 };
 
-const makeCollisionBox = (obstacle: (typeof ATHLETICS_COLLISION_PROXIES)[number]) => {
+type AthleticsCollisionBox = THREE.Box3 & {
+  footprint?: { x: number; z: number; width: number; depth: number; rotationY?: number };
+};
+
+const makeCollisionBox = (obstacle: (typeof ATHLETICS_COLLISION_PROXIES)[number]): AthleticsCollisionBox => {
   const minY = obstacle.minY ?? 0;
   const maxY = obstacle.maxY ?? 3;
-  const halfWidth = obstacle.kind === "rect" ? obstacle.width / 2 : obstacle.radius;
-  const halfDepth = obstacle.kind === "rect" ? obstacle.depth / 2 : obstacle.radius;
+  if (obstacle.kind === "rect") {
+    const angle = obstacle.rotationY ?? 0;
+    const cosine = Math.cos(angle);
+    const sine = Math.sin(angle);
+    const halfWidth = Math.abs(cosine) * obstacle.width / 2 + Math.abs(sine) * obstacle.depth / 2;
+    const halfDepth = Math.abs(sine) * obstacle.width / 2 + Math.abs(cosine) * obstacle.depth / 2;
+    const box = new THREE.Box3(
+      new THREE.Vector3(obstacle.x - halfWidth, minY, obstacle.z - halfDepth),
+      new THREE.Vector3(obstacle.x + halfWidth, maxY, obstacle.z + halfDepth)
+    ) as AthleticsCollisionBox;
+    box.footprint = {
+      x: obstacle.x,
+      z: obstacle.z,
+      width: obstacle.width,
+      depth: obstacle.depth,
+      rotationY: obstacle.rotationY
+    };
+    return box;
+  }
+  const halfWidth = obstacle.radius;
+  const halfDepth = obstacle.radius;
   return new THREE.Box3(
     new THREE.Vector3(obstacle.x - halfWidth, minY, obstacle.z - halfDepth),
     new THREE.Vector3(obstacle.x + halfWidth, maxY, obstacle.z + halfDepth)
@@ -268,7 +279,6 @@ export const buildAthleticsStadiumScene = ({
   const metal = makeMaterial(materialCache, "park-metal", "#506a82", { roughness: 0.38, metalness: 0.56 });
   const cream = makeMaterial(materialCache, "park-cream", "#fff0c8", { roughness: 0.68 });
   const dark = makeMaterial(materialCache, "park-dark", "#26334d", { roughness: 0.78 });
-  const water = makeMaterial(materialCache, "park-water", "#49dae0", { roughness: 0.28, metalness: 0.24, emissive: "#1cb4c2", emissiveIntensity: 0.14 });
   const accentMaterials = Object.fromEntries(
     (Object.entries(sectionColors) as Array<[AthleticsAccent, string]>).map(([accent, color]) => [
       accent,
@@ -280,8 +290,9 @@ export const buildAthleticsStadiumScene = ({
     material: THREE.MeshStandardMaterial,
     size: [number, number, number],
     position: [number, number, number],
-    surface: "stone" | "wood" | "metal" | "sand" | "accent" = "stone"
-  ) => staticBatcher.prepare(addBox(park, material, size, position), `#${material.color.getHexString()}`, surface);
+    surface: "stone" | "wood" | "metal" | "sand" | "accent" = "stone",
+    rotation: [number, number, number] = [0, 0, 0]
+  ) => staticBatcher.prepare(addBox(park, material, size, position, rotation), `#${material.color.getHexString()}`, surface);
 
   // 280 x 280 floor and boundary match ATHLETICS_COURSE_BOUNDS. The route is
   // intentionally absent from the floor; only the landings communicate where
@@ -325,9 +336,16 @@ export const buildAthleticsStadiumScene = ({
     ...course.surfaces.map((surface) => ({ surface, shortcut: false })),
     ...course.shortcuts.flatMap((shortcut) => shortcut.surfaces.map((surface) => ({ surface, shortcut: true })))
   ];
-  const supportIndices = new Set([4, 10, 14, 21, 25, 32, 35, 43, 47, 54, 58, 64]);
+  const supportIndices = new Set([10, 21, 32, 35, 43, 54, 64]);
+  const surfacePoint = (surface: AthleticsCourseSurface, localX: number, localZ: number) => {
+    const angle = surface.rotationY ?? 0;
+    return {
+      x: surface.x + Math.cos(angle) * localX + Math.sin(angle) * localZ,
+      z: surface.z - Math.sin(angle) * localX + Math.cos(angle) * localZ
+    };
+  };
 
-  allSurfaceEntries.forEach(({ surface, shortcut }, visualIndex) => {
+  allSurfaceEntries.forEach(({ surface, shortcut }) => {
     const progress = getAthleticsRouteProgress({ x: surface.x, y: surface.y, z: surface.z }, course);
     const accent = shortcut ? "gold" : getSectionAccent(progress);
     const platformMaterial = surface.material === "wood"
@@ -335,12 +353,13 @@ export const buildAthleticsStadiumScene = ({
       : surface.material === "stone"
         ? stone
         : surface.material === "accent"
-          ? accentMaterials[accent]
-          : metal;
+        ? accentMaterials[accent]
+        : metal;
     const slabHeight = surface.y <= 0 ? ATHLETICS_GROUND_SURFACE_SLAB_HEIGHT : ATHLETICS_SURFACE_SLAB_HEIGHT;
     const surfaceLayer = surface.material === "wood" ? "wood" : surface.material === "accent" ? "accent" : surface.material === "stone" ? "stone" : "metal";
-    addBatchedBox(platformMaterial, [surface.width, slabHeight, surface.depth], [surface.x, surface.y - slabHeight / 2, surface.z], surfaceLayer);
-    addBatchedBox(dark, [Math.max(4, surface.width - 1.2), 0.16, Math.max(4, surface.depth - 1.2)], [surface.x, surface.y + 0.08, surface.z], "stone");
+    const surfaceRotation: [number, number, number] = [0, surface.rotationY ?? 0, 0];
+    addBatchedBox(platformMaterial, [surface.width, slabHeight, surface.depth], [surface.x, surface.y - slabHeight / 2, surface.z], surfaceLayer, surfaceRotation);
+    addBatchedBox(dark, [Math.max(4, surface.width - 1.2), 0.16, Math.max(4, surface.depth - 1.2)], [surface.x, surface.y + 0.08, surface.z], "stone", surfaceRotation);
 
     // A bright perimeter is the primary next-landing language. It is kept
     // outside the collision proxy and updated only for the upcoming landing.
@@ -349,28 +368,35 @@ export const buildAthleticsStadiumScene = ({
     const edge = new THREE.LineSegments(edgeGeometry, edgeMaterial);
     edge.name = `athletics-platform-edge-${surface.id}`;
     edge.position.set(surface.x, surface.y + 0.13, surface.z);
+    edge.rotation.y = surface.rotationY ?? 0;
     edge.renderOrder = 3;
     park.add(edge);
     surfaceVisuals.push({ surface, progress, edge });
 
     if (surface.kind === "stair") {
       for (const inset of [-0.28, 0, 0.28]) {
-        addBatchedBox(cream, [surface.width * 0.7, 0.08, 0.38], [surface.x, surface.y + 0.17, surface.z + inset * surface.depth], "sand");
+        const tread = surfacePoint(surface, 0, inset * surface.depth);
+        addBatchedBox(cream, [surface.width * 0.7, 0.08, 0.38], [tread.x, surface.y + 0.17, tread.z], "sand", surfaceRotation);
       }
     } else if (surface.kind === "ramp") {
-      addBatchedBox(cream, [surface.width * 0.7, 0.08, 0.5], [surface.x, surface.y + 0.17, surface.z], "sand");
+      addBatchedBox(cream, [surface.width * 0.7, 0.08, 0.5], [surface.x, surface.y + 0.17, surface.z], "sand", surfaceRotation);
     }
 
     if (surface.kind === "checkpoint") {
-      addBox(park, accentMaterials[accent], [surface.width * 0.72, 0.16, 0.46], [surface.x, surface.y + 0.18, surface.z]);
-      addBox(park, cream, [0.28, 0.18, surface.depth * 0.7], [surface.x - surface.width * 0.3, surface.y + 0.18, surface.z]);
-      addBox(park, cream, [0.28, 0.18, surface.depth * 0.7], [surface.x + surface.width * 0.3, surface.y + 0.18, surface.z]);
+      addBox(park, accentMaterials[accent], [surface.width * 0.72, 0.16, 0.46], [surface.x, surface.y + 0.18, surface.z], surfaceRotation);
+      const leftMarker = surfacePoint(surface, -surface.width * 0.3, 0);
+      const rightMarker = surfacePoint(surface, surface.width * 0.3, 0);
+      addBox(park, cream, [0.28, 0.18, surface.depth * 0.7], [leftMarker.x, surface.y + 0.18, leftMarker.z], surfaceRotation);
+      addBox(park, cream, [0.28, 0.18, surface.depth * 0.7], [rightMarker.x, surface.y + 0.18, rightMarker.z], surfaceRotation);
     }
 
-    if (qualityConfig.detail > 0 && !shortcut && supportIndices.has(visualIndex)) {
+    const routeIndex = course.surfaces.indexOf(surface);
+    if (qualityConfig.detail > 0 && !shortcut && supportIndices.has(routeIndex)) {
       const supportHeight = Math.max(3, surface.y - 0.8);
-      addBatchedBox(metal, [1.25, supportHeight, 1.25], [surface.x - surface.width * 0.33, supportHeight / 2, surface.z - surface.depth * 0.3], "metal");
-      addBatchedBox(metal, [1.25, supportHeight, 1.25], [surface.x + surface.width * 0.33, supportHeight / 2, surface.z + surface.depth * 0.3], "metal");
+      const leftSupport = surfacePoint(surface, -surface.width * 0.33, -surface.depth * 0.3);
+      const rightSupport = surfacePoint(surface, surface.width * 0.33, surface.depth * 0.3);
+      addBatchedBox(metal, [1.25, supportHeight, 1.25], [leftSupport.x, supportHeight / 2, leftSupport.z], "metal", surfaceRotation);
+      addBatchedBox(metal, [1.25, supportHeight, 1.25], [rightSupport.x, supportHeight / 2, rightSupport.z], "metal", surfaceRotation);
     }
   });
 
@@ -389,7 +415,6 @@ export const buildAthleticsStadiumScene = ({
   const finishLabel = makeLabelTexture("SUMMIT FINISH", "#2b1731", "#ffd66e");
   addArch(park, accentMaterials.gold, finish, 1, 24, 9);
   addBox(park, labelMaterial("finish-label", finishLabel), [14, 1.9, 0.08], [finish.x, finish.y + 10.1, finish.z]);
-  addBunting(park, accentMaterials.gold, { x: finish.x - 17, y: finish.y + 9.5, z: finish.z - 2 }, { x: finish.x + 17, y: finish.y + 9.5, z: finish.z - 2 });
 
   const nextMarker = new THREE.Group();
   nextMarker.name = "athletics-next-landing-marker";
@@ -409,41 +434,29 @@ export const buildAthleticsStadiumScene = ({
     addBox(park, labelMaterial(`checkpoint-label-${index}`, checkpointLabel), [13.5, 1.1, 0.08], [point.x, point.y + 7.7, point.z]);
   });
 
-  // Compact attraction vignette: imported GLBs can hide these named fallback
-  // groups after they load; the authored course remains playable either way.
-  const midway = getAthleticsPointAtProgress(0.2, course);
+  // Ground-level attraction district: imported GLBs can hide these named
+  // fallback groups after they load; the authored course remains playable
+  // either way.
   const stallFallback = new THREE.Group();
   stallFallback.name = "athletics-fallback-stalls";
   park.add(stallFallback);
-  addFairgroundStallFallback(stallFallback, { wall: accentMaterials.orange, roof: accentMaterials.gold, trim: cream }, { x: midway.x - 24, y: midway.y, z: midway.z - 13 });
-  addFairgroundStallFallback(stallFallback, { wall: accentMaterials.pink, roof: accentMaterials.violet, trim: cream }, { x: midway.x + 22, y: midway.y, z: midway.z + 14 });
-  addBunting(park, accentMaterials.orange, { x: midway.x - 34, y: midway.y + 8, z: midway.z }, { x: midway.x + 34, y: midway.y + 8, z: midway.z });
+  addFairgroundStallFallback(stallFallback, { wall: accentMaterials.orange, roof: accentMaterials.gold, trim: cream }, { x: -49, y: 0, z: -8 });
+  addFairgroundStallFallback(stallFallback, { wall: accentMaterials.pink, roof: accentMaterials.violet, trim: cream }, { x: 24, y: 0, z: -55 });
 
-  const bumper = getAthleticsPointAtProgress(0.32, course);
   const bumperGroup = new THREE.Group();
   bumperGroup.name = "athletics-bumper-bowl";
   park.add(bumperGroup);
-  addMesh(bumperGroup, new THREE.CylinderGeometry(19, 19, 0.45, 28), dark, [bumper.x + 24, bumper.y + 0.24, bumper.z - 10]);
-  addMesh(bumperGroup, new THREE.TorusGeometry(19, 0.75, 8, 32), accentMaterials.lime, [bumper.x + 24, bumper.y + 1, bumper.z - 10], [Math.PI / 2, 0, 0]);
-  for (let index = 0; index < 6; index += 1) {
+  const bumperCenter = { x: 20, y: 0, z: -48 };
+  addMesh(bumperGroup, new THREE.CylinderGeometry(17, 17, 0.45, 28), dark, [bumperCenter.x, 0.24, bumperCenter.z]);
+  addMesh(bumperGroup, new THREE.TorusGeometry(17, 0.75, 8, 32), accentMaterials.lime, [bumperCenter.x, 1, bumperCenter.z], [Math.PI / 2, 0, 0]);
+  for (let index = 0; index < 5; index += 1) {
     const angle = (index / 6) * Math.PI * 2;
-    addBox(bumperGroup, accentMaterials.orange, [2.6, 0.55, 2.6], [bumper.x + 24 + Math.cos(angle) * 11, bumper.y + 1.2, bumper.z - 10 + Math.sin(angle) * 11]);
+    addBox(bumperGroup, accentMaterials.orange, [2.6, 0.55, 2.6], [bumperCenter.x + Math.cos(angle) * 10, 1.2, bumperCenter.z + Math.sin(angle) * 10], [0, -angle, 0]);
   }
 
-  const ferrisFallback = addFallbackFerrisWheel(park, metal, accentMaterials.gold, accentMaterials.pink, { x: -78, y: 99, z: 43 });
-  addFallbackCoaster(park, metal, accentMaterials.cyan, { x: -91, y: 81, z: 38 });
-  addDropTower(park, metal, accentMaterials.violet, { x: 69, y: 91, z: -61 });
-
-  const sky = getAthleticsPointAtProgress(0.9, course);
-  for (const [x, z, color] of [
-    [-30, -17, "pink"],
-    [18, -24, "cyan"],
-    [28, 17, "gold"]
-  ] as Array<[number, number, AthleticsAccent]>) {
-    addMesh(park, new THREE.SphereGeometry(4.5, 14, 10), accentMaterials[color], [sky.x + x, sky.y + 28, sky.z + z]);
-    addBox(park, cream, [0.18, 27, 0.18], [sky.x + x, sky.y + 14, sky.z + z]);
-  }
-  addBox(park, water, [38, 0.7, 4], [sky.x, sky.y + 16, sky.z + 14]);
+  const ferrisFallback = addFallbackFerrisWheel(park, metal, accentMaterials.gold, accentMaterials.pink, { x: -72, y: 29, z: 28 });
+  addFallbackCoaster(park, metal, accentMaterials.cyan, { x: -96, y: 42, z: 34 });
+  addDropTower(park, metal, accentMaterials.violet, { x: 61, y: 0, z: -24 });
 
   const movingGroups = course.movingObstacles.map((obstacle: AthleticsMovingObstacle) => {
     const group = new THREE.Group();
