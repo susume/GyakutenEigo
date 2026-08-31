@@ -104,6 +104,9 @@ enum CompetitionMatchStatus {
 enum SpeakingActivityStatus {
   draft
   ready
+  archived
+  // Legacy values are kept so databases created by the Stage 1 migration can
+  // be upgraded without rewriting migration history. New code never uses them.
   active
   ended
 }
@@ -136,6 +139,9 @@ enum SpeakingParticipantStatus {
 enum SpeakingSessionStatus {
   ready
   active
+  paused
+  ended
+  // Legacy value retained for databases created by the Stage 1 migration.
   completed
   expired
 }
@@ -161,7 +167,7 @@ model User {
   contributionEvents ContributionEvent[]
   contributionBadges ContributionBadge[]
   tournaments        Tournament[]
-  speakingActivities  SpeakingActivity[]
+  speakingActivities SpeakingActivity[]
   createdAt          DateTime            @default(now())
   updatedAt          DateTime            @updatedAt
 }
@@ -296,26 +302,25 @@ model GameSession {
 }
 
 model SpeakingActivity {
-  id                   String                 @id @default(cuid())
-  teacherId            String
-  teacher              User                   @relation(fields: [teacherId], references: [id], onDelete: Cascade)
-  title                String
-  scenario             String
-  aiRole               String
-  studentRole          String
-  level                String
+  id                    String                 @id @default(cuid())
+  teacherId             String
+  teacher               User                   @relation(fields: [teacherId], references: [id], onDelete: Cascade)
+  title                 String
+  scenario              String
+  aiRole                String
+  studentRole           String
+  level                 String
   difficulty            SpeakingDifficulty     @default(normal)
-  nativeLanguage       SpeakingNativeLanguage @default(ja)
-  durationSeconds      Int
-  joinCode             String                 @unique
-  status               SpeakingActivityStatus  @default(draft)
-  identifierMode       SpeakingIdentifierMode @default(nickname)
+  nativeLanguage        SpeakingNativeLanguage @default(ja)
+  durationSeconds       Int
+  status                SpeakingActivityStatus @default(draft)
+  identifierMode        SpeakingIdentifierMode @default(nickname)
   targetExpressionsJson Json                   @default("[]")
-  rubric               SpeakingRubric[]
-  sessions             SpeakingSession[]
-  participants         SpeakingParticipant[]
-  createdAt            DateTime               @default(now())
-  updatedAt            DateTime               @updatedAt
+  rubric                SpeakingRubric[]
+  sessions              SpeakingSession[]
+  participants          SpeakingParticipant[]
+  createdAt             DateTime               @default(now())
+  updatedAt             DateTime               @updatedAt
 
   @@index([teacherId, status])
 }
@@ -334,57 +339,67 @@ model SpeakingRubric {
 }
 
 model SpeakingSession {
-  id          String                @id @default(cuid())
-  activityId  String
-  activity    SpeakingActivity      @relation(fields: [activityId], references: [id], onDelete: Cascade)
-  participant SpeakingParticipant?
-  status      SpeakingSessionStatus @default(ready)
-  startedAt   DateTime              @default(now())
-  endedAt     DateTime?
-  turns       SpeakingTurn[]
+  id                   String                @id @default(cuid())
+  activityId           String
+  activity             SpeakingActivity      @relation(fields: [activityId], references: [id], onDelete: Cascade)
+  joinCode             String                @unique
+  status               SpeakingSessionStatus @default(ready)
+  createdAt            DateTime              @default(now())
+  startedAt            DateTime?
+  pausedAt             DateTime?
+  endedAt              DateTime?
+  expiresAt            DateTime
+  activitySnapshotJson Json
+  participants         SpeakingParticipant[]
+  turns                SpeakingTurn[]
 
   @@index([activityId, status])
+  @@index([joinCode, status, expiresAt])
 }
 
 model SpeakingParticipant {
   id                 String                    @id @default(cuid())
   activityId         String
   activity           SpeakingActivity          @relation(fields: [activityId], references: [id], onDelete: Cascade)
-  sessionId          String                    @unique
+  sessionId          String
   session            SpeakingSession           @relation(fields: [sessionId], references: [id], onDelete: Cascade)
   displayIdentifier  String?
   anonymousTokenHash String                    @unique
-  startedAt          DateTime                  @default(now())
+  startedAt          DateTime?
   finishedAt         DateTime?
   status             SpeakingParticipantStatus @default(joined)
   helpCount          Int                       @default(0)
+  helpPending        Boolean                   @default(false)
   turns              SpeakingTurn[]
   evaluation         SpeakingEvaluation?
 
   @@index([activityId, status])
+  @@index([sessionId, status])
 }
 
 model SpeakingTurn {
-  id                      String               @id @default(cuid())
+  id                      String              @id @default(cuid())
   participantId           String
   participant             SpeakingParticipant @relation(fields: [participantId], references: [id], onDelete: Cascade)
   sessionId               String
   session                 SpeakingSession     @relation(fields: [sessionId], references: [id], onDelete: Cascade)
   speaker                 SpeakingTurnSpeaker
   text                    String
-  createdAt               DateTime             @default(now())
+  createdAt               DateTime            @default(now())
   audioDurationMs         Int?
   responseTimeMs          Int?
-  usedHelp                Boolean              @default(false)
+  usedHelp                Boolean             @default(false)
   transcriptionConfidence Float?
+  requestId               String?
 
+  @@unique([participantId, requestId])
   @@index([participantId, createdAt])
   @@index([sessionId, createdAt])
 }
 
 model SpeakingEvaluation {
-  participantId     String              @id
-  participant       SpeakingParticipant @relation(fields: [participantId], references: [id], onDelete: Cascade)
+  participantId     String                 @id
+  participant       SpeakingParticipant    @relation(fields: [participantId], references: [id], onDelete: Cascade)
   language          SpeakingNativeLanguage
   scoresJson        Json
   evidenceJson      Json
@@ -392,7 +407,7 @@ model SpeakingEvaluation {
   improvementsJson  Json
   usefulEnglishJson Json
   overallMessage    String
-  createdAt         DateTime            @default(now())
+  createdAt         DateTime               @default(now())
 }
 
 model StudySetUsage {

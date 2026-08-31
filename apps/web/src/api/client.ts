@@ -30,19 +30,21 @@ const cleanUrl = (value: string | undefined) => {
 // Production normally stays on the website origin. The explicit rollout flag
 // temporarily preserves the existing Render connection until Cloudflare owns
 // the domain and its /api and /socket.io routes are verified live.
+const runtimeEnv = (import.meta as ImportMeta & { env?: Record<string, string | boolean | undefined> }).env ?? {};
+const pageOrigin = typeof window === "undefined" ? "http://localhost" : window.location.origin;
 const allowConfiguredApiOrigin = Boolean(
-  import.meta.env.DEV
-  || import.meta.env.MODE === "test"
-  || import.meta.env.VITE_ALLOW_PRODUCTION_API_OVERRIDE === "true"
+  runtimeEnv.DEV
+  || runtimeEnv.MODE === "test"
+  || runtimeEnv.VITE_ALLOW_PRODUCTION_API_OVERRIDE === "true"
 );
 const API_URL = resolveApiOrigin({
-  pageOrigin: window.location.origin,
-  configuredOrigin: cleanUrl(import.meta.env.VITE_API_URL as string | undefined),
+  pageOrigin,
+  configuredOrigin: cleanUrl(runtimeEnv.VITE_API_URL as string | undefined),
   allowConfiguredOrigin: allowConfiguredApiOrigin
 });
 const API_URLS = buildApiUrlCandidates(
   API_URL,
-  allowConfiguredApiOrigin ? cleanUrl(import.meta.env.VITE_API_FALLBACK_URL as string | undefined) : undefined
+  allowConfiguredApiOrigin ? cleanUrl(runtimeEnv.VITE_API_FALLBACK_URL as string | undefined) : undefined
 );
 let activeApiUrl = API_URLS[0] ?? API_URL;
 
@@ -68,10 +70,11 @@ const fetchApi = async (path: string, options?: RequestInit, policy: ApiRequestP
   return result.response;
 };
 
-const getToken = () => localStorage.getItem("quizstrike_token");
+const getToken = () => typeof localStorage === "undefined" ? null : localStorage.getItem("quizstrike_token");
 export const getTeacherToken = getToken;
 
 const playerHeaders = (playerToken: string) => ({ "X-Player-Token": playerToken });
+export const speakingHeaders = (speakingToken: string) => ({ "X-Speaking-Token": speakingToken });
 
 export async function api<T>(path: string, options: RequestInit = {}, policy: ApiRequestPolicy = {}): Promise<T> {
   const headers = new Headers(options.headers);
@@ -102,7 +105,7 @@ export async function api<T>(path: string, options: RequestInit = {}, policy: Ap
     try { payload = JSON.parse(responseText) as { error?: string }; } catch { /* A proxy or old server may return HTML. */ }
   }
   if (!response.ok) {
-    if (import.meta.env.DEV) {
+    if (runtimeEnv.DEV) {
       console.error(`[api] ${options.method ?? "GET"} ${path} failed with ${response.status}`, payload.error ?? responseText.slice(0, 300));
     }
     throw new ApiError(payload.error ?? "QuizStrike couldn't complete that request. Try again.", response.status, {
@@ -358,21 +361,27 @@ export const speakingApi = {
   activities: () => api("/api/speaking/activities"),
   createActivity: (body: SpeakingCreateActivityInput) => api("/api/speaking/activities", { method: "POST", body: JSON.stringify(body) }),
   activity: (id: string) => api(`/api/speaking/activities/${encodeURIComponent(id)}`),
-  activate: (id: string) => api(`/api/speaking/activities/${encodeURIComponent(id)}/activate`, { method: "POST" }),
-  endActivity: (id: string) => api(`/api/speaking/activities/${encodeURIComponent(id)}/end`, { method: "POST" }),
+  sessions: (activityId: string) => api(`/api/speaking/activities/${encodeURIComponent(activityId)}/sessions`),
+  launchSession: (activityId: string) => api(`/api/speaking/activities/${encodeURIComponent(activityId)}/sessions`, { method: "POST" }),
   join: (code: string, identifier?: string) => api("/api/speaking/join", { method: "POST", body: JSON.stringify({ code, identifier }) }),
-  session: (sessionId: string, token: string) => api(`/api/speaking/sessions/${encodeURIComponent(sessionId)}`, { headers: playerHeaders(token) }),
-  turn: (sessionId: string, token: string, body: { text?: string; audio?: Blob }) => api(`/api/speaking/sessions/${encodeURIComponent(sessionId)}/turn`, {
+  startParticipant: (sessionId: string, token: string) => api(`/api/speaking/sessions/${encodeURIComponent(sessionId)}/start`, { method: "POST", headers: speakingHeaders(token) }),
+  startSession: (sessionId: string) => api(`/api/speaking/sessions/${encodeURIComponent(sessionId)}/start-session`, { method: "POST" }),
+  pauseSession: (sessionId: string) => api(`/api/speaking/sessions/${encodeURIComponent(sessionId)}/pause`, { method: "POST" }),
+  resumeSession: (sessionId: string) => api(`/api/speaking/sessions/${encodeURIComponent(sessionId)}/resume`, { method: "POST" }),
+  endSession: (sessionId: string) => api(`/api/speaking/sessions/${encodeURIComponent(sessionId)}/end`, { method: "POST" }),
+  session: (sessionId: string, token: string) => api(`/api/speaking/sessions/${encodeURIComponent(sessionId)}`, { headers: speakingHeaders(token) }),
+  turn: (sessionId: string, token: string, body: { text?: string; audio?: Blob; requestId?: string }) => api(`/api/speaking/sessions/${encodeURIComponent(sessionId)}/turn`, {
     method: "POST",
     headers: body.audio
-      ? { ...playerHeaders(token), "Content-Type": body.audio.type || "audio/webm" }
-      : playerHeaders(token),
+      ? { ...speakingHeaders(token), "Content-Type": body.audio.type || "audio/webm", ...(body.requestId ? { "X-Speaking-Turn-Id": body.requestId } : {}) }
+      : { ...speakingHeaders(token), ...(body.requestId ? { "X-Speaking-Turn-Id": body.requestId } : {}) },
     body: body.audio ? body.audio : JSON.stringify({ text: body.text }),
   }),
-  help: (sessionId: string, token: string) => api(`/api/speaking/sessions/${encodeURIComponent(sessionId)}/help`, { method: "POST", headers: playerHeaders(token) }),
-  finish: (sessionId: string, token: string) => api(`/api/speaking/sessions/${encodeURIComponent(sessionId)}/finish`, { method: "POST", headers: playerHeaders(token) }),
-  results: (activityId: string) => api(`/api/speaking/activities/${encodeURIComponent(activityId)}/results`),
-  result: (participantId: string, token?: string) => api(`/api/speaking/results/${encodeURIComponent(participantId)}`, token ? { headers: playerHeaders(token) } : {})
+  help: (sessionId: string, token: string) => api(`/api/speaking/sessions/${encodeURIComponent(sessionId)}/help`, { method: "POST", headers: speakingHeaders(token) }),
+  finish: (sessionId: string, token: string) => api(`/api/speaking/sessions/${encodeURIComponent(sessionId)}/finish`, { method: "POST", headers: speakingHeaders(token) }),
+  results: (activityId: string, sessionId?: string) => api(`/api/speaking/activities/${encodeURIComponent(activityId)}/results${sessionId ? `?sessionId=${encodeURIComponent(sessionId)}` : ""}`),
+  sessionResults: (sessionId: string) => api(`/api/speaking/sessions/${encodeURIComponent(sessionId)}/results`),
+  result: (participantId: string, token?: string) => api(`/api/speaking/results/${encodeURIComponent(participantId)}`, token ? { headers: speakingHeaders(token) } : {})
 };
 
 export const fetchDecalAsset = async (code: string, assetId: string, playerToken?: string): Promise<Blob> => {

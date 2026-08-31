@@ -16,64 +16,59 @@ import {
   type TeacherUser
 } from "@quizstrike/shared";
 import { randomBytes, randomInt } from "node:crypto";
+import { PrismaClient } from "@prisma/client";
 import {
-  mockConversationProvider,
-  mockEvaluationProvider,
-  mockHelpProvider,
-  mockTranscriptionProvider,
+  createInMemorySpeakingState,
+  hashSpeakingToken,
+  InMemorySpeakingRepository,
+  PrismaSpeakingRepository,
+  type InMemorySpeakingState,
+  type SpeakingRepository
+} from "../speakingRepository.js";
+import {
+  createSpeakingProviders,
   type ConversationProvider,
   type EvaluationProvider,
+  type HelpProvider,
+  type TranscriptionProvider,
   type TranscriptionResult
 } from "../speakingProviders.js";
 
 type AuthedRequest = Request & { user?: TeacherUser };
 
-type SpeakingSessionRecord = SpeakingSession & {
-  turns: SpeakingTurn[];
-  evaluation?: SpeakingEvaluation;
-  lastAiAtMs: number;
-  pendingHelp: boolean;
-  turnRequests: Map<string, TurnResponse>;
-};
-
-type TurnResponse = {
-  studentTurn: SpeakingTurn;
-  aiTurn: SpeakingTurn;
-  session: SpeakingSession;
-};
-
-export type SpeakingRouteState = {
-  activities: Map<string, SpeakingActivity>;
-  participants: Map<string, SpeakingParticipant>;
-  sessions: Map<string, SpeakingSessionRecord>;
-  tokenToParticipant: Map<string, string>;
+export type SpeakingRouteState = InMemorySpeakingState & {
   requestWindows: Map<string, { startedAtMs: number; count: number }>;
 };
 
 export type SpeakingRouteDependencies = {
-  requireTeacher: (req: Request, res: Response, next: () => void) => void;
+  requireTeacher: (req: Request, res: Response, next: NextFunction) => void;
   now: () => string;
   id: () => string;
   state?: SpeakingRouteState;
-  transcriber?: { transcribe(input: { text?: string; hasAudio?: boolean }): Promise<TranscriptionResult> };
+  repository?: SpeakingRepository;
+  prisma?: PrismaClient;
+  providers?: {
+    transcription: TranscriptionProvider;
+    conversation: ConversationProvider;
+    help: HelpProvider;
+    evaluation: EvaluationProvider;
+  };
+  /** Compatibility injection for route tests. It also enables text test input. */
+  transcriber?: TranscriptionProvider;
   conversationProvider?: ConversationProvider;
   evaluationProvider?: EvaluationProvider;
+  helpProvider?: HelpProvider;
+  allowTextInput?: boolean;
+  sessionLifetimeSeconds?: number;
 };
 
-const makeState = (): SpeakingRouteState => ({
-  activities: new Map(),
-  participants: new Map(),
-  sessions: new Map(),
-  tokenToParticipant: new Map(),
-  requestWindows: new Map()
-});
+const createState = (): SpeakingRouteState => ({ ...createInMemorySpeakingState(), requestWindows: new Map() });
 
 const cloneRubric = () => DEFAULT_SPEAKING_RUBRIC.map((criterion) => ({ ...criterion }));
 
-const templateInputs: Array<SpeakingCreateActivityInput & { id: string; joinCode: string }> = [
+const templateInputs: Array<SpeakingCreateActivityInput & { id: string }> = [
   {
     id: "template-restaurant",
-    joinCode: "EAT456",
     title: "At the Restaurant",
     scenario: "The student is ordering lunch at a restaurant.",
     aiRole: "Restaurant worker",
@@ -88,7 +83,6 @@ const templateInputs: Array<SpeakingCreateActivityInput & { id: string; joinCode
   },
   {
     id: "template-shopping",
-    joinCode: "ABC123",
     title: "Shopping for Clothes",
     scenario: "The student wants to buy a T-shirt in a clothing store.",
     aiRole: "Shop assistant",
@@ -103,7 +97,6 @@ const templateInputs: Array<SpeakingCreateActivityInput & { id: string; joinCode
   },
   {
     id: "template-directions",
-    joinCode: "MAP789",
     title: "Asking for Directions",
     scenario: "The student is looking for the library and asks a helpful person.",
     aiRole: "Helpful local",
@@ -118,7 +111,6 @@ const templateInputs: Array<SpeakingCreateActivityInput & { id: string; joinCode
   },
   {
     id: "template-hobbies",
-    joinCode: "PLAY12",
     title: "Talking About Hobbies",
     scenario: "The student meets a new classmate and talks about hobbies.",
     aiRole: "New classmate",
@@ -133,7 +125,6 @@ const templateInputs: Array<SpeakingCreateActivityInput & { id: string; joinCode
   },
   {
     id: "template-weekend",
-    joinCode: "PLAN34",
     title: "Weekend Plans",
     scenario: "The student and a friend make plans for the weekend.",
     aiRole: "Friend",
@@ -148,7 +139,6 @@ const templateInputs: Array<SpeakingCreateActivityInput & { id: string; joinCode
   },
   {
     id: "template-introduction",
-    joinCode: "HELLO5",
     title: "Self Introduction",
     scenario: "The student meets someone new and shares a few things about themselves.",
     aiRole: "New friend",
@@ -163,7 +153,9 @@ const templateInputs: Array<SpeakingCreateActivityInput & { id: string; joinCode
   }
 ];
 
-const makeTemplate = (input: ArrayElement<typeof templateInputs>, now: string): SpeakingActivity => ({
+type TemplateInput = (typeof templateInputs)[number];
+
+const makeTemplate = (input: TemplateInput, now: string): SpeakingActivity => ({
   id: input.id,
   teacherId: "speaking-template",
   title: input.title,
@@ -174,7 +166,6 @@ const makeTemplate = (input: ArrayElement<typeof templateInputs>, now: string): 
   difficulty: input.difficulty,
   nativeLanguage: input.nativeLanguage,
   durationSeconds: input.durationSeconds,
-  joinCode: input.joinCode,
   status: "ready",
   identifierMode: input.identifierMode,
   targetExpressions: [...input.targetExpressions],
@@ -182,8 +173,6 @@ const makeTemplate = (input: ArrayElement<typeof templateInputs>, now: string): 
   createdAt: now,
   updatedAt: now
 });
-
-type ArrayElement<T> = T extends readonly (infer U)[] ? U : never;
 
 const publicParticipant = (participant: SpeakingParticipant) => {
   const { anonymousToken: _anonymousToken, ...safeParticipant } = participant;
@@ -204,11 +193,12 @@ const activitySummary = (activity: SpeakingActivity) => ({
   rubric: activity.rubric
 });
 
-const toResult = (activity: SpeakingActivity, session: SpeakingSessionRecord, participant: SpeakingParticipant): SpeakingParticipantResult => ({
-  participant: participant,
+const toResult = (activity: SpeakingActivity, session: SpeakingSession, participant: SpeakingParticipant, turns: SpeakingTurn[], evaluation?: SpeakingEvaluation): SpeakingParticipantResult => ({
+  participant,
   activity: activitySummary(activity),
-  turns: session.turns,
-  ...(session.evaluation ? { evaluation: session.evaluation } : {})
+  session,
+  turns,
+  ...(evaluation ? { evaluation } : {})
 });
 
 const safeResult = (result: SpeakingParticipantResult) => ({
@@ -216,30 +206,19 @@ const safeResult = (result: SpeakingParticipantResult) => ({
   participant: publicParticipant(result.participant)
 });
 
-const makeJoinCode = (state: SpeakingRouteState) => {
-  const alphabet = "ABCDEFGHJKLMNPQRSTUVWXYZ23456789";
-  for (let attempt = 0; attempt < 50; attempt += 1) {
-    const code = Array.from({ length: 6 }, () => alphabet[randomInt(0, alphabet.length)]).join("");
-    if ([...state.activities.values()].every((activity) => activity.joinCode !== code)) return code;
-  }
-  throw new Error("Could not allocate a unique speaking activity code.");
-};
-
 const secureToken = () => randomBytes(32).toString("base64url");
-
 const normalizeIdentifier = (value: unknown) => typeof value === "string" ? value.trim().slice(0, 80) : "";
+const formatError = (issues: Array<{ path: PropertyKey[]; message: string }>) => issues.slice(0, 3).map((issue) => `${issue.path.join(".") || "activity"}: ${issue.message}`).join("; ");
 
-const formatError = (issues: Array<{ path: PropertyKey[]; message: string }>) =>
-  issues.slice(0, 3).map((issue) => `${issue.path.join(".") || "activity"}: ${issue.message}`).join("; ");
-
-const parseSessionToken = (state: SpeakingRouteState, req: Request) => {
-  const token = req.header("X-Speaking-Token")?.trim();
-  const participantId = token ? state.tokenToParticipant.get(token) : undefined;
-  if (!token || !participantId) return undefined;
-  const participant = state.participants.get(participantId);
-  const session = participant?.sessionId ? state.sessions.get(participant.sessionId) : undefined;
-  return participant && session ? { token, participant, session } : undefined;
+const initialGreeting = (activity: SpeakingActivity) => {
+  const title = activity.title.toLowerCase();
+  if (title.includes("restaurant")) return "Hello! What would you like to order?";
+  if (title.includes("direction")) return "Hello! Can I help you find a place?";
+  if (title.includes("shopping") || title.includes("clothes")) return "Hi! Can I help you today?";
+  return "Hi! Nice to meet you. Can we talk?";
 };
+
+const sessionPayload = (session: SpeakingSession) => ({ ...session });
 
 const allowRequest = (state: SpeakingRouteState, key: string, limit: number, nowMs = Date.now()) => {
   const current = state.requestWindows.get(key);
@@ -252,70 +231,121 @@ const allowRequest = (state: SpeakingRouteState, key: string, limit: number, now
   return true;
 };
 
-const initialGreeting = (activity: SpeakingActivity) =>
-  activity.title.toLowerCase().includes("restaurant")
-    ? "Hello! What would you like to order?"
-    : activity.title.toLowerCase().includes("direction")
-      ? "Hello! Can I help you find a place?"
-      : activity.title.toLowerCase().includes("shopping") || activity.title.toLowerCase().includes("clothes")
-        ? "Hi! Can I help you today?"
-        : "Hi! Nice to meet you. Can we talk?";
-
-const sessionPayload = (session: SpeakingSessionRecord) => ({
-  id: session.id,
-  activityId: session.activityId,
-  participantId: session.participantId,
-  status: session.status,
-  startedAt: session.startedAt,
-  ...(session.endedAt ? { endedAt: session.endedAt } : {})
-});
-
-const requestTextAndAudio = (req: Request) => {
-  const isAudio = Buffer.isBuffer(req.body) || (req.header("content-type") ?? "").toLowerCase().startsWith("audio/");
-  const text = req.body && !Buffer.isBuffer(req.body) && typeof req.body === "object"
-    ? (req.body as { text?: unknown }).text
-    : undefined;
-  return { isAudio, text: typeof text === "string" ? text : undefined };
+const makeJoinCode = async (repository: SpeakingRepository) => {
+  const alphabet = "ABCDEFGHJKLMNPQRSTUVWXYZ23456789";
+  for (let attempt = 0; attempt < 50; attempt += 1) {
+    const code = Array.from({ length: 6 }, () => alphabet[randomInt(0, alphabet.length)]).join("");
+    if (!(await repository.isJoinCodeTaken(code))) return code;
+  }
+  throw new Error("Could not allocate a unique speaking session code.");
 };
 
+const parseParticipantToken = (req: Request) => req.header("X-Speaking-Token")?.trim();
+
+const parseAudioOrText = (req: Request) => {
+  const contentType = (req.header("content-type") ?? "").split(";", 1)[0].trim().toLowerCase();
+  const audio = Buffer.isBuffer(req.body) ? req.body : undefined;
+  const text = req.body && !audio && typeof req.body === "object" ? (req.body as { text?: unknown }).text : undefined;
+  return {
+    audio,
+    text: typeof text === "string" ? text : undefined,
+    mimeType: contentType || "application/octet-stream"
+  };
+};
+
+const supportedAudioMime = (mimeType: string) => mimeType === "audio/webm" || mimeType === "audio/mp4" || mimeType === "audio/ogg" || mimeType === "audio/wav" || mimeType === "audio/mpeg";
+
+const participantDeadline = (participant: SpeakingParticipant, activity: SpeakingActivity) => participant.startedAt ? Date.parse(participant.startedAt) + activity.durationSeconds * 1_000 : undefined;
+
+export const validateSpeakingEvaluation = (evaluation: SpeakingEvaluation, activity: SpeakingActivity, participantId: string) => {
+  const parsed = SpeakingEvaluationSchema.safeParse(evaluation);
+  if (!parsed.success || parsed.data.participantId !== participantId) throw new Error("Evaluation provider returned invalid data.");
+  const enabledIds = new Set(activity.rubric.filter((criterion) => criterion.enabled).map((criterion) => criterion.id));
+  const scoreIds = Object.keys(parsed.data.scores);
+  const evidenceIds = Object.keys(parsed.data.evidence);
+  if (scoreIds.some((id) => !enabledIds.has(id)) || evidenceIds.some((id) => !enabledIds.has(id)) || scoreIds.some((id) => !evidenceIds.includes(id)) || [...enabledIds].some((id) => !scoreIds.includes(id))) throw new Error("Evaluation provider omitted or added rubric criteria.");
+  if (scoreIds.some((id) => /pronunciation|accent|phoneme/i.test(id))) throw new Error("Pronunciation scoring is not supported.");
+  return parsed.data;
+};
+
+const unsupportedPronunciationCriterion = (criterion: { id: string; name: string; description: string }) =>
+  /pronunciation|accent|phoneme/i.test(`${criterion.id} ${criterion.name} ${criterion.description}`);
+
 export const registerSpeakingRoutes = (app: Application, deps: SpeakingRouteDependencies) => {
-  const state = deps.state ?? makeState();
-  const transcriber = deps.transcriber ?? mockTranscriptionProvider;
-  const conversationProvider = deps.conversationProvider ?? mockConversationProvider;
-  const evaluationProvider = deps.evaluationProvider ?? mockEvaluationProvider;
+  const state = deps.state ?? createState();
+  const repository = deps.repository ?? (deps.prisma ? new PrismaSpeakingRepository(deps.prisma) : new InMemorySpeakingRepository(state));
+  const defaults = deps.providers ?? createSpeakingProviders();
+  const transcriber = deps.transcriber ?? defaults.transcription;
+  const conversationProvider = deps.conversationProvider ?? defaults.conversation;
+  const helpProvider = deps.helpProvider ?? defaults.help;
+  const evaluationProvider = deps.evaluationProvider ?? defaults.evaluation;
   const templates = templateInputs.map((input) => makeTemplate(input, deps.now()));
+  const allowTextInput = deps.allowTextInput ?? (!deps.providers && !deps.prisma);
+  const environmentSessionLifetime = Number.parseInt(process.env.SPEAKING_SESSION_LIFETIME_SECONDS ?? "", 10);
+  const configuredSessionLifetime = deps.sessionLifetimeSeconds ?? (Number.isFinite(environmentSessionLifetime) ? environmentSessionLifetime : SPEAKING_LIMITS.sessionLifetimeSeconds);
+  const sessionLifetimeSeconds = Math.min(7 * 24 * 60 * 60, Math.max(10 * 60, Math.floor(configuredSessionLifetime)));
+  const turnLocks = new Map<string, Promise<void>>();
 
-  // Express's JSON parser deliberately skips audio/* requests. Parse those
-  // only on the turn endpoint and cap the body so raw recordings are never
-  // retained or forwarded accidentally.
-  app.use("/api/speaking/sessions/:sessionId/turn", express.raw({ type: ["audio/*", "application/octet-stream"], limit: "4mb" }));
+  // Express's JSON parser skips audio/*, so parse only this endpoint as a
+  // bounded binary request. Raw bytes are never written to the repository.
+  app.use("/api/speaking/sessions/:sessionId/turn", express.raw({ type: ["audio/*", "application/octet-stream"], limit: `${SPEAKING_LIMITS.maxAudioBytes}b` }));
 
-  const requireOwnedActivity = (req: AuthedRequest, res: Response) => {
-    const activity = state.activities.get(String(req.params.activityId ?? req.params.id));
-    if (!activity || activity.teacherId !== req.user?.id) {
+  const withTurnLock = async <T>(participantId: string, work: () => Promise<T>) => {
+    const previous = turnLocks.get(participantId) ?? Promise.resolve();
+    let release!: () => void;
+    const current = new Promise<void>((resolve) => { release = resolve; });
+    const queued = previous.then(() => current);
+    turnLocks.set(participantId, queued);
+    await previous;
+    try { return await work(); } finally {
+      release();
+      if (turnLocks.get(participantId) === queued) turnLocks.delete(participantId);
+    }
+  };
+
+  const requireOwnedActivity = async (req: AuthedRequest, res: Response) => {
+    const activity = await repository.getOwnedActivity(String(req.params.activityId ?? req.params.id), req.user?.id ?? "");
+    if (!activity) {
       res.status(404).json({ error: "We couldn’t find that speaking activity." });
       return undefined;
     }
     return activity;
   };
 
-  const finishSession = async (activity: SpeakingActivity, participant: SpeakingParticipant, session: SpeakingSessionRecord) => {
-    if (session.evaluation) return session.evaluation;
-    if (participant.status === "evaluating") return undefined;
-    participant.status = "evaluating";
+  const getParticipantAccess = async (req: Request) => {
+    const token = parseParticipantToken(req);
+    return token ? repository.getParticipantAccessByTokenHash(hashSpeakingToken(token)) : undefined;
+  };
+
+  const expireSessionIfNeeded = async (access: { session: SpeakingSession; activity: SpeakingActivity }) => {
+    if (access.session.status !== "expired" && Date.parse(access.session.expiresAt) <= Date.parse(deps.now())) {
+      const session = await repository.updateSession(access.session.id, { status: "expired", endedAt: deps.now() });
+      return session ?? { ...access.session, status: "expired" as const, endedAt: deps.now() };
+    }
+    return access.session;
+  };
+
+  const finishParticipant = async (access: { session: SpeakingSession; activity: SpeakingActivity; participant: SpeakingParticipant }) => {
+    const existing = await repository.getResult(access.participant.id);
+    if (existing?.evaluation) return existing.evaluation;
+    const current = await repository.getParticipant(access.participant.id);
+    if (!current || current.status === "evaluating") return undefined;
+    await repository.updateParticipant(access.participant.id, { status: "evaluating" });
+    const turns = await repository.listTurns(access.participant.id);
     try {
-      const evaluation = await evaluationProvider.evaluate({ activity, turns: session.turns, participantId: participant.id });
-      const parsed = SpeakingEvaluationSchema.safeParse(evaluation);
-      if (!parsed.success) throw new Error("Evaluation provider returned invalid data.");
-      session.evaluation = parsed.data as SpeakingEvaluation;
-      participant.status = "completed";
-      participant.finishedAt = deps.now();
-      session.status = "completed";
-      session.endedAt = participant.finishedAt;
-      return session.evaluation;
+      const finishedAt = deps.now();
+      const evaluation = validateSpeakingEvaluation(await evaluationProvider.evaluate({
+        activity: access.activity,
+        turns,
+        participantId: access.participant.id,
+        timingMetadata: { startedAt: current.startedAt, finishedAt, durationSeconds: current.startedAt ? Math.max(0, (Date.parse(finishedAt) - Date.parse(current.startedAt)) / 1_000) : 0 },
+        helpMetadata: { helpCount: current.helpCount, helpedTurnCount: turns.filter((turn) => turn.usedHelp).length }
+      }), access.activity, access.participant.id);
+      await repository.saveEvaluation(access.participant.id, evaluation);
+      await repository.updateParticipant(access.participant.id, { status: "completed", finishedAt, helpPending: false });
+      return evaluation;
     } catch {
-      participant.status = "error";
-      session.status = "active";
+      await repository.updateParticipant(access.participant.id, { status: "error" });
       return undefined;
     }
   };
@@ -324,334 +354,390 @@ export const registerSpeakingRoutes = (app: Application, deps: SpeakingRouteDepe
     res.json({ items: templates.map(publicActivity) });
   });
 
-  app.get("/api/speaking/activities", deps.requireTeacher, (req: AuthedRequest, res) => {
-    res.json({ items: [...state.activities.values()].filter((activity) => activity.teacherId === req.user?.id).map(publicActivity) });
+  app.get("/api/speaking/activities", deps.requireTeacher, async (req: AuthedRequest, res) => {
+    res.json({ items: (await repository.listActivities(req.user!.id)).map(publicActivity) });
   });
 
-  app.post("/api/speaking/activities", deps.requireTeacher, (req: AuthedRequest, res) => {
+  app.post("/api/speaking/activities", deps.requireTeacher, async (req: AuthedRequest, res) => {
     const parsed = SpeakingCreateActivityInputSchema.safeParse(req.body);
     if (!parsed.success) {
       res.status(400).json({ error: `Check the activity details. ${formatError(parsed.error.issues)}` });
       return;
     }
-    const input = parsed.data as SpeakingCreateActivityInput;
-    const now = deps.now();
-    const activity: SpeakingActivity = {
-      id: deps.id(),
-      teacherId: req.user!.id,
-      title: input.title,
-      scenario: input.scenario,
-      aiRole: input.aiRole,
-      studentRole: input.studentRole,
-      level: input.level,
-      difficulty: input.difficulty,
-      nativeLanguage: input.nativeLanguage,
-      durationSeconds: input.durationSeconds,
-      joinCode: makeJoinCode(state),
-      status: "ready",
-      identifierMode: input.identifierMode,
-      targetExpressions: input.targetExpressions.slice(0, SPEAKING_LIMITS.expressions),
-      rubric: input.rubric.filter((criterion) => criterion.enabled).slice(0, SPEAKING_LIMITS.rubricCriteria),
-      createdAt: now,
-      updatedAt: now
-    };
-    state.activities.set(activity.id, activity);
+    if (parsed.data.rubric.some(unsupportedPronunciationCriterion)) {
+      res.status(400).json({ error: "Pronunciation, accent, and phoneme scoring are not supported by Speaking Practice." });
+      return;
+    }
+    const activity = await repository.createActivity(req.user!.id, parsed.data, deps.id(), deps.now());
     res.status(201).json({ activity: publicActivity(activity) });
   });
 
-  app.get("/api/speaking/activities/:activityId", deps.requireTeacher, (req: AuthedRequest, res) => {
-    const activity = requireOwnedActivity(req, res);
-    if (!activity) return;
-    res.json({ activity: publicActivity(activity) });
+  app.get("/api/speaking/activities/:activityId", deps.requireTeacher, async (req: AuthedRequest, res) => {
+    const activity = await requireOwnedActivity(req, res);
+    if (activity) res.json({ activity: publicActivity(activity) });
   });
 
-  const updateActivityStatus = (status: SpeakingActivity["status"]) => (req: AuthedRequest, res: Response) => {
-    const activity = requireOwnedActivity(req, res);
+  app.get("/api/speaking/activities/:activityId/sessions", deps.requireTeacher, async (req: AuthedRequest, res) => {
+    const activity = await requireOwnedActivity(req, res);
     if (!activity) return;
-    if (status === "active" && activity.status === "ended") {
-      res.status(400).json({ error: "This activity has ended and cannot be activated again." });
-      return;
+    const sessions = await repository.listSessions(activity.id, req.user!.id);
+    const currentSessions = await Promise.all(sessions.map(async (session) => expireSessionIfNeeded({ activity, session })));
+    res.json({ activity: publicActivity(activity), sessions: currentSessions.map(sessionPayload) });
+  });
+
+  // Legacy activity controls are retained as authoring status operations. A
+  // classroom session is launched explicitly through the endpoint below.
+  app.post("/api/speaking/activities/:activityId/activate", deps.requireTeacher, async (req: AuthedRequest, res) => {
+    const activity = await requireOwnedActivity(req, res);
+    if (activity) res.json({ activity: publicActivity(activity) });
+  });
+  app.post("/api/speaking/activities/:activityId/end", deps.requireTeacher, async (req: AuthedRequest, res) => {
+    const activity = await requireOwnedActivity(req, res);
+    if (activity) res.json({ activity: publicActivity(activity) });
+  });
+
+  app.post("/api/speaking/activities/:activityId/sessions", deps.requireTeacher, async (req: AuthedRequest, res) => {
+    const activity = await requireOwnedActivity(req, res);
+    if (!activity) return;
+    const createdAt = deps.now();
+    const expiresAt = new Date(Date.parse(createdAt) + sessionLifetimeSeconds * 1_000).toISOString();
+    let session: SpeakingSession | undefined;
+    for (let attempt = 0; attempt < 3 && !session; attempt += 1) {
+      try {
+        session = await repository.createSession({ id: deps.id(), activity, joinCode: await makeJoinCode(repository), createdAt, expiresAt });
+      } catch (error) {
+        if (attempt === 2) throw error;
+      }
     }
-    activity.status = status;
-    activity.updatedAt = deps.now();
-    res.json({ activity: publicActivity(activity) });
-  };
+    res.status(201).json({ activity: publicActivity(activity), session: sessionPayload(session!) });
+  });
 
-  app.post("/api/speaking/activities/:activityId/activate", deps.requireTeacher, updateActivityStatus("active"));
-  app.post("/api/speaking/activities/:activityId/end", deps.requireTeacher, updateActivityStatus("ended"));
-
-  app.post("/api/speaking/join", (req, res) => {
+  app.post("/api/speaking/join", async (req, res) => {
     const parsed = SpeakingJoinInputSchema.safeParse(req.body);
     if (!parsed.success) {
-      res.status(400).json({ error: "Enter the six-character activity code." });
+      res.status(400).json({ error: "Enter the six-character session code." });
       return;
     }
     if (!allowRequest(state, `join:${req.ip}`, 30)) {
       res.status(429).json({ error: "Too many join attempts. Please wait a moment." });
       return;
     }
-    const activity = [...state.activities.values()].find((item) => item.joinCode === parsed.data.code && item.status !== "ended")
-      ?? templates.find((item) => item.joinCode === parsed.data.code);
-    if (!activity) {
-      res.status(404).json({ error: "We couldn’t find that activity. Check the code and try again." });
+    const access = await repository.findJoinableSession(parsed.data.code, deps.now());
+    if (!access) {
+      res.status(404).json({ error: "We couldn’t find an open classroom session. Check the code and try again." });
       return;
     }
     const identifier = normalizeIdentifier(parsed.data.identifier);
-    if (activity.identifierMode !== "anonymous" && identifier.length < 2) {
-      res.status(400).json({ error: activity.identifierMode === "student_number" ? "Enter your student number." : "Enter a nickname." });
+    if (access.activity.identifierMode !== "anonymous" && identifier.length < 2) {
+      res.status(400).json({ error: access.activity.identifierMode === "student_number" ? "Enter your student number." : "Enter a nickname." });
       return;
     }
-    const participantId = deps.id();
-    const anonymousToken = secureToken();
-    const startedAt = deps.now();
-    const participant: SpeakingParticipant = {
-      id: participantId,
-      activityId: activity.id,
-      sessionId: deps.id(),
-      ...(activity.identifierMode === "anonymous" ? {} : { displayIdentifier: identifier }),
-      anonymousToken,
-      startedAt,
-      status: "joined",
-      helpCount: 0
-    };
-    const sessionId = participant.sessionId!;
-    const greeting: SpeakingTurn = {
-      id: deps.id(),
-      participantId,
-      speaker: "ai",
-      text: initialGreeting(activity),
-      createdAt: startedAt
-    };
-    const session: SpeakingSessionRecord = {
-      id: sessionId,
-      activityId: activity.id,
-      participantId,
-      status: "ready",
-      startedAt,
-      turns: [greeting],
-      lastAiAtMs: Date.now(),
-      pendingHelp: false,
-      turnRequests: new Map()
-    };
-    state.participants.set(participant.id, participant);
-    state.sessions.set(session.id, session);
-    state.tokenToParticipant.set(anonymousToken, participant.id);
-    res.status(201).json({
-      activity: publicActivity(activity),
-      participant: publicParticipant(participant),
-      session: sessionPayload(session),
-      token: anonymousToken
-    });
+    const token = secureToken();
+    const participant = await repository.createParticipant({ id: deps.id(), activity: access.activity, session: access.session, ...(access.activity.identifierMode === "anonymous" ? {} : { displayIdentifier: identifier }), tokenHash: hashSpeakingToken(token) });
+    const greeting: SpeakingTurn = { id: deps.id(), participantId: participant.id, speaker: "ai", text: initialGreeting(access.activity), createdAt: deps.now() };
+    await repository.appendTurn(greeting);
+    res.status(201).json({ activity: publicActivity(access.activity), participant: publicParticipant(participant), session: sessionPayload(access.session), token });
   });
 
-  app.get("/api/speaking/sessions/:sessionId", async (req, res) => {
-    const access = parseSessionToken(state, req);
-    const session = state.sessions.get(String(req.params.sessionId));
-    if (!access || !session || access.session.id !== session.id) {
+  app.post("/api/speaking/sessions/:sessionId/start", async (req, res) => {
+    const access = await getParticipantAccess(req);
+    if (!access || access.session.id !== String(req.params.sessionId)) {
       res.status(401).json({ error: "This speaking session is no longer available." });
       return;
     }
-    const activity = state.activities.get(session.activityId) ?? templates.find((item) => item.id === session.activityId);
-    if (!activity) {
-      res.status(404).json({ error: "The speaking activity is no longer available." });
+    const session = await expireSessionIfNeeded(access);
+    if (["expired", "ended"].includes(session.status)) {
+      res.status(410).json({ error: "This activity has ended. Please ask your teacher for a new code." });
       return;
     }
     if (session.status === "ready") {
-      const elapsed = Date.now() - Date.parse(session.startedAt);
-      if (elapsed > activity.durationSeconds * 1_000) {
-        session.status = "expired";
-        access.participant.status = "completed";
-        access.participant.finishedAt = deps.now();
-      }
+      res.status(409).json({ error: "Waiting for your teacher to start the activity." });
+      return;
     }
-    res.json({
-      activity: publicActivity(activity),
-      participant: publicParticipant(access.participant),
-      session: sessionPayload(session),
-      turns: session.turns
+    if (session.status === "paused") {
+      res.status(409).json({ error: "Your teacher paused the activity." });
+      return;
+    }
+    const participant = await repository.startParticipant(access.participant.id, access.participant.startedAt ?? deps.now());
+    res.json({ participant: participant ? publicParticipant(participant) : publicParticipant(access.participant), session: sessionPayload(session) });
+  });
+
+  const teacherSessionAction = (action: "start" | "pause" | "resume" | "end") => async (req: AuthedRequest, res: Response) => {
+    const sessionAccess = await repository.getSession(String(req.params.sessionId));
+    if (!sessionAccess || sessionAccess.activity.teacherId !== req.user?.id) {
+      res.status(404).json({ error: "We couldn’t find that speaking session." });
+      return;
+    }
+    const current = await expireSessionIfNeeded(sessionAccess);
+    if (current.status === "expired" && action !== "end") {
+      res.status(410).json({ error: "This speaking session has expired." });
+      return;
+    }
+    const now = deps.now();
+    const transitions: Record<typeof action, { from: string[]; status: "ready" | "active" | "paused" | "ended" }> = {
+      start: { from: ["ready"], status: "active" },
+      pause: { from: ["active"], status: "paused" },
+      resume: { from: ["paused"], status: "active" },
+      end: { from: ["ready", "active", "paused"], status: "ended" }
+    };
+    const transition = transitions[action];
+    if (!transition.from.includes(current.status)) {
+      res.status(409).json({ error: `This session cannot ${action} from its current state.` });
+      return;
+    }
+    const updated = await repository.updateSession(current.id, {
+      status: transition.status,
+      ...(action === "start" ? { startedAt: now } : {}),
+      ...(action === "pause" ? { pausedAt: now } : {}),
+      ...(action === "resume" ? { pausedAt: null } : {}),
+      ...(action === "end" ? { endedAt: now } : {})
     });
+    res.json({ activity: publicActivity(sessionAccess.activity), session: sessionPayload(updated ?? { ...current, status: transition.status }) });
+  };
+
+  app.post("/api/speaking/sessions/:sessionId/start-session", deps.requireTeacher, teacherSessionAction("start"));
+  app.post("/api/speaking/sessions/:sessionId/pause", deps.requireTeacher, teacherSessionAction("pause"));
+  app.post("/api/speaking/sessions/:sessionId/resume", deps.requireTeacher, teacherSessionAction("resume"));
+  app.post("/api/speaking/sessions/:sessionId/end", deps.requireTeacher, teacherSessionAction("end"));
+
+  app.get("/api/speaking/sessions/:sessionId", async (req, res) => {
+    const access = await getParticipantAccess(req);
+    if (!access || access.session.id !== String(req.params.sessionId)) {
+      res.status(401).json({ error: "This speaking session is no longer available." });
+      return;
+    }
+    const session = await expireSessionIfNeeded(access);
+    const turns = await repository.listTurns(access.participant.id);
+    res.json({ activity: publicActivity(access.activity), participant: publicParticipant(access.participant), session: sessionPayload(session), turns });
   });
 
   app.post("/api/speaking/sessions/:sessionId/turn", async (req, res) => {
-    const access = parseSessionToken(state, req);
-    const session = state.sessions.get(String(req.params.sessionId));
-    if (!access || !session || access.session.id !== session.id) {
+    const access = await getParticipantAccess(req);
+    if (!access || access.session.id !== String(req.params.sessionId)) {
       res.status(401).json({ error: "This speaking session is no longer available." });
       return;
     }
-    if (!allowRequest(state, `turn:${access.token}`, 45)) {
-      res.status(429).json({ error: "Please wait a moment before speaking again." });
-      return;
-    }
-    if (session.status === "completed" || access.participant.status === "completed") {
-      res.status(409).json({ error: "This speaking activity is already finished." });
-      return;
-    }
-    if (access.participant.status === "evaluating" || access.participant.status === "error") {
-      res.status(409).json({ error: "This speaking activity is finishing. Please try the result screen." });
-      return;
-    }
-    const activity = state.activities.get(session.activityId) ?? templates.find((item) => item.id === session.activityId);
-    if (!activity) {
-      res.status(404).json({ error: "The speaking activity is no longer available." });
-      return;
-    }
-    const requestId = req.header("X-Speaking-Turn-Id")?.trim();
-    if (requestId && requestId.length <= 120) {
-      const previous = session.turnRequests.get(requestId);
-      if (previous) {
-        res.json(previous);
+    return withTurnLock(access.participant.id, async () => {
+      const requestId = req.header("X-Speaking-Turn-Id")?.trim();
+      if (requestId && requestId.length <= 120) {
+        const previous = await repository.findTurnPair(access.participant.id, requestId);
+        if (previous?.aiTurn) {
+          res.json({ studentTurn: previous.studentTurn, aiTurn: previous.aiTurn, session: sessionPayload(access.session) });
+          return;
+        }
+      }
+      if (!allowRequest(state, `turn:${hashSpeakingToken(parseParticipantToken(req) ?? "")}`, 45)) {
+        res.status(429).json({ error: "Please wait a moment before speaking again." });
         return;
       }
-    }
-    if (session.turns.filter((turn) => turn.speaker === "student").length >= SPEAKING_LIMITS.maxTurns) {
-      res.status(409).json({ error: "This activity has reached its speaking turn limit." });
-      return;
-    }
-    const { isAudio, text } = requestTextAndAudio(req);
-    const input = SpeakingTurnInputSchema.safeParse(text === undefined ? {} : { text });
-    if (!input.success && !isAudio) {
-      res.status(400).json({ error: "I couldn’t hear that clearly. Please try again." });
-      return;
-    }
-    const transcription = await transcriber.transcribe({ text: input.success ? input.data.text : undefined, hasAudio: isAudio });
-    const studentText = transcription.text.trim().slice(0, SPEAKING_LIMITS.turnText);
-    if (!studentText) {
-      res.status(422).json({ error: "I couldn’t hear that clearly. Please try again." });
-      return;
-    }
-    access.participant.status = "in_progress";
-    session.status = "active";
-    const createdAt = deps.now();
-    const studentTurn: SpeakingTurn = {
-      id: deps.id(),
-      participantId: access.participant.id,
-      speaker: "student",
-      text: studentText,
-      createdAt,
-      responseTimeMs: Math.max(0, Date.now() - session.lastAiAtMs),
-      usedHelp: session.pendingHelp,
-      transcriptionConfidence: transcription.confidence
-    };
-    session.pendingHelp = false;
-    session.turns.push(studentTurn);
-    const responseText = await conversationProvider.respond({ activity, turns: session.turns, studentText });
-    const aiTurn: SpeakingTurn = {
-      id: deps.id(),
-      participantId: access.participant.id,
-      speaker: "ai",
-      text: responseText.trim().slice(0, 280),
-      createdAt: deps.now()
-    };
-    session.turns.push(aiTurn);
-    session.lastAiAtMs = Date.now();
-    const response: TurnResponse = { studentTurn, aiTurn, session: sessionPayload(session) };
-    if (requestId && requestId.length <= 120) session.turnRequests.set(requestId, response);
-    res.json(response);
+      const currentSession = await expireSessionIfNeeded(access);
+      if (currentSession.status === "paused") {
+        res.status(409).json({ error: "Your teacher paused the activity." });
+        return;
+      }
+      if (currentSession.status !== "active") {
+        res.status(currentSession.status === "expired" || currentSession.status === "ended" ? 410 : 409).json({ error: currentSession.status === "ready" ? "Waiting for your teacher to start the activity." : "This speaking activity is no longer accepting turns." });
+        return;
+      }
+      if (access.participant.status === "completed") {
+        res.status(409).json({ error: "This speaking activity is already finished." });
+        return;
+      }
+      const currentParticipant = await repository.getParticipant(access.participant.id) ?? access.participant;
+      const startedAt = currentParticipant.startedAt ?? deps.now();
+      if (!currentParticipant.startedAt) await repository.startParticipant(currentParticipant.id, startedAt);
+      const deadline = participantDeadline({ ...currentParticipant, startedAt }, access.activity);
+      if (deadline !== undefined && Date.parse(deps.now()) >= deadline) {
+        res.status(409).json({ error: "Your speaking time is over. You can finish and view your result." });
+        return;
+      }
+      if (currentParticipant.status === "evaluating" || currentParticipant.status === "error") {
+        res.status(409).json({ error: "This speaking activity is finishing. Please try the result screen." });
+        return;
+      }
+      const existingTurns = await repository.listTurns(currentParticipant.id);
+      if (existingTurns.length >= SPEAKING_LIMITS.maxTurns) {
+        res.status(409).json({ error: "This speaking activity has reached its turn limit. You can finish and view your result." });
+        return;
+      }
+      const parsed = parseAudioOrText(req);
+      if (parsed.audio && parsed.audio.length > SPEAKING_LIMITS.maxAudioBytes) {
+        res.status(413).json({ error: "That recording is too large. Please record a shorter answer." });
+        return;
+      }
+      if (parsed.audio && !supportedAudioMime(parsed.mimeType)) {
+        res.status(415).json({ error: "This browser recording format is not supported. Try Safari, Chrome, or a shorter recording." });
+        return;
+      }
+      const textInput = SpeakingTurnInputSchema.safeParse(parsed.text === undefined ? {} : { text: parsed.text });
+      if (!parsed.audio && (!allowTextInput || !textInput.success)) {
+        res.status(400).json({ error: "I couldn’t hear that clearly. Please try again." });
+        return;
+      }
+      let transcription: TranscriptionResult;
+      try {
+        transcription = await transcriber.transcribe({ audio: parsed.audio ?? Buffer.from(parsed.text ?? "", "utf8"), mimeType: parsed.audio ? parsed.mimeType : "text/plain", languageHint: access.activity.nativeLanguage, ...(allowTextInput && textInput.success ? { text: textInput.data.text } : {}) });
+      } catch {
+        res.status(503).json({ error: "I couldn’t transcribe that recording. Please try again." });
+        return;
+      }
+      const studentText = transcription.text.trim().slice(0, SPEAKING_LIMITS.turnText);
+      if (!studentText) {
+        res.status(422).json({ error: "I couldn’t hear any speech. Please say a short sentence and try again." });
+        return;
+      }
+      let studentTurn = (requestId ? (await repository.findTurnPair(access.participant.id, requestId))?.studentTurn : undefined);
+      if (!studentTurn) {
+        const turnCreatedAt = deps.now();
+        studentTurn = await repository.appendTurn({
+          id: deps.id(),
+          participantId: access.participant.id,
+          speaker: "student",
+          text: studentText,
+          createdAt: turnCreatedAt,
+           responseTimeMs: Math.max(0, Date.parse(turnCreatedAt) - Math.max(0, Date.parse(existingTurns.filter((turn) => turn.speaker === "ai").at(-1)?.createdAt ?? turnCreatedAt))),
+          usedHelp: currentParticipant.helpPending,
+          ...(transcription.confidence === undefined ? {} : { transcriptionConfidence: transcription.confidence }),
+          ...(requestId && requestId.length <= 120 ? { requestId } : {})
+        });
+        await repository.updateParticipant(currentParticipant.id, { status: "in_progress", helpPending: false });
+      }
+      let aiTurn = requestId ? (await repository.findTurnPair(access.participant.id, requestId))?.aiTurn : undefined;
+      if (!aiTurn) {
+        const turns = await repository.listTurns(access.participant.id);
+        let responseText: string;
+        try {
+          responseText = (await conversationProvider.respond({ activity: access.activity, turns, studentText: studentTurn.text })).trim().slice(0, 280);
+        } catch {
+          res.status(503).json({ error: "I couldn’t answer just now. Please tap Retry." });
+          return;
+        }
+        if (!responseText) {
+          res.status(503).json({ error: "I couldn’t answer just now. Please tap Retry." });
+          return;
+        }
+        aiTurn = await repository.appendTurn({ id: deps.id(), participantId: access.participant.id, speaker: "ai", text: responseText, createdAt: deps.now() });
+      }
+      res.json({ studentTurn, aiTurn, session: sessionPayload(currentSession) });
+    });
   });
 
   app.post("/api/speaking/sessions/:sessionId/help", async (req, res) => {
-    const access = parseSessionToken(state, req);
-    const session = state.sessions.get(String(req.params.sessionId));
-    if (!access || !session || access.session.id !== session.id) {
+    const access = await getParticipantAccess(req);
+    if (!access || access.session.id !== String(req.params.sessionId)) {
       res.status(401).json({ error: "This speaking session is no longer available." });
       return;
     }
-    if (!allowRequest(state, `help:${access.token}`, 30)) {
+    if (!allowRequest(state, `help:${hashSpeakingToken(parseParticipantToken(req) ?? "")}`, 30)) {
       res.status(429).json({ error: "Please wait a moment before asking for another hint." });
       return;
     }
-    const activity = state.activities.get(session.activityId) ?? templates.find((item) => item.id === session.activityId);
-    if (!activity || session.status === "completed") {
-      res.status(409).json({ error: "Help is not available after the activity is finished." });
+    const currentSession = await expireSessionIfNeeded(access);
+    if (currentSession.status === "paused") {
+      res.status(409).json({ error: "Your teacher paused the activity." });
       return;
     }
-    const latestStudentText = [...session.turns].reverse().find((turn) => turn.speaker === "student")?.text;
-    const hint = await mockHelpProvider.hint({ activity, latestStudentText });
-    access.participant.helpCount = Math.min(20, access.participant.helpCount + 1);
-    session.pendingHelp = true;
-    res.json({ ...hint, helpCount: access.participant.helpCount });
+    if (currentSession.status !== "active") {
+      res.status(409).json({ error: currentSession.status === "ready" ? "Waiting for your teacher to start the activity." : "Help is not available after the activity is finished." });
+      return;
+    }
+    const participant = await repository.getParticipant(access.participant.id) ?? access.participant;
+    if (participant.helpCount >= SPEAKING_LIMITS.maxHelpCalls) {
+      res.status(429).json({ error: "You have reached the Help limit for this activity." });
+      return;
+    }
+    const turns = await repository.listTurns(participant.id);
+    try {
+      const hint = await helpProvider.hint({ activity: access.activity, turns, latestStudentText: [...turns].reverse().find((turn) => turn.speaker === "student")?.text });
+      const updated = await repository.updateParticipant(participant.id, { helpCount: participant.helpCount + 1, helpPending: true });
+      res.json({ ...hint, helpCount: updated?.helpCount ?? participant.helpCount + 1 });
+    } catch {
+      res.status(503).json({ error: "Help is temporarily unavailable. Please try again." });
+    }
   });
 
   app.post("/api/speaking/sessions/:sessionId/finish", async (req, res) => {
-    const access = parseSessionToken(state, req);
-    const session = state.sessions.get(String(req.params.sessionId));
-    if (!access || !session || access.session.id !== session.id) {
+    const access = await getParticipantAccess(req);
+    if (!access || access.session.id !== String(req.params.sessionId)) {
       res.status(401).json({ error: "This speaking session is no longer available." });
       return;
     }
-    if (!allowRequest(state, `finish:${access.token}`, 5)) {
-      res.status(429).json({ error: "Please wait while the result is prepared." });
-      return;
-    }
-    const activity = state.activities.get(session.activityId) ?? templates.find((item) => item.id === session.activityId);
-    if (!activity) {
-      res.status(404).json({ error: "The speaking activity is no longer available." });
-      return;
-    }
-    if (!session.evaluation) await finishSession(activity, access.participant, session);
-    if (!session.evaluation) {
-      res.status(503).json({ error: "The result could not be prepared yet. Please try again." });
-      return;
-    }
-    res.json({ result: safeResult(toResult(activity, session, access.participant)) });
+    return withTurnLock(access.participant.id, async () => {
+      if (!allowRequest(state, `finish:${hashSpeakingToken(parseParticipantToken(req) ?? "")}`, 5)) {
+        res.status(429).json({ error: "Please wait while the result is prepared." });
+        return;
+      }
+      const currentSession = await expireSessionIfNeeded(access);
+      if (currentSession.status === "ready") {
+        res.status(409).json({ error: "Waiting for your teacher to start the activity." });
+        return;
+      }
+      const evaluation = await finishParticipant({ ...access, session: currentSession });
+      if (!evaluation) {
+        res.status(503).json({ error: "The result could not be prepared yet. Please try again." });
+        return;
+      }
+      const result = await repository.getResult(access.participant.id);
+      if (!result) {
+        res.status(404).json({ error: "We couldn’t find that speaking result." });
+        return;
+      }
+      res.json({ result: safeResult(toResult(result.activity, result.session, result.participant, result.turns, result.evaluation)) });
+    });
   });
 
-  app.get("/api/speaking/activities/:activityId/results", deps.requireTeacher, (req: AuthedRequest, res) => {
-    const activity = requireOwnedActivity(req, res);
+  app.get("/api/speaking/activities/:activityId/results", deps.requireTeacher, async (req: AuthedRequest, res) => {
+    const activity = await requireOwnedActivity(req, res);
     if (!activity) return;
-    const items = [...state.sessions.values()]
-      .filter((session) => session.activityId === activity.id)
-      .map((session) => {
-        const participant = state.participants.get(session.participantId);
-        if (!participant) return undefined;
-        const evaluation = session.evaluation;
-        const scoreValues = evaluation ? Object.values(evaluation.scores) : [];
-        const overallScore = scoreValues.length > 0 ? Math.round((scoreValues.reduce((sum, value) => sum + value, 0) / scoreValues.length) * 25) : undefined;
-        return {
-          participant: publicParticipant(participant),
-          status: participant.status,
-          durationSeconds: Math.max(0, Math.round(((Date.parse(participant.finishedAt ?? deps.now()) - Date.parse(participant.startedAt)) / 1_000))),
-          overallScore,
-          helpCount: participant.helpCount,
-          evaluation
-        };
-      })
-      .filter((item): item is NonNullable<typeof item> => Boolean(item));
-    res.json({ activity: publicActivity(activity), items });
+    const sessionId = typeof req.query.sessionId === "string" ? req.query.sessionId : "";
+    if (!sessionId) {
+      const sessions = await repository.listSessions(activity.id, req.user!.id);
+      const currentSessions = await Promise.all(sessions.map(async (session) => expireSessionIfNeeded({ activity, session })));
+      res.json({ activity: publicActivity(activity), sessions: currentSessions.map(sessionPayload), items: [] });
+      return;
+    }
+    const items = await repository.listResults(activity.id, sessionId, req.user!.id);
+    const session = items[0]?.session ?? (await repository.listSessions(activity.id, req.user!.id)).find((candidate) => candidate.id === sessionId);
+    if (!session) {
+      res.status(404).json({ error: "We couldn’t find that speaking session." });
+      return;
+    }
+    res.json({ activity: publicActivity(activity), session: sessionPayload(session), items: items.map((item) => ({ participant: publicParticipant(item.participant), status: item.participant.status, durationSeconds: item.participant.startedAt ? Math.max(0, Math.round(((Date.parse(item.participant.finishedAt ?? deps.now()) - Date.parse(item.participant.startedAt)) / 1_000))) : 0, overallScore: item.overallScore, helpCount: item.participant.helpCount, evaluation: item.evaluation })) });
   });
 
-  // Result access may be either a student token or the existing teacher JWT.
-  // Keep the JWT middleware on a small optional path so anonymous students are
-  // never asked to create an account.
+  app.get("/api/speaking/sessions/:sessionId/results", deps.requireTeacher, async (req: AuthedRequest, res) => {
+    const sessionAccess = await repository.getSession(String(req.params.sessionId));
+    if (!sessionAccess || sessionAccess.activity.teacherId !== req.user?.id) {
+      res.status(404).json({ error: "We couldn’t find that speaking session." });
+      return;
+    }
+    const items = await repository.listResults(sessionAccess.activity.id, sessionAccess.session.id, req.user!.id);
+    res.json({ activity: publicActivity(sessionAccess.activity), session: sessionPayload(sessionAccess.session), items: items.map((item) => ({ participant: publicParticipant(item.participant), status: item.participant.status, durationSeconds: item.participant.startedAt ? Math.max(0, Math.round(((Date.parse(item.participant.finishedAt ?? deps.now()) - Date.parse(item.participant.startedAt)) / 1_000))) : 0, overallScore: item.overallScore, helpCount: item.participant.helpCount, evaluation: item.evaluation })) });
+  });
+
+  // A result URL is never sufficient by itself. Student access still requires
+  // their opaque Speaking token; otherwise the existing teacher JWT is used.
   app.use("/api/speaking/results/:participantId", (req, res, next: NextFunction) => {
-    if (req.header("X-Speaking-Token")) return next();
+    if (parseParticipantToken(req)) return next();
     return deps.requireTeacher(req, res, next);
   });
 
-  app.get("/api/speaking/results/:participantId", (req, res) => {
-    const participant = state.participants.get(String(req.params.participantId));
-    const session = participant?.sessionId ? state.sessions.get(participant.sessionId) : undefined;
-    const activity = participant ? state.activities.get(participant.activityId) ?? templates.find((item) => item.id === participant.activityId) : undefined;
-    if (!participant || !session || !activity) {
+  app.get("/api/speaking/results/:participantId", async (req: AuthedRequest, res) => {
+    const result = await repository.getResult(String(req.params.participantId));
+    if (!result) {
       res.status(404).json({ error: "We couldn’t find that speaking result." });
       return;
     }
-    const playerToken = req.header("X-Speaking-Token")?.trim();
-    const ownsParticipant = playerToken && state.tokenToParticipant.get(playerToken) === participant.id;
-    const teacher = (req as AuthedRequest).user;
-    if (!ownsParticipant && (!teacher || teacher.id !== activity.teacherId)) {
+    const token = parseParticipantToken(req);
+    const ownsParticipant = token ? Boolean((await repository.getParticipantAccessByTokenHash(hashSpeakingToken(token)))?.participant.id === result.participant.id) : false;
+    if (!ownsParticipant && result.activity.teacherId !== req.user?.id) {
       res.status(403).json({ error: "You do not have access to this speaking result." });
       return;
     }
-    if (!session.evaluation) {
-      res.status(409).json({ error: "This speaking activity has not been evaluated yet." });
-      return;
-    }
-    res.json({ result: safeResult(toResult(activity, session, participant)) });
+    res.json({ result: safeResult(toResult(result.activity, result.session, result.participant, result.turns, result.evaluation)) });
   });
 
   return state;
 };
 
-export { makeState as createSpeakingRouteState };
+export { createState as createSpeakingRouteState };

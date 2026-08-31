@@ -54,6 +54,7 @@ const StudentExperience = lazy(() => import("./student/StudentExperience"));
 
 type ApiWakeState = "waking" | "ready" | "slow";
 const TOURNAMENT_TEACHER_RETURN_KEY = "quizstrike_tournament_teacher_return";
+const SPEAKING_TEACHER_RETURN_KEY = "quizstrike_speaking_teacher_return";
 
 export default function App() {
   const [routePath, setRoutePath] = useState(() => normalizeRoutePath(window.location.pathname));
@@ -221,9 +222,10 @@ export default function App() {
       {mode === "characterLab" && (isCharacterLabAvailable ? <CharacterLab /> : <InternalToolNotice onReturn={() => navigateTo("/quiz-strike", "quizStrike")} />)}
       {mode === "teacher" && <Suspense fallback={<FeatureLoading label="Loading teacher workspace" />}><TeacherWorkspace teacher={teacher} apiWakeState={apiWakeState} initialMode={teacherAuthMode} initialPath={routePath} onNavigate={navigateTo} onLogout={logout} onAuthed={(user) => {
           setTeacher(user);
-          const returnTo = sessionStorage.getItem(TOURNAMENT_TEACHER_RETURN_KEY);
+          const returnTo = sessionStorage.getItem(TOURNAMENT_TEACHER_RETURN_KEY) ?? sessionStorage.getItem(SPEAKING_TEACHER_RETURN_KEY);
           sessionStorage.removeItem(TOURNAMENT_TEACHER_RETURN_KEY);
-          navigateTo(returnTo ?? "/quiz-strike/teacher/home", returnTo ? "quizStrike" : "teacher");
+          sessionStorage.removeItem(SPEAKING_TEACHER_RETURN_KEY);
+          navigateTo(returnTo ?? "/quiz-strike/teacher/home", returnTo ? modeForRoute(returnTo.split(/[?#]/u)[0] ?? "") : "teacher");
         }} /></Suspense>}
       {mode === "student" && <Suspense fallback={<FeatureLoading label="Loading game" />}><StudentExperience onExit={() => navigateTo("/quiz-strike", "quizStrike")} /></Suspense>}
     </main>

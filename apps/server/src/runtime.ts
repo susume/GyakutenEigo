@@ -14,6 +14,7 @@ import { CombatService } from "./combat.js";
 import { BotNavigationService } from "./botNavigation.js";
 import { registerAuthRoutes } from "./routes/authRoutes.js";
 import { registerSpeakingRoutes } from "./routes/speakingRoutes.js";
+import { createSpeakingProviders } from "./speakingProviders.js";
 import {
   registerClassRoute,
   registerFolderRoutes,
@@ -2047,7 +2048,9 @@ registerAuthRoutes(app, {
 registerSpeakingRoutes(app, {
   requireTeacher,
   now,
-  id
+  id,
+  prisma,
+  providers: createSpeakingProviders()
 });
 
 registerCompetitionRoutes(app, {
@@ -2689,10 +2692,10 @@ const appearanceRouteDependencies: AppearanceRouteDependencies = {
 
 registerAppearanceRoutes(app, appearanceRouteDependencies);
 
-app.use((error: unknown, _req: Request, res: Response, next: NextFunction) => {
+app.use((error: unknown, req: Request, res: Response, next: NextFunction) => {
   const bodyError = error as { type?: string; status?: number };
   if (bodyError.type === "entity.too.large" || bodyError.status === 413) {
-    res.status(413).json({ error: "That upload is too large. Choose a smaller image and try again." });
+    res.status(413).json({ error: req.path.startsWith("/api/speaking/") ? "That recording is too large. Please record a shorter answer." : "That upload is too large. Choose a smaller image and try again." });
     return;
   }
   if (bodyError.type === "entity.parse.failed") {

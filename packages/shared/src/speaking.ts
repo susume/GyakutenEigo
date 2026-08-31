@@ -42,13 +42,15 @@ export const SPEAKING_IDENTIFIER_MODE_LABELS: Record<SpeakingIdentifierMode, str
   student_number: "Student number"
 };
 
-export const SPEAKING_ACTIVITY_STATUSES = ["draft", "ready", "active", "ended"] as const;
+// Activity status describes reusable lesson content. Classroom lifecycle is
+// deliberately represented by SpeakingSessionStatus below.
+export const SPEAKING_ACTIVITY_STATUSES = ["draft", "ready", "archived"] as const;
 export type SpeakingActivityStatus = (typeof SPEAKING_ACTIVITY_STATUSES)[number];
 
 export const SPEAKING_PARTICIPANT_STATUSES = ["joined", "in_progress", "evaluating", "completed", "error"] as const;
 export type SpeakingParticipantStatus = (typeof SPEAKING_PARTICIPANT_STATUSES)[number];
 
-export const SPEAKING_SESSION_STATUSES = ["ready", "active", "completed", "expired"] as const;
+export const SPEAKING_SESSION_STATUSES = ["ready", "active", "paused", "ended", "expired"] as const;
 export type SpeakingSessionStatus = (typeof SPEAKING_SESSION_STATUSES)[number];
 
 export interface SpeakingRubricCriterion {
@@ -102,7 +104,6 @@ export interface SpeakingActivity {
   difficulty: SpeakingDifficulty;
   nativeLanguage: SpeakingNativeLanguage;
   durationSeconds: number;
-  joinCode: string;
   status: SpeakingActivityStatus;
   identifierMode: SpeakingIdentifierMode;
   targetExpressions: string[];
@@ -116,8 +117,9 @@ export interface SpeakingParticipant {
   activityId: string;
   sessionId?: string;
   displayIdentifier?: string;
-  anonymousToken: string;
-  startedAt: string;
+  /** Returned only to the joining browser once; public responses omit it. */
+  anonymousToken?: string;
+  startedAt?: string;
   finishedAt?: string;
   status: SpeakingParticipantStatus;
   helpCount: number;
@@ -126,10 +128,13 @@ export interface SpeakingParticipant {
 export interface SpeakingSession {
   id: string;
   activityId: string;
-  participantId: string;
+  joinCode: string;
+  createdAt: string;
   status: SpeakingSessionStatus;
-  startedAt: string;
+  startedAt?: string;
+  pausedAt?: string;
   endedAt?: string;
+  expiresAt: string;
 }
 
 export interface SpeakingTurn {
@@ -142,6 +147,8 @@ export interface SpeakingTurn {
   responseTimeMs?: number;
   usedHelp?: boolean;
   transcriptionConfidence?: number;
+  /** Request id used to make retried student turns idempotent. */
+  requestId?: string;
 }
 
 export interface SpeakingEvaluation {
@@ -158,6 +165,7 @@ export interface SpeakingEvaluation {
 
 export interface SpeakingParticipantResult {
   participant: SpeakingParticipant;
+  session: SpeakingSession;
   activity: Pick<SpeakingActivity, "id" | "title" | "scenario" | "targetExpressions" | "nativeLanguage" | "rubric">;
   turns: SpeakingTurn[];
   evaluation?: SpeakingEvaluation;
@@ -187,7 +195,11 @@ export const SPEAKING_LIMITS = {
   turnText: 1_200,
   maxDurationSeconds: 7 * 60,
   maxTurnSeconds: 30,
-  maxTurns: 24
+  maxTurns: 24,
+  maxAudioBytes: 4 * 1024 * 1024,
+  maxHelpCalls: 20,
+  maxContextTurns: 8,
+  sessionLifetimeSeconds: 8 * 60 * 60
 } as const;
 
 export const SpeakingRubricCriterionSchema = z.object({
@@ -219,6 +231,8 @@ export const SpeakingJoinInputSchema = z.object({
 export const SpeakingTurnInputSchema = z.object({
   text: z.string().trim().min(1).max(SPEAKING_LIMITS.turnText).optional()
 });
+
+export const SpeakingSessionStatusSchema = z.enum(SPEAKING_SESSION_STATUSES);
 
 export const SpeakingEvaluationSchema = z.object({
   participantId: z.string().min(1),
