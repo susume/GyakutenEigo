@@ -15,6 +15,7 @@ import type {
 export type Team = "blue" | "red";
 export * from "./protocol/index.js";
 export * from "./athleticsRace.js";
+export * from "./speaking.js";
 export type SessionStatus = "waiting" | "active" | "paused" | "ended";
 export type SessionControlState = "running" | "teacher_paused";
 export type Choice = "A" | "B" | "C" | "D";

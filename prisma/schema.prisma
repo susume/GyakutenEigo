@@ -101,6 +101,50 @@ enum CompetitionMatchStatus {
   DISPUTED
 }
 
+enum SpeakingActivityStatus {
+  draft
+  ready
+  active
+  ended
+}
+
+enum SpeakingDifficulty {
+  easy
+  normal
+  challenge
+}
+
+enum SpeakingNativeLanguage {
+  ja
+  en
+}
+
+enum SpeakingIdentifierMode {
+  anonymous
+  nickname
+  student_number
+}
+
+enum SpeakingParticipantStatus {
+  joined
+  in_progress
+  evaluating
+  completed
+  error
+}
+
+enum SpeakingSessionStatus {
+  ready
+  active
+  completed
+  expired
+}
+
+enum SpeakingTurnSpeaker {
+  ai
+  student
+}
+
 model User {
   id                 String              @id @default(cuid())
   name               String
@@ -117,6 +161,7 @@ model User {
   contributionEvents ContributionEvent[]
   contributionBadges ContributionBadge[]
   tournaments        Tournament[]
+  speakingActivities  SpeakingActivity[]
   createdAt          DateTime            @default(now())
   updatedAt          DateTime            @updatedAt
 }
@@ -248,6 +293,106 @@ model GameSession {
   tournamentMatch      TournamentMatch?
 
   @@index([teacherId, status])
+}
+
+model SpeakingActivity {
+  id                   String                 @id @default(cuid())
+  teacherId            String
+  teacher              User                   @relation(fields: [teacherId], references: [id], onDelete: Cascade)
+  title                String
+  scenario             String
+  aiRole               String
+  studentRole          String
+  level                String
+  difficulty            SpeakingDifficulty     @default(normal)
+  nativeLanguage       SpeakingNativeLanguage @default(ja)
+  durationSeconds      Int
+  joinCode             String                 @unique
+  status               SpeakingActivityStatus  @default(draft)
+  identifierMode       SpeakingIdentifierMode @default(nickname)
+  targetExpressionsJson Json                   @default("[]")
+  rubric               SpeakingRubric[]
+  sessions             SpeakingSession[]
+  participants         SpeakingParticipant[]
+  createdAt            DateTime               @default(now())
+  updatedAt            DateTime               @updatedAt
+
+  @@index([teacherId, status])
+}
+
+model SpeakingRubric {
+  id          String           @id @default(cuid())
+  activityId  String
+  activity    SpeakingActivity @relation(fields: [activityId], references: [id], onDelete: Cascade)
+  criterionId String
+  name        String
+  description String
+  enabled     Boolean          @default(true)
+  position    Int              @default(0)
+
+  @@index([activityId, position])
+}
+
+model SpeakingSession {
+  id          String                @id @default(cuid())
+  activityId  String
+  activity    SpeakingActivity      @relation(fields: [activityId], references: [id], onDelete: Cascade)
+  participant SpeakingParticipant?
+  status      SpeakingSessionStatus @default(ready)
+  startedAt   DateTime              @default(now())
+  endedAt     DateTime?
+  turns       SpeakingTurn[]
+
+  @@index([activityId, status])
+}
+
+model SpeakingParticipant {
+  id                 String                    @id @default(cuid())
+  activityId         String
+  activity           SpeakingActivity          @relation(fields: [activityId], references: [id], onDelete: Cascade)
+  sessionId          String                    @unique
+  session            SpeakingSession           @relation(fields: [sessionId], references: [id], onDelete: Cascade)
+  displayIdentifier  String?
+  anonymousTokenHash String                    @unique
+  startedAt          DateTime                  @default(now())
+  finishedAt         DateTime?
+  status             SpeakingParticipantStatus @default(joined)
+  helpCount          Int                       @default(0)
+  turns              SpeakingTurn[]
+  evaluation         SpeakingEvaluation?
+
+  @@index([activityId, status])
+}
+
+model SpeakingTurn {
+  id                      String               @id @default(cuid())
+  participantId           String
+  participant             SpeakingParticipant @relation(fields: [participantId], references: [id], onDelete: Cascade)
+  sessionId               String
+  session                 SpeakingSession     @relation(fields: [sessionId], references: [id], onDelete: Cascade)
+  speaker                 SpeakingTurnSpeaker
+  text                    String
+  createdAt               DateTime             @default(now())
+  audioDurationMs         Int?
+  responseTimeMs          Int?
+  usedHelp                Boolean              @default(false)
+  transcriptionConfidence Float?
+
+  @@index([participantId, createdAt])
+  @@index([sessionId, createdAt])
+}
+
+model SpeakingEvaluation {
+  participantId     String              @id
+  participant       SpeakingParticipant @relation(fields: [participantId], references: [id], onDelete: Cascade)
+  language          SpeakingNativeLanguage
+  scoresJson        Json
+  evidenceJson      Json
+  strengthsJson     Json
+  improvementsJson  Json
+  usefulEnglishJson Json
+  overallMessage    String
+  createdAt         DateTime            @default(now())
 }
 
 model StudySetUsage {

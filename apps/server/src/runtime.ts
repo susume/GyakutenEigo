@@ -13,6 +13,7 @@ import { DecalStore } from "./decalStore.js";
 import { CombatService } from "./combat.js";
 import { BotNavigationService } from "./botNavigation.js";
 import { registerAuthRoutes } from "./routes/authRoutes.js";
+import { registerSpeakingRoutes } from "./routes/speakingRoutes.js";
 import {
   registerClassRoute,
   registerFolderRoutes,
@@ -2041,6 +2042,12 @@ registerAuthRoutes(app, {
   schedulePersistence,
   requireTeacher,
   healthPayload
+});
+
+registerSpeakingRoutes(app, {
+  requireTeacher,
+  now,
+  id
 });
 
 registerCompetitionRoutes(app, {

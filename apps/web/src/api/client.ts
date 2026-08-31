@@ -1,4 +1,4 @@
-import type { CharacterCustomizationSettings, Choice, PlayerAppearance, SessionSettings, SnowballPackSize, StudySetSummary } from "@quizstrike/shared";
+import type { CharacterCustomizationSettings, Choice, PlayerAppearance, SessionSettings, SnowballPackSize, SpeakingCreateActivityInput, StudySetSummary } from "@quizstrike/shared";
 import { ApiError } from "./errors";
 import { ApiRequestTimeoutError, buildApiUrlCandidates, fetchFromApiCandidates, resolveApiOrigin } from "./endpoints.js";
 import { retryOnce } from "./retry.js";
@@ -351,6 +351,28 @@ export const studentApi = {
       headers: playerHeaders(playerToken),
       ...(packSize ? { body: JSON.stringify({ packSize }) } : {})
     })
+};
+
+export const speakingApi = {
+  templates: () => api("/api/speaking/templates"),
+  activities: () => api("/api/speaking/activities"),
+  createActivity: (body: SpeakingCreateActivityInput) => api("/api/speaking/activities", { method: "POST", body: JSON.stringify(body) }),
+  activity: (id: string) => api(`/api/speaking/activities/${encodeURIComponent(id)}`),
+  activate: (id: string) => api(`/api/speaking/activities/${encodeURIComponent(id)}/activate`, { method: "POST" }),
+  endActivity: (id: string) => api(`/api/speaking/activities/${encodeURIComponent(id)}/end`, { method: "POST" }),
+  join: (code: string, identifier?: string) => api("/api/speaking/join", { method: "POST", body: JSON.stringify({ code, identifier }) }),
+  session: (sessionId: string, token: string) => api(`/api/speaking/sessions/${encodeURIComponent(sessionId)}`, { headers: playerHeaders(token) }),
+  turn: (sessionId: string, token: string, body: { text?: string; audio?: Blob }) => api(`/api/speaking/sessions/${encodeURIComponent(sessionId)}/turn`, {
+    method: "POST",
+    headers: body.audio
+      ? { ...playerHeaders(token), "Content-Type": body.audio.type || "audio/webm" }
+      : playerHeaders(token),
+    body: body.audio ? body.audio : JSON.stringify({ text: body.text }),
+  }),
+  help: (sessionId: string, token: string) => api(`/api/speaking/sessions/${encodeURIComponent(sessionId)}/help`, { method: "POST", headers: playerHeaders(token) }),
+  finish: (sessionId: string, token: string) => api(`/api/speaking/sessions/${encodeURIComponent(sessionId)}/finish`, { method: "POST", headers: playerHeaders(token) }),
+  results: (activityId: string) => api(`/api/speaking/activities/${encodeURIComponent(activityId)}/results`),
+  result: (participantId: string, token?: string) => api(`/api/speaking/results/${encodeURIComponent(participantId)}`, token ? { headers: playerHeaders(token) } : {})
 };
 
 export const fetchDecalAsset = async (code: string, assetId: string, playerToken?: string): Promise<Blob> => {

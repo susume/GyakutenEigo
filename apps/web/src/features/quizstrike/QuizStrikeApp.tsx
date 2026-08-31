@@ -3,6 +3,7 @@ import {
   DoorOpen,
   GraduationCap,
   LogOut,
+  Mic,
   Play,
   RefreshCw,
   Shield,
@@ -129,6 +130,11 @@ export default function App() {
     navigateTo("/", "home");
   };
 
+  const openSpeakingPractice = () => {
+    window.history.pushState(null, "", "/speak");
+    window.dispatchEvent(new PopStateEvent("popstate"));
+  };
+
   return (
     <main id="main-content" className="app-shell" tabIndex={-1}>
       <a className={`skip-link skip-link-${mode}`} href="#main-content">Skip to main content</a>
@@ -151,6 +157,10 @@ export default function App() {
             <>
               <button onClick={() => { setTeacherAuthMode("signup"); navigateTo("/quiz-strike/teacher/home", "teacher"); }}>Create a teacher account</button>
               <button onClick={() => navigateTo("/join", "student")}>Join with code</button>
+              <button onClick={openSpeakingPractice}>
+                <Mic size={18} aria-hidden="true" />
+                Speaking Practice
+              </button>
               <button className="nav-login" onClick={() => { setTeacherAuthMode("login"); navigateTo("/quiz-strike/teacher/home", "teacher"); }}>Teacher login</button>
             </>
           ) : <>
@@ -161,6 +171,10 @@ export default function App() {
           <button className={mode === "student" ? "active" : ""} onClick={() => navigateTo("/join", "student")}>
             <DoorOpen size={18} aria-hidden="true" />
             Join with code
+          </button>
+          <button onClick={openSpeakingPractice}>
+            <Mic size={18} aria-hidden="true" />
+            Speaking Practice
           </button>
           {teacher ? (
             <>

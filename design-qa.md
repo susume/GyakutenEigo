@@ -53,6 +53,48 @@ No remaining P0, P1, or P2 visual mismatches were found.
 
 final result: passed
 
+# Speaking Practice — Design QA (2026-08-31)
+
+## Visual truth and scope
+
+- Source reference: `C:\Users\admin\Downloads\Speaking Practice UI.png`.
+- Implementation capture: `C:\Users\admin\Documents\Quiz version CS 1 . 6\design-qa-assets\speaking-practice-desktop.jpg`.
+- The implementation uses the reference's core composition: branded header, iPad-like speaking surface, scenario card, AI partner, speech bubble, Useful English panel, microphone CTA, teacher creation preview, QR/join code, results summary, and feature strip.
+- The generated AI shop-assistant portrait is a local product asset at `C:\Users\admin\Documents\Quiz version CS 1 . 6\apps\web\public\assets\speaking\ai-shop-assistant.png`.
+
+## Viewports and states checked
+
+- `/speak` at CSS viewport 1448×1085: device and teacher rail align to the reference geometry; no horizontal overflow.
+- `/speak` at 1024×768, 820×1180, and 768×1024: responsive two-column/stacked layouts remain inside the viewport and the Useful English panel is not clipped.
+- `/speak/join/ABC123`: student join flow, scenario, role cards, target expressions, microphone explanation, and Start Speaking CTA render.
+- `/speak/teacher/create`: activity fields, six templates, target-expression editor, five rubric rows, and create action render.
+- `/speak/result/demo-participant`: student result summary, rubric scores, Japanese feedback, useful English, and retry action render.
+- `/speak/teacher/activity/demo-shopping/results`: teacher results table renders completion, score, support count, and participant data.
+
+## Interaction and regression checks
+
+- Mock speaking loop covers Ready → Listening → Thinking → AI Speaking → Ready, Help, Finish, and result navigation.
+- Silent microphone attempts now stop at an empty transcript, do not append a student turn, and receive retry guidance with a zero overall result instead of credit for mock words.
+- Microphone permission denial/unsupported-browser states have recovery copy; browser permission was not forced during QA.
+- Existing `/quiz-strike` and `/join` routes still render, and Speaking Practice styles are not present outside the speaking route.
+- Server tests cover teacher ownership, join-code validation, opaque student tokens, token authorization, help counts, turn idempotency, result access, and prompt-injection safe redirect.
+- No raw audio is persisted; structured turns and evaluations are stored by the in-memory MVP route state. Prisma schema and migration are included for the persistence boundary.
+- Pronunciation scoring is explicitly excluded because the MVP does not perform audio pronunciation analysis.
+
+## Verification
+
+- `npm run typecheck -w @quizstrike/shared`: passed.
+- `npm run typecheck -w @quizstrike/web`: passed.
+- `npm run typecheck -w @quizstrike/server`: passed after Prisma client generation.
+- Speaking API, navigation, and speaking-data tests: passed.
+- Prisma validation with the project datasource URL: passed.
+- Reference-sized browser geometry and responsive overflow checks: passed.
+- Supported Playwright E2E: 14/16 passed. Two unchanged QuizStrike classroom assertions failed on feedback timing/render waits; a targeted rerun reproduced both while logging WebSocket proxy resets. No Speaking Practice route was involved, and manual `/quiz-strike` plus `/join` checks passed.
+
+No actionable P0, P1, or P2 issue was found in the Speaking Practice visual/runtime QA.
+
+final result: passed
+
 # QuizStrike Teacher Workspace - Spectator Interaction Resilience QA
 
 ## Update

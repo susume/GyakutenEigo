@@ -4,6 +4,7 @@ import { normalizeRoutePath } from "./navigation";
 
 const QuizStrikeApp = lazy(() => import("./QuizStrikeAppEntry"));
 const NetworkDiagnosticsPage = lazy(() => import("./features/quizstrike/NetworkDiagnosticsPage"));
+const SpeakingPracticeApp = lazy(() => import("./features/speaking/SpeakingPracticeApp"));
 
 const loadingFallback = (
   <section className="app-loading-screen" aria-live="polite">
@@ -26,6 +27,9 @@ export default function BrowserApp() {
   }, []);
 
   if (pathname === "/join") return <StudentJoinScreen onJoined={openGame} />;
+  if (pathname === "/speak" || pathname.startsWith("/speak/")) {
+    return <Suspense fallback={<section className="app-loading-screen" aria-live="polite"><div className="panel form-panel"><p>Loading Speaking Practice…</p></div></section>}><SpeakingPracticeApp /></Suspense>;
+  }
   if (pathname === "/check" || pathname === "/diagnostics") {
     return <Suspense fallback={loadingFallback}><NetworkDiagnosticsPage /></Suspense>;
   }
