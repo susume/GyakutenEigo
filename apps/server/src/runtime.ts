@@ -265,10 +265,6 @@ const clientOrigins = resolveClientOrigins({
 });
 const corsOrigin = clientOrigins.length > 0 ? clientOrigins : true;
 
-if (isProduction && !databaseUrl) {
-  console.warn("DATABASE_URL is not configured; QuizStrike is running online with in-memory storage.");
-}
-
 if (config.trustProxy) {
   app.set("trust proxy", 1);
 }
@@ -2761,6 +2757,7 @@ registerSpeakingRoutes(app, {
   requireTeacher,
   now,
   id,
+  environment: config.environment,
   prisma,
   providers: createSpeakingProviders()
 });

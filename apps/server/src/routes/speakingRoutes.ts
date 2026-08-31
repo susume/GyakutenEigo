@@ -2,10 +2,13 @@ import express, { type Application, type NextFunction, type Request, type Respon
 import {
   DEFAULT_SPEAKING_RUBRIC,
   SPEAKING_LIMITS,
+  SPEAKING_PRACTICE_LANGUAGE,
   SpeakingCreateActivityInputSchema,
   SpeakingEvaluationSchema,
   SpeakingJoinInputSchema,
   SpeakingTurnInputSchema,
+  speakingActiveElapsedMs,
+  speakingFeedbackCopy,
   type SpeakingActivity,
   type SpeakingCreateActivityInput,
   type SpeakingEvaluation,
@@ -19,9 +22,8 @@ import { randomBytes, randomInt } from "node:crypto";
 import { PrismaClient } from "@prisma/client";
 import {
   createInMemorySpeakingState,
+  createSpeakingRepository,
   hashSpeakingToken,
-  InMemorySpeakingRepository,
-  PrismaSpeakingRepository,
   type InMemorySpeakingState,
   type SpeakingRepository
 } from "../speakingRepository.js";
@@ -44,6 +46,7 @@ export type SpeakingRouteDependencies = {
   requireTeacher: (req: Request, res: Response, next: NextFunction) => void;
   now: () => string;
   id: () => string;
+  environment?: string;
   state?: SpeakingRouteState;
   repository?: SpeakingRepository;
   prisma?: PrismaClient;
@@ -220,6 +223,29 @@ const initialGreeting = (activity: SpeakingActivity) => {
 
 const sessionPayload = (session: SpeakingSession) => ({ ...session });
 
+export const makeInsufficientEvidenceEvaluation = (activity: SpeakingActivity, participantId: string, createdAt: string): SpeakingEvaluation => {
+  const copy = speakingFeedbackCopy(activity.nativeLanguage);
+  const scores: Record<string, null> = {};
+  const evidence: Record<string, string> = {};
+  for (const criterion of activity.rubric.filter((item) => item.enabled)) {
+    scores[criterion.id] = null;
+    evidence[criterion.id] = copy.insufficientEvidenceReason;
+  }
+  return {
+    participantId,
+    language: activity.nativeLanguage,
+    assessmentStatus: "insufficient_evidence",
+    notScoredReason: copy.insufficientEvidenceReason,
+    scores,
+    evidence,
+    strengths: [copy.insufficientEvidenceStrength],
+    improvements: [copy.insufficientEvidenceImprovement],
+    usefulEnglish: [],
+    overallMessage: copy.insufficientEvidenceMessage,
+    createdAt
+  };
+};
+
 const allowRequest = (state: SpeakingRouteState, key: string, limit: number, nowMs = Date.now()) => {
   const current = state.requestWindows.get(key);
   if (!current || nowMs - current.startedAtMs >= 60_000) {
@@ -247,26 +273,37 @@ const parseAudioOrText = (req: Request) => {
   const audio = Buffer.isBuffer(req.body) ? req.body : undefined;
   const text = req.body && !audio && typeof req.body === "object" ? (req.body as { text?: unknown }).text : undefined;
   const speechHeader = req.header("X-Speaking-Audio-Activity")?.trim().toLowerCase();
+  const durationHeader = req.header("X-Speaking-Audio-Duration-Ms");
+  const durationHeaderValue = durationHeader === undefined ? undefined : Number(durationHeader);
   return {
     audio,
     text: typeof text === "string" ? text : undefined,
     mimeType: contentType || "application/octet-stream",
-    speechDetected: speechHeader === "true" ? true : speechHeader === "false" ? false : undefined
+    speechDetected: speechHeader === "true" ? true : speechHeader === "false" ? false : undefined,
+    audioDurationMs: durationHeaderValue !== undefined && Number.isFinite(durationHeaderValue) ? durationHeaderValue : undefined
   };
 };
 
 const supportedAudioMime = (mimeType: string) => mimeType === "audio/webm" || mimeType === "audio/mp4" || mimeType === "audio/ogg" || mimeType === "audio/wav" || mimeType === "audio/mpeg";
 
-const participantDeadline = (participant: SpeakingParticipant, activity: SpeakingActivity) => participant.startedAt ? Date.parse(participant.startedAt) + activity.durationSeconds * 1_000 : undefined;
+export const participantActiveElapsedMs = (participant: SpeakingParticipant, session: SpeakingSession, referenceTime: string) =>
+  speakingActiveElapsedMs(participant, session, referenceTime);
+
+export const participantHasSpeakingTime = (participant: SpeakingParticipant, session: SpeakingSession, activity: SpeakingActivity, referenceTime: string) =>
+  !participant.startedAt || participantActiveElapsedMs(participant, session, referenceTime) < activity.durationSeconds * 1_000;
 
 export const validateSpeakingEvaluation = (evaluation: SpeakingEvaluation, activity: SpeakingActivity, participantId: string) => {
   const parsed = SpeakingEvaluationSchema.safeParse(evaluation);
-  if (!parsed.success || parsed.data.participantId !== participantId) throw new Error("Evaluation provider returned invalid data.");
+  if (!parsed.success || parsed.data.participantId !== participantId || parsed.data.language !== activity.nativeLanguage) throw new Error("Evaluation provider returned invalid data.");
   const enabledIds = new Set(activity.rubric.filter((criterion) => criterion.enabled).map((criterion) => criterion.id));
   const scoreIds = Object.keys(parsed.data.scores);
   const evidenceIds = Object.keys(parsed.data.evidence);
   if (scoreIds.some((id) => !enabledIds.has(id)) || evidenceIds.some((id) => !enabledIds.has(id)) || scoreIds.some((id) => !evidenceIds.includes(id)) || [...enabledIds].some((id) => !scoreIds.includes(id))) throw new Error("Evaluation provider omitted or added rubric criteria.");
   if (scoreIds.some((id) => /pronunciation|accent|phoneme/i.test(id))) throw new Error("Pronunciation scoring is not supported.");
+  const hasNumericScore = Object.values(parsed.data.scores).some((score) => typeof score === "number");
+  if ((parsed.data.assessmentStatus === "insufficient_evidence" && hasNumericScore) || (parsed.data.assessmentStatus === "scored" && !hasNumericScore)) {
+    throw new Error("Evaluation provider returned an inconsistent assessment status.");
+  }
   return parsed.data;
 };
 
@@ -275,7 +312,7 @@ const unsupportedPronunciationCriterion = (criterion: { id: string; name: string
 
 export const registerSpeakingRoutes = (app: Application, deps: SpeakingRouteDependencies) => {
   const state = deps.state ?? createState();
-  const repository = deps.repository ?? (deps.prisma ? new PrismaSpeakingRepository(deps.prisma) : new InMemorySpeakingRepository(state));
+  const repository = deps.repository ?? createSpeakingRepository({ environment: deps.environment, prisma: deps.prisma, state });
   const defaults = deps.providers ?? createSpeakingProviders();
   const transcriber = deps.transcriber ?? defaults.transcription;
   const conversationProvider = deps.conversationProvider ?? defaults.conversation;
@@ -320,31 +357,56 @@ export const registerSpeakingRoutes = (app: Application, deps: SpeakingRouteDepe
   };
 
   const expireSessionIfNeeded = async (access: { session: SpeakingSession; activity: SpeakingActivity }) => {
-    if (access.session.status !== "expired" && Date.parse(access.session.expiresAt) <= Date.parse(deps.now())) {
-      const session = await repository.updateSession(access.session.id, { status: "expired", endedAt: deps.now() });
-      return session ?? { ...access.session, status: "expired" as const, endedAt: deps.now() };
+    const now = deps.now();
+    const latestAccess = await repository.getSession(access.session.id);
+    let current = latestAccess?.session ?? access.session;
+    if (!["ended", "expired"].includes(current.status) && Date.parse(current.expiresAt) <= Date.parse(now)) {
+      if (current.status === "paused" && current.pausedAt) {
+        current = await repository.finalizeSessionPause(current.id, now) ?? current;
+      }
+      const session = await repository.updateSession(current.id, { status: "expired", endedAt: now, pausedAt: null });
+      return session ?? { ...current, status: "expired" as const, endedAt: now, pausedAt: undefined };
     }
-    return access.session;
+    return current;
   };
 
   const finishParticipant = async (access: { session: SpeakingSession; activity: SpeakingActivity; participant: SpeakingParticipant }) => {
     const existing = await repository.getResult(access.participant.id);
-    if (existing?.evaluation) return existing.evaluation;
+    if (existing?.evaluation) {
+      if (existing.participant.status !== "completed") {
+        await repository.updateParticipant(access.participant.id, {
+          status: "completed",
+          finishedAt: existing.participant.finishedAt ?? existing.evaluation.createdAt,
+          helpPending: false
+        });
+      }
+      return existing.evaluation;
+    }
     const current = await repository.getParticipant(access.participant.id);
     if (!current || current.status === "evaluating") return undefined;
-    await repository.updateParticipant(access.participant.id, { status: "evaluating" });
+    const finishedAt = current.finishedAt ?? deps.now();
+    // Persist the participant's stop time before the provider call. A teacher
+    // can resume a paused session while evaluation is running, and pause
+    // finalization needs this timestamp to account only for the overlap.
+    await repository.updateParticipant(access.participant.id, { status: "evaluating", finishedAt });
     const turns = await repository.listTurns(access.participant.id);
     try {
-      const finishedAt = deps.now();
-      const evaluation = validateSpeakingEvaluation(await evaluationProvider.evaluate({
-        activity: access.activity,
-        turns,
-        participantId: access.participant.id,
-        timingMetadata: { startedAt: current.startedAt, finishedAt, durationSeconds: current.startedAt ? Math.max(0, (Date.parse(finishedAt) - Date.parse(current.startedAt)) / 1_000) : 0 },
-        helpMetadata: { helpCount: current.helpCount, helpedTurnCount: turns.filter((turn) => turn.usedHelp).length }
-      }), access.activity, access.participant.id);
+      const studentTurns = turns.filter((turn) => turn.speaker === "student" && turn.text.trim().length > 0);
+      const evaluation = validateSpeakingEvaluation(
+        studentTurns.length === 0
+          ? makeInsufficientEvidenceEvaluation(access.activity, access.participant.id, finishedAt)
+          : await evaluationProvider.evaluate({
+            activity: access.activity,
+            turns,
+            participantId: access.participant.id,
+            timingMetadata: { startedAt: current.startedAt, finishedAt, durationSeconds: participantActiveElapsedMs(current, access.session, finishedAt) / 1_000 },
+            helpMetadata: { helpCount: current.helpCount, helpedTurnCount: turns.filter((turn) => turn.usedHelp).length }
+          }),
+        access.activity,
+        access.participant.id
+      );
       await repository.saveEvaluation(access.participant.id, evaluation);
-      await repository.updateParticipant(access.participant.id, { status: "completed", finishedAt, helpPending: false });
+      await repository.updateParticipant(access.participant.id, { status: "completed", helpPending: false });
       return evaluation;
     } catch {
       await repository.updateParticipant(access.participant.id, { status: "error" });
@@ -372,6 +434,24 @@ export const registerSpeakingRoutes = (app: Application, deps: SpeakingRouteDepe
     }
     const activity = await repository.createActivity(req.user!.id, parsed.data, deps.id(), deps.now());
     res.status(201).json({ activity: publicActivity(activity) });
+  });
+
+  app.patch("/api/speaking/activities/:activityId", deps.requireTeacher, async (req: AuthedRequest, res) => {
+    const parsed = SpeakingCreateActivityInputSchema.safeParse(req.body);
+    if (!parsed.success) {
+      res.status(400).json({ error: `Check the activity details. ${formatError(parsed.error.issues)}` });
+      return;
+    }
+    if (parsed.data.rubric.some(unsupportedPronunciationCriterion)) {
+      res.status(400).json({ error: "Pronunciation, accent, and phoneme scoring are not supported by Speaking Practice." });
+      return;
+    }
+    const activity = await repository.updateActivity(req.user!.id, String(req.params.activityId), parsed.data, deps.now());
+    if (!activity) {
+      res.status(404).json({ error: "We couldn’t find that speaking activity." });
+      return;
+    }
+    res.json({ activity: publicActivity(activity) });
   });
 
   app.get("/api/speaking/activities/:activityId", deps.requireTeacher, async (req: AuthedRequest, res) => {
@@ -470,12 +550,15 @@ export const registerSpeakingRoutes = (app: Application, deps: SpeakingRouteDepe
       res.status(404).json({ error: "We couldn’t find that speaking session." });
       return;
     }
-    const current = await expireSessionIfNeeded(sessionAccess);
+    let current = await expireSessionIfNeeded(sessionAccess);
     if (current.status === "expired" && action !== "end") {
       res.status(410).json({ error: "This speaking session has expired." });
       return;
     }
     const now = deps.now();
+    if ((action === "resume" || action === "end") && current.status === "paused" && current.pausedAt) {
+      current = await repository.finalizeSessionPause(current.id, now) ?? current;
+    }
     const transitions: Record<typeof action, { from: string[]; status: "ready" | "active" | "paused" | "ended" }> = {
       start: { from: ["ready"], status: "active" },
       pause: { from: ["active"], status: "paused" },
@@ -510,7 +593,8 @@ export const registerSpeakingRoutes = (app: Application, deps: SpeakingRouteDepe
     }
     const session = await expireSessionIfNeeded(access);
     const turns = await repository.listTurns(access.participant.id);
-    res.json({ activity: publicActivity(access.activity), participant: publicParticipant(access.participant), session: sessionPayload(session), turns });
+    const participant = await repository.getParticipant(access.participant.id) ?? access.participant;
+    res.json({ activity: publicActivity(access.activity), participant: publicParticipant(participant), session: sessionPayload(session), turns });
   });
 
   app.post("/api/speaking/sessions/:sessionId/turn", async (req, res) => {
@@ -520,76 +604,90 @@ export const registerSpeakingRoutes = (app: Application, deps: SpeakingRouteDepe
       return;
     }
     return withTurnLock(access.participant.id, async () => {
-      const requestId = req.header("X-Speaking-Turn-Id")?.trim();
-      if (requestId && requestId.length <= 120) {
-        const previous = await repository.findTurnPair(access.participant.id, requestId);
-        if (previous?.aiTurn) {
-          res.json({ studentTurn: previous.studentTurn, aiTurn: previous.aiTurn, session: sessionPayload(access.session) });
-          return;
-        }
+      const rawRequestId = req.header("X-Speaking-Turn-Id")?.trim();
+      const requestId = rawRequestId && rawRequestId.length <= 120 ? rawRequestId : undefined;
+      const previous = requestId ? await repository.findTurnPair(access.participant.id, requestId) : undefined;
+      if (previous?.aiTurn) {
+        const latestSession = await repository.getSession(access.session.id);
+        res.json({ studentTurn: previous.studentTurn, aiTurn: previous.aiTurn, session: sessionPayload(latestSession?.session ?? access.session) });
+        return;
       }
       if (!allowRequest(state, `turn:${hashSpeakingToken(parseParticipantToken(req) ?? "")}`, 45)) {
         res.status(429).json({ error: "Please wait a moment before speaking again." });
         return;
       }
-      const currentSession = await expireSessionIfNeeded(access);
-      if (currentSession.status === "paused") {
+      let currentSession = await expireSessionIfNeeded(access);
+      if (!previous?.studentTurn && currentSession.status === "paused") {
         res.status(409).json({ error: "Your teacher paused the activity." });
         return;
       }
-      if (currentSession.status !== "active") {
+      if (!previous?.studentTurn && currentSession.status !== "active") {
         res.status(currentSession.status === "expired" || currentSession.status === "ended" ? 410 : 409).json({ error: currentSession.status === "ready" ? "Waiting for your teacher to start the activity." : "This speaking activity is no longer accepting turns." });
         return;
       }
-      if (access.participant.status === "completed") {
-        res.status(409).json({ error: "This speaking activity is already finished." });
-        return;
-      }
-      const currentParticipant = await repository.getParticipant(access.participant.id) ?? access.participant;
-      const startedAt = currentParticipant.startedAt ?? deps.now();
-      if (!currentParticipant.startedAt) await repository.startParticipant(currentParticipant.id, startedAt);
-      const deadline = participantDeadline({ ...currentParticipant, startedAt }, access.activity);
-      if (deadline !== undefined && Date.parse(deps.now()) >= deadline) {
-        res.status(409).json({ error: "Your speaking time is over. You can finish and view your result." });
-        return;
-      }
-      if (currentParticipant.status === "evaluating" || currentParticipant.status === "error") {
-        res.status(409).json({ error: "This speaking activity is finishing. Please try the result screen." });
-        return;
-      }
+      let currentParticipant = await repository.getParticipant(access.participant.id) ?? access.participant;
       const existingTurns = await repository.listTurns(currentParticipant.id);
-      if (existingTurns.length >= SPEAKING_LIMITS.maxTurns) {
-        res.status(409).json({ error: "This speaking activity has reached its turn limit. You can finish and view your result." });
-        return;
-      }
-      const parsed = parseAudioOrText(req);
-      if (parsed.audio && parsed.audio.length > SPEAKING_LIMITS.maxAudioBytes) {
-        res.status(413).json({ error: "That recording is too large. Please record a shorter answer." });
-        return;
-      }
-      if (parsed.audio && !supportedAudioMime(parsed.mimeType)) {
-        res.status(415).json({ error: "This browser recording format is not supported. Try Safari, Chrome, or a shorter recording." });
-        return;
-      }
-      const textInput = SpeakingTurnInputSchema.safeParse(parsed.text === undefined ? {} : { text: parsed.text });
-      if (!parsed.audio && (!allowTextInput || !textInput.success)) {
-        res.status(400).json({ error: "I couldn’t hear that clearly. Please try again." });
-        return;
-      }
-      let transcription: TranscriptionResult;
-      try {
-        transcription = await transcriber.transcribe({ audio: parsed.audio ?? Buffer.from(parsed.text ?? "", "utf8"), mimeType: parsed.audio ? parsed.mimeType : "text/plain", languageHint: access.activity.nativeLanguage, ...(parsed.speechDetected === undefined ? {} : { speechDetected: parsed.speechDetected }), ...(allowTextInput && textInput.success ? { text: textInput.data.text } : {}) });
-      } catch {
-        res.status(503).json({ error: "I couldn’t transcribe that recording. Please try again." });
-        return;
-      }
-      const studentText = transcription.text.trim().slice(0, SPEAKING_LIMITS.turnText);
-      if (!studentText) {
-        res.status(422).json({ error: "I couldn’t hear any speech. Please say a short sentence and try again." });
-        return;
-      }
-      let studentTurn = (requestId ? (await repository.findTurnPair(access.participant.id, requestId))?.studentTurn : undefined);
+      let studentTurn = previous?.studentTurn;
       if (!studentTurn) {
+        if (currentParticipant.status === "completed") {
+          res.status(409).json({ error: "This speaking activity is already finished." });
+          return;
+        }
+        const startedAt = currentParticipant.startedAt ?? deps.now();
+        if (!currentParticipant.startedAt) {
+          const startedParticipant = await repository.startParticipant(currentParticipant.id, startedAt);
+          currentParticipant = { ...currentParticipant, ...(startedParticipant ?? { startedAt }) };
+        }
+        if (!participantHasSpeakingTime(currentParticipant, currentSession, access.activity, deps.now())) {
+          res.status(409).json({ error: "Your speaking time is over. You can finish and view your result." });
+          return;
+        }
+        if (currentParticipant.status === "evaluating" || currentParticipant.status === "error") {
+          res.status(409).json({ error: "This speaking activity is finishing. Please try the result screen." });
+          return;
+        }
+        if (existingTurns.length >= SPEAKING_LIMITS.maxTurns) {
+          res.status(409).json({ error: "This speaking activity has reached its turn limit. You can finish and view your result." });
+          return;
+        }
+        const parsed = parseAudioOrText(req);
+        if (parsed.audio && parsed.audio.length > SPEAKING_LIMITS.maxAudioBytes) {
+          res.status(413).json({ error: "That recording is too large. Please record a shorter answer." });
+          return;
+        }
+        if (parsed.audio && !supportedAudioMime(parsed.mimeType)) {
+          res.status(415).json({ error: "This browser recording format is not supported. Try Safari, Chrome, or a shorter recording." });
+          return;
+        }
+        if (parsed.audio && parsed.audioDurationMs !== undefined && (!Number.isInteger(parsed.audioDurationMs) || parsed.audioDurationMs < 0 || parsed.audioDurationMs > SPEAKING_LIMITS.maxTurnSeconds * 1_000 + 2_000)) {
+          // This client value is advisory only. The byte limit and provider-side
+          // transcription remain the authoritative defenses; this catches only
+          // obviously malformed metadata without adding a media parser.
+          res.status(400).json({ error: "That recording duration is not valid. Please record a shorter answer." });
+          return;
+        }
+        const textInput = SpeakingTurnInputSchema.safeParse(parsed.text === undefined ? {} : { text: parsed.text });
+        if (!parsed.audio && (!allowTextInput || !textInput.success)) {
+          res.status(400).json({ error: "I couldn’t hear that clearly. Please try again." });
+          return;
+        }
+        let transcription: TranscriptionResult;
+        try {
+          transcription = await transcriber.transcribe({ audio: parsed.audio ?? Buffer.from(parsed.text ?? "", "utf8"), mimeType: parsed.audio ? parsed.mimeType : "text/plain", languageHint: SPEAKING_PRACTICE_LANGUAGE, ...(parsed.speechDetected === undefined ? {} : { speechDetected: parsed.speechDetected }), ...(allowTextInput && textInput.success ? { text: textInput.data.text } : {}) });
+        } catch {
+          res.status(503).json({ error: "I couldn’t transcribe that recording. Please try again." });
+          return;
+        }
+        currentSession = await expireSessionIfNeeded({ ...access, session: currentSession });
+        if (currentSession.status !== "active") {
+          res.status(currentSession.status === "expired" || currentSession.status === "ended" ? 410 : 409).json({ error: currentSession.status === "paused" ? "Your teacher paused the activity." : "This speaking activity is no longer accepting turns." });
+          return;
+        }
+        const studentText = transcription.text.trim().slice(0, SPEAKING_LIMITS.turnText);
+        if (!studentText) {
+          res.status(422).json({ error: "I couldn’t hear any speech. Please say a short sentence and try again." });
+          return;
+        }
         const turnCreatedAt = deps.now();
         studentTurn = await repository.appendTurn({
           id: deps.id(),
@@ -597,14 +695,15 @@ export const registerSpeakingRoutes = (app: Application, deps: SpeakingRouteDepe
           speaker: "student",
           text: studentText,
           createdAt: turnCreatedAt,
-           responseTimeMs: Math.max(0, Date.parse(turnCreatedAt) - Math.max(0, Date.parse(existingTurns.filter((turn) => turn.speaker === "ai").at(-1)?.createdAt ?? turnCreatedAt))),
+          ...(parsed.audio && parsed.audioDurationMs !== undefined ? { audioDurationMs: parsed.audioDurationMs } : {}),
+          responseTimeMs: Math.max(0, Date.parse(turnCreatedAt) - Math.max(0, Date.parse(existingTurns.filter((turn) => turn.speaker === "ai").at(-1)?.createdAt ?? turnCreatedAt))),
           usedHelp: currentParticipant.helpPending,
           ...(transcription.confidence === undefined ? {} : { transcriptionConfidence: transcription.confidence }),
-          ...(requestId && requestId.length <= 120 ? { requestId } : {})
+          ...(requestId ? { requestId } : {})
         });
         await repository.updateParticipant(currentParticipant.id, { status: "in_progress", helpPending: false });
       }
-      let aiTurn = requestId ? (await repository.findTurnPair(access.participant.id, requestId))?.aiTurn : undefined;
+      let aiTurn = previous?.aiTurn;
       if (!aiTurn) {
         const turns = await repository.listTurns(access.participant.id);
         let responseText: string;
@@ -620,7 +719,8 @@ export const registerSpeakingRoutes = (app: Application, deps: SpeakingRouteDepe
         }
         aiTurn = await repository.appendTurn({ id: deps.id(), participantId: access.participant.id, speaker: "ai", text: responseText, createdAt: deps.now() });
       }
-      res.json({ studentTurn, aiTurn, session: sessionPayload(currentSession) });
+      const latestSession = await repository.getSession(access.session.id);
+      res.json({ studentTurn, aiTurn, session: sessionPayload(latestSession?.session ?? currentSession) });
     });
   });
 
@@ -698,13 +798,14 @@ export const registerSpeakingRoutes = (app: Application, deps: SpeakingRouteDepe
       res.json({ activity: publicActivity(activity), sessions: currentSessions.map(sessionPayload), items: [] });
       return;
     }
-    const items = await repository.listResults(activity.id, sessionId, req.user!.id);
-    const session = items[0]?.session ?? (await repository.listSessions(activity.id, req.user!.id)).find((candidate) => candidate.id === sessionId);
-    if (!session) {
+    const sessionAccess = await repository.getSession(sessionId);
+    if (!sessionAccess || sessionAccess.activity.id !== activity.id || sessionAccess.activity.teacherId !== req.user!.id) {
       res.status(404).json({ error: "We couldn’t find that speaking session." });
       return;
     }
-    res.json({ activity: publicActivity(activity), session: sessionPayload(session), items: items.map((item) => ({ participant: publicParticipant(item.participant), status: item.participant.status, durationSeconds: item.participant.startedAt ? Math.max(0, Math.round(((Date.parse(item.participant.finishedAt ?? deps.now()) - Date.parse(item.participant.startedAt)) / 1_000))) : 0, overallScore: item.overallScore, helpCount: item.participant.helpCount, evaluation: item.evaluation })) });
+    const session = await expireSessionIfNeeded(sessionAccess);
+    const items = await repository.listResults(activity.id, sessionId, req.user!.id);
+    res.json({ activity: publicActivity(activity), session: sessionPayload(session), items: items.map((item) => ({ participant: publicParticipant(item.participant), status: item.participant.status, durationSeconds: item.participant.startedAt ? Math.max(0, Math.round(participantActiveElapsedMs(item.participant, session, item.participant.finishedAt ?? session.endedAt ?? deps.now()) / 1_000)) : 0, overallScore: item.overallScore, helpCount: item.participant.helpCount, evaluation: item.evaluation })) });
   });
 
   app.get("/api/speaking/sessions/:sessionId/results", deps.requireTeacher, async (req: AuthedRequest, res) => {
@@ -713,8 +814,9 @@ export const registerSpeakingRoutes = (app: Application, deps: SpeakingRouteDepe
       res.status(404).json({ error: "We couldn’t find that speaking session." });
       return;
     }
+    const session = await expireSessionIfNeeded(sessionAccess);
     const items = await repository.listResults(sessionAccess.activity.id, sessionAccess.session.id, req.user!.id);
-    res.json({ activity: publicActivity(sessionAccess.activity), session: sessionPayload(sessionAccess.session), items: items.map((item) => ({ participant: publicParticipant(item.participant), status: item.participant.status, durationSeconds: item.participant.startedAt ? Math.max(0, Math.round(((Date.parse(item.participant.finishedAt ?? deps.now()) - Date.parse(item.participant.startedAt)) / 1_000))) : 0, overallScore: item.overallScore, helpCount: item.participant.helpCount, evaluation: item.evaluation })) });
+    res.json({ activity: publicActivity(sessionAccess.activity), session: sessionPayload(session), items: items.map((item) => ({ participant: publicParticipant(item.participant), status: item.participant.status, durationSeconds: item.participant.startedAt ? Math.max(0, Math.round(participantActiveElapsedMs(item.participant, session, item.participant.finishedAt ?? session.endedAt ?? deps.now()) / 1_000)) : 0, overallScore: item.overallScore, helpCount: item.participant.helpCount, evaluation: item.evaluation })) });
   });
 
   // A result URL is never sufficient by itself. Student access still requires

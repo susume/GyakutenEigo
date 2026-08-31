@@ -53,6 +53,10 @@ export type SpeakingParticipantStatus = (typeof SPEAKING_PARTICIPANT_STATUSES)[n
 export const SPEAKING_SESSION_STATUSES = ["ready", "active", "paused", "ended", "expired"] as const;
 export type SpeakingSessionStatus = (typeof SPEAKING_SESSION_STATUSES)[number];
 
+export const SPEAKING_PRACTICE_LANGUAGE = "en" as const;
+export const SPEAKING_ASSESSMENT_STATUSES = ["scored", "insufficient_evidence"] as const;
+export type SpeakingAssessmentStatus = (typeof SPEAKING_ASSESSMENT_STATUSES)[number];
+
 export interface SpeakingRubricCriterion {
   id: string;
   name: string;
@@ -121,6 +125,8 @@ export interface SpeakingParticipant {
   anonymousToken?: string;
   startedAt?: string;
   finishedAt?: string;
+  /** Milliseconds spent in finalized teacher pauses after this participant started. */
+  pausedDurationMs: number;
   status: SpeakingParticipantStatus;
   helpCount: number;
 }
@@ -154,7 +160,9 @@ export interface SpeakingTurn {
 export interface SpeakingEvaluation {
   participantId: string;
   language: SpeakingNativeLanguage;
-  scores: Record<string, number>;
+  assessmentStatus: SpeakingAssessmentStatus;
+  notScoredReason?: string;
+  scores: Record<string, number | null>;
   evidence: Record<string, string>;
   strengths: string[];
   improvements: string[];
@@ -221,6 +229,13 @@ export const SpeakingCreateActivityInputSchema = z.object({
   identifierMode: z.enum(SPEAKING_IDENTIFIER_MODES),
   targetExpressions: z.array(z.string().trim().min(1).max(SPEAKING_LIMITS.expression)).max(SPEAKING_LIMITS.expressions),
   rubric: z.array(SpeakingRubricCriterionSchema).min(1).max(SPEAKING_LIMITS.rubricCriteria)
+}).superRefine((input, context) => {
+  if (!input.rubric.some((criterion) => criterion.enabled)) {
+    context.addIssue({ code: "custom", message: "At least one rubric criterion must be enabled.", path: ["rubric"] });
+  }
+  if (new Set(input.rubric.map((criterion) => criterion.id)).size !== input.rubric.length) {
+    context.addIssue({ code: "custom", message: "Rubric criterion IDs must be unique.", path: ["rubric"] });
+  }
 });
 
 export const SpeakingJoinInputSchema = z.object({
@@ -237,7 +252,9 @@ export const SpeakingSessionStatusSchema = z.enum(SPEAKING_SESSION_STATUSES);
 export const SpeakingEvaluationSchema = z.object({
   participantId: z.string().min(1),
   language: z.enum(SPEAKING_NATIVE_LANGUAGES),
-  scores: z.record(z.string(), z.number().int().min(1).max(4)),
+  assessmentStatus: z.enum(SPEAKING_ASSESSMENT_STATUSES).default("scored"),
+  notScoredReason: z.string().max(500).optional(),
+  scores: z.record(z.string(), z.number().int().min(1).max(4).nullable()),
   evidence: z.record(z.string(), z.string().max(500)),
   strengths: z.array(z.string().max(300)).max(5),
   improvements: z.array(z.string().max(300)).max(5),
@@ -245,3 +262,126 @@ export const SpeakingEvaluationSchema = z.object({
   overallMessage: z.string().max(500),
   createdAt: z.string().min(1)
 });
+
+export const speakingActiveElapsedMs = (
+  participant: Pick<SpeakingParticipant, "startedAt" | "pausedDurationMs">,
+  session: Pick<SpeakingSession, "status" | "pausedAt">,
+  referenceTime: string | number | Date
+) => {
+  if (!participant.startedAt) return 0;
+  const startedAtMs = Date.parse(participant.startedAt);
+  const referenceTimeMs = referenceTime instanceof Date
+    ? referenceTime.getTime()
+    : typeof referenceTime === "number" ? referenceTime : Date.parse(referenceTime);
+  if (!Number.isFinite(startedAtMs) || !Number.isFinite(referenceTimeMs)) return 0;
+  const finalizedPauseMs = Math.max(0, participant.pausedDurationMs ?? 0);
+  const pausedAtMs = session.pausedAt ? Date.parse(session.pausedAt) : Number.NaN;
+  const currentPauseMs = session.status === "paused" && Number.isFinite(pausedAtMs)
+    ? Math.max(0, referenceTimeMs - pausedAtMs)
+    : 0;
+  return Math.max(0, referenceTimeMs - startedAtMs - finalizedPauseMs - currentPauseMs);
+};
+
+export const speakingRemainingSeconds = (
+  participant: Pick<SpeakingParticipant, "startedAt" | "pausedDurationMs">,
+  session: Pick<SpeakingSession, "status" | "pausedAt">,
+  durationSeconds: number,
+  referenceTime: string | number | Date
+) => Math.max(0, Math.floor((durationSeconds * 1_000 - speakingActiveElapsedMs(participant, session, referenceTime)) / 1_000));
+
+export const speakingOverallScore = (evaluation?: Pick<SpeakingEvaluation, "scores">) => {
+  const scoredValues = evaluation ? Object.values(evaluation.scores).filter((score): score is number => typeof score === "number") : [];
+  return scoredValues.length
+    ? Math.round((scoredValues.reduce((sum, score) => sum + score, 0) / (scoredValues.length * 4)) * 100)
+    : undefined;
+};
+
+export type SpeakingFeedbackCopy = {
+  scoredHeadline: string;
+  scoredSummary: string;
+  insufficientEvidenceHeadline: string;
+  insufficientEvidenceMessage: string;
+  insufficientEvidenceReason: string;
+  insufficientEvidenceStrength: string;
+  insufficientEvidenceImprovement: string;
+  notScored: string;
+  notScoredDetail: string;
+  evaluationUnavailable: string;
+  evaluationUnavailableMessage: string;
+  evaluationDetail: string;
+  resultHeading: string;
+  whatWentWell: string;
+  tryNext: string;
+  usefulEnglish: string;
+  youSaid: string;
+  tryLabel: string;
+  speakingTurns: string;
+  transcript: string;
+  conversationEvidence: string;
+  aiLabel: string;
+  studentLabel: string;
+  helpHint: string;
+  helpEncouragement: string;
+  noSpeechDetected: string;
+  noUsefulEnglish: string;
+};
+
+export const speakingFeedbackCopy = (language: SpeakingNativeLanguage): SpeakingFeedbackCopy => language === "en"
+  ? {
+    scoredHeadline: "Great work!",
+    scoredSummary: "You kept trying to communicate and move the conversation forward.",
+    insufficientEvidenceHeadline: "Not enough speech to score this attempt.",
+    insufficientEvidenceMessage: "There wasn't enough speech to score this attempt. Try saying one short sentence and try again.",
+    insufficientEvidenceReason: "Not enough speaking evidence.",
+    insufficientEvidenceStrength: "You can try the speaking activity again.",
+    insufficientEvidenceImprovement: "Try saying one short sentence.",
+    notScored: "Not scored",
+    notScoredDetail: "Not enough speaking evidence.",
+    evaluationUnavailable: "Evaluation unavailable",
+    evaluationUnavailableMessage: "Your transcript is saved, but the evaluation provider did not return a result. Please ask your teacher to try again.",
+    evaluationDetail: "Evaluation detail",
+    resultHeading: "Your speaking result",
+    whatWentWell: "What You Did Well",
+    tryNext: "Try This Next Time",
+    usefulEnglish: "Useful English",
+    youSaid: "You said",
+    tryLabel: "Try",
+    speakingTurns: "speaking turns",
+    transcript: "Transcript",
+    conversationEvidence: "Conversation evidence",
+    aiLabel: "AI",
+    studentLabel: "Student",
+    helpHint: "Use one short sentence, then ask the other person a question.",
+    helpEncouragement: "It's okay to use your own words. Short, slow sentences can still communicate clearly.",
+    noSpeechDetected: "No speech was detected in this attempt.",
+    noUsefulEnglish: "No alternative phrase was needed for this attempt."
+  }
+  : {
+    scoredHeadline: "よくできました！",
+    scoredSummary: "まちがいを気にしすぎず、会話を続けられました。",
+    insufficientEvidenceHeadline: "今回は評価できるだけの英語を聞くことができませんでした。",
+    insufficientEvidenceMessage: "今回は評価できるだけの英語を聞くことができませんでした。短い文を1つ話して、もう一度チャレンジしてみましょう。",
+    insufficientEvidenceReason: "評価できる発話が十分にありません。",
+    insufficientEvidenceStrength: "もう一度話す練習にチャレンジできます。",
+    insufficientEvidenceImprovement: "短い英語を1文話してみましょう。",
+    notScored: "評価なし",
+    notScoredDetail: "評価できる発話が十分にありません。",
+    evaluationUnavailable: "評価を準備できませんでした",
+    evaluationUnavailableMessage: "会話の記録は保存されていますが、評価を準備できませんでした。先生にもう一度試してもらいましょう。",
+    evaluationDetail: "評価の詳細",
+    resultHeading: "今回の結果",
+    whatWentWell: "よくできたこと",
+    tryNext: "次はこれを試そう",
+    usefulEnglish: "役立つ英語",
+    youSaid: "あなたの表現",
+    tryLabel: "言い換え",
+    speakingTurns: "発話",
+    transcript: "会話記録",
+    conversationEvidence: "会話の記録",
+    aiLabel: "AI",
+    studentLabel: "生徒",
+    helpHint: "相手の質問に、短い英語で答えてみよう。",
+    helpEncouragement: "自分の言葉で大丈夫です。短い文でも、ゆっくりでも伝わります。",
+    noSpeechDetected: "声が聞こえなかったため、会話は始まりませんでした。",
+    noUsefulEnglish: "今回は言い換えの提案はありません。"
+  };

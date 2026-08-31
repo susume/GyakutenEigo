@@ -2,6 +2,7 @@ import { createHash } from "node:crypto";
 import { Prisma, PrismaClient } from "@prisma/client";
 import {
   SPEAKING_LIMITS,
+  speakingOverallScore,
   type SpeakingActivity,
   type SpeakingCreateActivityInput,
   type SpeakingEvaluation,
@@ -65,6 +66,7 @@ export interface SpeakingRepository {
   getActivity(id: string): Promise<SpeakingActivity | undefined>;
   getOwnedActivity(id: string, teacherId: string): Promise<SpeakingActivity | undefined>;
   createActivity(teacherId: string, input: SpeakingCreateActivityInput, id: string, now: string): Promise<SpeakingActivity>;
+  updateActivity(teacherId: string, activityId: string, input: SpeakingCreateActivityInput, now: string): Promise<SpeakingActivity | undefined>;
   isJoinCodeTaken(joinCode: string): Promise<boolean>;
   createSession(input: {
     id: string;
@@ -88,6 +90,8 @@ export interface SpeakingRepository {
   startParticipant(participantId: string, startedAt: string): Promise<SpeakingParticipant | undefined>;
   updateParticipant(participantId: string, patch: { status?: SpeakingParticipantStatus; finishedAt?: string | null; helpPending?: boolean; helpCount?: number }): Promise<SpeakingParticipant | undefined>;
   updateSession(sessionId: string, patch: { status?: SpeakingSessionStatus; startedAt?: string | null; pausedAt?: string | null; endedAt?: string | null }): Promise<SpeakingSession | undefined>;
+  /** Finalize a currently open pause and add its duration to affected participants. */
+  finalizeSessionPause(sessionId: string, pausedUntil: string): Promise<SpeakingSession | undefined>;
   listTurns(participantId: string): Promise<SpeakingTurn[]>;
   findTurnPair(participantId: string, requestId: string): Promise<SpeakingTurnPair | undefined>;
   appendTurn(input: Omit<SpeakingTurn, "id"> & { id: string; requestId?: string }): Promise<SpeakingTurn>;
@@ -178,7 +182,9 @@ const normalizeActivityInput = (input: SpeakingCreateActivityInput, id: string, 
   status: "ready",
   identifierMode: input.identifierMode,
   targetExpressions: input.targetExpressions.map((expression) => expression.trim().slice(0, SPEAKING_LIMITS.expression)).filter(Boolean).slice(0, SPEAKING_LIMITS.expressions),
-  rubric: input.rubric.filter((criterion) => criterion.enabled).slice(0, SPEAKING_LIMITS.rubricCriteria).map((criterion) => ({ ...criterion })),
+  // Persist the complete teacher configuration. Evaluation filters enabled
+  // criteria later, while historical session snapshots retain this exact list.
+  rubric: input.rubric.slice(0, SPEAKING_LIMITS.rubricCriteria).map((criterion) => ({ ...criterion })),
   createdAt: now,
   updatedAt: now
 });
@@ -195,6 +201,7 @@ const participantFromInput = (input: {
   sessionId: input.session.id,
   ...(input.displayIdentifier ? { displayIdentifier: input.displayIdentifier } : {}),
   startedAt: undefined,
+  pausedDurationMs: 0,
   status: "joined",
   helpCount: 0,
   tokenHash: input.tokenHash,
@@ -223,6 +230,15 @@ export class InMemorySpeakingRepository implements SpeakingRepository {
   async createActivity(teacherId: string, input: SpeakingCreateActivityInput, id: string, now: string) {
     const activity = normalizeActivityInput(input, id, teacherId, now);
     this.state.activities.set(id, activity);
+    return cloneActivity(activity);
+  }
+
+  async updateActivity(teacherId: string, activityId: string, input: SpeakingCreateActivityInput, now: string) {
+    const current = this.state.activities.get(activityId);
+    if (!current || current.teacherId !== teacherId) return undefined;
+    const normalized = normalizeActivityInput(input, activityId, teacherId, now);
+    const activity = { ...normalized, status: current.status, createdAt: current.createdAt };
+    this.state.activities.set(activityId, activity);
     return cloneActivity(activity);
   }
 
@@ -310,6 +326,28 @@ export class InMemorySpeakingRepository implements SpeakingRepository {
     return cloneSession(session);
   }
 
+  async finalizeSessionPause(sessionId: string, pausedUntil: string) {
+    const session = this.state.sessions.get(sessionId);
+    if (!session) return undefined;
+    if (session.pausedAt) {
+      const pauseStartedAtMs = Date.parse(session.pausedAt);
+      const pauseEndedAtMs = Date.parse(pausedUntil);
+      if (Number.isFinite(pauseStartedAtMs) && Number.isFinite(pauseEndedAtMs)) {
+        for (const participant of this.state.participants.values()) {
+          if (participant.sessionId !== sessionId || !participant.startedAt) continue;
+          const participantStartedAtMs = Date.parse(participant.startedAt);
+          const participantFinishedAtMs = participant.finishedAt ? Date.parse(participant.finishedAt) : pauseEndedAtMs;
+          const overlapStartedAtMs = Math.max(pauseStartedAtMs, participantStartedAtMs);
+          const overlapEndedAtMs = Math.min(pauseEndedAtMs, participantFinishedAtMs);
+          const pausedDurationMs = Math.max(0, overlapEndedAtMs - overlapStartedAtMs);
+          if (pausedDurationMs > 0) participant.pausedDurationMs = (participant.pausedDurationMs ?? 0) + pausedDurationMs;
+        }
+      }
+      session.pausedAt = undefined;
+    }
+    return cloneSession(session);
+  }
+
   async listTurns(participantId: string) {
     const participant = this.state.participants.get(participantId);
     const session = participant ? this.state.sessions.get(participant.sessionId!) : undefined;
@@ -363,8 +401,7 @@ export class InMemorySpeakingRepository implements SpeakingRepository {
       .map((participant) => {
         const turns = session.turns.filter((turn) => turn.participantId === participant.id).map((turn) => ({ ...turn }));
         const evaluation = session.evaluations.get(participant.id);
-        const scoreValues = evaluation ? Object.values(evaluation.scores) : [];
-        const overallScore = scoreValues.length ? Math.round((scoreValues.reduce((sum, value) => sum + value, 0) / (scoreValues.length * 4)) * 100) : undefined;
+        const overallScore = speakingOverallScore(evaluation);
         return { session: cloneSession(session), participant: participantPublic(participant), activity: sessionActivity, turns, ...(evaluation ? { evaluation } : {}), ...(overallScore === undefined ? {} : { overallScore }) };
       });
   }
@@ -442,13 +479,14 @@ const toSession = (row: Pick<PrismaSession, "id" | "activityId" | "joinCode" | "
   expiresAt: row.expiresAt.toISOString()
 });
 
-const toParticipant = (row: { id: string; activityId: string; sessionId: string; displayIdentifier: string | null; startedAt: Date | null; finishedAt: Date | null; status: string; helpCount: number }): SpeakingParticipant => ({
+const toParticipant = (row: { id: string; activityId: string; sessionId: string; displayIdentifier: string | null; startedAt: Date | null; finishedAt: Date | null; pausedDurationMs: number; status: string; helpCount: number }): SpeakingParticipant => ({
   id: row.id,
   activityId: row.activityId,
   sessionId: row.sessionId,
   ...(row.displayIdentifier ? { displayIdentifier: row.displayIdentifier } : {}),
   ...(row.startedAt ? { startedAt: row.startedAt.toISOString() } : {}),
   ...(row.finishedAt ? { finishedAt: row.finishedAt.toISOString() } : {}),
+  pausedDurationMs: Math.max(0, row.pausedDurationMs ?? 0),
   status: row.status as SpeakingParticipant["status"],
   helpCount: row.helpCount
 });
@@ -469,7 +507,8 @@ const toTurn = (row: { id: string; participantId: string; speaker: string; text:
 const toEvaluation = (row: { participantId: string; language: string; scoresJson: Prisma.JsonValue; evidenceJson: Prisma.JsonValue; strengthsJson: Prisma.JsonValue; improvementsJson: Prisma.JsonValue; usefulEnglishJson: Prisma.JsonValue; overallMessage: string; createdAt: Date }): SpeakingEvaluation => ({
   participantId: row.participantId,
   language: row.language as SpeakingEvaluation["language"],
-  scores: objectFromJson(row.scoresJson) as Record<string, number>,
+  assessmentStatus: Object.values(objectFromJson(row.scoresJson)).some((value) => typeof value === "number") ? "scored" : "insufficient_evidence",
+  scores: Object.fromEntries(Object.entries(objectFromJson(row.scoresJson)).map(([key, value]) => [key, typeof value === "number" ? value : null])) as Record<string, number | null>,
   evidence: objectFromJson(row.evidenceJson) as Record<string, string>,
   strengths: Array.isArray(row.strengthsJson) ? row.strengthsJson.filter((item): item is string => typeof item === "string") : [],
   improvements: Array.isArray(row.improvementsJson) ? row.improvementsJson.filter((item): item is string => typeof item === "string") : [],
@@ -533,6 +572,33 @@ export class PrismaSpeakingRepository implements SpeakingRepository {
     return toActivity(row);
   }
 
+  async updateActivity(teacherId: string, activityId: string, input: SpeakingCreateActivityInput, now: string) {
+    const normalized = normalizeActivityInput(input, activityId, teacherId, now);
+    const row = await this.prisma.$transaction(async (transaction) => {
+      const owned = await transaction.speakingActivity.findFirst({ where: { id: activityId, teacherId }, select: { id: true, status: true, createdAt: true } });
+      if (!owned) return undefined;
+      await transaction.speakingRubric.deleteMany({ where: { activityId } });
+      return transaction.speakingActivity.update({
+        where: { id: activityId },
+        data: {
+          title: normalized.title,
+          scenario: normalized.scenario,
+          aiRole: normalized.aiRole,
+          studentRole: normalized.studentRole,
+          level: normalized.level,
+          difficulty: normalized.difficulty,
+          nativeLanguage: normalized.nativeLanguage,
+          durationSeconds: normalized.durationSeconds,
+          identifierMode: normalized.identifierMode,
+          targetExpressionsJson: normalized.targetExpressions as Prisma.InputJsonValue,
+          rubric: { create: normalized.rubric.map((criterion, position) => ({ criterionId: criterion.id, name: criterion.name, description: criterion.description, enabled: criterion.enabled, position })) }
+        },
+        include: activityInclude
+      });
+    });
+    return row ? toActivity(row) : undefined;
+  }
+
   async isJoinCodeTaken(joinCode: string) {
     return Boolean(await this.prisma.speakingSession.findUnique({ where: { joinCode }, select: { id: true } }));
   }
@@ -580,6 +646,7 @@ export class PrismaSpeakingRepository implements SpeakingRepository {
         ...(input.displayIdentifier ? { displayIdentifier: input.displayIdentifier } : {}),
         anonymousTokenHash: input.tokenHash,
         startedAt: null,
+        pausedDurationMs: 0,
         status: "joined",
         helpCount: 0,
         helpPending: false
@@ -628,6 +695,46 @@ export class PrismaSpeakingRepository implements SpeakingRepository {
       ...(patch.endedAt !== undefined ? { endedAt: patch.endedAt ? new Date(patch.endedAt) : null } : {})
     } });
     return toSession(row);
+  }
+
+  async finalizeSessionPause(sessionId: string, pausedUntil: string) {
+    const row = await this.prisma.$transaction(async (transaction) => {
+      const current = await transaction.speakingSession.findUnique({ where: { id: sessionId }, select: { pausedAt: true } });
+      if (!current) return undefined;
+      if (current.pausedAt) {
+        const pauseStartedAtMs = current.pausedAt.getTime();
+        const pauseEndedAtMs = Date.parse(pausedUntil);
+        const claimed = await transaction.speakingSession.updateMany({
+          where: { id: sessionId, pausedAt: current.pausedAt },
+          data: { pausedAt: null }
+        });
+        if (claimed.count === 0) return transaction.speakingSession.findUnique({ where: { id: sessionId } });
+        if (Number.isFinite(pauseEndedAtMs)) {
+          const participants = await transaction.speakingParticipant.findMany({
+            where: {
+              sessionId,
+              startedAt: { not: null },
+              OR: [{ finishedAt: null }, { finishedAt: { gt: current.pausedAt } }]
+            },
+            select: { id: true, startedAt: true, finishedAt: true }
+          });
+          for (const participant of participants) {
+            const overlapStartedAtMs = Math.max(pauseStartedAtMs, participant.startedAt!.getTime());
+            const overlapEndedAtMs = Math.min(pauseEndedAtMs, participant.finishedAt?.getTime() ?? pauseEndedAtMs);
+            const pausedDurationMs = Math.max(0, overlapEndedAtMs - overlapStartedAtMs);
+            if (pausedDurationMs > 0) {
+              await transaction.speakingParticipant.update({
+                where: { id: participant.id },
+                data: { pausedDurationMs: { increment: pausedDurationMs } }
+              });
+            }
+          }
+        }
+        return transaction.speakingSession.findUnique({ where: { id: sessionId } });
+      }
+      return transaction.speakingSession.findUnique({ where: { id: sessionId } });
+    });
+    return row ? toSession(row) : undefined;
   }
 
   async listTurns(participantId: string) {
@@ -707,9 +814,23 @@ export class PrismaSpeakingRepository implements SpeakingRepository {
       const activity = activityFromSnapshot(accessActivity, snapshotFromJson(row.session.activitySnapshotJson, accessActivity));
       const turns = row.turns.sort((a, b) => a.createdAt.getTime() - b.createdAt.getTime()).map(toTurn);
       const evaluation = row.evaluation ? toEvaluation(row.evaluation) : undefined;
-      const scoreValues = evaluation ? Object.values(evaluation.scores) : [];
-      const overallScore = scoreValues.length ? Math.round((scoreValues.reduce((sum, value) => sum + value, 0) / (scoreValues.length * 4)) * 100) : undefined;
+      const overallScore = speakingOverallScore(evaluation);
       return { session: toSession(row.session), participant: toParticipant(row), activity, turns, ...(evaluation ? { evaluation } : {}), ...(overallScore === undefined ? {} : { overallScore }) };
     });
   }
 }
+
+export const createSpeakingRepository = ({
+  environment = process.env.NODE_ENV ?? "development",
+  prisma,
+  state
+}: {
+  environment?: string;
+  prisma?: PrismaClient;
+  state?: InMemorySpeakingState;
+} = {}): SpeakingRepository => {
+  if (environment.trim().toLowerCase() === "production" && !prisma) {
+    throw new Error("Speaking Practice requires a durable Prisma database in production. Set DATABASE_URL before starting the server.");
+  }
+  return prisma ? new PrismaSpeakingRepository(prisma) : new InMemorySpeakingRepository(state);
+};

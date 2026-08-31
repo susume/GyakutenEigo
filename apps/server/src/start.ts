@@ -16,7 +16,7 @@ if (databaseUrl) {
   if (migration.error || migration.status !== 0) {
     process.exit(migration.status ?? 1);
   }
-} else {
+} else if (process.env.NODE_ENV !== "production") {
   console.warn("DATABASE_URL is not configured; starting QuizStrike with in-memory storage.");
 }
 

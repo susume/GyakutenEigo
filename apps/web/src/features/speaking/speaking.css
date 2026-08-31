@@ -2392,7 +2392,18 @@ body[data-speaking="true"] {
 }
 
 .speaking-share-card-heading .speaking-icon-button {
+  width: auto;
+  margin-left: auto;
+  padding: 0 4px !important;
   color: var(--speaking-blue);
+}
+
+.speaking-share-card-heading .speaking-icon-button::after {
+  content: "Edit activity";
+}
+
+.speaking-edit-label {
+  display: none;
 }
 
 .speaking-share-code-card {

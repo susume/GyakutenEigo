@@ -360,6 +360,7 @@ export const speakingApi = {
   templates: () => api("/api/speaking/templates"),
   activities: () => api("/api/speaking/activities"),
   createActivity: (body: SpeakingCreateActivityInput) => api("/api/speaking/activities", { method: "POST", body: JSON.stringify(body) }),
+  updateActivity: (id: string, body: SpeakingCreateActivityInput) => api(`/api/speaking/activities/${encodeURIComponent(id)}`, { method: "PATCH", body: JSON.stringify(body) }),
   activity: (id: string) => api(`/api/speaking/activities/${encodeURIComponent(id)}`),
   sessions: (activityId: string) => api(`/api/speaking/activities/${encodeURIComponent(activityId)}/sessions`),
   launchSession: (activityId: string) => api(`/api/speaking/activities/${encodeURIComponent(activityId)}/sessions`, { method: "POST" }),
@@ -370,10 +371,10 @@ export const speakingApi = {
   resumeSession: (sessionId: string) => api(`/api/speaking/sessions/${encodeURIComponent(sessionId)}/resume`, { method: "POST" }),
   endSession: (sessionId: string) => api(`/api/speaking/sessions/${encodeURIComponent(sessionId)}/end`, { method: "POST" }),
   session: (sessionId: string, token: string) => api(`/api/speaking/sessions/${encodeURIComponent(sessionId)}`, { headers: speakingHeaders(token) }),
-  turn: (sessionId: string, token: string, body: { text?: string; audio?: Blob; requestId?: string; speechDetected?: boolean }) => api(`/api/speaking/sessions/${encodeURIComponent(sessionId)}/turn`, {
+  turn: (sessionId: string, token: string, body: { text?: string; audio?: Blob; requestId?: string; speechDetected?: boolean; audioDurationMs?: number }) => api(`/api/speaking/sessions/${encodeURIComponent(sessionId)}/turn`, {
     method: "POST",
     headers: body.audio
-      ? { ...speakingHeaders(token), "Content-Type": body.audio.type || "audio/webm", ...(body.requestId ? { "X-Speaking-Turn-Id": body.requestId } : {}), ...(body.speechDetected === undefined ? {} : { "X-Speaking-Audio-Activity": String(body.speechDetected) }) }
+      ? { ...speakingHeaders(token), "Content-Type": body.audio.type || "audio/webm", ...(body.requestId ? { "X-Speaking-Turn-Id": body.requestId } : {}), ...(body.speechDetected === undefined ? {} : { "X-Speaking-Audio-Activity": String(body.speechDetected) }), ...(body.audioDurationMs === undefined ? {} : { "X-Speaking-Audio-Duration-Ms": String(body.audioDurationMs) }) }
       : { ...speakingHeaders(token), ...(body.requestId ? { "X-Speaking-Turn-Id": body.requestId } : {}) },
     body: body.audio ? body.audio : JSON.stringify({ text: body.text }),
   }),

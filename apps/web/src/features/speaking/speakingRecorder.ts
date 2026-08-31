@@ -11,6 +11,42 @@ export type SpeakingAudioActivityMonitor = {
   dispose: () => void;
 };
 
+export type SpeakingAudioCapture = {
+  recorder: MediaRecorder;
+  stream: MediaStream;
+  timeoutId: number;
+  activityMonitor: SpeakingAudioActivityMonitor;
+  requestId: string;
+  startedAtMs: number;
+  submitOnStop: boolean;
+  resourcesDisposed?: boolean;
+};
+
+const clearCaptureResources = (capture: SpeakingAudioCapture) => {
+  if (capture.resourcesDisposed) return;
+  capture.resourcesDisposed = true;
+  globalThis.clearTimeout(capture.timeoutId);
+  capture.activityMonitor.dispose();
+  capture.stream.getTracks().forEach((track) => track.stop());
+};
+
+/** Stop a user-ended recording and let its onstop handler submit the blob. */
+export const stopSpeakingAudioCapture = (capture: SpeakingAudioCapture) => {
+  capture.submitOnStop = true;
+  if (capture.recorder.state === "recording") capture.recorder.stop();
+};
+
+/** Cancel a recording across a session-state boundary. Its blob must not be submitted. */
+export const cancelSpeakingAudioCapture = (capture: SpeakingAudioCapture) => {
+  capture.submitOnStop = false;
+  clearCaptureResources(capture);
+  if (capture.recorder.state === "recording") {
+    try { capture.recorder.stop(); } catch { /* The stream is already being torn down. */ }
+  }
+};
+
+export const disposeSpeakingAudioCapture = clearCaptureResources;
+
 const SPEECH_ACTIVITY_THRESHOLD = 0.025;
 
 /**

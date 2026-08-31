@@ -84,6 +84,7 @@ export const buildEvaluationPrompt = ({
   "Speech transcription may contain recognition errors. Do not penalize a student for a suspected transcription error unless the interaction provides clear evidence that it reflects the student's communication.",
   "Do not infer pronunciation accuracy from transcript text. Do not create a pronunciation score; fluency is only a classroom communication heuristic.",
   "Do not reward a student simply for speaking more. A short, appropriate response can demonstrate successful communication relative to the selected level and rubric.",
+  "Write every feedback field in the selected feedback language. If there is no usable student speech, return null for every rubric score and describe the result as insufficient evidence rather than poor performance.",
   "Feedback must be brief, kind, and understandable to a child.",
   `Scenario: ${clip(activity.scenario, 800)}`,
   `AI role: ${clip(activity.aiRole, 80)}`,

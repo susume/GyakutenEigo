@@ -44,6 +44,9 @@ import {
   SPEAKING_LEVELS,
   SPEAKING_NATIVE_LANGUAGE_LABELS,
   SPEAKING_NATIVE_LANGUAGES,
+  speakingOverallScore,
+  speakingFeedbackCopy,
+  speakingRemainingSeconds,
   type SpeakingActivity,
   type SpeakingCreateActivityInput,
   type SpeakingDifficulty,
@@ -59,7 +62,7 @@ import {
 import { ApiError, authApi, getTeacherToken, speakingApi } from "../../api/client";
 import { SPEAKING_TEMPLATES, formatDuration, makeDemoEvaluation } from "./speakingData";
 import { browserTtsProvider } from "./speakingProviders";
-import { createSpeakingAudioActivityMonitor, createSpeakingAudioRecorder, type SpeakingAudioActivityMonitor } from "./speakingRecorder";
+import { cancelSpeakingAudioCapture, createSpeakingAudioActivityMonitor, createSpeakingAudioRecorder, disposeSpeakingAudioCapture, stopSpeakingAudioCapture, type SpeakingAudioCapture } from "./speakingRecorder";
 import "./speaking.css";
 
 type SpeakingRoute =
@@ -69,7 +72,7 @@ type SpeakingRoute =
   | { kind: "result"; id: string }
   | { kind: "teacher" }
   | { kind: "create" }
-  | { kind: "activity"; id: string; results?: boolean }
+  | { kind: "activity"; id: string; results?: boolean; edit?: boolean }
   | { kind: "teacher-result"; id: string };
 
 type SpeakingUiState = "ready" | "listening" | "thinking" | "ai-speaking";
@@ -92,7 +95,7 @@ const parseRoute = (path: string): SpeakingRoute => {
   if (segments[1] === "session" && segments[2]) return { kind: "session", id: segments[2] };
   if (segments[1] === "result" && segments[2]) return { kind: "result", id: segments[2] };
   if (segments[1] === "teacher" && segments[2] === "create") return { kind: "create" };
-  if (segments[1] === "teacher" && segments[2] === "activity" && segments[3]) return { kind: "activity", id: segments[3], results: segments[4] === "results" };
+  if (segments[1] === "teacher" && segments[2] === "activity" && segments[3]) return { kind: "activity", id: segments[3], results: segments[4] === "results", edit: segments[4] === "edit" };
   if (segments[1] === "teacher" && segments[2] === "result" && segments[3]) return { kind: "teacher-result", id: segments[3] };
   if (segments[1] === "teacher") return { kind: "teacher" };
   return { kind: "home" };
@@ -101,6 +104,7 @@ const parseRoute = (path: string): SpeakingRoute => {
 const isTeacherRoute = (route: SpeakingRoute) => route.kind === "teacher" || route.kind === "create" || route.kind === "activity" || route.kind === "teacher-result";
 
 const getErrorMessage = (error: unknown, fallback: string) => error instanceof ApiError ? error.message : fallback;
+const isFatalParticipantAuthorizationError = (error: unknown) => error instanceof ApiError && [401, 403, 404].includes(error.status);
 
 const saveJoinCredentials = (payload: JoinResponse) => {
   sessionStorage.setItem(`speaking-token:${payload.session.id}`, payload.token);
@@ -171,7 +175,7 @@ export default function SpeakingPracticeApp() {
       {route.kind === "result" && <SpeakingResultPage navigate={navigate} participantId={route.id} />}
       {route.kind === "teacher" && <SpeakingTeacherDashboard navigate={navigate} />}
       {route.kind === "create" && <SpeakingCreatePage navigate={navigate} />}
-      {route.kind === "activity" && <SpeakingActivityPage navigate={navigate} activityId={route.id} results={route.results === true} />}
+      {route.kind === "activity" && <SpeakingActivityPage navigate={navigate} activityId={route.id} results={route.results === true} edit={route.edit === true} />}
       {route.kind === "teacher-result" && <SpeakingTeacherResultPage navigate={navigate} participantId={route.id} />}
     </div>
   );
@@ -303,15 +307,19 @@ function SpeakingSessionPage({ navigate, sessionId }: { navigate: Navigate; sess
 function SpeakingSessionExperience({ navigate, token, initialData }: { navigate: Navigate; token: string; initialData: SessionResponse }) {
   const [data, setData] = useState(initialData);
   const [voiceState, setVoiceState] = useState<SpeakingVoiceState>("ready");
-  const [remaining, setRemaining] = useState(initialData.participant.startedAt ? Math.max(0, initialData.activity.durationSeconds - Math.floor((Date.now() - Date.parse(initialData.participant.startedAt)) / 1_000)) : initialData.activity.durationSeconds);
+  const [remaining, setRemaining] = useState(() => speakingRemainingSeconds(initialData.participant, initialData.session, initialData.activity.durationSeconds, Date.now()));
   const [helpOpen, setHelpOpen] = useState(false);
   const [helpHint, setHelpHint] = useState("");
   const [helpEnglish, setHelpEnglish] = useState("");
   const [helpLoading, setHelpLoading] = useState(false);
   const [error, setError] = useState("");
   const [micNotice, setMicNotice] = useState("");
-  const recorderRef = useRef<{ recorder: MediaRecorder; stream: MediaStream; timeoutId: number; requestId: string; activityMonitor: SpeakingAudioActivityMonitor } | undefined>(undefined);
+  const [authorizationFailed, setAuthorizationFailed] = useState(false);
+  const authorizationFailedRef = useRef(false);
+  const participantFinalizedRef = useRef(["evaluating", "completed", "error"].includes(initialData.participant.status));
+  const recorderRef = useRef<SpeakingAudioCapture | undefined>(undefined);
   const recordingStartRef = useRef(false);
+  const recordingGenerationRef = useRef(0);
   const chunksRef = useRef<Blob[]>([]);
   const lastAudioRef = useRef<Blob | undefined>(undefined);
   const lastRequestIdRef = useRef<string | undefined>(undefined);
@@ -321,14 +329,44 @@ function SpeakingSessionExperience({ navigate, token, initialData }: { navigate:
   const dataRef = useRef(data);
   dataRef.current = data;
 
+  const cancelRecording = useCallback(() => {
+    recordingGenerationRef.current += 1;
+    const current = recorderRef.current;
+    if (current) {
+      cancelSpeakingAudioCapture(current);
+      recorderRef.current = undefined;
+    }
+    recordingStartRef.current = false;
+    chunksRef.current = [];
+  }, []);
+
+  const handleFatalAuthorization = useCallback((authorizationError: unknown) => {
+    cancelRecording();
+    browserTtsProvider.cancel();
+    authorizationFailedRef.current = true;
+    setAuthorizationFailed(true);
+    setVoiceState("error");
+    setError(getErrorMessage(authorizationError, "This speaking session is no longer available."));
+  }, [cancelRecording]);
+
   const refresh = useCallback(async () => {
+    if (authorizationFailedRef.current) return;
     try {
       const next = await speakingApi.session(initialData.session.id, token) as SessionResponse;
+      if (["paused", "ended", "expired"].includes(next.session.status) || ["evaluating", "completed", "error"].includes(next.participant.status)) {
+        cancelRecording();
+        browserTtsProvider.cancel();
+      }
+      if (next.participant.status === "evaluating") setVoiceState("evaluating");
+      else if (next.participant.status === "completed") setVoiceState("completed");
+      else if (next.participant.status === "error") setVoiceState("error");
+      participantFinalizedRef.current = ["evaluating", "completed", "error"].includes(next.participant.status);
       setData(next);
-      if (next.session.status === "paused" && voiceState === "student_recording") setVoiceState("paused");
-      if (next.session.status === "active" && voiceState === "paused") setVoiceState("ready");
-    } catch { /* The current UI retains its last trustworthy state during a short poll failure. */ }
-  }, [initialData.session.id, token, voiceState]);
+    } catch (loadError) {
+      if (isFatalParticipantAuthorizationError(loadError)) handleFatalAuthorization(loadError);
+      /* The current UI retains its last trustworthy state during a short poll failure. */
+    }
+  }, [cancelRecording, handleFatalAuthorization, initialData.session.id, token]);
 
   useEffect(() => {
     const interval = window.setInterval(() => { void refresh(); }, 2_500);
@@ -336,9 +374,29 @@ function SpeakingSessionExperience({ navigate, token, initialData }: { navigate:
   }, [refresh]);
 
   useEffect(() => {
+    if (["paused", "ended", "expired"].includes(data.session.status)) {
+      // Cancel presentation and capture before exposing the invalidating state
+      // to controls that could otherwise start another turn.
+      cancelRecording();
+      browserTtsProvider.cancel();
+      setVoiceState(data.session.status === "paused" ? "paused" : "ready");
+    } else if (data.session.status === "active") {
+      setVoiceState((current) => current === "paused" ? "ready" : current);
+    }
+  }, [cancelRecording, data.session.status]);
+
+  useEffect(() => {
+    if (!["evaluating", "completed", "error"].includes(data.participant.status)) return;
+    participantFinalizedRef.current = true;
+    cancelRecording();
+    browserTtsProvider.cancel();
+    setVoiceState(data.participant.status === "evaluating" ? "evaluating" : data.participant.status === "completed" ? "completed" : "error");
+  }, [cancelRecording, data.participant.status]);
+
+  useEffect(() => {
     const greeting = data.turns.find((turn) => turn.speaker === "ai");
     const key = `speaking-greeting:${data.session.id}`;
-    if (greeting && !sessionStorage.getItem(key) && !greetingSpokenRef.current) {
+    if (greeting && !["paused", "ended", "expired"].includes(data.session.status) && !sessionStorage.getItem(key) && !greetingSpokenRef.current) {
       greetingSpokenRef.current = true;
       setVoiceState("ai_speaking");
       void browserTtsProvider.speak(greeting.text, { lang: "en-US", rate: data.activity.level === "beginner" ? 0.82 : 0.92 }).finally(() => {
@@ -346,30 +404,20 @@ function SpeakingSessionExperience({ navigate, token, initialData }: { navigate:
         if (dataRef.current.session.status === "active" || dataRef.current.session.status === "ready") setVoiceState("ready");
       });
     }
-  }, [data.session.id, data.activity.level, data.turns]);
+  }, [data.session.id, data.session.status, data.activity.level, data.turns]);
 
   useEffect(() => {
     const interval = window.setInterval(() => {
       const current = dataRef.current;
-      const nextRemaining = current.participant.startedAt ? Math.max(0, current.activity.durationSeconds - Math.floor((Date.now() - Date.parse(current.participant.startedAt)) / 1_000)) : current.activity.durationSeconds;
+      const referenceTime = ["ended", "expired"].includes(current.session.status) && current.session.endedAt ? current.session.endedAt : Date.now();
+      const nextRemaining = speakingRemainingSeconds(current.participant, current.session, current.activity.durationSeconds, referenceTime);
       setRemaining(nextRemaining);
       if (nextRemaining <= 0 && current.participant.startedAt && current.session.status === "active" && voiceState === "ready") finishRef.current();
     }, 1_000);
     return () => window.clearInterval(interval);
   }, [voiceState]);
 
-  const cleanupRecorder = () => {
-    const current = recorderRef.current;
-    if (current) {
-      window.clearTimeout(current.timeoutId);
-      current.activityMonitor.dispose();
-      current.stream.getTracks().forEach((track) => track.stop());
-      recorderRef.current = undefined;
-    }
-    chunksRef.current = [];
-  };
-
-  const submitRecording = useCallback(async (audio: Blob, requestId: string, speechDetected?: boolean) => {
+  const submitRecording = useCallback(async (audio: Blob, requestId: string, speechDetected?: boolean, audioDurationMs?: number) => {
     lastAudioRef.current = audio;
     lastRequestIdRef.current = requestId;
     lastSpeechDetectedRef.current = speechDetected;
@@ -377,13 +425,25 @@ function SpeakingSessionExperience({ navigate, token, initialData }: { navigate:
     setError("");
     try {
       setVoiceState("generating_response");
-      const response = await speakingApi.turn(dataRef.current.session.id, token, { audio, requestId, speechDetected }) as { studentTurn: SpeakingTurn; aiTurn: SpeakingTurn; session: SpeakingSession };
-      setData((current) => ({ ...current, participant: { ...current.participant, status: "in_progress" }, session: response.session, turns: [...current.turns, response.studentTurn, response.aiTurn] }));
+      const response = await speakingApi.turn(dataRef.current.session.id, token, { audio, requestId, speechDetected, audioDurationMs }) as { studentTurn: SpeakingTurn; aiTurn: SpeakingTurn; session: SpeakingSession };
+      if (authorizationFailedRef.current || participantFinalizedRef.current) return;
+      setData((current) => ({ ...current, participant: { ...current.participant, status: "in_progress" }, session: response.session, turns: Array.from(new Map([...current.turns, response.studentTurn, response.aiTurn].map((turn) => [turn.id, turn])).values()) }));
+      if (["paused", "ended", "expired"].includes(response.session.status)) {
+        browserTtsProvider.cancel();
+        cancelRecording();
+        setVoiceState(response.session.status === "paused" ? "paused" : "ready");
+        return;
+      }
       setVoiceState("ai_speaking");
       await browserTtsProvider.speak(response.aiTurn.text, { lang: "en-US", rate: dataRef.current.activity.level === "beginner" ? 0.82 : 0.92 });
-      if (dataRef.current.session.status === "paused") setVoiceState("paused"); else setVoiceState("ready");
+      if (["paused", "ended", "expired"].includes(dataRef.current.session.status)) {
+        browserTtsProvider.cancel();
+        setVoiceState(dataRef.current.session.status === "paused" ? "paused" : "ready");
+      } else setVoiceState("ready");
     } catch (turnError) {
-      if (turnError instanceof ApiError && turnError.status === 422) {
+      if (isFatalParticipantAuthorizationError(turnError)) {
+        handleFatalAuthorization(turnError);
+      } else if (turnError instanceof ApiError && turnError.status === 422) {
         setMicNotice(turnError.message);
         setVoiceState("ready");
       } else if (turnError instanceof ApiError && turnError.status === 409 && /paused/i.test(turnError.message)) {
@@ -394,43 +454,56 @@ function SpeakingSessionExperience({ navigate, token, initialData }: { navigate:
         setVoiceState("error");
       }
     }
-  }, [token]);
+  }, [cancelRecording, handleFatalAuthorization, token]);
 
   const stopRecording = useCallback(() => {
     const current = recorderRef.current;
-    if (!current || current.recorder.state !== "recording") return;
-    current.recorder.stop();
+    if (!current) return;
+    stopSpeakingAudioCapture(current);
   }, []);
 
   const startRecording = async () => {
-    if (voiceState !== "ready" || dataRef.current.session.status !== "active" || recordingStartRef.current || recorderRef.current) return;
+    if (authorizationFailed || voiceState !== "ready" || dataRef.current.session.status !== "active" || recordingStartRef.current || recorderRef.current) return;
     recordingStartRef.current = true;
+    const recordingGeneration = ++recordingGenerationRef.current;
     setMicNotice("");
     setError("");
+    lastAudioRef.current = undefined;
+    lastRequestIdRef.current = undefined;
+    lastSpeechDetectedRef.current = undefined;
     browserTtsProvider.cancel();
     if (!navigator.mediaDevices?.getUserMedia || typeof MediaRecorder === "undefined") { recordingStartRef.current = false; setError("This browser cannot record audio. Try a current Chrome, Edge, or Safari browser."); setVoiceState("error"); return; }
     let stream: MediaStream | undefined;
     try {
       stream = await navigator.mediaDevices.getUserMedia({ audio: true });
+      if (recordingGeneration !== recordingGenerationRef.current || dataRef.current.session.status !== "active") {
+        stream.getTracks().forEach((track) => track.stop());
+        recordingStartRef.current = false;
+        return;
+      }
       const { recorder, mimeType } = createSpeakingAudioRecorder(stream);
       const activityMonitor = createSpeakingAudioActivityMonitor(stream);
       const requestId = typeof crypto.randomUUID === "function" ? crypto.randomUUID() : `${Date.now()}-${Math.random()}`;
       chunksRef.current = [];
       recorder.ondataavailable = (event) => { if (event.data.size > 0) chunksRef.current.push(event.data); };
+      const capture: SpeakingAudioCapture = { recorder, stream, timeoutId: 0, requestId, activityMonitor, startedAtMs: Date.now(), submitOnStop: true };
       recorder.onstop = () => {
+        const shouldSubmit = capture.submitOnStop;
         const speechDetected = activityMonitor.getSpeechDetected();
         const blob = new Blob(chunksRef.current, { type: mimeType || recorder.mimeType || "audio/webm" });
         recordingStartRef.current = false;
-        cleanupRecorder();
-        void submitRecording(blob, requestId, speechDetected);
+        disposeSpeakingAudioCapture(capture);
+        if (recorderRef.current === capture) recorderRef.current = undefined;
+        chunksRef.current = [];
+        if (shouldSubmit) void submitRecording(blob, requestId, speechDetected, Math.max(0, Date.now() - capture.startedAtMs));
       };
-      const timeoutId = window.setTimeout(() => { setMicNotice(`The ${SPEAKING_LIMITS.maxTurnSeconds}-second speaking limit was reached.`); stopRecording(); }, SPEAKING_LIMITS.maxTurnSeconds * 1_000);
-      recorderRef.current = { recorder, stream, timeoutId, requestId, activityMonitor };
+      capture.timeoutId = window.setTimeout(() => { setMicNotice(`The ${SPEAKING_LIMITS.maxTurnSeconds}-second speaking limit was reached.`); stopRecording(); }, SPEAKING_LIMITS.maxTurnSeconds * 1_000);
+      recorderRef.current = capture;
       recorder.start();
       setVoiceState("student_recording");
     } catch (recordError) {
       recordingStartRef.current = false;
-      if (recorderRef.current) cleanupRecorder();
+      if (recorderRef.current) cancelRecording();
       else stream?.getTracks().forEach((track) => track.stop());
       setError(recordError instanceof DOMException && recordError.name === "NotAllowedError" ? "Microphone permission was denied. Please allow microphone access and try again." : "I couldn't start the microphone. Please try again.");
       setVoiceState("error");
@@ -443,7 +516,7 @@ function SpeakingSessionExperience({ navigate, token, initialData }: { navigate:
   };
 
   const onHelp = async () => {
-    if (helpLoading || voiceState !== "ready" || data.session.status !== "active") return;
+    if (authorizationFailed || helpLoading || voiceState !== "ready" || data.session.status !== "active") return;
     setHelpLoading(true);
     try {
       const help = await speakingApi.help(data.session.id, token) as { hint: string; english: string };
@@ -451,12 +524,16 @@ function SpeakingSessionExperience({ navigate, token, initialData }: { navigate:
       setHelpEnglish(help.english);
       setHelpOpen(true);
       setData((current) => ({ ...current, participant: { ...current.participant, helpCount: current.participant.helpCount + 1 } }));
-    } catch (helpError) { setError(getErrorMessage(helpError, "Help is temporarily unavailable. Please try again.")); }
+    } catch (helpError) {
+      if (isFatalParticipantAuthorizationError(helpError)) handleFatalAuthorization(helpError);
+      else setError(getErrorMessage(helpError, "Help is temporarily unavailable. Please try again."));
+    }
     finally { setHelpLoading(false); }
   };
 
   const finish = useCallback(async () => {
-    if (["finishing", "evaluating", "completed", "ai_speaking", "student_recording", "transcribing", "generating_response"].includes(voiceState)) return;
+    if (authorizationFailed || ["finishing", "evaluating", "completed", "ai_speaking", "student_recording", "transcribing", "generating_response"].includes(voiceState)) return;
+    cancelRecording();
     setVoiceState("finishing");
     setError("");
     browserTtsProvider.cancel();
@@ -465,25 +542,28 @@ function SpeakingSessionExperience({ navigate, token, initialData }: { navigate:
       setVoiceState("completed");
       navigate(`/speak/result/${dataRef.current.participant.id}`);
     } catch (finishError) {
-      setError(getErrorMessage(finishError, "結果を作成できませんでした。もう一度お試しください。"));
-      setVoiceState("error");
+      if (isFatalParticipantAuthorizationError(finishError)) handleFatalAuthorization(finishError);
+      else {
+        setError(getErrorMessage(finishError, speakingFeedbackCopy(dataRef.current.activity.nativeLanguage).evaluationUnavailableMessage));
+        setVoiceState("error");
+      }
     }
-  }, [navigate, token, voiceState]);
+  }, [authorizationFailed, cancelRecording, handleFatalAuthorization, navigate, token, voiceState]);
   finishRef.current = () => { void finish(); };
 
   const retry = () => { if (lastAudioRef.current && lastRequestIdRef.current) void submitRecording(lastAudioRef.current, lastRequestIdRef.current, lastSpeechDetectedRef.current); };
-  useEffect(() => () => { cleanupRecorder(); browserTtsProvider.cancel(); }, []);
+  useEffect(() => () => { cancelRecording(); browserTtsProvider.cancel(); }, [cancelRecording]);
 
   const waiting = data.session.status === "ready";
   const paused = data.session.status === "paused" || voiceState === "paused";
   const ended = data.session.status === "ended" || data.session.status === "expired";
-  const controlsDisabled = waiting || paused || ended || voiceState !== "ready" && voiceState !== "student_recording";
+  const controlsDisabled = authorizationFailed || waiting || paused || ended || voiceState !== "ready" && voiceState !== "student_recording";
   const uiState: SpeakingUiState = voiceState === "student_recording" ? "listening" : voiceState === "ai_speaking" ? "ai-speaking" : ["transcribing", "generating_response", "finishing", "evaluating", "error"].includes(voiceState) ? "thinking" : "ready";
   const latestStudent = [...data.turns].reverse().find((turn) => turn.speaker === "student");
-  return <div className="speaking-session-page"><SpeakingTopbar navigate={navigate} active="home" /><main className="speaking-session-main">{waiting && <div className="speaking-session-note" role="status"><Clock3 size={16} aria-hidden="true" /><span>You’re ready! Waiting for your teacher to start the activity.</span></div>}{paused && <div className="speaking-session-alert" role="alert"><HelpCircle size={18} aria-hidden="true" /><span>Your teacher paused the activity.</span></div>}{ended && <div className="speaking-session-alert" role="alert"><HelpCircle size={18} aria-hidden="true" /><span>This activity has ended. You can still finish and view your result if you already joined.</span></div>}{error && <div className="speaking-session-alert" role="alert"><HelpCircle size={18} aria-hidden="true" /><span>{error}</span>{voiceState === "error" && lastAudioRef.current && <button type="button" onClick={retry}>Retry</button>}<button type="button" onClick={() => setError("")} aria-label="Close error"><X size={15} aria-hidden="true" /></button></div>}{micNotice && <div className="speaking-session-note" role="status"><Mic size={16} aria-hidden="true" /><span>{micNotice}</span></div>}<SpeakingScreen activity={data.activity} state={uiState} remainingSeconds={remaining} turns={data.turns} transcriptPreview={latestStudent?.text ?? "…"} onMic={onMic} onHelp={onHelp} onFinish={() => void finish()} onPhraseClick={(phrase) => { setHelpHint("Try this phrase in your own sentence."); setHelpEnglish(phrase); setHelpOpen(true); }} disabled={controlsDisabled || helpLoading} finishDisabled={waiting || ["finishing", "evaluating", "completed"].includes(voiceState)} /></main>{helpOpen && <HelpDialog activity={data.activity} onClose={() => setHelpOpen(false)} helpText={helpHint} english={helpEnglish} />}</div>;
+  return <div className="speaking-session-page"><SpeakingTopbar navigate={navigate} active="home" /><main className="speaking-session-main">{waiting && <div className="speaking-session-note" role="status"><Clock3 size={16} aria-hidden="true" /><span>You’re ready! Waiting for your teacher to start the activity.</span></div>}{paused && <div className="speaking-session-alert" role="alert"><HelpCircle size={18} aria-hidden="true" /><span>Your teacher paused the activity.</span></div>}{ended && <div className="speaking-session-alert" role="alert"><HelpCircle size={18} aria-hidden="true" /><span>This activity has ended. You can still finish and view your result if you already joined.</span></div>}{error && <div className="speaking-session-alert" role="alert"><HelpCircle size={18} aria-hidden="true" /><span>{error}</span>{!authorizationFailed && voiceState === "error" && lastAudioRef.current && <button type="button" onClick={retry}>Retry</button>}<button type="button" onClick={() => setError("")} aria-label="Close error"><X size={15} aria-hidden="true" /></button></div>}{micNotice && <div className="speaking-session-note" role="status"><Mic size={16} aria-hidden="true" /><span>{micNotice}</span></div>}<SpeakingScreen activity={data.activity} state={uiState} remainingSeconds={remaining} turns={data.turns} transcriptPreview={latestStudent?.text ?? "…"} onMic={onMic} onHelp={onHelp} onFinish={() => void finish()} onPhraseClick={(phrase) => { setHelpHint(speakingFeedbackCopy(data.activity.nativeLanguage).helpHint); setHelpEnglish(phrase); setHelpOpen(true); }} disabled={controlsDisabled || helpLoading} finishDisabled={authorizationFailed || waiting || ["finishing", "evaluating", "completed", "ai_speaking", "student_recording", "transcribing", "generating_response"].includes(voiceState)} /></main>{helpOpen && <HelpDialog activity={data.activity} onClose={() => setHelpOpen(false)} helpText={helpHint} english={helpEnglish} />}</div>;
 }
 
-function HelpDialog({ activity, onClose, helpText, english, preview = false }: { activity: SpeakingActivity; onClose: () => void; helpText?: string; english?: string; preview?: boolean }) { const phrase = english || activity.targetExpressions[0] || "Could you say that again, please?"; return <div className="speaking-dialog-backdrop" role="presentation" onMouseDown={(event) => { if (event.target === event.currentTarget) onClose(); }}><section className="speaking-help-dialog" role="dialog" aria-modal="true" aria-labelledby="speaking-help-title"><button type="button" className="speaking-dialog-close" onClick={onClose} aria-label="Close help"><X size={18} aria-hidden="true" /></button><span className="speaking-help-dialog-icon"><Lightbulb size={25} aria-hidden="true" /></span><span className="speaking-card-kicker">Help</span><h2 id="speaking-help-title">You can try this:</h2>{helpText && <p className="speaking-help-copy">{helpText}</p>}<p className="speaking-help-phrase">{phrase}</p><p className="speaking-help-copy">{preview ? "Preview only — real Help is generated for the current classroom conversation." : "自分の言葉で大丈夫です。短い文でも、ゆっくりでも伝わります。"}</p><button type="button" className="speaking-primary-button" onClick={onClose}>Got it</button></section></div>; }
+function HelpDialog({ activity, onClose, helpText, english, preview = false }: { activity: SpeakingActivity; onClose: () => void; helpText?: string; english?: string; preview?: boolean }) { const phrase = english || activity.targetExpressions[0] || "Could you say that again, please?"; const copy = speakingFeedbackCopy(activity.nativeLanguage); const japanese = activity.nativeLanguage === "ja"; return <div className="speaking-dialog-backdrop" role="presentation" onMouseDown={(event) => { if (event.target === event.currentTarget) onClose(); }}><section className="speaking-help-dialog" role="dialog" aria-modal="true" aria-labelledby="speaking-help-title"><button type="button" className="speaking-dialog-close" onClick={onClose} aria-label={japanese ? "ヒントを閉じる" : "Close help"}><X size={18} aria-hidden="true" /></button><span className="speaking-help-dialog-icon"><Lightbulb size={25} aria-hidden="true" /></span><span className="speaking-card-kicker">{japanese ? "ヒント" : "Help"}</span><h2 id="speaking-help-title">{japanese ? "こんな言い方を試せます" : "You can try this:"}</h2>{helpText && <p className="speaking-help-copy">{helpText}</p>}<p className="speaking-help-phrase">{phrase}</p><p className="speaking-help-copy">{preview ? (japanese ? "プレビューです。実際のヒントは現在の会話に合わせて生成されます。" : "Preview only — real Help is generated for the current classroom conversation.") : copy.helpEncouragement}</p><button type="button" className="speaking-primary-button" onClick={onClose}>{japanese ? "わかりました" : "Got it"}</button></section></div>; }
 
 function MissingSpeakingSession({ navigate, message = "This practice session may have ended or expired." }: { navigate: Navigate; message?: string }) { return <div className="speaking-empty-page"><CircleCheck size={38} aria-hidden="true" /><h1>Session not found</h1><p>{message}</p><button className="speaking-primary-button" type="button" onClick={() => navigate("/speak/join")}>Join another activity</button></div>; }
 
@@ -497,16 +577,19 @@ function SpeakingResultPage({ navigate, participantId }: { navigate: Navigate; p
   if (!result && !error) return <div className="speaking-empty-page"><LoaderCircle size={34} className="speaking-spin" aria-hidden="true" /><h1>Preparing your result</h1><p>Your real conversation is being evaluated…</p></div>;
   if (!result) return <MissingSpeakingSession navigate={navigate} message={error} />;
   const hasSpeech = hasStudentSpeech(result.turns);
-  return <div className="speaking-page-shell speaking-result-page"><SpeakingTopbar navigate={navigate} /><main className="speaking-result-layout"><section className="speaking-result-hero"><span className="speaking-eyebrow"><Trophy size={15} aria-hidden="true" />{hasSpeech ? "Activity complete" : "No speech detected"}</span><h1>{hasSpeech ? "よくできました！" : "もう一度話してみよう"}</h1><p>{hasSpeech ? `${result.activity.title} の会話が終わりました。` : "声が聞こえなかったため、会話は始まりませんでした。"}</p>{result.evaluation ? <div className="speaking-result-score"><strong>{scoreFor(result.evaluation)}</strong><span>点</span><small>今日のスピーキング</small></div> : <div className="speaking-result-score"><strong>—</strong><small>Evaluation unavailable</small></div>}</section>{result.evaluation ? <ResultPanel activity={result.activity} turns={result.turns} evaluation={result.evaluation} teacherView={false} /> : <div className="speaking-empty-card"><h2>Evaluation unavailable</h2><p>Your transcript is saved, but the evaluation provider did not return a result. Please ask your teacher to try again.</p></div>}<div className="speaking-result-actions"><button className="speaking-primary-button" type="button" onClick={() => navigate("/speak/join")}><RotateCcw size={17} aria-hidden="true" />Try another activity</button><button className="speaking-text-button" type="button" onClick={() => navigate("/speak")}><ArrowLeft size={16} aria-hidden="true" />Speaking Practice home</button></div></main></div>;
+  const copy = speakingFeedbackCopy(result.evaluation?.language ?? result.activity.nativeLanguage);
+  const insufficientEvidence = Boolean(result.evaluation && (result.evaluation.assessmentStatus === "insufficient_evidence" || !hasSpeech));
+  return <div className="speaking-page-shell speaking-result-page"><SpeakingTopbar navigate={navigate} /><main className="speaking-result-layout"><section className="speaking-result-hero"><span className="speaking-eyebrow"><Trophy size={15} aria-hidden="true" />{insufficientEvidence ? copy.notScored : "Activity complete"}</span><h1>{result.evaluation ? (insufficientEvidence ? copy.insufficientEvidenceHeadline : copy.scoredHeadline) : copy.evaluationUnavailable}</h1><p>{result.evaluation ? (insufficientEvidence ? result.evaluation.overallMessage : `${result.activity.title} · ${copy.scoredSummary}`) : copy.evaluationUnavailableMessage}</p>{result.evaluation && !insufficientEvidence ? <div className="speaking-result-score"><strong>{scoreFor(result.evaluation)}</strong><span>{result.evaluation.language === "ja" ? "点" : "points"}</span><small>{result.evaluation.language === "ja" ? "今日のスピーキング" : "Today’s speaking"}</small></div> : <div className="speaking-result-score"><strong>—</strong><small>{insufficientEvidence ? copy.notScoredDetail : copy.evaluationUnavailable}</small></div>}</section>{result.evaluation ? <ResultPanel activity={result.activity} turns={result.turns} evaluation={result.evaluation} teacherView={false} /> : <div className="speaking-empty-card"><h2>{copy.evaluationUnavailable}</h2><p>{copy.evaluationUnavailableMessage}</p></div>}<div className="speaking-result-actions"><button className="speaking-primary-button" type="button" onClick={() => navigate("/speak/join")}><RotateCcw size={17} aria-hidden="true" />Try another activity</button><button className="speaking-text-button" type="button" onClick={() => navigate("/speak")}><ArrowLeft size={16} aria-hidden="true" />Speaking Practice home</button></div></main></div>;
 }
 
 const hasStudentSpeech = (turns: SpeakingTurn[]) => turns.some((turn) => turn.speaker === "student" && turn.text.trim().length > 0);
-const scoreFor = (evaluation?: SpeakingEvaluation) => { if (!evaluation) return undefined; const scores = Object.values(evaluation.scores); return scores.length ? Math.round((scores.reduce((sum, score) => sum + score, 0) / (scores.length * 4)) * 100) : 0; };
-const scoreForCriterion = (evaluation: SpeakingEvaluation, criterionId: string) => evaluation.scores[criterionId] ?? 0;
+const scoreFor = (evaluation?: SpeakingEvaluation) => speakingOverallScore(evaluation);
+const scoreForCriterion = (evaluation: SpeakingEvaluation, criterionId: string) => evaluation.scores[criterionId];
 
 function ResultPanel({ activity, turns, evaluation, teacherView }: { activity: Pick<SpeakingActivity, "title" | "rubric" | "targetExpressions" | "nativeLanguage">; turns: SpeakingTurn[]; evaluation: SpeakingEvaluation; teacherView: boolean }) {
   const studentTurns = turns.filter((turn) => turn.speaker === "student");
-  return <section className={`speaking-result-panel${teacherView ? " speaking-result-panel-teacher" : ""}`}><div className="speaking-result-panel-heading"><div><span className="speaking-card-kicker">{teacherView ? "Evaluation detail" : "Your speaking result"}</span><h2>{teacherView ? activity.title : "今回の結果"}</h2></div><span className="speaking-result-language"><Languages size={15} aria-hidden="true" />{evaluation.language === "ja" ? "日本語フィードバック" : "English feedback"}</span></div><div className="speaking-score-grid">{activity.rubric.filter((criterion) => criterion.enabled).map((criterion) => <div className="speaking-score-row" key={criterion.id}><div><strong>{criterion.name === "Fluency / Comprehensibility" ? "Fluency" : criterion.name}</strong>{teacherView && <small>{evaluation.evidence[criterion.id] ?? criterion.description}</small>}</div><span className="speaking-stars" aria-label={`${scoreForCriterion(evaluation, criterion.id)} out of 4 stars`}>{[1, 2, 3, 4].map((star) => <Star key={star} size={17} fill={star <= scoreForCriterion(evaluation, criterion.id) ? "currentColor" : "none"} aria-hidden="true" />)}<b>{scoreForCriterion(evaluation, criterion.id)}/4</b></span></div>)}</div><div className="speaking-result-columns"><div className="speaking-result-message speaking-result-message-good"><h3>👍 What You Did Well</h3><ul>{evaluation.strengths.map((strength) => <li key={strength}>{strength}</li>)}</ul></div><div className="speaking-result-message"><h3>🚀 Try This Next Time</h3><ul>{evaluation.improvements.map((improvement) => <li key={improvement}>{improvement}</li>)}</ul></div></div><div className="speaking-useful-result"><div className="speaking-result-section-heading"><h3>💬 Useful English</h3><span>{studentTurns.length} speaking turns</span></div>{evaluation.usefulEnglish.length ? evaluation.usefulEnglish.map((item) => <div className="speaking-correction-row" key={`${item.said}-${item.try}`}><div><small>You said</small><span>“{item.said}”</span></div><ArrowRight size={17} aria-hidden="true" /><div><small>Try</small><strong>“{item.try}”</strong></div></div>) : <p className="speaking-muted-copy">{hasStudentSpeech(turns) ? "Your conversation was saved for your teacher’s review." : "No speech was detected in this attempt."}</p>}</div>{teacherView && <div className="speaking-transcript-detail"><div className="speaking-result-section-heading"><h3>Transcript</h3><span>Conversation evidence</span></div>{turns.map((turn) => <p key={turn.id}><strong>{turn.speaker === "ai" ? "AI" : "Student"}</strong><span>{turn.text}</span></p>)}</div>}</section>;
+  const copy = speakingFeedbackCopy(evaluation.language);
+  return <section className={`speaking-result-panel${teacherView ? " speaking-result-panel-teacher" : ""}`}><div className="speaking-result-panel-heading"><div><span className="speaking-card-kicker">{teacherView ? copy.evaluationDetail : copy.resultHeading}</span><h2>{teacherView ? activity.title : copy.resultHeading}</h2></div><span className="speaking-result-language"><Languages size={15} aria-hidden="true" />{evaluation.language === "ja" ? "日本語フィードバック" : "English feedback"}</span></div>{evaluation.assessmentStatus === "insufficient_evidence" && <div className="speaking-result-message speaking-result-message-warning"><h3>{copy.insufficientEvidenceHeadline}</h3><p>{evaluation.notScoredReason ?? copy.notScoredDetail}</p></div>}<div className="speaking-score-grid">{activity.rubric.filter((criterion) => criterion.enabled).map((criterion) => { const score = scoreForCriterion(evaluation, criterion.id); return <div className="speaking-score-row" key={criterion.id}><div><strong>{criterion.name === "Fluency / Comprehensibility" ? "Fluency" : criterion.name}</strong>{teacherView && <small>{evaluation.evidence[criterion.id] ?? criterion.description}</small>}</div><span className="speaking-stars" aria-label={score === null || score === undefined ? copy.notScored : `${score} out of 4 stars`}>{[1, 2, 3, 4].map((star) => <Star key={star} size={17} fill={typeof score === "number" && star <= score ? "currentColor" : "none"} aria-hidden="true" />)}<b>{typeof score === "number" ? `${score}/4` : copy.notScored}</b></span></div>; })}</div><div className="speaking-result-columns"><div className="speaking-result-message speaking-result-message-good"><h3>👍 {copy.whatWentWell}</h3><ul>{evaluation.strengths.map((strength) => <li key={strength}>{strength}</li>)}</ul></div><div className="speaking-result-message"><h3>🚀 {copy.tryNext}</h3><ul>{evaluation.improvements.map((improvement) => <li key={improvement}>{improvement}</li>)}</ul></div></div><div className="speaking-useful-result"><div className="speaking-result-section-heading"><h3>💬 {copy.usefulEnglish}</h3><span>{studentTurns.length} {copy.speakingTurns}</span></div>{evaluation.usefulEnglish.length ? evaluation.usefulEnglish.map((item) => <div className="speaking-correction-row" key={`${item.said}-${item.try}`}><div><small>{copy.youSaid}</small><span>“{item.said}”</span></div><ArrowRight size={17} aria-hidden="true" /><div><small>{copy.tryLabel}</small><strong>“{item.try}”</strong></div></div>) : <p className="speaking-muted-copy">{hasStudentSpeech(turns) ? copy.noUsefulEnglish : copy.noSpeechDetected}</p>}</div>{teacherView && <div className="speaking-transcript-detail"><div className="speaking-result-section-heading"><h3>{copy.transcript}</h3><span>{copy.conversationEvidence}</span></div>{turns.map((turn) => <p key={turn.id}><strong>{turn.speaker === "ai" ? copy.aiLabel : copy.studentLabel}</strong><span>{turn.text}</span></p>)}</div>}</section>;
 }
 
 function SpeakingTeacherDashboard({ navigate }: { navigate: Navigate }) {
@@ -540,28 +623,52 @@ const SPEAKING_DURATION_PRESETS = [120, 180, 300, 420] as const;
 
 function SpeakingDurationField({ value, onChange }: { value: number; onChange: (value: number) => void }) { const isCustom = !SPEAKING_DURATION_PRESETS.includes(value as (typeof SPEAKING_DURATION_PRESETS)[number]); return <label>Speaking time<select value={isCustom ? "custom" : String(value)} onChange={(event) => onChange(event.target.value === "custom" ? (isCustom ? value : 240) : Number(event.target.value))}><option value={120}>2 minutes</option><option value={180}>3 minutes</option><option value={300}>5 minutes</option><option value={420}>7 minutes</option><option value="custom">Custom</option></select>{isCustom && <div className="speaking-custom-duration"><input type="number" min={2} max={7} step={1} value={Math.round(value / 60)} onChange={(event) => { const minutes = Number(event.target.value); onChange((Number.isFinite(minutes) ? Math.min(7, Math.max(2, Math.round(minutes))) : 2) * 60); }} aria-label="Custom speaking time in minutes" /><span>minutes</span></div>}</label>; }
 
-function SpeakingCreatePage({ navigate }: { navigate: Navigate }) {
+function SpeakingCreatePage({ navigate, activityId }: { navigate: Navigate; activityId?: string }) {
+  const editing = Boolean(activityId);
   const [draft, setDraft] = useState<SpeakingCreateActivityInput>(() => draftFromTemplate(SPEAKING_TEMPLATES[1]!));
   const [newExpression, setNewExpression] = useState("");
   const [formError, setFormError] = useState("");
   const [saving, setSaving] = useState(false);
+  const [loadingActivity, setLoadingActivity] = useState(editing);
   const update = <K extends keyof SpeakingCreateActivityInput>(key: K, value: SpeakingCreateActivityInput[K]) => setDraft((current) => ({ ...current, [key]: value }));
   const updateCriterion = (index: number, patch: Partial<SpeakingRubricCriterion>) => update("rubric", draft.rubric.map((criterion, candidateIndex) => candidateIndex === index ? { ...criterion, ...patch } : criterion));
   const addExpression = () => { if (!newExpression.trim() || draft.targetExpressions.length >= 12) return; update("targetExpressions", [...draft.targetExpressions, newExpression.trim()]); setNewExpression(""); };
+  useEffect(() => {
+    if (!activityId) return;
+    let cancelled = false;
+    void speakingApi.activity(activityId).then((payload) => {
+      if (cancelled) return;
+      const activity = (payload as { activity: SpeakingActivity }).activity;
+      setDraft(draftFromTemplate(activity));
+      setLoadingActivity(false);
+    }).catch((loadError) => {
+      if (cancelled) return;
+      setFormError(getErrorMessage(loadError, "This activity could not be loaded."));
+      setLoadingActivity(false);
+    });
+    return () => { cancelled = true; };
+  }, [activityId]);
   const handleCreate = async (event: FormEvent) => {
     event.preventDefault();
     if (!draft.title.trim() || !draft.scenario.trim()) { setFormError("Activity name and speaking situation are required."); return; }
     if (!draft.rubric.some((criterion) => criterion.enabled)) { setFormError("Choose at least one rubric skill."); return; }
     setSaving(true);
-    try { const payload = await speakingApi.createActivity(draft) as { activity: SpeakingActivity }; navigate(`/speak/teacher/activity/${payload.activity.id}`); }
-    catch (createError) { setFormError(getErrorMessage(createError, "The activity could not be saved. Please try again.")); }
+    try {
+      const payload = (editing && activityId
+        ? await speakingApi.updateActivity(activityId, draft)
+        : await speakingApi.createActivity(draft)) as { activity: SpeakingActivity };
+      navigate(`/speak/teacher/activity/${payload.activity.id}`);
+    }
+    catch (createError) { setFormError(getErrorMessage(createError, editing ? "The activity could not be updated. Please try again." : "The activity could not be saved. Please try again.")); }
     finally { setSaving(false); }
   };
-  return <div className="speaking-page-shell speaking-teacher-shell"><SpeakingTopbar navigate={navigate} active="teacher" teacher /><main className="speaking-teacher-layout"><SpeakingTeacherSidebar navigate={navigate} active="create" /><form className="speaking-builder" onSubmit={handleCreate}><div className="speaking-builder-header"><div><span className="speaking-eyebrow"><Edit3 size={15} aria-hidden="true" /> Activity builder</span><h1>Create an activity</h1><p>Set the situation first. The AI will stay in character while students practice.</p></div><div className="speaking-builder-header-actions"><button type="button" className="speaking-text-button" onClick={() => navigate("/speak/teacher")}><ArrowLeft size={15} aria-hidden="true" />Back</button><button type="submit" className="speaking-primary-button" disabled={saving}>{saving ? <LoaderCircle size={17} className="speaking-spin" aria-hidden="true" /> : <Check size={17} aria-hidden="true" />}Create activity</button></div></div><section className="speaking-builder-card"><div className="speaking-builder-card-heading"><div><span className="speaking-card-kicker">Start with a template</span><h2>Pick a familiar conversation</h2></div><span className="speaking-builder-step">01 / 04</span></div><div className="speaking-template-grid">{SPEAKING_TEMPLATES.map((template) => <button type="button" className={`speaking-template-card${draft.title === template.title ? " is-selected" : ""}`} key={template.id} onClick={() => setDraft(draftFromTemplate(template))}><span className="speaking-template-icon"><ShoppingBag size={19} aria-hidden="true" /></span><span><strong>{template.title}</strong><small>{SPEAKING_LEVEL_LABELS[template.level]} · {SPEAKING_DIFFICULTY_LABELS[template.difficulty]}</small></span>{draft.title === template.title && <Check size={16} aria-hidden="true" />}</button>)}</div></section><section className="speaking-builder-card"><div className="speaking-builder-card-heading"><div><span className="speaking-card-kicker">The conversation</span><h2>Give students a clear situation</h2></div><span className="speaking-builder-step">02 / 04</span></div><div className="speaking-builder-form-grid"><label>Activity name<input value={draft.title} onChange={(event) => update("title", event.target.value)} /></label><label>AI role<input value={draft.aiRole} onChange={(event) => update("aiRole", event.target.value)} /></label><label>Student role<input value={draft.studentRole} onChange={(event) => update("studentRole", event.target.value)} /></label><label className="speaking-span-2">Speaking situation<textarea value={draft.scenario} onChange={(event) => update("scenario", event.target.value)} rows={3} /></label></div></section><section className="speaking-builder-card"><div className="speaking-builder-card-heading"><div><span className="speaking-card-kicker">Target English</span><h2>Phrases the AI can bring into the conversation</h2></div><span className="speaking-builder-step">03 / 04</span></div><div className="speaking-expression-editor">{draft.targetExpressions.map((expression, index) => <div className="speaking-expression-chip" key={`${expression}-${index}`}><MessageCircle size={16} aria-hidden="true" /><input value={expression} onChange={(event) => update("targetExpressions", draft.targetExpressions.map((item, candidateIndex) => candidateIndex === index ? event.target.value : item))} /><button type="button" onClick={() => update("targetExpressions", draft.targetExpressions.filter((_, candidateIndex) => candidateIndex !== index))} aria-label={`Remove ${expression}`}><X size={15} aria-hidden="true" /></button></div>)}<div className="speaking-add-expression"><input value={newExpression} onChange={(event) => setNewExpression(event.target.value)} onKeyDown={(event) => { if (event.key === "Enter") { event.preventDefault(); addExpression(); } }} placeholder="Add an expression" /><button type="button" className="speaking-outline-button" onClick={addExpression}><Plus size={16} aria-hidden="true" />Add</button></div></div></section><section className="speaking-builder-card"><div className="speaking-builder-card-heading"><div><span className="speaking-card-kicker">Activity settings</span><h2>Set the right amount of support</h2></div><span className="speaking-builder-step">04 / 04</span></div><div className="speaking-settings-grid"><label>Student level<select value={draft.level} onChange={(event) => update("level", event.target.value as SpeakingLevel)}>{SPEAKING_LEVELS.map((level) => <option key={level} value={level}>{SPEAKING_LEVEL_LABELS[level]}</option>)}</select></label><label>AI difficulty<select value={draft.difficulty} onChange={(event) => update("difficulty", event.target.value as SpeakingDifficulty)}>{SPEAKING_DIFFICULTIES.map((difficulty) => <option key={difficulty} value={difficulty}>{SPEAKING_DIFFICULTY_LABELS[difficulty]}</option>)}</select></label><SpeakingDurationField value={draft.durationSeconds} onChange={(value) => update("durationSeconds", value)} /><label>Feedback language<select value={draft.nativeLanguage} onChange={(event) => update("nativeLanguage", event.target.value as SpeakingNativeLanguage)}>{SPEAKING_NATIVE_LANGUAGES.map((language) => <option key={language} value={language}>{SPEAKING_NATIVE_LANGUAGE_LABELS[language]}</option>)}</select></label><label>Student identification<select value={draft.identifierMode} onChange={(event) => update("identifierMode", event.target.value as SpeakingIdentifierMode)}>{SPEAKING_IDENTIFIER_MODES.map((mode) => <option key={mode} value={mode}>{SPEAKING_IDENTIFIER_MODE_LABELS[mode]}</option>)}</select></label></div><div className="speaking-rubric-editor-heading"><div><span className="speaking-card-kicker">Editable rubric</span><p>Keep the skills that matter for this activity. Pronunciation scoring is not included.</p></div><button type="button" className="speaking-outline-button" onClick={() => update("rubric", [...draft.rubric, { id: `custom-${Date.now()}`, name: "New skill", description: "What should students show?", enabled: true }])}><Plus size={16} aria-hidden="true" />Add criterion</button></div><div className="speaking-rubric-editor">{draft.rubric.map((criterion, index) => <div className={`speaking-rubric-row${criterion.enabled ? " is-enabled" : ""}`} key={criterion.id}><label className="speaking-rubric-toggle"><input type="checkbox" checked={criterion.enabled} onChange={(event) => updateCriterion(index, { enabled: event.target.checked })} /><span>{criterion.enabled ? "On" : "Off"}</span></label><div><input aria-label={`${criterion.name} name`} value={criterion.name} onChange={(event) => updateCriterion(index, { name: event.target.value })} /><textarea aria-label={`${criterion.name} description`} rows={2} value={criterion.description} onChange={(event) => updateCriterion(index, { description: event.target.value })} /></div><button type="button" className="speaking-icon-button speaking-danger-icon" onClick={() => update("rubric", draft.rubric.filter((_, candidateIndex) => candidateIndex !== index))} aria-label={`Remove ${criterion.name}`}><Trash2 size={16} aria-hidden="true" /></button></div>)}</div></section>{formError && <p className="speaking-error speaking-builder-error" role="alert">{formError}</p>}<div className="speaking-builder-footer"><p><ShieldIcon /><span>Activities are saved to your teacher workspace. Classroom join codes are created only when you launch a session.</span></p><button type="submit" className="speaking-primary-button" disabled={saving}><Check size={17} aria-hidden="true" />Create activity</button></div></form></main></div>;
+  if (loadingActivity) return <TeacherLoading />;
+  return <div className="speaking-page-shell speaking-teacher-shell"><SpeakingTopbar navigate={navigate} active="teacher" teacher /><main className="speaking-teacher-layout"><SpeakingTeacherSidebar navigate={navigate} active="create" /><form className="speaking-builder" onSubmit={handleCreate}><div className="speaking-builder-header"><div><span className="speaking-eyebrow"><Edit3 size={15} aria-hidden="true" /> Activity builder</span><h1>{editing ? "Edit activity" : "Create an activity"}</h1><p>{editing ? "Update the reusable activity. Existing classroom sessions keep their original setup." : "Set the situation first. The AI will stay in character while students practice."}</p></div><div className="speaking-builder-header-actions"><button type="button" className="speaking-text-button" onClick={() => navigate(editing && activityId ? `/speak/teacher/activity/${activityId}` : "/speak/teacher")}><ArrowLeft size={15} aria-hidden="true" />Back</button><button type="submit" className="speaking-primary-button" disabled={saving}>{saving ? <LoaderCircle size={17} className="speaking-spin" aria-hidden="true" /> : <Check size={17} aria-hidden="true" />}{editing ? "Save changes" : "Create activity"}</button></div></div><section className="speaking-builder-card"><div className="speaking-builder-card-heading"><div><span className="speaking-card-kicker">Start with a template</span><h2>Pick a familiar conversation</h2></div><span className="speaking-builder-step">01 / 04</span></div><div className="speaking-template-grid">{SPEAKING_TEMPLATES.map((template) => <button type="button" className={`speaking-template-card${draft.title === template.title ? " is-selected" : ""}`} key={template.id} onClick={() => setDraft(draftFromTemplate(template))}><span className="speaking-template-icon"><ShoppingBag size={19} aria-hidden="true" /></span><span><strong>{template.title}</strong><small>{SPEAKING_LEVEL_LABELS[template.level]} · {SPEAKING_DIFFICULTY_LABELS[template.difficulty]}</small></span>{draft.title === template.title && <Check size={16} aria-hidden="true" />}</button>)}</div></section><section className="speaking-builder-card"><div className="speaking-builder-card-heading"><div><span className="speaking-card-kicker">The conversation</span><h2>Give students a clear situation</h2></div><span className="speaking-builder-step">02 / 04</span></div><div className="speaking-builder-form-grid"><label>Activity name<input value={draft.title} onChange={(event) => update("title", event.target.value)} /></label><label>AI role<input value={draft.aiRole} onChange={(event) => update("aiRole", event.target.value)} /></label><label>Student role<input value={draft.studentRole} onChange={(event) => update("studentRole", event.target.value)} /></label><label className="speaking-span-2">Speaking situation<textarea value={draft.scenario} onChange={(event) => update("scenario", event.target.value)} rows={3} /></label></div></section><section className="speaking-builder-card"><div className="speaking-builder-card-heading"><div><span className="speaking-card-kicker">Target English</span><h2>Phrases the AI can bring into the conversation</h2></div><span className="speaking-builder-step">03 / 04</span></div><div className="speaking-expression-editor">{draft.targetExpressions.map((expression, index) => <div className="speaking-expression-chip" key={`${expression}-${index}`}><MessageCircle size={16} aria-hidden="true" /><input value={expression} onChange={(event) => update("targetExpressions", draft.targetExpressions.map((item, candidateIndex) => candidateIndex === index ? event.target.value : item))} /><button type="button" onClick={() => update("targetExpressions", draft.targetExpressions.filter((_, candidateIndex) => candidateIndex !== index))} aria-label={`Remove ${expression}`}><X size={15} aria-hidden="true" /></button></div>)}<div className="speaking-add-expression"><input value={newExpression} onChange={(event) => setNewExpression(event.target.value)} onKeyDown={(event) => { if (event.key === "Enter") { event.preventDefault(); addExpression(); } }} placeholder="Add an expression" /><button type="button" className="speaking-outline-button" onClick={addExpression}><Plus size={16} aria-hidden="true" />Add</button></div></div></section><section className="speaking-builder-card"><div className="speaking-builder-card-heading"><div><span className="speaking-card-kicker">Activity settings</span><h2>Set the right amount of support</h2></div><span className="speaking-builder-step">04 / 04</span></div><div className="speaking-settings-grid"><label>Student level<select value={draft.level} onChange={(event) => update("level", event.target.value as SpeakingLevel)}>{SPEAKING_LEVELS.map((level) => <option key={level} value={level}>{SPEAKING_LEVEL_LABELS[level]}</option>)}</select></label><label>AI difficulty<select value={draft.difficulty} onChange={(event) => update("difficulty", event.target.value as SpeakingDifficulty)}>{SPEAKING_DIFFICULTIES.map((difficulty) => <option key={difficulty} value={difficulty}>{SPEAKING_DIFFICULTY_LABELS[difficulty]}</option>)}</select></label><SpeakingDurationField value={draft.durationSeconds} onChange={(value) => update("durationSeconds", value)} /><label>Feedback language<select value={draft.nativeLanguage} onChange={(event) => update("nativeLanguage", event.target.value as SpeakingNativeLanguage)}>{SPEAKING_NATIVE_LANGUAGES.map((language) => <option key={language} value={language}>{SPEAKING_NATIVE_LANGUAGE_LABELS[language]}</option>)}</select></label><label>Student identification<select value={draft.identifierMode} onChange={(event) => update("identifierMode", event.target.value as SpeakingIdentifierMode)}>{SPEAKING_IDENTIFIER_MODES.map((mode) => <option key={mode} value={mode}>{SPEAKING_IDENTIFIER_MODE_LABELS[mode]}</option>)}</select></label></div><div className="speaking-rubric-editor-heading"><div><span className="speaking-card-kicker">Editable rubric</span><p>Keep the skills that matter for this activity. Pronunciation scoring is not included.</p></div><button type="button" className="speaking-outline-button" onClick={() => update("rubric", [...draft.rubric, { id: `custom-${Date.now()}`, name: "New skill", description: "What should students show?", enabled: true }])}><Plus size={16} aria-hidden="true" />Add criterion</button></div><div className="speaking-rubric-editor">{draft.rubric.map((criterion, index) => <div className={`speaking-rubric-row${criterion.enabled ? " is-enabled" : ""}`} key={criterion.id}><label className="speaking-rubric-toggle"><input type="checkbox" checked={criterion.enabled} onChange={(event) => updateCriterion(index, { enabled: event.target.checked })} /><span>{criterion.enabled ? "On" : "Off"}</span></label><div><input aria-label={`${criterion.name} name`} value={criterion.name} onChange={(event) => updateCriterion(index, { name: event.target.value })} /><textarea aria-label={`${criterion.name} description`} rows={2} value={criterion.description} onChange={(event) => updateCriterion(index, { description: event.target.value })} /></div><button type="button" className="speaking-icon-button speaking-danger-icon" onClick={() => update("rubric", draft.rubric.filter((_, candidateIndex) => candidateIndex !== index))} aria-label={`Remove ${criterion.name}`}><Trash2 size={16} aria-hidden="true" /></button></div>)}</div></section>{formError && <p className="speaking-error speaking-builder-error" role="alert">{formError}</p>}<div className="speaking-builder-footer"><p><ShieldIcon /><span>Activities are saved to your teacher workspace. Classroom join codes are created only when you launch a session.</span></p><button type="submit" className="speaking-primary-button" disabled={saving}><Check size={17} aria-hidden="true" />{editing ? "Save changes" : "Create activity"}</button></div></form></main></div>;
 }
 
-function SpeakingActivityPage({ navigate, activityId, results }: { navigate: Navigate; activityId: string; results: boolean }) {
+function SpeakingActivityPage({ navigate, activityId, results, edit }: { navigate: Navigate; activityId: string; results: boolean; edit: boolean }) {
   if (results) return <SpeakingResultsPage navigate={navigate} activityId={activityId} />;
+  if (edit) return <SpeakingCreatePage navigate={navigate} activityId={activityId} />;
   return <SpeakingActivityDetailPage navigate={navigate} activityId={activityId} />;
 }
 
@@ -579,7 +686,7 @@ function SpeakingActivityDetailPage({ navigate, activityId }: { navigate: Naviga
   const shareUrl = shareable ? `${window.location.origin}/speak/join/${latest!.joinCode}` : "";
   const run = async (action: () => Promise<unknown>) => { setWorking(true); setError(""); try { await action(); await load(); } catch (actionError) { setError(getErrorMessage(actionError, "The classroom session could not be updated.")); } finally { setWorking(false); } };
   const copyShareUrl = async () => { if (!shareUrl) return; try { await navigator.clipboard.writeText(shareUrl); setCopied(true); window.setTimeout(() => setCopied(false), 2_000); } catch { setCopied(false); } };
-  return <div className="speaking-page-shell speaking-teacher-shell"><SpeakingTopbar navigate={navigate} active="teacher" teacher /><main className="speaking-teacher-layout"><SpeakingTeacherSidebar navigate={navigate} active="home" /><section className="speaking-share-page"><button type="button" className="speaking-text-button" onClick={() => navigate("/speak/teacher")}><ArrowLeft size={16} aria-hidden="true" />All activities</button><div className="speaking-share-header"><div><span className="speaking-eyebrow"><Check size={15} aria-hidden="true" /> {latest ? "Classroom session" : "Reusable activity"}</span><h1>{activity.title}</h1><p>{activity.scenario}</p></div><span className={`speaking-status-pill speaking-status-${latest?.status ?? "ready"}`}>{latest ? latest.status : "Ready to launch"}</span></div>{error && <p className="speaking-error" role="alert">{error}</p>}<div className="speaking-share-grid"><section className="speaking-share-card speaking-share-code-card">{shareable ? <><div><span className="speaking-card-kicker">参加コード / QRコード</span><h2>{latest!.status === "ready" ? "Session ready" : "Share with your class"}</h2><p>Scan the QR code or enter this short code at <strong>/speak/join</strong>.</p></div><div className="speaking-share-visual"><QRCodeSVG value={shareUrl} size={172} bgColor="#ffffff" fgColor="#12214b" level="M" /><div className="speaking-join-code-block"><small>Session code</small><strong>{latest!.joinCode}</strong><button type="button" onClick={copyShareUrl} aria-label="Copy join URL">{copied ? <Check size={18} aria-hidden="true" /> : <Copy size={18} aria-hidden="true" />}</button></div></div><div className="speaking-share-link"><span>{shareUrl}</span><button className="speaking-outline-button" type="button" onClick={copyShareUrl}>{copied ? "Copied" : "Copy link"}</button></div></> : <><div><span className="speaking-card-kicker">{latest ? "Launch a new classroom run" : "Launch a classroom run"}</span><h2>{latest ? "Ready for another class?" : "Ready when you are"}</h2><p>Launching creates a new secure session code. This activity itself stays reusable.</p></div><button type="button" className="speaking-primary-button" disabled={working} onClick={() => void run(() => speakingApi.launchSession(activity.id))}><Play size={17} aria-hidden="true" />Launch session</button></>}</section><section className="speaking-share-card"><div className="speaking-share-card-heading"><span className="speaking-card-kicker">Activity setup</span><button type="button" className="speaking-icon-button" onClick={() => navigate("/speak/teacher/create")} aria-label="Create another activity"><Pencil size={16} aria-hidden="true" /></button></div><dl className="speaking-activity-facts"><div><dt>AI role</dt><dd>{activity.aiRole}</dd></div><div><dt>Student role</dt><dd>{activity.studentRole}</dd></div><div><dt>Level</dt><dd>{SPEAKING_LEVEL_LABELS[activity.level]}</dd></div><div><dt>Difficulty</dt><dd>{SPEAKING_DIFFICULTY_LABELS[activity.difficulty]}</dd></div><div><dt>Speaking time</dt><dd>{formatDuration(activity.durationSeconds)}</dd></div><div><dt>Feedback</dt><dd>{SPEAKING_NATIVE_LANGUAGE_LABELS[activity.nativeLanguage]}</dd></div></dl><div className="speaking-share-targets"><span>Target English</span><div>{activity.targetExpressions.map((expression) => <span key={expression}>{expression}</span>)}</div></div></section></div><div className="speaking-share-actions">{latest && latest.status === "ready" && <button type="button" className="speaking-primary-button" disabled={working} onClick={() => void run(() => speakingApi.startSession(latest.id))}>Start session</button>}{latest && latest.status === "active" && <button type="button" className="speaking-outline-button" disabled={working} onClick={() => void run(() => speakingApi.pauseSession(latest.id))}>Pause session</button>}{latest && latest.status === "paused" && <button type="button" className="speaking-primary-button" disabled={working} onClick={() => void run(() => speakingApi.resumeSession(latest.id))}>Resume session</button>}{latest && ["ready", "active", "paused"].includes(latest.status) && <button type="button" className="speaking-outline-button" disabled={working} onClick={() => void run(() => speakingApi.endSession(latest.id))}>End session</button>}{latest && <button type="button" className="speaking-primary-button" onClick={() => navigate(`/speak/teacher/activity/${activity.id}/results?sessionId=${encodeURIComponent(latest.id)}`)}><Trophy size={17} aria-hidden="true" />View results</button>}</div>{sessions.length > 1 && <section className="speaking-share-card speaking-previous-sessions"><div className="speaking-share-card-heading"><span className="speaking-card-kicker">Previous sessions</span></div>{sessions.slice(1).map((session) => <button className="speaking-results-table-row" type="button" key={session.id} onClick={() => navigate(`/speak/teacher/activity/${activity.id}/results?sessionId=${encodeURIComponent(session.id)}`)}><span>{new Date(session.createdAt).toLocaleString()}</span><code>{session.joinCode}</code><span className={`speaking-status-pill speaking-status-${session.status}`}>{session.status}</span><ChevronRight size={18} aria-hidden="true" /></button>)}</section>}</section></main></div>;
+  return <div className="speaking-page-shell speaking-teacher-shell"><SpeakingTopbar navigate={navigate} active="teacher" teacher /><main className="speaking-teacher-layout"><SpeakingTeacherSidebar navigate={navigate} active="home" /><section className="speaking-share-page"><button type="button" className="speaking-text-button" onClick={() => navigate("/speak/teacher")}><ArrowLeft size={16} aria-hidden="true" />All activities</button><div className="speaking-share-header"><div><span className="speaking-eyebrow"><Check size={15} aria-hidden="true" /> {latest ? "Classroom session" : "Reusable activity"}</span><h1>{activity.title}</h1><p>{activity.scenario}</p></div><span className={`speaking-status-pill speaking-status-${latest?.status ?? "ready"}`}>{latest ? latest.status : "Ready to launch"}</span></div>{error && <p className="speaking-error" role="alert">{error}</p>}<div className="speaking-share-grid"><section className="speaking-share-card speaking-share-code-card">{shareable ? <><div><span className="speaking-card-kicker">参加コード / QRコード</span><h2>{latest!.status === "ready" ? "Session ready" : "Share with your class"}</h2><p>Scan the QR code or enter this short code at <strong>/speak/join</strong>.</p></div><div className="speaking-share-visual"><QRCodeSVG value={shareUrl} size={172} bgColor="#ffffff" fgColor="#12214b" level="M" /><div className="speaking-join-code-block"><small>Session code</small><strong>{latest!.joinCode}</strong><button type="button" onClick={copyShareUrl} aria-label="Copy join URL">{copied ? <Check size={18} aria-hidden="true" /> : <Copy size={18} aria-hidden="true" />}</button></div></div><div className="speaking-share-link"><span>{shareUrl}</span><button className="speaking-outline-button" type="button" onClick={copyShareUrl}>{copied ? "Copied" : "Copy link"}</button></div></> : <><div><span className="speaking-card-kicker">{latest ? "Launch a new classroom run" : "Launch a classroom run"}</span><h2>{latest ? "Ready for another class?" : "Ready when you are"}</h2><p>Launching creates a new secure session code. This activity itself stays reusable.</p></div><button type="button" className="speaking-primary-button" disabled={working} onClick={() => void run(() => speakingApi.launchSession(activity.id))}><Play size={17} aria-hidden="true" />Launch session</button></>}</section><section className="speaking-share-card"><div className="speaking-share-card-heading"><span className="speaking-card-kicker">Activity setup</span><button type="button" className="speaking-icon-button" onClick={() => navigate(`/speak/teacher/activity/${activity.id}/edit`)} aria-label="Edit activity"><Pencil size={16} aria-hidden="true" /></button><span className="speaking-edit-label">Edit Activity</span></div><dl className="speaking-activity-facts"><div><dt>AI role</dt><dd>{activity.aiRole}</dd></div><div><dt>Student role</dt><dd>{activity.studentRole}</dd></div><div><dt>Level</dt><dd>{SPEAKING_LEVEL_LABELS[activity.level]}</dd></div><div><dt>Difficulty</dt><dd>{SPEAKING_DIFFICULTY_LABELS[activity.difficulty]}</dd></div><div><dt>Speaking time</dt><dd>{formatDuration(activity.durationSeconds)}</dd></div><div><dt>Feedback</dt><dd>{SPEAKING_NATIVE_LANGUAGE_LABELS[activity.nativeLanguage]}</dd></div></dl><div className="speaking-share-targets"><span>Target English</span><div>{activity.targetExpressions.map((expression) => <span key={expression}>{expression}</span>)}</div></div></section></div><div className="speaking-share-actions">{latest && latest.status === "ready" && <button type="button" className="speaking-primary-button" disabled={working} onClick={() => void run(() => speakingApi.startSession(latest.id))}>Start session</button>}{latest && latest.status === "active" && <button type="button" className="speaking-outline-button" disabled={working} onClick={() => void run(() => speakingApi.pauseSession(latest.id))}>Pause session</button>}{latest && latest.status === "paused" && <button type="button" className="speaking-primary-button" disabled={working} onClick={() => void run(() => speakingApi.resumeSession(latest.id))}>Resume session</button>}{latest && ["ready", "active", "paused"].includes(latest.status) && <button type="button" className="speaking-outline-button" disabled={working} onClick={() => void run(() => speakingApi.endSession(latest.id))}>End session</button>}{latest && <button type="button" className="speaking-primary-button" onClick={() => navigate(`/speak/teacher/activity/${activity.id}/results?sessionId=${encodeURIComponent(latest.id)}`)}><Trophy size={17} aria-hidden="true" />View results</button>}</div>{sessions.length > 1 && <section className="speaking-share-card speaking-previous-sessions"><div className="speaking-share-card-heading"><span className="speaking-card-kicker">Previous sessions</span></div>{sessions.slice(1).map((session) => <button className="speaking-results-table-row" type="button" key={session.id} onClick={() => navigate(`/speak/teacher/activity/${activity.id}/results?sessionId=${encodeURIComponent(session.id)}`)}><span>{new Date(session.createdAt).toLocaleString()}</span><code>{session.joinCode}</code><span className={`speaking-status-pill speaking-status-${session.status}`}>{session.status}</span><ChevronRight size={18} aria-hidden="true" /></button>)}</section>}</section></main></div>;
 }
 
 function SpeakingResultsPage({ navigate, activityId }: { navigate: Navigate; activityId: string }) {
@@ -592,7 +699,7 @@ function SpeakingResultsPage({ navigate, activityId }: { navigate: Navigate; act
   useEffect(() => { if (!sessionId) return; void speakingApi.sessionResults(sessionId).then((next) => setPayload(next as SessionResultsResponse)).catch((loadError) => setError(getErrorMessage(loadError, "Results could not be loaded."))); }, [sessionId]);
   if (error && !activity) return <MissingSpeakingSession navigate={navigate} message={error} />;
   if (!activity || !payload) return <TeacherLoading />;
-  return <div className="speaking-page-shell speaking-teacher-shell"><SpeakingTopbar navigate={navigate} active="teacher" teacher /><main className="speaking-teacher-layout"><SpeakingTeacherSidebar navigate={navigate} active="results" /><section className="speaking-teacher-content"><button type="button" className="speaking-text-button" onClick={() => navigate(`/speak/teacher/activity/${activity.id}`)}><ArrowLeft size={16} aria-hidden="true" />{activity.title}</button><div className="speaking-teacher-heading speaking-results-heading"><div><span className="speaking-eyebrow"><Trophy size={15} aria-hidden="true" /> Learning results</span><h1>See who found their voice</h1><p>Results are scoped to one launched classroom session.</p></div><select aria-label="Select classroom session" value={sessionId} onChange={(event) => { setSessionId(event.target.value); window.history.replaceState(null, "", `/speak/teacher/activity/${activity.id}/results?sessionId=${encodeURIComponent(event.target.value)}`); }}>{sessions.map((session) => <option key={session.id} value={session.id}>{new Date(session.createdAt).toLocaleString()} · {session.joinCode}</option>)}</select></div>{error && <p className="speaking-error" role="alert">{error}</p>}{payload.items.length ? <div className="speaking-results-table"><div className="speaking-results-table-head"><span>Participant</span><span>Status</span><span>Overall</span><span>Support</span><span /></div>{payload.items.map((item) => <button type="button" className="speaking-results-table-row" key={item.participant.id} onClick={() => navigate(`/speak/teacher/result/${item.participant.id}`)}><span className="speaking-participant-cell"><span className="speaking-student-avatar"><UserRound size={19} aria-hidden="true" /></span><strong>{item.participant.displayIdentifier ?? "Anonymous student"}</strong></span><span><span className={`speaking-status-pill speaking-status-${item.status}`}>{item.status === "completed" ? "Completed" : item.status === "error" ? "Evaluation unavailable" : "In progress"}</span></span><span className="speaking-table-score">{item.overallScore === undefined ? "—" : <>{item.overallScore}<small>/100</small></>}</span><span className="speaking-table-help"><Lightbulb size={15} aria-hidden="true" />{item.helpCount}</span><span><ChevronRight size={18} aria-hidden="true" /></span></button>)}</div> : <div className="speaking-empty-card"><Users size={32} aria-hidden="true" /><h2>No students yet</h2><p>Share {payload.session.joinCode} to invite the first practice session.</p><button type="button" className="speaking-primary-button" onClick={() => navigate(`/speak/teacher/activity/${activity.id}`)}>Show session code</button></div>}</section></main></div>;
+  return <div className="speaking-page-shell speaking-teacher-shell"><SpeakingTopbar navigate={navigate} active="teacher" teacher /><main className="speaking-teacher-layout"><SpeakingTeacherSidebar navigate={navigate} active="results" /><section className="speaking-teacher-content"><button type="button" className="speaking-text-button" onClick={() => navigate(`/speak/teacher/activity/${activity.id}`)}><ArrowLeft size={16} aria-hidden="true" />{activity.title}</button><div className="speaking-teacher-heading speaking-results-heading"><div><span className="speaking-eyebrow"><Trophy size={15} aria-hidden="true" /> Learning results</span><h1>See who found their voice</h1><p>Results are scoped to one launched classroom session.</p></div><select aria-label="Select classroom session" value={sessionId} onChange={(event) => { setSessionId(event.target.value); window.history.replaceState(null, "", `/speak/teacher/activity/${activity.id}/results?sessionId=${encodeURIComponent(event.target.value)}`); }}>{sessions.map((session) => <option key={session.id} value={session.id}>{new Date(session.createdAt).toLocaleString()} · {session.joinCode}</option>)}</select></div>{error && <p className="speaking-error" role="alert">{error}</p>}{payload.items.length ? <div className="speaking-results-table"><div className="speaking-results-table-head"><span>Participant</span><span>Status</span><span>Overall</span><span>Support</span><span /></div>{payload.items.map((item) => <button type="button" className="speaking-results-table-row" key={item.participant.id} onClick={() => navigate(`/speak/teacher/result/${item.participant.id}`)}><span className="speaking-participant-cell"><span className="speaking-student-avatar"><UserRound size={19} aria-hidden="true" /></span><strong>{item.participant.displayIdentifier ?? "Anonymous student"}</strong></span><span><span className={`speaking-status-pill speaking-status-${item.status}`}>{item.evaluation?.assessmentStatus === "insufficient_evidence" ? speakingFeedbackCopy(item.evaluation.language).notScored : item.status === "completed" ? "Completed" : item.status === "error" ? "Evaluation unavailable" : "In progress"}</span></span><span className="speaking-table-score">{item.overallScore === undefined ? "—" : <>{item.overallScore}<small>/100</small></>}</span><span className="speaking-table-help"><Lightbulb size={15} aria-hidden="true" />{item.helpCount}</span><span><ChevronRight size={18} aria-hidden="true" /></span></button>)}</div> : <div className="speaking-empty-card"><Users size={32} aria-hidden="true" /><h2>No students yet</h2><p>Share {payload.session.joinCode} to invite the first practice session.</p><button type="button" className="speaking-primary-button" onClick={() => navigate(`/speak/teacher/activity/${activity.id}`)}>Show session code</button></div>}</section></main></div>;
 }
 
 function SpeakingTeacherResultPage({ navigate, participantId }: { navigate: Navigate; participantId: string }) {
@@ -602,7 +709,7 @@ function SpeakingTeacherResultPage({ navigate, participantId }: { navigate: Navi
   if (!result && !error) return <TeacherLoading />;
   if (!result) return <MissingSpeakingSession navigate={navigate} message={error} />;
   const evaluation = result.evaluation;
-  return <div className="speaking-page-shell speaking-teacher-shell"><SpeakingTopbar navigate={navigate} active="teacher" teacher /><main className="speaking-teacher-layout"><SpeakingTeacherSidebar navigate={navigate} active="results" /><section className="speaking-teacher-content"><button type="button" className="speaking-text-button" onClick={() => navigate(`/speak/teacher/activity/${result.activity.id}/results?sessionId=${encodeURIComponent(result.session.id)}`)}><ArrowLeft size={16} aria-hidden="true" />Back to results</button><div className="speaking-teacher-heading speaking-detail-heading"><div><span className="speaking-eyebrow"><UserRound size={15} aria-hidden="true" /> Student detail</span><h1>{result.participant.displayIdentifier ?? "Anonymous student"}</h1><p>{result.activity.title} · {result.turns.filter((turn) => turn.speaker === "student").length} speaking turns · {result.participant.helpCount} Help uses</p></div><span className="speaking-detail-score"><strong>{evaluation ? scoreFor(evaluation) : "—"}</strong>{evaluation && <small>/100</small>}</span></div>{evaluation ? <ResultPanel activity={result.activity} turns={result.turns} evaluation={evaluation} teacherView /> : <div className="speaking-empty-card"><h2>Evaluation unavailable</h2><p>The participant’s transcript remains available, but no trustworthy evaluation is stored.</p><div className="speaking-transcript-detail">{result.turns.map((turn) => <p key={turn.id}><strong>{turn.speaker === "ai" ? "AI" : "Student"}</strong><span>{turn.text}</span></p>)}</div></div>}</section></main></div>;
+  return <div className="speaking-page-shell speaking-teacher-shell"><SpeakingTopbar navigate={navigate} active="teacher" teacher /><main className="speaking-teacher-layout"><SpeakingTeacherSidebar navigate={navigate} active="results" /><section className="speaking-teacher-content"><button type="button" className="speaking-text-button" onClick={() => navigate(`/speak/teacher/activity/${result.activity.id}/results?sessionId=${encodeURIComponent(result.session.id)}`)}><ArrowLeft size={16} aria-hidden="true" />Back to results</button><div className="speaking-teacher-heading speaking-detail-heading"><div><span className="speaking-eyebrow"><UserRound size={15} aria-hidden="true" /> Student detail</span><h1>{result.participant.displayIdentifier ?? "Anonymous student"}</h1><p>{result.activity.title} · {result.turns.filter((turn) => turn.speaker === "student").length} speaking turns · {result.participant.helpCount} Help uses</p></div><span className="speaking-detail-score"><strong>{evaluation ? scoreFor(evaluation) ?? "—" : "—"}</strong>{evaluation && scoreFor(evaluation) !== undefined && <small>/100</small>}</span></div>{evaluation ? <ResultPanel activity={result.activity} turns={result.turns} evaluation={evaluation} teacherView /> : <div className="speaking-empty-card"><h2>Evaluation unavailable</h2><p>The participant’s transcript remains available, but no trustworthy evaluation is stored.</p><div className="speaking-transcript-detail">{result.turns.map((turn) => <p key={turn.id}><strong>{turn.speaker === "ai" ? "AI" : "Student"}</strong><span>{turn.text}</span></p>)}</div></div>}</section></main></div>;
 }
 
 type SpeakingState = SpeakingUiState;

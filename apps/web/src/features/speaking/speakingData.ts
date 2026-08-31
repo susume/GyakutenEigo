@@ -120,6 +120,7 @@ export const SPEAKING_TEMPLATES: SpeakingActivity[] = [
 export const makeDemoEvaluation = (participantId = "demo-participant"): SpeakingEvaluation => ({
   participantId,
   language: "ja",
+  assessmentStatus: "scored",
   scores: { communication: 4, interaction: 4, vocabulary: 4, grammar: 3, fluency: 3 },
   evidence: {
     communication: "ほしい色とサイズを伝えられました。",

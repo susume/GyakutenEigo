@@ -76,7 +76,10 @@ export default function App() {
     const target = new URL(nextPath, window.location.origin);
     const normalizedPath = normalizeRoutePath(target.pathname);
     const targetUrl = `${normalizedPath}${target.search}${target.hash}`;
-    if (window.location.pathname !== normalizedPath || window.location.search !== target.search || window.location.hash !== target.hash) window.history.pushState(null, "", targetUrl);
+    if (window.location.pathname !== normalizedPath || window.location.search !== target.search || window.location.hash !== target.hash) {
+      window.history.pushState(null, "", targetUrl);
+      window.dispatchEvent(new PopStateEvent("popstate"));
+    }
     setRoutePath(normalizedPath);
     setMode(nextMode ?? modeForRoute(normalizedPath));
     setIsMobileNavOpen(false);

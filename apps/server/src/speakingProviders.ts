@@ -1,5 +1,7 @@
 import {
   SpeakingEvaluationSchema,
+  speakingFeedbackCopy,
+  SPEAKING_PRACTICE_LANGUAGE,
   type SpeakingActivity,
   type SpeakingEvaluation,
   type SpeakingRubricCriterion,
@@ -123,42 +125,48 @@ export const mockHelpProvider: HelpProvider = {
   }
 };
 
-const mockReason = (criterion: SpeakingRubricCriterion, studentTurnCount: number, helpCount: number) => {
-  if (criterion.id === "communication") return studentTurnCount > 0 ? "言いたいことを英語で伝えようとできました。" : "まだ英語で伝える場面がありませんでした。";
-  if (criterion.id === "interaction") return studentTurnCount > 1 ? "相手の質問に答えて、会話を続けられました。" : "次は相手の質問に答えてみましょう。";
-  if (criterion.id === "vocabulary") return studentTurnCount > 0 ? "場面に合う英語の言葉を使えました。" : "場面に合う英語を1つ使ってみましょう。";
-  if (criterion.id === "grammar") return studentTurnCount > 0 ? "少し直すところがあっても、意味は伝わりました。" : "短い文から練習してみましょう。";
-  if (criterion.id !== "fluency") return studentTurnCount > 0 ? "この活動に合う英語を使って、課題に取り組めました。" : "この活動に合う英語を1つ使ってみましょう。";
-  return helpCount > 0 ? "ヒントを使いながら、最後まで話そうとできました。" : "ゆっくりでも、最後まで話そうとできました。";
+const mockReason = (criterion: SpeakingRubricCriterion, studentTurnCount: number, helpCount: number, language: SpeakingActivity["nativeLanguage"]) => {
+  const japanese = language === "ja";
+  if (criterion.id === "communication") return studentTurnCount > 0 ? (japanese ? "言いたいことを英語で伝えようとできました。" : "You tried to communicate your idea in English.") : (japanese ? "まだ英語で伝える場面がありませんでした。" : "There was not enough speech to show this skill.");
+  if (criterion.id === "interaction") return studentTurnCount > 1 ? (japanese ? "相手の質問に答えて、会話を続けられました。" : "You responded and kept the conversation moving.") : (japanese ? "次は相手の質問に答えてみましょう。" : "Next time, try responding to the other person's question.");
+  if (criterion.id === "vocabulary") return studentTurnCount > 0 ? (japanese ? "場面に合う英語の言葉を使えました。" : "You used words that fit the situation.") : (japanese ? "場面に合う英語を1つ使ってみましょう。" : "Try one English expression that fits the situation.");
+  if (criterion.id === "grammar") return studentTurnCount > 0 ? (japanese ? "少し直すところがあっても、意味は伝わりました。" : "Your sentences communicated the meaning, even with small fixes to make.") : (japanese ? "短い文から練習してみましょう。" : "Start with one short sentence.");
+  if (criterion.id !== "fluency") return studentTurnCount > 0 ? (japanese ? "この活動に合う英語を使って、課題に取り組めました。" : "You used English that fit this activity.") : (japanese ? "この活動に合う英語を1つ使ってみましょう。" : "Try one expression that fits this activity.");
+  return helpCount > 0
+    ? (japanese ? "ヒントを使いながら、最後まで話そうとできました。" : "You kept trying, even with support.")
+    : (japanese ? "ゆっくりでも、最後まで話そうとできました。" : "You kept trying to speak clearly.");
 };
 
 export const mockEvaluationProvider: EvaluationProvider = {
   async evaluate(input) {
     void buildEvaluationPrompt({ activity: input.activity, turns: input.turns, rubric: input.activity.rubric, timingMetadata: input.timingMetadata, helpMetadata: input.helpMetadata });
     const studentTurns = latestStudentTurns(input.turns);
-    const scores: Record<string, number> = {};
+    const scores: Record<string, number | null> = {};
     const evidence: Record<string, string> = {};
     const noSpeech = studentTurns.length === 0;
+    const copy = speakingFeedbackCopy(input.activity.nativeLanguage);
     const helpCount = input.helpMetadata?.helpCount ?? input.turns.filter((turn) => turn.usedHelp).length;
     for (const criterion of input.activity.rubric.filter((item) => item.enabled)) {
-      scores[criterion.id] = noSpeech ? 1 : Math.min(4, Math.max(1, studentTurns.length >= 2 ? 4 : 3));
-      evidence[criterion.id] = noSpeech ? "No speech was detected in this attempt." : mockReason(criterion, studentTurns.length, helpCount);
+      scores[criterion.id] = noSpeech ? null : Math.min(4, Math.max(1, studentTurns.length >= 2 ? 4 : 3));
+      evidence[criterion.id] = noSpeech ? copy.insufficientEvidenceReason : mockReason(criterion, studentTurns.length, helpCount, input.activity.nativeLanguage);
     }
     const evaluation: SpeakingEvaluation = {
       participantId: input.participantId,
       language: input.activity.nativeLanguage,
+      assessmentStatus: noSpeech ? "insufficient_evidence" : "scored",
+      ...(noSpeech ? { notScoredReason: copy.insufficientEvidenceReason } : {}),
       scores,
       evidence,
       strengths: noSpeech
-        ? [input.activity.nativeLanguage === "ja" ? "もう一度話す練習にチャレンジできます。" : "You can try the speaking activity again."]
-        : [input.activity.nativeLanguage === "ja" ? "相手の話を聞いて、自分の言いたいことを伝えられました。" : "You kept trying to communicate.", input.activity.nativeLanguage === "ja" ? "まちがいを気にしすぎず、会話を続けられました。" : "You kept the conversation moving."],
+        ? [copy.insufficientEvidenceStrength]
+        : [copy.scoredSummary, copy.tryNext],
       improvements: noSpeech
-        ? [input.activity.nativeLanguage === "ja" ? "短い英語を1文話してみましょう。" : "Try saying one short sentence."]
-        : [input.activity.nativeLanguage === "ja" ? "次は、あなたからも相手に1つ質問してみましょう。" : "Next time, ask the other person one question."],
+        ? [copy.insufficientEvidenceImprovement]
+        : [copy.tryNext],
       usefulEnglish: studentTurns.length > 0 ? [{ said: studentTurns[0]!.text, try: input.activity.targetExpressions[0] ?? "I'd like..." }] : [],
       overallMessage: noSpeech
-        ? (input.activity.nativeLanguage === "ja" ? "声が聞こえませんでした。短い英語を1文話して、もう一度試してみましょう。" : "We couldn't hear any speech. Try one short sentence and try again.")
-        : (input.activity.nativeLanguage === "ja" ? "よくできました！まちがいを気にしすぎず、会話を続けられました。" : "Nice work! You kept trying to communicate."),
+        ? copy.insufficientEvidenceMessage
+        : `${copy.scoredHeadline} ${copy.scoredSummary}`,
       createdAt: new Date().toISOString()
     };
     const parsed = SpeakingEvaluationSchema.safeParse(evaluation);
@@ -193,7 +201,7 @@ export const openAiTranscriptionProvider: TranscriptionProvider = {
     audioBytes.set(input.audio);
     form.append("file", new Blob([audioBytes.buffer], { type: input.mimeType }), "speaking-audio");
     form.append("model", process.env.SPEAKING_TRANSCRIPTION_MODEL?.trim() || "gpt-4o-mini-transcribe");
-    if (input.languageHint && input.languageHint !== "ja") form.append("language", input.languageHint);
+    form.append("language", SPEAKING_PRACTICE_LANGUAGE);
     const apiKey = openAiKey();
     if (!apiKey) throw new Error("OpenAI transcription requires OPENAI_API_KEY or SPEAKING_OPENAI_API_KEY.");
     const response = await fetch("https://api.openai.com/v1/audio/transcriptions", { method: "POST", headers: { Authorization: `Bearer ${apiKey}` }, body: form });
@@ -234,7 +242,7 @@ const evaluationSchema = {
   type: "object",
   additionalProperties: false,
   properties: {
-    scores: { type: "object", additionalProperties: { type: "integer", minimum: 1, maximum: 4 } },
+    scores: { type: "object", additionalProperties: { anyOf: [{ type: "integer", minimum: 1, maximum: 4 }, { type: "null" }] } },
     evidence: { type: "object", additionalProperties: { type: "string" } },
     strengths: { type: "array", items: { type: "string" }, maxItems: 5 },
     improvements: { type: "array", items: { type: "string" }, maxItems: 5 },
@@ -253,7 +261,8 @@ export const openAiEvaluationProvider: EvaluationProvider = {
       messages: [{ role: "system", content: buildEvaluationPrompt({ activity: input.activity, turns: input.turns, rubric: input.activity.rubric, timingMetadata: input.timingMetadata, helpMetadata: input.helpMetadata }) }]
     });
     const output = JSON.parse(raw) as Omit<SpeakingEvaluation, "participantId" | "language" | "createdAt">;
-    const evaluation = { ...output, participantId: input.participantId, language: input.activity.nativeLanguage, createdAt: new Date().toISOString() };
+    const assessmentStatus = Object.values(output.scores).some((score) => typeof score === "number") ? "scored" : "insufficient_evidence";
+    const evaluation = { ...output, assessmentStatus, participantId: input.participantId, language: input.activity.nativeLanguage, createdAt: new Date().toISOString() };
     const parsed = SpeakingEvaluationSchema.safeParse(evaluation);
     if (!parsed.success) throw new Error("Evaluation provider returned invalid structured data.");
     return parsed.data;

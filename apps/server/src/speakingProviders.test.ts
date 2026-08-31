@@ -10,7 +10,8 @@ import {
   mockConversationProvider,
   mockEvaluationProvider,
   mockHelpProvider,
-  mockTranscriptionProvider
+  mockTranscriptionProvider,
+  openAiTranscriptionProvider
 } from "./speakingProviders.js";
 
 const activity = {
@@ -59,8 +60,9 @@ test("mock conversation resists prompt injection and Help follows the current AI
 test("mock evaluation supports Japanese, custom criteria, disabled criteria, and no-speech evidence", async () => {
   const noSpeech = await mockEvaluationProvider.evaluate({ activity, turns: [aiTurn("Hi!")], participantId: "participant-test", helpMetadata: { helpCount: 0, helpedTurnCount: 0 } });
   assert.equal(SpeakingEvaluationSchema.safeParse(noSpeech).success, true);
-  assert.deepEqual(Object.values(noSpeech.scores), [1, 1]);
-  assert.match(noSpeech.overallMessage, /声が聞こえませんでした/);
+  assert.deepEqual(Object.values(noSpeech.scores), [null, null]);
+  assert.equal(noSpeech.assessmentStatus, "insufficient_evidence");
+  assert.match(noSpeech.overallMessage, /評価できるだけの英語/);
 
   const speech = await mockEvaluationProvider.evaluate({
     activity,
@@ -72,6 +74,36 @@ test("mock evaluation supports Japanese, custom criteria, disabled criteria, and
   assert.equal(Object.hasOwn(speech.scores, "grammar"), false);
   assert.equal(Object.hasOwn(speech.scores, "custom"), true);
   assert.match(speech.evidence.custom ?? "", /活動|communication/i);
+});
+
+test("feedback language changes copy but never changes English transcription", async () => {
+  const englishActivity = { ...activity, nativeLanguage: "en" as const };
+  const help = await mockHelpProvider.hint({ activity: englishActivity, turns: [aiTurn("What size would you like?")] });
+  assert.doesNotMatch(help.hint, /[\u3040-\u30ff\u4e00-\u9fff]/u);
+  const evaluation = await mockEvaluationProvider.evaluate({
+    activity: englishActivity,
+    turns: [aiTurn("Hi!"), { id: "student-en", participantId: "participant-test", speaker: "student", text: "Medium, please.", createdAt: "2026-08-31T00:00:01.000Z" }],
+    participantId: "participant-test",
+    helpMetadata: { helpCount: 0, helpedTurnCount: 0 }
+  });
+  assert.doesNotMatch([evaluation.overallMessage, ...evaluation.strengths, ...evaluation.improvements].join(" "), /[\u3040-\u30ff\u4e00-\u9fff]/u);
+
+  const previousFetch = globalThis.fetch;
+  const previousKey = process.env.SPEAKING_OPENAI_API_KEY;
+  process.env.SPEAKING_OPENAI_API_KEY = "test-speaking-key";
+  let requestedLanguage: FormDataEntryValue | null = null;
+  globalThis.fetch = async (_input, init) => {
+    requestedLanguage = (init?.body as FormData).get("language");
+    return new Response(JSON.stringify({ text: "English transcription" }), { status: 200, headers: { "content-type": "application/json" } });
+  };
+  try {
+    await openAiTranscriptionProvider.transcribe({ audio: Buffer.from("audio"), mimeType: "audio/webm", languageHint: "ja" });
+  } finally {
+    globalThis.fetch = previousFetch;
+    if (previousKey === undefined) delete process.env.SPEAKING_OPENAI_API_KEY;
+    else process.env.SPEAKING_OPENAI_API_KEY = previousKey;
+  }
+  assert.equal(requestedLanguage, "en");
 });
 
 test("production speaking configuration never silently falls back to mock providers", () => {

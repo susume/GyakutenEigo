@@ -1,5 +1,28 @@
 import { expect, test } from "@playwright/test";
 
+test("logged-out teacher returns to the Speaking builder after existing auth", async ({ browser, request }) => {
+  const suffix = `${Date.now()}-${Math.random().toString(16).slice(2)}`;
+  const email = `speaking-return-${suffix}@example.test`;
+  const signup = await request.post("/api/auth/signup", {
+    data: { name: "Speaking Return Teacher", email, password: "speaking-pass" }
+  });
+  expect(signup.status()).toBe(201);
+
+  const context = await browser.newContext();
+  const page = await context.newPage();
+  try {
+    await page.goto("/speak/teacher/create");
+    await expect(page.getByRole("heading", { name: "Sign in to QuizStrike" })).toBeVisible();
+    await page.getByLabel("Email").fill(email);
+    await page.getByLabel("Password", { exact: true }).fill("speaking-pass");
+    await page.getByRole("button", { name: "Sign in", exact: true }).click();
+    await expect(page).toHaveURL(/\/speak\/teacher\/create$/);
+    await expect(page.getByRole("heading", { name: "Create an activity" })).toBeVisible();
+  } finally {
+    await context.close();
+  }
+});
+
 test("teacher and student Speaking Practice screens use the connected mock API", async ({ browser, request }) => {
   const suffix = `${Date.now()}-${Math.random().toString(16).slice(2)}`;
   const signup = await request.post("/api/auth/signup", {
@@ -65,7 +88,7 @@ test("teacher and student Speaking Practice screens use the connected mock API",
   await studentPage.getByRole("button", { name: "Stop speaking", exact: true }).click();
   await expect(studentPage.locator(".speaking-transcript-preview")).toContainText("practice this conversation", { timeout: 15_000 });
   await studentPage.getByRole("button", { name: "Finish", exact: true }).click();
-  await expect(studentPage.getByText("今回の結果")).toBeVisible({ timeout: 15_000 });
+  await expect(studentPage.getByRole("heading", { name: "今回の結果" })).toBeVisible({ timeout: 15_000 });
 
   await teacherPage.goto(`/speak/teacher/activity/${activityId}/results?sessionId=${encodeURIComponent(session!.id)}`);
   await expect(teacherPage.locator(".speaking-results-table-row").filter({ hasText: "Aki" })).toContainText("Completed");

@@ -1,6 +1,6 @@
 import assert from "node:assert/strict";
 import test from "node:test";
-import type { SpeakingActivity } from "@quizstrike/shared";
+import { speakingOverallScore, type SpeakingActivity } from "@quizstrike/shared";
 import { mockEvaluationProvider } from "./speakingProviders.js";
 import { validateSpeakingEvaluation } from "./routes/speakingRoutes.js";
 
@@ -29,10 +29,22 @@ test("evaluation validation accepts the enabled rubric and rejects malformed pro
 
   assert.throws(() => validateSpeakingEvaluation({ ...valid, scores: {} }, activity, "participant-1"), /rubric criteria/);
   assert.throws(() => validateSpeakingEvaluation({ ...valid, participantId: "other" }, activity, "participant-1"), /invalid data/);
+  assert.throws(() => validateSpeakingEvaluation({ ...valid, language: "ja" }, activity, "participant-1"), /invalid data/);
 });
 
 test("pronunciation-like rubric scoring is rejected even if a provider returns it", async () => {
   const pronunciationActivity: SpeakingActivity = { ...activity, rubric: [{ id: "pronunciation", name: "Pronunciation", description: "Not supported", enabled: true }] };
   const output = await mockEvaluationProvider.evaluate({ activity: pronunciationActivity, turns: [], participantId: "participant-1", helpMetadata: { helpCount: 0, helpedTurnCount: 0 } });
   assert.throws(() => validateSpeakingEvaluation(output, pronunciationActivity, "participant-1"), /Pronunciation scoring/);
+});
+
+test("nullable rubric scores are not scored, while invalid and unknown scores are rejected", async () => {
+  const valid = await mockEvaluationProvider.evaluate({ activity, turns: [], participantId: "participant-1", helpMetadata: { helpCount: 0, helpedTurnCount: 0 } });
+  const notScored = { ...valid, scores: { communication: null }, evidence: { communication: "Not enough evidence." } };
+  const accepted = validateSpeakingEvaluation(notScored, activity, "participant-1");
+  assert.equal(accepted.scores.communication, null);
+  assert.equal(speakingOverallScore(accepted), undefined);
+  assert.throws(() => validateSpeakingEvaluation({ ...valid, assessmentStatus: "scored", scores: { communication: 0 }, evidence: { communication: "Invalid" } }, activity, "participant-1"), /invalid data/);
+  assert.throws(() => validateSpeakingEvaluation({ ...valid, assessmentStatus: "scored", scores: { communication: 5 }, evidence: { communication: "Invalid" } }, activity, "participant-1"), /invalid data/);
+  assert.throws(() => validateSpeakingEvaluation({ ...valid, scores: { communication: null, unknown: null }, evidence: { communication: "Evidence", unknown: "Evidence" } }, activity, "participant-1"), /rubric criteria/);
 });

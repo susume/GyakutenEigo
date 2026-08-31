@@ -367,6 +367,7 @@ model SpeakingParticipant {
   anonymousTokenHash String                    @unique
   startedAt          DateTime?
   finishedAt         DateTime?
+  pausedDurationMs   Int                       @default(0)
   status             SpeakingParticipantStatus @default(joined)
   helpCount          Int                       @default(0)
   helpPending        Boolean                   @default(false)
