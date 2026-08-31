@@ -7,6 +7,7 @@ import {
   getAthleticsModeIntro,
   getHunterStation,
   getZeusTargetPlan,
+  resolveHunterHitsForRound,
   resolveChaosHit,
   resolveHunterQuiz,
   resolveRunnerQuiz,
@@ -52,6 +53,9 @@ test("server keeps Hunters & Runners balanced and changes the defender group", (
   assert.ok(second.hunterIds.every((id) => first.roles[id] === "runner"));
   assert.equal(getHunterStation(0, first.hunterIds.length).radius, 7);
   assert.ok(getHunterStation(2, first.hunterIds.length).progress > getHunterStation(0, first.hunterIds.length).progress);
+  assert.equal(resolveHunterHitsForRound({ role: "hunter", round: 1, previousHits: 9 }), 0);
+  assert.equal(resolveHunterHitsForRound({ role: "runner", round: 2, previousHits: 4 }), 4);
+  assert.equal(resolveHunterHitsForRound({ role: "hunter", round: 2 }), 0);
 });
 
 test("server authority wrappers preserve the shared resource and impact rules", () => {

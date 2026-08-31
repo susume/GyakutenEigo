@@ -115,6 +115,12 @@ test("Chaos waves are seeded, path-bound, capped, and resolve shielded impacts",
     hazardPosition: { x: 1, z: 1 },
     shieldCharges: 0
   }).knockback, 4);
+  assert.equal(resolveChaosHazardImpact({
+    hazard: { radius: 2, knockback: 4 },
+    playerPosition: { x: 0, y: 24, z: 0 },
+    hazardPosition: { x: 1, y: 1, z: 1 },
+    shieldCharges: 0
+  }).hit, false, "hazards on another vertical course level must not collide");
   assert.equal(getChaosEventModifiers("speed-round").hazardSpeedMultiplier, 1.35);
   assert.ok(getChaosHazardPosition(first[0]!, route, nowMs + 250, 1.35).progress >= getChaosHazardPosition(first[0]!, route, nowMs + 250).progress);
   assert.equal(getChaosEventModifiers("low-gravity").jumpHeightCap, 7.2);

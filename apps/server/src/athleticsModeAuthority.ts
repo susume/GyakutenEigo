@@ -108,6 +108,20 @@ export const resolveHunterQuiz = ({ isCorrect, ammo, streak }: { isCorrect: bool
 export const resolveRunnerQuiz = ({ isCorrect, charge, ability }: { isCorrect: boolean; charge: number; ability?: AthleticsAbility }) =>
   resolveRunnerQuizReward({ isCorrect, currentCharge: charge, currentAbility: ability });
 
+export const resolveHunterHitsForRound = ({
+  role,
+  round,
+  previousHits
+}: {
+  role: AthleticsRole;
+  round: number;
+  previousHits?: number;
+}) => {
+  const hits = Number.isFinite(previousHits) ? Math.max(0, Math.floor(previousHits ?? 0)) : 0;
+  if (round <= 1) return role === "hunter" ? 0 : undefined;
+  return role === "hunter" || hits > 0 ? hits : undefined;
+};
+
 export const getZeusTargetPlan = ({
   candidates,
   attackIndex,

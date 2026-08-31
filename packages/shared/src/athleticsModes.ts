@@ -478,13 +478,21 @@ export const resolveChaosHazardImpact = ({
   shieldCharges?: number;
 }) => {
   const distance = Math.hypot(playerPosition.x - hazardPosition.x, playerPosition.z - hazardPosition.z);
-  const hit = distance <= Math.max(0.5, hazard.radius + 0.8);
-  if (!hit) return { hit: false as const, shielded: false, distance, knockback: 0 };
-  if (shieldCharges > 0) return { hit: true as const, shielded: true, distance, knockback: 0 };
+  const verticalDistance = Number.isFinite(playerPosition.y) && Number.isFinite(hazardPosition.y)
+    ? Math.abs(Number(playerPosition.y) - Number(hazardPosition.y))
+    : 0;
+  // Player positions use eye height while rolling hazards sit near the floor.
+  // Keep a same-platform allowance without letting vertically stacked course
+  // sections damage each other merely because their X/Z paths cross.
+  const hit = distance <= Math.max(0.5, hazard.radius + 0.8)
+    && verticalDistance <= Math.max(1, hazard.radius + 3.4);
+  if (!hit) return { hit: false as const, shielded: false, distance, verticalDistance, knockback: 0 };
+  if (shieldCharges > 0) return { hit: true as const, shielded: true, distance, verticalDistance, knockback: 0 };
   return {
     hit: true as const,
     shielded: false,
     distance,
+    verticalDistance,
     knockback: Math.max(1.5, Math.min(6, hazard.knockback)),
     staggerMs: 300
   };

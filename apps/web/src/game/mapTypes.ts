@@ -1,3 +1,5 @@
+import type { SessionMapId } from "@quizstrike/shared";
+
 export type CitadelBlock = {
   id: string;
   label?: string;
@@ -102,7 +104,7 @@ export type CitadelProp = {
 };
 
 export type ArenaMapDefinition = {
-  id: "desert_citadel" | "iron_junction" | "temple_runoff";
+  id: SessionMapId;
   title: string;
   description: string;
   districts: readonly string[];

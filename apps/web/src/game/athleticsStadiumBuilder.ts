@@ -254,8 +254,10 @@ export const buildAthleticsStadiumScene = ({
   park.name = "skyline-adventure-park";
   scene.add(park);
 
-  scene.background = new THREE.Color("#f4b57c");
-  scene.fog = new THREE.Fog("#f4d0a5", 125, 420);
+  // Athletics has its own bright skyline identity. Reusing the old orange
+  // fallback made a correctly built course look like Desert Citadel.
+  scene.background = new THREE.Color("#9edcff");
+  scene.fog = new THREE.Fog("#d8f3ff", 125, 420);
   scene.add(new THREE.HemisphereLight("#fff1d0", "#153d52", 1.65));
   const keyLight = new THREE.DirectionalLight("#fff2c7", 3.2);
   keyLight.position.set(-120, 220, 120);

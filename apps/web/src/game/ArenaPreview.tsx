@@ -64,6 +64,8 @@ import { mountDesertCitadelImportedAssets } from "./desertCitadelImportedAssets"
 import { mountTempleRunoffImportedAssets } from "./templeRunoffImportedAssets";
 import { mountAthleticsImportedAssets } from "./athleticsImportedAssets";
 import { createAthleticsModeVisuals } from "./athleticsModeVisuals";
+import { buildAthleticsStadiumScene } from "./athleticsStadiumBuilder";
+import { getAthleticsDashMultiplier, getAthleticsJumpVelocityMultiplier } from "./athleticsClientTiming";
 import { getTempleRunoffReviewViewpoint } from "./templeRunoffReviewViewpoints";
 import {
   readGamePreferences,
@@ -344,7 +346,6 @@ export default function ArenaPreview({
   const [characterDebugStats, setCharacterDebugStats] = useState<CharacterManagerStats | null>(null);
   const [performanceSnapshot, setPerformanceSnapshot] = useState<ArenaPerformanceSnapshot | null>(null);
   const [vfxDebugStats, setVfxDebugStats] = useState<ArenaVfxStats | null>(null);
-  const [athleticsSceneBuilder, setAthleticsSceneBuilder] = useState<typeof import("./athleticsStadiumBuilder")["buildAthleticsStadiumScene"] | null>(null);
   const debugVfxPositionRef = useRef({ x: 0, y: 0.12, z: 0 });
   const previousWeaponRef = useRef<string | null>(null);
   const sceneSessionId = session?.id ?? "training";
@@ -355,14 +356,6 @@ export default function ArenaPreview({
   const athleticsMode = isAthleticsMode
     ? session?.settings.athleticsMode ?? session?.athletics?.mode ?? "classic"
     : "classic";
-  useEffect(() => {
-    if (!isAthleticsMode || athleticsSceneBuilder) return;
-    let active = true;
-    void import("./athleticsStadiumBuilder").then((module) => {
-      if (active) setAthleticsSceneBuilder(() => module.buildAthleticsStadiumScene);
-    });
-    return () => { active = false; };
-  }, [athleticsSceneBuilder, isAthleticsMode]);
   const arenaMapId: SessionMapId = session?.settings.mapId ?? "desert_citadel";
   const {
     arenaMap,
@@ -485,7 +478,6 @@ export default function ArenaPreview({
     const currentPlayer = currentPlayerRef.current;
     const mount = mountRef.current;
     if (!mount) return;
-    if (isAthleticsMode && !athleticsSceneBuilder) return;
     setRenderError("");
     setPerformanceSnapshot(null);
     setVfxDebugStats(null);
@@ -596,7 +588,7 @@ export default function ArenaPreview({
       desertCitadelVfx,
       athleticsUpdate
     } = isAthleticsMode
-      ? athleticsSceneBuilder!({
+      ? buildAthleticsStadiumScene({
           scene,
           renderer,
           activeQuality,
@@ -1172,13 +1164,14 @@ export default function ArenaPreview({
         return supportY === undefined ? mappedGroundY : Math.max(mappedGroundY, supportY);
       };
 
-      const getActiveChaosEventModifiers = () => {
+      const getActiveChaosEventModifiers = (nowMs: number) => {
         const event = sessionRef.current?.athletics?.chaos?.currentEvent;
-        return event && Date.now() < Date.parse(event.expiresAt) ? getChaosEventModifiers(event) : undefined;
+        return event && nowMs < Date.parse(event.expiresAt) ? getChaosEventModifiers(event) : undefined;
       };
       const isStationaryAthleticsHunter = isAthleticsMode && athleticsHud?.role === "hunter";
 
       const fpsLoop = createArenaRenderLoop(({ delta, currentTime, elapsed }) => {
+        const authoritativeNowMs = Date.now();
         performanceCapture.frame(currentTime);
         // Put target/body previews downrange on the aim line. The former close,
         // side-offset point made them read like HUD clutter beside the weapon.
@@ -1190,7 +1183,7 @@ export default function ArenaPreview({
         vfxPool.setViewPosition(playerPosition);
         vfxPool.update(currentTime);
         const platformCarry = athleticsUpdate?.(elapsed, playerPosition, wasGrounded);
-        athleticsModeVisuals?.update(sessionRef.current, Date.now());
+        athleticsModeVisuals?.update(sessionRef.current, authoritativeNowMs);
         if (isAthleticsMode && platformCarry && !inputPausedRef.current && !controlsDisabledRef.current) {
           playerPosition.x += platformCarry.x;
           playerPosition.y += platformCarry.y;
@@ -1221,7 +1214,7 @@ export default function ArenaPreview({
           performanceWindowAt = currentTime;
         }
         const controlsLocked = controlsDisabledRef.current;
-        const chaosEventModifiers = getActiveChaosEventModifiers();
+        const chaosEventModifiers = getActiveChaosEventModifiers(authoritativeNowMs);
         if (controlsLocked) {
           verticalVelocity = 0;
           jumpQueuedAt = 0;
@@ -1322,7 +1315,11 @@ export default function ArenaPreview({
         const bufferedJump = jumpQueuedAt > 0 && currentTime - jumpQueuedAt <= jumpBufferMs;
         const canUseCoyoteTime = grounded || currentTime - lastGroundedAt <= coyoteTimeMs;
         if (bufferedJump && canUseCoyoteTime && !crouching) {
-          const jumpHeightScale = chaosEventModifiers?.jumpHeightCap && chaosEventModifiers.jumpHeightCap > 4.5 ? 1.26 : 1;
+          const jumpHeightScale = getAthleticsJumpVelocityMultiplier({
+            jumpBoostUntil: currentPlayerRef.current?.athletics?.jumpBoostUntil,
+            chaosJumpHeightCap: chaosEventModifiers?.jumpHeightCap,
+            nowMs: authoritativeNowMs
+          });
           verticalVelocity = FPS_JUMP_VELOCITY * jumpHeightScale;
           jumpQueuedAt = 0;
           emitArenaAnimation({ kind: "jump", playerId: currentPlayerId, team: currentPlayerTeam });
@@ -1371,7 +1368,7 @@ export default function ArenaPreview({
           : true;
         const movementAudioMode: MovementAudioMode = crouching ? "crouch" : "run";
         const moveSpeed = resolveMovementSpeed({ crouching, hasMovementEnergy, gearSpeedMultiplier })
-          * (currentAthleticsPlayer?.dashUntil && currentTime < Date.parse(currentAthleticsPlayer.dashUntil) ? 1.42 : 1)
+          * getAthleticsDashMultiplier(currentAthleticsPlayer?.dashUntil, authoritativeNowMs)
           * (chaosEventModifiers?.movementSpeedMultiplier ?? 1);
         forwardVector.set(-Math.sin(yaw), 0, -Math.cos(yaw));
         rightVector.set(Math.cos(yaw), 0, -Math.sin(yaw));
@@ -1722,7 +1719,7 @@ export default function ArenaPreview({
       renderer.dispose();
       mount.removeChild(renderer.domElement);
     };
-  }, [sceneSessionId, currentPlayerId, currentPlayerTeam, currentWeaponId, currentPlayer?.gear, currentPlayer?.weapon, view, debugOverlay, quality, fallbackQuality, activeQuality, gamepadEnabled, arenaMapId, arenaMap, arenaBounds, teamBaseZones, captureZones, searchRetrieveItems, searchRetrieveDeliveryZones, isIronJunction, isDesertCitadel, isTempleRunoff, isAthleticsMode, athleticsMode, athleticsHud?.role, athleticsSceneBuilder, localToServerPosition, serverToLocalX, serverToLocalZ, movementLimitX, movementLimitZ, session?.settings.gameMode, session?.serverTime, loadDecalAsset]);
+  }, [sceneSessionId, currentPlayerId, currentPlayerTeam, currentWeaponId, currentPlayer?.gear, currentPlayer?.weapon, view, debugOverlay, quality, fallbackQuality, activeQuality, gamepadEnabled, arenaMapId, arenaMap, arenaBounds, teamBaseZones, captureZones, searchRetrieveItems, searchRetrieveDeliveryZones, isIronJunction, isDesertCitadel, isTempleRunoff, isAthleticsMode, athleticsMode, athleticsHud?.role, localToServerPosition, serverToLocalX, serverToLocalZ, movementLimitX, movementLimitZ, session?.settings.gameMode, loadDecalAsset]);
 
   const beginTouchMove = (event: ReactPointerEvent<HTMLButtonElement>) => {
     event.preventDefault();

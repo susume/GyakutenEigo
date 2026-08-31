@@ -9,7 +9,7 @@ type SessionFixture = {
   id: string;
   sessionCode: string;
   status: "waiting" | "active" | "paused" | "ended";
-  settings: { mapId: string; gameMode: string; athleticsCourseId?: string; athleticsCourseLaps?: number };
+  settings: { mapId: string; gameMode: string; athleticsMode?: string; athleticsCourseId?: string; athleticsCourseLaps?: number };
   players: PlayerFixture[];
   athletics?: { status: string; questionCount: number; questionsPerLap: number; requiredLaps: number; startAt: string; finishOrder: string[] };
 };
@@ -39,6 +39,8 @@ type PlayerFixture = {
     movementEpoch?: number;
     lastAcceptedMovementSequence?: number;
     lapTransitionUntil?: string;
+    abilityCharge?: number;
+    abilityReady?: string;
   };
   energy?: number;
   respawns?: number;
@@ -104,13 +106,17 @@ const createTeacherWithQuiz = async () => {
   return { token: signup.body.token, quizSetId: quiz.body.quizSet.id };
 };
 
-const createSession = async (teacher: { token: string; quizSetId: string }, athleticsCourseLaps = 1) => {
+const createSession = async (
+  teacher: { token: string; quizSetId: string },
+  athleticsCourseLaps = 1,
+  athleticsMode = "classic"
+) => {
   const created = await api<{ session: SessionFixture }>("/api/sessions", {
     method: "POST",
     teacherToken: teacher.token,
     body: {
       quizSetId: teacher.quizSetId,
-      settings: { gameMode: "athletics", athleticsCourseLaps, maxPlayers: 8, roundDurationSeconds: 60 }
+      settings: { gameMode: "athletics", athleticsMode, athleticsCourseLaps, maxPlayers: 8, roundDurationSeconds: 60 }
     }
   });
   assert.equal(created.response.status, 201);
@@ -453,6 +459,38 @@ test("Athletics creation, start gate, wrong-answer retry, skip prevention, and D
   assert.equal(alphaReport.raceStatus, "dnf");
   assert.equal(alphaReport.raceCheckpoint, 0);
   assert.equal(typeof alphaReport.raceFalls, "number");
+});
+
+test("Chaos Climb answers charge a usable ability", { timeout: 20_000 }, async () => {
+  const teacher = await createTeacherWithQuiz();
+  const session = await createSession(teacher, 1, "chaos-climb");
+  assert.equal(session.settings.mapId, "athletics_park");
+  assert.equal(session.settings.athleticsMode, "chaos-climb");
+
+  const student = await joinSession(session.sessionCode, "Chaos Climber");
+  assert.ok(student.question?.id);
+  const started = await api<{ session: SessionFixture }>(`/api/sessions/${session.sessionCode}/start`, {
+    method: "POST",
+    teacherToken: teacher.token
+  });
+  assert.equal(started.response.status, 200);
+
+  let questionId = student.question!.id;
+  for (let correctCount = 1; correctCount <= 3; correctCount += 1) {
+    const answered = await api<{ result: { nextQuestion?: { id: string }; player: PlayerFixture; rewardLabel?: string } }>(
+      `/api/sessions/${session.sessionCode}/players/${student.player.id}/answer`,
+      { method: "POST", playerToken: student.playerToken, body: { questionId, selectedChoice: "A" } }
+    );
+    assert.equal(answered.response.status, 200);
+    assert.equal(answered.body.result.player.athletics?.abilityCharge, correctCount);
+    assert.match(answered.body.result.rewardLabel ?? "", new RegExp(`Ability charge ${correctCount} / 3`, "i"));
+    if (correctCount < 3) {
+      assert.ok(answered.body.result.nextQuestion?.id);
+      questionId = answered.body.result.nextQuestion!.id;
+    } else {
+      assert.equal(answered.body.result.player.athletics?.abilityReady, "shield");
+    }
+  }
 });
 
 test("two-lap race keeps players independent, preserves the timer, and finishes only after the final lap", { timeout: 30_000 }, async () => {

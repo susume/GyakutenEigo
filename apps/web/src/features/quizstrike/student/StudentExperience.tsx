@@ -1073,12 +1073,13 @@ export default function StudentExperience({ onExit }: { onExit: () => void }) {
       } : current);
       gameAudio.playEvent("ui_warning");
     });
-    connectedSocket.on("zeus_freeze_break", (payload: { playerId?: string; message?: string }) => {
+    connectedSocket.on("zeus_freeze_break", (payload: { playerId?: string; automatic?: boolean; message?: string }) => {
       if (lastVisualSession.settings.gameMode !== "athletics" || payload.playerId !== activePlayerId) return;
       setPlayer((current) => current?.athletics ? {
         ...current,
         athletics: { ...current.athletics, zeusFrozen: false, zeusFrozenUntil: undefined }
       } : current);
+      if (payload.automatic) setQuizOpen(false);
       setFeedback(payload.message ?? "Lightning freeze broken. Keep climbing.");
       gameAudio.playEvent("athletics_checkpoint");
     });

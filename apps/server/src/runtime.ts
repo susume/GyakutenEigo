@@ -225,6 +225,7 @@ import {
   getAthleticsMode,
   getAthleticsModeIntro,
   getZeusTargetPlan,
+  resolveHunterHitsForRound,
   type PendingHunterProjectile
 } from "./athleticsModeAuthority.js";
 import {
@@ -1272,7 +1273,7 @@ const startAthleticsRace = (session: GameSession) => {
     athletics.role = role;
     athletics.stationIndex = role === "hunter" ? Math.max(0, stationIndex) : undefined;
     athletics.hunterAmmo = role === "hunter" ? 0 : undefined;
-    athletics.hunterHits = role === "hunter" ? 0 : undefined;
+    athletics.hunterHits = resolveHunterHitsForRound({ role, round: 1 });
     athletics.hunterQuizStreak = role === "hunter" ? 0 : undefined;
     athletics.abilityCharge = 0;
     athletics.abilityReady = undefined;
@@ -1806,7 +1807,7 @@ const advanceAthleticsProjectiles = (session: GameSession, nowMs: number) => {
     const hunter = session.players.find((player) => player.id === projectile.hunterId);
     const target = session.players.find((player) => player.id === projectile.targetId);
     const targetAthletics = target ? ensureAthleticsPlayerState(session, target) : undefined;
-    if (!hunter || !target || !targetAthletics || targetAthletics.status !== "racing" || targetAthletics.role !== "runner") continue;
+    if (!hunter || !target || !targetAthletics || targetAthletics.status !== "racing" || targetAthletics.role !== "runner" || targetAthletics.recoveryActive) continue;
     const impact = resolveChaosHazardImpact({
       hazard: { radius: projectile.radius, knockback: athleticsModeLimits.hunterKnockbackDistance },
       playerPosition: { x: target.x ?? 0, y: target.y, z: target.z ?? 0 },
@@ -1850,7 +1851,8 @@ const advanceAthleticsProjectiles = (session: GameSession, nowMs: number) => {
         knockback: impact.shielded ? 0 : HUNTER_KNOCKBACK_DISTANCE
       });
       broadcastPlayerPosition(session, { playerId: target.id, x: target.x ?? 0, y: target.y, z: target.z ?? 0, facing: target.facing ?? 0 });
-      broadcastPlayerState(session, [target]);
+      // Hunter score/hit totals and runner impact state change together.
+      broadcastPlayerState(session, [hunter, target]);
       changed = true;
     }
   }
@@ -1906,7 +1908,11 @@ const startNextHuntersRunnersRound = (session: GameSession, nowMs: number) => {
     athletics.role = role;
     athletics.stationIndex = role === "hunter" ? Math.max(0, stationIndex) : undefined;
     athletics.hunterAmmo = role === "hunter" ? 0 : undefined;
-    athletics.hunterHits = role === "hunter" ? 0 : undefined;
+    athletics.hunterHits = resolveHunterHitsForRound({
+      role,
+      round: nextRound,
+      previousHits: player.athletics?.hunterHits
+    });
     athletics.hunterQuizStreak = role === "hunter" ? 0 : undefined;
     return {
       ...player,
@@ -3129,6 +3135,22 @@ const answerQuestion = (
         // immobilize a runner or a station defender.
         playerQuestionGate.issue(player.id, question.id);
       }
+    } else if (athleticsMode === "chaos-climb") {
+      const runnerReward = resolveRunnerQuizReward({
+        isCorrect,
+        currentCharge: athletics.abilityCharge ?? 0,
+        currentAbility: athletics.abilityReady
+      });
+      athletics.abilityCharge = runnerReward.charge;
+      athletics.abilityReady = runnerReward.abilityReady;
+      if (isCorrect) {
+        athletics.questionIndex = Math.min(getAthleticsRaceConfig(session).questionCount, athletics.questionIndex + 1);
+        athletics.gateOpen = true;
+        athletics.wrongAnswerPenaltyUntil = undefined;
+      } else {
+        athletics.wrongAnswerPenaltyUntil = new Date(Date.now() + ATHLETICS_WRONG_ANSWER_PENALTY_MS).toISOString();
+        playerQuestionGate.issue(player.id, question.id, Date.now() + ATHLETICS_WRONG_ANSWER_PENALTY_MS);
+      }
     } else if (athleticsMode === "zeus" && athletics.zeusFrozen) {
       const freezeResult = resolveZeusAnswer({ isCorrect, nowMs: Date.now() });
       if (isCorrect) {
@@ -3206,10 +3228,14 @@ const answerQuestion = (
           ? isCorrect
             ? `Correct! +${Math.max(0, (athletics.hunterAmmo ?? 0) - hunterAmmoBefore)} foam ammo${athletics.hunterQuizStreak && athletics.hunterQuizStreak % 3 === 0 ? " · streak bonus" : ""}.`
             : "Not quite. Answer again to load foam ammo."
-          : athleticsMode === "hunters-runners"
+        : athleticsMode === "hunters-runners"
             ? isCorrect
               ? `Correct! Ability charge ${athletics?.abilityCharge ?? 0} / ${RUNNER_ABILITY_METER_MAX}.`
               : "Not quite. No ability charge gained."
+            : athleticsMode === "chaos-climb"
+              ? isCorrect
+                ? `Correct! +${energyAwarded} movement energy · Ability charge ${athletics?.abilityCharge ?? 0} / ${RUNNER_ABILITY_METER_MAX}.`
+                : "Not quite. No energy or ability charge gained."
             : isCorrect
               ? energyAwarded > 0
                 ? `Correct! +${energyAwarded} movement energy. Keep climbing.`
@@ -3236,6 +3262,8 @@ const answerQuestion = (
         : athleticsMode === "hunters-runners" && athletics?.role === "hunter"
           ? `+${Math.max(0, (athletics.hunterAmmo ?? 0) - hunterAmmoBefore)} foam ammo`
           : athleticsMode === "hunters-runners"
+            ? `Ability charge ${athletics?.abilityCharge ?? 0} / ${RUNNER_ABILITY_METER_MAX}`
+          : athleticsMode === "chaos-climb"
             ? `Ability charge ${athletics?.abilityCharge ?? 0} / ${RUNNER_ABILITY_METER_MAX}`
       : reward.moneyAwarded > 0
         ? `+$${reward.moneyAwarded}`
@@ -3454,15 +3482,19 @@ const handleAthleticsAction = (
     const ammo = Math.max(0, Math.floor(athletics.hunterAmmo ?? 0));
     if (ammo <= 0) return failStudentCommand(409, "Answer a question to load more foam balls.");
     const facing = player.facing ?? 0;
-    const forwardX = -Math.sin(facing);
-    const forwardZ = -Math.cos(facing);
+    const pitch = clampArenaAimPitch(Number(command.pitch));
+    const horizontalAim = Math.cos(pitch);
+    const forwardX = -Math.sin(facing) * horizontalAim;
+    const forwardY = Math.sin(pitch);
+    const forwardZ = -Math.cos(facing) * horizontalAim;
     const candidates = session.players
       .filter((candidate) => candidate.id !== player.id && candidate.isAlive && candidate.athletics?.status === "racing" && candidate.athletics.role === "runner")
       .map((candidate) => {
         const dx = (candidate.x ?? 0) - (player.x ?? 0);
+        const dy = (candidate.y ?? ATHLETICS_PLAYER_EYE_HEIGHT) - (player.y ?? ATHLETICS_PLAYER_EYE_HEIGHT);
         const dz = (candidate.z ?? 0) - (player.z ?? 0);
-        const distance = Math.hypot(dx, dz);
-        const dot = distance > 0 ? (dx * forwardX + dz * forwardZ) / distance : 1;
+        const distance = Math.hypot(dx, dy, dz);
+        const dot = distance > 0 ? (dx * forwardX + dy * forwardY + dz * forwardZ) / distance : 1;
         return { candidate, distance, dot };
       })
       .filter((candidate) => candidate.distance <= HUNTER_PROJECTILE_RANGE && candidate.dot >= 0.35)
