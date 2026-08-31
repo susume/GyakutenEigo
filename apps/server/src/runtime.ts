@@ -124,6 +124,8 @@ import {
   resolveSnowballPurchase,
   resolveSnowballUse,
   resolveZombieMovementEnergy,
+  type AthleticsAbility,
+  type AthleticsHazardDefinition,
   sanitizeSessionSettings,
   sanitizePlayerAppearance,
   sanitizeCharacterCustomizationSettings,
@@ -151,11 +153,13 @@ import {
   type SessionSettings,
   type SnowballPackSize,
   type LearningPulse,
+  type AthleticsActionCommand,
   type TeacherUser,
   type Team
 } from "@quizstrike/shared";
 import {
   ATHLETICS_DEFAULT_TIME_LIMIT_SECONDS,
+  ATHLETICS_COURSE_BOUNDS,
   ATHLETICS_STADIUM_COURSE,
   ATHLETICS_CHECKPOINT_COUNT,
   ATHLETICS_LAP_TRANSITION_MS,
@@ -189,10 +193,40 @@ import {
   normalizeAthleticsEnergy,
   resolveAthleticsMovementEnergy,
   resolveAthleticsStandings,
+  CHAOS_HAZARD_LIMIT,
+  CHAOS_WAVE_INTERVAL_MS,
+  HUNTER_PROJECTILE_COOLDOWN_MS,
+  HUNTER_PROJECTILE_RADIUS,
+  HUNTER_PROJECTILE_RANGE,
+  HUNTER_PROJECTILE_TRAVEL_MS,
+  HUNTER_STAGGER_MS,
+  HUNTER_KNOCKBACK_DISTANCE,
+  RUNNER_ABILITY_METER_MAX,
+  ZEUS_FREEZE_WRONG_EXTENSION_MS,
+  consumeRunnerAbility,
+  createChaosWave,
+  getChaosEventForWave,
+  getChaosEventModifiers,
+  getChaosHazardPosition,
+  getHunterStationProgress,
+  getZeusAttackProfile,
+  resolveChaosHazardImpact,
+  resolveHunterQuizReward,
+  resolveRunnerQuizReward,
+  resolveZeusAnswer,
+  resolveZeusStrike,
   type AthleticsPlayerState,
   type AthleticsPhysicalSupport,
   type AthleticsRecoveryReason
 } from "@quizstrike/shared";
+import {
+  athleticsModeLimits,
+  createAthleticsModeRoundState,
+  getAthleticsMode,
+  getAthleticsModeIntro,
+  getZeusTargetPlan,
+  type PendingHunterProjectile
+} from "./athleticsModeAuthority.js";
 import {
   decideAthleticsFall,
   isAthleticsCheckpointOccupied,
@@ -294,6 +328,8 @@ const quizRateLimits = new Map<string, number[]>();
 const fireRequestIds = new Map<string, Map<string, number>>();
 const playerMoveTimestamps = new Map<string, number>();
 const playerNextFireAt = new Map<string, number>();
+const athleticsActionNextAt = new Map<string, number>();
+const athleticsProjectiles = new Map<string, PendingHunterProjectile[]>();
 const botRespawnAt = new Map<string, number>();
 const botNextAttackAt = new Map<string, number>();
 const botMemoryById = new Map<string, BotMemory>();
@@ -673,7 +709,9 @@ const makeAthleticsPlayerState = (laneIndex = 0): AthleticsPlayerState => ({
   completedLaps: 0,
   lapSplitsMs: [],
   laneIndex,
-  status: "racing"
+  status: "racing",
+  abilityCharge: 0,
+  shieldCharges: 0
 });
 
 const ensureAthleticsPlayerState = (
@@ -690,6 +728,9 @@ const ensureAthleticsPlayerState = (
   player.athletics.recoveryCorrectAnswers ??= 0;
   player.athletics.recoveryRequiredAnswers ??= ATHLETICS_RECOVERY_CORRECT_ANSWERS_REQUIRED;
   player.athletics.recoveryActive ??= false;
+  player.athletics.abilityCharge ??= 0;
+  player.athletics.shieldCharges ??= 0;
+  if (getAthleticsMode(session.settings.athleticsMode ?? session.athletics?.mode) === "hunters-runners") player.athletics.role ??= "runner";
   if (player.athletics.recoveryActive) {
     player.athletics.currentSupportedSurfaceIndex = undefined;
     player.athletics.currentSupportKind = "airborne";
@@ -714,6 +755,19 @@ const getAthleticsRaceConfig = (session: GameSession) => {
     questionsPerLap,
     questionCount: session.athletics?.questionCount ?? questionsPerLap * requiredLaps,
     checkpointCount: ATHLETICS_CHECKPOINT_COUNT
+  };
+};
+
+const getAthleticsHunterStationPosition = (stationIndex: number, stationCount: number) => {
+  const progress = getHunterStationProgress(stationIndex, stationCount);
+  const point = getAthleticsPointAtProgress(progress);
+  const tangent = getAthleticsRouteTangent(progress);
+  // Stations sit just outside the runner line and never use the finish pad.
+  return {
+    x: point.x + tangent.z * 5.5,
+    y: point.y + ATHLETICS_PLAYER_EYE_HEIGHT,
+    z: point.z - tangent.x * 5.5,
+    facing: Math.atan2(-tangent.x, -tangent.z)
   };
 };
 
@@ -787,6 +841,14 @@ const issueNextQuestion = (session: GameSession, playerId: string): PublicQuesti
     if (!player || !athletics || athletics.status !== "racing") return undefined;
     if (athletics.recoveryActive) return issueAthleticsRecoveryQuestion(session, player, athletics);
     const race = getAthleticsRaceConfig(session);
+    // Zeus reuses the normal question gate while a player is electrified. It
+    // must not advance the race question until the freeze is cleared.
+    if (athletics.zeusFrozen) {
+      const question = questions[getAthleticsQuestionPoolIndex(athletics.questionIndex, questions.length)];
+      if (!question) return undefined;
+      playerQuestionGate.issue(player.id, question.id);
+      return publicQuestion(question);
+    }
     if (athletics.questionIndex >= race.questionCount || athletics.lapTransitionUntil) return undefined;
     const question = questions[getAthleticsQuestionPoolIndex(athletics.questionIndex, questions.length)];
     if (!question) return undefined;
@@ -968,20 +1030,27 @@ const makeReport = (session: GameSession): SessionReport => {
       }))
     : [];
   const raceStandingByPlayerId = new Map(raceStandings.map((standing) => [standing.playerId, standing]));
+  const reportPlayers = session.players.filter((player) => !player.isBot);
   const rows = buildReportRows({ players: session.players, answers: reportAnswers }).map((row, playerIndex) => {
     if (session.settings.gameMode !== "athletics") return row;
-    const player = session.players[playerIndex];
+    const player = reportPlayers[playerIndex];
     const athletics = player?.athletics;
     const standing = player ? raceStandingByPlayerId.get(player.id) : undefined;
+    const athleticsMode = getAthleticsMode(session.settings.athleticsMode ?? session.athletics?.mode);
     return {
       ...row,
       ...(standing && athletics?.status === "finished" ? { racePlace: player?.athletics?.finishPosition ?? standing.rank } : {}),
       ...(athletics?.finishTimeMs === undefined ? {} : { raceTimeMs: athletics.finishTimeMs }),
-      raceStatus: athletics?.status === "finished" ? "finished" as const : "dnf" as const,
+      raceStatus: athleticsMode === "hunters-runners" && athletics?.role === "hunter"
+        ? "hunter" as const
+        : athletics?.status === "finished" ? "finished" as const : "dnf" as const,
       raceFalls: athletics?.falls ?? 0,
       raceCheckpoint: athletics?.checkpointIndex ?? 0,
       raceLapsCompleted: athletics?.completedLaps ?? 0,
-      raceLapsRequired: getAthleticsRaceConfig(session).requiredLaps
+      raceLapsRequired: getAthleticsRaceConfig(session).requiredLaps,
+      athleticsMode,
+      ...(athletics?.role === undefined ? {} : { athleticsRole: athletics.role }),
+      ...(athletics?.hunterHits === undefined ? {} : { athleticsHunterHits: athletics.hunterHits })
     };
   });
 
@@ -1150,6 +1219,13 @@ const startAthleticsRace = (session: GameSession) => {
   const requiredLaps = session.settings.athleticsCourseLaps ?? 1;
   const questionsPerLap = getAthleticsQuestionsPerLap(questionPoolSize, requiredLaps);
   const questionCount = getAthleticsTotalQuestionCount(questionPoolSize, requiredLaps);
+  const modeState = createAthleticsModeRoundState({
+    sessionId: session.id,
+    playerIds: session.players.map((player) => player.id),
+    mode: session.settings.athleticsMode,
+    round: 1,
+    nowMs: Date.now()
+  });
   const startAtMs = Date.now() + ATHLETICS_START_COUNTDOWN_MS;
   const startAt = new Date(startAtMs).toISOString();
   const timeLimitSeconds = Math.max(
@@ -1167,18 +1243,40 @@ const startAthleticsRace = (session: GameSession) => {
   session.flag = undefined;
   session.athletics = {
     courseId: session.settings.athleticsCourseId ?? "stadium_loop",
+    mode: modeState.mode,
+    modeSeed: modeState.modeSeed,
+    modeRound: modeState.modeRound,
     questionsPerLap,
     questionCount,
     requiredLaps,
     status: "countdown",
     startAt,
-    finishOrder: []
+    finishOrder: [],
+    runnerIds: modeState.runnerIds,
+    hunterIds: modeState.hunterIds,
+    modeRoundsTotal: modeState.modeRoundsTotal,
+    rolesSwapped: modeState.rolesSwapped,
+    ...(modeState.zeus ? { zeus: modeState.zeus } : {}),
+    ...(modeState.chaos ? { chaos: modeState.chaos } : {})
   };
   const playerCount = Math.max(1, session.players.length);
+  const hunterCount = Math.max(1, modeState.hunterIds.length);
   session.players = session.players.map((player, index) => {
-    const spawn = getAthleticsStartPosition(index, playerCount);
+    const role = modeState.roles[player.id] ?? "runner";
+    const stationIndex = modeState.hunterIds.indexOf(player.id);
+    const spawn = role === "hunter"
+      ? getAthleticsHunterStationPosition(Math.max(0, stationIndex), hunterCount)
+      : getAthleticsStartPosition(index, playerCount);
     playerQuestionGate.clear(player.id);
     const athletics = makeAthleticsPlayerState(index);
+    athletics.role = role;
+    athletics.stationIndex = role === "hunter" ? Math.max(0, stationIndex) : undefined;
+    athletics.hunterAmmo = role === "hunter" ? 0 : undefined;
+    athletics.hunterHits = role === "hunter" ? 0 : undefined;
+    athletics.hunterQuizStreak = role === "hunter" ? 0 : undefined;
+    athletics.abilityCharge = 0;
+    athletics.abilityReady = undefined;
+    athletics.shieldCharges = 0;
     return {
       ...player,
       ...spawn,
@@ -1201,9 +1299,11 @@ const startAthleticsRace = (session: GameSession) => {
   session.announcement = {
     ...makeAnnouncement(
       "round_start",
-      "Get set",
-      "Jump from platform to platform. Answer anytime to refill movement energy.",
-      `${Math.ceil(ATHLETICS_START_COUNTDOWN_MS / 1000)} seconds until GO · ${requiredLaps} ${requiredLaps === 1 ? "lap" : "laps"} · ${questionsPerLap} checkpoint ${questionsPerLap === 1 ? "question" : "questions"} per lap`,
+      modeState.mode === "classic" ? "Get set" : getAthleticsModeIntro(modeState.mode).title,
+      modeState.mode === "classic"
+        ? "Jump from platform to platform. Answer anytime to refill movement energy."
+        : getAthleticsModeIntro(modeState.mode).message,
+      `${getAthleticsModeIntro(modeState.mode).detail} · ${Math.ceil(ATHLETICS_START_COUNTDOWN_MS / 1000)} seconds until GO · ${requiredLaps} ${requiredLaps === 1 ? "lap" : "laps"}`,
       ATHLETICS_START_COUNTDOWN_MS
     ),
     expiresAt: startAt
@@ -1217,6 +1317,11 @@ const markAthleticsFinished = (session: GameSession, player: PlayerSession, nowM
   athletics.finishedAt = new Date(nowMs).toISOString();
   athletics.finishTimeMs = Math.max(0, nowMs - Date.parse(session.athletics?.startAt ?? new Date(nowMs).toISOString()));
   athletics.finishPosition = (session.athletics?.finishOrder.length ?? 0) + 1;
+  const finishScore = session.athletics?.mode === "hunters-runners"
+    && athletics.role === "runner"
+    ? Math.max(3, 12 - athletics.finishPosition)
+    : 0;
+  if (finishScore > 0) player.score += finishScore;
   player.isAlive = false;
   player.jumping = false;
   if (session.athletics) session.athletics.finishOrder.push(player.id);
@@ -1229,8 +1334,32 @@ const markAthleticsFinished = (session: GameSession, player: PlayerSession, nowM
   emitToPlayers(session, [player.id], "athletics_finish", {
     playerId: player.id,
     finishPosition: athletics.finishPosition,
-    finishTimeMs: athletics.finishTimeMs
+    finishTimeMs: athletics.finishTimeMs,
+    ...(finishScore > 0 ? { finishScore } : {})
   });
+  if (session.athletics?.mode === "zeus" && session.status !== "ended") {
+    session.athletics.status = "finished";
+    if (session.athletics.zeus) {
+      session.athletics.zeus.phase = "defeated";
+      session.athletics.zeus.currentAttack = undefined;
+    }
+    emitAthleticsModeEvent(session, "zeus_defeated", {
+      winnerId: player.id,
+      winnerName: player.nickname,
+      message: "ZEUS HAS BEEN DEFEATED!"
+    });
+    finishSession(
+      session,
+      `${player.nickname} reached the summit and defeated Zeus.`,
+      makeAnnouncement(
+        "game_over",
+        "ZEUS HAS BEEN DEFEATED!",
+        `${player.nickname} reached the summit first.`,
+        "Final standings and quiz results are ready.",
+        GAME_OVER_ANNOUNCEMENT_MS
+      )
+    );
+  }
   return true;
 };
 
@@ -1304,6 +1433,9 @@ const updateAthleticsRace = (session: GameSession, player: PlayerSession, nowMs:
     broadcastSession(session);
   }
   if (race.status !== "running" || athletics.status !== "racing" || athletics.recoveryActive) return;
+  // Hunters defend their authored stations; they are not additional racers
+  // that should be evaluated against the parkour landing/checkpoint route.
+  if (getAthleticsMode(session.settings.athleticsMode ?? race.mode) === "hunters-runners" && athletics.role === "hunter") return;
   if (startNextAthleticsLap(session, player, nowMs)) {
     broadcastPlayerState(session, [player]);
     broadcastSession(session);
@@ -1381,6 +1513,442 @@ const updateAthleticsRace = (session: GameSession, player: PlayerSession, nowMs:
   }
 };
 
+const emitAthleticsModeEvent = (session: GameSession, eventName: string, payload: unknown) => {
+  io.to(gameplayRoom(session.sessionCode)).emit(eventName, payload);
+  io.to(teacherRoom(session.sessionCode)).emit(eventName, payload);
+};
+
+const advanceZeusMode = (session: GameSession, nowMs: number) => {
+  const race = session.athletics;
+  const zeus = race?.zeus;
+  if (!race || !zeus || race.status !== "running") return false;
+  let changed = false;
+
+  for (const player of session.players) {
+    const athletics = ensureAthleticsPlayerState(session, player);
+    if (!athletics?.zeusFrozen || !athletics.zeusFrozenUntil) continue;
+    if (nowMs < Date.parse(athletics.zeusFrozenUntil)) continue;
+    athletics.zeusFrozen = false;
+    athletics.zeusFrozenUntil = undefined;
+    changed = true;
+    emitToPlayers(session, [player.id], "zeus_freeze_break", {
+      playerId: player.id,
+      automatic: true,
+      message: "The charge faded. Keep climbing and watch for the next warning."
+    });
+  }
+
+  const attack = zeus.currentAttack;
+  if (attack) {
+    const strikeAt = Date.parse(attack.strikeAt);
+    if (!Number.isFinite(strikeAt) || nowMs < strikeAt) return changed;
+    for (const targetId of attack.targetIds) {
+      const target = session.players.find((player) => player.id === targetId);
+      if (!target) continue;
+      const targetAthletics = ensureAthleticsPlayerState(session, target);
+      const warningPosition = attack.warningPositions[target.id];
+      if (!targetAthletics || !warningPosition || targetAthletics.status !== "racing" || targetAthletics.recoveryActive) continue;
+      const strike = resolveZeusStrike({
+        targetPosition: { x: target.x ?? warningPosition.x, y: target.y, z: target.z ?? warningPosition.z },
+        warningPosition,
+        radius: attack.strikeRadius
+      });
+      if (strike.hit) {
+        targetAthletics.zeusFrozen = true;
+        targetAthletics.zeusFrozenUntil = new Date(nowMs + 7_500).toISOString();
+        const question = issueNextQuestion(session, target.id);
+        emitToPlayers(session, [target.id], "zeus_strike", {
+          playerId: target.id,
+          attackId: attack.id,
+          hit: true,
+          position: warningPosition,
+          frozenUntil: targetAthletics.zeusFrozenUntil,
+          question,
+          message: "Lightning caught you! Answer correctly to break the freeze."
+        });
+      } else {
+        emitToPlayers(session, [target.id], "zeus_strike", {
+          playerId: target.id,
+          attackId: attack.id,
+          hit: false,
+          position: warningPosition,
+          message: "You dodged the lightning!"
+        });
+      }
+      appendEvent(session, {
+        type: "timer",
+        message: strike.hit ? `${target.nickname} was caught by Zeus's lightning.` : `${target.nickname} dodged Zeus's lightning.`,
+        playerId: target.id,
+        team: target.team
+      });
+      broadcastPlayerState(session, [target]);
+    }
+    zeus.currentAttack = undefined;
+    zeus.phase = attack.tier === "rage" ? "rage" : "idle";
+    const profile = getZeusAttackProfile(
+      Math.max(...session.players.map((player) => player.athletics?.routeProgress ?? 0), 0),
+      Math.max(1, session.players.length)
+    );
+    zeus.nextAttackAt = new Date(nowMs + profile.cooldownMs).toISOString();
+    changed = true;
+    emitAthleticsModeEvent(session, "zeus_strike_complete", {
+      attackId: attack.id,
+      tier: attack.tier,
+      nextAttackAt: zeus.nextAttackAt
+    });
+    broadcastSession(session);
+    return changed;
+  }
+
+  if (zeus.nextAttackAt && nowMs < Date.parse(zeus.nextAttackAt)) return changed;
+  const eligible = session.players
+    .map((player) => {
+      const athletics = ensureAthleticsPlayerState(session, player);
+      return {
+        id: player.id,
+        routeProgress: athletics?.routeProgress ?? 0,
+        x: player.x ?? 0,
+        y: player.y ?? ATHLETICS_PLAYER_EYE_HEIGHT,
+        z: player.z ?? 0,
+        eligible: Boolean(athletics && athletics.status === "racing" && !athletics.recoveryActive && !athletics.zeusFrozen)
+      };
+    });
+  if (eligible.every((candidate) => candidate.eligible === false)) return changed;
+  const highestProgress = Math.max(...eligible.map((candidate) => candidate.routeProgress), 0);
+  const plan = getZeusTargetPlan({
+    candidates: eligible,
+    attackIndex: zeus.attackIndex,
+    recentTargetIds: zeus.recentTargetIds,
+    highestProgress
+  });
+  if (plan.targets.length === 0) return changed;
+  const warningStartedAt = new Date(nowMs).toISOString();
+  const strikeAt = new Date(nowMs + plan.profile.warningDurationMs).toISOString();
+  const attackId = `${session.id}:zeus:${zeus.attackIndex}`;
+  zeus.currentAttack = {
+    id: attackId,
+    tier: plan.profile.tier,
+    targetIds: plan.targets.map((target) => target.id),
+    warningPositions: Object.fromEntries(plan.targets.map((target) => [target.id, { x: target.x, y: target.y, z: target.z }])),
+    warningStartedAt,
+    strikeAt,
+    strikeRadius: plan.profile.strikeRadius,
+    shockwave: plan.profile.shockwave
+  };
+  zeus.attackIndex += 1;
+  zeus.phase = "charging";
+  zeus.recentTargetIds = [
+    ...plan.targets.map((target) => target.id),
+    ...zeus.recentTargetIds
+  ].filter((targetId, index, list) => list.indexOf(targetId) === index).slice(0, 6);
+  zeus.nextAttackAt = undefined;
+  emitAthleticsModeEvent(session, "zeus_warning", {
+    attackId,
+    tier: plan.profile.tier,
+    targetIds: zeus.currentAttack.targetIds,
+    warningPositions: zeus.currentAttack.warningPositions,
+    warningStartedAt,
+    strikeAt,
+    warningDurationMs: plan.profile.warningDurationMs,
+    strikeRadius: plan.profile.strikeRadius,
+    shockwave: plan.profile.shockwave
+  });
+  session.announcement = makeAnnouncement(
+    "round_start",
+    plan.profile.tier === "rage" ? "Zeus is furious!" : "Lightning warning",
+    plan.profile.tier === "rage" ? "Move now. Zeus is charging a stronger strike." : "Watch for the warning ring, then dodge.",
+    `${plan.profile.warningDurationMs / 1000}s warning · ${plan.profile.targetCount > 1 ? "multiple targets" : "one target"}`,
+    plan.profile.warningDurationMs
+  );
+  broadcastSession(session);
+  return true;
+};
+
+const applyChaosImpact = (session: GameSession, player: PlayerSession, hazard: AthleticsHazardDefinition, hazardPosition: { x: number; y: number; z: number }, nowMs: number) => {
+  const athletics = ensureAthleticsPlayerState(session, player);
+  if (!athletics || athletics.status !== "racing" || athletics.recoveryActive) return false;
+  const impact = resolveChaosHazardImpact({
+    hazard,
+    playerPosition: { x: player.x ?? 0, y: player.y, z: player.z ?? 0 },
+    hazardPosition,
+    shieldCharges: athletics.shieldCharges ?? 0
+  });
+  if (!impact.hit) return false;
+  hazard.hitIds = [...new Set([...(hazard.hitIds ?? []), player.id])];
+  if (impact.shielded) {
+    athletics.shieldCharges = Math.max(0, (athletics.shieldCharges ?? 0) - 1);
+    emitAthleticsModeEvent(session, "chaos_hazard_impact", {
+      hazardId: hazard.id,
+      hazardType: hazard.kind,
+      playerId: player.id,
+      x: hazardPosition.x,
+      y: hazardPosition.y,
+      z: hazardPosition.z,
+      shielded: true,
+      knockback: 0
+    });
+    broadcastPlayerState(session, [player]);
+    return true;
+  }
+  const resistActive = Boolean(athletics.knockbackResistUntil && nowMs < Date.parse(athletics.knockbackResistUntil));
+  const currentChaosEvent = session.athletics?.chaos?.currentEvent;
+  const activeChaosEvent = currentChaosEvent && nowMs < Date.parse(currentChaosEvent.expiresAt) ? currentChaosEvent : undefined;
+  const eventKnockbackMultiplier = activeChaosEvent ? getChaosEventModifiers(activeChaosEvent).knockbackMultiplier : 1;
+  const knockback = impact.knockback * eventKnockbackMultiplier * (resistActive ? 0.35 : 1);
+  let directionX = (player.x ?? 0) - hazardPosition.x;
+  let directionZ = (player.z ?? 0) - hazardPosition.z;
+  const directionLength = Math.hypot(directionX, directionZ);
+  if (directionLength < 0.001) {
+    const tangent = getAthleticsRouteTangent(ensureAthleticsPlayerState(session, player)?.routeProgress ?? 0);
+    directionX = tangent.z;
+    directionZ = -tangent.x;
+  } else {
+    directionX /= directionLength;
+    directionZ /= directionLength;
+  }
+  player.x = Math.max(-ATHLETICS_COURSE_BOUNDS.limitX + 1, Math.min(ATHLETICS_COURSE_BOUNDS.limitX - 1, (player.x ?? 0) + directionX * knockback));
+  player.z = Math.max(-ATHLETICS_COURSE_BOUNDS.limitZ + 1, Math.min(ATHLETICS_COURSE_BOUNDS.limitZ - 1, (player.z ?? 0) + directionZ * knockback));
+  athletics.staggerUntil = new Date(nowMs + HUNTER_STAGGER_MS).toISOString();
+  athletics.lastChaosHazardId = hazard.id;
+  emitAthleticsModeEvent(session, "chaos_hazard_impact", {
+    hazardId: hazard.id,
+    hazardType: hazard.kind,
+    playerId: player.id,
+    x: hazardPosition.x,
+    y: hazardPosition.y,
+    z: hazardPosition.z,
+    shielded: false,
+    knockback
+  });
+  appendEvent(session, {
+    type: "timer",
+    message: `${player.nickname} was bounced by a ${hazard.kind.replace("-", " ")}.`,
+    playerId: player.id,
+    team: player.team
+  });
+  broadcastPlayerPosition(session, { playerId: player.id, x: player.x, y: player.y, z: player.z, facing: player.facing ?? 0 });
+  broadcastPlayerState(session, [player]);
+  return true;
+};
+
+const advanceChaosClimb = (session: GameSession, nowMs: number) => {
+  const race = session.athletics;
+  const chaos = race?.chaos;
+  if (!race || !chaos || race.status !== "running") return false;
+  let changed = false;
+  const beforeCount = chaos.activeHazards.length;
+  chaos.activeHazards = chaos.activeHazards.filter((hazard) => {
+    const expiresAt = Date.parse(hazard.expiresAt);
+    return Number.isFinite(expiresAt) && expiresAt > nowMs;
+  });
+  changed = chaos.activeHazards.length !== beforeCount;
+  if (chaos.currentEvent && nowMs >= Date.parse(chaos.currentEvent.expiresAt)) {
+    chaos.currentEvent = undefined;
+    changed = true;
+  }
+  if (nowMs >= Date.parse(chaos.nextWaveAt) && chaos.activeHazards.length < CHAOS_HAZARD_LIMIT) {
+    const nextWaveIndex = chaos.waveIndex + 1;
+    const event = getChaosEventForWave({ seed: chaos.seed, waveIndex: nextWaveIndex, nowMs });
+    const wave = createChaosWave({
+      seed: chaos.seed,
+      waveIndex: nextWaveIndex,
+      nowMs,
+      activeHazardCount: chaos.activeHazards.length,
+      playerCount: session.players.length,
+      eventType: event?.type
+    });
+    chaos.waveIndex = nextWaveIndex;
+    chaos.activeHazards = [...chaos.activeHazards, ...wave].slice(0, CHAOS_HAZARD_LIMIT);
+    chaos.nextWaveAt = new Date(nowMs + CHAOS_WAVE_INTERVAL_MS).toISOString();
+    if (event) {
+      chaos.currentEvent = event;
+      session.announcement = makeAnnouncement(
+        "round_start",
+        `CHAOS EVENT: ${event.label}!`,
+        event.type === "wind-gust" ? "Hold your line through the gust." : "Watch the course and react together.",
+        "A short warning gives everyone time to respond.",
+        2_200
+      );
+    }
+    emitAthleticsModeEvent(session, "chaos_wave", {
+      waveIndex: chaos.waveIndex,
+      hazards: wave,
+      event,
+      nextWaveAt: chaos.nextWaveAt
+    });
+    changed = true;
+  }
+  const activeEvent = chaos.currentEvent && nowMs < Date.parse(chaos.currentEvent.expiresAt) ? chaos.currentEvent : undefined;
+  const hazardSpeedMultiplier = activeEvent ? getChaosEventModifiers(activeEvent).hazardSpeedMultiplier : 1;
+  for (const hazard of chaos.activeHazards) {
+    if (hazard.hitIds && hazard.hitIds.length >= session.players.length) continue;
+    const position = getChaosHazardPosition(hazard, ATHLETICS_STADIUM_COURSE.route, nowMs, hazardSpeedMultiplier);
+    for (const player of session.players) {
+      if (hazard.hitIds?.includes(player.id)) continue;
+      if (applyChaosImpact(session, player, hazard, position, nowMs)) changed = true;
+    }
+  }
+  if (changed) broadcastSession(session);
+  return changed;
+};
+
+const advanceAthleticsProjectiles = (session: GameSession, nowMs: number) => {
+  const pending = athleticsProjectiles.get(session.id);
+  if (!pending || pending.length === 0) return false;
+  let changed = false;
+  const remaining: PendingHunterProjectile[] = [];
+  for (const projectile of pending) {
+    if (projectile.resolved || nowMs < projectile.impactAt) {
+      remaining.push(projectile);
+      continue;
+    }
+    projectile.resolved = true;
+    const hunter = session.players.find((player) => player.id === projectile.hunterId);
+    const target = session.players.find((player) => player.id === projectile.targetId);
+    const targetAthletics = target ? ensureAthleticsPlayerState(session, target) : undefined;
+    if (!hunter || !target || !targetAthletics || targetAthletics.status !== "racing" || targetAthletics.role !== "runner") continue;
+    const impact = resolveChaosHazardImpact({
+      hazard: { radius: projectile.radius, knockback: athleticsModeLimits.hunterKnockbackDistance },
+      playerPosition: { x: target.x ?? 0, y: target.y, z: target.z ?? 0 },
+      hazardPosition: projectile.targetAtLaunch,
+      shieldCharges: targetAthletics.shieldCharges ?? 0
+    });
+    if (impact.hit) {
+      if (impact.shielded) targetAthletics.shieldCharges = Math.max(0, (targetAthletics.shieldCharges ?? 0) - 1);
+      else {
+        let dx = (target.x ?? 0) - projectile.targetAtLaunch.x;
+        let dz = (target.z ?? 0) - projectile.targetAtLaunch.z;
+        if (Math.hypot(dx, dz) < 0.001) {
+          const tangent = getAthleticsRouteTangent(targetAthletics.routeProgress ?? 0);
+          // Push across the route when the runner stayed on the telegraphed
+          // point; a zero vector must not turn a confirmed hit into a no-op.
+          dx = tangent.z;
+          dz = -tangent.x;
+        }
+        const length = Math.hypot(dx, dz) || 1;
+        const resist = targetAthletics.knockbackResistUntil && nowMs < Date.parse(targetAthletics.knockbackResistUntil) ? 0.35 : 1;
+        dx /= length;
+        dz /= length;
+        target.x = Math.max(-ATHLETICS_COURSE_BOUNDS.limitX + 1, Math.min(ATHLETICS_COURSE_BOUNDS.limitX - 1, (target.x ?? 0) + dx * HUNTER_KNOCKBACK_DISTANCE * resist));
+        target.z = Math.max(-ATHLETICS_COURSE_BOUNDS.limitZ + 1, Math.min(ATHLETICS_COURSE_BOUNDS.limitZ - 1, (target.z ?? 0) + dz * HUNTER_KNOCKBACK_DISTANCE * resist));
+        targetAthletics.staggerUntil = new Date(nowMs + HUNTER_STAGGER_MS).toISOString();
+      }
+      const hunterAthletics = ensureAthleticsPlayerState(session, hunter);
+      if (hunterAthletics) {
+        hunterAthletics.hunterHits = (hunterAthletics.hunterHits ?? 0) + 1;
+        hunter.score += impact.shielded ? 1 : 3;
+      }
+      targetAthletics.lastChaosHazardId = projectile.id;
+      emitAthleticsModeEvent(session, "athletics_projectile_impact", {
+        projectileId: projectile.id,
+        hunterId: hunter.id,
+        targetId: target.id,
+        x: projectile.targetAtLaunch.x,
+        y: projectile.targetAtLaunch.y,
+        z: projectile.targetAtLaunch.z,
+        shielded: impact.shielded,
+        knockback: impact.shielded ? 0 : HUNTER_KNOCKBACK_DISTANCE
+      });
+      broadcastPlayerPosition(session, { playerId: target.id, x: target.x ?? 0, y: target.y, z: target.z ?? 0, facing: target.facing ?? 0 });
+      broadcastPlayerState(session, [target]);
+      changed = true;
+    }
+  }
+  if (remaining.length > 0) athleticsProjectiles.set(session.id, remaining);
+  else athleticsProjectiles.delete(session.id);
+  return changed;
+};
+
+const startNextHuntersRunnersRound = (session: GameSession, nowMs: number) => {
+  const race = session.athletics;
+  if (!race || race.mode !== "hunters-runners" || (race.modeRound ?? 1) >= (race.modeRoundsTotal ?? 2)) return false;
+  const nextRound = (race.modeRound ?? 1) + 1;
+  const modeState = createAthleticsModeRoundState({
+    sessionId: session.id,
+    playerIds: session.players.map((player) => player.id),
+    mode: "hunters-runners",
+    round: nextRound,
+    nowMs
+  });
+  const startAtMs = nowMs + ATHLETICS_START_COUNTDOWN_MS;
+  const timeLimitSeconds = Math.max(60, session.settings.roundDurationSeconds || ATHLETICS_DEFAULT_TIME_LIMIT_SECONDS);
+  session.currentRound = nextRound;
+  session.status = "active";
+  session.controlState = "running";
+  session.teacherPausedAt = undefined;
+  session.startedAt = new Date(startAtMs).toISOString();
+  session.endsAt = new Date(startAtMs + timeLimitSeconds * 1000).toISOString();
+  session.roundTransition = undefined;
+  session.athletics = {
+    ...race,
+    mode: modeState.mode,
+    modeSeed: modeState.modeSeed,
+    modeRound: modeState.modeRound,
+    status: "countdown",
+    startAt: session.startedAt,
+    finishOrder: [],
+    runnerIds: modeState.runnerIds,
+    hunterIds: modeState.hunterIds,
+    modeRoundsTotal: modeState.modeRoundsTotal,
+    rolesSwapped: true
+  };
+  athleticsProjectiles.delete(session.id);
+  const playerCount = Math.max(1, session.players.length);
+  const hunterCount = Math.max(1, modeState.hunterIds.length);
+  session.players = session.players.map((player, index) => {
+    const role = modeState.roles[player.id] ?? "runner";
+    const stationIndex = modeState.hunterIds.indexOf(player.id);
+    const spawn = role === "hunter"
+      ? getAthleticsHunterStationPosition(Math.max(0, stationIndex), hunterCount)
+      : getAthleticsStartPosition(index, playerCount);
+    playerQuestionGate.clear(player.id);
+    const athletics = makeAthleticsPlayerState(index);
+    athletics.role = role;
+    athletics.stationIndex = role === "hunter" ? Math.max(0, stationIndex) : undefined;
+    athletics.hunterAmmo = role === "hunter" ? 0 : undefined;
+    athletics.hunterHits = role === "hunter" ? 0 : undefined;
+    athletics.hunterQuizStreak = role === "hunter" ? 0 : undefined;
+    return {
+      ...player,
+      ...spawn,
+      isAlive: true,
+      health: DEFAULT_PLAYER_HEALTH,
+      energy: ATHLETICS_CORRECT_ENERGY * 2,
+      crouching: false,
+      jumping: false,
+      athletics
+    };
+  });
+  for (const player of session.players) {
+    if (!player.isBot) {
+      const question = getSessionQuestions(session)[player.athletics?.questionIndex ?? 0];
+      if (question) playerQuestionGate.issue(player.id, question.id);
+    }
+  }
+  const intro = getAthleticsModeIntro("hunters-runners");
+  session.announcement = {
+    ...makeAnnouncement(
+      "round_start",
+      "ROLES SWAPPED",
+      `${intro.message} · Round ${nextRound}/${modeState.modeRoundsTotal}`,
+      `${intro.detail} · ${Math.ceil(ATHLETICS_START_COUNTDOWN_MS / 1000)} seconds until GO`,
+      ATHLETICS_START_COUNTDOWN_MS
+    ),
+    expiresAt: session.startedAt
+  };
+  appendEvent(session, { type: "start", message: `Hunters & Runners roles swapped for round ${nextRound}.` });
+  emitAthleticsModeEvent(session, "athletics_role_swap", {
+    modeRound: nextRound,
+    modeRoundsTotal: modeState.modeRoundsTotal,
+    runnerIds: modeState.runnerIds,
+    hunterIds: modeState.hunterIds,
+    startAt: session.startedAt
+  });
+  broadcastSession(session);
+  broadcastPlayerState(session, session.players);
+  return true;
+};
+
 const advanceAthleticsRaces = () => {
   const currentMs = Date.now();
   for (const session of sessions.values()) {
@@ -1388,8 +1956,23 @@ const advanceAthleticsRaces = () => {
     if (isTeacherPaused(session)) continue;
     if (!session.athletics) continue;
     for (const player of session.players) updateAthleticsRace(session, player, currentMs);
+    const mode = getAthleticsMode(session.settings.athleticsMode ?? session.athletics.mode);
+    if (mode === "zeus") advanceZeusMode(session, currentMs);
+    if (mode === "chaos-climb") advanceChaosClimb(session, currentMs);
+    if (mode === "hunters-runners") advanceAthleticsProjectiles(session, currentMs);
+    if (mode === "hunters-runners") {
+      const runnerIds = session.athletics.runnerIds ?? session.players.filter((player) => player.athletics?.role === "runner").map((player) => player.id);
+      const runners = session.players.filter((player) => runnerIds.includes(player.id));
+      const runnersDone = runners.length > 0 && runners.every((player) => player.athletics?.status === "finished" || player.athletics?.status === "dnf");
+      if (runnersDone) {
+        if (startNextHuntersRunnersRound(session, currentMs)) continue;
+        session.athletics.status = "finished";
+        finishSession(session, "All runners completed the final Hunters & Runners round. Results are ready.");
+        continue;
+      }
+    }
     const realRacers = session.players.filter((player) => !player.isBot);
-    if (realRacers.length > 0 && realRacers.every((player) => player.athletics?.status === "finished")) {
+    if (mode !== "hunters-runners" && mode !== "zeus" && realRacers.length > 0 && realRacers.every((player) => player.athletics?.status === "finished")) {
       session.athletics.status = "finished";
       finishSession(session, "Every racer crossed the line. Athletics results are ready.");
       continue;
@@ -1401,7 +1984,8 @@ const advanceAthleticsRaces = () => {
       const athletics = ensureAthleticsPlayerState(session, player);
       if (athletics?.status === "racing") athletics.status = "dnf";
     }
-    finishSession(session, "Athletics Race time expired. Results are ready.");
+    if (mode === "hunters-runners" && startNextHuntersRunnersRound(session, currentMs)) continue;
+    finishSession(session, mode === "zeus" ? "The climb ended before anyone defeated Zeus. Results are ready." : "Athletics Race time expired. Results are ready.");
   }
 };
 
@@ -1665,17 +2249,45 @@ const applyAuthoritativePosition = (
     }
     if (hasSequence) athletics.lastAcceptedMovementSequence = requestedSequence;
   }
+  const isStationaryAthleticsHunter = Boolean(
+    isAthletics
+    && athletics
+    && getAthleticsMode(session.settings.athleticsMode ?? session.athletics?.mode) === "hunters-runners"
+    && athletics.role === "hunter"
+  );
   if (isAthletics && athletics && (
     athletics.status !== "racing"
     || athletics.recoveryActive
+    || athletics.zeusFrozen
     || Boolean(athletics.lapTransitionUntil && nowMs < Date.parse(athletics.lapTransitionUntil))
     || (athletics.respawnPenaltyUntil && nowMs < Date.parse(athletics.respawnPenaltyUntil))
     || (athletics.wrongAnswerPenaltyUntil && nowMs < Date.parse(athletics.wrongAnswerPenaltyUntil))
+    || Boolean(athletics.staggerUntil && nowMs < Date.parse(athletics.staggerUntil))
     || (session.athletics && nowMs < Date.parse(session.athletics.startAt))
   )) {
     playerMoveTimestamps.set(player.id, nowMs);
     player.facing = requestedFacing;
     return { ...currentPosition, facing: requestedFacing };
+  }
+  if (isStationaryAthleticsHunter && athletics) {
+    // Hunters defend authored stations rather than standing on the runner
+    // route. Their station can intentionally hover beside a gap or elevated
+    // platform, so route support/fall recovery must not reinterpret a valid
+    // station position as a player fall.
+    const station = getAthleticsHunterStationPosition(
+      athletics.stationIndex ?? 0,
+      Math.max(1, session.athletics?.hunterIds?.length ?? 1)
+    );
+    player.x = station.x;
+    player.y = station.y;
+    player.z = station.z;
+    player.facing = requestedFacing;
+    player.crouching = requestedCrouching;
+    player.jumping = false;
+    athletics.currentSupportedSurfaceIndex = undefined;
+    athletics.currentSupportKind = "airborne";
+    playerMoveTimestamps.set(player.id, nowMs);
+    return { ...station, facing: requestedFacing };
   }
   if (isAthletics && athletics
     && Number.isFinite(Number(requested.y))
@@ -1702,8 +2314,22 @@ const applyAuthoritativePosition = (
   const jumpStarted = isAthletics && requested.jumping === true && player.jumping !== true;
   const athleticsCanJump = !jumpStarted || normalizeAthleticsEnergy(player.energy) >= ATHLETICS_JUMP_ENERGY_COST;
   const acceptedRequestedY = isAthletics && jumpStarted && !athleticsCanJump ? currentEyeY : requested.y;
+  const athleticsJumpBoostActive = Boolean(
+    isAthletics
+    && athletics?.jumpBoostUntil
+    && nowMs < Date.parse(athletics.jumpBoostUntil)
+  );
+  const chaosEvent = isAthletics
+    && getAthleticsMode(session.settings.athleticsMode ?? session.athletics?.mode) === "chaos-climb"
+    ? session.athletics?.chaos?.currentEvent
+    : undefined;
+  const activeChaosEvent = chaosEvent && nowMs < Date.parse(chaosEvent.expiresAt) ? chaosEvent : undefined;
+  const chaosEventModifiers = activeChaosEvent ? getChaosEventModifiers(activeChaosEvent) : undefined;
+  const jumpHeightCap = athleticsJumpBoostActive
+    ? 7.2
+    : chaosEventModifiers?.jumpHeightCap ?? 4.5;
   const requestedMovementY = Number.isFinite(Number(acceptedRequestedY))
-    ? Math.min(requestedStandingY + 4.5, Math.max(requestedStandingY, Number(acceptedRequestedY)))
+    ? Math.min(requestedStandingY + jumpHeightCap, Math.max(requestedStandingY, Number(acceptedRequestedY)))
     : requestedStandingY;
   playerPositionHistory.record(player.id, currentPosition, lastMoveAt);
   const movementEnergy = resolveZombieMovementEnergy({
@@ -1730,13 +2356,27 @@ const applyAuthoritativePosition = (
       !hasMovementEnergy
         ? 0
         : PLAYER_MAX_SPEED
-    ) * getPlayerMoveSpeedMultiplier(player),
+    )
+      * getPlayerMoveSpeedMultiplier(player)
+      * (athletics?.dashUntil && nowMs < Date.parse(athletics.dashUntil) ? 1.42 : 1)
+      * (chaosEventModifiers?.movementSpeedMultiplier ?? 1),
     obstacles: isAthletics ? getAthleticsObstacles(nowMs) : getArenaObstacles(session.settings.mapId),
     groundY: requestedGroundY,
     eyeHeight: requestedEyeHeight,
     mapId: isAthletics ? ATHLETICS_ARENA_MAP_ID : session.settings.mapId
   });
   if (isAthletics && athletics) {
+    if (getAthleticsMode(session.settings.athleticsMode ?? session.athletics?.mode) === "hunters-runners" && athletics.role === "hunter") {
+      const station = getAthleticsHunterStationPosition(
+        athletics.stationIndex ?? 0,
+        Math.max(1, session.athletics?.hunterIds?.length ?? 1)
+      );
+      if (Math.hypot(position.x - station.x, position.z - station.z) > athleticsModeLimits.hunterKnockbackDistance * 2.2) {
+        position.x = currentPosition.x;
+        position.y = currentPosition.y;
+        position.z = currentPosition.z;
+      }
+    }
     const resolvedPosition = {
       x: position.x,
       y: position.y ?? requestedStandingY,
@@ -1922,6 +2562,72 @@ const advanceAthleticsBot = (session: GameSession, bot: PlayerSession, index: nu
   const race = session.athletics;
   const athletics = ensureAthleticsPlayerState(session, bot, index);
   if (!race || !athletics || race.status !== "running" || athletics.status !== "racing") return false;
+  const mode = getAthleticsMode(session.settings.athleticsMode ?? race.mode);
+  if (athletics.recoveryActive || (athletics.zeusFrozen && mode === "zeus") || (athletics.staggerUntil && nowMs < Date.parse(athletics.staggerUntil))) return false;
+  if (mode === "hunters-runners" && athletics.role === "hunter") {
+    const hunterCount = Math.max(1, race.hunterIds?.length ?? 1);
+    const station = getAthleticsHunterStationPosition(athletics.stationIndex ?? 0, hunterCount);
+    const movedToStation = Math.hypot((bot.x ?? station.x) - station.x, (bot.z ?? station.z) - station.z) > 0.01
+      || Math.abs((bot.y ?? station.y) - station.y) > 0.01;
+    bot.x = station.x;
+    bot.y = station.y;
+    bot.z = station.z;
+    bot.facing = station.facing;
+
+    // Bot Hunters follow the same answer-powered ammo economy as students.
+    // The bot path has no quiz modal, so refill only when the magazine is
+    // empty instead of granting an unbounded stream of projectiles.
+    if ((athletics.hunterAmmo ?? 0) <= 0) {
+      const reward = resolveHunterQuizReward({
+        isCorrect: true,
+        currentAmmo: athletics.hunterAmmo ?? 0,
+        currentStreak: athletics.hunterQuizStreak ?? 0
+      });
+      athletics.hunterAmmo = reward.ammo;
+      athletics.hunterQuizStreak = reward.streak;
+    }
+
+    const nextAllowedAt = athleticsActionNextAt.get(bot.id) ?? 0;
+    const target = session.players
+      .filter((candidate) => candidate.id !== bot.id && candidate.isAlive && candidate.athletics?.status === "racing" && candidate.athletics.role === "runner")
+      .map((candidate) => ({ candidate, distance: Math.hypot((candidate.x ?? 0) - station.x, (candidate.z ?? 0) - station.z) }))
+      .filter(({ distance }) => distance <= HUNTER_PROJECTILE_RANGE)
+      .sort((left, right) => left.distance - right.distance)[0]?.candidate;
+    if (!target || (athletics.hunterAmmo ?? 0) <= 0 || nowMs < nextAllowedAt) return movedToStation;
+
+    const dx = (target.x ?? 0) - station.x;
+    const dz = (target.z ?? 0) - station.z;
+    bot.facing = Math.atan2(-dx, -dz);
+    athletics.hunterAmmo = Math.max(0, (athletics.hunterAmmo ?? 0) - 1);
+    const projectile: PendingHunterProjectile = {
+      id: `${session.id}:foam:${id()}`,
+      sessionId: session.id,
+      hunterId: bot.id,
+      targetId: target.id,
+      origin: { x: station.x, y: station.y, z: station.z },
+      targetAtLaunch: { x: target.x ?? 0, y: target.y ?? ATHLETICS_PLAYER_EYE_HEIGHT, z: target.z ?? 0 },
+      launchedAt: nowMs,
+      impactAt: nowMs + HUNTER_PROJECTILE_TRAVEL_MS,
+      radius: HUNTER_PROJECTILE_RADIUS
+    };
+    const projectiles = athleticsProjectiles.get(session.id) ?? [];
+    projectiles.push(projectile);
+    athleticsProjectiles.set(session.id, projectiles.slice(-24));
+    athleticsActionNextAt.set(bot.id, nowMs + HUNTER_PROJECTILE_COOLDOWN_MS);
+    emitAthleticsModeEvent(session, "athletics_projectile", {
+      projectileId: projectile.id,
+      hunterId: projectile.hunterId,
+      targetId: projectile.targetId,
+      origin: projectile.origin,
+      targetAtLaunch: projectile.targetAtLaunch,
+      launchedAt: new Date(projectile.launchedAt).toISOString(),
+      impactAt: new Date(projectile.impactAt).toISOString(),
+      travelMs: HUNTER_PROJECTILE_TRAVEL_MS,
+      radius: HUNTER_PROJECTILE_RADIUS
+    });
+    broadcastPlayerState(session, [bot]);
+    return true;
+  }
   if (athletics.lapTransitionUntil && nowMs < Date.parse(athletics.lapTransitionUntil)) {
     updateAthleticsRace(session, bot, nowMs);
     return true;
@@ -2275,6 +2981,9 @@ const answerQuestion = (
   body: { questionId?: unknown; selectedChoice?: unknown }
 ): StudentCommandResult<{ result: QuizResult; cosmeticProgressToken: string }> => {
   const isAthletics = session.settings.gameMode === "athletics";
+  const athleticsMode = isAthletics
+    ? getAthleticsMode(session.settings.athleticsMode ?? session.athletics?.mode)
+    : undefined;
   const athletics = isAthletics ? ensureAthleticsPlayerState(session, player) : undefined;
   const athleticsRecoveryActive = isAthletics && athletics?.recoveryActive === true;
   if (isTeacherPaused(session)) {
@@ -2324,6 +3033,10 @@ const answerQuestion = (
   const responseTimeMs = gatedQuestion.responseTimeMs;
   const isCorrect = question.correctChoice === selectedChoice;
   const answerContext: AnswerLog["context"] = player.isAlive && !athleticsRecoveryActive ? "main" : "practice";
+  const zeusFreezeWasActive = athleticsMode === "zeus" && athletics?.zeusFrozen === true;
+  const hunterAmmoBefore = athleticsMode === "hunters-runners" && athletics?.role === "hunter"
+    ? athletics.hunterAmmo ?? 0
+    : 0;
   const reward = resolveAnswerReward({ player, settings: session.settings, isCorrect, responseTimeMs });
   player.money = reward.nextMoney;
   player.quizMoneyEarned = (player.quizMoneyEarned ?? 0) + reward.moneyAwarded;
@@ -2332,7 +3045,8 @@ const answerQuestion = (
   player.correctAnswers += reward.correctDelta;
   player.wrongAnswers += reward.wrongDelta;
   const previousEnergy = player.energy ?? 0;
-  player.energy = isAthletics && !athleticsRecoveryActive
+  const athleticsHunter = athleticsMode === "hunters-runners" && athletics?.role === "hunter";
+  player.energy = isAthletics && !athleticsRecoveryActive && !athleticsHunter
     ? awardAthleticsEnergy({ isCorrect, currentEnergy: player.energy })
     : isAthletics
       ? normalizeAthleticsEnergy(player.energy)
@@ -2389,6 +3103,61 @@ const answerQuestion = (
         // question so a client cannot skip to the next recovery item.
         playerQuestionGate.issue(player.id, question.id);
       }
+    } else if (athleticsMode === "hunters-runners") {
+      if (athletics.role === "hunter") {
+        const hunterReward = resolveHunterQuizReward({
+          isCorrect,
+          currentAmmo: athletics.hunterAmmo ?? 0,
+          currentStreak: athletics.hunterQuizStreak ?? 0
+        });
+        athletics.hunterAmmo = hunterReward.ammo;
+        athletics.hunterQuizStreak = hunterReward.streak;
+      } else {
+        const runnerReward = resolveRunnerQuizReward({
+          isCorrect,
+          currentCharge: athletics.abilityCharge ?? 0,
+          currentAbility: athletics.abilityReady
+        });
+        athletics.abilityCharge = runnerReward.charge;
+        athletics.abilityReady = runnerReward.abilityReady;
+      }
+      if (isCorrect) {
+        athletics.questionIndex = Math.min(getAthleticsRaceConfig(session).questionCount, athletics.questionIndex + 1);
+        athletics.gateOpen = true;
+      } else {
+        // H&R questions power resources; an incorrect response should not
+        // immobilize a runner or a station defender.
+        playerQuestionGate.issue(player.id, question.id);
+      }
+    } else if (athleticsMode === "zeus" && athletics.zeusFrozen) {
+      const freezeResult = resolveZeusAnswer({ isCorrect, nowMs: Date.now() });
+      if (isCorrect) {
+        athletics.zeusFrozen = false;
+        athletics.zeusFrozenUntil = undefined;
+        athletics.questionIndex = Math.min(getAthleticsRaceConfig(session).questionCount, athletics.questionIndex + 1);
+        athletics.gateOpen = true;
+        athletics.wrongAnswerPenaltyUntil = undefined;
+        emitToPlayers(session, [player.id], "zeus_freeze_break", {
+          playerId: player.id,
+          automatic: false,
+          message: "Correct! The lightning freeze is broken."
+        });
+      } else {
+        const previousFreezeUntil = Date.parse(athletics.zeusFrozenUntil ?? "");
+        const requestedFreezeUntil = Date.parse(freezeResult.freezeUntil);
+        const extendedUntil = Math.max(
+          requestedFreezeUntil,
+          (Number.isFinite(previousFreezeUntil) ? previousFreezeUntil : Date.now()) + ZEUS_FREEZE_WRONG_EXTENSION_MS
+        );
+        athletics.zeusFrozen = true;
+        athletics.zeusFrozenUntil = new Date(extendedUntil).toISOString();
+        playerQuestionGate.issue(player.id, question.id);
+        emitToPlayers(session, [player.id], "zeus_freeze_extended", {
+          playerId: player.id,
+          frozenUntil: athletics.zeusFrozenUntil,
+          message: "Not quite. The lightning charge lasts longer."
+        });
+      }
     } else if (isCorrect) {
       athletics.questionIndex = Math.min(getAthleticsRaceConfig(session).questionCount, athletics.questionIndex + 1);
       athletics.gateOpen = true;
@@ -2429,11 +3198,23 @@ const answerQuestion = (
           ? "Recovery complete! Back to the course with enough energy to retry."
           : `Recovery Questions ${respawn.progress} / ${respawn.required}`
         : `Incorrect. Recovery Questions ${respawn.progress} / ${respawn.required}. Only correct answers count.`
-      : isCorrect
-        ? energyAwarded > 0
-          ? `Correct! +${energyAwarded} movement energy. Keep climbing.`
-          : "Correct! Movement energy is full. Keep climbing."
-        : "Not quite. No movement energy gained; try again when you are ready."
+      : zeusFreezeWasActive
+        ? isCorrect
+          ? "Correct! Lightning freeze broken. Keep climbing."
+          : "Not quite. Zeus extended the freeze."
+        : athleticsMode === "hunters-runners" && athletics?.role === "hunter"
+          ? isCorrect
+            ? `Correct! +${Math.max(0, (athletics.hunterAmmo ?? 0) - hunterAmmoBefore)} foam ammo${athletics.hunterQuizStreak && athletics.hunterQuizStreak % 3 === 0 ? " · streak bonus" : ""}.`
+            : "Not quite. Answer again to load foam ammo."
+          : athleticsMode === "hunters-runners"
+            ? isCorrect
+              ? `Correct! Ability charge ${athletics?.abilityCharge ?? 0} / ${RUNNER_ABILITY_METER_MAX}.`
+              : "Not quite. No ability charge gained."
+            : isCorrect
+              ? energyAwarded > 0
+                ? `Correct! +${energyAwarded} movement energy. Keep climbing.`
+                : "Correct! Movement energy is full. Keep climbing."
+              : "Not quite. No movement energy gained; try again when you are ready."
     : isCorrect
     ? respawn.respawned
       ? "Respawned! Three correct practice answers brought you back."
@@ -2450,6 +3231,12 @@ const answerQuestion = (
       ? respawn.respawned
         ? `Recovery Questions ${respawn.required} / ${respawn.required} — Back to the course!`
         : `Recovery Questions ${respawn.progress} / ${respawn.required}`
+      : zeusFreezeWasActive
+        ? "Lightning freeze broken"
+        : athleticsMode === "hunters-runners" && athletics?.role === "hunter"
+          ? `+${Math.max(0, (athletics.hunterAmmo ?? 0) - hunterAmmoBefore)} foam ammo`
+          : athleticsMode === "hunters-runners"
+            ? `Ability charge ${athletics?.abilityCharge ?? 0} / ${RUNNER_ABILITY_METER_MAX}`
       : reward.moneyAwarded > 0
         ? `+$${reward.moneyAwarded}`
         : energyAwarded > 0
@@ -2490,6 +3277,8 @@ const answerQuestion = (
     respawnRequired: respawn.required,
     ...(isAthletics && athletics ? {
       athletics: {
+        mode: athleticsMode,
+        role: athletics.role,
         questionIndex: athletics.questionIndex,
         checkpointIndex: athletics.checkpointIndex,
         routeProgress: athletics.routeProgress,
@@ -2499,6 +3288,14 @@ const answerQuestion = (
         recoveryActive: athletics.recoveryActive,
         recoveryCorrectAnswers: athletics.recoveryCorrectAnswers,
         recoveryRequiredAnswers: athletics.recoveryRequiredAnswers,
+        ...(athletics.hunterAmmo === undefined ? {} : { hunterAmmo: athletics.hunterAmmo }),
+        ...(athletics.hunterHits === undefined ? {} : { hunterHits: athletics.hunterHits }),
+        ...(athletics.hunterQuizStreak === undefined ? {} : { hunterQuizStreak: athletics.hunterQuizStreak }),
+        ...(athletics.abilityCharge === undefined ? {} : { abilityCharge: athletics.abilityCharge }),
+        ...(athletics.abilityReady === undefined ? {} : { abilityReady: athletics.abilityReady }),
+        ...(athletics.shieldCharges === undefined ? {} : { shieldCharges: athletics.shieldCharges }),
+        ...(athletics.zeusFrozen === undefined ? {} : { zeusFrozen: athletics.zeusFrozen }),
+        ...(athletics.zeusFrozenUntil === undefined ? {} : { zeusFrozenUntil: athletics.zeusFrozenUntil }),
         ...(athletics.finishPosition === undefined ? {} : { finishPosition: athletics.finishPosition })
       }
     } : {})
@@ -2600,6 +3397,160 @@ const buySnowballs = (session: GameSession, player: PlayerSession, requestedPack
   });
   broadcastPlayerState(session, [player]);
   return { ok: true, data: { player, message: `+${purchase.snowballsAdded} snowballs ready to use.` } };
+};
+
+type AthleticsActionResponse = {
+  player: PlayerSession;
+  action: "fire" | "ability";
+  message: string;
+};
+
+const handleAthleticsAction = (
+  session: GameSession,
+  player: PlayerSession,
+  command: AthleticsActionCommand
+): StudentCommandResult<AthleticsActionResponse> => {
+  const mode = getAthleticsMode(session.settings.athleticsMode ?? session.athletics?.mode);
+  const race = session.athletics;
+  const athletics = session.settings.gameMode === "athletics"
+    ? ensureAthleticsPlayerState(session, player)
+    : undefined;
+  if (session.settings.gameMode !== "athletics" || !race || !athletics || mode === "classic") {
+    return failStudentCommand(400, "This Athletics room does not have an active ability or projectile action.");
+  }
+  if (isTeacherPaused(session)) {
+    return failStudentCommand(409, "The game is paused by the teacher. Wait for the game to resume.");
+  }
+  if (session.status !== "active" || race.status !== "running") {
+    return failStudentCommand(400, "The Athletics race is not currently running.");
+  }
+  if (!player.isAlive || athletics.status !== "racing" || athletics.recoveryActive) {
+    return failStudentCommand(400, "This racer cannot use a mode action right now.");
+  }
+
+  const fireRequest = registerFireRequest(player.id, command.requestId);
+  if (!fireRequest.ok) return failStudentCommand(400, fireRequest.reason);
+  const currentMs = Date.now();
+  const nextAllowedAt = athleticsActionNextAt.get(player.id) ?? 0;
+  if (currentMs < nextAllowedAt) {
+    return failStudentCommand(409, "That action is still cooling down.");
+  }
+
+  // Action coordinates are an aim hint only. Movement remains on the normal
+  // player_position path, so a forged action packet cannot teleport a Hunter
+  // or move a Runner while a projectile/ability is being resolved.
+  const currentPosition = {
+    x: player.x ?? 0,
+    y: player.y ?? ATHLETICS_PLAYER_EYE_HEIGHT,
+    z: player.z ?? 0
+  };
+  const requestedFacing = Number(command.facing);
+  if (Number.isFinite(requestedFacing)) player.facing = requestedFacing;
+
+  if (command.action === "fire") {
+    if (mode !== "hunters-runners" || athletics.role !== "hunter") {
+      return failStudentCommand(400, "Only Hunters can throw foam balls in this round.");
+    }
+    const ammo = Math.max(0, Math.floor(athletics.hunterAmmo ?? 0));
+    if (ammo <= 0) return failStudentCommand(409, "Answer a question to load more foam balls.");
+    const facing = player.facing ?? 0;
+    const forwardX = -Math.sin(facing);
+    const forwardZ = -Math.cos(facing);
+    const candidates = session.players
+      .filter((candidate) => candidate.id !== player.id && candidate.isAlive && candidate.athletics?.status === "racing" && candidate.athletics.role === "runner")
+      .map((candidate) => {
+        const dx = (candidate.x ?? 0) - (player.x ?? 0);
+        const dz = (candidate.z ?? 0) - (player.z ?? 0);
+        const distance = Math.hypot(dx, dz);
+        const dot = distance > 0 ? (dx * forwardX + dz * forwardZ) / distance : 1;
+        return { candidate, distance, dot };
+      })
+      .filter((candidate) => candidate.distance <= HUNTER_PROJECTILE_RANGE && candidate.dot >= 0.35)
+      .sort((left, right) => right.dot - left.dot || left.distance - right.distance);
+    const selected = command.targetId
+      ? candidates.find((candidate) => candidate.candidate.id === command.targetId)
+      : candidates[0];
+    if (!selected) {
+      const requestedTargetExists = command.targetId && session.players.some((candidate) => candidate.id === command.targetId);
+      return failStudentCommand(400, requestedTargetExists ? "That runner is outside your throw line." : "Aim at a runner before throwing.");
+    }
+    athletics.hunterAmmo = ammo - 1;
+    const projectile: PendingHunterProjectile = {
+      id: `${session.id}:foam:${id()}`,
+      sessionId: session.id,
+      hunterId: player.id,
+      targetId: selected.candidate.id,
+      origin: currentPosition,
+      targetAtLaunch: { x: selected.candidate.x ?? 0, y: selected.candidate.y ?? ATHLETICS_PLAYER_EYE_HEIGHT, z: selected.candidate.z ?? 0 },
+      launchedAt: currentMs,
+      impactAt: currentMs + HUNTER_PROJECTILE_TRAVEL_MS,
+      radius: HUNTER_PROJECTILE_RADIUS
+    };
+    const projectiles = athleticsProjectiles.get(session.id) ?? [];
+    projectiles.push(projectile);
+    athleticsProjectiles.set(session.id, projectiles.slice(-24));
+    athleticsActionNextAt.set(player.id, currentMs + HUNTER_PROJECTILE_COOLDOWN_MS);
+    emitAthleticsModeEvent(session, "athletics_projectile", {
+      projectileId: projectile.id,
+      hunterId: projectile.hunterId,
+      targetId: projectile.targetId,
+      origin: projectile.origin,
+      targetAtLaunch: projectile.targetAtLaunch,
+      launchedAt: new Date(projectile.launchedAt).toISOString(),
+      impactAt: new Date(projectile.impactAt).toISOString(),
+      travelMs: HUNTER_PROJECTILE_TRAVEL_MS,
+      radius: HUNTER_PROJECTILE_RADIUS
+    });
+    broadcastPlayerState(session, [player]);
+    broadcastSession(session);
+    return {
+      ok: true,
+      data: { player, action: "fire", message: `Foam ball away. ${athletics.hunterAmmo} ammo left.` }
+    };
+  }
+
+  const ability = command.ability as AthleticsAbility;
+  if (mode !== "chaos-climb" && mode !== "hunters-runners") {
+    return failStudentCommand(400, "This Athletics mode has no player abilities.");
+  }
+  if (mode === "hunters-runners" && athletics.role !== "runner") {
+    return failStudentCommand(400, "Hunters use answer-powered ammo instead of runner abilities.");
+  }
+  if (athletics.abilityReady && ability !== athletics.abilityReady) {
+    return failStudentCommand(409, `Your ready ability is ${athletics.abilityReady}.`);
+  }
+  const abilityResult = consumeRunnerAbility({
+    ability,
+    charge: athletics.abilityCharge ?? 0
+  });
+  if (!abilityResult.ok) return failStudentCommand(409, "Answer three questions to charge an ability.");
+  athletics.abilityCharge = abilityResult.charge;
+  athletics.abilityReady = abilityResult.ability;
+  if (ability === "dash") athletics.dashUntil = new Date(currentMs + 1_000).toISOString();
+  if (ability === "shield") athletics.shieldCharges = Math.min(3, (athletics.shieldCharges ?? 0) + 1);
+  if (ability === "super-jump") athletics.jumpBoostUntil = new Date(currentMs + 2_500).toISOString();
+  if (ability === "anchor") athletics.knockbackResistUntil = new Date(currentMs + 2_500).toISOString();
+  athleticsActionNextAt.set(player.id, currentMs + 300);
+  emitAthleticsModeEvent(session, "athletics_ability", {
+    playerId: player.id,
+    ability,
+    nextAbility: athletics.abilityReady,
+    charge: athletics.abilityCharge,
+    shieldCharges: athletics.shieldCharges ?? 0,
+    expiresAt: ability === "dash"
+      ? athletics.dashUntil
+      : ability === "super-jump"
+        ? athletics.jumpBoostUntil
+        : ability === "anchor"
+          ? athletics.knockbackResistUntil
+          : undefined
+  });
+  broadcastPlayerState(session, [player]);
+  broadcastSession(session);
+  return {
+    ok: true,
+    data: { player, action: "ability", message: `${ability.replace("-", " ")} activated.` }
+  };
 };
 
 const sendStudentCommand = <T>(res: Response, result: StudentCommandResult<T>) => {
@@ -2864,6 +3815,24 @@ io.on("connection", (socket) => {
     };
     broadcastPlayerPosition(session, authoritativePosition);
   });
+
+  socket.on(
+    "athletics_action",
+    (payload: unknown = {}, acknowledge: (response: StudentCommandAck<AthleticsActionResponse>) => void) => {
+      if (typeof acknowledge !== "function") return;
+      const command = parseSocketCommand(socket, "athletics_action", payload);
+      if (!command) {
+        acknowledge({ ok: false, status: 400, error: "The Athletics action was invalid." });
+        return;
+      }
+      const student = getBoundStudent(socket);
+      acknowledge(
+        student
+          ? commandAck(handleAthleticsAction(student.session, student.player, command))
+          : { ok: false, status: 401, error: "Reconnect to the game before using an Athletics action." }
+      );
+    }
+  );
 
   socket.on("fire_action", (payload: unknown = {}) => {
     const command = parseSocketCommand(socket, "fire_action", payload);

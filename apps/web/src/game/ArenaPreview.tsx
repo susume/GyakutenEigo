@@ -9,6 +9,7 @@ import {
   ATHLETICS_STADIUM_COURSE,
   getAthleticsObstacles,
   getAthleticsStartPosition,
+  getChaosEventModifiers,
   getGearFireCooldownMs,
   getGearZoomFovMultiplier,
   getArenaGroundHeight,
@@ -17,6 +18,7 @@ import {
   getPlayerMoveSpeedMultiplier,
   getPlayerWeaponId,
   getTeamSpawnForMap,
+  HUNTER_PROJECTILE_COOLDOWN_MS,
   type SessionMapId,
   isGearAutoFireEnabled,
   type GameSession,
@@ -61,6 +63,7 @@ import { mountIronJunctionImportedAssets } from "./ironJunctionImportedAssets";
 import { mountDesertCitadelImportedAssets } from "./desertCitadelImportedAssets";
 import { mountTempleRunoffImportedAssets } from "./templeRunoffImportedAssets";
 import { mountAthleticsImportedAssets } from "./athleticsImportedAssets";
+import { createAthleticsModeVisuals } from "./athleticsModeVisuals";
 import { getTempleRunoffReviewViewpoint } from "./templeRunoffReviewViewpoints";
 import {
   readGamePreferences,
@@ -84,6 +87,7 @@ interface ArenaPreviewProps {
   onFire?: (position: ArenaLivePosition) => void;
   onInteract?: (position: ArenaLivePosition) => void;
   onOpenQuestion?: () => void;
+  onAbilityFromTouch?: () => void;
   athleticsHud?: AthleticsHudState;
   loadDecalAsset?: (assetId: string) => Promise<Blob>;
 }
@@ -300,6 +304,7 @@ export default function ArenaPreview({
   onFire,
   onInteract,
   onOpenQuestion,
+  onAbilityFromTouch,
   athleticsHud,
   loadDecalAsset
 }: ArenaPreviewProps) {
@@ -347,6 +352,9 @@ export default function ArenaPreview({
   const currentPlayerTeam = currentPlayer?.team ?? "blue";
   const currentWeaponId = currentPlayer ? getPlayerWeaponId(currentPlayer) : undefined;
   const isAthleticsMode = session?.settings.gameMode === "athletics";
+  const athleticsMode = isAthleticsMode
+    ? session?.settings.athleticsMode ?? session?.athletics?.mode ?? "classic"
+    : "classic";
   useEffect(() => {
     if (!isAthleticsMode || athleticsSceneBuilder) return;
     let active = true;
@@ -517,6 +525,9 @@ export default function ArenaPreview({
       return;
     }
     const { scene, camera, renderer, qualityConfig } = sceneSetup;
+    const athleticsModeVisuals = isAthleticsMode
+      ? createAthleticsModeVisuals({ scene, mode: athleticsMode })
+      : null;
     const onWebglContextLost = (event: Event) => {
       event.preventDefault();
       setRenderError("The 3D renderer paused on this device. Retry in performance mode, then re-enter the game if needed.");
@@ -786,6 +797,27 @@ export default function ArenaPreview({
         if (controlsDisabledRef.current || inputPausedRef.current || !onFireRef.current) return;
         gameAudio.warm();
         const currentTime = performance.now();
+        if (isAthleticsMode) {
+          if (athleticsHud?.role !== "hunter") return;
+          if (currentTime - lastLocalFireAt < HUNTER_PROJECTILE_COOLDOWN_MS) {
+            if (currentTime - lastCooldownFxAt > 280) {
+              lastCooldownFxAt = currentTime;
+              gameAudio.playEvent("cooldown_tick");
+            }
+            return;
+          }
+          lastLocalFireAt = currentTime;
+          const launchPosition = {
+            ...localToServerPosition(playerPosition, yaw),
+            pitch,
+            scoped: false,
+            zoomLevel: 0
+          };
+          setHitPulse((value) => value + 1);
+          gameAudio.playEvent("weapon_fire_basic");
+          onFireRef.current(launchPosition);
+          return;
+        }
         const equippedGearId = getEquippedGearId();
         if (currentTime - lastLocalFireAt < getGearFireCooldownMs(equippedGearId)) {
           if (currentTime - lastCooldownFxAt > 280) {
@@ -1140,6 +1172,12 @@ export default function ArenaPreview({
         return supportY === undefined ? mappedGroundY : Math.max(mappedGroundY, supportY);
       };
 
+      const getActiveChaosEventModifiers = () => {
+        const event = sessionRef.current?.athletics?.chaos?.currentEvent;
+        return event && Date.now() < Date.parse(event.expiresAt) ? getChaosEventModifiers(event) : undefined;
+      };
+      const isStationaryAthleticsHunter = isAthleticsMode && athleticsHud?.role === "hunter";
+
       const fpsLoop = createArenaRenderLoop(({ delta, currentTime, elapsed }) => {
         performanceCapture.frame(currentTime);
         // Put target/body previews downrange on the aim line. The former close,
@@ -1152,6 +1190,7 @@ export default function ArenaPreview({
         vfxPool.setViewPosition(playerPosition);
         vfxPool.update(currentTime);
         const platformCarry = athleticsUpdate?.(elapsed, playerPosition, wasGrounded);
+        athleticsModeVisuals?.update(sessionRef.current, Date.now());
         if (isAthleticsMode && platformCarry && !inputPausedRef.current && !controlsDisabledRef.current) {
           playerPosition.x += platformCarry.x;
           playerPosition.y += platformCarry.y;
@@ -1182,6 +1221,7 @@ export default function ArenaPreview({
           performanceWindowAt = currentTime;
         }
         const controlsLocked = controlsDisabledRef.current;
+        const chaosEventModifiers = getActiveChaosEventModifiers();
         if (controlsLocked) {
           verticalVelocity = 0;
           jumpQueuedAt = 0;
@@ -1282,7 +1322,8 @@ export default function ArenaPreview({
         const bufferedJump = jumpQueuedAt > 0 && currentTime - jumpQueuedAt <= jumpBufferMs;
         const canUseCoyoteTime = grounded || currentTime - lastGroundedAt <= coyoteTimeMs;
         if (bufferedJump && canUseCoyoteTime && !crouching) {
-          verticalVelocity = FPS_JUMP_VELOCITY;
+          const jumpHeightScale = chaosEventModifiers?.jumpHeightCap && chaosEventModifiers.jumpHeightCap > 4.5 ? 1.26 : 1;
+          verticalVelocity = FPS_JUMP_VELOCITY * jumpHeightScale;
           jumpQueuedAt = 0;
           emitArenaAnimation({ kind: "jump", playerId: currentPlayerId, team: currentPlayerTeam });
           gameAudio.play("jump");
@@ -1322,13 +1363,16 @@ export default function ArenaPreview({
         isJumping = !wasGrounded;
 
         const activePlayer = currentPlayerRef.current;
+        const currentAthleticsPlayer = activePlayer?.athletics;
         const gearSpeedMultiplier = getPlayerMoveSpeedMultiplier(activePlayer ?? { gear: "starter_blaster" });
         const isZombieHuman = session?.settings.gameMode === "zombie" && activePlayer?.role !== "zombie";
         const hasMovementEnergy = isAthleticsMode || isZombieHuman
           ? (activePlayer?.energy ?? 0) > 0
           : true;
         const movementAudioMode: MovementAudioMode = crouching ? "crouch" : "run";
-        const moveSpeed = resolveMovementSpeed({ crouching, hasMovementEnergy, gearSpeedMultiplier });
+        const moveSpeed = resolveMovementSpeed({ crouching, hasMovementEnergy, gearSpeedMultiplier })
+          * (currentAthleticsPlayer?.dashUntil && currentTime < Date.parse(currentAthleticsPlayer.dashUntil) ? 1.42 : 1)
+          * (chaosEventModifiers?.movementSpeedMultiplier ?? 1);
         forwardVector.set(-Math.sin(yaw), 0, -Math.cos(yaw));
         rightVector.set(Math.cos(yaw), 0, -Math.sin(yaw));
         movementVector.set(0, 0, 0);
@@ -1345,7 +1389,7 @@ export default function ArenaPreview({
         if (gamepadMove.forward < -GAMEPAD_DEAD_ZONE) movementVector.sub(forwardVector);
         if (gamepadMove.right > GAMEPAD_DEAD_ZONE) movementVector.add(rightVector);
         if (gamepadMove.right < -GAMEPAD_DEAD_ZONE) movementVector.sub(rightVector);
-        if (movementVector.lengthSq() > 0) {
+        if (movementVector.lengthSq() > 0 && !isStationaryAthleticsHunter) {
           const movementSurface: "metal" | "water" | "stone" | "sand" = isAthleticsMode ? "stone" : isIronJunction ? "metal" : isTempleRunoff ? (surfaceGroundY < 1 ? "water" : "stone") : "sand";
           if (wasGrounded && moveSpeed > 0) {
             gameAudio.playMovementStep(movementAudioMode, currentTime, movementSurface);
@@ -1416,6 +1460,21 @@ export default function ArenaPreview({
           jumpQueuedAt = 0;
           wasGrounded = true;
           isJumping = false;
+        }
+
+        if (isStationaryAthleticsHunter) {
+          const authoritativeHunter = currentPlayerRef.current;
+          if (isFiniteNumber(authoritativeHunter?.x) && isFiniteNumber(authoritativeHunter?.z) && isFiniteNumber(authoritativeHunter?.y)) {
+            playerPosition.set(
+              serverToLocalX(authoritativeHunter.x),
+              authoritativeHunter.y,
+              serverToLocalZ(authoritativeHunter.z)
+            );
+            if (isFiniteNumber(authoritativeHunter.facing)) yaw = authoritativeHunter.facing;
+            verticalVelocity = 0;
+            wasGrounded = true;
+            isJumping = false;
+          }
         }
 
         const equippedGearId = getEquippedGearId();
@@ -1518,6 +1577,7 @@ export default function ArenaPreview({
         unsubscribeAnimation();
         performanceCapture.dispose();
         vfxPool.dispose();
+        athleticsModeVisuals?.dispose();
         desertCitadelArt?.dispose();
         desertCitadelVfx?.dispose();
         templeRunoffArt?.dispose();
@@ -1567,6 +1627,7 @@ export default function ArenaPreview({
       vfxPool.setViewPosition(camera.position);
       vfxPool.update(currentTime);
       athleticsUpdate?.(elapsed);
+      athleticsModeVisuals?.update(sessionRef.current, Date.now());
       desertCitadelVfx?.update(elapsed);
       templeRunoffArt?.update(elapsed);
       if (currentTime - performanceWindowAt >= 1000) {
@@ -1627,6 +1688,7 @@ export default function ArenaPreview({
       unsubscribeAnimation();
       performanceCapture.dispose();
       vfxPool.dispose();
+      athleticsModeVisuals?.dispose();
       desertCitadelArt?.dispose();
       desertCitadelVfx?.dispose();
       templeRunoffArt?.dispose();
@@ -1660,7 +1722,7 @@ export default function ArenaPreview({
       renderer.dispose();
       mount.removeChild(renderer.domElement);
     };
-  }, [sceneSessionId, currentPlayerId, currentPlayerTeam, currentWeaponId, currentPlayer?.gear, currentPlayer?.weapon, view, debugOverlay, quality, fallbackQuality, activeQuality, gamepadEnabled, arenaMapId, arenaMap, arenaBounds, teamBaseZones, captureZones, searchRetrieveItems, searchRetrieveDeliveryZones, isIronJunction, isDesertCitadel, isTempleRunoff, isAthleticsMode, athleticsSceneBuilder, localToServerPosition, serverToLocalX, serverToLocalZ, movementLimitX, movementLimitZ, session?.settings.gameMode, session?.serverTime, loadDecalAsset]);
+  }, [sceneSessionId, currentPlayerId, currentPlayerTeam, currentWeaponId, currentPlayer?.gear, currentPlayer?.weapon, view, debugOverlay, quality, fallbackQuality, activeQuality, gamepadEnabled, arenaMapId, arenaMap, arenaBounds, teamBaseZones, captureZones, searchRetrieveItems, searchRetrieveDeliveryZones, isIronJunction, isDesertCitadel, isTempleRunoff, isAthleticsMode, athleticsMode, athleticsHud?.role, athleticsSceneBuilder, localToServerPosition, serverToLocalX, serverToLocalZ, movementLimitX, movementLimitZ, session?.settings.gameMode, session?.serverTime, loadDecalAsset]);
 
   const beginTouchMove = (event: ReactPointerEvent<HTMLButtonElement>) => {
     event.preventDefault();
@@ -1695,6 +1757,9 @@ export default function ArenaPreview({
   };
   const questionFromTouch = () => {
     questionControlRef.current();
+  };
+  const fireFromTouch = () => {
+    fireControlRef.current();
   };
   const miniMapPlayer = miniMapPosition ?? (
     isFiniteNumber(currentPlayer?.x) && isFiniteNumber(currentPlayer?.z)
@@ -1806,6 +1871,8 @@ export default function ArenaPreview({
             onInteractFromTouch={onInteract ? interactFromTouch : undefined}
             onJumpFromTouch={jumpFromTouch}
             onQuestionFromTouch={isAthleticsMode ? questionFromTouch : undefined}
+            onFireFromTouch={isAthleticsMode && athleticsHud?.role === "hunter" ? fireFromTouch : undefined}
+            onAbilityFromTouch={onAbilityFromTouch}
             onToggleCrouchFromTouch={toggleCrouchFromTouch}
             touchCrouchEnabled={touchCrouchEnabled}
             athleticsHud={isAthleticsMode ? athleticsHud : undefined}

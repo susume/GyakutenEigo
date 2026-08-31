@@ -1,4 +1,5 @@
 import { useEffect, useState, type RefObject } from "react";
+import { getChaosAbilityLabel, type AthleticsAbility, type AthleticsMode, type AthleticsRole } from "@quizstrike/shared";
 
 type WeaponCooldown = {
   startedAt: number;
@@ -6,6 +7,9 @@ type WeaponCooldown = {
 };
 
 export type AthleticsHudState = {
+  mode?: AthleticsMode;
+  modeLabel?: string;
+  role?: AthleticsRole;
   startRemainingSeconds: number;
   remainingSeconds: number;
   checkpointIndex: number;
@@ -22,6 +26,16 @@ export type AthleticsHudState = {
   recoveryActive?: boolean;
   recoveryCorrectAnswers?: number;
   recoveryRequiredAnswers?: number;
+  hunterAmmo?: number;
+  hunterHits?: number;
+  abilityCharge?: number;
+  abilityMax?: number;
+  abilityReady?: AthleticsAbility;
+  shieldCharges?: number;
+  zeusFrozen?: boolean;
+  zeusWarningSeconds?: number;
+  remainingRunners?: number;
+  chaosEventLabel?: string;
 };
 
 const formatRaceTime = (seconds: number) => {
@@ -63,6 +77,8 @@ export const ArenaHudOverlay = ({
   onInteractFromTouch,
   onJumpFromTouch,
   onQuestionFromTouch,
+  onFireFromTouch,
+  onAbilityFromTouch,
   onToggleCrouchFromTouch,
   touchCrouchEnabled,
   athleticsHud
@@ -82,6 +98,8 @@ export const ArenaHudOverlay = ({
   onInteractFromTouch: (() => void) | undefined;
   onJumpFromTouch: (() => void) | undefined;
   onQuestionFromTouch: (() => void) | undefined;
+  onFireFromTouch: (() => void) | undefined;
+  onAbilityFromTouch: (() => void) | undefined;
   onToggleCrouchFromTouch: (() => void) | undefined;
   touchCrouchEnabled?: boolean;
   athleticsHud?: AthleticsHudState;
@@ -110,6 +128,7 @@ export const ArenaHudOverlay = ({
   if (athleticsHud) {
     const energyPercent = Math.round(Math.min(1, Math.max(0, athleticsHud.energy / Math.max(1, athleticsHud.maxEnergy))) * 100);
     const lap = Math.min(athleticsHud.requiredLaps, athleticsHud.completedLaps + (athleticsHud.status === "finished" ? 0 : 1));
+    const isVariant = athleticsHud.mode !== undefined && athleticsHud.mode !== "classic";
 
     return (
       <>
@@ -126,7 +145,19 @@ export const ArenaHudOverlay = ({
             <b>Recovery Questions {athleticsHud.recoveryCorrectAnswers ?? 0} / {athleticsHud.recoveryRequiredAnswers ?? 3}</b>
           </div>
         )}
+        {isVariant && athleticsHud.mode === "zeus" && athleticsHud.zeusFrozen && (
+          <div className="athletics-mode-banner athletics-zeus-freeze" role="status" aria-live="assertive">
+            <strong>LIGHTNING FREEZE</strong>
+            <span>Answer correctly to break the charge.</span>
+          </div>
+        )}
         <div className="athletics-hud" data-testid="athletics-compact-hud" aria-label="Athletics race status">
+          {isVariant && (
+            <div className="athletics-variant-header">
+              <strong>{athleticsHud.modeLabel ?? athleticsHud.mode?.toUpperCase()}</strong>
+              <span className={`athletics-role athletics-role-${athleticsHud.role ?? "runner"}`}>{athleticsHud.role === "hunter" ? "HUNTER" : "RUNNER"}</span>
+            </div>
+          )}
           <div className="athletics-hud-header">
             <div className="athletics-energy-label">
               <span className="athletics-energy-icon" aria-hidden="true">⚡</span>
@@ -151,6 +182,27 @@ export const ArenaHudOverlay = ({
               <span><small>Lap</small><strong>{lap} / {athleticsHud.requiredLaps}</strong></span>
             </span>
           </div>
+          {isVariant && (
+            <div className="athletics-variant-stats">
+              {athleticsHud.role === "hunter" ? (
+                <span><small>Foam ammo</small><strong>{athleticsHud.hunterAmmo ?? 0}</strong><em>{athleticsHud.hunterHits ?? 0} hits</em></span>
+              ) : (
+                <span><small>Ability</small><strong>{athleticsHud.abilityCharge ?? 0} / {athleticsHud.abilityMax ?? 3}</strong><em>{athleticsHud.abilityReady ? getChaosAbilityLabel(athleticsHud.abilityReady) : "Charging"}</em></span>
+              )}
+              {athleticsHud.mode === "hunters-runners" && athleticsHud.role !== "hunter" && (
+                <span><small>Runners left</small><strong>{athleticsHud.remainingRunners ?? 0}</strong></span>
+              )}
+              {athleticsHud.mode === "chaos-climb" && (
+                <>
+                  <span><small>Shields</small><strong>{athleticsHud.shieldCharges ?? 0}</strong></span>
+                  <span><small>Event</small><strong>{athleticsHud.chaosEventLabel ?? "Watch"}</strong></span>
+                </>
+              )}
+              {athleticsHud.mode === "zeus" && (
+                <span><small>Lightning</small><strong>{athleticsHud.zeusFrozen ? "Frozen" : athleticsHud.zeusWarningSeconds ? `${athleticsHud.zeusWarningSeconds}s` : "Watch"}</strong></span>
+              )}
+            </div>
+          )}
         </div>
         {!controlsDisabled && !isPointerLocked && !suppressHint && <div className="control-lock athletics-control-lock">WASD moves at full speed · Shift crouches · Space jumps · Arrow keys or swipe looks · touch players can use Crouch + Jump</div>}
         <div className="touch-controls athletics-touch-controls" aria-label="Touch controls">
@@ -189,6 +241,18 @@ export const ArenaHudOverlay = ({
                 <button type="button" className="touch-jump" disabled={controlsDisabled} aria-label="Jump" aria-keyshortcuts="Space" onPointerDown={(event) => { event.preventDefault(); onJumpFromTouch(); }}>
                   <kbd aria-hidden="true">SPACE</kbd>
                   Jump
+                </button>
+              )}
+              {onFireFromTouch && athleticsHud.role === "hunter" && (
+                <button type="button" className="touch-fire" disabled={controlsDisabled} aria-label="Throw foam ball" onPointerDown={(event) => { event.preventDefault(); onFireFromTouch(); }}>
+                  <kbd aria-hidden="true">F</kbd>
+                  Throw
+                </button>
+              )}
+              {onAbilityFromTouch && athleticsHud.role !== "hunter" && athleticsHud.abilityReady && (
+                <button type="button" className="touch-ability" disabled={controlsDisabled || (athleticsHud.abilityCharge ?? 0) < (athleticsHud.abilityMax ?? 3)} aria-label={`Use ${getChaosAbilityLabel(athleticsHud.abilityReady)}`} onPointerDown={(event) => { event.preventDefault(); onAbilityFromTouch(); }}>
+                  <kbd aria-hidden="true">A</kbd>
+                  {getChaosAbilityLabel(athleticsHud.abilityReady)}
                 </button>
               )}
             </div>

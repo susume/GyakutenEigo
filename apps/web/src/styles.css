@@ -14508,6 +14508,190 @@ body:has(.workspace) .study-set-audio-recorder audio { width: min(100%, 440px); 
   pointer-events: none;
 }
 
+.athletics-mode-banner {
+  position: absolute;
+  top: var(--hud-safe-top, 16px);
+  left: 50%;
+  z-index: calc(var(--z-hud, 20) + 2);
+  display: grid;
+  gap: 3px;
+  min-width: min(300px, calc(100% - 32px));
+  padding: 10px 14px;
+  border: 1px solid rgba(255, 214, 110, .78);
+  border-radius: 11px;
+  background: rgba(45, 26, 13, .94);
+  box-shadow: 0 12px 28px rgba(2, 10, 20, .28), 0 0 22px rgba(255, 214, 110, .18);
+  color: #fff7d6;
+  text-align: center;
+  transform: translateX(-50%);
+  pointer-events: none;
+}
+
+.athletics-mode-banner strong {
+  color: #fff0a8;
+  font-size: .72rem;
+  font-weight: 950;
+  letter-spacing: .08em;
+}
+
+.athletics-mode-banner span {
+  font-size: .65rem;
+  font-weight: 800;
+}
+
+.athletics-zeus-freeze {
+  border-color: rgba(182, 151, 255, .9);
+  background: rgba(33, 23, 69, .95);
+  box-shadow: 0 12px 28px rgba(2, 10, 20, .28), 0 0 24px rgba(182, 151, 255, .27);
+}
+
+.athletics-variant-header,
+.athletics-variant-stats {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+}
+
+.athletics-variant-header {
+  color: #dffaff;
+  font-size: .68rem;
+  font-weight: 950;
+  letter-spacing: .08em;
+  text-transform: uppercase;
+}
+
+.athletics-role {
+  padding: 3px 6px;
+  border: 1px solid currentColor;
+  border-radius: 999px;
+  font-size: .52rem;
+  letter-spacing: .08em;
+}
+
+.athletics-role-hunter { color: #ffb86b; }
+.athletics-role-runner { color: #b5ef71; }
+
+.athletics-variant-stats {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 7px;
+}
+
+.athletics-variant-stats > span {
+  display: grid;
+  gap: 2px;
+  min-width: 0;
+  padding: 6px 8px;
+  border: 1px solid rgba(186, 230, 253, .17);
+  border-radius: 8px;
+  background: rgba(255, 255, 255, .06);
+}
+
+.athletics-variant-stats small,
+.athletics-variant-stats em {
+  color: #9fc9d5;
+  font-size: .52rem;
+  font-style: normal;
+  font-weight: 850;
+  letter-spacing: .04em;
+  text-transform: uppercase;
+}
+
+.athletics-variant-stats strong {
+  color: #ffffff;
+  font-size: .82rem;
+  font-variant-numeric: tabular-nums;
+}
+
+.athletics-mode-action-bar {
+  position: absolute;
+  left: var(--hud-safe-edge, 16px);
+  right: var(--hud-safe-edge, 16px);
+  bottom: max(14px, env(safe-area-inset-bottom));
+  z-index: var(--z-hud, 20);
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  min-height: 54px;
+  padding: 8px 10px;
+  border: 1px solid rgba(126, 231, 255, .38);
+  border-radius: 12px;
+  background: linear-gradient(90deg, rgba(5, 22, 37, .94), rgba(13, 46, 59, .86));
+  box-shadow: 0 12px 28px rgba(2, 14, 25, .28), inset 0 1px 0 rgba(255,255,255,.1);
+  color: #f8fdff;
+  pointer-events: auto;
+}
+
+.athletics-mode-action-copy {
+  display: grid;
+  min-width: 0;
+  gap: 2px;
+  margin-right: auto;
+}
+
+.athletics-mode-action-copy .eyebrow {
+  color: #8fdcec;
+  font-size: .52rem;
+  font-weight: 950;
+  letter-spacing: .08em;
+  text-transform: uppercase;
+}
+
+.athletics-mode-action-copy strong {
+  overflow: hidden;
+  color: #ffffff;
+  font-size: .78rem;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.athletics-mode-action-copy small {
+  color: #a9d4df;
+  font-size: .6rem;
+  font-weight: 800;
+}
+
+.athletics-ability-button,
+.athletics-mode-action-bar .athletics-warning-chip {
+  flex: 0 0 auto;
+}
+
+.athletics-ability-button {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  min-height: 38px;
+  padding: 0 11px;
+  border: 1px solid rgba(181, 239, 113, .68);
+  border-radius: 9px;
+  background: rgba(47, 91, 48, .88);
+  color: #eaffc7;
+  font-size: .67rem;
+  font-weight: 950;
+  text-transform: uppercase;
+}
+
+.athletics-ability-button:hover:not(:disabled),
+.athletics-ability-button:focus-visible {
+  border-color: #eaffc7;
+  background: rgba(67, 119, 61, .98);
+}
+
+.athletics-ability-button:disabled { opacity: .45; }
+
+.athletics-warning-chip {
+  padding: 7px 9px;
+  border: 1px solid rgba(255, 127, 180, .72);
+  border-radius: 999px;
+  background: rgba(78, 25, 65, .88);
+  color: #ffd2e5;
+  font-size: .59rem;
+  font-weight: 950;
+  letter-spacing: .05em;
+  white-space: nowrap;
+}
+
 .athletics-hud-header,
 .athletics-hud-stats {
   display: flex;
@@ -14891,6 +15075,41 @@ body:has(.workspace) .study-set-audio-recorder audio { width: min(100%, 440px); 
 
 .athletics-touch-controls .touch-question > span { display: grid; place-items: center; width: 27px; height: 27px; border: 2px solid currentColor; border-radius: 50%; font-size: 1rem; }
 
+.athletics-touch-controls .touch-fire,
+.athletics-touch-controls .touch-ability {
+  min-width: 102px;
+  min-height: 58px;
+  display: grid;
+  place-items: center;
+  gap: 2px;
+  border: 1px solid currentColor;
+  border-radius: 10px;
+  font-size: .72rem;
+  font-weight: 950;
+  text-transform: uppercase;
+}
+
+.athletics-touch-controls .touch-fire {
+  border-color: rgba(255, 156, 84, .9);
+  background: linear-gradient(145deg, rgba(111, 67, 22, .96), rgba(78, 38, 17, .96));
+  color: #ffe0b8;
+}
+
+.athletics-touch-controls .touch-ability {
+  border-color: rgba(181, 239, 113, .9);
+  background: linear-gradient(145deg, rgba(47, 91, 48, .96), rgba(25, 58, 40, .96));
+  color: #eaffc7;
+}
+
+.athletics-touch-controls .touch-fire kbd,
+.athletics-touch-controls .touch-ability kbd {
+  color: currentColor;
+  font-size: .55rem;
+}
+
+.athletics-touch-controls .touch-fire:disabled,
+.athletics-touch-controls .touch-ability:disabled { opacity: .45; }
+
 .athletics-lobby-card,
 .athletics-course-card,
 .athletics-result-card,
@@ -14973,6 +15192,152 @@ body:has(.workspace) .athletics-course-card {
   background: linear-gradient(145deg, #0b2145, #102d50);
 }
 
+body:has(.workspace) .athletics-mode-picker {
+  display: grid;
+  gap: 10px;
+  padding: 13px;
+  border: 1px solid rgba(92, 215, 255, .26);
+  border-radius: 12px;
+  background: rgba(4, 19, 42, .48);
+}
+
+body:has(.workspace) .athletics-mode-picker-heading {
+  display: flex;
+  align-items: end;
+  justify-content: space-between;
+  gap: 12px;
+}
+
+body:has(.workspace) .athletics-mode-picker-heading > div {
+  display: grid;
+  gap: 3px;
+}
+
+body:has(.workspace) .athletics-mode-picker-heading strong {
+  color: #f5fbff;
+  font-size: .82rem;
+}
+
+body:has(.workspace) .athletics-mode-picker-heading small {
+  color: #a5c9df;
+  font-size: .66rem;
+}
+
+body:has(.workspace) .athletics-mode-grid {
+  display: grid;
+  grid-template-columns: repeat(4, minmax(0, 1fr));
+  gap: 8px;
+}
+
+body:has(.workspace) .athletics-mode-choice {
+  min-width: 0;
+  display: grid;
+  gap: 6px;
+  padding: 10px;
+  border: 1px solid #254b78;
+  border-radius: 9px;
+  background: rgba(12, 29, 65, .86);
+  color: #f5fbff;
+  text-align: left;
+  transition: border-color .16s ease, background-color .16s ease, transform .16s ease;
+}
+
+body:has(.workspace) .athletics-mode-choice:hover,
+body:has(.workspace) .athletics-mode-choice:focus-visible {
+  border-color: var(--teacher-cyan);
+  background: #102956;
+  transform: translateY(-1px);
+}
+
+body:has(.workspace) .athletics-mode-choice.selected {
+  border-color: var(--teacher-cyan);
+  background: #112f5e;
+  box-shadow: inset 0 0 0 1px rgba(92, 215, 255, .25);
+}
+
+body:has(.workspace) .athletics-mode-choice-top {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 6px;
+  color: var(--teacher-cyan);
+}
+
+body:has(.workspace) .athletics-mode-choice-top strong {
+  overflow: hidden;
+  font-size: .72rem;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+body:has(.workspace) .athletics-mode-choice small {
+  color: var(--teacher-muted);
+  font-size: .62rem;
+  line-height: 1.35;
+}
+
+body:has(.workspace) .athletics-mode-brief {
+  display: grid;
+  grid-template-columns: minmax(170px, .9fr) minmax(0, 1.5fr);
+  gap: 12px;
+  padding: 11px 12px;
+  border: 1px solid rgba(92, 215, 255, .22);
+  border-left: 3px solid #40d9ff;
+  border-radius: 9px;
+  background: rgba(255, 255, 255, .045);
+}
+
+body:has(.workspace) .athletics-mode-brief > div {
+  display: grid;
+  align-content: start;
+  gap: 4px;
+}
+
+body:has(.workspace) .athletics-mode-brief .eyebrow {
+  color: #40d9ff;
+  font-size: .57rem;
+  font-weight: 950;
+  letter-spacing: .08em;
+  text-transform: uppercase;
+}
+
+body:has(.workspace) .athletics-mode-brief strong {
+  color: #f5fbff;
+  font-size: .72rem;
+  line-height: 1.3;
+}
+
+body:has(.workspace) .athletics-mode-brief ul {
+  display: grid;
+  gap: 3px;
+  margin: 0;
+  padding-left: 17px;
+  color: #afd0dd;
+  font-size: .64rem;
+  line-height: 1.35;
+}
+
+body:has(.workspace) .athletics-mode-brief.athletics-mode-zeus { border-left-color: #b697ff; }
+body:has(.workspace) .athletics-mode-brief.athletics-mode-hunters-runners { border-left-color: #ff9c54; }
+body:has(.workspace) .athletics-mode-brief.athletics-mode-chaos-climb { border-left-color: #ff7fb4; }
+
+.athletics-teacher-monitor {
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 7px 12px;
+  margin: 10px 0 12px;
+  padding: 9px 11px;
+  border: 1px solid #9c86e8;
+  border-radius: 9px;
+  background: #f7f4ff;
+  color: #443b71;
+  font-size: .72rem;
+}
+
+.athletics-teacher-monitor strong { color: #5d4eb2; }
+.athletics-teacher-monitor span { color: #5c6478; font-weight: 750; }
+
 .athletics-course-card-heading {
   display: flex;
   align-items: start;
@@ -15045,10 +15410,15 @@ body:has(.workspace) .athletics-teacher-results {
 
 @media (max-width: 850px) {
   .athletics-course-sections { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+  body:has(.workspace) .athletics-mode-grid { grid-template-columns: repeat(2, minmax(0, 1fr)); }
 }
 
 @media (max-width: 700px) {
   .fps-view .athletics-hud { left: 10px; top: 10px; width: min(300px, calc(100% - 20px)); padding: 9px 10px 10px; }
+  .athletics-mode-action-bar { left: 10px; right: 10px; bottom: max(10px, env(safe-area-inset-bottom)); }
+  .athletics-mode-action-copy small { max-width: 160px; }
+  body:has(.workspace) .athletics-mode-picker-heading { display: grid; align-items: start; }
+  body:has(.workspace) .athletics-mode-brief { grid-template-columns: 1fr; }
   .athletics-result-grid { grid-template-columns: repeat(2, minmax(0, 1fr)); }
   .athletics-course-card-heading { display: grid; }
   .athletics-course-badge { width: fit-content; }

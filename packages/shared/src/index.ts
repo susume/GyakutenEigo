@@ -11,10 +11,17 @@ import type {
   AthleticsPlayerState,
   AthleticsRaceState
 } from "./athleticsRace.js";
+import {
+  sanitizeAthleticsMode,
+  type AthleticsMode,
+  type AthleticsRole,
+  type AthleticsAbility
+} from "./athleticsModes.js";
 
 export type Team = "blue" | "red";
 export * from "./protocol/index.js";
 export * from "./athleticsRace.js";
+export * from "./athleticsModes.js";
 export * from "./speaking.js";
 export type SessionStatus = "waiting" | "active" | "paused" | "ended";
 export type SessionControlState = "running" | "teacher_paused";
@@ -572,6 +579,8 @@ export const getPlayerAppearanceError = (input: unknown): string | undefined => 
 export interface SessionSettings {
   mapId: SessionMapId;
   gameMode: GameMode;
+  /** Selected sub-mode when gameMode is Athletics. Legacy rooms resolve to Classic. */
+  athleticsMode?: AthleticsMode;
   athleticsCourseId?: AthleticsCourseId;
   /** Athletics only. Missing legacy values resolve to one lap. */
   athleticsCourseLaps?: number;
@@ -756,6 +765,8 @@ export interface QuizResult {
   respawnProgress?: number;
   respawnRequired?: number;
   athletics?: {
+    mode?: AthleticsMode;
+    role?: AthleticsRole;
     questionIndex: number;
     checkpointIndex: number;
     routeProgress: number;
@@ -765,6 +776,14 @@ export interface QuizResult {
     recoveryActive?: boolean;
     recoveryCorrectAnswers?: number;
     recoveryRequiredAnswers?: number;
+    hunterAmmo?: number;
+    hunterHits?: number;
+    hunterQuizStreak?: number;
+    abilityCharge?: number;
+    abilityReady?: AthleticsAbility;
+    shieldCharges?: number;
+    zeusFrozen?: boolean;
+    zeusFrozenUntil?: string;
     finishPosition?: number;
   };
 }
@@ -826,11 +845,14 @@ export interface SessionReportRow {
   score: number;
   racePlace?: number;
   raceTimeMs?: number;
-  raceStatus?: "finished" | "dnf";
+  raceStatus?: "finished" | "dnf" | "hunter";
   raceFalls?: number;
   raceCheckpoint?: number;
   raceLapsCompleted?: number;
   raceLapsRequired?: number;
+  athleticsMode?: AthleticsMode;
+  athleticsRole?: AthleticsRole;
+  athleticsHunterHits?: number;
 }
 
 export * from "./studentLearning.js";
@@ -902,6 +924,7 @@ export const SPEED_SHOES_HEALTH_BONUS = 30;
 export const DEFAULT_SESSION_SETTINGS: SessionSettings = {
   mapId: "desert_citadel",
   gameMode: "flag",
+  athleticsMode: "classic",
   athleticsCourseLaps: ATHLETICS_DEFAULT_COURSE_LAPS,
   botDifficulty: "standard",
   roundCount: FLAG_MODE_DEFAULTS.roundCount,
@@ -950,6 +973,7 @@ export const sanitizeSessionSettings = (input: Partial<SessionSettings> = {}): S
   mapId: gameMode === "athletics" ? ATHLETICS_ARENA_MAP_ID : sanitizeArenaMap(input.mapId),
   gameMode,
   ...(gameMode === "athletics" ? {
+    athleticsMode: sanitizeAthleticsMode(input.athleticsMode),
     athleticsCourseId: input.athleticsCourseId === "stadium_loop" ? input.athleticsCourseId : "stadium_loop" as const,
     athleticsCourseLaps: sanitizeAthleticsCourseLaps(input.athleticsCourseLaps)
   } : {}),
@@ -1066,15 +1090,28 @@ const csvCell = (value: string | number) => {
 
 export const buildCsvReport = (report: SessionReport) => {
   const isAthletics = report.session.settings.gameMode === "athletics";
+  const athleticsMode = isAthletics
+    ? sanitizeAthleticsMode(report.session.settings.athleticsMode ?? report.session.athletics?.mode)
+    : undefined;
+  const hasAthleticsModeStats = isAthletics && athleticsMode !== "classic";
   const rows = [
     isAthletics
-      ? ["Session Code", "Student", "Place", "Race Time (ms)", "Status", "Falls", "Laps Completed", "Laps Required", "Checkpoint", "Correct", "Wrong", "Accuracy %"]
+      ? [
+          "Session Code", "Student", "Place", "Race Time (ms)", "Status", "Falls", "Laps Completed", "Laps Required", "Checkpoint",
+          ...(hasAthleticsModeStats ? ["Athletics Mode", "Role", "Hunter Hits", "Score"] : []),
+          "Correct", "Wrong", "Accuracy %"
+        ]
       : ["Session Code", "Student", "Team", "Correct", "Wrong", "Accuracy %", "Wallet", "Quiz Rewards", "Score"],
     ...report.rows.map((row) => [
       report.session.sessionCode,
       row.nickname,
       ...(isAthletics
-        ? [row.racePlace ?? "", row.raceTimeMs ?? "", row.raceStatus ?? "dnf", row.raceFalls ?? 0, row.raceLapsCompleted ?? 0, row.raceLapsRequired ?? 1, row.raceCheckpoint ?? 0, row.correctAnswers, row.wrongAnswers, row.accuracy]
+        ? [
+            row.racePlace ?? "", row.raceTimeMs ?? "", row.raceStatus ?? "dnf", row.raceFalls ?? 0,
+            row.raceLapsCompleted ?? 0, row.raceLapsRequired ?? 1, row.raceCheckpoint ?? 0,
+            ...(hasAthleticsModeStats ? [row.athleticsMode ?? athleticsMode ?? "classic", row.athleticsRole ?? "", row.athleticsHunterHits ?? "", row.score] : []),
+            row.correctAnswers, row.wrongAnswers, row.accuracy
+          ]
         : [row.team, row.correctAnswers, row.wrongAnswers, row.accuracy, row.money, row.quizMoney, row.score])
     ]),
     [],

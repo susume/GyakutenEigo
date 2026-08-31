@@ -1,4 +1,11 @@
 import type { ArenaPosition, PlayerSession } from "./index.js";
+import type {
+  AthleticsAbility,
+  AthleticsChaosState,
+  AthleticsMode,
+  AthleticsRole,
+  AthleticsZeusState
+} from "./athleticsModes.js";
 
 export type AthleticsCourseId = "stadium_loop";
 
@@ -22,6 +29,11 @@ export type AthleticsRecoveryReason =
 
 export interface AthleticsRaceState {
   courseId: AthleticsCourseId;
+  /** Additive variant selector. Missing legacy values are Classic Athletics. */
+  mode?: AthleticsMode;
+  /** Seed and phase data are server-owned; clients use them to render paths. */
+  modeSeed?: number;
+  modeRound?: number;
   /** Number of question credits available on every lap. Questions are fuel, not gates. */
   questionsPerLap: number;
   /** Total correct answers that can be earned from the configured question pool. */
@@ -31,6 +43,14 @@ export interface AthleticsRaceState {
   /** Official GO timestamp. Before this instant the course is locked. */
   startAt: string;
   finishOrder: string[];
+  /** Zeus telegraphs and Chaos waves are included in snapshots for interpolation. */
+  zeus?: AthleticsZeusState;
+  chaos?: AthleticsChaosState;
+  /** Hunters & Runners keeps the role assignment visible to the teacher/report. */
+  runnerIds?: string[];
+  hunterIds?: string[];
+  modeRoundsTotal?: number;
+  rolesSwapped?: boolean;
 }
 
 export interface AthleticsPlayerState {
@@ -75,6 +95,23 @@ export interface AthleticsPlayerState {
   finishTimeMs?: number;
   finishedAt?: string;
   wrongAnswerPenaltyUntil?: string;
+  /** Mode-specific state is intentionally colocated with race progress so a
+   * single player_state snapshot can restore a reconnecting tablet. */
+  role?: AthleticsRole;
+  stationIndex?: number;
+  hunterAmmo?: number;
+  hunterHits?: number;
+  hunterQuizStreak?: number;
+  abilityCharge?: number;
+  abilityReady?: AthleticsAbility;
+  shieldCharges?: number;
+  dashUntil?: string;
+  jumpBoostUntil?: string;
+  knockbackResistUntil?: string;
+  staggerUntil?: string;
+  zeusFrozen?: boolean;
+  zeusFrozenUntil?: string;
+  lastChaosHazardId?: string;
 }
 
 export type AthleticsAccent = "cyan" | "orange" | "lime" | "violet" | "pink" | "gold";

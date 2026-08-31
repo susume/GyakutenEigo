@@ -91,6 +91,24 @@ export const FlagActionCommandSchema = z.object({
   ...positionFields
 }).strict();
 
+/**
+ * Additive Athletics actions. The payload carries the current transform only
+ * as an aim hint; the server resolves ammo, abilities, hits, and movement.
+ */
+export const AthleticsActionCommandSchema = z.object({
+  type: z.literal("athletics_action"),
+  requestId: boundedId,
+  action: z.enum(["fire", "ability"]),
+  ability: z.enum(["dash", "shield", "super-jump", "anchor"]).optional(),
+  ...positionFields,
+  pitch: z.number().finite().min(-Math.PI).max(Math.PI).optional(),
+  targetId: boundedId.optional()
+}).strict().superRefine((value, context) => {
+  if (value.action === "ability" && !value.ability) {
+    context.addIssue({ code: "custom", path: ["ability"], message: "An Athletics ability is required." });
+  }
+});
+
 const DiscriminatedClientCommandSchema = z.discriminatedUnion("type", [
   ClientHelloSchema,
   AnswerQuestionCommandSchema,
@@ -98,7 +116,8 @@ const DiscriminatedClientCommandSchema = z.discriminatedUnion("type", [
   BuySnowballsCommandSchema,
   PlayerPositionCommandSchema,
   FireActionCommandSchema,
-  FlagActionCommandSchema
+  FlagActionCommandSchema,
+  AthleticsActionCommandSchema
 ]);
 
 // The join schema has a superRefinement and therefore wraps the fast
@@ -116,6 +135,7 @@ export type BuySnowballsCommand = z.infer<typeof BuySnowballsCommandSchema>;
 export type PlayerPositionCommand = z.infer<typeof PlayerPositionCommandSchema>;
 export type FireActionCommand = z.infer<typeof FireActionCommandSchema>;
 export type FlagActionCommand = z.infer<typeof FlagActionCommandSchema>;
+export type AthleticsActionCommand = z.infer<typeof AthleticsActionCommandSchema>;
 
 export type ClientCommand =
   | ClientHello
@@ -125,7 +145,8 @@ export type ClientCommand =
   | BuySnowballsCommand
   | PlayerPositionCommand
   | FireActionCommand
-  | FlagActionCommand;
+  | FlagActionCommand
+  | AthleticsActionCommand;
 
 export type ClientCommandType = ClientCommand["type"];
 
@@ -137,7 +158,8 @@ export const CLIENT_COMMAND_TYPES = [
   "buy_snowballs",
   "player_position",
   "fire_action",
-  "flag_action"
+  "flag_action",
+  "athletics_action"
 ] as const satisfies readonly ClientCommandType[];
 
 const clientCommandSchemas: Record<ClientCommandType, z.ZodType> = {
@@ -148,7 +170,8 @@ const clientCommandSchemas: Record<ClientCommandType, z.ZodType> = {
   buy_snowballs: BuySnowballsCommandSchema,
   player_position: PlayerPositionCommandSchema,
   fire_action: FireActionCommandSchema,
-  flag_action: FlagActionCommandSchema
+  flag_action: FlagActionCommandSchema,
+  athletics_action: AthleticsActionCommandSchema
 };
 
 export type ProtocolErrorCode =

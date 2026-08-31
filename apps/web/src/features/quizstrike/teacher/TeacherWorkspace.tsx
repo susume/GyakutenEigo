@@ -11,6 +11,8 @@ import {
   isZombieSelectionPhase,
   ATHLETICS_ARENA_MAP_ID,
   ATHLETICS_STADIUM_COURSE,
+  ATHLETICS_MODES,
+  ATHLETICS_MODE_CONFIG,
   resolveAthleticsStandings,
   validateSessionSnapshot,
   type ArenaMapId,
@@ -165,6 +167,9 @@ const sessionStatusLabel = (status: GameSession["status"]) => status === "active
 const gameModeLabel = (mode: SessionSettings["gameMode"]) => mode === "flag" ? "Capture the Flag" : mode === "zombie" ? "Zombie Survival" : mode === "athletics" ? "Athletics Race" : "Team Tag";
 const arenaMapLabel = (mapId: ArenaMapId | string | undefined) => getArenaMap(mapId).title;
 const sessionCourseLabel = (session: GameSession) => session.settings.gameMode === "athletics" ? ATHLETICS_STADIUM_COURSE.title : arenaMapLabel(session.settings.mapId);
+const sessionGameModeLabel = (session: GameSession) => session.settings.gameMode === "athletics"
+  ? ATHLETICS_MODE_CONFIG[session.settings.athleticsMode ?? session.athletics?.mode ?? "classic"].label
+  : gameModeLabel(session.settings.gameMode);
 const arenaMapDisplayTitle = (title: string) => title.replace(/\s2\.0$/, "");
 const ARENA_MAP_PREVIEW_ASSETS: Record<ArenaMapId, string> = { desert_citadel: "/assets/arena-maps/desert-citadel.png", iron_junction: "/assets/arena-maps/iron-junction.png", temple_runoff: "/assets/arena-maps/temple-runoff.png" };
 const getTopLearner = (players: PlayerSession[], mode?: SessionSettings["gameMode"]) => {
@@ -1424,6 +1429,8 @@ function SessionManager({
   const status = useAsyncMessage();
   const remainingSeconds = useRoundRemaining(selectedSession);
   const selectedMap = getArenaMap(settings.mapId);
+  const selectedAthleticsMode = settings.athleticsMode ?? "classic";
+  const selectedAthleticsModeConfig = ATHLETICS_MODE_CONFIG[selectedAthleticsMode];
   const selectedQuiz = availableStudySets.find((quiz) => quiz.id === quizSetId);
   const sessionQuiz = selectedSession
     ? availableStudySets.find((quiz) => quiz.id === selectedSession.quizSetId)
@@ -1996,6 +2003,33 @@ function SessionManager({
                     );
                   })}
                 </div>
+                {settings.gameMode === "athletics" && (
+                  <div className="athletics-mode-picker" aria-label="Athletics modes">
+                    <div className="athletics-mode-picker-heading">
+                      <div><span className="eyebrow">Athletics variant</span><strong>Choose how the climb plays</strong></div>
+                      <small>Classic keeps the original race rules.</small>
+                    </div>
+                    <div className="athletics-mode-grid">
+                      {ATHLETICS_MODES.map((modeId) => {
+                        const mode = ATHLETICS_MODE_CONFIG[modeId];
+                        const selectedAthletics = selectedAthleticsMode === modeId;
+                        return (
+                          <button
+                            type="button"
+                            key={modeId}
+                            className={`athletics-mode-choice athletics-mode-choice-${modeId}${selectedAthletics ? " selected" : ""}`}
+                            aria-label={`${mode.label}: ${mode.description}`}
+                            aria-pressed={selectedAthletics}
+                            onClick={() => setSettings({ ...settings, athleticsMode: modeId })}
+                          >
+                            <span className="athletics-mode-choice-top"><strong>{mode.shortLabel}</strong>{selectedAthletics && <Check size={16} aria-hidden="true" />}</span>
+                            <small>{mode.description}</small>
+                          </button>
+                        );
+                      })}
+                    </div>
+                  </div>
+                )}
               </section>
             )}
 
@@ -2007,6 +2041,10 @@ function SessionManager({
                     <div className="athletics-course-card-heading">
                       <div><span className="eyebrow">Selected course</span><h4>{ATHLETICS_STADIUM_COURSE.title}</h4><p>{ATHLETICS_STADIUM_COURSE.subtitle}</p></div>
                       <span className="athletics-course-badge">{ATHLETICS_STADIUM_COURSE.sections.length} chapters · {ATHLETICS_STADIUM_COURSE.checkpoints.length} checkpoints · {ATHLETICS_STADIUM_COURSE.shortcuts.length} shortcuts</span>
+                    </div>
+                    <div className={`athletics-mode-brief athletics-mode-${selectedAthleticsMode}`}>
+                      <div><span className="eyebrow">{selectedAthleticsModeConfig.label}</span><strong>{selectedAthleticsModeConfig.description}</strong></div>
+                      <ul>{selectedAthleticsModeConfig.instructionLines.map((line) => <li key={line}>{line}</li>)}</ul>
                     </div>
                     <div className="athletics-course-sections" aria-label="Skyline Adventure Park chapters">
                       {ATHLETICS_STADIUM_COURSE.sections.map((section, index) => (
@@ -2151,7 +2189,7 @@ function SessionManager({
 
             {hasInvalidSettings && <p className="error-text">Check the highlighted settings before creating the game.</p>}
             <div className="setup-create-bar">
-              <span><strong>Ready to create</strong><small>{settings.gameMode === "athletics" ? ATHLETICS_STADIUM_COURSE.title : selectedMap.title} · {gameModeLabel(settings.gameMode)} · your settings are saved with this room</small></span>
+              <span><strong>Ready to create</strong><small>{settings.gameMode === "athletics" ? ATHLETICS_STADIUM_COURSE.title : selectedMap.title} · {settings.gameMode === "athletics" ? selectedAthleticsModeConfig.label : gameModeLabel(settings.gameMode)} · your settings are saved with this room</small></span>
               <button className="primary create-game-button" type="submit" disabled={!quizSetId || hasInvalidSettings || isCreatingSession}>
                 <Play size={20} aria-hidden="true" />
                 {isCreatingSession ? "Creating lobby..." : "Continue to Lobby"}
@@ -2169,7 +2207,7 @@ function SessionManager({
         {selectedSession ? isSessionEnded ? (
           <div className="session-ended-summary">
             <span className="status-pill status-ended">Game complete</span>
-            <h3>{gameModeLabel(selectedSession.settings.gameMode)} has ended</h3>
+            <h3>{sessionGameModeLabel(selectedSession)} has ended</h3>
             <p>The room is closed. Students can view their summary, and the full class learning report is ready.</p>
             <dl>
               <div><dt>Final learners</dt><dd>{learnerPlayers.length}</dd></div>
@@ -2202,11 +2240,11 @@ function SessionManager({
                 <h2>{sessionQuiz?.title ?? "Live Game"}</h2>
                 <p>{selectedSession.settings.gameMode === "athletics" ? ATHLETICS_STADIUM_COURSE.title : arenaMapLabel(selectedSession.settings.mapId)} · {displayedPresetName} · {selectedSession.settings.gameMode === "athletics" ? `${selectedSession.settings.athleticsCourseLaps ?? 1} ${(selectedSession.settings.athleticsCourseLaps ?? 1) === 1 ? "Lap" : "Laps"}` : `${selectedSession.settings.roundCount} Rounds`} · {formatDuration(selectedSession.settings.roundDurationSeconds)} time limit</p>
               </div>
-              <div className="waiting-header-actions">
+                    <div className="waiting-header-actions">
                 <details className="waiting-settings-summary">
                   <summary>View game details</summary>
                   <dl>
-                    <div><dt>Mode</dt><dd>{gameModeLabel(selectedSession.settings.gameMode)}</dd></div>
+                    <div><dt>Mode</dt><dd>{sessionGameModeLabel(selectedSession)}</dd></div>
                     <div><dt>{selectedSession.settings.gameMode === "athletics" ? "Course" : "Teams"}</dt><dd>{selectedSession.settings.gameMode === "athletics" ? ATHLETICS_STADIUM_COURSE.title : selectedSession.settings.teamAssignment === "players_choose" ? "Players Choose" : "Random Teams"}</dd></div>
                     <div><dt>Players</dt><dd>Up to {selectedSession.maxPlayers}</dd></div>
                   </dl>
@@ -2358,15 +2396,23 @@ function SessionManager({
             </header>
             <div className="live-summary">
               <span className={`status-pill status-${selectedSession.status}${selectedSession.controlState === "teacher_paused" ? " teacher-paused-status" : ""}`}>{selectedSession.controlState === "teacher_paused" ? "Game paused" : isRoundPreparationPhase(selectedSession) ? "Preparation" : isZombieSelectionPhase(selectedSession) ? "Choosing Zombies" : sessionStatusLabel(selectedSession.status)}</span>
-              <span>{gameModeLabel(selectedSession.settings.gameMode)}</span>
+              <span>{sessionGameModeLabel(selectedSession)}</span>
               <span>{selectedSession.settings.gameMode === "athletics" ? ATHLETICS_STADIUM_COURSE.title : arenaMapLabel(selectedSession.settings.mapId)}</span>
               {selectedSession.settings.gameMode === "flag" && <span>Round {selectedSession.currentRound}/{selectedSession.settings.roundCount}</span>}
-              <span>{selectedSession.settings.gameMode === "athletics" ? `Race · ${selectedSession.athletics?.requiredLaps ?? selectedSession.settings.athleticsCourseLaps ?? 1} ${(selectedSession.athletics?.requiredLaps ?? selectedSession.settings.athleticsCourseLaps ?? 1) === 1 ? "lap" : "laps"} · ${ATHLETICS_STADIUM_COURSE.sections.length} chapters` : `Time ${formatDuration(remainingSeconds)}`}</span>
+              <span>{selectedSession.settings.gameMode === "athletics" ? `${sessionGameModeLabel(selectedSession)} · Race · ${selectedSession.athletics?.requiredLaps ?? selectedSession.settings.athleticsCourseLaps ?? 1} ${(selectedSession.athletics?.requiredLaps ?? selectedSession.settings.athleticsCourseLaps ?? 1) === 1 ? "lap" : "laps"} · ${ATHLETICS_STADIUM_COURSE.sections.length} chapters` : `Time ${formatDuration(remainingSeconds)}`}</span>
               <span>{activePlayers}/{selectedSession.players.length || 0} active</span>
               <span>{activeLearners} learner{activeLearners === 1 ? "" : "s"}</span>
               {botPlayers.length > 0 && <span>{botPlayers.length} bot{botPlayers.length === 1 ? "" : "s"}</span>}
               <span>{selectedSession.settings.gameMode === "athletics" ? `${resolveAthleticsStandings(selectedSession.players).filter((standing) => standing.status === "finished").length} finished` : selectedSession.settings.gameMode === "zombie" ? `Humans ${zombieCounts.humans} - Zombies ${zombieCounts.zombies}` : `Blue ${teamTotals.blue} - Red ${teamTotals.red}`}</span>
             </div>
+            {selectedSession.settings.gameMode === "athletics" && (selectedSession.settings.athleticsMode ?? selectedSession.athletics?.mode ?? "classic") !== "classic" && (
+              <div className="athletics-teacher-monitor" aria-label="Athletics mode monitor">
+                <strong>{sessionGameModeLabel(selectedSession)}</strong>
+                {(selectedSession.settings.athleticsMode ?? selectedSession.athletics?.mode) === "zeus" && <span>Phase: {selectedSession.athletics?.zeus?.phase ?? "idle"} · Attack {selectedSession.athletics?.zeus?.attackIndex ?? 0}</span>}
+                {(selectedSession.settings.athleticsMode ?? selectedSession.athletics?.mode) === "hunters-runners" && <span>Round {selectedSession.athletics?.modeRound ?? 1}/{selectedSession.athletics?.modeRoundsTotal ?? 2} · {selectedSession.athletics?.hunterIds?.length ?? 0} hunters · {selectedSession.athletics?.runnerIds?.length ?? 0} runners</span>}
+                {(selectedSession.settings.athleticsMode ?? selectedSession.athletics?.mode) === "chaos-climb" && <span>Wave {selectedSession.athletics?.chaos?.waveIndex ?? 0} · {selectedSession.athletics?.chaos?.activeHazards.length ?? 0} hazards active{selectedSession.athletics?.chaos?.currentEvent ? ` · ${selectedSession.athletics.chaos.currentEvent.label}` : ""}</span>}
+              </div>
+            )}
             <Suspense fallback={<ArenaLoading label="Loading live arena" />}>
               <ArenaPreview key={`${selectedSession.id}:${selectedSession.startedAt ?? "waiting"}:overview`} session={selectedSession} loadDecalAsset={loadTeacherDecal} />
             </Suspense>
@@ -2427,7 +2473,7 @@ function SessionManager({
                 <div>
                   <span className="teacher-spectator-kicker"><Eye size={15} aria-hidden="true" /> Read-only live view</span>
                   <h2 id="teacher-spectator-title">Watch the game</h2>
-              <p>{selectedSession.settings.gameMode === "athletics" ? ATHLETICS_STADIUM_COURSE.title : arenaMapLabel(selectedSession.settings.mapId)} <span aria-hidden="true">{"\u00B7"}</span> {gameModeLabel(selectedSession.settings.gameMode)} <span aria-hidden="true">{"\u00B7"}</span> Follow a learner</p>
+              <p>{selectedSession.settings.gameMode === "athletics" ? ATHLETICS_STADIUM_COURSE.title : arenaMapLabel(selectedSession.settings.mapId)} <span aria-hidden="true">{"\u00B7"}</span> {sessionGameModeLabel(selectedSession)} <span aria-hidden="true">{"\u00B7"}</span> Follow a learner</p>
                 </div>
                 <button
                   ref={teacherSpectatorCloseRef}
@@ -2590,6 +2636,10 @@ function ReportsPanel({
   const selectedQuizTitle = selectedMetadata?.quizSetName
     ?? (selectedSession ? quizSetById.get(selectedSession.quizSetId)?.title : undefined)
     ?? "Game report";
+  const reportAthleticsMode = report?.session.settings.gameMode === "athletics"
+    ? report.session.settings.athleticsMode ?? report.session.athletics?.mode ?? "classic"
+    : undefined;
+  const reportHasAthleticsModeStats = reportAthleticsMode !== undefined && reportAthleticsMode !== "classic";
 
   const load = async (requestedCode = code) => {
     if (!requestedCode || isLoadingReport) return;
@@ -2793,7 +2843,7 @@ function ReportsPanel({
               })()}
               <div className="report-table-wrap">
                 <table className="report-table">
-                  <thead><tr><th>Student</th>{report.session.settings.gameMode === "athletics" ? <><th>Place</th><th>Race time</th><th>Status</th><th>Laps</th><th>Falls</th><th>Checkpoint</th></> : <th>Team</th>}<th>Correct</th><th>Wrong</th><th>Accuracy</th>{report.session.settings.gameMode !== "athletics" && <><th>Rewards</th><th>Score</th></>}</tr></thead>
+                  <thead><tr><th>Student</th>{report.session.settings.gameMode === "athletics" ? <><th>Place</th><th>Race time</th><th>Status</th><th>Laps</th><th>Falls</th><th>Checkpoint</th>{reportHasAthleticsModeStats && <><th>Role</th><th>Hits</th><th>Score</th></>}</> : <th>Team</th>}<th>Correct</th><th>Wrong</th><th>Accuracy</th>{report.session.settings.gameMode !== "athletics" && <><th>Rewards</th><th>Score</th></>}</tr></thead>
                   <tbody>
                     {report.rows.map((row) => (
                       <tr key={row.nickname}>
@@ -2801,10 +2851,15 @@ function ReportsPanel({
                         {report.session.settings.gameMode === "athletics" ? <>
                           <td data-label="Place">{row.racePlace ? `#${row.racePlace}` : "—"}</td>
                           <td data-label="Race time">{row.raceTimeMs === undefined ? "—" : formatDuration(row.raceTimeMs / 1000)}</td>
-                          <td data-label="Status">{row.raceStatus === "finished" ? "Finished" : "DNF"}</td>
+                          <td data-label="Status">{row.raceStatus === "finished" ? "Finished" : row.raceStatus === "hunter" ? "Hunter" : "DNF"}</td>
                           <td data-label="Laps">{row.raceLapsCompleted ?? 0}/{row.raceLapsRequired ?? 1}</td>
                           <td data-label="Falls">{row.raceFalls ?? 0}</td>
                           <td data-label="Checkpoint">{row.raceCheckpoint ?? 0}</td>
+                          {reportHasAthleticsModeStats && <>
+                            <td data-label="Role">{row.athleticsRole === "hunter" ? "Hunter" : "Runner"}</td>
+                            <td data-label="Hits">{row.athleticsHunterHits ?? "—"}</td>
+                            <td data-label="Score">{row.score}</td>
+                          </>}
                         </> : <td data-label="Team">{teamLabel(row.team)}</td>}
                         <td data-label="Correct">{row.correctAnswers}</td>
                         <td data-label="Wrong">{row.wrongAnswers}</td>

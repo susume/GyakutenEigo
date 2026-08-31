@@ -85,6 +85,16 @@ client uses the same oriented footprint for support/blocking checks.
 Decorative stalls, Ferris geometry, coaster pieces, and supports do not add
 physics bodies.
 
+## New Athletics mode visuals
+
+The Zeus boss, lightning warning rings, Hunters & Runners station beacons, and
+Chaos Climb hazards are generated from Three.js procedural primitives in
+`apps/web/src/game/athleticsModeVisuals.ts`. They add no downloaded files,
+third-party meshes, fonts, or textures, so there are no additional asset
+licenses or attribution obligations for the three new modes. The server sends
+only compact mode state (timestamps, route progress, hazard definitions, and
+event identifiers); the client renders the corresponding primitives locally.
+
 ## Credits
 
 * Ferris Wheel: CreativeTrio via Poly Pizza, Public Domain/CC0.
