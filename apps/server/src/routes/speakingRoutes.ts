@@ -246,10 +246,12 @@ const parseAudioOrText = (req: Request) => {
   const contentType = (req.header("content-type") ?? "").split(";", 1)[0].trim().toLowerCase();
   const audio = Buffer.isBuffer(req.body) ? req.body : undefined;
   const text = req.body && !audio && typeof req.body === "object" ? (req.body as { text?: unknown }).text : undefined;
+  const speechHeader = req.header("X-Speaking-Audio-Activity")?.trim().toLowerCase();
   return {
     audio,
     text: typeof text === "string" ? text : undefined,
-    mimeType: contentType || "application/octet-stream"
+    mimeType: contentType || "application/octet-stream",
+    speechDetected: speechHeader === "true" ? true : speechHeader === "false" ? false : undefined
   };
 };
 
@@ -576,7 +578,7 @@ export const registerSpeakingRoutes = (app: Application, deps: SpeakingRouteDepe
       }
       let transcription: TranscriptionResult;
       try {
-        transcription = await transcriber.transcribe({ audio: parsed.audio ?? Buffer.from(parsed.text ?? "", "utf8"), mimeType: parsed.audio ? parsed.mimeType : "text/plain", languageHint: access.activity.nativeLanguage, ...(allowTextInput && textInput.success ? { text: textInput.data.text } : {}) });
+        transcription = await transcriber.transcribe({ audio: parsed.audio ?? Buffer.from(parsed.text ?? "", "utf8"), mimeType: parsed.audio ? parsed.mimeType : "text/plain", languageHint: access.activity.nativeLanguage, ...(parsed.speechDetected === undefined ? {} : { speechDetected: parsed.speechDetected }), ...(allowTextInput && textInput.success ? { text: textInput.data.text } : {}) });
       } catch {
         res.status(503).json({ error: "I couldn’t transcribe that recording. Please try again." });
         return;

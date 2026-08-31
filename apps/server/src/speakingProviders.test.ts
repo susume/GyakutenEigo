@@ -42,6 +42,8 @@ test("mock providers use the same binary transcription contract and keep silent 
   const audio = Buffer.from("test-audio-bytes");
   const transcription = await mockTranscriptionProvider.transcribe({ audio, mimeType: "audio/webm", languageHint: "ja" });
   assert.equal(transcription.text.length > 0, true);
+  const containerOnlySilence = await mockTranscriptionProvider.transcribe({ audio, mimeType: "audio/webm", languageHint: "ja", speechDetected: false });
+  assert.equal(containerOnlySilence.text, "");
   const silence = await mockTranscriptionProvider.transcribe({ audio: Buffer.alloc(0), mimeType: "audio/webm", languageHint: "ja" });
   assert.equal(silence.text, "");
 });

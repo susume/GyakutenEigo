@@ -21,7 +21,7 @@ test("speakingApi sends the dedicated participant token header for every protect
     const { speakingApi } = await import("./client.js");
     await speakingApi.session("session-1", "participant-token");
     await speakingApi.turn("session-1", "participant-token", { text: "Hello", requestId: "turn-1" });
-    await speakingApi.turn("session-1", "participant-token", { audio: new Blob(["audio"], { type: "audio/webm" }), requestId: "turn-2" });
+    await speakingApi.turn("session-1", "participant-token", { audio: new Blob(["audio"], { type: "audio/webm" }), requestId: "turn-2", speechDetected: false });
     await speakingApi.help("session-1", "participant-token");
     await speakingApi.finish("session-1", "participant-token");
     await speakingApi.result("participant-1", "participant-token");
@@ -34,6 +34,7 @@ test("speakingApi sends the dedicated participant token header for every protect
     }
     const audioRequest = requests[2]!.init!;
     assert.equal(new Headers(audioRequest.headers).get("Content-Type"), "audio/webm");
+    assert.equal(new Headers(audioRequest.headers).get("X-Speaking-Audio-Activity"), "false");
     assert.equal(audioRequest.body instanceof Blob, true);
   } finally {
     globalThis.fetch = originalFetch;

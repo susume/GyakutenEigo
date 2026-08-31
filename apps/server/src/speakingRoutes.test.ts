@@ -36,6 +36,7 @@ type ApiOptions = {
   rawBody?: Uint8Array;
   contentType?: string;
   turnId?: string;
+  speechDetected?: boolean;
 };
 
 test("Speaking Practice uses one classroom session for multiple isolated participants", async () => {
@@ -65,6 +66,7 @@ test("Speaking Practice uses one classroom session for multiple isolated partici
       async transcribe(input) {
         if (input.mimeType === "audio/webm") {
           receivedAudio = Buffer.from(input.audio);
+          if (input.speechDetected === false) return { text: "", confidence: 0 };
           return { text: "Can I try it on?", confidence: 0.91 };
         }
         return providers.transcription.transcribe(input);
@@ -83,6 +85,7 @@ test("Speaking Practice uses one classroom session for multiple isolated partici
     if (options.teacher) headers.set("x-teacher", options.teacher);
     if (options.speakingToken) headers.set("x-speaking-token", options.speakingToken);
     if (options.turnId) headers.set("x-speaking-turn-id", options.turnId);
+    if (options.speechDetected !== undefined) headers.set("x-speaking-audio-activity", String(options.speechDetected));
     if (options.rawBody) headers.set("content-type", options.contentType ?? "audio/webm");
     else if (options.body !== undefined) headers.set("content-type", options.contentType ?? "application/json");
     const response = await fetch(`${baseUrl}${path}`, {
@@ -175,11 +178,21 @@ test("Speaking Practice uses one classroom session for multiple isolated partici
     assert.equal(secondTurn.response.status, 200);
     assert.equal(secondTurn.body.studentTurn.participantId, joined[1]!.body.participant.id);
 
+    const silentTurn = await api(`/api/speaking/sessions/${joined[2]!.body.session.id}/turn`, {
+      method: "POST",
+      speakingToken: joined[2]!.body.token,
+      rawBody: new Uint8Array(Buffer.from("container-only-silence")),
+      contentType: "audio/webm",
+      speechDetected: false
+    });
+    assert.equal(silentTurn.response.status, 422);
+
     const thirdTurn = await api<{ studentTurn: { participantId: string } }>(`/api/speaking/sessions/${joined[2]!.body.session.id}/turn`, {
       method: "POST",
       speakingToken: joined[2]!.body.token,
       rawBody: new Uint8Array(Buffer.from("actual-audio-fixture")),
-      contentType: "audio/webm"
+      contentType: "audio/webm",
+      speechDetected: true
     });
     assert.equal(thirdTurn.response.status, 200);
     assert.equal(thirdTurn.body.studentTurn.participantId, joined[2]!.body.participant.id);

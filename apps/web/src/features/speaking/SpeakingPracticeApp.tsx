@@ -59,7 +59,7 @@ import {
 import { ApiError, authApi, getTeacherToken, speakingApi } from "../../api/client";
 import { SPEAKING_TEMPLATES, formatDuration, makeDemoEvaluation } from "./speakingData";
 import { browserTtsProvider } from "./speakingProviders";
-import { createSpeakingAudioRecorder } from "./speakingRecorder";
+import { createSpeakingAudioActivityMonitor, createSpeakingAudioRecorder, type SpeakingAudioActivityMonitor } from "./speakingRecorder";
 import "./speaking.css";
 
 type SpeakingRoute =
@@ -310,11 +310,12 @@ function SpeakingSessionExperience({ navigate, token, initialData }: { navigate:
   const [helpLoading, setHelpLoading] = useState(false);
   const [error, setError] = useState("");
   const [micNotice, setMicNotice] = useState("");
-  const recorderRef = useRef<{ recorder: MediaRecorder; stream: MediaStream; timeoutId: number; requestId: string } | undefined>(undefined);
+  const recorderRef = useRef<{ recorder: MediaRecorder; stream: MediaStream; timeoutId: number; requestId: string; activityMonitor: SpeakingAudioActivityMonitor } | undefined>(undefined);
   const recordingStartRef = useRef(false);
   const chunksRef = useRef<Blob[]>([]);
   const lastAudioRef = useRef<Blob | undefined>(undefined);
   const lastRequestIdRef = useRef<string | undefined>(undefined);
+  const lastSpeechDetectedRef = useRef<boolean | undefined>(undefined);
   const greetingSpokenRef = useRef(false);
   const finishRef = useRef<() => void>(() => undefined);
   const dataRef = useRef(data);
@@ -361,20 +362,22 @@ function SpeakingSessionExperience({ navigate, token, initialData }: { navigate:
     const current = recorderRef.current;
     if (current) {
       window.clearTimeout(current.timeoutId);
+      current.activityMonitor.dispose();
       current.stream.getTracks().forEach((track) => track.stop());
       recorderRef.current = undefined;
     }
     chunksRef.current = [];
   };
 
-  const submitRecording = useCallback(async (audio: Blob, requestId: string) => {
+  const submitRecording = useCallback(async (audio: Blob, requestId: string, speechDetected?: boolean) => {
     lastAudioRef.current = audio;
     lastRequestIdRef.current = requestId;
+    lastSpeechDetectedRef.current = speechDetected;
     setVoiceState("transcribing");
     setError("");
     try {
       setVoiceState("generating_response");
-      const response = await speakingApi.turn(dataRef.current.session.id, token, { audio, requestId }) as { studentTurn: SpeakingTurn; aiTurn: SpeakingTurn; session: SpeakingSession };
+      const response = await speakingApi.turn(dataRef.current.session.id, token, { audio, requestId, speechDetected }) as { studentTurn: SpeakingTurn; aiTurn: SpeakingTurn; session: SpeakingSession };
       setData((current) => ({ ...current, participant: { ...current.participant, status: "in_progress" }, session: response.session, turns: [...current.turns, response.studentTurn, response.aiTurn] }));
       setVoiceState("ai_speaking");
       await browserTtsProvider.speak(response.aiTurn.text, { lang: "en-US", rate: dataRef.current.activity.level === "beginner" ? 0.82 : 0.92 });
@@ -410,17 +413,19 @@ function SpeakingSessionExperience({ navigate, token, initialData }: { navigate:
     try {
       stream = await navigator.mediaDevices.getUserMedia({ audio: true });
       const { recorder, mimeType } = createSpeakingAudioRecorder(stream);
+      const activityMonitor = createSpeakingAudioActivityMonitor(stream);
       const requestId = typeof crypto.randomUUID === "function" ? crypto.randomUUID() : `${Date.now()}-${Math.random()}`;
       chunksRef.current = [];
       recorder.ondataavailable = (event) => { if (event.data.size > 0) chunksRef.current.push(event.data); };
       recorder.onstop = () => {
+        const speechDetected = activityMonitor.getSpeechDetected();
         const blob = new Blob(chunksRef.current, { type: mimeType || recorder.mimeType || "audio/webm" });
         recordingStartRef.current = false;
         cleanupRecorder();
-        void submitRecording(blob, requestId);
+        void submitRecording(blob, requestId, speechDetected);
       };
       const timeoutId = window.setTimeout(() => { setMicNotice(`The ${SPEAKING_LIMITS.maxTurnSeconds}-second speaking limit was reached.`); stopRecording(); }, SPEAKING_LIMITS.maxTurnSeconds * 1_000);
-      recorderRef.current = { recorder, stream, timeoutId, requestId };
+      recorderRef.current = { recorder, stream, timeoutId, requestId, activityMonitor };
       recorder.start();
       setVoiceState("student_recording");
     } catch (recordError) {
@@ -466,7 +471,7 @@ function SpeakingSessionExperience({ navigate, token, initialData }: { navigate:
   }, [navigate, token, voiceState]);
   finishRef.current = () => { void finish(); };
 
-  const retry = () => { if (lastAudioRef.current && lastRequestIdRef.current) void submitRecording(lastAudioRef.current, lastRequestIdRef.current); };
+  const retry = () => { if (lastAudioRef.current && lastRequestIdRef.current) void submitRecording(lastAudioRef.current, lastRequestIdRef.current, lastSpeechDetectedRef.current); };
   useEffect(() => () => { cleanupRecorder(); browserTtsProvider.cancel(); }, []);
 
   const waiting = data.session.status === "ready";

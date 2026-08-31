@@ -11,6 +11,8 @@ export interface TranscriptionInput {
   audio: Buffer;
   mimeType: string;
   languageHint?: string;
+  /** Browser-side signal detection used only to make local mock audio honest. */
+  speechDetected?: boolean;
   /** Only the explicit mock provider uses text input for contract tests. */
   text?: string;
 }
@@ -52,7 +54,10 @@ export const mockTranscriptionProvider: TranscriptionProvider = {
     if (supplied) return { text: supplied.slice(0, 1_200), confidence: 0.96 };
     // Mock mode intentionally accepts test audio without retaining it. Real
     // providers receive the bytes through the same interface below.
-    if (!input.audio.length) return { text: "", confidence: 0 };
+    // A MediaRecorder container is non-empty even when the microphone heard
+    // only silence. The browser sends speechDetected for local recordings so
+    // silence cannot turn into a canned successful answer.
+    if (!input.audio.length || input.speechDetected === false) return { text: "", confidence: 0 };
     return { text: "I'd like to practice this conversation.", confidence: 0.84 };
   }
 };
