@@ -31,7 +31,7 @@ import {
   type TeacherUser
 } from "@quizstrike/shared";
 import { authApi } from "../../api/client";
-import { getTournamentInvitationCodeFromSearch, modeForRoute, normalizeRoutePath, type AppMode } from "../../navigation";
+import { buildTeacherSpeakingPath, getTournamentInvitationCodeFromSearch, isSpeakingTeacherRoute, modeForRoute, normalizeRoutePath, type AppMode } from "../../navigation";
 import PublicHomepage from "../../ui/PublicHomepage";
 import QuizStrikeLogo from "../../ui/QuizStrikeLogo";
 import {
@@ -60,7 +60,8 @@ export default function App() {
   const [routePath, setRoutePath] = useState(() => normalizeRoutePath(window.location.pathname));
   const isJoinRoute = routePath === "/join";
   const isGameRoute = routePath === "/game";
-  const isQuizStrikeRoute = routePath === "/quiz-strike" || routePath.startsWith("/quiz-strike/");
+  const isSpeakingTeacherRoutePath = isSpeakingTeacherRoute(routePath);
+  const isQuizStrikeRoute = routePath === "/quiz-strike" || routePath.startsWith("/quiz-strike/") || isSpeakingTeacherRoutePath;
   const isCharacterLabRoute = routePath === "/character-lab";
   const isTournamentStudyRoute = routePath.startsWith("/tournament-study/");
   const isTournamentRegistrationRoute = /^\/quiz-strike\/tournaments\/[^/]+\/register$/.test(routePath);
@@ -118,6 +119,12 @@ export default function App() {
 
   useEffect(() => {
     if (isJoinRoute || isGameRoute || isCharacterLabRoute || isTournamentStudyRoute || !isQuizStrikeRoute) return;
+    if (isSpeakingTeacherRoutePath) {
+      const canonicalPath = buildTeacherSpeakingPath(window.location.pathname);
+      window.history.replaceState(null, "", `${canonicalPath}${window.location.search}${window.location.hash}`);
+      setRoutePath(canonicalPath);
+      return;
+    }
     if (!localStorage.getItem("quizstrike_token")) return;
     authApi
       .me()
@@ -126,7 +133,7 @@ export default function App() {
         setTeacher(data.user);
       })
       .catch(() => localStorage.removeItem("quizstrike_token"));
-  }, [isJoinRoute, isGameRoute, isQuizStrikeRoute, isCharacterLabRoute, isTournamentStudyRoute]);
+  }, [isJoinRoute, isGameRoute, isQuizStrikeRoute, isCharacterLabRoute, isTournamentStudyRoute, isSpeakingTeacherRoutePath]);
 
   const logout = () => {
     localStorage.removeItem("quizstrike_token");
@@ -143,8 +150,8 @@ export default function App() {
     <main id="main-content" className="app-shell" tabIndex={-1}>
       <a className={`skip-link skip-link-${mode}`} href="#main-content">Skip to main content</a>
         <header className={`topbar topbar-${mode}${teacher ? " teacher-authenticated" : ""}`}>
-        <button className="brand-button" type="button" aria-label="QuizStrike home" onClick={() => navigateTo("/", "home")}>
-          {mode === "home" || mode === "teacher" ? <span className="public-wordmark">QuizStrike</span> : <QuizStrikeLogo />}
+        <button className="brand-button" type="button" aria-label={mode === "teacher" ? "GyakutenEigo home" : "QuizStrike home"} onClick={() => navigateTo("/", "home")}>
+          {mode === "home" || mode === "teacher" ? <span className="public-wordmark">{mode === "teacher" ? "GyakutenEigo" : "QuizStrike"}</span> : <QuizStrikeLogo />}
         </button>
         <nav className="primary-nav" aria-label="Primary">
           <button
@@ -225,7 +232,15 @@ export default function App() {
       {mode === "characterLab" && (isCharacterLabAvailable ? <CharacterLab /> : <InternalToolNotice onReturn={() => navigateTo("/quiz-strike", "quizStrike")} />)}
       {mode === "teacher" && <Suspense fallback={<FeatureLoading label="Loading teacher workspace" />}><TeacherWorkspace teacher={teacher} apiWakeState={apiWakeState} initialMode={teacherAuthMode} initialPath={routePath} onNavigate={navigateTo} onLogout={logout} onAuthed={(user) => {
           setTeacher(user);
-          const returnTo = sessionStorage.getItem(TOURNAMENT_TEACHER_RETURN_KEY) ?? sessionStorage.getItem(SPEAKING_TEACHER_RETURN_KEY);
+          const storedReturnTo = sessionStorage.getItem(TOURNAMENT_TEACHER_RETURN_KEY) ?? sessionStorage.getItem(SPEAKING_TEACHER_RETURN_KEY);
+          const returnTo = storedReturnTo
+            ? (() => {
+                const target = new URL(storedReturnTo, window.location.origin);
+                return `${buildTeacherSpeakingPath(target.pathname)}${target.search}${target.hash}`;
+              })()
+            : isSpeakingTeacherRoutePath
+              ? `${buildTeacherSpeakingPath(routePath)}${window.location.search}${window.location.hash}`
+              : undefined;
           sessionStorage.removeItem(TOURNAMENT_TEACHER_RETURN_KEY);
           sessionStorage.removeItem(SPEAKING_TEACHER_RETURN_KEY);
           navigateTo(returnTo ?? "/quiz-strike/teacher/home", returnTo ? modeForRoute(returnTo.split(/[?#]/u)[0] ?? "") : "teacher");

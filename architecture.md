@@ -1,4 +1,4 @@
-# QuizStrike system architecture
+# GyakutenEigo system architecture
 
 Last verified: 15 August 2026
 Repository: susume/GyakutenEigo
@@ -8,6 +8,9 @@ Canonical operational handoff: HANDOFF.md
 This is the current architecture for GyakutenEigo / QuizStrike. It separates
 the live networking rollout from the intended Cloudflare design and records
 the authority boundaries that future changes must preserve.
+
+Teacher-facing composition and route ownership are documented in
+`docs/teacher-experience.md`.
 
 ## 1. Deployment truth
 
@@ -69,9 +72,13 @@ dependencies from the composition root.
 | Route | Owner | Purpose |
 | --- | --- | --- |
 | / | PublicHomepage.tsx | Public GyakutenEigo entry point |
-| /quiz-strike | QuizStrikeApp.tsx | Teacher authentication, library, setup, reports, competitions, tournaments |
+| /quiz-strike | QuizStrikeApp.tsx | Public QuizStrike entry point and product landing |
+| /quiz-strike/teacher/* | TeacherWorkspace.tsx + TeacherShell.tsx | Unified teacher dashboard for QuizStrike and Speaking Practice |
 | /join?code=ROOM | StudentJoinScreen.tsx | Student code and nickname entry |
 | /game | StudentExperience.tsx | Student lobby, live game, quiz, shop, scoreboard, reconnect |
+| /speak | SpeakingPracticeApp.tsx | Public Speaking Practice preview and student entry |
+| /speak/join/:code, /speak/session/:id, /speak/result/:id | SpeakingPracticeApp.tsx | Student speaking join, session, and feedback routes |
+| /speak/teacher/* | BrowserApp.tsx compatibility alias | Legacy Speaking teacher bookmarks redirect into `/quiz-strike/teacher/speaking` |
 | /check and /diagnostics | NetworkDiagnosticsPage.tsx | School network and device compatibility checks |
 | /tournament-study/:id | Tournament pages | Released tournament study material |
 
@@ -217,9 +224,22 @@ browser storage, realtime, auth, or asset storage.
 ## 9. Browser and rendering architecture
 
 Browser routing is in apps/web/src/BrowserApp.tsx. Teacher/product composition
-is in QuizStrikeApp.tsx. Student live state and UI are in StudentExperience.tsx.
-ArenaPreview.tsx composes the Three.js arena from focused map, character, input,
-camera, loop, VFX, and audio modules.
+is in QuizStrikeApp.tsx; the teacher shell and QuizStrike dashboard composition
+are in `features/quizstrike/teacher/TeacherShell.tsx` and
+`TeacherWorkspace.tsx`. Speaking teacher pages are mounted as the lazy
+`features/speaking/teacher/SpeakingTeacherWorkspace.tsx` feature inside that
+shell; shared evaluation presentation lives in `SpeakingResultPanel.tsx`.
+Student live state and UI are in StudentExperience.tsx, and student Speaking
+routes remain in SpeakingPracticeApp.tsx. ArenaPreview.tsx
+composes the Three.js arena from focused map, character, input, camera, loop,
+VFX, and audio modules.
+
+The teacher dashboard owns one JWT-authenticated session. It presents
+QuizStrike Study Sets, game hosting, and reports alongside Speaking activities,
+session join information, and evaluations. The feature-specific server models
+remain separate; the shared boundary is the teacher mental model and shell.
+Speaking is lazy-loaded from the teacher workspace so normal teacher navigation
+does not eagerly import the Speaking student flow or the Three.js arena.
 
 The arena has one requestAnimationFrame loop. Cleanup must stop the loop, remove
 resize/pointer/keyboard/visibility listeners, unsubscribe VFX and animation

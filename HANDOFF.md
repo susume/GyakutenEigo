@@ -53,6 +53,23 @@ Open the teacher login page, sign in once, and confirm the browser network
 panel shows /api/auth/login going to the configured Render compatibility origin.
 This is a temporary recovery check, not the final school-safe architecture.
 
+## Teacher dashboard consolidation (September 2026)
+
+The teacher-facing application now uses the QuizStrike workspace as the
+GyakutenEigo shell for both products. `TeacherShell.tsx` owns the shared header,
+navigation, responsive sidebar, account action, and active QuizStrike session
+rail. QuizStrike Study Sets, hosting, reports, competitions, and settings keep
+their existing routes; Speaking teacher tools use canonical
+`/quiz-strike/teacher/speaking/*` routes and load as a lazy feature inside that
+shell.
+
+Existing `/speak/teacher/*` URLs remain compatibility aliases and are mapped to
+the unified dashboard. Speaking student routes remain `/speak/join/*`,
+`/speak/session/*`, and `/speak/result/*`; they were not merged with the
+QuizStrike student join/game flow. See `docs/teacher-experience.md` for the
+route table and shared UI conventions, and `docs/school-ipad-checklist.md` for
+the physical-iPad Speaking checklist.
+
 ## 3. Current production facts
 
 | Item | Value |
@@ -144,6 +161,7 @@ teacher tokens, or player tokens in any VITE_* variable.
 | --- | --- |
 | Browser route/product composition | apps/web/src/BrowserApp.tsx and features/quizstrike/QuizStrikeApp.tsx |
 | Teacher workspace | features/quizstrike/teacher/TeacherWorkspace.tsx and TeacherHome.tsx |
+| Speaking teacher workspace | apps/web/src/features/speaking/teacher/SpeakingTeacherWorkspace.tsx and SpeakingResultPanel.tsx |
 | Student join/live UX | features/quizstrike/student/StudentJoinScreen.tsx and StudentExperience.tsx |
 | API resolution/errors | apps/web/src/api/client.ts, api/endpoints.ts, studentJoinErrors.ts |
 | Socket handshake | features/multiplayer/connection.ts and apps/server/src/realtime/protocolGateway.ts |

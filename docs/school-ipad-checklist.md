@@ -23,6 +23,35 @@ school-issued iPad.
 14. Confirm the reconnect banner clears and the room state is restored.
 15. If anything fails, repeat `/check` and give the full result to school IT.
 
+## Speaking Practice on a real iPad
+
+Chromium iPad emulation does not prove Mobile Safari microphone, audio, page
+lifecycle, or permission behavior. On an actual school-issued iPad, test both
+a successful run and a controlled failure (for example, deny microphone
+permission, then retry after enabling it):
+
+1. Open the Speaking Practice join page.
+2. Join a live speaking session.
+3. Grant microphone permission.
+4. Record speech.
+5. Stop recording.
+6. Confirm the upload succeeds.
+7. Confirm the transcription appears correctly.
+8. Confirm the AI response appears.
+9. Confirm speech/audio playback works after a user interaction.
+10. Complete multiple turns.
+11. Finish the activity.
+12. Confirm feedback appears correctly.
+13. Select Japanese feedback and confirm Japanese renders correctly where applicable.
+14. Rotate the device and repeat a short turn.
+15. Background Safari, return, and confirm the session remains recoverable.
+16. Test reconnect/session recovery after a brief network interruption.
+
+Record the iPadOS/Safari versions, permission result, join code, approximate
+time, network, and any console or `/check` evidence. Do not treat a failed
+provider/transcription response as a microphone failure; record which stage
+failed so the server logs and browser behavior can be compared.
+
 ## Comparison tests
 
 Repeat the same join and short-round test once on:

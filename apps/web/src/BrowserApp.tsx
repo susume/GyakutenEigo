@@ -1,6 +1,6 @@
 import { lazy, Suspense, useCallback, useEffect, useState } from "react";
 import StudentJoinScreen from "./features/quizstrike/student/StudentJoinScreen";
-import { normalizeRoutePath } from "./navigation";
+import { isSpeakingTeacherRoute, normalizeRoutePath } from "./navigation";
 
 const QuizStrikeApp = lazy(() => import("./QuizStrikeAppEntry"));
 const NetworkDiagnosticsPage = lazy(() => import("./features/quizstrike/NetworkDiagnosticsPage"));
@@ -27,6 +27,9 @@ export default function BrowserApp() {
   }, []);
 
   if (pathname === "/join") return <StudentJoinScreen onJoined={openGame} />;
+  if (isSpeakingTeacherRoute(pathname)) {
+    return <Suspense fallback={<section className="app-loading-screen" aria-live="polite"><div className="panel form-panel"><p>Loading teacher workspace…</p></div></section>}><QuizStrikeApp /></Suspense>;
+  }
   if (pathname === "/speak" || pathname.startsWith("/speak/")) {
     return <Suspense fallback={<section className="app-loading-screen" aria-live="polite"><div className="panel form-panel"><p>Loading Speaking Practice…</p></div></section>}><SpeakingPracticeApp /></Suspense>;
   }

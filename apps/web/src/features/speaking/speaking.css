@@ -3385,3 +3385,108 @@ body[data-speaking="true"] {
     animation-iteration-count: 1 !important;
   }
 }
+
+/* The teacher feature is rendered inside QuizStrike's shared workspace. */
+.speaking-embedded-teacher {
+  --speaking-navy: #14233d;
+  --speaking-blue: #1763b0;
+  --speaking-cloud: #f5f8fc;
+  --speaking-line: #dfe7f1;
+  --speaking-muted: #6f7f98;
+  min-height: 0;
+  background: transparent;
+}
+
+.speaking-embedded-teacher .speaking-page-shell {
+  min-height: 0;
+  background: transparent;
+}
+
+.speaking-embedded-teacher .speaking-topbar,
+.speaking-embedded-teacher .speaking-teacher-sidebar {
+  display: none;
+}
+
+.speaking-embedded-teacher .speaking-teacher-layout {
+  width: 100%;
+  display: block;
+  margin: 0;
+  padding: 0;
+}
+
+.speaking-embedded-teacher .speaking-teacher-content,
+.speaking-embedded-teacher .speaking-share-page,
+.speaking-embedded-teacher .speaking-builder {
+  width: 100%;
+  gap: 20px;
+}
+
+.speaking-embedded-teacher .speaking-teacher-heading,
+.speaking-embedded-teacher .speaking-builder-header,
+.speaking-embedded-teacher .speaking-share-header {
+  align-items: flex-start;
+}
+
+.speaking-embedded-teacher .speaking-teacher-heading h1,
+.speaking-embedded-teacher .speaking-builder-header h1,
+.speaking-embedded-teacher .speaking-share-header h1 {
+  color: #14233d;
+  font-size: clamp(1.95rem, 3.3vw, 2.85rem);
+  line-height: 1;
+  letter-spacing: -.05em;
+}
+
+.speaking-embedded-teacher .speaking-eyebrow,
+.speaking-embedded-teacher .speaking-card-kicker {
+  color: #2aaad5;
+}
+
+.speaking-embedded-teacher .speaking-builder-card,
+.speaking-embedded-teacher .speaking-share-card,
+.speaking-embedded-teacher .speaking-teacher-stats > div,
+.speaking-embedded-teacher .speaking-activity-row {
+  border-color: #dfe7f1;
+  border-radius: 14px;
+  box-shadow: 0 8px 25px rgba(36, 60, 92, .045);
+}
+
+.speaking-embedded-teacher .speaking-primary-button {
+  border-color: #14825a !important;
+  background: #14825a !important;
+  box-shadow: 0 9px 19px rgba(20, 130, 90, .16);
+}
+
+.speaking-embedded-teacher .speaking-primary-button:hover:not(:disabled) {
+  border-color: #19a36f !important;
+  background: #19a36f !important;
+}
+
+.speaking-embedded-teacher .speaking-outline-button {
+  border-color: #b9cce0 !important;
+  color: #1763b0 !important;
+}
+
+.speaking-embedded-teacher .speaking-text-button {
+  color: #1763b0 !important;
+}
+
+.speaking-embedded-teacher .speaking-empty-page {
+  min-height: 280px;
+  padding: 42px 24px;
+  border: 1px dashed #cbd8e6;
+  border-radius: 14px;
+  background: rgba(255, 255, 255, .65);
+}
+
+@media (max-width: 720px) {
+  .speaking-embedded-teacher .speaking-teacher-heading,
+  .speaking-embedded-teacher .speaking-builder-header,
+  .speaking-embedded-teacher .speaking-share-header {
+    gap: 14px;
+  }
+
+  .speaking-embedded-teacher .speaking-builder-header-actions,
+  .speaking-embedded-teacher .speaking-teacher-heading > .speaking-primary-button {
+    width: 100%;
+  }
+}

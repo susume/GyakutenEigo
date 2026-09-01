@@ -4,29 +4,22 @@ import {
   ArrowRight,
   BarChart3,
   Bookmark,
-  Check,
   ChevronDown,
-  ChevronRight,
   CircleCheck,
   Clock3,
   Copy,
   Edit3,
   HelpCircle,
-  Languages,
   Lightbulb,
   LoaderCircle,
   Menu,
   MessageCircle,
   Mic,
-  Pencil,
-  Play,
-  Plus,
   RotateCcw,
   ScanLine,
   ShoppingBag,
   Sparkles,
   Star,
-  Trash2,
   Trophy,
   UserRound,
   Users,
@@ -35,45 +28,28 @@ import {
 } from "lucide-react";
 import { QRCodeSVG } from "qrcode.react";
 import {
-  SPEAKING_DIFFICULTIES,
-  SPEAKING_DIFFICULTY_LABELS,
-  SPEAKING_IDENTIFIER_MODE_LABELS,
-  SPEAKING_IDENTIFIER_MODES,
   SPEAKING_LIMITS,
-  SPEAKING_LEVEL_LABELS,
-  SPEAKING_LEVELS,
-  SPEAKING_NATIVE_LANGUAGE_LABELS,
-  SPEAKING_NATIVE_LANGUAGES,
-  speakingOverallScore,
   speakingFeedbackCopy,
   speakingRemainingSeconds,
   type SpeakingActivity,
-  type SpeakingCreateActivityInput,
-  type SpeakingDifficulty,
   type SpeakingEvaluation,
-  type SpeakingIdentifierMode,
-  type SpeakingLevel,
-  type SpeakingNativeLanguage,
   type SpeakingParticipant,
-  type SpeakingRubricCriterion,
   type SpeakingSession,
   type SpeakingTurn
 } from "@quizstrike/shared";
-import { ApiError, authApi, getTeacherToken, speakingApi } from "../../api/client";
+import { ApiError, speakingApi } from "../../api/client";
+import { isSpeakingTeacherRoute } from "../../navigation";
 import { SPEAKING_TEMPLATES, formatDuration, makeDemoEvaluation } from "./speakingData";
 import { browserTtsProvider } from "./speakingProviders";
 import { cancelSpeakingAudioCapture, createSpeakingAudioActivityMonitor, createSpeakingAudioRecorder, disposeSpeakingAudioCapture, stopSpeakingAudioCapture, type SpeakingAudioCapture } from "./speakingRecorder";
+import { hasStudentSpeech, ResultPanel, scoreFor } from "./SpeakingResultPanel";
 import "./speaking.css";
 
 type SpeakingRoute =
   | { kind: "home" }
   | { kind: "join"; code?: string }
   | { kind: "session"; id: string }
-  | { kind: "result"; id: string }
-  | { kind: "teacher" }
-  | { kind: "create" }
-  | { kind: "activity"; id: string; results?: boolean; edit?: boolean }
-  | { kind: "teacher-result"; id: string };
+  | { kind: "result"; id: string };
 
 type SpeakingUiState = "ready" | "listening" | "thinking" | "ai-speaking";
 type SpeakingVoiceState = "ready" | "ai_speaking" | "student_recording" | "transcribing" | "generating_response" | "paused" | "finishing" | "evaluating" | "completed" | "error";
@@ -82,26 +58,24 @@ type Navigate = (nextPath: string) => void;
 type JoinResponse = { activity: SpeakingActivity; participant: SpeakingParticipant; session: SpeakingSession; token: string };
 type SessionResponse = { activity: SpeakingActivity; participant: SpeakingParticipant; session: SpeakingSession; turns: SpeakingTurn[] };
 type ResultResponse = { result: { activity: Pick<SpeakingActivity, "id" | "title" | "scenario" | "targetExpressions" | "nativeLanguage" | "rubric">; session: SpeakingSession; participant: SpeakingParticipant; turns: SpeakingTurn[]; evaluation?: SpeakingEvaluation } };
-type SessionResultsResponse = { activity: SpeakingActivity; session: SpeakingSession; items: Array<{ participant: SpeakingParticipant; status: SpeakingParticipant["status"]; durationSeconds: number; overallScore?: number; helpCount: number; evaluation?: SpeakingEvaluation }> };
 
-const TEACHER_RETURN_KEY = "quizstrike_speaking_teacher_return";
-
-const normalizePath = (path: string) => (path === "/" ? path : path.replace(/\/$/u, ""));
+const normalizePath = (path: string) => (path === "/" ? path : path.replace(/\/+$/u, ""));
+const decodeRouteSegment = (segment: string) => {
+  try {
+    return decodeURIComponent(segment);
+  } catch {
+    return segment;
+  }
+};
 
 const parseRoute = (path: string): SpeakingRoute => {
-  const segments = normalizePath(path).split("/").filter(Boolean).map((segment) => decodeURIComponent(segment));
+  const segments = normalizePath(path).split("/").filter(Boolean).map(decodeRouteSegment);
   if (segments.length <= 1) return { kind: "home" };
   if (segments[1] === "join") return { kind: "join", ...(segments[2] ? { code: segments[2].toUpperCase() } : {}) };
   if (segments[1] === "session" && segments[2]) return { kind: "session", id: segments[2] };
   if (segments[1] === "result" && segments[2]) return { kind: "result", id: segments[2] };
-  if (segments[1] === "teacher" && segments[2] === "create") return { kind: "create" };
-  if (segments[1] === "teacher" && segments[2] === "activity" && segments[3]) return { kind: "activity", id: segments[3], results: segments[4] === "results", edit: segments[4] === "edit" };
-  if (segments[1] === "teacher" && segments[2] === "result" && segments[3]) return { kind: "teacher-result", id: segments[3] };
-  if (segments[1] === "teacher") return { kind: "teacher" };
   return { kind: "home" };
 };
-
-const isTeacherRoute = (route: SpeakingRoute) => route.kind === "teacher" || route.kind === "create" || route.kind === "activity" || route.kind === "teacher-result";
 
 const getErrorMessage = (error: unknown, fallback: string) => error instanceof ApiError ? error.message : fallback;
 const isFatalParticipantAuthorizationError = (error: unknown) => error instanceof ApiError && [401, 403, 404].includes(error.status);
@@ -117,55 +91,30 @@ const tokenForSession = (sessionId: string) => sessionStorage.getItem(`speaking-
 export default function SpeakingPracticeApp() {
   const [path, setPath] = useState(() => normalizePath(window.location.pathname));
   const route = parseRoute(path);
-  const requiresTeacher = isTeacherRoute(route);
-  const [teacherAuth, setTeacherAuth] = useState<"idle" | "loading" | "ready" | "redirecting">("idle");
 
   const navigate = useCallback<Navigate>((nextPath) => {
     const target = new URL(nextPath, window.location.origin);
     const targetPath = `${normalizePath(target.pathname)}${target.search}${target.hash}`;
     window.history.pushState(null, "", targetPath);
+    if (isSpeakingTeacherRoute(target.pathname)) {
+      window.dispatchEvent(new PopStateEvent("popstate"));
+      return;
+    }
     setPath(normalizePath(target.pathname));
   }, []);
 
   useEffect(() => {
+    const previousTitle = document.title;
     document.body.dataset.speaking = "true";
     document.title = "Speaking Practice · GyakutenEigo";
     const onPopState = () => setPath(normalizePath(window.location.pathname));
     window.addEventListener("popstate", onPopState);
     return () => {
       delete document.body.dataset.speaking;
+      document.title = previousTitle;
       window.removeEventListener("popstate", onPopState);
     };
   }, []);
-
-  useEffect(() => {
-    if (!requiresTeacher) {
-      setTeacherAuth("idle");
-      return;
-    }
-    if (!getTeacherToken()) {
-      sessionStorage.setItem(TEACHER_RETURN_KEY, `${window.location.pathname}${window.location.search}`);
-      setTeacherAuth("redirecting");
-      window.history.pushState(null, "", "/quiz-strike/teacher/home");
-      window.dispatchEvent(new PopStateEvent("popstate"));
-      return;
-    }
-    let cancelled = false;
-    setTeacherAuth("loading");
-    void authApi.me().then(() => {
-      if (!cancelled) setTeacherAuth("ready");
-    }).catch(() => {
-      if (cancelled) return;
-      localStorage.removeItem("quizstrike_token");
-      sessionStorage.setItem(TEACHER_RETURN_KEY, `${window.location.pathname}${window.location.search}`);
-      setTeacherAuth("redirecting");
-      window.history.pushState(null, "", "/quiz-strike/teacher/home");
-      window.dispatchEvent(new PopStateEvent("popstate"));
-    });
-    return () => { cancelled = true; };
-  }, [path, requiresTeacher]);
-
-  if (requiresTeacher && teacherAuth !== "ready") return <div className="speaking-empty-page"><LoaderCircle size={34} className="speaking-spin" aria-hidden="true" /><h1>{teacherAuth === "redirecting" ? "Opening teacher login" : "Checking teacher account"}</h1><p>Your existing GyakutenEigo teacher account protects classroom activities and results.</p></div>;
 
   return (
     <div className="speaking-app" id="main-content" tabIndex={-1}>
@@ -173,10 +122,6 @@ export default function SpeakingPracticeApp() {
       {route.kind === "join" && <SpeakingJoinPage navigate={navigate} initialCode={route.code} />}
       {route.kind === "session" && <SpeakingSessionPage navigate={navigate} sessionId={route.id} />}
       {route.kind === "result" && <SpeakingResultPage navigate={navigate} participantId={route.id} />}
-      {route.kind === "teacher" && <SpeakingTeacherDashboard navigate={navigate} />}
-      {route.kind === "create" && <SpeakingCreatePage navigate={navigate} />}
-      {route.kind === "activity" && <SpeakingActivityPage navigate={navigate} activityId={route.id} results={route.results === true} edit={route.edit === true} />}
-      {route.kind === "teacher-result" && <SpeakingTeacherResultPage navigate={navigate} participantId={route.id} />}
     </div>
   );
 }
@@ -580,136 +525,6 @@ function SpeakingResultPage({ navigate, participantId }: { navigate: Navigate; p
   const copy = speakingFeedbackCopy(result.evaluation?.language ?? result.activity.nativeLanguage);
   const insufficientEvidence = Boolean(result.evaluation && (result.evaluation.assessmentStatus === "insufficient_evidence" || !hasSpeech));
   return <div className="speaking-page-shell speaking-result-page"><SpeakingTopbar navigate={navigate} /><main className="speaking-result-layout"><section className="speaking-result-hero"><span className="speaking-eyebrow"><Trophy size={15} aria-hidden="true" />{insufficientEvidence ? copy.notScored : "Activity complete"}</span><h1>{result.evaluation ? (insufficientEvidence ? copy.insufficientEvidenceHeadline : copy.scoredHeadline) : copy.evaluationUnavailable}</h1><p>{result.evaluation ? (insufficientEvidence ? result.evaluation.overallMessage : `${result.activity.title} · ${copy.scoredSummary}`) : copy.evaluationUnavailableMessage}</p>{result.evaluation && !insufficientEvidence ? <div className="speaking-result-score"><strong>{scoreFor(result.evaluation)}</strong><span>{result.evaluation.language === "ja" ? "点" : "points"}</span><small>{result.evaluation.language === "ja" ? "今日のスピーキング" : "Today’s speaking"}</small></div> : <div className="speaking-result-score"><strong>—</strong><small>{insufficientEvidence ? copy.notScoredDetail : copy.evaluationUnavailable}</small></div>}</section>{result.evaluation ? <ResultPanel activity={result.activity} turns={result.turns} evaluation={result.evaluation} teacherView={false} /> : <div className="speaking-empty-card"><h2>{copy.evaluationUnavailable}</h2><p>{copy.evaluationUnavailableMessage}</p></div>}<div className="speaking-result-actions"><button className="speaking-primary-button" type="button" onClick={() => navigate("/speak/join")}><RotateCcw size={17} aria-hidden="true" />Try another activity</button><button className="speaking-text-button" type="button" onClick={() => navigate("/speak")}><ArrowLeft size={16} aria-hidden="true" />Speaking Practice home</button></div></main></div>;
-}
-
-const hasStudentSpeech = (turns: SpeakingTurn[]) => turns.some((turn) => turn.speaker === "student" && turn.text.trim().length > 0);
-const scoreFor = (evaluation?: SpeakingEvaluation) => speakingOverallScore(evaluation);
-const scoreForCriterion = (evaluation: SpeakingEvaluation, criterionId: string) => evaluation.scores[criterionId];
-
-function ResultPanel({ activity, turns, evaluation, teacherView }: { activity: Pick<SpeakingActivity, "title" | "rubric" | "targetExpressions" | "nativeLanguage">; turns: SpeakingTurn[]; evaluation: SpeakingEvaluation; teacherView: boolean }) {
-  const studentTurns = turns.filter((turn) => turn.speaker === "student");
-  const copy = speakingFeedbackCopy(evaluation.language);
-  return <section className={`speaking-result-panel${teacherView ? " speaking-result-panel-teacher" : ""}`}><div className="speaking-result-panel-heading"><div><span className="speaking-card-kicker">{teacherView ? copy.evaluationDetail : copy.resultHeading}</span><h2>{teacherView ? activity.title : copy.resultHeading}</h2></div><span className="speaking-result-language"><Languages size={15} aria-hidden="true" />{evaluation.language === "ja" ? "日本語フィードバック" : "English feedback"}</span></div>{evaluation.assessmentStatus === "insufficient_evidence" && <div className="speaking-result-message speaking-result-message-warning"><h3>{copy.insufficientEvidenceHeadline}</h3><p>{evaluation.notScoredReason ?? copy.notScoredDetail}</p></div>}<div className="speaking-score-grid">{activity.rubric.filter((criterion) => criterion.enabled).map((criterion) => { const score = scoreForCriterion(evaluation, criterion.id); return <div className="speaking-score-row" key={criterion.id}><div><strong>{criterion.name === "Fluency / Comprehensibility" ? "Fluency" : criterion.name}</strong>{teacherView && <small>{evaluation.evidence[criterion.id] ?? criterion.description}</small>}</div><span className="speaking-stars" aria-label={score === null || score === undefined ? copy.notScored : `${score} out of 4 stars`}>{[1, 2, 3, 4].map((star) => <Star key={star} size={17} fill={typeof score === "number" && star <= score ? "currentColor" : "none"} aria-hidden="true" />)}<b>{typeof score === "number" ? `${score}/4` : copy.notScored}</b></span></div>; })}</div><div className="speaking-result-columns"><div className="speaking-result-message speaking-result-message-good"><h3>👍 {copy.whatWentWell}</h3><ul>{evaluation.strengths.map((strength) => <li key={strength}>{strength}</li>)}</ul></div><div className="speaking-result-message"><h3>🚀 {copy.tryNext}</h3><ul>{evaluation.improvements.map((improvement) => <li key={improvement}>{improvement}</li>)}</ul></div></div><div className="speaking-useful-result"><div className="speaking-result-section-heading"><h3>💬 {copy.usefulEnglish}</h3><span>{studentTurns.length} {copy.speakingTurns}</span></div>{evaluation.usefulEnglish.length ? evaluation.usefulEnglish.map((item) => <div className="speaking-correction-row" key={`${item.said}-${item.try}`}><div><small>{copy.youSaid}</small><span>“{item.said}”</span></div><ArrowRight size={17} aria-hidden="true" /><div><small>{copy.tryLabel}</small><strong>“{item.try}”</strong></div></div>) : <p className="speaking-muted-copy">{hasStudentSpeech(turns) ? copy.noUsefulEnglish : copy.noSpeechDetected}</p>}</div>{teacherView && <div className="speaking-transcript-detail"><div className="speaking-result-section-heading"><h3>{copy.transcript}</h3><span>{copy.conversationEvidence}</span></div>{turns.map((turn) => <p key={turn.id}><strong>{turn.speaker === "ai" ? copy.aiLabel : copy.studentLabel}</strong><span>{turn.text}</span></p>)}</div>}</section>;
-}
-
-function SpeakingTeacherDashboard({ navigate }: { navigate: Navigate }) {
-  const [activities, setActivities] = useState<SpeakingActivity[]>([]);
-  const [sessions, setSessions] = useState<Record<string, SpeakingSession[]>>({});
-  const [loading, setLoading] = useState(true);
-  const [error, setError] = useState("");
-  const load = useCallback(async () => {
-    try {
-      const payload = await speakingApi.activities() as { items: SpeakingActivity[] };
-      setActivities(payload.items);
-      const pairs = await Promise.all(payload.items.map(async (activity) => [activity.id, ((await speakingApi.sessions(activity.id)) as { sessions: SpeakingSession[] }).sessions] as const));
-      setSessions(Object.fromEntries(pairs));
-    } catch (loadError) { setError(getErrorMessage(loadError, "Teacher activities could not be loaded.")); }
-    finally { setLoading(false); }
-  }, []);
-  useEffect(() => { void load(); }, [load]);
-  const sessionCount = Object.values(sessions).reduce((sum, items) => sum + items.length, 0);
-  if (loading) return <TeacherLoading />;
-  return <div className="speaking-page-shell speaking-teacher-shell"><SpeakingTopbar navigate={navigate} active="teacher" teacher /><main className="speaking-teacher-layout"><SpeakingTeacherSidebar navigate={navigate} active="home" /><section className="speaking-teacher-content"><div className="speaking-teacher-heading"><div><span className="speaking-eyebrow"><UserRound size={15} aria-hidden="true" /> Teacher workspace</span><h1>Speaking Practice</h1><p>Create a focused activity, launch one classroom session, and see how your students communicated.</p></div><button className="speaking-primary-button" type="button" onClick={() => navigate("/speak/teacher/create")}><Plus size={18} aria-hidden="true" />Create Activity</button></div>{error && <p className="speaking-error" role="alert">{error}</p>}<section className="speaking-teacher-stats"><div><span>Activities</span><strong>{activities.length}</strong><small>reusable lessons</small></div><div><span>Sessions launched</span><strong>{sessionCount}</strong><small>classroom runs</small></div><div><span>Active now</span><strong>{Object.values(sessions).flat().filter((session) => session.status === "active").length}</strong><small>live classrooms</small></div></section><div className="speaking-section-title"><div><span className="speaking-card-kicker">Your activities</span><h2>Keep practice moving</h2></div><button className="speaking-text-button" type="button" onClick={() => navigate("/speak/teacher/create")}>New activity <ArrowRight size={15} aria-hidden="true" /></button></div>{activities.length ? <div className="speaking-activity-list">{activities.map((activity) => <TeacherActivityRow key={activity.id} activity={activity} sessions={sessions[activity.id] ?? []} navigate={navigate} />)}</div> : <div className="speaking-empty-card"><Edit3 size={30} aria-hidden="true" /><h2>Create your first activity</h2><p>Save a reusable conversation, then launch it for a classroom.</p><button type="button" className="speaking-primary-button" onClick={() => navigate("/speak/teacher/create")}>Create activity</button></div>}</section></main></div>;
-}
-
-function TeacherLoading() { return <div className="speaking-empty-page"><LoaderCircle size={34} className="speaking-spin" aria-hidden="true" /><h1>Loading teacher workspace</h1><p>Getting your real Speaking Practice activities…</p></div>; }
-
-function SpeakingTeacherSidebar({ navigate, active }: { navigate: Navigate; active: "home" | "create" | "results" }) { return <aside className="speaking-teacher-sidebar"><div className="speaking-sidebar-label">Workspace</div><button type="button" className={active === "home" ? "is-active" : ""} onClick={() => navigate("/speak/teacher")}><BarChart3 size={17} aria-hidden="true" />Overview</button><button type="button" className={active === "create" ? "is-active" : ""} onClick={() => navigate("/speak/teacher/create")}><Edit3 size={17} aria-hidden="true" />Create Activity</button><button type="button" className={active === "results" ? "is-active" : ""} onClick={() => navigate("/speak/teacher")}><Trophy size={17} aria-hidden="true" />Results</button><div className="speaking-sidebar-divider" /><div className="speaking-sidebar-note"><ShieldIcon /><span>Real classroom data is stored on the server.<br />Templates and preview data stay separate.</span></div></aside>; }
-
-function TeacherActivityRow({ activity, sessions, navigate }: { activity: SpeakingActivity; sessions: SpeakingSession[]; navigate: Navigate }) { const latest = sessions[0]; return <article className="speaking-activity-row"><div className="speaking-activity-row-icon"><ShoppingBag size={21} aria-hidden="true" /></div><div className="speaking-activity-row-main"><div><strong>{activity.title}</strong><span>{activity.aiRole} · {SPEAKING_LEVEL_LABELS[activity.level]}</span></div><p>{activity.scenario}</p></div><div className="speaking-activity-row-meta"><span className={`speaking-status-pill speaking-status-${latest?.status ?? "ready"}`}>{latest ? latest.status === "active" ? "Active" : latest.status === "paused" ? "Paused" : latest.status === "ended" ? "Ended" : "Ready" : "Not launched"}</span><span>{sessions.length} session{sessions.length === 1 ? "" : "s"}</span>{latest && <code>{latest.joinCode}</code>}</div><div className="speaking-activity-row-actions"><button type="button" onClick={() => navigate(`/speak/teacher/activity/${activity.id}`)} aria-label={`Open ${activity.title}`}><ChevronRight size={18} aria-hidden="true" /></button></div></article>; }
-
-const draftFromTemplate = (template: SpeakingActivity): SpeakingCreateActivityInput => ({ title: template.title, scenario: template.scenario, aiRole: template.aiRole, studentRole: template.studentRole, level: template.level, difficulty: template.difficulty, nativeLanguage: template.nativeLanguage, durationSeconds: template.durationSeconds, identifierMode: template.identifierMode, targetExpressions: [...template.targetExpressions], rubric: template.rubric.map((criterion) => ({ ...criterion })) });
-const SPEAKING_DURATION_PRESETS = [120, 180, 300, 420] as const;
-
-function SpeakingDurationField({ value, onChange }: { value: number; onChange: (value: number) => void }) { const isCustom = !SPEAKING_DURATION_PRESETS.includes(value as (typeof SPEAKING_DURATION_PRESETS)[number]); return <label>Speaking time<select value={isCustom ? "custom" : String(value)} onChange={(event) => onChange(event.target.value === "custom" ? (isCustom ? value : 240) : Number(event.target.value))}><option value={120}>2 minutes</option><option value={180}>3 minutes</option><option value={300}>5 minutes</option><option value={420}>7 minutes</option><option value="custom">Custom</option></select>{isCustom && <div className="speaking-custom-duration"><input type="number" min={2} max={7} step={1} value={Math.round(value / 60)} onChange={(event) => { const minutes = Number(event.target.value); onChange((Number.isFinite(minutes) ? Math.min(7, Math.max(2, Math.round(minutes))) : 2) * 60); }} aria-label="Custom speaking time in minutes" /><span>minutes</span></div>}</label>; }
-
-function SpeakingCreatePage({ navigate, activityId }: { navigate: Navigate; activityId?: string }) {
-  const editing = Boolean(activityId);
-  const [draft, setDraft] = useState<SpeakingCreateActivityInput>(() => draftFromTemplate(SPEAKING_TEMPLATES[1]!));
-  const [newExpression, setNewExpression] = useState("");
-  const [formError, setFormError] = useState("");
-  const [saving, setSaving] = useState(false);
-  const [loadingActivity, setLoadingActivity] = useState(editing);
-  const update = <K extends keyof SpeakingCreateActivityInput>(key: K, value: SpeakingCreateActivityInput[K]) => setDraft((current) => ({ ...current, [key]: value }));
-  const updateCriterion = (index: number, patch: Partial<SpeakingRubricCriterion>) => update("rubric", draft.rubric.map((criterion, candidateIndex) => candidateIndex === index ? { ...criterion, ...patch } : criterion));
-  const addExpression = () => { if (!newExpression.trim() || draft.targetExpressions.length >= 12) return; update("targetExpressions", [...draft.targetExpressions, newExpression.trim()]); setNewExpression(""); };
-  useEffect(() => {
-    if (!activityId) return;
-    let cancelled = false;
-    void speakingApi.activity(activityId).then((payload) => {
-      if (cancelled) return;
-      const activity = (payload as { activity: SpeakingActivity }).activity;
-      setDraft(draftFromTemplate(activity));
-      setLoadingActivity(false);
-    }).catch((loadError) => {
-      if (cancelled) return;
-      setFormError(getErrorMessage(loadError, "This activity could not be loaded."));
-      setLoadingActivity(false);
-    });
-    return () => { cancelled = true; };
-  }, [activityId]);
-  const handleCreate = async (event: FormEvent) => {
-    event.preventDefault();
-    if (!draft.title.trim() || !draft.scenario.trim()) { setFormError("Activity name and speaking situation are required."); return; }
-    if (!draft.rubric.some((criterion) => criterion.enabled)) { setFormError("Choose at least one rubric skill."); return; }
-    setSaving(true);
-    try {
-      const payload = (editing && activityId
-        ? await speakingApi.updateActivity(activityId, draft)
-        : await speakingApi.createActivity(draft)) as { activity: SpeakingActivity };
-      navigate(`/speak/teacher/activity/${payload.activity.id}`);
-    }
-    catch (createError) { setFormError(getErrorMessage(createError, editing ? "The activity could not be updated. Please try again." : "The activity could not be saved. Please try again.")); }
-    finally { setSaving(false); }
-  };
-  if (loadingActivity) return <TeacherLoading />;
-  return <div className="speaking-page-shell speaking-teacher-shell"><SpeakingTopbar navigate={navigate} active="teacher" teacher /><main className="speaking-teacher-layout"><SpeakingTeacherSidebar navigate={navigate} active="create" /><form className="speaking-builder" onSubmit={handleCreate}><div className="speaking-builder-header"><div><span className="speaking-eyebrow"><Edit3 size={15} aria-hidden="true" /> Activity builder</span><h1>{editing ? "Edit activity" : "Create an activity"}</h1><p>{editing ? "Update the reusable activity. Existing classroom sessions keep their original setup." : "Set the situation first. The AI will stay in character while students practice."}</p></div><div className="speaking-builder-header-actions"><button type="button" className="speaking-text-button" onClick={() => navigate(editing && activityId ? `/speak/teacher/activity/${activityId}` : "/speak/teacher")}><ArrowLeft size={15} aria-hidden="true" />Back</button><button type="submit" className="speaking-primary-button" disabled={saving}>{saving ? <LoaderCircle size={17} className="speaking-spin" aria-hidden="true" /> : <Check size={17} aria-hidden="true" />}{editing ? "Save changes" : "Create activity"}</button></div></div><section className="speaking-builder-card"><div className="speaking-builder-card-heading"><div><span className="speaking-card-kicker">Start with a template</span><h2>Pick a familiar conversation</h2></div><span className="speaking-builder-step">01 / 04</span></div><div className="speaking-template-grid">{SPEAKING_TEMPLATES.map((template) => <button type="button" className={`speaking-template-card${draft.title === template.title ? " is-selected" : ""}`} key={template.id} onClick={() => setDraft(draftFromTemplate(template))}><span className="speaking-template-icon"><ShoppingBag size={19} aria-hidden="true" /></span><span><strong>{template.title}</strong><small>{SPEAKING_LEVEL_LABELS[template.level]} · {SPEAKING_DIFFICULTY_LABELS[template.difficulty]}</small></span>{draft.title === template.title && <Check size={16} aria-hidden="true" />}</button>)}</div></section><section className="speaking-builder-card"><div className="speaking-builder-card-heading"><div><span className="speaking-card-kicker">The conversation</span><h2>Give students a clear situation</h2></div><span className="speaking-builder-step">02 / 04</span></div><div className="speaking-builder-form-grid"><label>Activity name<input value={draft.title} onChange={(event) => update("title", event.target.value)} /></label><label>AI role<input value={draft.aiRole} onChange={(event) => update("aiRole", event.target.value)} /></label><label>Student role<input value={draft.studentRole} onChange={(event) => update("studentRole", event.target.value)} /></label><label className="speaking-span-2">Speaking situation<textarea value={draft.scenario} onChange={(event) => update("scenario", event.target.value)} rows={3} /></label></div></section><section className="speaking-builder-card"><div className="speaking-builder-card-heading"><div><span className="speaking-card-kicker">Target English</span><h2>Phrases the AI can bring into the conversation</h2></div><span className="speaking-builder-step">03 / 04</span></div><div className="speaking-expression-editor">{draft.targetExpressions.map((expression, index) => <div className="speaking-expression-chip" key={`${expression}-${index}`}><MessageCircle size={16} aria-hidden="true" /><input value={expression} onChange={(event) => update("targetExpressions", draft.targetExpressions.map((item, candidateIndex) => candidateIndex === index ? event.target.value : item))} /><button type="button" onClick={() => update("targetExpressions", draft.targetExpressions.filter((_, candidateIndex) => candidateIndex !== index))} aria-label={`Remove ${expression}`}><X size={15} aria-hidden="true" /></button></div>)}<div className="speaking-add-expression"><input value={newExpression} onChange={(event) => setNewExpression(event.target.value)} onKeyDown={(event) => { if (event.key === "Enter") { event.preventDefault(); addExpression(); } }} placeholder="Add an expression" /><button type="button" className="speaking-outline-button" onClick={addExpression}><Plus size={16} aria-hidden="true" />Add</button></div></div></section><section className="speaking-builder-card"><div className="speaking-builder-card-heading"><div><span className="speaking-card-kicker">Activity settings</span><h2>Set the right amount of support</h2></div><span className="speaking-builder-step">04 / 04</span></div><div className="speaking-settings-grid"><label>Student level<select value={draft.level} onChange={(event) => update("level", event.target.value as SpeakingLevel)}>{SPEAKING_LEVELS.map((level) => <option key={level} value={level}>{SPEAKING_LEVEL_LABELS[level]}</option>)}</select></label><label>AI difficulty<select value={draft.difficulty} onChange={(event) => update("difficulty", event.target.value as SpeakingDifficulty)}>{SPEAKING_DIFFICULTIES.map((difficulty) => <option key={difficulty} value={difficulty}>{SPEAKING_DIFFICULTY_LABELS[difficulty]}</option>)}</select></label><SpeakingDurationField value={draft.durationSeconds} onChange={(value) => update("durationSeconds", value)} /><label>Feedback language<select value={draft.nativeLanguage} onChange={(event) => update("nativeLanguage", event.target.value as SpeakingNativeLanguage)}>{SPEAKING_NATIVE_LANGUAGES.map((language) => <option key={language} value={language}>{SPEAKING_NATIVE_LANGUAGE_LABELS[language]}</option>)}</select></label><label>Student identification<select value={draft.identifierMode} onChange={(event) => update("identifierMode", event.target.value as SpeakingIdentifierMode)}>{SPEAKING_IDENTIFIER_MODES.map((mode) => <option key={mode} value={mode}>{SPEAKING_IDENTIFIER_MODE_LABELS[mode]}</option>)}</select></label></div><div className="speaking-rubric-editor-heading"><div><span className="speaking-card-kicker">Editable rubric</span><p>Keep the skills that matter for this activity. Pronunciation scoring is not included.</p></div><button type="button" className="speaking-outline-button" onClick={() => update("rubric", [...draft.rubric, { id: `custom-${Date.now()}`, name: "New skill", description: "What should students show?", enabled: true }])}><Plus size={16} aria-hidden="true" />Add criterion</button></div><div className="speaking-rubric-editor">{draft.rubric.map((criterion, index) => <div className={`speaking-rubric-row${criterion.enabled ? " is-enabled" : ""}`} key={criterion.id}><label className="speaking-rubric-toggle"><input type="checkbox" checked={criterion.enabled} onChange={(event) => updateCriterion(index, { enabled: event.target.checked })} /><span>{criterion.enabled ? "On" : "Off"}</span></label><div><input aria-label={`${criterion.name} name`} value={criterion.name} onChange={(event) => updateCriterion(index, { name: event.target.value })} /><textarea aria-label={`${criterion.name} description`} rows={2} value={criterion.description} onChange={(event) => updateCriterion(index, { description: event.target.value })} /></div><button type="button" className="speaking-icon-button speaking-danger-icon" onClick={() => update("rubric", draft.rubric.filter((_, candidateIndex) => candidateIndex !== index))} aria-label={`Remove ${criterion.name}`}><Trash2 size={16} aria-hidden="true" /></button></div>)}</div></section>{formError && <p className="speaking-error speaking-builder-error" role="alert">{formError}</p>}<div className="speaking-builder-footer"><p><ShieldIcon /><span>Activities are saved to your teacher workspace. Classroom join codes are created only when you launch a session.</span></p><button type="submit" className="speaking-primary-button" disabled={saving}><Check size={17} aria-hidden="true" />{editing ? "Save changes" : "Create activity"}</button></div></form></main></div>;
-}
-
-function SpeakingActivityPage({ navigate, activityId, results, edit }: { navigate: Navigate; activityId: string; results: boolean; edit: boolean }) {
-  if (results) return <SpeakingResultsPage navigate={navigate} activityId={activityId} />;
-  if (edit) return <SpeakingCreatePage navigate={navigate} activityId={activityId} />;
-  return <SpeakingActivityDetailPage navigate={navigate} activityId={activityId} />;
-}
-
-function SpeakingActivityDetailPage({ navigate, activityId }: { navigate: Navigate; activityId: string }) {
-  const [activity, setActivity] = useState<SpeakingActivity>();
-  const [sessions, setSessions] = useState<SpeakingSession[]>([]);
-  const [error, setError] = useState("");
-  const load = useCallback(async () => { try { const [activityPayload, sessionPayload] = await Promise.all([speakingApi.activity(activityId), speakingApi.sessions(activityId)]); setActivity((activityPayload as { activity: SpeakingActivity }).activity); setSessions((sessionPayload as { sessions: SpeakingSession[] }).sessions); } catch (loadError) { setError(getErrorMessage(loadError, "This activity could not be loaded.")); } }, [activityId]);
-  useEffect(() => { void load(); }, [load]);
-  const [copied, setCopied] = useState(false);
-  const [working, setWorking] = useState(false);
-  if (!activity) return error ? <MissingSpeakingSession navigate={navigate} message={error} /> : <TeacherLoading />;
-  const latest = sessions[0];
-  const shareable = Boolean(latest && ["ready", "active", "paused"].includes(latest.status));
-  const shareUrl = shareable ? `${window.location.origin}/speak/join/${latest!.joinCode}` : "";
-  const run = async (action: () => Promise<unknown>) => { setWorking(true); setError(""); try { await action(); await load(); } catch (actionError) { setError(getErrorMessage(actionError, "The classroom session could not be updated.")); } finally { setWorking(false); } };
-  const copyShareUrl = async () => { if (!shareUrl) return; try { await navigator.clipboard.writeText(shareUrl); setCopied(true); window.setTimeout(() => setCopied(false), 2_000); } catch { setCopied(false); } };
-  return <div className="speaking-page-shell speaking-teacher-shell"><SpeakingTopbar navigate={navigate} active="teacher" teacher /><main className="speaking-teacher-layout"><SpeakingTeacherSidebar navigate={navigate} active="home" /><section className="speaking-share-page"><button type="button" className="speaking-text-button" onClick={() => navigate("/speak/teacher")}><ArrowLeft size={16} aria-hidden="true" />All activities</button><div className="speaking-share-header"><div><span className="speaking-eyebrow"><Check size={15} aria-hidden="true" /> {latest ? "Classroom session" : "Reusable activity"}</span><h1>{activity.title}</h1><p>{activity.scenario}</p></div><span className={`speaking-status-pill speaking-status-${latest?.status ?? "ready"}`}>{latest ? latest.status : "Ready to launch"}</span></div>{error && <p className="speaking-error" role="alert">{error}</p>}<div className="speaking-share-grid"><section className="speaking-share-card speaking-share-code-card">{shareable ? <><div><span className="speaking-card-kicker">参加コード / QRコード</span><h2>{latest!.status === "ready" ? "Session ready" : "Share with your class"}</h2><p>Scan the QR code or enter this short code at <strong>/speak/join</strong>.</p></div><div className="speaking-share-visual"><QRCodeSVG value={shareUrl} size={172} bgColor="#ffffff" fgColor="#12214b" level="M" /><div className="speaking-join-code-block"><small>Session code</small><strong>{latest!.joinCode}</strong><button type="button" onClick={copyShareUrl} aria-label="Copy join URL">{copied ? <Check size={18} aria-hidden="true" /> : <Copy size={18} aria-hidden="true" />}</button></div></div><div className="speaking-share-link"><span>{shareUrl}</span><button className="speaking-outline-button" type="button" onClick={copyShareUrl}>{copied ? "Copied" : "Copy link"}</button></div></> : <><div><span className="speaking-card-kicker">{latest ? "Launch a new classroom run" : "Launch a classroom run"}</span><h2>{latest ? "Ready for another class?" : "Ready when you are"}</h2><p>Launching creates a new secure session code. This activity itself stays reusable.</p></div><button type="button" className="speaking-primary-button" disabled={working} onClick={() => void run(() => speakingApi.launchSession(activity.id))}><Play size={17} aria-hidden="true" />Launch session</button></>}</section><section className="speaking-share-card"><div className="speaking-share-card-heading"><span className="speaking-card-kicker">Activity setup</span><button type="button" className="speaking-icon-button" onClick={() => navigate(`/speak/teacher/activity/${activity.id}/edit`)} aria-label="Edit activity"><Pencil size={16} aria-hidden="true" /></button><span className="speaking-edit-label">Edit Activity</span></div><dl className="speaking-activity-facts"><div><dt>AI role</dt><dd>{activity.aiRole}</dd></div><div><dt>Student role</dt><dd>{activity.studentRole}</dd></div><div><dt>Level</dt><dd>{SPEAKING_LEVEL_LABELS[activity.level]}</dd></div><div><dt>Difficulty</dt><dd>{SPEAKING_DIFFICULTY_LABELS[activity.difficulty]}</dd></div><div><dt>Speaking time</dt><dd>{formatDuration(activity.durationSeconds)}</dd></div><div><dt>Feedback</dt><dd>{SPEAKING_NATIVE_LANGUAGE_LABELS[activity.nativeLanguage]}</dd></div></dl><div className="speaking-share-targets"><span>Target English</span><div>{activity.targetExpressions.map((expression) => <span key={expression}>{expression}</span>)}</div></div></section></div><div className="speaking-share-actions">{latest && latest.status === "ready" && <button type="button" className="speaking-primary-button" disabled={working} onClick={() => void run(() => speakingApi.startSession(latest.id))}>Start session</button>}{latest && latest.status === "active" && <button type="button" className="speaking-outline-button" disabled={working} onClick={() => void run(() => speakingApi.pauseSession(latest.id))}>Pause session</button>}{latest && latest.status === "paused" && <button type="button" className="speaking-primary-button" disabled={working} onClick={() => void run(() => speakingApi.resumeSession(latest.id))}>Resume session</button>}{latest && ["ready", "active", "paused"].includes(latest.status) && <button type="button" className="speaking-outline-button" disabled={working} onClick={() => void run(() => speakingApi.endSession(latest.id))}>End session</button>}{latest && <button type="button" className="speaking-primary-button" onClick={() => navigate(`/speak/teacher/activity/${activity.id}/results?sessionId=${encodeURIComponent(latest.id)}`)}><Trophy size={17} aria-hidden="true" />View results</button>}</div>{sessions.length > 1 && <section className="speaking-share-card speaking-previous-sessions"><div className="speaking-share-card-heading"><span className="speaking-card-kicker">Previous sessions</span></div>{sessions.slice(1).map((session) => <button className="speaking-results-table-row" type="button" key={session.id} onClick={() => navigate(`/speak/teacher/activity/${activity.id}/results?sessionId=${encodeURIComponent(session.id)}`)}><span>{new Date(session.createdAt).toLocaleString()}</span><code>{session.joinCode}</code><span className={`speaking-status-pill speaking-status-${session.status}`}>{session.status}</span><ChevronRight size={18} aria-hidden="true" /></button>)}</section>}</section></main></div>;
-}
-
-function SpeakingResultsPage({ navigate, activityId }: { navigate: Navigate; activityId: string }) {
-  const [activity, setActivity] = useState<SpeakingActivity>();
-  const [sessions, setSessions] = useState<SpeakingSession[]>([]);
-  const [sessionId, setSessionId] = useState(() => new URLSearchParams(window.location.search).get("sessionId") ?? "");
-  const [payload, setPayload] = useState<SessionResultsResponse>();
-  const [error, setError] = useState("");
-  useEffect(() => { void Promise.all([speakingApi.activity(activityId), speakingApi.sessions(activityId)]).then(([activityPayload, sessionsPayload]) => { const nextActivity = (activityPayload as { activity: SpeakingActivity }).activity; const nextSessions = (sessionsPayload as { sessions: SpeakingSession[] }).sessions; setActivity(nextActivity); setSessions(nextSessions); setSessionId((current) => current || nextSessions[0]?.id || ""); }).catch((loadError) => setError(getErrorMessage(loadError, "Results could not be loaded."))); }, [activityId]);
-  useEffect(() => { if (!sessionId) return; void speakingApi.sessionResults(sessionId).then((next) => setPayload(next as SessionResultsResponse)).catch((loadError) => setError(getErrorMessage(loadError, "Results could not be loaded."))); }, [sessionId]);
-  if (error && !activity) return <MissingSpeakingSession navigate={navigate} message={error} />;
-  if (!activity || !payload) return <TeacherLoading />;
-  return <div className="speaking-page-shell speaking-teacher-shell"><SpeakingTopbar navigate={navigate} active="teacher" teacher /><main className="speaking-teacher-layout"><SpeakingTeacherSidebar navigate={navigate} active="results" /><section className="speaking-teacher-content"><button type="button" className="speaking-text-button" onClick={() => navigate(`/speak/teacher/activity/${activity.id}`)}><ArrowLeft size={16} aria-hidden="true" />{activity.title}</button><div className="speaking-teacher-heading speaking-results-heading"><div><span className="speaking-eyebrow"><Trophy size={15} aria-hidden="true" /> Learning results</span><h1>See who found their voice</h1><p>Results are scoped to one launched classroom session.</p></div><select aria-label="Select classroom session" value={sessionId} onChange={(event) => { setSessionId(event.target.value); window.history.replaceState(null, "", `/speak/teacher/activity/${activity.id}/results?sessionId=${encodeURIComponent(event.target.value)}`); }}>{sessions.map((session) => <option key={session.id} value={session.id}>{new Date(session.createdAt).toLocaleString()} · {session.joinCode}</option>)}</select></div>{error && <p className="speaking-error" role="alert">{error}</p>}{payload.items.length ? <div className="speaking-results-table"><div className="speaking-results-table-head"><span>Participant</span><span>Status</span><span>Overall</span><span>Support</span><span /></div>{payload.items.map((item) => <button type="button" className="speaking-results-table-row" key={item.participant.id} onClick={() => navigate(`/speak/teacher/result/${item.participant.id}`)}><span className="speaking-participant-cell"><span className="speaking-student-avatar"><UserRound size={19} aria-hidden="true" /></span><strong>{item.participant.displayIdentifier ?? "Anonymous student"}</strong></span><span><span className={`speaking-status-pill speaking-status-${item.status}`}>{item.evaluation?.assessmentStatus === "insufficient_evidence" ? speakingFeedbackCopy(item.evaluation.language).notScored : item.status === "completed" ? "Completed" : item.status === "error" ? "Evaluation unavailable" : "In progress"}</span></span><span className="speaking-table-score">{item.overallScore === undefined ? "—" : <>{item.overallScore}<small>/100</small></>}</span><span className="speaking-table-help"><Lightbulb size={15} aria-hidden="true" />{item.helpCount}</span><span><ChevronRight size={18} aria-hidden="true" /></span></button>)}</div> : <div className="speaking-empty-card"><Users size={32} aria-hidden="true" /><h2>No students yet</h2><p>Share {payload.session.joinCode} to invite the first practice session.</p><button type="button" className="speaking-primary-button" onClick={() => navigate(`/speak/teacher/activity/${activity.id}`)}>Show session code</button></div>}</section></main></div>;
-}
-
-function SpeakingTeacherResultPage({ navigate, participantId }: { navigate: Navigate; participantId: string }) {
-  const [result, setResult] = useState<ResultResponse["result"]>();
-  const [error, setError] = useState("");
-  useEffect(() => { void speakingApi.result(participantId).then((payload) => setResult((payload as ResultResponse).result)).catch((loadError) => setError(getErrorMessage(loadError, "This student result could not be loaded."))); }, [participantId]);
-  if (!result && !error) return <TeacherLoading />;
-  if (!result) return <MissingSpeakingSession navigate={navigate} message={error} />;
-  const evaluation = result.evaluation;
-  return <div className="speaking-page-shell speaking-teacher-shell"><SpeakingTopbar navigate={navigate} active="teacher" teacher /><main className="speaking-teacher-layout"><SpeakingTeacherSidebar navigate={navigate} active="results" /><section className="speaking-teacher-content"><button type="button" className="speaking-text-button" onClick={() => navigate(`/speak/teacher/activity/${result.activity.id}/results?sessionId=${encodeURIComponent(result.session.id)}`)}><ArrowLeft size={16} aria-hidden="true" />Back to results</button><div className="speaking-teacher-heading speaking-detail-heading"><div><span className="speaking-eyebrow"><UserRound size={15} aria-hidden="true" /> Student detail</span><h1>{result.participant.displayIdentifier ?? "Anonymous student"}</h1><p>{result.activity.title} · {result.turns.filter((turn) => turn.speaker === "student").length} speaking turns · {result.participant.helpCount} Help uses</p></div><span className="speaking-detail-score"><strong>{evaluation ? scoreFor(evaluation) ?? "—" : "—"}</strong>{evaluation && scoreFor(evaluation) !== undefined && <small>/100</small>}</span></div>{evaluation ? <ResultPanel activity={result.activity} turns={result.turns} evaluation={evaluation} teacherView /> : <div className="speaking-empty-card"><h2>Evaluation unavailable</h2><p>The participant’s transcript remains available, but no trustworthy evaluation is stored.</p><div className="speaking-transcript-detail">{result.turns.map((turn) => <p key={turn.id}><strong>{turn.speaker === "ai" ? "AI" : "Student"}</strong><span>{turn.text}</span></p>)}</div></div>}</section></main></div>;
 }
 
 type SpeakingState = SpeakingUiState;

@@ -15431,3 +15431,43 @@ body:has(.workspace) .athletics-teacher-results {
   .athletics-touch-controls .touch-crouch { min-width: 92px; min-height: 58px; }
   .athletics-touch-controls .touch-question { min-width: 82px; min-height: 74px; }
 }
+
+/* Unified teacher shell refinements: product grouping, quick actions, and tablet navigation. */
+body:has(.workspace) .teacher-sidebar-nav { display: grid; gap: 4px; }
+body:has(.workspace) .sidebar-section-label { margin: 12px 10px 4px; color: #91a0b5; font-size: .64rem; font-weight: 900; letter-spacing: .12em; text-transform: uppercase; }
+body:has(.workspace) .sidebar-section-label:first-child { margin-top: 0; }
+body:has(.workspace) .sidebar-secondary-action { min-height: 38px !important; margin-top: -1px; border: 1px dashed #c4d9ea !important; background: #f8fbff !important; color: #1763b0 !important; font-size: .78rem !important; }
+body:has(.workspace) .sidebar-secondary-action:hover,
+body:has(.workspace) .sidebar-secondary-action:focus-visible { border-color: #7eb9e1 !important; background: #eef7ff !important; color: #145592 !important; }
+body:has(.workspace) .dashboard-account-area { display: flex; align-items: center; gap: 14px; }
+body:has(.workspace) .dashboard-account-area strong { max-width: 220px; overflow: hidden; color: #2b3e5d; font-size: .82rem; text-overflow: ellipsis; white-space: nowrap; }
+body:has(.workspace) .dashboard-product-pair { color: #7a8aa4; font-size: .72rem; font-weight: 800; letter-spacing: .02em; }
+body:has(.workspace) .teacher-quick-actions { gap: 16px; }
+body:has(.workspace) .teacher-action-card-grid { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 12px; }
+body:has(.workspace) button.teacher-action-card { display: grid; grid-template-columns: 42px minmax(0, 1fr) auto; align-items: center; min-height: 94px; gap: 13px; padding: 14px 16px 14px 12px; border: 1px solid #dfe7f1; border-left: 4px solid #2483c7; border-radius: 13px; background: #ffffff; color: #1c2d4a; box-shadow: 0 8px 25px rgba(36, 60, 92, .045); text-align: left; }
+body:has(.workspace) button.teacher-action-card:hover,
+body:has(.workspace) button.teacher-action-card:focus-visible { border-color: #a9c8e8; background: #fbfdff; box-shadow: 0 12px 28px rgba(36, 60, 92, .09); transform: translateY(-1px); }
+body:has(.workspace) button.teacher-action-card-speaking { border-left-color: #14825a; background: linear-gradient(110deg, #f8fffc, #ffffff); }
+body:has(.workspace) button.teacher-action-card-quiet { border-left-color: #c6d5e6; }
+body:has(.workspace) .teacher-action-card-icon { display: grid; place-items: center; width: 42px; height: 42px; border-radius: 11px; background: #edf6ff; color: #2483c7; }
+body:has(.workspace) .teacher-action-card-speaking .teacher-action-card-icon { background: #e9f8f1; color: #14825a; }
+body:has(.workspace) .teacher-action-card-quiet .teacher-action-card-icon { background: #f2f5f8; color: #6c819b; }
+body:has(.workspace) .teacher-action-card > span:nth-child(2) { display: grid; gap: 5px; min-width: 0; }
+body:has(.workspace) .teacher-action-card strong { color: #1c2d4a; font-size: .92rem; }
+body:has(.workspace) .teacher-action-card small { color: #7a8aa4; font-size: .74rem; line-height: 1.35; }
+body:has(.workspace) .teacher-action-card > svg { color: #9badc1; }
+
+@media (max-width: 960px) {
+  body:has(.workspace) .dashboard-product-pair { display: none; }
+  body:has(.workspace) .workspace .sidebar .teacher-sidebar-nav { display: flex; flex-direction: row; align-items: center; gap: 4px; min-width: max-content; }
+  body:has(.workspace) .workspace .sidebar .teacher-sidebar-nav > .sidebar-section-label,
+  body:has(.workspace) .workspace .sidebar .teacher-sidebar-nav > .sidebar-divider { display: none; }
+  body:has(.workspace) .workspace .sidebar .teacher-sidebar-nav > button { flex: 0 0 auto; width: auto; }
+}
+
+@media (max-width: 620px) {
+  body:has(.workspace) .teacher-action-card-grid { grid-template-columns: 1fr; }
+  body:has(.workspace) .dashboard-account-area { gap: 8px; }
+  body:has(.workspace) .dashboard-account-area strong { max-width: 120px; }
+  body:has(.workspace) .workspace .sidebar { display: flex; overflow-x: auto; }
+}

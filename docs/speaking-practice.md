@@ -1,6 +1,23 @@
 # Speaking Practice operations
 
-Speaking Practice is a server-backed classroom flow at `/speak/*`.
+Speaking Practice has separate student routes at `/speak/*` and an integrated
+teacher workflow inside the GyakutenEigo dashboard.
+
+## Teacher routes
+
+The canonical teacher routes are:
+
+- `/quiz-strike/teacher/speaking` — activity overview and active-session summary;
+- `/quiz-strike/teacher/speaking/create` — create an activity;
+- `/quiz-strike/teacher/speaking/activity/:id` — activity setup, launch, join code, and session controls;
+- `/quiz-strike/teacher/speaking/activity/:id/edit` — edit an activity;
+- `/quiz-strike/teacher/speaking/activity/:id/results?sessionId=...` — session results;
+- `/quiz-strike/teacher/speaking/result/:participantId` — participant evaluation and transcript detail.
+
+Existing `/speak/teacher/*` bookmarks remain compatibility aliases. They are
+resolved by the browser into the shared teacher shell and authenticated once by
+the existing QuizStrike teacher token. Student routes (`/speak/join/*`,
+`/speak/session/*`, and `/speak/result/*`) are intentionally unchanged.
 
 ## Local mock mode
 

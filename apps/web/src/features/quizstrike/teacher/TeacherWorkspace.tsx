@@ -1,5 +1,5 @@
 import { lazy, Suspense, useCallback, useEffect, useMemo, useRef, useState } from "react";
-import { BookOpen, Bot, Check, ChevronDown, ChevronLeft, ChevronRight, ClipboardPaste, Copy, Download, Eye, EyeOff, Folder, Footprints, Globe2, GraduationCap, Link2, LockKeyhole, Mic, Minus, Play, Plus, RefreshCw, Settings, Sparkles, Square, Target, Trash2, Trophy, WifiOff, WandSparkles, Zap } from "lucide-react";
+import { BookOpen, Bot, Check, ChevronDown, ChevronLeft, ChevronRight, Copy, Download, Eye, EyeOff, Footprints, Globe2, GraduationCap, Link2, Minus, Play, Plus, RefreshCw, Trash2, Trophy, WifiOff } from "lucide-react";
 import { QRCodeSVG } from "qrcode.react";
 import {
   calculateClassAccuracy,
@@ -18,7 +18,6 @@ import {
   type ArenaMapId,
   type BotDifficulty,
   type CharacterCustomizationSettings,
-  type Choice,
   type GameSession,
   type PlayerSession,
   type QuizFolder,
@@ -52,8 +51,11 @@ import StudySetDetail from "./StudySetDetail";
 import TeacherHome from "./TeacherHome";
 import StudySetEditor from "./StudySetEditor";
 import { useSessionControls } from "./useSessionControls";
+import TeacherShell from "./TeacherShell";
+import { teacherRouteState, teacherSpeakingPath, teacherTabPath, type TeacherPrimaryTab, type TeacherSetupSection, type TeacherTab } from "./teacherRoutes";
 const ArenaPreview = lazy(() => import("../../../game/ArenaPreview"));
 const TournamentCenter = lazy(() => import("../tournament/TournamentCenter"));
+const SpeakingTeacherWorkspace = lazy(() => import("../../speaking/teacher/SpeakingTeacherWorkspace").then((module) => ({ default: module.SpeakingTeacherWorkspace })));
 
 
 type DashboardPayload = {
@@ -66,28 +68,7 @@ type DashboardPayload = {
 };
 type AuthPayload = { user: TeacherUser; token: string };
 export type ApiWakeState = "waking" | "ready" | "slow";
-type SetupSection = "mode" | "arena" | "advanced";
-const emptyQuestion = { prompt: "", choiceA: "", choiceB: "", choiceC: "", choiceD: "", correctChoice: "A", explanation: "", difficulty: "", audioUrl: "" };
-const choices: Choice[] = ["A", "B", "C", "D"];
-const TEACHER_FOLDER_SELECTION_STORAGE_KEY = "quizstrike_teacher_folder_selection_v1";
-type TeacherTab = "home" | "discover" | "library" | "detail" | "quizzes" | "sessions" | "reports" | "settings" | "tournaments";
-type TeacherRouteState = { tab: TeacherTab; studySetId?: string };
-const teacherRouteState = (path: string): TeacherRouteState => {
-  const segments = path.split("/").filter(Boolean).map((segment) => decodeURIComponent(segment));
-  const section = segments[2];
-  if (section === "discover") return { tab: "discover" };
-  if (section === "library") return { tab: "library" };
-  if (section === "reports") return { tab: "reports" };
-  if (section === "settings") return { tab: "settings" };
-  if (section === "competitions") return { tab: "tournaments" };
-  if (section === "create") return { tab: "quizzes" };
-  if (section === "host") return { tab: "sessions", studySetId: segments[3] };
-  if (section === "sets" && segments[3]) return { tab: segments[4] === "edit" ? "quizzes" : "detail", studySetId: segments[3] };
-  return { tab: "home" };
-};
-const teacherTabPath = (tab: Exclude<TeacherTab, "detail" | "quizzes" | "sessions">) =>
-  `/quiz-strike/teacher/${tab === "tournaments" ? "competitions" : tab}`;
-type QuestionDraft = typeof emptyQuestion;
+type SetupSection = TeacherSetupSection;
 const sessionNumberFields = [
   { name: "roundCount", label: "Number of rounds", min: 1, max: 30, help: "How many rounds the class will play." },
   { name: "flagHoldSeconds", label: "Flag hold time", min: 5, max: 180, step: 5, unit: "seconds", help: "How long Red protects a placed flag." },
@@ -103,52 +84,6 @@ const sessionNumberFields = [
   { name: "athleticsCourseLaps", label: "Course Laps", min: 1, max: 10, help: "How many times must students complete the course?" }
 ] as const satisfies ReadonlyArray<{ name: keyof Pick<SessionSettings, "maxPlayers" | "roundCount" | "flagHoldSeconds" | "initialZombieCount" | "startingMoney" | "correctAnswerReward" | "startingSnowballs" | "snowballPackPrice" | "snowballsPerPack" | "wrongAnswerPenalty" | "roundDurationSeconds" | "athleticsCourseLaps">; label: string; min: number; max: number; step?: number; unit?: string; help: string; }>;
 type SessionNumberField = (typeof sessionNumberFields)[number]["name"];
-const sampleImportText = `photosynthesis - Process plants use to make food from light
-evaporation - Liquid water changing into vapor
-denominator - The bottom number in a fraction
-metaphor - A comparison without using like or as`;
-const shuffle = <T,>(items: T[]) => {
-  const copy = [...items];
-  for (let index = copy.length - 1; index > 0; index -= 1) {
-    const swapIndex = Math.floor(Math.random() * (index + 1));
-    [copy[index], copy[swapIndex]] = [copy[swapIndex], copy[index]];
-  }
-  return copy;
-};
-const splitStudyLine = (line: string) => {
-  const separators = ["\t", " | ", " - ", " – ", " — ", ": ", " -- ", " = "];
-  for (const separator of separators) {
-    const index = line.indexOf(separator);
-    if (index > 0) {
-      const term = line.slice(0, index).trim();
-      const definition = line.slice(index + separator.length).trim();
-      if (term && definition) return { term, definition };
-    }
-  }
-  return { term: line.trim(), definition: "" };
-};
-const createGeneratedQuestions = (rawText: string): QuestionDraft[] => {
-  const entries = rawText.split(/\r?\n/).map((line) => line.trim().replace(/^\d+[).]\s*/, "")).filter(Boolean).map(splitStudyLine);
-  const pairedEntries = entries.filter((entry) => entry.definition);
-  if (pairedEntries.length >= 2) {
-    return pairedEntries.map((entry) => {
-      const distractors = shuffle(pairedEntries.filter((candidate) => candidate.term !== entry.term)).slice(0, 3).map((candidate) => candidate.definition);
-      const generatedChoices = shuffle([entry.definition, ...distractors]).slice(0, 4);
-      while (generatedChoices.length < 4) generatedChoices.push("Review this term again");
-      const correctIndex = generatedChoices.indexOf(entry.definition);
-      return { prompt: `What matches "${entry.term}"?`, choiceA: generatedChoices[0], choiceB: generatedChoices[1], choiceC: generatedChoices[2], choiceD: generatedChoices[3], correctChoice: choices[correctIndex] ?? "A", explanation: entry.definition, difficulty: "Imported", audioUrl: "" };
-    });
-  }
-  const terms = entries.map((entry) => entry.term).filter(Boolean);
-  return terms.map((term) => {
-    const distractors = shuffle(terms.filter((candidate) => candidate !== term)).slice(0, 3);
-    const generatedChoices = shuffle([term, ...distractors]).slice(0, 4);
-    while (generatedChoices.length < 4) generatedChoices.push("Not in this list");
-    const correctIndex = generatedChoices.indexOf(term);
-    return { prompt: "Which item was included in this study list?", choiceA: generatedChoices[0], choiceB: generatedChoices[1], choiceC: generatedChoices[2], choiceD: generatedChoices[3], correctChoice: choices[correctIndex] ?? "A", explanation: `${term} was imported from the pasted list.`, difficulty: "Imported", audioUrl: "" };
-  });
-};
-const getDraftChoiceText = (draft: QuestionDraft) => ({ A: draft.choiceA, B: draft.choiceB, C: draft.choiceC, D: draft.choiceD }[draft.correctChoice] ?? draft.choiceA);
 function useAsyncMessage() {
   const [message, setMessage] = useState("");
   const [error, setError] = useState("");
@@ -166,7 +101,6 @@ const teamLabel = (team: PlayerSession["team"]) => (team === "blue" ? "Blue Team
 const sessionStatusLabel = (status: GameSession["status"]) => status === "active" ? "Round live" : status === "paused" ? "Round results" : status === "ended" ? "Game over" : "Waiting for players";
 const gameModeLabel = (mode: SessionSettings["gameMode"]) => mode === "flag" ? "Capture the Flag" : mode === "zombie" ? "Zombie Survival" : mode === "athletics" ? "Athletics Race" : "Team Tag";
 const arenaMapLabel = (mapId: ArenaMapId | string | undefined) => getArenaMap(mapId).title;
-const sessionCourseLabel = (session: GameSession) => session.settings.gameMode === "athletics" ? ATHLETICS_STADIUM_COURSE.title : arenaMapLabel(session.settings.mapId);
 const sessionGameModeLabel = (session: GameSession) => session.settings.gameMode === "athletics"
   ? ATHLETICS_MODE_CONFIG[session.settings.athleticsMode ?? session.athletics?.mode ?? "classic"].label
   : gameModeLabel(session.settings.gameMode);
@@ -283,22 +217,22 @@ function TeacherAuth({
 
   return (
     <section className="auth-layout quizstrike-auth-layout auth-game-first">
-      <aside className="auth-visual" aria-label="QuizStrike teacher workspace">
+      <aside className="auth-visual" aria-label="GyakutenEigo teacher workspace">
         <img className="auth-visual-art" src="/assets/quizstrike-game-hero.png" alt="" width={1672} height={941} fetchPriority="high" />
         <div className="auth-visual-shade" aria-hidden="true" />
         <div className="auth-visual-content">
-          <span className="auth-game-wordmark">QuizStrike</span>
-          <span className="auth-kicker">Host workspace</span>
-          <p className="auth-visual-title">Build the round.<br />Run the match.</p>
-          <p>Choose the questions, open a game room, and control the match from one focused workspace.</p>
-          <span className="auth-tagline">Questions ready. Game on.</span>
+          <span className="auth-game-wordmark">GyakutenEigo</span>
+          <span className="auth-kicker">Teacher dashboard</span>
+          <p className="auth-visual-title">One workspace.<br />Every class.</p>
+          <p>Create QuizStrike games and Speaking Practice sessions from the same focused teacher dashboard.</p>
+          <span className="auth-tagline">Games ready. Voices heard.</span>
         </div>
       </aside>
       <form className="panel form-panel auth-form-panel" onSubmit={submit}>
         <div className="auth-form-heading">
           <span className="auth-kicker">Teacher account</span>
-          <h1>{isSignup ? "Create your account" : "Sign in to QuizStrike"}</h1>
-          <p>{isSignup ? "Set up your host workspace and start your first game." : "Open your question library, game rooms, and match reports."}</p>
+          <h1>{isSignup ? "Welcome to GyakutenEigo" : "Sign in to GyakutenEigo"}</h1>
+          <p>{isSignup ? "Create one teacher workspace for games and speaking practice." : "Open QuizStrike, Speaking Practice, and your class results."}</p>
         </div>
         {isSignup && (
           <label htmlFor="teacher-name">
@@ -367,6 +301,14 @@ function TeacherDashboard({ teacher, onLogout, initialPath, onNavigate }: { teac
   const [isDashboardLoading, setIsDashboardLoading] = useState(true);
   const [dashboardError, setDashboardError] = useState("");
   const status = useAsyncMessage();
+
+  useEffect(() => {
+    const previousTitle = document.title;
+    document.title = "Teacher Dashboard · GyakutenEigo";
+    return () => {
+      document.title = previousTitle;
+    };
+  }, []);
 
   const updateGamePreferences = (update: Partial<GamePreferences>) => {
     setGamePreferences((current) => {
@@ -486,7 +428,7 @@ function TeacherDashboard({ teacher, onLogout, initialPath, onNavigate }: { teac
     setDetailStudySetId(initialRoute.studySetId);
     if (initialRoute.studySetId && initialRoute.tab === "sessions") setLaunchQuizId(initialRoute.studySetId);
   }, [initialRoute]);
-  const navigateTeacherTab = (nextTab: Exclude<TeacherTab, "detail" | "quizzes" | "sessions">) => {
+  const navigateTeacherTab = (nextTab: TeacherPrimaryTab) => {
     setTab(nextTab);
     onNavigate(teacherTabPath(nextTab), "teacher");
   };
@@ -517,860 +459,88 @@ function TeacherDashboard({ teacher, onLogout, initialPath, onNavigate }: { teac
     }
   };
 
-  return (
-    <section className="workspace">
-      <div className="dashboard-brand-row">
-        <h1><span className="dashboard-wordmark">QuizStrike</span><small>Teacher workspace</small></h1>
-        <div><strong>{teacher.name}</strong><button onClick={onLogout}>Sign Out</button></div>
-      </div>
-      <aside className={`sidebar${isLiveSetup ? " setup-sidebar" : ""}`} aria-label={isLiveSetup ? "Live game setup sections" : "Teacher sections"}>
-        {isLiveSetup ? (
-          <div className="setup-sidebar-menu">
-            <span className="setup-sidebar-kicker">Host this Study Set</span>
-            <button className={activeSetupSection === "mode" ? "active" : ""} aria-current={activeSetupSection === "mode" ? "step" : undefined} onClick={() => setActiveSetupSection("mode")}><strong>Game Mode</strong></button>
-            <button className={activeSetupSection === "arena" ? "active" : ""} aria-current={activeSetupSection === "arena" ? "step" : undefined} onClick={() => setActiveSetupSection("arena")}><strong>Arena</strong></button>
-            <button className={activeSetupSection === "advanced" ? "active" : ""} aria-current={activeSetupSection === "advanced" ? "step" : undefined} onClick={() => setActiveSetupSection("advanced")}><Settings size={17} aria-hidden="true" /><strong>Advanced</strong></button>
-            <button className="setup-sidebar-back" onClick={() => navigateTeacherTab("library")}><ChevronLeft size={17} aria-hidden="true" />Back to Library</button>
-          </div>
-        ) : (
-          <>
-            <button aria-current={tab === "home" ? "page" : undefined} className={tab === "home" ? "active" : ""} onClick={() => navigateTeacherTab("home")}><BookOpen size={17} aria-hidden="true" />Home</button>
-            <button aria-current={tab === "discover" ? "page" : undefined} className={tab === "discover" ? "active" : ""} onClick={() => navigateTeacherTab("discover")}><Globe2 size={17} aria-hidden="true" />Discover</button>
-            <button aria-current={tab === "library" ? "page" : undefined} className={tab === "library" ? "active" : ""} onClick={() => navigateTeacherTab("library")}><Sparkles size={17} aria-hidden="true" />Library</button>
-            <button aria-current={tab === "reports" ? "page" : undefined} className={tab === "reports" ? "active" : ""} onClick={() => navigateTeacherTab("reports")}>Reports</button>
-            <button className="sidebar-create-button" onClick={() => openQuizManager()}><Plus size={17} aria-hidden="true" />Create</button>
-            <span className="sidebar-divider" />
-            <button aria-current={tab === "tournaments" ? "page" : undefined} className={tab === "tournaments" ? "active" : ""} onClick={() => navigateTeacherTab("tournaments")}><Trophy size={17} aria-hidden="true" />Competitions</button>
-            <button aria-current={tab === "settings" ? "page" : undefined} className={tab === "settings" ? "active" : ""} onClick={() => navigateTeacherTab("settings")}><Settings size={17} aria-hidden="true" />Settings</button>
-          </>
-        )}
-      </aside>
-
-      <div className="main-panel">
-        <StatusMessages error={status.error} message={status.message} />
-        {isSocketReconnecting && (
-          <p className="connection-banner">
-            <WifiOff size={16} aria-hidden="true" />
-            Connection paused · trying again...
-          </p>
-        )}
-
-        {tab === "home" && <TeacherHome teacher={teacher} quizSets={data.quizSets} sessions={data.sessions} recognition={data.recognition} onCreate={() => openQuizManager()} onDiscover={() => navigateTeacherTab("discover")} onLibrary={() => navigateTeacherTab("library")} onReports={() => navigateTeacherTab("reports")} onHost={(quizSetId) => void openStudySetForGame(quizSetId)} onOpenSet={openStudySet} />}
-        {tab === "quizzes" && (
-          <StudySetEditor
-            key={`${quizManagerRequest.mode}:${quizManagerRequest.quizSetId ?? "new"}`}
-            data={data}
-            onRefresh={refresh}
-            initialQuizSetId={quizManagerRequest.quizSetId}
-            startInCreateMode={quizManagerRequest.mode === "create"}
-          />
-        )}
-        {tab === "discover" && <StudySetLibrary data={data} scope="public" dashboardLoading={isDashboardLoading} dashboardError={dashboardError} onRefresh={refresh} onEditQuiz={openQuizManager} onPlayLive={openStudySetForGame} onOpenStudySet={openStudySet} />}
-        {tab === "library" && <StudySetLibrary data={data} scope="mine" dashboardLoading={isDashboardLoading} dashboardError={dashboardError} onRefresh={refresh} onEditQuiz={openQuizManager} onPlayLive={openStudySetForGame} onOpenStudySet={openStudySet} />}
-        {tab === "detail" && detailStudySetId && <StudySetDetail studySetId={detailStudySetId} isOwner={data.quizSets.some((quiz) => quiz.id === detailStudySetId)} onBack={() => navigateTeacherTab(data.quizSets.some((quiz) => quiz.id === detailStudySetId) ? "library" : "discover")} onHost={(quizSetId) => void openStudySetForGame(quizSetId)} onEdit={openQuizManager} onCopy={async (quizSetId) => { try { await teacherApi.duplicateStudySet(quizSetId); await refresh(); navigateTeacherTab("library"); } catch (error) { status.report(error); } }} />}
-        {tab === "sessions" && (
-          <SessionManager
-            data={data}
-            availableStudySets={availableStudySets}
-            selectedSession={selectedSession}
-            setSelectedSession={setSelectedSession}
-            onRefresh={refresh}
-            onReport={setReport}
-            onOpenReports={() => navigateTeacherTab("reports")}
-            onBrowseStudySets={() => navigateTeacherTab("discover")}
-            initialQuizSetId={launchQuizId}
-            activeSetupSection={activeSetupSection}
-          />
-        )}
-        {tab === "reports" && (
-          <ReportsPanel
-            sessions={data.sessions}
-            quizSets={data.quizSets}
-            reports={data.reports}
-            report={report}
-            setReport={setReport}
-            setTab={setTab}
-            onRefresh={refresh}
-          />
-        )}
-        {tab === "settings" && (
-          <GamePreferencesPanel
-            preferences={gamePreferences}
-            onChange={updateGamePreferences}
-            audioOnly
-          />
-        )}
-        {tab === "tournaments" && <Suspense fallback={<ArenaLoading label="Loading tournament center" />}><TournamentCenter teacher={teacher} quizSets={data.quizSets.map((quiz) => ({ id: quiz.id, title: quiz.title }))} /></Suspense>}
-
-        {activeSessions.length > 0 && (
-          <div className="live-rail">
-            {activeSessions.map((session) => (
-              <button
-                key={session.id}
-                className={selectedSession?.id === session.id ? "active session-chip" : "session-chip"}
-                onClick={() => {
-                  setSelectedSession(session);
-                  setLaunchQuizId(session.quizSetId);
-                  setTab("sessions");
-                  onNavigate(`/quiz-strike/teacher/host/${encodeURIComponent(session.quizSetId)}`, "teacher");
-                }}
-              >
-                <span>{session.sessionCode}</span>
-                <small>{session.players.length} players</small>
-              </button>
-            ))}
-          </div>
-        )}
-      </div>
-    </section>
-  );
-}
-
-// Retained for the legacy folder-management surface; the new teacher shell uses Library instead.
-// eslint-disable-next-line @typescript-eslint/no-unused-vars
-function TeacherFolders({
-  data,
-  onEditQuiz,
-  onPlayLive,
-  onRefresh
-}: {
-  data: DashboardPayload;
-  onEditQuiz: (quizSetId?: string) => void;
-  onPlayLive: (quizSetId: string) => void;
-  onRefresh: () => Promise<void>;
-}) {
-  const [selectedFolderId, setSelectedFolderId] = useState<string | undefined>(() => localStorage.getItem(TEACHER_FOLDER_SELECTION_STORAGE_KEY) || undefined);
-  const [draggedQuizId, setDraggedQuizId] = useState<string | null>(null);
-  const [searchTerm, setSearchTerm] = useState("");
-  const [isBusy, setIsBusy] = useState(false);
-  const folderById = useMemo(() => new Map(data.folders.map((folder) => [folder.id, folder])), [data.folders]);
-  const selectedFolder = selectedFolderId ? folderById.get(selectedFolderId) : undefined;
-  const childFolders = useMemo(
-    () => data.folders.filter((folder) => folder.parentId === selectedFolderId).sort((left, right) => left.name.localeCompare(right.name)),
-    [data.folders, selectedFolderId]
-  );
-  const visibleQuizSets = useMemo(
-    () => data.quizSets.filter((quiz) => quiz.folderId === selectedFolderId).sort((left, right) => left.title.localeCompare(right.title)),
-    [data.quizSets, selectedFolderId]
-  );
-  const filteredQuizSets = useMemo(
-    () => visibleQuizSets.filter((quiz) => quiz.title.toLowerCase().includes(searchTerm.trim().toLowerCase())),
-    [searchTerm, visibleQuizSets]
-  );
-  const featuredQuiz = filteredQuizSets[0];
-  useEffect(() => {
-    if (selectedFolderId && !folderById.has(selectedFolderId)) {
-      setSelectedFolderId(undefined);
-      return;
-    }
-    if (selectedFolderId) localStorage.setItem(TEACHER_FOLDER_SELECTION_STORAGE_KEY, selectedFolderId);
-    else localStorage.removeItem(TEACHER_FOLDER_SELECTION_STORAGE_KEY);
-  }, [folderById, selectedFolderId]);
-  const folderPath = (folder: QuizFolder) => {
-    const path: QuizFolder[] = [];
-    let current: QuizFolder | undefined = folder;
-    while (current) {
-      path.unshift(current);
-      current = current.parentId ? folderById.get(current.parentId) : undefined;
-    }
-    return path;
-  };
-  const runAction = async (action: () => Promise<unknown>) => {
-    if (isBusy) return;
-    setIsBusy(true);
-    try {
-      await action();
-      await onRefresh();
-    } catch (error) {
-      window.alert(error instanceof Error ? error.message : "The library action failed.");
-    } finally {
-      setIsBusy(false);
-    }
-  };
-  const createFolder = () => {
-    const name = window.prompt("Name this folder", "New folder")?.trim();
-    if (!name) return;
-    void runAction(() => teacherApi.createFolder({ name, ...(selectedFolderId ? { parentId: selectedFolderId } : {}) }));
-  };
-  const renameFolder = (folder: QuizFolder) => {
-    const name = window.prompt("Rename this folder", folder.name)?.trim();
-    if (!name || name === folder.name) return;
-    void runAction(() => teacherApi.updateFolder(folder.id, { name }));
-  };
-  const moveFolder = (folder: QuizFolder) => {
-    const destinations = [
-      { id: "", label: "All question sets" },
-      ...data.folders
-        .filter((candidate) => candidate.id !== folder.id && !folderPath(candidate).some((ancestor) => ancestor.id === folder.id))
-        .map((candidate) => ({ id: candidate.id, label: folderPath(candidate).map((item) => item.name).join(" / ") }))
-    ];
-    const choice = window.prompt(`Move “${folder.name}” to:\n${destinations.map((item, index) => `${index + 1}. ${item.label}`).join("\n")}\nEnter a number.`);
-    if (choice === null) return;
-    const destination = destinations[Number(choice) - 1];
-    if (!destination) {
-      window.alert("Choose one of the folder numbers listed.");
-      return;
-    }
-    void runAction(() => teacherApi.updateFolder(folder.id, { parentId: destination.id || null }));
-  };
-  const deleteFolder = (folder: QuizFolder) => {
-    if (!window.confirm(`Delete the empty folder “${folder.name}”?`)) return;
-    void runAction(async () => {
-      await teacherApi.deleteFolder(folder.id);
-      if (selectedFolderId === folder.id) setSelectedFolderId(folder.parentId);
-    });
-  };
-  const moveQuiz = (quiz: QuizSet, folderId: string | undefined) => {
-    if (quiz.folderId === folderId) return;
-    void runAction(() => teacherApi.moveQuizSet(quiz.id, folderId));
-  };
-  const dropQuizIntoFolder = (quizId: string | null, folderId: string | undefined) => {
-    if (!quizId) return;
-    const quiz = data.quizSets.find((item) => item.id === quizId);
-    if (quiz) moveQuiz(quiz, folderId);
-    setDraggedQuizId(null);
-  };
-  const renameQuiz = (quiz: QuizSet) => {
-    const title = window.prompt("Rename this question set", quiz.title)?.trim();
-    if (!title || title === quiz.title) return;
-    void runAction(() => teacherApi.renameQuizSet(quiz.id, title));
-  };
-  const deleteQuiz = (quiz: QuizSet) => {
-    if (!window.confirm(`Delete “${quiz.title}”? This cannot be undone.`)) return;
-    void runAction(() => teacherApi.deleteQuizSet(quiz.id));
-  };
-  return (
-    <section className="teacher-folders">
-      <div className="folders-heading">
-        <div><span className="teacher-eyebrow">Question library</span><h2>Keep your best questions close</h2><p>Choose a set, then start the right game for your class.</p></div>
-        <div className="folder-heading-actions">
-          <button className="folder-new" onClick={createFolder} disabled={isBusy}>New folder <Plus size={18} aria-hidden="true" /></button>
-          <button className="folder-new" onClick={() => onEditQuiz()}><BookOpen size={18} aria-hidden="true" />Create question set</button>
-        </div>
-      </div>
-      {data.recognition && <section className="dashboard-recognition-panel" aria-labelledby="dashboard-recognition-title"><div><span className="teacher-eyebrow">Your QuizStrike contribution</span><h3 id="dashboard-recognition-title">{data.recognition.level}</h3><p>{data.recognition.nextLevelPoints ? `${Math.max(0, data.recognition.nextLevelPoints - data.recognition.points)} points until ${data.recognition.nextLevel}.` : "Highest recognition level reached."}</p></div><div className="dashboard-recognition-numbers"><strong>{data.recognition.points}<small>points</small></strong><strong>{data.recognition.teachersUsingSets}<small>teachers used your sets</small></strong><strong>{data.recognition.badges.length}<small>achievements</small></strong></div></section>}
-      <div className="folder-breadcrumbs" aria-label="Folder path">
-        <button className={!selectedFolderId ? "active" : ""} onClick={() => setSelectedFolderId(undefined)} onDragOver={(event) => event.preventDefault()} onDrop={(event) => { event.preventDefault(); dropQuizIntoFolder(draggedQuizId, undefined); }}><Folder size={15} aria-hidden="true" />All question sets</button>
-        {(selectedFolder ? folderPath(selectedFolder) : []).map((folder) => <span key={folder.id}><ChevronRight size={14} aria-hidden="true" /><button className={folder.id === selectedFolderId ? "active" : ""} onClick={() => setSelectedFolderId(folder.id)} onDragOver={(event) => event.preventDefault()} onDrop={(event) => { event.preventDefault(); dropQuizIntoFolder(draggedQuizId, folder.id); }}>{folder.name}</button></span>)}
-      </div>
-      <div className="folder-chips" aria-label="Quiz folders">
-        {data.folders.length === 0 && <span className="folder-library-note">No folders yet. Add one when your question library starts to grow.</span>}
-        {childFolders.map((folder) => <div className="folder-chip-item" key={folder.id} onDragOver={(event) => event.preventDefault()} onDrop={(event) => { event.preventDefault(); dropQuizIntoFolder(draggedQuizId, folder.id); }}>
-          <button onClick={() => setSelectedFolderId(folder.id)}><Folder size={15} aria-hidden="true" />{folder.name}</button>
-          <button className="folder-chip-action" onClick={() => renameFolder(folder)}>Rename</button>
-          <button className="folder-chip-action" onClick={() => moveFolder(folder)}>Move</button>
-          <button className="folder-chip-action danger" aria-label={`Delete ${folder.name}`} onClick={() => deleteFolder(folder)}><Trash2 size={13} aria-hidden="true" /></button>
-        </div>)}
-      </div>
-      {featuredQuiz && (
-        <section className="teacher-featured-card" aria-labelledby="featured-quiz-title">
-          <div className="teacher-featured-art" aria-hidden="true"><Zap size={64} /></div>
-          <div className="teacher-featured-copy">
-            <span className="featured-badge">Featured set</span>
-            <h3 id="featured-quiz-title">{featuredQuiz.title}</h3>
-            <p>{featuredQuiz.description || "A ready-to-play question set for your next class game."}</p>
-            <div className="teacher-featured-meta"><span>{featuredQuiz.questions.length} questions</span><span>Last edited {new Date(featuredQuiz.createdAt).toLocaleDateString()}</span></div>
-          </div>
-          <div className="teacher-featured-action"><button className="play-live" onClick={() => onPlayLive(featuredQuiz.id)}><Play size={18} aria-hidden="true" />Start a game</button><small>Choose the mode next</small></div>
-        </section>
-      )}
-      <div className="folder-quiz-list">
-        {visibleQuizSets.length > 0 && <div className="folder-list-toolbar">
-          <label className="quiz-search"><span className="sr-only">Search question sets</span><input value={searchTerm} onChange={(event) => setSearchTerm(event.target.value)} placeholder="Search question sets..." /></label>
-          <span>{filteredQuizSets.length} question set{filteredQuizSets.length === 1 ? "" : "s"}</span>
-          <small className="folder-list-hint">Drag a row to move it into a folder.</small>
-        </div>}
-        {filteredQuizSets.map((quiz) => (
-          <article
-            className={`folder-quiz-row${draggedQuizId === quiz.id ? " is-dragged" : ""}`}
-            key={quiz.id}
-            draggable
-            onDragStart={() => setDraggedQuizId(quiz.id)}
-            onDragEnd={() => setDraggedQuizId(null)}
-            onDragOver={(event) => event.preventDefault()}
-            onDrop={(event) => {
-              event.preventDefault();
-              if (draggedQuizId && draggedQuizId !== quiz.id) {
-                const dragged = data.quizSets.find((item) => item.id === draggedQuizId);
-                if (dragged) moveQuiz(dragged, quiz.folderId);
-              }
-              setDraggedQuizId(null);
-            }}
-          >
-            <div className="quiz-cover"><BookOpen size={26} aria-hidden="true" /></div>
-            <div><h3>{quiz.title}</h3><small>{quiz.questions.length} questions · Created {new Date(quiz.createdAt).toLocaleDateString()}</small></div>
-            <div className="folder-row-actions">
-              <button className="play-live" onClick={() => onPlayLive(quiz.id)}><Play size={17} aria-hidden="true" />Start a game</button>
-              <button className="edit-set" onClick={() => onEditQuiz(quiz.id)}>Edit set</button>
-              <button className="edit-set" onClick={() => renameQuiz(quiz)}>Rename</button>
-              <button className="delete-set" onClick={() => deleteQuiz(quiz)}><Trash2 size={16} aria-hidden="true" />Delete set</button>
-            </div>
-          </article>
-        ))}
-        {filteredQuizSets.length === 0 && (
-          <div className="folder-empty"><BookOpen size={34} aria-hidden="true" /><h3>{data.quizSets.length === 0 ? "Your question sets will appear here" : "No question sets match that search"}</h3><p>{data.quizSets.length === 0 ? "Create your first set, then start a game for your class." : "Try another search or create a new set."}</p><button className="folder-new" onClick={() => onEditQuiz()}>Create question set <Plus size={18} aria-hidden="true" /></button></div>
-        )}
-      </div>
-      <p className="folder-library-note">Reports save automatically when a game ends. We keep your 15 newest reports.</p>
-    </section>
-  );
-}
-
-function _DashboardHome({ data, onTab }: { data: DashboardPayload; onTab: (tab: "quizzes" | "sessions") => void }) {
-  const activeSession = data.sessions.find((session) => session.status !== "ended");
-  const totalQuestions = data.quizSets.reduce((total, quiz) => total + quiz.questions.length, 0);
-  const studentsConnected = data.sessions.reduce((total, session) => total + session.players.length, 0);
-  const recentSessions = data.sessions.slice(0, 4);
-  const topLearner = activeSession ? getTopLearner(activeSession.players, activeSession.settings.gameMode) : undefined;
-  return (
-    <div className="dashboard-home-grid">
-      <section className="panel dashboard-command-card">
-        <div>
-          <span className={activeSession ? "dashboard-live-label active" : "dashboard-live-label"}>{activeSession ? "Live classroom room" : "Next classroom action"}</span>
-          <h2>{activeSession ? `${activeSession.sessionCode} is ${sessionStatusLabel(activeSession.status).toLowerCase()}` : "Create a room when your quiz is ready."}</h2>
-          <p>{activeSession ? `${gameModeLabel(activeSession.settings.gameMode)} · ${sessionCourseLabel(activeSession)} · ${activeSession.players.length} joined · ${topLearner ? `Top learner: ${topLearner.nickname}` : "Waiting for the first answer"}` : "Start with a quiz set, then choose the game mode and share one private code with the class."}</p>
-        </div>
-        <div className="button-row">
-          <button className="primary" onClick={() => onTab(activeSession ? "sessions" : "quizzes")}>
-            {activeSession ? <Play size={18} aria-hidden="true" /> : <Plus size={18} aria-hidden="true" />}
-            {activeSession ? "Open Live Control" : "Create New Quiz"}
-          </button>
-          {!activeSession && <button onClick={() => onTab("sessions")}><Target size={18} aria-hidden="true" />Create game</button>}
-        </div>
-      </section>
-
-      <section className="dashboard-metrics" aria-label="Classroom overview">
-        <div className="metric"><span>Quiz sets</span><strong>{data.quizSets.length}</strong><small>{totalQuestions} total questions</small></div>
-        <div className="metric"><span>Live rooms</span><strong>{data.sessions.filter((session) => session.status !== "ended").length}</strong><small>{activeSession ? gameModeLabel(activeSession.settings.gameMode) : "No room open"}</small></div>
-        <div className="metric"><span>Students joined</span><strong>{studentsConnected}</strong><small>Across available sessions</small></div>
-      </section>
-
-      <section className="panel dashboard-workflow-card">
-        <div className="panel-title"><h2>Classroom workflow</h2><span>Keep the next step obvious</span></div>
-        <ol className="teacher-flow-list">
-          <li><span>01</span><div><strong>Prepare questions</strong><small>Build a quiz set or turn pasted study terms into questions.</small></div><button onClick={() => onTab("quizzes")}>Quiz Sets</button></li>
-          <li><span>02</span><div><strong>Open a private room</strong><small>Set the mode, timing, rewards, and student capacity.</small></div><button onClick={() => onTab("sessions")}>Sessions</button></li>
-          <li><span>03</span><div><strong>Guide and review</strong><small>Watch the live roster, then use the report to follow up.</small></div><button onClick={() => onTab("sessions")}>Live Control</button></li>
-        </ol>
-      </section>
-
-      <section className="panel dashboard-list-card">
-        <div className="panel-title"><h2>Recent games</h2><span>{recentSessions.length ? `${recentSessions.length} available` : "No games yet"}</span></div>
-        <ul className="dashboard-session-list">
-          {recentSessions.map((session) => <li key={session.id}><div><strong>{session.sessionCode}</strong><small>{gameModeLabel(session.settings.gameMode)} · {sessionCourseLabel(session)} · {session.players.length} joined</small></div><span className={`status-pill status-${session.status}`}>{sessionStatusLabel(session.status)}</span></li>)}
-          {recentSessions.length === 0 && <li className="dashboard-empty-state"><Target size={22} aria-hidden="true" /><div><strong>No games yet</strong><small>Your first private room will appear here after you create one.</small></div></li>}
-        </ul>
-      </section>
-
-      <section className="panel dashboard-list-card">
-        <div className="panel-title"><h2>Ready quiz sets</h2><span>{data.quizSets.length} saved</span></div>
-        <ul className="dashboard-session-list">
-          {data.quizSets.slice(0, 4).map((quiz) => <li key={quiz.id}><div><strong>{quiz.title}</strong><small>{quiz.questions.length} questions{quiz.description ? ` · ${quiz.description}` : ""}</small></div><button onClick={() => onTab("sessions")}>Host</button></li>)}
-          {data.quizSets.length === 0 && <li className="dashboard-empty-state"><BookOpen size={22} aria-hidden="true" /><div><strong>No question sets yet</strong><small>Create a set first, then turn it into a game room.</small></div></li>}
-        </ul>
-      </section>
-    </div>
-  );
-}
-
-export function QuizManager({ data, onRefresh, initialQuizSetId, startInCreateMode = false }: { data: DashboardPayload; onRefresh: () => Promise<void>; initialQuizSetId?: string; startInCreateMode?: boolean }) {
-  const [selectedQuizId, setSelectedQuizId] = useState(() => startInCreateMode ? "" : initialQuizSetId ?? data.quizSets[0]?.id ?? "");
-  const [quizForm, setQuizForm] = useState({ title: "", description: "", subject: "", topic: "", gradeLevel: "", language: "English", visibility: "PRIVATE" as "PRIVATE" | "PUBLIC" });
-  const [questionForm, setQuestionForm] = useState(emptyQuestion);
-  const [editingQuestionId, setEditingQuestionId] = useState<string | null>(null);
-  const [questionBuilderMode, setQuestionBuilderMode] = useState<"bulk" | "manual">("bulk");
-  const [bulkText, setBulkText] = useState("");
-  const [isCreatingQuiz, setIsCreatingQuiz] = useState(false);
-  const [isAddingQuestion, setIsAddingQuestion] = useState(false);
-  const [isImporting, setIsImporting] = useState(false);
-  const [recordingState, setRecordingState] = useState<"idle" | "recording" | "ready">("idle");
-  const [recordingSeconds, setRecordingSeconds] = useState(0);
-  const [recordingError, setRecordingError] = useState("");
-  const [recordedAudio, setRecordedAudio] = useState<{ blob: Blob; previewUrl: string } | null>(null);
-  const [isSavingDetails, setIsSavingDetails] = useState(false);
-  const mediaRecorderRef = useRef<MediaRecorder | null>(null);
-  const recordingStreamRef = useRef<MediaStream | null>(null);
-  const recordingChunksRef = useRef<BlobPart[]>([]);
-  const recordingTimerRef = useRef<number | null>(null);
-  const recordingLimitTimerRef = useRef<number | null>(null);
-  const status = useAsyncMessage();
-
-  const clearRecordingTimers = () => {
-    if (recordingTimerRef.current !== null) window.clearInterval(recordingTimerRef.current);
-    if (recordingLimitTimerRef.current !== null) window.clearTimeout(recordingLimitTimerRef.current);
-    recordingTimerRef.current = null;
-    recordingLimitTimerRef.current = null;
-  };
-
-  const discardRecordedAudio = () => {
-    setRecordedAudio((current) => {
-      if (current) URL.revokeObjectURL(current.previewUrl);
-      return null;
-    });
-    setRecordingState("idle");
-    setRecordingSeconds(0);
-  };
-
-  const stopVoiceRecording = () => {
-    const recorder = mediaRecorderRef.current;
-    if (!recorder || recorder.state === "inactive") return;
-    recorder.stop();
-  };
-
-  const startVoiceRecording = async () => {
-    if (recordingState === "recording") {
-      stopVoiceRecording();
-      return;
-    }
-    if (!navigator.mediaDevices?.getUserMedia || typeof MediaRecorder === "undefined") {
-      setRecordingError("Voice recording is not supported by this browser.");
-      return;
-    }
-
-    setRecordingError("");
-    discardRecordedAudio();
-    try {
-      const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
-      const mimeType = ["audio/webm;codecs=opus", "audio/webm", "audio/ogg;codecs=opus", "audio/mp4"]
-        .find((candidate) => MediaRecorder.isTypeSupported(candidate));
-      const recorder = new MediaRecorder(stream, mimeType ? { mimeType } : undefined);
-      recordingStreamRef.current = stream;
-      mediaRecorderRef.current = recorder;
-      recordingChunksRef.current = [];
-      recorder.ondataavailable = (event) => {
-        if (event.data.size > 0) recordingChunksRef.current.push(event.data);
-      };
-      recorder.onerror = () => {
-        setRecordingError("The browser could not finish this recording. Please try again.");
-      };
-      recorder.onstop = () => {
-        clearRecordingTimers();
-        recordingStreamRef.current?.getTracks().forEach((track) => track.stop());
-        recordingStreamRef.current = null;
-        mediaRecorderRef.current = null;
-        const chunks = recordingChunksRef.current;
-        recordingChunksRef.current = [];
-        if (chunks.length === 0) {
-          setRecordingState("idle");
-          return;
-        }
-        const blob = new Blob(chunks, { type: recorder.mimeType || mimeType || "audio/webm" });
-        setRecordedAudio({ blob, previewUrl: URL.createObjectURL(blob) });
-        setRecordingState("ready");
-      };
-      recorder.start();
-      setRecordingSeconds(0);
-      setRecordingState("recording");
-      recordingTimerRef.current = window.setInterval(() => setRecordingSeconds((seconds) => seconds + 1), 1_000);
-      recordingLimitTimerRef.current = window.setTimeout(stopVoiceRecording, 60_000);
-    } catch {
-      recordingStreamRef.current?.getTracks().forEach((track) => track.stop());
-      recordingStreamRef.current = null;
-      mediaRecorderRef.current = null;
-      setRecordingState("idle");
-      setRecordingError("Microphone access was denied or unavailable. Check the browser permission and try again.");
-    }
-  };
-
-  useEffect(() => () => {
-    clearRecordingTimers();
-    mediaRecorderRef.current?.stop();
-    recordingStreamRef.current?.getTracks().forEach((track) => track.stop());
-    if (recordedAudio) URL.revokeObjectURL(recordedAudio.previewUrl);
-  }, [recordedAudio]);
-
-  useEffect(() => {
-    if (initialQuizSetId) {
-      setSelectedQuizId(initialQuizSetId);
-      return;
-    }
-    if (!startInCreateMode && !selectedQuizId && data.quizSets[0]) setSelectedQuizId(data.quizSets[0].id);
-  }, [data.quizSets, initialQuizSetId, selectedQuizId, startInCreateMode]);
-
-  const selectedQuiz = data.quizSets.find((quiz) => quiz.id === selectedQuizId);
-  useEffect(() => {
-    const quiz = data.quizSets.find((item) => item.id === selectedQuizId);
-    if (!quiz || startInCreateMode) return;
-    setQuizForm({
-      title: quiz.title,
-      description: quiz.description ?? "",
-      subject: quiz.subject ?? "",
-      topic: quiz.topic ?? "",
-      gradeLevel: quiz.gradeLevel ?? "",
-      language: quiz.language ?? "English",
-      visibility: quiz.visibility ?? "PRIVATE"
-    });
-  }, [data.quizSets, selectedQuizId, startInCreateMode]);
-  const generatedQuestions = useMemo(() => createGeneratedQuestions(bulkText).slice(0, 80), [bulkText]);
-  const importBadge = bulkText.trim() ? `${generatedQuestions.length} ready` : `${selectedQuiz?.questions.length ?? 0} in quiz`;
-
-  const createQuiz = async (event: React.FormEvent) => {
-    event.preventDefault();
-    if (isCreatingQuiz) return;
-    status.clear();
-    setIsCreatingQuiz(true);
-    try {
-      const payload = (await teacherApi.createQuizSet(quizForm)) as { quizSet: QuizSet };
-      setSelectedQuizId(payload.quizSet.id);
-      setQuizForm({ title: "", description: "", subject: "", topic: "", gradeLevel: "", language: "English", visibility: "PRIVATE" });
-      await onRefresh();
-      status.setMessage("Question set created. It’s ready for questions.");
-    } catch (err) {
-      status.report(err);
-    } finally {
-      setIsCreatingQuiz(false);
-    }
-  };
-
-  const saveStudySetDetails = async (event: React.FormEvent) => {
-    event.preventDefault();
-    if (!selectedQuiz || isSavingDetails) return;
-    setIsSavingDetails(true);
-    status.clear();
-    try {
-      await teacherApi.updateStudySet(selectedQuiz.id, quizForm);
-      await onRefresh();
-      status.setMessage("Study Set details saved.");
-    } catch (err) {
-      status.report(err);
-    } finally {
-      setIsSavingDetails(false);
-    }
-  };
-
-  const addQuestion = async (event: React.FormEvent) => {
-    event.preventDefault();
-    if (!selectedQuiz || isAddingQuestion) return;
-    status.clear();
-    setIsAddingQuestion(true);
-    try {
-      const wasEditing = Boolean(editingQuestionId);
-      const payload = wasEditing
-        ? await teacherApi.updateQuestion(editingQuestionId!, questionForm)
-        : await teacherApi.addQuestion(selectedQuiz.id, questionForm);
-      const savedQuestion = (payload as { question?: QuizSet["questions"][number] }).question;
-      if (recordedAudio && savedQuestion) {
-        // Saving the question first gives a new question a stable ID for its
-        // durable audio asset. If upload fails, leave the form and recording
-        // in place so the teacher can retry without losing the clip.
-        if (!wasEditing) setEditingQuestionId(savedQuestion.id);
-        await teacherApi.uploadQuestionAudio(savedQuestion.id, recordedAudio.blob);
-      }
-      setQuestionForm(emptyQuestion);
-      setEditingQuestionId(null);
-      discardRecordedAudio();
-      await onRefresh();
-      status.setMessage(wasEditing ? "Question updated." : "Question added.");
-    } catch (err) {
-      status.report(err);
-    } finally {
-      setIsAddingQuestion(false);
-    }
-  };
-
-  const beginEditingQuestion = (question: QuizSet["questions"][number]) => {
-    discardRecordedAudio();
-    setRecordingError("");
-    setEditingQuestionId(question.id);
-    setQuestionBuilderMode("manual");
-    setQuestionForm({
-      prompt: question.prompt,
-      choiceA: question.choiceA,
-      choiceB: question.choiceB,
-      choiceC: question.choiceC,
-      choiceD: question.choiceD,
-      correctChoice: question.correctChoice,
-      difficulty: question.difficulty ?? "",
-      explanation: question.explanation ?? "",
-      audioUrl: question.audioUrl ?? ""
-    });
-  };
-
-  const deleteQuestion = async (questionId: string) => {
-    if (!window.confirm("Delete this question? This cannot be undone.")) return;
-    status.clear();
-    try {
-      await teacherApi.deleteQuestion(questionId);
-      if (editingQuestionId === questionId) {
-        setEditingQuestionId(null);
-        setQuestionForm(emptyQuestion);
-        discardRecordedAudio();
-      }
-      await onRefresh();
-      status.setMessage("Question deleted.");
-    } catch (err) {
-      status.report(err);
-    }
-  };
-
-  const importQuestions = async () => {
-    if (!selectedQuiz || isImporting) return;
-    status.clear();
-    if (generatedQuestions.length === 0) {
-      status.setError("Paste at least two study items to build questions.");
-      return;
-    }
-
-    setIsImporting(true);
-    try {
-      for (const draft of generatedQuestions) {
-        await teacherApi.addQuestion(selectedQuiz.id, draft);
-      }
-      setBulkText("");
-      await onRefresh();
-      status.setMessage(`${generatedQuestions.length} questions are ready to review.`);
-    } catch (err) {
-      status.report(err);
-    } finally {
-      setIsImporting(false);
-    }
-  };
-
-  const importStudyFile = async (event: React.ChangeEvent<HTMLInputElement>) => {
-    const file = event.currentTarget.files?.[0];
-    if (!file) return;
-    status.clear();
-    try {
-      setBulkText(await file.text());
-      status.setMessage(`${file.name} is ready. Review the preview, then add the questions.`);
-    } catch (err) {
-      status.report(err);
-    } finally {
-      event.currentTarget.value = "";
-    }
+  const openGameSession = (session: GameSession) => {
+    setSelectedSession(session);
+    setLaunchQuizId(session.quizSetId);
+    setTab("sessions");
+    onNavigate(`/quiz-strike/teacher/host/${encodeURIComponent(session.quizSetId)}`, "teacher");
   };
 
   return (
-    <div className={`two-column quiz-manager-shell ${startInCreateMode ? "quiz-create-mode" : "quiz-edit-mode"}`}>
-      {startInCreateMode && !selectedQuiz ? <form className="panel form-panel quiz-create-panel" onSubmit={createQuiz}>
-        <span className="teacher-eyebrow">New question set</span>
-        <h2>Create a set</h2>
-        <p>Give this set a clear name. You can add questions next.</p>
-        <label>
-          Set name
-          <input placeholder="e.g. Unit 3 review" value={quizForm.title} onChange={(event) => setQuizForm({ ...quizForm, title: event.target.value })} />
-        </label>
-        <label>
-          Description <small>(optional)</small>
-          <textarea
-            placeholder="What does this set cover?"
-            value={quizForm.description}
-            onChange={(event) => setQuizForm({ ...quizForm, description: event.target.value })}
-          />
-        </label>
-        <div className="study-set-form-grid"><label>Subject<input placeholder="e.g. English" value={quizForm.subject} onChange={(event) => setQuizForm({ ...quizForm, subject: event.target.value })} /></label><label>Grade / level<input placeholder="e.g. Eiken Pre-2" value={quizForm.gradeLevel} onChange={(event) => setQuizForm({ ...quizForm, gradeLevel: event.target.value })} /></label><label>Topic<input placeholder="e.g. Vocabulary" value={quizForm.topic} onChange={(event) => setQuizForm({ ...quizForm, topic: event.target.value })} /></label><label>Language<input value={quizForm.language} onChange={(event) => setQuizForm({ ...quizForm, language: event.target.value })} /></label></div>
-        <div className="study-set-visibility-fieldset"><strong>New Study Sets start private</strong><span><LockKeyhole size={14} aria-hidden="true" /> Add questions first, then publish intentionally from the Study Set editor.</span></div>
-        <button className="primary" type="submit" disabled={isCreatingQuiz}>
-          <Plus size={18} aria-hidden="true" />
-          {isCreatingQuiz ? "Creating..." : "Create set"}
-        </button>
-      </form> : (
-        <aside className="panel quiz-context-panel">
-          <span className="teacher-eyebrow">Question workspace</span>
-          <h2>{selectedQuiz?.title ?? "Question sets"}</h2>
-          <p>{selectedQuiz ? "Add questions here, then host this set when it is ready." : "Build, review, and prepare this set for its next game."}</p>
-          <div className="quiz-context-stat"><strong>{selectedQuiz?.questions.length ?? 0}</strong><span>questions in this set</span></div>
-          <div className="quiz-context-note"><Zap size={18} aria-hidden="true" /><span>When you are ready, host this set and choose Capture the Flag, Zombie Survival, or Team Tag.</span></div>
-        </aside>
+    <TeacherShell
+      teacher={teacher}
+      tab={tab}
+      isLiveSetup={isLiveSetup}
+      activeSetupSection={activeSetupSection}
+      onSetupSectionChange={setActiveSetupSection}
+      onNavigateTab={navigateTeacherTab}
+      onCreateStudySet={() => openQuizManager()}
+      onCreateSpeakingActivity={() => onNavigate(teacherSpeakingPath("create"), "teacher")}
+      onLogout={onLogout}
+      activeSessions={activeSessions}
+      selectedSessionId={selectedSession?.id}
+      onOpenSession={openGameSession}
+    >
+      <StatusMessages error={status.error} message={status.message} />
+      {isSocketReconnecting && (
+        <p className="connection-banner">
+          <WifiOff size={16} aria-hidden="true" />
+          Connection paused · trying again...
+        </p>
       )}
 
-      <div className="panel quiz-editor-panel">
-          <div className="quiz-editor-heading">
-          <div>
-            <span className="teacher-eyebrow">Active question set</span>
-            <h2>{selectedQuiz?.title ?? "Choose a question set"}</h2>
-            {selectedQuiz && <p>{selectedQuiz.questions.length} {selectedQuiz.questions.length === 1 ? "question" : "questions"} · Build in bulk or add questions one at a time.</p>}
-          </div>
-          {selectedQuiz && (
-            <span className={`quiz-save-status${selectedQuiz.questions.length === 0 ? " is-draft" : ""}`}>
-              {selectedQuiz.questions.length > 0 && <Check size={15} aria-hidden="true" />}
-              {selectedQuiz.questions.length > 0 ? "Ready to host" : "Draft"}
-            </span>
-          )}
-          </div>
-          {selectedQuiz && <form className="study-set-details-form" onSubmit={saveStudySetDetails}><div className="study-set-details-heading"><div><span className="teacher-eyebrow">Study Set details</span><p>Private is the default. Publishing requires at least two complete questions.</p></div><button className="secondary-button small-button" type="submit" disabled={isSavingDetails}>{isSavingDetails ? "Saving…" : "Save details"}</button></div><div className="study-set-form-grid"><label>Title<input value={quizForm.title} onChange={(event) => setQuizForm({ ...quizForm, title: event.target.value })} /></label><label>Subject<input value={quizForm.subject} onChange={(event) => setQuizForm({ ...quizForm, subject: event.target.value })} /></label><label>Grade / level<input value={quizForm.gradeLevel} onChange={(event) => setQuizForm({ ...quizForm, gradeLevel: event.target.value })} /></label><label>Topic<input value={quizForm.topic} onChange={(event) => setQuizForm({ ...quizForm, topic: event.target.value })} /></label><label>Language<input value={quizForm.language} onChange={(event) => setQuizForm({ ...quizForm, language: event.target.value })} /></label></div><label>Description<textarea value={quizForm.description} onChange={(event) => setQuizForm({ ...quizForm, description: event.target.value })} /></label><fieldset className="study-set-visibility-fieldset"><legend>Visibility</legend><label><input type="radio" name={`study-set-visibility-${selectedQuiz.id}`} checked={quizForm.visibility === "PRIVATE"} onChange={() => setQuizForm({ ...quizForm, visibility: "PRIVATE" })} /> <LockKeyhole size={14} aria-hidden="true" /> Private — only you</label><label><input type="radio" name={`study-set-visibility-${selectedQuiz.id}`} checked={quizForm.visibility === "PUBLIC"} onChange={() => setQuizForm({ ...quizForm, visibility: "PUBLIC" })} /> <Globe2 size={14} aria-hidden="true" /> Public — other teachers can find and use it</label></fieldset></form>}
-          {!startInCreateMode && <label className="quiz-set-picker">
-            Switch question set
-            <select value={selectedQuizId} onChange={(event) => setSelectedQuizId(event.target.value)}>
-              {data.quizSets.map((quiz) => <option key={quiz.id} value={quiz.id}>{quiz.title}</option>)}
-            </select>
-          </label>}
-        {selectedQuiz ? (
-          <>
-            <div className="question-builder-tabs" role="tablist" aria-label="Choose how to add questions">
-              <button type="button" role="tab" aria-selected={questionBuilderMode === "bulk"} className={questionBuilderMode === "bulk" ? "active" : ""} onClick={() => setQuestionBuilderMode("bulk")}>From a study list</button>
-              <button type="button" role="tab" aria-selected={questionBuilderMode === "manual"} className={questionBuilderMode === "manual" ? "active" : ""} onClick={() => setQuestionBuilderMode("manual")}>One question</button>
-            </div>
-
-            {questionBuilderMode === "bulk" ? <div className="import-builder" role="tabpanel">
-              <div className="panel-title">
-                <div>
-                  <span className="teacher-eyebrow">Fastest way to build</span>
-                  <h3>Turn a study list into questions</h3>
-                </div>
-                <span>{importBadge}</span>
-              </div>
-              <p>
-                Paste one term and definition per line. We’ll create questions for you to review.
-              </p>
-              <textarea
-                className="bulk-textarea"
-                value={bulkText}
-                onChange={(event) => setBulkText(event.target.value)}
-                placeholder={sampleImportText}
-              />
-              <div className="button-row">
-                <label className="file-import-button">
-                  <input type="file" accept=".txt,.csv,.tsv,text/plain,text/csv" onChange={importStudyFile} />
-                  <ClipboardPaste size={18} aria-hidden="true" />
-                  Upload file
-                </label>
-                <button type="button" onClick={() => setBulkText(sampleImportText)}>
-                  <ClipboardPaste size={18} aria-hidden="true" />
-                  Use example
-                </button>
-                <button className="primary" type="button" onClick={importQuestions} disabled={isImporting}>
-                  <WandSparkles size={18} aria-hidden="true" />
-                  {isImporting ? "Creating..." : "Create questions"}
-                </button>
-              </div>
-              {generatedQuestions.length > 0 && (
-                <div className="import-preview">
-                  <strong>Preview {Math.min(5, generatedQuestions.length)} questions</strong>
-                  <div className="import-preview-list">
-                    {generatedQuestions.slice(0, 5).map((draft, index) => (
-                      <div key={`${draft.prompt}-${index}`} className="import-preview-item">
-                        <span>{index + 1}. {draft.prompt}</span>
-                        <small>Answer: {getDraftChoiceText(draft)}</small>
-                      </div>
-                    ))}
-                  </div>
-                  <small>{generatedQuestions.length} questions will be added to this quiz.</small>
-                </div>
-              )}
-            </div> : (
-
-            <form className="question-form" role="tabpanel" onSubmit={addQuestion}>
-              <div className="question-form-heading">
-                <span className="teacher-eyebrow">Manual editor</span>
-                <h3>{editingQuestionId ? "Edit question" : "Add one question"}</h3>
-                <p>Write the prompt, four choices, and the correct answer.</p>
-              </div>
-              <label>
-                Question prompt
-                <textarea
-                  placeholder="What do you want players to answer?"
-                  value={questionForm.prompt}
-                  onChange={(event) => setQuestionForm({ ...questionForm, prompt: event.target.value })}
-                />
-              </label>
-              <div className="choice-grid">
-                {choices.map((choice) => (
-                  <label key={choice}>
-                    Answer {choice}
-                    <input
-                      value={questionForm[`choice${choice}` as keyof typeof questionForm]}
-                      onChange={(event) => setQuestionForm({ ...questionForm, [`choice${choice}`]: event.target.value })}
-                    />
-                  </label>
-                ))}
-              </div>
-              <div className="choice-grid">
-                <label>
-                  Correct answer
-                  <select
-                    value={questionForm.correctChoice}
-                    onChange={(event) => setQuestionForm({ ...questionForm, correctChoice: event.target.value })}
-                  >
-                    {choices.map((choice) => (
-                      <option key={choice} value={choice}>
-                        {choice}
-                      </option>
-                    ))}
-                  </select>
-                </label>
-                <label>
-                  Difficulty
-                  <input
-                    value={questionForm.difficulty}
-                    onChange={(event) => setQuestionForm({ ...questionForm, difficulty: event.target.value })}
-                  />
-                </label>
-              </div>
-              <label>
-                Explanation
-                <textarea
-                  value={questionForm.explanation}
-                  onChange={(event) => setQuestionForm({ ...questionForm, explanation: event.target.value })}
-                />
-              </label>
-              <label>
-                  Question audio <small>(optional)</small>
-                <input
-                  type="text"
-                  inputMode="url"
-                  value={questionForm.audioUrl}
-                  onChange={(event) => setQuestionForm({ ...questionForm, audioUrl: event.target.value })}
-                  placeholder="Paste an audio link, or leave this blank"
-                />
-              </label>
-              <div className="question-audio-recorder">
-                <div className="question-audio-recorder-actions">
-                  <button
-                    type="button"
-                    className={recordingState === "recording" ? "recording-button" : ""}
-                    onClick={() => void startVoiceRecording()}
-                    disabled={isAddingQuestion || recordingState === "ready"}
-                  >
-                    {recordingState === "recording" ? <Square size={16} aria-hidden="true" /> : <Mic size={17} aria-hidden="true" />}
-                    {recordingState === "recording" ? `Stop recording (${String(Math.floor(recordingSeconds / 60)).padStart(2, "0")}:${String(recordingSeconds % 60).padStart(2, "0")})` : "Record the question"}
-                  </button>
-                  {recordedAudio && (
-                    <button type="button" onClick={discardRecordedAudio} disabled={isAddingQuestion}>
-                      <Trash2 size={16} aria-hidden="true" />
-                      Remove recording
-                    </button>
-                  )}
-                </div>
-                <small>Record up to 60 seconds. The clip saves with the question.</small>
-                {recordedAudio && <audio controls preload="metadata" src={recordedAudio.previewUrl} aria-label="Recorded question audio preview" />}
-                {recordingError && <span className="field-error">{recordingError}</span>}
-              </div>
-              <div className="question-form-actions">
-                <button className="primary" type="submit" disabled={isAddingQuestion}>
-                  <Plus size={18} aria-hidden="true" />
-                  {isAddingQuestion ? "Saving..." : editingQuestionId ? "Save question" : "Add question"}
-                </button>
-                {editingQuestionId && <button type="button" onClick={() => { setEditingQuestionId(null); setQuestionForm(emptyQuestion); discardRecordedAudio(); }}>Cancel</button>}
-              </div>
-            </form>
-            )}
-            <div className="question-list-heading">
-              <div><span className="teacher-eyebrow">Set contents</span><h3>Questions</h3></div>
-              <span>{selectedQuiz.questions.length}</span>
-            </div>
-            <ul className="question-list">
-              {selectedQuiz.questions.map((question, index) => (
-                <li key={question.id}>
-                  <div className="question-list-copy">
-                    <strong>{index + 1}. {question.prompt}</strong>
-                    <span>Answer {question.correctChoice} · {question.difficulty || "Standard"} · {question.explanation ? "Explanation added" : "No explanation yet"}{question.audioUrl ? " · Audio added" : ""}</span>
-                  </div>
-                  <div className="question-list-actions">
-                    <button type="button" onClick={() => beginEditingQuestion(question)}>Edit</button>
-                    <button type="button" className="danger-text" onClick={() => void deleteQuestion(question.id)}>Delete</button>
-                  </div>
-                </li>
-              ))}
-              {selectedQuiz.questions.length === 0 && <li className="question-list-empty"><div><strong>No questions yet</strong><span>Paste a study list or add the first question manually.</span></div></li>}
-            </ul>
-          </>
-        ) : (
-          <p>Create a question set to start adding questions.</p>
-        )}
-        <StatusMessages error={status.error} message={status.message} />
-      </div>
-    </div>
+      {tab === "home" && <TeacherHome teacher={teacher} quizSets={data.quizSets} sessions={data.sessions} recognition={data.recognition} onCreate={() => openQuizManager()} onDiscover={() => navigateTeacherTab("discover")} onLibrary={() => navigateTeacherTab("library")} onReports={() => navigateTeacherTab("reports")} onHost={(quizSetId) => void openStudySetForGame(quizSetId)} onOpenSession={openGameSession} onOpenSet={openStudySet} onStartQuizStrike={() => navigateTeacherTab("library")} onStartSpeaking={() => navigateTeacherTab("speaking")} onCreateSpeaking={() => onNavigate(teacherSpeakingPath("create"), "teacher")} />}
+      {tab === "quizzes" && (
+        <StudySetEditor
+          key={`${quizManagerRequest.mode}:${quizManagerRequest.quizSetId ?? "new"}`}
+          data={data}
+          onRefresh={refresh}
+          initialQuizSetId={quizManagerRequest.quizSetId}
+          startInCreateMode={quizManagerRequest.mode === "create"}
+        />
+      )}
+      {tab === "discover" && <StudySetLibrary data={data} scope="public" dashboardLoading={isDashboardLoading} dashboardError={dashboardError} onRefresh={refresh} onEditQuiz={openQuizManager} onPlayLive={openStudySetForGame} onOpenStudySet={openStudySet} />}
+      {tab === "library" && <StudySetLibrary data={data} scope="mine" dashboardLoading={isDashboardLoading} dashboardError={dashboardError} onRefresh={refresh} onEditQuiz={openQuizManager} onPlayLive={openStudySetForGame} onOpenStudySet={openStudySet} />}
+      {tab === "detail" && detailStudySetId && <StudySetDetail studySetId={detailStudySetId} isOwner={data.quizSets.some((quiz) => quiz.id === detailStudySetId)} onBack={() => navigateTeacherTab(data.quizSets.some((quiz) => quiz.id === detailStudySetId) ? "library" : "discover")} onHost={(quizSetId) => void openStudySetForGame(quizSetId)} onEdit={openQuizManager} onCopy={async (quizSetId) => { try { await teacherApi.duplicateStudySet(quizSetId); await refresh(); navigateTeacherTab("library"); } catch (error) { status.report(error); } }} />}
+      {tab === "sessions" && (
+        <SessionManager
+          data={data}
+          availableStudySets={availableStudySets}
+          selectedSession={selectedSession}
+          setSelectedSession={setSelectedSession}
+          onRefresh={refresh}
+          onReport={setReport}
+          onOpenReports={() => navigateTeacherTab("reports")}
+          onBrowseStudySets={() => navigateTeacherTab("discover")}
+          initialQuizSetId={launchQuizId}
+          activeSetupSection={activeSetupSection}
+        />
+      )}
+      {tab === "reports" && (
+        <ReportsPanel
+          sessions={data.sessions}
+          quizSets={data.quizSets}
+          reports={data.reports}
+          report={report}
+          setReport={setReport}
+          setTab={setTab}
+          onRefresh={refresh}
+        />
+      )}
+      {tab === "settings" && (
+        <GamePreferencesPanel
+          preferences={gamePreferences}
+          onChange={updateGamePreferences}
+          audioOnly
+        />
+      )}
+      {tab === "tournaments" && <Suspense fallback={<ArenaLoading label="Loading tournament center" />}><TournamentCenter teacher={teacher} quizSets={data.quizSets.map((quiz) => ({ id: quiz.id, title: quiz.title }))} /></Suspense>}
+      {tab === "speaking" && (
+        <Suspense fallback={<ArenaLoading label="Loading Speaking Practice" />}>
+          <SpeakingTeacherWorkspace initialPath={initialPath} onNavigate={(path) => onNavigate(path, "teacher")} />
+        </Suspense>
+      )}
+    </TeacherShell>
   );
 }
 

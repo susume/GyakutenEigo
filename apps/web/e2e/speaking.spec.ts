@@ -12,11 +12,24 @@ test("logged-out teacher returns to the Speaking builder after existing auth", a
   const page = await context.newPage();
   try {
     await page.goto("/speak/teacher/create");
-    await expect(page.getByRole("heading", { name: "Sign in to QuizStrike" })).toBeVisible();
+    await expect(page.getByRole("heading", { name: "Sign in to GyakutenEigo" })).toBeVisible();
+    await expect(page).toHaveURL(/\/quiz-strike\/teacher\/speaking\/create$/);
     await page.getByLabel("Email").fill(email);
     await page.getByLabel("Password", { exact: true }).fill("speaking-pass");
     await page.getByRole("button", { name: "Sign in", exact: true }).click();
-    await expect(page).toHaveURL(/\/speak\/teacher\/create$/);
+    await expect(page).toHaveURL(/\/quiz-strike\/teacher\/speaking\/create$/);
+    await expect(page.getByRole("heading", { name: "Create an activity" })).toBeVisible();
+    await expect(page.getByRole("button", { name: "Speaking Practice", exact: true })).toHaveClass(/active/);
+    await page.getByRole("button", { name: "Speaking Practice", exact: true }).click();
+    await expect(page).toHaveURL(/\/quiz-strike\/teacher\/speaking$/);
+    await expect(page.getByRole("heading", { name: "Speaking Practice", exact: true })).toBeVisible();
+    await expect(page.locator(".speaking-embedded-teacher .speaking-teacher-sidebar")).toBeHidden();
+    await page.getByRole("button", { name: "Home", exact: true }).click();
+    await expect(page).toHaveURL(/\/quiz-strike\/teacher\/home$/);
+    await expect(page.getByRole("heading", { name: /Welcome back/ })).toBeVisible();
+    await page.getByRole("button", { name: "Speaking Practice", exact: true }).click();
+    await page.getByRole("complementary", { name: "Teacher sections" }).getByRole("button", { name: "New activity", exact: true }).click();
+    await expect(page).toHaveURL(/\/quiz-strike\/teacher\/speaking\/create$/);
     await expect(page.getByRole("heading", { name: "Create an activity" })).toBeVisible();
   } finally {
     await context.close();
@@ -35,11 +48,14 @@ test("teacher and student Speaking Practice screens use the connected mock API",
   const teacherContext = await browser.newContext();
   const teacherPage = await teacherContext.newPage();
   await teacherPage.addInitScript((token) => localStorage.setItem("quizstrike_token", token), teacherToken);
-  await teacherPage.goto("/speak/teacher/create");
+  await teacherPage.goto("/quiz-strike/teacher/speaking/create");
   await expect(teacherPage.getByRole("heading", { name: "Create an activity" })).toBeVisible();
   await teacherPage.getByRole("button", { name: "Create activity", exact: true }).last().click();
-  await expect(teacherPage.getByRole("button", { name: "Launch session", exact: true })).toBeVisible();
   const activityId = new URL(teacherPage.url()).pathname.split("/").pop()!;
+  await teacherPage.goto(`/quiz-strike/teacher/speaking/activity/${activityId}/results`);
+  await expect(teacherPage.getByRole("heading", { name: "No classroom sessions yet" })).toBeVisible();
+  await teacherPage.getByRole("button", { name: "Open activity", exact: true }).click();
+  await expect(teacherPage.getByRole("button", { name: "Launch session", exact: true })).toBeVisible();
   await teacherPage.getByRole("button", { name: "Launch session", exact: true }).click();
   await expect(teacherPage.locator(".speaking-join-code-block strong")).toBeVisible();
   const joinCode = await teacherPage.locator(".speaking-join-code-block strong").innerText();
@@ -90,7 +106,7 @@ test("teacher and student Speaking Practice screens use the connected mock API",
   await studentPage.getByRole("button", { name: "Finish", exact: true }).click();
   await expect(studentPage.getByRole("heading", { name: "今回の結果" })).toBeVisible({ timeout: 15_000 });
 
-  await teacherPage.goto(`/speak/teacher/activity/${activityId}/results?sessionId=${encodeURIComponent(session!.id)}`);
+  await teacherPage.goto(`/quiz-strike/teacher/speaking/activity/${activityId}/results?sessionId=${encodeURIComponent(session!.id)}`);
   await expect(teacherPage.locator(".speaking-results-table-row").filter({ hasText: "Aki" })).toContainText("Completed");
   await expect(teacherPage.locator(".speaking-table-score")).not.toHaveText("—");
 

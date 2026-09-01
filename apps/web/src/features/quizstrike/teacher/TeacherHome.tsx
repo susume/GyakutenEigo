@@ -1,4 +1,4 @@
-import { BookOpen, ChevronRight, Globe2, Play, Plus, Trophy, UsersRound } from "lucide-react";
+import { BookOpen, ChevronRight, Globe2, Mic, Play, Plus, Trophy, UsersRound } from "lucide-react";
 import type { GameSession, QuizSet, RecognitionSummary, TeacherUser } from "@quizstrike/shared";
 
 type TeacherHomeProps = {
@@ -11,12 +11,16 @@ type TeacherHomeProps = {
   onLibrary: () => void;
   onReports: () => void;
   onHost: (quizSetId: string) => void;
+  onOpenSession: (session: GameSession) => void;
   onOpenSet: (quizSetId: string) => void;
+  onStartQuizStrike: () => void;
+  onStartSpeaking: () => void;
+  onCreateSpeaking: () => void;
 };
 
 const formatDate = (value: string) => new Date(value).toLocaleDateString(undefined, { month: "short", day: "numeric" });
 
-export default function TeacherHome({ teacher, quizSets, sessions, recognition, onCreate, onDiscover, onLibrary, onReports, onHost, onOpenSet }: TeacherHomeProps) {
+export default function TeacherHome({ teacher, quizSets, sessions, recognition, onCreate, onDiscover, onLibrary, onReports, onHost, onOpenSession, onOpenSet, onStartQuizStrike, onStartSpeaking, onCreateSpeaking }: TeacherHomeProps) {
   const activeSession = sessions.find((session) => session.status !== "ended");
   const recentSets = [...quizSets].sort((left, right) => (right.updatedAt ?? right.createdAt).localeCompare(left.updatedAt ?? left.createdAt)).slice(0, 3);
   const recentGames = sessions.filter((session) => session.status === "ended").slice(0, 3);
@@ -27,7 +31,7 @@ export default function TeacherHome({ teacher, quizSets, sessions, recognition, 
         <div>
           <span className="teacher-eyebrow">Teacher home</span>
           <h2 id="teacher-home-title">Welcome back, {teacher.name.split(" ")[0]}</h2>
-          <p>Find a Study Set, make one, and get your class into the game.</p>
+          <p>Choose a QuizStrike game or a Speaking Practice session for your class.</p>
         </div>
         <div className="teacher-home-hero-actions">
           <button className="primary" onClick={onCreate}><Plus size={18} aria-hidden="true" />Create Study Set</button>
@@ -42,9 +46,40 @@ export default function TeacherHome({ teacher, quizSets, sessions, recognition, 
             <h3 id="active-game-title">{activeSession.sessionCode} is waiting for your class</h3>
             <p>{activeSession.players.length} joined · {activeSession.settings.gameMode === "flag" ? "Capture the Flag" : activeSession.settings.gameMode === "zombie" ? "Zombie Survival" : activeSession.settings.gameMode === "athletics" ? "Athletics Race" : "Team Tag"}</p>
           </div>
-          <button className="primary" onClick={() => onHost(activeSession.quizSetId)}><Play size={17} aria-hidden="true" />Open lobby</button>
+          <button className="primary" onClick={() => onOpenSession(activeSession)}><Play size={17} aria-hidden="true" />Open lobby</button>
         </section>
       )}
+
+      <section className="teacher-home-section teacher-quick-actions" aria-labelledby="teacher-quick-actions-title">
+        <div className="teacher-home-section-heading">
+          <div>
+            <span className="teacher-eyebrow">Start a class activity</span>
+            <h3 id="teacher-quick-actions-title">What would you like to do with your class?</h3>
+          </div>
+        </div>
+        <div className="teacher-action-card-grid">
+          <button type="button" className="teacher-action-card teacher-action-card-quizstrike" onClick={onStartQuizStrike}>
+            <span className="teacher-action-card-icon"><Play size={20} aria-hidden="true" /></span>
+            <span><strong>Start QuizStrike</strong><small>Choose a Study Set and open a classroom game.</small></span>
+            <ChevronRight size={18} aria-hidden="true" />
+          </button>
+          <button type="button" className="teacher-action-card teacher-action-card-speaking" onClick={onStartSpeaking}>
+            <span className="teacher-action-card-icon"><Mic size={20} aria-hidden="true" /></span>
+            <span><strong>Start Speaking Practice</strong><small>Choose an activity and launch a speaking session.</small></span>
+            <ChevronRight size={18} aria-hidden="true" />
+          </button>
+          <button type="button" className="teacher-action-card teacher-action-card-quiet" onClick={onCreate}>
+            <span className="teacher-action-card-icon"><Plus size={20} aria-hidden="true" /></span>
+            <span><strong>Create Study Set</strong><small>Build a new set of questions for your next game.</small></span>
+            <ChevronRight size={18} aria-hidden="true" />
+          </button>
+          <button type="button" className="teacher-action-card teacher-action-card-quiet" onClick={onCreateSpeaking}>
+            <span className="teacher-action-card-icon"><Mic size={20} aria-hidden="true" /></span>
+            <span><strong>Create Speaking Activity</strong><small>Set the situation, rubric, and feedback language.</small></span>
+            <ChevronRight size={18} aria-hidden="true" />
+          </button>
+        </div>
+      </section>
 
       <section className="teacher-home-section" aria-labelledby="recent-sets-title">
         <div className="teacher-home-section-heading"><div><span className="teacher-eyebrow">Keep playing</span><h3 id="recent-sets-title">Recently used</h3></div><button className="link-button" onClick={onLibrary}>View library <ChevronRight size={16} aria-hidden="true" /></button></div>
