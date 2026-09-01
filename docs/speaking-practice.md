@@ -45,14 +45,13 @@ SPEAKING_AI_PROVIDER=gemini
 SPEAKING_TRANSCRIPTION_PROVIDER=gemini
 SPEAKING_GEMINI_API_KEY=server-only-secret
 SPEAKING_GEMINI_MODEL=gemini-2.5-flash-lite
-SPEAKING_GEMINI_TRANSCRIPTION_MODEL=gemini-2.5-flash-lite
+SPEAKING_GEMINI_TRANSCRIPTION_MODEL=gemini-3.5-transcribe
 SPEAKING_SESSION_LIFETIME_SECONDS=28800
 ```
 
 The OpenAI adapters remain available as an alternative by selecting `openai` for
 both providers and supplying the corresponding OpenAI variables. A hybrid setup
-is also supported and is the preferred latency experiment when an OpenAI key is
-available:
+is also supported when an OpenAI key is available:
 
 ```text
 SPEAKING_AI_PROVIDER=gemini

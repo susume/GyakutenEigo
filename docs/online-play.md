@@ -72,7 +72,7 @@ SPEAKING_AI_PROVIDER=gemini
 SPEAKING_TRANSCRIPTION_PROVIDER=gemini
 SPEAKING_GEMINI_API_KEY=<Render secret>
 SPEAKING_GEMINI_MODEL=gemini-2.5-flash-lite
-SPEAKING_GEMINI_TRANSCRIPTION_MODEL=gemini-2.5-flash-lite
+SPEAKING_GEMINI_TRANSCRIPTION_MODEL=gemini-3.5-transcribe
 ~~~
 
 Never put `DATABASE_URL`, `JWT_SECRET`, provider keys, Supabase credentials,

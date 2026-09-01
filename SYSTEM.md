@@ -240,7 +240,7 @@ SPEAKING_AI_PROVIDER=gemini
 SPEAKING_TRANSCRIPTION_PROVIDER=gemini
 SPEAKING_GEMINI_API_KEY=<server-only secret>
 SPEAKING_GEMINI_MODEL=gemini-2.5-flash-lite
-SPEAKING_GEMINI_TRANSCRIPTION_MODEL=gemini-2.5-flash-lite
+SPEAKING_GEMINI_TRANSCRIPTION_MODEL=gemini-3.5-transcribe
 ```
 
 The API sends audio and prompts from the server to Gemini. The browser never
@@ -282,7 +282,7 @@ SPEAKING_AI_PROVIDER=gemini
 SPEAKING_TRANSCRIPTION_PROVIDER=gemini
 SPEAKING_GEMINI_API_KEY=<server-only secret>
 SPEAKING_GEMINI_MODEL=gemini-2.5-flash-lite
-SPEAKING_GEMINI_TRANSCRIPTION_MODEL=gemini-2.5-flash-lite
+SPEAKING_GEMINI_TRANSCRIPTION_MODEL=gemini-3.5-transcribe
 ```
 
 `PORT` is provider-controlled on Render; the local default is 4000. Never put

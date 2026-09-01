@@ -31,6 +31,7 @@ import {
 } from "../speakingRepository.js";
 import {
   createSpeakingProviders,
+  speakingProviderFailureDetails,
   type ConversationProvider,
   type EvaluationProvider,
   type HelpProvider,
@@ -313,6 +314,13 @@ const logSpeakingLatency = (diagnostics: SpeakingLatencyDiagnostics) => {
   // Deliberately log only bounded timings and payload size. Never include
   // transcript text, audio bytes, participant identifiers, or provider keys.
   console.info(`[Speaking latency] ${JSON.stringify(diagnostics)}`);
+};
+
+const transcriptionFailureResponse = (kind: ReturnType<typeof speakingProviderFailureDetails>["kind"]) => {
+  if (kind === "timeout") return { code: "SPEAKING_TRANSCRIPTION_TIMEOUT", error: "Speech recognition took too long. Please try again." };
+  if (kind === "rate_limit" || kind === "unavailable" || kind === "network") return { code: "SPEAKING_TRANSCRIPTION_BUSY", error: "Speech recognition is temporarily busy. Please try again." };
+  if (kind === "bad_request") return { code: "SPEAKING_TRANSCRIPTION_AUDIO_INVALID", error: "That recording could not be read. Please record it again." };
+  return { code: "SPEAKING_TRANSCRIPTION_UNAVAILABLE", error: "Speech recognition is temporarily unavailable. Please try again." };
 };
 
 export const participantActiveElapsedMs = (participant: SpeakingParticipant, session: SpeakingSession, referenceTime: string) =>
@@ -732,8 +740,21 @@ export const registerSpeakingRoutes = (app: Application, deps: SpeakingRouteDepe
           const transcriptionStartedAt = performance.now();
           try {
             transcription = await transcriber.transcribe({ audio: parsed.audio ?? Buffer.from(parsed.text ?? "", "utf8"), mimeType: parsed.audio ? parsed.mimeType : "text/plain", languageHint: SPEAKING_PRACTICE_LANGUAGE, ...(parsed.speechDetected === undefined ? {} : { speechDetected: parsed.speechDetected }), ...(allowTextInput && textInput.success ? { text: textInput.data.text } : {}) });
-          } catch {
-            res.status(503).json({ error: "I couldn’t transcribe that recording. Please try again." });
+          } catch (error) {
+            const failure = speakingProviderFailureDetails(error);
+            // This log is intentionally safe: no transcript, audio, participant,
+            // session, request ID, provider response text, or credential is kept.
+            console.warn(`[Speaking provider failure] ${JSON.stringify({
+              operation: "transcription",
+              provider: transcriber.providerName ?? "custom",
+              kind: failure.kind,
+              ...(failure.status === undefined ? {} : { status: failure.status }),
+              durationMs: boundedSpeakingDurationMs(transcriptionStartedAt),
+              audioBytes: parsed.audio?.byteLength ?? 0,
+              audioDurationMs: parsed.audioDurationMs,
+              mimeType: parsed.mimeType
+            })}`);
+            res.status(503).json(transcriptionFailureResponse(failure.kind));
             return;
           } finally {
             latency.transcriptionMs = boundedSpeakingDurationMs(transcriptionStartedAt);

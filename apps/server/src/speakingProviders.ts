@@ -25,6 +25,8 @@ export interface TranscriptionResult {
 }
 
 export interface TranscriptionProvider {
+  /** Safe provider label for diagnostics. Custom test adapters may omit it. */
+  providerName?: SpeakingProviderName;
   transcribe(input: TranscriptionInput): Promise<TranscriptionResult>;
 }
 
@@ -55,6 +57,37 @@ export interface EvaluationProvider {
 }
 
 export type SpeakingProviderOperation = "transcription" | "conversation" | "help" | "evaluation";
+export type SpeakingProviderName = "mock" | "openai" | "gemini";
+export type SpeakingProviderFailureKind = "timeout" | "rate_limit" | "authentication" | "bad_request" | "unavailable" | "network" | "invalid_response" | "unknown";
+
+export class SpeakingProviderError extends Error {
+  readonly failureKind: SpeakingProviderFailureKind;
+  readonly status?: number;
+
+  constructor(message: string, failureKind: SpeakingProviderFailureKind, status?: number) {
+    super(message);
+    this.name = "SpeakingProviderError";
+    this.failureKind = failureKind;
+    this.status = status;
+  }
+}
+
+export const speakingProviderFailureDetails = (error: unknown): { kind: SpeakingProviderFailureKind; status?: number } =>
+  error instanceof SpeakingProviderError
+    ? { kind: error.failureKind, ...(error.status === undefined ? {} : { status: error.status }) }
+    : { kind: "unknown" };
+
+const failureKindForStatus = (status: number): SpeakingProviderFailureKind => {
+  if (status === 401 || status === 403) return "authentication";
+  if (status === 408) return "timeout";
+  if (status === 429) return "rate_limit";
+  if (status >= 500) return "unavailable";
+  if (status >= 400) return "bad_request";
+  return "unknown";
+};
+
+const providerHttpError = (provider: SpeakingProviderName, operation: SpeakingProviderOperation, status: number, message?: string) =>
+  new SpeakingProviderError(message?.trim() || `${provider} ${operation} failed with ${status}.`, failureKindForStatus(status), status);
 
 const DEFAULT_PROVIDER_TIMEOUTS_MS: Record<SpeakingProviderOperation, number> = {
   // These are deliberately bounded, but leave enough room for a classroom
@@ -97,7 +130,7 @@ const fetchWithSpeakingTimeout = async (
   const timeout = new Promise<never>((_, reject) => {
     timeoutId = setTimeout(() => {
       controller.abort();
-      reject(new Error(`Speaking ${operation} provider timed out after ${timeoutMs}ms.`));
+      reject(new SpeakingProviderError(`Speaking ${operation} provider timed out after ${timeoutMs}ms.`, "timeout"));
     }, timeoutMs);
   });
   try {
@@ -110,6 +143,9 @@ const fetchWithSpeakingTimeout = async (
     // adapters cannot leave a classroom request hanging indefinitely.
     const body = await Promise.race([response.arrayBuffer(), timeout]);
     return new Response(body, { status: response.status, statusText: response.statusText, headers: response.headers });
+  } catch (error) {
+    if (error instanceof SpeakingProviderError) throw error;
+    throw new SpeakingProviderError(`Speaking ${operation} provider request failed.`, "network");
   } finally {
     if (timeoutId) clearTimeout(timeoutId);
   }
@@ -120,6 +156,7 @@ const latestStudentTurns = (turns: SpeakingTurn[]) => turns.filter((turn) => tur
 const promptInjectionPattern = /ignore\s+(?:all|any|previous)|system\s+prompt|developer\s+message|reveal.*instruction|jailbreak/i;
 
 export const mockTranscriptionProvider: TranscriptionProvider = {
+  providerName: "mock",
   async transcribe(input) {
     const supplied = input.text?.trim();
     if (supplied) return { text: supplied.slice(0, 1_200), confidence: 0.96 };
@@ -259,15 +296,20 @@ const openAiRequest = async (
     body: JSON.stringify({ model: openAiModel(environment), ...body })
   }, operation, environment);
   const payload = await response.json().catch(() => ({})) as { error?: { message?: string }; choices?: Array<{ message?: { content?: string } }> };
-  if (!response.ok) throw new Error(payload.error?.message ?? `OpenAI request failed with ${response.status}.`);
+  if (!response.ok) throw providerHttpError("openai", operation, response.status, payload.error?.message);
   const content = payload.choices?.[0]?.message?.content?.trim();
-  if (!content) throw new Error("OpenAI returned an empty Speaking response.");
+  if (!content) throw new SpeakingProviderError("OpenAI returned an empty Speaking response.", "invalid_response");
   return content;
 };
 
 const geminiKey = (environment: NodeJS.ProcessEnv = process.env) => environment.GEMINI_API_KEY?.trim() || environment.SPEAKING_GEMINI_API_KEY?.trim();
 const geminiModel = (environment: NodeJS.ProcessEnv = process.env) => environment.SPEAKING_GEMINI_MODEL?.trim() || "gemini-2.5-flash-lite";
-const geminiTranscriptionModel = (environment: NodeJS.ProcessEnv = process.env) => environment.SPEAKING_GEMINI_TRANSCRIPTION_MODEL?.trim() || geminiModel(environment);
+const geminiTranscriptionModel = (environment: NodeJS.ProcessEnv = process.env) => {
+  const configured = environment.SPEAKING_GEMINI_TRANSCRIPTION_MODEL?.trim();
+  // Migrate the former documented default automatically. It is a general
+  // multimodal generation model, not Google's dedicated speech-to-text model.
+  return !configured || configured === "gemini-2.5-flash-lite" ? "gemini-3.5-transcribe" : configured;
+};
 
 type GeminiResponsePayload = {
   error?: { message?: string };
@@ -288,9 +330,9 @@ const geminiRequest = async (
     body: JSON.stringify(body)
   }, operation, environment);
   const payload = await response.json().catch(() => ({})) as GeminiResponsePayload;
-  if (!response.ok) throw new Error(payload.error?.message ?? `Gemini request failed with ${response.status}.`);
+  if (!response.ok) throw providerHttpError("gemini", operation, response.status, payload.error?.message);
   const content = payload.candidates?.flatMap((candidate) => candidate.content?.parts ?? []).map((part) => part.text ?? "").join("").trim();
-  if (!content) throw new Error("Gemini returned an empty Speaking response.");
+  if (!content) throw new SpeakingProviderError("Gemini returned an empty Speaking response.", "invalid_response");
   return content;
 };
 
@@ -302,6 +344,7 @@ const parseJsonResponse = <T>(raw: string): T => {
 };
 
 export const openAiTranscriptionProvider: TranscriptionProvider = {
+  providerName: "openai",
   async transcribe(input) {
     if (!input.audio.length) return { text: "", confidence: 0 };
     const form = new FormData();
@@ -314,7 +357,7 @@ export const openAiTranscriptionProvider: TranscriptionProvider = {
     if (!apiKey) throw new Error("OpenAI transcription requires OPENAI_API_KEY or SPEAKING_OPENAI_API_KEY.");
     const response = await fetchWithSpeakingTimeout("https://api.openai.com/v1/audio/transcriptions", { method: "POST", headers: { Authorization: `Bearer ${apiKey}` }, body: form }, "transcription");
     const payload = await response.json().catch(() => ({})) as { text?: string; error?: { message?: string } };
-    if (!response.ok) throw new Error(payload.error?.message ?? `OpenAI transcription failed with ${response.status}.`);
+    if (!response.ok) throw providerHttpError("openai", "transcription", response.status, payload.error?.message);
     return { text: payload.text?.trim() ?? "" };
   }
 };
@@ -378,25 +421,47 @@ export const openAiEvaluationProvider: EvaluationProvider = {
 };
 
 export const geminiTranscriptionProvider: TranscriptionProvider = {
+  providerName: "gemini",
   async transcribe(input) {
     if (!input.audio.length) return { text: "", confidence: 0 };
-    const text = await geminiRequest(geminiTranscriptionModel(), {
-      contents: [{
-        role: "user",
-        parts: [
-          {
-            text: "Transcribe only the student's spoken English. Return only the words spoken, without quotes, commentary, markdown, or timestamps. If no intelligible speech is present, return an empty string."
-          },
-          {
-            inline_data: {
-              mime_type: normalizeAudioMimeType(input.mimeType),
-              data: input.audio.toString("base64")
-            }
+    const apiKey = geminiKey();
+    if (!apiKey) throw new Error("Gemini transcription requires GEMINI_API_KEY or SPEAKING_GEMINI_API_KEY.");
+    const response = await fetchWithSpeakingTimeout("https://generativelanguage.googleapis.com/v1beta/interactions", {
+      method: "POST",
+      headers: { "x-goog-api-key": apiKey, "Content-Type": "application/json" },
+      body: JSON.stringify({
+        model: geminiTranscriptionModel(),
+        input: [{
+          type: "audio",
+          data: input.audio.toString("base64"),
+          mime_type: normalizeAudioMimeType(input.mimeType)
+        }],
+        generation_config: {
+          transcription_config: {
+            language_codes: [SPEAKING_PRACTICE_LANGUAGE],
+            mode: { type: "verbatim" }
           }
-        ]
-      }],
-      generationConfig: { temperature: 0, maxOutputTokens: 120 }
-    }, process.env, "transcription");
+        },
+        store: false
+      })
+    }, "transcription");
+    const payload = await response.json().catch(() => ({})) as {
+      error?: { message?: string };
+      errors?: Array<{ message?: string }>;
+      status?: string;
+      output_text?: string;
+      steps?: Array<{ type?: string; content?: Array<{ type?: string; text?: string }> }>;
+    };
+    if (!response.ok) throw providerHttpError("gemini", "transcription", response.status, payload.error?.message);
+    if (payload.status === "failed") throw new SpeakingProviderError(payload.errors?.[0]?.message ?? "Gemini transcription failed.", "unavailable");
+    const modelOutput = payload.steps?.filter((step) => step.type === "model_output")
+      .flatMap((step) => step.content ?? [])
+      .filter((content) => content.type === "text")
+      .map((content) => content.text ?? "")
+      .join("")
+      .trim();
+    const text = payload.output_text?.trim() || modelOutput || "";
+    if (!payload.steps && payload.output_text === undefined) throw new SpeakingProviderError("Gemini transcription returned an invalid response.", "invalid_response");
     return { text: text.slice(0, 1_200) };
   }
 };

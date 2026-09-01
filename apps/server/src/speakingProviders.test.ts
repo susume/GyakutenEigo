@@ -19,6 +19,7 @@ import {
   openAiEvaluationProvider,
   openAiHelpProvider,
   openAiTranscriptionProvider,
+  speakingProviderFailureDetails,
   speakingProviderTimeoutMs
 } from "./speakingProviders.js";
 import { buildConversationPrompt } from "./speakingPrompts.js";
@@ -174,7 +175,7 @@ test("provider selection supports hybrid, OpenAI-only, and explicit mock modes",
   assert.equal(mock.evaluation, mockEvaluationProvider);
 });
 
-test("Gemini transcription sends inline audio through the server-side API contract", async () => {
+test("Gemini transcription uses the dedicated Interactions speech-to-text contract", async () => {
   const previousFetch = globalThis.fetch;
   const previousKey = process.env.SPEAKING_GEMINI_API_KEY;
   const previousModel = process.env.SPEAKING_GEMINI_TRANSCRIPTION_MODEL;
@@ -185,7 +186,7 @@ test("Gemini transcription sends inline audio through the server-side API contra
   globalThis.fetch = async (input, init) => {
     requestedUrl = String(input);
     requestedInit = init;
-    return new Response(JSON.stringify({ candidates: [{ content: { parts: [{ text: " I want a blue shirt. " }] } }] }), { status: 200, headers: { "content-type": "application/json" } });
+    return new Response(JSON.stringify({ status: "completed", steps: [{ type: "model_output", content: [{ type: "text", text: " I want a blue shirt. " }] }] }), { status: 200, headers: { "content-type": "application/json" } });
   };
   try {
     const result = await geminiTranscriptionProvider.transcribe({ audio: Buffer.from("audio"), mimeType: "audio/webm;codecs=opus", languageHint: "ja" });
@@ -198,15 +199,65 @@ test("Gemini transcription sends inline audio through the server-side API contra
     else process.env.SPEAKING_GEMINI_TRANSCRIPTION_MODEL = previousModel;
   }
 
-  assert.match(requestedUrl, /models\/gemini-test-model:generateContent$/);
+  assert.equal(requestedUrl, "https://generativelanguage.googleapis.com/v1beta/interactions");
   const headers = requestedInit?.headers as Record<string, string>;
   assert.equal(headers["x-goog-api-key"], "test-gemini-key");
-  const body = JSON.parse(String(requestedInit?.body)) as { contents: Array<{ parts: Array<{ inline_data?: { mime_type?: string; data?: string } }> }> };
-  assert.equal(body.contents[0]?.parts[1]?.inline_data?.mime_type, "audio/webm");
-  assert.equal(body.contents[0]?.parts[1]?.inline_data?.data, Buffer.from("audio").toString("base64"));
-  const generationConfig = (body as unknown as { generationConfig?: { temperature?: number; maxOutputTokens?: number } }).generationConfig;
-  assert.equal(generationConfig?.temperature, 0);
-  assert.equal(generationConfig?.maxOutputTokens, 120);
+  const body = JSON.parse(String(requestedInit?.body)) as {
+    model?: string;
+    input: Array<{ type?: string; mime_type?: string; data?: string }>;
+    generation_config?: { transcription_config?: { language_codes?: string[]; mode?: { type?: string } } };
+    store?: boolean;
+  };
+  assert.equal(body.model, "gemini-test-model");
+  assert.equal(body.input[0]?.type, "audio");
+  assert.equal(body.input[0]?.mime_type, "audio/webm");
+  assert.equal(body.input[0]?.data, Buffer.from("audio").toString("base64"));
+  assert.deepEqual(body.generation_config?.transcription_config?.language_codes, ["en"]);
+  assert.equal(body.generation_config?.transcription_config?.mode?.type, "verbatim");
+  assert.equal(body.store, false);
+});
+
+test("Gemini transcription migrates the former general-purpose default to the dedicated model", async () => {
+  const previousFetch = globalThis.fetch;
+  const previousKey = process.env.SPEAKING_GEMINI_API_KEY;
+  const previousModel = process.env.SPEAKING_GEMINI_TRANSCRIPTION_MODEL;
+  process.env.SPEAKING_GEMINI_API_KEY = "test-gemini-key";
+  process.env.SPEAKING_GEMINI_TRANSCRIPTION_MODEL = "gemini-2.5-flash-lite";
+  let requestedModel = "";
+  globalThis.fetch = async (_input, init) => {
+    requestedModel = (JSON.parse(String(init?.body)) as { model?: string }).model ?? "";
+    return new Response(JSON.stringify({ status: "completed", steps: [{ type: "model_output", content: [{ type: "text", text: "No, thank you." }] }] }), { status: 200 });
+  };
+  try {
+    await geminiTranscriptionProvider.transcribe({ audio: Buffer.from("audio"), mimeType: "audio/webm" });
+  } finally {
+    globalThis.fetch = previousFetch;
+    if (previousKey === undefined) delete process.env.SPEAKING_GEMINI_API_KEY;
+    else process.env.SPEAKING_GEMINI_API_KEY = previousKey;
+    if (previousModel === undefined) delete process.env.SPEAKING_GEMINI_TRANSCRIPTION_MODEL;
+    else process.env.SPEAKING_GEMINI_TRANSCRIPTION_MODEL = previousModel;
+  }
+  assert.equal(requestedModel, "gemini-3.5-transcribe");
+});
+
+test("Speaking provider failures retain only safe classification details", async () => {
+  const previousFetch = globalThis.fetch;
+  const previousKey = process.env.SPEAKING_OPENAI_API_KEY;
+  process.env.SPEAKING_OPENAI_API_KEY = "test-speaking-key";
+  globalThis.fetch = async () => new Response(JSON.stringify({ error: { message: "provider quota detail" } }), { status: 429 });
+  try {
+    await assert.rejects(
+      () => openAiTranscriptionProvider.transcribe({ audio: Buffer.from("audio"), mimeType: "audio/webm" }),
+      (error) => {
+        assert.deepEqual(speakingProviderFailureDetails(error), { kind: "rate_limit", status: 429 });
+        return true;
+      }
+    );
+  } finally {
+    globalThis.fetch = previousFetch;
+    if (previousKey === undefined) delete process.env.SPEAKING_OPENAI_API_KEY;
+    else process.env.SPEAKING_OPENAI_API_KEY = previousKey;
+  }
 });
 
 test("Speaking provider requests abort at the configured transcription timeout", async () => {

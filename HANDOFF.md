@@ -110,7 +110,7 @@ SPEAKING_AI_PROVIDER=gemini
 SPEAKING_TRANSCRIPTION_PROVIDER=gemini
 SPEAKING_GEMINI_API_KEY=<secret>
 SPEAKING_GEMINI_MODEL=gemini-2.5-flash-lite
-SPEAKING_GEMINI_TRANSCRIPTION_MODEL=gemini-2.5-flash-lite
+SPEAKING_GEMINI_TRANSCRIPTION_MODEL=gemini-3.5-transcribe
 ~~~
 
 Do not copy secret values into `.env.example`, GitHub Actions variables,
