@@ -1,327 +1,165 @@
-# GyakutenEigo system architecture
+# GyakutenEigo architecture
 
-Last verified: 15 August 2026
-Repository: susume/GyakutenEigo
-Baseline commit: 60bd853 (migration for school ipads)
-Canonical operational handoff: HANDOFF.md
+**Current-state summary — verified 1 September 2026 at commit `76840ec`.**
 
-This is the current architecture for GyakutenEigo / QuizStrike. It separates
-the live networking rollout from the intended Cloudflare design and records
-the authority boundaries that future changes must preserve.
+The detailed, authoritative system description is
+[`SYSTEM.md`](SYSTEM.md). This file is the compact architecture map for
+developers changing boundaries, authority, persistence, networking, or
+scaling. If this summary conflicts with code or `SYSTEM.md`, stop and update
+the source-of-truth document before proceeding.
 
-Teacher-facing composition and route ownership are documented in
-`docs/teacher-experience.md`.
+## Topology
 
-## 1. Deployment truth
-
-The school-iPad update introduced a same-origin target, but the infrastructure
-cutover has not happened yet.
-
-| Concern | Verified state |
-| --- | --- |
-| Static frontend | GitHub Pages with the GyakutenEigo custom-domain artifact |
-| Checked-in browser target | Same-origin /api/* and /socket.io/* by default |
-| Live same-origin API | Not active: both public /api/health URLs returned 404 during verification |
-| Backend | Render service gyakuteneigo-api; direct /api/health returned 200 with PostgreSQL storage |
-| DNS | Registrar nameservers are still active, not Cloudflare nameservers |
-| Cloudflare Worker | Implemented in infrastructure/cloudflare, not deployed to the live zone |
-| Temporary recovery | Working-tree release configuration uses Render until the Worker route is verified |
-| Database | Supabase PostgreSQL through server-side Prisma only |
-| Runtime scale | One Render Node instance; process-local live-room authority |
-
-The temporary Render origin is a rollout compatibility mode, not the school-safe
-end state. Do not disable it until the public same-origin health check succeeds.
-The CI guard in .github/workflows/deploy-web.yml is the cutover gate.
-
-## 2. Intended system boundary
-
-~~~mermaid
+```mermaid
 flowchart LR
-  Student["Student browser"] --> Edge["gyakuteneigo.com"]
-  Teacher["Teacher browser"] --> Edge
-  Edge --> Pages["GitHub Pages static files"]
-  Edge --> Worker["Cloudflare Worker routes"]
-  Worker -->|"/api/* and /socket.io/*"| Server["Render Node service"]
-  Server --> Prisma["Prisma repositories"]
-  Prisma --> DB["Supabase PostgreSQL"]
-~~~
+  Browser[Teacher / student browser]
+  Pages[GitHub Pages<br/>React/Vite static build]
+  API[Render<br/>Express + Socket.IO]
+  Runtime[Authoritative in-memory<br/>room and round runtime]
+  Prisma[Prisma repositories]
+  DB[(Supabase PostgreSQL)]
+  Gemini[Gemini API<br/>server-side only]
 
-During the migration window, the browser uses the explicit Render origin when
-VITE_ALLOW_PRODUCTION_API_OVERRIDE=true. After DNS and Worker verification,
-set that flag to false, remove VITE_API_URL, and make the website origin the
-only browser-visible application origin.
+  Browser --> Pages
+  Browser -->|HTTPS API + Socket.IO<br/>current direct Render origin| API
+  API --> Runtime
+  API --> Prisma --> DB
+  API -->|Speaking prompts/audio| Gemini
+```
 
-## 3. Repository boundaries
+The live public website is `gyakuteneigo.com`/`www.gyakuteneigo.com` on GitHub
+Pages. The live API is `api.gyakuteneigo.com` and the Render native hostname.
+The checked-in Cloudflare Worker is a prepared future proxy; the website
+`/api/*` path is currently a Pages 404, so the production web build keeps the
+explicit Render origin enabled.
 
-| Area | Responsibility |
-| --- | --- |
-| apps/web | React/Vite browser app, teacher/student UX, API, Socket.IO, Three.js, diagnostics, Playwright |
-| apps/server | Express API, Socket.IO gateway, auth, room authority, game orchestration, reports, persistence |
-| packages/shared | Cross-runtime types, schemas, protocol messages, constants, bounds, pure rules |
-| infrastructure/cloudflare | Narrow proxy for /api/* and /socket.io/*; never a generic forwarder |
-| prisma | Database schema and ordered migrations |
-| .github/workflows | GitHub Pages build/deploy and same-origin cutover guard |
-| docs | Deployment procedures, device checks, feature contracts, and operations |
+## Boundary ownership
 
-The server composition root is apps/server/src/runtime.ts. Keep it as the
-dependency-wiring boundary; put new behavior in focused modules and inject
-dependencies from the composition root.
-
-## 4. Product surfaces
-
-| Route | Owner | Purpose |
+| Boundary | Owner | Rule |
 | --- | --- | --- |
-| / | PublicHomepage.tsx | Public GyakutenEigo entry point |
-| /quiz-strike | QuizStrikeApp.tsx | Public QuizStrike entry point and product landing |
-| /quiz-strike/teacher/* | TeacherWorkspace.tsx + TeacherShell.tsx | Unified teacher dashboard for QuizStrike and Speaking Practice |
-| /join?code=ROOM | StudentJoinScreen.tsx | Student code and nickname entry |
-| /game | StudentExperience.tsx | Student lobby, live game, quiz, shop, scoreboard, reconnect |
-| /speak | SpeakingPracticeApp.tsx | Public Speaking Practice preview and student entry |
-| /speak/join/:code, /speak/session/:id, /speak/result/:id | SpeakingPracticeApp.tsx | Student speaking join, session, and feedback routes |
-| /speak/teacher/* | BrowserApp.tsx compatibility alias | Legacy Speaking teacher bookmarks redirect into `/quiz-strike/teacher/speaking` |
-| /check and /diagnostics | NetworkDiagnosticsPage.tsx | School network and device compatibility checks |
-| /tournament-study/:id | Tournament pages | Released tournament study material |
+| Browser route selection | `apps/web/src/BrowserApp.tsx`, `navigation.ts` | Small History API router; direct SPA paths need Pages fallbacks |
+| Teacher/library HTTP | `apps/server/src/routes/teacherLibrary.ts`, `studySets.ts`, `quizSets.ts`, `questions.ts`, `reports.ts` | JWT plus teacher ownership checks |
+| Room HTTP | `apps/server/src/routes/sessionRoutes.ts`, `playerRoutes.ts` | Teacher JWT creates/controls rooms; scoped player tokens join/rejoin |
+| Socket binding | `realtime/protocolGateway.ts`, `realtime/roomAuthority.ts`, `connectionLifecycle.ts` | Validate protocol, authenticate, bind to one room, emit role-scoped state |
+| Round lifecycle | `roundRuntime.ts`, `roundFlow.ts` | Server owns phases, deadlines, scoring, pause/resume, and conclusions |
+| Combat/objectives | `combat.ts`, runtime flag handlers, `botRuntime.ts` | Server validates position/intent and resolves damage, flags, respawns, and bots |
+| Athletics | `athleticsAuthority.ts`, `athleticsModeAuthority.ts`, shared Athletics modules | Server owns course progress, energy, role/variant rules, hazards, and race results |
+| Speaking | `routes/speakingRoutes.ts`, `speakingProviders.ts`, `speakingRepository.ts` | Server receives bounded audio/text and calls the selected provider; keys never reach browser |
+| Durable storage | `persistence/normalizedLibrary.ts`, `persistenceScheduler.ts`, Prisma | PostgreSQL is authoritative for teacher/library/history/Speaking records |
+| Runtime checkpoint | `RuntimeSnapshot` and runtime hydration helpers | Recovery/backfill aid for active rooms, not the new library authority |
 
-GitHub Pages receives SPA fallback copies for browser routes. The API and
-Socket.IO paths must be handled by the Worker after cutover, not by fake static
-HTML pages.
+The browser can predict presentation, but the server decides correctness,
+damage, money, eliminations, objectives, round results, bot behavior, and
+authoritative positions. Public student projections omit `correctChoice`,
+teacher-only fields, and Learning Pulse.
 
-## 5. Request architecture
+## Runtime state model
 
-### Current migration window
+The deployed service is intentionally single-instance:
 
-~~~text
-Browser -> GitHub Pages for static files
-Browser -> Render compatibility origin for API and Socket.IO
-Render -> CORS-authenticated response
-~~~
+- process-local rooms, join-code directory, room leases/fencing, sockets,
+  timers, bot memory, disconnect grace, rate limits, deduplication caches, and
+  transient decal/projectile/hazard state;
+- normalized Prisma data for users, classes, quiz sets, folders, questions,
+  audio, sessions, players, answers, rounds, reports, competitions,
+  tournaments, and Speaking Practice;
+- `RuntimeSnapshot` id `primary` for recoverable active-session state and old
+  migration/backfill compatibility.
 
-### Target school-safe path
+`RUNTIME_STORE=redis` is rejected. Do not add replicas until distributed room
+ownership/takeover, Socket.IO fan-out, reconnect routing, rate limits and
+deduplication, and object-backed decal storage are implemented and tested.
 
-~~~text
-Browser -> Cloudflare edge on the website origin
-Cloudflare -> GitHub Pages for static files
-Cloudflare Worker -> Render for /api/* and /socket.io/*
-Browser <- same-origin response
-~~~
+## Browser and product boundaries
 
-The client lives in apps/web/src/api/client.ts. API URLs resolve from
-window.location.origin unless the explicit development/test or temporary
-production override is enabled. Socket.IO uses the selected origin with path
-/socket.io/, starts with polling, and permits WebSocket upgrade.
+The main browser surface is:
 
-The Worker in infrastructure/cloudflare/src/index.ts:
+- `/` public home;
+- `/quiz-strike` QuizStrike landing/auth/competition entry;
+- `/quiz-strike/teacher/*` unified teacher workspace;
+- `/join?code=ROOM` and `/game` student classroom flow;
+- `/speak`, `/speak/join/:activityCode`, `/speak/session/:sessionId`, and
+  `/speak/result/:participantId` Speaking Practice flow;
+- `/quiz-strike/organizer`, competition/tournament routes, and
+  `/tournament-study/:id` competition features;
+- `/check` and `/diagnostics` network diagnostics;
+- `/character-lab` local-only rendering harness.
 
-- accepts only /api and /api/*;
-- accepts only /socket.io and /socket.io/*;
-- derives the destination from one HTTPS BACKEND_ORIGIN binding;
-- preserves method, query, body, Authorization, X-Player-Token, and upgrade headers;
-- returns upstream status and headers, marks live traffic no-store, and passes
-  successful 101 WebSocket responses directly;
-- uses a 25-second API timeout and 60-second Socket.IO timeout so normal
-  Engine.IO polling heartbeats are not aborted.
+QuizStrike `GameMode` values are `classic`, `flag`, `zombie`, and `athletics`.
+Athletics variants are Classic Athletics, Zeus, Hunters & Runners, and Chaos
+Climb. Standard arena maps are Desert Citadel, Iron Junction, and Temple
+Runoff; Athletics uses the authored Stadium Loop course.
 
-## 6. Server composition and authority
+## Realtime protocol
 
-The server is authoritative for every value that affects fairness or durable
-classroom results. The browser sends intent and renders server projections.
+The canonical Socket.IO protocol is version 1, defined in
+`packages/shared/src/protocol`. The temporary server-only legacy adapter may
+recognize unversioned version-0 clients during rollout, but version 0 is not a
+supported browser contract.
 
-| Server area | Current owner |
-| --- | --- |
-| Authentication | routes/authRoutes.ts; signed teacher JWTs |
-| Teacher library | routes/teacherLibrary.ts, studySets.ts, quizSets.ts, questions.ts |
-| Room lifecycle | routes/sessionRoutes.ts, realtime/roomAuthority.ts, roundRuntime.ts |
-| Student operations | routes/playerRoutes.ts and appearanceRoutes.ts |
-| Reports | routes/reports.ts and normalized repositories |
-| Competitions | competitionDomain.ts and competitionRoutes.ts |
-| Tournaments | tournamentDomain.ts and tournamentRoutes.ts |
-| Realtime handshake | realtime/protocolGateway.ts |
-| Disconnect behavior | connectionLifecycle.ts |
-| Combat | combat.ts plus shared rules |
-| Bots | botRuntime.ts, botAI.ts, botNavigation.ts |
-| Round timing | roundRuntime.ts and roundFlow.ts |
-| Live infrastructure | scaling/runtimeInfrastructure.ts |
+Connection sequence:
 
-There is one bot scheduler and one round/deadline scheduler. Do not create a
-second hidden room runtime in a route or feature module.
+1. Socket.IO connects.
+2. Browser sends `client_hello` with protocol version 1.
+3. Server returns `server_hello` with connection id and server time.
+4. Browser sends `join_session_room` with either teacher JWT or player token.
+5. Server validates credentials, joins a role-scoped room, and emits a
+   sanitized authoritative `session_state`.
 
-### State ownership
+Commands are schema-validated, bounded to 16 KiB, and range checked before
+game logic. Reconnect repeats the sequence. Read the full wire contract in
+[`packages/shared/PROTOCOL.md`](packages/shared/PROTOCOL.md).
 
-| State | Authority | Durability |
-| --- | --- | --- |
-| Protocol types, schemas, bounds, pure rules | packages/shared | Source-controlled code |
-| Teacher identity and library | Server and Prisma | Supabase PostgreSQL |
-| Active room, players, timers, combat, objectives, bots | One room owner in Render memory | Checkpointed where required; not multi-instance safe |
-| Answers, rounds, reports, history | Server persistence boundary | Normalized PostgreSQL models |
-| RuntimeSnapshot | Recovery and compatibility checkpoint | PostgreSQL JSON; not new library source of truth |
-| Teacher pause | Room runtime and checkpoint fields | controlState plus shifted deadlines |
-| Learning Pulse | Server-derived teacher projection | Ephemeral/cache; excluded from student data |
-| Socket bindings, dedupe, rate limits, question gates, decals | Render process | Cleared on lifecycle completion/restart |
-| Camera, input, audio, VFX, UI | Browser | Never authoritative |
+## Deployment boundary
 
-## 7. Protocol and gameplay flow
+### Render API
 
-~~~mermaid
-sequenceDiagram
-  participant C as Client
-  participant S as Socket.IO gateway
-  participant A as Room authority
-  participant D as Database
-  C->>S: client_hello, protocol v1
-  S-->>C: server_hello, connection id and clock
-  C->>S: join_session_room, JWT or player token
-  S->>A: Validate role, room, token, payload
-  A-->>C: Role-scoped session_state
-  C->>S: Intent: move, fire, answer, buy, objective
-  S->>A: Schema, phase, bounds, cooldown, ownership checks
-  A->>D: Persist answer/session/report data when required
-  A-->>C: Authoritative snapshot and event/result
-~~~
+```text
+npm ci --include=dev && npm run build -w @quizstrike/shared && npm run build -w @quizstrike/server
+npm start -w @quizstrike/server
+```
 
-The protocol contract is packages/shared/PROTOCOL.md. The server temporarily
-accepts an unversioned legacy client as inferred v0 for rollout compatibility;
-explicit unsupported versions are rejected. Reconnect repeats the handshake and
-receives a complete role-scoped snapshot.
+`apps/server/src/start.ts` runs `prisma migrate deploy` when
+`DATABASE_URL` is configured, then imports the runtime. Render currently uses
+the Supabase session pooler on port 5432. Speaking is production Gemini mode:
 
-Student question payloads omit correctChoice. The server does not trust client
-identity, team, score, balance, answer correctness, target, damage, or position.
-Student answers and purchases can use HTTP fallback when Socket.IO is unavailable;
-ambiguous purchases must not be retried through both transports.
+```text
+SPEAKING_MOCK_MODE=false
+SPEAKING_AI_PROVIDER=gemini
+SPEAKING_TRANSCRIPTION_PROVIDER=gemini
+SPEAKING_GEMINI_API_KEY=<Render secret>
+SPEAKING_GEMINI_MODEL=gemini-2.5-flash-lite
+SPEAKING_GEMINI_TRANSCRIPTION_MODEL=gemini-2.5-flash-lite
+```
 
-## 8. Game model
+### GitHub Pages web
 
-Rooms start in waiting, then use preparation or Zombie selection, buy phases,
-active rounds, result transitions, and ended. Server epoch timestamps are the
-source for deadlines; the browser only estimates countdown display.
+`.github/workflows/deploy-web.yml` builds `apps/web/dist` on Node 22 and
+creates SPA fallbacks. Its current compatibility defaults are:
 
-controlState: teacher_paused is separate from round-result status. An owning
-teacher can pause active gameplay, blocking movement, firing, answers,
-purchases, bot ticks, and countdown progression. Resume shifts room deadlines by
-the pause duration and survives reconnect.
+```text
+VITE_BASE_PATH=/
+PAGE_CUSTOM_DOMAIN=www.gyakuteneigo.com
+VITE_API_URL=https://gyakuteneigo-api.onrender.com
+VITE_ALLOW_PRODUCTION_API_OVERRIDE=true
+```
 
-| Mode | Authority |
-| --- | --- |
-| Classic Tag | Team freeze/tag, respawn, round result, quiz tie-breaking |
-| Flag | Red pickup/carry/placement, Blue capture, hold countdown, timeout, disconnect drop |
-| Zombie | Initial Red selection, human energy, conversion on valid elimination, match end |
+The Cloudflare Worker in `infrastructure/cloudflare` only becomes part of the
+architecture after DNS is delegated to Cloudflare, routes are deployed, and
+both API and Socket.IO checks pass through the website origin.
 
-Maps are Desert Citadel, The Iron Junction, and Temple Runoff. Each has authored
-visual geometry, map-aware collision/navigation data, team spawns, objective
-zones, and signs/props. Rendered meshes are not authoritative collision,
-movement, or hit data.
+## Change rules
 
-Current equipment is Starter Snowball Launcher, Quick Snowball Launcher, Heavy
-Snowball Launcher, Warm Vest, and Speed Boots. Weapon and perk slots are
-independent. Rewards, money, snowballs, health, movement speed, range, damage,
-cooldowns, and input bounds are shared/server-controlled. Freeze streaks are
-emitted only after server-validated eliminations.
+Before changing a boundary:
 
-Appearance choices are room state by default. Decals are authenticated,
-bounded, processed without EXIF/GPS data, kept outside snapshots, and cleaned
-on player/session end, policy reset, expiry, or process restart. Supabase is not
-browser storage, realtime, auth, or asset storage.
+1. update shared types/schemas first when the wire contract changes;
+2. keep the server-compatible release deployed before the matching browser;
+3. preserve teacher ownership, player-token scope, and student payload
+   redaction;
+4. keep raw Speaking audio and server secrets out of durable/client payloads;
+5. keep migrations additive and release them through `prisma migrate deploy`;
+6. keep one Render instance while live state is process-local;
+7. run `npm run lint`, `npm run typecheck`, `npm test`, and `npm run build`.
 
-## 9. Browser and rendering architecture
-
-Browser routing is in apps/web/src/BrowserApp.tsx. Teacher/product composition
-is in QuizStrikeApp.tsx; the teacher shell and QuizStrike dashboard composition
-are in `features/quizstrike/teacher/TeacherShell.tsx` and
-`TeacherWorkspace.tsx`. Speaking teacher pages are mounted as the lazy
-`features/speaking/teacher/SpeakingTeacherWorkspace.tsx` feature inside that
-shell; shared evaluation presentation lives in `SpeakingResultPanel.tsx`.
-Student live state and UI are in StudentExperience.tsx, and student Speaking
-routes remain in SpeakingPracticeApp.tsx. ArenaPreview.tsx
-composes the Three.js arena from focused map, character, input, camera, loop,
-VFX, and audio modules.
-
-The teacher dashboard owns one JWT-authenticated session. It presents
-QuizStrike Study Sets, game hosting, and reports alongside Speaking activities,
-session join information, and evaluations. The feature-specific server models
-remain separate; the shared boundary is the teacher mental model and shell.
-Speaking is lazy-loaded from the teacher workspace so normal teacher navigation
-does not eagerly import the Speaking student flow or the Three.js arena.
-
-The arena has one requestAnimationFrame loop. Cleanup must stop the loop, remove
-resize/pointer/keyboard/visibility listeners, unsubscribe VFX and animation
-handlers, dispose pooled resources and the renderer, and remove the canvas.
-Socket snapshots must update live refs/state without remounting the whole scene.
-
-The iPad work includes touch pointer controls, safe-area viewport metadata,
-visibility/pageshow reconnect handling, WebGL context-loss handling, audio and
-local-storage diagnostics, polling-first Socket.IO, and bounded checks at
-/check. Automated Chromium iPad emulation is not proof of physical Safari.
-
-## 10. Persistence and recovery
-
-Prisma is the only application database client. Supabase PostgreSQL stores
-teachers, classes, folders, quiz sets, questions, question audio, sessions,
-players, answers, rounds, reports, competitions, tournaments, and normalized
-related data.
-
-The migration 20260805000000_harden_public_tables_rls protects application
-tables from direct anon/authenticated access. RuntimeSnapshot supports recovery
-and legacy compatibility; it is not a replacement for normalized new writes.
-A process restart can restore selected room state, but process-local sockets,
-timers, bot memory, rate limits, and ephemeral decals still require
-reconnect/reconstruction.
-
-## 11. Security invariants
-
-- Teacher mutations require signed JWT authentication and ownership checks.
-- Student HTTP and Socket.IO mutations require a room-scoped player token bound
-  to player ID and session code.
-- The Worker has a fixed path allowlist and fixed HTTPS origin binding; it is
-  not an open proxy.
-- Live API and Socket.IO traffic is no-store; authenticated responses are not
-  cached.
-- CORS uses explicit configured origins with credentials; it is not *.
-- Secrets such as DATABASE_URL and JWT_SECRET are server-only. VITE_* values are
-  public build inputs.
-- Socket payloads are schema-validated, size-bounded, rate-limited where needed,
-  and deduplicated by request/event IDs.
-- Learning Pulse and private teacher data never enter the student projection.
-
-## 12. Scaling boundary
-
-The system is intentionally one Render instance. Do not add a second instance
-until all of these exist and are integration-tested together:
-
-1. shared room state and join-code directory;
-2. distributed leases/fencing and owner takeover;
-3. Socket.IO adapter and cross-instance fan-out;
-4. reconnect routing to the current room owner;
-5. distributed rate limits and request deduplication;
-6. durable/object-backed decal storage;
-7. split-brain, duplicate-event, restart, and two-instance tests.
-
-RUNTIME_STORE=redis currently fails closed by design.
-
-## 13. Safe change checklist
-
-1. Update shared types/schemas/rules first when the contract changes.
-2. Preserve server authority and role-scoped projections.
-3. Update both HTTP and Socket.IO paths when an action has both transports.
-4. Preserve reconnect, deduplication, timeout, and cleanup behavior.
-5. Add or update server, shared, browser, proxy, and Playwright coverage.
-6. Update HANDOFF.md, docs/online-play.md, and the relevant feature document.
-7. Run release validation before deployment.
-
-## 14. Validation baseline
-
-The school-iPad implementation has local coverage for shared/server/web unit
-tests, the Cloudflare Worker, same-origin resolution, failed API joins,
-Socket.IO failure/recovery, iPad-sized Playwright flows, WebGL context loss,
-and /check diagnostics.
-
-~~~text
-npm run lint
-npm run typecheck
-npm test
-npm run build
-npm run test:load
-npm run test:e2e
-npx prisma validate
-~~~
-
-The local environment cannot prove Cloudflare DNS, the deployed Worker, or
-physical Safari/iPad. Those require HANDOFF.md and docs/school-ipad-checklist.md.
+For release procedure, health checks, rollback, and the known gaps, use
+[`HANDOFF.md`](HANDOFF.md) and [`SYSTEM.md`](SYSTEM.md).

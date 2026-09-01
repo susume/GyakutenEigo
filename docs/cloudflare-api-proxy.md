@@ -1,137 +1,118 @@
-# Cloudflare same-origin API and Socket.IO setup
+# Cloudflare same-origin API and Socket.IO cutover
 
-> Rollout safety: deploy and verify the Worker routes before disabling
-> `VITE_ALLOW_PRODUCTION_API_OVERRIDE`. If DNS does not use Cloudflare yet,
-> `/api/*` reaches GitHub Pages and returns 404 instead of reaching Render.
+**Status:** prepared in source, not live as of 1 September 2026
+**Canonical system source:** [`../SYSTEM.md`](../SYSTEM.md)
 
-This repository keeps GitHub Pages as the static frontend and Render as the
-Node/Express/Socket.IO backend. The Worker in
-`infrastructure/cloudflare/src/index.ts` exposes only these live paths on the
-public website origin:
+The Worker in `infrastructure/cloudflare/src/index.ts` is a narrow future proxy
+for the static GitHub Pages site and the Render API. It is not currently the
+website’s live request path. Today:
 
-```text
+- `https://gyakuteneigo.com/` and `https://www.gyakuteneigo.com/` serve
+  GitHub Pages;
+- `https://api.gyakuteneigo.com/api/health` and the Render native hostname
+  return the live API;
+- `https://gyakuteneigo.com/api/health` and the `www` equivalent return
+  GitHub Pages 404s;
+- DNS remains delegated to `dns1.registrar-servers.com` and
+  `dns2.registrar-servers.com`, not Cloudflare.
+
+The current Pages build therefore uses the explicit compatibility origin:
+
+~~~text
+VITE_API_URL=https://gyakuteneigo-api.onrender.com
+VITE_ALLOW_PRODUCTION_API_OVERRIDE=true
+~~~
+
+Do not change those values until the checks in this runbook pass.
+
+## Intended routes
+
+~~~text
 https://gyakuteneigo.com/api/*        -> Render backend
 https://gyakuteneigo.com/socket.io/*  -> Render backend
-```
+https://www.gyakuteneigo.com/api/*   -> Render backend
+https://www.gyakuteneigo.com/socket.io/* -> Render backend
+~~~
 
-All other paths continue to resolve to GitHub Pages. The student browser does
-not receive or automatically fall back to the Render hostname.
+All other paths must continue to resolve to the GitHub Pages static site. The
+Worker must never be attached to `/*`, become a generic forwarder, or receive
+server secrets.
 
-## Before changing DNS
+## Before DNS changes
 
-1. Open the current GitHub Pages settings and record the verified custom domain
-   and HTTPS state. The current workflow defaults `PAGE_CUSTOM_DOMAIN` to
-   `www.gyakuteneigo.com`; if the live canonical site is the apex
-   `gyakuteneigo.com`, set the GitHub Actions variable to that value rather than
-   changing it by guesswork.
-2. Confirm the current Pages artifact still contains `CNAME` with the chosen
-   canonical hostname. Do not remove the GitHub Pages project.
-3. Add `gyakuteneigo.com` to Cloudflare and move the domain nameservers to
-   Cloudflare only if the domain owner is ready to manage DNS there.
-4. Preserve the existing GitHub Pages DNS target. Cloudflare Worker Routes need
-   an existing DNS record for the hostname, and that record must be proxied
-   (orange-clouded). Do not invent a new GitHub Pages target; copy the current
-   verified record values from the DNS provider/GitHub Pages settings.
+1. Record the current GitHub Pages custom-domain and HTTPS state.
+2. Preserve the Pages origin records and confirm the deployed artifact still
+   contains the desired CNAME.
+3. Confirm the domain owner is ready to manage DNS in Cloudflare and delegate
+   the nameservers deliberately.
+4. Add the domain to Cloudflare and create proxied DNS records for the website
+   hostnames. Do not invent Pages targets; copy the verified current records.
+5. Confirm the Render API origin remains healthy before changing the edge.
 
-Cloudflare documents that Routes run in front of an existing origin and require
-an active zone plus a proxied DNS record for the hostname:
-[Workers Routes](https://developers.cloudflare.com/workers/configuration/routing/routes/).
+## Worker configuration
 
-## Deploy the Worker
+The committed `infrastructure/cloudflare/wrangler.toml` points
+`BACKEND_ORIGIN` at:
 
-The committed `infrastructure/cloudflare/wrangler.toml` contains the selective
-routes for both the apex and `www` hostnames. If only one hostname is live,
-remove the unused pair or leave them disabled until that hostname has a
-proxied DNS record.
+~~~text
+https://gyakuteneigo-api.onrender.com
+~~~
 
-From the repository root:
+Deploy from the Worker directory:
 
-```powershell
+~~~powershell
 cd infrastructure/cloudflare
 npx wrangler login
 npx wrangler deploy
-```
+~~~
 
-`BACKEND_ORIGIN` is a Worker environment variable. It is currently set to the
-public Render origin in `wrangler.toml`; it contains no secret. If the Render
-service changes, update that one binding and redeploy. Never put `JWT_SECRET`,
-`DATABASE_URL`, teacher tokens, or player tokens in Worker variables or source.
+If `BACKEND_ORIGIN` changes, update the Worker binding and redeploy. Keep the
+value as an HTTPS origin with no path, credentials, query string, or fragment.
+Never put `JWT_SECRET`, `DATABASE_URL`, provider keys, teacher tokens, player
+tokens, or private decal data in Worker variables or source.
 
-To change it without committing a value, set the variable in the Cloudflare
-Worker dashboard under Settings → Variables and Secrets, or deploy with the
-equivalent Wrangler variable mechanism. Keep the value as an HTTPS origin with
-no path, credentials, query string, or fragment.
+The implementation forwards request method, headers, query string, and body for
+the two allowlisted path families. It preserves successful Socket.IO 101
+responses and uses bounded API/socket timeouts. Responses are marked
+`no-store`; live game traffic must not be cached.
 
-Do not attach this Worker to `/*`. The fixed path guard and the route patterns
-are intentionally limited to `/api/*` and `/socket.io/*`; the Pages site must
-remain the origin for static files and SPA routes.
+## Cutover gates
 
-## DNS, TLS, and WebSockets
+Run these only after DNS and Worker deployment:
 
-- Keep the GitHub Pages DNS records as the origin for the website and proxy the
-  relevant hostname through Cloudflare.
-- Use Cloudflare SSL/TLS mode **Full (strict)** after confirming that both
-  GitHub Pages and the Render origin present valid HTTPS certificates.
-- Keep WebSockets enabled in Cloudflare. The Worker forwards the original
-  `Upgrade`, `Connection`, `Sec-WebSocket-*`, query string, and Socket.IO path;
-  a successful upstream `101` response is returned directly.
-- Socket.IO still starts with HTTP long polling and can upgrade to WebSocket.
-  A network that blocks upgrades can remain functional through polling, though
-  it may be less responsive.
-- `/api/*` and `/socket.io/*` responses are explicitly marked `no-store` by the
-  Worker. Do not add a cache rule for live game traffic.
+~~~powershell
+Invoke-WebRequest https://gyakuteneigo.com/api/health -UseBasicParsing
+Invoke-WebRequest https://www.gyakuteneigo.com/api/health -UseBasicParsing
+curl.exe -i "https://gyakuteneigo.com/socket.io/?EIO=4&transport=polling"
+curl.exe -i "https://www.gyakuteneigo.com/socket.io/?EIO=4&transport=websocket"
+~~~
 
-Cloudflare’s Worker WebSocket support uses a fetch request carrying the
-`Upgrade: websocket` header:
-[WebSockets in Workers](https://developers.cloudflare.com/workers/examples/websockets/).
+Require healthy JSON from every hostname that will be used and an Engine.IO
+opening payload from the polling request. Then:
 
-## Verify before inviting a class
+1. Open `/check` and confirm Game API, realtime, and WebSocket checks.
+2. Sign in, create a room, join from two student browsers, and reconnect one.
+3. Run a short current game and confirm reports.
+4. Verify browser network requests use the website origin for both HTTP and
+   Socket.IO.
+5. Change the Pages build to same-origin mode:
+   `VITE_ALLOW_PRODUCTION_API_OVERRIDE=false`; remove the direct
+   `VITE_API_URL` compatibility value.
+6. Re-run the release and classroom smoke checks.
+7. Record the evidence, date, DNS state, Worker version, and commit in
+   [`../SYSTEM.md`](../SYSTEM.md).
 
-Run these checks after DNS and Worker deployment:
-
-```powershell
-Invoke-WebRequest 'https://gyakuteneigo.com/api/health' -UseBasicParsing
-curl.exe -i 'https://gyakuteneigo.com/socket.io/?EIO=4&transport=polling'
-```
-
-The health request should return JSON with `ok: true`. The Socket.IO request
-should return an Engine.IO opening payload, not a GitHub Pages HTML document.
-Then open `https://gyakuteneigo.com/check` on a school iPad and confirm Game API,
-Realtime server, and WebSocket results. Finally join a real classroom room and
-watch the browser network panel: normal game requests should be under the
-website origin, never the Render hostname.
-
-The backend still allows the configured direct diagnostic origins through
-`CLIENT_ORIGIN` (`gyakuteneigo.com`, `www.gyakuteneigo.com`, and the GitHub Pages
-origin), but normal classroom traffic should be same-origin.
-
-## Free-plan consideration
-
-This design does not require a paid Cloudflare feature. However, Cloudflare’s
-current Workers Free plan has a **100,000 requests/day** account limit and a
-10 ms CPU limit for a Worker invocation. A simple path proxy should fit the CPU
-budget, but a busy school day with many students, polling fallbacks, and
-reconnects can approach the request quota. Monitor Worker analytics before a
-large rollout and move to the paid plan if the quota or operational headroom is
-not sufficient. Cloudflare’s current limits are documented at
-[Workers limits](https://developers.cloudflare.com/workers/platform/limits/) and
-[Workers pricing](https://developers.cloudflare.com/workers/platform/pricing/).
-
-The WebSocket connection itself is billed as the initial upgrade request; do not
-assume that one classroom connection is equivalent to one HTTP request for all
-of its later traffic. Measure the actual school-day pattern.
+The server’s `CLIENT_ORIGIN` must continue to include every actual web origin
+used during the transition. Same-origin mode is a browser build decision; it
+does not remove the need for CORS and token checks on the API.
 
 ## Rollback
 
-1. If the Worker code is wrong, redeploy the previous Worker version or disable
-   only the `/api/*` and `/socket.io/*` routes. Keep the Pages DNS and CNAME
-   intact.
-2. If the backend origin is temporarily unavailable, restore the previous
-   `BACKEND_ORIGIN` binding and redeploy the Worker. Do not turn the Worker into
-   a generic forwarder.
-3. If the web build is wrong, redeploy the previous GitHub Pages artifact while
-   keeping the compatible Worker version. The web and backend/proxy contracts
-   should be rolled back together when a protocol change is involved.
-4. A pre-proxy browser build that directly uses `api.gyakuteneigo.com` is a last
-   resort for desktop diagnostics only; it is not a school-iPad solution because
-   it reintroduces the multi-host failure mode.
+- If the Worker is wrong, disable only the API/socket routes or redeploy the
+  previous Worker version.
+- If the origin changes, restore the previous `BACKEND_ORIGIN` binding.
+- If the web build is wrong, redeploy the previous Pages artifact and restore
+  the direct API origin until the edge is healthy.
+- Keep the Pages static site and DNS records intact during rollback.
+- Do not use a generic proxy or expose provider/database credentials as a
+  workaround.

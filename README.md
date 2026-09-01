@@ -1,44 +1,54 @@
-# GyakutenEigo / Quiz Strike
+# GyakutenEigo / QuizStrike
 
-GyakutenEigo is a browser-based English-learning site. Quiz Strike is its live
-classroom game: teachers author quizzes and private rooms, while students join
-with a code, answer questions, earn in-game currency, and play school-safe team
-arena modes.
+GyakutenEigo is a school-safe English-learning platform. QuizStrike is its
+live classroom game: teachers author study sets and private rooms, students
+join with a code, answer questions, earn in-game rewards, and play
+server-authoritative arena or Athletics modes. Speaking Practice adds
+teacher-created AI conversation activities with student results.
 
-## Current production state
+## Live status
 
-The production web service is 'gyakuteneigo-api' on Render. Render hosts the
-Node.js/Express/Socket.IO process only; production PostgreSQL is the Supabase
-project **Quiz Strike Production** in Sydney ('ap-southeast-2'). The former
-Render PostgreSQL database was retired after the 1 August 2026 cutover and is no
-longer recoverable from Render.
+| Service | Location | Status |
+| --- | --- | --- |
+| Web app | [gyakuteneigo.com](https://gyakuteneigo.com) and [www.gyakuteneigo.com](https://www.gyakuteneigo.com) | GitHub Pages static build |
+| API/realtime | [api.gyakuteneigo.com](https://api.gyakuteneigo.com) | Render service `gyakuteneigo-api` |
+| Database | Supabase PostgreSQL | Production data store, Sydney region |
+| Speaking AI | Gemini | Server-side conversation, help, evaluation, and transcription |
 
-The final validated local backup is retained at:
+The API health endpoint is [api.gyakuteneigo.com/api/health](https://api.gyakuteneigo.com/api/health).
+The public website is static Pages, so its `/api/*` path is not same-origin yet.
+The checked-in Cloudflare Worker is prepared for a future cutover; the current
+web build uses the Render API origin explicitly.
 
-    database-backups/quizstrike-render-20260801-231819.dump
+The production service is currently one Render instance because live rooms,
+Socket.IO bindings, timers, bots, rate limits, and other transient state are
+process-local. Production PostgreSQL is the Supabase project **Quiz Strike
+Production**. The former Render PostgreSQL database was retired after the
+1 August 2026 migration; the final local native backup is kept outside Git at
+`database-backups/quizstrike-render-20260801-231819.dump`.
 
-The backup directory is ignored by Git. Do not move credentials or database
-URLs into this repository.
+For the complete current-state description, read
+[`SYSTEM.md`](SYSTEM.md) first.
 
 ## Repository layout
 
 | Path | Responsibility |
 | --- | --- |
-| 'apps/web' | React/Vite application, teacher flows, student flows, Three.js arena |
-| 'apps/server' | Express API, Socket.IO gateway, authoritative simulation, persistence orchestration |
-| 'apps/server/src/routes' | Teacher, quiz, session, player, report, and appearance route modules |
-| 'apps/server/src/botRuntime.ts' | Bot decisions, firing, respawn, and bot tick |
-| 'apps/server/src/roundRuntime.ts' | Round mutation, transitions, deadline evaluation, and round broadcasts |
-| 'packages/shared' | Shared types, protocol schemas, validation, map data, deterministic game rules |
-| 'prisma' | PostgreSQL schema and committed migrations |
-| 'scripts/database' | Auditing, migration, backup, and idempotent snapshot backfill tools |
-| 'docs' | Focused feature, map, performance, and migration notes |
-| 'architecture.md' | Current system architecture and authority boundaries |
-| 'HANDOFF.md' | Current operator/developer handoff and next actions |
+| `apps/web` | React/Vite client, teacher/student flows, Three.js arena, Speaking UI |
+| `apps/server` | Express API, Socket.IO, authoritative runtime, bots, providers, persistence |
+| `packages/shared` | Shared TypeScript types, protocol schemas, game rules, Athletics and Speaking contracts |
+| `prisma` | PostgreSQL schema and committed migrations |
+| `infrastructure/cloudflare` | Prepared selective API/Socket.IO Worker proxy; not currently live |
+| `.github/workflows` | CI and GitHub Pages deployment |
+| `scripts/database` | Database audit, backup, migration, and snapshot tools |
+| `docs` | Feature, migration, performance, and QA notes |
+| `SYSTEM.md` | Canonical current-state system source of truth |
+| `architecture.md` | Compact authority and boundary map |
+| `HANDOFF.md` | Release, troubleshooting, and operator handoff |
 
 ## Local setup
 
-Use Node.js 20.19+ or 22.13+. '.nvmrc' selects Node 22.13.
+Use Node.js 20.19+ or 22.13+; `.nvmrc` selects Node 22.13.
 
 ~~~powershell
 npm install
@@ -47,123 +57,69 @@ npm run prisma:generate
 npm run dev
 ~~~
 
-The local app runs at:
+Local URLs:
 
-- Web: 'http://localhost:5173'
-- API: 'http://localhost:4000'
-- Health: 'http://localhost:4000/api/health'
-- Development character/map lab: 'http://localhost:5173/character-lab'
+- web: `http://localhost:5173`;
+- API: `http://localhost:4000`;
+- health: `http://localhost:4000/api/health`;
+- development-only character/map lab: `http://localhost:5173/character-lab`.
 
-For durable local data, start the included PostgreSQL container first:
+For durable local data:
 
 ~~~powershell
 docker compose up -d
 npm run prisma:migrate
 ~~~
 
-Without 'DATABASE_URL', the server intentionally uses in-memory persistence and
-all classroom data disappears on restart.
+Without `DATABASE_URL`, the server intentionally uses in-memory persistence
+and data disappears when the process exits. Local Speaking uses mock providers
+unless real provider values are explicitly configured.
 
-## Routes
+## Main routes
 
 | Route | Use |
 | --- | --- |
-| '/' | Public GyakutenEigo landing page |
-| '/quiz-strike' | Teacher authentication and dashboard |
-| '/join?code=ROOM' | Student room-code entry |
-| '/game' | Student arena |
-| '/character-lab' | Development-only rendering/performance harness |
+| `/` | Public GyakutenEigo home |
+| `/quiz-strike` | QuizStrike landing, authentication, and competition entry |
+| `/quiz-strike/teacher/*` | Unified teacher workspace |
+| `/join?code=ROOM` | Student room-code entry |
+| `/game` | Student live arena |
+| `/speak` | Speaking Practice entry |
+| `/speak/join/:activityCode` | Speaking student join |
+| `/quiz-strike/organizer` and competition routes | Organizer and tournament features |
+| `/tournament-study/:id` | Released tournament study page |
+| `/check` and `/diagnostics` | Network/API/realtime diagnostics |
+| `/character-lab` | Local development rendering harness |
 
-The app uses a small History API router; React Router is not installed. Static
-hosts must serve 'index.html' for these paths.
+The app uses a small History API router; React Router is not installed. The
+Pages workflow supplies `404.html` and direct route entry points.
 
-## Game and product scope
+## Product scope
 
-- Teacher signup/login, classes, quiz sets, question CRUD, folders, reports,
-  session creation, join links, and classroom controls.
-- Teacher workspace navigation with Library, Reports, and Settings; completed
-  game history can be reviewed, exported, individually deleted, or cleared.
-- Teacher-owned Tournament Center with study packs, QR/share links, team
-  approval, deterministic single-elimination brackets, official room locking,
-  and server-verified result linking.
-- Three-step live setup with Zombie, Tag, and Flag modes, map selection, arena
-  rules, and advanced settings for tuning the experience to a class.
-- Student join/rejoin with private player tokens and classroom-safe nicknames.
-- Tag Mode, Flag Mode, and Zombie Mode.
-- Server-authoritative movement, damage, health, economy, purchases, objectives,
-  rounds, bots, answer rewards, and results.
-- Owner-only teacher attention pause/resume that freezes gameplay commands and
-  shifts room deadlines without changing the current round phase.
-- Teacher-only Learning Pulse with cached class accuracy, answer totals,
-  review signals, and difficult/strongest-question patterns; student snapshots
-  never include it.
-- Desert Citadel, The Iron Junction, and Temple Runoff maps.
-- Starter, Quick, and Heavy Snowball Launchers plus Warm Vest and Speed Boots.
-- Shared skinned characters, bounded decals, teacher moderation, touch/gamepad
-  input, audio, minimap, VFX pools, and Low/Medium/High quality presets.
-
-### Teacher live-room flow
-
-1. Choose a quiz from Library and create a game using Game Mode, Arena, and
-   Advanced Settings.
-2. Share the join code or QR code from the waiting room, manage learners/bots,
-   then start the game with the green Start Game action.
-3. Use Live Game Control for round actions, scoreboard and event-feed review,
-   then open Spectator View when a read-only learner perspective is useful.
-4. In Spectator View, choose a connected, alive, non-bot learner from the
-   scrollable picker or use Previous/Next. This changes only the teacher's
-   camera target; it does not send movement, firing, answer, or room commands.
-5. End the game to create the learning report, then review it from Reports.
-
-The teacher workspace keeps its left navigation visible while the main panel
-scrolls. The current maps are Desert Citadel, The Iron Junction, and Temple
-Runoff, with the map artwork used in both setup cards and live previews.
-
-## Architecture at a glance
-
-~~~mermaid
-flowchart LR
-  B[Teacher or student browser] -->|HTTPS / WSS| R[Render Node service]
-  R --> S[Authoritative in-memory room engine]
-  R --> P[Prisma normalized repositories]
-  P --> U[(Supabase PostgreSQL)]
-  R --> C[(RuntimeSnapshot checkpoint)]
-~~~
-
-The server owns meaningful outcomes. The browser sends intent and may predict
-presentation, but it does not decide correctness, damage, money, eliminations,
-objectives, round results, or authoritative positions.
-
-Durable teacher and history data are normalized Prisma models. 'RuntimeSnapshot'
-with id 'primary' remains a recoverable active-session checkpoint and a legacy
-backfill source; it is not the authority for new teacher-library writes.
-
-The current runtime is single-instance. Live sockets, room state, timers, bot
-memory, rate limits, and uploaded decal bytes are process-local. Keep one Render
-instance and require sticky room affinity. 'RUNTIME_STORE=redis' fails closed in
-this build because Redis adapters have not been implemented. The current route,
-bot, round, and arena ownership boundaries are documented in
-[architecture.md](architecture.md).
-
-The monolith extraction is complete on 'main': 'runtime.ts' and
-'ArenaPreview.tsx' remain composition points, while route bodies, bot
-orchestration, round flow, map construction, character synchronization,
-minimap rendering, render-loop lifecycle, and independent round timing each
-have focused owners. See
-[docs/quizstrike-monolith-extraction.md](docs/quizstrike-monolith-extraction.md)
-for the handoff metrics and commit history.
-
-Read [architecture.md](architecture.md) before changing persistence, networking,
-collision, combat, or scaling boundaries.
+- Teacher signup/login, classes, folders, Discover, Library, study-set editing,
+  question CRUD, question audio, reports, and classroom controls.
+- Private QuizStrike rooms with join links/QR codes, student rejoin, bots,
+  appearance customization, touch/gamepad input, audio, minimap, VFX, and
+  Low/Medium/High quality presets.
+- Server-authoritative Classic, Flag, Zombie, and Athletics game modes.
+- Athletics variants: Classic Athletics, Zeus, Hunters & Runners, and Chaos
+  Climb, using the authored Stadium Loop course.
+- Standard arena maps: Desert Citadel, Iron Junction, and Temple Runoff.
+- Teacher-only Learning Pulse derived from authoritative non-bot answers.
+- Teacher-owned Competitions/Tournament Center with study packs, team approval,
+  deterministic brackets, official room locking, and result linking.
+- Speaking Practice activities with scenario prompts, help, server-side AI
+  conversation/transcription/evaluation, bounded session lifetimes, and
+  teacher/student result views.
 
 ## Production configuration
 
-Server-only values:
+Server-only Render values:
 
 ~~~text
 NODE_ENV=production
 NODE_VERSION=22
-JWT_SECRET=<long random secret>
+JWT_SECRET=<secret>
 DATABASE_URL=<Supabase session-pooler URL>
 CLIENT_ORIGIN=https://gyakuteneigo.com,https://www.gyakuteneigo.com,https://susume.github.io
 TRUST_PROXY=true
@@ -171,31 +127,33 @@ RUNTIME_STORE=in-memory
 SPEAKING_MOCK_MODE=false
 SPEAKING_AI_PROVIDER=gemini
 SPEAKING_TRANSCRIPTION_PROVIDER=gemini
-SPEAKING_GEMINI_API_KEY=<server-only Google AI Studio key>
+SPEAKING_GEMINI_API_KEY=<server-only secret>
 SPEAKING_GEMINI_MODEL=gemini-2.5-flash-lite
 SPEAKING_GEMINI_TRANSCRIPTION_MODEL=gemini-2.5-flash-lite
 ~~~
 
-Build-time web values:
+Web build values:
 
 ~~~text
 VITE_BASE_PATH=/
+PAGE_CUSTOM_DOMAIN=www.gyakuteneigo.com
+VITE_API_URL=https://gyakuteneigo-api.onrender.com
+VITE_ALLOW_PRODUCTION_API_OVERRIDE=true
 ~~~
 
-The target production path keeps API and Socket.IO traffic on the current
-`gyakuteneigo.com` origin through Cloudflare. Until that DNS/Worker cutover is
-live, the deployment uses an explicit Render compatibility origin so login and
-classroom play remain operational. See the rollout order in
-[the Cloudflare setup runbook](docs/cloudflare-api-proxy.md).
+Never put database URLs, JWTs, provider keys, Supabase credentials, player
+tokens, or private decal bytes in `VITE_*` variables or committed files.
+Render starts with:
 
-Never put 'DATABASE_URL', 'JWT_SECRET', Supabase keys, or private decal data in
-'VITE_*' variables or committed files.
+~~~text
+npm start -w @quizstrike/server
+~~~
 
-Render start-up runs 'prisma migrate deploy' before the server listens. The
-Supabase session pooler is used for the long-running Node process. Do not use
-'prisma db push' or 'prisma migrate dev' against production.
+The service runs `prisma migrate deploy` before listening when
+`DATABASE_URL` is configured. Do not use `prisma db push` or
+`prisma migrate dev` against production.
 
-## Verification commands
+## Verification
 
 Run from the repository root:
 
@@ -204,64 +162,39 @@ npm run lint
 npm run typecheck
 npm test
 npm run build
+npx prisma validate
+~~~
+
+Use the focused checks when relevant:
+
+~~~powershell
 npm run test:load
 npm run test:e2e
 npm run test:proxy
+npm run typecheck:proxy
 ~~~
 
-The current validated baseline is recorded in [architecture.md](architecture.md)
-and includes the unit-test suite, 40-client load harness, Playwright classroom
-scenario, and local WebGL smoke coverage. For the latest teacher-workspace
-change, web typecheck and production build pass; build warnings about Node
-version or large Vite chunks are non-fatal. Use the declared Node version for
-hosted builds.
+The current protocol is version 1; its wire contract is documented in
+[`packages/shared/PROTOCOL.md`](packages/shared/PROTOCOL.md). For deployment,
+rollback, and classroom smoke testing, use [`HANDOFF.md`](HANDOFF.md). For
+boundary ownership and state authority, use [`architecture.md`](architecture.md).
 
-Database tools:
+## Documentation
 
-~~~powershell
-npx prisma validate
-npm run prisma:deploy
-npm run db:backfill -- --dry-run
-npm run db:verify
-~~~
-
-Use `npx prisma validate` for schema validation; `npm run prisma:validate` is
-not a repository script. The production cutover and backup record is documented in
-[docs/supabase-database-migration.md](docs/supabase-database-migration.md).
-
-## Safety rules
-
-1. Keep game authority on the server and deterministic shared rules in
-   'packages/shared'.
-2. Keep rendered meshes separate from client/server collision proxies.
-3. Keep launcher and perk slots independent.
-4. Never include a question's correct choice in a student question payload.
-5. Check teacher ownership and player tokens on every private operation.
-6. Keep decal bytes bounded, authenticated, expiring, and out of snapshots.
-7. Keep `controlState: "teacher_paused"` separate from round-result `status`;
-   pause/resume must remain owner-only, room-scoped, and deadline-safe.
-8. Keep Learning Pulse teacher-only, derived from authoritative answers, and
-   absent from student snapshots and runtime checkpoints.
-9. Use only school-safe language: snow tags, snowball launchers, warmth, gear,
-   arena, Blue Team, and Red Team. Do not add gore, realistic weapon branding,
-   public matchmaking, public chat, voice chat, or copied Counter-Strike content.
-
-## Documentation index
-
+- [System source of truth](SYSTEM.md)
 - [Architecture](architecture.md)
-- [Development handoff](HANDOFF.md)
-- [Monolith extraction report](docs/quizstrike-monolith-extraction.md)
+- [Developer/operator handoff](HANDOFF.md)
+- [Online hosting runbook](docs/online-play.md)
+- [Cloudflare proxy runbook](docs/cloudflare-api-proxy.md)
+- [Speaking Practice](docs/speaking-practice.md)
 - [Production database migration](docs/supabase-database-migration.md)
 - [Runtime snapshot migration](docs/runtime-snapshot-migration.md)
 - [Teacher library and reports](docs/teacher-library.md)
 - [Tournament Center](docs/tournament-center.md)
-- [Online hosting runbook](docs/online-play.md)
-- [System handoff](HANDOFF.md)
-- [Game rules for students](docs/game-rules.md)
-- [Protocol contract](packages/shared/PROTOCOL.md)
-- [Phases 7-10 implementation report](docs/phases-7-10-implementation-report.md)
-- [Chromebook certification matrix](docs/performance/CHROMEBOOK_CERTIFICATION.md)
+- [Game rules](docs/game-rules.md)
+- [Multiplayer protocol](packages/shared/PROTOCOL.md)
 - [Security audit](AUDIT.md)
 
-Schools should review privacy, safeguarding, accessibility, retention, and local
-policy requirements before classroom deployment.
+No repository license is currently declared. Schools should review privacy,
+safeguarding, accessibility, retention, and local policy requirements before
+classroom deployment.

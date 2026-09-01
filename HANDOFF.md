@@ -1,98 +1,36 @@
-# QuizStrike system handoff
+# GyakutenEigo developer and operator handoff
 
-Last verified: 15 August 2026
-Repository: susume/GyakutenEigo
-Baseline commit: 60bd853
-Audience: the next developer, release operator, or technical owner
+**Verified:** 1 September 2026 (JST)
+**Application baseline:** `76840ec`
+**Canonical system document:** [`SYSTEM.md`](SYSTEM.md)
 
-Read architecture.md for authority boundaries. Read docs/online-play.md for the
-broader production runbook and docs/cloudflare-api-proxy.md for the DNS and
-Worker cutover.
+This file is the short “what do I do next?” guide. It deliberately avoids
+duplicating the full architecture. Update `SYSTEM.md` whenever a deployment,
+authority, persistence, provider, or route fact changes.
 
-## 1. Executive status
+## Current status
 
-QuizStrike is a browser classroom game with teacher authoring, student
-join/rejoin, three server-authoritative modes, three authored arenas,
-combat/economy, bots, reports, competitions, tournaments, customization,
-teacher pause, Learning Pulse, spectator view, and iPad diagnostics.
+- The application baseline is `76840ec` (`Add Gemini Speaking providers`);
+  documentation commits may be newer.
+- GitHub Actions `CI` and `Deploy Web` both succeeded for that commit.
+- `gyakuteneigo.com` and `www.gyakuteneigo.com` serve the GitHub Pages web
+  artifact.
+- `api.gyakuteneigo.com/api/health` and
+  `gyakuteneigo-api.onrender.com/api/health` return healthy PostgreSQL-backed
+  API responses.
+- Production data is in Supabase PostgreSQL. The old Render database is
+  retired; the final local native backup is outside Git at
+  `database-backups/quizstrike-render-20260801-231819.dump`.
+- Production Speaking uses Gemini for both AI and transcription. Provider keys
+  are Render-only secrets.
+- The service remains one Render instance with process-local live room state.
+- The Cloudflare same-origin Worker is prepared in source but is not verified
+  live. Website `/api/health` is still a 404, so do not disable the explicit
+  Render API origin in the Pages build.
 
-The important operational fact is the networking rollout:
+## Start locally
 
-1. The frontend update changed production API and Socket.IO resolution to the
-   page origin.
-2. The public domain has not yet been moved to Cloudflare.
-3. Live /api/* requests therefore reach GitHub Pages and return 404, while
-   Render itself is healthy.
-4. The working tree contains a compatibility release configuration that uses
-   https://gyakuteneigo-api.onrender.com until Cloudflare is ready.
-5. Publish that compatibility configuration to restore teacher login, then do
-   the Worker/DNS cutover in the order below.
-
-Do not set the production override to false while the public health route is
-not returning {"ok":true}. CI now blocks that mistake.
-
-## 2. Immediate recovery release
-
-The local working-tree changes include:
-
-- VITE_API_URL defaulting to the healthy Render API in the Pages workflow;
-- VITE_ALLOW_PRODUCTION_API_OVERRIDE=true during the migration window;
-- a production endpoint-resolution regression test;
-- a CI health guard for the eventual same-origin cutover;
-- architecture and handoff documentation reflecting this two-stage rollout.
-
-After review, publish the changes through the normal repository release path.
-Then verify:
-
-~~~powershell
-Invoke-RestMethod https://gyakuteneigo-api.onrender.com/api/health
-Invoke-WebRequest https://www.gyakuteneigo.com/quiz-strike/teacher/home -UseBasicParsing
-~~~
-
-Open the teacher login page, sign in once, and confirm the browser network
-panel shows /api/auth/login going to the configured Render compatibility origin.
-This is a temporary recovery check, not the final school-safe architecture.
-
-## Teacher dashboard consolidation (September 2026)
-
-The teacher-facing application now uses the QuizStrike workspace as the
-GyakutenEigo shell for both products. `TeacherShell.tsx` owns the shared header,
-navigation, responsive sidebar, account action, and active QuizStrike session
-rail. QuizStrike Study Sets, hosting, reports, competitions, and settings keep
-their existing routes; Speaking teacher tools use canonical
-`/quiz-strike/teacher/speaking/*` routes and load as a lazy feature inside that
-shell.
-
-Existing `/speak/teacher/*` URLs remain compatibility aliases and are mapped to
-the unified dashboard. Speaking student routes remain `/speak/join/*`,
-`/speak/session/*`, and `/speak/result/*`; they were not merged with the
-QuizStrike student join/game flow. See `docs/teacher-experience.md` for the
-route table and shared UI conventions, and `docs/school-ipad-checklist.md` for
-the physical-iPad Speaking checklist.
-
-## 3. Current production facts
-
-| Item | Value |
-| --- | --- |
-| Static host | GitHub Pages |
-| Canonical Pages variable | PAGE_CUSTOM_DOMAIN; workflow default is www.gyakuteneigo.com |
-| Backend | Render gyakuteneigo-api |
-| Backend health | 200, ok: true, storage: postgres at last verification |
-| Database | Supabase PostgreSQL via server-side Prisma/session pooler |
-| Runtime store | in-memory only |
-| Worker source | infrastructure/cloudflare/src/index.ts |
-| Worker config | infrastructure/cloudflare/wrangler.toml |
-| Live DNS | Registrar nameservers; Cloudflare zone/routing is not active |
-| Browser target after cutover | https://gyakuteneigo.com/api/* and /socket.io/* |
-| Health after cutover | https://gyakuteneigo.com/api/health |
-
-The Render service is single-instance. Live rooms, timers, bot state, Socket.IO
-bindings, leases, rate limits, dedupe, and ephemeral decals are process-local.
-Do not scale horizontally.
-
-## 4. Local development
-
-Use Node 20.19+ or Node 22.13+ as specified by .nvmrc and package.json.
+Use Node 20.19+ or Node 22.13+; `.nvmrc` selects Node 22.13.
 
 ~~~powershell
 npm install
@@ -103,30 +41,66 @@ npm run dev
 
 Local URLs:
 
-- web: http://localhost:5173;
-- API: http://localhost:4000;
-- health: http://localhost:4000/api/health;
-- diagnostics: http://localhost:5173/check;
-- character/map lab: http://localhost:5173/character-lab.
+- web: `http://localhost:5173`;
+- API: `http://localhost:4000`;
+- health: `http://localhost:4000/api/health`;
+- local rendering lab: `http://localhost:5173/character-lab`.
 
-Without DATABASE_URL, the server deliberately uses in-memory state. For durable
-local state:
+For durable local data, start PostgreSQL and migrate:
 
 ~~~powershell
 docker compose up -d
 npm run prisma:migrate
 ~~~
 
-Do not use prisma db push or prisma migrate dev against production.
+Without `DATABASE_URL`, the server intentionally uses in-memory persistence.
+Users, rooms, answers, reports, and Speaking records disappear when the
+process exits. Local Speaking uses mock providers unless real provider values
+are explicitly configured.
 
-## 5. Environment contract
+## Before a release
 
-Server-only values belong in Render/server configuration:
+Run the checks relevant to the change. The normal minimum is:
+
+~~~powershell
+npm run lint
+npm run typecheck
+npm test
+npm run build
+npx prisma validate
+~~~
+
+Add these for the corresponding changes:
+
+~~~powershell
+npm run test:load       # realtime/server load behavior
+npm run test:e2e        # browser/classroom flow
+npm run test:proxy      # Cloudflare proxy contract
+npm run typecheck:proxy
+~~~
+
+When a protocol or shared type changes, deploy the compatible server first,
+then the web build. When a Prisma migration changes production data, use
+`prisma migrate deploy` through server startup; never use `prisma db push` or
+`prisma migrate dev` against Supabase production.
+
+## Production configuration checklist
+
+### Render
+
+The service uses:
+
+~~~text
+Build: npm ci --include=dev && npm run build -w @quizstrike/shared && npm run build -w @quizstrike/server
+Start: npm start -w @quizstrike/server
+~~~
+
+Required names (values belong only in Render):
 
 ~~~text
 NODE_ENV=production
-PORT=4000
-JWT_SECRET=<long random secret>
+NODE_VERSION=22
+JWT_SECRET=<secret>
 DATABASE_URL=<Supabase session-pooler URL>
 CLIENT_ORIGIN=https://gyakuteneigo.com,https://www.gyakuteneigo.com,https://susume.github.io
 TRUST_PROXY=true
@@ -134,12 +108,18 @@ RUNTIME_STORE=in-memory
 SPEAKING_MOCK_MODE=false
 SPEAKING_AI_PROVIDER=gemini
 SPEAKING_TRANSCRIPTION_PROVIDER=gemini
-SPEAKING_GEMINI_API_KEY=<server-only Google AI Studio key>
+SPEAKING_GEMINI_API_KEY=<secret>
 SPEAKING_GEMINI_MODEL=gemini-2.5-flash-lite
 SPEAKING_GEMINI_TRANSCRIPTION_MODEL=gemini-2.5-flash-lite
 ~~~
 
-Public web build values are safe to expose but must not contain secrets:
+Do not copy secret values into `.env.example`, GitHub Actions variables,
+`VITE_*` values, screenshots, logs, or documentation. Render supplies `PORT`;
+the local default is 4000.
+
+### GitHub Pages
+
+The Pages workflow builds on `main` with Node 22. Current default values are:
 
 ~~~text
 VITE_BASE_PATH=/
@@ -148,178 +128,113 @@ VITE_API_URL=https://gyakuteneigo-api.onrender.com
 VITE_ALLOW_PRODUCTION_API_OVERRIDE=true
 ~~~
 
-Cutover values, only after the Worker is live:
+The workflow copies `index.html` to `404.html` and creates direct entry points
+for `/quiz-strike`, `/join`, `/game`, `/check`, and `/diagnostics`. If the
+repository-level Pages variables differ from the defaults, verify the actual
+artifact and update [`SYSTEM.md`](SYSTEM.md).
 
-~~~text
-VITE_BASE_PATH=/
-PAGE_CUSTOM_DOMAIN=www.gyakuteneigo.com
-VITE_API_URL=<unset>
-VITE_ALLOW_PRODUCTION_API_OVERRIDE=false
-~~~
+## Release sequence
 
-Local development may use VITE_API_URL=http://localhost:4000 and an optional
-VITE_API_FALLBACK_URL. Never put DATABASE_URL, JWT_SECRET, Supabase keys,
-teacher tokens, or player tokens in any VITE_* variable.
+1. Confirm the intended `main` commit and that CI passes.
+2. If the server or Prisma changed, watch Render startup for migration output
+   and a listening message.
+3. Check both API health endpoints:
 
-## 6. Repository ownership map
+   ~~~powershell
+   Invoke-RestMethod https://api.gyakuteneigo.com/api/health
+   Invoke-RestMethod https://gyakuteneigo-api.onrender.com/api/health
+   ~~~
 
-| Change area | Start here |
-| --- | --- |
-| Browser route/product composition | apps/web/src/BrowserApp.tsx and features/quizstrike/QuizStrikeApp.tsx |
-| Teacher workspace | features/quizstrike/teacher/TeacherWorkspace.tsx and TeacherHome.tsx |
-| Speaking teacher workspace | apps/web/src/features/speaking/teacher/SpeakingTeacherWorkspace.tsx and SpeakingResultPanel.tsx |
-| Student join/live UX | features/quizstrike/student/StudentJoinScreen.tsx and StudentExperience.tsx |
-| API resolution/errors | apps/web/src/api/client.ts, api/endpoints.ts, studentJoinErrors.ts |
-| Socket handshake | features/multiplayer/connection.ts and apps/server/src/realtime/protocolGateway.ts |
-| Server composition | apps/server/src/runtime.ts |
-| Teacher/library routes | routes/teacherLibrary.ts, studySets.ts, quizSets.ts, questions.ts |
-| Session/player routes | routes/sessionRoutes.ts, playerRoutes.ts, appearanceRoutes.ts |
-| Reports/organizers | routes/reports.ts, competitionRoutes.ts, tournamentRoutes.ts |
-| Room/game authority | realtime/roomAuthority.ts, roundRuntime.ts, roundFlow.ts, combat.ts |
-| Bots | botRuntime.ts, botAI.ts, botNavigation.ts |
-| Persistence | persistence/normalizedLibrary.ts, prisma/schema.prisma, prisma/migrations/ |
-| Shared protocol/rules | packages/shared/PROTOCOL.md and packages/shared/src/ |
-| Arena/rendering | apps/web/src/game/ArenaPreview.tsx, arenaMapBuilder.ts, characterSync.ts, arenaLoop.ts |
-| Worker | infrastructure/cloudflare/src/index.ts, wrangler.toml, docs/cloudflare-api-proxy.md |
+   Require `ok: true` and `storage: postgres`.
+4. Confirm the web workflow completed and open `/`, `/quiz-strike`, `/join`,
+   `/check`, and a direct `/speak` route.
+5. Run the classroom smoke test below on the actual target network before
+   inviting a class.
 
-## 7. Release procedure
+## Classroom smoke test
 
-### Web/API release
+Use a teacher browser and at least two student browsers:
 
-1. Confirm the intended commit and database backup state.
-2. Run the validation commands in section 10.
-3. Confirm Render has DATABASE_URL, JWT_SECRET, CLIENT_ORIGIN, TRUST_PROXY,
-   and RUNTIME_STORE=in-memory.
-4. Deploy the server and wait for migrations to complete before accepting
-   classrooms.
-5. Verify Render health and PostgreSQL storage.
-6. Deploy the web artifact through .github/workflows/deploy-web.yml.
-7. Test teacher login, quiz library, room creation, student join, Socket.IO
-   handshake, reconnect, report creation, and /check.
+1. Teacher signs in, opens Library, selects a quiz, and creates a room.
+2. Waiting room shows join link/QR, roster, bot and appearance controls, and a
+   visible Start Game action.
+3. Students join and receive a Socket.IO handshake, scoped snapshot, question,
+   answer result, money, scoreboard, and event feed.
+4. Run at least one current mode. For arena modes, exercise a short Classic,
+   Flag, or Zombie round; for Athletics, verify course progress and the chosen
+   variant behavior.
+5. Test shop/purchases where relevant, reconnect one student, and verify the
+   authoritative snapshot restores the room.
+6. Pause and resume as the owning teacher. Confirm movement, firing, answers,
+   purchases, countdowns, and bot/deadline progress freeze and resume safely.
+7. Confirm Learning Pulse appears to the teacher but not in student snapshots.
+8. End the room, open the report, export it, and verify teacher-scoped history.
+9. If Speaking changed, create a short activity, join it, send one recording,
+   request help, finish, and verify the result/evaluation path.
 
-### Cloudflare cutover
+## Troubleshooting
 
-Do this only when the compatibility release is stable:
+### Render exits during startup
 
-1. Record the current GitHub Pages custom domain and DNS records.
-2. Add gyakuteneigo.com to Cloudflare.
-3. Move the domain nameservers to Cloudflare and preserve the Pages origin
-   record, proxied through Cloudflare.
-4. Deploy the Worker with npx wrangler login and npx wrangler deploy from
-   infrastructure/cloudflare/.
-5. Confirm apex and www Worker routes have valid proxied DNS records.
-6. Verify /api/health returns JSON and
-   /socket.io/?EIO=4&transport=polling returns an Engine.IO opening response,
-   not Pages HTML.
-7. Open /check from a normal browser and a physical school iPad.
-8. Set VITE_ALLOW_PRODUCTION_API_OVERRIDE=false, remove VITE_API_URL, and let
-   the CI guard validate the public route before Pages deploys.
-9. Inspect the browser network panel: normal gameplay traffic must stay on the
-   website origin.
+Check the first error after `prisma migrate deploy`:
 
-The Worker routes are limited to /api/* and /socket.io/*. Never attach the
-Worker to /*. Keep BACKEND_ORIGIN as an HTTPS origin with no path, credentials,
-query, or fragment.
+- missing `JWT_SECRET` fails production configuration;
+- missing `SPEAKING_AI_PROVIDER` or
+  `SPEAKING_TRANSCRIPTION_PROVIDER` fails production Speaking configuration;
+- Gemini mode also requires `SPEAKING_GEMINI_API_KEY` (or the supported
+  `GEMINI_API_KEY` alias);
+- an unsupported `RUNTIME_STORE` fails closed because the runtime is not
+  distributed.
 
-## 8. Health and rollback
+For the original startup failure, set both provider selectors and the
+server-only Gemini key in Render, keep `SPEAKING_MOCK_MODE=false`, then
+redeploy. Use `SPEAKING_MOCK_MODE=true` only for an intentional non-AI test
+deployment.
 
-Health checks:
+### Website loads but API calls are 404
 
-~~~powershell
-Invoke-RestMethod https://gyakuteneigo-api.onrender.com/api/health
-Invoke-RestMethod https://www.gyakuteneigo.com/api/health
-curl.exe -i "https://www.gyakuteneigo.com/socket.io/?EIO=4&transport=polling"
-~~~
+This is expected for `https://gyakuteneigo.com/api/*` until the Cloudflare
+Worker cutover is complete. Verify the deployed web build still has
+`VITE_API_URL=https://gyakuteneigo-api.onrender.com` and
+`VITE_ALLOW_PRODUCTION_API_OVERRIDE=true`. Test the API directly at
+`https://api.gyakuteneigo.com/api/health`.
 
-The second and third commands are expected to use the website origin only after
-Cloudflare cutover. Before then, use the Render health URL and compatibility
-web build.
+Do not “fix” this by attaching the Worker to `/*`, adding a generic proxy, or
+putting secrets into the web build.
 
-Rollback order:
+### WebSocket/reconnect failures
 
-- Web-only issue: redeploy the previous Pages artifact with the matching API mode.
-- Worker issue: redeploy the previous Worker or disable only the two Worker
-  routes; keep Pages DNS/CNAME intact.
-- API/protocol issue: roll back compatible server and web versions together.
-- Database migration issue: stop classroom launches and use the approved
-  recovery procedure; never manually reverse a production migration.
+Confirm the browser uses the same API base URL for HTTP and Socket.IO, the
+Render service still has one instance, CORS includes the real Pages origin,
+and the target network permits Socket.IO polling. The protocol handshake is
+`client_hello` → `server_hello` → `join_session_room`; inspect the browser
+diagnostics page and Render logs without logging tokens.
 
-## 9. Classroom verification
+### Speaking failures
 
-Run the full manual procedure in docs/school-ipad-checklist.md. The short
-release smoke is:
+Confirm the provider selectors match (`gemini`, `openai`, or intentional
+`mock`), the selected provider key is present only on Render, the model names
+are valid, and the request is within the bounded audio/session limits. The
+server stores transcript/evaluation metadata, not raw Speaking audio.
 
-1. Teacher signs in and opens a quiz set.
-2. Teacher creates a room and verifies the join code/QR.
-3. Student opens /join, enters a nickname, joins, chooses a team, and reaches
-   the lobby.
-4. Teacher starts a round.
-5. Student renders the arena, uses touch controls, opens the quiz, answers, and
-   sees score/state synchronization.
-6. Student backgrounds Safari briefly, returns, and reconnects.
-7. Teacher pauses/resumes, ends the session, and opens the report.
+## Scaling and rollback guardrails
 
-Repeat once on home Wi-Fi, school Wi-Fi, and a desktop browser. Automated
-Chromium iPad emulation is useful regression coverage but does not prove real
-Safari/iPadOS behavior.
+Do not add Render replicas. Process-local rooms, sockets, timers, bots, rate
+limits, deduplication, and transient assets require room affinity and one
+authoritative instance.
 
-## 10. Validation commands
+For a web-only regression, redeploy the previous Pages artifact. For an API or
+protocol regression, stop inviting new rooms and roll web/server back to a
+compatible pair. Never reverse a production migration by hand; recover data
+through the approved backup procedure and reconcile any writes first.
 
-From the repository root:
+For a same-origin cutover rollback, disable only the Worker API/socket routes
+or restore the previous Worker origin. Keep the Pages static site intact.
 
-~~~powershell
-npm run lint
-npm run typecheck
-npm test
-npm run build
-npm run test:load
-npm run test:e2e
-npx prisma validate
-git diff --check
-~~~
+## Ownership map
 
-Focused checks:
-
-~~~powershell
-npm run test:proxy
-npm run typecheck:proxy
-npm run test -w @quizstrike/web
-npm run typecheck -w @quizstrike/web
-~~~
-
-The school-iPad work includes proxy path/header/timeout tests, API resolution
-tests, friendly join-error tests, API/socket failure and recovery Playwright
-coverage, an iPad-sized project, and /check diagnostics. The local environment
-cannot validate Cloudflare DNS or a physical iPad.
-
-## 11. Known limits and risks
-
-- Cloudflare is not yet the live DNS edge; the same-origin cutover is a
-  deployment, not only a frontend setting.
-- School filtering may block WebSocket upgrades. Socket.IO starts with polling
-  and can remain functional over polling, with higher latency.
-- Render cold starts can make the first request slow. Bounded timeouts and
-  classroom-facing retry wording are intentional.
-- One Render instance is required for room affinity. A restart can require
-  reconnect/rejoin and does not provide zero-downtime live-room handoff.
-- GitHub Pages remains a static host; SPA fallback and custom-domain/CNAME
-  settings must be preserved during DNS changes.
-- WebGL, AudioContext, localStorage, page lifecycle, viewport, and touch
-  behavior still need physical Safari confirmation.
-- Cloudflare free-plan request/CPU quotas should be monitored during a school
-  day, especially if polling fallback is common.
-- Uploaded decals are ephemeral and are not a durable classroom asset store.
-
-## 12. Non-negotiable invariants
-
-1. The server is authoritative for identity, correctness, movement acceptance,
-   combat, economy, objectives, timers, reports, and role-scoped state.
-2. Students never receive correctChoice, Learning Pulse, private roster data,
-   or teacher-only projections.
-3. Purchases and other ambiguous actions are not retried through two transports.
-4. Live API and Socket.IO traffic is never cached.
-5. The Worker is not an open proxy and never receives application secrets.
-6. RUNTIME_STORE=redis remains disabled until the full multi-instance design is
-   implemented and tested.
-7. Any production networking change updates this file, architecture.md,
-   docs/online-play.md, tests, and release verification steps.
+For changes to server authority, persistence, network paths, security, or
+product routes, read [`architecture.md`](architecture.md) and
+[`SYSTEM.md`](SYSTEM.md) first. Focused feature and migration notes in
+`docs/` are supporting evidence, not replacements for the current-state
+document.
