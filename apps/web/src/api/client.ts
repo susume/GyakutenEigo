@@ -76,6 +76,11 @@ export const getTeacherToken = getToken;
 const playerHeaders = (playerToken: string) => ({ "X-Player-Token": playerToken });
 export const speakingHeaders = (speakingToken: string) => ({ "X-Speaking-Token": speakingToken });
 
+// The server bounds transcription and conversation separately. Leave enough
+// time for both operations plus normal persistence, so a valid slow turn does
+// not get abandoned by the browser while the server is still completing it.
+const SPEAKING_TURN_REQUEST_TIMEOUT_MS = 35_000;
+
 export async function api<T>(path: string, options: RequestInit = {}, policy: ApiRequestPolicy = {}): Promise<T> {
   const headers = new Headers(options.headers);
   if (!headers.has("Content-Type") && options.body) headers.set("Content-Type", "application/json");
@@ -377,7 +382,7 @@ export const speakingApi = {
       ? { ...speakingHeaders(token), "Content-Type": body.audio.type || "audio/webm", ...(body.requestId ? { "X-Speaking-Turn-Id": body.requestId } : {}), ...(body.speechDetected === undefined ? {} : { "X-Speaking-Audio-Activity": String(body.speechDetected) }), ...(body.audioDurationMs === undefined ? {} : { "X-Speaking-Audio-Duration-Ms": String(body.audioDurationMs) }) }
       : { ...speakingHeaders(token), ...(body.requestId ? { "X-Speaking-Turn-Id": body.requestId } : {}) },
     body: body.audio ? body.audio : JSON.stringify({ text: body.text }),
-  }),
+  }, { attemptTimeoutMs: SPEAKING_TURN_REQUEST_TIMEOUT_MS }),
   help: (sessionId: string, token: string) => api(`/api/speaking/sessions/${encodeURIComponent(sessionId)}/help`, { method: "POST", headers: speakingHeaders(token) }),
   finish: (sessionId: string, token: string) => api(`/api/speaking/sessions/${encodeURIComponent(sessionId)}/finish`, { method: "POST", headers: speakingHeaders(token) }),
   results: (activityId: string, sessionId?: string) => api(`/api/speaking/activities/${encodeURIComponent(activityId)}/results${sessionId ? `?sessionId=${encodeURIComponent(sessionId)}` : ""}`),

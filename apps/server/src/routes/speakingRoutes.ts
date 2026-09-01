@@ -19,10 +19,12 @@ import {
   type TeacherUser
 } from "@quizstrike/shared";
 import { randomBytes, randomInt } from "node:crypto";
+import { performance } from "node:perf_hooks";
 import { PrismaClient } from "@prisma/client";
 import {
   createInMemorySpeakingState,
   createSpeakingRepository,
+  findSpeakingTurnPair,
   hashSpeakingToken,
   type InMemorySpeakingState,
   type SpeakingRepository
@@ -35,8 +37,21 @@ import {
   type TranscriptionProvider,
   type TranscriptionResult
 } from "../speakingProviders.js";
+import { buildConversationPrompt } from "../speakingPrompts.js";
 
 type AuthedRequest = Request & { user?: TeacherUser };
+type SpeakingTurnRequest = Request & { speakingTurnRequestStartedAt?: number };
+
+export type SpeakingLatencyDiagnostics = {
+  audioBytes: number;
+  requestParsingMs: number;
+  transcriptionMs: number;
+  studentPersistenceMs: number;
+  promptPreparationMs: number;
+  conversationMs: number;
+  aiPersistenceMs: number;
+  totalMs: number;
+};
 
 export type SpeakingRouteState = InMemorySpeakingState & {
   requestWindows: Map<string, { startedAtMs: number; count: number }>;
@@ -63,6 +78,8 @@ export type SpeakingRouteDependencies = {
   helpProvider?: HelpProvider;
   allowTextInput?: boolean;
   sessionLifetimeSeconds?: number;
+  /** Explicit test override; production diagnostics remain opt-in by environment. */
+  latencyDebug?: boolean;
 };
 
 const createState = (): SpeakingRouteState => ({ ...createInMemorySpeakingState(), requestWindows: new Map() });
@@ -286,6 +303,18 @@ const parseAudioOrText = (req: Request) => {
 
 const supportedAudioMime = (mimeType: string) => mimeType === "audio/webm" || mimeType === "audio/mp4" || mimeType === "audio/ogg" || mimeType === "audio/wav" || mimeType === "audio/mpeg";
 
+const boundedSpeakingDurationMs = (startedAt: number, finishedAt = performance.now()) =>
+  Math.min(120_000, Math.max(0, Math.round(finishedAt - startedAt)));
+
+const speakingLatencyDebugEnabled = (environment: NodeJS.ProcessEnv = process.env) =>
+  environment.SPEAKING_LATENCY_DEBUG?.trim().toLowerCase() === "true";
+
+const logSpeakingLatency = (diagnostics: SpeakingLatencyDiagnostics) => {
+  // Deliberately log only bounded timings and payload size. Never include
+  // transcript text, audio bytes, participant identifiers, or provider keys.
+  console.info(`[Speaking latency] ${JSON.stringify(diagnostics)}`);
+};
+
 export const participantActiveElapsedMs = (participant: SpeakingParticipant, session: SpeakingSession, referenceTime: string) =>
   speakingActiveElapsedMs(participant, session, referenceTime);
 
@@ -324,10 +353,15 @@ export const registerSpeakingRoutes = (app: Application, deps: SpeakingRouteDepe
   const configuredSessionLifetime = deps.sessionLifetimeSeconds ?? (Number.isFinite(environmentSessionLifetime) ? environmentSessionLifetime : SPEAKING_LIMITS.sessionLifetimeSeconds);
   const sessionLifetimeSeconds = Math.min(7 * 24 * 60 * 60, Math.max(10 * 60, Math.floor(configuredSessionLifetime)));
   const turnLocks = new Map<string, Promise<void>>();
+  const latencyDebug = deps.latencyDebug ?? speakingLatencyDebugEnabled();
 
   // Express's JSON parser skips audio/*, so parse only this endpoint as a
   // bounded binary request. Raw bytes are never written to the repository.
-  app.use("/api/speaking/sessions/:sessionId/turn", express.raw({ type: ["audio/*", "application/octet-stream"], limit: `${SPEAKING_LIMITS.maxAudioBytes}b` }));
+  const turnRoutePath = "/api/speaking/sessions/:sessionId/turn";
+  app.use(turnRoutePath, (req, _res, next) => {
+    (req as SpeakingTurnRequest).speakingTurnRequestStartedAt = performance.now();
+    next();
+  }, express.raw({ type: ["audio/*", "application/octet-stream"], limit: `${SPEAKING_LIMITS.maxAudioBytes}b` }));
 
   const withTurnLock = async <T>(participantId: string, work: () => Promise<T>) => {
     const previous = turnLocks.get(participantId) ?? Promise.resolve();
@@ -597,130 +631,180 @@ export const registerSpeakingRoutes = (app: Application, deps: SpeakingRouteDepe
     res.json({ activity: publicActivity(access.activity), participant: publicParticipant(participant), session: sessionPayload(session), turns });
   });
 
-  app.post("/api/speaking/sessions/:sessionId/turn", async (req, res) => {
+  app.post(turnRoutePath, async (req, res) => {
+    const requestStartedAt = (req as SpeakingTurnRequest).speakingTurnRequestStartedAt;
+    const requestParsedAt = performance.now();
+    const turnStartedAt = requestStartedAt ?? performance.now();
     const access = await getParticipantAccess(req);
     if (!access || access.session.id !== String(req.params.sessionId)) {
       res.status(401).json({ error: "This speaking session is no longer available." });
       return;
     }
     return withTurnLock(access.participant.id, async () => {
-      const rawRequestId = req.header("X-Speaking-Turn-Id")?.trim();
-      const requestId = rawRequestId && rawRequestId.length <= 120 ? rawRequestId : undefined;
-      const previous = requestId ? await repository.findTurnPair(access.participant.id, requestId) : undefined;
-      if (previous?.aiTurn) {
+      const latency: SpeakingLatencyDiagnostics = {
+        audioBytes: 0,
+        requestParsingMs: 0,
+        transcriptionMs: 0,
+        studentPersistenceMs: 0,
+        promptPreparationMs: 0,
+        conversationMs: 0,
+        aiPersistenceMs: 0,
+        totalMs: 0
+      };
+      const latencyResponse = () => {
+        latency.totalMs = boundedSpeakingDurationMs(turnStartedAt);
+        return latencyDebug ? { latency: { ...latency } } : {};
+      };
+
+      try {
+        latency.requestParsingMs = requestStartedAt === undefined ? 0 : boundedSpeakingDurationMs(requestStartedAt, requestParsedAt);
+        const rawRequestId = req.header("X-Speaking-Turn-Id")?.trim();
+        const requestId = rawRequestId && rawRequestId.length <= 120 ? rawRequestId : undefined;
+        const requestTurns = requestId ? await repository.listTurns(access.participant.id) : undefined;
+        const previous = requestId && requestTurns ? findSpeakingTurnPair(requestTurns, requestId) : undefined;
+        if (previous?.aiTurn) {
+          const latestSession = await repository.getSession(access.session.id);
+          res.json({ studentTurn: previous.studentTurn, aiTurn: previous.aiTurn, session: sessionPayload(latestSession?.session ?? access.session), ...latencyResponse() });
+          return;
+        }
+        if (!allowRequest(state, `turn:${hashSpeakingToken(parseParticipantToken(req) ?? "")}`, 45)) {
+          res.status(429).json({ error: "Please wait a moment before speaking again." });
+          return;
+        }
+        let currentSession = await expireSessionIfNeeded(access);
+        if (!previous?.studentTurn && currentSession.status === "paused") {
+          res.status(409).json({ error: "Your teacher paused the activity." });
+          return;
+        }
+        if (!previous?.studentTurn && currentSession.status !== "active") {
+          res.status(currentSession.status === "expired" || currentSession.status === "ended" ? 410 : 409).json({ error: currentSession.status === "ready" ? "Waiting for your teacher to start the activity." : "This speaking activity is no longer accepting turns." });
+          return;
+        }
+        let currentParticipant = await repository.getParticipant(access.participant.id) ?? access.participant;
+        const existingTurns = requestTurns ?? await repository.listTurns(currentParticipant.id);
+        let turnsForConversation = existingTurns;
+        let studentTurn = previous?.studentTurn;
+        if (!studentTurn) {
+          if (currentParticipant.status === "completed") {
+            res.status(409).json({ error: "This speaking activity is already finished." });
+            return;
+          }
+          const startedAt = currentParticipant.startedAt ?? deps.now();
+          if (!currentParticipant.startedAt) {
+            const startedParticipant = await repository.startParticipant(currentParticipant.id, startedAt);
+            currentParticipant = { ...currentParticipant, ...(startedParticipant ?? { startedAt }) };
+          }
+          if (!participantHasSpeakingTime(currentParticipant, currentSession, access.activity, deps.now())) {
+            res.status(409).json({ error: "Your speaking time is over. You can finish and view your result." });
+            return;
+          }
+          if (currentParticipant.status === "evaluating" || currentParticipant.status === "error") {
+            res.status(409).json({ error: "This speaking activity is finishing. Please try the result screen." });
+            return;
+          }
+          if (existingTurns.length >= SPEAKING_LIMITS.maxTurns) {
+            res.status(409).json({ error: "This speaking activity has reached its turn limit. You can finish and view your result." });
+            return;
+          }
+          const parsed = parseAudioOrText(req);
+          latency.audioBytes = parsed.audio?.byteLength ?? 0;
+          if (parsed.audio && parsed.audio.length > SPEAKING_LIMITS.maxAudioBytes) {
+            res.status(413).json({ error: "That recording is too large. Please record a shorter answer." });
+            return;
+          }
+          if (parsed.audio && !supportedAudioMime(parsed.mimeType)) {
+            res.status(415).json({ error: "This browser recording format is not supported. Try Safari, Chrome, or a shorter recording." });
+            return;
+          }
+          if (parsed.audio && parsed.audioDurationMs !== undefined && (!Number.isInteger(parsed.audioDurationMs) || parsed.audioDurationMs < 0 || parsed.audioDurationMs > SPEAKING_LIMITS.maxTurnSeconds * 1_000 + 2_000)) {
+            // This client value is advisory only. The byte limit and provider-side
+            // transcription remain the authoritative defenses; this catches only
+            // obviously malformed metadata without adding a media parser.
+            res.status(400).json({ error: "That recording duration is not valid. Please record a shorter answer." });
+            return;
+          }
+          const textInput = SpeakingTurnInputSchema.safeParse(parsed.text === undefined ? {} : { text: parsed.text });
+          if (!parsed.audio && (!allowTextInput || !textInput.success)) {
+            res.status(400).json({ error: "I couldn’t hear that clearly. Please try again." });
+            return;
+          }
+          let transcription: TranscriptionResult;
+          const transcriptionStartedAt = performance.now();
+          try {
+            transcription = await transcriber.transcribe({ audio: parsed.audio ?? Buffer.from(parsed.text ?? "", "utf8"), mimeType: parsed.audio ? parsed.mimeType : "text/plain", languageHint: SPEAKING_PRACTICE_LANGUAGE, ...(parsed.speechDetected === undefined ? {} : { speechDetected: parsed.speechDetected }), ...(allowTextInput && textInput.success ? { text: textInput.data.text } : {}) });
+          } catch {
+            res.status(503).json({ error: "I couldn’t transcribe that recording. Please try again." });
+            return;
+          } finally {
+            latency.transcriptionMs = boundedSpeakingDurationMs(transcriptionStartedAt);
+          }
+          currentSession = await expireSessionIfNeeded({ ...access, session: currentSession });
+          if (currentSession.status !== "active") {
+            res.status(currentSession.status === "expired" || currentSession.status === "ended" ? 410 : 409).json({ error: currentSession.status === "paused" ? "Your teacher paused the activity." : "This speaking activity is no longer accepting turns." });
+            return;
+          }
+          const studentText = transcription.text.trim().slice(0, SPEAKING_LIMITS.turnText);
+          if (!studentText) {
+            res.status(422).json({ error: "I couldn’t hear any speech. Please say a short sentence and try again." });
+            return;
+          }
+          const turnCreatedAt = deps.now();
+          const studentPersistenceStartedAt = performance.now();
+          try {
+            studentTurn = await repository.appendTurn({
+              id: deps.id(),
+              participantId: access.participant.id,
+              sessionId: access.session.id,
+              speaker: "student",
+              text: studentText,
+              createdAt: turnCreatedAt,
+              ...(parsed.audio && parsed.audioDurationMs !== undefined ? { audioDurationMs: parsed.audioDurationMs } : {}),
+              responseTimeMs: Math.max(0, Date.parse(turnCreatedAt) - Math.max(0, Date.parse(existingTurns.filter((turn) => turn.speaker === "ai").at(-1)?.createdAt ?? turnCreatedAt))),
+              usedHelp: currentParticipant.helpPending,
+              ...(transcription.confidence === undefined ? {} : { transcriptionConfidence: transcription.confidence }),
+              ...(requestId ? { requestId } : {})
+            });
+            await repository.updateParticipant(currentParticipant.id, { status: "in_progress", helpPending: false });
+          } finally {
+            latency.studentPersistenceMs = boundedSpeakingDurationMs(studentPersistenceStartedAt);
+          }
+          // The participant turn lock prevents another turn from being appended
+          // while this request is running, so the already-loaded ordered list is
+          // safe to extend locally and avoids another full listTurns query.
+          turnsForConversation = [...existingTurns, studentTurn];
+        }
+        let aiTurn = previous?.aiTurn;
+        if (!aiTurn) {
+          const promptStartedAt = performance.now();
+          const prompt = buildConversationPrompt({ activity: access.activity, turns: turnsForConversation, latestStudentText: studentTurn.text });
+          latency.promptPreparationMs = boundedSpeakingDurationMs(promptStartedAt);
+          let responseText: string;
+          const conversationStartedAt = performance.now();
+          try {
+            responseText = (await conversationProvider.respond({ activity: access.activity, turns: turnsForConversation, studentText: studentTurn.text, prompt })).trim().slice(0, 280);
+          } catch {
+            res.status(503).json({ error: "I couldn’t answer just now. Please tap Retry." });
+            return;
+          } finally {
+            latency.conversationMs = boundedSpeakingDurationMs(conversationStartedAt);
+          }
+          if (!responseText) {
+            res.status(503).json({ error: "I couldn’t answer just now. Please tap Retry." });
+            return;
+          }
+          const aiPersistenceStartedAt = performance.now();
+          try {
+            aiTurn = await repository.appendTurn({ id: deps.id(), participantId: access.participant.id, sessionId: access.session.id, speaker: "ai", text: responseText, createdAt: deps.now() });
+          } finally {
+            latency.aiPersistenceMs = boundedSpeakingDurationMs(aiPersistenceStartedAt);
+          }
+        }
         const latestSession = await repository.getSession(access.session.id);
-        res.json({ studentTurn: previous.studentTurn, aiTurn: previous.aiTurn, session: sessionPayload(latestSession?.session ?? access.session) });
-        return;
+        res.json({ studentTurn, aiTurn, session: sessionPayload(latestSession?.session ?? currentSession), ...latencyResponse() });
+      } finally {
+        latency.totalMs = boundedSpeakingDurationMs(turnStartedAt);
+        if (latencyDebug) logSpeakingLatency(latency);
       }
-      if (!allowRequest(state, `turn:${hashSpeakingToken(parseParticipantToken(req) ?? "")}`, 45)) {
-        res.status(429).json({ error: "Please wait a moment before speaking again." });
-        return;
-      }
-      let currentSession = await expireSessionIfNeeded(access);
-      if (!previous?.studentTurn && currentSession.status === "paused") {
-        res.status(409).json({ error: "Your teacher paused the activity." });
-        return;
-      }
-      if (!previous?.studentTurn && currentSession.status !== "active") {
-        res.status(currentSession.status === "expired" || currentSession.status === "ended" ? 410 : 409).json({ error: currentSession.status === "ready" ? "Waiting for your teacher to start the activity." : "This speaking activity is no longer accepting turns." });
-        return;
-      }
-      let currentParticipant = await repository.getParticipant(access.participant.id) ?? access.participant;
-      const existingTurns = await repository.listTurns(currentParticipant.id);
-      let studentTurn = previous?.studentTurn;
-      if (!studentTurn) {
-        if (currentParticipant.status === "completed") {
-          res.status(409).json({ error: "This speaking activity is already finished." });
-          return;
-        }
-        const startedAt = currentParticipant.startedAt ?? deps.now();
-        if (!currentParticipant.startedAt) {
-          const startedParticipant = await repository.startParticipant(currentParticipant.id, startedAt);
-          currentParticipant = { ...currentParticipant, ...(startedParticipant ?? { startedAt }) };
-        }
-        if (!participantHasSpeakingTime(currentParticipant, currentSession, access.activity, deps.now())) {
-          res.status(409).json({ error: "Your speaking time is over. You can finish and view your result." });
-          return;
-        }
-        if (currentParticipant.status === "evaluating" || currentParticipant.status === "error") {
-          res.status(409).json({ error: "This speaking activity is finishing. Please try the result screen." });
-          return;
-        }
-        if (existingTurns.length >= SPEAKING_LIMITS.maxTurns) {
-          res.status(409).json({ error: "This speaking activity has reached its turn limit. You can finish and view your result." });
-          return;
-        }
-        const parsed = parseAudioOrText(req);
-        if (parsed.audio && parsed.audio.length > SPEAKING_LIMITS.maxAudioBytes) {
-          res.status(413).json({ error: "That recording is too large. Please record a shorter answer." });
-          return;
-        }
-        if (parsed.audio && !supportedAudioMime(parsed.mimeType)) {
-          res.status(415).json({ error: "This browser recording format is not supported. Try Safari, Chrome, or a shorter recording." });
-          return;
-        }
-        if (parsed.audio && parsed.audioDurationMs !== undefined && (!Number.isInteger(parsed.audioDurationMs) || parsed.audioDurationMs < 0 || parsed.audioDurationMs > SPEAKING_LIMITS.maxTurnSeconds * 1_000 + 2_000)) {
-          // This client value is advisory only. The byte limit and provider-side
-          // transcription remain the authoritative defenses; this catches only
-          // obviously malformed metadata without adding a media parser.
-          res.status(400).json({ error: "That recording duration is not valid. Please record a shorter answer." });
-          return;
-        }
-        const textInput = SpeakingTurnInputSchema.safeParse(parsed.text === undefined ? {} : { text: parsed.text });
-        if (!parsed.audio && (!allowTextInput || !textInput.success)) {
-          res.status(400).json({ error: "I couldn’t hear that clearly. Please try again." });
-          return;
-        }
-        let transcription: TranscriptionResult;
-        try {
-          transcription = await transcriber.transcribe({ audio: parsed.audio ?? Buffer.from(parsed.text ?? "", "utf8"), mimeType: parsed.audio ? parsed.mimeType : "text/plain", languageHint: SPEAKING_PRACTICE_LANGUAGE, ...(parsed.speechDetected === undefined ? {} : { speechDetected: parsed.speechDetected }), ...(allowTextInput && textInput.success ? { text: textInput.data.text } : {}) });
-        } catch {
-          res.status(503).json({ error: "I couldn’t transcribe that recording. Please try again." });
-          return;
-        }
-        currentSession = await expireSessionIfNeeded({ ...access, session: currentSession });
-        if (currentSession.status !== "active") {
-          res.status(currentSession.status === "expired" || currentSession.status === "ended" ? 410 : 409).json({ error: currentSession.status === "paused" ? "Your teacher paused the activity." : "This speaking activity is no longer accepting turns." });
-          return;
-        }
-        const studentText = transcription.text.trim().slice(0, SPEAKING_LIMITS.turnText);
-        if (!studentText) {
-          res.status(422).json({ error: "I couldn’t hear any speech. Please say a short sentence and try again." });
-          return;
-        }
-        const turnCreatedAt = deps.now();
-        studentTurn = await repository.appendTurn({
-          id: deps.id(),
-          participantId: access.participant.id,
-          speaker: "student",
-          text: studentText,
-          createdAt: turnCreatedAt,
-          ...(parsed.audio && parsed.audioDurationMs !== undefined ? { audioDurationMs: parsed.audioDurationMs } : {}),
-          responseTimeMs: Math.max(0, Date.parse(turnCreatedAt) - Math.max(0, Date.parse(existingTurns.filter((turn) => turn.speaker === "ai").at(-1)?.createdAt ?? turnCreatedAt))),
-          usedHelp: currentParticipant.helpPending,
-          ...(transcription.confidence === undefined ? {} : { transcriptionConfidence: transcription.confidence }),
-          ...(requestId ? { requestId } : {})
-        });
-        await repository.updateParticipant(currentParticipant.id, { status: "in_progress", helpPending: false });
-      }
-      let aiTurn = previous?.aiTurn;
-      if (!aiTurn) {
-        const turns = await repository.listTurns(access.participant.id);
-        let responseText: string;
-        try {
-          responseText = (await conversationProvider.respond({ activity: access.activity, turns, studentText: studentTurn.text })).trim().slice(0, 280);
-        } catch {
-          res.status(503).json({ error: "I couldn’t answer just now. Please tap Retry." });
-          return;
-        }
-        if (!responseText) {
-          res.status(503).json({ error: "I couldn’t answer just now. Please tap Retry." });
-          return;
-        }
-        aiTurn = await repository.appendTurn({ id: deps.id(), participantId: access.participant.id, speaker: "ai", text: responseText, createdAt: deps.now() });
-      }
-      const latestSession = await repository.getSession(access.session.id);
-      res.json({ studentTurn, aiTurn, session: sessionPayload(latestSession?.session ?? currentSession) });
     });
   });
 

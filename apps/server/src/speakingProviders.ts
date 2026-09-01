@@ -28,8 +28,16 @@ export interface TranscriptionProvider {
   transcribe(input: TranscriptionInput): Promise<TranscriptionResult>;
 }
 
+export interface ConversationInput {
+  activity: SpeakingActivity;
+  turns: SpeakingTurn[];
+  studentText: string;
+  /** Prepared once by the route so prompt construction is measurable and not duplicated. */
+  prompt?: string;
+}
+
 export interface ConversationProvider {
-  respond(input: { activity: SpeakingActivity; turns: SpeakingTurn[]; studentText: string }): Promise<string>;
+  respond(input: ConversationInput): Promise<string>;
 }
 
 export interface HelpProvider {
@@ -45,6 +53,67 @@ export interface EvaluationProvider {
     helpMetadata?: { helpCount: number; helpedTurnCount: number };
   }): Promise<SpeakingEvaluation>;
 }
+
+export type SpeakingProviderOperation = "transcription" | "conversation" | "help" | "evaluation";
+
+const DEFAULT_PROVIDER_TIMEOUTS_MS: Record<SpeakingProviderOperation, number> = {
+  // These are deliberately bounded, but leave enough room for a classroom
+  // tablet on an ordinary school network. A turn still has a separate timeout
+  // for transcription and conversation, so no provider can wait indefinitely.
+  transcription: 15_000,
+  conversation: 12_000,
+  help: 12_000,
+  evaluation: 30_000
+};
+
+const providerTimeoutEnvironmentKey: Record<SpeakingProviderOperation, keyof NodeJS.ProcessEnv> = {
+  transcription: "SPEAKING_TRANSCRIPTION_TIMEOUT_MS",
+  conversation: "SPEAKING_CONVERSATION_TIMEOUT_MS",
+  help: "SPEAKING_HELP_TIMEOUT_MS",
+  evaluation: "SPEAKING_EVALUATION_TIMEOUT_MS"
+};
+
+export const speakingProviderTimeoutMs = (
+  operation: SpeakingProviderOperation,
+  environment: NodeJS.ProcessEnv = process.env
+) => {
+  const specific = Number.parseInt(environment[providerTimeoutEnvironmentKey[operation]] ?? "", 10);
+  const shared = Number.parseInt(environment.SPEAKING_PROVIDER_TIMEOUT_MS ?? "", 10);
+  const configured = Number.isFinite(specific) ? specific : Number.isFinite(shared) ? shared : DEFAULT_PROVIDER_TIMEOUTS_MS[operation];
+  // Keep configuration from accidentally becoming an unbounded wait or an
+  // unusably short classroom request.
+  return Math.min(120_000, Math.max(1_000, Math.floor(configured)));
+};
+
+const fetchWithSpeakingTimeout = async (
+  input: string | URL,
+  init: RequestInit,
+  operation: SpeakingProviderOperation,
+  environment: NodeJS.ProcessEnv = process.env
+) => {
+  const timeoutMs = speakingProviderTimeoutMs(operation, environment);
+  const controller = new AbortController();
+  let timeoutId: ReturnType<typeof setTimeout> | undefined;
+  const timeout = new Promise<never>((_, reject) => {
+    timeoutId = setTimeout(() => {
+      controller.abort();
+      reject(new Error(`Speaking ${operation} provider timed out after ${timeoutMs}ms.`));
+    }, timeoutMs);
+  });
+  try {
+    const response = await Promise.race([
+      fetch(input, { ...init, signal: controller.signal }),
+      timeout
+    ]);
+    // Fetch resolves after headers, not necessarily after the provider body
+    // has arrived. Consume it under the same timeout so response.json() in the
+    // adapters cannot leave a classroom request hanging indefinitely.
+    const body = await Promise.race([response.arrayBuffer(), timeout]);
+    return new Response(body, { status: response.status, statusText: response.statusText, headers: response.headers });
+  } finally {
+    if (timeoutId) clearTimeout(timeoutId);
+  }
+};
 
 const clipResponse = (value: string) => value.trim().slice(0, 280);
 const latestStudentTurns = (turns: SpeakingTurn[]) => turns.filter((turn) => turn.speaker === "student");
@@ -97,7 +166,6 @@ const scenarioResponse = (activity: SpeakingActivity, studentText: string, stude
 
 export const mockConversationProvider: ConversationProvider = {
   async respond(input) {
-    void buildConversationPrompt({ activity: input.activity, turns: input.turns, latestStudentText: input.studentText });
     if (promptInjectionPattern.test(input.studentText)) return safeRedirect(input.activity);
     const count = latestStudentTurns(input.turns).length;
     return clipResponse(input.activity.title.toLowerCase().includes("shopping") || input.activity.title.toLowerCase().includes("clothes") || input.activity.title.toLowerCase().includes("t-shirt")
@@ -178,14 +246,18 @@ export const mockEvaluationProvider: EvaluationProvider = {
 const openAiKey = (environment: NodeJS.ProcessEnv = process.env) => environment.OPENAI_API_KEY?.trim() || environment.SPEAKING_OPENAI_API_KEY?.trim();
 const openAiModel = (environment: NodeJS.ProcessEnv = process.env) => environment.SPEAKING_OPENAI_MODEL?.trim() || "gpt-4o-mini";
 
-const openAiRequest = async (body: Record<string, unknown>, environment: NodeJS.ProcessEnv = process.env) => {
+const openAiRequest = async (
+  body: Record<string, unknown>,
+  environment: NodeJS.ProcessEnv = process.env,
+  operation: SpeakingProviderOperation = "conversation"
+) => {
   const apiKey = openAiKey(environment);
   if (!apiKey) throw new Error("OpenAI Speaking providers require OPENAI_API_KEY or SPEAKING_OPENAI_API_KEY.");
-  const response = await fetch("https://api.openai.com/v1/chat/completions", {
+  const response = await fetchWithSpeakingTimeout("https://api.openai.com/v1/chat/completions", {
     method: "POST",
     headers: { Authorization: `Bearer ${apiKey}`, "Content-Type": "application/json" },
     body: JSON.stringify({ model: openAiModel(environment), ...body })
-  });
+  }, operation, environment);
   const payload = await response.json().catch(() => ({})) as { error?: { message?: string }; choices?: Array<{ message?: { content?: string } }> };
   if (!response.ok) throw new Error(payload.error?.message ?? `OpenAI request failed with ${response.status}.`);
   const content = payload.choices?.[0]?.message?.content?.trim();
@@ -202,14 +274,19 @@ type GeminiResponsePayload = {
   candidates?: Array<{ content?: { parts?: Array<{ text?: string }> } }>;
 };
 
-const geminiRequest = async (model: string, body: Record<string, unknown>, environment: NodeJS.ProcessEnv = process.env) => {
+const geminiRequest = async (
+  model: string,
+  body: Record<string, unknown>,
+  environment: NodeJS.ProcessEnv = process.env,
+  operation: SpeakingProviderOperation = "conversation"
+) => {
   const apiKey = geminiKey(environment);
   if (!apiKey) throw new Error("Gemini Speaking providers require GEMINI_API_KEY or SPEAKING_GEMINI_API_KEY.");
-  const response = await fetch(`https://generativelanguage.googleapis.com/v1beta/models/${encodeURIComponent(model)}:generateContent`, {
+  const response = await fetchWithSpeakingTimeout(`https://generativelanguage.googleapis.com/v1beta/models/${encodeURIComponent(model)}:generateContent`, {
     method: "POST",
     headers: { "x-goog-api-key": apiKey, "Content-Type": "application/json" },
     body: JSON.stringify(body)
-  });
+  }, operation, environment);
   const payload = await response.json().catch(() => ({})) as GeminiResponsePayload;
   if (!response.ok) throw new Error(payload.error?.message ?? `Gemini request failed with ${response.status}.`);
   const content = payload.candidates?.flatMap((candidate) => candidate.content?.parts ?? []).map((part) => part.text ?? "").join("").trim();
@@ -218,6 +295,7 @@ const geminiRequest = async (model: string, body: Record<string, unknown>, envir
 };
 
 const normalizeAudioMimeType = (mimeType: string) => mimeType.split(";", 1)[0]?.trim() || "audio/webm";
+const openAiTranscriptionModel = (environment: NodeJS.ProcessEnv = process.env) => environment.SPEAKING_TRANSCRIPTION_MODEL?.trim() || "gpt-4o-mini-transcribe";
 const parseJsonResponse = <T>(raw: string): T => {
   const fenced = raw.match(/^```(?:json)?\s*([\s\S]*?)\s*```$/i)?.[1] ?? raw;
   return JSON.parse(fenced.trim()) as T;
@@ -230,11 +308,11 @@ export const openAiTranscriptionProvider: TranscriptionProvider = {
     const audioBytes = new Uint8Array(input.audio.byteLength);
     audioBytes.set(input.audio);
     form.append("file", new Blob([audioBytes.buffer], { type: input.mimeType }), "speaking-audio");
-    form.append("model", process.env.SPEAKING_TRANSCRIPTION_MODEL?.trim() || "gpt-4o-mini-transcribe");
+    form.append("model", openAiTranscriptionModel());
     form.append("language", SPEAKING_PRACTICE_LANGUAGE);
     const apiKey = openAiKey();
     if (!apiKey) throw new Error("OpenAI transcription requires OPENAI_API_KEY or SPEAKING_OPENAI_API_KEY.");
-    const response = await fetch("https://api.openai.com/v1/audio/transcriptions", { method: "POST", headers: { Authorization: `Bearer ${apiKey}` }, body: form });
+    const response = await fetchWithSpeakingTimeout("https://api.openai.com/v1/audio/transcriptions", { method: "POST", headers: { Authorization: `Bearer ${apiKey}` }, body: form }, "transcription");
     const payload = await response.json().catch(() => ({})) as { text?: string; error?: { message?: string } };
     if (!response.ok) throw new Error(payload.error?.message ?? `OpenAI transcription failed with ${response.status}.`);
     return { text: payload.text?.trim() ?? "" };
@@ -246,7 +324,7 @@ export const openAiConversationProvider: ConversationProvider = {
     const content = await openAiRequest({
       temperature: 0.4,
       max_tokens: 100,
-      messages: [{ role: "system", content: buildConversationPrompt({ activity: input.activity, turns: input.turns, latestStudentText: input.studentText }) }]
+      messages: [{ role: "system", content: input.prompt ?? buildConversationPrompt({ activity: input.activity, turns: input.turns, latestStudentText: input.studentText }) }]
     });
     return clipResponse(content);
   }
@@ -261,7 +339,7 @@ export const openAiHelpProvider: HelpProvider = {
       max_tokens: 100,
       response_format: { type: "json_schema", json_schema: { name: "speaking_help", strict: true, schema: helpSchema } },
       messages: [{ role: "system", content: buildHelpPrompt(input) }]
-    });
+    }, process.env, "help");
     const parsed = JSON.parse(raw) as { hint?: unknown; english?: unknown };
     if (typeof parsed.hint !== "string" || typeof parsed.english !== "string" || !parsed.hint.trim() || !parsed.english.trim()) throw new Error("Help provider returned invalid structured data.");
     return { hint: parsed.hint.trim().slice(0, 300), english: parsed.english.trim().slice(0, 160) };
@@ -289,7 +367,7 @@ export const openAiEvaluationProvider: EvaluationProvider = {
       max_tokens: 900,
       response_format: { type: "json_schema", json_schema: { name: "speaking_evaluation", strict: true, schema: evaluationSchema } },
       messages: [{ role: "system", content: buildEvaluationPrompt({ activity: input.activity, turns: input.turns, rubric: input.activity.rubric, timingMetadata: input.timingMetadata, helpMetadata: input.helpMetadata }) }]
-    });
+    }, process.env, "evaluation");
     const output = JSON.parse(raw) as Omit<SpeakingEvaluation, "participantId" | "language" | "createdAt">;
     const assessmentStatus = Object.values(output.scores).some((score) => typeof score === "number") ? "scored" : "insufficient_evidence";
     const evaluation = { ...output, assessmentStatus, participantId: input.participantId, language: input.activity.nativeLanguage, createdAt: new Date().toISOString() };
@@ -316,8 +394,9 @@ export const geminiTranscriptionProvider: TranscriptionProvider = {
             }
           }
         ]
-      }]
-    });
+      }],
+      generationConfig: { temperature: 0, maxOutputTokens: 120 }
+    }, process.env, "transcription");
     return { text: text.slice(0, 1_200) };
   }
 };
@@ -325,7 +404,7 @@ export const geminiTranscriptionProvider: TranscriptionProvider = {
 export const geminiConversationProvider: ConversationProvider = {
   async respond(input) {
     const content = await geminiRequest(geminiModel(), {
-      system_instruction: { parts: [{ text: buildConversationPrompt({ activity: input.activity, turns: input.turns, latestStudentText: input.studentText }) }] },
+      system_instruction: { parts: [{ text: input.prompt ?? buildConversationPrompt({ activity: input.activity, turns: input.turns, latestStudentText: input.studentText }) }] },
       contents: [{ role: "user", parts: [{ text: "Reply to the latest student turn as the speaking partner." }] }],
       generationConfig: { temperature: 0.4, maxOutputTokens: 100 }
     });
@@ -339,7 +418,7 @@ export const geminiHelpProvider: HelpProvider = {
       system_instruction: { parts: [{ text: buildHelpPrompt(input) }] },
       contents: [{ role: "user", parts: [{ text: "Return only a JSON object with exactly two string fields: hint and english." }] }],
       generationConfig: { temperature: 0.3, maxOutputTokens: 100, responseMimeType: "application/json" }
-    });
+    }, process.env, "help");
     const parsed = parseJsonResponse<{ hint?: unknown; english?: unknown }>(raw);
     if (typeof parsed.hint !== "string" || typeof parsed.english !== "string" || !parsed.hint.trim() || !parsed.english.trim()) throw new Error("Gemini Help provider returned invalid structured data.");
     return { hint: parsed.hint.trim().slice(0, 300), english: parsed.english.trim().slice(0, 160) };
@@ -360,7 +439,7 @@ export const geminiEvaluationProvider: EvaluationProvider = {
       },
       contents: [{ role: "user", parts: [{ text: "Return the completed evaluation as JSON only." }] }],
       generationConfig: { temperature: 0.2, maxOutputTokens: 900, responseMimeType: "application/json" }
-    });
+    }, process.env, "evaluation");
     const output = parseJsonResponse<Omit<SpeakingEvaluation, "participantId" | "language" | "createdAt">>(raw);
     const assessmentStatus = Object.values(output.scores).some((score) => typeof score === "number") ? "scored" : "insufficient_evidence";
     const evaluation = { ...output, assessmentStatus, participantId: input.participantId, language: input.activity.nativeLanguage, createdAt: new Date().toISOString() };

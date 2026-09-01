@@ -61,6 +61,8 @@ const turnPairForRequest = (turns: SpeakingTurn[], requestId: string): SpeakingT
   return { studentTurn: turns[studentIndex]!, ...(aiTurn ? { aiTurn } : {}) };
 };
 
+export const findSpeakingTurnPair = (turns: SpeakingTurn[], requestId: string) => turnPairForRequest(turns, requestId);
+
 export interface SpeakingRepository {
   listActivities(teacherId: string): Promise<SpeakingActivity[]>;
   getActivity(id: string): Promise<SpeakingActivity | undefined>;
@@ -94,7 +96,8 @@ export interface SpeakingRepository {
   finalizeSessionPause(sessionId: string, pausedUntil: string): Promise<SpeakingSession | undefined>;
   listTurns(participantId: string): Promise<SpeakingTurn[]>;
   findTurnPair(participantId: string, requestId: string): Promise<SpeakingTurnPair | undefined>;
-  appendTurn(input: Omit<SpeakingTurn, "id"> & { id: string; requestId?: string }): Promise<SpeakingTurn>;
+  /** sessionId is supplied by the already-authorized route to avoid a redundant participant lookup. */
+  appendTurn(input: Omit<SpeakingTurn, "id"> & { id: string; requestId?: string; sessionId?: string }): Promise<SpeakingTurn>;
   saveEvaluation(participantId: string, evaluation: SpeakingEvaluation): Promise<SpeakingEvaluation>;
   getResult(participantId: string): Promise<SpeakingResultRecord | undefined>;
   listResults(activityId: string, sessionId: string, teacherId: string): Promise<Array<SpeakingResultRecord & { overallScore?: number }>>;
@@ -359,7 +362,7 @@ export class InMemorySpeakingRepository implements SpeakingRepository {
     return turnPairForRequest(turns, requestId);
   }
 
-  async appendTurn(input: Omit<SpeakingTurn, "id"> & { id: string; requestId?: string }) {
+  async appendTurn(input: Omit<SpeakingTurn, "id"> & { id: string; requestId?: string; sessionId?: string }) {
     const participant = this.state.participants.get(input.participantId);
     const session = participant ? this.state.sessions.get(participant.sessionId!) : undefined;
     if (!session) throw new Error("Speaking participant session not found.");
@@ -746,11 +749,11 @@ export class PrismaSpeakingRepository implements SpeakingRepository {
     return turnPairForRequest(await this.listTurns(participantId), requestId);
   }
 
-  async appendTurn(input: Omit<SpeakingTurn, "id"> & { id: string; requestId?: string }) {
+  async appendTurn(input: Omit<SpeakingTurn, "id"> & { id: string; requestId?: string; sessionId?: string }) {
     const row = await this.prisma.speakingTurn.create({ data: {
       id: input.id,
       participantId: input.participantId,
-      sessionId: (await this.prisma.speakingParticipant.findUniqueOrThrow({ where: { id: input.participantId }, select: { sessionId: true } })).sessionId,
+      sessionId: input.sessionId ?? (await this.prisma.speakingParticipant.findUniqueOrThrow({ where: { id: input.participantId }, select: { sessionId: true } })).sessionId,
       speaker: input.speaker,
       text: input.text,
       createdAt: new Date(input.createdAt),

@@ -15,8 +15,13 @@ import {
   geminiEvaluationProvider,
   geminiHelpProvider,
   geminiTranscriptionProvider,
-  openAiTranscriptionProvider
+  openAiConversationProvider,
+  openAiEvaluationProvider,
+  openAiHelpProvider,
+  openAiTranscriptionProvider,
+  speakingProviderTimeoutMs
 } from "./speakingProviders.js";
+import { buildConversationPrompt } from "./speakingPrompts.js";
 
 const activity = {
   id: "activity-test",
@@ -110,6 +115,21 @@ test("feedback language changes copy but never changes English transcription", a
   assert.equal(requestedLanguage, "en");
 });
 
+test("conversation prompt bounds context and does not duplicate the latest student turn", () => {
+  const latestText = "A uniquely latest student answer that must appear once.";
+  const prompt = buildConversationPrompt({
+    activity,
+    turns: [
+      aiTurn("What size would you like?"),
+      { id: "student-current", participantId: "participant-test", speaker: "student", text: latestText, createdAt: "2026-08-31T00:00:01.000Z" }
+    ],
+    latestStudentText: latestText
+  });
+  assert.equal(prompt.split(latestText).length - 1, 1);
+  assert.match(prompt, /Latest student turn:/);
+  assert.match(prompt, /Recent transcript: ai:/);
+});
+
 test("Gemini production configuration selects Gemini adapters", () => {
   const providers = createSpeakingProviders({
     NODE_ENV: "production",
@@ -121,6 +141,37 @@ test("Gemini production configuration selects Gemini adapters", () => {
   assert.equal(providers.conversation, geminiConversationProvider);
   assert.equal(providers.help, geminiHelpProvider);
   assert.equal(providers.evaluation, geminiEvaluationProvider);
+});
+
+test("provider selection supports hybrid, OpenAI-only, and explicit mock modes", () => {
+  const hybrid = createSpeakingProviders({
+    NODE_ENV: "production",
+    SPEAKING_AI_PROVIDER: "gemini",
+    SPEAKING_TRANSCRIPTION_PROVIDER: "openai",
+    SPEAKING_GEMINI_API_KEY: "test-gemini-key",
+    SPEAKING_OPENAI_API_KEY: "test-openai-key"
+  });
+  assert.equal(hybrid.transcription, openAiTranscriptionProvider);
+  assert.equal(hybrid.conversation, geminiConversationProvider);
+  assert.equal(hybrid.help, geminiHelpProvider);
+  assert.equal(hybrid.evaluation, geminiEvaluationProvider);
+
+  const openAiOnly = createSpeakingProviders({
+    NODE_ENV: "production",
+    SPEAKING_AI_PROVIDER: "openai",
+    SPEAKING_TRANSCRIPTION_PROVIDER: "openai",
+    SPEAKING_OPENAI_API_KEY: "test-openai-key"
+  });
+  assert.equal(openAiOnly.transcription, openAiTranscriptionProvider);
+  assert.equal(openAiOnly.conversation, openAiConversationProvider);
+  assert.equal(openAiOnly.help, openAiHelpProvider);
+  assert.equal(openAiOnly.evaluation, openAiEvaluationProvider);
+
+  const mock = createSpeakingProviders({ NODE_ENV: "test", SPEAKING_MOCK_MODE: "true" });
+  assert.equal(mock.transcription, mockTranscriptionProvider);
+  assert.equal(mock.conversation, mockConversationProvider);
+  assert.equal(mock.help, mockHelpProvider);
+  assert.equal(mock.evaluation, mockEvaluationProvider);
 });
 
 test("Gemini transcription sends inline audio through the server-side API contract", async () => {
@@ -153,6 +204,33 @@ test("Gemini transcription sends inline audio through the server-side API contra
   const body = JSON.parse(String(requestedInit?.body)) as { contents: Array<{ parts: Array<{ inline_data?: { mime_type?: string; data?: string } }> }> };
   assert.equal(body.contents[0]?.parts[1]?.inline_data?.mime_type, "audio/webm");
   assert.equal(body.contents[0]?.parts[1]?.inline_data?.data, Buffer.from("audio").toString("base64"));
+  const generationConfig = (body as unknown as { generationConfig?: { temperature?: number; maxOutputTokens?: number } }).generationConfig;
+  assert.equal(generationConfig?.temperature, 0);
+  assert.equal(generationConfig?.maxOutputTokens, 120);
+});
+
+test("Speaking provider requests abort at the configured transcription timeout", async () => {
+  const previousFetch = globalThis.fetch;
+  const previousKey = process.env.SPEAKING_OPENAI_API_KEY;
+  const previousTimeout = process.env.SPEAKING_TRANSCRIPTION_TIMEOUT_MS;
+  process.env.SPEAKING_OPENAI_API_KEY = "test-speaking-key";
+  process.env.SPEAKING_TRANSCRIPTION_TIMEOUT_MS = "1000";
+  globalThis.fetch = async (_input, init) => new Promise<Response>((_resolve, reject) => {
+    init?.signal?.addEventListener("abort", () => reject(new Error("fetch aborted")), { once: true });
+  });
+  try {
+    assert.equal(speakingProviderTimeoutMs("transcription"), 1_000);
+    await assert.rejects(
+      () => openAiTranscriptionProvider.transcribe({ audio: Buffer.from("audio"), mimeType: "audio/webm" }),
+      /Speaking transcription provider timed out after 1000ms/
+    );
+  } finally {
+    globalThis.fetch = previousFetch;
+    if (previousKey === undefined) delete process.env.SPEAKING_OPENAI_API_KEY;
+    else process.env.SPEAKING_OPENAI_API_KEY = previousKey;
+    if (previousTimeout === undefined) delete process.env.SPEAKING_TRANSCRIPTION_TIMEOUT_MS;
+    else process.env.SPEAKING_TRANSCRIPTION_TIMEOUT_MS = previousTimeout;
+  }
 });
 
 test("production speaking configuration never silently falls back to mock providers", () => {

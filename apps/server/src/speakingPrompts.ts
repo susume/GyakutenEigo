@@ -18,6 +18,15 @@ const promptTurn = (turn: SpeakingTurn, max = 300) =>
     ? `student: ${untrustedBlock(turn.text, max)}`
     : `ai: ${clip(turn.text, max)}`;
 
+const previousTurnsForConversation = (turns: SpeakingTurn[], latestStudentText: string) => {
+  const latestTurn = turns.at(-1);
+  // The route persists the latest student turn before preparing the prompt.
+  // Keep it in the dedicated latest-student block below, rather than sending
+  // the same potentially long transcript text twice.
+  if (latestTurn?.speaker === "student" && latestTurn.text === latestStudentText) return turns.slice(0, -1);
+  return turns;
+};
+
 export const buildConversationPrompt = ({
   activity,
   turns,
@@ -38,8 +47,12 @@ export const buildConversationPrompt = ({
   `Level: ${SPEAKING_LEVEL_LABELS[activity.level]}`,
   `Difficulty: ${SPEAKING_DIFFICULTY_LABELS[activity.difficulty]}`,
   `Target expressions: ${activity.targetExpressions.slice(0, 12).map((item) => clip(item, 120)).join(" | ")}`,
-  `Recent transcript: ${turns.slice(-SPEAKING_LIMITS.maxContextTurns).map((turn) => promptTurn(turn)).join(" || ")}`,
-  untrustedBlock(latestStudentText),
+  // Keep at most eight conversational turns in total: up to seven preceding
+  // turns plus the latest student turn. Speaking Practice is a short classroom
+  // exchange, so an unbounded transcript adds latency without improving the
+  // normal reply. The latest turn is kept separate to make its role explicit.
+  `Recent transcript: ${previousTurnsForConversation(turns, latestStudentText).slice(-(SPEAKING_LIMITS.maxContextTurns - 1)).map((turn) => promptTurn(turn)).join(" || ") || "No prior conversation yet."}`,
+  `Latest student turn: ${untrustedBlock(latestStudentText)}`,
   "Respond as the character in natural, simple English. If the meaning is unclear, ask a kind clarification. Keep the response under 280 characters."
 ].join("\n");
 

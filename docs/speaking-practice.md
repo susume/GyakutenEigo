@@ -50,11 +50,75 @@ SPEAKING_SESSION_LIFETIME_SECONDS=28800
 ```
 
 The OpenAI adapters remain available as an alternative by selecting `openai` for
-both providers and supplying the corresponding OpenAI variables. Both adapters
-use server-side HTTP requests. Do not prefix these secrets with `VITE_`. If
+both providers and supplying the corresponding OpenAI variables. A hybrid setup
+is also supported and is the preferred latency experiment when an OpenAI key is
+available:
+
+```text
+SPEAKING_AI_PROVIDER=gemini
+SPEAKING_TRANSCRIPTION_PROVIDER=openai
+SPEAKING_GEMINI_API_KEY=server-only-gemini-secret
+SPEAKING_GEMINI_MODEL=gemini-2.5-flash-lite
+SPEAKING_OPENAI_API_KEY=server-only-openai-secret
+SPEAKING_TRANSCRIPTION_MODEL=gpt-4o-mini-transcribe
+```
+
+Gemini-only and mock mode remain supported; OpenAI is never required for
+Speaking Practice. Both adapters use server-side HTTP requests. Do not prefix
+these secrets with `VITE_`. If
 `NODE_ENV=production` is missing a provider selection or key, the server fails
 clearly at provider setup; it does not return a canned answer, transcript, or
 evaluation.
+
+## Turn latency and diagnostics
+
+The normal turn remains a single request so existing clients keep their
+idempotency, participant-token, lock, pause/end, and retry behavior:
+
+```text
+browser uploads Blob
+  → bounded request parsing
+  → selected transcription provider
+  → persist student turn
+  → prepare bounded conversation prompt
+  → selected conversation provider
+  → persist AI turn
+  → browser speechSynthesis
+```
+
+The conversation prompt contains at most seven preceding turns plus the latest
+student turn (eight turns total). The latest turn is sent in its own explicit
+block and is not duplicated in the recent transcript. This preserves the short
+classroom context while avoiding an ever-growing prompt.
+
+Provider requests have bounded AbortController timeouts. Defaults are 15
+seconds for transcription, 12 seconds for conversation and Help, and 30 seconds
+for final evaluation. They can be overridden with the corresponding
+`SPEAKING_*_TIMEOUT_MS` variables or the shared
+`SPEAKING_PROVIDER_TIMEOUT_MS` value. The browser allows 35 seconds for the
+complete turn so it does not abandon a valid request while the two bounded
+provider calls are completing.
+
+For a short diagnostic window, set `SPEAKING_LATENCY_DEBUG=true` on the server.
+Successful turn responses include a bounded `latency` object, and the server
+prints one aggregate `[Speaking latency]` record containing only byte count and
+durations—not transcript text, audio, identifiers, or secrets. Turn diagnostics
+are opt-in; return the variable to `false` after measurement.
+
+To measure multiple real provider turns, keep the server diagnostic flag on and
+run the helper with an existing active participant session and real recordings:
+
+```text
+SPEAKING_LATENCY_SESSION_ID=...
+SPEAKING_LATENCY_TOKEN=...
+SPEAKING_LATENCY_AUDIO_DIR=./path/to/recordings
+npm run speaking:latency
+```
+
+The first recording is marked as the cold-provider candidate; later recordings
+are labeled turn 2, turn 3, and so on. The helper never uses test text input and
+prints timings only. Use a fresh classroom session because each recording is a
+real student turn.
 
 ## Stored data and privacy
 
@@ -69,7 +133,9 @@ They are not written to Prisma, browser storage, application logs, or the
 transcript. Providers receive the selected activity context and transcript
 needed for their operation; participant identifiers are not included in AI
 prompts. Browser `speechSynthesis` speaks the returned AI text and is not a
-data provider.
+data provider. While a single request is in progress, the browser shows
+“Processing your answer” because it cannot honestly distinguish transcription
+from reply generation until the server responds.
 
 ## Browser and lifecycle limits
 

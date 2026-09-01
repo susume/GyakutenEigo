@@ -31,7 +31,7 @@ import {
   type TeacherUser
 } from "@quizstrike/shared";
 import { authApi } from "../../api/client";
-import { buildTeacherSpeakingPath, getTournamentInvitationCodeFromSearch, isSpeakingTeacherRoute, modeForRoute, normalizeRoutePath, type AppMode } from "../../navigation";
+import { buildTeacherSpeakingPath, getTournamentInvitationCodeFromSearch, isSpeakingTeacherRoute, isTeacherSpeakingRoute, modeForRoute, normalizeRoutePath, type AppMode } from "../../navigation";
 import PublicHomepage from "../../ui/PublicHomepage";
 import QuizStrikeLogo from "../../ui/QuizStrikeLogo";
 import {
@@ -238,7 +238,7 @@ export default function App() {
                 const target = new URL(storedReturnTo, window.location.origin);
                 return `${buildTeacherSpeakingPath(target.pathname)}${target.search}${target.hash}`;
               })()
-            : isSpeakingTeacherRoutePath
+            : isTeacherSpeakingRoute(routePath)
               ? `${buildTeacherSpeakingPath(routePath)}${window.location.search}${window.location.hash}`
               : undefined;
           sessionStorage.removeItem(TOURNAMENT_TEACHER_RETURN_KEY);

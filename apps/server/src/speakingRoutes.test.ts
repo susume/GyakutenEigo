@@ -2,7 +2,7 @@ import assert from "node:assert/strict";
 import type { AddressInfo } from "node:net";
 import test from "node:test";
 import express, { type NextFunction, type Request, type Response } from "express";
-import { speakingRemainingSeconds, type TeacherUser } from "@quizstrike/shared";
+import { SPEAKING_LIMITS, speakingRemainingSeconds, type TeacherUser } from "@quizstrike/shared";
 import { createSpeakingProviders } from "./speakingProviders.js";
 import { createSpeakingRouteState, registerSpeakingRoutes } from "./routes/speakingRoutes.js";
 
@@ -48,6 +48,7 @@ test("Speaking Practice uses one classroom session for multiple isolated partici
   let receivedAudio: Buffer | undefined;
   const providers = createSpeakingProviders({ NODE_ENV: "test", SPEAKING_MOCK_MODE: "true" });
   let recoveryConversationAttempts = 0;
+  const conversationTurnSnapshots: Array<Array<{ speaker: string; text: string }>> = [];
   let signalDelayedTranscriptionStarted!: () => void;
   let releaseDelayedTranscription!: () => void;
   const delayedTranscriptionStarted = new Promise<void>((resolve) => { signalDelayedTranscriptionStarted = resolve; });
@@ -71,6 +72,7 @@ test("Speaking Practice uses one classroom session for multiple isolated partici
     providers,
     conversationProvider: {
       async respond(input) {
+        conversationTurnSnapshots.push(input.turns.map((turn) => ({ speaker: turn.speaker, text: turn.text })));
         if (input.studentText === "Please recover this turn." && recoveryConversationAttempts++ === 0) throw new Error("Simulated provider outage");
         return providers.conversation.respond(input);
       }
@@ -97,7 +99,16 @@ test("Speaking Practice uses one classroom session for multiple isolated partici
       }
     },
     allowTextInput: true,
-    sessionLifetimeSeconds: 10 * 60
+    sessionLifetimeSeconds: 10 * 60,
+    latencyDebug: true
+  });
+  app.use((error: unknown, _req: Request, res: Response, next: NextFunction) => {
+    const status = typeof error === "object" && error !== null && "status" in error && typeof error.status === "number" ? error.status : 500;
+    if (status === 413) {
+      res.status(413).json({ error: "That recording is too large. Please record a shorter answer." });
+      return;
+    }
+    next(error);
   });
 
   const server = await new Promise<ReturnType<typeof app.listen>>((resolve) => {
@@ -120,7 +131,10 @@ test("Speaking Practice uses one classroom session for multiple isolated partici
         ? (options.body === undefined ? undefined : JSON.stringify(options.body))
         : new Blob([options.rawBody as unknown as BlobPart], { type: options.contentType ?? "audio/webm" })
     });
-    return { response, body: await response.json() as T };
+    const responseText = await response.text();
+    let body = {} as T;
+    try { body = responseText ? JSON.parse(responseText) as T : body; } catch { /* Express's default 413 page is HTML. */ }
+    return { response, body };
   };
 
   try {
@@ -201,7 +215,7 @@ test("Speaking Practice uses one classroom session for multiple isolated partici
     assert.equal(help.body.helpCount, 1);
     assert.ok(help.body.english);
 
-    const firstTurn = await api<{ studentTurn: { id: string; participantId: string; usedHelp?: boolean }; aiTurn: { text: string } }>(`/api/speaking/sessions/${joined[0]!.body.session.id}/turn`, {
+    const firstTurn = await api<{ studentTurn: { id: string; participantId: string; usedHelp?: boolean }; aiTurn: { text: string }; latency: { audioBytes: number; requestParsingMs: number; transcriptionMs: number; studentPersistenceMs: number; promptPreparationMs: number; conversationMs: number; aiPersistenceMs: number; totalMs: number } }>(`/api/speaking/sessions/${joined[0]!.body.session.id}/turn`, {
       method: "POST",
       speakingToken: joined[0]!.body.token,
       turnId: "aki-turn-1",
@@ -210,6 +224,12 @@ test("Speaking Practice uses one classroom session for multiple isolated partici
     assert.equal(firstTurn.response.status, 200);
     assert.equal(firstTurn.body.studentTurn.participantId, joined[0]!.body.participant.id);
     assert.match(firstTurn.body.aiTurn.text, /size|looking/i);
+    for (const key of ["audioBytes", "requestParsingMs", "transcriptionMs", "studentPersistenceMs", "promptPreparationMs", "conversationMs", "aiPersistenceMs", "totalMs"] as const) {
+      assert.equal(typeof firstTurn.body.latency[key], "number");
+    }
+    assert.ok(firstTurn.body.latency.totalMs >= firstTurn.body.latency.transcriptionMs);
+    assert.deepEqual(conversationTurnSnapshots[0]?.map((turn) => turn.speaker), ["ai", "student"]);
+    assert.equal(conversationTurnSnapshots[0]?.at(-1)?.text, "I want a blue T-shirt.");
 
     const secondTurn = await api<{ studentTurn: { participantId: string }; aiTurn: { text: string } }>(`/api/speaking/sessions/${joined[1]!.body.session.id}/turn`, {
       method: "POST",
@@ -221,6 +241,20 @@ test("Speaking Practice uses one classroom session for multiple isolated partici
     assert.equal(secondTurn.response.status, 200);
     assert.equal(secondTurn.body.studentTurn.participantId, joined[1]!.body.participant.id);
     assert.deepEqual(receivedAudio, Buffer.from("actual-audio-fixture"));
+    const unsupportedFormat = await api(`/api/speaking/sessions/${joined[1]!.body.session.id}/turn`, {
+      method: "POST",
+      speakingToken: joined[1]!.body.token,
+      rawBody: new Uint8Array(Buffer.from("unsupported-audio")),
+      contentType: "audio/aac"
+    });
+    assert.equal(unsupportedFormat.response.status, 415);
+    const oversized = await api(`/api/speaking/sessions/${joined[1]!.body.session.id}/turn`, {
+      method: "POST",
+      speakingToken: joined[1]!.body.token,
+      rawBody: new Uint8Array(SPEAKING_LIMITS.maxAudioBytes + 1),
+      contentType: "audio/webm"
+    });
+    assert.equal(oversized.response.status, 413);
     const fractionalDuration = await api(`/api/speaking/sessions/${joined[1]!.body.session.id}/turn`, {
       method: "POST",
       speakingToken: joined[1]!.body.token,
@@ -374,7 +408,10 @@ test("teacher pauses freeze active speaking time and pause-to-end accounts the f
     if (options.speakingToken) headers.set("x-speaking-token", options.speakingToken);
     if (options.body !== undefined) headers.set("content-type", "application/json");
     const response = await fetch(`${baseUrl}${path}`, { method: options.method ?? "GET", headers, body: options.body === undefined ? undefined : JSON.stringify(options.body) });
-    return { response, body: await response.json() as T };
+    const responseText = await response.text();
+    let body = {} as T;
+    try { body = responseText ? JSON.parse(responseText) as T : body; } catch { /* Express's default 413 page is HTML. */ }
+    return { response, body };
   };
 
   try {
