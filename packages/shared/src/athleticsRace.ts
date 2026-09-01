@@ -221,9 +221,23 @@ export interface AthleticsCourseDefinition {
 /** Compact vertical footprint: the playable course stays inside a 280 x 280 park. */
 export const ATHLETICS_COURSE_BOUNDS = { limitX: 140, limitZ: 140 } as const;
 export const ATHLETICS_PLAYER_EYE_HEIGHT = 4.21;
+/** Keep the authored support footprint in lockstep with the FPS body radius. */
+export const ATHLETICS_PLAYER_RADIUS = 0.45;
 export const ATHLETICS_CHECKPOINT_COUNT = 6;
 export const ATHLETICS_GROUND_SURFACE_SLAB_HEIGHT = 0.55;
 export const ATHLETICS_SURFACE_SLAB_HEIGHT = 1.1;
+/** Classic Athletics jump contract shared by level authoring and the client. */
+export const ATHLETICS_JUMP_VELOCITY = 15.5;
+export const ATHLETICS_JUMP_GRAVITY = 36;
+export const ATHLETICS_JUMP_HORIZONTAL_SPEED = 14.8;
+export const ATHLETICS_JUMP_APEX_HEIGHT = Number(
+  ((ATHLETICS_JUMP_VELOCITY * ATHLETICS_JUMP_VELOCITY) / (2 * ATHLETICS_JUMP_GRAVITY)).toFixed(2)
+);
+export const ATHLETICS_JUMP_AIRTIME_SECONDS = Number(
+  ((ATHLETICS_JUMP_VELOCITY * 2) / ATHLETICS_JUMP_GRAVITY).toFixed(3)
+);
+/** Extra edge-to-edge allowance keeps a jump reliable at the player footprint. */
+export const ATHLETICS_JUMP_LANDING_MARGIN = 1;
 /** Falls farther below the authored lane than a normal jump can recover from. */
 export const ATHLETICS_MAX_RECOVERABLE_ROUTE_DROP = 1.75;
 
@@ -331,46 +345,46 @@ const ATHLETICS_ROUTE: readonly AthleticsRoutePoint[] = [
   { x: 58, z: 19, y: 13 },
   { x: 44, z: 36, y: 14 },
   { x: 29, z: 26, y: 13 },
-  { x: 11, z: 39, y: 16 },
+  { x: 11, z: 39, y: 15 },
   { x: -8, z: 28, y: 16 },
   // Ferris & Coaster: approach the grounded wheel's lower deck, cross its
   // moving gondola line, then climb to the supported coaster maintenance run.
   { x: -24, z: 17, y: 16 },
   { x: -40, z: 28, y: 18 },
   { x: -56, z: 39, y: 18 },
-  { x: -72, z: 28, y: 21 },
-  { x: -86, z: 15, y: 24 },
-  { x: -96, z: 31, y: 27 },
-  { x: -85, z: 48, y: 30 },
-  { x: -67.5, z: 59.5, y: 29 },
-  { x: -48, z: 52, y: 32 },
-  { x: -30, z: 44, y: 34 },
-  { x: -17, z: 58, y: 34 },
+  { x: -72, z: 28, y: 20 },
+  { x: -86, z: 15, y: 22 },
+  { x: -96, z: 31, y: 24 },
+  { x: -85, z: 48, y: 24 },
+  { x: -67.5, z: 59.5, y: 25 },
+  { x: -48, z: 52, y: 27 },
+  { x: -30, z: 44, y: 29 },
+  { x: -17, z: 58, y: 29 },
   // Drop Tower: three service-deck jumps, a sharp lift, then a dropping
   // diagonal that turns toward the next checkpoint.
-  { x: -3, z: 44, y: 36 },
-  { x: 14, z: 31, y: 36 },
-  { x: 30, z: 44, y: 38 },
-  { x: 47, z: 30, y: 38 },
-  { x: 62.5, z: 14.5, y: 40 },
-  { x: 49, z: -1, y: 40 },
-  { x: 32.5, z: -15.5, y: 40 },
-  { x: 16, z: -1, y: 55 },
-  { x: 1, z: -15, y: 58 },
-  { x: -18, z: -4, y: 60 },
-  { x: -35, z: -19, y: 62 },
+  { x: -3, z: 44, y: 31 },
+  { x: 14, z: 31, y: 31 },
+  { x: 30, z: 44, y: 33 },
+  { x: 47, z: 30, y: 33 },
+  { x: 62.5, z: 14.5, y: 33 },
+  { x: 49, z: -1, y: 33 },
+  { x: 32.5, z: -15.5, y: 33 },
+  { x: 16, z: -1, y: 41 },
+  { x: 1, z: -15, y: 43 },
+  { x: -18, z: -4, y: 45 },
+  { x: -35, z: -19, y: 47 },
   // Sky Park Summit: exposed lateral traversal at a stable high level before
   // the final sharp ascent above the whole park.
-  { x: -52, z: -33, y: 62 },
-  { x: -70, z: -20, y: 65 },
-  { x: -86, z: -34, y: 65 },
-  { x: -103, z: -20, y: 67 },
-  { x: -92, z: -2, y: 69 },
-  { x: -74, z: 8, y: 71 },
-  { x: -54, z: -4.5, y: 74 },
-  { x: -35, z: 7, y: 77 },
-  { x: -17, z: -3, y: 80 },
-  { x: 2, z: 12, y: 110 }
+  { x: -52, z: -33, y: 49 },
+  { x: -70, z: -20, y: 51 },
+  { x: -86, z: -34, y: 53 },
+  { x: -103, z: -20, y: 53 },
+  { x: -92, z: -2, y: 55 },
+  { x: -74, z: 8, y: 57 },
+  { x: -54, z: -4.5, y: 59 },
+  { x: -35, z: 7, y: 61 },
+  { x: -17, z: -3, y: 63 },
+  { x: 2, z: 12, y: 79 }
 ];
 
 const sectionAt = (startIndex: number, endIndex: number, id: string, label: string, description: string, accent: AthleticsAccent, landmark: string): AthleticsCourseSection => ({
@@ -553,13 +567,13 @@ const ATHLETICS_SHORTCUTS: readonly AthleticsCourseShortcut[] = [
       ATHLETICS_ROUTE[34]!,
       { x: -51, z: 12, y: 18 },
       { x: -65, z: 18, y: 20 },
-      { x: -80, z: 30, y: 24 },
+      { x: -79.5, z: 29.5, y: 22 },
       ATHLETICS_ROUTE[39]!
     ],
     surfaces: [
       shortcutSurface("shortcut-ferris-maintenance-01", "platform", -51, 12, 18, 8, 7, "metal", Math.atan2(-14, 6)),
       shortcutSurface("shortcut-ferris-maintenance-02", "platform", -65, 18, 20, 8, 8, "accent", Math.atan2(-15, 12)),
-      shortcutSurface("shortcut-ferris-maintenance-03", "platform", -80, 30, 24, 8, 8, "metal", Math.atan2(-5, 18))
+      shortcutSurface("shortcut-ferris-maintenance-03", "platform", -79.5, 29.5, 22, 8, 8, "metal", Math.atan2(-5, 18))
     ],
     transitions: [
       { id: "ferris-maintenance-cut-01", fromSurfaceId: routeSurfaceId(34), toSurfaceId: "shortcut-ferris-maintenance-01", type: "shortcut_jump", note: "Skip across the lower wheel service rail." },
@@ -576,15 +590,15 @@ const ATHLETICS_SHORTCUTS: readonly AthleticsCourseShortcut[] = [
     endProgress: routeProgressAtIndex(ATHLETICS_ROUTE, 51),
     route: [
       ATHLETICS_ROUTE[47]!,
-      { x: 60, z: 16, y: 42 },
-      { x: 49, z: 0, y: 47 },
-      { x: 33, z: -12, y: 51 },
+      { x: 60, z: 16, y: 35 },
+      { x: 49, z: 0, y: 37 },
+      { x: 33, z: -12, y: 39 },
       ATHLETICS_ROUTE[51]!
     ],
     surfaces: [
-      shortcutSurface("shortcut-drop-rooftop-01", "platform", 60, 16, 42, 12, 11, "accent", Math.atan2(-11, -16)),
-      shortcutSurface("shortcut-drop-rooftop-02", "ramp", 49, 0, 47, 12, 11, "metal", Math.atan2(-16, -12)),
-      shortcutSurface("shortcut-drop-rooftop-03", "platform", 33, -12, 51, 12, 11, "accent", Math.atan2(-17, 11))
+      shortcutSurface("shortcut-drop-rooftop-01", "platform", 60, 16, 35, 12, 11, "accent", Math.atan2(-11, -16)),
+      shortcutSurface("shortcut-drop-rooftop-02", "ramp", 49, 0, 37, 12, 11, "metal", Math.atan2(-16, -12)),
+      shortcutSurface("shortcut-drop-rooftop-03", "platform", 33, -12, 39, 12, 11, "accent", Math.atan2(-17, 11))
     ],
     transitions: [
       { id: "drop-tower-rooftop-cut-01", fromSurfaceId: routeSurfaceId(47), toSurfaceId: "shortcut-drop-rooftop-01", type: "shortcut_jump", note: "Leap from the tower deck to the rooftop line." },
@@ -648,8 +662,11 @@ const ATHLETICS_MOVING_OBSTACLES: readonly AthleticsMovingObstacle[] = [
   { id: "ride-district-lift", kind: "elevator", x: 39, z: -17, y: 13, width: 11, depth: 10, height: 1.2, axis: "y", amplitude: 5, periodMs: 5600, phaseMs: 900, material: "metal", jumpable: true },
   { id: "ferris-gondola-crossing", kind: "platform", x: -72, z: 28, y: 21, width: 10, depth: 7, height: 1.2, axis: "z", amplitude: 5, periodMs: 3900, phaseMs: 1100, material: "accent", jumpable: true },
   { id: "coaster-maintenance-cart", kind: "barrier", x: -67, z: 55, y: 31, width: 9, depth: 3, height: 1.4, axis: "x", amplitude: 6, periodMs: 4700, phaseMs: 1500, material: "metal", jumpable: true },
-  { id: "drop-tower-lift", kind: "elevator", x: 35, z: -9, y: 43, width: 11, depth: 10, height: 1.2, axis: "y", amplitude: 12, periodMs: 6000, phaseMs: 200, material: "metal", jumpable: true },
-  { id: "summit-finish-lift", kind: "elevator", x: -8, z: 5, y: 95, width: 11, depth: 10, height: 1.2, axis: "y", amplitude: 15, periodMs: 6600, phaseMs: 700, material: "accent", jumpable: true }
+  // Both lifts now overlap the route at their low point and only climb the
+  // height needed by the next landing. This keeps them usable with the
+  // standard jump arc instead of asking players to board a floating platform.
+  { id: "drop-tower-lift", kind: "elevator", x: 35, z: -9, y: 38, width: 11, depth: 10, height: 1.2, axis: "y", amplitude: 7, periodMs: 6000, phaseMs: 200, material: "metal", jumpable: true },
+  { id: "summit-finish-lift", kind: "elevator", x: -8, z: 5, y: 72, width: 11, depth: 10, height: 1.2, axis: "y", amplitude: 7, periodMs: 6600, phaseMs: 700, material: "accent", jumpable: true }
 ];
 
 export const ATHLETICS_STADIUM_COURSE: AthleticsCourseDefinition = {
@@ -836,6 +853,63 @@ export const getAthleticsTransitionAirGap = (
   return first && second ? getAthleticsSurfaceAirGap(first, second) : Number.NaN;
 };
 
+/**
+ * Returns the descending time at which the classic jump arc reaches a
+ * landing's height. A rise above the apex is only valid when a named lift
+ * carries the player; silently treating it as a normal jump is how unreachable
+ * platforms slipped into the authored route.
+ */
+export const getAthleticsJumpFlightTime = (verticalRise: number) => {
+  const rise = Number(verticalRise);
+  if (!Number.isFinite(rise)) return undefined;
+  const discriminant = ATHLETICS_JUMP_VELOCITY * ATHLETICS_JUMP_VELOCITY
+    - 2 * ATHLETICS_JUMP_GRAVITY * rise;
+  if (discriminant < -0.000001) return undefined;
+  return (ATHLETICS_JUMP_VELOCITY + Math.sqrt(Math.max(0, discriminant))) / ATHLETICS_JUMP_GRAVITY;
+};
+
+/**
+ * Conservative horizontal travel available before landing. The margin is
+ * intentionally larger than the body radius so a route does not depend on a
+ * pixel-perfect edge landing or a particular frame rate.
+ */
+export const getAthleticsJumpHorizontalReach = (
+  verticalRise: number,
+  landingMargin = ATHLETICS_JUMP_LANDING_MARGIN
+) => {
+  const flightTime = getAthleticsJumpFlightTime(verticalRise);
+  return flightTime === undefined
+    ? 0
+    : Math.max(0, flightTime * ATHLETICS_JUMP_HORIZONTAL_SPEED - Math.max(0, landingMargin));
+};
+
+export interface AthleticsTransitionJumpEnvelope {
+  airGap: number;
+  verticalRise: number;
+  horizontalReach: number;
+  flightTimeSeconds?: number;
+}
+
+/** Returns the actual jump envelope used by Athletics geometry QA. */
+export const getAthleticsTransitionJumpEnvelope = (
+  transition: AthleticsCourseTransition,
+  course: AthleticsCourseDefinition = ATHLETICS_STADIUM_COURSE
+): AthleticsTransitionJumpEnvelope => {
+  const first = surfaceById(course, transition.fromSurfaceId);
+  const second = surfaceById(course, transition.toSurfaceId);
+  if (!first || !second) {
+    return { airGap: Number.NaN, verticalRise: Number.NaN, horizontalReach: 0 };
+  }
+  const verticalRise = second.y - first.y;
+  const flightTimeSeconds = getAthleticsJumpFlightTime(verticalRise);
+  return {
+    airGap: getAthleticsSurfaceAirGap(first, second),
+    verticalRise,
+    horizontalReach: getAthleticsJumpHorizontalReach(verticalRise),
+    ...(flightTimeSeconds === undefined ? {} : { flightTimeSeconds })
+  };
+};
+
 export interface AthleticsCourseGeometryMetrics {
   mainRoutePlatformCount: number;
   transitionCount: number;
@@ -910,11 +984,42 @@ export const getAthleticsCourseGeometryIssues = (
       issues.push(`${label} references missing moving obstacle ${transition.movingObstacleId}`);
     }
   };
+  const checkJumpEnvelope = (transition: AthleticsCourseTransition, label: string) => {
+    const envelope = getAthleticsTransitionJumpEnvelope(transition, course);
+    if (!Number.isFinite(envelope.airGap) || !Number.isFinite(envelope.verticalRise)) return;
+    if (envelope.flightTimeSeconds !== undefined) {
+      if (envelope.airGap > envelope.horizontalReach + 0.001) {
+        issues.push(`${label} air gap ${envelope.airGap.toFixed(2)} exceeds reliable jump reach ${envelope.horizontalReach.toFixed(2)}`);
+      }
+      return;
+    }
+
+    const lift = transition.movingObstacleId
+      ? course.movingObstacles.find((obstacle) => obstacle.id === transition.movingObstacleId)
+      : undefined;
+    if (!lift || lift.axis !== "y") {
+      issues.push(`${label} rises ${envelope.verticalRise.toFixed(2)} above the ${ATHLETICS_JUMP_APEX_HEIGHT.toFixed(2)} jump apex without a vertical lift`);
+      return;
+    }
+    const amplitude = Math.abs(lift.amplitude);
+    const lowestLiftTop = lift.y - amplitude + lift.height;
+    const highestLiftTop = lift.y + amplitude + lift.height;
+    const from = surfaceById(course, transition.fromSurfaceId);
+    const to = surfaceById(course, transition.toSurfaceId);
+    if (!from || !to) return;
+    if (lowestLiftTop > from.y + ATHLETICS_JUMP_APEX_HEIGHT + 0.001) {
+      issues.push(`${label} lift starts at ${lowestLiftTop.toFixed(2)}, above the ${from.id} jump boarding envelope`);
+    }
+    if (to.y > highestLiftTop + 0.001) {
+      issues.push(`${label} destination ${to.id} at ${to.y.toFixed(2)} is above lift travel ${highestLiftTop.toFixed(2)}`);
+    }
+  };
   if (course.transitions.length !== Math.max(0, course.surfaces.length - 1)) {
     issues.push(`main transition count ${course.transitions.length} does not match ${course.surfaces.length - 1} surface transitions`);
   }
   course.transitions.forEach((transition, index) => {
     checkMovingReference(transition, transition.id);
+    checkJumpEnvelope(transition, transition.id);
     const expectedFrom = course.surfaces[index]?.id;
     const expectedTo = course.surfaces[index + 1]?.id;
     if (transition.fromSurfaceId !== expectedFrom || transition.toSurfaceId !== expectedTo) {
@@ -936,6 +1041,7 @@ export const getAthleticsCourseGeometryIssues = (
   for (const shortcut of course.shortcuts) {
     for (const transition of shortcut.transitions) {
       checkMovingReference(transition, `${shortcut.id}/${transition.id}`);
+      checkJumpEnvelope(transition, `${shortcut.id}/${transition.id}`);
       const gap = getAthleticsTransitionAirGap(transition, course);
       const minimum = ATHLETICS_TRANSITION_AIR_GAP_TARGETS[transition.type];
       if (!Number.isFinite(gap)) issues.push(`${shortcut.id}/${transition.id} references a missing surface`);
@@ -1114,8 +1220,9 @@ export const getAthleticsPreviousSafeSurfaceIndex = (
 
 /**
  * Finds a stable authored landing under a racer. This helper only
- * considers main-route slabs with a generous interior margin, so a fall near
- * a shortcut or a moving hazard cannot make that surface the recovery target.
+ * considers main-route slabs with a player-radius interior margin, so a fall
+ * near a shortcut or a moving hazard cannot make that surface the recovery
+ * target while legitimate edge landings remain authoritative.
  */
 export const getAthleticsSurfaceIndexAtPosition = (
   position: Pick<ArenaPosition, "x" | "z"> & { y?: number },
@@ -1128,7 +1235,7 @@ export const getAthleticsSurfaceIndexAtPosition = (
   course.surfaces.forEach((surface, index) => {
     const obstacle = surfaceToObstacle(surface);
     if (obstacle.kind !== "rect") return;
-    if (!isPointInsideAthleticsRect(position, obstacle, -0.85)) return;
+    if (!isPointInsideAthleticsRect(position, obstacle, -ATHLETICS_PLAYER_RADIUS)) return;
     const verticalDistance = Math.abs(footY - surface.y);
     if (verticalDistance > 1.25) return;
     const distance = Math.hypot(position.x - surface.x, position.z - surface.z, verticalDistance * 1.5);
@@ -1228,7 +1335,7 @@ export const getAthleticsPhysicalSupport = (
     priority = kind === "main_surface" ? 0 : 1
   ) => {
     const obstacle = surfaceToObstacle(surface);
-    if (obstacle.kind !== "rect" || !isPointInsideAthleticsRect(position, obstacle, -0.85)) return;
+    if (obstacle.kind !== "rect" || !isPointInsideAthleticsRect(position, obstacle, -ATHLETICS_PLAYER_RADIUS)) return;
     const verticalDistance = Math.abs(footY - surface.y);
     if (verticalDistance > 1.25) return;
     candidates.push({
@@ -1250,7 +1357,7 @@ export const getAthleticsPhysicalSupport = (
   for (const moving of course.movingObstacles) {
     if (moving.kind === "barrier" || moving.jumpable === false) continue;
     const obstacle = movingObstacleToObstacle(moving, nowMs);
-    if (obstacle.kind !== "rect" || !isPointInsideAthleticsRect(position, obstacle, -0.85)) continue;
+    if (obstacle.kind !== "rect" || !isPointInsideAthleticsRect(position, obstacle, -ATHLETICS_PLAYER_RADIUS)) continue;
     const supportY = Number(obstacle.maxY ?? 0);
     const verticalDistance = Math.abs(footY - supportY);
     if (verticalDistance > 1.25) continue;

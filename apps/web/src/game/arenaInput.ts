@@ -1,6 +1,8 @@
+import { ATHLETICS_JUMP_HORIZONTAL_SPEED } from "@quizstrike/shared";
+
 export type CombatPointerAction = "fire" | "scope" | "none";
 
-export const PLAYER_FULL_SPEED = 14.8;
+export const PLAYER_FULL_SPEED = ATHLETICS_JUMP_HORIZONTAL_SPEED;
 export const PLAYER_CROUCH_SPEED = 6.4;
 
 /** Every game mode has one normal movement speed; Shift changes posture. */

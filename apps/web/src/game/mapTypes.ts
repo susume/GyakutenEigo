@@ -107,6 +107,8 @@ export type ArenaMapDefinition = {
   id: SessionMapId;
   title: string;
   description: string;
+  /** Optional named visual kit; gameplay/collision data remains independent. */
+  environmentKitId?: string;
   districts: readonly string[];
   routes: readonly string[];
   footprint: { width: number; depth: number };

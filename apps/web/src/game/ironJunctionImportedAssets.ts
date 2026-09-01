@@ -1,6 +1,6 @@
 import * as THREE from "three";
 import { ARENA_SCALE } from "@quizstrike/shared";
-import { instantiateArenaAsset, loadArenaAsset } from "./arenaAssetLoader";
+import { instantiateArenaAsset, loadArenaAsset, releaseArenaAsset } from "./arenaAssetLoader";
 
 const s = (value: number) => value * ARENA_SCALE;
 
@@ -169,10 +169,6 @@ const addSign = (root: THREE.Group, spec: SignSpec) => {
     );
     face.position.z = -0.05;
     sign.add(face);
-    sign.userData.dispose = () => {
-      texture.dispose();
-      face.material.dispose();
-    };
   }
 
   for (const x of [-0.42, 0.42]) {
@@ -187,25 +183,66 @@ const addSign = (root: THREE.Group, spec: SignSpec) => {
   root.add(sign);
 };
 
+const disposeOwnedRootResources = (root: THREE.Group) => {
+  const geometries = new Set<THREE.BufferGeometry>();
+  const materials = new Set<THREE.Material>();
+  const textures = new Set<THREE.Texture>();
+  root.traverse((object) => {
+    const mesh = object as THREE.Mesh;
+    if (!mesh.isMesh || mesh.userData.preserveSharedResources) return;
+    geometries.add(mesh.geometry);
+    const meshMaterials = Array.isArray(mesh.material) ? mesh.material : [mesh.material];
+    meshMaterials.forEach((material) => {
+      materials.add(material);
+      Object.values(material as THREE.Material & Record<string, unknown>).forEach((value) => {
+        if (value instanceof THREE.Texture) textures.add(value);
+      });
+    });
+  });
+  textures.forEach((texture) => texture.dispose());
+  geometries.forEach((geometry) => geometry.dispose());
+  materials.forEach((material) => material.dispose());
+};
+
 export const mountIronJunctionImportedAssets = async ({
   scene,
   detail,
-  isFps
+  isFps,
+  signal
 }: {
   scene: THREE.Scene;
   detail: number;
   isFps: boolean;
+  signal?: AbortSignal;
 }) => {
   const root = new THREE.Group();
   root.name = "iron_junction_imported_assets";
   scene.add(root);
   SIGN_SPECS.forEach((spec) => addSign(root, spec));
   let disposed = false;
+  const acquiredPaths: string[] = [];
+  const isDisposed = () => disposed || signal?.aborted === true;
+  const dispose = () => {
+    if (disposed) return;
+    disposed = true;
+    disposeOwnedRootResources(root);
+    root.removeFromParent();
+    acquiredPaths.forEach((path) => releaseArenaAsset(path));
+    acquiredPaths.length = 0;
+  };
+  const onAbort = () => dispose();
+  if (signal?.aborted) dispose();
+  else signal?.addEventListener("abort", onAbort, { once: true });
 
   await Promise.all(IRON_JUNCTION_IMPORTED_ASSETS.filter((asset) => detail >= asset.minimumDetail).map(async (asset) => {
+    if (isDisposed()) return;
     try {
       const source = await loadArenaAsset(asset.path);
-      if (disposed) return;
+      acquiredPaths.push(asset.path);
+      if (isDisposed()) {
+        releaseArenaAsset(asset.path);
+        return;
+      }
       const instance = instantiateArenaAsset({
         source,
         name: asset.id,
@@ -227,6 +264,7 @@ export const mountIronJunctionImportedAssets = async ({
         if (fallback) fallback.visible = false;
       });
     } catch (error) {
+      if (isDisposed()) return;
       // The procedural map remains playable if an optional GLB fails to load.
       console.warn(`[QuizStrike] optional Iron Junction asset failed: ${asset.id}`, error);
     }
@@ -234,12 +272,8 @@ export const mountIronJunctionImportedAssets = async ({
 
   return {
     dispose: () => {
-      disposed = true;
-      root.traverse((object) => {
-        const dispose = object.userData?.dispose;
-        if (typeof dispose === "function") dispose();
-      });
-      root.removeFromParent();
+      signal?.removeEventListener("abort", onAbort);
+      dispose();
     }
   };
 };

@@ -23,15 +23,17 @@ export const makeSurfaceAtlas = (textures: {
   wood: THREE.Texture;
   metal: THREE.Texture;
   sand: THREE.Texture;
-}) => {
+}, resolution = 1024) => {
+  const atlasResolution = Math.max(512, Math.round(resolution));
+  const tileResolution = atlasResolution / 2;
   const canvas = document.createElement("canvas");
-  canvas.width = 2048;
-  canvas.height = 2048;
+  canvas.width = atlasResolution;
+  canvas.height = atlasResolution;
   const context = canvas.getContext("2d")!;
-  context.drawImage(textures.metal.image as CanvasImageSource, 0, 0, 1024, 1024);
-  context.drawImage(textures.sand.image as CanvasImageSource, 1024, 0, 1024, 1024);
-  context.drawImage(textures.stone.image as CanvasImageSource, 0, 1024, 1024, 1024);
-  context.drawImage(textures.wood.image as CanvasImageSource, 1024, 1024, 1024, 1024);
+  context.drawImage(textures.metal.image as CanvasImageSource, 0, 0, tileResolution, tileResolution);
+  context.drawImage(textures.sand.image as CanvasImageSource, tileResolution, 0, tileResolution, tileResolution);
+  context.drawImage(textures.stone.image as CanvasImageSource, 0, tileResolution, tileResolution, tileResolution);
+  context.drawImage(textures.wood.image as CanvasImageSource, tileResolution, tileResolution, tileResolution, tileResolution);
   const atlas = new THREE.CanvasTexture(canvas);
   atlas.colorSpace = THREE.SRGBColorSpace;
   atlas.wrapS = THREE.ClampToEdgeWrapping;

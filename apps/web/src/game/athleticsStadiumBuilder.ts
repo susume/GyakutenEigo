@@ -17,6 +17,8 @@ import {
 import { ArenaStaticBatcher, makeSurfaceAtlas } from "./ArenaStaticBatch";
 import type { ArenaQuality } from "./gamePreferences";
 import type { ArenaQualityConfig } from "./sceneSetup";
+import { createQuizStrikeMaterial, type QuizStrikeMaterialStyle } from "./rendering/materials/QuizStrikeMaterials";
+import { buildAthleticsEnvironmentDress } from "./rendering/environment/AthleticsEnvironmentDress";
 
 type ActiveArenaQuality = Exclude<ArenaQuality, "auto">;
 type TextureKind = "floor" | "stone" | "wood" | "water" | "sand" | "metal";
@@ -24,13 +26,15 @@ type TextureKind = "floor" | "stone" | "wood" | "water" | "sand" | "metal";
 type AthleticsStadiumBuilderDependencies = {
   scene: THREE.Scene;
   renderer: THREE.WebGLRenderer;
+  isFps: boolean;
   activeQuality: ActiveArenaQuality;
   qualityConfig: ArenaQualityConfig;
-  makeCanvasTexture: (kind: TextureKind, accent?: string) => THREE.CanvasTexture;
+  makeCanvasTexture: (kind: TextureKind, accent?: string, resolution?: number) => THREE.CanvasTexture;
   makeLabelTexture: (label: string, color?: string, background?: string) => THREE.CanvasTexture;
   questionsPerLap?: number;
   serverTime?: string;
   debugOverlay?: boolean;
+  seededRandom: (seed: number) => () => number;
 };
 
 const sectionColors: Record<AthleticsAccent, string> = {
@@ -50,7 +54,18 @@ const makeMaterial = (
 ) => {
   const existing = cache.get(key);
   if (existing) return existing;
-  const material = new THREE.MeshStandardMaterial({ color, roughness: 0.62, metalness: 0.08, ...options });
+  const style: QuizStrikeMaterialStyle = key.includes("turf")
+    ? "vegetation"
+    : key.includes("stone")
+      ? "stone"
+      : key.includes("wood")
+        ? "wood"
+        : key.includes("metal")
+          ? "metal"
+          : key.includes("accent")
+            ? "emissive"
+            : "painted";
+  const material = createQuizStrikeMaterial(style, { color, ...options });
   cache.set(key, material);
   return material;
 };
@@ -164,10 +179,31 @@ const addFallbackCoaster = (
     const z = center.z + Math.sin(index * 0.9) * 10;
     const y = center.y + (index % 2) * 4;
     const trackRotation: [number, number, number] = [0, Math.sin(index * 0.9) * 0.2, 0];
-    addBox(fallback, accent, [8.8, 0.55, 1.1], [x, y, z], trackRotation);
-    addBox(supports, metal, [1.4, Math.max(5, y), 1.4], [x, y / 2, z]);
-    if (index < 6) addBox(supports, metal, [9.4, 0.7, 0.7], [x + 4.5, y * 0.42, z], trackRotation);
+    const trackPart = new THREE.Group();
+    trackPart.name = index === 0
+      ? "athletics-fallback-coaster-track-a"
+      : index === 2
+        ? "athletics-fallback-coaster-track-curve"
+        : index === 4
+          ? "athletics-fallback-coaster-track-b"
+          : `athletics-fallback-coaster-track-${index}`;
+    fallback.add(trackPart);
+    addBox(trackPart, accent, [8.8, 0.55, 1.1], [x, y, z], trackRotation);
+
+    const supportPart = new THREE.Group();
+    supportPart.name = index === 0
+      ? "athletics-fallback-coaster-support-a"
+      : index === 4
+        ? "athletics-fallback-coaster-support-b"
+        : `athletics-fallback-coaster-support-${index}`;
+    supports.add(supportPart);
+    addBox(supportPart, metal, [1.4, Math.max(5, y), 1.4], [x, y / 2, z]);
+    if (index < 6) addBox(supportPart, metal, [9.4, 0.7, 0.7], [x + 4.5, y * 0.42, z], trackRotation);
   }
+  const train = new THREE.Group();
+  train.name = "athletics-fallback-coaster-train";
+  fallback.add(train);
+  addBox(train, accent, [5.6, 1.9, 2.4], [center.x + 3, center.y + 1.4, center.z + 4]);
   return fallback;
 };
 
@@ -228,59 +264,58 @@ const makeCollisionBox = (obstacle: (typeof ATHLETICS_COLLISION_PROXIES)[number]
 export const buildAthleticsStadiumScene = ({
   scene,
   renderer,
+  isFps,
   activeQuality,
   qualityConfig,
   makeCanvasTexture,
   makeLabelTexture,
   questionsPerLap = 7,
   serverTime,
-  debugOverlay = false
+  debugOverlay = false,
+  seededRandom
 }: AthleticsStadiumBuilderDependencies) => {
-  const floorTexture = makeCanvasTexture("floor", "#83c995");
-  const stoneTexture = makeCanvasTexture("stone", "#dbe6e2");
-  const woodTexture = makeCanvasTexture("wood", "#dba16e");
-  const waterTexture = makeCanvasTexture("water", "#5de6ec");
-  const sandTexture = makeCanvasTexture("sand", "#dfc875");
-  const metalTexture = makeCanvasTexture("metal", "#a9c2cc");
+  const surfaceTextureResolution = activeQuality === "high" ? 1024 : 512;
+  const floorTexture = makeCanvasTexture("floor", "#83c995", surfaceTextureResolution);
+  const stoneTexture = makeCanvasTexture("stone", "#dbe6e2", surfaceTextureResolution);
+  const woodTexture = makeCanvasTexture("wood", "#dba16e", surfaceTextureResolution);
+  const waterTexture = makeCanvasTexture("water", "#5de6ec", surfaceTextureResolution);
+  const sandTexture = makeCanvasTexture("sand", "#dfc875", surfaceTextureResolution);
+  const metalTexture = makeCanvasTexture("metal", "#a9c2cc", surfaceTextureResolution);
   [floorTexture, stoneTexture, woodTexture, waterTexture, sandTexture, metalTexture].forEach((texture) => {
     texture.anisotropy = qualityConfig.anisotropy;
   });
 
-  const surfaceAtlas = makeSurfaceAtlas({ stone: stoneTexture, wood: woodTexture, metal: metalTexture, sand: sandTexture });
-  const staticBatcher = new ArenaStaticBatcher(surfaceAtlas, qualityConfig.shadows && activeQuality !== "performance");
+  const surfaceAtlas = makeSurfaceAtlas(
+    { stone: stoneTexture, wood: woodTexture, metal: metalTexture, sand: sandTexture },
+    activeQuality === "high" ? 2048 : 1024
+  );
+  const staticBatcher = new ArenaStaticBatcher(surfaceAtlas, !isFps && qualityConfig.shadows);
   const materialCache = new Map<string, THREE.MeshStandardMaterial>();
   const collisionProxyMaterial = new THREE.MeshBasicMaterial({ visible: false, colorWrite: false, depthWrite: false });
   const park = new THREE.Group();
   park.name = "skyline-adventure-park";
   scene.add(park);
 
-  // Athletics has its own bright skyline identity. Reusing the old orange
-  // fallback made a correctly built course look like Desert Citadel.
-  scene.background = new THREE.Color("#9edcff");
-  scene.fog = new THREE.Fog("#d8f3ff", 125, 420);
-  scene.add(new THREE.HemisphereLight("#fff1d0", "#153d52", 1.65));
-  const keyLight = new THREE.DirectionalLight("#fff2c7", 3.2);
-  keyLight.position.set(-120, 220, 120);
-  keyLight.castShadow = qualityConfig.shadows && activeQuality !== "performance";
-  keyLight.shadow.mapSize.set(2048, 2048);
-  keyLight.shadow.camera.left = -165;
-  keyLight.shadow.camera.right = 165;
-  keyLight.shadow.camera.top = 180;
-  keyLight.shadow.camera.bottom = -180;
-  scene.add(keyLight);
-  const sunsetFill = new THREE.DirectionalLight("#ff83b0", 1.1);
-  sunsetFill.position.set(160, 90, -180);
-  scene.add(sunsetFill);
-  const parkGlow = new THREE.PointLight("#ffe36e", 80, 180, 2);
-  parkGlow.position.set(-24, 44, -20);
-  scene.add(parkGlow);
+  // SceneSetup owns the shared sky, hemisphere, sun, and colored fill rig.
+  // Athletics only adds localized lights for its stadium fixtures below.
 
-  const turf = makeMaterial(materialCache, "park-turf", "#377b67", { roughness: 0.95 });
+  const turf = makeMaterial(materialCache, "park-turf", "#2f8668", { roughness: 0.95 });
+  const turfLight = makeMaterial(materialCache, "park-turf-light", "#63b77d", { roughness: 0.95 });
+  const track = makeMaterial(materialCache, "park-track", "#c95755", { roughness: 0.84 });
+  const trackLine = makeMaterial(materialCache, "park-track-line", "#ffe8bb", { roughness: 0.72 });
   const stone = makeMaterial(materialCache, "park-stone", "#a9c3c4", { roughness: 0.84 });
   const wood = makeMaterial(materialCache, "park-wood", "#c97845", { roughness: 0.76 });
   const metal = makeMaterial(materialCache, "park-metal", "#506a82", { roughness: 0.38, metalness: 0.56 });
   const cream = makeMaterial(materialCache, "park-cream", "#fff0c8", { roughness: 0.68 });
   const dark = makeMaterial(materialCache, "park-dark", "#26334d", { roughness: 0.78 });
+  const stadium = makeMaterial(materialCache, "stadium-concrete", "#6b8996", { roughness: 0.88 });
+  const stadiumDark = makeMaterial(materialCache, "stadium-dark", "#293d54", { roughness: 0.82 });
+  const stadiumRoof = makeMaterial(materialCache, "stadium-roof", "#36566d", { roughness: 0.55, metalness: 0.32 });
+  const seatBlue = makeMaterial(materialCache, "stadium-seat-blue", "#38b7d8", { roughness: 0.62, metalness: 0.08 });
+  const seatCoral = makeMaterial(materialCache, "stadium-seat-coral", "#ee766b", { roughness: 0.62, metalness: 0.08 });
+  const foliage = makeMaterial(materialCache, "park-foliage", "#2b8d70", { roughness: 0.94 });
+  const foliageLight = makeMaterial(materialCache, "park-foliage-light", "#6acb86", { roughness: 0.94 });
+  const trunk = makeMaterial(materialCache, "park-trunk", "#6a4a3b", { roughness: 0.94 });
   const accentMaterials = Object.fromEntries(
     (Object.entries(sectionColors) as Array<[AthleticsAccent, string]>).map(([accent, color]) => [
       accent,
@@ -295,6 +330,37 @@ export const buildAthleticsStadiumScene = ({
     surface: "stone" | "wood" | "metal" | "sand" | "accent" = "stone",
     rotation: [number, number, number] = [0, 0, 0]
   ) => staticBatcher.prepare(addBox(park, material, size, position, rotation), `#${material.color.getHexString()}`, surface);
+
+  const environmentDress = buildAthleticsEnvironmentDress({
+    parent: park,
+    detail: qualityConfig.detail,
+    isFps,
+    addBatchedBox: (size, position, material, surface, rotation) => addBatchedBox(material, size, position, surface, rotation),
+    materials: {
+      turf,
+      turfLight,
+      track,
+      trackLine,
+      stadium,
+      stadiumDark,
+      stadiumRoof,
+      seatBlue,
+      seatCoral,
+      metal,
+      cream,
+      foliage,
+      foliageLight,
+      trunk,
+      cyan: accentMaterials.cyan,
+      orange: accentMaterials.orange,
+      lime: accentMaterials.lime,
+      violet: accentMaterials.violet,
+      pink: accentMaterials.pink,
+      gold: accentMaterials.gold
+    },
+    seededRandom,
+    makeLabelTexture
+  });
 
   // 280 x 280 floor and boundary match ATHLETICS_COURSE_BOUNDS. The route is
   // intentionally absent from the floor; only the landings communicate where
@@ -439,11 +505,14 @@ export const buildAthleticsStadiumScene = ({
   // Ground-level attraction district: imported GLBs can hide these named
   // fallback groups after they load; the authored course remains playable
   // either way.
-  const stallFallback = new THREE.Group();
-  stallFallback.name = "athletics-fallback-stalls";
-  park.add(stallFallback);
-  addFairgroundStallFallback(stallFallback, { wall: accentMaterials.orange, roof: accentMaterials.gold, trim: cream }, { x: -49, y: 0, z: -8 });
-  addFairgroundStallFallback(stallFallback, { wall: accentMaterials.pink, roof: accentMaterials.violet, trim: cream }, { x: 24, y: 0, z: -55 });
+  const foodStallFallback = new THREE.Group();
+  foodStallFallback.name = "athletics-fallback-food-stall";
+  park.add(foodStallFallback);
+  addFairgroundStallFallback(foodStallFallback, { wall: accentMaterials.orange, roof: accentMaterials.gold, trim: cream }, { x: -49, y: 0, z: -8 });
+  const drinksStallFallback = new THREE.Group();
+  drinksStallFallback.name = "athletics-fallback-drinks-stall";
+  park.add(drinksStallFallback);
+  addFairgroundStallFallback(drinksStallFallback, { wall: accentMaterials.pink, roof: accentMaterials.violet, trim: cream }, { x: 24, y: 0, z: -55 });
 
   const bumperGroup = new THREE.Group();
   bumperGroup.name = "athletics-bumper-bowl";
@@ -545,6 +614,7 @@ export const buildAthleticsStadiumScene = ({
     });
 
     ferrisFallback.rotation.z = nowMs * 0.00008;
+    environmentDress.update(nowMs);
     const bob = Math.sin(nowMs * 0.003) * 0.18;
     if (currentPosition) {
       const progress = getAthleticsRouteProgress({ x: currentPosition.x, y: currentPosition.y, z: currentPosition.z }, course);

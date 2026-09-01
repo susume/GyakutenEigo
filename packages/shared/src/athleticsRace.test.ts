@@ -6,7 +6,11 @@ import {
   ATHLETICS_COURSE_BOUNDS,
   ATHLETICS_CORRECT_ENERGY,
   ATHLETICS_DEFAULT_TIME_LIMIT_SECONDS,
+  ATHLETICS_JUMP_AIRTIME_SECONDS,
+  ATHLETICS_JUMP_APEX_HEIGHT,
+  ATHLETICS_JUMP_HORIZONTAL_SPEED,
   ATHLETICS_MOVEMENT_DRAIN_PER_SECOND,
+  ATHLETICS_PLAYER_RADIUS,
   ATHLETICS_PLAYER_EYE_HEIGHT,
   ATHLETICS_MAX_ENERGY,
   ATHLETICS_STADIUM_COURSE,
@@ -36,6 +40,7 @@ import {
   getAthleticsSurfaceIndexAtPosition,
   getAthleticsSurfaceRouteProgress,
   getAthleticsSurfaceVolumeOverlap,
+  getAthleticsTransitionJumpEnvelope,
   getAthleticsTransitionAirGap,
   isAthleticsJumpTransition,
   isAthleticsFinish,
@@ -91,7 +96,7 @@ test("Athletics transition authoring proves real air gaps and intentional except
   assert.ok(metrics.medianAirGap >= 4);
   assert.ok(metrics.averageAirGap >= 4);
   assert.ok(metrics.maximumNormalRouteGap <= 9);
-  assert.ok(metrics.maximumShortcutGap >= 9 && metrics.maximumShortcutGap <= 10);
+  assert.ok(metrics.maximumShortcutGap >= 8.8 && metrics.maximumShortcutGap <= 10);
   assert.ok(metrics.maximumShortcutGap > metrics.maximumNormalRouteGap, "shortcut ceiling should be harder than the normal route ceiling");
   assert.equal(metrics.connectedNonJumpTransitionCount, 7);
   assert.equal(metrics.movingPlatformTransitionCount, 6);
@@ -102,8 +107,8 @@ test("Athletics transition authoring proves real air gaps and intentional except
   // envelope (3.34-unit apex). The two larger rises must be carried by a
   // named vertical lift, and no authored jump may exceed the full-speed
   // 14.8 * 0.861-second airborne travel budget.
-  const maximumStaticJumpRise = 3.34;
-  const maximumFullSpeedAirDistance = 14.8 * 0.861;
+  const maximumStaticJumpRise = ATHLETICS_JUMP_APEX_HEIGHT;
+  const maximumFullSpeedAirDistance = ATHLETICS_JUMP_HORIZONTAL_SPEED * ATHLETICS_JUMP_AIRTIME_SECONDS;
   for (const [index, transition] of course.transitions.entries()) {
     const fromSurface = course.surfaces[index]!;
     const toSurface = course.surfaces[index + 1]!;
@@ -163,6 +168,45 @@ test("Athletics transition authoring proves real air gaps and intentional except
   if (rotatedProxy?.kind === "rect") assert.equal(rotatedProxy.rotationY, rotatedSurface?.rotationY);
 });
 
+test("Athletics route and shortcuts fit the reliable classic jump envelope", () => {
+  const course = ATHLETICS_STADIUM_COURSE;
+  const transitions = [
+    ...course.transitions,
+    ...course.shortcuts.flatMap((shortcut) => shortcut.transitions)
+  ];
+
+  for (const transition of transitions) {
+    const envelope = getAthleticsTransitionJumpEnvelope(transition, course);
+    assert.ok(Number.isFinite(envelope.airGap), `${transition.id} must reference two authored surfaces`);
+    if (envelope.flightTimeSeconds === undefined) {
+      assert.ok(transition.movingObstacleId, `${transition.id} needs a named lift above the jump apex`);
+      continue;
+    }
+    assert.ok(
+      envelope.airGap <= envelope.horizontalReach + 0.001,
+      `${transition.id} air gap ${envelope.airGap.toFixed(2)} exceeds reliable reach ${envelope.horizontalReach.toFixed(2)}`
+    );
+  }
+});
+
+test("Athletics geometry QA rejects a static platform above the jump apex", () => {
+  const course = ATHLETICS_STADIUM_COURSE;
+  const brokenCourse = {
+    ...course,
+    surfaces: course.surfaces.map((surface, index) => (
+      index === 23
+        ? { ...surface, y: surface.y + ATHLETICS_JUMP_APEX_HEIGHT + 1 }
+        : surface
+    ))
+  };
+
+  const issues = getAthleticsCourseGeometryIssues(brokenCourse);
+  assert.ok(
+    issues.some((issue) => issue.includes("main-transition-023") && issue.includes("without a vertical lift")),
+    "geometry QA should reject an unaided rise above the jump apex"
+  );
+});
+
 test("Athletics edge-gap geometry respects touching, separation, and rotation", () => {
   const first = { x: 0, z: 0, width: 10, depth: 4 };
   assert.equal(getAthleticsSurfaceAirGap(first, { x: 0, z: 1, width: 10, depth: 4 }), 0);
@@ -196,6 +240,20 @@ test("Athletics ground spawn can move out from underneath elevated switchbacks",
 
     assert.notEqual(`${result.x}:${result.z}`, `${start.x}:${start.z}`, `${label} movement should not be blocked at the ground spawn`);
   }
+});
+
+test("Athletics server support accepts a legitimate player-radius edge landing", () => {
+  const surface = ATHLETICS_STADIUM_COURSE.surfaces[0]!;
+  const angle = surface.rotationY ?? 0;
+  const localX = surface.width / 2 - ATHLETICS_PLAYER_RADIUS - 0.02;
+  const support = getAthleticsPhysicalSupport({
+    x: surface.x + Math.cos(angle) * localX,
+    y: surface.y + ATHLETICS_PLAYER_EYE_HEIGHT,
+    z: surface.z - Math.sin(angle) * localX
+  });
+
+  assert.equal(support.kind, "main_surface");
+  assert.equal(support.surfaceId, surface.id);
 });
 
 test("Athletics recovers racers stranded below a raised route", () => {

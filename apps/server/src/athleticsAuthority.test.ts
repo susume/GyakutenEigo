@@ -73,10 +73,12 @@ test("server fall authority accepts every authored main-route landing and exact 
     // A real airborne interval is allowed to exist before the eventual fall
     // decision. The recovery latch below models the server's recoveryActive
     // state and proves one fall increments the counter exactly once.
+    // Probe beyond the authored bounds so a wide late-course platform cannot
+    // make the next platform look like a false positive landing.
     const airborneSupport = getAthleticsPhysicalSupport({
-      x: movedPosition.x + Math.cos(angle) * (surface.width / 2 + 2),
+      x: course.bounds.limitX + course.routeWidth,
       y: movedPosition.y + 2.5,
-      z: movedPosition.z + Math.sin(angle) * (surface.width / 2 + 2)
+      z: course.bounds.limitZ + course.routeWidth
     }, course, ATHLETICS_PLAYER_EYE_HEIGHT, 0);
     assert.equal(airborneSupport.kind, "airborne", `${surface.id} leaving the footprint should be airborne`);
     assert.deepEqual(decideAthleticsFall({

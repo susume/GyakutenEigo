@@ -1,6 +1,6 @@
 import * as THREE from "three";
 import { ARENA_SCALE } from "@quizstrike/shared";
-import { instantiateArenaAsset, loadArenaAsset } from "./arenaAssetLoader";
+import { instantiateArenaAsset, loadArenaAsset, releaseArenaAsset } from "./arenaAssetLoader";
 
 const s = (value: number) => value * ARENA_SCALE;
 
@@ -107,20 +107,39 @@ export const showTempleRunoffLoadFailureFallback = (scene: THREE.Scene, asset: T
 
 export const mountTempleRunoffImportedAssets = async ({
   scene,
-  isFps
+  isFps,
+  signal
 }: {
   scene: THREE.Scene;
   isFps: boolean;
+  signal?: AbortSignal;
 }) => {
   const root = new THREE.Group();
   root.name = "temple_runoff_imported_assets";
   scene.add(root);
   let disposed = false;
+  const acquiredPaths: string[] = [];
+  const isDisposed = () => disposed || signal?.aborted === true;
+  const dispose = () => {
+    if (disposed) return;
+    disposed = true;
+    root.removeFromParent();
+    acquiredPaths.forEach((path) => releaseArenaAsset(path));
+    acquiredPaths.length = 0;
+  };
+  const onAbort = () => dispose();
+  if (signal?.aborted) dispose();
+  else signal?.addEventListener("abort", onAbort, { once: true });
 
   await Promise.all(TEMPLE_RUNOFF_IMPORTED_ASSETS.map(async (asset) => {
+    if (isDisposed()) return;
     try {
       const source = await loadArenaAsset(asset.path);
-      if (disposed) return;
+      acquiredPaths.push(asset.path);
+      if (isDisposed()) {
+        releaseArenaAsset(asset.path);
+        return;
+      }
       const instance = instantiateArenaAsset({
         source,
         name: asset.id,
@@ -142,6 +161,7 @@ export const mountTempleRunoffImportedAssets = async ({
       root.add(instance);
       hideTempleRunoffFallback(scene, asset);
     } catch (error) {
+      if (isDisposed()) return;
       showTempleRunoffLoadFailureFallback(scene, asset);
       console.warn(`[QuizStrike] critical Temple Runoff asset failed: ${asset.id}`, error);
     }
@@ -149,8 +169,8 @@ export const mountTempleRunoffImportedAssets = async ({
 
   return {
     dispose: () => {
-      disposed = true;
-      root.removeFromParent();
+      signal?.removeEventListener("abort", onAbort);
+      dispose();
     }
   };
 };

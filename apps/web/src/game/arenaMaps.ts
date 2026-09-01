@@ -17,6 +17,7 @@ export const ARENA_MAPS: ArenaMapData[] = [
     id: "athletics_park",
     title: "Skyline Adventure Park",
     description: "A vertical parkour course built for Athletics.",
+    environmentKitId: "athletics-skyline-park",
     districts: ["Start plaza", "Skyline summit"],
     routes: ["Stadium loop"],
     footprint: { width: 280, depth: 280 },

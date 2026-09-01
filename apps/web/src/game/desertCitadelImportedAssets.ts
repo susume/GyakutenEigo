@@ -1,6 +1,6 @@
 import * as THREE from "three";
 import { ARENA_SCALE } from "@quizstrike/shared";
-import { instantiateArenaAsset, loadArenaAsset } from "./arenaAssetLoader";
+import { instantiateArenaAsset, loadArenaAsset, releaseArenaAsset } from "./arenaAssetLoader";
 
 const s = (value: number) => value * ARENA_SCALE;
 // The classroom character rig is intentionally larger than a real-world
@@ -96,20 +96,39 @@ const showLoadFailureFallback = (scene: THREE.Scene, blockId: string) => {
 
 export const mountDesertCitadelImportedAssets = async ({
   scene,
-  isFps
+  isFps,
+  signal
 }: {
   scene: THREE.Scene;
   isFps: boolean;
+  signal?: AbortSignal;
 }) => {
   const root = new THREE.Group();
   root.name = "desert_citadel_imported_assets";
   scene.add(root);
   let disposed = false;
+  const acquiredPaths: string[] = [];
+  const isDisposed = () => disposed || signal?.aborted === true;
+  const dispose = () => {
+    if (disposed) return;
+    disposed = true;
+    root.removeFromParent();
+    acquiredPaths.forEach((path) => releaseArenaAsset(path));
+    acquiredPaths.length = 0;
+  };
+  const onAbort = () => dispose();
+  if (signal?.aborted) dispose();
+  else signal?.addEventListener("abort", onAbort, { once: true });
 
   await Promise.all(DESERT_CITADEL_IMPORTED_ASSETS.map(async (asset) => {
+    if (isDisposed()) return;
     try {
       const source = await loadArenaAsset(asset.path);
-      if (disposed) return;
+      acquiredPaths.push(asset.path);
+      if (isDisposed()) {
+        releaseArenaAsset(asset.path);
+        return;
+      }
       const instance = instantiateArenaAsset({
         source,
         name: asset.id,
@@ -125,6 +144,7 @@ export const mountDesertCitadelImportedAssets = async ({
       root.add(instance);
       asset.fallbackBlockIds?.forEach((blockId) => hideFallbackBlock(scene, blockId));
     } catch (error) {
+      if (isDisposed()) return;
       // Collision-aware procedural fallbacks stay visible if an optional GLB
       // cannot load, so the map remains readable and multiplayer-safe.
       asset.fallbackBlockIds?.forEach((blockId) => showLoadFailureFallback(scene, blockId));
@@ -134,8 +154,8 @@ export const mountDesertCitadelImportedAssets = async ({
 
   return {
     dispose: () => {
-      disposed = true;
-      root.removeFromParent();
+      signal?.removeEventListener("abort", onAbort);
+      dispose();
     }
   };
 };

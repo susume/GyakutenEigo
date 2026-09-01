@@ -52,6 +52,7 @@ export class CharacterModel {
   private readonly parts: CharacterModelParts;
   private readonly showWeapon: boolean;
   private readonly cosmeticMotionNodes: THREE.Object3D[] = [];
+  private shadowLevel: "near" | "off" | "uninitialized" = "uninitialized";
   private worldY = 0;
   private animatedLocalY = 0;
 
@@ -179,6 +180,14 @@ export class CharacterModel {
 
   update({ camera, delta, elapsed, speed, velocityX, velocityZ, forwardSpeed, strafeSpeed, turnSpeed, alive, aimPitch, firing, crouching, carryingObjective }: CharacterModelUpdate) {
     const lodState = this.lod.update(this.root, camera);
+    const nextShadowLevel = lodState.level.name === "LOD0" ? "near" : "off";
+    if (nextShadowLevel !== this.shadowLevel) {
+      this.shadowLevel = nextShadowLevel;
+      this.root.traverse((object) => {
+        const mesh = object as THREE.Mesh;
+        if (mesh.isMesh) mesh.castShadow = nextShadowLevel === "near";
+      });
+    }
     if (lodState.shouldAnimate || this.animator.hasActiveCue) {
       this.root.position.y = this.animatedLocalY;
       this.animator.update(this.parts, { delta, elapsed, speed, velocityX, velocityZ, forwardSpeed, strafeSpeed, turnSpeed, alive, aimPitch, firing, crouching, carryingObjective });

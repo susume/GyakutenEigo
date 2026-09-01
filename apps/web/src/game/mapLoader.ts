@@ -7,11 +7,14 @@ import {
   type SessionMapId
 } from "@quizstrike/shared";
 import { getArenaMap } from "./arenaMaps";
+import { getEnvironmentKit } from "./rendering/environment/EnvironmentKit";
 
 export const loadArenaMapContext = (arenaMapId: SessionMapId) => {
   const arenaMap = getArenaMap(arenaMapId);
+  const environmentKit = getEnvironmentKit(arenaMap.environmentKitId);
   return {
     arenaMap,
+    environmentKit,
     arenaBounds: getArenaBounds(arenaMapId),
     teamBaseZones: getTeamBaseZones(arenaMapId),
     captureZones: getCaptureZonesForMap(arenaMapId),

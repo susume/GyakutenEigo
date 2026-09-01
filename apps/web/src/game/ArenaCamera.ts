@@ -1,3 +1,8 @@
+import {
+  ATHLETICS_JUMP_GRAVITY,
+  ATHLETICS_JUMP_VELOCITY
+} from "@quizstrike/shared";
+
 export const CHARACTER_VISUAL_SCALE = 2.45;
 export const BASE_STANDING_EYE_HEIGHT = 1.72;
 export const BASE_CROUCH_EYE_HEIGHT = 1.08;
@@ -7,8 +12,8 @@ export const FPS_CROUCH_EYE_HEIGHT = Number((BASE_CROUCH_EYE_HEIGHT * CHARACTER_
 export const FPS_BODY_HEIGHT = Number((2.05 * CHARACTER_VISUAL_SCALE).toFixed(2));
 // A high initial impulse and stronger gravity preserve the useful cover-clearing
 // apex while removing the long, floaty hang time of the previous 11/18 profile.
-export const FPS_JUMP_VELOCITY = 15.5;
-export const FPS_JUMP_GRAVITY = 36;
+export const FPS_JUMP_VELOCITY = ATHLETICS_JUMP_VELOCITY;
+export const FPS_JUMP_GRAVITY = ATHLETICS_JUMP_GRAVITY;
 export const FPS_JUMP_APEX_HEIGHT = Number(
   ((FPS_JUMP_VELOCITY * FPS_JUMP_VELOCITY) / (2 * FPS_JUMP_GRAVITY)).toFixed(2)
 );

@@ -56,3 +56,28 @@ test("40 lobby characters keep the shared-body render budget bounded", () => {
   models.forEach((model) => model.dispose());
   factory.dispose();
 });
+
+test("distant characters opt out of shadow casting while the nearest silhouette remains grounded", () => {
+  const factory = new CharacterFactory();
+  const model = factory.createCharacter({ playerId: "shadow-budget-student", team: "blue" });
+  const camera = new THREE.PerspectiveCamera();
+  const countShadowCasters = () => {
+    let count = 0;
+    model.root.traverse((object) => {
+      const mesh = object as THREE.Mesh;
+      if (mesh.isMesh && mesh.castShadow) count += 1;
+    });
+    return count;
+  };
+
+  camera.position.set(120, 120, 120);
+  model.update({ camera, delta: 1 / 60, elapsed: 0, speed: 0, alive: true });
+  assert.equal(countShadowCasters(), 0);
+
+  camera.position.set(0, 2, 6);
+  model.update({ camera, delta: 1 / 60, elapsed: 0, speed: 0, alive: true });
+  assert.ok(countShadowCasters() > 0);
+
+  model.dispose();
+  factory.dispose();
+});

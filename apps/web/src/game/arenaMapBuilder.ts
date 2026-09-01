@@ -20,6 +20,7 @@ import { addTempleRunoffArtPass } from "./TempleRunoffArtPass";
 import type { ArenaQuality } from "./gamePreferences";
 import type { ArenaQualityConfig } from "./sceneSetup";
 import { FPS_CROUCH_EYE_HEIGHT, FPS_STANDING_EYE_HEIGHT } from "./ArenaCamera";
+import { createQuizStrikeMaterial, styleForArenaSurface } from "./rendering/materials/QuizStrikeMaterials";
 
 type ActiveArenaQuality = Exclude<ArenaQuality, "auto">;
 type TextureKind = "floor" | "stone" | "wood" | "water" | "sand" | "metal";
@@ -45,7 +46,7 @@ type MapBuilderDependencies = {
   isZombieMode: boolean;
   activeQuality: ActiveArenaQuality;
   qualityConfig: ArenaQualityConfig;
-  makeCanvasTexture: (kind: TextureKind, accent?: string) => THREE.CanvasTexture;
+  makeCanvasTexture: (kind: TextureKind, accent?: string, resolution?: number) => THREE.CanvasTexture;
   seededRandom: (seed: number) => () => number;
   scaleArenaValue: (value: number) => number;
 };
@@ -81,12 +82,13 @@ export const buildArenaMapScene = (deps: MapBuilderDependencies) => {
   const timber = "#765038";
   const warning = "#d18a3f";
 
-const floorTexture = makeCanvasTexture(palette.floorTexture, palette.accent);
-const stoneTexture = makeCanvasTexture("stone", "#f6d98e");
-const woodTexture = makeCanvasTexture("wood", "#bb8652");
-const waterTexture = makeCanvasTexture("water", "#67e8f9");
-const sandTexture = makeCanvasTexture("sand", "#f2ca73");
-const metalTexture = makeCanvasTexture("metal", "#93a6ad");
+const surfaceTextureResolution = activeQuality === "high" ? 1024 : 512;
+const floorTexture = makeCanvasTexture(palette.floorTexture, palette.accent, surfaceTextureResolution);
+const stoneTexture = makeCanvasTexture("stone", "#f6d98e", surfaceTextureResolution);
+const woodTexture = makeCanvasTexture("wood", "#bb8652", surfaceTextureResolution);
+const waterTexture = makeCanvasTexture("water", "#67e8f9", surfaceTextureResolution);
+const sandTexture = makeCanvasTexture("sand", "#f2ca73", surfaceTextureResolution);
+const metalTexture = makeCanvasTexture("metal", "#93a6ad", surfaceTextureResolution);
 [floorTexture, stoneTexture, woodTexture, waterTexture, sandTexture, metalTexture].forEach((texture) => {
   texture.anisotropy = qualityConfig.anisotropy;
 });
@@ -110,7 +112,10 @@ const desertCitadelPbrTextures = isDesertCitadel && qualityConfig.detail > 0
       };
     })()
   : null;
-const surfaceAtlas = makeSurfaceAtlas({ stone: stoneTexture, wood: woodTexture, metal: metalTexture, sand: sandTexture });
+const surfaceAtlas = makeSurfaceAtlas(
+  { stone: stoneTexture, wood: woodTexture, metal: metalTexture, sand: sandTexture },
+  activeQuality === "high" ? 2048 : 1024
+);
 surfaceAtlas.anisotropy = qualityConfig.anisotropy;
 const staticBatcher = new ArenaStaticBatcher(surfaceAtlas, !isFps && qualityConfig.shadows);
 
@@ -146,7 +151,7 @@ const materialFor = (color: string, material = "stone") => {
       materialOptions.bumpScale = material === "metal" ? 0.025 : 0.065;
     }
   }
-  const next = new THREE.MeshStandardMaterial(materialOptions);
+  const next = createQuizStrikeMaterial(styleForArenaSurface(material), materialOptions);
   materialCache.set(key, next);
   return next;
 };
@@ -178,26 +183,8 @@ const createFlagClothGeometry = (width: number, height: number, segments = 12) =
   return geometry;
 };
 
-scene.add(new THREE.HemisphereLight(
-  isZombieMode ? "#d8ddff" : isIronJunction ? "#d9edf0" : isTempleRunoff ? "#e7f4d5" : "#fff6d8",
-  isZombieMode ? "#65556e" : isIronJunction ? "#354146" : isTempleRunoff ? "#334836" : "#8f7d6f",
-  isFps ? 1.12 : 1.28
-));
-
-const keyLight = new THREE.DirectionalLight(isZombieMode ? "#d9e1ff" : isIronJunction ? "#d6edf0" : isTempleRunoff ? "#ffd798" : "#fff0ca", isFps ? 2.18 : isIronJunction ? 2.35 : isTempleRunoff ? 2.5 : 2.72);
-keyLight.position.set(isIronJunction ? -120 : isTempleRunoff ? -105 : -85, 180, isIronJunction ? -60 : 95);
-keyLight.castShadow = !isFps;
-keyLight.shadow.mapSize.set(1024, 1024);
-keyLight.shadow.camera.left = -190;
-keyLight.shadow.camera.right = 190;
-keyLight.shadow.camera.top = 175;
-keyLight.shadow.camera.bottom = -175;
-scene.add(keyLight);
-
-const fillLight = new THREE.DirectionalLight(isZombieMode ? "#b7a8de" : isIronJunction ? "#f3b47a" : isTempleRunoff ? "#7ed9c8" : "#ffe7bd", isFps ? 1.22 : 0.82);
-fillLight.position.set(110, 80, -130);
-scene.add(fillLight);
-
+// The shared QuizStrikeLighting rig is created by sceneSetup. Maps only add
+// local accent lights when a landmark genuinely benefits from one.
 if (!isIronJunction) {
   const aqueductLight = new THREE.PointLight("#53e7ff", 42, 135, 2);
   aqueductLight.position.set(0, 7, isTempleRunoff ? -27 : 0);

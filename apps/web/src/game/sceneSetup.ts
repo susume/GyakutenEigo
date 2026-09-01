@@ -1,7 +1,9 @@
 import * as THREE from "three";
 import type { ArenaQuality } from "./gamePreferences";
+import { createQuizStrikeLightingRig, getQuizStrikeLightingConfig } from "./rendering/lighting/QuizStrikeLighting";
 
 type ArenaSceneMap = {
+  id?: string;
   palette: {
     sky: string;
     fog: string;
@@ -35,6 +37,7 @@ export const createArenaSceneSetup = ({
   isFps,
   isZombieMode,
   isIronJunction,
+  isTempleRunoff,
   activeQuality
 }: {
   mount: HTMLDivElement;
@@ -42,13 +45,10 @@ export const createArenaSceneSetup = ({
   isFps: boolean;
   isZombieMode: boolean;
   isIronJunction: boolean;
+  isTempleRunoff: boolean;
   activeQuality: ActiveArenaQuality;
 }): ArenaSceneSetup | null => {
   const scene = new THREE.Scene();
-  const palette = arenaMap.palette;
-  scene.background = new THREE.Color(isZombieMode ? "#5d668a" : palette.sky);
-  scene.fog = new THREE.Fog(isZombieMode ? "#8f8395" : palette.fog, isFps ? 120 : 210, isFps ? 350 : 500);
-
   const camera = new THREE.PerspectiveCamera(
     isFps ? FPS_BASE_FOV : 52,
     mount.clientWidth / Math.max(1, mount.clientHeight),
@@ -67,11 +67,21 @@ export const createArenaSceneSetup = ({
     return null;
   }
 
+  const balancedShadows = arenaMap.id === "athletics_park";
   const qualityConfig: ArenaQualityConfig = activeQuality === "performance"
     ? { pixelRatio: 1, shadows: false, anisotropy: 2, detail: 0 }
     : activeQuality === "balanced"
-      ? { pixelRatio: 1.25, shadows: false, anisotropy: 4, detail: 1 }
+      ? { pixelRatio: 1.25, shadows: balancedShadows, anisotropy: 4, detail: 1 }
       : { pixelRatio: 1.75, shadows: true, anisotropy: 8, detail: 2 };
+
+  createQuizStrikeLightingRig(scene, getQuizStrikeLightingConfig({
+    mapId: arenaMap.id ?? "desert_citadel",
+    isFps,
+    isZombieMode,
+    isIronJunction,
+    isTempleRunoff,
+    quality: activeQuality
+  }));
 
   renderer.setPixelRatio(Math.min(window.devicePixelRatio, qualityConfig.pixelRatio));
   renderer.setSize(mount.clientWidth, mount.clientHeight);

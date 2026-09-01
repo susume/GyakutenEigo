@@ -6,6 +6,7 @@ import {
   ARENA_SCALE,
   ATHLETICS_COURSE_BOUNDS,
   ATHLETICS_JUMP_ENERGY_COST,
+  ATHLETICS_PLAYER_RADIUS,
   ATHLETICS_STADIUM_COURSE,
   getAthleticsObstacles,
   getAthleticsStartPosition,
@@ -58,11 +59,18 @@ import { cycleHeavyGunZoom, getWeaponFov, shouldResetWeaponZoom } from "./weapon
 import { resolveTouchJoystickVector } from "./touchJoystick";
 import { emitArenaVfx, getArenaVfxAnchor, getArenaWeaponVfxKind, type ArenaVfxStats } from "./ArenaVfx";
 import { emitArenaAnimation } from "./ArenaAnimation";
-import { ArenaPerformanceCapture, AutoGraphicsQualityController, type ArenaPerformanceSnapshot } from "./ArenaPerformance";
+import {
+  ArenaPerformanceCapture,
+  AutoGraphicsQualityController,
+  evaluateArenaBudget,
+  getArenaRenderBudget,
+  type ArenaPerformanceSnapshot
+} from "./ArenaPerformance";
 import { mountIronJunctionImportedAssets } from "./ironJunctionImportedAssets";
 import { mountDesertCitadelImportedAssets } from "./desertCitadelImportedAssets";
 import { mountTempleRunoffImportedAssets } from "./templeRunoffImportedAssets";
 import { mountAthleticsImportedAssets } from "./athleticsImportedAssets";
+import { arenaAssetManager } from "./rendering/assets/ArenaAssetManager";
 import { createAthleticsModeVisuals } from "./athleticsModeVisuals";
 import { buildAthleticsStadiumScene } from "./athleticsStadiumBuilder";
 import { getAthleticsDashMultiplier, getAthleticsJumpVelocityMultiplier } from "./athleticsClientTiming";
@@ -106,7 +114,7 @@ type ArenaLivePosition = {
   jumping?: boolean;
 };
 
-const PLAYER_RADIUS = 0.45;
+const PLAYER_RADIUS = ATHLETICS_PLAYER_RADIUS;
 const GAMEPAD_DEAD_ZONE = 0.18;
 const KEYBOARD_LOOK_SPEED = 1.9;
 const TOUCH_LOOK_SENSITIVITY = 0.006;
@@ -149,11 +157,17 @@ const seededRandom = (seed: number) => {
   };
 };
 
-const makeCanvasTexture = (kind: "floor" | "stone" | "wood" | "water" | "sand" | "metal", accent = "#e8c67a") => {
+const makeCanvasTexture = (
+  kind: "floor" | "stone" | "wood" | "water" | "sand" | "metal",
+  accent = "#e8c67a",
+  resolution = 1024
+) => {
+  const textureResolution = Math.max(256, Math.round(resolution));
   const canvas = document.createElement("canvas");
-  canvas.width = 1024;
-  canvas.height = 1024;
+  canvas.width = textureResolution;
+  canvas.height = textureResolution;
   const ctx = canvas.getContext("2d")!;
+  ctx.scale(textureResolution / 1024, textureResolution / 1024);
   const palettes = {
     floor: ["#b9ab94", "#f2e7cf"],
     stone: ["#bdb3a7", "#f1e9df"],
@@ -359,6 +373,7 @@ export default function ArenaPreview({
   const arenaMapId: SessionMapId = session?.settings.mapId ?? "desert_citadel";
   const {
     arenaMap,
+    environmentKit,
     arenaBounds,
     teamBaseZones,
     captureZones,
@@ -510,6 +525,7 @@ export default function ArenaPreview({
       isFps,
       isZombieMode,
       isIronJunction,
+      isTempleRunoff,
       activeQuality
     });
     if (!sceneSetup) {
@@ -517,6 +533,13 @@ export default function ArenaPreview({
       return;
     }
     const { scene, camera, renderer, qualityConfig } = sceneSetup;
+    renderer.domElement.dataset.environmentKit = environmentKit?.id ?? "procedural-core";
+    const unsubscribeAssetProgress = arenaAssetManager.subscribe((progress) => {
+      renderer.domElement.dataset.assetsLoaded = String(progress.loaded);
+      renderer.domElement.dataset.assetsTotal = String(progress.total);
+      renderer.domElement.dataset.assetsFailed = String(progress.failed);
+      renderer.domElement.dataset.assetsActive = String(progress.active);
+    });
     const athleticsModeVisuals = isAthleticsMode
       ? createAthleticsModeVisuals({ scene, mode: athleticsMode })
       : null;
@@ -591,13 +614,15 @@ export default function ArenaPreview({
       ? buildAthleticsStadiumScene({
           scene,
           renderer,
+          isFps,
           activeQuality,
           qualityConfig,
           makeCanvasTexture,
           makeLabelTexture,
           questionsPerLap: session?.athletics?.questionsPerLap,
           serverTime: session?.serverTime,
-          debugOverlay
+          debugOverlay,
+          seededRandom
         })
       : buildArenaMapScene({
       scene,
@@ -620,17 +645,18 @@ export default function ArenaPreview({
       seededRandom,
       scaleArenaValue
     });
+    const assetMountAbortController = new AbortController();
     const ironJunctionAssetsPromise = !isAthleticsMode && isIronJunction
-      ? mountIronJunctionImportedAssets({ scene, detail: qualityConfig.detail, isFps })
+      ? mountIronJunctionImportedAssets({ scene, detail: qualityConfig.detail, isFps, signal: assetMountAbortController.signal })
       : Promise.resolve(null);
     const desertCitadelAssetsPromise = !isAthleticsMode && isDesertCitadel
-      ? mountDesertCitadelImportedAssets({ scene, isFps })
+      ? mountDesertCitadelImportedAssets({ scene, isFps, signal: assetMountAbortController.signal })
       : Promise.resolve(null);
     const templeRunoffAssetsPromise = !isAthleticsMode && isTempleRunoff
-      ? mountTempleRunoffImportedAssets({ scene, isFps })
+      ? mountTempleRunoffImportedAssets({ scene, isFps, signal: assetMountAbortController.signal })
       : Promise.resolve(null);
     const athleticsAssetsPromise = isAthleticsMode
-      ? mountAthleticsImportedAssets({ scene, detail: qualityConfig.detail, isFps })
+      ? mountAthleticsImportedAssets({ scene, detail: qualityConfig.detail, isFps, signal: assetMountAbortController.signal })
       : Promise.resolve(null);
 
 
@@ -659,7 +685,41 @@ export default function ArenaPreview({
       serverToLocalZ,
       flagMarker
     });
-    const performanceCapture = new ArenaPerformanceCapture(renderer, activeQuality);
+    const performanceCapture = new ArenaPerformanceCapture(renderer, activeQuality, scene);
+    const renderBudget = getArenaRenderBudget(activeQuality);
+    const publishPerformanceDataset = (profile: ArenaPerformanceSnapshot) => {
+      const budget = evaluateArenaBudget({
+        fps: profile.fps,
+        frameMsP95: profile.frameMsP95,
+        drawCalls: profile.drawCalls,
+        triangles: profile.triangles,
+        textureMb: profile.textureMb,
+        shadowCasters: profile.shadowCasters,
+        activeParticles: vfxPool.particleCount
+      }, renderBudget);
+      renderer.domElement.dataset.fps = String(profile.fps);
+      renderer.domElement.dataset.frameP95 = String(profile.frameMsP95);
+      renderer.domElement.dataset.drawCalls = String(profile.drawCalls);
+      renderer.domElement.dataset.triangles = String(profile.triangles);
+      renderer.domElement.dataset.textures = String(profile.textures);
+      if (profile.textureMb !== undefined) renderer.domElement.dataset.textureMb = String(profile.textureMb);
+      renderer.domElement.dataset.geometries = String(profile.geometries);
+      renderer.domElement.dataset.shadowCasters = String(profile.shadowCasters);
+      if (profile.heapMb !== undefined) renderer.domElement.dataset.heapMb = String(profile.heapMb);
+      renderer.domElement.dataset.longTasks = String(profile.longTasks);
+      renderer.domElement.dataset.vfxActive = String(vfxPool.activeCount);
+      renderer.domElement.dataset.vfxSprites = String(vfxPool.particleCount);
+      renderer.domElement.dataset.vfxDropped = String(vfxPool.getStats().dropped);
+      renderer.domElement.dataset.renderBudget = budget.withinBudget ? "within" : budget.violations.join(",");
+      renderer.domElement.dataset.renderBudgetDrawCalls = String(renderBudget.maxDrawCalls);
+      renderer.domElement.dataset.renderBudgetTriangles = String(renderBudget.maxTriangles);
+      renderer.domElement.dataset.renderBudgetTextureMb = String(renderBudget.maxTextureMb);
+      renderer.domElement.dataset.renderBudgetShadowCasters = String(renderBudget.maxShadowCasters);
+      renderer.domElement.dataset.renderBudgetParticles = String(renderBudget.maxActiveParticles);
+      if (environmentKit) renderer.domElement.dataset.environmentBudgetTextureMb = String(environmentKit.budget.targetTextureMb);
+      if (debugOverlay) setPerformanceSnapshot(profile);
+      if (debugOverlay) setVfxDebugStats(vfxPool.getStats());
+    };
     syncPlayersRef.current = syncPlayers;
     syncPlayers(session, currentPlayer);
 
@@ -1201,16 +1261,7 @@ export default function ArenaPreview({
             }
             setAutoResolvedQuality(adjustment.quality);
           }
-          renderer.domElement.dataset.fps = String(profile.fps);
-          renderer.domElement.dataset.frameP95 = String(profile.frameMsP95);
-          renderer.domElement.dataset.drawCalls = String(profile.drawCalls);
-          renderer.domElement.dataset.triangles = String(profile.triangles);
-          renderer.domElement.dataset.longTasks = String(profile.longTasks);
-          renderer.domElement.dataset.vfxActive = String(vfxPool.activeCount);
-          renderer.domElement.dataset.vfxSprites = String(vfxPool.particleCount);
-          renderer.domElement.dataset.vfxDropped = String(vfxPool.getStats().dropped);
-          if (debugOverlay) setPerformanceSnapshot(profile);
-          if (debugOverlay) setVfxDebugStats(vfxPool.getStats());
+          publishPerformanceDataset(profile);
           performanceWindowAt = currentTime;
         }
         const controlsLocked = controlsDisabledRef.current;
@@ -1573,13 +1624,16 @@ export default function ArenaPreview({
         unsubscribeVfx();
         unsubscribeAnimation();
         performanceCapture.dispose();
+        unsubscribeAssetProgress();
         vfxPool.dispose();
         athleticsModeVisuals?.dispose();
         desertCitadelArt?.dispose();
         desertCitadelVfx?.dispose();
         templeRunoffArt?.dispose();
+        assetMountAbortController.abort();
         void ironJunctionAssetsPromise.then((assets) => assets?.dispose());
         void desertCitadelAssetsPromise.then((assets) => assets?.dispose());
+        void templeRunoffAssetsPromise.then((assets) => assets?.dispose());
         void athleticsAssetsPromise.then((assets) => assets?.dispose());
         fireControlRef.current = () => undefined;
         zoomControlRef.current = () => undefined;
@@ -1637,16 +1691,7 @@ export default function ArenaPreview({
           }
           setAutoResolvedQuality(adjustment.quality);
         }
-        renderer.domElement.dataset.fps = String(profile.fps);
-        renderer.domElement.dataset.frameP95 = String(profile.frameMsP95);
-        renderer.domElement.dataset.drawCalls = String(profile.drawCalls);
-        renderer.domElement.dataset.triangles = String(profile.triangles);
-        renderer.domElement.dataset.longTasks = String(profile.longTasks);
-        renderer.domElement.dataset.vfxActive = String(vfxPool.activeCount);
-        renderer.domElement.dataset.vfxSprites = String(vfxPool.particleCount);
-        renderer.domElement.dataset.vfxDropped = String(vfxPool.getStats().dropped);
-        if (debugOverlay) setPerformanceSnapshot(profile);
-        if (debugOverlay) setVfxDebugStats(vfxPool.getStats());
+        publishPerformanceDataset(profile);
         performanceWindowAt = currentTime;
       }
       camera.position.x = Math.sin(elapsed * 0.04) * 24;
@@ -1684,11 +1729,13 @@ export default function ArenaPreview({
       unsubscribeVfx();
       unsubscribeAnimation();
       performanceCapture.dispose();
+      unsubscribeAssetProgress();
       vfxPool.dispose();
       athleticsModeVisuals?.dispose();
       desertCitadelArt?.dispose();
       desertCitadelVfx?.dispose();
       templeRunoffArt?.dispose();
+      assetMountAbortController.abort();
       void ironJunctionAssetsPromise.then((assets) => assets?.dispose());
       void desertCitadelAssetsPromise.then((assets) => assets?.dispose());
       void templeRunoffAssetsPromise.then((assets) => assets?.dispose());
@@ -1719,7 +1766,7 @@ export default function ArenaPreview({
       renderer.dispose();
       mount.removeChild(renderer.domElement);
     };
-  }, [sceneSessionId, currentPlayerId, currentPlayerTeam, currentWeaponId, currentPlayer?.gear, currentPlayer?.weapon, view, debugOverlay, quality, fallbackQuality, activeQuality, gamepadEnabled, arenaMapId, arenaMap, arenaBounds, teamBaseZones, captureZones, searchRetrieveItems, searchRetrieveDeliveryZones, isIronJunction, isDesertCitadel, isTempleRunoff, isAthleticsMode, athleticsMode, athleticsHud?.role, localToServerPosition, serverToLocalX, serverToLocalZ, movementLimitX, movementLimitZ, session?.settings.gameMode, loadDecalAsset]);
+  }, [sceneSessionId, currentPlayerId, currentPlayerTeam, currentWeaponId, currentPlayer?.gear, currentPlayer?.weapon, view, debugOverlay, quality, fallbackQuality, activeQuality, gamepadEnabled, arenaMapId, arenaMap, environmentKit, arenaBounds, teamBaseZones, captureZones, searchRetrieveItems, searchRetrieveDeliveryZones, isIronJunction, isDesertCitadel, isTempleRunoff, isAthleticsMode, athleticsMode, athleticsHud?.role, localToServerPosition, serverToLocalX, serverToLocalZ, movementLimitX, movementLimitZ, session?.settings.gameMode, loadDecalAsset]);
 
   const beginTouchMove = (event: ReactPointerEvent<HTMLButtonElement>) => {
     event.preventDefault();
