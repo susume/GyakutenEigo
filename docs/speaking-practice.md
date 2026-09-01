@@ -38,19 +38,23 @@ truth when Prisma is configured.
 Production requires both provider selections unless an explicit mock override is
 being used:
 
+Google AI Studio / Gemini:
+
 ```text
-SPEAKING_AI_PROVIDER=openai
-SPEAKING_TRANSCRIPTION_PROVIDER=openai
-SPEAKING_OPENAI_API_KEY=server-only-secret
-SPEAKING_OPENAI_MODEL=gpt-4o-mini
-SPEAKING_TRANSCRIPTION_MODEL=gpt-4o-mini-transcribe
+SPEAKING_AI_PROVIDER=gemini
+SPEAKING_TRANSCRIPTION_PROVIDER=gemini
+SPEAKING_GEMINI_API_KEY=server-only-secret
+SPEAKING_GEMINI_MODEL=gemini-2.5-flash-lite
+SPEAKING_GEMINI_TRANSCRIPTION_MODEL=gemini-2.5-flash-lite
 SPEAKING_SESSION_LIFETIME_SECONDS=28800
 ```
 
-The OpenAI adapters use server-side HTTP requests. Do not prefix these secrets
-with `VITE_`. If `NODE_ENV=production` is missing a provider selection or key,
-the server fails clearly at provider setup; it does not return a canned answer,
-transcript, or evaluation.
+The OpenAI adapters remain available as an alternative by selecting `openai` for
+both providers and supplying the corresponding OpenAI variables. Both adapters
+use server-side HTTP requests. Do not prefix these secrets with `VITE_`. If
+`NODE_ENV=production` is missing a provider selection or key, the server fails
+clearly at provider setup; it does not return a canned answer, transcript, or
+evaluation.
 
 ## Stored data and privacy
 

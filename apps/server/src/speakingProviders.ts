@@ -193,6 +193,36 @@ const openAiRequest = async (body: Record<string, unknown>, environment: NodeJS.
   return content;
 };
 
+const geminiKey = (environment: NodeJS.ProcessEnv = process.env) => environment.GEMINI_API_KEY?.trim() || environment.SPEAKING_GEMINI_API_KEY?.trim();
+const geminiModel = (environment: NodeJS.ProcessEnv = process.env) => environment.SPEAKING_GEMINI_MODEL?.trim() || "gemini-2.5-flash-lite";
+const geminiTranscriptionModel = (environment: NodeJS.ProcessEnv = process.env) => environment.SPEAKING_GEMINI_TRANSCRIPTION_MODEL?.trim() || geminiModel(environment);
+
+type GeminiResponsePayload = {
+  error?: { message?: string };
+  candidates?: Array<{ content?: { parts?: Array<{ text?: string }> } }>;
+};
+
+const geminiRequest = async (model: string, body: Record<string, unknown>, environment: NodeJS.ProcessEnv = process.env) => {
+  const apiKey = geminiKey(environment);
+  if (!apiKey) throw new Error("Gemini Speaking providers require GEMINI_API_KEY or SPEAKING_GEMINI_API_KEY.");
+  const response = await fetch(`https://generativelanguage.googleapis.com/v1beta/models/${encodeURIComponent(model)}:generateContent`, {
+    method: "POST",
+    headers: { "x-goog-api-key": apiKey, "Content-Type": "application/json" },
+    body: JSON.stringify(body)
+  });
+  const payload = await response.json().catch(() => ({})) as GeminiResponsePayload;
+  if (!response.ok) throw new Error(payload.error?.message ?? `Gemini request failed with ${response.status}.`);
+  const content = payload.candidates?.flatMap((candidate) => candidate.content?.parts ?? []).map((part) => part.text ?? "").join("").trim();
+  if (!content) throw new Error("Gemini returned an empty Speaking response.");
+  return content;
+};
+
+const normalizeAudioMimeType = (mimeType: string) => mimeType.split(";", 1)[0]?.trim() || "audio/webm";
+const parseJsonResponse = <T>(raw: string): T => {
+  const fenced = raw.match(/^```(?:json)?\s*([\s\S]*?)\s*```$/i)?.[1] ?? raw;
+  return JSON.parse(fenced.trim()) as T;
+};
+
 export const openAiTranscriptionProvider: TranscriptionProvider = {
   async transcribe(input) {
     if (!input.audio.length) return { text: "", confidence: 0 };
@@ -269,6 +299,77 @@ export const openAiEvaluationProvider: EvaluationProvider = {
   }
 };
 
+export const geminiTranscriptionProvider: TranscriptionProvider = {
+  async transcribe(input) {
+    if (!input.audio.length) return { text: "", confidence: 0 };
+    const text = await geminiRequest(geminiTranscriptionModel(), {
+      contents: [{
+        role: "user",
+        parts: [
+          {
+            text: "Transcribe only the student's spoken English. Return only the words spoken, without quotes, commentary, markdown, or timestamps. If no intelligible speech is present, return an empty string."
+          },
+          {
+            inline_data: {
+              mime_type: normalizeAudioMimeType(input.mimeType),
+              data: input.audio.toString("base64")
+            }
+          }
+        ]
+      }]
+    });
+    return { text: text.slice(0, 1_200) };
+  }
+};
+
+export const geminiConversationProvider: ConversationProvider = {
+  async respond(input) {
+    const content = await geminiRequest(geminiModel(), {
+      system_instruction: { parts: [{ text: buildConversationPrompt({ activity: input.activity, turns: input.turns, latestStudentText: input.studentText }) }] },
+      contents: [{ role: "user", parts: [{ text: "Reply to the latest student turn as the speaking partner." }] }],
+      generationConfig: { temperature: 0.4, maxOutputTokens: 100 }
+    });
+    return clipResponse(content);
+  }
+};
+
+export const geminiHelpProvider: HelpProvider = {
+  async hint(input) {
+    const raw = await geminiRequest(geminiModel(), {
+      system_instruction: { parts: [{ text: buildHelpPrompt(input) }] },
+      contents: [{ role: "user", parts: [{ text: "Return only a JSON object with exactly two string fields: hint and english." }] }],
+      generationConfig: { temperature: 0.3, maxOutputTokens: 100, responseMimeType: "application/json" }
+    });
+    const parsed = parseJsonResponse<{ hint?: unknown; english?: unknown }>(raw);
+    if (typeof parsed.hint !== "string" || typeof parsed.english !== "string" || !parsed.hint.trim() || !parsed.english.trim()) throw new Error("Gemini Help provider returned invalid structured data.");
+    return { hint: parsed.hint.trim().slice(0, 300), english: parsed.english.trim().slice(0, 160) };
+  }
+};
+
+export const geminiEvaluationProvider: EvaluationProvider = {
+  async evaluate(input) {
+    const raw = await geminiRequest(geminiModel(), {
+      system_instruction: {
+        parts: [{
+          text: [
+            buildEvaluationPrompt({ activity: input.activity, turns: input.turns, rubric: input.activity.rubric, timingMetadata: input.timingMetadata, helpMetadata: input.helpMetadata }),
+            "Return only valid JSON with exactly these fields: scores, evidence, strengths, improvements, usefulEnglish, and overallMessage.",
+            "scores must contain only enabled rubric IDs with an integer from 1 to 4 or null. evidence must contain one short string for every score. usefulEnglish must be an array of objects with said and try strings."
+          ].join("\n")
+        }]
+      },
+      contents: [{ role: "user", parts: [{ text: "Return the completed evaluation as JSON only." }] }],
+      generationConfig: { temperature: 0.2, maxOutputTokens: 900, responseMimeType: "application/json" }
+    });
+    const output = parseJsonResponse<Omit<SpeakingEvaluation, "participantId" | "language" | "createdAt">>(raw);
+    const assessmentStatus = Object.values(output.scores).some((score) => typeof score === "number") ? "scored" : "insufficient_evidence";
+    const evaluation = { ...output, assessmentStatus, participantId: input.participantId, language: input.activity.nativeLanguage, createdAt: new Date().toISOString() };
+    const parsed = SpeakingEvaluationSchema.safeParse(evaluation);
+    if (!parsed.success) throw new Error("Gemini Evaluation provider returned invalid structured data.");
+    return parsed.data;
+  }
+};
+
 export type SpeakingProviderRegistry = {
   transcription: TranscriptionProvider;
   conversation: ConversationProvider;
@@ -287,13 +388,14 @@ export const createSpeakingProviders = (environment: NodeJS.ProcessEnv = process
   const mockMode = explicitMockMode || (!production && !configuredAiMode && !configuredTranscriptionMode);
   const aiMode = mockMode ? "mock" : configuredAiMode || "mock";
   const transcriptionMode = mockMode ? "mock" : configuredTranscriptionMode || "mock";
-  if (aiMode !== "mock" && aiMode !== "openai") throw new Error(`Unsupported SPEAKING_AI_PROVIDER: ${aiMode}.`);
-  if (transcriptionMode !== "mock" && transcriptionMode !== "openai") throw new Error(`Unsupported SPEAKING_TRANSCRIPTION_PROVIDER: ${transcriptionMode}.`);
+  if (aiMode !== "mock" && aiMode !== "openai" && aiMode !== "gemini") throw new Error(`Unsupported SPEAKING_AI_PROVIDER: ${aiMode}.`);
+  if (transcriptionMode !== "mock" && transcriptionMode !== "openai" && transcriptionMode !== "gemini") throw new Error(`Unsupported SPEAKING_TRANSCRIPTION_PROVIDER: ${transcriptionMode}.`);
   if ((aiMode === "openai" || transcriptionMode === "openai") && !openAiKey(environment)) throw new Error("Speaking OpenAI mode requires OPENAI_API_KEY or SPEAKING_OPENAI_API_KEY.");
+  if ((aiMode === "gemini" || transcriptionMode === "gemini") && !geminiKey(environment)) throw new Error("Speaking Gemini mode requires GEMINI_API_KEY or SPEAKING_GEMINI_API_KEY.");
   return {
-    transcription: transcriptionMode === "openai" ? openAiTranscriptionProvider : mockTranscriptionProvider,
-    conversation: aiMode === "openai" ? openAiConversationProvider : mockConversationProvider,
-    help: aiMode === "openai" ? openAiHelpProvider : mockHelpProvider,
-    evaluation: aiMode === "openai" ? openAiEvaluationProvider : mockEvaluationProvider
+    transcription: transcriptionMode === "openai" ? openAiTranscriptionProvider : transcriptionMode === "gemini" ? geminiTranscriptionProvider : mockTranscriptionProvider,
+    conversation: aiMode === "openai" ? openAiConversationProvider : aiMode === "gemini" ? geminiConversationProvider : mockConversationProvider,
+    help: aiMode === "openai" ? openAiHelpProvider : aiMode === "gemini" ? geminiHelpProvider : mockHelpProvider,
+    evaluation: aiMode === "openai" ? openAiEvaluationProvider : aiMode === "gemini" ? geminiEvaluationProvider : mockEvaluationProvider
   };
 };

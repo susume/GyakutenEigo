@@ -11,6 +11,10 @@ import {
   mockEvaluationProvider,
   mockHelpProvider,
   mockTranscriptionProvider,
+  geminiConversationProvider,
+  geminiEvaluationProvider,
+  geminiHelpProvider,
+  geminiTranscriptionProvider,
   openAiTranscriptionProvider
 } from "./speakingProviders.js";
 
@@ -104,6 +108,51 @@ test("feedback language changes copy but never changes English transcription", a
     else process.env.SPEAKING_OPENAI_API_KEY = previousKey;
   }
   assert.equal(requestedLanguage, "en");
+});
+
+test("Gemini production configuration selects Gemini adapters", () => {
+  const providers = createSpeakingProviders({
+    NODE_ENV: "production",
+    SPEAKING_AI_PROVIDER: "gemini",
+    SPEAKING_TRANSCRIPTION_PROVIDER: "gemini",
+    SPEAKING_GEMINI_API_KEY: "test-gemini-key"
+  });
+  assert.equal(providers.transcription, geminiTranscriptionProvider);
+  assert.equal(providers.conversation, geminiConversationProvider);
+  assert.equal(providers.help, geminiHelpProvider);
+  assert.equal(providers.evaluation, geminiEvaluationProvider);
+});
+
+test("Gemini transcription sends inline audio through the server-side API contract", async () => {
+  const previousFetch = globalThis.fetch;
+  const previousKey = process.env.SPEAKING_GEMINI_API_KEY;
+  const previousModel = process.env.SPEAKING_GEMINI_TRANSCRIPTION_MODEL;
+  process.env.SPEAKING_GEMINI_API_KEY = "test-gemini-key";
+  process.env.SPEAKING_GEMINI_TRANSCRIPTION_MODEL = "gemini-test-model";
+  let requestedUrl = "";
+  let requestedInit: RequestInit | undefined;
+  globalThis.fetch = async (input, init) => {
+    requestedUrl = String(input);
+    requestedInit = init;
+    return new Response(JSON.stringify({ candidates: [{ content: { parts: [{ text: " I want a blue shirt. " }] } }] }), { status: 200, headers: { "content-type": "application/json" } });
+  };
+  try {
+    const result = await geminiTranscriptionProvider.transcribe({ audio: Buffer.from("audio"), mimeType: "audio/webm;codecs=opus", languageHint: "ja" });
+    assert.equal(result.text, "I want a blue shirt.");
+  } finally {
+    globalThis.fetch = previousFetch;
+    if (previousKey === undefined) delete process.env.SPEAKING_GEMINI_API_KEY;
+    else process.env.SPEAKING_GEMINI_API_KEY = previousKey;
+    if (previousModel === undefined) delete process.env.SPEAKING_GEMINI_TRANSCRIPTION_MODEL;
+    else process.env.SPEAKING_GEMINI_TRANSCRIPTION_MODEL = previousModel;
+  }
+
+  assert.match(requestedUrl, /models\/gemini-test-model:generateContent$/);
+  const headers = requestedInit?.headers as Record<string, string>;
+  assert.equal(headers["x-goog-api-key"], "test-gemini-key");
+  const body = JSON.parse(String(requestedInit?.body)) as { contents: Array<{ parts: Array<{ inline_data?: { mime_type?: string; data?: string } }> }> };
+  assert.equal(body.contents[0]?.parts[1]?.inline_data?.mime_type, "audio/webm");
+  assert.equal(body.contents[0]?.parts[1]?.inline_data?.data, Buffer.from("audio").toString("base64"));
 });
 
 test("production speaking configuration never silently falls back to mock providers", () => {

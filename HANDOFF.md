@@ -131,6 +131,12 @@ DATABASE_URL=<Supabase session-pooler URL>
 CLIENT_ORIGIN=https://gyakuteneigo.com,https://www.gyakuteneigo.com,https://susume.github.io
 TRUST_PROXY=true
 RUNTIME_STORE=in-memory
+SPEAKING_MOCK_MODE=false
+SPEAKING_AI_PROVIDER=gemini
+SPEAKING_TRANSCRIPTION_PROVIDER=gemini
+SPEAKING_GEMINI_API_KEY=<server-only Google AI Studio key>
+SPEAKING_GEMINI_MODEL=gemini-2.5-flash-lite
+SPEAKING_GEMINI_TRANSCRIPTION_MODEL=gemini-2.5-flash-lite
 ~~~
 
 Public web build values are safe to expose but must not contain secrets:
