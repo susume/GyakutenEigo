@@ -376,6 +376,11 @@ export function CharacterPreview({
 
     return () => {
       cancelAnimationFrame(frame);
+      renderer.domElement.removeEventListener("pointerdown", pointerDown);
+      renderer.domElement.removeEventListener("pointermove", pointerMove);
+      renderer.domElement.removeEventListener("pointerup", pointerUp);
+      renderer.domElement.removeEventListener("pointercancel", pointerUp);
+      renderer.domElement.removeEventListener("wheel", wheel);
       observer.disconnect();
       model.dispose();
       factory.dispose();

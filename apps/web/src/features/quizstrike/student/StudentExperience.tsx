@@ -2579,7 +2579,7 @@ export default function StudentExperience({ onExit }: { onExit: () => void }) {
         ) : (
           <Suspense fallback={<ArenaLoading />}>
             <ArenaPreview
-              key={`${session.id}:${session.startedAt ?? "waiting"}:${player.id}`}
+              key={`${session.id}:${player.id}`}
               session={session}
               currentPlayer={arenaPlayer}
               view="fps"

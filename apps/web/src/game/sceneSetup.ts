@@ -31,6 +31,18 @@ export type ArenaSceneSetup = {
   qualityConfig: ArenaQualityConfig;
 };
 
+export const getArenaQualityConfig = (
+  arenaMap: Pick<ArenaSceneMap, "id">,
+  activeQuality: ActiveArenaQuality
+): ArenaQualityConfig => {
+  const balancedShadows = arenaMap.id === "athletics_park";
+  return activeQuality === "performance"
+    ? { pixelRatio: 1, shadows: false, anisotropy: 2, detail: 0 }
+    : activeQuality === "balanced"
+      ? { pixelRatio: 1.25, shadows: balancedShadows, anisotropy: 4, detail: 1 }
+      : { pixelRatio: 1.75, shadows: true, anisotropy: 8, detail: 2 };
+};
+
 export const createArenaSceneSetup = ({
   mount,
   arenaMap,
@@ -67,12 +79,7 @@ export const createArenaSceneSetup = ({
     return null;
   }
 
-  const balancedShadows = arenaMap.id === "athletics_park";
-  const qualityConfig: ArenaQualityConfig = activeQuality === "performance"
-    ? { pixelRatio: 1, shadows: false, anisotropy: 2, detail: 0 }
-    : activeQuality === "balanced"
-      ? { pixelRatio: 1.25, shadows: balancedShadows, anisotropy: 4, detail: 1 }
-      : { pixelRatio: 1.75, shadows: true, anisotropy: 8, detail: 2 };
+  const qualityConfig = getArenaQualityConfig(arenaMap, activeQuality);
 
   createQuizStrikeLightingRig(scene, getQuizStrikeLightingConfig({
     mapId: arenaMap.id ?? "desert_citadel",

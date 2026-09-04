@@ -55,7 +55,8 @@ export default defineConfig({
         PORT: "4000",
         NODE_ENV: "test",
         JWT_SECRET: "playwright-classroom-secret",
-        DATABASE_URL: " "
+        DATABASE_URL: " ",
+        QUIZSTRIKE_TEST_ROUND_PREPARATION_MS: "5000"
       },
       url: "http://127.0.0.1:4000/api/health",
       reuseExistingServer,

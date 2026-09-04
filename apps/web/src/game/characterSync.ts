@@ -12,6 +12,7 @@ import {
   type ArenaVfxTextures
 } from "./ArenaVfx";
 import { subscribeArenaAnimation } from "./ArenaAnimation";
+import { getArenaPlayerRenderProfile } from "./ArenaPerformance";
 import { CharacterFactory } from "./characters/CharacterFactory";
 import { CharacterManager } from "./characters/CharacterManager";
 import {
@@ -19,6 +20,7 @@ import {
   getArenaObjectiveGroundY,
   getTeamSpawnForMap,
   type SessionMapId,
+  type FlagStateName,
   type GameSession,
   type PlayerSession
 } from "@quizstrike/shared";
@@ -37,7 +39,7 @@ export type CharacterSyncDependencies = {
   activeQuality: Exclude<ArenaQuality, "auto">;
   vfxTextures?: ArenaVfxTextures;
   loadDecalAsset?: (assetId: string) => Promise<Blob>;
-  makeLabelTexture: (label: string, color: string, background?: string) => THREE.CanvasTexture;
+  makeLabelTexture: (label: string, color: string, background?: string, resolution?: number) => THREE.CanvasTexture;
   serverToLocalX: (x: number) => number;
   serverToLocalZ: (z: number) => number;
   flagMarker?: THREE.Group;
@@ -66,6 +68,7 @@ export const createCharacterSync = (deps: CharacterSyncDependencies) => {
     serverToLocalZ,
     flagMarker
   } = deps;
+  let displayedPlayerId = currentPlayerId;
   const billboardSprites: THREE.Sprite[] = [];
   const characterFactory = new CharacterFactory({
     loadDecalTexture: loadDecalAsset
@@ -82,13 +85,15 @@ export const createCharacterSync = (deps: CharacterSyncDependencies) => {
         }
       : undefined
   });
+  const baseStreakAuraDetail = deps.activeQuality === "performance" ? 0 : activeQuality === "balanced" ? 1 : 2;
+  const playerRenderProfile = getArenaPlayerRenderProfile(players.length, baseStreakAuraDetail);
   const characterManager = new CharacterManager(scene, characterFactory, {
     isFps,
     currentPlayerId,
-    showBadges: isFps || players.length <= 24,
+    showBadges: true,
     showWeapons: session?.settings.gameMode !== "athletics",
-    makeBadgeMaterial: (player) => new THREE.SpriteMaterial({
-      map: makeLabelTexture(player.isBot ? "BOT" : `${playerAccuracy(player)}%`, player.team === "blue" ? "#7dd3fc" : "#fb923c"),
+    makeBadgeMaterial: (player, badgeResolution = 768) => new THREE.SpriteMaterial({
+      map: makeLabelTexture(player.isBot ? "BOT" : `${playerAccuracy(player)}%`, player.team === "blue" ? "#7dd3fc" : "#fb923c", undefined, badgeResolution),
       transparent: true,
       depthWrite: false
     }),
@@ -96,13 +101,16 @@ export const createCharacterSync = (deps: CharacterSyncDependencies) => {
       magic: deps.vfxTextures?.magic,
       circle: deps.vfxTextures?.circle
     },
-    streakAuraDetail: deps.activeQuality === "performance" ? 0 : activeQuality === "balanced" ? 1 : 2
+    streakAuraDetail: playerRenderProfile.streakAuraDetail,
+    baseStreakAuraDetail,
+    playerCount: players.length
   });
   const vfxPool = new ArenaVfxPool(
     scene,
-    deps.activeQuality === "performance" ? 0 : activeQuality === "balanced" ? 1 : 2,
+    playerRenderProfile.vfxDetail,
     deps.vfxTextures
   );
+  let activePlayerRenderProfile = playerRenderProfile;
   const unsubscribeAnimation = subscribeArenaAnimation((event) => characterManager.triggerAnimation(event));
   const knownAlive = new Map(players.map((player) => [player.id, player.isAlive]));
   let knownFlagState = session?.flag?.state;
@@ -209,11 +217,18 @@ export const createCharacterSync = (deps: CharacterSyncDependencies) => {
   const syncPlayers = (nextSession?: GameSession, nextCurrentPlayer?: PlayerSession) => {
     const nextPlayers = nextSession?.players.length ? nextSession.players : nextCurrentPlayer ? [nextCurrentPlayer] : [];
     latestPlayers = nextPlayers;
+    displayedPlayerId = nextCurrentPlayer?.id ?? currentPlayerId;
+    characterManager.setCurrentPlayerId(displayedPlayerId);
+    const nextPlayerRenderProfile = getArenaPlayerRenderProfile(nextPlayers.length, baseStreakAuraDetail);
+    if (nextPlayerRenderProfile.vfxDetail !== activePlayerRenderProfile.vfxDetail) {
+      vfxPool.setDetail(nextPlayerRenderProfile.vfxDetail);
+    }
+    activePlayerRenderProfile = nextPlayerRenderProfile;
     nextPlayers.forEach((nextPlayer, index) => {
       const wasAlive = knownAlive.get(nextPlayer.id);
       const visualPosition = getVisualPosition(nextPlayer, index);
       if (wasAlive === false && nextPlayer.isAlive) {
-        emitVfx({ kind: "spawn", x: visualPosition.x, y: visualPosition.y, z: visualPosition.z, playerId: nextPlayer.id, team: nextPlayer.team, local: nextPlayer.id === currentPlayerId });
+        emitVfx({ kind: "spawn", x: visualPosition.x, y: visualPosition.y, z: visualPosition.z, playerId: nextPlayer.id, team: nextPlayer.team, local: nextPlayer.id === displayedPlayerId });
       }
       // Combat broadcasts the authoritative knockout impact separately. Do
       // not infer an elimination effect from the replicated state here: the
@@ -223,6 +238,7 @@ export const createCharacterSync = (deps: CharacterSyncDependencies) => {
       knownAlive.set(nextPlayer.id, nextPlayer.isAlive);
     });
     const nextFlag = nextSession?.flag;
+    flagMarker?.userData.updateFlagState?.(nextFlag?.state ?? ("available" as FlagStateName));
     characterManager.sync(getDisplayPlayers(nextPlayers), getVisualPosition, nextFlag?.carrierId);
     if (nextFlag && (knownFlagState !== nextFlag.state || knownFlagInteraction !== nextFlag.interactionPlayerId)) {
       const objectivePlayerId = nextFlag.interactionPlayerId ?? nextFlag.capturedById ?? nextFlag.placedById ?? nextFlag.carrierId;
@@ -242,20 +258,20 @@ export const createCharacterSync = (deps: CharacterSyncDependencies) => {
             y: getArenaObjectiveGroundY(arenaMapId, nextFlag.position, FPS_STANDING_EYE_HEIGHT)
           };
       if (nextFlag.state === "being_placed" || nextFlag.state === "being_captured") {
-        emitVfx({ kind: "objective_progress", ...objectivePosition, team: objectivePlayer?.team, local: objectivePlayer?.id === currentPlayerId });
+        emitVfx({ kind: "objective_progress", ...objectivePosition, team: objectivePlayer?.team, local: objectivePlayer?.id === displayedPlayerId });
         if (objectivePlayerId) characterManager.triggerPlayerAnimation(objectivePlayerId, "flag_plant");
       } else if (nextFlag.state === "placed") {
-        emitVfx({ kind: "flag_plant", ...objectivePosition, team: objectivePlayer?.team, local: objectivePlayer?.id === currentPlayerId });
+        emitVfx({ kind: "flag_plant", ...objectivePosition, team: objectivePlayer?.team, local: objectivePlayer?.id === displayedPlayerId });
         if (objectivePlayerId) characterManager.triggerPlayerAnimation(objectivePlayerId, "flag_plant");
       } else if (nextFlag.state === "captured") {
-        emitVfx({ kind: "flag_capture", ...objectivePosition, team: objectivePlayer?.team, local: objectivePlayer?.id === currentPlayerId });
+        emitVfx({ kind: "flag_capture", ...objectivePosition, team: objectivePlayer?.team, local: objectivePlayer?.id === displayedPlayerId });
         if (objectivePlayerId) characterManager.triggerPlayerAnimation(objectivePlayerId, "flag_capture");
       } else if (nextFlag.state === "carried") {
         emitVfx({
           kind: knownFlagState === "available" || knownFlagState === "dropped" ? "flag_pickup" : "objective",
           ...objectivePosition,
           team: objectivePlayer?.team,
-          local: objectivePlayer?.id === currentPlayerId
+          local: objectivePlayer?.id === displayedPlayerId
         });
       }
       knownFlagState = nextFlag.state;
@@ -265,14 +281,14 @@ export const createCharacterSync = (deps: CharacterSyncDependencies) => {
     if (announcement?.id && knownAnnouncementId !== announcement.id) {
       const anchor = nextCurrentPlayer ?? nextPlayers[0];
       if (announcement.kind === "round_start") {
-        emitVfx({ kind: "round_start", x: anchor?.x ?? 0, z: anchor?.z ?? 0, playerId: anchor?.id, team: anchor?.team, local: anchor?.id === currentPlayerId });
+        emitVfx({ kind: "round_start", x: anchor?.x ?? 0, z: anchor?.z ?? 0, playerId: anchor?.id, team: anchor?.team, local: anchor?.id === displayedPlayerId });
         characterManager.triggerAnimation({ kind: "respawn" });
       } else if (announcement.kind === "round_result" || announcement.kind === "game_over") {
         const winningTeam = /blue/i.test(announcement.title) ? "blue" : /red/i.test(announcement.title) ? "red" : undefined;
-        const localResultKind = winningTeam && anchor?.id === currentPlayerId
+        const localResultKind = winningTeam && anchor?.id === displayedPlayerId
           ? anchor.team === winningTeam ? "victory" : "defeat"
           : "round_end";
-        emitVfx({ kind: localResultKind, x: anchor?.x ?? 0, z: anchor?.z ?? 0, playerId: anchor?.id, team: anchor?.team, local: anchor?.id === currentPlayerId });
+        emitVfx({ kind: localResultKind, x: anchor?.x ?? 0, z: anchor?.z ?? 0, playerId: anchor?.id, team: anchor?.team, local: anchor?.id === displayedPlayerId });
         if (winningTeam) {
           characterManager.triggerAnimation({ kind: "victory", team: winningTeam });
           characterManager.triggerAnimation({ kind: "defeat", team: winningTeam === "blue" ? "red" : "blue" });
@@ -297,6 +313,7 @@ export const createCharacterSync = (deps: CharacterSyncDependencies) => {
     }
   };
 
+  characterManager.setCurrentPlayerId(displayedPlayerId);
   characterManager.sync(getDisplayPlayers(players), getVisualPosition, session?.flag?.carrierId);
 
   return { billboardSprites, characterFactory, characterManager, vfxPool, unsubscribeVfx, unsubscribeAnimation, syncPlayers };

@@ -207,7 +207,7 @@ const usesNormalBlending = (key?: ArenaVfxTextureKey) => key === "smoke" || key 
 
 export class ArenaVfxPool {
   private readonly slots: VfxSlot[];
-  private readonly budget: ArenaVfxBudget;
+  private budget: ArenaVfxBudget;
   private readonly textures: ArenaVfxTextures;
   private readonly ringGeometry = new THREE.TorusGeometry(1, 0.045, 6, 28);
   private readonly beamGeometry = new THREE.CylinderGeometry(0.22, 0.42, 1, 12, 1, true);
@@ -219,11 +219,9 @@ export class ArenaVfxPool {
   private emittedCount = 0;
   private droppedCount = 0;
   private hasViewPosition = false;
-  readonly maxActive: number;
 
   constructor(private readonly scene: THREE.Scene, detail: number, textures: ArenaVfxTextures = {}) {
     this.budget = getArenaVfxBudget(detail);
-    this.maxActive = this.budget.maxActive;
     this.textures = textures;
     this.slots = Array.from({ length: this.budget.maxActive }, () => {
       const group = new THREE.Group();
@@ -343,7 +341,7 @@ export class ArenaVfxPool {
     this.activeEffects += 1;
     this.activeSprites += this.countVisibleSprites(slot);
     this.emittedCount += 1;
-    this.cursor = (this.cursor + 1) % this.slots.length;
+    this.cursor = (this.cursor + 1) % Math.max(1, Math.min(this.budget.maxActive, this.slots.length));
     return true;
   }
 
@@ -382,9 +380,33 @@ export class ArenaVfxPool {
 
   get activeCount() { return this.activeEffects; }
   get particleCount() { return this.activeSprites; }
+  get maxActive() { return this.budget.maxActive; }
 
   getStats(): ArenaVfxStats {
     return { active: this.activeEffects, sprites: this.activeSprites, emitted: this.emittedCount, dropped: this.droppedCount, budget: this.budget };
+  }
+
+  /** Clear round-scoped effects while retaining the pool's GPU resources. */
+  reset() {
+    this.slots.forEach((slot) => this.releaseSlot(slot));
+    this.cursor = 0;
+    this.hasViewPosition = false;
+  }
+
+  /** Change transient effect detail without reallocating the pool. */
+  setDetail(detail: number) {
+    const requested = getArenaVfxBudget(detail);
+    const nextBudget = {
+      ...requested,
+      maxActive: Math.min(requested.maxActive, this.slots.length)
+    };
+    if (
+      nextBudget.maxActive === this.budget.maxActive
+      && nextBudget.maxSprites === this.budget.maxSprites
+      && nextBudget.maxDistance === this.budget.maxDistance
+    ) return;
+    this.reset();
+    this.budget = nextBudget;
   }
 
   dispose() {
@@ -525,12 +547,15 @@ export class ArenaVfxPool {
   }
 
   private findSlot(incomingPriority: number) {
-    for (let offset = 0; offset < this.slots.length; offset += 1) {
-      const candidate = this.slots[(this.cursor + offset) % this.slots.length];
+    const slotCount = Math.min(this.budget.maxActive, this.slots.length);
+    if (slotCount === 0) return undefined;
+    for (let offset = 0; offset < slotCount; offset += 1) {
+      const candidate = this.slots[(this.cursor + offset) % slotCount];
       if (!candidate.active) return candidate;
     }
     let replacement: VfxSlot | undefined;
-    for (const candidate of this.slots) {
+    for (let index = 0; index < slotCount; index += 1) {
+      const candidate = this.slots[index]!;
       if (incomingPriority < candidate.priority) continue;
       if (!replacement
         || candidate.priority < replacement.priority

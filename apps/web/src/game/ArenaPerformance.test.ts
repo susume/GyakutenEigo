@@ -5,7 +5,8 @@ import {
   AutoGraphicsQualityController,
   evaluateArenaBudget,
   estimateSceneTextureBytes,
-  getArenaRenderBudget
+  getArenaRenderBudget,
+  getArenaPlayerRenderProfile
 } from "./ArenaPerformance";
 import { resolveArenaQuality } from "./gamePreferences";
 
@@ -80,6 +81,33 @@ test("budget evaluation names every exceeded guardrail", () => {
     activeParticles: 40
   }, budget);
   assert.deepEqual(evaluation.violations, ["fps", "frame-p95", "draw-calls", "triangles", "textures", "shadow-casters", "particles"]);
+});
+
+test("large classrooms reduce only remote-effect detail and distant badges", () => {
+  assert.deepEqual(getArenaPlayerRenderProfile(20, 2), {
+    badgeMaxDistance: Number.POSITIVE_INFINITY,
+    badgeResolution: 768,
+    streakAuraDetail: 2,
+    vfxDetail: 2
+  });
+  assert.deepEqual(getArenaPlayerRenderProfile(22, 2), {
+    badgeMaxDistance: 180,
+    badgeResolution: 512,
+    streakAuraDetail: 1,
+    vfxDetail: 1
+  });
+  assert.deepEqual(getArenaPlayerRenderProfile(33, 2), {
+    badgeMaxDistance: 112,
+    badgeResolution: 384,
+    streakAuraDetail: 1,
+    vfxDetail: 1
+  });
+  assert.deepEqual(getArenaPlayerRenderProfile(40, 0), {
+    badgeMaxDistance: 112,
+    badgeResolution: 384,
+    streakAuraDetail: 0,
+    vfxDetail: 0
+  });
 });
 
 test("texture budget estimation counts shared scene maps once", () => {

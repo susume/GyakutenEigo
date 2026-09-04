@@ -2,7 +2,11 @@ import type { APIRequestContext } from "@playwright/test";
 
 export const createClassroom = async (
   request: APIRequestContext,
-  { gameMode = "classic" }: { gameMode?: "classic" | "flag" | "athletics" } = {}
+  {
+    gameMode = "classic",
+    roundCount = 3,
+    startingMoney = 0
+  }: { gameMode?: "classic" | "flag" | "athletics"; roundCount?: number; startingMoney?: number } = {}
 ) => {
   const suffix = `${Date.now()}-${Math.random().toString(16).slice(2)}`;
   const signup = await request.post("/api/auth/signup", {
@@ -39,7 +43,7 @@ export const createClassroom = async (
     headers: authorization,
     data: {
       quizSetId: quizSet.id,
-      settings: { gameMode, maxPlayers: 2, roundDurationSeconds: 60 }
+      settings: { gameMode, maxPlayers: 2, roundCount, startingMoney, roundDurationSeconds: 60 }
     }
   });
   if (created.status() !== 201) throw new Error(`Session creation failed with ${created.status()}.`);

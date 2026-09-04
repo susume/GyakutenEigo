@@ -1584,7 +1584,7 @@ function SessionManager({
               </div>
             )}
             <Suspense fallback={<ArenaLoading label="Loading live arena" />}>
-              <ArenaPreview key={`${selectedSession.id}:${selectedSession.startedAt ?? "waiting"}:overview`} session={selectedSession} loadDecalAsset={loadTeacherDecal} />
+              <ArenaPreview key={`${selectedSession.id}:overview`} session={selectedSession} loadDecalAsset={loadTeacherDecal} />
             </Suspense>
             <LearningPulse pulse={selectedSession.learningPulse} />
             <Scoreboard players={selectedSession.players} gameMode={selectedSession.settings.gameMode} athleticsRequiredLaps={selectedSession.athletics?.requiredLaps ?? selectedSession.settings.athleticsCourseLaps ?? 1} onRemovePlayer={(playerId) => void removePlayer(playerId)} removingPlayerId={removingPlayerId} />
@@ -1666,7 +1666,7 @@ function SessionManager({
               <div className="teacher-spectator-arena">
                 <Suspense fallback={<ArenaLoading label="Loading spectator view" />}>
                   <ArenaPreview
-                    key={`${selectedSession.id}:${teacherSpectatorPlayer.id}:spectator`}
+                    key={`${selectedSession.id}:teacher-spectator`}
                     session={selectedSession}
                     currentPlayer={teacherSpectatorPlayer}
                     view="fps"

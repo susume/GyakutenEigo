@@ -106,6 +106,19 @@ test("pooled VFX stays bounded, culls distant remote cues, and recycles", () => 
   pool.dispose();
 });
 
+test("pooled VFX can adapt to a larger roster without reallocating its slots", () => {
+  const scene = new THREE.Scene();
+  const pool = new ArenaVfxPool(scene, 2);
+  pool.emit({ kind: "victory", x: 0, z: 0 }, 0);
+  assert.equal(pool.activeCount, 1);
+  pool.setDetail(1);
+  assert.equal(pool.maxActive, 12);
+  assert.deepEqual(pool.getStats().budget, getArenaVfxBudget(1));
+  assert.equal(pool.activeCount, 0);
+  assert.equal(scene.children.length, 16);
+  pool.dispose();
+});
+
 test("the pool uses free capacity before evicting an active effect", () => {
   const scene = new THREE.Scene();
   const pool = new ArenaVfxPool(scene, 0);

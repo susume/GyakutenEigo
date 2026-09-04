@@ -325,12 +325,14 @@ export const createWeaponSet = (
 
   const silhouette = new THREE.Mesh(geometry.silhouette, weaponMaterials);
   silhouette.name = "QS_AR1_Silhouette";
+  silhouette.userData.preserveSharedResources = true;
   silhouette.castShadow = true;
   silhouette.receiveShadow = true;
   weapon.add(silhouette);
 
   const weaponDetails = new THREE.Mesh(geometry.details, weaponMaterials);
   weaponDetails.name = "QS_AR1_Details";
+  weaponDetails.userData.preserveSharedResources = true;
   weaponDetails.castShadow = true;
   weaponDetails.receiveShadow = true;
   weapon.add(weaponDetails);

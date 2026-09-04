@@ -43,7 +43,7 @@ import {
   intersectsFpsBody,
   smoothFpsGroundedCameraY
 } from "./ArenaCamera.js";
-import { createArenaSceneSetup, FPS_BASE_FOV } from "./sceneSetup";
+import { createArenaSceneSetup, FPS_BASE_FOV, getArenaQualityConfig } from "./sceneSetup";
 import { ArenaHudOverlay, type AthleticsHudState } from "./hudOverlay";
 import { type CharacterManagerStats } from "./characters/CharacterManager";
 import {
@@ -75,6 +75,7 @@ import { createAthleticsModeVisuals } from "./athleticsModeVisuals";
 import { buildAthleticsStadiumScene } from "./athleticsStadiumBuilder";
 import { getAthleticsDashMultiplier, getAthleticsJumpVelocityMultiplier } from "./athleticsClientTiming";
 import { getTempleRunoffReviewViewpoint } from "./templeRunoffReviewViewpoints";
+import { registerArenaRenderer, type ArenaRendererDiagnosticsHandle } from "./arenaRendererDiagnostics";
 import {
   readGamePreferences,
   resolveArenaQuality,
@@ -112,6 +113,11 @@ type ArenaLivePosition = {
   zoomLevel?: number;
   crouching?: boolean;
   jumping?: boolean;
+};
+
+type ArenaRendererRuntime = {
+  applyQuality: (quality: Exclude<ArenaQuality, "auto">) => void;
+  retry: () => boolean;
 };
 
 const PLAYER_RADIUS = ATHLETICS_PLAYER_RADIUS;
@@ -272,11 +278,19 @@ const makeCanvasTexture = (
   return texture;
 };
 
-const makeLabelTexture = (label: string, color = "#ffffff", background = "rgba(41, 28, 16, 0.78)") => {
+const makeLabelTexture = (
+  label: string,
+  color = "#ffffff",
+  background = "rgba(41, 28, 16, 0.78)",
+  resolution = 768
+) => {
+  const width = Math.max(128, Math.round(resolution));
+  const scale = width / 768;
   const canvas = document.createElement("canvas");
-  canvas.width = 768;
-  canvas.height = 256;
+  canvas.width = width;
+  canvas.height = Math.max(64, Math.round(256 * scale));
   const ctx = canvas.getContext("2d")!;
+  ctx.scale(scale, scale);
   ctx.fillStyle = background;
   ctx.strokeStyle = color;
   ctx.lineWidth = 12;
@@ -294,14 +308,25 @@ const makeLabelTexture = (label: string, color = "#ffffff", background = "rgba(4
 };
 
 const disposeObject = (object: THREE.Object3D) => {
+  const geometries = new Set<THREE.BufferGeometry>();
+  const materials = new Set<THREE.Material>();
+  const textures = new Set<THREE.Texture>();
   object.traverse((child) => {
     const mesh = child as THREE.Mesh;
     if (mesh.userData?.preserveSharedResources) return;
-    if (mesh.geometry) mesh.geometry.dispose();
+    if (mesh.geometry) geometries.add(mesh.geometry);
     const material = mesh.material;
-    if (Array.isArray(material)) material.forEach((item) => item.dispose());
-    else material?.dispose?.();
+    const meshMaterials = Array.isArray(material) ? material : material ? [material] : [];
+    meshMaterials.forEach((item) => {
+      materials.add(item);
+      Object.values(item as THREE.Material & Record<string, unknown>).forEach((value) => {
+        if (value instanceof THREE.Texture) textures.add(value);
+      });
+    });
   });
+  geometries.forEach((geometry) => geometry.dispose());
+  textures.forEach((texture) => texture.dispose());
+  materials.forEach((material) => material.dispose());
 };
 
 export default function ArenaPreview({
@@ -331,19 +356,30 @@ export default function ArenaPreview({
   const zoomControlRef = useRef<() => void>(() => undefined);
   const interactControlRef = useRef<() => void>(() => undefined);
   const jumpControlRef = useRef<() => void>(() => undefined);
-      const questionControlRef = useRef<() => void>(() => undefined);
+  const questionControlRef = useRef<() => void>(() => undefined);
   const onMoveRef = useRef(onMove);
   const onFireRef = useRef(onFire);
   const onInteractRef = useRef(onInteract);
   const onOpenQuestionRef = useRef(onOpenQuestion);
   const currentPlayerRef = useRef(currentPlayer);
   const sessionRef = useRef(session);
+  const athleticsHudRef = useRef(athleticsHud);
+  const loadDecalAssetRef = useRef(loadDecalAsset);
+  const gamepadEnabledRef = useRef(gamepadEnabled);
   const pendingShotsRef = useRef(0);
   const inputPausedRef = useRef(inputPaused);
   const controlsDisabledRef = useRef(controlsDisabled);
   const joystickPointerRef = useRef<number | null>(null);
   const joystickElementRef = useRef<HTMLButtonElement | null>(null);
   const syncPlayersRef = useRef<(session?: GameSession, currentPlayer?: PlayerSession) => void>(() => undefined);
+  const roundResetRef = useRef<() => void>(() => undefined);
+  const rendererRuntimeRef = useRef<ArenaRendererRuntime | null>(null);
+  const rendererDiagnosticsRef = useRef<ArenaRendererDiagnosticsHandle | null>(null);
+  const activeQualityRef = useRef<Exclude<ArenaQuality, "auto">>("balanced");
+  const previousRoundLifecycleKeyRef = useRef<string | undefined>(undefined);
+  const previousRoundNumberRef = useRef<number | undefined>(undefined);
+  const previousCurrentPlayerIdRef = useRef<string | undefined>(undefined);
+  const arenaComponentMountedRef = useRef(false);
   const [isPointerLocked, setIsPointerLocked] = useState(false);
   const [touchCrouchEnabled, setTouchCrouchEnabled] = useState(false);
   const [hitPulse, setHitPulse] = useState(0);
@@ -363,7 +399,6 @@ export default function ArenaPreview({
   const debugVfxPositionRef = useRef({ x: 0, y: 0.12, z: 0 });
   const previousWeaponRef = useRef<string | null>(null);
   const sceneSessionId = session?.id ?? "training";
-  const currentPlayerId = currentPlayer?.id ?? "";
   const currentPlayerTeam = currentPlayer?.team ?? "blue";
   const currentWeaponId = currentPlayer ? getPlayerWeaponId(currentPlayer) : undefined;
   const isAthleticsMode = session?.settings.gameMode === "athletics";
@@ -398,6 +433,13 @@ export default function ArenaPreview({
   }), [movementLimitX, movementLimitZ]);
   currentPlayerRef.current = currentPlayer;
   sessionRef.current = session;
+  athleticsHudRef.current = athleticsHud;
+  loadDecalAssetRef.current = loadDecalAsset;
+  gamepadEnabledRef.current = gamepadEnabled;
+  activeQualityRef.current = activeQuality;
+  const roundLifecycleKey = session
+    ? `${session.id}:${session.currentRound}:${session.status}:${session.roundTransition?.phase ?? "active"}`
+    : undefined;
 
   useEffect(() => {
     setFallbackQuality(null);
@@ -424,6 +466,21 @@ export default function ArenaPreview({
     inputPausedRef.current = inputPaused;
     controlsDisabledRef.current = controlsDisabled;
   }, [onMove, onFire, onInteract, onOpenQuestion, inputPaused, controlsDisabled]);
+
+  useEffect(() => {
+    rendererDiagnosticsRef.current?.update({
+      currentRound: session?.currentRound,
+      playerCount: session?.players.length ?? (currentPlayer ? 1 : 0),
+      graphicsQuality: activeQuality
+    });
+  }, [session?.currentRound, session?.players.length, currentPlayer, activeQuality]);
+
+  useEffect(() => {
+    arenaComponentMountedRef.current = true;
+    return () => {
+      arenaComponentMountedRef.current = false;
+    };
+  }, []);
 
   useEffect(() => {
     const resetJoystick = () => {
@@ -487,10 +544,18 @@ export default function ArenaPreview({
     syncPlayersRef.current(session, currentPlayer);
   }, [session, currentPlayer]);
 
+  // Teacher spectator targets and local player identities can change while the
+  // renderer remains mounted. Reset the camera/input state for the new target.
+  useEffect(() => {
+    if (previousCurrentPlayerIdRef.current !== currentPlayer?.id) roundResetRef.current();
+    previousCurrentPlayerIdRef.current = currentPlayer?.id;
+  }, [currentPlayer?.id]);
+
   // Live session payloads replace array references, so only primitive scene-build inputs belong in this dependency list.
   useEffect(() => {
     const session = sessionRef.current;
     const currentPlayer = currentPlayerRef.current;
+    const initialArenaQuality = activeQualityRef.current;
     const mount = mountRef.current;
     if (!mount) return;
     setRenderError("");
@@ -526,13 +591,83 @@ export default function ArenaPreview({
       isZombieMode,
       isIronJunction,
       isTempleRunoff,
-      activeQuality
+      activeQuality: initialArenaQuality
     });
     if (!sceneSetup) {
       setRenderError("WebGL is not available in this browser. Try updating the browser or enabling hardware acceleration.");
       return;
     }
     const { scene, camera, renderer, qualityConfig } = sceneSetup;
+    const rendererDiagnostics = registerArenaRenderer(renderer, {
+      currentRound: session?.currentRound,
+      playerCount: session?.players.length ?? (currentPlayer ? 1 : 0),
+      graphicsQuality: initialArenaQuality
+    });
+    rendererDiagnosticsRef.current = rendererDiagnostics;
+    let disposed = false;
+    let contextLost = false;
+    let stopRenderLoop: () => void = () => undefined;
+    let restartRenderLoop: () => void = () => undefined;
+    let runtimeQuality = initialArenaQuality;
+    let renderBudget = getArenaRenderBudget(runtimeQuality);
+    const performanceCapture = new ArenaPerformanceCapture(renderer, initialArenaQuality, scene);
+    const renderSceneSafely = () => {
+      if (disposed || contextLost) return false;
+      try {
+        renderer.render(scene, camera);
+        return true;
+      } catch {
+        contextLost = true;
+        stopRenderLoop();
+        setRenderError("3D graphics paused on this device. Your game session is safe; retry or reload the game if recovery does not finish.");
+        return false;
+      }
+    };
+    const compileSceneSafely = () => {
+      if (disposed || contextLost) return false;
+      try {
+        renderer.compile(scene, camera);
+        return true;
+      } catch {
+        contextLost = true;
+        stopRenderLoop();
+        setRenderError("3D graphics paused on this device. Your game session is safe; retry or reload the game if recovery does not finish.");
+        return false;
+      }
+    };
+    const applyRuntimeQuality = (nextQuality: Exclude<ArenaQuality, "auto">) => {
+      const nextConfig = getArenaQualityConfig(arenaMap, nextQuality);
+      renderer.setPixelRatio(Math.min(window.devicePixelRatio, nextConfig.pixelRatio));
+      renderer.setSize(mount.clientWidth, Math.max(1, mount.clientHeight));
+      renderer.shadowMap.enabled = !isFps && nextConfig.shadows;
+      renderer.domElement.dataset.quality = nextQuality;
+      runtimeQuality = nextQuality;
+      renderBudget = getArenaRenderBudget(nextQuality);
+      performanceCapture.setQuality(nextQuality);
+      rendererDiagnostics.update({ graphicsQuality: nextQuality });
+    };
+    const tryRecoverRenderer = () => {
+      if (disposed) return false;
+      // A manual retry may happen before the browser emits
+      // webglcontextrestored. Clear the guard for one bounded attempt; the
+      // safe compile/render wrappers will put it back if the context is still
+      // unavailable.
+      contextLost = false;
+      try {
+        applyRuntimeQuality("performance");
+        if (!compileSceneSafely() || !renderSceneSafely()) return false;
+        restartRenderLoop();
+        setFallbackQuality("performance");
+        setRenderError("");
+        return true;
+      } catch {
+        contextLost = true;
+        stopRenderLoop();
+        setRenderError("3D graphics could not recover yet. Your game is still saved; reload the game to try again.");
+        return false;
+      }
+    };
+    rendererRuntimeRef.current = { applyQuality: applyRuntimeQuality, retry: tryRecoverRenderer };
     renderer.domElement.dataset.environmentKit = environmentKit?.id ?? "procedural-core";
     const unsubscribeAssetProgress = arenaAssetManager.subscribe((progress) => {
       renderer.domElement.dataset.assetsLoaded = String(progress.loaded);
@@ -545,15 +680,29 @@ export default function ArenaPreview({
       : null;
     const onWebglContextLost = (event: Event) => {
       event.preventDefault();
-      setRenderError("The 3D renderer paused on this device. Retry in performance mode, then re-enter the game if needed.");
+      contextLost = true;
+      stopRenderLoop();
+      rendererDiagnostics.contextLost({
+        geometries: renderer.info.memory.geometries,
+        textures: renderer.info.memory.textures,
+        drawCalls: renderer.info.render.calls,
+        triangles: renderer.info.render.triangles,
+        devicePixelRatio: window.devicePixelRatio,
+        canvasWidth: renderer.domElement.width,
+        canvasHeight: renderer.domElement.height
+      });
+      setRenderError("3D graphics paused while this device restores the game. Your game session is safe; retrying in performance mode.");
     };
     const onWebglContextRestored = () => {
-      setFallbackQuality("performance");
-      setRenderError("");
+      rendererDiagnostics.contextRestored();
+      contextLost = false;
+      if (!tryRecoverRenderer()) {
+        setRenderError("3D graphics could not recover yet. Your game is still saved; reload the game to try again.");
+      }
     };
     renderer.domElement.addEventListener("webglcontextlost", onWebglContextLost, false);
     renderer.domElement.addEventListener("webglcontextrestored", onWebglContextRestored, false);
-    const autoQualityController = quality === "auto" && !fallbackQuality
+    const autoQualityController = quality === "auto"
       ? autoQualityControllerRef.current ?? undefined
       : undefined;
     if (isFps) {
@@ -615,7 +764,7 @@ export default function ArenaPreview({
           scene,
           renderer,
           isFps,
-          activeQuality,
+          activeQuality: initialArenaQuality,
           qualityConfig,
           makeCanvasTexture,
           makeLabelTexture,
@@ -639,7 +788,7 @@ export default function ArenaPreview({
       isTempleRunoff,
       isFps,
       isZombieMode,
-      activeQuality,
+      activeQuality: initialArenaQuality,
       qualityConfig,
       makeCanvasTexture,
       seededRandom,
@@ -658,6 +807,21 @@ export default function ArenaPreview({
     const athleticsAssetsPromise = isAthleticsMode
       ? mountAthleticsImportedAssets({ scene, detail: qualityConfig.detail, isFps, signal: assetMountAbortController.signal })
       : Promise.resolve(null);
+    const importedAssetPromises = [
+      ironJunctionAssetsPromise,
+      desertCitadelAssetsPromise,
+      templeRunoffAssetsPromise,
+      athleticsAssetsPromise
+    ] as const;
+    const releaseImportedAssets = () => {
+      assetMountAbortController.abort();
+      void Promise.allSettled(importedAssetPromises).then((results) => {
+        results.forEach((result) => {
+          if (result.status === "fulfilled") result.value?.dispose();
+        });
+        arenaAssetManager.unloadUnusedAssets();
+      });
+    };
 
 
     const players = session?.players.length ? session.players : currentPlayer ? [currentPlayer] : [];
@@ -672,21 +836,21 @@ export default function ArenaPreview({
     } = createCharacterSync({
       scene,
       isFps,
-      currentPlayerId,
+      currentPlayerId: currentPlayerRef.current?.id ?? "",
       players,
       currentPlayer,
       session,
       arenaMapId,
-      activeQuality,
-      loadDecalAsset,
+      activeQuality: initialArenaQuality,
+      loadDecalAsset: loadDecalAssetRef.current
+        ? (assetId) => loadDecalAssetRef.current?.(assetId) ?? Promise.reject(new Error("Decal loader unavailable"))
+        : undefined,
       vfxTextures,
       makeLabelTexture,
       serverToLocalX,
       serverToLocalZ,
       flagMarker
     });
-    const performanceCapture = new ArenaPerformanceCapture(renderer, activeQuality, scene);
-    const renderBudget = getArenaRenderBudget(activeQuality);
     const publishPerformanceDataset = (profile: ArenaPerformanceSnapshot) => {
       const budget = evaluateArenaBudget({
         fps: profile.fps,
@@ -717,6 +881,11 @@ export default function ArenaPreview({
       renderer.domElement.dataset.renderBudgetShadowCasters = String(renderBudget.maxShadowCasters);
       renderer.domElement.dataset.renderBudgetParticles = String(renderBudget.maxActiveParticles);
       if (environmentKit) renderer.domElement.dataset.environmentBudgetTextureMb = String(environmentKit.budget.targetTextureMb);
+      rendererDiagnostics.update({
+        currentRound: sessionRef.current?.currentRound,
+        playerCount: sessionRef.current?.players.length ?? (currentPlayerRef.current ? 1 : 0),
+        graphicsQuality: runtimeQuality
+      });
       if (debugOverlay) setPerformanceSnapshot(profile);
       if (debugOverlay) setVfxDebugStats(vfxPool.getStats());
     };
@@ -729,11 +898,14 @@ export default function ArenaPreview({
       scene.add(cameraRig);
       cameraRig.add(camera);
 
-      const firstPersonModel = characterFactory.createFirstPersonViewModel(currentPlayerTeam, getPlayerWeaponId(currentPlayer ?? { gear: "starter_blaster" }));
+      const getEquippedGearId = () => getPlayerWeaponId(currentPlayerRef.current ?? { gear: "starter_blaster" });
+      let firstPersonTeam = currentPlayerRef.current?.team ?? "blue";
+      let firstPersonGear = getEquippedGearId();
+      let firstPersonModel = characterFactory.createFirstPersonViewModel(firstPersonTeam, firstPersonGear);
       if (isAthleticsMode) firstPersonModel.root.visible = false;
       camera.add(firstPersonModel.root);
-      const firstPersonRootBaseY = firstPersonModel.root.position.y;
-      const firstPersonWeaponRotation = firstPersonModel.weapon.rotation.clone();
+      let firstPersonRootBaseY = firstPersonModel.root.position.y;
+      let firstPersonWeaponRotation = firstPersonModel.weapon.rotation.clone();
       const fpsMuzzlePosition = new THREE.Vector3();
       const fpsMuzzleWorldPosition = new THREE.Vector3();
       const syncFpsMuzzlePosition = () => {
@@ -741,6 +913,33 @@ export default function ArenaPreview({
         firstPersonModel.muzzle.getWorldPosition(fpsMuzzleWorldPosition);
         fpsMuzzlePosition.copy(fpsMuzzleWorldPosition);
         camera.worldToLocal(fpsMuzzlePosition);
+      };
+      const syncFirstPersonLoadout = () => {
+        const player = currentPlayerRef.current;
+        const nextTeam = player?.team ?? firstPersonTeam;
+        const nextGear = getEquippedGearId();
+        if (nextTeam === firstPersonTeam && nextGear === firstPersonGear) return;
+
+        if (nextTeam !== firstPersonTeam) {
+          const nextModel = characterFactory.createFirstPersonViewModel(nextTeam, nextGear);
+          nextModel.root.visible = firstPersonModel.root.visible;
+          firstPersonModel.root.removeFromParent();
+          camera.add(nextModel.root);
+          firstPersonModel = nextModel;
+        } else {
+          // Weapon geometry/materials are shared by the bounded equipment cache;
+          // detaching the old group is the correct ownership boundary here.
+          const nextWeapon = characterFactory.createFirstPersonWeapon(nextTeam, nextGear);
+          firstPersonModel.weapon.removeFromParent();
+          firstPersonModel.weapon = nextWeapon.weapon;
+          firstPersonModel.muzzle = nextWeapon.muzzle;
+          firstPersonModel.root.add(nextWeapon.weapon);
+        }
+        firstPersonTeam = nextTeam;
+        firstPersonGear = nextGear;
+        firstPersonRootBaseY = firstPersonModel.root.position.y;
+        firstPersonWeaponRotation = firstPersonModel.weapon.rotation.clone();
+        syncFpsMuzzlePosition();
       };
 
       const flashMaterial = new THREE.SpriteMaterial({
@@ -809,6 +1008,7 @@ export default function ArenaPreview({
       let activeZoomLevel = 0;
       let hadPointerLock = false;
       let cooldownTimeout: number | undefined;
+      const pendingFireTimers = new Set<number>();
       let wasGrounded = true;
       let landedAt = 0;
       let cameraVisualY = playerPosition.y;
@@ -826,8 +1026,7 @@ export default function ArenaPreview({
         questionHoldPosition = playerPosition.clone();
         onOpenQuestionRef.current?.();
       };
-      const getEquippedGearId = () => getPlayerWeaponId(currentPlayerRef.current ?? { gear: "starter_blaster" });
-      const hasHeavyGun = () => currentWeaponId === "power_blaster";
+      const hasHeavyGun = () => getEquippedGearId() === "power_blaster";
       const hasZoomGear = () => hasHeavyGun() || getGearZoomFovMultiplier(getEquippedGearId()) < 1;
       const hasAutoFireGear = () => isGearAutoFireEnabled(getEquippedGearId());
       const setZoomLevel = (nextLevel: number) => {
@@ -850,7 +1049,7 @@ export default function ArenaPreview({
         gameAudio.warm();
         const currentTime = performance.now();
         if (isAthleticsMode) {
-          if (athleticsHud?.role !== "hunter") return;
+          if (athleticsHudRef.current?.role !== "hunter") return;
           if (currentTime - lastLocalFireAt < HUNTER_PROJECTILE_COOLDOWN_MS) {
             if (currentTime - lastCooldownFxAt > 280) {
               lastCooldownFxAt = currentTime;
@@ -912,7 +1111,7 @@ export default function ArenaPreview({
           x: fpsMuzzleWorldPosition.x,
           y: fpsMuzzleWorldPosition.y,
           z: fpsMuzzleWorldPosition.z,
-          team: currentPlayerTeam,
+          team: currentPlayerRef.current?.team ?? "blue",
           local: true
         });
         flash.material.opacity = 1;
@@ -926,12 +1125,15 @@ export default function ArenaPreview({
           gameAudio.playEvent("weapon_fire_heavy_local");
         }
         else gameAudio.playEvent(equippedGearId === "quick_blaster" ? "weapon_fire_quick" : "weapon_fire_basic");
-        window.setTimeout(() => {
+        const fireDispatchTimer = window.setTimeout(() => {
+          pendingFireTimers.delete(fireDispatchTimer);
+          if (disposed) return;
           if (readGamePreferences().vibrationEnabled) {
             navigator.vibrate?.(18);
           }
           onFireRef.current?.(launchPosition);
         }, 0);
+        pendingFireTimers.add(fireDispatchTimer);
       };
       fireControlRef.current = fire;
       interactControlRef.current = () => {
@@ -952,7 +1154,7 @@ export default function ArenaPreview({
       let gamepadFireWasPressed = false;
       let gamepadInteractWasPressed = false;
       const applyGamepadInput = () => {
-        if (!gamepadEnabled || controlsDisabledRef.current || inputPausedRef.current || !navigator.getGamepads) {
+        if (!gamepadEnabledRef.current || controlsDisabledRef.current || inputPausedRef.current || !navigator.getGamepads) {
           gamepadMove.forward = 0;
           gamepadMove.right = 0;
           return;
@@ -1144,6 +1346,79 @@ export default function ArenaPreview({
         crouching: isCrouching,
         jumping: isJumping
       };
+      const resetGameplayState = () => {
+        if (disposed) return;
+        const player = currentPlayerRef.current;
+        const spawn = isAthleticsMode
+          ? getAthleticsStartPosition(0, Math.max(1, sessionRef.current?.players.length ?? 1))
+          : player ? getTeamSpawnForMap(arenaMapId, player.team) : getTeamSpawnForMap(arenaMapId, "blue");
+        const nextX = isFiniteNumber(player?.x) ? serverToLocalX(player.x) : spawn.x;
+        const nextZ = isFiniteNumber(player?.z) ? serverToLocalZ(player.z) : spawn.z;
+        const nextY = isFiniteNumber(player?.y)
+          ? player.y
+          : spawn.y ?? (isAthleticsMode ? 0 : getArenaGroundHeight(arenaMapId, nextX, nextZ) + FPS_STANDING_EYE_HEIGHT);
+        playerPosition.set(nextX, nextY, nextZ);
+        yaw = isFiniteNumber(player?.facing) ? player.facing : spawn.facing;
+        pitch = -0.12;
+        verticalVelocity = 0;
+        jumpQueuedAt = 0;
+        lastGroundedAt = performance.now();
+        lastLocalFireAt = 0;
+        lastEmptyFireRequestAt = 0;
+        lastCooldownFxAt = 0;
+        lastFootstepVfxAt = 0;
+        activeZoomLevel = 0;
+        flashUntil = 0;
+        snowballLaunchAt = 0;
+        landedAt = 0;
+        cameraVisualY = playerPosition.y;
+        fireHeld = false;
+        questionHoldPosition = null;
+        wasGrounded = true;
+        isCrouching = false;
+        isJumping = false;
+        previousFloorEyeHeight = FPS_STANDING_EYE_HEIGHT;
+        previousControlsDisabled = controlsDisabledRef.current;
+        lastMoveEmitAt = 0;
+        lastMiniMapAt = 0;
+        keys.clear();
+        lookKeys.clear();
+        gamepadMove.forward = 0;
+        gamepadMove.right = 0;
+        gamepadFireWasPressed = false;
+        gamepadInteractWasPressed = false;
+        touchLookPointerId = null;
+        touchLookDistance = 0;
+        touchCrouchRef.current = false;
+        setTouchCrouchEnabled(false);
+        if (cooldownTimeout) window.clearTimeout(cooldownTimeout);
+        cooldownTimeout = undefined;
+        pendingFireTimers.forEach((timer) => window.clearTimeout(timer));
+        pendingFireTimers.clear();
+        pendingShotsRef.current = 0;
+        setZoomLevel(0);
+        setZoomLevelState(0);
+        setWeaponCooldown(null);
+        setHitPulse(0);
+        flash.material.opacity = 0;
+        muzzleRingMaterial.opacity = 0;
+        snowball.visible = false;
+        projectileTrail.visible = false;
+        tracer.visible = false;
+        impactMaterial.opacity = 0;
+        vfxPool.reset();
+        syncPlayersRef.current(sessionRef.current, player);
+        syncFirstPersonLoadout();
+        updateCamera();
+        syncFpsMuzzlePosition();
+        lastSentPosition = {
+          ...localToServerPosition(playerPosition, yaw),
+          crouching: false,
+          jumping: false
+        };
+        setMiniMapPosition(localToServerPosition(playerPosition, yaw));
+      };
+      roundResetRef.current = resetGameplayState;
       const forwardVector = new THREE.Vector3();
       const rightVector = new THREE.Vector3();
       const movementVector = new THREE.Vector3();
@@ -1228,9 +1503,14 @@ export default function ArenaPreview({
         const event = sessionRef.current?.athletics?.chaos?.currentEvent;
         return event && nowMs < Date.parse(event.expiresAt) ? getChaosEventModifiers(event) : undefined;
       };
-      const isStationaryAthleticsHunter = isAthleticsMode && athleticsHud?.role === "hunter";
+      const isStationaryAthleticsHunter = () => isAthleticsMode && athleticsHudRef.current?.role === "hunter";
 
       const fpsLoop = createArenaRenderLoop(({ delta, currentTime, elapsed }) => {
+        if (contextLost || disposed) {
+          stopRenderLoop();
+          return;
+        }
+        syncFirstPersonLoadout();
         const authoritativeNowMs = Date.now();
         performanceCapture.frame(currentTime);
         // Put target/body previews downrange on the aim line. The former close,
@@ -1373,7 +1653,7 @@ export default function ArenaPreview({
           });
           verticalVelocity = FPS_JUMP_VELOCITY * jumpHeightScale;
           jumpQueuedAt = 0;
-          emitArenaAnimation({ kind: "jump", playerId: currentPlayerId, team: currentPlayerTeam });
+          emitArenaAnimation({ kind: "jump", playerId: currentPlayerRef.current?.id ?? "", team: currentPlayerRef.current?.team ?? "blue" });
           gameAudio.play("jump");
         }
         if (jumpQueuedAt > 0 && currentTime - jumpQueuedAt > jumpBufferMs) jumpQueuedAt = 0;
@@ -1399,7 +1679,7 @@ export default function ArenaPreview({
           verticalVelocity = 0;
           if (!wasGrounded) {
             landedAt = currentTime;
-            emitArenaAnimation({ kind: "land", playerId: currentPlayerId, team: currentPlayerTeam });
+            emitArenaAnimation({ kind: "land", playerId: currentPlayerRef.current?.id ?? "", team: currentPlayerRef.current?.team ?? "blue" });
             gameAudio.play("land");
           }
           wasGrounded = true;
@@ -1437,7 +1717,7 @@ export default function ArenaPreview({
         if (gamepadMove.forward < -GAMEPAD_DEAD_ZONE) movementVector.sub(forwardVector);
         if (gamepadMove.right > GAMEPAD_DEAD_ZONE) movementVector.add(rightVector);
         if (gamepadMove.right < -GAMEPAD_DEAD_ZONE) movementVector.sub(rightVector);
-        if (movementVector.lengthSq() > 0 && !isStationaryAthleticsHunter) {
+        if (movementVector.lengthSq() > 0 && !isStationaryAthleticsHunter()) {
           const movementSurface: "metal" | "water" | "stone" | "sand" = isAthleticsMode ? "stone" : isIronJunction ? "metal" : isTempleRunoff ? (surfaceGroundY < 1 ? "water" : "stone") : "sand";
           if (wasGrounded && moveSpeed > 0) {
             gameAudio.playMovementStep(movementAudioMode, currentTime, movementSurface);
@@ -1510,7 +1790,7 @@ export default function ArenaPreview({
           isJumping = false;
         }
 
-        if (isStationaryAthleticsHunter) {
+        if (isStationaryAthleticsHunter()) {
           const authoritativeHunter = currentPlayerRef.current;
           if (isFiniteNumber(authoritativeHunter?.x) && isFiniteNumber(authoritativeHunter?.z) && isFiniteNumber(authoritativeHunter?.y)) {
             playerPosition.set(
@@ -1588,7 +1868,7 @@ export default function ArenaPreview({
             impactPuff.scale.setScalar(0.8 + (travel - 0.82) * 5.5);
           }
         }
-        renderer.render(scene, camera);
+        renderSceneSafely();
       }, 0.035);
       syncFpsMuzzlePosition();
       flash.position.copy(fpsMuzzlePosition);
@@ -1596,16 +1876,18 @@ export default function ArenaPreview({
       flash.material.opacity = 1;
       snowball.visible = true;
       characterManager.update(0, 0, camera);
-      renderer.compile(scene, camera);
-      renderer.render(scene, camera);
+      compileSceneSafely();
+      renderSceneSafely();
       flash.material.opacity = 0;
       snowball.visible = false;
       projectileTrail.visible = false;
       tracer.visible = false;
-      renderer.render(scene, camera);
+      renderSceneSafely();
       renderer.domElement.dataset.drawCalls = String(renderer.info.render.calls);
       renderer.domElement.dataset.triangles = String(renderer.info.render.triangles);
-      fpsLoop.start();
+      stopRenderLoop = fpsLoop.stop;
+      restartRenderLoop = fpsLoop.start;
+      if (!contextLost) fpsLoop.start();
 
       const resizeFps = () => {
         const width = mount.clientWidth;
@@ -1617,6 +1899,7 @@ export default function ArenaPreview({
       window.addEventListener("resize", resizeFps);
 
       return () => {
+        disposed = true;
         fpsLoop.stop();
         window.removeEventListener("resize", resizeFps);
         renderer.domElement.removeEventListener("webglcontextlost", onWebglContextLost);
@@ -1630,22 +1913,24 @@ export default function ArenaPreview({
         desertCitadelArt?.dispose();
         desertCitadelVfx?.dispose();
         templeRunoffArt?.dispose();
-        assetMountAbortController.abort();
-        void ironJunctionAssetsPromise.then((assets) => assets?.dispose());
-        void desertCitadelAssetsPromise.then((assets) => assets?.dispose());
-        void templeRunoffAssetsPromise.then((assets) => assets?.dispose());
-        void athleticsAssetsPromise.then((assets) => assets?.dispose());
+        releaseImportedAssets();
         fireControlRef.current = () => undefined;
         zoomControlRef.current = () => undefined;
         interactControlRef.current = () => undefined;
         jumpControlRef.current = () => undefined;
         questionControlRef.current = () => undefined;
         syncPlayersRef.current = () => undefined;
+        roundResetRef.current = () => undefined;
         if (cooldownTimeout) window.clearTimeout(cooldownTimeout);
+        cooldownTimeout = undefined;
+        pendingFireTimers.forEach((timer) => window.clearTimeout(timer));
+        pendingFireTimers.clear();
         setZoomLevel(0);
         setWeaponCooldown(null);
         cleanupControls();
         characterManager.dispose();
+        renderer.setAnimationLoop(null);
+        renderer.renderLists.dispose();
         disposeObject(scene);
         characterFactory.dispose();
         staticBatcher.dispose();
@@ -1664,14 +1949,29 @@ export default function ArenaPreview({
         Object.values(vfxTextures).forEach((texture) => {
           if (texture !== puffTexture) texture.dispose();
         });
+        if (rendererRuntimeRef.current?.retry === tryRecoverRenderer) rendererRuntimeRef.current = null;
+        if (rendererDiagnosticsRef.current === rendererDiagnostics) rendererDiagnosticsRef.current = null;
+        rendererDiagnostics.dispose();
+        // A dependency-boundary cleanup must leave the context reusable. Only
+        // a genuine component unmount gets the stronger WebGL context release.
+        if (!arenaComponentMountedRef.current) renderer.forceContextLoss();
         renderer.dispose();
-        mount.removeChild(renderer.domElement);
+        renderer.domElement.remove();
       };
     }
 
+    roundResetRef.current = () => {
+      if (disposed) return;
+      vfxPool.reset();
+      syncPlayersRef.current(sessionRef.current, currentPlayerRef.current);
+    };
     let lastDebugStatsAt = 0;
     let performanceWindowAt = performance.now();
     const overviewLoop = createArenaRenderLoop(({ delta, elapsed, currentTime }) => {
+      if (contextLost || disposed) {
+        stopRenderLoop();
+        return;
+      }
       performanceCapture.frame(currentTime);
       // Keep overview previews on the arena floor, not at the orbit camera.
       debugVfxPositionRef.current = { x: 0, y: 0.12, z: -6 };
@@ -1703,14 +2003,16 @@ export default function ArenaPreview({
         lastDebugStatsAt = currentTime;
         setCharacterDebugStats(characterManager.getStats());
       }
-      renderer.render(scene, camera);
+      renderSceneSafely();
     }, 0.05);
     characterManager.update(0, 0, camera);
-    renderer.compile(scene, camera);
-    renderer.render(scene, camera);
+    compileSceneSafely();
+    renderSceneSafely();
     renderer.domElement.dataset.drawCalls = String(renderer.info.render.calls);
     renderer.domElement.dataset.triangles = String(renderer.info.render.triangles);
-    overviewLoop.start();
+    stopRenderLoop = overviewLoop.stop;
+    restartRenderLoop = overviewLoop.start;
+    if (!contextLost) overviewLoop.start();
 
     const resize = () => {
       const width = mount.clientWidth;
@@ -1722,6 +2024,7 @@ export default function ArenaPreview({
     window.addEventListener("resize", resize);
 
     return () => {
+      disposed = true;
       overviewLoop.stop();
       window.removeEventListener("resize", resize);
       renderer.domElement.removeEventListener("webglcontextlost", onWebglContextLost);
@@ -1735,16 +2038,15 @@ export default function ArenaPreview({
       desertCitadelArt?.dispose();
       desertCitadelVfx?.dispose();
       templeRunoffArt?.dispose();
-      assetMountAbortController.abort();
-      void ironJunctionAssetsPromise.then((assets) => assets?.dispose());
-      void desertCitadelAssetsPromise.then((assets) => assets?.dispose());
-      void templeRunoffAssetsPromise.then((assets) => assets?.dispose());
-      void athleticsAssetsPromise.then((assets) => assets?.dispose());
+      releaseImportedAssets();
       interactControlRef.current = () => undefined;
       jumpControlRef.current = () => undefined;
       questionControlRef.current = () => undefined;
       syncPlayersRef.current = () => undefined;
+      roundResetRef.current = () => undefined;
       characterManager.dispose();
+      renderer.setAnimationLoop(null);
+      renderer.renderLists.dispose();
       disposeObject(scene);
       characterFactory.dispose();
       staticBatcher.dispose();
@@ -1763,10 +2065,37 @@ export default function ArenaPreview({
       Object.values(vfxTextures).forEach((texture) => {
         if (texture !== puffTexture) texture.dispose();
       });
+      if (rendererRuntimeRef.current?.retry === tryRecoverRenderer) rendererRuntimeRef.current = null;
+      if (rendererDiagnosticsRef.current === rendererDiagnostics) rendererDiagnosticsRef.current = null;
+      rendererDiagnostics.dispose();
+      // A dependency-boundary cleanup must leave the context reusable. Only
+      // a genuine component unmount gets the stronger WebGL context release.
+      if (!arenaComponentMountedRef.current) renderer.forceContextLoss();
       renderer.dispose();
-      mount.removeChild(renderer.domElement);
+      renderer.domElement.remove();
     };
-  }, [sceneSessionId, currentPlayerId, currentPlayerTeam, currentWeaponId, currentPlayer?.gear, currentPlayer?.weapon, view, debugOverlay, quality, fallbackQuality, activeQuality, gamepadEnabled, arenaMapId, arenaMap, environmentKit, arenaBounds, teamBaseZones, captureZones, searchRetrieveItems, searchRetrieveDeliveryZones, isIronJunction, isDesertCitadel, isTempleRunoff, isAthleticsMode, athleticsMode, athleticsHud?.role, localToServerPosition, serverToLocalX, serverToLocalZ, movementLimitX, movementLimitZ, session?.settings.gameMode, loadDecalAsset]);
+  }, [sceneSessionId, view, debugOverlay, quality, arenaMapId, arenaMap, environmentKit, arenaBounds, teamBaseZones, captureZones, searchRetrieveItems, searchRetrieveDeliveryZones, isIronJunction, isDesertCitadel, isTempleRunoff, isAthleticsMode, athleticsMode, localToServerPosition, serverToLocalX, serverToLocalZ, movementLimitX, movementLimitZ, session?.settings.gameMode]);
+
+  // Auto quality changes only adjust renderer settings in place. Manual quality,
+  // map, mode, and view changes remain intentional scene rebuild boundaries.
+  useEffect(() => {
+    rendererRuntimeRef.current?.applyQuality(activeQuality);
+  }, [activeQuality]);
+
+  // Round transitions reset local gameplay state explicitly. The renderer and
+  // canvas stay mounted while the authoritative session/player snapshot syncs.
+  useEffect(() => {
+    if (!roundLifecycleKey) return;
+    const previousKey = previousRoundLifecycleKeyRef.current;
+    const previousRound = previousRoundNumberRef.current;
+    const roundChanged = previousRound !== undefined && previousRound !== session?.currentRound;
+    const enteringPreparation = session?.roundTransition?.phase === "preparation";
+    if (previousKey !== undefined && previousKey !== roundLifecycleKey && (roundChanged || enteringPreparation)) {
+      roundResetRef.current();
+    }
+    previousRoundLifecycleKeyRef.current = roundLifecycleKey;
+    previousRoundNumberRef.current = session?.currentRound;
+  }, [roundLifecycleKey, session?.currentRound, session?.roundTransition?.phase]);
 
   const beginTouchMove = (event: ReactPointerEvent<HTMLButtonElement>) => {
     event.preventDefault();
@@ -1844,6 +2173,12 @@ export default function ArenaPreview({
       surface: kind === "impact" ? "metal" : kind === "snowball_impact" ? "snow" : undefined
     });
   };
+  const retryRenderer = () => {
+    setFallbackQuality("performance");
+    if (!rendererRuntimeRef.current?.retry()) {
+      setRenderError("3D graphics are still unavailable. Your game session is safe; reload the game to try again.");
+    }
+  };
 
   return (
     <div
@@ -1857,7 +2192,7 @@ export default function ArenaPreview({
           Graphics adjusted for smoother gameplay
         </div>
       )}
-      {renderError && <div className="arena-error" role="alert"><strong>Arena unavailable</strong><span>{renderError}</span><button type="button" onClick={() => { setFallbackQuality("performance"); setRenderError(""); }}>Retry in performance mode</button></div>}
+      {renderError && <div className="arena-error" role="alert"><strong>Arena unavailable</strong><span>{renderError}</span><button type="button" onClick={retryRenderer}>Retry in performance mode</button><button type="button" onClick={() => window.location.reload()}>Reload game</button></div>}
       {debugOverlay && characterDebugStats && (
         <div className="character-debug-overlay" aria-label="Character debug stats">
           <strong>{debugLabel}</strong>

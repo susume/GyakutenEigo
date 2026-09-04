@@ -524,7 +524,7 @@ export class StreakAura {
   readonly group = new THREE.Group();
 
   private readonly target: THREE.Object3D;
-  private readonly detail: number;
+  private detail: number;
   private readonly textures: StreakAuraTextures;
   private readonly resources: SharedStreakAuraResources;
   private readonly phase: number;
@@ -697,6 +697,11 @@ export class StreakAura {
     if (previousTier?.key !== nextTier.key || previousStreak < nextTier.minStreak) {
       this.startThresholdBurst(nextTier);
     }
+  }
+
+  setDetail(detail: number) {
+    if (this.disposed) return;
+    this.detail = Math.max(0, Math.min(2, Math.floor(detail)));
   }
 
   triggerShutdown() {

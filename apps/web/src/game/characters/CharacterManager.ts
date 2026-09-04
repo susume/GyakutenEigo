@@ -3,6 +3,7 @@ import type { PlayerSession } from "@quizstrike/shared";
 import { CharacterController } from "./CharacterController.js";
 import { CharacterFactory } from "./CharacterFactory.js";
 import type { ArenaAnimationCue, ArenaAnimationEvent } from "../ArenaAnimation.js";
+import { getArenaPlayerRenderProfile, type ArenaPlayerRenderProfile } from "../ArenaPerformance.js";
 import { StreakAura, type StreakAuraTextures } from "../vfx/StreakAura.js";
 
 export interface CharacterVisualState {
@@ -17,9 +18,11 @@ export interface CharacterManagerOptions {
   currentPlayerId?: string;
   showBadges?: boolean;
   showWeapons?: boolean;
-  makeBadgeMaterial: (player: PlayerSession) => THREE.SpriteMaterial;
+  makeBadgeMaterial: (player: PlayerSession, resolution?: number) => THREE.SpriteMaterial;
   streakAuraTextures?: StreakAuraTextures;
   streakAuraDetail?: number;
+  baseStreakAuraDetail?: number;
+  playerCount?: number;
 }
 
 type CharacterRecord = {
@@ -28,11 +31,13 @@ type CharacterRecord = {
   badge: THREE.Sprite;
   ring?: THREE.Mesh;
   gear: string;
-  badgeAlive: boolean;
   alive: boolean;
   team: PlayerSession["team"];
   role?: PlayerSession["role"];
   appearanceSignature: string;
+  badgeSignature: string;
+  badgeResolution: number;
+  player: PlayerSession;
 };
 
 export interface CharacterManagerStats {
@@ -43,19 +48,42 @@ export interface CharacterManagerStats {
   lod: Record<"LOD0" | "LOD1" | "LOD2" | "LOD3", number>;
 }
 
+const getBadgeSignature = (player: PlayerSession) => {
+  const total = player.correctAnswers + player.wrongAnswers;
+  const accuracy = total === 0 ? 0 : Math.round((player.correctAnswers / total) * 100);
+  return `${player.isBot ? "BOT" : `${accuracy}%`}:${player.team}`;
+};
+
+const disposeBadgeMaterial = (material: THREE.Material | THREE.Material[]) => {
+  const materials = Array.isArray(material) ? material : [material];
+  materials.forEach((item) => {
+    const mapped = item as THREE.Material & { map?: THREE.Texture | null };
+    mapped.map?.dispose();
+    item.dispose();
+  });
+};
+
 export class CharacterManager {
   private readonly records = new Map<string, CharacterRecord>();
+  private playerRenderProfile: ArenaPlayerRenderProfile;
+  private readonly baseStreakAuraDetail: number;
+  private currentPlayerId?: string;
 
   constructor(
     private readonly scene: THREE.Scene,
     private readonly factory: CharacterFactory,
     private readonly options: CharacterManagerOptions
-  ) {}
+  ) {
+    this.baseStreakAuraDetail = options.baseStreakAuraDetail ?? options.streakAuraDetail ?? 2;
+    this.playerRenderProfile = getArenaPlayerRenderProfile(options.playerCount ?? 0, this.baseStreakAuraDetail);
+    this.currentPlayerId = options.currentPlayerId;
+  }
 
   sync(players: PlayerSession[], getVisualState: (player: PlayerSession, index: number) => CharacterVisualState, objectiveCarrierId?: string) {
+    this.setPlayerCount(players.length);
     const seen = new Set<string>();
     players.forEach((player, index) => {
-      if (this.options.isFps && player.id === this.options.currentPlayerId) return;
+      if (this.options.isFps && player.id === this.currentPlayerId) return;
       seen.add(player.id);
       const state = getVisualState(player, index);
       let record = this.records.get(player.id);
@@ -64,6 +92,7 @@ export class CharacterManager {
         record = this.records.get(player.id);
       }
       if (!record) return;
+      record.player = player;
       const appearanceSignature = JSON.stringify(player.appearance ?? null);
       if (record.gear !== player.gear || record.team !== player.team || record.role !== player.role || record.appearanceSignature !== appearanceSignature) {
         this.removeRecord(record);
@@ -85,20 +114,14 @@ export class CharacterManager {
         if (record.ring) record.ring.visible = false;
         return;
       }
-      if (record.badgeAlive !== player.isAlive) {
-        const previousMaterial = record.badge.material;
-        record.badge.material = this.options.makeBadgeMaterial(player);
-        if (!Array.isArray(previousMaterial)) {
-          const mappedMaterial = previousMaterial as THREE.Material & { map?: THREE.Texture | null };
-          mappedMaterial.map?.dispose();
-          previousMaterial.dispose();
-        }
-        record.badgeAlive = player.isAlive;
+      const nextBadgeSignature = getBadgeSignature(player);
+      if (record.badgeSignature !== nextBadgeSignature || record.badgeResolution !== this.playerRenderProfile.badgeResolution) {
+        this.replaceBadgeMaterial(record, player);
       }
       record.controller.setTarget(state.x, state.z, state.facing, player.isAlive, state.y ?? 0);
       record.controller.model.root.visible = true;
       record.badge.visible = this.options.showBadges !== false;
-      if (record.ring) record.ring.visible = player.id === this.options.currentPlayerId;
+      if (record.ring) record.ring.visible = player.id === this.currentPlayerId;
     });
 
     for (const [playerId, record] of this.records) {
@@ -147,6 +170,9 @@ export class CharacterManager {
         record.badge.position.set(current.x, current.y + 6.2, current.z);
         record.badge.scale.set(alive ? 8.2 : 7.2, alive ? 3 : 2.6, 1);
         record.badge.lookAt(camera.position);
+        record.badge.visible = alive
+          && this.options.showBadges !== false
+          && record.controller.model.root.position.distanceTo(camera.position) <= this.playerRenderProfile.badgeMaxDistance;
         if (record.ring) record.ring.position.set(current.x, current.y + 0.08, current.z);
       }
       // Shutdown VFX intentionally continues for a short window after a
@@ -175,6 +201,39 @@ export class CharacterManager {
     return stats;
   }
 
+  setPlayerCount(playerCount: number) {
+    const nextProfile = getArenaPlayerRenderProfile(playerCount, this.baseStreakAuraDetail);
+    if (
+      nextProfile.badgeMaxDistance === this.playerRenderProfile.badgeMaxDistance
+      && nextProfile.badgeResolution === this.playerRenderProfile.badgeResolution
+      && nextProfile.streakAuraDetail === this.playerRenderProfile.streakAuraDetail
+      && nextProfile.vfxDetail === this.playerRenderProfile.vfxDetail
+    ) return;
+    this.playerRenderProfile = nextProfile;
+    this.records.forEach((record) => {
+      record.streakAura.setDetail(nextProfile.streakAuraDetail);
+      if (record.badgeResolution !== nextProfile.badgeResolution) this.replaceBadgeMaterial(record, record.player);
+    });
+  }
+
+  setCurrentPlayerId(playerId?: string) {
+    this.currentPlayerId = playerId;
+    if (this.options.isFps) return;
+    for (const record of this.records.values()) {
+      if (record.player.id === playerId && !record.ring) {
+        record.ring = this.createCurrentPlayerRing();
+        this.scene.add(record.ring);
+      }
+      if (record.ring) {
+        record.ring.visible = record.player.id === playerId && record.alive;
+        if (record.ring.visible) {
+          const { current } = record.controller;
+          record.ring.position.set(current.x, current.y + 0.08, current.z);
+        }
+      }
+    }
+  }
+
   private add(player: PlayerSession, state: CharacterVisualState) {
     const model = this.factory.createCharacter({
       playerId: player.id,
@@ -190,24 +249,21 @@ export class CharacterManager {
       scene: this.scene,
       target: model.root,
       textures: this.options.streakAuraTextures,
-      detail: this.options.streakAuraDetail,
+      detail: this.playerRenderProfile.streakAuraDetail,
       seed: player.id,
       initialStreak: player.isAlive ? player.freezeStreak ?? 0 : 0
     });
 
-    const badge = new THREE.Sprite(this.options.makeBadgeMaterial(player));
+    const badgeResolution = this.playerRenderProfile.badgeResolution;
+    const badge = new THREE.Sprite(this.options.makeBadgeMaterial(player, badgeResolution));
     badge.position.set(state.x, (state.y ?? 0) + 6.2, state.z);
     badge.scale.set(8.2, 3, 1);
     badge.visible = this.options.showBadges !== false;
     this.scene.add(badge);
 
     let ring: THREE.Mesh | undefined;
-    if (player.id === this.options.currentPlayerId && !this.options.isFps) {
-      ring = new THREE.Mesh(
-        new THREE.TorusGeometry(3.8, 0.25, 8, 42),
-        new THREE.MeshBasicMaterial({ color: "#172033" })
-      );
-      ring.rotation.x = Math.PI / 2;
+    if (player.id === this.currentPlayerId && !this.options.isFps) {
+      ring = this.createCurrentPlayerRing();
       ring.position.set(state.x, (state.y ?? 0) + 0.08, state.z);
       this.scene.add(ring);
     }
@@ -218,11 +274,13 @@ export class CharacterManager {
       badge,
       ring,
       gear: player.gear,
-      badgeAlive: player.isAlive,
       alive: player.isAlive,
       team: player.team,
       role: player.role,
-      appearanceSignature: JSON.stringify(player.appearance ?? null)
+      appearanceSignature: JSON.stringify(player.appearance ?? null),
+      badgeSignature: getBadgeSignature(player),
+      badgeResolution,
+      player
     });
   }
 
@@ -236,17 +294,29 @@ export class CharacterManager {
     record.controller.model.dispose();
     this.scene.remove(record.controller.model.root);
     this.scene.remove(record.badge);
-    const badgeMaterial = Array.isArray(record.badge.material) ? record.badge.material : [record.badge.material];
-    badgeMaterial.forEach((material) => {
-      const mapped = material as THREE.Material & { map?: THREE.Texture | null };
-      mapped.map?.dispose();
-      material.dispose();
-    });
+    disposeBadgeMaterial(record.badge.material);
     if (record.ring) {
       this.scene.remove(record.ring);
       record.ring.geometry.dispose();
       const ringMaterials = Array.isArray(record.ring.material) ? record.ring.material : [record.ring.material];
       ringMaterials.forEach((material) => material.dispose());
     }
+  }
+
+  private replaceBadgeMaterial(record: CharacterRecord, player: PlayerSession) {
+    const previousMaterial = record.badge.material;
+    record.badge.material = this.options.makeBadgeMaterial(player, this.playerRenderProfile.badgeResolution);
+    disposeBadgeMaterial(previousMaterial);
+    record.badgeSignature = getBadgeSignature(player);
+    record.badgeResolution = this.playerRenderProfile.badgeResolution;
+  }
+
+  private createCurrentPlayerRing() {
+    const ring = new THREE.Mesh(
+      new THREE.TorusGeometry(3.8, 0.25, 8, 42),
+      new THREE.MeshBasicMaterial({ color: "#172033" })
+    );
+    ring.rotation.x = Math.PI / 2;
+    return ring;
   }
 }

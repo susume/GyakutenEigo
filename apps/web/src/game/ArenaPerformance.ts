@@ -79,6 +79,28 @@ export type ArenaBudgetEvaluation = {
 
 export const getArenaRenderBudget = (quality: AdaptiveArenaQuality) => ARENA_RENDER_BUDGETS[quality];
 
+export type ArenaPlayerRenderProfile = {
+  /** Distant accuracy/name badges are the first per-player texture cost to trim. */
+  badgeMaxDistance: number;
+  /** Large classes use smaller badge canvases; the HUD remains unchanged. */
+  badgeResolution: number;
+  /** Streak aura detail is reduced only for larger rosters, not for every Chromebook. */
+  streakAuraDetail: number;
+  /** The transient VFX pool remains bounded without changing world geometry quality. */
+  vfxDetail: number;
+};
+
+export const getArenaPlayerRenderProfile = (playerCount: number, baseDetail: number): ArenaPlayerRenderProfile => {
+  const normalizedDetail = Math.max(0, Math.min(2, Math.floor(baseDetail)));
+  if (playerCount >= 29) {
+    return { badgeMaxDistance: 112, badgeResolution: 384, streakAuraDetail: Math.min(1, normalizedDetail), vfxDetail: Math.min(1, normalizedDetail) };
+  }
+  if (playerCount >= 21) {
+    return { badgeMaxDistance: 180, badgeResolution: 512, streakAuraDetail: Math.min(1, normalizedDetail), vfxDetail: Math.min(1, normalizedDetail) };
+  }
+  return { badgeMaxDistance: Number.POSITIVE_INFINITY, badgeResolution: 768, streakAuraDetail: normalizedDetail, vfxDetail: normalizedDetail };
+};
+
 export const evaluateArenaBudget = (
   sample: ArenaBudgetSample,
   budget: ArenaRenderBudget
@@ -158,11 +180,14 @@ export class ArenaPerformanceCapture {
   private longestTaskMs = 0;
   private observer?: PerformanceObserver;
 
+  private quality: string;
+
   constructor(
     private readonly renderer: THREE.WebGLRenderer,
-    private readonly quality: string,
+    quality: string,
     private readonly scene?: THREE.Scene
   ) {
+    this.quality = quality;
     if (typeof PerformanceObserver !== "undefined" && PerformanceObserver.supportedEntryTypes?.includes("longtask")) {
       this.observer = new PerformanceObserver((list) => {
         list.getEntries().forEach((entry) => {
@@ -215,6 +240,10 @@ export class ArenaPerformanceCapture {
     };
     window.__quizstrikeArenaProfile = snapshot;
     return snapshot;
+  }
+
+  setQuality(quality: string) {
+    this.quality = quality;
   }
 
   dispose() {

@@ -9,6 +9,7 @@ import {
   getTeamSpawnsForMap,
   getTeamBaseZones,
   type SessionMapId,
+  type FlagStateName,
   type GameSession
 } from "@quizstrike/shared";
 import type { ArenaMapData } from "./arenaMaps";
@@ -264,18 +265,19 @@ if (session?.settings.gameMode === "flag" && session.flag) {
   const flagWidth = isFps ? 2.65 : 3.35;
   const flagHeight = isFps ? 1.35 : 1.7;
   const fabricGeometry = createFlagClothGeometry(flagWidth, flagHeight, isFps ? 14 : 10);
+  const fabricMaterial = new THREE.MeshStandardMaterial({
+    color: markerColor,
+    emissive: markerColor,
+    emissiveIntensity: 0.16,
+    roughness: 0.74,
+    metalness: 0.02,
+    transparent: true,
+    opacity: 0.94,
+    side: THREE.DoubleSide
+  });
   const fabric = new THREE.Mesh(
     fabricGeometry,
-    new THREE.MeshStandardMaterial({
-      color: markerColor,
-      emissive: markerColor,
-      emissiveIntensity: 0.16,
-      roughness: 0.74,
-      metalness: 0.02,
-      transparent: true,
-      opacity: 0.94,
-      side: THREE.DoubleSide
-    })
+    fabricMaterial
   );
   const flagTopY = isFps ? 7.8 : 7.55;
   fabric.position.set(0.16, flagTopY, 0);
@@ -298,22 +300,28 @@ if (session?.settings.gameMode === "flag" && session.flag) {
   );
   finial.position.y = 8.86;
   flagMarker.add(finial);
-  const objectiveRing = new THREE.Mesh(
-    new THREE.TorusGeometry(4.35, 0.14, 8, 32),
-    new THREE.MeshBasicMaterial({ color: markerColor, transparent: true, opacity: 0.62 })
-  );
+  const objectiveRingMaterial = new THREE.MeshBasicMaterial({ color: markerColor, transparent: true, opacity: 0.62 });
+  const objectiveRing = new THREE.Mesh(new THREE.TorusGeometry(4.35, 0.14, 8, 32), objectiveRingMaterial);
   objectiveRing.position.y = 0.23;
   objectiveRing.rotation.x = Math.PI / 2;
   flagMarker.add(objectiveRing);
-  const base = new THREE.Mesh(
-    new THREE.CylinderGeometry(1.05, 1.25, 0.18, 16),
-    new THREE.MeshStandardMaterial({ color: "#f8fafc", metalness: 0.5, roughness: 0.32, emissive: markerColor, emissiveIntensity: 0.12 })
-  );
+  const baseMaterial = new THREE.MeshStandardMaterial({ color: "#f8fafc", metalness: 0.5, roughness: 0.32, emissive: markerColor, emissiveIntensity: 0.12 });
+  const base = new THREE.Mesh(new THREE.CylinderGeometry(1.05, 1.25, 0.18, 16), baseMaterial);
   base.position.y = 0.1;
   flagMarker.add(base);
   const flagGlow = new THREE.PointLight(markerColor, activeQuality === "performance" ? 0 : 18, 42, 2);
   flagGlow.position.y = 5;
   flagMarker.add(flagGlow);
+  const updateFlagState = (state: FlagStateName) => {
+    const nextColor = state === "placed" ? "#facc15" : "#fb7185";
+    fabricMaterial.color.set(nextColor);
+    fabricMaterial.emissive.set(nextColor);
+    objectiveRingMaterial.color.set(nextColor);
+    baseMaterial.emissive.set(nextColor);
+    flagGlow.color.set(nextColor);
+  };
+  flagMarker.userData.updateFlagState = updateFlagState;
+  updateFlagState(session.flag.state);
   flagMarker.position.set(markerX, markerY, markerZ);
   scene.add(flagMarker);
 }

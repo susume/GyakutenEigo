@@ -21,6 +21,11 @@ export interface FirstPersonViewModel {
   muzzle: THREE.Object3D;
 }
 
+export interface FirstPersonWeaponViewModel {
+  weapon: THREE.Object3D;
+  muzzle: THREE.Object3D;
+}
+
 export interface CharacterFactoryOptions {
   loadDecalTexture?: (assetId: string) => Promise<THREE.Texture | null>;
 }
@@ -120,6 +125,7 @@ export class CharacterFactory {
     rotation: [number, number, number] = [0, 0, 0]
   ) {
     const mesh = new THREE.Mesh(geometry, material);
+    mesh.userData.preserveSharedResources = true;
     mesh.position.set(...position);
     mesh.scale.set(...scale);
     mesh.rotation.set(...rotation);
@@ -299,6 +305,20 @@ export class CharacterFactory {
     }, { showWeapon: input.showWeapon });
   }
 
+  private createFirstPersonWeaponFromMaterials(materials: CharacterMaterials, gear: string): FirstPersonWeaponViewModel {
+    const { weapon, muzzle } = createWeaponSet(materials, this.boxGeometry, gear);
+    const firstPerson = getWeaponMountTransform(gear).firstPerson;
+    weapon.position.set(...firstPerson.position);
+    weapon.rotation.set(...firstPerson.rotation);
+    weapon.scale.set(...firstPerson.scale);
+    return { weapon, muzzle };
+  }
+
+  createFirstPersonWeapon(team: Team, gear = "starter_blaster"): FirstPersonWeaponViewModel {
+    const appearance = resolveCharacterAppearance({ team, playerId: "local", gear, variant: "assault" });
+    return this.createFirstPersonWeaponFromMaterials(this.materialsFor(appearance), gear);
+  }
+
   createFirstPersonViewModel(team: Team, gear = "starter_blaster"): FirstPersonViewModel {
     const appearance = resolveCharacterAppearance({ team, playerId: "local", gear, variant: "assault" });
     const materials = this.materialsFor(appearance);
@@ -311,12 +331,8 @@ export class CharacterFactory {
     this.addShape(root, this.jointGeometry, materials.dark, [-0.24, -0.42, -0.42], [0.9, 0.9, 0.9]);
     this.addShape(root, this.jointGeometry, materials.dark, [0.36, -0.38, -0.38], [0.9, 0.9, 0.9]);
 
-    const { weapon, muzzle } = createWeaponSet(materials, this.boxGeometry, gear);
-    const firstPerson = getWeaponMountTransform(gear).firstPerson;
-    weapon.position.set(...firstPerson.position);
-    weapon.rotation.set(...firstPerson.rotation);
-    weapon.scale.set(...firstPerson.scale);
-    root.add(weapon);
-    return { root, weapon, muzzle };
+    const weaponModel = this.createFirstPersonWeaponFromMaterials(materials, gear);
+    root.add(weaponModel.weapon);
+    return { root, ...weaponModel };
   }
 }
