@@ -542,3 +542,39 @@ final result: passed
 No actionable P0, P1, or P2 issue was found in the color progression self-audit.
 
 final result: passed
+
+# Speaking Practice Student UI — Image-to-Code QA (2026-09-04)
+
+## Visual truth and scope
+
+- Source reference: `C:\Users\admin\Downloads\Student UI.png`.
+- The requested scope is the live student session at `/speak/session/:id`; the existing `/speak` home preview and teacher workspace remain on their existing compositions.
+- Implementation was inspected in the local in-app browser at `http://localhost:5173/speak/session/e07d013f-785f-4adb-ad82-4e3a70211dd8`.
+
+## Viewports and states checked
+
+- Reference-sized desktop: 1672 × 941 CSS px, ready state with the restaurant AI greeting visible.
+- Tablet: 1024 × 900 CSS px, no horizontal overflow and all primary controls remain visible.
+- Mobile: 768 × 1000 CSS px, single-column recomposition with a wrapping header and vertically ordered flow, transcript, controls, and utility rail.
+- The supplied reference is a mid-conversation state with a student response and pending AI turn; the implementation capture used the same restaurant activity in its initial ready state, so the transcript content count differs by state rather than by layout.
+
+## Fidelity and functionality
+
+- The desktop shell matches the reference's 80px header, 288px conversation-flow rail, 900px transcript column, 375px utility rail, 26px inter-column gaps, white bordered cards, pale blue bubbles, navy typography, blue microphone, teal timer progress, and bilingual copy.
+- Conversation Flow includes the five numbered bilingual steps, dashed connector, matching Lucide line icons, and the two-line Goal card.
+- Full transcript uses the existing AI portrait asset, localized restaurant role label, bilingual greeting translation, audio replay controls, and the existing live turn data.
+- Useful English preserves the activity expressions and adds functional phrase buttons that open the existing help dialog. See the menu opens a working menu popover. Notes is a labeled editable textarea.
+- Replay calls the existing browser TTS provider. The mic preserves the existing recording callback and now also responds to Spacebar when focus is not inside a form control.
+- Tap targets retain semantic buttons, visible focus styles, accessible labels, image alt text, and the existing finish/help/result behavior.
+
+## Verification
+
+- `npm run typecheck -w @quizstrike/web`: passed.
+- `npm run build -w @quizstrike/web`: passed with the existing Vite large-chunk advisory.
+- `git diff --check`: passed; only the repository's existing LF/CRLF normalization warnings remain.
+- Browser interaction checks: menu open/close, useful-expression help open/close, and notes editing passed in the in-app browser.
+- Responsive screenshots showed no overlap or clipped primary action at the checked tablet and mobile widths.
+
+No actionable P0, P1, or P2 visual or accessibility issue was found for the requested student session redesign.
+
+final result: passed
