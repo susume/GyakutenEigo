@@ -99,6 +99,7 @@ test("invalid backend origins fail closed", async () => {
 
 test("Socket.IO polling can outlive the Engine.IO heartbeat window", () => {
   assert.equal(getProxyTimeoutMs("/api/health"), 25_000);
+  assert.equal(getProxyTimeoutMs("/api/speaking/sessions/session-1/turn"), 45_000);
   assert.equal(getProxyTimeoutMs("/socket.io/"), 60_000);
   assert.ok(getProxyTimeoutMs("/socket.io/") > 45_000);
 });

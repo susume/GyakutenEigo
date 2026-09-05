@@ -83,6 +83,10 @@ export const fetchFromApiCandidates = async ({
         url
       };
     } catch (error) {
+      // An explicit caller cancellation is final. Retrying another API
+      // candidate with an already-aborted signal creates noisy unmount errors
+      // and can turn navigation into a false connection failure.
+      if (options?.signal?.aborted) throw error;
       lastNetworkError = error;
     }
   }

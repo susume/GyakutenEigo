@@ -151,6 +151,13 @@ enum SpeakingTurnSpeaker {
   student
 }
 
+enum SpeakingEvaluationJobStatus {
+  queued
+  running
+  completed
+  failed
+}
+
 model User {
   id                 String              @id @default(cuid())
   name               String
@@ -316,6 +323,7 @@ model SpeakingActivity {
   status                SpeakingActivityStatus @default(draft)
   identifierMode        SpeakingIdentifierMode @default(nickname)
   targetExpressionsJson Json                   @default("[]")
+  scenarioResourcesJson Json                   @default("{}")
   rubric                SpeakingRubric[]
   sessions              SpeakingSession[]
   participants          SpeakingParticipant[]
@@ -349,6 +357,7 @@ model SpeakingSession {
   pausedAt             DateTime?
   endedAt              DateTime?
   expiresAt            DateTime
+  revision             Int                   @default(0)
   activitySnapshotJson Json
   participants         SpeakingParticipant[]
   turns                SpeakingTurn[]
@@ -365,17 +374,22 @@ model SpeakingParticipant {
   session            SpeakingSession           @relation(fields: [sessionId], references: [id], onDelete: Cascade)
   displayIdentifier  String?
   anonymousTokenHash String                    @unique
+  joinRequestId      String?
   startedAt          DateTime?
   finishedAt         DateTime?
+  readyAt            DateTime?
+  lastSeenAt          DateTime?
   pausedDurationMs   Int                       @default(0)
   status             SpeakingParticipantStatus @default(joined)
   helpCount          Int                       @default(0)
   helpPending        Boolean                   @default(false)
   turns              SpeakingTurn[]
   evaluation         SpeakingEvaluation?
+  evaluationJob      SpeakingEvaluationJob?
 
   @@index([activityId, status])
   @@index([sessionId, status])
+  @@unique([sessionId, joinRequestId])
 }
 
 model SpeakingTurn {
@@ -409,6 +423,22 @@ model SpeakingEvaluation {
   usefulEnglishJson Json
   overallMessage    String
   createdAt         DateTime               @default(now())
+}
+
+model SpeakingEvaluationJob {
+  id             String                      @id @default(cuid())
+  participantId  String                      @unique
+  participant    SpeakingParticipant         @relation(fields: [participantId], references: [id], onDelete: Cascade)
+  status         SpeakingEvaluationJobStatus @default(queued)
+  attempt        Int                         @default(0)
+  queuedAt       DateTime                    @default(now())
+  startedAt      DateTime?
+  finishedAt     DateTime?
+  leaseUntil     DateTime?
+  lastErrorCode  String?
+  updatedAt      DateTime                    @updatedAt
+
+  @@index([status, updatedAt])
 }
 
 model StudySetUsage {

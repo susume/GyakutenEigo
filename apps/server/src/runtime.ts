@@ -2759,7 +2759,11 @@ registerSpeakingRoutes(app, {
   id,
   environment: config.environment,
   prisma,
-  providers: createSpeakingProviders()
+  providers: createSpeakingProviders(),
+  // Text turns are a deliberate local/mock load-test seam only. Never expose
+  // it from a production process, even if an operator accidentally sets the
+  // load-test flag there.
+  allowTextInput: !config.isProduction && process.env.SPEAKING_LOAD_TEXT === "true"
 });
 
 registerCompetitionRoutes(app, {
@@ -4034,6 +4038,7 @@ const startServer = async () => {
 
 let isShuttingDown = false;
 const shutdown = (signal: string) => {
+  app.emit("speaking:shutdown");
   if (isShuttingDown) return;
   isShuttingDown = true;
   isDraining = true;

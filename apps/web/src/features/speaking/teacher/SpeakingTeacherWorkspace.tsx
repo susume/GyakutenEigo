@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useState, type FormEvent } from "react";
+import { useCallback, useEffect, useRef, useState, type FormEvent } from "react";
 import {
   ArrowLeft,
   ArrowRight,
@@ -31,6 +31,7 @@ import {
   SPEAKING_LEVEL_LABELS,
   SPEAKING_LEVELS,
   speakingFeedbackCopy,
+  speakingScenarioResources,
   type SpeakingActivity,
   type SpeakingCreateActivityInput,
   type SpeakingDifficulty,
@@ -40,6 +41,7 @@ import {
   type SpeakingNativeLanguage,
   type SpeakingParticipant,
   type SpeakingRubricCriterion,
+  type SpeakingScenarioResources,
   type SpeakingSession,
   type SpeakingTurn,
 } from "@quizstrike/shared";
@@ -78,6 +80,37 @@ type SessionResultsResponse = {
     helpCount: number;
     evaluation?: SpeakingEvaluation;
   }>;
+};
+
+type SpeakingRosterStatus = "joined" | "ready" | "practicing" | "processing" | "evaluating" | "finished" | "error";
+type SpeakingRosterResponse = {
+  session: SpeakingSession;
+  counts: Record<SpeakingRosterStatus, number>;
+  items: Array<{
+    participant: SpeakingParticipant;
+    status: SpeakingRosterStatus;
+    latestActivityAt?: string;
+    latestTurnSpeaker?: "ai" | "student";
+  }>;
+};
+
+const ROSTER_STATUS_LABELS: Record<SpeakingRosterStatus, string> = {
+  joined: "Joined",
+  ready: "Ready",
+  practicing: "Practicing",
+  processing: "Processing",
+  evaluating: "Evaluating",
+  finished: "Finished",
+  error: "Needs attention"
+};
+
+const rosterStatusOrder: SpeakingRosterStatus[] = ["joined", "ready", "practicing", "processing", "evaluating", "finished", "error"];
+
+const formatRosterActivity = (value?: string) => {
+  if (!value) return "No activity yet";
+  const date = new Date(value);
+  if (Number.isNaN(date.getTime())) return "No activity yet";
+  return date.toLocaleTimeString([], { hour: "numeric", minute: "2-digit" });
 };
 
 const normalizePath = (path: string) =>
@@ -433,6 +466,18 @@ const draftFromTemplate = (
   identifierMode: template.identifierMode,
   targetExpressions: [...template.targetExpressions],
   rubric: template.rubric.map((criterion) => ({ ...criterion })),
+  scenarioResources: (() => {
+    const resources = speakingScenarioResources(template.scenarioResources);
+    return {
+      openingLine: resources.openingLine,
+      studentGoal: resources.studentGoal,
+      suggestedSteps: [...resources.suggestedSteps],
+      usefulVocabulary: [...resources.usefulVocabulary],
+      referenceItems: resources.referenceItems.map((item) => ({ ...item })),
+      ...(resources.imageSrc ? { imageSrc: resources.imageSrc } : {}),
+      ...(resources.imageAlt ? { imageAlt: resources.imageAlt } : {})
+    };
+  })(),
 });
 const SPEAKING_DURATION_PRESETS = [120, 180, 300, 420] as const;
 
@@ -503,6 +548,8 @@ function SpeakingCreatePage({
   const [draft, setDraft] = useState<SpeakingCreateActivityInput>(() =>
     draftFromTemplate(SPEAKING_TEMPLATES[1]!),
   );
+  const expressionIds = useRef<string[]>([]);
+  const expressionId = (index: number) => expressionIds.current[index] ?? (expressionIds.current[index] = crypto.randomUUID());
   const [newExpression, setNewExpression] = useState("");
   const [formError, setFormError] = useState("");
   const [saving, setSaving] = useState(false);
@@ -511,6 +558,9 @@ function SpeakingCreatePage({
     key: K,
     value: SpeakingCreateActivityInput[K],
   ) => setDraft((current) => ({ ...current, [key]: value }));
+  const resourceDraft = speakingScenarioResources(draft.scenarioResources);
+  const updateResources = (patch: SpeakingScenarioResources) =>
+    update("scenarioResources", { ...resourceDraft, ...patch });
   const updateCriterion = (
     index: number,
     patch: Partial<SpeakingRubricCriterion>,
@@ -707,6 +757,55 @@ function SpeakingCreatePage({
                   rows={3}
                 />
               </label>
+              <div className="speaking-span-2 speaking-resource-editor">
+                <div className="speaking-resource-editor-heading">
+                  <div>
+                    <span className="speaking-card-kicker">Scenario support</span>
+                    <p>These resources are saved with the activity and shown to students as optional guidance.</p>
+                  </div>
+                </div>
+                <div className="speaking-resource-grid">
+                  <label>
+                    Opening line
+                    <input
+                      value={resourceDraft.openingLine}
+                      onChange={(event) => updateResources({ openingLine: event.target.value })}
+                    />
+                  </label>
+                  <label>
+                    Student goal
+                    <textarea
+                      rows={2}
+                      value={resourceDraft.studentGoal}
+                      onChange={(event) => updateResources({ studentGoal: event.target.value })}
+                    />
+                  </label>
+                  <label>
+                    Suggested steps <small>(one per line)</small>
+                    <textarea
+                      rows={5}
+                      value={resourceDraft.suggestedSteps.join("\n")}
+                      onChange={(event) => updateResources({ suggestedSteps: event.target.value.split(/\r?\n/u) })}
+                    />
+                  </label>
+                  <label>
+                    Useful vocabulary <small>(one per line)</small>
+                    <textarea
+                      rows={5}
+                      value={resourceDraft.usefulVocabulary.join("\n")}
+                      onChange={(event) => updateResources({ usefulVocabulary: event.target.value.split(/\r?\n/u) })}
+                    />
+                  </label>
+                  <label className="speaking-span-2">
+                    Reference material <small>(one item per line: label | detail)</small>
+                    <textarea
+                      rows={3}
+                      value={resourceDraft.referenceItems.map((item) => item.detail ? `${item.label} | ${item.detail}` : item.label).join("\n")}
+                      onChange={(event) => updateResources({ referenceItems: event.target.value.split(/\r?\n/u).map((line) => { const [label, ...detail] = line.split("|"); return { label: label?.trim() ?? "", ...(detail.join("|").trim() ? { detail: detail.join("|").trim() } : {}) }; }) })}
+                    />
+                  </label>
+                </div>
+              </div>
             </div>
           </section>
           <section className="speaking-builder-card">
@@ -721,11 +820,12 @@ function SpeakingCreatePage({
               {draft.targetExpressions.map((expression, index) => (
                 <div
                   className="speaking-expression-chip"
-                  key={`${expression}-${index}`}
+                  key={expressionId(index)}
                 >
                   <MessageCircle size={16} aria-hidden="true" />
                   <input
                     value={expression}
+                    aria-label={`Target expression ${index + 1}`}
                     onChange={(event) =>
                       update(
                         "targetExpressions",
@@ -737,14 +837,10 @@ function SpeakingCreatePage({
                   />
                   <button
                     type="button"
-                    onClick={() =>
-                      update(
-                        "targetExpressions",
-                        draft.targetExpressions.filter(
-                          (_, candidateIndex) => candidateIndex !== index,
-                        ),
-                      )
-                    }
+                    onClick={() => {
+                      expressionIds.current.splice(index, 1);
+                      update("targetExpressions", draft.targetExpressions.filter((_, candidateIndex) => candidateIndex !== index));
+                    }}
                     aria-label={`Remove ${expression}`}
                   >
                     <X size={15} aria-hidden="true" />
@@ -754,6 +850,7 @@ function SpeakingCreatePage({
               <div className="speaking-add-expression">
                 <input
                   value={newExpression}
+                  aria-label="New target expression"
                   onChange={(event) => setNewExpression(event.target.value)}
                   onKeyDown={(event) => {
                     if (event.key === "Enter") {
@@ -998,6 +1095,11 @@ function SpeakingActivityDetailPage({
   const [activity, setActivity] = useState<SpeakingActivity>();
   const [sessions, setSessions] = useState<SpeakingSession[]>([]);
   const [error, setError] = useState("");
+  const [roster, setRoster] = useState<SpeakingRosterResponse>();
+  const [rosterSearch, setRosterSearch] = useState("");
+  const [rosterFilter, setRosterFilter] = useState<SpeakingRosterStatus | "all">("all");
+  const [rosterLoading, setRosterLoading] = useState(false);
+  const [rosterError, setRosterError] = useState("");
   const load = useCallback(async () => {
     try {
       const [activityPayload, sessionPayload] = await Promise.all([
@@ -1017,6 +1119,46 @@ function SpeakingActivityDetailPage({
   }, [load]);
   const [copied, setCopied] = useState(false);
   const [working, setWorking] = useState(false);
+  const latestSessionId = sessions[0]?.id;
+  const loadRoster = useCallback(async (sessionId: string, signal?: AbortSignal) => {
+    try {
+      const next = await speakingApi.roster(sessionId, signal) as SpeakingRosterResponse;
+      if (signal?.aborted) return;
+      setRoster(next);
+      setRosterError("");
+    } catch (loadError) {
+      if (signal?.aborted) return;
+      setRosterError(getErrorMessage(loadError, "The live roster could not be loaded."));
+    } finally {
+      if (!signal?.aborted) setRosterLoading(false);
+    }
+  }, []);
+  useEffect(() => {
+    if (!latestSessionId) {
+      setRoster(undefined);
+      setRosterLoading(false);
+      setRosterError("");
+      return;
+    }
+    const controller = new AbortController();
+    let inFlight = false;
+    setRosterLoading(true);
+    const poll = async () => {
+      if (inFlight || controller.signal.aborted) return;
+      inFlight = true;
+      try {
+        await loadRoster(latestSessionId, controller.signal);
+      } finally {
+        inFlight = false;
+      }
+    };
+    void poll();
+    const timerId = window.setInterval(() => void poll(), 5_000);
+    return () => {
+      controller.abort();
+      window.clearInterval(timerId);
+    };
+  }, [latestSessionId, loadRoster]);
   if (!activity)
     return error ? (
       <MissingSpeakingSession navigate={navigate} message={error} />
@@ -1300,6 +1442,17 @@ function SpeakingActivityDetailPage({
               </button>
             )}
           </div>
+          {latest && (
+            <SpeakingRosterCard
+              roster={roster}
+              loading={rosterLoading}
+              error={rosterError}
+              search={rosterSearch}
+              filter={rosterFilter}
+              onSearch={setRosterSearch}
+              onFilter={setRosterFilter}
+            />
+          )}
           {sessions.length > 1 && (
             <section className="speaking-share-card speaking-previous-sessions">
               <div className="speaking-share-card-heading">
@@ -1334,6 +1487,97 @@ function SpeakingActivityDetailPage({
   );
 }
 
+function SpeakingRosterCard({
+  roster,
+  loading,
+  error,
+  search,
+  filter,
+  onSearch,
+  onFilter,
+}: {
+  roster?: SpeakingRosterResponse;
+  loading: boolean;
+  error: string;
+  search: string;
+  filter: SpeakingRosterStatus | "all";
+  onSearch: (value: string) => void;
+  onFilter: (value: SpeakingRosterStatus | "all") => void;
+}) {
+  const query = search.trim().toLocaleLowerCase();
+  const items = (roster?.items ?? []).filter((item) => {
+    const display = item.participant.displayIdentifier ?? "Anonymous student";
+    return (filter === "all" || item.status === filter) &&
+      (!query || display.toLocaleLowerCase().includes(query));
+  });
+  return (
+    <section className="speaking-roster-card" aria-labelledby="speaking-roster-title" aria-live="polite">
+      <div className="speaking-roster-heading">
+        <div>
+          <span className="speaking-card-kicker">Live classroom</span>
+          <h2 id="speaking-roster-title">Who is ready to speak?</h2>
+          <p>{roster ? `${roster.items.length} students connected` : "The roster will update as students join."}</p>
+        </div>
+        <span className={`speaking-status-pill speaking-status-${roster?.session.status ?? "ready"}`}>
+          {roster?.session.status ?? "loading"}
+        </span>
+      </div>
+      <div className="speaking-roster-counts" aria-label="Roster counts">
+        {rosterStatusOrder.map((status) => (
+          <div className="speaking-roster-count" key={status}>
+            <strong>{roster?.counts[status] ?? 0}</strong>
+            <span>{ROSTER_STATUS_LABELS[status]}</span>
+          </div>
+        ))}
+      </div>
+      <div className="speaking-roster-toolbar">
+        <label>
+          <span className="sr-only">Search classroom roster</span>
+          <input
+            aria-label="Search classroom roster"
+            value={search}
+            onChange={(event) => onSearch(event.target.value)}
+            placeholder="Search students"
+          />
+        </label>
+        <label>
+          <span className="sr-only">Filter classroom roster</span>
+          <select
+            aria-label="Filter classroom roster"
+            value={filter}
+            onChange={(event) => onFilter(event.target.value as SpeakingRosterStatus | "all")}
+          >
+            <option value="all">All statuses</option>
+            {rosterStatusOrder.map((status) => <option key={status} value={status}>{ROSTER_STATUS_LABELS[status]}</option>)}
+          </select>
+        </label>
+        {loading && <span className="speaking-roster-refreshing"><LoaderCircle size={15} className="speaking-spin" aria-hidden="true" /> Updating</span>}
+      </div>
+      {error && !roster ? (
+        <p className="speaking-error" role="alert">{error}</p>
+      ) : !roster && loading ? (
+        <p className="speaking-roster-empty">Loading live roster…</p>
+      ) : items.length ? (
+        <div className="speaking-roster-list" role="list">
+          {items.map((item, index) => {
+            const display = item.participant.displayIdentifier ?? `Anonymous student ${index + 1}`;
+            return (
+              <div className="speaking-roster-row" role="listitem" key={item.participant.id}>
+                <span className={`speaking-roster-status-dot status-${item.status}`} aria-hidden="true" />
+                <strong>{display}</strong>
+                <span className={`speaking-roster-status status-${item.status}`}>{ROSTER_STATUS_LABELS[item.status]}</span>
+                <time dateTime={item.latestActivityAt}>{formatRosterActivity(item.latestActivityAt)}</time>
+              </div>
+            );
+          })}
+        </div>
+      ) : (
+        <p className="speaking-roster-empty">No students match this view.</p>
+      )}
+    </section>
+  );
+}
+
 function SpeakingResultsPage({
   navigate,
   activityId,
@@ -1349,6 +1593,9 @@ function SpeakingResultsPage({
   const [payload, setPayload] = useState<SessionResultsResponse>();
   const [error, setError] = useState("");
   const [loadingResults, setLoadingResults] = useState(false);
+  const [resultsSearch, setResultsSearch] = useState("");
+  const [resultsFilter, setResultsFilter] = useState<SpeakingParticipant["status"] | "all">("all");
+  const [refreshNonce, setRefreshNonce] = useState(0);
   useEffect(() => {
     let cancelled = false;
     setError("");
@@ -1380,32 +1627,52 @@ function SpeakingResultsPage({
       cancelled = true;
     };
   }, [activityId]);
+  const loadResults = useCallback(async (id: string, signal: AbortSignal) => {
+    try {
+      const next = await speakingApi.sessionResults(id, signal);
+      if (signal.aborted) return;
+      setPayload(next as SessionResultsResponse);
+      setError("");
+    } catch (loadError) {
+      if (!signal.aborted)
+        setError(getErrorMessage(loadError, "Results could not be loaded."));
+    } finally {
+      if (!signal.aborted) setLoadingResults(false);
+    }
+  }, []);
   useEffect(() => {
     if (!sessionId) {
       setPayload(undefined);
       setLoadingResults(false);
       return;
     }
-    let cancelled = false;
+    const controller = new AbortController();
+    let inFlight = false;
     setError("");
     setPayload(undefined);
     setLoadingResults(true);
-    void speakingApi
-      .sessionResults(sessionId)
-      .then((next) => {
-        if (!cancelled) setPayload(next as SessionResultsResponse);
-      })
-      .catch((loadError) => {
-        if (!cancelled)
-          setError(getErrorMessage(loadError, "Results could not be loaded."));
-      })
-      .finally(() => {
-        if (!cancelled) setLoadingResults(false);
-      });
-    return () => {
-      cancelled = true;
+    const poll = async () => {
+      if (inFlight || controller.signal.aborted) return;
+      inFlight = true;
+      try {
+        await loadResults(sessionId, controller.signal);
+      } finally {
+        inFlight = false;
+      }
     };
-  }, [sessionId]);
+    void poll();
+    const timerId = window.setInterval(() => void poll(), 5_000);
+    return () => {
+      controller.abort();
+      window.clearInterval(timerId);
+    };
+  }, [loadResults, refreshNonce, sessionId]);
+  const resultQuery = resultsSearch.trim().toLocaleLowerCase();
+  const filteredResults = (payload?.items ?? []).filter((item) => {
+    const display = item.participant.displayIdentifier ?? "Anonymous student";
+    return (resultsFilter === "all" || item.status === resultsFilter) &&
+      (!resultQuery || display.toLocaleLowerCase().includes(resultQuery));
+  });
   if (error && !activity)
     return <MissingSpeakingSession navigate={navigate} message={error} />;
   if (!activity || (sessionId && loadingResults)) return <TeacherLoading />;
@@ -1458,6 +1725,37 @@ function SpeakingResultsPage({
               {error}
             </p>
           )}
+          {payload && sessions.length > 0 && (
+            <div className="speaking-results-toolbar">
+              <label>
+                <span className="sr-only">Search learning results</span>
+                <input
+                  aria-label="Search learning results"
+                  value={resultsSearch}
+                  onChange={(event) => setResultsSearch(event.target.value)}
+                  placeholder="Search students"
+                />
+              </label>
+              <label>
+                <span className="sr-only">Filter learning results</span>
+                <select
+                  aria-label="Filter learning results"
+                  value={resultsFilter}
+                  onChange={(event) => setResultsFilter(event.target.value as SpeakingParticipant["status"] | "all")}
+                >
+                  <option value="all">All statuses</option>
+                  <option value="joined">Joined</option>
+                  <option value="in_progress">Practicing</option>
+                  <option value="evaluating">Evaluating</option>
+                  <option value="completed">Completed</option>
+                  <option value="error">Needs attention</option>
+                </select>
+              </label>
+              <button type="button" className="speaking-outline-button" onClick={() => setRefreshNonce((current) => current + 1)}>
+                Refresh
+              </button>
+            </div>
+          )}
           {sessions.length === 0 ? (
             <div className="speaking-empty-card">
               <Trophy size={32} aria-hidden="true" />
@@ -1488,7 +1786,7 @@ function SpeakingResultsPage({
                 Open activity
               </button>
             </div>
-          ) : payload?.items.length ? (
+          ) : payload?.items.length ? filteredResults.length ? (
             <div className="speaking-results-table">
               <div className="speaking-results-table-head">
                 <span>Participant</span>
@@ -1497,7 +1795,7 @@ function SpeakingResultsPage({
                 <span>Support</span>
                 <span />
               </div>
-              {payload.items.map((item) => (
+              {filteredResults.map((item) => (
                 <button
                   type="button"
                   className="speaking-results-table-row"
@@ -1549,6 +1847,12 @@ function SpeakingResultsPage({
                   </span>
                 </button>
               ))}
+            </div>
+          ) : (
+            <div className="speaking-empty-card">
+              <Users size={32} aria-hidden="true" />
+              <h2>No students match this view</h2>
+              <p>Try clearing the search or choosing another status.</p>
             </div>
           ) : (
             <div className="speaking-empty-card">

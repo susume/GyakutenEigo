@@ -6,9 +6,12 @@ import {
   type SpeakingActivity,
   type SpeakingCreateActivityInput,
   type SpeakingEvaluation,
+  type SpeakingEvaluationJob,
+  type SpeakingEvaluationJobStatus,
   type SpeakingParticipant,
   type SpeakingParticipantStatus,
   type SpeakingRubricCriterion,
+  type SpeakingScenarioResources,
   type SpeakingSession,
   type SpeakingSessionStatus,
   type SpeakingTurn
@@ -27,12 +30,24 @@ export type SpeakingActivitySnapshot = Pick<
   | "identifierMode"
   | "targetExpressions"
   | "rubric"
+  | "scenarioResources"
 >;
 
 export type StoredSpeakingParticipant = SpeakingParticipant & {
   tokenHash: string;
   helpPending: boolean;
+  joinRequestId?: string;
 };
+
+export type SpeakingRosterItem = {
+  participant: SpeakingParticipant;
+  latestActivityAt?: string;
+  latestTurnSpeaker?: "ai" | "student";
+};
+
+export class SpeakingParticipantAdmissionError extends Error {
+  constructor(public readonly code: "full" | "duplicate") { super(code); }
+}
 
 export type SpeakingSessionAccess = {
   session: SpeakingSession;
@@ -55,6 +70,8 @@ export type SpeakingTurnPair = {
 const turnPairForRequest = (turns: SpeakingTurn[], requestId: string): SpeakingTurnPair | undefined => {
   const studentIndex = turns.findIndex((turn) => turn.speaker === "student" && turn.requestId === requestId);
   if (studentIndex < 0) return undefined;
+  const explicitlyLinkedAiTurn = turns.find((turn) => turn.speaker === "ai" && turn.requestId === `${requestId}:ai`);
+  if (explicitlyLinkedAiTurn) return { studentTurn: turns[studentIndex]!, aiTurn: explicitlyLinkedAiTurn };
   const followingTurns = turns.slice(studentIndex + 1);
   const nextStudentIndex = followingTurns.findIndex((turn) => turn.speaker === "student");
   const aiTurn = followingTurns.slice(0, nextStudentIndex < 0 ? followingTurns.length : nextStudentIndex).find((turn) => turn.speaker === "ai");
@@ -86,11 +103,18 @@ export interface SpeakingRepository {
     session: SpeakingSession;
     displayIdentifier?: string;
     tokenHash: string;
+    joinRequestId?: string;
+    maxParticipants?: number;
   }): Promise<SpeakingParticipant>;
+  findParticipantByJoinRequest(sessionId: string, joinRequestId: string): Promise<SpeakingParticipant | undefined>;
+  countParticipants(sessionId: string): Promise<number>;
+  listRoster(sessionId: string): Promise<SpeakingRosterItem[]>;
   getParticipant(id: string): Promise<StoredSpeakingParticipant | undefined>;
   getParticipantAccessByTokenHash(tokenHash: string): Promise<(SpeakingSessionAccess & { participant: StoredSpeakingParticipant }) | undefined>;
   startParticipant(participantId: string, startedAt: string): Promise<SpeakingParticipant | undefined>;
-  updateParticipant(participantId: string, patch: { status?: SpeakingParticipantStatus; finishedAt?: string | null; helpPending?: boolean; helpCount?: number }): Promise<SpeakingParticipant | undefined>;
+  markParticipantReady(participantId: string, readyAt: string): Promise<SpeakingParticipant | undefined>;
+  touchParticipant(participantId: string, lastSeenAt: string): Promise<SpeakingParticipant | undefined>;
+  updateParticipant(participantId: string, patch: { status?: SpeakingParticipantStatus; finishedAt?: string | null; helpPending?: boolean; helpCount?: number; readyAt?: string | null; lastSeenAt?: string | null }): Promise<SpeakingParticipant | undefined>;
   updateSession(sessionId: string, patch: { status?: SpeakingSessionStatus; startedAt?: string | null; pausedAt?: string | null; endedAt?: string | null }): Promise<SpeakingSession | undefined>;
   /** Finalize a currently open pause and add its duration to affected participants. */
   finalizeSessionPause(sessionId: string, pausedUntil: string): Promise<SpeakingSession | undefined>;
@@ -99,6 +123,12 @@ export interface SpeakingRepository {
   /** sessionId is supplied by the already-authorized route to avoid a redundant participant lookup. */
   appendTurn(input: Omit<SpeakingTurn, "id"> & { id: string; requestId?: string; sessionId?: string }): Promise<SpeakingTurn>;
   saveEvaluation(participantId: string, evaluation: SpeakingEvaluation): Promise<SpeakingEvaluation>;
+  getEvaluationJob(participantId: string): Promise<SpeakingEvaluationJob | undefined>;
+  upsertEvaluationJob(participantId: string, input: { id: string; queuedAt: string; updatedAt: string; status?: SpeakingEvaluationJobStatus; attempt?: number }): Promise<SpeakingEvaluationJob>;
+  claimEvaluationJob(participantId: string, startedAt: string, leaseUntil: string): Promise<SpeakingEvaluationJob | undefined>;
+  settleEvaluationJob(participantId: string, attempt: number, now: string, outcome: { evaluation?: SpeakingEvaluation; errorCode?: string }): Promise<boolean>;
+  recoverableEvaluationParticipants(now: string): Promise<string[]>;
+  updateEvaluationJob(participantId: string, patch: { status?: SpeakingEvaluationJobStatus; startedAt?: string | null; finishedAt?: string | null; leaseUntil?: string | null; lastErrorCode?: string | null; updatedAt: string }): Promise<SpeakingEvaluationJob | undefined>;
   getResult(participantId: string): Promise<SpeakingResultRecord | undefined>;
   listResults(activityId: string, sessionId: string, teacherId: string): Promise<Array<SpeakingResultRecord & { overallScore?: number }>>;
 }
@@ -108,6 +138,7 @@ export type InMemorySpeakingState = {
   participants: Map<string, StoredSpeakingParticipant>;
   sessions: Map<string, InMemorySession>;
   tokenToParticipant: Map<string, string>;
+  evaluationJobs: Map<string, SpeakingEvaluationJob>;
 };
 
 export type InMemorySession = SpeakingSession & {
@@ -120,7 +151,8 @@ export const createInMemorySpeakingState = (): InMemorySpeakingState => ({
   activities: new Map(),
   participants: new Map(),
   sessions: new Map(),
-  tokenToParticipant: new Map()
+  tokenToParticipant: new Map(),
+  evaluationJobs: new Map()
 });
 
 export const hashSpeakingToken = (token: string) => createHash("sha256").update(token).digest("hex");
@@ -136,20 +168,30 @@ export const snapshotActivity = (activity: SpeakingActivity): SpeakingActivitySn
   durationSeconds: activity.durationSeconds,
   identifierMode: activity.identifierMode,
   targetExpressions: [...activity.targetExpressions],
-  rubric: activity.rubric.map((criterion) => ({ ...criterion }))
+  rubric: activity.rubric.map((criterion) => ({ ...criterion })),
+  ...(activity.scenarioResources ? { scenarioResources: cloneScenarioResources(activity.scenarioResources) } : {})
 });
+
+const cloneScenarioResources = (resources?: SpeakingScenarioResources) => resources ? ({
+  ...resources,
+  ...(resources.suggestedSteps ? { suggestedSteps: [...resources.suggestedSteps] } : {}),
+  ...(resources.usefulVocabulary ? { usefulVocabulary: [...resources.usefulVocabulary] } : {}),
+  ...(resources.referenceItems ? { referenceItems: resources.referenceItems.map((item) => ({ ...item })) } : {})
+}) : undefined;
 
 const activityFromSnapshot = (activity: SpeakingActivity, snapshot: SpeakingActivitySnapshot): SpeakingActivity => ({
   ...activity,
   ...snapshot,
   targetExpressions: [...snapshot.targetExpressions],
-  rubric: snapshot.rubric.map((criterion) => ({ ...criterion }))
+  rubric: snapshot.rubric.map((criterion) => ({ ...criterion })),
+  ...(snapshot.scenarioResources ? { scenarioResources: cloneScenarioResources(snapshot.scenarioResources) } : {})
 });
 
 const cloneActivity = (activity: SpeakingActivity): SpeakingActivity => ({
   ...activity,
   targetExpressions: [...activity.targetExpressions],
-  rubric: activity.rubric.map((criterion) => ({ ...criterion }))
+  rubric: activity.rubric.map((criterion) => ({ ...criterion })),
+  ...(activity.scenarioResources ? { scenarioResources: cloneScenarioResources(activity.scenarioResources) } : {})
 });
 
 const cloneSession = (session: SpeakingSession): SpeakingSession => ({
@@ -161,13 +203,16 @@ const cloneSession = (session: SpeakingSession): SpeakingSession => ({
   ...(session.startedAt ? { startedAt: session.startedAt } : {}),
   ...(session.pausedAt ? { pausedAt: session.pausedAt } : {}),
   ...(session.endedAt ? { endedAt: session.endedAt } : {}),
-  expiresAt: session.expiresAt
+  expiresAt: session.expiresAt,
+  ...(session.revision === undefined ? {} : { revision: session.revision })
 });
 
 const cloneParticipant = (participant: SpeakingParticipant): SpeakingParticipant => ({ ...participant });
 
+const cloneEvaluationJob = (job: SpeakingEvaluationJob): SpeakingEvaluationJob => ({ ...job });
+
 const participantPublic = (participant: StoredSpeakingParticipant): SpeakingParticipant => {
-  const { tokenHash: _tokenHash, helpPending: _helpPending, ...publicParticipant } = participant;
+  const { tokenHash: _tokenHash, helpPending: _helpPending, joinRequestId: _joinRequestId, ...publicParticipant } = participant;
   return cloneParticipant(publicParticipant);
 };
 
@@ -188,6 +233,7 @@ const normalizeActivityInput = (input: SpeakingCreateActivityInput, id: string, 
   // Persist the complete teacher configuration. Evaluation filters enabled
   // criteria later, while historical session snapshots retain this exact list.
   rubric: input.rubric.slice(0, SPEAKING_LIMITS.rubricCriteria).map((criterion) => ({ ...criterion })),
+  ...(input.scenarioResources ? { scenarioResources: cloneScenarioResources(input.scenarioResources) } : {}),
   createdAt: now,
   updatedAt: now
 });
@@ -198,6 +244,7 @@ const participantFromInput = (input: {
   session: SpeakingSession;
   displayIdentifier?: string;
   tokenHash: string;
+  joinRequestId?: string;
 }): StoredSpeakingParticipant => ({
   id: input.id,
   activityId: input.activity.id,
@@ -208,7 +255,8 @@ const participantFromInput = (input: {
   status: "joined",
   helpCount: 0,
   tokenHash: input.tokenHash,
-  helpPending: false
+  helpPending: false,
+  ...(input.joinRequestId ? { joinRequestId: input.joinRequestId } : {})
 });
 
 export class InMemorySpeakingRepository implements SpeakingRepository {
@@ -257,6 +305,7 @@ export class InMemorySpeakingRepository implements SpeakingRepository {
       status: "ready",
       createdAt: input.createdAt,
       expiresAt: input.expiresAt,
+      revision: 0,
       activitySnapshot: snapshotActivity(input.activity),
       turns: [],
       evaluations: new Map()
@@ -287,11 +336,41 @@ export class InMemorySpeakingRepository implements SpeakingRepository {
       .map(cloneSession);
   }
 
-  async createParticipant(input: { id: string; activity: SpeakingActivity; session: SpeakingSession; displayIdentifier?: string; tokenHash: string }) {
+  async createParticipant(input: { id: string; activity: SpeakingActivity; session: SpeakingSession; displayIdentifier?: string; tokenHash: string; joinRequestId?: string; maxParticipants?: number }) {
+    const existing = [...this.state.participants.values()].filter((participant) => participant.sessionId === input.session.id);
+    if (input.joinRequestId && existing.some((participant) => participant.joinRequestId === input.joinRequestId)) throw new SpeakingParticipantAdmissionError("duplicate");
+    if (input.maxParticipants !== undefined && existing.length >= input.maxParticipants) throw new SpeakingParticipantAdmissionError("full");
     const participant = participantFromInput(input);
     this.state.participants.set(participant.id, participant);
     this.state.tokenToParticipant.set(participant.tokenHash, participant.id);
+    const session = this.state.sessions.get(input.session.id);
+    if (session) session.revision = (session.revision ?? 0) + 1;
     return participantPublic(participant);
+  }
+
+  async findParticipantByJoinRequest(sessionId: string, joinRequestId: string) {
+    const participant = [...this.state.participants.values()].find((candidate) => candidate.sessionId === sessionId && candidate.joinRequestId === joinRequestId);
+    return participant ? participantPublic(participant) : undefined;
+  }
+
+  async countParticipants(sessionId: string) {
+    return [...this.state.participants.values()].filter((participant) => participant.sessionId === sessionId).length;
+  }
+
+  async listRoster(sessionId: string) {
+    return [...this.state.participants.values()]
+      .filter((participant) => participant.sessionId === sessionId)
+      .sort((left, right) => left.id.localeCompare(right.id))
+      .map((participant) => {
+        const session = this.state.sessions.get(sessionId);
+        const latestTurn = session?.turns
+          .filter((turn) => turn.participantId === participant.id)
+          .sort((left, right) => right.createdAt.localeCompare(left.createdAt))[0];
+        return {
+          participant: participantPublic(participant),
+          ...(latestTurn ? { latestActivityAt: latestTurn.createdAt, latestTurnSpeaker: latestTurn.speaker } : participant.lastSeenAt ? { latestActivityAt: participant.lastSeenAt } : {})
+        };
+      });
   }
 
   async getParticipant(id: string) {
@@ -310,15 +389,32 @@ export class InMemorySpeakingRepository implements SpeakingRepository {
   async startParticipant(participantId: string, startedAt: string) {
     const participant = this.state.participants.get(participantId);
     if (!participant) return undefined;
+    const hadStartedAt = Boolean(participant.startedAt);
+    const previousStatus = participant.status;
     if (!participant.startedAt) participant.startedAt = startedAt;
     if (participant.status === "joined") participant.status = "in_progress";
+    const session = participant.sessionId ? this.state.sessions.get(participant.sessionId) : undefined;
+    if (session && (!hadStartedAt || previousStatus !== participant.status)) session.revision = (session.revision ?? 0) + 1;
     return participantPublic(participant);
   }
 
-  async updateParticipant(participantId: string, patch: { status?: SpeakingParticipantStatus; finishedAt?: string | null; helpPending?: boolean; helpCount?: number }) {
+  async markParticipantReady(participantId: string, readyAt: string) {
+    return this.updateParticipant(participantId, { readyAt });
+  }
+
+  async touchParticipant(participantId: string, lastSeenAt: string) {
+    const participant = this.state.participants.get(participantId);
+    if (!participant) return undefined;
+    participant.lastSeenAt = lastSeenAt;
+    return participantPublic(participant);
+  }
+
+  async updateParticipant(participantId: string, patch: { status?: SpeakingParticipantStatus; finishedAt?: string | null; helpPending?: boolean; helpCount?: number; readyAt?: string | null; lastSeenAt?: string | null }) {
     const participant = this.state.participants.get(participantId);
     if (!participant) return undefined;
     Object.assign(participant, patch);
+    const session = participant.sessionId ? this.state.sessions.get(participant.sessionId) : undefined;
+    if (session && Object.keys(patch).some((key) => key !== "lastSeenAt")) session.revision = (session.revision ?? 0) + 1;
     return participantPublic(participant);
   }
 
@@ -326,6 +422,7 @@ export class InMemorySpeakingRepository implements SpeakingRepository {
     const session = this.state.sessions.get(sessionId);
     if (!session) return undefined;
     Object.assign(session, patch);
+    session.revision = (session.revision ?? 0) + 1;
     return cloneSession(session);
   }
 
@@ -347,6 +444,7 @@ export class InMemorySpeakingRepository implements SpeakingRepository {
         }
       }
       session.pausedAt = undefined;
+      session.revision = (session.revision ?? 0) + 1;
     }
     return cloneSession(session);
   }
@@ -367,7 +465,12 @@ export class InMemorySpeakingRepository implements SpeakingRepository {
     const session = participant ? this.state.sessions.get(participant.sessionId!) : undefined;
     if (!session) throw new Error("Speaking participant session not found.");
     const turn = { ...input };
+    const existing = session.turns.find((candidate) =>
+      candidate.id === turn.id || (turn.requestId && candidate.requestId === turn.requestId && candidate.speaker === turn.speaker)
+    );
+    if (existing) return { ...existing };
     session.turns.push(turn);
+    session.revision = (session.revision ?? 0) + 1;
     return { ...turn };
   }
 
@@ -376,7 +479,61 @@ export class InMemorySpeakingRepository implements SpeakingRepository {
     const session = participant ? this.state.sessions.get(participant.sessionId!) : undefined;
     if (!participant || !session) throw new Error("Speaking participant session not found.");
     session.evaluations.set(participantId, { ...evaluation });
+    session.revision = (session.revision ?? 0) + 1;
     return { ...evaluation };
+  }
+
+  async getEvaluationJob(participantId: string) {
+    const job = this.state.evaluationJobs.get(participantId);
+    return job ? cloneEvaluationJob(job) : undefined;
+  }
+
+  async upsertEvaluationJob(participantId: string, input: { id: string; queuedAt: string; updatedAt: string; status?: SpeakingEvaluationJobStatus; attempt?: number }) {
+    const existing = this.state.evaluationJobs.get(participantId);
+    if (existing && existing.status !== "failed") return cloneEvaluationJob(existing);
+    const job: SpeakingEvaluationJob = existing
+      ? { ...existing, ...(input.status ? { status: input.status } : {}), ...(input.attempt === undefined ? {} : { attempt: input.attempt }), updatedAt: input.updatedAt, ...(input.status === "queued" ? { queuedAt: input.queuedAt, startedAt: undefined, finishedAt: undefined, leaseUntil: undefined, lastErrorCode: undefined } : {}) }
+      : { id: input.id, participantId, status: input.status ?? "queued", attempt: input.attempt ?? 0, queuedAt: input.queuedAt, updatedAt: input.updatedAt };
+    this.state.evaluationJobs.set(participantId, job);
+    return cloneEvaluationJob(job);
+  }
+
+  async claimEvaluationJob(participantId: string, startedAt: string, leaseUntil: string) {
+    const job = this.state.evaluationJobs.get(participantId);
+    if (!job) return undefined;
+    const nowMs = Date.parse(startedAt);
+    const leaseMs = job.leaseUntil ? Date.parse(job.leaseUntil) : Number.NaN;
+    if (job.status !== "queued" && !(job.status === "running" && (!Number.isFinite(leaseMs) || leaseMs <= nowMs))) return undefined;
+    job.status = "running";
+    job.attempt += 1;
+    job.startedAt = startedAt;
+    job.leaseUntil = leaseUntil;
+    job.updatedAt = startedAt;
+    return cloneEvaluationJob(job);
+  }
+
+  async settleEvaluationJob(participantId: string, attempt: number, now: string, outcome: { evaluation?: SpeakingEvaluation; errorCode?: string }) {
+    const job = this.state.evaluationJobs.get(participantId);
+    if (!job || job.status !== "running" || job.attempt !== attempt) return false;
+    job.status = outcome.evaluation ? "completed" : "failed";
+    job.finishedAt = now;
+    job.leaseUntil = undefined;
+    job.updatedAt = now;
+    job.lastErrorCode = outcome.errorCode;
+    if (outcome.evaluation) await this.saveEvaluation(participantId, outcome.evaluation);
+    await this.updateParticipant(participantId, { status: outcome.evaluation ? "completed" : "error", helpPending: false });
+    return true;
+  }
+
+  async recoverableEvaluationParticipants(now: string) {
+    return [...this.state.evaluationJobs.values()].filter((job) => job.status === "queued" || job.status === "running" && (!job.leaseUntil || Date.parse(job.leaseUntil) <= Date.parse(now))).slice(0, 100).map((job) => job.participantId);
+  }
+
+  async updateEvaluationJob(participantId: string, patch: { status?: SpeakingEvaluationJobStatus; startedAt?: string | null; finishedAt?: string | null; leaseUntil?: string | null; lastErrorCode?: string | null; updatedAt: string }) {
+    const job = this.state.evaluationJobs.get(participantId);
+    if (!job) return undefined;
+    Object.assign(job, patch);
+    return cloneEvaluationJob(job);
   }
 
   async getResult(participantId: string) {
@@ -434,6 +591,29 @@ const stringArrayFromJson = (value: Prisma.JsonValue): string[] => Array.isArray
 
 const objectFromJson = (value: Prisma.JsonValue): Record<string, unknown> => value && typeof value === "object" && !Array.isArray(value) ? value as Record<string, unknown> : {};
 
+const scenarioResourcesFromJson = (value: Prisma.JsonValue): SpeakingScenarioResources | undefined => {
+  const source = objectFromJson(value);
+  const suggestedSteps = Array.isArray(source.suggestedSteps) ? source.suggestedSteps.filter((item): item is string => typeof item === "string") : undefined;
+  const usefulVocabulary = Array.isArray(source.usefulVocabulary) ? source.usefulVocabulary.filter((item): item is string => typeof item === "string") : undefined;
+  const referenceItems = Array.isArray(source.referenceItems)
+    ? source.referenceItems.flatMap((item) => {
+      if (!item || typeof item !== "object" || Array.isArray(item)) return [];
+      const candidate = item as Record<string, unknown>;
+      return typeof candidate.label === "string" ? [{ label: candidate.label, ...(typeof candidate.detail === "string" ? { detail: candidate.detail } : {}) }] : [];
+    })
+    : undefined;
+  const resources: SpeakingScenarioResources = {
+    ...(typeof source.openingLine === "string" ? { openingLine: source.openingLine } : {}),
+    ...(typeof source.studentGoal === "string" ? { studentGoal: source.studentGoal } : {}),
+    ...(suggestedSteps ? { suggestedSteps } : {}),
+    ...(usefulVocabulary ? { usefulVocabulary } : {}),
+    ...(referenceItems ? { referenceItems } : {}),
+    ...(typeof source.imageSrc === "string" ? { imageSrc: source.imageSrc } : {}),
+    ...(typeof source.imageAlt === "string" ? { imageAlt: source.imageAlt } : {})
+  };
+  return Object.keys(resources).length ? resources : undefined;
+};
+
 const snapshotFromJson = (value: Prisma.JsonValue, activity: SpeakingActivity): SpeakingActivitySnapshot => {
   const source = objectFromJson(value);
   return {
@@ -447,7 +627,8 @@ const snapshotFromJson = (value: Prisma.JsonValue, activity: SpeakingActivity): 
     durationSeconds: typeof source.durationSeconds === "number" ? source.durationSeconds : activity.durationSeconds,
     identifierMode: source.identifierMode === "anonymous" || source.identifierMode === "student_number" ? source.identifierMode : "nickname",
     targetExpressions: stringArrayFromJson((source.targetExpressions ?? activity.targetExpressions) as Prisma.JsonValue),
-    rubric: rubricFromJson((source.rubric ?? activity.rubric) as Prisma.JsonValue)
+    rubric: rubricFromJson((source.rubric ?? activity.rubric) as Prisma.JsonValue),
+    ...(scenarioResourcesFromJson((source.scenarioResources ?? {}) as Prisma.JsonValue) ? { scenarioResources: scenarioResourcesFromJson((source.scenarioResources ?? {}) as Prisma.JsonValue) } : {})
   };
 };
 
@@ -466,11 +647,12 @@ const toActivity = (row: PrismaActivity): SpeakingActivity => ({
   identifierMode: row.identifierMode,
   targetExpressions: stringArrayFromJson(row.targetExpressionsJson),
   rubric: row.rubric.map((criterion) => ({ id: criterion.criterionId, name: criterion.name, description: criterion.description, enabled: criterion.enabled })),
+  ...(scenarioResourcesFromJson(row.scenarioResourcesJson) ? { scenarioResources: scenarioResourcesFromJson(row.scenarioResourcesJson) } : {}),
   createdAt: row.createdAt.toISOString(),
   updatedAt: row.updatedAt.toISOString()
 });
 
-const toSession = (row: Pick<PrismaSession, "id" | "activityId" | "joinCode" | "status" | "createdAt" | "startedAt" | "pausedAt" | "endedAt" | "expiresAt">): SpeakingSession => ({
+const toSession = (row: Pick<PrismaSession, "id" | "activityId" | "joinCode" | "status" | "createdAt" | "startedAt" | "pausedAt" | "endedAt" | "expiresAt" | "revision">): SpeakingSession => ({
   id: row.id,
   activityId: row.activityId,
   joinCode: row.joinCode,
@@ -479,16 +661,19 @@ const toSession = (row: Pick<PrismaSession, "id" | "activityId" | "joinCode" | "
   ...(row.startedAt ? { startedAt: row.startedAt.toISOString() } : {}),
   ...(row.pausedAt ? { pausedAt: row.pausedAt.toISOString() } : {}),
   ...(row.endedAt ? { endedAt: row.endedAt.toISOString() } : {}),
-  expiresAt: row.expiresAt.toISOString()
+  expiresAt: row.expiresAt.toISOString(),
+  revision: row.revision
 });
 
-const toParticipant = (row: { id: string; activityId: string; sessionId: string; displayIdentifier: string | null; startedAt: Date | null; finishedAt: Date | null; pausedDurationMs: number; status: string; helpCount: number }): SpeakingParticipant => ({
+const toParticipant = (row: { id: string; activityId: string; sessionId: string; displayIdentifier: string | null; startedAt: Date | null; finishedAt: Date | null; readyAt?: Date | null; lastSeenAt?: Date | null; pausedDurationMs: number; status: string; helpCount: number }): SpeakingParticipant => ({
   id: row.id,
   activityId: row.activityId,
   sessionId: row.sessionId,
   ...(row.displayIdentifier ? { displayIdentifier: row.displayIdentifier } : {}),
   ...(row.startedAt ? { startedAt: row.startedAt.toISOString() } : {}),
   ...(row.finishedAt ? { finishedAt: row.finishedAt.toISOString() } : {}),
+  ...(row.readyAt ? { readyAt: row.readyAt.toISOString() } : {}),
+  ...(row.lastSeenAt ? { lastSeenAt: row.lastSeenAt.toISOString() } : {}),
   pausedDurationMs: Math.max(0, row.pausedDurationMs ?? 0),
   status: row.status as SpeakingParticipant["status"],
   helpCount: row.helpCount
@@ -568,6 +753,7 @@ export class PrismaSpeakingRepository implements SpeakingRepository {
         status: activity.status,
         identifierMode: activity.identifierMode,
         targetExpressionsJson: activity.targetExpressions as Prisma.InputJsonValue,
+        scenarioResourcesJson: (activity.scenarioResources ?? {}) as Prisma.InputJsonValue,
         rubric: { create: activity.rubric.map((criterion, position) => ({ criterionId: criterion.id, name: criterion.name, description: criterion.description, enabled: criterion.enabled, position })) }
       },
       include: activityInclude
@@ -594,6 +780,7 @@ export class PrismaSpeakingRepository implements SpeakingRepository {
           durationSeconds: normalized.durationSeconds,
           identifierMode: normalized.identifierMode,
           targetExpressionsJson: normalized.targetExpressions as Prisma.InputJsonValue,
+          scenarioResourcesJson: (normalized.scenarioResources ?? {}) as Prisma.InputJsonValue,
           rubric: { create: normalized.rubric.map((criterion, position) => ({ criterionId: criterion.id, name: criterion.name, description: criterion.description, enabled: criterion.enabled, position })) }
         },
         include: activityInclude
@@ -615,6 +802,7 @@ export class PrismaSpeakingRepository implements SpeakingRepository {
         status: "ready",
         createdAt: new Date(input.createdAt),
         expiresAt: new Date(input.expiresAt),
+        revision: 0,
         activitySnapshotJson: snapshotActivity(input.activity) as unknown as Prisma.InputJsonValue
       },
       include: sessionInclude
@@ -640,7 +828,7 @@ export class PrismaSpeakingRepository implements SpeakingRepository {
     return rows.map(toSession);
   }
 
-  async createParticipant(input: { id: string; activity: SpeakingActivity; session: SpeakingSession; displayIdentifier?: string; tokenHash: string }) {
+  async createParticipant(input: { id: string; activity: SpeakingActivity; session: SpeakingSession; displayIdentifier?: string; tokenHash: string; joinRequestId?: string }) {
     const row = await this.prisma.speakingParticipant.create({
       data: {
         id: input.id,
@@ -648,6 +836,7 @@ export class PrismaSpeakingRepository implements SpeakingRepository {
         sessionId: input.session.id,
         ...(input.displayIdentifier ? { displayIdentifier: input.displayIdentifier } : {}),
         anonymousTokenHash: input.tokenHash,
+        ...(input.joinRequestId ? { joinRequestId: input.joinRequestId } : {}),
         startedAt: null,
         pausedDurationMs: 0,
         status: "joined",
@@ -655,7 +844,29 @@ export class PrismaSpeakingRepository implements SpeakingRepository {
         helpPending: false
       }
     });
+    await this.prisma.speakingSession.update({ where: { id: input.session.id }, data: { revision: { increment: 1 } } });
     return toParticipant(row);
+  }
+
+  async findParticipantByJoinRequest(sessionId: string, joinRequestId: string) {
+    const row = await this.prisma.speakingParticipant.findFirst({ where: { sessionId, joinRequestId } });
+    return row ? toParticipant(row) : undefined;
+  }
+
+  async countParticipants(sessionId: string) {
+    return this.prisma.speakingParticipant.count({ where: { sessionId } });
+  }
+
+  async listRoster(sessionId: string) {
+    const rows = await this.prisma.speakingParticipant.findMany({
+      where: { sessionId },
+      include: { turns: { orderBy: [{ createdAt: "desc" }], take: 1 } },
+      orderBy: [{ id: "asc" }]
+    });
+    return rows.map((row) => ({
+      participant: toParticipant(row),
+      ...(row.turns[0]?.createdAt ? { latestActivityAt: row.turns[0].createdAt.toISOString(), latestTurnSpeaker: row.turns[0].speaker as "ai" | "student" } : row.lastSeenAt ? { latestActivityAt: row.lastSeenAt.toISOString() } : {})
+    }));
   }
 
   async getParticipant(id: string) {
@@ -677,16 +888,31 @@ export class PrismaSpeakingRepository implements SpeakingRepository {
       return current ? toParticipant(current) : undefined;
     }
     const updated = await this.prisma.speakingParticipant.findUnique({ where: { id: participantId } });
+    if (updated) await this.prisma.speakingSession.update({ where: { id: updated.sessionId }, data: { revision: { increment: 1 } } });
     return updated ? toParticipant(updated) : undefined;
   }
 
-  async updateParticipant(participantId: string, patch: { status?: SpeakingParticipantStatus; finishedAt?: string | null; helpPending?: boolean; helpCount?: number }) {
+  async markParticipantReady(participantId: string, readyAt: string) {
+    const row = await this.prisma.speakingParticipant.update({ where: { id: participantId }, data: { readyAt: new Date(readyAt) } });
+    await this.prisma.speakingSession.update({ where: { id: row.sessionId }, data: { revision: { increment: 1 } } });
+    return toParticipant(row);
+  }
+
+  async touchParticipant(participantId: string, lastSeenAt: string) {
+    const row = await this.prisma.speakingParticipant.update({ where: { id: participantId }, data: { lastSeenAt: new Date(lastSeenAt) } });
+    return toParticipant(row);
+  }
+
+  async updateParticipant(participantId: string, patch: { status?: SpeakingParticipantStatus; finishedAt?: string | null; helpPending?: boolean; helpCount?: number; readyAt?: string | null; lastSeenAt?: string | null }) {
     const row = await this.prisma.speakingParticipant.update({ where: { id: participantId }, data: {
       ...(patch.status ? { status: patch.status } : {}),
       ...(patch.finishedAt !== undefined ? { finishedAt: patch.finishedAt ? new Date(patch.finishedAt) : null } : {}),
       ...(patch.helpPending !== undefined ? { helpPending: patch.helpPending } : {}),
-      ...(patch.helpCount !== undefined ? { helpCount: patch.helpCount } : {})
+      ...(patch.helpCount !== undefined ? { helpCount: patch.helpCount } : {}),
+      ...(patch.readyAt !== undefined ? { readyAt: patch.readyAt ? new Date(patch.readyAt) : null } : {}),
+      ...(patch.lastSeenAt !== undefined ? { lastSeenAt: patch.lastSeenAt ? new Date(patch.lastSeenAt) : null } : {})
     } });
+    await this.prisma.speakingSession.update({ where: { id: row.sessionId }, data: { revision: { increment: 1 } } });
     return toParticipant(row);
   }
 
@@ -695,7 +921,8 @@ export class PrismaSpeakingRepository implements SpeakingRepository {
       ...(patch.status ? { status: patch.status } : {}),
       ...(patch.startedAt !== undefined ? { startedAt: patch.startedAt ? new Date(patch.startedAt) : null } : {}),
       ...(patch.pausedAt !== undefined ? { pausedAt: patch.pausedAt ? new Date(patch.pausedAt) : null } : {}),
-      ...(patch.endedAt !== undefined ? { endedAt: patch.endedAt ? new Date(patch.endedAt) : null } : {})
+      ...(patch.endedAt !== undefined ? { endedAt: patch.endedAt ? new Date(patch.endedAt) : null } : {}),
+      revision: { increment: 1 }
     } });
     return toSession(row);
   }
@@ -709,7 +936,7 @@ export class PrismaSpeakingRepository implements SpeakingRepository {
         const pauseEndedAtMs = Date.parse(pausedUntil);
         const claimed = await transaction.speakingSession.updateMany({
           where: { id: sessionId, pausedAt: current.pausedAt },
-          data: { pausedAt: null }
+          data: { pausedAt: null, revision: { increment: 1 } }
         });
         if (claimed.count === 0) return transaction.speakingSession.findUnique({ where: { id: sessionId } });
         if (Number.isFinite(pauseEndedAtMs)) {
@@ -750,19 +977,32 @@ export class PrismaSpeakingRepository implements SpeakingRepository {
   }
 
   async appendTurn(input: Omit<SpeakingTurn, "id"> & { id: string; requestId?: string; sessionId?: string }) {
-    const row = await this.prisma.speakingTurn.create({ data: {
-      id: input.id,
-      participantId: input.participantId,
-      sessionId: input.sessionId ?? (await this.prisma.speakingParticipant.findUniqueOrThrow({ where: { id: input.participantId }, select: { sessionId: true } })).sessionId,
-      speaker: input.speaker,
-      text: input.text,
-      createdAt: new Date(input.createdAt),
-      ...(input.audioDurationMs === undefined ? {} : { audioDurationMs: input.audioDurationMs }),
-      ...(input.responseTimeMs === undefined ? {} : { responseTimeMs: input.responseTimeMs }),
-      usedHelp: input.usedHelp === true,
-      ...(input.transcriptionConfidence === undefined ? {} : { transcriptionConfidence: input.transcriptionConfidence }),
-      ...(input.requestId ? { requestId: input.requestId } : {})
-    } });
+    let row;
+    try {
+      row = await this.prisma.speakingTurn.create({ data: {
+        id: input.id,
+        participantId: input.participantId,
+        sessionId: input.sessionId ?? (await this.prisma.speakingParticipant.findUniqueOrThrow({ where: { id: input.participantId }, select: { sessionId: true } })).sessionId,
+        speaker: input.speaker,
+        text: input.text,
+        createdAt: new Date(input.createdAt),
+        ...(input.audioDurationMs === undefined ? {} : { audioDurationMs: input.audioDurationMs }),
+        ...(input.responseTimeMs === undefined ? {} : { responseTimeMs: input.responseTimeMs }),
+        usedHelp: input.usedHelp === true,
+        ...(input.transcriptionConfidence === undefined ? {} : { transcriptionConfidence: input.transcriptionConfidence }),
+        ...(input.requestId ? { requestId: input.requestId } : {})
+      } });
+    } catch (error) {
+      if (input.requestId && error instanceof Prisma.PrismaClientKnownRequestError && error.code === "P2002") {
+        const existing = await this.prisma.speakingTurn.findFirst({ where: { participantId: input.participantId, requestId: input.requestId, speaker: input.speaker } });
+        if (existing) return toTurn(existing);
+      }
+      throw error;
+    }
+    await this.prisma.speakingSession.update({
+      where: { id: input.sessionId ?? row.sessionId },
+      data: { revision: { increment: 1 } }
+    });
     return toTurn(row);
   }
 
@@ -791,6 +1031,111 @@ export class PrismaSpeakingRepository implements SpeakingRepository {
       }
     });
     return toEvaluation(row);
+  }
+
+  async getEvaluationJob(participantId: string) {
+    const row = await this.prisma.speakingEvaluationJob.findUnique({ where: { participantId } });
+    return row ? {
+      id: row.id,
+      participantId: row.participantId,
+      status: row.status as SpeakingEvaluationJobStatus,
+      attempt: row.attempt,
+      queuedAt: row.queuedAt.toISOString(),
+      ...(row.startedAt ? { startedAt: row.startedAt.toISOString() } : {}),
+      ...(row.finishedAt ? { finishedAt: row.finishedAt.toISOString() } : {}),
+      ...(row.leaseUntil ? { leaseUntil: row.leaseUntil.toISOString() } : {}),
+      ...(row.lastErrorCode ? { lastErrorCode: row.lastErrorCode } : {}),
+      updatedAt: row.updatedAt.toISOString()
+    } : undefined;
+  }
+
+  async upsertEvaluationJob(participantId: string, input: { id: string; queuedAt: string; updatedAt: string; status?: SpeakingEvaluationJobStatus; attempt?: number }) {
+    if (input.status === "queued") await this.prisma.speakingEvaluationJob.updateMany({
+      where: { participantId, status: "failed" },
+      data: { status: "queued", queuedAt: new Date(input.queuedAt), startedAt: null, finishedAt: null, leaseUntil: null, lastErrorCode: null }
+    });
+    const row = await this.prisma.speakingEvaluationJob.upsert({
+      where: { participantId },
+      create: {
+        id: input.id,
+        participantId,
+        status: input.status ?? "queued",
+        attempt: input.attempt ?? 0,
+        queuedAt: new Date(input.queuedAt),
+        updatedAt: new Date(input.updatedAt)
+      },
+      update: {}
+    });
+    return {
+      id: row.id,
+      participantId: row.participantId,
+      status: row.status as SpeakingEvaluationJobStatus,
+      attempt: row.attempt,
+      queuedAt: row.queuedAt.toISOString(),
+      ...(row.startedAt ? { startedAt: row.startedAt.toISOString() } : {}),
+      ...(row.finishedAt ? { finishedAt: row.finishedAt.toISOString() } : {}),
+      ...(row.leaseUntil ? { leaseUntil: row.leaseUntil.toISOString() } : {}),
+      ...(row.lastErrorCode ? { lastErrorCode: row.lastErrorCode } : {}),
+      updatedAt: row.updatedAt.toISOString()
+    };
+  }
+
+  async claimEvaluationJob(participantId: string, startedAt: string, leaseUntil: string) {
+    const now = new Date(startedAt);
+    const claimed = await this.prisma.speakingEvaluationJob.updateMany({
+      where: {
+        participantId,
+        OR: [
+          { status: "queued" },
+          { status: "running", leaseUntil: { lte: now } },
+          { status: "running", leaseUntil: null }
+        ]
+      },
+      data: { status: "running", attempt: { increment: 1 }, startedAt: now, leaseUntil: new Date(leaseUntil), lastErrorCode: null }
+    });
+    if (!claimed.count) return undefined;
+    return this.getEvaluationJob(participantId);
+  }
+
+  async settleEvaluationJob(participantId: string, attempt: number, now: string, outcome: { evaluation?: SpeakingEvaluation; errorCode?: string }) {
+    return this.prisma.$transaction(async (tx) => {
+      const claimed = await tx.speakingEvaluationJob.updateMany({
+        where: { participantId, attempt, status: "running" },
+        data: { status: outcome.evaluation ? "completed" : "failed", finishedAt: new Date(now), leaseUntil: null, lastErrorCode: outcome.errorCode ?? null }
+      });
+      if (!claimed.count) return false;
+      const repository = new PrismaSpeakingRepository(tx as PrismaClient);
+      if (outcome.evaluation) await repository.saveEvaluation(participantId, outcome.evaluation);
+      await repository.updateParticipant(participantId, { status: outcome.evaluation ? "completed" : "error", helpPending: false });
+      return true;
+    });
+  }
+
+  async recoverableEvaluationParticipants(now: string) {
+    const rows = await this.prisma.speakingEvaluationJob.findMany({ where: { OR: [{ status: "queued" }, { status: "running", leaseUntil: { lte: new Date(now) } }, { status: "running", leaseUntil: null }] }, select: { participantId: true }, orderBy: { queuedAt: "asc" }, take: 100 });
+    return rows.map((row) => row.participantId);
+  }
+
+  async updateEvaluationJob(participantId: string, patch: { status?: SpeakingEvaluationJobStatus; startedAt?: string | null; finishedAt?: string | null; leaseUntil?: string | null; lastErrorCode?: string | null; updatedAt: string }) {
+    const row = await this.prisma.speakingEvaluationJob.update({ where: { participantId }, data: {
+      ...(patch.status ? { status: patch.status } : {}),
+      ...(patch.startedAt !== undefined ? { startedAt: patch.startedAt ? new Date(patch.startedAt) : null } : {}),
+      ...(patch.finishedAt !== undefined ? { finishedAt: patch.finishedAt ? new Date(patch.finishedAt) : null } : {}),
+      ...(patch.leaseUntil !== undefined ? { leaseUntil: patch.leaseUntil ? new Date(patch.leaseUntil) : null } : {}),
+      ...(patch.lastErrorCode !== undefined ? { lastErrorCode: patch.lastErrorCode } : {})
+    } });
+    return {
+      id: row.id,
+      participantId: row.participantId,
+      status: row.status as SpeakingEvaluationJobStatus,
+      attempt: row.attempt,
+      queuedAt: row.queuedAt.toISOString(),
+      ...(row.startedAt ? { startedAt: row.startedAt.toISOString() } : {}),
+      ...(row.finishedAt ? { finishedAt: row.finishedAt.toISOString() } : {}),
+      ...(row.leaseUntil ? { leaseUntil: row.leaseUntil.toISOString() } : {}),
+      ...(row.lastErrorCode ? { lastErrorCode: row.lastErrorCode } : {}),
+      updatedAt: row.updatedAt.toISOString()
+    };
   }
 
   async getResult(participantId: string) {

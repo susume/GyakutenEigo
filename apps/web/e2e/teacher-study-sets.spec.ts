@@ -36,7 +36,7 @@ test("teacher creates continuously, opens a detail page, and hosts the same Stud
   await page.goto("/quiz-strike/teacher/home");
   await expect(page.getByRole("heading", { name: /Welcome back/ })).toBeVisible();
 
-  await page.getByRole("button", { name: "Create", exact: true }).click();
+  await page.locator(".sidebar-create-button").click();
   await expect(page.getByRole("heading", { name: "Create Study Set", exact: true })).toBeVisible();
   await page.getByLabel("Study Set title").fill("Eiken Pre-2 Starter");
   await page.getByText("Details and visibility", { exact: true }).click();

@@ -8,12 +8,13 @@ export interface TTSProvider {
   cancel(): void;
 }
 
-let activeSpeech: { resolve: () => void; utterance: SpeechSynthesisUtterance } | undefined;
+let activeSpeech: { resolve: () => void; utterance: SpeechSynthesisUtterance; timeoutId: ReturnType<typeof setTimeout> } | undefined;
 
 const resolveActiveSpeech = (utterance?: SpeechSynthesisUtterance) => {
   const current = activeSpeech;
   if (!current || (utterance && current.utterance !== utterance)) return;
   activeSpeech = undefined;
+  clearTimeout(current.timeoutId);
   current?.resolve();
 };
 
@@ -27,10 +28,16 @@ export const browserTtsProvider: TTSProvider = {
       const utterance = new SpeechSynthesisUtterance(text);
       utterance.lang = options.lang ?? "en-US";
       utterance.rate = options.rate ?? 0.92;
-      activeSpeech = { resolve, utterance };
+      const timeoutId = setTimeout(() => {
+        if (activeSpeech?.utterance !== utterance) return;
+        window.speechSynthesis.cancel();
+        resolveActiveSpeech(utterance);
+      }, 30_000);
+      activeSpeech = { resolve, utterance, timeoutId };
       utterance.onend = () => resolveActiveSpeech(utterance);
       utterance.onerror = () => resolveActiveSpeech(utterance);
-      window.speechSynthesis.speak(utterance);
+      try { window.speechSynthesis.speak(utterance); }
+      catch { resolveActiveSpeech(utterance); }
     });
   },
   cancel() {

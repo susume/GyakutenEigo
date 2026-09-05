@@ -79,7 +79,11 @@ export const speakingHeaders = (speakingToken: string) => ({ "X-Speaking-Token":
 // The server bounds transcription and conversation separately. Leave enough
 // time for both operations plus normal persistence, so a valid slow turn does
 // not get abandoned by the browser while the server is still completing it.
-const SPEAKING_TURN_REQUEST_TIMEOUT_MS = 35_000;
+const SPEAKING_TURN_REQUEST_TIMEOUT_MS = 45_000;
+const SPEAKING_JOIN_REQUEST_TIMEOUT_MS = 8_000;
+const SPEAKING_STATUS_REQUEST_TIMEOUT_MS = 8_000;
+const SPEAKING_HELP_REQUEST_TIMEOUT_MS = 18_000;
+const SPEAKING_FINISH_REQUEST_TIMEOUT_MS = 8_000;
 
 export async function api<T>(path: string, options: RequestInit = {}, policy: ApiRequestPolicy = {}): Promise<T> {
   const headers = new Headers(options.headers);
@@ -105,7 +109,7 @@ export async function api<T>(path: string, options: RequestInit = {}, policy: Ap
   }
 
   const responseText = await response.text();
-  let payload: { error?: string } = {};
+  let payload: { error?: string; code?: string; retryAfterSeconds?: number } = {};
   if (responseText) {
     try { payload = JSON.parse(responseText) as { error?: string }; } catch { /* A proxy or old server may return HTML. */ }
   }
@@ -114,7 +118,9 @@ export async function api<T>(path: string, options: RequestInit = {}, policy: Ap
       console.error(`[api] ${options.method ?? "GET"} ${path} failed with ${response.status}`, payload.error ?? responseText.slice(0, 300));
     }
     throw new ApiError(payload.error ?? "QuizStrike couldn't complete that request. Try again.", response.status, {
-      kind: response.status >= 500 ? "server" : "http"
+      kind: response.status >= 500 ? "server" : "http",
+      code: payload.code,
+      retryAfterSeconds: payload.retryAfterSeconds
     });
   }
   return payload as T;
@@ -369,13 +375,15 @@ export const speakingApi = {
   activity: (id: string) => api(`/api/speaking/activities/${encodeURIComponent(id)}`),
   sessions: (activityId: string) => api(`/api/speaking/activities/${encodeURIComponent(activityId)}/sessions`),
   launchSession: (activityId: string) => api(`/api/speaking/activities/${encodeURIComponent(activityId)}/sessions`, { method: "POST" }),
-  join: (code: string, identifier?: string) => api("/api/speaking/join", { method: "POST", body: JSON.stringify({ code, identifier }) }),
+  join: (code: string, identifier?: string, requestId?: string) => api("/api/speaking/join", { method: "POST", ...(requestId ? { headers: { "X-Speaking-Join-Id": requestId } } : {}), body: JSON.stringify({ code, identifier, ...(requestId ? { requestId } : {}) }) }, { attemptTimeoutMs: SPEAKING_JOIN_REQUEST_TIMEOUT_MS }),
   startParticipant: (sessionId: string, token: string) => api(`/api/speaking/sessions/${encodeURIComponent(sessionId)}/start`, { method: "POST", headers: speakingHeaders(token) }),
   startSession: (sessionId: string) => api(`/api/speaking/sessions/${encodeURIComponent(sessionId)}/start-session`, { method: "POST" }),
   pauseSession: (sessionId: string) => api(`/api/speaking/sessions/${encodeURIComponent(sessionId)}/pause`, { method: "POST" }),
   resumeSession: (sessionId: string) => api(`/api/speaking/sessions/${encodeURIComponent(sessionId)}/resume`, { method: "POST" }),
   endSession: (sessionId: string) => api(`/api/speaking/sessions/${encodeURIComponent(sessionId)}/end`, { method: "POST" }),
-  session: (sessionId: string, token: string) => api(`/api/speaking/sessions/${encodeURIComponent(sessionId)}`, { headers: speakingHeaders(token) }),
+  session: (sessionId: string, token: string, signal?: AbortSignal) => api(`/api/speaking/sessions/${encodeURIComponent(sessionId)}`, { headers: speakingHeaders(token), signal }, { attemptTimeoutMs: SPEAKING_STATUS_REQUEST_TIMEOUT_MS }),
+  status: (sessionId: string, token: string, signal?: AbortSignal) => api(`/api/speaking/sessions/${encodeURIComponent(sessionId)}/status`, { headers: speakingHeaders(token), signal }, { attemptTimeoutMs: SPEAKING_STATUS_REQUEST_TIMEOUT_MS }),
+  roster: (sessionId: string, signal?: AbortSignal) => api(`/api/speaking/sessions/${encodeURIComponent(sessionId)}/roster`, { signal }, { attemptTimeoutMs: SPEAKING_STATUS_REQUEST_TIMEOUT_MS }),
   turn: (sessionId: string, token: string, body: { text?: string; audio?: Blob; requestId?: string; speechDetected?: boolean; audioDurationMs?: number }) => api(`/api/speaking/sessions/${encodeURIComponent(sessionId)}/turn`, {
     method: "POST",
     headers: body.audio
@@ -383,11 +391,11 @@ export const speakingApi = {
       : { ...speakingHeaders(token), ...(body.requestId ? { "X-Speaking-Turn-Id": body.requestId } : {}) },
     body: body.audio ? body.audio : JSON.stringify({ text: body.text }),
   }, { attemptTimeoutMs: SPEAKING_TURN_REQUEST_TIMEOUT_MS }),
-  help: (sessionId: string, token: string) => api(`/api/speaking/sessions/${encodeURIComponent(sessionId)}/help`, { method: "POST", headers: speakingHeaders(token) }),
-  finish: (sessionId: string, token: string) => api(`/api/speaking/sessions/${encodeURIComponent(sessionId)}/finish`, { method: "POST", headers: speakingHeaders(token) }),
+  help: (sessionId: string, token: string) => api(`/api/speaking/sessions/${encodeURIComponent(sessionId)}/help`, { method: "POST", headers: speakingHeaders(token) }, { attemptTimeoutMs: SPEAKING_HELP_REQUEST_TIMEOUT_MS }),
+  finish: (sessionId: string, token: string) => api(`/api/speaking/sessions/${encodeURIComponent(sessionId)}/finish`, { method: "POST", headers: speakingHeaders(token) }, { attemptTimeoutMs: SPEAKING_FINISH_REQUEST_TIMEOUT_MS }),
   results: (activityId: string, sessionId?: string) => api(`/api/speaking/activities/${encodeURIComponent(activityId)}/results${sessionId ? `?sessionId=${encodeURIComponent(sessionId)}` : ""}`),
-  sessionResults: (sessionId: string) => api(`/api/speaking/sessions/${encodeURIComponent(sessionId)}/results`),
-  result: (participantId: string, token?: string) => api(`/api/speaking/results/${encodeURIComponent(participantId)}`, token ? { headers: speakingHeaders(token) } : {})
+  sessionResults: (sessionId: string, signal?: AbortSignal) => api(`/api/speaking/sessions/${encodeURIComponent(sessionId)}/results`, { signal }, { attemptTimeoutMs: SPEAKING_STATUS_REQUEST_TIMEOUT_MS }),
+  result: (participantId: string, token?: string, signal?: AbortSignal) => api(`/api/speaking/results/${encodeURIComponent(participantId)}`, token ? { headers: speakingHeaders(token), signal } : { signal }, { attemptTimeoutMs: SPEAKING_STATUS_REQUEST_TIMEOUT_MS })
 };
 
 export const fetchDecalAsset = async (code: string, assetId: string, playerToken?: string): Promise<Blob> => {

@@ -64,6 +64,71 @@ export interface SpeakingRubricCriterion {
   enabled: boolean;
 }
 
+/**
+ * Scenario-owned learner support.  The fields are optional at the activity
+ * boundary so older/custom activities can be read safely; the resolver below
+ * supplies a neutral fallback for the student experience.
+ */
+export interface SpeakingScenarioResources {
+  openingLine?: string;
+  studentGoal?: string;
+  suggestedSteps?: string[];
+  usefulVocabulary?: string[];
+  referenceItems?: Array<{ label: string; detail?: string }>;
+  imageSrc?: string;
+  imageAlt?: string;
+}
+
+export type SpeakingResolvedScenarioResources = {
+  openingLine: string;
+  studentGoal: string;
+  suggestedSteps: string[];
+  usefulVocabulary: string[];
+  referenceItems: Array<{ label: string; detail?: string }>;
+  imageSrc?: string;
+  imageAlt?: string;
+};
+
+export const DEFAULT_SPEAKING_SCENARIO_RESOURCES: SpeakingResolvedScenarioResources = {
+  openingLine: "Hi! Nice to meet you. Can we talk?",
+  studentGoal: "Keep the conversation moving with short, clear English.",
+  suggestedSteps: [
+    "Listen to your partner.",
+    "Answer the question.",
+    "Ask a related question.",
+    "Use one target expression if possible.",
+    "Continue naturally."
+  ],
+  usefulVocabulary: [
+    "Could you repeat that, please?",
+    "Let me think for a moment.",
+    "Thank you."
+  ],
+  referenceItems: []
+};
+
+const boundedResourceText = (value: string | undefined, fallback: string, max = 240) =>
+  (value?.trim().slice(0, max) || fallback);
+
+/** Resolve activity-owned support without guessing from an editable title. */
+export const speakingScenarioResources = (
+  resources?: SpeakingScenarioResources
+): SpeakingResolvedScenarioResources => ({
+  openingLine: boundedResourceText(resources?.openingLine, DEFAULT_SPEAKING_SCENARIO_RESOURCES.openingLine),
+  studentGoal: boundedResourceText(resources?.studentGoal, DEFAULT_SPEAKING_SCENARIO_RESOURCES.studentGoal),
+  suggestedSteps: (resources?.suggestedSteps ?? DEFAULT_SPEAKING_SCENARIO_RESOURCES.suggestedSteps)
+    .map((step) => step.trim().slice(0, 160)).filter(Boolean).slice(0, 8),
+  usefulVocabulary: (resources?.usefulVocabulary ?? DEFAULT_SPEAKING_SCENARIO_RESOURCES.usefulVocabulary)
+    .map((item) => item.trim().slice(0, 160)).filter(Boolean).slice(0, 16),
+  referenceItems: (resources?.referenceItems ?? DEFAULT_SPEAKING_SCENARIO_RESOURCES.referenceItems)
+    .flatMap((item) => {
+      const label = item.label?.trim().slice(0, 120);
+      return label ? [{ label, ...(item.detail?.trim() ? { detail: item.detail.trim().slice(0, 240) } : {}) }] : [];
+    }).slice(0, 24),
+  ...(resources?.imageSrc?.trim() ? { imageSrc: resources.imageSrc.trim().slice(0, 500) } : {}),
+  ...(resources?.imageAlt?.trim() ? { imageAlt: resources.imageAlt.trim().slice(0, 160) } : {})
+});
+
 export const DEFAULT_SPEAKING_RUBRIC: SpeakingRubricCriterion[] = [
   {
     id: "communication",
@@ -112,6 +177,7 @@ export interface SpeakingActivity {
   identifierMode: SpeakingIdentifierMode;
   targetExpressions: string[];
   rubric: SpeakingRubricCriterion[];
+  scenarioResources?: SpeakingScenarioResources;
   createdAt: string;
   updatedAt: string;
 }
@@ -129,6 +195,10 @@ export interface SpeakingParticipant {
   pausedDurationMs: number;
   status: SpeakingParticipantStatus;
   helpCount: number;
+  /** Set after the browser completed the lightweight microphone preflight. */
+  readyAt?: string;
+  /** Last authenticated lifecycle touch from the student's browser. */
+  lastSeenAt?: string;
 }
 
 export interface SpeakingSession {
@@ -141,6 +211,8 @@ export interface SpeakingSession {
   pausedAt?: string;
   endedAt?: string;
   expiresAt: string;
+  /** Monotonic lifecycle revision used to reject stale browser responses. */
+  revision?: number;
 }
 
 export interface SpeakingTurn {
@@ -174,7 +246,7 @@ export interface SpeakingEvaluation {
 export interface SpeakingParticipantResult {
   participant: SpeakingParticipant;
   session: SpeakingSession;
-  activity: Pick<SpeakingActivity, "id" | "title" | "scenario" | "targetExpressions" | "nativeLanguage" | "rubric">;
+  activity: Pick<SpeakingActivity, "id" | "title" | "scenario" | "targetExpressions" | "nativeLanguage" | "rubric" | "scenarioResources">;
   turns: SpeakingTurn[];
   evaluation?: SpeakingEvaluation;
 }
@@ -191,6 +263,23 @@ export interface SpeakingCreateActivityInput {
   identifierMode: SpeakingIdentifierMode;
   targetExpressions: string[];
   rubric: SpeakingRubricCriterion[];
+  scenarioResources?: SpeakingScenarioResources;
+}
+
+export const SPEAKING_EVALUATION_JOB_STATUSES = ["queued", "running", "completed", "failed"] as const;
+export type SpeakingEvaluationJobStatus = (typeof SPEAKING_EVALUATION_JOB_STATUSES)[number];
+
+export interface SpeakingEvaluationJob {
+  id: string;
+  participantId: string;
+  status: SpeakingEvaluationJobStatus;
+  attempt: number;
+  queuedAt: string;
+  startedAt?: string;
+  finishedAt?: string;
+  leaseUntil?: string;
+  lastErrorCode?: string;
+  updatedAt: string;
 }
 
 export const SPEAKING_LIMITS = {
@@ -228,7 +317,16 @@ export const SpeakingCreateActivityInputSchema = z.object({
   durationSeconds: z.number().int().min(120).max(SPEAKING_LIMITS.maxDurationSeconds),
   identifierMode: z.enum(SPEAKING_IDENTIFIER_MODES),
   targetExpressions: z.array(z.string().trim().min(1).max(SPEAKING_LIMITS.expression)).max(SPEAKING_LIMITS.expressions),
-  rubric: z.array(SpeakingRubricCriterionSchema).min(1).max(SPEAKING_LIMITS.rubricCriteria)
+  rubric: z.array(SpeakingRubricCriterionSchema).min(1).max(SPEAKING_LIMITS.rubricCriteria),
+  scenarioResources: z.object({
+    openingLine: z.string().trim().min(1).max(240).optional(),
+    studentGoal: z.string().trim().min(1).max(240).optional(),
+    suggestedSteps: z.array(z.string().trim().min(1).max(160)).max(8).optional(),
+    usefulVocabulary: z.array(z.string().trim().min(1).max(160)).max(16).optional(),
+    referenceItems: z.array(z.object({ label: z.string().trim().min(1).max(120), detail: z.string().trim().max(240).optional() })).max(24).optional(),
+    imageSrc: z.string().trim().min(1).max(500).optional(),
+    imageAlt: z.string().trim().min(1).max(160).optional()
+  }).partial().optional()
 }).superRefine((input, context) => {
   if (!input.rubric.some((criterion) => criterion.enabled)) {
     context.addIssue({ code: "custom", message: "At least one rubric criterion must be enabled.", path: ["rubric"] });
@@ -240,7 +338,11 @@ export const SpeakingCreateActivityInputSchema = z.object({
 
 export const SpeakingJoinInputSchema = z.object({
   code: z.string().trim().toUpperCase().length(6),
-  identifier: z.string().trim().max(80).optional()
+  identifier: z.string().trim().max(80).optional(),
+  /** Client-generated key so a retried join does not create another roster row. */
+  requestId: z.string().trim().min(8).max(120).optional(),
+  /** Tab-scoped secret allows recovery when the successful join response is lost. */
+  joinToken: z.string().regex(/^[a-f0-9]{64}$/).optional()
 });
 
 export const SpeakingTurnInputSchema = z.object({

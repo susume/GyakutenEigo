@@ -4,6 +4,10 @@ export interface CloudflareProxyEnv {
 
 export const SOCKET_IO_PROXY_PATH = "/socket.io/";
 const API_PROXY_TIMEOUT_MS = 25_000;
+// One turn may spend up to 15s transcribing + 12s generating, plus the
+// bounded provider queue and persistence overhead. Finish/evaluation is
+// intentionally asynchronous and stays on the normal API budget.
+const SPEAKING_TURN_PROXY_TIMEOUT_MS = 45_000;
 // Engine.IO's default heartbeat can hold a polling request for roughly
 // 45 seconds (25s ping interval + 20s ping timeout).
 const SOCKET_IO_PROXY_TIMEOUT_MS = 60_000;
@@ -18,7 +22,9 @@ export const isProxyPath = (pathname: string) =>
 export const getProxyTimeoutMs = (pathname: string) =>
   isPathUnder(pathname, SOCKET_IO_PROXY_PATH)
     ? SOCKET_IO_PROXY_TIMEOUT_MS
-    : API_PROXY_TIMEOUT_MS;
+    : isPathUnder(pathname, "/api/speaking/sessions/") && pathname.endsWith("/turn")
+      ? SPEAKING_TURN_PROXY_TIMEOUT_MS
+      : API_PROXY_TIMEOUT_MS;
 
 export const resolveBackendUrl = (requestUrl: string, backendOrigin: string) => {
   const backend = new URL(backendOrigin.trim());
@@ -109,7 +115,7 @@ export const proxyRequest = async (
     });
   } catch (error) {
     if (error instanceof DOMException && error.name === "AbortError") {
-      return jsonResponse({ error: "The game server did not respond in time." }, 504);
+      return jsonResponse({ code: "UPSTREAM_TIMEOUT", error: "The game server did not respond in time." }, 504);
     }
     return jsonResponse({ error: "The game server is temporarily unavailable." }, 502);
   } finally {

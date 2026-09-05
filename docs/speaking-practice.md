@@ -94,9 +94,10 @@ Provider requests have bounded AbortController timeouts. Defaults are 15
 seconds for transcription, 12 seconds for conversation and Help, and 30 seconds
 for final evaluation. They can be overridden with the corresponding
 `SPEAKING_*_TIMEOUT_MS` variables or the shared
-`SPEAKING_PROVIDER_TIMEOUT_MS` value. The browser allows 35 seconds for the
-complete turn so it does not abandon a valid request while the two bounded
-provider calls are completing.
+`SPEAKING_PROVIDER_TIMEOUT_MS` value. The browser and Cloudflare turn proxy
+allow 45 seconds for the complete turn so they do not abandon a valid request
+while the two bounded provider calls and their queue/persistence overhead are
+completing.
 
 For a short diagnostic window, set `SPEAKING_LATENCY_DEBUG=true` on the server.
 Successful turn responses include a bounded `latency` object, and the server
@@ -148,3 +149,59 @@ resumed, ended, or expired. A session code is generated only at launch and is
 not reusable after expiry/end. Server-side limits cover activity duration,
 participant duration, turns, transcript/reply size, audio bytes, Help calls,
 and request rate.
+
+## Classroom readiness budgets and admission
+
+Speaking uses explicit end-to-end budgets rather than one universal timeout:
+
+```text
+join admission / status / roster / result retrieval: 8s browser request budget
+audio upload + request parsing + queue + transcription + conversation: 45s turn budget
+transcription provider: 15s default (configurable)
+conversation provider: 12s default (configurable)
+Help provider: 12s default, 18s browser request budget
+Finish acceptance: 8s browser request budget; it creates the durable evaluation job
+evaluation provider: 30s default; durable job lease: 120s default
+result/evaluation polling: 1–8s client backoff with jitter
+Cloudflare ordinary API: 25s; Speaking turn proxy: 45s
+```
+
+The shared workload controller is bounded and configurable. Its defaults are
+eight active provider operations, two evaluation slots, an 80-item queue, and a
+five-second queue wait. Interactive transcription/conversation/Help work is
+prioritized over background evaluation. Tune deployments with
+`SPEAKING_PROVIDER_CONCURRENCY`, `SPEAKING_EVALUATION_CONCURRENCY`,
+`SPEAKING_PROVIDER_QUEUE_MAX`, `SPEAKING_PROVIDER_QUEUE_WAIT_MS`,
+`SPEAKING_MAX_PARTICIPANTS`, `SPEAKING_VALID_JOIN_BURST`, and
+`SPEAKING_INVALID_JOIN_LIMIT`. Provider calls can be tuned with
+`SPEAKING_TRANSCRIPTION_TIMEOUT_MS`, `SPEAKING_CONVERSATION_TIMEOUT_MS`,
+`SPEAKING_HELP_TIMEOUT_MS`, `SPEAKING_EVALUATION_TIMEOUT_MS`, or the shared
+`SPEAKING_PROVIDER_TIMEOUT_MS`. Evaluation recovery uses
+`SPEAKING_EVALUATION_LEASE_MS` and the optional response grace
+`SPEAKING_EVALUATION_RESPONSE_GRACE_MS`.
+
+Valid joins use a classroom/session-aware burst budget with headroom above 40;
+invalid codes use a separate stricter IP window. Both return a machine-readable
+code and `Retry-After` when blocked. The load helper exercises the full five
+phases when supplied an open session:
+
+```text
+SPEAKING_LOAD_CODE=ABC234 SPEAKING_LOAD_TEXT=true SPEAKING_LOAD_BASE_URL=http://127.0.0.1:4000 npm run speaking:load
+```
+
+The default turn phases use small deterministic staggered delays to resemble a
+classroom wave. Set `SPEAKING_LOAD_TRUE_BURST=true` for a separate synchronized
+provider stress burst; keep both runs disposable and do not treat mock results
+as provider-capacity evidence.
+
+Set `SPEAKING_LOAD_TEACHER_TOKEN` to collect aggregate workload telemetry from
+the teacher-gated diagnostics route. Text turns are useful for local/mock
+capacity tests only; they are not evidence of real-provider capacity.
+
+Finish is intentionally asynchronous: the accepted request persists an
+evaluation job, marks the participant as evaluating, and the browser can resume
+the same job after refresh. In-memory development state cannot survive a
+process restart; production must use the Prisma repository and run the
+`20260905000000_speaking_reliability` migration. A production release still
+requires a controlled real-provider classroom test; mock-provider results do
+not establish support for 40 simultaneous students.

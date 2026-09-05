@@ -34,7 +34,16 @@ export const SPEAKING_TEMPLATES: SpeakingActivity[] = [
     durationSeconds: 180,
     status: "ready",
     identifierMode: "nickname",
-    targetExpressions: ["I'd like...", "Can I have...?", "How much is it?", "That's all, thank you."]
+    targetExpressions: ["I'd like...", "Can I have...?", "How much is it?", "That's all, thank you."],
+    scenarioResources: {
+      openingLine: "Hello! What would you like to order?",
+      studentGoal: "Order a meal, ask one question, and close the conversation politely.",
+      suggestedSteps: ["Greet the restaurant worker.", "Order a meal.", "Ask about one item.", "Check your order.", "Thank the worker."],
+      usefulVocabulary: ["menu", "still water", "I'd like…", "That's all, thank you."],
+      referenceItems: [{ label: "Soup", detail: "$5" }, { label: "Sandwich", detail: "$8" }, { label: "Orange juice", detail: "$3" }],
+      imageSrc: "/assets/speaking/ai-shop-assistant.png",
+      imageAlt: "Speaking partner"
+    }
   }),
   template({
     id: "template-shopping",
@@ -49,7 +58,16 @@ export const SPEAKING_TEMPLATES: SpeakingActivity[] = [
     durationSeconds: 300,
     status: "ready",
     identifierMode: "nickname",
-    targetExpressions: ["I'd like...", "How much is it?", "Do you have...?", "Can I try it on?"]
+    targetExpressions: ["I'd like...", "How much is it?", "Do you have...?", "Can I try it on?"],
+    scenarioResources: {
+      openingLine: "Hi! Can I help you find something today?",
+      studentGoal: "Ask about an item, try it on, and decide what you would like.",
+      suggestedSteps: ["Say what you are looking for.", "Ask about size or color.", "Ask the price.", "Ask to try it on.", "Thank the shop assistant."],
+      usefulVocabulary: ["size", "color", "fitting room", "How much is it?"],
+      referenceItems: [{ label: "Blue T-shirt", detail: "$18" }, { label: "Black hoodie", detail: "$35" }],
+      imageSrc: "/assets/speaking/ai-shop-assistant.png",
+      imageAlt: "Shop assistant"
+    }
   }),
   template({
     id: "template-directions",
@@ -64,7 +82,13 @@ export const SPEAKING_TEMPLATES: SpeakingActivity[] = [
     durationSeconds: 120,
     status: "ready",
     identifierMode: "anonymous",
-    targetExpressions: ["Excuse me.", "Where is...?", "How can I get to...?", "Thank you."]
+    targetExpressions: ["Excuse me.", "Where is...?", "How can I get to...?", "Thank you."],
+    scenarioResources: {
+      openingLine: "Hello! Are you looking for somewhere nearby?",
+      studentGoal: "Ask for directions, check one detail, and thank your partner.",
+      suggestedSteps: ["Say excuse me.", "Name the place you need.", "Ask how to get there.", "Check one direction.", "Thank your partner."],
+      usefulVocabulary: ["library", "turn left", "turn right", "next to"]
+    }
   }),
   template({
     id: "template-hobbies",
@@ -79,7 +103,13 @@ export const SPEAKING_TEMPLATES: SpeakingActivity[] = [
     durationSeconds: 180,
     status: "ready",
     identifierMode: "nickname",
-    targetExpressions: ["I like...", "I enjoy...", "How about you?", "Me too!"]
+    targetExpressions: ["I like...", "I enjoy...", "How about you?", "Me too!"],
+    scenarioResources: {
+      openingLine: "Hi! What do you like to do in your free time?",
+      studentGoal: "Share one hobby and ask your partner about theirs.",
+      suggestedSteps: ["Share one hobby.", "Give one detail.", "Ask your partner a question.", "React to their answer.", "Keep the conversation going."],
+      usefulVocabulary: ["free time", "usually", "on weekends", "How about you?"]
+    }
   }),
   template({
     id: "template-weekend",
@@ -94,7 +124,13 @@ export const SPEAKING_TEMPLATES: SpeakingActivity[] = [
     durationSeconds: 300,
     status: "ready",
     identifierMode: "nickname",
-    targetExpressions: ["What are you going to do?", "Would you like to...?", "That sounds fun.", "How about Saturday?"]
+    targetExpressions: ["What are you going to do?", "Would you like to...?", "That sounds fun.", "How about Saturday?"],
+    scenarioResources: {
+      openingLine: "Hi! Do you have any plans for the weekend?",
+      studentGoal: "Suggest a plan, ask about timing, and respond to your partner.",
+      suggestedSteps: ["Ask about plans.", "Suggest one activity.", "Ask about a day or time.", "Respond to the suggestion.", "Agree on a next step."],
+      usefulVocabulary: ["Saturday", "Sunday", "available", "That sounds fun."]
+    }
   }),
   template({
     id: "template-introduction",
@@ -109,7 +145,13 @@ export const SPEAKING_TEMPLATES: SpeakingActivity[] = [
     durationSeconds: 120,
     status: "ready",
     identifierMode: "nickname",
-    targetExpressions: ["My name is...", "I am from...", "I like...", "Nice to meet you."]
+    targetExpressions: ["My name is...", "I am from...", "I like...", "Nice to meet you."],
+    scenarioResources: {
+      openingLine: "Hi! Nice to meet you. What is your name?",
+      studentGoal: "Introduce yourself and ask your new partner one question.",
+      suggestedSteps: ["Say your name.", "Share where you are from.", "Share one interest.", "Ask your partner a question.", "Say nice to meet you."],
+      usefulVocabulary: ["name", "from", "school", "Nice to meet you."]
+    }
   })
 ];
 
