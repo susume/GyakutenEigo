@@ -27,6 +27,7 @@ import {
   createSpeakingRepository,
   findSpeakingTurnPair,
   hashSpeakingToken,
+  SpeakingParticipantAdmissionError,
   type InMemorySpeakingState,
   type SpeakingRepository
 } from "../speakingRepository.js";
@@ -44,7 +45,7 @@ import { consumeSpeakingRateLimit, type SpeakingRateLimitDecision } from "../spe
 import { createSpeakingProviderWorkload, SpeakingWorkloadError, type SpeakingProviderWorkload } from "../speakingWorkload.js";
 
 type AuthedRequest = Request & { user?: TeacherUser };
-type SpeakingTurnRequest = Request & { speakingTurnRequestStartedAt?: number };
+type SpeakingTurnRequest = Request & { speakingTurnRequestStartedAt?: number; releaseSpeakingUpload?: () => void };
 
 export type SpeakingLatencyDiagnostics = {
   audioBytes: number;
@@ -441,10 +442,14 @@ export const registerSpeakingRoutes = (app: Application, deps: SpeakingRouteDepe
     // Hold admission through provider work: the parsed body remains retained.
     let released = false;
     const release = () => { if (!released) { released = true; bufferedTurns -= 1; } };
-    res.once("finish", release);
-    res.once("close", release);
-    next();
-  }, express.raw({ type: ["audio/*", "application/octet-stream"], limit: `${SPEAKING_LIMITS.maxAudioBytes}b` }));
+    (req as SpeakingTurnRequest).releaseSpeakingUpload = release;
+    // A disconnected response can still have provider work retaining its body.
+    // Only parsing failure or actual route completion releases admission.
+    express.raw({ type: ["audio/*", "application/octet-stream"], limit: `${SPEAKING_LIMITS.maxAudioBytes}b` })(req, res, (error) => {
+      if (error) release();
+      next(error);
+    });
+  });
 
   const withTurnLock = async <T>(participantId: string, work: () => Promise<T>) => {
     const previous = turnLocks.get(participantId) ?? Promise.resolve();
@@ -694,6 +699,16 @@ export const registerSpeakingRoutes = (app: Application, deps: SpeakingRouteDepe
       res.status(400).json({ error: "Enter the six-character session code." });
       return;
     }
+    const recoverJoin = async () => {
+      if (!parsed.data.joinToken || !parsed.data.requestId) return false;
+      const saved = await repository.getParticipantAccessByTokenHash(hashSpeakingToken(parsed.data.joinToken));
+      if (!saved || saved.session.joinCode !== parsed.data.code) return false;
+      const requested = await repository.findParticipantByJoinRequest(saved.session.id, parsed.data.requestId);
+      if (requested?.id !== saved.participant.id) return false;
+      res.status(201).json({ activity: publicActivity(saved.activity), participant: publicParticipant(saved.participant), session: sessionPayload(saved.session), token: parsed.data.joinToken });
+      return true;
+    };
+    if (await recoverJoin()) return;
     const access = await repository.findJoinableSession(parsed.data.code, deps.now());
     if (!access) {
       const decision = consumeSpeakingRateLimit(state.requestWindows, `join-invalid:${req.ip}`, invalidJoinLimit, 60_000);
@@ -713,6 +728,7 @@ export const registerSpeakingRoutes = (app: Application, deps: SpeakingRouteDepe
     if (requestId) {
       const existingParticipant = await repository.findParticipantByJoinRequest(access.session.id, requestId);
       if (existingParticipant) {
+        if (await recoverJoin()) return;
         res.status(409).json({ code: "SPEAKING_JOIN_ALREADY_COMPLETED", error: "This join request was already completed. Refresh this page or use the saved session.", participantId: existingParticipant.id });
         return;
       }
@@ -723,12 +739,22 @@ export const registerSpeakingRoutes = (app: Application, deps: SpeakingRouteDepe
       return;
     }
     const identifier = normalizeIdentifier(parsed.data.identifier);
-    if (access.activity.identifierMode !== "anonymous" && identifier.length < 2) {
+    if (access.activity.identifierMode !== "anonymous" && identifier.length < (access.activity.identifierMode === "student_number" ? 1 : 2)) {
       res.status(400).json({ error: access.activity.identifierMode === "student_number" ? "Enter your student number." : "Enter a nickname." });
       return;
     }
-    const token = secureToken();
-    const participant = await repository.createParticipant({ id: deps.id(), activity: access.activity, session: access.session, ...(access.activity.identifierMode === "anonymous" ? {} : { displayIdentifier: identifier }), tokenHash: hashSpeakingToken(token), ...(requestId ? { joinRequestId: requestId } : {}) });
+    const token = parsed.data.joinToken ?? secureToken();
+    let participant: SpeakingParticipant;
+    try {
+      participant = await repository.createParticipant({ id: deps.id(), activity: access.activity, session: access.session, maxParticipants, ...(access.activity.identifierMode === "anonymous" ? {} : { displayIdentifier: identifier }), tokenHash: hashSpeakingToken(token), ...(requestId ? { joinRequestId: requestId } : {}) });
+    } catch (error) {
+      if (await recoverJoin()) return;
+      if (error instanceof SpeakingParticipantAdmissionError) {
+        res.status(409).json({ code: error.code === "full" ? "SPEAKING_CLASSROOM_FULL" : "SPEAKING_JOIN_ALREADY_COMPLETED", error: error.code === "full" ? "This classroom is full. Please ask your teacher for help." : "This join request already completed. Resume your saved session." });
+        return;
+      }
+      throw error;
+    }
     const greeting: SpeakingTurn = { id: deps.id(), participantId: participant.id, speaker: "ai", text: initialGreeting(access.activity), createdAt: deps.now() };
     await repository.appendTurn(greeting);
     const latestSession = await repository.getSession(access.session.id);
@@ -864,6 +890,7 @@ export const registerSpeakingRoutes = (app: Application, deps: SpeakingRouteDepe
   });
 
   app.post(turnRoutePath, async (req, res) => {
+    try {
     const requestStartedAt = (req as SpeakingTurnRequest).speakingTurnRequestStartedAt;
     const requestParsedAt = performance.now();
     const turnStartedAt = requestStartedAt ?? performance.now();
@@ -872,7 +899,7 @@ export const registerSpeakingRoutes = (app: Application, deps: SpeakingRouteDepe
       res.status(401).json({ error: "This speaking session is no longer available." });
       return;
     }
-    return withTurnLock(access.participant.id, async () => {
+    return await withTurnLock(access.participant.id, async () => {
       const latency: SpeakingLatencyDiagnostics = {
         audioBytes: 0,
         requestParsingMs: 0,
@@ -997,7 +1024,7 @@ export const registerSpeakingRoutes = (app: Application, deps: SpeakingRouteDepe
             res.status(422).json({ error: "I couldn’t hear any speech. Please say a short sentence and try again." });
             return;
           }
-          const turnCreatedAt = deps.now();
+          const turnCreatedAt = new Date(Math.max(Date.parse(deps.now()), ...existingTurns.map((turn) => Date.parse(turn.createdAt) + 1))).toISOString();
           const studentPersistenceStartedAt = performance.now();
           try {
             studentTurn = await repository.appendTurn({
@@ -1047,7 +1074,7 @@ export const registerSpeakingRoutes = (app: Application, deps: SpeakingRouteDepe
           }
           const aiPersistenceStartedAt = performance.now();
           try {
-            aiTurn = await repository.appendTurn({ id: deps.id(), participantId: access.participant.id, sessionId: access.session.id, speaker: "ai", text: responseText, createdAt: deps.now(), ...(requestId ? { requestId: requestId + ":ai" } : {}) });
+            aiTurn = await repository.appendTurn({ id: deps.id(), participantId: access.participant.id, sessionId: access.session.id, speaker: "ai", text: responseText, createdAt: new Date(Math.max(Date.parse(deps.now()), Date.parse(studentTurn.createdAt) + 1)).toISOString(), ...(requestId ? { requestId: requestId + ":ai" } : {}) });
           } finally {
             latency.aiPersistenceMs = boundedSpeakingDurationMs(aiPersistenceStartedAt);
           }
@@ -1059,6 +1086,9 @@ export const registerSpeakingRoutes = (app: Application, deps: SpeakingRouteDepe
         if (latencyDebug) logSpeakingLatency(latency);
       }
     });
+    } finally {
+      (req as SpeakingTurnRequest).releaseSpeakingUpload?.();
+    }
   });
 
   app.post("/api/speaking/sessions/:sessionId/help", async (req, res) => {

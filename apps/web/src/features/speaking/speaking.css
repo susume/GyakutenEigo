@@ -4618,7 +4618,7 @@ body[data-speaking="true"] {
     order: 2;
     height: auto;
     min-height: 760px;
-    grid-template-rows: 540px auto;
+    grid-template-rows: auto;
     gap: 20px;
   }
 
@@ -4786,10 +4786,11 @@ body[data-speaking="true"] {
   padding: 12px clamp(10px, 2vw, 26px) 28px;
 }
 
-.speaking-session-alert,
-.speaking-session-note {
+.speaking-session-main > .speaking-session-alert,
+.speaking-session-main > .speaking-session-note {
   position: relative;
   inset: auto;
+  transform: none;
   width: min(100%, 1180px);
   margin: 0 auto 10px;
   z-index: 2;
@@ -4848,8 +4849,8 @@ body[data-speaking="true"] {
   min-width: 0;
   min-height: 0;
   height: auto;
-  display: grid;
-  grid-template-columns: minmax(0, 1fr);
+  display: flex;
+  flex-direction: column;
   gap: 12px;
 }
 
@@ -4920,7 +4921,6 @@ body[data-speaking="true"] {
 
 .speaking-student-controls {
   height: auto;
-  grid-row: 2;
   min-height: 100px;
   display: grid;
   grid-template-columns: minmax(90px, 1fr) minmax(120px, 1.2fr) minmax(120px, 1fr);

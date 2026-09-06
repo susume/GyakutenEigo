@@ -220,6 +220,13 @@ function SpeakingStudentScreenV2({ activity, state, remainingSeconds, turns, onM
           <div><span className="speaking-card-kicker">Your speaking partner · {activity.aiRole}</span><p>{state === "listening" ? "Your turn — speak when you are ready." : state === "thinking" ? "Understanding your answer…" : currentAiTurn?.text ?? resources.openingLine}</p></div>
           <button type="button" className="speaking-icon-button" onClick={() => onReplay?.(currentAiTurn?.text)} disabled={!onReplay || !currentAiTurn || state !== "ready"} aria-label="Replay current partner message"><Volume2 size={20} aria-hidden="true" /></button>
         </section>
+        <footer className="speaking-student-controls" aria-label="Speaking controls">
+          <button className="speaking-replay-button" type="button" onClick={() => onReplay?.(currentAiTurn?.text)} disabled={!onReplay || !currentAiTurn || state !== "ready"}><RotateCcw size={27} strokeWidth={1.7} aria-hidden="true" /><span>Replay</span></button>
+          <div className="speaking-student-mic-wrap"><button className={"speaking-student-mic speaking-student-mic-" + state} type="button" onClick={onMic} disabled={disabled} aria-label={micLabel}><Mic size={54} strokeWidth={1.65} aria-hidden="true" /></button><span>{state === "ai-speaking" ? "Stop playback" : state === "listening" ? "Stop speaking" : state === "thinking" ? "Processing…" : "Tap to Speak"}</span></div>
+          <button className="speaking-student-help-button" type="button" onClick={onHelp} disabled={disabled || helpLoading || state !== "ready"}><Lightbulb size={22} strokeWidth={1.8} aria-hidden="true" /><span>{helpLoading ? "Loading Help…" : "Help"}</span><small>{activity.targetExpressions.length} expressions available</small></button>
+        </footer>
+        {helpError && <div className="speaking-inline-operation-error" role="alert"><span>{helpError}</span>{onHelpRetry && <button type="button" onClick={onHelpRetry}>Retry Help</button>}</div>}
+        <p className="speaking-student-status" aria-live="polite">{stateDescriptions[state]}</p>
         <section className="speaking-transcript-card" aria-label="Full transcript">
           <div className="speaking-transcript-heading"><MessageCircle size={28} strokeWidth={1.8} aria-hidden="true" /><strong>Full transcript</strong><span>Conversation record</span></div>
           <div className="speaking-transcript-list" aria-live="polite">
@@ -228,13 +235,7 @@ function SpeakingStudentScreenV2({ activity, state, remainingSeconds, turns, onM
             <div ref={transcriptEndRef} aria-hidden="true" />
           </div>
         </section>
-        <footer className="speaking-student-controls" aria-label="Speaking controls">
-          <button className="speaking-replay-button" type="button" onClick={() => onReplay?.(currentAiTurn?.text)} disabled={!onReplay || !currentAiTurn || state !== "ready"}><RotateCcw size={27} strokeWidth={1.7} aria-hidden="true" /><span>Replay</span></button>
-          <div className="speaking-student-mic-wrap"><button className={"speaking-student-mic speaking-student-mic-" + state} type="button" onClick={onMic} disabled={disabled} aria-label={micLabel}><Mic size={54} strokeWidth={1.65} aria-hidden="true" /></button><span>{state === "ai-speaking" ? "Stop playback" : state === "listening" ? "Stop speaking" : state === "thinking" ? "Processing…" : "Tap to Speak"}</span></div>
-          <button className="speaking-student-help-button" type="button" onClick={onHelp} disabled={disabled || helpLoading || state !== "ready"}><Lightbulb size={22} strokeWidth={1.8} aria-hidden="true" /><span>{helpLoading ? "Loading Help…" : "Help"}</span><small>{activity.targetExpressions.length} expressions available</small></button>
-        </footer>
-        {helpError && <div className="speaking-inline-operation-error" role="alert"><span>{helpError}</span>{onHelpRetry && <button type="button" onClick={onHelpRetry}>Retry Help</button>}</div>}
-        <p className="speaking-student-status" aria-live="polite">{stateDescriptions[state]}</p>
+
       </div>
       <aside className="speaking-flow-panel" aria-label="Suggested conversation steps">
         <details open={guidanceOpen} onToggle={(event) => setGuidanceOpen(event.currentTarget.open)}>
@@ -275,14 +276,31 @@ function SpeakingJoinPage({ navigate, initialCode }: { navigate: Navigate; initi
   const [joining, setJoining] = useState(false);
   const [joined, setJoined] = useState<JoinResponse>();
   const joinRequestIdRef = useRef<string | undefined>(undefined);
+  const joinSecretRef = useRef<string | undefined>(undefined);
   const submit = async (event: FormEvent) => {
     event.preventDefault();
     setError("");
     setJoining(true);
     try {
       if (!joinRequestIdRef.current) joinRequestIdRef.current = typeof crypto.randomUUID === "function" ? crypto.randomUUID() : String(Date.now()) + "-" + String(Math.random());
-      const payload = await speakingApi.join(code, identifier.trim() || undefined, joinRequestIdRef.current) as JoinResponse;
+      const key = `speaking-pending-join:${code}`;
+      const saved = sessionStorage.getItem(key);
+      let pending: { requestId: string; token: string } | undefined;
+      try {
+        const candidate = saved ? JSON.parse(saved) : undefined;
+        if (typeof candidate?.requestId === "string" && /^[a-f0-9]{64}$/.test(candidate?.token)) pending = candidate;
+      } catch { /* Replace a malformed pending record, without losing other sessions. */ }
+      if (pending) {
+        joinRequestIdRef.current = pending.requestId;
+        joinSecretRef.current = pending.token;
+      } else {
+        joinSecretRef.current = Array.from(crypto.getRandomValues(new Uint8Array(32)), (byte) => byte.toString(16).padStart(2, "0")).join("");
+        sessionStorage.setItem(key, JSON.stringify({ requestId: joinRequestIdRef.current, token: joinSecretRef.current }));
+      }
+      const payload = await speakingApi.join(code, identifier.trim() || undefined, joinRequestIdRef.current, joinSecretRef.current) as JoinResponse;
       saveJoinCredentials(payload);
+      sessionStorage.removeItem(`speaking-pending-join:${code}`);
+      if (["completed", "evaluating", "error"].includes(payload.participant.status)) { navigate("/speak/result/" + payload.participant.id); return; }
       joinRequestIdRef.current = undefined;
       setJoined(payload);
     } catch (joinError) {
@@ -407,6 +425,8 @@ function SpeakingSessionExperienceV2({ navigate, token, initialData }: { navigat
   const [helpHint, setHelpHint] = useState("");
   const [helpEnglish, setHelpEnglish] = useState("");
   const [helpLoading, setHelpLoading] = useState(false);
+  const helpRequestRef = useRef<AbortController | undefined>(undefined);
+  useEffect(() => () => helpRequestRef.current?.abort(), []);
   const [helpError, setHelpError] = useState("");
   const [error, setError] = useState("");
   const [errorOperation, setErrorOperation] = useState<SpeakingOperationError>();
@@ -700,20 +720,25 @@ function SpeakingSessionExperienceV2({ navigate, token, initialData }: { navigat
   }, [startRecording, stopRecording]);
 
   const requestHelp = useCallback(async () => {
-    if (authorizationFailed || helpLoading || voiceStateRef.current !== "ready" || dataRef.current.session.status !== "active") return;
+    if (authorizationFailed || helpRequestRef.current || voiceStateRef.current !== "ready" || dataRef.current.session.status !== "active") return;
+    const controller = new AbortController();
+    helpRequestRef.current = controller;
     setHelpLoading(true);
     setHelpError("");
     try {
-      const help = await speakingApi.help(dataRef.current.session.id, token) as { hint: string; english: string; helpCount?: number };
+      const help = await speakingApi.help(dataRef.current.session.id, token, controller.signal) as { hint: string; english: string; helpCount?: number };
+      if (controller.signal.aborted || authorizationFailedRef.current || participantFinalizedRef.current || voiceStateRef.current !== "ready" || dataRef.current.session.status !== "active") return;
       setHelpHint(help.hint);
       setHelpEnglish(help.english);
       setHelpOpen(true);
       setData((current) => ({ ...current, participant: { ...current.participant, helpCount: help.helpCount ?? current.participant.helpCount + 1 } }));
     } catch (helpRequestError) {
+      if (controller.signal.aborted) return;
       if (isFatalParticipantAuthorizationError(helpRequestError)) handleFatalAuthorization(helpRequestError);
       else setHelpError(getErrorMessage(helpRequestError, "Help is temporarily unavailable. Retry Help when you are ready."));
     } finally {
-      setHelpLoading(false);
+      if (helpRequestRef.current === controller) helpRequestRef.current = undefined;
+      if (!controller.signal.aborted) setHelpLoading(false);
     }
   }, [handleFatalAuthorization, helpLoading, token, authorizationFailed]);
 

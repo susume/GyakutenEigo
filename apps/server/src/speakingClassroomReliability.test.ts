@@ -76,7 +76,7 @@ test("40 students can join one classroom concurrently and the teacher roster sta
     const launched = await api<{ session: { id: string; joinCode: string } }>(`/api/speaking/activities/${activity.body.activity.id}/sessions`, { method: "POST", teacher: teacher.id });
     const joined = await Promise.all(Array.from({ length: 40 }, (_, index) => api<{ participant: { id: string }; session: { id: string }; token: string }>("/api/speaking/join", {
       method: "POST",
-      body: { code: launched.body.session.joinCode, identifier: `Student ${index + 1}`, requestId: `classroom-${index + 1}` }
+      body: { code: launched.body.session.joinCode, identifier: `Student ${index + 1}`, requestId: `classroom-${index + 1}`, joinToken: (index + 1).toString(16).padStart(64, "0") }
     })));
 
     assert.ok(joined.every((item) => item.response.status === 201));
@@ -91,6 +91,19 @@ test("40 students can join one classroom concurrently and the teacher roster sta
     assert.equal(duplicate.response.status, 409);
     assert.equal(duplicate.body.code, "SPEAKING_JOIN_ALREADY_COMPLETED");
     assert.equal(duplicate.body.participantId, joined[0]?.body.participant.id);
+
+    const recovered = await api<{ participant: { id: string }; token: string }>("/api/speaking/join", {
+      method: "POST",
+      body: { code: launched.body.session.joinCode, identifier: "Student 1", requestId: "classroom-1", joinToken: "1".padStart(64, "0") }
+    });
+    assert.equal(recovered.response.status, 201);
+    assert.equal(recovered.body.participant.id, joined[0]?.body.participant.id);
+    assert.equal(recovered.body.token, joined[0]?.body.token);
+    const wrongSecret = await api("/api/speaking/join", {
+      method: "POST",
+      body: { code: launched.body.session.joinCode, identifier: "Student 1", requestId: "classroom-1", joinToken: "f".repeat(64) }
+    });
+    assert.equal(wrongSecret.response.status, 409);
 
     const roster = await api<{ counts: { joined: number }; items: unknown[] }>(`/api/speaking/sessions/${launched.body.session.id}/roster`, { teacher: teacher.id });
     assert.equal(roster.response.status, 200);
@@ -109,6 +122,7 @@ test("40 students can join one classroom concurrently and the teacher roster sta
     }
     assert.deepEqual(invalidStatuses.slice(0, 10), Array.from({ length: 10 }, () => 404));
   } finally {
+    app.emit("speaking:shutdown");
     await new Promise<void>((resolve, reject) => server.close((error) => error ? reject(error) : resolve()));
   }
 });

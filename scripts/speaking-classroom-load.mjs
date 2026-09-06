@@ -118,7 +118,7 @@ const main = async () => {
     skipped("phase-3-turns", "No successful participants.");
     skipped("phase-4-help-mix", "No successful participants.");
     skipped("phase-5-finish-evaluation", "No successful participants.");
-    console.log(JSON.stringify({ summary: { totalHttpRequests: allRequests.length, memory: { beforeRss: memoryBefore.rss, afterRss: process.memoryUsage().rss }, workload: workloadSamples.at(-1) || "not available" } }));
+    console.log(JSON.stringify({ summary: { totalHttpRequests: allRequests.length, loadClientMemory: { beforeRss: memoryBefore.rss, afterRss: process.memoryUsage().rss }, serverMemory: "not measured", databaseLoad: "not measured", workload: workloadSamples.at(-1) || "not available" } }));
     process.exitCode = 1;
     return;
   }

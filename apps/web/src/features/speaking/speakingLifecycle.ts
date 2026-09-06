@@ -17,7 +17,8 @@ export const shouldAcceptSpeakingRevision = (currentRevision: number, nextRevisi
 export const mergeSpeakingTurns = (current: SpeakingTurn[], incoming: SpeakingTurn[]) => {
   const byId = new Map(current.map((turn) => [turn.id, turn]));
   for (const turn of incoming) byId.set(turn.id, turn);
-  return [...byId.values()].sort((left, right) => left.createdAt.localeCompare(right.createdAt) || left.id.localeCompare(right.id));
+  // Equal timestamps must preserve API/insertion order, not random UUID order.
+  return [...byId.values()].sort((left, right) => left.createdAt.localeCompare(right.createdAt));
 };
 
 export const speakingTimerReference = (

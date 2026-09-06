@@ -26,3 +26,12 @@ test("speaking lifecycle freezes the timer at participant or session terminal ti
   assert.equal(speakingTimerReference({ status: "completed", finishedAt: "2026-09-05T00:01:00.000Z" }, { status: "active" }, Date.parse("2026-09-05T00:02:00.000Z")), "2026-09-05T00:01:00.000Z");
   assert.equal(speakingTimerReference({ status: "joined" }, { status: "ended", endedAt: "2026-09-05T00:03:00.000Z" }, Date.parse("2026-09-05T00:04:00.000Z")), "2026-09-05T00:03:00.000Z");
 });
+
+test("equal timestamps preserve student-before-reply order regardless of UUID", () => {
+  const createdAt = "2026-09-06T00:00:00.000Z";
+  const turns = mergeSpeakingTurns([], [
+    { id: "z-student", participantId: "p", speaker: "student", text: "Hello", createdAt },
+    { id: "a-ai", participantId: "p", speaker: "ai", text: "Hi", createdAt }
+  ]);
+  assert.deepEqual(turns.map((turn) => turn.id), ["z-student", "a-ai"]);
+});

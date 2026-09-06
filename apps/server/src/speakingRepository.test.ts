@@ -85,6 +85,37 @@ test("speaking repository fails closed for production without Prisma", () => {
   assert.ok(createSpeakingRepository({ environment: "development" }) instanceof InMemorySpeakingRepository);
 });
 
+test("expired evaluation workers cannot replace a newer result", async () => {
+  const state = createInMemorySpeakingState();
+  const repository = new InMemorySpeakingRepository(state);
+  const now = "2026-09-06T00:00:00.000Z";
+  const activity = await repository.createActivity("teacher-1", input, "lease-activity", now);
+  const session = await repository.createSession({ id: "lease-session", activity, joinCode: "ABC238", createdAt: now, expiresAt: "2026-09-06T08:00:00.000Z" });
+  const participant = await repository.createParticipant({ id: "lease-participant", activity, session, tokenHash: hashSpeakingToken("lease-token") });
+  await repository.upsertEvaluationJob(participant.id, { id: "lease-job", queuedAt: now, updatedAt: now });
+  const first = await repository.claimEvaluationJob(participant.id, now, "2026-09-06T00:01:00.000Z");
+  const restarted = new InMemorySpeakingRepository(state);
+  assert.deepEqual(await restarted.recoverableEvaluationParticipants("2026-09-06T00:01:00.000Z"), [participant.id]);
+  const second = await restarted.claimEvaluationJob(participant.id, "2026-09-06T00:01:00.000Z", "2026-09-06T00:02:00.000Z");
+  assert.ok(first && second && second.attempt > first.attempt);
+  assert.equal(await repository.settleEvaluationJob(participant.id, first!.attempt, now, { errorCode: "timeout" }), false);
+  assert.equal(await restarted.settleEvaluationJob(participant.id, second!.attempt, now, { evaluation: evaluation(participant.id) }), true);
+  assert.equal(await repository.settleEvaluationJob(participant.id, first!.attempt, now, { errorCode: "timeout" }), false);
+  assert.equal((await repository.getParticipant(participant.id))?.status, "completed");
+  assert.ok((await repository.getResult(participant.id))?.evaluation);
+});
+
+test("concurrent classroom admission respects capacity and request identity", async () => {
+  const repository = new InMemorySpeakingRepository(createInMemorySpeakingState());
+  const now = "2026-09-06T00:00:00.000Z";
+  const activity = await repository.createActivity("teacher-1", input, "capacity-activity", now);
+  const session = await repository.createSession({ id: "capacity-session", activity, joinCode: "ABC239", createdAt: now, expiresAt: "2026-09-06T08:00:00.000Z" });
+  const attempts = await Promise.allSettled(Array.from({ length: 12 }, (_, index) => repository.createParticipant({ id: `capacity-${index}`, activity, session, maxParticipants: 3, joinRequestId: `request-${index}`, tokenHash: hashSpeakingToken(`capacity-token-${index}`) })));
+  assert.equal(attempts.filter((result) => result.status === "fulfilled").length, 3);
+  assert.equal(await repository.countParticipants(session.id), 3);
+  await assert.rejects(repository.createParticipant({ id: "duplicate", activity, session, maxParticipants: 3, joinRequestId: "request-0", tokenHash: hashSpeakingToken("duplicate-token") }), /duplicate/);
+});
+
 test("participant active time excludes a finalized teacher pause", async () => {
   const repository = new InMemorySpeakingRepository(createInMemorySpeakingState());
   const created = await repository.createActivity("teacher-1", input, "activity-time", "2026-08-31T00:00:00.000Z");

@@ -50,6 +50,11 @@ test("teacher and student Speaking Practice screens use the connected mock API",
   await teacherPage.addInitScript((token) => localStorage.setItem("quizstrike_token", token), teacherToken);
   await teacherPage.goto("/quiz-strike/teacher/speaking/create");
   await expect(teacherPage.getByRole("heading", { name: "Create an activity" })).toBeVisible();
+  const expression = teacherPage.getByRole("textbox", { name: "Target expression 1", exact: true });
+  await expression.fill("Hello");
+  await expression.pressSequentially(" there.");
+  await expect(expression).toHaveValue("Hello there.");
+  await expect(expression).toBeFocused();
   await teacherPage.getByRole("button", { name: "Create activity", exact: true }).last().click();
   await expect(teacherPage).toHaveURL(/\/speaking\/activity\/[^/]+$/);
   const activityId = new URL(teacherPage.url()).pathname.split("/").pop()!;
@@ -148,6 +153,8 @@ test("teacher and student Speaking Practice screens use the connected mock API",
     expect(stopBoundsAtViewport!.x + stopBoundsAtViewport!.width).toBeLessThanOrEqual(viewport.width + 1);
     expect(stopBoundsAtViewport!.y).toBeGreaterThanOrEqual(0);
     expect(stopBoundsAtViewport!.y + stopBoundsAtViewport!.height).toBeLessThanOrEqual(viewport.height + 1);
+    // Give the synthetic tone time to reach the real audio activity monitor.
+    await studentPage.waitForTimeout(300);
     await stopSpeakingAtViewport.click();
     await expect(studentPage.getByRole("button", { name: "Tap to speak", exact: true })).toBeEnabled({ timeout: 15_000 });
     await studentPage.screenshot({ path: testInfo.outputPath(`speaking-${viewport.width}x${viewport.height}.png`), fullPage: false });
@@ -176,6 +183,7 @@ test("teacher and student Speaking Practice screens use the connected mock API",
   expect(stopBounds!.y).toBeGreaterThanOrEqual(0);
   expect(stopBounds!.y + stopBounds!.height).toBeLessThanOrEqual(844 + 1);
   await stopSpeaking.focus();
+  await studentPage.waitForTimeout(300);
   await studentPage.keyboard.press("Enter");
   await expect(studentPage.locator(".speaking-transcript-card")).toContainText("practice this conversation", { timeout: 15_000 });
   await studentPage.getByRole("button", { name: "Finish", exact: true }).click();

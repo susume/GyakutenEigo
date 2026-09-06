@@ -828,24 +828,29 @@ export class PrismaSpeakingRepository implements SpeakingRepository {
     return rows.map(toSession);
   }
 
-  async createParticipant(input: { id: string; activity: SpeakingActivity; session: SpeakingSession; displayIdentifier?: string; tokenHash: string; joinRequestId?: string }) {
-    const row = await this.prisma.speakingParticipant.create({
-      data: {
-        id: input.id,
-        activityId: input.activity.id,
-        sessionId: input.session.id,
-        ...(input.displayIdentifier ? { displayIdentifier: input.displayIdentifier } : {}),
-        anonymousTokenHash: input.tokenHash,
-        ...(input.joinRequestId ? { joinRequestId: input.joinRequestId } : {}),
-        startedAt: null,
-        pausedDurationMs: 0,
-        status: "joined",
-        helpCount: 0,
-        helpPending: false
-      }
+  async createParticipant(input: { id: string; activity: SpeakingActivity; session: SpeakingSession; displayIdentifier?: string; tokenHash: string; joinRequestId?: string; maxParticipants?: number }) {
+    return this.prisma.$transaction(async (tx) => {
+      // Serialize admission on the session row before counting, across instances.
+      await tx.speakingSession.update({ where: { id: input.session.id }, data: { revision: { increment: 1 } } });
+      if (input.joinRequestId && await tx.speakingParticipant.findFirst({ where: { sessionId: input.session.id, joinRequestId: input.joinRequestId } })) throw new SpeakingParticipantAdmissionError("duplicate");
+      if (input.maxParticipants !== undefined && await tx.speakingParticipant.count({ where: { sessionId: input.session.id } }) >= input.maxParticipants) throw new SpeakingParticipantAdmissionError("full");
+      const row = await tx.speakingParticipant.create({
+        data: {
+          id: input.id,
+          activityId: input.activity.id,
+          sessionId: input.session.id,
+          ...(input.displayIdentifier ? { displayIdentifier: input.displayIdentifier } : {}),
+          anonymousTokenHash: input.tokenHash,
+          ...(input.joinRequestId ? { joinRequestId: input.joinRequestId } : {}),
+          startedAt: null,
+          pausedDurationMs: 0,
+          status: "joined",
+          helpCount: 0,
+          helpPending: false
+        }
+      });
+      return toParticipant(row);
     });
-    await this.prisma.speakingSession.update({ where: { id: input.session.id }, data: { revision: { increment: 1 } } });
-    return toParticipant(row);
   }
 
   async findParticipantByJoinRequest(sessionId: string, joinRequestId: string) {
