@@ -1,0 +1,142 @@
+/* Laptop-first speaking layouts. Content reflows at browser zoom; never scale the page. */
+.speaking-app { font-size: 16px; line-height: 1.5; --speaking-muted: #536580; --speaking-shadow: 0 8px 24px #16345b0a; }
+.speaking-app :is(button, input, select, textarea) { font-size: 15px; }
+.speaking-app :is(h1,h2,h3,p,div,section,aside) { min-width: 0; }
+.speaking-app :is(h1,h2,h3,p) { overflow-wrap: anywhere; }
+.speaking-app :is(.speaking-card-kicker,.speaking-eyebrow) { font-size: 12px; color: #25659f; }
+.speaking-app :is(.speaking-status-pill,.speaking-result-language) { font-size: 12px; }
+.speaking-app :is(.speaking-topbar-actions button,.speaking-topbar-teacher-actions button) { font-size: 14px; }
+.speaking-topbar { width: 100%; padding: 12px max(24px, calc((100% - 1180px) / 2)); min-height: 68px; grid-template-columns: 1fr auto; }
+.speaking-welcome { min-height: 100dvh; background: radial-gradient(ellipse at 85% 15%, #eaf7ff, transparent 48%), #f7f9fc; }
+.speaking-welcome-main { width: min(1080px, calc(100% - 48px)); margin: auto; padding: 32px 0; }
+.speaking-welcome-intro { margin-bottom: 24px; }
+.speaking-welcome-intro h1 { font-size: clamp(32px, 3.4vw, 46px); letter-spacing: -.045em; line-height: 1.13; margin: 12px 0; }
+.speaking-welcome-intro p { margin: 6px 0; color: #52647e; font-size: 16px; }
+.speaking-welcome-intro p[lang] { font-size: 14px; }
+.speaking-entry-grid { display: grid; grid-template-columns: repeat(2,minmax(0,1fr)); gap: 20px; }
+.speaking-entry-card { position: relative; padding: 24px; background: white; border: 1px solid #d7e3f0; border-radius: 18px; box-shadow: 0 8px 22px #1b416407; }
+.speaking-entry-card h2 { font-size: 25px; margin: 8px 0; letter-spacing: -.025em; }
+.speaking-entry-card p { color: #536580; margin-bottom: 20px; max-width: 390px; }
+.speaking-entry-icon { float: right; display: grid; place-items: center; width: 46px; height: 46px; border-radius: 14px; background: #eef6ff; color: #2478ee; }
+.speaking-entry-card button { min-height: 46px; justify-content: space-between; }
+.speaking-entry-card small { display: block; text-align: center; margin-top: 10px; color: #536580; font-size: 13px; }
+.speaking-welcome-steps { display: grid; grid-template-columns: repeat(3,minmax(0,1fr)); gap: 24px; margin: 24px 0; }
+.speaking-welcome-steps div { display: grid; grid-template-columns: 30px 1fr; column-gap: 10px; }
+.speaking-welcome-steps span { grid-row: span 2; color: #2478ee; font-size: 13px; font-weight: 800; padding-top: 2px; }
+.speaking-welcome-steps strong { font-size: 14px; }
+.speaking-welcome-steps p { font-size: 13px; color: #536580; margin: 3px 0 0; }
+.speaking-welcome-preview { border-top: 1px solid #d7e3f0; padding-top: 16px; }
+.speaking-welcome-preview summary { cursor: pointer; font-size: 14px; font-weight: 700; }
+.speaking-welcome-preview summary span { font-size: 12px; font-weight: 400; color: #536580; margin-left: 12px; }
+.speaking-demo-conversation { display: flex; align-items: center; gap: 24px; padding: 24px 0; }
+.speaking-demo-conversation img { width: 120px; height: 120px; object-fit: cover; border-radius: 50%; }
+.speaking-demo-conversation small { display: block; margin-top: 10px; color: #536580; }
+/* Join, microphone preparation and feedback share one readable page scale. */
+.speaking-app :is(.speaking-join-layout,.speaking-preactivity-layout,.speaking-result-layout) { width: min(1080px,calc(100% - 48px)); min-height: 0; padding: 32px 0; gap: 32px; align-items: start; }
+.speaking-app :is(.speaking-join-copy,.speaking-preactivity-hero,.speaking-result-hero) { gap: 14px; padding-top: 24px; }
+.speaking-app :is(.speaking-join-copy h1,.speaking-preactivity-hero h1,.speaking-result-hero h1) { font-size: clamp(28px,3vw,40px); line-height: 1.15; letter-spacing: -.035em; }
+.speaking-app :is(.speaking-join-card,.speaking-prep-card,.speaking-result-panel) { padding: 24px; border-radius: 16px; }
+.speaking-app :is(.speaking-join-card p,.speaking-join-card label,.speaking-prep-card p,.speaking-prep-expressions,.speaking-privacy-note,.speaking-result-message p,.speaking-correction-row,.speaking-muted-copy,.speaking-score-row small,.speaking-transcript-detail p) { font-size: 14px; line-height: 1.5; }
+.speaking-app :is(.speaking-join-hint,.speaking-join-help,.speaking-role-pills span,.speaking-result-score small,.speaking-score-row p,.speaking-result-message h3,.speaking-transcript-detail small) { font-size: 13px; }
+.speaking-app .speaking-prep-card { gap: 12px; }
+.speaking-app .speaking-result-layout { grid-template-columns: minmax(240px,.65fr) minmax(0,1.35fr); }
+.speaking-app .speaking-result-score strong { font-size: 64px; }
+.speaking-app .speaking-result-actions { grid-column: 1 / -1; margin: 0; }
+.speaking-dialog-backdrop { overflow-y: auto; padding: 24px; }
+.speaking-help-dialog { max-height: calc(100dvh - 48px); overflow-y: auto; }
+/* Teacher workspace: constrain line length, promote actions, keep secondary labels readable. */
+.speaking-embedded-teacher .speaking-teacher-layout { max-width: 1240px; margin-inline: auto; }
+.speaking-embedded-teacher :is(.speaking-teacher-content,.speaking-share-page,.speaking-builder) { gap: 18px; }
+.speaking-embedded-teacher :is(.speaking-teacher-heading h1,.speaking-builder-header h1,.speaking-share-header h1) { font-size: clamp(26px,2.6vw,34px); line-height: 1.15; letter-spacing: -.035em; margin: 6px 0; }
+.speaking-embedded-teacher :is(.speaking-teacher-heading p,.speaking-builder-header p,.speaking-share-header p) { font-size: 14px; line-height: 1.5; }
+.speaking-embedded-teacher :is(.speaking-card-kicker,.speaking-eyebrow,.speaking-builder-step) { font-size: 12px; color: #286493; }
+.speaking-embedded-teacher :is(.speaking-builder-card,.speaking-share-card) { padding: 20px; gap: 14px; }
+.speaking-embedded-teacher :is(.speaking-builder label,.speaking-builder label > span,.speaking-builder p,.speaking-share-card p,.speaking-activity-row-main p,.speaking-activity-row-meta,.speaking-roster-row strong,.speaking-results-row,.speaking-results-table button) { font-size: 14px; }
+.speaking-embedded-teacher :is(.speaking-builder small,.speaking-template-card small,.speaking-template-card span,.speaking-activity-facts dt,.speaking-activity-row-main small,.speaking-roster-counts span,.speaking-roster-row small,.speaking-share-targets span,.speaking-share-link span,.speaking-roster-heading p,.speaking-results-table-header) { font-size: 12px; }
+.speaking-embedded-teacher :is(.speaking-activity-facts dd,.speaking-template-card strong,.speaking-roster-filters input,.speaking-roster-filters select) { font-size: 14px; }
+.speaking-embedded-teacher .speaking-share-grid { grid-template-columns: minmax(0,1.1fr) minmax(0,1fr); gap: 16px; }
+.speaking-embedded-teacher .speaking-share-visual { grid-template-columns: 120px minmax(0,1fr); padding: 12px; gap: 14px; }
+.speaking-embedded-teacher .speaking-share-visual > svg { width: 120px; height: 120px; }
+.speaking-embedded-teacher .speaking-join-code-block { padding: 12px; }
+.speaking-embedded-teacher .speaking-join-code-block strong { font-size: clamp(26px,3vw,38px); letter-spacing: .09em; }
+.speaking-embedded-teacher .speaking-join-code-block small { font-size: 12px; }
+.speaking-embedded-teacher .speaking-activity-facts > div { min-height: 54px; padding: 8px 12px; }
+.speaking-embedded-teacher .speaking-share-actions { position: sticky; bottom: 12px; z-index: 5; width: fit-content; max-width: 100%; padding: 10px; border: 1px solid #d7e3f0; border-radius: 12px; background: #fff; box-shadow: 0 4px 20px #16345b12; }
+.speaking-embedded-teacher .speaking-roster-card { padding: 18px; }
+.speaking-embedded-teacher .speaking-roster-counts { gap: 8px; }
+.speaking-embedded-teacher .speaking-roster-counts > div { padding: 10px; }
+.speaking-embedded-teacher .speaking-roster-counts strong { font-size: 22px; }
+.speaking-builder-jump { display: flex; flex-wrap: wrap; gap: 8px; }
+.speaking-builder-jump a { color: #25659f; background: #fff; border: 1px solid #d7e3f0; border-radius: 9px; padding: 9px 14px; font-size: 14px; text-decoration: none; }
+.speaking-builder-jump a:hover { background: #eef6ff; }
+.speaking-builder-card { scroll-margin-top: 100px; }
+.speaking-embedded-teacher .speaking-builder-header { position: sticky; top: 0; z-index: 6; padding: 12px 0; background: #f5f8fc; border-bottom: 1px solid #d7e3f0; }
+.speaking-embedded-teacher .speaking-builder-footer { position: static; }
+/* A single bounded laptop workspace, with independently scrollable reference and transcript. */
+@media (min-width: 901px) and (min-height: 560px) {
+  .speaking-session-main { display: flex; flex-direction: column; height: 100dvh; padding: 0; overflow: hidden; }
+  .speaking-session-main > :is(.speaking-session-note,.speaking-session-alert) { flex: 0 0 auto; margin: 0 auto; max-height: 20dvh; overflow-y: auto; }
+  .speaking-student-screen { display: flex; flex-direction: column; flex: 1 1 auto; min-height: 0; height: auto; overflow: hidden; }
+  .speaking-student-header { flex: 0 0 auto; min-height: 64px; }
+  .speaking-student-grid { flex: 1 1 auto; min-height: 0; height: auto; padding: 16px; grid-template-columns: minmax(0,1fr) 270px; grid-template-rows: minmax(0,1fr) auto; grid-template-areas: "center sidebar" "center flow"; gap: 16px; align-items: stretch; }
+  .speaking-student-center { height: 100%; overflow: hidden; gap: 10px; }
+  .speaking-live-reply { flex: 0 0 auto; max-height: 25%; overflow-y: auto; min-height: 82px; padding: 12px; }
+  .speaking-student-controls { flex: 0 0 auto; min-height: 100px; padding: 8px 16px; }
+  .speaking-student-mic { width: 72px; height: 72px; min-height: 72px !important; }
+  .speaking-student-mic svg { width: 40px; height: 40px; }
+  .speaking-student-status { flex: 0 0 auto; margin: 0; }
+  .speaking-transcript-card { flex: 1 1 0; min-height: 0; height: auto; }
+  .speaking-student-sidebar { min-height: 0; overflow-y: auto; }
+  .speaking-flow-panel { overflow-y: auto; max-height: 220px; }
+  .speaking-student-header .speaking-brand-name { display: none; }
+  .speaking-student-context { padding-inline: 0; }
+}
+.speaking-app :is(.speaking-flow-copy strong,.speaking-goal-card p,.speaking-student-card-heading p,.speaking-student-status,.speaking-turn-label,.speaking-transcript-heading span) { font-size: 14px; }
+.speaking-app .speaking-student-expression-list button { font-size: 15px !important; }
+.speaking-app .speaking-student-help-button small { font-size: 12px; }
+.speaking-app .speaking-turn-bubble strong { font-size: 16px; }
+@media (max-width: 1000px) {
+  .speaking-embedded-teacher .speaking-share-grid { grid-template-columns: 1fr; }
+  .speaking-embedded-teacher .speaking-roster-counts { grid-template-columns: repeat(4,minmax(0,1fr)); }
+  .speaking-app .speaking-result-layout { grid-template-columns: 1fr; }
+  .speaking-result-hero { grid-template-columns: 1fr auto; }
+  .speaking-result-hero .speaking-result-score { grid-column: 2; grid-row: 1 / 4; }
+}
+@media (max-width: 700px) {
+  .speaking-topbar { padding: 10px 16px; }
+  .speaking-welcome-main { width: calc(100% - 32px); padding-top: 24px; }
+  .speaking-entry-grid,.speaking-welcome-steps { grid-template-columns: 1fr; gap: 16px; }
+  .speaking-entry-card { padding: 20px; }
+  .speaking-app :is(.speaking-join-layout,.speaking-preactivity-layout,.speaking-result-layout) { width: calc(100% - 32px); grid-template-columns: 1fr; padding: 20px 0; gap: 20px; }
+  .speaking-app :is(.speaking-join-copy,.speaking-preactivity-hero,.speaking-result-hero) { padding-top: 0; }
+  .speaking-embedded-teacher .speaking-builder-header { position: static; }
+  .speaking-embedded-teacher .speaking-share-visual { grid-template-columns: 96px minmax(0,1fr); }
+  .speaking-embedded-teacher .speaking-share-visual > svg { width: 96px; height: 96px; }
+  .speaking-embedded-teacher .speaking-join-code-block strong { font-size: 24px; }
+  .speaking-demo-conversation { align-items: start; gap: 12px; }
+  .speaking-demo-conversation img { width: 64px; height: 64px; }
+}
+@media (prefers-reduced-motion: reduce) { .speaking-app *, .speaking-app *::before, .speaking-app *::after { scroll-behavior: auto !important; } }
+.speaking-topbar > .speaking-brand { justify-self: start; }
+.speaking-setup-details { border: 1px solid #d7e3f0; border-radius: 12px; background: white; }
+.speaking-setup-details > summary { cursor: pointer; padding: 16px 20px; color: #203956; font-weight: 700; font-size: 15px; }
+.speaking-setup-details > summary span { margin-left: 14px; font-size: 13px; font-weight: 400; color: #536580; }
+.speaking-embedded-teacher .speaking-setup-details > .speaking-share-card { border: 0; box-shadow: none; }
+.speaking-embedded-teacher .speaking-share-grid { align-items: start; }
+.speaking-embedded-teacher .speaking-share-grid .speaking-roster-counts { grid-template-columns: repeat(4,minmax(0,1fr)); }
+.speaking-embedded-teacher .speaking-share-page > .speaking-text-button { justify-self: start; }
+.speaking-launch-steps { padding-left: 22px; margin: 0; color: #536580; }
+.speaking-launch-steps li { padding: 8px 0; }
+@media (min-width: 901px) and (min-height: 560px) {
+  .speaking-student-sidebar { display: flex; flex-direction: column; }
+  .speaking-student-sidebar > * { flex: 0 0 auto; }
+  .speaking-useful-student-card { display: block; }
+  .speaking-student-expression-list { height: auto; max-height: none; }
+}
+.speaking-embedded-teacher .speaking-roster-counts span { white-space: normal; overflow: visible; line-height: 1.3; }
+.speaking-embedded-teacher .speaking-share-actions { top: 12px; bottom: auto; margin: 0; }
+.speaking-app :is(.speaking-result-message li,.speaking-correction-row p,.speaking-correction-row strong,.speaking-score-row strong) { font-size: 14px; line-height: 1.5; }
+.speaking-app :is(.speaking-correction-row span,.speaking-result-section-heading span,.speaking-results-table-head,.speaking-results-table-row small) { font-size: 12px; }
+.speaking-result-hero .speaking-result-actions { display: flex; align-items: flex-start; flex-direction: column; gap: 12px; padding-top: 16px; }
+.speaking-embedded-teacher .speaking-results-heading > div { flex: 1 1 auto; }
+.speaking-embedded-teacher .speaking-results-heading > select { width: min(360px,100%); flex: 0 1 360px; }

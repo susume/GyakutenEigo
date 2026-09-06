@@ -50,6 +50,7 @@ import { buildTeacherSpeakingPath } from "../../../navigation";
 import { SPEAKING_TEMPLATES, formatDuration } from "../speakingData";
 import { ResultPanel, scoreFor } from "../SpeakingResultPanel";
 import "../speaking.css";
+import "../speaking-layout.css";
 
 type Navigate = (nextPath: string) => void;
 type ResultResponse = {
@@ -682,7 +683,10 @@ function SpeakingCreatePage({
               </button>
             </div>
           </div>
-          <section className="speaking-builder-card">
+          <nav className="speaking-builder-jump" aria-label="Activity setup sections">
+            <a href="#speaking-template">1. Template</a><a href="#speaking-situation">2. Situation</a><a href="#speaking-language">3. Target English</a><a href="#speaking-settings">4. Settings & rubric</a>
+          </nav>
+          <section id="speaking-template" className="speaking-builder-card">
             <div className="speaking-builder-card-heading">
               <div>
                 <span className="speaking-card-kicker">
@@ -717,7 +721,7 @@ function SpeakingCreatePage({
               ))}
             </div>
           </section>
-          <section className="speaking-builder-card">
+          <section id="speaking-situation" className="speaking-builder-card">
             <div className="speaking-builder-card-heading">
               <div>
                 <span className="speaking-card-kicker">The conversation</span>
@@ -808,7 +812,7 @@ function SpeakingCreatePage({
               </div>
             </div>
           </section>
-          <section className="speaking-builder-card">
+          <section id="speaking-language" className="speaking-builder-card">
             <div className="speaking-builder-card-heading">
               <div>
                 <span className="speaking-card-kicker">Target English</span>
@@ -871,7 +875,7 @@ function SpeakingCreatePage({
               </div>
             </div>
           </section>
-          <section className="speaking-builder-card">
+          <section id="speaking-settings" className="speaking-builder-card">
             <div className="speaking-builder-card-heading">
               <div>
                 <span className="speaking-card-kicker">Activity settings</span>
@@ -1241,6 +1245,69 @@ function SpeakingActivityDetailPage({
               {error}
             </p>
           )}
+          <div className="speaking-share-actions">
+            {latest && latest.status === "ready" && (
+              <button
+                type="button"
+                className="speaking-primary-button"
+                disabled={working}
+                onClick={() =>
+                  void run(() => speakingApi.startSession(latest.id))
+                }
+              >
+                Start session
+              </button>
+            )}
+            {latest && latest.status === "active" && (
+              <button
+                type="button"
+                className="speaking-outline-button"
+                disabled={working}
+                onClick={() =>
+                  void run(() => speakingApi.pauseSession(latest.id))
+                }
+              >
+                Pause session
+              </button>
+            )}
+            {latest && latest.status === "paused" && (
+              <button
+                type="button"
+                className="speaking-primary-button"
+                disabled={working}
+                onClick={() =>
+                  void run(() => speakingApi.resumeSession(latest.id))
+                }
+              >
+                Resume session
+              </button>
+            )}
+            {latest &&
+              ["ready", "active", "paused"].includes(latest.status) && (
+                <button
+                  type="button"
+                  className="speaking-outline-button"
+                  disabled={working}
+                  onClick={endLatestSession}
+                >
+                  End session
+                </button>
+              )}
+            {latest && (
+              <button
+                type="button"
+                className="speaking-primary-button"
+                onClick={() =>
+                  navigate(
+                    `/speak/teacher/activity/${activity.id}/results?sessionId=${encodeURIComponent(latest.id)}`,
+                  )
+                }
+              >
+                <Trophy size={17} aria-hidden="true" />
+                View results
+              </button>
+            )}
+          </div>
           <div className="speaking-share-grid">
             <section className="speaking-share-card speaking-share-code-card">
               {shareable ? (
@@ -1326,6 +1393,22 @@ function SpeakingActivityDetailPage({
                 </>
               )}
             </section>
+          {latest && (
+            <SpeakingRosterCard
+              roster={roster}
+              loading={rosterLoading}
+              error={rosterError}
+              search={rosterSearch}
+              filter={rosterFilter}
+              onSearch={setRosterSearch}
+              onFilter={setRosterFilter}
+            />
+          )}
+            {!latest && <section className="speaking-share-card"><span className="speaking-card-kicker">Your next steps</span><h2>Bring your class together</h2><ol className="speaking-launch-steps"><li>Launch a session to get a join code.</li><li>Share the code and wait for students to join.</li><li>Start the session when everyone is ready.</li></ol></section>}
+          </div>
+
+          <details className="speaking-setup-details">
+            <summary>Activity setup <span>Roles, target English and settings</span></summary>
             <section className="speaking-share-card">
               <div className="speaking-share-card-heading">
                 <span className="speaking-card-kicker">Activity setup</span>
@@ -1378,81 +1461,7 @@ function SpeakingActivityDetailPage({
                 </div>
               </div>
             </section>
-          </div>
-          <div className="speaking-share-actions">
-            {latest && latest.status === "ready" && (
-              <button
-                type="button"
-                className="speaking-primary-button"
-                disabled={working}
-                onClick={() =>
-                  void run(() => speakingApi.startSession(latest.id))
-                }
-              >
-                Start session
-              </button>
-            )}
-            {latest && latest.status === "active" && (
-              <button
-                type="button"
-                className="speaking-outline-button"
-                disabled={working}
-                onClick={() =>
-                  void run(() => speakingApi.pauseSession(latest.id))
-                }
-              >
-                Pause session
-              </button>
-            )}
-            {latest && latest.status === "paused" && (
-              <button
-                type="button"
-                className="speaking-primary-button"
-                disabled={working}
-                onClick={() =>
-                  void run(() => speakingApi.resumeSession(latest.id))
-                }
-              >
-                Resume session
-              </button>
-            )}
-            {latest &&
-              ["ready", "active", "paused"].includes(latest.status) && (
-                <button
-                  type="button"
-                  className="speaking-outline-button"
-                  disabled={working}
-                  onClick={endLatestSession}
-                >
-                  End session
-                </button>
-              )}
-            {latest && (
-              <button
-                type="button"
-                className="speaking-primary-button"
-                onClick={() =>
-                  navigate(
-                    `/speak/teacher/activity/${activity.id}/results?sessionId=${encodeURIComponent(latest.id)}`,
-                  )
-                }
-              >
-                <Trophy size={17} aria-hidden="true" />
-                View results
-              </button>
-            )}
-          </div>
-          {latest && (
-            <SpeakingRosterCard
-              roster={roster}
-              loading={rosterLoading}
-              error={rosterError}
-              search={rosterSearch}
-              filter={rosterFilter}
-              onSearch={setRosterSearch}
-              onFilter={setRosterFilter}
-            />
-          )}
+          </details>
           {sessions.length > 1 && (
             <section className="speaking-share-card speaking-previous-sessions">
               <div className="speaking-share-card-heading">

@@ -1,3 +1,4 @@
+import "../../speaking/speaking-auth.css";
 import { lazy, Suspense, useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { BookOpen, Bot, Check, ChevronDown, ChevronLeft, ChevronRight, Copy, Download, Eye, EyeOff, Footprints, Globe2, GraduationCap, Link2, Minus, Play, Plus, RefreshCw, Trash2, Trophy, WifiOff } from "lucide-react";
 import { QRCodeSVG } from "qrcode.react";
@@ -143,11 +144,13 @@ function useRoundRemaining(session: GameSession | null) {
 function TeacherAuth({
   onAuthed,
   initialMode,
-  apiWakeState
+  apiWakeState,
+  speaking = false
 }: {
   onAuthed: (user: TeacherUser) => void;
   initialMode: "login" | "signup";
   apiWakeState: ApiWakeState;
+  speaking?: boolean;
 }) {
   const [isSignup, setIsSignup] = useState(initialMode === "signup");
   const [form, setForm] = useState({ name: "", email: "", password: "" });
@@ -216,15 +219,15 @@ function TeacherAuth({
       : "Sign in";
 
   return (
-    <section className="auth-layout quizstrike-auth-layout auth-game-first">
+    <section className={`auth-layout quizstrike-auth-layout auth-game-first${speaking ? " speaking-auth" : ""}`}>
       <aside className="auth-visual" aria-label="GyakutenEigo teacher workspace">
         <img className="auth-visual-art" src="/assets/quizstrike-game-hero.png" alt="" width={1672} height={941} fetchPriority="high" />
         <div className="auth-visual-shade" aria-hidden="true" />
         <div className="auth-visual-content">
           <span className="auth-game-wordmark">GyakutenEigo</span>
           <span className="auth-kicker">Teacher dashboard</span>
-          <p className="auth-visual-title">One workspace.<br />Every class.</p>
-          <p>Create QuizStrike games and Speaking Practice sessions from the same focused teacher dashboard.</p>
+          <p className="auth-visual-title">{speaking ? <>More speaking.<br />For every student.</> : <>One workspace.<br />Every class.</>}</p>
+          <p>{speaking ? "Choose a conversation, invite your students with a code, and see how they are doing in one classroom workspace." : "Create QuizStrike games and Speaking Practice sessions from the same focused teacher dashboard."}</p>
           <span className="auth-tagline">Games ready. Voices heard.</span>
         </div>
       </aside>
@@ -2076,5 +2079,5 @@ export default function TeacherWorkspace({
   onLogout: () => void;
   onAuthed: (user: TeacherUser) => void;
 }) {
-  return teacher ? <TeacherDashboard teacher={teacher} initialPath={initialPath} onNavigate={onNavigate} onLogout={onLogout} /> : <TeacherAuth apiWakeState={apiWakeState} initialMode={initialMode} onAuthed={onAuthed} />;
+  return teacher ? <TeacherDashboard teacher={teacher} initialPath={initialPath} onNavigate={onNavigate} onLogout={onLogout} /> : <TeacherAuth speaking={initialPath.includes("/speaking") || initialPath.startsWith("/speak/")} apiWakeState={apiWakeState} initialMode={initialMode} onAuthed={onAuthed} />;
 }

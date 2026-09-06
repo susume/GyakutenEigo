@@ -1,6 +1,6 @@
 import { expect, test } from "@playwright/test";
 
-test("logged-out teacher returns to the Speaking builder after existing auth", async ({ browser, request }) => {
+test("logged-out teacher returns to the Speaking builder after existing auth", async ({ browser, request }, testInfo) => {
   const suffix = `${Date.now()}-${Math.random().toString(16).slice(2)}`;
   const email = `speaking-return-${suffix}@example.test`;
   const signup = await request.post("/api/auth/signup", {
@@ -14,6 +14,7 @@ test("logged-out teacher returns to the Speaking builder after existing auth", a
     await page.goto("/speak/teacher/create");
     await expect(page.getByRole("heading", { name: "Sign in to GyakutenEigo" })).toBeVisible();
     await expect(page).toHaveURL(/\/quiz-strike\/teacher\/speaking\/create$/);
+    await page.screenshot({ path: testInfo.outputPath("teacher-sign-in.png"), fullPage: true });
     await page.getByLabel("Email").fill(email);
     await page.getByLabel("Password", { exact: true }).fill("speaking-pass");
     await page.getByRole("button", { name: "Sign in", exact: true }).click();
@@ -55,6 +56,8 @@ test("teacher and student Speaking Practice screens use the connected mock API",
   await expression.pressSequentially(" there.");
   await expect(expression).toHaveValue("Hello there.");
   await expect(expression).toBeFocused();
+  await teacherPage.setViewportSize({ width: 1366, height: 768 });
+  await teacherPage.screenshot({ path: testInfo.outputPath("teacher-builder.png"), fullPage: true });
   await teacherPage.getByRole("button", { name: "Create activity", exact: true }).last().click();
   await expect(teacherPage).toHaveURL(/\/speaking\/activity\/[^/]+$/);
   const activityId = new URL(teacherPage.url()).pathname.split("/").pop()!;
@@ -65,6 +68,14 @@ test("teacher and student Speaking Practice screens use the connected mock API",
   await teacherPage.getByRole("button", { name: "Launch session", exact: true }).click();
   await expect(teacherPage.locator(".speaking-join-code-block strong")).toBeVisible();
   const joinCode = await teacherPage.locator(".speaking-join-code-block strong").innerText();
+  const startBounds = await teacherPage.getByRole("button", { name: "Start session", exact: true }).boundingBox();
+  expect(startBounds!.y + startBounds!.height).toBeLessThanOrEqual(768);
+  await teacherPage.screenshot({ path: testInfo.outputPath("teacher-classroom.png"), fullPage: true });
+  await teacherPage.setViewportSize({ width: 1280, height: 640 });
+  const compactStart = await teacherPage.getByRole("button", { name: "Start session", exact: true }).boundingBox();
+  expect(compactStart!.y + compactStart!.height).toBeLessThanOrEqual(640);
+  await teacherPage.screenshot({ path: testInfo.outputPath("teacher-classroom-1280.png"), fullPage: false });
+  await teacherPage.setViewportSize({ width: 1366, height: 768 });
   await teacherPage.getByRole("button", { name: "Start session", exact: true }).click();
   await expect(teacherPage.getByRole("button", { name: "Pause session", exact: true })).toBeVisible();
 
@@ -109,10 +120,13 @@ test("teacher and student Speaking Practice screens use the connected mock API",
   await studentPage.goto(`/speak/join/${joinCode}`);
   await studentPage.getByLabel("Nickname or student number").fill("Aki");
   await studentPage.getByRole("button", { name: "Join session", exact: true }).click();
+  await studentPage.setViewportSize({ width: 1366, height: 768 });
+  await studentPage.screenshot({ path: testInfo.outputPath("student-microphone.png"), fullPage: true });
   await studentPage.getByRole("button", { name: "Start Speaking", exact: true }).click();
   await expect(studentPage.getByRole("button", { name: "Tap to speak", exact: true })).toBeEnabled();
   const responsiveViewports = [
     { width: 1366, height: 768 },
+    { width: 1280, height: 640 },
     { width: 1024, height: 768 },
     { width: 768, height: 1024 },
     { width: 390, height: 844 }
@@ -192,6 +206,12 @@ test("teacher and student Speaking Practice screens use the connected mock API",
   await teacherPage.goto(`/quiz-strike/teacher/speaking/activity/${activityId}/results?sessionId=${encodeURIComponent(session!.id)}`);
   await expect(teacherPage.locator(".speaking-results-table-row").filter({ hasText: "Aki" })).toContainText("Completed");
   await expect(teacherPage.locator(".speaking-table-score")).not.toHaveText("—");
+  await teacherPage.screenshot({ path: testInfo.outputPath("teacher-results.png"), fullPage: true });
+  await studentPage.setViewportSize({ width: 1366, height: 768 });
+  await studentPage.screenshot({ path: testInfo.outputPath("student-result.png"), fullPage: true });
+  await teacherPage.locator(".speaking-results-table-row").filter({ hasText: "Aki" }).click();
+  await expect(teacherPage.locator(".speaking-result-panel")).toBeVisible();
+  await teacherPage.screenshot({ path: testInfo.outputPath("teacher-student-result.png"), fullPage: true });
 
   await studentContext.close();
   await teacherContext.close();
@@ -371,5 +391,29 @@ test("Speaking Practice recovers each failed operation without cross-retrying", 
     await expect(page.getByRole("heading", { name: "今回の結果" })).toBeVisible({ timeout: 15_000 });
   } finally {
     await context.close();
+  }
+});
+
+
+test("speaking entry and join fit laptop viewports without page scaling", async ({ page }, testInfo) => {
+  for (const viewport of [{ width: 1366, height: 768 }, { width: 1280, height: 640 }, { width: 1024, height: 768 }, { width: 390, height: 844 }]) {
+    await page.setViewportSize(viewport);
+    await page.goto("/speak");
+    const student = page.getByRole("main").getByRole("button", { name: "Join activity", exact: true });
+    const teacher = page.getByRole("button", { name: "Open teacher workspace", exact: true });
+    await expect(student).toBeVisible();
+    await expect(teacher).toBeVisible();
+    expect(await page.evaluate(() => document.documentElement.scrollWidth)).toBeLessThanOrEqual(viewport.width);
+    if (viewport.width >= 1024) {
+      for (const action of [student, teacher]) {
+        const bounds = await action.boundingBox();
+        expect(bounds!.y + bounds!.height).toBeLessThanOrEqual(viewport.height);
+      }
+    }
+    await page.screenshot({ path: testInfo.outputPath(`welcome-${viewport.width}.png`), fullPage: true });
+    await student.click();
+    await expect(page.getByRole("button", { name: "Join session", exact: true })).toBeVisible();
+    expect(await page.evaluate(() => document.documentElement.scrollWidth)).toBeLessThanOrEqual(viewport.width);
+    await page.screenshot({ path: testInfo.outputPath(`join-${viewport.width}.png`), fullPage: true });
   }
 });

@@ -1,0 +1,19 @@
+/* Speaking sign-in retains the shared authentication behavior. */
+.quizstrike-auth-layout.speaking-auth { width: min(1040px,calc(100% - 48px)); min-height: 0; grid-template-columns: minmax(0,1fr) minmax(0,1fr); gap: 32px; padding: 32px 0; align-items: start; }
+.speaking-auth .auth-visual { min-height: 400px; background: #edf6ff; border: 1px solid #d6e5f5; box-shadow: none; }
+.speaking-auth .auth-visual-art,.speaking-auth .auth-visual-shade { display: none; }
+.speaking-auth .auth-visual-content { position: relative; padding: 32px; color: #203956; }
+.speaking-auth .auth-visual-title { color: #14233d; font-size: 38px; line-height: 1.15; letter-spacing: -.04em; }
+.speaking-auth .auth-visual-content p,.speaking-auth .auth-tagline,.speaking-auth .auth-game-wordmark,.speaking-auth .auth-kicker { color: #315a80; }
+.speaking-auth .auth-form-panel { padding: 28px; }
+.speaking-auth .auth-form-heading h1 { font-size: 30px; line-height: 1.15; letter-spacing: -.03em; }
+.speaking-auth .auth-form-heading p { font-size: 14px; }
+@media (max-width: 760px) {
+ .quizstrike-auth-layout.speaking-auth { width: calc(100% - 32px); grid-template-columns: 1fr; padding: 20px 0; gap: 16px; }
+ .speaking-auth .auth-visual { min-height: 0; }
+ .speaking-auth .auth-visual-content { padding: 20px; }
+ .speaking-auth .auth-visual-title { font-size: 28px; }
+ .speaking-auth .auth-tagline,.speaking-auth .auth-game-wordmark { display: none; }
+}
+.speaking-auth .auth-visual-title { color: #14233d !important; }
+.speaking-auth .auth-form-heading .auth-kicker { color: #8ecbff; }
