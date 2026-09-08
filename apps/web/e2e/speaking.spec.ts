@@ -19,7 +19,7 @@ test("logged-out teacher returns to the Speaking builder after existing auth", a
     await page.getByLabel("Password", { exact: true }).fill("speaking-pass");
     await page.getByRole("button", { name: "Sign in", exact: true }).click();
     await expect(page).toHaveURL(/\/quiz-strike\/teacher\/speaking\/create$/);
-    await expect(page.getByRole("heading", { name: "Create an activity" })).toBeVisible();
+    await expect(page.getByRole("heading", { name: "Create a Performance Test" })).toBeVisible();
     await expect(page.getByRole("button", { name: "Speaking Practice", exact: true })).toHaveClass(/active/);
     await page.getByRole("button", { name: "Speaking Practice", exact: true }).click();
     await expect(page).toHaveURL(/\/quiz-strike\/teacher\/speaking$/);
@@ -31,7 +31,7 @@ test("logged-out teacher returns to the Speaking builder after existing auth", a
     await page.getByRole("button", { name: "Speaking Practice", exact: true }).click();
     await page.getByRole("complementary", { name: "Teacher sections" }).getByRole("button", { name: "New activity", exact: true }).click();
     await expect(page).toHaveURL(/\/quiz-strike\/teacher\/speaking\/create$/);
-    await expect(page.getByRole("heading", { name: "Create an activity" })).toBeVisible();
+    await expect(page.getByRole("heading", { name: "Create a Performance Test" })).toBeVisible();
   } finally {
     await context.close();
   }
@@ -50,14 +50,22 @@ test("teacher and student Speaking Practice screens use the connected mock API",
   const teacherPage = await teacherContext.newPage();
   await teacherPage.addInitScript((token) => localStorage.setItem("quizstrike_token", token), teacherToken);
   await teacherPage.goto("/quiz-strike/teacher/speaking/create");
-  await expect(teacherPage.getByRole("heading", { name: "Create an activity" })).toBeVisible();
+  await expect(teacherPage.getByRole("heading", { name: "Create a Performance Test" })).toBeVisible();
   const expression = teacherPage.getByRole("textbox", { name: "Target expression 1", exact: true });
   await expression.fill("Hello");
   await expression.pressSequentially(" there.");
   await expect(expression).toHaveValue("Hello there.");
   await expect(expression).toBeFocused();
   await teacherPage.setViewportSize({ width: 1366, height: 768 });
+  await teacherPage.evaluate(() => window.scrollTo(0, 0));
   await teacherPage.screenshot({ path: testInfo.outputPath("teacher-builder.png"), fullPage: true });
+  await teacherPage.screenshot({ path: testInfo.outputPath("teacher-builder-viewport.png"), fullPage: false });
+  for (const viewport of [{ width: 1024, height: 768 }, { width: 768, height: 1024 }, { width: 390, height: 844 }]) {
+    await teacherPage.setViewportSize(viewport);
+    expect(await teacherPage.evaluate(() => document.documentElement.scrollWidth)).toBeLessThanOrEqual(viewport.width);
+    await teacherPage.screenshot({ path: testInfo.outputPath(`teacher-builder-${viewport.width}.png`), fullPage: true });
+  }
+  await teacherPage.setViewportSize({ width: 1366, height: 768 });
   await teacherPage.getByRole("button", { name: "Create activity", exact: true }).last().click();
   await expect(teacherPage).toHaveURL(/\/speaking\/activity\/[^/]+$/);
   const activityId = new URL(teacherPage.url()).pathname.split("/").pop()!;
@@ -122,6 +130,13 @@ test("teacher and student Speaking Practice screens use the connected mock API",
   await studentPage.getByRole("button", { name: "Join session", exact: true }).click();
   await studentPage.setViewportSize({ width: 1366, height: 768 });
   await studentPage.screenshot({ path: testInfo.outputPath("student-microphone.png"), fullPage: true });
+  await expect(studentPage.getByRole("heading", { name: "Your task", exact: true })).toBeVisible();
+  await studentPage.screenshot({ path: testInfo.outputPath("student-briefing.png"), fullPage: true });
+  for (const viewport of [{ width: 768, height: 1024 }, { width: 390, height: 844 }]) {
+    await studentPage.setViewportSize(viewport);
+    expect(await studentPage.evaluate(() => document.documentElement.scrollWidth)).toBeLessThanOrEqual(viewport.width);
+    await studentPage.screenshot({ path: testInfo.outputPath(`student-briefing-${viewport.width}.png`), fullPage: true });
+  }
   await studentPage.getByRole("button", { name: "Start Speaking", exact: true }).click();
   await expect(studentPage.getByRole("button", { name: "Tap to speak", exact: true })).toBeEnabled();
   const responsiveViewports = [
@@ -183,6 +198,7 @@ test("teacher and student Speaking Practice screens use the connected mock API",
   expect(zoomedMic!.x + zoomedMic!.width).toBeLessThanOrEqual(zoomViewport.width + 1);
   expect(zoomedMic!.y).toBeGreaterThanOrEqual(0);
   expect(zoomedMic!.y + zoomedMic!.height).toBeLessThanOrEqual(zoomViewport.height + 1);
+  await studentPage.screenshot({ path: testInfo.outputPath("speaking-zoom-125.png"), fullPage: false });
   await studentPage.evaluate(() => { document.documentElement.style.zoom = ""; });
   const tapToSpeak = studentPage.getByRole("button", { name: "Tap to speak", exact: true });
   await tapToSpeak.focus();
@@ -209,15 +225,21 @@ test("teacher and student Speaking Practice screens use the connected mock API",
   await teacherPage.screenshot({ path: testInfo.outputPath("teacher-results.png"), fullPage: true });
   await studentPage.setViewportSize({ width: 1366, height: 768 });
   await studentPage.screenshot({ path: testInfo.outputPath("student-result.png"), fullPage: true });
-  await teacherPage.locator(".speaking-results-table-row").filter({ hasText: "Aki" }).click();
+  for (const viewport of [{ width: 768, height: 1024 }, { width: 390, height: 844 }]) {
+    await studentPage.setViewportSize(viewport);
+    expect(await studentPage.evaluate(() => document.documentElement.scrollWidth)).toBeLessThanOrEqual(viewport.width);
+    await studentPage.screenshot({ path: testInfo.outputPath(`student-result-${viewport.width}.png`), fullPage: true });
+  }
+  await teacherPage.getByRole("button", { name: "Aki", exact: true }).click();
   await expect(teacherPage.locator(".speaking-result-panel")).toBeVisible();
+  await expect(teacherPage.getByRole("meter")).toHaveCount(5);
   await teacherPage.screenshot({ path: testInfo.outputPath("teacher-student-result.png"), fullPage: true });
 
   await studentContext.close();
   await teacherContext.close();
 });
 
-test("Speaking Practice recovers each failed operation without cross-retrying", async ({ browser, request }) => {
+test("Speaking Practice recovers each failed operation without cross-retrying", async ({ browser, request }, testInfo) => {
   const suffix = `${Date.now()}-${Math.random().toString(16).slice(2)}`;
   const signup = await request.post("/api/auth/signup", {
     data: { name: "Speaking Recovery Teacher", email: `speaking-recovery-${suffix}@example.test`, password: "speaking-pass" }
@@ -271,6 +293,7 @@ test("Speaking Practice recovers each failed operation without cross-retrying", 
   await deniedPage.getByRole("button", { name: "Start Speaking", exact: true }).click();
   await expect(deniedPage.getByRole("button", { name: "Retry microphone", exact: true })).toBeVisible();
   await expect(deniedPage.getByRole("alert")).toContainText("Microphone permission was denied");
+  await deniedPage.screenshot({ path: testInfo.outputPath("microphone-denied.png"), fullPage: true });
   await deniedPage.evaluate(() => (window as typeof window & { __allowSpeakingMicrophone?: () => void }).__allowSpeakingMicrophone?.());
   await deniedPage.getByRole("button", { name: "Retry microphone", exact: true }).click();
   await expect(deniedPage.getByRole("alert")).toContainText("could not measure input");
@@ -327,6 +350,7 @@ test("Speaking Practice recovers each failed operation without cross-retrying", 
     await expect(page.getByRole("button", { name: "Tap to speak", exact: true })).toBeEnabled();
     await page.getByRole("button", { name: "Retry Help", exact: true }).click();
     await expect(page.getByRole("dialog")).toContainText("You can try this");
+    await page.screenshot({ path: testInfo.outputPath("student-help.png"), fullPage: true });
     const closeHelp = page.getByRole("button", { name: "Close help", exact: true });
     await closeHelp.focus();
     await page.keyboard.press("Shift+Tab");
@@ -399,8 +423,8 @@ test("speaking entry and join fit laptop viewports without page scaling", async 
   for (const viewport of [{ width: 1366, height: 768 }, { width: 1280, height: 640 }, { width: 1024, height: 768 }, { width: 390, height: 844 }]) {
     await page.setViewportSize(viewport);
     await page.goto("/speak");
-    const student = page.getByRole("main").getByRole("button", { name: "Join activity", exact: true });
-    const teacher = page.getByRole("button", { name: "Open teacher workspace", exact: true });
+    const student = page.getByRole("main").getByRole("button", { name: "Join Performance Test", exact: true });
+    const teacher = page.getByRole("button", { name: "Create or run a Performance Test", exact: true });
     await expect(student).toBeVisible();
     await expect(teacher).toBeVisible();
     expect(await page.evaluate(() => document.documentElement.scrollWidth)).toBeLessThanOrEqual(viewport.width);

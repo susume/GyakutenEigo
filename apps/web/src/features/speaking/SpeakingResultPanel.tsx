@@ -1,4 +1,4 @@
-import { ArrowRight, Languages, Star } from "lucide-react";
+import { ArrowRight, Languages } from "lucide-react";
 import {
   speakingFeedbackCopy,
   speakingOverallScore,
@@ -58,6 +58,7 @@ export function ResultPanel({
           <p>{evaluation.notScoredReason ?? copy.notScoredDetail}</p>
         </div>
       )}
+      <p className="speaking-rubric-intro">{evaluation.language === "ja" ? "評価基準と会話の根拠 · 各項目4点満点" : "Rubric and conversation evidence · Each criterion is scored out of 4"}</p>
       <div className="speaking-score-grid">
         {activity.rubric
           .filter((criterion) => criterion.enabled)
@@ -71,33 +72,18 @@ export function ResultPanel({
                       ? "Fluency"
                       : criterion.name}
                   </strong>
-                  {teacherView && (
-                    <small>
-                      {evaluation.evidence[criterion.id] ??
-                        criterion.description}
-                    </small>
-                  )}
+                  <small>{criterion.description}</small>
+                  {evaluation.evidence[criterion.id] && <p className="speaking-criterion-evidence">{evaluation.evidence[criterion.id]}</p>}
                 </div>
                 <span
-                  className="speaking-stars"
+                  className="speaking-criterion-score"
                   aria-label={
                     score === null || score === undefined
                       ? copy.notScored
-                      : `${score} out of 4 stars`
+                      : `${score} out of 4`
                   }
                 >
-                  {[1, 2, 3, 4].map((star) => (
-                    <Star
-                      key={star}
-                      size={17}
-                      fill={
-                        typeof score === "number" && star <= score
-                          ? "currentColor"
-                          : "none"
-                      }
-                      aria-hidden="true"
-                    />
-                  ))}
+                  {typeof score === "number" && <meter min={0} max={4} value={score} aria-label={`${criterion.name} score`} />}
                   <b>
                     {typeof score === "number" ? `${score}/4` : copy.notScored}
                   </b>
@@ -108,7 +94,7 @@ export function ResultPanel({
       </div>
       <div className="speaking-result-columns">
         <div className="speaking-result-message speaking-result-message-good">
-          <h3>👍 {copy.whatWentWell}</h3>
+          <h3>{copy.whatWentWell}</h3>
           <ul>
             {evaluation.strengths.map((strength) => (
               <li key={strength}>{strength}</li>
@@ -116,7 +102,7 @@ export function ResultPanel({
           </ul>
         </div>
         <div className="speaking-result-message">
-          <h3>🚀 {copy.tryNext}</h3>
+          <h3>{copy.tryNext}</h3>
           <ul>
             {evaluation.improvements.map((improvement) => (
               <li key={improvement}>{improvement}</li>
@@ -126,7 +112,7 @@ export function ResultPanel({
       </div>
       <div className="speaking-useful-result">
         <div className="speaking-result-section-heading">
-          <h3>💬 {copy.usefulEnglish}</h3>
+          <h3>{copy.usefulEnglish}</h3>
           <span>
             {studentTurns.length} {copy.speakingTurns}
           </span>
@@ -156,12 +142,8 @@ export function ResultPanel({
           </p>
         )}
       </div>
-      {teacherView && (
-        <div className="speaking-transcript-detail">
-          <div className="speaking-result-section-heading">
-            <h3>{copy.transcript}</h3>
-            <span>{copy.conversationEvidence}</span>
-          </div>
+        <details className="speaking-transcript-detail">
+          <summary>{copy.transcript} · {turns.length}</summary>
           {turns.map((turn) => (
             <p key={turn.id}>
               <strong>
@@ -170,8 +152,7 @@ export function ResultPanel({
               <span>{turn.text}</span>
             </p>
           ))}
-        </div>
-      )}
+        </details>
     </section>
   );
 }

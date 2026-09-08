@@ -1,25 +1,30 @@
 import { useCallback, useEffect, useRef, useState, type FormEvent } from "react";
 import {
   ArrowLeft,
+  BookOpenText,
+  Monitor,
+  AlertCircle,
+  Clock3,
+  Mic,
+  ClipboardCheck,
   ArrowRight,
   Check,
   ChevronRight,
   CircleCheck,
   Copy,
   Edit3,
-  Lightbulb,
   LoaderCircle,
   MessageCircle,
   Pencil,
   Play,
   Plus,
-  ShoppingBag,
   Trash2,
   Trophy,
   UserRound,
   Users,
   X,
 } from "lucide-react";
+import { createPortal } from "react-dom";
 import { QRCodeSVG } from "qrcode.react";
 import {
   SPEAKING_DIFFICULTIES,
@@ -30,7 +35,6 @@ import {
   SPEAKING_NATIVE_LANGUAGES,
   SPEAKING_LEVEL_LABELS,
   SPEAKING_LEVELS,
-  speakingFeedbackCopy,
   speakingScenarioResources,
   type SpeakingActivity,
   type SpeakingCreateActivityInput,
@@ -284,10 +288,11 @@ function SpeakingTeacherDashboard({ navigate }: { navigate: Navigate }) {
   useEffect(() => {
     void load();
   }, [load]);
-  const sessionCount = Object.values(sessions).reduce(
-    (sum, items) => sum + items.length,
-    0,
-  );
+  const [search, setSearch] = useState("");
+  const allSessions = activities.flatMap((activity) => (sessions[activity.id] ?? []).map((session) => ({ activity, session })));
+  const openSessions = allSessions.filter(({ session }) => ["ready", "active", "paused"].includes(session.status));
+  const recentSessions = allSessions.filter(({ session }) => ["ended", "expired"].includes(session.status)).sort((a, b) => b.session.createdAt.localeCompare(a.session.createdAt)).slice(0, 5);
+  const visibleActivities = activities.filter((activity) => `${activity.title} ${activity.scenario}`.toLocaleLowerCase().includes(search.trim().toLocaleLowerCase()));
   if (loading) return <TeacherLoading />;
   return (
     <div className="speaking-page-shell speaking-teacher-shell">
@@ -300,8 +305,7 @@ function SpeakingTeacherDashboard({ navigate }: { navigate: Navigate }) {
               </span>
               <h1>Speaking Practice</h1>
               <p>
-                Create a focused activity, launch one classroom session, and see
-                how your students communicated.
+                Prepare a performance task, run it with your class, and review the rubric evidence.
               </p>
             </div>
             <button
@@ -310,7 +314,7 @@ function SpeakingTeacherDashboard({ navigate }: { navigate: Navigate }) {
               onClick={() => navigate("/speak/teacher/create")}
             >
               <Plus size={18} aria-hidden="true" />
-              Create Activity
+              Create Performance Test
             </button>
           </div>
           {error && (
@@ -318,33 +322,14 @@ function SpeakingTeacherDashboard({ navigate }: { navigate: Navigate }) {
               {error}
             </p>
           )}
-          <section className="speaking-teacher-stats">
-            <div>
-              <span>Activities</span>
-              <strong>{activities.length}</strong>
-              <small>reusable lessons</small>
-            </div>
-            <div>
-              <span>Sessions launched</span>
-              <strong>{sessionCount}</strong>
-              <small>classroom runs</small>
-            </div>
-            <div>
-              <span>Active now</span>
-              <strong>
-                {
-                  Object.values(sessions)
-                    .flat()
-                    .filter((session) => session.status === "active").length
-                }
-              </strong>
-              <small>live classrooms</small>
-            </div>
-          </section>
+          {openSessions.length > 0 && <section className="speaking-session-strip" aria-label="Open classroom sessions">
+            <div className="speaking-section-title"><h2>In the classroom</h2><span>{openSessions.length} open</span></div>
+            {openSessions.map(({ activity, session }) => <button className="speaking-session-row" key={session.id} type="button" onClick={() => navigate(`/speak/teacher/activity/${activity.id}?sessionId=${encodeURIComponent(session.id)}`)}><span className={`speaking-status-pill speaking-status-${session.status}`}>{session.status === "ready" ? "Students joining" : session.status === "paused" ? "Paused" : "Running"}</span><strong>{activity.title}</strong><code>{session.joinCode}</code><span>Open classroom <ArrowRight size={16} aria-hidden="true" /></span></button>)}
+          </section>}
           <div className="speaking-section-title">
             <div>
               <span className="speaking-card-kicker">Your activities</span>
-              <h2>Keep practice moving</h2>
+              <h2>Reusable performance tasks</h2>
             </div>
             <button
               className="speaking-text-button"
@@ -354,9 +339,11 @@ function SpeakingTeacherDashboard({ navigate }: { navigate: Navigate }) {
               New activity <ArrowRight size={15} aria-hidden="true" />
             </button>
           </div>
+          {activities.length > 0 && <label className="speaking-task-search"><span className="sr-only">Search performance tasks</span><input aria-label="Search performance tasks" value={search} onChange={(event) => setSearch(event.target.value)} placeholder="Search by task, textbook unit or situation" /></label>}
           {activities.length ? (
             <div className="speaking-activity-list">
-              {activities.map((activity) => (
+              {!visibleActivities.length && <p>No tasks match your search.</p>}
+              {visibleActivities.map((activity) => (
                 <TeacherActivityRow
                   key={activity.id}
                   activity={activity}
@@ -381,6 +368,7 @@ function SpeakingTeacherDashboard({ navigate }: { navigate: Navigate }) {
               </button>
             </div>
           )}
+          {recentSessions.length > 0 && <section className="speaking-recent-sessions"><div className="speaking-section-title"><h2>Recent completed sessions</h2></div>{recentSessions.map(({ activity, session }) => <button className="speaking-session-row" type="button" key={session.id} onClick={() => navigate(`/speak/teacher/activity/${activity.id}/results?sessionId=${encodeURIComponent(session.id)}`)}><ClipboardCheck size={19} aria-hidden="true" /><strong>{activity.title}</strong><time>{new Date(session.createdAt).toLocaleDateString()}</time><span>Review results <ArrowRight size={16} aria-hidden="true" /></span></button>)}</section>}
         </section>
       </main>
     </div>
@@ -410,7 +398,7 @@ function TeacherActivityRow({
   return (
     <article className="speaking-activity-row">
       <div className="speaking-activity-row-icon">
-        <ShoppingBag size={21} aria-hidden="true" />
+        <BookOpenText size={21} aria-hidden="true" />
       </div>
       <div className="speaking-activity-row-main">
         <div>
@@ -419,7 +407,7 @@ function TeacherActivityRow({
             {activity.aiRole} · {SPEAKING_LEVEL_LABELS[activity.level]}
           </span>
         </div>
-        <p>{activity.scenario}</p>
+        <p>{activity.scenario}</p><small>{formatDuration(activity.durationSeconds)} · {activity.rubric.filter((criterion) => criterion.enabled).length} criteria{latest ? ` · Last run ${new Date(latest.createdAt).toLocaleDateString()}` : " · Ready for your first class"}</small>
       </div>
       <div className="speaking-activity-row-meta">
         <span
@@ -432,7 +420,7 @@ function TeacherActivityRow({
                 ? "Paused"
                 : latest.status === "ended"
                   ? "Ended"
-                  : "Ready"
+                  : latest.status === "expired" ? "Expired" : "Students joining"
             : "Not launched"}
         </span>
         <span>
@@ -643,11 +631,11 @@ function SpeakingCreatePage({
               <span className="speaking-eyebrow">
                 <Edit3 size={15} aria-hidden="true" /> Activity builder
               </span>
-              <h1>{editing ? "Edit activity" : "Create an activity"}</h1>
+              <h1>{editing ? "Edit Performance Test" : "Create a Performance Test"}</h1>
               <p>
                 {editing
                   ? "Update the reusable activity. Existing classroom sessions keep their original setup."
-                  : "Set the situation first. The AI will stay in character while students practice."}
+                  : "Adapt a conversation from your textbook. Save the task, then launch it for your class."}
               </p>
             </div>
             <div className="speaking-builder-header-actions">
@@ -684,7 +672,7 @@ function SpeakingCreatePage({
             </div>
           </div>
           <nav className="speaking-builder-jump" aria-label="Activity setup sections">
-            <a href="#speaking-template">1. Template</a><a href="#speaking-situation">2. Situation</a><a href="#speaking-language">3. Target English</a><a href="#speaking-settings">4. Settings & rubric</a>
+            <a href="#speaking-template">Template</a><a href="#speaking-situation">1. Task</a><a href="#speaking-language">2. Student support</a><a href="#speaking-settings">3. Settings</a><a href="#speaking-rubric">4. Rubric</a><a href="#speaking-review">5. Review</a>
           </nav>
           <section id="speaking-template" className="speaking-builder-card">
             <div className="speaking-builder-card-heading">
@@ -694,7 +682,7 @@ function SpeakingCreatePage({
                 </span>
                 <h2>Pick a familiar conversation</h2>
               </div>
-              <span className="speaking-builder-step">01 / 04</span>
+              <span className="speaking-builder-step">Template</span>
             </div>
             <div className="speaking-template-grid">
               {SPEAKING_TEMPLATES.map((template) => (
@@ -705,7 +693,7 @@ function SpeakingCreatePage({
                   onClick={() => setDraft(draftFromTemplate(template))}
                 >
                   <span className="speaking-template-icon">
-                    <ShoppingBag size={19} aria-hidden="true" />
+                    <MessageCircle size={19} aria-hidden="true" />
                   </span>
                   <span>
                     <strong>{template.title}</strong>
@@ -727,7 +715,7 @@ function SpeakingCreatePage({
                 <span className="speaking-card-kicker">The conversation</span>
                 <h2>Give students a clear situation</h2>
               </div>
-              <span className="speaking-builder-step">02 / 04</span>
+              <span className="speaking-builder-step">01 / 05</span>
             </div>
             <div className="speaking-builder-form-grid">
               <label>
@@ -761,6 +749,17 @@ function SpeakingCreatePage({
                   rows={3}
                 />
               </label>
+
+            </div>
+          </section>
+          <section id="speaking-language" className="speaking-builder-card">
+            <div className="speaking-builder-card-heading">
+              <div>
+                <span className="speaking-card-kicker">Target English</span>
+                <h2>Help students prepare</h2>
+              </div>
+              <span className="speaking-builder-step">02 / 05</span>
+            </div>
               <div className="speaking-span-2 speaking-resource-editor">
                 <div className="speaking-resource-editor-heading">
                   <div>
@@ -784,6 +783,7 @@ function SpeakingCreatePage({
                       onChange={(event) => updateResources({ studentGoal: event.target.value })}
                     />
                   </label>
+                  <details className="speaking-span-2 speaking-support-details"><summary>Optional steps, vocabulary & reference material</summary><div className="speaking-resource-grid">
                   <label>
                     Suggested steps <small>(one per line)</small>
                     <textarea
@@ -808,18 +808,9 @@ function SpeakingCreatePage({
                       onChange={(event) => updateResources({ referenceItems: event.target.value.split(/\r?\n/u).map((line) => { const [label, ...detail] = line.split("|"); return { label: label?.trim() ?? "", ...(detail.join("|").trim() ? { detail: detail.join("|").trim() } : {}) }; }) })}
                     />
                   </label>
+                </div></details>
                 </div>
               </div>
-            </div>
-          </section>
-          <section id="speaking-language" className="speaking-builder-card">
-            <div className="speaking-builder-card-heading">
-              <div>
-                <span className="speaking-card-kicker">Target English</span>
-                <h2>Phrases the AI can bring into the conversation</h2>
-              </div>
-              <span className="speaking-builder-step">03 / 04</span>
-            </div>
             <div className="speaking-expression-editor">
               {draft.targetExpressions.map((expression, index) => (
                 <div
@@ -881,7 +872,7 @@ function SpeakingCreatePage({
                 <span className="speaking-card-kicker">Activity settings</span>
                 <h2>Set the right amount of support</h2>
               </div>
-              <span className="speaking-builder-step">04 / 04</span>
+              <span className="speaking-builder-step">03 / 05</span>
             </div>
             <div className="speaking-settings-grid">
               <label>
@@ -958,6 +949,10 @@ function SpeakingCreatePage({
                 </select>
               </label>
             </div>
+          </section>
+          <section id="speaking-rubric" className="speaking-builder-card">
+            <div className="speaking-builder-card-heading"><div><span className="speaking-card-kicker">Evaluation rubric</span><h2>What will students be evaluated on?</h2></div><span className="speaking-builder-step">04 / 05</span></div>
+            <p className="speaking-rubric-intro">Each enabled criterion is scored from 1 to 4, with conversation evidence. Insufficient speech is left unscored.</p>
             <div className="speaking-rubric-editor-heading">
               <div>
                 <span className="speaking-card-kicker">Editable rubric</span>
@@ -969,6 +964,7 @@ function SpeakingCreatePage({
               <button
                 type="button"
                 className="speaking-outline-button"
+                disabled={draft.rubric.length >= 10}
                 onClick={() =>
                   update("rubric", [
                     ...draft.rubric,
@@ -994,6 +990,7 @@ function SpeakingCreatePage({
                   <label className="speaking-rubric-toggle">
                     <input
                       type="checkbox"
+                      aria-label={`Evaluate ${criterion.name}`}
                       checked={criterion.enabled}
                       onChange={(event) =>
                         updateCriterion(index, {
@@ -1040,6 +1037,11 @@ function SpeakingCreatePage({
                 </div>
               ))}
             </div>
+          </section>
+          <section id="speaking-review" className="speaking-builder-card speaking-review-card">
+            <div className="speaking-builder-card-heading"><div><span className="speaking-card-kicker">Review & launch</span><h2>{draft.title || "Your Performance Test"}</h2></div><span className="speaking-builder-step">05 / 05</span></div>
+            <p>{draft.scenario}</p><dl className="speaking-review-facts"><div><dt>Speaking time</dt><dd>{formatDuration(draft.durationSeconds)}</dd></div><div><dt>Student identification</dt><dd>{SPEAKING_IDENTIFIER_MODE_LABELS[draft.identifierMode]}</dd></div><div><dt>Evaluation</dt><dd>{draft.rubric.filter((criterion) => criterion.enabled).length} criteria · 4 points each</dd></div></dl>
+            <p>Save this reusable task. On the next screen, launch a session to get your class code.</p>
           </section>
           {formError && (
             <p className="speaking-error speaking-builder-error" role="alert">
@@ -1111,7 +1113,9 @@ function SpeakingActivityDetailPage({
         speakingApi.sessions(activityId),
       ]);
       setActivity((activityPayload as { activity: SpeakingActivity }).activity);
-      setSessions((sessionPayload as { sessions: SpeakingSession[] }).sessions);
+      const nextSessions = (sessionPayload as { sessions: SpeakingSession[] }).sessions;
+      const selectedId = new URLSearchParams(window.location.search).get("sessionId");
+      setSessions(selectedId ? [...nextSessions].sort((a, b) => Number(b.id === selectedId) - Number(a.id === selectedId)) : nextSessions);
     } catch (loadError) {
       setError(
         getErrorMessage(loadError, "This activity could not be loaded."),
@@ -1122,6 +1126,8 @@ function SpeakingActivityDetailPage({
     void load();
   }, [load]);
   const [copied, setCopied] = useState(false);
+  const [projecting, setProjecting] = useState(false);
+  const [copyError, setCopyError] = useState("");
   const [working, setWorking] = useState(false);
   const latestSessionId = sessions[0]?.id;
   const loadRoster = useCallback(async (sessionId: string, signal?: AbortSignal) => {
@@ -1169,7 +1175,7 @@ function SpeakingActivityDetailPage({
     ) : (
       <TeacherLoading />
     );
-  const latest = sessions[0];
+  const latest = roster && roster.session.id === sessions[0]?.id && (roster.session.revision ?? 0) >= (sessions[0]?.revision ?? 0) ? roster.session : sessions[0];
   const shareable = Boolean(
     latest && ["ready", "active", "paused"].includes(latest.status),
   );
@@ -1182,6 +1188,7 @@ function SpeakingActivityDetailPage({
     try {
       await action();
       await load();
+      if (latest) await loadRoster(latest.id);
     } catch (actionError) {
       setError(
         getErrorMessage(
@@ -1207,9 +1214,11 @@ function SpeakingActivityDetailPage({
     if (!shareUrl) return;
     try {
       await navigator.clipboard.writeText(shareUrl);
+      setCopyError("");
       setCopied(true);
       window.setTimeout(() => setCopied(false), 2_000);
     } catch {
+      setCopyError("Copy did not work. Select and copy the join link below.");
       setCopied(false);
     }
   };
@@ -1245,7 +1254,10 @@ function SpeakingActivityDetailPage({
               {error}
             </p>
           )}
+          {projecting && shareable && latest && <SpeakingProjector activity={activity} session={latest} shareUrl={shareUrl} roster={roster} stale={Boolean(rosterError)} onClose={() => setProjecting(false)} />}
           <div className="speaking-share-actions">
+            {shareable && <button type="button" className="speaking-outline-button" onClick={() => setProjecting(true)}><Monitor size={17} aria-hidden="true" />Project join screen</button>}
+
             {latest && latest.status === "ready" && (
               <button
                 type="button"
@@ -1296,7 +1308,7 @@ function SpeakingActivityDetailPage({
             {latest && (
               <button
                 type="button"
-                className="speaking-primary-button"
+                className="speaking-outline-button"
                 onClick={() =>
                   navigate(
                     `/speak/teacher/activity/${activity.id}/results?sessionId=${encodeURIComponent(latest.id)}`,
@@ -1308,6 +1320,8 @@ function SpeakingActivityDetailPage({
               </button>
             )}
           </div>
+          <details className="speaking-session-instructions" open={!shareable || latest?.status === "ready"}>
+          <summary>{shareable ? `Join instructions · ${latest!.joinCode}` : "Launch a classroom session"}</summary>
           <div className="speaking-share-grid">
             <section className="speaking-share-card speaking-share-code-card">
               {shareable ? (
@@ -1318,8 +1332,8 @@ function SpeakingActivityDetailPage({
                     </span>
                     <h2>
                       {latest!.status === "ready"
-                        ? "Session ready"
-                        : "Share with your class"}
+                        ? "Students are joining"
+                        : latest!.status === "paused" ? "Performance Test paused" : "Performance Test running"}
                     </h2>
                     <p>
                       Scan the QR code or enter this short code at{" "}
@@ -1350,8 +1364,9 @@ function SpeakingActivityDetailPage({
                       </button>
                     </div>
                   </div>
+                  {copyError && <p className="speaking-error" role="alert">{copyError}</p>}
                   <div className="speaking-share-link">
-                    <span>{shareUrl}</span>
+                    <input aria-label="Student join link" value={shareUrl} readOnly onFocus={(event) => event.currentTarget.select()} />
                     <button
                       className="speaking-outline-button"
                       type="button"
@@ -1384,7 +1399,13 @@ function SpeakingActivityDetailPage({
                     className="speaking-primary-button"
                     disabled={working}
                     onClick={() =>
-                      void run(() => speakingApi.launchSession(activity.id))
+                      void run(async () => {
+                        await speakingApi.launchSession(activity.id);
+                        // A new classroom run must replace any historical session selection.
+                        const url = new URL(window.location.href);
+                        url.searchParams.delete("sessionId");
+                        window.history.replaceState({}, "", url);
+                      })
                     }
                   >
                     <Play size={17} aria-hidden="true" />
@@ -1393,6 +1414,8 @@ function SpeakingActivityDetailPage({
                 </>
               )}
             </section>
+          </div>
+          </details>
           {latest && (
             <SpeakingRosterCard
               roster={roster}
@@ -1405,7 +1428,6 @@ function SpeakingActivityDetailPage({
             />
           )}
             {!latest && <section className="speaking-share-card"><span className="speaking-card-kicker">Your next steps</span><h2>Bring your class together</h2><ol className="speaking-launch-steps"><li>Launch a session to get a join code.</li><li>Share the code and wait for students to join.</li><li>Start the session when everyone is ready.</li></ol></section>}
-          </div>
 
           <details className="speaking-setup-details">
             <summary>Activity setup <span>Roles, target English and settings</span></summary>
@@ -1465,7 +1487,7 @@ function SpeakingActivityDetailPage({
           {sessions.length > 1 && (
             <section className="speaking-share-card speaking-previous-sessions">
               <div className="speaking-share-card-heading">
-                <span className="speaking-card-kicker">Previous sessions</span>
+                <span className="speaking-card-kicker">Other sessions</span>
               </div>
               {sessions.slice(1).map((session) => (
                 <button
@@ -1496,6 +1518,29 @@ function SpeakingActivityDetailPage({
   );
 }
 
+function RosterIcon({ status }: { status: SpeakingRosterStatus }) {
+  const Icon = status === "error" ? AlertCircle : status === "finished" ? ClipboardCheck : status === "ready" ? CircleCheck : status === "practicing" ? Mic : status === "joined" ? UserRound : Clock3;
+  return <Icon className={`speaking-roster-icon status-${status}`} size={17} aria-hidden="true" />;
+}
+
+function SpeakingProjector({ activity, session, shareUrl, roster, stale, onClose }: { activity: SpeakingActivity; session: SpeakingSession; shareUrl: string; roster?: SpeakingRosterResponse; stale: boolean; onClose: () => void }) {
+  const dialogRef = useRef<HTMLDialogElement>(null);
+  useEffect(() => {
+    const returnFocus = document.activeElement as HTMLElement | null;
+    const dialog = dialogRef.current;
+    dialog?.showModal();
+    return () => { dialog?.close(); returnFocus?.focus(); };
+  }, []);
+  return createPortal(<dialog ref={dialogRef} className="speaking-projector speaking-app" aria-labelledby="speaking-projector-title" onCancel={onClose}>
+    <header><span>GyakutenEigo · Performance Test</span><button type="button" onClick={onClose}>Close projection</button></header>
+    <main><span className={`speaking-status-pill speaking-status-${session.status}`}>{session.status === "ready" ? "Students are joining" : session.status === "paused" ? "Performance Test paused" : "Performance Test running"}</span><h1 id="speaking-projector-title">{activity.title}</h1><p>Scan the QR code or enter the code below.</p><p lang="ja">QRコードを読み取るか、参加コードを入力してください。</p>
+    <div className="speaking-projector-join"><QRCodeSVG value={shareUrl} size={240} marginSize={3} level="M" /><div><span>Session code</span><strong>{session.joinCode}</strong><p>{window.location.origin}/speak/join</p></div></div>
+    <div className="speaking-projector-counts" role="status"><span><strong>{roster?.items.length ?? "—"}</strong> joined</span><span><strong>{roster?.counts.ready ?? "—"}</strong> ready</span><span><strong>{roster?.counts.error ?? "—"}</strong> need attention</span></div>
+    {stale && <p role="alert">Class counts may be out of date. Updates are retrying.</p>}
+    <p>{session.status === "ready" ? "Check your microphone, then wait for your teacher." : session.status === "paused" ? "Please wait for your teacher to resume." : "Work on your own device. Use Help if you need a hint."}</p></main>
+  </dialog>, document.body);
+}
+
 function SpeakingRosterCard({
   roster,
   loading,
@@ -1515,17 +1560,17 @@ function SpeakingRosterCard({
 }) {
   const query = search.trim().toLocaleLowerCase();
   const items = (roster?.items ?? []).filter((item) => {
-    const display = item.participant.displayIdentifier ?? "Anonymous student";
+    const display = item.participant.displayIdentifier ?? `Student ${item.participant.id.slice(0, 6)}`;
     return (filter === "all" || item.status === filter) &&
       (!query || display.toLocaleLowerCase().includes(query));
-  });
+  }).sort((a, b) => Number(b.status === "error") - Number(a.status === "error") || (a.participant.displayIdentifier ?? a.participant.id).localeCompare(b.participant.displayIdentifier ?? b.participant.id, undefined, { numeric: true }));
   return (
-    <section className="speaking-roster-card" aria-labelledby="speaking-roster-title" aria-live="polite">
+    <section className="speaking-roster-card" aria-labelledby="speaking-roster-title">
       <div className="speaking-roster-heading">
         <div>
           <span className="speaking-card-kicker">Live classroom</span>
-          <h2 id="speaking-roster-title">Who is ready to speak?</h2>
-          <p>{roster ? `${roster.items.length} students connected` : "The roster will update as students join."}</p>
+          <h2 id="speaking-roster-title">Class monitor</h2>
+          <p>{roster ? `${roster.items.length} students joined · Private teacher view` : "The roster will update as students join."}</p>
         </div>
         <span className={`speaking-status-pill speaking-status-${roster?.session.status ?? "ready"}`}>
           {roster?.session.status ?? "loading"}
@@ -1533,10 +1578,10 @@ function SpeakingRosterCard({
       </div>
       <div className="speaking-roster-counts" aria-label="Roster counts">
         {rosterStatusOrder.map((status) => (
-          <div className="speaking-roster-count" key={status}>
+          <button type="button" className={`speaking-roster-count status-${status}`} key={status} aria-pressed={filter === status} onClick={() => onFilter(filter === status ? "all" : status)}>
             <strong>{roster?.counts[status] ?? 0}</strong>
             <span>{ROSTER_STATUS_LABELS[status]}</span>
-          </div>
+          </button>
         ))}
       </div>
       <div className="speaking-roster-toolbar">
@@ -1560,19 +1605,18 @@ function SpeakingRosterCard({
             {rosterStatusOrder.map((status) => <option key={status} value={status}>{ROSTER_STATUS_LABELS[status]}</option>)}
           </select>
         </label>
-        {loading && <span className="speaking-roster-refreshing"><LoaderCircle size={15} className="speaking-spin" aria-hidden="true" /> Updating</span>}
+        <span className="speaking-roster-refreshing" role="status">{loading ? "Updating…" : error ? "Updates interrupted" : "Refreshes every 5 seconds"}</span>
       </div>
-      {error && !roster ? (
-        <p className="speaking-error" role="alert">{error}</p>
-      ) : !roster && loading ? (
+      {error && <p className="speaking-error" role="alert">{error} {roster ? "Showing the last received roster; updates will retry automatically." : "Retrying automatically."}</p>}
+      {!roster && error ? null : !roster && loading ? (
         <p className="speaking-roster-empty">Loading live roster…</p>
       ) : items.length ? (
         <div className="speaking-roster-list" role="list">
-          {items.map((item, index) => {
-            const display = item.participant.displayIdentifier ?? `Anonymous student ${index + 1}`;
+          {items.map((item) => {
+            const display = item.participant.displayIdentifier ?? `Student ${item.participant.id.slice(0, 6)}`;
             return (
               <div className="speaking-roster-row" role="listitem" key={item.participant.id}>
-                <span className={`speaking-roster-status-dot status-${item.status}`} aria-hidden="true" />
+                <RosterIcon status={item.status} />
                 <strong>{display}</strong>
                 <span className={`speaking-roster-status status-${item.status}`}>{ROSTER_STATUS_LABELS[item.status]}</span>
                 <time dateTime={item.latestActivityAt}>{formatRosterActivity(item.latestActivityAt)}</time>
@@ -1581,7 +1625,7 @@ function SpeakingRosterCard({
           })}
         </div>
       ) : (
-        <p className="speaking-roster-empty">No students match this view.</p>
+        <p className="speaking-roster-empty">{roster?.items.length ? "No students match this view. Clear the search or select All statuses." : "Waiting for your class. Share the QR or code to invite students."}</p>
       )}
     </section>
   );
@@ -1603,7 +1647,8 @@ function SpeakingResultsPage({
   const [error, setError] = useState("");
   const [loadingResults, setLoadingResults] = useState(false);
   const [resultsSearch, setResultsSearch] = useState("");
-  const [resultsFilter, setResultsFilter] = useState<SpeakingParticipant["status"] | "all">("all");
+  const [resultsFilter, setResultsFilter] = useState<SpeakingParticipant["status"] | "all" | "review">("all");
+  const [sort, setSort] = useState("name");
   const [refreshNonce, setRefreshNonce] = useState(0);
   useEffect(() => {
     let cancelled = false;
@@ -1679,9 +1724,13 @@ function SpeakingResultsPage({
   const resultQuery = resultsSearch.trim().toLocaleLowerCase();
   const filteredResults = (payload?.items ?? []).filter((item) => {
     const display = item.participant.displayIdentifier ?? "Anonymous student";
-    return (resultsFilter === "all" || item.status === resultsFilter) &&
+    return (resultsFilter === "all" || (resultsFilter === "review" ? item.status === "error" || item.evaluation?.assessmentStatus === "insufficient_evidence" : item.status === resultsFilter)) &&
       (!resultQuery || display.toLocaleLowerCase().includes(resultQuery));
   });
+  filteredResults.sort((a, b) => sort === "score" ? (a.overallScore ?? -1) - (b.overallScore ?? -1) : sort === "help" ? b.helpCount - a.helpCount : (a.participant.displayIdentifier ?? a.participant.id).localeCompare(b.participant.displayIdentifier ?? b.participant.id, undefined, { numeric: true }));
+  const completed = payload?.items.filter((item) => item.status === "completed").length ?? 0;
+  const needsReview = payload?.items.filter((item) => item.status === "error" || item.evaluation?.assessmentStatus === "insufficient_evidence").length ?? 0;
+  const criteria = payload?.activity.rubric.filter((criterion) => criterion.enabled) ?? [];
   if (error && !activity)
     return <MissingSpeakingSession navigate={navigate} message={error} />;
   if (!activity || (sessionId && loadingResults)) return <TeacherLoading />;
@@ -1702,8 +1751,8 @@ function SpeakingResultsPage({
               <span className="speaking-eyebrow">
                 <Trophy size={15} aria-hidden="true" /> Learning results
               </span>
-              <h1>See who found their voice</h1>
-              <p>Results are scoped to one launched classroom session.</p>
+              <h1>Class results</h1>
+              <p>{activity.title} · Review completion, rubric scores and conversation evidence.</p>
             </div>
             {sessions.length > 0 && (
               <select
@@ -1734,6 +1783,7 @@ function SpeakingResultsPage({
               {error}
             </p>
           )}
+          {payload && <div className="speaking-class-summary" aria-label="Class result summary"><span><strong>{completed} / {payload.items.length}</strong> completed</span><span><strong>{payload.items.length - completed}</strong> not completed</span><span><strong>{needsReview}</strong> need review</span></div>}
           {payload && sessions.length > 0 && (
             <div className="speaking-results-toolbar">
               <label>
@@ -1750,9 +1800,10 @@ function SpeakingResultsPage({
                 <select
                   aria-label="Filter learning results"
                   value={resultsFilter}
-                  onChange={(event) => setResultsFilter(event.target.value as SpeakingParticipant["status"] | "all")}
+                  onChange={(event) => setResultsFilter(event.target.value as SpeakingParticipant["status"] | "all" | "review")}
                 >
                   <option value="all">All statuses</option>
+                  <option value="review">Needs review / unscored</option>
                   <option value="joined">Joined</option>
                   <option value="in_progress">Practicing</option>
                   <option value="evaluating">Evaluating</option>
@@ -1760,6 +1811,7 @@ function SpeakingResultsPage({
                   <option value="error">Needs attention</option>
                 </select>
               </label>
+              <label><span className="sr-only">Sort class results</span><select aria-label="Sort class results" value={sort} onChange={(event) => setSort(event.target.value)}><option value="name">Student order</option><option value="score">Score: low to high</option><option value="help">Help: most used</option></select></label>
               <button type="button" className="speaking-outline-button" onClick={() => setRefreshNonce((current) => current + 1)}>
                 Refresh
               </button>
@@ -1796,66 +1848,20 @@ function SpeakingResultsPage({
               </button>
             </div>
           ) : payload?.items.length ? filteredResults.length ? (
-            <div className="speaking-results-table">
-              <div className="speaking-results-table-head">
-                <span>Participant</span>
-                <span>Status</span>
-                <span>Overall</span>
-                <span>Support</span>
-                <span />
-              </div>
-              {filteredResults.map((item) => (
-                <button
-                  type="button"
-                  className="speaking-results-table-row"
-                  key={item.participant.id}
-                  onClick={() =>
-                    navigate(`/speak/teacher/result/${item.participant.id}`)
-                  }
-                >
-                  <span className="speaking-participant-cell">
-                    <span className="speaking-student-avatar">
-                      <UserRound size={19} aria-hidden="true" />
-                    </span>
-                    <strong>
-                      {item.participant.displayIdentifier ??
-                        "Anonymous student"}
-                    </strong>
-                  </span>
-                  <span>
-                    <span
-                      className={`speaking-status-pill speaking-status-${item.status}`}
-                    >
-                      {item.evaluation?.assessmentStatus ===
-                      "insufficient_evidence"
-                        ? speakingFeedbackCopy(item.evaluation.language)
-                            .notScored
-                        : item.status === "completed"
-                          ? "Completed"
-                          : item.status === "error"
-                            ? "Evaluation unavailable"
-                            : "In progress"}
-                    </span>
-                  </span>
-                  <span className="speaking-table-score">
-                    {item.overallScore === undefined ? (
-                      "—"
-                    ) : (
-                      <>
-                        {item.overallScore}
-                        <small>/100</small>
-                      </>
-                    )}
-                  </span>
-                  <span className="speaking-table-help">
-                    <Lightbulb size={15} aria-hidden="true" />
-                    {item.helpCount}
-                  </span>
-                  <span>
-                    <ChevronRight size={18} aria-hidden="true" />
-                  </span>
-                </button>
-              ))}
+            <div className="speaking-results-table" role="region" aria-label="Class results table" tabIndex={0}>
+              <table><caption>Rubric scores out of 4 · AI evaluation for teacher review</caption><thead><tr>
+                <th scope="col">Student</th><th scope="col">Status</th><th scope="col">Overall</th>
+                {criteria.map((criterion) => <th scope="col" key={criterion.id} title={criterion.description}>{criterion.name}</th>)}
+                <th scope="col">Elapsed</th><th scope="col">Help</th>
+              </tr></thead><tbody>
+              {filteredResults.map((item) => <tr className="speaking-results-table-row" key={item.participant.id}>
+                <th scope="row"><button type="button" className="speaking-result-student-link" onClick={() => navigate(`/speak/teacher/result/${item.participant.id}`)}>{item.participant.displayIdentifier ?? `Student ${item.participant.id.slice(0, 6)}`}<ChevronRight size={16} aria-hidden="true" /></button></th>
+                <td><span className={`speaking-status-pill speaking-status-${item.status}`}>{item.evaluation?.assessmentStatus === "insufficient_evidence" ? "Not scored" : item.status === "completed" ? "Completed" : item.status === "error" ? "Needs attention" : item.status === "joined" ? "Not started" : item.status === "evaluating" ? "Evaluating" : "Practicing"}</span></td>
+                <td className="speaking-table-score">{item.overallScore === undefined ? "—" : <>{item.overallScore}<small>/100</small></>}</td>
+                {criteria.map((criterion) => <td key={criterion.id}>{item.evaluation?.scores[criterion.id] ?? "—"}</td>)}
+                <td>{formatDuration(item.durationSeconds)}</td><td>{item.helpCount}</td>
+              </tr>)}
+              </tbody></table>
             </div>
           ) : (
             <div className="speaking-empty-card">
