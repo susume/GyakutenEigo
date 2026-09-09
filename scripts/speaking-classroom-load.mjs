@@ -155,7 +155,7 @@ const main = async () => {
       .map((record, index) => ({ record, participant: participants[index] }))
       .filter((item) => item.record.status === 200)
       .slice(0, Math.min(5, participants.length));
-    const duplicateRecords = await Promise.all(duplicateCandidates.map(({ participant }, index) => request({
+    const duplicateRecords = await Promise.all(duplicateCandidates.map(({ participant }) => request({
       phase: "duplicate-turn-retry",
       path: `/api/speaking/sessions/${encodeURIComponent(sessionId)}/turn`,
       method: "POST",

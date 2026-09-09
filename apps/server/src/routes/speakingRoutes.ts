@@ -8,6 +8,7 @@ import {
   SpeakingJoinInputSchema,
   SpeakingTurnInputSchema,
   speakingActiveElapsedMs,
+  speakingOverallScore,
   speakingFeedbackCopy,
   type SpeakingEvaluationJob,
   type SpeakingActivity,
@@ -43,6 +44,7 @@ import {
 import { buildConversationPrompt } from "../speakingPrompts.js";
 import { consumeSpeakingRateLimit, type SpeakingRateLimitDecision } from "../speakingAdmission.js";
 import { createSpeakingProviderWorkload, SpeakingWorkloadError, type SpeakingProviderWorkload } from "../speakingWorkload.js";
+import { buildSpeakingCsv, speakingCsvEvaluationScores } from "../speakingCsv.js";
 
 type AuthedRequest = Request & { user?: TeacherUser };
 type SpeakingTurnRequest = Request & { speakingTurnRequestStartedAt?: number; releaseSpeakingUpload?: () => void };
@@ -111,8 +113,8 @@ const templateInputs: Array<SpeakingCreateActivityInput & { id: string }> = [
       suggestedSteps: ["Greet the restaurant worker.", "Order a meal.", "Ask about one item.", "Check your order.", "Thank the worker."],
       usefulVocabulary: ["menu", "still water", "I'd like…", "That's all, thank you."],
       referenceItems: [{ label: "Soup", detail: "$5" }, { label: "Sandwich", detail: "$8" }, { label: "Orange juice", detail: "$3" }],
-      imageSrc: "/assets/speaking/ai-shop-assistant.png",
-      imageAlt: "Speaking partner"
+      imageSrc: "/assets/speaking/scenario-restaurant.webp",
+      imageAlt: "Two classmates ordering lunch together"
     },
     rubric: cloneRubric()
   },
@@ -134,8 +136,8 @@ const templateInputs: Array<SpeakingCreateActivityInput & { id: string }> = [
       suggestedSteps: ["Say what you are looking for.", "Ask about size or color.", "Ask the price.", "Ask to try it on.", "Thank the shop assistant."],
       usefulVocabulary: ["size", "color", "fitting room", "How much is it?"],
       referenceItems: [{ label: "Blue T-shirt", detail: "$18" }, { label: "Black hoodie", detail: "$35" }],
-      imageSrc: "/assets/speaking/ai-shop-assistant.png",
-      imageAlt: "Shop assistant"
+      imageSrc: "/assets/speaking/scenario-shopping.webp",
+      imageAlt: "A student choosing a blue T-shirt with a shop assistant"
     },
     rubric: cloneRubric()
   },
@@ -156,6 +158,8 @@ const templateInputs: Array<SpeakingCreateActivityInput & { id: string }> = [
       studentGoal: "Ask for directions, check one detail, and thank your partner.",
       suggestedSteps: ["Say excuse me.", "Name the place you need.", "Ask how to get there.", "Check one direction.", "Thank your partner."],
       usefulVocabulary: ["library", "turn left", "turn right", "next to"],
+      imageSrc: "/assets/speaking/scenario-train-directions.webp",
+      imageAlt: "A local giving directions beside a metro map",
     },
     rubric: cloneRubric()
   },
@@ -176,6 +180,8 @@ const templateInputs: Array<SpeakingCreateActivityInput & { id: string }> = [
       studentGoal: "Share one hobby and ask your partner about theirs.",
       suggestedSteps: ["Share one hobby.", "Give one detail.", "Ask your partner a question.", "React to their answer.", "Keep the conversation going."],
       usefulVocabulary: ["free time", "usually", "on weekends", "How about you?"],
+      imageSrc: "/assets/speaking/scenario-hobbies.webp",
+      imageAlt: "Two classmates talking about their hobbies",
     },
     rubric: cloneRubric()
   },
@@ -196,6 +202,8 @@ const templateInputs: Array<SpeakingCreateActivityInput & { id: string }> = [
       studentGoal: "Suggest a plan, ask about timing, and respond to your partner.",
       suggestedSteps: ["Ask about plans.", "Suggest one activity.", "Ask about a day or time.", "Respond to the suggestion.", "Agree on a next step."],
       usefulVocabulary: ["Saturday", "Sunday", "available", "That sounds fun."],
+      imageSrc: "/assets/speaking/scenario-weekend.webp",
+      imageAlt: "Two friends planning a weekend together",
     },
     rubric: cloneRubric()
   },
@@ -216,6 +224,8 @@ const templateInputs: Array<SpeakingCreateActivityInput & { id: string }> = [
       studentGoal: "Introduce yourself and ask your new partner one question.",
       suggestedSteps: ["Say your name.", "Share where you are from.", "Share one interest.", "Ask your partner a question.", "Say nice to meet you."],
       usefulVocabulary: ["name", "from", "school", "Nice to meet you."],
+      imageSrc: "/assets/speaking/scenario-introduction.webp",
+      imageAlt: "Two students introducing themselves at school",
     },
     rubric: cloneRubric()
   }
@@ -285,6 +295,29 @@ const initialGreeting = (activity: SpeakingActivity) => {
 };
 
 const sessionPayload = (session: SpeakingSession) => ({ ...session });
+
+const speakingDurationLabel = (seconds: number) => `${Math.floor(Math.max(0, seconds) / 60)}:${String(Math.max(0, seconds) % 60).padStart(2, "0")}`;
+const csvFilenamePart = (value: string) => value.toLocaleLowerCase().replace(/[^a-z0-9]+/giu, "-").replace(/^-|-$/gu, "").slice(0, 48) || "speaking";
+
+const speakingCsvRowsForResults = (items: Awaited<ReturnType<SpeakingRepository["listResults"]>>, setNames: string) => items.map((item) => {
+  const referenceTime = item.participant.finishedAt ?? item.session.endedAt ?? item.session.createdAt;
+  const durationSeconds = item.participant.startedAt
+    ? Math.round(participantActiveElapsedMs(item.participant, item.session, referenceTime) / 1_000)
+    : 0;
+  const scores = speakingCsvEvaluationScores(item.evaluation);
+  return {
+    setNames,
+    performanceTest: item.activity.title,
+    session: item.session.joinCode,
+    date: new Date(item.session.endedAt ?? item.session.createdAt).toISOString().slice(0, 10),
+    student: item.participant.displayIdentifier ?? "Anonymous student",
+    status: item.participant.status,
+    duration: speakingDurationLabel(durationSeconds),
+    overallScore: speakingOverallScore(item.evaluation),
+    criteria: item.activity.rubric.filter((criterion) => criterion.enabled).map((criterion) => ({ id: criterion.id, name: criterion.name, score: scores[criterion.id] ?? null })),
+    helpCount: item.participant.helpCount
+  };
+});
 
 export const makeInsufficientEvidenceEvaluation = (activity: SpeakingActivity, participantId: string, createdAt: string): SpeakingEvaluation => {
   const copy = speakingFeedbackCopy(activity.nativeLanguage);
@@ -591,7 +624,7 @@ export const registerSpeakingRoutes = (app: Application, deps: SpeakingRouteDepe
         const result = await repository.getResult(participantId);
         if (result) await scheduleEvaluation(result);
       }
-    } catch (error) {
+    } catch {
       console.warn("[Speaking recovery] Durable job scan failed; will retry.");
     } finally { recovering = false; }
   };
@@ -614,6 +647,91 @@ export const registerSpeakingRoutes = (app: Application, deps: SpeakingRouteDepe
 
   app.get("/api/speaking/activities", deps.requireTeacher, async (req: AuthedRequest, res) => {
     res.json({ items: (await repository.listActivities(req.user!.id)).map(publicActivity) });
+  });
+
+  app.get("/api/speaking/library", deps.requireTeacher, async (req: AuthedRequest, res) => {
+    const items = await repository.listActivityLibrary(req.user!.id);
+    res.json({ items: items.map((item) => ({ ...item, activity: publicActivity(item.activity), setMemberships: item.setMemberships })) });
+  });
+
+  app.get("/api/speaking/reports", deps.requireTeacher, async (req: AuthedRequest, res) => {
+    res.json({ items: await repository.listReportSummaries(req.user!.id) });
+  });
+
+  app.get("/api/speaking/sets", deps.requireTeacher, async (req: AuthedRequest, res) => {
+    res.json({ items: await repository.listSets(req.user!.id) });
+  });
+
+  app.post("/api/speaking/sets", deps.requireTeacher, async (req: AuthedRequest, res) => {
+    const name = typeof req.body?.name === "string" ? req.body.name.trim() : "";
+    const description = typeof req.body?.description === "string" ? req.body.description.trim() : "";
+    if (!name || name.length > 120 || description.length > 500) {
+      res.status(400).json({ error: "Enter a Set name up to 120 characters." });
+      return;
+    }
+    const set = await repository.createSet(req.user!.id, { name, description }, deps.id(), deps.now());
+    res.status(201).json({ set });
+  });
+
+  app.get("/api/speaking/sets/:setId", deps.requireTeacher, async (req: AuthedRequest, res) => {
+    const set = await repository.getSet(req.user!.id, String(req.params.setId));
+    if (!set) {
+      res.status(404).json({ error: "We couldn’t find that Set." });
+      return;
+    }
+    res.json({ set: { ...set, activities: set.activities.map((item) => ({ ...item, activity: publicActivity(item.activity) })) } });
+  });
+
+  app.patch("/api/speaking/sets/:setId", deps.requireTeacher, async (req: AuthedRequest, res) => {
+    const name = req.body?.name === undefined ? undefined : typeof req.body.name === "string" ? req.body.name.trim() : "";
+    const description = req.body?.description === undefined ? undefined : typeof req.body.description === "string" ? req.body.description.trim() : "";
+    if ((name !== undefined && (!name || name.length > 120)) || (description !== undefined && description.length > 500)) {
+      res.status(400).json({ error: "Check the Set name and description." });
+      return;
+    }
+    const set = await repository.updateSet(req.user!.id, String(req.params.setId), { ...(name === undefined ? {} : { name }), ...(description === undefined ? {} : { description }) }, deps.now());
+    if (!set) {
+      res.status(404).json({ error: "We couldn’t find that Set." });
+      return;
+    }
+    res.json({ set });
+  });
+
+  app.delete("/api/speaking/sets/:setId", deps.requireTeacher, async (req: AuthedRequest, res) => {
+    const deleted = await repository.deleteSet(req.user!.id, String(req.params.setId));
+    if (!deleted) {
+      res.status(404).json({ error: "We couldn’t find that Set." });
+      return;
+    }
+    res.json({ deleted: true });
+  });
+
+  app.post("/api/speaking/sets/:setId/activities/:activityId", deps.requireTeacher, async (req: AuthedRequest, res) => {
+    const set = await repository.addSetActivity(req.user!.id, String(req.params.setId), String(req.params.activityId));
+    if (!set) {
+      res.status(404).json({ error: "We couldn’t add that Performance Test to the Set." });
+      return;
+    }
+    res.json({ set: { ...set, activities: set.activities.map((item) => ({ ...item, activity: publicActivity(item.activity) })) } });
+  });
+
+  app.delete("/api/speaking/sets/:setId/activities/:activityId", deps.requireTeacher, async (req: AuthedRequest, res) => {
+    const set = await repository.removeSetActivity(req.user!.id, String(req.params.setId), String(req.params.activityId));
+    if (!set) {
+      res.status(404).json({ error: "We couldn’t find that Set." });
+      return;
+    }
+    res.json({ set: { ...set, activities: set.activities.map((item) => ({ ...item, activity: publicActivity(item.activity) })) } });
+  });
+
+  app.patch("/api/speaking/sets/:setId/order", deps.requireTeacher, async (req: AuthedRequest, res) => {
+    const activityIds = Array.isArray(req.body?.activityIds) ? req.body.activityIds.filter((value: unknown): value is string => typeof value === "string") : [];
+    const set = await repository.reorderSetActivities(req.user!.id, String(req.params.setId), activityIds);
+    if (!set) {
+      res.status(400).json({ error: "The Set order could not be saved." });
+      return;
+    }
+    res.json({ set: { ...set, activities: set.activities.map((item) => ({ ...item, activity: publicActivity(item.activity) })) } });
   });
 
   app.post("/api/speaking/activities", deps.requireTeacher, async (req: AuthedRequest, res) => {
@@ -646,6 +764,37 @@ export const registerSpeakingRoutes = (app: Application, deps: SpeakingRouteDepe
       return;
     }
     res.json({ activity: publicActivity(activity) });
+  });
+
+  app.post("/api/speaking/activities/:activityId/duplicate", deps.requireTeacher, async (req: AuthedRequest, res) => {
+    const source = await requireOwnedActivity(req, res);
+    if (!source) return;
+    const title = typeof req.body?.title === "string" && req.body.title.trim() ? req.body.title.trim() : `${source.title} copy`;
+    const input: SpeakingCreateActivityInput = {
+      title,
+      scenario: source.scenario,
+      aiRole: source.aiRole,
+      studentRole: source.studentRole,
+      level: source.level,
+      difficulty: source.difficulty,
+      nativeLanguage: source.nativeLanguage,
+      durationSeconds: source.durationSeconds,
+      identifierMode: source.identifierMode,
+      targetExpressions: [...source.targetExpressions],
+      rubric: source.rubric.map((criterion) => ({ ...criterion })),
+      ...(source.scenarioResources ? { scenarioResources: source.scenarioResources } : {})
+    };
+    const activity = await repository.createActivity(req.user!.id, input, deps.id(), deps.now());
+    res.status(201).json({ activity: publicActivity(activity) });
+  });
+
+  app.delete("/api/speaking/activities/:activityId", deps.requireTeacher, async (req: AuthedRequest, res) => {
+    const deleted = await repository.archiveActivity(req.user!.id, String(req.params.activityId));
+    if (!deleted) {
+      res.status(404).json({ error: "We couldn’t find that Performance Test." });
+      return;
+    }
+    res.json({ deleted: true, historicalSessionsRemain: true });
   });
 
   app.get("/api/speaking/activities/:activityId", deps.requireTeacher, async (req: AuthedRequest, res) => {
@@ -828,6 +977,15 @@ export const registerSpeakingRoutes = (app: Application, deps: SpeakingRouteDepe
   app.post("/api/speaking/sessions/:sessionId/pause", deps.requireTeacher, teacherSessionAction("pause"));
   app.post("/api/speaking/sessions/:sessionId/resume", deps.requireTeacher, teacherSessionAction("resume"));
   app.post("/api/speaking/sessions/:sessionId/end", deps.requireTeacher, teacherSessionAction("end"));
+
+  app.delete("/api/speaking/sessions/:sessionId", deps.requireTeacher, async (req: AuthedRequest, res) => {
+    const deleted = await repository.deleteSession(req.user!.id, String(req.params.sessionId));
+    if (!deleted) {
+      res.status(404).json({ error: "We couldn’t find that speaking Session." });
+      return;
+    }
+    res.json({ deleted: true });
+  });
 
   app.get("/api/speaking/sessions/:sessionId/status", async (req, res) => {
     const access = await getParticipantAccess(req);
@@ -1210,6 +1368,40 @@ export const registerSpeakingRoutes = (app: Application, deps: SpeakingRouteDepe
     const session = await expireSessionIfNeeded(sessionAccess);
     const items = await repository.listResults(sessionAccess.activity.id, sessionAccess.session.id, req.user!.id);
     res.json({ activity: publicActivity(sessionAccess.activity), session: sessionPayload(session), items: items.map((item) => ({ participant: publicParticipant(item.participant), status: item.participant.status, durationSeconds: item.participant.startedAt ? Math.max(0, Math.round(participantActiveElapsedMs(item.participant, session, item.participant.finishedAt ?? session.endedAt ?? deps.now()) / 1_000)) : 0, overallScore: item.overallScore, helpCount: item.participant.helpCount, evaluation: item.evaluation })) });
+  });
+
+  app.get("/api/speaking/sessions/:sessionId/report.csv", deps.requireTeacher, async (req: AuthedRequest, res) => {
+    const sessionAccess = await repository.getSession(String(req.params.sessionId));
+    if (!sessionAccess || sessionAccess.activity.teacherId !== req.user?.id) {
+      res.status(404).json({ error: "We couldn’t find that speaking session." });
+      return;
+    }
+    const reportSummaries = await repository.listReportSummaries(req.user!.id);
+    const summary = reportSummaries.find((item) => item.session.id === sessionAccess.session.id);
+    const items = await repository.listResults(sessionAccess.activity.id, sessionAccess.session.id, req.user!.id);
+    const csv = buildSpeakingCsv(speakingCsvRowsForResults(items, summary?.setMemberships.map((set) => set.name).join(" · ") ?? ""));
+    res.setHeader("Content-Type", "text/csv; charset=utf-8");
+    res.setHeader("Content-Disposition", `attachment; filename="speaking-${csvFilenamePart(sessionAccess.activity.title)}-${sessionAccess.session.joinCode}.csv"`);
+    res.send(csv);
+  });
+
+  app.get("/api/speaking/sets/:setId/report.csv", deps.requireTeacher, async (req: AuthedRequest, res) => {
+    const set = await repository.getSet(req.user!.id, String(req.params.setId));
+    if (!set) {
+      res.status(404).json({ error: "We couldn’t find that Set." });
+      return;
+    }
+    const reportSummaries = await repository.listReportSummaries(req.user!.id);
+    const activityIds = new Set(set.activities.map((item) => item.activity.id));
+    const rows = [];
+    for (const summary of reportSummaries.filter((item) => activityIds.has(item.activity.id))) {
+      const items = await repository.listResults(summary.activity.id, summary.session.id, req.user!.id);
+      rows.push(...speakingCsvRowsForResults(items, set.name));
+    }
+    const csv = buildSpeakingCsv(rows);
+    res.setHeader("Content-Type", "text/csv; charset=utf-8");
+    res.setHeader("Content-Disposition", `attachment; filename="speaking-${csvFilenamePart(set.name)}-${new Date(deps.now()).toISOString().slice(0, 10)}.csv"`);
+    res.send(csv);
   });
 
   // A result URL is never sufficient by itself. Student access still requires

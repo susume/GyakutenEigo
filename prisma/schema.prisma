@@ -175,6 +175,7 @@ model User {
   contributionBadges ContributionBadge[]
   tournaments        Tournament[]
   speakingActivities SpeakingActivity[]
+  speakingSets       SpeakingSet[]
   createdAt          DateTime            @default(now())
   updatedAt          DateTime            @updatedAt
 }
@@ -327,10 +328,36 @@ model SpeakingActivity {
   rubric                SpeakingRubric[]
   sessions              SpeakingSession[]
   participants          SpeakingParticipant[]
+  setMemberships        SpeakingSetActivity[]
   createdAt             DateTime               @default(now())
   updatedAt             DateTime               @updatedAt
 
   @@index([teacherId, status])
+}
+
+model SpeakingSet {
+  id          String               @id @default(cuid())
+  teacherId   String
+  teacher     User                 @relation(fields: [teacherId], references: [id], onDelete: Cascade)
+  name        String
+  description String               @default("")
+  createdAt   DateTime             @default(now())
+  updatedAt   DateTime             @updatedAt
+  activities  SpeakingSetActivity[]
+
+  @@index([teacherId, updatedAt])
+}
+
+model SpeakingSetActivity {
+  setId      String
+  activityId String
+  position   Int             @default(0)
+  set        SpeakingSet     @relation(fields: [setId], references: [id], onDelete: Cascade)
+  activity   SpeakingActivity @relation(fields: [activityId], references: [id], onDelete: Cascade)
+
+  @@id([setId, activityId])
+  @@index([activityId, position])
+  @@index([setId, position])
 }
 
 model SpeakingRubric {

@@ -1,7 +1,6 @@
 import { useCallback, useEffect, useRef, useState, type FormEvent } from "react";
 import {
   ArrowLeft,
-  BookOpenText,
   Monitor,
   AlertCircle,
   Clock3,
@@ -15,9 +14,11 @@ import {
   Edit3,
   LoaderCircle,
   MessageCircle,
+  MoreHorizontal,
   Pencil,
   Play,
   Plus,
+  SlidersHorizontal,
   Trash2,
   Trophy,
   UserRound,
@@ -40,6 +41,7 @@ import {
   type SpeakingCreateActivityInput,
   type SpeakingDifficulty,
   type SpeakingEvaluation,
+  type SpeakingLibraryItem,
   type SpeakingIdentifierMode,
   type SpeakingLevel,
   type SpeakingNativeLanguage,
@@ -47,12 +49,15 @@ import {
   type SpeakingRubricCriterion,
   type SpeakingScenarioResources,
   type SpeakingSession,
+  type SpeakingSetSummary,
   type SpeakingTurn,
 } from "@quizstrike/shared";
 import { ApiError, speakingApi } from "../../../api/client";
 import { buildTeacherSpeakingPath } from "../../../navigation";
 import { SPEAKING_TEMPLATES, formatDuration } from "../speakingData";
 import { ResultPanel, scoreFor } from "../SpeakingResultPanel";
+import { SpeakingSetDetailPage, SpeakingSetsPage } from "./SpeakingSetsPage";
+import SpeakingReportsPanel from "./SpeakingReportsPanel";
 import "../speaking.css";
 import "../speaking-layout.css";
 
@@ -134,6 +139,12 @@ const parseTeacherRoute = (path: string) => {
     .map(decodeRouteSegment);
   if (segments[1] === "teacher" && segments[2] === "create")
     return { kind: "create" as const };
+  if (segments[1] === "teacher" && segments[2] === "sets")
+    return { kind: "sets" as const };
+  if (segments[1] === "teacher" && segments[2] === "reports")
+    return { kind: "speaking-reports" as const };
+  if (segments[1] === "teacher" && segments[2] === "set" && segments[3])
+    return { kind: "set" as const, id: segments[3] };
   if (segments[1] === "teacher" && segments[2] === "activity" && segments[3])
     return {
       kind: "activity" as const,
@@ -232,6 +243,9 @@ export function SpeakingTeacherWorkspace({
         <SpeakingTeacherDashboard navigate={navigate} />
       )}
       {route.kind === "create" && <SpeakingCreatePage navigate={navigate} />}
+      {route.kind === "sets" && <SpeakingSetsPage navigate={navigate} />}
+      {route.kind === "speaking-reports" && <SpeakingReportsPanel navigate={navigate} />}
+      {route.kind === "set" && <SpeakingSetDetailPage navigate={navigate} setId={route.id} />}
       {route.kind === "activity" && (
         <SpeakingActivityPage
           navigate={navigate}
@@ -251,128 +265,54 @@ export function SpeakingTeacherWorkspace({
 }
 
 function SpeakingTeacherDashboard({ navigate }: { navigate: Navigate }) {
-  const [activities, setActivities] = useState<SpeakingActivity[]>([]);
-  const [sessions, setSessions] = useState<Record<string, SpeakingSession[]>>(
-    {},
-  );
+  const [library, setLibrary] = useState<SpeakingLibraryItem[]>([]);
+  const [sets, setSets] = useState<SpeakingSetSummary[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState("");
+  const [search, setSearch] = useState("");
+  const [level, setLevel] = useState("all");
+  const [difficulty, setDifficulty] = useState("all");
+  const [sort, setSort] = useState("recent");
   const load = useCallback(async () => {
     try {
-      const payload = (await speakingApi.activities()) as {
-        items: SpeakingActivity[];
-      };
-      setActivities(payload.items);
-      const pairs = await Promise.all(
-        payload.items.map(
-          async (activity) =>
-            [
-              activity.id,
-              (
-                (await speakingApi.sessions(activity.id)) as {
-                  sessions: SpeakingSession[];
-                }
-              ).sessions,
-            ] as const,
-        ),
-      );
-      setSessions(Object.fromEntries(pairs));
+      const [libraryPayload, setPayload] = await Promise.all([speakingApi.library(), speakingApi.sets()]);
+      setLibrary((libraryPayload as { items: SpeakingLibraryItem[] }).items);
+      setSets((setPayload as { items: SpeakingSetSummary[] }).items);
+      setError("");
     } catch (loadError) {
-      setError(
-        getErrorMessage(loadError, "Teacher activities could not be loaded."),
-      );
+      setError(getErrorMessage(loadError, "Performance Tests could not be loaded."));
     } finally {
       setLoading(false);
     }
   }, []);
-  useEffect(() => {
-    void load();
-  }, [load]);
-  const [search, setSearch] = useState("");
-  const allSessions = activities.flatMap((activity) => (sessions[activity.id] ?? []).map((session) => ({ activity, session })));
-  const openSessions = allSessions.filter(({ session }) => ["ready", "active", "paused"].includes(session.status));
-  const recentSessions = allSessions.filter(({ session }) => ["ended", "expired"].includes(session.status)).sort((a, b) => b.session.createdAt.localeCompare(a.session.createdAt)).slice(0, 5);
-  const visibleActivities = activities.filter((activity) => `${activity.title} ${activity.scenario}`.toLocaleLowerCase().includes(search.trim().toLocaleLowerCase()));
+  useEffect(() => { void load(); }, [load]);
+  const query = search.trim().toLocaleLowerCase();
+  const visibleItems = [...library].filter((item) => {
+    const activity = item.activity;
+    const setText = item.setMemberships.map((set) => set.name).join(" ");
+    return (!query || `${activity.title} ${activity.scenario} ${activity.aiRole} ${activity.studentRole} ${setText}`.toLocaleLowerCase().includes(query)) &&
+      (level === "all" || activity.level === level) && (difficulty === "all" || activity.difficulty === difficulty);
+  }).sort((left, right) => sort === "az" ? left.activity.title.localeCompare(right.activity.title) : sort === "za" ? right.activity.title.localeCompare(left.activity.title) : (Date.parse(right.lastSessionAt ?? right.activity.createdAt) - Date.parse(left.lastSessionAt ?? left.activity.createdAt)));
+  const openSessions = library.flatMap((item) => item.activeSession ? [{ activity: item.activity, session: item.activeSession }] : []);
+  const completedItems = [...library]
+    .filter((item) => !item.activeSession && (item.latestSessionStatus === "ended" || item.latestSessionStatus === "expired"))
+    .sort((left, right) => Date.parse(right.lastSessionAt ?? "") - Date.parse(left.lastSessionAt ?? ""))
+    .slice(0, 4);
   if (loading) return <TeacherLoading />;
-  return (
-    <div className="speaking-page-shell speaking-teacher-shell">
-      <main className="speaking-teacher-layout">
-        <section className="speaking-teacher-content">
-          <div className="speaking-teacher-heading">
-            <div>
-              <span className="speaking-eyebrow">
-                <UserRound size={15} aria-hidden="true" /> Teacher workspace
-              </span>
-              <h1>Speaking Practice</h1>
-              <p>
-                Prepare a performance task, run it with your class, and review the rubric evidence.
-              </p>
-            </div>
-            <button
-              className="speaking-primary-button"
-              type="button"
-              onClick={() => navigate("/speak/teacher/create")}
-            >
-              <Plus size={18} aria-hidden="true" />
-              Create Performance Test
-            </button>
-          </div>
-          {error && (
-            <p className="speaking-error" role="alert">
-              {error}
-            </p>
-          )}
-          {openSessions.length > 0 && <section className="speaking-session-strip" aria-label="Open classroom sessions">
-            <div className="speaking-section-title"><h2>In the classroom</h2><span>{openSessions.length} open</span></div>
-            {openSessions.map(({ activity, session }) => <button className="speaking-session-row" key={session.id} type="button" onClick={() => navigate(`/speak/teacher/activity/${activity.id}?sessionId=${encodeURIComponent(session.id)}`)}><span className={`speaking-status-pill speaking-status-${session.status}`}>{session.status === "ready" ? "Students joining" : session.status === "paused" ? "Paused" : "Running"}</span><strong>{activity.title}</strong><code>{session.joinCode}</code><span>Open classroom <ArrowRight size={16} aria-hidden="true" /></span></button>)}
-          </section>}
-          <div className="speaking-section-title">
-            <div>
-              <span className="speaking-card-kicker">Your activities</span>
-              <h2>Reusable performance tasks</h2>
-            </div>
-            <button
-              className="speaking-text-button"
-              type="button"
-              onClick={() => navigate("/speak/teacher/create")}
-            >
-              New activity <ArrowRight size={15} aria-hidden="true" />
-            </button>
-          </div>
-          {activities.length > 0 && <label className="speaking-task-search"><span className="sr-only">Search performance tasks</span><input aria-label="Search performance tasks" value={search} onChange={(event) => setSearch(event.target.value)} placeholder="Search by task, textbook unit or situation" /></label>}
-          {activities.length ? (
-            <div className="speaking-activity-list">
-              {!visibleActivities.length && <p>No tasks match your search.</p>}
-              {visibleActivities.map((activity) => (
-                <TeacherActivityRow
-                  key={activity.id}
-                  activity={activity}
-                  sessions={sessions[activity.id] ?? []}
-                  navigate={navigate}
-                />
-              ))}
-            </div>
-          ) : (
-            <div className="speaking-empty-card">
-              <Edit3 size={30} aria-hidden="true" />
-              <h2>Create your first activity</h2>
-              <p>
-                Save a reusable conversation, then launch it for a classroom.
-              </p>
-              <button
-                type="button"
-                className="speaking-primary-button"
-                onClick={() => navigate("/speak/teacher/create")}
-              >
-                Create activity
-              </button>
-            </div>
-          )}
-          {recentSessions.length > 0 && <section className="speaking-recent-sessions"><div className="speaking-section-title"><h2>Recent completed sessions</h2></div>{recentSessions.map(({ activity, session }) => <button className="speaking-session-row" type="button" key={session.id} onClick={() => navigate(`/speak/teacher/activity/${activity.id}/results?sessionId=${encodeURIComponent(session.id)}`)}><ClipboardCheck size={19} aria-hidden="true" /><strong>{activity.title}</strong><time>{new Date(session.createdAt).toLocaleDateString()}</time><span>Review results <ArrowRight size={16} aria-hidden="true" /></span></button>)}</section>}
-        </section>
-      </main>
-    </div>
-  );
+  return <div className="speaking-page-shell speaking-teacher-shell">
+    <main className="speaking-teacher-layout">
+      <section className="speaking-teacher-content speaking-library-page">
+        <div className="speaking-teacher-heading"><div><span className="speaking-eyebrow"><UserRound size={15} aria-hidden="true" /> Teacher workspace</span><h1>Speaking Practice</h1><p>Create, organize and run speaking assessments.</p></div><button className="speaking-primary-button" type="button" onClick={() => navigate("/speak/teacher/create")}><Plus size={18} aria-hidden="true" />New Performance Test</button></div>
+        {error && <p className="speaking-error" role="alert">{error}</p>}
+        <div className="speaking-library-tabs" role="tablist" aria-label="Speaking Practice library"><button type="button" role="tab" aria-selected="true" className="is-active">Performance Tests <span>{library.length}</span></button><button type="button" role="tab" aria-selected="false" onClick={() => navigate("/speak/teacher/sets")}>Sets <span>{sets.length}</span></button></div>
+        {openSessions.length > 0 && <section className="speaking-session-strip" aria-label="Active classroom sessions"><div className="speaking-section-title"><div><span className="speaking-card-kicker">Live now</span><h2>Active classroom sessions</h2></div><span>{openSessions.length} open</span></div>{openSessions.map(({ activity, session }) => <button className="speaking-session-row" key={session.id} type="button" onClick={() => navigate(`/speak/teacher/activity/${activity.id}?sessionId=${encodeURIComponent(session.id)}`)}><span className={`speaking-status-pill speaking-status-${session.status}`}>{session.status === "ready" ? "Students joining" : session.status === "paused" ? "Paused" : "Running"}</span><strong>{activity.title}</strong><code>{session.joinCode}</code><span>Open classroom <ArrowRight size={16} aria-hidden="true" /></span></button>)}</section>}
+        <div className="speaking-section-title speaking-library-section-heading"><div><span className="speaking-card-kicker">Your library</span><h2>Performance Tests</h2></div><button type="button" className="speaking-text-button" onClick={() => navigate("/speak/teacher/create")}>New test <ArrowRight size={15} aria-hidden="true" /></button></div>
+        <div className="speaking-library-toolbar"><label className="speaking-task-search"><span className="sr-only">Search Performance Tests</span><input aria-label="Search Performance Tests" value={search} onChange={(event) => setSearch(event.target.value)} placeholder="Search tests, roles or Sets" /></label><label><span className="sr-only">Filter by level</span><select aria-label="Filter by level" value={level} onChange={(event) => setLevel(event.target.value)}><option value="all">All levels</option>{SPEAKING_LEVELS.map((option) => <option key={option} value={option}>{SPEAKING_LEVEL_LABELS[option]}</option>)}</select></label><label><span className="sr-only">Filter by difficulty</span><select aria-label="Filter by difficulty" value={difficulty} onChange={(event) => setDifficulty(event.target.value)}><option value="all">All difficulty</option>{SPEAKING_DIFFICULTIES.map((option) => <option key={option} value={option}>{SPEAKING_DIFFICULTY_LABELS[option]}</option>)}</select></label><label><span className="sr-only">Sort Performance Tests</span><select aria-label="Sort Performance Tests" value={sort} onChange={(event) => setSort(event.target.value)}><option value="recent">Recently used</option><option value="az">A–Z</option><option value="za">Z–A</option></select></label><span className="speaking-filter-icon" aria-hidden="true"><SlidersHorizontal size={17} /></span></div>
+        {library.length ? visibleItems.length ? <div className="speaking-activity-list">{visibleItems.map((item) => <TeacherActivityRow key={item.activity.id} item={item} sets={sets} navigate={navigate} onRefresh={load} />)}</div> : <div className="speaking-empty-card"><h2>No Performance Tests match</h2><p>Try a different search or filter.</p></div> : <div className="speaking-empty-card"><img className="speaking-empty-art" src="/assets/speaking/empty-performance-tests.webp" alt="" width={132} height={132} /><h2>Create your first Performance Test</h2><p>Save a reusable conversation, then launch it for a classroom.</p><button type="button" className="speaking-primary-button" onClick={() => navigate("/speak/teacher/create")}>Create Performance Test</button></div>}
+        {completedItems.length > 0 && <section className="speaking-recent-sessions" aria-labelledby="recent-completed-sessions"><div className="speaking-section-title"><div><span className="speaking-card-kicker">Classroom history</span><h2 id="recent-completed-sessions">Recent completed sessions</h2></div><button type="button" className="speaking-text-button" onClick={() => navigate("/speak/teacher/reports")}>View reports <ArrowRight size={15} aria-hidden="true" /></button></div><div className="speaking-recent-session-list">{completedItems.map((item) => <div className="speaking-recent-session" key={item.activity.id}><div><strong>{item.activity.title}</strong><span>{item.sessionCount} session{item.sessionCount === 1 ? "" : "s"} · {item.lastSessionAt ? `Completed ${new Date(item.lastSessionAt).toLocaleDateString()}` : "Completed recently"}</span></div><span className="speaking-status-pill speaking-status-ended">Completed</span></div>)}</div></section>}
+      </section>
+    </main>
+  </div>;
 }
 
 function TeacherLoading() {
@@ -386,59 +326,22 @@ function TeacherLoading() {
 }
 
 function TeacherActivityRow({
-  activity,
-  sessions,
+  item,
+  sets,
   navigate,
+  onRefresh,
 }: {
-  activity: SpeakingActivity;
-  sessions: SpeakingSession[];
+  item: SpeakingLibraryItem;
+  sets: SpeakingSetSummary[];
   navigate: Navigate;
+  onRefresh: () => Promise<void>;
 }) {
-  const latest = sessions[0];
-  return (
-    <article className="speaking-activity-row">
-      <div className="speaking-activity-row-icon">
-        <BookOpenText size={21} aria-hidden="true" />
-      </div>
-      <div className="speaking-activity-row-main">
-        <div>
-          <strong>{activity.title}</strong>
-          <span>
-            {activity.aiRole} · {SPEAKING_LEVEL_LABELS[activity.level]}
-          </span>
-        </div>
-        <p>{activity.scenario}</p><small>{formatDuration(activity.durationSeconds)} · {activity.rubric.filter((criterion) => criterion.enabled).length} criteria{latest ? ` · Last run ${new Date(latest.createdAt).toLocaleDateString()}` : " · Ready for your first class"}</small>
-      </div>
-      <div className="speaking-activity-row-meta">
-        <span
-          className={`speaking-status-pill speaking-status-${latest?.status ?? "ready"}`}
-        >
-          {latest
-            ? latest.status === "active"
-              ? "Active"
-              : latest.status === "paused"
-                ? "Paused"
-                : latest.status === "ended"
-                  ? "Ended"
-                  : latest.status === "expired" ? "Expired" : "Students joining"
-            : "Not launched"}
-        </span>
-        <span>
-          {sessions.length} session{sessions.length === 1 ? "" : "s"}
-        </span>
-        {latest && <code>{latest.joinCode}</code>}
-      </div>
-      <div className="speaking-activity-row-actions">
-        <button
-          type="button"
-          onClick={() => navigate(`/speak/teacher/activity/${activity.id}`)}
-          aria-label={`Open ${activity.title}`}
-        >
-          <ChevronRight size={18} aria-hidden="true" />
-        </button>
-      </div>
-    </article>
-  );
+  const activity = item.activity;
+  const imageSrc = activity.scenarioResources?.imageSrc ?? "/assets/speaking/scenario-introduction.webp";
+  const duplicate = async () => { try { await speakingApi.duplicateActivity(activity.id); await onRefresh(); } catch (error) { window.alert(getErrorMessage(error, "The Performance Test could not be duplicated.")); } };
+  const remove = async () => { if (!window.confirm(`Delete “${activity.title}”?\n\nExisting historical reports will remain available.`)) return; try { await speakingApi.deleteActivity(activity.id); await onRefresh(); } catch (error) { window.alert(getErrorMessage(error, "The Performance Test could not be deleted.")); } };
+  const addToSet = async (setId: string) => { if (!setId) return; try { await speakingApi.addToSet(setId, activity.id); await onRefresh(); } catch (error) { window.alert(getErrorMessage(error, "The Performance Test could not be added to that Set.")); } };
+  return <article className="speaking-activity-row"><img className="speaking-activity-thumbnail" src={imageSrc} alt="" loading="lazy" /><div className="speaking-activity-row-main"><div><strong>{activity.title}</strong><span>{activity.studentRole} · {SPEAKING_LEVEL_LABELS[activity.level]}</span></div><p>{activity.scenario}</p><small>{formatDuration(activity.durationSeconds)} · {activity.rubric.filter((criterion) => criterion.enabled).length} criteria · {item.sessionCount} session{item.sessionCount === 1 ? "" : "s"}{item.lastSessionAt ? ` · Last used ${new Date(item.lastSessionAt).toLocaleDateString()}` : ""}</small>{item.setMemberships.length > 0 && <div className="speaking-row-set-tags">{item.setMemberships.map((set) => <span key={set.id}>{set.name}</span>)}</div>}</div><div className="speaking-activity-row-meta">{item.activeSession ? <span className={`speaking-status-pill speaking-status-${item.activeSession.status}`}>{item.activeSession.status === "ready" ? "Students joining" : item.activeSession.status === "paused" ? "Paused" : "Live"}</span> : <span className="speaking-status-pill speaking-status-ready">Ready to launch</span>}<span>{activity.aiRole}</span></div><div className="speaking-activity-row-actions"><button type="button" className="speaking-row-launch" onClick={() => navigate(`/speak/teacher/activity/${activity.id}`)}>{item.activeSession ? "Open" : "Launch"}</button><button type="button" onClick={() => navigate(`/speak/teacher/activity/${activity.id}`)} aria-label={`Open ${activity.title}`}><ChevronRight size={18} aria-hidden="true" /></button><details><summary aria-label={`More actions for ${activity.title}`}><MoreHorizontal size={18} aria-hidden="true" /></summary><div className="speaking-overflow-menu"><button type="button" onClick={() => void duplicate()}>Duplicate</button><label>Add to Set<select aria-label={`Add ${activity.title} to a Set`} defaultValue="" onChange={(event) => void addToSet(event.target.value)}><option value="">Choose a Set…</option>{sets.filter((set) => !item.setMemberships.some((membership) => membership.id === set.id)).map((set) => <option key={set.id} value={set.id}>{set.name}</option>)}</select></label><button type="button" className="is-danger" onClick={() => void remove()}><Trash2 size={15} aria-hidden="true" />Delete</button></div></details></div></article>;
 }
 
 const draftFromTemplate = (
@@ -543,6 +446,28 @@ function SpeakingCreatePage({
   const [formError, setFormError] = useState("");
   const [saving, setSaving] = useState(false);
   const [loadingActivity, setLoadingActivity] = useState(editing);
+  const [activeBuilderStep, setActiveBuilderStep] = useState("template");
+  const builderSteps = [
+    { id: "template", label: "Template", target: "speaking-template" },
+    { id: "task", label: "Task", target: "speaking-situation" },
+    { id: "support", label: "Student support", target: "speaking-language" },
+    { id: "settings", label: "Settings", target: "speaking-settings" },
+    { id: "rubric", label: "Rubric", target: "speaking-rubric" },
+    { id: "review", label: "Review", target: "speaking-review" }
+  ] as const;
+  const builderStepComplete: Record<(typeof builderSteps)[number]["id"], boolean> = {
+    template: Boolean(draft.title.trim()),
+    task: Boolean(draft.title.trim() && draft.scenario.trim() && draft.aiRole.trim() && draft.studentRole.trim()),
+    support: draft.targetExpressions.some((expression) => expression.trim().length > 0),
+    settings: Boolean(draft.durationSeconds && draft.level && draft.difficulty && draft.identifierMode),
+    rubric: draft.rubric.some((criterion) => criterion.enabled && criterion.name.trim()),
+    review: Boolean(draft.title.trim() && draft.scenario.trim() && draft.rubric.some((criterion) => criterion.enabled))
+  };
+  const focusBuilderStep = (step: (typeof builderSteps)[number]["id"]) => {
+    setActiveBuilderStep(step);
+    const target = builderSteps.find((candidate) => candidate.id === step)?.target;
+    if (target) document.getElementById(target)?.scrollIntoView({ behavior: "smooth", block: "start" });
+  };
   const update = <K extends keyof SpeakingCreateActivityInput>(
     key: K,
     value: SpeakingCreateActivityInput[K],
@@ -667,12 +592,12 @@ function SpeakingCreatePage({
                 ) : (
                   <Check size={17} aria-hidden="true" />
                 )}
-                {editing ? "Save changes" : "Create activity"}
+                {editing ? "Save changes" : "Create Performance Test"}
               </button>
             </div>
           </div>
-          <nav className="speaking-builder-jump" aria-label="Activity setup sections">
-            <a href="#speaking-template">Template</a><a href="#speaking-situation">1. Task</a><a href="#speaking-language">2. Student support</a><a href="#speaking-settings">3. Settings</a><a href="#speaking-rubric">4. Rubric</a><a href="#speaking-review">5. Review</a>
+          <nav className="speaking-builder-jump" aria-label="Performance Test setup steps">
+            {builderSteps.map((step, index) => <button type="button" key={step.id} className={`${activeBuilderStep === step.id ? "is-active " : ""}${builderStepComplete[step.id] ? "is-complete" : ""}`} aria-current={activeBuilderStep === step.id ? "step" : undefined} onClick={() => focusBuilderStep(step.id)}><span>{index === 0 ? "" : index}</span><strong>{step.label}</strong>{builderStepComplete[step.id] && <Check size={14} aria-hidden="true" />}</button>)}
           </nav>
           <section id="speaking-template" className="speaking-builder-card">
             <div className="speaking-builder-card-heading">
@@ -692,15 +617,11 @@ function SpeakingCreatePage({
                   key={template.id}
                   onClick={() => setDraft(draftFromTemplate(template))}
                 >
-                  <span className="speaking-template-icon">
-                    <MessageCircle size={19} aria-hidden="true" />
-                  </span>
-                  <span>
+                  <img className="speaking-template-image" src={template.scenarioResources?.imageSrc ?? "/assets/speaking/scenario-introduction.webp"} alt="" width={52} height={52} loading="lazy" />
+                  <span className="speaking-template-copy">
                     <strong>{template.title}</strong>
-                    <small>
-                      {SPEAKING_LEVEL_LABELS[template.level]} ·{" "}
-                      {SPEAKING_DIFFICULTY_LABELS[template.difficulty]}
-                    </small>
+                    <small>{template.scenario}</small>
+                    <small>{SPEAKING_LEVEL_LABELS[template.level]} · {SPEAKING_DIFFICULTY_LABELS[template.difficulty]}</small>
                   </span>
                   {draft.title === template.title && (
                     <Check size={16} aria-hidden="true" />
@@ -1062,7 +983,7 @@ function SpeakingCreatePage({
               disabled={saving}
             >
               <Check size={17} aria-hidden="true" />
-              {editing ? "Save changes" : "Create activity"}
+              {editing ? "Save changes" : "Create Performance Test"}
             </button>
           </div>
         </form>

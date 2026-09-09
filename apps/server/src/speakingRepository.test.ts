@@ -80,6 +80,45 @@ test("activity edits preserve old session snapshots and update new sessions", as
   assert.deepEqual(snapshotB?.activity.rubric.map((criterion) => criterion.id), ["communication"]);
 });
 
+test("library, sets, reports, and safe deletion preserve the reusable-test model", async () => {
+  const repository = new InMemorySpeakingRepository(createInMemorySpeakingState());
+  const now = "2026-09-01T00:00:00.000Z";
+  const activity = await repository.createActivity("teacher-1", input, "library-activity", now);
+  const secondActivity = await repository.createActivity("teacher-1", { ...input, title: "Second activity" }, "library-activity-2", now);
+  const session = await repository.createSession({ id: "library-session", activity, joinCode: "ABC240", createdAt: now, expiresAt: "2026-09-01T08:00:00.000Z" });
+  await repository.createSession({ id: "archived-session", activity: secondActivity, joinCode: "ABC241", createdAt: now, expiresAt: "2026-09-01T08:00:00.000Z" });
+  const participant = await repository.createParticipant({ id: "library-participant", activity, session, displayIdentifier: "Aki", tokenHash: hashSpeakingToken("library-token") });
+  await repository.updateParticipant(participant.id, { status: "completed", finishedAt: "2026-09-01T00:02:00.000Z" });
+  await repository.saveEvaluation(participant.id, evaluation(participant.id));
+
+  const set = await repository.createSet("teacher-1", { name: "Week 1", description: "First week" }, "library-set", now);
+  await repository.addSetActivity("teacher-1", set.id, activity.id);
+  await repository.addSetActivity("teacher-1", set.id, secondActivity.id);
+  const detail = await repository.getSet("teacher-1", set.id);
+  assert.deepEqual(detail?.activities.map((item) => item.activity.id), [activity.id, secondActivity.id]);
+  assert.equal(detail?.activities[0]?.sessionCount, 1);
+
+  const library = await repository.listActivityLibrary("teacher-1");
+  assert.equal(library.find((item) => item.activity.id === activity.id)?.sessionCount, 1);
+  assert.equal(library.find((item) => item.activity.id === activity.id)?.setMemberships[0]?.id, set.id);
+  const reports = await repository.listReportSummaries("teacher-1");
+  assert.equal(reports[0]?.participantCount, 1);
+  assert.equal(reports[0]?.completedCount, 1);
+  assert.equal(reports[0]?.setMemberships[0]?.name, "Week 1");
+
+  assert.equal(await repository.reorderSetActivities("teacher-1", set.id, [secondActivity.id, activity.id]) !== undefined, true);
+  assert.deepEqual((await repository.getSet("teacher-1", set.id))?.activities.map((item) => item.activity.id), [secondActivity.id, activity.id]);
+  assert.equal(await repository.archiveActivity("teacher-1", secondActivity.id), true);
+  assert.equal((await repository.listActivityLibrary("teacher-1")).some((item) => item.activity.id === secondActivity.id), false);
+  assert.equal((await repository.listReportSummaries("teacher-1")).some((item) => item.activity.id === secondActivity.id), true);
+
+  assert.equal(await repository.deleteSession("other-teacher", session.id), false);
+  assert.equal(await repository.deleteSession("teacher-1", session.id), true);
+  assert.equal((await repository.listReportSummaries("teacher-1")).some((item) => item.session.id === session.id), false);
+  assert.equal(await repository.deleteSet("teacher-1", set.id), true);
+  assert.equal((await repository.listSets("teacher-1")).length, 0);
+});
+
 test("speaking repository fails closed for production without Prisma", () => {
   assert.throws(() => createSpeakingRepository({ environment: "production" }), /durable Prisma database/);
   assert.ok(createSpeakingRepository({ environment: "development" }) instanceof InMemorySpeakingRepository);

@@ -41,8 +41,8 @@ export const SPEAKING_TEMPLATES: SpeakingActivity[] = [
       suggestedSteps: ["Greet the restaurant worker.", "Order a meal.", "Ask about one item.", "Check your order.", "Thank the worker."],
       usefulVocabulary: ["menu", "still water", "I'd like…", "That's all, thank you."],
       referenceItems: [{ label: "Soup", detail: "$5" }, { label: "Sandwich", detail: "$8" }, { label: "Orange juice", detail: "$3" }],
-      imageSrc: "/assets/speaking/ai-shop-assistant.png",
-      imageAlt: "Speaking partner"
+      imageSrc: "/assets/speaking/scenario-restaurant.webp",
+      imageAlt: "Two classmates ordering lunch together"
     }
   }),
   template({
@@ -65,8 +65,8 @@ export const SPEAKING_TEMPLATES: SpeakingActivity[] = [
       suggestedSteps: ["Say what you are looking for.", "Ask about size or color.", "Ask the price.", "Ask to try it on.", "Thank the shop assistant."],
       usefulVocabulary: ["size", "color", "fitting room", "How much is it?"],
       referenceItems: [{ label: "Blue T-shirt", detail: "$18" }, { label: "Black hoodie", detail: "$35" }],
-      imageSrc: "/assets/speaking/ai-shop-assistant.png",
-      imageAlt: "Shop assistant"
+      imageSrc: "/assets/speaking/scenario-shopping.webp",
+      imageAlt: "A student choosing a blue T-shirt with a shop assistant"
     }
   }),
   template({
@@ -87,7 +87,9 @@ export const SPEAKING_TEMPLATES: SpeakingActivity[] = [
       openingLine: "Hello! Are you looking for somewhere nearby?",
       studentGoal: "Ask for directions, check one detail, and thank your partner.",
       suggestedSteps: ["Say excuse me.", "Name the place you need.", "Ask how to get there.", "Check one direction.", "Thank your partner."],
-      usefulVocabulary: ["library", "turn left", "turn right", "next to"]
+      usefulVocabulary: ["library", "turn left", "turn right", "next to"],
+      imageSrc: "/assets/speaking/scenario-train-directions.webp",
+      imageAlt: "A local giving directions beside a metro map"
     }
   }),
   template({
@@ -108,7 +110,9 @@ export const SPEAKING_TEMPLATES: SpeakingActivity[] = [
       openingLine: "Hi! What do you like to do in your free time?",
       studentGoal: "Share one hobby and ask your partner about theirs.",
       suggestedSteps: ["Share one hobby.", "Give one detail.", "Ask your partner a question.", "React to their answer.", "Keep the conversation going."],
-      usefulVocabulary: ["free time", "usually", "on weekends", "How about you?"]
+      usefulVocabulary: ["free time", "usually", "on weekends", "How about you?"],
+      imageSrc: "/assets/speaking/scenario-hobbies.webp",
+      imageAlt: "Two classmates talking about their hobbies"
     }
   }),
   template({
@@ -129,7 +133,9 @@ export const SPEAKING_TEMPLATES: SpeakingActivity[] = [
       openingLine: "Hi! Do you have any plans for the weekend?",
       studentGoal: "Suggest a plan, ask about timing, and respond to your partner.",
       suggestedSteps: ["Ask about plans.", "Suggest one activity.", "Ask about a day or time.", "Respond to the suggestion.", "Agree on a next step."],
-      usefulVocabulary: ["Saturday", "Sunday", "available", "That sounds fun."]
+      usefulVocabulary: ["Saturday", "Sunday", "available", "That sounds fun."],
+      imageSrc: "/assets/speaking/scenario-weekend.webp",
+      imageAlt: "Two friends planning a weekend together"
     }
   }),
   template({
@@ -150,7 +156,9 @@ export const SPEAKING_TEMPLATES: SpeakingActivity[] = [
       openingLine: "Hi! Nice to meet you. What is your name?",
       studentGoal: "Introduce yourself and ask your new partner one question.",
       suggestedSteps: ["Say your name.", "Share where you are from.", "Share one interest.", "Ask your partner a question.", "Say nice to meet you."],
-      usefulVocabulary: ["name", "from", "school", "Nice to meet you."]
+      usefulVocabulary: ["name", "from", "school", "Nice to meet you."],
+      imageSrc: "/assets/speaking/scenario-introduction.webp",
+      imageAlt: "Two students introducing themselves at school"
     }
   })
 ];

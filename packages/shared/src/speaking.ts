@@ -215,6 +215,43 @@ export interface SpeakingSession {
   revision?: number;
 }
 
+export interface SpeakingSetSummary {
+  id: string;
+  name: string;
+  description: string;
+  activityCount: number;
+  lastUsedAt?: string;
+  createdAt: string;
+  updatedAt: string;
+}
+
+export interface SpeakingSetDetail extends SpeakingSetSummary {
+  activities: Array<{
+    activity: SpeakingActivity;
+    position: number;
+    sessionCount: number;
+    lastSessionAt?: string;
+  }>;
+}
+
+export interface SpeakingLibraryItem {
+  activity: SpeakingActivity;
+  sessionCount: number;
+  lastSessionAt?: string;
+  latestSessionStatus?: SpeakingSessionStatus;
+  activeSession?: SpeakingSession;
+  setMemberships: SpeakingSetSummary[];
+}
+
+export interface SpeakingReportSummary {
+  activity: Pick<SpeakingActivity, "id" | "title" | "scenario" | "rubric">;
+  session: SpeakingSession;
+  setMemberships: SpeakingSetSummary[];
+  participantCount: number;
+  completedCount: number;
+  needsReviewCount: number;
+}
+
 export interface SpeakingTurn {
   id: string;
   participantId: string;

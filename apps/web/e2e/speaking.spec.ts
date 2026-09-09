@@ -66,7 +66,7 @@ test("teacher and student Speaking Practice screens use the connected mock API",
     await teacherPage.screenshot({ path: testInfo.outputPath(`teacher-builder-${viewport.width}.png`), fullPage: true });
   }
   await teacherPage.setViewportSize({ width: 1366, height: 768 });
-  await teacherPage.getByRole("button", { name: "Create activity", exact: true }).last().click();
+  await teacherPage.getByRole("button", { name: "Create Performance Test", exact: true }).last().click();
   await expect(teacherPage).toHaveURL(/\/speaking\/activity\/[^/]+$/);
   const activityId = new URL(teacherPage.url()).pathname.split("/").pop()!;
   await teacherPage.goto(`/quiz-strike/teacher/speaking/activity/${activityId}/results`);

@@ -10,8 +10,12 @@ import {
   type SpeakingEvaluationJobStatus,
   type SpeakingParticipant,
   type SpeakingParticipantStatus,
+  type SpeakingLibraryItem,
+  type SpeakingReportSummary,
   type SpeakingRubricCriterion,
   type SpeakingScenarioResources,
+  type SpeakingSetDetail,
+  type SpeakingSetSummary,
   type SpeakingSession,
   type SpeakingSessionStatus,
   type SpeakingTurn
@@ -82,10 +86,22 @@ export const findSpeakingTurnPair = (turns: SpeakingTurn[], requestId: string) =
 
 export interface SpeakingRepository {
   listActivities(teacherId: string): Promise<SpeakingActivity[]>;
+  listActivityLibrary(teacherId: string): Promise<SpeakingLibraryItem[]>;
+  listReportSummaries(teacherId: string): Promise<SpeakingReportSummary[]>;
   getActivity(id: string): Promise<SpeakingActivity | undefined>;
   getOwnedActivity(id: string, teacherId: string): Promise<SpeakingActivity | undefined>;
   createActivity(teacherId: string, input: SpeakingCreateActivityInput, id: string, now: string): Promise<SpeakingActivity>;
   updateActivity(teacherId: string, activityId: string, input: SpeakingCreateActivityInput, now: string): Promise<SpeakingActivity | undefined>;
+  archiveActivity(teacherId: string, activityId: string): Promise<boolean>;
+  deleteSession(teacherId: string, sessionId: string): Promise<boolean>;
+  listSets(teacherId: string): Promise<SpeakingSetSummary[]>;
+  getSet(teacherId: string, setId: string): Promise<SpeakingSetDetail | undefined>;
+  createSet(teacherId: string, input: { name: string; description?: string }, id: string, now: string): Promise<SpeakingSetSummary>;
+  updateSet(teacherId: string, setId: string, input: { name?: string; description?: string }, now: string): Promise<SpeakingSetSummary | undefined>;
+  deleteSet(teacherId: string, setId: string): Promise<boolean>;
+  addSetActivity(teacherId: string, setId: string, activityId: string): Promise<SpeakingSetDetail | undefined>;
+  removeSetActivity(teacherId: string, setId: string, activityId: string): Promise<SpeakingSetDetail | undefined>;
+  reorderSetActivities(teacherId: string, setId: string, activityIds: string[]): Promise<SpeakingSetDetail | undefined>;
   isJoinCodeTaken(joinCode: string): Promise<boolean>;
   createSession(input: {
     id: string;
@@ -139,6 +155,13 @@ export type InMemorySpeakingState = {
   sessions: Map<string, InMemorySession>;
   tokenToParticipant: Map<string, string>;
   evaluationJobs: Map<string, SpeakingEvaluationJob>;
+  sets: Map<string, InMemorySpeakingSet>;
+};
+
+export type InMemorySpeakingSet = {
+  teacherId: string;
+  summary: SpeakingSetSummary;
+  activityIds: Map<string, number>;
 };
 
 export type InMemorySession = SpeakingSession & {
@@ -152,7 +175,8 @@ export const createInMemorySpeakingState = (): InMemorySpeakingState => ({
   participants: new Map(),
   sessions: new Map(),
   tokenToParticipant: new Map(),
-  evaluationJobs: new Map()
+  evaluationJobs: new Map(),
+  sets: new Map()
 });
 
 export const hashSpeakingToken = (token: string) => createHash("sha256").update(token).digest("hex");
@@ -206,6 +230,48 @@ const cloneSession = (session: SpeakingSession): SpeakingSession => ({
   expiresAt: session.expiresAt,
   ...(session.revision === undefined ? {} : { revision: session.revision })
 });
+
+const cloneSetSummary = (summary: SpeakingSetSummary): SpeakingSetSummary => ({ ...summary });
+
+const sessionForActivity = (state: InMemorySpeakingState, activityId: string) =>
+  [...state.sessions.values()]
+    .filter((session) => session.activityId === activityId)
+    .sort((left, right) => right.createdAt.localeCompare(left.createdAt) || right.id.localeCompare(left.id));
+
+const setMembershipsForActivity = (state: InMemorySpeakingState, teacherId: string, activityId: string) =>
+  [...state.sets.values()]
+    .filter((set) => set.teacherId === teacherId && set.activityIds.has(activityId))
+    .map((set) => cloneSetSummary(set.summary));
+
+const refreshSetSummary = (state: InMemorySpeakingState, set: InMemorySpeakingSet) => {
+  const sessions = [...set.activityIds.keys()].flatMap((activityId) => sessionForActivity(state, activityId));
+  const lastUsedAt = sessions.sort((left, right) => right.createdAt.localeCompare(left.createdAt))[0]?.createdAt;
+  set.summary = {
+    ...set.summary,
+    activityCount: set.activityIds.size,
+    ...(lastUsedAt ? { lastUsedAt } : {})
+  };
+  return cloneSetSummary(set.summary);
+};
+
+const setDetailFromMemory = (state: InMemorySpeakingState, set: InMemorySpeakingSet): SpeakingSetDetail | undefined => {
+  const activities = [...set.activityIds.entries()]
+    .map(([activityId, position]) => {
+      const activity = state.activities.get(activityId);
+      if (!activity) return undefined;
+      const sessions = sessionForActivity(state, activityId);
+      return {
+        activity: cloneActivity(activity),
+        position,
+        sessionCount: sessions.length,
+        ...(sessions[0] ? { lastSessionAt: sessions[0].createdAt } : {})
+      };
+    })
+    .filter((item): item is NonNullable<typeof item> => Boolean(item))
+    .sort((left, right) => left.position - right.position || left.activity.title.localeCompare(right.activity.title));
+  refreshSetSummary(state, set);
+  return { ...cloneSetSummary(set.summary), activities };
+};
 
 const cloneParticipant = (participant: SpeakingParticipant): SpeakingParticipant => ({ ...participant });
 
@@ -268,6 +334,38 @@ export class InMemorySpeakingRepository implements SpeakingRepository {
       .map(cloneActivity);
   }
 
+  async listActivityLibrary(teacherId: string) {
+    return [...this.state.activities.values()]
+      .filter((activity) => activity.teacherId === teacherId && activity.status !== "archived")
+      .map((activity): SpeakingLibraryItem => {
+        const sessions = sessionForActivity(this.state, activity.id);
+        const latest = sessions[0];
+        return {
+          activity: cloneActivity(activity),
+          sessionCount: sessions.length,
+          ...(latest ? { lastSessionAt: latest.createdAt, latestSessionStatus: latest.status } : {}),
+          ...(latest && ["ready", "active", "paused"].includes(latest.status) ? { activeSession: cloneSession(latest) } : {}),
+          setMemberships: setMembershipsForActivity(this.state, teacherId, activity.id)
+        };
+      });
+  }
+
+  async listReportSummaries(teacherId: string) {
+    return [...this.state.activities.values()]
+      .filter((activity) => activity.teacherId === teacherId)
+      .flatMap((activity): SpeakingReportSummary[] => sessionForActivity(this.state, activity.id).map((session) => {
+        const participants = [...this.state.participants.values()].filter((participant) => participant.sessionId === session.id);
+        return {
+          activity: { id: activity.id, title: activity.title, scenario: activity.scenario, rubric: activity.rubric.map((criterion) => ({ ...criterion })) },
+          session: cloneSession(session),
+          setMemberships: setMembershipsForActivity(this.state, teacherId, activity.id),
+          participantCount: participants.length,
+          completedCount: participants.filter((participant) => participant.status === "completed").length,
+          needsReviewCount: participants.filter((participant) => participant.status === "error" || session.evaluations.get(participant.id)?.assessmentStatus === "insufficient_evidence").length
+        };
+      }));
+  }
+
   async getActivity(id: string) {
     const activity = this.state.activities.get(id);
     return activity ? cloneActivity(activity) : undefined;
@@ -291,6 +389,88 @@ export class InMemorySpeakingRepository implements SpeakingRepository {
     const activity = { ...normalized, status: current.status, createdAt: current.createdAt };
     this.state.activities.set(activityId, activity);
     return cloneActivity(activity);
+  }
+
+  async archiveActivity(teacherId: string, activityId: string) {
+    const activity = this.state.activities.get(activityId);
+    if (!activity || activity.teacherId !== teacherId) return false;
+    activity.status = "archived";
+    activity.updatedAt = new Date().toISOString();
+    return true;
+  }
+
+  async deleteSession(teacherId: string, sessionId: string) {
+    const session = this.state.sessions.get(sessionId);
+    const activity = session ? this.state.activities.get(session.activityId) : undefined;
+    if (!session || !activity || activity.teacherId !== teacherId) return false;
+    for (const participant of [...this.state.participants.values()]) {
+      if (participant.sessionId !== sessionId) continue;
+      this.state.tokenToParticipant.delete(participant.tokenHash);
+      this.state.evaluationJobs.delete(participant.id);
+      this.state.participants.delete(participant.id);
+    }
+    this.state.sessions.delete(sessionId);
+    return true;
+  }
+
+  async listSets(teacherId: string) {
+    return [...this.state.sets.values()]
+      .filter((set) => set.teacherId === teacherId)
+      .sort((left, right) => right.summary.updatedAt.localeCompare(left.summary.updatedAt))
+      .map((set) => refreshSetSummary(this.state, set));
+  }
+
+  async getSet(teacherId: string, setId: string) {
+    const set = this.state.sets.get(setId);
+    return set && set.teacherId === teacherId ? setDetailFromMemory(this.state, set) : undefined;
+  }
+
+  async createSet(teacherId: string, input: { name: string; description?: string }, id: string, now: string) {
+    const summary: SpeakingSetSummary = { id, name: input.name.trim().slice(0, 120), description: input.description?.trim().slice(0, 500) ?? "", activityCount: 0, createdAt: now, updatedAt: now };
+    this.state.sets.set(id, { teacherId, summary, activityIds: new Map() });
+    return cloneSetSummary(summary);
+  }
+
+  async updateSet(teacherId: string, setId: string, input: { name?: string; description?: string }, now: string) {
+    const set = this.state.sets.get(setId);
+    if (!set || set.teacherId !== teacherId) return undefined;
+    set.summary = { ...set.summary, ...(input.name === undefined ? {} : { name: input.name.trim().slice(0, 120) }), ...(input.description === undefined ? {} : { description: input.description.trim().slice(0, 500) }), updatedAt: now };
+    return cloneSetSummary(set.summary);
+  }
+
+  async deleteSet(teacherId: string, setId: string) {
+    const set = this.state.sets.get(setId);
+    if (!set || set.teacherId !== teacherId) return false;
+    this.state.sets.delete(setId);
+    return true;
+  }
+
+  async addSetActivity(teacherId: string, setId: string, activityId: string) {
+    const set = this.state.sets.get(setId);
+    const activity = this.state.activities.get(activityId);
+    if (!set || set.teacherId !== teacherId || !activity || activity.teacherId !== teacherId || activity.status === "archived") return undefined;
+    if (!set.activityIds.has(activityId)) set.activityIds.set(activityId, set.activityIds.size);
+    set.summary.updatedAt = new Date().toISOString();
+    return setDetailFromMemory(this.state, set);
+  }
+
+  async removeSetActivity(teacherId: string, setId: string, activityId: string) {
+    const set = this.state.sets.get(setId);
+    if (!set || set.teacherId !== teacherId) return undefined;
+    set.activityIds.delete(activityId);
+    [...set.activityIds.keys()].forEach((id, index) => set.activityIds.set(id, index));
+    set.summary.updatedAt = new Date().toISOString();
+    return setDetailFromMemory(this.state, set);
+  }
+
+  async reorderSetActivities(teacherId: string, setId: string, activityIds: string[]) {
+    const set = this.state.sets.get(setId);
+    if (!set || set.teacherId !== teacherId) return undefined;
+    const current = new Set(set.activityIds.keys());
+    if (activityIds.some((id) => !current.has(id)) || current.size !== activityIds.length) return undefined;
+    set.activityIds = new Map(activityIds.map((id, position) => [id, position]));
+    set.summary.updatedAt = new Date().toISOString();
+    return setDetailFromMemory(this.state, set);
   }
 
   async isJoinCodeTaken(joinCode: string) {
@@ -711,6 +891,29 @@ const toEvaluation = (row: { participantId: string; language: string; scoresJson
 
 const activityInclude = { rubric: { orderBy: { position: "asc" as const } } } as const;
 const sessionInclude = { activity: { include: activityInclude } } as const;
+const setInclude = {
+  activities: {
+    orderBy: [{ position: "asc" }, { activityId: "asc" }],
+    include: {
+      activity: {
+        include: {
+          ...activityInclude,
+          sessions: { orderBy: [{ createdAt: "desc" }, { id: "desc" }], select: { createdAt: true } }
+        }
+      }
+    }
+  }
+} satisfies Prisma.SpeakingSetInclude;
+
+const toSetSummary = (row: { id: string; name: string; description: string; createdAt: Date; updatedAt: Date }, activityCount: number, lastUsedAt?: Date): SpeakingSetSummary => ({
+  id: row.id,
+  name: row.name,
+  description: row.description,
+  activityCount,
+  ...(lastUsedAt ? { lastUsedAt: lastUsedAt.toISOString() } : {}),
+  createdAt: row.createdAt.toISOString(),
+  updatedAt: row.updatedAt.toISOString()
+});
 
 export class PrismaSpeakingRepository implements SpeakingRepository {
   constructor(private readonly prisma: PrismaClient) {}
@@ -724,6 +927,57 @@ export class PrismaSpeakingRepository implements SpeakingRepository {
   async listActivities(teacherId: string) {
     const rows = await this.prisma.speakingActivity.findMany({ where: { teacherId }, include: activityInclude, orderBy: [{ updatedAt: "desc" }, { id: "desc" }] });
     return rows.map(toActivity);
+  }
+
+  async listActivityLibrary(teacherId: string) {
+    const rows = await this.prisma.speakingActivity.findMany({
+      where: { teacherId, status: { not: "archived" } },
+      include: {
+        ...activityInclude,
+        sessions: {
+          orderBy: [{ createdAt: "desc" }, { id: "desc" }],
+          select: { id: true, activityId: true, joinCode: true, status: true, createdAt: true, startedAt: true, pausedAt: true, endedAt: true, expiresAt: true, revision: true }
+        },
+        setMemberships: { include: { set: { select: { id: true, name: true, description: true, createdAt: true, updatedAt: true } } } }
+      },
+      orderBy: [{ updatedAt: "desc" }, { id: "desc" }]
+    });
+    return rows.map((row): SpeakingLibraryItem => {
+      const latest = row.sessions[0];
+      const setMemberships = row.setMemberships.map((membership) => toSetSummary(membership.set, 0));
+      return {
+        activity: toActivity(row),
+        sessionCount: row.sessions.length,
+        ...(latest ? { lastSessionAt: latest.createdAt.toISOString(), latestSessionStatus: latest.status === "completed" ? "ended" : latest.status, ...( ["ready", "active", "paused"].includes(latest.status) ? { activeSession: toSession(latest) } : {}) } : {}),
+        setMemberships
+      };
+    });
+  }
+
+  async listReportSummaries(teacherId: string) {
+    const rows = await this.prisma.speakingActivity.findMany({
+      where: { teacherId },
+      include: {
+        ...activityInclude,
+        sessions: {
+          orderBy: [{ createdAt: "desc" }, { id: "desc" }],
+          include: { participants: { select: { status: true, evaluation: { select: { scoresJson: true } } } } }
+        },
+        setMemberships: { include: { set: { select: { id: true, name: true, description: true, createdAt: true, updatedAt: true } } } }
+      },
+      orderBy: [{ updatedAt: "desc" }, { id: "desc" }]
+    });
+    return rows.flatMap((row): SpeakingReportSummary[] => row.sessions.map((session) => {
+      const setMemberships = row.setMemberships.map((membership) => toSetSummary(membership.set, 0));
+      return {
+        activity: { id: row.id, title: row.title, scenario: row.scenario, rubric: row.rubric.map((criterion) => ({ id: criterion.criterionId, name: criterion.name, description: criterion.description, enabled: criterion.enabled })) },
+        session: toSession(session),
+        setMemberships,
+        participantCount: session.participants.length,
+        completedCount: session.participants.filter((participant) => participant.status === "completed").length,
+        needsReviewCount: session.participants.filter((participant) => participant.status === "error" || (participant.evaluation && !Object.values(objectFromJson(participant.evaluation.scoresJson)).some((value) => typeof value === "number"))).length
+      };
+    }));
   }
 
   async getActivity(id: string) {
@@ -787,6 +1041,84 @@ export class PrismaSpeakingRepository implements SpeakingRepository {
       });
     });
     return row ? toActivity(row) : undefined;
+  }
+
+  async archiveActivity(teacherId: string, activityId: string) {
+    const result = await this.prisma.speakingActivity.updateMany({ where: { id: activityId, teacherId, status: { not: "archived" } }, data: { status: "archived" } });
+    return result.count > 0;
+  }
+
+  async deleteSession(teacherId: string, sessionId: string) {
+    const result = await this.prisma.speakingSession.deleteMany({ where: { id: sessionId, activity: { teacherId } } });
+    return result.count > 0;
+  }
+
+  async listSets(teacherId: string) {
+    const rows = await this.prisma.speakingSet.findMany({ where: { teacherId }, include: setInclude, orderBy: [{ updatedAt: "desc" }, { id: "desc" }] });
+    return rows.map((row) => {
+      const lastUsedAt = row.activities.flatMap((membership) => membership.activity.sessions).sort((left, right) => right.createdAt.getTime() - left.createdAt.getTime())[0]?.createdAt;
+      return toSetSummary(row, row.activities.length, lastUsedAt);
+    });
+  }
+
+  async getSet(teacherId: string, setId: string) {
+    const row = await this.prisma.speakingSet.findFirst({ where: { id: setId, teacherId }, include: setInclude });
+    if (!row) return undefined;
+    const lastUsedAt = row.activities.flatMap((membership) => membership.activity.sessions).sort((left, right) => right.createdAt.getTime() - left.createdAt.getTime())[0]?.createdAt;
+    return {
+      ...toSetSummary(row, row.activities.length, lastUsedAt),
+      activities: row.activities.filter((membership) => membership.activity.status !== "archived").map((membership) => {
+        const lastSessionAt = membership.activity.sessions[0]?.createdAt;
+        return { activity: toActivity(membership.activity), position: membership.position, sessionCount: membership.activity.sessions.length, ...(lastSessionAt ? { lastSessionAt: lastSessionAt.toISOString() } : {}) };
+      })
+    } satisfies SpeakingSetDetail;
+  }
+
+  async createSet(teacherId: string, input: { name: string; description?: string }, id: string, now: string) {
+    const row = await this.prisma.speakingSet.create({ data: { id, teacherId, name: input.name.trim().slice(0, 120), description: input.description?.trim().slice(0, 500) ?? "", createdAt: new Date(now), updatedAt: new Date(now) } });
+    return toSetSummary(row, 0);
+  }
+
+  async updateSet(teacherId: string, setId: string, input: { name?: string; description?: string }, now: string) {
+    const owned = await this.prisma.speakingSet.findFirst({ where: { id: setId, teacherId } });
+    if (!owned) return undefined;
+    const row = await this.prisma.speakingSet.update({ where: { id: setId }, data: { ...(input.name === undefined ? {} : { name: input.name.trim().slice(0, 120) }), ...(input.description === undefined ? {} : { description: input.description.trim().slice(0, 500) }), updatedAt: new Date(now) }, include: { _count: { select: { activities: true } } } });
+    return toSetSummary(row, row._count.activities);
+  }
+
+  async deleteSet(teacherId: string, setId: string) {
+    const result = await this.prisma.speakingSet.deleteMany({ where: { id: setId, teacherId } });
+    return result.count > 0;
+  }
+
+  async addSetActivity(teacherId: string, setId: string, activityId: string) {
+    const owned = await this.prisma.speakingActivity.findFirst({ where: { id: activityId, teacherId, status: { not: "archived" } }, select: { id: true } });
+    const set = await this.prisma.speakingSet.findFirst({ where: { id: setId, teacherId }, include: { activities: { select: { activityId: true, position: true } } } });
+    if (!owned || !set) return undefined;
+    if (!set.activities.some((membership) => membership.activityId === activityId)) {
+      await this.prisma.speakingSetActivity.create({ data: { setId, activityId, position: set.activities.length } });
+    }
+    return this.getSet(teacherId, setId);
+  }
+
+  async removeSetActivity(teacherId: string, setId: string, activityId: string) {
+    const set = await this.prisma.speakingSet.findFirst({ where: { id: setId, teacherId }, include: { activities: { orderBy: { position: "asc" }, select: { activityId: true } } } });
+    if (!set) return undefined;
+    await this.prisma.$transaction(async (transaction) => {
+      await transaction.speakingSetActivity.deleteMany({ where: { setId, activityId } });
+      const remaining = set.activities.filter((membership) => membership.activityId !== activityId);
+      for (const [position, membership] of remaining.entries()) await transaction.speakingSetActivity.update({ where: { setId_activityId: { setId, activityId: membership.activityId } }, data: { position } });
+    });
+    return this.getSet(teacherId, setId);
+  }
+
+  async reorderSetActivities(teacherId: string, setId: string, activityIds: string[]) {
+    const set = await this.prisma.speakingSet.findFirst({ where: { id: setId, teacherId }, include: { activities: { select: { activityId: true } } } });
+    if (!set || new Set(activityIds).size !== activityIds.length || activityIds.length !== set.activities.length || activityIds.some((id) => !set.activities.some((membership) => membership.activityId === id))) return undefined;
+    await this.prisma.$transaction(async (transaction) => {
+      for (const [position, activityId] of activityIds.entries()) await transaction.speakingSetActivity.update({ where: { setId_activityId: { setId, activityId } }, data: { position } });
+    });
+    return this.getSet(teacherId, setId);
   }
 
   async isJoinCodeTaken(joinCode: string) {

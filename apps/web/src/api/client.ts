@@ -367,11 +367,33 @@ export const studentApi = {
     })
 };
 
+const downloadSpeakingCsv = async (path: string) => {
+  const token = getToken();
+  const response = await fetchApi(path, { headers: token ? { Authorization: `Bearer ${token}` } : undefined });
+  if (!response.ok) {
+    const payload = (await response.json().catch(() => ({}))) as { error?: string };
+    throw new ApiError(payload.error ?? "CSV export failed.", response.status);
+  }
+  return response.blob();
+};
+
 export const speakingApi = {
   templates: () => api("/api/speaking/templates"),
   activities: () => api("/api/speaking/activities"),
+  library: () => api("/api/speaking/library"),
+  reports: () => api("/api/speaking/reports"),
+  sets: () => api("/api/speaking/sets"),
+  set: (id: string) => api(`/api/speaking/sets/${encodeURIComponent(id)}`),
+  createSet: (body: { name: string; description?: string }) => api("/api/speaking/sets", { method: "POST", body: JSON.stringify(body) }),
+  updateSet: (id: string, body: { name?: string; description?: string }) => api(`/api/speaking/sets/${encodeURIComponent(id)}`, { method: "PATCH", body: JSON.stringify(body) }),
+  deleteSet: (id: string) => api(`/api/speaking/sets/${encodeURIComponent(id)}`, { method: "DELETE" }),
+  addToSet: (setId: string, activityId: string) => api(`/api/speaking/sets/${encodeURIComponent(setId)}/activities/${encodeURIComponent(activityId)}`, { method: "POST" }),
+  removeFromSet: (setId: string, activityId: string) => api(`/api/speaking/sets/${encodeURIComponent(setId)}/activities/${encodeURIComponent(activityId)}`, { method: "DELETE" }),
+  reorderSet: (setId: string, activityIds: string[]) => api(`/api/speaking/sets/${encodeURIComponent(setId)}/order`, { method: "PATCH", body: JSON.stringify({ activityIds }) }),
   createActivity: (body: SpeakingCreateActivityInput) => api("/api/speaking/activities", { method: "POST", body: JSON.stringify(body) }),
   updateActivity: (id: string, body: SpeakingCreateActivityInput) => api(`/api/speaking/activities/${encodeURIComponent(id)}`, { method: "PATCH", body: JSON.stringify(body) }),
+  duplicateActivity: (id: string, title?: string) => api(`/api/speaking/activities/${encodeURIComponent(id)}/duplicate`, { method: "POST", body: JSON.stringify(title ? { title } : {}) }),
+  deleteActivity: (id: string) => api(`/api/speaking/activities/${encodeURIComponent(id)}`, { method: "DELETE" }),
   activity: (id: string) => api(`/api/speaking/activities/${encodeURIComponent(id)}`),
   sessions: (activityId: string) => api(`/api/speaking/activities/${encodeURIComponent(activityId)}/sessions`),
   launchSession: (activityId: string) => api(`/api/speaking/activities/${encodeURIComponent(activityId)}/sessions`, { method: "POST" }),
@@ -381,6 +403,7 @@ export const speakingApi = {
   pauseSession: (sessionId: string) => api(`/api/speaking/sessions/${encodeURIComponent(sessionId)}/pause`, { method: "POST" }),
   resumeSession: (sessionId: string) => api(`/api/speaking/sessions/${encodeURIComponent(sessionId)}/resume`, { method: "POST" }),
   endSession: (sessionId: string) => api(`/api/speaking/sessions/${encodeURIComponent(sessionId)}/end`, { method: "POST" }),
+  deleteSession: (sessionId: string) => api(`/api/speaking/sessions/${encodeURIComponent(sessionId)}`, { method: "DELETE" }),
   session: (sessionId: string, token: string, signal?: AbortSignal) => api(`/api/speaking/sessions/${encodeURIComponent(sessionId)}`, { headers: speakingHeaders(token), signal }, { attemptTimeoutMs: SPEAKING_STATUS_REQUEST_TIMEOUT_MS }),
   status: (sessionId: string, token: string, signal?: AbortSignal) => api(`/api/speaking/sessions/${encodeURIComponent(sessionId)}/status`, { headers: speakingHeaders(token), signal }, { attemptTimeoutMs: SPEAKING_STATUS_REQUEST_TIMEOUT_MS }),
   roster: (sessionId: string, signal?: AbortSignal) => api(`/api/speaking/sessions/${encodeURIComponent(sessionId)}/roster`, { signal }, { attemptTimeoutMs: SPEAKING_STATUS_REQUEST_TIMEOUT_MS }),
@@ -395,7 +418,9 @@ export const speakingApi = {
   finish: (sessionId: string, token: string) => api(`/api/speaking/sessions/${encodeURIComponent(sessionId)}/finish`, { method: "POST", headers: speakingHeaders(token) }, { attemptTimeoutMs: SPEAKING_FINISH_REQUEST_TIMEOUT_MS }),
   results: (activityId: string, sessionId?: string) => api(`/api/speaking/activities/${encodeURIComponent(activityId)}/results${sessionId ? `?sessionId=${encodeURIComponent(sessionId)}` : ""}`),
   sessionResults: (sessionId: string, signal?: AbortSignal) => api(`/api/speaking/sessions/${encodeURIComponent(sessionId)}/results`, { signal }, { attemptTimeoutMs: SPEAKING_STATUS_REQUEST_TIMEOUT_MS }),
-  result: (participantId: string, token?: string, signal?: AbortSignal) => api(`/api/speaking/results/${encodeURIComponent(participantId)}`, token ? { headers: speakingHeaders(token), signal } : { signal }, { attemptTimeoutMs: SPEAKING_STATUS_REQUEST_TIMEOUT_MS })
+  result: (participantId: string, token?: string, signal?: AbortSignal) => api(`/api/speaking/results/${encodeURIComponent(participantId)}`, token ? { headers: speakingHeaders(token), signal } : { signal }, { attemptTimeoutMs: SPEAKING_STATUS_REQUEST_TIMEOUT_MS }),
+  sessionCsv: async (sessionId: string) => downloadSpeakingCsv(`/api/speaking/sessions/${encodeURIComponent(sessionId)}/report.csv`),
+  setCsv: async (setId: string) => downloadSpeakingCsv(`/api/speaking/sets/${encodeURIComponent(setId)}/report.csv`)
 };
 
 export const fetchDecalAsset = async (code: string, assetId: string, playerToken?: string): Promise<Blob> => {

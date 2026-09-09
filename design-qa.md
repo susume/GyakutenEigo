@@ -112,6 +112,44 @@ final result: passed
 
 final result: needs fresh-browser confirmation
 
+# Speaking Practice production upgrade — Design QA (2026-09-09)
+
+## Visual truth and scope
+
+- Source references: `C:\Users\hungb\Downloads\screenshots\screenshots\1 (1).png` through `1 (6).png`.
+- Prototype: local Speaking Practice routes in the GyakutenEigo workspace.
+- The comparison covered the teacher library, Performance Test builder, Sets list/detail, Reports integration, student join, microphone preflight, and mobile layouts.
+- Generated scenario and empty-state artwork is stored under `apps/web/public/assets/speaking/` and is used as real image content rather than CSS placeholders.
+
+## Viewports and states checked
+
+- Desktop: 1366 × 768, seeded teacher account with six Performance Tests, one Set, and classroom history.
+- Mobile: 390 × 844, library with an active session and builder with the step rail/template grid.
+- Student: join URL with a real session code, then joined microphone preflight.
+- No horizontal overflow was observed in the checked desktop/mobile states; the mobile document width matched the viewport width.
+
+## Interaction and regression checks
+
+- Performance Test library supports search, level/difficulty filters, sorting, launch/open, duplicate, Set membership, and safe archive.
+- Sets support creation, editing, ordering, add/remove, detail navigation, and CSV export.
+- Reports is available from the teacher Reports area with Speaking Practice tab, Set filtering, results navigation, CSV export, and safe session deletion.
+- The global Space shortcut yields to inputs, text editors, buttons, dialogs, and other editable targets; focused test coverage passes.
+- Student join and microphone preflight render the supplied flow vocabulary and generated microphone-ready guidance.
+
+## Verification
+
+- `npm run lint`: passed.
+- `npm run build`: passed.
+- Shared tests: passed.
+- Server tests: passed after adding library/Set/report/archive/delete lifecycle coverage.
+- Web tests: 256/256 passed.
+- Targeted Speaking Playwright coverage: 5/5 passed.
+- Full browser suite: 19/21 passed; the two failures were outside Speaking Practice (an unrelated iPad Athletics timing assertion). The Speaking classroom assertion was fixed and passed in the targeted rerun.
+
+No actionable P0, P1, or P2 visual mismatch remains for the Speaking Practice scope.
+
+final result: passed
+
 # QuizStrike Teacher Workspace - Spectator Learner Selector QA
 
 ## Update

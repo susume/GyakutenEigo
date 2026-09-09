@@ -53,6 +53,7 @@ import TeacherHome from "./TeacherHome";
 import StudySetEditor from "./StudySetEditor";
 import { useSessionControls } from "./useSessionControls";
 import TeacherShell from "./TeacherShell";
+import SpeakingReportsPanel from "../../speaking/teacher/SpeakingReportsPanel";
 import { teacherRouteState, teacherSpeakingPath, teacherTabPath, type TeacherPrimaryTab, type TeacherSetupSection, type TeacherTab } from "./teacherRoutes";
 const ArenaPreview = lazy(() => import("../../../game/ArenaPreview"));
 const TournamentCenter = lazy(() => import("../tournament/TournamentCenter"));
@@ -528,6 +529,7 @@ function TeacherDashboard({ teacher, onLogout, initialPath, onNavigate }: { teac
           setReport={setReport}
           setTab={setTab}
           onRefresh={refresh}
+          onOpenSpeaking={(path) => onNavigate(path, "teacher")}
         />
       )}
       {tab === "settings" && (
@@ -1768,7 +1770,8 @@ function ReportsPanel({
   report,
   setReport,
   setTab,
-  onRefresh
+  onRefresh,
+  onOpenSpeaking
 }: {
   sessions: GameSession[];
   quizSets: QuizSet[];
@@ -1777,7 +1780,9 @@ function ReportsPanel({
   setReport: (report: SessionReport | null) => void;
   setTab: (tab: "sessions") => void;
   onRefresh: () => Promise<void>;
+  onOpenSpeaking: (path: string) => void;
 }) {
+  const [reportArea, setReportArea] = useState<"quizstrike" | "speaking">("quizstrike");
   const [code, setCode] = useState(reports[0]?.sessionCode ?? "");
   const [selectedReportId, setSelectedReportId] = useState(reports[0]?.id ?? "");
   const [isLoadingReport, setIsLoadingReport] = useState(false);
@@ -1909,6 +1914,9 @@ function ReportsPanel({
     }
   };
 
+  if (reportArea === "speaking") {
+    return <div className="report-panel reports-page"><div className="reports-area-tabs" role="tablist" aria-label="Report type"><button type="button" role="tab" aria-selected="false" onClick={() => setReportArea("quizstrike")}>QuizStrike</button><button type="button" className="is-active" role="tab" aria-selected="true">Speaking Practice</button></div><SpeakingReportsPanel navigate={onOpenSpeaking} /></div>;
+  }
   return (
     <div className="report-panel reports-page">
       <header className="reports-page-heading">
@@ -1922,6 +1930,7 @@ function ReportsPanel({
           <button onClick={() => setTab("sessions")}>Open live games</button>
         </div>
       </header>
+      <div className="reports-area-tabs" role="tablist" aria-label="Report type"><button type="button" className="is-active" role="tab" aria-selected="true">QuizStrike</button><button type="button" role="tab" aria-selected="false" onClick={() => setReportArea("speaking")}>Speaking Practice</button></div>
       <StatusMessages error={status.error} message={status.message} />
 
       <div className="reports-layout">
