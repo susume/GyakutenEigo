@@ -14,6 +14,12 @@ test("space shortcut recognizes an unmodified physical spacebar press", () => {
   assert.equal(isSpaceShortcutEvent({ code: "Space", key: " ", repeat: false, altKey: false, ctrlKey: false, metaKey: false, shiftKey: true } as KeyboardEvent), false);
 });
 
+test("space shortcut respects IME composition and consumed events", () => {
+  for (const patch of [{ isComposing: true }, { keyCode: 229 }, { defaultPrevented: true }]) {
+    assert.equal(isSpaceShortcutEvent({ code: "Space", key: " ", ...patch } as KeyboardEvent), false);
+  }
+});
+
 test("global space shortcut yields to inputs and composed-path text editors", () => {
   const originalElement = globalThis.Element;
   Object.defineProperty(globalThis, "Element", { configurable: true, value: FakeElement });

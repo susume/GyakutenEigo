@@ -144,7 +144,7 @@ final result: needs fresh-browser confirmation
 - Server tests: passed after adding library/Set/report/archive/delete lifecycle coverage.
 - Web tests: 256/256 passed.
 - Targeted Speaking Playwright coverage: 5/5 passed.
-- Full browser suite: 19/21 passed; the two failures were outside Speaking Practice (an unrelated iPad Athletics timing assertion). The Speaking classroom assertion was fixed and passed in the targeted rerun.
+- Full browser suite: 19/21 passed initially. One failure was the Speaking classroom history assertion, subsequently fixed and verified by the targeted rerun. The other was an iPad round-state assertion (expected active, received paused); it was not resolved in that run.
 
 No actionable P0, P1, or P2 visual mismatch remains for the Speaking Practice scope.
 

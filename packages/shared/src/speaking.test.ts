@@ -1,6 +1,12 @@
 import assert from "node:assert/strict";
 import test from "node:test";
-import { DEFAULT_SPEAKING_SCENARIO_RESOURCES, speakingScenarioResources } from "./speaking.js";
+import { DEFAULT_SPEAKING_SCENARIO_RESOURCES, speakingScenarioResources, speakingTeacherDate } from "./speaking.js";
+
+test("teacher calendar dates use Japan midnight rather than UTC or host timezone", () => {
+  assert.equal(speakingTeacherDate("2026-09-09T15:30:00Z"), "2026-09-10");
+  assert.equal(speakingTeacherDate("2026-09-09T14:59:59Z"), "2026-09-09");
+  assert.equal(speakingTeacherDate("2026-12-31T15:00:00Z"), "2027-01-01");
+});
 
 test("speaking scenario support resolves neutral defaults without title inference", () => {
   const resources = speakingScenarioResources({ openingLine: "", studentGoal: "", suggestedSteps: [], usefulVocabulary: [] });

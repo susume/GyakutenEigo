@@ -104,6 +104,8 @@ export interface SpeakingRepository {
   reorderSetActivities(teacherId: string, setId: string, activityIds: string[]): Promise<SpeakingSetDetail | undefined>;
   isJoinCodeTaken(joinCode: string): Promise<boolean>;
   createSession(input: {
+    speakingSetId?: string;
+    speakingSetNameSnapshot?: string;
     id: string;
     activity: SpeakingActivity;
     joinCode: string;
@@ -219,6 +221,7 @@ const cloneActivity = (activity: SpeakingActivity): SpeakingActivity => ({
 });
 
 const cloneSession = (session: SpeakingSession): SpeakingSession => ({
+  ...(session.speakingSetId ? { speakingSetId: session.speakingSetId, speakingSetNameSnapshot: session.speakingSetNameSnapshot } : {}),
   id: session.id,
   activityId: session.activityId,
   joinCode: session.joinCode,
@@ -232,6 +235,9 @@ const cloneSession = (session: SpeakingSession): SpeakingSession => ({
 });
 
 const cloneSetSummary = (summary: SpeakingSetSummary): SpeakingSetSummary => ({ ...summary });
+
+const historicalSetMemberships = (session: SpeakingSession): SpeakingSetSummary[] =>
+  session.speakingSetId ? [{ id: session.speakingSetId, name: session.speakingSetNameSnapshot ?? "Deleted Set", description: "", activityCount: 0, createdAt: session.createdAt, updatedAt: session.createdAt }] : [];
 
 const sessionForActivity = (state: InMemorySpeakingState, activityId: string) =>
   [...state.sessions.values()]
@@ -251,6 +257,7 @@ const refreshSetSummary = (state: InMemorySpeakingState, set: InMemorySpeakingSe
     activityCount: set.activityIds.size,
     ...(lastUsedAt ? { lastUsedAt } : {})
   };
+  if (!lastUsedAt) delete set.summary.lastUsedAt;
   return cloneSetSummary(set.summary);
 };
 
@@ -353,12 +360,13 @@ export class InMemorySpeakingRepository implements SpeakingRepository {
   async listReportSummaries(teacherId: string) {
     return [...this.state.activities.values()]
       .filter((activity) => activity.teacherId === teacherId)
-      .flatMap((activity): SpeakingReportSummary[] => sessionForActivity(this.state, activity.id).map((session) => {
+      .flatMap((activity): SpeakingReportSummary[] => sessionForActivity(this.state, activity.id).filter((session) => ["ended", "expired"].includes(session.status)).map((session) => {
         const participants = [...this.state.participants.values()].filter((participant) => participant.sessionId === session.id);
+        const snapshot = activityFromSnapshot(activity, session.activitySnapshot);
         return {
-          activity: { id: activity.id, title: activity.title, scenario: activity.scenario, rubric: activity.rubric.map((criterion) => ({ ...criterion })) },
+          activity: { id: activity.id, title: snapshot.title, scenario: snapshot.scenario, rubric: snapshot.rubric.map((criterion) => ({ ...criterion })) },
           session: cloneSession(session),
-          setMemberships: setMembershipsForActivity(this.state, teacherId, activity.id),
+          setMemberships: historicalSetMemberships(session),
           participantCount: participants.length,
           completedCount: participants.filter((participant) => participant.status === "completed").length,
           needsReviewCount: participants.filter((participant) => participant.status === "error" || session.evaluations.get(participant.id)?.assessmentStatus === "insufficient_evidence").length
@@ -384,7 +392,7 @@ export class InMemorySpeakingRepository implements SpeakingRepository {
 
   async updateActivity(teacherId: string, activityId: string, input: SpeakingCreateActivityInput, now: string) {
     const current = this.state.activities.get(activityId);
-    if (!current || current.teacherId !== teacherId) return undefined;
+    if (!current || current.teacherId !== teacherId || current.status === "archived") return undefined;
     const normalized = normalizeActivityInput(input, activityId, teacherId, now);
     const activity = { ...normalized, status: current.status, createdAt: current.createdAt };
     this.state.activities.set(activityId, activity);
@@ -402,7 +410,7 @@ export class InMemorySpeakingRepository implements SpeakingRepository {
   async deleteSession(teacherId: string, sessionId: string) {
     const session = this.state.sessions.get(sessionId);
     const activity = session ? this.state.activities.get(session.activityId) : undefined;
-    if (!session || !activity || activity.teacherId !== teacherId) return false;
+    if (!session || !activity || activity.teacherId !== teacherId || !["ended", "expired"].includes(session.status)) return false;
     for (const participant of [...this.state.participants.values()]) {
       if (participant.sessionId !== sessionId) continue;
       this.state.tokenToParticipant.delete(participant.tokenHash);
@@ -458,7 +466,7 @@ export class InMemorySpeakingRepository implements SpeakingRepository {
     const set = this.state.sets.get(setId);
     if (!set || set.teacherId !== teacherId) return undefined;
     set.activityIds.delete(activityId);
-    [...set.activityIds.keys()].forEach((id, index) => set.activityIds.set(id, index));
+    [...set.activityIds.entries()].sort((left, right) => left[1] - right[1]).forEach(([id], index) => set.activityIds.set(id, index));
     set.summary.updatedAt = new Date().toISOString();
     return setDetailFromMemory(this.state, set);
   }
@@ -467,7 +475,7 @@ export class InMemorySpeakingRepository implements SpeakingRepository {
     const set = this.state.sets.get(setId);
     if (!set || set.teacherId !== teacherId) return undefined;
     const current = new Set(set.activityIds.keys());
-    if (activityIds.some((id) => !current.has(id)) || current.size !== activityIds.length) return undefined;
+    if (new Set(activityIds).size !== activityIds.length || activityIds.some((id) => !current.has(id)) || current.size !== activityIds.length) return undefined;
     set.activityIds = new Map(activityIds.map((id, position) => [id, position]));
     set.summary.updatedAt = new Date().toISOString();
     return setDetailFromMemory(this.state, set);
@@ -477,9 +485,10 @@ export class InMemorySpeakingRepository implements SpeakingRepository {
     return [...this.state.sessions.values()].some((session) => session.joinCode === joinCode);
   }
 
-  async createSession(input: { id: string; activity: SpeakingActivity; joinCode: string; createdAt: string; expiresAt: string }) {
+  async createSession(input: Parameters<SpeakingRepository["createSession"]>[0]) {
     const session: InMemorySession = {
       id: input.id,
+      ...(input.speakingSetId ? { speakingSetId: input.speakingSetId, speakingSetNameSnapshot: input.speakingSetNameSnapshot } : {}),
       activityId: input.activity.id,
       joinCode: input.joinCode,
       status: "ready",
@@ -832,7 +841,8 @@ const toActivity = (row: PrismaActivity): SpeakingActivity => ({
   updatedAt: row.updatedAt.toISOString()
 });
 
-const toSession = (row: Pick<PrismaSession, "id" | "activityId" | "joinCode" | "status" | "createdAt" | "startedAt" | "pausedAt" | "endedAt" | "expiresAt" | "revision">): SpeakingSession => ({
+const toSession = (row: Pick<PrismaSession, "id" | "activityId" | "joinCode" | "status" | "createdAt" | "startedAt" | "pausedAt" | "endedAt" | "expiresAt" | "revision"> & Partial<Pick<PrismaSession, "speakingSetId" | "speakingSetNameSnapshot">>): SpeakingSession => ({
+  ...(row.speakingSetId ? { speakingSetId: row.speakingSetId, speakingSetNameSnapshot: row.speakingSetNameSnapshot ?? undefined } : {}),
   id: row.id,
   activityId: row.activityId,
   joinCode: row.joinCode,
@@ -960,6 +970,7 @@ export class PrismaSpeakingRepository implements SpeakingRepository {
       include: {
         ...activityInclude,
         sessions: {
+          where: { status: { in: ["ended", "expired", "completed"] } },
           orderBy: [{ createdAt: "desc" }, { id: "desc" }],
           include: { participants: { select: { status: true, evaluation: { select: { scoresJson: true } } } } }
         },
@@ -968,9 +979,10 @@ export class PrismaSpeakingRepository implements SpeakingRepository {
       orderBy: [{ updatedAt: "desc" }, { id: "desc" }]
     });
     return rows.flatMap((row): SpeakingReportSummary[] => row.sessions.map((session) => {
-      const setMemberships = row.setMemberships.map((membership) => toSetSummary(membership.set, 0));
+      const setMemberships = historicalSetMemberships(toSession(session));
+      const snapshot = snapshotFromJson(session.activitySnapshotJson, toActivity(row));
       return {
-        activity: { id: row.id, title: row.title, scenario: row.scenario, rubric: row.rubric.map((criterion) => ({ id: criterion.criterionId, name: criterion.name, description: criterion.description, enabled: criterion.enabled })) },
+        activity: { id: row.id, title: snapshot.title, scenario: snapshot.scenario, rubric: snapshot.rubric },
         session: toSession(session),
         setMemberships,
         participantCount: session.participants.length,
@@ -1019,7 +1031,7 @@ export class PrismaSpeakingRepository implements SpeakingRepository {
     const normalized = normalizeActivityInput(input, activityId, teacherId, now);
     const row = await this.prisma.$transaction(async (transaction) => {
       const owned = await transaction.speakingActivity.findFirst({ where: { id: activityId, teacherId }, select: { id: true, status: true, createdAt: true } });
-      if (!owned) return undefined;
+      if (!owned || owned.status === "archived") return undefined;
       await transaction.speakingRubric.deleteMany({ where: { activityId } });
       return transaction.speakingActivity.update({
         where: { id: activityId },
@@ -1049,7 +1061,7 @@ export class PrismaSpeakingRepository implements SpeakingRepository {
   }
 
   async deleteSession(teacherId: string, sessionId: string) {
-    const result = await this.prisma.speakingSession.deleteMany({ where: { id: sessionId, activity: { teacherId } } });
+    const result = await this.prisma.speakingSession.deleteMany({ where: { id: sessionId, activity: { teacherId }, status: { in: ["ended", "expired", "completed"] } } });
     return result.count > 0;
   }
 
@@ -1125,11 +1137,13 @@ export class PrismaSpeakingRepository implements SpeakingRepository {
     return Boolean(await this.prisma.speakingSession.findUnique({ where: { joinCode }, select: { id: true } }));
   }
 
-  async createSession(input: { id: string; activity: SpeakingActivity; joinCode: string; createdAt: string; expiresAt: string }) {
+  async createSession(input: Parameters<SpeakingRepository["createSession"]>[0]) {
     const row = await this.prisma.speakingSession.create({
       data: {
         id: input.id,
         activityId: input.activity.id,
+        speakingSetId: input.speakingSetId,
+        speakingSetNameSnapshot: input.speakingSetNameSnapshot,
         joinCode: input.joinCode,
         status: "ready",
         createdAt: new Date(input.createdAt),

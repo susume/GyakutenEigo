@@ -374,6 +374,10 @@ model SpeakingRubric {
 }
 
 model SpeakingSession {
+  // Historical scalar context, not a FK: deleting a Set must preserve reports.
+  speakingSetId String?
+  speakingSetNameSnapshot String?
+  @@index([speakingSetId, status])
   id                   String                @id @default(cuid())
   activityId           String
   activity             SpeakingActivity      @relation(fields: [activityId], references: [id], onDelete: Cascade)

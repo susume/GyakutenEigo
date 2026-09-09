@@ -1,0 +1,25 @@
+.speaking-reports-panel .reports-page-heading h2 {
+  color: #14233d !important;
+}
+.speaking-reports-panel .reports-page-heading p,
+.speaking-reports-panel .reports-count {
+  color: #536580 !important;
+}
+.speaking-reports-panel .speaking-reports-toolbar > label {
+  flex: 1 1 320px;
+  min-width: 0;
+}
+.speaking-reports-panel .speaking-reports-toolbar input {
+  min-width: 0;
+  color: #14233d;
+  background: #fff;
+}
+.speaking-reports-panel .speaking-reports-toolbar > select {
+  flex: 0 1 240px;
+}
+@media (max-width: 640px) {
+  .speaking-reports-panel .speaking-reports-toolbar > select {
+    flex-basis: 100%;
+    min-height: 42px;
+  }
+}

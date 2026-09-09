@@ -21,3 +21,10 @@ test("speaking CSV preserves Japanese, commas, quotes, newlines, and custom rubr
   assert.ok(csv.includes('"Teacher\'s ""focus"""'));
   assert.ok(csv.endsWith("\r\n"));
 });
+
+test("CSV neutralizes formulas in teacher and student text", () => {
+  const csv = buildSpeakingCsv([{ setNames: "=1+1", performanceTest: "+SUM(A1)", session: "ABC123", date: "2026-09-09", student: "@SUM(A1)", status: "Completed", duration: "2:00", criteria: [], helpCount: 0 }]);
+  assert.ok(csv.includes("'=1+1"));
+  assert.ok(csv.includes("'+SUM(A1)"));
+  assert.ok(csv.includes("'@SUM(A1)"));
+});

@@ -31,4 +31,4 @@ export const isKeyboardEditingTarget = (event: KeyboardEvent): boolean => {
 };
 
 export const isSpaceShortcutEvent = (event: KeyboardEvent): boolean =>
-  (event.code === "Space" || event.key === " ") && !event.repeat && !event.altKey && !event.ctrlKey && !event.metaKey && !event.shiftKey;
+  (event.code === "Space" || event.key === " ") && !event.defaultPrevented && !event.isComposing && event.keyCode !== 229 && !event.repeat && !event.altKey && !event.ctrlKey && !event.metaKey && !event.shiftKey;

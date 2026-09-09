@@ -14,7 +14,8 @@ export type SpeakingCsvRow = {
 };
 
 const escapeCsv = (value: unknown) => {
-  const text = value === undefined || value === null ? "" : String(value);
+  const raw = value === undefined || value === null ? "" : String(value);
+  const text = typeof value === "string" && /^[\s]*[=+@-]|^[\t\r\n]/u.test(raw) ? `'${raw}` : raw;
   return /[",\r\n]/u.test(text) ? `"${text.replace(/"/gu, '""')}"` : text;
 };
 

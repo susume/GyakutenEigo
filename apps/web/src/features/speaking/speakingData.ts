@@ -88,7 +88,7 @@ export const SPEAKING_TEMPLATES: SpeakingActivity[] = [
       studentGoal: "Ask for directions, check one detail, and thank your partner.",
       suggestedSteps: ["Say excuse me.", "Name the place you need.", "Ask how to get there.", "Check one direction.", "Thank your partner."],
       usefulVocabulary: ["library", "turn left", "turn right", "next to"],
-      imageSrc: "/assets/speaking/scenario-train-directions.webp",
+      imageSrc: "/assets/speaking/scenario-directions.webp",
       imageAlt: "A local giving directions beside a metro map"
     }
   }),

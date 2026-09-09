@@ -200,6 +200,13 @@ test("teacher and student Speaking Practice screens use the connected mock API",
   expect(zoomedMic!.y + zoomedMic!.height).toBeLessThanOrEqual(zoomViewport.height + 1);
   await studentPage.screenshot({ path: testInfo.outputPath("speaking-zoom-125.png"), fullPage: false });
   await studentPage.evaluate(() => { document.documentElement.style.zoom = ""; });
+  // Exercise the global shortcut with focus outside inputs and buttons.
+  await studentPage.locator(".speaking-transcript-card").click();
+  await studentPage.keyboard.press("Space");
+  await expect(studentPage.getByRole("button", { name: "Stop speaking", exact: true })).toBeVisible();
+  await studentPage.waitForTimeout(300);
+  await studentPage.keyboard.press("Space");
+  await expect(studentPage.getByRole("button", { name: "Tap to speak", exact: true })).toBeEnabled({ timeout: 15_000 });
   const tapToSpeak = studentPage.getByRole("button", { name: "Tap to speak", exact: true });
   await tapToSpeak.focus();
   await expect(tapToSpeak).toBeFocused();

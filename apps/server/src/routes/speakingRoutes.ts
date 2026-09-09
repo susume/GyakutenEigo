@@ -1,6 +1,8 @@
 import express, { type Application, type NextFunction, type Request, type Response } from "express";
 import {
   DEFAULT_SPEAKING_RUBRIC,
+  speakingTeacherDate,
+  isFinishedSpeakingSession,
   SPEAKING_LIMITS,
   SPEAKING_PRACTICE_LANGUAGE,
   SpeakingCreateActivityInputSchema,
@@ -158,7 +160,7 @@ const templateInputs: Array<SpeakingCreateActivityInput & { id: string }> = [
       studentGoal: "Ask for directions, check one detail, and thank your partner.",
       suggestedSteps: ["Say excuse me.", "Name the place you need.", "Ask how to get there.", "Check one direction.", "Thank your partner."],
       usefulVocabulary: ["library", "turn left", "turn right", "next to"],
-      imageSrc: "/assets/speaking/scenario-train-directions.webp",
+      imageSrc: "/assets/speaking/scenario-directions.webp",
       imageAlt: "A local giving directions beside a metro map",
     },
     rubric: cloneRubric()
@@ -309,7 +311,7 @@ const speakingCsvRowsForResults = (items: Awaited<ReturnType<SpeakingRepository[
     setNames,
     performanceTest: item.activity.title,
     session: item.session.joinCode,
-    date: new Date(item.session.endedAt ?? item.session.createdAt).toISOString().slice(0, 10),
+    date: speakingTeacherDate(item.session.endedAt ?? item.session.createdAt),
     student: item.participant.displayIdentifier ?? "Anonymous student",
     status: item.participant.status,
     duration: speakingDurationLabel(durationSeconds),
@@ -824,12 +826,26 @@ export const registerSpeakingRoutes = (app: Application, deps: SpeakingRouteDepe
   app.post("/api/speaking/activities/:activityId/sessions", deps.requireTeacher, async (req: AuthedRequest, res) => {
     const activity = await requireOwnedActivity(req, res);
     if (!activity) return;
+    if (activity.status === "archived") {
+      res.status(409).json({ error: "Archived Performance Tests cannot be launched." });
+      return;
+    }
+    const setId: unknown = req.body?.setId;
+    if (setId !== undefined && (typeof setId !== "string" || !setId.trim())) {
+      res.status(400).json({ error: "Enter a valid Set ID." });
+      return;
+    }
+    const set = typeof setId === "string" ? await repository.getSet(req.user!.id, setId) : undefined;
+    if (setId !== undefined && (!set || !set.activities.some((item) => item.activity.id === activity.id))) {
+      res.status(404).json({ error: "This Performance Test is not in that Set." });
+      return;
+    }
     const createdAt = deps.now();
     const expiresAt = new Date(Date.parse(createdAt) + sessionLifetimeSeconds * 1_000).toISOString();
     let session: SpeakingSession | undefined;
     for (let attempt = 0; attempt < 3 && !session; attempt += 1) {
       try {
-        session = await repository.createSession({ id: deps.id(), activity, joinCode: await makeJoinCode(repository), createdAt, expiresAt });
+        session = await repository.createSession({ id: deps.id(), activity, joinCode: await makeJoinCode(repository), createdAt, expiresAt, ...(set ? { speakingSetId: set.id, speakingSetNameSnapshot: set.name } : {}) });
       } catch (error) {
         if (attempt === 2) throw error;
       }
@@ -979,6 +995,15 @@ export const registerSpeakingRoutes = (app: Application, deps: SpeakingRouteDepe
   app.post("/api/speaking/sessions/:sessionId/end", deps.requireTeacher, teacherSessionAction("end"));
 
   app.delete("/api/speaking/sessions/:sessionId", deps.requireTeacher, async (req: AuthedRequest, res) => {
+    const access = await repository.getSession(String(req.params.sessionId));
+    if (!access || access.activity.teacherId !== req.user!.id) {
+      res.status(404).json({ error: "We couldn’t find that speaking Session." });
+      return;
+    }
+    if (!isFinishedSpeakingSession(access.session.status)) {
+      res.status(409).json({ error: "End the classroom Session before deleting its report." });
+      return;
+    }
     const deleted = await repository.deleteSession(req.user!.id, String(req.params.sessionId));
     if (!deleted) {
       res.status(404).json({ error: "We couldn’t find that speaking Session." });
@@ -1376,10 +1401,8 @@ export const registerSpeakingRoutes = (app: Application, deps: SpeakingRouteDepe
       res.status(404).json({ error: "We couldn’t find that speaking session." });
       return;
     }
-    const reportSummaries = await repository.listReportSummaries(req.user!.id);
-    const summary = reportSummaries.find((item) => item.session.id === sessionAccess.session.id);
     const items = await repository.listResults(sessionAccess.activity.id, sessionAccess.session.id, req.user!.id);
-    const csv = buildSpeakingCsv(speakingCsvRowsForResults(items, summary?.setMemberships.map((set) => set.name).join(" · ") ?? ""));
+    const csv = buildSpeakingCsv(speakingCsvRowsForResults(items, sessionAccess.session.speakingSetNameSnapshot ?? ""));
     res.setHeader("Content-Type", "text/csv; charset=utf-8");
     res.setHeader("Content-Disposition", `attachment; filename="speaking-${csvFilenamePart(sessionAccess.activity.title)}-${sessionAccess.session.joinCode}.csv"`);
     res.send(csv);
@@ -1392,15 +1415,14 @@ export const registerSpeakingRoutes = (app: Application, deps: SpeakingRouteDepe
       return;
     }
     const reportSummaries = await repository.listReportSummaries(req.user!.id);
-    const activityIds = new Set(set.activities.map((item) => item.activity.id));
     const rows = [];
-    for (const summary of reportSummaries.filter((item) => activityIds.has(item.activity.id))) {
+    for (const summary of reportSummaries.filter((item) => item.session.speakingSetId === set.id)) {
       const items = await repository.listResults(summary.activity.id, summary.session.id, req.user!.id);
-      rows.push(...speakingCsvRowsForResults(items, set.name));
+      rows.push(...speakingCsvRowsForResults(items, summary.session.speakingSetNameSnapshot ?? ""));
     }
     const csv = buildSpeakingCsv(rows);
     res.setHeader("Content-Type", "text/csv; charset=utf-8");
-    res.setHeader("Content-Disposition", `attachment; filename="speaking-${csvFilenamePart(set.name)}-${new Date(deps.now()).toISOString().slice(0, 10)}.csv"`);
+    res.setHeader("Content-Disposition", `attachment; filename="speaking-${csvFilenamePart(set.name)}-${speakingTeacherDate(deps.now())}.csv"`);
     res.send(csv);
   });
 

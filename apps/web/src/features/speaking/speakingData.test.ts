@@ -3,6 +3,10 @@ import test from "node:test";
 import { SpeakingEvaluationSchema, speakingScenarioResources } from "@quizstrike/shared";
 import { SPEAKING_TEMPLATES, formatDuration, makeDemoEvaluation, previewActivityLimits } from "./speakingData.js";
 
+test("ordinary directions template uses the town illustration", () => {
+  assert.equal(SPEAKING_TEMPLATES.find((item) => item.title === "Asking for Directions")?.scenarioResources?.imageSrc, "/assets/speaking/scenario-directions.webp");
+});
+
 test("speaking templates are static previews and never carry a classroom join code", () => {
   assert.equal(SPEAKING_TEMPLATES.length, 6);
   assert.equal(SPEAKING_TEMPLATES.every((activity) => !Object.hasOwn(activity, "joinCode")), true);

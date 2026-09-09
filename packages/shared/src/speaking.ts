@@ -202,6 +202,9 @@ export interface SpeakingParticipant {
 }
 
 export interface SpeakingSession {
+  /** Immutable launch context; deliberately retained after a Set is deleted. */
+  speakingSetId?: string;
+  speakingSetNameSnapshot?: string;
   id: string;
   activityId: string;
   joinCode: string;
@@ -214,6 +217,13 @@ export interface SpeakingSession {
   /** Monotonic lifecycle revision used to reject stale browser responses. */
   revision?: number;
 }
+
+/** Teacher-facing calendar dates must not depend on the server/browser timezone. */
+export const speakingTeacherDate = (value: string | Date): string =>
+  new Intl.DateTimeFormat("en-CA", { timeZone: "Asia/Tokyo", year: "numeric", month: "2-digit", day: "2-digit" }).format(new Date(value));
+
+export const isFinishedSpeakingSession = (status: string): boolean =>
+  status === "ended" || status === "expired" || status === "completed";
 
 export interface SpeakingSetSummary {
   id: string;

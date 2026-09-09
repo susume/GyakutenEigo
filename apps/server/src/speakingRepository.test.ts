@@ -1,7 +1,23 @@
 import assert from "node:assert/strict";
 import test from "node:test";
 import { DEFAULT_SPEAKING_RUBRIC, speakingActiveElapsedMs, speakingRemainingSeconds, type SpeakingCreateActivityInput, type SpeakingEvaluation } from "@quizstrike/shared";
-import { InMemorySpeakingRepository, createInMemorySpeakingState, createSpeakingRepository, hashSpeakingToken } from "./speakingRepository.js";
+import { InMemorySpeakingRepository, PrismaSpeakingRepository, createInMemorySpeakingState, createSpeakingRepository, hashSpeakingToken } from "./speakingRepository.js";
+import type { PrismaClient } from "@prisma/client";
+
+test("Prisma history queries and atomic deletion constrain terminal statuses and ownership", async () => {
+  const calls: unknown[] = [];
+  const prisma = {
+    speakingActivity: { findMany: async (query: unknown) => { calls.push(query); return []; } },
+    speakingSession: { deleteMany: async (query: unknown) => { calls.push(query); return { count: 0 }; } }
+  } as unknown as PrismaClient;
+  const repository = new PrismaSpeakingRepository(prisma);
+  assert.deepEqual(await repository.listReportSummaries("owner"), []);
+  assert.equal(await repository.deleteSession("owner", "live"), false);
+  const query = calls[0] as { where: unknown; include: { sessions: { where: unknown } } };
+  assert.deepEqual(query.where, { teacherId: "owner" });
+  assert.deepEqual(query.include.sessions.where, { status: { in: ["ended", "expired", "completed"] } });
+  assert.deepEqual(calls[1], { where: { id: "live", activity: { teacherId: "owner" }, status: { in: ["ended", "expired", "completed"] } } });
+});
 
 const input: SpeakingCreateActivityInput = {
   title: "Repository activity",
@@ -91,6 +107,9 @@ test("library, sets, reports, and safe deletion preserve the reusable-test model
   await repository.updateParticipant(participant.id, { status: "completed", finishedAt: "2026-09-01T00:02:00.000Z" });
   await repository.saveEvaluation(participant.id, evaluation(participant.id));
 
+  await repository.updateSession(session.id, { status: "ended", endedAt: now });
+  await repository.updateSession("archived-session", { status: "ended", endedAt: now });
+
   const set = await repository.createSet("teacher-1", { name: "Week 1", description: "First week" }, "library-set", now);
   await repository.addSetActivity("teacher-1", set.id, activity.id);
   await repository.addSetActivity("teacher-1", set.id, secondActivity.id);
@@ -104,7 +123,7 @@ test("library, sets, reports, and safe deletion preserve the reusable-test model
   const reports = await repository.listReportSummaries("teacher-1");
   assert.equal(reports[0]?.participantCount, 1);
   assert.equal(reports[0]?.completedCount, 1);
-  assert.equal(reports[0]?.setMemberships[0]?.name, "Week 1");
+  assert.deepEqual(reports[0]?.setMemberships, []); // Launched before membership existed.
 
   assert.equal(await repository.reorderSetActivities("teacher-1", set.id, [secondActivity.id, activity.id]) !== undefined, true);
   assert.deepEqual((await repository.getSet("teacher-1", set.id))?.activities.map((item) => item.activity.id), [secondActivity.id, activity.id]);
@@ -122,6 +141,31 @@ test("library, sets, reports, and safe deletion preserve the reusable-test model
 test("speaking repository fails closed for production without Prisma", () => {
   assert.throws(() => createSpeakingRepository({ environment: "production" }), /durable Prisma database/);
   assert.ok(createSpeakingRepository({ environment: "development" }) instanceof InMemorySpeakingRepository);
+});
+
+test("Set ordering rejects duplicates and retains order after removal", async () => {
+  const repository = new InMemorySpeakingRepository(createInMemorySpeakingState());
+  const now = "2026-09-09T00:00:00.000Z";
+  await repository.createSet("owner", { name: "Ordered" }, "set", now);
+  for (const id of ["a", "b", "c"]) {
+    await repository.createActivity("owner", input, id, now);
+    await repository.addSetActivity("owner", "set", id);
+  }
+  assert.equal(await repository.reorderSetActivities("owner", "set", ["a", "a", "c"]), undefined);
+  assert.equal((await repository.getSet("owner", "set"))?.activities.length, 3);
+  await repository.reorderSetActivities("owner", "set", ["c", "b", "a"]);
+  await repository.removeSetActivity("owner", "set", "b");
+  assert.deepEqual((await repository.getSet("owner", "set"))?.activities.map((item) => item.activity.id), ["c", "a"]);
+});
+
+test("report summaries preserve the session title after editing a reusable test", async () => {
+  const repository = new InMemorySpeakingRepository(createInMemorySpeakingState());
+  const now = "2026-09-09T00:00:00.000Z";
+  const activity = await repository.createActivity("owner", input, "a", now);
+  await repository.createSession({ id: "s", activity, joinCode: "ABC999", createdAt: now, expiresAt: now });
+  await repository.updateSession("s", { status: "ended", endedAt: now });
+  await repository.updateActivity("owner", "a", { ...input, title: "Edited title" }, now);
+  assert.equal((await repository.listReportSummaries("owner"))[0]?.activity.title, input.title);
 });
 
 test("expired evaluation workers cannot replace a newer result", async () => {
