@@ -4218,7 +4218,8 @@ body[data-speaking="true"] {
 .speaking-roster-status-dot.status-finished { background: #2caa83; }
 .speaking-roster-status-dot.status-practicing { background: #4b85e7; }
 .speaking-roster-status-dot.status-processing,
-.speaking-roster-status-dot.status-evaluating { background: #e6a523; }
+.speaking-roster-status-dot.status-evaluating,
+.speaking-roster-status-dot.status-retrying { background: #e6a523; }
 .speaking-roster-status-dot.status-error { background: #d8555e; }
 
 .speaking-roster-status {
@@ -4235,7 +4236,8 @@ body[data-speaking="true"] {
 .speaking-roster-status.status-finished { color: #237d68; background: #e9faf5; }
 .speaking-roster-status.status-practicing { color: #285da4; background: #edf4ff; }
 .speaking-roster-status.status-processing,
-.speaking-roster-status.status-evaluating { color: #9b6b15; background: #fff6dd; }
+.speaking-roster-status.status-evaluating,
+.speaking-roster-status.status-retrying { color: #9b6b15; background: #fff6dd; }
 .speaking-roster-status.status-error { color: #a23943; background: #fff0f1; }
 
 .speaking-roster-empty {

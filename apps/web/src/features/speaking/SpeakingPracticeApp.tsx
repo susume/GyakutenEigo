@@ -61,7 +61,8 @@ type Navigate = (nextPath: string) => void;
 
 type JoinResponse = { activity: SpeakingActivity; participant: SpeakingParticipant; session: SpeakingSession; token: string };
 type SessionResponse = { activity: SpeakingActivity; participant: SpeakingParticipant; session: SpeakingSession; turns: SpeakingTurn[] };
-type ResultResponse = { result: { activity: Pick<SpeakingActivity, "id" | "title" | "scenario" | "targetExpressions" | "nativeLanguage" | "rubric" | "scenarioResources">; session: SpeakingSession; participant: SpeakingParticipant; turns: SpeakingTurn[]; evaluation?: SpeakingEvaluation }; evaluationStatus?: "queued" | "running" | "completed" | "failed" };
+type SpeakingEvaluationStatus = "queued" | "running" | "retrying" | "completed" | "failed";
+type ResultResponse = { result: { activity: Pick<SpeakingActivity, "id" | "title" | "scenario" | "targetExpressions" | "nativeLanguage" | "rubric" | "scenarioResources">; session: SpeakingSession; participant: SpeakingParticipant; turns: SpeakingTurn[]; evaluation?: SpeakingEvaluation }; evaluationStatus?: SpeakingEvaluationStatus; evaluationRetryable?: boolean; nextRetryAt?: string };
 
 const normalizePath = (path: string) => (path === "/" ? path : path.replace(/\/+$/u, ""));
 const decodeRouteSegment = (segment: string) => {
@@ -418,7 +419,9 @@ type SpeakingStatusResponse = {
   participant: SpeakingParticipant;
   session: SpeakingSession;
   revision: number;
-  evaluationStatus?: "queued" | "running" | "completed" | "failed";
+  evaluationStatus?: SpeakingEvaluationStatus;
+  evaluationRetryable?: boolean;
+  nextRetryAt?: string;
 };
 
 function SpeakingSessionExperienceV2({ navigate, token, initialData }: { navigate: Navigate; token: string; initialData: SessionResponse }) {
@@ -531,7 +534,7 @@ function SpeakingSessionExperienceV2({ navigate, token, initialData }: { navigat
           cancelRecording();
           browserTtsProvider.cancel();
         }
-        if (next.participant.status === "completed" && !navigatedToResultRef.current) {
+        if (participantFinalizedRef.current && !navigatedToResultRef.current) {
           navigatedToResultRef.current = true;
           navigate("/speak/result/" + next.participant.id);
           return;
@@ -539,10 +542,11 @@ function SpeakingSessionExperienceV2({ navigate, token, initialData }: { navigat
         if (next.participant.status === "evaluating") {
           setVoiceState("evaluating");
           setErrorOperation(undefined);
+          setError("");
         } else if (next.participant.status === "error") {
           setVoiceState("error");
-          setErrorOperation("evaluation");
-          setError("Your speaking practice is saved, but feedback could not be prepared.");
+          setErrorOperation(next.evaluationStatus === "failed" && next.evaluationRetryable ? "evaluation" : undefined);
+          setError(speakingFeedbackCopy(initialData.activity.nativeLanguage).evaluationNeedsAttentionMessage);
         } else if (next.session.status === "paused") {
           setVoiceState("paused");
         } else if (["ended", "expired"].includes(next.session.status)) {
@@ -578,7 +582,7 @@ function SpeakingSessionExperienceV2({ navigate, token, initialData }: { navigat
       controller.abort();
       pollNowRef.current = () => undefined;
     };
-  }, [cancelRecording, handleFatalAuthorization, initialData.session.id, navigate, token]);
+  }, [cancelRecording, handleFatalAuthorization, initialData.activity.nativeLanguage, initialData.session.id, navigate, token]);
 
   useEffect(() => {
     if (!["evaluating", "completed", "error"].includes(data.participant.status)) return;
@@ -767,7 +771,7 @@ function SpeakingSessionExperienceV2({ navigate, token, initialData }: { navigat
       if (isFatalParticipantAuthorizationError(finishError)) handleFatalAuthorization(finishError);
       else {
         setErrorOperation("evaluation");
-        setError(getErrorMessage(finishError, speakingFeedbackCopy(dataRef.current.activity.nativeLanguage).evaluationUnavailableMessage));
+        setError(getErrorMessage(finishError, speakingFeedbackCopy(dataRef.current.activity.nativeLanguage).evaluationPendingMessage));
         setVoiceState("error");
       }
     }
@@ -800,7 +804,7 @@ function SpeakingSessionExperienceV2({ navigate, token, initialData }: { navigat
   const paused = data.session.status === "paused" || voiceState === "paused";
   const ended = data.session.status === "ended" || data.session.status === "expired";
   const controlsDisabled = authorizationFailed || waiting || paused || ended || !["ready", "student_recording", "ai_speaking"].includes(voiceState);
-  const uiState: SpeakingUiState = voiceState === "student_recording" ? "listening" : voiceState === "ai_speaking" ? "ai-speaking" : ["processing", "finishing", "evaluating", "error"].includes(voiceState) ? "thinking" : "ready";
+  const uiState: SpeakingUiState = voiceState === "student_recording" ? "listening" : voiceState === "ai_speaking" ? "ai-speaking" : ["processing", "finishing", "evaluating"].includes(voiceState) ? "thinking" : "ready";
   const operationMessage = errorOperation === "microphone" ? "Retry microphone" : errorOperation === "turn" ? "Retry this turn" : errorOperation === "evaluation" ? "Check evaluation" : "Refresh status";
   return <div className="speaking-session-page"><main className="speaking-session-main">{waiting && <div className="speaking-session-note" role="status"><Clock3 size={16} aria-hidden="true" /><span>You’re ready! Waiting for your teacher to start the activity.</span></div>}{paused && <div className="speaking-session-alert" role="alert"><HelpCircle size={18} aria-hidden="true" /><span>Your teacher paused the activity.</span></div>}{ended && <div className="speaking-session-alert" role="alert"><HelpCircle size={18} aria-hidden="true" /><span>This activity has ended. Your saved conversation can still be reviewed.</span></div>}{error && <div className="speaking-session-alert" role="alert"><HelpCircle size={18} aria-hidden="true" /><span>{error}</span>{!authorizationFailed && <button type="button" onClick={retryOperation}>{operationMessage}</button>}</div>}{micNotice && <div className="speaking-session-note" role="status"><Mic size={16} aria-hidden="true" /><span>{micNotice}</span></div>}{voiceState === "evaluating" && <div className="speaking-session-note" role="status"><LoaderCircle size={16} className="speaking-spin" aria-hidden="true" /><span>Your speaking practice is finished. Your feedback is being prepared.</span></div>}<SpeakingStudentScreenV2 statusText={waiting ? "Waiting for your teacher" : paused ? "Paused" : ended ? "Test ended" : voiceState === "finishing" || voiceState === "evaluating" ? "Finishing" : error ? "Check the message above" : undefined} activity={data.activity} state={uiState} remainingSeconds={remaining} turns={data.turns} onMic={onMic} onReplay={replay} onBrandClick={() => navigate("/speak")} onHelp={requestHelp} onHelpRetry={requestHelp} helpLoading={helpLoading} helpError={helpError} onFinish={() => void finish()} onPhraseClick={(phrase) => { setHelpError(""); setHelpHint(speakingFeedbackCopy(data.activity.nativeLanguage).helpHint); setHelpEnglish(phrase); setHelpOpen(true); }} disabled={controlsDisabled} finishDisabled={authorizationFailed || waiting || ["finishing", "evaluating", "completed", "ai_speaking", "student_recording", "processing"].includes(voiceState)} /></main>{helpOpen && <HelpDialogV2 activity={data.activity} onClose={() => setHelpOpen(false)} helpText={helpHint} english={helpEnglish} />}</div>;
 }
@@ -836,24 +840,28 @@ function MissingSpeakingSession({ navigate, message = "This practice session may
 function SpeakingResultPageV2({ navigate, participantId }: { navigate: Navigate; participantId: string }) {
   const [result, setResult] = useState<ResultResponse["result"]>();
   const [evaluationStatus, setEvaluationStatus] = useState<ResultResponse["evaluationStatus"]>();
+  const [evaluationRetryable, setEvaluationRetryable] = useState(false);
   const [error, setError] = useState("");
   const [retrying, setRetrying] = useState(false);
+  const [resultUnavailable, setResultUnavailable] = useState(false);
   const resultRef = useRef<ResultResponse["result"] | undefined>(undefined);
   const pollNowRef = useRef<() => void>(() => undefined);
   resultRef.current = result;
   const retryEvaluation = async () => {
-    if (!result || retrying) return;
+    if (!result || retrying || !evaluationRetryable) return;
     const token = sessionStorage.getItem("speaking-participant-token:" + participantId) ?? undefined;
     if (!token) return;
     setRetrying(true);
     setError("");
     try {
-      const response = await speakingApi.finish(result.session.id, token) as { result?: ResultResponse["result"]; evaluationStatus?: ResultResponse["evaluationStatus"] };
+      const response = await speakingApi.finish(result.session.id, token) as { result?: ResultResponse["result"]; evaluationStatus?: ResultResponse["evaluationStatus"]; evaluationRetryable?: boolean };
       if (response.result) {
         resultRef.current = response.result;
         setResult(response.result);
       }
       setEvaluationStatus(response.evaluationStatus ?? "queued");
+      setEvaluationRetryable(response.evaluationRetryable === true);
+      pollNowRef.current();
     } catch (retryError) {
       setError(getErrorMessage(retryError, "Evaluation could not be restarted. Please try again."));
     } finally {
@@ -865,6 +873,8 @@ function SpeakingResultPageV2({ navigate, participantId }: { navigate: Navigate;
     resultRef.current = undefined;
     setResult(undefined);
     setEvaluationStatus(undefined);
+    setEvaluationRetryable(false);
+    setResultUnavailable(false);
     setError("");
     let cancelled = false;
     let inFlight = false;
@@ -885,14 +895,17 @@ function SpeakingResultPageV2({ navigate, participantId }: { navigate: Navigate;
         resultRef.current = payload.result;
         setResult(payload.result);
         setEvaluationStatus(payload.evaluationStatus);
+        setEvaluationRetryable(payload.evaluationRetryable === true);
         setError("");
         stablePolls = Math.min(6, stablePolls + 1);
-        if (!payload.result.evaluation) schedule();
+        if (!payload.result.evaluation && payload.evaluationStatus !== "failed" && payload.result.participant.status !== "error") schedule();
       } catch (loadError) {
         if (!cancelled && !(loadError instanceof DOMException && loadError.name === "AbortError")) {
-          setError(getErrorMessage(loadError, "The result is not available yet."));
+          const terminal = isFatalParticipantAuthorizationError(loadError) || (loadError instanceof ApiError && loadError.status === 404);
+          setResultUnavailable(terminal);
+          setError(terminal ? getErrorMessage(loadError, "This result is not available.") : "Connection interrupted. We’re checking for your result again.");
           stablePolls = 0;
-          schedule();
+          if (!terminal) schedule();
         }
       } finally {
         inFlight = false;
@@ -912,11 +925,11 @@ function SpeakingResultPageV2({ navigate, participantId }: { navigate: Navigate;
     };
   }, [participantId]);
   if (!result && !error) return <div className="speaking-empty-page"><LoaderCircle size={34} className="speaking-spin" aria-hidden="true" /><h1>Preparing your result</h1><p>Your real conversation is being evaluated…</p></div>;
-  if (!result) return <MissingSpeakingSession navigate={navigate} message={error} />;
+  if (!result && resultUnavailable) return <MissingSpeakingSession navigate={navigate} message={error} />;
+  if (!result) return <div className="speaking-empty-page" role="status"><LoaderCircle size={34} className="speaking-spin" aria-hidden="true" /><h1>Reconnecting to your result</h1><p>{error}</p><button type="button" className="speaking-outline-button" onClick={() => pollNowRef.current()}>Refresh status</button></div>;
   const hasSpeech = hasStudentSpeech(result.turns);
   const copy = speakingFeedbackCopy(result.evaluation?.language ?? result.activity.nativeLanguage);
   const insufficientEvidence = Boolean(result.evaluation && (result.evaluation.assessmentStatus === "insufficient_evidence" || !hasSpeech));
-  const evaluationPending = !result.evaluation && (result.participant.status === "evaluating" || evaluationStatus === "queued" || evaluationStatus === "running");
-  const evaluationFailed = !result.evaluation && (result.participant.status === "error" || evaluationStatus === "failed");
-  return <div className="speaking-page-shell speaking-result-page"><SpeakingTopbar navigate={navigate} student /><StudentJourney step={3} /><main className="speaking-result-layout">{evaluationPending ? <section className="speaking-empty-card speaking-evaluation-status-card"><LoaderCircle size={34} className="speaking-spin" aria-hidden="true" /><span className="speaking-card-kicker">Evaluation in progress</span><h1>Your speaking practice is finished.</h1><p>Your feedback is being prepared. You can leave this page and return later; the saved evaluation will continue.</p><button type="button" className="speaking-outline-button" onClick={() => pollNowRef.current()}>Refresh status</button></section> : <><section className="speaking-result-hero"><span className="speaking-eyebrow"><Trophy size={15} aria-hidden="true" />{insufficientEvidence ? copy.notScored : "Activity complete"}</span><h1>{result.evaluation ? (insufficientEvidence ? copy.insufficientEvidenceHeadline : copy.scoredHeadline) : copy.evaluationUnavailable}</h1><p>{result.evaluation ? (insufficientEvidence ? result.evaluation.overallMessage : result.evaluation.overallMessage) : copy.evaluationUnavailableMessage}</p>{result.evaluation && !insufficientEvidence ? <div className="speaking-result-score"><strong>{scoreFor(result.evaluation)}</strong><span>{result.evaluation.language === "ja" ? "点" : "points"}</span><small>{result.evaluation.language === "ja" ? "今日のスピーキング" : "Today’s speaking"}</small></div> : <div className="speaking-result-score"><strong>—</strong><small>{insufficientEvidence ? copy.notScoredDetail : copy.evaluationUnavailable}</small></div>}<div className="speaking-result-actions"><button className="speaking-primary-button" type="button" onClick={() => navigate("/speak/join")}><RotateCcw size={17} aria-hidden="true" />Join another teacher’s task</button><button className="speaking-text-button" type="button" onClick={() => navigate("/speak")}><ArrowLeft size={16} aria-hidden="true" />Speaking Practice home</button></div></section>{result.evaluation ? <ResultPanel activity={result.activity} turns={result.turns} evaluation={result.evaluation} teacherView={false} /> : <div className="speaking-empty-card"><h2>{evaluationFailed ? "Evaluation needs another try" : copy.evaluationUnavailable}</h2><p>{evaluationFailed ? "Your conversation is saved. Retry evaluation when the service is available; your old turn will not be sent again." : copy.evaluationUnavailableMessage}</p>{evaluationFailed && <button type="button" className="speaking-primary-button" onClick={() => void retryEvaluation()} disabled={retrying}>{retrying ? "Retrying evaluation…" : "Retry evaluation"}</button>}{error && <p className="speaking-error" role="alert">{error}</p>}</div>}</>}</main></div>;
+  const evaluationPending = !result.evaluation && (result.participant.status === "evaluating" || evaluationStatus === "queued" || evaluationStatus === "running" || evaluationStatus === "retrying");
+  return <div className="speaking-page-shell speaking-result-page"><SpeakingTopbar navigate={navigate} student /><StudentJourney step={3} /><main className="speaking-result-layout">{evaluationPending ? <section className="speaking-empty-card speaking-evaluation-status-card"><LoaderCircle size={34} className="speaking-spin" aria-hidden="true" /><span className="speaking-card-kicker">{evaluationStatus === "retrying" ? "Evaluation retrying" : "Evaluation in progress"}</span><h1>{copy.evaluationPendingHeadline}</h1><p>{evaluationStatus === "retrying" ? copy.evaluationRetryingMessage : copy.evaluationPendingMessage}</p><button type="button" className="speaking-outline-button" onClick={() => pollNowRef.current()}>Refresh status</button></section> : <><section className="speaking-result-hero"><span className="speaking-eyebrow"><Trophy size={15} aria-hidden="true" />{insufficientEvidence ? copy.notScored : "Activity complete"}</span><h1>{result.evaluation ? (insufficientEvidence ? copy.insufficientEvidenceHeadline : copy.scoredHeadline) : copy.evaluationNeedsAttentionHeadline}</h1><p>{result.evaluation ? result.evaluation.overallMessage : copy.evaluationNeedsAttentionMessage}</p>{result.evaluation && !insufficientEvidence ? <div className="speaking-result-score"><strong>{scoreFor(result.evaluation)}</strong><span>{result.evaluation.language === "ja" ? "点" : "points"}</span><small>{result.evaluation.language === "ja" ? "今日のスピーキング" : "Today’s speaking"}</small></div> : <div className="speaking-result-score"><strong>—</strong><small>{insufficientEvidence ? copy.notScoredDetail : copy.evaluationNeedsAttentionHeadline}</small></div>}<div className="speaking-result-actions"><button className="speaking-primary-button" type="button" onClick={() => navigate("/speak/join")}><RotateCcw size={17} aria-hidden="true" />Join another teacher’s task</button><button className="speaking-text-button" type="button" onClick={() => navigate("/speak")}><ArrowLeft size={16} aria-hidden="true" />Speaking Practice home</button></div></section>{result.evaluation ? <ResultPanel activity={result.activity} turns={result.turns} evaluation={result.evaluation} teacherView={false} /> : <div className="speaking-empty-card"><h2>{evaluationRetryable ? "Evaluation needs another try" : copy.evaluationNeedsAttentionHeadline}</h2><p>{evaluationRetryable ? "Your conversation is saved. We’ll try the evaluation again; your saved turns will not be sent again." : copy.evaluationNeedsAttentionMessage}</p>{evaluationRetryable && <button type="button" className="speaking-primary-button" onClick={() => void retryEvaluation()} disabled={retrying}>{retrying ? "Retrying evaluation…" : "Retry evaluation"}</button>}{error && <p className="speaking-error" role="alert">{error}</p>}</div>}</>}</main></div>;
 }

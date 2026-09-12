@@ -62,6 +62,7 @@ import "../speaking.css";
 import "../speaking-layout.css";
 
 type Navigate = (nextPath: string) => void;
+type SpeakingEvaluationStatus = "queued" | "running" | "retrying" | "completed" | "failed";
 type ResultResponse = {
   result: {
     activity: Pick<
@@ -78,6 +79,9 @@ type ResultResponse = {
     turns: SpeakingTurn[];
     evaluation?: SpeakingEvaluation;
   };
+  evaluationStatus?: SpeakingEvaluationStatus;
+  evaluationRetryable?: boolean;
+  nextRetryAt?: string;
 };
 type SessionResultsResponse = {
   activity: SpeakingActivity;
@@ -89,18 +93,23 @@ type SessionResultsResponse = {
     overallScore?: number;
     helpCount: number;
     evaluation?: SpeakingEvaluation;
+    evaluationStatus?: SpeakingEvaluationStatus;
+    evaluationRetryable?: boolean;
+    nextRetryAt?: string;
   }>;
 };
 
-type SpeakingRosterStatus = "joined" | "ready" | "practicing" | "processing" | "evaluating" | "finished" | "error";
+type SpeakingRosterStatus = "joined" | "ready" | "practicing" | "processing" | "evaluating" | "retrying" | "finished" | "error";
 type SpeakingRosterResponse = {
   session: SpeakingSession;
-  counts: Record<SpeakingRosterStatus, number>;
+  counts: Partial<Record<SpeakingRosterStatus, number>>;
   items: Array<{
     participant: SpeakingParticipant;
     status: SpeakingRosterStatus;
     latestActivityAt?: string;
     latestTurnSpeaker?: "ai" | "student";
+    evaluationStatus?: SpeakingEvaluationStatus;
+    evaluationRetryable?: boolean;
   }>;
 };
 
@@ -110,11 +119,12 @@ const ROSTER_STATUS_LABELS: Record<SpeakingRosterStatus, string> = {
   practicing: "Practicing",
   processing: "Processing",
   evaluating: "Evaluating",
+  retrying: "Evaluation retrying",
   finished: "Finished",
   error: "Needs attention"
 };
 
-const rosterStatusOrder: SpeakingRosterStatus[] = ["joined", "ready", "practicing", "processing", "evaluating", "finished", "error"];
+const rosterStatusOrder: SpeakingRosterStatus[] = ["joined", "ready", "practicing", "processing", "evaluating", "retrying", "finished", "error"];
 
 const formatRosterActivity = (value?: string) => {
   if (!value) return "No activity yet";
@@ -1568,7 +1578,7 @@ function SpeakingResultsPage({
   const [error, setError] = useState("");
   const [loadingResults, setLoadingResults] = useState(false);
   const [resultsSearch, setResultsSearch] = useState("");
-  const [resultsFilter, setResultsFilter] = useState<SpeakingParticipant["status"] | "all" | "review">("all");
+  const [resultsFilter, setResultsFilter] = useState<SpeakingParticipant["status"] | "retrying" | "all" | "review">("all");
   const [sort, setSort] = useState("name");
   const [refreshNonce, setRefreshNonce] = useState(0);
   useEffect(() => {
@@ -1645,12 +1655,12 @@ function SpeakingResultsPage({
   const resultQuery = resultsSearch.trim().toLocaleLowerCase();
   const filteredResults = (payload?.items ?? []).filter((item) => {
     const display = item.participant.displayIdentifier ?? "Anonymous student";
-    return (resultsFilter === "all" || (resultsFilter === "review" ? item.status === "error" || item.evaluation?.assessmentStatus === "insufficient_evidence" : item.status === resultsFilter)) &&
+    return (resultsFilter === "all" || (resultsFilter === "review" ? item.status === "error" || item.evaluationStatus === "failed" || item.evaluation?.assessmentStatus === "insufficient_evidence" : resultsFilter === "retrying" ? item.evaluationStatus === "retrying" : item.status === resultsFilter)) &&
       (!resultQuery || display.toLocaleLowerCase().includes(resultQuery));
   });
   filteredResults.sort((a, b) => sort === "score" ? (a.overallScore ?? -1) - (b.overallScore ?? -1) : sort === "help" ? b.helpCount - a.helpCount : (a.participant.displayIdentifier ?? a.participant.id).localeCompare(b.participant.displayIdentifier ?? b.participant.id, undefined, { numeric: true }));
   const completed = payload?.items.filter((item) => item.status === "completed").length ?? 0;
-  const needsReview = payload?.items.filter((item) => item.status === "error" || item.evaluation?.assessmentStatus === "insufficient_evidence").length ?? 0;
+  const needsReview = payload?.items.filter((item) => item.status === "error" || item.evaluationStatus === "failed" || item.evaluation?.assessmentStatus === "insufficient_evidence").length ?? 0;
   const criteria = payload?.activity.rubric.filter((criterion) => criterion.enabled) ?? [];
   if (error && !activity)
     return <MissingSpeakingSession navigate={navigate} message={error} />;
@@ -1721,13 +1731,14 @@ function SpeakingResultsPage({
                 <select
                   aria-label="Filter learning results"
                   value={resultsFilter}
-                  onChange={(event) => setResultsFilter(event.target.value as SpeakingParticipant["status"] | "all" | "review")}
+                  onChange={(event) => setResultsFilter(event.target.value as SpeakingParticipant["status"] | "retrying" | "all" | "review")}
                 >
                   <option value="all">All statuses</option>
                   <option value="review">Needs review / unscored</option>
                   <option value="joined">Joined</option>
                   <option value="in_progress">Practicing</option>
                   <option value="evaluating">Evaluating</option>
+                  <option value="retrying">Evaluation retrying</option>
                   <option value="completed">Completed</option>
                   <option value="error">Needs attention</option>
                 </select>
@@ -1777,7 +1788,7 @@ function SpeakingResultsPage({
               </tr></thead><tbody>
               {filteredResults.map((item) => <tr className="speaking-results-table-row" key={item.participant.id}>
                 <th scope="row"><button type="button" className="speaking-result-student-link" onClick={() => navigate(`/speak/teacher/result/${item.participant.id}`)}>{item.participant.displayIdentifier ?? `Student ${item.participant.id.slice(0, 6)}`}<ChevronRight size={16} aria-hidden="true" /></button></th>
-                <td><span className={`speaking-status-pill speaking-status-${item.status}`}>{item.evaluation?.assessmentStatus === "insufficient_evidence" ? "Not scored" : item.status === "completed" ? "Completed" : item.status === "error" ? "Needs attention" : item.status === "joined" ? "Not started" : item.status === "evaluating" ? "Evaluating" : "Practicing"}</span></td>
+                <td><span className={`speaking-status-pill speaking-status-${item.evaluationStatus === "retrying" ? "retrying" : item.status}`}>{item.evaluation?.assessmentStatus === "insufficient_evidence" ? "Not scored" : item.evaluationStatus === "retrying" ? "Evaluation retrying" : item.evaluationStatus === "failed" ? "Needs attention" : item.status === "completed" ? "Completed" : item.status === "error" ? "Needs attention" : item.status === "joined" ? "Not started" : item.status === "evaluating" ? "Evaluating" : "Practicing"}</span></td>
                 <td className="speaking-table-score">{item.overallScore === undefined ? "—" : <>{item.overallScore}<small>/100</small></>}</td>
                 {criteria.map((criterion) => <td key={criterion.id}>{item.evaluation?.scores[criterion.id] ?? "—"}</td>)}
                 <td>{formatDuration(item.durationSeconds)}</td><td>{item.helpCount}</td>
@@ -1823,19 +1834,39 @@ function SpeakingTeacherResultPage({
   participantId: string;
 }) {
   const [result, setResult] = useState<ResultResponse["result"]>();
+  const [evaluationStatus, setEvaluationStatus] = useState<ResultResponse["evaluationStatus"]>();
+  const [evaluationRetryable, setEvaluationRetryable] = useState(false);
   const [error, setError] = useState("");
   useEffect(() => {
-    void speakingApi
-      .result(participantId)
-      .then((payload) => setResult((payload as ResultResponse).result))
-      .catch((loadError) =>
-        setError(
-          getErrorMessage(
-            loadError,
-            "This student result could not be loaded.",
-          ),
-        ),
-      );
+    let cancelled = false;
+    let timer: ReturnType<typeof setTimeout> | undefined;
+    const controller = new AbortController();
+    setResult(undefined);
+    setEvaluationStatus(undefined);
+    setEvaluationRetryable(false);
+    setError("");
+    const poll = async () => {
+      try {
+        const payload = await speakingApi.result(participantId, undefined, controller.signal);
+        if (cancelled) return;
+        const next = payload as ResultResponse;
+        setResult(next.result);
+        setEvaluationStatus(next.evaluationStatus);
+        setEvaluationRetryable(next.evaluationRetryable === true);
+        setError("");
+        if (!next.result.evaluation && next.evaluationStatus !== "failed" && next.result.participant.status !== "error") timer = setTimeout(() => { void poll(); }, 3_000);
+      } catch (loadError) {
+        if (cancelled) return;
+        setError(getErrorMessage(loadError, "This student result could not be loaded."));
+        if (!(loadError instanceof ApiError && [401, 403, 404].includes(loadError.status))) timer = setTimeout(() => { void poll(); }, 3_000);
+      }
+    };
+    void poll();
+    return () => {
+      cancelled = true;
+      controller.abort();
+      if (timer) clearTimeout(timer);
+    };
   }, [participantId]);
   if (!result && !error) return <TeacherLoading />;
   if (!result)
@@ -1892,10 +1923,13 @@ function SpeakingTeacherResultPage({
             />
           ) : (
             <div className="speaking-empty-card">
-              <h2>Evaluation unavailable</h2>
+              <h2>{evaluationStatus === "retrying" || evaluationStatus === "queued" || evaluationStatus === "running" ? "Evaluation in progress" : "Evaluation needs attention"}</h2>
               <p>
-                The participant’s transcript remains available, but no
-                trustworthy evaluation is stored.
+                {evaluationStatus === "retrying" || evaluationStatus === "queued" || evaluationStatus === "running"
+                  ? "The transcript is safely saved. The evaluation service is still preparing feedback."
+                  : evaluationRetryable
+                    ? "The transcript remains available. A retry can use the saved turns without asking the student to retake the test."
+                    : "The participant’s transcript remains available. Evaluation needs technical attention; the student does not need to retake the test."}
               </p>
               <div className="speaking-transcript-detail">
                 {result.turns.map((turn) => (

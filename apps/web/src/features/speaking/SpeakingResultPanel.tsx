@@ -6,6 +6,7 @@ import {
   type SpeakingEvaluation,
   type SpeakingTurn,
 } from "@quizstrike/shared";
+import { exactUsefulEnglishItems } from "./speakingEvaluationDisplay";
 
 export const hasStudentSpeech = (turns: SpeakingTurn[]) =>
   turns.some(
@@ -34,6 +35,7 @@ export function ResultPanel({
 }) {
   const studentTurns = turns.filter((turn) => turn.speaker === "student");
   const copy = speakingFeedbackCopy(evaluation.language);
+  const usefulEnglishItems = exactUsefulEnglishItems(evaluation, turns);
   return (
     <section
       className={`speaking-result-panel${teacherView ? " speaking-result-panel-teacher" : ""}`}
@@ -45,8 +47,8 @@ export function ResultPanel({
           </span>
           <h2>{teacherView ? activity.title : copy.resultHeading}</h2>
         </div>
-        <span className="speaking-result-language">
-          <Languages size={15} aria-hidden="true" />
+        <span className="speaking-result-language" aria-label={evaluation.language === "ja" ? "日本語フィードバック" : "English feedback"}>
+          <Languages size={15} aria-hidden="true" focusable="false" />
           {evaluation.language === "ja"
             ? "日本語フィードバック"
             : "English feedback"}
@@ -56,6 +58,23 @@ export function ResultPanel({
         <div className="speaking-result-message speaking-result-message-warning">
           <h3>{copy.insufficientEvidenceHeadline}</h3>
           <p>{evaluation.notScoredReason ?? copy.notScoredDetail}</p>
+        </div>
+      )}
+      {evaluation.goalCompletion && (
+        <div className="speaking-result-message speaking-result-goal-message">
+          <h3>{evaluation.language === "ja" ? "課題のゴール" : "Task goal"}</h3>
+          <ul>
+            {evaluation.goalCompletion.requirements.map((requirement, index) => (
+              <li key={`${requirement.requirement}-${index}`}>
+                <strong>{({
+                  completed: evaluation.language === "ja" ? "達成" : "Completed",
+                  partially_completed: evaluation.language === "ja" ? "一部達成" : "Partly completed",
+                  not_completed: evaluation.language === "ja" ? "次の目標" : "Not yet completed",
+                  uncertain: evaluation.language === "ja" ? "確認できません" : "Not enough evidence"
+                })[requirement.status]}:</strong> {requirement.requirement}
+              </li>
+            ))}
+          </ul>
         </div>
       )}
       <p className="speaking-rubric-intro">{evaluation.language === "ja" ? "評価基準と会話の根拠 · 各項目4点満点" : "Rubric and conversation evidence · Each criterion is scored out of 4"}</p>
@@ -117,8 +136,8 @@ export function ResultPanel({
             {studentTurns.length} {copy.speakingTurns}
           </span>
         </div>
-        {evaluation.usefulEnglish.length ? (
-          evaluation.usefulEnglish.map((item) => (
+        {usefulEnglishItems.length ? (
+          usefulEnglishItems.map((item) => (
             <div
               className="speaking-correction-row"
               key={`${item.said}-${item.try}`}

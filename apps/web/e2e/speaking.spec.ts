@@ -1,5 +1,42 @@
 import { expect, test } from "@playwright/test";
 
+test("result reconnects after network failure and resumes polling after manual retry", async ({ page, request }) => {
+  const templatesResponse = await request.get("/api/speaking/templates");
+  const { items } = await templatesResponse.json() as { items: Array<Record<string, unknown>> };
+  const activity = { ...items[0], nativeLanguage: "en" };
+  const participantId = "result-recovery-regression";
+  const baseResult = { activity, session: { id: "result-session", status: "ended" }, participant: { id: participantId, status: "error" }, turns: [{ id: "student-1", participantId, speaker: "student", text: "Hello.", createdAt: new Date().toISOString() }] };
+  let attempts = 0;
+  let retried = false;
+  let ready = false;
+  await page.addInitScript((id) => sessionStorage.setItem(`speaking-participant-token:${id}`, "test-token"), participantId);
+  await page.route(`**/api/speaking/results/${participantId}`, async (route) => {
+    attempts += 1;
+    if (attempts === 1) { await route.abort("failed"); return; }
+    const evaluation = ready ? {
+      participantId, language: "en", assessmentStatus: "scored", scores: { communication: 3 }, evidence: { communication: "You greeted the partner." },
+      strengths: ["You greeted your partner."], improvements: [], usefulEnglish: [], overallMessage: "You greeted your partner.", createdAt: new Date().toISOString()
+    } : undefined;
+    await route.fulfill({ json: { result: { ...baseResult, participant: { ...baseResult.participant, status: ready ? "completed" : retried ? "evaluating" : "error" }, evaluation }, evaluationStatus: ready ? "completed" : retried ? "retrying" : "failed", evaluationRetryable: !ready } });
+  });
+  await page.route("**/api/speaking/sessions/result-session/finish", async (route) => {
+    retried = true;
+    await route.fulfill({ status: 202, json: { result: { ...baseResult, participant: { ...baseResult.participant, status: "evaluating" } }, evaluationStatus: "retrying", evaluationRetryable: true } });
+  });
+  await page.goto(`/speak/result/${participantId}`);
+  await expect(page.getByRole("heading", { name: "Reconnecting to your result" })).toBeVisible();
+  await expect(page.getByRole("heading", { name: "Session not found" })).toHaveCount(0);
+  await page.getByRole("button", { name: "Retry evaluation", exact: true }).click();
+  await expect(page.getByText("Evaluation retrying", { exact: true })).toBeVisible();
+  const attemptsAfterRetry = attempts;
+  await expect.poll(() => attempts).toBeGreaterThan(attemptsAfterRetry);
+  await page.reload();
+  await expect(page.getByText("Evaluation retrying", { exact: true })).toBeVisible();
+  ready = true;
+  await expect(page.locator(".speaking-result-hero h1")).toBeVisible({ timeout: 15_000 });
+  await expect(page.locator(".speaking-result-hero")).toContainText("You greeted your partner.");
+});
+
 test("logged-out teacher returns to the Speaking builder after existing auth", async ({ browser, request }, testInfo) => {
   const suffix = `${Date.now()}-${Math.random().toString(16).slice(2)}`;
   const email = `speaking-return-${suffix}@example.test`;
@@ -237,8 +274,18 @@ test("teacher and student Speaking Practice screens use the connected mock API",
     expect(await studentPage.evaluate(() => document.documentElement.scrollWidth)).toBeLessThanOrEqual(viewport.width);
     await studentPage.screenshot({ path: testInfo.outputPath(`student-result-${viewport.width}.png`), fullPage: true });
   }
+  let teacherResultReads = 0;
+  await teacherPage.route("**/api/speaking/results/*", async (route) => {
+    teacherResultReads += 1;
+    if (teacherResultReads > 1) { await route.continue(); return; }
+    const response = await route.fetch();
+    const payload = await response.json() as { result: { participant: Record<string, unknown> } };
+    await route.fulfill({ json: { ...payload, evaluationStatus: "retrying", result: { ...payload.result, participant: { ...payload.result.participant, status: "evaluating" }, evaluation: undefined } } });
+  });
   await teacherPage.getByRole("button", { name: "Aki", exact: true }).click();
+  await expect(teacherPage.getByRole("heading", { name: "Evaluation in progress" })).toBeVisible();
   await expect(teacherPage.locator(".speaking-result-panel")).toBeVisible();
+  expect(teacherResultReads).toBeGreaterThan(1);
   await expect(teacherPage.getByRole("meter")).toHaveCount(5);
   await teacherPage.screenshot({ path: testInfo.outputPath("teacher-student-result.png"), fullPage: true });
 
@@ -414,7 +461,7 @@ test("Speaking Practice recovers each failed operation without cross-retrying", 
     await expect(page.getByRole("button", { name: "Check evaluation", exact: true })).toBeVisible();
     await page.getByRole("button", { name: "Check evaluation", exact: true }).click();
     expect(turnAttempts).toBe(2);
-    await expect(page.getByRole("heading", { name: "Your speaking practice is finished.", exact: true })).toBeVisible({ timeout: 15_000 });
+    await expect(page.locator(".speaking-result-hero h1")).toBeVisible({ timeout: 15_000 });
     await expect(page.getByRole("heading", { name: "今回の結果" })).toBeVisible({ timeout: 15_000 });
     expect(finishAttempts).toBe(2);
     expect(pendingResultShown).toBe(true);

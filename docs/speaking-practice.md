@@ -162,6 +162,7 @@ conversation provider: 12s default (configurable)
 Help provider: 12s default, 18s browser request budget
 Finish acceptance: 8s browser request budget; it creates the durable evaluation job
 evaluation provider: 30s default; durable job lease: 120s default
+evaluation retry: up to 5 attempts with 10s / 30s / 2m / 5m backoff plus jitter
 result/evaluation polling: 1–8s client backoff with jitter
 Cloudflare ordinary API: 25s; Speaking turn proxy: 45s
 ```
@@ -200,8 +201,40 @@ capacity tests only; they are not evidence of real-provider capacity.
 
 Finish is intentionally asynchronous: the accepted request persists an
 evaluation job, marks the participant as evaluating, and the browser can resume
-the same job after refresh. In-memory development state cannot survive a
-process restart; production must use the Prisma repository and run the
-`20260905000000_speaking_reliability` migration. A production release still
+the same job after refresh. Transient timeout, rate-limit, network, provider
+5xx, and malformed structured-response failures enter `retrying`; the student
+sees that the conversation is saved and never needs to retake the test. Auth
+and request/configuration failures are terminal and are surfaced as teacher
+attention. A retry never appends another transcript turn.
+
+Evaluation output is validated against the immutable activity snapshot. The
+prompt includes the explicit student goal, support resources, rubric, timing,
+Help metadata, and stable transcript turn IDs. The server then re-checks goal
+requirements, filters evidence IDs to real turns, preserves exact student
+quotes for Useful English, and matches goal requirements by text rather than
+array position. Missing or invalid student evidence cannot establish goal
+completion. Normal AI follow-ups do not automatically penalize interaction;
+an unanswered information request followed by the same question is repair
+evidence. All added coaching stays within the five-item schema limit.
+Fluency is withheld unless every student turn has recording duration. Even
+then, duration supports only a cautious communication heuristic: recording
+length cannot establish pauses, hesitation, or smooth speech.
+
+Claims and participant status changes are atomic in PostgreSQL. Expired jobs
+stop after five attempts even across repeated crashes. The evaluation lease
+covers the configured provider timeout, workload queue limit, and persistence
+headroom. Student and individual teacher result pages poll pending work;
+manual retries resume polling, and transient result-fetch errors reconnect.
+The `GET /api/speaking/diagnostics/evaluations` teacher route exposes
+aggregate attempt, retry, failure, parse/schema, queue-wait, provider-time,
+prompt-size, response-size, and p50/p95/p99 latency metrics without transcript
+or audio content. These aggregates are process-local and should be exported to
+the deployment metrics system if longer retention is needed.
+
+In-memory development state cannot survive a process restart; production must
+use the Prisma repository and run both `20260905000000_speaking_reliability`
+and `20260912000000_speaking_evaluation_resilience`. The latter adds retrying
+state, retry schedule metadata, and evaluator metadata while preserving old
+evaluations through optional/backfilled fields. A production release still
 requires a controlled real-provider classroom test; mock-provider results do
 not establish support for 40 simultaneous students.

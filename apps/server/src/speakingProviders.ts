@@ -39,20 +39,29 @@ export interface ConversationInput {
 }
 
 export interface ConversationProvider {
+  /** Safe provider label for diagnostics. Custom test adapters may omit it. */
+  providerName?: SpeakingProviderName;
   respond(input: ConversationInput): Promise<string>;
 }
 
 export interface HelpProvider {
+  /** Safe provider label for diagnostics. Custom test adapters may omit it. */
+  providerName?: SpeakingProviderName;
   hint(input: { activity: SpeakingActivity; turns: SpeakingTurn[]; latestStudentText?: string }): Promise<{ hint: string; english: string }>;
 }
 
 export interface EvaluationProvider {
+  /** Safe provider label for diagnostics. Custom test adapters may omit it. */
+  providerName?: SpeakingProviderName;
   evaluate(input: {
     activity: SpeakingActivity;
     turns: SpeakingTurn[];
     participantId: string;
-    timingMetadata?: { startedAt?: string; finishedAt?: string; durationSeconds?: number };
+    /** Prepared once by the route for prompt-size telemetry and provider reuse. */
+    prompt?: string;
+    timingMetadata?: { startedAt?: string; finishedAt?: string; durationSeconds?: number; reliableAudioTiming?: boolean; studentAudioDurationMs?: number };
     helpMetadata?: { helpCount: number; helpedTurnCount: number };
+    interactionMetadata?: { studentTurnCount: number; independentResponseCount: number; helpedTurnCount: number; aiRepairPromptCount: number; repeatedQuestionCount: number; reliableAudioTurnCount: number };
   }): Promise<SpeakingEvaluation>;
 }
 
@@ -72,12 +81,20 @@ export class SpeakingProviderError extends Error {
   }
 }
 
-export const speakingProviderFailureDetails = (error: unknown): { kind: SpeakingProviderFailureKind; status?: number } =>
-  error instanceof SpeakingProviderError
-    ? { kind: error.failureKind, ...(error.status === undefined ? {} : { status: error.status }) }
-    : { kind: "unknown" };
+export const speakingProviderFailureDetails = (error: unknown): { kind: SpeakingProviderFailureKind; status?: number } => {
+  if (error instanceof SpeakingProviderError) return { kind: error.failureKind, ...(error.status === undefined ? {} : { status: error.status }) };
+  const message = error instanceof Error ? error.message : String(error);
+  if (/timed? ?out|timeout/iu.test(message)) return { kind: "timeout" };
+  if (/rate.?limit|too many requests|\b429\b/iu.test(message)) return { kind: "rate_limit" };
+  if (/overload|temporarily unavailable|service unavailable|provider outage|\b5\d\d\b/iu.test(message)) return { kind: "unavailable" };
+  if (/failed to fetch|fetch failed|network|econnreset|etimedout|econnrefused|eai_again|socket hang up/iu.test(message)) return { kind: "network" };
+  if (error instanceof SyntaxError || /invalid json|json parse|structured (?:data|output|response)|truncated response|unexpected end/iu.test(message)) return { kind: "invalid_response" };
+  if (/api key|credential|unauthori[sz]ed|authentication|permission denied/iu.test(message)) return { kind: "authentication" };
+  if (/invalid (?:model|configuration)|model .*not found|configuration required/iu.test(message)) return { kind: "bad_request" };
+  return { kind: "unknown" };
+};
 
-const failureKindForStatus = (status: number): SpeakingProviderFailureKind => {
+export const failureKindForStatus = (status: number): SpeakingProviderFailureKind => {
   if (status === 401 || status === 403) return "authentication";
   if (status === 408) return "timeout";
   if (status === 429) return "rate_limit";
@@ -179,6 +196,7 @@ const safeRedirect = (activity: SpeakingActivity) => {
 
 const shoppingResponse = (studentText: string, studentTurnCount: number) => {
   const lower = studentText.toLowerCase();
+  if (/\b(?:thank(?:s| you)?|that's all|that is all|goodbye|bye)\b/i.test(studentText) && !/[?？]/u.test(studentText)) return "You are welcome. Have a nice day!";
   if (lower.includes("blue") || lower.includes("red") || lower.includes("black") || lower.includes("shirt") || lower.includes("t-shirt")) return "Sure! What size would you like?";
   if (lower.includes("small") || lower.includes("medium") || lower.includes("large") || lower.includes("size")) return "Great choice. Would you like to try it on?";
   if (lower.includes("try") || lower.includes("fitting")) return "Of course. The fitting room is over there.";
@@ -188,6 +206,7 @@ const shoppingResponse = (studentText: string, studentTurnCount: number) => {
 
 const scenarioResponse = (activity: SpeakingActivity, studentText: string, studentTurnCount: number) => {
   const title = activity.title.toLowerCase();
+  if (/\b(?:thank(?:s| you)?|that's all|that is all|goodbye|bye)\b/i.test(studentText) && !/[?？]/u.test(studentText)) return "You are welcome. Have a nice day!";
   if (title.includes("restaurant") || title.includes("food")) {
     const lower = studentText.toLowerCase();
     if (lower.includes("drink") || lower.includes("water")) return "Sure. Would you like anything to eat?";
@@ -202,6 +221,7 @@ const scenarioResponse = (activity: SpeakingActivity, studentText: string, stude
 };
 
 export const mockConversationProvider: ConversationProvider = {
+  providerName: "mock",
   async respond(input) {
     if (promptInjectionPattern.test(input.studentText)) return safeRedirect(input.activity);
     const count = latestStudentTurns(input.turns).length;
@@ -212,6 +232,7 @@ export const mockConversationProvider: ConversationProvider = {
 };
 
 export const mockHelpProvider: HelpProvider = {
+  providerName: "mock",
   async hint(input) {
     void buildHelpPrompt(input);
     const recentAi = [...input.turns].reverse().find((turn) => turn.speaker === "ai")?.text.toLowerCase() ?? "";
@@ -243,8 +264,9 @@ const mockReason = (criterion: SpeakingRubricCriterion, studentTurnCount: number
 };
 
 export const mockEvaluationProvider: EvaluationProvider = {
+  providerName: "mock",
   async evaluate(input) {
-    void buildEvaluationPrompt({ activity: input.activity, turns: input.turns, rubric: input.activity.rubric, timingMetadata: input.timingMetadata, helpMetadata: input.helpMetadata });
+    void (input.prompt ?? buildEvaluationPrompt({ activity: input.activity, turns: input.turns, rubric: input.activity.rubric, timingMetadata: input.timingMetadata, helpMetadata: input.helpMetadata, interactionMetadata: input.interactionMetadata }));
     const studentTurns = latestStudentTurns(input.turns);
     const scores: Record<string, number | null> = {};
     const evidence: Record<string, string> = {};
@@ -268,7 +290,7 @@ export const mockEvaluationProvider: EvaluationProvider = {
       improvements: noSpeech
         ? [copy.insufficientEvidenceImprovement]
         : [copy.tryNext],
-      usefulEnglish: studentTurns.length > 0 ? [{ said: studentTurns[0]!.text, try: input.activity.targetExpressions[0] ?? "I'd like..." }] : [],
+      usefulEnglish: studentTurns.length > 0 ? [{ said: studentTurns[0]!.text, try: input.activity.targetExpressions[0] ?? "I'd like...", sourceTurnId: studentTurns[0]!.id }] : [],
       overallMessage: noSpeech
         ? copy.insufficientEvidenceMessage
         : `${copy.scoredHeadline} ${copy.scoredSummary}`,
@@ -281,7 +303,7 @@ export const mockEvaluationProvider: EvaluationProvider = {
 };
 
 const openAiKey = (environment: NodeJS.ProcessEnv = process.env) => environment.OPENAI_API_KEY?.trim() || environment.SPEAKING_OPENAI_API_KEY?.trim();
-const openAiModel = (environment: NodeJS.ProcessEnv = process.env) => environment.SPEAKING_OPENAI_MODEL?.trim() || "gpt-4o-mini";
+export const openAiModel = (environment: NodeJS.ProcessEnv = process.env) => environment.SPEAKING_OPENAI_MODEL?.trim() || "gpt-4o-mini";
 
 const openAiRequest = async (
   body: Record<string, unknown>,
@@ -303,7 +325,9 @@ const openAiRequest = async (
 };
 
 const geminiKey = (environment: NodeJS.ProcessEnv = process.env) => environment.GEMINI_API_KEY?.trim() || environment.SPEAKING_GEMINI_API_KEY?.trim();
-const geminiModel = (environment: NodeJS.ProcessEnv = process.env) => environment.SPEAKING_GEMINI_MODEL?.trim() || "gemini-2.5-flash-lite";
+export const geminiModel = (environment: NodeJS.ProcessEnv = process.env) => environment.SPEAKING_GEMINI_MODEL?.trim() || "gemini-2.5-flash-lite";
+export const speakingEvaluationProviderModel = (providerName?: SpeakingProviderName, environment: NodeJS.ProcessEnv = process.env) =>
+  providerName === "gemini" ? geminiModel(environment) : providerName === "openai" ? openAiModel(environment) : "mock";
 const geminiTranscriptionModel = (environment: NodeJS.ProcessEnv = process.env) => {
   const configured = environment.SPEAKING_GEMINI_TRANSCRIPTION_MODEL?.trim();
   // Migrate the former documented default automatically. It is a general
@@ -338,9 +362,17 @@ const geminiRequest = async (
 
 const normalizeAudioMimeType = (mimeType: string) => mimeType.split(";", 1)[0]?.trim() || "audio/webm";
 const openAiTranscriptionModel = (environment: NodeJS.ProcessEnv = process.env) => environment.SPEAKING_TRANSCRIPTION_MODEL?.trim() || "gpt-4o-mini-transcribe";
-const parseJsonResponse = <T>(raw: string): T => {
+export const parseJsonResponse = <T>(raw: string): T => {
   const fenced = raw.match(/^```(?:json)?\s*([\s\S]*?)\s*```$/i)?.[1] ?? raw;
-  return JSON.parse(fenced.trim()) as T;
+  try {
+    const parsed: unknown = JSON.parse(fenced.trim());
+    if (!parsed || typeof parsed !== "object" || Array.isArray(parsed)) {
+      throw new SpeakingProviderError("Speaking provider returned a non-object structured response.", "invalid_response");
+    }
+    return parsed as T;
+  } catch {
+    throw new SpeakingProviderError("Speaking provider returned invalid JSON.", "invalid_response");
+  }
 };
 
 export const openAiTranscriptionProvider: TranscriptionProvider = {
@@ -363,6 +395,7 @@ export const openAiTranscriptionProvider: TranscriptionProvider = {
 };
 
 export const openAiConversationProvider: ConversationProvider = {
+  providerName: "openai",
   async respond(input) {
     const content = await openAiRequest({
       temperature: 0.4,
@@ -376,6 +409,7 @@ export const openAiConversationProvider: ConversationProvider = {
 const helpSchema = { type: "object", additionalProperties: false, properties: { hint: { type: "string" }, english: { type: "string" } }, required: ["hint", "english"] };
 
 export const openAiHelpProvider: HelpProvider = {
+  providerName: "openai",
   async hint(input) {
     const raw = await openAiRequest({
       temperature: 0.3,
@@ -383,8 +417,8 @@ export const openAiHelpProvider: HelpProvider = {
       response_format: { type: "json_schema", json_schema: { name: "speaking_help", strict: true, schema: helpSchema } },
       messages: [{ role: "system", content: buildHelpPrompt(input) }]
     }, process.env, "help");
-    const parsed = JSON.parse(raw) as { hint?: unknown; english?: unknown };
-    if (typeof parsed.hint !== "string" || typeof parsed.english !== "string" || !parsed.hint.trim() || !parsed.english.trim()) throw new Error("Help provider returned invalid structured data.");
+    const parsed = parseJsonResponse<{ hint?: unknown; english?: unknown }>(raw);
+    if (typeof parsed.hint !== "string" || typeof parsed.english !== "string" || !parsed.hint.trim() || !parsed.english.trim()) throw new SpeakingProviderError("Help provider returned invalid structured data.", "invalid_response");
     return { hint: parsed.hint.trim().slice(0, 300), english: parsed.english.trim().slice(0, 160) };
   }
 };
@@ -397,25 +431,49 @@ const evaluationSchema = {
     evidence: { type: "object", additionalProperties: { type: "string" } },
     strengths: { type: "array", items: { type: "string" }, maxItems: 5 },
     improvements: { type: "array", items: { type: "string" }, maxItems: 5 },
-    usefulEnglish: { type: "array", items: { type: "object", additionalProperties: false, properties: { said: { type: "string" }, try: { type: "string" } }, required: ["said", "try"] }, maxItems: 5 },
+    usefulEnglish: { type: "array", items: { type: "object", additionalProperties: false, properties: { said: { type: "string" }, try: { type: "string" }, sourceTurnId: { type: "string" } }, required: ["said", "try", "sourceTurnId"] }, maxItems: 5 },
+    goalCompletion: {
+      type: "object",
+      additionalProperties: false,
+      properties: {
+        completed: { type: "boolean" },
+        requirements: {
+          type: "array",
+          maxItems: 12,
+          items: {
+            type: "object",
+            additionalProperties: false,
+            properties: {
+              requirement: { type: "string" },
+              status: { type: "string", enum: ["completed", "partially_completed", "not_completed", "uncertain"] },
+              evidenceTurnIds: { type: "array", items: { type: "string" }, maxItems: 12 }
+            },
+            required: ["requirement", "status", "evidenceTurnIds"]
+          }
+        }
+      },
+      required: ["completed", "requirements"]
+    },
     overallMessage: { type: "string" }
   },
-  required: ["scores", "evidence", "strengths", "improvements", "usefulEnglish", "overallMessage"]
+  required: ["scores", "evidence", "strengths", "improvements", "usefulEnglish", "goalCompletion", "overallMessage"]
 };
 
 export const openAiEvaluationProvider: EvaluationProvider = {
+  providerName: "openai",
   async evaluate(input) {
     const raw = await openAiRequest({
       temperature: 0.2,
-      max_tokens: 900,
+      max_tokens: 1_200,
       response_format: { type: "json_schema", json_schema: { name: "speaking_evaluation", strict: true, schema: evaluationSchema } },
-      messages: [{ role: "system", content: buildEvaluationPrompt({ activity: input.activity, turns: input.turns, rubric: input.activity.rubric, timingMetadata: input.timingMetadata, helpMetadata: input.helpMetadata }) }]
+      messages: [{ role: "system", content: input.prompt ?? buildEvaluationPrompt({ activity: input.activity, turns: input.turns, rubric: input.activity.rubric, timingMetadata: input.timingMetadata, helpMetadata: input.helpMetadata, interactionMetadata: input.interactionMetadata }) }]
     }, process.env, "evaluation");
-    const output = JSON.parse(raw) as Omit<SpeakingEvaluation, "participantId" | "language" | "createdAt">;
-    const assessmentStatus = Object.values(output.scores).some((score) => typeof score === "number") ? "scored" : "insufficient_evidence";
-    const evaluation = { ...output, assessmentStatus, participantId: input.participantId, language: input.activity.nativeLanguage, createdAt: new Date().toISOString() };
+    const output = parseJsonResponse<Partial<Omit<SpeakingEvaluation, "participantId" | "language" | "createdAt">>>(raw);
+    const scores = output.scores && typeof output.scores === "object" ? output.scores : {};
+    const assessmentStatus = Object.values(scores).some((score) => typeof score === "number") ? "scored" : "insufficient_evidence";
+    const evaluation = { ...output, scores, assessmentStatus, participantId: input.participantId, language: input.activity.nativeLanguage, createdAt: new Date().toISOString() };
     const parsed = SpeakingEvaluationSchema.safeParse(evaluation);
-    if (!parsed.success) throw new Error("Evaluation provider returned invalid structured data.");
+    if (!parsed.success) throw new SpeakingProviderError("Evaluation provider returned invalid structured data.", "invalid_response");
     return parsed.data;
   }
 };
@@ -467,6 +525,7 @@ export const geminiTranscriptionProvider: TranscriptionProvider = {
 };
 
 export const geminiConversationProvider: ConversationProvider = {
+  providerName: "gemini",
   async respond(input) {
     const content = await geminiRequest(geminiModel(), {
       system_instruction: { parts: [{ text: input.prompt ?? buildConversationPrompt({ activity: input.activity, turns: input.turns, latestStudentText: input.studentText }) }] },
@@ -478,6 +537,7 @@ export const geminiConversationProvider: ConversationProvider = {
 };
 
 export const geminiHelpProvider: HelpProvider = {
+  providerName: "gemini",
   async hint(input) {
     const raw = await geminiRequest(geminiModel(), {
       system_instruction: { parts: [{ text: buildHelpPrompt(input) }] },
@@ -485,31 +545,33 @@ export const geminiHelpProvider: HelpProvider = {
       generationConfig: { temperature: 0.3, maxOutputTokens: 100, responseMimeType: "application/json" }
     }, process.env, "help");
     const parsed = parseJsonResponse<{ hint?: unknown; english?: unknown }>(raw);
-    if (typeof parsed.hint !== "string" || typeof parsed.english !== "string" || !parsed.hint.trim() || !parsed.english.trim()) throw new Error("Gemini Help provider returned invalid structured data.");
+    if (typeof parsed.hint !== "string" || typeof parsed.english !== "string" || !parsed.hint.trim() || !parsed.english.trim()) throw new SpeakingProviderError("Gemini Help provider returned invalid structured data.", "invalid_response");
     return { hint: parsed.hint.trim().slice(0, 300), english: parsed.english.trim().slice(0, 160) };
   }
 };
 
 export const geminiEvaluationProvider: EvaluationProvider = {
+  providerName: "gemini",
   async evaluate(input) {
     const raw = await geminiRequest(geminiModel(), {
       system_instruction: {
         parts: [{
           text: [
-            buildEvaluationPrompt({ activity: input.activity, turns: input.turns, rubric: input.activity.rubric, timingMetadata: input.timingMetadata, helpMetadata: input.helpMetadata }),
-            "Return only valid JSON with exactly these fields: scores, evidence, strengths, improvements, usefulEnglish, and overallMessage.",
-            "scores must contain only enabled rubric IDs with an integer from 1 to 4 or null. evidence must contain one short string for every score. usefulEnglish must be an array of objects with said and try strings."
+            input.prompt ?? buildEvaluationPrompt({ activity: input.activity, turns: input.turns, rubric: input.activity.rubric, timingMetadata: input.timingMetadata, helpMetadata: input.helpMetadata, interactionMetadata: input.interactionMetadata }),
+            "Return only valid JSON with exactly these fields: scores, evidence, strengths, improvements, usefulEnglish, goalCompletion, and overallMessage.",
+            "scores must contain only enabled rubric IDs with an integer from 1 to 4 or null. evidence must contain one short string for every score. usefulEnglish must be an array of objects with said, try, and sourceTurnId strings; said must exactly match a student transcript turn. goalCompletion must contain completed and requirements with evidenceTurnIds."
           ].join("\n")
         }]
       },
       contents: [{ role: "user", parts: [{ text: "Return the completed evaluation as JSON only." }] }],
-      generationConfig: { temperature: 0.2, maxOutputTokens: 900, responseMimeType: "application/json" }
+      generationConfig: { temperature: 0.2, maxOutputTokens: 1_200, responseMimeType: "application/json" }
     }, process.env, "evaluation");
-    const output = parseJsonResponse<Omit<SpeakingEvaluation, "participantId" | "language" | "createdAt">>(raw);
-    const assessmentStatus = Object.values(output.scores).some((score) => typeof score === "number") ? "scored" : "insufficient_evidence";
-    const evaluation = { ...output, assessmentStatus, participantId: input.participantId, language: input.activity.nativeLanguage, createdAt: new Date().toISOString() };
+    const output = parseJsonResponse<Partial<Omit<SpeakingEvaluation, "participantId" | "language" | "createdAt">>>(raw);
+    const scores = output.scores && typeof output.scores === "object" ? output.scores : {};
+    const assessmentStatus = Object.values(scores).some((score) => typeof score === "number") ? "scored" : "insufficient_evidence";
+    const evaluation = { ...output, scores, assessmentStatus, participantId: input.participantId, language: input.activity.nativeLanguage, createdAt: new Date().toISOString() };
     const parsed = SpeakingEvaluationSchema.safeParse(evaluation);
-    if (!parsed.success) throw new Error("Gemini Evaluation provider returned invalid structured data.");
+    if (!parsed.success) throw new SpeakingProviderError("Gemini Evaluation provider returned invalid structured data.", "invalid_response");
     return parsed.data;
   }
 };

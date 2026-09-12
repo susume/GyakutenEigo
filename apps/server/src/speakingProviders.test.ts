@@ -19,6 +19,9 @@ import {
   openAiEvaluationProvider,
   openAiHelpProvider,
   openAiTranscriptionProvider,
+  parseJsonResponse,
+  SpeakingProviderError,
+  failureKindForStatus,
   speakingProviderFailureDetails,
   speakingProviderTimeoutMs
 } from "./speakingProviders.js";
@@ -65,6 +68,8 @@ test("mock conversation resists prompt injection and Help follows the current AI
   assert.doesNotMatch(injection, /system prompt/i);
   const help = await mockHelpProvider.hint({ activity, turns: [aiTurn("What size would you like?")] });
   assert.equal(help.english, "What size would you like?");
+  const closed = await mockConversationProvider.respond({ activity: { ...activity, title: "At the Restaurant" }, turns: [aiTurn("What would you like?")], studentText: "That's all, thank you." });
+  assert.doesNotMatch(closed, /anything else/i);
 });
 
 test("mock evaluation supports Japanese, custom criteria, disabled criteria, and no-speech evidence", async () => {
@@ -282,6 +287,26 @@ test("Speaking provider requests abort at the configured transcription timeout",
     if (previousTimeout === undefined) delete process.env.SPEAKING_TRANSCRIPTION_TIMEOUT_MS;
     else process.env.SPEAKING_TRANSCRIPTION_TIMEOUT_MS = previousTimeout;
   }
+});
+
+test("malformed structured output is typed as an invalid response", () => {
+  for (const raw of ["null", "[]", '"hello"', "1", "true"]) {
+    assert.throws(() => parseJsonResponse(raw), (error) => error instanceof SpeakingProviderError && error.failureKind === "invalid_response");
+  }
+  assert.equal(failureKindForStatus(503), "unavailable");
+  assert.equal(failureKindForStatus(500), "unavailable");
+  assert.equal(failureKindForStatus(408), "timeout");
+  assert.equal(failureKindForStatus(429), "rate_limit");
+  assert.throws(() => parseJsonResponse("{not-json"), (error) => {
+    assert.ok(error instanceof SpeakingProviderError);
+    assert.equal(error.failureKind, "invalid_response");
+    return true;
+  });
+  assert.deepEqual(speakingProviderFailureDetails(new TypeError("fetch failed")), { kind: "network" });
+  assert.deepEqual(speakingProviderFailureDetails(new Error("temporary provider outage")), { kind: "unavailable" });
+  assert.deepEqual(speakingProviderFailureDetails(new Error("truncated response")), { kind: "invalid_response" });
+  assert.deepEqual(speakingProviderFailureDetails(new Error("invalid model name")), { kind: "bad_request" });
+  assert.deepEqual(speakingProviderFailureDetails(new Error("API key is missing")), { kind: "authentication" });
 });
 
 test("production speaking configuration never silently falls back to mock providers", () => {

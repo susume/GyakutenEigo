@@ -154,6 +154,7 @@ enum SpeakingTurnSpeaker {
 enum SpeakingEvaluationJobStatus {
   queued
   running
+  retrying
   completed
   failed
 }
@@ -452,6 +453,8 @@ model SpeakingEvaluation {
   strengthsJson     Json
   improvementsJson  Json
   usefulEnglishJson Json
+  /// Assessment status, not-scored reason, goal completion, and evaluator metadata.
+  metadataJson      Json                   @default("{}")
   overallMessage    String
   createdAt         DateTime               @default(now())
 }
@@ -467,9 +470,12 @@ model SpeakingEvaluationJob {
   finishedAt     DateTime?
   leaseUntil     DateTime?
   lastErrorCode  String?
+  retryable      Boolean                   @default(false)
+  nextRetryAt    DateTime?
   updatedAt      DateTime                    @updatedAt
 
   @@index([status, updatedAt])
+  @@index([status, nextRetryAt])
 }
 
 model StudySetUsage {

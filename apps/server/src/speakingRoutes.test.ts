@@ -4,6 +4,7 @@ import test from "node:test";
 import express, { type NextFunction, type Request, type Response } from "express";
 import { SPEAKING_LIMITS, speakingRemainingSeconds, type TeacherUser } from "@quizstrike/shared";
 import { createSpeakingProviders } from "./speakingProviders.js";
+import { SpeakingProviderError } from "./speakingProviders.js";
 import { createSpeakingRouteState, registerSpeakingRoutes } from "./routes/speakingRoutes.js";
 
 const teachers = new Map<string, TeacherUser>([
@@ -370,6 +371,115 @@ test("Speaking Practice uses one classroom session for multiple isolated partici
     assert.equal(expiredJoin.response.status, 404);
   } finally {
     await new Promise<void>((resolve, reject) => server.close((error) => error ? reject(error) : resolve()));
+  }
+});
+
+for (const failure of [
+  new SpeakingProviderError("temporary timeout", "timeout"),
+  new SpeakingProviderError("request timeout", "timeout", 408),
+  new SpeakingProviderError("rate limit", "rate_limit", 429),
+  new SpeakingProviderError("server failure", "unavailable", 500),
+  new SpeakingProviderError("overloaded", "unavailable", 503),
+  new SpeakingProviderError("network failure", "network"),
+  new SpeakingProviderError("malformed JSON", "invalid_response"),
+  new SpeakingProviderError("bad credentials", "authentication", 401),
+  new SpeakingProviderError("invalid model", "bad_request", 404)
+]) test(`evaluation recovery handles ${failure.failureKind} ${failure.status ?? ""}`, async () => {
+  const app = express();
+  app.use(express.json());
+  const state = createSpeakingRouteState();
+  const providers = createSpeakingProviders({ NODE_ENV: "test", SPEAKING_MOCK_MODE: "true" });
+  let counter = 0;
+  let evaluationCalls = 0;
+  let nowMs = Date.parse("2026-09-12T00:00:00.000Z");
+  const requireTeacher = (req: Request & { user?: TeacherUser }, res: Response, next: NextFunction) => {
+    const teacher = teachers.get(String(req.header("x-teacher") ?? ""));
+    if (!teacher) {
+      res.status(401).json({ error: "Teacher login required." });
+      return;
+    }
+    req.user = teacher;
+    next();
+  };
+  registerSpeakingRoutes(app, {
+    requireTeacher,
+    now: () => new Date(nowMs).toISOString(),
+    id: () => `retry-route-${++counter}`,
+    state,
+    providers,
+    evaluationProvider: {
+      async evaluate(input) {
+        evaluationCalls += 1;
+        if (evaluationCalls === 1) throw failure;
+        return providers.evaluation.evaluate(input);
+      }
+    },
+    allowTextInput: true,
+    random: () => 0.5
+  });
+  const server = await new Promise<ReturnType<typeof app.listen>>((resolve) => {
+    const listener = app.listen(0, () => resolve(listener));
+  });
+  const baseUrl = `http://127.0.0.1:${(server.address() as AddressInfo).port}`;
+  const api = async <T>(path: string, options: ApiOptions = {}) => {
+    const headers = new Headers();
+    if (options.teacher) headers.set("x-teacher", options.teacher);
+    if (options.speakingToken) headers.set("x-speaking-token", options.speakingToken);
+    if (options.body !== undefined) headers.set("content-type", "application/json");
+    const response = await fetch(`${baseUrl}${path}`, { method: options.method ?? "GET", headers, body: options.body === undefined ? undefined : JSON.stringify(options.body) });
+    const text = await response.text();
+    return { response, body: (text ? JSON.parse(text) : {}) as T };
+  };
+  try {
+    const created = await api<{ activity: { id: string } }>("/api/speaking/activities", { method: "POST", teacher: "owner", body: activityInput });
+    const launched = await api<{ session: { id: string; joinCode: string } }>(`/api/speaking/activities/${created.body.activity.id}/sessions`, { method: "POST", teacher: "owner" });
+    await api(`/api/speaking/sessions/${launched.body.session.id}/start-session`, { method: "POST", teacher: "owner" });
+    const joined = await api<{ token: string; session: { id: string }; participant: { id: string } }>("/api/speaking/join", { method: "POST", body: { code: launched.body.session.joinCode, identifier: "Retry student" } });
+    await api(`/api/speaking/sessions/${joined.body.session.id}/start`, { method: "POST", speakingToken: joined.body.token });
+    await api(`/api/speaking/sessions/${joined.body.session.id}/turn`, { method: "POST", speakingToken: joined.body.token, body: { text: "I want a blue shirt." } });
+    const firstFinish = await api<{ evaluationStatus?: string; evaluationRetryable?: boolean; nextRetryAt?: string }>(`/api/speaking/sessions/${joined.body.session.id}/finish`, { method: "POST", speakingToken: joined.body.token });
+    assert.equal(firstFinish.response.status, 202);
+    if (failure.failureKind === "authentication" || failure.failureKind === "bad_request") {
+      assert.equal(firstFinish.body.evaluationStatus, "failed");
+      assert.equal(firstFinish.body.evaluationRetryable, false);
+      nowMs += 600_000;
+      await api(`/api/speaking/sessions/${joined.body.session.id}/finish`, { method: "POST", speakingToken: joined.body.token });
+      await api(`/api/speaking/results/${joined.body.participant.id}`, { speakingToken: joined.body.token });
+      assert.equal(evaluationCalls, 1);
+      return;
+    }
+    assert.equal(firstFinish.body.evaluationStatus, "retrying");
+    assert.equal(firstFinish.body.evaluationRetryable, true);
+    assert.ok(firstFinish.body.nextRetryAt);
+    await Promise.all([
+      api(`/api/speaking/results/${joined.body.participant.id}`, { speakingToken: joined.body.token }),
+      api(`/api/speaking/sessions/${joined.body.session.id}/finish`, { method: "POST", speakingToken: joined.body.token })
+    ]);
+    assert.equal(evaluationCalls, 1, "manual retry must respect durable backoff");
+
+    nowMs = Date.parse(firstFinish.body.nextRetryAt!);
+    let recovered: { evaluation?: unknown; participant: { status: string } } | undefined;
+    for (let attempt = 0; attempt < 20; attempt += 1) {
+      const next = await api<{ result: { evaluation?: unknown; participant: { status: string } }; evaluationStatus?: string }>(`/api/speaking/results/${joined.body.participant.id}`, { speakingToken: joined.body.token });
+      recovered = next.body.result;
+      if (recovered.evaluation) break;
+      await new Promise((resolve) => setTimeout(resolve, 25));
+    }
+    assert.ok(recovered?.evaluation);
+    assert.equal(recovered?.participant.status, "completed");
+    assert.equal(evaluationCalls, 2);
+    const diagnostics = await api<{ metrics: { attempts: number; successes: number; retriesScheduled: number; failuresByKind: Record<string, number>; promptChars: { p50?: number }; responseChars: { p50?: number }; queueWaitMs: { p95?: number } } }>("/api/speaking/diagnostics/evaluations", { teacher: "owner" });
+    assert.equal(diagnostics.response.status, 200);
+    assert.equal(diagnostics.body.metrics.attempts, 2);
+    assert.equal(diagnostics.body.metrics.successes, 1);
+    assert.equal(diagnostics.body.metrics.retriesScheduled, 1);
+    assert.equal(diagnostics.body.metrics.failuresByKind[failure.failureKind], 1);
+    assert.ok((diagnostics.body.metrics.promptChars.p50 ?? 0) > 0);
+    assert.ok((diagnostics.body.metrics.responseChars.p50 ?? 0) > 0);
+    assert.ok((diagnostics.body.metrics.queueWaitMs.p95 ?? Infinity) < 1_000, "retry backoff must not be reported as provider queue delay");
+  } finally {
+    app.emit("speaking:shutdown");
+    await new Promise<void>((resolve) => server.close(() => resolve()));
   }
 });
 

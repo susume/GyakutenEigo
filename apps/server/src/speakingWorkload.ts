@@ -9,6 +9,7 @@ export type SpeakingWorkloadOptions = {
 };
 
 export type SpeakingWorkloadMetrics = {
+  maxQueueWaitMs: number;
   maxConcurrent: number;
   maxEvaluationConcurrent: number;
   maxQueue: number;
@@ -164,6 +165,7 @@ export class SpeakingProviderWorkload {
 
   snapshot(): SpeakingWorkloadMetrics {
     return {
+      maxQueueWaitMs: this.maxQueueWaitMs,
       maxConcurrent: this.maxConcurrent,
       maxEvaluationConcurrent: this.maxEvaluationConcurrent,
       maxQueue: this.maxQueue,

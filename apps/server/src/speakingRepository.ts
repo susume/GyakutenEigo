@@ -1,5 +1,6 @@
 import { createHash } from "node:crypto";
 import { Prisma, PrismaClient } from "@prisma/client";
+import { SPEAKING_EVALUATION_MAX_ATTEMPTS } from "./speakingEvaluation.js";
 import {
   SPEAKING_LIMITS,
   speakingOverallScore,
@@ -142,11 +143,11 @@ export interface SpeakingRepository {
   appendTurn(input: Omit<SpeakingTurn, "id"> & { id: string; requestId?: string; sessionId?: string }): Promise<SpeakingTurn>;
   saveEvaluation(participantId: string, evaluation: SpeakingEvaluation): Promise<SpeakingEvaluation>;
   getEvaluationJob(participantId: string): Promise<SpeakingEvaluationJob | undefined>;
-  upsertEvaluationJob(participantId: string, input: { id: string; queuedAt: string; updatedAt: string; status?: SpeakingEvaluationJobStatus; attempt?: number }): Promise<SpeakingEvaluationJob>;
+  upsertEvaluationJob(participantId: string, input: { id: string; queuedAt: string; updatedAt: string; status?: SpeakingEvaluationJobStatus; attempt?: number; retryable?: boolean; nextRetryAt?: string | null }): Promise<SpeakingEvaluationJob>;
   claimEvaluationJob(participantId: string, startedAt: string, leaseUntil: string): Promise<SpeakingEvaluationJob | undefined>;
-  settleEvaluationJob(participantId: string, attempt: number, now: string, outcome: { evaluation?: SpeakingEvaluation; errorCode?: string }): Promise<boolean>;
+  settleEvaluationJob(participantId: string, attempt: number, now: string, outcome: { evaluation?: SpeakingEvaluation; errorCode?: string; retryable?: boolean; nextRetryAt?: string | null }): Promise<boolean>;
   recoverableEvaluationParticipants(now: string): Promise<string[]>;
-  updateEvaluationJob(participantId: string, patch: { status?: SpeakingEvaluationJobStatus; startedAt?: string | null; finishedAt?: string | null; leaseUntil?: string | null; lastErrorCode?: string | null; updatedAt: string }): Promise<SpeakingEvaluationJob | undefined>;
+  updateEvaluationJob(participantId: string, patch: { status?: SpeakingEvaluationJobStatus; startedAt?: string | null; finishedAt?: string | null; leaseUntil?: string | null; lastErrorCode?: string | null; retryable?: boolean; nextRetryAt?: string | null; updatedAt: string }): Promise<SpeakingEvaluationJob | undefined>;
   getResult(participantId: string): Promise<SpeakingResultRecord | undefined>;
   listResults(activityId: string, sessionId: string, teacherId: string): Promise<Array<SpeakingResultRecord & { overallScore?: number }>>;
 }
@@ -677,12 +678,12 @@ export class InMemorySpeakingRepository implements SpeakingRepository {
     return job ? cloneEvaluationJob(job) : undefined;
   }
 
-  async upsertEvaluationJob(participantId: string, input: { id: string; queuedAt: string; updatedAt: string; status?: SpeakingEvaluationJobStatus; attempt?: number }) {
+  async upsertEvaluationJob(participantId: string, input: { id: string; queuedAt: string; updatedAt: string; status?: SpeakingEvaluationJobStatus; attempt?: number; retryable?: boolean; nextRetryAt?: string | null }) {
     const existing = this.state.evaluationJobs.get(participantId);
     if (existing && existing.status !== "failed") return cloneEvaluationJob(existing);
     const job: SpeakingEvaluationJob = existing
-      ? { ...existing, ...(input.status ? { status: input.status } : {}), ...(input.attempt === undefined ? {} : { attempt: input.attempt }), updatedAt: input.updatedAt, ...(input.status === "queued" ? { queuedAt: input.queuedAt, startedAt: undefined, finishedAt: undefined, leaseUntil: undefined, lastErrorCode: undefined } : {}) }
-      : { id: input.id, participantId, status: input.status ?? "queued", attempt: input.attempt ?? 0, queuedAt: input.queuedAt, updatedAt: input.updatedAt };
+      ? { ...existing, ...(input.status ? { status: input.status } : {}), ...(input.attempt === undefined ? {} : { attempt: input.attempt }), ...(input.retryable === undefined ? {} : { retryable: input.retryable }), ...(input.nextRetryAt === undefined ? {} : input.nextRetryAt ? { nextRetryAt: input.nextRetryAt } : { nextRetryAt: undefined }), updatedAt: input.updatedAt, ...(input.status === "queued" ? { queuedAt: input.queuedAt, startedAt: undefined, finishedAt: undefined, leaseUntil: undefined, lastErrorCode: undefined, retryable: false, nextRetryAt: undefined } : {}) }
+      : { id: input.id, participantId, status: input.status ?? "queued", attempt: input.attempt ?? 0, queuedAt: input.queuedAt, ...(input.retryable === undefined ? {} : { retryable: input.retryable }), ...(input.nextRetryAt ? { nextRetryAt: input.nextRetryAt } : {}), updatedAt: input.updatedAt };
     this.state.evaluationJobs.set(participantId, job);
     return cloneEvaluationJob(job);
   }
@@ -692,36 +693,67 @@ export class InMemorySpeakingRepository implements SpeakingRepository {
     if (!job) return undefined;
     const nowMs = Date.parse(startedAt);
     const leaseMs = job.leaseUntil ? Date.parse(job.leaseUntil) : Number.NaN;
-    if (job.status !== "queued" && !(job.status === "running" && (!Number.isFinite(leaseMs) || leaseMs <= nowMs))) return undefined;
+    const retryAtMs = job.nextRetryAt ? Date.parse(job.nextRetryAt) : Number.NaN;
+    const retryReady = job.status === "retrying" && (!Number.isFinite(retryAtMs) || retryAtMs <= nowMs);
+    if (job.status !== "queued" && !retryReady && !(job.status === "running" && (!Number.isFinite(leaseMs) || leaseMs <= nowMs))) return undefined;
+    if (job.attempt >= SPEAKING_EVALUATION_MAX_ATTEMPTS) {
+      job.status = "failed";
+      job.finishedAt = startedAt;
+      job.updatedAt = startedAt;
+      job.leaseUntil = undefined;
+      job.nextRetryAt = undefined;
+      job.retryable = false;
+      job.lastErrorCode = "attempts_exhausted";
+      await this.updateParticipant(participantId, { status: "error", helpPending: false });
+      return undefined;
+    }
     job.status = "running";
     job.attempt += 1;
     job.startedAt = startedAt;
     job.leaseUntil = leaseUntil;
+    job.nextRetryAt = undefined;
     job.updatedAt = startedAt;
+    const participant = this.state.participants.get(participantId);
+    await this.updateParticipant(participantId, { status: "evaluating", finishedAt: participant?.finishedAt ?? startedAt });
     return cloneEvaluationJob(job);
   }
 
-  async settleEvaluationJob(participantId: string, attempt: number, now: string, outcome: { evaluation?: SpeakingEvaluation; errorCode?: string }) {
+  async settleEvaluationJob(participantId: string, attempt: number, now: string, outcome: { evaluation?: SpeakingEvaluation; errorCode?: string; retryable?: boolean; nextRetryAt?: string | null }) {
     const job = this.state.evaluationJobs.get(participantId);
     if (!job || job.status !== "running" || job.attempt !== attempt) return false;
-    job.status = outcome.evaluation ? "completed" : "failed";
-    job.finishedAt = now;
+    const retrying = !outcome.evaluation && outcome.retryable === true && Boolean(outcome.nextRetryAt);
+    job.status = outcome.evaluation ? "completed" : retrying ? "retrying" : "failed";
+    if (retrying) {
+      job.finishedAt = undefined;
+      job.queuedAt = outcome.nextRetryAt!;
+    }
+    else job.finishedAt = now;
     job.leaseUntil = undefined;
+    job.retryable = outcome.retryable === true;
+    job.nextRetryAt = retrying ? outcome.nextRetryAt ?? undefined : undefined;
     job.updatedAt = now;
     job.lastErrorCode = outcome.errorCode;
     if (outcome.evaluation) await this.saveEvaluation(participantId, outcome.evaluation);
-    await this.updateParticipant(participantId, { status: outcome.evaluation ? "completed" : "error", helpPending: false });
+    await this.updateParticipant(participantId, { status: outcome.evaluation ? "completed" : retrying ? "evaluating" : "error", helpPending: false });
     return true;
   }
 
   async recoverableEvaluationParticipants(now: string) {
-    return [...this.state.evaluationJobs.values()].filter((job) => job.status === "queued" || job.status === "running" && (!job.leaseUntil || Date.parse(job.leaseUntil) <= Date.parse(now))).slice(0, 100).map((job) => job.participantId);
+    const nowMs = Date.parse(now);
+    return [...this.state.evaluationJobs.values()].filter((job) => job.status === "queued" || job.status === "retrying" && (!job.nextRetryAt || !Number.isFinite(Date.parse(job.nextRetryAt)) || Date.parse(job.nextRetryAt) <= nowMs) || job.status === "running" && (!job.leaseUntil || Date.parse(job.leaseUntil) <= nowMs)).slice(0, 100).map((job) => job.participantId);
   }
 
-  async updateEvaluationJob(participantId: string, patch: { status?: SpeakingEvaluationJobStatus; startedAt?: string | null; finishedAt?: string | null; leaseUntil?: string | null; lastErrorCode?: string | null; updatedAt: string }) {
+  async updateEvaluationJob(participantId: string, patch: { status?: SpeakingEvaluationJobStatus; startedAt?: string | null; finishedAt?: string | null; leaseUntil?: string | null; lastErrorCode?: string | null; retryable?: boolean; nextRetryAt?: string | null; updatedAt: string }) {
     const job = this.state.evaluationJobs.get(participantId);
     if (!job) return undefined;
-    Object.assign(job, patch);
+    if (patch.status !== undefined) job.status = patch.status;
+    if (patch.startedAt !== undefined) job.startedAt = patch.startedAt ?? undefined;
+    if (patch.finishedAt !== undefined) job.finishedAt = patch.finishedAt ?? undefined;
+    if (patch.leaseUntil !== undefined) job.leaseUntil = patch.leaseUntil ?? undefined;
+    if (patch.lastErrorCode !== undefined) job.lastErrorCode = patch.lastErrorCode ?? undefined;
+    if (patch.retryable !== undefined) job.retryable = patch.retryable;
+    if (patch.nextRetryAt !== undefined) job.nextRetryAt = patch.nextRetryAt ?? undefined;
+    job.updatedAt = patch.updatedAt;
     return cloneEvaluationJob(job);
   }
 
@@ -882,10 +914,19 @@ const toTurn = (row: { id: string; participantId: string; speaker: string; text:
   ...(row.requestId ? { requestId: row.requestId } : {})
 });
 
-const toEvaluation = (row: { participantId: string; language: string; scoresJson: Prisma.JsonValue; evidenceJson: Prisma.JsonValue; strengthsJson: Prisma.JsonValue; improvementsJson: Prisma.JsonValue; usefulEnglishJson: Prisma.JsonValue; overallMessage: string; createdAt: Date }): SpeakingEvaluation => ({
+const toEvaluation = (row: { participantId: string; language: string; scoresJson: Prisma.JsonValue; evidenceJson: Prisma.JsonValue; strengthsJson: Prisma.JsonValue; improvementsJson: Prisma.JsonValue; usefulEnglishJson: Prisma.JsonValue; metadataJson?: Prisma.JsonValue; overallMessage: string; createdAt: Date }): SpeakingEvaluation => {
+  const metadata = objectFromJson(row.metadataJson ?? {});
+  const goalCompletion = metadata.goalCompletion && typeof metadata.goalCompletion === "object" && !Array.isArray(metadata.goalCompletion)
+    ? metadata.goalCompletion as SpeakingEvaluation["goalCompletion"]
+    : undefined;
+  const assessmentStatus = metadata.assessmentStatus === "scored" || metadata.assessmentStatus === "insufficient_evidence"
+    ? metadata.assessmentStatus
+    : Object.values(objectFromJson(row.scoresJson)).some((value) => typeof value === "number") ? "scored" : "insufficient_evidence";
+  return {
   participantId: row.participantId,
   language: row.language as SpeakingEvaluation["language"],
-  assessmentStatus: Object.values(objectFromJson(row.scoresJson)).some((value) => typeof value === "number") ? "scored" : "insufficient_evidence",
+  assessmentStatus,
+  ...(typeof metadata.notScoredReason === "string" ? { notScoredReason: metadata.notScoredReason } : {}),
   scores: Object.fromEntries(Object.entries(objectFromJson(row.scoresJson)).map(([key, value]) => [key, typeof value === "number" ? value : null])) as Record<string, number | null>,
   evidence: objectFromJson(row.evidenceJson) as Record<string, string>,
   strengths: Array.isArray(row.strengthsJson) ? row.strengthsJson.filter((item): item is string => typeof item === "string") : [],
@@ -893,11 +934,13 @@ const toEvaluation = (row: { participantId: string; language: string; scoresJson
   usefulEnglish: Array.isArray(row.usefulEnglishJson) ? row.usefulEnglishJson.flatMap((item) => {
     if (!item || typeof item !== "object" || Array.isArray(item)) return [];
     const candidate = item as Record<string, unknown>;
-    return typeof candidate.said === "string" && typeof candidate.try === "string" ? [{ said: candidate.said, try: candidate.try }] : [];
+    return typeof candidate.said === "string" && typeof candidate.try === "string" ? [{ said: candidate.said, try: candidate.try, ...(typeof candidate.sourceTurnId === "string" ? { sourceTurnId: candidate.sourceTurnId } : {}) }] : [];
   }) : [],
+  ...(goalCompletion ? { goalCompletion } : {}),
   overallMessage: row.overallMessage,
   createdAt: row.createdAt.toISOString()
-});
+  };
+};
 
 const activityInclude = { rubric: { orderBy: { position: "asc" as const } } } as const;
 const sessionInclude = { activity: { include: activityInclude } } as const;
@@ -1368,6 +1411,11 @@ export class PrismaSpeakingRepository implements SpeakingRepository {
         strengthsJson: evaluation.strengths as Prisma.InputJsonValue,
         improvementsJson: evaluation.improvements as Prisma.InputJsonValue,
         usefulEnglishJson: evaluation.usefulEnglish as Prisma.InputJsonValue,
+        metadataJson: {
+          assessmentStatus: evaluation.assessmentStatus,
+          ...(evaluation.notScoredReason ? { notScoredReason: evaluation.notScoredReason } : {}),
+          ...(evaluation.goalCompletion ? { goalCompletion: evaluation.goalCompletion } : {})
+        } as unknown as Prisma.InputJsonValue,
         overallMessage: evaluation.overallMessage,
         createdAt: new Date(evaluation.createdAt)
       },
@@ -1378,6 +1426,11 @@ export class PrismaSpeakingRepository implements SpeakingRepository {
         strengthsJson: evaluation.strengths as Prisma.InputJsonValue,
         improvementsJson: evaluation.improvements as Prisma.InputJsonValue,
         usefulEnglishJson: evaluation.usefulEnglish as Prisma.InputJsonValue,
+        metadataJson: {
+          assessmentStatus: evaluation.assessmentStatus,
+          ...(evaluation.notScoredReason ? { notScoredReason: evaluation.notScoredReason } : {}),
+          ...(evaluation.goalCompletion ? { goalCompletion: evaluation.goalCompletion } : {})
+        } as unknown as Prisma.InputJsonValue,
         overallMessage: evaluation.overallMessage
       }
     });
@@ -1396,14 +1449,16 @@ export class PrismaSpeakingRepository implements SpeakingRepository {
       ...(row.finishedAt ? { finishedAt: row.finishedAt.toISOString() } : {}),
       ...(row.leaseUntil ? { leaseUntil: row.leaseUntil.toISOString() } : {}),
       ...(row.lastErrorCode ? { lastErrorCode: row.lastErrorCode } : {}),
+      retryable: row.retryable,
+      ...(row.nextRetryAt ? { nextRetryAt: row.nextRetryAt.toISOString() } : {}),
       updatedAt: row.updatedAt.toISOString()
     } : undefined;
   }
 
-  async upsertEvaluationJob(participantId: string, input: { id: string; queuedAt: string; updatedAt: string; status?: SpeakingEvaluationJobStatus; attempt?: number }) {
+  async upsertEvaluationJob(participantId: string, input: { id: string; queuedAt: string; updatedAt: string; status?: SpeakingEvaluationJobStatus; attempt?: number; retryable?: boolean; nextRetryAt?: string | null }) {
     if (input.status === "queued") await this.prisma.speakingEvaluationJob.updateMany({
       where: { participantId, status: "failed" },
-      data: { status: "queued", queuedAt: new Date(input.queuedAt), startedAt: null, finishedAt: null, leaseUntil: null, lastErrorCode: null }
+      data: { status: "queued", queuedAt: new Date(input.queuedAt), startedAt: null, finishedAt: null, leaseUntil: null, lastErrorCode: null, retryable: false, nextRetryAt: null }
     });
     const row = await this.prisma.speakingEvaluationJob.upsert({
       where: { participantId },
@@ -1413,6 +1468,8 @@ export class PrismaSpeakingRepository implements SpeakingRepository {
         status: input.status ?? "queued",
         attempt: input.attempt ?? 0,
         queuedAt: new Date(input.queuedAt),
+        retryable: input.retryable ?? false,
+        ...(input.nextRetryAt ? { nextRetryAt: new Date(input.nextRetryAt) } : {}),
         updatedAt: new Date(input.updatedAt)
       },
       update: {}
@@ -1427,53 +1484,73 @@ export class PrismaSpeakingRepository implements SpeakingRepository {
       ...(row.finishedAt ? { finishedAt: row.finishedAt.toISOString() } : {}),
       ...(row.leaseUntil ? { leaseUntil: row.leaseUntil.toISOString() } : {}),
       ...(row.lastErrorCode ? { lastErrorCode: row.lastErrorCode } : {}),
+      retryable: row.retryable,
+      ...(row.nextRetryAt ? { nextRetryAt: row.nextRetryAt.toISOString() } : {}),
       updatedAt: row.updatedAt.toISOString()
     };
   }
 
   async claimEvaluationJob(participantId: string, startedAt: string, leaseUntil: string) {
     const now = new Date(startedAt);
-    const claimed = await this.prisma.speakingEvaluationJob.updateMany({
-      where: {
-        participantId,
-        OR: [
-          { status: "queued" },
-          { status: "running", leaseUntil: { lte: now } },
-          { status: "running", leaseUntil: null }
-        ]
-      },
-      data: { status: "running", attempt: { increment: 1 }, startedAt: now, leaseUntil: new Date(leaseUntil), lastErrorCode: null }
+    const due: Prisma.SpeakingEvaluationJobWhereInput = {
+      participantId,
+      OR: [
+        { status: "queued" },
+        { status: "retrying", OR: [{ nextRetryAt: { lte: now } }, { nextRetryAt: null }] },
+        { status: "running", leaseUntil: { lte: now } },
+        { status: "running", leaseUntil: null }
+      ]
+    };
+    return this.prisma.$transaction(async (tx) => {
+      const exhausted = await tx.speakingEvaluationJob.updateMany({
+        where: { ...due, attempt: { gte: SPEAKING_EVALUATION_MAX_ATTEMPTS } },
+        data: { status: "failed", finishedAt: now, leaseUntil: null, nextRetryAt: null, retryable: false, lastErrorCode: "attempts_exhausted" }
+      });
+      if (exhausted.count) {
+        await new PrismaSpeakingRepository(tx as PrismaClient).updateParticipant(participantId, { status: "error", helpPending: false });
+        return undefined;
+      }
+      const claimed = await tx.speakingEvaluationJob.updateMany({
+        where: { ...due, attempt: { lt: SPEAKING_EVALUATION_MAX_ATTEMPTS } },
+        data: { status: "running", attempt: { increment: 1 }, startedAt: now, leaseUntil: new Date(leaseUntil), nextRetryAt: null }
+      });
+      if (!claimed.count) return undefined;
+      const repository = new PrismaSpeakingRepository(tx as PrismaClient);
+      const participant = await repository.getParticipant(participantId);
+      await repository.updateParticipant(participantId, { status: "evaluating", finishedAt: participant?.finishedAt ?? startedAt });
+      return repository.getEvaluationJob(participantId);
     });
-    if (!claimed.count) return undefined;
-    return this.getEvaluationJob(participantId);
   }
 
-  async settleEvaluationJob(participantId: string, attempt: number, now: string, outcome: { evaluation?: SpeakingEvaluation; errorCode?: string }) {
+  async settleEvaluationJob(participantId: string, attempt: number, now: string, outcome: { evaluation?: SpeakingEvaluation; errorCode?: string; retryable?: boolean; nextRetryAt?: string | null }) {
     return this.prisma.$transaction(async (tx) => {
+      const retrying = !outcome.evaluation && outcome.retryable === true && Boolean(outcome.nextRetryAt);
       const claimed = await tx.speakingEvaluationJob.updateMany({
         where: { participantId, attempt, status: "running" },
-        data: { status: outcome.evaluation ? "completed" : "failed", finishedAt: new Date(now), leaseUntil: null, lastErrorCode: outcome.errorCode ?? null }
+        data: { status: outcome.evaluation ? "completed" : retrying ? "retrying" : "failed", ...(retrying ? { queuedAt: new Date(outcome.nextRetryAt!) } : {}), finishedAt: retrying ? null : new Date(now), leaseUntil: null, lastErrorCode: outcome.errorCode ?? null, retryable: outcome.retryable === true, nextRetryAt: retrying ? new Date(outcome.nextRetryAt!) : null }
       });
       if (!claimed.count) return false;
       const repository = new PrismaSpeakingRepository(tx as PrismaClient);
       if (outcome.evaluation) await repository.saveEvaluation(participantId, outcome.evaluation);
-      await repository.updateParticipant(participantId, { status: outcome.evaluation ? "completed" : "error", helpPending: false });
+      await repository.updateParticipant(participantId, { status: outcome.evaluation ? "completed" : retrying ? "evaluating" : "error", helpPending: false });
       return true;
     });
   }
 
   async recoverableEvaluationParticipants(now: string) {
-    const rows = await this.prisma.speakingEvaluationJob.findMany({ where: { OR: [{ status: "queued" }, { status: "running", leaseUntil: { lte: new Date(now) } }, { status: "running", leaseUntil: null }] }, select: { participantId: true }, orderBy: { queuedAt: "asc" }, take: 100 });
+    const rows = await this.prisma.speakingEvaluationJob.findMany({ where: { OR: [{ status: "queued" }, { status: "retrying", OR: [{ nextRetryAt: { lte: new Date(now) } }, { nextRetryAt: null }] }, { status: "running", leaseUntil: { lte: new Date(now) } }, { status: "running", leaseUntil: null }] }, select: { participantId: true }, orderBy: { queuedAt: "asc" }, take: 100 });
     return rows.map((row) => row.participantId);
   }
 
-  async updateEvaluationJob(participantId: string, patch: { status?: SpeakingEvaluationJobStatus; startedAt?: string | null; finishedAt?: string | null; leaseUntil?: string | null; lastErrorCode?: string | null; updatedAt: string }) {
+  async updateEvaluationJob(participantId: string, patch: { status?: SpeakingEvaluationJobStatus; startedAt?: string | null; finishedAt?: string | null; leaseUntil?: string | null; lastErrorCode?: string | null; retryable?: boolean; nextRetryAt?: string | null; updatedAt: string }) {
     const row = await this.prisma.speakingEvaluationJob.update({ where: { participantId }, data: {
       ...(patch.status ? { status: patch.status } : {}),
       ...(patch.startedAt !== undefined ? { startedAt: patch.startedAt ? new Date(patch.startedAt) : null } : {}),
       ...(patch.finishedAt !== undefined ? { finishedAt: patch.finishedAt ? new Date(patch.finishedAt) : null } : {}),
       ...(patch.leaseUntil !== undefined ? { leaseUntil: patch.leaseUntil ? new Date(patch.leaseUntil) : null } : {}),
-      ...(patch.lastErrorCode !== undefined ? { lastErrorCode: patch.lastErrorCode } : {})
+      ...(patch.lastErrorCode !== undefined ? { lastErrorCode: patch.lastErrorCode } : {}),
+      ...(patch.retryable !== undefined ? { retryable: patch.retryable } : {}),
+      ...(patch.nextRetryAt !== undefined ? { nextRetryAt: patch.nextRetryAt ? new Date(patch.nextRetryAt) : null } : {})
     } });
     return {
       id: row.id,
@@ -1485,6 +1562,8 @@ export class PrismaSpeakingRepository implements SpeakingRepository {
       ...(row.finishedAt ? { finishedAt: row.finishedAt.toISOString() } : {}),
       ...(row.leaseUntil ? { leaseUntil: row.leaseUntil.toISOString() } : {}),
       ...(row.lastErrorCode ? { lastErrorCode: row.lastErrorCode } : {}),
+      retryable: row.retryable,
+      ...(row.nextRetryAt ? { nextRetryAt: row.nextRetryAt.toISOString() } : {}),
       updatedAt: row.updatedAt.toISOString()
     };
   }

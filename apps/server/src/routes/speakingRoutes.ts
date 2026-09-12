@@ -36,14 +36,24 @@ import {
 } from "../speakingRepository.js";
 import {
   createSpeakingProviders,
+  speakingEvaluationProviderModel,
+  speakingProviderTimeoutMs,
   speakingProviderFailureDetails,
+  SpeakingProviderError,
   type ConversationProvider,
   type EvaluationProvider,
   type HelpProvider,
   type TranscriptionProvider,
   type TranscriptionResult
 } from "../speakingProviders.js";
-import { buildConversationPrompt } from "../speakingPrompts.js";
+import { buildConversationPrompt, buildEvaluationPrompt } from "../speakingPrompts.js";
+import {
+  SPEAKING_EVALUATION_MAX_ATTEMPTS,
+  SPEAKING_EVALUATOR_PROMPT_VERSION,
+  buildSpeakingInteractionMetadata,
+  nextSpeakingEvaluationRetryAt,
+  sanitizeSpeakingEvaluation
+} from "../speakingEvaluation.js";
 import { consumeSpeakingRateLimit, type SpeakingRateLimitDecision } from "../speakingAdmission.js";
 import { createSpeakingProviderWorkload, SpeakingWorkloadError, type SpeakingProviderWorkload } from "../speakingWorkload.js";
 import { buildSpeakingCsv, speakingCsvEvaluationScores } from "../speakingCsv.js";
@@ -89,6 +99,8 @@ export type SpeakingRouteDependencies = {
   sessionLifetimeSeconds?: number;
   /** Explicit test override; production diagnostics remain opt-in by environment. */
   latencyDebug?: boolean;
+  /** Deterministic retry jitter hook for route tests. */
+  random?: () => number;
   workload?: SpeakingProviderWorkload;
 };
 
@@ -406,17 +418,24 @@ export const participantActiveElapsedMs = (participant: SpeakingParticipant, ses
 export const participantHasSpeakingTime = (participant: SpeakingParticipant, session: SpeakingSession, activity: SpeakingActivity, referenceTime: string) =>
   !participant.startedAt || participantActiveElapsedMs(participant, session, referenceTime) < activity.durationSeconds * 1_000;
 
+export class SpeakingEvaluationValidationError extends Error {
+  constructor(message: string) {
+    super(message);
+    this.name = "SpeakingEvaluationValidationError";
+  }
+}
+
 export const validateSpeakingEvaluation = (evaluation: SpeakingEvaluation, activity: SpeakingActivity, participantId: string) => {
   const parsed = SpeakingEvaluationSchema.safeParse(evaluation);
-  if (!parsed.success || parsed.data.participantId !== participantId || parsed.data.language !== activity.nativeLanguage) throw new Error("Evaluation provider returned invalid data.");
+  if (!parsed.success || parsed.data.participantId !== participantId || parsed.data.language !== activity.nativeLanguage) throw new SpeakingEvaluationValidationError("Evaluation provider returned invalid data.");
   const enabledIds = new Set(activity.rubric.filter((criterion) => criterion.enabled).map((criterion) => criterion.id));
   const scoreIds = Object.keys(parsed.data.scores);
   const evidenceIds = Object.keys(parsed.data.evidence);
-  if (scoreIds.some((id) => !enabledIds.has(id)) || evidenceIds.some((id) => !enabledIds.has(id)) || scoreIds.some((id) => !evidenceIds.includes(id)) || [...enabledIds].some((id) => !scoreIds.includes(id))) throw new Error("Evaluation provider omitted or added rubric criteria.");
-  if (scoreIds.some((id) => /pronunciation|accent|phoneme/i.test(id))) throw new Error("Pronunciation scoring is not supported.");
+  if (scoreIds.some((id) => !enabledIds.has(id)) || evidenceIds.some((id) => !enabledIds.has(id)) || scoreIds.some((id) => !evidenceIds.includes(id)) || [...enabledIds].some((id) => !scoreIds.includes(id))) throw new SpeakingEvaluationValidationError("Evaluation provider omitted or added rubric criteria.");
+  if (scoreIds.some((id) => /pronunciation|accent|phoneme/i.test(id))) throw new SpeakingEvaluationValidationError("Pronunciation scoring is not supported.");
   const hasNumericScore = Object.values(parsed.data.scores).some((score) => typeof score === "number");
   if ((parsed.data.assessmentStatus === "insufficient_evidence" && hasNumericScore) || (parsed.data.assessmentStatus === "scored" && !hasNumericScore)) {
-    throw new Error("Evaluation provider returned an inconsistent assessment status.");
+    throw new SpeakingEvaluationValidationError("Evaluation provider returned an inconsistent assessment status.");
   }
   return parsed.data;
 };
@@ -447,6 +466,44 @@ export const registerSpeakingRoutes = (app: Application, deps: SpeakingRouteDepe
   const configuredInvalidJoinLimit = Number.parseInt(process.env.SPEAKING_INVALID_JOIN_LIMIT ?? "", 10);
   const invalidJoinLimit = Number.isFinite(configuredInvalidJoinLimit) ? Math.min(50, Math.max(3, configuredInvalidJoinLimit)) : 10;
   const latencyDebug = deps.latencyDebug ?? speakingLatencyDebugEnabled();
+  const evaluationTelemetry = {
+    attempts: 0,
+    successes: 0,
+    retriesScheduled: 0,
+    terminalFailures: 0,
+    failuresByKind: {} as Record<string, number>,
+    parseFailures: 0,
+    schemaFailures: 0,
+    durationsMs: [] as number[],
+    queueWaitMs: [] as number[],
+    providerDurationsMs: [] as number[],
+    promptChars: [] as number[],
+    responseChars: [] as number[]
+  };
+  const rememberEvaluationMetric = (values: number[], value: number) => {
+    if (Number.isFinite(value)) values.push(Math.min(120_000, Math.max(0, Math.round(value))));
+    if (values.length > 1_000) values.splice(0, values.length - 1_000);
+  };
+  const percentile = (values: number[], percentileValue: number) => {
+    if (!values.length) return undefined;
+    const sorted = [...values].sort((left, right) => left - right);
+    return sorted[Math.min(sorted.length - 1, Math.max(0, Math.ceil(sorted.length * percentileValue) - 1))];
+  };
+  const evaluationTelemetrySnapshot = () => ({
+    promptVersion: SPEAKING_EVALUATOR_PROMPT_VERSION,
+    attempts: evaluationTelemetry.attempts,
+    successes: evaluationTelemetry.successes,
+    retriesScheduled: evaluationTelemetry.retriesScheduled,
+    terminalFailures: evaluationTelemetry.terminalFailures,
+    failuresByKind: { ...evaluationTelemetry.failuresByKind },
+    parseFailures: evaluationTelemetry.parseFailures,
+    schemaFailures: evaluationTelemetry.schemaFailures,
+    latencyMs: { p50: percentile(evaluationTelemetry.durationsMs, 0.5), p95: percentile(evaluationTelemetry.durationsMs, 0.95), p99: percentile(evaluationTelemetry.durationsMs, 0.99) },
+    queueWaitMs: { p50: percentile(evaluationTelemetry.queueWaitMs, 0.5), p95: percentile(evaluationTelemetry.queueWaitMs, 0.95), p99: percentile(evaluationTelemetry.queueWaitMs, 0.99) },
+    providerDurationMs: { p50: percentile(evaluationTelemetry.providerDurationsMs, 0.5), p95: percentile(evaluationTelemetry.providerDurationsMs, 0.95), p99: percentile(evaluationTelemetry.providerDurationsMs, 0.99) },
+    promptChars: { p50: percentile(evaluationTelemetry.promptChars, 0.5), p95: percentile(evaluationTelemetry.promptChars, 0.95), p99: percentile(evaluationTelemetry.promptChars, 0.99) },
+    responseChars: { p50: percentile(evaluationTelemetry.responseChars, 0.5), p95: percentile(evaluationTelemetry.responseChars, 0.95), p99: percentile(evaluationTelemetry.responseChars, 0.99) }
+  });
 
   // Express's JSON parser skips audio/*, so parse only this endpoint as a
   // bounded binary request. Raw bytes are never written to the repository.
@@ -538,9 +595,18 @@ export const registerSpeakingRoutes = (app: Application, deps: SpeakingRouteDepe
   };
 
   const evaluationGraceMs = Math.min(1_000, Math.max(0, Number.parseInt(process.env.SPEAKING_EVALUATION_RESPONSE_GRACE_MS ?? "250", 10) || 250));
-  const evaluationLeaseMs = Math.min(10 * 60_000, Math.max(30_000, Number.parseInt(process.env.SPEAKING_EVALUATION_LEASE_MS ?? "120000", 10) || 120_000));
+  const evaluationLeaseMs = Math.min(10 * 60_000, Math.max(
+    speakingProviderTimeoutMs("evaluation") + workload.snapshot().maxQueueWaitMs + 30_000,
+    Number.parseInt(process.env.SPEAKING_EVALUATION_LEASE_MS ?? "120000", 10) || 120_000
+  ));
 
   const evaluationStatus = (job?: SpeakingEvaluationJob) => job?.status ?? "queued";
+  const evaluationState = (job?: SpeakingEvaluationJob) => ({
+    evaluationStatus: evaluationStatus(job),
+    evaluationRetryable: Boolean(job?.retryable && job.attempt < SPEAKING_EVALUATION_MAX_ATTEMPTS),
+    ...(job?.nextRetryAt ? { nextRetryAt: job.nextRetryAt } : {})
+  });
+  const retryableEvaluationKinds = new Set(["overload", "timeout", "rate_limit", "unavailable", "network", "invalid_response"]);
 
   /**
    * Claim and run one durable evaluation job. The job row is the source of
@@ -548,6 +614,23 @@ export const registerSpeakingRoutes = (app: Application, deps: SpeakingRouteDepe
    * the database claim protects a second server instance.
    */
   const runEvaluation = async (participantId: string, claimedJob: SpeakingEvaluationJob) => {
+    const evaluationStartedAt = performance.now();
+    let queueWaitMs = Number.isFinite(Date.parse(claimedJob.startedAt ?? "")) && Number.isFinite(Date.parse(claimedJob.queuedAt))
+      ? Math.max(0, Date.parse(claimedJob.startedAt ?? claimedJob.queuedAt) - Date.parse(claimedJob.queuedAt))
+      : 0;
+    const providerName = evaluationProvider.providerName ?? "custom";
+    const model = speakingEvaluationProviderModel(evaluationProvider.providerName);
+    let providerDurationMs = 0;
+    let failureKind: string | undefined;
+    let failureStatus: number | undefined;
+    let parseFailure = false;
+    let schemaFailure = false;
+    let retryScheduledAt: string | undefined;
+    let promptChars = 0;
+    let responseChars = 0;
+    let finalJobState = "unknown";
+    let settled = false;
+    evaluationTelemetry.attempts += 1;
     try {
       const result = await repository.getResult(participantId);
       if (!result) throw new Error("Speaking participant session not found.");
@@ -555,42 +638,133 @@ export const registerSpeakingRoutes = (app: Application, deps: SpeakingRouteDepe
       if (!current) throw new Error("Speaking participant not found.");
       const finishedAt = current.finishedAt ?? deps.now();
       const studentTurns = result.turns.filter((turn) => turn.speaker === "student" && turn.text.trim().length > 0);
+      const interactionMetadata = buildSpeakingInteractionMetadata(result.turns);
+      const studentAudioDurationMs = studentTurns.reduce((total, turn) => total + (Number.isFinite(turn.audioDurationMs) ? Math.max(0, turn.audioDurationMs ?? 0) : 0), 0);
+      const rawEvaluation = studentTurns.length === 0
+        ? makeInsufficientEvidenceEvaluation(result.activity, participantId, finishedAt)
+        : await (async () => {
+          const timingMetadata = {
+            startedAt: current.startedAt,
+            finishedAt,
+            durationSeconds: participantActiveElapsedMs(current, result.session, finishedAt) / 1_000,
+            reliableAudioTiming: studentTurns.length > 0 && interactionMetadata.reliableAudioTurnCount === studentTurns.length,
+            studentAudioDurationMs
+          };
+          const prompt = buildEvaluationPrompt({ activity: result.activity, turns: result.turns, rubric: result.activity.rubric, timingMetadata, helpMetadata: { helpCount: current.helpCount, helpedTurnCount: interactionMetadata.helpedTurnCount }, interactionMetadata });
+          promptChars = prompt.length;
+          rememberEvaluationMetric(evaluationTelemetry.promptChars, promptChars);
+          const workloadQueuedAt = performance.now();
+          let providerStarted = false;
+          try {
+            return await runProvider("evaluation", async () => {
+              providerStarted = true;
+              queueWaitMs += boundedSpeakingDurationMs(workloadQueuedAt);
+              const providerStartedAt = performance.now();
+              try {
+                return await evaluationProvider.evaluate({
+                  activity: result.activity,
+                  turns: result.turns,
+                  participantId,
+                  prompt,
+                  timingMetadata,
+                  helpMetadata: { helpCount: current.helpCount, helpedTurnCount: interactionMetadata.helpedTurnCount },
+                  interactionMetadata
+                });
+              } finally {
+                providerDurationMs = boundedSpeakingDurationMs(providerStartedAt);
+                rememberEvaluationMetric(evaluationTelemetry.providerDurationsMs, providerDurationMs);
+              }
+            });
+          } catch (error) {
+            if (!providerStarted) queueWaitMs += boundedSpeakingDurationMs(workloadQueuedAt);
+            throw error;
+          }
+        })();
+      if (!rawEvaluation || typeof rawEvaluation !== "object" || Array.isArray(rawEvaluation)) {
+        throw new SpeakingProviderError("Evaluation provider returned an empty structured response.", "invalid_response");
+      }
+      try {
+        responseChars = JSON.stringify(rawEvaluation)?.length ?? 0;
+        rememberEvaluationMetric(evaluationTelemetry.responseChars, responseChars);
+      } catch {
+        responseChars = 0;
+      }
       const evaluation = validateSpeakingEvaluation(
-        studentTurns.length === 0
-          ? makeInsufficientEvidenceEvaluation(result.activity, participantId, finishedAt)
-          : await runProvider("evaluation", () => evaluationProvider.evaluate({
-            activity: result.activity,
-            turns: result.turns,
-            participantId,
-            timingMetadata: { startedAt: current.startedAt, finishedAt, durationSeconds: participantActiveElapsedMs(current, result.session, finishedAt) / 1_000 },
-            helpMetadata: { helpCount: current.helpCount, helpedTurnCount: result.turns.filter((turn) => turn.usedHelp).length }
-          })),
+        sanitizeSpeakingEvaluation(validateSpeakingEvaluation(rawEvaluation, result.activity, participantId), result.activity, result.turns, interactionMetadata),
         result.activity,
         participantId
       );
-      await repository.settleEvaluationJob(participantId, claimedJob.attempt, deps.now(), { evaluation });
+      settled = await repository.settleEvaluationJob(participantId, claimedJob.attempt, deps.now(), { evaluation });
+      if (settled) evaluationTelemetry.successes += 1;
     } catch (error) {
       const failure = error instanceof SpeakingWorkloadError
         ? { kind: "overload" as const }
-        : speakingProviderFailureDetails(error);
-      await repository.settleEvaluationJob(participantId, claimedJob.attempt, deps.now(), { errorCode: failure.kind });
+        : error instanceof SpeakingEvaluationValidationError
+          ? { kind: "invalid_response" as const }
+          : speakingProviderFailureDetails(error);
+      failureKind = failure.kind;
+      failureStatus = "status" in failure ? failure.status : undefined;
+      evaluationTelemetry.failuresByKind[failure.kind] = (evaluationTelemetry.failuresByKind[failure.kind] ?? 0) + 1;
+      if (error instanceof SpeakingEvaluationValidationError) {
+        schemaFailure = true;
+        evaluationTelemetry.schemaFailures += 1;
+      } else if (error instanceof SpeakingProviderError && failure.kind === "invalid_response") {
+        parseFailure = true;
+        evaluationTelemetry.parseFailures += 1;
+      }
+      const retryable = retryableEvaluationKinds.has(failure.kind);
+      retryScheduledAt = retryable ? nextSpeakingEvaluationRetryAt(deps.now(), claimedJob.attempt, deps.random ?? Math.random) : undefined;
+      if (retryScheduledAt) evaluationTelemetry.retriesScheduled += 1;
+      else evaluationTelemetry.terminalFailures += 1;
+      settled = await repository.settleEvaluationJob(participantId, claimedJob.attempt, deps.now(), {
+        errorCode: failure.kind,
+        retryable,
+        nextRetryAt: retryScheduledAt ?? null
+      });
+    } finally {
+      rememberEvaluationMetric(evaluationTelemetry.queueWaitMs, queueWaitMs);
+      const finalJob = await repository.getEvaluationJob(participantId);
+      finalJobState = finalJob?.status ?? (settled ? "completed" : "unknown");
+      rememberEvaluationMetric(evaluationTelemetry.durationsMs, boundedSpeakingDurationMs(evaluationStartedAt));
+      console.info(`[Speaking evaluation] ${JSON.stringify({
+        jobId: claimedJob.id,
+        participantId,
+        correlationId: `speaking-evaluation:${claimedJob.id}:${claimedJob.attempt}`,
+        provider: providerName,
+        model,
+        attempt: claimedJob.attempt,
+        queueWaitMs,
+        providerDurationMs,
+        totalEvaluationMs: boundedSpeakingDurationMs(evaluationStartedAt),
+        promptChars,
+        responseChars,
+        ...(failureKind ? { failureKind } : {}),
+        ...(failureStatus === undefined ? {} : { status: failureStatus }),
+        timeout: failureKind === "timeout",
+        rateLimited: failureKind === "rate_limit",
+        provider5xx: failureStatus !== undefined && failureStatus >= 500,
+        parseFailure,
+        schemaFailure,
+        ...(schemaFailure ? { responseValidationFailure: "evaluation_schema" } : {}),
+        retryable: retryScheduledAt !== undefined,
+        ...(retryScheduledAt ? { retryScheduledAt } : {}),
+        finalJobState,
+        promptVersion: SPEAKING_EVALUATOR_PROMPT_VERSION
+      })}`);
     }
-    // Keep the claimed job referenced without putting its contents into logs
-    // or responses.
-    void claimedJob;
   };
 
   const scheduleEvaluation = async (access: { session: SpeakingSession; activity: SpeakingActivity; participant: SpeakingParticipant }, retryFailed = false) => {
     const now = deps.now();
     const current = await repository.getParticipant(access.participant.id) ?? access.participant;
     const existing = await repository.getEvaluationJob(current.id);
-    const shouldQueue = !existing || retryFailed || (existing.status === "completed" && !(await repository.getResult(current.id))?.evaluation);
+    const shouldRetryFailed = retryFailed && existing?.status === "failed" && existing.retryable === true && existing.attempt < SPEAKING_EVALUATION_MAX_ATTEMPTS;
+    const shouldQueue = !existing || shouldRetryFailed || (existing.status === "completed" && !(await repository.getResult(current.id))?.evaluation);
     const job = shouldQueue
       ? await repository.upsertEvaluationJob(current.id, { id: existing?.id ?? deps.id(), queuedAt: now, updatedAt: now, status: "queued", attempt: existing?.attempt ?? 0 })
       : existing;
-    const finishedAt = current.finishedAt ?? now;
     if (job.status === "completed") return job;
-    if (current.status !== "evaluating" || !current.finishedAt) await repository.updateParticipant(current.id, { status: "evaluating", finishedAt });
+    if (job.status === "failed") return job;
     if (evaluationRuns.has(current.id)) return job;
     const claimed = await repository.claimEvaluationJob(current.id, now, new Date(Date.parse(now) + evaluationLeaseMs).toISOString());
     if (claimed && !evaluationRuns.has(current.id)) {
@@ -645,6 +819,12 @@ export const registerSpeakingRoutes = (app: Application, deps: SpeakingRouteDepe
     // load run can inspect aggregate pressure without exposing the workload
     // controller publicly.
     res.json({ metrics: workload.snapshot() });
+  });
+
+  app.get("/api/speaking/diagnostics/evaluations", deps.requireTeacher, (_req, res) => {
+    // Aggregate-only evaluator telemetry. No transcript, audio, student name,
+    // prompt body, or provider response is returned.
+    res.json({ metrics: evaluationTelemetrySnapshot() });
   });
 
   app.get("/api/speaking/activities", deps.requireTeacher, async (req: AuthedRequest, res) => {
@@ -1025,15 +1205,17 @@ export const registerSpeakingRoutes = (app: Application, deps: SpeakingRouteDepe
       participant = await repository.touchParticipant(participant.id, now) ?? participant;
     }
     const job = await repository.getEvaluationJob(participant.id);
-    if (job && (job.status === "queued" || (job.status === "running" && job.leaseUntil && Date.parse(job.leaseUntil) <= Date.parse(now))) && !evaluationRuns.has(participant.id)) {
+    const retryReady = job?.status === "retrying" && (!job.nextRetryAt || Date.parse(job.nextRetryAt) <= Date.parse(now));
+    if (job && (job.status === "queued" || retryReady || (job.status === "running" && job.leaseUntil && Date.parse(job.leaseUntil) <= Date.parse(now))) && !evaluationRuns.has(participant.id)) {
       void scheduleEvaluation({ session, activity: access.activity, participant }, false).catch(() => undefined);
     }
+    const currentJob = await repository.getEvaluationJob(participant.id) ?? job;
     res.json({
       participant: publicParticipant(participant),
       session: sessionPayload(session),
       revision: session.revision ?? 0,
       serverTime: now,
-      evaluationStatus: evaluationStatus(job)
+      ...evaluationState(currentJob)
     });
   });
 
@@ -1059,15 +1241,16 @@ export const registerSpeakingRoutes = (app: Application, deps: SpeakingRouteDepe
     }
     const session = await expireSessionIfNeeded(sessionAccess);
     const roster = await repository.listRoster(session.id);
-    const items = roster.map((item) => {
+    const items = await Promise.all(roster.map(async (item) => {
+      const job = await repository.getEvaluationJob(item.participant.id);
       const status = item.participant.status === "joined"
         ? (item.participant.readyAt ? "ready" : "joined")
         : item.participant.status === "in_progress"
           ? (item.latestTurnSpeaker === "student" ? "processing" : "practicing")
-          : item.participant.status === "evaluating" ? "evaluating" : item.participant.status === "completed" ? "finished" : "error";
-      return { ...item, status };
-    });
-    const counts = { joined: 0, ready: 0, practicing: 0, processing: 0, evaluating: 0, finished: 0, error: 0 };
+          : job?.status === "retrying" ? "retrying" : item.participant.status === "evaluating" ? "evaluating" : item.participant.status === "completed" ? "finished" : "error";
+      return { ...item, status, ...evaluationState(job) };
+    }));
+    const counts = { joined: 0, ready: 0, practicing: 0, processing: 0, evaluating: 0, retrying: 0, finished: 0, error: 0 };
     for (const item of items) counts[item.status as keyof typeof counts] += 1;
     res.json({ session: sessionPayload(session), counts, items });
   });
@@ -1349,17 +1532,18 @@ export const registerSpeakingRoutes = (app: Application, deps: SpeakingRouteDepe
       const currentParticipant = await repository.getParticipant(access.participant.id) ?? access.participant;
       const existing = await repository.getResult(currentParticipant.id);
       if (existing?.evaluation) {
-        res.json({ result: safeResult(toResult(existing.activity, existing.session, existing.participant, existing.turns, existing.evaluation)), evaluationStatus: "completed" });
+        res.json({ result: safeResult(toResult(existing.activity, existing.session, existing.participant, existing.turns, existing.evaluation)), ...evaluationState({ status: "completed", attempt: 0, id: "completed", participantId: currentParticipant.id, queuedAt: existing.evaluation.createdAt, updatedAt: existing.evaluation.createdAt }) });
         return;
       }
       const existingJob = await repository.getEvaluationJob(currentParticipant.id);
-      const job = await scheduleEvaluation({ ...access, session: currentSession, participant: currentParticipant }, existingJob?.status === "failed" || currentParticipant.status === "error");
+      const canRetryFailed = existingJob?.status === "failed" && existingJob.retryable === true && existingJob.attempt < SPEAKING_EVALUATION_MAX_ATTEMPTS;
+      const job = await scheduleEvaluation({ ...access, session: currentSession, participant: currentParticipant }, canRetryFailed);
       const result = await waitForEvaluationGrace(currentParticipant.id);
       if (!result) {
         res.status(404).json({ error: "We couldn’t find that speaking result." });
         return;
       }
-      const payload = { result: safeResult(toResult(result.activity, result.session, result.participant, result.turns, result.evaluation)), evaluationStatus: evaluationStatus(await repository.getEvaluationJob(currentParticipant.id) ?? job) };
+      const payload = { result: safeResult(toResult(result.activity, result.session, result.participant, result.turns, result.evaluation)), ...evaluationState(await repository.getEvaluationJob(currentParticipant.id) ?? job) };
       res.status(result.evaluation ? 200 : 202).json(payload);
     });
   });
@@ -1381,7 +1565,7 @@ export const registerSpeakingRoutes = (app: Application, deps: SpeakingRouteDepe
     }
     const session = await expireSessionIfNeeded(sessionAccess);
     const items = await repository.listResults(activity.id, sessionId, req.user!.id);
-    res.json({ activity: publicActivity(activity), session: sessionPayload(session), items: items.map((item) => ({ participant: publicParticipant(item.participant), status: item.participant.status, durationSeconds: item.participant.startedAt ? Math.max(0, Math.round(participantActiveElapsedMs(item.participant, session, item.participant.finishedAt ?? session.endedAt ?? deps.now()) / 1_000)) : 0, overallScore: item.overallScore, helpCount: item.participant.helpCount, evaluation: item.evaluation })) });
+    res.json({ activity: publicActivity(activity), session: sessionPayload(session), items: await Promise.all(items.map(async (item) => ({ participant: publicParticipant(item.participant), status: item.participant.status, durationSeconds: item.participant.startedAt ? Math.max(0, Math.round(participantActiveElapsedMs(item.participant, session, item.participant.finishedAt ?? session.endedAt ?? deps.now()) / 1_000)) : 0, overallScore: item.overallScore, helpCount: item.participant.helpCount, evaluation: item.evaluation, ...evaluationState(await repository.getEvaluationJob(item.participant.id)) }))) });
   });
 
   app.get("/api/speaking/sessions/:sessionId/results", deps.requireTeacher, async (req: AuthedRequest, res) => {
@@ -1392,7 +1576,7 @@ export const registerSpeakingRoutes = (app: Application, deps: SpeakingRouteDepe
     }
     const session = await expireSessionIfNeeded(sessionAccess);
     const items = await repository.listResults(sessionAccess.activity.id, sessionAccess.session.id, req.user!.id);
-    res.json({ activity: publicActivity(sessionAccess.activity), session: sessionPayload(session), items: items.map((item) => ({ participant: publicParticipant(item.participant), status: item.participant.status, durationSeconds: item.participant.startedAt ? Math.max(0, Math.round(participantActiveElapsedMs(item.participant, session, item.participant.finishedAt ?? session.endedAt ?? deps.now()) / 1_000)) : 0, overallScore: item.overallScore, helpCount: item.participant.helpCount, evaluation: item.evaluation })) });
+    res.json({ activity: publicActivity(sessionAccess.activity), session: sessionPayload(session), items: await Promise.all(items.map(async (item) => ({ participant: publicParticipant(item.participant), status: item.participant.status, durationSeconds: item.participant.startedAt ? Math.max(0, Math.round(participantActiveElapsedMs(item.participant, session, item.participant.finishedAt ?? session.endedAt ?? deps.now()) / 1_000)) : 0, overallScore: item.overallScore, helpCount: item.participant.helpCount, evaluation: item.evaluation, ...evaluationState(await repository.getEvaluationJob(item.participant.id)) }))) });
   });
 
   app.get("/api/speaking/sessions/:sessionId/report.csv", deps.requireTeacher, async (req: AuthedRequest, res) => {
@@ -1446,10 +1630,12 @@ export const registerSpeakingRoutes = (app: Application, deps: SpeakingRouteDepe
       return;
     }
     const job = await repository.getEvaluationJob(result.participant.id);
-    if (job && (job.status === "queued" || (job.status === "running" && job.leaseUntil && Date.parse(job.leaseUntil) <= Date.parse(deps.now()))) && !evaluationRuns.has(result.participant.id)) {
+    const retryReady = job?.status === "retrying" && (!job.nextRetryAt || Date.parse(job.nextRetryAt) <= Date.parse(deps.now()));
+    if (job && (job.status === "queued" || retryReady || (job.status === "running" && job.leaseUntil && Date.parse(job.leaseUntil) <= Date.parse(deps.now()))) && !evaluationRuns.has(result.participant.id)) {
       void scheduleEvaluation({ session: result.session, activity: result.activity, participant: result.participant }, false).catch(() => undefined);
     }
-    res.json({ result: safeResult(toResult(result.activity, result.session, result.participant, result.turns, result.evaluation)), evaluationStatus: evaluationStatus(job) });
+    const currentJob = await repository.getEvaluationJob(result.participant.id) ?? job;
+    res.json({ result: safeResult(toResult(result.activity, result.session, result.participant, result.turns, result.evaluation)), ...evaluationState(currentJob) });
   });
 
   return state;

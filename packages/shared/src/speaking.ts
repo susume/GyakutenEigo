@@ -57,6 +57,21 @@ export const SPEAKING_PRACTICE_LANGUAGE = "en" as const;
 export const SPEAKING_ASSESSMENT_STATUSES = ["scored", "insufficient_evidence"] as const;
 export type SpeakingAssessmentStatus = (typeof SPEAKING_ASSESSMENT_STATUSES)[number];
 
+export const SPEAKING_GOAL_REQUIREMENT_STATUSES = ["completed", "partially_completed", "not_completed", "uncertain"] as const;
+export type SpeakingGoalRequirementStatus = (typeof SPEAKING_GOAL_REQUIREMENT_STATUSES)[number];
+
+export interface SpeakingGoalRequirement {
+  requirement: string;
+  status: SpeakingGoalRequirementStatus;
+  /** IDs must refer to real transcript turns; the server filters provider output. */
+  evidenceTurnIds: string[];
+}
+
+export interface SpeakingGoalCompletion {
+  completed: boolean;
+  requirements: SpeakingGoalRequirement[];
+}
+
 export interface SpeakingRubricCriterion {
   id: string;
   name: string;
@@ -285,7 +300,8 @@ export interface SpeakingEvaluation {
   evidence: Record<string, string>;
   strengths: string[];
   improvements: string[];
-  usefulEnglish: Array<{ said: string; try: string }>;
+  usefulEnglish: Array<{ said: string; try: string; sourceTurnId?: string }>;
+  goalCompletion?: SpeakingGoalCompletion;
   overallMessage: string;
   createdAt: string;
 }
@@ -313,7 +329,7 @@ export interface SpeakingCreateActivityInput {
   scenarioResources?: SpeakingScenarioResources;
 }
 
-export const SPEAKING_EVALUATION_JOB_STATUSES = ["queued", "running", "completed", "failed"] as const;
+export const SPEAKING_EVALUATION_JOB_STATUSES = ["queued", "running", "retrying", "completed", "failed"] as const;
 export type SpeakingEvaluationJobStatus = (typeof SPEAKING_EVALUATION_JOB_STATUSES)[number];
 
 export interface SpeakingEvaluationJob {
@@ -326,6 +342,8 @@ export interface SpeakingEvaluationJob {
   finishedAt?: string;
   leaseUntil?: string;
   lastErrorCode?: string;
+  retryable?: boolean;
+  nextRetryAt?: string;
   updatedAt: string;
 }
 
@@ -407,7 +425,15 @@ export const SpeakingEvaluationSchema = z.object({
   evidence: z.record(z.string(), z.string().max(500)),
   strengths: z.array(z.string().max(300)).max(5),
   improvements: z.array(z.string().max(300)).max(5),
-  usefulEnglish: z.array(z.object({ said: z.string().max(300), try: z.string().max(300) })).max(5),
+  usefulEnglish: z.array(z.object({ said: z.string().max(300), try: z.string().max(300), sourceTurnId: z.string().min(1).max(120).optional() })).max(5),
+  goalCompletion: z.object({
+    completed: z.boolean(),
+    requirements: z.array(z.object({
+      requirement: z.string().trim().min(1).max(300),
+      status: z.enum(SPEAKING_GOAL_REQUIREMENT_STATUSES),
+      evidenceTurnIds: z.array(z.string().min(1).max(120)).max(12)
+    })).max(12)
+  }).optional(),
   overallMessage: z.string().max(500),
   createdAt: z.string().min(1)
 });
@@ -457,6 +483,11 @@ export type SpeakingFeedbackCopy = {
   notScoredDetail: string;
   evaluationUnavailable: string;
   evaluationUnavailableMessage: string;
+  evaluationPendingHeadline: string;
+  evaluationPendingMessage: string;
+  evaluationRetryingMessage: string;
+  evaluationNeedsAttentionHeadline: string;
+  evaluationNeedsAttentionMessage: string;
   evaluationDetail: string;
   resultHeading: string;
   whatWentWell: string;
@@ -488,6 +519,11 @@ export const speakingFeedbackCopy = (language: SpeakingNativeLanguage): Speaking
     notScoredDetail: "Not enough speaking evidence.",
     evaluationUnavailable: "Evaluation unavailable",
     evaluationUnavailableMessage: "Your transcript is saved, but the evaluation provider did not return a result. Please ask your teacher to try again.",
+    evaluationPendingHeadline: "Your performance test was submitted successfully.",
+    evaluationPendingMessage: "Your conversation is safely saved. We’re preparing your evaluation. This is taking a little longer than usual, so you do not need to take the test again.",
+    evaluationRetryingMessage: "Your conversation is safely saved. We’re trying the evaluation service again. You do not need to take the test again.",
+    evaluationNeedsAttentionHeadline: "Your conversation is saved",
+    evaluationNeedsAttentionMessage: "Your conversation is safely saved, but the evaluation needs attention from your teacher. You do not need to take the test again.",
     evaluationDetail: "Evaluation detail",
     resultHeading: "Your speaking result",
     whatWentWell: "What You Did Well",
@@ -517,6 +553,11 @@ export const speakingFeedbackCopy = (language: SpeakingNativeLanguage): Speaking
     notScoredDetail: "評価できる発話が十分にありません。",
     evaluationUnavailable: "評価を準備できませんでした",
     evaluationUnavailableMessage: "会話の記録は保存されていますが、評価を準備できませんでした。先生にもう一度試してもらいましょう。",
+    evaluationPendingHeadline: "パフォーマンステストは正常に提出されました。",
+    evaluationPendingMessage: "会話の記録は安全に保存されています。評価を準備しています。通常より少し時間がかかっていますが、もう一度テストを受ける必要はありません。",
+    evaluationRetryingMessage: "会話の記録は安全に保存されています。評価の準備をもう一度試しています。もう一度テストを受ける必要はありません。",
+    evaluationNeedsAttentionHeadline: "会話の記録は保存されています",
+    evaluationNeedsAttentionMessage: "会話の記録は安全に保存されていますが、評価の準備に先生の確認が必要です。もう一度テストを受ける必要はありません。",
     evaluationDetail: "評価の詳細",
     resultHeading: "今回の結果",
     whatWentWell: "よくできたこと",

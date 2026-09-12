@@ -67,6 +67,25 @@ test("repository state survives service re-instantiation and isolates participan
   assert.equal((await second.listResults(activity.id, session.id, "teacher-1")).filter((item) => item.evaluation).length, 1);
 });
 
+test("repeated process restarts exhaust the durable evaluation attempt budget", async () => {
+  const state = createInMemorySpeakingState();
+  let repository = new InMemorySpeakingRepository(state);
+  const now = "2026-09-12T00:00:00.000Z";
+  const activity = await repository.createActivity("teacher-1", input, "crash-activity", now);
+  const session = await repository.createSession({ id: "crash-session", activity, joinCode: "ABC238", createdAt: now, expiresAt: "2026-09-13T00:00:00.000Z" });
+  const participant = await repository.createParticipant({ id: "crash-participant", activity, session, tokenHash: hashSpeakingToken("crash-token") });
+  await repository.upsertEvaluationJob(participant.id, { id: "crash-job", queuedAt: now, updatedAt: now });
+  for (let attempt = 1; attempt <= 5; attempt += 1) {
+    repository = new InMemorySpeakingRepository(state);
+    assert.equal((await repository.claimEvaluationJob(participant.id, now, now))?.attempt, attempt);
+  }
+  assert.equal(await repository.claimEvaluationJob(participant.id, now, now), undefined);
+  assert.equal((await repository.getEvaluationJob(participant.id))?.status, "failed");
+  assert.equal((await repository.getParticipant(participant.id))?.status, "error");
+  assert.deepEqual(await repository.recoverableEvaluationParticipants(now), []);
+  assert.equal(await repository.settleEvaluationJob(participant.id, 5, now, { evaluation: evaluation(participant.id) }), false);
+});
+
 test("activity edits preserve old session snapshots and update new sessions", async () => {
   const repository = new InMemorySpeakingRepository(createInMemorySpeakingState());
   const original = await repository.createActivity("teacher-1", input, "activity-edit", "2026-08-31T00:00:00.000Z");
@@ -186,6 +205,28 @@ test("expired evaluation workers cannot replace a newer result", async () => {
   assert.equal(await repository.settleEvaluationJob(participant.id, first!.attempt, now, { errorCode: "timeout" }), false);
   assert.equal((await repository.getParticipant(participant.id))?.status, "completed");
   assert.ok((await repository.getResult(participant.id))?.evaluation);
+});
+
+test("evaluation retry state survives a restart and becomes terminal after a permanent failure", async () => {
+  const state = createInMemorySpeakingState();
+  const repository = new InMemorySpeakingRepository(state);
+  const now = "2026-09-12T00:00:00.000Z";
+  const activity = await repository.createActivity("teacher-1", input, "retry-activity", now);
+  const session = await repository.createSession({ id: "retry-session", activity, joinCode: "ABC242", createdAt: now, expiresAt: "2026-09-12T08:00:00.000Z" });
+  const participant = await repository.createParticipant({ id: "retry-participant", activity, session, tokenHash: hashSpeakingToken("retry-token") });
+  await repository.upsertEvaluationJob(participant.id, { id: "retry-job", queuedAt: now, updatedAt: now });
+  const first = await repository.claimEvaluationJob(participant.id, now, "2026-09-12T00:01:00.000Z");
+  assert.ok(first);
+  assert.equal(await repository.settleEvaluationJob(participant.id, first!.attempt, "2026-09-12T00:00:01.000Z", { errorCode: "timeout", retryable: true, nextRetryAt: "2026-09-12T00:00:10.000Z" }), true);
+  assert.equal((await repository.getEvaluationJob(participant.id))?.status, "retrying");
+  assert.deepEqual(await new InMemorySpeakingRepository(state).recoverableEvaluationParticipants("2026-09-12T00:00:09.000Z"), []);
+  assert.deepEqual(await new InMemorySpeakingRepository(state).recoverableEvaluationParticipants("2026-09-12T00:00:10.000Z"), [participant.id]);
+  const second = await repository.claimEvaluationJob(participant.id, "2026-09-12T00:00:10.000Z", "2026-09-12T00:02:10.000Z");
+  assert.equal(second?.attempt, 2);
+  assert.equal(await repository.settleEvaluationJob(participant.id, second!.attempt, "2026-09-12T00:00:11.000Z", { errorCode: "authentication", retryable: false, nextRetryAt: null }), true);
+  assert.equal((await repository.getEvaluationJob(participant.id))?.status, "failed");
+  assert.equal((await repository.getParticipant(participant.id))?.status, "error");
+  assert.deepEqual(await repository.recoverableEvaluationParticipants("2026-09-12T00:05:00.000Z"), []);
 });
 
 test("concurrent classroom admission respects capacity and request identity", async () => {
