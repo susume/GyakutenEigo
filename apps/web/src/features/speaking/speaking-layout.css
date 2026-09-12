@@ -187,3 +187,172 @@
   .speaking-class-summary { gap: 16px; }
   .speaking-embedded-teacher .speaking-results-heading > select { flex: 0 1 auto; width: 100%; min-height: 44px; }
 }
+
+/* The student Performance Test is a two-column reading workspace. These
+   rules intentionally come after the legacy bounded laptop composition so
+   the current transcript/sidebar design is the final desktop cascade. */
+@media (min-width: 861px) and (min-height: 560px) {
+  .speaking-session-main {
+    height: 100dvh;
+    min-height: 100dvh;
+    overflow: hidden;
+  }
+
+  .speaking-student-screen {
+    height: auto;
+    min-height: 0;
+    overflow: hidden;
+  }
+
+  .speaking-student-grid {
+    width: min(100%, 1680px);
+    min-height: 0;
+    height: auto;
+    padding: 16px clamp(16px, 3.45vw, 58px) 18px;
+    grid-template-columns: minmax(0, 1fr) clamp(300px, 25.5vw, 428px);
+    grid-template-rows: minmax(0, 1fr);
+    grid-template-areas: "center sidebar";
+    gap: clamp(16px, 1.45vw, 22px);
+  }
+
+  .speaking-student-center {
+    height: 100%;
+    display: grid;
+    grid-template-rows: auto auto auto minmax(0, 1fr);
+    gap: 12px;
+    overflow: visible;
+  }
+
+  .speaking-live-reply {
+    min-height: 112px;
+    max-height: none;
+    overflow: hidden;
+    padding: 14px 22px;
+  }
+
+  .speaking-student-controls {
+    min-height: 170px;
+    padding: 18px clamp(24px, 5vw, 62px) 12px;
+  }
+
+  .speaking-student-mic {
+    width: 108px;
+    height: 108px;
+    min-height: 108px !important;
+  }
+
+  .speaking-student-mic svg {
+    width: 52px;
+    height: 52px;
+  }
+
+  .speaking-transcript-card {
+    height: auto;
+    flex: none;
+  }
+
+  .speaking-student-sidebar {
+    height: 100%;
+    overflow-y: auto;
+  }
+}
+
+@media (min-width: 861px) and (max-width: 1100px) and (min-height: 560px) {
+  .speaking-student-grid {
+    grid-template-columns: minmax(0, 1fr) minmax(280px, 31vw);
+    gap: 16px;
+  }
+
+  .speaking-student-controls {
+    min-height: 150px;
+    grid-template-columns: minmax(140px, 1fr) 126px minmax(140px, 1fr);
+    gap: 12px;
+    padding-inline: 24px;
+  }
+
+  .speaking-student-mic {
+    width: 96px;
+    height: 96px;
+    min-height: 96px !important;
+  }
+
+  .speaking-student-mic svg {
+    width: 48px;
+    height: 48px;
+  }
+}
+
+/* Restore the mirrored chat rows after the old compact transcript rules. */
+.speaking-app .speaking-transcript-turn {
+  grid-template-columns: 54px minmax(0, 1fr);
+  gap: 12px;
+  margin-top: 0;
+}
+
+.speaking-app .speaking-transcript-turn-student {
+  grid-template-columns: minmax(0, 1fr) 54px;
+  width: min(100%, 850px);
+}
+
+.speaking-app .speaking-turn-avatar {
+  width: 54px;
+  height: 54px;
+}
+
+.speaking-app .speaking-turn-avatar-student {
+  grid-column: 2;
+  margin-top: 18px;
+}
+
+.speaking-app .speaking-transcript-turn-student .speaking-turn-body {
+  grid-column: 1;
+  grid-row: 1;
+}
+
+.speaking-app .speaking-turn-bubble {
+  min-height: 74px;
+  padding: 14px 16px;
+  border: 1px solid #d8e9fa;
+  border-radius: 16px;
+}
+
+.speaking-app .speaking-transcript-turn-student .speaking-turn-bubble {
+  border-color: #c8eee2;
+}
+
+.speaking-app .speaking-turn-bubble strong {
+  font-size: clamp(1rem, 1.18vw, 1.2rem);
+  font-weight: 600;
+  line-height: 1.5;
+}
+
+@media (max-width: 620px) {
+  .speaking-app .speaking-transcript-turn {
+    grid-template-columns: 42px minmax(0, 1fr);
+    gap: 8px;
+  }
+
+  .speaking-app .speaking-transcript-turn-student {
+    grid-template-columns: minmax(0, 1fr) 42px;
+    width: 100%;
+  }
+
+  .speaking-app .speaking-turn-avatar {
+    width: 42px;
+    height: 42px;
+  }
+
+  .speaking-app .speaking-turn-avatar-student {
+    margin-top: 16px;
+  }
+
+  .speaking-app .speaking-turn-bubble {
+    min-height: 64px;
+    padding: 12px 13px;
+    border-radius: 13px;
+  }
+
+  .speaking-app .speaking-turn-bubble strong {
+    font-size: .9rem;
+  }
+}

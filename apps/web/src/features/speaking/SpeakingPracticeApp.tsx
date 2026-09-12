@@ -19,7 +19,6 @@ import {
   RotateCcw,
   ScanLine,
   Sparkles,
-  Star,
   Trophy,
   UserRound,
   Users,
@@ -82,7 +81,12 @@ const parseRoute = (path: string): SpeakingRoute => {
   return { kind: "home" };
 };
 
-const getErrorMessage = (error: unknown, fallback: string) => error instanceof ApiError ? error.message : fallback;
+const getErrorMessage = (error: unknown, fallback: string) => {
+  if (!(error instanceof ApiError)) return fallback;
+  if (error.status === 0 && error.kind === "timeout") return "Speaking Practice took too long to respond. It may be waking up; wait a few seconds and try again.";
+  if (error.status === 0 && error.kind === "network") return "We can open Speaking Practice, but this network cannot reach the server. Try again, or ask your teacher for help.";
+  return error.message;
+};
 const isFatalParticipantAuthorizationError = (error: unknown) => error instanceof ApiError && [401, 403, 404].includes(error.status);
 
 const saveJoinCredentials = (payload: JoinResponse) => {
@@ -187,21 +191,53 @@ interface SpeakingScreenProps { statusText?: string; activity: SpeakingActivity;
 const stateDescriptions: Record<SpeakingUiState, string> = { ready: "Your turn · Tap the microphone to speak.", listening: "Listening · Tap again when you finish.", thinking: "Processing your answer…", "ai-speaking": "AI speaking · Listen to your partner." };
 
 function SpeakingStudentScreenV2({ statusText, activity, state, remainingSeconds, turns, onMic, onReplay, onBrandClick, onHelp, onHelpRetry, helpLoading = false, helpError = "", onFinish, onPhraseClick, disabled = false, finishDisabled = false }: SpeakingScreenProps) {
-  const [guidanceOpen, setGuidanceOpen] = useState(false);
   const [referenceOpen, setReferenceOpen] = useState(false);
   const [notes, setNotes] = useState("");
-  const transcriptEndRef = useRef<HTMLDivElement>(null);
+  const [showJumpToLatest, setShowJumpToLatest] = useState(false);
+  const transcriptListRef = useRef<HTMLDivElement>(null);
+  const transcriptAwayFromBottomRef = useRef(false);
+  const transcriptUserIntentRef = useRef(false);
   const resources = speakingScenarioResources(activity.scenarioResources);
   const currentAiTurn = [...turns].reverse().find((turn) => turn.speaker === "ai");
   const durationProgress = Math.max(0, Math.min(100, (remainingSeconds / Math.max(1, activity.durationSeconds)) * 100));
   const micLabel = statusText ?? (state === "ai-speaking" ? "Stop playback" : state === "listening" ? "Stop speaking" : state === "thinking" ? "Processing your answer" : "Tap to speak");
   const pendingReply = state === "thinking" && turns.some((turn) => turn.speaker === "student");
   const partnerImage = resources.imageSrc;
+  const helperText = statusText ?? (state === "thinking" ? "Check the message above" : stateDescriptions[state]);
 
   useEffect(() => {
-    const transcript = transcriptEndRef.current?.parentElement;
-    if (transcript) transcript.scrollTop = transcript.scrollHeight;
+    const frame = window.requestAnimationFrame(() => {
+      const transcript = transcriptListRef.current;
+      if (!transcript || transcriptAwayFromBottomRef.current) {
+        if (transcript) setShowJumpToLatest(true);
+        return;
+      }
+      transcript.scrollTop = transcript.scrollHeight;
+      setShowJumpToLatest(false);
+    });
+    return () => window.cancelAnimationFrame(frame);
   }, [turns.length, pendingReply]);
+
+  const handleTranscriptScroll = useCallback(() => {
+    const transcript = transcriptListRef.current;
+    if (!transcript) return;
+    const atBottom = transcript.scrollHeight - transcript.scrollTop - transcript.clientHeight <= 56;
+    if (!transcriptUserIntentRef.current && !transcriptAwayFromBottomRef.current && !atBottom) {
+      transcript.scrollTop = transcript.scrollHeight;
+      return;
+    }
+    transcriptAwayFromBottomRef.current = !atBottom;
+    setShowJumpToLatest(!atBottom);
+  }, []);
+
+  const scrollToLatest = useCallback((behavior: ScrollBehavior = "smooth") => {
+    const transcript = transcriptListRef.current;
+    if (!transcript) return;
+    transcriptUserIntentRef.current = false;
+    transcriptAwayFromBottomRef.current = false;
+    setShowJumpToLatest(false);
+    transcript.scrollTo({ top: transcript.scrollHeight, behavior });
+  }, []);
 
   useEffect(() => {
     const handleSpacebar = (event: KeyboardEvent) => {
@@ -224,54 +260,48 @@ function SpeakingStudentScreenV2({ statusText, activity, state, remainingSeconds
     <div className="speaking-student-grid">
       <div className="speaking-student-center">
         <section className="speaking-live-reply" aria-live="polite" aria-label="Current speaking partner">
-          <div className="speaking-live-reply-avatar">{partnerImage ? <img src={partnerImage} alt={resources.imageAlt ?? "Speaking partner"} /> : <MessageCircle size={28} aria-hidden="true" />}</div>
-          <div><span className="speaking-card-kicker">Your speaking partner · {activity.aiRole}</span><p>{state === "listening" ? "Listening to you…" : state === "thinking" ? "Processing your answer…" : currentAiTurn?.text ?? resources.openingLine}</p></div>
-          <button type="button" className="speaking-icon-button" onClick={() => onReplay?.(currentAiTurn?.text)} disabled={!onReplay || !currentAiTurn || state !== "ready"} aria-label="Replay current partner message"><Volume2 size={20} aria-hidden="true" /></button>
-        </section>
-        <footer className="speaking-student-controls" aria-label="Speaking controls">
-          <button className="speaking-replay-button" type="button" onClick={() => onReplay?.(currentAiTurn?.text)} disabled={!onReplay || !currentAiTurn || state !== "ready"}><RotateCcw size={27} strokeWidth={1.7} aria-hidden="true" /><span>Replay</span></button>
-          <div className="speaking-student-mic-wrap"><button className={"speaking-student-mic speaking-student-mic-" + state} type="button" onClick={onMic} disabled={disabled} aria-label={micLabel}><Mic size={54} strokeWidth={1.65} aria-hidden="true" /></button><span>{statusText ?? (state === "ai-speaking" ? "Stop playback" : state === "listening" ? "Stop speaking" : state === "thinking" ? "Processing…" : "Tap to Speak")}</span></div>
-          <button className="speaking-student-help-button" type="button" onClick={onHelp} disabled={disabled || helpLoading || state !== "ready"}><Lightbulb size={22} strokeWidth={1.8} aria-hidden="true" /><span>{helpLoading ? "Loading Help…" : "Help"}</span><small>{activity.targetExpressions.length} expressions available</small></button>
-        </footer>
-        {helpError && <div className="speaking-inline-operation-error" role="alert"><span>{helpError}</span>{onHelpRetry && <button type="button" onClick={onHelpRetry}>Retry Help</button>}</div>}
-        <p className="speaking-student-status" aria-live="polite">{statusText ?? stateDescriptions[state]}</p>
-        <section className="speaking-transcript-card" aria-label="Full transcript">
-          <div className="speaking-transcript-heading"><MessageCircle size={28} strokeWidth={1.8} aria-hidden="true" /><strong>Full transcript</strong><span>Conversation record</span></div>
-          <div className="speaking-transcript-list" aria-live="polite">
-            {turns.map((turn) => <StudentTranscriptTurnV2 key={turn.id} activity={activity} turn={turn} onReplay={state === "ready" && !disabled ? onReplay : undefined} />)}
-            {pendingReply && <div className="speaking-transcript-turn speaking-transcript-turn-ai is-pending"><div className="speaking-turn-avatar speaking-turn-avatar-ai">{partnerImage ? <img src={partnerImage} alt={resources.imageAlt ?? "Speaking partner"} /> : <MessageCircle size={22} aria-hidden="true" />}</div><div className="speaking-turn-body"><p className="speaking-turn-label">AI · {activity.aiRole}</p><div className="speaking-turn-bubble"><span className="speaking-pending-dots">•••</span></div></div></div>}
-            <div ref={transcriptEndRef} aria-hidden="true" />
-          </div>
-        </section>
+           <div className="speaking-live-reply-avatar">{partnerImage ? <img src={partnerImage} alt={resources.imageAlt ?? "Speaking partner"} /> : <MessageCircle size={28} aria-hidden="true" />}</div>
+           <div><span className="speaking-card-kicker">Your speaking partner · {activity.aiRole}</span><p>{state === "listening" ? "Listening to you…" : state === "thinking" ? "Processing your answer…" : currentAiTurn?.text ?? resources.openingLine}</p></div>
+           <button type="button" className="speaking-icon-button" onClick={() => onReplay?.(currentAiTurn?.text)} disabled={!onReplay || !currentAiTurn || state !== "ready"} aria-label="Replay current partner message"><Volume2 size={20} aria-hidden="true" /></button>
+         </section>
+         <footer className="speaking-student-controls" aria-label="Speaking controls">
+           <button className="speaking-replay-button" type="button" onClick={() => onReplay?.(currentAiTurn?.text)} disabled={!onReplay || !currentAiTurn || state !== "ready"} aria-label="Replay latest AI message"><RotateCcw size={27} strokeWidth={1.7} aria-hidden="true" /><span>Replay</span></button>
+           <div className="speaking-student-mic-wrap"><button className={"speaking-student-mic speaking-student-mic-" + state} type="button" onClick={onMic} disabled={disabled} aria-label={micLabel}><Mic size={54} strokeWidth={1.65} aria-hidden="true" /></button><span>{statusText ?? (state === "ai-speaking" ? "Stop playback" : state === "listening" ? "Stop speaking" : state === "thinking" ? "Processing…" : "Tap to Speak")}</span></div>
+           <button className="speaking-student-help-button" type="button" onClick={onHelp} disabled={disabled || helpLoading || state !== "ready"}><Lightbulb size={22} strokeWidth={1.8} aria-hidden="true" /><span>{helpLoading ? "Loading Help…" : "Help"}</span><small>{activity.targetExpressions.length} expressions available</small></button>
+         </footer>
+         {helpError && <div className="speaking-inline-operation-error" role="alert"><span>{helpError}</span>{onHelpRetry && <button type="button" onClick={onHelpRetry}>Retry Help</button>}</div>}
+         <p className="speaking-student-status" aria-live="polite">{helperText}</p>
+         <section className="speaking-transcript-card" aria-labelledby="speaking-conversation-title">
+           <div className="speaking-transcript-heading"><MessageCircle size={30} strokeWidth={1.8} aria-hidden="true" /><div><h2 id="speaking-conversation-title">Conversation</h2><span>Your conversation so far</span></div><span className="speaking-turn-count">{turns.length} turns</span><ChevronDown size={21} aria-hidden="true" /></div>
+           {showJumpToLatest && <button type="button" className="speaking-jump-latest" onClick={() => scrollToLatest()}><span>Jump to latest</span><ChevronDown size={17} aria-hidden="true" /></button>}
+           <div ref={transcriptListRef} className="speaking-transcript-list" role="list" aria-label="Conversation turns" aria-live="polite" aria-busy={pendingReply} onPointerDown={() => { transcriptUserIntentRef.current = true; }} onTouchStart={() => { transcriptUserIntentRef.current = true; }} onWheel={() => { transcriptUserIntentRef.current = true; }} onScroll={handleTranscriptScroll}>
+             {turns.map((turn) => <StudentTranscriptTurnV2 key={turn.id} activity={activity} turn={turn} onReplay={state === "ready" && !disabled ? onReplay : undefined} />)}
+             {pendingReply && <div className="speaking-transcript-turn speaking-transcript-turn-ai is-pending" role="listitem"><div className="speaking-turn-avatar speaking-turn-avatar-ai">{partnerImage ? <img src={partnerImage} alt="" aria-hidden="true" /> : <MessageCircle size={22} aria-hidden="true" />}</div><div className="speaking-turn-body"><p className="speaking-turn-label">AI partner · {activity.aiRole}</p><div className="speaking-turn-bubble" role="status"><div><span className="speaking-pending-dots" aria-hidden="true">•••</span><strong>Processing your answer…</strong></div></div></div></div>}
+           </div>
+         </section>
 
-      </div>
-      <aside className="speaking-flow-panel" aria-label="Suggested conversation steps">
-        <details open={guidanceOpen} onToggle={(event) => setGuidanceOpen(event.currentTarget.open)}>
-          <summary><span><strong>Suggested steps</strong><small>Optional guidance</small></span><ChevronDown size={19} aria-hidden="true" /></summary>
-          <ol className="speaking-flow-list">{resources.suggestedSteps.map((step, index) => <li key={step}><span className="speaking-flow-number">{index + 1}</span><span className="speaking-flow-icon"><MessageCircle size={21} strokeWidth={1.8} aria-hidden="true" /></span><span className="speaking-flow-copy"><strong>{step}</strong></span></li>)}</ol>
-        </details>
-        <div className="speaking-goal-card"><Star size={25} strokeWidth={1.8} aria-hidden="true" /><div><strong>Goal</strong><p>{resources.studentGoal}</p></div></div>
-      </aside>
-      <aside className="speaking-student-sidebar">
-        <section className="speaking-useful-student-card">
-          <div className="speaking-student-card-heading"><div><h2>Useful English</h2><p>Target expressions</p></div><Bookmark size={22} strokeWidth={1.7} aria-hidden="true" /></div>
-          <div className="speaking-student-expression-list">{activity.targetExpressions.map((expression) => <button type="button" key={expression} onClick={() => onPhraseClick?.(expression)} disabled={disabled}><MessageCircle size={19} strokeWidth={1.7} aria-hidden="true" /><span>{expression}</span></button>)}</div>
-        </section>
-        {resources.referenceItems.length > 0 && <section className="speaking-reference-card"><button type="button" onClick={() => setReferenceOpen((open) => !open)} aria-expanded={referenceOpen}><BookOpenText size={22} aria-hidden="true" /><span>Reference material</span><ChevronDown size={18} aria-hidden="true" /></button>{referenceOpen && <ul>{resources.referenceItems.map((item) => <li key={item.label}><strong>{item.label}</strong>{item.detail && <span>{item.detail}</span>}</li>)}</ul>}</section>}
-        <section className="speaking-notes-card"><div className="speaking-student-card-heading"><div><h2>Notes</h2><p>Private on this device</p></div><PencilLine size={21} strokeWidth={1.7} aria-hidden="true" /></div><textarea value={notes} onChange={(event) => setNotes(event.target.value)} placeholder="Write a note…" aria-label="Notes" /></section>
-      </aside>
-    </div>
-  </div>;
+       </div>
+       <aside className="speaking-student-sidebar">
+         <section className="speaking-useful-student-card">
+           <div className="speaking-student-card-heading"><div><h2>Useful English</h2><p>Target expressions</p></div><Bookmark size={22} strokeWidth={1.7} aria-hidden="true" /></div>
+           <div className="speaking-student-expression-list">{activity.targetExpressions.map((expression) => <button type="button" key={expression} onClick={() => onPhraseClick?.(expression)} disabled={disabled}><MessageCircle size={19} strokeWidth={1.7} aria-hidden="true" /><span>{expression}</span></button>)}</div>
+           <div className="speaking-useful-callout"><Lightbulb size={27} strokeWidth={1.7} aria-hidden="true" /><span>Try using these expressions in your conversation!</span></div>
+         </section>
+         <section className="speaking-notes-card"><div className="speaking-student-card-heading"><div><h2>Notes</h2><p>Private on this device</p></div><PencilLine size={21} strokeWidth={1.7} aria-hidden="true" /></div><div className="speaking-notes-field"><textarea value={notes} onChange={(event) => setNotes(event.target.value)} placeholder="Write a note…" aria-label="Notes" /><img src="/assets/speaking/notes-motivation.png" alt="" aria-hidden="true" /></div></section>
+         {resources.referenceItems.length > 0 && <section className="speaking-reference-card"><button type="button" onClick={() => setReferenceOpen((open) => !open)} aria-expanded={referenceOpen}><BookOpenText size={22} aria-hidden="true" /><span>Reference material</span><ChevronDown size={18} aria-hidden="true" /></button>{referenceOpen && <ul>{resources.referenceItems.map((item) => <li key={item.label}><strong>{item.label}</strong>{item.detail && <span>{item.detail}</span>}</li>)}</ul>}</section>}
+       </aside>
+     </div>
+   </div>;
 }
 function StudentTranscriptTurnV2({ activity, turn, onReplay }: { activity: SpeakingActivity; turn: SpeakingTurn; onReplay?: (text?: string) => void }) {
   const isAi = turn.speaker === "ai";
   const resources = speakingScenarioResources(activity.scenarioResources);
   const createdAt = new Date(turn.createdAt);
   const time = Number.isNaN(createdAt.getTime()) ? "" : createdAt.toLocaleTimeString([], { hour: "numeric", minute: "2-digit" });
-  return <div className={"speaking-transcript-turn " + (isAi ? "speaking-transcript-turn-ai" : "speaking-transcript-turn-student")}>
-    <div className={"speaking-turn-avatar " + (isAi ? "speaking-turn-avatar-ai" : "speaking-turn-avatar-student")}>{isAi ? resources.imageSrc ? <img src={resources.imageSrc} alt={resources.imageAlt ?? "Speaking partner"} /> : <MessageCircle size={22} aria-hidden="true" /> : <UserRound size={39} strokeWidth={1.5} aria-hidden="true" />}</div>
-    <div className="speaking-turn-body"><p className="speaking-turn-label">{isAi ? "AI · " + activity.aiRole : "You"}</p><div className="speaking-turn-bubble"><div><strong>{turn.text}</strong></div><button type="button" onClick={() => onReplay?.(turn.text)} disabled={!isAi || !onReplay} aria-label="Replay AI message"><Volume2 size={22} strokeWidth={1.8} aria-hidden="true" /></button></div>{!isAi && time && <time dateTime={turn.createdAt}>{time}</time>}</div>
-  </div>;
+  return <article className={"speaking-transcript-turn " + (isAi ? "speaking-transcript-turn-ai" : "speaking-transcript-turn-student")} role="listitem">
+    <div className={"speaking-turn-avatar " + (isAi ? "speaking-turn-avatar-ai" : "speaking-turn-avatar-student")} aria-hidden="true">{isAi ? resources.imageSrc ? <img src={resources.imageSrc} alt="" aria-hidden="true" /> : <MessageCircle size={22} aria-hidden="true" /> : <img src="/assets/speaking/student-avatar.png" alt="" aria-hidden="true" />}</div>
+    <div className="speaking-turn-body"><p className="speaking-turn-label">{isAi ? "AI partner · " + activity.aiRole : "You"}</p><div className="speaking-turn-bubble"><div><strong>{turn.text}</strong></div><div className="speaking-turn-meta">{time && <time dateTime={turn.createdAt}>{time}</time>}{isAi && <button type="button" onClick={() => onReplay?.(turn.text)} disabled={!onReplay} aria-label="Replay AI message"><Volume2 size={22} strokeWidth={1.8} aria-hidden="true" /></button>}</div></div></div>
+  </article>;
 }
 
 

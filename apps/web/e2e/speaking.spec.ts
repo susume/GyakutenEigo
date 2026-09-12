@@ -24,7 +24,7 @@ test("result reconnects after network failure and resumes polling after manual r
     await route.fulfill({ status: 202, json: { result: { ...baseResult, participant: { ...baseResult.participant, status: "evaluating" } }, evaluationStatus: "retrying", evaluationRetryable: true } });
   });
   await page.goto(`/speak/result/${participantId}`);
-  await expect(page.getByRole("heading", { name: "Reconnecting to your result" })).toBeVisible();
+  await expect(page.getByRole("heading", { name: "Evaluation needs another try" })).toBeVisible();
   await expect(page.getByRole("heading", { name: "Session not found" })).toHaveCount(0);
   await page.getByRole("button", { name: "Retry evaluation", exact: true }).click();
   await expect(page.getByText("Evaluation retrying", { exact: true })).toBeVisible();
@@ -176,9 +176,16 @@ test("teacher and student Speaking Practice screens use the connected mock API",
   }
   await studentPage.getByRole("button", { name: "Start Speaking", exact: true }).click();
   await expect(studentPage.getByRole("button", { name: "Tap to speak", exact: true })).toBeEnabled();
+  await expect(studentPage.locator(".speaking-flow-panel")).toHaveCount(0);
+  await expect(studentPage.getByRole("heading", { name: "Conversation", exact: true })).toBeVisible();
+  await expect(studentPage.getByText("Your conversation so far", { exact: true })).toBeVisible();
+  await expect(studentPage.getByLabel("Notes", { exact: true })).toBeVisible();
+  await expect(studentPage.getByText("Try using these expressions in your conversation!", { exact: true })).toBeVisible();
   const responsiveViewports = [
     { width: 1366, height: 768 },
+    { width: 1280, height: 800 },
     { width: 1280, height: 640 },
+    { width: 1180, height: 820 },
     { width: 1024, height: 768 },
     { width: 768, height: 1024 },
     { width: 390, height: 844 }
@@ -225,6 +232,19 @@ test("teacher and student Speaking Practice screens use the connected mock API",
     await expect(studentPage.getByRole("button", { name: "Tap to speak", exact: true })).toBeEnabled({ timeout: 15_000 });
     await studentPage.screenshot({ path: testInfo.outputPath(`speaking-${viewport.width}x${viewport.height}.png`), fullPage: false });
   }
+  await studentPage.setViewportSize({ width: 1366, height: 768 });
+  const transcriptList = studentPage.locator(".speaking-transcript-list");
+  const transcriptMetrics = await transcriptList.evaluate((element) => ({ scrollHeight: element.scrollHeight, clientHeight: element.clientHeight }));
+  expect(transcriptMetrics.scrollHeight).toBeGreaterThan(transcriptMetrics.clientHeight);
+  await transcriptList.dispatchEvent("wheel", { deltaY: -1000 });
+  await transcriptList.evaluate((element) => {
+    element.scrollTop = 0;
+    element.dispatchEvent(new Event("scroll", { bubbles: true }));
+  });
+  await expect(studentPage.getByRole("button", { name: "Jump to latest", exact: true })).toBeVisible();
+  await studentPage.getByRole("button", { name: "Jump to latest", exact: true }).click();
+  await expect(studentPage.getByRole("button", { name: "Jump to latest", exact: true })).toBeHidden();
+  await studentPage.setViewportSize({ width: 390, height: 844 });
   await studentPage.evaluate(() => {
     document.documentElement.style.zoom = "1.25";
   });
@@ -277,15 +297,16 @@ test("teacher and student Speaking Practice screens use the connected mock API",
   let teacherResultReads = 0;
   await teacherPage.route("**/api/speaking/results/*", async (route) => {
     teacherResultReads += 1;
-    if (teacherResultReads > 1) { await route.continue(); return; }
+    if (teacherResultReads > 2) { await route.continue(); return; }
     const response = await route.fetch();
     const payload = await response.json() as { result: { participant: Record<string, unknown> } };
-    await route.fulfill({ json: { ...payload, evaluationStatus: "retrying", result: { ...payload.result, participant: { ...payload.result.participant, status: "evaluating" }, evaluation: undefined } } });
+    await route.fulfill({ json: { ...payload, evaluationStatus: "retrying", evaluationRetryable: true, result: { ...payload.result, participant: { ...payload.result.participant, status: "evaluating" }, evaluation: undefined } } });
   });
   await teacherPage.getByRole("button", { name: "Aki", exact: true }).click();
   await expect(teacherPage.getByRole("heading", { name: "Evaluation in progress" })).toBeVisible();
-  await expect(teacherPage.locator(".speaking-result-panel")).toBeVisible();
-  expect(teacherResultReads).toBeGreaterThan(1);
+  await expect(teacherPage.locator(".speaking-empty-card")).toBeVisible();
+  await expect.poll(() => teacherResultReads, { timeout: 15_000 }).toBeGreaterThan(2);
+  await expect(teacherPage.locator(".speaking-result-panel")).toBeVisible({ timeout: 15_000 });
   await expect(teacherPage.getByRole("meter")).toHaveCount(5);
   await teacherPage.screenshot({ path: testInfo.outputPath("teacher-student-result.png"), fullPage: true });
 
