@@ -376,7 +376,7 @@ function SpeakingPreActivityPageV2({ navigate, joined }: { navigate: Navigate; j
     const chosen = voices.find((voice) => voice.providerVoiceId === savedVoiceId) ?? getDefaultCuratedSpeakingVoice(readBrowserSpeechVoices());
     if (!chosen) return;
     setSelectedVoiceId(chosen.providerVoiceId);
-    if (chosen.providerVoiceId !== savedVoiceId) persistSpeakingVoiceSelection(joined.session.id, chosen);
+    persistSpeakingVoiceSelection(joined.session.id, chosen);
   }, [joined.session.id, voices]);
 
   const startSession = useCallback(async () => {
@@ -401,6 +401,7 @@ function SpeakingPreActivityPageV2({ navigate, joined }: { navigate: Navigate; j
 
   const requestMicrophone = useCallback(async () => {
     if (micState === "requesting" || micState === "testing") return;
+    browserTtsProvider.cancel();
     if (!navigator.mediaDevices?.getUserMedia || typeof MediaRecorder === "undefined") {
       setMicState("unsupported");
       return;
@@ -497,7 +498,7 @@ function SpeakingPreActivityPageV2({ navigate, joined }: { navigate: Navigate; j
         <p className="speaking-preflight-status">{microphoneHelp}</p>
 
         <div className="speaking-prep-divider" />
-        <SpeakingVoiceSelector voices={voices} selectedVoiceId={selectedVoiceId} onSelect={(voice) => { setSelectedVoiceId(voice.providerVoiceId); persistSpeakingVoiceSelection(joined.session.id, voice); }} />
+        <SpeakingVoiceSelector voices={voices} selectedVoiceId={selectedVoiceId} previewDisabled={micState === "requesting" || micState === "testing" || micState === "ready"} onSelect={(voice) => { setSelectedVoiceId(voice.providerVoiceId); persistSpeakingVoiceSelection(joined.session.id, voice); }} />
 
         <details className="speaking-preflight-guidance">
           <summary><ChevronRight size={17} aria-hidden="true" /><Lightbulb size={18} aria-hidden="true" /><strong>Microphone tips</strong></summary>

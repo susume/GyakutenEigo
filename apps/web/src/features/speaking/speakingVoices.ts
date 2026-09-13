@@ -72,7 +72,7 @@ const voiceText = (voice: SpeechSynthesisVoice) => `${voice.name} ${voice.voiceU
 
 const isEnglishVoice = (voice: SpeechSynthesisVoice) => {
   const language = voice.lang.trim().replace(/_/gu, "-").toLowerCase();
-  return language === "en" || language.startsWith("en-") || /\benglish\b/iu.test(voiceText(voice));
+  return language === "en" || language.startsWith("en-");
 };
 
 const voiceProviderId = (voice: SpeechSynthesisVoice) => voice.voiceURI.trim() || voice.name.trim();
@@ -94,10 +94,8 @@ const bestVoiceForPreset = (preset: SpeakingVoicePreset, voices: readonly Speech
     })
     .filter((candidate) => candidate.matcherIndex >= 0 && candidate.providerVoiceId && !usedIds.has(candidate.providerVoiceId))
     .sort((left, right) => {
-      const matcherDifference = left.matcherIndex - right.matcherIndex;
-      if (matcherDifference) return matcherDifference;
       const qualityDifference = qualityBonus(right.voice) - qualityBonus(left.voice);
-      return qualityDifference || left.index - right.index;
+      return qualityDifference || left.matcherIndex - right.matcherIndex || left.index - right.index;
     });
   const selected = candidates[0];
   return selected ? { preset, providerVoiceId: selected.providerVoiceId, voice: selected.voice } : undefined;
@@ -162,8 +160,12 @@ const readStorageValue = (storage: Storage | undefined, key: string) => {
   }
 };
 
-const sessionStorageIfAvailable = () => typeof sessionStorage === "undefined" ? undefined : sessionStorage;
-const localStorageIfAvailable = () => typeof localStorage === "undefined" ? undefined : localStorage;
+const sessionStorageIfAvailable = () => {
+  try { return globalThis.sessionStorage; } catch { return undefined; }
+};
+const localStorageIfAvailable = () => {
+  try { return globalThis.localStorage; } catch { return undefined; }
+};
 
 export const readSpeakingVoiceForSession = (sessionId: string) => readStorageValue(sessionStorageIfAvailable(), speakingVoiceSessionStorageKey(sessionId));
 export const readSpeakingVoicePreference = () => readStorageValue(localStorageIfAvailable(), SPEAKING_VOICE_PREFERENCE_STORAGE_KEY);

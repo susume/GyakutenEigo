@@ -1,6 +1,6 @@
 import assert from "node:assert/strict";
 import test from "node:test";
-import { getCuratedSpeakingVoices, getDefaultCuratedSpeakingVoice, isApprovedSpeakingVoiceId } from "./speakingVoices.js";
+import { getCuratedSpeakingVoices, getDefaultCuratedSpeakingVoice, isApprovedSpeakingVoiceId, readSpeakingVoicePreference } from "./speakingVoices.js";
 
 const fakeVoice = (name: string, lang: string, voiceURI = name, defaultVoice = false) => ({
   default: defaultVoice,
@@ -56,4 +56,20 @@ test("the headed Windows runtime voices resolve by exact voiceURI and keep Japan
     "Microsoft James - English (Australia)"
   ]);
   assert.equal(curated.some((option) => option.providerVoiceId.includes("Ayumi")), false);
+});
+
+test("an English-looking name cannot override a non-English language", () => {
+  assert.deepEqual(getCuratedSpeakingVoices([
+    fakeVoice("Microsoft Jenny Online (Natural) - English", "ja-JP")
+  ]), []);
+});
+
+test("blocked storage access does not crash voice preference initialization", () => {
+  const original = Object.getOwnPropertyDescriptor(globalThis, "localStorage");
+  Object.defineProperty(globalThis, "localStorage", { configurable: true, get() { throw new Error("Storage blocked"); } });
+  try { assert.equal(readSpeakingVoicePreference(), undefined); }
+  finally {
+    if (original) Object.defineProperty(globalThis, "localStorage", original);
+    else Reflect.deleteProperty(globalThis, "localStorage");
+  }
 });

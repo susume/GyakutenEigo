@@ -251,6 +251,7 @@ test("teacher and student Speaking Practice screens use the connected mock API",
     await studentPage.screenshot({ path: testInfo.outputPath(`student-briefing-${viewport.width}.png`), fullPage: true });
   }
   const cancelCountBeforeStart = await studentPage.evaluate(() => (window as Window & { __speakingSpeechCancelCount?: number }).__speakingSpeechCancelCount ?? 0);
+  await studentPage.evaluate(() => { (window as Window & { __speakingSpeechLog?: unknown[] }).__speakingSpeechLog?.splice(0); });
   await studentPage.getByRole("button", { name: "Start Speaking", exact: true }).click();
   await expect(studentPage.getByRole("button", { name: "Tap to speak", exact: true })).toBeEnabled();
   expect(await studentPage.evaluate(() => (window as Window & { __speakingSpeechCancelCount?: number }).__speakingSpeechCancelCount ?? 0)).toBeGreaterThan(cancelCountBeforeStart);

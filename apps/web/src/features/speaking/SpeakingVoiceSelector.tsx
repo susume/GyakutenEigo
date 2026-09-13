@@ -8,12 +8,20 @@ type PreviewState = { providerVoiceId: string; phase: "loading" | "playing" } | 
 type SpeakingVoiceSelectorProps = {
   voices: CuratedSpeakingVoice[];
   selectedVoiceId?: string;
+  previewDisabled?: boolean;
   onSelect: (voice: CuratedSpeakingVoice) => void;
 };
 
-export default function SpeakingVoiceSelector({ voices, selectedVoiceId, onSelect }: SpeakingVoiceSelectorProps) {
+export default function SpeakingVoiceSelector({ voices, selectedVoiceId, previewDisabled = false, onSelect }: SpeakingVoiceSelectorProps) {
   const [preview, setPreview] = useState<PreviewState>();
   const previewTokenRef = useRef(0);
+
+  useEffect(() => {
+    if (!previewDisabled) return;
+    previewTokenRef.current += 1;
+    browserTtsProvider.cancel();
+    setPreview(undefined);
+  }, [previewDisabled]);
 
   useEffect(() => () => {
     previewTokenRef.current += 1;
@@ -21,6 +29,7 @@ export default function SpeakingVoiceSelector({ voices, selectedVoiceId, onSelec
   }, []);
 
   const previewVoice = useCallback(async (voice: CuratedSpeakingVoice) => {
+    if (previewDisabled) return;
     const current = preview;
     const token = ++previewTokenRef.current;
     browserTtsProvider.cancel();
@@ -41,7 +50,7 @@ export default function SpeakingVoiceSelector({ voices, selectedVoiceId, onSelec
     } finally {
       if (previewTokenRef.current === token) setPreview(undefined);
     }
-  }, [preview]);
+  }, [preview, previewDisabled]);
 
   return <section className="speaking-voice-selector" data-testid="speaking-voice-selector" aria-labelledby="speaking-voice-selector-title">
     <div className="speaking-voice-selector-heading">
@@ -71,6 +80,7 @@ export default function SpeakingVoiceSelector({ voices, selectedVoiceId, onSelec
             type="button"
             aria-label={`${activePreview ? "Stop" : "Preview"} ${voice.preset.displayName} voice`}
             aria-busy={activePreview && preview?.phase === "loading"}
+            disabled={previewDisabled}
             onClick={() => void previewVoice(voice)}
           >
             {activePreview && preview?.phase === "loading" ? <LoaderCircle size={17} className="speaking-spin" aria-hidden="true" /> : activePreview ? <Volume2 size={17} aria-hidden="true" /> : <Play size={16} fill="currentColor" aria-hidden="true" />}

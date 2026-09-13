@@ -1,4 +1,4 @@
-import { isApprovedSpeakingVoiceId, readBrowserSpeechVoices, resolveCuratedSpeakingVoice } from "./speakingVoices";
+import { getDefaultCuratedSpeakingVoice, readBrowserSpeechVoices, resolveCuratedSpeakingVoice } from "./speakingVoices";
 
 export interface SpeakOptions {
   lang?: string;
@@ -31,9 +31,8 @@ export const browserTtsProvider: TTSProvider = {
     return new Promise((resolve) => {
       const utterance = new SpeechSynthesisUtterance(text);
       const voices = readBrowserSpeechVoices();
-      const selectedVoice = options.voiceId && isApprovedSpeakingVoiceId(options.voiceId, voices)
-        ? resolveCuratedSpeakingVoice(options.voiceId, voices)?.voice
-        : undefined;
+      const selectedVoice = (resolveCuratedSpeakingVoice(options.voiceId, voices)
+        ?? getDefaultCuratedSpeakingVoice(voices))?.voice;
       if (selectedVoice) {
         utterance.voice = selectedVoice;
         utterance.lang = selectedVoice.lang || options.lang || "en-US";

@@ -902,3 +902,11 @@ Selecting a card stores `{ presetId, providerVoiceId }` in session storage for t
 - The reference screenshot shows a live “Listening…” microphone state; the initial implementation capture correctly shows “Waiting for microphone” until the student grants access and speaks. The waveform is driven by real analyser/RMS input during the check.
 - The current QA machine has only two approved English system voices, so its live selector has two cards; the supported three-card product path is covered by the connected E2E fixture and appears when a third curated runtime voice is available.
 - No P0/P1 visual findings were found.
+
+## Follow-up implementation audit
+
+Fixed remembered-device preferences not being copied into active session storage, invalid TTS IDs bypassing the curated default, storage getter exceptions during initialization, and previews continuing or restarting during the microphone check. Explicit non-English language metadata now excludes a voice even when its name contains English. Natural quality ranking now takes precedence over matcher order. The decorative selection check no longer intercepts preview clicks.
+
+The session handoff E2E assertion previously counted preview speech and could pass without verifying session speech. It now clears the preview log before starting and verifies subsequent session speech uses Ken. Validation: six voice tests, connected speaking E2E, web typecheck, repository lint, production web build, and whitespace check passed. Desktop render reviewed; responsive overflow assertions passed in the connected test.
+
+Correction to the previous voice-quality report: runtime enumeration proves voice availability, not conversational naturalness. Catherine/James and the other OS fallbacks have not received an audible quality review in this audit. The current provider has no reliable cross-platform quality metadata, and three consistently natural voices across school devices are not guaranteed by this implementation. The earlier blanket completion statement overstated that part of the brief.
