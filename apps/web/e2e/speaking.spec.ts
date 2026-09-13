@@ -171,25 +171,90 @@ test("teacher and student Speaking Practice screens use the connected mock API",
       }
     }
     Object.defineProperty(window, "MediaRecorder", { configurable: true, value: FakeMediaRecorder });
+    class FakeSpeechSynthesisUtterance {
+      lang = "";
+      onend?: () => void;
+      onerror?: () => void;
+      rate = 1;
+      voice?: { voiceURI?: string };
+      constructor(readonly text: string) {}
+    }
+    Object.defineProperty(window, "SpeechSynthesisUtterance", { configurable: true, value: FakeSpeechSynthesisUtterance });
+    const speakingVoices = [
+      { default: true, lang: "en-US", localService: true, name: "Microsoft Jenny Online (Natural) - English (United States)", voiceURI: "fake-mika" },
+      { default: false, lang: "en-US", localService: true, name: "Microsoft Guy Online (Natural) - English (United States)", voiceURI: "fake-ken" },
+      { default: false, lang: "en-GB", localService: true, name: "Microsoft Sonia Online (Natural) - English (United Kingdom)", voiceURI: "fake-alex" }
+    ];
+    const speakingSpeechLog: Array<{ text: string; voiceId: string }> = [];
+    let speakingSpeechCancelCount = 0;
+    Object.defineProperty(window, "__speakingSpeechLog", { configurable: true, value: speakingSpeechLog });
+    Object.defineProperty(window, "__speakingSpeechCancelCount", { configurable: true, get: () => speakingSpeechCancelCount });
     Object.defineProperty(window, "speechSynthesis", { configurable: true, value: {
-      cancel: () => undefined,
-      speak: (utterance: { onend?: () => void }) => setTimeout(() => utterance.onend?.(), 0)
+      addEventListener: () => undefined,
+      cancel: () => { speakingSpeechCancelCount += 1; },
+      getVoices: () => speakingVoices,
+      removeEventListener: () => undefined,
+      speak: (utterance: { onend?: () => void; text?: string; voice?: { voiceURI?: string } }) => {
+        speakingSpeechLog.push({ text: utterance.text ?? "", voiceId: utterance.voice?.voiceURI ?? "" });
+        setTimeout(() => utterance.onend?.(), 0);
+      }
     } });
+  });
+  await studentPage.route("**/api/speaking/join", async (route) => {
+    const response = await route.fetch();
+    const payload = await response.json() as { activity: Record<string, unknown> } & Record<string, unknown>;
+    await route.fulfill({
+      status: response.status(),
+      contentType: "application/json",
+      body: JSON.stringify({
+        ...payload,
+        activity: {
+          ...payload.activity,
+          title: "Giving Train Directions",
+          scenario: "A visitor asks you how to reach a popular place by train from the station information desk.",
+          aiRole: "Visitor",
+          studentRole: "Station helper",
+          durationSeconds: 240,
+          targetExpressions: ["Take the… line.", "Change at…", "Get off at…", "Let me check that for you."],
+          scenarioResources: {
+            ...(payload.activity as { scenarioResources?: Record<string, unknown> }).scenarioResources,
+            studentGoal: "Explain the line, platform, transfer, and arrival stop in a way the visitor can repeat.",
+            imageSrc: "/assets/speaking/scenario-train-directions.webp",
+            imageAlt: "A station helper giving train directions"
+          }
+        }
+      })
+    });
   });
   await studentPage.goto(`/speak/join/${joinCode}`);
   await studentPage.getByLabel("Nickname or student number").fill("Aki");
   await studentPage.getByRole("button", { name: "Join session", exact: true }).click();
-  await studentPage.setViewportSize({ width: 1366, height: 768 });
+  await studentPage.setViewportSize({ width: 1680, height: 942 });
   await studentPage.screenshot({ path: testInfo.outputPath("student-microphone.png"), fullPage: true });
   await expect(studentPage.getByRole("heading", { name: "Your task", exact: true })).toBeVisible();
+  await expect(studentPage.getByRole("heading", { name: "Choose AI voice", exact: true })).toBeVisible();
+  await expect(studentPage.locator("[data-testid^='speaking-voice-card-']")).toHaveCount(3);
+  await studentPage.getByRole("button", { name: "Choose Ken voice", exact: true }).click();
+  await expect(studentPage.locator("[data-testid='speaking-voice-card-ken']").getByRole("button", { name: "Choose Ken voice", exact: true })).toHaveAttribute("aria-pressed", "true");
+  await expect.poll(() => studentPage.evaluate((id) => sessionStorage.getItem(`speaking-voice:${id}`), session!.id)).toContain("fake-ken");
+  const cancelCountBeforePreview = await studentPage.evaluate(() => (window as Window & { __speakingSpeechCancelCount?: number }).__speakingSpeechCancelCount ?? 0);
+  await studentPage.getByRole("button", { name: "Preview Ken voice", exact: true }).click();
+  await expect.poll(() => studentPage.evaluate(() => (window as Window & { __speakingSpeechLog?: Array<{ voiceId: string }> }).__speakingSpeechLog?.length ?? 0)).toBeGreaterThan(0);
+  expect(await studentPage.evaluate(() => (window as Window & { __speakingSpeechLog?: Array<{ voiceId: string }> }).__speakingSpeechLog?.at(-1)?.voiceId)).toBe("fake-ken");
+  await studentPage.getByRole("button", { name: "Preview Alex voice", exact: true }).click();
+  await expect.poll(() => studentPage.evaluate(() => (window as Window & { __speakingSpeechLog?: Array<{ voiceId: string }> }).__speakingSpeechLog?.at(-1)?.voiceId)).toBe("fake-alex");
+  expect(await studentPage.evaluate(() => (window as Window & { __speakingSpeechCancelCount?: number }).__speakingSpeechCancelCount ?? 0)).toBeGreaterThan(cancelCountBeforePreview);
   await studentPage.screenshot({ path: testInfo.outputPath("student-briefing.png"), fullPage: true });
   for (const viewport of [{ width: 768, height: 1024 }, { width: 390, height: 844 }]) {
     await studentPage.setViewportSize(viewport);
     expect(await studentPage.evaluate(() => document.documentElement.scrollWidth)).toBeLessThanOrEqual(viewport.width);
     await studentPage.screenshot({ path: testInfo.outputPath(`student-briefing-${viewport.width}.png`), fullPage: true });
   }
+  const cancelCountBeforeStart = await studentPage.evaluate(() => (window as Window & { __speakingSpeechCancelCount?: number }).__speakingSpeechCancelCount ?? 0);
   await studentPage.getByRole("button", { name: "Start Speaking", exact: true }).click();
   await expect(studentPage.getByRole("button", { name: "Tap to speak", exact: true })).toBeEnabled();
+  expect(await studentPage.evaluate(() => (window as Window & { __speakingSpeechCancelCount?: number }).__speakingSpeechCancelCount ?? 0)).toBeGreaterThan(cancelCountBeforeStart);
+  await expect.poll(() => studentPage.evaluate(() => (window as Window & { __speakingSpeechLog?: Array<{ voiceId: string }> }).__speakingSpeechLog?.some((entry) => entry.voiceId === "fake-ken") ?? false)).toBe(true);
   await expect(studentPage.locator(".speaking-flow-panel")).toHaveCount(0);
   await expect(studentPage.getByRole("heading", { name: "Conversation", exact: true })).toBeVisible();
   await expect(studentPage.getByText("Your conversation so far", { exact: true })).toBeVisible();

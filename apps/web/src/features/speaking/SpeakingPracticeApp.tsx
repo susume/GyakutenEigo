@@ -20,7 +20,9 @@ import {
   ScanLine,
   Sparkles,
   Trophy,
+  Target,
   UserRound,
+  UsersRound,
   Volume2,
   X
 } from "lucide-react";
@@ -43,6 +45,8 @@ import { formatDuration } from "./speakingData";
 import { browserTtsProvider } from "./speakingProviders";
 import { testSpeakingMicrophone } from "./speakingPreflight";
 import { cancelSpeakingAudioCapture, createSpeakingAudioActivityMonitor, createSpeakingAudioRecorder, disposeSpeakingAudioCapture, stopSpeakingAudioCapture, type SpeakingAudioCapture } from "./speakingRecorder";
+import SpeakingVoiceSelector from "./SpeakingVoiceSelector";
+import { getBrowserSpeechSynthesis, getCuratedSpeakingVoices, getDefaultCuratedSpeakingVoice, persistSpeakingVoiceSelection, readBrowserSpeechVoices, readSpeakingVoiceForSession, readSpeakingVoicePreference, speakingVoiceIdForSession } from "./speakingVoices";
 import { hasStudentSpeech, ResultPanel, scoreFor } from "./SpeakingResultPanel";
 import { mergeSpeakingTurns, nextSpeakingPollDelay, shouldAcceptSpeakingRevision, speakingTimerReference } from "./speakingLifecycle";
 import { isKeyboardEditingTarget, isSpaceShortcutEvent } from "./speakingKeyboard";
@@ -145,8 +149,12 @@ function SpeakingBrand({ navigate, compact = false }: { navigate: Navigate; comp
   return <button className={`speaking-brand${compact ? " speaking-brand-compact" : ""}`} type="button" onClick={() => navigate("/speak")} aria-label="GyakutenEigo Speaking Practice home"><span className="speaking-brand-mark"><MessageCircle size={compact ? 22 : 28} strokeWidth={2.2} aria-hidden="true" /></span><span className="speaking-brand-name">GyakutenEigo</span></button>;
 }
 
-function SpeakingTopbar({ navigate, active = "home", teacher = false, student = false }: { navigate: Navigate; student?: boolean; active?: "home" | "join" | "teacher"; teacher?: boolean }) {
+function SpeakingTopbar({ navigate, active = "home", teacher = false, student = false, studentSetup = false, studentLabel = "Student" }: { navigate: Navigate; student?: boolean; studentSetup?: boolean; studentLabel?: string; active?: "home" | "join" | "teacher"; teacher?: boolean }) {
   const [menuOpen, setMenuOpen] = useState(false);
+  if (student && studentSetup) {
+    const initial = studentLabel.trim().charAt(0).toUpperCase() || "S";
+    return <header className="speaking-topbar speaking-student-topbar speaking-setup-topbar"><SpeakingBrand navigate={navigate} /><div className="speaking-setup-account"><span>Speak today. A wider tomorrow.</span><span className="speaking-setup-account-avatar" aria-label={`Signed in as ${studentLabel}`}>{initial}</span></div></header>;
+  }
   if (student) return <header className="speaking-topbar speaking-student-topbar"><SpeakingBrand navigate={navigate} compact /><span>Performance Test</span></header>;
   return <header className={`speaking-topbar${teacher ? " speaking-topbar-teacher" : ""}`}><SpeakingBrand navigate={navigate} compact /><nav id="speaking-navigation" className={`speaking-topbar-actions${menuOpen ? " is-open" : ""}`} aria-label="Speaking Practice navigation"><button type="button" className={active === "home" ? "is-active" : ""} onClick={() => navigate("/speak")}><Sparkles size={16} aria-hidden="true" />Practice</button><button type="button" className={active === "join" ? "is-active" : ""} onClick={() => navigate("/speak/join")}><ScanLine size={16} aria-hidden="true" />Join activity</button><button type="button" className={active === "teacher" ? "is-active" : ""} onClick={() => navigate("/speak/teacher")}><UserRound size={16} aria-hidden="true" />Teacher tools</button></nav><button className="speaking-menu-toggle" type="button" aria-expanded={menuOpen} aria-controls="speaking-navigation" onClick={() => setMenuOpen((open) => !open)}><Menu size={20} aria-hidden="true" /><span>Menu</span></button></header>;
 }
@@ -330,13 +338,49 @@ function SpeakingJoinPage({ navigate, initialCode }: { navigate: Navigate; initi
 function ShieldIcon() { return <span className="speaking-privacy-dot" aria-hidden="true"><CircleCheck size={14} /></span>; }
 
 function SpeakingPreActivityPageV2({ navigate, joined }: { navigate: Navigate; joined: JoinResponse }) {
+  const resources = speakingScenarioResources(joined.activity.scenarioResources);
   const [micState, setMicState] = useState<"idle" | "requesting" | "testing" | "ready" | "unverified" | "no-signal" | "denied" | "unsupported" | "waiting">("idle");
+  const [micLevels, setMicLevels] = useState<number[]>(() => Array.from({ length: 12 }, () => 0));
+  const [voices, setVoices] = useState<ReturnType<typeof getCuratedSpeakingVoices>>([]);
+  const [selectedVoiceId, setSelectedVoiceId] = useState<string>();
+  const [scenarioImageVisible, setScenarioImageVisible] = useState(Boolean(resources.imageSrc));
+  const [error, setError] = useState("");
   const preflightRef = useRef<AbortController | undefined>(undefined);
   const mountedRef = useRef(true);
-  useEffect(() => { mountedRef.current = true; return () => { mountedRef.current = false; preflightRef.current?.abort(); }; }, []);
-  const [signalDetected, setSignalDetected] = useState(false);
-  const [error, setError] = useState("");
+
+  useEffect(() => {
+    mountedRef.current = true;
+    return () => {
+      mountedRef.current = false;
+      preflightRef.current?.abort();
+      browserTtsProvider.cancel();
+    };
+  }, []);
+
+  const refreshVoices = useCallback(() => {
+    setVoices(getCuratedSpeakingVoices(readBrowserSpeechVoices()));
+  }, []);
+
+  useEffect(() => {
+    refreshVoices();
+    const synthesis = getBrowserSpeechSynthesis();
+    if (!synthesis) return;
+    const onVoicesChanged = () => refreshVoices();
+    synthesis.addEventListener?.("voiceschanged", onVoicesChanged);
+    return () => synthesis.removeEventListener?.("voiceschanged", onVoicesChanged);
+  }, [refreshVoices]);
+
+  useEffect(() => {
+    if (voices.length === 0) return;
+    const savedVoiceId = readSpeakingVoiceForSession(joined.session.id) ?? readSpeakingVoicePreference();
+    const chosen = voices.find((voice) => voice.providerVoiceId === savedVoiceId) ?? getDefaultCuratedSpeakingVoice(readBrowserSpeechVoices());
+    if (!chosen) return;
+    setSelectedVoiceId(chosen.providerVoiceId);
+    if (chosen.providerVoiceId !== savedVoiceId) persistSpeakingVoiceSelection(joined.session.id, chosen);
+  }, [joined.session.id, voices]);
+
   const startSession = useCallback(async () => {
+    browserTtsProvider.cancel();
     setError("");
     try {
       await speakingApi.startParticipant(joined.session.id, joined.token);
@@ -348,23 +392,32 @@ function SpeakingPreActivityPageV2({ navigate, joined }: { navigate: Navigate; j
       if (startError instanceof ApiError && startError.status === 409 && /waiting/i.test(message)) {
         setMicState("waiting");
         navigate("/speak/session/" + joined.session.id);
-      } else { setMicState("unverified"); setError(message); }
+      } else {
+        setMicState("unverified");
+        setError(message);
+      }
     }
   }, [joined.session.id, joined.token, navigate]);
-  const requestMicrophone = async () => {
+
+  const requestMicrophone = useCallback(async () => {
+    if (micState === "requesting" || micState === "testing") return;
     if (!navigator.mediaDevices?.getUserMedia || typeof MediaRecorder === "undefined") {
       setMicState("unsupported");
       return;
     }
     setMicState("requesting");
-    setSignalDetected(false);
+    setMicLevels(Array.from({ length: 12 }, () => 0));
     setError("");
     preflightRef.current?.abort();
     const controller = new AbortController();
     preflightRef.current = controller;
     try {
       setMicState("testing");
-      const detected = await testSpeakingMicrophone(controller.signal, () => setSignalDetected(true));
+      const detected = await testSpeakingMicrophone(
+        controller.signal,
+        undefined,
+        (levels) => { if (mountedRef.current && levels.length > 0) setMicLevels(levels); }
+      );
       if (controller.signal.aborted) return;
       if (detected === undefined) {
         setMicState("unverified");
@@ -375,7 +428,6 @@ function SpeakingPreActivityPageV2({ navigate, joined }: { navigate: Navigate; j
         setMicState("no-signal");
         return;
       }
-      setSignalDetected(true);
       setMicState("ready");
       sessionStorage.setItem("speaking-microphone-ready", "true");
       void startSession();
@@ -384,9 +436,82 @@ function SpeakingPreActivityPageV2({ navigate, joined }: { navigate: Navigate; j
       setMicState("denied");
       setError(micError instanceof DOMException && micError.name === "NotAllowedError" ? "Microphone permission was denied. Allow microphone access, then try again." : "The microphone could not be tested. Check the device and try again.");
     }
-  };
-  const resources = speakingScenarioResources(joined.activity.scenarioResources);
-  return <div className="speaking-page-shell speaking-preactivity-page"><SpeakingTopbar navigate={navigate} student /><StudentJourney step={1} /><main className="speaking-preactivity-layout"><section className="speaking-preactivity-hero"><span className="speaking-eyebrow"><Mic size={15} aria-hidden="true" /> Before you start</span><h1>{joined.activity.title}</h1><p>{joined.activity.scenario}</p><div className="speaking-role-pills"><span>You are: <strong>{joined.activity.studentRole}</strong></span><span>Talk to: <strong>{joined.activity.aiRole}</strong></span><span><Clock3 size={14} aria-hidden="true" /> {formatDuration(joined.activity.durationSeconds)}</span></div><div className="speaking-task-brief"><h2>Your task</h2><p>{resources.studentGoal}</p><h3>Target expressions</h3><ul>{joined.activity.targetExpressions.map((expression) => <li key={expression}>{expression}</li>)}</ul><details><summary>What will be evaluated?</summary><ul>{joined.activity.rubric.filter((criterion) => criterion.enabled).map((criterion) => <li key={criterion.id}><strong>{criterion.name}</strong> · {criterion.description}</li>)}</ul></details></div></section><section className="speaking-prep-card"><div className="speaking-prep-card-heading"><div><span className="speaking-card-kicker">Quick microphone check</span><h2>Make sure we can hear you</h2><p>Allow the microphone, then say a few words. Headphones are recommended in class.</p></div><img className="speaking-prep-art" src="/assets/speaking/microphone-ready.webp" alt="" width={86} height={86} /></div><p lang="ja" className="speaking-operational-help">マイクを許可して、短く声を出してください。</p><div className="speaking-preflight-meter" aria-live="polite" aria-label={signalDetected ? "Microphone input detected" : "Waiting for microphone input"}>{[0, 1, 2, 3, 4].map((bar) => <span key={bar} className={signalDetected ? "is-active" : ""} style={{ animationDelay: bar * 80 + "ms" }} />)}</div><p className="speaking-preflight-status">{micState === "testing" ? "Speak now — checking for input…" : micState === "ready" ? "Microphone input detected." : micState === "no-signal" ? "No input was detected. Check the mute switch or microphone and try again." : micState === "waiting" ? "Waiting for your teacher to start the activity." : "You can retry the check if your microphone changes."}</p><details className="speaking-preflight-guidance"><summary>Microphone tips</summary><ul><li>Allow microphone access for this site.</li><li>Use headphones if the room is noisy.</li><li>Speak close enough to the device for the input meter to move.</li></ul></details>{error && <div className="speaking-error speaking-prep-error" role="alert"><strong>{error}</strong></div>}{micState === "denied" && <div className="speaking-preflight-actions"><button type="button" className="speaking-primary-button" onClick={requestMicrophone}>Retry microphone</button></div>}{micState === "unsupported" && <div className="speaking-error speaking-prep-error" role="alert"><strong>This browser cannot record a microphone.</strong><span>Use a current Chrome, Edge, or Safari browser on a secure connection.</span></div>}{micState === "no-signal" && <div className="speaking-preflight-actions"><button type="button" className="speaking-primary-button" onClick={requestMicrophone}>Test again</button></div>}{micState === "requesting" ? <button type="button" className="speaking-primary-button speaking-wide-button" disabled><LoaderCircle size={18} className="speaking-spin" aria-hidden="true" />Allowing microphone…</button> : micState === "testing" ? <button type="button" className="speaking-primary-button speaking-wide-button" disabled><LoaderCircle size={18} className="speaking-spin" aria-hidden="true" />Listening for your voice…</button> : micState === "idle" && <button type="button" className="speaking-primary-button speaking-wide-button" onClick={requestMicrophone}><Mic size={18} aria-hidden="true" />Start Speaking</button>}{micState === "unverified" && <button type="button" className="speaking-primary-button speaking-wide-button" onClick={() => void startSession()}>Continue without input test</button>}{micState === "ready" && <p className="speaking-session-note" role="status"><CircleCheck size={16} aria-hidden="true" />Microphone ready. Opening your activity…</p>}</section></main></div>;
+  }, [micState, startSession]);
+
+  const microphoneStatus = micState === "testing" ? "Listening…" : micState === "ready" ? "Microphone detected" : micState === "denied" ? "Microphone blocked" : micState === "no-signal" ? "No microphone detected" : micState === "waiting" ? "Waiting for your teacher" : "Waiting for microphone";
+  const microphoneHelp = micState === "testing" ? "Say a few words so we can check your microphone." : micState === "ready" ? "You can retry the check if your microphone changes." : micState === "denied" ? "Allow access in your browser, then try again." : micState === "no-signal" ? "Check the mute switch or microphone, then test again." : "You can retry the check if your microphone changes.";
+  const studentLabel = joined.participant.displayIdentifier?.trim() || "Student";
+  const introClassName = "speaking-preactivity-intro" + (scenarioImageVisible ? " has-image" : "");
+
+  return <div className="speaking-page-shell speaking-preactivity-page">
+    <SpeakingTopbar navigate={navigate} student studentSetup studentLabel={studentLabel} />
+    <StudentJourney step={1} />
+    <main className="speaking-preactivity-layout">
+      <section className="speaking-preactivity-hero">
+        <div className={introClassName}>
+          <div className="speaking-preactivity-copy">
+            <span className="speaking-eyebrow"><ArrowRight size={13} strokeWidth={3} aria-hidden="true" /> Before you start</span>
+            <h1>{joined.activity.title}</h1>
+            <p>{joined.activity.scenario}</p>
+            <div className="speaking-role-pills">
+              <span><UserRound size={16} aria-hidden="true" />You are: <strong>{joined.activity.studentRole}</strong></span>
+              <span><UsersRound size={16} aria-hidden="true" />Talk to: <strong>{joined.activity.aiRole}</strong></span>
+              <span><Clock3 size={16} aria-hidden="true" />{formatDuration(joined.activity.durationSeconds)}</span>
+            </div>
+          </div>
+          {scenarioImageVisible && resources.imageSrc && <img className="speaking-scenario-art" src={resources.imageSrc} alt={resources.imageAlt ?? ""} width={320} height={250} onError={() => setScenarioImageVisible(false)} />}
+        </div>
+
+        <article className="speaking-student-info-card speaking-task-card">
+          <span className="speaking-info-card-icon speaking-info-card-icon-blue" aria-hidden="true"><BookOpenText size={27} strokeWidth={2.1} /></span>
+          <div><h2>Your task</h2><p>{resources.studentGoal}</p></div>
+        </article>
+
+        <article className="speaking-student-info-card speaking-expressions-card">
+          <span className="speaking-info-card-icon speaking-info-card-icon-green" aria-hidden="true"><Target size={28} strokeWidth={2.1} /></span>
+          <div><h2>Target expressions</h2><ul>{joined.activity.targetExpressions.map((expression) => <li key={expression}>{expression}</li>)}</ul></div>
+        </article>
+
+        <details className="speaking-evaluation-card">
+          <summary><span className="speaking-evaluation-chevron" aria-hidden="true"><ChevronRight size={18} /></span><strong>What will be evaluated?</strong></summary>
+          <ul>{joined.activity.rubric.filter((criterion) => criterion.enabled).map((criterion) => <li key={criterion.id}><strong>{criterion.name}</strong><span>{criterion.description}</span></li>)}</ul>
+        </details>
+      </section>
+
+      <section className="speaking-prep-card speaking-ready-card">
+        <div className="speaking-ready-card-heading">
+          <div>
+            <span className="speaking-card-kicker">Check your setup</span>
+            <h2>Get ready to speak</h2>
+            <p>Allow the microphone, then say a few words.<br />Headphones are recommended in class.</p>
+            <p lang="ja" className="speaking-operational-help">マイクを許可して、短く声を出してください。<br />ヘッドフォンの使用をおすすめします。</p>
+          </div>
+          <img className="speaking-prep-art" src="/assets/speaking/microphone-ready.webp" alt="" width={118} height={118} />
+        </div>
+
+        <div className={"speaking-microphone-meter speaking-microphone-meter-" + micState} aria-live="polite" aria-label={microphoneStatus}>
+          <span className="speaking-microphone-badge" aria-hidden="true"><Mic size={25} strokeWidth={2.2} /></span>
+          <div className="speaking-microphone-wave" aria-hidden="true">{Array.from({ length: 12 }, (_, index) => <span key={index} className={(micLevels[index] ?? 0) > 0.04 ? "is-active" : ""} style={{ height: Math.max(4, Math.round((micLevels[index] ?? 0) * 54)) + "px" }} />)}</div>
+          <strong>{microphoneStatus}</strong>
+        </div>
+        <p className="speaking-preflight-status">{microphoneHelp}</p>
+
+        <div className="speaking-prep-divider" />
+        <SpeakingVoiceSelector voices={voices} selectedVoiceId={selectedVoiceId} onSelect={(voice) => { setSelectedVoiceId(voice.providerVoiceId); persistSpeakingVoiceSelection(joined.session.id, voice); }} />
+
+        <details className="speaking-preflight-guidance">
+          <summary><ChevronRight size={17} aria-hidden="true" /><Lightbulb size={18} aria-hidden="true" /><strong>Microphone tips</strong></summary>
+          <ul><li>Allow microphone access for this site.</li><li>Use headphones if the room is noisy.</li><li>Speak close enough to the device for the input meter to move.</li></ul>
+        </details>
+
+        {error && <div className="speaking-error speaking-prep-error" role="alert"><strong>{error}</strong></div>}
+        {micState === "denied" && <div className="speaking-preflight-actions"><button type="button" className="speaking-outline-button" onClick={() => void requestMicrophone()}>Retry microphone</button></div>}
+        {micState === "unsupported" && <div className="speaking-error speaking-prep-error" role="alert"><strong>This browser cannot record a microphone.</strong><span>Use a current Chrome, Edge, or Safari browser on a secure connection.</span></div>}
+        {micState === "no-signal" && <div className="speaking-preflight-actions"><button type="button" className="speaking-outline-button" onClick={() => void requestMicrophone()}>Test again</button></div>}
+        {micState === "requesting" ? <button type="button" className="speaking-primary-button speaking-wide-button" disabled><LoaderCircle size={18} className="speaking-spin" aria-hidden="true" />Allowing microphone…</button> : micState === "testing" ? <button type="button" className="speaking-primary-button speaking-wide-button" disabled><LoaderCircle size={18} className="speaking-spin" aria-hidden="true" />Listening for your voice…</button> : micState === "idle" || micState === "ready" ? <button type="button" className="speaking-primary-button speaking-wide-button" onClick={() => micState === "ready" ? void startSession() : void requestMicrophone()}><Mic size={18} aria-hidden="true" />Start Speaking</button> : micState === "unverified" ? <button type="button" className="speaking-primary-button speaking-wide-button" onClick={() => void startSession()}>Continue without input test</button> : null}
+      </section>
+    </main>
+  </div>;
 }
 
 function SpeakingSessionPage({ navigate, sessionId }: { navigate: Navigate; sessionId: string }) {
@@ -604,7 +729,7 @@ function SpeakingSessionExperienceV2({ navigate, token, initialData }: { navigat
     if (greeting && !["paused", "ended", "expired"].includes(data.session.status) && !sessionStorage.getItem(key) && !greetingSpokenRef.current) {
       greetingSpokenRef.current = true;
       setVoiceState("ai_speaking");
-      void browserTtsProvider.speak(greeting.text, { lang: "en-US", rate: data.activity.level === "beginner" ? 0.82 : 0.92 }).finally(() => {
+      void browserTtsProvider.speak(greeting.text, { lang: "en-US", rate: data.activity.level === "beginner" ? 0.82 : 0.92, voiceId: speakingVoiceIdForSession(data.session.id) }).finally(() => {
         sessionStorage.setItem(key, "spoken");
         if (dataRef.current.session.status === "active" || dataRef.current.session.status === "ready") setVoiceState("ready");
       });
@@ -646,7 +771,7 @@ function SpeakingSessionExperienceV2({ navigate, token, initialData }: { navigat
         return;
       }
       setVoiceState("ai_speaking");
-      await browserTtsProvider.speak(response.aiTurn.text, { lang: "en-US", rate: dataRef.current.activity.level === "beginner" ? 0.82 : 0.92 });
+      await browserTtsProvider.speak(response.aiTurn.text, { lang: "en-US", rate: dataRef.current.activity.level === "beginner" ? 0.82 : 0.92, voiceId: speakingVoiceIdForSession(dataRef.current.session.id) });
       if (authorizationFailedRef.current || participantFinalizedRef.current) return;
       if (["paused", "ended", "expired"].includes(dataRef.current.session.status)) {
         browserTtsProvider.cancel();
@@ -799,7 +924,7 @@ function SpeakingSessionExperienceV2({ navigate, token, initialData }: { navigat
     if (aiTurn) {
       voiceStateRef.current = "ai_speaking";
       setVoiceState("ai_speaking");
-      void browserTtsProvider.speak(aiTurn, { lang: "en-US", rate: dataRef.current.activity.level === "beginner" ? 0.82 : 0.92 }).finally(() => {
+      void browserTtsProvider.speak(aiTurn, { lang: "en-US", rate: dataRef.current.activity.level === "beginner" ? 0.82 : 0.92, voiceId: speakingVoiceIdForSession(dataRef.current.session.id) }).finally(() => {
         if (!authorizationFailedRef.current && !participantFinalizedRef.current && dataRef.current.session.status === "active") setVoiceState("ready");
       });
     }

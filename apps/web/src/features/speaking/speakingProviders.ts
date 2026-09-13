@@ -1,6 +1,10 @@
+import { isApprovedSpeakingVoiceId, readBrowserSpeechVoices, resolveCuratedSpeakingVoice } from "./speakingVoices";
+
 export interface SpeakOptions {
   lang?: string;
   rate?: number;
+  /** Runtime-resolved SpeechSynthesisVoice.voiceURI from the curated list. */
+  voiceId?: string;
 }
 
 export interface TTSProvider {
@@ -26,7 +30,16 @@ export const browserTtsProvider: TTSProvider = {
     window.speechSynthesis.cancel();
     return new Promise((resolve) => {
       const utterance = new SpeechSynthesisUtterance(text);
-      utterance.lang = options.lang ?? "en-US";
+      const voices = readBrowserSpeechVoices();
+      const selectedVoice = options.voiceId && isApprovedSpeakingVoiceId(options.voiceId, voices)
+        ? resolveCuratedSpeakingVoice(options.voiceId, voices)?.voice
+        : undefined;
+      if (selectedVoice) {
+        utterance.voice = selectedVoice;
+        utterance.lang = selectedVoice.lang || options.lang || "en-US";
+      } else {
+        utterance.lang = options.lang ?? "en-US";
+      }
       utterance.rate = options.rate ?? 0.92;
       const timeoutId = setTimeout(() => {
         if (activeSpeech?.utterance !== utterance) return;

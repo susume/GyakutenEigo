@@ -361,3 +361,1015 @@
     font-size: .9rem;
   }
 }
+
+/* Student "Get ready" page: a calm briefing column paired with one clear
+   setup card. These selectors are intentionally scoped to the pre-activity
+   route so the teacher and live speaking surfaces keep their own composition. */
+.speaking-preactivity-page {
+  min-height: 100dvh;
+  background: #eff8fd;
+}
+
+.speaking-preactivity-page .speaking-setup-topbar {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  min-height: 68px;
+  padding: 0 max(32px, calc((100% - 1528px) / 2));
+  border-bottom-color: #e1eaf2;
+  background: #fff;
+}
+
+.speaking-preactivity-page .speaking-setup-topbar .speaking-brand {
+  min-height: 68px !important;
+}
+
+.speaking-preactivity-page .speaking-setup-topbar .speaking-brand-mark {
+  width: 42px;
+  height: 40px;
+}
+
+.speaking-preactivity-page .speaking-setup-topbar .speaking-brand-name {
+  font-size: 1.42rem;
+}
+
+.speaking-setup-account {
+  display: flex;
+  align-items: center;
+  gap: 18px;
+  color: #627593;
+  font-size: 14px;
+  font-weight: 600;
+}
+
+.speaking-setup-account-avatar {
+  display: grid;
+  place-items: center;
+  width: 42px;
+  height: 42px;
+  border-radius: 50%;
+  color: #355274;
+  background: #e7eef7;
+  font-size: 17px;
+  font-weight: 800;
+}
+
+.speaking-preactivity-page > .speaking-journey {
+  width: min(524px, calc(100% - 48px));
+  margin: 0 auto;
+  justify-content: space-between;
+  gap: 0;
+  padding: 18px 0 12px;
+}
+
+.speaking-preactivity-page > .speaking-journey li {
+  position: relative;
+  gap: 8px;
+  color: #60718d;
+  font-size: 14px;
+  white-space: nowrap;
+}
+
+.speaking-preactivity-page > .speaking-journey li:not(:last-child)::after {
+  content: "";
+  position: absolute;
+  top: 50%;
+  left: calc(100% + 14px);
+  width: 28px;
+  height: 1px;
+  background: #becde0;
+}
+
+.speaking-preactivity-page > .speaking-journey li > span {
+  width: 36px;
+  height: 36px;
+  color: #365274;
+  background: #e0eaf5;
+  font-size: 15px;
+}
+
+.speaking-preactivity-page > .speaking-journey li[aria-current] {
+  color: #1264c6;
+}
+
+.speaking-preactivity-page > .speaking-journey li[aria-current] > span {
+  color: #fff;
+  background: #176ad8;
+  box-shadow: 0 5px 12px rgba(23, 106, 216, .2);
+}
+
+.speaking-preactivity-page .speaking-preactivity-layout {
+  width: min(1528px, calc(100% - 48px));
+  min-height: 0;
+  grid-template-columns: minmax(0, 1.46fr) minmax(500px, .98fr);
+  align-items: start;
+  gap: 32px;
+  padding: 13px 0 34px;
+}
+
+@media (min-width: 1301px) {
+  .speaking-preactivity-page .speaking-preactivity-layout {
+    grid-template-columns: minmax(0, calc(100% - 639px)) 603px;
+    justify-content: start;
+  }
+}
+
+.speaking-preactivity-page .speaking-preactivity-hero {
+  display: grid;
+  align-content: start;
+  gap: 14px;
+  padding-top: 23px;
+}
+
+.speaking-preactivity-intro {
+  display: grid;
+  gap: 20px;
+  align-items: center;
+}
+
+.speaking-preactivity-intro.has-image {
+  grid-template-columns: minmax(0, 1fr) 310px;
+  gap: 26px;
+}
+
+.speaking-preactivity-copy {
+  display: grid;
+  align-content: center;
+  align-self: start;
+  gap: 14px;
+  min-width: 0;
+  padding-left: 38px;
+}
+
+.speaking-preactivity-page .speaking-preactivity-copy .speaking-eyebrow {
+  font-size: 12px;
+  letter-spacing: .08em;
+}
+
+.speaking-preactivity-page .speaking-preactivity-copy h1 {
+  max-width: 660px;
+  margin: 0;
+  color: #111d4b;
+  font-size: clamp(2.65rem, 3vw, 3.15rem);
+  line-height: 1.08;
+  letter-spacing: -.065em;
+}
+
+.speaking-preactivity-page .speaking-preactivity-copy > p {
+  max-width: 680px;
+  margin: 0;
+  color: #5b6f90;
+  font-size: 19px;
+  line-height: 1.65;
+}
+
+.speaking-preactivity-page .speaking-role-pills {
+  gap: 9px;
+  margin-top: 2px;
+}
+
+.speaking-preactivity-page .speaking-role-pills span {
+  min-height: 42px;
+  gap: 7px;
+  padding: 0 15px;
+  border-color: #d7e5f3;
+  color: #627493;
+  background: rgba(255, 255, 255, .88);
+  font-size: 14px;
+}
+
+.speaking-preactivity-page .speaking-role-pills span > svg {
+  color: #2478ee;
+}
+
+.speaking-preactivity-page .speaking-role-pills strong {
+  color: #16264f;
+}
+
+.speaking-scenario-art {
+  display: block;
+  width: 310px;
+  height: 247px;
+  border-radius: 22px;
+  object-fit: cover;
+  object-position: center;
+  background: #dcecf8;
+}
+
+.speaking-student-info-card {
+  display: grid;
+  grid-template-columns: 64px minmax(0, 1fr);
+  align-items: start;
+  gap: 24px;
+  padding: 22px 40px;
+  border: 1px solid #e2eaf2;
+  border-radius: 16px;
+  background: #fff;
+  box-shadow: 0 7px 20px rgba(38, 82, 122, .035);
+}
+
+.speaking-task-card {
+  min-height: 110px;
+  align-items: center;
+}
+
+.speaking-expressions-card {
+  min-height: 208px;
+}
+
+.speaking-info-card-icon {
+  display: grid;
+  place-items: center;
+  width: 64px;
+  height: 64px;
+  border-radius: 50%;
+}
+
+.speaking-info-card-icon-blue {
+  color: #2478ee;
+  background: #e7f2ff;
+}
+
+.speaking-info-card-icon-green {
+  color: #19ae87;
+  background: #dff8ee;
+}
+
+.speaking-student-info-card h2 {
+  margin: 0 0 7px;
+  color: #101d4c;
+  font-size: 24px;
+  line-height: 1.2;
+  letter-spacing: -.035em;
+}
+
+.speaking-student-info-card p {
+  margin: 0;
+  color: #394f75;
+  font-size: 17px;
+  line-height: 1.55;
+}
+
+.speaking-expressions-card ul {
+  display: grid;
+  gap: 7px;
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+
+.speaking-expressions-card li {
+  position: relative;
+  padding-left: 20px;
+  color: #394f75;
+  font-size: 17px;
+  line-height: 1.35;
+}
+
+.speaking-expressions-card li::before {
+  content: "";
+  position: absolute;
+  top: .63em;
+  left: 3px;
+  width: 8px;
+  height: 8px;
+  border-radius: 50%;
+  background: #1c78e8;
+}
+
+.speaking-evaluation-card {
+  border: 1px solid #e2eaf2;
+  border-radius: 16px;
+  background: #fff;
+  box-shadow: 0 7px 20px rgba(38, 82, 122, .035);
+}
+
+.speaking-evaluation-card > summary {
+  display: flex;
+  align-items: center;
+  gap: 14px;
+  min-height: 64px;
+  padding: 0 32px;
+  cursor: pointer;
+  list-style: none;
+  color: #182b58;
+  font-size: 17px;
+}
+
+.speaking-evaluation-card > summary::-webkit-details-marker {
+  display: none;
+}
+
+.speaking-evaluation-chevron {
+  display: inline-grid;
+  place-items: center;
+  color: #173d75;
+}
+
+.speaking-evaluation-card[open] .speaking-evaluation-chevron {
+  transform: rotate(90deg);
+}
+
+.speaking-evaluation-card > ul {
+  display: grid;
+  gap: 8px;
+  margin: 0;
+  padding: 0 32px 22px 64px;
+  color: #536580;
+  font-size: 14px;
+  line-height: 1.5;
+}
+
+.speaking-evaluation-card > ul li {
+  display: grid;
+  gap: 2px;
+}
+
+.speaking-evaluation-card > ul li strong {
+  color: #263d68;
+}
+
+.speaking-preactivity-page .speaking-ready-card {
+  display: grid;
+  gap: 14px;
+  padding: 30px 30px 26px;
+  border-color: #dfe8f1;
+  border-radius: 18px;
+  box-shadow: 0 12px 30px rgba(34, 76, 116, .07);
+}
+
+.speaking-ready-card-heading {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) 126px;
+  align-items: start;
+  gap: 18px;
+}
+
+.speaking-ready-card-heading > div {
+  min-width: 0;
+}
+
+.speaking-ready-card .speaking-card-kicker {
+  display: block;
+  margin-bottom: 9px;
+  font-size: 12px;
+  letter-spacing: .08em;
+  text-transform: uppercase;
+}
+
+.speaking-preactivity-page .speaking-ready-card h2 {
+  margin: 0 0 18px;
+  color: #111d4b;
+  font-size: clamp(2rem, 2.8vw, 2.45rem);
+  line-height: 1.08;
+  letter-spacing: -.055em;
+}
+
+.speaking-preactivity-page .speaking-ready-card-heading p {
+  margin: 0;
+  color: #607292;
+  font-size: 17px;
+  line-height: 1.62;
+}
+
+.speaking-preactivity-page .speaking-ready-card-heading p.speaking-operational-help {
+  margin-top: 7px;
+  color: #697994;
+  font-size: 14px;
+  line-height: 1.6;
+}
+
+.speaking-preactivity-page .speaking-ready-card .speaking-prep-art {
+  width: 126px;
+  height: 126px;
+  margin-top: 5px;
+  border-radius: 22px;
+  object-fit: cover;
+  background: #eaf4ff;
+}
+
+.speaking-microphone-meter {
+  display: grid;
+  grid-template-columns: 50px minmax(0, 1fr) auto;
+  align-items: center;
+  gap: 16px;
+  min-height: 80px;
+  padding: 12px 18px;
+  border: 1px solid #d8e4f3;
+  border-radius: 15px;
+  background: #f5f8ff;
+}
+
+.speaking-microphone-badge {
+  display: grid;
+  place-items: center;
+  width: 50px;
+  height: 50px;
+  border-radius: 50%;
+  color: #2779e4;
+  background: #e3efff;
+}
+
+.speaking-microphone-wave {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 6px;
+  min-width: 0;
+  height: 58px;
+}
+
+.speaking-microphone-wave > span {
+  width: 6px;
+  min-height: 4px;
+  border-radius: 99px;
+  background: #c9d7ee;
+  transition: height 100ms ease, background 160ms ease;
+}
+
+.speaking-microphone-wave > span.is-active {
+  background: #378cf1;
+}
+
+.speaking-microphone-meter > strong {
+  color: #1aa47d;
+  font-size: 15px;
+  font-weight: 700;
+  white-space: nowrap;
+}
+
+.speaking-microphone-meter-testing > strong {
+  color: #2179df;
+}
+
+.speaking-microphone-meter-denied > strong,
+.speaking-microphone-meter-no-signal > strong,
+.speaking-microphone-meter-unsupported > strong {
+  color: #b34e5d;
+}
+
+.speaking-preactivity-page .speaking-preflight-status {
+  min-height: 20px;
+  margin: 0;
+  color: #697994;
+  font-size: 14px;
+  font-weight: 500;
+  text-align: center;
+}
+
+.speaking-prep-divider {
+  width: 100%;
+  height: 1px;
+  margin: 1px 0 3px;
+  background: #e1e9f1;
+}
+
+.speaking-voice-selector {
+  display: grid;
+  gap: 12px;
+}
+
+.speaking-voice-selector-heading {
+  display: flex;
+  align-items: flex-start;
+  gap: 10px;
+}
+
+.speaking-voice-selector-icon {
+  display: inline-grid;
+  place-items: center;
+  flex: 0 0 auto;
+  width: 28px;
+  height: 28px;
+  color: #2478ee;
+}
+
+.speaking-voice-selector-heading h3 {
+  margin: 0 0 2px;
+  color: #162752;
+  font-size: 20px;
+  line-height: 1.25;
+  letter-spacing: -.025em;
+}
+
+.speaking-voice-selector-heading p {
+  margin: 0;
+  color: #687995;
+  font-size: 14px;
+  line-height: 1.45;
+}
+
+.speaking-voice-grid {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 12px;
+}
+
+.speaking-voice-card {
+  position: relative;
+  min-width: 0;
+  min-height: 128px;
+  overflow: hidden;
+  border: 1px solid #d6e1ef;
+  border-radius: 14px;
+  background: #fff;
+  transition: border-color 160ms ease, background 160ms ease, box-shadow 160ms ease;
+}
+
+.speaking-voice-card.is-selected {
+  border: 2px solid #2680f0;
+  background: #f3f8ff;
+  box-shadow: 0 5px 12px rgba(36, 120, 238, .12);
+}
+
+.speaking-voice-card-select {
+  position: relative;
+  z-index: 1;
+  display: flex;
+  align-items: center;
+  gap: 9px;
+  width: 100%;
+  height: 100%;
+  min-height: 126px !important;
+  padding: 15px 10px 12px;
+  border: 0 !important;
+  border-radius: 0 !important;
+  color: #1a2b55;
+  background: transparent !important;
+  box-shadow: none !important;
+  text-align: left;
+}
+
+.speaking-voice-card-select:focus-visible {
+  box-shadow: inset 0 0 0 3px rgba(36, 120, 238, .25) !important;
+}
+
+.speaking-voice-avatar {
+  display: grid;
+  place-items: center;
+  flex: 0 0 auto;
+  width: 48px;
+  height: 48px;
+  border: 2px solid rgba(255, 255, 255, .9);
+  border-radius: 50%;
+  color: #254e83;
+  background: #d9eafa;
+  box-shadow: 0 2px 5px rgba(33, 72, 119, .08);
+}
+
+.speaking-voice-avatar-mika { color: #196d76; background: #d7f2ef; }
+.speaking-voice-avatar-ken { color: #31558b; background: #dce9fa; }
+.speaking-voice-avatar-alex { color: #855e33; background: #f7e8cb; }
+
+.speaking-voice-card-copy {
+  display: grid;
+  min-width: 0;
+  gap: 2px;
+}
+
+.speaking-voice-card-copy strong {
+  color: #1a2b55;
+  font-size: 16px;
+  line-height: 1.2;
+}
+
+.speaking-voice-card-copy small {
+  color: #6c7e99;
+  font-size: 13px;
+  line-height: 1.25;
+}
+
+.speaking-voice-preview {
+  position: absolute;
+  top: 12px;
+  right: 10px;
+  z-index: 3;
+  display: grid;
+  place-items: center;
+  width: 34px;
+  min-height: 34px !important;
+  padding: 0 !important;
+  border: 1px solid #cbdcf2 !important;
+  border-radius: 50% !important;
+  color: #2478ee;
+  background: #fff !important;
+  box-shadow: none !important;
+}
+
+.speaking-voice-preview:hover:not(:disabled),
+.speaking-voice-preview.is-active {
+  border-color: #2478ee !important;
+  color: #fff;
+  background: #2478ee !important;
+}
+
+.speaking-voice-selected-check {
+  position: absolute;
+  top: -1px;
+  right: -1px;
+  z-index: 4;
+  display: grid;
+  place-items: center;
+  width: 26px;
+  height: 26px;
+  border-radius: 0 12px 0 12px;
+  color: #fff;
+  background: #267fe9;
+}
+
+.speaking-voice-unavailable,
+.speaking-voice-preview-status {
+  margin: 0;
+  color: #687995;
+  font-size: 13px;
+  line-height: 1.45;
+}
+
+.speaking-voice-preview-status {
+  min-height: 18px;
+  color: #2478ee;
+}
+
+.speaking-voice-preview-status:empty {
+  height: 0;
+  min-height: 0;
+}
+
+.speaking-preactivity-page .speaking-preflight-guidance {
+  margin: 0;
+  border-radius: 12px;
+  color: #1f3761;
+  background: #f1f5fb;
+  font-size: 14px;
+}
+
+.speaking-preactivity-page .speaking-ready-card > .speaking-preflight-guidance {
+  margin-top: 9px;
+}
+
+.speaking-preactivity-page .speaking-preflight-guidance > summary {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  min-height: 48px;
+  padding: 0 14px;
+  cursor: pointer;
+  list-style: none;
+}
+
+.speaking-preactivity-page .speaking-preflight-guidance > summary::-webkit-details-marker {
+  display: none;
+}
+
+.speaking-preactivity-page .speaking-preflight-guidance > summary svg:first-child {
+  color: #183b74;
+  transition: transform 160ms ease;
+}
+
+.speaking-preactivity-page .speaking-preflight-guidance[open] > summary svg:first-child {
+  transform: rotate(90deg);
+}
+
+.speaking-preactivity-page .speaking-preflight-guidance > summary svg:nth-child(2) {
+  color: #eeae36;
+}
+
+.speaking-preactivity-page .speaking-preflight-guidance ul {
+  margin: 0;
+  padding: 0 18px 14px 40px;
+  color: #60718d;
+  line-height: 1.55;
+}
+
+.speaking-preactivity-page .speaking-preflight-actions {
+  justify-content: stretch;
+}
+
+.speaking-preactivity-page .speaking-preflight-actions button {
+  width: 100%;
+}
+
+.speaking-preactivity-page .speaking-ready-card > .speaking-primary-button {
+  min-height: 58px !important;
+  border-radius: 12px;
+  font-size: 18px;
+  box-shadow: 0 8px 18px rgba(36, 120, 238, .2);
+}
+
+.speaking-preactivity-page .speaking-ready-card > .speaking-primary-button:focus-visible,
+.speaking-preactivity-page .speaking-ready-card .speaking-outline-button:focus-visible {
+  box-shadow: 0 0 0 3px rgba(36, 120, 238, .25), 0 8px 18px rgba(36, 120, 238, .2);
+}
+
+.speaking-preactivity-page .speaking-prep-error {
+  font-size: 14px;
+}
+
+@media (max-width: 1300px) {
+  .speaking-preactivity-page .speaking-preactivity-layout {
+    grid-template-columns: minmax(0, 1.25fr) minmax(480px, 1fr);
+  }
+
+  .speaking-preactivity-intro.has-image {
+    grid-template-columns: minmax(0, 1fr) 270px;
+  }
+
+  .speaking-scenario-art {
+    width: 270px;
+    height: 220px;
+  }
+}
+
+@media (max-width: 1150px) {
+  .speaking-preactivity-page .speaking-preactivity-layout {
+    grid-template-columns: 1fr;
+    width: min(820px, calc(100% - 48px));
+  }
+
+  .speaking-preactivity-page .speaking-ready-card {
+    width: 100%;
+  }
+}
+
+@media (max-width: 700px) {
+  .speaking-preactivity-page .speaking-setup-topbar {
+    min-height: 64px;
+    padding: 0 16px;
+  }
+
+  .speaking-preactivity-page .speaking-setup-topbar .speaking-brand {
+    min-height: 64px !important;
+  }
+
+  .speaking-preactivity-page .speaking-setup-topbar .speaking-brand-mark {
+    width: 38px;
+    height: 36px;
+  }
+
+  .speaking-preactivity-page .speaking-setup-topbar .speaking-brand-name {
+    font-size: 1.12rem;
+  }
+
+  .speaking-setup-account {
+    gap: 8px;
+    font-size: 12px;
+  }
+
+  .speaking-setup-account > span:first-child {
+    display: none;
+  }
+
+  .speaking-setup-account-avatar {
+    width: 36px;
+    height: 36px;
+    font-size: 15px;
+  }
+
+  .speaking-preactivity-page > .speaking-journey {
+    width: calc(100% - 32px);
+    padding-top: 15px;
+  }
+
+  .speaking-preactivity-page > .speaking-journey li {
+    gap: 5px;
+    font-size: 12px;
+  }
+
+  .speaking-preactivity-page > .speaking-journey li:not(:last-child)::after {
+    left: calc(100% + 7px);
+    width: 14px;
+  }
+
+  .speaking-preactivity-page > .speaking-journey li > span {
+    width: 30px;
+    height: 30px;
+    font-size: 13px;
+  }
+
+  .speaking-preactivity-page .speaking-preactivity-layout {
+    width: calc(100% - 32px);
+    gap: 20px;
+    padding: 4px 0 24px;
+  }
+
+  .speaking-preactivity-intro.has-image {
+    grid-template-columns: 1fr;
+    gap: 16px;
+  }
+
+  .speaking-preactivity-page .speaking-preactivity-copy h1 {
+    font-size: clamp(2.35rem, 10vw, 3rem);
+  }
+
+  .speaking-preactivity-page .speaking-preactivity-copy > p {
+    font-size: 16px;
+  }
+
+  .speaking-preactivity-page .speaking-role-pills span {
+    min-height: 40px;
+    font-size: 13px;
+  }
+
+  .speaking-scenario-art {
+    width: 100%;
+    height: 210px;
+    border-radius: 18px;
+  }
+
+  .speaking-student-info-card {
+    grid-template-columns: 52px minmax(0, 1fr);
+    gap: 16px;
+    padding: 20px;
+  }
+
+  .speaking-preactivity-page .speaking-preactivity-hero {
+    padding-top: 0;
+  }
+
+  .speaking-preactivity-copy {
+    padding-left: 0;
+  }
+
+  .speaking-task-card {
+    min-height: 0;
+  }
+
+  .speaking-expressions-card {
+    min-height: 0;
+  }
+
+  .speaking-info-card-icon {
+    width: 52px;
+    height: 52px;
+  }
+
+  .speaking-student-info-card h2 {
+    font-size: 20px;
+  }
+
+  .speaking-student-info-card p,
+  .speaking-expressions-card li {
+    font-size: 15px;
+  }
+
+  .speaking-evaluation-card > summary {
+    min-height: 58px;
+    padding-inline: 20px;
+    font-size: 15px;
+  }
+
+  .speaking-evaluation-card > ul {
+    padding: 0 20px 20px 52px;
+  }
+
+  .speaking-preactivity-page .speaking-ready-card {
+    padding: 20px;
+    border-radius: 16px;
+  }
+
+  .speaking-ready-card-heading {
+    grid-template-columns: minmax(0, 1fr) 86px;
+    gap: 12px;
+  }
+
+  .speaking-preactivity-page .speaking-ready-card h2 {
+    font-size: 2rem;
+  }
+
+  .speaking-preactivity-page .speaking-ready-card-heading p {
+    font-size: 15px;
+  }
+
+  .speaking-preactivity-page .speaking-ready-card-heading p.speaking-operational-help {
+    font-size: 13px;
+  }
+
+  .speaking-preactivity-page .speaking-ready-card .speaking-prep-art {
+    width: 86px;
+    height: 86px;
+    border-radius: 17px;
+  }
+
+  .speaking-microphone-meter {
+    grid-template-columns: 44px minmax(0, 1fr);
+    gap: 10px;
+    padding: 10px 12px;
+  }
+
+  .speaking-microphone-badge {
+    width: 44px;
+    height: 44px;
+  }
+
+  .speaking-microphone-wave {
+    gap: 4px;
+  }
+
+  .speaking-microphone-wave > span {
+    width: 5px;
+  }
+
+  .speaking-microphone-meter > strong {
+    grid-column: 1 / -1;
+    justify-self: end;
+    font-size: 13px;
+  }
+
+  .speaking-voice-grid {
+    grid-template-columns: repeat(3, minmax(148px, 1fr));
+    overflow-x: auto;
+    padding-bottom: 2px;
+  }
+
+  .speaking-voice-card {
+    min-height: 116px;
+  }
+
+  .speaking-voice-card-select {
+    min-height: 114px !important;
+    padding-inline: 9px;
+  }
+
+  .speaking-voice-avatar {
+    width: 42px;
+    height: 42px;
+  }
+
+  .speaking-voice-card-copy strong {
+    font-size: 15px;
+  }
+
+  .speaking-voice-card-copy small {
+    font-size: 12px;
+  }
+}
+
+@media (max-width: 430px) {
+  .speaking-preactivity-page .speaking-setup-topbar .speaking-brand-name {
+    font-size: 1rem;
+  }
+
+  .speaking-preactivity-page .speaking-preactivity-copy h1 {
+    font-size: 2.2rem;
+  }
+
+  .speaking-preactivity-page .speaking-role-pills {
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+  }
+
+  .speaking-preactivity-page .speaking-role-pills span:last-child {
+    grid-column: 1 / -1;
+    justify-self: start;
+  }
+
+  .speaking-ready-card-heading {
+    grid-template-columns: 1fr;
+  }
+
+  .speaking-preactivity-page .speaking-ready-card .speaking-prep-art {
+    display: none;
+  }
+
+  .speaking-preactivity-page .speaking-voice-grid {
+    grid-template-columns: 1fr;
+    overflow: visible;
+  }
+
+  .speaking-preactivity-page .speaking-voice-card,
+  .speaking-preactivity-page .speaking-voice-card-select {
+    min-height: 86px !important;
+  }
+
+  .speaking-preactivity-page .speaking-voice-card-select {
+    padding-block: 10px;
+  }
+}
+
+@media (min-width: 701px) {
+  .speaking-preactivity-page .speaking-ready-card-heading {
+    padding-bottom: 6px;
+  }
+
+  .speaking-preactivity-page .speaking-prep-divider {
+    margin-bottom: 6px;
+    transform: translateY(3px);
+  }
+
+  .speaking-preactivity-page .speaking-ready-card > .speaking-voice-selector {
+    margin-top: 3px;
+    margin-bottom: -15px;
+  }
+
+  .speaking-preactivity-page .speaking-voice-grid {
+    margin-top: 6px;
+  }
+
+  .speaking-preactivity-page .speaking-voice-card {
+    min-height: 124px;
+  }
+
+  .speaking-preactivity-page .speaking-voice-card-select {
+    min-height: 122px !important;
+  }
+}

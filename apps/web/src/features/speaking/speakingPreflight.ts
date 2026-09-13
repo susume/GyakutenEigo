@@ -1,7 +1,7 @@
 import { createSpeakingAudioActivityMonitor } from "./speakingRecorder";
 
 /** Permission is not evidence of signal. Always release the test stream. */
-export async function testSpeakingMicrophone(signal: AbortSignal, onSignal: () => void): Promise<boolean | undefined> {
+export async function testSpeakingMicrophone(signal: AbortSignal, onSignal?: () => void, onLevel?: (levels: number[]) => void): Promise<boolean | undefined> {
   const stream = await navigator.mediaDevices.getUserMedia({ audio: { echoCancellation: true, noiseSuppression: true } });
   let monitor: ReturnType<typeof createSpeakingAudioActivityMonitor> | undefined;
   try {
@@ -13,7 +13,8 @@ export async function testSpeakingMicrophone(signal: AbortSignal, onSignal: () =
       const abort = () => { cleanup(); reject(new DOMException("Microphone check cancelled", "AbortError")); };
       const timer = setInterval(() => {
         const detected = monitor!.getSpeechDetected();
-        if (detected === true) onSignal();
+        onLevel?.(monitor!.getLevels());
+        if (detected === true) onSignal?.();
         if (detected === true || detected === undefined || Date.now() - started >= 5_000) {
           cleanup();
           resolve(detected);

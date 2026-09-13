@@ -8,6 +8,7 @@ export const SPEAKING_AUDIO_MIME_TYPES = [
 
 export type SpeakingAudioActivityMonitor = {
   getSpeechDetected: () => boolean | undefined;
+  getLevels: () => number[];
   dispose: () => void;
 };
 
@@ -56,7 +57,7 @@ const SPEECH_ACTIVITY_THRESHOLD = 0.025;
  */
 export const createSpeakingAudioActivityMonitor = (stream: MediaStream): SpeakingAudioActivityMonitor => {
   if (typeof window === "undefined" || typeof window.AudioContext === "undefined") {
-    return { getSpeechDetected: () => undefined, dispose: () => undefined };
+    return { getSpeechDetected: () => undefined, getLevels: () => [], dispose: () => undefined };
   }
 
   let audioContext: AudioContext | undefined;
@@ -65,6 +66,7 @@ export const createSpeakingAudioActivityMonitor = (stream: MediaStream): Speakin
   let frameId: number | undefined;
   let disposed = false;
   let speechDetected = false;
+  let levels: number[] = [];
 
   try {
     audioContext = new window.AudioContext();
@@ -84,17 +86,31 @@ export const createSpeakingAudioActivityMonitor = (stream: MediaStream): Speakin
       }
       const rms = Math.sqrt(squaredTotal / samples.length);
       if (rms >= SPEECH_ACTIVITY_THRESHOLD) speechDetected = true;
+      const bucketCount = 12;
+      const bucketSize = Math.max(1, Math.floor(samples.length / bucketCount));
+      levels = Array.from({ length: bucketCount }, (_, bucketIndex) => {
+        const start = bucketIndex * bucketSize;
+        const end = Math.min(samples.length, start + bucketSize);
+        let bucketSquaredTotal = 0;
+        for (let index = start; index < end; index += 1) {
+          const centered = (samples[index]! - 128) / 128;
+          bucketSquaredTotal += centered * centered;
+        }
+        const bucketRms = Math.sqrt(bucketSquaredTotal / Math.max(1, end - start));
+        return Math.min(1, bucketRms * 10);
+      });
       frameId = window.requestAnimationFrame(sample);
     };
     void audioContext.resume().catch(() => undefined);
     frameId = window.requestAnimationFrame(sample);
   } catch {
     if (audioContext) void audioContext.close().catch(() => undefined);
-    return { getSpeechDetected: () => undefined, dispose: () => undefined };
+    return { getSpeechDetected: () => undefined, getLevels: () => [], dispose: () => undefined };
   }
 
   return {
     getSpeechDetected: () => speechDetected,
+    getLevels: () => [...levels],
     dispose: () => {
       disposed = true;
       if (frameId !== undefined) window.cancelAnimationFrame(frameId);

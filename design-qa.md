@@ -856,3 +856,49 @@ Verification:
 - `npm run lint -- --quiet`: passed.
 - `npm run build`: passed; the existing Vite large-chunk advisory remains.
 - `git diff --check`: passed; only existing LF/CRLF normalization warnings remain.
+
+# Speaking “Get ready” visual QA (2026-09-13)
+
+Result: **passed**
+
+## Evidence
+
+- Reference: `C:\\Users\\hungb\\Downloads\\ChatGPT Image Sep 13, 2026, 07_57_12 PM.png` (1680×942).
+- Initial-state implementation capture: `apps/web/test-results/speaking-teacher-and-stude-5f570--use-the-connected-mock-API-desktop-chrome/student-microphone.png` (1680×942, Mika selected).
+- Interaction capture: `apps/web/test-results/speaking-teacher-and-stude-5f570--use-the-connected-mock-API-desktop-chrome/student-briefing.png` (1680×942, Ken selected).
+- Responsive captures: `student-briefing-768.png` and `student-briefing-390.png` in the same test-results directory.
+- Render QA used Playwright Desktop Chrome with reduced motion. Runtime voice inventory was checked in the headed Codex in-app browser.
+
+## Comparison
+
+The implementation matches the reference’s core design language and hierarchy:
+
+- white branded header with compact four-step journey and active “Get ready” state;
+- pale blue student background and a two-column desktop layout;
+- scenario briefing with dynamic title, scenario, role/time chips, illustration, task card, target-expression card, and evaluation accordion;
+- strong right-hand setup card with English/Japanese microphone guidance, live input meter, recoverable microphone states, curated voice cards, tips row, and prominent Start Speaking CTA;
+- responsive stacking at tablet/mobile sizes, with all three product voice options reachable at 390px and no horizontal overflow;
+- visible selected state, semantic buttons, `aria-pressed`, live microphone status, preview status, and keyboard-focusable controls.
+
+## Voice provider and IDs
+
+- Existing provider: the browser Web Speech API (`window.speechSynthesis` and `SpeechSynthesisUtterance`) in `browserTtsProvider`; no second TTS provider was added.
+- Before this change there was no product voice preference. `SpeechSynthesisUtterance.voice` was left unset, so the browser/OS default voice was used.
+- Product curation is centralized in `apps/web/src/features/speaking/speakingVoices.ts`. It resolves at most one current runtime `voiceURI` for each of Mika/Friendly, Ken/Clear, and Alex/Calm, filters to English, prefers Natural/known-service voices, and never renders the full browser catalogue.
+- Exact English runtime IDs resolved during headed QA on this Windows machine:
+  - Mika candidate: `Microsoft Catherine - English (Australia)`
+  - Ken candidate: `Microsoft James - English (Australia)`
+- The same runtime exposed `Microsoft Ayumi - Japanese (Japan)`, `Microsoft Haruka - Japanese (Japan)`, `Microsoft Ichiro - Japanese (Japan)`, and `Microsoft Sayaka - Japanese (Japan)`; all were excluded. No third approved English runtime voice was installed, so the live browser correctly exposes two choices rather than inventing a duplicate or a weaker voice. The automated three-voice fixture uses `fake-mika`, `fake-ken`, and `fake-alex` only to exercise the complete supported UI path; those are not production IDs.
+- Mika is the default approved profile. On browsers with the curated profiles available, the product resolves the best matching runtime voice for each profile; when the current runtime lacks a profile, that card is omitted and the browser default remains a safe fallback.
+
+## Selection and fallback verification
+
+Selecting a card stores `{ presetId, providerVoiceId }` in session storage for the active activity and in local storage as an optional device preference. `speakingVoiceIdForSession()` revalidates the stored ID against the current curated runtime list before every speaking call. The speaking pipeline assigns the matching `SpeechSynthesisVoice` only when it is currently approved; stale, unknown, unavailable, or absent IDs fall back to the browser’s normal English/default voice. Preview audio is shared, cancellable, and stopped before entering Speak.
+
+## Remaining differences from the mockup
+
+- The reference’s train-helper artwork and microphone illustration are not exact copies; the implementation reuses the project’s existing scenario and microphone assets and keeps the scenario image dynamic.
+- Voice avatars use the project’s restrained profile icons instead of the reference portraits.
+- The reference screenshot shows a live “Listening…” microphone state; the initial implementation capture correctly shows “Waiting for microphone” until the student grants access and speaks. The waveform is driven by real analyser/RMS input during the check.
+- The current QA machine has only two approved English system voices, so its live selector has two cards; the supported three-card product path is covered by the connected E2E fixture and appears when a third curated runtime voice is available.
+- No P0/P1 visual findings were found.
