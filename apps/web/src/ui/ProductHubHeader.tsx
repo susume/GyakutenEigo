@@ -43,7 +43,7 @@ export default function ProductHubHeader({ onNavigate, onLogin, onGetStarted }: 
           <div className="product-hub-nav-group">
             <button className="product-hub-nav-link" type="button" onClick={() => go("/speak")}>
               <Mic size={18} aria-hidden="true" />
-              Speaking
+              SpeakCheck App
             </button>
             <button className="product-hub-nav-link" type="button" onClick={() => go("/quiz-strike")}>
               <Gamepad2 size={18} aria-hidden="true" />

@@ -1,37 +1,45 @@
-# Design QA
+# QuizStrike hub update — design QA
 
 ## Source visual truth
 
-- Image A: `C:\Users\hungb\OneDrive\Pictures\Screenshots\Screenshot 2026-09-13 161726.png`
-- Image B: `C:\Users\hungb\Downloads\ChatGPT Image Sep 13, 2026, 04_23_13 PM.png`
+- Layout reference: `C:\Users\hungb\OneDrive\Pictures\Screenshots\Screenshot 2026-09-13 190431.png`
+- Replacement QuizStrike artwork: `C:\Users\hungb\Downloads\ChatGPT Image Sep 13, 2026, 04_58_59 PM.png`
 
 ## Implementation captures
 
 - `apps/web/test-results/speaking-the-product-hub-r-b8240--to-both-classroom-products-desktop-chrome/product-hub-1672.png`
+- `apps/web/test-results/speaking-the-product-hub-r-b8240--to-both-classroom-products-desktop-chrome/product-hub-1891.png`
 - `apps/web/test-results/speaking-the-product-hub-r-b8240--to-both-classroom-products-desktop-chrome/product-hub-390.png`
 - `apps/web/test-results/speaking-speaking-entry-an-11001-wports-without-page-scaling-desktop-chrome/speaking-reference.png`
 
 ## Viewport and normalization
 
-- Root source and implementation capture: 1672x941 CSS pixels, density 1, browser chrome excluded from the implementation capture.
+- Current root source and implementation capture: 1891x900 CSS pixels, density 1, browser chrome excluded from the implementation capture.
+- Earlier 1672x941 root capture remains as a regression check; the 390px capture remains the mobile regression check.
 - Speaking source: 1895x971 including approximately 60px of Chrome UI; compared against the approximately 1895x911 web-content crop and the 1894x912 implementation capture, with a 1px tolerance.
 - Mobile root capture: 390px wide responsive check; it is not intended to be pixel-equal to the desktop reference.
 
 ## State
 
-- Public logged-out state.
-- Scroll at top, menu closed, local assets decoded, fonts ready, and reduced-motion-friendly Playwright capture.
-- Root product hub and `/speak` public landing page checked at desktop and mobile widths.
+- Public logged-out root product hub, menu closed, local assets decoded, fonts ready, scroll at top, and reduced-motion-friendly Playwright capture.
 
 ## Full-view comparison
 
-- Root: light-blue canvas, centered intro, decorative notes, two equal product cards, CTA row, and three benefits follow the reference hierarchy, palette, and spacing.
-- `/speak`: white header, blue/navy hero, illustrated three-step flow, benefits, and teacher/student entry cards follow the reference composition and copy. The wide headline remains on one line.
+- Root: the 1891px composition now uses the reference's 85px header, centered navigation/auth controls, wide two-card shell, title/subtitle rhythm, aligned card tops, and CTA baseline.
+- QuizStrike: the supplied blue/green classroom image is used in the product card, with the logo and scoreboard retained in the wide crop; the green card treatment and content badges remain readable.
+- `/speak`: the previously verified white header, blue/navy hero, illustrated three-step flow, benefits, and teacher/student entry cards remain intact.
+
+## Focused-region comparison
+
+- Header region: the 1891px capture was checked against the reference for logo mark/text bounds, centered product navigation, auth button sizing, and 85px vertical alignment.
+- Product-card region: card edges, title/description baselines, 4:3 replacement-art crop, image frame top, and shared CTA baseline were checked at the same viewport.
+- Interaction evidence: the landing E2E test clicks both product CTAs, verifies `/speak` and `/quiz-strike`, checks the replacement asset's 1448px natural width, and validates the 390px responsive menu/no-overflow state.
 
 ## Findings
 
 - No actionable P0/P1 findings.
-- Accepted P2/P3 differences: the QuizStrike card uses the existing `quizstrike-classroom-hero.png` arena artwork rather than the mockup's custom scoreboard illustration; Image A includes browser chrome while the implementation capture is content-only; decorative notes are hidden below the wide breakpoint to avoid crowding at 1440px; and the repo uses system sans metrics rather than the mockup's exact rasterized type.
+- Accepted P3 difference: the new supplied artwork is 1448x1086 (4:3) while the product card is a wide banner, so `object-fit: cover` crops the outer image edges to preserve the card's established height and CTA alignment.
+- The reference is a screenshot of the public page without browser chrome; the implementation capture is the same content-only state. The repo uses system sans metrics rather than the reference's exact rasterized type.
 - Browser checks found no horizontal overflow, missing image assets, or console errors on the landing flows.
 
 ## Comparison history
@@ -41,9 +49,9 @@
 3. `/speak/join` restored the wrong title/site state; title and site ownership now live in `SpeakingPracticeApp`, and route checks confirm the speaking title.
 4. A broad `.speaking-app button` rule washed out the landing actions; scoped landing-button and entry-card overrides restore the blue, outlined, and green treatments.
 5. Wide `/speak` shell, headline, flow, and navigation metrics were too narrow; the wide breakpoint now matches the supplied desktop composition more closely.
-6. Marketing-art capture could race async image loading; above-fold art is eager/synchronous and the E2E capture waits for image decoding and fonts.
-7. The root scribble crowded the 1440px layout; it is intentionally hidden below the wide breakpoint while remaining visible in the exact-width reference capture.
-8. Final accepted difference: QuizStrike artwork differs from the mockup because the implementation reuses the existing product asset, documented above.
+6. The root's old QuizStrike artwork used a warmer red/orange palette; replaced only the product-hub card source with the supplied `quizstrike-home-hero.png`, leaving competition/join artwork untouched.
+7. At 1891px, the hub shell and header remained at the older 1495px/79px scale; the wide breakpoint expands the shell and header while preserving the 1672px and mobile layouts.
+8. The right art frame and both CTAs sat too high relative to the updated reference; calibrated the wide card height, flow copy rhythm, and frame crop; the final `product-hub-1891.png` shows the corrected baseline.
 
 ## Implementation checklist
 
@@ -51,7 +59,7 @@
 - `/speak` is the polished Speaking Performance page.
 - `/quiz-strike` remains the actual QuizStrike landing route.
 - Existing `/join`, `/game`, `/check`, `/diagnostics`, teacher/auth, speaking join/session/result, competition, and organizer routes remain available.
-- Local art assets, semantic section landmarks, keyboard-visible controls, menu behavior, and no-overflow checks were verified.
+- Supplied local art, semantic section landmarks, keyboard-visible controls, menu behavior, natural image dimensions, and no-overflow checks were verified.
 
 final result: passed
 

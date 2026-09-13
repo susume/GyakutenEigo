@@ -516,9 +516,9 @@ test("the product hub routes visitors to both classroom products", async ({ page
 
   await page.goto("/");
   await expect(page.getByRole("heading", { name: "Two powerful tools for English classrooms", exact: true })).toBeVisible();
-  await expect(page.getByRole("heading", { name: "Computer-Based Performance Test for English", exact: true })).toBeVisible();
+  await expect(page.getByRole("heading", { name: "SpeakCheck App", exact: true })).toBeVisible();
   await expect(page.getByRole("heading", { name: "QuizStrike", exact: true })).toBeVisible();
-  await expect(page.getByRole("button", { name: "Open Speaking Performance", exact: true })).toBeVisible();
+  await expect(page.getByRole("button", { name: "Open SpeakCheck App", exact: true })).toBeVisible();
   await expect(page.getByRole("button", { name: "Open QuizStrike", exact: true })).toBeVisible();
   expect(await page.locator("img").evaluateAll((images) => images.every((image) => {
     const element = image as HTMLImageElement;
@@ -529,20 +529,37 @@ test("the product hub routes visitors to both classroom products", async ({ page
   await page.setViewportSize({ width: 1672, height: 941 });
   await page.goto("/");
   const quizArtwork = page.locator(".product-hub-quiz-art-frame img");
-  await expect(quizArtwork).toHaveJSProperty("naturalWidth", 1672);
+  await expect(quizArtwork).toHaveJSProperty("naturalWidth", 1448);
   await quizArtwork.evaluate(async (image) => { await (image as HTMLImageElement).decode(); });
   await page.evaluate(async () => { await document.fonts.ready; });
   await page.waitForTimeout(1000);
-  for (const name of ["Open Speaking Performance", "Open QuizStrike"]) {
+  for (const name of ["Open SpeakCheck App", "Open QuizStrike"]) {
     const bounds = await page.getByRole("button", { name, exact: true }).boundingBox();
     expect(bounds).toBeTruthy();
     expect(bounds!.y + bounds!.height).toBeLessThanOrEqual(941);
   }
   await page.screenshot({ path: testInfo.outputPath("product-hub-1672.png"), fullPage: false });
 
-  await page.getByRole("button", { name: "Open Speaking Performance", exact: true }).click();
+  await page.setViewportSize({ width: 1891, height: 900 });
+  await page.goto("/");
+  await expect(page.getByRole("heading", { name: "Two powerful tools for English classrooms", exact: true })).toBeVisible();
+  const wideHub = await page.evaluate(() => {
+    const header = document.querySelector(".product-hub-topbar")?.getBoundingClientRect();
+    const shell = document.querySelector(".product-hub-shell")?.getBoundingClientRect();
+    const brandMark = document.querySelector(".product-hub-topbar .performance-brand-mark")?.getBoundingClientRect();
+    return { headerHeight: header?.height ?? 0, shellLeft: shell?.left ?? 0, shellWidth: shell?.width ?? 0, brandMarkWidth: brandMark?.width ?? 0 };
+  });
+  expect(wideHub.headerHeight).toBeGreaterThanOrEqual(72);
+  expect(wideHub.shellLeft).toBeGreaterThanOrEqual(24);
+  expect(wideHub.shellLeft).toBeLessThanOrEqual(220);
+  expect(wideHub.shellWidth).toBeGreaterThanOrEqual(1400);
+  expect(wideHub.brandMarkWidth).toBeGreaterThanOrEqual(40);
+  await expect(page.locator(".product-hub-quiz-art-frame img")).toHaveJSProperty("naturalWidth", 1448);
+  await page.screenshot({ path: testInfo.outputPath("product-hub-1891.png"), fullPage: false });
+
+  await page.getByRole("button", { name: "Open SpeakCheck App", exact: true }).click();
   await expect(page).toHaveURL(/\/speak$/);
-  await expect(page.getByRole("heading", { name: "Speaking Performance", exact: true })).toBeVisible();
+  await expect(page.getByRole("heading", { name: "SpeakCheck App", exact: true })).toBeVisible();
 
   await page.goto("/");
   await page.getByRole("button", { name: "Open QuizStrike", exact: true }).click();
@@ -581,7 +598,7 @@ test("speaking entry and join fit laptop viewports without page scaling", async 
   }
   await page.setViewportSize({ width: 1894, height: 912 });
   await page.goto("/speak");
-  await expect(page.getByRole("heading", { name: "Speaking Performance", exact: true })).toBeVisible();
+  await expect(page.getByRole("heading", { name: "SpeakCheck App", exact: true })).toBeVisible();
   await page.evaluate(async () => { await document.fonts.ready; });
   await page.locator(".speaking-welcome img").evaluateAll(async (images) => {
     await Promise.all(images.map((image) => (image as HTMLImageElement).decode()));

@@ -11,7 +11,7 @@ const speakingSteps = [
   {
     number: "1",
     title: "Set Task",
-    copy: <>Choose a task<br />and rubric</>,
+    copy: <>Choose a task and rubric</>,
     image: "/assets/speaking/performance-teacher.png",
     alt: "Teacher setting a speaking task with a tablet",
     className: "product-hub-stage-teacher"
@@ -19,7 +19,7 @@ const speakingSteps = [
   {
     number: "2",
     title: "Students Speak",
-    copy: <>Speak independently<br />on any device</>,
+    copy: <>Speak independently on any device</>,
     image: "/assets/speaking/performance-student.png",
     alt: "Student speaking with headphones at a laptop",
     className: "product-hub-stage-student"
@@ -27,7 +27,7 @@ const speakingSteps = [
   {
     number: "3",
     title: "Review Results",
-    copy: <>See scores, rubrics<br />and clear evidence</>,
+    copy: <>See scores, rubrics and clear evidence</>,
     image: "/assets/speaking/performance-results.png",
     alt: "Speaking assessment results chart with a green checkmark",
     className: "product-hub-stage-results"
@@ -63,18 +63,17 @@ export default function ProductHubHomepage({ onOpenSpeaking, onOpenQuizStrike }:
             <i />
           </span>
           <h1 id="product-hub-title">Two powerful tools for English classrooms</h1>
-          <p>Speaking, assessment, and game-based review — all in one place.</p>
           <span className="product-hub-scribble product-hub-scribble-right" aria-hidden="true">
-            Small<br />steps<br />Big<br />voices
+            Small steps Big voices
           </span>
         </section>
 
         <section className="product-hub-products" aria-label="GyakutenEigo products">
           <article className="product-hub-card product-hub-speaking-card">
-            <p className="product-hub-card-label">Speaking Performance</p>
-            <h2>Computer-Based<br />Performance Test for English</h2>
-            <p className="product-hub-card-description">Assess real speaking performance<br className="product-hub-desktop-break" /> across your whole class.</p>
-            <div className="product-hub-speaking-flow" aria-label="Speaking Performance steps">
+            <p className="product-hub-card-label">Speaking assessment</p>
+            <h2>SpeakCheck App</h2>
+            <p className="product-hub-card-description">Assess real speaking performance  across your whole class.</p>
+            <div className="product-hub-speaking-flow" aria-label="SpeakCheck App steps">
               {speakingSteps.map((step, index) => (
                 <div className="product-hub-flow-stage-wrap" key={step.number}>
                   <article className={`product-hub-flow-stage ${step.className}`}>
@@ -95,20 +94,20 @@ export default function ProductHubHomepage({ onOpenSpeaking, onOpenQuizStrike }:
             </div>
             <button className="product-hub-card-button product-hub-speaking-button" type="button" onClick={onOpenSpeaking}>
               <BookOpenText size={21} aria-hidden="true" />
-              <span>Open Speaking Performance</span>
+              <span>Open SpeakCheck App</span>
               <ArrowRight size={22} aria-hidden="true" />
             </button>
           </article>
 
           <article className="product-hub-card product-hub-quizstrike-card">
-            <p className="product-hub-card-label">QuizStrike</p>
+            <p className="product-hub-card-label">Multiplayer review</p>
             <div className="product-hub-quiz-title-row">
               <h2>QuizStrike</h2>
               <Gamepad2 size={58} strokeWidth={1.9} aria-hidden="true" />
             </div>
-            <p className="product-hub-card-description">Turn classroom review into<br />a multiplayer challenge.</p>
+            <p className="product-hub-card-description">Turn classroom review into a multiplayer challenge.</p>
             <div className="product-hub-quiz-art-frame">
-              <img src="/assets/quizstrike-classroom-hero.png" alt="QuizStrike classroom game with red and blue teams competing in an arena" width={1672} height={941} fetchPriority="high" decoding="sync" />
+              <img src="/assets/quizstrike-home-hero.png" alt="QuizStrike classroom review game with students answering a question" width={1448} height={1086} fetchPriority="high" decoding="sync" />
               <div className="product-hub-quiz-badges" aria-label="QuizStrike content areas">
                 <span><BookOpenText size={15} aria-hidden="true" />Vocabulary</span>
                 <span><Settings2 size={15} aria-hidden="true" />Grammar</span>

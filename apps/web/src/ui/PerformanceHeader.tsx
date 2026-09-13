@@ -17,10 +17,10 @@ export default function PerformanceHeader({ onNavigate }: PerformanceHeaderProps
 
   return (
     <header className="topbar performance-topbar performance-route-header">
-      <button className="brand-button" type="button" aria-label="GyakutenEigo Speaking Performance home" onClick={() => go("/speak")}>
+      <button className="brand-button" type="button" aria-label="GyakutenEigo SpeakCheck App home" onClick={() => go("/speak")}>
         <GyakutenEigoBrand />
       </button>
-      <nav className="primary-nav" aria-label="Speaking Performance navigation" onKeyDown={(event) => {
+      <nav className="primary-nav" aria-label="SpeakCheck App navigation" onKeyDown={(event) => {
         if (event.key === "Escape" && menuOpen) {
           setMenuOpen(false);
           event.currentTarget.querySelector<HTMLButtonElement>(".nav-menu-toggle")?.focus();

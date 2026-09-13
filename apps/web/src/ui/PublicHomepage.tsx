@@ -79,7 +79,7 @@ export default function PublicHomepage({
       <section className="performance-shell performance-hero" aria-labelledby="public-hero-title">
         <div className="performance-hero-copy">
           <p className="performance-eyebrow">Computer-based performance test</p>
-          <h1 id="public-hero-title" tabIndex={-1}>Speaking Performance</h1>
+          <h1 id="public-hero-title" tabIndex={-1}>SpeakCheck App</h1>
           <p className="performance-hero-lead">Fair, consistent speaking assessment for every student.</p>
           <div className="performance-hero-actions">
             <button className="performance-button performance-button-primary" type="button" onClick={onCreateMatch}>

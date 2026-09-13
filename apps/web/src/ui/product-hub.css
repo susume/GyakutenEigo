@@ -393,7 +393,7 @@ body[data-site="product-hub"] .app-shell {
   width: 100%;
   height: 100%;
   object-fit: cover;
-  object-position: center 56%;
+  object-position: center 38%;
 }
 
 .product-hub-quiz-badges {
@@ -880,4 +880,61 @@ body[data-site="product-hub"] .app-shell {
   .topbar.product-hub-topbar .top-actions[data-open="true"] {
     display: flex;
   }
+}
+
+
+
+/* Keep product typography and content rows consistent across desktop widths. */
+.product-hub-home { padding-top: 32px; }
+.product-hub-intro { margin-bottom: 28px; }
+.product-hub-intro h1 {
+  font-size: clamp(2rem, 3.2vw, 3rem);
+  letter-spacing: -0.045em;
+  line-height: 1.15;
+  text-wrap: balance;
+}
+.product-hub-scribble { display: none; }
+.product-hub-card { min-height: 0; }
+.product-hub-card h2,
+.product-hub-quiz-title-row h2 {
+  margin: 12px 0;
+  font-size: clamp(2rem, 3vw, 3rem);
+  letter-spacing: -0.045em;
+  line-height: 1.15;
+  text-wrap: balance;
+}
+.product-hub-quiz-title-row svg { width: 42px; height: 42px; }
+.product-hub-card-description { font-size: 1.15rem; line-height: 1.45; text-wrap: pretty; }
+.product-hub-speaking-flow { margin-top: 20px; padding-top: 0; }
+.product-hub-flow-copy small { text-wrap: pretty; }
+.product-hub-quiz-art-frame { margin-top: 20px; object-position: center; }
+.product-hub-quiz-art-frame img { object-position: center 24%; }
+.product-hub-card-button { margin-top: 20px; }
+.topbar.product-hub-topbar .top-actions button { white-space: nowrap; }
+
+@media (min-width: 901px) {
+  .product-hub-products { grid-template-rows: auto auto auto 1fr auto; gap: 0 20px; }
+  .product-hub-card { display: grid; grid-row: span 5; grid-template-rows: subgrid; }
+  .product-hub-quiz-art-frame { height: auto; min-height: 240px; align-self: stretch; }
+  .product-hub-quiz-art-frame img { position: absolute; inset: 0; }
+  .product-hub-speaking-flow { align-content: start; }
+  .product-hub-flow-visual { height: clamp(120px, 11vw, 160px); }
+  .product-hub-card-button { align-self: end; }
+  .topbar.product-hub-topbar .product-hub-nav-group { position: static; transform: none; margin-inline: auto; gap: 12px; }
+  .product-hub-topbar .brand-button { min-width: 0; flex-shrink: 0; }
+  .product-hub-topbar .top-actions { gap: 16px; }
+  .topbar.product-hub-topbar .primary-nav { display: flex; flex-direction: row; width: auto; margin-left: 24px; }
+  .topbar.product-hub-topbar .top-actions { flex-wrap: nowrap; flex-direction: row; }
+}
+@media (min-width: 901px) and (max-width: 1180px) {
+  .topbar.product-hub-topbar { padding-inline: 24px; }
+  .topbar.product-hub-topbar .top-actions button { padding-inline: 8px; font-size: 0.82rem; min-width: 0; }
+  .topbar.product-hub-topbar .product-hub-nav-group { gap: 4px; }
+  .product-hub-flow-copy { grid-template-columns: 1fr; }
+  .product-hub-flow-copy strong { min-height: 2.1em; }
+}
+@media (max-width: 600px) {
+  .product-hub-card h2, .product-hub-quiz-title-row h2 { font-size: 2rem; }
+  .product-hub-card-description { font-size: 1.05rem; }
+  .product-hub-flow-visual { height: 94px; }
 }
