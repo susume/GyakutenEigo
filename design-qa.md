@@ -616,3 +616,54 @@ final result: passed
 No actionable P0, P1, or P2 visual or accessibility issue was found for the requested student session redesign.
 
 final result: passed
+
+# GyakutenEigo Speaking Performance Splash — Image-to-Code QA (2026-09-13)
+
+## Visual truth and scope
+
+- Source visual truth: `C:\Users\hungb\Downloads\ChatGPT Image Sep 13, 2026, 08_22_33 AM.png`.
+- Implementation: local home route at `http://localhost:5173/`.
+- Implementation screenshot evidence: final clean in-app browser capture of `http://127.0.0.1:5173/` at 1672 × 941 CSS px; the browser API exposes this as an inline capture rather than a filesystem path.
+- The source is a 1672 × 941 mockup containing browser chrome; comparison focused on the app-owned navigation, hero, infographic, benefit strip, entry cards, and footer.
+- A temporary same-size comparison view placed the source image above the live implementation at 1672 × 941 CSS px; the temporary comparison page and copied source image were removed after review.
+
+## Viewport and state
+
+- Desktop reference viewport: 1672 × 941 CSS px.
+- Implementation viewport: 1672 × 941 CSS px requested, 1672 × 942 CSS px reported by the in-app browser due viewport rounding; device pixel ratio 1.0 for the final clean capture.
+- State: home route, Practice active, no mobile menu open, example code visible, no modal or authentication state.
+- Tablet check: 1024 × 768; hero remains two-column and the entry cards continue below the fold without horizontal overflow.
+- Narrow check: 600 × 900; navigation collapses to Menu, hero/flow/benefits/cards stack while preserving the workflow.
+
+## Comparison evidence
+
+- Full-view comparison confirms the same section order and silhouette: navigation → two-column hero → large three-step infographic → three compact benefits → side-by-side teacher/student cards → footer.
+- The implementation preserves the reference's pale blue page, deep navy headline, bright blue primary CTA, outlined secondary CTA, green teacher treatment, blue student treatment, rounded white cards, and soft borders/shadows.
+- Hero geometry measured at the final desktop size: 1420px content width; 377px hero row; 722px infographic width; 122px benefit strip; 301px entry-card row; 35px footer.
+- The only intentional source difference is the omitted faux browser-window chrome, which belongs to the screenshot presentation rather than the application page.
+
+## Required fidelity surfaces
+
+- Typography: existing system sans stack retained; `Speaking Performance` is the dominant one-line desktop headline with compact uppercase eyebrow, muted supporting copy, and smaller card hierarchy.
+- Spacing and layout: centered 1420px max-width shell, approximately 45/55 hero split, 16px benefit gaps, 18px entry-card gap, and compact vertical rhythm matching the supplied layout.
+- Colors and tokens: light blue page background, navy text, blue actions/Practice state, green teacher accents, purple review icon, and low-contrast blue-gray borders/shadows.
+- Image quality and assets: three real raster assets generated in the supplied soft dimensional educational style and stored at `apps/web/public/assets/speaking/performance-teacher.png`, `performance-student.png`, and `performance-results.png`; Lucide icons are used for standard UI affordances.
+- Copy: reference copy is preserved for the hero, three workflow stages, benefit strip, teacher/student cards, sample code, and footer.
+
+## Interaction and regression checks
+
+- Practice navigation opens `/speak` and renders Speaking Practice.
+- Teacher tools opens `/quiz-strike/teacher/home` and renders the existing teacher auth workspace.
+- Join with Code follows the existing `/join` flow; with the browser's stored student session it correctly continues to `/game`.
+- Teacher workspace CTA uses the existing teacher-login callback.
+- Join Performance Test CTA uses the existing student-join callback.
+- Example code copy button changes to the copied accessible state.
+- Final clean desktop capture reported no browser console errors or warnings.
+- `npm run typecheck` in `apps/web`: passed.
+- `npm run test` in `apps/web`: passed — 259/259.
+- `npm run build` in `apps/web`: passed; existing large-chunk advisory remains.
+- `git diff --check`: passed with the repository's existing LF/CRLF normalization warnings only.
+
+No actionable P0, P1, or P2 visual, responsive, accessibility, or interaction mismatch remains for this splash-page redesign.
+
+final result: passed

@@ -4,10 +4,14 @@ import {
   GraduationCap,
   LogOut,
   Mic,
+  MessageCircle,
   Play,
   RefreshCw,
+  ScanLine,
   Shield,
+  Sparkles,
   Target,
+  UserRound,
   Users,
   Zap
 } from "lucide-react";
@@ -148,12 +152,24 @@ export default function App() {
 
   return (
     <main id="main-content" className="app-shell" tabIndex={-1}>
-      <a className={`skip-link skip-link-${mode}`} href="#main-content">Skip to main content</a>
-        <header className={`topbar topbar-${mode}${teacher ? " teacher-authenticated" : ""}`}>
-        <button className="brand-button" type="button" aria-label={mode === "teacher" ? "GyakutenEigo home" : "QuizStrike home"} onClick={() => navigateTo("/", "home")}>
-          {mode === "home" || mode === "teacher" ? <span className="public-wordmark">{mode === "teacher" ? "GyakutenEigo" : "QuizStrike"}</span> : <QuizStrikeLogo />}
+      <a className={`skip-link skip-link-${mode}`} href={mode === "home" ? "#public-hero-title" : "#main-content"}>Skip to main content</a>
+        <header className={`topbar topbar-${mode}${teacher ? " teacher-authenticated" : ""}${mode === "home" ? " performance-topbar" : ""}`}>
+        <button className="brand-button" type="button" aria-label={mode === "home" || mode === "teacher" ? "GyakutenEigo home" : "QuizStrike home"} onClick={() => navigateTo("/", "home")}>
+          {mode === "home" ? (
+            <span className="performance-brand">
+              <span className="performance-brand-mark"><MessageCircle size={25} strokeWidth={2.4} aria-hidden="true" /></span>
+              <span>GyakutenEigo</span>
+            </span>
+          ) : mode === "teacher" ? <span className="public-wordmark">GyakutenEigo</span> : <QuizStrikeLogo />}
         </button>
-        <nav className="primary-nav" aria-label="Primary">
+        <nav className="primary-nav" aria-label="Primary" onKeyDown={(event) => {
+          if (event.key === "Escape" && isMobileNavOpen) {
+            setIsMobileNavOpen(false);
+            event.currentTarget.querySelector<HTMLButtonElement>(".nav-menu-toggle")?.focus();
+          }
+        }} onBlur={(event) => {
+          if (!event.currentTarget.contains(event.relatedTarget)) setIsMobileNavOpen(false);
+        }}>
           <button
             className="nav-menu-toggle"
             type="button"
@@ -164,7 +180,22 @@ export default function App() {
             Menu
           </button>
           <div id="primary-actions" className="top-actions" data-open={isMobileNavOpen ? "true" : "false"}>
-          {mode === "quizStrike" && !teacher ? (
+          {mode === "home" ? (
+            <>
+              <button className="performance-nav-link is-active" onClick={openSpeakingPractice}>
+                <Sparkles size={19} aria-hidden="true" />
+                Practice
+              </button>
+              <button className="performance-nav-link" onClick={() => navigateTo("/join", "student")}>
+                <ScanLine size={19} aria-hidden="true" />
+                Join activity
+              </button>
+              <button className="performance-nav-link" onClick={() => { setTeacherAuthMode("login"); navigateTo("/quiz-strike/teacher/home", "teacher"); }}>
+                <UserRound size={19} aria-hidden="true" />
+                Teacher tools
+              </button>
+            </>
+          ) : mode === "quizStrike" && !teacher ? (
             <>
               <button onClick={() => { setTeacherAuthMode("signup"); navigateTo("/quiz-strike/teacher/home", "teacher"); }}>Create a teacher account</button>
               <button onClick={() => navigateTo("/join", "student")}>Join with code</button>
@@ -211,9 +242,8 @@ export default function App() {
 
       {mode === "home" && <PublicHomepage
         onCreateMatch={() => { setTeacherAuthMode("signup"); navigateTo("/quiz-strike/teacher/home", "teacher"); }}
-        onJoinGame={() => navigateTo("/join", "student")}
+        onJoinGame={(code) => navigateTo(code ? `/join?code=${encodeURIComponent(code)}` : "/join", "student")}
         onTeacherLogin={() => { setTeacherAuthMode("login"); navigateTo("/quiz-strike/teacher/home", "teacher"); }}
-        onOpenCompetitions={() => navigateTo("/quiz-strike", "quizStrike")}
       />}
       {mode === "quizStrike" && routePath === "/quiz-strike/organizer" && <Suspense fallback={<FeatureLoading label="Loading organizer workspace" />}><OrganizerWorkspace teacher={teacher} onNavigate={navigateTo} /></Suspense>}
       {mode === "quizStrike" && isTournamentRegistrationRoute && <Suspense fallback={<FeatureLoading label="Loading tournament registration" />}><TournamentRegistrationPage

@@ -1,0 +1,12 @@
+# Splash audit and repairs — 2026-09-13
+
+This follow-up supersedes the earlier blanket QA pass in design-qa.md. The audit inspected the current local page, DOM, styles, keyboard behavior, and route transitions.
+
+1. Home layout: repaired. A legacy selector overrode the logo's flex layout; phone workflow grid styles targeted the wrapper instead of the article. Corrected both, stacked entry-card imagery above content on small phones, allowed button labels to wrap, and removed the page's inherited minimum body width. Checked 1440, 768, 390, and 320px viewports. Desktop preserves the supplied composition; phone and tablet primary labels fit.
+2. Student entry: repaired. Replaced the copyable dummy code with a labeled input using ABC123 as a placeholder. Input normalizes to six alphanumeric characters. A short code is blocked by native validation; Enter with AB1234 navigated to /join?code=AB1234 and the existing join screen displayed that code. Empty submission continues to the existing blank join screen. Existing routes remain intact.
+3. Navigation and keyboard: repaired. Escape closes the mobile menu and returns focus to its toggle; leaving the nav closes it. The home skip link targets the focusable hero heading. Added explicit focus outlines and darkened primary blue for readable white button text. Teacher workspace reached the existing sign-in screen.
+4. Footer and metadata: repaired. Removed misleading Privacy/Terms links that only jumped to the top and the nonfunctional language dropdown indicator. How it works links to the workflow panel. Updated the copyright year dynamically and set/restored the home document title and body theme.
+
+Verification: production build passed; existing web suite passed 259/259; TypeScript check passed. Current audit screenshots were inspected inline in the in-app browser. Its screenshot API did not expose a local save path; full-page captures showed stitching artifacts, so viewport screenshots and DOM measurements were used for layout judgments.
+
+Limits: the local API is unavailable (connection refused), so authenticated sign-in and live classroom joining were not completed. This is a scoped splash-page audit, not a claim of complete accessibility compliance or exact illustration fidelity. The retained /join route opens QuizStrike, consistent with the original request to preserve existing student navigation; a dedicated speaking route would be a separate product change.
