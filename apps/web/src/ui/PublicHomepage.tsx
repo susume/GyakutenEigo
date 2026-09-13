@@ -1,4 +1,4 @@
-import { useEffect, useState } from "react";
+import { useState } from "react";
 import {
   ArrowRight,
   BarChart3,
@@ -8,6 +8,7 @@ import {
   ScanLine,
   Users
 } from "lucide-react";
+import "../homepage-game-first.css";
 
 type PublicHomepageProps = {
   onCreateMatch: () => void;
@@ -70,18 +71,6 @@ export default function PublicHomepage({
 }: PublicHomepageProps) {
   const [sessionCode, setSessionCode] = useState("");
 
-  useEffect(() => {
-    const previousSite = document.body.dataset.site;
-    const previousTitle = document.title;
-    document.body.dataset.site = "performance";
-    document.title = "GyakutenEigo · Speaking Performance";
-    return () => {
-      if (previousSite === undefined) delete document.body.dataset.site;
-      else document.body.dataset.site = previousSite;
-      document.title = previousTitle;
-    };
-  }, []);
-
   return (
     <div className="performance-home">
       <span className="performance-orb performance-orb-one" aria-hidden="true" />
@@ -136,8 +125,8 @@ export default function PublicHomepage({
             <img
               src="/assets/speaking/performance-teacher.png"
               alt="Friendly teacher holding a tablet"
-              loading="lazy"
-              decoding="async"
+              loading="eager"
+              decoding="sync"
             />
           </div>
           <div className="performance-entry-content">
@@ -161,8 +150,8 @@ export default function PublicHomepage({
             <img
               src="/assets/speaking/performance-student.png"
               alt="Student wearing headphones at a laptop"
-              loading="lazy"
-              decoding="async"
+              loading="eager"
+              decoding="sync"
             />
           </div>
           <form className="performance-entry-content" onSubmit={(event) => { event.preventDefault(); onJoinGame(sessionCode); }}>
@@ -213,7 +202,7 @@ function PerformanceFlow() {
           <div className="performance-flow-stage-wrap" key={step.number}>
             <article className={`performance-flow-stage ${step.className}`}>
               <div className="performance-flow-visual">
-                <img src={step.image} alt={step.alt} decoding="async" />
+                <img src={step.image} alt={step.alt} decoding="sync" />
               </div>
               <div className="performance-flow-stage-copy">
                 <span className="performance-flow-number">{step.number}</span>

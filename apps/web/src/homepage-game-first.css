@@ -154,7 +154,7 @@ body[data-site="performance"] .app-shell {
 .performance-shell {
   position: relative;
   z-index: 1;
-  width: min(1420px, calc(100% - 48px));
+  width: min(1580px, calc(100% - 48px));
   margin-right: auto;
   margin-left: auto;
 }
@@ -243,6 +243,20 @@ body[data-site="performance"] .app-shell {
   border-color: var(--performance-blue);
   background: #ffffff;
   color: var(--performance-blue);
+}
+
+@media (min-width: 1161px) {
+  .performance-hero-actions {
+    flex-wrap: nowrap;
+  }
+
+  .performance-button-primary {
+    min-width: 344px;
+  }
+
+  .performance-button-secondary {
+    min-width: 205px;
+  }
 }
 
 .performance-button-secondary:hover,
@@ -1086,5 +1100,163 @@ body[data-site="performance"] .app-shell {
   .performance-topbar * {
     scroll-behavior: auto !important;
     transition-duration: .01ms !important;
+  }
+}
+
+/* SpeakingPracticeApp's shared button reset is intentionally broad; restore the landing CTA treatment here. */
+.speaking-app .performance-button {
+  min-height: 55px;
+  border-radius: 12px;
+  padding: 0 20px;
+  font-size: 1rem;
+  font-weight: 800;
+  letter-spacing: -.015em;
+}
+
+.speaking-app .performance-button-primary {
+  border-color: var(--performance-blue);
+  background: var(--performance-blue);
+  color: #ffffff;
+  box-shadow: 0 9px 20px rgba(21, 125, 241, .2);
+}
+
+.speaking-app .performance-button-primary:hover,
+.speaking-app .performance-button-primary:focus-visible {
+  border-color: var(--performance-blue-dark);
+  background: var(--performance-blue-dark);
+}
+
+.speaking-app .performance-button-secondary {
+  border-color: var(--performance-blue);
+  background: #ffffff;
+  color: var(--performance-blue);
+}
+
+.speaking-app .performance-button-secondary:hover,
+.speaking-app .performance-button-secondary:focus-visible {
+  border-color: var(--performance-blue-dark);
+  background: #f2f8ff;
+  color: var(--performance-blue-dark);
+}
+
+.speaking-app .performance-entry-action {
+  display: grid;
+  grid-template-columns: 25px minmax(0, 1fr) 25px;
+  width: 100%;
+  min-height: 53px;
+  align-items: center;
+  gap: 9px;
+  padding: 0 17px;
+  border-radius: 12px;
+  color: #ffffff;
+  font-size: .99rem;
+  font-weight: 800;
+}
+
+.speaking-app .performance-entry-action-teacher {
+  border-color: #138e5c;
+  background: #138e5c;
+}
+
+.speaking-app .performance-entry-action-teacher:hover,
+.speaking-app .performance-entry-action-teacher:focus-visible {
+  border-color: #0d7248;
+  background: #0d7248;
+}
+
+.speaking-app .performance-entry-action-student {
+  border-color: var(--performance-blue);
+  background: var(--performance-blue);
+}
+
+.speaking-app .performance-entry-action-student:hover,
+.speaking-app .performance-entry-action-student:focus-visible {
+  border-color: var(--performance-blue-dark);
+  background: var(--performance-blue-dark);
+}
+
+@media (min-width: 1400px) {
+  .topbar.performance-topbar {
+    min-height: 90px;
+    height: 90px;
+    padding-inline: clamp(22px, 4vw, 74px);
+  }
+
+  .topbar.performance-topbar .brand-button .performance-brand {
+    gap: 13px;
+    font-size: 1.44rem;
+  }
+
+  .topbar.performance-topbar .brand-button .performance-brand-mark {
+    width: 48px;
+    height: 48px;
+    border-radius: 13px;
+  }
+
+  .topbar.performance-topbar .top-actions {
+    gap: 16px;
+  }
+
+  .topbar.performance-topbar .top-actions .performance-nav-link {
+    min-height: 52px;
+    padding-inline: 17px;
+    font-size: 1.2rem;
+  }
+
+  .topbar.performance-topbar .top-actions .performance-nav-link svg {
+    width: 20px;
+    height: 20px;
+  }
+
+  .topbar.performance-topbar .top-actions .performance-nav-link.is-active {
+    min-width: 154px;
+  }
+
+  .performance-hero h1 {
+    max-width: 700px;
+    font-size: clamp(54px, 3.45vw, 66px);
+  }
+
+  .performance-hero-lead {
+    font-size: clamp(20px, 1.45vw, 26px);
+  }
+
+  .performance-button-primary {
+    min-width: 395px;
+  }
+
+  .performance-button-secondary {
+    min-width: 240px;
+  }
+
+  .performance-flow {
+    min-height: 406px;
+    padding-top: 30px;
+    padding-bottom: 20px;
+  }
+
+  .performance-flow-heading h2 {
+    font-size: 1.48rem;
+  }
+
+  .performance-flow-stages {
+    margin-top: 26px;
+  }
+
+  .performance-flow-visual {
+    height: 152px;
+  }
+
+  .performance-flow-stage-copy strong {
+    font-size: 1.08rem;
+  }
+
+  .performance-flow-stage-copy small {
+    font-size: .9rem;
+  }
+
+  .performance-benefit-card {
+    min-height: 116px;
+    padding-block: 20px;
   }
 }

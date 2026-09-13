@@ -1,3 +1,64 @@
+# Design QA
+
+## Source visual truth
+
+- Image A: `C:\Users\hungb\OneDrive\Pictures\Screenshots\Screenshot 2026-09-13 161726.png`
+- Image B: `C:\Users\hungb\Downloads\ChatGPT Image Sep 13, 2026, 04_23_13 PM.png`
+
+## Implementation captures
+
+- `apps/web/test-results/speaking-the-product-hub-r-b8240--to-both-classroom-products-desktop-chrome/product-hub-1672.png`
+- `apps/web/test-results/speaking-the-product-hub-r-b8240--to-both-classroom-products-desktop-chrome/product-hub-390.png`
+- `apps/web/test-results/speaking-speaking-entry-an-11001-wports-without-page-scaling-desktop-chrome/speaking-reference.png`
+
+## Viewport and normalization
+
+- Root source and implementation capture: 1672x941 CSS pixels, density 1, browser chrome excluded from the implementation capture.
+- Speaking source: 1895x971 including approximately 60px of Chrome UI; compared against the approximately 1895x911 web-content crop and the 1894x912 implementation capture, with a 1px tolerance.
+- Mobile root capture: 390px wide responsive check; it is not intended to be pixel-equal to the desktop reference.
+
+## State
+
+- Public logged-out state.
+- Scroll at top, menu closed, local assets decoded, fonts ready, and reduced-motion-friendly Playwright capture.
+- Root product hub and `/speak` public landing page checked at desktop and mobile widths.
+
+## Full-view comparison
+
+- Root: light-blue canvas, centered intro, decorative notes, two equal product cards, CTA row, and three benefits follow the reference hierarchy, palette, and spacing.
+- `/speak`: white header, blue/navy hero, illustrated three-step flow, benefits, and teacher/student entry cards follow the reference composition and copy. The wide headline remains on one line.
+
+## Findings
+
+- No actionable P0/P1 findings.
+- Accepted P2/P3 differences: the QuizStrike card uses the existing `quizstrike-classroom-hero.png` arena artwork rather than the mockup's custom scoreboard illustration; Image A includes browser chrome while the implementation capture is content-only; decorative notes are hidden below the wide breakpoint to avoid crowding at 1440px; and the repo uses system sans metrics rather than the mockup's exact rasterized type.
+- Browser checks found no horizontal overflow, missing image assets, or console errors on the landing flows.
+
+## Comparison history
+
+1. `/speak` mobile header stacked and clipped; fixed with `performance-header.css`; the final 390px capture keeps the header in one row.
+2. A legacy tablet `.topbar` rule stacked the root header; an explicit product-hub flex override keeps the final mobile header in one row with the menu control.
+3. `/speak/join` restored the wrong title/site state; title and site ownership now live in `SpeakingPracticeApp`, and route checks confirm the speaking title.
+4. A broad `.speaking-app button` rule washed out the landing actions; scoped landing-button and entry-card overrides restore the blue, outlined, and green treatments.
+5. Wide `/speak` shell, headline, flow, and navigation metrics were too narrow; the wide breakpoint now matches the supplied desktop composition more closely.
+6. Marketing-art capture could race async image loading; above-fold art is eager/synchronous and the E2E capture waits for image decoding and fonts.
+7. The root scribble crowded the 1440px layout; it is intentionally hidden below the wide breakpoint while remaining visible in the exact-width reference capture.
+8. Final accepted difference: QuizStrike artwork differs from the mockup because the implementation reuses the existing product asset, documented above.
+
+## Implementation checklist
+
+- `/` is the two-product hub.
+- `/speak` is the polished Speaking Performance page.
+- `/quiz-strike` remains the actual QuizStrike landing route.
+- Existing `/join`, `/game`, `/check`, `/diagnostics`, teacher/auth, speaking join/session/result, competition, and organizer routes remain available.
+- Local art assets, semantic section landmarks, keyboard-visible controls, menu behavior, and no-overflow checks were verified.
+
+final result: passed
+
+---
+
+## Previous QA record (preserved)
+
 # QuizStrike public homepage — design QA
 
 ## Visual truth

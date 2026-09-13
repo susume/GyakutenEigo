@@ -4,14 +4,10 @@ import {
   GraduationCap,
   LogOut,
   Mic,
-  MessageCircle,
   Play,
   RefreshCw,
-  ScanLine,
   Shield,
-  Sparkles,
   Target,
-  UserRound,
   Users,
   Zap
 } from "lucide-react";
@@ -36,7 +32,8 @@ import {
 } from "@quizstrike/shared";
 import { authApi } from "../../api/client";
 import { buildTeacherSpeakingPath, getTournamentInvitationCodeFromSearch, isSpeakingTeacherRoute, isTeacherSpeakingRoute, modeForRoute, normalizeRoutePath, type AppMode } from "../../navigation";
-import PublicHomepage from "../../ui/PublicHomepage";
+import ProductHubHeader from "../../ui/ProductHubHeader";
+import ProductHubHomepage from "../../ui/ProductHubHomepage";
 import QuizStrikeLogo from "../../ui/QuizStrikeLogo";
 import {
   CHARACTER_STRESS_COUNTS,
@@ -154,98 +151,85 @@ export default function App() {
 
   return (
     <main id="main-content" className="app-shell" tabIndex={-1}>
-      <a className={`skip-link skip-link-${mode}`} href={mode === "home" ? "#public-hero-title" : "#main-content"}>Skip to main content</a>
-        <header className={`topbar topbar-${mode}${teacher ? " teacher-authenticated" : ""}${mode === "home" ? " performance-topbar" : ""}`}>
-        <button className="brand-button" type="button" aria-label={mode === "home" || mode === "teacher" ? "GyakutenEigo home" : "QuizStrike home"} onClick={() => navigateTo("/", "home")}>
-          {mode === "home" ? (
-            <span className="performance-brand">
-              <span className="performance-brand-mark"><MessageCircle size={25} strokeWidth={2.4} aria-hidden="true" /></span>
-              <span>GyakutenEigo</span>
-            </span>
-          ) : mode === "teacher" ? <span className="public-wordmark">GyakutenEigo</span> : <QuizStrikeLogo />}
-        </button>
-        <nav className="primary-nav" aria-label="Primary" onKeyDown={(event) => {
-          if (event.key === "Escape" && isMobileNavOpen) {
-            setIsMobileNavOpen(false);
-            event.currentTarget.querySelector<HTMLButtonElement>(".nav-menu-toggle")?.focus();
-          }
-        }} onBlur={(event) => {
-          if (!event.currentTarget.contains(event.relatedTarget)) setIsMobileNavOpen(false);
-        }}>
-          <button
-            className="nav-menu-toggle"
-            type="button"
-            aria-expanded={isMobileNavOpen}
-            aria-controls="primary-actions"
-            onClick={() => setIsMobileNavOpen((open) => !open)}
-          >
-            Menu
+      <a className={`skip-link skip-link-${mode}`} href={mode === "home" ? "#product-hub-title" : "#main-content"}>Skip to main content</a>
+      {mode === "home" ? (
+        <ProductHubHeader
+          onNavigate={(path) => navigateTo(path)}
+          onLogin={() => { setTeacherAuthMode("login"); navigateTo("/quiz-strike/teacher/home", "teacher"); }}
+          onGetStarted={() => { setTeacherAuthMode("signup"); navigateTo("/quiz-strike/teacher/home", "teacher"); }}
+        />
+      ) : (
+        <header className={`topbar topbar-${mode}${teacher ? " teacher-authenticated" : ""}`}>
+          <button className="brand-button" type="button" aria-label={mode === "teacher" ? "GyakutenEigo home" : "QuizStrike home"} onClick={() => navigateTo("/", "home")}>
+            {mode === "teacher" ? <span className="public-wordmark">GyakutenEigo</span> : <QuizStrikeLogo />}
           </button>
-          <div id="primary-actions" className="top-actions" data-open={isMobileNavOpen ? "true" : "false"}>
-          {mode === "home" ? (
-            <>
-              <button className="performance-nav-link is-active" onClick={openSpeakingPractice}>
-                <Sparkles size={19} aria-hidden="true" />
-                Practice
-              </button>
-              <button className="performance-nav-link" onClick={() => navigateTo("/join", "student")}>
-                <ScanLine size={19} aria-hidden="true" />
-                Join activity
-              </button>
-              <button className="performance-nav-link" onClick={() => { setTeacherAuthMode("login"); navigateTo("/quiz-strike/teacher/home", "teacher"); }}>
-                <UserRound size={19} aria-hidden="true" />
-                Teacher tools
-              </button>
-            </>
-          ) : mode === "quizStrike" && !teacher ? (
-            <>
-              <button onClick={() => { setTeacherAuthMode("signup"); navigateTo("/quiz-strike/teacher/home", "teacher"); }}>Create a teacher account</button>
-              <button onClick={() => navigateTo("/join", "student")}>Join with code</button>
-              <button onClick={openSpeakingPractice}>
-                <Mic size={18} aria-hidden="true" />
-                Speaking Practice
-              </button>
-              <button className="nav-login" onClick={() => { setTeacherAuthMode("login"); navigateTo("/quiz-strike/teacher/home", "teacher"); }}>Teacher login</button>
-            </>
-          ) : <>
-          <button className={mode === "quizStrike" ? "active" : ""} onClick={() => navigateTo("/quiz-strike", "quizStrike")}>
-            <Play size={18} aria-hidden="true" />
-            QuizStrike
-          </button>
-          <button className={mode === "student" ? "active" : ""} onClick={() => navigateTo("/join", "student")}>
-            <DoorOpen size={18} aria-hidden="true" />
-            Join with code
-          </button>
-          <button onClick={openSpeakingPractice}>
-            <Mic size={18} aria-hidden="true" />
-            Speaking Practice
-          </button>
-          {teacher ? (
-            <>
-              <button className={mode === "teacher" ? "active" : ""} onClick={() => navigateTo("/quiz-strike/teacher/home", "teacher")}>
-                <GraduationCap size={18} aria-hidden="true" />
-                Teacher workspace
-              </button>
-              <button onClick={logout}>
-                <LogOut size={18} aria-hidden="true" />
-                Sign out
-              </button>
-            </>
-          ) : (
-            <button className={mode === "teacher" ? "active" : ""} onClick={() => { setTeacherAuthMode("login"); navigateTo("/quiz-strike/teacher/home", "teacher"); }}>
-              <GraduationCap size={18} aria-hidden="true" />
-              Teacher login
+          <nav className="primary-nav" aria-label="Primary" onKeyDown={(event) => {
+            if (event.key === "Escape" && isMobileNavOpen) {
+              setIsMobileNavOpen(false);
+              event.currentTarget.querySelector<HTMLButtonElement>(".nav-menu-toggle")?.focus();
+            }
+          }} onBlur={(event) => {
+            if (!event.currentTarget.contains(event.relatedTarget)) setIsMobileNavOpen(false);
+          }}>
+            <button
+              className="nav-menu-toggle"
+              type="button"
+              aria-expanded={isMobileNavOpen}
+              aria-controls="primary-actions"
+              onClick={() => setIsMobileNavOpen((open) => !open)}
+            >
+              Menu
             </button>
-          )}
-          </>}
-          </div>
-        </nav>
-      </header>
+            <div id="primary-actions" className="top-actions" data-open={isMobileNavOpen ? "true" : "false"}>
+              {mode === "quizStrike" && !teacher ? (
+                <>
+                  <button onClick={() => { setTeacherAuthMode("signup"); navigateTo("/quiz-strike/teacher/home", "teacher"); }}>Create a teacher account</button>
+                  <button onClick={() => navigateTo("/join", "student")}>Join with code</button>
+                  <button onClick={openSpeakingPractice}>
+                    <Mic size={18} aria-hidden="true" />
+                    Speaking Practice
+                  </button>
+                  <button className="nav-login" onClick={() => { setTeacherAuthMode("login"); navigateTo("/quiz-strike/teacher/home", "teacher"); }}>Teacher login</button>
+                </>
+              ) : <>
+                <button className={mode === "quizStrike" ? "active" : ""} onClick={() => navigateTo("/quiz-strike", "quizStrike")}>
+                  <Play size={18} aria-hidden="true" />
+                  QuizStrike
+                </button>
+                <button className={mode === "student" ? "active" : ""} onClick={() => navigateTo("/join", "student")}>
+                  <DoorOpen size={18} aria-hidden="true" />
+                  Join with code
+                </button>
+                <button onClick={openSpeakingPractice}>
+                  <Mic size={18} aria-hidden="true" />
+                  Speaking Practice
+                </button>
+                {teacher ? (
+                  <>
+                    <button className={mode === "teacher" ? "active" : ""} onClick={() => navigateTo("/quiz-strike/teacher/home", "teacher")}>
+                      <GraduationCap size={18} aria-hidden="true" />
+                      Teacher workspace
+                    </button>
+                    <button onClick={logout}>
+                      <LogOut size={18} aria-hidden="true" />
+                      Sign out
+                    </button>
+                  </>
+                ) : (
+                  <button className={mode === "teacher" ? "active" : ""} onClick={() => { setTeacherAuthMode("login"); navigateTo("/quiz-strike/teacher/home", "teacher"); }}>
+                    <GraduationCap size={18} aria-hidden="true" />
+                    Teacher login
+                  </button>
+                )}
+              </>}
+            </div>
+          </nav>
+        </header>
+      )}
 
-      {mode === "home" && <PublicHomepage
-        onCreateMatch={() => { setTeacherAuthMode("signup"); navigateTo("/quiz-strike/teacher/home", "teacher"); }}
-        onJoinGame={(code) => navigateTo(code ? `/join?code=${encodeURIComponent(code)}` : "/join", "student")}
-        onTeacherLogin={() => { setTeacherAuthMode("login"); navigateTo("/quiz-strike/teacher/home", "teacher"); }}
+      {mode === "home" && <ProductHubHomepage
+        onOpenSpeaking={() => navigateTo("/speak")}
+        onOpenQuizStrike={() => navigateTo("/quiz-strike", "quizStrike")}
       />}
       {mode === "quizStrike" && routePath === "/quiz-strike/organizer" && <Suspense fallback={<FeatureLoading label="Loading organizer workspace" />}><OrganizerWorkspace teacher={teacher} onNavigate={navigateTo} /></Suspense>}
       {mode === "quizStrike" && isTournamentRegistrationRoute && <Suspense fallback={<FeatureLoading label="Loading tournament registration" />}><TournamentRegistrationPage

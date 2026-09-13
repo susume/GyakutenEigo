@@ -21,7 +21,6 @@ import {
   Sparkles,
   Trophy,
   UserRound,
-  Users,
   Volume2,
   X
 } from "lucide-react";
@@ -38,6 +37,8 @@ import {
 } from "@quizstrike/shared";
 import { ApiError, speakingApi } from "../../api/client";
 import { isSpeakingTeacherRoute } from "../../navigation";
+import PerformanceHeader from "../../ui/PerformanceHeader";
+import PublicHomepage from "../../ui/PublicHomepage";
 import { formatDuration } from "./speakingData";
 import { browserTtsProvider } from "./speakingProviders";
 import { testSpeakingMicrophone } from "./speakingPreflight";
@@ -114,13 +115,17 @@ export default function SpeakingPracticeApp() {
   }, []);
 
   useEffect(() => {
+    const previousSite = document.body.dataset.site;
     const previousTitle = document.title;
     document.body.dataset.speaking = "true";
+    document.body.dataset.site = "performance";
     document.title = "Speaking Practice · GyakutenEigo";
     const onPopState = () => setPath(normalizePath(window.location.pathname));
     window.addEventListener("popstate", onPopState);
     return () => {
       delete document.body.dataset.speaking;
+      if (previousSite === undefined) delete document.body.dataset.site;
+      else document.body.dataset.site = previousSite;
       document.title = previousTitle;
       window.removeEventListener("popstate", onPopState);
     };
@@ -147,42 +152,13 @@ function SpeakingTopbar({ navigate, active = "home", teacher = false, student = 
 }
 
 function SpeakingHome({ navigate }: { navigate: Navigate }) {
-  const [code, setCode] = useState("");
   return <div className="speaking-home-page speaking-welcome">
-    <SpeakingTopbar navigate={navigate} />
-    <main className="speaking-welcome-main">
-      <section className="speaking-welcome-intro">
-        <span className="speaking-eyebrow"><Mic size={16} aria-hidden="true" /> Speaking Practice · Classroom assessment</span>
-        <h1>Speaking Performance</h1>
-        <p>AI-supported speaking assessment for your class.</p>
-      </section>
-      <div className="speaking-entry-grid">
-        <section className="speaking-entry-card speaking-entry-teacher">
-          <span className="speaking-entry-icon"><Users size={24} aria-hidden="true" /></span>
-          <span className="speaking-card-kicker">Teacher workspace · 先生</span>
-          <h2>A speaking task.<br />Your whole class.</h2>
-          <p>Set a textbook conversation and rubric. Let students speak independently while you follow the class.</p>
-          <button type="button" className="speaking-primary-button speaking-wide-button" onClick={() => navigate("/speak/teacher")}><BookOpenText size={18} aria-hidden="true" />Create or run a Performance Test<ArrowRight size={18} aria-hidden="true" /></button>
-          <small>Sign in to your teacher workspace.</small>
-          <ol className="speaking-classroom-workflow" aria-label="Teacher workflow">
-            <li><strong>Prepare</strong><span>Choose a task and evaluation rubric</span></li>
-            <li><strong>Run</strong><span>Share the QR or code; monitor your class</span></li>
-            <li><strong>Review</strong><span>See results, rubric scores and evidence</span></li>
-          </ol>
-        </section>
-        <section className="speaking-entry-card speaking-entry-student">
-          <span className="speaking-card-kicker">Student entry · 生徒</span>
-          <h2>Join your Performance Test</h2>
-          <p>Have a code from your teacher?</p>
-          <form onSubmit={(event) => { event.preventDefault(); navigate(code.length === 6 ? `/speak/join/${code}` : "/speak/join"); }}>
-            <label>Session code<input className="speaking-code-input" value={code} onChange={(event) => setCode(event.target.value.toUpperCase().replace(/[^A-Z0-9]/g, "").slice(0, 6))} placeholder="ABC123" maxLength={6} autoComplete="off" /></label>
-            <button type="submit" className="speaking-outline-button speaking-wide-button" disabled={code.length > 0 && code.length !== 6}><ScanLine size={18} aria-hidden="true" />Join Performance Test<ArrowRight size={18} aria-hidden="true" /></button>
-          </form>
-          <p lang="ja" className="speaking-operational-help">先生からのコードを入力してください。<br />生徒用アカウントは必要ありません。</p>
-          <div className="speaking-student-journey">Join <ChevronRight size={14} aria-hidden="true" /> Get ready <ChevronRight size={14} aria-hidden="true" /> Speak <ChevronRight size={14} aria-hidden="true" /> Finish</div>
-        </section>
-      </div>
-    </main>
+    <PerformanceHeader onNavigate={navigate} />
+    <PublicHomepage
+      onCreateMatch={() => navigate("/speak/teacher")}
+      onJoinGame={(code) => navigate(code ? `/speak/join/${encodeURIComponent(code)}` : "/speak/join")}
+      onTeacherLogin={() => navigate("/speak/teacher")}
+    />
   </div>;
 }
 

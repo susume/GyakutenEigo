@@ -508,12 +508,62 @@ test("Speaking Practice recovers each failed operation without cross-retrying", 
 });
 
 
+test("the product hub routes visitors to both classroom products", async ({ page }, testInfo) => {
+  const consoleErrors: string[] = [];
+  const pageErrors: string[] = [];
+  page.on("console", (message) => { if (message.type() === "error") consoleErrors.push(message.text()); });
+  page.on("pageerror", (error) => pageErrors.push(error.message));
+
+  await page.goto("/");
+  await expect(page.getByRole("heading", { name: "Two powerful tools for English classrooms", exact: true })).toBeVisible();
+  await expect(page.getByRole("heading", { name: "Computer-Based Performance Test for English", exact: true })).toBeVisible();
+  await expect(page.getByRole("heading", { name: "QuizStrike", exact: true })).toBeVisible();
+  await expect(page.getByRole("button", { name: "Open Speaking Performance", exact: true })).toBeVisible();
+  await expect(page.getByRole("button", { name: "Open QuizStrike", exact: true })).toBeVisible();
+  expect(await page.locator("img").evaluateAll((images) => images.every((image) => {
+    const element = image as HTMLImageElement;
+    return element.complete && element.naturalWidth > 0;
+  }))).toBeTruthy();
+  expect(await page.evaluate(() => document.documentElement.scrollWidth)).toBeLessThanOrEqual(1280);
+
+  await page.setViewportSize({ width: 1672, height: 941 });
+  await page.goto("/");
+  const quizArtwork = page.locator(".product-hub-quiz-art-frame img");
+  await expect(quizArtwork).toHaveJSProperty("naturalWidth", 1672);
+  await quizArtwork.evaluate(async (image) => { await (image as HTMLImageElement).decode(); });
+  await page.evaluate(async () => { await document.fonts.ready; });
+  await page.waitForTimeout(1000);
+  for (const name of ["Open Speaking Performance", "Open QuizStrike"]) {
+    const bounds = await page.getByRole("button", { name, exact: true }).boundingBox();
+    expect(bounds).toBeTruthy();
+    expect(bounds!.y + bounds!.height).toBeLessThanOrEqual(941);
+  }
+  await page.screenshot({ path: testInfo.outputPath("product-hub-1672.png"), fullPage: false });
+
+  await page.getByRole("button", { name: "Open Speaking Performance", exact: true }).click();
+  await expect(page).toHaveURL(/\/speak$/);
+  await expect(page.getByRole("heading", { name: "Speaking Performance", exact: true })).toBeVisible();
+
+  await page.goto("/");
+  await page.getByRole("button", { name: "Open QuizStrike", exact: true }).click();
+  await expect(page).toHaveURL(/\/quiz-strike$/);
+  await expect(page.getByRole("heading", { name: "Enter the QuizStrike Arena", exact: true })).toBeVisible();
+
+  await page.setViewportSize({ width: 390, height: 844 });
+  await page.goto("/");
+  await expect(page.getByRole("heading", { name: "Two powerful tools for English classrooms", exact: true })).toBeVisible();
+  expect(await page.evaluate(() => document.documentElement.scrollWidth)).toBeLessThanOrEqual(390);
+  await page.screenshot({ path: testInfo.outputPath("product-hub-390.png"), fullPage: true });
+  expect(consoleErrors).toEqual([]);
+  expect(pageErrors).toEqual([]);
+});
+
 test("speaking entry and join fit laptop viewports without page scaling", async ({ page }, testInfo) => {
   for (const viewport of [{ width: 1366, height: 768 }, { width: 1280, height: 640 }, { width: 1024, height: 768 }, { width: 390, height: 844 }]) {
     await page.setViewportSize(viewport);
     await page.goto("/speak");
-    const student = page.getByRole("main").getByRole("button", { name: "Join Performance Test", exact: true });
-    const teacher = page.getByRole("button", { name: "Create or run a Performance Test", exact: true });
+    const student = page.getByRole("button", { name: "Join with Code", exact: true });
+    const teacher = page.getByRole("button", { name: "Create a Performance Test", exact: true });
     await expect(student).toBeVisible();
     await expect(teacher).toBeVisible();
     expect(await page.evaluate(() => document.documentElement.scrollWidth)).toBeLessThanOrEqual(viewport.width);
@@ -529,4 +579,12 @@ test("speaking entry and join fit laptop viewports without page scaling", async 
     expect(await page.evaluate(() => document.documentElement.scrollWidth)).toBeLessThanOrEqual(viewport.width);
     await page.screenshot({ path: testInfo.outputPath(`join-${viewport.width}.png`), fullPage: true });
   }
+  await page.setViewportSize({ width: 1894, height: 912 });
+  await page.goto("/speak");
+  await expect(page.getByRole("heading", { name: "Speaking Performance", exact: true })).toBeVisible();
+  await page.evaluate(async () => { await document.fonts.ready; });
+  await page.locator(".speaking-welcome img").evaluateAll(async (images) => {
+    await Promise.all(images.map((image) => (image as HTMLImageElement).decode()));
+  });
+  await page.screenshot({ path: testInfo.outputPath("speaking-reference.png"), fullPage: false });
 });

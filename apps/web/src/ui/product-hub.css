@@ -1,0 +1,883 @@
+body[data-site="product-hub"] {
+  min-width: 320px;
+  background: #eaf6fd;
+  color: #111b3c;
+}
+
+body[data-site="product-hub"] .app-shell {
+  min-height: 100vh;
+  background: #eaf6fd;
+}
+
+.product-hub-topbar {
+  min-height: 79px;
+  height: 79px;
+  padding: 0 clamp(24px, 5.2vw, 88px);
+  border-bottom: 1px solid #dbeaf5;
+  background: rgba(255, 255, 255, 0.96);
+  color: #142044;
+  box-shadow: 0 1px 0 rgba(116, 164, 207, 0.07);
+  backdrop-filter: blur(16px);
+}
+
+.product-hub-topbar .brand-button {
+  min-width: 225px;
+  min-height: 56px;
+  justify-content: flex-start;
+  padding: 0;
+  border: 0;
+  background: transparent;
+  color: #142044;
+}
+
+.product-hub-topbar .performance-brand,
+.performance-route-header .performance-brand {
+  display: inline-flex;
+  align-items: center;
+  gap: 13px;
+  color: #142044;
+  font-size: 1.28rem;
+  font-weight: 900;
+  letter-spacing: -0.045em;
+  line-height: 1;
+}
+
+.product-hub-topbar .performance-brand-mark,
+.performance-route-header .performance-brand-mark {
+  display: grid;
+  width: 42px;
+  height: 42px;
+  place-items: center;
+  border-radius: 11px;
+  background: #20b7ef;
+  color: #ffffff;
+  box-shadow: 0 7px 16px rgba(31, 181, 239, 0.22);
+}
+
+.product-hub-topbar .primary-nav {
+  flex: 1 1 auto;
+  justify-content: flex-end;
+  min-width: 0;
+}
+
+.product-hub-topbar .top-actions {
+  display: flex;
+  width: 100%;
+  align-items: center;
+  gap: 30px;
+}
+
+.product-hub-nav-group,
+.product-hub-auth-group {
+  display: flex;
+  align-items: center;
+  gap: 14px;
+}
+
+.product-hub-nav-group {
+  margin: 0 auto;
+}
+
+.product-hub-auth-group {
+  margin-left: auto;
+}
+
+.product-hub-topbar .top-actions button {
+  min-height: 44px;
+  border: 1px solid transparent;
+  border-radius: 10px;
+  background: transparent;
+  color: #4d6388;
+  font-size: 0.95rem;
+  font-weight: 800;
+  white-space: nowrap;
+}
+
+.product-hub-topbar .top-actions .product-hub-nav-link {
+  padding-inline: 7px;
+}
+
+.product-hub-topbar .top-actions button:hover,
+.product-hub-topbar .top-actions button:focus-visible {
+  border-color: #d7e7f5;
+  background: #f5faff;
+  color: #1676df;
+}
+
+.product-hub-topbar .product-hub-login {
+  min-width: 103px;
+  border-color: #86bbf5 !important;
+  background: #ffffff !important;
+  color: #0875df !important;
+}
+
+.product-hub-topbar .product-hub-get-started {
+  min-width: 156px;
+  border-color: #1678e6 !important;
+  background: #147ce9 !important;
+  color: #ffffff !important;
+  box-shadow: 0 8px 18px rgba(20, 124, 233, 0.16);
+}
+
+.product-hub-topbar .product-hub-get-started:hover,
+.product-hub-topbar .product-hub-get-started:focus-visible {
+  border-color: #0967cb !important;
+  background: #0967cb !important;
+}
+
+.product-hub-home {
+  --hub-blue: #0878e8;
+  --hub-blue-dark: #0767c9;
+  --hub-navy: #101a3c;
+  --hub-muted: #586d92;
+  --hub-border: #cfe5f6;
+  --hub-green: #0a9562;
+  min-height: calc(100vh - 79px);
+  overflow: hidden;
+  padding: 42px 0 28px;
+  background: #edf8ff;
+  color: var(--hub-navy);
+}
+
+.product-hub-shell {
+  width: min(1495px, calc(100% - 88px));
+  margin: 0 auto;
+}
+
+.product-hub-intro {
+  position: relative;
+  margin: 0 auto 30px;
+  text-align: center;
+}
+
+.product-hub-scribble {
+  position: absolute;
+  z-index: 0;
+  color: #79b8fb;
+  font-family: "Comic Sans MS", "Bradley Hand", cursive;
+  font-size: 1.22rem;
+  font-style: italic;
+  line-height: 1.08;
+  pointer-events: none;
+}
+
+.product-hub-scribble-left {
+  top: 8px;
+  left: 12px;
+  display: grid;
+  text-align: left;
+  transform: rotate(-7deg);
+}
+
+.product-hub-scribble-left span:nth-child(2) {
+  margin-left: 77px;
+}
+
+.product-hub-scribble-left i {
+  position: absolute;
+  right: -56px;
+  bottom: -18px;
+  width: 175px;
+  height: 22px;
+  border-top: 3px solid #a3ccfb;
+  border-radius: 50%;
+  transform: rotate(-12deg);
+}
+
+.product-hub-scribble-right {
+  top: -2px;
+  right: 13px;
+  text-align: center;
+  transform: rotate(5deg);
+}
+
+@media (max-width: 1500px) {
+  .product-hub-scribble {
+    display: none;
+  }
+}
+
+.product-hub-intro h1 {
+  margin: 0;
+  color: var(--hub-navy);
+  font-size: clamp(2.35rem, 3.5vw, 3.05rem);
+  font-weight: 900;
+  letter-spacing: -0.1em;
+  line-height: 1.06;
+}
+
+.product-hub-intro p {
+  margin: 9px 0 0;
+  color: var(--hub-muted);
+  font-size: clamp(1.1rem, 1.65vw, 1.5rem);
+  letter-spacing: -0.02em;
+  line-height: 1.35;
+}
+
+.product-hub-products {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 20px;
+}
+
+.product-hub-card {
+  display: flex;
+  min-width: 0;
+  min-height: 535px;
+  flex-direction: column;
+  overflow: hidden;
+  padding: 28px 32px 22px;
+  border: 1px solid var(--hub-border);
+  border-radius: 19px;
+  background: rgba(255, 255, 255, 0.95);
+  box-shadow: 0 9px 25px rgba(47, 112, 163, 0.07);
+}
+
+.product-hub-quizstrike-card {
+  border-color: #c1ead7;
+  background: #f5fdf9;
+}
+
+.product-hub-card-label {
+  margin: 0;
+  color: var(--hub-blue);
+  font-size: 0.8rem;
+  font-weight: 900;
+  letter-spacing: 0.08em;
+  line-height: 1.2;
+  text-transform: uppercase;
+}
+
+.product-hub-quizstrike-card .product-hub-card-label {
+  color: var(--hub-green);
+}
+
+.product-hub-card h2 {
+  margin: 11px 0 10px;
+  color: var(--hub-navy);
+  font-size: clamp(2rem, 3vw, 2.5rem);
+  font-weight: 900;
+  letter-spacing: -0.055em;
+  line-height: 1.05;
+}
+
+.product-hub-quiz-title-row {
+  display: flex;
+  align-items: center;
+  gap: 15px;
+}
+
+.product-hub-quiz-title-row h2 {
+  margin-bottom: 5px;
+  font-size: clamp(2.9rem, 4.3vw, 3.65rem);
+}
+
+.product-hub-quiz-title-row svg {
+  flex: 0 0 auto;
+  color: var(--hub-green);
+  transform: rotate(-8deg);
+}
+
+.product-hub-card-description {
+  margin: 0;
+  color: var(--hub-muted);
+  font-size: clamp(1.05rem, 1.5vw, 1.32rem);
+  letter-spacing: -0.02em;
+  line-height: 1.3;
+}
+
+.product-hub-speaking-flow {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 16px;
+  margin-top: auto;
+  padding-top: 18px;
+}
+
+.product-hub-flow-stage-wrap {
+  position: relative;
+  min-width: 0;
+}
+
+.product-hub-flow-stage {
+  min-width: 0;
+}
+
+.product-hub-flow-visual {
+  width: 100%;
+  height: 136px;
+  overflow: hidden;
+  border-radius: 14px;
+  background: #eef8ff;
+}
+
+.product-hub-flow-visual img {
+  display: block;
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+}
+
+.product-hub-stage-teacher .product-hub-flow-visual img {
+  object-position: 32% 52%;
+}
+
+.product-hub-stage-student .product-hub-flow-visual img {
+  object-position: 30% 52%;
+}
+
+.product-hub-stage-results .product-hub-flow-visual img {
+  object-position: 50% 50%;
+}
+
+.product-hub-flow-copy {
+  display: grid;
+  grid-template-columns: 34px minmax(0, 1fr);
+  align-items: start;
+  gap: 8px;
+  margin-top: 10px;
+}
+
+.product-hub-flow-number {
+  display: grid;
+  width: 34px;
+  height: 34px;
+  place-items: center;
+  border-radius: 50%;
+  background: #278aef;
+  color: #ffffff;
+  font-size: 1rem;
+  font-weight: 900;
+}
+
+.product-hub-flow-copy strong,
+.product-hub-flow-copy small {
+  display: block;
+}
+
+.product-hub-flow-copy strong {
+  margin-top: 1px;
+  color: var(--hub-navy);
+  font-size: 0.98rem;
+  font-weight: 900;
+  letter-spacing: -0.025em;
+  line-height: 1.18;
+}
+
+.product-hub-flow-copy small {
+  margin-top: 6px;
+  color: var(--hub-muted);
+  font-size: 0.83rem;
+  line-height: 1.35;
+}
+
+.product-hub-flow-arrow {
+  position: absolute;
+  top: 57px;
+  right: -21px;
+  z-index: 2;
+  color: #83bdf5;
+}
+
+.product-hub-quiz-art-frame {
+  position: relative;
+  height: 270px;
+  margin-top: auto;
+  overflow: hidden;
+  border-radius: 15px;
+  background: #d8efe4;
+}
+
+.product-hub-quiz-art-frame img {
+  display: block;
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+  object-position: center 56%;
+}
+
+.product-hub-quiz-badges {
+  position: absolute;
+  top: 14px;
+  right: 12px;
+  display: grid;
+  gap: 7px;
+}
+
+.product-hub-quiz-badges span {
+  display: inline-flex;
+  min-height: 29px;
+  align-items: center;
+  gap: 6px;
+  padding: 4px 9px;
+  border: 1px solid rgba(111, 196, 151, 0.8);
+  border-radius: 8px;
+  background: rgba(255, 255, 255, 0.92);
+  color: #17633e;
+  font-size: 0.72rem;
+  font-weight: 900;
+  white-space: nowrap;
+}
+
+.product-hub-card-button {
+  display: grid;
+  grid-template-columns: 26px minmax(0, 1fr) 26px;
+  width: 100%;
+  min-height: 52px;
+  align-items: center;
+  gap: 9px;
+  margin-top: 15px;
+  padding: 0 17px;
+  border: 1px solid transparent;
+  border-radius: 11px;
+  color: #ffffff;
+  font-size: 1rem;
+  font-weight: 900;
+}
+
+.product-hub-card-button span {
+  min-width: 0;
+  text-align: center;
+}
+
+.product-hub-card-button svg:last-child {
+  justify-self: end;
+}
+
+.product-hub-speaking-button {
+  border-color: var(--hub-blue);
+  background: var(--hub-blue);
+  box-shadow: 0 8px 16px rgba(8, 120, 232, 0.18);
+}
+
+.product-hub-speaking-button:hover,
+.product-hub-speaking-button:focus-visible {
+  border-color: var(--hub-blue-dark);
+  background: var(--hub-blue-dark);
+}
+
+.product-hub-quiz-button {
+  border-color: var(--hub-green);
+  background: var(--hub-green);
+  box-shadow: 0 8px 16px rgba(10, 149, 98, 0.17);
+}
+
+.product-hub-quiz-button:hover,
+.product-hub-quiz-button:focus-visible {
+  border-color: #087b50;
+  background: #087b50;
+}
+
+.product-hub-benefits {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 16px;
+  margin-top: 20px;
+}
+
+.product-hub-benefit-card {
+  display: flex;
+  min-width: 0;
+  min-height: 120px;
+  align-items: center;
+  gap: 18px;
+  padding: 18px 23px;
+  border: 1px solid var(--hub-border);
+  border-radius: 16px;
+  background: rgba(255, 255, 255, 0.94);
+  box-shadow: 0 7px 18px rgba(54, 115, 158, 0.045);
+}
+
+.product-hub-benefit-icon {
+  display: grid;
+  width: 61px;
+  height: 61px;
+  flex: 0 0 auto;
+  place-items: center;
+  border-radius: 17px;
+}
+
+.product-hub-benefit-icon-blue {
+  background: #e8f4ff;
+  color: #197bf0;
+}
+
+.product-hub-benefit-icon-green {
+  background: #e6f8ef;
+  color: #1b9b70;
+}
+
+.product-hub-benefit-icon-purple {
+  background: #f0edff;
+  color: #7155da;
+}
+
+.product-hub-benefit-card > span:last-child {
+  display: grid;
+  min-width: 0;
+  gap: 5px;
+}
+
+.product-hub-benefit-card strong,
+.product-hub-benefit-card small {
+  display: block;
+}
+
+.product-hub-benefit-card strong {
+  color: var(--hub-navy);
+  font-size: 1.05rem;
+  font-weight: 900;
+  letter-spacing: -0.025em;
+  line-height: 1.15;
+}
+
+.product-hub-benefit-card small {
+  color: var(--hub-muted);
+  font-size: 0.92rem;
+  line-height: 1.3;
+}
+
+.product-hub-home :is(button, a):focus-visible,
+.product-hub-topbar :is(button, a):focus-visible {
+  outline: 3px solid #064d9c;
+  outline-offset: 3px;
+}
+
+@media (max-width: 1180px) {
+  .product-hub-shell {
+    width: min(1120px, calc(100% - 48px));
+  }
+
+  .product-hub-scribble {
+    display: none;
+  }
+
+  .product-hub-card {
+    padding-inline: 24px;
+  }
+
+  .product-hub-flow-copy {
+    grid-template-columns: 31px minmax(0, 1fr);
+    gap: 6px;
+  }
+
+  .product-hub-flow-number {
+    width: 31px;
+    height: 31px;
+  }
+
+  .product-hub-flow-copy strong {
+    font-size: 0.88rem;
+  }
+
+  .product-hub-flow-copy small {
+    font-size: 0.76rem;
+  }
+
+  .product-hub-flow-arrow {
+    right: -18px;
+  }
+}
+
+@media (max-width: 900px) {
+  .product-hub-topbar {
+    min-height: 72px;
+    height: 72px;
+    padding-inline: 16px;
+  }
+
+  .product-hub-topbar .brand-button {
+    min-width: 0;
+  }
+
+  .product-hub-topbar .primary-nav {
+    margin-left: auto;
+  }
+
+  .product-hub-topbar .nav-menu-toggle {
+    display: inline-flex;
+    min-height: 42px;
+    border-color: #c5ddf1;
+    background: #ffffff;
+    color: #32618e;
+  }
+
+  .product-hub-topbar .top-actions {
+    position: absolute;
+    top: calc(100% + 8px);
+    right: 16px;
+    z-index: 12;
+    display: none;
+    width: min(300px, calc(100vw - 32px));
+    align-items: stretch;
+    flex-direction: column;
+    gap: 10px;
+    padding: 10px;
+    border: 1px solid #cfe4f6;
+    border-radius: 14px;
+    background: #ffffff;
+    box-shadow: 0 14px 30px rgba(55, 102, 146, 0.15);
+  }
+
+  .product-hub-topbar .top-actions[data-open="true"] {
+    display: flex;
+  }
+
+  .product-hub-nav-group,
+  .product-hub-auth-group {
+    width: 100%;
+    align-items: stretch;
+    flex-direction: column;
+    gap: 4px;
+  }
+
+  .product-hub-nav-group {
+    margin: 0;
+  }
+
+  .product-hub-auth-group {
+    margin-left: 0;
+    padding-top: 6px;
+    border-top: 1px solid #e0edf7;
+  }
+
+  .product-hub-topbar .top-actions button {
+    width: 100%;
+    justify-content: flex-start;
+    padding-inline: 12px;
+  }
+
+  .product-hub-topbar .top-actions .product-hub-login,
+  .product-hub-topbar .top-actions .product-hub-get-started {
+    justify-content: center;
+  }
+
+  .product-hub-home {
+    min-height: calc(100vh - 72px);
+    padding-top: 34px;
+  }
+
+  .product-hub-shell {
+    width: min(760px, calc(100% - 32px));
+  }
+
+  .product-hub-intro {
+    margin-bottom: 26px;
+  }
+
+  .product-hub-intro h1 {
+    letter-spacing: -0.055em;
+  }
+
+  .product-hub-products,
+  .product-hub-benefits {
+    grid-template-columns: 1fr;
+  }
+
+  .product-hub-card {
+    min-height: 0;
+  }
+
+  .product-hub-benefits {
+    gap: 12px;
+  }
+}
+
+@media (max-width: 600px) {
+  .product-hub-topbar .performance-brand {
+    gap: 9px;
+    font-size: 1.06rem;
+  }
+
+  .product-hub-topbar .performance-brand-mark {
+    width: 37px;
+    height: 37px;
+  }
+
+  .product-hub-home {
+    padding-top: 28px;
+  }
+
+  .product-hub-shell {
+    width: calc(100% - 24px);
+  }
+
+  .product-hub-intro h1 {
+    font-size: clamp(2rem, 9.5vw, 2.8rem);
+  }
+
+  .product-hub-intro p {
+    font-size: 1.02rem;
+  }
+
+  .product-hub-card {
+    padding: 22px 18px 18px;
+    border-radius: 16px;
+  }
+
+  .product-hub-card h2 {
+    font-size: clamp(1.75rem, 9vw, 2.35rem);
+  }
+
+  .product-hub-quiz-title-row h2 {
+    font-size: clamp(2.65rem, 14vw, 3.5rem);
+  }
+
+  .product-hub-quiz-title-row svg {
+    width: 45px;
+    height: 45px;
+  }
+
+  .product-hub-speaking-flow {
+    grid-template-columns: 1fr;
+    gap: 15px;
+    padding-top: 20px;
+  }
+
+  .product-hub-flow-stage {
+    display: grid;
+    grid-template-columns: 100px minmax(0, 1fr);
+    align-items: center;
+    gap: 12px;
+  }
+
+  .product-hub-flow-visual {
+    height: 94px;
+  }
+
+  .product-hub-flow-copy {
+    margin-top: 0;
+  }
+
+  .product-hub-flow-copy strong {
+    font-size: 0.97rem;
+  }
+
+  .product-hub-flow-copy small {
+    font-size: 0.82rem;
+  }
+
+  .product-hub-flow-arrow {
+    top: auto;
+    right: auto;
+    bottom: -20px;
+    left: 37px;
+    transform: rotate(90deg);
+  }
+
+  .product-hub-desktop-break {
+    display: none;
+  }
+
+  .product-hub-quiz-art-frame {
+    height: 225px;
+  }
+
+  .product-hub-quiz-badges {
+    top: 9px;
+    right: 8px;
+    gap: 5px;
+  }
+
+  .product-hub-quiz-badges span {
+    min-height: 25px;
+    padding-inline: 7px;
+    font-size: 0.63rem;
+  }
+
+  .product-hub-card-button {
+    min-height: 49px;
+    padding-inline: 11px;
+    font-size: 0.87rem;
+  }
+
+  .product-hub-benefit-card {
+    min-height: 86px;
+    padding: 12px 16px;
+  }
+
+  .product-hub-benefit-icon {
+    width: 52px;
+    height: 52px;
+    border-radius: 14px;
+  }
+
+  .product-hub-benefit-card strong {
+    font-size: 0.98rem;
+  }
+
+  .product-hub-benefit-card small {
+    font-size: 0.84rem;
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .product-hub-home *,
+  .product-hub-home *::before,
+  .product-hub-home *::after,
+  .product-hub-topbar * {
+    scroll-behavior: auto !important;
+    transition-duration: 0.01ms !important;
+    animation-duration: 0.01ms !important;
+    animation-iteration-count: 1 !important;
+  }
+}
+
+/* Keep the hub header horizontal when legacy app-wide tablet rules load after this file. */
+.topbar.product-hub-topbar {
+  display: flex;
+  flex-direction: row;
+  align-items: center;
+  justify-content: space-between;
+  padding: 0 clamp(24px, 5.2vw, 88px);
+}
+
+.topbar.product-hub-topbar .performance-brand {
+  font-size: 1.4rem;
+}
+
+.topbar.product-hub-topbar .performance-brand-mark {
+  width: 45px;
+  height: 45px;
+  border-radius: 12px;
+}
+
+.topbar.product-hub-topbar .product-hub-nav-group {
+  position: absolute;
+  top: 50%;
+  left: 50%;
+  gap: 22px;
+  transform: translate(-50%, -50%);
+}
+
+@media (max-width: 900px) {
+  .topbar.product-hub-topbar {
+    min-height: 72px;
+    height: 72px;
+    padding: 0 16px;
+    position: relative;
+  }
+
+  .topbar.product-hub-topbar .primary-nav {
+    display: flex;
+    width: auto;
+    align-items: center;
+    justify-content: flex-end;
+    gap: 10px;
+    margin-left: auto;
+  }
+
+  .topbar.product-hub-topbar .product-hub-nav-group {
+    position: static;
+    gap: 4px;
+    transform: none;
+  }
+
+  .topbar.product-hub-topbar .top-actions {
+    display: none;
+  }
+
+  .topbar.product-hub-topbar .top-actions[data-open="true"] {
+    display: flex;
+  }
+}
