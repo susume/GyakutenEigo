@@ -6,11 +6,16 @@ test("builder spaces persist through create, reopen, edit and save", async ({ pa
   const { token } = await signup.json() as { token: string };
   await page.addInitScript((value) => localStorage.setItem("quizstrike_token", value), token);
   await page.goto("/quiz-strike/teacher/speaking/create");
+  await page.getByRole("button", { name: /Start from scratch/ }).click();
   const values = {
     "Activity name": "Giving Train Directions for Grade 2",
     "Speaking situation": "The student should give directions using the metro map.",
     "AI role": "Confused Tourist",
-    "Target expression 1": "Change trains at Osaka Station."
+    "Student role": "Station helper",
+    "Opening line": "Hello there, can you help?",
+    "Student goal": "Explain the route clearly.",
+    "AI context": "The visitor needs to reach Osaka.",
+    "Possible complication": "The visitor misunderstands the platform."
   };
   for (const [label, value] of Object.entries(values)) {
     const input = page.getByRole("textbox", { name: label, exact: true });
@@ -19,11 +24,18 @@ test("builder spaces persist through create, reopen, edit and save", async ({ pa
     await expect(input).toHaveValue(value);
     await expect(input).toBeFocused();
   }
+  const conditions = page.getByLabel("Success conditions", { exact: false });
+  await conditions.fill("");
+  await conditions.pressSequentially("Explain the route");
+  await conditions.press("Enter");
+  await conditions.pressSequentially("Confirm understanding");
+  await expect(conditions).toHaveValue("Explain the route\nConfirm understanding");
   await page.getByRole("button", { name: "Create Performance Test", exact: true }).last().click();
   await expect(page).toHaveURL(/\/activity\/[^/]+$/);
   const detail = page.url();
   await page.goto(`${detail}/edit`);
   await expect(page.getByRole("heading", { name: "Edit Performance Test" })).toBeVisible();
+  await expect(conditions).toHaveValue("Explain the route\nConfirm understanding");
   for (const [label, value] of Object.entries(values)) await expect(page.getByRole("textbox", { name: label, exact: true })).toHaveValue(value);
   const title = page.getByRole("textbox", { name: "Activity name", exact: true });
   await title.press("End");

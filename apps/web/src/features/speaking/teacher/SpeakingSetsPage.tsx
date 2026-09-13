@@ -2,7 +2,7 @@ import { useCallback, useEffect, useMemo, useState } from "react";
 import { ArrowLeft, ChevronDown, ChevronRight, Download, GripVertical, Pencil, Plus, Trash2 } from "lucide-react";
 import type { SpeakingSession, SpeakingActivity, SpeakingSetDetail, SpeakingSetSummary } from "@quizstrike/shared";
 import { ApiError, speakingApi } from "../../../api/client";
-import { speakingTeacherDate, SPEAKING_LEVEL_LABELS, SPEAKING_DIFFICULTY_LABELS } from "@quizstrike/shared";
+import { speakingTeacherDate, speakingScenarioResources } from "@quizstrike/shared";
 import { formatDuration } from "../speakingData";
 
 type Navigate = (nextPath: string) => void;
@@ -23,6 +23,7 @@ export function SpeakingSetsPage({ navigate }: { navigate: Navigate }) {
   const [showCreate, setShowCreate] = useState(false);
   const [name, setName] = useState("");
   const [description, setDescription] = useState("");
+  const [focus, setFocus] = useState("");
   const [working, setWorking] = useState(false);
 
   const load = useCallback(async () => {
@@ -44,10 +45,11 @@ export function SpeakingSetsPage({ navigate }: { navigate: Navigate }) {
     if (!name.trim() || working) return;
     setWorking(true);
     try {
-      const payload = await speakingApi.createSet({ name: name.trim(), description: description.trim() }) as { set: SpeakingSetSummary };
+      const payload = await speakingApi.createSet({ name: name.trim(), description: description.trim(), focus: focus.trim() }) as { set: SpeakingSetSummary };
       setSets((current) => [payload.set, ...current]);
       setName("");
       setDescription("");
+      setFocus("");
       setShowCreate(false);
       navigate(`/speak/teacher/set/${payload.set.id}`);
     } catch (createError) {
@@ -69,6 +71,7 @@ export function SpeakingSetsPage({ navigate }: { navigate: Navigate }) {
         {showCreate && <form className="speaking-set-create-form" onSubmit={create}>
           <label>Set name<input autoFocus value={name} onChange={(event) => setName(event.target.value)} placeholder="Grade 2 — Term 1" maxLength={120} /></label>
           <label>Description <span className="speaking-muted-copy">optional</span><textarea value={description} onChange={(event) => setDescription(event.target.value)} placeholder="The speaking assessments for this term." maxLength={500} rows={2} /></label>
+          <label>Shared assessment focus <span className="speaking-muted-copy">optional</span><textarea value={focus} onChange={(event) => setFocus(event.target.value)} placeholder="Pay particular attention to follow-up questions and clarification." maxLength={500} rows={2} /><small className="speaking-form-help">This guides assessment emphasis for every test in the Set. Students may still use any English that communicates the task.</small></label>
           <div className="speaking-form-actions"><button type="button" className="speaking-outline-button" onClick={() => setShowCreate(false)}>Cancel</button><button type="submit" className="speaking-primary-button" disabled={!name.trim() || working}>{working ? "Creating…" : "Create Set"}</button></div>
         </form>}
         {loading ? <div className="speaking-empty-card"><p>Loading Sets…</p></div> : sets.length ? <div className="speaking-set-grid">
@@ -92,6 +95,7 @@ export function SpeakingSetDetailPage({ navigate, setId }: { navigate: Navigate;
   const [editing, setEditing] = useState(false);
   const [name, setName] = useState("");
   const [description, setDescription] = useState("");
+  const [focus, setFocus] = useState("");
   const [working, setWorking] = useState(false);
 
   const load = useCallback(async () => {
@@ -101,6 +105,7 @@ export function SpeakingSetDetailPage({ navigate, setId }: { navigate: Navigate;
       setSet(nextSet);
       setName(nextSet.name);
       setDescription(nextSet.description);
+      setFocus(nextSet.focus ?? "");
       setLibrary((libraryPayload as LibraryResponse).items.map((item) => item.activity));
       setError("");
     } catch (loadError) {
@@ -119,6 +124,14 @@ export function SpeakingSetDetailPage({ navigate, setId }: { navigate: Navigate;
     finally { setWorking(false); }
   };
 
+  useEffect(() => {
+    if (!editing && set) {
+      setName(set.name);
+      setDescription(set.description);
+      setFocus(set.focus ?? "");
+    }
+  }, [editing, set]);
+
   const memberIds = useMemo(() => new Set(set?.activities.map((item) => item.activity.id)), [set]);
   const available = library.filter((activity) => !memberIds.has(activity.id) && `${activity.title} ${activity.scenario}`.toLocaleLowerCase().includes(query.trim().toLocaleLowerCase()));
 
@@ -127,7 +140,7 @@ export function SpeakingSetDetailPage({ navigate, setId }: { navigate: Navigate;
     if (!name.trim() || working) return;
     setWorking(true);
     try {
-      const payload = await speakingApi.updateSet(setId, { name: name.trim(), description: description.trim() }) as { set: SpeakingSetSummary };
+      const payload = await speakingApi.updateSet(setId, { name: name.trim(), description: description.trim(), focus: focus.trim() }) as { set: SpeakingSetSummary };
       setSet((current) => current ? { ...current, ...payload.set } : current);
       setEditing(false);
     } catch (updateError) {
@@ -189,8 +202,9 @@ export function SpeakingSetDetailPage({ navigate, setId }: { navigate: Navigate;
         <button type="button" className="speaking-text-button" onClick={() => navigate("/speak/teacher/sets")}><ArrowLeft size={16} aria-hidden="true" />Sets</button>
         <div className="speaking-teacher-heading"><div><span className="speaking-eyebrow">Set · {set.activities.length} Performance Tests</span><h1>{set.name}</h1><p>{set.description || "Organize a sequence of classroom speaking assessments."}</p></div><div className="speaking-heading-actions"><button type="button" className="speaking-outline-button" onClick={() => setEditing((open) => !open)}><Pencil size={16} aria-hidden="true" />Edit Set</button><button type="button" className="speaking-outline-button" onClick={() => void download()}><Download size={16} aria-hidden="true" />Download CSV</button><details open={menuOpen} onToggle={(event) => setMenuOpen(event.currentTarget.open)}><summary aria-label="Set actions"><ChevronDown size={17} aria-hidden="true" /></summary><div className="speaking-overflow-menu"><button type="button" onClick={() => void deleteSet()}><Trash2 size={15} aria-hidden="true" />Delete Set</button></div></details></div></div>
         {error && <p className="speaking-error" role="alert">{error}</p>}
-        {editing && <form className="speaking-set-edit-form" onSubmit={updateSet}><label>Set name<input value={name} onChange={(event) => setName(event.target.value)} maxLength={120} /></label><label>Description<textarea value={description} onChange={(event) => setDescription(event.target.value)} maxLength={500} rows={2} /></label><div className="speaking-form-actions"><button type="button" className="speaking-outline-button" onClick={() => setEditing(false)}>Cancel</button><button type="submit" className="speaking-primary-button" disabled={!name.trim() || working}>Save changes</button></div></form>}
-        <section className="speaking-set-section"><div className="speaking-section-title"><div><span className="speaking-card-kicker">In this Set</span><h2>Performance Tests</h2></div><span>{set.activities.length} total</span></div>{set.activities.length ? <div className="speaking-set-member-list">{set.activities.map((item, index) => <article className="speaking-set-member" key={item.activity.id}><GripVertical size={17} aria-hidden="true" /><span className="speaking-set-position">{index + 1}</span><img src={item.activity.scenarioResources?.imageSrc ?? "/assets/speaking/scenario-introduction.webp"} alt="" loading="lazy" /><div className="speaking-set-member-copy"><strong>{item.activity.title}</strong><span>{SPEAKING_LEVEL_LABELS[item.activity.level]} · {SPEAKING_DIFFICULTY_LABELS[item.activity.difficulty]} · {formatDuration(item.activity.durationSeconds)}</span><small>{item.sessionCount} session{item.sessionCount === 1 ? "" : "s"}{item.lastSessionAt ? ` · Last used ${speakingTeacherDate(item.lastSessionAt)}` : ""}</small></div><div className="speaking-set-member-actions"><button type="button" disabled={working} onClick={() => void launch(item.activity.id)} aria-label={`Launch ${item.activity.title} from Set`}>Launch</button><button type="button" onClick={() => move(index, -1)} disabled={index === 0 || working} aria-label={`Move ${item.activity.title} up`}>↑</button><button type="button" onClick={() => move(index, 1)} disabled={index === set.activities.length - 1 || working} aria-label={`Move ${item.activity.title} down`}>↓</button><button type="button" onClick={() => navigate(`/speak/teacher/activity/${item.activity.id}`)} aria-label={`Open ${item.activity.title}`}><ChevronRight size={17} aria-hidden="true" /></button><button type="button" onClick={() => void remove(item.activity.id)} disabled={working} aria-label={`Remove ${item.activity.title} from Set`}><Trash2 size={16} aria-hidden="true" /></button></div></article>)}</div> : <div className="speaking-empty-card"><h3>This Set is empty</h3><p>Add a Performance Test below to start organizing the class.</p></div>}</section>
+        {set.focus && <aside className="speaking-set-focus-card"><span className="speaking-card-kicker">Shared assessment focus</span><p>{set.focus}</p><small>Emphasis for review, not a restriction on what students may say.</small></aside>}
+        {editing && <form className="speaking-set-edit-form" onSubmit={updateSet}><label>Set name<input value={name} onChange={(event) => setName(event.target.value)} maxLength={120} /></label><label>Description<textarea value={description} onChange={(event) => setDescription(event.target.value)} maxLength={500} rows={2} /></label><label>Shared assessment focus <span className="speaking-muted-copy">optional</span><textarea value={focus} onChange={(event) => setFocus(event.target.value)} placeholder="Pay particular attention to follow-up questions and clarification." maxLength={500} rows={2} /><small className="speaking-form-help">Assessment emphasis only. Students may still use any English that communicates the task.</small></label><div className="speaking-form-actions"><button type="button" className="speaking-outline-button" onClick={() => setEditing(false)}>Cancel</button><button type="submit" className="speaking-primary-button" disabled={!name.trim() || working}>Save changes</button></div></form>}
+        <section className="speaking-set-section"><div className="speaking-section-title"><div><span className="speaking-card-kicker">In this Set</span><h2>Performance Tests</h2></div><span>{set.activities.length} total</span></div>{set.activities.length ? <div className="speaking-set-member-list">{set.activities.map((item, index) => <article className="speaking-set-member" key={item.activity.id}><GripVertical size={17} aria-hidden="true" /><span className="speaking-set-position">{index + 1}</span><img src={item.activity.scenarioResources?.imageSrc ?? "/assets/speaking/scenario-introduction.webp"} alt="" loading="lazy" /><div className="speaking-set-member-copy"><strong>{item.activity.title}</strong><span>{speakingScenarioResources(item.activity.scenarioResources).category ?? "Everyday Communication"} · {formatDuration(item.activity.durationSeconds)}</span><small>{item.sessionCount} session{item.sessionCount === 1 ? "" : "s"}{item.lastSessionAt ? ` · Last used ${speakingTeacherDate(item.lastSessionAt)}` : ""}</small></div><div className="speaking-set-member-actions"><button type="button" disabled={working} onClick={() => void launch(item.activity.id)} aria-label={`Launch ${item.activity.title} from Set`}>Launch</button><button type="button" onClick={() => move(index, -1)} disabled={index === 0 || working} aria-label={`Move ${item.activity.title} up`}>↑</button><button type="button" onClick={() => move(index, 1)} disabled={index === set.activities.length - 1 || working} aria-label={`Move ${item.activity.title} down`}>↓</button><button type="button" onClick={() => navigate(`/speak/teacher/activity/${item.activity.id}`)} aria-label={`Open ${item.activity.title}`}><ChevronRight size={17} aria-hidden="true" /></button><button type="button" onClick={() => void remove(item.activity.id)} disabled={working} aria-label={`Remove ${item.activity.title} from Set`}><Trash2 size={16} aria-hidden="true" /></button></div></article>)}</div> : <div className="speaking-empty-card"><h3>This Set is empty</h3><p>Add a Performance Test below to start organizing the class.</p></div>}</section>
         <section className="speaking-set-section"><div className="speaking-section-title"><div><span className="speaking-card-kicker">Add from your library</span><h2>More Performance Tests</h2></div><label className="speaking-inline-search"><span className="sr-only">Search Performance Tests</span><input value={query} onChange={(event) => setQuery(event.target.value)} placeholder="Search tests" /></label></div>{available.length ? <div className="speaking-set-add-list">{available.map((activity) => <article key={activity.id}><img src={activity.scenarioResources?.imageSrc ?? "/assets/speaking/scenario-introduction.webp"} alt="" loading="lazy" /><div><strong>{activity.title}</strong><span>{activity.scenario}</span></div><button type="button" className="speaking-outline-button" onClick={() => void add(activity.id)} disabled={working}><Plus size={15} aria-hidden="true" />Add</button></article>)}</div> : <p className="speaking-muted-copy">Everything in your library is already in this Set, or nothing matches the search.</p>}</section>
       </section>
     </main>

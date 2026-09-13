@@ -3429,6 +3429,7 @@ body[data-speaking="true"] {
 .speaking-set-create-form, .speaking-set-edit-form { display: grid; gap: 12px; margin: 0 0 20px; padding: 18px; border: 1px solid #ceddec; border-radius: 14px; background: #fff; }
 .speaking-set-create-form label, .speaking-set-edit-form label { display: grid; gap: 6px; color: #2b4a70; font-size: 13px; font-weight: 750; }
 .speaking-set-create-form input, .speaking-set-create-form textarea, .speaking-set-edit-form input, .speaking-set-edit-form textarea { width: 100%; border: 1px solid #cbd9e8; border-radius: 9px; padding: 10px 12px; color: #14213d; background: #fff; }
+.speaking-form-help { color: #6a819c; font-size: 12px; font-weight: 500; line-height: 1.45; }
 .speaking-form-actions { display: flex; justify-content: flex-end; gap: 8px; }
 .speaking-set-grid { display: grid; grid-template-columns: repeat(2, minmax(0,1fr)); gap: 14px; }
 .speaking-set-card { display: grid; grid-template-columns: 74px minmax(0,1fr) auto; align-items: center; gap: 14px; min-height: 132px; border: 1px solid #d6e2ee; border-radius: 14px; padding: 14px; background: #fff; color: #172744; text-align: left; cursor: pointer; }
@@ -3439,6 +3440,9 @@ body[data-speaking="true"] {
 .speaking-set-card-copy span, .speaking-set-card-copy small { color: #607896; font-size: 13px; }
 .speaking-heading-actions { display: flex; align-items: center; gap: 8px; }
 .speaking-set-section { display: grid; gap: 12px; margin-top: 24px; }
+.speaking-set-focus-card { display: grid; gap: 6px; margin-top: 18px; padding: 16px 18px; border: 1px solid #cfe8df; border-radius: 12px; background: linear-gradient(135deg, #f5fcf8, #fff); }
+.speaking-set-focus-card p { margin: 0; color: #193d56; font-size: 14px; line-height: 1.55; }
+.speaking-set-focus-card small { color: #66839a; font-size: 12px; }
 .speaking-set-member-list, .speaking-set-add-list { display: grid; gap: 8px; }
 .speaking-set-member, .speaking-set-add-list article { display: grid; grid-template-columns: auto auto 64px minmax(0,1fr) auto; align-items: center; gap: 12px; padding: 12px 14px; border: 1px solid #d7e3ef; border-radius: 12px; background: #fff; }
 .speaking-set-member > img, .speaking-set-add-list article > img { width: 64px; height: 52px; border-radius: 8px; object-fit: cover; }

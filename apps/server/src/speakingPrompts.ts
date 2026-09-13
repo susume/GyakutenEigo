@@ -1,6 +1,4 @@
 import {
-  SPEAKING_DIFFICULTY_LABELS,
-  SPEAKING_LEVEL_LABELS,
   SPEAKING_LIMITS,
   SPEAKING_NATIVE_LANGUAGE_LABELS,
   speakingScenarioResources,
@@ -58,9 +56,9 @@ export const buildConversationPrompt = ({
   `Scenario: ${clip(activity.scenario, 800)}`,
   `Your role: ${clip(activity.aiRole, 80)}`,
   `Student role: ${clip(activity.studentRole, 80)}`,
-  `Level: ${SPEAKING_LEVEL_LABELS[activity.level]}`,
-  `Difficulty: ${SPEAKING_DIFFICULTY_LABELS[activity.difficulty]}`,
   `Student task goal: ${clip(resources.studentGoal, 300)}`,
+  ...(resources.aiContext ? [`AI context: ${clip(resources.aiContext, 500)}`] : []),
+  ...(resources.possibleComplication ? [`Possible complication: ${clip(resources.possibleComplication, 500)} Introduce it naturally only when the conversation supports it; do not force it.`] : []),
   `Target expressions: ${activity.targetExpressions.slice(0, 12).map((item) => clip(item, 120)).join(" | ")}`,
   // Keep at most eight conversational turns in total: up to seven preceding
   // turns plus the latest student turn. Speaking Practice is a short classroom
@@ -90,8 +88,6 @@ export const buildHelpPrompt = ({
   `Scenario: ${clip(activity.scenario, 800)}`,
   `AI role: ${clip(activity.aiRole, 80)}`,
   `Student role: ${clip(activity.studentRole, 80)}`,
-  `Level: ${SPEAKING_LEVEL_LABELS[activity.level]}`,
-  `Difficulty: ${SPEAKING_DIFFICULTY_LABELS[activity.difficulty]}`,
   `Useful English: ${activity.targetExpressions.slice(0, 4).map((item) => clip(item, 120)).join(" | ")}`,
   `Recent turns: ${latestTurnsForHelp(turns)}`,
   latestStudentText ? untrustedBlock(latestStudentText) : "No student speech yet.",
@@ -102,6 +98,7 @@ export const buildEvaluationPrompt = ({
   activity,
   turns,
   rubric,
+  setFocus,
   timingMetadata,
   helpMetadata,
   interactionMetadata
@@ -109,6 +106,7 @@ export const buildEvaluationPrompt = ({
   activity: SpeakingActivity;
   turns: SpeakingTurn[];
   rubric: SpeakingRubricCriterion[];
+  setFocus?: string;
   timingMetadata?: { durationSeconds?: number; reliableAudioTiming?: boolean; studentAudioDurationMs?: number };
   helpMetadata?: { helpCount: number; helpedTurnCount: number };
   interactionMetadata?: SpeakingInteractionMetadata;
@@ -121,11 +119,11 @@ export const buildEvaluationPrompt = ({
   "Return structured data matching the evaluation schema. Do not invent achievements.",
   "Speech transcription may contain recognition errors. Do not penalize a student for a suspected transcription error unless the interaction provides clear evidence that it reflects the student's communication.",
   "Do not infer pronunciation accuracy from transcript text. Do not create a pronunciation score; fluency is only a classroom communication heuristic.",
-  "Do not treat responseTimeMs alone as the student's fluency or pause pattern; it is turn-level response timing and may include interaction latency. Score fluency only when reliable student audio duration is present; otherwise return null for fluency and say that timing was unavailable.",
+  "Do not treat responseTimeMs alone as the student's fluency or pause pattern; it is turn-level response timing and may include interaction latency. For a legacy standalone criterion with id fluency, return null when reliable student audio duration is unavailable. For communication_fluency, assess clear and successful communication from transcript evidence even without audio timing; never infer pauses or pronunciation.",
   "Recorded audio duration is the microphone recording length, not speech or pause segmentation. Even when available, never claim smooth speech, few pauses, or no hesitation. Limit fluency to a cautious transcript-and-duration communication heuristic, and do not infer the cause of a long recording.",
-  "Do not reward a student simply for speaking more. A short, appropriate response can demonstrate successful communication relative to the selected level and rubric.",
+  "Do not reward a student simply for speaking more. A short, appropriate response can demonstrate successful communication relative to the task and rubric.",
   "The task goal is an explicit requirement. Judge each requirement separately, and set goalCompletion.completed to true only when every requirement has clear student evidence.",
-  "Score anchors: 4 means consistently successful and independent for the learner level; 3 means mostly successful with minor errors or support; 2 means partial success with frequent support; 1 means limited demonstrated success. Communication 4 requires all material goals. Interaction 4 requires appropriate independent responses; a repeated question after an irrelevant answer is repair evidence, while unnecessary AI scaffolding is not the student's fault. Vocabulary reflects usable range, not transcript length. Grammar reflects accuracy as well as understandable meaning; repeated missing articles or incorrect constructions cannot earn 4. Accept natural equivalents of target expressions.",
+  "Score anchors: 4 means consistently successful and independent for this task; 3 means mostly successful with minor errors or support; 2 means partial success with frequent support; 1 means limited demonstrated success; 0 means the criterion was demonstrated but not achieved. Null means there was not enough usable evidence to score. Task Achievement 4 requires all material goals. Interaction 4 requires appropriate independent responses; a repeated question after an irrelevant answer is repair evidence, while unnecessary AI scaffolding is not the student's fault. Language Range & Control reflects usable vocabulary and grammar, not transcript length. Communication & Fluency reflects clear, successful communication without inferring pronunciation or unsupported pause claims. Accept natural equivalents of target expressions.",
   "For goalCompletion.requirements, include evidenceTurnIds that are real transcript id values. Use completed, partially_completed, not_completed, or uncertain; do not treat an AI turn as student evidence.",
   "For usefulEnglish, every item must include sourceTurnId and said must copy the corresponding student transcript text exactly, including wording and errors. Never rewrite the student's quote. If no exact source exists, omit the item.",
   "Write every feedback field in the selected feedback language. If there is no usable student speech, return null for every rubric score and describe the result as insufficient evidence rather than poor performance.",
@@ -134,10 +132,14 @@ export const buildEvaluationPrompt = ({
   `Scenario: ${clip(activity.scenario, 800)}`,
   `AI role: ${clip(activity.aiRole, 80)}`,
   `Student role: ${clip(activity.studentRole, 80)}`,
-  `Level: ${SPEAKING_LEVEL_LABELS[activity.level]}`,
-  `Difficulty: ${SPEAKING_DIFFICULTY_LABELS[activity.difficulty]}`,
   `Feedback language: ${SPEAKING_NATIVE_LANGUAGE_LABELS[activity.nativeLanguage]}`,
+  ...(setFocus?.trim() ? [`Set assessment focus (emphasis only, never a restriction): ${clip(setFocus, 500)}. Use this to pay closer attention to relevant evidence while still assessing the activity's own goal and rubric. Students may use any English that communicates the task.`] : []),
+  ...(resources.teacherFocus ? [`Individual test assessment focus: ${clip(resources.teacherFocus, 500)}. Combine this with any Set focus as observation priorities. Neither focus creates a compulsory language requirement or overrides the task goal or rubric.`] : []),
+  `Communication opportunities (assessment emphasis only, not compulsory requirements): ${resources.communicationSkills.join(" | ") || "Natural interaction"}`,
   `Explicit student goal: ${clip(resources.studentGoal, 300)}`,
+  ...(resources.aiContext ? [`AI context: ${clip(resources.aiContext, 500)}`] : []),
+  ...(resources.possibleComplication ? [`Possible complication context: ${clip(resources.possibleComplication, 500)}`] : []),
+  `Success conditions: ${resources.successConditions.map((item) => clip(item, 220)).join(" | ") || "Communicate the main idea and respond naturally."}`,
   `Goal requirements (copy each requirement exactly, in any order): ${JSON.stringify(speakingGoalRequirements(activity))}`,
   `Suggested steps (support context, not a score checklist): ${resources.suggestedSteps.map((item) => clip(item, 160)).join(" | ")}`,
   `Useful vocabulary (support context, semantic equivalents count): ${resources.usefulVocabulary.map((item) => clip(item, 160)).join(" | ")}`,

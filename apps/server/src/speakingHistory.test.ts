@@ -14,7 +14,7 @@ test("Speaking history HTTP boundaries preserve launch context and protect live 
   const input = { title: "Directions", scenario: "Give directions around town.", aiRole: "Tourist", studentRole: "Local", level: "elementary" as const, difficulty: "normal" as const, nativeLanguage: "ja" as const, durationSeconds: 120, identifierMode: "nickname" as const, targetExpressions: ["Turn left."], rubric: DEFAULT_SPEAKING_RUBRIC };
   const activity = await repository.createActivity("owner", input, "test", now);
   const otherActivity = await repository.createActivity("other", input, "other-test", now);
-  await repository.createSet("owner", { name: "Original Set" }, "set", now);
+  await repository.createSet("owner", { name: "Original Set", focus: "Pay attention to follow-up questions and clarification." }, "set", now);
   await repository.createSet("owner", { name: "Unrelated" }, "unrelated", now);
   await repository.createSet("other", { name: "Other owner" }, "foreign", now);
   await repository.addSetActivity("other", "foreign", otherActivity.id);
@@ -43,8 +43,15 @@ test("Speaking history HTTP boundaries preserve launch context and protect live 
   const reports = async () => (await (await api("/reports")).json() as { items: SpeakingReportSummary[] }).items;
   const participant = async (session: SpeakingSession, name: string) => repository.createParticipant({ id: name, activity, session, tokenHash: name, displayIdentifier: name });
   try {
+    const createdSet = await api("/sets", "POST", { name: "HTTP Focus Set", focus: "Notice clarification requests." });
+    assert.equal(createdSet.status, 201);
+    assert.equal((await createdSet.json() as { set: { focus: string } }).set.focus, "Notice clarification requests.");
+    const updatedThroughApi = await api("/sets/set", "PATCH", { focus: "Pay attention to follow-up questions and clarification." });
+    assert.equal(updatedThroughApi.status, 200);
+    assert.equal((await updatedThroughApi.json() as { set: { focus: string } }).set.focus, "Pay attention to follow-up questions and clarification.");
     const templates = await (await api("/templates")).json() as { items: Array<{ title: string; scenarioResources: { imageSrc: string } }> };
-    assert.equal(templates.items.find((item) => item.title === "Asking for Directions")?.scenarioResources.imageSrc, "/assets/speaking/scenario-directions.webp");
+    assert.equal(templates.items.length, 30);
+    assert.equal(templates.items.find((item) => item.title === "Asking for Street Directions")?.scenarioResources.imageSrc, "/assets/speaking/scenario-directions.webp");
     const beforeMembership = await launch();
     await participant(beforeMembership, "PRE_MEMBERSHIP");
     await repository.updateSession(beforeMembership.id, { status: "ended", endedAt: now });
@@ -55,7 +62,8 @@ test("Speaking history HTTP boundaries preserve launch context and protect live 
     for (const setId of ["foreign", "missing", "unrelated"]) assert.equal((await api("/activities/test/sessions", "POST", { setId })).status, 404);
     assert.equal((await api("/activities/test/sessions", "POST", { setId: 42 })).status, 400);
     assert.equal((await api("/activities/other-test/sessions", "POST", { setId: "set" })).status, 404);
-    const historical = await launch("set");
+  const historical = await launch("set");
+  assert.equal(historical.speakingSetFocusSnapshot, "Pay attention to follow-up questions and clarification.");
     await participant(historical, "HISTORICAL_RUN");
     await repository.updateSession(historical.id, { status: "ended", endedAt: now });
     const expired = await launch("set");
@@ -72,7 +80,9 @@ test("Speaking history HTTP boundaries preserve launch context and protect live 
     }
     assert.equal((await api(`/sessions/${live.id}/resume`, "POST")).status, 200);
     assert.equal((await api(`/sessions/${historical.id}`, "DELETE", undefined, "other")).status, 404);
-    await repository.updateSet("owner", "set", { name: "Renamed Set" }, now);
+  await repository.updateSet("owner", "set", { name: "Renamed Set", focus: "Use the focus only as assessment emphasis." }, now);
+  assert.equal((await repository.getSet("owner", "set"))?.focus, "Use the focus only as assessment emphasis.");
+  assert.equal((await repository.getSession(historical.id))?.session.speakingSetFocusSnapshot, "Pay attention to follow-up questions and clarification.");
     await repository.removeSetActivity("owner", "set", activity.id);
     await repository.addSetActivity("owner", "unrelated", activity.id);
     const summary = (await reports()).find((item) => item.session.id === historical.id)!;

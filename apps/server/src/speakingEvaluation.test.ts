@@ -20,6 +20,9 @@ const activity = {
   targetExpressions: ["I'd like...", "Can I have...?", "How much is it?", "That's all, thank you."],
   scenarioResources: {
     studentGoal: "Order a meal, ask one question, and close the conversation politely.",
+    aiContext: "The restaurant worker can answer menu questions and offer a simple alternative.",
+    possibleComplication: "The first side dish is unavailable.",
+    successConditions: ["Order a meal.", "Ask one question.", "Close politely."],
     suggestedSteps: ["Order a meal.", "Ask about one item.", "Thank the worker."],
     usefulVocabulary: ["menu", "burger", "water"],
     referenceItems: [{ label: "Burger", detail: "$8" }]
@@ -117,11 +120,18 @@ test("prompts include the task goal and independence guardrails", () => {
   assert.match(conversation, /Order a meal, ask one question/u);
   assert.match(conversation, /performance test/u);
   assert.match(conversation, /Do not repeatedly ask/u);
-  const evaluation = buildEvaluationPrompt({ activity, turns, rubric: activity.rubric, timingMetadata: { reliableAudioTiming: true, studentAudioDurationMs: 2_210 }, interactionMetadata: buildSpeakingInteractionMetadata(turns) });
+  assert.match(conversation, /AI context/u);
+  assert.match(conversation, /Possible complication/u);
+  assert.doesNotMatch(conversation, /(?:^|\n)(?:Level|Difficulty):/u);
+  const evaluation = buildEvaluationPrompt({ activity, turns, rubric: activity.rubric, setFocus: "Pay attention to follow-up questions.", timingMetadata: { reliableAudioTiming: true, studentAudioDurationMs: 2_210 }, interactionMetadata: buildSpeakingInteractionMetadata(turns) });
   assert.match(evaluation, /sourceTurnId/u);
   assert.match(evaluation, /evidenceTurnIds/u);
   assert.match(evaluation, /Reference items/u);
   assert.match(evaluation, /semantic equivalents count; exact wording is not required/u);
+  assert.match(evaluation, /Success conditions/u);
+  assert.match(evaluation, /Set assessment focus \(emphasis only, never a restriction\)/u);
+  assert.match(evaluation, /Pay attention to follow-up questions/u);
+  assert.doesNotMatch(evaluation, /(?:^|\n)(?:Level|Difficulty):/u);
 });
 
 test("retry policy is bounded and jittered around the documented schedule", () => {
@@ -173,6 +183,16 @@ test("added coaching stays within schema limits and low-confidence orders are no
   const uncertainResult = sanitizeSpeakingEvaluation(providerEvaluation(), activity, uncertain);
   assert.equal(uncertainResult.scores.grammar, 4);
   assert.deepEqual(uncertainResult.usefulEnglish, []);
+});
+
+test("individual and Set focus are combined as assessment emphasis", () => {
+  const focusedActivity = { ...activity, scenarioResources: { ...activity.scenarioResources, teacherFocus: "Notice polite requests.", communicationSkills: ["Clarifying"] } };
+  const prompt = buildEvaluationPrompt({ activity: focusedActivity, rubric: focusedActivity.rubric, turns, setFocus: "Observe follow-up questions." });
+  assert.match(prompt, /Notice polite requests/);
+  assert.match(prompt, /Observe follow-up questions/);
+  assert.match(prompt, /Neither focus creates a compulsory language requirement/);
+  assert.match(prompt, /assessment emphasis only, not compulsory requirements\): Clarifying/);
+  assert.match(prompt, /communication_fluency, assess clear and successful communication from transcript evidence even without audio timing/);
 });
 
 test("recording length cannot support pause claims anywhere in feedback", () => {

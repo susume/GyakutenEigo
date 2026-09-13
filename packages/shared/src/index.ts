@@ -23,6 +23,7 @@ export * from "./protocol/index.js";
 export * from "./athleticsRace.js";
 export * from "./athleticsModes.js";
 export * from "./speaking.js";
+export * from "./speakingCoreLibrary.js";
 export type SessionStatus = "waiting" | "active" | "paused" | "ended";
 export type SessionControlState = "running" | "teacher_paused";
 export type Choice = "A" | "B" | "C" | "D";

@@ -28,22 +28,19 @@ import {
 import { createPortal } from "react-dom";
 import { QRCodeSVG } from "qrcode.react";
 import {
-  SPEAKING_DIFFICULTIES,
-  SPEAKING_DIFFICULTY_LABELS,
+  DEFAULT_SPEAKING_RUBRIC,
+  SPEAKING_CATEGORIES,
+  SPEAKING_COMMUNICATION_SKILLS,
   SPEAKING_IDENTIFIER_MODE_LABELS,
   SPEAKING_IDENTIFIER_MODES,
   SPEAKING_NATIVE_LANGUAGE_LABELS,
   SPEAKING_NATIVE_LANGUAGES,
-  SPEAKING_LEVEL_LABELS,
-  SPEAKING_LEVELS,
   speakingScenarioResources,
   type SpeakingActivity,
   type SpeakingCreateActivityInput,
-  type SpeakingDifficulty,
   type SpeakingEvaluation,
   type SpeakingLibraryItem,
   type SpeakingIdentifierMode,
-  type SpeakingLevel,
   type SpeakingNativeLanguage,
   type SpeakingParticipant,
   type SpeakingRubricCriterion,
@@ -54,12 +51,14 @@ import {
 } from "@quizstrike/shared";
 import { ApiError, speakingApi } from "../../../api/client";
 import { buildTeacherSpeakingPath } from "../../../navigation";
-import { SPEAKING_TEMPLATES, formatDuration } from "../speakingData";
+import { formatDuration } from "../speakingData";
+import { SPEAKING_CORE_LIBRARY } from "@quizstrike/shared";
 import { ResultPanel, scoreFor } from "../SpeakingResultPanel";
 import { SpeakingSetDetailPage, SpeakingSetsPage } from "./SpeakingSetsPage";
 import SpeakingReportsPanel from "./SpeakingReportsPanel";
 import "../speaking.css";
 import "../speaking-layout.css";
+import "./speaking-dashboard.css";
 
 type Navigate = (nextPath: string) => void;
 type SpeakingEvaluationStatus = "queued" | "running" | "retrying" | "completed" | "failed";
@@ -164,7 +163,7 @@ const parseTeacherRoute = (path: string) => {
     };
   if (segments[1] === "teacher" && segments[2] === "result" && segments[3])
     return { kind: "teacher-result" as const, id: segments[3] };
-  return { kind: "teacher" as const };
+  return { kind: "teacher" as const, tab: segments[2] === "core" ? "core" as const : "tests" as const };
 };
 
 const toSpeakingTeacherPath = (path: string) => {
@@ -250,7 +249,7 @@ export function SpeakingTeacherWorkspace({
       aria-label="Speaking Practice teacher tools"
     >
       {route.kind === "teacher" && (
-        <SpeakingTeacherDashboard navigate={navigate} />
+        <SpeakingTeacherDashboard navigate={navigate} initialTab={route.tab} />
       )}
       {route.kind === "create" && <SpeakingCreatePage navigate={navigate} />}
       {route.kind === "sets" && <SpeakingSetsPage navigate={navigate} />}
@@ -274,55 +273,295 @@ export function SpeakingTeacherWorkspace({
   );
 }
 
-function SpeakingTeacherDashboard({ navigate }: { navigate: Navigate }) {
+type DashboardTab = "tests" | "core";
+
+const speakingCategory = (activity: Pick<SpeakingActivity, "scenarioResources">) =>
+  speakingScenarioResources(activity.scenarioResources).category ?? "Everyday Communication";
+
+const speakingSkills = (activity: Pick<SpeakingActivity, "scenarioResources">) =>
+  speakingScenarioResources(activity.scenarioResources).communicationSkills;
+
+const speakingMinutes = (seconds: number) => `${Math.max(1, Math.round(seconds / 60))} min`;
+
+const coreFallbackActivities = (): SpeakingActivity[] => SPEAKING_CORE_LIBRARY.map((template) => ({
+  ...template,
+  teacherId: "speaking-template",
+  status: "ready",
+  createdAt: "2026-01-01T00:00:00.000Z",
+  updatedAt: "2026-01-01T00:00:00.000Z"
+}));
+
+function SpeakingTeacherDashboard({ navigate, initialTab = "tests" }: { navigate: Navigate; initialTab?: DashboardTab }) {
   const [library, setLibrary] = useState<SpeakingLibraryItem[]>([]);
+  const [coreLibrary, setCoreLibrary] = useState<SpeakingActivity[]>(() => coreFallbackActivities());
   const [sets, setSets] = useState<SpeakingSetSummary[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState("");
+  const [activeTab, setActiveTab] = useState<DashboardTab>(initialTab);
   const [search, setSearch] = useState("");
-  const [level, setLevel] = useState("all");
-  const [difficulty, setDifficulty] = useState("all");
+  const [category, setCategory] = useState("all");
+  const [skill, setSkill] = useState("all");
+  const [source, setSource] = useState("all");
   const [sort, setSort] = useState("recent");
+  const [previewTemplate, setPreviewTemplate] = useState<SpeakingActivity | null>(null);
+  const [workingTemplateId, setWorkingTemplateId] = useState("");
+
   const load = useCallback(async () => {
-    try {
-      const [libraryPayload, setPayload] = await Promise.all([speakingApi.library(), speakingApi.sets()]);
-      setLibrary((libraryPayload as { items: SpeakingLibraryItem[] }).items);
-      setSets((setPayload as { items: SpeakingSetSummary[] }).items);
-      setError("");
-    } catch (loadError) {
-      setError(getErrorMessage(loadError, "Performance Tests could not be loaded."));
-    } finally {
-      setLoading(false);
+    setLoading(true);
+    const [libraryResult, setsResult, templatesResult] = await Promise.allSettled([
+      speakingApi.library(),
+      speakingApi.sets(),
+      speakingApi.templates()
+    ]);
+    const failures: string[] = [];
+    if (libraryResult.status === "fulfilled") {
+      setLibrary((libraryResult.value as { items: SpeakingLibraryItem[] }).items ?? []);
+    } else {
+      setLibrary([]);
+      failures.push("your Performance Tests");
     }
+    if (setsResult.status === "fulfilled") {
+      setSets((setsResult.value as { items: SpeakingSetSummary[] }).items ?? []);
+    } else {
+      setSets([]);
+      failures.push("your Sets");
+    }
+    if (templatesResult.status === "fulfilled") {
+      const items = (templatesResult.value as { items: SpeakingActivity[] }).items ?? [];
+      setCoreLibrary(items.length ? items : coreFallbackActivities());
+    } else {
+      setCoreLibrary(coreFallbackActivities());
+    }
+    setError(failures.length ? `Could not load ${failures.join(" or ")}. Built-in scenarios are still available.` : "");
+    setLoading(false);
   }, []);
+
   useEffect(() => { void load(); }, [load]);
+  useEffect(() => { setActiveTab(initialTab); }, [initialTab]);
+  useEffect(() => {
+    if (!previewTemplate) return;
+    const handleKeyDown = (event: KeyboardEvent) => {
+      if (event.key === "Escape") setPreviewTemplate(null);
+    };
+    window.addEventListener("keydown", handleKeyDown);
+    return () => window.removeEventListener("keydown", handleKeyDown);
+  }, [previewTemplate]);
+
   const query = search.trim().toLocaleLowerCase();
-  const visibleItems = [...library].filter((item) => {
-    const activity = item.activity;
-    const setText = item.setMemberships.map((set) => set.name).join(" ");
-    return (!query || `${activity.title} ${activity.scenario} ${activity.aiRole} ${activity.studentRole} ${setText}`.toLocaleLowerCase().includes(query)) &&
-      (level === "all" || activity.level === level) && (difficulty === "all" || activity.difficulty === difficulty);
-  }).sort((left, right) => sort === "az" ? left.activity.title.localeCompare(right.activity.title) : sort === "za" ? right.activity.title.localeCompare(left.activity.title) : (Date.parse(right.lastSessionAt ?? right.activity.createdAt) - Date.parse(left.lastSessionAt ?? left.activity.createdAt)));
+  const matchesMetadata = (activity: SpeakingActivity) => {
+    const resources = speakingScenarioResources(activity.scenarioResources);
+    const haystack = [
+      activity.title,
+      activity.scenario,
+      activity.aiRole,
+      activity.studentRole,
+      resources.category ?? "",
+      resources.communicationSkills.join(" "),
+      resources.studentGoal,
+      resources.aiContext ?? ""
+    ].join(" ").toLocaleLowerCase();
+    const isBuiltIn = resources.builtIn === true || activity.teacherId === "speaking-template";
+    const sourceMatches = activeTab === "core"
+      ? isBuiltIn
+      : source === "all" || (source === "built-in" ? isBuiltIn : !isBuiltIn);
+    return (!query || haystack.includes(query))
+      && (category === "all" || speakingCategory(activity) === category)
+      && (skill === "all" || resources.communicationSkills.includes(skill))
+      && sourceMatches;
+  };
+  const visibleItems = [...library]
+    .filter((item) => matchesMetadata(item.activity))
+    .sort((left, right) => sort === "az"
+      ? left.activity.title.localeCompare(right.activity.title)
+      : sort === "za"
+        ? right.activity.title.localeCompare(left.activity.title)
+        : Date.parse(right.lastSessionAt ?? right.activity.updatedAt) - Date.parse(left.lastSessionAt ?? left.activity.updatedAt));
+  const lastCoreUse = (templateId: string) => Math.max(0, ...library
+    .filter((item) => item.activity.scenarioResources?.sourceTemplateId === templateId)
+    .map((item) => Date.parse(item.lastSessionAt ?? "") || 0));
+  const visibleCore = [...coreLibrary]
+    .filter(matchesMetadata)
+    .sort((left, right) => sort === "az"
+      ? left.title.localeCompare(right.title)
+      : sort === "za"
+        ? right.title.localeCompare(left.title)
+        : lastCoreUse(right.id) - lastCoreUse(left.id) || left.title.localeCompare(right.title));
   const openSessions = library.flatMap((item) => item.activeSession ? [{ activity: item.activity, session: item.activeSession }] : []);
   const completedItems = [...library]
     .filter((item) => !item.activeSession && (item.latestSessionStatus === "ended" || item.latestSessionStatus === "expired"))
     .sort((left, right) => Date.parse(right.lastSessionAt ?? "") - Date.parse(left.lastSessionAt ?? ""))
     .slice(0, 4);
+
+  const addCoreTemplate = async (template: SpeakingActivity) => {
+    setWorkingTemplateId(template.id);
+    try {
+      const { id: _templateId, teacherId: _teacherId, createdAt: _createdAt, updatedAt: _updatedAt, status: _status, ...input } = template;
+      const resources = speakingScenarioResources(template.scenarioResources);
+      const payload = {
+        ...input,
+        scenarioResources: {
+          ...resources,
+          builtIn: false,
+          sourceTemplateId: template.id,
+          communicationSkills: [...resources.communicationSkills],
+          successConditions: [...resources.successConditions],
+          suggestedSteps: [...resources.suggestedSteps],
+          usefulVocabulary: [...resources.usefulVocabulary],
+          referenceItems: resources.referenceItems.map((item) => ({ ...item }))
+        }
+      } satisfies SpeakingCreateActivityInput;
+      const result = await speakingApi.createActivity(payload) as { activity: SpeakingActivity };
+      setPreviewTemplate(null);
+      navigate(`/speak/teacher/activity/${result.activity.id}`);
+    } catch (useError) {
+      window.alert(getErrorMessage(useError, "This built-in scenario could not be added to your Performance Tests."));
+    } finally {
+      setWorkingTemplateId("");
+    }
+  };
+
+  const customizeTemplate = (template: SpeakingActivity) => {
+    setPreviewTemplate(null);
+    navigate(`/speak/teacher/create?templateId=${encodeURIComponent(template.id)}`);
+  };
+
+  const clearFilters = () => {
+    setSearch("");
+    setCategory("all");
+    setSkill("all");
+    setSource("all");
+  };
+
   if (loading) return <TeacherLoading />;
-  return <div className="speaking-page-shell speaking-teacher-shell">
-    <main className="speaking-teacher-layout">
-      <section className="speaking-teacher-content speaking-library-page">
-        <div className="speaking-teacher-heading"><div><span className="speaking-eyebrow"><UserRound size={15} aria-hidden="true" /> Teacher workspace</span><h1>Speaking Practice</h1><p>Create, organize and run speaking assessments.</p></div><button className="speaking-primary-button" type="button" onClick={() => navigate("/speak/teacher/create")}><Plus size={18} aria-hidden="true" />New Performance Test</button></div>
-        {error && <p className="speaking-error" role="alert">{error}</p>}
-        <div className="speaking-library-tabs" role="tablist" aria-label="Speaking Practice library"><button type="button" role="tab" aria-selected="true" className="is-active">Performance Tests <span>{library.length}</span></button><button type="button" role="tab" aria-selected="false" onClick={() => navigate("/speak/teacher/sets")}>Sets <span>{sets.length}</span></button></div>
-        {openSessions.length > 0 && <section className="speaking-session-strip" aria-label="Active classroom sessions"><div className="speaking-section-title"><div><span className="speaking-card-kicker">Live now</span><h2>Active classroom sessions</h2></div><span>{openSessions.length} open</span></div>{openSessions.map(({ activity, session }) => <button className="speaking-session-row" key={session.id} type="button" onClick={() => navigate(`/speak/teacher/activity/${activity.id}?sessionId=${encodeURIComponent(session.id)}`)}><span className={`speaking-status-pill speaking-status-${session.status}`}>{session.status === "ready" ? "Students joining" : session.status === "paused" ? "Paused" : "Running"}</span><strong>{activity.title}</strong><code>{session.joinCode}</code><span>Open classroom <ArrowRight size={16} aria-hidden="true" /></span></button>)}</section>}
-        <div className="speaking-section-title speaking-library-section-heading"><div><span className="speaking-card-kicker">Your library</span><h2>Performance Tests</h2></div><button type="button" className="speaking-text-button" onClick={() => navigate("/speak/teacher/create")}>New test <ArrowRight size={15} aria-hidden="true" /></button></div>
-        <div className="speaking-library-toolbar"><label className="speaking-task-search"><span className="sr-only">Search Performance Tests</span><input aria-label="Search Performance Tests" value={search} onChange={(event) => setSearch(event.target.value)} placeholder="Search tests, roles or Sets" /></label><label><span className="sr-only">Filter by level</span><select aria-label="Filter by level" value={level} onChange={(event) => setLevel(event.target.value)}><option value="all">All levels</option>{SPEAKING_LEVELS.map((option) => <option key={option} value={option}>{SPEAKING_LEVEL_LABELS[option]}</option>)}</select></label><label><span className="sr-only">Filter by difficulty</span><select aria-label="Filter by difficulty" value={difficulty} onChange={(event) => setDifficulty(event.target.value)}><option value="all">All difficulty</option>{SPEAKING_DIFFICULTIES.map((option) => <option key={option} value={option}>{SPEAKING_DIFFICULTY_LABELS[option]}</option>)}</select></label><label><span className="sr-only">Sort Performance Tests</span><select aria-label="Sort Performance Tests" value={sort} onChange={(event) => setSort(event.target.value)}><option value="recent">Recently used</option><option value="az">A–Z</option><option value="za">Z–A</option></select></label><span className="speaking-filter-icon" aria-hidden="true"><SlidersHorizontal size={17} /></span></div>
-        {library.length ? visibleItems.length ? <div className="speaking-activity-list">{visibleItems.map((item) => <TeacherActivityRow key={item.activity.id} item={item} sets={sets} navigate={navigate} onRefresh={load} />)}</div> : <div className="speaking-empty-card"><h2>No Performance Tests match</h2><p>Try a different search or filter.</p></div> : <div className="speaking-empty-card"><img className="speaking-empty-art" src="/assets/speaking/empty-performance-tests.webp" alt="" width={132} height={132} /><h2>Create your first Performance Test</h2><p>Save a reusable conversation, then launch it for a classroom.</p><button type="button" className="speaking-primary-button" onClick={() => navigate("/speak/teacher/create")}>Create Performance Test</button></div>}
-        {completedItems.length > 0 && <section className="speaking-recent-sessions" aria-labelledby="recent-completed-sessions"><div className="speaking-section-title"><div><span className="speaking-card-kicker">Classroom history</span><h2 id="recent-completed-sessions">Recent completed sessions</h2></div><button type="button" className="speaking-text-button" onClick={() => navigate("/speak/teacher/reports")}>View reports <ArrowRight size={15} aria-hidden="true" /></button></div><div className="speaking-recent-session-list">{completedItems.map((item) => <div className="speaking-recent-session" key={item.activity.id}><div><strong>{item.activity.title}</strong><span>{item.sessionCount} session{item.sessionCount === 1 ? "" : "s"} · {item.lastSessionAt ? `Completed ${new Date(item.lastSessionAt).toLocaleDateString()}` : "Completed recently"}</span></div><span className="speaking-status-pill speaking-status-ended">Completed</span></div>)}</div></section>}
-      </section>
-    </main>
+  return (
+    <div className="speaking-page-shell speaking-teacher-shell speaking-dashboard-shell">
+      <main className="speaking-teacher-layout speaking-dashboard-layout">
+        <section className="speaking-teacher-content speaking-library-page speaking-dashboard-page">
+          <div className="speaking-dashboard-heading">
+            <div>
+              <span className="speaking-eyebrow"><Mic size={15} aria-hidden="true" /> Teacher workspace</span>
+              <h1>Speaking Practice</h1>
+              <p>Create, customise and run real-world English performance tests.</p>
+            </div>
+            <button className="speaking-primary-button speaking-new-test-button" type="button" onClick={() => navigate("/speak/teacher/create")}>
+              <Plus size={18} aria-hidden="true" /> New Performance Test
+            </button>
+          </div>
+          {error && <p className="speaking-error speaking-dashboard-error" role="status">{error}</p>}
+          <div className="speaking-library-tabs speaking-dashboard-tabs" role="tablist" aria-label="Speaking Practice library">
+            <button type="button" role="tab" aria-selected={activeTab === "tests"} className={activeTab === "tests" ? "is-active" : ""} onClick={() => setActiveTab("tests")}>
+              Performance Tests <span>{library.length}</span>
+            </button>
+            <button type="button" role="tab" aria-selected={activeTab === "core"} className={activeTab === "core" ? "is-active" : ""} onClick={() => setActiveTab("core")}>
+              Core Library <span>{coreLibrary.length}</span>
+            </button>
+            <button type="button" role="tab" aria-selected={false} onClick={() => navigate("/speak/teacher/sets")}>
+              Sets <span>{sets.length}</span>
+            </button>
+          </div>
+          {activeTab === "tests" ? (
+            <>
+              {openSessions.length > 0 && <section className="speaking-session-strip speaking-dashboard-live" aria-label="Active classroom sessions"><div className="speaking-section-title"><div><span className="speaking-card-kicker">Live now</span><h2>Active classroom sessions</h2></div><span>{openSessions.length} open</span></div>{openSessions.map(({ activity, session }) => <button className="speaking-session-row" key={session.id} type="button" onClick={() => navigate(`/speak/teacher/activity/${activity.id}?sessionId=${encodeURIComponent(session.id)}`)}><span className={`speaking-status-pill speaking-status-${session.status}`}>{session.status === "ready" ? "Students joining" : session.status === "paused" ? "Paused" : "Running"}</span><strong>{activity.title}</strong><code>{session.joinCode}</code><span>Open classroom <ArrowRight size={16} aria-hidden="true" /></span></button>)}</section>}
+              <div className="speaking-section-title speaking-library-section-heading"><div><span className="speaking-card-kicker">Your workspace</span><h2>Your Performance Tests</h2><p>Launch a saved test, edit its conversation, or add it to a Set.</p></div><button type="button" className="speaking-text-button" onClick={() => setActiveTab("core")}>Browse core library <ArrowRight size={15} aria-hidden="true" /></button></div>
+              <SpeakingLibraryToolbar search={search} setSearch={setSearch} category={category} setCategory={setCategory} skill={skill} setSkill={setSkill} source={source} setSource={setSource} sort={sort} setSort={setSort} clearFilters={clearFilters} />
+              {library.length ? visibleItems.length ? <div className="speaking-activity-list speaking-dashboard-activity-list">{visibleItems.map((item) => <TeacherActivityRow key={item.activity.id} item={item} sets={sets} navigate={navigate} onRefresh={load} />)}</div> : <SpeakingNoMatches onClear={clearFilters} /> : <div className="speaking-empty-card"><img className="speaking-empty-art" src="/assets/speaking/empty-performance-tests.webp" alt="" width={132} height={132} /><h2>Create your first Performance Test</h2><p>Start with a core scenario or build an open-ended conversation from scratch.</p><button type="button" className="speaking-primary-button" onClick={() => setActiveTab("core")}>Browse Core Library</button></div>}
+              {completedItems.length > 0 && <section className="speaking-recent-sessions" aria-labelledby="recent-completed-sessions"><div className="speaking-section-title"><div><span className="speaking-card-kicker">Classroom history</span><h2 id="recent-completed-sessions">Recent completed sessions</h2></div><button type="button" className="speaking-text-button" onClick={() => navigate("/speak/teacher/reports")}>View reports <ArrowRight size={15} aria-hidden="true" /></button></div><div className="speaking-recent-session-list">{completedItems.map((item) => <div className="speaking-recent-session" key={item.activity.id}><div><strong>{item.activity.title}</strong><span>{item.sessionCount} session{item.sessionCount === 1 ? "" : "s"} · {item.lastSessionAt ? `Completed ${new Date(item.lastSessionAt).toLocaleDateString()}` : "Completed recently"}</span></div><span className="speaking-status-pill speaking-status-ended">Completed</span></div>)}</div></section>}
+            </>
+          ) : (
+            <section className="speaking-core-library" aria-labelledby="core-library-heading">
+              <div className="speaking-section-title speaking-library-section-heading"><div><span className="speaking-card-kicker">Built-in scenarios</span><h2 id="core-library-heading">Core Library</h2><p>30 complete, editable conversations for real-world junior-high English.</p></div><span className="speaking-core-count">{visibleCore.length} shown</span></div>
+              <SpeakingLibraryToolbar search={search} setSearch={setSearch} category={category} setCategory={setCategory} skill={skill} setSkill={setSkill} source="built-in" setSource={() => undefined} sort={sort} setSort={setSort} clearFilters={clearFilters} coreOnly />
+              {visibleCore.length ? <div className="speaking-core-grid">{visibleCore.map((template) => <SpeakingCoreCard key={template.id} template={template} working={workingTemplateId === template.id} onPreview={() => setPreviewTemplate(template)} onUse={() => void addCoreTemplate(template)} onCustomize={() => customizeTemplate(template)} />)}</div> : <SpeakingNoMatches onClear={clearFilters} />}
+            </section>
+          )}
+        </section>
+      </main>
+      {previewTemplate && <SpeakingCorePreview template={previewTemplate} working={workingTemplateId === previewTemplate.id} onClose={() => setPreviewTemplate(null)} onUse={() => void addCoreTemplate(previewTemplate)} onCustomize={() => customizeTemplate(previewTemplate)} />}
+    </div>
+  );
+}
+
+function SpeakingLibraryToolbar({
+  search,
+  setSearch,
+  category,
+  setCategory,
+  skill,
+  setSkill,
+  source,
+  setSource,
+  sort,
+  setSort,
+  clearFilters,
+  coreOnly = false
+}: {
+  search: string;
+  setSearch: (value: string) => void;
+  category: string;
+  setCategory: (value: string) => void;
+  skill: string;
+  setSkill: (value: string) => void;
+  source: string;
+  setSource: (value: string) => void;
+  sort: string;
+  setSort: (value: string) => void;
+  clearFilters: () => void;
+  coreOnly?: boolean;
+}) {
+  return <div className="speaking-library-toolbar speaking-dashboard-toolbar">
+    <label className="speaking-task-search"><span className="sr-only">Search scenarios</span><input aria-label="Search scenarios" value={search} onChange={(event) => setSearch(event.target.value)} placeholder={coreOnly ? "Search scenarios" : "Search tests, roles or scenarios"} /></label>
+    <label><span className="sr-only">Filter by category</span><select aria-label="Filter by category" value={category} onChange={(event) => setCategory(event.target.value)}><option value="all">All categories</option>{SPEAKING_CATEGORIES.map((item) => <option key={item} value={item}>{item}</option>)}</select></label>
+    <label><span className="sr-only">Filter by communication skill</span><select aria-label="Filter by communication skill" value={skill} onChange={(event) => setSkill(event.target.value)}><option value="all">All skills</option>{SPEAKING_COMMUNICATION_SKILLS.map((item) => <option key={item} value={item}>{item}</option>)}</select></label>
+    {!coreOnly && <label><span className="sr-only">Filter by source</span><select aria-label="Filter by source" value={source} onChange={(event) => setSource(event.target.value)}><option value="all">Built-in & My versions</option><option value="built-in">Built-in</option><option value="mine">My versions</option></select></label>}
+    <label><span className="sr-only">Sort Performance Tests</span><select aria-label="Sort Performance Tests" value={sort} onChange={(event) => setSort(event.target.value)}><option value="recent">Recently used</option><option value="az">A–Z</option><option value="za">Z–A</option></select></label>
+    <button type="button" className="speaking-filter-icon" aria-label="Clear filters" onClick={clearFilters}><SlidersHorizontal size={17} aria-hidden="true" /></button>
   </div>;
+}
+
+function SpeakingNoMatches({ onClear }: { onClear: () => void }) {
+  return <div className="speaking-empty-card speaking-no-matches"><h2>No scenarios match</h2><p>Try a different search or filter.</p><button type="button" className="speaking-outline-button" onClick={onClear}>Clear filters</button></div>;
+}
+
+function SpeakingCoreCard({ template, working, onPreview, onUse, onCustomize }: { template: SpeakingActivity; working: boolean; onPreview: () => void; onUse: () => void; onCustomize: () => void }) {
+  const resources = speakingScenarioResources(template.scenarioResources);
+  return <article className="speaking-core-card">
+    <div className="speaking-core-card-image"><img src={resources.imageSrc ?? "/assets/speaking/scenario-introduction.webp"} alt={resources.imageAlt ?? ""} loading="lazy" /><span>Built-in</span></div>
+    <div className="speaking-core-card-body"><div className="speaking-core-card-heading"><div><span className="speaking-category-chip">{speakingCategory(template)}</span><h3>{template.title}</h3></div><span className="speaking-core-duration"><Clock3 size={14} aria-hidden="true" /> {speakingMinutes(template.durationSeconds)}</span></div><p>{template.scenario}</p><div className="speaking-skill-tags" aria-label={`Communication skills for ${template.title}`}>{speakingSkills(template).slice(0, 4).map((item) => <span key={item}>{item}</span>)}</div><div className="speaking-core-card-footer"><span><UserRound size={14} aria-hidden="true" /> AI: {template.aiRole}</span><div><button type="button" className="speaking-outline-button" onClick={onPreview}>Preview</button><button type="button" className="speaking-text-button" onClick={onCustomize}>Customize</button><button type="button" className="speaking-row-launch" onClick={onUse} disabled={working}>{working ? "Adding…" : "Use as-is"}</button></div></div></div>
+  </article>;
+}
+
+function SpeakingCorePreview({ template, working, onClose, onUse, onCustomize }: { template: SpeakingActivity; working: boolean; onClose: () => void; onUse: () => void; onCustomize: () => void }) {
+  const previewRef = useRef<HTMLElement>(null);
+  useEffect(() => {
+    const previous = document.activeElement;
+    const preview = previewRef.current;
+    if (!preview) return;
+    const focusable = () => Array.from(preview.querySelectorAll<HTMLElement>('button:not(:disabled), [href], input, select, textarea, [tabindex="0"]'));
+    focusable()[0]?.focus();
+    const trap = (event: KeyboardEvent) => {
+      if (event.key !== "Tab") return;
+      const items = focusable();
+      const first = items[0];
+      const last = items.at(-1);
+      if (event.shiftKey && (document.activeElement === first || document.activeElement === preview)) {
+        event.preventDefault(); last?.focus();
+      } else if (!event.shiftKey && document.activeElement === last) {
+        event.preventDefault(); first?.focus();
+      }
+    };
+    const contain = (event: FocusEvent) => {
+      if (event.target instanceof Node && !preview.contains(event.target)) (focusable()[0] ?? preview).focus();
+    };
+    preview.addEventListener("keydown", trap);
+    document.addEventListener("focusin", contain);
+    return () => {
+      preview.removeEventListener("keydown", trap);
+      document.removeEventListener("focusin", contain);
+      if (previous instanceof HTMLElement && previous.isConnected) previous.focus();
+    };
+  }, []);
+  const resources = speakingScenarioResources(template.scenarioResources);
+  return <div className="speaking-preview-backdrop" role="presentation" onMouseDown={(event) => { if (event.currentTarget === event.target) onClose(); }}><section ref={previewRef} tabIndex={-1} className="speaking-core-preview" role="dialog" aria-modal="true" aria-labelledby="speaking-preview-title"><button type="button" className="speaking-preview-close" onClick={onClose} aria-label="Close preview"><X size={19} aria-hidden="true" /></button><div className="speaking-preview-top"><img src={resources.imageSrc ?? "/assets/speaking/scenario-introduction.webp"} alt={resources.imageAlt ?? ""} /><div><span className="speaking-category-chip">{speakingCategory(template)}</span><h2 id="speaking-preview-title">{template.title}</h2><p>{template.scenario}</p></div></div><div className="speaking-preview-grid"><div><span className="speaking-preview-label">Student goal</span><p>{resources.studentGoal}</p></div><div><span className="speaking-preview-label">AI context</span><p>{resources.aiContext ?? `Act as ${template.aiRole} in this situation.`}</p></div><div><span className="speaking-preview-label">Possible complication</span><p>{resources.possibleComplication ?? "Respond naturally if the student takes a different direction."}</p></div><div><span className="speaking-preview-label">Success conditions</span><ul>{(resources.successConditions.length ? resources.successConditions : ["Communicate the main idea.", "Respond and keep the conversation moving."]).map((item) => <li key={item}>{item}</li>)}</ul></div></div><div className="speaking-preview-skills"><span className="speaking-preview-label">AI role</span><p>{template.aiRole}</p><span className="speaking-preview-label">Assessment</span><ul>{template.rubric.filter((criterion) => criterion.enabled).map((criterion) => <li key={criterion.id}><strong>{criterion.name}</strong>: {criterion.description}</li>)}</ul></div><div className="speaking-preview-skills"><span className="speaking-preview-label">Communication skills</span><div className="speaking-skill-tags">{speakingSkills(template).map((item) => <span key={item}>{item}</span>)}</div></div><div className="speaking-preview-actions"><button type="button" className="speaking-outline-button" onClick={onClose}>Close</button><button type="button" className="speaking-text-button" onClick={onCustomize}>Customize</button><button type="button" className="speaking-primary-button" onClick={onUse} disabled={working}>{working ? "Adding…" : "Use as-is"}</button></div></section></div>;
 }
 
 function TeacherLoading() {
@@ -351,7 +590,9 @@ function TeacherActivityRow({
   const duplicate = async () => { try { await speakingApi.duplicateActivity(activity.id); await onRefresh(); } catch (error) { window.alert(getErrorMessage(error, "The Performance Test could not be duplicated.")); } };
   const remove = async () => { if (!window.confirm(`Delete “${activity.title}”?\n\nExisting historical reports will remain available.`)) return; try { await speakingApi.deleteActivity(activity.id); await onRefresh(); } catch (error) { window.alert(getErrorMessage(error, "The Performance Test could not be deleted.")); } };
   const addToSet = async (setId: string) => { if (!setId) return; try { await speakingApi.addToSet(setId, activity.id); await onRefresh(); } catch (error) { window.alert(getErrorMessage(error, "The Performance Test could not be added to that Set.")); } };
-  return <article className="speaking-activity-row"><img className="speaking-activity-thumbnail" src={imageSrc} alt="" loading="lazy" /><div className="speaking-activity-row-main"><div><strong>{activity.title}</strong><span>{activity.studentRole} · {SPEAKING_LEVEL_LABELS[activity.level]}</span></div><p>{activity.scenario}</p><small>{formatDuration(activity.durationSeconds)} · {activity.rubric.filter((criterion) => criterion.enabled).length} criteria · {item.sessionCount} session{item.sessionCount === 1 ? "" : "s"}{item.lastSessionAt ? ` · Last used ${new Date(item.lastSessionAt).toLocaleDateString()}` : ""}</small>{item.setMemberships.length > 0 && <div className="speaking-row-set-tags">{item.setMemberships.map((set) => <span key={set.id}>{set.name}</span>)}</div>}</div><div className="speaking-activity-row-meta">{item.activeSession ? <span className={`speaking-status-pill speaking-status-${item.activeSession.status}`}>{item.activeSession.status === "ready" ? "Students joining" : item.activeSession.status === "paused" ? "Paused" : "Live"}</span> : <span className="speaking-status-pill speaking-status-ready">Ready to launch</span>}<span>{activity.aiRole}</span></div><div className="speaking-activity-row-actions"><button type="button" className="speaking-row-launch" onClick={() => navigate(`/speak/teacher/activity/${activity.id}`)}>{item.activeSession ? "Open" : "Launch"}</button><button type="button" onClick={() => navigate(`/speak/teacher/activity/${activity.id}`)} aria-label={`Open ${activity.title}`}><ChevronRight size={18} aria-hidden="true" /></button><details><summary aria-label={`More actions for ${activity.title}`}><MoreHorizontal size={18} aria-hidden="true" /></summary><div className="speaking-overflow-menu"><button type="button" onClick={() => void duplicate()}>Duplicate</button><label>Add to Set<select aria-label={`Add ${activity.title} to a Set`} defaultValue="" onChange={(event) => void addToSet(event.target.value)}><option value="">Choose a Set…</option>{sets.filter((set) => !item.setMemberships.some((membership) => membership.id === set.id)).map((set) => <option key={set.id} value={set.id}>{set.name}</option>)}</select></label><button type="button" className="is-danger" onClick={() => void remove()}><Trash2 size={15} aria-hidden="true" />Delete</button></div></details></div></article>;
+  const resources = speakingScenarioResources(activity.scenarioResources);
+  const isBuiltIn = resources.builtIn === true || activity.teacherId === "speaking-template";
+  return <article className="speaking-activity-row"><img className="speaking-activity-thumbnail" src={imageSrc} alt="" loading="lazy" /><div className="speaking-activity-row-main"><div><strong>{activity.title}</strong><span>{activity.studentRole} · {speakingCategory(activity)}</span></div><p>{activity.scenario}</p><small>{speakingMinutes(activity.durationSeconds)} · {activity.rubric.filter((criterion) => criterion.enabled).length} criteria · {item.sessionCount} session{item.sessionCount === 1 ? "" : "s"}{item.lastSessionAt ? ` · Last used ${new Date(item.lastSessionAt).toLocaleDateString()}` : ""}</small><div className="speaking-row-context-tags"><span>{isBuiltIn ? "Built-in" : "My version"}</span>{speakingSkills(activity).slice(0, 2).map((item) => <span key={item}>{item}</span>)}{item.setMemberships.map((set) => <span key={set.id}>{set.name}</span>)}</div></div><div className="speaking-activity-row-meta">{item.activeSession ? <span className={`speaking-status-pill speaking-status-${item.activeSession.status}`}>{item.activeSession.status === "ready" ? "Students joining" : item.activeSession.status === "paused" ? "Paused" : "Live"}</span> : <span className="speaking-status-pill speaking-status-ready">Ready to launch</span>}<span>{activity.aiRole}</span></div><div className="speaking-activity-row-actions"><button type="button" className="speaking-row-launch" onClick={() => navigate(`/speak/teacher/activity/${activity.id}`)}>{item.activeSession ? "Open" : "Launch"}</button><button type="button" onClick={() => navigate(`/speak/teacher/activity/${activity.id}`)} aria-label={`Open ${activity.title}`}><ChevronRight size={18} aria-hidden="true" /></button><details><summary aria-label={`More actions for ${activity.title}`}><MoreHorizontal size={18} aria-hidden="true" /></summary><div className="speaking-overflow-menu"><button type="button" onClick={() => navigate(`/speak/teacher/activity/${activity.id}/edit`)}>Edit</button><button type="button" onClick={() => void duplicate()}>Duplicate</button><label>Add to Set<select aria-label={`Add ${activity.title} to a Set`} defaultValue="" onChange={(event) => void addToSet(event.target.value)}><option value="">Choose a Set…</option>{sets.filter((set) => !item.setMemberships.some((membership) => membership.id === set.id)).map((set) => <option key={set.id} value={set.id}>{set.name}</option>)}</select></label><button type="button" className="is-danger" onClick={() => void remove()}><Trash2 size={15} aria-hidden="true" />Delete</button></div></details></div></article>;
 }
 
 const draftFromTemplate = (
@@ -371,6 +612,14 @@ const draftFromTemplate = (
   scenarioResources: (() => {
     const resources = speakingScenarioResources(template.scenarioResources);
     return {
+      ...(resources.category ? { category: resources.category } : {}),
+      ...(resources.teacherFocus ? { teacherFocus: resources.teacherFocus } : {}),
+      communicationSkills: [...resources.communicationSkills],
+      ...(resources.aiContext ? { aiContext: resources.aiContext } : {}),
+      ...(resources.possibleComplication ? { possibleComplication: resources.possibleComplication } : {}),
+      successConditions: [...resources.successConditions],
+      builtIn: false,
+      ...((resources.builtIn || template.teacherId === "speaking-template") ? { sourceTemplateId: template.id } : resources.sourceTemplateId ? { sourceTemplateId: resources.sourceTemplateId } : {}),
       openingLine: resources.openingLine,
       studentGoal: resources.studentGoal,
       suggestedSteps: [...resources.suggestedSteps],
@@ -381,6 +630,64 @@ const draftFromTemplate = (
     };
   })(),
 });
+
+const blankSpeakingDraft = (): SpeakingCreateActivityInput => ({
+  title: "",
+  scenario: "",
+  aiRole: "",
+  studentRole: "",
+  // These fields stay populated for the existing API contract while the
+  // teacher-facing workflow is organized around scenarios and skills.
+  level: "elementary",
+  difficulty: "normal",
+  nativeLanguage: "ja",
+  durationSeconds: 180,
+  identifierMode: "nickname",
+  targetExpressions: [],
+  rubric: DEFAULT_SPEAKING_RUBRIC.map((criterion) => ({ ...criterion })),
+  scenarioResources: {
+    category: SPEAKING_CATEGORIES[0],
+    communicationSkills: ["Asking questions", "Sharing information"]
+  }
+});
+
+function SpeakingCreateChoice({
+  onBrowseCore,
+  onStartScratch,
+  onBack
+}: {
+  onBrowseCore: () => void;
+  onStartScratch: () => void;
+  onBack: () => void;
+}) {
+  return (
+    <div className="speaking-page-shell speaking-teacher-shell speaking-dashboard-shell">
+      <main className="speaking-teacher-layout speaking-dashboard-layout">
+        <section className="speaking-teacher-content speaking-create-choice" aria-labelledby="speaking-create-choice-title">
+          <button type="button" className="speaking-text-button speaking-create-back" onClick={onBack}>
+            <ArrowLeft size={15} aria-hidden="true" /> Back to Speaking Practice
+          </button>
+          <span className="speaking-eyebrow"><Plus size={15} aria-hidden="true" /> New Performance Test</span>
+          <h1 id="speaking-create-choice-title">How would you like to start?</h1>
+          <p className="speaking-create-choice-intro">Choose a complete real-world scenario to customise, or build an open-ended conversation for your class.</p>
+          <div className="speaking-choice-grid">
+            <button type="button" className="speaking-choice-card is-featured" onClick={onBrowseCore}>
+              <span className="speaking-choice-icon"><ClipboardCheck size={22} aria-hidden="true" /></span>
+              <span className="speaking-choice-card-copy"><strong>Use the Core Library</strong><span>Start with one of 30 complete junior-high performance tests, then adjust the task, support, or rubric.</span></span>
+              <span className="speaking-choice-action">Browse Core Library <ArrowRight size={16} aria-hidden="true" /></span>
+            </button>
+            <button type="button" className="speaking-choice-card" onClick={onStartScratch}>
+              <span className="speaking-choice-icon"><Pencil size={22} aria-hidden="true" /></span>
+              <span className="speaking-choice-card-copy"><strong>Start from scratch</strong><span>Write your own situation, choose the communication skills, and shape the rubric step by step.</span></span>
+              <span className="speaking-choice-action">Build a new test <ArrowRight size={16} aria-hidden="true" /></span>
+            </button>
+          </div>
+        </section>
+      </main>
+    </div>
+  );
+}
+
 const SPEAKING_DURATION_PRESETS = [120, 180, 300, 420] as const;
 
 function SpeakingDurationField({
@@ -447,15 +754,18 @@ function SpeakingCreatePage({
   activityId?: string;
 }) {
   const editing = Boolean(activityId);
-  const [draft, setDraft] = useState<SpeakingCreateActivityInput>(() =>
-    draftFromTemplate(SPEAKING_TEMPLATES[1]!),
-  );
+  const templateId = typeof window === "undefined" ? "" : new URLSearchParams(window.location.search).get("templateId") ?? "";
+  const initialTemplate = coreFallbackActivities().find((template) => template.id === templateId) ?? coreFallbackActivities()[9]!;
+  const [draft, setDraft] = useState<SpeakingCreateActivityInput>(() => draftFromTemplate(initialTemplate));
+  const [createMode, setCreateMode] = useState(() => editing || Boolean(templateId));
   const expressionIds = useRef<string[]>([]);
+  const isDirtyRef = useRef(false);
   const expressionId = (index: number) => expressionIds.current[index] ?? (expressionIds.current[index] = crypto.randomUUID());
   const [newExpression, setNewExpression] = useState("");
   const [formError, setFormError] = useState("");
   const [saving, setSaving] = useState(false);
   const [loadingActivity, setLoadingActivity] = useState(editing);
+  const [activityLoadFailed, setActivityLoadFailed] = useState(false);
   const [activeBuilderStep, setActiveBuilderStep] = useState("template");
   const builderSteps = [
     { id: "template", label: "Template", target: "speaking-template" },
@@ -468,8 +778,8 @@ function SpeakingCreatePage({
   const builderStepComplete: Record<(typeof builderSteps)[number]["id"], boolean> = {
     template: Boolean(draft.title.trim()),
     task: Boolean(draft.title.trim() && draft.scenario.trim() && draft.aiRole.trim() && draft.studentRole.trim()),
-    support: draft.targetExpressions.some((expression) => expression.trim().length > 0),
-    settings: Boolean(draft.durationSeconds && draft.level && draft.difficulty && draft.identifierMode),
+    support: Boolean(draft.scenarioResources?.studentGoal?.trim()),
+    settings: Boolean(draft.durationSeconds && draft.identifierMode),
     rubric: draft.rubric.some((criterion) => criterion.enabled && criterion.name.trim()),
     review: Boolean(draft.title.trim() && draft.scenario.trim() && draft.rubric.some((criterion) => criterion.enabled))
   };
@@ -478,13 +788,28 @@ function SpeakingCreatePage({
     const target = builderSteps.find((candidate) => candidate.id === step)?.target;
     if (target) document.getElementById(target)?.scrollIntoView({ behavior: "smooth", block: "start" });
   };
+  const leaveBuilder = (nextPath: string) => {
+    if (isDirtyRef.current && !window.confirm("Leave this Performance Test? Unsaved changes will be lost.")) return;
+    navigate(nextPath);
+  };
   const update = <K extends keyof SpeakingCreateActivityInput>(
     key: K,
     value: SpeakingCreateActivityInput[K],
-  ) => setDraft((current) => ({ ...current, [key]: value }));
-  const resourceDraft = speakingScenarioResources(draft.scenarioResources);
+  ) => {
+    isDirtyRef.current = true;
+    setFormError("");
+    setDraft((current) => ({ ...current, [key]: value }));
+  };
+  // Keep spaces, blank lines and empty fields intact until the save boundary.
+  const resourceDraft = { ...speakingScenarioResources(), ...draft.scenarioResources };
   const updateResources = (patch: SpeakingScenarioResources) =>
     update("scenarioResources", { ...resourceDraft, ...patch });
+  const toggleSkill = (candidate: string) => {
+    const next = resourceDraft.communicationSkills.includes(candidate)
+      ? resourceDraft.communicationSkills.filter((item) => item !== candidate)
+      : [...resourceDraft.communicationSkills, candidate];
+    updateResources({ communicationSkills: next });
+  };
   const updateCriterion = (
     index: number,
     patch: Partial<SpeakingRubricCriterion>,
@@ -504,6 +829,26 @@ function SpeakingCreatePage({
     setNewExpression("");
   };
   useEffect(() => {
+    if (activityId || !templateId) return;
+    let cancelled = false;
+    void speakingApi
+      .templates()
+      .then((payload) => {
+        if (cancelled || isDirtyRef.current) return;
+        const template = ((payload as { items?: SpeakingActivity[] }).items ?? []).find((item) => item.id === templateId);
+        if (template) {
+          setDraft(draftFromTemplate(template));
+          isDirtyRef.current = false;
+        }
+      })
+      .catch(() => {
+        // The complete built-in fallback is already in the initial draft.
+      });
+    return () => {
+      cancelled = true;
+    };
+  }, [activityId, templateId]);
+  useEffect(() => {
     if (!activityId) return;
     let cancelled = false;
     void speakingApi
@@ -512,6 +857,7 @@ function SpeakingCreatePage({
         if (cancelled) return;
         const activity = (payload as { activity: SpeakingActivity }).activity;
         setDraft(draftFromTemplate(activity));
+        isDirtyRef.current = false;
         setLoadingActivity(false);
       })
       .catch((loadError) => {
@@ -519,14 +865,26 @@ function SpeakingCreatePage({
         setFormError(
           getErrorMessage(loadError, "This activity could not be loaded."),
         );
+        setActivityLoadFailed(true);
         setLoadingActivity(false);
       });
     return () => {
       cancelled = true;
     };
   }, [activityId]);
+  useEffect(() => {
+    if (!createMode) return;
+    const handleBeforeUnload = (event: BeforeUnloadEvent) => {
+      if (!isDirtyRef.current) return;
+      event.preventDefault();
+      event.returnValue = "";
+    };
+    window.addEventListener("beforeunload", handleBeforeUnload);
+    return () => window.removeEventListener("beforeunload", handleBeforeUnload);
+  }, [createMode, saving]);
   const handleCreate = async (event: FormEvent) => {
     event.preventDefault();
+    if (saving || activityLoadFailed) return;
     if (!draft.title.trim() || !draft.scenario.trim()) {
       setFormError("Activity name and speaking situation are required.");
       return;
@@ -539,9 +897,10 @@ function SpeakingCreatePage({
     try {
       const payload = (
         editing && activityId
-          ? await speakingApi.updateActivity(activityId, draft)
-          : await speakingApi.createActivity(draft)
+          ? await speakingApi.updateActivity(activityId, { ...draft, scenarioResources: speakingScenarioResources(draft.scenarioResources) })
+          : await speakingApi.createActivity({ ...draft, scenarioResources: speakingScenarioResources(draft.scenarioResources) })
       ) as { activity: SpeakingActivity };
+      isDirtyRef.current = false;
       navigate(`/speak/teacher/activity/${payload.activity.id}`);
     } catch (createError) {
       setFormError(
@@ -557,6 +916,10 @@ function SpeakingCreatePage({
     }
   };
   if (loadingActivity) return <TeacherLoading />;
+  if (activityLoadFailed) return <MissingSpeakingSession navigate={navigate} message={formError} />;
+  if (!editing && !templateId && !createMode) {
+    return <SpeakingCreateChoice onBrowseCore={() => navigate("/speak/teacher/core")} onStartScratch={() => { setDraft(blankSpeakingDraft()); setCreateMode(true); }} onBack={() => navigate("/speak/teacher")} />;
+  }
   return (
     <div className="speaking-page-shell speaking-teacher-shell">
       <main className="speaking-teacher-layout">
@@ -578,7 +941,7 @@ function SpeakingCreatePage({
                 type="button"
                 className="speaking-text-button"
                 onClick={() =>
-                  navigate(
+                  leaveBuilder(
                     editing && activityId
                       ? `/speak/teacher/activity/${activityId}`
                       : "/speak/teacher",
@@ -620,18 +983,23 @@ function SpeakingCreatePage({
               <span className="speaking-builder-step">Template</span>
             </div>
             <div className="speaking-template-grid">
-              {SPEAKING_TEMPLATES.map((template) => (
+              {coreFallbackActivities().map((template) => (
                 <button
                   type="button"
                   className={`speaking-template-card${draft.title === template.title ? " is-selected" : ""}`}
                   key={template.id}
-                  onClick={() => setDraft(draftFromTemplate(template))}
+                  onClick={() => {
+                    if (isDirtyRef.current && !window.confirm("Replace your unsaved changes with this template?")) return;
+                    isDirtyRef.current = true;
+                    setFormError("");
+                    setDraft(draftFromTemplate(template));
+                  }}
                 >
                   <img className="speaking-template-image" src={template.scenarioResources?.imageSrc ?? "/assets/speaking/scenario-introduction.webp"} alt="" width={52} height={52} loading="lazy" />
                   <span className="speaking-template-copy">
                     <strong>{template.title}</strong>
                     <small>{template.scenario}</small>
-                    <small>{SPEAKING_LEVEL_LABELS[template.level]} · {SPEAKING_DIFFICULTY_LABELS[template.difficulty]}</small>
+                    <small>{speakingCategory(template)} · {speakingSkills(template).slice(0, 2).join(" · ")}</small>
                   </span>
                   {draft.title === template.title && (
                     <Check size={16} aria-hidden="true" />
@@ -714,6 +1082,33 @@ function SpeakingCreatePage({
                       onChange={(event) => updateResources({ studentGoal: event.target.value })}
                     />
                   </label>
+                  <label>
+                    AI context
+                    <textarea
+                      rows={2}
+                      value={resourceDraft.aiContext ?? ""}
+                      onChange={(event) => updateResources({ aiContext: event.target.value || undefined })}
+                      placeholder="What the AI knows, wants, or can offer in this situation"
+                    />
+                  </label>
+                  <label>
+                    Possible complication
+                    <textarea
+                      rows={2}
+                      value={resourceDraft.possibleComplication ?? ""}
+                      onChange={(event) => updateResources({ possibleComplication: event.target.value || undefined })}
+                      placeholder="A natural change or problem the AI may introduce"
+                    />
+                  </label>
+                  <label className="speaking-span-2">
+                    Success conditions <small>(one per line)</small>
+                    <textarea
+                      rows={3}
+                      value={resourceDraft.successConditions.join("\n")}
+                      onChange={(event) => updateResources({ successConditions: event.target.value.split(/\r?\n/u) })}
+                      placeholder="What a successful conversation should demonstrate"
+                    />
+                  </label>
                   <details className="speaking-span-2 speaking-support-details"><summary>Optional steps, vocabulary & reference material</summary><div className="speaking-resource-grid">
                   <label>
                     Suggested steps <small>(one per line)</small>
@@ -735,8 +1130,8 @@ function SpeakingCreatePage({
                     Reference material <small>(one item per line: label | detail)</small>
                     <textarea
                       rows={3}
-                      value={resourceDraft.referenceItems.map((item) => item.detail ? `${item.label} | ${item.detail}` : item.label).join("\n")}
-                      onChange={(event) => updateResources({ referenceItems: event.target.value.split(/\r?\n/u).map((line) => { const [label, ...detail] = line.split("|"); return { label: label?.trim() ?? "", ...(detail.join("|").trim() ? { detail: detail.join("|").trim() } : {}) }; }) })}
+                      value={resourceDraft.referenceItems.map((item) => item.detail !== undefined ? `${item.label}|${item.detail}` : item.label).join("\n")}
+                      onChange={(event) => updateResources({ referenceItems: event.target.value.split(/\r?\n/u).map((line) => { const [label, ...detail] = line.split("|"); return { label: label ?? "", ...(detail.length ? { detail: detail.join("|") } : {}) }; }) })}
                     />
                   </label>
                 </div></details>
@@ -807,36 +1202,12 @@ function SpeakingCreatePage({
             </div>
             <div className="speaking-settings-grid">
               <label>
-                Student level
+                Category
                 <select
-                  value={draft.level}
-                  onChange={(event) =>
-                    update("level", event.target.value as SpeakingLevel)
-                  }
+                  value={resourceDraft.category ?? SPEAKING_CATEGORIES[0]}
+                  onChange={(event) => updateResources({ category: event.target.value })}
                 >
-                  {SPEAKING_LEVELS.map((level) => (
-                    <option key={level} value={level}>
-                      {SPEAKING_LEVEL_LABELS[level]}
-                    </option>
-                  ))}
-                </select>
-              </label>
-              <label>
-                AI difficulty
-                <select
-                  value={draft.difficulty}
-                  onChange={(event) =>
-                    update(
-                      "difficulty",
-                      event.target.value as SpeakingDifficulty,
-                    )
-                  }
-                >
-                  {SPEAKING_DIFFICULTIES.map((difficulty) => (
-                    <option key={difficulty} value={difficulty}>
-                      {SPEAKING_DIFFICULTY_LABELS[difficulty]}
-                    </option>
-                  ))}
+                  {SPEAKING_CATEGORIES.map((item) => <option key={item} value={item}>{item}</option>)}
                 </select>
               </label>
               <SpeakingDurationField
@@ -879,11 +1250,20 @@ function SpeakingCreatePage({
                   ))}
                 </select>
               </label>
+              <fieldset className="speaking-skill-picker speaking-span-2">
+                <legend>Communication skills</legend>
+                <p>Select the skills you want the AI and rubric to foreground. Students can still use any English that helps them communicate.</p>
+                <div>{SPEAKING_COMMUNICATION_SKILLS.map((item) => <label key={item}><input type="checkbox" checked={resourceDraft.communicationSkills.includes(item)} onChange={() => toggleSkill(item)} />{item}</label>)}</div>
+              </fieldset>
+              <label className="speaking-span-2">Additional focus or class content
+                <textarea value={resourceDraft.teacherFocus ?? ""} onChange={(event) => updateResources({ teacherFocus: event.target.value })} maxLength={500} rows={3} placeholder="Vocabulary from this week's unit, or asking follow-up questions." />
+                <small>Optional. The assessment will pay particular attention to this area. Students are still free to use any English they know.</small>
+              </label>
             </div>
           </section>
           <section id="speaking-rubric" className="speaking-builder-card">
             <div className="speaking-builder-card-heading"><div><span className="speaking-card-kicker">Evaluation rubric</span><h2>What will students be evaluated on?</h2></div><span className="speaking-builder-step">04 / 05</span></div>
-            <p className="speaking-rubric-intro">Each enabled criterion is scored from 1 to 4, with conversation evidence. Insufficient speech is left unscored.</p>
+            <p className="speaking-rubric-intro">Each enabled criterion is scored from 0 to 4, with conversation evidence. Insufficient speech is left unscored.</p>
             <div className="speaking-rubric-editor-heading">
               <div>
                 <span className="speaking-card-kicker">Editable rubric</span>
@@ -1103,9 +1483,10 @@ function SpeakingActivityDetailPage({
   if (!activity)
     return error ? (
       <MissingSpeakingSession navigate={navigate} message={error} />
-    ) : (
+  ) : (
       <TeacherLoading />
     );
+  const resourceDetails = speakingScenarioResources(activity.scenarioResources);
   const latest = roster && roster.session.id === sessions[0]?.id && (roster.session.revision ?? 0) >= (sessions[0]?.revision ?? 0) ? roster.session : sessions[0];
   const shareable = Boolean(
     latest && ["ready", "active", "paused"].includes(latest.status),
@@ -1387,12 +1768,12 @@ function SpeakingActivityDetailPage({
                   <dd>{activity.studentRole}</dd>
                 </div>
                 <div>
-                  <dt>Level</dt>
-                  <dd>{SPEAKING_LEVEL_LABELS[activity.level]}</dd>
+                  <dt>Category</dt>
+                  <dd>{resourceDetails.category ?? "Everyday Communication"}</dd>
                 </div>
                 <div>
-                  <dt>Difficulty</dt>
-                  <dd>{SPEAKING_DIFFICULTY_LABELS[activity.difficulty]}</dd>
+                  <dt>Communication skills</dt>
+                  <dd>{resourceDetails.communicationSkills.length ? resourceDetails.communicationSkills.join(", ") : "Conversation skills"}</dd>
                 </div>
                 <div>
                   <dt>Speaking time</dt>
@@ -1781,7 +2162,7 @@ function SpeakingResultsPage({
             </div>
           ) : payload?.items.length ? filteredResults.length ? (
             <div className="speaking-results-table" role="region" aria-label="Class results table" tabIndex={0}>
-              <table><caption>Rubric scores out of 4 · AI evaluation for teacher review</caption><thead><tr>
+              <table><caption>Rubric scores from 0 to 4 · AI evaluation for teacher review</caption><thead><tr>
                 <th scope="col">Student</th><th scope="col">Status</th><th scope="col">Overall</th>
                 {criteria.map((criterion) => <th scope="col" key={criterion.id} title={criterion.description}>{criterion.name}</th>)}
                 <th scope="col">Elapsed</th><th scope="col">Help</th>

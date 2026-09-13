@@ -1,6 +1,5 @@
 import express, { type Application, type NextFunction, type Request, type Response } from "express";
 import {
-  DEFAULT_SPEAKING_RUBRIC,
   speakingTeacherDate,
   isFinishedSpeakingSession,
   SPEAKING_LIMITS,
@@ -22,6 +21,7 @@ import {
   type SpeakingTurn,
   type TeacherUser
 } from "@quizstrike/shared";
+import { SPEAKING_CORE_LIBRARY } from "@quizstrike/shared";
 import { randomBytes, randomInt } from "node:crypto";
 import { performance } from "node:perf_hooks";
 import { PrismaClient } from "@prisma/client";
@@ -106,146 +106,7 @@ export type SpeakingRouteDependencies = {
 
 const createState = (): SpeakingRouteState => ({ ...createInMemorySpeakingState(), requestWindows: new Map() });
 
-const cloneRubric = () => DEFAULT_SPEAKING_RUBRIC.map((criterion) => ({ ...criterion }));
-
-const templateInputs: Array<SpeakingCreateActivityInput & { id: string }> = [
-  {
-    id: "template-restaurant",
-    title: "At the Restaurant",
-    scenario: "The student is ordering lunch at a restaurant.",
-    aiRole: "Restaurant worker",
-    studentRole: "Customer",
-    level: "elementary",
-    difficulty: "normal",
-    nativeLanguage: "ja",
-    durationSeconds: 180,
-    identifierMode: "nickname",
-    targetExpressions: ["I'd like...", "Can I have...?", "How much is it?", "That's all, thank you."],
-    scenarioResources: {
-      openingLine: "Hello! What would you like to order?",
-      studentGoal: "Order a meal, ask one question, and close the conversation politely.",
-      suggestedSteps: ["Greet the restaurant worker.", "Order a meal.", "Ask about one item.", "Check your order.", "Thank the worker."],
-      usefulVocabulary: ["menu", "still water", "I'd like…", "That's all, thank you."],
-      referenceItems: [{ label: "Soup", detail: "$5" }, { label: "Sandwich", detail: "$8" }, { label: "Orange juice", detail: "$3" }],
-      imageSrc: "/assets/speaking/scenario-restaurant.webp",
-      imageAlt: "Two classmates ordering lunch together"
-    },
-    rubric: cloneRubric()
-  },
-  {
-    id: "template-shopping",
-    title: "Shopping for Clothes",
-    scenario: "The student wants to buy a T-shirt in a clothing store.",
-    aiRole: "Shop assistant",
-    studentRole: "Customer",
-    level: "elementary",
-    difficulty: "normal",
-    nativeLanguage: "ja",
-    durationSeconds: 300,
-    identifierMode: "nickname",
-    targetExpressions: ["I'd like...", "How much is it?", "Do you have...?", "Can I try it on?"],
-    scenarioResources: {
-      openingLine: "Hi! Can I help you find something today?",
-      studentGoal: "Ask about an item, try it on, and decide what you would like.",
-      suggestedSteps: ["Say what you are looking for.", "Ask about size or color.", "Ask the price.", "Ask to try it on.", "Thank the shop assistant."],
-      usefulVocabulary: ["size", "color", "fitting room", "How much is it?"],
-      referenceItems: [{ label: "Blue T-shirt", detail: "$18" }, { label: "Black hoodie", detail: "$35" }],
-      imageSrc: "/assets/speaking/scenario-shopping.webp",
-      imageAlt: "A student choosing a blue T-shirt with a shop assistant"
-    },
-    rubric: cloneRubric()
-  },
-  {
-    id: "template-directions",
-    title: "Asking for Directions",
-    scenario: "The student is looking for the library and asks a helpful person.",
-    aiRole: "Helpful local",
-    studentRole: "Visitor",
-    level: "beginner",
-    difficulty: "easy",
-    nativeLanguage: "ja",
-    durationSeconds: 120,
-    identifierMode: "anonymous",
-    targetExpressions: ["Excuse me.", "Where is...?", "How can I get to...?", "Thank you."],
-    scenarioResources: {
-      openingLine: "Hello! Are you looking for somewhere nearby?",
-      studentGoal: "Ask for directions, check one detail, and thank your partner.",
-      suggestedSteps: ["Say excuse me.", "Name the place you need.", "Ask how to get there.", "Check one direction.", "Thank your partner."],
-      usefulVocabulary: ["library", "turn left", "turn right", "next to"],
-      imageSrc: "/assets/speaking/scenario-directions.webp",
-      imageAlt: "A local giving directions beside a metro map",
-    },
-    rubric: cloneRubric()
-  },
-  {
-    id: "template-hobbies",
-    title: "Talking About Hobbies",
-    scenario: "The student meets a new classmate and talks about hobbies.",
-    aiRole: "New classmate",
-    studentRole: "Student",
-    level: "elementary",
-    difficulty: "normal",
-    nativeLanguage: "ja",
-    durationSeconds: 180,
-    identifierMode: "nickname",
-    targetExpressions: ["I like...", "I enjoy...", "How about you?", "Me too!"],
-    scenarioResources: {
-      openingLine: "Hi! What do you like to do in your free time?",
-      studentGoal: "Share one hobby and ask your partner about theirs.",
-      suggestedSteps: ["Share one hobby.", "Give one detail.", "Ask your partner a question.", "React to their answer.", "Keep the conversation going."],
-      usefulVocabulary: ["free time", "usually", "on weekends", "How about you?"],
-      imageSrc: "/assets/speaking/scenario-hobbies.webp",
-      imageAlt: "Two classmates talking about their hobbies",
-    },
-    rubric: cloneRubric()
-  },
-  {
-    id: "template-weekend",
-    title: "Weekend Plans",
-    scenario: "The student and a friend make plans for the weekend.",
-    aiRole: "Friend",
-    studentRole: "Student",
-    level: "lower_intermediate",
-    difficulty: "challenge",
-    nativeLanguage: "ja",
-    durationSeconds: 300,
-    identifierMode: "nickname",
-    targetExpressions: ["What are you going to do?", "Would you like to...?", "That sounds fun.", "How about Saturday?"],
-    scenarioResources: {
-      openingLine: "Hi! Do you have any plans for the weekend?",
-      studentGoal: "Suggest a plan, ask about timing, and respond to your partner.",
-      suggestedSteps: ["Ask about plans.", "Suggest one activity.", "Ask about a day or time.", "Respond to the suggestion.", "Agree on a next step."],
-      usefulVocabulary: ["Saturday", "Sunday", "available", "That sounds fun."],
-      imageSrc: "/assets/speaking/scenario-weekend.webp",
-      imageAlt: "Two friends planning a weekend together",
-    },
-    rubric: cloneRubric()
-  },
-  {
-    id: "template-introduction",
-    title: "Self Introduction",
-    scenario: "The student meets someone new and shares a few things about themselves.",
-    aiRole: "New friend",
-    studentRole: "Student",
-    level: "beginner",
-    difficulty: "easy",
-    nativeLanguage: "ja",
-    durationSeconds: 120,
-    identifierMode: "nickname",
-    targetExpressions: ["My name is...", "I am from...", "I like...", "Nice to meet you."],
-    scenarioResources: {
-      openingLine: "Hi! Nice to meet you. What is your name?",
-      studentGoal: "Introduce yourself and ask your new partner one question.",
-      suggestedSteps: ["Say your name.", "Share where you are from.", "Share one interest.", "Ask your partner a question.", "Say nice to meet you."],
-      usefulVocabulary: ["name", "from", "school", "Nice to meet you."],
-      imageSrc: "/assets/speaking/scenario-introduction.webp",
-      imageAlt: "Two students introducing themselves at school",
-    },
-    rubric: cloneRubric()
-  }
-];
-
-type TemplateInput = (typeof templateInputs)[number];
+type TemplateInput = SpeakingCreateActivityInput & { id: string };
 
 const makeTemplate = (input: TemplateInput, now: string): SpeakingActivity => ({
   id: input.id,
@@ -262,7 +123,7 @@ const makeTemplate = (input: TemplateInput, now: string): SpeakingActivity => ({
   identifierMode: input.identifierMode,
   targetExpressions: [...input.targetExpressions],
   rubric: input.rubric.map((criterion) => ({ ...criterion })),
-  ...(input.scenarioResources ? { scenarioResources: { ...input.scenarioResources, ...(input.scenarioResources.suggestedSteps ? { suggestedSteps: [...input.scenarioResources.suggestedSteps] } : {}), ...(input.scenarioResources.usefulVocabulary ? { usefulVocabulary: [...input.scenarioResources.usefulVocabulary] } : {}), ...(input.scenarioResources.referenceItems ? { referenceItems: input.scenarioResources.referenceItems.map((item) => ({ ...item })) } : {}) } } : {}),
+  ...(input.scenarioResources ? { scenarioResources: { ...input.scenarioResources, ...(input.scenarioResources.communicationSkills ? { communicationSkills: [...input.scenarioResources.communicationSkills] } : {}), ...(input.scenarioResources.successConditions ? { successConditions: [...input.scenarioResources.successConditions] } : {}), ...(input.scenarioResources.suggestedSteps ? { suggestedSteps: [...input.scenarioResources.suggestedSteps] } : {}), ...(input.scenarioResources.usefulVocabulary ? { usefulVocabulary: [...input.scenarioResources.usefulVocabulary] } : {}), ...(input.scenarioResources.referenceItems ? { referenceItems: input.scenarioResources.referenceItems.map((item) => ({ ...item })) } : {}) } } : {}),
   createdAt: now,
   updatedAt: now
 });
@@ -451,7 +312,7 @@ export const registerSpeakingRoutes = (app: Application, deps: SpeakingRouteDepe
   const conversationProvider = deps.conversationProvider ?? defaults.conversation;
   const helpProvider = deps.helpProvider ?? defaults.help;
   const evaluationProvider = deps.evaluationProvider ?? defaults.evaluation;
-  const templates = templateInputs.map((input) => makeTemplate(input, deps.now()));
+  const templates = SPEAKING_CORE_LIBRARY.map((input) => makeTemplate(input, deps.now()));
   const allowTextInput = deps.allowTextInput ?? (!deps.providers && !deps.prisma);
   const environmentSessionLifetime = Number.parseInt(process.env.SPEAKING_SESSION_LIFETIME_SECONDS ?? "", 10);
   const configuredSessionLifetime = deps.sessionLifetimeSeconds ?? (Number.isFinite(environmentSessionLifetime) ? environmentSessionLifetime : SPEAKING_LIMITS.sessionLifetimeSeconds);
@@ -650,7 +511,7 @@ export const registerSpeakingRoutes = (app: Application, deps: SpeakingRouteDepe
             reliableAudioTiming: studentTurns.length > 0 && interactionMetadata.reliableAudioTurnCount === studentTurns.length,
             studentAudioDurationMs
           };
-          const prompt = buildEvaluationPrompt({ activity: result.activity, turns: result.turns, rubric: result.activity.rubric, timingMetadata, helpMetadata: { helpCount: current.helpCount, helpedTurnCount: interactionMetadata.helpedTurnCount }, interactionMetadata });
+          const prompt = buildEvaluationPrompt({ activity: result.activity, turns: result.turns, rubric: result.activity.rubric, setFocus: result.session.speakingSetFocusSnapshot, timingMetadata, helpMetadata: { helpCount: current.helpCount, helpedTurnCount: interactionMetadata.helpedTurnCount }, interactionMetadata });
           promptChars = prompt.length;
           rememberEvaluationMetric(evaluationTelemetry.promptChars, promptChars);
           const workloadQueuedAt = performance.now();
@@ -847,11 +708,12 @@ export const registerSpeakingRoutes = (app: Application, deps: SpeakingRouteDepe
   app.post("/api/speaking/sets", deps.requireTeacher, async (req: AuthedRequest, res) => {
     const name = typeof req.body?.name === "string" ? req.body.name.trim() : "";
     const description = typeof req.body?.description === "string" ? req.body.description.trim() : "";
-    if (!name || name.length > 120 || description.length > 500) {
-      res.status(400).json({ error: "Enter a Set name up to 120 characters." });
+    const focus = req.body?.focus === undefined ? "" : typeof req.body.focus === "string" ? req.body.focus.trim() : undefined;
+    if (!name || name.length > 120 || description.length > 500 || focus === undefined || focus.length > 500) {
+      res.status(400).json({ error: "Enter a Set name up to 120 characters and keep its description and focus within 500 characters." });
       return;
     }
-    const set = await repository.createSet(req.user!.id, { name, description }, deps.id(), deps.now());
+    const set = await repository.createSet(req.user!.id, { name, description, focus }, deps.id(), deps.now());
     res.status(201).json({ set });
   });
 
@@ -867,11 +729,12 @@ export const registerSpeakingRoutes = (app: Application, deps: SpeakingRouteDepe
   app.patch("/api/speaking/sets/:setId", deps.requireTeacher, async (req: AuthedRequest, res) => {
     const name = req.body?.name === undefined ? undefined : typeof req.body.name === "string" ? req.body.name.trim() : "";
     const description = req.body?.description === undefined ? undefined : typeof req.body.description === "string" ? req.body.description.trim() : "";
-    if ((name !== undefined && (!name || name.length > 120)) || (description !== undefined && description.length > 500)) {
-      res.status(400).json({ error: "Check the Set name and description." });
+    const focus = req.body?.focus === undefined ? undefined : typeof req.body.focus === "string" ? req.body.focus.trim() : null;
+    if ((name !== undefined && (!name || name.length > 120)) || (description !== undefined && description.length > 500) || focus === null || (focus !== undefined && focus.length > 500)) {
+      res.status(400).json({ error: "Check the Set name, description, and focus." });
       return;
     }
-    const set = await repository.updateSet(req.user!.id, String(req.params.setId), { ...(name === undefined ? {} : { name }), ...(description === undefined ? {} : { description }) }, deps.now());
+    const set = await repository.updateSet(req.user!.id, String(req.params.setId), { ...(name === undefined ? {} : { name }), ...(description === undefined ? {} : { description }), ...(focus === undefined ? {} : { focus }) }, deps.now());
     if (!set) {
       res.status(404).json({ error: "We couldn’t find that Set." });
       return;
@@ -1025,7 +888,7 @@ export const registerSpeakingRoutes = (app: Application, deps: SpeakingRouteDepe
     let session: SpeakingSession | undefined;
     for (let attempt = 0; attempt < 3 && !session; attempt += 1) {
       try {
-        session = await repository.createSession({ id: deps.id(), activity, joinCode: await makeJoinCode(repository), createdAt, expiresAt, ...(set ? { speakingSetId: set.id, speakingSetNameSnapshot: set.name } : {}) });
+        session = await repository.createSession({ id: deps.id(), activity, joinCode: await makeJoinCode(repository), createdAt, expiresAt, ...(set ? { speakingSetId: set.id, speakingSetNameSnapshot: set.name, speakingSetFocusSnapshot: set.focus } : {}) });
       } catch (error) {
         if (attempt === 2) throw error;
       }

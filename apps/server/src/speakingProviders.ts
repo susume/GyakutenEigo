@@ -59,6 +59,7 @@ export interface EvaluationProvider {
     participantId: string;
     /** Prepared once by the route for prompt-size telemetry and provider reuse. */
     prompt?: string;
+    setFocus?: string;
     timingMetadata?: { startedAt?: string; finishedAt?: string; durationSeconds?: number; reliableAudioTiming?: boolean; studentAudioDurationMs?: number };
     helpMetadata?: { helpCount: number; helpedTurnCount: number };
     interactionMetadata?: { studentTurnCount: number; independentResponseCount: number; helpedTurnCount: number; aiRepairPromptCount: number; repeatedQuestionCount: number; reliableAudioTurnCount: number };
@@ -253,10 +254,13 @@ export const mockHelpProvider: HelpProvider = {
 
 const mockReason = (criterion: SpeakingRubricCriterion, studentTurnCount: number, helpCount: number, language: SpeakingActivity["nativeLanguage"]) => {
   const japanese = language === "ja";
+  if (criterion.id === "task_achievement") return studentTurnCount > 0 ? (japanese ? "課題の目的に向かって英語で取り組めました。" : "You worked toward the goal of the task.") : (japanese ? "課題に取り組む英語の発話がありませんでした。" : "There was not enough speech to show progress on the task.");
   if (criterion.id === "communication") return studentTurnCount > 0 ? (japanese ? "言いたいことを英語で伝えようとできました。" : "You tried to communicate your idea in English.") : (japanese ? "まだ英語で伝える場面がありませんでした。" : "There was not enough speech to show this skill.");
   if (criterion.id === "interaction") return studentTurnCount > 1 ? (japanese ? "相手の質問に答えて、会話を続けられました。" : "You responded and kept the conversation moving.") : (japanese ? "次は相手の質問に答えてみましょう。" : "Next time, try responding to the other person's question.");
+  if (criterion.id === "language_range_control") return studentTurnCount > 0 ? (japanese ? "場面に合う言葉と文の形を使えました。" : "You used words and sentence patterns that fit the situation.") : (japanese ? "場面に合う英語の言葉を1つ使ってみましょう。" : "Try one English word or sentence pattern that fits the situation.");
   if (criterion.id === "vocabulary") return studentTurnCount > 0 ? (japanese ? "場面に合う英語の言葉を使えました。" : "You used words that fit the situation.") : (japanese ? "場面に合う英語を1つ使ってみましょう。" : "Try one English expression that fits the situation.");
   if (criterion.id === "grammar") return studentTurnCount > 0 ? (japanese ? "少し直すところがあっても、意味は伝わりました。" : "Your sentences communicated the meaning, even with small fixes to make.") : (japanese ? "短い文から練習してみましょう。" : "Start with one short sentence.");
+  if (criterion.id === "communication_fluency") return studentTurnCount > 0 ? (japanese ? "伝えたいことを、分かりやすい英語で表せました。" : "You expressed your message clearly in English.") : (japanese ? "伝えたいことを英語で表す練習をしましょう。" : "Practice expressing one message in English.");
   if (criterion.id !== "fluency") return studentTurnCount > 0 ? (japanese ? "この活動に合う英語を使って、課題に取り組めました。" : "You used English that fit this activity.") : (japanese ? "この活動に合う英語を1つ使ってみましょう。" : "Try one expression that fits this activity.");
   return helpCount > 0
     ? (japanese ? "ヒントを使いながら、最後まで話そうとできました。" : "You kept trying, even with support.")
@@ -266,7 +270,7 @@ const mockReason = (criterion: SpeakingRubricCriterion, studentTurnCount: number
 export const mockEvaluationProvider: EvaluationProvider = {
   providerName: "mock",
   async evaluate(input) {
-    void (input.prompt ?? buildEvaluationPrompt({ activity: input.activity, turns: input.turns, rubric: input.activity.rubric, timingMetadata: input.timingMetadata, helpMetadata: input.helpMetadata, interactionMetadata: input.interactionMetadata }));
+    void (input.prompt ?? buildEvaluationPrompt({ activity: input.activity, turns: input.turns, rubric: input.activity.rubric, setFocus: input.setFocus, timingMetadata: input.timingMetadata, helpMetadata: input.helpMetadata, interactionMetadata: input.interactionMetadata }));
     const studentTurns = latestStudentTurns(input.turns);
     const scores: Record<string, number | null> = {};
     const evidence: Record<string, string> = {};
@@ -427,7 +431,7 @@ const evaluationSchema = {
   type: "object",
   additionalProperties: false,
   properties: {
-    scores: { type: "object", additionalProperties: { anyOf: [{ type: "integer", minimum: 1, maximum: 4 }, { type: "null" }] } },
+    scores: { type: "object", additionalProperties: { anyOf: [{ type: "integer", minimum: 0, maximum: 4 }, { type: "null" }] } },
     evidence: { type: "object", additionalProperties: { type: "string" } },
     strengths: { type: "array", items: { type: "string" }, maxItems: 5 },
     improvements: { type: "array", items: { type: "string" }, maxItems: 5 },
@@ -466,7 +470,7 @@ export const openAiEvaluationProvider: EvaluationProvider = {
       temperature: 0.2,
       max_tokens: 1_200,
       response_format: { type: "json_schema", json_schema: { name: "speaking_evaluation", strict: true, schema: evaluationSchema } },
-      messages: [{ role: "system", content: input.prompt ?? buildEvaluationPrompt({ activity: input.activity, turns: input.turns, rubric: input.activity.rubric, timingMetadata: input.timingMetadata, helpMetadata: input.helpMetadata, interactionMetadata: input.interactionMetadata }) }]
+      messages: [{ role: "system", content: input.prompt ?? buildEvaluationPrompt({ activity: input.activity, turns: input.turns, rubric: input.activity.rubric, setFocus: input.setFocus, timingMetadata: input.timingMetadata, helpMetadata: input.helpMetadata, interactionMetadata: input.interactionMetadata }) }]
     }, process.env, "evaluation");
     const output = parseJsonResponse<Partial<Omit<SpeakingEvaluation, "participantId" | "language" | "createdAt">>>(raw);
     const scores = output.scores && typeof output.scores === "object" ? output.scores : {};
@@ -557,9 +561,9 @@ export const geminiEvaluationProvider: EvaluationProvider = {
       system_instruction: {
         parts: [{
           text: [
-            input.prompt ?? buildEvaluationPrompt({ activity: input.activity, turns: input.turns, rubric: input.activity.rubric, timingMetadata: input.timingMetadata, helpMetadata: input.helpMetadata, interactionMetadata: input.interactionMetadata }),
+            input.prompt ?? buildEvaluationPrompt({ activity: input.activity, turns: input.turns, rubric: input.activity.rubric, setFocus: input.setFocus, timingMetadata: input.timingMetadata, helpMetadata: input.helpMetadata, interactionMetadata: input.interactionMetadata }),
             "Return only valid JSON with exactly these fields: scores, evidence, strengths, improvements, usefulEnglish, goalCompletion, and overallMessage.",
-            "scores must contain only enabled rubric IDs with an integer from 1 to 4 or null. evidence must contain one short string for every score. usefulEnglish must be an array of objects with said, try, and sourceTurnId strings; said must exactly match a student transcript turn. goalCompletion must contain completed and requirements with evidenceTurnIds."
+            "scores must contain only enabled rubric IDs with an integer from 0 to 4 or null. evidence must contain one short string for every score. usefulEnglish must be an array of objects with said, try, and sourceTurnId strings; said must exactly match a student transcript turn. goalCompletion must contain completed and requirements with evidenceTurnIds."
           ].join("\n")
         }]
       },

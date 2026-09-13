@@ -77,7 +77,7 @@ export function ResultPanel({
           </ul>
         </div>
       )}
-      <p className="speaking-rubric-intro">{evaluation.language === "ja" ? "評価基準と会話の根拠 · 各項目4点満点" : "Rubric and conversation evidence · Each criterion is scored out of 4"}</p>
+      <p className="speaking-rubric-intro">{evaluation.language === "ja" ? "評価基準と会話の根拠 · 各項目0〜4点" : "Rubric and conversation evidence · Each criterion is scored from 0 to 4"}</p>
       <div className="speaking-score-grid">
         {activity.rubric
           .filter((criterion) => criterion.enabled)

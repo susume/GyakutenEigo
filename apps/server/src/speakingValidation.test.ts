@@ -38,13 +38,15 @@ test("pronunciation-like rubric scoring is rejected even if a provider returns i
   assert.throws(() => validateSpeakingEvaluation(output, pronunciationActivity, "participant-1"), /Pronunciation scoring/);
 });
 
-test("nullable rubric scores are not scored, while invalid and unknown scores are rejected", async () => {
+test("nullable rubric scores are not scored, zero is a valid demonstrated score, and unknown scores are rejected", async () => {
   const valid = await mockEvaluationProvider.evaluate({ activity, turns: [], participantId: "participant-1", helpMetadata: { helpCount: 0, helpedTurnCount: 0 } });
   const notScored = { ...valid, scores: { communication: null }, evidence: { communication: "Not enough evidence." } };
   const accepted = validateSpeakingEvaluation(notScored, activity, "participant-1");
   assert.equal(accepted.scores.communication, null);
   assert.equal(speakingOverallScore(accepted), undefined);
-  assert.throws(() => validateSpeakingEvaluation({ ...valid, assessmentStatus: "scored", scores: { communication: 0 }, evidence: { communication: "Invalid" } }, activity, "participant-1"), /invalid data/);
+  const zero = validateSpeakingEvaluation({ ...valid, assessmentStatus: "scored", scores: { communication: 0 }, evidence: { communication: "The student did not yet communicate the task." } }, activity, "participant-1");
+  assert.equal(zero.scores.communication, 0);
+  assert.equal(speakingOverallScore(zero), 0);
   assert.throws(() => validateSpeakingEvaluation({ ...valid, assessmentStatus: "scored", scores: { communication: 5 }, evidence: { communication: "Invalid" } }, activity, "participant-1"), /invalid data/);
   assert.throws(() => validateSpeakingEvaluation({ ...valid, scores: { communication: null, unknown: null }, evidence: { communication: "Evidence", unknown: "Evidence" } }, activity, "participant-1"), /rubric criteria/);
 });

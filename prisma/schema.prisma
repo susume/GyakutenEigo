@@ -342,6 +342,7 @@ model SpeakingSet {
   teacher     User                 @relation(fields: [teacherId], references: [id], onDelete: Cascade)
   name        String
   description String               @default("")
+  focus       String               @default("")
   createdAt   DateTime             @default(now())
   updatedAt   DateTime             @updatedAt
   activities  SpeakingSetActivity[]
@@ -378,6 +379,7 @@ model SpeakingSession {
   // Historical scalar context, not a FK: deleting a Set must preserve reports.
   speakingSetId String?
   speakingSetNameSnapshot String?
+  speakingSetFocusSnapshot String?
   @@index([speakingSetId, status])
   id                   String                @id @default(cuid())
   activityId           String

@@ -667,3 +667,97 @@ final result: passed
 No actionable P0, P1, or P2 visual, responsive, accessibility, or interaction mismatch remains for this splash-page redesign.
 
 final result: passed
+
+# Teacher Speaking Practice Dashboard — Product Design QA (2026-09-13)
+
+## Visual truth and scope
+
+- Source visual truth: `C:\Users\hungb\Downloads\ChatGPT Image Sep 13, 2026, 09_21_21 AM.png`.
+- Implementation: local teacher route at `http://127.0.0.1:5173/quiz-strike/teacher/speaking`.
+- Scope: redesigned the embedded Speaking Practice workspace while preserving the existing GyakutenEigo teacher header, navigation, sidebar, and shared app shell.
+- The supplied dashboard mockup was treated as design context; the implementation keeps the existing backend and auth boundaries intact.
+
+## States and interactions checked
+
+- Performance Tests tab with search, category, communication-skill, source, and sort controls.
+- Core Library tab with all 30 built-in junior-high scenarios, category/skill filters, real illustrations, and Built-in labels.
+- Core Library search for `train` returned exactly four scenarios: Asking for Train Directions, At a Train Station, Giving Train Directions, and Using Public Transportation.
+- Preview dialog exposes the goal, AI context, possible complication, success conditions, and communication skills; Escape closes it and returns focus to the triggering Preview button.
+- New Performance Test choice offers Core Library and Start from scratch; the scratch editor exposes open-ended task fields, categories, skills, optional support, and rubric controls without teacher-facing level/difficulty concepts.
+- Sets navigation remains available from the primary tab row, and row actions retain launch/open, edit, duplicate, add-to-set, and confirmed delete paths.
+- Unsaved editor changes trigger a leave confirmation.
+
+## Fidelity and accessibility checks
+
+- Screenshot review confirms the intended pale blue-gray workspace, navy typography, blue accent, green primary actions, white bordered cards, rounded controls, and compact teacher-tool hierarchy.
+- The final Core Library DOM contained 30 cards, no rendered Beginner/Intermediate/Easy/Hard/Level/Difficulty labels, and no horizontal overflow (`scrollWidth === clientWidth === 1521`).
+- Core cards and dialog content use semantic headings, buttons, labels, dialog semantics, keyboard focus styles, and descriptive image alt text.
+- The schema retains hidden legacy level/difficulty compatibility fields, but the dashboard, core content, and AI prompts no longer expose or depend on them.
+- Dev preview limitation: owned Performance Tests and Sets require an authenticated teacher API session; when unavailable, the built-in Core Library remains usable and the UI presents a clear recovery message.
+
+## Verification
+
+- `npm run typecheck`: passed.
+- `npm run build`: passed; the existing Vite large-chunk advisory remains.
+- `npm run test`: passed — shared 140/140, server 158/158, web 259/259, proxy 7/7.
+- `npm run lint -- --quiet`: passed.
+- `git diff --check`: passed; only the repository's existing LF/CRLF normalization warnings remain.
+
+The initial review covered the listed states. Its broad completion claim was superseded by the follow-up audit below, which found editor and accessibility regressions.
+
+final result: passed
+
+## Follow-up functional audit — 2026-09-13
+
+Fixed:
+
+- Scenario editor normalization removed spaces, newlines and cleared values during typing. Draft values now remain raw until saving, including reference-material delimiters.
+- Customized templates retained Built-in metadata and lacked source attribution. Saved copies now set builtIn=false and retain sourceTemplateId.
+- Failed edit loads exposed an unrelated fallback template with Save controls. They now show an error view without an editable form.
+- Template selection could overwrite unsaved changes without confirmation. Replacement now requires confirmation.
+- Preview focus stayed outside the modal. It now enters the modal, wraps in both Tab directions, and returns to the trigger after Escape.
+- Preview omitted the AI role and assessment rubric. Both are now displayed.
+- Core Recently used sorting ignored session history. It now sorts by the latest session of the teacher's corresponding template copies.
+- Legacy records displayed a fallback category but did not match that category's filter. Display and filtering now use the same fallback.
+- Restored the direct Edit overflow action; removed the unused six-template server array.
+
+Verification for this audit:
+
+- Updated browser persistence regression types spaces character by character and enters multiline success conditions, then creates, reopens, edits and saves through the authenticated API.
+- Added dashboard regression checks for 30 core cards, category/skill filters, preview focus wrapping and Escape, customized-copy metadata, My versions filtering, direct Edit, and failed edit loading.
+- The dashboard browser test checked document overflow at 1366, 768 and 390 pixels.
+- Both focused browser tests passed against the production build.
+- Full production build, web TypeScript including E2E types, and repository lint passed. Existing large-chunk advisory remains.
+- The previous full unit-suite results above belong to the initial implementation; this audit ran the focused browser regressions.
+- No database migration or commit was created.
+
+## Completion follow-up — 2026-09-13
+
+The two gaps identified above are now implemented end-to-end:
+
+- Set-level focus is editable on Set create/detail screens, validated and persisted in both repositories, snapshotted when a test is launched from a Set, included in evaluation as an assessment emphasis rather than a language restriction, and preserved on historical sessions when the Set is later edited.
+- New activities and Core Library activities now use the requested four-criterion default rubric: Task Achievement, Interaction, Language Range & Control, and Communication & Fluency. Rubric scores use the 0–4 contract; `null` remains reserved for insufficient evidence, and legacy custom rubric records remain readable.
+
+Verification for completion:
+
+- `npm run typecheck`: passed.
+- `npm run build`: passed; the existing Vite large-chunk advisory remains.
+- `npm run lint -- --quiet`: passed.
+- `npx prisma validate` with a task-local PostgreSQL URL: passed.
+- Shared unit tests: passed — 141/141.
+- Server unit tests: passed — 158/158.
+- Web unit tests: passed — 259/259.
+- Focused dashboard browser regressions: passed — 2/2, including Set focus persistence, launch snapshots, and the four default rubric IDs.
+- `git diff --check`: passed; only the repository's existing LF/CRLF normalization warnings remain.
+
+Result: the set-level focus and four-criterion default rubric findings were addressed. The subsequent audit below found additional issues; the earlier checks were not proof of full brief completion.
+
+## Additional functional audit — 2026-09-13
+
+Fixed three issues:
+
+- Individual tests lacked a free-text teacher focus and communication-skill selections were absent from evaluation prompts. Added a bounded optional teacherFocus field to the existing scenario JSON, an editor field, preservation on reopen/customization, and evaluation context that combines individual focus, Set focus, and communication opportunities without making them compulsory language requirements. No additional database migration is needed for this JSON field.
+- The evaluator's blanket timing instruction contradicted the combined Communication & Fluency criterion. Restricted the timing-dependent null rule to the legacy standalone fluency criterion; combined communication scoring can use transcript evidence without unsupported audio claims.
+- Cancelling a Set edit retained discarded values. Closing the editor now restores saved name, description, and focus.
+
+Validation: production build and lint passed; 19 targeted shared/server tests passed; both browser regression tests passed, including typing spaces in teacher focus, saving/reopening it, Set cancellation, launch snapshots, preview keyboard handling, and responsive overflow checks. Git diff whitespace check passed with existing line-ending warnings. The existing Vite large-chunk advisory remains. Deployment database migration and live AI-provider behavior were not exercised in this pass.

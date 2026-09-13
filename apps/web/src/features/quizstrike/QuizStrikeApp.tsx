@@ -59,12 +59,14 @@ const StudentExperience = lazy(() => import("./student/StudentExperience"));
 type ApiWakeState = "waking" | "ready" | "slow";
 const TOURNAMENT_TEACHER_RETURN_KEY = "quizstrike_tournament_teacher_return";
 const SPEAKING_TEACHER_RETURN_KEY = "quizstrike_speaking_teacher_return";
+const DEV_TEACHER_PREVIEW: TeacherUser = { id: "teacher-preview", name: "Peter Hoang", email: "preview@gyakuteneigo.local", role: "teacher" };
 
 export default function App() {
   const [routePath, setRoutePath] = useState(() => normalizeRoutePath(window.location.pathname));
   const isJoinRoute = routePath === "/join";
   const isGameRoute = routePath === "/game";
   const isSpeakingTeacherRoutePath = isSpeakingTeacherRoute(routePath);
+  const isTeacherDashboardPreview = import.meta.env.DEV && isTeacherSpeakingRoute(routePath) && new URLSearchParams(window.location.search).get("teacherPreview") === "1";
   const isQuizStrikeRoute = routePath === "/quiz-strike" || routePath.startsWith("/quiz-strike/") || isSpeakingTeacherRoutePath;
   const isCharacterLabRoute = routePath === "/character-lab";
   const isTournamentStudyRoute = routePath.startsWith("/tournament-study/");
@@ -260,7 +262,7 @@ export default function App() {
       />}
       {mode === "tournamentStudy" && <Suspense fallback={<FeatureLoading label="Loading tournament study" />}><TournamentStudyPage tournamentId={decodeURIComponent(routePath.slice("/tournament-study/".length))} /></Suspense>}
       {mode === "characterLab" && (isCharacterLabAvailable ? <CharacterLab /> : <InternalToolNotice onReturn={() => navigateTo("/quiz-strike", "quizStrike")} />)}
-      {mode === "teacher" && <Suspense fallback={<FeatureLoading label="Loading teacher workspace" />}><TeacherWorkspace teacher={teacher} apiWakeState={apiWakeState} initialMode={teacherAuthMode} initialPath={routePath} onNavigate={navigateTo} onLogout={logout} onAuthed={(user) => {
+      {mode === "teacher" && <Suspense fallback={<FeatureLoading label="Loading teacher workspace" />}><TeacherWorkspace teacher={teacher ?? (isTeacherDashboardPreview ? DEV_TEACHER_PREVIEW : null)} apiWakeState={apiWakeState} initialMode={teacherAuthMode} initialPath={routePath} onNavigate={navigateTo} onLogout={logout} onAuthed={(user) => {
           setTeacher(user);
           const storedReturnTo = sessionStorage.getItem(TOURNAMENT_TEACHER_RETURN_KEY) ?? sessionStorage.getItem(SPEAKING_TEACHER_RETURN_KEY);
           const returnTo = storedReturnTo

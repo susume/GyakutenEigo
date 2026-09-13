@@ -33,6 +33,36 @@ export const SPEAKING_NATIVE_LANGUAGE_LABELS: Record<SpeakingNativeLanguage, str
   en: "English"
 };
 
+export const SPEAKING_CATEGORIES = [
+  "Everyday Communication",
+  "Shopping & Services",
+  "Food & Restaurants",
+  "Travel & Transportation",
+  "School & Social Life",
+  "Help & Problem Solving",
+  "Opinions & Decisions",
+  "Japan & Cultural Exchange"
+] as const;
+
+export type SpeakingCategory = (typeof SPEAKING_CATEGORIES)[number];
+
+export const SPEAKING_COMMUNICATION_SKILLS = [
+  "Asking questions",
+  "Sharing information",
+  "Describing",
+  "Explaining",
+  "Clarifying",
+  "Requesting",
+  "Comparing",
+  "Giving reasons",
+  "Recommending",
+  "Making suggestions",
+  "Giving opinions",
+  "Negotiating",
+  "Problem solving",
+  "Follow-up questions"
+] as const;
+
 export const SPEAKING_IDENTIFIER_MODES = ["anonymous", "nickname", "student_number"] as const;
 export type SpeakingIdentifierMode = (typeof SPEAKING_IDENTIFIER_MODES)[number];
 
@@ -85,6 +115,15 @@ export interface SpeakingRubricCriterion {
  * supplies a neutral fallback for the student experience.
  */
 export interface SpeakingScenarioResources {
+  teacherFocus?: string;
+  /** Teacher-facing organization metadata. It is optional for legacy records. */
+  category?: string;
+  communicationSkills?: string[];
+  aiContext?: string;
+  possibleComplication?: string;
+  successConditions?: string[];
+  builtIn?: boolean;
+  sourceTemplateId?: string;
   openingLine?: string;
   studentGoal?: string;
   suggestedSteps?: string[];
@@ -95,6 +134,14 @@ export interface SpeakingScenarioResources {
 }
 
 export type SpeakingResolvedScenarioResources = {
+  teacherFocus?: string;
+  category?: string;
+  communicationSkills: string[];
+  aiContext?: string;
+  possibleComplication?: string;
+  successConditions: string[];
+  builtIn?: boolean;
+  sourceTemplateId?: string;
   openingLine: string;
   studentGoal: string;
   suggestedSteps: string[];
@@ -105,6 +152,8 @@ export type SpeakingResolvedScenarioResources = {
 };
 
 export const DEFAULT_SPEAKING_SCENARIO_RESOURCES: SpeakingResolvedScenarioResources = {
+  communicationSkills: [],
+  successConditions: [],
   openingLine: "Hi! Nice to meet you. Can we talk?",
   studentGoal: "Keep the conversation moving with short, clear English.",
   suggestedSteps: [
@@ -129,6 +178,16 @@ const boundedResourceText = (value: string | undefined, fallback: string, max = 
 export const speakingScenarioResources = (
   resources?: SpeakingScenarioResources
 ): SpeakingResolvedScenarioResources => ({
+  ...(resources?.teacherFocus?.trim() ? { teacherFocus: resources.teacherFocus.trim().slice(0, 500) } : {}),
+  ...(resources?.category?.trim() ? { category: resources.category.trim().slice(0, 80) } : {}),
+  communicationSkills: (resources?.communicationSkills ?? [])
+    .map((skill) => skill.trim().slice(0, 80)).filter(Boolean).slice(0, 14),
+  ...(resources?.aiContext?.trim() ? { aiContext: resources.aiContext.trim().slice(0, 500) } : {}),
+  ...(resources?.possibleComplication?.trim() ? { possibleComplication: resources.possibleComplication.trim().slice(0, 500) } : {}),
+  successConditions: (resources?.successConditions ?? [])
+    .map((condition) => condition.trim().slice(0, 220)).filter(Boolean).slice(0, 8),
+  ...(resources?.builtIn !== undefined ? { builtIn: resources.builtIn } : {}),
+  ...(resources?.sourceTemplateId?.trim() ? { sourceTemplateId: resources.sourceTemplateId.trim().slice(0, 120) } : {}),
   openingLine: boundedResourceText(resources?.openingLine, DEFAULT_SPEAKING_SCENARIO_RESOURCES.openingLine),
   studentGoal: boundedResourceText(resources?.studentGoal, DEFAULT_SPEAKING_SCENARIO_RESOURCES.studentGoal),
   suggestedSteps: (resources?.suggestedSteps ?? DEFAULT_SPEAKING_SCENARIO_RESOURCES.suggestedSteps)
@@ -146,33 +205,27 @@ export const speakingScenarioResources = (
 
 export const DEFAULT_SPEAKING_RUBRIC: SpeakingRubricCriterion[] = [
   {
-    id: "communication",
-    name: "Communication",
-    description: "Can the student communicate what they want to say?",
+    id: "task_achievement",
+    name: "Task Achievement",
+    description: "Did the student accomplish the real-world communication goal?",
     enabled: true
   },
   {
     id: "interaction",
     name: "Interaction",
-    description: "Does the student respond and keep the conversation moving?",
+    description: "Did the student understand, respond, ask questions, clarify, and maintain communication?",
     enabled: true
   },
   {
-    id: "vocabulary",
-    name: "Vocabulary",
-    description: "Does the student use useful words and expressions?",
+    id: "language_range_control",
+    name: "Language Range & Control",
+    description: "How effectively did the student use the vocabulary and grammar available to them?",
     enabled: true
   },
   {
-    id: "grammar",
-    name: "Grammar",
-    description: "Are the student’s sentences understandable?",
-    enabled: true
-  },
-  {
-    id: "fluency",
-    name: "Fluency / Comprehensibility",
-    description: "Can the student communicate without too much difficulty?",
+    id: "communication_fluency",
+    name: "Communication & Fluency",
+    description: "How clearly and successfully did the student express themselves?",
     enabled: true
   }
 ];
@@ -220,6 +273,7 @@ export interface SpeakingSession {
   /** Immutable launch context; deliberately retained after a Set is deleted. */
   speakingSetId?: string;
   speakingSetNameSnapshot?: string;
+  speakingSetFocusSnapshot?: string;
   id: string;
   activityId: string;
   joinCode: string;
@@ -244,6 +298,8 @@ export interface SpeakingSetSummary {
   id: string;
   name: string;
   description: string;
+  /** Optional assessment emphasis shared by tests in this Set. */
+  focus: string;
   activityCount: number;
   lastUsedAt?: string;
   createdAt: string;
@@ -384,6 +440,14 @@ export const SpeakingCreateActivityInputSchema = z.object({
   targetExpressions: z.array(z.string().trim().min(1).max(SPEAKING_LIMITS.expression)).max(SPEAKING_LIMITS.expressions),
   rubric: z.array(SpeakingRubricCriterionSchema).min(1).max(SPEAKING_LIMITS.rubricCriteria),
   scenarioResources: z.object({
+    teacherFocus: z.string().trim().max(500).optional(),
+    category: z.string().trim().min(1).max(80).optional(),
+    communicationSkills: z.array(z.string().trim().min(1).max(80)).max(14).optional(),
+    aiContext: z.string().trim().min(1).max(500).optional(),
+    possibleComplication: z.string().trim().min(1).max(500).optional(),
+    successConditions: z.array(z.string().trim().min(1).max(220)).max(8).optional(),
+    builtIn: z.boolean().optional(),
+    sourceTemplateId: z.string().trim().min(1).max(120).optional(),
     openingLine: z.string().trim().min(1).max(240).optional(),
     studentGoal: z.string().trim().min(1).max(240).optional(),
     suggestedSteps: z.array(z.string().trim().min(1).max(160)).max(8).optional(),
@@ -421,7 +485,7 @@ export const SpeakingEvaluationSchema = z.object({
   language: z.enum(SPEAKING_NATIVE_LANGUAGES),
   assessmentStatus: z.enum(SPEAKING_ASSESSMENT_STATUSES).default("scored"),
   notScoredReason: z.string().max(500).optional(),
-  scores: z.record(z.string(), z.number().int().min(1).max(4).nullable()),
+  scores: z.record(z.string(), z.number().int().min(0).max(4).nullable()),
   evidence: z.record(z.string(), z.string().max(500)),
   strengths: z.array(z.string().max(300)).max(5),
   improvements: z.array(z.string().max(300)).max(5),

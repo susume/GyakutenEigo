@@ -171,13 +171,12 @@ export const makeDemoEvaluation = (participantId = "demo-participant"): Speaking
   participantId,
   language: "ja",
   assessmentStatus: "scored",
-  scores: { communication: 4, interaction: 4, vocabulary: 4, grammar: 3, fluency: 3 },
+  scores: { task_achievement: 4, interaction: 4, language_range_control: 3, communication_fluency: 3 },
   evidence: {
-    communication: "ほしい色とサイズを伝えられました。",
+    task_achievement: "ほしい色とサイズを伝えられました。",
     interaction: "質問に答えて、会話を続けられました。",
-    vocabulary: "size や fitting room などの言葉を使えました。",
-    grammar: "少し直すところはありますが、意味はよく伝わりました。",
-    fluency: "ゆっくりでも、最後まで話そうとできました。"
+    language_range_control: "size や fitting room などの言葉を使えました。文の意味もよく伝わりました。",
+    communication_fluency: "ゆっくりでも、最後まで分かりやすく話そうとできました。"
   },
   strengths: ["ほしいTシャツの色とサイズを伝えられました。", "店員さんの質問に答えて、会話を続けられました。"],
   improvements: ["I want ... より I'd like ... を使うと、もっと自然です。"],

@@ -97,8 +97,8 @@ export interface SpeakingRepository {
   deleteSession(teacherId: string, sessionId: string): Promise<boolean>;
   listSets(teacherId: string): Promise<SpeakingSetSummary[]>;
   getSet(teacherId: string, setId: string): Promise<SpeakingSetDetail | undefined>;
-  createSet(teacherId: string, input: { name: string; description?: string }, id: string, now: string): Promise<SpeakingSetSummary>;
-  updateSet(teacherId: string, setId: string, input: { name?: string; description?: string }, now: string): Promise<SpeakingSetSummary | undefined>;
+  createSet(teacherId: string, input: { name: string; description?: string; focus?: string }, id: string, now: string): Promise<SpeakingSetSummary>;
+  updateSet(teacherId: string, setId: string, input: { name?: string; description?: string; focus?: string }, now: string): Promise<SpeakingSetSummary | undefined>;
   deleteSet(teacherId: string, setId: string): Promise<boolean>;
   addSetActivity(teacherId: string, setId: string, activityId: string): Promise<SpeakingSetDetail | undefined>;
   removeSetActivity(teacherId: string, setId: string, activityId: string): Promise<SpeakingSetDetail | undefined>;
@@ -107,6 +107,7 @@ export interface SpeakingRepository {
   createSession(input: {
     speakingSetId?: string;
     speakingSetNameSnapshot?: string;
+    speakingSetFocusSnapshot?: string;
     id: string;
     activity: SpeakingActivity;
     joinCode: string;
@@ -201,6 +202,8 @@ export const snapshotActivity = (activity: SpeakingActivity): SpeakingActivitySn
 
 const cloneScenarioResources = (resources?: SpeakingScenarioResources) => resources ? ({
   ...resources,
+  ...(resources.communicationSkills ? { communicationSkills: [...resources.communicationSkills] } : {}),
+  ...(resources.successConditions ? { successConditions: [...resources.successConditions] } : {}),
   ...(resources.suggestedSteps ? { suggestedSteps: [...resources.suggestedSteps] } : {}),
   ...(resources.usefulVocabulary ? { usefulVocabulary: [...resources.usefulVocabulary] } : {}),
   ...(resources.referenceItems ? { referenceItems: resources.referenceItems.map((item) => ({ ...item })) } : {})
@@ -222,7 +225,7 @@ const cloneActivity = (activity: SpeakingActivity): SpeakingActivity => ({
 });
 
 const cloneSession = (session: SpeakingSession): SpeakingSession => ({
-  ...(session.speakingSetId ? { speakingSetId: session.speakingSetId, speakingSetNameSnapshot: session.speakingSetNameSnapshot } : {}),
+  ...(session.speakingSetId ? { speakingSetId: session.speakingSetId, speakingSetNameSnapshot: session.speakingSetNameSnapshot, ...(session.speakingSetFocusSnapshot === undefined ? {} : { speakingSetFocusSnapshot: session.speakingSetFocusSnapshot }) } : {}),
   id: session.id,
   activityId: session.activityId,
   joinCode: session.joinCode,
@@ -238,7 +241,7 @@ const cloneSession = (session: SpeakingSession): SpeakingSession => ({
 const cloneSetSummary = (summary: SpeakingSetSummary): SpeakingSetSummary => ({ ...summary });
 
 const historicalSetMemberships = (session: SpeakingSession): SpeakingSetSummary[] =>
-  session.speakingSetId ? [{ id: session.speakingSetId, name: session.speakingSetNameSnapshot ?? "Deleted Set", description: "", activityCount: 0, createdAt: session.createdAt, updatedAt: session.createdAt }] : [];
+  session.speakingSetId ? [{ id: session.speakingSetId, name: session.speakingSetNameSnapshot ?? "Deleted Set", description: "", focus: session.speakingSetFocusSnapshot ?? "", activityCount: 0, createdAt: session.createdAt, updatedAt: session.createdAt }] : [];
 
 const sessionForActivity = (state: InMemorySpeakingState, activityId: string) =>
   [...state.sessions.values()]
@@ -434,16 +437,16 @@ export class InMemorySpeakingRepository implements SpeakingRepository {
     return set && set.teacherId === teacherId ? setDetailFromMemory(this.state, set) : undefined;
   }
 
-  async createSet(teacherId: string, input: { name: string; description?: string }, id: string, now: string) {
-    const summary: SpeakingSetSummary = { id, name: input.name.trim().slice(0, 120), description: input.description?.trim().slice(0, 500) ?? "", activityCount: 0, createdAt: now, updatedAt: now };
+  async createSet(teacherId: string, input: { name: string; description?: string; focus?: string }, id: string, now: string) {
+    const summary: SpeakingSetSummary = { id, name: input.name.trim().slice(0, 120), description: input.description?.trim().slice(0, 500) ?? "", focus: input.focus?.trim().slice(0, 500) ?? "", activityCount: 0, createdAt: now, updatedAt: now };
     this.state.sets.set(id, { teacherId, summary, activityIds: new Map() });
     return cloneSetSummary(summary);
   }
 
-  async updateSet(teacherId: string, setId: string, input: { name?: string; description?: string }, now: string) {
+  async updateSet(teacherId: string, setId: string, input: { name?: string; description?: string; focus?: string }, now: string) {
     const set = this.state.sets.get(setId);
     if (!set || set.teacherId !== teacherId) return undefined;
-    set.summary = { ...set.summary, ...(input.name === undefined ? {} : { name: input.name.trim().slice(0, 120) }), ...(input.description === undefined ? {} : { description: input.description.trim().slice(0, 500) }), updatedAt: now };
+    set.summary = { ...set.summary, ...(input.name === undefined ? {} : { name: input.name.trim().slice(0, 120) }), ...(input.description === undefined ? {} : { description: input.description.trim().slice(0, 500) }), ...(input.focus === undefined ? {} : { focus: input.focus.trim().slice(0, 500) }), updatedAt: now };
     return cloneSetSummary(set.summary);
   }
 
@@ -489,7 +492,7 @@ export class InMemorySpeakingRepository implements SpeakingRepository {
   async createSession(input: Parameters<SpeakingRepository["createSession"]>[0]) {
     const session: InMemorySession = {
       id: input.id,
-      ...(input.speakingSetId ? { speakingSetId: input.speakingSetId, speakingSetNameSnapshot: input.speakingSetNameSnapshot } : {}),
+      ...(input.speakingSetId ? { speakingSetId: input.speakingSetId, speakingSetNameSnapshot: input.speakingSetNameSnapshot, ...(input.speakingSetFocusSnapshot === undefined ? {} : { speakingSetFocusSnapshot: input.speakingSetFocusSnapshot }) } : {}),
       activityId: input.activity.id,
       joinCode: input.joinCode,
       status: "ready",
@@ -814,6 +817,8 @@ const objectFromJson = (value: Prisma.JsonValue): Record<string, unknown> => val
 
 const scenarioResourcesFromJson = (value: Prisma.JsonValue): SpeakingScenarioResources | undefined => {
   const source = objectFromJson(value);
+  const communicationSkills = Array.isArray(source.communicationSkills) ? source.communicationSkills.filter((item): item is string => typeof item === "string") : undefined;
+  const successConditions = Array.isArray(source.successConditions) ? source.successConditions.filter((item): item is string => typeof item === "string") : undefined;
   const suggestedSteps = Array.isArray(source.suggestedSteps) ? source.suggestedSteps.filter((item): item is string => typeof item === "string") : undefined;
   const usefulVocabulary = Array.isArray(source.usefulVocabulary) ? source.usefulVocabulary.filter((item): item is string => typeof item === "string") : undefined;
   const referenceItems = Array.isArray(source.referenceItems)
@@ -824,6 +829,13 @@ const scenarioResourcesFromJson = (value: Prisma.JsonValue): SpeakingScenarioRes
     })
     : undefined;
   const resources: SpeakingScenarioResources = {
+    ...(typeof source.category === "string" ? { category: source.category } : {}),
+    ...(communicationSkills ? { communicationSkills } : {}),
+    ...(typeof source.aiContext === "string" ? { aiContext: source.aiContext } : {}),
+    ...(typeof source.possibleComplication === "string" ? { possibleComplication: source.possibleComplication } : {}),
+    ...(successConditions ? { successConditions } : {}),
+    ...(typeof source.builtIn === "boolean" ? { builtIn: source.builtIn } : {}),
+    ...(typeof source.sourceTemplateId === "string" ? { sourceTemplateId: source.sourceTemplateId } : {}),
     ...(typeof source.openingLine === "string" ? { openingLine: source.openingLine } : {}),
     ...(typeof source.studentGoal === "string" ? { studentGoal: source.studentGoal } : {}),
     ...(suggestedSteps ? { suggestedSteps } : {}),
@@ -873,8 +885,8 @@ const toActivity = (row: PrismaActivity): SpeakingActivity => ({
   updatedAt: row.updatedAt.toISOString()
 });
 
-const toSession = (row: Pick<PrismaSession, "id" | "activityId" | "joinCode" | "status" | "createdAt" | "startedAt" | "pausedAt" | "endedAt" | "expiresAt" | "revision"> & Partial<Pick<PrismaSession, "speakingSetId" | "speakingSetNameSnapshot">>): SpeakingSession => ({
-  ...(row.speakingSetId ? { speakingSetId: row.speakingSetId, speakingSetNameSnapshot: row.speakingSetNameSnapshot ?? undefined } : {}),
+const toSession = (row: Pick<PrismaSession, "id" | "activityId" | "joinCode" | "status" | "createdAt" | "startedAt" | "pausedAt" | "endedAt" | "expiresAt" | "revision"> & Partial<Pick<PrismaSession, "speakingSetId" | "speakingSetNameSnapshot" | "speakingSetFocusSnapshot">>): SpeakingSession => ({
+  ...(row.speakingSetId ? { speakingSetId: row.speakingSetId, speakingSetNameSnapshot: row.speakingSetNameSnapshot ?? undefined, ...(row.speakingSetFocusSnapshot === null || row.speakingSetFocusSnapshot === undefined ? {} : { speakingSetFocusSnapshot: row.speakingSetFocusSnapshot }) } : {}),
   id: row.id,
   activityId: row.activityId,
   joinCode: row.joinCode,
@@ -958,10 +970,11 @@ const setInclude = {
   }
 } satisfies Prisma.SpeakingSetInclude;
 
-const toSetSummary = (row: { id: string; name: string; description: string; createdAt: Date; updatedAt: Date }, activityCount: number, lastUsedAt?: Date): SpeakingSetSummary => ({
+const toSetSummary = (row: { id: string; name: string; description: string; focus: string; createdAt: Date; updatedAt: Date }, activityCount: number, lastUsedAt?: Date): SpeakingSetSummary => ({
   id: row.id,
   name: row.name,
   description: row.description,
+  focus: row.focus,
   activityCount,
   ...(lastUsedAt ? { lastUsedAt: lastUsedAt.toISOString() } : {}),
   createdAt: row.createdAt.toISOString(),
@@ -989,9 +1002,9 @@ export class PrismaSpeakingRepository implements SpeakingRepository {
         ...activityInclude,
         sessions: {
           orderBy: [{ createdAt: "desc" }, { id: "desc" }],
-          select: { id: true, activityId: true, joinCode: true, status: true, createdAt: true, startedAt: true, pausedAt: true, endedAt: true, expiresAt: true, revision: true }
+          select: { id: true, activityId: true, joinCode: true, status: true, createdAt: true, startedAt: true, pausedAt: true, endedAt: true, expiresAt: true, revision: true, speakingSetId: true, speakingSetNameSnapshot: true, speakingSetFocusSnapshot: true }
         },
-        setMemberships: { include: { set: { select: { id: true, name: true, description: true, createdAt: true, updatedAt: true } } } }
+        setMemberships: { include: { set: { select: { id: true, name: true, description: true, focus: true, createdAt: true, updatedAt: true } } } }
       },
       orderBy: [{ updatedAt: "desc" }, { id: "desc" }]
     });
@@ -1017,7 +1030,7 @@ export class PrismaSpeakingRepository implements SpeakingRepository {
           orderBy: [{ createdAt: "desc" }, { id: "desc" }],
           include: { participants: { select: { status: true, evaluation: { select: { scoresJson: true } } } } }
         },
-        setMemberships: { include: { set: { select: { id: true, name: true, description: true, createdAt: true, updatedAt: true } } } }
+        setMemberships: { include: { set: { select: { id: true, name: true, description: true, focus: true, createdAt: true, updatedAt: true } } } }
       },
       orderBy: [{ updatedAt: "desc" }, { id: "desc" }]
     });
@@ -1129,15 +1142,15 @@ export class PrismaSpeakingRepository implements SpeakingRepository {
     } satisfies SpeakingSetDetail;
   }
 
-  async createSet(teacherId: string, input: { name: string; description?: string }, id: string, now: string) {
-    const row = await this.prisma.speakingSet.create({ data: { id, teacherId, name: input.name.trim().slice(0, 120), description: input.description?.trim().slice(0, 500) ?? "", createdAt: new Date(now), updatedAt: new Date(now) } });
+  async createSet(teacherId: string, input: { name: string; description?: string; focus?: string }, id: string, now: string) {
+    const row = await this.prisma.speakingSet.create({ data: { id, teacherId, name: input.name.trim().slice(0, 120), description: input.description?.trim().slice(0, 500) ?? "", focus: input.focus?.trim().slice(0, 500) ?? "", createdAt: new Date(now), updatedAt: new Date(now) } });
     return toSetSummary(row, 0);
   }
 
-  async updateSet(teacherId: string, setId: string, input: { name?: string; description?: string }, now: string) {
+  async updateSet(teacherId: string, setId: string, input: { name?: string; description?: string; focus?: string }, now: string) {
     const owned = await this.prisma.speakingSet.findFirst({ where: { id: setId, teacherId } });
     if (!owned) return undefined;
-    const row = await this.prisma.speakingSet.update({ where: { id: setId }, data: { ...(input.name === undefined ? {} : { name: input.name.trim().slice(0, 120) }), ...(input.description === undefined ? {} : { description: input.description.trim().slice(0, 500) }), updatedAt: new Date(now) }, include: { _count: { select: { activities: true } } } });
+    const row = await this.prisma.speakingSet.update({ where: { id: setId }, data: { ...(input.name === undefined ? {} : { name: input.name.trim().slice(0, 120) }), ...(input.description === undefined ? {} : { description: input.description.trim().slice(0, 500) }), ...(input.focus === undefined ? {} : { focus: input.focus.trim().slice(0, 500) }), updatedAt: new Date(now) }, include: { _count: { select: { activities: true } } } });
     return toSetSummary(row, row._count.activities);
   }
 
@@ -1187,6 +1200,7 @@ export class PrismaSpeakingRepository implements SpeakingRepository {
         activityId: input.activity.id,
         speakingSetId: input.speakingSetId,
         speakingSetNameSnapshot: input.speakingSetNameSnapshot,
+        speakingSetFocusSnapshot: input.speakingSetFocusSnapshot,
         joinCode: input.joinCode,
         status: "ready",
         createdAt: new Date(input.createdAt),

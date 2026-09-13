@@ -112,7 +112,7 @@ test("activity edits preserve old session snapshots and update new sessions", as
   assert.equal(snapshotB?.activity.difficulty, "challenge");
   assert.equal(snapshotB?.activity.nativeLanguage, "en");
   assert.deepEqual(snapshotB?.activity.targetExpressions, ["New phrase."]);
-  assert.deepEqual(snapshotB?.activity.rubric.map((criterion) => criterion.id), ["communication"]);
+  assert.deepEqual(snapshotB?.activity.rubric.map((criterion) => criterion.id), ["task_achievement"]);
 });
 
 test("library, sets, reports, and safe deletion preserve the reusable-test model", async () => {

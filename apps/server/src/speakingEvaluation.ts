@@ -100,7 +100,7 @@ const deriveGoalCompletion = (activity: SpeakingActivity, turns: SpeakingTurn[],
   return { completed: requirements.length > 0 && requirements.every((item) => item.status === "completed"), requirements };
 };
 
-const scoreOrNull = (score: number | null | undefined) => typeof score === "number" && Number.isInteger(score) && score >= 1 && score <= 4 ? score : null;
+const scoreOrNull = (score: number | null | undefined) => typeof score === "number" && Number.isInteger(score) && score >= 0 && score <= 4 ? score : null;
 const appendUnique = (items: string[], value: string) => value && !items.includes(value) ? [...items, value] : items;
 const unsupportedTimingClaim = (text: string) => /\b(?:smooth(?:ly)?|hesitat\w*|pauses?|without stopping|fluent(?:ly)?)\b|流暢|流ちょう|すらすら|スラスラ|ためら|よどみ|間を空け|途切れ/iu.test(text);
 
@@ -161,7 +161,7 @@ export const sanitizeSpeakingEvaluation = (
         ? "音声の長さを確認できないため、流暢さは評価しません。"
         : "Fluency was not scored because reliable audio timing was not available; pauses were not judged.";
     }
-    if ((criterion.id === "communication" && incompleteGoal) || (criterion.id === "interaction" && (questionRequirementMissing || interactionMetadata.repeatedQuestionCount > 0))) {
+    if (((criterion.id === "communication" || criterion.id === "task_achievement") && incompleteGoal) || (criterion.id === "interaction" && (questionRequirementMissing || interactionMetadata.repeatedQuestionCount > 0))) {
       if (score !== null) score = Math.min(score, 3);
       criterionEvidence = criterion.id === "interaction" && interactionMetadata.repeatedQuestionCount > 0
         ? activity.nativeLanguage === "ja"
@@ -171,13 +171,13 @@ export const sanitizeSpeakingEvaluation = (
           ? "目標をすべて達成したと確認できないため、この項目は控えめに評価しました。"
           : "The transcript does not confirm completion of every task requirement.";
     }
-    if (criterion.id === "grammar" && malformedOrder) {
+    if ((criterion.id === "grammar" || criterion.id === "language_range_control") && malformedOrder) {
       if (score !== null) score = Math.min(score, 3);
       criterionEvidence = activity.nativeLanguage === "ja"
         ? "注文の文は伝わりました。冠詞と文の形をもう少し練習しましょう。"
         : "Your order was understandable. Practice the article and sentence shape in the example below.";
     }
-    if (criterion.id === "vocabulary" && repeatedStarter) {
+    if ((criterion.id === "vocabulary" || criterion.id === "language_range_control") && repeatedStarter) {
       if (score !== null) score = Math.min(score, 3);
       criterionEvidence = activity.nativeLanguage === "ja"
         ? "同じ始め方が何度か続きました。別の言い方も試しましょう。"

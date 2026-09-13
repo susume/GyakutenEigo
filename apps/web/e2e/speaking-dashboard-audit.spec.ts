@@ -1,0 +1,83 @@
+import { expect, test } from "@playwright/test";
+
+test("core preview traps focus and customization saves an owned version", async ({ page, request }) => {
+  const signup = await request.post("/api/auth/signup", { data: { name: "Dashboard audit", email: `dashboard-${Date.now()}@example.test`, password: "speaking-pass" } });
+  expect(signup.status()).toBe(201);
+  const { token } = await signup.json();
+  await page.addInitScript((value) => localStorage.setItem("quizstrike_token", value), token);
+  await page.goto("/quiz-strike/teacher/speaking/core");
+  await expect(page.locator(".speaking-core-card")).toHaveCount(30);
+  await page.getByLabel("Filter by category").selectOption("Shopping & Services");
+  await expect(page.locator(".speaking-core-card")).toHaveCount(2);
+  await page.getByLabel("Filter by communication skill").selectOption("Comparing");
+  await expect(page.locator(".speaking-core-card")).toHaveCount(2);
+  await page.getByRole("button", { name: "Clear filters" }).click();
+  for (const width of [1366, 768, 390]) {
+    await page.setViewportSize({ width, height: 844 });
+    expect(await page.evaluate(() => document.documentElement.scrollWidth)).toBeLessThanOrEqual(width);
+  }
+  await page.setViewportSize({ width: 1366, height: 844 });
+  await page.getByLabel("Search scenarios", { exact: true }).fill("Buying Clothes");
+  await expect(page.locator(".speaking-core-card")).toHaveCount(1);
+  const trigger = page.getByRole("button", { name: "Preview", exact: true });
+  await trigger.click();
+  const dialog = page.getByRole("dialog");
+  const close = dialog.getByRole("button", { name: "Close preview" });
+  await expect(close).toBeFocused();
+  await close.press("Shift+Tab");
+  await expect(dialog.getByRole("button", { name: "Use as-is" })).toBeFocused();
+  await page.keyboard.press("Tab");
+  await expect(close).toBeFocused();
+  await expect(dialog).toContainText("Assessment");
+  await page.keyboard.press("Escape");
+  await expect(dialog).toHaveCount(0);
+  await expect(trigger).toBeFocused();
+  await page.getByRole("button", { name: "Customize", exact: true }).click();
+  await expect(page.getByLabel("Activity name", { exact: true })).toHaveValue("Buying Clothes");
+  await page.getByLabel("Additional focus or class content").pressSequentially("Notice polite requests and class vocabulary.");
+  await page.getByRole("button", { name: "Create Performance Test", exact: true }).last().click();
+  await expect(page).toHaveURL(/\/activity\/[^/]+$/);
+  const id = new URL(page.url()).pathname.split("/").at(-1);
+  const response = await request.get(`/api/speaking/activities/${id}`, { headers: { Authorization: `Bearer ${token}` } });
+  const { activity } = await response.json();
+  expect(activity.scenarioResources.builtIn).toBe(false);
+  expect(activity.scenarioResources.teacherFocus).toBe("Notice polite requests and class vocabulary.");
+  expect(activity.scenarioResources.sourceTemplateId).toBeTruthy();
+  expect(activity.rubric.map((criterion: { id: string }) => criterion.id)).toEqual(["task_achievement", "interaction", "language_range_control", "communication_fluency"]);
+
+  const setResponse = await request.post("/api/speaking/sets", { headers: { Authorization: `Bearer ${token}` }, data: { name: "Grade 2 Conversation", focus: "Pay particular attention to follow-up questions and clarification." } });
+  expect(setResponse.status()).toBe(201);
+  const { set } = await setResponse.json() as { set: { id: string; focus: string } };
+  expect(set.focus).toBe("Pay particular attention to follow-up questions and clarification.");
+  const addResponse = await request.post(`/api/speaking/sets/${set.id}/activities/${id}`, { headers: { Authorization: `Bearer ${token}` } });
+  expect(addResponse.status()).toBe(200);
+
+  await page.goto(`/quiz-strike/teacher/speaking/set/${set.id}`);
+  await expect(page.getByText("Shared assessment focus", { exact: true })).toBeVisible();
+  await expect(page.getByText("Pay particular attention to follow-up questions and clarification.", { exact: true })).toBeVisible();
+  await page.getByRole("button", { name: "Edit Set", exact: true }).click();
+  const focusInput = page.getByRole("textbox", { name: /Shared assessment focus/ });
+  await focusInput.fill("Discard this focus");
+  await page.getByRole("button", { name: "Cancel", exact: true }).click();
+  await page.getByRole("button", { name: "Edit Set", exact: true }).click();
+  await expect(focusInput).toHaveValue(set.focus);
+  await focusInput.fill("Notice clarification requests and follow-up questions.");
+  await page.getByRole("button", { name: "Save changes", exact: true }).click();
+  await expect(page.getByText("Notice clarification requests and follow-up questions.", { exact: true })).toBeVisible();
+  await page.getByRole("button", { name: "Launch Buying Clothes from Set", exact: true }).click();
+  await expect(page).toHaveURL(new RegExp(`/activity/${id}\\?sessionId=`));
+  const sessionList = await request.get(`/api/speaking/activities/${id}/sessions`, { headers: { Authorization: `Bearer ${token}` } });
+  const sessions = await sessionList.json() as { sessions: Array<{ speakingSetFocusSnapshot?: string }> };
+  expect(sessions.sessions.at(0)?.speakingSetFocusSnapshot).toBe("Notice clarification requests and follow-up questions.");
+
+  await page.goto("/quiz-strike/teacher/speaking");
+  await page.getByLabel("Filter by source").selectOption("mine");
+  await expect(page.locator(".speaking-activity-row")).toContainText("Buying Clothes");
+  await page.getByLabel("More actions for Buying Clothes").click();
+  await page.getByRole("button", { name: "Edit", exact: true }).click();
+  await expect(page.getByRole("heading", { name: "Edit Performance Test" })).toBeVisible();
+  await expect(page.getByLabel("Additional focus or class content")).toHaveValue("Notice polite requests and class vocabulary.");
+  await page.goto("/quiz-strike/teacher/speaking/activity/missing-audit-id/edit");
+  await expect(page.getByRole("heading", { name: "Activity not found" })).toBeVisible();
+  await expect(page.getByRole("button", { name: "Save changes", exact: true })).toHaveCount(0);
+});
