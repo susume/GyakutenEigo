@@ -33,7 +33,7 @@ test("Set launch persists history and deleted Sets remain filterable in Reports"
   expect((await request.delete(`/api/speaking/sets/${set.id}`, { headers })).ok()).toBeTruthy();
   await page.goto("/quiz-strike/teacher/speaking/reports");
   await expect(page.getByRole("heading", { name: "Speaking reports" })).toBeVisible();
-  await page.getByLabel("Filter speaking reports by Set").selectOption(set.id);
+  await page.getByLabel("Filter speaking reports by My Set").selectOption(set.id);
   await expect(page.locator(".speaking-report-row")).toContainText(set.name);
   for (const width of [1366, 768, 390]) {
     await page.setViewportSize({ width, height: 844 });

@@ -192,19 +192,24 @@
    rules intentionally come after the legacy bounded laptop composition so
    the current transcript/sidebar design is the final desktop cascade. */
 @media (min-width: 861px) and (min-height: 560px) {
-  .speaking-session-main {
+  /* speaking.css contains the visual desktop composition later in the
+     cascade. Keep these structural constraints more specific so the
+     desktop workspace remains bounded and the transcript can scroll. */
+  .speaking-app .speaking-session-main {
     height: 100dvh;
     min-height: 100dvh;
     overflow: hidden;
   }
 
-  .speaking-student-screen {
+  .speaking-app .speaking-student-screen {
+    flex: 1 1 auto;
     height: auto;
     min-height: 0;
     overflow: hidden;
   }
 
-  .speaking-student-grid {
+  .speaking-app .speaking-student-grid {
+    flex: 1 1 auto;
     width: min(100%, 1680px);
     min-height: 0;
     height: auto;
@@ -215,7 +220,7 @@
     gap: clamp(16px, 1.45vw, 22px);
   }
 
-  .speaking-student-center {
+  .speaking-app .speaking-student-center {
     height: 100%;
     display: grid;
     grid-template-rows: auto auto auto minmax(0, 1fr);
@@ -246,7 +251,7 @@
     height: 52px;
   }
 
-  .speaking-transcript-card {
+  .speaking-app .speaking-transcript-card {
     height: auto;
     flex: none;
   }

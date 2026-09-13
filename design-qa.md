@@ -761,3 +761,29 @@ Fixed three issues:
 - Cancelling a Set edit retained discarded values. Closing the editor now restores saved name, description, and focus.
 
 Validation: production build and lint passed; 19 targeted shared/server tests passed; both browser regression tests passed, including typing spaces in teacher focus, saving/reopening it, Set cancellation, launch snapshots, preview keyboard handling, and responsive overflow checks. Git diff whitespace check passed with existing line-ending warnings. The existing Vite large-chunk advisory remains. Deployment database migration and live AI-provider behavior were not exercised in this pass.
+
+## Core Library compatibility audit — 2026-09-13
+
+Evidence:
+
+- The deployed teacher page reproduced `Core Library 6`, `0 shown`, and `No scenarios match` with no filters selected.
+- The deployed `GET https://gyakuteneigo-api.onrender.com/api/speaking/templates` response was HTTP 200 with exactly six legacy `template-*` records: `template-restaurant`, `template-shopping`, `template-directions`, `template-hobbies`, `template-weekend`, and `template-introduction`.
+- None of those records contained `scenarioResources.builtIn === true`; the response also omitted `teacherId` and used the legacy five-criterion rubric (`communication`, `interaction`, `vocabulary`, `grammar`, `fluency`).
+- The client accepted any non-empty API response in place of the local library. Core filtering then required `builtIn === true` or `teacherId === "speaking-template"`; `publicActivity` also removes `teacherId` from public responses. Thus the badge became six and all six API records were filtered out, producing zero visible cards.
+
+Fixed:
+
+- Added `isCompatibleCoreLibraryResponse` in `apps/web/src/features/speaking/teacher/speakingLibrary.ts`. It accepts only the complete current built-in collection: all 30 known IDs exactly once, valid activity data, built-in metadata, current filter metadata, and the current four default rubric criteria.
+- Any partial, legacy, malformed, duplicate, or incompatible response now falls back to the existing `SPEAKING_CORE_LIBRARY` as one collection. The client does not merge versions, seed another library, change the API, or alter the Sets architecture.
+- Teacher-facing navigation and report labels now use `My Tests`, `Core Library`, and `My Sets`. Existing models, routes, endpoints, and teacher-owned data are unchanged.
+- The existing desktop Speaking session layout now keeps its bounded transcript region, restoring independent transcript scrolling without changing the session data model.
+
+Verification:
+
+- The dashboard browser audit confirmed 30 Core Library cards, badge 30, 30 shown with no filters, working category/skill/search filters, Preview, Use as-is, Customize, My Tests launch/edit/duplicate/delete and Add to Set actions, My Sets/detail/history, reports, and responsive overflow checks.
+- All five Speaking E2E specs passed: 9/9.
+- `npm run test`: shared 141/141, server 159/159, web 261/261, proxy 7/7.
+- `npm run typecheck`: passed.
+- `npm run lint -- --quiet`: passed.
+- `npm run build`: passed; the existing Vite large-chunk advisory remains.
+- `git diff --check`: passed; only existing LF/CRLF normalization warnings remain.

@@ -6,7 +6,12 @@ test("core preview traps focus and customization saves an owned version", async 
   const { token } = await signup.json();
   await page.addInitScript((value) => localStorage.setItem("quizstrike_token", value), token);
   await page.goto("/quiz-strike/teacher/speaking/core");
+  await expect(page.getByRole("tab", { name: /My Tests/ })).toBeVisible();
+  await expect(page.getByRole("tab", { name: /Core Library 30/ })).toBeVisible();
+  await expect(page.getByRole("tab", { name: /My Sets/ })).toBeVisible();
   await expect(page.locator(".speaking-core-card")).toHaveCount(30);
+  await expect(page.getByText("30 shown", { exact: true })).toBeVisible();
+  await expect(page.getByText("No scenarios match", { exact: true })).toHaveCount(0);
   await page.getByLabel("Filter by category").selectOption("Shopping & Services");
   await expect(page.locator(".speaking-core-card")).toHaveCount(2);
   await page.getByLabel("Filter by communication skill").selectOption("Comparing");
@@ -49,6 +54,9 @@ test("core preview traps focus and customization saves an owned version", async 
   expect(setResponse.status()).toBe(201);
   const { set } = await setResponse.json() as { set: { id: string; focus: string } };
   expect(set.focus).toBe("Pay particular attention to follow-up questions and clarification.");
+  const secondSetResponse = await request.post("/api/speaking/sets", { headers: { Authorization: `Bearer ${token}` }, data: { name: "Grade 3 Conversation" } });
+  expect(secondSetResponse.status()).toBe(201);
+  const { set: secondSet } = await secondSetResponse.json() as { set: { id: string; name: string } };
   const addResponse = await request.post(`/api/speaking/sets/${set.id}/activities/${id}`, { headers: { Authorization: `Bearer ${token}` } });
   expect(addResponse.status()).toBe(200);
 
@@ -77,6 +85,21 @@ test("core preview traps focus and customization saves an owned version", async 
   await page.getByRole("button", { name: "Edit", exact: true }).click();
   await expect(page.getByRole("heading", { name: "Edit Performance Test" })).toBeVisible();
   await expect(page.getByLabel("Additional focus or class content")).toHaveValue("Notice polite requests and class vocabulary.");
+  await page.goto("/quiz-strike/teacher/speaking");
+  await page.getByLabel("Filter by source").selectOption("mine");
+  await expect(page.locator(".speaking-activity-row")).toHaveCount(1);
+  await page.getByLabel("More actions for Buying Clothes").click();
+  await page.getByLabel("Add Buying Clothes to a Set").selectOption(secondSet.id);
+  await expect(page.locator(".speaking-activity-row").filter({ hasText: "Buying Clothes" })).toContainText(secondSet.name);
+  const duplicateButton = page.getByRole("button", { name: "Duplicate", exact: true });
+  if (!(await duplicateButton.isVisible())) await page.getByLabel("More actions for Buying Clothes").click();
+  await duplicateButton.click();
+  await expect(page.getByText("Buying Clothes copy", { exact: true })).toBeVisible();
+  await expect(page.locator(".speaking-activity-row")).toHaveCount(2);
+  await page.getByLabel("More actions for Buying Clothes copy").click();
+  page.once("dialog", (dialog) => dialog.accept());
+  await page.getByRole("button", { name: "Delete", exact: true }).click();
+  await expect(page.locator(".speaking-activity-row")).toHaveCount(1);
   await page.goto("/quiz-strike/teacher/speaking/activity/missing-audit-id/edit");
   await expect(page.getByRole("heading", { name: "Activity not found" })).toBeVisible();
   await expect(page.getByRole("button", { name: "Save changes", exact: true })).toHaveCount(0);

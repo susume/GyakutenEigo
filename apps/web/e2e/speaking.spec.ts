@@ -56,6 +56,8 @@ test("logged-out teacher returns to the Speaking builder after existing auth", a
     await page.getByLabel("Password", { exact: true }).fill("speaking-pass");
     await page.getByRole("button", { name: "Sign in", exact: true }).click();
     await expect(page).toHaveURL(/\/quiz-strike\/teacher\/speaking\/create$/);
+    await expect(page.getByRole("heading", { name: "How would you like to start?" })).toBeVisible();
+    await page.getByRole("button", { name: /Start from scratch/ }).click();
     await expect(page.getByRole("heading", { name: "Create a Performance Test" })).toBeVisible();
     await expect(page.getByRole("button", { name: "Speaking Practice", exact: true })).toHaveClass(/active/);
     await page.getByRole("button", { name: "Speaking Practice", exact: true }).click();
@@ -68,7 +70,7 @@ test("logged-out teacher returns to the Speaking builder after existing auth", a
     await page.getByRole("button", { name: "Speaking Practice", exact: true }).click();
     await page.getByRole("complementary", { name: "Teacher sections" }).getByRole("button", { name: "New activity", exact: true }).click();
     await expect(page).toHaveURL(/\/quiz-strike\/teacher\/speaking\/create$/);
-    await expect(page.getByRole("heading", { name: "Create a Performance Test" })).toBeVisible();
+    await expect(page.getByRole("heading", { name: "How would you like to start?" })).toBeVisible();
   } finally {
     await context.close();
   }
@@ -87,12 +89,24 @@ test("teacher and student Speaking Practice screens use the connected mock API",
   const teacherPage = await teacherContext.newPage();
   await teacherPage.addInitScript((token) => localStorage.setItem("quizstrike_token", token), teacherToken);
   await teacherPage.goto("/quiz-strike/teacher/speaking/create");
+  await expect(teacherPage.getByRole("heading", { name: "How would you like to start?" })).toBeVisible();
+  await teacherPage.getByRole("button", { name: /Start from scratch/ }).click();
   await expect(teacherPage.getByRole("heading", { name: "Create a Performance Test" })).toBeVisible();
-  const expression = teacherPage.getByRole("textbox", { name: "Target expression 1", exact: true });
+  for (const [label, value] of Object.entries({
+    "Activity name": "Connected mock activity",
+    "AI role": "Speaking partner",
+    "Student role": "Student",
+    "Speaking situation": "Talk with your partner about your day."
+  })) {
+    await teacherPage.getByRole("textbox", { name: label, exact: true }).fill(value);
+  }
+  const expression = teacherPage.getByRole("textbox", { name: "New target expression", exact: true });
   await expression.fill("Hello");
   await expression.pressSequentially(" there.");
   await expect(expression).toHaveValue("Hello there.");
   await expect(expression).toBeFocused();
+  await expression.press("Enter");
+  await expect(teacherPage.getByRole("textbox", { name: "Target expression 1", exact: true })).toHaveValue("Hello there.");
   await teacherPage.setViewportSize({ width: 1366, height: 768 });
   await teacherPage.evaluate(() => window.scrollTo(0, 0));
   await teacherPage.screenshot({ path: testInfo.outputPath("teacher-builder.png"), fullPage: true });
@@ -307,7 +321,7 @@ test("teacher and student Speaking Practice screens use the connected mock API",
   await expect(teacherPage.locator(".speaking-empty-card")).toBeVisible();
   await expect.poll(() => teacherResultReads, { timeout: 15_000 }).toBeGreaterThan(2);
   await expect(teacherPage.locator(".speaking-result-panel")).toBeVisible({ timeout: 15_000 });
-  await expect(teacherPage.getByRole("meter")).toHaveCount(5);
+  await expect(teacherPage.getByRole("meter")).toHaveCount(4);
   await teacherPage.screenshot({ path: testInfo.outputPath("teacher-student-result.png"), fullPage: true });
 
   await studentContext.close();

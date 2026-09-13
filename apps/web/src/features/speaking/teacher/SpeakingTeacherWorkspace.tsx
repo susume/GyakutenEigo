@@ -52,10 +52,10 @@ import {
 import { ApiError, speakingApi } from "../../../api/client";
 import { buildTeacherSpeakingPath } from "../../../navigation";
 import { formatDuration } from "../speakingData";
-import { SPEAKING_CORE_LIBRARY } from "@quizstrike/shared";
 import { ResultPanel, scoreFor } from "../SpeakingResultPanel";
 import { SpeakingSetDetailPage, SpeakingSetsPage } from "./SpeakingSetsPage";
 import SpeakingReportsPanel from "./SpeakingReportsPanel";
+import { coreFallbackActivities, isCompatibleCoreLibraryResponse } from "./speakingLibrary";
 import "../speaking.css";
 import "../speaking-layout.css";
 import "./speaking-dashboard.css";
@@ -283,14 +283,6 @@ const speakingSkills = (activity: Pick<SpeakingActivity, "scenarioResources">) =
 
 const speakingMinutes = (seconds: number) => `${Math.max(1, Math.round(seconds / 60))} min`;
 
-const coreFallbackActivities = (): SpeakingActivity[] => SPEAKING_CORE_LIBRARY.map((template) => ({
-  ...template,
-  teacherId: "speaking-template",
-  status: "ready",
-  createdAt: "2026-01-01T00:00:00.000Z",
-  updatedAt: "2026-01-01T00:00:00.000Z"
-}));
-
 function SpeakingTeacherDashboard({ navigate, initialTab = "tests" }: { navigate: Navigate; initialTab?: DashboardTab }) {
   const [library, setLibrary] = useState<SpeakingLibraryItem[]>([]);
   const [coreLibrary, setCoreLibrary] = useState<SpeakingActivity[]>(() => coreFallbackActivities());
@@ -318,17 +310,17 @@ function SpeakingTeacherDashboard({ navigate, initialTab = "tests" }: { navigate
       setLibrary((libraryResult.value as { items: SpeakingLibraryItem[] }).items ?? []);
     } else {
       setLibrary([]);
-      failures.push("your Performance Tests");
+      failures.push("My Tests");
     }
     if (setsResult.status === "fulfilled") {
       setSets((setsResult.value as { items: SpeakingSetSummary[] }).items ?? []);
     } else {
       setSets([]);
-      failures.push("your Sets");
+      failures.push("My Sets");
     }
     if (templatesResult.status === "fulfilled") {
-      const items = (templatesResult.value as { items: SpeakingActivity[] }).items ?? [];
-      setCoreLibrary(items.length ? items : coreFallbackActivities());
+      const items = (templatesResult.value as { items?: unknown }).items;
+      setCoreLibrary(isCompatibleCoreLibraryResponse(items) ? items : coreFallbackActivities());
     } else {
       setCoreLibrary(coreFallbackActivities());
     }
@@ -414,7 +406,7 @@ function SpeakingTeacherDashboard({ navigate, initialTab = "tests" }: { navigate
       setPreviewTemplate(null);
       navigate(`/speak/teacher/activity/${result.activity.id}`);
     } catch (useError) {
-      window.alert(getErrorMessage(useError, "This built-in scenario could not be added to your Performance Tests."));
+      window.alert(getErrorMessage(useError, "This built-in scenario could not be added to My Tests."));
     } finally {
       setWorkingTemplateId("");
     }
@@ -450,19 +442,19 @@ function SpeakingTeacherDashboard({ navigate, initialTab = "tests" }: { navigate
           {error && <p className="speaking-error speaking-dashboard-error" role="status">{error}</p>}
           <div className="speaking-library-tabs speaking-dashboard-tabs" role="tablist" aria-label="Speaking Practice library">
             <button type="button" role="tab" aria-selected={activeTab === "tests"} className={activeTab === "tests" ? "is-active" : ""} onClick={() => setActiveTab("tests")}>
-              Performance Tests <span>{library.length}</span>
+              My Tests <span>{library.length}</span>
             </button>
             <button type="button" role="tab" aria-selected={activeTab === "core"} className={activeTab === "core" ? "is-active" : ""} onClick={() => setActiveTab("core")}>
               Core Library <span>{coreLibrary.length}</span>
             </button>
             <button type="button" role="tab" aria-selected={false} onClick={() => navigate("/speak/teacher/sets")}>
-              Sets <span>{sets.length}</span>
+              My Sets <span>{sets.length}</span>
             </button>
           </div>
           {activeTab === "tests" ? (
             <>
               {openSessions.length > 0 && <section className="speaking-session-strip speaking-dashboard-live" aria-label="Active classroom sessions"><div className="speaking-section-title"><div><span className="speaking-card-kicker">Live now</span><h2>Active classroom sessions</h2></div><span>{openSessions.length} open</span></div>{openSessions.map(({ activity, session }) => <button className="speaking-session-row" key={session.id} type="button" onClick={() => navigate(`/speak/teacher/activity/${activity.id}?sessionId=${encodeURIComponent(session.id)}`)}><span className={`speaking-status-pill speaking-status-${session.status}`}>{session.status === "ready" ? "Students joining" : session.status === "paused" ? "Paused" : "Running"}</span><strong>{activity.title}</strong><code>{session.joinCode}</code><span>Open classroom <ArrowRight size={16} aria-hidden="true" /></span></button>)}</section>}
-              <div className="speaking-section-title speaking-library-section-heading"><div><span className="speaking-card-kicker">Your workspace</span><h2>Your Performance Tests</h2><p>Launch a saved test, edit its conversation, or add it to a Set.</p></div><button type="button" className="speaking-text-button" onClick={() => setActiveTab("core")}>Browse core library <ArrowRight size={15} aria-hidden="true" /></button></div>
+              <div className="speaking-section-title speaking-library-section-heading"><div><span className="speaking-card-kicker">Your workspace</span><h2>My Tests</h2><p>Launch a saved test, edit its conversation, or add it to a Set.</p></div><button type="button" className="speaking-text-button" onClick={() => setActiveTab("core")}>Browse core library <ArrowRight size={15} aria-hidden="true" /></button></div>
               <SpeakingLibraryToolbar search={search} setSearch={setSearch} category={category} setCategory={setCategory} skill={skill} setSkill={setSkill} source={source} setSource={setSource} sort={sort} setSort={setSort} clearFilters={clearFilters} />
               {library.length ? visibleItems.length ? <div className="speaking-activity-list speaking-dashboard-activity-list">{visibleItems.map((item) => <TeacherActivityRow key={item.activity.id} item={item} sets={sets} navigate={navigate} onRefresh={load} />)}</div> : <SpeakingNoMatches onClear={clearFilters} /> : <div className="speaking-empty-card"><img className="speaking-empty-art" src="/assets/speaking/empty-performance-tests.webp" alt="" width={132} height={132} /><h2>Create your first Performance Test</h2><p>Start with a core scenario or build an open-ended conversation from scratch.</p><button type="button" className="speaking-primary-button" onClick={() => setActiveTab("core")}>Browse Core Library</button></div>}
               {completedItems.length > 0 && <section className="speaking-recent-sessions" aria-labelledby="recent-completed-sessions"><div className="speaking-section-title"><div><span className="speaking-card-kicker">Classroom history</span><h2 id="recent-completed-sessions">Recent completed sessions</h2></div><button type="button" className="speaking-text-button" onClick={() => navigate("/speak/teacher/reports")}>View reports <ArrowRight size={15} aria-hidden="true" /></button></div><div className="speaking-recent-session-list">{completedItems.map((item) => <div className="speaking-recent-session" key={item.activity.id}><div><strong>{item.activity.title}</strong><span>{item.sessionCount} session{item.sessionCount === 1 ? "" : "s"} · {item.lastSessionAt ? `Completed ${new Date(item.lastSessionAt).toLocaleDateString()}` : "Completed recently"}</span></div><span className="speaking-status-pill speaking-status-ended">Completed</span></div>)}</div></section>}
@@ -513,7 +505,7 @@ function SpeakingLibraryToolbar({
     <label><span className="sr-only">Filter by category</span><select aria-label="Filter by category" value={category} onChange={(event) => setCategory(event.target.value)}><option value="all">All categories</option>{SPEAKING_CATEGORIES.map((item) => <option key={item} value={item}>{item}</option>)}</select></label>
     <label><span className="sr-only">Filter by communication skill</span><select aria-label="Filter by communication skill" value={skill} onChange={(event) => setSkill(event.target.value)}><option value="all">All skills</option>{SPEAKING_COMMUNICATION_SKILLS.map((item) => <option key={item} value={item}>{item}</option>)}</select></label>
     {!coreOnly && <label><span className="sr-only">Filter by source</span><select aria-label="Filter by source" value={source} onChange={(event) => setSource(event.target.value)}><option value="all">Built-in & My versions</option><option value="built-in">Built-in</option><option value="mine">My versions</option></select></label>}
-    <label><span className="sr-only">Sort Performance Tests</span><select aria-label="Sort Performance Tests" value={sort} onChange={(event) => setSort(event.target.value)}><option value="recent">Recently used</option><option value="az">A–Z</option><option value="za">Z–A</option></select></label>
+    <label><span className="sr-only">Sort My Tests</span><select aria-label="Sort My Tests" value={sort} onChange={(event) => setSort(event.target.value)}><option value="recent">Recently used</option><option value="az">A–Z</option><option value="za">Z–A</option></select></label>
     <button type="button" className="speaking-filter-icon" aria-label="Clear filters" onClick={clearFilters}><SlidersHorizontal size={17} aria-hidden="true" /></button>
   </div>;
 }
