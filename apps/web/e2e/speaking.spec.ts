@@ -283,15 +283,15 @@ test("teacher and student Speaking Practice screens use the connected mock API",
         viewport: { width: window.innerWidth, height: window.innerHeight },
         mic: read(".speaking-student-mic"),
         finish: read(".speaking-student-timer button"),
-        help: read(".speaking-student-help-button"),
+        context: read(".speaking-student-context-button"),
         transcript: read(".speaking-transcript-card")
       };
     });
     expect(bounds.mic).toBeTruthy();
     expect(bounds.finish).toBeTruthy();
-    expect(bounds.help).toBeTruthy();
+    expect(bounds.context).toBeTruthy();
     expect(bounds.transcript).toBeTruthy();
-    for (const control of [bounds.mic, bounds.finish, bounds.help]) {
+    for (const control of [bounds.mic, bounds.finish, bounds.context]) {
       expect(control!.left).toBeGreaterThanOrEqual(0);
       expect(control!.right).toBeLessThanOrEqual(viewport.width + 1);
       expect(control!.bottom).toBeLessThanOrEqual(viewport.height + 1);
@@ -490,30 +490,17 @@ test("Speaking Practice recovers each failed operation without cross-retrying", 
     await expect(page.getByRole("button", { name: "Tap to speak", exact: true })).toBeEnabled();
     await expect(page.getByRole("button", { name: "One more question.", exact: true })).toBeVisible();
 
-    let helpAttempts = 0;
-    await page.route(`**/api/speaking/sessions/${session.id}/help`, async (route) => {
-      helpAttempts += 1;
-      if (helpAttempts === 1) {
-        await route.fulfill({ status: 503, contentType: "application/json", body: JSON.stringify({ code: "SPEAKING_HELP_UNAVAILABLE", error: "Help service temporarily unavailable." }) });
-        return;
-      }
-      await route.continue();
-    });
-    await page.locator(".speaking-student-help-button").click();
-    await expect(page.getByRole("alert")).toContainText("Help service temporarily unavailable.");
-    await expect(page.getByRole("button", { name: "Retry Help", exact: true })).toBeVisible();
+    await page.getByRole("button", { name: "Open Context support", exact: true }).click();
+    await expect(page.getByRole("tab", { name: "Context", exact: true })).toHaveAttribute("aria-selected", "true");
+    await expect(page.getByRole("tabpanel", { name: "Context", exact: true })).toContainText("No context available for this activity.");
     await expect(page.getByRole("button", { name: "Tap to speak", exact: true })).toBeEnabled();
-    await page.getByRole("button", { name: "Retry Help", exact: true }).click();
-    await expect(page.getByRole("dialog")).toContainText("You can try this");
-    await page.screenshot({ path: testInfo.outputPath("student-help.png"), fullPage: true });
-    const closeHelp = page.getByRole("button", { name: "Close help", exact: true });
-    await closeHelp.focus();
-    await page.keyboard.press("Shift+Tab");
-    await expect(page.getByRole("button", { name: "Got it", exact: true })).toBeFocused();
-    await page.keyboard.press("Tab");
-    await expect(closeHelp).toBeFocused();
-    expect(helpAttempts).toBe(2);
-    await page.getByRole("button", { name: "Got it", exact: true }).click();
+    await page.getByRole("tab", { name: "Useful English", exact: true }).click();
+    await expect(page.getByRole("tab", { name: "Useful English", exact: true })).toHaveAttribute("aria-selected", "true");
+    await page.screenshot({ path: testInfo.outputPath("student-context-empty.png"), fullPage: true });
+    await page.getByRole("button", { name: "Close support panel", exact: true }).click();
+    await expect(page.getByRole("button", { name: "Close support panel", exact: true })).toBeHidden();
+    await page.getByRole("button", { name: "Open Context support", exact: true }).click();
+    await expect(page.getByRole("tab", { name: "Context", exact: true })).toHaveAttribute("aria-selected", "true");
 
     let turnAttempts = 0;
     await page.route(`**/api/speaking/sessions/${session.id}/turn`, async (route) => {

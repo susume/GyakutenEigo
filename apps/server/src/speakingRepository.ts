@@ -14,6 +14,7 @@ import {
   type SpeakingLibraryItem,
   type SpeakingReportSummary,
   type SpeakingRubricCriterion,
+  type SpeakingContext,
   type SpeakingScenarioResources,
   type SpeakingSetDetail,
   type SpeakingSetSummary,
@@ -36,6 +37,7 @@ export type SpeakingActivitySnapshot = Pick<
   | "targetExpressions"
   | "rubric"
   | "scenarioResources"
+  | "context"
 >;
 
 export type StoredSpeakingParticipant = SpeakingParticipant & {
@@ -71,6 +73,9 @@ export type SpeakingTurnPair = {
   studentTurn: SpeakingTurn;
   aiTurn?: SpeakingTurn;
 };
+
+const cloneSpeakingContext = (context?: SpeakingContext): SpeakingContext | undefined =>
+  context ? { ...context } : undefined;
 
 const turnPairForRequest = (turns: SpeakingTurn[], requestId: string): SpeakingTurnPair | undefined => {
   const studentIndex = turns.findIndex((turn) => turn.speaker === "student" && turn.requestId === requestId);
@@ -197,7 +202,8 @@ export const snapshotActivity = (activity: SpeakingActivity): SpeakingActivitySn
   identifierMode: activity.identifierMode,
   targetExpressions: [...activity.targetExpressions],
   rubric: activity.rubric.map((criterion) => ({ ...criterion })),
-  ...(activity.scenarioResources ? { scenarioResources: cloneScenarioResources(activity.scenarioResources) } : {})
+  ...(activity.scenarioResources ? { scenarioResources: cloneScenarioResources(activity.scenarioResources) } : {}),
+  ...(activity.context ? { context: cloneSpeakingContext(activity.context) } : {})
 });
 
 const cloneScenarioResources = (resources?: SpeakingScenarioResources) => resources ? ({
@@ -206,22 +212,30 @@ const cloneScenarioResources = (resources?: SpeakingScenarioResources) => resour
   ...(resources.successConditions ? { successConditions: [...resources.successConditions] } : {}),
   ...(resources.suggestedSteps ? { suggestedSteps: [...resources.suggestedSteps] } : {}),
   ...(resources.usefulVocabulary ? { usefulVocabulary: [...resources.usefulVocabulary] } : {}),
-  ...(resources.referenceItems ? { referenceItems: resources.referenceItems.map((item) => ({ ...item })) } : {})
+  ...(resources.referenceItems ? { referenceItems: resources.referenceItems.map((item) => ({ ...item })) } : {}),
+  ...(resources.context ? { context: cloneSpeakingContext(resources.context) } : {})
 }) : undefined;
+
+const scenarioResourcesForStorage = (activity: Pick<SpeakingActivity, "scenarioResources" | "context">): SpeakingScenarioResources => ({
+  ...(activity.scenarioResources ? cloneScenarioResources(activity.scenarioResources) : {}),
+  ...(activity.context ? { context: cloneSpeakingContext(activity.context) } : {})
+});
 
 const activityFromSnapshot = (activity: SpeakingActivity, snapshot: SpeakingActivitySnapshot): SpeakingActivity => ({
   ...activity,
   ...snapshot,
   targetExpressions: [...snapshot.targetExpressions],
   rubric: snapshot.rubric.map((criterion) => ({ ...criterion })),
-  ...(snapshot.scenarioResources ? { scenarioResources: cloneScenarioResources(snapshot.scenarioResources) } : {})
+  ...(snapshot.scenarioResources ? { scenarioResources: cloneScenarioResources(snapshot.scenarioResources) } : {}),
+  ...(snapshot.context ? { context: cloneSpeakingContext(snapshot.context) } : {})
 });
 
 const cloneActivity = (activity: SpeakingActivity): SpeakingActivity => ({
   ...activity,
   targetExpressions: [...activity.targetExpressions],
   rubric: activity.rubric.map((criterion) => ({ ...criterion })),
-  ...(activity.scenarioResources ? { scenarioResources: cloneScenarioResources(activity.scenarioResources) } : {})
+  ...(activity.scenarioResources ? { scenarioResources: cloneScenarioResources(activity.scenarioResources) } : {}),
+  ...(activity.context ? { context: cloneSpeakingContext(activity.context) } : {})
 });
 
 const cloneSession = (session: SpeakingSession): SpeakingSession => ({
@@ -311,6 +325,7 @@ const normalizeActivityInput = (input: SpeakingCreateActivityInput, id: string, 
   // criteria later, while historical session snapshots retain this exact list.
   rubric: input.rubric.slice(0, SPEAKING_LIMITS.rubricCriteria).map((criterion) => ({ ...criterion })),
   ...(input.scenarioResources ? { scenarioResources: cloneScenarioResources(input.scenarioResources) } : {}),
+  ...(input.context ? { context: cloneSpeakingContext(input.context) } : {}),
   createdAt: now,
   updatedAt: now
 });
@@ -817,6 +832,16 @@ const objectFromJson = (value: Prisma.JsonValue): Record<string, unknown> => val
 
 const scenarioResourcesFromJson = (value: Prisma.JsonValue): SpeakingScenarioResources | undefined => {
   const source = objectFromJson(value);
+  const contextSource = objectFromJson((source.context ?? {}) as Prisma.JsonValue);
+  const context: SpeakingContext | undefined = Object.keys(contextSource).length
+    ? {
+      ...(typeof contextSource.title === "string" ? { title: contextSource.title } : {}),
+      ...(typeof contextSource.description === "string" ? { description: contextSource.description } : {}),
+      ...(typeof contextSource.imageUrl === "string" ? { imageUrl: contextSource.imageUrl } : {}),
+      ...(typeof contextSource.alt === "string" ? { alt: contextSource.alt } : {}),
+      ...(typeof contextSource.type === "string" && ["map", "menu", "subway", "timetable", "chart", "photo", "other"].includes(contextSource.type) ? { type: contextSource.type as SpeakingContext["type"] } : {})
+    }
+    : undefined;
   const communicationSkills = Array.isArray(source.communicationSkills) ? source.communicationSkills.filter((item): item is string => typeof item === "string") : undefined;
   const successConditions = Array.isArray(source.successConditions) ? source.successConditions.filter((item): item is string => typeof item === "string") : undefined;
   const suggestedSteps = Array.isArray(source.suggestedSteps) ? source.suggestedSteps.filter((item): item is string => typeof item === "string") : undefined;
@@ -842,13 +867,15 @@ const scenarioResourcesFromJson = (value: Prisma.JsonValue): SpeakingScenarioRes
     ...(usefulVocabulary ? { usefulVocabulary } : {}),
     ...(referenceItems ? { referenceItems } : {}),
     ...(typeof source.imageSrc === "string" ? { imageSrc: source.imageSrc } : {}),
-    ...(typeof source.imageAlt === "string" ? { imageAlt: source.imageAlt } : {})
+    ...(typeof source.imageAlt === "string" ? { imageAlt: source.imageAlt } : {}),
+    ...(context ? { context } : {})
   };
   return Object.keys(resources).length ? resources : undefined;
 };
 
 const snapshotFromJson = (value: Prisma.JsonValue, activity: SpeakingActivity): SpeakingActivitySnapshot => {
   const source = objectFromJson(value);
+  const context = scenarioResourcesFromJson({ context: source.context } as Prisma.JsonValue)?.context;
   return {
     title: typeof source.title === "string" ? source.title : activity.title,
     scenario: typeof source.scenario === "string" ? source.scenario : activity.scenario,
@@ -861,29 +888,34 @@ const snapshotFromJson = (value: Prisma.JsonValue, activity: SpeakingActivity): 
     identifierMode: source.identifierMode === "anonymous" || source.identifierMode === "student_number" ? source.identifierMode : "nickname",
     targetExpressions: stringArrayFromJson((source.targetExpressions ?? activity.targetExpressions) as Prisma.JsonValue),
     rubric: rubricFromJson((source.rubric ?? activity.rubric) as Prisma.JsonValue),
-    ...(scenarioResourcesFromJson((source.scenarioResources ?? {}) as Prisma.JsonValue) ? { scenarioResources: scenarioResourcesFromJson((source.scenarioResources ?? {}) as Prisma.JsonValue) } : {})
+    ...(scenarioResourcesFromJson((source.scenarioResources ?? {}) as Prisma.JsonValue) ? { scenarioResources: scenarioResourcesFromJson((source.scenarioResources ?? {}) as Prisma.JsonValue) } : {}),
+    ...(context ? { context } : {})
   };
 };
 
-const toActivity = (row: PrismaActivity): SpeakingActivity => ({
-  id: row.id,
-  teacherId: row.teacherId,
-  title: row.title,
-  scenario: row.scenario,
-  aiRole: row.aiRole,
-  studentRole: row.studentRole,
-  level: row.level as SpeakingActivity["level"],
-  difficulty: row.difficulty,
-  nativeLanguage: row.nativeLanguage,
-  durationSeconds: row.durationSeconds,
-  status: row.status === "archived" ? "archived" : row.status === "draft" ? "draft" : "ready",
-  identifierMode: row.identifierMode,
-  targetExpressions: stringArrayFromJson(row.targetExpressionsJson),
-  rubric: row.rubric.map((criterion) => ({ id: criterion.criterionId, name: criterion.name, description: criterion.description, enabled: criterion.enabled })),
-  ...(scenarioResourcesFromJson(row.scenarioResourcesJson) ? { scenarioResources: scenarioResourcesFromJson(row.scenarioResourcesJson) } : {}),
-  createdAt: row.createdAt.toISOString(),
-  updatedAt: row.updatedAt.toISOString()
-});
+const toActivity = (row: PrismaActivity): SpeakingActivity => {
+  const scenarioResources = scenarioResourcesFromJson(row.scenarioResourcesJson);
+  return {
+    id: row.id,
+    teacherId: row.teacherId,
+    title: row.title,
+    scenario: row.scenario,
+    aiRole: row.aiRole,
+    studentRole: row.studentRole,
+    level: row.level as SpeakingActivity["level"],
+    difficulty: row.difficulty,
+    nativeLanguage: row.nativeLanguage,
+    durationSeconds: row.durationSeconds,
+    status: row.status === "archived" ? "archived" : row.status === "draft" ? "draft" : "ready",
+    identifierMode: row.identifierMode,
+    targetExpressions: stringArrayFromJson(row.targetExpressionsJson),
+    rubric: row.rubric.map((criterion) => ({ id: criterion.criterionId, name: criterion.name, description: criterion.description, enabled: criterion.enabled })),
+    ...(scenarioResources ? { scenarioResources } : {}),
+    ...(scenarioResources?.context ? { context: cloneSpeakingContext(scenarioResources.context) } : {}),
+    createdAt: row.createdAt.toISOString(),
+    updatedAt: row.updatedAt.toISOString()
+  };
+};
 
 const toSession = (row: Pick<PrismaSession, "id" | "activityId" | "joinCode" | "status" | "createdAt" | "startedAt" | "pausedAt" | "endedAt" | "expiresAt" | "revision"> & Partial<Pick<PrismaSession, "speakingSetId" | "speakingSetNameSnapshot" | "speakingSetFocusSnapshot">>): SpeakingSession => ({
   ...(row.speakingSetId ? { speakingSetId: row.speakingSetId, speakingSetNameSnapshot: row.speakingSetNameSnapshot ?? undefined, ...(row.speakingSetFocusSnapshot === null || row.speakingSetFocusSnapshot === undefined ? {} : { speakingSetFocusSnapshot: row.speakingSetFocusSnapshot }) } : {}),
@@ -1075,7 +1107,7 @@ export class PrismaSpeakingRepository implements SpeakingRepository {
         status: activity.status,
         identifierMode: activity.identifierMode,
         targetExpressionsJson: activity.targetExpressions as Prisma.InputJsonValue,
-        scenarioResourcesJson: (activity.scenarioResources ?? {}) as Prisma.InputJsonValue,
+        scenarioResourcesJson: scenarioResourcesForStorage(activity) as Prisma.InputJsonValue,
         rubric: { create: activity.rubric.map((criterion, position) => ({ criterionId: criterion.id, name: criterion.name, description: criterion.description, enabled: criterion.enabled, position })) }
       },
       include: activityInclude
@@ -1102,7 +1134,7 @@ export class PrismaSpeakingRepository implements SpeakingRepository {
           durationSeconds: normalized.durationSeconds,
           identifierMode: normalized.identifierMode,
           targetExpressionsJson: normalized.targetExpressions as Prisma.InputJsonValue,
-          scenarioResourcesJson: (normalized.scenarioResources ?? {}) as Prisma.InputJsonValue,
+          scenarioResourcesJson: scenarioResourcesForStorage(normalized) as Prisma.InputJsonValue,
           rubric: { create: normalized.rubric.map((criterion, position) => ({ criterionId: criterion.id, name: criterion.name, description: criterion.description, enabled: criterion.enabled, position })) }
         },
         include: activityInclude

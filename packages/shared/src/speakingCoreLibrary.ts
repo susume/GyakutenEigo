@@ -2,6 +2,7 @@ import {
   DEFAULT_SPEAKING_RUBRIC,
   type SpeakingCategory,
   type SpeakingCreateActivityInput,
+  type SpeakingContext,
   type SpeakingScenarioResources
 } from "./speaking.js";
 
@@ -28,9 +29,245 @@ type CoreSeed = {
   targetExpressions: string[];
   imageSrc: string;
   imageAlt: string;
+  context?: SpeakingContext;
   durationSeconds?: number;
   referenceItems?: Array<{ label: string; detail?: string }>;
 };
+
+const INTRO = "/assets/speaking/scenario-introduction.webp";
+const HOBBIES = "/assets/speaking/scenario-hobbies.webp";
+const RESTAURANT = "/assets/speaking/scenario-restaurant.webp";
+const SHOPPING = "/assets/speaking/scenario-shopping.webp";
+const DIRECTIONS = "/assets/speaking/scenario-directions.webp";
+const WEEKEND = "/assets/speaking/scenario-weekend.webp";
+const TOURIST_MAP = "/assets/speaking/context-tourist-map.png";
+const CAFE_MENU = "/assets/speaking/context-cafe-menu.svg";
+const TRANSIT_MAP = "/assets/speaking/context-transit-map.svg";
+const STATION_BOARD = "/assets/speaking/context-station-board.svg";
+const SHOPPING_SHELF = "/assets/speaking/context-shopping-shelf.svg";
+const OUTING_OPTIONS = "/assets/speaking/context-outing-options.svg";
+
+const CORE_CONTEXTS: Record<string, SpeakingContext> = {
+  "introducing-yourself": {
+    title: "Student profile",
+    description: "Use the profile scene to introduce yourself and share a few details.",
+    imageUrl: INTRO,
+    alt: "Two students sharing a simple student profile at school",
+    type: "photo"
+  },
+  "meeting-someone-new": {
+    title: "Exchange meetup",
+    description: "Use the meetup scene to find a shared interest and keep the conversation going.",
+    imageUrl: INTRO,
+    alt: "Two students meeting for the first time at an exchange activity",
+    type: "photo"
+  },
+  "talking-about-hobbies": {
+    title: "After-school hobbies",
+    description: "Use the activity scene to describe what you enjoy and when you do it.",
+    imageUrl: HOBBIES,
+    alt: "Students talking about music and sports after school",
+    type: "photo"
+  },
+  "talking-about-school-life": {
+    title: "School day",
+    description: "Use the school scene to talk about classes, clubs, and routines.",
+    imageUrl: INTRO,
+    alt: "Students talking together in a school setting",
+    type: "photo"
+  },
+  "talking-about-daily-life": {
+    title: "Weekday routine",
+    description: "Use the everyday scene to compare before-school and after-school routines.",
+    imageUrl: HOBBIES,
+    alt: "Students comparing their weekday routines",
+    type: "photo"
+  },
+  "talking-about-a-past-experience": {
+    title: "Memory snapshot",
+    description: "Use the scene to organize a short story about a past experience.",
+    imageUrl: WEEKEND,
+    alt: "Students sharing a memorable weekend experience",
+    type: "photo"
+  },
+  "talking-about-future-plans": {
+    title: "Holiday planner",
+    description: "Use the planning scene to discuss a future activity and a backup idea.",
+    imageUrl: WEEKEND,
+    alt: "Friends discussing plans for an upcoming holiday",
+    type: "photo"
+  },
+  "making-plans-with-a-friend": {
+    title: "Weekend planner",
+    description: "Use the weekend scene to agree on an activity and a time to meet.",
+    imageUrl: WEEKEND,
+    alt: "Two friends making plans for the weekend",
+    type: "photo"
+  },
+  "making-and-responding-to-invitations": {
+    title: "School event",
+    description: "Use the event scene to discuss an invitation, time, place, and details.",
+    imageUrl: WEEKEND,
+    alt: "Students discussing an invitation to a school event",
+    type: "photo"
+  },
+  "buying-clothes": {
+    title: "Clothing display",
+    description: "Use the shop display to compare size, color, price, and availability.",
+    imageUrl: SHOPPING_SHELF,
+    alt: "Illustrated shop display with a blue T-shirt, black hoodie, and green jacket",
+    type: "other"
+  },
+  "shopping-for-everyday-items": {
+    title: "School supply shelf",
+    description: "Use the product display to choose supplies and check the total.",
+    imageUrl: SHOPPING_SHELF,
+    alt: "Illustrated store display of everyday school shopping choices",
+    type: "other"
+  },
+  "ordering-food": {
+    title: "Café menu",
+    description: "Use the menu to choose a meal, ask about an ingredient, and confirm.",
+    imageUrl: CAFE_MENU,
+    alt: "Illustrated café menu with a sandwich, soup containing milk, and orange juice",
+    type: "menu"
+  },
+  "at-a-restaurant": {
+    title: "Lunch menu",
+    description: "Use the menu to choose lunch, handle an unavailable side, and check the bill.",
+    imageUrl: CAFE_MENU,
+    alt: "Illustrated lunch menu with meals, prices, and a side dish note",
+    type: "menu"
+  },
+  "asking-for-street-directions": {
+    title: "Neighborhood map",
+    description: "Use the local map to ask about landmarks, distance, and a detour.",
+    imageUrl: TOURIST_MAP,
+    alt: "Illustrated neighborhood map with a museum, park, shopping street, station, and location marker",
+    type: "map"
+  },
+  "giving-street-directions": {
+    title: "Neighborhood route",
+    description: "Use the local map to give a visitor clear steps from the station to a destination.",
+    imageUrl: TOURIST_MAP,
+    alt: "Illustrated local area map showing streets, landmarks, a station, and a park",
+    type: "map"
+  },
+  "asking-for-train-directions": {
+    title: "City transit map",
+    description: "Use the line map to ask about a platform, route, and transfer.",
+    imageUrl: TRANSIT_MAP,
+    alt: "Simple city transit map with Central, Park, East, Museum, Market, and Station stops",
+    type: "subway"
+  },
+  "giving-train-directions": {
+    title: "Train route map",
+    description: "Use the line map to explain the route, transfer, and arrival stop.",
+    imageUrl: TRANSIT_MAP,
+    alt: "Simple city transit map with colored lines and labeled transfer stops",
+    type: "subway"
+  },
+  "using-public-transportation": {
+    title: "Transit route choices",
+    description: "Use the transit map to compare routes, travel time, and connections.",
+    imageUrl: TRANSIT_MAP,
+    alt: "Simple city transit map showing several routes between a station and local destinations",
+    type: "subway"
+  },
+  "at-a-train-station": {
+    title: "Station information board",
+    description: "Use the departures board to compare times, platforms, and transfers.",
+    imageUrl: STATION_BOARD,
+    alt: "Illustrated station departures board with train times, destinations, and platforms",
+    type: "timetable"
+  },
+  "helping-a-tourist": {
+    title: "Context",
+    description: "Use this visual to help your answer.",
+    imageUrl: TOURIST_MAP,
+    alt: "Illustrated local area map with a museum, park, shopping street, station, and your location",
+    type: "map"
+  },
+  "introducing-your-hometown": {
+    title: "Hometown highlights",
+    description: "Use the local map to choose places, activities, and a rainy-day idea.",
+    imageUrl: TOURIST_MAP,
+    alt: "Illustrated local area map with places a visitor can explore in a hometown",
+    type: "map"
+  },
+  "introducing-japanese-culture": {
+    title: "Culture snapshot",
+    description: "Use the cultural scene to explain a custom, celebration, or everyday practice.",
+    imageUrl: INTRO,
+    alt: "Students discussing Japanese culture during an exchange activity",
+    type: "photo"
+  },
+  "asking-for-help": {
+    title: "School help desk",
+    description: "Use the school scene to explain a problem and identify the help you need.",
+    imageUrl: INTRO,
+    alt: "A student asking a helpful school staff member for assistance",
+    type: "photo"
+  },
+  "lost-property": {
+    title: "Lost and found desk",
+    description: "Use the office scene to describe an item and where you last saw it.",
+    imageUrl: INTRO,
+    alt: "A student reporting a lost item at a school office",
+    type: "photo"
+  },
+  "feeling-sick": {
+    title: "School health room",
+    description: "Use the health-room scene to describe symptoms and decide on a next step.",
+    imageUrl: INTRO,
+    alt: "A student speaking with a school nurse in a health room",
+    type: "photo"
+  },
+  "making-requests-and-asking-permission": {
+    title: "Project request",
+    description: "Use the classroom scene to explain what your group needs and why.",
+    imageUrl: INTRO,
+    alt: "A student discussing a group project request with a teacher",
+    type: "photo"
+  },
+  "giving-advice": {
+    title: "Busy week planner",
+    description: "Use the planning scene to sort priorities and compare practical choices.",
+    imageUrl: WEEKEND,
+    alt: "Friends discussing how to manage a busy week",
+    type: "photo"
+  },
+  "giving-an-opinion": {
+    title: "Class discussion",
+    description: "Use the discussion scene to consider different views and examples.",
+    imageUrl: HOBBIES,
+    alt: "Students sharing different opinions in a class discussion",
+    type: "photo"
+  },
+  "choosing-between-options": {
+    title: "Outing options",
+    description: "Use the comparison board to weigh price, travel time, and activities.",
+    imageUrl: OUTING_OPTIONS,
+    alt: "Illustrated comparison board showing museum, park, and aquarium outing options",
+    type: "chart"
+  },
+  "solving-an-everyday-problem": {
+    title: "Project problem board",
+    description: "Use the group-work scene to identify the missing item and compare solutions.",
+    imageUrl: INTRO,
+    alt: "Students working together to solve a group project problem",
+    type: "photo"
+  }
+};
+
+const contextForCoreSeed = (seed: CoreSeed): SpeakingContext =>
+  seed.context ?? CORE_CONTEXTS[seed.id] ?? {
+    title: "Activity context",
+    description: "Use this visual to help your answer.",
+    imageUrl: seed.imageSrc,
+    alt: seed.imageAlt,
+    type: "photo"
+  };
 
 const core = (seed: CoreSeed): SpeakingCoreLibraryItem => ({
   id: `core-${seed.id}`,
@@ -47,6 +284,7 @@ const core = (seed: CoreSeed): SpeakingCoreLibraryItem => ({
   identifierMode: "nickname",
   targetExpressions: [...seed.targetExpressions],
   rubric: DEFAULT_SPEAKING_RUBRIC.map((criterion) => ({ ...criterion })),
+  context: { ...contextForCoreSeed(seed) },
   scenarioResources: {
     category: seed.category,
     communicationSkills: [...seed.skills],
@@ -61,16 +299,10 @@ const core = (seed: CoreSeed): SpeakingCoreLibraryItem => ({
     builtIn: true,
     sourceTemplateId: `core-${seed.id}`,
     imageSrc: seed.imageSrc,
-    imageAlt: seed.imageAlt
+    imageAlt: seed.imageAlt,
+    context: { ...contextForCoreSeed(seed) }
   }
 });
-
-const INTRO = "/assets/speaking/scenario-introduction.webp";
-const HOBBIES = "/assets/speaking/scenario-hobbies.webp";
-const RESTAURANT = "/assets/speaking/scenario-restaurant.webp";
-const SHOPPING = "/assets/speaking/scenario-shopping.webp";
-const DIRECTIONS = "/assets/speaking/scenario-directions.webp";
-const WEEKEND = "/assets/speaking/scenario-weekend.webp";
 
 /**
  * The built-in junior-high library. Each item is a complete, editable

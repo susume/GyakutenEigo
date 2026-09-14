@@ -601,6 +601,7 @@ const draftFromTemplate = (
   identifierMode: template.identifierMode,
   targetExpressions: [...template.targetExpressions],
   rubric: template.rubric.map((criterion) => ({ ...criterion })),
+  ...(template.context ? { context: { ...template.context } } : {}),
   scenarioResources: (() => {
     const resources = speakingScenarioResources(template.scenarioResources);
     return {

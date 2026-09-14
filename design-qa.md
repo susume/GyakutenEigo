@@ -1,3 +1,87 @@
+# Speaking Context coverage follow-up — design QA (2026-09-14)
+
+## Coverage evidence
+
+- The built-in library contains 30 speaking tests.
+- The live `/api/speaking/templates` response was checked after the update: `templates=30 contexts=30 uniqueContextTitles=30`.
+- Every built-in activity now provides a heading, description, image URL, meaningful alt text, and context type.
+
+## Visual evidence
+
+- Context visuals are assigned by scenario family: school/conversation photos, menu boards, product displays, local maps, transit maps, a station departures board, and an outing comparison board.
+- Shared assets are intentionally reused where the same situational visual language applies; the context copy and title remain specific to each test.
+- New lightweight assets: `apps/web/public/assets/speaking/context-cafe-menu.svg`, `context-transit-map.svg`, `context-station-board.svg`, `context-shopping-shelf.svg`, and `context-outing-options.svg`.
+
+## Findings
+
+- P0: none.
+- P1: none.
+- P2: none. The new coverage test protects against future built-in activities silently losing context.
+- P3: some conversational tests reuse the existing scene artwork as a photo-style visual; this keeps the bundle small while still giving every activity useful non-phrase situational support.
+
+## Validation
+
+- `npm run typecheck` — passed.
+- `npm run build` — passed.
+- `npm test -w @quizstrike/web` — passed, 268 tests.
+- Context asset HTTP checks — passed for all new assets and the existing tourist map.
+- Final result: passed.
+
+# Speaking Practice support panel redesign — design QA (2026-09-14)
+
+## Source visual truth
+
+- Primary visual reference: `C:\Users\hungb\Downloads\ChatGPT Image Sep 14, 2026, 05_39_34 PM.png`
+- Product requirements: `C:\Users\hungb\.codex\attachments\5e336e57-51f7-4811-b228-176d3a2b4ac5\pasted-text.txt`
+- The pasted brief was treated as implementation guidance; the attached PNG was treated as the visual source of truth.
+
+## Implementation captures
+
+- Automated capture: `C:\Users\hungb\OneDrive\Documents\GitHub\GyakutenEigo\apps\web\test-results\speaking-Speaking-Practice-d28ba-tion-without-cross-retrying-desktop-chrome\student-context-empty.png` (1280x720 CSS pixels, empty-context fallback state).
+- Exact visual QA capture: Codex in-app browser, 1672x942 CSS pixels, seeded `Helping a Tourist` activity with the Context tab open and the local map visible. The CUA capture was emitted inline during QA and is not serialized as a workspace file.
+
+## Viewport and normalization
+
+- Source PNG: 1672x942 raster pixels.
+- Exact comparison: 1672x942 CSS pixels, density 1, browser chrome excluded.
+- Automated responsive capture: 1280x720 CSS pixels, density 1.
+- Additional responsive checks covered 1280x800, 1280x640, 1180x820, 1024x768, 768x1024, and 390x844.
+
+## State
+
+- Speaking Practice, `Helping a Tourist`, live partner prompt visible, one-turn conversation visible, support rail open, `Context` selected, local illustrated map loaded, no blocking Help modal.
+- Dynamic timer and clock values were allowed to differ from the static reference.
+
+## Full-view comparison
+
+- The 1672px composition matches the reference hierarchy: 94px header, left practice workspace, persistent right support rail, rounded cards, navy/blue typography, blue microphone control, and the transcript card anchored below the speaking controls.
+- The partner prompt wraps at the same visual point, uses the existing directions artwork as the circular partner image, and keeps the audio affordance aligned at the right edge.
+- The Context rail uses the reference tab treatment, close control, heading/description rhythm, and a contained map visual that remains inside the panel at the bottom edge.
+- The old blocking Help dialog path is no longer part of the student UI; the speaking controls remain usable while support is open.
+
+## Focused-region comparison
+
+- Right rail: verified Context/Useful English tab switching, roving ArrowRight keyboard navigation, close/reopen behavior, empty-context fallback, image load fallback, and accessible tab/tabpanel relationships.
+- Speaking controls: verified Replay and Context buttons stay inside the card, the microphone remains centered, and helper status text stays within the controls card rather than pushing the transcript out of the viewport.
+- Responsive layout: verified no horizontal overflow and no control overlap across the listed desktop, tablet, and mobile viewports; short desktop heights retain usable transcript space.
+
+## Findings and iteration history
+
+| Iteration | Severity | Finding | Resolution | Result |
+| --- | --- | --- | --- | --- |
+| 1 | P2 | Right rail was too inset and the map could extend past the visible panel. | Matched the full-width grid geometry, hid incidental panel scrollbar chrome, and constrained the context visual to the panel height. | Resolved |
+| 2 | P2 | Replay/Context controls and helper status did not align with the reference card; the prompt scale was too small. | Moved status into the controls footer, tuned control padding/placement, and matched prompt/avatar/audio sizing and wrapping. | Resolved |
+| 3 | P2 | At 1280x640 the transcript collapsed to an unusably short strip. | Added a short-viewport grid override with fixed usable heights for the prompt and speaking controls. | Resolved |
+| 4 | P3 | Static mock typography and dynamic time cannot be pixel-identical across browser/font rasterization and runtime state. | Preserved the visual type scale and spacing; accepted the runtime-only differences. | Accepted |
+
+## Validation
+
+- `npm run typecheck` — passed.
+- `npm run build` — passed.
+- `npm test` — passed (shared, server, web, and proxy suites).
+- Targeted speaking E2E recovery/context test — passed.
+- Final result: passed.
+
 # QuizStrike hub update — design QA
 
 ## Source visual truth

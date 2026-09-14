@@ -1,0 +1,31 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 720 1000" role="img">
+  <rect width="720" height="1000" rx="34" fill="#f4f9ff"/>
+  <rect x="28" y="28" width="664" height="142" rx="28" fill="#1264dc"/>
+  <text x="58" y="88" fill="#fff" font-family="Arial,sans-serif" font-size="32" font-weight="700">SHOP DISPLAY</text>
+  <text x="58" y="128" fill="#dcecff" font-family="Arial,sans-serif" font-size="20">Find an item for the school event</text>
+  <g font-family="Arial,sans-serif">
+    <rect x="42" y="208" width="636" height="218" rx="26" fill="#fff" stroke="#d4e4f7" stroke-width="3"/>
+    <rect x="72" y="244" width="170" height="140" rx="18" fill="#eaf4ff"/>
+    <path d="M117 286h80l18 25v61h-116v-61z" fill="#4e9df8"/><path d="M117 286c8-32 72-32 80 0" fill="none" stroke="#fff" stroke-width="11"/>
+    <text x="272" y="275" fill="#12336d" font-size="29" font-weight="700">Blue T-shirt</text>
+    <text x="272" y="314" fill="#5d7295" font-size="20">$18 · S / M</text>
+    <text x="272" y="352" fill="#1264dc" font-size="19" font-weight="700">Good for a school event</text>
+    <text x="272" y="384" fill="#5d7295" font-size="18">Available in two sizes</text>
+
+    <rect x="42" y="450" width="636" height="218" rx="26" fill="#fff" stroke="#d4e4f7" stroke-width="3"/>
+    <rect x="72" y="486" width="170" height="140" rx="18" fill="#eaf4ff"/>
+    <path d="M116 529h80l22 24v58H115v-58z" fill="#26364e"/><path d="M116 529c8-31 72-31 80 0" fill="none" stroke="#fff" stroke-width="11"/>
+    <text x="272" y="517" fill="#12336d" font-size="29" font-weight="700">Black hoodie</text>
+    <text x="272" y="556" fill="#5d7295" font-size="20">$35 · M / L</text>
+    <text x="272" y="594" fill="#d85d55" font-size="19" font-weight="700">Popular choice</text>
+    <text x="272" y="626" fill="#5d7295" font-size="18">Try it on before buying</text>
+
+    <rect x="42" y="692" width="636" height="218" rx="26" fill="#fff" stroke="#d4e4f7" stroke-width="3"/>
+    <rect x="72" y="728" width="170" height="140" rx="18" fill="#eaf4ff"/>
+    <path d="M112 775h90l20 22v54H110v-54z" fill="#73bd73"/><path d="M112 775c11-29 74-29 90 0" fill="none" stroke="#fff" stroke-width="11"/>
+    <text x="272" y="759" fill="#12336d" font-size="29" font-weight="700">Green jacket</text>
+    <text x="272" y="798" fill="#5d7295" font-size="20">$42 · L</text>
+    <text x="272" y="836" fill="#1264dc" font-size="19" font-weight="700">One size left</text>
+    <text x="272" y="868" fill="#5d7295" font-size="18">Ask about the fitting room</text>
+  </g>
+</svg>

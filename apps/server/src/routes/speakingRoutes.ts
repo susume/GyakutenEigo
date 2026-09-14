@@ -124,6 +124,7 @@ const makeTemplate = (input: TemplateInput, now: string): SpeakingActivity => ({
   targetExpressions: [...input.targetExpressions],
   rubric: input.rubric.map((criterion) => ({ ...criterion })),
   ...(input.scenarioResources ? { scenarioResources: { ...input.scenarioResources, ...(input.scenarioResources.communicationSkills ? { communicationSkills: [...input.scenarioResources.communicationSkills] } : {}), ...(input.scenarioResources.successConditions ? { successConditions: [...input.scenarioResources.successConditions] } : {}), ...(input.scenarioResources.suggestedSteps ? { suggestedSteps: [...input.scenarioResources.suggestedSteps] } : {}), ...(input.scenarioResources.usefulVocabulary ? { usefulVocabulary: [...input.scenarioResources.usefulVocabulary] } : {}), ...(input.scenarioResources.referenceItems ? { referenceItems: input.scenarioResources.referenceItems.map((item) => ({ ...item })) } : {}) } } : {}),
+  ...(input.context ? { context: { ...input.context } } : {}),
   createdAt: now,
   updatedAt: now
 });
@@ -145,7 +146,8 @@ const activitySummary = (activity: SpeakingActivity) => ({
   targetExpressions: activity.targetExpressions,
   nativeLanguage: activity.nativeLanguage,
   rubric: activity.rubric,
-  ...(activity.scenarioResources ? { scenarioResources: activity.scenarioResources } : {})
+  ...(activity.scenarioResources ? { scenarioResources: activity.scenarioResources } : {}),
+  ...(activity.context ? { context: activity.context } : {})
 });
 
 const toResult = (activity: SpeakingActivity, session: SpeakingSession, participant: SpeakingParticipant, turns: SpeakingTurn[], evaluation?: SpeakingEvaluation): SpeakingParticipantResult => ({
@@ -827,7 +829,8 @@ export const registerSpeakingRoutes = (app: Application, deps: SpeakingRouteDepe
       identifierMode: source.identifierMode,
       targetExpressions: [...source.targetExpressions],
       rubric: source.rubric.map((criterion) => ({ ...criterion })),
-      ...(source.scenarioResources ? { scenarioResources: source.scenarioResources } : {})
+      ...(source.scenarioResources ? { scenarioResources: source.scenarioResources } : {}),
+      ...(source.context ? { context: source.context } : {})
     };
     const activity = await repository.createActivity(req.user!.id, input, deps.id(), deps.now());
     res.status(201).json({ activity: publicActivity(activity) });

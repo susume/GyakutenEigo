@@ -1374,3 +1374,641 @@
     min-height: 122px !important;
   }
 }
+
+/* Unified learner support: language help and situational context share one
+   quiet, non-blocking surface beside the speaking workspace. */
+.speaking-app .speaking-support-panel {
+  min-width: 0;
+  min-height: 0;
+  height: 100%;
+  display: flex;
+  flex-direction: column;
+  overflow: hidden;
+  border: 1px solid #d6e5f4;
+  border-radius: 18px;
+  background: #fff;
+  box-shadow: 0 10px 28px rgba(34, 78, 126, .08);
+}
+
+.speaking-support-header {
+  flex: 0 0 auto;
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) 46px;
+  align-items: start;
+  gap: 10px;
+  padding: 16px 10px 0 16px;
+  background: #fff;
+}
+
+.speaking-support-tabs {
+  min-width: 0;
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  overflow: hidden;
+  border: 1px solid #dce8f4;
+  border-radius: 13px;
+  background: #f4f8fd;
+}
+
+.speaking-support-tabs button {
+  position: relative;
+  min-width: 0;
+  min-height: 48px !important;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 7px;
+  padding: 0 9px !important;
+  border: 0 !important;
+  border-radius: 12px;
+  color: #607395 !important;
+  background: transparent !important;
+  box-shadow: none !important;
+  font-size: .96rem !important;
+  font-weight: 800 !important;
+  white-space: nowrap;
+}
+
+.speaking-support-tabs button:hover:not(:disabled),
+.speaking-support-tabs button:focus-visible {
+  color: #246ac5 !important;
+  background: #edf5ff !important;
+}
+
+.speaking-support-tabs button[aria-selected="true"] {
+  color: #146fe5 !important;
+  background: #fff !important;
+}
+
+.speaking-support-tabs button[aria-selected="true"]::after {
+  content: "";
+  position: absolute;
+  right: 14px;
+  bottom: 0;
+  left: 14px;
+  height: 3px;
+  border-radius: 99px 99px 0 0;
+  background: #1d76e8;
+}
+
+.speaking-support-close {
+  width: 46px;
+  min-height: 46px !important;
+  display: inline-grid;
+  place-items: center;
+  padding: 0 !important;
+  border: 1px solid #d9e6f2 !important;
+  border-radius: 13px;
+  color: #10295b !important;
+  background: #fff !important;
+  box-shadow: none !important;
+}
+
+.speaking-support-close:hover:not(:disabled),
+.speaking-support-close:focus-visible {
+  border-color: #9dc5f4 !important;
+  color: #146fe5 !important;
+  background: #f4f9ff !important;
+}
+
+.speaking-support-content {
+  min-height: 0;
+  flex: 1 1 auto;
+  display: flex;
+}
+
+.speaking-support-tabpanel {
+  min-width: 0;
+  min-height: 0;
+  width: 100%;
+  height: 100%;
+  overflow-y: auto;
+  padding: 31px 17px 20px;
+  scrollbar-color: #bfd3e8 transparent;
+  scrollbar-width: thin;
+}
+
+.speaking-support-tabpanel:focus-visible {
+  outline: 3px solid rgba(36, 120, 238, .25);
+  outline-offset: -3px;
+}
+
+.speaking-useful-panel-content,
+.speaking-context-panel-content {
+  min-width: 0;
+  min-height: 100%;
+  display: flex;
+  flex-direction: column;
+  gap: 22px;
+}
+
+.speaking-support-title-row {
+  min-width: 0;
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 14px;
+}
+
+.speaking-support-title-row > div {
+  min-width: 0;
+}
+
+.speaking-support-title-row > svg {
+  flex: 0 0 auto;
+  margin-top: 2px;
+  color: #667d9f;
+}
+
+.speaking-support-kicker {
+  display: block;
+  margin-bottom: 8px;
+  color: #2b72c9;
+  font-size: .75rem;
+  font-weight: 800;
+  letter-spacing: .02em;
+  text-transform: uppercase;
+}
+
+.speaking-support-title-row h2 {
+  margin: 0;
+  color: #10295b;
+  font-size: 1.38rem;
+  font-weight: 850;
+  letter-spacing: -.035em;
+  line-height: 1.15;
+}
+
+.speaking-support-title-row p {
+  margin: 7px 0 0;
+  color: #5c7295;
+  font-size: .97rem;
+  font-weight: 650;
+  line-height: 1.4;
+}
+
+.speaking-support-panel .speaking-student-expression-list {
+  gap: 12px;
+}
+
+.speaking-support-panel .speaking-student-expression-list button {
+  min-height: 56px !important;
+}
+
+.speaking-support-panel .speaking-useful-callout {
+  margin-top: auto;
+}
+
+.speaking-context-panel-content {
+  gap: 20px;
+}
+
+.speaking-context-title-row p {
+  max-width: 270px;
+}
+
+.speaking-context-visual {
+  min-width: 0;
+  min-height: 0;
+  flex: 1 1 auto;
+  display: flex;
+  align-items: stretch;
+  justify-content: center;
+  overflow: hidden;
+  margin: 0;
+  border: 1px solid #dbe7f2;
+  border-radius: 16px;
+  background: #edf6ff;
+}
+
+.speaking-context-visual img {
+  display: block;
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+  object-position: center;
+}
+
+.speaking-context-empty {
+  min-height: 260px;
+  display: grid;
+  place-content: center;
+  justify-items: center;
+  gap: 10px;
+  padding: 28px 20px;
+  border: 1px dashed #b9d4ee;
+  border-radius: 16px;
+  color: #294776;
+  background: #f4f9ff;
+  text-align: center;
+}
+
+.speaking-context-empty-icon {
+  display: grid;
+  place-items: center;
+  width: 54px;
+  height: 54px;
+  border-radius: 16px;
+  color: #2478ee;
+  background: #e4f0ff;
+}
+
+.speaking-context-empty strong {
+  max-width: 260px;
+  font-size: 1rem;
+  line-height: 1.35;
+}
+
+.speaking-context-empty p {
+  max-width: 270px;
+  margin: 0;
+  color: #6d809d;
+  font-size: .86rem;
+  line-height: 1.5;
+}
+
+.speaking-sidebar-secondary {
+  flex: 0 0 auto;
+  display: grid;
+  gap: 18px;
+  margin-top: 18px;
+}
+
+.speaking-student-grid.is-support-collapsed {
+  grid-template-columns: minmax(0, 1fr);
+  grid-template-areas: "center";
+}
+
+.speaking-student-grid.is-support-collapsed .speaking-student-sidebar {
+  display: none;
+}
+
+.speaking-student-context-button {
+  width: min(100%, 300px);
+  min-height: 70px;
+  justify-self: end;
+  display: grid;
+  grid-template-columns: 28px minmax(0, 1fr);
+  grid-template-rows: auto auto;
+  align-items: center;
+  gap: 4px 12px;
+  padding: 12px 22px;
+  border: 1px solid #cfe1f8 !important;
+  border-radius: 15px;
+  color: var(--student-navy) !important;
+  background: #fff !important;
+  box-shadow: 0 5px 14px rgba(36, 57, 110, .05) !important;
+  font-size: 1.08rem;
+  font-weight: 850;
+  text-align: left;
+}
+
+.speaking-student-context-button:hover:not(:disabled),
+.speaking-student-context-button:focus-visible {
+  border-color: #9dc5f4 !important;
+  color: #146fe5 !important;
+  background: #f5faff !important;
+}
+
+.speaking-student-context-button > svg {
+  color: var(--student-blue);
+}
+
+.speaking-student-context-button span {
+  text-align: left;
+}
+
+.speaking-student-context-button small {
+  grid-column: 2;
+  color: #5f779d;
+  font-size: .79rem;
+  font-weight: 650;
+  line-height: 1.25;
+  text-align: left;
+}
+
+@media (min-width: 901px) and (min-height: 560px) {
+  .speaking-app .speaking-session-main {
+    background: #eef7ff;
+  }
+
+  .speaking-app .speaking-student-screen {
+    background: #eef7ff;
+  }
+
+  .speaking-app .speaking-student-header {
+    height: 94px;
+    min-height: 94px;
+  }
+
+  .speaking-app .speaking-student-brand,
+  .speaking-app .speaking-student-brand .speaking-brand {
+    height: 94px;
+  }
+
+  .speaking-app .speaking-student-grid {
+    width: 100%;
+    max-width: none;
+    min-height: 0;
+    height: auto;
+    flex: 1 1 auto;
+    grid-template-columns: minmax(0, 1fr) clamp(390px, 29.3vw, 492px);
+    grid-template-rows: minmax(0, 1fr);
+    grid-template-areas: "center sidebar";
+    gap: 16px;
+    padding: 22px 3.4vw 24px;
+  }
+
+  .speaking-app .speaking-student-center {
+    grid-template-rows: minmax(126px, auto) minmax(230px, 267px) auto minmax(0, 1fr);
+    gap: 16px;
+  }
+
+  .speaking-app .speaking-live-reply {
+    min-height: 136px;
+    padding: 18px 26px;
+  }
+
+  .speaking-app .speaking-student-controls {
+    min-height: 267px;
+    height: 100%;
+    padding: 18px clamp(24px, 5vw, 62px) 16px;
+  }
+
+  .speaking-app .speaking-student-mic {
+    width: 132px;
+    height: 132px;
+    min-height: 132px !important;
+  }
+
+  .speaking-app .speaking-student-mic svg {
+    width: 58px;
+    height: 58px;
+  }
+
+  .speaking-app .speaking-transcript-card {
+    height: auto;
+    min-height: 0;
+  }
+
+  .speaking-app .speaking-student-sidebar {
+    height: 100%;
+    min-height: 0;
+    overflow-y: auto;
+  }
+
+  .speaking-app .speaking-support-panel {
+    flex: 0 0 100%;
+  }
+
+  .speaking-app .speaking-support-tabpanel {
+    padding: 31px 18px 22px;
+  }
+
+  .speaking-app .speaking-context-visual {
+    min-height: 0;
+  }
+}
+
+@media (max-width: 900px) {
+  .speaking-app .speaking-student-grid {
+    grid-template-columns: minmax(0, 1fr);
+    grid-template-areas: "center" "sidebar";
+  }
+
+  .speaking-app .speaking-student-sidebar {
+    display: flex;
+    flex-direction: column;
+    height: auto;
+    overflow: visible;
+  }
+
+  .speaking-app .speaking-support-panel {
+    height: min(620px, calc(100dvh - 24px));
+    min-height: 480px;
+  }
+
+  .speaking-app .speaking-context-visual {
+    min-height: 360px;
+  }
+}
+
+@media (max-width: 620px) {
+  .speaking-app .speaking-student-context-button {
+    min-height: 56px;
+    grid-template-columns: 21px minmax(0, 1fr);
+    gap: 3px 6px;
+    padding: 8px;
+    font-size: .76rem;
+  }
+
+  .speaking-app .speaking-student-context-button small {
+    font-size: .58rem;
+  }
+
+  .speaking-app .speaking-support-header {
+    grid-template-columns: minmax(0, 1fr) 42px;
+    padding: 12px 8px 0 12px;
+  }
+
+  .speaking-app .speaking-support-tabs button {
+    min-height: 44px !important;
+    gap: 4px;
+    padding-inline: 5px !important;
+    font-size: .78rem !important;
+  }
+
+  .speaking-app .speaking-support-tabs button[aria-selected="true"]::after {
+    right: 8px;
+    left: 8px;
+  }
+
+  .speaking-app .speaking-support-close {
+    width: 42px;
+    min-height: 42px !important;
+  }
+
+  .speaking-app .speaking-support-tabpanel {
+    padding: 24px 12px 16px;
+  }
+
+  .speaking-app .speaking-support-title-row h2 {
+    font-size: 1.18rem;
+  }
+
+  .speaking-app .speaking-support-title-row p {
+    font-size: .86rem;
+  }
+
+  .speaking-app .speaking-support-panel .speaking-student-expression-list button {
+    min-height: 52px !important;
+    font-size: .88rem !important;
+  }
+
+  .speaking-app .speaking-support-panel .speaking-useful-callout {
+    font-size: .86rem;
+  }
+
+  .speaking-app .speaking-support-panel {
+    height: min(580px, calc(100dvh - 20px));
+    min-height: 430px;
+  }
+
+  .speaking-app .speaking-context-visual {
+    min-height: 280px;
+  }
+}
+
+/* Final desktop alignment for the screenshot-matched learner workspace. The
+   support rail reaches the viewport edge while the speaking controls keep
+   their two utility actions on the same upper row as the reference. */
+.speaking-app .speaking-student-controls > .speaking-student-status {
+  grid-column: 1 / -1;
+  min-width: 0;
+}
+
+@media (min-width: 901px) and (min-height: 560px) {
+  .speaking-app .speaking-student-grid {
+    padding-right: 17px;
+  }
+
+  .speaking-app .speaking-student-sidebar {
+    scrollbar-width: none;
+  }
+
+  .speaking-app .speaking-student-sidebar::-webkit-scrollbar {
+    width: 0;
+    height: 0;
+  }
+
+  .speaking-app .speaking-student-center {
+    grid-template-rows: minmax(126px, auto) minmax(230px, 267px) minmax(0, 1fr);
+    gap: 16px;
+  }
+
+  .speaking-app .speaking-live-reply {
+    grid-template-columns: 86px minmax(0, 1fr) 58px;
+    gap: 20px;
+    padding: 18px 26px;
+  }
+
+  .speaking-app .speaking-live-reply-avatar {
+    width: 86px;
+    height: 86px;
+  }
+
+  .speaking-app .speaking-live-reply p {
+    font-size: clamp(1.45rem, 1.9vw, 1.98rem);
+    line-height: 1.08;
+  }
+
+  .speaking-app .speaking-live-reply .speaking-icon-button {
+    width: 58px;
+    min-height: 58px !important;
+  }
+
+  .speaking-app .speaking-student-controls {
+    grid-template-rows: minmax(0, 1fr) auto;
+    row-gap: 8px;
+    padding-inline: clamp(24px, 5vw, 69px);
+  }
+
+  .speaking-app .speaking-replay-button,
+  .speaking-app .speaking-student-context-button {
+    width: 184px;
+    max-width: 184px;
+    min-height: 58px !important;
+    align-self: start;
+    margin-top: 6px;
+  }
+
+  .speaking-app .speaking-replay-button {
+    padding-inline: 20px;
+    gap: 12px;
+  }
+
+  .speaking-app .speaking-student-context-button {
+    grid-template-columns: 24px minmax(0, 1fr);
+    grid-template-rows: auto;
+    gap: 12px;
+    padding: 0 20px;
+  }
+
+  .speaking-app .speaking-student-context-button small {
+    display: none;
+  }
+
+  .speaking-app .speaking-student-status {
+    align-self: end;
+    margin: 0;
+  }
+
+  .speaking-app .speaking-support-header {
+    grid-template-columns: minmax(0, 1fr) 48px;
+    gap: 36px;
+    padding: 16px 10px 0 18px;
+  }
+
+  .speaking-app .speaking-support-tabs {
+    margin-top: 2px;
+  }
+
+  .speaking-app .speaking-support-close {
+    width: 48px;
+    min-height: 48px !important;
+    margin-top: -7px;
+  }
+
+  .speaking-app .speaking-context-panel-content {
+    height: 100%;
+    min-height: 0;
+    gap: 35px;
+  }
+
+  .speaking-app .speaking-context-title-row {
+    transform: translateY(5px);
+  }
+
+  .speaking-app .speaking-context-visual {
+    transform: translateY(-2px);
+  }
+
+  .speaking-app .speaking-transcript-card {
+    margin-top: 6px;
+    margin-bottom: 12px;
+  }
+
+  .speaking-app .speaking-context-title-row h2 {
+    font-size: 1.55rem;
+  }
+
+  .speaking-app .speaking-context-title-row p {
+    margin-top: 8px;
+    font-size: 1rem;
+  }
+}
+
+@media (min-width: 901px) and (max-height: 700px) {
+  .speaking-app .speaking-student-center {
+    grid-template-rows: minmax(120px, 120px) minmax(196px, 196px) minmax(0, 1fr);
+  }
+
+  .speaking-app .speaking-live-reply {
+    padding-block: 14px;
+  }
+
+  .speaking-app .speaking-live-reply-avatar {
+    width: 78px;
+    height: 78px;
+  }
+
+  .speaking-app .speaking-student-controls {
+    min-height: 196px;
+  }
+
+  .speaking-app .speaking-student-mic {
+    width: 112px;
+    height: 112px;
+    min-height: 112px !important;
+  }
+}

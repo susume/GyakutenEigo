@@ -109,6 +109,27 @@ export interface SpeakingRubricCriterion {
   enabled: boolean;
 }
 
+export const SPEAKING_CONTEXT_TYPES = [
+  "map",
+  "menu",
+  "subway",
+  "timetable",
+  "chart",
+  "photo",
+  "other"
+] as const;
+
+export type SpeakingContextType = (typeof SPEAKING_CONTEXT_TYPES)[number];
+
+/** Optional, non-linguistic visual support for a speaking activity. */
+export interface SpeakingContext {
+  title?: string;
+  description?: string;
+  imageUrl?: string;
+  alt?: string;
+  type?: SpeakingContextType;
+}
+
 /**
  * Scenario-owned learner support.  The fields are optional at the activity
  * boundary so older/custom activities can be read safely; the resolver below
@@ -131,6 +152,8 @@ export interface SpeakingScenarioResources {
   referenceItems?: Array<{ label: string; detail?: string }>;
   imageSrc?: string;
   imageAlt?: string;
+  /** Supported for scenario-owned authoring and legacy JSON records. */
+  context?: SpeakingContext;
 }
 
 export type SpeakingResolvedScenarioResources = {
@@ -149,6 +172,7 @@ export type SpeakingResolvedScenarioResources = {
   referenceItems: Array<{ label: string; detail?: string }>;
   imageSrc?: string;
   imageAlt?: string;
+  context?: SpeakingContext;
 };
 
 export const DEFAULT_SPEAKING_SCENARIO_RESOURCES: SpeakingResolvedScenarioResources = {
@@ -173,6 +197,23 @@ export const DEFAULT_SPEAKING_SCENARIO_RESOURCES: SpeakingResolvedScenarioResour
 
 const boundedResourceText = (value: string | undefined, fallback: string, max = 240) =>
   (value?.trim().slice(0, max) || fallback);
+
+const normalizeSpeakingContext = (context?: SpeakingContext): SpeakingContext | undefined => {
+  if (!context) return undefined;
+  const title = context.title?.trim().slice(0, 120);
+  const description = context.description?.trim().slice(0, 240);
+  const imageUrl = context.imageUrl?.trim().slice(0, 500);
+  const alt = context.alt?.trim().slice(0, 160);
+  const type = context.type && SPEAKING_CONTEXT_TYPES.includes(context.type) ? context.type : undefined;
+  if (!title && !description && !imageUrl && !alt && !type) return undefined;
+  return {
+    ...(title ? { title } : {}),
+    ...(description ? { description } : {}),
+    ...(imageUrl ? { imageUrl } : {}),
+    ...(alt ? { alt } : {}),
+    ...(type ? { type } : {})
+  };
+};
 
 /** Resolve activity-owned support without guessing from an editable title. */
 export const speakingScenarioResources = (
@@ -200,7 +241,8 @@ export const speakingScenarioResources = (
       return label ? [{ label, ...(item.detail?.trim() ? { detail: item.detail.trim().slice(0, 240) } : {}) }] : [];
     }).slice(0, 24),
   ...(resources?.imageSrc?.trim() ? { imageSrc: resources.imageSrc.trim().slice(0, 500) } : {}),
-  ...(resources?.imageAlt?.trim() ? { imageAlt: resources.imageAlt.trim().slice(0, 160) } : {})
+  ...(resources?.imageAlt?.trim() ? { imageAlt: resources.imageAlt.trim().slice(0, 160) } : {}),
+  ...(normalizeSpeakingContext(resources?.context) ? { context: normalizeSpeakingContext(resources?.context) } : {})
 });
 
 export const DEFAULT_SPEAKING_RUBRIC: SpeakingRubricCriterion[] = [
@@ -246,9 +288,15 @@ export interface SpeakingActivity {
   targetExpressions: string[];
   rubric: SpeakingRubricCriterion[];
   scenarioResources?: SpeakingScenarioResources;
+  /** Activity-level visual support; scenarioResources.context remains a compatible alias. */
+  context?: SpeakingContext;
   createdAt: string;
   updatedAt: string;
 }
+
+export const speakingContext = (
+  activity: Pick<SpeakingActivity, "context" | "scenarioResources"> | undefined
+): SpeakingContext | undefined => normalizeSpeakingContext(activity?.context ?? activity?.scenarioResources?.context);
 
 export interface SpeakingParticipant {
   id: string;
@@ -365,7 +413,7 @@ export interface SpeakingEvaluation {
 export interface SpeakingParticipantResult {
   participant: SpeakingParticipant;
   session: SpeakingSession;
-  activity: Pick<SpeakingActivity, "id" | "title" | "scenario" | "targetExpressions" | "nativeLanguage" | "rubric" | "scenarioResources">;
+  activity: Pick<SpeakingActivity, "id" | "title" | "scenario" | "targetExpressions" | "nativeLanguage" | "rubric" | "scenarioResources" | "context">;
   turns: SpeakingTurn[];
   evaluation?: SpeakingEvaluation;
 }
@@ -383,6 +431,7 @@ export interface SpeakingCreateActivityInput {
   targetExpressions: string[];
   rubric: SpeakingRubricCriterion[];
   scenarioResources?: SpeakingScenarioResources;
+  context?: SpeakingContext;
 }
 
 export const SPEAKING_EVALUATION_JOB_STATUSES = ["queued", "running", "retrying", "completed", "failed"] as const;
@@ -427,6 +476,14 @@ export const SpeakingRubricCriterionSchema = z.object({
   enabled: z.boolean()
 });
 
+const SpeakingContextSchema = z.object({
+  title: z.string().trim().max(120).optional(),
+  description: z.string().trim().max(240).optional(),
+  imageUrl: z.string().trim().max(500).optional(),
+  alt: z.string().trim().max(160).optional(),
+  type: z.enum(SPEAKING_CONTEXT_TYPES).optional()
+}).partial();
+
 export const SpeakingCreateActivityInputSchema = z.object({
   title: z.string().trim().min(1).max(SPEAKING_LIMITS.title),
   scenario: z.string().trim().min(1).max(SPEAKING_LIMITS.scenario),
@@ -439,6 +496,7 @@ export const SpeakingCreateActivityInputSchema = z.object({
   identifierMode: z.enum(SPEAKING_IDENTIFIER_MODES),
   targetExpressions: z.array(z.string().trim().min(1).max(SPEAKING_LIMITS.expression)).max(SPEAKING_LIMITS.expressions),
   rubric: z.array(SpeakingRubricCriterionSchema).min(1).max(SPEAKING_LIMITS.rubricCriteria),
+  context: SpeakingContextSchema.optional(),
   scenarioResources: z.object({
     teacherFocus: z.string().trim().max(500).optional(),
     category: z.string().trim().min(1).max(80).optional(),
@@ -454,7 +512,8 @@ export const SpeakingCreateActivityInputSchema = z.object({
     usefulVocabulary: z.array(z.string().trim().min(1).max(160)).max(16).optional(),
     referenceItems: z.array(z.object({ label: z.string().trim().min(1).max(120), detail: z.string().trim().max(240).optional() })).max(24).optional(),
     imageSrc: z.string().trim().min(1).max(500).optional(),
-    imageAlt: z.string().trim().min(1).max(160).optional()
+    imageAlt: z.string().trim().min(1).max(160).optional(),
+    context: SpeakingContextSchema.optional()
   }).partial().optional()
 }).superRefine((input, context) => {
   if (!input.rubric.some((criterion) => criterion.enabled)) {
