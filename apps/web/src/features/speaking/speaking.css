@@ -2537,8 +2537,7 @@ body[data-speaking="true"] {
 
 .speaking-flow-panel,
 .speaking-transcript-card,
-.speaking-useful-student-card,
-.speaking-notes-card {
+.speaking-useful-student-card {
   border: 1px solid var(--student-line);
   border-radius: 17px;
   background: #fff;
@@ -3035,30 +3034,6 @@ body[data-speaking="true"] {
   font-weight: 800;
 }
 
-.speaking-notes-card {
-  min-height: 233px;
-  display: grid;
-  grid-template-rows: auto minmax(0, 1fr);
-  gap: 16px;
-  height: 233px;
-  margin-top: 2px;
-}
-
-.speaking-notes-card textarea {
-  height: 148px;
-  padding: 15px 16px;
-  border: 1px solid #e2eaf2;
-  border-radius: 12px;
-  color: var(--student-ink);
-  background: #fff;
-  font-size: .91rem;
-  line-height: 1.55;
-}
-
-.speaking-notes-card textarea::placeholder {
-  color: #9aa9be;
-}
-
 .speaking-student-controls {
   min-width: 0;
 }
@@ -3365,13 +3340,8 @@ body[data-speaking="true"] {
     order: 0;
   }
 
-  .speaking-useful-student-card,
-  .speaking-notes-card {
+  .speaking-useful-student-card {
     min-height: 0;
-  }
-
-  .speaking-notes-card {
-    height: auto;
   }
 }
 
@@ -3895,9 +3865,7 @@ body[data-speaking="true"] {
   gap: 12px;
 }
 
-.speaking-useful-student-card,
-.speaking-notes-card,
-.speaking-reference-card {
+.speaking-useful-student-card {
   min-height: 0;
   height: auto;
   border: 1px solid #dfe6f4;
@@ -3917,28 +3885,6 @@ body[data-speaking="true"] {
   min-height: 48px !important;
   padding: 9px 10px !important;
 }
-
-.speaking-reference-card { padding: 10px; }
-.speaking-reference-card > button {
-  width: 100%;
-  min-height: 46px;
-  display: flex;
-  align-items: center;
-  gap: 9px;
-  border: 0;
-  color: #25355f;
-  background: transparent;
-  font-weight: 800;
-  text-align: left;
-}
-.speaking-reference-card > button svg:last-child { margin-left: auto; }
-.speaking-reference-card > button[aria-expanded="true"] svg:last-child { transform: rotate(180deg); }
-.speaking-reference-card ul { margin: 0; padding: 0 10px 8px 34px; }
-.speaking-reference-card li { display: flex; justify-content: space-between; gap: 10px; padding: 7px 0; color: #33436f; font-size: .83rem; }
-.speaking-reference-card li span { color: #7784a3; }
-
-.speaking-notes-card { padding: 16px; }
-.speaking-notes-card textarea { min-height: 92px; resize: vertical; }
 
 .speaking-inline-operation-error {
   display: flex;
@@ -4063,7 +4009,6 @@ body[data-speaking="true"] {
   .speaking-flow-panel details:not([open]) + .speaking-goal-card { margin-top: 0; }
   .speaking-flow-list { max-height: 250px; }
   .speaking-student-expression-list { max-height: 210px; }
-  .speaking-notes-card { padding: 13px; }
 }
 
 @media (max-width: 420px) {
@@ -4360,7 +4305,7 @@ body[data-speaking="true"] {
 
 /* Approved Performance Test student layout. Secondary guidance stays out of
    this screen; the conversation and speaking controls own the primary
-   column while Useful English and Notes stay available in the sidebar. */
+   column while Useful English and Context stay available in the support rail. */
 .speaking-session-main {
   display: flex;
   flex-direction: column;
@@ -5008,9 +4953,7 @@ body[data-speaking="true"] {
   gap: 18px;
 }
 
-.speaking-useful-student-card,
-.speaking-notes-card,
-.speaking-reference-card {
+.speaking-useful-student-card {
   min-width: 0;
   height: auto;
   border: 1px solid var(--student-line);
@@ -5109,75 +5052,6 @@ body[data-speaking="true"] {
 
 .speaking-useful-callout > svg { color: #f5b83d; }
 
-.speaking-notes-card {
-  min-height: 310px;
-  display: grid;
-  align-content: start;
-  gap: 16px;
-  padding: 24px;
-}
-
-.speaking-notes-field {
-  position: relative;
-  min-width: 0;
-  min-height: 196px;
-  overflow: hidden;
-  border: 1px solid #dfe8f2;
-  border-radius: 14px;
-  background: #fff;
-}
-
-.speaking-notes-field textarea {
-  position: relative;
-  z-index: 1;
-  width: 100%;
-  height: 196px;
-  min-height: 196px;
-  padding: 16px 16px 94px;
-  border: 0;
-  border-radius: 0;
-  color: var(--student-ink);
-  background: transparent;
-  font-size: 1rem;
-  line-height: 1.55;
-  resize: vertical;
-}
-
-.speaking-notes-field textarea::placeholder { color: #9aa9be; }
-
-.speaking-notes-field img {
-  position: absolute;
-  right: 0;
-  bottom: 0;
-  z-index: 0;
-  width: 100%;
-  height: 82px;
-  object-fit: cover;
-  object-position: center bottom;
-  pointer-events: none;
-}
-
-.speaking-reference-card { padding: 10px; }
-
-.speaking-reference-card > button {
-  width: 100%;
-  min-height: 46px;
-  display: flex;
-  align-items: center;
-  gap: 9px;
-  border: 0;
-  color: #25355f;
-  background: transparent;
-  font-weight: 800;
-  text-align: left;
-}
-
-.speaking-reference-card > button svg:last-child { margin-left: auto; }
-.speaking-reference-card > button[aria-expanded="true"] svg:last-child { transform: rotate(180deg); }
-.speaking-reference-card ul { margin: 0; padding: 0 10px 8px 34px; }
-.speaking-reference-card li { display: flex; justify-content: space-between; gap: 10px; padding: 7px 0; color: #33436f; font-size: .83rem; }
-.speaking-reference-card li span { color: #7784a3; }
-
 @media (max-width: 1100px) {
   .speaking-student-header { gap: 13px; }
   .speaking-student-product { font-size: 1.2rem; }
@@ -5202,7 +5076,7 @@ body[data-speaking="true"] {
   .speaking-student-center { height: auto; min-height: 0; display: flex; gap: 12px; }
   .speaking-transcript-card { height: clamp(340px, 52vh, 520px); min-height: 340px; }
   .speaking-student-sidebar { gap: 14px; }
-  .speaking-useful-student-card, .speaking-notes-card { padding: 20px; }
+  .speaking-useful-student-card { padding: 20px; }
   .speaking-student-controls { min-height: 150px; padding-inline: 28px; }
   .speaking-student-mic { width: 96px; height: 96px; min-height: 96px !important; }
   .speaking-student-mic svg { width: 48px; height: 48px; }
@@ -5257,7 +5131,5 @@ body[data-speaking="true"] {
   .speaking-turn-meta time { font-size: .68rem; }
   .speaking-turn-meta button { width: 30px; min-height: 30px !important; }
   .speaking-student-expression-list button { min-height: 52px !important; font-size: .88rem !important; }
-  .speaking-useful-student-card, .speaking-notes-card { padding: 16px; }
-  .speaking-notes-card { min-height: 0; }
-  .speaking-notes-field, .speaking-notes-field textarea { min-height: 180px; height: 180px; }
+  .speaking-useful-student-card { padding: 16px; }
 }

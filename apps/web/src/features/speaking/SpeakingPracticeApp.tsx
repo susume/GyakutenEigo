@@ -15,7 +15,6 @@ import {
   Menu,
   MessageCircle,
   Mic,
-  PencilLine,
   RotateCcw,
   ScanLine,
   Sparkles,
@@ -172,13 +171,11 @@ function SpeakingHome({ navigate }: { navigate: Navigate }) {
 }
 
 
-interface SpeakingScreenProps { statusText?: string; activity: SpeakingActivity; state: SpeakingUiState; remainingSeconds: number; turns: SpeakingTurn[]; onMic: () => void; onReplay?: (text?: string) => void; onBrandClick?: () => void; onFinish: () => void; disabled?: boolean; finishDisabled?: boolean; }
+interface SpeakingScreenProps { statusText?: string; activity: SpeakingActivity; state: SpeakingUiState; remainingSeconds: number; turns: SpeakingTurn[]; onMic: () => void; onReplay?: (text?: string) => void; onBrandClick?: () => void; onFinish: () => void; disabled?: boolean; supportDisabled?: boolean; finishDisabled?: boolean; }
 const stateDescriptions: Record<SpeakingUiState, string> = { ready: "Your turn · Tap the microphone to speak.", listening: "Listening · Tap again when you finish.", thinking: "Processing your answer…", "ai-speaking": "AI speaking · Listen to your partner." };
 
-function SpeakingStudentScreenV2({ statusText, activity, state, remainingSeconds, turns, onMic, onReplay, onBrandClick, onFinish, disabled = false, finishDisabled = false }: SpeakingScreenProps) {
-  const [referenceOpen, setReferenceOpen] = useState(false);
-  const [notes, setNotes] = useState("");
-  const [supportOpen, setSupportOpen] = useState(true);
+function SpeakingStudentScreenV2({ statusText, activity, state, remainingSeconds, turns, onMic, onReplay, onBrandClick, onFinish, disabled = false, supportDisabled = false, finishDisabled = false }: SpeakingScreenProps) {
+  const [supportOpen, setSupportOpen] = useState(() => typeof window === "undefined" || window.matchMedia("(min-width: 901px)").matches);
   const [showJumpToLatest, setShowJumpToLatest] = useState(false);
   const transcriptListRef = useRef<HTMLDivElement>(null);
   const transcriptAwayFromBottomRef = useRef(false);
@@ -190,8 +187,19 @@ function SpeakingStudentScreenV2({ statusText, activity, state, remainingSeconds
   const pendingReply = state === "thinking" && turns.some((turn) => turn.speaker === "student");
   const partnerImage = resources.imageSrc;
   const context = speakingContext(activity);
-  const [supportTab, setSupportTab] = useState<SpeakingSupportTab>(() => context ? "context" : "useful-english");
-  const helperText = statusText ?? (state === "thinking" ? "Check the message above" : stateDescriptions[state]);
+  const [supportTab, setSupportTab] = useState<SpeakingSupportTab>(() => activity.targetExpressions.length > 0 ? "useful-english" : context ? "context" : "useful-english");
+  const helperText = statusText ?? (state === "thinking" ? "Still processing your answer…" : stateDescriptions[state]);
+
+  useEffect(() => {
+    const mediaQuery = window.matchMedia("(min-width: 901px)");
+    const handleViewportChange = () => {
+      // Keep the portrait drawer out of the way of the microphone when a
+      // school tablet is rotated or a responsive preview narrows the page.
+      if (!mediaQuery.matches) setSupportOpen(false);
+    };
+    mediaQuery.addEventListener("change", handleViewportChange);
+    return () => mediaQuery.removeEventListener("change", handleViewportChange);
+  }, []);
 
   useEffect(() => {
     const frame = window.requestAnimationFrame(() => {
@@ -259,7 +267,7 @@ function SpeakingStudentScreenV2({ statusText, activity, state, remainingSeconds
          <footer className="speaking-student-controls" aria-label="Speaking controls">
            <button className="speaking-replay-button" type="button" onClick={() => onReplay?.(currentAiTurn?.text)} disabled={!onReplay || !currentAiTurn || state !== "ready"} aria-label="Replay latest AI message"><RotateCcw size={27} strokeWidth={1.7} aria-hidden="true" /><span>Replay</span></button>
            <div className="speaking-student-mic-wrap"><button className={"speaking-student-mic speaking-student-mic-" + state} type="button" onClick={onMic} disabled={disabled} aria-label={micLabel}><Mic size={54} strokeWidth={1.65} aria-hidden="true" /></button><span>{statusText ?? (state === "ai-speaking" ? "Stop playback" : state === "listening" ? "Stop speaking" : state === "thinking" ? "Processing…" : "Tap to Speak")}</span></div>
-           <button className="speaking-student-context-button" type="button" onClick={openContext} disabled={disabled} aria-label="Open Context support"><MapPinned size={22} strokeWidth={1.8} aria-hidden="true" /><span>Context</span></button>
+           <button className="speaking-student-context-button" type="button" onClick={openContext} disabled={supportDisabled} aria-label="Open Context support"><MapPinned size={22} strokeWidth={1.8} aria-hidden="true" /><span>Context</span></button>
            <p className="speaking-student-status" aria-live="polite">{helperText}</p>
          </footer>
          <section className="speaking-transcript-card" aria-labelledby="speaking-conversation-title">
@@ -273,11 +281,7 @@ function SpeakingStudentScreenV2({ statusText, activity, state, remainingSeconds
 
        </div>
        <aside className={`speaking-student-sidebar${supportOpen ? " is-open" : " is-collapsed"}`}>
-         <SpeakingSupportPanel activity={activity} activeTab={supportTab} onTabChange={setSupportTab} onClose={() => setSupportOpen(false)} disabled={disabled} />
-         <div className="speaking-sidebar-secondary">
-           <section className="speaking-notes-card"><div className="speaking-student-card-heading"><div><h2>Notes</h2><p>Private on this device</p></div><PencilLine size={21} strokeWidth={1.7} aria-hidden="true" /></div><div className="speaking-notes-field"><textarea value={notes} onChange={(event) => setNotes(event.target.value)} placeholder="Write a note…" aria-label="Notes" /><img src="/assets/speaking/notes-motivation.png" alt="" aria-hidden="true" /></div></section>
-           {resources.referenceItems.length > 0 && <section className="speaking-reference-card"><button type="button" onClick={() => setReferenceOpen((open) => !open)} aria-expanded={referenceOpen}><BookOpenText size={22} aria-hidden="true" /><span>Reference material</span><ChevronDown size={18} aria-hidden="true" /></button>{referenceOpen && <ul>{resources.referenceItems.map((item) => <li key={item.label}><strong>{item.label}</strong>{item.detail && <span>{item.detail}</span>}</li>)}</ul>}</section>}
-         </div>
+         <SpeakingSupportPanel activity={activity} activeTab={supportTab} onTabChange={setSupportTab} onClose={() => setSupportOpen(false)} disabled={supportDisabled} />
        </aside>
      </div>
    </div>;
@@ -663,6 +667,7 @@ function SpeakingSessionExperienceV2({ navigate, token, initialData }: { navigat
         if (["paused", "ended", "expired"].includes(next.session.status) || participantFinalizedRef.current) {
           cancelRecording();
           browserTtsProvider.cancel();
+          releaseRetryAudio();
         }
         if (participantFinalizedRef.current && !navigatedToResultRef.current) {
           navigatedToResultRef.current = true;
@@ -710,17 +715,19 @@ function SpeakingSessionExperienceV2({ navigate, token, initialData }: { navigat
       cancelled = true;
       if (timerId !== undefined) window.clearTimeout(timerId);
       controller.abort();
+      releaseRetryAudio();
       pollNowRef.current = () => undefined;
     };
-  }, [cancelRecording, handleFatalAuthorization, initialData.activity.nativeLanguage, initialData.session.id, navigate, token]);
+  }, [cancelRecording, handleFatalAuthorization, initialData.activity.nativeLanguage, initialData.session.id, navigate, releaseRetryAudio, token]);
 
   useEffect(() => {
     if (!["evaluating", "completed", "error"].includes(data.participant.status)) return;
     participantFinalizedRef.current = true;
     cancelRecording();
     browserTtsProvider.cancel();
+    releaseRetryAudio();
     setVoiceState(data.participant.status === "evaluating" ? "evaluating" : data.participant.status === "completed" ? "completed" : "error");
-  }, [cancelRecording, data.participant.status]);
+  }, [cancelRecording, data.participant.status, releaseRetryAudio]);
 
   useEffect(() => {
     const greeting = data.turns.find((turn) => turn.speaker === "ai");
@@ -756,7 +763,10 @@ function SpeakingSessionExperienceV2({ navigate, token, initialData }: { navigat
     setErrorOperation(undefined);
     try {
       const response = await speakingApi.turn(dataRef.current.session.id, token, { audio, requestId, speechDetected, audioDurationMs }) as { studentTurn: SpeakingTurn; aiTurn: SpeakingTurn; session: SpeakingSession };
-      if (authorizationFailedRef.current || participantFinalizedRef.current) return;
+      if (authorizationFailedRef.current || participantFinalizedRef.current) {
+        releaseRetryAudio();
+        return;
+      }
       releaseRetryAudio();
       const acceptSession = shouldAcceptSpeakingRevision(revisionRef.current, response.session.revision ?? 0);
       setData((current) => ({ ...current, participant: { ...current.participant, status: "in_progress" }, session: acceptSession ? response.session : current.session, turns: mergeSpeakingTurns(current.turns, [response.studentTurn, response.aiTurn]) }));
@@ -905,7 +915,7 @@ function SpeakingSessionExperienceV2({ navigate, token, initialData }: { navigat
       });
     }
   }, []);
-  useEffect(() => () => { cancelRecording(); browserTtsProvider.cancel(); }, [cancelRecording]);
+  useEffect(() => () => { cancelRecording(); browserTtsProvider.cancel(); releaseRetryAudio(); }, [cancelRecording, releaseRetryAudio]);
 
   const waiting = data.session.status === "ready";
   const paused = data.session.status === "paused" || voiceState === "paused";
@@ -913,7 +923,7 @@ function SpeakingSessionExperienceV2({ navigate, token, initialData }: { navigat
   const controlsDisabled = authorizationFailed || waiting || paused || ended || !["ready", "student_recording", "ai_speaking"].includes(voiceState);
   const uiState: SpeakingUiState = voiceState === "student_recording" ? "listening" : voiceState === "ai_speaking" ? "ai-speaking" : ["processing", "finishing", "evaluating"].includes(voiceState) ? "thinking" : "ready";
   const operationMessage = errorOperation === "microphone" ? "Retry microphone" : errorOperation === "turn" ? "Retry this turn" : errorOperation === "evaluation" ? "Check evaluation" : "Refresh status";
-  return <div className="speaking-session-page"><main className="speaking-session-main">{waiting && <div className="speaking-session-note" role="status"><Clock3 size={16} aria-hidden="true" /><span>You’re ready! Waiting for your teacher to start the activity.</span></div>}{paused && <div className="speaking-session-alert" role="alert"><HelpCircle size={18} aria-hidden="true" /><span>Your teacher paused the activity.</span></div>}{ended && <div className="speaking-session-alert" role="alert"><HelpCircle size={18} aria-hidden="true" /><span>This activity has ended. Your saved conversation can still be reviewed.</span></div>}{error && <div className="speaking-session-alert" role="alert"><HelpCircle size={18} aria-hidden="true" /><span>{error}</span>{!authorizationFailed && <button type="button" onClick={retryOperation}>{operationMessage}</button>}</div>}{micNotice && <div className="speaking-session-note" role="status"><Mic size={16} aria-hidden="true" /><span>{micNotice}</span></div>}{voiceState === "evaluating" && <div className="speaking-session-note" role="status"><LoaderCircle size={16} className="speaking-spin" aria-hidden="true" /><span>Your speaking practice is finished. Your feedback is being prepared.</span></div>}<SpeakingStudentScreenV2 statusText={waiting ? "Waiting for your teacher" : paused ? "Paused" : ended ? "Test ended" : voiceState === "finishing" || voiceState === "evaluating" ? "Finishing" : error ? "Check the message above" : undefined} activity={data.activity} state={uiState} remainingSeconds={remaining} turns={data.turns} onMic={onMic} onReplay={replay} onBrandClick={() => navigate("/speak")} onFinish={() => void finish()} disabled={controlsDisabled} finishDisabled={authorizationFailed || waiting || ["finishing", "evaluating", "completed", "ai_speaking", "student_recording", "processing"].includes(voiceState)} /></main></div>;
+  return <div className="speaking-session-page"><main className="speaking-session-main">{waiting && <div className="speaking-session-note" role="status"><Clock3 size={16} aria-hidden="true" /><span>You’re ready! Waiting for your teacher to start the activity.</span></div>}{paused && <div className="speaking-session-alert" role="alert"><HelpCircle size={18} aria-hidden="true" /><span>Your teacher paused the activity.</span></div>}{ended && <div className="speaking-session-alert" role="alert"><HelpCircle size={18} aria-hidden="true" /><span>This activity has ended. Your saved conversation can still be reviewed.</span></div>}{error && <div className="speaking-session-alert" role="alert"><HelpCircle size={18} aria-hidden="true" /><span>{error}</span>{!authorizationFailed && <button type="button" onClick={retryOperation}>{operationMessage}</button>}</div>}{micNotice && <div className="speaking-session-note" role="status"><Mic size={16} aria-hidden="true" /><span>{micNotice}</span></div>}{voiceState === "evaluating" && <div className="speaking-session-note" role="status"><LoaderCircle size={16} className="speaking-spin" aria-hidden="true" /><span>Your speaking practice is finished. Your feedback is being prepared.</span></div>}<SpeakingStudentScreenV2 statusText={waiting ? "Waiting for your teacher" : paused ? "Paused" : ended ? "Test ended" : voiceState === "finishing" || voiceState === "evaluating" ? "Finishing" : error ? "Check the message above" : undefined} activity={data.activity} state={uiState} remainingSeconds={remaining} turns={data.turns} onMic={onMic} onReplay={replay} onBrandClick={() => navigate("/speak")} onFinish={() => void finish()} disabled={controlsDisabled} supportDisabled={authorizationFailed || ended} finishDisabled={authorizationFailed || waiting || ["finishing", "evaluating", "completed", "ai_speaking", "student_recording", "processing"].includes(voiceState)} /></main></div>;
 }
 
 

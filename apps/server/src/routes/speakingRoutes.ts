@@ -37,6 +37,7 @@ import {
 import {
   createSpeakingProviders,
   speakingEvaluationProviderModel,
+  speakingTranscriptionProviderModel,
   speakingProviderTimeoutMs,
   speakingProviderFailureDetails,
   SpeakingProviderError,
@@ -65,6 +66,10 @@ export type SpeakingLatencyDiagnostics = {
   audioBytes: number;
   requestParsingMs: number;
   transcriptionMs: number;
+  transcriptionAttempts: number;
+  transcriptionRetryUsed: boolean;
+  transcriptionRetrySucceeded: boolean;
+  transcriptionFailureKind?: string;
   studentPersistenceMs: number;
   promptPreparationMs: number;
   conversationMs: number;
@@ -268,10 +273,17 @@ const logSpeakingLatency = (diagnostics: SpeakingLatencyDiagnostics) => {
   console.info(`[Speaking latency] ${JSON.stringify(diagnostics)}`);
 };
 
-const transcriptionFailureResponse = (kind: ReturnType<typeof speakingProviderFailureDetails>["kind"]) => {
-  if (kind === "timeout") return { code: "SPEAKING_TRANSCRIPTION_TIMEOUT", error: "Speech recognition took too long. Please try again." };
-  if (kind === "rate_limit" || kind === "unavailable" || kind === "network") return { code: "SPEAKING_TRANSCRIPTION_BUSY", error: "Speech recognition is temporarily busy. Please try again." };
-  if (kind === "bad_request") return { code: "SPEAKING_TRANSCRIPTION_AUDIO_INVALID", error: "That recording could not be read. Please record it again." };
+const transientTranscriptionFailureKinds = new Set<ReturnType<typeof speakingProviderFailureDetails>["kind"]>(["timeout", "network", "unavailable", "rate_limit"]);
+const isTransientTranscriptionFailure = (failure: ReturnType<typeof speakingProviderFailureDetails>) =>
+  transientTranscriptionFailureKinds.has(failure.kind) || (failure.status !== undefined && failure.status >= 500 && failure.status <= 599);
+const transcriptionRetryDelayMs = (random: () => number) => 120 + Math.round(Math.min(1, Math.max(0, random())) * 180);
+const waitForSpeakingRetry = (delayMs: number) => new Promise<void>((resolve) => setTimeout(resolve, delayMs));
+
+const transcriptionFailureResponse = (failure: ReturnType<typeof speakingProviderFailureDetails>, automaticRetryUsed = false) => {
+  if (automaticRetryUsed && isTransientTranscriptionFailure(failure)) return { code: "SPEAKING_TRANSCRIPTION_RETRYABLE", error: "Speech recognition is taking longer than expected. Your recording is saved. You can retry the same answer." };
+  if (failure.kind === "timeout") return { code: "SPEAKING_TRANSCRIPTION_TIMEOUT", error: "Speech recognition took too long. Please try again." };
+  if (failure.kind === "rate_limit" || failure.kind === "unavailable" || failure.kind === "network") return { code: "SPEAKING_TRANSCRIPTION_BUSY", error: "Speech recognition is temporarily busy. Please try again." };
+  if (failure.kind === "bad_request") return { code: "SPEAKING_TRANSCRIPTION_AUDIO_INVALID", error: "That recording could not be read. Please record it again." };
   return { code: "SPEAKING_TRANSCRIPTION_UNAVAILABLE", error: "Speech recognition is temporarily unavailable. Please try again." };
 };
 
@@ -343,6 +355,18 @@ export const registerSpeakingRoutes = (app: Application, deps: SpeakingRouteDepe
     promptChars: [] as number[],
     responseChars: [] as number[]
   };
+  const transcriptionTelemetry = {
+    attempts: 0,
+    successes: 0,
+    firstAttemptSuccesses: 0,
+    firstAttemptFailures: 0,
+    retriesScheduled: 0,
+    retryRecoveries: 0,
+    terminalFailures: 0,
+    failuresByKind: {} as Record<string, number>,
+    latencyMs: [] as number[],
+    providerDurationMs: [] as number[]
+  };
   const rememberEvaluationMetric = (values: number[], value: number) => {
     if (Number.isFinite(value)) values.push(Math.min(120_000, Math.max(0, Math.round(value))));
     if (values.length > 1_000) values.splice(0, values.length - 1_000);
@@ -366,6 +390,25 @@ export const registerSpeakingRoutes = (app: Application, deps: SpeakingRouteDepe
     providerDurationMs: { p50: percentile(evaluationTelemetry.providerDurationsMs, 0.5), p95: percentile(evaluationTelemetry.providerDurationsMs, 0.95), p99: percentile(evaluationTelemetry.providerDurationsMs, 0.99) },
     promptChars: { p50: percentile(evaluationTelemetry.promptChars, 0.5), p95: percentile(evaluationTelemetry.promptChars, 0.95), p99: percentile(evaluationTelemetry.promptChars, 0.99) },
     responseChars: { p50: percentile(evaluationTelemetry.responseChars, 0.5), p95: percentile(evaluationTelemetry.responseChars, 0.95), p99: percentile(evaluationTelemetry.responseChars, 0.99) }
+  });
+  const transcriptionTelemetrySnapshot = () => ({
+    provider: transcriber.providerName ?? "custom",
+    model: speakingTranscriptionProviderModel(transcriber.providerName),
+    attempts: transcriptionTelemetry.attempts,
+    successes: transcriptionTelemetry.successes,
+    firstAttemptSuccesses: transcriptionTelemetry.firstAttemptSuccesses,
+    firstAttemptFailures: transcriptionTelemetry.firstAttemptFailures,
+    firstAttemptSuccessRate: transcriptionTelemetry.firstAttemptSuccesses + transcriptionTelemetry.firstAttemptFailures > 0
+      ? transcriptionTelemetry.firstAttemptSuccesses / (transcriptionTelemetry.firstAttemptSuccesses + transcriptionTelemetry.firstAttemptFailures)
+      : null,
+    retriesScheduled: transcriptionTelemetry.retriesScheduled,
+    retryRecoveries: transcriptionTelemetry.retryRecoveries,
+    retryRecoveryRate: transcriptionTelemetry.retriesScheduled > 0 ? transcriptionTelemetry.retryRecoveries / transcriptionTelemetry.retriesScheduled : null,
+    terminalFailures: transcriptionTelemetry.terminalFailures,
+    failuresByKind: { ...transcriptionTelemetry.failuresByKind },
+    timeoutRate: transcriptionTelemetry.attempts > 0 ? (transcriptionTelemetry.failuresByKind.timeout ?? 0) / transcriptionTelemetry.attempts : null,
+    latencyMs: { p50: percentile(transcriptionTelemetry.latencyMs, 0.5), p95: percentile(transcriptionTelemetry.latencyMs, 0.95), p99: percentile(transcriptionTelemetry.latencyMs, 0.99) },
+    providerDurationMs: { p50: percentile(transcriptionTelemetry.providerDurationMs, 0.5), p95: percentile(transcriptionTelemetry.providerDurationMs, 0.95), p99: percentile(transcriptionTelemetry.providerDurationMs, 0.99) }
   });
 
   // Express's JSON parser skips audio/*, so parse only this endpoint as a
@@ -687,7 +730,7 @@ export const registerSpeakingRoutes = (app: Application, deps: SpeakingRouteDepe
   app.get("/api/speaking/diagnostics/evaluations", deps.requireTeacher, (_req, res) => {
     // Aggregate-only evaluator telemetry. No transcript, audio, student name,
     // prompt body, or provider response is returned.
-    res.json({ metrics: evaluationTelemetrySnapshot() });
+    res.json({ metrics: evaluationTelemetrySnapshot(), transcription: transcriptionTelemetrySnapshot() });
   });
 
   app.get("/api/speaking/activities", deps.requireTeacher, async (req: AuthedRequest, res) => {
@@ -1136,6 +1179,9 @@ export const registerSpeakingRoutes = (app: Application, deps: SpeakingRouteDepe
         audioBytes: 0,
         requestParsingMs: 0,
         transcriptionMs: 0,
+        transcriptionAttempts: 0,
+        transcriptionRetryUsed: false,
+        transcriptionRetrySucceeded: false,
         studentPersistenceMs: 0,
         promptPreparationMs: 0,
         conversationMs: 0,
@@ -1219,32 +1265,81 @@ export const registerSpeakingRoutes = (app: Application, deps: SpeakingRouteDepe
             res.status(400).json({ error: "I couldn’t hear that clearly. Please try again." });
             return;
           }
-          let transcription: TranscriptionResult;
+          let transcription: TranscriptionResult | undefined;
           const transcriptionStartedAt = performance.now();
+          const transcriptionAudio = parsed.audio ?? Buffer.from(parsed.text ?? "", "utf8");
+          const transcriptionInput = {
+            audio: transcriptionAudio,
+            mimeType: parsed.audio ? parsed.mimeType : "text/plain",
+            languageHint: SPEAKING_PRACTICE_LANGUAGE,
+            ...(requestId ? { requestId } : {}),
+            ...(parsed.speechDetected === undefined ? {} : { speechDetected: parsed.speechDetected }),
+            ...(allowTextInput && textInput.success ? { text: textInput.data.text } : {})
+          };
           try {
-            transcription = await runProvider("transcription", () => transcriber.transcribe({ audio: parsed.audio ?? Buffer.from(parsed.text ?? "", "utf8"), mimeType: parsed.audio ? parsed.mimeType : "text/plain", languageHint: SPEAKING_PRACTICE_LANGUAGE, ...(parsed.speechDetected === undefined ? {} : { speechDetected: parsed.speechDetected }), ...(allowTextInput && textInput.success ? { text: textInput.data.text } : {}) }));
-          } catch (error) {
-            if (error instanceof SpeakingWorkloadError) {
-              providerBusyResponse(res, error);
-              return;
+            for (let attempt = 1; attempt <= 2; attempt += 1) {
+              latency.transcriptionAttempts = attempt;
+              transcriptionTelemetry.attempts += 1;
+              const providerStartedAt = performance.now();
+              try {
+                transcription = await runProvider("transcription", () => transcriber.transcribe(transcriptionInput));
+                const providerDurationMs = boundedSpeakingDurationMs(providerStartedAt);
+                rememberEvaluationMetric(transcriptionTelemetry.providerDurationMs, providerDurationMs);
+                transcriptionTelemetry.successes += 1;
+                if (attempt === 1) transcriptionTelemetry.firstAttemptSuccesses += 1;
+                if (attempt > 1) {
+                  latency.transcriptionRetrySucceeded = true;
+                  transcriptionTelemetry.retryRecoveries += 1;
+                }
+                break;
+              } catch (error) {
+                if (error instanceof SpeakingWorkloadError) {
+                  providerBusyResponse(res, error);
+                  return;
+                }
+                const failure = speakingProviderFailureDetails(error);
+                const providerDurationMs = boundedSpeakingDurationMs(providerStartedAt);
+                rememberEvaluationMetric(transcriptionTelemetry.providerDurationMs, providerDurationMs);
+                latency.transcriptionFailureKind = failure.kind;
+                transcriptionTelemetry.failuresByKind[failure.kind] = (transcriptionTelemetry.failuresByKind[failure.kind] ?? 0) + 1;
+                if (attempt === 1) transcriptionTelemetry.firstAttemptFailures += 1;
+                const shouldRetry = attempt === 1 && isTransientTranscriptionFailure(failure);
+                if (shouldRetry) {
+                  latency.transcriptionRetryUsed = true;
+                  transcriptionTelemetry.retriesScheduled += 1;
+                  await waitForSpeakingRetry(transcriptionRetryDelayMs(deps.random ?? Math.random));
+                  continue;
+                }
+                transcriptionTelemetry.terminalFailures += 1;
+                // This log is intentionally safe: no transcript, audio,
+                // participant, session, request ID, provider response text,
+                // or credential is kept.
+                console.warn(`[Speaking provider failure] ${JSON.stringify({
+                  operation: "transcription",
+                  provider: transcriber.providerName ?? "custom",
+                  model: speakingTranscriptionProviderModel(transcriber.providerName),
+                  attempt,
+                  kind: failure.kind,
+                  ...(failure.status === undefined ? {} : { status: failure.status }),
+                  providerDurationMs,
+                  audioBytes: parsed.audio?.byteLength ?? 0,
+                  audioDurationMs: parsed.audioDurationMs,
+                  mimeType: parsed.mimeType,
+                  automaticRetryUsed: latency.transcriptionRetryUsed,
+                  automaticRetrySucceeded: false,
+                  success: false
+                })}`);
+                res.status(503).json(transcriptionFailureResponse(failure, latency.transcriptionRetryUsed));
+                return;
+              }
             }
-            const failure = speakingProviderFailureDetails(error);
-            // This log is intentionally safe: no transcript, audio, participant,
-            // session, request ID, provider response text, or credential is kept.
-            console.warn(`[Speaking provider failure] ${JSON.stringify({
-              operation: "transcription",
-              provider: transcriber.providerName ?? "custom",
-              kind: failure.kind,
-              ...(failure.status === undefined ? {} : { status: failure.status }),
-              durationMs: boundedSpeakingDurationMs(transcriptionStartedAt),
-              audioBytes: parsed.audio?.byteLength ?? 0,
-              audioDurationMs: parsed.audioDurationMs,
-              mimeType: parsed.mimeType
-            })}`);
-            res.status(503).json(transcriptionFailureResponse(failure.kind));
-            return;
           } finally {
             latency.transcriptionMs = boundedSpeakingDurationMs(transcriptionStartedAt);
+            rememberEvaluationMetric(transcriptionTelemetry.latencyMs, latency.transcriptionMs);
+          }
+          if (!transcription) {
+            res.status(503).json(transcriptionFailureResponse({ kind: "unavailable" }, latency.transcriptionRetryUsed));
+            return;
           }
           currentSession = await expireSessionIfNeeded({ ...access, session: currentSession });
           if (currentSession.status !== "active") {

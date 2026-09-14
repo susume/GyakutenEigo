@@ -275,7 +275,7 @@ test("Speaking provider requests abort at the configured transcription timeout",
     init?.signal?.addEventListener("abort", () => reject(new Error("fetch aborted")), { once: true });
   });
   try {
-    assert.equal(speakingProviderTimeoutMs("transcription"), 1_000);
+  assert.equal(speakingProviderTimeoutMs("transcription"), 1_000);
     await assert.rejects(
       () => openAiTranscriptionProvider.transcribe({ audio: Buffer.from("audio"), mimeType: "audio/webm" }),
       /Speaking transcription provider timed out after 1000ms/
@@ -287,6 +287,14 @@ test("Speaking provider requests abort at the configured transcription timeout",
     if (previousTimeout === undefined) delete process.env.SPEAKING_TRANSCRIPTION_TIMEOUT_MS;
     else process.env.SPEAKING_TRANSCRIPTION_TIMEOUT_MS = previousTimeout;
   }
+});
+
+test("transcription keeps a bounded 25 second default while honoring environment overrides", () => {
+  const environment = { SPEAKING_TRANSCRIPTION_TIMEOUT_MS: "" } as NodeJS.ProcessEnv;
+  assert.equal(speakingProviderTimeoutMs("transcription", environment), 25_000);
+  assert.equal(speakingProviderTimeoutMs("transcription", { SPEAKING_TRANSCRIPTION_TIMEOUT_MS: "45000" }), 45_000);
+  assert.equal(speakingProviderTimeoutMs("transcription", { SPEAKING_PROVIDER_TIMEOUT_MS: "50000" }), 50_000);
+  assert.equal(speakingProviderTimeoutMs("transcription", { SPEAKING_TRANSCRIPTION_TIMEOUT_MS: "999999" }), 120_000);
 });
 
 test("malformed structured output is typed as an invalid response", () => {

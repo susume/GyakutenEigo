@@ -226,8 +226,10 @@ const activityFromSnapshot = (activity: SpeakingActivity, snapshot: SpeakingActi
   ...snapshot,
   targetExpressions: [...snapshot.targetExpressions],
   rubric: snapshot.rubric.map((criterion) => ({ ...criterion })),
-  ...(snapshot.scenarioResources ? { scenarioResources: cloneScenarioResources(snapshot.scenarioResources) } : {}),
-  ...(snapshot.context ? { context: cloneSpeakingContext(snapshot.context) } : {})
+  ...(snapshot.scenarioResources ? { scenarioResources: cloneScenarioResources(snapshot.scenarioResources) } : { scenarioResources: undefined }),
+  // An absent field is meaningful for historical sessions. Explicitly clear
+  // the current activity value so a later edit cannot backfill new support.
+  ...(snapshot.context ? { context: cloneSpeakingContext(snapshot.context) } : { context: undefined })
 });
 
 const cloneActivity = (activity: SpeakingActivity): SpeakingActivity => ({

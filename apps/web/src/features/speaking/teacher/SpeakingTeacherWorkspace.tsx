@@ -31,6 +31,7 @@ import {
   DEFAULT_SPEAKING_RUBRIC,
   SPEAKING_CATEGORIES,
   SPEAKING_COMMUNICATION_SKILLS,
+  SPEAKING_CONTEXT_TYPES,
   SPEAKING_IDENTIFIER_MODE_LABELS,
   SPEAKING_IDENTIFIER_MODES,
   SPEAKING_NATIVE_LANGUAGE_LABELS,
@@ -38,6 +39,7 @@ import {
   speakingScenarioResources,
   type SpeakingActivity,
   type SpeakingCreateActivityInput,
+  type SpeakingContext,
   type SpeakingEvaluation,
   type SpeakingLibraryItem,
   type SpeakingIdentifierMode,
@@ -601,7 +603,7 @@ const draftFromTemplate = (
   identifierMode: template.identifierMode,
   targetExpressions: [...template.targetExpressions],
   rubric: template.rubric.map((criterion) => ({ ...criterion })),
-  ...(template.context ? { context: { ...template.context } } : {}),
+  ...((template.context ?? template.scenarioResources?.context) ? { context: { ...(template.context ?? template.scenarioResources?.context) } } : {}),
   scenarioResources: (() => {
     const resources = speakingScenarioResources(template.scenarioResources);
     return {
@@ -795,8 +797,12 @@ function SpeakingCreatePage({
   };
   // Keep spaces, blank lines and empty fields intact until the save boundary.
   const resourceDraft = { ...speakingScenarioResources(), ...draft.scenarioResources };
+  const contextDraft = draft.context;
   const updateResources = (patch: SpeakingScenarioResources) =>
     update("scenarioResources", { ...resourceDraft, ...patch });
+  const updateContext = (patch: Partial<SpeakingContext>) =>
+    update("context", { ...(draft.context ?? {}), ...patch });
+  const removeContext = () => update("context", undefined);
   const toggleSkill = (candidate: string) => {
     const next = resourceDraft.communicationSkills.includes(candidate)
       ? resourceDraft.communicationSkills.filter((item) => item !== candidate)
@@ -1130,6 +1136,53 @@ function SpeakingCreatePage({
                 </div></details>
                 </div>
               </div>
+            <section className="speaking-context-editor speaking-span-2" aria-labelledby="speaking-context-editor-title">
+              <div className="speaking-resource-editor-heading">
+                <div>
+                  <span className="speaking-card-kicker">Optional visual support</span>
+                  <h3 id="speaking-context-editor-title">Context</h3>
+                  <p>Keep the image, title and description aligned with the situation students will speak about.</p>
+                </div>
+                {contextDraft && <button type="button" className="speaking-text-button speaking-context-remove" onClick={removeContext}>Remove Context</button>}
+              </div>
+              {contextDraft ? (
+                <>
+                  <div className="speaking-context-editor-preview">
+                    {contextDraft.imageUrl ? <img src={contextDraft.imageUrl} alt={contextDraft.alt ?? "Current context preview"} loading="lazy" /> : <div className="speaking-context-editor-empty">Add an image URL below to show a preview.</div>}
+                    <div><strong>{contextDraft.title || "Untitled context"}</strong><span>{contextDraft.description || "No description yet."}</span><small>{contextDraft.type ?? "photo"} · Read-only student support</small></div>
+                  </div>
+                  <div className="speaking-context-editor-fields">
+                    <label>
+                      Context title
+                      <input value={contextDraft.title ?? ""} onChange={(event) => updateContext({ title: event.target.value || undefined })} placeholder="Museum map" />
+                    </label>
+                    <label>
+                      Context type
+                      <select value={contextDraft.type ?? "photo"} onChange={(event) => updateContext({ type: event.target.value as SpeakingContext["type"] })}>
+                        {SPEAKING_CONTEXT_TYPES.map((type) => <option key={type} value={type}>{type}</option>)}
+                      </select>
+                    </label>
+                    <label className="speaking-span-2">
+                      Image URL
+                      <input value={contextDraft.imageUrl ?? ""} onChange={(event) => updateContext({ imageUrl: event.target.value || undefined })} placeholder="/assets/speaking/context-map.webp" inputMode="url" />
+                    </label>
+                    <label>
+                      Description
+                      <textarea rows={2} value={contextDraft.description ?? ""} onChange={(event) => updateContext({ description: event.target.value || undefined })} placeholder="Use this visual to help your answer." />
+                    </label>
+                    <label>
+                      Alt text
+                      <textarea rows={2} value={contextDraft.alt ?? ""} onChange={(event) => updateContext({ alt: event.target.value || undefined })} placeholder="A simple map showing the nearby museum" />
+                    </label>
+                  </div>
+                </>
+              ) : (
+                <div className="speaking-context-editor-empty-state">
+                  <p>No Context is saved for this activity. Add one only when it matches the scenario.</p>
+                  <button type="button" className="speaking-outline-button" onClick={() => update("context", { title: "Context", description: "Use this visual to help your answer.", type: "photo" })}>Add Context</button>
+                </div>
+              )}
+            </section>
             <div className="speaking-expression-editor">
               {draft.targetExpressions.map((expression, index) => (
                 <div

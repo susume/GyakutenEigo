@@ -374,6 +374,106 @@ test("Speaking Practice uses one classroom session for multiple isolated partici
   }
 });
 
+test("transcription retries one transient failure with the same audio and never duplicates turns", async () => {
+  const app = express();
+  app.use(express.json());
+  const state = createSpeakingRouteState();
+  const providers = createSpeakingProviders({ NODE_ENV: "test", SPEAKING_MOCK_MODE: "true" });
+  let counter = 0;
+  let nowMs = Date.parse("2026-09-13T00:00:00.000Z");
+  const attemptsByRequest = new Map<string, number>();
+  const audioByRequest = new Map<string, Buffer[]>();
+  const requireTeacher = (req: Request & { user?: TeacherUser }, res: Response, next: NextFunction) => {
+    const teacher = teachers.get(String(req.header("x-teacher") ?? ""));
+    if (!teacher) {
+      res.status(401).json({ error: "Teacher login required." });
+      return;
+    }
+    req.user = teacher;
+    next();
+  };
+  registerSpeakingRoutes(app, {
+    requireTeacher,
+    now: () => new Date(nowMs).toISOString(),
+    id: () => `transcription-retry-${++counter}`,
+    state,
+    providers,
+    transcriber: {
+      async transcribe(input) {
+        const requestId = input.requestId ?? "missing-request-id";
+        const attempt = (attemptsByRequest.get(requestId) ?? 0) + 1;
+        attemptsByRequest.set(requestId, attempt);
+        const recordings = audioByRequest.get(requestId) ?? [];
+        recordings.push(Buffer.from(input.audio));
+        audioByRequest.set(requestId, recordings);
+        if (requestId === "recover-turn" && attempt === 1) throw new SpeakingProviderError("temporary timeout", "timeout", 408);
+        if (requestId === "fail-turn") throw new SpeakingProviderError("temporary timeout", "timeout", 408);
+        return { text: "I would like the blue one.", confidence: 0.9 };
+      }
+    },
+    allowTextInput: true,
+    latencyDebug: true,
+    random: () => 0
+  });
+  const server = await new Promise<ReturnType<typeof app.listen>>((resolve) => {
+    const listener = app.listen(0, () => resolve(listener));
+  });
+  const baseUrl = `http://127.0.0.1:${(server.address() as AddressInfo).port}`;
+  const api = async <T>(path: string, options: ApiOptions = {}) => {
+    const headers = new Headers();
+    if (options.teacher) headers.set("x-teacher", options.teacher);
+    if (options.speakingToken) headers.set("x-speaking-token", options.speakingToken);
+    if (options.turnId) headers.set("x-speaking-turn-id", options.turnId);
+    if (options.speechDetected !== undefined) headers.set("x-speaking-audio-activity", String(options.speechDetected));
+    if (options.rawBody) headers.set("content-type", options.contentType ?? "audio/webm");
+    else if (options.body !== undefined) headers.set("content-type", options.contentType ?? "application/json");
+    const response = await fetch(`${baseUrl}${path}`, {
+      method: options.method ?? "GET",
+      headers,
+      body: options.rawBody === undefined ? (options.body === undefined ? undefined : JSON.stringify(options.body)) : new Blob([options.rawBody as unknown as BlobPart], { type: options.contentType ?? "audio/webm" })
+    });
+    const text = await response.text();
+    return { response, body: (text ? JSON.parse(text) : {}) as T };
+  };
+  try {
+    const created = await api<{ activity: { id: string } }>("/api/speaking/activities", { method: "POST", teacher: "owner", body: activityInput });
+    const launched = await api<{ session: { id: string; joinCode: string } }>(`/api/speaking/activities/${created.body.activity.id}/sessions`, { method: "POST", teacher: "owner" });
+    await api(`/api/speaking/sessions/${launched.body.session.id}/start-session`, { method: "POST", teacher: "owner" });
+    const joined = await api<{ token: string; participant: { id: string } }>("/api/speaking/join", { method: "POST", body: { code: launched.body.session.joinCode, identifier: "Retry student" } });
+    await api(`/api/speaking/sessions/${launched.body.session.id}/start`, { method: "POST", speakingToken: joined.body.token });
+    const audio = new Uint8Array(Buffer.from("same-audio-fixture"));
+    const recovered = await api<{ studentTurn: { id: string }; aiTurn: { id: string }; latency: { transcriptionAttempts: number; transcriptionRetryUsed: boolean; transcriptionRetrySucceeded: boolean } }>(`/api/speaking/sessions/${launched.body.session.id}/turn`, { method: "POST", speakingToken: joined.body.token, turnId: "recover-turn", rawBody: audio, contentType: "audio/webm", speechDetected: true });
+    assert.equal(recovered.response.status, 200);
+    assert.equal(recovered.body.latency.transcriptionAttempts, 2);
+    assert.equal(recovered.body.latency.transcriptionRetryUsed, true);
+    assert.equal(recovered.body.latency.transcriptionRetrySucceeded, true);
+    assert.equal(attemptsByRequest.get("recover-turn"), 2);
+    assert.deepEqual(audioByRequest.get("recover-turn"), [Buffer.from(audio), Buffer.from(audio)]);
+    const afterRecovery = await api<{ turns: Array<{ speaker: string; requestId?: string }> }>(`/api/speaking/sessions/${launched.body.session.id}`, { speakingToken: joined.body.token });
+    assert.equal(afterRecovery.body.turns.filter((turn) => turn.requestId === "recover-turn").length, 1);
+    assert.equal(afterRecovery.body.turns.filter((turn) => turn.requestId === "recover-turn:ai").length, 1);
+
+    const failed = await api<{ error: string; latency?: { transcriptionAttempts: number; transcriptionRetryUsed: boolean } }>(`/api/speaking/sessions/${launched.body.session.id}/turn`, { method: "POST", speakingToken: joined.body.token, turnId: "fail-turn", rawBody: audio, contentType: "audio/webm", speechDetected: true });
+    assert.equal(failed.response.status, 503);
+    assert.match(failed.body.error, /taking longer than expected|recording is saved/i);
+    assert.equal(attemptsByRequest.get("fail-turn"), 2);
+    const failedRetry = await api<{ error: string }>(`/api/speaking/sessions/${launched.body.session.id}/turn`, { method: "POST", speakingToken: joined.body.token, turnId: "fail-turn", rawBody: audio, contentType: "audio/webm", speechDetected: true });
+    assert.equal(failedRetry.response.status, 503);
+    assert.equal(attemptsByRequest.get("fail-turn"), 4);
+    const afterFailure = await api<{ turns: Array<{ requestId?: string }> }>(`/api/speaking/sessions/${launched.body.session.id}`, { speakingToken: joined.body.token });
+    assert.equal(afterFailure.body.turns.filter((turn) => turn.requestId === "fail-turn" || turn.requestId === "fail-turn:ai").length, 0);
+    const diagnostics = await api<{ transcription: { firstAttemptSuccessRate: number; retryRecoveryRate: number; timeoutRate: number; latencyMs: { p50: number; p95: number } } }>("/api/speaking/diagnostics/evaluations", { teacher: "owner" });
+    assert.equal(diagnostics.response.status, 200);
+    assert.equal(diagnostics.body.transcription.firstAttemptSuccessRate, 0);
+    assert.equal(diagnostics.body.transcription.retryRecoveryRate, 1 / 3);
+    assert.ok(diagnostics.body.transcription.timeoutRate > 0);
+    assert.ok(diagnostics.body.transcription.latencyMs.p95 >= diagnostics.body.transcription.latencyMs.p50);
+    assert.equal(JSON.stringify(diagnostics.body).includes("recover-turn"), false);
+  } finally {
+    await new Promise<void>((resolve) => server.close(() => resolve()));
+  }
+});
+
 for (const failure of [
   new SpeakingProviderError("temporary timeout", "timeout"),
   new SpeakingProviderError("request timeout", "timeout", 408),

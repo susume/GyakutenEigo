@@ -79,7 +79,11 @@ export const speakingHeaders = (speakingToken: string) => ({ "X-Speaking-Token":
 // The server bounds transcription and conversation separately. Leave enough
 // time for both operations plus normal persistence, so a valid slow turn does
 // not get abandoned by the browser while the server is still completing it.
-const SPEAKING_TURN_REQUEST_TIMEOUT_MS = 45_000;
+// Two bounded 25-second transcription attempts plus retry jitter and normal
+// persistence need more than the provider's single-attempt timeout. This is
+// still a finite browser request timeout; provider overrides remain bounded
+// independently on the server.
+const SPEAKING_TURN_REQUEST_TIMEOUT_MS = 65_000;
 const SPEAKING_JOIN_REQUEST_TIMEOUT_MS = 8_000;
 const SPEAKING_STATUS_REQUEST_TIMEOUT_MS = 8_000;
 const SPEAKING_HELP_REQUEST_TIMEOUT_MS = 18_000;

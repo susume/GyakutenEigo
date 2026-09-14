@@ -10,7 +10,7 @@
 
 - Context visuals are assigned by scenario family: school/conversation photos, menu boards, product displays, local maps, transit maps, a station departures board, and an outing comparison board.
 - Shared assets are intentionally reused where the same situational visual language applies; the context copy and title remain specific to each test.
-- New lightweight assets: `apps/web/public/assets/speaking/context-cafe-menu.svg`, `context-transit-map.svg`, `context-station-board.svg`, `context-shopping-shelf.svg`, and `context-outing-options.svg`.
+- New lightweight raster assets: `apps/web/public/assets/speaking/context-cafe-menu.webp`, `context-transit-map.webp`, `context-station-board.webp`, `context-clothing-display.webp`, `context-school-supplies.webp`, `context-restaurant-menu.webp`, `context-library-map.webp`, and `context-outing-options.webp`.
 
 ## Findings
 
@@ -23,9 +23,20 @@
 
 - `npm run typecheck` — passed.
 - `npm run build` — passed.
-- `npm test -w @quizstrike/web` — passed, 268 tests.
+- `npm test -w @quizstrike/web` — passed, 269 tests.
 - Context asset HTTP checks — passed for all new assets and the existing tourist map.
 - Final result: passed.
+
+## Final implementation audit — 2026-09-14
+
+- All 30 built-in speaking activities now have direct visual Context data with scenario-specific title, description, meaningful alt text, and context type. The key mismatch cases are covered by school supplies, clothing, cafe/restaurant menus, a library map, transit directions, a station board, and outing options.
+- Context is initially selected only when Useful English is unavailable, remains available while transcription/evaluation is processing, and opens as a right-side drawer on portrait layouts. The student view has no Notes/reference stack or nested support scroll region.
+- Transcription uses one buffered audio payload and one request ID across a bounded automatic retry. Only transient timeout/network/unavailable/rate-limit and provider-5xx failures retry; permanent auth, bad-audio, unsupported, and configuration failures do not. Retry recovery, first-attempt success/failure, timeout rate, p50/p95 latency, and provider duration are exposed through safe aggregate diagnostics.
+- Historical speaking sessions preserve their original context snapshot and do not backfill later activity edits. The teacher editor can add, edit, and remove Context data.
+- Fresh connected Speaking E2E coverage passed at 360×800, 390×844, 768×1024, 820×1180, 1024×768, 1180×820, 1280×800, 1366×768, 1440×900, and 1920×1080, including drawer behavior, a loaded transit-map Context asset, empty-image fallback, control bounds, overflow checks, and retry recovery. Screenshots are in `apps/web/test-results/speaking-teacher-and-stude-5f570--use-the-connected-mock-API-desktop-chrome/`.
+- Verification: `npm run typecheck`, `npm run build`, `npm test -w @quizstrike/server` (162/162), `npm test -w @quizstrike/web` (269/269), focused speaking tests, and connected Speaking E2E passed. The Vite large-chunk advisory remains informational.
+- Asset optimization replaced the approximately 1.9 MB tourist-map PNG and handcrafted SVG context assets with generated WebP files; the largest current context asset is approximately 133 KB.
+- Remaining production-only verification: real Gemini/OpenAI provider latency and failure behavior still require provider-backed staging traffic; local injected-provider tests and the mock connected flow cover the retry contract and UI recovery path.
 
 # Speaking Practice support panel redesign — design QA (2026-09-14)
 

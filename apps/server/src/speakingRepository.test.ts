@@ -115,6 +115,27 @@ test("activity edits preserve old session snapshots and update new sessions", as
   assert.deepEqual(snapshotB?.activity.rubric.map((criterion) => criterion.id), ["task_achievement"]);
 });
 
+test("historical sessions do not inherit Context added after they were created", async () => {
+  const repository = new InMemorySpeakingRepository(createInMemorySpeakingState());
+  const now = "2026-09-10T00:00:00.000Z";
+  const original = await repository.createActivity("teacher-1", input, "context-snapshot", now);
+  const session = await repository.createSession({ id: "context-session", activity: original, joinCode: "ABC243", createdAt: now, expiresAt: "2026-09-10T08:00:00.000Z" });
+  const edited = await repository.updateActivity("teacher-1", original.id, {
+    ...input,
+    context: {
+      title: "New map",
+      description: "A map added after the class session was created.",
+      imageUrl: "/assets/speaking/context-new-map.webp",
+      alt: "A new map",
+      type: "map"
+    }
+  }, "2026-09-10T01:00:00.000Z");
+  assert.ok(edited?.context);
+  const historical = await repository.getSession(session.id);
+  assert.equal(historical?.activity.context, undefined);
+  assert.equal(historical?.activity.scenarioResources, undefined);
+});
+
 test("library, sets, reports, and safe deletion preserve the reusable-test model", async () => {
   const repository = new InMemorySpeakingRepository(createInMemorySpeakingState());
   const now = "2026-09-01T00:00:00.000Z";

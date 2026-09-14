@@ -13,6 +13,8 @@ export interface TranscriptionInput {
   audio: Buffer;
   mimeType: string;
   languageHint?: string;
+  /** Stable turn correlation used when the route retries the same audio. */
+  requestId?: string;
   /** Browser-side signal detection used only to make local mock audio honest. */
   speechDetected?: boolean;
   /** Only the explicit mock provider uses text input for contract tests. */
@@ -111,7 +113,7 @@ const DEFAULT_PROVIDER_TIMEOUTS_MS: Record<SpeakingProviderOperation, number> = 
   // These are deliberately bounded, but leave enough room for a classroom
   // tablet on an ordinary school network. A turn still has a separate timeout
   // for transcription and conversation, so no provider can wait indefinitely.
-  transcription: 15_000,
+  transcription: 25_000,
   conversation: 12_000,
   help: 12_000,
   evaluation: 30_000
@@ -366,6 +368,8 @@ const geminiRequest = async (
 
 const normalizeAudioMimeType = (mimeType: string) => mimeType.split(";", 1)[0]?.trim() || "audio/webm";
 const openAiTranscriptionModel = (environment: NodeJS.ProcessEnv = process.env) => environment.SPEAKING_TRANSCRIPTION_MODEL?.trim() || "gpt-4o-mini-transcribe";
+export const speakingTranscriptionProviderModel = (providerName?: SpeakingProviderName, environment: NodeJS.ProcessEnv = process.env) =>
+  providerName === "gemini" ? geminiTranscriptionModel(environment) : providerName === "openai" ? openAiTranscriptionModel(environment) : "mock";
 export const parseJsonResponse = <T>(raw: string): T => {
   const fenced = raw.match(/^```(?:json)?\s*([\s\S]*?)\s*```$/i)?.[1] ?? raw;
   try {

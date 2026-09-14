@@ -40,12 +40,15 @@ const RESTAURANT = "/assets/speaking/scenario-restaurant.webp";
 const SHOPPING = "/assets/speaking/scenario-shopping.webp";
 const DIRECTIONS = "/assets/speaking/scenario-directions.webp";
 const WEEKEND = "/assets/speaking/scenario-weekend.webp";
-const TOURIST_MAP = "/assets/speaking/context-tourist-map.png";
-const CAFE_MENU = "/assets/speaking/context-cafe-menu.svg";
-const TRANSIT_MAP = "/assets/speaking/context-transit-map.svg";
-const STATION_BOARD = "/assets/speaking/context-station-board.svg";
-const SHOPPING_SHELF = "/assets/speaking/context-shopping-shelf.svg";
-const OUTING_OPTIONS = "/assets/speaking/context-outing-options.svg";
+const TOURIST_MAP = "/assets/speaking/context-tourist-map.webp";
+const LIBRARY_MAP = "/assets/speaking/context-library-map.webp";
+const CAFE_MENU = "/assets/speaking/context-cafe-menu.webp";
+const RESTAURANT_MENU = "/assets/speaking/context-restaurant-menu.webp";
+const TRANSIT_MAP = "/assets/speaking/context-transit-map.webp";
+const STATION_BOARD = "/assets/speaking/context-station-board.webp";
+const CLOTHING_DISPLAY = "/assets/speaking/context-clothing-display.webp";
+const SCHOOL_SUPPLIES = "/assets/speaking/context-school-supplies.webp";
+const OUTING_OPTIONS = "/assets/speaking/context-outing-options.webp";
 
 const CORE_CONTEXTS: Record<string, SpeakingContext> = {
   "introducing-yourself": {
@@ -114,15 +117,15 @@ const CORE_CONTEXTS: Record<string, SpeakingContext> = {
   "buying-clothes": {
     title: "Clothing display",
     description: "Use the shop display to compare size, color, price, and availability.",
-    imageUrl: SHOPPING_SHELF,
+    imageUrl: CLOTHING_DISPLAY,
     alt: "Illustrated shop display with a blue T-shirt, black hoodie, and green jacket",
     type: "other"
   },
   "shopping-for-everyday-items": {
     title: "School supply shelf",
     description: "Use the product display to choose supplies and check the total.",
-    imageUrl: SHOPPING_SHELF,
-    alt: "Illustrated store display of everyday school shopping choices",
+    imageUrl: SCHOOL_SUPPLIES,
+    alt: "Illustrated store display with notebooks, colored pens, and tape",
     type: "other"
   },
   "ordering-food": {
@@ -135,15 +138,15 @@ const CORE_CONTEXTS: Record<string, SpeakingContext> = {
   "at-a-restaurant": {
     title: "Lunch menu",
     description: "Use the menu to choose lunch, handle an unavailable side, and check the bill.",
-    imageUrl: CAFE_MENU,
-    alt: "Illustrated lunch menu with meals, prices, and a side dish note",
+    imageUrl: RESTAURANT_MENU,
+    alt: "Illustrated lunch menu with a curry set, pasta set, and unavailable fruit side",
     type: "menu"
   },
   "asking-for-street-directions": {
     title: "Neighborhood map",
     description: "Use the local map to ask about landmarks, distance, and a detour.",
-    imageUrl: TOURIST_MAP,
-    alt: "Illustrated neighborhood map with a museum, park, shopping street, station, and location marker",
+    imageUrl: LIBRARY_MAP,
+    alt: "Illustrated neighborhood map with a library, park, station, and location marker",
     type: "map"
   },
   "giving-street-directions": {
@@ -182,8 +185,8 @@ const CORE_CONTEXTS: Record<string, SpeakingContext> = {
     type: "timetable"
   },
   "helping-a-tourist": {
-    title: "Context",
-    description: "Use this visual to help your answer.",
+    title: "Local highlights",
+    description: "Use the nearby landmarks to recommend a place and explain how to reach it.",
     imageUrl: TOURIST_MAP,
     alt: "Illustrated local area map with a museum, park, shopping street, station, and your location",
     type: "map"

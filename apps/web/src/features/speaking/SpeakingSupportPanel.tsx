@@ -102,12 +102,19 @@ function UsefulEnglishPanel({ activity, onPhraseClick, disabled }: { activity: S
           <p>Target expressions</p>
         </div>
       </div>
-      <div className="speaking-student-expression-list">
+      <div className="speaking-student-expression-list" role="list" aria-label="Target expressions">
         {activity.targetExpressions.map((expression) => (
-          <button type="button" key={expression} onClick={() => onPhraseClick?.(expression)} disabled={disabled}>
-            <MessageCircle size={19} strokeWidth={1.7} aria-hidden="true" />
-            <span>{expression}</span>
-          </button>
+          onPhraseClick ? (
+            <button type="button" key={expression} onClick={() => onPhraseClick(expression)} disabled={disabled}>
+              <MessageCircle size={19} strokeWidth={1.7} aria-hidden="true" />
+              <span>{expression}</span>
+            </button>
+          ) : (
+            <div className="speaking-expression-card" key={expression} role="listitem">
+              <MessageCircle size={19} strokeWidth={1.7} aria-hidden="true" />
+              <span>{expression}</span>
+            </div>
+          )
         ))}
       </div>
       <div className="speaking-useful-callout">
@@ -143,8 +150,8 @@ export function SpeakingContextPanel({ context }: { context?: SpeakingContext })
         </div>
       </div>
       {imageUrl && !imageError ? (
-        <figure className="speaking-context-visual">
-          <img src={imageUrl} alt={alt} onError={() => setImageError(true)} />
+        <figure className={`speaking-context-visual context-type-${context.type ?? "photo"}`}>
+          <img src={imageUrl} alt={alt} onError={() => setImageError(true)} decoding="async" />
         </figure>
       ) : (
         <ContextEmptyState message={imageUrl ? "Unable to load context image." : "No context image available for this activity."} />
