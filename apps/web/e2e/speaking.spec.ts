@@ -322,11 +322,40 @@ test("teacher and student Speaking Practice screens use the connected mock API",
   ];
   for (const viewport of responsiveViewports) {
     await studentPage.setViewportSize(viewport);
-    if (viewport.width >= 901) {
-      await studentPage.getByRole("button", { name: "Open Context support", exact: true }).click();
-      await expect(studentPage.locator(".speaking-context-visual img")).toBeVisible();
-      await expect(studentPage.locator(".speaking-context-visual img")).toHaveAttribute("src", "/assets/speaking/context-transit-map.webp");
-    }
+    await studentPage.getByRole("button", { name: "Open Context support", exact: true }).click();
+    await expect(studentPage.locator(".speaking-context-visual img")).toBeVisible();
+    await expect(studentPage.locator(".speaking-context-visual img")).toHaveAttribute("src", "/assets/speaking/context-transit-map.webp");
+    const contextPanel = studentPage.getByRole("tabpanel", { name: "Context", exact: true });
+    await expect(contextPanel.locator("h2, p")).toHaveCount(0);
+    await expect(contextPanel.locator("img")).toHaveAttribute("alt", "Illustrated transit map with train lines and station labels");
+    await expect(contextPanel).toHaveClass(/speaking-support-tabpanel-context/u);
+    const contextLayout = await contextPanel.evaluate((panel) => {
+      const visual = panel.querySelector<HTMLElement>(".speaking-context-visual");
+      const image = panel.querySelector<HTMLImageElement>(".speaking-context-visual img");
+      if (!visual || !image) return undefined;
+      const visualStyle = getComputedStyle(visual);
+      const imageStyle = getComputedStyle(image);
+      return {
+        panelPadding: getComputedStyle(panel).padding,
+        visualWidth: visual.getBoundingClientRect().width,
+        visualHeight: visual.getBoundingClientRect().height,
+        visualContentWidth: visual.clientWidth,
+        visualContentHeight: visual.clientHeight,
+        imageWidth: image.getBoundingClientRect().width,
+        imageHeight: image.getBoundingClientRect().height,
+        imageFit: imageStyle.objectFit,
+        visualPadding: visualStyle.padding
+      };
+    });
+    expect(contextLayout).toBeTruthy();
+    expect(contextLayout!.panelPadding).toBe("0px");
+    expect(contextLayout!.visualPadding).toBe("0px");
+    expect(contextLayout!.imageFit).toBe("contain");
+    expect(contextLayout!.imageWidth).toBeCloseTo(contextLayout!.visualContentWidth, 0);
+    expect(contextLayout!.imageHeight).toBeCloseTo(contextLayout!.visualContentHeight, 0);
+    await studentPage.screenshot({ path: testInfo.outputPath(`speaking-context-${viewport.width}x${viewport.height}.png`), fullPage: false });
+    await studentPage.getByRole("button", { name: "Close support panel", exact: true }).click();
+    await expect(studentPage.locator(".speaking-student-sidebar")).toHaveClass(/is-collapsed/u);
     const bounds = await studentPage.evaluate(() => {
       const read = (selector: string) => {
         const element = document.querySelector<HTMLElement>(selector);

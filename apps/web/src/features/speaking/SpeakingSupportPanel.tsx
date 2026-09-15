@@ -83,7 +83,7 @@ export function SpeakingSupportPanel({
             <UsefulEnglishPanel activity={activity} onPhraseClick={onPhraseClick} disabled={disabled} />
           </div>
         ) : (
-          <div id={`${panelId}-panel-context`} role="tabpanel" aria-labelledby={`${panelId}-tab-context`} tabIndex={0} className="speaking-support-tabpanel">
+          <div id={`${panelId}-panel-context`} role="tabpanel" aria-labelledby={`${panelId}-tab-context`} tabIndex={0} className="speaking-support-tabpanel speaking-support-tabpanel-context">
             <SpeakingContextPanel context={context} />
           </div>
         )}
@@ -137,18 +137,10 @@ export function SpeakingContextPanel({ context }: { context?: SpeakingContext })
     return <ContextEmptyState message="No context available for this activity." />;
   }
 
-  const title = context.title ?? "Context";
-  const description = context.description ?? "Use this visual to help your answer.";
   const alt = context.alt ?? "Visual context for this speaking activity";
 
   return (
     <div className="speaking-context-panel-content">
-      <div className="speaking-support-title-row speaking-context-title-row">
-        <div>
-          <h2>{title}</h2>
-          <p>{description}</p>
-        </div>
-      </div>
       {imageUrl && !imageError ? (
         <figure className={`speaking-context-visual context-type-${context.type ?? "photo"}`}>
           <img src={imageUrl} alt={alt} onError={() => setImageError(true)} decoding="async" />

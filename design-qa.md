@@ -1,3 +1,23 @@
+# Student Context image-first pass — design QA (2026-09-15)
+
+## Evidence
+
+- Source visual truth: `C:\Users\admin\Desktop\2026-09-15 09_31_00-Settings.png`, user-provided inline at 1912×1018 CSS pixels.
+- Implementation captures: `apps/web/test-results/speaking-teacher-and-stude-5f570--use-the-connected-mock-API-desktop-chrome/speaking-context-1366x768.png`, `speaking-context-820x1180.png`, and `speaking-context-390x844.png` (Playwright, device scale factor 1).
+- State: active student Speaking Practice session, Context tab selected, valid transit/map context loaded.
+
+## Comparison
+
+- Full-view evidence: the student workspace, fixed support rail/drawer, tabs, close control, main speaking area, and surrounding layout remain present across desktop, tablet, and mobile captures.
+- Focused-region evidence: the valid context panel now uses the available content area for the image; title and description are absent; the complete image is preserved with `object-fit: contain`; tab, close, border, background, and accessible `alt` behavior remain intact.
+- Regression surfaces checked: valid image, missing context, missing image, responsive drawer/rail behavior, Context close control, and existing Useful English/main speaking flow.
+- Comparison history: the initial implementation had visible context copy, a content gap, and cover-cropped imagery. The post-fix captures above confirm those issues are removed without changing the context data model.
+
+## Findings
+
+- P0/P1/P2 findings: none.
+- Final result: `passed`.
+
 # Speaking Context coverage follow-up — design QA (2026-09-14)
 
 ## Coverage evidence
