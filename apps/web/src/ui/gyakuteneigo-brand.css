@@ -1,0 +1,95 @@
+.gyakuteneigo-brand {
+  display: inline-flex;
+  flex: 0 0 auto;
+  align-items: center;
+  min-width: 0;
+  line-height: 0;
+}
+
+.gyakuteneigo-logo-image {
+  display: block;
+  width: 100%;
+  max-width: 100%;
+  height: auto;
+  aspect-ratio: 4096 / 1248;
+  object-fit: contain;
+}
+
+.product-hub-topbar .gyakuteneigo-brand,
+.performance-route-header .gyakuteneigo-brand {
+  width: clamp(176px, 15vw, 220px);
+}
+
+.topbar .brand-button .public-wordmark {
+  width: clamp(146px, 12vw, 190px);
+}
+
+.auth-game-wordmark {
+  display: inline-flex;
+  width: clamp(174px, 17vw, 230px);
+  line-height: 0;
+}
+
+.dashboard-brand-logo {
+  width: clamp(150px, 14vw, 184px);
+}
+
+body:has(.workspace) .dashboard-brand-row h1 {
+  align-items: center;
+}
+
+.speaking-brand-logo {
+  width: clamp(160px, 14vw, 214px);
+}
+
+.speaking-brand-compact .speaking-brand-logo {
+  width: clamp(138px, 11vw, 176px);
+}
+
+.speaking-student-brand .speaking-brand-logo {
+  width: min(100%, 170px);
+}
+
+.speaking-projector-brand-lockup {
+  display: flex;
+  min-width: 0;
+  align-items: center;
+  gap: 12px;
+}
+
+.speaking-projector-brand-lockup .speaking-projector-brand {
+  width: clamp(150px, 14vw, 190px);
+}
+
+@media (max-width: 700px) {
+  .product-hub-topbar .gyakuteneigo-brand,
+  .performance-route-header .gyakuteneigo-brand {
+    width: 176px;
+  }
+
+  .speaking-brand-logo {
+    width: 160px;
+  }
+
+  .speaking-brand-compact .speaking-brand-logo {
+    width: 148px;
+  }
+}
+
+@media (max-width: 520px) {
+  .topbar .brand-button .public-wordmark {
+    width: 140px;
+  }
+
+  .auth-game-wordmark {
+    width: 170px;
+  }
+
+  .dashboard-brand-logo {
+    width: 144px;
+  }
+
+  .speaking-projector-brand-lockup .speaking-projector-brand {
+    width: 140px;
+  }
+}

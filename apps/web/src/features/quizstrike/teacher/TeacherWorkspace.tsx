@@ -33,6 +33,7 @@ import type { Socket } from "socket.io-client";
 import { ApiError, authApi, fetchDecalAsset, getTeacherToken, teacherApi } from "../../../api/client";
 import { createMultiplayerSocket } from "../../multiplayer/connection";
 import { buildStudentJoinUrl } from "../../../navigation";
+import GyakutenEigoBrand from "../../../ui/GyakutenEigoBrand";
 import { getModeScoreSummary, getZombieCounts } from "../../../sessionPresentation";
 import { StatusMessages } from "../../../ui/StatusMessages";
 import TeacherDecalGallery from "../../../ui/TeacherDecalGallery";
@@ -225,7 +226,7 @@ function TeacherAuth({
         <img className="auth-visual-art" src="/assets/quizstrike-game-hero.png" alt="" width={1672} height={941} fetchPriority="high" />
         <div className="auth-visual-shade" aria-hidden="true" />
         <div className="auth-visual-content">
-          <span className="auth-game-wordmark">GyakutenEigo</span>
+          <GyakutenEigoBrand className="auth-game-wordmark" />
           <span className="auth-kicker">Teacher dashboard</span>
           <p className="auth-visual-title">{speaking ? <>More speaking.<br />For every student.</> : <>One workspace.<br />Every class.</>}</p>
           <p>{speaking ? "Choose a conversation, invite your students with a code, and see how they are doing in one classroom workspace." : "Create QuizStrike games and Speaking Practice sessions from the same focused teacher dashboard."}</p>

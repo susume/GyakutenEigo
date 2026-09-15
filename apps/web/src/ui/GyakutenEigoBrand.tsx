@@ -1,16 +1,22 @@
-import { MessageCircle } from "lucide-react";
+import "./gyakuteneigo-brand.css";
 
 type GyakutenEigoBrandProps = {
   compact?: boolean;
+  className?: string;
+  alt?: string;
 };
 
-export default function GyakutenEigoBrand({ compact = false }: GyakutenEigoBrandProps) {
+export default function GyakutenEigoBrand({ compact = false, className, alt = "GyakutenEigo" }: GyakutenEigoBrandProps) {
   return (
-    <span className={`performance-brand${compact ? " performance-brand-compact" : ""}`}>
-      <span className="performance-brand-mark">
-        <MessageCircle size={compact ? 22 : 25} strokeWidth={2.4} aria-hidden="true" />
-      </span>
-      <span>GyakutenEigo</span>
+    <span className={["gyakuteneigo-brand", compact ? "gyakuteneigo-brand-compact" : "", className].filter(Boolean).join(" ")}>
+      <img
+        className="gyakuteneigo-logo-image"
+        src="/assets/gyakuteneigo-logo-exact-hires.png"
+        alt={alt}
+        width={4096}
+        height={1248}
+        decoding="async"
+      />
     </span>
   );
 }

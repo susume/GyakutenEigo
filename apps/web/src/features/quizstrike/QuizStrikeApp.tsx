@@ -32,6 +32,7 @@ import {
 } from "@quizstrike/shared";
 import { authApi } from "../../api/client";
 import { buildTeacherSpeakingPath, getTournamentInvitationCodeFromSearch, isSpeakingTeacherRoute, isTeacherSpeakingRoute, modeForRoute, normalizeRoutePath, type AppMode } from "../../navigation";
+import GyakutenEigoBrand from "../../ui/GyakutenEigoBrand";
 import ProductHubHeader from "../../ui/ProductHubHeader";
 import ProductHubHomepage from "../../ui/ProductHubHomepage";
 import QuizStrikeLogo from "../../ui/QuizStrikeLogo";
@@ -161,7 +162,7 @@ export default function App() {
       ) : (
         <header className={`topbar topbar-${mode}${teacher ? " teacher-authenticated" : ""}`}>
           <button className="brand-button" type="button" aria-label={mode === "teacher" ? "GyakutenEigo home" : "QuizStrike home"} onClick={() => navigateTo("/", "home")}>
-            {mode === "teacher" ? <span className="public-wordmark">GyakutenEigo</span> : <QuizStrikeLogo />}
+            {mode === "teacher" ? <GyakutenEigoBrand className="public-wordmark" /> : <QuizStrikeLogo />}
           </button>
           <nav className="primary-nav" aria-label="Primary" onKeyDown={(event) => {
             if (event.key === "Escape" && isMobileNavOpen) {

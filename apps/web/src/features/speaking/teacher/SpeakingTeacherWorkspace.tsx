@@ -53,6 +53,7 @@ import {
 } from "@quizstrike/shared";
 import { ApiError, speakingApi } from "../../../api/client";
 import { buildTeacherSpeakingPath } from "../../../navigation";
+import GyakutenEigoBrand from "../../../ui/GyakutenEigoBrand";
 import { formatDuration } from "../speakingData";
 import { ResultPanel, scoreFor } from "../SpeakingResultPanel";
 import { SpeakingSetDetailPage, SpeakingSetsPage } from "./SpeakingSetsPage";
@@ -1890,7 +1891,7 @@ function SpeakingProjector({ activity, session, shareUrl, roster, stale, onClose
     return () => { dialog?.close(); returnFocus?.focus(); };
   }, []);
   return createPortal(<dialog ref={dialogRef} className="speaking-projector speaking-app" aria-labelledby="speaking-projector-title" onCancel={onClose}>
-    <header><span>GyakutenEigo · Performance Test</span><button type="button" onClick={onClose}>Close projection</button></header>
+    <header><div className="speaking-projector-brand-lockup"><GyakutenEigoBrand className="speaking-projector-brand" /><span>Performance Test</span></div><button type="button" onClick={onClose}>Close projection</button></header>
     <main><span className={`speaking-status-pill speaking-status-${session.status}`}>{session.status === "ready" ? "Students are joining" : session.status === "paused" ? "Performance Test paused" : "Performance Test running"}</span><h1 id="speaking-projector-title">{activity.title}</h1><p>Scan the QR code or enter the code below.</p><p lang="ja">QRコードを読み取るか、参加コードを入力してください。</p>
     <div className="speaking-projector-join"><QRCodeSVG value={shareUrl} size={240} marginSize={3} level="M" /><div><span>Session code</span><strong>{session.joinCode}</strong><p>{window.location.origin}/speak/join</p></div></div>
     <div className="speaking-projector-counts" role="status"><span><strong>{roster?.items.length ?? "—"}</strong> joined</span><span><strong>{roster?.counts.ready ?? "—"}</strong> ready</span><span><strong>{roster?.counts.error ?? "—"}</strong> need attention</span></div>

@@ -15,6 +15,7 @@ import type {
   TeacherSetupSection,
   TeacherTab,
 } from "./teacherRoutes";
+import GyakutenEigoBrand from "../../../ui/GyakutenEigoBrand";
 
 type TeacherShellProps = {
   teacher: TeacherUser;
@@ -59,7 +60,7 @@ export default function TeacherShell({
     <section className="workspace" aria-label="GyakutenEigo teacher dashboard">
       <header className="dashboard-brand-row">
         <h1>
-          <span className="dashboard-wordmark">GyakutenEigo</span>
+          <GyakutenEigoBrand className="dashboard-brand-logo" />
           <small>Teacher dashboard</small>
         </h1>
         <div className="dashboard-account-area">

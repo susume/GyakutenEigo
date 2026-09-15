@@ -38,6 +38,7 @@ import {
 import { speakingContext } from "@quizstrike/shared";
 import { ApiError, speakingApi } from "../../api/client";
 import { isSpeakingTeacherRoute } from "../../navigation";
+import GyakutenEigoBrand from "../../ui/GyakutenEigoBrand";
 import PerformanceHeader from "../../ui/PerformanceHeader";
 import PublicHomepage from "../../ui/PublicHomepage";
 import { formatDuration } from "./speakingData";
@@ -146,7 +147,7 @@ export default function SpeakingPracticeApp() {
 }
 
 function SpeakingBrand({ navigate, compact = false }: { navigate: Navigate; compact?: boolean }) {
-  return <button className={`speaking-brand${compact ? " speaking-brand-compact" : ""}`} type="button" onClick={() => navigate("/speak")} aria-label="GyakutenEigo Speaking Practice home"><span className="speaking-brand-mark"><MessageCircle size={compact ? 22 : 28} strokeWidth={2.2} aria-hidden="true" /></span><span className="speaking-brand-name">GyakutenEigo</span></button>;
+  return <button className={`speaking-brand${compact ? " speaking-brand-compact" : ""}`} type="button" onClick={() => navigate("/speak")} aria-label="GyakutenEigo Speaking Practice home"><GyakutenEigoBrand compact={compact} className="speaking-brand-logo" /></button>;
 }
 
 function SpeakingTopbar({ navigate, active = "home", teacher = false, student = false, studentSetup = false, studentLabel = "Student" }: { navigate: Navigate; student?: boolean; studentSetup?: boolean; studentLabel?: string; active?: "home" | "join" | "teacher"; teacher?: boolean }) {
