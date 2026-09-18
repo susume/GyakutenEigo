@@ -2318,34 +2318,9 @@
   line-height: 1.45;
 }
 
-.speaking-app .speaking-student-grid.no-support-panel {
+.speaking-student-screen .speaking-student-grid.no-support-panel {
   grid-template-columns: minmax(0, 1fr);
   grid-template-areas: "center";
-}
-
-.speaking-app .speaking-student-controls.is-no-replay.is-mic-only {
-  grid-template-columns: minmax(0, 1fr);
-}
-
-.speaking-app .speaking-student-controls:not(.is-no-replay).is-mic-only {
-  grid-template-columns: minmax(0, 1fr) minmax(0, 1fr);
-}
-
-.speaking-app .speaking-student-controls.is-no-replay.has-support-actions {
-  grid-template-columns: minmax(0, 1fr) minmax(150px, 1fr);
-}
-
-.speaking-student-support-actions {
-  min-width: 0;
-  display: grid;
-  gap: 8px;
-  align-self: start;
-}
-
-.speaking-student-support-actions > * {
-  width: 100%;
-  max-width: none;
-  justify-self: stretch;
 }
 
 .speaking-help-response {
@@ -2591,5 +2566,154 @@
   .speaking-context-editor-empty-state {
     align-items: stretch;
     flex-direction: column;
+  }
+}
+
+/* Student live-session compatibility layer. The task contract may remove
+   support controls, but the learner workspace keeps the original visual
+   rhythm: a compact mark, a plain mode label, and balanced utility tracks. */
+.speaking-session-page .speaking-session-main > .speaking-session-waiting-note {
+  min-height: 44px;
+  height: 44px;
+  max-height: 54px;
+  align-items: center;
+  margin: 0 auto;
+  padding: 0 14px;
+}
+
+.speaking-student-screen .speaking-student-mode {
+  display: inline;
+  min-height: 0;
+  padding: 0;
+  border: 0;
+  border-radius: 0;
+  color: var(--student-navy);
+  background: transparent;
+  font-size: clamp(1.32rem, 1.6vw, 1.74rem);
+  font-weight: 850;
+  letter-spacing: -.045em;
+  line-height: normal;
+}
+
+.speaking-student-screen .speaking-student-center.is-no-transcript {
+  grid-template-rows: minmax(126px, auto) minmax(230px, 267px);
+  align-content: start;
+}
+
+.speaking-student-screen .speaking-student-center.has-help-response {
+  grid-template-rows: minmax(126px, auto) minmax(230px, 267px) auto minmax(0, 1fr);
+}
+
+.speaking-student-screen .speaking-student-center.is-no-transcript.has-help-response {
+  grid-template-rows: minmax(126px, auto) minmax(230px, 267px) auto;
+}
+
+.speaking-student-screen .speaking-student-support-actions {
+  width: 184px;
+  max-width: 100%;
+  min-width: 0;
+  display: grid;
+  grid-template-columns: 1fr;
+  gap: 8px;
+  align-self: start;
+  justify-self: end;
+  justify-items: stretch;
+}
+
+.speaking-student-screen .speaking-student-support-actions > * {
+  width: 184px;
+  max-width: 100%;
+  justify-self: stretch;
+}
+
+.speaking-student-screen .speaking-student-support-actions .speaking-student-help-button {
+  min-height: 40px !important;
+  display: inline-flex;
+  grid-template-columns: none;
+  grid-template-rows: none;
+  align-items: center;
+  gap: 8px;
+  padding: 0 14px;
+  font-size: .84rem;
+}
+
+.speaking-student-screen .speaking-student-support-actions .speaking-student-help-button > svg {
+  width: 18px;
+  height: 18px;
+}
+
+.speaking-student-screen .speaking-student-control-balance {
+  display: block;
+  width: min(100%, 184px);
+  min-height: 58px;
+  visibility: hidden;
+  pointer-events: none;
+}
+
+.speaking-student-screen .speaking-student-control-balance.is-left {
+  justify-self: start;
+}
+
+.speaking-student-screen .speaking-student-control-balance.is-right {
+  justify-self: end;
+}
+
+@media (min-width: 901px) and (min-height: 560px) {
+  .speaking-app .speaking-student-screen .speaking-student-controls {
+    grid-template-columns: minmax(170px, 1fr) minmax(126px, 160px) minmax(170px, 1fr);
+  }
+}
+
+@media (max-width: 720px) {
+  .speaking-session-page .speaking-session-main > .speaking-session-waiting-note {
+    height: auto;
+    max-height: none;
+    min-height: 44px;
+  }
+
+  .speaking-app .speaking-student-screen .speaking-student-controls {
+    grid-template-columns: minmax(0, 1fr) minmax(78px, 92px) minmax(0, 1fr);
+    grid-template-rows: minmax(0, 1fr) auto;
+    align-items: start;
+  }
+
+  .speaking-student-screen .speaking-student-controls > .speaking-replay-button,
+  .speaking-student-screen .speaking-student-controls > .speaking-student-control-balance.is-left {
+    grid-column: 1;
+    grid-row: 1;
+    justify-self: start;
+  }
+
+  .speaking-student-screen .speaking-student-controls > .speaking-student-mic-wrap {
+    grid-column: 2;
+    grid-row: 1;
+    justify-self: center;
+  }
+
+  .speaking-student-screen .speaking-student-controls > .speaking-student-support-actions,
+  .speaking-student-screen .speaking-student-controls > .speaking-student-control-balance.is-right {
+    grid-column: 3;
+    grid-row: 1;
+    justify-self: end;
+  }
+
+  .speaking-student-screen .speaking-student-controls > .speaking-student-status {
+    grid-column: 1 / -1;
+    grid-row: 2;
+    align-self: end;
+  }
+
+  .speaking-student-screen .speaking-student-support-actions {
+    grid-template-columns: 1fr;
+    width: 100%;
+    max-width: 100%;
+  }
+
+  .speaking-student-screen .speaking-student-support-actions > * {
+    width: 100%;
+  }
+
+  .speaking-student-screen .speaking-student-control-balance {
+    width: 100%;
   }
 }
