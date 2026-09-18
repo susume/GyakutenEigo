@@ -24,17 +24,41 @@ test("result reconnects after network failure and resumes polling after manual r
     await route.fulfill({ status: 202, json: { result: { ...baseResult, participant: { ...baseResult.participant, status: "evaluating" } }, evaluationStatus: "retrying", evaluationRetryable: true } });
   });
   await page.goto(`/speak/result/${participantId}`);
-  await expect(page.getByRole("heading", { name: "Evaluation needs another try" })).toBeVisible();
+  await expect(page.getByRole("heading", { name: "Feedback needs another try" })).toBeVisible();
+  await expect(page.getByText(/You won[’']t need to speak again/)).toBeVisible();
+  await expect(page.getByText(/saved turns will not be sent again/)).toHaveCount(0);
   await expect(page.getByRole("heading", { name: "Session not found" })).toHaveCount(0);
-  await page.getByRole("button", { name: "Retry evaluation", exact: true }).click();
-  await expect(page.getByText("Evaluation retrying", { exact: true })).toBeVisible();
+  await page.getByRole("button", { name: "Retry feedback", exact: true }).click();
+  await expect(page.getByText("Feedback retrying", { exact: true })).toBeVisible();
   const attemptsAfterRetry = attempts;
   await expect.poll(() => attempts).toBeGreaterThan(attemptsAfterRetry);
   await page.reload();
-  await expect(page.getByText("Evaluation retrying", { exact: true })).toBeVisible();
+  await expect(page.getByText("Feedback retrying", { exact: true })).toBeVisible();
   ready = true;
   await expect(page.locator(".speaking-result-hero h1")).toBeVisible({ timeout: 15_000 });
-  await expect(page.locator(".speaking-result-hero")).toContainText("You greeted your partner.");
+  await expect(page.locator(".speaking-result-panel")).toContainText("You greeted your partner.");
+});
+
+test("non-retryable terminal result stops polling and offers no retry", async ({ page, request }) => {
+  const { items } = await (await request.get("/api/speaking/templates")).json();
+  const participantId = "non-retryable-result";
+  let polls = 0;
+  await page.clock.install();
+  await page.addInitScript((id) => sessionStorage.setItem(`speaking-participant-token:${id}`, "test-token"), participantId);
+  await page.route(`**/api/speaking/results/${participantId}`, async (route) => {
+    polls += 1;
+    await route.fulfill({ json: {
+      result: { activity: { ...items[0], nativeLanguage: "en" }, session: { id: "terminal-session", status: "ended" }, participant: { id: participantId, status: "error" }, turns: [] },
+      evaluationStatus: "failed", evaluationRetryable: false, evaluationManualRetryable: false
+    } });
+  });
+  await page.goto(`/speak/result/${participantId}`);
+  await expect(page.locator(".speaking-result-hero")).toBeVisible();
+  await expect(page.getByRole("button", { name: "Retry feedback", exact: true })).toHaveCount(0);
+  const settledPolls = polls;
+  await page.clock.fastForward(600_000);
+  await expect(page.locator(".speaking-result-hero")).toBeVisible();
+  expect(polls).toBe(settledPolls);
 });
 
 test("logged-out teacher returns to the Speaking builder after existing auth", async ({ browser, request }, testInfo) => {

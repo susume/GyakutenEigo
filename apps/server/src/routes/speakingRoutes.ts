@@ -622,7 +622,7 @@ export const registerSpeakingRoutes = (app: Application, deps: SpeakingRouteDepe
 
   const evaluationStatus = (job?: SpeakingEvaluationJob) => job?.status ?? "queued";
   const manualEvaluationRetryAt = (job?: SpeakingEvaluationJob) => {
-    if (!job || job.status !== "failed" || job.attempt < SPEAKING_EVALUATION_MAX_ATTEMPTS) return undefined;
+    if (!job || job.status !== "failed" || job.retryable !== true || job.attempt < SPEAKING_EVALUATION_MAX_ATTEMPTS) return undefined;
     const terminalAt = Date.parse(job.finishedAt ?? job.updatedAt);
     return Number.isFinite(terminalAt) ? new Date(terminalAt + SPEAKING_EVALUATION_MANUAL_RETRY_COOLDOWN_MS).toISOString() : undefined;
   };

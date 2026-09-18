@@ -688,7 +688,7 @@ test("teacher pauses freeze active speaking time and pause-to-end accounts the f
   }
 });
 
-test("terminal speaking evaluation exposes a cooldowned, idempotent manual retry", async () => {
+for (const terminalFailure of ["unavailable", "authentication", "bad_request"] as const) test(`terminal speaking evaluation exposes a cooldowned, idempotent manual retry: ${terminalFailure}`, async () => {
   const app = express();
   app.use(express.json());
   const state = createSpeakingRouteState();
@@ -714,6 +714,9 @@ test("terminal speaking evaluation exposes a cooldowned, idempotent manual retry
     evaluationProvider: {
       async evaluate(input) {
         evaluationCalls += 1;
+        if (evaluationCalls === 5 && terminalFailure !== "unavailable") {
+          throw new SpeakingProviderError("terminal provider failure", terminalFailure, terminalFailure === "authentication" ? 401 : 404);
+        }
         if (evaluationCalls <= 5) throw new SpeakingProviderError("temporary provider outage", "unavailable", 503);
         return providers.evaluation.evaluate(input);
       }
@@ -755,7 +758,28 @@ test("terminal speaking evaluation exposes a cooldowned, idempotent manual retry
     }
     assert.equal(evaluationCalls, 5);
     assert.equal(finish.body.evaluationStatus, "failed");
+    assert.equal(state.evaluationJobs.get(joined.body.participant.id)?.retryable, terminalFailure === "unavailable");
     assert.equal(finish.body.evaluationRetryable, false);
+    if (terminalFailure !== "unavailable") {
+      assert.equal(finish.body.evaluationManualRetryAt, undefined);
+      nowMs += 600_000;
+      state.requestWindows.clear();
+      const terminalResult = await api<{ evaluationStatus: string; evaluationRetryable: boolean; evaluationManualRetryable: boolean; evaluationManualRetryAt?: string; result: { evaluation?: unknown; turns: unknown[] } }>(`/api/speaking/results/${joined.body.participant.id}`, { speakingToken: joined.body.token });
+      assert.equal(terminalResult.body.evaluationStatus, "failed");
+      assert.equal(terminalResult.body.evaluationRetryable, false);
+      assert.equal(terminalResult.body.evaluationManualRetryable, false);
+      assert.equal(terminalResult.body.evaluationManualRetryAt, undefined);
+      assert.equal(terminalResult.body.result.evaluation, undefined);
+      for (const credentials of [{ speakingToken: joined.body.token }, { teacher: "owner" }]) {
+        const denied = await api<{ code: string }>(`/api/speaking/results/${joined.body.participant.id}/retry-evaluation`, { method: "POST", ...credentials });
+        assert.equal(denied.response.status, 409);
+        assert.equal(denied.body.code, "SPEAKING_EVALUATION_RETRY_UNAVAILABLE");
+      }
+      await api(`/api/speaking/sessions/${joined.body.session.id}/finish`, { method: "POST", speakingToken: joined.body.token });
+      assert.equal(evaluationCalls, 5, "cooldown, polling, and explicit retry must not restart a non-retryable job");
+      assert.deepEqual(terminalResult.body.result.turns, finish.body.result.turns);
+      return;
+    }
     assert.ok(finish.body.evaluationManualRetryAt);
 
     const beforeCooldownTeacherRetry = await api(`/api/speaking/results/${joined.body.participant.id}/retry-evaluation`, { method: "POST", teacher: "owner" });
