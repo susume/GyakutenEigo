@@ -73,6 +73,19 @@ export type SpeakingResultRecord = {
   evaluation?: SpeakingEvaluation;
 };
 
+export type SpeakingContextImageRecord = {
+  id: string;
+  teacherId: string;
+  mimeType: string;
+  bytes: Uint8Array;
+  byteLength: number;
+  width: number;
+  height: number;
+  createdAt: string;
+  updatedAt: string;
+  deletedAt?: string;
+};
+
 export type SpeakingTurnPair = {
   studentTurn: SpeakingTurn;
   aiTurn?: SpeakingTurn;
@@ -102,6 +115,9 @@ export interface SpeakingRepository {
   getOwnedActivity(id: string, teacherId: string): Promise<SpeakingActivity | undefined>;
   createActivity(teacherId: string, input: SpeakingCreateActivityInput, id: string, now: string): Promise<SpeakingActivity>;
   updateActivity(teacherId: string, activityId: string, input: SpeakingCreateActivityInput, now: string): Promise<SpeakingActivity | undefined>;
+  createContextImage(input: Omit<SpeakingContextImageRecord, "updatedAt" | "deletedAt">): Promise<SpeakingContextImageRecord>;
+  getContextImage(id: string): Promise<SpeakingContextImageRecord | undefined>;
+  softDeleteContextImage(teacherId: string, id: string, now: string): Promise<boolean>;
   archiveActivity(teacherId: string, activityId: string): Promise<boolean>;
   deleteSession(teacherId: string, sessionId: string): Promise<boolean>;
   listSets(teacherId: string): Promise<SpeakingSetSummary[]>;
@@ -169,6 +185,7 @@ export type InMemorySpeakingState = {
   tokenToParticipant: Map<string, string>;
   evaluationJobs: Map<string, SpeakingEvaluationJob>;
   sets: Map<string, InMemorySpeakingSet>;
+  contextImages: Map<string, SpeakingContextImageRecord>;
 };
 
 export type InMemorySpeakingSet = {
@@ -189,7 +206,8 @@ export const createInMemorySpeakingState = (): InMemorySpeakingState => ({
   sessions: new Map(),
   tokenToParticipant: new Map(),
   evaluationJobs: new Map(),
-  sets: new Map()
+  sets: new Map(),
+  contextImages: new Map()
 });
 
 export const hashSpeakingToken = (token: string) => createHash("sha256").update(token).digest("hex");
@@ -315,6 +333,11 @@ const setDetailFromMemory = (state: InMemorySpeakingState, set: InMemorySpeaking
 const cloneParticipant = (participant: SpeakingParticipant): SpeakingParticipant => ({ ...participant });
 
 const cloneEvaluationJob = (job: SpeakingEvaluationJob): SpeakingEvaluationJob => ({ ...job });
+
+const cloneContextImage = (image: SpeakingContextImageRecord): SpeakingContextImageRecord => ({
+  ...image,
+  bytes: new Uint8Array(image.bytes)
+});
 
 const participantPublic = (participant: StoredSpeakingParticipant): SpeakingParticipant => {
   const { tokenHash: _tokenHash, helpPending: _helpPending, joinRequestId: _joinRequestId, ...publicParticipant } = participant;
@@ -446,6 +469,25 @@ export class InMemorySpeakingRepository implements SpeakingRepository {
     const activity = { ...normalized, status: current.status, createdAt: current.createdAt };
     this.state.activities.set(activityId, activity);
     return cloneActivity(activity);
+  }
+
+  async createContextImage(input: Omit<SpeakingContextImageRecord, "updatedAt" | "deletedAt">) {
+    const image: SpeakingContextImageRecord = { ...input, updatedAt: input.createdAt, bytes: new Uint8Array(input.bytes) };
+    this.state.contextImages.set(image.id, image);
+    return cloneContextImage(image);
+  }
+
+  async getContextImage(id: string) {
+    const image = this.state.contextImages.get(id);
+    return image ? cloneContextImage(image) : undefined;
+  }
+
+  async softDeleteContextImage(teacherId: string, id: string, now: string) {
+    const image = this.state.contextImages.get(id);
+    if (!image || image.teacherId !== teacherId || image.deletedAt) return false;
+    image.deletedAt = now;
+    image.updatedAt = now;
+    return true;
   }
 
   async archiveActivity(teacherId: string, activityId: string) {
@@ -845,6 +887,7 @@ type PrismaParticipantResult = Prisma.SpeakingParticipantGetPayload<{
     evaluation: true;
   };
 }>;
+type PrismaContextImage = Prisma.SpeakingContextImageGetPayload<{}>;
 
 const rubricFromJson = (value: Prisma.JsonValue): SpeakingRubricCriterion[] => {
   if (!Array.isArray(value)) return [];
@@ -876,6 +919,7 @@ const scenarioResourcesFromJson = (value: Prisma.JsonValue): SpeakingScenarioRes
   const contextSource = objectFromJson((source.context ?? {}) as Prisma.JsonValue);
   const context: SpeakingContext | undefined = Object.keys(contextSource).length
     ? {
+      ...(typeof contextSource.assetId === "string" ? { assetId: contextSource.assetId } : {}),
       ...(typeof contextSource.title === "string" ? { title: contextSource.title } : {}),
       ...(typeof contextSource.description === "string" ? { description: contextSource.description } : {}),
       ...(typeof contextSource.imageUrl === "string" ? { imageUrl: contextSource.imageUrl } : {}),
@@ -961,6 +1005,19 @@ const toActivity = (row: PrismaActivity): SpeakingActivity => {
     updatedAt: row.updatedAt.toISOString()
   };
 };
+
+const toContextImage = (row: PrismaContextImage): SpeakingContextImageRecord => ({
+  id: row.id,
+  teacherId: row.teacherId,
+  mimeType: row.mimeType,
+  bytes: new Uint8Array(row.bytes),
+  byteLength: row.byteLength,
+  width: row.width,
+  height: row.height,
+  createdAt: row.createdAt.toISOString(),
+  updatedAt: row.updatedAt.toISOString(),
+  ...(row.deletedAt ? { deletedAt: row.deletedAt.toISOString() } : {})
+});
 
 const toSession = (row: Pick<PrismaSession, "id" | "activityId" | "joinCode" | "status" | "createdAt" | "startedAt" | "pausedAt" | "endedAt" | "expiresAt" | "revision"> & Partial<Pick<PrismaSession, "speakingSetId" | "speakingSetNameSnapshot" | "speakingSetFocusSnapshot">>): SpeakingSession => ({
   ...(row.speakingSetId ? { speakingSetId: row.speakingSetId, speakingSetNameSnapshot: row.speakingSetNameSnapshot ?? undefined, ...(row.speakingSetFocusSnapshot === null || row.speakingSetFocusSnapshot === undefined ? {} : { speakingSetFocusSnapshot: row.speakingSetFocusSnapshot }) } : {}),
@@ -1193,6 +1250,36 @@ export class PrismaSpeakingRepository implements SpeakingRepository {
       });
     });
     return row ? toActivity(row) : undefined;
+  }
+
+  async createContextImage(input: Omit<SpeakingContextImageRecord, "updatedAt" | "deletedAt">) {
+    const row = await this.prisma.speakingContextImage.create({
+      data: {
+        id: input.id,
+        teacherId: input.teacherId,
+        mimeType: input.mimeType,
+        bytes: Buffer.from(input.bytes),
+        byteLength: input.byteLength,
+        width: input.width,
+        height: input.height,
+        createdAt: new Date(input.createdAt),
+        updatedAt: new Date(input.createdAt)
+      }
+    });
+    return toContextImage(row);
+  }
+
+  async getContextImage(id: string) {
+    const row = await this.prisma.speakingContextImage.findUnique({ where: { id } });
+    return row ? toContextImage(row) : undefined;
+  }
+
+  async softDeleteContextImage(teacherId: string, id: string, now: string) {
+    const result = await this.prisma.speakingContextImage.updateMany({
+      where: { id, teacherId, deletedAt: null },
+      data: { deletedAt: new Date(now), updatedAt: new Date(now) }
+    });
+    return result.count > 0;
   }
 
   async archiveActivity(teacherId: string, activityId: string) {

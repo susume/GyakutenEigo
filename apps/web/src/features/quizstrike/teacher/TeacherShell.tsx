@@ -65,7 +65,7 @@ export default function TeacherShell({
         </h1>
         <div className="dashboard-account-area">
           <span className="dashboard-product-pair">
-            QuizStrike + Speaking Practice
+            QuizStrike + Speaking Tasks
           </span>
           <strong>{teacher.name}</strong>
           <button type="button" onClick={onLogout}>
@@ -170,7 +170,7 @@ export default function TeacherShell({
             </button>
 
             <span className="sidebar-divider" />
-            <span className="sidebar-section-label">Speaking Practice</span>
+            <span className="sidebar-section-label">SPEAKING TASKS</span>
             <button
               type="button"
               aria-current={activeTab === "speaking" ? "page" : undefined}
@@ -178,7 +178,7 @@ export default function TeacherShell({
               onClick={() => onNavigateTab("speaking")}
             >
               <Mic size={17} aria-hidden="true" />
-              Speaking Practice
+              Speaking Tasks
             </button>
             <button
               type="button"
@@ -186,7 +186,7 @@ export default function TeacherShell({
               onClick={onCreateSpeakingActivity}
             >
               <Plus size={15} aria-hidden="true" />
-              New activity
+              New task
             </button>
 
             <span className="sidebar-divider" />

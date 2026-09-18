@@ -131,6 +131,8 @@ export type SpeakingContextType = (typeof SPEAKING_CONTEXT_TYPES)[number];
 
 /** Optional, non-linguistic visual support for a speaking activity. */
 export interface SpeakingContext {
+  /** Opaque server-owned asset reference for teacher-uploaded context images. */
+  assetId?: string;
   title?: string;
   description?: string;
   imageUrl?: string;
@@ -251,13 +253,15 @@ const boundedResourceText = (value: string | undefined, fallback: string, max = 
 
 const normalizeSpeakingContext = (context?: SpeakingContext): SpeakingContext | undefined => {
   if (!context) return undefined;
+  const assetId = context.assetId?.trim().slice(0, 120);
   const title = context.title?.trim().slice(0, 120);
   const description = context.description?.trim().slice(0, 240);
   const imageUrl = context.imageUrl?.trim().slice(0, 500);
   const alt = context.alt?.trim().slice(0, 160);
   const type = context.type && SPEAKING_CONTEXT_TYPES.includes(context.type) ? context.type : undefined;
-  if (!title && !description && !imageUrl && !alt && !type) return undefined;
+  if (!assetId && !title && !description && !imageUrl && !alt && !type) return undefined;
   return {
+    ...(assetId ? { assetId } : {}),
     ...(title ? { title } : {}),
     ...(description ? { description } : {}),
     ...(imageUrl ? { imageUrl } : {}),
@@ -546,6 +550,7 @@ export const SpeakingSupportSettingsSchema = z.object({
 });
 
 const SpeakingContextSchema = z.object({
+  assetId: z.string().trim().max(120).optional(),
   title: z.string().trim().max(120).optional(),
   description: z.string().trim().max(240).optional(),
   imageUrl: z.string().trim().max(500).optional(),

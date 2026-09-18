@@ -145,6 +145,27 @@
 .speaking-embedded-teacher .speaking-builder-card { box-shadow: none; }
 .speaking-embedded-teacher .speaking-resource-grid { display: grid; grid-template-columns: repeat(2,minmax(0,1fr)); gap: 16px; }
 .speaking-embedded-teacher .speaking-settings-grid { grid-template-columns: repeat(3,minmax(0,1fr)); }
+.speaking-embedded-teacher .speaking-builder-form-grid > label { min-width: 0; align-content: start; }
+.speaking-embedded-teacher .speaking-builder-form-grid > label > small { color: #7185a0; font-size: .72rem; font-weight: 600; line-height: 1.4; }
+.speaking-embedded-teacher .speaking-advanced-settings { min-width: 0; border: 1px solid #dbe6f1; border-radius: 13px; background: #fbfdff; }
+.speaking-embedded-teacher .speaking-advanced-settings > summary { display: flex; align-items: baseline; justify-content: space-between; gap: 12px; padding: 13px 15px; color: #23456f; font-size: .86rem; font-weight: 850; cursor: pointer; list-style: none; }
+.speaking-embedded-teacher .speaking-advanced-settings > summary::-webkit-details-marker { display: none; }
+.speaking-embedded-teacher .speaking-advanced-settings > summary::after { content: "+"; flex: 0 0 auto; color: #2878c8; font-size: 1.1rem; }
+.speaking-embedded-teacher .speaking-advanced-settings[open] > summary::after { content: "–"; }
+.speaking-embedded-teacher .speaking-advanced-settings > summary span { color: #7185a0; font-size: .72rem; font-weight: 600; line-height: 1.4; }
+.speaking-embedded-teacher .speaking-advanced-content { display: grid; gap: 17px; padding: 0 15px 16px; }
+.speaking-embedded-teacher .speaking-advanced-grid { display: grid; grid-template-columns: repeat(2,minmax(0,1fr)); gap: 14px; padding-top: 15px; border-top: 1px solid #e6eef5; }
+.speaking-embedded-teacher .speaking-advanced-grid > label { min-width: 0; }
+.speaking-embedded-teacher .speaking-target-english-heading { display: flex; align-items: center; justify-content: space-between; gap: 12px; }
+.speaking-embedded-teacher .speaking-target-english-heading p { margin: 4px 0 0; color: #7185a0; font-size: .78rem; }
+.speaking-embedded-teacher .speaking-context-editor-actions { display: flex; flex-wrap: wrap; align-items: center; gap: 8px; }
+.speaking-embedded-teacher .speaking-context-instruction { min-width: 0; }
+.speaking-embedded-teacher .speaking-context-instruction small { color: #7185a0; font-size: .72rem; font-weight: 600; }
+.speaking-embedded-teacher .speaking-context-advanced { display: grid; gap: 10px; border-top: 1px solid #e3edf5; padding-top: 14px; }
+.speaking-embedded-teacher .speaking-advanced-subheading { display: grid; gap: 3px; }
+.speaking-embedded-teacher .speaking-advanced-subheading strong { color: #507095; font-size: .75rem; font-weight: 800; }
+.speaking-embedded-teacher .speaking-advanced-subheading span { color: #7185a0; font-size: .72rem; line-height: 1.4; }
+.speaking-visually-hidden-file-input { position: absolute !important; width: 1px !important; height: 1px !important; overflow: hidden !important; clip: rect(0 0 0 0) !important; clip-path: inset(50%) !important; white-space: nowrap !important; }
 .speaking-embedded-teacher .speaking-rubric-editor-heading { padding-top: 0; border: 0; }
 .speaking-embedded-teacher .speaking-rubric-row { grid-template-columns: 62px minmax(0,1fr) 44px; padding: 12px 0; border: 0; border-bottom: 1px solid var(--speaking-line); border-radius: 0; background: white; }
 .speaking-rubric-row .speaking-icon-button { min-height: 44px !important; width: 44px; }
@@ -174,7 +195,7 @@
   .speaking-app .speaking-preactivity-layout { grid-template-columns: 1fr; }
   .speaking-journey { gap: 12px; }
   .speaking-journey li { font-size: 12px; }
-  .speaking-embedded-teacher .speaking-resource-grid, .speaking-review-facts { grid-template-columns: 1fr; }
+  .speaking-embedded-teacher .speaking-resource-grid, .speaking-embedded-teacher .speaking-advanced-grid, .speaking-review-facts { grid-template-columns: 1fr; }
   .speaking-embedded-teacher .speaking-settings-grid { grid-template-columns: repeat(2,minmax(0,1fr)); }
   .speaking-embedded-teacher .speaking-roster-row { grid-template-columns: 20px minmax(0,1fr) auto; min-height: 66px; row-gap: 4px; }
   .speaking-embedded-teacher .speaking-roster-row time { grid-column: 2 / -1; }

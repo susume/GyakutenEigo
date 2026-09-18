@@ -28,10 +28,22 @@ body[data-speaking="true"] {
 }
 
 .speaking-app button,
-.speaking-app input,
+.speaking-app input:not([type="checkbox"]):not([type="radio"]):not([type="file"]),
 .speaking-app textarea,
 .speaking-app select {
   font: inherit;
+}
+
+.speaking-app input[type="checkbox"],
+.speaking-app input[type="radio"] {
+  flex: 0 0 auto;
+  width: 19px;
+  min-width: 19px;
+  height: 19px;
+  min-height: 19px;
+  margin: 2px 0 0;
+  padding: 0;
+  accent-color: var(--speaking-blue);
 }
 
 .speaking-app button {
@@ -68,7 +80,7 @@ body[data-speaking="true"] {
   cursor: not-allowed;
 }
 
-.speaking-app input,
+.speaking-app input:not([type="checkbox"]):not([type="radio"]):not([type="file"]),
 .speaking-app textarea,
 .speaking-app select {
   width: 100%;

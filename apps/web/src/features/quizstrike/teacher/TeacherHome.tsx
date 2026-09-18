@@ -31,7 +31,7 @@ export default function TeacherHome({ teacher, quizSets, sessions, recognition, 
         <div>
           <span className="teacher-eyebrow">Teacher home</span>
           <h2 id="teacher-home-title">Welcome back, {teacher.name.split(" ")[0]}</h2>
-          <p>Choose a QuizStrike game or a Speaking Practice session for your class.</p>
+          <p>Choose a QuizStrike game or a Speaking Task session for your class.</p>
         </div>
         <div className="teacher-home-hero-actions">
           <button className="primary" onClick={onCreate}><Plus size={18} aria-hidden="true" />Create Study Set</button>
@@ -65,7 +65,7 @@ export default function TeacherHome({ teacher, quizSets, sessions, recognition, 
           </button>
           <button type="button" className="teacher-action-card teacher-action-card-speaking" onClick={onStartSpeaking}>
             <span className="teacher-action-card-icon"><Mic size={20} aria-hidden="true" /></span>
-            <span><strong>Start Speaking Practice</strong><small>Choose an activity and launch a speaking session.</small></span>
+            <span><strong>Start Speaking Task</strong><small>Choose a task and launch a speaking session.</small></span>
             <ChevronRight size={18} aria-hidden="true" />
           </button>
           <button type="button" className="teacher-action-card teacher-action-card-quiet" onClick={onCreate}>
@@ -75,7 +75,7 @@ export default function TeacherHome({ teacher, quizSets, sessions, recognition, 
           </button>
           <button type="button" className="teacher-action-card teacher-action-card-quiet" onClick={onCreateSpeaking}>
             <span className="teacher-action-card-icon"><Mic size={20} aria-hidden="true" /></span>
-            <span><strong>Create Speaking Activity</strong><small>Set the situation, rubric, and feedback language.</small></span>
+            <span><strong>Create speaking task</strong><small>Set the situation, rubric, and feedback language.</small></span>
             <ChevronRight size={18} aria-hidden="true" />
           </button>
         </div>

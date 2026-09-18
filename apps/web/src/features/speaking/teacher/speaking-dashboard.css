@@ -490,17 +490,20 @@
   display: flex;
   align-items: center;
   justify-content: flex-end;
+  flex: 0 0 auto;
   gap: 6px;
 }
 
 .speaking-core-card-footer button {
   min-height: 31px;
+  white-space: nowrap;
   border-radius: 7px;
   padding: 0 8px;
   font-size: 11px;
 }
 
 .speaking-core-card-footer .speaking-row-launch {
+  min-width: 78px;
   border: 1px solid #087b4e;
   background: #087b4e;
   color: #fff;
@@ -513,8 +516,12 @@
 }
 
 .speaking-core-card-footer .speaking-text-button {
-  min-width: auto;
+  min-width: 82px;
   padding: 0 2px;
+}
+
+.speaking-core-card-footer .speaking-outline-button {
+  min-width: 70px;
 }
 
 .speaking-core-library {

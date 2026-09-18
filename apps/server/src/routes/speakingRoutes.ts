@@ -60,6 +60,7 @@ import {
 import { consumeSpeakingRateLimit, type SpeakingRateLimitDecision } from "../speakingAdmission.js";
 import { createSpeakingProviderWorkload, SpeakingWorkloadError, type SpeakingProviderWorkload } from "../speakingWorkload.js";
 import { buildSpeakingCsv, speakingCsvEvaluationScores } from "../speakingCsv.js";
+import { processSpeakingContextImage, SPEAKING_CONTEXT_IMAGE_LIMITS, SpeakingContextImageProcessingError } from "../speakingContextImages.js";
 
 type AuthedRequest = Request & { user?: TeacherUser };
 type SpeakingTurnRequest = Request & { speakingTurnRequestStartedAt?: number; releaseSpeakingUpload?: () => void };
@@ -380,6 +381,99 @@ export const registerSpeakingRoutes = (app: Application, deps: SpeakingRouteDepe
     latencyMs: [] as number[],
     providerDurationMs: [] as number[]
   };
+
+  const contextImagePath = (id: string) => `/api/speaking/context-images/${encodeURIComponent(id)}`;
+  const contextImageUploadLimit = `${SPEAKING_CONTEXT_IMAGE_LIMITS.maxInputBytes}b`;
+
+  // Context images are normalized before persistence. DELETE is intentionally
+  // a soft delete in the repository: historical session snapshots may still
+  // contain the opaque URL and must keep rendering it.
+  app.post("/api/speaking/context-images", deps.requireTeacher, (req, res, next) => {
+    const contentLength = Number(req.header("content-length"));
+    if (Number.isFinite(contentLength) && contentLength > SPEAKING_CONTEXT_IMAGE_LIMITS.maxInputBytes) {
+      res.status(413).json({ code: "SPEAKING_CONTEXT_IMAGE_TOO_LARGE", error: "That image is too large. Choose an image smaller than 10 MB." });
+      return;
+    }
+    express.raw({
+      type: ["image/jpeg", "image/png", "image/webp"],
+      limit: contextImageUploadLimit
+    })(req, res, async (error) => {
+      if (error) {
+        if (typeof error === "object" && error !== null && "status" in error && error.status === 413) {
+          res.status(413).json({ code: "SPEAKING_CONTEXT_IMAGE_TOO_LARGE", error: "That image is too large. Choose an image smaller than 10 MB." });
+          return;
+        }
+        next(error);
+        return;
+      }
+      const body = Buffer.isBuffer(req.body) ? req.body : undefined;
+      if (!body?.byteLength) {
+        res.status(400).json({ code: "SPEAKING_CONTEXT_IMAGE_REQUIRED", error: "Choose an image to upload." });
+        return;
+      }
+      try {
+        const processed = await processSpeakingContextImage(body, req.header("content-type") ?? "");
+        const id = randomBytes(24).toString("base64url");
+        const image = await repository.createContextImage({
+          id,
+          teacherId: (req as AuthedRequest).user?.id ?? "",
+          mimeType: processed.mimeType,
+          bytes: processed.bytes,
+          byteLength: processed.byteLength,
+          width: processed.width,
+          height: processed.height,
+          createdAt: deps.now()
+        });
+        res.status(201).json({
+          image: {
+            id: image.id,
+            url: contextImagePath(image.id),
+            mimeType: image.mimeType,
+            byteLength: image.byteLength,
+            width: image.width,
+            height: image.height
+          }
+        });
+      } catch (imageError) {
+        if (imageError instanceof SpeakingContextImageProcessingError) {
+          const status = imageError.code === "SPEAKING_CONTEXT_IMAGE_TOO_LARGE" ? 413 : 400;
+          res.status(status).json({ code: imageError.code, error: imageError.message });
+          return;
+        }
+        next(imageError);
+      }
+    });
+  });
+
+  app.get("/api/speaking/context-images/:id", async (req, res, next) => {
+    try {
+      const image = await repository.getContextImage(String(req.params.id));
+      if (!image) {
+        res.status(404).json({ error: "That context image is no longer available." });
+        return;
+      }
+      res.setHeader("Content-Type", image.mimeType);
+      res.setHeader("Content-Length", String(image.byteLength));
+      res.setHeader("Cache-Control", "public, max-age=31536000, immutable");
+      res.end(Buffer.from(image.bytes));
+    } catch (imageError) {
+      next(imageError);
+    }
+  });
+
+  app.delete("/api/speaking/context-images/:id", deps.requireTeacher, async (req, res, next) => {
+    try {
+      const removed = await repository.softDeleteContextImage((req as AuthedRequest).user?.id ?? "", String(req.params.id), deps.now());
+      if (!removed) {
+        res.status(404).json({ error: "That context image is not owned by this teacher." });
+        return;
+      }
+      res.status(204).end();
+    } catch (imageError) {
+      next(imageError);
+    }
+  });
+
   const rememberEvaluationMetric = (values: number[], value: number) => {
     if (Number.isFinite(value)) values.push(Math.min(120_000, Math.max(0, Math.round(value))));
     if (values.length > 1_000) values.splice(0, values.length - 1_000);

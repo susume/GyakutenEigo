@@ -229,7 +229,7 @@ function TeacherAuth({
           <GyakutenEigoBrand className="auth-game-wordmark" />
           <span className="auth-kicker">Teacher dashboard</span>
           <p className="auth-visual-title">{speaking ? <>More speaking.<br />For every student.</> : <>One workspace.<br />Every class.</>}</p>
-          <p>{speaking ? "Choose a conversation, invite your students with a code, and see how they are doing in one classroom workspace." : "Create QuizStrike games and Speaking Practice sessions from the same focused teacher dashboard."}</p>
+          <p>{speaking ? "Choose a conversation, invite your students with a code, and see how they are doing in one classroom workspace." : "Create QuizStrike games and Speaking Tasks from the same focused teacher dashboard."}</p>
           <span className="auth-tagline">Games ready. Voices heard.</span>
         </div>
       </aside>
@@ -237,7 +237,7 @@ function TeacherAuth({
         <div className="auth-form-heading">
           <span className="auth-kicker">Teacher account</span>
           <h1>{isSignup ? "Welcome to GyakutenEigo" : "Sign in to GyakutenEigo"}</h1>
-          <p>{isSignup ? "Create one teacher workspace for games and speaking practice." : "Open QuizStrike, Speaking Practice, and your class results."}</p>
+          <p>{isSignup ? "Create one teacher workspace for games and speaking tasks." : "Open QuizStrike, Speaking Tasks, and your class results."}</p>
         </div>
         {isSignup && (
           <label htmlFor="teacher-name">
@@ -542,7 +542,7 @@ function TeacherDashboard({ teacher, onLogout, initialPath, onNavigate }: { teac
       )}
       {tab === "tournaments" && <Suspense fallback={<ArenaLoading label="Loading tournament center" />}><TournamentCenter teacher={teacher} quizSets={data.quizSets.map((quiz) => ({ id: quiz.id, title: quiz.title }))} /></Suspense>}
       {tab === "speaking" && (
-        <Suspense fallback={<ArenaLoading label="Loading Speaking Practice" />}>
+        <Suspense fallback={<ArenaLoading label="Loading Speaking Tasks" />}>
           <SpeakingTeacherWorkspace initialPath={initialPath} onNavigate={(path) => onNavigate(path, "teacher")} />
         </Suspense>
       )}
@@ -1916,7 +1916,7 @@ function ReportsPanel({
   };
 
   if (reportArea === "speaking") {
-    return <div className="report-panel reports-page"><div className="reports-area-tabs" role="tablist" aria-label="Report type"><button type="button" role="tab" aria-selected="false" onClick={() => setReportArea("quizstrike")}>QuizStrike</button><button type="button" className="is-active" role="tab" aria-selected="true">Speaking Practice</button></div><SpeakingReportsPanel navigate={onOpenSpeaking} /></div>;
+    return <div className="report-panel reports-page"><div className="reports-area-tabs" role="tablist" aria-label="Report type"><button type="button" role="tab" aria-selected="false" onClick={() => setReportArea("quizstrike")}>QuizStrike</button><button type="button" className="is-active" role="tab" aria-selected="true">Speaking Tasks</button></div><SpeakingReportsPanel navigate={onOpenSpeaking} /></div>;
   }
   return (
     <div className="report-panel reports-page">
@@ -1931,7 +1931,7 @@ function ReportsPanel({
           <button onClick={() => setTab("sessions")}>Open live games</button>
         </div>
       </header>
-      <div className="reports-area-tabs" role="tablist" aria-label="Report type"><button type="button" className="is-active" role="tab" aria-selected="true">QuizStrike</button><button type="button" role="tab" aria-selected="false" onClick={() => setReportArea("speaking")}>Speaking Practice</button></div>
+      <div className="reports-area-tabs" role="tablist" aria-label="Report type"><button type="button" className="is-active" role="tab" aria-selected="true">QuizStrike</button><button type="button" role="tab" aria-selected="false" onClick={() => setReportArea("speaking")}>Speaking Tasks</button></div>
       <StatusMessages error={status.error} message={status.message} />
 
       <div className="reports-layout">

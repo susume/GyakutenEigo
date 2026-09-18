@@ -663,7 +663,7 @@ const blankSpeakingDraft = (): SpeakingCreateActivityInput => ({
   rubric: DEFAULT_SPEAKING_RUBRIC.map((criterion) => ({ ...criterion })),
   scenarioResources: {
     category: SPEAKING_CATEGORIES[0],
-    communicationSkills: ["Asking questions", "Sharing information"]
+    studentGoal: ""
   }
 });
 
@@ -694,7 +694,7 @@ function SpeakingCreateChoice({
             </button>
             <button type="button" className="speaking-choice-card" onClick={onStartScratch}>
               <span className="speaking-choice-icon"><Pencil size={22} aria-hidden="true" /></span>
-              <span className="speaking-choice-card-copy"><strong>Start from scratch</strong><span>Write your own situation, choose the communication skills, and shape the rubric step by step.</span></span>
+              <span className="speaking-choice-card-copy"><strong>Start from scratch</strong><span>Write your own situation, set the student goal, and shape the classroom task in a few clear steps.</span></span>
               <span className="speaking-choice-action">Build a new task <ArrowRight size={16} aria-hidden="true" /></span>
             </button>
           </div>
@@ -790,28 +790,9 @@ function SpeakingCreatePage({
   const [saving, setSaving] = useState(false);
   const [loadingActivity, setLoadingActivity] = useState(editing);
   const [activityLoadFailed, setActivityLoadFailed] = useState(false);
-  const [activeBuilderStep, setActiveBuilderStep] = useState("template");
-  const builderSteps = [
-    { id: "template", label: "Template", target: "speaking-template" },
-    { id: "task", label: "Task", target: "speaking-situation" },
-    { id: "support", label: "Student support", target: "speaking-language" },
-    { id: "settings", label: "Settings", target: "speaking-settings" },
-    { id: "rubric", label: "Rubric", target: "speaking-rubric" },
-    { id: "review", label: "Review", target: "speaking-review" }
-  ] as const;
-  const builderStepComplete: Record<(typeof builderSteps)[number]["id"], boolean> = {
-    template: Boolean(draft.title.trim()),
-    task: Boolean(draft.title.trim() && draft.scenario.trim() && draft.aiRole.trim() && draft.studentRole.trim()),
-    support: Boolean(draft.scenarioResources?.studentGoal?.trim()),
-    settings: Boolean(draft.durationSeconds && draft.identifierMode),
-    rubric: draft.rubric.some((criterion) => criterion.enabled && criterion.name.trim()),
-    review: Boolean(draft.title.trim() && draft.scenario.trim() && draft.rubric.some((criterion) => criterion.enabled))
-  };
-  const focusBuilderStep = (step: (typeof builderSteps)[number]["id"]) => {
-    setActiveBuilderStep(step);
-    const target = builderSteps.find((candidate) => candidate.id === step)?.target;
-    if (target) document.getElementById(target)?.scrollIntoView({ behavior: "smooth", block: "start" });
-  };
+  const contextImageInputRef = useRef<HTMLInputElement>(null);
+  const [uploadingContextImage, setUploadingContextImage] = useState(false);
+  const [contextImageError, setContextImageError] = useState("");
   const leaveBuilder = (nextPath: string) => {
     if (isDirtyRef.current && !window.confirm("Leave this Speaking Task? Unsaved changes will be lost.")) return;
     navigate(nextPath);
@@ -833,16 +814,54 @@ function SpeakingCreatePage({
     update("scenarioResources", { ...resourceDraft, ...patch });
   const updateContext = (patch: Partial<SpeakingContext>) =>
     update("context", { ...(draft.context ?? {}), ...patch });
-  const removeContext = () => update("context", undefined);
+  const removeContext = async () => {
+    const assetId = draft.context?.assetId;
+    update("context", undefined);
+    setContextImageError("");
+    if (!assetId) return;
+    try {
+      await speakingApi.deleteContextImage(assetId);
+    } catch (removeError) {
+      setContextImageError(getErrorMessage(removeError, "The image was removed from this task, but its stored asset could not be cleaned up yet."));
+    }
+  };
+  const uploadContextImage = async (file: File) => {
+    setContextImageError("");
+    if (!(["image/jpeg", "image/png", "image/webp"] as string[]).includes(file.type)) {
+      setContextImageError("Choose a JPEG, PNG, or WebP image.");
+      return;
+    }
+    if (file.size > 10 * 1024 * 1024) {
+      setContextImageError("That image is too large. Choose an image smaller than 10 MB.");
+      return;
+    }
+    const previousAssetId = draft.context?.assetId;
+    setUploadingContextImage(true);
+    try {
+      const result = await speakingApi.uploadContextImage(file);
+      const image = result.image;
+      const currentContext = draft.context ?? {};
+      const fallbackAlt = currentContext.alt?.trim() || currentContext.description?.trim() || `Visual support for ${draft.title.trim() || "this speaking task"}`;
+      update("context", {
+        ...currentContext,
+        assetId: image.id,
+        imageUrl: speakingApi.contextImageUrl(image.id),
+        type: "photo",
+        alt: fallbackAlt,
+        title: currentContext.title?.trim() || "Context image"
+      });
+      if (previousAssetId && previousAssetId !== image.id) {
+        try { await speakingApi.deleteContextImage(previousAssetId); } catch { /* Historical snapshots keep the old asset available. */ }
+      }
+    } catch (uploadError) {
+      setContextImageError(getErrorMessage(uploadError, "The image could not be uploaded. Please try another file."));
+    } finally {
+      setUploadingContextImage(false);
+    }
+  };
   const updateSupportSetting = (key: keyof SpeakingSupportSettings, value: boolean) =>
     update("supportSettings", { ...selectedSupportSettings, [key]: value });
   const applyRecommendedSupport = () => update("supportSettings", recommendedSpeakingSupportSettings(selectedMode));
-  const toggleSkill = (candidate: string) => {
-    const next = resourceDraft.communicationSkills.includes(candidate)
-      ? resourceDraft.communicationSkills.filter((item) => item !== candidate)
-      : [...resourceDraft.communicationSkills, candidate];
-    updateResources({ communicationSkills: next });
-  };
   const updateCriterion = (
     index: number,
     patch: Partial<SpeakingRubricCriterion>,
@@ -918,8 +937,12 @@ function SpeakingCreatePage({
   const handleCreate = async (event: FormEvent) => {
     event.preventDefault();
     if (saving || activityLoadFailed) return;
-    if (!draft.title.trim() || !draft.scenario.trim()) {
-      setFormError("Activity name and speaking situation are required.");
+    if (!draft.title.trim() || !draft.scenario.trim() || !draft.aiRole.trim() || !draft.studentRole.trim()) {
+      setFormError("Task name, speaking situation, partner role, and student role are required.");
+      return;
+    }
+    if (!resourceDraft.studentGoal.trim()) {
+      setFormError("Add a student goal so the task has a clear assessment target.");
       return;
     }
     if (!draft.rubric.some((criterion) => criterion.enabled)) {
@@ -928,10 +951,16 @@ function SpeakingCreatePage({
     }
     setSaving(true);
     try {
+      const normalizedResources = speakingScenarioResources({
+        ...draft.scenarioResources,
+        studentGoal: resourceDraft.studentGoal,
+        successConditions: resourceDraft.successConditions.length ? resourceDraft.successConditions : [resourceDraft.studentGoal]
+      });
+      const payloadInput = { ...draft, scenarioResources: normalizedResources };
       const payload = (
         editing && activityId
-          ? await speakingApi.updateActivity(activityId, { ...draft, scenarioResources: speakingScenarioResources(draft.scenarioResources) })
-          : await speakingApi.createActivity({ ...draft, scenarioResources: speakingScenarioResources(draft.scenarioResources) })
+          ? await speakingApi.updateActivity(activityId, payloadInput)
+          : await speakingApi.createActivity(payloadInput)
       ) as { activity: SpeakingActivity };
       isDirtyRef.current = false;
       navigate(`/speak/teacher/activity/${payload.activity.id}`);
@@ -960,7 +989,7 @@ function SpeakingCreatePage({
           <div className="speaking-builder-header">
             <div>
               <span className="speaking-eyebrow">
-                <Edit3 size={15} aria-hidden="true" /> Activity builder
+                  <Edit3 size={15} aria-hidden="true" /> Speaking task
               </span>
               <h1>{editing ? "Edit Speaking Task" : "Create a Speaking Task"}</h1>
               <p>
@@ -998,22 +1027,19 @@ function SpeakingCreatePage({
                 ) : (
                   <Check size={17} aria-hidden="true" />
                 )}
-                {editing ? "Save changes" : "Create Speaking Task"}
+                {editing ? "Save changes" : "Create task"}
               </button>
             </div>
           </div>
-          <nav className="speaking-builder-jump" aria-label="Speaking Task setup steps">
-            {builderSteps.map((step, index) => <button type="button" key={step.id} className={`${activeBuilderStep === step.id ? "is-active " : ""}${builderStepComplete[step.id] ? "is-complete" : ""}`} aria-current={activeBuilderStep === step.id ? "step" : undefined} onClick={() => focusBuilderStep(step.id)}><span>{index === 0 ? "" : index}</span><strong>{step.label}</strong>{builderStepComplete[step.id] && <Check size={14} aria-hidden="true" />}</button>)}
-          </nav>
           <section id="speaking-template" className="speaking-builder-card">
             <div className="speaking-builder-card-heading">
               <div>
-                <span className="speaking-card-kicker">
-                  Start with a template
+                  <span className="speaking-card-kicker">
+                   Start with a task
                 </span>
                 <h2>Pick a familiar conversation</h2>
               </div>
-              <span className="speaking-builder-step">Template</span>
+               <span className="speaking-builder-step">Optional</span>
             </div>
             <div className="speaking-template-grid">
               {coreFallbackActivities().map((template) => (
@@ -1047,11 +1073,11 @@ function SpeakingCreatePage({
                 <span className="speaking-card-kicker">The conversation</span>
                 <h2>Give students a clear situation</h2>
               </div>
-              <span className="speaking-builder-step">01 / 05</span>
+               <span className="speaking-builder-step">01</span>
             </div>
             <div className="speaking-builder-form-grid">
               <label>
-                Activity name
+                Task name
                 <input
                   value={draft.title}
                   onChange={(event) => update("title", event.target.value)}
@@ -1081,6 +1107,16 @@ function SpeakingCreatePage({
                   rows={3}
                 />
               </label>
+              <label className="speaking-span-2">
+                Student goal
+                <textarea
+                  value={resourceDraft.studentGoal}
+                  onChange={(event) => updateResources({ studentGoal: event.target.value })}
+                  placeholder="What should the student accomplish in this conversation?"
+                  rows={2}
+                />
+                <small>This is the main requirement used to assess the task.</small>
+              </label>
 
             </div>
           </section>
@@ -1090,133 +1126,59 @@ function SpeakingCreatePage({
                 <span className="speaking-card-kicker">Target English</span>
                 <h2>Help students prepare</h2>
               </div>
-              <span className="speaking-builder-step">02 / 05</span>
+              <span className="speaking-builder-step">Optional</span>
             </div>
-              <div className="speaking-span-2 speaking-resource-editor">
-                <div className="speaking-resource-editor-heading">
-                  <div>
-                    <span className="speaking-card-kicker">Scenario support</span>
-                    <p>These resources are saved with the activity and shown to students as optional guidance.</p>
-                  </div>
-                </div>
-                <div className="speaking-resource-grid">
-                  <label>
-                    Opening line
-                    <input
-                      value={resourceDraft.openingLine}
-                      onChange={(event) => updateResources({ openingLine: event.target.value })}
-                    />
-                  </label>
-                  <label>
-                    Student goal
-                    <textarea
-                      rows={2}
-                      value={resourceDraft.studentGoal}
-                      onChange={(event) => updateResources({ studentGoal: event.target.value })}
-                    />
-                  </label>
-                  <label>
-                    Speaking partner context
-                    <textarea
-                      rows={2}
-                      value={resourceDraft.aiContext ?? ""}
-                      onChange={(event) => updateResources({ aiContext: event.target.value || undefined })}
-                      placeholder="What your speaking partner knows, wants, or can offer in this situation"
-                    />
-                  </label>
-                  <label>
-                    Possible complication
-                    <textarea
-                      rows={2}
-                      value={resourceDraft.possibleComplication ?? ""}
-                      onChange={(event) => updateResources({ possibleComplication: event.target.value || undefined })}
-                      placeholder="A natural change or problem the speaking partner may introduce"
-                    />
-                  </label>
-                  <label className="speaking-span-2">
-                    Success conditions <small>(one per line)</small>
-                    <textarea
-                      rows={3}
-                      value={resourceDraft.successConditions.join("\n")}
-                      onChange={(event) => updateResources({ successConditions: event.target.value.split(/\r?\n/u) })}
-                      placeholder="What a successful conversation should demonstrate"
-                    />
-                  </label>
-                  <details className="speaking-span-2 speaking-support-details"><summary>Optional steps, vocabulary & reference material</summary><div className="speaking-resource-grid">
-                  <label>
-                    Suggested steps <small>(one per line)</small>
-                    <textarea
-                      rows={5}
-                      value={resourceDraft.suggestedSteps.join("\n")}
-                      onChange={(event) => updateResources({ suggestedSteps: event.target.value.split(/\r?\n/u) })}
-                    />
-                  </label>
-                  <label>
-                    Useful vocabulary <small>(one per line)</small>
-                    <textarea
-                      rows={5}
-                      value={resourceDraft.usefulVocabulary.join("\n")}
-                      onChange={(event) => updateResources({ usefulVocabulary: event.target.value.split(/\r?\n/u) })}
-                    />
-                  </label>
-                  <label className="speaking-span-2">
-                    Reference material <small>(one item per line: label | detail)</small>
-                    <textarea
-                      rows={3}
-                      value={resourceDraft.referenceItems.map((item) => item.detail !== undefined ? `${item.label}|${item.detail}` : item.label).join("\n")}
-                      onChange={(event) => updateResources({ referenceItems: event.target.value.split(/\r?\n/u).map((line) => { const [label, ...detail] = line.split("|"); return { label: label ?? "", ...(detail.length ? { detail: detail.join("|") } : {}) }; }) })}
-                    />
-                  </label>
-                </div></details>
-                </div>
-              </div>
             <section className="speaking-context-editor speaking-span-2" aria-labelledby="speaking-context-editor-title">
+              <input
+                ref={contextImageInputRef}
+                className="speaking-visually-hidden-file-input"
+                type="file"
+                accept="image/jpeg,image/png,image/webp"
+                onChange={(event) => {
+                  const file = event.target.files?.[0];
+                  event.currentTarget.value = "";
+                  if (file) void uploadContextImage(file);
+                }}
+              />
               <div className="speaking-resource-editor-heading">
                 <div>
                   <span className="speaking-card-kicker">Optional visual support</span>
-                  <h3 id="speaking-context-editor-title">Context</h3>
-                  <p>Keep the image, title and description aligned with the situation students will speak about.</p>
+                  <h3 id="speaking-context-editor-title">Context image</h3>
+                  <p>Add an image students can use during the task. Maps, menus, photos and timetables work well.</p>
                 </div>
-                {contextDraft && <button type="button" className="speaking-text-button speaking-context-remove" onClick={removeContext}>Remove Context</button>}
               </div>
               {contextDraft ? (
                 <>
                   <div className="speaking-context-editor-preview">
-                    {contextDraft.imageUrl ? <img src={contextDraft.imageUrl} alt={contextDraft.alt ?? "Current context preview"} loading="lazy" /> : <div className="speaking-context-editor-empty">Add an image URL below to show a preview.</div>}
-                    <div><strong>{contextDraft.title || "Untitled context"}</strong><span>{contextDraft.description || "No description yet."}</span><small>{contextDraft.type ?? "photo"} · Read-only student support</small></div>
+                    {contextDraft.imageUrl ? <img src={contextDraft.imageUrl} alt={contextDraft.alt ?? "Context image preview"} loading="lazy" /> : <div className="speaking-context-editor-empty">No image uploaded yet.</div>}
+                    <div><strong>{contextDraft.title || "Context image"}</strong><span>{contextDraft.description || "Students can use this visual while speaking."}</span><small>{contextDraft.assetId ? "Uploaded image" : "Built-in image"} · Student support</small></div>
                   </div>
-                  <div className="speaking-context-editor-fields">
-                    <label>
-                      Context title
-                      <input value={contextDraft.title ?? ""} onChange={(event) => updateContext({ title: event.target.value || undefined })} placeholder="Museum map" />
-                    </label>
-                    <label>
-                      Context type
-                      <select value={contextDraft.type ?? "photo"} onChange={(event) => updateContext({ type: event.target.value as SpeakingContext["type"] })}>
-                        {SPEAKING_CONTEXT_TYPES.map((type) => <option key={type} value={type}>{type}</option>)}
-                      </select>
-                    </label>
-                    <label className="speaking-span-2">
-                      Image URL
-                      <input value={contextDraft.imageUrl ?? ""} onChange={(event) => updateContext({ imageUrl: event.target.value || undefined })} placeholder="/assets/speaking/context-map.webp" inputMode="url" />
-                    </label>
-                    <label>
-                      Description
-                      <textarea rows={2} value={contextDraft.description ?? ""} onChange={(event) => updateContext({ description: event.target.value || undefined })} placeholder="Use this visual to help your answer." />
-                    </label>
-                    <label>
-                      Alt text
-                      <textarea rows={2} value={contextDraft.alt ?? ""} onChange={(event) => updateContext({ alt: event.target.value || undefined })} placeholder="A simple map showing the nearby museum" />
-                    </label>
+                  <div className="speaking-context-editor-actions">
+                    <button type="button" className="speaking-outline-button" onClick={() => contextImageInputRef.current?.click()} disabled={uploadingContextImage}>
+                      {uploadingContextImage ? <LoaderCircle size={16} className="speaking-spin" aria-hidden="true" /> : <Plus size={16} aria-hidden="true" />}
+                      {uploadingContextImage ? "Uploading…" : "Replace image"}
+                    </button>
+                    <button type="button" className="speaking-text-button speaking-context-remove" onClick={() => void removeContext()} disabled={uploadingContextImage}>Remove image</button>
                   </div>
+                  <label className="speaking-context-instruction">
+                    Student instruction <small>(optional)</small>
+                    <textarea rows={2} value={contextDraft.description ?? ""} onChange={(event) => updateContext({ description: event.target.value || undefined })} placeholder="Use the menu to choose what you want to order." />
+                  </label>
                 </>
               ) : (
                 <div className="speaking-context-editor-empty-state">
-                  <p>No Context is saved for this activity. Add one only when it matches the scenario.</p>
-                  <button type="button" className="speaking-outline-button" onClick={() => update("context", { title: "Context", description: "Use this visual to help your answer.", type: "photo" })}>Add Context</button>
+                  <p>Add an image students can use during the task.</p>
+                  <button type="button" className="speaking-outline-button" onClick={() => contextImageInputRef.current?.click()} disabled={uploadingContextImage}>
+                    {uploadingContextImage ? <LoaderCircle size={16} className="speaking-spin" aria-hidden="true" /> : <Plus size={16} aria-hidden="true" />}
+                    {uploadingContextImage ? "Uploading…" : "Add image"}
+                  </button>
                 </div>
               )}
+              {contextImageError && <p className="speaking-error" role="alert">{contextImageError}</p>}
             </section>
+            <div className="speaking-target-english-heading">
+              <div><span className="speaking-card-kicker">Target English</span><p>Optional phrases students may use.</p></div>
+            </div>
             <div className="speaking-expression-editor">
               {draft.targetExpressions.map((expression, index) => (
                 <div
@@ -1275,10 +1237,10 @@ function SpeakingCreatePage({
           <section id="speaking-settings" className="speaking-builder-card">
             <div className="speaking-builder-card-heading">
               <div>
-                <span className="speaking-card-kicker">Activity settings</span>
-                <h2>Set the right amount of support</h2>
-              </div>
-              <span className="speaking-builder-step">03 / 05</span>
+                  <span className="speaking-card-kicker">Classroom settings</span>
+                  <h2>Choose how the class will use it</h2>
+                </div>
+              <span className="speaking-builder-step">02</span>
             </div>
             <section className="speaking-mode-support-config speaking-span-2" aria-labelledby="speaking-mode-title">
               <div className="speaking-mode-config-heading">
@@ -1314,15 +1276,6 @@ function SpeakingCreatePage({
               </fieldset>
             </section>
             <div className="speaking-settings-grid">
-              <label>
-                Category
-                <select
-                  value={resourceDraft.category ?? SPEAKING_CATEGORIES[0]}
-                  onChange={(event) => updateResources({ category: event.target.value })}
-                >
-                  {SPEAKING_CATEGORIES.map((item) => <option key={item} value={item}>{item}</option>)}
-                </select>
-              </label>
               <SpeakingDurationField
                 value={draft.durationSeconds}
                 onChange={(value) => update("durationSeconds", value)}
@@ -1363,19 +1316,70 @@ function SpeakingCreatePage({
                   ))}
                 </select>
               </label>
-              <fieldset className="speaking-skill-picker speaking-span-2">
-                <legend>Communication skills</legend>
-                <p>Select the skills you want the speaking partner and rubric to foreground. Students can still use any English that helps them communicate.</p>
-                <div>{SPEAKING_COMMUNICATION_SKILLS.map((item) => <label key={item}><input type="checkbox" checked={resourceDraft.communicationSkills.includes(item)} onChange={() => toggleSkill(item)} />{item}</label>)}</div>
-              </fieldset>
-              <label className="speaking-span-2">Additional focus or class content
-                <textarea value={resourceDraft.teacherFocus ?? ""} onChange={(event) => updateResources({ teacherFocus: event.target.value })} maxLength={500} rows={3} placeholder="Vocabulary from this week's unit, or asking follow-up questions." />
-                <small>Optional. The assessment will pay particular attention to this area. Students are still free to use any English they know.</small>
-              </label>
             </div>
           </section>
-          <section id="speaking-rubric" className="speaking-builder-card">
-            <div className="speaking-builder-card-heading"><div><span className="speaking-card-kicker">Evaluation rubric</span><h2>What will students show?</h2></div><span className="speaking-builder-step">04 / 05</span></div>
+          <section id="speaking-rubric" className="speaking-builder-card speaking-advanced-card">
+            <details className="speaking-advanced-settings">
+              <summary>Advanced settings <span>Task metadata, conversation guidance, image details, and rubric customization</span></summary>
+              <div className="speaking-advanced-content">
+                <div className="speaking-resource-editor">
+                  <div className="speaking-resource-grid">
+                    <label>
+                      Opening line
+                      <input value={resourceDraft.openingLine} onChange={(event) => updateResources({ openingLine: event.target.value })} />
+                    </label>
+                    <label>
+                      Speaking partner context
+                      <textarea rows={2} value={resourceDraft.aiContext ?? ""} onChange={(event) => updateResources({ aiContext: event.target.value || undefined })} placeholder="What your speaking partner knows, wants, or can offer in this situation" />
+                    </label>
+                    <label>
+                      Possible complication
+                      <textarea rows={2} value={resourceDraft.possibleComplication ?? ""} onChange={(event) => updateResources({ possibleComplication: event.target.value || undefined })} placeholder="A natural change or problem the speaking partner may introduce" />
+                    </label>
+                    <label>
+                      Success conditions <small>(one per line)</small>
+                      <textarea rows={3} value={resourceDraft.successConditions.join("\n")} onChange={(event) => updateResources({ successConditions: event.target.value.split(/\r?\n/u) })} placeholder="Leave blank to use the Student goal." />
+                    </label>
+                    <label className="speaking-span-2">
+                      Suggested steps <small>(one per line)</small>
+                      <textarea rows={4} value={resourceDraft.suggestedSteps.join("\n")} onChange={(event) => updateResources({ suggestedSteps: event.target.value.split(/\r?\n/u) })} />
+                    </label>
+                    <label>
+                      Useful vocabulary <small>(one per line)</small>
+                      <textarea rows={4} value={resourceDraft.usefulVocabulary.join("\n")} onChange={(event) => updateResources({ usefulVocabulary: event.target.value.split(/\r?\n/u) })} />
+                    </label>
+                    <label>
+                      Reference material <small>(one item per line: label | detail)</small>
+                      <textarea rows={4} value={resourceDraft.referenceItems.map((item) => item.detail !== undefined ? `${item.label}|${item.detail}` : item.label).join("\n")} onChange={(event) => updateResources({ referenceItems: event.target.value.split(/\r?\n/u).map((line) => { const [label, ...detail] = line.split("|"); return { label: label ?? "", ...(detail.length ? { detail: detail.join("|") } : {}) }; }) })} />
+                    </label>
+                  </div>
+                </div>
+                {contextDraft && (
+                  <div className="speaking-context-advanced">
+                    <div className="speaking-advanced-subheading">
+                      <strong>Advanced image details</strong>
+                      <span>Optional metadata retained for built-in and uploaded visuals.</span>
+                    </div>
+                    <div className="speaking-context-editor-fields">
+                      <label>Context title<input value={contextDraft.title ?? ""} onChange={(event) => updateContext({ title: event.target.value || undefined })} placeholder="Museum map" /></label>
+                      <label>Context type<select value={contextDraft.type ?? "photo"} onChange={(event) => updateContext({ type: event.target.value as SpeakingContext["type"] })}>{SPEAKING_CONTEXT_TYPES.map((type) => <option key={type} value={type}>{type}</option>)}</select></label>
+                      <label className="speaking-span-2">Alt text<textarea rows={2} value={contextDraft.alt ?? ""} onChange={(event) => updateContext({ alt: event.target.value || undefined })} placeholder="A simple map showing the nearby museum" /></label>
+                    </div>
+                  </div>
+                )}
+                <div className="speaking-advanced-grid">
+                  <label>
+                    Task category
+                    <select value={resourceDraft.category ?? SPEAKING_CATEGORIES[0]} onChange={(event) => updateResources({ category: event.target.value })}>
+                      {SPEAKING_CATEGORIES.map((item) => <option key={item} value={item}>{item}</option>)}
+                    </select>
+                  </label>
+                  <label>
+                    Additional focus or class content
+                    <textarea value={resourceDraft.teacherFocus ?? ""} onChange={(event) => updateResources({ teacherFocus: event.target.value })} maxLength={500} rows={2} placeholder="Optional vocabulary or follow-up questions." />
+                  </label>
+                </div>
+                <div className="speaking-builder-card-heading"><div><span className="speaking-card-kicker">Evaluation rubric</span><h2>Customize the standard rubric</h2></div><span className="speaking-builder-step">Advanced</span></div>
             <p className="speaking-rubric-intro">Each enabled criterion is scored from 0 to 4, with conversation evidence. Insufficient speech is left unscored.</p>
             <div className="speaking-rubric-editor-heading">
               <div>
@@ -1461,9 +1465,11 @@ function SpeakingCreatePage({
                 </div>
               ))}
             </div>
+              </div>
+            </details>
           </section>
           <section id="speaking-review" className="speaking-builder-card speaking-review-card">
-            <div className="speaking-builder-card-heading"><div><span className="speaking-card-kicker">Review & launch</span><h2>{draft.title || "Your Speaking Task"}</h2></div><span className="speaking-builder-step">05 / 05</span></div>
+             <div className="speaking-builder-card-heading"><div><span className="speaking-card-kicker">Review & save</span><h2>{draft.title || "Your Speaking Task"}</h2></div><span className="speaking-builder-step">03</span></div>
             <p>{draft.scenario}</p><dl className="speaking-review-facts"><div><dt>Mode</dt><dd><span className={`speaking-mode-badge speaking-mode-${selectedMode}`}>{speakingModeLabel(selectedMode)}</span></dd></div><div className="speaking-review-support-fact"><dt>Student support</dt><dd>{speakingSupportSummary({ mode: selectedMode, supportSettings: selectedSupportSettings })}</dd></div><div><dt>Speaking time</dt><dd>{formatDuration(draft.durationSeconds)}</dd></div><div><dt>Student identification</dt><dd>{SPEAKING_IDENTIFIER_MODE_LABELS[draft.identifierMode]}</dd></div><div><dt>Evaluation</dt><dd>{draft.rubric.filter((criterion) => criterion.enabled).length} criteria · 4 points each</dd></div></dl>
             <p>Save this reusable task. On the next screen, launch a session to get your class code.</p>
           </section>
@@ -1486,7 +1492,7 @@ function SpeakingCreatePage({
               disabled={saving}
             >
               <Check size={17} aria-hidden="true" />
-              {editing ? "Save changes" : "Create Speaking Task"}
+              {editing ? "Save changes" : "Create task"}
             </button>
           </div>
         </form>
