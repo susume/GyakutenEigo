@@ -36,6 +36,26 @@ export function ResultPanel({
   const studentTurns = turns.filter((turn) => turn.speaker === "student");
   const copy = speakingFeedbackCopy(evaluation.language);
   const usefulEnglishItems = exactUsefulEnglishItems(evaluation, turns);
+  const resultColumns = (
+    <div className="speaking-result-columns">
+      <div className="speaking-result-message speaking-result-message-good">
+        <h3>{copy.whatWentWell}</h3>
+        <ul>
+          {evaluation.strengths.map((strength) => (
+            <li key={strength}>{strength}</li>
+          ))}
+        </ul>
+      </div>
+      <div className="speaking-result-message">
+        <h3>{copy.tryNext}</h3>
+        <ul>
+          {evaluation.improvements.map((improvement) => (
+            <li key={improvement}>{improvement}</li>
+          ))}
+        </ul>
+      </div>
+    </div>
+  );
   return (
     <section
       className={`speaking-result-panel${teacherView ? " speaking-result-panel-teacher" : ""}`}
@@ -60,6 +80,7 @@ export function ResultPanel({
           <p>{evaluation.notScoredReason ?? copy.notScoredDetail}</p>
         </div>
       )}
+      {!teacherView && resultColumns}
       {evaluation.goalCompletion && (
         <div className="speaking-result-message speaking-result-goal-message">
           <h3>{evaluation.language === "ja" ? "課題のゴール" : "Task goal"}</h3>
@@ -111,24 +132,7 @@ export function ResultPanel({
             );
           })}
       </div>
-      <div className="speaking-result-columns">
-        <div className="speaking-result-message speaking-result-message-good">
-          <h3>{copy.whatWentWell}</h3>
-          <ul>
-            {evaluation.strengths.map((strength) => (
-              <li key={strength}>{strength}</li>
-            ))}
-          </ul>
-        </div>
-        <div className="speaking-result-message">
-          <h3>{copy.tryNext}</h3>
-          <ul>
-            {evaluation.improvements.map((improvement) => (
-              <li key={improvement}>{improvement}</li>
-            ))}
-          </ul>
-        </div>
-      </div>
+      {teacherView && resultColumns}
       <div className="speaking-useful-result">
         <div className="speaking-result-section-heading">
           <h3>{copy.usefulEnglish}</h3>

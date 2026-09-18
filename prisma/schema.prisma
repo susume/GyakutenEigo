@@ -128,6 +128,11 @@ enum SpeakingIdentifierMode {
   student_number
 }
 
+enum SpeakingMode {
+  practice
+  assessment
+}
+
 enum SpeakingParticipantStatus {
   joined
   in_progress
@@ -324,6 +329,8 @@ model SpeakingActivity {
   durationSeconds       Int
   status                SpeakingActivityStatus @default(draft)
   identifierMode        SpeakingIdentifierMode @default(nickname)
+  mode                  SpeakingMode           @default(assessment)
+  supportSettingsJson   Json                   @default("{\"showTargetExpressions\":true,\"showContext\":true,\"showTranscript\":true,\"allowReplay\":true,\"allowHelp\":true}")
   targetExpressionsJson Json                   @default("[]")
   scenarioResourcesJson Json                   @default("{}")
   rubric                SpeakingRubric[]

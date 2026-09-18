@@ -1,6 +1,6 @@
 import assert from "node:assert/strict";
 import test from "node:test";
-import { speakingOverallScore, type SpeakingActivity } from "@quizstrike/shared";
+import { DEFAULT_SPEAKING_ASSESSMENT_SUPPORT_SETTINGS, speakingOverallScore, type SpeakingActivity } from "@quizstrike/shared";
 import { mockEvaluationProvider } from "./speakingProviders.js";
 import { validateSpeakingEvaluation } from "./routes/speakingRoutes.js";
 
@@ -17,6 +17,8 @@ const activity = {
   durationSeconds: 120,
   status: "ready",
   identifierMode: "anonymous",
+  mode: "assessment",
+  supportSettings: { ...DEFAULT_SPEAKING_ASSESSMENT_SUPPORT_SETTINGS },
   targetExpressions: ["My name is..."],
   rubric: [{ id: "communication", name: "Communication", description: "Communicates a clear idea.", enabled: true }],
   createdAt: "2026-08-31T00:00:00.000Z",

@@ -1,6 +1,6 @@
 import assert from "node:assert/strict";
 import test from "node:test";
-import { DEFAULT_SPEAKING_RUBRIC, DEFAULT_SPEAKING_SCENARIO_RESOURCES, speakingScenarioResources, speakingTeacherDate } from "./speaking.js";
+import { DEFAULT_SPEAKING_ASSESSMENT_SUPPORT_SETTINGS, DEFAULT_SPEAKING_PRACTICE_SUPPORT_SETTINGS, DEFAULT_SPEAKING_RUBRIC, DEFAULT_SPEAKING_SCENARIO_RESOURCES, SpeakingCreateActivityInputSchema, recommendedSpeakingSupportSettings, resolveSpeakingSupportSettings, speakingScenarioResources, speakingTeacherDate } from "./speaking.js";
 import { SPEAKING_CATEGORIES, SPEAKING_COMMUNICATION_SKILLS, SPEAKING_CORE_LIBRARY } from "./index.js";
 
 test("teacher calendar dates use Japan midnight rather than UTC or host timezone", () => {
@@ -35,6 +35,49 @@ test("speaking scenario support bounds teacher-authored reference material", () 
   assert.equal(resources.suggestedSteps.length, 8);
   assert.equal(resources.usefulVocabulary.length, 16);
   assert.equal(resources.referenceItems.length, 24);
+});
+
+test("speaking modes expose explicit recommendations and preserve legacy support", () => {
+  assert.deepEqual(recommendedSpeakingSupportSettings("practice"), DEFAULT_SPEAKING_PRACTICE_SUPPORT_SETTINGS);
+  assert.deepEqual(recommendedSpeakingSupportSettings("assessment"), DEFAULT_SPEAKING_ASSESSMENT_SUPPORT_SETTINGS);
+  assert.deepEqual(resolveSpeakingSupportSettings(undefined), {
+    showTargetExpressions: true,
+    showContext: true,
+    showTranscript: true,
+    allowReplay: true,
+    allowHelp: true
+  });
+  const parsed = SpeakingCreateActivityInputSchema.parse({
+    title: "A task",
+    scenario: "A classroom situation.",
+    aiRole: "Partner",
+    studentRole: "Student",
+    level: "beginner",
+    difficulty: "easy",
+    nativeLanguage: "en",
+    durationSeconds: 120,
+    identifierMode: "nickname",
+    mode: "assessment",
+    supportSettings: { showTranscript: true },
+    targetExpressions: [],
+    rubric: DEFAULT_SPEAKING_RUBRIC
+  });
+  assert.equal(parsed.mode, "assessment");
+  assert.deepEqual(parsed.supportSettings, { showTranscript: true });
+  assert.throws(() => SpeakingCreateActivityInputSchema.parse({
+    title: "A task",
+    scenario: "A classroom situation.",
+    aiRole: "Partner",
+    studentRole: "Student",
+    level: "beginner",
+    difficulty: "easy",
+    nativeLanguage: "en",
+    durationSeconds: 120,
+    identifierMode: "nickname",
+    mode: "test",
+    targetExpressions: [],
+    rubric: DEFAULT_SPEAKING_RUBRIC
+  }));
 });
 
 test("core speaking library contains complete, categorized junior-high scenarios", () => {

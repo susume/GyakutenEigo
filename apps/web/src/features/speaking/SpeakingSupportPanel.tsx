@@ -1,6 +1,6 @@
 import { useEffect, useId, useState, type KeyboardEvent } from "react";
 import { ImageOff, Lightbulb, MessageCircle, X } from "lucide-react";
-import { speakingContext, type SpeakingActivity, type SpeakingContext } from "@quizstrike/shared";
+import { speakingContext, speakingSupportSettings, type SpeakingActivity, type SpeakingContext } from "@quizstrike/shared";
 
 export type SpeakingSupportTab = "useful-english" | "context";
 
@@ -13,10 +13,13 @@ export interface SpeakingSupportPanelProps {
   disabled?: boolean;
 }
 
-const tabs: Array<{ id: SpeakingSupportTab; label: string }> = [
-  { id: "useful-english", label: "Useful English" },
-  { id: "context", label: "Context" }
-];
+export const getSpeakingSupportTabs = (activity: SpeakingActivity): Array<{ id: SpeakingSupportTab; label: string }> => {
+  const support = speakingSupportSettings(activity);
+  return [
+    ...(support.showTargetExpressions && activity.targetExpressions.length ? [{ id: "useful-english" as const, label: "Useful English" }] : []),
+    ...(support.showContext && speakingContext(activity) ? [{ id: "context" as const, label: "Context" }] : [])
+  ];
+};
 
 const safeId = (value: string) => value.replace(/[^a-zA-Z0-9_-]/g, "");
 
@@ -31,6 +34,14 @@ export function SpeakingSupportPanel({
   const generatedId = useId();
   const panelId = `speaking-support-${safeId(generatedId)}`;
   const context = speakingContext(activity);
+  const tabs = getSpeakingSupportTabs(activity);
+  const selectedTab = tabs.some((tab) => tab.id === activeTab) ? activeTab : tabs[0]?.id;
+
+  useEffect(() => {
+    if (selectedTab && selectedTab !== activeTab) onTabChange(selectedTab);
+  }, [activeTab, onTabChange, selectedTab]);
+
+  if (!tabs.length || !selectedTab) return null;
 
   const focusTab = (tab: SpeakingSupportTab) => {
     onTabChange(tab);
@@ -55,7 +66,7 @@ export function SpeakingSupportPanel({
       <div className="speaking-support-header">
         <div className="speaking-support-tabs" role="tablist" aria-label="Speaking support modes">
           {tabs.map((tab) => {
-            const selected = activeTab === tab.id;
+            const selected = selectedTab === tab.id;
             return (
               <button
                 key={tab.id}
@@ -78,7 +89,7 @@ export function SpeakingSupportPanel({
         </button>
       </div>
       <div className="speaking-support-content">
-        {activeTab === "useful-english" ? (
+        {selectedTab === "useful-english" ? (
           <div id={`${panelId}-panel-useful-english`} role="tabpanel" aria-labelledby={`${panelId}-tab-useful-english`} tabIndex={0} className="speaking-support-tabpanel">
             <UsefulEnglishPanel activity={activity} onPhraseClick={onPhraseClick} disabled={disabled} />
           </div>

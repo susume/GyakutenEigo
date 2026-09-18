@@ -26,6 +26,7 @@ import {
 } from "lucide-react";
 import {
   SPEAKING_LIMITS,
+  resolveSpeakingSupportSettings,
   speakingFeedbackCopy,
   speakingScenarioResources,
   speakingRemainingSeconds,
@@ -51,6 +52,8 @@ import { hasStudentSpeech, ResultPanel, scoreFor } from "./SpeakingResultPanel";
 import { mergeSpeakingTurns, nextSpeakingPollDelay, shouldAcceptSpeakingRevision, speakingTimerReference } from "./speakingLifecycle";
 import { isKeyboardEditingTarget, isSpaceShortcutEvent } from "./speakingKeyboard";
 import { SpeakingSupportPanel, type SpeakingSupportTab } from "./SpeakingSupportPanel";
+import { getSpeakingSupportTabs } from "./SpeakingSupportPanel";
+import { speakingModeAction, speakingModeIntro, speakingModeLabel } from "./speakingCopy";
 import "./speaking.css";
 import "./speaking-layout.css";
 
@@ -67,7 +70,7 @@ type Navigate = (nextPath: string) => void;
 type JoinResponse = { activity: SpeakingActivity; participant: SpeakingParticipant; session: SpeakingSession; token: string };
 type SessionResponse = { activity: SpeakingActivity; participant: SpeakingParticipant; session: SpeakingSession; turns: SpeakingTurn[] };
 type SpeakingEvaluationStatus = "queued" | "running" | "retrying" | "completed" | "failed";
-type ResultResponse = { result: { activity: Pick<SpeakingActivity, "id" | "title" | "scenario" | "targetExpressions" | "nativeLanguage" | "rubric" | "scenarioResources">; session: SpeakingSession; participant: SpeakingParticipant; turns: SpeakingTurn[]; evaluation?: SpeakingEvaluation }; evaluationStatus?: SpeakingEvaluationStatus; evaluationRetryable?: boolean; nextRetryAt?: string };
+type ResultResponse = { result: { activity: Pick<SpeakingActivity, "id" | "title" | "scenario" | "targetExpressions" | "nativeLanguage" | "rubric" | "scenarioResources" | "context" | "mode" | "supportSettings">; session: SpeakingSession; participant: SpeakingParticipant; turns: SpeakingTurn[]; evaluation?: SpeakingEvaluation }; evaluationStatus?: SpeakingEvaluationStatus; evaluationRetryable?: boolean; nextRetryAt?: string };
 
 const normalizePath = (path: string) => (path === "/" ? path : path.replace(/\/+$/u, ""));
 const decodeRouteSegment = (segment: string) => {
@@ -89,8 +92,8 @@ const parseRoute = (path: string): SpeakingRoute => {
 
 const getErrorMessage = (error: unknown, fallback: string) => {
   if (!(error instanceof ApiError)) return fallback;
-  if (error.status === 0 && error.kind === "timeout") return "Speaking Practice took too long to respond. It may be waking up; wait a few seconds and try again.";
-  if (error.status === 0 && error.kind === "network") return "We can open Speaking Practice, but this network cannot reach the server. Try again, or ask your teacher for help.";
+  if (error.status === 0 && error.kind === "timeout") return "The speaking task took too long to respond. It may be waking up; wait a few seconds and try again.";
+  if (error.status === 0 && error.kind === "network") return "We can open the speaking task, but this network cannot reach the server. Try again, or ask your teacher for help.";
   return error.message;
 };
 const isFatalParticipantAuthorizationError = (error: unknown) => error instanceof ApiError && [401, 403, 404].includes(error.status);
@@ -124,7 +127,7 @@ export default function SpeakingPracticeApp() {
     const previousTitle = document.title;
     document.body.dataset.speaking = "true";
     document.body.dataset.site = "performance";
-    document.title = "Speaking Practice · GyakutenEigo";
+    document.title = "Speaking Tasks · GyakutenEigo";
     const onPopState = () => setPath(normalizePath(window.location.pathname));
     window.addEventListener("popstate", onPopState);
     return () => {
@@ -147,7 +150,7 @@ export default function SpeakingPracticeApp() {
 }
 
 function SpeakingBrand({ navigate, compact = false }: { navigate: Navigate; compact?: boolean }) {
-  return <button className={`speaking-brand${compact ? " speaking-brand-compact" : ""}`} type="button" onClick={() => navigate("/speak")} aria-label="GyakutenEigo Speaking Practice home"><GyakutenEigoBrand compact={compact} className="speaking-brand-logo" /></button>;
+  return <button className={`speaking-brand${compact ? " speaking-brand-compact" : ""}`} type="button" onClick={() => navigate("/speak")} aria-label="GyakutenEigo Speaking Tasks home"><GyakutenEigoBrand compact={compact} className="speaking-brand-logo" /></button>;
 }
 
 function SpeakingTopbar({ navigate, active = "home", teacher = false, student = false, studentSetup = false, studentLabel = "Student" }: { navigate: Navigate; student?: boolean; studentSetup?: boolean; studentLabel?: string; active?: "home" | "join" | "teacher"; teacher?: boolean }) {
@@ -156,14 +159,15 @@ function SpeakingTopbar({ navigate, active = "home", teacher = false, student = 
     const initial = studentLabel.trim().charAt(0).toUpperCase() || "S";
     return <header className="speaking-topbar speaking-student-topbar speaking-setup-topbar"><SpeakingBrand navigate={navigate} /><div className="speaking-setup-account"><span>Speak today. A wider tomorrow.</span><span className="speaking-setup-account-avatar" aria-label={`Signed in as ${studentLabel}`}>{initial}</span></div></header>;
   }
-  if (student) return <header className="speaking-topbar speaking-student-topbar"><SpeakingBrand navigate={navigate} compact /><span>Performance Test</span></header>;
-  return <header className={`speaking-topbar${teacher ? " speaking-topbar-teacher" : ""}`}><SpeakingBrand navigate={navigate} compact /><nav id="speaking-navigation" className={`speaking-topbar-actions${menuOpen ? " is-open" : ""}`} aria-label="Speaking Practice navigation"><button type="button" className={active === "home" ? "is-active" : ""} onClick={() => navigate("/speak")}><Sparkles size={16} aria-hidden="true" />Practice</button><button type="button" className={active === "join" ? "is-active" : ""} onClick={() => navigate("/speak/join")}><ScanLine size={16} aria-hidden="true" />Join activity</button><button type="button" className={active === "teacher" ? "is-active" : ""} onClick={() => navigate("/speak/teacher")}><UserRound size={16} aria-hidden="true" />Teacher tools</button></nav><button className="speaking-menu-toggle" type="button" aria-expanded={menuOpen} aria-controls="speaking-navigation" onClick={() => setMenuOpen((open) => !open)}><Menu size={20} aria-hidden="true" /><span>Menu</span></button></header>;
+  if (student) return <header className="speaking-topbar speaking-student-topbar"><SpeakingBrand navigate={navigate} compact /><span>Speaking Task</span></header>;
+  return <header className={`speaking-topbar${teacher ? " speaking-topbar-teacher" : ""}`}><SpeakingBrand navigate={navigate} compact /><nav id="speaking-navigation" className={`speaking-topbar-actions${menuOpen ? " is-open" : ""}`} aria-label="Speaking Tasks navigation"><button type="button" className={active === "home" ? "is-active" : ""} onClick={() => navigate("/speak")}><Sparkles size={16} aria-hidden="true" />Speaking tasks</button><button type="button" className={active === "join" ? "is-active" : ""} onClick={() => navigate("/speak/join")}><ScanLine size={16} aria-hidden="true" />Join a task</button><button type="button" className={active === "teacher" ? "is-active" : ""} onClick={() => navigate("/speak/teacher")}><UserRound size={16} aria-hidden="true" />Teacher tools</button></nav><button className="speaking-menu-toggle" type="button" aria-expanded={menuOpen} aria-controls="speaking-navigation" onClick={() => setMenuOpen((open) => !open)}><Menu size={20} aria-hidden="true" /><span>Menu</span></button></header>;
 }
 
 function SpeakingHome({ navigate }: { navigate: Navigate }) {
   return <div className="speaking-home-page speaking-welcome">
     <PerformanceHeader onNavigate={navigate} />
     <PublicHomepage
+      variant="speaking"
       onCreateMatch={() => navigate("/speak/teacher")}
       onJoinGame={(code) => navigate(code ? `/speak/join/${encodeURIComponent(code)}` : "/speak/join")}
       onTeacherLogin={() => navigate("/speak/teacher")}
@@ -172,11 +176,18 @@ function SpeakingHome({ navigate }: { navigate: Navigate }) {
 }
 
 
-interface SpeakingScreenProps { statusText?: string; activity: SpeakingActivity; state: SpeakingUiState; remainingSeconds: number; turns: SpeakingTurn[]; onMic: () => void; onReplay?: (text?: string) => void; onBrandClick?: () => void; onFinish: () => void; disabled?: boolean; supportDisabled?: boolean; finishDisabled?: boolean; }
-const stateDescriptions: Record<SpeakingUiState, string> = { ready: "Your turn · Tap the microphone to speak.", listening: "Listening · Tap again when you finish.", thinking: "Processing your answer…", "ai-speaking": "AI speaking · Listen to your partner." };
+interface SpeakingScreenProps { statusText?: string; activity: SpeakingActivity; state: SpeakingUiState; remainingSeconds: number; turns: SpeakingTurn[]; onMic: () => void; onReplay?: (text?: string) => void; onHelp?: () => void; helpLoading?: boolean; helpResponse?: { hint: string; english?: string; helpCount?: number }; onBrandClick?: () => void; onFinish: () => void; disabled?: boolean; supportDisabled?: boolean; finishDisabled?: boolean; }
+const stateDescriptions: Record<SpeakingUiState, string> = { ready: "Your turn · Tap the microphone to speak.", listening: "Listening · Tap again when you finish.", thinking: "Processing your answer…", "ai-speaking": "Your partner is speaking…" };
 
-function SpeakingStudentScreenV2({ statusText, activity, state, remainingSeconds, turns, onMic, onReplay, onBrandClick, onFinish, disabled = false, supportDisabled = false, finishDisabled = false }: SpeakingScreenProps) {
-  const [supportOpen, setSupportOpen] = useState(() => typeof window === "undefined" || window.matchMedia("(min-width: 901px)").matches);
+function SpeakingStudentScreenV2({ statusText, activity, state, remainingSeconds, turns, onMic, onReplay, onHelp, helpLoading = false, helpResponse, onBrandClick, onFinish, disabled = false, supportDisabled = false, finishDisabled = false }: SpeakingScreenProps) {
+  const supportSettings = resolveSpeakingSupportSettings(activity.supportSettings);
+  const supportTabs = getSpeakingSupportTabs(activity);
+  const hasSupportPanel = supportTabs.length > 0;
+  const context = speakingContext(activity);
+  const showContextButton = supportSettings.showContext && Boolean(context);
+  const showHelpButton = supportSettings.allowHelp && Boolean(onHelp);
+  const showSupportActions = showContextButton || showHelpButton;
+  const [supportOpen, setSupportOpen] = useState(() => hasSupportPanel && (typeof window === "undefined" || window.matchMedia("(min-width: 901px)").matches));
   const [showJumpToLatest, setShowJumpToLatest] = useState(false);
   const transcriptListRef = useRef<HTMLDivElement>(null);
   const transcriptAwayFromBottomRef = useRef(false);
@@ -187,9 +198,16 @@ function SpeakingStudentScreenV2({ statusText, activity, state, remainingSeconds
   const micLabel = statusText ?? (state === "ai-speaking" ? "Stop playback" : state === "listening" ? "Stop speaking" : state === "thinking" ? "Processing your answer" : "Tap to speak");
   const pendingReply = state === "thinking" && turns.some((turn) => turn.speaker === "student");
   const partnerImage = resources.imageSrc;
-  const context = speakingContext(activity);
-  const [supportTab, setSupportTab] = useState<SpeakingSupportTab>(() => activity.targetExpressions.length > 0 ? "useful-english" : context ? "context" : "useful-english");
+  const [supportTab, setSupportTab] = useState<SpeakingSupportTab>(() => supportTabs[0]?.id ?? "useful-english");
   const helperText = statusText ?? (state === "thinking" ? "Still processing your answer…" : stateDescriptions[state]);
+
+  useEffect(() => {
+    if (!hasSupportPanel) {
+      setSupportOpen(false);
+      return;
+    }
+    if (!supportTabs.some((tab) => tab.id === supportTab)) setSupportTab(supportTabs[0]!.id);
+  }, [hasSupportPanel, supportTab, supportTabs]);
 
   useEffect(() => {
     const mediaQuery = window.matchMedia("(min-width: 901px)");
@@ -248,6 +266,7 @@ function SpeakingStudentScreenV2({ statusText, activity, state, remainingSeconds
   }, [disabled, onMic]);
 
   const openContext = () => {
+    if (!showContextButton) return;
     setSupportTab("context");
     setSupportOpen(true);
   };
@@ -255,35 +274,39 @@ function SpeakingStudentScreenV2({ statusText, activity, state, remainingSeconds
   return <div className={"speaking-student-screen speaking-student-screen-" + state}>
     <header className="speaking-student-header">
       <div className="speaking-student-brand"><SpeakingBrand navigate={onBrandClick ?? (() => undefined)} compact /></div>
-      <div className="speaking-student-context"><span className="speaking-student-product">Performance Test</span><ChevronRight size={24} aria-hidden="true" /><strong title={activity.title}>{activity.title}</strong></div>
-      <div className="speaking-student-timer"><span className="speaking-student-time"><Clock3 size={21} aria-hidden="true" />{formatDuration(remainingSeconds)} left</span><span className="speaking-student-progress" aria-label={Math.round(durationProgress) + "% time remaining"}><span style={{ width: durationProgress + "%" }} /></span><button type="button" onClick={onFinish} disabled={finishDisabled}>Finish</button></div>
+      <div className="speaking-student-context"><span className={`speaking-student-product speaking-mode-badge speaking-mode-${activity.mode}`}>{speakingModeLabel(activity.mode)}</span><ChevronRight size={24} aria-hidden="true" /><strong title={activity.title}>{activity.title}</strong></div>
+      <div className="speaking-student-timer"><span className="speaking-student-time"><Clock3 size={21} aria-hidden="true" />{formatDuration(remainingSeconds)} left</span><span className="speaking-student-progress" aria-label={Math.round(durationProgress) + "% time remaining"}><span style={{ width: durationProgress + "%" }} /></span><button type="button" onClick={onFinish} disabled={finishDisabled}>{speakingModeAction(activity.mode, "finish")}</button></div>
     </header>
-    <div className={`speaking-student-grid${supportOpen ? "" : " is-support-collapsed"}`}>
+    <div className={`speaking-student-grid${supportOpen ? "" : " is-support-collapsed"}${!hasSupportPanel ? " no-support-panel" : ""}`}>
       <div className="speaking-student-center">
         <section className="speaking-live-reply" aria-live="polite" aria-label="Current speaking partner">
            <div className="speaking-live-reply-avatar">{partnerImage ? <img src={partnerImage} alt={resources.imageAlt ?? "Speaking partner"} /> : <MessageCircle size={28} aria-hidden="true" />}</div>
-           <div><span className="speaking-card-kicker">Your speaking partner · {activity.aiRole}</span><p>{state === "listening" ? "Listening to you…" : state === "thinking" ? "Processing your answer…" : currentAiTurn?.text ?? resources.openingLine}</p></div>
-           <button type="button" className="speaking-icon-button" onClick={() => onReplay?.(currentAiTurn?.text)} disabled={!onReplay || !currentAiTurn || state !== "ready"} aria-label="Replay current partner message"><Volume2 size={20} aria-hidden="true" /></button>
+           <div><span className="speaking-card-kicker">Speaking partner · {activity.aiRole}</span><p>{state === "listening" ? "Listening to you…" : state === "thinking" ? "Processing your answer…" : currentAiTurn?.text ?? resources.openingLine}</p></div>
+           {supportSettings.allowReplay && <button type="button" className="speaking-icon-button" onClick={() => onReplay?.(currentAiTurn?.text)} disabled={!onReplay || !currentAiTurn || state !== "ready"} aria-label="Replay current partner message"><Volume2 size={20} aria-hidden="true" /></button>}
          </section>
-         <footer className="speaking-student-controls" aria-label="Speaking controls">
-           <button className="speaking-replay-button" type="button" onClick={() => onReplay?.(currentAiTurn?.text)} disabled={!onReplay || !currentAiTurn || state !== "ready"} aria-label="Replay latest AI message"><RotateCcw size={27} strokeWidth={1.7} aria-hidden="true" /><span>Replay</span></button>
+         <footer className={`speaking-student-controls${supportSettings.allowReplay ? "" : " is-no-replay"}${showSupportActions ? " has-support-actions" : " is-mic-only"}`} aria-label="Speaking controls">
+           {supportSettings.allowReplay && <button className="speaking-replay-button" type="button" onClick={() => onReplay?.(currentAiTurn?.text)} disabled={!onReplay || !currentAiTurn || state !== "ready"} aria-label="Replay latest partner message"><RotateCcw size={27} strokeWidth={1.7} aria-hidden="true" /><span>Replay</span></button>}
            <div className="speaking-student-mic-wrap"><button className={"speaking-student-mic speaking-student-mic-" + state} type="button" onClick={onMic} disabled={disabled} aria-label={micLabel}><Mic size={54} strokeWidth={1.65} aria-hidden="true" /></button><span>{statusText ?? (state === "ai-speaking" ? "Stop playback" : state === "listening" ? "Stop speaking" : state === "thinking" ? "Processing…" : "Tap to Speak")}</span></div>
-           <button className="speaking-student-context-button" type="button" onClick={openContext} disabled={supportDisabled} aria-label="Open Context support"><MapPinned size={22} strokeWidth={1.8} aria-hidden="true" /><span>Context</span></button>
+           {showSupportActions && <div className="speaking-student-support-actions">
+             {showContextButton && <button className="speaking-student-context-button" type="button" onClick={openContext} disabled={supportDisabled} aria-label="Open Context support"><MapPinned size={22} strokeWidth={1.8} aria-hidden="true" /><span>Context</span></button>}
+             {showHelpButton && <button className="speaking-student-help-button" type="button" onClick={onHelp} disabled={supportDisabled || state !== "ready" || helpLoading} aria-label="Ask for a hint"><Lightbulb size={22} strokeWidth={1.8} aria-hidden="true" /><span>{helpLoading ? "Getting a hint…" : "Help"}</span></button>}
+           </div>}
            <p className="speaking-student-status" aria-live="polite">{helperText}</p>
          </footer>
-         <section className="speaking-transcript-card" aria-labelledby="speaking-conversation-title">
+         {helpResponse && <div className="speaking-help-response" role="status"><Lightbulb size={20} aria-hidden="true" /><div><strong>Hint</strong><p>{helpResponse.hint}</p>{helpResponse.english && <span>{helpResponse.english}</span>}</div></div>}
+         {supportSettings.showTranscript && <section className="speaking-transcript-card" aria-labelledby="speaking-conversation-title">
            <div className="speaking-transcript-heading"><MessageCircle size={30} strokeWidth={1.8} aria-hidden="true" /><div><h2 id="speaking-conversation-title">Conversation</h2><span>Your conversation so far</span></div><span className="speaking-turn-count">{turns.length} turns</span><ChevronDown size={21} aria-hidden="true" /></div>
            {showJumpToLatest && <button type="button" className="speaking-jump-latest" onClick={() => scrollToLatest()}><span>Jump to latest</span><ChevronDown size={17} aria-hidden="true" /></button>}
            <div ref={transcriptListRef} className="speaking-transcript-list" role="list" aria-label="Conversation turns" aria-live="polite" aria-busy={pendingReply} onPointerDown={() => { transcriptUserIntentRef.current = true; }} onTouchStart={() => { transcriptUserIntentRef.current = true; }} onWheel={() => { transcriptUserIntentRef.current = true; }} onScroll={handleTranscriptScroll}>
-             {turns.map((turn) => <StudentTranscriptTurnV2 key={turn.id} activity={activity} turn={turn} onReplay={state === "ready" && !disabled ? onReplay : undefined} />)}
-             {pendingReply && <div className="speaking-transcript-turn speaking-transcript-turn-ai is-pending" role="listitem"><div className="speaking-turn-avatar speaking-turn-avatar-ai">{partnerImage ? <img src={partnerImage} alt="" aria-hidden="true" /> : <MessageCircle size={22} aria-hidden="true" />}</div><div className="speaking-turn-body"><p className="speaking-turn-label">AI partner · {activity.aiRole}</p><div className="speaking-turn-bubble" role="status"><div><span className="speaking-pending-dots" aria-hidden="true">•••</span><strong>Processing your answer…</strong></div></div></div></div>}
+             {turns.map((turn) => <StudentTranscriptTurnV2 key={turn.id} activity={activity} turn={turn} onReplay={supportSettings.allowReplay && state === "ready" && !disabled ? onReplay : undefined} />)}
+             {pendingReply && <div className="speaking-transcript-turn speaking-transcript-turn-ai is-pending" role="listitem"><div className="speaking-turn-avatar speaking-turn-avatar-ai">{partnerImage ? <img src={partnerImage} alt="" aria-hidden="true" /> : <MessageCircle size={22} aria-hidden="true" />}</div><div className="speaking-turn-body"><p className="speaking-turn-label">Speaking partner · {activity.aiRole}</p><div className="speaking-turn-bubble" role="status"><div><span className="speaking-pending-dots" aria-hidden="true">•••</span><strong>Processing your answer…</strong></div></div></div></div>}
            </div>
-         </section>
+         </section>}
 
        </div>
-       <aside className={`speaking-student-sidebar${supportOpen ? " is-open" : " is-collapsed"}`}>
+       {hasSupportPanel && <aside className={`speaking-student-sidebar${supportOpen ? " is-open" : " is-collapsed"}`}>
          <SpeakingSupportPanel activity={activity} activeTab={supportTab} onTabChange={setSupportTab} onClose={() => setSupportOpen(false)} disabled={supportDisabled} />
-       </aside>
+       </aside>}
      </div>
    </div>;
 }
@@ -294,13 +317,13 @@ function StudentTranscriptTurnV2({ activity, turn, onReplay }: { activity: Speak
   const time = Number.isNaN(createdAt.getTime()) ? "" : createdAt.toLocaleTimeString([], { hour: "numeric", minute: "2-digit" });
   return <article className={"speaking-transcript-turn " + (isAi ? "speaking-transcript-turn-ai" : "speaking-transcript-turn-student")} role="listitem">
     <div className={"speaking-turn-avatar " + (isAi ? "speaking-turn-avatar-ai" : "speaking-turn-avatar-student")} aria-hidden="true">{isAi ? resources.imageSrc ? <img src={resources.imageSrc} alt="" aria-hidden="true" /> : <MessageCircle size={22} aria-hidden="true" /> : <img src="/assets/speaking/student-avatar.png" alt="" aria-hidden="true" />}</div>
-    <div className="speaking-turn-body"><p className="speaking-turn-label">{isAi ? "AI partner · " + activity.aiRole : "You"}</p><div className="speaking-turn-bubble"><div><strong>{turn.text}</strong></div><div className="speaking-turn-meta">{time && <time dateTime={turn.createdAt}>{time}</time>}{isAi && <button type="button" onClick={() => onReplay?.(turn.text)} disabled={!onReplay} aria-label="Replay AI message"><Volume2 size={22} strokeWidth={1.8} aria-hidden="true" /></button>}</div></div></div>
+    <div className="speaking-turn-body"><p className="speaking-turn-label">{isAi ? "Speaking partner · " + activity.aiRole : "You"}</p><div className="speaking-turn-bubble"><div><strong>{turn.text}</strong></div><div className="speaking-turn-meta">{time && <time dateTime={turn.createdAt}>{time}</time>}{isAi && onReplay && <button type="button" onClick={() => onReplay(turn.text)} aria-label="Replay partner message"><Volume2 size={22} strokeWidth={1.8} aria-hidden="true" /></button>}</div></div></div>
   </article>;
 }
 
 
 function StudentJourney({ step }: { step: number }) {
-  return <ol className="speaking-journey" aria-label="Performance Test progress">{["Join", "Get ready", "Speak", "Finish"].map((label, index) => <li key={label} aria-current={step === index ? "step" : undefined}><span>{index < step ? <Check size={14} aria-hidden="true" /> : index + 1}</span>{label}</li>)}</ol>;
+  return <ol className="speaking-journey" aria-label="Speaking task progress">{["Join", "Get ready", "Speak", "Finish"].map((label, index) => <li key={label} aria-current={step === index ? "step" : undefined}><span>{index < step ? <Check size={14} aria-hidden="true" /> : index + 1}</span>{label}</li>)}</ol>;
 }
 
 function SpeakingJoinPage({ navigate, initialCode }: { navigate: Navigate; initialCode?: string }) {
@@ -342,13 +365,15 @@ function SpeakingJoinPage({ navigate, initialCode }: { navigate: Navigate; initi
     } finally { setJoining(false); }
   };
   if (joined) return <SpeakingPreActivityPageV2 navigate={navigate} joined={joined} />;
-  return <div className="speaking-page-shell speaking-join-page"><SpeakingTopbar navigate={navigate} active="join" student /><main className="speaking-join-layout"><section className="speaking-join-copy"><span className="speaking-eyebrow"><ScanLine size={15} aria-hidden="true" /> Student entry</span><h1>Join your Performance Test</h1><p lang="ja">先生からのコードと、指定された名前・出席番号を入力してください。</p></section><form className="speaking-form-card" onSubmit={submit}><div className="speaking-form-heading"><span>Join a classroom</span><h2>{initialCode ? "Your teacher’s session" : "Enter session code"}</h2><p>{initialCode ? "Your code is already filled in. Add your name or student number below." : "Ask your teacher for the six-character code."}</p></div><label htmlFor="speaking-activity-code">Session code<input id="speaking-activity-code" className="speaking-code-input" value={code} onChange={(event) => { setCode(event.target.value.toUpperCase().replace(/[^A-Z0-9]/g, "").slice(0, 6)); setError(""); }} placeholder="ABC123" autoComplete="off" maxLength={6} /></label><label htmlFor="speaking-identifier">Nickname or student number <small>(if requested by your teacher)</small><input autoComplete="off" id="speaking-identifier" value={identifier} onChange={(event) => setIdentifier(event.target.value)} placeholder="e.g. Hana" maxLength={80} /></label>{error && <p className="speaking-error" role="alert">{error}</p>}<button className="speaking-primary-button speaking-wide-button" type="submit" disabled={joining || code.length !== 6}>{joining ? <><LoaderCircle size={18} className="speaking-spin" aria-hidden="true" />Joining…</> : <><ArrowRight size={18} aria-hidden="true" />Join session</>}</button><p className="speaking-privacy-note"><ShieldIcon /><span>Your teacher can review your transcript and feedback. Audio is sent for speech processing; the app does not store recordings.</span></p></form></main><div className="speaking-join-footer"><button type="button" className="speaking-text-button" onClick={() => navigate("/speak")}><ArrowLeft size={16} aria-hidden="true" />Back to Speaking Practice</button></div></div>;
+  return <div className="speaking-page-shell speaking-join-page"><SpeakingTopbar navigate={navigate} active="join" student /><main className="speaking-join-layout"><section className="speaking-join-copy"><span className="speaking-eyebrow"><ScanLine size={15} aria-hidden="true" /> Student entry</span><h1>Join your speaking task</h1><p>Enter the code from your teacher.</p><p lang="ja">先生からのコードと、指定された名前・出席番号を入力してください。</p></section><form className="speaking-form-card" onSubmit={submit}><div className="speaking-form-heading"><span>Join a classroom</span><h2>{initialCode ? "Your teacher’s session" : "Enter session code"}</h2><p>{initialCode ? "Your code is already filled in. Add your name or student number below." : "Ask your teacher for the six-character code."}</p></div><label htmlFor="speaking-activity-code">Session code<input id="speaking-activity-code" className="speaking-code-input" value={code} onChange={(event) => { setCode(event.target.value.toUpperCase().replace(/[^A-Z0-9]/g, "").slice(0, 6)); setError(""); }} placeholder="ABC123" autoComplete="off" maxLength={6} /></label><label htmlFor="speaking-identifier">Nickname or student number <small>(if requested by your teacher)</small><input autoComplete="off" id="speaking-identifier" value={identifier} onChange={(event) => setIdentifier(event.target.value)} placeholder="e.g. Hana" maxLength={80} /></label>{error && <p className="speaking-error" role="alert">{error}</p>}<button className="speaking-primary-button speaking-wide-button" type="submit" disabled={joining || code.length !== 6}>{joining ? <><LoaderCircle size={18} className="speaking-spin" aria-hidden="true" />Joining…</> : <><ArrowRight size={18} aria-hidden="true" />Join speaking task</>}</button><p className="speaking-privacy-note"><ShieldIcon /><span>Your teacher can review your conversation and feedback. Audio is sent for speech processing; the app does not store recordings.</span></p></form></main><div className="speaking-join-footer"><button type="button" className="speaking-text-button" onClick={() => navigate("/speak")}><ArrowLeft size={16} aria-hidden="true" />Back to Speaking Tasks</button></div></div>;
 }
 
 function ShieldIcon() { return <span className="speaking-privacy-dot" aria-hidden="true"><CircleCheck size={14} /></span>; }
 
 function SpeakingPreActivityPageV2({ navigate, joined }: { navigate: Navigate; joined: JoinResponse }) {
   const resources = speakingScenarioResources(joined.activity.scenarioResources);
+  const support = resolveSpeakingSupportSettings(joined.activity.supportSettings);
+  const isPractice = joined.activity.mode === "practice";
   const [micState, setMicState] = useState<"idle" | "requesting" | "testing" | "ready" | "unverified" | "no-signal" | "denied" | "unsupported" | "waiting">("idle");
   const [micLevels, setMicLevels] = useState<number[]>(() => Array.from({ length: 12 }, () => 0));
   const [voices, setVoices] = useState<ReturnType<typeof getCuratedSpeakingVoices>>([]);
@@ -461,12 +486,13 @@ function SpeakingPreActivityPageV2({ navigate, joined }: { navigate: Navigate; j
       <section className="speaking-preactivity-hero">
         <div className={introClassName}>
           <div className="speaking-preactivity-copy">
-            <span className="speaking-eyebrow"><ArrowRight size={13} strokeWidth={3} aria-hidden="true" /> Before you start</span>
+            <span className={`speaking-eyebrow speaking-mode-badge speaking-mode-${joined.activity.mode}`}><ArrowRight size={13} strokeWidth={3} aria-hidden="true" /> {speakingModeLabel(joined.activity.mode)} · {isPractice ? "Build your confidence" : "Show what you can do"}</span>
             <h1>{joined.activity.title}</h1>
-            <p>{joined.activity.scenario}</p>
+            <p>{speakingModeIntro(joined.activity.mode)}</p>
+            <p className="speaking-preactivity-scenario">{joined.activity.scenario}</p>
             <div className="speaking-role-pills">
               <span><UserRound size={16} aria-hidden="true" />You are: <strong>{joined.activity.studentRole}</strong></span>
-              <span><UsersRound size={16} aria-hidden="true" />Talk to: <strong>{joined.activity.aiRole}</strong></span>
+              <span><UsersRound size={16} aria-hidden="true" />Speaking partner: <strong>{joined.activity.aiRole}</strong></span>
               <span><Clock3 size={16} aria-hidden="true" />{formatDuration(joined.activity.durationSeconds)}</span>
             </div>
           </div>
@@ -478,13 +504,13 @@ function SpeakingPreActivityPageV2({ navigate, joined }: { navigate: Navigate; j
           <div><h2>Your task</h2><p>{resources.studentGoal}</p></div>
         </article>
 
-        <article className="speaking-student-info-card speaking-expressions-card">
+        {support.showTargetExpressions && joined.activity.targetExpressions.length > 0 && <article className="speaking-student-info-card speaking-expressions-card">
           <span className="speaking-info-card-icon speaking-info-card-icon-green" aria-hidden="true"><Target size={28} strokeWidth={2.1} /></span>
           <div><h2>Target expressions</h2><ul>{joined.activity.targetExpressions.map((expression) => <li key={expression}>{expression}</li>)}</ul></div>
-        </article>
+        </article>}
 
         <details className="speaking-evaluation-card">
-          <summary><span className="speaking-evaluation-chevron" aria-hidden="true"><ChevronRight size={18} /></span><strong>What will be evaluated?</strong></summary>
+          <summary><span className="speaking-evaluation-chevron" aria-hidden="true"><ChevronRight size={18} /></span><strong>{isPractice ? "What to focus on" : "What to show"}</strong></summary>
           <ul>{joined.activity.rubric.filter((criterion) => criterion.enabled).map((criterion) => <li key={criterion.id}><strong>{criterion.name}</strong><span>{criterion.description}</span></li>)}</ul>
         </details>
       </section>
@@ -519,7 +545,7 @@ function SpeakingPreActivityPageV2({ navigate, joined }: { navigate: Navigate; j
         {micState === "denied" && <div className="speaking-preflight-actions"><button type="button" className="speaking-outline-button" onClick={() => void requestMicrophone()}>Retry microphone</button></div>}
         {micState === "unsupported" && <div className="speaking-error speaking-prep-error" role="alert"><strong>This browser cannot record a microphone.</strong><span>Use a current Chrome, Edge, or Safari browser on a secure connection.</span></div>}
         {micState === "no-signal" && <div className="speaking-preflight-actions"><button type="button" className="speaking-outline-button" onClick={() => void requestMicrophone()}>Test again</button></div>}
-        {micState === "requesting" ? <button type="button" className="speaking-primary-button speaking-wide-button" disabled><LoaderCircle size={18} className="speaking-spin" aria-hidden="true" />Allowing microphone…</button> : micState === "testing" ? <button type="button" className="speaking-primary-button speaking-wide-button" disabled><LoaderCircle size={18} className="speaking-spin" aria-hidden="true" />Listening for your voice…</button> : micState === "idle" || micState === "ready" ? <button type="button" className="speaking-primary-button speaking-wide-button" onClick={() => micState === "ready" ? void startSession() : void requestMicrophone()}><Mic size={18} aria-hidden="true" />Start Speaking</button> : micState === "unverified" ? <button type="button" className="speaking-primary-button speaking-wide-button" onClick={() => void startSession()}>Continue without input test</button> : null}
+        {micState === "requesting" ? <button type="button" className="speaking-primary-button speaking-wide-button" disabled><LoaderCircle size={18} className="speaking-spin" aria-hidden="true" />Allowing microphone…</button> : micState === "testing" ? <button type="button" className="speaking-primary-button speaking-wide-button" disabled><LoaderCircle size={18} className="speaking-spin" aria-hidden="true" />Listening for your voice…</button> : micState === "idle" || micState === "ready" ? <button type="button" className="speaking-primary-button speaking-wide-button" onClick={() => micState === "ready" ? void startSession() : void requestMicrophone()}><Mic size={18} aria-hidden="true" />{speakingModeAction(joined.activity.mode, "start")}</button> : micState === "unverified" ? <button type="button" className="speaking-primary-button speaking-wide-button" onClick={() => void startSession()}>Continue without input test</button> : null}
       </section>
     </main>
   </div>;
@@ -580,6 +606,8 @@ function SpeakingSessionExperienceV2({ navigate, token, initialData }: { navigat
   const errorOperationRef = useRef(errorOperation);
   errorOperationRef.current = errorOperation;
   const [micNotice, setMicNotice] = useState("");
+  const [helpLoading, setHelpLoading] = useState(false);
+  const [helpResponse, setHelpResponse] = useState<{ hint: string; english?: string; helpCount?: number }>();
   const [, setEvaluationStatus] = useState<SpeakingStatusResponse["evaluationStatus"]>(initialData.participant.status === "evaluating" ? "running" : undefined);
   const [authorizationFailed, setAuthorizationFailed] = useState(false);
   const authorizationFailedRef = useRef(false);
@@ -601,6 +629,7 @@ function SpeakingSessionExperienceV2({ navigate, token, initialData }: { navigat
   const pollNowRef = useRef<() => void>(() => undefined);
   dataRef.current = data;
   voiceStateRef.current = voiceState;
+  const supportSettings = resolveSpeakingSupportSettings(data.activity.supportSettings);
 
   const cancelRecording = useCallback(() => {
     recordingGenerationRef.current += 1;
@@ -630,6 +659,22 @@ function SpeakingSessionExperienceV2({ navigate, token, initialData }: { navigat
     setErrorOperation("connection");
     setError(getErrorMessage(authorizationError, "This speaking session is no longer available."));
   }, [cancelRecording, releaseRetryAudio]);
+
+  const requestHelp = useCallback(async () => {
+    if (!supportSettings.allowHelp || authorizationFailedRef.current || participantFinalizedRef.current || dataRef.current.session.status !== "active" || voiceStateRef.current !== "ready") return;
+    setHelpLoading(true);
+    try {
+      const response = await speakingApi.help(dataRef.current.session.id, token) as { hint: string; english?: string; helpCount?: number };
+      setHelpResponse(response);
+      setError("");
+      setErrorOperation(undefined);
+    } catch (helpError) {
+      if (isFatalParticipantAuthorizationError(helpError)) handleFatalAuthorization(helpError);
+      else setError(getErrorMessage(helpError, "A hint is not available right now. You can keep speaking or try again."));
+    } finally {
+      setHelpLoading(false);
+    }
+  }, [handleFatalAuthorization, supportSettings.allowHelp, token]);
 
   useEffect(() => {
     let cancelled = false;
@@ -760,6 +805,7 @@ function SpeakingSessionExperienceV2({ navigate, token, initialData }: { navigat
     lastSpeechDetectedRef.current = speechDetected;
     lastAudioDurationRef.current = audioDurationMs;
     setVoiceState("processing");
+    setHelpResponse(undefined);
     setError("");
     setErrorOperation(undefined);
     try {
@@ -924,7 +970,7 @@ function SpeakingSessionExperienceV2({ navigate, token, initialData }: { navigat
   const controlsDisabled = authorizationFailed || waiting || paused || ended || !["ready", "student_recording", "ai_speaking"].includes(voiceState);
   const uiState: SpeakingUiState = voiceState === "student_recording" ? "listening" : voiceState === "ai_speaking" ? "ai-speaking" : ["processing", "finishing", "evaluating"].includes(voiceState) ? "thinking" : "ready";
   const operationMessage = errorOperation === "microphone" ? "Retry microphone" : errorOperation === "turn" ? "Retry this turn" : errorOperation === "evaluation" ? "Check evaluation" : "Refresh status";
-  return <div className="speaking-session-page"><main className="speaking-session-main">{waiting && <div className="speaking-session-note" role="status"><Clock3 size={16} aria-hidden="true" /><span>You’re ready! Waiting for your teacher to start the activity.</span></div>}{paused && <div className="speaking-session-alert" role="alert"><HelpCircle size={18} aria-hidden="true" /><span>Your teacher paused the activity.</span></div>}{ended && <div className="speaking-session-alert" role="alert"><HelpCircle size={18} aria-hidden="true" /><span>This activity has ended. Your saved conversation can still be reviewed.</span></div>}{error && <div className="speaking-session-alert" role="alert"><HelpCircle size={18} aria-hidden="true" /><span>{error}</span>{!authorizationFailed && <button type="button" onClick={retryOperation}>{operationMessage}</button>}</div>}{micNotice && <div className="speaking-session-note" role="status"><Mic size={16} aria-hidden="true" /><span>{micNotice}</span></div>}{voiceState === "evaluating" && <div className="speaking-session-note" role="status"><LoaderCircle size={16} className="speaking-spin" aria-hidden="true" /><span>Your speaking practice is finished. Your feedback is being prepared.</span></div>}<SpeakingStudentScreenV2 statusText={waiting ? "Waiting for your teacher" : paused ? "Paused" : ended ? "Test ended" : voiceState === "finishing" || voiceState === "evaluating" ? "Finishing" : error ? "Check the message above" : undefined} activity={data.activity} state={uiState} remainingSeconds={remaining} turns={data.turns} onMic={onMic} onReplay={replay} onBrandClick={() => navigate("/speak")} onFinish={() => void finish()} disabled={controlsDisabled} supportDisabled={authorizationFailed || ended} finishDisabled={authorizationFailed || waiting || ["finishing", "evaluating", "completed", "ai_speaking", "student_recording", "processing"].includes(voiceState)} /></main></div>;
+  return <div className="speaking-session-page"><main className="speaking-session-main">{waiting && <div className="speaking-session-note" role="status"><Clock3 size={16} aria-hidden="true" /><span>You’re ready! Waiting for your teacher to start the {data.activity.mode === "practice" ? "practice" : "task"}.</span></div>}{paused && <div className="speaking-session-alert" role="alert"><HelpCircle size={18} aria-hidden="true" /><span>Your teacher paused the activity.</span></div>}{ended && <div className="speaking-session-alert" role="alert"><HelpCircle size={18} aria-hidden="true" /><span>This speaking task has ended. Your saved conversation can still be reviewed.</span></div>}{error && <div className="speaking-session-alert" role="alert"><HelpCircle size={18} aria-hidden="true" /><span>{error}</span>{!authorizationFailed && <button type="button" onClick={retryOperation}>{operationMessage}</button>}</div>}{micNotice && <div className="speaking-session-note" role="status"><Mic size={16} aria-hidden="true" /><span>{micNotice}</span></div>}{voiceState === "evaluating" && <div className="speaking-session-note" role="status"><LoaderCircle size={16} className="speaking-spin" aria-hidden="true" /><span>Your speaking task is finished. Your feedback is being prepared.</span></div>}<SpeakingStudentScreenV2 statusText={waiting ? "Waiting for your teacher" : paused ? "Paused" : ended ? "Task ended" : voiceState === "finishing" || voiceState === "evaluating" ? "Finishing" : error ? "Check the message above" : undefined} activity={data.activity} state={uiState} remainingSeconds={remaining} turns={data.turns} onMic={onMic} onReplay={supportSettings.allowReplay ? replay : undefined} onHelp={supportSettings.allowHelp ? requestHelp : undefined} helpLoading={helpLoading} helpResponse={helpResponse} onBrandClick={() => navigate("/speak")} onFinish={() => void finish()} disabled={controlsDisabled} supportDisabled={authorizationFailed || waiting || paused || ended} finishDisabled={authorizationFailed || waiting || ["finishing", "evaluating", "completed", "ai_speaking", "student_recording", "processing"].includes(voiceState)} /></main></div>;
 }
 
 
@@ -1024,5 +1070,35 @@ function SpeakingResultPageV2({ navigate, participantId }: { navigate: Navigate;
   const copy = speakingFeedbackCopy(result.evaluation?.language ?? result.activity.nativeLanguage);
   const insufficientEvidence = Boolean(result.evaluation && (result.evaluation.assessmentStatus === "insufficient_evidence" || !hasSpeech));
   const evaluationPending = !result.evaluation && (result.participant.status === "evaluating" || evaluationStatus === "queued" || evaluationStatus === "running" || evaluationStatus === "retrying");
-  return <div className="speaking-page-shell speaking-result-page"><SpeakingTopbar navigate={navigate} student /><StudentJourney step={3} /><main className="speaking-result-layout">{evaluationPending ? <section className="speaking-empty-card speaking-evaluation-status-card"><LoaderCircle size={34} className="speaking-spin" aria-hidden="true" /><span className="speaking-card-kicker">{evaluationStatus === "retrying" ? "Evaluation retrying" : "Evaluation in progress"}</span><h1>{copy.evaluationPendingHeadline}</h1><p>{evaluationStatus === "retrying" ? copy.evaluationRetryingMessage : copy.evaluationPendingMessage}</p><button type="button" className="speaking-outline-button" onClick={() => pollNowRef.current()}>Refresh status</button></section> : <><section className="speaking-result-hero"><span className="speaking-eyebrow"><Trophy size={15} aria-hidden="true" />{insufficientEvidence ? copy.notScored : "Activity complete"}</span><h1>{result.evaluation ? (insufficientEvidence ? copy.insufficientEvidenceHeadline : copy.scoredHeadline) : copy.evaluationNeedsAttentionHeadline}</h1><p>{result.evaluation ? result.evaluation.overallMessage : copy.evaluationNeedsAttentionMessage}</p>{result.evaluation && !insufficientEvidence ? <div className="speaking-result-score"><strong>{scoreFor(result.evaluation)}</strong><span>{result.evaluation.language === "ja" ? "点" : "points"}</span><small>{result.evaluation.language === "ja" ? "今日のスピーキング" : "Today’s speaking"}</small></div> : <div className="speaking-result-score"><strong>—</strong><small>{insufficientEvidence ? copy.notScoredDetail : copy.evaluationNeedsAttentionHeadline}</small></div>}<div className="speaking-result-actions"><button className="speaking-primary-button" type="button" onClick={() => navigate("/speak/join")}><RotateCcw size={17} aria-hidden="true" />Join another teacher’s task</button><button className="speaking-text-button" type="button" onClick={() => navigate("/speak")}><ArrowLeft size={16} aria-hidden="true" />Speaking Practice home</button></div></section>{result.evaluation ? <ResultPanel activity={result.activity} turns={result.turns} evaluation={result.evaluation} teacherView={false} /> : <div className="speaking-empty-card"><h2>{evaluationRetryable ? "Evaluation needs another try" : copy.evaluationNeedsAttentionHeadline}</h2><p>{evaluationRetryable ? "Your conversation is saved. We’ll try the evaluation again; your saved turns will not be sent again." : copy.evaluationNeedsAttentionMessage}</p>{evaluationRetryable && <button type="button" className="speaking-primary-button" onClick={() => void retryEvaluation()} disabled={retrying}>{retrying ? "Retrying evaluation…" : "Retry evaluation"}</button>}{error && <p className="speaking-error" role="alert">{error}</p>}</div>}</>}</main></div>;
+  const partlyCompleted = Boolean(result.evaluation?.goalCompletion && result.evaluation.goalCompletion.requirements.some((requirement) => requirement.status === "completed" || requirement.status === "partially_completed"));
+  const resultHeadline = !result.evaluation
+    ? copy.evaluationNeedsAttentionHeadline
+    : insufficientEvidence
+      ? copy.insufficientEvidenceHeadline
+      : result.activity.mode === "practice"
+        ? copy.practiceCompleteHeadline
+        : result.evaluation.goalCompletion?.completed === true
+          ? copy.assessmentCompletedHeadline
+          : partlyCompleted
+            ? copy.assessmentProgressHeadline
+            : copy.assessmentFinishedHeadline;
+  const resultMessage = !result.evaluation
+    ? copy.evaluationNeedsAttentionMessage
+    : insufficientEvidence
+      ? result.evaluation.notScoredReason ?? copy.notScoredDetail
+      : result.activity.mode === "practice"
+        ? copy.practiceCompleteMessage
+        : result.evaluation.goalCompletion?.completed === true
+          ? copy.assessmentCompletedMessage
+          : partlyCompleted
+            ? copy.assessmentProgressMessage
+            : copy.assessmentFinishedMessage;
+  const resultKicker = insufficientEvidence
+    ? copy.notScored
+    : result.activity.mode === "practice"
+      ? copy.practiceCompleteHeadline
+      : result.evaluation?.goalCompletion?.completed === true
+        ? "Task completed"
+        : "Assessment result";
+  return <div className="speaking-page-shell speaking-result-page"><SpeakingTopbar navigate={navigate} student /><StudentJourney step={3} /><main className="speaking-result-layout">{evaluationPending ? <section className="speaking-empty-card speaking-evaluation-status-card"><LoaderCircle size={34} className="speaking-spin" aria-hidden="true" /><span className="speaking-card-kicker">{evaluationStatus === "retrying" ? "Feedback retrying" : "Feedback in progress"}</span><h1>{copy.evaluationPendingHeadline}</h1><p>{evaluationStatus === "retrying" ? copy.evaluationRetryingMessage : copy.evaluationPendingMessage}</p><button type="button" className="speaking-outline-button" onClick={() => pollNowRef.current()}>Refresh status</button></section> : <><section className="speaking-result-hero"><span className="speaking-eyebrow"><Trophy size={15} aria-hidden="true" />{resultKicker}</span><span className={`speaking-mode-badge speaking-mode-${result.activity.mode}`}>{speakingModeLabel(result.activity.mode)}</span><h1>{resultHeadline}</h1><p>{resultMessage}</p>{result.evaluation && !insufficientEvidence ? <div className="speaking-result-score speaking-result-score-secondary"><strong>{scoreFor(result.evaluation)}</strong><span>{result.evaluation.language === "ja" ? "点" : "points"}</span><small>{result.evaluation.language === "ja" ? "今回のスピーキング" : "Task evidence"}</small></div> : <div className="speaking-result-score speaking-result-score-secondary"><strong>—</strong><small>{insufficientEvidence ? copy.notScoredDetail : copy.evaluationNeedsAttentionHeadline}</small></div>}<div className="speaking-result-actions"><button className="speaking-primary-button" type="button" onClick={() => navigate("/speak/join")}><RotateCcw size={17} aria-hidden="true" />Join another teacher’s task</button><button className="speaking-text-button" type="button" onClick={() => navigate("/speak")}><ArrowLeft size={16} aria-hidden="true" />Speaking Tasks home</button></div></section>{result.evaluation ? <ResultPanel activity={result.activity} turns={result.turns} evaluation={result.evaluation} teacherView={false} /> : <div className="speaking-empty-card"><h2>{evaluationRetryable ? "Feedback needs another try" : copy.evaluationNeedsAttentionHeadline}</h2><p>{evaluationRetryable ? "Your conversation is saved. We’ll try the feedback again; your saved turns will not be sent again." : copy.evaluationNeedsAttentionMessage}</p>{evaluationRetryable && <button type="button" className="speaking-primary-button" onClick={() => void retryEvaluation()} disabled={retrying}>{retrying ? "Retrying feedback…" : "Retry feedback"}</button>}{error && <p className="speaking-error" role="alert">{error}</p>}</div>}</>}</main></div>;
 }

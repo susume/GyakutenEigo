@@ -1,5 +1,6 @@
 import {
   DEFAULT_SPEAKING_RUBRIC,
+  DEFAULT_SPEAKING_ASSESSMENT_SUPPORT_SETTINGS,
   type SpeakingCategory,
   type SpeakingCreateActivityInput,
   type SpeakingContext,
@@ -285,6 +286,8 @@ const core = (seed: CoreSeed): SpeakingCoreLibraryItem => ({
   nativeLanguage: "ja",
   durationSeconds: seed.durationSeconds ?? 180,
   identifierMode: "nickname",
+  mode: "assessment",
+  supportSettings: { ...DEFAULT_SPEAKING_ASSESSMENT_SUPPORT_SETTINGS },
   targetExpressions: [...seed.targetExpressions],
   rubric: DEFAULT_SPEAKING_RUBRIC.map((criterion) => ({ ...criterion })),
   context: { ...contextForCoreSeed(seed) },
@@ -309,7 +312,7 @@ const core = (seed: CoreSeed): SpeakingCoreLibraryItem => ({
 
 /**
  * The built-in junior-high library. Each item is a complete, editable
- * performance test: situation, goal, AI context, complication, success
+ * speaking task: situation, goal, partner context, complication, success
  * conditions, optional support, and the default evidence rubric.
  */
 export const SPEAKING_CORE_LIBRARY: SpeakingCoreLibraryItem[] = [

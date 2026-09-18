@@ -1,6 +1,6 @@
 import assert from "node:assert/strict";
 import test from "node:test";
-import { DEFAULT_SPEAKING_RUBRIC, speakingActiveElapsedMs, speakingRemainingSeconds, type SpeakingCreateActivityInput, type SpeakingEvaluation } from "@quizstrike/shared";
+import { DEFAULT_SPEAKING_ASSESSMENT_SUPPORT_SETTINGS, DEFAULT_SPEAKING_PRACTICE_SUPPORT_SETTINGS, DEFAULT_SPEAKING_RUBRIC, speakingActiveElapsedMs, speakingRemainingSeconds, type SpeakingCreateActivityInput, type SpeakingEvaluation } from "@quizstrike/shared";
 import { InMemorySpeakingRepository, PrismaSpeakingRepository, createInMemorySpeakingState, createSpeakingRepository, hashSpeakingToken } from "./speakingRepository.js";
 import type { PrismaClient } from "@prisma/client";
 
@@ -113,6 +113,40 @@ test("activity edits preserve old session snapshots and update new sessions", as
   assert.equal(snapshotB?.activity.nativeLanguage, "en");
   assert.deepEqual(snapshotB?.activity.targetExpressions, ["New phrase."]);
   assert.deepEqual(snapshotB?.activity.rubric.map((criterion) => criterion.id), ["task_achievement"]);
+});
+
+test("mode and support settings are immutable per session and legacy updates preserve availability", async () => {
+  const repository = new InMemorySpeakingRepository(createInMemorySpeakingState());
+  const now = "2026-09-14T00:00:00.000Z";
+  const newActivity = await repository.createActivity("teacher-1", input, "default-mode-activity", now);
+  assert.equal(newActivity.mode, "assessment");
+  assert.deepEqual(newActivity.supportSettings, DEFAULT_SPEAKING_ASSESSMENT_SUPPORT_SETTINGS);
+  const assessment = await repository.createActivity("teacher-1", {
+    ...input,
+    mode: "assessment",
+    supportSettings: { ...DEFAULT_SPEAKING_ASSESSMENT_SUPPORT_SETTINGS }
+  }, "mode-activity", now);
+  const sessionA = await repository.createSession({ id: "mode-session-a", activity: assessment, joinCode: "ABC250", createdAt: now, expiresAt: "2026-09-14T08:00:00.000Z" });
+  const practice = await repository.updateActivity("teacher-1", assessment.id, {
+    ...input,
+    mode: "practice",
+    supportSettings: { ...DEFAULT_SPEAKING_PRACTICE_SUPPORT_SETTINGS }
+  }, "2026-09-14T01:00:00.000Z");
+  assert.equal(practice?.mode, "practice");
+  assert.equal(practice?.supportSettings.showTranscript, true);
+  const sessionB = await repository.createSession({ id: "mode-session-b", activity: practice!, joinCode: "ABC251", createdAt: "2026-09-14T01:00:00.000Z", expiresAt: "2026-09-14T09:00:00.000Z" });
+  const snapshotA = await repository.getSession(sessionA.id);
+  const snapshotB = await repository.getSession(sessionB.id);
+  assert.equal(snapshotA?.activity.mode, "assessment");
+  assert.equal(snapshotA?.activity.supportSettings.showTranscript, false);
+  assert.equal(snapshotA?.activity.supportSettings.allowHelp, false);
+  assert.equal(snapshotB?.activity.mode, "practice");
+  assert.equal(snapshotB?.activity.supportSettings.showTranscript, true);
+  assert.equal(snapshotB?.activity.supportSettings.allowHelp, true);
+
+  const legacyEdited = await repository.updateActivity("teacher-1", assessment.id, { ...input, title: "Legacy client edit" }, "2026-09-14T02:00:00.000Z");
+  assert.equal(legacyEdited?.mode, "practice");
+  assert.deepEqual(legacyEdited?.supportSettings, DEFAULT_SPEAKING_PRACTICE_SUPPORT_SETTINGS);
 });
 
 test("historical sessions do not inherit Context added after they were created", async () => {

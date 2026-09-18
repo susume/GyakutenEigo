@@ -2,7 +2,8 @@ import assert from "node:assert/strict";
 import test from "node:test";
 import { createElement } from "react";
 import { renderToStaticMarkup } from "react-dom/server";
-import { SpeakingContextPanel } from "./SpeakingSupportPanel.js";
+import { SpeakingContextPanel, SpeakingSupportPanel, getSpeakingSupportTabs } from "./SpeakingSupportPanel.js";
+import { SPEAKING_TEMPLATES } from "./speakingData.js";
 
 test("valid student context renders the accessible image without visible context copy", () => {
   const markup = renderToStaticMarkup(createElement(SpeakingContextPanel, {
@@ -40,4 +41,28 @@ test("student context keeps the missing-image empty state", () => {
   }));
 
   assert.match(markup, /No context image available for this activity\./u);
+});
+
+test("support tabs follow the teacher's launch-time settings", () => {
+  const activity = {
+    ...SPEAKING_TEMPLATES[0]!,
+    targetExpressions: ["Could you help me?"],
+    context: { title: "Map", imageUrl: "/map.webp", type: "map" as const },
+    supportSettings: { showTargetExpressions: true, showContext: true, showTranscript: false, allowReplay: false, allowHelp: false }
+  };
+  assert.deepEqual(getSpeakingSupportTabs(activity), [
+    { id: "useful-english", label: "Useful English" },
+    { id: "context", label: "Context" }
+  ]);
+  assert.deepEqual(getSpeakingSupportTabs({ ...activity, supportSettings: { showTargetExpressions: false, showContext: true } }), [
+    { id: "context", label: "Context" }
+  ]);
+  assert.deepEqual(getSpeakingSupportTabs({ ...activity, supportSettings: { showTargetExpressions: false, showContext: false } }), []);
+  const markup = renderToStaticMarkup(createElement(SpeakingSupportPanel, {
+    activity: { ...activity, supportSettings: { showTargetExpressions: false, showContext: false } },
+    activeTab: "useful-english",
+    onTabChange: () => undefined,
+    onClose: () => undefined
+  }));
+  assert.equal(markup, "");
 });

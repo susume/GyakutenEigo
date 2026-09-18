@@ -1,8 +1,10 @@
-import type { SpeakingEvaluation } from "@quizstrike/shared";
+import { resolveSpeakingSupportSettings, type SpeakingEvaluation, type SpeakingMode, type SpeakingSupportSettings } from "@quizstrike/shared";
 
 export type SpeakingCsvRow = {
   setNames: string;
   performanceTest: string;
+  mode?: SpeakingMode;
+  supportSettings?: Partial<SpeakingSupportSettings>;
   session: string;
   date: string;
   student: string;
@@ -24,10 +26,21 @@ export const buildSpeakingCsv = (rows: SpeakingCsvRow[]) => {
     if (!all.some((candidate) => candidate.id === criterion.id)) all.push({ id: criterion.id, name: criterion.name });
     return all;
   }, []);
-  const headers = ["Set", "Performance Test", "Session", "Date", "Student", "Status", "Duration", "Overall Score", ...criteria.map((criterion) => criterion.name), "Help Count"];
+  const headers = ["Set", "Speaking Task", "Mode", "Target expressions allowed", "Context allowed", "Transcript allowed", "Replay allowed", "Help allowed", "Session", "Date", "Student", "Status", "Duration", "Overall Score", ...criteria.map((criterion) => criterion.name), "Help Count"];
   const lines = [headers, ...rows.map((row) => [
-    row.setNames,
-    row.performanceTest,
+    ...(() => {
+      const supportSettings = resolveSpeakingSupportSettings(row.supportSettings);
+      return [
+        row.setNames,
+        row.performanceTest,
+        row.mode ?? "assessment",
+        supportSettings.showTargetExpressions ? "Yes" : "No",
+        supportSettings.showContext ? "Yes" : "No",
+        supportSettings.showTranscript ? "Yes" : "No",
+        supportSettings.allowReplay ? "Yes" : "No",
+        supportSettings.allowHelp ? "Yes" : "No"
+      ];
+    })(),
     row.session,
     row.date,
     row.student,

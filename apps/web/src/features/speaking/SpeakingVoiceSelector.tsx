@@ -56,7 +56,7 @@ export default function SpeakingVoiceSelector({ voices, selectedVoiceId, preview
     <div className="speaking-voice-selector-heading">
       <span className="speaking-voice-selector-icon" aria-hidden="true"><Volume2 size={19} strokeWidth={2.2} /></span>
       <div>
-        <h3 id="speaking-voice-selector-title">Choose AI voice</h3>
+        <h3 id="speaking-voice-selector-title">Choose a speaking partner voice</h3>
         <p>You can preview the voice before you begin.</p>
       </div>
     </div>

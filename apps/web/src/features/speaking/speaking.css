@@ -3352,7 +3352,7 @@ body[data-speaking="true"] {
   object-fit: cover;
 }
 
-/* Speaking Practice library, Sets, and Reports refresh. */
+/* Speaking Tasks library, Sets, and Reports refresh. */
 .speaking-embedded-teacher .speaking-library-page,
 .speaking-embedded-teacher .speaking-sets-page,
 .speaking-embedded-teacher .speaking-set-detail-page,
@@ -4303,7 +4303,7 @@ body[data-speaking="true"] {
 .speaking-projector-counts strong { font-size: 28px; margin-right: 8px; }
 .speaking-session-instructions > summary { cursor: pointer; padding: 12px 0; color: #174a8b; font-size: 14px; font-weight: 600; }
 
-/* Approved Performance Test student layout. Secondary guidance stays out of
+/* Approved speaking-task student layout. Secondary guidance stays out of
    this screen; the conversation and speaking controls own the primary
    column while Useful English and Context stay available in the support rail. */
 .speaking-session-main {

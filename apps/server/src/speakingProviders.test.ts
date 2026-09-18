@@ -1,6 +1,7 @@
 import assert from "node:assert/strict";
 import test from "node:test";
 import {
+  DEFAULT_SPEAKING_ASSESSMENT_SUPPORT_SETTINGS,
   SpeakingEvaluationSchema,
   type SpeakingActivity,
   type SpeakingTurn
@@ -40,6 +41,8 @@ const activity = {
   durationSeconds: 300,
   status: "ready",
   identifierMode: "nickname",
+  mode: "assessment",
+  supportSettings: { ...DEFAULT_SPEAKING_ASSESSMENT_SUPPORT_SETTINGS },
   targetExpressions: ["I'd like...", "How much is it?", "Can I try it on?"],
   rubric: [
     { id: "communication", name: "Communication", description: "Communicates a clear idea.", enabled: true },

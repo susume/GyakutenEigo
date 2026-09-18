@@ -11,6 +11,7 @@ test("speaking templates are static previews and never carry a classroom join co
   assert.equal(SPEAKING_TEMPLATES.length, 6);
   assert.equal(SPEAKING_TEMPLATES.every((activity) => !Object.hasOwn(activity, "joinCode")), true);
   assert.equal(SPEAKING_TEMPLATES.every((activity) => activity.status === "ready"), true);
+  assert.equal(SPEAKING_TEMPLATES.every((activity) => activity.mode === "assessment" && activity.supportSettings.allowHelp === false), true);
   assert.equal(previewActivityLimits.maxExpressions, 12);
 });
 

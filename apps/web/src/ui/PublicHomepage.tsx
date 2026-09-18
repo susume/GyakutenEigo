@@ -11,6 +11,7 @@ import {
 import "../homepage-game-first.css";
 
 type PublicHomepageProps = {
+  variant?: "quiz" | "speaking";
   onCreateMatch: () => void;
   onJoinGame: (code?: string) => void;
   onTeacherLogin: () => void;
@@ -32,6 +33,27 @@ const benefits = [
   {
     title: "Quick Review",
     copy: "Evidence and scores in one place",
+    icon: BarChart3,
+    tone: "purple"
+  }
+] as const;
+
+const speakingBenefits = [
+  {
+    title: "Clear Tasks",
+    copy: "Students know what to do",
+    icon: Lightbulb,
+    tone: "blue"
+  },
+  {
+    title: "Build Confidence",
+    copy: "Practise before you speak",
+    icon: Users,
+    tone: "green"
+  },
+  {
+    title: "Useful Feedback",
+    copy: "Notice what students can do",
     icon: BarChart3,
     tone: "purple"
   }
@@ -64,12 +86,41 @@ const flowSteps = [
   }
 ] as const;
 
+const speakingFlowSteps = [
+  {
+    number: "1",
+    title: "Choose a task",
+    copy: <>Set the goal<br />and support</>,
+    image: "/assets/speaking/performance-teacher.png",
+    alt: "Teacher setting a speaking task with a tablet",
+    className: "flow-stage-teacher"
+  },
+  {
+    number: "2",
+    title: "Practise together",
+    copy: <>Build confidence<br />with helpful support</>,
+    image: "/assets/speaking/performance-student.png",
+    alt: "Student practising speaking with headphones at a laptop",
+    className: "flow-stage-student"
+  },
+  {
+    number: "3",
+    title: "Show what you can do",
+    copy: <>Use the English<br />you know</>,
+    image: "/assets/speaking/performance-results.png",
+    alt: "Speaking task evidence ready for teacher review",
+    className: "flow-stage-results"
+  }
+] as const;
+
 export default function PublicHomepage({
+  variant = "quiz",
   onCreateMatch,
   onJoinGame,
   onTeacherLogin
 }: PublicHomepageProps) {
   const [sessionCode, setSessionCode] = useState("");
+  const speaking = variant === "speaking";
 
   return (
     <div className="performance-home">
@@ -78,13 +129,13 @@ export default function PublicHomepage({
 
       <section className="performance-shell performance-hero" aria-labelledby="public-hero-title">
         <div className="performance-hero-copy">
-          <p className="performance-eyebrow">Computer-based performance test</p>
-          <h1 id="public-hero-title" tabIndex={-1}>SpeakCheck App</h1>
-          <p className="performance-hero-lead">Fair, consistent speaking assessment for every student.</p>
+          <p className="performance-eyebrow">{speaking ? "Classroom speaking tasks" : "Computer-based performance test"}</p>
+          <h1 id="public-hero-title" tabIndex={-1}>{speaking ? "Use the English you’ve learned." : "SpeakCheck App"}</h1>
+          <p className="performance-hero-lead">{speaking ? "Learn it in class. Practise it together. Then try the speaking task yourself and show what you can do." : "Fair, consistent speaking assessment for every student."}</p>
           <div className="performance-hero-actions">
             <button className="performance-button performance-button-primary" type="button" onClick={onCreateMatch}>
               <BookOpen size={20} aria-hidden="true" />
-              <span>Create a Performance Test</span>
+              <span>{speaking ? "Create a Speaking Task" : "Create a Performance Test"}</span>
               <ArrowRight size={21} aria-hidden="true" />
             </button>
             <button className="performance-button performance-button-secondary" type="button" onClick={() => onJoinGame()}>
@@ -99,11 +150,11 @@ export default function PublicHomepage({
           </p>
         </div>
 
-        <PerformanceFlow />
+        <PerformanceFlow speaking={speaking} />
       </section>
 
-      <section className="performance-shell performance-benefits" aria-label="Assessment benefits">
-        {benefits.map((benefit) => {
+      <section className="performance-shell performance-benefits" aria-label={speaking ? "Speaking task benefits" : "Assessment benefits"}>
+        {(speaking ? speakingBenefits : benefits).map((benefit) => {
           const BenefitIcon = benefit.icon;
           return (
             <article className="performance-benefit-card" key={benefit.title}>
@@ -131,11 +182,11 @@ export default function PublicHomepage({
           </div>
           <div className="performance-entry-content">
             <p className="performance-entry-kicker performance-entry-kicker-teacher">For teachers</p>
-            <h2>Create and manage tests</h2>
+            <h2>{speaking ? "Create and review speaking tasks" : "Create and manage tests"}</h2>
             <ul className="performance-checklist">
-              <li><span><Check size={16} strokeWidth={3} aria-hidden="true" /></span>Choose a task</li>
+              <li><span><Check size={16} strokeWidth={3} aria-hidden="true" /></span>{speaking ? "Create a real communication task" : "Choose a task"}</li>
               <li><span><Check size={16} strokeWidth={3} aria-hidden="true" /></span>Set a rubric</li>
-              <li><span><Check size={16} strokeWidth={3} aria-hidden="true" /></span>Review results</li>
+              <li><span><Check size={16} strokeWidth={3} aria-hidden="true" /></span>{speaking ? "Collect student evidence" : "Review results"}</li>
             </ul>
             <button className="performance-entry-action performance-entry-action-teacher" type="button" onClick={onTeacherLogin}>
               <BookOpen size={21} aria-hidden="true" />
@@ -172,7 +223,7 @@ export default function PublicHomepage({
             </div>
             <button className="performance-entry-action performance-entry-action-student" type="submit">
               <ScanLine size={21} aria-hidden="true" />
-              <span>Join Performance Test</span>
+              <span>{speaking ? "Join speaking task" : "Join Performance Test"}</span>
               <ArrowRight size={21} aria-hidden="true" />
             </button>
           </form>
@@ -190,15 +241,16 @@ export default function PublicHomepage({
   );
 }
 
-function PerformanceFlow() {
+function PerformanceFlow({ speaking }: { speaking: boolean }) {
+  const steps = speaking ? speakingFlowSteps : flowSteps;
   return (
-    <section id="performance-flow" className="performance-flow" aria-label="Three-step speaking assessment flow" tabIndex={-1}>
+      <section id="performance-flow" className="performance-flow" aria-label="Three-step speaking task flow" tabIndex={-1}>
       <div className="performance-flow-heading">
         <h2>A simple 3-step flow</h2>
         <span aria-hidden="true">Small<br />steps<br />Big<br />voices</span>
       </div>
       <div className="performance-flow-stages">
-        {flowSteps.map((step, index) => (
+        {steps.map((step, index) => (
           <div className="performance-flow-stage-wrap" key={step.number}>
             <article className={`performance-flow-stage ${step.className}`}>
               <div className="performance-flow-visual">

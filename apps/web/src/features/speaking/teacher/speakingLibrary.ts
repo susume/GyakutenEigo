@@ -1,5 +1,7 @@
 import {
   DEFAULT_SPEAKING_RUBRIC,
+  recommendedSpeakingSupportSettings,
+  resolveSpeakingSupportSettings,
   SPEAKING_CORE_LIBRARY,
   SpeakingCreateActivityInputSchema,
   type SpeakingActivity
@@ -35,6 +37,8 @@ export const coreFallbackActivities = (): SpeakingActivity[] => SPEAKING_CORE_LI
   ...template,
   teacherId: "speaking-template",
   status: "ready",
+  mode: template.mode ?? "assessment",
+  supportSettings: resolveSpeakingSupportSettings(template.supportSettings ?? recommendedSpeakingSupportSettings("assessment")),
   createdAt: "2026-01-01T00:00:00.000Z",
   updatedAt: "2026-01-01T00:00:00.000Z"
 }));

@@ -3,6 +3,8 @@ import { Prisma, PrismaClient } from "@prisma/client";
 import { SPEAKING_EVALUATION_MAX_ATTEMPTS } from "./speakingEvaluation.js";
 import {
   SPEAKING_LIMITS,
+  recommendedSpeakingSupportSettings,
+  resolveSpeakingSupportSettings,
   speakingOverallScore,
   type SpeakingActivity,
   type SpeakingCreateActivityInput,
@@ -34,6 +36,8 @@ export type SpeakingActivitySnapshot = Pick<
   | "nativeLanguage"
   | "durationSeconds"
   | "identifierMode"
+  | "mode"
+  | "supportSettings"
   | "targetExpressions"
   | "rubric"
   | "scenarioResources"
@@ -200,6 +204,8 @@ export const snapshotActivity = (activity: SpeakingActivity): SpeakingActivitySn
   nativeLanguage: activity.nativeLanguage,
   durationSeconds: activity.durationSeconds,
   identifierMode: activity.identifierMode,
+  mode: activity.mode,
+  supportSettings: { ...resolveSpeakingSupportSettings(activity.supportSettings) },
   targetExpressions: [...activity.targetExpressions],
   rubric: activity.rubric.map((criterion) => ({ ...criterion })),
   ...(activity.scenarioResources ? { scenarioResources: cloneScenarioResources(activity.scenarioResources) } : {}),
@@ -224,6 +230,10 @@ const scenarioResourcesForStorage = (activity: Pick<SpeakingActivity, "scenarioR
 const activityFromSnapshot = (activity: SpeakingActivity, snapshot: SpeakingActivitySnapshot): SpeakingActivity => ({
   ...activity,
   ...snapshot,
+  // Sessions created before modes existed are historical speaking tasks, not
+  // newly edited practice activities. Keep their neutral legacy behavior.
+  mode: snapshot.mode === "practice" || snapshot.mode === "assessment" ? snapshot.mode : "assessment",
+  supportSettings: resolveSpeakingSupportSettings(snapshot.supportSettings),
   targetExpressions: [...snapshot.targetExpressions],
   rubric: snapshot.rubric.map((criterion) => ({ ...criterion })),
   ...(snapshot.scenarioResources ? { scenarioResources: cloneScenarioResources(snapshot.scenarioResources) } : { scenarioResources: undefined }),
@@ -234,6 +244,8 @@ const activityFromSnapshot = (activity: SpeakingActivity, snapshot: SpeakingActi
 
 const cloneActivity = (activity: SpeakingActivity): SpeakingActivity => ({
   ...activity,
+  mode: activity.mode ?? "assessment",
+  supportSettings: { ...resolveSpeakingSupportSettings(activity.supportSettings) },
   targetExpressions: [...activity.targetExpressions],
   rubric: activity.rubric.map((criterion) => ({ ...criterion })),
   ...(activity.scenarioResources ? { scenarioResources: cloneScenarioResources(activity.scenarioResources) } : {}),
@@ -309,7 +321,20 @@ const participantPublic = (participant: StoredSpeakingParticipant): SpeakingPart
   return cloneParticipant(publicParticipant);
 };
 
-const normalizeActivityInput = (input: SpeakingCreateActivityInput, id: string, teacherId: string, now: string): SpeakingActivity => ({
+const normalizeActivityInput = (
+  input: SpeakingCreateActivityInput,
+  id: string,
+  teacherId: string,
+  now: string,
+  fallback?: Pick<SpeakingActivity, "mode" | "supportSettings">
+): SpeakingActivity => {
+  const mode = input.mode ?? fallback?.mode ?? "assessment";
+  const supportSettings = input.supportSettings
+    ? resolveSpeakingSupportSettings(input.supportSettings)
+    : fallback?.supportSettings
+      ? resolveSpeakingSupportSettings(fallback.supportSettings)
+      : recommendedSpeakingSupportSettings(mode);
+  return {
   id,
   teacherId,
   title: input.title.trim().slice(0, SPEAKING_LIMITS.title),
@@ -322,6 +347,8 @@ const normalizeActivityInput = (input: SpeakingCreateActivityInput, id: string, 
   durationSeconds: Math.min(SPEAKING_LIMITS.maxDurationSeconds, Math.max(120, Math.round(input.durationSeconds))),
   status: "ready",
   identifierMode: input.identifierMode,
+  mode,
+  supportSettings,
   targetExpressions: input.targetExpressions.map((expression) => expression.trim().slice(0, SPEAKING_LIMITS.expression)).filter(Boolean).slice(0, SPEAKING_LIMITS.expressions),
   // Persist the complete teacher configuration. Evaluation filters enabled
   // criteria later, while historical session snapshots retain this exact list.
@@ -330,7 +357,8 @@ const normalizeActivityInput = (input: SpeakingCreateActivityInput, id: string, 
   ...(input.context ? { context: cloneSpeakingContext(input.context) } : {}),
   createdAt: now,
   updatedAt: now
-});
+  };
+};
 
 const participantFromInput = (input: {
   id: string;
@@ -385,7 +413,7 @@ export class InMemorySpeakingRepository implements SpeakingRepository {
         const participants = [...this.state.participants.values()].filter((participant) => participant.sessionId === session.id);
         const snapshot = activityFromSnapshot(activity, session.activitySnapshot);
         return {
-          activity: { id: activity.id, title: snapshot.title, scenario: snapshot.scenario, rubric: snapshot.rubric.map((criterion) => ({ ...criterion })) },
+          activity: { id: activity.id, title: snapshot.title, scenario: snapshot.scenario, rubric: snapshot.rubric.map((criterion) => ({ ...criterion })), mode: snapshot.mode, supportSettings: { ...snapshot.supportSettings } },
           session: cloneSession(session),
           setMemberships: historicalSetMemberships(session),
           participantCount: participants.length,
@@ -414,7 +442,7 @@ export class InMemorySpeakingRepository implements SpeakingRepository {
   async updateActivity(teacherId: string, activityId: string, input: SpeakingCreateActivityInput, now: string) {
     const current = this.state.activities.get(activityId);
     if (!current || current.teacherId !== teacherId || current.status === "archived") return undefined;
-    const normalized = normalizeActivityInput(input, activityId, teacherId, now);
+    const normalized = normalizeActivityInput(input, activityId, teacherId, now, current);
     const activity = { ...normalized, status: current.status, createdAt: current.createdAt };
     this.state.activities.set(activityId, activity);
     return cloneActivity(activity);
@@ -832,6 +860,17 @@ const stringArrayFromJson = (value: Prisma.JsonValue): string[] => Array.isArray
 
 const objectFromJson = (value: Prisma.JsonValue): Record<string, unknown> => value && typeof value === "object" && !Array.isArray(value) ? value as Record<string, unknown> : {};
 
+const supportSettingsFromJson = (value: Prisma.JsonValue) => {
+  const source = objectFromJson(value);
+  return resolveSpeakingSupportSettings({
+    ...(typeof source.showTargetExpressions === "boolean" ? { showTargetExpressions: source.showTargetExpressions } : {}),
+    ...(typeof source.showContext === "boolean" ? { showContext: source.showContext } : {}),
+    ...(typeof source.showTranscript === "boolean" ? { showTranscript: source.showTranscript } : {}),
+    ...(typeof source.allowReplay === "boolean" ? { allowReplay: source.allowReplay } : {}),
+    ...(typeof source.allowHelp === "boolean" ? { allowHelp: source.allowHelp } : {})
+  });
+};
+
 const scenarioResourcesFromJson = (value: Prisma.JsonValue): SpeakingScenarioResources | undefined => {
   const source = objectFromJson(value);
   const contextSource = objectFromJson((source.context ?? {}) as Prisma.JsonValue);
@@ -888,6 +927,8 @@ const snapshotFromJson = (value: Prisma.JsonValue, activity: SpeakingActivity): 
     nativeLanguage: source.nativeLanguage === "en" ? "en" : "ja",
     durationSeconds: typeof source.durationSeconds === "number" ? source.durationSeconds : activity.durationSeconds,
     identifierMode: source.identifierMode === "anonymous" || source.identifierMode === "student_number" ? source.identifierMode : "nickname",
+    mode: source.mode === "practice" || source.mode === "assessment" ? source.mode : "assessment",
+    supportSettings: supportSettingsFromJson((source.supportSettings ?? {}) as Prisma.JsonValue),
     targetExpressions: stringArrayFromJson((source.targetExpressions ?? activity.targetExpressions) as Prisma.JsonValue),
     rubric: rubricFromJson((source.rubric ?? activity.rubric) as Prisma.JsonValue),
     ...(scenarioResourcesFromJson((source.scenarioResources ?? {}) as Prisma.JsonValue) ? { scenarioResources: scenarioResourcesFromJson((source.scenarioResources ?? {}) as Prisma.JsonValue) } : {}),
@@ -910,6 +951,8 @@ const toActivity = (row: PrismaActivity): SpeakingActivity => {
     durationSeconds: row.durationSeconds,
     status: row.status === "archived" ? "archived" : row.status === "draft" ? "draft" : "ready",
     identifierMode: row.identifierMode,
+    mode: row.mode === "practice" ? "practice" : "assessment",
+    supportSettings: supportSettingsFromJson(row.supportSettingsJson),
     targetExpressions: stringArrayFromJson(row.targetExpressionsJson),
     rubric: row.rubric.map((criterion) => ({ id: criterion.criterionId, name: criterion.name, description: criterion.description, enabled: criterion.enabled })),
     ...(scenarioResources ? { scenarioResources } : {}),
@@ -1072,7 +1115,7 @@ export class PrismaSpeakingRepository implements SpeakingRepository {
       const setMemberships = historicalSetMemberships(toSession(session));
       const snapshot = snapshotFromJson(session.activitySnapshotJson, toActivity(row));
       return {
-        activity: { id: row.id, title: snapshot.title, scenario: snapshot.scenario, rubric: snapshot.rubric },
+        activity: { id: row.id, title: snapshot.title, scenario: snapshot.scenario, rubric: snapshot.rubric, mode: snapshot.mode, supportSettings: { ...snapshot.supportSettings } },
         session: toSession(session),
         setMemberships,
         participantCount: session.participants.length,
@@ -1108,6 +1151,8 @@ export class PrismaSpeakingRepository implements SpeakingRepository {
         durationSeconds: activity.durationSeconds,
         status: activity.status,
         identifierMode: activity.identifierMode,
+        mode: activity.mode,
+        supportSettingsJson: activity.supportSettings as unknown as Prisma.InputJsonValue,
         targetExpressionsJson: activity.targetExpressions as Prisma.InputJsonValue,
         scenarioResourcesJson: scenarioResourcesForStorage(activity) as Prisma.InputJsonValue,
         rubric: { create: activity.rubric.map((criterion, position) => ({ criterionId: criterion.id, name: criterion.name, description: criterion.description, enabled: criterion.enabled, position })) }
@@ -1118,10 +1163,13 @@ export class PrismaSpeakingRepository implements SpeakingRepository {
   }
 
   async updateActivity(teacherId: string, activityId: string, input: SpeakingCreateActivityInput, now: string) {
-    const normalized = normalizeActivityInput(input, activityId, teacherId, now);
     const row = await this.prisma.$transaction(async (transaction) => {
-      const owned = await transaction.speakingActivity.findFirst({ where: { id: activityId, teacherId }, select: { id: true, status: true, createdAt: true } });
+      const owned = await transaction.speakingActivity.findFirst({ where: { id: activityId, teacherId }, select: { id: true, status: true, mode: true, supportSettingsJson: true } });
       if (!owned || owned.status === "archived") return undefined;
+      const normalized = normalizeActivityInput(input, activityId, teacherId, now, {
+        mode: owned.mode === "practice" ? "practice" : "assessment",
+        supportSettings: supportSettingsFromJson(owned.supportSettingsJson)
+      });
       await transaction.speakingRubric.deleteMany({ where: { activityId } });
       return transaction.speakingActivity.update({
         where: { id: activityId },
@@ -1135,6 +1183,8 @@ export class PrismaSpeakingRepository implements SpeakingRepository {
           nativeLanguage: normalized.nativeLanguage,
           durationSeconds: normalized.durationSeconds,
           identifierMode: normalized.identifierMode,
+          mode: normalized.mode,
+          supportSettingsJson: normalized.supportSettings as unknown as Prisma.InputJsonValue,
           targetExpressionsJson: normalized.targetExpressions as Prisma.InputJsonValue,
           scenarioResourcesJson: scenarioResourcesForStorage(normalized) as Prisma.InputJsonValue,
           rubric: { create: normalized.rubric.map((criterion, position) => ({ criterionId: criterion.id, name: criterion.name, description: criterion.description, enabled: criterion.enabled, position })) }
@@ -1656,7 +1706,7 @@ export const createSpeakingRepository = ({
   state?: InMemorySpeakingState;
 } = {}): SpeakingRepository => {
   if (environment.trim().toLowerCase() === "production" && !prisma) {
-    throw new Error("Speaking Practice requires a durable Prisma database in production. Set DATABASE_URL before starting the server.");
+    throw new Error("Speaking tasks require a durable Prisma database in production. Set DATABASE_URL before starting the server.");
   }
   return prisma ? new PrismaSpeakingRepository(prisma) : new InMemorySpeakingRepository(state);
 };

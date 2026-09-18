@@ -25,6 +25,14 @@ export const SPEAKING_DIFFICULTY_LABELS: Record<SpeakingDifficulty, string> = {
   challenge: "Challenge"
 };
 
+export const SPEAKING_MODES = ["practice", "assessment"] as const;
+export type SpeakingMode = (typeof SPEAKING_MODES)[number];
+
+export const SPEAKING_MODE_LABELS: Record<SpeakingMode, string> = {
+  practice: "Practice",
+  assessment: "Assessment"
+};
+
 export const SPEAKING_NATIVE_LANGUAGES = ["ja", "en"] as const;
 export type SpeakingNativeLanguage = (typeof SPEAKING_NATIVE_LANGUAGES)[number];
 
@@ -129,6 +137,49 @@ export interface SpeakingContext {
   alt?: string;
   type?: SpeakingContextType;
 }
+
+export interface SpeakingSupportSettings {
+  showTargetExpressions: boolean;
+  showContext: boolean;
+  showTranscript: boolean;
+  allowReplay: boolean;
+  allowHelp: boolean;
+}
+
+export const DEFAULT_SPEAKING_PRACTICE_SUPPORT_SETTINGS: SpeakingSupportSettings = {
+  showTargetExpressions: true,
+  showContext: true,
+  showTranscript: true,
+  allowReplay: true,
+  allowHelp: true
+};
+
+export const DEFAULT_SPEAKING_ASSESSMENT_SUPPORT_SETTINGS: SpeakingSupportSettings = {
+  showTargetExpressions: true,
+  showContext: true,
+  showTranscript: false,
+  allowReplay: false,
+  allowHelp: false
+};
+
+/** Legacy activities had every existing support available. Keep that behaviour. */
+export const LEGACY_SPEAKING_SUPPORT_SETTINGS: SpeakingSupportSettings = {
+  ...DEFAULT_SPEAKING_PRACTICE_SUPPORT_SETTINGS
+};
+
+export const recommendedSpeakingSupportSettings = (mode: SpeakingMode): SpeakingSupportSettings => ({
+  ...(mode === "practice"
+    ? DEFAULT_SPEAKING_PRACTICE_SUPPORT_SETTINGS
+    : DEFAULT_SPEAKING_ASSESSMENT_SUPPORT_SETTINGS)
+});
+
+/** Resolve missing/partial settings without hiding support from legacy records. */
+export const resolveSpeakingSupportSettings = (
+  settings?: Partial<SpeakingSupportSettings> | null
+): SpeakingSupportSettings => ({
+  ...LEGACY_SPEAKING_SUPPORT_SETTINGS,
+  ...(settings ?? {})
+});
 
 /**
  * Scenario-owned learner support.  The fields are optional at the activity
@@ -285,6 +336,8 @@ export interface SpeakingActivity {
   durationSeconds: number;
   status: SpeakingActivityStatus;
   identifierMode: SpeakingIdentifierMode;
+  mode: SpeakingMode;
+  supportSettings: SpeakingSupportSettings;
   targetExpressions: string[];
   rubric: SpeakingRubricCriterion[];
   scenarioResources?: SpeakingScenarioResources;
@@ -297,6 +350,10 @@ export interface SpeakingActivity {
 export const speakingContext = (
   activity: Pick<SpeakingActivity, "context" | "scenarioResources"> | undefined
 ): SpeakingContext | undefined => normalizeSpeakingContext(activity?.context ?? activity?.scenarioResources?.context);
+
+export const speakingSupportSettings = (
+  activity: Pick<SpeakingActivity, "supportSettings"> | undefined
+): SpeakingSupportSettings => resolveSpeakingSupportSettings(activity?.supportSettings);
 
 export interface SpeakingParticipant {
   id: string;
@@ -346,7 +403,7 @@ export interface SpeakingSetSummary {
   id: string;
   name: string;
   description: string;
-  /** Optional assessment emphasis shared by tests in this Set. */
+  /** Optional focus shared by tasks in this Set. */
   focus: string;
   activityCount: number;
   lastUsedAt?: string;
@@ -373,7 +430,7 @@ export interface SpeakingLibraryItem {
 }
 
 export interface SpeakingReportSummary {
-  activity: Pick<SpeakingActivity, "id" | "title" | "scenario" | "rubric">;
+  activity: Pick<SpeakingActivity, "id" | "title" | "scenario" | "rubric" | "mode" | "supportSettings">;
   session: SpeakingSession;
   setMemberships: SpeakingSetSummary[];
   participantCount: number;
@@ -413,7 +470,7 @@ export interface SpeakingEvaluation {
 export interface SpeakingParticipantResult {
   participant: SpeakingParticipant;
   session: SpeakingSession;
-  activity: Pick<SpeakingActivity, "id" | "title" | "scenario" | "targetExpressions" | "nativeLanguage" | "rubric" | "scenarioResources" | "context">;
+  activity: Pick<SpeakingActivity, "id" | "title" | "scenario" | "targetExpressions" | "nativeLanguage" | "rubric" | "scenarioResources" | "context" | "mode" | "supportSettings">;
   turns: SpeakingTurn[];
   evaluation?: SpeakingEvaluation;
 }
@@ -428,6 +485,10 @@ export interface SpeakingCreateActivityInput {
   nativeLanguage: SpeakingNativeLanguage;
   durationSeconds: number;
   identifierMode: SpeakingIdentifierMode;
+  /** Optional for older clients; the server resolves Assessment safely. */
+  mode?: SpeakingMode;
+  /** Optional for older clients; the server resolves legacy-compatible support. */
+  supportSettings?: Partial<SpeakingSupportSettings>;
   targetExpressions: string[];
   rubric: SpeakingRubricCriterion[];
   scenarioResources?: SpeakingScenarioResources;
@@ -476,6 +537,14 @@ export const SpeakingRubricCriterionSchema = z.object({
   enabled: z.boolean()
 });
 
+export const SpeakingSupportSettingsSchema = z.object({
+  showTargetExpressions: z.boolean(),
+  showContext: z.boolean(),
+  showTranscript: z.boolean(),
+  allowReplay: z.boolean(),
+  allowHelp: z.boolean()
+});
+
 const SpeakingContextSchema = z.object({
   title: z.string().trim().max(120).optional(),
   description: z.string().trim().max(240).optional(),
@@ -494,6 +563,8 @@ export const SpeakingCreateActivityInputSchema = z.object({
   nativeLanguage: z.enum(SPEAKING_NATIVE_LANGUAGES),
   durationSeconds: z.number().int().min(120).max(SPEAKING_LIMITS.maxDurationSeconds),
   identifierMode: z.enum(SPEAKING_IDENTIFIER_MODES),
+  mode: z.enum(SPEAKING_MODES).optional(),
+  supportSettings: SpeakingSupportSettingsSchema.partial().optional(),
   targetExpressions: z.array(z.string().trim().min(1).max(SPEAKING_LIMITS.expression)).max(SPEAKING_LIMITS.expressions),
   rubric: z.array(SpeakingRubricCriterionSchema).min(1).max(SPEAKING_LIMITS.rubricCriteria),
   context: SpeakingContextSchema.optional(),
@@ -597,6 +668,14 @@ export const speakingOverallScore = (evaluation?: Pick<SpeakingEvaluation, "scor
 export type SpeakingFeedbackCopy = {
   scoredHeadline: string;
   scoredSummary: string;
+  practiceCompleteHeadline: string;
+  practiceCompleteMessage: string;
+  assessmentCompletedHeadline: string;
+  assessmentCompletedMessage: string;
+  assessmentProgressHeadline: string;
+  assessmentProgressMessage: string;
+  assessmentFinishedHeadline: string;
+  assessmentFinishedMessage: string;
   insufficientEvidenceHeadline: string;
   insufficientEvidenceMessage: string;
   insufficientEvidenceReason: string;
@@ -631,8 +710,16 @@ export type SpeakingFeedbackCopy = {
 
 export const speakingFeedbackCopy = (language: SpeakingNativeLanguage): SpeakingFeedbackCopy => language === "en"
   ? {
-    scoredHeadline: "Great work!",
-    scoredSummary: "You kept trying to communicate and move the conversation forward.",
+    scoredHeadline: "You communicated your idea.",
+    scoredSummary: "You kept the conversation moving and used your English to communicate.",
+    practiceCompleteHeadline: "Practice complete",
+    practiceCompleteMessage: "Nice work — you used your English. See what went well and choose one thing to try next time.",
+    assessmentCompletedHeadline: "You did it!",
+    assessmentCompletedMessage: "You completed the speaking task and showed that you could use your English to communicate.",
+    assessmentProgressHeadline: "Good progress",
+    assessmentProgressMessage: "You completed the conversation and showed part of the task. See what worked and what to try next.",
+    assessmentFinishedHeadline: "You finished the speaking task",
+    assessmentFinishedMessage: "Your conversation is saved. See what you did well and one thing to work on next time.",
     insufficientEvidenceHeadline: "Not enough speech to score this attempt.",
     insufficientEvidenceMessage: "There wasn't enough speech to score this attempt. Try saying one short sentence and try again.",
     insufficientEvidenceReason: "Not enough speaking evidence.",
@@ -642,13 +729,13 @@ export const speakingFeedbackCopy = (language: SpeakingNativeLanguage): Speaking
     notScoredDetail: "Not enough speaking evidence.",
     evaluationUnavailable: "Evaluation unavailable",
     evaluationUnavailableMessage: "Your transcript is saved, but the evaluation provider did not return a result. Please ask your teacher to try again.",
-    evaluationPendingHeadline: "Your performance test was submitted successfully.",
-    evaluationPendingMessage: "Your conversation is safely saved. We’re preparing your evaluation. This is taking a little longer than usual, so you do not need to take the test again.",
-    evaluationRetryingMessage: "Your conversation is safely saved. We’re trying the evaluation service again. You do not need to take the test again.",
+    evaluationPendingHeadline: "Your speaking task was submitted successfully.",
+    evaluationPendingMessage: "Your conversation is safely saved. We’re preparing your feedback. This is taking a little longer than usual, so you do not need to do the task again.",
+    evaluationRetryingMessage: "Your conversation is safely saved. We’re preparing your feedback again. You do not need to do the task again.",
     evaluationNeedsAttentionHeadline: "Your conversation is saved",
-    evaluationNeedsAttentionMessage: "Your conversation is safely saved, but the evaluation needs attention from your teacher. You do not need to take the test again.",
-    evaluationDetail: "Evaluation detail",
-    resultHeading: "Your speaking result",
+    evaluationNeedsAttentionMessage: "Your conversation is safely saved, but your teacher needs to check the feedback. You do not need to do the task again.",
+    evaluationDetail: "Speaking evaluation",
+    resultHeading: "Your speaking task",
     whatWentWell: "What You Did Well",
     tryNext: "Try This Next Time",
     usefulEnglish: "Useful English",
@@ -657,7 +744,7 @@ export const speakingFeedbackCopy = (language: SpeakingNativeLanguage): Speaking
     speakingTurns: "speaking turns",
     transcript: "Transcript",
     conversationEvidence: "Conversation evidence",
-    aiLabel: "AI",
+    aiLabel: "Speaking partner",
     studentLabel: "Student",
     helpHint: "Use one short sentence, then ask the other person a question.",
     helpEncouragement: "It's okay to use your own words. Short, slow sentences can still communicate clearly.",
@@ -665,8 +752,16 @@ export const speakingFeedbackCopy = (language: SpeakingNativeLanguage): Speaking
     noUsefulEnglish: "No alternative phrase was needed for this attempt."
   }
   : {
-    scoredHeadline: "よくできました！",
-    scoredSummary: "まちがいを気にしすぎず、会話を続けられました。",
+    scoredHeadline: "自分の考えを伝えられました。",
+    scoredSummary: "英語を使って、会話を続けることができました。",
+    practiceCompleteHeadline: "練習完了！",
+    practiceCompleteMessage: "英語を使って伝えることができました。よくできたことと、次に試したいことを確認してみましょう。",
+    assessmentCompletedHeadline: "課題を達成できました！",
+    assessmentCompletedMessage: "授業で学んだ英語を使って、相手に伝えることができました。",
+    assessmentProgressHeadline: "よい進歩です",
+    assessmentProgressMessage: "会話を最後まで続け、課題の一部を達成できました。うまくいったことと、次に試すことを確認しましょう。",
+    assessmentFinishedHeadline: "スピーキング課題を終えました",
+    assessmentFinishedMessage: "会話の記録は保存されています。よくできたことと、次に取り組むことを確認しましょう。",
     insufficientEvidenceHeadline: "今回は評価できるだけの英語を聞くことができませんでした。",
     insufficientEvidenceMessage: "今回は評価できるだけの英語を聞くことができませんでした。短い文を1つ話して、もう一度チャレンジしてみましょう。",
     insufficientEvidenceReason: "評価できる発話が十分にありません。",
@@ -676,13 +771,13 @@ export const speakingFeedbackCopy = (language: SpeakingNativeLanguage): Speaking
     notScoredDetail: "評価できる発話が十分にありません。",
     evaluationUnavailable: "評価を準備できませんでした",
     evaluationUnavailableMessage: "会話の記録は保存されていますが、評価を準備できませんでした。先生にもう一度試してもらいましょう。",
-    evaluationPendingHeadline: "パフォーマンステストは正常に提出されました。",
-    evaluationPendingMessage: "会話の記録は安全に保存されています。評価を準備しています。通常より少し時間がかかっていますが、もう一度テストを受ける必要はありません。",
-    evaluationRetryingMessage: "会話の記録は安全に保存されています。評価の準備をもう一度試しています。もう一度テストを受ける必要はありません。",
+    evaluationPendingHeadline: "スピーキング課題を提出しました。",
+    evaluationPendingMessage: "会話の記録は安全に保存されています。フィードバックを準備しています。少し時間がかかっていますが、もう一度課題をする必要はありません。",
+    evaluationRetryingMessage: "会話の記録は安全に保存されています。フィードバックの準備をもう一度試しています。もう一度課題をする必要はありません。",
     evaluationNeedsAttentionHeadline: "会話の記録は保存されています",
-    evaluationNeedsAttentionMessage: "会話の記録は安全に保存されていますが、評価の準備に先生の確認が必要です。もう一度テストを受ける必要はありません。",
-    evaluationDetail: "評価の詳細",
-    resultHeading: "今回の結果",
+    evaluationNeedsAttentionMessage: "会話の記録は安全に保存されていますが、フィードバックの準備に先生の確認が必要です。もう一度課題をする必要はありません。",
+    evaluationDetail: "スピーキング評価",
+    resultHeading: "今回のスピーキング課題",
     whatWentWell: "よくできたこと",
     tryNext: "次はこれを試そう",
     usefulEnglish: "役立つ英語",
@@ -691,7 +786,7 @@ export const speakingFeedbackCopy = (language: SpeakingNativeLanguage): Speaking
     speakingTurns: "発話",
     transcript: "会話記録",
     conversationEvidence: "会話の記録",
-    aiLabel: "AI",
+    aiLabel: "スピーキングパートナー",
     studentLabel: "生徒",
     helpHint: "相手の質問に、短い英語で答えてみよう。",
     helpEncouragement: "自分の言葉で大丈夫です。短い文でも、ゆっくりでも伝わります。",

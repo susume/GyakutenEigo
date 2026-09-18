@@ -6,6 +6,8 @@ test("speaking CSV preserves Japanese, commas, quotes, newlines, and custom rubr
   const csv = buildSpeakingCsv([{
     setNames: "Grade 2, Unit 4",
     performanceTest: "Shopping for Clothes",
+    mode: "assessment",
+    supportSettings: { showTargetExpressions: true, showContext: false, showTranscript: false, allowReplay: true, allowHelp: false },
     session: "ABC123",
     date: "2026-09-09",
     student: "佐藤\nAki",
@@ -15,7 +17,8 @@ test("speaking CSV preserves Japanese, commas, quotes, newlines, and custom rubr
     criteria: [{ id: "task", name: "Task achievement", score: 4 }, { id: "custom", name: "Teacher's \"focus\"", score: null }],
     helpCount: 1
   }]);
-  assert.ok(csv.startsWith("\uFEFFSet,Performance Test"));
+  assert.ok(csv.startsWith("\uFEFFSet,Speaking Task,Mode,Target expressions allowed,Context allowed,Transcript allowed,Replay allowed,Help allowed"));
+  assert.ok(csv.includes("assessment,Yes,No,No,Yes,No,ABC123"));
   assert.ok(csv.includes('"Grade 2, Unit 4"'));
   assert.ok(csv.includes('"佐藤\nAki"'));
   assert.ok(csv.includes('"Teacher\'s ""focus"""'));

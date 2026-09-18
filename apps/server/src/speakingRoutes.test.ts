@@ -22,6 +22,7 @@ const activityInput = {
   nativeLanguage: "ja",
   durationSeconds: 120,
   identifierMode: "nickname",
+  mode: "practice",
   targetExpressions: ["I'd like...", "How much is it?"],
   rubric: [
     { id: "communication", name: "Communication", description: "Communicates a clear idea.", enabled: true },
@@ -142,7 +143,7 @@ test("Speaking Practice uses one classroom session for multiple isolated partici
     const unauthenticated = await api("/api/speaking/activities");
     assert.equal(unauthenticated.response.status, 401);
 
-    const created = await api<{ activity: { id: string; joinCode?: string; rubric: Array<{ id: string }> } }>("/api/speaking/activities", {
+    const created = await api<{ activity: { id: string; joinCode?: string; mode: string; supportSettings: { allowHelp: boolean }; rubric: Array<{ id: string }> } }>("/api/speaking/activities", {
       method: "POST",
       teacher: "owner",
       body: activityInput
@@ -150,6 +151,8 @@ test("Speaking Practice uses one classroom session for multiple isolated partici
     assert.equal(created.response.status, 201);
     assert.equal(created.body.activity.joinCode, undefined);
     assert.deepEqual(created.body.activity.rubric.map((criterion) => criterion.id), ["communication", "grammar"]);
+    assert.equal(created.body.activity.mode, "practice");
+    assert.equal(created.body.activity.supportSettings.allowHelp, true);
     const duplicateRubric = await api("/api/speaking/activities", {
       method: "POST",
       teacher: "owner",
@@ -215,6 +218,24 @@ test("Speaking Practice uses one classroom session for multiple isolated partici
     assert.equal(help.response.status, 200);
     assert.equal(help.body.helpCount, 1);
     assert.ok(help.body.english);
+
+    const restrictedActivity = await api<{ activity: { id: string } }>("/api/speaking/activities", {
+      method: "POST",
+      teacher: "owner",
+      body: {
+        ...activityInput,
+        title: "Assessment without live help",
+        mode: "assessment",
+        supportSettings: { showTargetExpressions: true, showContext: true, showTranscript: false, allowReplay: false, allowHelp: false }
+      }
+    });
+    const restrictedLaunch = await api<{ session: { id: string; joinCode: string } }>(`/api/speaking/activities/${restrictedActivity.body.activity.id}/sessions`, { method: "POST", teacher: "owner" });
+    const restrictedJoin = await api<{ token: string; session: { id: string } }>("/api/speaking/join", { method: "POST", body: { code: restrictedLaunch.body.session.joinCode, identifier: "Restricted" } });
+    assert.equal((await api(`/api/speaking/sessions/${restrictedLaunch.body.session.id}/start-session`, { method: "POST", teacher: "owner" })).response.status, 200);
+    assert.equal((await api(`/api/speaking/sessions/${restrictedJoin.body.session.id}/start`, { method: "POST", speakingToken: restrictedJoin.body.token })).response.status, 200);
+    const restrictedHelp = await api<{ code: string; error: string }>(`/api/speaking/sessions/${restrictedJoin.body.session.id}/help`, { method: "POST", speakingToken: restrictedJoin.body.token });
+    assert.equal(restrictedHelp.response.status, 403);
+    assert.equal(restrictedHelp.body.code, "SPEAKING_HELP_DISABLED");
 
     const firstTurn = await api<{ studentTurn: { id: string; participantId: string; usedHelp?: boolean }; aiTurn: { text: string }; latency: { audioBytes: number; requestParsingMs: number; transcriptionMs: number; studentPersistenceMs: number; promptPreparationMs: number; conversationMs: number; aiPersistenceMs: number; totalMs: number } }>(`/api/speaking/sessions/${joined[0]!.body.session.id}/turn`, {
       method: "POST",

@@ -11,6 +11,8 @@ import {
   speakingActiveElapsedMs,
   speakingOverallScore,
   speakingFeedbackCopy,
+  recommendedSpeakingSupportSettings,
+  resolveSpeakingSupportSettings,
   type SpeakingEvaluationJob,
   type SpeakingActivity,
   type SpeakingCreateActivityInput,
@@ -113,7 +115,9 @@ const createState = (): SpeakingRouteState => ({ ...createInMemorySpeakingState(
 
 type TemplateInput = SpeakingCreateActivityInput & { id: string };
 
-const makeTemplate = (input: TemplateInput, now: string): SpeakingActivity => ({
+const makeTemplate = (input: TemplateInput, now: string): SpeakingActivity => {
+  const mode = input.mode ?? "assessment";
+  return {
   id: input.id,
   teacherId: "speaking-template",
   title: input.title,
@@ -126,13 +130,18 @@ const makeTemplate = (input: TemplateInput, now: string): SpeakingActivity => ({
   durationSeconds: input.durationSeconds,
   status: "ready",
   identifierMode: input.identifierMode,
+  mode,
+  supportSettings: input.supportSettings
+    ? resolveSpeakingSupportSettings(input.supportSettings)
+    : recommendedSpeakingSupportSettings(mode),
   targetExpressions: [...input.targetExpressions],
   rubric: input.rubric.map((criterion) => ({ ...criterion })),
   ...(input.scenarioResources ? { scenarioResources: { ...input.scenarioResources, ...(input.scenarioResources.communicationSkills ? { communicationSkills: [...input.scenarioResources.communicationSkills] } : {}), ...(input.scenarioResources.successConditions ? { successConditions: [...input.scenarioResources.successConditions] } : {}), ...(input.scenarioResources.suggestedSteps ? { suggestedSteps: [...input.scenarioResources.suggestedSteps] } : {}), ...(input.scenarioResources.usefulVocabulary ? { usefulVocabulary: [...input.scenarioResources.usefulVocabulary] } : {}), ...(input.scenarioResources.referenceItems ? { referenceItems: input.scenarioResources.referenceItems.map((item) => ({ ...item })) } : {}) } } : {}),
   ...(input.context ? { context: { ...input.context } } : {}),
   createdAt: now,
   updatedAt: now
-});
+  };
+};
 
 const publicParticipant = (participant: SpeakingParticipant) => {
   const { anonymousToken: _anonymousToken, ...safeParticipant } = participant;
@@ -150,6 +159,8 @@ const activitySummary = (activity: SpeakingActivity) => ({
   scenario: activity.scenario,
   targetExpressions: activity.targetExpressions,
   nativeLanguage: activity.nativeLanguage,
+  mode: activity.mode,
+  supportSettings: { ...resolveSpeakingSupportSettings(activity.supportSettings) },
   rubric: activity.rubric,
   ...(activity.scenarioResources ? { scenarioResources: activity.scenarioResources } : {}),
   ...(activity.context ? { context: activity.context } : {})
@@ -190,6 +201,8 @@ const speakingCsvRowsForResults = (items: Awaited<ReturnType<SpeakingRepository[
   return {
     setNames,
     performanceTest: item.activity.title,
+    mode: item.activity.mode,
+    supportSettings: { ...resolveSpeakingSupportSettings(item.activity.supportSettings) },
     session: item.session.joinCode,
     date: speakingTeacherDate(item.session.endedAt ?? item.session.createdAt),
     student: item.participant.displayIdentifier ?? "Anonymous student",
@@ -799,7 +812,7 @@ export const registerSpeakingRoutes = (app: Application, deps: SpeakingRouteDepe
   app.post("/api/speaking/sets/:setId/activities/:activityId", deps.requireTeacher, async (req: AuthedRequest, res) => {
     const set = await repository.addSetActivity(req.user!.id, String(req.params.setId), String(req.params.activityId));
     if (!set) {
-      res.status(404).json({ error: "We couldn’t add that Performance Test to the Set." });
+      res.status(404).json({ error: "We couldn’t add that Speaking Task to the Set." });
       return;
     }
     res.json({ set: { ...set, activities: set.activities.map((item) => ({ ...item, activity: publicActivity(item.activity) })) } });
@@ -831,7 +844,7 @@ export const registerSpeakingRoutes = (app: Application, deps: SpeakingRouteDepe
       return;
     }
     if (parsed.data.rubric.some(unsupportedPronunciationCriterion)) {
-      res.status(400).json({ error: "Pronunciation, accent, and phoneme scoring are not supported by Speaking Practice." });
+      res.status(400).json({ error: "Pronunciation, accent, and phoneme scoring are not supported by speaking tasks." });
       return;
     }
     const activity = await repository.createActivity(req.user!.id, parsed.data, deps.id(), deps.now());
@@ -845,7 +858,7 @@ export const registerSpeakingRoutes = (app: Application, deps: SpeakingRouteDepe
       return;
     }
     if (parsed.data.rubric.some(unsupportedPronunciationCriterion)) {
-      res.status(400).json({ error: "Pronunciation, accent, and phoneme scoring are not supported by Speaking Practice." });
+      res.status(400).json({ error: "Pronunciation, accent, and phoneme scoring are not supported by speaking tasks." });
       return;
     }
     const activity = await repository.updateActivity(req.user!.id, String(req.params.activityId), parsed.data, deps.now());
@@ -870,6 +883,8 @@ export const registerSpeakingRoutes = (app: Application, deps: SpeakingRouteDepe
       nativeLanguage: source.nativeLanguage,
       durationSeconds: source.durationSeconds,
       identifierMode: source.identifierMode,
+      mode: source.mode,
+      supportSettings: { ...resolveSpeakingSupportSettings(source.supportSettings) },
       targetExpressions: [...source.targetExpressions],
       rubric: source.rubric.map((criterion) => ({ ...criterion })),
       ...(source.scenarioResources ? { scenarioResources: source.scenarioResources } : {}),
@@ -882,7 +897,7 @@ export const registerSpeakingRoutes = (app: Application, deps: SpeakingRouteDepe
   app.delete("/api/speaking/activities/:activityId", deps.requireTeacher, async (req: AuthedRequest, res) => {
     const deleted = await repository.archiveActivity(req.user!.id, String(req.params.activityId));
     if (!deleted) {
-      res.status(404).json({ error: "We couldn’t find that Performance Test." });
+      res.status(404).json({ error: "We couldn’t find that Speaking Task." });
       return;
     }
     res.json({ deleted: true, historicalSessionsRemain: true });
@@ -916,7 +931,7 @@ export const registerSpeakingRoutes = (app: Application, deps: SpeakingRouteDepe
     const activity = await requireOwnedActivity(req, res);
     if (!activity) return;
     if (activity.status === "archived") {
-      res.status(409).json({ error: "Archived Performance Tests cannot be launched." });
+      res.status(409).json({ error: "Archived Speaking Tasks cannot be launched." });
       return;
     }
     const setId: unknown = req.body?.setId;
@@ -926,7 +941,7 @@ export const registerSpeakingRoutes = (app: Application, deps: SpeakingRouteDepe
     }
     const set = typeof setId === "string" ? await repository.getSet(req.user!.id, setId) : undefined;
     if (setId !== undefined && (!set || !set.activities.some((item) => item.activity.id === activity.id))) {
-      res.status(404).json({ error: "This Performance Test is not in that Set." });
+      res.status(404).json({ error: "This Speaking Task is not in that Set." });
       return;
     }
     const createdAt = deps.now();
@@ -1424,6 +1439,10 @@ export const registerSpeakingRoutes = (app: Application, deps: SpeakingRouteDepe
       res.status(401).json({ error: "This speaking session is no longer available." });
       return;
     }
+    if (!resolveSpeakingSupportSettings(access.activity.supportSettings).allowHelp) {
+      res.status(403).json({ code: "SPEAKING_HELP_DISABLED", error: "Help is not available for this speaking task." });
+      return;
+    }
     return withTurnLock(access.participant.id, async () => {
       const decision = consumeSpeakingRateLimit(state.requestWindows, `help:${hashSpeakingToken(parseParticipantToken(req) ?? "")}`, 30, 60_000);
       if (!decision.allowed) {
@@ -1462,7 +1481,12 @@ export const registerSpeakingRoutes = (app: Application, deps: SpeakingRouteDepe
           return;
         }
         const updated = await repository.updateParticipant(participant.id, { helpCount: participant.helpCount + 1, helpPending: true });
-        res.json({ ...hint, helpCount: updated?.helpCount ?? participant.helpCount + 1 });
+        const supportSettings = resolveSpeakingSupportSettings(access.activity.supportSettings);
+        res.json({
+          ...hint,
+          ...(supportSettings.showTargetExpressions ? {} : { english: "" }),
+          helpCount: updated?.helpCount ?? participant.helpCount + 1
+        });
       } catch (error) {
         if (error instanceof SpeakingWorkloadError) {
           providerBusyResponse(res, error);
@@ -1526,7 +1550,7 @@ export const registerSpeakingRoutes = (app: Application, deps: SpeakingRouteDepe
     }
     const session = await expireSessionIfNeeded(sessionAccess);
     const items = await repository.listResults(activity.id, sessionId, req.user!.id);
-    res.json({ activity: publicActivity(activity), session: sessionPayload(session), items: await Promise.all(items.map(async (item) => ({ participant: publicParticipant(item.participant), status: item.participant.status, durationSeconds: item.participant.startedAt ? Math.max(0, Math.round(participantActiveElapsedMs(item.participant, session, item.participant.finishedAt ?? session.endedAt ?? deps.now()) / 1_000)) : 0, overallScore: item.overallScore, helpCount: item.participant.helpCount, evaluation: item.evaluation, ...evaluationState(await repository.getEvaluationJob(item.participant.id)) }))) });
+    res.json({ activity: publicActivity(sessionAccess.activity), session: sessionPayload(session), items: await Promise.all(items.map(async (item) => ({ participant: publicParticipant(item.participant), status: item.participant.status, durationSeconds: item.participant.startedAt ? Math.max(0, Math.round(participantActiveElapsedMs(item.participant, session, item.participant.finishedAt ?? session.endedAt ?? deps.now()) / 1_000)) : 0, overallScore: item.overallScore, helpCount: item.participant.helpCount, evaluation: item.evaluation, ...evaluationState(await repository.getEvaluationJob(item.participant.id)) }))) });
   });
 
   app.get("/api/speaking/sessions/:sessionId/results", deps.requireTeacher, async (req: AuthedRequest, res) => {

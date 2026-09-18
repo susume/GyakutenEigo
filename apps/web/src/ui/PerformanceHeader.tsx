@@ -17,10 +17,10 @@ export default function PerformanceHeader({ onNavigate }: PerformanceHeaderProps
 
   return (
     <header className="topbar performance-topbar performance-route-header">
-      <button className="brand-button" type="button" aria-label="GyakutenEigo SpeakCheck App home" onClick={() => go("/speak")}>
+      <button className="brand-button" type="button" aria-label="GyakutenEigo Speaking Tasks home" onClick={() => go("/speak")}>
         <GyakutenEigoBrand />
       </button>
-      <nav className="primary-nav" aria-label="SpeakCheck App navigation" onKeyDown={(event) => {
+      <nav className="primary-nav" aria-label="Speaking Tasks navigation" onKeyDown={(event) => {
         if (event.key === "Escape" && menuOpen) {
           setMenuOpen(false);
           event.currentTarget.querySelector<HTMLButtonElement>(".nav-menu-toggle")?.focus();
@@ -35,11 +35,11 @@ export default function PerformanceHeader({ onNavigate }: PerformanceHeaderProps
         <div id="performance-actions" className="top-actions" data-open={menuOpen ? "true" : "false"}>
           <button className="performance-nav-link is-active" type="button" onClick={() => go("/speak")}>
             <Sparkles size={19} aria-hidden="true" />
-            Practice
+            Speaking tasks
           </button>
           <button className="performance-nav-link" type="button" onClick={() => go("/speak/join")}>
             <ScanLine size={19} aria-hidden="true" />
-            Join activity
+            Join a task
           </button>
           <button className="performance-nav-link" type="button" onClick={() => go("/speak/teacher")}>
             <UserRound size={19} aria-hidden="true" />

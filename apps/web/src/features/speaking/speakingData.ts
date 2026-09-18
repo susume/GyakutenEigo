@@ -1,4 +1,5 @@
 import {
+  DEFAULT_SPEAKING_ASSESSMENT_SUPPORT_SETTINGS,
   DEFAULT_SPEAKING_RUBRIC,
   SPEAKING_LIMITS,
   type SpeakingActivity,
@@ -10,10 +11,12 @@ import {
 const now = () => new Date().toISOString();
 const cloneRubric = () => DEFAULT_SPEAKING_RUBRIC.map((criterion) => ({ ...criterion }));
 
-const template = (input: Omit<SpeakingActivity, "createdAt" | "updatedAt" | "rubric"> & { rubric?: SpeakingActivity["rubric"] }): SpeakingActivity => {
+const template = (input: Omit<SpeakingActivity, "createdAt" | "updatedAt" | "rubric" | "mode" | "supportSettings"> & { rubric?: SpeakingActivity["rubric"]; mode?: SpeakingActivity["mode"]; supportSettings?: SpeakingActivity["supportSettings"] }): SpeakingActivity => {
   const timestamp = now();
   return {
     ...input,
+    mode: input.mode ?? "assessment",
+    supportSettings: input.supportSettings ?? { ...DEFAULT_SPEAKING_ASSESSMENT_SUPPORT_SETTINGS },
     rubric: input.rubric?.map((criterion) => ({ ...criterion })) ?? cloneRubric(),
     createdAt: timestamp,
     updatedAt: timestamp

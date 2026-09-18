@@ -1,6 +1,6 @@
 import assert from "node:assert/strict";
 import test from "node:test";
-import { SpeakingEvaluationSchema, type SpeakingActivity, type SpeakingEvaluation, type SpeakingTurn } from "@quizstrike/shared";
+import { DEFAULT_SPEAKING_ASSESSMENT_SUPPORT_SETTINGS, SpeakingEvaluationSchema, type SpeakingActivity, type SpeakingEvaluation, type SpeakingTurn } from "@quizstrike/shared";
 import { buildSpeakingInteractionMetadata, nextSpeakingEvaluationRetryAt, sanitizeSpeakingEvaluation, speakingGoalRequirements } from "./speakingEvaluation.js";
 import { buildConversationPrompt, buildEvaluationPrompt } from "./speakingPrompts.js";
 
@@ -17,6 +17,8 @@ const activity = {
   durationSeconds: 180,
   status: "ready",
   identifierMode: "nickname",
+  mode: "assessment",
+  supportSettings: { ...DEFAULT_SPEAKING_ASSESSMENT_SUPPORT_SETTINGS },
   targetExpressions: ["I'd like...", "Can I have...?", "How much is it?", "That's all, thank you."],
   scenarioResources: {
     studentGoal: "Order a meal, ask one question, and close the conversation politely.",
@@ -118,9 +120,9 @@ test("fluency and corrections stay cautious when timing or ASR evidence is weak"
 test("prompts include the task goal and independence guardrails", () => {
   const conversation = buildConversationPrompt({ activity, turns: turns.slice(0, 2), latestStudentText: turns[1]!.text });
   assert.match(conversation, /Order a meal, ask one question/u);
-  assert.match(conversation, /performance test/u);
+  assert.match(conversation, /real communication task/u);
   assert.match(conversation, /Do not repeatedly ask/u);
-  assert.match(conversation, /AI context/u);
+  assert.match(conversation, /Partner context/u);
   assert.match(conversation, /Possible complication/u);
   assert.doesNotMatch(conversation, /(?:^|\n)(?:Level|Difficulty):/u);
   const evaluation = buildEvaluationPrompt({ activity, turns, rubric: activity.rubric, setFocus: "Pay attention to follow-up questions.", timingMetadata: { reliableAudioTiming: true, studentAudioDurationMs: 2_210 }, interactionMetadata: buildSpeakingInteractionMetadata(turns) });
