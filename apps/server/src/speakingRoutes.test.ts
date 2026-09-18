@@ -401,7 +401,7 @@ test("transcription retries one transient failure with the same audio and never 
   const state = createSpeakingRouteState();
   const providers = createSpeakingProviders({ NODE_ENV: "test", SPEAKING_MOCK_MODE: "true" });
   let counter = 0;
-  let nowMs = Date.parse("2026-09-13T00:00:00.000Z");
+  const nowMs = Date.parse("2026-09-13T00:00:00.000Z");
   const attemptsByRequest = new Map<string, number>();
   const audioByRequest = new Map<string, Buffer[]>();
   const requireTeacher = (req: Request & { user?: TeacherUser }, res: Response, next: NextFunction) => {

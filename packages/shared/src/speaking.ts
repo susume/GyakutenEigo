@@ -1,4 +1,17 @@
 import { z } from "zod";
+import {
+  SPEAKING_LIBRARY_CATEGORY_IDS,
+  SPEAKING_LIBRARY_COLLECTIONS,
+  type SpeakingLibraryCategoryId,
+  type SpeakingLibraryCollection
+} from "./speakingLibraryRegistry.js";
+
+export {
+  SPEAKING_CATEGORIES,
+  SPEAKING_LIBRARY_CATEGORY_IDS,
+  SPEAKING_LIBRARY_COLLECTIONS
+} from "./speakingLibraryRegistry.js";
+export type { SpeakingCategory, SpeakingLibraryCategoryId, SpeakingLibraryCollection } from "./speakingLibraryRegistry.js";
 
 export const SPEAKING_LEVELS = [
   "beginner",
@@ -41,19 +54,6 @@ export const SPEAKING_NATIVE_LANGUAGE_LABELS: Record<SpeakingNativeLanguage, str
   en: "English"
 };
 
-export const SPEAKING_CATEGORIES = [
-  "Everyday Communication",
-  "Shopping & Services",
-  "Food & Restaurants",
-  "Travel & Transportation",
-  "School & Social Life",
-  "Help & Problem Solving",
-  "Opinions & Decisions",
-  "Japan & Cultural Exchange"
-] as const;
-
-export type SpeakingCategory = (typeof SPEAKING_CATEGORIES)[number];
-
 export const SPEAKING_COMMUNICATION_SKILLS = [
   "Asking questions",
   "Sharing information",
@@ -68,8 +68,18 @@ export const SPEAKING_COMMUNICATION_SKILLS = [
   "Giving opinions",
   "Negotiating",
   "Problem solving",
-  "Follow-up questions"
+  "Listening",
+  "Follow-up questions",
+  "Welcoming",
+  "Confirming information",
+  "Scheduling",
+  "Handling concerns",
+  "Giving directions",
+  "Taking orders",
+  "Explaining features"
 ] as const;
+
+export type SpeakingCommunicationSkill = (typeof SPEAKING_COMMUNICATION_SKILLS)[number];
 
 export const SPEAKING_IDENTIFIER_MODES = ["anonymous", "nickname", "student_number"] as const;
 export type SpeakingIdentifierMode = (typeof SPEAKING_IDENTIFIER_MODES)[number];
@@ -191,6 +201,9 @@ export const resolveSpeakingSupportSettings = (
 export interface SpeakingScenarioResources {
   teacherFocus?: string;
   /** Teacher-facing organization metadata. It is optional for legacy records. */
+  libraryCollection?: SpeakingLibraryCollection;
+  /** Stable registry id; category remains the backwards-compatible display label. */
+  categoryId?: SpeakingLibraryCategoryId;
   category?: string;
   communicationSkills?: string[];
   aiContext?: string;
@@ -211,6 +224,8 @@ export interface SpeakingScenarioResources {
 
 export type SpeakingResolvedScenarioResources = {
   teacherFocus?: string;
+  libraryCollection?: SpeakingLibraryCollection;
+  categoryId?: SpeakingLibraryCategoryId;
   category?: string;
   communicationSkills: string[];
   aiContext?: string;
@@ -275,6 +290,8 @@ export const speakingScenarioResources = (
   resources?: SpeakingScenarioResources
 ): SpeakingResolvedScenarioResources => ({
   ...(resources?.teacherFocus?.trim() ? { teacherFocus: resources.teacherFocus.trim().slice(0, 500) } : {}),
+  ...(resources?.libraryCollection && SPEAKING_LIBRARY_COLLECTIONS.includes(resources.libraryCollection) ? { libraryCollection: resources.libraryCollection } : {}),
+  ...(resources?.categoryId && SPEAKING_LIBRARY_CATEGORY_IDS.includes(resources.categoryId) ? { categoryId: resources.categoryId } : {}),
   ...(resources?.category?.trim() ? { category: resources.category.trim().slice(0, 80) } : {}),
   communicationSkills: (resources?.communicationSkills ?? [])
     .map((skill) => skill.trim().slice(0, 80)).filter(Boolean).slice(0, 14),
@@ -575,6 +592,8 @@ export const SpeakingCreateActivityInputSchema = z.object({
   context: SpeakingContextSchema.optional(),
   scenarioResources: z.object({
     teacherFocus: z.string().trim().max(500).optional(),
+    libraryCollection: z.enum(SPEAKING_LIBRARY_COLLECTIONS).optional(),
+    categoryId: z.enum(SPEAKING_LIBRARY_CATEGORY_IDS).optional(),
     category: z.string().trim().min(1).max(80).optional(),
     communicationSkills: z.array(z.string().trim().min(1).max(80)).max(14).optional(),
     aiContext: z.string().trim().min(1).max(500).optional(),

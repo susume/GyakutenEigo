@@ -40,6 +40,9 @@ import {
   SPEAKING_NATIVE_LANGUAGE_LABELS,
   SPEAKING_NATIVE_LANGUAGES,
   SPEAKING_MODES,
+  SPEAKING_LIBRARY_COLLECTION_DEFINITIONS,
+  SPEAKING_LIBRARY_CATEGORY_DEFINITIONS,
+  SPEAKING_LIBRARY_COLLECTION_LABELS,
   speakingScenarioResources,
   type SpeakingActivity,
   type SpeakingCreateActivityInput,
@@ -56,6 +59,8 @@ import {
   type SpeakingMode,
   type SpeakingSupportSettings,
   type SpeakingTurn,
+  type SpeakingLibraryCollection,
+  type SpeakingLibraryCategoryId,
 } from "@quizstrike/shared";
 import { ApiError, speakingApi } from "../../../api/client";
 import { buildTeacherSpeakingPath } from "../../../navigation";
@@ -287,12 +292,19 @@ export function SpeakingTeacherWorkspace({
 }
 
 type DashboardTab = "tests" | "core";
+type CoreLibraryView =
+  | { kind: "collections" }
+  | { kind: "categories"; collectionId: SpeakingLibraryCollection }
+  | { kind: "tasks"; collectionId: SpeakingLibraryCollection; categoryId: SpeakingLibraryCategoryId };
 
 const speakingCategory = (activity: Pick<SpeakingActivity, "scenarioResources">) =>
   speakingScenarioResources(activity.scenarioResources).category ?? "Everyday Communication";
 
 const speakingSkills = (activity: Pick<SpeakingActivity, "scenarioResources">) =>
   speakingScenarioResources(activity.scenarioResources).communicationSkills;
+
+const speakingCollection = (activity: Pick<SpeakingActivity, "scenarioResources">): SpeakingLibraryCollection =>
+  speakingScenarioResources(activity.scenarioResources).libraryCollection ?? "school-english";
 
 const speakingMinutes = (seconds: number) => `${Math.max(1, Math.round(seconds / 60))} min`;
 
@@ -308,6 +320,7 @@ function SpeakingTeacherDashboard({ navigate, initialTab = "tests" }: { navigate
   const [skill, setSkill] = useState("all");
   const [source, setSource] = useState("all");
   const [sort, setSort] = useState("recent");
+  const [coreView, setCoreView] = useState<CoreLibraryView>({ kind: "collections" });
   const [previewTemplate, setPreviewTemplate] = useState<SpeakingActivity | null>(null);
   const [workingTemplateId, setWorkingTemplateId] = useState("");
 
@@ -384,8 +397,30 @@ function SpeakingTeacherDashboard({ navigate, initialTab = "tests" }: { navigate
   const lastCoreUse = (templateId: string) => Math.max(0, ...library
     .filter((item) => item.activity.scenarioResources?.sourceTemplateId === templateId)
     .map((item) => Date.parse(item.lastSessionAt ?? "") || 0));
+  const coreScopeCollection = coreView.kind === "collections" ? undefined : coreView.collectionId;
+  const coreScopeCategory = coreView.kind === "tasks" ? coreView.categoryId : undefined;
+  const matchesCoreMetadata = (activity: SpeakingActivity) => {
+    const resources = speakingScenarioResources(activity.scenarioResources);
+    const haystack = [
+      activity.title,
+      activity.scenario,
+      activity.aiRole,
+      activity.studentRole,
+      resources.libraryCollection ?? "",
+      resources.category ?? "",
+      resources.communicationSkills.join(" "),
+      resources.studentGoal,
+      resources.aiContext ?? "",
+      resources.usefulVocabulary.join(" "),
+      activity.targetExpressions.join(" ")
+    ].join(" ").toLocaleLowerCase();
+    return (!query || haystack.includes(query))
+      && (!coreScopeCollection || speakingCollection(activity) === coreScopeCollection)
+      && (!coreScopeCategory || resources.categoryId === coreScopeCategory)
+      && (skill === "all" || resources.communicationSkills.includes(skill));
+  };
   const visibleCore = [...coreLibrary]
-    .filter(matchesMetadata)
+    .filter(matchesCoreMetadata)
     .sort((left, right) => sort === "az"
       ? left.title.localeCompare(right.title)
       : sort === "za"
@@ -435,7 +470,18 @@ function SpeakingTeacherDashboard({ navigate, initialTab = "tests" }: { navigate
     setCategory("all");
     setSkill("all");
     setSource("all");
+    setCoreView({ kind: "collections" });
   };
+
+  const showCoreTaskResults = coreView.kind === "tasks" || Boolean(query) || skill !== "all";
+  const currentCollection = coreView.kind === "collections"
+    ? undefined
+    : SPEAKING_LIBRARY_COLLECTION_DEFINITIONS.find((collection) => collection.id === coreView.collectionId);
+  const currentCategory = coreView.kind === "tasks"
+    ? SPEAKING_LIBRARY_CATEGORY_DEFINITIONS.find((categoryDefinition) => categoryDefinition.id === coreView.categoryId)
+    : undefined;
+  const collectionCount = (collectionId: SpeakingLibraryCollection) => coreLibrary.filter((activity) => speakingCollection(activity) === collectionId).length;
+  const categoryCount = (categoryId: SpeakingLibraryCategoryId) => coreLibrary.filter((activity) => speakingScenarioResources(activity.scenarioResources).categoryId === categoryId).length;
 
   if (loading) return <TeacherLoading />;
   return (
@@ -474,9 +520,27 @@ function SpeakingTeacherDashboard({ navigate, initialTab = "tests" }: { navigate
             </>
           ) : (
             <section className="speaking-core-library" aria-labelledby="core-library-heading">
-              <div className="speaking-section-title speaking-library-section-heading"><div><span className="speaking-card-kicker">Built-in scenarios</span><h2 id="core-library-heading">Core Library</h2><p>30 complete, editable conversations for real-world junior-high English.</p></div><span className="speaking-core-count">{visibleCore.length} shown</span></div>
-              <SpeakingLibraryToolbar search={search} setSearch={setSearch} category={category} setCategory={setCategory} skill={skill} setSkill={setSkill} source="built-in" setSource={() => undefined} sort={sort} setSort={setSort} clearFilters={clearFilters} coreOnly />
-              {visibleCore.length ? <div className="speaking-core-grid">{visibleCore.map((template) => <SpeakingCoreCard key={template.id} template={template} working={workingTemplateId === template.id} onPreview={() => setPreviewTemplate(template)} onUse={() => void addCoreTemplate(template)} onCustomize={() => customizeTemplate(template)} />)}</div> : <SpeakingNoMatches onClear={clearFilters} />}
+              {showCoreTaskResults ? (
+                <>
+                  <SpeakingCoreBreadcrumbs view={coreView} onNavigate={setCoreView} />
+                  <div className="speaking-section-title speaking-library-section-heading"><div><span className="speaking-card-kicker">{currentCategory?.name ?? currentCollection?.name ?? "Core Library"}</span><h2 id="core-library-heading">{query ? "Search results" : "Speaking Tasks"}</h2><p>{query ? `Results across ${currentCategory?.name ?? currentCollection?.name ?? "the Core Library"}.` : currentCategory?.description ?? "Choose a ready-made speaking task to preview or adapt."}</p></div><span className="speaking-core-count">{visibleCore.length} shown</span></div>
+                  <SpeakingLibraryToolbar search={search} setSearch={setSearch} category={category} setCategory={setCategory} skill={skill} setSkill={setSkill} source="built-in" setSource={() => undefined} sort={sort} setSort={setSort} clearFilters={clearFilters} coreOnly showCategory={false} />
+                  {visibleCore.length ? <div className="speaking-core-grid">{visibleCore.map((template) => <SpeakingCoreCard key={template.id} template={template} showHierarchy={coreView.kind !== "tasks"} working={workingTemplateId === template.id} onPreview={() => setPreviewTemplate(template)} onUse={() => void addCoreTemplate(template)} onCustomize={() => customizeTemplate(template)} />)}</div> : <SpeakingNoMatches onClear={clearFilters} />}
+                </>
+              ) : coreView.kind === "collections" ? (
+                <>
+                  <div className="speaking-section-title speaking-library-section-heading"><div><span className="speaking-card-kicker">Built-in scenarios</span><h2 id="core-library-heading">Core Library</h2><p>Ready-made speaking tasks for school and workplace English.</p></div><span className="speaking-core-count">{coreLibrary.length} total</span></div>
+                  <SpeakingLibraryToolbar search={search} setSearch={setSearch} category={category} setCategory={setCategory} skill={skill} setSkill={setSkill} source="built-in" setSource={() => undefined} sort={sort} setSort={setSort} clearFilters={clearFilters} coreOnly showCategory={false} />
+                  <div className="speaking-collection-grid">{SPEAKING_LIBRARY_COLLECTION_DEFINITIONS.map((collection) => <SpeakingCollectionCard key={collection.id} collection={collection} count={collectionCount(collection.id)} onOpen={() => setCoreView({ kind: "categories", collectionId: collection.id })} />)}</div>
+                </>
+              ) : (
+                <>
+                  <SpeakingCoreBreadcrumbs view={coreView} onNavigate={setCoreView} />
+                  <div className="speaking-section-title speaking-library-section-heading"><div><span className="speaking-card-kicker">Collection</span><h2 id="core-library-heading">{currentCollection?.name}</h2><p>{currentCollection?.description}</p></div><span className="speaking-core-count">{currentCollection ? collectionCount(currentCollection.id) : 0} tasks</span></div>
+                  <SpeakingLibraryToolbar search={search} setSearch={setSearch} category={category} setCategory={setCategory} skill={skill} setSkill={setSkill} source="built-in" setSource={() => undefined} sort={sort} setSort={setSort} clearFilters={clearFilters} coreOnly showCategory={false} />
+                  <div className="speaking-category-grid">{currentCollection?.categories.map((categoryDefinition) => <SpeakingCategoryCard key={categoryDefinition.id} category={categoryDefinition} count={categoryCount(categoryDefinition.id)} onOpen={() => setCoreView({ kind: "tasks", collectionId: categoryDefinition.collectionId, categoryId: categoryDefinition.id })} />)}</div>
+                </>
+              )}
             </section>
           )}
         </section>
@@ -498,7 +562,8 @@ function SpeakingLibraryToolbar({
   sort,
   setSort,
   clearFilters,
-  coreOnly = false
+  coreOnly = false,
+  showCategory = true
 }: {
   search: string;
   setSearch: (value: string) => void;
@@ -512,10 +577,11 @@ function SpeakingLibraryToolbar({
   setSort: (value: string) => void;
   clearFilters: () => void;
   coreOnly?: boolean;
+  showCategory?: boolean;
 }) {
   return <div className="speaking-library-toolbar speaking-dashboard-toolbar">
     <label className="speaking-task-search"><span className="sr-only">Search scenarios</span><input aria-label="Search scenarios" value={search} onChange={(event) => setSearch(event.target.value)} placeholder={coreOnly ? "Search scenarios" : "Search tasks, roles or scenarios"} /></label>
-    <label><span className="sr-only">Filter by category</span><select aria-label="Filter by category" value={category} onChange={(event) => setCategory(event.target.value)}><option value="all">All categories</option>{SPEAKING_CATEGORIES.map((item) => <option key={item} value={item}>{item}</option>)}</select></label>
+    {showCategory && <label><span className="sr-only">Filter by category</span><select aria-label="Filter by category" value={category} onChange={(event) => setCategory(event.target.value)}><option value="all">All categories</option>{SPEAKING_CATEGORIES.map((item) => <option key={item} value={item}>{item}</option>)}</select></label>}
     <label><span className="sr-only">Filter by communication skill</span><select aria-label="Filter by communication skill" value={skill} onChange={(event) => setSkill(event.target.value)}><option value="all">All skills</option>{SPEAKING_COMMUNICATION_SKILLS.map((item) => <option key={item} value={item}>{item}</option>)}</select></label>
     {!coreOnly && <label><span className="sr-only">Filter by source</span><select aria-label="Filter by source" value={source} onChange={(event) => setSource(event.target.value)}><option value="all">Built-in & My versions</option><option value="built-in">Built-in</option><option value="mine">My versions</option></select></label>}
     <label><span className="sr-only">Sort Speaking Tasks</span><select aria-label="Sort Speaking Tasks" value={sort} onChange={(event) => setSort(event.target.value)}><option value="recent">Recently used</option><option value="az">A–Z</option><option value="za">Z–A</option></select></label>
@@ -527,11 +593,39 @@ function SpeakingNoMatches({ onClear }: { onClear: () => void }) {
   return <div className="speaking-empty-card speaking-no-matches"><h2>No scenarios match</h2><p>Try a different search or filter.</p><button type="button" className="speaking-outline-button" onClick={onClear}>Clear filters</button></div>;
 }
 
-function SpeakingCoreCard({ template, working, onPreview, onUse, onCustomize }: { template: SpeakingActivity; working: boolean; onPreview: () => void; onUse: () => void; onCustomize: () => void }) {
+function SpeakingCoreBreadcrumbs({ view, onNavigate }: { view: CoreLibraryView; onNavigate: (view: CoreLibraryView) => void }) {
+  const collection = view.kind === "collections" ? undefined : SPEAKING_LIBRARY_COLLECTION_DEFINITIONS.find((item) => item.id === view.collectionId);
+  const category = view.kind === "tasks" ? SPEAKING_LIBRARY_CATEGORY_DEFINITIONS.find((item) => item.id === view.categoryId) : undefined;
+  return <nav className="speaking-library-breadcrumbs" aria-label="Core Library location">
+    <button type="button" onClick={() => onNavigate({ kind: "collections" })}>Core Library</button>
+    {collection && <><ChevronRight size={14} aria-hidden="true" /><button type="button" onClick={() => onNavigate({ kind: "categories", collectionId: collection.id })}>{collection.name}</button></>}
+    {category && <><ChevronRight size={14} aria-hidden="true" /><span aria-current="page">{category.name}</span></>}
+  </nav>;
+}
+
+function SpeakingCollectionCard({ collection, count, onOpen }: { collection: (typeof SPEAKING_LIBRARY_COLLECTION_DEFINITIONS)[number]; count: number; onOpen: () => void }) {
+  return <button type="button" className="speaking-collection-card" onClick={onOpen}>
+    <span className="speaking-collection-card-top"><span className="speaking-collection-card-kicker">Collection</span><strong>{count}</strong></span>
+    <span className="speaking-collection-card-title">{collection.name}</span>
+    <span className="speaking-collection-card-description">{collection.description}</span>
+    <span className="speaking-collection-card-audience">{collection.audience}</span>
+    <span className="speaking-collection-card-action">Explore collection <ArrowRight size={16} aria-hidden="true" /></span>
+  </button>;
+}
+
+function SpeakingCategoryCard({ category, count, onOpen }: { category: (typeof SPEAKING_LIBRARY_CATEGORY_DEFINITIONS)[number]; count: number; onOpen: () => void }) {
+  return <button type="button" className="speaking-category-card" onClick={onOpen}>
+    <span className="speaking-category-card-top"><span>{category.name}</span><strong>{count}</strong></span>
+    <span className="speaking-category-card-description">{category.description}</span>
+    <span className="speaking-category-card-action">View tasks <ArrowRight size={16} aria-hidden="true" /></span>
+  </button>;
+}
+
+function SpeakingCoreCard({ template, showHierarchy = false, working, onPreview, onUse, onCustomize }: { template: SpeakingActivity; showHierarchy?: boolean; working: boolean; onPreview: () => void; onUse: () => void; onCustomize: () => void }) {
   const resources = speakingScenarioResources(template.scenarioResources);
   return <article className="speaking-core-card">
-    <div className="speaking-core-card-image"><img src={resources.imageSrc ?? "/assets/speaking/scenario-introduction.webp"} alt={resources.imageAlt ?? ""} loading="lazy" /><span>Built-in</span></div>
-    <div className="speaking-core-card-body"><div className="speaking-core-card-heading"><div><span className="speaking-category-chip">{speakingCategory(template)}</span><h3>{template.title}</h3></div><span className="speaking-core-duration"><Clock3 size={14} aria-hidden="true" /> {speakingMinutes(template.durationSeconds)}</span></div><p>{template.scenario}</p><div className="speaking-skill-tags" aria-label={`Communication skills for ${template.title}`}>{speakingSkills(template).slice(0, 4).map((item) => <span key={item}>{item}</span>)}</div><div className="speaking-core-card-footer"><span><UserRound size={14} aria-hidden="true" /> Speaking partner: {template.aiRole}</span><div><button type="button" className="speaking-outline-button" onClick={onPreview}>Preview</button><button type="button" className="speaking-text-button" onClick={onCustomize}>Customize</button><button type="button" className="speaking-row-launch" onClick={onUse} disabled={working}>{working ? "Adding…" : "Use as-is"}</button></div></div></div>
+    <div className="speaking-core-card-image">{resources.imageSrc ? <img src={resources.imageSrc} alt={resources.imageAlt ?? ""} loading="lazy" /> : <span className="speaking-core-card-placeholder" aria-hidden="true"><ClipboardCheck size={28} /></span>}<span>Built-in</span></div>
+    <div className="speaking-core-card-body"><div className="speaking-core-card-heading"><div>{showHierarchy && <span className="speaking-card-hierarchy">{SPEAKING_LIBRARY_COLLECTION_LABELS[resources.libraryCollection ?? "school-english"]} / {speakingCategory(template)}</span>}<span className="speaking-category-chip">{speakingCategory(template)}</span><h3>{template.title}</h3></div><span className="speaking-core-duration"><Clock3 size={14} aria-hidden="true" /> {speakingMinutes(template.durationSeconds)}</span></div><p>{template.scenario}</p><div className="speaking-skill-tags" aria-label={`Communication skills for ${template.title}`}>{speakingSkills(template).slice(0, 4).map((item) => <span key={item}>{item}</span>)}</div><div className="speaking-core-card-footer"><span><UserRound size={14} aria-hidden="true" /> Speaking partner: {template.aiRole}</span><div><button type="button" className="speaking-outline-button" onClick={onPreview}>Preview</button><button type="button" className="speaking-text-button" onClick={onCustomize}>Customize</button><button type="button" className="speaking-row-launch" onClick={onUse} disabled={working}>{working ? "Adding…" : "Use as-is"}</button></div></div></div>
   </article>;
 }
 
@@ -566,7 +660,7 @@ function SpeakingCorePreview({ template, working, onClose, onUse, onCustomize }:
     };
   }, []);
   const resources = speakingScenarioResources(template.scenarioResources);
-  return <div className="speaking-preview-backdrop" role="presentation" onMouseDown={(event) => { if (event.currentTarget === event.target) onClose(); }}><section ref={previewRef} tabIndex={-1} className="speaking-core-preview" role="dialog" aria-modal="true" aria-labelledby="speaking-preview-title"><button type="button" className="speaking-preview-close" onClick={onClose} aria-label="Close preview"><X size={19} aria-hidden="true" /></button><div className="speaking-preview-top"><img src={resources.imageSrc ?? "/assets/speaking/scenario-introduction.webp"} alt={resources.imageAlt ?? ""} /><div><span className="speaking-category-chip">{speakingCategory(template)}</span><span className={`speaking-mode-badge speaking-mode-${template.mode}`}>{speakingModeLabel(template.mode)}</span><h2 id="speaking-preview-title">{template.title}</h2><p>{template.scenario}</p></div></div><div className="speaking-preview-grid"><div><span className="speaking-preview-label">Student goal</span><p>{resources.studentGoal}</p></div><div><span className="speaking-preview-label">Speaking partner context</span><p>{resources.aiContext ?? `Act as ${template.aiRole} in this situation.`}</p></div><div><span className="speaking-preview-label">Possible complication</span><p>{resources.possibleComplication ?? "Respond naturally if the student takes a different direction."}</p></div><div><span className="speaking-preview-label">Success conditions</span><ul>{(resources.successConditions.length ? resources.successConditions : ["Communicate the main idea.", "Respond and keep the conversation moving."]).map((item) => <li key={item}>{item}</li>)}</ul></div></div><div className="speaking-preview-skills"><span className="speaking-preview-label">Speaking partner role</span><p>{template.aiRole}</p><span className="speaking-preview-label">What students show</span><ul>{template.rubric.filter((criterion) => criterion.enabled).map((criterion) => <li key={criterion.id}><strong>{criterion.name}</strong>: {criterion.description}</li>)}</ul></div><div className="speaking-preview-skills"><span className="speaking-preview-label">Communication skills</span><div className="speaking-skill-tags">{speakingSkills(template).map((item) => <span key={item}>{item}</span>)}</div></div><div className="speaking-preview-actions"><button type="button" className="speaking-outline-button" onClick={onClose}>Close</button><button type="button" className="speaking-text-button" onClick={onCustomize}>Customize</button><button type="button" className="speaking-primary-button" onClick={onUse} disabled={working}>{working ? "Adding…" : "Use as-is"}</button></div></section></div>;
+  return <div className="speaking-preview-backdrop" role="presentation" onMouseDown={(event) => { if (event.currentTarget === event.target) onClose(); }}><section ref={previewRef} tabIndex={-1} className="speaking-core-preview" role="dialog" aria-modal="true" aria-labelledby="speaking-preview-title"><button type="button" className="speaking-preview-close" onClick={onClose} aria-label="Close preview"><X size={19} aria-hidden="true" /></button><div className="speaking-preview-top">{resources.imageSrc ? <img src={resources.imageSrc} alt={resources.imageAlt ?? ""} /> : <div className="speaking-preview-placeholder" aria-hidden="true"><ClipboardCheck size={34} /></div>}<div><span className="speaking-card-hierarchy">{SPEAKING_LIBRARY_COLLECTION_LABELS[resources.libraryCollection ?? "school-english"]} / {speakingCategory(template)}</span><span className={`speaking-mode-badge speaking-mode-${template.mode}`}>{speakingModeLabel(template.mode)}</span><h2 id="speaking-preview-title">{template.title}</h2><p>{template.scenario}</p></div></div><div className="speaking-preview-grid"><div><span className="speaking-preview-label">Student goal</span><p>{resources.studentGoal}</p></div><div><span className="speaking-preview-label">Learner role</span><p>{template.studentRole}</p></div><div><span className="speaking-preview-label">Speaking partner context</span><p>{resources.aiContext ?? `Act as ${template.aiRole} in this situation.`}</p></div><div><span className="speaking-preview-label">Possible complication</span><p>{resources.possibleComplication ?? "Respond naturally if the student takes a different direction."}</p></div><div><span className="speaking-preview-label">Duration</span><p>{speakingMinutes(template.durationSeconds)} · Assessment by default</p></div><div><span className="speaking-preview-label">Target English</span><ul>{template.targetExpressions.map((expression) => <li key={expression}>{expression}</li>)}</ul></div><div><span className="speaking-preview-label">Success conditions</span><ul>{(resources.successConditions.length ? resources.successConditions : ["Communicate the main idea.", "Respond and keep the conversation moving."]).map((item) => <li key={item}>{item}</li>)}</ul></div></div><div className="speaking-preview-skills"><span className="speaking-preview-label">Speaking partner role</span><p>{template.aiRole}</p><span className="speaking-preview-label">Assessment criteria</span><ul>{template.rubric.filter((criterion) => criterion.enabled).map((criterion) => <li key={criterion.id}><strong>{criterion.name}</strong>: {criterion.description}</li>)}</ul></div><div className="speaking-preview-skills"><span className="speaking-preview-label">Communication skills</span><div className="speaking-skill-tags">{speakingSkills(template).map((item) => <span key={item}>{item}</span>)}</div></div><div className="speaking-preview-actions"><button type="button" className="speaking-outline-button" onClick={onClose}>Close</button><button type="button" className="speaking-text-button" onClick={onCustomize}>Customize</button><button type="button" className="speaking-primary-button" onClick={onUse} disabled={working}>{working ? "Adding…" : "Use as-is"}</button></div></section></div>;
 }
 
 function TeacherLoading() {
@@ -591,13 +685,19 @@ function TeacherActivityRow({
   onRefresh: () => Promise<void>;
 }) {
   const activity = item.activity;
-  const imageSrc = activity.scenarioResources?.imageSrc ?? "/assets/speaking/scenario-introduction.webp";
   const duplicate = async () => { try { await speakingApi.duplicateActivity(activity.id); await onRefresh(); } catch (error) { window.alert(getErrorMessage(error, "The Speaking Task could not be duplicated.")); } };
   const remove = async () => { if (!window.confirm(`Delete “${activity.title}”?\n\nExisting historical reports will remain available.`)) return; try { await speakingApi.deleteActivity(activity.id); await onRefresh(); } catch (error) { window.alert(getErrorMessage(error, "The Speaking Task could not be deleted.")); } };
   const addToSet = async (setId: string) => { if (!setId) return; try { await speakingApi.addToSet(setId, activity.id); await onRefresh(); } catch (error) { window.alert(getErrorMessage(error, "The Speaking Task could not be added to that Set.")); } };
   const resources = speakingScenarioResources(activity.scenarioResources);
   const isBuiltIn = resources.builtIn === true || activity.teacherId === "speaking-template";
-  return <article className="speaking-activity-row"><img className="speaking-activity-thumbnail" src={imageSrc} alt="" loading="lazy" /><div className="speaking-activity-row-main"><div><strong>{activity.title}</strong><span>{activity.studentRole} · {speakingCategory(activity)}</span></div><p>{activity.scenario}</p><small>{speakingMinutes(activity.durationSeconds)} · {activity.rubric.filter((criterion) => criterion.enabled).length} criteria · {item.sessionCount} session{item.sessionCount === 1 ? "" : "s"}{item.lastSessionAt ? ` · Last used ${new Date(item.lastSessionAt).toLocaleDateString()}` : ""}</small><div className="speaking-row-context-tags"><span className="speaking-mode-badge speaking-mode-badge-compact">{speakingModeLabel(activity.mode)}</span><span>{isBuiltIn ? "Built-in" : "My version"}</span>{speakingSkills(activity).slice(0, 2).map((item) => <span key={item}>{item}</span>)}{item.setMemberships.map((set) => <span key={set.id}>{set.name}</span>)}</div></div><div className="speaking-activity-row-meta">{item.activeSession ? <span className={`speaking-status-pill speaking-status-${item.activeSession.status}`}>{item.activeSession.status === "ready" ? "Students joining" : item.activeSession.status === "paused" ? "Paused" : "Live"}</span> : <span className="speaking-status-pill speaking-status-ready">Ready to launch</span>}<span>Speaking partner · {activity.aiRole}</span></div><div className="speaking-activity-row-actions"><button type="button" className="speaking-row-launch" onClick={() => navigate(`/speak/teacher/activity/${activity.id}`)}>{item.activeSession ? "Open" : "Launch"}</button><button type="button" onClick={() => navigate(`/speak/teacher/activity/${activity.id}`)} aria-label={`Open ${activity.title}`}><ChevronRight size={18} aria-hidden="true" /></button><details><summary aria-label={`More actions for ${activity.title}`}><MoreHorizontal size={18} aria-hidden="true" /></summary><div className="speaking-overflow-menu"><button type="button" onClick={() => navigate(`/speak/teacher/activity/${activity.id}/edit`)}>Edit</button><button type="button" onClick={() => void duplicate()}>Duplicate</button><label>Add to Set<select aria-label={`Add ${activity.title} to a Set`} defaultValue="" onChange={(event) => void addToSet(event.target.value)}><option value="">Choose a Set…</option>{sets.filter((set) => !item.setMemberships.some((membership) => membership.id === set.id)).map((set) => <option key={set.id} value={set.id}>{set.name}</option>)}</select></label><button type="button" className="is-danger" onClick={() => void remove()}><Trash2 size={15} aria-hidden="true" />Delete</button></div></details></div></article>;
+  return <article className="speaking-activity-row"><SpeakingActivityThumbnail activity={activity} /><div className="speaking-activity-row-main"><div><strong>{activity.title}</strong><span>{activity.studentRole} · {speakingCategory(activity)}</span></div><p>{activity.scenario}</p><small>{speakingMinutes(activity.durationSeconds)} · {activity.rubric.filter((criterion) => criterion.enabled).length} criteria · {item.sessionCount} session{item.sessionCount === 1 ? "" : "s"}{item.lastSessionAt ? ` · Last used ${new Date(item.lastSessionAt).toLocaleDateString()}` : ""}</small><div className="speaking-row-context-tags"><span className="speaking-mode-badge speaking-mode-badge-compact">{speakingModeLabel(activity.mode)}</span><span>{isBuiltIn ? "Built-in" : "My version"}</span>{speakingSkills(activity).slice(0, 2).map((item) => <span key={item}>{item}</span>)}{item.setMemberships.map((set) => <span key={set.id}>{set.name}</span>)}</div></div><div className="speaking-activity-row-meta">{item.activeSession ? <span className={`speaking-status-pill speaking-status-${item.activeSession.status}`}>{item.activeSession.status === "ready" ? "Students joining" : item.activeSession.status === "paused" ? "Paused" : "Live"}</span> : <span className="speaking-status-pill speaking-status-ready">Ready to launch</span>}<span>Speaking partner · {activity.aiRole}</span></div><div className="speaking-activity-row-actions"><button type="button" className="speaking-row-launch" onClick={() => navigate(`/speak/teacher/activity/${activity.id}`)}>{item.activeSession ? "Open" : "Launch"}</button><button type="button" onClick={() => navigate(`/speak/teacher/activity/${activity.id}`)} aria-label={`Open ${activity.title}`}><ChevronRight size={18} aria-hidden="true" /></button><details><summary aria-label={`More actions for ${activity.title}`}><MoreHorizontal size={18} aria-hidden="true" /></summary><div className="speaking-overflow-menu"><button type="button" onClick={() => navigate(`/speak/teacher/activity/${activity.id}/edit`)}>Edit</button><button type="button" onClick={() => void duplicate()}>Duplicate</button><label>Add to Set<select aria-label={`Add ${activity.title} to a Set`} defaultValue="" onChange={(event) => void addToSet(event.target.value)}><option value="">Choose a Set…</option>{sets.filter((set) => !item.setMemberships.some((membership) => membership.id === set.id)).map((set) => <option key={set.id} value={set.id}>{set.name}</option>)}</select></label><button type="button" className="is-danger" onClick={() => void remove()}><Trash2 size={15} aria-hidden="true" />Delete</button></div></details></div></article>;
+}
+
+function SpeakingActivityThumbnail({ activity }: { activity: SpeakingActivity }) {
+  const resources = speakingScenarioResources(activity.scenarioResources);
+  return resources.imageSrc
+    ? <img className="speaking-activity-thumbnail" src={resources.imageSrc} alt="" loading="lazy" />
+    : <div className="speaking-activity-thumbnail speaking-activity-thumbnail-placeholder" aria-hidden="true"><ClipboardCheck size={25} />{speakingCollection(activity) === "workplace-english" && <span>Workplace</span>}</div>;
 }
 
 const draftFromTemplate = (
@@ -625,6 +725,8 @@ const draftFromTemplate = (
   scenarioResources: (() => {
     const resources = speakingScenarioResources(template.scenarioResources);
     return {
+      ...(resources.libraryCollection ? { libraryCollection: resources.libraryCollection } : {}),
+      ...(resources.categoryId ? { categoryId: resources.categoryId } : {}),
       ...(resources.category ? { category: resources.category } : {}),
       ...(resources.teacherFocus ? { teacherFocus: resources.teacherFocus } : {}),
       communicationSkills: [...resources.communicationSkills],
@@ -689,7 +791,7 @@ function SpeakingCreateChoice({
           <div className="speaking-choice-grid">
             <button type="button" className="speaking-choice-card is-featured" onClick={onBrowseCore}>
               <span className="speaking-choice-icon"><ClipboardCheck size={22} aria-hidden="true" /></span>
-              <span className="speaking-choice-card-copy"><strong>Use the Core Library</strong><span>Start with one of 30 complete junior-high speaking tasks, then adjust the task, support, or rubric.</span></span>
+              <span className="speaking-choice-card-copy"><strong>Use the Core Library</strong><span>Start with a ready-made School or Workplace speaking task, then adapt it for your learners.</span></span>
               <span className="speaking-choice-action">Browse Core Library <ArrowRight size={16} aria-hidden="true" /></span>
             </button>
             <button type="button" className="speaking-choice-card" onClick={onStartScratch}>
@@ -1054,7 +1156,7 @@ function SpeakingCreatePage({
                     setDraft(draftFromTemplate(template));
                   }}
                 >
-                  <img className="speaking-template-image" src={template.scenarioResources?.imageSrc ?? "/assets/speaking/scenario-introduction.webp"} alt="" width={52} height={52} loading="lazy" />
+                  {template.scenarioResources?.imageSrc ? <img className="speaking-template-image" src={template.scenarioResources.imageSrc} alt="" width={52} height={52} loading="lazy" /> : <span className="speaking-template-image speaking-template-image-placeholder" aria-hidden="true"><ClipboardCheck size={21} /></span>}
                   <span className="speaking-template-copy">
                     <strong>{template.title}</strong>
                     <small>{template.scenario}</small>

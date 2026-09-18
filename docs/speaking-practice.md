@@ -19,6 +19,24 @@ resolved by the browser into the shared teacher shell and authenticated once by
 the existing QuizStrike teacher token. Student routes (`/speak/join/*`,
 `/speak/session/*`, and `/speak/result/*`) are intentionally unchanged.
 
+## Core Library
+
+The built-in catalog is browsed progressively as Collection → Category →
+Speaking Task. It is intentionally split so teachers can find a relevant
+scenario quickly:
+
+- School English: 30 tasks for junior-high students;
+- Workplace English: 49 tasks for adults and workplace learners;
+- Total: 79 built-in tasks.
+
+School English preserves the original template ids and categories. Workplace
+English covers Luxury Car Sales, Hotels & Hospitality, Restaurants & Cafés,
+Retail & Customer Service, Tourism & Visitor Support, and Office & Business.
+Every built-in task is an editable Assessment-mode template that can be
+previewed, customized into a teacher-owned activity, or used as-is. Unknown
+professional facts are deliberately handled with check-and-confirm language
+instead of encouraging employees to guess.
+
 ## Local mock mode
 
 1. Start PostgreSQL and set `DATABASE_URL` if you want to exercise Prisma persistence.

@@ -136,6 +136,24 @@ test("prompts include the task goal and independence guardrails", () => {
   assert.doesNotMatch(evaluation, /(?:^|\n)(?:Level|Difficulty):/u);
 });
 
+test("workplace prompts preserve realistic role-play framing", () => {
+  const workplaceActivity = {
+    ...activity,
+    scenarioResources: {
+      ...activity.scenarioResources,
+      libraryCollection: "workplace-english" as const,
+      category: "Restaurants & Cafés"
+    }
+  };
+  const conversation = buildConversationPrompt({ activity: workplaceActivity, turns: turns.slice(0, 2), latestStudentText: turns[1]!.text });
+  assert.match(conversation, /realistic customer, guest, colleague, manager, client, visitor, or vendor/u);
+  assert.match(conversation, /Do not act as an English teacher/u);
+  assert.doesNotMatch(conversation, /school English speaking task/u);
+  const evaluation = buildEvaluationPrompt({ activity: workplaceActivity, turns, rubric: workplaceActivity.rubric });
+  assert.doesNotMatch(evaluation, /completed school speaking activity/u);
+  assert.match(evaluation, /understandable to the learner/u);
+});
+
 test("retry policy is bounded and jittered around the documented schedule", () => {
   const now = "2026-09-12T00:00:00.000Z";
   assert.equal(nextSpeakingEvaluationRetryAt(now, 1, () => 0.5), "2026-09-12T00:00:10.000Z");

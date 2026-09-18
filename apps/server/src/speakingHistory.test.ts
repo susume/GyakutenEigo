@@ -49,9 +49,10 @@ test("Speaking history HTTP boundaries preserve launch context and protect live 
     const updatedThroughApi = await api("/sets/set", "PATCH", { focus: "Pay attention to follow-up questions and clarification." });
     assert.equal(updatedThroughApi.status, 200);
     assert.equal((await updatedThroughApi.json() as { set: { focus: string } }).set.focus, "Pay attention to follow-up questions and clarification.");
-    const templates = await (await api("/templates")).json() as { items: Array<{ title: string; scenarioResources: { imageSrc: string } }> };
-    assert.equal(templates.items.length, 30);
+    const templates = await (await api("/templates")).json() as { items: Array<{ title: string; scenarioResources: { imageSrc?: string; libraryCollection?: string } }> };
+    assert.equal(templates.items.length, 79);
     assert.equal(templates.items.find((item) => item.title === "Asking for Street Directions")?.scenarioResources.imageSrc, "/assets/speaking/scenario-directions.webp");
+    assert.equal(templates.items.find((item) => item.title === "Explaining a Mercedes to a Customer")?.scenarioResources.libraryCollection, "workplace-english");
     const beforeMembership = await launch();
     await participant(beforeMembership, "PRE_MEMBERSHIP");
     await repository.updateSession(beforeMembership.id, { status: "ended", endedAt: now });

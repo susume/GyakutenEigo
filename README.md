@@ -110,7 +110,8 @@ Pages workflow supplies `404.html` and direct route entry points.
   deterministic brackets, official room locking, and result linking.
 - Speaking Practice activities with scenario prompts, help, server-side AI
   conversation/transcription/evaluation, bounded session lifetimes, and
-  teacher/student result views.
+  teacher/student result views. The built-in Core Library includes 30 School
+  English tasks and 49 Workplace English tasks (79 total).
 
 ## Production configuration
 

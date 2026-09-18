@@ -3,6 +3,7 @@ import { Prisma, PrismaClient } from "@prisma/client";
 import { SPEAKING_EVALUATION_MAX_ATTEMPTS } from "./speakingEvaluation.js";
 import {
   SPEAKING_LIMITS,
+  SPEAKING_LIBRARY_CATEGORY_IDS,
   recommendedSpeakingSupportSettings,
   resolveSpeakingSupportSettings,
   speakingOverallScore,
@@ -887,7 +888,7 @@ type PrismaParticipantResult = Prisma.SpeakingParticipantGetPayload<{
     evaluation: true;
   };
 }>;
-type PrismaContextImage = Prisma.SpeakingContextImageGetPayload<{}>;
+type PrismaContextImage = Prisma.SpeakingContextImageGetPayload<Prisma.SpeakingContextImageDefaultArgs>;
 
 const rubricFromJson = (value: Prisma.JsonValue): SpeakingRubricCriterion[] => {
   if (!Array.isArray(value)) return [];
@@ -938,7 +939,15 @@ const scenarioResourcesFromJson = (value: Prisma.JsonValue): SpeakingScenarioRes
       return typeof candidate.label === "string" ? [{ label: candidate.label, ...(typeof candidate.detail === "string" ? { detail: candidate.detail } : {}) }] : [];
     })
     : undefined;
+  const libraryCollection = source.libraryCollection === "school-english" || source.libraryCollection === "workplace-english"
+    ? source.libraryCollection
+    : undefined;
+  const categoryId = typeof source.categoryId === "string" && SPEAKING_LIBRARY_CATEGORY_IDS.includes(source.categoryId as (typeof SPEAKING_LIBRARY_CATEGORY_IDS)[number])
+    ? source.categoryId as (typeof SPEAKING_LIBRARY_CATEGORY_IDS)[number]
+    : undefined;
   const resources: SpeakingScenarioResources = {
+    ...(libraryCollection ? { libraryCollection } : {}),
+    ...(categoryId ? { categoryId } : {}),
     ...(typeof source.category === "string" ? { category: source.category } : {}),
     ...(communicationSkills ? { communicationSkills } : {}),
     ...(typeof source.aiContext === "string" ? { aiContext: source.aiContext } : {}),
@@ -948,6 +957,7 @@ const scenarioResourcesFromJson = (value: Prisma.JsonValue): SpeakingScenarioRes
     ...(typeof source.sourceTemplateId === "string" ? { sourceTemplateId: source.sourceTemplateId } : {}),
     ...(typeof source.openingLine === "string" ? { openingLine: source.openingLine } : {}),
     ...(typeof source.studentGoal === "string" ? { studentGoal: source.studentGoal } : {}),
+    ...(typeof source.teacherFocus === "string" ? { teacherFocus: source.teacherFocus } : {}),
     ...(suggestedSteps ? { suggestedSteps } : {}),
     ...(usefulVocabulary ? { usefulVocabulary } : {}),
     ...(referenceItems ? { referenceItems } : {}),

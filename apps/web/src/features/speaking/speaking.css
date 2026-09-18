@@ -1502,6 +1502,12 @@ body[data-speaking="true"] {
   background: #eaf4ff;
 }
 
+.speaking-template-image-placeholder {
+  display: grid;
+  place-items: center;
+  color: #3c7ba6;
+}
+
 .speaking-template-card > span:nth-child(2) {
   display: grid;
   gap: 4px;
@@ -3427,7 +3433,8 @@ body[data-speaking="true"] {
 .speaking-set-focus-card small { color: #66839a; font-size: 12px; }
 .speaking-set-member-list, .speaking-set-add-list { display: grid; gap: 8px; }
 .speaking-set-member, .speaking-set-add-list article { display: grid; grid-template-columns: auto auto 64px minmax(0,1fr) auto; align-items: center; gap: 12px; padding: 12px 14px; border: 1px solid #d7e3ef; border-radius: 12px; background: #fff; }
-.speaking-set-member > img, .speaking-set-add-list article > img { width: 64px; height: 52px; border-radius: 8px; object-fit: cover; }
+.speaking-set-thumbnail { width: 64px; height: 52px; border-radius: 8px; object-fit: cover; }
+.speaking-set-thumbnail-placeholder { display: grid; place-items: center; background: linear-gradient(145deg, #edf6ff, #e6f3ee); color: #3c7ba6; }
 .speaking-set-position { display: grid; place-items: center; min-width: 24px; height: 24px; border-radius: 50%; background: #edf4fb; color: #1763b0; font-size: 12px; font-weight: 800; }
 .speaking-set-member-copy, .speaking-set-add-list article > div { display: grid; gap: 4px; min-width: 0; }
 .speaking-set-member-copy strong, .speaking-set-add-list article strong { color: #172744; }
@@ -3459,7 +3466,7 @@ body[data-speaking="true"] {
 .speaking-report-actions { display: flex; justify-content: flex-end; gap: 6px; }
 .speaking-report-actions .speaking-outline-button { min-height: 34px !important; padding: 0 9px !important; font-size: 12px !important; }
 @media (max-width: 900px) { .speaking-library-toolbar { flex-wrap: wrap; } .speaking-library-toolbar > label:first-child { flex-basis: 100%; } .speaking-set-grid { grid-template-columns: 1fr; } .speaking-report-list-header { display: none; } .speaking-report-row { grid-template-columns: 1fr 1fr; gap: 9px 14px; } .speaking-report-row > span:nth-child(3), .speaking-report-row > span:nth-child(4) { font-size: 12px; } .speaking-report-actions { grid-column: 1 / -1; justify-content: flex-start; } }
-@media (max-width: 640px) { .speaking-embedded-teacher .speaking-activity-row { grid-template-columns: 64px minmax(0,1fr); gap: 12px; } .speaking-activity-thumbnail { width: 64px; height: 64px; } .speaking-activity-row-meta, .speaking-activity-row-actions { grid-column: 2; justify-items: start; } .speaking-activity-row-actions { flex-wrap: wrap; } .speaking-heading-actions { flex-wrap: wrap; justify-content: flex-start; } .speaking-recent-session { align-items: flex-start; } .speaking-recent-session .speaking-status-pill { flex: 0 0 auto; } .speaking-set-member, .speaking-set-add-list article { grid-template-columns: 24px 52px minmax(0,1fr); } .speaking-set-member > svg:first-child { display: none; } .speaking-set-member > img, .speaking-set-add-list article > img { width: 52px; height: 46px; } .speaking-set-member-actions, .speaking-set-add-list article > .speaking-outline-button { grid-column: 3; justify-content: flex-start; } .speaking-inline-search { margin-left: 0; width: 100%; } .speaking-inline-search input { width: 100%; } .speaking-reports-toolbar { flex-wrap: wrap; } .speaking-reports-toolbar label, .speaking-reports-toolbar select { min-width: 100%; } }
+@media (max-width: 640px) { .speaking-embedded-teacher .speaking-activity-row { grid-template-columns: 64px minmax(0,1fr); gap: 12px; } .speaking-activity-thumbnail { width: 64px; height: 64px; } .speaking-activity-row-meta, .speaking-activity-row-actions { grid-column: 2; justify-items: start; } .speaking-activity-row-actions { flex-wrap: wrap; } .speaking-heading-actions { flex-wrap: wrap; justify-content: flex-start; } .speaking-recent-session { align-items: flex-start; } .speaking-recent-session .speaking-status-pill { flex: 0 0 auto; } .speaking-set-member, .speaking-set-add-list article { grid-template-columns: 24px 52px minmax(0,1fr); } .speaking-set-member > svg:first-child { display: none; } .speaking-set-thumbnail { width: 52px; height: 46px; } .speaking-set-member-actions, .speaking-set-add-list article > .speaking-outline-button { grid-column: 3; justify-content: flex-start; } .speaking-inline-search { margin-left: 0; width: 100%; } .speaking-inline-search input { width: 100%; } .speaking-reports-toolbar { flex-wrap: wrap; } .speaking-reports-toolbar label, .speaking-reports-toolbar select { min-width: 100%; } }
 
 @media (max-width: 520px) {
   .speaking-student-brand {

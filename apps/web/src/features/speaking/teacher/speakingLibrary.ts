@@ -3,6 +3,8 @@ import {
   recommendedSpeakingSupportSettings,
   resolveSpeakingSupportSettings,
   SPEAKING_CORE_LIBRARY,
+  SPEAKING_LIBRARY_CATEGORY_DEFINITIONS,
+  SPEAKING_LIBRARY_COLLECTIONS,
   SpeakingCreateActivityInputSchema,
   type SpeakingActivity
 } from "@quizstrike/shared";
@@ -26,7 +28,9 @@ export const isCompatibleCoreLibraryResponse = (value: unknown): value is Speaki
     if (!SpeakingCreateActivityInputSchema.safeParse(candidate).success) return false;
     if (!isRecord(candidate.scenarioResources)) return false;
     const resources = candidate.scenarioResources;
-    if (resources.builtIn !== true || typeof resources.category !== "string" || !Array.isArray(resources.communicationSkills) || resources.communicationSkills.length === 0 || !Array.isArray(resources.successConditions) || resources.successConditions.length === 0) return false;
+    if (resources.builtIn !== true || typeof resources.libraryCollection !== "string" || !SPEAKING_LIBRARY_COLLECTIONS.includes(resources.libraryCollection as typeof SPEAKING_LIBRARY_COLLECTIONS[number]) || typeof resources.categoryId !== "string" || typeof resources.category !== "string" || !Array.isArray(resources.communicationSkills) || resources.communicationSkills.length === 0 || !Array.isArray(resources.successConditions) || resources.successConditions.length < 3 || typeof resources.openingLine !== "string" || !resources.openingLine.trim() || typeof resources.studentGoal !== "string" || !resources.studentGoal.trim() || !Array.isArray(candidate.targetExpressions) || candidate.targetExpressions.length === 0 || resources.sourceTemplateId !== candidate.id) return false;
+    const category = SPEAKING_LIBRARY_CATEGORY_DEFINITIONS.find((definition) => definition.id === resources.categoryId);
+    if (!category || category.collectionId !== resources.libraryCollection || category.name !== resources.category) return false;
     if (!Array.isArray(candidate.rubric) || candidate.rubric.length !== expectedRubricIds.length || candidate.rubric.some((criterion, index) => !isRecord(criterion) || criterion.id !== expectedRubricIds[index])) return false;
     seenIds.add(candidate.id);
   }
