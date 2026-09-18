@@ -71,21 +71,44 @@ export interface EvaluationProvider {
 export type SpeakingProviderOperation = "transcription" | "conversation" | "help" | "evaluation";
 export type SpeakingProviderName = "mock" | "openai" | "gemini";
 export type SpeakingProviderFailureKind = "timeout" | "rate_limit" | "authentication" | "bad_request" | "unavailable" | "network" | "invalid_response" | "unknown";
+export type SpeakingProviderResponseCategory = "empty_response" | "invalid_json" | "schema_validation" | "truncated_output";
+
+type SpeakingProviderErrorMetadata = {
+  providerFinishReason?: string;
+  structuredOutput?: boolean;
+  responseCategory?: SpeakingProviderResponseCategory;
+  retryAfterMs?: number;
+};
 
 export class SpeakingProviderError extends Error {
   readonly failureKind: SpeakingProviderFailureKind;
   readonly status?: number;
+  readonly providerFinishReason?: string;
+  readonly structuredOutput?: boolean;
+  readonly responseCategory?: SpeakingProviderResponseCategory;
+  readonly retryAfterMs?: number;
 
-  constructor(message: string, failureKind: SpeakingProviderFailureKind, status?: number) {
+  constructor(message: string, failureKind: SpeakingProviderFailureKind, status?: number, metadata: SpeakingProviderErrorMetadata = {}) {
     super(message);
     this.name = "SpeakingProviderError";
     this.failureKind = failureKind;
     this.status = status;
+    this.providerFinishReason = metadata.providerFinishReason;
+    this.structuredOutput = metadata.structuredOutput;
+    this.responseCategory = metadata.responseCategory;
+    this.retryAfterMs = metadata.retryAfterMs;
   }
 }
 
-export const speakingProviderFailureDetails = (error: unknown): { kind: SpeakingProviderFailureKind; status?: number } => {
-  if (error instanceof SpeakingProviderError) return { kind: error.failureKind, ...(error.status === undefined ? {} : { status: error.status }) };
+export const speakingProviderFailureDetails = (error: unknown): { kind: SpeakingProviderFailureKind; status?: number; providerFinishReason?: string; structuredOutput?: boolean; responseCategory?: SpeakingProviderResponseCategory; retryAfterMs?: number } => {
+  if (error instanceof SpeakingProviderError) return {
+    kind: error.failureKind,
+    ...(error.status === undefined ? {} : { status: error.status }),
+    ...(error.providerFinishReason === undefined ? {} : { providerFinishReason: error.providerFinishReason }),
+    ...(error.structuredOutput === undefined ? {} : { structuredOutput: error.structuredOutput }),
+    ...(error.responseCategory === undefined ? {} : { responseCategory: error.responseCategory }),
+    ...(error.retryAfterMs === undefined ? {} : { retryAfterMs: error.retryAfterMs })
+  };
   const message = error instanceof Error ? error.message : String(error);
   if (/timed? ?out|timeout/iu.test(message)) return { kind: "timeout" };
   if (/rate.?limit|too many requests|\b429\b/iu.test(message)) return { kind: "rate_limit" };
@@ -106,8 +129,8 @@ export const failureKindForStatus = (status: number): SpeakingProviderFailureKin
   return "unknown";
 };
 
-const providerHttpError = (provider: SpeakingProviderName, operation: SpeakingProviderOperation, status: number, message?: string) =>
-  new SpeakingProviderError(message?.trim() || `${provider} ${operation} failed with ${status}.`, failureKindForStatus(status), status);
+const providerHttpError = (provider: SpeakingProviderName, operation: SpeakingProviderOperation, status: number, message?: string, metadata: SpeakingProviderErrorMetadata = {}) =>
+  new SpeakingProviderError(message?.trim() || `${provider} ${operation} failed with ${status}.`, failureKindForStatus(status), status, metadata);
 
 const DEFAULT_PROVIDER_TIMEOUTS_MS: Record<SpeakingProviderOperation, number> = {
   // These are deliberately bounded, but leave enough room for a classroom
@@ -342,8 +365,67 @@ const geminiTranscriptionModel = (environment: NodeJS.ProcessEnv = process.env) 
 };
 
 type GeminiResponsePayload = {
-  error?: { message?: string };
-  candidates?: Array<{ content?: { parts?: Array<{ text?: string }> } }>;
+  error?: { message?: string; details?: Array<{ retryDelay?: string }> };
+  candidates?: Array<{ finishReason?: string; content?: { parts?: Array<{ text?: string }> } }>;
+};
+
+type GeminiRequestResult = {
+  content: string;
+  finishReason?: string;
+  structuredOutput: boolean;
+};
+
+const safeGeminiFinishReason = (value: unknown) => {
+  if (typeof value !== "string") return undefined;
+  const normalized = value.trim().slice(0, 64);
+  return /^[A-Z0-9_]+$/u.test(normalized) ? normalized : undefined;
+};
+
+const retryAfterMilliseconds = (value: string | null, nowMs = Date.now()) => {
+  if (!value) return undefined;
+  const seconds = Number(value.trim());
+  if (Number.isFinite(seconds) && seconds >= 0) return Math.min(10 * 60_000, Math.round(seconds * 1_000));
+  const timestamp = Date.parse(value);
+  if (!Number.isFinite(timestamp)) return undefined;
+  return Math.min(10 * 60_000, Math.max(0, timestamp - nowMs));
+};
+
+const retryDelayFromGeminiDetails = (details: Array<{ retryDelay?: string }> | undefined) => {
+  const value = details?.map((detail) => detail.retryDelay).find((candidate) => typeof candidate === "string" && /^\d+(?:\.\d+)?s$/u.test(candidate.trim()));
+  if (!value) return undefined;
+  return Math.min(10 * 60_000, Math.round(Number.parseFloat(value) * 1_000));
+};
+
+const hasGeminiResponseSchema = (body: Record<string, unknown>) => {
+  const config = body.generationConfig;
+  return typeof config === "object" && config !== null && "responseSchema" in config;
+};
+
+const geminiRequestResult = async (
+  model: string,
+  body: Record<string, unknown>,
+  environment: NodeJS.ProcessEnv = process.env,
+  operation: SpeakingProviderOperation = "conversation"
+): Promise<GeminiRequestResult> => {
+  const apiKey = geminiKey(environment);
+  if (!apiKey) throw new Error("Gemini Speaking providers require GEMINI_API_KEY or SPEAKING_GEMINI_API_KEY.");
+  const structuredOutput = hasGeminiResponseSchema(body);
+  const response = await fetchWithSpeakingTimeout(`https://generativelanguage.googleapis.com/v1beta/models/${encodeURIComponent(model)}:generateContent`, {
+    method: "POST",
+    headers: { "x-goog-api-key": apiKey, "Content-Type": "application/json" },
+    body: JSON.stringify(body)
+  }, operation, environment);
+  const payload = await response.json().catch(() => ({})) as GeminiResponsePayload;
+  const retryAfterMs = retryAfterMilliseconds(response.headers.get("retry-after")) ?? retryDelayFromGeminiDetails(payload.error?.details);
+  if (!response.ok) throw providerHttpError("gemini", operation, response.status, payload.error?.message, { structuredOutput, retryAfterMs });
+  const finishReason = safeGeminiFinishReason(payload.candidates?.map((candidate) => candidate.finishReason).find((reason) => reason !== undefined));
+  const content = payload.candidates?.flatMap((candidate) => candidate.content?.parts ?? []).map((part) => part.text ?? "").join("").trim();
+  if (!content) throw new SpeakingProviderError("Gemini returned an empty Speaking response.", "invalid_response", undefined, {
+    providerFinishReason: finishReason,
+    structuredOutput,
+    responseCategory: finishReason === "MAX_TOKENS" ? "truncated_output" : "empty_response"
+  });
+  return { content, ...(finishReason ? { finishReason } : {}), structuredOutput };
 };
 
 const geminiRequest = async (
@@ -351,20 +433,7 @@ const geminiRequest = async (
   body: Record<string, unknown>,
   environment: NodeJS.ProcessEnv = process.env,
   operation: SpeakingProviderOperation = "conversation"
-) => {
-  const apiKey = geminiKey(environment);
-  if (!apiKey) throw new Error("Gemini Speaking providers require GEMINI_API_KEY or SPEAKING_GEMINI_API_KEY.");
-  const response = await fetchWithSpeakingTimeout(`https://generativelanguage.googleapis.com/v1beta/models/${encodeURIComponent(model)}:generateContent`, {
-    method: "POST",
-    headers: { "x-goog-api-key": apiKey, "Content-Type": "application/json" },
-    body: JSON.stringify(body)
-  }, operation, environment);
-  const payload = await response.json().catch(() => ({})) as GeminiResponsePayload;
-  if (!response.ok) throw providerHttpError("gemini", operation, response.status, payload.error?.message);
-  const content = payload.candidates?.flatMap((candidate) => candidate.content?.parts ?? []).map((part) => part.text ?? "").join("").trim();
-  if (!content) throw new SpeakingProviderError("Gemini returned an empty Speaking response.", "invalid_response");
-  return content;
-};
+) => (await geminiRequestResult(model, body, environment, operation)).content;
 
 const normalizeAudioMimeType = (mimeType: string) => mimeType.split(";", 1)[0]?.trim() || "audio/webm";
 const openAiTranscriptionModel = (environment: NodeJS.ProcessEnv = process.env) => environment.SPEAKING_TRANSCRIPTION_MODEL?.trim() || "gpt-4o-mini-transcribe";
@@ -378,8 +447,22 @@ export const parseJsonResponse = <T>(raw: string): T => {
       throw new SpeakingProviderError("Speaking provider returned a non-object structured response.", "invalid_response");
     }
     return parsed as T;
-  } catch {
+  } catch (error) {
+    if (error instanceof SpeakingProviderError) throw error;
     throw new SpeakingProviderError("Speaking provider returned invalid JSON.", "invalid_response");
+  }
+};
+
+const parseGeminiJsonResponse = <T>(result: GeminiRequestResult): T => {
+  try {
+    return parseJsonResponse<T>(result.content);
+  } catch (error) {
+    const message = error instanceof SpeakingProviderError ? error.message : "Speaking provider returned invalid JSON.";
+    throw new SpeakingProviderError(message, "invalid_response", undefined, {
+      ...(result.finishReason ? { providerFinishReason: result.finishReason } : {}),
+      structuredOutput: result.structuredOutput,
+      responseCategory: result.finishReason === "MAX_TOKENS" ? "truncated_output" : "invalid_json"
+    });
   }
 };
 
@@ -431,6 +514,31 @@ export const openAiHelpProvider: HelpProvider = {
   }
 };
 
+export const SPEAKING_EVALUATION_MAX_OUTPUT_TOKENS = 2_200;
+
+const goalCompletionSchema = {
+  type: "object",
+  additionalProperties: false,
+  properties: {
+    completed: { type: "boolean" },
+    requirements: {
+      type: "array",
+      maxItems: 12,
+      items: {
+        type: "object",
+        additionalProperties: false,
+        properties: {
+          requirement: { type: "string" },
+          status: { type: "string", enum: ["completed", "partially_completed", "not_completed", "uncertain"] },
+          evidenceTurnIds: { type: "array", items: { type: "string" }, maxItems: 12 }
+        },
+        required: ["requirement", "status", "evidenceTurnIds"]
+      }
+    }
+  },
+  required: ["completed", "requirements"]
+};
+
 const evaluationSchema = {
   type: "object",
   additionalProperties: false,
@@ -440,31 +548,38 @@ const evaluationSchema = {
     strengths: { type: "array", items: { type: "string" }, maxItems: 5 },
     improvements: { type: "array", items: { type: "string" }, maxItems: 5 },
     usefulEnglish: { type: "array", items: { type: "object", additionalProperties: false, properties: { said: { type: "string" }, try: { type: "string" }, sourceTurnId: { type: "string" } }, required: ["said", "try", "sourceTurnId"] }, maxItems: 5 },
-    goalCompletion: {
-      type: "object",
-      additionalProperties: false,
-      properties: {
-        completed: { type: "boolean" },
-        requirements: {
-          type: "array",
-          maxItems: 12,
-          items: {
-            type: "object",
-            additionalProperties: false,
-            properties: {
-              requirement: { type: "string" },
-              status: { type: "string", enum: ["completed", "partially_completed", "not_completed", "uncertain"] },
-              evidenceTurnIds: { type: "array", items: { type: "string" }, maxItems: 12 }
-            },
-            required: ["requirement", "status", "evidenceTurnIds"]
-          }
-        }
-      },
-      required: ["completed", "requirements"]
-    },
+    goalCompletion: goalCompletionSchema,
     overallMessage: { type: "string" }
   },
   required: ["scores", "evidence", "strengths", "improvements", "usefulEnglish", "goalCompletion", "overallMessage"]
+};
+
+export const buildGeminiEvaluationResponseSchema = (activity: Pick<SpeakingActivity, "rubric">) => {
+  const enabledIds = activity.rubric.filter((criterion) => criterion.enabled).map((criterion) => criterion.id);
+  return {
+    type: "object",
+    additionalProperties: false,
+    properties: {
+      scores: {
+        type: "object",
+        additionalProperties: false,
+        properties: Object.fromEntries(enabledIds.map((id) => [id, { anyOf: [{ type: "integer", minimum: 0, maximum: 4 }, { type: "null" }] }])),
+        required: enabledIds
+      },
+      evidence: {
+        type: "object",
+        additionalProperties: false,
+        properties: Object.fromEntries(enabledIds.map((id) => [id, { type: "string" }])),
+        required: enabledIds
+      },
+      strengths: { type: "array", items: { type: "string" }, maxItems: 5 },
+      improvements: { type: "array", items: { type: "string" }, maxItems: 5 },
+      usefulEnglish: { type: "array", items: { type: "object", additionalProperties: false, properties: { said: { type: "string" }, try: { type: "string" }, sourceTurnId: { type: "string" } }, required: ["said", "try", "sourceTurnId"] }, maxItems: 5 },
+      goalCompletion: goalCompletionSchema,
+      overallMessage: { type: "string" }
+    },
+    required: ["scores", "evidence", "strengths", "improvements", "usefulEnglish", "goalCompletion", "overallMessage"]
+  };
 };
 
 export const openAiEvaluationProvider: EvaluationProvider = {
@@ -561,25 +676,30 @@ export const geminiHelpProvider: HelpProvider = {
 export const geminiEvaluationProvider: EvaluationProvider = {
   providerName: "gemini",
   async evaluate(input) {
-    const raw = await geminiRequest(geminiModel(), {
+    const response = await geminiRequestResult(geminiModel(), {
       system_instruction: {
         parts: [{
           text: [
             input.prompt ?? buildEvaluationPrompt({ activity: input.activity, turns: input.turns, rubric: input.activity.rubric, setFocus: input.setFocus, timingMetadata: input.timingMetadata, helpMetadata: input.helpMetadata, interactionMetadata: input.interactionMetadata }),
             "Return only valid JSON with exactly these fields: scores, evidence, strengths, improvements, usefulEnglish, goalCompletion, and overallMessage.",
-            "scores must contain only enabled rubric IDs with an integer from 0 to 4 or null. evidence must contain one short string for every score. usefulEnglish must be an array of objects with said, try, and sourceTurnId strings; said must exactly match a student transcript turn. goalCompletion must contain completed and requirements with evidenceTurnIds."
+            "Use every enabled rubric ID exactly once in scores and evidence. The response schema is authoritative; do not add rubric IDs or server-owned fields such as participantId, language, assessmentStatus, or createdAt.",
+            "usefulEnglish must be an array of objects with said, try, and sourceTurnId strings; said must exactly match a student transcript turn. goalCompletion must contain completed and requirements with evidenceTurnIds."
           ].join("\n")
         }]
       },
       contents: [{ role: "user", parts: [{ text: "Return the completed evaluation as JSON only." }] }],
-      generationConfig: { temperature: 0.2, maxOutputTokens: 1_200, responseMimeType: "application/json" }
+      generationConfig: { temperature: 0.2, maxOutputTokens: SPEAKING_EVALUATION_MAX_OUTPUT_TOKENS, responseMimeType: "application/json", responseSchema: buildGeminiEvaluationResponseSchema(input.activity) }
     }, process.env, "evaluation");
-    const output = parseJsonResponse<Partial<Omit<SpeakingEvaluation, "participantId" | "language" | "createdAt">>>(raw);
+    const output = parseGeminiJsonResponse<Partial<Omit<SpeakingEvaluation, "participantId" | "language" | "createdAt">>>(response);
     const scores = output.scores && typeof output.scores === "object" ? output.scores : {};
     const assessmentStatus = Object.values(scores).some((score) => typeof score === "number") ? "scored" : "insufficient_evidence";
     const evaluation = { ...output, scores, assessmentStatus, participantId: input.participantId, language: input.activity.nativeLanguage, createdAt: new Date().toISOString() };
     const parsed = SpeakingEvaluationSchema.safeParse(evaluation);
-    if (!parsed.success) throw new SpeakingProviderError("Gemini Evaluation provider returned invalid structured data.", "invalid_response");
+    if (!parsed.success) throw new SpeakingProviderError("Gemini Evaluation provider returned invalid structured data.", "invalid_response", undefined, {
+      ...(response.finishReason ? { providerFinishReason: response.finishReason } : {}),
+      structuredOutput: response.structuredOutput,
+      responseCategory: "schema_validation"
+    });
     return parsed.data;
   }
 };

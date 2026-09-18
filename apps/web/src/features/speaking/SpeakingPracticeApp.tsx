@@ -70,7 +70,7 @@ type Navigate = (nextPath: string) => void;
 type JoinResponse = { activity: SpeakingActivity; participant: SpeakingParticipant; session: SpeakingSession; token: string };
 type SessionResponse = { activity: SpeakingActivity; participant: SpeakingParticipant; session: SpeakingSession; turns: SpeakingTurn[] };
 type SpeakingEvaluationStatus = "queued" | "running" | "retrying" | "completed" | "failed";
-type ResultResponse = { result: { activity: Pick<SpeakingActivity, "id" | "title" | "scenario" | "targetExpressions" | "nativeLanguage" | "rubric" | "scenarioResources" | "context" | "mode" | "supportSettings">; session: SpeakingSession; participant: SpeakingParticipant; turns: SpeakingTurn[]; evaluation?: SpeakingEvaluation }; evaluationStatus?: SpeakingEvaluationStatus; evaluationRetryable?: boolean; nextRetryAt?: string };
+type ResultResponse = { result: { activity: Pick<SpeakingActivity, "id" | "title" | "scenario" | "targetExpressions" | "nativeLanguage" | "rubric" | "scenarioResources" | "context" | "mode" | "supportSettings">; session: SpeakingSession; participant: SpeakingParticipant; turns: SpeakingTurn[]; evaluation?: SpeakingEvaluation }; evaluationStatus?: SpeakingEvaluationStatus; evaluationRetryable?: boolean; evaluationManualRetryAt?: string; nextRetryAt?: string };
 
 const normalizePath = (path: string) => (path === "/" ? path : path.replace(/\/+$/u, ""));
 const decodeRouteSegment = (segment: string) => {
@@ -1037,7 +1037,7 @@ function SpeakingResultPageV2({ navigate, participantId }: { navigate: Navigate;
         setEvaluationRetryable(payload.evaluationRetryable === true);
         setError("");
         stablePolls = Math.min(6, stablePolls + 1);
-        if (!payload.result.evaluation && payload.evaluationStatus !== "failed" && payload.result.participant.status !== "error") schedule();
+        if (!payload.result.evaluation && (payload.evaluationStatus !== "failed" && payload.result.participant.status !== "error" || payload.evaluationManualRetryAt)) schedule();
       } catch (loadError) {
         if (!cancelled && !(loadError instanceof DOMException && loadError.name === "AbortError")) {
           const terminal = isFatalParticipantAuthorizationError(loadError) || (loadError instanceof ApiError && loadError.status === 404);

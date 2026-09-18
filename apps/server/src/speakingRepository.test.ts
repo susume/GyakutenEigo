@@ -282,6 +282,11 @@ test("evaluation retry state survives a restart and becomes terminal after a per
   assert.equal((await repository.getEvaluationJob(participant.id))?.status, "failed");
   assert.equal((await repository.getParticipant(participant.id))?.status, "error");
   assert.deepEqual(await repository.recoverableEvaluationParticipants("2026-09-12T00:05:00.000Z"), []);
+
+  const manuallyQueued = await repository.upsertEvaluationJob(participant.id, { id: "retry-job", queuedAt: "2026-09-12T00:06:00.000Z", updatedAt: "2026-09-12T00:06:00.000Z", status: "queued", attempt: 0 });
+  assert.equal(manuallyQueued.status, "queued");
+  assert.equal(manuallyQueued.attempt, 0);
+  assert.equal((await repository.claimEvaluationJob(participant.id, "2026-09-12T00:06:00.000Z", "2026-09-12T00:07:00.000Z"))?.attempt, 1);
 });
 
 test("concurrent classroom admission respects capacity and request identity", async () => {

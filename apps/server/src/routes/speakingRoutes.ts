@@ -52,6 +52,7 @@ import {
 import { buildConversationPrompt, buildEvaluationPrompt } from "../speakingPrompts.js";
 import {
   SPEAKING_EVALUATION_MAX_ATTEMPTS,
+  SPEAKING_EVALUATION_MANUAL_RETRY_COOLDOWN_MS,
   SPEAKING_EVALUATOR_PROMPT_VERSION,
   buildSpeakingInteractionMetadata,
   nextSpeakingEvaluationRetryAt,
@@ -361,6 +362,9 @@ export const registerSpeakingRoutes = (app: Application, deps: SpeakingRouteDepe
     retriesScheduled: 0,
     terminalFailures: 0,
     failuresByKind: {} as Record<string, number>,
+    providerFinishReasons: {} as Record<string, number>,
+    responseCategories: {} as Record<string, number>,
+    structuredOutputAttempts: 0,
     parseFailures: 0,
     schemaFailures: 0,
     durationsMs: [] as number[],
@@ -490,6 +494,9 @@ export const registerSpeakingRoutes = (app: Application, deps: SpeakingRouteDepe
     retriesScheduled: evaluationTelemetry.retriesScheduled,
     terminalFailures: evaluationTelemetry.terminalFailures,
     failuresByKind: { ...evaluationTelemetry.failuresByKind },
+    providerFinishReasons: { ...evaluationTelemetry.providerFinishReasons },
+    responseCategories: { ...evaluationTelemetry.responseCategories },
+    structuredOutputAttempts: evaluationTelemetry.structuredOutputAttempts,
     parseFailures: evaluationTelemetry.parseFailures,
     schemaFailures: evaluationTelemetry.schemaFailures,
     latencyMs: { p50: percentile(evaluationTelemetry.durationsMs, 0.5), p95: percentile(evaluationTelemetry.durationsMs, 0.95), p99: percentile(evaluationTelemetry.durationsMs, 0.99) },
@@ -614,11 +621,22 @@ export const registerSpeakingRoutes = (app: Application, deps: SpeakingRouteDepe
   ));
 
   const evaluationStatus = (job?: SpeakingEvaluationJob) => job?.status ?? "queued";
-  const evaluationState = (job?: SpeakingEvaluationJob) => ({
-    evaluationStatus: evaluationStatus(job),
-    evaluationRetryable: Boolean(job?.retryable && job.attempt < SPEAKING_EVALUATION_MAX_ATTEMPTS),
-    ...(job?.nextRetryAt ? { nextRetryAt: job.nextRetryAt } : {})
-  });
+  const manualEvaluationRetryAt = (job?: SpeakingEvaluationJob) => {
+    if (!job || job.status !== "failed" || job.attempt < SPEAKING_EVALUATION_MAX_ATTEMPTS) return undefined;
+    const terminalAt = Date.parse(job.finishedAt ?? job.updatedAt);
+    return Number.isFinite(terminalAt) ? new Date(terminalAt + SPEAKING_EVALUATION_MANUAL_RETRY_COOLDOWN_MS).toISOString() : undefined;
+  };
+  const evaluationState = (job?: SpeakingEvaluationJob) => {
+    const manualRetryAt = manualEvaluationRetryAt(job);
+    const manualRetryable = Boolean(manualRetryAt && Date.parse(manualRetryAt) <= Date.parse(deps.now()));
+    return {
+      evaluationStatus: evaluationStatus(job),
+      evaluationRetryable: Boolean(job?.retryable && job.attempt < SPEAKING_EVALUATION_MAX_ATTEMPTS) || manualRetryable,
+      evaluationManualRetryable: manualRetryable,
+      ...(manualRetryAt ? { evaluationManualRetryAt: manualRetryAt } : {}),
+      ...(job?.nextRetryAt ? { nextRetryAt: job.nextRetryAt } : {})
+    };
+  };
   const retryableEvaluationKinds = new Set(["overload", "timeout", "rate_limit", "unavailable", "network", "invalid_response"]);
 
   /**
@@ -636,6 +654,9 @@ export const registerSpeakingRoutes = (app: Application, deps: SpeakingRouteDepe
     let providerDurationMs = 0;
     let failureKind: string | undefined;
     let failureStatus: number | undefined;
+    let providerFinishReason: string | undefined;
+    let responseCategory: string | undefined;
+    let structuredOutput = providerName === "gemini" || providerName === "openai";
     let parseFailure = false;
     let schemaFailure = false;
     let retryScheduledAt: string | undefined;
@@ -644,6 +665,7 @@ export const registerSpeakingRoutes = (app: Application, deps: SpeakingRouteDepe
     let finalJobState = "unknown";
     let settled = false;
     evaluationTelemetry.attempts += 1;
+    if (structuredOutput) evaluationTelemetry.structuredOutputAttempts += 1;
     try {
       const result = await repository.getResult(participantId);
       if (!result) throw new Error("Speaking participant session not found.");
@@ -717,16 +739,32 @@ export const registerSpeakingRoutes = (app: Application, deps: SpeakingRouteDepe
           : speakingProviderFailureDetails(error);
       failureKind = failure.kind;
       failureStatus = "status" in failure ? failure.status : undefined;
+      providerFinishReason = "providerFinishReason" in failure ? failure.providerFinishReason : undefined;
+      responseCategory = "responseCategory" in failure ? failure.responseCategory : undefined;
+      if ("structuredOutput" in failure && failure.structuredOutput !== undefined) {
+        // A provider can make the exact response contract explicit for this
+        // attempt. Do not log or retain any response text.
+        structuredOutput = failure.structuredOutput;
+      }
+      if (error instanceof SpeakingEvaluationValidationError && !responseCategory) responseCategory = "schema_validation";
+      if (providerFinishReason) evaluationTelemetry.providerFinishReasons[providerFinishReason] = (evaluationTelemetry.providerFinishReasons[providerFinishReason] ?? 0) + 1;
+      if (responseCategory) evaluationTelemetry.responseCategories[responseCategory] = (evaluationTelemetry.responseCategories[responseCategory] ?? 0) + 1;
       evaluationTelemetry.failuresByKind[failure.kind] = (evaluationTelemetry.failuresByKind[failure.kind] ?? 0) + 1;
       if (error instanceof SpeakingEvaluationValidationError) {
         schemaFailure = true;
         evaluationTelemetry.schemaFailures += 1;
       } else if (error instanceof SpeakingProviderError && failure.kind === "invalid_response") {
-        parseFailure = true;
-        evaluationTelemetry.parseFailures += 1;
+        if (responseCategory === "schema_validation") {
+          schemaFailure = true;
+          evaluationTelemetry.schemaFailures += 1;
+        } else {
+          parseFailure = true;
+          evaluationTelemetry.parseFailures += 1;
+        }
       }
       const retryable = retryableEvaluationKinds.has(failure.kind);
-      retryScheduledAt = retryable ? nextSpeakingEvaluationRetryAt(deps.now(), claimedJob.attempt, deps.random ?? Math.random) : undefined;
+      const providerRetryAfterMs = "retryAfterMs" in failure ? failure.retryAfterMs : undefined;
+      retryScheduledAt = retryable ? nextSpeakingEvaluationRetryAt(deps.now(), claimedJob.attempt, deps.random ?? Math.random, providerRetryAfterMs) : undefined;
       if (retryScheduledAt) evaluationTelemetry.retriesScheduled += 1;
       else evaluationTelemetry.terminalFailures += 1;
       settled = await repository.settleEvaluationJob(participantId, claimedJob.attempt, deps.now(), {
@@ -753,6 +791,9 @@ export const registerSpeakingRoutes = (app: Application, deps: SpeakingRouteDepe
         responseChars,
         ...(failureKind ? { failureKind } : {}),
         ...(failureStatus === undefined ? {} : { status: failureStatus }),
+        ...(providerFinishReason ? { providerFinishReason } : {}),
+        structuredOutput,
+        ...(responseCategory ? { responseCategory } : {}),
         timeout: failureKind === "timeout",
         rateLimited: failureKind === "rate_limit",
         provider5xx: failureStatus !== undefined && failureStatus >= 500,
@@ -767,14 +808,19 @@ export const registerSpeakingRoutes = (app: Application, deps: SpeakingRouteDepe
     }
   };
 
-  const scheduleEvaluation = async (access: { session: SpeakingSession; activity: SpeakingActivity; participant: SpeakingParticipant }, retryFailed = false) => {
+  type EvaluationScheduleOptions = boolean | { retryFailed?: boolean; manual?: boolean };
+  const scheduleEvaluation = async (access: { session: SpeakingSession; activity: SpeakingActivity; participant: SpeakingParticipant }, options: EvaluationScheduleOptions = false) => {
+    const retryFailed = typeof options === "boolean" ? options : options.retryFailed === true;
+    const manual = typeof options === "boolean" ? false : options.manual === true;
     const now = deps.now();
     const current = await repository.getParticipant(access.participant.id) ?? access.participant;
     const existing = await repository.getEvaluationJob(current.id);
-    const shouldRetryFailed = retryFailed && existing?.status === "failed" && existing.retryable === true && existing.attempt < SPEAKING_EVALUATION_MAX_ATTEMPTS;
+    const manualRetryAt = manualEvaluationRetryAt(existing);
+    const manualRetryReady = manual && Boolean(manualRetryAt && Date.parse(manualRetryAt) <= Date.parse(now));
+    const shouldRetryFailed = (retryFailed && existing?.status === "failed" && existing.retryable === true && existing.attempt < SPEAKING_EVALUATION_MAX_ATTEMPTS) || manualRetryReady;
     const shouldQueue = !existing || shouldRetryFailed || (existing.status === "completed" && !(await repository.getResult(current.id))?.evaluation);
     const job = shouldQueue
-      ? await repository.upsertEvaluationJob(current.id, { id: existing?.id ?? deps.id(), queuedAt: now, updatedAt: now, status: "queued", attempt: existing?.attempt ?? 0 })
+      ? await repository.upsertEvaluationJob(current.id, { id: existing?.id ?? deps.id(), queuedAt: now, updatedAt: now, status: "queued", attempt: manualRetryReady ? 0 : existing?.attempt ?? 0 })
       : existing;
     if (job.status === "completed") return job;
     if (job.status === "failed") return job;
@@ -1616,7 +1662,9 @@ export const registerSpeakingRoutes = (app: Application, deps: SpeakingRouteDepe
       }
       const existingJob = await repository.getEvaluationJob(currentParticipant.id);
       const canRetryFailed = existingJob?.status === "failed" && existingJob.retryable === true && existingJob.attempt < SPEAKING_EVALUATION_MAX_ATTEMPTS;
-      const job = await scheduleEvaluation({ ...access, session: currentSession, participant: currentParticipant }, canRetryFailed);
+      const manualRetryAt = manualEvaluationRetryAt(existingJob);
+      const canManuallyRetry = Boolean(manualRetryAt && Date.parse(manualRetryAt) <= Date.parse(deps.now()));
+      const job = await scheduleEvaluation({ ...access, session: currentSession, participant: currentParticipant }, { retryFailed: canRetryFailed, manual: canManuallyRetry });
       const result = await waitForEvaluationGrace(currentParticipant.id);
       if (!result) {
         res.status(404).json({ error: "We couldn’t find that speaking result." });
@@ -1694,6 +1742,51 @@ export const registerSpeakingRoutes = (app: Application, deps: SpeakingRouteDepe
   app.use("/api/speaking/results/:participantId", (req, res, next: NextFunction) => {
     if (parseParticipantToken(req)) return next();
     return deps.requireTeacher(req, res, next);
+  });
+
+  app.post("/api/speaking/results/:participantId/retry-evaluation", async (req: AuthedRequest, res) => {
+    const participantId = String(req.params.participantId);
+    const result = await repository.getResult(participantId);
+    if (!result) {
+      res.status(404).json({ error: "We couldn’t find that speaking result." });
+      return;
+    }
+    const token = parseParticipantToken(req);
+    const ownsParticipant = token ? Boolean((await repository.getParticipantAccessByTokenHash(hashSpeakingToken(token)))?.participant.id === participantId) : false;
+    const ownsTeacher = result.activity.teacherId === req.user?.id;
+    if (!ownsParticipant && !ownsTeacher) {
+      res.status(403).json({ error: "You do not have access to this speaking result." });
+      return;
+    }
+    const rateKey = ownsParticipant
+      ? `evaluation-retry:${hashSpeakingToken(token ?? "")}`
+      : `evaluation-retry-teacher:${req.user?.id ?? "unknown"}:${participantId}`;
+    const decision = consumeSpeakingRateLimit(state.requestWindows, rateKey, 3, 60_000);
+    if (!decision.allowed) {
+      sendRateLimit(res, decision, "SPEAKING_EVALUATION_RETRY_RATE_LIMITED", "Please wait before retrying feedback again.");
+      return;
+    }
+    if (result.evaluation) {
+      res.json({ result: safeResult(toResult(result.activity, result.session, result.participant, result.turns, result.evaluation)), ...evaluationState({ status: "completed", attempt: 0, id: "completed", participantId, queuedAt: result.evaluation.createdAt, updatedAt: result.evaluation.createdAt }) });
+      return;
+    }
+    const existingJob = await repository.getEvaluationJob(participantId);
+    const retryAt = manualEvaluationRetryAt(existingJob);
+    if (!retryAt) {
+      res.status(409).json({ code: "SPEAKING_EVALUATION_RETRY_UNAVAILABLE", error: "Feedback is not ready for a manual retry yet." });
+      return;
+    }
+    const retryAtMs = Date.parse(retryAt);
+    const nowMs = Date.parse(deps.now());
+    if (!Number.isFinite(nowMs) || !Number.isFinite(retryAtMs) || retryAtMs > nowMs) {
+      res.status(409).json({ code: "SPEAKING_EVALUATION_RETRY_COOLDOWN", error: "Please wait before retrying feedback again.", evaluationManualRetryAt: retryAt, retryAfterSeconds: Math.max(1, Math.ceil((retryAtMs - nowMs) / 1_000)) });
+      return;
+    }
+    const job = await scheduleEvaluation({ session: result.session, activity: result.activity, participant: result.participant }, { manual: true });
+    const completed = await waitForEvaluationGrace(participantId);
+    const latest = completed ?? await repository.getResult(participantId) ?? result;
+    const currentJob = await repository.getEvaluationJob(participantId) ?? job;
+    res.status(latest.evaluation ? 200 : 202).json({ result: safeResult(toResult(latest.activity, latest.session, latest.participant, latest.turns, latest.evaluation)), ...evaluationState(currentJob) });
   });
 
   app.get("/api/speaking/results/:participantId", async (req: AuthedRequest, res) => {

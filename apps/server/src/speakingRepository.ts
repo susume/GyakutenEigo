@@ -1653,7 +1653,7 @@ export class PrismaSpeakingRepository implements SpeakingRepository {
   async upsertEvaluationJob(participantId: string, input: { id: string; queuedAt: string; updatedAt: string; status?: SpeakingEvaluationJobStatus; attempt?: number; retryable?: boolean; nextRetryAt?: string | null }) {
     if (input.status === "queued") await this.prisma.speakingEvaluationJob.updateMany({
       where: { participantId, status: "failed" },
-      data: { status: "queued", queuedAt: new Date(input.queuedAt), startedAt: null, finishedAt: null, leaseUntil: null, lastErrorCode: null, retryable: false, nextRetryAt: null }
+      data: { status: "queued", attempt: input.attempt ?? 0, queuedAt: new Date(input.queuedAt), startedAt: null, finishedAt: null, leaseUntil: null, lastErrorCode: null, retryable: false, nextRetryAt: null, updatedAt: new Date(input.updatedAt) }
     });
     const row = await this.prisma.speakingEvaluationJob.upsert({
       where: { participantId },
@@ -1699,7 +1699,7 @@ export class PrismaSpeakingRepository implements SpeakingRepository {
     return this.prisma.$transaction(async (tx) => {
       const exhausted = await tx.speakingEvaluationJob.updateMany({
         where: { ...due, attempt: { gte: SPEAKING_EVALUATION_MAX_ATTEMPTS } },
-        data: { status: "failed", finishedAt: now, leaseUntil: null, nextRetryAt: null, retryable: false, lastErrorCode: "attempts_exhausted" }
+        data: { status: "failed", finishedAt: now, leaseUntil: null, nextRetryAt: null, retryable: false, lastErrorCode: "attempts_exhausted", updatedAt: now }
       });
       if (exhausted.count) {
         await new PrismaSpeakingRepository(tx as PrismaClient).updateParticipant(participantId, { status: "error", helpPending: false });
@@ -1707,7 +1707,7 @@ export class PrismaSpeakingRepository implements SpeakingRepository {
       }
       const claimed = await tx.speakingEvaluationJob.updateMany({
         where: { ...due, attempt: { lt: SPEAKING_EVALUATION_MAX_ATTEMPTS } },
-        data: { status: "running", attempt: { increment: 1 }, startedAt: now, leaseUntil: new Date(leaseUntil), nextRetryAt: null }
+        data: { status: "running", attempt: { increment: 1 }, startedAt: now, leaseUntil: new Date(leaseUntil), nextRetryAt: null, updatedAt: now }
       });
       if (!claimed.count) return undefined;
       const repository = new PrismaSpeakingRepository(tx as PrismaClient);
@@ -1722,7 +1722,7 @@ export class PrismaSpeakingRepository implements SpeakingRepository {
       const retrying = !outcome.evaluation && outcome.retryable === true && Boolean(outcome.nextRetryAt);
       const claimed = await tx.speakingEvaluationJob.updateMany({
         where: { participantId, attempt, status: "running" },
-        data: { status: outcome.evaluation ? "completed" : retrying ? "retrying" : "failed", ...(retrying ? { queuedAt: new Date(outcome.nextRetryAt!) } : {}), finishedAt: retrying ? null : new Date(now), leaseUntil: null, lastErrorCode: outcome.errorCode ?? null, retryable: outcome.retryable === true, nextRetryAt: retrying ? new Date(outcome.nextRetryAt!) : null }
+        data: { status: outcome.evaluation ? "completed" : retrying ? "retrying" : "failed", ...(retrying ? { queuedAt: new Date(outcome.nextRetryAt!) } : {}), finishedAt: retrying ? null : new Date(now), leaseUntil: null, lastErrorCode: outcome.errorCode ?? null, retryable: outcome.retryable === true, nextRetryAt: retrying ? new Date(outcome.nextRetryAt!) : null, updatedAt: new Date(now) }
       });
       if (!claimed.count) return false;
       const repository = new PrismaSpeakingRepository(tx as PrismaClient);

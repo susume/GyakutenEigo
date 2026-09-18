@@ -16,6 +16,8 @@ import {
   geminiEvaluationProvider,
   geminiHelpProvider,
   geminiTranscriptionProvider,
+  buildGeminiEvaluationResponseSchema,
+  SPEAKING_EVALUATION_MAX_OUTPUT_TOKENS,
   openAiConversationProvider,
   openAiEvaluationProvider,
   openAiHelpProvider,
@@ -248,6 +250,146 @@ test("Gemini transcription migrates the former general-purpose default to the de
   assert.equal(requestedModel, "gemini-3.5-transcribe");
 });
 
+const geminiEvaluationJson = (overrides: Record<string, unknown> = {}) => JSON.stringify({
+  scores: { communication: 3, custom: 2 },
+  evidence: { communication: "The student explained the request clearly.", custom: "The student used a target expression." },
+  strengths: ["The request was understandable."],
+  improvements: ["Add one more detail."],
+  usefulEnglish: [],
+  goalCompletion: { completed: false, requirements: [] },
+  overallMessage: "Good work.",
+  ...overrides
+});
+
+const withGeminiEvaluationEnvironment = async (work: () => Promise<void>, response: Response | (() => Response)) => {
+  const previousFetch = globalThis.fetch;
+  const previousKey = process.env.SPEAKING_GEMINI_API_KEY;
+  const previousModel = process.env.SPEAKING_GEMINI_MODEL;
+  process.env.SPEAKING_GEMINI_API_KEY = "test-gemini-key";
+  process.env.SPEAKING_GEMINI_MODEL = "gemini-evaluation-test";
+  globalThis.fetch = async () => typeof response === "function" ? response() : response;
+  try {
+    await work();
+  } finally {
+    globalThis.fetch = previousFetch;
+    if (previousKey === undefined) delete process.env.SPEAKING_GEMINI_API_KEY;
+    else process.env.SPEAKING_GEMINI_API_KEY = previousKey;
+    if (previousModel === undefined) delete process.env.SPEAKING_GEMINI_MODEL;
+    else process.env.SPEAKING_GEMINI_MODEL = previousModel;
+  }
+};
+
+test("Gemini evaluation sends a dynamic v1beta structured-output schema", async () => {
+  let requestedUrl = "";
+  let requestedBody: Record<string, unknown> | undefined;
+  await withGeminiEvaluationEnvironment(async () => {
+    const previousFetch = globalThis.fetch;
+    globalThis.fetch = async (input, init) => {
+      requestedUrl = String(input);
+      requestedBody = JSON.parse(String(init?.body)) as Record<string, unknown>;
+      return new Response(JSON.stringify({ candidates: [{ finishReason: "STOP", content: { parts: [{ text: geminiEvaluationJson() }] } }] }), { status: 200 });
+    };
+    try {
+      const result = await geminiEvaluationProvider.evaluate({
+        activity,
+        turns: [aiTurn("Which color would you like?"), { id: "student-1", participantId: "participant-test", speaker: "student", text: "I'd like the blue one.", createdAt: "2026-08-31T00:00:01.000Z" }],
+        participantId: "participant-test",
+        prompt: "Evaluate this short exchange."
+      });
+      assert.equal(result.participantId, "participant-test");
+      assert.equal(SpeakingEvaluationSchema.safeParse(result).success, true);
+    } finally {
+      globalThis.fetch = previousFetch;
+    }
+  }, new Response("{}"));
+
+  assert.equal(requestedUrl, "https://generativelanguage.googleapis.com/v1beta/models/gemini-evaluation-test:generateContent");
+  const generationConfig = requestedBody?.generationConfig as { maxOutputTokens?: number; responseMimeType?: string; responseSchema?: Record<string, any> };
+  assert.equal(generationConfig.maxOutputTokens, SPEAKING_EVALUATION_MAX_OUTPUT_TOKENS);
+  assert.equal(generationConfig.responseMimeType, "application/json");
+  const schema = generationConfig.responseSchema!;
+  assert.deepEqual(schema.required, ["scores", "evidence", "strengths", "improvements", "usefulEnglish", "goalCompletion", "overallMessage"]);
+  assert.deepEqual(Object.keys(schema.properties.scores.properties), ["communication", "custom"]);
+  assert.deepEqual(schema.properties.scores.required, ["communication", "custom"]);
+  assert.equal(schema.properties.scores.additionalProperties, false);
+  assert.deepEqual(Object.keys(schema.properties.evidence.properties), ["communication", "custom"]);
+  assert.equal(Object.hasOwn(schema.properties, "participantId"), false);
+  assert.equal(Object.hasOwn(schema.properties, "language"), false);
+  assert.deepEqual(Object.keys(buildGeminiEvaluationResponseSchema(activity).properties.scores.properties), ["communication", "custom"]);
+});
+
+test("Gemini evaluation exposes finish reasons, structured-output failures, and Retry-After safely", async () => {
+  await withGeminiEvaluationEnvironment(async () => {
+    globalThis.fetch = async () => new Response(JSON.stringify({ candidates: [{ finishReason: "STOP" }] }), { status: 200 });
+    await assert.rejects(
+      () => geminiEvaluationProvider.evaluate({ activity, turns: [aiTurn("Question")], participantId: "participant-test", prompt: "Evaluate." }),
+      (error) => {
+        assert.deepEqual(speakingProviderFailureDetails(error), {
+          kind: "invalid_response",
+          providerFinishReason: "STOP",
+          structuredOutput: true,
+          responseCategory: "empty_response"
+        });
+        return true;
+      }
+    );
+  }, new Response("{}"));
+
+  await withGeminiEvaluationEnvironment(async () => {
+    globalThis.fetch = async () => new Response(JSON.stringify({ candidates: [{ finishReason: "MAX_TOKENS", content: { parts: [{ text: '{"scores":' }] } }] }), { status: 200 });
+    await assert.rejects(
+      () => geminiEvaluationProvider.evaluate({ activity, turns: [aiTurn("Question")], participantId: "participant-test", prompt: "Evaluate." }),
+      (error) => {
+        assert.equal(error instanceof SpeakingProviderError, true);
+        assert.deepEqual(speakingProviderFailureDetails(error), {
+          kind: "invalid_response",
+          providerFinishReason: "MAX_TOKENS",
+          structuredOutput: true,
+          responseCategory: "truncated_output"
+        });
+        return true;
+      }
+    );
+  }, new Response("{}"));
+
+  await withGeminiEvaluationEnvironment(async () => {
+    globalThis.fetch = async () => new Response(JSON.stringify({ error: { message: "busy" } }), { status: 429, headers: { "Retry-After": "7" } });
+    await assert.rejects(
+      () => geminiEvaluationProvider.evaluate({ activity, turns: [aiTurn("Question")], participantId: "participant-test", prompt: "Evaluate." }),
+      (error) => {
+        assert.deepEqual(speakingProviderFailureDetails(error), { kind: "rate_limit", status: 429, structuredOutput: true, retryAfterMs: 7_000 });
+        return true;
+      }
+    );
+  }, new Response("{}"));
+
+  await withGeminiEvaluationEnvironment(async () => {
+    globalThis.fetch = async () => new Response(JSON.stringify({ error: { message: "unavailable" } }), { status: 503 });
+    await assert.rejects(
+      () => geminiEvaluationProvider.evaluate({ activity, turns: [aiTurn("Question")], participantId: "participant-test", prompt: "Evaluate." }),
+      (error) => {
+        assert.deepEqual(speakingProviderFailureDetails(error), { kind: "unavailable", status: 503, structuredOutput: true });
+        return true;
+      }
+    );
+  }, new Response("{}"));
+});
+
+test("Gemini evaluation rejects provider JSON that violates score or goal schemas", async () => {
+  for (const output of [
+    { scores: { communication: 5, custom: 2 } },
+    { goalCompletion: { completed: false, requirements: [{ requirement: "Ask a question", status: "invalid", evidenceTurnIds: [] }] } }
+  ]) {
+    await withGeminiEvaluationEnvironment(async () => {
+      globalThis.fetch = async () => new Response(JSON.stringify({ candidates: [{ finishReason: "STOP", content: { parts: [{ text: geminiEvaluationJson(output) }] } }] }), { status: 200 });
+      await assert.rejects(
+        () => geminiEvaluationProvider.evaluate({ activity, turns: [aiTurn("Question")], participantId: "participant-test", prompt: "Evaluate." }),
+        (error) => error instanceof SpeakingProviderError && error.failureKind === "invalid_response" && error.responseCategory === "schema_validation"
+      );
+    }, new Response("{}"));
+  }
+});
+
 test("Speaking provider failures retain only safe classification details", async () => {
   const previousFetch = globalThis.fetch;
   const previousKey = process.env.SPEAKING_OPENAI_API_KEY;
@@ -325,4 +467,21 @@ test("production speaking configuration never silently falls back to mock provid
   assert.throws(() => createSpeakingProviders({ NODE_ENV: "production", SPEAKING_AI_PROVIDER: "openai", SPEAKING_TRANSCRIPTION_PROVIDER: "openai" }), /OPENAI_API_KEY/);
   const explicitMock = createSpeakingProviders({ NODE_ENV: "production", SPEAKING_MOCK_MODE: "true" });
   assert.equal(explicitMock.transcription, mockTranscriptionProvider);
+});
+
+const realGeminiSmokeEnabled = process.env.SPEAKING_REAL_PROVIDER_SMOKE?.trim().toLowerCase() === "true"
+  && Boolean(process.env.GEMINI_API_KEY?.trim() || process.env.SPEAKING_GEMINI_API_KEY?.trim());
+
+test("optional real Gemini evaluation smoke validates the production contract", { skip: !realGeminiSmokeEnabled, timeout: 60_000 }, async () => {
+  const result = await geminiEvaluationProvider.evaluate({
+    activity,
+    turns: [
+      aiTurn("Which color would you like?"),
+      { id: "smoke-student-1", participantId: "smoke-participant", speaker: "student", text: "I'd like the blue one, please.", createdAt: "2026-08-31T00:00:01.000Z" }
+    ],
+    participantId: "smoke-participant",
+    prompt: "Evaluate this small synthetic exchange. Keep every explanation short and return the required structured evaluation."
+  });
+  assert.equal(SpeakingEvaluationSchema.safeParse(result).success, true);
+  assert.deepEqual(Object.keys(result.scores).sort(), ["communication", "custom"]);
 });

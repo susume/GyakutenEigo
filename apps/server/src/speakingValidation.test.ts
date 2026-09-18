@@ -30,8 +30,11 @@ test("evaluation validation accepts the enabled rubric and rejects malformed pro
   assert.equal(validateSpeakingEvaluation(valid, activity, "participant-1").participantId, "participant-1");
 
   assert.throws(() => validateSpeakingEvaluation({ ...valid, scores: {} }, activity, "participant-1"), /rubric criteria/);
+  assert.throws(() => validateSpeakingEvaluation({ ...valid, evidence: {} }, activity, "participant-1"), /rubric criteria/);
+  assert.throws(() => validateSpeakingEvaluation({ ...valid, scores: { wrong_rubric: 3 }, evidence: { wrong_rubric: "Evidence" } }, activity, "participant-1"), /rubric criteria/);
   assert.throws(() => validateSpeakingEvaluation({ ...valid, participantId: "other" }, activity, "participant-1"), /invalid data/);
   assert.throws(() => validateSpeakingEvaluation({ ...valid, language: "ja" }, activity, "participant-1"), /invalid data/);
+  assert.throws(() => validateSpeakingEvaluation({ ...valid, goalCompletion: { completed: false, requirements: [{ requirement: "Ask a question", status: "invalid", evidenceTurnIds: [] }] } } as never, activity, "participant-1"), /invalid data/);
 });
 
 test("pronunciation-like rubric scoring is rejected even if a provider returns it", async () => {

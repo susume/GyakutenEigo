@@ -92,6 +92,8 @@ test("evaluation sanitizer preserves exact transcript evidence and caps overgene
     try: "I'd like a burger, please.",
     sourceTurnId: "student-1"
   });
+  const fakeUsefulSource = sanitizeSpeakingEvaluation(providerEvaluation({ usefulEnglish: [{ said: turns[1]!.text, try: "A safer correction.", sourceTurnId: "fake-student" }] }), activity, turns, metadata);
+  assert.equal(fakeUsefulSource.usefulEnglish.some((item) => item.sourceTurnId === "fake-student"), false);
   assert.ok(sanitized.improvements.some((item) => /question/i.test(item)));
   assert.match(sanitized.evidence.interaction ?? "", /task/u);
 });
@@ -158,6 +160,7 @@ test("retry policy is bounded and jittered around the documented schedule", () =
   const now = "2026-09-12T00:00:00.000Z";
   assert.equal(nextSpeakingEvaluationRetryAt(now, 1, () => 0.5), "2026-09-12T00:00:10.000Z");
   assert.equal(nextSpeakingEvaluationRetryAt(now, 4, () => 0.5), "2026-09-12T00:05:00.000Z");
+  assert.equal(nextSpeakingEvaluationRetryAt(now, 1, () => 0.5, 45_000), "2026-09-12T00:00:45.000Z");
   assert.equal(nextSpeakingEvaluationRetryAt(now, 5, () => 0.5), undefined);
 });
 

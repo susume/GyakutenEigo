@@ -13,6 +13,8 @@ export const SPEAKING_EVALUATOR_PROMPT_VERSION = "2026-09-12-goal-v1";
 
 export const SPEAKING_EVALUATION_MAX_ATTEMPTS = 5;
 export const SPEAKING_EVALUATION_RETRY_DELAYS_MS = [10_000, 30_000, 120_000, 300_000] as const;
+/** A terminal provider failure can be retried explicitly, but not in a tight loop. */
+export const SPEAKING_EVALUATION_MANUAL_RETRY_COOLDOWN_MS = 60_000;
 
 export type SpeakingInteractionMetadata = {
   studentTurnCount: number;
@@ -65,11 +67,13 @@ export const speakingEvaluationRetryDelayMs = (attempt: number, random = Math.ra
   return Math.round(base * jitter);
 };
 
-export const nextSpeakingEvaluationRetryAt = (now: string, attempt: number, random = Math.random) => {
+export const nextSpeakingEvaluationRetryAt = (now: string, attempt: number, random = Math.random, providerRetryAfterMs?: number) => {
   if (attempt >= SPEAKING_EVALUATION_MAX_ATTEMPTS) return undefined;
   const nowMs = Date.parse(now);
   if (!Number.isFinite(nowMs)) return undefined;
-  return new Date(nowMs + speakingEvaluationRetryDelayMs(attempt, random)).toISOString();
+  const retryDelay = speakingEvaluationRetryDelayMs(attempt, random);
+  const providerDelay = Number.isFinite(providerRetryAfterMs) ? Math.min(10 * 60_000, Math.max(0, Math.round(providerRetryAfterMs!))) : 0;
+  return new Date(nowMs + Math.max(retryDelay, providerDelay)).toISOString();
 };
 
 const cleanSentence = (value: string) => value.trim().replace(/[.。!?！]+$/u, "").trim();

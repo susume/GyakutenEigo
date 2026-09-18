@@ -87,6 +87,12 @@ these secrets with `VITE_`. If
 clearly at provider setup; it does not return a canned answer, transcript, or
 evaluation.
 
+Before a major Speaking release, an optional live evaluator smoke test can be
+run with `SPEAKING_REAL_PROVIDER_SMOKE=true` and a server-side Gemini key:
+`npm run test --workspace @quizstrike/server -- src` (or run the focused
+`speakingProviders.test.ts` file). The test is skipped in normal CI and uses
+only a synthetic exchange; it never sends student data.
+
 ## Turn latency and diagnostics
 
 The normal turn remains a single request so existing clients keep their

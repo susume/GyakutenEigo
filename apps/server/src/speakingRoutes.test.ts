@@ -2,10 +2,11 @@ import assert from "node:assert/strict";
 import type { AddressInfo } from "node:net";
 import test from "node:test";
 import express, { type NextFunction, type Request, type Response } from "express";
-import { SPEAKING_LIMITS, speakingRemainingSeconds, type TeacherUser } from "@quizstrike/shared";
-import { createSpeakingProviders } from "./speakingProviders.js";
+import { SPEAKING_CORE_LIBRARY, SPEAKING_LIMITS, speakingRemainingSeconds, type SpeakingEvaluation, type TeacherUser } from "@quizstrike/shared";
+import { createSpeakingProviders, parseJsonResponse } from "./speakingProviders.js";
 import { SpeakingProviderError } from "./speakingProviders.js";
 import { createSpeakingRouteState, registerSpeakingRoutes } from "./routes/speakingRoutes.js";
+import { speakingGoalRequirements } from "./speakingEvaluation.js";
 
 const teachers = new Map<string, TeacherUser>([
   ["owner", { id: "owner", name: "Owner", email: "owner@example.test", role: "teacher" }],
@@ -684,5 +685,244 @@ test("teacher pauses freeze active speaking time and pause-to-end accounts the f
     assert.equal(endedResults.body.items.find((item) => item.participant.id === joined.body.participant.id)?.durationSeconds, 121);
   } finally {
     await new Promise<void>((resolve, reject) => server.close((error) => error ? reject(error) : resolve()));
+  }
+});
+
+test("terminal speaking evaluation exposes a cooldowned, idempotent manual retry", async () => {
+  const app = express();
+  app.use(express.json());
+  const state = createSpeakingRouteState();
+  const providers = createSpeakingProviders({ NODE_ENV: "test", SPEAKING_MOCK_MODE: "true" });
+  let counter = 0;
+  let evaluationCalls = 0;
+  let nowMs = Date.parse("2026-09-14T00:00:00.000Z");
+  const requireTeacher = (req: Request & { user?: TeacherUser }, res: Response, next: NextFunction) => {
+    const teacher = teachers.get(String(req.header("x-teacher") ?? ""));
+    if (!teacher) {
+      res.status(401).json({ error: "Teacher login required." });
+      return;
+    }
+    req.user = teacher;
+    next();
+  };
+  registerSpeakingRoutes(app, {
+    requireTeacher,
+    now: () => new Date(nowMs).toISOString(),
+    id: () => `manual-retry-${++counter}`,
+    state,
+    providers,
+    evaluationProvider: {
+      async evaluate(input) {
+        evaluationCalls += 1;
+        if (evaluationCalls <= 5) throw new SpeakingProviderError("temporary provider outage", "unavailable", 503);
+        return providers.evaluation.evaluate(input);
+      }
+    },
+    allowTextInput: true,
+    random: () => 0.5
+  });
+  const server = await new Promise<ReturnType<typeof app.listen>>((resolve) => {
+    const listener = app.listen(0, () => resolve(listener));
+  });
+  const baseUrl = `http://127.0.0.1:${(server.address() as AddressInfo).port}`;
+  const api = async <T>(path: string, options: { method?: string; teacher?: string; speakingToken?: string; body?: unknown } = {}) => {
+    const headers = new Headers();
+    if (options.teacher) headers.set("x-teacher", options.teacher);
+    if (options.speakingToken) headers.set("x-speaking-token", options.speakingToken);
+    if (options.body !== undefined) headers.set("content-type", "application/json");
+    const response = await fetch(`${baseUrl}${path}`, { method: options.method ?? "GET", headers, body: options.body === undefined ? undefined : JSON.stringify(options.body) });
+    const responseText = await response.text();
+    let body = {} as T;
+    try { body = responseText ? JSON.parse(responseText) as T : body; } catch { /* Express error pages are not part of this assertion. */ }
+    return { response, body };
+  };
+
+  try {
+    const created = await api<{ activity: { id: string } }>("/api/speaking/activities", { method: "POST", teacher: "owner", body: activityInput });
+    const launched = await api<{ session: { id: string; joinCode: string } }>(`/api/speaking/activities/${created.body.activity.id}/sessions`, { method: "POST", teacher: "owner" });
+    await api(`/api/speaking/sessions/${launched.body.session.id}/start-session`, { method: "POST", teacher: "owner" });
+    const joined = await api<{ token: string; participant: { id: string }; session: { id: string } }>("/api/speaking/join", { method: "POST", body: { code: launched.body.session.joinCode, identifier: "Manual retry student" } });
+    await api(`/api/speaking/sessions/${joined.body.session.id}/start`, { method: "POST", speakingToken: joined.body.token });
+    await api(`/api/speaking/sessions/${joined.body.session.id}/turn`, { method: "POST", speakingToken: joined.body.token, body: { text: "I would like the blue one." } });
+
+    let finish = await api<{ result: { turns: unknown[] }; evaluationStatus?: string; evaluationRetryable?: boolean; nextRetryAt?: string; evaluationManualRetryAt?: string }>(`/api/speaking/sessions/${joined.body.session.id}/finish`, { method: "POST", speakingToken: joined.body.token });
+    assert.equal(finish.response.status, 202);
+    for (let attempt = 1; attempt < 5; attempt += 1) {
+      assert.equal(finish.body.evaluationStatus, "retrying");
+      nowMs = Date.parse(finish.body.nextRetryAt!);
+      state.requestWindows.clear();
+      finish = await api(`/api/speaking/sessions/${joined.body.session.id}/finish`, { method: "POST", speakingToken: joined.body.token });
+    }
+    assert.equal(evaluationCalls, 5);
+    assert.equal(finish.body.evaluationStatus, "failed");
+    assert.equal(finish.body.evaluationRetryable, false);
+    assert.ok(finish.body.evaluationManualRetryAt);
+
+    const beforeCooldownTeacherRetry = await api(`/api/speaking/results/${joined.body.participant.id}/retry-evaluation`, { method: "POST", teacher: "owner" });
+    assert.equal(beforeCooldownTeacherRetry.response.status, 409);
+    state.requestWindows.clear();
+    const beforeManualFinish = await api(`/api/speaking/sessions/${joined.body.session.id}/finish`, { method: "POST", speakingToken: joined.body.token });
+    assert.equal(beforeManualFinish.response.status, 202);
+    assert.equal(evaluationCalls, 5);
+
+    nowMs = Date.parse(finish.body.evaluationManualRetryAt!);
+    const available = await api<{ evaluationRetryable?: boolean; evaluationManualRetryable?: boolean }>(`/api/speaking/results/${joined.body.participant.id}`, { speakingToken: joined.body.token });
+    assert.equal(available.body.evaluationRetryable, true);
+    assert.equal(available.body.evaluationManualRetryable, true);
+    state.requestWindows.clear();
+    const turnsBeforeRetry = (await api<{ result: { turns: unknown[] } }>(`/api/speaking/results/${joined.body.participant.id}`, { speakingToken: joined.body.token })).body.result.turns.length;
+    const manualFinish = await api<{ result: { evaluation?: unknown; turns: unknown[] }; evaluationStatus?: string }>(`/api/speaking/sessions/${joined.body.session.id}/finish`, { method: "POST", speakingToken: joined.body.token });
+    assert.equal(manualFinish.response.status, 200);
+    assert.equal(manualFinish.body.evaluationStatus, "completed");
+    assert.ok(manualFinish.body.result.evaluation);
+    assert.equal(manualFinish.body.result.turns.length, turnsBeforeRetry);
+    assert.equal(evaluationCalls, 6);
+
+    const teacherResult = await api<{ result: { evaluation?: unknown } }>(`/api/speaking/results/${joined.body.participant.id}`, { teacher: "owner" });
+    assert.equal(teacherResult.response.status, 200);
+    assert.ok(teacherResult.body.result.evaluation);
+  } finally {
+    app.emit("speaking:shutdown");
+    await new Promise<void>((resolve) => server.close(() => resolve()));
+  }
+});
+
+test("Luxury Car Sales test-drive evaluation survives parse, validation, sanitization, persistence, and result APIs", async () => {
+  const template = SPEAKING_CORE_LIBRARY.find((item) => item.id === "workplace-luxury-car-test-drive");
+  assert.ok(template);
+  assert.equal(template.title, "Arranging and Discussing a Test Drive");
+  assert.equal(template.rubric.filter((criterion) => criterion.enabled).length, 4);
+  const workplaceInput = {
+    title: template.title,
+    scenario: template.scenario,
+    aiRole: template.aiRole,
+    studentRole: template.studentRole,
+    level: template.level,
+    difficulty: template.difficulty,
+    nativeLanguage: template.nativeLanguage,
+    durationSeconds: template.durationSeconds,
+    identifierMode: template.identifierMode,
+    mode: template.mode,
+    supportSettings: template.supportSettings,
+    targetExpressions: template.targetExpressions,
+    rubric: template.rubric,
+    scenarioResources: template.scenarioResources
+  };
+  const app = express();
+  app.use(express.json());
+  const state = createSpeakingRouteState();
+  const providers = createSpeakingProviders({ NODE_ENV: "test", SPEAKING_MOCK_MODE: "true" });
+  let counter = 0;
+  let evaluationCalls = 0;
+  const now = "2026-09-15T00:00:00.000Z";
+  const requireTeacher = (req: Request & { user?: TeacherUser }, res: Response, next: NextFunction) => {
+    const teacher = teachers.get(String(req.header("x-teacher") ?? ""));
+    if (!teacher) {
+      res.status(401).json({ error: "Teacher login required." });
+      return;
+    }
+    req.user = teacher;
+    next();
+  };
+  registerSpeakingRoutes(app, {
+    requireTeacher,
+    now: () => now,
+    id: () => `luxury-car-regression-${++counter}`,
+    state,
+    providers,
+    evaluationProvider: {
+      async evaluate(input) {
+        evaluationCalls += 1;
+        const studentTurns = input.turns.filter((turn) => turn.speaker === "student");
+        const enabledIds = input.activity.rubric.filter((criterion) => criterion.enabled).map((criterion) => criterion.id);
+        const parsed = parseJsonResponse<{
+          scores: Record<string, number | null>;
+          evidence: Record<string, string>;
+          strengths: string[];
+          improvements: string[];
+          usefulEnglish: Array<{ said: string; try: string; sourceTurnId: string }>;
+          goalCompletion: NonNullable<SpeakingEvaluation["goalCompletion"]>;
+          overallMessage: string;
+        }>(JSON.stringify({
+          scores: Object.fromEntries(enabledIds.map((id) => [id, 4])),
+          evidence: Object.fromEntries(enabledIds.map((id) => [id, "予約時間と試乗の流れを明確に説明しました。"])),
+          strengths: ["お客様の希望を確認し、丁寧に案内できました。"],
+          improvements: ["次は試乗後の次の一歩を、さらに短く確認しましょう。"],
+          usefulEnglish: studentTurns[0] ? [{ said: studentTurns[0].text, try: "Let me confirm the test-drive details.", sourceTurnId: studentTurns[0].id }] : [],
+          goalCompletion: {
+            completed: true,
+            requirements: speakingGoalRequirements(input.activity).map((requirement) => ({ requirement, status: "completed", evidenceTurnIds: studentTurns.map((turn) => turn.id) }))
+          },
+          overallMessage: "試乗の予約と説明ができました。会話の目的をしっかり達成しています。"
+        }));
+        return {
+          ...parsed,
+          participantId: input.participantId,
+          language: input.activity.nativeLanguage,
+          assessmentStatus: "scored" as const,
+          createdAt: now
+        };
+      }
+    },
+    allowTextInput: true,
+    random: () => 0.5
+  });
+  const server = await new Promise<ReturnType<typeof app.listen>>((resolve) => {
+    const listener = app.listen(0, () => resolve(listener));
+  });
+  const baseUrl = `http://127.0.0.1:${(server.address() as AddressInfo).port}`;
+  const api = async <T>(path: string, options: { method?: string; teacher?: string; speakingToken?: string; body?: unknown } = {}) => {
+    const headers = new Headers();
+    if (options.teacher) headers.set("x-teacher", options.teacher);
+    if (options.speakingToken) headers.set("x-speaking-token", options.speakingToken);
+    if (options.body !== undefined) headers.set("content-type", "application/json");
+    const response = await fetch(`${baseUrl}${path}`, { method: options.method ?? "GET", headers, body: options.body === undefined ? undefined : JSON.stringify(options.body) });
+    const responseText = await response.text();
+    let body = {} as T;
+    try { body = responseText ? JSON.parse(responseText) as T : body; } catch { /* Express error pages are not part of this assertion. */ }
+    return { response, body };
+  };
+
+  try {
+    const created = await api<{ activity: { id: string; rubric: Array<{ id: string; enabled: boolean }> } }>("/api/speaking/activities", { method: "POST", teacher: "owner", body: workplaceInput });
+    assert.equal(created.response.status, 201);
+    assert.equal(created.body.activity.rubric.filter((criterion) => criterion.enabled).length, 4);
+    const launched = await api<{ session: { id: string; joinCode: string } }>(`/api/speaking/activities/${created.body.activity.id}/sessions`, { method: "POST", teacher: "owner" });
+    await api(`/api/speaking/sessions/${launched.body.session.id}/start-session`, { method: "POST", teacher: "owner" });
+    const joined = await api<{ token: string; participant: { id: string }; session: { id: string } }>("/api/speaking/join", { method: "POST", body: { code: launched.body.session.joinCode, identifier: "Hana" } });
+    await api(`/api/speaking/sessions/${joined.body.session.id}/start`, { method: "POST", speakingToken: joined.body.token });
+    for (const text of [
+      "Good afternoon. I would like to arrange a test drive for the silver sedan.",
+      "My name is Hana, and what time would be convenient?",
+      "How long will the drive take, and what should I bring?",
+      "I will check that document requirement for you. My family member can join.",
+      "The drive was helpful. I would like to compare another option."
+    ]) {
+      const turn = await api(`/api/speaking/sessions/${joined.body.session.id}/turn`, { method: "POST", speakingToken: joined.body.token, body: { text } });
+      assert.equal(turn.response.status, 200);
+    }
+    const finished = await api<{ result: { evaluation?: SpeakingEvaluation; turns: Array<{ speaker: string; text: string; id: string }> }; evaluationStatus?: string }>(`/api/speaking/sessions/${joined.body.session.id}/finish`, { method: "POST", speakingToken: joined.body.token });
+    assert.equal(finished.response.status, 200);
+    assert.equal(finished.body.evaluationStatus, "completed");
+    assert.equal(evaluationCalls, 1);
+    assert.ok(finished.body.result.evaluation);
+    assert.equal(finished.body.result.evaluation?.language, "ja");
+    assert.equal(finished.body.result.evaluation?.goalCompletion?.completed, true);
+    assert.equal(finished.body.result.evaluation?.usefulEnglish[0]?.said, finished.body.result.turns.find((turn) => turn.speaker === "student")?.text);
+
+    const studentResult = await api<{ result: { evaluation?: SpeakingEvaluation }; evaluationStatus?: string }>(`/api/speaking/results/${joined.body.participant.id}`, { speakingToken: joined.body.token });
+    assert.equal(studentResult.response.status, 200);
+    assert.equal(studentResult.body.evaluationStatus, "completed");
+    assert.equal(studentResult.body.result.evaluation?.assessmentStatus, "scored");
+    assert.equal(Object.values(studentResult.body.result.evaluation?.scores ?? {}).every((score) => score === 4), true);
+
+    const teacherResults = await api<{ items: Array<{ participant: { id: string }; overallScore?: number; evaluation?: SpeakingEvaluation }> }>(`/api/speaking/sessions/${launched.body.session.id}/results`, { teacher: "owner" });
+    assert.equal(teacherResults.response.status, 200);
+    const teacherItem = teacherResults.body.items.find((item) => item.participant.id === joined.body.participant.id);
+    assert.equal(teacherItem?.overallScore, 100);
+    assert.equal(teacherItem?.evaluation?.language, "ja");
+  } finally {
+    app.emit("speaking:shutdown");
+    await new Promise<void>((resolve) => server.close(() => resolve()));
   }
 });
