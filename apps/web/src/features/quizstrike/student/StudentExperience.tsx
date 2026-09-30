@@ -2471,7 +2471,7 @@ export default function StudentExperience({ onExit }: { onExit: () => void }) {
               : athleticsMode === "hunters-runners"
                 ? `Climb to the summit. ${athleticsRemainingRunners} runner${athleticsRemainingRunners === 1 ? "" : "s"} still racing.`
                 : athleticsMode === "chaos-climb"
-                  ? "Watch the seeded hazard waves. Answer to charge abilities and keep climbing."
+                  ? "Amber rings warn of hazards. Answer to charge abilities and keep climbing."
                   : athleticsEnergy <= ATHLETICS_CRITICAL_ENERGY
                     ? "Energy is low. Answer on a platform, then keep climbing."
                     : "Jump from platform to platform. Answer anytime to refill energy."
@@ -2898,9 +2898,13 @@ export default function StudentExperience({ onExit }: { onExit: () => void }) {
                     </div>
                   </div>
                   {athleticsRace ? (
-                    <div className="athletics-lobby-card" role="note">
+                    <div className="athletics-lobby-card athletics-briefing" role="note">
                       <Footprints className="athletics-lobby-mark" size={22} aria-hidden="true" />
-                      <span><strong>Skyline Adventure Park</strong><small>{ATHLETICS_STADIUM_COURSE.sections.length} chapters · {ATHLETICS_STADIUM_COURSE.checkpoints.length} checkpoints · answer anytime for energy</small></span>
+                      <span><strong>{athleticsModeConfig.label} · Skyline Adventure Park</strong>
+                        <small>{ATHLETICS_STADIUM_COURSE.sections.length} chapters · {ATHLETICS_STADIUM_COURSE.checkpoints.length} checkpoints</small>
+                        <ol>{athleticsModeConfig.instructionLines.map((line) => <li key={line}>{line}</li>)}</ol>
+                        <small>Move: WASD · Look: mouse / arrows · Jump: Space · Question: Q. On touch screens, use the on-screen controls. Cyan markers show required lifts.</small>
+                      </span>
                     </div>
                   ) : <div className="team-choice-grid" aria-label="Choose your team">
                     <button
@@ -2962,9 +2966,10 @@ export default function StudentExperience({ onExit }: { onExit: () => void }) {
                   <section className="athletics-result-card" aria-label="Your race result">
                     <div className="athletics-result-kicker"><Trophy size={18} aria-hidden="true" /> Skyline Adventure Park result</div>
                     <div className="athletics-result-grid">
-                      <span><small>Place</small><strong>{athleticsPlayer?.status === "finished" && athleticsStanding?.rank ? `#${athleticsStanding.rank}` : "DNF"}</strong></span>
-                      <span><small>Time</small><strong>{athleticsPlayer?.finishTimeMs === undefined ? "DNF" : formatDuration(athleticsPlayer.finishTimeMs / 1000)}</strong></span>
-                      <span><small>Laps</small><strong>{athleticsPlayer?.completedLaps ?? 0}/{athleticsRequiredLaps}</strong></span>
+                      <span><small>{athleticsPlayer?.role === "hunter" ? "Role" : "Place"}</small><strong>{athleticsPlayer?.role === "hunter" ? "Hunter" : athleticsPlayer?.status === "finished" && athleticsStanding?.rank ? `#${athleticsStanding.rank}` : "Time up"}</strong></span>
+                      <span><small>{athleticsPlayer?.role === "hunter" ? "Hits" : "Time"}</small><strong>{athleticsPlayer?.role === "hunter" ? athleticsPlayer.hunterHits ?? 0 : athleticsPlayer?.finishTimeMs === undefined ? "—" : formatDuration(athleticsPlayer.finishTimeMs / 1000)}</strong></span>
+                      <span><small>{athleticsPlayer?.role === "hunter" ? "Points" : "Laps"}</small><strong>{athleticsPlayer?.role === "hunter" ? player.score : `${athleticsPlayer?.completedLaps ?? 0}/${athleticsRequiredLaps}`}</strong></span>
+                      {athleticsPlayer?.role !== "hunter" && <span><small>Checkpoints reached</small><strong>{athleticsPlayer?.checkpointIndex ?? 0}/{ATHLETICS_STADIUM_COURSE.checkpoints.length}</strong></span>}
                       <span><small>Questions</small><strong>{athleticsPlayer?.questionIndex ?? 0}/{athleticsQuestionCount}</strong></span>
                       <span><small>Falls</small><strong>{athleticsPlayer?.falls ?? 0}</strong></span>
                     </div>

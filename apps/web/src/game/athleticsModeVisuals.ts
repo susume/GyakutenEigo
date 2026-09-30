@@ -1,6 +1,8 @@
 import * as THREE from "three";
 import {
   ATHLETICS_STADIUM_COURSE,
+  ATHLETICS_PLAYER_EYE_HEIGHT,
+  CHAOS_HAZARD_WARNING_MS,
   getAthleticsPointAtProgress,
   getAthleticsRouteTangent,
   getChaosHazardPosition,
@@ -82,6 +84,10 @@ const createZeusVisuals = (root: THREE.Group) => {
     );
     ring.rotation.x = Math.PI / 2;
     warning.add(ring);
+    const countdown = new THREE.Mesh(new THREE.TorusGeometry(1, 0.08, 6, 32),
+      new THREE.MeshBasicMaterial({ color: "#ffd66e", transparent: true, opacity: 0.9, depthWrite: false }));
+    countdown.rotation.x = Math.PI / 2;
+    warning.add(countdown);
     const column = new THREE.Mesh(
       new THREE.CylinderGeometry(0.13, 0.42, 5.8, 8),
       new THREE.MeshBasicMaterial({ color: "#b697ff", transparent: true, opacity: 0.16, depthWrite: false })
@@ -89,7 +95,7 @@ const createZeusVisuals = (root: THREE.Group) => {
     column.position.y = 2.8;
     warning.add(column);
     root.add(warning);
-    return { warning, ring, column };
+    return { warning, ring, countdown, column };
   });
 
   return {
@@ -108,18 +114,21 @@ const createZeusVisuals = (root: THREE.Group) => {
       lightning.intensity = phase === "rage" ? 24 : phase === "charging" ? 19 : phase === "defeated" ? Math.max(0, 14 * (1 - defeatProgress)) : 12;
       const attack = zeus?.currentAttack;
       const entries = attack ? Object.entries(attack.warningPositions) : [];
-      warningPool.forEach(({ warning, ring, column }, index) => {
+      warningPool.forEach(({ warning, ring, countdown, column }, index) => {
         const target = entries[index]?.[1];
         if (!target || !attack) {
           warning.visible = false;
           return;
         }
         warning.visible = true;
-        warning.position.set(target.x, target.y - 1.52, target.z);
+        warning.position.set(target.x, target.y - ATHLETICS_PLAYER_EYE_HEIGHT + 0.22, target.z);
         const strikeAt = Date.parse(attack.strikeAt);
         const remaining = Number.isFinite(strikeAt) ? Math.max(0, strikeAt - nowMs) : 0;
-        const radius = attack.strikeRadius * (remaining > 0 ? 0.78 + 0.22 * (1 - Math.min(1, remaining / 1800)) : 1.2);
-        ring.scale.setScalar(radius);
+        // The outer ring always shows the true damage radius. The inner ring
+        // closes toward the centre to communicate time, without flashing.
+        ring.scale.setScalar(attack.strikeRadius);
+        const duration = Math.max(1, strikeAt - Date.parse(attack.warningStartedAt));
+        countdown.scale.setScalar(attack.strikeRadius * Math.max(0.04, Math.min(1, remaining / duration)));
         ring.rotation.z = nowMs * (remaining < 900 ? 0.008 : 0.002);
         (ring.material as THREE.MeshBasicMaterial).opacity = remaining < 900 ? 1 : 0.72;
         (column.material as THREE.MeshBasicMaterial).opacity = remaining < 900 ? 0.3 : 0.12;
@@ -144,10 +153,45 @@ const createChaosVisuals = (root: THREE.Group) => {
     const ball = new THREE.Mesh(new THREE.SphereGeometry(1, 12, 8), material);
     const bumper = new THREE.Mesh(new THREE.TorusGeometry(0.95, 0.28, 8, 16), material);
     bumper.rotation.x = Math.PI / 2;
-    const crate = new THREE.Mesh(new THREE.BoxGeometry(1.65, 1.65, 1.65), material);
-    hazard.add(ball, bumper, crate);
+    const barrel = new THREE.Mesh(new THREE.CylinderGeometry(0.85, 0.85, 1.8, 10), material);
+    barrel.rotation.z = Math.PI / 2;
+    const duck = new THREE.Group();
+    const duckBody = new THREE.Mesh(new THREE.SphereGeometry(0.9, 12, 8), material);
+    duckBody.scale.set(1, 0.75, 1.2);
+    const duckHead = new THREE.Mesh(new THREE.SphereGeometry(0.5, 10, 8), material);
+    duckHead.position.set(0, 0.85, 0.5);
+    const beak = new THREE.Mesh(new THREE.ConeGeometry(0.24, 0.55, 4), makeMaterial("#ff9c54"));
+    beak.rotation.x = Math.PI / 2;
+    beak.position.set(0, 0.8, 1.08);
+    duck.add(duckBody, duckHead, beak);
+    for (const side of [-1, 1]) {
+      const eye = new THREE.Mesh(new THREE.SphereGeometry(0.07, 6, 4), makeMaterial("#26334d"));
+      eye.position.set(side * 0.28, 1, 0.87);
+      duck.add(eye);
+    }
+    const cart = new THREE.Group();
+    const cartBody = new THREE.Mesh(new THREE.BoxGeometry(1.8, 0.9, 2.2), material);
+    cartBody.position.y = 0.2;
+    cart.add(cartBody);
+    for (const x of [-0.95, 0.95]) for (const z of [-0.7, 0.7]) {
+      const wheel = new THREE.Mesh(new THREE.CylinderGeometry(0.32, 0.32, 0.18, 8), makeMaterial("#26334d"));
+      wheel.rotation.z = Math.PI / 2;
+      wheel.position.set(x, -0.45, z);
+      cart.add(wheel);
+    }
+    hazard.add(ball, bumper, barrel, duck, cart);
     root.add(hazard);
-    return { hazard, ball, bumper, crate, material };
+    const warning = new THREE.Group();
+    warning.name = `athletics-chaos-warning-${index}`;
+    const warningMaterial = new THREE.MeshBasicMaterial({ color: "#ffd66e", transparent: true, opacity: 0.9, depthWrite: false });
+    const warningRing = new THREE.Mesh(new THREE.TorusGeometry(1, 0.13, 6, 24), warningMaterial);
+    warningRing.rotation.x = Math.PI / 2;
+    const pointer = new THREE.Mesh(new THREE.ConeGeometry(0.35, 1.6, 3), warningMaterial);
+    pointer.rotation.x = Math.PI / 2;
+    pointer.position.z = 1;
+    warning.add(warningRing, pointer);
+    root.add(warning);
+    return { hazard, ball, bumper, barrel, duck, cart, material, warning, warningRing, warningMaterial };
   });
   return {
     update: (session: GameSession | null | undefined, nowMs: number) => {
@@ -155,25 +199,39 @@ const createChaosVisuals = (root: THREE.Group) => {
       const event = session?.athletics?.chaos?.currentEvent;
       const eventActive = event && nowMs < Date.parse(event.expiresAt) ? event : undefined;
       const hazardSpeedMultiplier = eventActive ? getChaosEventModifiers(eventActive).hazardSpeedMultiplier : 1;
-      pool.forEach(({ hazard, ball, bumper, crate, material }, index) => {
+      pool.forEach(({ hazard, ball, bumper, barrel, duck, cart, material, warning, warningRing, warningMaterial }, index) => {
         const definition = hazards[index];
         if (!definition) {
           hazard.visible = false;
+          warning.visible = false;
           return;
         }
         const position = getChaosHazardPosition(definition, ATHLETICS_STADIUM_COURSE.route, nowMs, hazardSpeedMultiplier);
-        hazard.visible = true;
-        hazard.position.set(position.x, position.y, position.z);
+        const spawnAt = Date.parse(definition.spawnAt);
+        const expiresAt = Date.parse(definition.expiresAt);
+        const telegraphing = nowMs < spawnAt;
+        warning.visible = telegraphing;
+        hazard.visible = !telegraphing && nowMs < expiresAt;
+        if (telegraphing) {
+          warning.position.set(position.x, position.y - 0.88, position.z);
+          warningRing.scale.setScalar(definition.radius + 0.8);
+          warningMaterial.opacity = 0.45 + 0.5 * (1 - Math.min(1, (spawnAt - nowMs) / CHAOS_HAZARD_WARNING_MS));
+          const ahead = getChaosHazardPosition(definition, ATHLETICS_STADIUM_COURSE.route, spawnAt + 250, hazardSpeedMultiplier);
+          warning.rotation.y = Math.atan2(ahead.x - position.x, ahead.z - position.z);
+        }
+        hazard.position.set(position.x, definition.kind === "giant-ball" ? position.y - 1.1 + definition.radius : position.y, position.z);
         hazard.rotation.y = nowMs * (definition.kind === "swinging-bumper" ? 0.003 : 0.0015) * (index % 2 ? -1 : 1);
         const color = colors[definition.kind] ?? "#ff7fb4";
         material.color.set(color);
         material.emissive.set(color);
         material.emissiveIntensity = definition.kind === "giant-ball" ? 0.8 : 0.5;
-        const scale = Math.max(0.7, definition.radius / 1.45);
+        const scale = definition.kind === "giant-ball" ? definition.radius : Math.max(0.7, definition.radius / 1.45);
         hazard.scale.setScalar(scale);
-        ball.visible = definition.kind === "giant-ball" || definition.kind === "rubber-duck";
+        ball.visible = definition.kind === "giant-ball";
         bumper.visible = definition.kind === "swinging-bumper";
-        crate.visible = !ball.visible && !bumper.visible;
+        duck.visible = definition.kind === "rubber-duck";
+        barrel.visible = definition.kind === "barrel";
+        cart.visible = definition.kind === "runaway-cart";
       });
     },
     dispose: () => undefined

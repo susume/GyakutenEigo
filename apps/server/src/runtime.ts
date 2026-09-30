@@ -225,6 +225,7 @@ import {
   getAthleticsMode,
   getAthleticsModeIntro,
   getZeusTargetPlan,
+  isActiveChaosHazard,
   resolveHunterHitsForRound,
   type PendingHunterProjectile
 } from "./athleticsModeAuthority.js";
@@ -1778,6 +1779,8 @@ const advanceChaosClimb = (session: GameSession, nowMs: number) => {
   const activeEvent = chaos.currentEvent && nowMs < Date.parse(chaos.currentEvent.expiresAt) ? chaos.currentEvent : undefined;
   const hazardSpeedMultiplier = activeEvent ? getChaosEventModifiers(activeEvent).hazardSpeedMultiplier : 1;
   for (const hazard of chaos.activeHazards) {
+    // Telegraphs are present in snapshots before they become collidable.
+    if (!isActiveChaosHazard(hazard, nowMs)) continue;
     if (hazard.hitIds && hazard.hitIds.length >= session.players.length) continue;
     const position = getChaosHazardPosition(hazard, ATHLETICS_STADIUM_COURSE.route, nowMs, hazardSpeedMultiplier);
     for (const player of session.players) {

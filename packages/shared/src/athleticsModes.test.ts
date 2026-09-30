@@ -127,6 +127,31 @@ test("Chaos waves are seeded, path-bound, capped, and resolve shielded impacts",
   assert.equal(getChaosEventModifiers("wind-gust").knockbackMultiplier, 1.15);
 });
 
+test("Zeus allows normal jumps but cannot strike another course storey", () => {
+  const warningPosition = { x: 0, y: 20, z: 0 };
+  assert.equal(resolveZeusStrike({ targetPosition: { x: 0, y: 23.4, z: 0 }, warningPosition, radius: 3 }).hit, true);
+  assert.equal(resolveZeusStrike({ targetPosition: { x: 0, y: 40, z: 0 }, warningPosition, radius: 3 }).hit, false);
+  assert.ok(getZeusAttackProfile(1, 30).warningDurationMs >= 1600);
+});
+
+test("Chaos telegraphs precede locally bounded travel and use course distance", () => {
+  const nowMs = 10_000;
+  for (let waveIndex = 1; waveIndex <= 20; waveIndex += 1) {
+    for (const hazard of createChaosWave({ seed: 123, waveIndex, nowMs, playerCount: 40 })) {
+      assert.equal(Date.parse(hazard.spawnAt) - nowMs, 1600);
+      assert.ok(Date.parse(hazard.expiresAt) - Date.parse(hazard.spawnAt) >= 4500);
+      assert.ok(Math.abs(hazard.endProgress - hazard.startProgress) <= 0.071);
+      assert.equal(getChaosHazardPosition(hazard, [{ x: 0, y: 0, z: 0 }, { x: 100, y: 0, z: 0 }], nowMs).progress, 0);
+    }
+  }
+  const hazard = { startProgress: .5, endProgress: 1, laneOffset: 0, spawnAt: new Date(0).toISOString(), expiresAt: new Date(1000).toISOString() };
+  // Unequal segments must project at x=50, rather than the middle vertex x=10.
+  const route = [{ x: 0, y: 0, z: 0 }, { x: 10, y: 0, z: 0 }, { x: 100, y: 0, z: 0 }];
+  assert.equal(getChaosHazardPosition(hazard, route, 0).x, 50);
+  assert.equal(getChaosHazardPosition({ ...hazard, laneOffset: 2 }, route, 1000).z, 2);
+  assert.equal(getChaosEventModifiers("wind-gust").movementSpeedMultiplier, 1);
+});
+
 test("non-Classic Athletics reports export mode-specific results", () => {
   const report = {
     session: { sessionCode: "ATHLETICS", settings: { gameMode: "athletics", athleticsMode: "hunters-runners" } },

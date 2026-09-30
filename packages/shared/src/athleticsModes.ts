@@ -29,7 +29,7 @@ export const ATHLETICS_MODE_CONFIG: Readonly<Record<AthleticsMode, AthleticsMode
     shortLabel: "Classic",
     description: "Pure parkour racing: answer for energy, jump the course, and reach the summit.",
     instructionTitle: "CLIMB THE SKYLINE",
-    instructionLines: ["Answer for movement energy", "Jump from platform to platform", "Reach the summit first"],
+    instructionLines: ["Follow white arrows; gold paths are optional shortcuts", "Answer anytime for energy; falls return you to your last landing", "Reach the summit first"],
     accent: "#40d9ff"
   },
   zeus: {
@@ -38,7 +38,7 @@ export const ATHLETICS_MODE_CONFIG: Readonly<Record<AthleticsMode, AthleticsMode
     shortLabel: "Zeus",
     description: "Climb toward Zeus, dodge telegraphed lightning, and answer to break an electric freeze.",
     instructionTitle: "CLIMB TO ZEUS",
-    instructionLines: ["Dodge the warning ring", "Answer correctly to break a freeze", "First to the summit defeats Zeus"],
+    instructionLines: ["Leave the lightning ring before it fills", "Answer correctly to break a freeze", "First to the summit defeats Zeus"],
     accent: "#b697ff"
   },
   "hunters-runners": {
@@ -54,9 +54,9 @@ export const ATHLETICS_MODE_CONFIG: Readonly<Record<AthleticsMode, AthleticsMode
     id: "chaos-climb",
     label: "Chaos Climb",
     shortLabel: "Chaos Climb",
-    description: "Race through seeded hazard waves, dodge rolling park props, and charge simple abilities.",
+    description: "Race through hazard waves with advance warnings, dodge rolling park props, and charge simple abilities.",
     instructionTitle: "SURVIVE THE CHAOS",
-    instructionLines: ["Answer for energy and abilities", "Watch for rolling hazards", "Recover at the last safe checkpoint"],
+    instructionLines: ["Answer for energy; three correct answers charge an ability", "Amber rings warn where hazards will appear", "Follow the arrows and retry from your last landing"],
     accent: "#ff7fb4"
   }
 };
@@ -231,10 +231,10 @@ export const getZeusAttackTier = (highestProgress: number): ZeusAttackTier => {
 export const getZeusAttackProfile = (highestProgress: number, playerCount: number): ZeusAttackProfile => {
   const tier = getZeusAttackTier(highestProgress);
   const count = Math.max(1, Math.floor(playerCount));
-  if (tier === "rage") return { tier, warningDurationMs: 1050, cooldownMs: 3000, targetCount: Math.min(2, count), strikeRadius: 3.4, shockwave: true };
-  if (tier === "upper") return { tier, warningDurationMs: 1250, cooldownMs: 4700, targetCount: Math.min(2, count), strikeRadius: 2.8, shockwave: true };
-  if (tier === "middle") return { tier, warningDurationMs: 1500, cooldownMs: 6100, targetCount: Math.min(2, count), strikeRadius: 2.35, shockwave: false };
-  return { tier, warningDurationMs: 1800, cooldownMs: 7800, targetCount: 1, strikeRadius: 1.95, shockwave: false };
+  if (tier === "rage") return { tier, warningDurationMs: 1600, cooldownMs: 4200, targetCount: Math.min(2, count), strikeRadius: 3.4, shockwave: true };
+  if (tier === "upper") return { tier, warningDurationMs: 1800, cooldownMs: 5200, targetCount: Math.min(2, count), strikeRadius: 2.8, shockwave: true };
+  if (tier === "middle") return { tier, warningDurationMs: 2100, cooldownMs: 6500, targetCount: Math.min(2, count), strikeRadius: 2.35, shockwave: false };
+  return { tier, warningDurationMs: 2400, cooldownMs: 8200, targetCount: 1, strikeRadius: 1.95, shockwave: false };
 };
 
 export interface ZeusTargetCandidate {
@@ -277,7 +277,11 @@ export const resolveZeusStrike = ({
   radius: number;
 }) => {
   const distance = Math.hypot(targetPosition.x - warningPosition.x, targetPosition.z - warningPosition.z);
-  return { hit: distance <= Math.max(0.5, radius), distance };
+  // Both positions are eye-height snapshots. Normal jumps remain inside the
+  // strike column, but another storey of the stacked course cannot be hit.
+  const verticalDistance = Number.isFinite(targetPosition.y) && Number.isFinite(warningPosition.y)
+    ? Math.abs(Number(targetPosition.y) - Number(warningPosition.y)) : 0;
+  return { hit: distance <= Math.max(0.5, radius) && verticalDistance <= 5, distance, verticalDistance };
 };
 
 export const ZEUS_FREEZE_CORRECT_RELEASE_MS = 0;
@@ -337,7 +341,9 @@ export const getChaosEventModifiers = (
   const type = typeof event === "string" ? event : event?.type;
   if (type === "speed-round") return { movementSpeedMultiplier: 1, hazardSpeedMultiplier: 1.35, jumpHeightCap: 4.5, knockbackMultiplier: 1 };
   if (type === "low-gravity") return { movementSpeedMultiplier: 1, hazardSpeedMultiplier: 1, jumpHeightCap: 7.2, knockbackMultiplier: 1 };
-  if (type === "wind-gust") return { movementSpeedMultiplier: 0.9, hazardSpeedMultiplier: 1, jumpHeightCap: 4.5, knockbackMultiplier: 1.15 };
+  // Mandatory gaps are tuned for standard speed; slowing a racer mid-jump
+  // would invalidate that jump contract. Wind changes impacts instead.
+  if (type === "wind-gust") return { movementSpeedMultiplier: 1, hazardSpeedMultiplier: 1, jumpHeightCap: 4.5, knockbackMultiplier: 1.15 };
   return { movementSpeedMultiplier: 1, hazardSpeedMultiplier: 1, jumpHeightCap: 4.5, knockbackMultiplier: 1 };
 };
 
@@ -350,6 +356,7 @@ export interface AthleticsChaosState {
 }
 
 export const CHAOS_HAZARD_LIMIT = 18;
+export const CHAOS_HAZARD_WARNING_MS = 1600;
 export const CHAOS_WAVE_INTERVAL_MS = 5200;
 export const CHAOS_EVENT_DURATION_MS = 7000;
 export const CHAOS_EVENT_INTERVAL = 4;
@@ -395,9 +402,10 @@ export const createChaosWave = ({
       ? "giant-ball"
       : chaosKinds[Math.floor(seededValue(seed, waveIndex * 17 + index + 3) * chaosKinds.length)] ?? "barrel";
     const downhill = (waveIndex + index) % 2 === 0;
-    const startProgress = downhill ? Math.min(0.94, progress + 0.12 + variance * 0.08) : Math.max(0.04, progress - variance * 0.05);
-    const endProgress = downhill ? Math.max(0.04, startProgress - (0.12 + variance * 0.09)) : Math.min(0.94, startProgress + (0.12 + variance * 0.09));
-    const durationMs = Math.round(2500 + variance * 1000 + (kind === "giant-ball" ? 600 : 0));
+    const travel = 0.045 + variance * 0.025;
+    const startProgress = downhill ? Math.min(0.94, progress + travel) : Math.max(0.04, progress - variance * 0.025);
+    const endProgress = downhill ? Math.max(0.04, startProgress - travel) : Math.min(0.94, startProgress + travel);
+    const durationMs = Math.round(4500 + variance * 1200 + (kind === "giant-ball" ? 600 : 0));
     const radius = kind === "giant-ball" ? 3.1 : kind === "runaway-cart" ? 2.3 : kind === "swinging-bumper" ? 2 : 1.45;
     wave.push({
       id: `chaos-${Math.max(0, Math.floor(waveIndex))}-${index}-${(hashString(`${seed}:${waveIndex}:${index}`) >>> 0).toString(36)}`,
@@ -405,8 +413,8 @@ export const createChaosWave = ({
       startProgress,
       endProgress,
       laneOffset: (seededValue(seed, waveIndex * 23 + index + 5) - 0.5) * 8,
-      spawnAt: new Date(nowMs).toISOString(),
-      expiresAt: new Date(nowMs + durationMs).toISOString(),
+      spawnAt: new Date(nowMs + CHAOS_HAZARD_WARNING_MS).toISOString(),
+      expiresAt: new Date(nowMs + CHAOS_HAZARD_WARNING_MS + durationMs).toISOString(),
       speed: 1 / durationMs,
       radius,
       knockback: kind === "giant-ball" ? 5.2 : kind === "runaway-cart" ? 4.2 : kind === "swinging-bumper" ? 3.6 : 2.6,
@@ -440,23 +448,30 @@ export const getChaosHazardPosition = (
     ? 0
     : (nowMs - startAt) / (endAt - startAt);
   const progress = Math.max(0, Math.min(1, rawProgress * Math.max(0.1, speedMultiplier)));
+  const lengths = route.slice(1).map((point, index) => Math.hypot(point.x - route[index]!.x, point.z - route[index]!.z));
+  const totalLength = lengths.reduce((sum, length) => sum + length, 0);
   const routePosition = (routeProgress: number) => {
-    const safeProgress = Math.max(0, Math.min(1, routeProgress));
-    const exact = safeProgress * Math.max(1, route.length - 1);
-    const index = Math.min(route.length - 1, Math.floor(exact));
-    const next = route[Math.min(route.length - 1, index + 1)] ?? route[index]!;
+    let distance = Math.max(0, Math.min(1, routeProgress)) * totalLength;
+    let index = 0;
+    while (index < lengths.length - 1 && distance > lengths[index]!) {
+      distance -= lengths[index]!;
+      index += 1;
+    }
     const point = route[index]!;
-    const part = exact - index;
+    const next = route[index + 1] ?? point;
+    const part = lengths[index] ? Math.min(1, distance / lengths[index]!) : 0;
     return {
       x: point.x + (next.x - point.x) * part,
       y: point.y + (next.y - point.y) * part,
       z: point.z + (next.z - point.z) * part
     };
   };
-  const point = routePosition(hazard.startProgress + (hazard.endProgress - hazard.startProgress) * progress);
-  const ahead = routePosition(Math.min(1, Math.max(0, hazard.startProgress + (hazard.endProgress - hazard.startProgress) * progress + 0.003)));
-  const tangentX = ahead.x - point.x;
-  const tangentZ = ahead.z - point.z;
+  const routeProgress = hazard.startProgress + (hazard.endProgress - hazard.startProgress) * progress;
+  const point = routePosition(routeProgress);
+  const ahead = routePosition(Math.min(1, routeProgress + 0.003));
+  const behind = routePosition(Math.max(0, routeProgress - 0.003));
+  const tangentX = ahead.x - behind.x;
+  const tangentZ = ahead.z - behind.z;
   const length = Math.hypot(tangentX, tangentZ) || 1;
   return {
     x: point.x - (tangentZ / length) * hazard.laneOffset,

@@ -10,6 +10,7 @@ import {
   getAthleticsRouteLength,
   getAthleticsRouteProgress,
   getAthleticsRouteTangent,
+  getAthleticsSurfaceRouteProgress,
   type AthleticsAccent,
   type AthleticsCourseSurface,
   type AthleticsMovingObstacle
@@ -19,6 +20,7 @@ import type { ArenaQuality } from "./gamePreferences";
 import type { ArenaQualityConfig } from "./sceneSetup";
 import { createQuizStrikeMaterial, type QuizStrikeMaterialStyle } from "./rendering/materials/QuizStrikeMaterials";
 import { buildAthleticsEnvironmentDress } from "./rendering/environment/AthleticsEnvironmentDress";
+import { getAthleticsLandingGuide, type AthleticsLandingGuide } from "./athleticsNavigation";
 
 type ActiveArenaQuality = Exclude<ArenaQuality, "auto">;
 type TextureKind = "floor" | "stone" | "wood" | "water" | "sand" | "metal";
@@ -414,7 +416,10 @@ export const buildAthleticsStadiumScene = ({
   };
 
   allSurfaceEntries.forEach(({ surface, shortcut }) => {
-    const progress = getAthleticsRouteProgress({ x: surface.x, y: surface.y, z: surface.z }, course);
+    const routeIndex = course.surfaces.indexOf(surface);
+    const progress = shortcut
+      ? getAthleticsRouteProgress({ x: surface.x, y: surface.y + ATHLETICS_PLAYER_EYE_HEIGHT, z: surface.z }, course)
+      : getAthleticsSurfaceRouteProgress(routeIndex, course);
     const accent = shortcut ? "gold" : getSectionAccent(progress);
     const platformMaterial = surface.material === "wood"
       ? wood
@@ -458,7 +463,21 @@ export const buildAthleticsStadiumScene = ({
       addBox(park, cream, [0.28, 0.18, surface.depth * 0.7], [rightMarker.x, surface.y + 0.18, rightMarker.z], surfaceRotation);
     }
 
-    const routeIndex = course.surfaces.indexOf(surface);
+    // White chevrons give direction even in Low quality and without colour
+    // vision. They sit flush on the landing and add no collision geometry.
+    const outgoing = [...course.transitions, ...course.shortcuts.flatMap((entry) => entry.transitions)]
+      .find((transition) => transition.fromSurfaceId === surface.id);
+    const destination = allSurfaceEntries.find((entry) => entry.surface.id === outgoing?.toSurfaceId)?.surface;
+    if (destination) {
+      const heading = Math.atan2(destination.x - surface.x, destination.z - surface.z);
+      for (const side of [-1, 1]) {
+        const offset = side * 0.42;
+        const directionX = Math.sin(heading), directionZ = Math.cos(heading);
+        addBatchedBox(shortcut ? accentMaterials.gold : cream, [0.22, 0.035, 1.7],
+          [surface.x + directionZ * offset, surface.y + 0.185, surface.z - directionX * offset],
+          "sand", [0, heading + side * -0.55, 0]);
+      }
+    }
     if (qualityConfig.detail > 0 && !shortcut && supportIndices.has(routeIndex)) {
       const supportHeight = Math.max(3, surface.y - 0.8);
       const leftSupport = surfacePoint(surface, -surface.width * 0.33, -surface.depth * 0.3);
@@ -499,7 +518,17 @@ export const buildAthleticsStadiumScene = ({
     addArch(park, accentMaterials[accent], point, progress, 18, 6.8);
     const sectionLabel = course.sections.find((section) => progress <= section.endProgress)?.label ?? "Sky Park Summit";
     const checkpointLabel = makeLabelTexture(`CHECKPOINT ${index + 1} · ${sectionLabel.toUpperCase()}`, "#13243b", sectionColors[accent]);
-    addBox(park, labelMaterial(`checkpoint-label-${index}`, checkpointLabel), [13.5, 1.1, 0.08], [point.x, point.y + 7.7, point.z]);
+    const tangent = getAthleticsRouteTangent(progress, course);
+    addBox(park, labelMaterial(`checkpoint-label-${index}`, checkpointLabel), [13.5, 1.1, 0.08], [point.x, point.y + 7.7, point.z], [0, Math.atan2(tangent.x, tangent.z), 0]);
+  });
+
+  // Branches are advertised before the player commits to a narrower jump.
+  course.shortcuts.forEach((shortcut) => {
+    const point = getAthleticsPointAtProgress(shortcut.startProgress, course);
+    const tangent = getAthleticsRouteTangent(shortcut.startProgress, course);
+    const label = makeLabelTexture("GOLD SHORTCUT · HARDER JUMPS", "#30241a", "#ffd66e");
+    addBox(park, labelMaterial(`shortcut-label-${shortcut.id}`, label), [8, 0.85, 0.08],
+      [point.x + tangent.z * 4.2, point.y + 3, point.z - tangent.x * 4.2], [0, Math.atan2(tangent.x, tangent.z), 0]);
   });
 
   // Ground-level attraction district: imported GLBs can hide these named
@@ -583,9 +612,8 @@ export const buildAthleticsStadiumScene = ({
     previousMovingPositions.set(obstacle.id, getAthleticsMovingObstaclePosition(obstacle, Date.now() + serverOffsetMs));
   });
 
-  const sortedSurfaceVisuals = surfaceVisuals.slice().sort((left, right) => left.progress - right.progress);
-  const firstNextSurface = sortedSurfaceVisuals.find((entry) => entry.progress > 0.01) ?? sortedSurfaceVisuals[0];
-  if (firstNextSurface) nextMarker.position.set(firstNextSurface.surface.x, firstNextSurface.surface.y + 3.2, firstNextSurface.surface.z);
+  let landingGuide: AthleticsLandingGuide | null = { ...course.surfaces[1]!, kind: "landing" };
+  nextMarker.position.set(landingGuide.x, landingGuide.y + 3.2, landingGuide.z);
 
   const staticBatchStats = staticBatcher.flush(scene);
   renderer.domElement.dataset.staticSources = String(staticBatchStats.sourceMeshes);
@@ -617,22 +645,29 @@ export const buildAthleticsStadiumScene = ({
     environmentDress.update(nowMs);
     const bob = Math.sin(nowMs * 0.003) * 0.18;
     if (currentPosition) {
-      const progress = getAthleticsRouteProgress({ x: currentPosition.x, y: currentPosition.y, z: currentPosition.z }, course);
-      let next = sortedSurfaceVisuals.find((entry) => entry.progress > progress + 0.018);
-      if (!next && progress < 0.98) next = sortedSurfaceVisuals.at(-1);
-      if (next) {
+      if (grounded) {
+        const guide = getAthleticsLandingGuide(currentPosition, nowMs, course);
+        if (guide !== undefined) landingGuide = guide;
+      }
+      if (landingGuide?.kind === "lift") {
+        const lift = course.movingObstacles.find((obstacle) => obstacle.id === landingGuide?.id);
+        if (lift) {
+          const point = getAthleticsMovingObstaclePosition(lift, nowMs);
+          landingGuide = { ...landingGuide, ...point, y: point.y + lift.height };
+        }
+      }
+      if (landingGuide) {
         nextMarker.visible = true;
-        nextMarker.position.set(next.surface.x, next.surface.y + 3.2 + bob, next.surface.z);
+        nextMarker.position.set(landingGuide.x, landingGuide.y + 3.2 + bob, landingGuide.z);
+        markerMaterial.color.set(landingGuide.kind === "lift" ? "#7bf0ff" : "#fff4a8");
       } else {
         nextMarker.visible = false;
       }
-      let selectedNext = false;
-      sortedSurfaceVisuals.forEach((entry) => {
-        const isNext = !selectedNext && entry.progress > progress + 0.018;
-        selectedNext = selectedNext || isNext;
+      surfaceVisuals.forEach((entry) => {
+        const isNext = entry.surface.id === landingGuide?.id;
         const material = entry.edge.material as THREE.LineBasicMaterial;
         material.opacity = isNext ? 1 : entry.surface.safe ? 0.78 : 0.5;
-        const accent = entry.surface.material === "accent" ? getSectionAccent(entry.progress) : "cyan";
+        const accent = entry.surface.id.startsWith("shortcut-") ? "gold" : getSectionAccent(entry.progress);
         material.color.set(isNext ? "#fff4a8" : sectionColors[accent]);
       });
     }

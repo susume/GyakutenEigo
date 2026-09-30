@@ -1,6 +1,27 @@
 import { expect, test } from "@playwright/test";
 import { createClassroom } from "./classroomFixture";
 
+test("Athletics briefing and jump/question controls fit an iPad", async ({ page, request }, testInfo) => {
+  const classroom = await createClassroom(request, { gameMode: "athletics", athleticsMode: "chaos-climb" });
+  await page.goto(`/join?code=${classroom.code}`);
+  await page.getByPlaceholder("Player name").fill("Tablet Runner");
+  await page.getByRole("button", { name: "Join game", exact: true }).tap();
+  await expect(page.locator(".athletics-briefing li")).toHaveCount(3);
+  const briefing = await page.locator(".athletics-briefing").boundingBox();
+  expect(briefing!.x).toBeGreaterThanOrEqual(0);
+  expect(briefing!.x + briefing!.width).toBeLessThanOrEqual(page.viewportSize()!.width);
+  const start = await request.post(`/api/sessions/${classroom.code}/start`, { headers: { Authorization: `Bearer ${classroom.teacherToken}` } });
+  expect(start.status()).toBe(200);
+  await expect(page.locator(".athletics-hud")).toBeVisible({ timeout: 30_000 });
+  await expect(page.locator(".game-announcement")).toBeHidden({ timeout: 15_000 });
+  await expect(page.getByRole("button", { name: "Jump", exact: true })).toBeEnabled();
+  await expect(page.getByRole("button", { name: "Answer a movement energy question", exact: true })).toBeVisible();
+  await expect(page.locator(".athletics-mode-action-bar")).toBeHidden();
+  await page.screenshot({ path: testInfo.outputPath("athletics-tablet.png") });
+  await page.getByRole("button", { name: "Answer a movement energy question", exact: true }).tap();
+  await expect(page.getByText("Which answer is correct?", { exact: true })).toBeVisible();
+});
+
 test("iPad-like profile joins, starts, renders the arena shell, and accepts touch controls", async ({ page, request }) => {
   const classroom = await createClassroom(request, { gameMode: "flag", roundCount: 3, startingMoney: 4000 });
 

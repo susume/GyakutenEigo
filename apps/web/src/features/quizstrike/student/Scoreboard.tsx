@@ -25,14 +25,15 @@ export default function Scoreboard({
   removingPlayerId?: string | null;
 }) {
   if (gameMode === "athletics") {
-    const standings = resolveAthleticsStandings(players);
+    const hunters = players.filter((racer) => racer.athletics?.role === "hunter");
+    const standings = resolveAthleticsStandings(players.filter((racer) => racer.athletics?.role !== "hunter"));
     return (
       <div className="scoreboard athletics-scoreboard">
         <div className="panel-title">
           <h2>Race standings</h2>
           <span>{players.length} {players.length === 1 ? "racer" : "racers"}</span>
         </div>
-        <p className="scoreboard-mode-note">Finish order leads. Progress breaks ties until the tape.</p>
+        <p className="scoreboard-mode-note">Finish order leads. Progress breaks ties until the tape.{hunters.length > 0 ? " Hunters earn hits at their stations." : ""}</p>
         <div className="scoreboard-table-wrap">
           <table className="scoreboard-table">
             <caption>Athletics Race standings</caption>
@@ -73,6 +74,12 @@ export default function Scoreboard({
                   </tr>
                 );
               })}
+              {hunters.map((hunter) => <tr className="scoreboard-row athletics-scoreboard-row" key={hunter.id}>
+                <th scope="row">Hunter</th>
+                <td>{hunter.nickname}{hunter.id === localPlayerId ? " · you" : ""}</td>
+                <td colSpan={5}>Station {(hunter.athletics?.stationIndex ?? 0) + 1} · {hunter.athletics?.hunterHits ?? 0} hits · {hunter.score} points</td>
+                {onRemovePlayer && <td className="scoreboard-actions"><button type="button" className="scoreboard-remove-player" onClick={() => onRemovePlayer(hunter.id)} disabled={Boolean(removingPlayerId)} aria-label={`Remove ${hunter.nickname} from the game`}><Trash2 size={15} aria-hidden="true" />Remove</button></td>}
+              </tr>)}
               {standings.length === 0 && <tr><td colSpan={onRemovePlayer ? 8 : 7}>No racers here yet.</td></tr>}
             </tbody>
           </table>

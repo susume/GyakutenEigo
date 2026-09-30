@@ -11,7 +11,8 @@ import {
   resolveChaosHit,
   resolveHunterQuiz,
   resolveRunnerQuiz,
-  resolveZeusHit
+  resolveZeusHit,
+  isActiveChaosHazard
 } from "./athleticsModeAuthority.js";
 
 const playerIds = Array.from({ length: 10 }, (_, index) => `student-${index}`);
@@ -82,4 +83,8 @@ test("server Zeus plans and Chaos waves are deterministic", () => {
   assert.deepEqual(first, repeat);
   assert.ok(first.event?.label);
   assert.ok(first.hazards.length > 0);
+  const hazard = first.hazards[0]!;
+  assert.equal(isActiveChaosHazard(hazard, nowMs + 1599), false);
+  assert.equal(isActiveChaosHazard(hazard, nowMs + 1600), true);
+  assert.equal(isActiveChaosHazard(hazard, Date.parse(hazard.expiresAt) + 1), false);
 });

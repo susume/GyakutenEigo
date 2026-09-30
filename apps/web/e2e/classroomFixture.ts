@@ -5,8 +5,9 @@ export const createClassroom = async (
   {
     gameMode = "classic",
     roundCount = 3,
-    startingMoney = 0
-  }: { gameMode?: "classic" | "flag" | "athletics"; roundCount?: number; startingMoney?: number } = {}
+    startingMoney = 0,
+    athleticsMode = "classic"
+  }: { gameMode?: "classic" | "flag" | "athletics"; roundCount?: number; startingMoney?: number; athleticsMode?: "classic" | "zeus" | "hunters-runners" | "chaos-climb" } = {}
 ) => {
   const suffix = `${Date.now()}-${Math.random().toString(16).slice(2)}`;
   const signup = await request.post("/api/auth/signup", {
@@ -43,7 +44,7 @@ export const createClassroom = async (
     headers: authorization,
     data: {
       quizSetId: quizSet.id,
-      settings: { gameMode, maxPlayers: 2, roundCount, startingMoney, roundDurationSeconds: 60 }
+      settings: { gameMode, maxPlayers: 2, roundCount, startingMoney, roundDurationSeconds: 60, athleticsMode }
     }
   });
   if (created.status() !== 201) throw new Error(`Session creation failed with ${created.status()}.`);
