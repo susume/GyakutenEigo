@@ -67,6 +67,7 @@ import { buildTeacherSpeakingPath } from "../../../navigation";
 import GyakutenEigoBrand from "../../../ui/GyakutenEigoBrand";
 import { formatDuration } from "../speakingData";
 import { ResultPanel, scoreFor } from "../SpeakingResultPanel";
+import { SpeakingKeywords, SpeakingReferenceSheet } from "../SpeakingSupportPanel";
 import { SpeakingSetDetailPage, SpeakingSetsPage } from "./SpeakingSetsPage";
 import SpeakingReportsPanel from "./SpeakingReportsPanel";
 import { coreFallbackActivities, isCompatibleCoreLibraryResponse } from "./speakingLibrary";
@@ -660,7 +661,30 @@ function SpeakingCorePreview({ template, working, onClose, onUse, onCustomize }:
     };
   }, []);
   const resources = speakingScenarioResources(template.scenarioResources);
-  return <div className="speaking-preview-backdrop" role="presentation" onMouseDown={(event) => { if (event.currentTarget === event.target) onClose(); }}><section ref={previewRef} tabIndex={-1} className="speaking-core-preview" role="dialog" aria-modal="true" aria-labelledby="speaking-preview-title"><button type="button" className="speaking-preview-close" onClick={onClose} aria-label="Close preview"><X size={19} aria-hidden="true" /></button><div className="speaking-preview-top">{resources.imageSrc ? <img src={resources.imageSrc} alt={resources.imageAlt ?? ""} /> : <div className="speaking-preview-placeholder" aria-hidden="true"><ClipboardCheck size={34} /></div>}<div><span className="speaking-card-hierarchy">{SPEAKING_LIBRARY_COLLECTION_LABELS[resources.libraryCollection ?? "school-english"]} / {speakingCategory(template)}</span><span className={`speaking-mode-badge speaking-mode-${template.mode}`}>{speakingModeLabel(template.mode)}</span><h2 id="speaking-preview-title">{template.title}</h2><p>{template.scenario}</p></div></div><div className="speaking-preview-grid"><div><span className="speaking-preview-label">Student goal</span><p>{resources.studentGoal}</p></div><div><span className="speaking-preview-label">Learner role</span><p>{template.studentRole}</p></div><div><span className="speaking-preview-label">Speaking partner context</span><p>{resources.aiContext ?? `Act as ${template.aiRole} in this situation.`}</p></div><div><span className="speaking-preview-label">Possible complication</span><p>{resources.possibleComplication ?? "Respond naturally if the student takes a different direction."}</p></div><div><span className="speaking-preview-label">Duration</span><p>{speakingMinutes(template.durationSeconds)} · Assessment by default</p></div><div><span className="speaking-preview-label">Target English</span><ul>{template.targetExpressions.map((expression) => <li key={expression}>{expression}</li>)}</ul></div><div><span className="speaking-preview-label">Success conditions</span><ul>{(resources.successConditions.length ? resources.successConditions : ["Communicate the main idea.", "Respond and keep the conversation moving."]).map((item) => <li key={item}>{item}</li>)}</ul></div></div><div className="speaking-preview-skills"><span className="speaking-preview-label">Speaking partner role</span><p>{template.aiRole}</p><span className="speaking-preview-label">Assessment criteria</span><ul>{template.rubric.filter((criterion) => criterion.enabled).map((criterion) => <li key={criterion.id}><strong>{criterion.name}</strong>: {criterion.description}</li>)}</ul></div><div className="speaking-preview-skills"><span className="speaking-preview-label">Communication skills</span><div className="speaking-skill-tags">{speakingSkills(template).map((item) => <span key={item}>{item}</span>)}</div></div><div className="speaking-preview-actions"><button type="button" className="speaking-outline-button" onClick={onClose}>Close</button><button type="button" className="speaking-text-button" onClick={onCustomize}>Customize</button><button type="button" className="speaking-primary-button" onClick={onUse} disabled={working}>{working ? "Adding…" : "Use as-is"}</button></div></section></div>;
+  return <div className="speaking-preview-backdrop" role="presentation" onMouseDown={(event) => { if (event.currentTarget === event.target) onClose(); }}>
+    <section ref={previewRef} tabIndex={-1} className="speaking-core-preview" role="dialog" aria-modal="true" aria-labelledby="speaking-preview-title">
+      <button type="button" className="speaking-preview-close" onClick={onClose} aria-label="Close preview"><X size={19} aria-hidden="true" /></button>
+      <div className="speaking-preview-top">
+        {resources.imageSrc ? <img src={resources.imageSrc} alt={resources.imageAlt ?? ""} /> : <div className="speaking-preview-placeholder" aria-hidden="true"><ClipboardCheck size={34} /></div>}
+        <div><span className="speaking-card-hierarchy">{SPEAKING_LIBRARY_COLLECTION_LABELS[resources.libraryCollection ?? "school-english"]} / {speakingCategory(template)}</span><span className={`speaking-mode-badge speaking-mode-${template.mode}`}>{speakingModeLabel(template.mode)}</span><h2 id="speaking-preview-title">{template.title}</h2><p>{template.scenario}</p></div>
+      </div>
+      <div className="speaking-preview-grid">
+        <div><span className="speaking-preview-label">Student goal</span><p>{resources.studentGoal}</p></div>
+        <div><span className="speaking-preview-label">Learner role</span><p>{template.studentRole}</p></div>
+        <div><span className="speaking-preview-label">Speaking partner context</span><p>{resources.aiContext ?? `Act as ${template.aiRole} in this situation.`}</p></div>
+        <div><span className="speaking-preview-label">Possible complication</span><p>{resources.possibleComplication ?? "Respond naturally if the student takes a different direction."}</p></div>
+        <div><span className="speaking-preview-label">Duration</span><p>{speakingMinutes(template.durationSeconds)} · Assessment by default</p></div>
+        <div><span className="speaking-preview-label">Target English</span><p>Examples, not compulsory wording.</p><ul>{template.targetExpressions.map((expression) => <li key={expression}>{expression}</li>)}</ul></div>
+        <div><span className="speaking-preview-label">Success conditions</span><ul>{(resources.successConditions.length ? resources.successConditions : ["Communicate the main idea.", "Respond and keep the conversation moving."]).map((item) => <li key={item}>{item}</li>)}</ul></div>
+        {resources.suggestedSteps.length > 0 && <div><span className="speaking-preview-label">Suggested steps</span><ol>{resources.suggestedSteps.map((item, index) => <li key={`${index}-${item}`}>{item}</li>)}</ol></div>}
+      </div>
+      <SpeakingKeywords words={resources.usefulVocabulary} />
+      <SpeakingReferenceSheet items={resources.referenceItems} />
+      <div className="speaking-preview-skills"><span className="speaking-preview-label">Speaking partner role</span><p>{template.aiRole}</p><span className="speaking-preview-label">Assessment criteria</span><ul>{template.rubric.filter((criterion) => criterion.enabled).map((criterion) => <li key={criterion.id}><strong>{criterion.name}</strong>: {criterion.description}</li>)}</ul></div>
+      <div className="speaking-preview-skills"><span className="speaking-preview-label">Communication skills</span><div className="speaking-skill-tags">{speakingSkills(template).map((item) => <span key={item}>{item}</span>)}</div></div>
+      <div className="speaking-preview-actions"><button type="button" className="speaking-outline-button" onClick={onClose}>Close</button><button type="button" className="speaking-text-button" onClick={onCustomize}>Customize</button><button type="button" className="speaking-primary-button" onClick={onUse} disabled={working}>{working ? "Adding…" : "Use as-is"}</button></div>
+    </section>
+  </div>;
 }
 
 function TeacherLoading() {
@@ -809,8 +833,8 @@ function SpeakingCreateChoice({
 const SPEAKING_DURATION_PRESETS = [120, 180, 300, 420] as const;
 
 const SPEAKING_SUPPORT_OPTIONS: Array<{ key: keyof SpeakingSupportSettings; label: string; description: string }> = [
-  { key: "showTargetExpressions", label: "Target expressions", description: "Show the target English from this lesson." },
-  { key: "showContext", label: "Context", description: "Show the map, image, menu or other task material." },
+  { key: "showTargetExpressions", label: "Target expressions", description: "Show useful expressions and keywords for this task." },
+  { key: "showContext", label: "Context", description: "Show reference facts, maps, images, menus or other task material." },
   { key: "showTranscript", label: "Conversation transcript", description: "Let students read the conversation while speaking." },
   { key: "allowReplay", label: "Replay partner", description: "Let students replay the partner’s latest message." },
   { key: "allowHelp", label: "Help", description: "Let students request an extra hint during the task." }

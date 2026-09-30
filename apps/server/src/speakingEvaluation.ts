@@ -9,7 +9,7 @@ import {
 } from "@quizstrike/shared";
 
 /** Bump when the evaluator's evidence contract or scoring guardrails change. */
-export const SPEAKING_EVALUATOR_PROMPT_VERSION = "2026-09-12-goal-v1";
+export const SPEAKING_EVALUATOR_PROMPT_VERSION = "2026-09-30-task-facts-v2";
 
 export const SPEAKING_EVALUATION_MAX_ATTEMPTS = 5;
 export const SPEAKING_EVALUATION_RETRY_DELAYS_MS = [10_000, 30_000, 120_000, 300_000] as const;
@@ -80,7 +80,11 @@ const cleanSentence = (value: string) => value.trim().replace(/[.。!?！]+$/u, 
 
 export const speakingGoalRequirements = (activity: SpeakingActivity): string[] => {
   const goal = speakingScenarioResources(activity.scenarioResources).studentGoal.trim();
-  const pieces = goal.split(/[,;]|\band\s+(?=(?:ask|close|finish|order|describe|explain|tell|say|give|choose|introduce|compare|share)\b)/iu).map(cleanSentence).map((piece) => piece.replace(/^and\s+/iu, "")).filter(Boolean);
+  // A comma can separate objects ("size, colour and price"), not just actions.
+  // Keep those lists together so the evaluator never scores "colour" alone.
+  const action = "(?:ask|close|finish|order|describe|explain|tell|say|give|choose|introduce|compare|share|confirm|check|offer|respond|suggest|agree|identify|recommend|summarize|welcome|discover|understand|avoid|make|answer|listen|clarify|propose)";
+  const separator = new RegExp(`;|,\\s*(?=(?:(?:and|then)\\s+)?${action}\\b)|\\band\\s+(?=${action}\\b)`, "iu");
+  const pieces = goal.split(separator).map(cleanSentence).map((piece) => piece.replace(/^(?:and|then)\s+/iu, "")).filter(Boolean);
   return (pieces.length ? pieces : [goal]).slice(0, 8);
 };
 

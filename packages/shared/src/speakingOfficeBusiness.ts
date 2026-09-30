@@ -10,16 +10,17 @@ const seeds: WorkplaceSeed[] = [
     aiRole: "New colleague",
     studentRole: "Employee introducing themselves",
     goal: "Introduce yourself, explain your role in simple English, ask about the colleague's work and establish a comfortable next connection.",
-    aiContext: "The colleague works with the customer-support team and is curious about the employee's role. The employee can choose realistic details but should keep the introduction clear and concise.",
+    aiContext: "Maya works in customer support and answers questions about orders. If asked about the team, mention the unfamiliar term 'order fulfilment' and explain it as preparing and sending orders when the learner asks. Let the employee choose their own name and plausible role.",
     skills: ["Welcoming", "Sharing information", "Asking questions", "Follow-up questions"],
     complication: "The colleague uses an unfamiliar department name, so the employee asks a polite clarification question.",
-    conditions: ["Say your name and team.", "Explain one responsibility.", "Ask a relevant question about the colleague's work.", "Clarify one unfamiliar detail and close naturally."],
+    conditions: ["Say your name and team.", "Explain one responsibility.", "Ask a relevant question about the colleague's work.", "Respond to the answer and close naturally; ask for clarification if needed."],
     openingLine: "Hi, I do not think we have met yet. I am Maya from customer support.",
     steps: ["Greet and introduce yourself.", "Explain your role in one or two sentences.", "Ask about the colleague's work.", "Clarify one detail and suggest staying in touch."],
     vocabulary: ["department", "team", "role", "responsibility", "support", "colleague"],
     targetExpressions: ["Nice to meet you.", "I work on…", "My main responsibility is…", "What does your team handle?", "Could you explain that briefly?", "I look forward to working with you."],
     durationSeconds: 180,
-    difficulty: "easy"
+    difficulty: "easy",
+    referenceItems: [{ label: "Your introduction", detail: "Use your own name and role, or choose a fictional team and one responsibility. You do not need to share confidential workplace information." }]
   },
   {
     id: "office-welcome-visitor",
@@ -39,7 +40,8 @@ const seeds: WorkplaceSeed[] = [
     vocabulary: ["appointment", "visitor", "reception", "host", "lobby", "meeting room"],
     targetExpressions: ["Welcome to our office.", "May I have your name and company?", "Let me contact Ken Ito.", "Please make yourself comfortable while I check.", "I can't confirm the waiting time yet.", "I'll update you as soon as I know."],
     durationSeconds: 240,
-    difficulty: "easy"
+    difficulty: "easy",
+    referenceItems: [{ label: "Fictional reception process", detail: "Confirm visitor, company, host and appointment. Contact the host before giving access; offer a seat in the reception lobby while checking. Host arrival time is unknown." }]
   },
   {
     id: "office-client-small-talk",
@@ -68,16 +70,21 @@ const seeds: WorkplaceSeed[] = [
     scenario: "A colleague and a client need to find a time for a 30-minute online meeting next week. The employee proposes options, checks time zones and confirms the final arrangement.",
     aiRole: "Colleague or client scheduling a meeting",
     studentRole: "Employee arranging the meeting",
-    goal: "Clarify the meeting purpose and length, offer available times, confirm the time zone and participants, and summarize the agreed arrangement.",
-    aiContext: "The client is in Singapore and can meet Tuesday or Wednesday afternoon Japan time. The meeting should take 30 minutes and include the employee's manager. The exact video platform is not supplied.",
+    goal: "Agree on a 30-minute meeting using the available slots. Confirm both local times and explain how you will send the invitation and meeting link.",
+    aiContext: "The client is in Singapore and is free Tuesday or Wednesday, 13:00–15:00 Singapore time. They want to discuss the customer survey with the employee and manager. When a slot is proposed, ask 'Do you mean Japan time or my time?' Accept either supplied slot once both times are confirmed.",
     skills: ["Scheduling", "Asking questions", "Confirming information", "Clarifying"],
-    complication: "The client suggests a time that is fine in Singapore but early in Japan, so the employee checks the time zone before agreeing.",
-    conditions: ["Confirm the purpose and duration.", "Offer at least two possible times.", "Check the time zone and participants.", "Clarify the meeting platform if needed.", "Repeat the final arrangement."],
+    complication: "The client assumes the suggested time is Singapore time. Confirm that Japan is one hour ahead before finalizing the meeting.",
+    conditions: ["Confirm the purpose and duration.", "Offer a supplied slot and another option if needed.", "Confirm the participants and both local times.", "Explain that the meeting link or platform will be confirmed.", "Repeat the agreed day and time and offer to send an invitation."],
     openingLine: "Could we arrange a short meeting next week to discuss the new customer survey?",
     steps: ["Ask about duration and participants.", "Offer suitable times.", "Check the time zone.", "Confirm platform and summarize the final booking."],
     vocabulary: ["schedule", "available", "time zone", "duration", "participant", "online"],
     targetExpressions: ["When would be convenient for you?", "Would Tuesday afternoon work?", "Let me check the time zone.", "The meeting will take about 30 minutes.", "Let me confirm the details.", "I'll send the meeting information."],
-    durationSeconds: 240
+    durationSeconds: 240,
+    referenceItems: [
+      { label: "Fictional availability", detail: "You and your manager are free Tuesday 14:00–14:30 or Wednesday 15:00–15:30 Japan time next week." },
+      { label: "Time zones", detail: "Tuesday 14:00 Japan = 13:00 Singapore; Wednesday 15:00 Japan = 14:00 Singapore." },
+      { label: "Invitation", detail: "Customer survey discussion · 30 minutes · employee, manager and client. Platform and link still need confirmation." }
+    ]
   },
   {
     id: "office-work-problem",
@@ -97,7 +104,11 @@ const seeds: WorkplaceSeed[] = [
     vocabulary: ["delay", "file", "report", "partial", "complete", "follow-up"],
     targetExpressions: ["One file has not arrived yet.", "Here is what I can provide now.", "I can send a partial draft.", "I can't guarantee the final time yet.", "I'll update you by…", "Would that help for now?"],
     durationSeconds: 300,
-    difficulty: "challenge"
+    difficulty: "challenge",
+    referenceItems: [
+      { label: "Report status", detail: "Sales file ready; delivery file missing from another team. Complete report was expected this morning; final completion time is unknown." },
+      { label: "Available action", detail: "Send a partial draft now, clearly labelled incomplete. Contact the other team and update your colleague at 15:00, even if the file is still missing." }
+    ]
   },
   {
     id: "office-clarify",
@@ -108,7 +119,7 @@ const seeds: WorkplaceSeed[] = [
     aiRole: "Manager giving a work request",
     studentRole: "Employee clarifying the request",
     goal: "Identify what is unclear, ask specific clarification questions, confirm the output and deadline and summarize the request in your own words.",
-    aiContext: "The manager wants the customer list 'updated before Friday.' It is unclear whether the employee should add new contacts, remove duplicates, or change the format. The employee should ask rather than assume.",
+    aiContext: "Start with the vague request 'update the customer list before Friday.' Reveal only when asked: add this month's new contacts, remove duplicates, keep the spreadsheet format and send it by Thursday 17:00. New contacts take priority. Give short answers but answer specific clarification questions.",
     skills: ["Clarifying", "Asking questions", "Confirming information", "Listening"],
     complication: "The manager is busy and gives a short answer, so the employee needs to confirm the most important points politely.",
     conditions: ["State which part is unclear.", "Ask at least two useful clarification questions.", "Confirm the required format or content.", "Confirm the deadline.", "Summarize the agreed task."],
@@ -116,7 +127,8 @@ const seeds: WorkplaceSeed[] = [
     steps: ["Listen for the ambiguous parts.", "Ask about content, format and priority.", "Confirm the deadline.", "Repeat the task and check that your understanding is correct."],
     vocabulary: ["clarify", "customer list", "duplicate", "format", "deadline", "priority"],
     targetExpressions: ["Could I clarify one point?", "Do you mean that I should…?", "Which format would you prefer?", "What is the priority?", "Let me repeat that to make sure I understand.", "I will complete it by…"],
-    durationSeconds: 240
+    durationSeconds: 240,
+    referenceItems: [{ label: "Your situation", detail: "You have the existing customer spreadsheet, but the requested changes and exact deadline have not been explained. Ask the manager rather than assume." }]
   },
   {
     id: "office-project-update",
@@ -133,9 +145,13 @@ const seeds: WorkplaceSeed[] = [
     conditions: ["State the project purpose or scope briefly.", "Report completed and current work.", "Explain the open question or risk.", "Avoid guaranteeing a date that depends on a reply.", "Suggest the next action."],
     openingLine: "Could you give me a quick update on the website translation?",
     steps: ["Give the short overall status.", "Say what is complete and in progress.", "Explain the client-dependent point.", "Confirm the next follow-up and expected timing."],
-    vocabulary: ["update", "complete", "in progress", "terminology", "client", "target"],
+    vocabulary: ["status update", "completed", "in progress", "word choice", "client confirmation", "target date"],
     targetExpressions: ["The current status is…", "We have completed…", "We are working on…", "One point is still waiting for confirmation.", "The timing depends on…", "The next step is…"],
-    durationSeconds: 300
+    durationSeconds: 300,
+    referenceItems: [
+      { label: "Translation status", detail: "Homepage complete; booking page in progress; one terminology question awaits the client's confirmation." },
+      { label: "Timing and next step", detail: "Friday is an internal target, not a confirmed delivery date. Follow up with the client about the open question and update the team." }
+    ]
   },
   {
     id: "office-client-request",
@@ -149,15 +165,15 @@ const seeds: WorkplaceSeed[] = [
     aiContext: "The client wants a regional sales comparison added to a report by tomorrow afternoon. The employee knows the source data may need another team's input and cannot promise the finished section until that is checked.",
     skills: ["Listening", "Clarifying", "Negotiating", "Confirming information"],
     complication: "The client says the request is urgent and asks for a guarantee before the employee has checked the data or team capacity.",
-    conditions: ["Listen and restate the requested change.", "Ask what detail and deadline matter most.", "Explain the dependency or information to check.", "Offer a realistic partial update or confirmation time.", "Do not promise an unverified delivery."],
+    conditions: ["Restate the requested change accurately.", "Ask what detail and deadline matter most.", "Explain the dependency or information to check.", "Offer a realistic partial update or confirmation time.", "Do not promise an unverified delivery."],
     openingLine: "Could you add a regional sales comparison to the report by tomorrow afternoon?",
     steps: ["Clarify the desired comparison and format.", "Confirm the deadline and priority.", "Explain what needs checking.", "Offer a realistic next update and summarize the agreement."],
-    vocabulary: ["request", "regional", "comparison", "deadline", "data", "capacity"],
+    vocabulary: ["regional sales", "comparison", "deadline", "source data", "team availability", "progress update"],
     targetExpressions: ["Let me make sure I understand the request.", "Which detail is most important?", "I need to check the source data first.", "I can confirm the timing after I check.", "I can send a preliminary update by…", "I'll follow up with you."],
     durationSeconds: 300,
-    difficulty: "challenge"
+    difficulty: "challenge",
+    referenceItems: [{ label: "Request handling", detail: "A regional comparison needs source data from another team. Check data and team availability before promising delivery; offer a progress update rather than a guaranteed finished section." }]
   }
 ];
 
 export const OFFICE_BUSINESS_LIBRARY = seeds.map(workplace);
-

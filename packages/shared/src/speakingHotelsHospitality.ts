@@ -9,7 +9,7 @@ const seeds: WorkplaceSeed[] = [
     scenario: "A guest arrives at a hotel reception carrying luggage and looking for a calm, helpful first contact. The employee welcomes them and finds out what assistance they need.",
     aiRole: "International hotel guest",
     studentRole: "Hotel reception employee",
-    goal: "Welcome the guest warmly, ask whether they have a reservation or need information, and guide them to the next useful step.",
+    goal: "Welcome the guest and confirm their booking or request. Help them take the next step at reception.",
     aiContext: "The guest has a reservation under Morgan Lee and wants to know where reception and the luggage area are. They may ask about breakfast or Wi-Fi after the initial welcome.",
     skills: ["Welcoming", "Asking questions", "Explaining", "Confirming information"],
     complication: "The guest is tired and asks two questions at once, so the employee should slow down and answer in a clear order.",
@@ -19,7 +19,11 @@ const seeds: WorkplaceSeed[] = [
     vocabulary: ["reservation", "reception", "guest", "luggage", "breakfast", "Wi-Fi"],
     targetExpressions: ["Welcome to our hotel.", "How may I help you?", "May I have the name on the reservation?", "Let me show you where to go.", "I hope you enjoy your stay."],
     durationSeconds: 180,
-    difficulty: "easy"
+    difficulty: "easy",
+    referenceItems: [
+      { label: "Reception", detail: "Front desk in the lobby; luggage assistance is available there." },
+      { label: "Guest questions", detail: "Check the booking for breakfast inclusion; Wi-Fi details are on the room information card." }
+    ]
   },
   {
     id: "hotel-check-in",
@@ -29,7 +33,7 @@ const seeds: WorkplaceSeed[] = [
     scenario: "A guest arrives to check in after a long journey. The receptionist confirms the reservation, room type and key stay information.",
     aiRole: "Guest checking in",
     studentRole: "Hotel front-desk employee",
-    goal: "Confirm the reservation name and room type, explain breakfast, Wi-Fi and checkout time, and check whether the guest needs any immediate help.",
+    goal: "Confirm the booking and explain the main stay details. Help with the guest's room request without promising availability.",
     aiContext: "The reservation is under Priya Shah for a double room. Breakfast is included, the hotel Wi-Fi is available, and the standard checkout time is 11:00. The guest asks whether a quiet room is possible; availability is not supplied.",
     skills: ["Welcoming", "Confirming information", "Explaining", "Clarifying"],
     complication: "The guest requests a quiet room, but the employee does not know whether one is available. They should check rather than promise it.",
@@ -39,7 +43,12 @@ const seeds: WorkplaceSeed[] = [
     vocabulary: ["check in", "double room", "included", "checkout", "quiet room", "availability"],
     targetExpressions: ["Let me confirm your reservation.", "You have a double room.", "Breakfast is included.", "Checkout is at…", "I'll check availability for you.", "Here is your room information."],
     durationSeconds: 240,
-    difficulty: "easy"
+    difficulty: "easy",
+    referenceItems: [
+      { label: "Booking", detail: "Priya Shah · double room · breakfast included" },
+      { label: "Stay information", detail: "Checkout 11:00; Wi-Fi connection details are on the room information card." },
+      { label: "Room requests", detail: "Quiet-room availability must be checked before confirming a change." }
+    ]
   },
   {
     id: "hotel-explain-facilities",
@@ -58,7 +67,12 @@ const seeds: WorkplaceSeed[] = [
     steps: ["Ask which services are important.", "Explain the known facilities and times.", "Check understanding or invite a question.", "Handle one unavailable detail professionally."],
     vocabulary: ["facility", "ground floor", "front desk", "laundry", "gym", "opening time"],
     targetExpressions: ["The breakfast café is on…", "Breakfast is served from…", "You can find the Wi-Fi details in…", "The front desk is available to help.", "I'll confirm that with the front desk."],
-    durationSeconds: 240
+    durationSeconds: 240,
+    referenceItems: [
+      { label: "Breakfast", detail: "Ground-floor café · 7:00–10:00" },
+      { label: "Wi-Fi and checkout", detail: "Wi-Fi details in the room · checkout 11:00" },
+      { label: "Help", detail: "Front desk in the lobby; check laundry availability and gym hours with the front desk." }
+    ]
   },
   {
     id: "hotel-room-request",
@@ -68,7 +82,7 @@ const seeds: WorkplaceSeed[] = [
     scenario: "A guest calls reception because the room needs extra towels and the guest would prefer a quieter room if one becomes available.",
     aiRole: "Guest making a room request",
     studentRole: "Hotel reception employee",
-    goal: "Listen to the request, confirm the room and items needed, contact the appropriate team, and explain what can be checked rather than promising an unavailable room.",
+    goal: "Confirm the towel and room-change requests. Explain who you will contact and how the guest will receive an update.",
     aiContext: "The guest is in room 604 and needs two extra towels. They also hear noise from the corridor and ask about changing rooms. Housekeeping can be contacted; room availability is not supplied.",
     skills: ["Listening", "Requesting", "Confirming information", "Problem solving"],
     complication: "The guest asks for an immediate room change while the employee cannot see availability.",
@@ -77,7 +91,11 @@ const seeds: WorkplaceSeed[] = [
     steps: ["Repeat the room number and request.", "Confirm the quantity and timing question.", "Explain that housekeeping will be contacted.", "Handle the quiet-room request with an availability check and next step."],
     vocabulary: ["extra towels", "room number", "housekeeping", "corridor", "noise", "room change"],
     targetExpressions: ["I understand.", "May I confirm your room number?", "I'll contact housekeeping.", "I'll check availability for you.", "I'll update you as soon as I know more."],
-    durationSeconds: 240
+    durationSeconds: 240,
+    referenceItems: [
+      { label: "Towel requests", detail: "Reception can contact housekeeping; delivery time needs confirmation." },
+      { label: "Room changes", detail: "Check room availability first; explain the next update without promising a move." }
+    ]
   },
   {
     id: "hotel-guest-complaint",
@@ -91,7 +109,7 @@ const seeds: WorkplaceSeed[] = [
     aiContext: "The guest says the air conditioning was not working well and that there was noise outside the room. They want to know what the hotel can do. Do not require an admission of legal liability or promise a particular compensation.",
     skills: ["Listening", "Handling concerns", "Clarifying", "Problem solving"],
     complication: "The guest becomes frustrated and asks for a guaranteed room change or refund even though availability and policy are not supplied.",
-    conditions: ["Let the guest explain the problem.", "Acknowledge the inconvenience and apologize appropriately.", "Ask for the room number and useful details.", "Offer a realistic check or contact with the responsible team.", "Avoid promising an unconfirmed remedy."],
+    conditions: ["Summarize the guest's problem accurately.", "Acknowledge the inconvenience and apologize appropriately.", "Confirm the room number and one useful problem detail.", "Offer a realistic check or contact with the responsible team.", "Explain the next update without promising an unconfirmed remedy."],
     openingLine: "I had a difficult night. The room was noisy and the air conditioning did not seem to work properly.",
     steps: ["Listen and summarize the complaint.", "Apologize for the inconvenience.", "Ask what happened and confirm the room.", "Offer to contact maintenance or check another solution and explain follow-up."],
     vocabulary: ["complaint", "inconvenience", "air conditioning", "noise", "maintenance", "follow-up"],
@@ -108,15 +126,20 @@ const seeds: WorkplaceSeed[] = [
     aiRole: "Guest asking for local advice",
     studentRole: "Hotel concierge or reception employee",
     goal: "Ask about food, distance and time preferences, recommend a suitable local option, and explain how the guest can reach it without inventing live information.",
-    aiContext: "The guest wants a quiet Japanese dinner within a short walk and may be interested in a riverside walk afterward. The employee knows a restaurant near the station but does not know its current opening status.",
+    aiContext: "The guest wants a quiet Japanese dinner within a short walk and may enjoy a riverside walk afterward. Reveal preferences when asked. Use the fictional local guide; tonight's opening status is unknown.",
     skills: ["Asking questions", "Recommending", "Giving directions", "Confirming information"],
     complication: "The guest asks whether the restaurant is open tonight, but the employee has not checked the latest hours.",
     conditions: ["Ask about the guest's food and distance preferences.", "Recommend a place with a reason.", "Explain a simple route or landmark.", "Say that current opening information needs to be checked.", "Offer a backup idea."],
     openingLine: "We would like a quiet place for dinner nearby. Do you have a recommendation?",
     steps: ["Ask about cuisine, budget or walking distance.", "Suggest a suitable restaurant.", "Explain the route or nearby landmark.", "Check or offer to check opening information and give a backup."],
     vocabulary: ["recommendation", "nearby", "quiet", "walking distance", "opening hours", "backup"],
-    targetExpressions: ["What kind of food would you prefer?", "There is a good option near…", "It is about a short walk from here.", "I'll check whether it is open tonight.", "Another possibility is…"],
-    durationSeconds: 240
+    targetExpressions: ["What kind of food would you prefer?", "How far would you like to walk?", "There is a quiet restaurant near the station.", "It's about a five-minute walk.", "I'll check whether it is open tonight.", "Another option is…"],
+    durationSeconds: 240,
+    referenceItems: [
+      { label: "Fictional local guide", detail: "Sora Kitchen serves Japanese set meals; five-minute walk straight from the hotel toward the station." },
+      { label: "Backup", detail: "Station café offers light meals near Sora Kitchen. Confirm current opening hours for either venue." },
+      { label: "Evening walk", detail: "Riverside path begins beside the station; ask whether the guest would like a walk after dinner." }
+    ]
   },
   {
     id: "hotel-luggage-transport",
@@ -135,7 +158,11 @@ const seeds: WorkplaceSeed[] = [
     steps: ["Confirm the departure plan.", "Explain where and how luggage can be stored.", "Ask about the destination and time.", "Offer to call a taxi or explain the station route and flag unknown details."],
     vocabulary: ["luggage storage", "check out", "station", "taxi", "departure", "waiting time"],
     targetExpressions: ["We can store your luggage here.", "What time would you like to leave?", "Would you like me to call a taxi?", "I can't confirm the exact waiting time yet.", "I'll check that for you.", "Let me confirm your destination."],
-    durationSeconds: 240
+    durationSeconds: 240,
+    referenceItems: [
+      { label: "Luggage storage", detail: "Leave bags at reception, keep the claim tag and collect them before departure." },
+      { label: "Transport", detail: "Reception can call a taxi; check waiting time and fare with the operator." }
+    ]
   },
   {
     id: "hotel-check-out",
@@ -154,9 +181,13 @@ const seeds: WorkplaceSeed[] = [
     steps: ["Confirm the guest and room.", "Listen to the billing question.", "Check or explain only the known information.", "Offer transport or luggage help and close the interaction."],
     vocabulary: ["check out", "bill", "charge", "receipt", "luggage", "train"],
     targetExpressions: ["Let me confirm your room number.", "I'll check that charge for you.", "Here is your receipt.", "Would you like us to store your luggage?", "Can we help with transportation?", "Thank you for staying with us."],
-    durationSeconds: 240
+    durationSeconds: 300,
+    difficulty: "challenge",
+    referenceItems: [
+      { label: "Billing review", detail: "Confirm the guest and disputed item, then check the café record with the front desk. Do not decide on a refund before verification." },
+      { label: "Departure help", detail: "Reception can arrange luggage storage or request a taxi; check timing before confirming." }
+    ]
   }
 ];
 
 export const HOTELS_HOSPITALITY_LIBRARY = seeds.map(workplace);
-

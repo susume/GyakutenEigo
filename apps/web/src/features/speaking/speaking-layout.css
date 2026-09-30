@@ -1628,6 +1628,63 @@
   object-position: center;
 }
 
+.speaking-keywords h3,
+.speaking-reference-sheet h3 {
+  margin: 0 0 12px;
+  color: #10295b;
+  font-size: 1rem;
+}
+
+.speaking-keywords { margin-top: 18px; }
+
+.speaking-keywords ul {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+
+.speaking-keywords li {
+  max-width: 100%;
+  padding: 7px 10px;
+  border-radius: 8px;
+  color: #294776;
+  background: #edf6ff;
+  overflow-wrap: anywhere;
+}
+
+.speaking-reference-sheet {
+  min-width: 0;
+  margin: 18px 0;
+  padding: 18px;
+  border: 1px solid #dbe7f2;
+  border-radius: 14px;
+  background: #f8fbff;
+}
+
+.speaking-reference-sheet dl { margin: 0; }
+.speaking-reference-sheet dl > div + div { margin-top: 14px; }
+.speaking-reference-sheet dt { font-weight: 750; color: #294776; }
+.speaking-reference-sheet dd {
+  margin: 4px 0 0;
+  color: #3e5b83;
+  line-height: 1.5;
+  overflow-wrap: anywhere;
+}
+
+/* Text facts remain scrollable on tablets, including image-optional tasks. */
+.speaking-app .speaking-support-tabpanel-context.has-reference-sheet {
+  overflow-y: auto;
+  padding: 16px;
+}
+
+.speaking-app .speaking-support-tabpanel-context.has-reference-sheet .speaking-context-panel-content { height: auto; }
+.speaking-app .has-reference-sheet .speaking-context-visual { height: auto; min-height: 240px; flex: 0 0 240px; }
+.has-reference-sheet .speaking-reference-sheet { margin: 0; }
+.has-reference-sheet .speaking-context-visual + .speaking-reference-sheet { margin-top: 16px; }
+
 .speaking-context-empty {
   min-height: 260px;
   display: grid;

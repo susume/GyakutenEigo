@@ -37,6 +37,22 @@ previewed, customized into a teacher-owned activity, or used as-is. Unknown
 professional facts are deliberately handled with check-and-confirm language
 instead of encouraging employees to guess.
 
+Task goals describe the communication outcome. Success conditions give teachers
+observable evidence to look for; suggested steps, keywords and target expressions
+are support rather than compulsory scripts. Natural equivalent wording counts,
+and clear communication can succeed with minor grammar errors.
+
+Workplace tasks include fictional reference notes where employees need vehicle,
+menu, product, route, booking or project facts. Learners can see these under
+Context when the teacher allows it, including tasks with no image. Useful English
+includes the task's keywords when language support is allowed. Reference notes
+also appear before the conversation and in the teacher's preview. Private
+customer preferences remain for learners to discover through questions.
+
+The partner, hints and evaluator use the same fact sheet. Unknown information
+stays unconfirmed; agreeing to check or seek approval can be a successful next
+step. Role-play does not make real bookings, payments or external checks.
+
 ## Local mock mode
 
 1. Start PostgreSQL and set `DATABASE_URL` if you want to exercise Prisma persistence.

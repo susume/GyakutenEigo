@@ -17,9 +17,10 @@ const seeds: WorkplaceSeed[] = [
     openingLine: "Good evening. We have a reservation under Daniel Kim for two.",
     steps: ["Welcome the party.", "Confirm the reservation and number of guests.", "Ask about seating needs.", "Explain the table or waiting step and offer menus."],
     vocabulary: ["reservation", "party", "table", "quiet", "menu", "available"],
-    targetExpressions: ["Welcome. Do you have a reservation?", "May I have the name, please?", "Your table is ready.", "I'll check whether a quieter table is available.", "Right this way, please."],
+    targetExpressions: ["Welcome. Do you have a reservation?", "May I have the name, please?", "How many people are in your party?", "I'll check whether a quieter table is available.", "Right this way, please."],
     durationSeconds: 180,
-    difficulty: "easy"
+    difficulty: "easy",
+    referenceItems: [{ label: "Seating", detail: "Check the reservation and table availability before seating guests; a quiet table is not guaranteed." }]
   },
   {
     id: "restaurant-explain-menu",
@@ -30,7 +31,7 @@ const seeds: WorkplaceSeed[] = [
     aiRole: "Customer deciding what to order",
     studentRole: "Restaurant or café server",
     goal: "Explain supplied menu information clearly, ask what the customer prefers and identify any ingredient question that must be checked with the kitchen.",
-    aiContext: "The menu includes a grilled fish set with rice and soup, a vegetable pasta, and a chicken sandwich. The set includes a drink. Exact soup ingredients are not supplied.",
+    aiContext: "Use the fictional menu reference. The customer is choosing between the fish set and pasta and asks whether the fish set includes a drink. Soup ingredients and portion changes must be checked with the kitchen.",
     skills: ["Explaining", "Asking questions", "Clarifying", "Taking orders"],
     complication: "The customer asks whether the soup contains a particular ingredient that the menu does not list.",
     conditions: ["Describe at least two menu options.", "Answer the supplied set and drink question.", "Ask about the customer's preference.", "Offer to check an unknown ingredient with the kitchen."],
@@ -39,7 +40,13 @@ const seeds: WorkplaceSeed[] = [
     vocabulary: ["dish", "set meal", "ingredient", "portion", "soup", "kitchen"],
     targetExpressions: ["This dish comes with…", "The set includes a drink.", "Would you prefer something light?", "Let me check the ingredients with the kitchen.", "I don't want to give you incorrect information."],
     durationSeconds: 240,
-    difficulty: "easy"
+    difficulty: "easy",
+    referenceItems: [
+      { label: "Grilled fish set", detail: "Grilled fish, rice and soup; includes a drink." },
+      { label: "Vegetable pasta", detail: "Pasta with seasonal vegetables; standard main-dish portion." },
+      { label: "Chicken sandwich", detail: "Chicken sandwich; a lighter meal than the fish set." },
+      { label: "Ingredient checks", detail: "Soup ingredients, allergy information and portion changes must be confirmed with the kitchen." }
+    ]
   },
   {
     id: "restaurant-take-order",
@@ -54,11 +61,15 @@ const seeds: WorkplaceSeed[] = [
     skills: ["Taking orders", "Clarifying", "Confirming information", "Asking questions"],
     complication: "One guest changes the drink after the server repeats the order.",
     conditions: ["Check who is ready to order.", "Record main dishes and drinks accurately.", "Confirm the no-cheese modification.", "Repeat the order and handle the changed drink.", "Explain what will happen next."],
-    openingLine: "Are you ready to order, or would you like a few more minutes?",
+    openingLine: "Two of us are ready to order, but our friend needs another minute. Could we order first?",
     steps: ["Check readiness and take one order at a time.", "Ask clarifying questions about choices.", "Repeat the complete order.", "Correct the changed item and confirm the kitchen will receive it."],
     vocabulary: ["order", "main dish", "drink", "change", "repeat", "kitchen"],
-    targetExpressions: ["May I take your order?", "What would you like to drink?", "Would you like anything changed?", "Let me repeat that.", "I'll send this to the kitchen now."],
-    durationSeconds: 240
+    targetExpressions: ["May I take your order?", "What would you like to drink?", "You'd like the pasta without cheese, is that right?", "Let me repeat your order.", "I'll update the drink order.", "I'll send this to the kitchen now."],
+    durationSeconds: 240,
+    referenceItems: [
+      { label: "Order options", detail: "Vegetable pasta · chicken set · iced tea · hot tea · water" },
+      { label: "Modification", detail: "The kitchen can prepare this pasta without the cheese topping. This is not an allergy-safety guarantee." }
+    ]
   },
   {
     id: "restaurant-dietary-questions",
@@ -68,17 +79,18 @@ const seeds: WorkplaceSeed[] = [
     scenario: "A customer has a serious food allergy and needs reliable information before ordering. The server must ask precise questions and consult the kitchen when the menu is not enough.",
     aiRole: "Customer asking about dietary needs",
     studentRole: "Restaurant server",
-    goal: "Listen carefully to the allergy or dietary question, identify what is known, avoid inventing ingredient or cross-contact information, and check with the kitchen before recommending a dish.",
+    goal: "Confirm the customer's dietary concern and arrange a kitchen check. Explain that you cannot confirm ingredients or cross-contact safety yet.",
     aiContext: "The customer says they have a nut allergy and asks about the sauce on a noodle dish. The menu does not provide enough detail. The server should not give medical advice or guarantee safety without checking the kitchen.",
     skills: ["Listening", "Clarifying", "Confirming information", "Problem solving"],
     complication: "The customer asks whether a small amount would be safe. The employee must not make a medical judgment.",
     conditions: ["Ask the customer to explain the dietary concern.", "Repeat the key allergy information to confirm understanding.", "Say that the ingredient information must be checked.", "Contact or offer to contact the kitchen.", "Avoid medical advice or an unsupported safety guarantee."],
     openingLine: "Before I order, I need to ask about a nut allergy. Do you know what is in the sauce?",
-    steps: ["Listen and clarify the allergy question.", "Repeat the important detail.", "Explain what the menu can and cannot confirm.", "Check with the kitchen and return with verified information or another option."],
-    vocabulary: ["allergy", "ingredient", "sauce", "kitchen", "dietary", "confirm"],
+    steps: ["Listen and clarify the allergy question.", "Repeat the important detail.", "Explain what the menu can and cannot confirm.", "Arrange a kitchen check and agree how you will update the customer."],
+    vocabulary: ["nut allergy", "ingredients", "sauce", "cross-contact", "dietary requirement", "confirm with the kitchen"],
     targetExpressions: ["Thank you for telling me.", "Let me check with the kitchen.", "I don't want to guess about the ingredients.", "I'll confirm what we can offer.", "Would you like to wait while I check?"],
     durationSeconds: 300,
-    difficulty: "challenge"
+    difficulty: "challenge",
+    referenceItems: [{ label: "Kitchen check required", detail: "The menu does not confirm sauce ingredients or cross-contact. No verified kitchen reply is supplied; do not claim a dish is safe or give medical advice." }]
   },
   {
     id: "restaurant-recommend-food-drinks",
@@ -89,15 +101,20 @@ const seeds: WorkplaceSeed[] = [
     aiRole: "Visitor choosing food and a drink",
     studentRole: "Restaurant server",
     goal: "Discover the customer's preferences, recommend a dish and drink with reasons, explain a relevant detail and check whether the customer is ready to order.",
-    aiContext: "The customer wants something not too spicy, a moderate portion and a non-alcoholic drink. They are open to a local-style dish but want to understand it first.",
+    aiContext: "Reveal preferences when asked: not too spicy, a moderate portion and a non-alcoholic drink. The customer is open to a local-style dish. Use the fictional menu and ask about a smaller portion after a recommendation.",
     skills: ["Asking questions", "Recommending", "Explaining", "Giving reasons"],
     complication: "The customer likes the recommendation but asks whether there is a smaller portion or a less spicy version.",
     conditions: ["Ask about taste, portion and drink preferences.", "Recommend a suitable dish and drink.", "Give a clear reason for the recommendation.", "Answer the portion or spice follow-up accurately or offer to check.", "Invite the customer to decide."],
     openingLine: "I would like to try something local, but I do not know what to choose.",
     steps: ["Ask what flavors and portion the customer prefers.", "Suggest a dish and drink.", "Explain the key features and reason.", "Respond to the follow-up and confirm the order decision."],
     vocabulary: ["recommend", "spicy", "portion", "local", "non-alcoholic", "flavor"],
-    targetExpressions: ["What kind of flavors do you prefer?", "I would recommend…", "It is popular because…", "This may be a good choice if…", "Let me check whether a smaller portion is available."],
-    durationSeconds: 240
+    targetExpressions: ["What kind of flavors do you prefer?", "Would you like a hot or cold drink?", "I would recommend the grilled fish set.", "It isn't spicy and comes with rice and soup.", "Let me check whether a smaller portion is available."],
+    durationSeconds: 240,
+    referenceItems: [
+      { label: "Fictional menu", detail: "Grilled fish set: not spicy, standard portion with rice and soup. Vegetable curry: mildly spicy, standard portion." },
+      { label: "Drinks", detail: "Hot green tea · iced barley tea · orange juice; all non-alcoholic." },
+      { label: "Changes", detail: "Smaller portions and recipe changes need kitchen confirmation." }
+    ]
   },
   {
     id: "restaurant-unavailable-item",
@@ -116,7 +133,11 @@ const seeds: WorkplaceSeed[] = [
     steps: ["Check and explain the item status.", "Apologize for the inconvenience.", "Offer the available alternatives.", "Handle the future-availability question and confirm the new choice."],
     vocabulary: ["sold out", "unavailable", "seasonal", "alternative", "replacement", "available"],
     targetExpressions: ["I'm sorry, but that item is sold out.", "Would you like to try… instead?", "This is another popular choice.", "I can't confirm when it will be available again.", "Let me confirm your new order."],
-    durationSeconds: 240
+    durationSeconds: 240,
+    referenceItems: [
+      { label: "Today's dessert stock", detail: "Matcha parfait sold out; fruit tart and vanilla pudding available." },
+      { label: "Future availability", detail: "No confirmed restock date; offer to check rather than promise tomorrow." }
+    ]
   },
   {
     id: "restaurant-customer-problem",
@@ -147,17 +168,20 @@ const seeds: WorkplaceSeed[] = [
     aiRole: "Customer finishing a meal",
     studentRole: "Restaurant server",
     goal: "Confirm the payment arrangement, provide or explain the bill, check the payment method and close the interaction politely.",
-    aiContext: "There are four guests. They want to split the bill evenly if the restaurant can do so. The employee knows the total but should check any exact split or payment policy that is not supplied.",
+    aiContext: "There are four guests and the fictional bill totals ¥12,000. They want to split evenly, then ask to use separate cards. Split-payment and card policies need confirmation; accept a clear offer to check.",
     skills: ["Confirming information", "Clarifying", "Explaining", "Welcoming"],
     complication: "The guests change from one payment to separate payments and ask whether each person can use a card.",
-    conditions: ["Ask how the group would like to pay.", "Explain the bill or total clearly.", "Check the split-payment question rather than inventing policy.", "Confirm the final payment arrangement.", "Thank the guests and say goodbye naturally."],
+    conditions: ["Ask how the group would like to pay.", "Explain the bill or total clearly.", "Check the split-payment question rather than inventing policy.", "Confirm the requested arrangement and what still needs checking.", "Thank the guests and close the exchange naturally."],
     openingLine: "Everything was delicious. Could we have the bill, please?",
-    steps: ["Bring or explain the bill.", "Ask whether payment is together or separate.", "Check the card or split question.", "Confirm payment and close warmly."],
+    steps: ["Bring or explain the bill.", "Ask whether payment is together or separate.", "Check the card or split question.", "Confirm the next payment step and close warmly."],
     vocabulary: ["bill", "total", "split", "evenly", "card", "receipt"],
-    targetExpressions: ["Of course. I'll bring the bill.", "Would you like to pay together or separately?", "Let me check whether we can split it that way.", "Here is your receipt.", "Thank you very much. Have a good evening."],
-    durationSeconds: 240
+    targetExpressions: ["Of course. I'll bring the bill.", "Would you like to pay together or separately?", "Let me check whether we can split it that way.", "I'll explain the payment options once I've checked.", "Thank you very much. Have a good evening."],
+    durationSeconds: 240,
+    referenceItems: [
+      { label: "Bill", detail: "Total ¥12,000 for four guests; an equal share would be ¥3,000 each, subject to confirmation of split-payment policy." },
+      { label: "Payment", detail: "Separate cards and split-payment acceptance are not confirmed. Check before taking payment; do not claim it has succeeded." }
+    ]
   }
 ];
 
 export const RESTAURANTS_CAFES_LIBRARY = seeds.map(workplace);
-

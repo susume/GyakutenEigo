@@ -1,6 +1,6 @@
 import { useEffect, useId, useState, type KeyboardEvent } from "react";
 import { ImageOff, Lightbulb, MessageCircle, X } from "lucide-react";
-import { speakingContext, speakingSupportSettings, type SpeakingActivity, type SpeakingContext } from "@quizstrike/shared";
+import { speakingContext, speakingScenarioResources, speakingSupportSettings, type SpeakingActivity, type SpeakingContext } from "@quizstrike/shared";
 
 export type SpeakingSupportTab = "useful-english" | "context";
 
@@ -15,9 +15,10 @@ export interface SpeakingSupportPanelProps {
 
 export const getSpeakingSupportTabs = (activity: SpeakingActivity): Array<{ id: SpeakingSupportTab; label: string }> => {
   const support = speakingSupportSettings(activity);
+  const resources = speakingScenarioResources(activity.scenarioResources);
   return [
-    ...(support.showTargetExpressions && activity.targetExpressions.length ? [{ id: "useful-english" as const, label: "Useful English" }] : []),
-    ...(support.showContext && speakingContext(activity) ? [{ id: "context" as const, label: "Context" }] : [])
+    ...(support.showTargetExpressions && (activity.targetExpressions.length || resources.usefulVocabulary.length) ? [{ id: "useful-english" as const, label: "Useful English" }] : []),
+    ...(support.showContext && (speakingContext(activity) || resources.referenceItems.length) ? [{ id: "context" as const, label: "Context" }] : [])
   ];
 };
 
@@ -34,6 +35,7 @@ export function SpeakingSupportPanel({
   const generatedId = useId();
   const panelId = `speaking-support-${safeId(generatedId)}`;
   const context = speakingContext(activity);
+  const resources = speakingScenarioResources(activity.scenarioResources);
   const tabs = getSpeakingSupportTabs(activity);
   const selectedTab = tabs.some((tab) => tab.id === activeTab) ? activeTab : tabs[0]?.id;
 
@@ -94,8 +96,8 @@ export function SpeakingSupportPanel({
             <UsefulEnglishPanel activity={activity} onPhraseClick={onPhraseClick} disabled={disabled} />
           </div>
         ) : (
-          <div id={`${panelId}-panel-context`} role="tabpanel" aria-labelledby={`${panelId}-tab-context`} tabIndex={0} className="speaking-support-tabpanel speaking-support-tabpanel-context">
-            <SpeakingContextPanel context={context} />
+          <div id={`${panelId}-panel-context`} role="tabpanel" aria-labelledby={`${panelId}-tab-context`} tabIndex={0} className={`speaking-support-tabpanel speaking-support-tabpanel-context${resources.referenceItems.length ? " has-reference-sheet" : ""}`}>
+            <SpeakingContextPanel context={context} referenceItems={resources.referenceItems} />
           </div>
         )}
       </div>
@@ -104,13 +106,14 @@ export function SpeakingSupportPanel({
 }
 
 function UsefulEnglishPanel({ activity, onPhraseClick, disabled }: { activity: SpeakingActivity; onPhraseClick?: (phrase: string) => void; disabled: boolean }) {
+  const resources = speakingScenarioResources(activity.scenarioResources);
   return (
     <div className="speaking-useful-panel-content">
       <div className="speaking-support-title-row">
         <div>
           <span className="speaking-support-kicker">Language support</span>
           <h2>Useful English</h2>
-          <p>Target expressions</p>
+          <p>Use these examples or your own words.</p>
         </div>
       </div>
       <div className="speaking-student-expression-list" role="list" aria-label="Target expressions">
@@ -128,15 +131,34 @@ function UsefulEnglishPanel({ activity, onPhraseClick, disabled }: { activity: S
           )
         ))}
       </div>
+      <SpeakingKeywords words={resources.usefulVocabulary} />
       <div className="speaking-useful-callout">
         <Lightbulb size={27} strokeWidth={1.7} aria-hidden="true" />
-        <span>Try using these expressions in your conversation!</span>
+        <span>Focus on your message. You do not need to use every expression or keyword.</span>
       </div>
     </div>
   );
 }
 
-export function SpeakingContextPanel({ context }: { context?: SpeakingContext }) {
+type ReferenceItems = NonNullable<SpeakingActivity["scenarioResources"]>["referenceItems"];
+
+export function SpeakingKeywords({ words }: { words: string[] }) {
+  if (!words.length) return null;
+  return <section className="speaking-keywords" aria-label="Useful keywords">
+    <h3>Useful keywords</h3>
+    <ul>{words.map((word, index) => <li key={`${index}-${word}`}>{word}</li>)}</ul>
+  </section>;
+}
+
+export function SpeakingReferenceSheet({ items = [] }: { items?: ReferenceItems }) {
+  if (!items.length) return null;
+  return <section className="speaking-reference-sheet" aria-label="Task information">
+    <h3>Task information</h3>
+    <dl>{items.map((item, index) => <div key={`${index}-${item.label}`}><dt>{item.label}</dt>{item.detail && <dd>{item.detail}</dd>}</div>)}</dl>
+  </section>;
+}
+
+export function SpeakingContextPanel({ context, referenceItems = [] }: { context?: SpeakingContext; referenceItems?: ReferenceItems }) {
   const [imageError, setImageError] = useState(false);
   const imageUrl = context?.imageUrl;
 
@@ -144,21 +166,22 @@ export function SpeakingContextPanel({ context }: { context?: SpeakingContext })
     setImageError(false);
   }, [imageUrl]);
 
-  if (!context) {
+  if (!context && !referenceItems.length) {
     return <ContextEmptyState message="No context available for this activity." />;
   }
 
-  const alt = context.alt ?? "Visual context for this speaking activity";
+  const alt = context?.alt ?? "Visual context for this speaking activity";
 
   return (
     <div className="speaking-context-panel-content">
       {imageUrl && !imageError ? (
-        <figure className={`speaking-context-visual context-type-${context.type ?? "photo"}`}>
+        <figure className={`speaking-context-visual context-type-${context?.type ?? "photo"}`}>
           <img src={imageUrl} alt={alt} onError={() => setImageError(true)} decoding="async" />
         </figure>
-      ) : (
+      ) : context ? (
         <ContextEmptyState message={imageUrl ? "Unable to load context image." : "No context image available for this activity."} />
-      )}
+      ) : null}
+      <SpeakingReferenceSheet items={referenceItems} />
     </div>
   );
 }

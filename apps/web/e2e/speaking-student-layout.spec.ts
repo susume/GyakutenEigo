@@ -1,4 +1,5 @@
 import { expect, test, type Page, type Route } from "@playwright/test";
+import { SPEAKING_CORE_LIBRARY } from "@quizstrike/shared";
 
 const baseUrl = "http://127.0.0.1:4173";
 type SessionStatus = "ready" | "active";
@@ -78,7 +79,7 @@ function makeSessionData(id: string, status: SessionStatus, mode: SpeakingMode, 
   };
 }
 
-async function mockStudentSession(page: Page, id: string, data: ReturnType<typeof makeSessionData>) {
+async function mockStudentSession(page: Page, id: string, data: Omit<ReturnType<typeof makeSessionData>, "activity"> & { activity: object }) {
   await page.addInitScript((sessionId: string) => {
     sessionStorage.setItem(`speaking-token:${sessionId}`, "student-layout-test-token");
   }, id);
@@ -102,6 +103,39 @@ async function mockStudentSession(page: Page, id: string, data: ReturnType<typeo
     await route.fulfill({ json: data });
   });
 }
+
+test("workplace reference sheets and keywords are usable without a context image", async ({ page }, testInfo) => {
+  const id = "workplace-reference-support";
+  const task = SPEAKING_CORE_LIBRARY.find((item) => item.id === "workplace-luxury-car-explain-vehicle")!;
+  const data = makeSessionData(id, "active", "assessment", {
+    showTargetExpressions: true, showContext: true, showTranscript: false, allowReplay: false, allowHelp: false
+  });
+  await mockStudentSession(page, id, { ...data, activity: { ...task, supportSettings: data.activity.supportSettings }, turns: [{ ...data.turns[0]!, text: task.scenarioResources.openingLine! }] });
+
+  for (const width of [1366, 1280, 1024, 768, 390]) {
+    await page.setViewportSize({ width, height: 844 });
+    await page.goto(`${baseUrl}/speak/session/${id}`);
+    await expect(page.locator(".speaking-student-screen-ready")).toBeVisible();
+    await page.getByRole("button", { name: "Open Context support" }).click();
+    const contextPanel = page.getByRole("tabpanel", { name: "Context", exact: true });
+    await expect(contextPanel.getByRole("heading", { name: "Task information" })).toBeVisible();
+    await expect(contextPanel).toContainText("18,500 km");
+    await expect(contextPanel).toContainText("¥7,480,000");
+    await expect(contextPanel).toContainText("Brake-pad replacement date");
+    await expect(contextPanel).not.toContainText("No context image");
+    expect(await page.evaluate(() => document.documentElement.scrollWidth)).toBeLessThanOrEqual(width);
+    await contextPanel.evaluate((panel) => { panel.scrollTop = panel.scrollHeight; });
+    await expect(contextPanel.getByText(/Brake-pad replacement date/)).toBeInViewport();
+    await page.screenshot({ path: testInfo.outputPath(`workplace-reference-${width}.png`) });
+    await page.getByRole("tab", { name: "Useful English", exact: true }).click();
+    const languagePanel = page.getByRole("tabpanel", { name: "Useful English", exact: true });
+    await expect(languagePanel).toContainText("Useful keywords");
+    await expect(languagePanel).toContainText("brake pads");
+    await expect(languagePanel).toContainText("You do not need to use every expression or keyword");
+    await page.getByRole("button", { name: "Close support panel" }).click();
+    await expect(page.getByRole("button", { name: "Tap to speak" })).toBeVisible();
+  }
+});
 
 async function readLayout(page: Page) {
   return page.evaluate(() => {

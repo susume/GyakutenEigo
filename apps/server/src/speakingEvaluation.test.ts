@@ -1,8 +1,8 @@
 import assert from "node:assert/strict";
 import test from "node:test";
-import { DEFAULT_SPEAKING_ASSESSMENT_SUPPORT_SETTINGS, SpeakingEvaluationSchema, type SpeakingActivity, type SpeakingEvaluation, type SpeakingTurn } from "@quizstrike/shared";
+import { DEFAULT_SPEAKING_ASSESSMENT_SUPPORT_SETTINGS, SPEAKING_CORE_LIBRARY, SpeakingEvaluationSchema, type SpeakingActivity, type SpeakingEvaluation, type SpeakingTurn } from "@quizstrike/shared";
 import { buildSpeakingInteractionMetadata, nextSpeakingEvaluationRetryAt, sanitizeSpeakingEvaluation, speakingGoalRequirements } from "./speakingEvaluation.js";
-import { buildConversationPrompt, buildEvaluationPrompt } from "./speakingPrompts.js";
+import { buildConversationPrompt, buildEvaluationPrompt, buildHelpPrompt } from "./speakingPrompts.js";
 
 const activity = {
   id: "restaurant-regression",
@@ -154,6 +154,39 @@ test("workplace prompts preserve realistic role-play framing", () => {
   const evaluation = buildEvaluationPrompt({ activity: workplaceActivity, turns, rubric: workplaceActivity.rubric });
   assert.doesNotMatch(evaluation, /completed school speaking activity/u);
   assert.match(evaluation, /understandable to the learner/u);
+});
+
+test("conversation, hints and evaluation share the full factual reference sheet", () => {
+  const car: SpeakingActivity = {
+    ...activity,
+    ...SPEAKING_CORE_LIBRARY.find((item) => item.id === "workplace-luxury-car-explain-vehicle")!,
+    supportSettings: { ...DEFAULT_SPEAKING_ASSESSMENT_SUPPORT_SETTINGS }
+  };
+  const prompts = [
+    buildConversationPrompt({ activity: car, turns: [], latestStudentText: "When were the brake pads replaced?" }),
+    buildHelpPrompt({ activity: car, turns: [] }),
+    buildEvaluationPrompt({ activity: car, turns: [], rubric: car.rubric })
+  ];
+  for (const prompt of prompts) {
+    for (const item of car.scenarioResources?.referenceItems ?? []) assert.ok(prompt.includes(item.detail!), item.label);
+  }
+  assert.match(prompts[0]!, /Keep stated unknowns unknown/u);
+  assert.match(prompts[1]!, /phrase for the learner's role/u);
+  assert.match(prompts[2]!, /Never reward invented factual information/u);
+  assert.match(prompts[2]!, /Minor grammar errors do not prevent task success/u);
+  assert.match(prompts[2]!, /optional complication the partner never introduced/u);
+});
+
+test("goal requirements keep lists of factual details together", () => {
+  assert.deepEqual(speakingGoalRequirements({ ...activity, scenarioResources: {
+    studentGoal: "Ask about size, colour and price, then confirm the purchase."
+  } }), ["Ask about size, colour and price", "confirm the purchase"]);
+  assert.deepEqual(speakingGoalRequirements({ ...activity, scenarioResources: {
+    studentGoal: "Explain mileage, condition, history and safety; offer to check unknown details."
+  } }), ["Explain mileage, condition, history and safety", "offer to check unknown details"]);
+  assert.deepEqual(speakingGoalRequirements({ ...activity, scenarioResources: {
+    studentGoal: "Describe your family and friends, and ask one question."
+  } }), ["Describe your family and friends", "ask one question"]);
 });
 
 test("retry policy is bounded and jittered around the documented schedule", () => {

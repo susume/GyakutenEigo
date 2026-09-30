@@ -9,7 +9,7 @@ const seeds: WorkplaceSeed[] = [
     scenario: "An international customer enters a specialty store and looks around. The employee gives them space while making a helpful first contact.",
     aiRole: "Customer entering a store",
     studentRole: "Retail store employee",
-    goal: "Greet the customer, offer help without pressure, find out whether they are browsing or looking for something specific, and point them toward a useful area.",
+    goal: "Welcome the customer and respect their wish to browse. Offer useful help when they are ready to discuss a gift.",
     aiContext: "The customer is browsing for a gift but is not ready to explain everything at once. They appreciate a short, natural welcome and may ask for help after looking around.",
     skills: ["Welcoming", "Asking questions", "Recommending", "Explaining"],
     complication: "The customer says they are only looking, then returns with a vague question about gifts.",
@@ -19,7 +19,8 @@ const seeds: WorkplaceSeed[] = [
     vocabulary: ["browse", "gift", "looking for", "section", "help", "customer"],
     targetExpressions: ["Welcome. Please take your time.", "How can I help you today?", "Are you looking for anything in particular?", "I can show you where those are.", "Please let me know if you have any questions."],
     durationSeconds: 180,
-    difficulty: "easy"
+    difficulty: "easy",
+    referenceItems: [{ label: "Fictional store layout", detail: "Gift display near the entrance; travel bags at the back. Ask about the recipient before recommending a gift." }]
   },
   {
     id: "retail-find-needs",
@@ -39,7 +40,8 @@ const seeds: WorkplaceSeed[] = [
     vocabulary: ["carry-on", "business trip", "laptop compartment", "budget", "size", "feature"],
     targetExpressions: ["What will you mainly use it for?", "What size would work best?", "Which feature is most important?", "Let me make sure I understand.", "This option may suit your needs."],
     durationSeconds: 240,
-    difficulty: "easy"
+    difficulty: "easy",
+    referenceItems: [{ label: "Bag range", detail: "Travel backpacks and wheeled cabin bags are available to compare. Check dimensions against the customer's airline limits; no airline acceptance is guaranteed." }]
   },
   {
     id: "retail-explain-features",
@@ -57,15 +59,19 @@ const seeds: WorkplaceSeed[] = [
     openingLine: "Could you explain what this headset can do? I would use it on trains and for work calls.",
     steps: ["Ask about the customer's use.", "Explain connection, case and microphone.", "Relate a feature to the customer's priorities.", "Handle the unknown specification with a check."],
     vocabulary: ["wireless", "noise cancelling", "microphone", "carrying case", "battery life", "warranty"],
-    targetExpressions: ["This model has…", "It would be useful for…", "The microphone is included.", "Let me check the exact specification.", "I'll confirm the warranty information."],
-    durationSeconds: 240
+    targetExpressions: ["This model connects wirelessly.", "The built-in microphone is useful for calls.", "It comes with a carrying case.", "Let me check the battery life.", "I'll confirm the warranty information."],
+    durationSeconds: 240,
+    referenceItems: [
+      { label: "Fictional headset card", detail: "Noise cancelling · wireless connection · built-in microphone · carrying case included." },
+      { label: "Not confirmed", detail: "Battery life, device compatibility and warranty terms need checking. Do not promise that all background noise will disappear." }
+    ]
   },
   {
     id: "retail-compare-products",
     title: "Comparing Two Products",
     category: "Retail & Customer Service",
     categoryId: "retail-customer-service",
-    scenario: "A customer is choosing between two carry-on bags. The employee compares size, weight, material and price without pushing a product that does not fit the customer's use.",
+    scenario: "A customer is choosing between two carry-on bags. Use the product cards to compare weight, durability, storage and price before recommending an option.",
     aiRole: "Customer comparing two products",
     studentRole: "Retail associate",
     goal: "Ask what matters most, compare the supplied features clearly, explain a trade-off and help the customer choose or identify what to check next.",
@@ -77,7 +83,12 @@ const seeds: WorkplaceSeed[] = [
     steps: ["Ask about weight, durability and price priorities.", "Compare the two products.", "Explain the main trade-off.", "Check the size question or recommend how to verify it."],
     vocabulary: ["compare", "lighter", "durable", "pockets", "trade-off", "price"],
     targetExpressions: ["The main difference is…", "This one is lighter, while that one…", "Which feature matters most to you?", "I don't want to guarantee that without checking.", "Based on your priorities, I would suggest…"],
-    durationSeconds: 240
+    durationSeconds: 240,
+    referenceItems: [
+      { label: "Bag A", detail: "¥18,000 · lighter design · fewer pockets" },
+      { label: "Bag B", detail: "¥24,000 · stronger material · more pockets · heavier than Bag A" },
+      { label: "Size check", detail: "Exact dimensions and airline limits are not supplied; check both before guaranteeing carry-on acceptance." }
+    ]
   },
   {
     id: "retail-check-stock",
@@ -87,7 +98,7 @@ const seeds: WorkplaceSeed[] = [
     scenario: "A customer wants a particular jacket in medium and navy, but the display only has a different size and color. The employee checks the actual stock and explains alternatives.",
     aiRole: "Customer looking for a specific item",
     studentRole: "Retail store employee",
-    goal: "Confirm the requested product, size and color, check stock rather than guessing, and offer an available alternative or next step.",
+    goal: "Confirm the jacket size and colour the customer wants. Explain how you will check stock and any reservation or transfer options.",
     aiContext: "The customer wants the Horizon jacket, medium, navy. The floor sample is small and black. The employee must check the stock system or back room; availability is not supplied.",
     skills: ["Clarifying", "Confirming information", "Recommending", "Problem solving"],
     complication: "The customer is leaving soon and asks whether the item can be reserved or transferred, but the store policy is not supplied.",
@@ -95,8 +106,9 @@ const seeds: WorkplaceSeed[] = [
     openingLine: "Do you have this Horizon jacket in medium and navy?",
     steps: ["Repeat the product details.", "Check the stock information.", "Explain the result clearly.", "Offer an alternative or check the policy for reservation or transfer."],
     vocabulary: ["size", "colour", "stock", "back room", "reserve", "transfer"],
-    targetExpressions: ["Let me check the stock for you.", "May I confirm the size and colour?", "We have one available in…", "I need to check whether we can reserve it.", "Would you like to see another colour?"],
-    durationSeconds: 240
+    targetExpressions: ["Let me check the stock for you.", "You'd like medium in navy, is that right?", "I'll check the back room.", "I need to check whether we can reserve it.", "Would you consider another colour?"],
+    durationSeconds: 240,
+    referenceItems: [{ label: "Stock process", detail: "Floor sample: Horizon jacket, small, black. Check the system or back room for other sizes and colours; no result, reservation policy or transfer policy is supplied." }]
   },
   {
     id: "retail-return-exchange",
@@ -106,7 +118,7 @@ const seeds: WorkplaceSeed[] = [
     scenario: "A customer returns with a shirt that does not fit and asks for an exchange. The employee gathers the receipt and product details and checks the store policy.",
     aiRole: "Customer requesting an exchange",
     studentRole: "Retail customer-service employee",
-    goal: "Listen to the request, confirm the purchase and item condition, ask for the receipt, explain that the return policy must be checked and outline the next step without inventing a decision.",
+    goal: "Confirm the purchase details and the exchange the customer wants. Explain the policy check and next step without promising an outcome.",
     aiContext: "The customer bought the shirt three days ago and has a receipt. The tags are still attached. The exact exchange period and condition policy are not supplied.",
     skills: ["Listening", "Clarifying", "Confirming information", "Handling concerns"],
     complication: "The customer asks for a refund if an exchange is not possible, but the store policy is not available to the employee.",
@@ -116,7 +128,8 @@ const seeds: WorkplaceSeed[] = [
     vocabulary: ["return", "exchange", "receipt", "tags", "condition", "policy"],
     targetExpressions: ["I understand you would like an exchange.", "May I see the receipt?", "Is the item unused and are the tags attached?", "Let me check our return policy.", "I'll confirm what options are available."],
     durationSeconds: 300,
-    difficulty: "challenge"
+    difficulty: "challenge",
+    referenceItems: [{ label: "Exchange review", detail: "Ask for purchase date, receipt, item condition and desired replacement. Check the store's policy before confirming an exchange or refund; no policy decision is supplied." }]
   },
   {
     id: "retail-product-problem",
@@ -126,16 +139,18 @@ const seeds: WorkplaceSeed[] = [
     scenario: "A customer returns with a portable charger that stopped working after a short time. The employee asks what happened, checks the purchase information and explains the support path.",
     aiRole: "Customer reporting a product problem",
     studentRole: "Retail customer-service employee",
-    goal: "Understand the problem, ask useful troubleshooting questions, confirm receipt or warranty information and offer a realistic check or support next step.",
+    goal: "Find out what went wrong with the charger and confirm the purchase. Explain how the store will review the problem before deciding on a replacement.",
     aiContext: "The charger was purchased last month, the customer has a receipt, and it no longer charges a phone. The exact warranty process and replacement decision are not supplied.",
     skills: ["Asking questions", "Problem solving", "Clarifying", "Handling concerns"],
     complication: "The customer wants an immediate replacement, but the employee must follow the supplied process and not promise an outcome.",
-    conditions: ["Let the customer describe the problem.", "Ask when and how it stopped working.", "Confirm the receipt and product details.", "Explain the known support or inspection step.", "Avoid promising a replacement before checking."],
+    conditions: ["Summarize the reported problem accurately.", "Ask when and how it stopped working.", "Confirm the receipt and product details.", "Explain the support review and next update.", "Avoid promising a replacement before checking."],
     openingLine: "This charger stopped working after only a few weeks. Can you replace it today?",
     steps: ["Listen and summarize the issue.", "Ask one or two useful troubleshooting questions.", "Confirm the receipt and purchase date.", "Check the policy or support process and explain the next step."],
     vocabulary: ["portable charger", "charge", "receipt", "warranty", "replace", "inspection"],
     targetExpressions: ["I'm sorry you are having this problem.", "When did it stop working?", "Let me confirm the purchase details.", "I'll check the warranty process.", "I can't promise a replacement until we check it.", "Here is the next step."],
-    durationSeconds: 300
+    durationSeconds: 300,
+    difficulty: "challenge",
+    referenceItems: [{ label: "Fictional support process", detail: "Record the product and purchase details, then ask the service team to review the fault and warranty. Replacement eligibility and review time are not confirmed; do not ask the customer to open or repair the charger." }]
   },
   {
     id: "retail-complete-sale",
@@ -154,9 +169,12 @@ const seeds: WorkplaceSeed[] = [
     steps: ["Confirm the item and quantity.", "Explain price and supplied warranty.", "Offer to check the extra warranty question.", "Complete payment and say goodbye."],
     vocabulary: ["tripod", "quantity", "price", "warranty", "receipt", "payment"],
     targetExpressions: ["Let me confirm your selection.", "The price is…", "The product card says it has…", "I'll check whether an extended warranty is available.", "Here is your receipt.", "Thank you for shopping with us."],
-    durationSeconds: 240
+    durationSeconds: 240,
+    referenceItems: [
+      { label: "Product card", detail: "One compact tripod · ¥8,800 · one-year manufacturer warranty; exact coverage needs confirmation." },
+      { label: "Checkout notes", detail: "Cash and card accepted; provide a receipt after payment. Extended warranty availability is not supplied." }
+    ]
   }
 ];
 
 export const RETAIL_CUSTOMER_SERVICE_LIBRARY = seeds.map(workplace);
-

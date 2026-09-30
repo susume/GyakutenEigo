@@ -19,7 +19,11 @@ const seeds: WorkplaceSeed[] = [
     vocabulary: ["visitor", "afternoon", "local", "interest", "nearby", "priority"],
     targetExpressions: ["Welcome. What would you like to see?", "How much time do you have?", "What kind of place are you interested in?", "I would recommend…", "Let me help you choose."],
     durationSeconds: 180,
-    difficulty: "easy"
+    difficulty: "easy",
+    referenceItems: [
+      { label: "Fictional area guide", detail: "Covered market: local food, five minutes east of the station. Riverside garden: quiet outdoor space, ten minutes north of the station." },
+      { label: "Current information", detail: "Check opening times and access needs before confirming a visit; no live information is supplied." }
+    ]
   },
   {
     id: "tourism-street-directions",
@@ -39,26 +43,34 @@ const seeds: WorkplaceSeed[] = [
     vocabulary: ["straight", "turn left", "landmark", "post office", "next to", "walk"],
     targetExpressions: ["Go straight for about…", "Turn left at…", "It is next to…", "Does that route make sense?", "If you prefer, I can show you the taxi information."],
     durationSeconds: 240,
-    difficulty: "easy"
+    difficulty: "easy",
+    referenceItems: [
+      { label: "Fictional museum route", detail: "From the station: walk straight past the convenience store; turn left at the post office; museum beside the public library. Approximately ten minutes on foot." },
+      { label: "Alternative", detail: "Station taxi stand available; fares, wait times and accessibility need confirmation." }
+    ]
   },
   {
     id: "tourism-train-bus",
     title: "Explaining Train or Bus Travel",
     category: "Tourism & Visitor Support",
     categoryId: "tourism-visitor-support",
-    scenario: "A visitor wants to travel from Central Station to the garden district by train and bus. The staff member explains a simple route, platform and transfer.",
+    scenario: "A visitor wants to travel from Central Station to the Garden District by train and bus. Explain the route, boarding bay and train-to-bus transfer using the fictional guide.",
     aiRole: "Visitor planning local transport",
     studentRole: "Visitor-information staff member",
-    goal: "Confirm the destination, explain the supplied route, platform and transfer, state the known travel time and flag any live information that needs checking.",
-    aiContext: "Known route: take the Green Line from Central Station, change at East Gate, then take bus 12 from platform 3 to Garden District. The planned journey is about 35 minutes. The latest departure time is not supplied.",
+    goal: "Explain the train-to-bus route using the guide. Check the visitor's understanding and distinguish route notes from live departure information.",
+    aiContext: "Use the fictional route guide: Green Line from Central Station to East Gate, then bus 12 from bay 3 to Garden District; about 35 minutes. The visitor is unsure where to transfer. Latest departures and today's bay status are not supplied.",
     skills: ["Explaining", "Giving directions", "Confirming information", "Clarifying"],
-    complication: "The visitor asks for the next departure and whether platform 3 is operating today, but live schedule information is not available.",
-    conditions: ["Confirm the destination.", "Explain the train line and transfer.", "Give the supplied platform and travel time.", "Say that the latest live schedule must be checked.", "Confirm the visitor's understanding."],
+    complication: "The visitor asks for the next departure and whether bay 3 is in use today, but live schedule information is not available.",
+    conditions: ["Confirm the destination.", "Explain the train-to-bus transfer accurately.", "Give the boarding bay and approximate travel time from the route notes.", "Offer to check any requested live schedule detail.", "Confirm the visitor's understanding."],
     openingLine: "What is the easiest way to get to the Garden District from here?",
     steps: ["Ask when the visitor plans to travel.", "Explain the train and bus route.", "Describe the transfer and travel time.", "Check or direct the visitor to the latest departure information."],
-    vocabulary: ["platform", "transfer", "Green Line", "bus", "departure", "travel time"],
-    targetExpressions: ["Take the Green Line from…", "Change trains at…", "The bus leaves from platform…", "It takes about…", "Let me check the latest information for you."],
-    durationSeconds: 240
+    vocabulary: ["train line", "transfer to a bus", "bus bay", "departure", "journey time", "latest information"],
+    targetExpressions: ["Take the Green Line from Central Station.", "Get off at East Gate and transfer to bus 12.", "The bus leaves from bay 3.", "The journey takes about 35 minutes.", "Let me check the latest departure information for you."],
+    durationSeconds: 240,
+    referenceItems: [
+      { label: "Fictional route guide", detail: "Green Line: Central Station → East Gate. Transfer there to bus 12, bay 3, for Garden District. Planned journey about 35 minutes." },
+      { label: "Live checks", detail: "Next departure and today's boarding bay need confirmation; route notes are not a live timetable." }
+    ]
   },
   {
     id: "tourism-recommend-place",
@@ -77,7 +89,11 @@ const seeds: WorkplaceSeed[] = [
     steps: ["Ask what the visitors enjoy.", "Clarify time and walking needs.", "Compare or recommend places.", "Explain the route and handle the current-event question."],
     vocabulary: ["recommend", "garden", "market", "covered", "walking distance", "event"],
     targetExpressions: ["What kind of places do you enjoy?", "Based on that, I would recommend…", "It is a good choice because…", "You can get there by…", "I'll check whether the event is running today."],
-    durationSeconds: 240
+    durationSeconds: 240,
+    referenceItems: [
+      { label: "Fictional choices", detail: "Riverside garden: outdoor, ten-minute walk north from the station. Covered market: food stalls, five-minute walk east, shelter from rain." },
+      { label: "Access and events", detail: "Ask about walking needs; check taxi options, step-free access and today's events before confirming." }
+    ]
   },
   {
     id: "tourism-local-attraction",
@@ -96,18 +112,23 @@ const seeds: WorkplaceSeed[] = [
     steps: ["Ask what the visitor would like to know.", "Describe the attraction and typical visit length.", "Explain how to reach it.", "Check the current-hours and photography questions."],
     vocabulary: ["attraction", "restored", "merchant house", "leaflet", "visit", "photography"],
     targetExpressions: ["It is known for…", "Visitors can see…", "A visit usually takes about…", "I don't have the latest hours here.", "Let me check that information for you."],
-    durationSeconds: 240
+    durationSeconds: 240,
+    referenceItems: [
+      { label: "Fictional merchant house", detail: "Restored riverside merchant house with an English leaflet; typical visit about one hour." },
+      { label: "Route", detail: "From the station, follow Riverside Street for about ten minutes; the house is beside the footbridge." },
+      { label: "Checks", detail: "Today's opening hours, photography rules and step-free access are not confirmed." }
+    ]
   },
   {
     id: "tourism-lost-visitor",
     title: "Helping a Visitor Who Is Lost",
     category: "Tourism & Visitor Support",
     categoryId: "tourism-visitor-support",
-    scenario: "A visitor is confused near a station and shows a map with a destination circled. The support employee needs to establish their location and make the next direction easy to follow.",
+    scenario: "A visitor is confused near a station while reading a phone map. Establish where they are and use the route notes to help them reach the Sakura Street hotel.",
     aiRole: "Visitor who is lost",
     studentRole: "Visitor-support employee or local helper",
     goal: "Reassure the visitor, identify where they are and where they need to go, use the map or landmarks to give a clear next route and check whether further help is needed.",
-    aiContext: "The visitor wants the Sakura Street hotel but is near the wrong station exit. The hotel is a short walk from North Exit; the employee should first confirm the current exit and not assume the map orientation.",
+    aiContext: "Reveal when asked: the visitor is at South Exit, wants the Sakura Street hotel and is reading a phone map upside down. Use the route notes. They need short directions and confirmation of which station exit to use.",
     skills: ["Listening", "Giving directions", "Clarifying", "Problem solving"],
     complication: "The visitor is looking at the map upside down and thinks the hotel is in the opposite direction.",
     conditions: ["Reassure the visitor politely.", "Ask for the destination and current landmark.", "Clarify the correct station exit or direction.", "Give manageable route steps.", "Check understanding and offer another support option."],
@@ -116,7 +137,11 @@ const seeds: WorkplaceSeed[] = [
     vocabulary: ["lost", "map", "exit", "landmark", "opposite", "hotel"],
     targetExpressions: ["Don't worry; let's work it out.", "Where did you come from?", "Which exit are you near?", "The hotel is in this direction.", "Let me show you on the map.", "Could you check the next landmark?"],
     durationSeconds: 300,
-    difficulty: "challenge"
+    difficulty: "challenge",
+    referenceItems: [
+      { label: "Fictional station route", detail: "Follow signs through the public station passage to North Exit. Outside North Exit, follow Sakura Street for five minutes; the hotel is on the right beside the bakery." },
+      { label: "Extra help", detail: "Use landmarks and station signs; offer to check access or ask station staff if the route is unclear. No built-in map is required." }
+    ]
   },
   {
     id: "tourism-tickets-reservations",
@@ -127,7 +152,7 @@ const seeds: WorkplaceSeed[] = [
     aiRole: "Visitor arranging an attraction visit",
     studentRole: "Tourism information or ticket-desk employee",
     goal: "Clarify the requested date and number of people, explain the supplied ticket process, and check current reservation availability without promising a ticket.",
-    aiContext: "The visitor wants two tickets for this afternoon. Online reservations are one possible route, but current availability and exact prices are not supplied. The employee can direct the visitor to the official booking counter or site.",
+    aiContext: "The visitor wants two tickets for the fictional merchant house this afternoon. Use the booking notes. Availability and prices are not supplied; accept a clear explanation of how to check rather than demand an invented result.",
     skills: ["Asking questions", "Explaining", "Confirming information", "Problem solving"],
     complication: "The visitor has limited time and asks the employee to guarantee two tickets now.",
     conditions: ["Confirm date, time and number of visitors.", "Explain the known reservation route.", "Check or direct the visitor to current availability.", "Avoid promising tickets or prices that are not confirmed.", "Offer a backup plan if needed."],
@@ -135,7 +160,8 @@ const seeds: WorkplaceSeed[] = [
     steps: ["Ask about the visit time and group size.", "Explain the available booking route.", "Check current availability or direct the visitor to the official source.", "Offer a backup attraction or time if tickets are unavailable."],
     vocabulary: ["ticket", "reservation", "availability", "official", "same day", "backup"],
     targetExpressions: ["For what date and time?", "How many tickets do you need?", "Let me check availability.", "I can't guarantee a ticket until it is confirmed.", "The official booking desk can help with…", "Another option would be…"],
-    durationSeconds: 300
+    durationSeconds: 300,
+    referenceItems: [{ label: "Fictional booking notes", detail: "The merchant house has an official booking counter and online reservation page. Confirm date, time and party size there; current availability and prices are unknown. Do not claim a reservation has been made." }]
   },
   {
     id: "tourism-change-plan",
@@ -145,7 +171,7 @@ const seeds: WorkplaceSeed[] = [
     scenario: "Rain changes an international visitor's outdoor sightseeing plan. The tourism employee listens to what has already been booked and helps create a practical indoor alternative.",
     aiRole: "Visitor whose plan changed",
     studentRole: "Tourism support employee",
-    goal: "Understand the original plan, ask about time and interests, offer realistic alternatives and confirm what information or reservation needs to be checked.",
+    goal: "Help the visitor choose an indoor plan that fits before dinner. Explain which opening times or bookings still need checking.",
     aiContext: "The visitor planned a garden walk and an outdoor market but now wants indoor places near the station. They have a dinner reservation at 19:00. Current weather, attraction hours and same-day availability are not supplied.",
     skills: ["Listening", "Asking questions", "Recommending", "Problem solving"],
     complication: "The visitor asks for an indoor attraction that may be closed today and wants a route that fits before dinner.",
@@ -153,9 +179,13 @@ const seeds: WorkplaceSeed[] = [
     openingLine: "It is raining, so our outdoor plan will not work. Could you help us change it?",
     steps: ["Ask what the visitor still wants to experience.", "Confirm time and existing reservation.", "Suggest indoor alternatives near a practical route.", "Check current information and summarize the new plan."],
     vocabulary: ["change of plan", "rainy", "indoor", "reservation", "available", "route"],
-    targetExpressions: ["I understand. Let's find another plan.", "What would you still like to see?", "You could consider…", "I'll check the latest opening information.", "That should fit before your reservation.", "Let me summarize the plan."],
+    targetExpressions: ["Let's look at some indoor options.", "What would you still like to see?", "What time is your dinner reservation?", "We could consider the museum or covered market.", "I'll check the opening times before we decide.", "Let me summarize the plan."],
     durationSeconds: 300,
-    difficulty: "challenge"
+    difficulty: "challenge",
+    referenceItems: [
+      { label: "Fictional indoor options", detail: "City museum: ten-minute walk from the station, about one hour to visit. Covered market: five-minute walk east, food stalls under cover." },
+      { label: "Plan checks", detail: "Confirm current hours, travel conditions and any booking before promising that a plan will fit. No live availability is supplied." }
+    ]
   }
 ];
 

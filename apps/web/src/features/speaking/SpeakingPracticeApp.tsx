@@ -36,7 +36,6 @@ import {
   type SpeakingSession,
   type SpeakingTurn
 } from "@quizstrike/shared";
-import { speakingContext } from "@quizstrike/shared";
 import { ApiError, speakingApi } from "../../api/client";
 import GyakutenEigoBrand from "../../ui/GyakutenEigoBrand";
 import PerformanceHeader from "../../ui/PerformanceHeader";
@@ -50,7 +49,7 @@ import { getBrowserSpeechSynthesis, getCuratedSpeakingVoices, getDefaultCuratedS
 import { hasStudentSpeech, ResultPanel, scoreFor } from "./SpeakingResultPanel";
 import { mergeSpeakingTurns, nextSpeakingPollDelay, shouldAcceptSpeakingRevision, speakingTimerReference } from "./speakingLifecycle";
 import { isKeyboardEditingTarget, isSpaceShortcutEvent } from "./speakingKeyboard";
-import { SpeakingSupportPanel, type SpeakingSupportTab } from "./SpeakingSupportPanel";
+import { SpeakingSupportPanel, SpeakingKeywords, SpeakingReferenceSheet, type SpeakingSupportTab } from "./SpeakingSupportPanel";
 import { getSpeakingSupportTabs } from "./SpeakingSupportPanel";
 import { speakingModeAction, speakingModeIntro, speakingModeLabel } from "./speakingCopy";
 import "./speaking.css";
@@ -180,8 +179,7 @@ function SpeakingStudentScreenV2({ statusText, activity, state, remainingSeconds
   const supportSettings = resolveSpeakingSupportSettings(activity.supportSettings);
   const supportTabs = getSpeakingSupportTabs(activity);
   const hasSupportPanel = supportTabs.length > 0;
-  const context = speakingContext(activity);
-  const showContextButton = supportSettings.showContext && Boolean(context);
+  const showContextButton = supportTabs.some((tab) => tab.id === "context");
   const showHelpButton = supportSettings.allowHelp && Boolean(onHelp);
   const showSupportActions = showContextButton || showHelpButton;
   const [supportOpen, setSupportOpen] = useState(() => hasSupportPanel && (typeof window === "undefined" || window.matchMedia("(min-width: 901px)").matches));
@@ -501,10 +499,12 @@ function SpeakingPreActivityPageV2({ navigate, joined }: { navigate: Navigate; j
           <div><h2>Your task</h2><p>{resources.studentGoal}</p></div>
         </article>
 
-        {support.showTargetExpressions && joined.activity.targetExpressions.length > 0 && <article className="speaking-student-info-card speaking-expressions-card">
+        {support.showTargetExpressions && (joined.activity.targetExpressions.length > 0 || resources.usefulVocabulary.length > 0) && <article className="speaking-student-info-card speaking-expressions-card">
           <span className="speaking-info-card-icon speaking-info-card-icon-green" aria-hidden="true"><Target size={28} strokeWidth={2.1} /></span>
-          <div><h2>Target expressions</h2><ul>{joined.activity.targetExpressions.map((expression) => <li key={expression}>{expression}</li>)}</ul></div>
+          <div><h2>Target expressions</h2><p>Examples to help you communicate; your own words are welcome.</p><ul>{joined.activity.targetExpressions.map((expression) => <li key={expression}>{expression}</li>)}</ul><SpeakingKeywords words={resources.usefulVocabulary} /></div>
         </article>}
+
+        {support.showContext && <SpeakingReferenceSheet items={resources.referenceItems} />}
 
         <details className="speaking-evaluation-card">
           <summary><span className="speaking-evaluation-chevron" aria-hidden="true"><ChevronRight size={18} /></span><strong>{isPractice ? "What to focus on" : "What to show"}</strong></summary>

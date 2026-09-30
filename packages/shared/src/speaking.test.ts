@@ -189,3 +189,13 @@ test("every workplace built-in is a complete assessment-compatible speaking task
   }
   assert.equal(taskIds.size, 49);
 });
+
+test("built-in task facts and language survive the save-time resource bounds", () => {
+  for (const task of SPEAKING_CORE_LIBRARY) {
+    assert.equal(SpeakingCreateActivityInputSchema.safeParse(task).success, true, task.id);
+    const normalized = speakingScenarioResources(task.scenarioResources);
+    for (const field of ["studentGoal", "openingLine", "aiContext", "possibleComplication", "successConditions", "referenceItems", "usefulVocabulary", "suggestedSteps"] as const) {
+      assert.deepEqual(normalized[field], task.scenarioResources[field], `${task.id}: ${field}`);
+    }
+  }
+});
