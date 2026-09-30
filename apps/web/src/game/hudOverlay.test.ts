@@ -7,6 +7,8 @@ import { ArenaHudOverlay, type AthleticsHudState } from "./hudOverlay.js";
 (globalThis as typeof globalThis & { React: typeof React }).React = React;
 
 const renderHud = ({
+  showTouchControls = true,
+  onFireFromTouch,
   hitPulse = 0,
   hitConfirmPulse = 0,
   onInteractFromTouch,
@@ -16,6 +18,8 @@ const renderHud = ({
   athleticsHud,
   suppressHint = true
 }: {
+  showTouchControls?: boolean;
+  onFireFromTouch?: () => void;
   hitPulse?: number;
   hitConfirmPulse?: number;
   onInteractFromTouch?: () => void;
@@ -25,6 +29,8 @@ const renderHud = ({
   athleticsHud?: AthleticsHudState;
   suppressHint?: boolean;
 } = {}) => renderToStaticMarkup(React.createElement(ArenaHudOverlay, {
+  showTouchControls,
+  onFireFromTouch,
   hitPulse,
   hitConfirmPulse,
   zoomLevel: 0,
@@ -43,6 +49,16 @@ const renderHud = ({
   touchCrouchEnabled,
   athleticsHud
 }));
+
+test("keyboard HUD hides the joystick while tablet HUD exposes a dedicated snowball throw", () => {
+  const keyboard = renderHud({ showTouchControls: false });
+  assert.match(keyboard, /hidden="" class="touch-controls"/);
+  assert.match(keyboard, /aria-label="Keyboard controls"/);
+  const tablet = renderHud({ onFireFromTouch: () => undefined });
+  assert.doesNotMatch(tablet, /hidden="" class="touch-controls"/);
+  assert.match(tablet, /aria-label="Throw snowball"/);
+  assert.doesNotMatch(tablet, /aria-label="Keyboard controls"/);
+});
 
 test("touch HUD exposes an accessible environment interaction control when flag interaction is available", () => {
   const html = renderHud({ onInteractFromTouch: () => undefined });

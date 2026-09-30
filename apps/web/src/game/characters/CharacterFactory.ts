@@ -14,6 +14,8 @@ import {
 } from "./CharacterEquipment.js";
 import { CharacterModel } from "./CharacterModel.js";
 import { createSharedSkinnedStudent } from "./SharedSkinnedStudent.js";
+import { CommunityWeaponLibrary } from "./CommunityWeaponLibrary";
+import { CommunityStudentBodyLibrary } from "./CommunityStudentBody.js";
 
 export interface FirstPersonViewModel {
   root: THREE.Group;
@@ -46,10 +48,14 @@ export class CharacterFactory {
   private readonly jointGeometry = new THREE.SphereGeometry(0.14, 8, 6);
   private readonly shadowGeometry = new THREE.CircleGeometry(0.52, 16);
   private readonly materialCache = new Map<string, THREE.MeshStandardMaterial>();
+  private readonly communityWeapons = new CommunityWeaponLibrary();
+  private readonly communityBodies = new CommunityStudentBodyLibrary();
 
   constructor(private readonly options: CharacterFactoryOptions = {}) {}
 
   dispose() {
+    this.communityBodies.dispose();
+    this.communityWeapons.dispose();
     this.boxGeometry.dispose();
     this.limbGeometry.dispose();
     this.jointGeometry.dispose();
@@ -155,6 +161,8 @@ export class CharacterFactory {
     root.add(contactShadow);
     const athlete = createSharedSkinnedStudent(appearance, materials);
     root.add(athlete.mesh);
+    root.userData.characterModelSource = "built-in-fallback";
+    if (typeof window !== "undefined") void this.communityBodies.attach(athlete.mesh, root, materials, appearance.customization.footwearId);
     const {
       root: skeletonRoot,
       torso,
@@ -232,6 +240,7 @@ export class CharacterFactory {
       shoulderContact,
       sight
     } = createWeaponSet(materials, this.boxGeometry, gearId);
+    if (typeof window !== "undefined") void this.communityWeapons.attach(weapon, gearId);
     const mount = getWeaponMountTransform(gearId);
     const weaponSocket = new THREE.Group();
     weaponSocket.name = "RightHandWeaponSocket";
@@ -307,6 +316,7 @@ export class CharacterFactory {
 
   private createFirstPersonWeaponFromMaterials(materials: CharacterMaterials, gear: string): FirstPersonWeaponViewModel {
     const { weapon, muzzle } = createWeaponSet(materials, this.boxGeometry, gear);
+    if (typeof window !== "undefined") void this.communityWeapons.attach(weapon, gear);
     const firstPerson = getWeaponMountTransform(gear).firstPerson;
     weapon.position.set(...firstPerson.position);
     weapon.rotation.set(...firstPerson.rotation);

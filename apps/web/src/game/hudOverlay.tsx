@@ -62,6 +62,7 @@ const formatPlace = (rank: number) => {
 };
 
 export const ArenaHudOverlay = ({
+  showTouchControls = false,
   hitPulse,
   hitConfirmPulse,
   zoomLevel,
@@ -83,6 +84,7 @@ export const ArenaHudOverlay = ({
   touchCrouchEnabled,
   athleticsHud
 }: {
+  showTouchControls?: boolean;
   hitPulse: number;
   hitConfirmPulse: number;
   zoomLevel: number;
@@ -205,7 +207,7 @@ export const ArenaHudOverlay = ({
           )}
         </div>
         {!controlsDisabled && !isPointerLocked && !suppressHint && <div className="control-lock athletics-control-lock">WASD moves at full speed · Shift crouches · Space jumps · Arrow keys or swipe looks · touch players can use Crouch + Jump</div>}
-        <div className="touch-controls athletics-touch-controls" aria-label="Touch controls">
+        <div hidden={!showTouchControls} className="touch-controls athletics-touch-controls" aria-label="Touch controls">
           <button ref={joystickElementRef} type="button" className="touch-joystick" aria-label="Movement joystick" disabled={controlsDisabled} onPointerDown={onBeginTouchMove}>
             <span aria-hidden="true" />
           </button>
@@ -279,13 +281,15 @@ export const ArenaHudOverlay = ({
         <span key={weaponCooldown.startedAt} style={{ animationDuration: `${weaponCooldown.durationMs}ms` }} />
       </div>
     )}
-    {!controlsDisabled && !isPointerLocked && !suppressHint && <div className="control-lock">WASD moves at full speed · Shift crouches · Space jumps · Arrow keys or swipe look · click to aim · F fires · C zooms · E interacts</div>}
-    <div className="touch-controls" aria-label="Touch controls">
+    {!showTouchControls && !controlsDisabled && !isPointerLocked && !suppressHint && <div className="control-lock">WASD moves at full speed · Shift crouches · Space jumps · Arrow keys or swipe look · click to aim · F fires · C zooms · E interacts</div>}
+    {!showTouchControls && <div className="keyboard-control-legend" aria-label="Keyboard controls"><kbd>WASD</kbd> Move <kbd>Space</kbd> Jump <kbd>Shift</kbd> Crouch <kbd>F</kbd> Throw</div>}
+    <div hidden={!showTouchControls} className="touch-controls" aria-label="Touch controls">
       <button ref={joystickElementRef} type="button" className="touch-joystick" aria-label="Movement joystick" disabled={controlsDisabled} onPointerDown={onBeginTouchMove}>
         <span aria-hidden="true" />
       </button>
-      {(currentWeaponId === "power_blaster" || onInteractFromTouch || onJumpFromTouch || onToggleCrouchFromTouch) && (
+      {(currentWeaponId === "power_blaster" || onFireFromTouch || onInteractFromTouch || onJumpFromTouch || onToggleCrouchFromTouch) && (
         <div className="touch-action-group">
+          {onFireFromTouch && <button type="button" className="touch-fire" disabled={controlsDisabled} aria-label="Throw snowball" onPointerDown={(event) => { event.preventDefault(); onFireFromTouch(); }}>Throw</button>}
           {onToggleCrouchFromTouch && (
             <button
               type="button"

@@ -28,3 +28,13 @@ test("audio preferences migrate older saved settings and clamp unsafe levels", (
   assert.equal(normalizeGamePreferences({ musicVolume: Number.NaN }).musicVolume, DEFAULT_GAME_PREFERENCES.musicVolume);
   assert.equal(normalizeGamePreferences({}).sfxVolume, DEFAULT_GAME_PREFERENCES.sfxVolume);
 });
+
+test("modernized controls migrate saved preferences and clamp look sensitivity", () => {
+  const migrated = normalizeGamePreferences({ arenaQuality: "performance" });
+  assert.equal(migrated.contextualHud, true);
+  assert.equal(migrated.lookSensitivity, 1);
+  assert.equal(normalizeGamePreferences({ contextualHud: false }).contextualHud, false);
+  assert.equal(normalizeGamePreferences({ lookSensitivity: 10 }).lookSensitivity, 2.5);
+  assert.equal(normalizeGamePreferences({ lookSensitivity: -1 }).lookSensitivity, .2);
+  assert.equal(normalizeGamePreferences({ lookSensitivity: Number.NaN }).lookSensitivity, 1);
+});

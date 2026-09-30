@@ -44,6 +44,7 @@ export interface CharacterManagerStats {
   total: number;
   visible: number;
   alive: number;
+  imported: number;
   averageSpeed: number;
   lod: Record<"LOD0" | "LOD1" | "LOD2" | "LOD3", number>;
 }
@@ -186,11 +187,13 @@ export class CharacterManager {
       total: this.records.size,
       visible: 0,
       alive: 0,
+      imported: 0,
       averageSpeed: 0,
       lod: { LOD0: 0, LOD1: 0, LOD2: 0, LOD3: 0 }
     };
     let speedTotal = 0;
     for (const record of this.records.values()) {
+      if (record.controller.model.root.userData.characterModelSource === "kenney-retargeted") stats.imported += 1;
       if (!record.controller.model.root.visible) continue;
       stats.visible += 1;
       if (record.controller.alive) stats.alive += 1;

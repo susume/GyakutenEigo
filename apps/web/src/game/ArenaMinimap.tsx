@@ -1,3 +1,4 @@
+import { useState } from "react";
 import {
   ARENA_PLAYER_EYE_HEIGHT,
   getArenaGroundHeight,
@@ -52,6 +53,7 @@ export const ArenaMinimap = ({
   displayedFlagPosition,
   session
 }: ArenaMinimapProps) => {
+  const [expanded, setExpanded] = useState(false);
   const toMiniMapX = (x: number) => ((x + arenaBounds.limitX) / (arenaBounds.limitX * 2)) * MINIMAP_WIDTH;
   const toMiniMapY = (z: number) => ((z + arenaBounds.limitZ) / (arenaBounds.limitZ * 2)) * MINIMAP_HEIGHT;
   const toMiniMapW = (w: number) => (w / (arenaBounds.limitX * 2)) * MINIMAP_WIDTH;
@@ -73,8 +75,8 @@ export const ArenaMinimap = ({
     ? getArenaObjectiveGroundY(arenaMapId, displayedFlagPosition, ARENA_PLAYER_EYE_HEIGHT)
     : undefined;
   return (
-    <div className="arena-minimap" aria-label={`${arenaMap.title} minimap`}>
-      <div className="minimap-title">Map</div>
+    <div className={`arena-minimap${expanded ? " expanded" : ""}`} aria-label={`${arenaMap.title} minimap`}>
+      <button type="button" className="minimap-title" aria-label={expanded ? "Shrink map" : "Expand map"} aria-expanded={expanded} onClick={() => setExpanded(!expanded)}>Map <span aria-hidden="true">{expanded ? "−" : "+"}</span></button>
       <svg viewBox={`0 0 ${MINIMAP_WIDTH} ${MINIMAP_HEIGHT}`} role="img" aria-label={`${arenaMap.title} route overview`}>
         <title>{arenaMap.title} route overview</title>
         <desc>

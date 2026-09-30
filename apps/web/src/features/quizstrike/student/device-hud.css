@@ -1,0 +1,105 @@
+/* Classroom HUD: stable corner anchors, readable at 1280×720, no device-width guesses for input. */
+.touch-controls[hidden] { display: none !important; }
+.game-layout:not(.waiting-game-layout):not(.athletics-game-layout) :is(.hud-stat, .arena-minimap, .round-countdown, .arena-objective-strip > span, .action-bar button, .touch-action-group button) {
+  backdrop-filter: none;
+}
+.game-layout:not(.waiting-game-layout):not(.athletics-game-layout) {
+  --hud-safe-edge: max(12px, env(safe-area-inset-left));
+  --hud-safe-top: max(12px, env(safe-area-inset-top));
+  grid-template-rows: minmax(0, 1fr);
+}
+.game-layout:not(.waiting-game-layout):not(.athletics-game-layout) .arena-objective-strip {
+  left: var(--hud-safe-edge); top: var(--hud-safe-top); right: auto;
+  max-width: calc(50% - 100px); gap: 6px; flex-wrap: nowrap; width: auto;
+}
+.game-layout:not(.waiting-game-layout):not(.athletics-game-layout) .arena-objective-strip > span {
+  flex: 0 0 auto; width: auto; min-width: 0; min-height: 32px; padding: 6px 10px; font-size: 12px; line-height: 1.25;
+}
+.game-layout:not(.waiting-game-layout):not(.athletics-game-layout) .arena-objective-strip > .objective-primary {
+  flex: 0 1 auto; max-width: 180px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
+}
+.game-layout:not(.waiting-game-layout):not(.athletics-game-layout) .arena-objective-strip > .mode-pill { display: inline-flex; }
+.game-layout:not(.waiting-game-layout):not(.athletics-game-layout) .round-countdown {
+  top: var(--hud-safe-top); left: 50%; right: auto; transform: translateX(-50%); min-width: 142px; min-height: 40px; padding: 0 12px;
+}
+.game-layout:not(.waiting-game-layout):not(.athletics-game-layout) .round-countdown strong { font-size: 20px; }
+.game-layout:not(.waiting-game-layout):not(.athletics-game-layout) .game-stage > .player-status-hud {
+  left: var(--hud-safe-edge); top: auto; right: auto; bottom: 42px;
+  width: auto; max-width: calc(100% - 420px); min-height: 0;
+  display: flex; justify-content: flex-start; flex-wrap: wrap; align-items: stretch;
+  gap: 6px; padding: 0; background: none; border: 0; box-shadow: none; transform: none;
+}
+.game-layout:not(.waiting-game-layout):not(.athletics-game-layout) .player-status-hud .hud-stat {
+  width: auto; flex: 0 0 auto; min-width: 96px; min-height: 48px;
+  padding: 8px 10px; border-radius: 10px; background: rgba(10, 28, 43, .94);
+  border: 1px solid rgba(190, 226, 245, .32);
+}
+.game-layout:not(.waiting-game-layout):not(.athletics-game-layout) .player-status-hud .hud-stat small { font-size: 10px; }
+.game-layout:not(.waiting-game-layout):not(.athletics-game-layout) .player-status-hud .hud-stat strong { font-size: 17px; }
+.game-layout:not(.waiting-game-layout):not(.athletics-game-layout) .player-status-hud .contextual-vital { min-width: 145px; }
+.game-layout:not(.waiting-game-layout):not(.athletics-game-layout) .contextual-vital-heading { gap: 5px; }
+.game-layout:not(.waiting-game-layout):not(.athletics-game-layout) .contextual-vital-track { height: 4px; }
+.game-layout:not(.waiting-game-layout):not(.athletics-game-layout) .arena-minimap {
+  width: 148px; top: var(--hud-safe-top); right: var(--hud-safe-edge); padding: 6px;
+  border-radius: 12px; gap: 3px;
+}
+.game-layout:not(.waiting-game-layout):not(.athletics-game-layout) .arena-minimap.expanded { width: min(300px, 42vw, 45vh); }
+.game-stage .arena-minimap .minimap-title {
+  display: flex; justify-content: space-between; align-items: center;
+  width: 100%; min-height: 28px; padding: 0 4px; border: 0; border-radius: 4px;
+  background: transparent; color: #f0f8ff; font-size: 11px; cursor: pointer; pointer-events: auto;
+}
+.minimap-title span { font-size: 20px; }
+.minimap-title:focus-visible { outline: 2px solid #7dd3fc; outline-offset: 2px; }
+.game-layout:not(.waiting-game-layout):not(.athletics-game-layout) > .action-bar {
+  position: absolute; right: max(12px, env(safe-area-inset-right)); bottom: max(12px, env(safe-area-inset-bottom));
+  width: auto; height: auto; display: flex; gap: 6px; padding: 0; border: 0; background: none; box-shadow: none;
+}
+.game-layout:not(.waiting-game-layout):not(.athletics-game-layout) > .action-bar button {
+  width: auto; min-width: 66px; height: 48px; min-height: 48px; padding: 6px 10px;
+  display: flex; flex-direction: column; gap: 3px; border-radius: 10px;
+  background: rgba(10, 28, 43, .94); color: #eff8ff; border: 1px solid rgba(190, 226, 245, .45);
+}
+.game-layout:not(.waiting-game-layout):not(.athletics-game-layout) > .action-bar button > span {
+  position: static; width: auto; height: auto; overflow: visible; clip: auto;
+  font-size: 10px; line-height: 1.1; white-space: nowrap;
+}
+.keyboard-control-legend {
+  position: absolute; left: max(12px, env(safe-area-inset-left)); bottom: max(12px, env(safe-area-inset-bottom));
+  display: flex; align-items: center; gap: 6px; pointer-events: none;
+  font-size: 11px; color: #e8f4ff; text-shadow: 0 1px 3px #000;
+}
+.keyboard-control-legend kbd { padding: 2px 4px; border: 1px solid #a0bdd0; border-radius: 4px; background: #122c3e; font-size: 10px; }
+.game-layout:not(.waiting-game-layout):not(.athletics-game-layout) .notification-layer {
+  left: var(--hud-safe-edge); bottom: 102px; max-width: min(360px, 42vw); pointer-events: none;
+}
+.game-layout:not(.waiting-game-layout):not(.athletics-game-layout) .notification-layer > p { font-size: 12px; padding: 8px 10px; }
+.game-layout:not(.waiting-game-layout):not(.athletics-game-layout) .fps-ammo-counter { display: none; }
+.game-layout:not(.waiting-game-layout):not(.athletics-game-layout):has([data-input-mode="touch"]) .game-stage > .player-status-hud {
+  top: 58px; bottom: auto; max-width: calc(100% - 185px);
+}
+.game-layout:not(.waiting-game-layout):not(.athletics-game-layout):has([data-input-mode="touch"]) .arena-minimap { width: 132px; }
+.game-layout:not(.waiting-game-layout):not(.athletics-game-layout):has([data-input-mode="touch"]) .arena-minimap .minimap-title { min-height: 44px; }
+.game-layout:not(.waiting-game-layout):not(.athletics-game-layout):has([data-input-mode="touch"]) .arena-minimap.expanded { width: min(300px, 42vw, 45vh); }
+.game-layout:not(.waiting-game-layout):not(.athletics-game-layout):has([data-input-mode="touch"]) .notification-layer { left: 142px; bottom: 16px; max-width: calc(100% - 480px); }
+.fps-view[data-input-mode="touch"] .touch-controls { display: flex; }
+.fps-view[data-input-mode="touch"] .touch-joystick { width: 112px; height: 112px; min-width: 112px; min-height: 112px; }
+.fps-view[data-input-mode="touch"] .touch-joystick span { width: 44px; height: 44px; }
+.fps-view[data-input-mode="touch"] .touch-action-group { right: 0; bottom: 64px; gap: 7px; }
+.fps-view[data-input-mode="touch"] .touch-action-group button { min-width: 88px; min-height: 48px; padding: 8px 12px; font-size: 14px; border-radius: 12px; }
+.fps-view[data-input-mode="touch"] .touch-action-group button kbd { display: none; }
+.fps-view[data-input-mode="touch"] .touch-action-group .touch-fire { min-height: 64px; background: #0b6274; border: 1px solid #7feaff; color: #fff; font-weight: 800; }
+@media (max-width: 900px) {
+  .game-layout:not(.waiting-game-layout):not(.athletics-game-layout) .arena-objective-strip { max-width: calc(50% - 80px); }
+  .game-layout:not(.waiting-game-layout):not(.athletics-game-layout) .arena-objective-strip .objective-primary { display: none; }
+  .game-layout:not(.waiting-game-layout):not(.athletics-game-layout) .arena-minimap { width: 124px; }
+  .game-layout:not(.waiting-game-layout):not(.athletics-game-layout) .game-stage > .player-status-hud { max-width: calc(100% - 305px); }
+  .keyboard-control-legend { font-size: 10px; gap: 4px; }
+}
+@media (max-width: 600px) {
+  .game-layout:not(.waiting-game-layout):not(.athletics-game-layout) .game-stage > .player-status-hud { bottom: 76px; max-width: calc(100% - 24px); }
+  .game-layout:not(.waiting-game-layout):not(.athletics-game-layout) .player-status-hud .hud-stat { min-width: 78px; padding: 6px 8px; }
+  .game-layout:not(.waiting-game-layout):not(.athletics-game-layout) .player-status-hud .contextual-vital { min-width: 125px; }
+  .keyboard-control-legend { display: none; }
+  .game-layout:not(.waiting-game-layout):not(.athletics-game-layout):has([data-input-mode="touch"]) .notification-layer { left: 136px; bottom: 78px; max-width: calc(100% - 248px); }
+}

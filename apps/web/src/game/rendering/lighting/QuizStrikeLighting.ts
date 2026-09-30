@@ -42,14 +42,14 @@ export const getQuizStrikeLightingConfig = ({
     };
   }
   return {
-    background: isZombieMode ? "#5d668a" : isIronJunction ? "#8da6aa" : isTempleRunoff ? "#a9cfbe" : "#d5b56e",
+    background: isZombieMode ? "#5d668a" : isIronJunction ? "#8da6aa" : isTempleRunoff ? "#a9cfbe" : "#8fc9df",
     fog: {
-      color: isZombieMode ? "#8f8395" : isIronJunction ? "#bfd4d0" : isTempleRunoff ? "#b9d9ca" : "#eed9ad",
+      color: isZombieMode ? "#8f8395" : isIronJunction ? "#bfd4d0" : isTempleRunoff ? "#b9d9ca" : "#e5dcc9",
       near: isFps ? 110 : 185,
       far: isFps ? 360 : 520
     },
     ambient: {
-      sky: isZombieMode ? "#d8ddff" : isIronJunction ? "#d9edf0" : isTempleRunoff ? "#e7f4d5" : "#fff6d8",
+      sky: isZombieMode ? "#d8ddff" : isIronJunction ? "#d9edf0" : isTempleRunoff ? "#e7f4d5" : "#eef7ff",
       ground: isZombieMode ? "#65556e" : isIronJunction ? "#354146" : isTempleRunoff ? "#334836" : "#8f7d6f",
       intensity: isFps ? 1.04 : 1.18
     },
@@ -59,7 +59,7 @@ export const getQuizStrikeLightingConfig = ({
       direction: [isIronJunction ? -120 : isTempleRunoff ? -105 : -85, 180, isIronJunction ? -60 : 95]
     },
     fill: {
-      color: isZombieMode ? "#b7a8de" : isIronJunction ? "#f3b47a" : isTempleRunoff ? "#7ed9c8" : "#ffe7bd",
+      color: isZombieMode ? "#b7a8de" : isIronJunction ? "#f3b47a" : isTempleRunoff ? "#7ed9c8" : "#d7e9f4",
       intensity: isFps ? 0.66 : 0.52,
       direction: [110, 80, -130]
     },

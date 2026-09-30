@@ -40,11 +40,22 @@ export default function GamePreferencesPanel({
             </select>
             <small>Low uses less power while keeping team colors, objectives, and route landmarks clear.</small>
           </label>
+          <label>Touch controls<select value={preferences.touchControls} onChange={(event) => onChange({ touchControls: event.target.value as GamePreferences["touchControls"] })}><option value="auto">Auto — follow your input</option><option value="on">Always show — tablet</option><option value="off">Hide — keyboard and mouse</option></select><small>Auto hides the joystick when you use a keyboard or mouse, including on touchscreen notebooks.</small></label>
           <label className="toggle-row">
             <input type="checkbox" checked={preferences.highContrastHud} onChange={(event) => onChange({ highContrastHud: event.target.checked })} />
             <span>High-contrast game display</span>
           </label>
           <p className="settings-help">Makes game borders, text, and focus outlines easier to see.</p>
+          <label className="toggle-row">
+            <input type="checkbox" checked={preferences.contextualHud} onChange={(event) => onChange({ contextualHud: event.target.checked })} />
+            <span>Fade full health and energy bars outside combat</span>
+          </label>
+          <p className="settings-help">Combat and low vitals bring them back. High contrast keeps them visible.</p>
+          <label>
+            Look sensitivity
+            <input type="range" min="0.2" max="2.5" step="0.05" value={preferences.lookSensitivity} onChange={(event) => onChange({ lookSensitivity: Number(event.target.value) })} />
+            <small>{preferences.lookSensitivity.toFixed(2)}× for mouse, controller, and touch look.</small>
+          </label>
           <label className="toggle-row">
             <input type="checkbox" checked={preferences.gamepadEnabled} onChange={(event) => onChange({ gamepadEnabled: event.target.checked })} />
             <span>Use a controller {gamepadDetected ? "(controller connected)" : "(connect one to use)"}</span>

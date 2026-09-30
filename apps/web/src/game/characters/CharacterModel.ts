@@ -164,9 +164,11 @@ export class CharacterModel {
   dispose() {
     this.root.userData.disposed = true;
     this.root.traverse((object) => {
+      object.userData.disposed = true;
       const releaseSharedStudentBody = object.userData.releaseSharedStudentBody as (() => void) | undefined;
       releaseSharedStudentBody?.();
       if (!(object instanceof THREE.Mesh)) return;
+      if (object instanceof THREE.SkinnedMesh) object.skeleton.dispose();
       if (object.userData.disposeWithCharacterGeometry) object.geometry.dispose();
       if (!object.userData.ownedDecalMaterial && !object.userData.disposeWithCharacterMaterial) return;
       const materials = Array.isArray(object.material) ? object.material : [object.material];

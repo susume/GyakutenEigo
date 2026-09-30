@@ -26,6 +26,9 @@ import {
   type PlayerSession
 } from "@quizstrike/shared";
 import { attachArenaInputListeners } from "./inputHandling";
+import { useArenaInputMode } from "./input/useArenaInputMode";
+import { PointerLookController } from "./input/PointerLookController";
+import { radialStick, gamepadLookDelta } from "./input/gamepadInput";
 import { loadArenaMapContext } from "./mapLoader";
 import { buildArenaMapScene } from "./arenaMapBuilder";
 import { createCharacterSync } from "./characterSync";
@@ -71,6 +74,7 @@ import { mountDesertCitadelImportedAssets } from "./desertCitadelImportedAssets"
 import { mountTempleRunoffImportedAssets } from "./templeRunoffImportedAssets";
 import { mountAthleticsImportedAssets } from "./athleticsImportedAssets";
 import { arenaAssetManager } from "./rendering/assets/ArenaAssetManager";
+import { mountCommunityBackdrop } from "./rendering/environment/CommunityEnvironment";
 import { createAthleticsModeVisuals } from "./athleticsModeVisuals";
 import { buildAthleticsStadiumScene } from "./athleticsStadiumBuilder";
 import { getAthleticsDashMultiplier, getAthleticsJumpVelocityMultiplier } from "./athleticsClientTiming";
@@ -93,6 +97,8 @@ interface ArenaPreviewProps {
   debugLabel?: string;
   hitConfirmPulse?: number;
   quality?: ArenaQuality;
+  touchControls?: "auto" | "on" | "off";
+  lookSensitivity?: number;
   gamepadEnabled?: boolean;
   onMove?: (position: ArenaLivePosition) => void;
   onFire?: (position: ArenaLivePosition) => void;
@@ -313,6 +319,7 @@ const disposeObject = (object: THREE.Object3D) => {
   const textures = new Set<THREE.Texture>();
   object.traverse((child) => {
     const mesh = child as THREE.Mesh;
+    child.userData.disposed = true;
     if (mesh.userData?.preserveSharedResources) return;
     if (mesh.geometry) geometries.add(mesh.geometry);
     const material = mesh.material;
@@ -341,6 +348,8 @@ export default function ArenaPreview({
   hitConfirmPulse = 0,
   quality = "auto",
   gamepadEnabled = true,
+  lookSensitivity = 1,
+  touchControls = "auto",
   onMove,
   onFire,
   onInteract,
@@ -365,7 +374,9 @@ export default function ArenaPreview({
   const sessionRef = useRef(session);
   const athleticsHudRef = useRef(athleticsHud);
   const loadDecalAssetRef = useRef(loadDecalAsset);
+  const inputMode = useArenaInputMode(touchControls);
   const gamepadEnabledRef = useRef(gamepadEnabled);
+  const lookSensitivityRef = useRef(lookSensitivity);
   const pendingShotsRef = useRef(0);
   const inputPausedRef = useRef(inputPaused);
   const controlsDisabledRef = useRef(controlsDisabled);
@@ -436,6 +447,7 @@ export default function ArenaPreview({
   athleticsHudRef.current = athleticsHud;
   loadDecalAssetRef.current = loadDecalAsset;
   gamepadEnabledRef.current = gamepadEnabled;
+  lookSensitivityRef.current = lookSensitivity;
   activeQualityRef.current = activeQuality;
   const roundLifecycleKey = session
     ? `${session.id}:${session.currentRound}:${session.status}:${session.roundTransition?.phase ?? "active"}`
@@ -807,11 +819,15 @@ export default function ArenaPreview({
     const athleticsAssetsPromise = isAthleticsMode
       ? mountAthleticsImportedAssets({ scene, detail: qualityConfig.detail, isFps, signal: assetMountAbortController.signal })
       : Promise.resolve(null);
+    const communityBackdropPromise = !isAthleticsMode && (isTempleRunoff || isDesertCitadel)
+      ? mountCommunityBackdrop(scene, movementLimitX, movementLimitZ, qualityConfig.detail, isFps, assetMountAbortController.signal, isDesertCitadel ? 28 : 12)
+      : Promise.resolve(null);
     const importedAssetPromises = [
       ironJunctionAssetsPromise,
       desertCitadelAssetsPromise,
       templeRunoffAssetsPromise,
-      athleticsAssetsPromise
+      athleticsAssetsPromise,
+      communityBackdropPromise
     ] as const;
     const releaseImportedAssets = () => {
       assetMountAbortController.abort();
@@ -862,6 +878,7 @@ export default function ArenaPreview({
         activeParticles: vfxPool.particleCount
       }, renderBudget);
       renderer.domElement.dataset.fps = String(profile.fps);
+      renderer.domElement.dataset.importedCharacters = String(characterManager.getStats().imported);
       renderer.domElement.dataset.frameP95 = String(profile.frameMsP95);
       renderer.domElement.dataset.drawCalls = String(profile.drawCalls);
       renderer.domElement.dataset.triangles = String(profile.triangles);
@@ -1153,26 +1170,28 @@ export default function ArenaPreview({
       const gamepadMove = { forward: 0, right: 0 };
       let gamepadFireWasPressed = false;
       let gamepadInteractWasPressed = false;
-      const applyGamepadInput = () => {
+      const applyGamepadInput = (delta: number) => {
         if (!gamepadEnabledRef.current || controlsDisabledRef.current || inputPausedRef.current || !navigator.getGamepads) {
           gamepadMove.forward = 0;
           gamepadMove.right = 0;
+          gamepadFireWasPressed = false;
+          gamepadInteractWasPressed = false;
           return;
         }
-        const gamepad = Array.from(navigator.getGamepads()).find((item) => item?.connected);
+        const gamepad = Array.from(navigator.getGamepads()).find((item) => item?.connected && item.mapping === "standard");
         if (!gamepad) {
           gamepadMove.forward = 0;
           gamepadMove.right = 0;
+          gamepadFireWasPressed = false;
+          gamepadInteractWasPressed = false;
           return;
         }
-        const leftX = Math.abs(gamepad.axes[0] ?? 0) >= GAMEPAD_DEAD_ZONE ? gamepad.axes[0] ?? 0 : 0;
-        const leftY = Math.abs(gamepad.axes[1] ?? 0) >= GAMEPAD_DEAD_ZONE ? gamepad.axes[1] ?? 0 : 0;
-        const rightX = Math.abs(gamepad.axes[2] ?? 0) >= GAMEPAD_DEAD_ZONE ? gamepad.axes[2] ?? 0 : 0;
-        const rightY = Math.abs(gamepad.axes[3] ?? 0) >= GAMEPAD_DEAD_ZONE ? gamepad.axes[3] ?? 0 : 0;
-        gamepadMove.forward = -leftY;
-        gamepadMove.right = leftX;
-        yaw -= rightX * 0.055;
-        pitch = clamp(pitch - rightY * 0.042, ARENA_MIN_AIM_PITCH, ARENA_MAX_AIM_PITCH);
+        const left = radialStick(gamepad.axes[0], gamepad.axes[1]);
+        const look = gamepadLookDelta(gamepad.axes[2] ?? 0, gamepad.axes[3] ?? 0, delta, lookSensitivityRef.current);
+        gamepadMove.forward = -left.y;
+        gamepadMove.right = left.x;
+        yaw += look.yaw;
+        pitch = clamp(pitch + look.pitch, ARENA_MIN_AIM_PITCH, ARENA_MAX_AIM_PITCH);
         const firePressed = Boolean(gamepad.buttons[7]?.pressed || gamepad.buttons[0]?.pressed);
         const interactPressed = Boolean(gamepad.buttons[2]?.pressed);
         if (firePressed && !gamepadFireWasPressed) fire();
@@ -1219,15 +1238,12 @@ export default function ArenaPreview({
         const look = lookCode(event);
         if (look) lookKeys.delete(look);
       };
-      const onMouseMove = (event: MouseEvent) => {
-        if (document.pointerLockElement !== renderer.domElement) return;
-        yaw -= event.movementX * 0.0022;
-        pitch = clamp(
-          pitch - event.movementY * 0.0018,
-          ARENA_MIN_AIM_PITCH,
-          ARENA_MAX_AIM_PITCH
-        );
-      };
+      const pointerLook = new PointerLookController(renderer.domElement, {
+        read: () => ({ yaw, pitch }), write: (state) => { yaw = state.yaw; pitch = state.pitch; },
+        enabled: () => !controlsDisabledRef.current && !inputPausedRef.current,
+        sensitivity: () => lookSensitivityRef.current,
+        minPitch: ARENA_MIN_AIM_PITCH, maxPitch: ARENA_MAX_AIM_PITCH
+      });
       const onPointerLockChange = () => {
         const locked = document.pointerLockElement === renderer.domElement;
         setIsPointerLocked(locked);
@@ -1278,9 +1294,10 @@ export default function ArenaPreview({
       };
       const onTouchPointerMove = (event: PointerEvent) => {
         if (event.pointerType !== "touch" || event.pointerId !== touchLookPointerId) return;
-        yaw -= (event.clientX - touchLookX) * TOUCH_LOOK_SENSITIVITY;
+        if (controlsDisabledRef.current || inputPausedRef.current) return;
+        yaw -= (event.clientX - touchLookX) * TOUCH_LOOK_SENSITIVITY * lookSensitivityRef.current;
         pitch = clamp(
-          pitch - (event.clientY - touchLookY) * TOUCH_LOOK_SENSITIVITY,
+          pitch - (event.clientY - touchLookY) * TOUCH_LOOK_SENSITIVITY * lookSensitivityRef.current,
           ARENA_MIN_AIM_PITCH,
           ARENA_MAX_AIM_PITCH
         );
@@ -1310,7 +1327,6 @@ export default function ArenaPreview({
         rendererElement: renderer.domElement,
         onKeyDown,
         onKeyUp,
-        onMouseMove,
         onBlur: clearKeys,
         onPointerLockChange,
         onPointerLockError,
@@ -1601,7 +1617,7 @@ export default function ArenaPreview({
         } else {
           questionHoldPosition = null;
         }
-        applyGamepadInput();
+        applyGamepadInput(delta);
         const crouching = resolveCrouching({
           shiftPressed: keys.has("Shift"),
           touchCrouch: touchCrouchRef.current
@@ -1928,6 +1944,7 @@ export default function ArenaPreview({
         setZoomLevel(0);
         setWeaponCooldown(null);
         cleanupControls();
+        pointerLook.dispose();
         characterManager.dispose();
         renderer.setAnimationLoop(null);
         renderer.renderLists.dispose();
@@ -2183,6 +2200,7 @@ export default function ArenaPreview({
   return (
     <div
       className={view === "fps" ? "arena-frame fps-view" : "arena-frame"}
+      data-input-mode={inputMode}
       data-weapon-id={isAthleticsMode ? "none" : currentWeaponId ?? "starter_blaster"}
       data-zoom-level={zoomLevel}
     >
@@ -2235,6 +2253,7 @@ export default function ArenaPreview({
       {view === "fps" && (
         <>
           <ArenaHudOverlay
+            showTouchControls={inputMode === "touch"}
             hitPulse={hitPulse}
             hitConfirmPulse={hitConfirmPulse}
             zoomLevel={zoomLevel}
@@ -2250,7 +2269,7 @@ export default function ArenaPreview({
             onInteractFromTouch={onInteract ? interactFromTouch : undefined}
             onJumpFromTouch={jumpFromTouch}
             onQuestionFromTouch={isAthleticsMode ? questionFromTouch : undefined}
-            onFireFromTouch={isAthleticsMode && athleticsHud?.role === "hunter" ? fireFromTouch : undefined}
+            onFireFromTouch={!isAthleticsMode || athleticsHud?.role === "hunter" ? fireFromTouch : undefined}
             onAbilityFromTouch={onAbilityFromTouch}
             onToggleCrouchFromTouch={toggleCrouchFromTouch}
             touchCrouchEnabled={touchCrouchEnabled}

@@ -1,3 +1,4 @@
+import "./device-hud.css";
 import { lazy, Suspense, useCallback, useEffect, useMemo, useRef, useState } from "react";
 import type { FormEvent } from "react";
 import {
@@ -40,6 +41,7 @@ import {
   getArenaGroundHeight,
   ARENA_PLAYER_EYE_HEIGHT,
   getPlayerWeaponIdForMode,
+  getPlayerHealthMax,
   ATHLETICS_STADIUM_COURSE,
   resolveAthleticsStandings,
   RESPAWN_CORRECT_ANSWERS_REQUIRED,
@@ -103,6 +105,8 @@ import {
 } from "./studentSessionStorage";
 import { getNicknameError, validateStudentJoin } from "./studentJoinValidation";
 import { buildSnowballPurchaseCommand } from "./snowballPurchaseCommand";
+import { HudManager } from "../../../game/hud/HudManager";
+import { ContextualVitalBar } from "../../../game/hud/ContextualVitalBar";
 
 const ArenaPreview = lazy(() => import("../../../game/ArenaPreview"));
 const CharacterCreator = lazy(() => import("../../../ui/PremiumCharacterCreator"));
@@ -333,6 +337,7 @@ export default function StudentExperience({ onExit }: { onExit: () => void }) {
   const [nickname, setNickname] = useState("");
   const [session, setSession] = useState<GameSession | null>(null);
   const [player, setPlayer] = useState<PlayerSession | null>(null);
+  const [hudManager] = useState(() => new HudManager());
   const [playerToken, setPlayerToken] = useState("");
   const [restoreFailed, setRestoreFailed] = useState(false);
   const [question, setQuestion] = useState<PublicQuestion | null>(null);
@@ -424,6 +429,18 @@ export default function StudentExperience({ onExit }: { onExit: () => void }) {
   const roundScopedUiKey = session ? `${session.id}:${session.currentRound}` : "";
   currentSessionRef.current = session;
   currentPlayerRef.current = player;
+  const playerMaxHealth = player ? getPlayerHealthMax(player) : 100;
+
+  useEffect(() => {
+    hudManager.dispatch({ type: "vitals", vitals: {
+      health: player?.health ?? (player?.isAlive ? 100 : 0), maxHealth: playerMaxHealth,
+      energy: player?.energy, maxEnergy: session?.settings.gameMode === "athletics" ? ATHLETICS_MAX_ENERGY : ZOMBIE_HUMAN_MAX_ENERGY,
+      alive: player?.isAlive ?? false,
+      active: session?.status === "active" && session.controlState !== "teacher_paused",
+      alwaysVisible: !gamePreferences.contextualHud || gamePreferences.highContrastHud
+    } });
+  }, [hudManager, playerMaxHealth, player?.health, player?.energy, player?.isAlive, session?.settings.gameMode, session?.status, session?.controlState, gamePreferences.contextualHud, gamePreferences.highContrastHud]);
+  useEffect(() => () => hudManager.dispose(), [hudManager]);
 
   const resetRoundScopedStudentUi = useCallback(() => {
     if (answerFeedbackTimerRef.current !== undefined) {
@@ -1416,6 +1433,7 @@ export default function StudentExperience({ onExit }: { onExit: () => void }) {
     });
     connectedSocket.on("damage_result", (result: DamageResultPayload) => {
       if (lastVisualSession.settings.gameMode === "athletics") return;
+      if (result.ok && (result.attackerId === activePlayerId || result.targetId === activePlayerId)) hudManager.dispatch({ type: "combat" });
       if (typeof result.snowballs === "number" && (!result.ok || result.attackerId === activePlayerId)) {
         setPlayer((current) => current && current.id === activePlayerId ? { ...current, snowballs: result.snowballs } : current);
       }
@@ -1540,7 +1558,7 @@ export default function StudentExperience({ onExit }: { onExit: () => void }) {
       if (socketRef.current === socket) socketRef.current = null;
       socket?.disconnect();
     };
-  }, [sessionCode, playerId, playerToken, openRespawnPractice, setAnsweringChoice, setBuyingGearId, setBuyOpen, setFeedback, setIncomingHitCue, setIsBuyingSnowballs, setIsSocketReconnecting, setQuizOpen, setRewardPulse, setScoreboardOpen, setSettingsOpen, setStatusError]);
+  }, [sessionCode, playerId, playerToken, hudManager, openRespawnPractice, setAnsweringChoice, setBuyingGearId, setBuyOpen, setFeedback, setIncomingHitCue, setIsBuyingSnowballs, setIsSocketReconnecting, setQuizOpen, setRewardPulse, setScoreboardOpen, setSettingsOpen, setStatusError]);
 
   useEffect(() => {
     if (!sessionCode || !playerId || !playerToken || sessionStatus !== "waiting") return;
@@ -1662,13 +1680,14 @@ export default function StudentExperience({ onExit }: { onExit: () => void }) {
   const sendArenaFire = useCallback(
     (position: ArenaPositionPayload) => {
       if (!hasActiveArenaConnection) return;
+      hudManager.dispatch({ type: "combat" });
       const requestId = crypto.randomUUID?.() ?? `${Date.now()}-${Math.random().toString(36).slice(2)}`;
       socketRef.current?.emit("fire_action", {
         requestId,
         ...position
       });
     },
-    [hasActiveArenaConnection]
+    [hasActiveArenaConnection, hudManager]
   );
 
   const sendFlagAction = useCallback(
@@ -2586,6 +2605,8 @@ export default function StudentExperience({ onExit }: { onExit: () => void }) {
               suppressHint
               quality={gamePreferences.arenaQuality}
               gamepadEnabled={gamePreferences.gamepadEnabled}
+              lookSensitivity={gamePreferences.lookSensitivity}
+              touchControls={gamePreferences.touchControls}
               controlsDisabled={isFlagSpectator || isAthleticsSpectator || athleticsMovementLocked || !roundActive || !player.isAlive}
               inputPaused={gameplayInputPaused}
               hitConfirmPulse={hitConfirmPulse}
@@ -2615,7 +2636,7 @@ export default function StudentExperience({ onExit }: { onExit: () => void }) {
         </div>
         <div className="arena-objective-strip">
           <span className={`status-pill status-${session.status}`}>{athleticsRace && athleticsPlayer?.status === "finished" ? "Finished" : roundPreparation ? "Get ready" : zombieSelection ? "Choosing Zombies" : sessionStatusLabel(session.status)}</span>
-          <span className="objective-primary">{objectiveText}</span>
+          <span className="objective-primary" title={objectiveText}>{session.settings.gameMode === "classic" && roundActive ? "Most tags wins" : objectiveText}</span>
           {session.settings.gameMode === "flag" && session.flag?.state === "placed" && (
             <span className={`flag-objective-countdown${flagRemainingSeconds <= 10 ? " urgent" : ""}`} role="timer" aria-label={`Active flag time remaining ${formatDuration(flagRemainingSeconds)}`}>
               <Timer size={14} aria-hidden="true" />
@@ -2734,22 +2755,10 @@ export default function StudentExperience({ onExit }: { onExit: () => void }) {
             )}
           </section>
         ) : !athleticsRace ? (
-        <div className="hud player-status-hud">
-          <span className={player.isAlive ? "hud-stat hud-warmth" : "hud-stat hud-warmth low"}>
-            <HeartPulse size={18} aria-hidden="true" />
-            <span>
-              <small>Health</small>
-              <strong>{warmth}</strong>
-            </span>
-          </span>
+        <div className="hud player-status-hud contextual-status-hud">
+          <ContextualVitalBar manager={hudManager} kind="health" value={warmth} maximum={playerMaxHealth} />
           {isZombieHuman ? (
-            <span key={`energy-${currencyPulse}`} className={`hud-stat hud-energy${movementEnergy <= 20 ? " low" : ""}${currencyPulse ? " hud-value-pulse" : ""}`}>
-              <Zap size={18} aria-hidden="true" />
-              <span>
-                <small>Energy</small>
-                <strong>{movementEnergy}/{ZOMBIE_HUMAN_MAX_ENERGY}</strong>
-              </span>
-            </span>
+            <ContextualVitalBar manager={hudManager} kind="energy" value={movementEnergy} maximum={ZOMBIE_HUMAN_MAX_ENERGY} />
           ) : (
             <span key={`currency-${currencyPulse}`} className={`hud-stat hud-currency${currencyPulse ? " hud-value-pulse" : ""}`}>
               <CircleDollarSign size={18} aria-hidden="true" />
@@ -3042,7 +3051,7 @@ export default function StudentExperience({ onExit }: { onExit: () => void }) {
             setScoreboardOpen(false);
           }
         }}><BookOpen size={19} aria-hidden="true" /><span>{athleticsRace ? "Question" : "Q Questions"}</span></button>
-        {!athleticsRace && <button aria-label="Buy gear" disabled={roundEnded || teacherPaused || !player.isAlive} onClick={() => { gameAudio.play("menu_toggle"); setBuyOpen(!buyOpen); setQuizOpen(false); setScoreboardOpen(false); }}><Package size={19} aria-hidden="true" /><span>B Gear · 1–6 choose</span></button>}
+        {!athleticsRace && <button aria-label="Buy gear" disabled={roundEnded || teacherPaused || !player.isAlive} onClick={() => { gameAudio.play("menu_toggle"); setBuyOpen(!buyOpen); setQuizOpen(false); setScoreboardOpen(false); }}><Package size={19} aria-hidden="true" /><span>B Gear</span></button>}
         <button aria-label="Scoreboard" title="Scoreboard · hold Tab" disabled={teacherPaused} onPointerDown={() => { gameAudio.play("menu_toggle"); setScoreboardOpen(true); setQuizOpen(false); setBuyOpen(false); setSettingsOpen(false); }} onPointerUp={() => setScoreboardOpen(false)} onPointerCancel={() => setScoreboardOpen(false)} onBlur={() => setScoreboardOpen(false)}><Trophy size={19} aria-hidden="true" /><span>Scoreboard</span></button>
         <button aria-label="Settings" title="Settings" disabled={teacherPaused} onClick={() => { gameAudio.play("menu_toggle"); setSettingsOpen((open) => !open); setQuizOpen(false); setBuyOpen(false); setScoreboardOpen(false); }}><Settings size={19} aria-hidden="true" /><span>Settings</span></button>
       </div>}

@@ -8,6 +8,9 @@ export type GamePreferences = {
   sfxVolume: number;
   musicVolume: number;
   vibrationEnabled: boolean;
+  touchControls: "auto" | "on" | "off";
+  contextualHud: boolean;
+  lookSensitivity: number;
 };
 
 export const GAME_PREFERENCES_STORAGE_KEY = "quizstrike_game_preferences";
@@ -19,7 +22,10 @@ export const DEFAULT_GAME_PREFERENCES: GamePreferences = {
   soundEnabled: true,
   sfxVolume: 0.86,
   musicVolume: 0.16,
-  vibrationEnabled: true
+  vibrationEnabled: true,
+  touchControls: "auto",
+  contextualHud: true,
+  lookSensitivity: 1
 };
 
 const clampVolume = (value: unknown, fallback: number) =>
@@ -36,7 +42,11 @@ export const normalizeGamePreferences = (stored: Partial<GamePreferences>): Game
   soundEnabled: typeof stored.soundEnabled === "boolean" ? stored.soundEnabled : DEFAULT_GAME_PREFERENCES.soundEnabled,
   sfxVolume: clampVolume(stored.sfxVolume, DEFAULT_GAME_PREFERENCES.sfxVolume),
   musicVolume: clampVolume(stored.musicVolume, DEFAULT_GAME_PREFERENCES.musicVolume),
-  vibrationEnabled: typeof stored.vibrationEnabled === "boolean" ? stored.vibrationEnabled : DEFAULT_GAME_PREFERENCES.vibrationEnabled
+  vibrationEnabled: typeof stored.vibrationEnabled === "boolean" ? stored.vibrationEnabled : DEFAULT_GAME_PREFERENCES.vibrationEnabled,
+  touchControls: ["auto", "on", "off"].includes(stored.touchControls ?? "") ? stored.touchControls! : "auto",
+  contextualHud: typeof stored.contextualHud === "boolean" ? stored.contextualHud : DEFAULT_GAME_PREFERENCES.contextualHud,
+  lookSensitivity: typeof stored.lookSensitivity === "number" && Number.isFinite(stored.lookSensitivity)
+    ? Math.min(2.5, Math.max(.2, stored.lookSensitivity)) : DEFAULT_GAME_PREFERENCES.lookSensitivity
 });
 
 export const readGamePreferences = (): GamePreferences => {

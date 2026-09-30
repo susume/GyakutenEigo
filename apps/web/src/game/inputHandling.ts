@@ -2,7 +2,7 @@ type ArenaInputHandlers = {
   rendererElement: HTMLElement;
   onKeyDown: (event: KeyboardEvent) => void;
   onKeyUp: (event: KeyboardEvent) => void;
-  onMouseMove: (event: MouseEvent) => void;
+  onMouseMove?: (event: MouseEvent) => void;
   onBlur: () => void;
   onPointerLockChange: () => void;
   onPointerLockError: () => void;
@@ -41,7 +41,7 @@ export const attachArenaInputListeners = ({
 
   document.addEventListener("keydown", onKeyDown, true);
   document.addEventListener("keyup", onKeyUp, true);
-  window.addEventListener("mousemove", onMouseMove);
+  if (onMouseMove) window.addEventListener("mousemove", onMouseMove);
   window.addEventListener("blur", onBlur);
   document.addEventListener("pointerlockchange", onPointerLockChange);
   document.addEventListener("pointerlockerror", onPointerLockError);
@@ -56,7 +56,7 @@ export const attachArenaInputListeners = ({
     window.clearInterval(verifyPointerLock);
     document.removeEventListener("keydown", onKeyDown, true);
     document.removeEventListener("keyup", onKeyUp, true);
-    window.removeEventListener("mousemove", onMouseMove);
+    if (onMouseMove) window.removeEventListener("mousemove", onMouseMove);
     window.removeEventListener("blur", onBlur);
     document.removeEventListener("pointerlockchange", onPointerLockChange);
     document.removeEventListener("pointerlockerror", onPointerLockError);

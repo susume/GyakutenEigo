@@ -1,0 +1,32 @@
+{
+  "source": "https://kenney.nl/assets/animated-characters-protagonists",
+  "license": "CC0-1.0",
+  "importer": "scripts/assets/import-kenney-character.mjs",
+  "three": "0.178.0",
+  "triangles": 1604,
+  "height": 2.05,
+  "clips": [
+    {
+      "name": "idle",
+      "tracks": 135
+    },
+    {
+      "name": "run",
+      "tracks": 135
+    },
+    {
+      "name": "jump",
+      "tracks": 135
+    }
+  ],
+  "sha256": "c4890c450b26807d4d7cd4751edeac758dc7a96ca93eb78178905913ca23ca1b",
+  "optimization": {
+    "tool": "@gltf-transform/cli",
+    "version": "4.5.1",
+    "transforms": [
+      "resample",
+      "meshopt"
+    ]
+  },
+  "bytes": 213180
+}

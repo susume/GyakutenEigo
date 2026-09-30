@@ -1,0 +1,23 @@
+{
+  "source": "https://kenney.nl/assets/blaster-kit",
+  "version": "2.1",
+  "license": "CC0-1.0",
+  "modifications": "Embedded palette texture, flattened and merged static geometry; normalized by gameplay sockets at runtime.",
+  "assets": [
+    {
+      "file": "blaster-a.glb",
+      "bytes": 37516,
+      "sha256": "eb166ba2e4e9acb925e2776176a01c42adbee6957501f1adb08f0cd7d2444abd"
+    },
+    {
+      "file": "blaster-h.glb",
+      "bytes": 28276,
+      "sha256": "892ef521fa07d6ea6a57eb3aa99fdc41b20f260a42d0795c0c9751fb5a7100b7"
+    },
+    {
+      "file": "blaster-n.glb",
+      "bytes": 35588,
+      "sha256": "a6979aa1032ad725fbd19eaa3b8b02d17cd1380ceb38adeaeebf3bcf90702b41"
+    }
+  ]
+}

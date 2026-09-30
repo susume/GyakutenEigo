@@ -351,7 +351,7 @@ const buildSharedBodyGeometry = (
   return merged;
 };
 
-const createBones = (): Record<AthleteBoneName, THREE.Bone> => {
+export const createStudentBones = (): Record<AthleteBoneName, THREE.Bone> => {
   const root = new THREE.Bone();
   root.name = "HumanoidRoot";
 
@@ -464,7 +464,7 @@ export const createSharedSkinnedStudent = (
     sharedBodyMaterials.set(paletteKey, bodyMaterial);
   }
 
-  const bones = createBones();
+  const bones = createStudentBones();
   const skeletonBones = Object.values(bones);
   const mesh = new THREE.SkinnedMesh(geometry, bodyMaterial);
   mesh.name = `stylized_humanoid_${appearance.variant}`;
