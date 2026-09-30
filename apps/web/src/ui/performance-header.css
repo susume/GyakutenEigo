@@ -40,6 +40,13 @@
   display: none;
 }
 
+/* Keep the shared header horizontal after game-wide tablet styles load. */
+.topbar.performance-route-header { flex-direction: row; }
+.topbar.performance-route-header .primary-nav { width: auto; flex-direction: row; }
+.topbar.performance-route-header .nav-menu-toggle { width: auto; }
+.performance-code-label { color: #334a6a; font-size: .85rem; margin-bottom: 6px; }
+.performance-code-help { display: block; color: #526788; line-height: 1.5; margin-top: 8px; }
+
 @media (max-width: 930px) {
   .performance-route-header {
     min-height: 70px;
@@ -87,6 +94,7 @@
     background: #fff;
     box-shadow: 0 18px 38px rgba(41, 87, 124, 0.16);
     padding: 9px;
+    max-width: calc(100vw - 30px);
   }
 
   .performance-route-header .top-actions[data-open="true"] {

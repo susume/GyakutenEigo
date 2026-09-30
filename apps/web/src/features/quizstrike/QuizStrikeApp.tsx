@@ -73,7 +73,8 @@ export default function App() {
   const isCharacterLabAvailable = import.meta.env.DEV;
   const [mode, setMode] = useState<AppMode>(() => modeForRoute(routePath));
   const [teacher, setTeacher] = useState<TeacherUser | null>(null);
-  const [teacherAuthMode, setTeacherAuthMode] = useState<"login" | "signup">("login");
+  const [restoringTeacher, setRestoringTeacher] = useState(() => Boolean(localStorage.getItem("quizstrike_token")));
+  const [teacherAuthMode, setTeacherAuthMode] = useState<"login" | "signup">(() => new URLSearchParams(window.location.search).get("auth") === "signup" ? "signup" : "login");
   const [isMobileNavOpen, setIsMobileNavOpen] = useState(false);
   const [apiWakeState, setApiWakeState] = useState<ApiWakeState>("waking");
 
@@ -129,14 +130,19 @@ export default function App() {
       setRoutePath(canonicalPath);
       return;
     }
-    if (!localStorage.getItem("quizstrike_token")) return;
+    if (!localStorage.getItem("quizstrike_token")) { setRestoringTeacher(false); return; }
+    let cancelled = false;
+    setRestoringTeacher(true);
     authApi
       .me()
       .then((payload) => {
+        if (cancelled) return;
         const data = payload as { user: TeacherUser };
         setTeacher(data.user);
       })
-      .catch(() => localStorage.removeItem("quizstrike_token"));
+      .catch(() => { if (!cancelled) localStorage.removeItem("quizstrike_token"); })
+      .finally(() => { if (!cancelled) setRestoringTeacher(false); });
+    return () => { cancelled = true; };
   }, [isJoinRoute, isGameRoute, isQuizStrikeRoute, isCharacterLabRoute, isTournamentStudyRoute, isSpeakingTeacherRoutePath]);
 
   const logout = () => {
@@ -229,6 +235,7 @@ export default function App() {
       )}
 
       {mode === "home" && <ProductHubHomepage
+        onNavigate={navigateTo}
         onOpenSpeaking={() => navigateTo("/speak")}
         onOpenQuizStrike={() => navigateTo("/quiz-strike", "quizStrike")}
       />}
@@ -247,15 +254,17 @@ export default function App() {
       />}
       {mode === "tournamentStudy" && <Suspense fallback={<FeatureLoading label="Loading tournament study" />}><TournamentStudyPage tournamentId={decodeURIComponent(routePath.slice("/tournament-study/".length))} /></Suspense>}
       {mode === "characterLab" && (isCharacterLabAvailable ? <CharacterLab /> : <InternalToolNotice onReturn={() => navigateTo("/quiz-strike", "quizStrike")} />)}
-      {mode === "teacher" && <Suspense fallback={<FeatureLoading label="Loading teacher workspace" />}><TeacherWorkspace teacher={teacher ?? (isTeacherDashboardPreview ? DEV_TEACHER_PREVIEW : null)} apiWakeState={apiWakeState} initialMode={teacherAuthMode} initialPath={routePath} onNavigate={navigateTo} onLogout={logout} onAuthed={(user) => {
+      {mode === "teacher" && restoringTeacher && !isTeacherDashboardPreview && <FeatureLoading label="Opening your teacher workspace" />}
+      {mode === "teacher" && (!restoringTeacher || isTeacherDashboardPreview) && <Suspense fallback={<FeatureLoading label="Loading teacher workspace" />}><TeacherWorkspace teacher={teacher ?? (isTeacherDashboardPreview ? DEV_TEACHER_PREVIEW : null)} apiWakeState={apiWakeState} initialMode={teacherAuthMode} initialPath={routePath} onNavigate={navigateTo} onLogout={logout} onAuthed={(user) => {
           setTeacher(user);
+          setRestoringTeacher(false);
           const storedReturnTo = sessionStorage.getItem(TOURNAMENT_TEACHER_RETURN_KEY) ?? sessionStorage.getItem(SPEAKING_TEACHER_RETURN_KEY);
           const returnTo = storedReturnTo
             ? (() => {
                 const target = new URL(storedReturnTo, window.location.origin);
                 return `${buildTeacherSpeakingPath(target.pathname)}${target.search}${target.hash}`;
               })()
-            : isTeacherSpeakingRoute(routePath)
+            : routePath === "/quiz-strike/teacher" || routePath.startsWith("/quiz-strike/teacher/")
               ? `${buildTeacherSpeakingPath(routePath)}${window.location.search}${window.location.hash}`
               : undefined;
           sessionStorage.removeItem(TOURNAMENT_TEACHER_RETURN_KEY);
@@ -641,6 +650,15 @@ function FeatureLoading({ label }: { label: string }) {
 }
 
 function QuizStrikeLanding({ teacher, slug, onNavigate, onTeacherLogin }: { teacher?: TeacherUser | null; slug?: string; onNavigate: (path: string, mode?: "quizStrike" | "teacher") => void; onTeacherLogin: () => void }) {
-  return <Suspense fallback={<FeatureLoading label="Loading QuizStrike" />}><CompetitionHub teacher={teacher} slug={slug} onNavigate={onNavigate} onTeacherLogin={onTeacherLogin} /></Suspense>;
+  return <>
+    {!slug && <section className="quiz-classroom-entry" aria-labelledby="quiz-classroom-title">
+      <div><span className="auth-kicker">QuizStrike · Classroom games</span><h2 id="quiz-classroom-title">Ready to play with your class?</h2><p>Teachers choose a Study Set and host. Students join with a code.</p></div>
+      <div className="quiz-classroom-actions">
+        <button className="primary" type="button" onClick={() => onNavigate("/quiz-strike/teacher/library", "teacher")}><GraduationCap size={18} aria-hidden="true" />Host a classroom game</button>
+        <button type="button" onClick={() => onNavigate("/join")}><DoorOpen size={18} aria-hidden="true" />Join with a code</button>
+      </div>
+    </section>}
+    <Suspense fallback={<FeatureLoading label="Loading QuizStrike" />}><CompetitionHub teacher={teacher} slug={slug} onNavigate={onNavigate} onTeacherLogin={onTeacherLogin} /></Suspense>
+  </>;
 }
 

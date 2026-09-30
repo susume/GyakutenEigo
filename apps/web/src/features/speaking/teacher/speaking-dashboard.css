@@ -255,6 +255,10 @@
 }
 
 .speaking-dashboard-toolbar .speaking-filter-icon {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 8px;
   min-width: 40px;
   min-height: 40px;
   border-radius: 8px;
@@ -380,6 +384,8 @@
   font: inherit;
   cursor: pointer;
 }
+
+.speaking-filter-label { display: none; }
 
 .speaking-library-breadcrumbs button:hover {
   text-decoration: underline;
@@ -821,8 +827,14 @@
 
 @media (max-width: 1180px) {
   .speaking-dashboard-toolbar {
-    grid-template-columns: minmax(220px, 1fr) repeat(3, minmax(125px, auto)) 42px;
+    grid-template-columns: repeat(2, minmax(0, 1fr));
   }
+
+  .speaking-dashboard-toolbar > label:first-child { grid-column: 1 / -1; }
+  .speaking-dashboard-toolbar .speaking-filter-icon { grid-column: 1 / -1; justify-self: start; width: auto; min-height: 44px; padding-inline: 14px; }
+  .speaking-dashboard-toolbar .speaking-filter-label { display: inline; }
+  .speaking-dashboard-toolbar input,
+  .speaking-dashboard-toolbar select { min-height: 44px; }
 
   .speaking-dashboard-toolbar > label:nth-last-of-type(2) {
     grid-column: span 1;
@@ -835,7 +847,7 @@
 
 @media (max-width: 980px) {
   .speaking-dashboard-toolbar {
-    grid-template-columns: minmax(220px, 1fr) repeat(2, minmax(135px, 1fr)) 42px;
+    grid-template-columns: repeat(2, minmax(0, 1fr));
   }
 
   .speaking-dashboard-toolbar > label:first-child {
@@ -890,7 +902,7 @@
   }
 
   .speaking-dashboard-toolbar {
-    grid-template-columns: 1fr 1fr;
+    grid-template-columns: 1fr;
   }
 
   .speaking-dashboard-toolbar > label:first-child,

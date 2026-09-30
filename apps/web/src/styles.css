@@ -15471,3 +15471,25 @@ body:has(.workspace) .teacher-action-card > svg { color: #9badc1; }
   body:has(.workspace) .dashboard-account-area strong { max-width: 120px; }
   body:has(.workspace) .workspace .sidebar { display: flex; overflow-x: auto; }
 }
+
+/* Student entry stays navigable without loading the full game application. */
+.student-join-screen-nav { display: flex; align-items: center; justify-content: space-between; gap: 16px; max-width: 1320px; margin: 0 auto; padding: 16px clamp(16px, 4vw, 48px); }
+.student-join-screen-nav a { display: inline-flex; align-items: center; gap: 8px; min-height: 44px; color: #dbeafe; font-size: .9rem; font-weight: 800; text-decoration: none; }
+.student-join-screen-nav a:focus-visible { outline: 3px solid #54b8ff; outline-offset: 4px; border-radius: 6px; }
+.student-join-screen-nav .quizstrike-logo { display: block; width: 112px; line-height: 0; }
+.student-join-screen-nav img { display: block; width: 100%; height: auto; }
+.student-join-form .linked-join-code small { color: #b5c8e0; }
+.student-join-form .linked-join-code > span { color: #9bd5ef; }
+.student-join-form .linked-code-edit { justify-self: start; min-height: 44px; margin-top: 4px; padding: 0 12px; background: #122748; color: #dbeafe; border-color: #436486; font-size: .85rem; }
+.student-join-form .student-join-account-note { margin: 0; color: #b5c8e0; font-size: .8rem; line-height: 1.5; text-align: center; }
+
+.quiz-classroom-entry { display: flex; align-items: center; justify-content: space-between; gap: 24px; padding: 24px clamp(20px, 5vw, 80px); border-bottom: 1px solid #294164; background: #0b1b36; }
+.quiz-classroom-entry h2 { margin: 8px 0; color: #f5f8ff; font-size: clamp(1.35rem, 2.4vw, 1.9rem); line-height: 1.2; }
+.quiz-classroom-entry p { margin: 0; color: #b5c8e0; font-size: .9rem; line-height: 1.5; }
+.quiz-classroom-actions { display: flex; flex-wrap: wrap; gap: 10px; flex-shrink: 0; }
+.quiz-classroom-actions button { min-height: 48px; background: #132b4c; border-color: #436486; color: #f5f8ff; }
+.quiz-classroom-actions button.primary { background: #127e59; border-color: #1ba575; }
+.quiz-classroom-actions button:hover { background: #1b395e; }
+.quiz-classroom-actions button.primary:hover { background: #10694b; }
+@media (max-width: 1000px) { .quiz-classroom-entry { flex-direction: column; align-items: stretch; gap: 18px; } }
+@media (max-width: 600px) { .quiz-classroom-actions { display: grid; grid-template-columns: 1fr; } }

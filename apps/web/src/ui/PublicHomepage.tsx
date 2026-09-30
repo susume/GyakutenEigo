@@ -129,7 +129,7 @@ export default function PublicHomepage({
 
       <section className="performance-shell performance-hero" aria-labelledby="public-hero-title">
         <div className="performance-hero-copy">
-          <p className="performance-eyebrow">{speaking ? "Classroom speaking tasks" : "Computer-based performance test"}</p>
+          <p className="performance-eyebrow">{speaking ? "SpeakCheck · Classroom speaking tasks" : "Computer-based performance test"}</p>
           <h1 id="public-hero-title" tabIndex={-1}>{speaking ? "Use the English you’ve learned." : "SpeakCheck App"}</h1>
           <p className="performance-hero-lead">{speaking ? "Learn it in class. Practise it together. Then try the speaking task yourself and show what you can do." : "Fair, consistent speaking assessment for every student."}</p>
           <div className="performance-hero-actions">
@@ -209,11 +209,13 @@ export default function PublicHomepage({
             <p className="performance-entry-kicker performance-entry-kicker-student">For students</p>
             <h2>Join and begin</h2>
             <div className="performance-session-code">
-              <input aria-label="Session code" placeholder="ABC123" value={sessionCode}
+              <label htmlFor="public-session-code" className="performance-code-label">Classroom code</label>
+              <input id="public-session-code" required aria-label="Session code" aria-describedby="public-code-help" placeholder="ABC123" value={sessionCode}
                 onChange={(event) => setSessionCode(event.target.value.toUpperCase().replace(/[^A-Z0-9]/g, "").slice(0, 6))}
                 autoComplete="off" autoCapitalize="characters" spellCheck={false} maxLength={6} pattern="[A-Z0-9]{6}"
                 title="Enter the six-character code from your teacher" />
             </div>
+            <small id="public-code-help" className="performance-code-help">Enter the 6-character code from your teacher.</small>
             <div className="performance-sequence" aria-label="Student steps">
               <span><b>1</b>Join</span>
               <ArrowRight size={16} aria-hidden="true" />

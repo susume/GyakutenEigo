@@ -165,6 +165,7 @@ function TeacherAuth({
 
   const submit = async (event: React.FormEvent) => {
     event.preventDefault();
+    if (isSubmitting) return;
     status.clear();
     setIsSubmitting(true);
     setAuthProgress("connecting");
@@ -242,13 +243,14 @@ function TeacherAuth({
         {isSignup && (
           <label htmlFor="teacher-name">
             Your name
-            <input id="teacher-name" autoComplete="name" value={form.name} onChange={(event) => { setForm({ ...form, name: event.target.value }); status.clearError(); }} />
+            <input id="teacher-name" autoComplete="name" required minLength={2} maxLength={80} value={form.name} onChange={(event) => { setForm({ ...form, name: event.target.value }); status.clearError(); }} />
           </label>
         )}
         <label htmlFor="teacher-email">
           Email
           <input
             id="teacher-email"
+            required
             type="email"
             autoComplete="email"
             inputMode="email"
@@ -262,6 +264,10 @@ function TeacherAuth({
           <span className="password-field">
             <input
               id="teacher-password"
+              aria-label="Password"
+              required
+              minLength={isSignup ? 8 : undefined}
+              aria-describedby={isSignup ? "teacher-password-help" : undefined}
               type={isPasswordVisible ? "text" : "password"}
               autoComplete={isSignup ? "new-password" : "current-password"}
               enterKeyHint="go"
@@ -273,6 +279,7 @@ function TeacherAuth({
             </button>
           </span>
         </label>
+        {isSignup && <small id="teacher-password-help">Use at least 8 characters for your password.</small>}
         <div className={`server-wake-status server-wake-${wakeDisplay.tone}`} role="status" aria-live="polite">
           <RefreshCw size={18} aria-hidden="true" />
           <span><strong>{wakeDisplay.title}</strong><small>{wakeDisplay.detail}</small></span>
@@ -282,7 +289,7 @@ function TeacherAuth({
           <GraduationCap size={18} aria-hidden="true" />
           {submitLabel}
         </button>
-        <button className="text-button" type="button" onClick={() => setIsSignup(!isSignup)} disabled={isSubmitting}>
+        <button className="text-button" type="button" onClick={() => { setIsSignup(!isSignup); status.clear(); }} disabled={isSubmitting}>
           {isSignup ? "I already have an account" : "Create a teacher account"}
         </button>
       </form>
@@ -305,6 +312,7 @@ function TeacherDashboard({ teacher, onLogout, initialPath, onNavigate }: { teac
   const [gamePreferences, setGamePreferences] = useState<GamePreferences>(() => readGamePreferences());
   const [isDashboardLoading, setIsDashboardLoading] = useState(true);
   const [dashboardError, setDashboardError] = useState("");
+  const dashboardRequest = useRef(0);
   const status = useAsyncMessage();
 
   useEffect(() => {
@@ -348,36 +356,36 @@ function TeacherDashboard({ teacher, onLogout, initialPath, onNavigate }: { teac
   }, [tab, selectedSession?.id, selectedSession?.status, selectedSession?.controlState]);
 
   const refresh = useCallback(async () => {
+    const requestId = ++dashboardRequest.current;
     setIsDashboardLoading(true);
     setDashboardError("");
+    // Recognition is optional; it must not delay the classroom workspace.
+    void teacherApi.recognition().then((payload) => {
+      const recognition = (payload as { recognition?: RecognitionSummary }).recognition;
+      if (recognition && requestId === dashboardRequest.current) setData((current) => ({ ...current, recognition }));
+    }).catch(() => { /* Older API deployments may not provide recognition. */ });
     try {
       const dashboardPayload = await teacherApi.dashboard();
+      if (requestId !== dashboardRequest.current) return;
       const payload = dashboardPayload as DashboardPayload;
       const nextData = { ...payload };
-      setData(nextData);
+      setData((current) => ({ ...nextData, recognition: nextData.recognition ?? current.recognition }));
       setSelectedSession((current) => {
         if (!current) return nextData.sessions[0] ?? null;
         return nextData.sessions.find((session) => session.id === current.id) ?? nextData.sessions[0] ?? null;
       });
-      try {
-        const recognitionPayload = await teacherApi.recognition();
-        const recognition = (recognitionPayload as { recognition?: RecognitionSummary }).recognition;
-        if (recognition) setData((current) => ({ ...current, recognition }));
-      } catch (recognitionError) {
-        // Recognition is additive. Older API deployments must not hide the
-        // teacher's valid legacy dashboard/library payload.
-        if (import.meta.env.DEV) console.warn("Recognition could not be loaded.", recognitionError);
-      }
     } catch (err) {
+      if (requestId !== dashboardRequest.current) return;
       if (import.meta.env.DEV) console.error("Teacher dashboard could not be loaded.", err);
       setDashboardError("We couldn't load your Study Sets. Try again.");
     } finally {
-      setIsDashboardLoading(false);
+      if (requestId === dashboardRequest.current) setIsDashboardLoading(false);
     }
   }, []);
 
   useEffect(() => {
     void refresh();
+    return () => { dashboardRequest.current += 1; };
   }, [refresh]);
 
   useEffect(() => {
@@ -494,7 +502,7 @@ function TeacherDashboard({ teacher, onLogout, initialPath, onNavigate }: { teac
         </p>
       )}
 
-      {tab === "home" && <TeacherHome teacher={teacher} quizSets={data.quizSets} sessions={data.sessions} recognition={data.recognition} onCreate={() => openQuizManager()} onDiscover={() => navigateTeacherTab("discover")} onLibrary={() => navigateTeacherTab("library")} onReports={() => navigateTeacherTab("reports")} onHost={(quizSetId) => void openStudySetForGame(quizSetId)} onOpenSession={openGameSession} onOpenSet={openStudySet} onStartQuizStrike={() => navigateTeacherTab("library")} onStartSpeaking={() => navigateTeacherTab("speaking")} onCreateSpeaking={() => onNavigate(teacherSpeakingPath("create"), "teacher")} />}
+      {tab === "home" && <TeacherHome loading={isDashboardLoading} error={dashboardError} onRetry={() => void refresh()} teacher={teacher} quizSets={data.quizSets} sessions={data.sessions} recognition={data.recognition} onCreate={() => openQuizManager()} onDiscover={() => navigateTeacherTab("discover")} onLibrary={() => navigateTeacherTab("library")} onReports={() => navigateTeacherTab("reports")} onHost={(quizSetId) => void openStudySetForGame(quizSetId)} onOpenSession={openGameSession} onOpenSet={openStudySet} onStartQuizStrike={() => navigateTeacherTab("library")} onStartSpeaking={() => navigateTeacherTab("speaking")} onCreateSpeaking={() => onNavigate(teacherSpeakingPath("create"), "teacher")} />}
       {tab === "quizzes" && (
         <StudySetEditor
           key={`${quizManagerRequest.mode}:${quizManagerRequest.quizSetId ?? "new"}`}

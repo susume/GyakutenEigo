@@ -1,4 +1,4 @@
-import { Menu, ScanLine, Sparkles, UserRound } from "lucide-react";
+import { Gamepad2, Menu, ScanLine, Sparkles, UserRound } from "lucide-react";
 import { useState } from "react";
 import GyakutenEigoBrand from "./GyakutenEigoBrand";
 import "./performance-header.css";
@@ -17,7 +17,7 @@ export default function PerformanceHeader({ onNavigate }: PerformanceHeaderProps
 
   return (
     <header className="topbar performance-topbar performance-route-header">
-      <button className="brand-button" type="button" aria-label="GyakutenEigo Speaking Tasks home" onClick={() => go("/speak")}>
+      <button className="brand-button" type="button" aria-label="GyakutenEigo home" onClick={() => go("/")}>
         <GyakutenEigoBrand />
       </button>
       <nav className="primary-nav" aria-label="Speaking Tasks navigation" onKeyDown={(event) => {
@@ -35,7 +35,7 @@ export default function PerformanceHeader({ onNavigate }: PerformanceHeaderProps
         <div id="performance-actions" className="top-actions" data-open={menuOpen ? "true" : "false"}>
           <button className="performance-nav-link is-active" type="button" onClick={() => go("/speak")}>
             <Sparkles size={19} aria-hidden="true" />
-            Speaking tasks
+            SpeakCheck
           </button>
           <button className="performance-nav-link" type="button" onClick={() => go("/speak/join")}>
             <ScanLine size={19} aria-hidden="true" />
@@ -44,6 +44,10 @@ export default function PerformanceHeader({ onNavigate }: PerformanceHeaderProps
           <button className="performance-nav-link" type="button" onClick={() => go("/speak/teacher")}>
             <UserRound size={19} aria-hidden="true" />
             Teacher tools
+          </button>
+          <button className="performance-nav-link" type="button" onClick={() => go("/quiz-strike")}>
+            <Gamepad2 size={19} aria-hidden="true" />
+            QuizStrike
           </button>
         </div>
       </nav>

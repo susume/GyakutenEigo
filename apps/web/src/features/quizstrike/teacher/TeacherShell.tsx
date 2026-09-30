@@ -3,13 +3,17 @@ import {
   ChevronLeft,
   Globe2,
   Mic,
+  Menu,
+  X,
+  BarChart3,
   Plus,
   Settings,
   Sparkles,
   Trophy,
 } from "lucide-react";
 import type { GameSession, TeacherUser } from "@quizstrike/shared";
-import type { ReactNode } from "react";
+import { useId, useRef, useState, type ReactNode } from "react";
+import "./teacher-navigation.css";
 import type {
   TeacherPrimaryTab,
   TeacherSetupSection,
@@ -55,9 +59,22 @@ export default function TeacherShell({
   children,
 }: TeacherShellProps) {
   const activeTab = contentTab(tab);
+  const [menuOpen, setMenuOpen] = useState(false);
+  const menuId = useId();
+  const menuButton = useRef<HTMLButtonElement>(null);
+  const content = useRef<HTMLDivElement>(null);
+  const sectionLabels: Record<TeacherPrimaryTab, string> = {
+    home: "Home", discover: "Discover", library: "Library", reports: "Reports",
+    speaking: "SpeakCheck · Speaking Tasks", tournaments: "Competitions", settings: "Settings"
+  };
 
   return (
-    <section className="workspace" aria-label="GyakutenEigo teacher dashboard">
+    <section className="workspace" aria-label="GyakutenEigo teacher dashboard" onKeyDown={(event) => {
+      if (event.key === "Escape" && menuOpen) {
+        setMenuOpen(false);
+        menuButton.current?.focus();
+      }
+    }}>
       <header className="dashboard-brand-row">
         <h1>
           <GyakutenEigoBrand className="dashboard-brand-logo" />
@@ -65,7 +82,7 @@ export default function TeacherShell({
         </h1>
         <div className="dashboard-account-area">
           <span className="dashboard-product-pair">
-            QuizStrike + Speaking Tasks
+            QuizStrike + SpeakCheck
           </span>
           <strong>{teacher.name}</strong>
           <button type="button" onClick={onLogout}>
@@ -74,8 +91,24 @@ export default function TeacherShell({
         </div>
       </header>
 
+      <div className="teacher-mobile-navigation">
+        <span>{isLiveSetup ? "Game setup" : sectionLabels[activeTab]}</span>
+        <button ref={menuButton} type="button" aria-expanded={menuOpen} aria-controls={menuId} onClick={() => setMenuOpen((open) => !open)}>
+          {menuOpen ? <X size={18} aria-hidden="true" /> : <Menu size={18} aria-hidden="true" />}
+          {menuOpen ? "Close" : "Sections"}
+        </button>
+      </div>
+
       <aside
-        className={`sidebar${isLiveSetup ? " setup-sidebar" : ""}`}
+        id={menuId}
+        data-open={menuOpen}
+        className={`sidebar teacher-navigation-sidebar${isLiveSetup ? " setup-sidebar" : ""}`}
+        onClickCapture={(event) => {
+          if (menuOpen && (event.target as HTMLElement).closest("button")) {
+            setMenuOpen(false);
+            window.requestAnimationFrame(() => content.current?.focus());
+          }
+        }}
         aria-label={
           isLiveSetup ? "Live game setup sections" : "Teacher sections"
         }
@@ -157,6 +190,7 @@ export default function TeacherShell({
               className={activeTab === "reports" ? "active" : ""}
               onClick={() => onNavigateTab("reports")}
             >
+              <BarChart3 size={17} aria-hidden="true" />
               Reports
             </button>
             <button
@@ -170,7 +204,7 @@ export default function TeacherShell({
             </button>
 
             <span className="sidebar-divider" />
-            <span className="sidebar-section-label">SPEAKING TASKS</span>
+            <span className="sidebar-section-label">SpeakCheck</span>
             <button
               type="button"
               aria-current={activeTab === "speaking" ? "page" : undefined}
@@ -212,7 +246,7 @@ export default function TeacherShell({
         )}
       </aside>
 
-      <div className="main-panel">
+      <div ref={content} className="main-panel" tabIndex={-1}>
         {children}
         {activeSessions.length > 0 && (
           <div className="live-rail" aria-label="Active QuizStrike sessions">

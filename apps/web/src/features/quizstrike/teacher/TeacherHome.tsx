@@ -1,4 +1,4 @@
-import { BookOpen, ChevronRight, Globe2, Mic, Play, Plus, Trophy, UsersRound } from "lucide-react";
+import { BookOpen, ChevronRight, Globe2, Mic, Play, Plus, RefreshCw, Trophy, UsersRound } from "lucide-react";
 import type { GameSession, QuizSet, RecognitionSummary, TeacherUser } from "@quizstrike/shared";
 
 type TeacherHomeProps = {
@@ -16,14 +16,25 @@ type TeacherHomeProps = {
   onStartQuizStrike: () => void;
   onStartSpeaking: () => void;
   onCreateSpeaking: () => void;
+  loading?: boolean;
+  error?: string;
+  onRetry: () => void;
 };
 
 const formatDate = (value: string) => new Date(value).toLocaleDateString(undefined, { month: "short", day: "numeric" });
 
-export default function TeacherHome({ teacher, quizSets, sessions, recognition, onCreate, onDiscover, onLibrary, onReports, onHost, onOpenSession, onOpenSet, onStartQuizStrike, onStartSpeaking, onCreateSpeaking }: TeacherHomeProps) {
+export default function TeacherHome({ teacher, quizSets, sessions, recognition, onCreate, onDiscover, onLibrary, onReports, onHost, onOpenSession, onOpenSet, onStartQuizStrike, onStartSpeaking, onCreateSpeaking, loading, error, onRetry }: TeacherHomeProps) {
   const activeSession = sessions.find((session) => session.status !== "ended");
   const recentSets = [...quizSets].sort((left, right) => (right.updatedAt ?? right.createdAt).localeCompare(left.updatedAt ?? left.createdAt)).slice(0, 3);
-  const recentGames = sessions.filter((session) => session.status === "ended").slice(0, 3);
+  const recentGames = sessions.filter((session) => session.status === "ended").sort((left, right) => (right.endedAt ?? right.createdAt).localeCompare(left.endedAt ?? left.createdAt)).slice(0, 3);
+
+  if (loading || error) return <section className="teacher-home-page">
+    <div className="teacher-home-hero"><div><span className="teacher-eyebrow">Teacher home</span><h2>Welcome back, {teacher.name.split(" ")[0]}</h2></div></div>
+    <div className="teacher-home-empty" role={error ? "alert" : "status"}>
+      <RefreshCw size={24} aria-hidden="true" /><div><strong>{error ? "Your workspace couldn’t load" : "Loading your classroom workspace…"}</strong><p>{error ? "Check your connection and try again. Your content is still saved." : "Getting your Study Sets and class sessions ready."}</p></div>
+      {error && <button className="secondary-button" type="button" onClick={onRetry}>Try again</button>}
+    </div>
+  </section>;
 
   return (
     <div className="teacher-home-page">
@@ -43,10 +54,10 @@ export default function TeacherHome({ teacher, quizSets, sessions, recognition, 
         <section className="teacher-active-game" aria-labelledby="active-game-title">
           <div>
             <span className="teacher-eyebrow">Active game</span>
-            <h3 id="active-game-title">{activeSession.sessionCode} is waiting for your class</h3>
+            <h3 id="active-game-title">{activeSession.sessionCode} · {activeSession.status === "waiting" ? "Waiting for your class" : activeSession.controlState === "teacher_paused" ? "Paused by teacher" : activeSession.status === "active" ? "Game in progress" : "Round results"}</h3>
             <p>{activeSession.players.length} joined · {activeSession.settings.gameMode === "flag" ? "Capture the Flag" : activeSession.settings.gameMode === "zombie" ? "Zombie Survival" : activeSession.settings.gameMode === "athletics" ? "Athletics Race" : "Team Tag"}</p>
           </div>
-          <button className="primary" onClick={() => onOpenSession(activeSession)}><Play size={17} aria-hidden="true" />Open lobby</button>
+          <button className="primary" onClick={() => onOpenSession(activeSession)}><Play size={17} aria-hidden="true" />{activeSession.status === "waiting" ? "Open lobby" : "Return to game"}</button>
         </section>
       )}
 
@@ -88,7 +99,7 @@ export default function TeacherHome({ teacher, quizSets, sessions, recognition, 
             <span className="set-card-icon"><BookOpen size={19} aria-hidden="true" /></span>
             <span><strong>{quiz.title}</strong><small>{quiz.questions.length} questions · {quiz.visibility === "PUBLIC" ? "Public" : "Private"}</small></span>
           </button>
-          <button className="set-card-host" onClick={() => onHost(quiz.id)}><Play size={15} aria-hidden="true" />Host</button>
+          <button className="set-card-host" disabled={quiz.questions.length === 0} title={quiz.questions.length === 0 ? "Add a question before hosting" : undefined} onClick={() => onHost(quiz.id)}><Play size={15} aria-hidden="true" />Host</button>
         </article>)}</div> : <div className="teacher-home-empty"><BookOpen size={24} aria-hidden="true" /><div><strong>No Study Sets yet</strong><p>Start with a public set from Discover, or create your own.</p></div><button className="secondary-button" onClick={onDiscover}>Browse Study Sets</button></div>}
       </section>
 

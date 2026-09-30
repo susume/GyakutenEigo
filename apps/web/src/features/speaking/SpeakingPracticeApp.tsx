@@ -38,7 +38,6 @@ import {
 } from "@quizstrike/shared";
 import { speakingContext } from "@quizstrike/shared";
 import { ApiError, speakingApi } from "../../api/client";
-import { isSpeakingTeacherRoute } from "../../navigation";
 import GyakutenEigoBrand from "../../ui/GyakutenEigoBrand";
 import PerformanceHeader from "../../ui/PerformanceHeader";
 import PublicHomepage from "../../ui/PublicHomepage";
@@ -114,10 +113,8 @@ export default function SpeakingPracticeApp() {
     const target = new URL(nextPath, window.location.origin);
     const targetPath = `${normalizePath(target.pathname)}${target.search}${target.hash}`;
     window.history.pushState(null, "", targetPath);
-    if (isSpeakingTeacherRoute(target.pathname)) {
-      window.dispatchEvent(new PopStateEvent("popstate"));
-      return;
-    }
+    // Notify the outer product router too, including hub and QuizStrike links.
+    window.dispatchEvent(new PopStateEvent("popstate"));
     setPath(normalizePath(target.pathname));
     window.scrollTo(0, 0);
   }, []);
@@ -142,7 +139,7 @@ export default function SpeakingPracticeApp() {
   return (
     <div className="speaking-app" id="main-content" tabIndex={-1}>
       {route.kind === "home" && <SpeakingHome navigate={navigate} />}
-      {route.kind === "join" && <SpeakingJoinPage navigate={navigate} initialCode={route.code} />}
+      {route.kind === "join" && <SpeakingJoinPage key={route.code ?? "manual"} navigate={navigate} initialCode={route.code} />}
       {route.kind === "session" && <SpeakingSessionPage key={route.id} navigate={navigate} sessionId={route.id} />}
       {route.kind === "result" && <SpeakingResultPageV2 key={route.id} navigate={navigate} participantId={route.id} />}
     </div>
@@ -365,7 +362,7 @@ function SpeakingJoinPage({ navigate, initialCode }: { navigate: Navigate; initi
     } finally { setJoining(false); }
   };
   if (joined) return <SpeakingPreActivityPageV2 navigate={navigate} joined={joined} />;
-  return <div className="speaking-page-shell speaking-join-page"><SpeakingTopbar navigate={navigate} active="join" student /><main className="speaking-join-layout"><section className="speaking-join-copy"><span className="speaking-eyebrow"><ScanLine size={15} aria-hidden="true" /> Student entry</span><h1>Join your speaking task</h1><p>Enter the code from your teacher.</p><p lang="ja">先生からのコードと、指定された名前・出席番号を入力してください。</p></section><form className="speaking-form-card" onSubmit={submit}><div className="speaking-form-heading"><span>Join a classroom</span><h2>{initialCode ? "Your teacher’s session" : "Enter session code"}</h2><p>{initialCode ? "Your code is already filled in. Add your name or student number below." : "Ask your teacher for the six-character code."}</p></div><label htmlFor="speaking-activity-code">Session code<input id="speaking-activity-code" className="speaking-code-input" value={code} onChange={(event) => { setCode(event.target.value.toUpperCase().replace(/[^A-Z0-9]/g, "").slice(0, 6)); setError(""); }} placeholder="ABC123" autoComplete="off" maxLength={6} /></label><label htmlFor="speaking-identifier">Nickname or student number <small>(if requested by your teacher)</small><input autoComplete="off" id="speaking-identifier" value={identifier} onChange={(event) => setIdentifier(event.target.value)} placeholder="e.g. Hana" maxLength={80} /></label>{error && <p className="speaking-error" role="alert">{error}</p>}<button className="speaking-primary-button speaking-wide-button" type="submit" disabled={joining || code.length !== 6}>{joining ? <><LoaderCircle size={18} className="speaking-spin" aria-hidden="true" />Joining…</> : <><ArrowRight size={18} aria-hidden="true" />Join speaking task</>}</button><p className="speaking-privacy-note"><ShieldIcon /><span>Your teacher can review your conversation and feedback. Audio is sent for speech processing; the app does not store recordings.</span></p></form></main><div className="speaking-join-footer"><button type="button" className="speaking-text-button" onClick={() => navigate("/speak")}><ArrowLeft size={16} aria-hidden="true" />Back to Speaking Tasks</button></div></div>;
+  return <div className="speaking-page-shell speaking-join-page"><SpeakingTopbar navigate={navigate} active="join" student /><main className="speaking-join-layout"><section className="speaking-join-copy"><span className="speaking-eyebrow"><ScanLine size={15} aria-hidden="true" /> Student entry</span><h1>Join your speaking task</h1><p>Enter the code from your teacher.</p><p lang="ja">先生からのコードと、指定された名前・出席番号を入力してください。</p></section><form className="speaking-form-card" onSubmit={submit}><div className="speaking-form-heading"><span>Join a classroom</span><h2>{initialCode ? "Your teacher’s session" : "Enter session code"}</h2><p>{initialCode ? "Your code is already filled in. Add your name or student number below." : "Ask your teacher for the six-character code."}</p></div><label htmlFor="speaking-activity-code">Session code<input id="speaking-activity-code" required autoCapitalize="characters" spellCheck={false} enterKeyHint="next" pattern="[A-Z0-9]{6}" className="speaking-code-input" value={code} onChange={(event) => { setCode(event.target.value.toUpperCase().replace(/[^A-Z0-9]/g, "").slice(0, 6)); setError(""); }} placeholder="ABC123" autoComplete="off" maxLength={6} /></label><label htmlFor="speaking-identifier">Nickname or student number <small>(if requested by your teacher)</small><input autoComplete="off" id="speaking-identifier" value={identifier} onChange={(event) => setIdentifier(event.target.value)} placeholder="e.g. Hana" maxLength={80} /></label>{error && <p className="speaking-error" role="alert">{error}</p>}<button className="speaking-primary-button speaking-wide-button" type="submit" disabled={joining || code.length !== 6}>{joining ? <><LoaderCircle size={18} className="speaking-spin" aria-hidden="true" />Joining…</> : <><ArrowRight size={18} aria-hidden="true" />Join speaking task</>}</button><p className="speaking-privacy-note"><ShieldIcon /><span>Your teacher can review your conversation and feedback. Audio is sent for speech processing; the app does not store recordings.</span></p></form></main><div className="speaking-join-footer"><button type="button" className="speaking-text-button" onClick={() => navigate("/speak")}><ArrowLeft size={16} aria-hidden="true" />Back to Speaking Tasks</button></div></div>;
 }
 
 function ShieldIcon() { return <span className="speaking-privacy-dot" aria-hidden="true"><CircleCheck size={14} /></span>; }

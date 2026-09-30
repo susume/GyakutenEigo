@@ -1,10 +1,12 @@
 import { ArrowRight, BookOpenText, Gamepad2, Globe2, Lightbulb, Settings2, Users } from "lucide-react";
 import { useEffect } from "react";
+import ClassroomCodeEntry from "./ClassroomCodeEntry";
 import "./product-hub.css";
 
 type ProductHubHomepageProps = {
   onOpenSpeaking: () => void;
   onOpenQuizStrike: () => void;
+  onNavigate: (path: string) => void;
 };
 
 const speakingSteps = [
@@ -40,7 +42,7 @@ const benefits = [
   { title: "Fun multiplayer review", copy: "Higher engagement, better retention", icon: Gamepad2, tone: "purple" }
 ] as const;
 
-export default function ProductHubHomepage({ onOpenSpeaking, onOpenQuizStrike }: ProductHubHomepageProps) {
+export default function ProductHubHomepage({ onOpenSpeaking, onOpenQuizStrike, onNavigate }: ProductHubHomepageProps) {
   useEffect(() => {
     const previousSite = document.body.dataset.site;
     const previousTitle = document.title;
@@ -62,17 +64,20 @@ export default function ProductHubHomepage({ onOpenSpeaking, onOpenQuizStrike }:
             <span>Brighter futures</span>
             <i />
           </span>
-          <h1 id="product-hub-title">Two powerful tools for English classrooms</h1>
+          <h1 id="product-hub-title" tabIndex={-1}>Two powerful tools for English classrooms</h1>
+          <p>More speaking. More participation. One teacher workspace.</p>
           <span className="product-hub-scribble product-hub-scribble-right" aria-hidden="true">
             Small steps Big voices
           </span>
         </section>
 
+        <ClassroomCodeEntry onJoin={(product, code) => onNavigate(product === "speaking" ? `/speak/join/${code}` : `/join?code=${code}`)} />
+
         <section className="product-hub-products" aria-label="GyakutenEigo products">
           <article className="product-hub-card product-hub-speaking-card">
             <p className="product-hub-card-label">Speaking assessment</p>
             <h2>SpeakCheck App</h2>
-            <p className="product-hub-card-description">Assess real speaking performance  across your whole class.</p>
+            <p className="product-hub-card-description">Create speaking tasks, practise with an AI partner, and review each student’s evidence.</p>
             <div className="product-hub-speaking-flow" aria-label="SpeakCheck App steps">
               {speakingSteps.map((step, index) => (
                 <div className="product-hub-flow-stage-wrap" key={step.number}>
@@ -138,6 +143,7 @@ export default function ProductHubHomepage({ onOpenSpeaking, onOpenQuizStrike }:
             );
           })}
         </section>
+        <footer className="product-hub-footer"><span>GyakutenEigo · English classroom tools</span><span>Teachers host. Students join with a code.</span></footer>
       </section>
     </div>
   );

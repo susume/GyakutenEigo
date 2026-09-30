@@ -28,6 +28,7 @@ export function SpeakingSetsPage({ navigate }: { navigate: Navigate }) {
   const [sets, setSets] = useState<SpeakingSetSummary[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState("");
+  const [loadFailed, setLoadFailed] = useState(false);
   const [showCreate, setShowCreate] = useState(false);
   const [name, setName] = useState("");
   const [description, setDescription] = useState("");
@@ -35,11 +36,14 @@ export function SpeakingSetsPage({ navigate }: { navigate: Navigate }) {
   const [working, setWorking] = useState(false);
 
   const load = useCallback(async () => {
+    setLoading(true);
+    setLoadFailed(false);
     try {
       const payload = await speakingApi.sets() as { items: SpeakingSetSummary[] };
       setSets(payload.items);
       setError("");
     } catch (loadError) {
+      setLoadFailed(true);
       setError(errorMessage(loadError, "My Sets could not be loaded."));
     } finally {
       setLoading(false);
@@ -82,7 +86,7 @@ export function SpeakingSetsPage({ navigate }: { navigate: Navigate }) {
           <label>Shared focus <span className="speaking-muted-copy">optional</span><textarea value={focus} onChange={(event) => setFocus(event.target.value)} placeholder="Pay particular attention to follow-up questions and clarification." maxLength={500} rows={2} /><small className="speaking-form-help">Optional focus for feedback and review across tasks in this Set.</small></label>
           <div className="speaking-form-actions"><button type="button" className="speaking-outline-button" onClick={() => setShowCreate(false)}>Cancel</button><button type="submit" className="speaking-primary-button" disabled={!name.trim() || working}>{working ? "Creating…" : "Create Set"}</button></div>
         </form>}
-        {loading ? <div className="speaking-empty-card"><p>Loading My Sets…</p></div> : sets.length ? <div className="speaking-set-grid">
+        {loading ? <div className="speaking-empty-card" role="status"><p>Loading My Sets…</p></div> : loadFailed ? <div className="speaking-empty-card"><h2>Your Sets couldn’t load</h2><p>Check your connection, then try again.</p><button type="button" className="speaking-outline-button" onClick={() => void load()}>Try again</button></div> : sets.length ? <div className="speaking-set-grid">
           {sets.map((set, index) => <button type="button" className="speaking-set-card" key={set.id} onClick={() => navigate(`/speak/teacher/set/${set.id}`)}>
             <img className="speaking-set-mosaic" src={SET_PREVIEW_IMAGES[index % SET_PREVIEW_IMAGES.length]} alt="" loading="lazy" />
             <span className="speaking-set-card-copy"><strong>{set.name}</strong><span>{set.activityCount} task{set.activityCount === 1 ? "" : "s"}</span><small>{set.lastUsedAt ? `Last used ${speakingTeacherDate(set.lastUsedAt)}` : "Not used yet"}</small></span>

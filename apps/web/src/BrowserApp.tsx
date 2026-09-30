@@ -1,10 +1,11 @@
 import { lazy, Suspense, useCallback, useEffect, useState } from "react";
-import StudentJoinScreen from "./features/quizstrike/student/StudentJoinScreen";
 import { isSpeakingTeacherRoute, normalizeRoutePath } from "./navigation";
 
 const QuizStrikeApp = lazy(() => import("./QuizStrikeAppEntry"));
 const NetworkDiagnosticsPage = lazy(() => import("./features/quizstrike/NetworkDiagnosticsPage"));
 const SpeakingPracticeApp = lazy(() => import("./features/speaking/SpeakingPracticeApp"));
+const ProductHubPage = lazy(() => import("./ui/ProductHubPage"));
+const StudentJoinScreen = lazy(() => import("./features/quizstrike/student/StudentJoinScreen"));
 
 const loadingFallback = (
   <section className="app-loading-screen" aria-live="polite">
@@ -26,7 +27,8 @@ export default function BrowserApp() {
     setPathname("/game");
   }, []);
 
-  if (pathname === "/join") return <StudentJoinScreen onJoined={openGame} />;
+  if (pathname === "/join") return <Suspense fallback={<section className="app-loading-screen" role="status"><p>Opening QuizStrike join…</p></section>}><StudentJoinScreen onJoined={openGame} /></Suspense>;
+  if (pathname === "/") return <Suspense fallback={<section className="app-loading-screen" role="status"><p>Loading GyakutenEigo…</p></section>}><ProductHubPage /></Suspense>;
   if (isSpeakingTeacherRoute(pathname)) {
     return <Suspense fallback={<section className="app-loading-screen" aria-live="polite"><div className="panel form-panel"><p>Loading teacher workspace…</p></div></section>}><QuizStrikeApp /></Suspense>;
   }

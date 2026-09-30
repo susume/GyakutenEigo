@@ -1,6 +1,7 @@
 import { useEffect, useRef, useState } from "react";
 import type { FormEvent } from "react";
-import { Link2 } from "lucide-react";
+import { ArrowLeft, Link2 } from "lucide-react";
+import QuizStrikeLogo from "../../../ui/QuizStrikeLogo";
 import { studentApi } from "../../../api/client";
 import { getJoinCodeFromSearch } from "../../../navigation";
 import { formatStudentJoinError } from "../../../studentJoinErrors";
@@ -27,6 +28,7 @@ export default function StudentJoinScreen({ onJoined }: { onJoined: (options?: {
   const [nickname, setNickname] = useState("");
   const [error, setError] = useState("");
   const [isJoining, setIsJoining] = useState(false);
+  const [editingCode, setEditingCode] = useState(false);
   const redirectedRef = useRef(false);
   const nicknameError = getNicknameError(nickname);
 
@@ -65,6 +67,11 @@ export default function StudentJoinScreen({ onJoined }: { onJoined: (options?: {
   };
 
   return (
+    <main id="main-content" className="quizstrike-join-page">
+      <nav className="student-join-screen-nav" aria-label="QuizStrike entry navigation">
+        <a href="/quiz-strike" aria-label="QuizStrike home"><QuizStrikeLogo /></a>
+        <a href="/"><ArrowLeft size={16} aria-hidden="true" />All apps</a>
+      </nav>
     <section className="auth-layout student-join-screen game-join-screen">
       <div className="student-join-help">
         <div className="panel how-to-card controls-card" aria-labelledby="student-controls-heading">
@@ -89,11 +96,12 @@ export default function StudentJoinScreen({ onJoined }: { onJoined: (options?: {
           <h1>Enter QuizStrike</h1>
           <p>Use the game code from the host, then choose your player name.</p>
         </div>
-        {joinCodeFromLink ? (
+        {joinCodeFromLink && !editingCode ? (
           <div className="linked-join-code" aria-label={`Join session ${joinCode}`}>
             <span><Link2 size={17} aria-hidden="true" />Game link ready</span>
             <strong>{joinCode}</strong>
             <small>Add your player name below to join.</small>
+            <button type="button" className="linked-code-edit" onClick={() => setEditingCode(true)}>Use a different code</button>
           </div>
         ) : (
           <label className="join-field">
@@ -125,7 +133,9 @@ export default function StudentJoinScreen({ onJoined }: { onJoined: (options?: {
         <button className="primary" type="submit" disabled={isJoining || Boolean(nicknameError)}>
           {isJoining ? "Joining..." : "Join game"}
         </button>
+        <p className="student-join-account-note">No student account needed. Your teacher hosts the game.</p>
       </form>
     </section>
+    </main>
   );
 }
