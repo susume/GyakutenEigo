@@ -4,6 +4,7 @@ import {
   ATHLETICS_STADIUM_COURSE,
   getAthleticsPhysicalSupport,
   getAthleticsMovingObstaclePosition,
+  getAthleticsTransitionJumpEnvelope,
   type AthleticsCourseDefinition
 } from "@quizstrike/shared";
 
@@ -12,7 +13,7 @@ export interface AthleticsLandingGuide {
   x: number;
   y: number;
   z: number;
-  kind: "landing" | "lift";
+  kind: "landing" | "lift" | "shuttle";
 }
 
 /** Follow authored adjacency, never a distance threshold that skips pads.
@@ -37,6 +38,12 @@ export const getAthleticsLandingGuide = (
   if (lift && support.kind !== "moving_platform" && destination.y - support.supportY > ATHLETICS_JUMP_APEX_HEIGHT) {
     const point = getAthleticsMovingObstaclePosition(lift, nowMs);
     return { id: lift.id, ...point, y: point.y + lift.height, kind: "lift" };
+  }
+  const shuttle = course.movingObstacles.find((obstacle) => obstacle.id === transition.movingObstacleId && obstacle.kind === "platform");
+  const envelope = getAthleticsTransitionJumpEnvelope(transition, course);
+  if (shuttle && support.kind !== "moving_platform" && envelope.airGap > envelope.horizontalReach) {
+    const point = getAthleticsMovingObstaclePosition(shuttle, nowMs);
+    return { id: shuttle.id, ...point, y: point.y + shuttle.height, kind: "shuttle" };
   }
   return { id: destination.id, x: destination.x, y: destination.y, z: destination.z, kind: "landing" };
 };

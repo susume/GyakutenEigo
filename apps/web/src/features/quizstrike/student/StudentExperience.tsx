@@ -983,18 +983,13 @@ export default function StudentExperience({ onExit }: { onExit: () => void }) {
     }) => {
       if (lastVisualSession.settings.gameMode !== "athletics") return;
       if (payload.movementEpoch !== undefined) athleticsMovementEpochRef.current = payload.movementEpoch;
-      setQuestion(null);
-      setQuizOpen(false);
       const completedLaps = payload.completedLaps ?? 0;
       const requiredLaps = payload.requiredLaps ?? lastVisualSession.athletics?.requiredLaps ?? 1;
-      setRewardPulse(`Lap ${completedLaps} complete`);
-      setFeedback(`${Math.max(0, requiredLaps - completedLaps)} ${requiredLaps - completedLaps === 1 ? "lap" : "laps"} to go.`);
+      setRewardPulse(`Lap ${completedLaps} complete · Keep running`);
+      setFeedback(`Lap ${completedLaps + 1}/${requiredLaps} · Keep running across the line.`);
       gameAudio.playEvent("athletics_checkpoint");
       setPlayer((current) => current ? {
         ...current,
-        ...(payload.position ?? {}),
-        jumping: false,
-        crouching: false,
         athletics: current.athletics ? {
           ...current.athletics,
           completedLaps,
@@ -1014,7 +1009,7 @@ export default function StudentExperience({ onExit }: { onExit: () => void }) {
       setPlayer((current) => current?.athletics ? { ...current, athletics: { ...current.athletics, lapTransitionUntil: undefined } } : current);
       if (payload.question) setQuestion(payload.question);
       setAnswerFeedback(null);
-      setFeedback("New lap ready. Answer anytime to refill movement energy.");
+      setFeedback("Next lap is live. Keep running; answer anytime for energy.");
     });
     connectedSocket.on("athletics_finish", (payload: { finishPosition?: number; finishTimeMs?: number }) => {
       if (lastVisualSession.settings.gameMode !== "athletics") return;
@@ -2413,8 +2408,9 @@ export default function StudentExperience({ onExit }: { onExit: () => void }) {
   const snowballs = player.snowballs ?? session.settings.startingSnowballs;
   const warmth = getPlayerWarmth(player);
   const athleticsPlayer = player.athletics;
+  const athleticsCourseSection = ATHLETICS_STADIUM_COURSE.sections.find((section) => (athleticsPlayer?.routeProgress ?? 0) < section.endProgress)
+    ?? ATHLETICS_STADIUM_COURSE.sections.at(-1);
   const athleticsModeConfig = ATHLETICS_MODE_CONFIG[athleticsMode];
-  const athleticsQuestionCount = Math.max(1, session.athletics?.questionCount ?? athleticsPlayer?.questionIndex ?? 1);
   const athleticsRequiredLaps = Math.max(1, session.athletics?.requiredLaps ?? session.settings.athleticsCourseLaps ?? 1);
   const athleticsStanding = athleticsStandings.find((standing) => standing.playerId === player.id);
   const athleticsSpectatorStanding = spectatorPlayer
@@ -2460,8 +2456,6 @@ export default function StudentExperience({ onExit }: { onExit: () => void }) {
         ? "You fell! Answer 3 questions to get back on the course."
         : athleticsPlayer?.status === "finished"
         ? `Finished in ${formatDuration((athleticsPlayer.finishTimeMs ?? 0) / 1000)}. Watch the remaining racers.`
-        : athleticsPlayer?.lapTransitionUntil && Date.now() < Date.parse(athleticsPlayer.lapTransitionUntil)
-          ? `Lap ${athleticsPlayer.completedLaps} complete. The next lap is getting ready.`
         : athleticsMode === "zeus" && athleticsZeusFrozen
           ? "Lightning freeze active. Answer correctly to break it."
           : athleticsMode === "zeus" && athleticsWarning?.targeted
@@ -2469,12 +2463,12 @@ export default function StudentExperience({ onExit }: { onExit: () => void }) {
             : athleticsMode === "hunters-runners" && athleticsPlayer?.role === "hunter"
               ? `Answer for foam ammo. Defend your station and tag runners without stopping them.`
               : athleticsMode === "hunters-runners"
-                ? `Climb to the summit. ${athleticsRemainingRunners} runner${athleticsRemainingRunners === 1 ? "" : "s"} still racing.`
+                ? `Complete the circuit. ${athleticsRemainingRunners} runner${athleticsRemainingRunners === 1 ? "" : "s"} still racing.`
                 : athleticsMode === "chaos-climb"
                   ? "Amber rings warn of hazards. Answer to charge abilities and keep climbing."
                   : athleticsEnergy <= ATHLETICS_CRITICAL_ENERGY
                     ? "Energy is low. Answer on a platform, then keep climbing."
-                    : "Jump from platform to platform. Answer anytime to refill energy."
+                    : `${athleticsCourseSection?.description ?? "Follow the course."} Answer anytime to refill energy.`
     : session.settings.gameMode === "flag"
       ? flagStatusText(session)
     : session.settings.gameMode === "zombie"
@@ -2529,7 +2523,6 @@ export default function StudentExperience({ onExit }: { onExit: () => void }) {
   } : undefined;
   const athleticsMovementLocked = athleticsRace && (
     athleticsStartRemainingSeconds > 0
-    || Boolean(athleticsPlayer?.lapTransitionUntil && Date.now() < Date.parse(athleticsPlayer.lapTransitionUntil))
     || Boolean(athleticsPlayer?.respawnPenaltyUntil && Date.now() < Date.parse(athleticsPlayer.respawnPenaltyUntil))
     || Boolean(athleticsPlayer?.recoveryActive)
     || athleticsZeusFrozen
@@ -2902,8 +2895,10 @@ export default function StudentExperience({ onExit }: { onExit: () => void }) {
                       <Footprints className="athletics-lobby-mark" size={22} aria-hidden="true" />
                       <span><strong>{athleticsModeConfig.label} · Skyline Adventure Park</strong>
                         <small>{ATHLETICS_STADIUM_COURSE.sections.length} chapters · {ATHLETICS_STADIUM_COURSE.checkpoints.length} checkpoints</small>
+                        <small>Hurdles → balance → zigzag → moving bridges → climb → summit → descent.</small>
+                        <small>{athleticsRequiredLaps > 1 ? "Stage 7 leads back to the start/finish line. Cross it to begin your next lap without stopping." : "Visit all seven checkpoints, then cross the start/finish line to finish."}</small>
                         <ol>{athleticsModeConfig.instructionLines.map((line) => <li key={line}>{line}</li>)}</ol>
-                        <small>Move: WASD · Look: mouse / arrows · Jump: Space · Question: Q. On touch screens, use the on-screen controls. Cyan markers show required lifts.</small>
+                        <small>Move: WASD · Look: mouse / arrows · Jump: Space · Question: Q. On touch screens, use the on-screen controls. Cyan markers show required moving platforms.</small>
                       </span>
                     </div>
                   ) : <div className="team-choice-grid" aria-label="Choose your team">
@@ -2970,7 +2965,7 @@ export default function StudentExperience({ onExit }: { onExit: () => void }) {
                       <span><small>{athleticsPlayer?.role === "hunter" ? "Hits" : "Time"}</small><strong>{athleticsPlayer?.role === "hunter" ? athleticsPlayer.hunterHits ?? 0 : athleticsPlayer?.finishTimeMs === undefined ? "—" : formatDuration(athleticsPlayer.finishTimeMs / 1000)}</strong></span>
                       <span><small>{athleticsPlayer?.role === "hunter" ? "Points" : "Laps"}</small><strong>{athleticsPlayer?.role === "hunter" ? player.score : `${athleticsPlayer?.completedLaps ?? 0}/${athleticsRequiredLaps}`}</strong></span>
                       {athleticsPlayer?.role !== "hunter" && <span><small>Checkpoints reached</small><strong>{athleticsPlayer?.checkpointIndex ?? 0}/{ATHLETICS_STADIUM_COURSE.checkpoints.length}</strong></span>}
-                      <span><small>Questions</small><strong>{athleticsPlayer?.questionIndex ?? 0}/{athleticsQuestionCount}</strong></span>
+                      <span><small>Questions answered</small><strong>{athleticsPlayer?.questionIndex ?? 0}</strong></span>
                       <span><small>Falls</small><strong>{athleticsPlayer?.falls ?? 0}</strong></span>
                     </div>
                   </section>

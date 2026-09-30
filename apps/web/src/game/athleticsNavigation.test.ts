@@ -10,10 +10,12 @@ test("every stable main landing guides the adjacent pad or its required lift", (
   course.surfaces.slice(0, -1).forEach((surface, index) => {
     const guide = getAthleticsLandingGuide(standing(surface), 0);
     assert.ok(guide, surface.id);
-    if (index === 50 || index === 63) assert.equal(guide.kind, "lift", surface.id);
+    if (index === 49 || index === 63) assert.equal(guide.kind, "lift", surface.id);
+    else if (index === 34 || index === 38) assert.equal(guide.kind, "shuttle", surface.id);
     else assert.equal(guide.id, course.surfaces[index + 1]!.id, surface.id);
   });
-  assert.equal(getAthleticsLandingGuide(standing(course.surfaces.at(-1)!), 0), null);
+  assert.equal(getAthleticsLandingGuide(standing(course.surfaces.at(-1)!), 0)?.id, course.surfaces[0]!.id);
+  assert.equal(getAthleticsLandingGuide(standing(course.surfaces[64]!), 0)?.id, course.surfaces[65]!.id);
 });
 
 test("shortcut guidance follows the selected branch and rejoins the main route", () => {
@@ -24,7 +26,7 @@ test("shortcut guidance follows the selected branch and rejoins the main route",
 });
 
 test("lift riders see their exit and airborne players retain the prior target", () => {
-  for (const id of ["drop-tower-lift", "summit-finish-lift"]) {
+  for (const id of course.movingObstacles.filter((entry) => entry.kind !== "barrier").map((entry) => entry.id)) {
     const lift = course.movingObstacles.find((entry) => entry.id === id)!;
     const nowMs = 1000;
     const point = getAthleticsMovingObstaclePosition(lift, nowMs);

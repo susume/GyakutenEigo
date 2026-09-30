@@ -27,9 +27,9 @@ export const ATHLETICS_MODE_CONFIG: Readonly<Record<AthleticsMode, AthleticsMode
     id: "classic",
     label: "Classic Athletics",
     shortLabel: "Classic",
-    description: "Pure parkour racing: answer for energy, jump the course, and reach the summit.",
+    description: "Pure parkour racing: answer for energy, climb, descend, and complete the circuit.",
     instructionTitle: "CLIMB THE SKYLINE",
-    instructionLines: ["Follow white arrows; gold paths are optional shortcuts", "Answer anytime for energy; falls return you to your last landing", "Reach the summit first"],
+    instructionLines: ["Follow white arrows; gold paths are optional shortcuts", "Answer anytime for energy; falls return you to your last landing", "Descend stage 7; keep running across the start/finish"],
     accent: "#40d9ff"
   },
   zeus: {
@@ -38,7 +38,7 @@ export const ATHLETICS_MODE_CONFIG: Readonly<Record<AthleticsMode, AthleticsMode
     shortLabel: "Zeus",
     description: "Climb toward Zeus, dodge telegraphed lightning, and answer to break an electric freeze.",
     instructionTitle: "CLIMB TO ZEUS",
-    instructionLines: ["Leave the lightning ring before it fills", "Answer correctly to break a freeze", "First to the summit defeats Zeus"],
+    instructionLines: ["Leave the lightning ring before it fills", "Answer correctly to break a freeze", "First to finish the circuit defeats Zeus"],
     accent: "#b697ff"
   },
   "hunters-runners": {
@@ -47,7 +47,7 @@ export const ATHLETICS_MODE_CONFIG: Readonly<Record<AthleticsMode, AthleticsMode
     shortLabel: "Hunters & Runners",
     description: "Runners climb while Hunters defend stations with answer-powered foam balls.",
     instructionTitle: "RUN OR HUNT",
-    instructionLines: ["Runners climb to the summit", "Hunters answer for foam-ball ammo", "Roles swap for the next round"],
+    instructionLines: ["Runners climb and descend the full circuit", "Hunters answer for foam-ball ammo", "Roles swap for the next round"],
     accent: "#ff9c54"
   },
   "chaos-climb": {

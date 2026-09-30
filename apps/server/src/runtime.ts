@@ -162,8 +162,7 @@ import {
   ATHLETICS_COURSE_BOUNDS,
   ATHLETICS_STADIUM_COURSE,
   ATHLETICS_CHECKPOINT_COUNT,
-  ATHLETICS_LAP_TRANSITION_MS,
-  ATHLETICS_START_COUNTDOWN_MS,
+    ATHLETICS_START_COUNTDOWN_MS,
   ATHLETICS_WRONG_ANSWER_PENALTY_MS,
   ATHLETICS_CORRECT_ENERGY,
   ATHLETICS_JUMP_ENERGY_COST,
@@ -838,7 +837,6 @@ const issueNextQuestion = (session: GameSession, playerId: string): PublicQuesti
     const questions = getSessionQuestions(session);
     if (!player || !athletics || athletics.status !== "racing") return undefined;
     if (athletics.recoveryActive) return issueAthleticsRecoveryQuestion(session, player, athletics);
-    const race = getAthleticsRaceConfig(session);
     // Zeus reuses the normal question gate while a player is electrified. It
     // must not advance the race question until the freeze is cleared.
     if (athletics.zeusFrozen) {
@@ -847,7 +845,8 @@ const issueNextQuestion = (session: GameSession, playerId: string): PublicQuesti
       playerQuestionGate.issue(player.id, question.id);
       return publicQuestion(question);
     }
-    if (athletics.questionIndex >= race.questionCount || athletics.lapTransitionUntil) return undefined;
+    // Refill questions cycle for the whole race, including long return legs.
+    if (questions.length === 0) return undefined;
     const question = questions[getAthleticsQuestionPoolIndex(athletics.questionIndex, questions.length)];
     if (!question) return undefined;
     playerQuestionGate.issue(player.id, question.id);
@@ -1348,11 +1347,11 @@ const markAthleticsFinished = (session: GameSession, player: PlayerSession, nowM
     });
     finishSession(
       session,
-      `${player.nickname} reached the summit and defeated Zeus.`,
+      `${player.nickname} completed the circuit and defeated Zeus.`,
       makeAnnouncement(
         "game_over",
         "ZEUS HAS BEEN DEFEATED!",
-        `${player.nickname} reached the summit first.`,
+        `${player.nickname} completed the circuit first.`,
         "Final standings and quiz results are ready.",
         GAME_OVER_ANNOUNCEMENT_MS
       )
@@ -1361,30 +1360,15 @@ const markAthleticsFinished = (session: GameSession, player: PlayerSession, nowM
   return true;
 };
 
-const startNextAthleticsLap = (session: GameSession, player: PlayerSession, nowMs: number) => {
-  const athletics = ensureAthleticsPlayerState(session, player);
-  if (!athletics?.lapTransitionUntil || nowMs < Date.parse(athletics.lapTransitionUntil)) return false;
-  athletics.lapTransitionUntil = undefined;
-  const question = player.isBot ? undefined : issueNextQuestion(session, player.id);
-  emitToPlayers(session, [player.id], "athletics_lap_start", {
-    completedLaps: athletics.completedLaps,
-    requiredLaps: getAthleticsRaceConfig(session).requiredLaps,
-    question
-  });
-  return true;
-};
-
 const completeAthleticsLap = (session: GameSession, player: PlayerSession, nowMs: number) => {
   const race = session.athletics;
   const athletics = ensureAthleticsPlayerState(session, player);
-  if (!race || !athletics || athletics.status !== "racing" || athletics.lapTransitionUntil) return false;
+  if (!race || !athletics || athletics.status !== "racing" || athletics.checkpointIndex < ATHLETICS_CHECKPOINT_COUNT) return false;
   const { requiredLaps } = getAthleticsRaceConfig(session);
   athletics.completedLaps = Math.min(requiredLaps, athletics.completedLaps + 1);
   athletics.lapSplitsMs.push(Math.max(0, nowMs - Date.parse(race.startAt)));
   if (athletics.completedLaps >= requiredLaps) return markAthleticsFinished(session, player, nowMs);
 
-  const spawn = getAthleticsStartPosition(athletics.laneIndex ?? 0, Math.max(1, session.maxPlayers));
-  Object.assign(player, spawn, { jumping: false, crouching: false });
   athletics.checkpointIndex = 0;
   athletics.lastSafeCheckpointIndex = 0;
   athletics.routeProgress = 0;
@@ -1392,24 +1376,20 @@ const completeAthleticsLap = (session: GameSession, player: PlayerSession, nowMs
   athletics.currentSupportedSurfaceIndex = 0;
   athletics.currentSupportKind = "main_surface";
   athletics.lastSupportedAtMs = nowMs;
-  athletics.movementEpoch = (athletics.movementEpoch ?? 0) + 1;
   athletics.recoverySettleUntil = undefined;
   athletics.recoveryReason = undefined;
   // Energy carries across laps. A lap transition must not duplicate or erase
   // earned fuel, and the start platform remains safe for the next answer.
   athletics.gateOpen = true;
   athletics.wrongAnswerPenaltyUntil = undefined;
-  athletics.lapTransitionUntil = new Date(nowMs + ATHLETICS_LAP_TRANSITION_MS).toISOString();
-  playerQuestionGate.clear(player.id);
+  athletics.lapTransitionUntil = undefined;
   emitToPlayers(session, [player.id], "athletics_lap_complete", {
     completedLaps: athletics.completedLaps,
     requiredLaps,
     splitTimeMs: athletics.lapSplitsMs.at(-1),
-    position: spawn,
-    movementEpoch: athletics.movementEpoch,
-    transitionUntil: athletics.lapTransitionUntil,
-    transitionMs: ATHLETICS_LAP_TRANSITION_MS
+    transitionMs: 0
   });
+  emitToPlayers(session, [player.id], "athletics_lap_start", { completedLaps: athletics.completedLaps, requiredLaps });
   appendEvent(session, {
     type: "timer",
     message: `${player.nickname} completed lap ${athletics.completedLaps}/${requiredLaps}.`,
@@ -1434,12 +1414,6 @@ const updateAthleticsRace = (session: GameSession, player: PlayerSession, nowMs:
   // Hunters defend their authored stations; they are not additional racers
   // that should be evaluated against the parkour landing/checkpoint route.
   if (getAthleticsMode(session.settings.athleticsMode ?? race.mode) === "hunters-runners" && athletics.role === "hunter") return;
-  if (startNextAthleticsLap(session, player, nowMs)) {
-    broadcastPlayerState(session, [player]);
-    broadcastSession(session);
-  }
-  if (athletics.lapTransitionUntil && nowMs < Date.parse(athletics.lapTransitionUntil)) return;
-
   const currentPosition = { x: player.x ?? 0, y: player.y ?? 0, z: player.z ?? 0 };
   const support = getAthleticsPhysicalSupport(
     currentPosition,
@@ -1450,6 +1424,12 @@ const updateAthleticsRace = (session: GameSession, player: PlayerSession, nowMs:
   athletics.currentSupportedSurfaceIndex = support.kind === "main_surface" ? support.surfaceIndex : undefined;
   athletics.currentSupportKind = support.kind;
   if (isAthleticsPlayableSupport(support)) athletics.lastSupportedAtMs = nowMs;
+  if (!player.jumping && athletics.checkpointIndex >= ATHLETICS_CHECKPOINT_COUNT
+    && isAthleticsFinishOccupied(support, ATHLETICS_STADIUM_COURSE.finishSurfaceIndex ?? ATHLETICS_STADIUM_COURSE.surfaces.length - 1)) {
+    if (completeAthleticsLap(session, player, nowMs)) { broadcastPlayerState(session, [player]); broadcastSession(session); }
+    return;
+  }
+
   if (support.kind === "main_surface" && support.surfaceIndex !== undefined && !player.jumping) {
     if (support.surfaceIndex >= (athletics.lastSafeSurfaceIndex ?? 0)) {
       athletics.lastSafeSurfaceIndex = support.surfaceIndex;
@@ -1485,7 +1465,7 @@ const updateAthleticsRace = (session: GameSession, player: PlayerSession, nowMs:
       requiredLaps: race.requiredLaps,
       nextCheckpointProgress: ATHLETICS_STADIUM_COURSE.checkpoints[athletics.checkpointIndex],
       message: athletics.checkpointIndex >= ATHLETICS_CHECKPOINT_COUNT
-        ? "Skyline checkpoint reached. Keep climbing to the summit."
+        ? "Return lane complete. Keep running across the start/finish line."
         : "Checkpoint reached. Answer anytime to refill movement energy."
     });
     appendEvent(session, {
@@ -1498,17 +1478,7 @@ const updateAthleticsRace = (session: GameSession, player: PlayerSession, nowMs:
     broadcastSession(session);
   }
 
-  const isAtFinishSurface = isAthleticsFinishOccupied(
-    support,
-    ATHLETICS_STADIUM_COURSE.surfaces.length - 1
-  )
-    && !player.jumping;
-  if (isAtFinishSurface) {
-    if (completeAthleticsLap(session, player, nowMs)) {
-      broadcastPlayerState(session, [player]);
-      broadcastSession(session);
-    }
-  }
+
 };
 
 const emitAthleticsModeEvent = (session: GameSession, eventName: string, payload: unknown) => {
@@ -2646,11 +2616,18 @@ const advanceAthleticsBot = (session: GameSession, bot: PlayerSession, index: nu
       : ATHLETICS_MAX_ENERGY;
     athletics.questionIndex = Math.min(questionCount, athletics.questionIndex + 1);
   }
+  if (athletics.checkpointIndex >= ATHLETICS_CHECKPOINT_COUNT && ATHLETICS_STADIUM_COURSE.closedLoop) {
+    const start = ATHLETICS_STADIUM_COURSE.surfaces[0]!;
+    bot.x = start.x; bot.y = start.y + ATHLETICS_PLAYER_EYE_HEIGHT;
+    bot.z = Math.min(start.z, (bot.z ?? start.z) + 4);
+    updateAthleticsRace(session, bot, nowMs); broadcastPlayerState(session, [bot]); return true;
+  }
   const currentProgress = Math.max(
     athletics.routeProgress,
     getAthleticsRouteProgress({ x: bot.x ?? 0, y: bot.y ?? ATHLETICS_PLAYER_EYE_HEIGHT, z: bot.z ?? 0 })
   );
-  const nextProgress = Math.min(1, currentProgress + 0.06);
+  const nextCheckpoint = ATHLETICS_STADIUM_COURSE.checkpoints[athletics.checkpointIndex] ?? 1;
+  const nextProgress = Math.min(1, currentProgress + 0.06, nextCheckpoint);
   const nextPoint = getAthleticsPointAtProgress(nextProgress);
   const tangent = getAthleticsRouteTangent(nextProgress);
   const laneOffset = ((athletics.laneIndex ?? index) % 5 - 2) * 0.75;
@@ -3132,7 +3109,7 @@ const answerQuestion = (
         athletics.abilityReady = runnerReward.abilityReady;
       }
       if (isCorrect) {
-        athletics.questionIndex = Math.min(getAthleticsRaceConfig(session).questionCount, athletics.questionIndex + 1);
+        athletics.questionIndex += 1;
         athletics.gateOpen = true;
       } else {
         // H&R questions power resources; an incorrect response should not
@@ -3148,7 +3125,7 @@ const answerQuestion = (
       athletics.abilityCharge = runnerReward.charge;
       athletics.abilityReady = runnerReward.abilityReady;
       if (isCorrect) {
-        athletics.questionIndex = Math.min(getAthleticsRaceConfig(session).questionCount, athletics.questionIndex + 1);
+        athletics.questionIndex += 1;
         athletics.gateOpen = true;
         athletics.wrongAnswerPenaltyUntil = undefined;
       } else {
@@ -3160,7 +3137,7 @@ const answerQuestion = (
       if (isCorrect) {
         athletics.zeusFrozen = false;
         athletics.zeusFrozenUntil = undefined;
-        athletics.questionIndex = Math.min(getAthleticsRaceConfig(session).questionCount, athletics.questionIndex + 1);
+        athletics.questionIndex += 1;
         athletics.gateOpen = true;
         athletics.wrongAnswerPenaltyUntil = undefined;
         emitToPlayers(session, [player.id], "zeus_freeze_break", {
@@ -3185,7 +3162,7 @@ const answerQuestion = (
         });
       }
     } else if (isCorrect) {
-      athletics.questionIndex = Math.min(getAthleticsRaceConfig(session).questionCount, athletics.questionIndex + 1);
+      athletics.questionIndex += 1;
       athletics.gateOpen = true;
       athletics.wrongAnswerPenaltyUntil = undefined;
     } else {

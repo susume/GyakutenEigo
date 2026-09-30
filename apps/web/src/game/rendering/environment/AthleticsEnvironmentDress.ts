@@ -248,8 +248,8 @@ const addVegetation = (
   for (let index = 0; index < count; index += 1) {
     const edge = index % 4;
     const progress = random() * 2 - 1;
-    const x = edge === 0 ? -128 - random() * 5 : edge === 1 ? 128 + random() * 5 : progress * 128;
-    const z = edge === 2 ? -126 - random() * 5 : edge === 3 ? 126 + random() * 5 : progress * 126;
+    const x = edge === 0 ? -148 - random() * 5 : edge === 1 ? 148 + random() * 5 : progress * 112;
+    const z = edge === 2 ? -148 - random() * 5 : edge === 3 ? 148 + random() * 5 : progress * 112;
     const y = 3.5;
     scale.set(0.8 + random() * 0.42, 0.9 + random() * 0.65, 0.8 + random() * 0.42);
     matrix.compose(new THREE.Vector3(x, y, z), new THREE.Quaternion().setFromEuler(new THREE.Euler(0, random() * Math.PI, 0)), scale);
@@ -342,8 +342,8 @@ export const buildAthleticsEnvironmentDress = ({
 
   addGrandstand(root, detail, addBatchedBox, materials);
   if (!isFps && detail > 0) {
-    addSideStand(root, -123, Math.PI / 2, detail, addBatchedBox, materials);
-    addSideStand(root, 123, -Math.PI / 2, detail, addBatchedBox, materials);
+    addSideStand(root, -136, Math.PI / 2, detail, addBatchedBox, materials);
+    addSideStand(root, 136, -Math.PI / 2, detail, addBatchedBox, materials);
   }
   addScoreboard(root, addBatchedBox, materials, makeLabelTexture);
   addLightTowers(root, detail, addBatchedBox, materials);
@@ -352,7 +352,7 @@ export const buildAthleticsEnvironmentDress = ({
 
   // Small perimeter rails and sponsor blocks add scale while leaving the
   // actual route and course sightlines open.
-  for (const x of [-110, 110]) {
+  for (const x of [-136, 136]) {
     addBatchedBox([0.7, 2.4, 144], [x, 1.2, 0], materials.stadiumDark, "metal");
     for (let z = -105; z <= 105; z += 35) addBatchedBox([1.2, 3.4, 1.2], [x, 1.7, z], materials.gold, "accent");
   }

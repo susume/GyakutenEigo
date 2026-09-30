@@ -3,6 +3,7 @@ import assert from "node:assert/strict";
 import {
   PLAYER_CROUCH_SPEED,
   PLAYER_FULL_SPEED,
+  hasBufferedJump,
   isFireKeyboardEvent,
   isScopeKeyboardEvent,
   resolveCrouching,
@@ -10,6 +11,13 @@ import {
   resolveCombatPointerAction,
   shouldFireFromTouchGesture
 } from "./arenaInput.js";
+
+test("grounded jumps survive a slow frame while airborne presses expire", () => {
+  assert.equal(hasBufferedJump(1000, 1350, true), true);
+  assert.equal(hasBufferedJump(1000, 1350, false), false);
+  assert.equal(hasBufferedJump(1000, 1100, false), true);
+  assert.equal(hasBufferedJump(0, 1350, true), false);
+});
 
 test("primary mouse press fires even while secondary scope is held", () => {
   assert.equal(resolveCombatPointerAction({ button: 0, buttons: 3 }), "fire");

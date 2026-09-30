@@ -109,6 +109,8 @@ export const ArenaHudOverlay = ({
   const athleticsOnboardingEligible = Boolean(
     athleticsHud
     && athleticsHud.status === "racing"
+    && athleticsHud.role !== "hunter"
+    && athleticsHud.startRemainingSeconds === 0
     && !athleticsHud.recoveryActive
     && athleticsHud.checkpointIndex === 0
     && athleticsHud.routeProgress < ATHLETICS_ONBOARDING_MAX_PROGRESS
@@ -136,7 +138,7 @@ export const ArenaHudOverlay = ({
       <>
         {athleticsOnboardingEligible && !athleticsOnboardingDismissed && (
           <div className="athletics-onboarding" aria-label="Jump tutorial">
-            <strong>JUMP ONTO THE GLOWING PLATFORMS</strong>
+            <strong>SPRINT FORWARD · JUMP THE STRIPED HURDLES</strong>
             <span>SPACE — JUMP · Tablet: tap JUMP</span>
           </div>
         )}

@@ -5,6 +5,10 @@ export type CombatPointerAction = "fire" | "scope" | "none";
 export const PLAYER_FULL_SPEED = ATHLETICS_JUMP_HORIZONTAL_SPEED;
 export const PLAYER_CROUCH_SPEED = 6.4;
 
+/** A grounded press survives a slow render frame; airborne buffering stays bounded. */
+export const hasBufferedJump = (queuedAt: number, now: number, grounded: boolean, bufferMs = 150) =>
+  queuedAt > 0 && (grounded || now - queuedAt <= bufferMs);
+
 /** Every game mode has one normal movement speed; Shift changes posture. */
 export const resolveMovementSpeed = ({
   crouching,

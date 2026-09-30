@@ -41,6 +41,7 @@ import {
   getAthleticsSurfaceRouteProgress,
   getAthleticsSurfaceVolumeOverlap,
   getAthleticsTransitionJumpEnvelope,
+  getAthleticsJumpHorizontalReach,
   getAthleticsTransitionAirGap,
   isAthleticsJumpTransition,
   isAthleticsFinish,
@@ -52,16 +53,16 @@ import {
 } from "./athleticsRace.js";
 import { ATHLETICS_ARENA_MAP_ID, resolveAnswerReward, resolveAuthoritativeMovement, sanitizeSessionSettings } from "./index.js";
 
-test("Skyline Adventure Park exposes a compact authored vertical route", () => {
+test("Skyline Adventure Park exposes seven separated athletic districts", () => {
   assert.equal(ATHLETICS_STADIUM_COURSE.id, "stadium_loop");
-  assert.equal(ATHLETICS_STADIUM_COURSE.sections.length, 6);
+  assert.equal(ATHLETICS_STADIUM_COURSE.sections.length, 7);
   assert.equal(ATHLETICS_STADIUM_COURSE.checkpoints.length, ATHLETICS_CHECKPOINT_COUNT);
-  assert.ok(ATHLETICS_STADIUM_COURSE.route.at(-1)!.y > ATHLETICS_STADIUM_COURSE.route[0]!.y);
-  assert.equal(ATHLETICS_STADIUM_COURSE.route.length, 65);
-  assert.ok(getAthleticsRouteLength() >= 1100 && getAthleticsRouteLength() <= 1400);
-  assert.ok(ATHLETICS_STADIUM_COURSE.surfaces.length >= 60 && ATHLETICS_STADIUM_COURSE.surfaces.length <= 80);
+  assert.ok(ATHLETICS_STADIUM_COURSE.route[64]!.y > ATHLETICS_STADIUM_COURSE.route[0]!.y);
+  assert.equal(ATHLETICS_STADIUM_COURSE.route.length, 138);
+  assert.ok(getAthleticsRouteLength() >= 1100 && getAthleticsRouteLength() <= 1250);
+  assert.ok(ATHLETICS_STADIUM_COURSE.surfaces.length >= 130 && ATHLETICS_STADIUM_COURSE.surfaces.length <= 150);
   assert.equal(ATHLETICS_STADIUM_COURSE.shortcuts.length, 3);
-  assert.equal(ATHLETICS_STADIUM_COURSE.movingObstacles.length, 6);
+  assert.equal(ATHLETICS_STADIUM_COURSE.movingObstacles.length, 5);
   for (const point of ATHLETICS_STADIUM_COURSE.route) {
     assert.ok(Math.abs(point.x) <= ATHLETICS_COURSE_BOUNDS.limitX);
     assert.ok(Math.abs(point.z) <= ATHLETICS_COURSE_BOUNDS.limitZ);
@@ -83,89 +84,65 @@ test("Skyline Adventure Park exposes a compact authored vertical route", () => {
   assert.equal(getAthleticsNextGateProgress({ questionIndex: 7, checkpointIndex: 6 }, 7), 1);
 });
 
-test("Athletics transition authoring proves real air gaps and intentional exceptions", () => {
+test("Athletics has distinct connected, balance, jumping, and timing challenges", () => {
   const course = ATHLETICS_STADIUM_COURSE;
   const metrics = getAthleticsCourseGeometryMetrics(course);
-
   assert.deepEqual(getAthleticsCourseGeometryIssues(course), []);
-  assert.equal(metrics.mainRoutePlatformCount, 65);
-  assert.equal(metrics.transitionCount, 64);
-  assert.equal(metrics.genuineJumpTransitionCount, 57);
+  assert.equal(metrics.mainRoutePlatformCount, 138);
+  assert.equal(metrics.transitionCount, 138);
+  assert.equal(metrics.genuineJumpTransitionCount, 32);
   assert.equal(metrics.jumpTransitionAirGapPercentage, 100);
-  assert.ok(metrics.jumpTransitionPercentage >= 75);
+  assert.ok(metrics.jumpTransitionPercentage > 20);
+  assert.equal(metrics.connectedNonJumpTransitionCount, 106);
+  assert.equal(metrics.movingPlatformTransitionCount, 5);
   assert.ok(metrics.medianAirGap >= 4);
-  assert.ok(metrics.averageAirGap >= 4);
-  assert.ok(metrics.maximumNormalRouteGap <= 9);
-  assert.ok(metrics.maximumShortcutGap >= 8.8 && metrics.maximumShortcutGap <= 10);
-  assert.ok(metrics.maximumShortcutGap > metrics.maximumNormalRouteGap, "shortcut ceiling should be harder than the normal route ceiling");
-  assert.equal(metrics.connectedNonJumpTransitionCount, 7);
-  assert.equal(metrics.movingPlatformTransitionCount, 6);
-  assert.ok(metrics.averagePlatformWidth < 16);
-  assert.ok(metrics.averagePlatformDepth < 15);
-
-  // Keep static rises inside the current 15.5 velocity / 36 gravity jump
-  // envelope (3.34-unit apex). The two larger rises must be carried by a
-  // named vertical lift, and no authored jump may exceed the full-speed
-  // 14.8 * 0.861-second airborne travel budget.
-  const maximumStaticJumpRise = ATHLETICS_JUMP_APEX_HEIGHT;
-  const maximumFullSpeedAirDistance = ATHLETICS_JUMP_HORIZONTAL_SPEED * ATHLETICS_JUMP_AIRTIME_SECONDS;
-  for (const [index, transition] of course.transitions.entries()) {
-    const fromSurface = course.surfaces[index]!;
-    const toSurface = course.surfaces[index + 1]!;
-    assert.equal(transition.fromSurfaceId, fromSurface.id);
-    assert.equal(transition.toSurfaceId, toSurface.id);
-    const gap = getAthleticsTransitionAirGap(transition, course);
-    assert.ok(Number.isFinite(gap));
-    if (isAthleticsJumpTransition(transition.type)) {
-      assert.ok(gap >= ATHLETICS_TRANSITION_AIR_GAP_TARGETS[transition.type], `${transition.id} needs a typed air gap`);
-      assert.ok(gap <= maximumFullSpeedAirDistance, `${transition.id} exceeds the full-speed jump envelope`);
-    } else if (gap <= 0.001) {
-      assert.ok(["connected", "checkpoint_entry", "elevator", "bridge"].includes(transition.type));
-    }
-    if (toSurface.y - fromSurface.y > maximumStaticJumpRise) {
-      assert.ok(transition.movingObstacleId, `${transition.id} needs a lift for its vertical rise`);
-      const lift = course.movingObstacles.find((obstacle) => obstacle.id === transition.movingObstacleId);
-      assert.equal(lift?.axis, "y");
-      assert.ok(toSurface.y <= (lift?.y ?? 0) + Math.abs(lift?.amplitude ?? 0) + (lift?.height ?? 0));
-    }
-    if (transition.type === "moving_jump") {
-      assert.ok(transition.movingObstacleId);
-      assert.ok(course.movingObstacles.some((obstacle) => obstacle.id === transition.movingObstacleId));
+  assert.ok(metrics.averagePlatformWidth < 16 && metrics.averagePlatformDepth < 15);
+  assert.ok(course.transitions.slice(0, 9).every((transition) => getAthleticsTransitionAirGap(transition, course) <= .001));
+  assert.ok(course.surfaces.slice(11, 21).every((surface) => surface.width === 4 && surface.material === "wood"));
+  assert.ok(course.surfaces.slice(28, 32).every((surface) => surface.kind === "stair"));
+  assert.equal(course.challenges?.filter((entry) => entry.kind === "hurdle").length, 4);
+  assert.equal(course.challenges?.filter((entry) => entry.kind === "slalom").length, 6);
+  for (const challenge of course.challenges ?? []) {
+    const proxy = getAthleticsObstacles().find((entry) => entry.id === challenge.id);
+    assert.ok(proxy, challenge.id + " needs a solid collision proxy");
+    assert.equal(proxy.maxY, challenge.y + challenge.height);
+  }
+  for (let i = 0; i < course.surfaces.length; i += 1) {
+    for (let j = i + 2; j < course.surfaces.length; j += 1) {
+      if (i === 0 && j === course.surfaces.length - 1) continue;
+      assert.ok(getAthleticsSurfaceAirGap(course.surfaces[i]!, course.surfaces[j]!) > .001,
+        course.surfaces[i]!.id + " must not cross above or below " + course.surfaces[j]!.id);
     }
   }
+});
 
-  const tutorialGaps = course.transitions.slice(0, 3).map((transition) => getAthleticsTransitionAirGap(transition, course));
-  assert.ok(tutorialGaps.every((gap) => gap >= 3 && gap <= 4.5), `first three tutorial gaps must be 3–4.5: ${tutorialGaps.join(", ")}`);
-  const remainingTutorialGaps = course.transitions.slice(3, 9).map((transition) => getAthleticsTransitionAirGap(transition, course));
-  assert.ok(remainingTutorialGaps.every((gap) => gap >= 4 && gap <= 6), `remaining tutorial gaps must be 4–6: ${remainingTutorialGaps.join(", ")}`);
+test("Athletics geometry QA rejects route crossings even at different heights", () => {
+  const course = ATHLETICS_STADIUM_COURSE;
+  const brokenCourse = { ...course, surfaces: course.surfaces.map((surface, index) => index === 60
+    ? { ...surface, x: course.surfaces[2]!.x, z: course.surfaces[2]!.z } : surface) };
+  assert.ok(getAthleticsCourseGeometryIssues(brokenCourse).some((issue) => issue.includes("route-platform-003") && issue.includes("route-platform-061")));
+});
 
-  for (const shortcut of course.shortcuts) {
-    for (const transition of shortcut.transitions) {
-      const gap = getAthleticsTransitionAirGap(transition, course);
-      assert.ok(gap >= 6, `${shortcut.id}/${transition.id} needs a meaningful shortcut air gap`);
-      assert.ok(gap >= ATHLETICS_TRANSITION_AIR_GAP_TARGETS.shortcut_jump, `${shortcut.id}/${transition.id} needs visible shortcut air`);
-    }
-  }
-
-  const chapterSizeTargets = [
-    [0, 9, 16, 20],
-    [11, 20, 12, 16],
-    [22, 31, 10, 15],
-    [33, 42, 10, 15],
-    [44, 53, 8, 13],
-    [55, 63, 8, 13]
-  ] as const;
-  for (const [start, end, minimum, maximum] of chapterSizeTargets) {
-    for (const surface of course.surfaces.slice(start, end + 1)) {
-      assert.ok(surface.width >= minimum && surface.width <= maximum, `${surface.id} width ${surface.width} is outside its chapter target`);
-    }
-  }
-
-  const rotatedSurface = course.surfaces.find((surface) => Math.abs(surface.rotationY ?? 0) > 0.2);
-  assert.ok(rotatedSurface, "the authored route must contain deliberate platform rotations");
-  const rotatedProxy = getAthleticsObstacles().find((obstacle) => obstacle.id === rotatedSurface?.id);
-  assert.equal(rotatedProxy?.kind, "rect");
-  if (rotatedProxy?.kind === "rect") assert.equal(rotatedProxy.rotationY, rotatedSurface?.rotationY);
+test("solid sprint hurdles require a jump and slalom posts require steering", () => {
+  const hurdlePad = ATHLETICS_STADIUM_COURSE.surfaces[2]!;
+  const crossHurdle = (rise: number) => resolveAuthoritativeMovement({
+    current: { x: hurdlePad.x + 2, y: hurdlePad.y + ATHLETICS_PLAYER_EYE_HEIGHT, z: hurdlePad.z, facing: -Math.PI / 2 },
+    requested: { x: hurdlePad.x - 2, y: hurdlePad.y + ATHLETICS_PLAYER_EYE_HEIGHT + rise, z: hurdlePad.z, facing: -Math.PI / 2 },
+    elapsedMs: 300, maxSpeed: 22, obstacles: getAthleticsObstacles(), groundY: hurdlePad.y,
+    eyeHeight: ATHLETICS_PLAYER_EYE_HEIGHT, mapId: ATHLETICS_ARENA_MAP_ID
+  });
+  assert.equal(crossHurdle(0).blocked, true);
+  assert.equal(crossHurdle(2).x, hurdlePad.x - 2);
+  const slalomPad = ATHLETICS_STADIUM_COURSE.surfaces[46]!;
+  const passPost = (offset: number) => resolveAuthoritativeMovement({
+    current: { x: slalomPad.x + offset, y: slalomPad.y + ATHLETICS_PLAYER_EYE_HEIGHT, z: slalomPad.z - 3, facing: 0 },
+    requested: { x: slalomPad.x + offset, y: slalomPad.y + ATHLETICS_PLAYER_EYE_HEIGHT, z: slalomPad.z + 3, facing: 0 },
+    elapsedMs: 300, maxSpeed: 22, obstacles: getAthleticsObstacles(), groundY: slalomPad.y,
+    eyeHeight: ATHLETICS_PLAYER_EYE_HEIGHT, mapId: ATHLETICS_ARENA_MAP_ID
+  });
+  assert.equal(passPost(0).blocked, true);
+  assert.equal(passPost(4).z, slalomPad.z + 3);
+  assert.equal(passPost(-4).z, slalomPad.z + 3);
 });
 
 test("Athletics route and shortcuts fit the reliable classic jump envelope", () => {
@@ -180,6 +157,18 @@ test("Athletics route and shortcuts fit the reliable classic jump envelope", () 
     assert.ok(Number.isFinite(envelope.airGap), `${transition.id} must reference two authored surfaces`);
     if (envelope.flightTimeSeconds === undefined) {
       assert.ok(transition.movingObstacleId, `${transition.id} needs a named lift above the jump apex`);
+      continue;
+    }
+    const shuttle = course.movingObstacles.find((entry) => entry.id === transition.movingObstacleId && entry.kind === "platform");
+    if (shuttle) {
+      const from = course.surfaces.find((entry) => entry.id === transition.fromSurfaceId)!;
+      const to = course.surfaces.find((entry) => entry.id === transition.toSurfaceId)!;
+      for (const fraction of [.25, .5, .75]) {
+        const position = getAthleticsMovingObstaclePosition(shuttle, shuttle.periodMs * fraction - (shuttle.phaseMs ?? 0));
+        const deck = { ...position, y: position.y + shuttle.height, width: shuttle.width, depth: shuttle.depth };
+        assert.ok(getAthleticsSurfaceAirGap(from, deck) <= getAthleticsJumpHorizontalReach(deck.y - from.y));
+        assert.ok(getAthleticsSurfaceAirGap(deck, to) <= getAthleticsJumpHorizontalReach(to.y - deck.y));
+      }
       continue;
     }
     assert.ok(
@@ -257,7 +246,7 @@ test("Athletics server support accepts a legitimate player-radius edge landing",
 });
 
 test("Athletics recovers racers stranded below a raised route", () => {
-  const raisedProgress = 0.1;
+  const raisedProgress = getAthleticsSurfaceRouteProgress(22);
   const routePoint = getAthleticsPointAtProgress(raisedProgress);
   assert.ok(routePoint.y > 2);
   assert.equal(isAthleticsBelowRecoverableRoute({ y: ATHLETICS_PLAYER_EYE_HEIGHT }, raisedProgress), true);
@@ -299,7 +288,7 @@ test("route projection is monotonic for authored points and rejects off-course s
   });
   assert.ok(isAthleticsOnRoute(getAthleticsPointAtProgress(0.6)));
   assert.equal(isAthleticsOnRoute({ x: 220, z: 220 }), false);
-  const summitApproach = getAthleticsPointAtProgress(0.96);
+  const summitApproach = getAthleticsPointAtProgress(getAthleticsSurfaceRouteProgress(63));
   assert.equal(isAthleticsOnRoute({ ...summitApproach, y: summitApproach.y + 4.21 }), true);
   assert.equal(isAthleticsOnRoute({ ...summitApproach, y: 0 }), false);
 });
@@ -314,6 +303,7 @@ test("authored shortcuts and moving platforms remain collision-backed and route-
 
   const expectedStaticProxyCount = 4
     + ATHLETICS_STADIUM_COURSE.surfaces.length
+    + (ATHLETICS_STADIUM_COURSE.challenges?.length ?? 0)
     + ATHLETICS_STADIUM_COURSE.shortcuts.reduce((total, branch) => total + branch.surfaces.length, 0);
   assert.equal(ATHLETICS_COLLISION_PROXIES.length, expectedStaticProxyCount);
 
@@ -363,7 +353,7 @@ test("physical support classification covers main, shortcut, moving, crouch, and
 
   assert.deepEqual(
     course.checkpoints.map((_, index) => getAthleticsCheckpointSurfaceIndex(index, course)),
-    [10, 21, 32, 43, 54, 64]
+    [10, 21, 32, 43, 54, 64, 137]
   );
 });
 
@@ -387,14 +377,43 @@ test("start lanes stay on the route and respawns land just behind the last safe 
 test("forty-player Athletics starts never overlap", () => {
   const starts = Array.from({ length: 40 }, (_, index) => getAthleticsStartPosition(index, 40));
   assert.equal(new Set(starts.map((start) => `${start.x.toFixed(3)}:${start.z.toFixed(3)}`)).size, 40);
-  starts.forEach((start) => assert.ok(isAthleticsOnRoute(start)));
+  starts.forEach((start, index) => {
+    assert.ok(isAthleticsOnRoute(start));
+    assert.equal(getAthleticsPhysicalSupport(start).surfaceIndex, 0);
+    for (const other of starts.slice(index + 1)) {
+      assert.ok(Math.hypot(start.x - other.x, start.z - other.z) >= ATHLETICS_PLAYER_RADIUS * 2);
+    }
+  });
 });
 
-test("finish is earned by reaching the summit, while the legacy predicate remains compatible", () => {
-  assert.equal(isAthleticsCourseFinish(getAthleticsPointAtProgress(0.99)), true);
+test("the circuit finish is the start runway after the return stage", () => {
+  assert.equal(isAthleticsCourseFinish(getAthleticsPointAtProgress(0)), true);
+  assert.equal(isAthleticsCourseFinish(getAthleticsPointAtProgress(0.99)), false);
   assert.equal(isAthleticsCourseFinish(getAthleticsPointAtProgress(0.8)), false);
-  assert.equal(isAthleticsFinish(getAthleticsPointAtProgress(0.99), 6, 7), false);
-  assert.equal(isAthleticsFinish(getAthleticsPointAtProgress(0.99), 7, 7), true);
+  assert.equal(isAthleticsFinish(getAthleticsPointAtProgress(0), 6, 7), false);
+  assert.equal(isAthleticsFinish(getAthleticsPointAtProgress(0), 7, 7), true);
+});
+
+test("connected runway and return seams support the player while outside edges remain unsafe", () => {
+  for (const point of [{ x: -18, z: 123 }, { x: -36, z: 123 }, { x: -24, z: 105 }, { x: 0, z: 110 }]) {
+    assert.equal(getAthleticsPhysicalSupport({ ...point, y: ATHLETICS_PLAYER_EYE_HEIGHT }).kind, "main_surface");
+  }
+  assert.equal(getAthleticsPhysicalSupport({ x: 0, z: 137, y: ATHLETICS_PLAYER_EYE_HEIGHT }).kind, "park_floor");
+});
+
+test("stage seven descends to a touching finish join without a teleport or jump gap", () => {
+  const course = ATHLETICS_STADIUM_COURSE;
+  assert.equal(course.closedLoop, true);
+  assert.equal(course.finishSurfaceIndex, 0);
+  for (let index = 64; index < course.surfaces.length - 1; index += 1) {
+    const from = course.surfaces[index]!;
+    const to = course.surfaces[index + 1]!;
+    assert.ok(to.y <= from.y);
+    assert.ok(from.y - to.y <= .8);
+    assert.ok(getAthleticsSurfaceAirGap(from, to) <= .03);
+  }
+  assert.equal(course.transitions.at(-1)?.toSurfaceId, course.surfaces[0]!.id);
+  assert.equal(getAthleticsSurfaceAirGap(course.surfaces.at(-1)!, course.surfaces[0]!), 0);
 });
 
 test("Athletics answers refill movement energy and movement/jumps spend it", () => {

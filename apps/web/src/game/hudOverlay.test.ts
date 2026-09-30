@@ -118,7 +118,7 @@ test("athletics HUD keeps only the four active-race metrics", () => {
   assert.match(html, /1st \/ 1/u);
   assert.match(html, /1 \/ 3/u);
   assert.match(html, /7:00/u);
-  assert.match(html, /JUMP ONTO THE GLOWING PLATFORMS/u);
+  assert.match(html, /SPRINT FORWARD · JUMP THE STRIPED HURDLES/u);
   assert.match(html, /SPACE — JUMP/u);
   assert.doesNotMatch(html, /Course route guide|Jump to the first platform|Skyline Adventure Park|Park Entrance|Jump forward|Questions|Checkpoints|Answer Question|Correct answers add/u);
 });
@@ -201,7 +201,7 @@ test("Athletics control hint matches full-speed movement and Shift crouch", () =
   assert.doesNotMatch(html, /Shift sprints/iu);
 });
 
-test("athletics onboarding fades after the opening jump sequence", () => {
+test("athletics onboarding fades after the opening hurdle sequence", () => {
   const html = renderHud({
     athleticsHud: {
       startRemainingSeconds: 0,
@@ -219,5 +219,5 @@ test("athletics onboarding fades after the opening jump sequence", () => {
       status: "racing"
     }
   });
-  assert.doesNotMatch(html, /JUMP ONTO THE GLOWING PLATFORMS/u);
+  assert.doesNotMatch(html, /SPRINT FORWARD · JUMP THE STRIPED HURDLES/u);
 });

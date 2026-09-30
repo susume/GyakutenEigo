@@ -16,7 +16,7 @@ test("Athletics declares a small, lazy attraction asset set", () => {
   assert.ok(ATHLETICS_IMPORTED_ASSETS.every((asset) => asset.fallbackObjectNames?.length));
 
   const ferris = ATHLETICS_IMPORTED_ASSETS.find((asset) => asset.id === "athletics-ferris-wheel");
-  assert.deepEqual(ferris?.position, [-72, 35.2, 28]);
+  assert.deepEqual(ferris?.position, [55, 35.2, -40]);
   assert.equal(ferris?.scale, 52);
   assert.equal(ferris?.rotationY, 0);
 
@@ -24,7 +24,7 @@ test("Athletics declares a small, lazy attraction asset set", () => {
   assert.equal(supports.length, 2);
   assert.ok(supports.every((asset) => asset.minimumDetail === 1));
   assert.ok(supports.every((asset) => asset.position[1] === 0));
-  assert.ok(supports.every((asset) => asset.scaleVector?.[1] === 42));
+  assert.ok(supports.every((asset) => asset.scaleVector?.[1] === 8));
 });
 
 test("Athletics GLB outputs are embedded binary files within the scenery budget", () => {

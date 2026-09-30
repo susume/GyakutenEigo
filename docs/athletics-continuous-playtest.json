@@ -1,0 +1,14 @@
+{
+  "method": "Browser automation using the actual student joystick, jump, look, question and recovery controls. No player position or checkpoint injection.",
+  "checkpointsCompleted": 7,
+  "completedLaps": 1,
+  "nextLapSupportedSurface": 1,
+  "status": "racing",
+  "questionIndex": 13,
+  "movementEpochAtSummit": 21,
+  "movementEpochAfterLap": 21,
+  "additionalFallsDuringStageSeven": 0,
+  "totalFallsIncludingDriverRetries": 21,
+  "browserErrors": [],
+  "scope": "Full circuit followed by movement onto the first landing of lap two. Reloads resumed the same student account during driver debugging. This is not classroom testing with students."
+}

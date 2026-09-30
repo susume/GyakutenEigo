@@ -2,7 +2,7 @@ import assert from "node:assert/strict";
 import type { AddressInfo } from "node:net";
 import test from "node:test";
 import { io as createSocket, type Socket as ClientSocket } from "socket.io-client";
-import { getAthleticsPointAtProgress, getAthleticsRecoveryPosition, getAthleticsRouteTangent } from "@quizstrike/shared";
+import { getAthleticsPhysicalSupport, getAthleticsPointAtProgress, getAthleticsRecoveryPosition, getAthleticsRouteTangent } from "@quizstrike/shared";
 
 type ServerRuntime = typeof import("./index.js");
 type SessionFixture = {
@@ -265,12 +265,12 @@ test("Athletics creation, start gate, wrong-answer retry, skip prevention, and D
   assert.equal(noWeapons.response.status, 400);
 
   const progressBeforeFall = beforeGo.athletics?.routeProgress ?? 0;
-  // Settling on the visible park floor between the first two landings must
+  // Settling on the visible park floor beside the opening runway must
   // enter recovery too; a student must never have to walk back from ground.
   socketConnection.socket.emit("player_position", {
-    x: -2,
+    x: 0,
     y: 4.21,
-    z: 113,
+    z: 137,
     facing: 0
   });
   const recoverySnapshot = await waitUntil(
@@ -461,6 +461,29 @@ test("Athletics creation, start gate, wrong-answer retry, skip prevention, and D
   assert.equal(typeof alphaReport.raceFalls, "number");
 });
 
+test("movement refill questions keep cycling after the quiz pool is exhausted", { timeout: 20_000 }, async () => {
+  const teacher = await createTeacherWithQuiz();
+  const session = await createSession(teacher);
+  const student = await joinSession(session.sessionCode, "Repeat Refills");
+  await api(`/api/sessions/${session.sessionCode}/start`, { method: "POST", teacherToken: teacher.token });
+  let questionId = student.question!.id;
+  const seen = new Set<string>();
+  for (let answerCount = 1; answerCount <= 7; answerCount += 1) {
+    seen.add(questionId);
+    const answered = await api<{ result: { nextQuestion?: { id: string }; player: PlayerFixture } }>(
+      `/api/sessions/${session.sessionCode}/players/${student.player.id}/answer`,
+      { method: "POST", playerToken: student.playerToken, body: { questionId, selectedChoice: "A" } }
+    );
+    assert.equal(answered.response.status, 200);
+    assert.equal(answered.body.result.player.athletics?.questionIndex, answerCount);
+    assert.ok(answered.body.result.nextQuestion?.id, "a long circuit must never run out of refill questions");
+    assert.ok((answered.body.result.player.energy ?? 0) <= 1000);
+    questionId = answered.body.result.nextQuestion!.id;
+    await delay(600);
+  }
+  assert.equal(seen.size, 3);
+});
+
 test("Chaos Climb answers charge a usable ability", { timeout: 20_000 }, async () => {
   const teacher = await createTeacherWithQuiz();
   const session = await createSession(teacher, 1, "chaos-climb");
@@ -493,7 +516,7 @@ test("Chaos Climb answers charge a usable ability", { timeout: 20_000 }, async (
   }
 });
 
-test("two-lap race keeps players independent, preserves the timer, and finishes only after the final lap", { timeout: 30_000 }, async () => {
+test("two-lap race keeps players independent, preserves the timer, and finishes only after the final lap", { timeout: 60_000 }, async () => {
   const teacher = await createTeacherWithQuiz();
   const session = await createSession(teacher, 2);
   assert.equal(session.settings.athleticsCourseLaps, 2);
@@ -518,11 +541,20 @@ test("two-lap race keeps players independent, preserves the timer, and finishes 
 
   const afterFirstLap = await waitUntil(
     async () => (await api<{ session: SessionFixture }>(`/api/sessions/${session.sessionCode}`, { playerToken: human.playerToken })).body.session,
-    (snapshot) => (snapshot.players.find((player) => player.id === botId)?.athletics?.completedLaps ?? 0) >= 1
+    (snapshot) => (snapshot.players.find((player) => player.id === botId)?.athletics?.completedLaps ?? 0) >= 1,
+    25_000
   );
   const botAfterFirstLap = afterFirstLap.players.find((player) => player.id === botId)!;
   const humanAfterFirstLap = afterFirstLap.players.find((player) => player.id === human.player.id)!;
   assert.equal(botAfterFirstLap.athletics?.status, "racing");
+  assert.equal(botAfterFirstLap.athletics?.checkpointIndex, 0);
+  assert.equal(botAfterFirstLap.athletics?.routeProgress, 0);
+  assert.equal(botAfterFirstLap.athletics?.lapTransitionUntil, undefined, "crossing the line never locks movement");
+  assert.equal(botAfterFirstLap.athletics?.movementEpoch ?? 0, 0, "lap changes must not reset movement prediction");
+  assert.notEqual(botAfterFirstLap.z, started.body.session.players.find((entry) => entry.id === botId)!.z, "racers keep their crossing position rather than teleporting to their grid lane");
+  assert.equal(getAthleticsPhysicalSupport({ x: botAfterFirstLap.x!, y: botAfterFirstLap.y!, z: botAfterFirstLap.z! }).surfaceIndex, 0);
+  assert.equal(humanAfterFirstLap.x, started.body.session.players.find((entry) => entry.id === human.player.id)!.x);
+  assert.equal(humanAfterFirstLap.z, started.body.session.players.find((entry) => entry.id === human.player.id)!.z);
   assert.equal(humanAfterFirstLap.athletics?.completedLaps, 0);
 
   const rejoined = await api<JoinedPlayer>(`/api/sessions/${session.sessionCode}/players/${human.player.id}/rejoin`, { playerToken: human.playerToken });
@@ -543,6 +575,8 @@ test("two-lap race keeps players independent, preserves the timer, and finishes 
   });
   const finishedBot = afterFinish.players.find((player) => player.id === botId)!;
   assert.equal(finishedBot.athletics?.completedLaps, 2);
+  assert.equal(finishedBot.athletics?.lapTransitionUntil, undefined);
+  assert.equal(getAthleticsPhysicalSupport({ x: finishedBot.x!, y: finishedBot.y!, z: finishedBot.z! }).surfaceIndex, 0);
   assert.equal(afterFinish.athletics?.finishOrder.filter((playerId) => playerId === botId).length, 1);
   assert.ok(Date.now() >= officialStartAt);
 });

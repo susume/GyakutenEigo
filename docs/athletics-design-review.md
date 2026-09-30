@@ -1,164 +1,148 @@
-# QuizStrike Athletics design review
+# QuizStrike Athletics circuit redesign
 
 30 September 2026. Audience: upper elementary through high school.
 
-This review is based on the authored course, shared jump/collision rules,
-authoritative server runtime, student and teacher interfaces, automated
-gameplay tests, and desktop/tablet browser captures. It is an implementation
-review; student playtesting has not been conducted.
+The course has been rebuilt, including its actual walkable geometry, shared
+collision, moving obstacles, and navigation. This replaces the previous
+stacked attraction route. The review uses code, physics checks, server
+integration tests, and desktop/tablet browser captures. A browser-controlled
+student session exercises the same joystick, jump, and question controls
+available to students; classroom playtesting with students remains separate.
 
-![Updated course at the starting landing](athletics-upgrade-preview.png)
+![The rebuilt course](athletics-redesign-overview.png)
 
-## Course assessment
+## Route and challenge design
 
-Skyline Adventure Park has a coherent climbing fantasy: learn near the
-entrance, weave through the midway, cross attraction decks, traverse the
-Ferris/coaster structures, ride the tower, and reach the skyline summit.
-The common course lets a class learn the geography in Classic and reuse
-that knowledge in the other modes.
+The main course forms a rectangular spiral around the stadium before turning
+inward toward the summit. Each zone occupies a separate strip. No two
+non-adjacent main-route footprints overlap, except the intentional last-to-first join.
+Players see the upcoming challenge rather than another route overhead.
 
-Measured from the shared course definition:
+| Zone | Athletic task | Teaching purpose |
+| --- | --- | --- |
+| 1. Hurdle Sprint | Connected broad runway with four solid low hurdles | Practise movement and jump timing before exposed gaps |
+| 2. Balance Canyon | Connected four-unit-wide wooden beams with gentle rises | Practise steering and controlled movement |
+| 3. Zigzag Steps | Alternating stepping stones followed by a short stair run | Combine directional jumps and a brief running recovery |
+| 4. Timing Traverse | Two necessary moving shuttles and a sliding gate | Board, ride, jump off, and judge a moving opening |
+| 5. Power Stairs | Broad ascending terraces, three solid slalom posts, and a lift | Combine climbing with steering around obstacles |
+| 6. Precision Summit | Longer exposed jumps, a bend, and the final lift | Apply the learned skills at the summit lookout |
+| 7. Skyline Descent | Wide connected descending stairs, three slalom obstacles, and a level return lane | Control speed and steering before crossing into the next lap |
 
-| Element | Current course |
+The opening is deliberately connected: difficulty comes from hurdles, not
+invisible gaps. Balance beams introduce exposure before precision jumping.
+Large checkpoint landings provide breaks between tasks. Three gold branches
+remain optional: stair corner cut, expert shuttle bypass, and summit corner
+cut. They rejoin the main course without skipping a checkpoint.
+
+| Geometry | Redesigned course |
 | --- | --- |
-| Main route | 65 landings, 64 transitions, approximately 1,325 horizontal world units |
-| Chapters / checkpoints | 6 / 6 |
-| Height | 0 to 79 world units |
-| Optional branches | 3 shortcuts |
-| Moving interactions | 6 |
-| Genuine authored jump transitions | 57, all with positive air gaps |
-| Median / maximum ordinary gap | 6.98 / 8.87 units |
-| Maximum shortcut gap | 8.92 units |
-| Average landing footprint | 14.97 × 12.77 units |
-| Standard jump | 15.5 upward velocity, 36 gravity, 14.8 horizontal speed |
+| Main landings / transitions | 138 / 138, including the closing join |
+| Horizontal route length | Approximately 1,140 units |
+| Height | 0 to 46 units |
+| Checkpoints / optional branches | 7 / 3 |
+| Authored jump transitions | 32, each with a positive air gap |
+| Other transitions | 106 connected, checkpoint, or lift transitions |
+| Moving interactions | 2 shuttles, 1 sliding gate, 2 vertical lifts |
+| Solid athletic obstacles | 4 hurdles and 6 slalom posts |
+| Balance beam width | 4 units |
+| Median jump air gap | 4 units |
+| Largest shortcut gap | Approximately 10.30 units |
 
-The geometry validator and jump-envelope tests pass. The route already has
-an accessible opening, large chapter checkpoints, and optional narrower
-shortcuts. The largest problems were communication and hazard fairness:
-stacked paths make projected progress an unreliable landing guide, and fast
-surprise hazards can punish a correct jump.
+The two twenty-unit shuttle gaps require an intermediate moving deck. They
+are not treated as single jumps: both boarding and exit jumps are validated
+at each shuttle's minimum, centre, and maximum position. The cyan guide
+points to that deck before boarding and to the exit after boarding. Lift
+boarding and exit heights use the same slab top as server collision.
 
-## Implemented map changes
+## Readability and scenery
 
-- **Follow the next actual landing.** Guidance now follows authored
-  transitions from the surface under the player. The old `progress + 0.018`
-  lookup could skip a nearby landing, mix an optional branch into the main
-  path, or change targets during a jump. Guidance holds its target in flight,
-  follows a shortcut after entering it, and hides at the finish.
-- **Teach lift boarding.** The Drop Tower and final summit transitions rise
-  beyond the standard jump apex. Their cyan marker follows the lift until
-  boarding; a rider then sees the exit pad. This avoids presenting an
-  unreachable static platform as the next jump.
-- **Make direction persistent.** Cream chevrons point toward each landing's
-  exit, including Low quality. Shortcut chevrons are gold. Shape provides
-  direction without requiring colour recognition.
-- **Make risk a choice.** Each shortcut entrance has a gold sign explaining
-  that it has harder jumps. The normal route remains the default guide.
-- **Improve chapter readability.** Checkpoint signs face the course tangent,
-  and normal platform edge colours consistently follow their chapter.
+- Bright district tops and edges, named zone signs, and cream exit chevrons
+  support recognition without relying solely on the floating arrow.
+- The guide follows physical support and actual adjacent transitions, holds
+  its target during a jump, and follows an optional branch once selected.
+- Raised landings have structural supports, including Low quality.
+- The Ferris wheel and coaster now occupy the central infield. Their
+  imported models and procedural fallbacks both use the new positions.
+- Perimeter rails, stands, and trees have moved away from the new lanes.
+- The obsolete Drop Tower structure has been removed from the route.
+- The lobby introduces the seven tasks before the host starts the race.
+- Touch steering uses the joystick's actual vector and strength, allowing
+  controlled movement on beams and landings. Connected stair risers step
+  automatically; real jump gaps and tall obstacles still require jumps.
+- Grounded jump presses survive a slow render frame. Stationary Athletics
+  positions are confirmed every 750 ms so authoritative landings and fall
+  recovery can settle after movement clamping.
 
-All cues are decorative. The established surfaces, collision, checkpoint
-validation, energy economy, and anti-skip authority remain the gameplay
-contract. Permanent chevrons use the existing static batching system.
+Existing local GLB assets are reused. This redesign adds no external asset
+downloads or new licensing requirements. The new athletic obstacles are
+procedural and have matching collision in the client and server.
 
-## Mode assessment and changes
+![Top-down route separation](athletics-redesign-top-down.png)
 
-| Mode | Classroom purpose | Implemented improvement |
-| --- | --- | --- |
-| Classic | Learn the route and build movement confidence | Reliable landing/lift cues, shortcut risk signs, a three-step lobby briefing, and checkpoint-based unfinished results |
-| Zeus | Practise reacting while maintaining a jump rhythm | Longer warning windows, a fixed full-size hit ring plus a closing countdown ring, and vertical hit separation |
-| Hunters & Runners | Combine station strategy with runner movement | Hunters are displayed separately from race ranks, with station, hits, and points; final Hunter results show their contribution |
-| Chaos Climb | Use learned movement under changing pressure | Advance spawn warnings, local hazard travel, consistent route-distance sampling, recognisable objects, and wind that preserves required jump speed |
+![The student view at the hurdle runway](athletics-upgrade-preview.png)
 
-### Zeus
+## Continuous laps
 
-| Tier | Warning before / after | Cooldown before / after |
-| --- | --- | --- |
-| Lower | 1.8 / 2.4 seconds | 7.8 / 8.2 seconds |
-| Middle | 1.5 / 2.1 seconds | 6.1 / 6.5 seconds |
-| Upper | 1.25 / 1.8 seconds | 4.7 / 5.2 seconds |
-| Rage | 1.05 / 1.6 seconds | 3.0 / 4.2 seconds |
+The summit is checkpoint six. Players turn onto a physical connector,
+descend 64 broad stair treads, steer past three obstacles, and turn onto a
+level return lane. Checkpoint seven marks the end of that lane. Its last
+landing touches the original start runway, with a checkered start/finish
+stripe and a “KEEP RUNNING” sign.
 
-Rage still asks for faster reactions and affects up to two targets. The
-warning's outer ring now displays the entire authoritative strike radius;
-the inner ring communicates the remaining time. The old ring initially
-showed only 78% of that radius. Ring placement uses player eye height to
-align a standing target's warning with the landing.
+After validating all seven checkpoints, the server records a lap when the
+player reaches the start runway. If laps remain, it resets only lap progress
+and checkpoint bookkeeping. Position, facing, jumping state, movement epoch,
+energy, active question, and the overall race timer continue. There is no
+teleport, lap countdown, movement lock, or question modal at the crossing.
+On the final required lap, the player finishes at this same bottom line.
 
-The strike check now rejects targets more than five vertical units from
-their warning snapshot. Standard jumps remain within the strike column;
-crossing to another storey of the stacked course is a legitimate escape.
-Answering to break a freeze and automatic freeze expiry remain available.
+Refill questions cycle throughout the race, even when a student has answered
+every question in a short quiz pool. Connected floor seams remain supported
+when the player straddles two panels; outer edges remain real falls.
 
-### Chaos Climb
+## Game modes
 
-Every wave is published **1.6 seconds before its hazards activate**. Amber
-rings mark the starting locations and arrows show the direction of travel.
-The server skips impact checks during this warning. Rendering also separates
-the warning from the active object and hides expired objects.
+Classic, Zeus, Hunters & Runners, and Chaos Climb all use the rebuilt course.
+The previously implemented mode improvements remain: clearer briefings,
+full-radius Zeus warning rings and reaction windows, separate hunter
+contribution/results, advance Chaos hazard warnings, and local hazard paths.
+Those paths are sampled from the new shared route rather than old map
+coordinates. Checkpoint/finish validation and fall recovery remain server
+authoritative.
 
-Hazards now traverse 4.5–7% of the route instead of 12–21%, over approximately
-4.5–6.3 seconds instead of 2.5–4.1 seconds. This creates local encounters
-across a few jumps, with time to make a movement decision. Seeds, event
-variety, shields, and the 18-object cap remain in use.
+## Review and validation
 
-Path sampling now uses horizontal segment lengths, matching course progress.
-Previously it treated every segment as the same length, causing different
-positions and variable physical speeds on unequal segments. Wind affects
-knockback without reducing normal movement speed: slowing a racer during a
-mandatory gap can make an otherwise valid jump fail.
+Geometry tests cover non-crossing footprints, standard jump reach, shuttle
+boarding/exit at motion extremes, lift access, every main landing and recovery
+position, shortcut support, and forty-player start spacing. Movement tests
+prove that a hurdle blocks grounded movement and permits a jump, while a
+slalom post blocks the centre line but permits passing on either side.
 
-Ducks have heads, beaks and eyes; carts have wheels; barrels are cylinders;
-bumpers have rings; giant balls are spheres at their actual authored radius.
-These procedural models need no additional downloads or third-party licences.
-Existing imported park scenery continues to load through the existing asset
-kit and quality settings.
+Server integration tests cover recovery, stale movement, checkpoint skip
+prevention, repeated refill questions, and independent two- and three-lap races. Browser checks cover
+all four mode briefings/rendering and iPad controls. The production build and
+unit suites are also checked. Captures show implemented geometry rather
+than concept art.
 
-### Student feedback
+Final validation: 627 automated tests passed (one existing test skipped),
+four desktop mode checks and two iPad browser checks passed, and the
+production build passed.
 
-The lobby gives each mode three concrete rules and accurate keyboard/touch
-controls before GO. Hunters are no longer labelled unsuccessful racers for
-doing their assigned job. Unfinished runners see checkpoints reached and a
-plain "Time up" result, alongside their quiz report.
+Run the development server and open **/athletics-lab** for an orbitable review
+of the actual builder, imported scenery, and seven zone cameras. This viewer
+is excluded from production. Use a normal Athletics session to play the
+course and assess classroom difficulty; timing and enjoyment still need
+student playtesting.
 
-Tablet screenshot review also exposed the mode action bar overlapping Answer
-and the joystick. Touch mode now uses the existing touch HUD/actions, hides
-the duplicate mode bar, and reserves a separate bottom row for the menu.
-The tablet test taps Answer and verifies that its question actually opens.
+The browser-controlled student session completed all seven checkpoints,
+crossed the bottom finish, and moved onto the first landing of lap two.
+It used the real joystick, jump, question, recovery, and look controls without
+injecting coordinates or checkpoint progress. Stage seven added no falls;
+the movement epoch and active refill question continued across the lap.
+Earlier stages required driver retries and the same account was resumed
+during debugging; this is a functional circuit check, not a student timing
+or difficulty study. See [the recorded outcome](athletics-continuous-playtest.json).
 
-## Verification
+![The connected seventh stage](athletics-continuous-stage7.png)
 
-- Full production build and web/e2e TypeScript checks pass.
-- Shared Athletics course, geometry, movement, mode and resource tests pass.
-- Navigation tests cover every main landing, all shortcut landings, both
-  required lifts, lift exits, airborne target retention, and the finish.
-- Visual tests cover warning-to-active-to-expired Chaos states, teardown,
-  Zeus ground alignment, the full hit radius, and the countdown ring.
-- The server suite passes: 173 passed, one existing skip. Its initial run
-  under concurrent verification had a two-lap timeout; the four Athletics
-  integration tests passed in isolation and the complete server rerun passed.
-- The shared suite passes: 146 tests. The web suite passes: 295 tests,
-  including all existing rendering/asset tests. All seven proxy tests pass.
-- Browser checks cover Classic, Zeus, Hunters & Runners, and Chaos Climb;
-  both tablet checks cover briefing fit, jump/crouch controls and opening a
-  movement-energy question by touch.
-
-Browser screenshots are written to Playwright's `apps/web/test-results/`
-output. The implementation has not been deployed.
-
-## Classroom validation still needed
-
-Automated checks establish correctness and basic presentation, not enjoyment
-or age suitability. A small mixed-skill classroom session should measure:
-
-- first-landing success and whether students can board each required lift;
-- completion and checkpoint reach by age and control device;
-- question time versus movement time, especially after repeated falls;
-- whether Zeus warnings are visible during a jump and Chaos warnings are
-  understood before the first hit;
-- whether Hunters feel useful and runners understand their role swap.
-
-The existing three-correct-answer fall recovery is retained. It deserves
-particular observation with younger learners: repeated falls can turn a
-movement challenge into a long sequence of recovery questions. Any future
-recovery/difficulty presets should be judged against those classroom results.
+![Student HUD and controls during lap two](athletics-continuous-student.png)

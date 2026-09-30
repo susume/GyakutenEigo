@@ -1,0 +1,10 @@
+.athletics-course-lab { height: 100dvh; display: flex; flex-direction: column; background: #102435; color: #ecf6fc; padding: 16px; gap: 10px; }
+.athletics-course-lab header span { font-size: 11px; letter-spacing: 2px; color: #7bf0ff; }
+.athletics-course-lab h1 { font-size: 26px; margin: 4px 0; }
+.athletics-course-lab p { margin: 0; color: #c2d8e5; font-size: 13px; }
+.athletics-course-lab nav { display: flex; flex-wrap: wrap; gap: 6px; }
+.athletics-course-lab button { background: #243e50; color: white; border: 1px solid #436073; padding: 7px 12px; border-radius: 8px; font-size: 12px; }
+.athletics-course-lab button[aria-pressed="true"] { background: #7bf0ff; color: #102435; }
+.athletics-course-view { flex: 1; min-height: 0; overflow: hidden; border-radius: 14px; }
+.athletics-course-view canvas { width: 100%; height: 100%; }
+.athletics-course-lab footer { font-size: 13px; color: #c2d8e5; }

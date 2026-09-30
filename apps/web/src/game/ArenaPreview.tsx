@@ -1,3 +1,4 @@
+import { seededRandom, makeCanvasTexture, makeLabelTexture } from "./arenaTextures";
 import { useCallback, useEffect, useMemo, useRef, useState, type PointerEvent as ReactPointerEvent } from "react";
 import * as THREE from "three";
 import {
@@ -54,6 +55,7 @@ import {
   isScopeKeyboardEvent,
   resolveCrouching,
   resolveMovementSpeed,
+  hasBufferedJump,
   resolveCombatPointerAction,
   shouldFireFromTouchGesture
 } from "./arenaInput";
@@ -160,158 +162,6 @@ const movementCode = (event: KeyboardEvent) => {
 };
 
 const lookCode = (event: KeyboardEvent) => event.code.startsWith("Arrow") ? event.code : "";
-
-const seededRandom = (seed: number) => {
-  let state = seed >>> 0;
-  return () => {
-    state = (state * 1664525 + 1013904223) >>> 0;
-    return state / 0xffffffff;
-  };
-};
-
-const makeCanvasTexture = (
-  kind: "floor" | "stone" | "wood" | "water" | "sand" | "metal",
-  accent = "#e8c67a",
-  resolution = 1024
-) => {
-  const textureResolution = Math.max(256, Math.round(resolution));
-  const canvas = document.createElement("canvas");
-  canvas.width = textureResolution;
-  canvas.height = textureResolution;
-  const ctx = canvas.getContext("2d")!;
-  ctx.scale(textureResolution / 1024, textureResolution / 1024);
-  const palettes = {
-    floor: ["#b9ab94", "#f2e7cf"],
-    stone: ["#bdb3a7", "#f1e9df"],
-    wood: ["#a99482", "#e8d5bd"],
-    water: ["#7eb8bd", "#ddfbff"],
-    sand: ["#c7b99e", "#f7ebcc"],
-    metal: ["#8d9a9e", "#e8eef0"]
-  } as const;
-  const gradient = ctx.createLinearGradient(0, 0, 1024, 1024);
-  gradient.addColorStop(0, palettes[kind][0]);
-  gradient.addColorStop(1, palettes[kind][1]);
-  ctx.fillStyle = gradient;
-  ctx.fillRect(0, 0, 1024, 1024);
-
-  const random = seededRandom({ floor: 17, stone: 31, wood: 47, water: 59, sand: 71, metal: 83 }[kind]);
-  ctx.globalAlpha = kind === "water" ? 0.08 : 0.16;
-  for (let index = 0; index < 1100; index += 1) {
-    const shade = Math.floor(105 + random() * 115);
-    ctx.fillStyle = kind === "water" ? `rgba(210,250,255,.8)` : `rgb(${shade},${shade},${shade})`;
-    ctx.fillRect(random() * 1024, random() * 1024, 1 + random() * 4, 1 + random() * 4);
-  }
-  ctx.globalAlpha = 1;
-
-  if (kind !== "water") {
-    ctx.strokeStyle = "rgba(255,255,255,.18)";
-    ctx.lineWidth = kind === "floor" || kind === "sand" ? 3 : 5;
-    const step = kind === "wood" ? 128 : kind === "metal" ? 512 : 256;
-    for (let pos = 0; pos <= 1024; pos += step) {
-      ctx.beginPath();
-      ctx.moveTo(pos, 0);
-      ctx.lineTo(pos, 1024);
-      ctx.moveTo(0, pos);
-      ctx.lineTo(1024, pos);
-      ctx.stroke();
-    }
-    if (kind === "stone") {
-      ctx.strokeStyle = "rgba(78,54,32,.24)";
-      ctx.lineWidth = 5;
-      for (let y = 128; y < 1024; y += 128) {
-        ctx.beginPath();
-        ctx.moveTo(0, y);
-        ctx.lineTo(1024, y);
-        ctx.stroke();
-        const offset = (y / 128) % 2 ? 128 : 0;
-        for (let x = offset; x < 1024; x += 256) {
-          ctx.beginPath();
-          ctx.moveTo(x, y - 128);
-          ctx.lineTo(x, y);
-          ctx.stroke();
-        }
-      }
-    }
-    if (kind === "sand" || kind === "floor") {
-      ctx.strokeStyle = "rgba(255,241,199,.2)";
-      ctx.lineWidth = 3;
-      for (let y = 48; y < 1024; y += 72) {
-        ctx.beginPath();
-        for (let x = 0; x <= 1024; x += 32) {
-          const waveY = y + Math.sin((x + y) * 0.018) * 8;
-          if (x === 0) ctx.moveTo(x, waveY);
-          else ctx.lineTo(x, waveY);
-        }
-        ctx.stroke();
-      }
-    }
-    if (kind === "metal") {
-      ctx.fillStyle = "rgba(240,250,252,.2)";
-      for (let y = 96; y < 1024; y += 256) {
-        for (let x = 96; x < 1024; x += 256) {
-          ctx.beginPath();
-          ctx.arc(x, y, 9, 0, Math.PI * 2);
-          ctx.fill();
-        }
-      }
-    }
-  } else {
-    ctx.strokeStyle = "rgba(190,250,255,.32)";
-    ctx.lineWidth = 8;
-    for (let pos = -200; pos < 1200; pos += 120) {
-      ctx.beginPath();
-      ctx.moveTo(pos, 180);
-      ctx.bezierCurveTo(pos + 80, 260, pos + 160, 120, pos + 240, 220);
-      ctx.stroke();
-    }
-  }
-
-  ctx.strokeStyle = accent;
-  ctx.globalAlpha = 0.25;
-  ctx.lineWidth = 12;
-  ctx.beginPath();
-  ctx.moveTo(120, 880);
-  ctx.lineTo(904, 880);
-  ctx.stroke();
-  ctx.globalAlpha = 1;
-
-  const texture = new THREE.CanvasTexture(canvas);
-  texture.colorSpace = THREE.SRGBColorSpace;
-  texture.wrapS = THREE.RepeatWrapping;
-  texture.wrapT = THREE.RepeatWrapping;
-  texture.repeat.set(kind === "floor" ? 16 : 3, kind === "floor" ? 14 : 3);
-  texture.anisotropy = 8;
-  return texture;
-};
-
-const makeLabelTexture = (
-  label: string,
-  color = "#ffffff",
-  background = "rgba(41, 28, 16, 0.78)",
-  resolution = 768
-) => {
-  const width = Math.max(128, Math.round(resolution));
-  const scale = width / 768;
-  const canvas = document.createElement("canvas");
-  canvas.width = width;
-  canvas.height = Math.max(64, Math.round(256 * scale));
-  const ctx = canvas.getContext("2d")!;
-  ctx.scale(scale, scale);
-  ctx.fillStyle = background;
-  ctx.strokeStyle = color;
-  ctx.lineWidth = 12;
-  ctx.roundRect(24, 24, 720, 208, 28);
-  ctx.fill();
-  ctx.stroke();
-  ctx.fillStyle = color;
-  ctx.font = "700 52px system-ui, sans-serif";
-  ctx.textAlign = "center";
-  ctx.textBaseline = "middle";
-  ctx.fillText(label, 384, 128, 660);
-  const texture = new THREE.CanvasTexture(canvas);
-  texture.colorSpace = THREE.SRGBColorSpace;
-  return texture;
-};
 
 const disposeObject = (object: THREE.Object3D) => {
   const geometries = new Set<THREE.BufferGeometry>();
@@ -773,6 +623,7 @@ export default function ArenaPreview({
       athleticsUpdate
     } = isAthleticsMode
       ? buildAthleticsStadiumScene({
+        requiredLaps: sessionRef.current?.athletics?.requiredLaps ?? 1,
           scene,
           renderer,
           isFps,
@@ -1347,6 +1198,7 @@ export default function ArenaPreview({
         renderer.domElement.dataset.playerX = playerPosition.x.toFixed(3);
         renderer.domElement.dataset.playerY = playerPosition.y.toFixed(3);
         renderer.domElement.dataset.playerZ = playerPosition.z.toFixed(3);
+        renderer.domElement.dataset.playerFacing = yaw.toFixed(5);
       };
       updateCamera();
 
@@ -1466,7 +1318,10 @@ export default function ArenaPreview({
         const turned = Math.abs(nextPosition.facing - lastSentPosition.facing);
         const postureChanged = nextPosition.crouching !== lastSentPosition.crouching
           || nextPosition.jumping !== lastSentPosition.jumping;
-        if (moved < 0.3 && movedVertically < 0.12 && turned < 0.08 && !postureChanged) return;
+        // Continue confirming a stationary Athletics landing so server-side
+        // movement clamping can settle onto it or complete fall recovery.
+        const athleticsHeartbeat = isAthleticsMode && currentTime - lastMoveEmitAt >= 750;
+        if (moved < 0.3 && movedVertically < 0.12 && turned < 0.08 && !postureChanged && !athleticsHeartbeat) return;
         lastMoveEmitAt = currentTime;
         lastSentPosition = nextPosition;
         if (controlsDisabledRef.current || inputPausedRef.current) return;
@@ -1504,7 +1359,7 @@ export default function ArenaPreview({
           );
         if (verticalVelocity > 0) return mappedGroundY;
         const footY = eyeY - floorEyeHeight;
-        const supportY = findFpsSupportSurfaceY(
+        let supportY = findFpsSupportSurfaceY(
           coverBoxes,
           x,
           z,
@@ -1512,6 +1367,14 @@ export default function ArenaPreview({
           footY,
           footY
         );
+        if (wasGrounded && verticalVelocity === 0) {
+          for (let index = 0; index < coverBoxes.length; index += 1) {
+            const source = collisionSources[index] as { stair?: boolean; style?: string } | undefined;
+            if (!source?.stair && source?.style !== "stair") continue;
+            const stepY = findFpsSupportSurfaceY([coverBoxes[index]!], x, z, PLAYER_RADIUS, footY - 0.8, footY + 0.8, 0);
+            if (stepY !== undefined && (supportY === undefined || stepY > supportY)) supportY = stepY;
+          }
+        }
         return supportY === undefined ? mappedGroundY : Math.max(mappedGroundY, supportY);
       };
 
@@ -1659,7 +1522,7 @@ export default function ArenaPreview({
         }
         const grounded = playerPosition.y <= groundEyeY + 0.02 && Math.abs(verticalVelocity) < 0.01;
         if (grounded) lastGroundedAt = currentTime;
-        const bufferedJump = jumpQueuedAt > 0 && currentTime - jumpQueuedAt <= jumpBufferMs;
+        const bufferedJump = hasBufferedJump(jumpQueuedAt, currentTime, grounded, jumpBufferMs);
         const canUseCoyoteTime = grounded || currentTime - lastGroundedAt <= coyoteTimeMs;
         if (bufferedJump && canUseCoyoteTime && !crouching) {
           const jumpHeightScale = getAthleticsJumpVelocityMultiplier({
@@ -1725,10 +1588,8 @@ export default function ArenaPreview({
         if (keys.has("KeyS")) movementVector.sub(forwardVector);
         if (keys.has("KeyD")) movementVector.add(rightVector);
         if (keys.has("KeyA")) movementVector.sub(rightVector);
-        if (touchMove.forward > 0) movementVector.add(forwardVector);
-        if (touchMove.forward < 0) movementVector.sub(forwardVector);
-        if (touchMove.right > 0) movementVector.add(rightVector);
-        if (touchMove.right < 0) movementVector.sub(rightVector);
+        movementVector.addScaledVector(forwardVector, touchMove.forward);
+        movementVector.addScaledVector(rightVector, touchMove.right);
         if (gamepadMove.forward > GAMEPAD_DEAD_ZONE) movementVector.add(forwardVector);
         if (gamepadMove.forward < -GAMEPAD_DEAD_ZONE) movementVector.sub(forwardVector);
         if (gamepadMove.right > GAMEPAD_DEAD_ZONE) movementVector.add(rightVector);
@@ -1751,7 +1612,8 @@ export default function ArenaPreview({
               });
             }
           }
-          movementVector.normalize().multiplyScalar(moveSpeed * delta);
+          if (movementVector.lengthSq() > 1) movementVector.normalize();
+          movementVector.multiplyScalar(moveSpeed * delta);
           nextPosition.copy(playerPosition).add(movementVector);
           nextPosition.x = clamp(nextPosition.x, -movementLimitX + PLAYER_RADIUS, movementLimitX - PLAYER_RADIUS);
           nextPosition.z = clamp(nextPosition.z, -movementLimitZ + PLAYER_RADIUS, movementLimitZ - PLAYER_RADIUS);
