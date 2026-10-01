@@ -1,3 +1,4 @@
+import { useSiteTranslation } from "../../ui/siteTranslation";
 import { useCallback, useEffect, useState } from "react";
 import { AlertTriangle, CheckCircle2, CircleHelp, LoaderCircle, RefreshCw, Wifi } from "lucide-react";
 import { io } from "socket.io-client";
@@ -193,6 +194,7 @@ const statusLabel = (check: DiagnosticCheck) => {
 };
 
 export default function NetworkDiagnosticsPage() {
+  const { t, locale } = useSiteTranslation();
   const [checks, setChecks] = useState(createInitialChecks);
   const [isRunning, setIsRunning] = useState(false);
   const [lastChecked, setLastChecked] = useState<Date | null>(null);
@@ -228,15 +230,15 @@ export default function NetworkDiagnosticsPage() {
     <main className="diagnostics-page">
       <header className="diagnostics-header">
         <div>
-          <p className="diagnostics-kicker">QuizStrike Classroom</p>
-          <h1>School device check</h1>
-          <p>Run this check on the school network before a class starts. It does not identify or track the student.</p>
+          <p className="diagnostics-kicker">{t("QuizStrike Classroom")}</p>
+          <h1>{t("School device check")}</h1>
+          <p>{t("Run this check on the school network before a class starts. It does not identify or track the student.")}</p>
         </div>
         <div className="diagnostics-actions">
-          <a href="/join">Join a game</a>
+          <a href="/join">{t("Join a game")}</a>
           <button type="button" className="primary" onClick={() => void runChecks()} disabled={isRunning}>
             {isRunning ? <LoaderCircle size={17} className="diagnostics-spin" aria-hidden="true" /> : <RefreshCw size={17} aria-hidden="true" />}
-            {isRunning ? "Checking…" : "Run check again"}
+            {isRunning ? t("Checking…") : t("Run check again")}
           </button>
         </div>
       </header>
@@ -244,13 +246,13 @@ export default function NetworkDiagnosticsPage() {
       <section className={`diagnostics-callout ${apiFailed ? "is-failed" : webSocketFailed ? "is-warning" : "is-ready"}`} aria-live="polite">
         {apiFailed ? <AlertTriangle size={22} aria-hidden="true" /> : webSocketFailed ? <CircleHelp size={22} aria-hidden="true" /> : <CheckCircle2 size={22} aria-hidden="true" />}
         <div>
-          <h2>{apiFailed ? "Game Server: FAILED" : webSocketFailed ? "Game Server: READY WITH A NETWORK LIMIT" : "Game Server: READY"}</h2>
+          <h2>{apiFailed ? t("Game Server: FAILED") : webSocketFailed ? t("Game Server: READY WITH A NETWORK LIMIT") : t("Game Server: READY")}</h2>
           <p>
             {apiFailed
-              ? "This device can open QuizStrike, but it cannot reach the multiplayer server. Please give this diagnostic result to your school IT administrator."
+              ? t("This device can open QuizStrike, but it cannot reach the multiplayer server. Please give this diagnostic result to your school IT administrator.")
               : webSocketFailed
-                ? "The school network may block WebSocket upgrades. QuizStrike can try HTTP long polling, but the connection may be less responsive."
-                : "The main game paths are reachable from this device. You can continue with a classroom join test."}
+                ? t("The school network may block WebSocket upgrades. QuizStrike can try HTTP long polling, but the connection may be less responsive.")
+                : t("The main game paths are reachable from this device. You can continue with a classroom join test.")}
           </p>
         </div>
       </section>
@@ -258,8 +260,8 @@ export default function NetworkDiagnosticsPage() {
       <section className="diagnostics-panel" aria-labelledby="diagnostics-results-heading">
         <div className="diagnostics-panel-heading">
           <div>
-            <p className="diagnostics-kicker">Connection and device results</p>
-            <h2 id="diagnostics-results-heading">What this device can reach</h2>
+            <p className="diagnostics-kicker">{t("Connection and device results")}</p>
+            <h2 id="diagnostics-results-heading">{t("What this device can reach")}</h2>
           </div>
           <Wifi size={24} aria-hidden="true" />
         </div>
@@ -267,10 +269,10 @@ export default function NetworkDiagnosticsPage() {
           {checks.map((check) => (
             <li key={check.key} data-testid={`diagnostic-${check.key}`} className={`diagnostic-result is-${check.state}`}>
               <div className="diagnostic-result-title">
-                <strong>{check.label}</strong>
-                <span className="diagnostic-status">{statusLabel(check)}</span>
+                <strong>{t(check.label)}</strong>
+                <span className="diagnostic-status">{t(statusLabel(check))}</span>
               </div>
-              <p>{check.detail}</p>
+              <p>{t(check.detail)}</p>
             </li>
           ))}
         </ul>
@@ -279,22 +281,22 @@ export default function NetworkDiagnosticsPage() {
       <section className="diagnostics-panel diagnostics-device-panel" aria-labelledby="diagnostics-device-heading">
         <div className="diagnostics-panel-heading">
           <div>
-            <p className="diagnostics-kicker">Basic device information</p>
-            <h2 id="diagnostics-device-heading">What the browser reports</h2>
+            <p className="diagnostics-kicker">{t("Basic device information")}</p>
+            <h2 id="diagnostics-device-heading">{t("What the browser reports")}</h2>
           </div>
         </div>
         <dl className="diagnostics-device-grid">
-          <div><dt>Device</dt><dd>{deviceLabel()}</dd></div>
-          <div><dt>Browser</dt><dd>{browserLabel()}</dd></div>
-          <div><dt>Viewport</dt><dd>{window.innerWidth} × {window.innerHeight} CSS pixels</dd></div>
-          <div><dt>Touch points</dt><dd>{navigator.maxTouchPoints}</dd></div>
+          <div><dt>{t("Device")}</dt><dd>{t(deviceLabel())}</dd></div>
+          <div><dt>{t("Browser")}</dt><dd>{t(browserLabel())}</dd></div>
+          <div><dt>{t("Viewport")}</dt><dd>{window.innerWidth} × {window.innerHeight}{" "}{t("CSS pixels")}</dd></div>
+          <div><dt>{t("Touch points")}</dt><dd>{navigator.maxTouchPoints}</dd></div>
         </dl>
-        <p className="diagnostics-privacy-note">Only basic capability information is shown. No device fingerprint or personal information is collected by this page.</p>
+        <p className="diagnostics-privacy-note">{t("Only basic capability information is shown. No device fingerprint or personal information is collected by this page.")}</p>
       </section>
 
       <footer className="diagnostics-footer">
-        <span>{lastChecked ? `Last checked ${lastChecked.toLocaleTimeString()}.` : "Checking now…"}</span>
-        <a href="/">Back to QuizStrike</a>
+        <span>{lastChecked ? t("Last checked {value0}.", { value0: lastChecked.toLocaleTimeString(locale) }) : t("Checking now…")}</span>
+        <a href="/">{t("Back to QuizStrike")}</a>
       </footer>
     </main>
   );

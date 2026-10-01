@@ -1,3 +1,4 @@
+import { useSiteTranslation } from "../../ui/siteTranslation";
 import { useEffect, useId, useState, type KeyboardEvent } from "react";
 import { ImageOff, Lightbulb, MessageCircle, X } from "lucide-react";
 import { speakingContext, speakingScenarioResources, speakingSupportSettings, type SpeakingActivity, type SpeakingContext } from "@quizstrike/shared";
@@ -32,6 +33,7 @@ export function SpeakingSupportPanel({
   onPhraseClick,
   disabled = false
 }: SpeakingSupportPanelProps) {
+  const { t } = useSiteTranslation();
   const generatedId = useId();
   const panelId = `speaking-support-${safeId(generatedId)}`;
   const context = speakingContext(activity);
@@ -64,9 +66,9 @@ export function SpeakingSupportPanel({
   };
 
   return (
-    <section className="speaking-support-panel" aria-label="Speaking support">
+    <section className="speaking-support-panel" aria-label={t("Speaking support")}>
       <div className="speaking-support-header">
-        <div className="speaking-support-tabs" role="tablist" aria-label="Speaking support modes">
+        <div className="speaking-support-tabs" role="tablist" aria-label={t("Speaking support modes")}>
           {tabs.map((tab) => {
             const selected = selectedTab === tab.id;
             return (
@@ -81,12 +83,12 @@ export function SpeakingSupportPanel({
                 onClick={() => onTabChange(tab.id)}
                 onKeyDown={handleTabKeyDown}
               >
-                <span>{tab.label}</span>
+                <span>{t(tab.label)}</span>
               </button>
             );
           })}
         </div>
-        <button className="speaking-support-close" type="button" onClick={onClose} aria-label="Close support panel">
+        <button className="speaking-support-close" type="button" onClick={onClose} aria-label={t("Close support panel")}>
           <X size={20} strokeWidth={2} aria-hidden="true" />
         </button>
       </div>
@@ -106,17 +108,18 @@ export function SpeakingSupportPanel({
 }
 
 function UsefulEnglishPanel({ activity, onPhraseClick, disabled }: { activity: SpeakingActivity; onPhraseClick?: (phrase: string) => void; disabled: boolean }) {
+  const { t } = useSiteTranslation();
   const resources = speakingScenarioResources(activity.scenarioResources);
   return (
     <div className="speaking-useful-panel-content">
       <div className="speaking-support-title-row">
         <div>
-          <span className="speaking-support-kicker">Language support</span>
-          <h2>Useful English</h2>
-          <p>Use these examples or your own words.</p>
+          <span className="speaking-support-kicker">{t("Language support")}</span>
+          <h2>{t("Useful English")}</h2>
+          <p>{t("Use these examples or your own words.")}</p>
         </div>
       </div>
-      <div className="speaking-student-expression-list" role="list" aria-label="Target expressions">
+      <div className="speaking-student-expression-list" role="list" aria-label={t("Target expressions")}>
         {activity.targetExpressions.map((expression) => (
           onPhraseClick ? (
             <button type="button" key={expression} onClick={() => onPhraseClick(expression)} disabled={disabled}>
@@ -134,7 +137,7 @@ function UsefulEnglishPanel({ activity, onPhraseClick, disabled }: { activity: S
       <SpeakingKeywords words={resources.usefulVocabulary} />
       <div className="speaking-useful-callout">
         <Lightbulb size={27} strokeWidth={1.7} aria-hidden="true" />
-        <span>Focus on your message. You do not need to use every expression or keyword.</span>
+        <span>{t("Focus on your message. You do not need to use every expression or keyword.")}</span>
       </div>
     </div>
   );
@@ -143,22 +146,25 @@ function UsefulEnglishPanel({ activity, onPhraseClick, disabled }: { activity: S
 type ReferenceItems = NonNullable<SpeakingActivity["scenarioResources"]>["referenceItems"];
 
 export function SpeakingKeywords({ words }: { words: string[] }) {
+  const { t } = useSiteTranslation();
   if (!words.length) return null;
-  return <section className="speaking-keywords" aria-label="Useful keywords">
-    <h3>Useful keywords</h3>
+  return <section className="speaking-keywords" aria-label={t("Useful keywords")}>
+    <h3>{t("Useful keywords")}</h3>
     <ul>{words.map((word, index) => <li key={`${index}-${word}`}>{word}</li>)}</ul>
   </section>;
 }
 
 export function SpeakingReferenceSheet({ items = [] }: { items?: ReferenceItems }) {
+  const { t } = useSiteTranslation();
   if (!items.length) return null;
-  return <section className="speaking-reference-sheet" aria-label="Task information">
-    <h3>Task information</h3>
-    <dl>{items.map((item, index) => <div key={`${index}-${item.label}`}><dt>{item.label}</dt>{item.detail && <dd>{item.detail}</dd>}</div>)}</dl>
+  return <section className="speaking-reference-sheet" aria-label={t("Task information")}>
+    <h3>{t("Task information")}</h3>
+    <dl lang="en">{items.map((item, index) => <div key={`${index}-${item.label}`}><dt>{item.label}</dt>{item.detail && <dd>{item.detail}</dd>}</div>)}</dl>
   </section>;
 }
 
 export function SpeakingContextPanel({ context, referenceItems = [] }: { context?: SpeakingContext; referenceItems?: ReferenceItems }) {
+  const { t } = useSiteTranslation();
   const [imageError, setImageError] = useState(false);
   const imageUrl = context?.imageUrl;
 
@@ -167,7 +173,7 @@ export function SpeakingContextPanel({ context, referenceItems = [] }: { context
   }, [imageUrl]);
 
   if (!context && !referenceItems.length) {
-    return <ContextEmptyState message="No context available for this activity." />;
+    return <ContextEmptyState message={t("No context available for this activity.")} />;
   }
 
   const alt = context?.alt ?? "Visual context for this speaking activity";
@@ -179,7 +185,7 @@ export function SpeakingContextPanel({ context, referenceItems = [] }: { context
           <img src={imageUrl} alt={alt} onError={() => setImageError(true)} decoding="async" />
         </figure>
       ) : context ? (
-        <ContextEmptyState message={imageUrl ? "Unable to load context image." : "No context image available for this activity."} />
+        <ContextEmptyState message={imageUrl ? t("Unable to load context image.") : t("No context image available for this activity.")} />
       ) : null}
       <SpeakingReferenceSheet items={referenceItems} />
     </div>
@@ -187,11 +193,12 @@ export function SpeakingContextPanel({ context, referenceItems = [] }: { context
 }
 
 function ContextEmptyState({ message }: { message: string }) {
+  const { t } = useSiteTranslation();
   return (
     <div className="speaking-context-empty" role="status">
       <span className="speaking-context-empty-icon"><ImageOff size={28} strokeWidth={1.7} aria-hidden="true" /></span>
-      <strong>{message}</strong>
-      <p>The speaking conversation is still ready whenever you are.</p>
+      <strong>{t(message)}</strong>
+      <p>{t("The speaking conversation is still ready whenever you are.")}</p>
     </div>
   );
 }

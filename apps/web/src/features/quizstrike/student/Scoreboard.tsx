@@ -1,3 +1,4 @@
+import { useSiteTranslation } from "../../../ui/siteTranslation";
 import { Trash2 } from "lucide-react";
 import { resolveAthleticsStandings, type PlayerSession, type SessionSettings, type Team } from "@quizstrike/shared";
 import { groupScoreboardRows } from "../../../scoreboardGroups";
@@ -24,29 +25,30 @@ export default function Scoreboard({
   onRemovePlayer?: (playerId: string) => void;
   removingPlayerId?: string | null;
 }) {
+  const { t } = useSiteTranslation();
   if (gameMode === "athletics") {
     const hunters = players.filter((racer) => racer.athletics?.role === "hunter");
     const standings = resolveAthleticsStandings(players.filter((racer) => racer.athletics?.role !== "hunter"));
     return (
       <div className="scoreboard athletics-scoreboard">
         <div className="panel-title">
-          <h2>Race standings</h2>
-          <span>{players.length} {players.length === 1 ? "racer" : "racers"}</span>
+          <h2>{t("Race standings")}</h2>
+          <span>{players.length} {players.length === 1 ? t("racer") : t("racers")}</span>
         </div>
-        <p className="scoreboard-mode-note">Finish order leads. Progress breaks ties until the tape.{hunters.length > 0 ? " Hunters earn hits at their stations." : ""}</p>
+        <p className="scoreboard-mode-note">{t("Finish order leads. Progress breaks ties until the tape.")}{hunters.length > 0 ? t(" Hunters earn hits at their stations.") : ""}</p>
         <div className="scoreboard-table-wrap">
           <table className="scoreboard-table">
-            <caption>Athletics Race standings</caption>
+            <caption>{t("Athletics Race standings")}</caption>
             <thead>
               <tr className="scoreboard-row scoreboard-head">
-                <th scope="col">Place</th>
-                <th scope="col">Racer</th>
-                <th scope="col">Laps</th>
-                <th scope="col">Checkpoint</th>
-                <th scope="col">Progress</th>
-                <th scope="col">Falls</th>
-                <th scope="col">Status</th>
-                {onRemovePlayer && <th scope="col" className="scoreboard-actions-heading">Actions</th>}
+                <th scope="col">{t("Place")}</th>
+                <th scope="col">{t("Racer")}</th>
+                <th scope="col">{t("Laps")}</th>
+                <th scope="col">{t("Checkpoint")}</th>
+                <th scope="col">{t("Progress")}</th>
+                <th scope="col">{t("Falls")}</th>
+                <th scope="col">{t("Status")}</th>
+                {onRemovePlayer && <th scope="col" className="scoreboard-actions-heading">{t("Actions")}</th>}
               </tr>
             </thead>
             <tbody>
@@ -56,18 +58,18 @@ export default function Scoreboard({
                 const athletics = racer.athletics;
                 return (
                   <tr className="scoreboard-row athletics-scoreboard-row" key={racer.id}>
-                    <th scope="row">{standing.status === "finished" ? `#${standing.rank}` : standing.rank}</th>
-                    <td>{racer.nickname}{racer.isBot ? " · test player" : ""}{racer.id === localPlayerId ? " · you" : ""}</td>
+                    <th scope="row">{standing.status === "finished" ? t("#{value0}", { value0: standing.rank }) : standing.rank}</th>
+                    <td>{racer.nickname}{racer.isBot ? t(" · test player") : ""}{racer.id === localPlayerId ? t(" · you") : ""}</td>
                     <td>{standing.completedLaps}/{athleticsRequiredLaps}</td>
                     <td>{standing.checkpointIndex}</td>
                     <td>{Math.round(standing.routeProgress * 100)}%</td>
                     <td>{athletics?.falls ?? 0}</td>
-                    <td>{standing.status === "finished" ? "Finished" : standing.status === "dnf" ? "DNF" : "Racing"}</td>
+                    <td>{standing.status === "finished" ? t("Finished") : standing.status === "dnf" ? t("DNF") : t("Racing")}</td>
                     {onRemovePlayer && (
                       <td className="scoreboard-actions">
-                        <button type="button" className="scoreboard-remove-player" onClick={() => onRemovePlayer(racer.id)} disabled={Boolean(removingPlayerId)} aria-label={`Remove ${racer.nickname} from the game`}>
+                        <button type="button" className="scoreboard-remove-player" onClick={() => onRemovePlayer(racer.id)} disabled={Boolean(removingPlayerId)} aria-label={t("Remove {value0} from the game", { value0: racer.nickname })}>
                           <Trash2 size={15} aria-hidden="true" />
-                          {removingPlayerId === racer.id ? "Removing..." : "Remove"}
+                          {removingPlayerId === racer.id ? t("Removing...") : t("Remove")}
                         </button>
                       </td>
                     )}
@@ -75,12 +77,12 @@ export default function Scoreboard({
                 );
               })}
               {hunters.map((hunter) => <tr className="scoreboard-row athletics-scoreboard-row" key={hunter.id}>
-                <th scope="row">Hunter</th>
-                <td>{hunter.nickname}{hunter.id === localPlayerId ? " · you" : ""}</td>
-                <td colSpan={5}>Station {(hunter.athletics?.stationIndex ?? 0) + 1} · {hunter.athletics?.hunterHits ?? 0} hits · {hunter.score} points</td>
-                {onRemovePlayer && <td className="scoreboard-actions"><button type="button" className="scoreboard-remove-player" onClick={() => onRemovePlayer(hunter.id)} disabled={Boolean(removingPlayerId)} aria-label={`Remove ${hunter.nickname} from the game`}><Trash2 size={15} aria-hidden="true" />Remove</button></td>}
+                <th scope="row">{t("Hunter")}</th>
+                <td>{hunter.nickname}{hunter.id === localPlayerId ? t(" · you") : ""}</td>
+                <td colSpan={5}>{t("Station")}{" "}{(hunter.athletics?.stationIndex ?? 0) + 1} · {hunter.athletics?.hunterHits ?? 0}{" "}{t("hits ·")}{" "}{hunter.score}{" "}{t("points")}</td>
+                {onRemovePlayer && <td className="scoreboard-actions"><button type="button" className="scoreboard-remove-player" onClick={() => onRemovePlayer(hunter.id)} disabled={Boolean(removingPlayerId)} aria-label={t("Remove {value0} from the game", { value0: hunter.nickname })}><Trash2 size={15} aria-hidden="true" />{t("Remove")}</button></td>}
               </tr>)}
-              {standings.length === 0 && <tr><td colSpan={onRemovePlayer ? 8 : 7}>No racers here yet.</td></tr>}
+              {standings.length === 0 && <tr><td colSpan={onRemovePlayer ? 8 : 7}>{t("No racers here yet.")}</td></tr>}
             </tbody>
           </table>
         </div>
@@ -93,35 +95,35 @@ export default function Scoreboard({
   return (
     <div className="scoreboard">
       <div className="panel-title">
-        <h2>Scoreboard</h2>
-        <span>{players.length} {players.length === 1 ? "player" : "players"}</span>
+        <h2>{t("Scoreboard")}</h2>
+        <span>{players.length} {players.length === 1 ? t("player") : t("players")}</span>
       </div>
       <div className="team-score-row">
         {gameMode === "zombie" ? (
           <>
-          <span className="team-score blue-team">Humans · {zombieCounts.humans}</span>
-          <span className="team-score red-team">Zombies · {zombieCounts.zombies}</span>
+          <span className="team-score blue-team">{t("Humans ·")}{" "}{zombieCounts.humans}</span>
+          <span className="team-score red-team">{t("Zombies ·")}{" "}{zombieCounts.zombies}</span>
           </>
         ) : (
           <>
-          <span className="team-score blue-team">Blue · {totals.blue}</span>
-          <span className="team-score red-team">Red · {totals.red}</span>
+          <span className="team-score blue-team">{t("Blue ·")}{" "}{totals.blue}</span>
+          <span className="team-score red-team">{t("Red ·")}{" "}{totals.red}</span>
           </>
         )}
       </div>
       <div className="scoreboard-table-wrap">
         {grouped.map((group) => (
           <div className="scoreboard-group" key={group.id}>
-            <h3>{group.label} <span>{group.rows.length}</span></h3>
+            <h3>{t(group.label)} <span>{group.rows.length}</span></h3>
             <table className="scoreboard-table">
-              <caption>{group.label} scoreboard</caption>
+              <caption>{t(group.label)}{" "}{t("scoreboard")}</caption>
               <thead>
                 <tr className="scoreboard-row scoreboard-head">
-                  <th scope="col">Player</th>
-                  <th scope="col">Tags</th>
-                  <th scope="col">Respawns</th>
-                  <th scope="col">Answer accuracy</th>
-                  {onRemovePlayer && <th scope="col" className="scoreboard-actions-heading">Actions</th>}
+                  <th scope="col">{t("Player")}</th>
+                  <th scope="col">{t("Tags")}</th>
+                  <th scope="col">{t("Respawns")}</th>
+                  <th scope="col">{t("Answer accuracy")}</th>
+                  {onRemovePlayer && <th scope="col" className="scoreboard-actions-heading">{t("Actions")}</th>}
                 </tr>
               </thead>
               <tbody>
@@ -129,25 +131,25 @@ export default function Scoreboard({
                 <tr className={`scoreboard-row ${row.teamId}-team`} key={row.playerId}>
                   <th scope="row" title={row.displayName}>
                     {row.displayName}
-                    {row.isBot ? " · test player" : ""}
-                    {row.isLocalPlayer ? " · you" : ""}
-                    {row.connectionState === "disconnected" ? " · away" : ""}
-                    <small>{gameMode === "zombie" ? (row.role === "zombie" ? "Zombie" : "Human") : teamLabel(row.teamId)}</small>
+                    {row.isBot ? t(" · test player") : ""}
+                    {row.isLocalPlayer ? t(" · you") : ""}
+                    {row.connectionState === "disconnected" ? t(" · away") : ""}
+                    <small>{gameMode === "zombie" ? (row.role === "zombie" ? t("Zombie") : t("Human")) : t(teamLabel(row.teamId))}</small>
                   </th>
                   <td>{row.tags}</td>
                   <td>{row.respawns}</td>
                   <td>{row.questionAccuracy}</td>
                   {onRemovePlayer && (
                     <td className="scoreboard-actions">
-                      <button type="button" className="scoreboard-remove-player" onClick={() => onRemovePlayer(row.playerId)} disabled={Boolean(removingPlayerId)} aria-label={`Remove ${row.displayName} from the game`}>
+                      <button type="button" className="scoreboard-remove-player" onClick={() => onRemovePlayer(row.playerId)} disabled={Boolean(removingPlayerId)} aria-label={t("Remove {value0} from the game", { value0: row.displayName })}>
                         <Trash2 size={15} aria-hidden="true" />
-                        {removingPlayerId === row.playerId ? "Removing..." : "Remove"}
+                        {removingPlayerId === row.playerId ? t("Removing...") : t("Remove")}
                       </button>
                     </td>
                   )}
                 </tr>
               ))}
-              {group.rows.length === 0 && <tr><td colSpan={onRemovePlayer ? 5 : 4}>No players here yet.</td></tr>}
+              {group.rows.length === 0 && <tr><td colSpan={onRemovePlayer ? 5 : 4}>{t("No players here yet.")}</td></tr>}
               </tbody>
             </table>
           </div>

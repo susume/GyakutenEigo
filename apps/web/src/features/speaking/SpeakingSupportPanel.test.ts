@@ -1,10 +1,14 @@
 import assert from "node:assert/strict";
 import test from "node:test";
 import { createElement } from "react";
-import { renderToStaticMarkup } from "react-dom/server";
+import { renderToStaticMarkup as renderMarkup } from "react-dom/server";
+import { SiteLanguageProvider } from "../../ui/SiteLanguageProvider.js";
 import { SpeakingContextPanel, SpeakingSupportPanel, getSpeakingSupportTabs } from "./SpeakingSupportPanel.js";
 import { SPEAKING_TEMPLATES } from "./speakingData.js";
 import { coreFallbackActivities } from "./teacher/speakingLibrary.js";
+
+const renderToStaticMarkup = (element: Parameters<typeof renderMarkup>[0]) =>
+  renderMarkup(createElement(SiteLanguageProvider, { initialLanguage: "en", children: element }));
 
 test("valid student context renders the accessible image without visible context copy", () => {
   const markup = renderToStaticMarkup(createElement(SpeakingContextPanel, {

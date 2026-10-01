@@ -1,3 +1,4 @@
+import { useSiteTranslation } from "../ui/siteTranslation";
 import { seededRandom, makeCanvasTexture, makeLabelTexture } from "./arenaTextures";
 import { useCallback, useEffect, useMemo, useRef, useState, type PointerEvent as ReactPointerEvent } from "react";
 import * as THREE from "three";
@@ -208,6 +209,7 @@ export default function ArenaPreview({
   athleticsHud,
   loadDecalAsset
 }: ArenaPreviewProps) {
+  const { t } = useSiteTranslation();
   const mountRef = useRef<HTMLDivElement | null>(null);
   const touchMoveRef = useRef({ forward: 0, right: 0 });
   const touchCrouchRef = useRef(false);
@@ -2066,45 +2068,42 @@ export default function ArenaPreview({
       data-weapon-id={isAthleticsMode ? "none" : currentWeaponId ?? "starter_blaster"}
       data-zoom-level={zoomLevel}
     >
-      <div className="arena-canvas" ref={mountRef} aria-label={isAthleticsMode ? "Skyline Adventure Park athletics course" : `${arenaMap.title} arena`} />
+      <div className="arena-canvas" ref={mountRef} aria-label={isAthleticsMode ? t("Skyline Adventure Park athletics course") : t("{value0} arena", { value0: arenaMap.title })} />
       {autoQualityNotice && quality === "auto" && !fallbackQuality && (
-        <div className="arena-quality-notice" role="status" aria-live="polite">
-          Graphics adjusted for smoother gameplay
-        </div>
+        <div className="arena-quality-notice" role="status" aria-live="polite">{t("Graphics adjusted for smoother gameplay")}</div>
       )}
-      {renderError && <div className="arena-error" role="alert"><strong>Arena unavailable</strong><span>{renderError}</span><button type="button" onClick={retryRenderer}>Retry in performance mode</button><button type="button" onClick={() => window.location.reload()}>Reload game</button></div>}
+      {renderError && <div className="arena-error" role="alert"><strong>{t("Arena unavailable")}</strong><span>{renderError}</span><button type="button" onClick={retryRenderer}>{t("Retry in performance mode")}</button><button type="button" onClick={() => window.location.reload()}>{t("Reload game")}</button></div>}
       {debugOverlay && characterDebugStats && (
-        <div className="character-debug-overlay" aria-label="Character debug stats">
+        <div className="character-debug-overlay" aria-label={t("Character debug stats")}>
           <strong>{debugLabel}</strong>
-          <span>{characterDebugStats.visible}/{characterDebugStats.total} visible</span>
-          <span>{characterDebugStats.alive} alive</span>
-          <span>Avg speed {characterDebugStats.averageSpeed}</span>
-          <span>
-            LOD {characterDebugStats.lod.LOD0}/{characterDebugStats.lod.LOD1}/{characterDebugStats.lod.LOD2}/{characterDebugStats.lod.LOD3}
+          <span>{characterDebugStats.visible}/{characterDebugStats.total}{" "}{t("visible")}</span>
+          <span>{characterDebugStats.alive}{" "}{t("alive")}</span>
+          <span>{t("Avg speed")}{" "}{characterDebugStats.averageSpeed}</span>
+          <span>{t("LOD")}{" "}{characterDebugStats.lod.LOD0}/{characterDebugStats.lod.LOD1}/{characterDebugStats.lod.LOD2}/{characterDebugStats.lod.LOD3}
           </span>
           {isAthleticsMode && currentPlayer?.athletics && (
             <>
-              <span>Course {Math.round(currentPlayer.athletics.routeProgress * 100)}% · checkpoint {currentPlayer.athletics.checkpointIndex}/{ATHLETICS_STADIUM_COURSE.checkpoints.length}</span>
-              <span>Lap {(currentPlayer.athletics.completedLaps ?? 0) + 1}/{session?.athletics?.requiredLaps ?? 1} · energy {Math.round(currentPlayer.energy ?? 0)}</span>
-              <span>Ground normal 0,1,0 · fall boundary y &lt; 0.5 · {ATHLETICS_STADIUM_COURSE.movingObstacles.length} moving colliders</span>
-              <span>Course bounds ±{ATHLETICS_COURSE_BOUNDS.limitX} × ±{ATHLETICS_COURSE_BOUNDS.limitZ}</span>
+              <span>{t("Course")}{" "}{Math.round(currentPlayer.athletics.routeProgress * 100)}{t("% · checkpoint")}{" "}{currentPlayer.athletics.checkpointIndex}/{ATHLETICS_STADIUM_COURSE.checkpoints.length}</span>
+              <span>{t("Lap")}{" "}{(currentPlayer.athletics.completedLaps ?? 0) + 1}/{session?.athletics?.requiredLaps ?? 1}{" "}{t("· energy")}{" "}{Math.round(currentPlayer.energy ?? 0)}</span>
+              <span>{t("Ground normal 0,1,0 · fall boundary y < 0.5 ·")}{" "}{ATHLETICS_STADIUM_COURSE.movingObstacles.length}{" "}{t("moving colliders")}</span>
+              <span>{t("Course bounds ±")}{ATHLETICS_COURSE_BOUNDS.limitX} × ±{ATHLETICS_COURSE_BOUNDS.limitZ}</span>
             </>
           )}
           {performanceSnapshot && (
             <>
-              <span>{performanceSnapshot.fps} FPS · p95 {performanceSnapshot.frameMsP95} ms</span>
-              <span>{performanceSnapshot.drawCalls} calls · {performanceSnapshot.triangles.toLocaleString()} tris</span>
-              <span>{performanceSnapshot.longTasks} long tasks · {performanceSnapshot.heapMb ?? "n/a"} MB heap</span>
+              <span>{performanceSnapshot.fps}{" "}{t("FPS · p95")}{" "}{performanceSnapshot.frameMsP95}{" "}{t("ms")}</span>
+              <span>{performanceSnapshot.drawCalls}{" "}{t("calls ·")}{" "}{performanceSnapshot.triangles.toLocaleString()}{" "}{t("tris")}</span>
+              <span>{performanceSnapshot.longTasks}{" "}{t("long tasks ·")}{" "}{performanceSnapshot.heapMb ?? "n/a"}{" "}{t("MB heap")}</span>
             </>
           )}
           {vfxDebugStats && (
-            <span>VFX {vfxDebugStats.active}/{vfxDebugStats.budget.maxActive} · {vfxDebugStats.sprites} sprites · {vfxDebugStats.dropped} dropped</span>
+            <span>{t("VFX")}{" "}{vfxDebugStats.active}/{vfxDebugStats.budget.maxActive} · {vfxDebugStats.sprites}{" "}{t("sprites ·")}{" "}{vfxDebugStats.dropped}{" "}{t("dropped")}</span>
           )}
         </div>
       )}
       {vfxDebugEnabled && (
-        <div className="vfx-debug-panel" aria-label="VFX debug controls">
-          <strong>VFX Debug</strong>
+        <div className="vfx-debug-panel" aria-label={t("VFX debug controls")}>
+          <strong>{t("VFX Debug")}</strong>
           <div>
             {VFX_DEBUG_CUES.map(([label, kind]) => (
               <button key={kind} type="button" onClick={() => triggerDebugVfx(kind)}>{label}</button>
@@ -2139,7 +2138,7 @@ export default function ArenaPreview({
           />
           {!isAthleticsMode && zoomLevel > 0 && (
             <div key={`${zoomLevel}-${zoomPulse}`} className={`scope-overlay scope-level-${zoomLevel} scope-pulse`} aria-hidden="true">
-              <span>Heavy Scope</span>
+              <span>{t("Heavy Scope")}</span>
               <strong>{zoomLevel === 1 ? "3×" : "7×"}</strong>
             </div>
           )}

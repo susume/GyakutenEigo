@@ -1,3 +1,4 @@
+import { useSiteTranslation } from "./siteTranslation";
 import { useEffect, useRef, useState } from "react";
 import { Eye, ImageOff, ShieldCheck, Trash2, X } from "lucide-react";
 import { teacherApi, type DecalModerationAsset, type DecalModerationSummary } from "../api/client";
@@ -12,6 +13,7 @@ type TeacherDecalGalleryProps = {
 const formatBytes = (bytes: number) => bytes < 1024 ? `${bytes} B` : `${(bytes / 1024).toFixed(1)} KB`;
 
 function AuthenticatedDecalImage({ asset, loadAsset, className }: { asset: DecalModerationAsset; loadAsset: (assetId: string) => Promise<Blob>; className?: string }) {
+  const { t } = useSiteTranslation();
   const [url, setUrl] = useState("");
   const [failed, setFailed] = useState(false);
   useEffect(() => {
@@ -28,13 +30,14 @@ function AuthenticatedDecalImage({ asset, loadAsset, className }: { asset: Decal
       if (objectUrl) URL.revokeObjectURL(objectUrl);
     };
   }, [asset.assetId, loadAsset]);
-  if (failed) return <span className={`moderation-image-fallback ${className ?? ""}`}><ImageOff aria-hidden="true" />Preview unavailable</span>;
+  if (failed) return <span className={`moderation-image-fallback ${className ?? ""}`}><ImageOff aria-hidden="true" />{t("Preview unavailable")}</span>;
   return url
-    ? <img className={className} src={url} alt={`${asset.nickname}'s submitted sticker`} />
-    : <span className={`moderation-image-fallback ${className ?? ""}`}>Loading preview…</span>;
+    ? <img className={className} src={url} alt={t("{value0}'s submitted sticker", { value0: asset.nickname })} />
+    : <span className={`moderation-image-fallback ${className ?? ""}`}>{t("Loading preview…")}</span>;
 }
 
 export default function TeacherDecalGallery({ sessionCode, refreshKey, loadAsset, onRemove }: TeacherDecalGalleryProps) {
+  const { t } = useSiteTranslation();
   const [summary, setSummary] = useState<DecalModerationSummary | null>(null);
   const [preview, setPreview] = useState<DecalModerationAsset | null>(null);
   const [error, setError] = useState("");
@@ -92,27 +95,27 @@ export default function TeacherDecalGallery({ sessionCode, refreshKey, loadAsset
   return (
     <section className="decal-moderation" aria-labelledby="decal-moderation-title">
       <header>
-        <div><h4 id="decal-moderation-title"><ShieldCheck size={18} />Student sticker review</h4><p>Only this room can see them. Preview each sticker and remove anything that doesn’t belong.</p></div>
+        <div><h4 id="decal-moderation-title"><ShieldCheck size={18} />{t("Student sticker review")}</h4><p>{t("Only this room can see them. Preview each sticker and remove anything that doesn’t belong.")}</p></div>
         {summary && <span>{formatBytes(summary.totalBytes)} / {formatBytes(summary.maxBytes)}</span>}
       </header>
-      {error && <p className="error-text" role="alert">{error}</p>}
-      {!summary && !error && <p>Loading student stickers…</p>}
-      {summary?.assets.length === 0 && <p className="moderation-empty">No student stickers yet.</p>}
+      {error && <p className="error-text" role="alert">{t(error)}</p>}
+      {!summary && !error && <p>{t("Loading student stickers…")}</p>}
+      {summary?.assets.length === 0 && <p className="moderation-empty">{t("No student stickers yet.")}</p>}
       <div className="decal-moderation-grid">
         {summary?.assets.map((asset) => (
           <article key={asset.assetId}>
             <AuthenticatedDecalImage asset={asset} loadAsset={loadAsset} />
-            <div><strong>{asset.nickname}</strong><small>{asset.isActive ? "In use" : "Not in use"} · {formatBytes(asset.byteLength)}</small></div>
-            <div className="moderation-actions"><button type="button" onClick={() => setPreview(asset)}><Eye size={15} />Preview</button><button type="button" onClick={() => void remove(asset.assetId)}><Trash2 size={15} />Remove</button></div>
+            <div><strong>{asset.nickname}</strong><small>{asset.isActive ? t("In use") : t("Not in use")} · {formatBytes(asset.byteLength)}</small></div>
+            <div className="moderation-actions"><button type="button" onClick={() => setPreview(asset)}><Eye size={15} />{t("Preview")}</button><button type="button" onClick={() => void remove(asset.assetId)}><Trash2 size={15} />{t("Remove")}</button></div>
           </article>
         ))}
       </div>
       {preview && (
         <div className="moderation-preview-backdrop" role="presentation">
           <div ref={dialogRef} className="moderation-preview-dialog" role="dialog" aria-modal="true" aria-labelledby="moderation-preview-title">
-            <header><div><h3 id="moderation-preview-title">{preview.nickname}’s sticker</h3><p>{formatBytes(preview.byteLength)} · deleted automatically after this room</p></div><button ref={closeRef} type="button" onClick={() => setPreview(null)} aria-label="Close sticker preview"><X /></button></header>
+            <header><div><h3 id="moderation-preview-title">{preview.nickname}{t("’s sticker")}</h3><p>{formatBytes(preview.byteLength)}{" "}{t("· deleted automatically after this room")}</p></div><button ref={closeRef} type="button" onClick={() => setPreview(null)} aria-label={t("Close sticker preview")}><X /></button></header>
             <div className="moderation-preview-checker"><AuthenticatedDecalImage asset={preview} loadAsset={loadAsset} className="moderation-preview-image" /></div>
-            <footer><button type="button" onClick={() => setPreview(null)}>Keep sticker</button><button type="button" className="danger" onClick={() => void remove(preview.assetId)}><Trash2 size={16} />Remove sticker</button></footer>
+            <footer><button type="button" onClick={() => setPreview(null)}>{t("Keep sticker")}</button><button type="button" className="danger" onClick={() => void remove(preview.assetId)}><Trash2 size={16} />{t("Remove sticker")}</button></footer>
           </div>
         </div>
       )}

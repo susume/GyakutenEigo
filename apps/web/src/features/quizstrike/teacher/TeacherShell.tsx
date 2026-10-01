@@ -1,3 +1,4 @@
+import { useSiteTranslation } from "../../../ui/siteTranslation";
 import {
   BookOpen,
   ChevronLeft,
@@ -20,6 +21,7 @@ import type {
   TeacherTab,
 } from "./teacherRoutes";
 import GyakutenEigoBrand from "../../../ui/GyakutenEigoBrand";
+import SiteLanguagePicker from "../../../ui/SiteLanguagePicker";
 
 type TeacherShellProps = {
   teacher: TeacherUser;
@@ -58,6 +60,7 @@ export default function TeacherShell({
   onOpenSession,
   children,
 }: TeacherShellProps) {
+  const { t } = useSiteTranslation();
   const activeTab = contentTab(tab);
   const [menuOpen, setMenuOpen] = useState(false);
   const menuId = useId();
@@ -69,7 +72,7 @@ export default function TeacherShell({
   };
 
   return (
-    <section className="workspace" aria-label="GyakutenEigo teacher dashboard" onKeyDown={(event) => {
+    <section className="workspace" aria-label={t("GyakutenEigo teacher dashboard")} onKeyDown={(event) => {
       if (event.key === "Escape" && menuOpen) {
         setMenuOpen(false);
         menuButton.current?.focus();
@@ -78,24 +81,21 @@ export default function TeacherShell({
       <header className="dashboard-brand-row">
         <h1>
           <GyakutenEigoBrand className="dashboard-brand-logo" />
-          <small>Teacher dashboard</small>
+          <small>{t("Teacher dashboard")}</small>
         </h1>
         <div className="dashboard-account-area">
-          <span className="dashboard-product-pair">
-            QuizStrike + SpeakCheck
-          </span>
+          <SiteLanguagePicker />
+          <span className="dashboard-product-pair">{t("QuizStrike + SpeakCheck")}</span>
           <strong>{teacher.name}</strong>
-          <button type="button" onClick={onLogout}>
-            Sign Out
-          </button>
+          <button type="button" onClick={onLogout}>{t("Sign Out")}</button>
         </div>
       </header>
 
       <div className="teacher-mobile-navigation">
-        <span>{isLiveSetup ? "Game setup" : sectionLabels[activeTab]}</span>
+        <span>{isLiveSetup ? t("Game setup") : t(sectionLabels[activeTab])}</span>
         <button ref={menuButton} type="button" aria-expanded={menuOpen} aria-controls={menuId} onClick={() => setMenuOpen((open) => !open)}>
           {menuOpen ? <X size={18} aria-hidden="true" /> : <Menu size={18} aria-hidden="true" />}
-          {menuOpen ? "Close" : "Sections"}
+          {menuOpen ? t("Close") : t("Sections")}
         </button>
       </div>
 
@@ -110,19 +110,19 @@ export default function TeacherShell({
           }
         }}
         aria-label={
-          isLiveSetup ? "Live game setup sections" : "Teacher sections"
+          isLiveSetup ? t("Live game setup sections") : t("Teacher sections")
         }
       >
         {isLiveSetup ? (
           <div className="setup-sidebar-menu">
-            <span className="setup-sidebar-kicker">Host this Study Set</span>
+            <span className="setup-sidebar-kicker">{t("Host this Study Set")}</span>
             <button
               type="button"
               className={activeSetupSection === "mode" ? "active" : ""}
               aria-current={activeSetupSection === "mode" ? "step" : undefined}
               onClick={() => onSetupSectionChange("mode")}
             >
-              <strong>Game Mode</strong>
+              <strong>{t("Game Mode")}</strong>
             </button>
             <button
               type="button"
@@ -130,7 +130,7 @@ export default function TeacherShell({
               aria-current={activeSetupSection === "arena" ? "step" : undefined}
               onClick={() => onSetupSectionChange("arena")}
             >
-              <strong>Arena</strong>
+              <strong>{t("Arena")}</strong>
             </button>
             <button
               type="button"
@@ -141,29 +141,25 @@ export default function TeacherShell({
               onClick={() => onSetupSectionChange("advanced")}
             >
               <Settings size={17} aria-hidden="true" />
-              <strong>Advanced</strong>
+              <strong>{t("Advanced")}</strong>
             </button>
             <button
               type="button"
               className="setup-sidebar-back"
               onClick={() => onNavigateTab("library")}
             >
-              <ChevronLeft size={17} aria-hidden="true" />
-              Back to Library
-            </button>
+              <ChevronLeft size={17} aria-hidden="true" />{t("Back to Library")}</button>
           </div>
         ) : (
-          <nav className="teacher-sidebar-nav" aria-label="Teacher navigation">
-            <span className="sidebar-section-label">Workspace</span>
+          <nav className="teacher-sidebar-nav" aria-label={t("Teacher navigation")}>
+            <span className="sidebar-section-label">{t("Workspace")}</span>
             <button
               type="button"
               aria-current={activeTab === "home" ? "page" : undefined}
               className={activeTab === "home" ? "active" : ""}
               onClick={() => onNavigateTab("home")}
             >
-              <BookOpen size={17} aria-hidden="true" />
-              Home
-            </button>
+              <BookOpen size={17} aria-hidden="true" />{t("Home")}</button>
             <span className="sidebar-divider" />
             <span className="sidebar-section-label">QuizStrike</span>
             <button
@@ -172,36 +168,28 @@ export default function TeacherShell({
               className={activeTab === "discover" ? "active" : ""}
               onClick={() => onNavigateTab("discover")}
             >
-              <Globe2 size={17} aria-hidden="true" />
-              Discover
-            </button>
+              <Globe2 size={17} aria-hidden="true" />{t("Discover")}</button>
             <button
               type="button"
               aria-current={activeTab === "library" ? "page" : undefined}
               className={activeTab === "library" ? "active" : ""}
               onClick={() => onNavigateTab("library")}
             >
-              <Sparkles size={17} aria-hidden="true" />
-              Library
-            </button>
+              <Sparkles size={17} aria-hidden="true" />{t("Library")}</button>
             <button
               type="button"
               aria-current={activeTab === "reports" ? "page" : undefined}
               className={activeTab === "reports" ? "active" : ""}
               onClick={() => onNavigateTab("reports")}
             >
-              <BarChart3 size={17} aria-hidden="true" />
-              Reports
-            </button>
+              <BarChart3 size={17} aria-hidden="true" />{t("Reports")}</button>
             <button
               type="button"
               className="sidebar-create-button"
-              aria-label="Create Study Set"
+              aria-label={t("Create Study Set")}
               onClick={onCreateStudySet}
             >
-              <Plus size={17} aria-hidden="true" />
-              Create
-            </button>
+              <Plus size={17} aria-hidden="true" />{t("Create")}</button>
 
             <span className="sidebar-divider" />
             <span className="sidebar-section-label">SpeakCheck</span>
@@ -211,17 +199,13 @@ export default function TeacherShell({
               className={activeTab === "speaking" ? "active" : ""}
               onClick={() => onNavigateTab("speaking")}
             >
-              <Mic size={17} aria-hidden="true" />
-              Speaking Tasks
-            </button>
+              <Mic size={17} aria-hidden="true" />{t("Speaking Tasks")}</button>
             <button
               type="button"
               className="sidebar-secondary-action"
               onClick={onCreateSpeakingActivity}
             >
-              <Plus size={15} aria-hidden="true" />
-              New task
-            </button>
+              <Plus size={15} aria-hidden="true" />{t("New task")}</button>
 
             <span className="sidebar-divider" />
             <button
@@ -230,18 +214,14 @@ export default function TeacherShell({
               className={activeTab === "tournaments" ? "active" : ""}
               onClick={() => onNavigateTab("tournaments")}
             >
-              <Trophy size={17} aria-hidden="true" />
-              Competitions
-            </button>
+              <Trophy size={17} aria-hidden="true" />{t("Competitions")}</button>
             <button
               type="button"
               aria-current={activeTab === "settings" ? "page" : undefined}
               className={activeTab === "settings" ? "active" : ""}
               onClick={() => onNavigateTab("settings")}
             >
-              <Settings size={17} aria-hidden="true" />
-              Settings
-            </button>
+              <Settings size={17} aria-hidden="true" />{t("Settings")}</button>
           </nav>
         )}
       </aside>
@@ -249,7 +229,7 @@ export default function TeacherShell({
       <div ref={content} className="main-panel" tabIndex={-1}>
         {children}
         {activeSessions.length > 0 && (
-          <div className="live-rail" aria-label="Active QuizStrike sessions">
+          <div className="live-rail" aria-label={t("Active QuizStrike sessions")}>
             {activeSessions.map((session) => (
               <button
                 type="button"
@@ -262,7 +242,7 @@ export default function TeacherShell({
                 onClick={() => onOpenSession(session)}
               >
                 <span>{session.sessionCode}</span>
-                <small>{session.players.length} players</small>
+                <small>{session.players.length}{" "}{t("players")}</small>
               </button>
             ))}
           </div>

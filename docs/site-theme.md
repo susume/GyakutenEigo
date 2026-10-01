@@ -49,6 +49,17 @@ and invalid code feedback. The local speaking teacher preview can be used at
 `/about` uses the shared theme and English/Japanese content in
 `apps/web/src/ui/aboutContent.ts`. The header language selector persists an
 explicit choice under `gyakuteneigo.language`. Without a saved choice, use the
-first supported browser language, falling back to English. The About page and
-public header update immediately; existing product content remains in English.
-The document language and each content region identify their actual language.
+first supported browser language, falling back to English. The interface updates
+immediately across the hub, SpeakCheck, QuizStrike, competitions, teacher tools,
+and student screens. Switching languages preserves entered values and in-progress
+work. The document language follows the selection; English reference sheets
+explicitly retain their own language.
+
+Use `useSiteTranslation().t()` for interface copy, with English source strings and
+Japanese translations in `apps/web/src/ui/locales/ja.json`. Pass variable values
+through placeholders rather than concatenating messages. Translate display labels
+while preserving option values, route names, API payloads, and stored enum values.
+Keep teacher-authored tasks, quiz questions, student input, English examples,
+transcripts, and generated feedback content in their original language. The site
+selection controls interface labels; an activity's native language controls its
+learning support and generated feedback.

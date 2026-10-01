@@ -1,3 +1,4 @@
+import { useSiteTranslation } from "../../ui/siteTranslation";
 import { ArrowRight, Languages } from "lucide-react";
 import {
   speakingFeedbackCopy,
@@ -33,8 +34,9 @@ export function ResultPanel({
   evaluation: SpeakingEvaluation;
   teacherView: boolean;
 }) {
+  const { t, language } = useSiteTranslation();
   const studentTurns = turns.filter((turn) => turn.speaker === "student");
-  const copy = speakingFeedbackCopy(evaluation.language);
+  const copy = speakingFeedbackCopy(language);
   const usefulEnglishItems = exactUsefulEnglishItems(evaluation, turns);
   const resultColumns = (
     <div className="speaking-result-columns">
@@ -67,11 +69,11 @@ export function ResultPanel({
           </span>
           <h2>{teacherView ? activity.title : copy.resultHeading}</h2>
         </div>
-        <span className="speaking-result-language" aria-label={evaluation.language === "ja" ? "日本語フィードバック" : "English feedback"}>
+        <span className="speaking-result-language" aria-label={t(evaluation.language === "ja" ? "Japanese feedback" : "English feedback")}>
           <Languages size={15} aria-hidden="true" focusable="false" />
           {evaluation.language === "ja"
             ? "日本語フィードバック"
-            : "English feedback"}
+            : t("English feedback")}
         </span>
       </div>
       {evaluation.assessmentStatus === "insufficient_evidence" && (
@@ -83,22 +85,22 @@ export function ResultPanel({
       {!teacherView && resultColumns}
       {evaluation.goalCompletion && (
         <div className="speaking-result-message speaking-result-goal-message">
-          <h3>{evaluation.language === "ja" ? "課題のゴール" : "Task goal"}</h3>
+          <h3>{t("Task goal")}</h3>
           <ul>
             {evaluation.goalCompletion.requirements.map((requirement, index) => (
               <li key={`${requirement.requirement}-${index}`}>
                 <strong>{({
-                  completed: evaluation.language === "ja" ? "達成" : "Completed",
-                  partially_completed: evaluation.language === "ja" ? "一部達成" : "Partly completed",
-                  not_completed: evaluation.language === "ja" ? "次の目標" : "Not yet completed",
-                  uncertain: evaluation.language === "ja" ? "確認できません" : "Not enough evidence"
+                  completed: t("Completed"),
+                  partially_completed: t("Partly completed"),
+                  not_completed: t("Not yet completed"),
+                  uncertain: t("Not enough evidence")
                 })[requirement.status]}:</strong> {requirement.requirement}
               </li>
             ))}
           </ul>
         </div>
       )}
-      <p className="speaking-rubric-intro">{evaluation.language === "ja" ? "評価基準と会話の根拠 · 各項目0〜4点" : "Rubric and conversation evidence · Each criterion is scored from 0 to 4"}</p>
+      <p className="speaking-rubric-intro">{t("Rubric and conversation evidence · Each criterion is scored from 0 to 4")}</p>
       <div className="speaking-score-grid">
         {activity.rubric
           .filter((criterion) => criterion.enabled)
@@ -109,7 +111,7 @@ export function ResultPanel({
                 <div>
                   <strong>
                     {criterion.name === "Fluency / Comprehensibility"
-                      ? "Fluency"
+                      ? t("Fluency")
                       : criterion.name}
                   </strong>
                   <small>{criterion.description}</small>
@@ -120,12 +122,12 @@ export function ResultPanel({
                   aria-label={
                     score === null || score === undefined
                       ? copy.notScored
-                      : `${score} out of 4`
+                      : t("{value0} out of 4", { value0: score })
                   }
                 >
-                  {typeof score === "number" && <meter min={0} max={4} value={score} aria-label={`${criterion.name} score`} />}
+                  {typeof score === "number" && <meter min={0} max={4} value={score} aria-label={t("{value0} score", { value0: criterion.name })} />}
                   <b>
-                    {typeof score === "number" ? `${score}/4` : copy.notScored}
+                    {typeof score === "number" ? t("{value0}/4", { value0: score }) : copy.notScored}
                   </b>
                 </span>
               </div>

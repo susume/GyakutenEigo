@@ -33,11 +33,14 @@ const supportLabels: Array<[keyof SpeakingSupportSettings, string]> = [
   ["allowHelp", "Help"]
 ];
 
-export const speakingSupportSummary = (activity: Pick<SpeakingActivity, "mode" | "supportSettings"> | undefined) => {
+export const speakingSupportSummary = (
+  activity: Pick<SpeakingActivity, "mode" | "supportSettings"> | undefined,
+  translate: (text: string) => string = (text) => text
+) => {
   const settings = speakingSupportSettings(activity);
-  const allowed = supportLabels.filter(([key]) => settings[key]).map(([, label]) => `${label} allowed`);
-  const disabled = supportLabels.filter(([key]) => !settings[key]).map(([, label]) => `${label} off`);
-  return [...allowed, ...disabled].join(" · ") || "No optional support";
+  const allowed = supportLabels.filter(([key]) => settings[key]).map(([, label]) => translate(`${label} allowed`));
+  const disabled = supportLabels.filter(([key]) => !settings[key]).map(([, label]) => translate(`${label} off`));
+  return [...allowed, ...disabled].join(" · ") || translate("No optional support");
 };
 
 export const speakingSupportSettingsForMode = (mode: SpeakingMode): SpeakingSupportSettings =>

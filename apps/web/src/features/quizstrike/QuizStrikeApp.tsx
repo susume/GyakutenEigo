@@ -1,3 +1,4 @@
+import { useSiteTranslation } from "../../ui/siteTranslation";
 import { lazy, Suspense, useCallback, useEffect, useMemo, useState } from "react";
 import {
   DoorOpen,
@@ -60,6 +61,7 @@ const SPEAKING_TEACHER_RETURN_KEY = "quizstrike_speaking_teacher_return";
 const DEV_TEACHER_PREVIEW: TeacherUser = { id: "teacher-preview", name: "Peter Hoang", email: "preview@gyakuteneigo.local", role: "teacher" };
 
 export default function App() {
+  const { t } = useSiteTranslation();
   const [routePath, setRoutePath] = useState(() => normalizeRoutePath(window.location.pathname));
   const isJoinRoute = routePath === "/join";
   const isGameRoute = routePath === "/game";
@@ -158,7 +160,7 @@ export default function App() {
 
   return (
     <main id="main-content" className="app-shell" tabIndex={-1}>
-      <a className={`skip-link skip-link-${mode}`} href={mode === "home" ? "#product-hub-title" : "#main-content"}>Skip to main content</a>
+      <a className={`skip-link skip-link-${mode}`} href={mode === "home" ? "#product-hub-title" : "#main-content"}>{t("Skip to main content")}</a>
       {mode === "home" || (!teacher && (mode === "quizStrike" || mode === "teacher")) ? (
         <ProductHubHeader
           active={mode === "quizStrike" ? "quiz" : mode === "teacher" ? "teacher" : undefined}
@@ -168,10 +170,10 @@ export default function App() {
         />
       ) : (
         <header className={`topbar topbar-${mode}${teacher ? " teacher-authenticated" : ""}`}>
-          <button className="brand-button" type="button" aria-label={mode === "teacher" ? "GyakutenEigo home" : "QuizStrike home"} onClick={() => navigateTo("/", "home")}>
+          <button className="brand-button" type="button" aria-label={mode === "teacher" ? t("GyakutenEigo home") : t("QuizStrike home")} onClick={() => navigateTo("/", "home")}>
             {mode === "teacher" ? <GyakutenEigoBrand className="public-wordmark" /> : <QuizStrikeLogo />}
           </button>
-          <nav className="primary-nav" aria-label="Primary" onKeyDown={(event) => {
+          <nav className="primary-nav" aria-label={t("Primary")} onKeyDown={(event) => {
             if (event.key === "Escape" && isMobileNavOpen) {
               setIsMobileNavOpen(false);
               event.currentTarget.querySelector<HTMLButtonElement>(".nav-menu-toggle")?.focus();
@@ -185,19 +187,15 @@ export default function App() {
               aria-expanded={isMobileNavOpen}
               aria-controls="primary-actions"
               onClick={() => setIsMobileNavOpen((open) => !open)}
-            >
-              Menu
-            </button>
+            >{t("Menu")}</button>
             <div id="primary-actions" className="top-actions" data-open={isMobileNavOpen ? "true" : "false"}>
               {mode === "quizStrike" && !teacher ? (
                 <>
-                  <button onClick={() => { setTeacherAuthMode("signup"); navigateTo("/quiz-strike/teacher/home", "teacher"); }}>Create a teacher account</button>
-                  <button onClick={() => navigateTo("/join", "student")}>Join with code</button>
+                  <button onClick={() => { setTeacherAuthMode("signup"); navigateTo("/quiz-strike/teacher/home", "teacher"); }}>{t("Create a teacher account")}</button>
+                  <button onClick={() => navigateTo("/join", "student")}>{t("Join with code")}</button>
                   <button onClick={openSpeakingPractice}>
-                    <Mic size={18} aria-hidden="true" />
-                    Speaking Practice
-                  </button>
-                  <button className="nav-login" onClick={() => { setTeacherAuthMode("login"); navigateTo("/quiz-strike/teacher/home", "teacher"); }}>Teacher login</button>
+                    <Mic size={18} aria-hidden="true" />{t("Speaking Practice")}</button>
+                  <button className="nav-login" onClick={() => { setTeacherAuthMode("login"); navigateTo("/quiz-strike/teacher/home", "teacher"); }}>{t("Teacher login")}</button>
                 </>
               ) : <>
                 <button className={mode === "quizStrike" ? "active" : ""} onClick={() => navigateTo("/quiz-strike", "quizStrike")}>
@@ -205,29 +203,19 @@ export default function App() {
                   QuizStrike
                 </button>
                 <button className={mode === "student" ? "active" : ""} onClick={() => navigateTo("/join", "student")}>
-                  <DoorOpen size={18} aria-hidden="true" />
-                  Join with code
-                </button>
+                  <DoorOpen size={18} aria-hidden="true" />{t("Join with code")}</button>
                 <button onClick={openSpeakingPractice}>
-                  <Mic size={18} aria-hidden="true" />
-                  Speaking Practice
-                </button>
+                  <Mic size={18} aria-hidden="true" />{t("Speaking Practice")}</button>
                 {teacher ? (
                   <>
                     <button className={mode === "teacher" ? "active" : ""} onClick={() => navigateTo("/quiz-strike/teacher/home", "teacher")}>
-                      <GraduationCap size={18} aria-hidden="true" />
-                      Teacher workspace
-                    </button>
+                      <GraduationCap size={18} aria-hidden="true" />{t("Teacher workspace")}</button>
                     <button onClick={logout}>
-                      <LogOut size={18} aria-hidden="true" />
-                      Sign out
-                    </button>
+                      <LogOut size={18} aria-hidden="true" />{t("Sign out")}</button>
                   </>
                 ) : (
                   <button className={mode === "teacher" ? "active" : ""} onClick={() => { setTeacherAuthMode("login"); navigateTo("/quiz-strike/teacher/home", "teacher"); }}>
-                    <GraduationCap size={18} aria-hidden="true" />
-                    Teacher login
-                  </button>
+                    <GraduationCap size={18} aria-hidden="true" />{t("Teacher login")}</button>
                 )}
               </>}
             </div>
@@ -240,8 +228,8 @@ export default function App() {
         onOpenSpeaking={() => navigateTo("/speak")}
         onOpenQuizStrike={() => navigateTo("/quiz-strike", "quizStrike")}
       />}
-      {mode === "quizStrike" && routePath === "/quiz-strike/organizer" && <Suspense fallback={<FeatureLoading label="Loading organizer workspace" />}><OrganizerWorkspace teacher={teacher} onNavigate={navigateTo} /></Suspense>}
-      {mode === "quizStrike" && isTournamentRegistrationRoute && <Suspense fallback={<FeatureLoading label="Loading tournament registration" />}><TournamentRegistrationPage
+      {mode === "quizStrike" && routePath === "/quiz-strike/organizer" && <Suspense fallback={<FeatureLoading label={t("Loading organizer workspace")} />}><OrganizerWorkspace teacher={teacher} onNavigate={navigateTo} /></Suspense>}
+      {mode === "quizStrike" && isTournamentRegistrationRoute && <Suspense fallback={<FeatureLoading label={t("Loading tournament registration")} />}><TournamentRegistrationPage
         tournamentId={decodeURIComponent(tournamentRegistrationId)}
         invitationCode={getTournamentInvitationCodeFromSearch(window.location.search)}
         teacher={teacher}
@@ -253,10 +241,10 @@ export default function App() {
         onNavigate={navigateTo}
         onTeacherLogin={() => { setTeacherAuthMode("login"); navigateTo("/quiz-strike/teacher/home", "teacher"); }}
       />}
-      {mode === "tournamentStudy" && <Suspense fallback={<FeatureLoading label="Loading tournament study" />}><TournamentStudyPage tournamentId={decodeURIComponent(routePath.slice("/tournament-study/".length))} /></Suspense>}
+      {mode === "tournamentStudy" && <Suspense fallback={<FeatureLoading label={t("Loading tournament study")} />}><TournamentStudyPage tournamentId={decodeURIComponent(routePath.slice("/tournament-study/".length))} /></Suspense>}
       {mode === "characterLab" && (isCharacterLabAvailable ? <CharacterLab /> : <InternalToolNotice onReturn={() => navigateTo("/quiz-strike", "quizStrike")} />)}
-      {mode === "teacher" && restoringTeacher && !isTeacherDashboardPreview && <FeatureLoading label="Opening your teacher workspace" />}
-      {mode === "teacher" && (!restoringTeacher || isTeacherDashboardPreview) && <Suspense fallback={<FeatureLoading label="Loading teacher workspace" />}><TeacherWorkspace teacher={teacher ?? (isTeacherDashboardPreview ? DEV_TEACHER_PREVIEW : null)} apiWakeState={apiWakeState} initialMode={teacherAuthMode} initialPath={routePath} onNavigate={navigateTo} onLogout={logout} onAuthed={(user) => {
+      {mode === "teacher" && restoringTeacher && !isTeacherDashboardPreview && <FeatureLoading label={t("Opening your teacher workspace")} />}
+      {mode === "teacher" && (!restoringTeacher || isTeacherDashboardPreview) && <Suspense fallback={<FeatureLoading label={t("Loading teacher workspace")} />}><TeacherWorkspace teacher={teacher ?? (isTeacherDashboardPreview ? DEV_TEACHER_PREVIEW : null)} apiWakeState={apiWakeState} initialMode={teacherAuthMode} initialPath={routePath} onNavigate={navigateTo} onLogout={logout} onAuthed={(user) => {
           setTeacher(user);
           setRestoringTeacher(false);
           const storedReturnTo = sessionStorage.getItem(TOURNAMENT_TEACHER_RETURN_KEY) ?? sessionStorage.getItem(SPEAKING_TEACHER_RETURN_KEY);
@@ -272,22 +260,24 @@ export default function App() {
           sessionStorage.removeItem(SPEAKING_TEACHER_RETURN_KEY);
           navigateTo(returnTo ?? "/quiz-strike/teacher/home", returnTo ? modeForRoute(returnTo.split(/[?#]/u)[0] ?? "") : "teacher");
         }} /></Suspense>}
-      {mode === "student" && <Suspense fallback={<FeatureLoading label="Loading game" />}><StudentExperience onExit={() => navigateTo("/quiz-strike", "quizStrike")} /></Suspense>}
+      {mode === "student" && <Suspense fallback={<FeatureLoading label={t("Loading game")} />}><StudentExperience onExit={() => navigateTo("/quiz-strike", "quizStrike")} /></Suspense>}
     </main>
   );
 }
 
 function InternalToolNotice({ onReturn }: { onReturn: () => void }) {
+  const { t } = useSiteTranslation();
   return (
     <section className="notice-panel">
-      <h1>Internal diagnostic</h1>
-      <p>Character Lab is available only in local development. It is not a supported public game mode.</p>
-      <button className="primary" onClick={onReturn}>Return to Quiz-Strike</button>
+      <h1>{t("Internal diagnostic")}</h1>
+      <p>{t("Character Lab is available only in local development. It is not a supported public game mode.")}</p>
+      <button className="primary" onClick={onReturn}>{t("Return to Quiz-Strike")}</button>
     </section>
   );
 }
 
 function CharacterLab() {
+  const { t } = useSiteTranslation();
   const previewParams = new URLSearchParams(window.location.search);
   // The lab is also used to inspect the playable camera. Keep diagnostics
   // opt-in so collision boxes and performance text cannot cover the course.
@@ -437,10 +427,10 @@ function CharacterLab() {
     <section className="character-lab">
       <div className="section-heading">
         <div>
-          <h1>Character Lab</h1>
-          <p>Development test arena for multiplayer character readability, LOD, and stress checks.</p>
+          <h1>{t("Character Lab")}</h1>
+          <p>{t("Development test arena for multiplayer character readability, LOD, and stress checks.")}</p>
         </div>
-        <div className="button-row" aria-label="Stress test presets">
+        <div className="button-row" aria-label={t("Stress test presets")}>
           {CHARACTER_STRESS_COUNTS.map((preset) => (
             <button
               key={preset}
@@ -448,71 +438,64 @@ function CharacterLab() {
               aria-pressed={count === preset}
               onClick={() => setCount(preset)}
             >
-              {preset} players
-            </button>
+              {preset}{" "}{t("players")}</button>
           ))}
         </div>
       </div>
 
       <div className="character-lab-grid">
         <div className="panel character-lab-controls">
-          <h2>Scenario</h2>
-          <div className="button-row" aria-label="Character lab map">
-            <button className={athleticsLab ? "active" : ""} aria-pressed={athleticsLab} onClick={() => setAthleticsLab(true)}>Skyline Adventure Park</button>
-            <button className={!athleticsLab && labMapId === "desert_citadel" ? "active" : ""} aria-pressed={!athleticsLab && labMapId === "desert_citadel"} onClick={() => { setAthleticsLab(false); setLabMapId("desert_citadel"); }}>Desert Citadel</button>
-            <button className={!athleticsLab && labMapId === "iron_junction" ? "active" : ""} aria-pressed={!athleticsLab && labMapId === "iron_junction"} onClick={() => { setAthleticsLab(false); setLabMapId("iron_junction"); }}>Iron Junction</button>
-            <button className={!athleticsLab && labMapId === "temple_runoff" ? "active" : ""} aria-pressed={!athleticsLab && labMapId === "temple_runoff"} onClick={() => { setAthleticsLab(false); setLabMapId("temple_runoff"); }}>Temple Runoff</button>
+          <h2>{t("Scenario")}</h2>
+          <div className="button-row" aria-label={t("Character lab map")}>
+            <button className={athleticsLab ? "active" : ""} aria-pressed={athleticsLab} onClick={() => setAthleticsLab(true)}>{t("Skyline Adventure Park")}</button>
+            <button className={!athleticsLab && labMapId === "desert_citadel" ? "active" : ""} aria-pressed={!athleticsLab && labMapId === "desert_citadel"} onClick={() => { setAthleticsLab(false); setLabMapId("desert_citadel"); }}>{t("Desert Citadel")}</button>
+            <button className={!athleticsLab && labMapId === "iron_junction" ? "active" : ""} aria-pressed={!athleticsLab && labMapId === "iron_junction"} onClick={() => { setAthleticsLab(false); setLabMapId("iron_junction"); }}>{t("Iron Junction")}</button>
+            <button className={!athleticsLab && labMapId === "temple_runoff" ? "active" : ""} aria-pressed={!athleticsLab && labMapId === "temple_runoff"} onClick={() => { setAthleticsLab(false); setLabMapId("temple_runoff"); }}>{t("Temple Runoff")}</button>
           </div>
-          <div className="button-row" aria-label="Character lab quality">
-            <button className={labQuality === "performance" ? "active" : ""} aria-pressed={labQuality === "performance"} onClick={() => setLabQuality("performance")}>Low</button>
-            <button className={labQuality === "balanced" ? "active" : ""} aria-pressed={labQuality === "balanced"} onClick={() => setLabQuality("balanced")}>Medium</button>
-            <button className={labQuality === "high" ? "active" : ""} aria-pressed={labQuality === "high"} onClick={() => setLabQuality("high")}>High</button>
+          <div className="button-row" aria-label={t("Character lab quality")}>
+            <button className={labQuality === "performance" ? "active" : ""} aria-pressed={labQuality === "performance"} onClick={() => setLabQuality("performance")}>{t("Low")}</button>
+            <button className={labQuality === "balanced" ? "active" : ""} aria-pressed={labQuality === "balanced"} onClick={() => setLabQuality("balanced")}>{t("Medium")}</button>
+            <button className={labQuality === "high" ? "active" : ""} aria-pressed={labQuality === "high"} onClick={() => setLabQuality("high")}>{t("High")}</button>
           </div>
-          <div className="button-row" aria-label="Character lab camera">
-            <button className={labView === "overview" ? "active" : ""} aria-pressed={labView === "overview"} onClick={() => setLabView("overview")}>Overview</button>
-            <button className={labView === "fps" ? "active" : ""} aria-pressed={labView === "fps"} onClick={() => setLabView("fps")}>Playable FPS</button>
+          <div className="button-row" aria-label={t("Character lab camera")}>
+            <button className={labView === "overview" ? "active" : ""} aria-pressed={labView === "overview"} onClick={() => setLabView("overview")}>{t("Overview")}</button>
+            <button className={labView === "fps" ? "active" : ""} aria-pressed={labView === "fps"} onClick={() => setLabView("fps")}>{t("Playable FPS")}</button>
           </div>
           {labView === "fps" && (athleticsLab ? (
-            <div className="button-row" aria-label="Athletics diagnostic view">
-              <span className="mini-copy">Course focus: {Math.round(athleticsProgress * 100)}% route progress · use the URL to stage another level</span>
+            <div className="button-row" aria-label={t("Athletics diagnostic view")}>
+              <span className="mini-copy">{t("Course focus:")}{" "}{Math.round(athleticsProgress * 100)}{t("% route progress · use the URL to stage another level")}</span>
             </div>
           ) : (
-            <div className="button-row" aria-label="Map test level">
-              <button className={labLevel === "lower" ? "active" : ""} aria-pressed={labLevel === "lower"} onClick={() => setLabLevel("lower")}>{labMapId === "temple_runoff" ? "River ↓" : "Ground •"}</button>
-              {labMapId === "desert_citadel" && <button className={labLevel === "market" ? "active" : ""} aria-pressed={labLevel === "market"} onClick={() => setLabLevel("market")}>Market •</button>}
-              {labMapId === "desert_citadel" && <button className={labLevel === "cistern" ? "active" : ""} aria-pressed={labLevel === "cistern"} onClick={() => setLabLevel("cistern")}>Cistern •</button>}
-              {labMapId === "desert_citadel" && <button className={labLevel === "flag" ? "active" : ""} aria-pressed={labLevel === "flag"} onClick={() => setLabLevel("flag")}>Flag ⚑</button>}
-              <button className={labLevel === "main" ? "active" : ""} aria-pressed={labLevel === "main"} onClick={() => setLabLevel("main")}>{labMapId === "temple_runoff" ? "Main •" : labMapId === "iron_junction" ? "Loading ↑" : "Citadel ↑"}</button>
-              <button className={labLevel === "upper" ? "active" : ""} aria-pressed={labLevel === "upper"} onClick={() => setLabLevel("upper")}>{labMapId === "temple_runoff" ? "Bridge ↑" : labMapId === "iron_junction" ? "Overpass ↑" : "Lookout ↑↑"}</button>
+            <div className="button-row" aria-label={t("Map test level")}>
+              <button className={labLevel === "lower" ? "active" : ""} aria-pressed={labLevel === "lower"} onClick={() => setLabLevel("lower")}>{labMapId === "temple_runoff" ? t("River ↓") : t("Ground •")}</button>
+              {labMapId === "desert_citadel" && <button className={labLevel === "market" ? "active" : ""} aria-pressed={labLevel === "market"} onClick={() => setLabLevel("market")}>{t("Market •")}</button>}
+              {labMapId === "desert_citadel" && <button className={labLevel === "cistern" ? "active" : ""} aria-pressed={labLevel === "cistern"} onClick={() => setLabLevel("cistern")}>{t("Cistern •")}</button>}
+              {labMapId === "desert_citadel" && <button className={labLevel === "flag" ? "active" : ""} aria-pressed={labLevel === "flag"} onClick={() => setLabLevel("flag")}>{t("Flag ⚑")}</button>}
+              <button className={labLevel === "main" ? "active" : ""} aria-pressed={labLevel === "main"} onClick={() => setLabLevel("main")}>{labMapId === "temple_runoff" ? t("Main •") : labMapId === "iron_junction" ? t("Loading ↑") : t("Citadel ↑")}</button>
+              <button className={labLevel === "upper" ? "active" : ""} aria-pressed={labLevel === "upper"} onClick={() => setLabLevel("upper")}>{labMapId === "temple_runoff" ? t("Bridge ↑") : labMapId === "iron_junction" ? t("Overpass ↑") : t("Lookout ↑↑")}</button>
             </div>
           ))}
-          {athleticsLab && <p className="mini-copy">The default playable view starts on the race grid. Use <code>?athleticsProgress=0.08</code> through <code>0.96</code> to inspect later elevations.</p>}
+          {athleticsLab && <p className="mini-copy">{t("The default playable view starts on the race grid. Use")}{" "}<code>?athleticsProgress=0.08</code>{" "}{t("through")}{" "}<code>0.96</code>{" "}{t("to inspect later elevations.")}</p>}
           <div className="lab-metrics">
-            <span><strong>{summary.total}</strong>Total</span>
-            <span><strong>{summary.alive}</strong>Alive</span>
-            <span><strong>{summary.teams.blue}</strong>Alpha</span>
-            <span><strong>{summary.teams.red}</strong>Bravo</span>
-            <span><strong>{summary.gearTypes}</strong>Gear sets</span>
+            <span><strong>{summary.total}</strong>{t("Total")}</span>
+            <span><strong>{summary.alive}</strong>{t("Alive")}</span>
+            <span><strong>{summary.teams.blue}</strong>{t("Alpha")}</span>
+            <span><strong>{summary.teams.red}</strong>{t("Bravo")}</span>
+            <span><strong>{summary.gearTypes}</strong>{t("Gear sets")}</span>
           </div>
           <label className="toggle-row">
             <input
               type="checkbox"
               checked={isMoving}
               onChange={(event) => setIsMoving(event.target.checked)}
-            />
-            Simulate network movement
-          </label>
+            />{t("Simulate network movement")}</label>
           <button onClick={() => setTick((value) => value + 1)}>
-            <RefreshCw size={18} aria-hidden="true" />
-            Step Simulation
-          </button>
-          <p className="mini-copy">
-            This route uses generated session data only. It does not create a classroom session or affect student gameplay.
-          </p>
+            <RefreshCw size={18} aria-hidden="true" />{t("Step Simulation")}</button>
+          <p className="mini-copy">{t("This route uses generated session data only. It does not create a classroom session or affect student gameplay.")}</p>
         </div>
 
         <div className="character-lab-arena">
-          <Suspense fallback={<ArenaLoading label="Loading character lab" />}>
+          <Suspense fallback={<ArenaLoading label={t("Loading character lab")} />}>
             <ArenaPreview
               key={`${athleticsLab ? ATHLETICS_ARENA_MAP_ID : labMapId}:${labView}:${labLevel}`}
               session={session}
@@ -533,133 +516,132 @@ function CharacterLab() {
 }
 
 export function GyakutenEigoHome({ onOpenGame, onJoinGame }: { onOpenGame: () => void; onJoinGame: () => void }) {
+  const { t } = useSiteTranslation();
   return (
     <div className="product-home rescued-home">
       <section className="site-home site-home-esports" aria-labelledby="quizstrike-home-title">
         <div className="site-home-copy">
-          <span className="eyebrow">A teacher-led classroom game</span>
-          <h1 id="quizstrike-home-title">Make every correct answer matter.</h1>
-          <p>QuizStrike turns review into a live team game. Students answer questions, make choices, and help their team while teachers stay in control.</p>
-          <span className="hero-tagline">Learn together. Play together.</span>
-          <div className="hero-proof-row" aria-label="Product qualities">
-            <span><Users size={16} aria-hidden="true" />Class vs. class energy</span>
-            <span><Zap size={16} aria-hidden="true" />School vs. school spirit</span>
-            <span><Shield size={16} aria-hidden="true" />Teacher-controlled matches</span>
+          <span className="eyebrow">{t("A teacher-led classroom game")}</span>
+          <h1 id="quizstrike-home-title">{t("Make every correct answer matter.")}</h1>
+          <p>{t("QuizStrike turns review into a live team game. Students answer questions, make choices, and help their team while teachers stay in control.")}</p>
+          <span className="hero-tagline">{t("Learn together. Play together.")}</span>
+          <div className="hero-proof-row" aria-label={t("Product qualities")}>
+            <span><Users size={16} aria-hidden="true" />{t("Class vs. class energy")}</span>
+            <span><Zap size={16} aria-hidden="true" />{t("School vs. school spirit")}</span>
+            <span><Shield size={16} aria-hidden="true" />{t("Teacher-controlled matches")}</span>
           </div>
           <div className="button-row">
             <button className="primary" onClick={onOpenGame}>
-              <Play size={18} aria-hidden="true" />
-              Create your first game
-            </button>
+              <Play size={18} aria-hidden="true" />{t("Create your first game")}</button>
             <button onClick={onJoinGame}>
-              <DoorOpen size={18} aria-hidden="true" />
-              Join with a code
-            </button>
+              <DoorOpen size={18} aria-hidden="true" />{t("Join with a code")}</button>
           </div>
         </div>
-        <article className="game-host-card" aria-label="QuizStrike game preview">
+        <article className="game-host-card" aria-label={t("QuizStrike game preview")}>
           <div className="hero-arena-preview">
-            <img className="game-host-card-art" src="/assets/quizstrike-classroom-cover.webp" alt="QuizStrike cover art showing red and blue teams answering questions in a desert arena." width={1672} height={941} fetchPriority="high" />
-            <span className="game-host-card-label">Live game · Desert Citadel</span>
+            <img className="game-host-card-art" src="/assets/quizstrike-classroom-cover.webp" alt={t("QuizStrike cover art showing red and blue teams answering questions in a desert arena.")} width={1672} height={941} fetchPriority="high" />
+            <span className="game-host-card-label">{t("Live game · Desert Citadel")}</span>
           </div>
           <div className="game-preview-meta">
-            <span className="game-preview-objective game-preview-objective-new"><Target size={16} aria-hidden="true" />Answer · earn · outplay</span>
-            <span className="game-preview-objective"><Target size={16} aria-hidden="true" />Answer · earn · capture</span>
-            <strong>Every question changes the scoreboard.</strong>
-            <small>Build momentum. Make the comeback. Take the round.</small>
+            <span className="game-preview-objective game-preview-objective-new"><Target size={16} aria-hidden="true" />{t("Answer · earn · outplay")}</span>
+            <span className="game-preview-objective"><Target size={16} aria-hidden="true" />{t("Answer · earn · capture")}</span>
+            <strong>{t("Every question changes the scoreboard.")}</strong>
+            <small>{t("Build momentum. Make the comeback. Take the round.")}</small>
           </div>
-          <div className="game-preview-signal-row" aria-label="Match highlights">
-            <span><strong>2</strong><small>rival teams</small></span>
-            <span><strong>Live</strong><small>teacher-hosted</small></span>
-            <span><strong>All in</strong><small>student focus</small></span>
+          <div className="game-preview-signal-row" aria-label={t("Match highlights")}>
+            <span><strong>2</strong><small>{t("rival teams")}</small></span>
+            <span><strong>{t("Live")}</strong><small>{t("teacher-hosted")}</small></span>
+            <span><strong>{t("All in")}</strong><small>{t("student focus")}</small></span>
           </div>
         </article>
       </section>
 
       <section className="landing-section product-intro esports-proof-section" aria-labelledby="why-play-title">
-        <div className="section-kicker">Why students lean in</div>
-        <h2 id="why-play-title">Review that feels like game day.</h2>
-        <p className="section-lede">A correct answer is more than a point. It powers the next move, gives the team a reason to communicate, and keeps the whole class watching the scoreboard.</p>
+        <div className="section-kicker">{t("Why students lean in")}</div>
+        <h2 id="why-play-title">{t("Review that feels like game day.")}</h2>
+        <p className="section-lede">{t("A correct answer is more than a point. It powers the next move, gives the team a reason to communicate, and keeps the whole class watching the scoreboard.")}</p>
         <div className="value-card-grid">
-          <article><Zap size={22} aria-hidden="true" /><h3>Every answer has impact</h3><p>Correct answers create momentum students can feel immediately.</p></article>
-          <article><Users size={22} aria-hidden="true" /><h3>Classroom rivalry, real teamwork</h3><p>Compete as a class, communicate under pressure, and celebrate the comeback together.</p></article>
-          <article><Shield size={22} aria-hidden="true" /><h3>Teachers run the match</h3><p>Choose the questions, rules, pace, and finish line from one focused workspace.</p></article>
+          <article><Zap size={22} aria-hidden="true" /><h3>{t("Every answer has impact")}</h3><p>{t("Correct answers create momentum students can feel immediately.")}</p></article>
+          <article><Users size={22} aria-hidden="true" /><h3>{t("Classroom rivalry, real teamwork")}</h3><p>{t("Compete as a class, communicate under pressure, and celebrate the comeback together.")}</p></article>
+          <article><Shield size={22} aria-hidden="true" /><h3>{t("Teachers run the match")}</h3><p>{t("Choose the questions, rules, pace, and finish line from one focused workspace.")}</p></article>
         </div>
       </section>
 
       <section className="landing-section founder-story-section" aria-labelledby="founder-story-title">
         <div className="founder-story-intro">
-          <span className="eyebrow">The story behind QuizStrike</span>
-          <h2 id="founder-story-title">Built for real classroom time.</h2>
-          <span className="founder-story-signoff">Peter · Founder, QuizStrike</span>
+          <span className="eyebrow">{t("The story behind QuizStrike")}</span>
+          <h2 id="founder-story-title">{t("Built for real classroom time.")}</h2>
+          <span className="founder-story-signoff">{t("Peter · Founder, QuizStrike")}</span>
         </div>
         <div className="founder-story-card">
-          <p className="founder-greeting">Hi! I’m Peter.</p>
-          <p>I started <strong>QuizStrike</strong> because I wanted review to feel active, social, and worth showing up for.</p>
-          <p>Teachers need a game they can start quickly, guide clearly, and connect back to learning. Students need a reason to talk, think, and try again.</p>
-          <p>That is what <strong>QuizStrike</strong> is for: a classroom game where every answer helps the team make its next move.</p>
-          <p className="founder-closing">I hope it gives your next lesson a little more energy.</p>
+          <p className="founder-greeting">{t("Hi! I’m Peter.")}</p>
+          <p>{t("I started")}{" "}<strong>QuizStrike</strong>{" "}{t("because I wanted review to feel active, social, and worth showing up for.")}</p>
+          <p>{t("Teachers need a game they can start quickly, guide clearly, and connect back to learning. Students need a reason to talk, think, and try again.")}</p>
+          <p>{t("That is what")}{" "}<strong>QuizStrike</strong>{" "}{t("is for: a classroom game where every answer helps the team make its next move.")}</p>
+          <p className="founder-closing">{t("I hope it gives your next lesson a little more energy.")}</p>
         </div>
       </section>
 
       <section className="landing-section mode-section" aria-labelledby="modes-title">
         <div>
-          <span className="eyebrow">Choose your matchup</span>
-          <h2 id="modes-title">One question can swing the whole round.</h2>
+          <span className="eyebrow">{t("Choose your matchup")}</span>
+          <h2 id="modes-title">{t("One question can swing the whole round.")}</h2>
         </div>
         <div className="mode-card-grid">
-          <article className="mode-card flag-mode-card"><span>01</span><h3>Class vs. class tactics</h3><p>Push the objective, protect your lead, and make every answer count when the other team is closing in.</p></article>
-          <article className="mode-card zombie-mode-card"><span>02</span><h3>Team survival mode</h3><p>Answer quickly, keep your team moving, and turn a pressure-filled review into a shared mission.</p></article>
-          <article className="mode-card classic-mode-card"><span>03</span><h3>Quick start, full focus</h3><p>Run a clean warmup or a school-day showdown with a simple mode that gets everyone playing fast.</p></article>
+          <article className="mode-card flag-mode-card"><span>01</span><h3>{t("Class vs. class tactics")}</h3><p>{t("Push the objective, protect your lead, and make every answer count when the other team is closing in.")}</p></article>
+          <article className="mode-card zombie-mode-card"><span>02</span><h3>{t("Team survival mode")}</h3><p>{t("Answer quickly, keep your team moving, and turn a pressure-filled review into a shared mission.")}</p></article>
+          <article className="mode-card classic-mode-card"><span>03</span><h3>{t("Quick start, full focus")}</h3><p>{t("Run a clean warmup or a school-day showdown with a simple mode that gets everyone playing fast.")}</p></article>
         </div>
       </section>
 
       <section className="landing-section classroom-flow-section" aria-labelledby="classroom-flow-title">
         <div>
-          <span className="eyebrow">From lesson plan to leaderboard</span>
-          <h2 id="classroom-flow-title">Set the matchup in minutes.</h2>
+          <span className="eyebrow">{t("From lesson plan to leaderboard")}</span>
+          <h2 id="classroom-flow-title">{t("Set the matchup in minutes.")}</h2>
         </div>
         <ol className="classroom-flow">
-          <li><span>1</span><strong>Load the questions</strong><p>Paste study terms or build a custom set for the lesson you are teaching.</p></li>
-          <li><span>2</span><strong>Choose the matchup</strong><p>Set the mode, pace, rewards, and rules for your classroom showdown.</p></li>
-          <li><span>3</span><strong>Share the join code</strong><p>Students join from a browser with a nickname—no student email required.</p></li>
-          <li><span>4</span><strong>Recap the result</strong><p>Use participation, accuracy, and missed-question data to plan the next play.</p></li>
+          <li><span>1</span><strong>{t("Load the questions")}</strong><p>{t("Paste study terms or build a custom set for the lesson you are teaching.")}</p></li>
+          <li><span>2</span><strong>{t("Choose the matchup")}</strong><p>{t("Set the mode, pace, rewards, and rules for your classroom showdown.")}</p></li>
+          <li><span>3</span><strong>{t("Share the join code")}</strong><p>{t("Students join from a browser with a nickname—no student email required.")}</p></li>
+          <li><span>4</span><strong>{t("Recap the result")}</strong><p>{t("Use participation, accuracy, and missed-question data to plan the next play.")}</p></li>
         </ol>
       </section>
 
       <section className="landing-section faq-section" aria-labelledby="faq-title">
-        <div><span className="eyebrow">Built for the real classroom</span><h2 id="faq-title">Live competition. Lasting learning.</h2></div>
+        <div><span className="eyebrow">{t("Built for the real classroom")}</span><h2 id="faq-title">{t("Live competition. Lasting learning.")}</h2></div>
         <div className="faq-list">
-          <details open><summary>Is this only for high-stakes competition?</summary><p>No. Use it for a five-minute warmup, a focused review, or a full class-vs-class event.</p></details>
-           <details><summary>Can teachers keep the game on track?</summary><p>Yes. Teachers create and start games, choose the mode and settings, watch the roster, and end the game when the lesson is ready.</p></details>
-          <details><summary>What happens after the matchup?</summary><p>The teacher workspace keeps participation and question-accuracy information ready for the next lesson and the next rematch.</p></details>
+          <details open><summary>{t("Is this only for high-stakes competition?")}</summary><p>{t("No. Use it for a five-minute warmup, a focused review, or a full class-vs-class event.")}</p></details>
+           <details><summary>{t("Can teachers keep the game on track?")}</summary><p>{t("Yes. Teachers create and start games, choose the mode and settings, watch the roster, and end the game when the lesson is ready.")}</p></details>
+          <details><summary>{t("What happens after the matchup?")}</summary><p>{t("The teacher workspace keeps participation and question-accuracy information ready for the next lesson and the next rematch.")}</p></details>
         </div>
       </section>
 
       <section className="landing-final-cta">
-        <span className="eyebrow">Ready for the next matchup?</span>
-        <h2 className="landing-final-cta-title">Turn your next review into the main event.</h2>
-        <h2>Bring the questions. We’ll bring the game loop.</h2>
-         <div className="button-row"><button className="primary" onClick={onOpenGame}><Play size={18} aria-hidden="true" />Create your first game</button></div>
+        <span className="eyebrow">{t("Ready for the next matchup?")}</span>
+        <h2 className="landing-final-cta-title">{t("Turn your next review into the main event.")}</h2>
+        <h2>{t("Bring the questions. We’ll bring the game loop.")}</h2>
+         <div className="button-row"><button className="primary" onClick={onOpenGame}><Play size={18} aria-hidden="true" />{t("Create your first game")}</button></div>
       </section>
     </div>
   );
 }
 
 function FeatureLoading({ label }: { label: string }) {
-  return <section className="notice-panel" role="status"><p>{label}…</p></section>;
+  const { t } = useSiteTranslation();
+  return <section className="notice-panel" role="status"><p>{t(label)}…</p></section>;
 }
 
 function QuizStrikeLanding({ teacher, slug, onNavigate, onTeacherLogin }: { teacher?: TeacherUser | null; slug?: string; onNavigate: (path: string, mode?: "quizStrike" | "teacher") => void; onTeacherLogin: () => void }) {
+  const { t } = useSiteTranslation();
   return <>
     {!slug && <section className="quiz-classroom-entry" aria-labelledby="quiz-classroom-title">
-      <div><span className="auth-kicker">QuizStrike · Classroom games</span><h2 id="quiz-classroom-title">Ready to play with your class?</h2><p>Teachers choose a Study Set and host. Students join with a code.</p></div>
+      <div><span className="auth-kicker">{t("QuizStrike · Classroom games")}</span><h2 id="quiz-classroom-title">{t("Ready to play with your class?")}</h2><p>{t("Teachers choose a Study Set and host. Students join with a code.")}</p></div>
       <div className="quiz-classroom-actions">
-        <button className="primary" type="button" onClick={() => onNavigate("/quiz-strike/teacher/library", "teacher")}><GraduationCap size={18} aria-hidden="true" />Host a classroom game</button>
-        <button type="button" onClick={() => onNavigate("/join")}><DoorOpen size={18} aria-hidden="true" />Join with a code</button>
+        <button className="primary" type="button" onClick={() => onNavigate("/quiz-strike/teacher/library", "teacher")}><GraduationCap size={18} aria-hidden="true" />{t("Host a classroom game")}</button>
+        <button type="button" onClick={() => onNavigate("/join")}><DoorOpen size={18} aria-hidden="true" />{t("Join with a code")}</button>
       </div>
     </section>}
-    <Suspense fallback={<FeatureLoading label="Loading QuizStrike" />}><CompetitionHub teacher={teacher} slug={slug} onNavigate={onNavigate} onTeacherLogin={onTeacherLogin} /></Suspense>
+    <Suspense fallback={<FeatureLoading label={t("Loading QuizStrike")} />}><CompetitionHub teacher={teacher} slug={slug} onNavigate={onNavigate} onTeacherLogin={onTeacherLogin} /></Suspense>
   </>;
 }
 

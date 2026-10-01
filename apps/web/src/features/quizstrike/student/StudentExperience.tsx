@@ -1,3 +1,4 @@
+import { useSiteTranslation } from "../../../ui/siteTranslation";
 import "./device-hud.css";
 import { lazy, Suspense, useCallback, useEffect, useMemo, useRef, useState } from "react";
 import type { FormEvent } from "react";
@@ -332,6 +333,7 @@ function useFlagRemainingSeconds(session: GameSession | null) {
 
 
 export default function StudentExperience({ onExit }: { onExit: () => void }) {
+  const { t } = useSiteTranslation();
   const [joinCodeFromLink] = useState(() => getJoinCodeFromSearch(window.location.search));
   const [joinCode, setJoinCode] = useState(joinCodeFromLink);
   const [nickname, setNickname] = useState("");
@@ -2312,7 +2314,7 @@ export default function StudentExperience({ onExit }: { onExit: () => void }) {
     if (isRestoringStudentSession) {
       return (
         <section className="auth-layout student-join-screen">
-          <ArenaLoading label="Restoring your student session" />
+          <ArenaLoading label={t("Restoring your student session")} />
         </section>
       );
     }
@@ -2320,36 +2322,36 @@ export default function StudentExperience({ onExit }: { onExit: () => void }) {
       <section className="auth-layout student-join-screen game-join-screen">
         <div className="student-join-help">
           <div className="panel how-to-card controls-card" aria-labelledby="student-controls-heading">
-            <div className="controls-card-heading"><h2 id="student-controls-heading">Quick controls</h2><span>Keyboard + touch</span></div>
+            <div className="controls-card-heading"><h2 id="student-controls-heading">{t("Quick controls")}</h2><span>{t("Keyboard + touch")}</span></div>
             <div className="student-controls-grid">
-              <div className="student-control"><kbd>WASD</kbd><span>Move at full speed</span></div>
-              <div className="student-control"><kbd>Shift</kbd><span>Crouch</span></div>
-              <div className="student-control"><kbd>Space</kbd><span>Jump</span></div>
-              <div className="student-control"><kbd>Arrow keys / swipe</kbd><span>Look around</span></div>
-              <div className="student-control"><kbd>F</kbd><span>Fire</span></div>
-              <div className="student-control"><kbd>C</kbd><span>Zoom</span></div>
-              <div className="student-control"><kbd>E</kbd><span>Environment button</span></div>
-              <div className="student-control"><kbd>Q</kbd><span>Questions</span></div>
-              <div className="student-control"><kbd>B / 1-6</kbd><span>Open and choose gear</span></div>
-              <div className="student-control"><kbd>Tab</kbd><span>Scoreboard</span></div>
+              <div className="student-control"><kbd>WASD</kbd><span>{t("Move at full speed")}</span></div>
+              <div className="student-control"><kbd>Shift</kbd><span>{t("Crouch")}</span></div>
+              <div className="student-control"><kbd>Space</kbd><span>{t("Jump")}</span></div>
+              <div className="student-control"><kbd>{t("Arrow keys / swipe")}</kbd><span>{t("Look around")}</span></div>
+              <div className="student-control"><kbd>F</kbd><span>{t("Fire")}</span></div>
+              <div className="student-control"><kbd>C</kbd><span>{t("Zoom")}</span></div>
+              <div className="student-control"><kbd>E</kbd><span>{t("Environment button")}</span></div>
+              <div className="student-control"><kbd>Q</kbd><span>{t("Questions")}</span></div>
+              <div className="student-control"><kbd>B / 1-6</kbd><span>{t("Open and choose gear")}</span></div>
+              <div className="student-control"><kbd>Tab</kbd><span>{t("Scoreboard")}</span></div>
             </div>
           </div>
         </div>
         <form className="panel form-panel student-join-form" onSubmit={join}>
           <div className="game-join-form-heading">
-            <span className="auth-kicker">Player join</span>
-            <h1>Enter QuizStrike</h1>
-            <p>Use the game code from the host, then choose your player name.</p>
+            <span className="auth-kicker">{t("Player join")}</span>
+            <h1>{t("Enter QuizStrike")}</h1>
+            <p>{t("Use the game code from the host, then choose your player name.")}</p>
           </div>
           {joinCodeFromLink ? (
-            <div className="linked-join-code" aria-label={`Join session ${joinCode}`}>
-              <span><Link2 size={17} aria-hidden="true" />Game link ready</span>
+            <div className="linked-join-code" aria-label={t("Join session {value0}", { value0: joinCode })}>
+              <span><Link2 size={17} aria-hidden="true" />{t("Game link ready")}</span>
               <strong>{joinCode}</strong>
-              <small>Add your player name below to join.</small>
+              <small>{t("Add your player name below to join.")}</small>
             </div>
           ) : (
             <label className="join-field">
-              <span className="join-field-label">Game code</span>
+              <span className="join-field-label">{t("Game code")}</span>
               <input
                 value={joinCode}
                 onChange={(event) => {
@@ -2367,16 +2369,16 @@ export default function StudentExperience({ onExit }: { onExit: () => void }) {
                 aria-describedby={status.error ? "join-error join-code-help" : "join-code-help"}
                 placeholder="ABC123"
               />
-              <small id="join-code-help">Enter the 6-character code on the host's screen.</small>
+              <small id="join-code-help">{t("Enter the 6-character code on the host's screen.")}</small>
             </label>
           )}
           <label className="join-field">
-            <span className="join-field-label">Player name</span>
-            <input required placeholder="Player name" autoComplete="nickname" autoFocus={Boolean(joinCodeFromLink)} enterKeyHint="done" value={nickname} onChange={(event) => { setNickname(event.target.value); status.clearError(); }} maxLength={20} aria-invalid={Boolean(nicknameError)} aria-describedby={nicknameError ? "nickname-error nickname-help" : "nickname-help"} />
-            <small id="nickname-help">Use a name other players will recognize.</small>
+            <span className="join-field-label">{t("Player name")}</span>
+            <input required placeholder={t("Player name")} autoComplete="nickname" autoFocus={Boolean(joinCodeFromLink)} enterKeyHint="done" value={nickname} onChange={(event) => { setNickname(event.target.value); status.clearError(); }} maxLength={20} aria-invalid={Boolean(nicknameError)} aria-describedby={nicknameError ? "nickname-error nickname-help" : "nickname-help"} />
+            <small id="nickname-help">{t("Use a name other players will recognize.")}</small>
           </label>
-          {nicknameError && <p id="nickname-error" className="error-text" role="alert">{nicknameError}</p>}
-          {status.error && <p id="join-error" className="error-text" role="alert">{status.error}</p>}
+          {nicknameError && <p id="nickname-error" className="error-text" role="alert">{t(nicknameError)}</p>}
+          {status.error && <p id="join-error" className="error-text" role="alert">{t(status.error)}</p>}
           {restoreFailed && (
             <button
               className="text-button join-recovery-button"
@@ -2388,12 +2390,10 @@ export default function StudentExperience({ onExit }: { onExit: () => void }) {
                 setNickname("");
                 status.clear();
               }}
-            >
-              Start over with a new join
-            </button>
+            >{t("Start over with a new join")}</button>
           )}
           <button className="primary" type="submit" disabled={isJoining || Boolean(nicknameError)}>
-            {isJoining ? "Joining..." : "Join game"}
+            {isJoining ? t("Joining...") : t("Join game")}
           </button>
         </form>
       </section>
@@ -2580,11 +2580,11 @@ export default function StudentExperience({ onExit }: { onExit: () => void }) {
           {session.status === "waiting" ? (
             <div className="lobby-brand">
               <QuizStrikeLogo size="lobby" />
-              <small>{athleticsRace && athleticsMode !== "classic" ? athleticsModeConfig.label : gameModeLabel(session.settings.gameMode)} · Room {session.sessionCode}</small>
+              <small>{athleticsRace && athleticsMode !== "classic" ? t(athleticsModeConfig.label) : t(gameModeLabel(session.settings.gameMode))}{" "}{t("· Room")}{" "}{session.sessionCode}</small>
             </div>
-          ) : <span>{athleticsRace && athleticsMode !== "classic" ? athleticsModeConfig.label : gameModeLabel(session.settings.gameMode)}</span>}
-          <button type="button" disabled={teacherPaused} onClick={() => { setSettingsOpen(true); setQuizOpen(false); setBuyOpen(false); setScoreboardOpen(false); }}><Settings size={16} aria-hidden="true" />Settings</button>
-          <button type="button" onClick={onExit}>Leave game</button>
+          ) : <span>{athleticsRace && athleticsMode !== "classic" ? t(athleticsModeConfig.label) : t(gameModeLabel(session.settings.gameMode))}</span>}
+          <button type="button" disabled={teacherPaused} onClick={() => { setSettingsOpen(true); setQuizOpen(false); setBuyOpen(false); setScoreboardOpen(false); }}><Settings size={16} aria-hidden="true" />{t("Settings")}</button>
+          <button type="button" onClick={onExit}>{t("Leave game")}</button>
         </div>
         {session.status === "waiting" ? (
           <div className="arena-waiting-surface" aria-hidden="true" />
@@ -2622,31 +2622,31 @@ export default function StudentExperience({ onExit }: { onExit: () => void }) {
         <RewardVfxOverlay cue={rewardVfx} onComplete={() => setRewardVfx(null)} />
         {teacherPaused && <TeacherPauseOverlay />}
         {session.status !== "waiting" && (<>
-        <div className={roundCountdownClassName} role="timer" aria-label={`Round time remaining ${roundTimeLabel}`}>
+        <div className={roundCountdownClassName} role="timer" aria-label={t("Round time remaining {value0}", { value0: roundTimeLabel })}>
           <Timer size={18} aria-hidden="true" />
-          <span>{athleticsRace ? (athleticsStartRemainingSeconds > 0 ? "Get set" : "Race time") : roundPreparation ? "Get ready" : zombieSelection ? "Choose Zombies" : "Time left"}</span>
-          <strong>{roundTimeLabel}</strong>
+          <span>{athleticsRace ? (athleticsStartRemainingSeconds > 0 ? t("Get set") : t("Race time")) : roundPreparation ? t("Get ready") : zombieSelection ? t("Choose Zombies") : t("Time left")}</span>
+          <strong>{t(roundTimeLabel)}</strong>
         </div>
         <div className="arena-objective-strip">
-          <span className={`status-pill status-${session.status}`}>{athleticsRace && athleticsPlayer?.status === "finished" ? "Finished" : roundPreparation ? "Get ready" : zombieSelection ? "Choosing Zombies" : sessionStatusLabel(session.status)}</span>
-          <span className="objective-primary" title={objectiveText}>{session.settings.gameMode === "classic" && roundActive ? "Most tags wins" : objectiveText}</span>
+          <span className={`status-pill status-${session.status}`}>{athleticsRace && athleticsPlayer?.status === "finished" ? t("Finished") : roundPreparation ? t("Get ready") : zombieSelection ? t("Choosing Zombies") : t(sessionStatusLabel(session.status))}</span>
+          <span className="objective-primary" title={objectiveText}>{session.settings.gameMode === "classic" && roundActive ? t("Most tags wins") : objectiveText}</span>
           {session.settings.gameMode === "flag" && session.flag?.state === "placed" && (
-            <span className={`flag-objective-countdown${flagRemainingSeconds <= 10 ? " urgent" : ""}`} role="timer" aria-label={`Active flag time remaining ${formatDuration(flagRemainingSeconds)}`}>
+            <span className={`flag-objective-countdown${flagRemainingSeconds <= 10 ? " urgent" : ""}`} role="timer" aria-label={t("Active flag time remaining {value0}", { value0: formatDuration(flagRemainingSeconds) })}>
               <Timer size={14} aria-hidden="true" />
               <strong>{formatDuration(flagRemainingSeconds)}</strong>
             </span>
           )}
           <span className={`mode-pill mode-${session.settings.gameMode}`}>
-            {athleticsRace && athleticsMode !== "classic" ? athleticsModeConfig.shortLabel : gameModeLabel(session.settings.gameMode)}
-            {session.settings.gameMode === "flag" ? ` · Round ${session.currentRound}/${session.settings.roundCount}` : ""}
+            {athleticsRace && athleticsMode !== "classic" ? t(athleticsModeConfig.shortLabel) : t(gameModeLabel(session.settings.gameMode))}
+            {session.settings.gameMode === "flag" ? t(" · Round {value0}/{value1}", { value0: session.currentRound, value1: session.settings.roundCount }) : ""}
           </span>
         </div>
         {athleticsRace && athleticsMode !== "classic" && !isAthleticsSpectator && !isFlagSpectator && (
-          <div className={`athletics-mode-action-bar athletics-mode-${athleticsMode}`} aria-label={`${athleticsModeConfig.label} controls`}>
+          <div className={`athletics-mode-action-bar athletics-mode-${athleticsMode}`} aria-label={t("{value0} controls", { value0: athleticsModeConfig.label })}>
             <div className="athletics-mode-action-copy">
               <span className="eyebrow">{athleticsModeConfig.instructionTitle}</span>
-              <strong>{athleticsPlayer?.role === "hunter" ? "Defend the station" : athleticsModeConfig.label}</strong>
-              <small>{athleticsPlayer?.role === "hunter" ? `${athleticsPlayer.hunterAmmo ?? 0} foam ammo · ${athleticsPlayer.hunterHits ?? 0} hits` : `${athleticsPlayer?.abilityCharge ?? 0}/3 ability charge`}</small>
+              <strong>{athleticsPlayer?.role === "hunter" ? t("Defend the station") : t(athleticsModeConfig.label)}</strong>
+              <small>{athleticsPlayer?.role === "hunter" ? t("{value0} foam ammo · {value1} hits", { value0: athleticsPlayer.hunterAmmo ?? 0, value1: athleticsPlayer.hunterHits ?? 0 }) : t("{value0}/3 ability charge", { value0: athleticsPlayer?.abilityCharge ?? 0 })}</small>
             </div>
             {athleticsPlayer?.role !== "hunter" && athleticsAbility && (
               <button
@@ -2656,24 +2656,24 @@ export default function StudentExperience({ onExit }: { onExit: () => void }) {
                 onClick={() => activateAthleticsAbility(athleticsAbility)}
               >
                 <Zap size={16} aria-hidden="true" />
-                {getChaosAbilityLabel(athleticsAbility)}
+                {t(getChaosAbilityLabel(athleticsAbility))}
               </button>
             )}
             {athleticsMode === "zeus" && athleticsWarning?.targeted && (
-              <span className="athletics-warning-chip" role="status">⚡ STRIKE IN {athleticsWarningRemainingSeconds}s</span>
+              <span className="athletics-warning-chip" role="status">{t("⚡ STRIKE IN")}{" "}{athleticsWarningRemainingSeconds}s</span>
             )}
             {athleticsMode === "chaos-climb" && chaosEventLabel && (
-              <span className="athletics-warning-chip athletics-chaos-event-chip" role="status">💥 {chaosEventLabel}</span>
+              <span className="athletics-warning-chip athletics-chaos-event-chip" role="status">💥 {t(chaosEventLabel)}</span>
             )}
           </div>
         )}
         {isFlagSpectator || isAthleticsSpectator ? (
-          <section className="spectator-dock" aria-label="Spectator controls" data-testid="spectator-dock">
+          <section className="spectator-dock" aria-label={t("Spectator controls")} data-testid="spectator-dock">
             <div className="spectator-state">
               <span className="spectator-state-icon">{isAthleticsSpectator ? <Trophy size={20} aria-hidden="true" /> : <Snowflake size={20} aria-hidden="true" />}</span>
               <span>
-                <small>{isAthleticsSpectator ? "Finished the course" : "Frozen for this round"}</small>
-                <strong>{isAthleticsSpectator ? "Watch the live racers" : "Back in the next round"}</strong>
+                <small>{isAthleticsSpectator ? t("Finished the course") : t("Frozen for this round")}</small>
+                <strong>{isAthleticsSpectator ? t("Watch the live racers") : t("Back in the next round")}</strong>
               </span>
             </div>
             <button
@@ -2681,20 +2681,20 @@ export default function StudentExperience({ onExit }: { onExit: () => void }) {
               type="button"
               onClick={() => cycleSpectator(-1)}
               disabled={spectatorCandidates.length < 2}
-              aria-label="Watch the previous player"
+              aria-label={t("Watch the previous player")}
             >
               <ChevronLeft size={22} aria-hidden="true" />
-              <span>Previous</span>
+              <span>{t("Previous")}</span>
             </button>
             <div className="spectator-focus" aria-live="polite" aria-atomic="true">
-              <small><Eye size={15} aria-hidden="true" />Watching{spectatorCandidates.length > 0 ? ` ${spectatorIndex} of ${spectatorCandidates.length}` : ""}</small>
+              <small><Eye size={15} aria-hidden="true" />{t("Watching")}{spectatorCandidates.length > 0 ? t(" {value0} of {value1}", { value0: spectatorIndex, value1: spectatorCandidates.length }) : ""}</small>
               <div>
-                <strong>{spectatorPlayer?.nickname ?? "Waiting for an active player"}</strong>
+                <strong>{spectatorPlayer?.nickname ?? t("Waiting for an active player")}</strong>
                 {spectatorPlayer && (
                   isAthleticsSpectator
-                    ? <span className="spectator-team spectator-team-athletics">{athleticsSpectatorStanding ? `Lap ${Math.min(athleticsRequiredLaps, athleticsSpectatorStanding.completedLaps + 1)}/${athleticsRequiredLaps} · ${Math.round(athleticsSpectatorStanding.routeProgress * 100)}%` : "Racing"}</span>
+                    ? <span className="spectator-team spectator-team-athletics">{athleticsSpectatorStanding ? t("Lap {value0}/{value1} · {value2}%", { value0: Math.min(athleticsRequiredLaps, athleticsSpectatorStanding.completedLaps + 1), value1: athleticsRequiredLaps, value2: Math.round(athleticsSpectatorStanding.routeProgress * 100) }) : t("Racing")}</span>
                     : <span className={`spectator-team spectator-team-${spectatorPlayer.team}`}>
-                      {spectatorPlayer.team === "blue" ? "Blue Team" : "Red Team"}
+                      {spectatorPlayer.team === "blue" ? t("Blue Team") : t("Red Team")}
                     </span>
                 )}
               </div>
@@ -2704,47 +2704,47 @@ export default function StudentExperience({ onExit }: { onExit: () => void }) {
               type="button"
               onClick={() => cycleSpectator(1)}
               disabled={spectatorCandidates.length < 2}
-              aria-label="Watch the next player"
+              aria-label={t("Watch the next player")}
             >
-              <span>Next</span>
+              <span>{t("Next")}</span>
               <ChevronRight size={22} aria-hidden="true" />
             </button>
             {isAthleticsSpectator && spectatorPlayer ? (
-              <div className="spectator-player-stats athletics-spectator-stats" aria-label={`${spectatorPlayer.nickname} race status`}>
+              <div className="spectator-player-stats athletics-spectator-stats" aria-label={t("{value0} race status", { value0: spectatorPlayer.nickname })}>
                 <span>
                   <Footprints size={16} aria-hidden="true" />
-                  <span><small>Lap</small><strong>{Math.min(athleticsRequiredLaps, (athleticsSpectatorStanding?.completedLaps ?? spectatorPlayer.athletics?.completedLaps ?? 0) + 1)}/{athleticsRequiredLaps}</strong></span>
+                  <span><small>{t("Lap")}</small><strong>{Math.min(athleticsRequiredLaps, (athleticsSpectatorStanding?.completedLaps ?? spectatorPlayer.athletics?.completedLaps ?? 0) + 1)}/{athleticsRequiredLaps}</strong></span>
                 </span>
                 <span>
                   <Target size={16} aria-hidden="true" />
-                  <span><small>Checkpoint</small><strong>{athleticsSpectatorStanding?.checkpointIndex ?? spectatorPlayer.athletics?.checkpointIndex ?? 0}</strong></span>
+                  <span><small>{t("Checkpoint")}</small><strong>{athleticsSpectatorStanding?.checkpointIndex ?? spectatorPlayer.athletics?.checkpointIndex ?? 0}</strong></span>
                 </span>
                 <span>
                   <Timer size={16} aria-hidden="true" />
-                  <span><small>Progress</small><strong>{Math.round((athleticsSpectatorStanding?.routeProgress ?? spectatorPlayer.athletics?.routeProgress ?? 0) * 100)}%</strong></span>
+                  <span><small>{t("Progress")}</small><strong>{Math.round((athleticsSpectatorStanding?.routeProgress ?? spectatorPlayer.athletics?.routeProgress ?? 0) * 100)}%</strong></span>
                 </span>
                 <span className="spectator-gear">
                   <Trophy size={16} aria-hidden="true" />
-                  <span><small>Place</small><strong>{athleticsSpectatorStanding?.rank ?? "—"}</strong></span>
+                  <span><small>{t("Place")}</small><strong>{athleticsSpectatorStanding?.rank ?? "—"}</strong></span>
                 </span>
               </div>
             ) : spectatorPlayer && spectatorGear ? (
-              <div className="spectator-player-stats" aria-label={`${spectatorPlayer.nickname} status`}>
+              <div className="spectator-player-stats" aria-label={t("{value0} status", { value0: spectatorPlayer.nickname })}>
                 <span>
                   <HeartPulse size={16} aria-hidden="true" />
-                  <span><small>Health</small><strong>{getPlayerWarmth(spectatorPlayer)}</strong></span>
+                  <span><small>{t("Health")}</small><strong>{getPlayerWarmth(spectatorPlayer)}</strong></span>
                 </span>
                 <span>
                   <Target size={16} aria-hidden="true" />
-                  <span><small>Snowballs</small><strong>{spectatorPlayer.snowballs ?? session.settings.startingSnowballs}</strong></span>
+                  <span><small>{t("Snowballs")}</small><strong>{spectatorPlayer.snowballs ?? session.settings.startingSnowballs}</strong></span>
                 </span>
                 <span className="spectator-gear">
                   <Package size={16} aria-hidden="true" />
-                  <span><small>Gear</small><strong>{spectatorGear.name}</strong></span>
+                  <span><small>{t("Gear")}</small><strong>{spectatorGear.name}</strong></span>
                 </span>
               </div>
             ) : (
-              <p className="spectator-waiting-copy">The camera will switch when a student is active.</p>
+              <p className="spectator-waiting-copy">{t("The camera will switch when a student is active.")}</p>
             )}
           </section>
         ) : !athleticsRace ? (
@@ -2756,7 +2756,7 @@ export default function StudentExperience({ onExit }: { onExit: () => void }) {
             <span key={`currency-${currencyPulse}`} className={`hud-stat hud-currency${currencyPulse ? " hud-value-pulse" : ""}`}>
               <CircleDollarSign size={18} aria-hidden="true" />
               <span>
-                <small>Money</small>
+                <small>{t("Money")}</small>
                 <strong>${player.money}</strong>
               </span>
             </span>
@@ -2766,15 +2766,15 @@ export default function StudentExperience({ onExit }: { onExit: () => void }) {
               <span className="hud-stat weapon">
                 <BookOpen size={18} aria-hidden="true" />
                 <span>
-                  <small>Recharge</small>
-                  <strong>Correct answer = +{ZOMBIE_HUMAN_CORRECT_ENERGY}</strong>
+                  <small>{t("Recharge")}</small>
+                  <strong>{t("Correct answer = +")}{ZOMBIE_HUMAN_CORRECT_ENERGY}</strong>
                 </span>
               </span>
               <span className="hud-stat">
                 <Shield size={18} aria-hidden="true" />
                 <span>
-                  <small>Human goal</small>
-                  <strong>{movementEnergy > 0 ? "Move and survive" : "Answer to move"}</strong>
+                  <small>{t("Human goal")}</small>
+                  <strong>{movementEnergy > 0 ? t("Move and survive") : t("Answer to move")}</strong>
                 </span>
               </span>
             </>
@@ -2782,7 +2782,7 @@ export default function StudentExperience({ onExit }: { onExit: () => void }) {
           <span className="hud-stat">
             <Target size={18} aria-hidden="true" />
             <span>
-              <small>Snowballs left</small>
+              <small>{t("Snowballs left")}</small>
               <strong>{snowballs}</strong>
             </span>
           </span>
@@ -2802,11 +2802,11 @@ export default function StudentExperience({ onExit }: { onExit: () => void }) {
             <span className="incoming-attacker-label">
               <strong>{incomingHitCue.attackerName}</strong>
               <small>
-                {incomingHitCue.eliminated ? "froze you" : "attacking"} from{" "}
+                {incomingHitCue.eliminated ? t("froze you") : t("attacking")}{" "}{t("from")}{" "}
                 {incomingHitCue.direction === "front"
-                  ? "ahead"
+                  ? t("ahead")
                   : incomingHitCue.direction === "back"
-                    ? "behind"
+                    ? t("behind")
                     : incomingHitCue.direction}
               </small>
             </span>
@@ -2814,12 +2814,10 @@ export default function StudentExperience({ onExit }: { onExit: () => void }) {
         )}
         {rewardPulse && <div className="reward-toast" onAnimationEnd={() => setRewardPulse("")}>{rewardPulse}</div>}
         {panelsOpen && (
-          <div className="game-menu-overlay" role="dialog" aria-modal="false" aria-label="Arena menu">
+          <div className="game-menu-overlay" role="dialog" aria-modal="false" aria-label={t("Arena menu")}>
             <div className="game-menu-bar">
               <strong>{menuTitle}</strong>
-              <button type="button" onClick={() => { gameAudio.play("menu_toggle"); setQuizOpen(false); setBuyOpen(false); setScoreboardOpen(false); setSettingsOpen(false); }}>
-                Back to the game
-              </button>
+              <button type="button" onClick={() => { gameAudio.play("menu_toggle"); setQuizOpen(false); setBuyOpen(false); setScoreboardOpen(false); setSettingsOpen(false); }}>{t("Back to the game")}</button>
             </div>
             {quizOpen && (
               <>
@@ -2827,27 +2825,27 @@ export default function StudentExperience({ onExit }: { onExit: () => void }) {
                   <div className="panel respawn-card respawn-card-overlay athletics-recovery-card" role="status" aria-live="polite">
                     <div className="panel-title">
                       <div>
-                        <span className="menu-eyebrow">Fall recovery</span>
-                        <h2>You fell! Answer 3 questions to get back on the course.</h2>
+                        <span className="menu-eyebrow">{t("Fall recovery")}</span>
+                        <h2>{t("You fell! Answer 3 questions to get back on the course.")}</h2>
                       </div>
                       <span>{athleticsPlayer?.recoveryCorrectAnswers ?? 0}/{athleticsPlayer?.recoveryRequiredAnswers ?? 3}</span>
                     </div>
-                    <div className="respawn-meter" aria-label="Recovery question progress">
+                    <div className="respawn-meter" aria-label={t("Recovery question progress")}>
                       <span style={{ width: `${Math.min(100, ((athleticsPlayer?.recoveryCorrectAnswers ?? 0) / Math.max(1, athleticsPlayer?.recoveryRequiredAnswers ?? 3)) * 100)}%` }} />
                     </div>
-                    <p>Recovery Questions {athleticsPlayer?.recoveryCorrectAnswers ?? 0} / {athleticsPlayer?.recoveryRequiredAnswers ?? 3} · only correct answers count. You’ll return to the previous safe platform.</p>
+                    <p>{t("Recovery Questions")}{" "}{athleticsPlayer?.recoveryCorrectAnswers ?? 0} / {athleticsPlayer?.recoveryRequiredAnswers ?? 3}{" "}{t("· only correct answers count. You’ll return to the previous safe platform.")}</p>
                   </div>
                 )}
                 {canPracticeToRespawn && (
                   <div className="panel respawn-card respawn-card-overlay">
                     <div className="panel-title">
-                      <h2>Answer 3 to return</h2>
+                      <h2>{t("Answer 3 to return")}</h2>
                       <span>{respawnProgress}/{RESPAWN_CORRECT_ANSWERS_REQUIRED}</span>
                     </div>
-                    <div className="respawn-meter" aria-label="Respawn progress">
+                    <div className="respawn-meter" aria-label={t("Respawn progress")}>
                       <span style={{ width: `${Math.min(100, (respawnProgress / RESPAWN_CORRECT_ANSWERS_REQUIRED) * 100)}%` }} />
                     </div>
-                    <p>Get three practice answers correct to return with full health and fresh snowballs.</p>
+                    <p>{t("Get three practice answers correct to return with full health and fresh snowballs.")}</p>
                   </div>
                 )}
                 <QuizPanel
@@ -2882,26 +2880,26 @@ export default function StudentExperience({ onExit }: { onExit: () => void }) {
               <div className="panel pre-round-card creator-ready-room">
                 <header className="lobby-selection-header">
                   <div className="lobby-instruction">
-                    <span>Before the game</span>
-                    <h2>{athleticsRace ? "Choose your lane, then wait for the host to start." : "Choose your team, then wait for the host to start."}</h2>
-                    <p className="lobby-ready-note">{athleticsRace ? "You’re connected. Style your runner while the others join. The course opens on the host’s start signal." : "You’re connected. Pick a team and style your player while the others join."}</p>
+                    <span>{t("Before the game")}</span>
+                    <h2>{athleticsRace ? t("Choose your lane, then wait for the host to start.") : t("Choose your team, then wait for the host to start.")}</h2>
+                    <p className="lobby-ready-note">{athleticsRace ? t("You’re connected. Style your runner while the others join. The course opens on the host’s start signal.") : t("You’re connected. Pick a team and style your player while the others join.")}</p>
                     <div className="lobby-status-row">
-                      <span className="waiting-status"><span className="waiting-pulse" />Waiting for host…</span>
-                      <span className="lobby-player-count"><Users size={15} />{connectedPlayers.length} {connectedPlayers.length === 1 ? "player" : "players"} joined</span>
+                      <span className="waiting-status"><span className="waiting-pulse" />{t("Waiting for host…")}</span>
+                      <span className="lobby-player-count"><Users size={15} />{connectedPlayers.length} {connectedPlayers.length === 1 ? t("player") : t("players")}{" "}{t("joined")}</span>
                     </div>
                   </div>
                   {athleticsRace ? (
                     <div className="athletics-lobby-card athletics-briefing" role="note">
                       <Footprints className="athletics-lobby-mark" size={22} aria-hidden="true" />
-                      <span><strong>{athleticsModeConfig.label} · Skyline Adventure Park</strong>
-                        <small>{ATHLETICS_STADIUM_COURSE.sections.length} chapters · {ATHLETICS_STADIUM_COURSE.checkpoints.length} checkpoints</small>
-                        <small>Hurdles → balance → zigzag → moving bridges → climb → summit → descent.</small>
-                        <small>{athleticsRequiredLaps > 1 ? "Stage 7 leads back to the start/finish line. Cross it to begin your next lap without stopping." : "Visit all seven checkpoints, then cross the start/finish line to finish."}</small>
+                      <span><strong>{t(athleticsModeConfig.label)}{" "}{t("· Skyline Adventure Park")}</strong>
+                        <small>{ATHLETICS_STADIUM_COURSE.sections.length}{" "}{t("chapters ·")}{" "}{ATHLETICS_STADIUM_COURSE.checkpoints.length}{" "}{t("checkpoints")}</small>
+                        <small>{t("Hurdles → balance → zigzag → moving bridges → climb → summit → descent.")}</small>
+                        <small>{athleticsRequiredLaps > 1 ? t("Stage 7 leads back to the start/finish line. Cross it to begin your next lap without stopping.") : t("Visit all seven checkpoints, then cross the start/finish line to finish.")}</small>
                         <ol>{athleticsModeConfig.instructionLines.map((line) => <li key={line}>{line}</li>)}</ol>
-                        <small>Move: WASD · Look: mouse / arrows · Jump: Space · Question: Q. On touch screens, use the on-screen controls. Cyan markers show required moving platforms.</small>
+                        <small>{t("Move: WASD · Look: mouse / arrows · Jump: Space · Question: Q. On touch screens, use the on-screen controls. Cyan markers show required moving platforms.")}</small>
                       </span>
                     </div>
-                  ) : <div className="team-choice-grid" aria-label="Choose your team">
+                  ) : <div className="team-choice-grid" aria-label={t("Choose your team")}>
                     <button
                       type="button"
                       className={`team-choice team-choice-red${player.team === "red" ? " selected" : ""}`}
@@ -2910,7 +2908,7 @@ export default function StudentExperience({ onExit }: { onExit: () => void }) {
                       aria-pressed={player.team === "red"}
                     >
                       <span className="team-choice-emblem"><Shield size={20} /></span>
-                      <span><small>Red team</small><strong>{redTeamCount} playing</strong></span>
+                      <span><small>{t("Red team")}</small><strong>{redTeamCount}{" "}{t("playing")}</strong></span>
                       {player.team === "red" && <Check className="team-choice-check" size={18} />}
                     </button>
                     <button
@@ -2921,13 +2919,13 @@ export default function StudentExperience({ onExit }: { onExit: () => void }) {
                       aria-pressed={player.team === "blue"}
                     >
                       <span className="team-choice-emblem"><Shield size={20} /></span>
-                      <span><small>Blue team</small><strong>{blueTeamCount} playing</strong></span>
+                      <span><small>{t("Blue team")}</small><strong>{blueTeamCount}{" "}{t("playing")}</strong></span>
                       {player.team === "blue" && <Check className="team-choice-check" size={18} />}
                     </button>
-                    {session.settings.teamAssignment !== "players_choose" && <small className="team-lock-note">The host is assigning the teams.</small>}
+                    {session.settings.teamAssignment !== "players_choose" && <small className="team-lock-note">{t("The host is assigning the teams.")}</small>}
                   </div>}
                 </header>
-                <Suspense fallback={<ArenaLoading label="Loading character creator" />}>
+                <Suspense fallback={<ArenaLoading label={t("Loading character creator")} />}>
                   <CharacterCreator
                     appearance={player.appearance}
                     team={player.team}
@@ -2951,86 +2949,84 @@ export default function StudentExperience({ onExit }: { onExit: () => void }) {
               >
                 <div className="student-learning-report-heading">
                   <div>
-                    <span className="menu-eyebrow">Your learning report</span>
-                    <h2 id="student-learning-report-title">Game over</h2>
+                    <span className="menu-eyebrow">{t("Your learning report")}</span>
+                    <h2 id="student-learning-report-title">{t("Game over")}</h2>
                   </div>
                   <span className="student-match-result">{sessionResult}</span>
                 </div>
-                <p className="student-learning-report-intro">Here is what your answers say about what to practise next.</p>
+                <p className="student-learning-report-intro">{t("Here is what your answers say about what to practise next.")}</p>
                 {athleticsRace && (
-                  <section className="athletics-result-card" aria-label="Your race result">
-                    <div className="athletics-result-kicker"><Trophy size={18} aria-hidden="true" /> Skyline Adventure Park result</div>
+                  <section className="athletics-result-card" aria-label={t("Your race result")}>
+                    <div className="athletics-result-kicker"><Trophy size={18} aria-hidden="true" />{" "}{t("Skyline Adventure Park result")}</div>
                     <div className="athletics-result-grid">
-                      <span><small>{athleticsPlayer?.role === "hunter" ? "Role" : "Place"}</small><strong>{athleticsPlayer?.role === "hunter" ? "Hunter" : athleticsPlayer?.status === "finished" && athleticsStanding?.rank ? `#${athleticsStanding.rank}` : "Time up"}</strong></span>
-                      <span><small>{athleticsPlayer?.role === "hunter" ? "Hits" : "Time"}</small><strong>{athleticsPlayer?.role === "hunter" ? athleticsPlayer.hunterHits ?? 0 : athleticsPlayer?.finishTimeMs === undefined ? "—" : formatDuration(athleticsPlayer.finishTimeMs / 1000)}</strong></span>
-                      <span><small>{athleticsPlayer?.role === "hunter" ? "Points" : "Laps"}</small><strong>{athleticsPlayer?.role === "hunter" ? player.score : `${athleticsPlayer?.completedLaps ?? 0}/${athleticsRequiredLaps}`}</strong></span>
-                      {athleticsPlayer?.role !== "hunter" && <span><small>Checkpoints reached</small><strong>{athleticsPlayer?.checkpointIndex ?? 0}/{ATHLETICS_STADIUM_COURSE.checkpoints.length}</strong></span>}
-                      <span><small>Questions answered</small><strong>{athleticsPlayer?.questionIndex ?? 0}</strong></span>
-                      <span><small>Falls</small><strong>{athleticsPlayer?.falls ?? 0}</strong></span>
+                      <span><small>{athleticsPlayer?.role === "hunter" ? t("Role") : t("Place")}</small><strong>{athleticsPlayer?.role === "hunter" ? t("Hunter") : athleticsPlayer?.status === "finished" && athleticsStanding?.rank ? t("#{value0}", { value0: athleticsStanding.rank }) : t("Time up")}</strong></span>
+                      <span><small>{athleticsPlayer?.role === "hunter" ? t("Hits") : t("Time")}</small><strong>{athleticsPlayer?.role === "hunter" ? athleticsPlayer.hunterHits ?? 0 : athleticsPlayer?.finishTimeMs === undefined ? "—" : formatDuration(athleticsPlayer.finishTimeMs / 1000)}</strong></span>
+                      <span><small>{athleticsPlayer?.role === "hunter" ? t("Points") : t("Laps")}</small><strong>{athleticsPlayer?.role === "hunter" ? player.score : t("{value0}/{value1}", { value0: athleticsPlayer?.completedLaps ?? 0, value1: athleticsRequiredLaps })}</strong></span>
+                      {athleticsPlayer?.role !== "hunter" && <span><small>{t("Checkpoints reached")}</small><strong>{athleticsPlayer?.checkpointIndex ?? 0}/{ATHLETICS_STADIUM_COURSE.checkpoints.length}</strong></span>}
+                      <span><small>{t("Questions answered")}</small><strong>{athleticsPlayer?.questionIndex ?? 0}</strong></span>
+                      <span><small>{t("Falls")}</small><strong>{athleticsPlayer?.falls ?? 0}</strong></span>
                     </div>
                   </section>
                 )}
                 {isLearningReportLoading && learningSummary.totalAttempts === 0 ? (
-                  <p className="student-learning-report-loading" role="status">Preparing your personal summary...</p>
+                  <p className="student-learning-report-loading" role="status">{t("Preparing your personal summary...")}</p>
                 ) : (
                   <>
-                    <div className="student-summary-metrics student-learning-metrics" aria-label="Your learning results">
-                      <span><strong>{learningSummary.totalAttempts}</strong> Questions answered</span>
-                      <span><strong>{learningSummary.correctAttempts}</strong> Correct</span>
-                      <span><strong>{learningSummary.incorrectAttempts}</strong> Incorrect</span>
-                      <span><strong>{learningSummary.accuracy === null ? "—" : `${learningSummary.accuracy}%`}</strong> Accuracy</span>
-                      <span><strong>{learningSummary.questionsToReview}</strong> Questions to review</span>
+                    <div className="student-summary-metrics student-learning-metrics" aria-label={t("Your learning results")}>
+                      <span><strong>{learningSummary.totalAttempts}</strong>{" "}{t("Questions answered")}</span>
+                      <span><strong>{learningSummary.correctAttempts}</strong>{" "}{t("Correct")}</span>
+                      <span><strong>{learningSummary.incorrectAttempts}</strong>{" "}{t("Incorrect")}</span>
+                      <span><strong>{learningSummary.accuracy === null ? "—" : t("{value0}%", { value0: learningSummary.accuracy })}</strong>{" "}{t("Accuracy")}</span>
+                      <span><strong>{learningSummary.questionsToReview}</strong>{" "}{t("Questions to review")}</span>
                     </div>
                     {learningSummary.totalAttempts === 0 ? (
-                      <p className="student-learning-report-note">No questions answered this game.</p>
+                      <p className="student-learning-report-note">{t("No questions answered this game.")}</p>
                     ) : (
                       <p className="student-learning-report-note">
                         {learningSummary.questionsToReview === 0
-                          ? "Great job. A short review sheet is ready for reinforcement."
-                          : `${learningSummary.questionsToReview} question${learningSummary.questionsToReview === 1 ? "" : "s"} ${learningSummary.questionsToReview === 1 ? "is" : "are"} ready to review.`}
+                          ? t("Great job. A short review sheet is ready for reinforcement.")
+                          : t("{value0} question{value1} {value2} ready to review.", { value0: learningSummary.questionsToReview, value1: learningSummary.questionsToReview === 1 ? "" : "s", value2: learningSummary.questionsToReview === 1 ? "is" : "are" })}
                       </p>
                     )}
                     <div className="student-worksheet-actions">
                       <button className="primary" type="button" onClick={() => void downloadWorksheet()} disabled={isDownloadingWorksheet || practiceQuestions.length === 0}>
                         <Download size={18} aria-hidden="true" />
-                        {isDownloadingWorksheet ? "Creating worksheet..." : "Download Practice Worksheet"}
+                        {isDownloadingWorksheet ? t("Creating worksheet...") : t("Download Practice Worksheet")}
                       </button>
-                      {isLearningReportLoading && <small className="student-learning-report-sync-note" role="status">Syncing your saved answers...</small>}
-                      {practiceQuestions.length === 0 && <small>No question-set data is available for a worksheet yet.</small>}
-                      {learningReportError && <small className="student-learning-report-sync-note">Your on-screen summary is based on the answers available in this session.</small>}
+                      {isLearningReportLoading && <small className="student-learning-report-sync-note" role="status">{t("Syncing your saved answers...")}</small>}
+                      {practiceQuestions.length === 0 && <small>{t("No question-set data is available for a worksheet yet.")}</small>}
+                      {learningReportError && <small className="student-learning-report-sync-note">{t("Your on-screen summary is based on the answers available in this session.")}</small>}
                     </div>
-                    {!athleticsRace && <div className="student-competition-summary" aria-label="Match results">
-                      <span><strong>{Math.round(player.quizMoneyEarned ?? 0)}</strong> rewards earned</span>
-                      <span><strong>{formatRewards(player.moneySpent ?? 0)}</strong> spent on gear</span>
-                      <span><strong>{Math.round(player.money)}</strong> rewards left</span>
-                      <span><strong>{player.score}</strong> final score</span>
+                    {!athleticsRace && <div className="student-competition-summary" aria-label={t("Match results")}>
+                      <span><strong>{Math.round(player.quizMoneyEarned ?? 0)}</strong>{" "}{t("rewards earned")}</span>
+                      <span><strong>{formatRewards(player.moneySpent ?? 0)}</strong>{" "}{t("spent on gear")}</span>
+                      <span><strong>{Math.round(player.money)}</strong>{" "}{t("rewards left")}</span>
+                      <span><strong>{player.score}</strong>{" "}{t("final score")}</span>
                     </div>}
                   </>
                 )}
                 <div className="button-row">
-                  <button className="primary" onClick={returnToJoin}>Join another game</button>
-                  <button onClick={onExit}>Back to QuizStrike</button>
+                  <button className="primary" onClick={returnToJoin}>{t("Join another game")}</button>
+                  <button onClick={onExit}>{t("Back to QuizStrike")}</button>
                 </div>
               </div>
             )}
             {isSocketReconnecting && (
               <p className="connection-banner" data-testid="student-realtime-reconnecting">
-                <WifiOff size={16} aria-hidden="true" />
-                Live game connection lost. Trying to reconnect...
-              </p>
+                <WifiOff size={16} aria-hidden="true" />{t("Live game connection lost. Trying to reconnect...")}</p>
             )}
             {!player.isAlive && session.settings.gameMode !== "flag" && !athleticsRace && (
               <div className="panel respawn-card">
                 <div className="panel-title">
-                  <h2>{canPracticeToRespawn ? "Practice to return" : "Waiting for the next round"}</h2>
+                  <h2>{canPracticeToRespawn ? t("Practice to return") : t("Waiting for the next round")}</h2>
                   <span>{respawnProgress}/{RESPAWN_CORRECT_ANSWERS_REQUIRED}</span>
                 </div>
-                <div className="respawn-meter" aria-label="Respawn progress">
+                <div className="respawn-meter" aria-label={t("Respawn progress")}>
                   <span style={{ width: `${Math.min(100, (respawnProgress / RESPAWN_CORRECT_ANSWERS_REQUIRED) * 100)}%` }} />
                 </div>
                 <p>{canPracticeToRespawn
-                  ? `Answer ${Math.max(0, RESPAWN_CORRECT_ANSWERS_REQUIRED - respawnProgress)} more correctly to return at your team base with full health and fresh snowballs.`
-                  : "Practice questions are off for this game. Watch the scoreboard and get ready for the next round."}</p>
+                  ? t("Answer {value0} more correctly to return at your team base with full health and fresh snowballs.", { value0: Math.max(0, RESPAWN_CORRECT_ANSWERS_REQUIRED - respawnProgress) })
+                  : t("Practice questions are off for this game. Watch the scoreboard and get ready for the next round.")}</p>
               </div>
             )}
           </div>
@@ -3042,7 +3038,7 @@ export default function StudentExperience({ onExit }: { onExit: () => void }) {
         )}
       </div>
       {session.status !== "waiting" && <div className={`action-bar control-prompts${athleticsRace ? " athletics-action-bar" : ""}`}>
-        <button aria-label={athleticsRace ? "Answer movement energy question" : "Questions"} title={athleticsRace ? "Answer question · Q" : "Questions · Q"} disabled={roundEnded || teacherPaused} onClick={() => {
+        <button aria-label={athleticsRace ? t("Answer movement energy question") : t("Questions")} title={athleticsRace ? t("Answer question · Q") : t("Questions · Q")} disabled={roundEnded || teacherPaused} onClick={() => {
           if (athleticsRace) openAthleticsQuestion();
           else {
             gameAudio.playEvent(quizOpen ? "modal_close" : "quiz_open");
@@ -3050,10 +3046,10 @@ export default function StudentExperience({ onExit }: { onExit: () => void }) {
             setBuyOpen(false);
             setScoreboardOpen(false);
           }
-        }}><BookOpen size={19} aria-hidden="true" /><span>{athleticsRace ? "Question" : "Q Questions"}</span></button>
-        {!athleticsRace && <button aria-label="Buy gear" disabled={roundEnded || teacherPaused || !player.isAlive} onClick={() => { gameAudio.play("menu_toggle"); setBuyOpen(!buyOpen); setQuizOpen(false); setScoreboardOpen(false); }}><Package size={19} aria-hidden="true" /><span>B Gear</span></button>}
-        <button aria-label="Scoreboard" title="Scoreboard · hold Tab" disabled={teacherPaused} onPointerDown={() => { gameAudio.play("menu_toggle"); setScoreboardOpen(true); setQuizOpen(false); setBuyOpen(false); setSettingsOpen(false); }} onPointerUp={() => setScoreboardOpen(false)} onPointerCancel={() => setScoreboardOpen(false)} onBlur={() => setScoreboardOpen(false)}><Trophy size={19} aria-hidden="true" /><span>Scoreboard</span></button>
-        <button aria-label="Settings" title="Settings" disabled={teacherPaused} onClick={() => { gameAudio.play("menu_toggle"); setSettingsOpen((open) => !open); setQuizOpen(false); setBuyOpen(false); setScoreboardOpen(false); }}><Settings size={19} aria-hidden="true" /><span>Settings</span></button>
+        }}><BookOpen size={19} aria-hidden="true" /><span>{athleticsRace ? t("Question") : t("Q Questions")}</span></button>
+        {!athleticsRace && <button aria-label={t("Buy gear")} disabled={roundEnded || teacherPaused || !player.isAlive} onClick={() => { gameAudio.play("menu_toggle"); setBuyOpen(!buyOpen); setQuizOpen(false); setScoreboardOpen(false); }}><Package size={19} aria-hidden="true" /><span>{t("B Gear")}</span></button>}
+        <button aria-label={t("Scoreboard")} title={t("Scoreboard · hold Tab")} disabled={teacherPaused} onPointerDown={() => { gameAudio.play("menu_toggle"); setScoreboardOpen(true); setQuizOpen(false); setBuyOpen(false); setSettingsOpen(false); }} onPointerUp={() => setScoreboardOpen(false)} onPointerCancel={() => setScoreboardOpen(false)} onBlur={() => setScoreboardOpen(false)}><Trophy size={19} aria-hidden="true" /><span>{t("Scoreboard")}</span></button>
+        <button aria-label={t("Settings")} title={t("Settings")} disabled={teacherPaused} onClick={() => { gameAudio.play("menu_toggle"); setSettingsOpen((open) => !open); setQuizOpen(false); setBuyOpen(false); setScoreboardOpen(false); }}><Settings size={19} aria-hidden="true" /><span>{t("Settings")}</span></button>
       </div>}
     </section>
   );

@@ -1,3 +1,4 @@
+import { useSiteTranslation } from "../../../ui/siteTranslation";
 import { ShoppingBag } from "lucide-react";
 import {
   GEAR_ITEMS,
@@ -38,6 +39,7 @@ export default function BuyPanel({
   isBuyingSnowballs: boolean;
   buyPhaseSeconds?: number;
 }) {
+  const { t } = useSiteTranslation();
   const GearGlyph = ({ gearId }: { gearId: string }) => {
     if (gearId === "starter_blaster") return <span className="gear-glyph launcher-starter" aria-hidden="true" />;
     if (gearId === "quick_blaster") return <span className="gear-glyph launcher-quick" aria-hidden="true" />;
@@ -59,13 +61,13 @@ export default function BuyPanel({
   return (
     <div className="panel buy-panel">
       <div className="panel-title">
-        <h2>{buyPhaseSeconds === undefined ? "Choose gear" : `Get ready · ${buyPhaseSeconds}s`}</h2>
-        <span className="buy-balance">Balance {formatMoney(player.money)}</span>
+        <h2>{buyPhaseSeconds === undefined ? t("Choose gear") : t("Get ready · {value0}s", { value0: buyPhaseSeconds })}</h2>
+        <span className="buy-balance">{t("Balance")}{" "}{formatMoney(player.money)}</span>
       </div>
       <p className="menu-timer-note">{buyPhaseSeconds === undefined
-        ? "The round clock keeps running while this menu is open."
-        : "Press Q to answer questions before the round starts."}</p>
-      <p className="buy-shortcut-help">Press 1–6 to choose quickly · B to close</p>
+        ? t("The round clock keeps running while this menu is open.")
+        : t("Press Q to answer questions before the round starts.")}</p>
+      <p className="buy-shortcut-help">{t("Press 1–6 to choose quickly · B to close")}</p>
       <button
         className="gear-row"
         onClick={() => onBuySnowballs("standard")}
@@ -75,8 +77,8 @@ export default function BuyPanel({
         <kbd className="buy-shortcut-key">1</kbd>
         <GearGlyph gearId="snowballs" />
         <span>
-          <strong>{isBuyingSnowballs ? "Adding..." : `${snowballCount} snowballs`}</strong>
-          <small className="gear-status">{isZombieHuman ? "Humans only" : player.money < snowballPrice ? `Need ${formatMoney(snowballPrice - player.money)} more` : player.isAlive ? "Ready to choose" : "Available next round"}</small>
+          <strong>{isBuyingSnowballs ? t("Adding...") : t("{value0} snowballs", { value0: snowballCount })}</strong>
+          <small className="gear-status">{isZombieHuman ? t("Humans only") : player.money < snowballPrice ? t("Need {value0} more", { value0: formatMoney(snowballPrice - player.money) }) : player.isAlive ? t("Ready to choose") : t("Available next round")}</small>
         </span>
         <em>{formatMoney(snowballPrice)}</em>
       </button>
@@ -89,9 +91,9 @@ export default function BuyPanel({
         <kbd className="buy-shortcut-key buy-shortcut-key-bulk">6</kbd>
         <GearGlyph gearId="snowballs" />
         <span>
-          <strong>{isBuyingSnowballs ? "Adding..." : `${LARGE_SNOWBALL_PACK_COUNT} snowballs`}</strong>
-          <small className="gear-subtitle">Bulk refill for the Quick Launcher</small>
-          <small className="gear-status">{isZombieHuman ? "Humans only" : player.money < largeSnowballPrice ? `Need ${formatMoney(largeSnowballPrice - player.money)} more` : player.isAlive ? "Ready to choose" : "Available next round"}</small>
+          <strong>{isBuyingSnowballs ? t("Adding...") : t("{value0} snowballs", { value0: LARGE_SNOWBALL_PACK_COUNT })}</strong>
+          <small className="gear-subtitle">{t("Bulk refill for the Quick Launcher")}</small>
+          <small className="gear-status">{isZombieHuman ? t("Humans only") : player.money < largeSnowballPrice ? t("Need {value0} more", { value0: formatMoney(largeSnowballPrice - player.money) }) : player.isAlive ? t("Ready to choose") : t("Available next round")}</small>
         </span>
         <em>{formatMoney(largeSnowballPrice)}</em>
       </button>
@@ -106,9 +108,9 @@ export default function BuyPanel({
           <kbd className="buy-shortcut-key">{getShopShortcutKey(gear.id)}</kbd>
           <GearGlyph gearId={gear.id} />
           <span>
-            <strong>{buyingGearId === gear.id ? "Adding..." : gear.name}</strong>
-            {gearSubtitle(gear.id) && <small className="gear-subtitle">{gearSubtitle(gear.id)}</small>}
-            <small className="gear-status">{isZombieMode && isWeaponGearId(gear.id) ? "Default launcher only" : (getPlayerWeaponId(player) === gear.id || getPlayerPerks(player).includes(gear.id)) ? "Equipped" : player.money < gear.cost || !player.isAlive ? gearLockReason(gear.cost) : "Ready to choose"}</small>
+            <strong>{buyingGearId === gear.id ? t("Adding...") : gear.name}</strong>
+            {gearSubtitle(gear.id) && <small className="gear-subtitle">{t(gearSubtitle(gear.id))}</small>}
+            <small className="gear-status">{isZombieMode && isWeaponGearId(gear.id) ? t("Default launcher only") : (getPlayerWeaponId(player) === gear.id || getPlayerPerks(player).includes(gear.id)) ? t("Equipped") : player.money < gear.cost || !player.isAlive ? gearLockReason(gear.cost) : t("Ready to choose")}</small>
           </span>
           <em>{formatMoney(gear.cost)}</em>
         </button>

@@ -1,3 +1,4 @@
+import { useSiteTranslation } from "../../../ui/siteTranslation";
 import { useEffect, useState } from "react";
 import type { Choice, GameSession, PlayerSession, PublicQuestion } from "@quizstrike/shared";
 import { RESPAWN_CORRECT_ANSWERS_REQUIRED, ZOMBIE_HUMAN_CORRECT_ENERGY } from "@quizstrike/shared";
@@ -32,6 +33,7 @@ export default function QuizPanel({
   answeringChoice: Choice | null;
   answerFeedback: QuizAnswerFeedback | null;
 }) {
+  const { t } = useSiteTranslation();
   const [audioError, setAudioError] = useState(false);
   const [audioSource, setAudioSource] = useState<string | undefined>();
   useEffect(() => setAudioError(false), [question?.id, question?.audioUrl]);
@@ -68,7 +70,7 @@ export default function QuizPanel({
     };
   }, [playerToken, question?.audioUrl, question?.id]);
 
-  if (!question) return <div className="panel"><p>Your next question will appear here.</p></div>;
+  if (!question) return <div className="panel"><p>{t("Your next question will appear here.")}</p></div>;
   const isAthletics = session.settings.gameMode === "athletics";
   const isAthleticsRecovery = isAthletics && player.athletics?.recoveryActive === true;
   const reward = isAthletics
@@ -92,8 +94,8 @@ export default function QuizPanel({
     <div className="panel quiz-panel">
       <div className="panel-title">
         <div>
-           <span className="menu-eyebrow">{isAthleticsRecovery ? "Fall recovery" : "Live question"}</span>
-           <h2>{isAthleticsRecovery ? "Recovery question" : isAthletics ? "Refuel movement" : "Answer to earn"}</h2>
+           <span className="menu-eyebrow">{isAthleticsRecovery ? t("Fall recovery") : t("Live question")}</span>
+           <h2>{isAthleticsRecovery ? t("Recovery question") : isAthletics ? t("Refuel movement") : t("Answer to earn")}</h2>
         </div>
         <span className="question-reward">{reward}</span>
       </div>
@@ -103,9 +105,9 @@ export default function QuizPanel({
       {question.audioUrl && (
         <div className="question-audio">
           <Volume2 size={18} aria-hidden="true" />
-          <span>Listen to the question</span>
-          {audioSource && <audio controls preload="metadata" src={audioSource} aria-label="Question audio" onError={() => setAudioError(true)} />}
-          {audioError && <small role="status">The audio couldn’t load. You can still answer below.</small>}
+          <span>{t("Listen to the question")}</span>
+          {audioSource && <audio controls preload="metadata" src={audioSource} aria-label={t("Question audio")} onError={() => setAudioError(true)} />}
+          {audioError && <small role="status">{t("The audio couldn’t load. You can still answer below.")}</small>}
         </div>
       )}
       <div className="answer-grid">
@@ -116,31 +118,31 @@ export default function QuizPanel({
             className={answerFeedback?.selectedChoice === choice ? "selected" : ""}
             onClick={() => onAnswer(choice)}
             disabled={Boolean(answeringChoice || answerFeedback)}
-            aria-label={`Answer ${choice}: ${labels[choice]}`}
+            aria-label={t("Answer {value0}: {value1}", { value0: choice, value1: labels[choice] })}
             aria-pressed={answerFeedback?.selectedChoice === choice}
           >
             <strong>{index + 1}</strong>
-            <span>{answeringChoice === choice ? "Checking..." : labels[choice]}</span>
+            <span>{answeringChoice === choice ? t("Checking...") : labels[choice]}</span>
           </button>
         ))}
       </div>
       <section className={`question-feedback-area${answerFeedback ? " has-result" : ""}`} aria-live="polite" aria-atomic="true">
         {!answerFeedback ? (
-          <span className="question-feedback-prompt">Choose an answer</span>
+          <span className="question-feedback-prompt">{t("Choose an answer")}</span>
         ) : (
           <div className={`question-feedback-result ${answerFeedback.isCorrect ? "is-correct" : "is-incorrect"}`}>
             <div className="question-feedback-heading">
               {answerFeedback.isCorrect ? <CheckCircle2 size={27} aria-hidden="true" /> : <XCircle size={27} aria-hidden="true" />}
-              <strong>{answerFeedback.isCorrect ? "✓ CORRECT!" : "✕ INCORRECT"}</strong>
+              <strong>{answerFeedback.isCorrect ? t("✓ CORRECT!") : t("✕ INCORRECT")}</strong>
             </div>
             <div className="question-feedback-answers">
               <div>
-                <span>Your answer</span>
+                <span>{t("Your answer")}</span>
                 <strong>{labels[answerFeedback.selectedChoice]}</strong>
               </div>
               {!answerFeedback.isCorrect && (
                 <div>
-                  <span>Correct answer</span>
+                  <span>{t("Correct answer")}</span>
                   <strong>{labels[answerFeedback.correctChoice]}</strong>
                 </div>
               )}

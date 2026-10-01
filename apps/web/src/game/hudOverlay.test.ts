@@ -1,10 +1,15 @@
 import assert from "node:assert/strict";
 import test from "node:test";
 import * as React from "react";
-import { renderToStaticMarkup } from "react-dom/server";
+import { renderToStaticMarkup as renderMarkup } from "react-dom/server";
+import { SiteLanguageProvider } from "../ui/SiteLanguageProvider.js";
+import type { SiteLanguage } from "../ui/siteLanguage.js";
 import { ArenaHudOverlay, type AthleticsHudState } from "./hudOverlay.js";
 
 (globalThis as typeof globalThis & { React: typeof React }).React = React;
+
+const renderToStaticMarkup = (element: Parameters<typeof renderMarkup>[0], language: SiteLanguage = "en") =>
+  renderMarkup(React.createElement(SiteLanguageProvider, { initialLanguage: language, children: element }));
 
 const renderHud = ({
   showTouchControls = true,
@@ -16,6 +21,7 @@ const renderHud = ({
   onToggleCrouchFromTouch,
   touchCrouchEnabled = false,
   athleticsHud,
+  language = "en",
   suppressHint = true
 }: {
   showTouchControls?: boolean;
@@ -27,6 +33,7 @@ const renderHud = ({
   onToggleCrouchFromTouch?: () => void;
   touchCrouchEnabled?: boolean;
   athleticsHud?: AthleticsHudState;
+  language?: SiteLanguage;
   suppressHint?: boolean;
 } = {}) => renderToStaticMarkup(React.createElement(ArenaHudOverlay, {
   showTouchControls,
@@ -48,7 +55,16 @@ const renderHud = ({
   onToggleCrouchFromTouch,
   touchCrouchEnabled,
   athleticsHud
-}));
+}), language);
+
+test("Japanese game controls retain keyboard shortcuts and game values", () => {
+  const markup = renderHud({ language: "ja", onFireFromTouch: () => undefined, onJumpFromTouch: () => undefined });
+  assert.match(markup, /aria-label="雪玉を投げる"/u);
+  assert.match(markup, /aria-label="残りの雪玉 10個"/u);
+  assert.match(markup, /aria-keyshortcuts="Space"/u);
+  assert.match(markup, />ジャンプ<\/button>/u);
+  assert.doesNotMatch(markup, />Throw<\/button>/u);
+});
 
 test("keyboard HUD hides the joystick while tablet HUD exposes a dedicated snowball throw", () => {
   const keyboard = renderHud({ showTouchControls: false });

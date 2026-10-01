@@ -12,8 +12,8 @@ function readLanguage(): SiteLanguage {
   return resolveSiteLanguage(saved, navigator.languages.length ? navigator.languages : [navigator.language]);
 }
 
-export function SiteLanguageProvider({ children }: { children: ReactNode }) {
-  const [language, updateLanguage] = useState<SiteLanguage>(readLanguage);
+export function SiteLanguageProvider({ children, initialLanguage }: { children: ReactNode; initialLanguage?: SiteLanguage }) {
+  const [language, updateLanguage] = useState<SiteLanguage>(() => initialLanguage ?? readLanguage());
 
   const setLanguage = (next: SiteLanguage) => {
     updateLanguage(next);

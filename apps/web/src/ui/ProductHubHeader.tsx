@@ -1,8 +1,9 @@
-import { Gamepad2, Globe2, Menu, Mic, UserRound } from "lucide-react";
+import { Gamepad2, Menu, Mic, UserRound } from "lucide-react";
 import { useState } from "react";
 import GyakutenEigoBrand from "./GyakutenEigoBrand";
 import "./product-hub.css";
-import { useSiteLanguage } from "./SiteLanguageProvider";
+import { useSiteTranslation } from "./siteTranslation";
+import SiteLanguagePicker from "./SiteLanguagePicker";
 
 type ProductHubHeaderProps = {
   onNavigate: (path: string) => void;
@@ -13,7 +14,7 @@ type ProductHubHeaderProps = {
 
 export default function ProductHubHeader({ onNavigate, onLogin, onGetStarted, active }: ProductHubHeaderProps) {
   const [menuOpen, setMenuOpen] = useState(false);
-  const { language, setLanguage } = useSiteLanguage();
+  const { language, t } = useSiteTranslation();
   const japanese = language === "ja";
 
   const go = (path: string) => {
@@ -23,10 +24,10 @@ export default function ProductHubHeader({ onNavigate, onLogin, onGetStarted, ac
 
   return (
     <header className="topbar product-hub-topbar" lang={language}>
-      <button className="brand-button" type="button" aria-label="GyakutenEigo home" onClick={() => go("/")}>
+      <button className="brand-button" type="button" aria-label={t("GyakutenEigo home")} onClick={() => go("/")}>
         <GyakutenEigoBrand />
       </button>
-      <nav className="primary-nav" aria-label="Primary" onKeyDown={(event) => {
+      <nav className="primary-nav" aria-label={t("Primary navigation")} onKeyDown={(event) => {
         if (event.key === "Escape" && menuOpen) {
           setMenuOpen(false);
           event.currentTarget.querySelector<HTMLButtonElement>(".nav-menu-toggle")?.focus();
@@ -63,12 +64,7 @@ export default function ProductHubHeader({ onNavigate, onLogin, onGetStarted, ac
             </button>
           </div>
           <div className="product-hub-auth-group">
-            <label className="ge-language-picker">
-              <Globe2 size={16} aria-hidden="true" />
-              <select aria-label="Language / 言語" value={language} onChange={(event) => setLanguage(event.target.value === "ja" ? "ja" : "en")}>
-                <option value="en">English</option><option value="ja">日本語</option>
-              </select>
-            </label>
+            <SiteLanguagePicker />
             <button className="product-hub-login" type="button" onClick={() => { setMenuOpen(false); onLogin(); }}>{japanese ? "ログイン" : "Log in"}</button>
             <button className="product-hub-get-started" type="button" onClick={() => { setMenuOpen(false); onGetStarted(); }}>{japanese ? "はじめる" : "Get started"}</button>
           </div>

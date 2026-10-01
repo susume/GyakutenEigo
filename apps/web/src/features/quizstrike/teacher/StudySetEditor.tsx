@@ -1,3 +1,4 @@
+import { useSiteTranslation } from "../../../ui/siteTranslation";
 import { useEffect, useMemo, useRef, useState } from "react";
 import { ArrowDown, ArrowUp, Check, Copy, Eye, FileUp, Globe2, LockKeyhole, Mic, Plus, Save, Square, Trash2, X } from "lucide-react";
 import type { Choice, QuizSet } from "@quizstrike/shared";
@@ -52,6 +53,7 @@ function QuestionAudioRecorder({ audio, disabled, onChange }: {
   disabled: boolean;
   onChange: (audio: PendingAudio | null) => void;
 }) {
+  const { t } = useSiteTranslation();
   const [recording, setRecording] = useState(false);
   const [seconds, setSeconds] = useState(0);
   const [error, setError] = useState("");
@@ -131,13 +133,13 @@ function QuestionAudioRecorder({ audio, disabled, onChange }: {
     <div className="study-set-audio-actions">
       <button type="button" className={recording ? "recording-button" : "secondary-button"} onClick={() => void toggleRecording()} disabled={disabled || Boolean(audio)}>
         {recording ? <Square size={15} aria-hidden="true" /> : <Mic size={16} aria-hidden="true" />}
-        {recording ? `Stop (${String(Math.floor(seconds / 60)).padStart(2, "0")}:${String(seconds % 60).padStart(2, "0")})` : "Record question audio"}
+        {recording ? t("Stop ({value0}:{value1})", { value0: String(Math.floor(seconds / 60)).padStart(2, "0"), value1: String(seconds % 60).padStart(2, "0") }) : t("Record question audio")}
       </button>
-      {audio && <button type="button" className="text-button danger-text" onClick={() => onChange(null)} disabled={disabled}><Trash2 size={15} aria-hidden="true" />Remove recording</button>}
+      {audio && <button type="button" className="text-button danger-text" onClick={() => onChange(null)} disabled={disabled}><Trash2 size={15} aria-hidden="true" />{t("Remove recording")}</button>}
     </div>
-    <small>Optional · up to 60 seconds. The recording uploads when you save.</small>
-    {audio && <audio controls preload="metadata" src={audio.previewUrl} aria-label="Recorded question audio preview" />}
-    {error && <span className="field-error" role="alert">{error}</span>}
+    <small>{t("Optional · up to 60 seconds. The recording uploads when you save.")}</small>
+    {audio && <audio controls preload="metadata" src={audio.previewUrl} aria-label={t("Recorded question audio preview")} />}
+    {error && <span className="field-error" role="alert">{t(error)}</span>}
   </div>;
 }
 
@@ -147,6 +149,7 @@ export default function StudySetEditor({ data, onRefresh, initialQuizSetId, star
   initialQuizSetId?: string;
   startInCreateMode?: boolean;
 }) {
+  const { t } = useSiteTranslation();
   const initialQuiz = startInCreateMode ? undefined : data.quizSets.find((quiz) => quiz.id === initialQuizSetId) ?? data.quizSets[0];
   const [persistedId, setPersistedId] = useState(initialQuiz?.id ?? "");
   const [metadata, setMetadata] = useState<Metadata>(() => metadataFromQuiz(initialQuiz));
@@ -433,64 +436,64 @@ export default function StudySetEditor({ data, onRefresh, initialQuizSetId, star
     }
   }}>
     <header className="study-set-editor-header">
-      <div><span className="teacher-eyebrow">Study Set editor</span><h2>{persistedId ? "Edit Study Set" : "Create Study Set"}</h2><p>Build a set once, then use it in any QuizStrike game.</p></div>
+      <div><span className="teacher-eyebrow">{t("Study Set editor")}</span><h2>{persistedId ? t("Edit Study Set") : t("Create Study Set")}</h2><p>{t("Build a set once, then use it in any QuizStrike game.")}</p></div>
       <div className="study-set-editor-actions">
-        <button type="button" className="secondary-button" onClick={() => setShowImport((open) => !open)}><FileUp size={16} aria-hidden="true" />Import questions</button>
-        <button type="button" className="secondary-button" onClick={() => setShowPreview(true)} disabled={!completeQuestions.length}><Eye size={16} aria-hidden="true" />Preview</button>
-        <button type="submit" className="primary" disabled={saving}><Save size={17} aria-hidden="true" />{saving ? "Saving…" : "Save Study Set"}</button>
+        <button type="button" className="secondary-button" onClick={() => setShowImport((open) => !open)}><FileUp size={16} aria-hidden="true" />{t("Import questions")}</button>
+        <button type="button" className="secondary-button" onClick={() => setShowPreview(true)} disabled={!completeQuestions.length}><Eye size={16} aria-hidden="true" />{t("Preview")}</button>
+        <button type="submit" className="primary" disabled={saving}><Save size={17} aria-hidden="true" />{saving ? t("Saving…") : t("Save Study Set")}</button>
       </div>
     </header>
 
     <div className={`study-set-save-banner ${saveState}`} role={saveState === "error" ? "alert" : "status"} aria-live="polite">
-      {saving ? "Saving your Study Set…" : saveState === "saved" ? <><Check size={16} aria-hidden="true" />{message}</> : saveState === "error" ? message : dirty ? "Unsaved changes" : persistedId ? "All changes saved" : "New Study Set · Private by default"}
+      {saving ? t("Saving your Study Set…") : saveState === "saved" ? <><Check size={16} aria-hidden="true" />{t(message)}</> : saveState === "error" ? t(message) : dirty ? t("Unsaved changes") : persistedId ? t("All changes saved") : t("New Study Set · Private by default")}
     </div>
 
     {showImport && <section className="study-set-import-panel" aria-labelledby="study-set-import-title">
-      <div><h3 id="study-set-import-title">Import a term and definition list</h3><p>Paste one pair per line. You can review every generated question before saving.</p></div>
-      <textarea className="bulk-textarea" value={importText} onChange={(event) => setImportText(event.target.value)} placeholder={'environment - 環境\ngovernment - 政府\nincrease - 増加する'} aria-label="Term and definition list" />
-      <div className="study-set-import-actions"><button type="button" className="primary" onClick={importQuestions}>Add imported questions</button><button type="button" className="text-button" onClick={() => setShowImport(false)}>Cancel</button></div>
+      <div><h3 id="study-set-import-title">{t("Import a term and definition list")}</h3><p>{t("Paste one pair per line. You can review every generated question before saving.")}</p></div>
+      <textarea className="bulk-textarea" value={importText} onChange={(event) => setImportText(event.target.value)} placeholder={t("environment - 環境\ngovernment - 政府\nincrease - 増加する")} aria-label={t("Term and definition list")} />
+      <div className="study-set-import-actions"><button type="button" className="primary" onClick={importQuestions}>{t("Add imported questions")}</button><button type="button" className="text-button" onClick={() => setShowImport(false)}>{t("Cancel")}</button></div>
     </section>}
 
     <section className="study-set-info-card" aria-labelledby="study-set-info-title">
-      <div className="study-set-card-heading"><div><span className="teacher-eyebrow">Set information</span><h3 id="study-set-info-title">Name your Study Set</h3></div><span>{completeQuestions.length} {completeQuestions.length === 1 ? "question" : "questions"}</span></div>
-      <label className="study-set-title-field">Study Set title<input ref={titleRef} value={metadata.title} onChange={(event) => updateMetadata("title", event.target.value)} placeholder="Eiken Pre-2 Vocabulary — Unit 3" aria-invalid={Boolean(titleError)} aria-describedby={titleError ? "study-set-title-error" : undefined} />{titleError && <span className="field-error" id="study-set-title-error">{titleError}</span>}</label>
-      <label className="study-set-description-field">Description <small>(optional)</small><textarea value={metadata.description} onChange={(event) => updateMetadata("description", event.target.value)} placeholder="What will students review?" /></label>
+      <div className="study-set-card-heading"><div><span className="teacher-eyebrow">{t("Set information")}</span><h3 id="study-set-info-title">{t("Name your Study Set")}</h3></div><span>{completeQuestions.length} {completeQuestions.length === 1 ? t("question") : t("questions")}</span></div>
+      <label className="study-set-title-field">{t("Study Set title")}<input ref={titleRef} value={metadata.title} onChange={(event) => updateMetadata("title", event.target.value)} placeholder={t("Eiken Pre-2 Vocabulary — Unit 3")} aria-invalid={Boolean(titleError)} aria-describedby={titleError ? "study-set-title-error" : undefined} />{titleError && <span className="field-error" id="study-set-title-error">{t(titleError)}</span>}</label>
+      <label className="study-set-description-field">{t("Description")}{" "}<small>{t("(optional)")}</small><textarea value={metadata.description} onChange={(event) => updateMetadata("description", event.target.value)} placeholder={t("What will students review?")} /></label>
       <details className="study-set-details-disclosure">
-        <summary><span><strong>Details and visibility</strong><small>{metadata.visibility === "PUBLIC" ? "Public · other teachers can discover it" : "Private · only you can use it"}</small></span></summary>
+        <summary><span><strong>{t("Details and visibility")}</strong><small>{metadata.visibility === "PUBLIC" ? t("Public · other teachers can discover it") : t("Private · only you can use it")}</small></span></summary>
         <div className="study-set-details-body">
           <div className="study-set-metadata-grid">
-            <label>Subject<input value={metadata.subject} onChange={(event) => updateMetadata("subject", event.target.value)} placeholder="English" /></label>
-            <label>Level<input value={metadata.gradeLevel} onChange={(event) => updateMetadata("gradeLevel", event.target.value)} placeholder="Eiken Pre-2" /></label>
-            <label>Topic<input value={metadata.topic} onChange={(event) => updateMetadata("topic", event.target.value)} placeholder="Vocabulary" /></label>
-            <label>Language<input value={metadata.language} onChange={(event) => updateMetadata("language", event.target.value)} placeholder="English" /></label>
+            <label>{t("Subject")}<input value={metadata.subject} onChange={(event) => updateMetadata("subject", event.target.value)} placeholder={t("English")} /></label>
+            <label>{t("Level")}<input value={metadata.gradeLevel} onChange={(event) => updateMetadata("gradeLevel", event.target.value)} placeholder={t("Eiken Pre-2")} /></label>
+            <label>{t("Topic")}<input value={metadata.topic} onChange={(event) => updateMetadata("topic", event.target.value)} placeholder={t("Vocabulary")} /></label>
+            <label>{t("Language")}<input value={metadata.language} onChange={(event) => updateMetadata("language", event.target.value)} placeholder={t("English")} /></label>
           </div>
-          <fieldset className="study-set-visibility-selector"><legend>Who can use this set?</legend>
-            <label className={metadata.visibility === "PRIVATE" ? "selected" : ""}><input type="radio" name="study-set-visibility" checked={metadata.visibility === "PRIVATE"} onChange={() => updateMetadata("visibility", "PRIVATE")} /><LockKeyhole size={19} aria-hidden="true" /><span><strong>Private</strong><small>Only you can see and use this Study Set.</small></span></label>
-            <label className={metadata.visibility === "PUBLIC" ? "selected" : ""}><input type="radio" name="study-set-visibility" checked={metadata.visibility === "PUBLIC"} onChange={() => updateMetadata("visibility", "PUBLIC")} /><Globe2 size={19} aria-hidden="true" /><span><strong>Public</strong><small>Other QuizStrike teachers can discover and use it.</small></span></label>
+          <fieldset className="study-set-visibility-selector"><legend>{t("Who can use this set?")}</legend>
+            <label className={metadata.visibility === "PRIVATE" ? "selected" : ""}><input type="radio" name="study-set-visibility" checked={metadata.visibility === "PRIVATE"} onChange={() => updateMetadata("visibility", "PRIVATE")} /><LockKeyhole size={19} aria-hidden="true" /><span><strong>{t("Private")}</strong><small>{t("Only you can see and use this Study Set.")}</small></span></label>
+            <label className={metadata.visibility === "PUBLIC" ? "selected" : ""}><input type="radio" name="study-set-visibility" checked={metadata.visibility === "PUBLIC"} onChange={() => updateMetadata("visibility", "PUBLIC")} /><Globe2 size={19} aria-hidden="true" /><span><strong>{t("Public")}</strong><small>{t("Other QuizStrike teachers can discover and use it.")}</small></span></label>
           </fieldset>
         </div>
       </details>
     </section>
 
     <section className="study-set-question-stack" aria-labelledby="study-set-questions-heading">
-      <div className="study-set-questions-heading"><div><span className="teacher-eyebrow">Questions</span><h3 id="study-set-questions-heading">Add questions and answers</h3></div><small>Ctrl/Cmd + Enter adds another</small></div>
+      <div className="study-set-questions-heading"><div><span className="teacher-eyebrow">{t("Questions")}</span><h3 id="study-set-questions-heading">{t("Add questions and answers")}</h3></div><small>{t("Ctrl/Cmd + Enter adds another")}</small></div>
       {questions.map((question, index) => <article className="study-set-question-card" key={question.key} data-question-key={question.key}>
-        <header><div className="study-set-question-number"><span>Question {index + 1}</span></div><div className="study-set-question-tools"><button type="button" onClick={() => moveQuestion(index, -1)} disabled={index === 0} aria-label={`Move question ${index + 1} up`} title="Move up"><ArrowUp size={16} /></button><button type="button" onClick={() => moveQuestion(index, 1)} disabled={index === questions.length - 1} aria-label={`Move question ${index + 1} down`} title="Move down"><ArrowDown size={16} /></button><button type="button" onClick={() => duplicateQuestion(index)}><Copy size={15} aria-hidden="true" />Duplicate</button><button type="button" className="danger-text" onClick={() => removeQuestion(index)} aria-label={`Delete question ${index + 1}`} title="Delete question"><Trash2 size={16} /></button></div></header>
-        <label>Question<input data-question-prompt value={question.prompt} onChange={(event) => updateQuestion(question.key, "prompt", event.target.value)} placeholder="What does “environment” mean?" aria-invalid={Boolean(questionErrors[question.key])} /></label>
-        <fieldset className="study-set-answer-list"><legend>Answers</legend>{choices.map((choice) => {
+        <header><div className="study-set-question-number"><span>{t("Question")}{" "}{index + 1}</span></div><div className="study-set-question-tools"><button type="button" onClick={() => moveQuestion(index, -1)} disabled={index === 0} aria-label={t("Move question {value0} up", { value0: index + 1 })} title={t("Move up")}><ArrowUp size={16} /></button><button type="button" onClick={() => moveQuestion(index, 1)} disabled={index === questions.length - 1} aria-label={t("Move question {value0} down", { value0: index + 1 })} title={t("Move down")}><ArrowDown size={16} /></button><button type="button" onClick={() => duplicateQuestion(index)}><Copy size={15} aria-hidden="true" />{t("Duplicate")}</button><button type="button" className="danger-text" onClick={() => removeQuestion(index)} aria-label={t("Delete question {value0}", { value0: index + 1 })} title={t("Delete question")}><Trash2 size={16} /></button></div></header>
+        <label>{t("Question")}<input data-question-prompt value={question.prompt} onChange={(event) => updateQuestion(question.key, "prompt", event.target.value)} placeholder={t("What does “environment” mean?")} aria-invalid={Boolean(questionErrors[question.key])} /></label>
+        <fieldset className="study-set-answer-list"><legend>{t("Answers")}</legend>{choices.map((choice) => {
           const field = choiceField(choice);
           const correct = question.correctChoice === choice;
           const radioId = `correct-${question.key}-${choice}`;
-          return <div className={correct ? "correct" : ""} key={choice}><input id={radioId} type="radio" name={`correct-${question.key}`} checked={correct} onChange={() => updateQuestion(question.key, "correctChoice", choice)} aria-label={`Mark answer ${choice} correct`} /><label htmlFor={radioId} className="answer-letter">{choice}</label><input aria-label={`Answer ${choice}`} value={question[field]} onChange={(event) => updateQuestion(question.key, field, event.target.value)} placeholder={`Answer ${choice}`} /><label htmlFor={radioId} className="correct-label">{correct ? <><Check size={15} aria-hidden="true" />Correct</> : "Mark correct"}</label></div>;
+          return <div className={correct ? "correct" : ""} key={choice}><input id={radioId} type="radio" name={`correct-${question.key}`} checked={correct} onChange={() => updateQuestion(question.key, "correctChoice", choice)} aria-label={t("Mark answer {value0} correct", { value0: choice })} /><label htmlFor={radioId} className="answer-letter">{choice}</label><input aria-label={t("Answer {value0}", { value0: choice })} value={question[field]} onChange={(event) => updateQuestion(question.key, field, event.target.value)} placeholder={t("Answer {value0}", { value0: choice })} /><label htmlFor={radioId} className="correct-label">{correct ? <><Check size={15} aria-hidden="true" />{t("Correct")}</> : t("Mark correct")}</label></div>;
         })}</fieldset>
         {questionErrors[question.key] && <p className="field-error" role="alert">{questionErrors[question.key]}</p>}
-        <details className="study-set-more-options"><summary>More options</summary><div className="study-set-advanced-grid"><label>Explanation<textarea value={question.explanation} onChange={(event) => updateQuestion(question.key, "explanation", event.target.value)} placeholder="Shown during review" /></label><label>Difficulty<input value={question.difficulty} onChange={(event) => updateQuestion(question.key, "difficulty", event.target.value)} placeholder="Standard" /></label><label className="wide">Question audio URL<input inputMode="url" value={question.audioUrl} onChange={(event) => updateQuestion(question.key, "audioUrl", event.target.value)} placeholder="https://…" /></label><QuestionAudioRecorder audio={pendingQuestionAudio[question.key]} disabled={saving} onChange={(audio) => setQuestionRecording(question.key, audio)} /></div></details>
+        <details className="study-set-more-options"><summary>{t("More options")}</summary><div className="study-set-advanced-grid"><label>{t("Explanation")}<textarea value={question.explanation} onChange={(event) => updateQuestion(question.key, "explanation", event.target.value)} placeholder={t("Shown during review")} /></label><label>{t("Difficulty")}<input value={question.difficulty} onChange={(event) => updateQuestion(question.key, "difficulty", event.target.value)} placeholder={t("Standard")} /></label><label className="wide">{t("Question audio URL")}<input inputMode="url" value={question.audioUrl} onChange={(event) => updateQuestion(question.key, "audioUrl", event.target.value)} placeholder="https://…" /></label><QuestionAudioRecorder audio={pendingQuestionAudio[question.key]} disabled={saving} onChange={(audio) => setQuestionRecording(question.key, audio)} /></div></details>
       </article>)}
-      <button type="button" className="study-set-add-question" onClick={addQuestion}><Plus size={19} aria-hidden="true" />Add Question</button>
+      <button type="button" className="study-set-add-question" onClick={addQuestion}><Plus size={19} aria-hidden="true" />{t("Add Question")}</button>
     </section>
 
-    <footer className="study-set-editor-footer"><div><strong>{completeQuestions.length} questions</strong><span>{dirty ? "Unsaved changes" : "All changes saved"}</span></div><button type="submit" className="primary" disabled={saving}><Save size={17} aria-hidden="true" />{saving ? "Saving…" : "Save Study Set"}</button></footer>
+    <footer className="study-set-editor-footer"><div><strong>{completeQuestions.length}{" "}{t("questions")}</strong><span>{dirty ? t("Unsaved changes") : t("All changes saved")}</span></div><button type="submit" className="primary" disabled={saving}><Save size={17} aria-hidden="true" />{saving ? t("Saving…") : t("Save Study Set")}</button></footer>
 
-    {showPreview && <div className="study-set-preview-backdrop" role="dialog" aria-modal="true" aria-labelledby="study-set-preview-title"><section className="study-set-preview"><button type="button" className="study-set-preview-close" onClick={() => setShowPreview(false)} aria-label="Close preview"><X size={20} /></button><span className={`study-set-visibility ${metadata.visibility.toLowerCase()}`}>{metadata.visibility === "PUBLIC" ? <Globe2 size={14} /> : <LockKeyhole size={14} />}{metadata.visibility === "PUBLIC" ? "Public" : "Private"}</span><h2 id="study-set-preview-title">{metadata.title || "Untitled Study Set"}</h2><p>{metadata.description || "No description yet."}</p><ol className="study-set-preview-questions">{completeQuestions.map((question) => <li key={question.key}><strong>{question.prompt}</strong><span>Correct answer: {question[choiceField(question.correctChoice)]}</span></li>)}</ol></section></div>}
+    {showPreview && <div className="study-set-preview-backdrop" role="dialog" aria-modal="true" aria-labelledby="study-set-preview-title"><section className="study-set-preview"><button type="button" className="study-set-preview-close" onClick={() => setShowPreview(false)} aria-label={t("Close preview")}><X size={20} /></button><span className={`study-set-visibility ${metadata.visibility.toLowerCase()}`}>{metadata.visibility === "PUBLIC" ? <Globe2 size={14} /> : <LockKeyhole size={14} />}{metadata.visibility === "PUBLIC" ? t("Public") : t("Private")}</span><h2 id="study-set-preview-title">{metadata.title || t("Untitled Study Set")}</h2><p>{metadata.description || t("No description yet.")}</p><ol className="study-set-preview-questions">{completeQuestions.map((question) => <li key={question.key}><strong>{question.prompt}</strong><span>{t("Correct answer:")}{" "}{question[choiceField(question.correctChoice)]}</span></li>)}</ol></section></div>}
   </form>;
 }

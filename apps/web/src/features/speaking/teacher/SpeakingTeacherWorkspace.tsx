@@ -1,3 +1,4 @@
+import { useSiteTranslation } from "../../../ui/siteTranslation";
 import { useCallback, useEffect, useRef, useState, type FormEvent } from "react";
 import {
   ArrowLeft,
@@ -144,11 +145,11 @@ const ROSTER_STATUS_LABELS: Record<SpeakingRosterStatus, string> = {
 
 const rosterStatusOrder: SpeakingRosterStatus[] = ["joined", "ready", "practicing", "processing", "evaluating", "retrying", "finished", "error"];
 
-const formatRosterActivity = (value?: string) => {
+const formatRosterActivity = (value?: string, locale?: string) => {
   if (!value) return "No activity yet";
   const date = new Date(value);
   if (Number.isNaN(date.getTime())) return "No activity yet";
-  return date.toLocaleTimeString([], { hour: "numeric", minute: "2-digit" });
+  return date.toLocaleTimeString(locale, { hour: "numeric", minute: "2-digit" });
 };
 
 const normalizePath = (path: string) =>
@@ -209,18 +210,17 @@ function MissingSpeakingSession({
   navigate: Navigate;
   message?: string;
 }) {
+  const { t } = useSiteTranslation();
   return (
     <div className="speaking-empty-page">
       <CircleCheck size={38} aria-hidden="true" />
-      <h1>Activity not found</h1>
-      <p>{message}</p>
+      <h1>{t("Activity not found")}</h1>
+      <p>{t(message)}</p>
       <button
         className="speaking-primary-button"
         type="button"
         onClick={() => navigate("/speak/teacher")}
-      >
-        Back to Speaking Tasks
-      </button>
+      >{t("Back to Speaking Tasks")}</button>
     </div>
   );
 }
@@ -244,6 +244,7 @@ export function SpeakingTeacherWorkspace({
   initialPath: string;
   onNavigate: Navigate;
 }) {
+  const { t } = useSiteTranslation();
   const [path, setPath] = useState(() => toSpeakingTeacherPath(initialPath));
 
   useEffect(() => {
@@ -265,7 +266,7 @@ export function SpeakingTeacherWorkspace({
   return (
     <div
       className="speaking-app speaking-embedded-teacher"
-      aria-label="Speaking Tasks teacher tools"
+      aria-label={t("Speaking Tasks teacher tools")}
     >
       {route.kind === "teacher" && (
         <SpeakingTeacherDashboard navigate={navigate} initialTab={route.tab} />
@@ -307,9 +308,10 @@ const speakingSkills = (activity: Pick<SpeakingActivity, "scenarioResources">) =
 const speakingCollection = (activity: Pick<SpeakingActivity, "scenarioResources">): SpeakingLibraryCollection =>
   speakingScenarioResources(activity.scenarioResources).libraryCollection ?? "school-english";
 
-const speakingMinutes = (seconds: number) => `${Math.max(1, Math.round(seconds / 60))} min`;
+const speakingMinutes = (seconds: number) => Math.max(1, Math.round(seconds / 60));
 
 function SpeakingTeacherDashboard({ navigate, initialTab = "tests" }: { navigate: Navigate; initialTab?: DashboardTab }) {
+  const { t, locale } = useSiteTranslation();
   const [library, setLibrary] = useState<SpeakingLibraryItem[]>([]);
   const [coreLibrary, setCoreLibrary] = useState<SpeakingActivity[]>(() => coreFallbackActivities());
   const [sets, setSets] = useState<SpeakingSetSummary[]>([]);
@@ -491,53 +493,49 @@ function SpeakingTeacherDashboard({ navigate, initialTab = "tests" }: { navigate
         <section className="speaking-teacher-content speaking-library-page speaking-dashboard-page">
           <div className="speaking-dashboard-heading">
             <div>
-              <span className="speaking-eyebrow"><Mic size={15} aria-hidden="true" /> Teacher workspace</span>
-              <h1>Speaking Tasks</h1>
-              <p>Create real communication tasks and collect evidence of what students can do.</p>
+              <span className="speaking-eyebrow"><Mic size={15} aria-hidden="true" />{" "}{t("Teacher workspace")}</span>
+              <h1>{t("Speaking Tasks")}</h1>
+              <p>{t("Create real communication tasks and collect evidence of what students can do.")}</p>
             </div>
             <button className="speaking-primary-button speaking-new-test-button" type="button" onClick={() => navigate("/speak/teacher/create")}>
-              <Plus size={18} aria-hidden="true" /> New Speaking Task
-            </button>
+              <Plus size={18} aria-hidden="true" />{" "}{t("New Speaking Task")}</button>
           </div>
-          {error && <p className="speaking-error speaking-dashboard-error" role="status">{error}</p>}
-          <div className="speaking-library-tabs speaking-dashboard-tabs" role="tablist" aria-label="Speaking Tasks library">
-            <button type="button" role="tab" aria-selected={activeTab === "tests"} className={activeTab === "tests" ? "is-active" : ""} onClick={() => setActiveTab("tests")}>
-              My Speaking Tasks <span>{library.length}</span>
+          {error && <p className="speaking-error speaking-dashboard-error" role="status">{t(error)}</p>}
+          <div className="speaking-library-tabs speaking-dashboard-tabs" role="tablist" aria-label={t("Speaking Tasks library")}>
+            <button type="button" role="tab" aria-selected={activeTab === "tests"} className={activeTab === "tests" ? "is-active" : ""} onClick={() => setActiveTab("tests")}>{t("My Speaking Tasks")}{" "}<span>{library.length}</span>
             </button>
-            <button type="button" role="tab" aria-selected={activeTab === "core"} className={activeTab === "core" ? "is-active" : ""} onClick={() => setActiveTab("core")}>
-              Core Library <span>{coreLibrary.length}</span>
+            <button type="button" role="tab" aria-selected={activeTab === "core"} className={activeTab === "core" ? "is-active" : ""} onClick={() => setActiveTab("core")}>{t("Core Library")}{" "}<span>{coreLibrary.length}</span>
             </button>
-            <button type="button" role="tab" aria-selected={false} onClick={() => navigate("/speak/teacher/sets")}>
-              My Sets <span>{sets.length}</span>
+            <button type="button" role="tab" aria-selected={false} onClick={() => navigate("/speak/teacher/sets")}>{t("My Sets")}{" "}<span>{sets.length}</span>
             </button>
           </div>
           {activeTab === "tests" ? (
             <>
-              {openSessions.length > 0 && <section className="speaking-session-strip speaking-dashboard-live" aria-label="Active classroom sessions"><div className="speaking-section-title"><div><span className="speaking-card-kicker">Live now</span><h2>Active classroom sessions</h2></div><span>{openSessions.length} open</span></div>{openSessions.map(({ activity, session }) => <button className="speaking-session-row" key={session.id} type="button" onClick={() => navigate(`/speak/teacher/activity/${activity.id}?sessionId=${encodeURIComponent(session.id)}`)}><span className={`speaking-status-pill speaking-status-${session.status}`}>{session.status === "ready" ? "Students joining" : session.status === "paused" ? "Paused" : "Running"}</span><strong>{activity.title}</strong><code>{session.joinCode}</code><span>Open classroom <ArrowRight size={16} aria-hidden="true" /></span></button>)}</section>}
-              <div className="speaking-section-title speaking-library-section-heading"><div><span className="speaking-card-kicker">Your workspace</span><h2>My Speaking Tasks</h2><p>Launch a saved task, edit its conversation, or add it to a Set.</p></div><button type="button" className="speaking-text-button" onClick={() => setActiveTab("core")}>Browse Core Library <ArrowRight size={15} aria-hidden="true" /></button></div>
+              {openSessions.length > 0 && <section className="speaking-session-strip speaking-dashboard-live" aria-label={t("Active classroom sessions")}><div className="speaking-section-title"><div><span className="speaking-card-kicker">{t("Live now")}</span><h2>{t("Active classroom sessions")}</h2></div><span>{openSessions.length}{" "}{t("open")}</span></div>{openSessions.map(({ activity, session }) => <button className="speaking-session-row" key={session.id} type="button" onClick={() => navigate(`/speak/teacher/activity/${activity.id}?sessionId=${encodeURIComponent(session.id)}`)}><span className={`speaking-status-pill speaking-status-${session.status}`}>{session.status === "ready" ? t("Students joining") : session.status === "paused" ? t("Paused") : t("Running")}</span><strong>{activity.title}</strong><code>{session.joinCode}</code><span>{t("Open classroom")}{" "}<ArrowRight size={16} aria-hidden="true" /></span></button>)}</section>}
+              <div className="speaking-section-title speaking-library-section-heading"><div><span className="speaking-card-kicker">{t("Your workspace")}</span><h2>{t("My Speaking Tasks")}</h2><p>{t("Launch a saved task, edit its conversation, or add it to a Set.")}</p></div><button type="button" className="speaking-text-button" onClick={() => setActiveTab("core")}>{t("Browse Core Library")}{" "}<ArrowRight size={15} aria-hidden="true" /></button></div>
               <SpeakingLibraryToolbar search={search} setSearch={setSearch} category={category} setCategory={setCategory} skill={skill} setSkill={setSkill} source={source} setSource={setSource} sort={sort} setSort={setSort} clearFilters={clearFilters} />
-              {library.length ? visibleItems.length ? <div className="speaking-activity-list speaking-dashboard-activity-list">{visibleItems.map((item) => <TeacherActivityRow key={item.activity.id} item={item} sets={sets} navigate={navigate} onRefresh={load} />)}</div> : <SpeakingNoMatches onClear={clearFilters} /> : <div className="speaking-empty-card"><img className="speaking-empty-art" src="/assets/speaking/empty-performance-tests.webp" alt="" width={132} height={132} /><h2>Create your first Speaking Task</h2><p>Start with a core scenario or build an open-ended conversation from scratch.</p><button type="button" className="speaking-primary-button" onClick={() => setActiveTab("core")}>Browse Core Library</button></div>}
-              {completedItems.length > 0 && <section className="speaking-recent-sessions" aria-labelledby="recent-completed-sessions"><div className="speaking-section-title"><div><span className="speaking-card-kicker">Classroom history</span><h2 id="recent-completed-sessions">Recent completed sessions</h2></div><button type="button" className="speaking-text-button" onClick={() => navigate("/speak/teacher/reports")}>View reports <ArrowRight size={15} aria-hidden="true" /></button></div><div className="speaking-recent-session-list">{completedItems.map((item) => <div className="speaking-recent-session" key={item.activity.id}><div><strong>{item.activity.title}</strong><span>{item.sessionCount} session{item.sessionCount === 1 ? "" : "s"} · {item.lastSessionAt ? `Completed ${new Date(item.lastSessionAt).toLocaleDateString()}` : "Completed recently"}</span></div><span className="speaking-status-pill speaking-status-ended">Completed</span></div>)}</div></section>}
+              {library.length ? visibleItems.length ? <div className="speaking-activity-list speaking-dashboard-activity-list">{visibleItems.map((item) => <TeacherActivityRow key={item.activity.id} item={item} sets={sets} navigate={navigate} onRefresh={load} />)}</div> : <SpeakingNoMatches onClear={clearFilters} /> : <div className="speaking-empty-card"><img className="speaking-empty-art" src="/assets/speaking/empty-performance-tests.webp" alt="" width={132} height={132} /><h2>{t("Create your first Speaking Task")}</h2><p>{t("Start with a core scenario or build an open-ended conversation from scratch.")}</p><button type="button" className="speaking-primary-button" onClick={() => setActiveTab("core")}>{t("Browse Core Library")}</button></div>}
+              {completedItems.length > 0 && <section className="speaking-recent-sessions" aria-labelledby="recent-completed-sessions"><div className="speaking-section-title"><div><span className="speaking-card-kicker">{t("Classroom history")}</span><h2 id="recent-completed-sessions">{t("Recent completed sessions")}</h2></div><button type="button" className="speaking-text-button" onClick={() => navigate("/speak/teacher/reports")}>{t("View reports")}{" "}<ArrowRight size={15} aria-hidden="true" /></button></div><div className="speaking-recent-session-list">{completedItems.map((item) => <div className="speaking-recent-session" key={item.activity.id}><div><strong>{item.activity.title}</strong><span>{t(item.sessionCount === 1 ? "{value0} session" : "{value0} sessions", { value0: item.sessionCount })} · {item.lastSessionAt ? t("Completed {value0}", { value0: new Date(item.lastSessionAt).toLocaleDateString(locale) }) : t("Completed recently")}</span></div><span className="speaking-status-pill speaking-status-ended">{t("Completed")}</span></div>)}</div></section>}
             </>
           ) : (
             <section className="speaking-core-library" aria-labelledby="core-library-heading">
               {showCoreTaskResults ? (
                 <>
                   <SpeakingCoreBreadcrumbs view={coreView} onNavigate={setCoreView} />
-                  <div className="speaking-section-title speaking-library-section-heading"><div><span className="speaking-card-kicker">{currentCategory?.name ?? currentCollection?.name ?? "Core Library"}</span><h2 id="core-library-heading">{query ? "Search results" : "Speaking Tasks"}</h2><p>{query ? `Results across ${currentCategory?.name ?? currentCollection?.name ?? "the Core Library"}.` : currentCategory?.description ?? "Choose a ready-made speaking task to preview or adapt."}</p></div><span className="speaking-core-count">{visibleCore.length} shown</span></div>
+                  <div className="speaking-section-title speaking-library-section-heading"><div><span className="speaking-card-kicker">{t(currentCategory?.name) ?? t(currentCollection?.name) ?? t("Core Library")}</span><h2 id="core-library-heading">{query ? t("Search results") : t("Speaking Tasks")}</h2><p>{query ? t("Results across {value0}.", { value0: currentCategory?.name ?? currentCollection?.name ?? "the Core Library" }) : currentCategory?.description ?? t("Choose a ready-made speaking task to preview or adapt.")}</p></div><span className="speaking-core-count">{visibleCore.length}{" "}{t("shown")}</span></div>
                   <SpeakingLibraryToolbar search={search} setSearch={setSearch} category={category} setCategory={setCategory} skill={skill} setSkill={setSkill} source="built-in" setSource={() => undefined} sort={sort} setSort={setSort} clearFilters={clearFilters} coreOnly showCategory={false} />
                   {visibleCore.length ? <div className="speaking-core-grid">{visibleCore.map((template) => <SpeakingCoreCard key={template.id} template={template} showHierarchy={coreView.kind !== "tasks"} working={workingTemplateId === template.id} onPreview={() => setPreviewTemplate(template)} onUse={() => void addCoreTemplate(template)} onCustomize={() => customizeTemplate(template)} />)}</div> : <SpeakingNoMatches onClear={clearFilters} />}
                 </>
               ) : coreView.kind === "collections" ? (
                 <>
-                  <div className="speaking-section-title speaking-library-section-heading"><div><span className="speaking-card-kicker">Built-in scenarios</span><h2 id="core-library-heading">Core Library</h2><p>Ready-made speaking tasks for school and workplace English.</p></div><span className="speaking-core-count">{coreLibrary.length} total</span></div>
+                  <div className="speaking-section-title speaking-library-section-heading"><div><span className="speaking-card-kicker">{t("Built-in scenarios")}</span><h2 id="core-library-heading">{t("Core Library")}</h2><p>{t("Ready-made speaking tasks for school and workplace English.")}</p></div><span className="speaking-core-count">{coreLibrary.length}{" "}{t("total")}</span></div>
                   <SpeakingLibraryToolbar search={search} setSearch={setSearch} category={category} setCategory={setCategory} skill={skill} setSkill={setSkill} source="built-in" setSource={() => undefined} sort={sort} setSort={setSort} clearFilters={clearFilters} coreOnly showCategory={false} />
                   <div className="speaking-collection-grid">{SPEAKING_LIBRARY_COLLECTION_DEFINITIONS.map((collection) => <SpeakingCollectionCard key={collection.id} collection={collection} count={collectionCount(collection.id)} onOpen={() => setCoreView({ kind: "categories", collectionId: collection.id })} />)}</div>
                 </>
               ) : (
                 <>
                   <SpeakingCoreBreadcrumbs view={coreView} onNavigate={setCoreView} />
-                  <div className="speaking-section-title speaking-library-section-heading"><div><span className="speaking-card-kicker">Collection</span><h2 id="core-library-heading">{currentCollection?.name}</h2><p>{currentCollection?.description}</p></div><span className="speaking-core-count">{currentCollection ? collectionCount(currentCollection.id) : 0} tasks</span></div>
+                  <div className="speaking-section-title speaking-library-section-heading"><div><span className="speaking-card-kicker">{t("Collection")}</span><h2 id="core-library-heading">{t(currentCollection?.name)}</h2><p>{t(currentCollection?.description)}</p></div><span className="speaking-core-count">{currentCollection ? collectionCount(currentCollection.id) : 0}{" "}{t("tasks")}</span></div>
                   <SpeakingLibraryToolbar search={search} setSearch={setSearch} category={category} setCategory={setCategory} skill={skill} setSkill={setSkill} source="built-in" setSource={() => undefined} sort={sort} setSort={setSort} clearFilters={clearFilters} coreOnly showCategory={false} />
                   <div className="speaking-category-grid">{currentCollection?.categories.map((categoryDefinition) => <SpeakingCategoryCard key={categoryDefinition.id} category={categoryDefinition} count={categoryCount(categoryDefinition.id)} onOpen={() => setCoreView({ kind: "tasks", collectionId: categoryDefinition.collectionId, categoryId: categoryDefinition.id })} />)}</div>
                 </>
@@ -580,57 +578,64 @@ function SpeakingLibraryToolbar({
   coreOnly?: boolean;
   showCategory?: boolean;
 }) {
+  const { t } = useSiteTranslation();
   return <div className="speaking-library-toolbar speaking-dashboard-toolbar">
-    <label className="speaking-task-search"><span className="sr-only">Search scenarios</span><input aria-label="Search scenarios" value={search} onChange={(event) => setSearch(event.target.value)} placeholder={coreOnly ? "Search scenarios" : "Search tasks, roles or scenarios"} /></label>
-    {showCategory && <label><span className="sr-only">Filter by category</span><select aria-label="Filter by category" value={category} onChange={(event) => setCategory(event.target.value)}><option value="all">All categories</option>{SPEAKING_CATEGORIES.map((item) => <option key={item} value={item}>{item}</option>)}</select></label>}
-    <label><span className="sr-only">Filter by communication skill</span><select aria-label="Filter by communication skill" value={skill} onChange={(event) => setSkill(event.target.value)}><option value="all">All skills</option>{SPEAKING_COMMUNICATION_SKILLS.map((item) => <option key={item} value={item}>{item}</option>)}</select></label>
-    {!coreOnly && <label><span className="sr-only">Filter by source</span><select aria-label="Filter by source" value={source} onChange={(event) => setSource(event.target.value)}><option value="all">Built-in & My versions</option><option value="built-in">Built-in</option><option value="mine">My versions</option></select></label>}
-    <label><span className="sr-only">Sort Speaking Tasks</span><select aria-label="Sort Speaking Tasks" value={sort} onChange={(event) => setSort(event.target.value)}><option value="recent">Recently used</option><option value="az">A–Z</option><option value="za">Z–A</option></select></label>
-    <button type="button" className="speaking-filter-icon" aria-label="Clear filters" onClick={clearFilters}><SlidersHorizontal size={17} aria-hidden="true" /><span className="speaking-filter-label">Clear filters</span></button>
+    <label className="speaking-task-search"><span className="sr-only">{t("Search scenarios")}</span><input aria-label={t("Search scenarios")} value={search} onChange={(event) => setSearch(event.target.value)} placeholder={coreOnly ? t("Search scenarios") : t("Search tasks, roles or scenarios")} /></label>
+    {showCategory && <label><span className="sr-only">{t("Filter by category")}</span><select aria-label={t("Filter by category")} value={category} onChange={(event) => setCategory(event.target.value)}><option value="all">{t("All categories")}</option>{SPEAKING_CATEGORIES.map((item) => <option key={item} value={item}>{t(item)}</option>)}</select></label>}
+    <label><span className="sr-only">{t("Filter by communication skill")}</span><select aria-label={t("Filter by communication skill")} value={skill} onChange={(event) => setSkill(event.target.value)}><option value="all">{t("All skills")}</option>{SPEAKING_COMMUNICATION_SKILLS.map((item) => <option key={item} value={item}>{t(item)}</option>)}</select></label>
+    {!coreOnly && <label><span className="sr-only">{t("Filter by source")}</span><select aria-label={t("Filter by source")} value={source} onChange={(event) => setSource(event.target.value)}><option value="all">{t("Built-in & My versions")}</option><option value="built-in">{t("Built-in")}</option><option value="mine">{t("My versions")}</option></select></label>}
+    <label><span className="sr-only">{t("Sort Speaking Tasks")}</span><select aria-label={t("Sort Speaking Tasks")} value={sort} onChange={(event) => setSort(event.target.value)}><option value="recent">{t("Recently used")}</option><option value="az">A–Z</option><option value="za">Z–A</option></select></label>
+    <button type="button" className="speaking-filter-icon" aria-label={t("Clear filters")} onClick={clearFilters}><SlidersHorizontal size={17} aria-hidden="true" /><span className="speaking-filter-label">{t("Clear filters")}</span></button>
   </div>;
 }
 
 function SpeakingNoMatches({ onClear }: { onClear: () => void }) {
-  return <div className="speaking-empty-card speaking-no-matches"><h2>No scenarios match</h2><p>Try a different search or filter.</p><button type="button" className="speaking-outline-button" onClick={onClear}>Clear filters</button></div>;
+  const { t } = useSiteTranslation();
+  return <div className="speaking-empty-card speaking-no-matches"><h2>{t("No scenarios match")}</h2><p>{t("Try a different search or filter.")}</p><button type="button" className="speaking-outline-button" onClick={onClear}>{t("Clear filters")}</button></div>;
 }
 
 function SpeakingCoreBreadcrumbs({ view, onNavigate }: { view: CoreLibraryView; onNavigate: (view: CoreLibraryView) => void }) {
+  const { t } = useSiteTranslation();
   const collection = view.kind === "collections" ? undefined : SPEAKING_LIBRARY_COLLECTION_DEFINITIONS.find((item) => item.id === view.collectionId);
   const category = view.kind === "tasks" ? SPEAKING_LIBRARY_CATEGORY_DEFINITIONS.find((item) => item.id === view.categoryId) : undefined;
-  return <nav className="speaking-library-breadcrumbs" aria-label="Core Library location">
-    <button type="button" onClick={() => onNavigate({ kind: "collections" })}>Core Library</button>
-    {collection && <><ChevronRight size={14} aria-hidden="true" /><button type="button" onClick={() => onNavigate({ kind: "categories", collectionId: collection.id })}>{collection.name}</button></>}
-    {category && <><ChevronRight size={14} aria-hidden="true" /><span aria-current="page">{category.name}</span></>}
+  return <nav className="speaking-library-breadcrumbs" aria-label={t("Core Library location")}>
+    <button type="button" onClick={() => onNavigate({ kind: "collections" })}>{t("Core Library")}</button>
+    {collection && <><ChevronRight size={14} aria-hidden="true" /><button type="button" onClick={() => onNavigate({ kind: "categories", collectionId: collection.id })}>{t(collection.name)}</button></>}
+    {category && <><ChevronRight size={14} aria-hidden="true" /><span aria-current="page">{t(category.name)}</span></>}
   </nav>;
 }
 
 function SpeakingCollectionCard({ collection, count, onOpen }: { collection: (typeof SPEAKING_LIBRARY_COLLECTION_DEFINITIONS)[number]; count: number; onOpen: () => void }) {
+  const { t } = useSiteTranslation();
   return <button type="button" className="speaking-collection-card" onClick={onOpen}>
-    <span className="speaking-collection-card-top"><span className="speaking-collection-card-kicker">Collection</span><strong>{count}</strong></span>
-    <span className="speaking-collection-card-title">{collection.name}</span>
-    <span className="speaking-collection-card-description">{collection.description}</span>
-    <span className="speaking-collection-card-audience">{collection.audience}</span>
-    <span className="speaking-collection-card-action">Explore collection <ArrowRight size={16} aria-hidden="true" /></span>
+    <span className="speaking-collection-card-top"><span className="speaking-collection-card-kicker">{t("Collection")}</span><strong>{count}</strong></span>
+    <span className="speaking-collection-card-title">{t(collection.name)}</span>
+    <span className="speaking-collection-card-description">{t(collection.description)}</span>
+    <span className="speaking-collection-card-audience">{t(collection.audience)}</span>
+    <span className="speaking-collection-card-action">{t("Explore collection")}{" "}<ArrowRight size={16} aria-hidden="true" /></span>
   </button>;
 }
 
 function SpeakingCategoryCard({ category, count, onOpen }: { category: (typeof SPEAKING_LIBRARY_CATEGORY_DEFINITIONS)[number]; count: number; onOpen: () => void }) {
+  const { t } = useSiteTranslation();
   return <button type="button" className="speaking-category-card" onClick={onOpen}>
-    <span className="speaking-category-card-top"><span>{category.name}</span><strong>{count}</strong></span>
-    <span className="speaking-category-card-description">{category.description}</span>
-    <span className="speaking-category-card-action">View tasks <ArrowRight size={16} aria-hidden="true" /></span>
+    <span className="speaking-category-card-top"><span>{t(category.name)}</span><strong>{count}</strong></span>
+    <span className="speaking-category-card-description">{t(category.description)}</span>
+    <span className="speaking-category-card-action">{t("View tasks")}{" "}<ArrowRight size={16} aria-hidden="true" /></span>
   </button>;
 }
 
 function SpeakingCoreCard({ template, showHierarchy = false, working, onPreview, onUse, onCustomize }: { template: SpeakingActivity; showHierarchy?: boolean; working: boolean; onPreview: () => void; onUse: () => void; onCustomize: () => void }) {
+  const { t } = useSiteTranslation();
   const resources = speakingScenarioResources(template.scenarioResources);
   return <article className="speaking-core-card">
-    <div className="speaking-core-card-image">{resources.imageSrc ? <img src={resources.imageSrc} alt={resources.imageAlt ?? ""} loading="lazy" /> : <span className="speaking-core-card-placeholder" aria-hidden="true"><ClipboardCheck size={28} /></span>}<span>Built-in</span></div>
-    <div className="speaking-core-card-body"><div className="speaking-core-card-heading"><div>{showHierarchy && <span className="speaking-card-hierarchy">{SPEAKING_LIBRARY_COLLECTION_LABELS[resources.libraryCollection ?? "school-english"]} / {speakingCategory(template)}</span>}<span className="speaking-category-chip">{speakingCategory(template)}</span><h3>{template.title}</h3></div><span className="speaking-core-duration"><Clock3 size={14} aria-hidden="true" /> {speakingMinutes(template.durationSeconds)}</span></div><p>{template.scenario}</p><div className="speaking-skill-tags" aria-label={`Communication skills for ${template.title}`}>{speakingSkills(template).slice(0, 4).map((item) => <span key={item}>{item}</span>)}</div><div className="speaking-core-card-footer"><span><UserRound size={14} aria-hidden="true" /> Speaking partner: {template.aiRole}</span><div><button type="button" className="speaking-outline-button" onClick={onPreview}>Preview</button><button type="button" className="speaking-text-button" onClick={onCustomize}>Customize</button><button type="button" className="speaking-row-launch" onClick={onUse} disabled={working}>{working ? "Adding…" : "Use as-is"}</button></div></div></div>
+    <div className="speaking-core-card-image">{resources.imageSrc ? <img src={resources.imageSrc} alt={resources.imageAlt ?? ""} loading="lazy" /> : <span className="speaking-core-card-placeholder" aria-hidden="true"><ClipboardCheck size={28} /></span>}<span>{t("Built-in")}</span></div>
+    <div className="speaking-core-card-body"><div className="speaking-core-card-heading"><div>{showHierarchy && <span className="speaking-card-hierarchy">{t(SPEAKING_LIBRARY_COLLECTION_LABELS[resources.libraryCollection ?? "school-english"])} / {t(speakingCategory(template))}</span>}<span className="speaking-category-chip">{t(speakingCategory(template))}</span><h3>{template.title}</h3></div><span className="speaking-core-duration"><Clock3 size={14} aria-hidden="true" /> {t("{value0} min", { value0: speakingMinutes(template.durationSeconds) })}</span></div><p>{template.scenario}</p><div className="speaking-skill-tags" aria-label={t("Communication skills for {value0}", { value0: template.title })}>{speakingSkills(template).slice(0, 4).map((item) => <span key={item}>{t(item)}</span>)}</div><div className="speaking-core-card-footer"><span><UserRound size={14} aria-hidden="true" />{" "}{t("Speaking partner:")}{" "}{template.aiRole}</span><div><button type="button" className="speaking-outline-button" onClick={onPreview}>{t("Preview")}</button><button type="button" className="speaking-text-button" onClick={onCustomize}>{t("Customize")}</button><button type="button" className="speaking-row-launch" onClick={onUse} disabled={working}>{working ? t("Adding…") : t("Use as-is")}</button></div></div></div>
   </article>;
 }
 
 function SpeakingCorePreview({ template, working, onClose, onUse, onCustomize }: { template: SpeakingActivity; working: boolean; onClose: () => void; onUse: () => void; onCustomize: () => void }) {
+  const { t } = useSiteTranslation();
   const previewRef = useRef<HTMLElement>(null);
   useEffect(() => {
     const previous = document.activeElement;
@@ -663,36 +668,37 @@ function SpeakingCorePreview({ template, working, onClose, onUse, onCustomize }:
   const resources = speakingScenarioResources(template.scenarioResources);
   return <div className="speaking-preview-backdrop" role="presentation" onMouseDown={(event) => { if (event.currentTarget === event.target) onClose(); }}>
     <section ref={previewRef} tabIndex={-1} className="speaking-core-preview" role="dialog" aria-modal="true" aria-labelledby="speaking-preview-title">
-      <button type="button" className="speaking-preview-close" onClick={onClose} aria-label="Close preview"><X size={19} aria-hidden="true" /></button>
+      <button type="button" className="speaking-preview-close" onClick={onClose} aria-label={t("Close preview")}><X size={19} aria-hidden="true" /></button>
       <div className="speaking-preview-top">
         {resources.imageSrc ? <img src={resources.imageSrc} alt={resources.imageAlt ?? ""} /> : <div className="speaking-preview-placeholder" aria-hidden="true"><ClipboardCheck size={34} /></div>}
-        <div><span className="speaking-card-hierarchy">{SPEAKING_LIBRARY_COLLECTION_LABELS[resources.libraryCollection ?? "school-english"]} / {speakingCategory(template)}</span><span className={`speaking-mode-badge speaking-mode-${template.mode}`}>{speakingModeLabel(template.mode)}</span><h2 id="speaking-preview-title">{template.title}</h2><p>{template.scenario}</p></div>
+        <div><span className="speaking-card-hierarchy">{t(SPEAKING_LIBRARY_COLLECTION_LABELS[resources.libraryCollection ?? "school-english"])} / {t(speakingCategory(template))}</span><span className={`speaking-mode-badge speaking-mode-${template.mode}`}>{t(speakingModeLabel(template.mode))}</span><h2 id="speaking-preview-title">{template.title}</h2><p>{template.scenario}</p></div>
       </div>
       <div className="speaking-preview-grid">
-        <div><span className="speaking-preview-label">Student goal</span><p>{resources.studentGoal}</p></div>
-        <div><span className="speaking-preview-label">Learner role</span><p>{template.studentRole}</p></div>
-        <div><span className="speaking-preview-label">Speaking partner context</span><p>{resources.aiContext ?? `Act as ${template.aiRole} in this situation.`}</p></div>
-        <div><span className="speaking-preview-label">Possible complication</span><p>{resources.possibleComplication ?? "Respond naturally if the student takes a different direction."}</p></div>
-        <div><span className="speaking-preview-label">Duration</span><p>{speakingMinutes(template.durationSeconds)} · Assessment by default</p></div>
-        <div><span className="speaking-preview-label">Target English</span><p>Examples, not compulsory wording.</p><ul>{template.targetExpressions.map((expression) => <li key={expression}>{expression}</li>)}</ul></div>
-        <div><span className="speaking-preview-label">Success conditions</span><ul>{(resources.successConditions.length ? resources.successConditions : ["Communicate the main idea.", "Respond and keep the conversation moving."]).map((item) => <li key={item}>{item}</li>)}</ul></div>
-        {resources.suggestedSteps.length > 0 && <div><span className="speaking-preview-label">Suggested steps</span><ol>{resources.suggestedSteps.map((item, index) => <li key={`${index}-${item}`}>{item}</li>)}</ol></div>}
+        <div><span className="speaking-preview-label">{t("Student goal")}</span><p>{resources.studentGoal}</p></div>
+        <div><span className="speaking-preview-label">{t("Learner role")}</span><p>{template.studentRole}</p></div>
+        <div><span className="speaking-preview-label">{t("Speaking partner context")}</span><p>{resources.aiContext ?? t("Act as {value0} in this situation.", { value0: template.aiRole })}</p></div>
+        <div><span className="speaking-preview-label">{t("Possible complication")}</span><p>{resources.possibleComplication ?? t("Respond naturally if the student takes a different direction.")}</p></div>
+        <div><span className="speaking-preview-label">{t("Duration")}</span><p>{t("{value0} min", { value0: speakingMinutes(template.durationSeconds) })}{" "}{t("· Assessment by default")}</p></div>
+        <div><span className="speaking-preview-label">{t("Target English")}</span><p>{t("Examples, not compulsory wording.")}</p><ul>{template.targetExpressions.map((expression) => <li key={expression}>{expression}</li>)}</ul></div>
+        <div><span className="speaking-preview-label">{t("Success conditions")}</span><ul>{(resources.successConditions.length ? resources.successConditions : ["Communicate the main idea.", "Respond and keep the conversation moving."]).map((item) => <li key={item}>{item}</li>)}</ul></div>
+        {resources.suggestedSteps.length > 0 && <div><span className="speaking-preview-label">{t("Suggested steps")}</span><ol>{resources.suggestedSteps.map((item, index) => <li key={`${index}-${item}`}>{item}</li>)}</ol></div>}
       </div>
       <SpeakingKeywords words={resources.usefulVocabulary} />
       <SpeakingReferenceSheet items={resources.referenceItems} />
-      <div className="speaking-preview-skills"><span className="speaking-preview-label">Speaking partner role</span><p>{template.aiRole}</p><span className="speaking-preview-label">Assessment criteria</span><ul>{template.rubric.filter((criterion) => criterion.enabled).map((criterion) => <li key={criterion.id}><strong>{criterion.name}</strong>: {criterion.description}</li>)}</ul></div>
-      <div className="speaking-preview-skills"><span className="speaking-preview-label">Communication skills</span><div className="speaking-skill-tags">{speakingSkills(template).map((item) => <span key={item}>{item}</span>)}</div></div>
-      <div className="speaking-preview-actions"><button type="button" className="speaking-outline-button" onClick={onClose}>Close</button><button type="button" className="speaking-text-button" onClick={onCustomize}>Customize</button><button type="button" className="speaking-primary-button" onClick={onUse} disabled={working}>{working ? "Adding…" : "Use as-is"}</button></div>
+      <div className="speaking-preview-skills"><span className="speaking-preview-label">{t("Speaking partner role")}</span><p>{template.aiRole}</p><span className="speaking-preview-label">{t("Assessment criteria")}</span><ul>{template.rubric.filter((criterion) => criterion.enabled).map((criterion) => <li key={criterion.id}><strong>{criterion.name}</strong>: {criterion.description}</li>)}</ul></div>
+      <div className="speaking-preview-skills"><span className="speaking-preview-label">{t("Communication skills")}</span><div className="speaking-skill-tags">{speakingSkills(template).map((item) => <span key={item}>{t(item)}</span>)}</div></div>
+      <div className="speaking-preview-actions"><button type="button" className="speaking-outline-button" onClick={onClose}>{t("Close")}</button><button type="button" className="speaking-text-button" onClick={onCustomize}>{t("Customize")}</button><button type="button" className="speaking-primary-button" onClick={onUse} disabled={working}>{working ? t("Adding…") : t("Use as-is")}</button></div>
     </section>
   </div>;
 }
 
 function TeacherLoading() {
+  const { t } = useSiteTranslation();
   return (
     <div className="speaking-empty-page">
       <LoaderCircle size={34} className="speaking-spin" aria-hidden="true" />
-      <h1>Loading teacher workspace</h1>
-      <p>Getting your speaking tasks…</p>
+      <h1>{t("Loading teacher workspace")}</h1>
+      <p>{t("Getting your speaking tasks…")}</p>
     </div>
   );
 }
@@ -708,20 +714,22 @@ function TeacherActivityRow({
   navigate: Navigate;
   onRefresh: () => Promise<void>;
 }) {
+  const { t, locale } = useSiteTranslation();
   const activity = item.activity;
   const duplicate = async () => { try { await speakingApi.duplicateActivity(activity.id); await onRefresh(); } catch (error) { window.alert(getErrorMessage(error, "The Speaking Task could not be duplicated.")); } };
   const remove = async () => { if (!window.confirm(`Delete “${activity.title}”?\n\nExisting historical reports will remain available.`)) return; try { await speakingApi.deleteActivity(activity.id); await onRefresh(); } catch (error) { window.alert(getErrorMessage(error, "The Speaking Task could not be deleted.")); } };
   const addToSet = async (setId: string) => { if (!setId) return; try { await speakingApi.addToSet(setId, activity.id); await onRefresh(); } catch (error) { window.alert(getErrorMessage(error, "The Speaking Task could not be added to that Set.")); } };
   const resources = speakingScenarioResources(activity.scenarioResources);
   const isBuiltIn = resources.builtIn === true || activity.teacherId === "speaking-template";
-  return <article className="speaking-activity-row"><SpeakingActivityThumbnail activity={activity} /><div className="speaking-activity-row-main"><div><strong>{activity.title}</strong><span>{activity.studentRole} · {speakingCategory(activity)}</span></div><p>{activity.scenario}</p><small>{speakingMinutes(activity.durationSeconds)} · {activity.rubric.filter((criterion) => criterion.enabled).length} criteria · {item.sessionCount} session{item.sessionCount === 1 ? "" : "s"}{item.lastSessionAt ? ` · Last used ${new Date(item.lastSessionAt).toLocaleDateString()}` : ""}</small><div className="speaking-row-context-tags"><span className="speaking-mode-badge speaking-mode-badge-compact">{speakingModeLabel(activity.mode)}</span><span>{isBuiltIn ? "Built-in" : "My version"}</span>{speakingSkills(activity).slice(0, 2).map((item) => <span key={item}>{item}</span>)}{item.setMemberships.map((set) => <span key={set.id}>{set.name}</span>)}</div></div><div className="speaking-activity-row-meta">{item.activeSession ? <span className={`speaking-status-pill speaking-status-${item.activeSession.status}`}>{item.activeSession.status === "ready" ? "Students joining" : item.activeSession.status === "paused" ? "Paused" : "Live"}</span> : <span className="speaking-status-pill speaking-status-ready">Ready to launch</span>}<span>Speaking partner · {activity.aiRole}</span></div><div className="speaking-activity-row-actions"><button type="button" className="speaking-row-launch" onClick={() => navigate(`/speak/teacher/activity/${activity.id}`)}>{item.activeSession ? "Open" : "Launch"}</button><button type="button" onClick={() => navigate(`/speak/teacher/activity/${activity.id}`)} aria-label={`Open ${activity.title}`}><ChevronRight size={18} aria-hidden="true" /></button><details><summary aria-label={`More actions for ${activity.title}`}><MoreHorizontal size={18} aria-hidden="true" /></summary><div className="speaking-overflow-menu"><button type="button" onClick={() => navigate(`/speak/teacher/activity/${activity.id}/edit`)}>Edit</button><button type="button" onClick={() => void duplicate()}>Duplicate</button><label>Add to Set<select aria-label={`Add ${activity.title} to a Set`} defaultValue="" onChange={(event) => void addToSet(event.target.value)}><option value="">Choose a Set…</option>{sets.filter((set) => !item.setMemberships.some((membership) => membership.id === set.id)).map((set) => <option key={set.id} value={set.id}>{set.name}</option>)}</select></label><button type="button" className="is-danger" onClick={() => void remove()}><Trash2 size={15} aria-hidden="true" />Delete</button></div></details></div></article>;
+  return <article className="speaking-activity-row"><SpeakingActivityThumbnail activity={activity} /><div className="speaking-activity-row-main"><div><strong>{activity.title}</strong><span>{activity.studentRole} · {t(speakingCategory(activity))}</span></div><p>{activity.scenario}</p><small>{t("{value0} min", { value0: speakingMinutes(activity.durationSeconds) })} · {activity.rubric.filter((criterion) => criterion.enabled).length}{" "}{t("criteria ·")}{" "}{t(item.sessionCount === 1 ? "{value0} session" : "{value0} sessions", { value0: item.sessionCount })}{item.lastSessionAt ? t(" · Last used {value0}", { value0: new Date(item.lastSessionAt).toLocaleDateString(locale) }) : ""}</small><div className="speaking-row-context-tags"><span className="speaking-mode-badge speaking-mode-badge-compact">{t(speakingModeLabel(activity.mode))}</span><span>{isBuiltIn ? t("Built-in") : t("My version")}</span>{speakingSkills(activity).slice(0, 2).map((item) => <span key={item}>{t(item)}</span>)}{item.setMemberships.map((set) => <span key={set.id}>{set.name}</span>)}</div></div><div className="speaking-activity-row-meta">{item.activeSession ? <span className={`speaking-status-pill speaking-status-${item.activeSession.status}`}>{item.activeSession.status === "ready" ? t("Students joining") : item.activeSession.status === "paused" ? t("Paused") : t("Live")}</span> : <span className="speaking-status-pill speaking-status-ready">{t("Ready to launch")}</span>}<span>{t("Speaking partner ·")}{" "}{activity.aiRole}</span></div><div className="speaking-activity-row-actions"><button type="button" className="speaking-row-launch" onClick={() => navigate(`/speak/teacher/activity/${activity.id}`)}>{item.activeSession ? t("Open") : t("Launch")}</button><button type="button" onClick={() => navigate(`/speak/teacher/activity/${activity.id}`)} aria-label={t("Open {value0}", { value0: activity.title })}><ChevronRight size={18} aria-hidden="true" /></button><details><summary aria-label={t("More actions for {value0}", { value0: activity.title })}><MoreHorizontal size={18} aria-hidden="true" /></summary><div className="speaking-overflow-menu"><button type="button" onClick={() => navigate(`/speak/teacher/activity/${activity.id}/edit`)}>{t("Edit")}</button><button type="button" onClick={() => void duplicate()}>{t("Duplicate")}</button><label>{t("Add to Set")}<select aria-label={t("Add {value0} to a Set", { value0: activity.title })} defaultValue="" onChange={(event) => void addToSet(event.target.value)}><option value="">{t("Choose a Set…")}</option>{sets.filter((set) => !item.setMemberships.some((membership) => membership.id === set.id)).map((set) => <option key={set.id} value={set.id}>{set.name}</option>)}</select></label><button type="button" className="is-danger" onClick={() => void remove()}><Trash2 size={15} aria-hidden="true" />{t("Delete")}</button></div></details></div></article>;
 }
 
 function SpeakingActivityThumbnail({ activity }: { activity: SpeakingActivity }) {
+  const { t } = useSiteTranslation();
   const resources = speakingScenarioResources(activity.scenarioResources);
   return resources.imageSrc
     ? <img className="speaking-activity-thumbnail" src={resources.imageSrc} alt="" loading="lazy" />
-    : <div className="speaking-activity-thumbnail speaking-activity-thumbnail-placeholder" aria-hidden="true"><ClipboardCheck size={25} />{speakingCollection(activity) === "workplace-english" && <span>Workplace</span>}</div>;
+    : <div className="speaking-activity-thumbnail speaking-activity-thumbnail-placeholder" aria-hidden="true"><ClipboardCheck size={25} />{speakingCollection(activity) === "workplace-english" && <span>{t("Workplace")}</span>}</div>;
 }
 
 const draftFromTemplate = (
@@ -802,26 +810,26 @@ function SpeakingCreateChoice({
   onStartScratch: () => void;
   onBack: () => void;
 }) {
+  const { t } = useSiteTranslation();
   return (
     <div className="speaking-page-shell speaking-teacher-shell speaking-dashboard-shell">
       <main className="speaking-teacher-layout speaking-dashboard-layout">
         <section className="speaking-teacher-content speaking-create-choice" aria-labelledby="speaking-create-choice-title">
           <button type="button" className="speaking-text-button speaking-create-back" onClick={onBack}>
-            <ArrowLeft size={15} aria-hidden="true" /> Back to Speaking Tasks
-          </button>
-          <span className="speaking-eyebrow"><Plus size={15} aria-hidden="true" /> New Speaking Task</span>
-          <h1 id="speaking-create-choice-title">How would you like to start?</h1>
-          <p className="speaking-create-choice-intro">Choose a complete real-world scenario to customise, or build an open-ended conversation for your class.</p>
+            <ArrowLeft size={15} aria-hidden="true" />{" "}{t("Back to Speaking Tasks")}</button>
+          <span className="speaking-eyebrow"><Plus size={15} aria-hidden="true" />{" "}{t("New Speaking Task")}</span>
+          <h1 id="speaking-create-choice-title">{t("How would you like to start?")}</h1>
+          <p className="speaking-create-choice-intro">{t("Choose a complete real-world scenario to customise, or build an open-ended conversation for your class.")}</p>
           <div className="speaking-choice-grid">
             <button type="button" className="speaking-choice-card is-featured" onClick={onBrowseCore}>
               <span className="speaking-choice-icon"><ClipboardCheck size={22} aria-hidden="true" /></span>
-              <span className="speaking-choice-card-copy"><strong>Use the Core Library</strong><span>Start with a ready-made School or Workplace speaking task, then adapt it for your learners.</span></span>
-              <span className="speaking-choice-action">Browse Core Library <ArrowRight size={16} aria-hidden="true" /></span>
+              <span className="speaking-choice-card-copy"><strong>{t("Use the Core Library")}</strong><span>{t("Start with a ready-made School or Workplace speaking task, then adapt it for your learners.")}</span></span>
+              <span className="speaking-choice-action">{t("Browse Core Library")}{" "}<ArrowRight size={16} aria-hidden="true" /></span>
             </button>
             <button type="button" className="speaking-choice-card" onClick={onStartScratch}>
               <span className="speaking-choice-icon"><Pencil size={22} aria-hidden="true" /></span>
-              <span className="speaking-choice-card-copy"><strong>Start from scratch</strong><span>Write your own situation, set the student goal, and shape the classroom task in a few clear steps.</span></span>
-              <span className="speaking-choice-action">Build a new task <ArrowRight size={16} aria-hidden="true" /></span>
+              <span className="speaking-choice-card-copy"><strong>{t("Start from scratch")}</strong><span>{t("Write your own situation, set the student goal, and shape the classroom task in a few clear steps.")}</span></span>
+              <span className="speaking-choice-action">{t("Build a new task")}{" "}<ArrowRight size={16} aria-hidden="true" /></span>
             </button>
           </div>
         </section>
@@ -847,13 +855,12 @@ function SpeakingDurationField({
   value: number;
   onChange: (value: number) => void;
 }) {
+  const { t } = useSiteTranslation();
   const isCustom = !SPEAKING_DURATION_PRESETS.includes(
     value as (typeof SPEAKING_DURATION_PRESETS)[number],
   );
   return (
-    <label>
-      Speaking time
-      <select
+    <label>{t("Speaking time")}<select
         value={isCustom ? "custom" : String(value)}
         onChange={(event) =>
           onChange(
@@ -865,11 +872,11 @@ function SpeakingDurationField({
           )
         }
       >
-        <option value={120}>2 minutes</option>
-        <option value={180}>3 minutes</option>
-        <option value={300}>5 minutes</option>
-        <option value={420}>7 minutes</option>
-        <option value="custom">Custom</option>
+        <option value={120}>{t("2 minutes")}</option>
+        <option value={180}>{t("3 minutes")}</option>
+        <option value={300}>{t("5 minutes")}</option>
+        <option value={420}>{t("7 minutes")}</option>
+        <option value="custom">{t("Custom")}</option>
       </select>
       {isCustom && (
         <div className="speaking-custom-duration">
@@ -887,9 +894,9 @@ function SpeakingDurationField({
                   : 2) * 60,
               );
             }}
-            aria-label="Custom speaking time in minutes"
+            aria-label={t("Custom speaking time in minutes")}
           />
-          <span>minutes</span>
+          <span>{t("minutes")}</span>
         </div>
       )}
     </label>
@@ -903,6 +910,7 @@ function SpeakingCreatePage({
   navigate: Navigate;
   activityId?: string;
 }) {
+  const { t } = useSiteTranslation();
   const editing = Boolean(activityId);
   const templateId = typeof window === "undefined" ? "" : new URLSearchParams(window.location.search).get("templateId") ?? "";
   const initialTemplate = coreFallbackActivities().find((template) => template.id === templateId) ?? coreFallbackActivities()[9]!;
@@ -1115,13 +1123,12 @@ function SpeakingCreatePage({
           <div className="speaking-builder-header">
             <div>
               <span className="speaking-eyebrow">
-                  <Edit3 size={15} aria-hidden="true" /> Speaking task
-              </span>
-              <h1>{editing ? "Edit Speaking Task" : "Create a Speaking Task"}</h1>
+                  <Edit3 size={15} aria-hidden="true" />{" "}{t("Speaking task")}</span>
+              <h1>{editing ? t("Edit Speaking Task") : t("Create a Speaking Task")}</h1>
               <p>
                 {editing
-                  ? "Update the reusable activity. Existing classroom sessions keep their original setup."
-                  : "Adapt a conversation from your textbook. Save the task, then launch it for your class."}
+                  ? t("Update the reusable activity. Existing classroom sessions keep their original setup.")
+                  : t("Adapt a conversation from your textbook. Save the task, then launch it for your class.")}
               </p>
             </div>
             <div className="speaking-builder-header-actions">
@@ -1136,9 +1143,7 @@ function SpeakingCreatePage({
                   )
                 }
               >
-                <ArrowLeft size={15} aria-hidden="true" />
-                Back
-              </button>
+                <ArrowLeft size={15} aria-hidden="true" />{t("Back")}</button>
               <button
                 type="submit"
                 className="speaking-primary-button"
@@ -1153,19 +1158,17 @@ function SpeakingCreatePage({
                 ) : (
                   <Check size={17} aria-hidden="true" />
                 )}
-                {editing ? "Save changes" : "Create task"}
+                {editing ? t("Save changes") : t("Create task")}
               </button>
             </div>
           </div>
           <section id="speaking-template" className="speaking-builder-card">
             <div className="speaking-builder-card-heading">
               <div>
-                  <span className="speaking-card-kicker">
-                   Start with a task
-                </span>
-                <h2>Pick a familiar conversation</h2>
+                  <span className="speaking-card-kicker">{t("Start with a task")}</span>
+                <h2>{t("Pick a familiar conversation")}</h2>
               </div>
-               <span className="speaking-builder-step">Optional</span>
+               <span className="speaking-builder-step">{t("Optional")}</span>
             </div>
             <div className="speaking-template-grid">
               {coreFallbackActivities().map((template) => (
@@ -1184,7 +1187,7 @@ function SpeakingCreatePage({
                   <span className="speaking-template-copy">
                     <strong>{template.title}</strong>
                     <small>{template.scenario}</small>
-                    <small>{speakingCategory(template)} · {speakingSkills(template).slice(0, 2).join(" · ")}</small>
+                    <small>{t(speakingCategory(template))} · {speakingSkills(template).slice(0, 2).map((skill) => t(skill)).join(" · ")}</small>
                   </span>
                   {draft.title === template.title && (
                     <Check size={16} aria-hidden="true" />
@@ -1196,52 +1199,42 @@ function SpeakingCreatePage({
           <section id="speaking-situation" className="speaking-builder-card">
             <div className="speaking-builder-card-heading">
               <div>
-                <span className="speaking-card-kicker">The conversation</span>
-                <h2>Give students a clear situation</h2>
+                <span className="speaking-card-kicker">{t("The conversation")}</span>
+                <h2>{t("Give students a clear situation")}</h2>
               </div>
                <span className="speaking-builder-step">01</span>
             </div>
             <div className="speaking-builder-form-grid">
-              <label>
-                Task name
-                <input
+              <label>{t("Task name")}<input
                   value={draft.title}
                   onChange={(event) => update("title", event.target.value)}
                 />
               </label>
-              <label>
-                Speaking partner role
-                <input
+              <label>{t("Speaking partner role")}<input
                   value={draft.aiRole}
                   onChange={(event) => update("aiRole", event.target.value)}
                 />
               </label>
-              <label>
-                Student role
-                <input
+              <label>{t("Student role")}<input
                   value={draft.studentRole}
                   onChange={(event) =>
                     update("studentRole", event.target.value)
                   }
                 />
               </label>
-              <label className="speaking-span-2">
-                Speaking situation
-                <textarea
+              <label className="speaking-span-2">{t("Speaking situation")}<textarea
                   value={draft.scenario}
                   onChange={(event) => update("scenario", event.target.value)}
                   rows={3}
                 />
               </label>
-              <label className="speaking-span-2">
-                Student goal
-                <textarea
+              <label className="speaking-span-2">{t("Student goal")}<textarea
                   value={resourceDraft.studentGoal}
                   onChange={(event) => updateResources({ studentGoal: event.target.value })}
-                  placeholder="What should the student accomplish in this conversation?"
+                  placeholder={t("What should the student accomplish in this conversation?")}
                   rows={2}
                 />
-                <small>This is the main requirement used to assess the task.</small>
+                <small>{t("This is the main requirement used to assess the task.")}</small>
               </label>
 
             </div>
@@ -1249,10 +1242,10 @@ function SpeakingCreatePage({
           <section id="speaking-language" className="speaking-builder-card">
             <div className="speaking-builder-card-heading">
               <div>
-                <span className="speaking-card-kicker">Target English</span>
-                <h2>Help students prepare</h2>
+                <span className="speaking-card-kicker">{t("Target English")}</span>
+                <h2>{t("Help students prepare")}</h2>
               </div>
-              <span className="speaking-builder-step">Optional</span>
+              <span className="speaking-builder-step">{t("Optional")}</span>
             </div>
             <section className="speaking-context-editor speaking-span-2" aria-labelledby="speaking-context-editor-title">
               <input
@@ -1268,42 +1261,41 @@ function SpeakingCreatePage({
               />
               <div className="speaking-resource-editor-heading">
                 <div>
-                  <span className="speaking-card-kicker">Optional visual support</span>
-                  <h3 id="speaking-context-editor-title">Context image</h3>
-                  <p>Add an image students can use during the task. Maps, menus, photos and timetables work well.</p>
+                  <span className="speaking-card-kicker">{t("Optional visual support")}</span>
+                  <h3 id="speaking-context-editor-title">{t("Context image")}</h3>
+                  <p>{t("Add an image students can use during the task. Maps, menus, photos and timetables work well.")}</p>
                 </div>
               </div>
               {contextDraft ? (
                 <>
                   <div className="speaking-context-editor-preview">
-                    {contextDraft.imageUrl ? <img src={contextDraft.imageUrl} alt={contextDraft.alt ?? "Context image preview"} loading="lazy" /> : <div className="speaking-context-editor-empty">No image uploaded yet.</div>}
-                    <div><strong>{contextDraft.title || "Context image"}</strong><span>{contextDraft.description || "Students can use this visual while speaking."}</span><small>{contextDraft.assetId ? "Uploaded image" : "Built-in image"} · Student support</small></div>
+                    {contextDraft.imageUrl ? <img src={contextDraft.imageUrl} alt={contextDraft.alt ?? t("Context image preview")} loading="lazy" /> : <div className="speaking-context-editor-empty">{t("No image uploaded yet.")}</div>}
+                    <div><strong>{contextDraft.title || t("Context image")}</strong><span>{contextDraft.description || t("Students can use this visual while speaking.")}</span><small>{contextDraft.assetId ? t("Uploaded image") : t("Built-in image")}{" "}{t("· Student support")}</small></div>
                   </div>
                   <div className="speaking-context-editor-actions">
                     <button type="button" className="speaking-outline-button" onClick={() => contextImageInputRef.current?.click()} disabled={uploadingContextImage}>
                       {uploadingContextImage ? <LoaderCircle size={16} className="speaking-spin" aria-hidden="true" /> : <Plus size={16} aria-hidden="true" />}
-                      {uploadingContextImage ? "Uploading…" : "Replace image"}
+                      {uploadingContextImage ? t("Uploading…") : t("Replace image")}
                     </button>
-                    <button type="button" className="speaking-text-button speaking-context-remove" onClick={() => void removeContext()} disabled={uploadingContextImage}>Remove image</button>
+                    <button type="button" className="speaking-text-button speaking-context-remove" onClick={() => void removeContext()} disabled={uploadingContextImage}>{t("Remove image")}</button>
                   </div>
-                  <label className="speaking-context-instruction">
-                    Student instruction <small>(optional)</small>
-                    <textarea rows={2} value={contextDraft.description ?? ""} onChange={(event) => updateContext({ description: event.target.value || undefined })} placeholder="Use the menu to choose what you want to order." />
+                  <label className="speaking-context-instruction">{t("Student instruction")}{" "}<small>{t("(optional)")}</small>
+                    <textarea rows={2} value={contextDraft.description ?? ""} onChange={(event) => updateContext({ description: event.target.value || undefined })} placeholder={t("Use the menu to choose what you want to order.")} />
                   </label>
                 </>
               ) : (
                 <div className="speaking-context-editor-empty-state">
-                  <p>Add an image students can use during the task.</p>
+                  <p>{t("Add an image students can use during the task.")}</p>
                   <button type="button" className="speaking-outline-button" onClick={() => contextImageInputRef.current?.click()} disabled={uploadingContextImage}>
                     {uploadingContextImage ? <LoaderCircle size={16} className="speaking-spin" aria-hidden="true" /> : <Plus size={16} aria-hidden="true" />}
-                    {uploadingContextImage ? "Uploading…" : "Add image"}
+                    {uploadingContextImage ? t("Uploading…") : t("Add image")}
                   </button>
                 </div>
               )}
               {contextImageError && <p className="speaking-error" role="alert">{contextImageError}</p>}
             </section>
             <div className="speaking-target-english-heading">
-              <div><span className="speaking-card-kicker">Target English</span><p>Optional phrases students may use.</p></div>
+              <div><span className="speaking-card-kicker">{t("Target English")}</span><p>{t("Optional phrases students may use.")}</p></div>
             </div>
             <div className="speaking-expression-editor">
               {draft.targetExpressions.map((expression, index) => (
@@ -1314,7 +1306,7 @@ function SpeakingCreatePage({
                   <MessageCircle size={16} aria-hidden="true" />
                   <input
                     value={expression}
-                    aria-label={`Target expression ${index + 1}`}
+                    aria-label={t("Target expression {value0}", { value0: index + 1 })}
                     onChange={(event) =>
                       update(
                         "targetExpressions",
@@ -1330,7 +1322,7 @@ function SpeakingCreatePage({
                       expressionIds.current.splice(index, 1);
                       update("targetExpressions", draft.targetExpressions.filter((_, candidateIndex) => candidateIndex !== index));
                     }}
-                    aria-label={`Remove ${expression}`}
+                    aria-label={t("Remove {value0}", { value0: expression })}
                   >
                     <X size={15} aria-hidden="true" />
                   </button>
@@ -1339,7 +1331,7 @@ function SpeakingCreatePage({
               <div className="speaking-add-expression">
                 <input
                   value={newExpression}
-                  aria-label="New target expression"
+                  aria-label={t("New target expression")}
                   onChange={(event) => setNewExpression(event.target.value)}
                   onKeyDown={(event) => {
                     if (event.key === "Enter") {
@@ -1347,57 +1339,55 @@ function SpeakingCreatePage({
                       addExpression();
                     }
                   }}
-                  placeholder="Add an expression"
+                  placeholder={t("Add an expression")}
                 />
                 <button
                   type="button"
                   className="speaking-outline-button"
                   onClick={addExpression}
                 >
-                  <Plus size={16} aria-hidden="true" />
-                  Add
-                </button>
+                  <Plus size={16} aria-hidden="true" />{t("Add")}</button>
               </div>
             </div>
           </section>
           <section id="speaking-settings" className="speaking-builder-card">
             <div className="speaking-builder-card-heading">
               <div>
-                  <span className="speaking-card-kicker">Classroom settings</span>
-                  <h2>Choose how the class will use it</h2>
+                  <span className="speaking-card-kicker">{t("Classroom settings")}</span>
+                  <h2>{t("Choose how the class will use it")}</h2>
                 </div>
               <span className="speaking-builder-step">02</span>
             </div>
             <section className="speaking-mode-support-config speaking-span-2" aria-labelledby="speaking-mode-title">
               <div className="speaking-mode-config-heading">
                 <div>
-                  <span className="speaking-card-kicker">Mode and student support</span>
-                  <h3 id="speaking-mode-title">How will students use this task?</h3>
-                  <p>Choose the conditions that fit the classroom goal. Changing the mode keeps your current custom support choices.</p>
+                  <span className="speaking-card-kicker">{t("Mode and student support")}</span>
+                  <h3 id="speaking-mode-title">{t("How will students use this task?")}</h3>
+                  <p>{t("Choose the conditions that fit the classroom goal. Changing the mode keeps your current custom support choices.")}</p>
                 </div>
-                <span className={`speaking-mode-badge speaking-mode-${selectedMode}`}>{speakingModeLabel(selectedMode)}</span>
+                <span className={`speaking-mode-badge speaking-mode-${selectedMode}`}>{t(speakingModeLabel(selectedMode))}</span>
               </div>
               <fieldset className="speaking-mode-picker">
-                <legend className="sr-only">Speaking task mode</legend>
+                <legend className="sr-only">{t("Speaking task mode")}</legend>
                 <div className="speaking-mode-option-grid">
                   {SPEAKING_MODES.map((mode) => <label className={`speaking-mode-option${selectedMode === mode ? " is-selected" : ""}`} key={mode}>
                     <input type="radio" name="speaking-mode" value={mode} checked={selectedMode === mode} onChange={() => update("mode", mode)} />
-                    <span><strong>{SPEAKING_MODE_LABELS[mode]}</strong><small>{speakingModeDescription(mode)}</small></span>
+                    <span><strong>{t(SPEAKING_MODE_LABELS[mode])}</strong><small>{t(speakingModeDescription(mode))}</small></span>
                   </label>)}
                 </div>
               </fieldset>
               <fieldset className="speaking-support-picker">
-                <legend>Student support</legend>
-                <p>Choose what students can use while speaking. Context and target English may be part of the task, so you decide what is appropriate.</p>
+                <legend>{t("Student support")}</legend>
+                <p>{t("Choose what students can use while speaking. Context and target English may be part of the task, so you decide what is appropriate.")}</p>
                 <div className="speaking-support-option-list">
                   {SPEAKING_SUPPORT_OPTIONS.map((option) => <label key={option.key}>
                     <input type="checkbox" checked={selectedSupportSettings[option.key]} onChange={(event) => updateSupportSetting(option.key, event.target.checked)} />
-                    <span><strong>{option.label}</strong><small>{option.description}</small></span>
+                    <span><strong>{t(option.label)}</strong><small>{t(option.description)}</small></span>
                   </label>)}
                 </div>
                 <div className="speaking-support-recommendation">
-                  <p>{selectedMode === "practice" ? "Practice starts with all support available." : "Assessment starts with transcript, replay and Help off. You can turn them on when they are appropriate for the task."}</p>
-                  <button type="button" className="speaking-outline-button" onClick={applyRecommendedSupport}>Use recommended settings</button>
+                  <p>{selectedMode === "practice" ? t("Practice starts with all support available.") : t("Assessment starts with transcript, replay and Help off. You can turn them on when they are appropriate for the task.")}</p>
+                  <button type="button" className="speaking-outline-button" onClick={applyRecommendedSupport}>{t("Use recommended settings")}</button>
                 </div>
               </fieldset>
             </section>
@@ -1406,9 +1396,7 @@ function SpeakingCreatePage({
                 value={draft.durationSeconds}
                 onChange={(value) => update("durationSeconds", value)}
               />
-              <label>
-                Feedback language
-                <select
+              <label>{t("Feedback language")}<select
                   value={draft.nativeLanguage}
                   onChange={(event) =>
                     update(
@@ -1419,14 +1407,12 @@ function SpeakingCreatePage({
                 >
                   {SPEAKING_NATIVE_LANGUAGES.map((language) => (
                     <option key={language} value={language}>
-                      {SPEAKING_NATIVE_LANGUAGE_LABELS[language]}
+                      {t(SPEAKING_NATIVE_LANGUAGE_LABELS[language])}
                     </option>
                   ))}
                 </select>
               </label>
-              <label>
-                Student identification
-                <select
+              <label>{t("Student identification")}<select
                   value={draft.identifierMode}
                   onChange={(event) =>
                     update(
@@ -1437,7 +1423,7 @@ function SpeakingCreatePage({
                 >
                   {SPEAKING_IDENTIFIER_MODES.map((mode) => (
                     <option key={mode} value={mode}>
-                      {SPEAKING_IDENTIFIER_MODE_LABELS[mode]}
+                      {t(SPEAKING_IDENTIFIER_MODE_LABELS[mode])}
                     </option>
                   ))}
                 </select>
@@ -1446,36 +1432,26 @@ function SpeakingCreatePage({
           </section>
           <section id="speaking-rubric" className="speaking-builder-card speaking-advanced-card">
             <details className="speaking-advanced-settings">
-              <summary>Advanced settings <span>Task metadata, conversation guidance, image details, and rubric customization</span></summary>
+              <summary>{t("Advanced settings")}{" "}<span>{t("Task metadata, conversation guidance, image details, and rubric customization")}</span></summary>
               <div className="speaking-advanced-content">
                 <div className="speaking-resource-editor">
                   <div className="speaking-resource-grid">
-                    <label>
-                      Opening line
-                      <input value={resourceDraft.openingLine} onChange={(event) => updateResources({ openingLine: event.target.value })} />
+                    <label>{t("Opening line")}<input value={resourceDraft.openingLine} onChange={(event) => updateResources({ openingLine: event.target.value })} />
                     </label>
-                    <label>
-                      Speaking partner context
-                      <textarea rows={2} value={resourceDraft.aiContext ?? ""} onChange={(event) => updateResources({ aiContext: event.target.value || undefined })} placeholder="What your speaking partner knows, wants, or can offer in this situation" />
+                    <label>{t("Speaking partner context")}<textarea rows={2} value={resourceDraft.aiContext ?? ""} onChange={(event) => updateResources({ aiContext: event.target.value || undefined })} placeholder={t("What your speaking partner knows, wants, or can offer in this situation")} />
                     </label>
-                    <label>
-                      Possible complication
-                      <textarea rows={2} value={resourceDraft.possibleComplication ?? ""} onChange={(event) => updateResources({ possibleComplication: event.target.value || undefined })} placeholder="A natural change or problem the speaking partner may introduce" />
+                    <label>{t("Possible complication")}<textarea rows={2} value={resourceDraft.possibleComplication ?? ""} onChange={(event) => updateResources({ possibleComplication: event.target.value || undefined })} placeholder={t("A natural change or problem the speaking partner may introduce")} />
                     </label>
-                    <label>
-                      Success conditions <small>(one per line)</small>
-                      <textarea rows={3} value={resourceDraft.successConditions.join("\n")} onChange={(event) => updateResources({ successConditions: event.target.value.split(/\r?\n/u) })} placeholder="Leave blank to use the Student goal." />
+                    <label>{t("Success conditions")}{" "}<small>{t("(one per line)")}</small>
+                      <textarea rows={3} value={resourceDraft.successConditions.join("\n")} onChange={(event) => updateResources({ successConditions: event.target.value.split(/\r?\n/u) })} placeholder={t("Leave blank to use the Student goal.")} />
                     </label>
-                    <label className="speaking-span-2">
-                      Suggested steps <small>(one per line)</small>
+                    <label className="speaking-span-2">{t("Suggested steps")}{" "}<small>{t("(one per line)")}</small>
                       <textarea rows={4} value={resourceDraft.suggestedSteps.join("\n")} onChange={(event) => updateResources({ suggestedSteps: event.target.value.split(/\r?\n/u) })} />
                     </label>
-                    <label>
-                      Useful vocabulary <small>(one per line)</small>
+                    <label>{t("Useful vocabulary")}{" "}<small>{t("(one per line)")}</small>
                       <textarea rows={4} value={resourceDraft.usefulVocabulary.join("\n")} onChange={(event) => updateResources({ usefulVocabulary: event.target.value.split(/\r?\n/u) })} />
                     </label>
-                    <label>
-                      Reference material <small>(one item per line: label | detail)</small>
+                    <label>{t("Reference material")}{" "}<small>{t("(one item per line: label | detail)")}</small>
                       <textarea rows={4} value={resourceDraft.referenceItems.map((item) => item.detail !== undefined ? `${item.label}|${item.detail}` : item.label).join("\n")} onChange={(event) => updateResources({ referenceItems: event.target.value.split(/\r?\n/u).map((line) => { const [label, ...detail] = line.split("|"); return { label: label ?? "", ...(detail.length ? { detail: detail.join("|") } : {}) }; }) })} />
                     </label>
                   </div>
@@ -1483,37 +1459,30 @@ function SpeakingCreatePage({
                 {contextDraft && (
                   <div className="speaking-context-advanced">
                     <div className="speaking-advanced-subheading">
-                      <strong>Advanced image details</strong>
-                      <span>Optional metadata retained for built-in and uploaded visuals.</span>
+                      <strong>{t("Advanced image details")}</strong>
+                      <span>{t("Optional metadata retained for built-in and uploaded visuals.")}</span>
                     </div>
                     <div className="speaking-context-editor-fields">
-                      <label>Context title<input value={contextDraft.title ?? ""} onChange={(event) => updateContext({ title: event.target.value || undefined })} placeholder="Museum map" /></label>
-                      <label>Context type<select value={contextDraft.type ?? "photo"} onChange={(event) => updateContext({ type: event.target.value as SpeakingContext["type"] })}>{SPEAKING_CONTEXT_TYPES.map((type) => <option key={type} value={type}>{type}</option>)}</select></label>
-                      <label className="speaking-span-2">Alt text<textarea rows={2} value={contextDraft.alt ?? ""} onChange={(event) => updateContext({ alt: event.target.value || undefined })} placeholder="A simple map showing the nearby museum" /></label>
+                      <label>{t("Context title")}<input value={contextDraft.title ?? ""} onChange={(event) => updateContext({ title: event.target.value || undefined })} placeholder={t("Museum map")} /></label>
+                      <label>{t("Context type")}<select value={contextDraft.type ?? "photo"} onChange={(event) => updateContext({ type: event.target.value as SpeakingContext["type"] })}>{SPEAKING_CONTEXT_TYPES.map((type) => <option key={type} value={type}>{t(type)}</option>)}</select></label>
+                      <label className="speaking-span-2">{t("Alt text")}<textarea rows={2} value={contextDraft.alt ?? ""} onChange={(event) => updateContext({ alt: event.target.value || undefined })} placeholder={t("A simple map showing the nearby museum")} /></label>
                     </div>
                   </div>
                 )}
                 <div className="speaking-advanced-grid">
-                  <label>
-                    Task category
-                    <select value={resourceDraft.category ?? SPEAKING_CATEGORIES[0]} onChange={(event) => updateResources({ category: event.target.value })}>
-                      {SPEAKING_CATEGORIES.map((item) => <option key={item} value={item}>{item}</option>)}
+                  <label>{t("Task category")}<select value={resourceDraft.category ?? SPEAKING_CATEGORIES[0]} onChange={(event) => updateResources({ category: event.target.value })}>
+                      {SPEAKING_CATEGORIES.map((item) => <option key={item} value={item}>{t(item)}</option>)}
                     </select>
                   </label>
-                  <label>
-                    Additional focus or class content
-                    <textarea value={resourceDraft.teacherFocus ?? ""} onChange={(event) => updateResources({ teacherFocus: event.target.value })} maxLength={500} rows={2} placeholder="Optional vocabulary or follow-up questions." />
+                  <label>{t("Additional focus or class content")}<textarea value={resourceDraft.teacherFocus ?? ""} onChange={(event) => updateResources({ teacherFocus: event.target.value })} maxLength={500} rows={2} placeholder={t("Optional vocabulary or follow-up questions.")} />
                   </label>
                 </div>
-                <div className="speaking-builder-card-heading"><div><span className="speaking-card-kicker">Evaluation rubric</span><h2>Customize the standard rubric</h2></div><span className="speaking-builder-step">Advanced</span></div>
-            <p className="speaking-rubric-intro">Each enabled criterion is scored from 0 to 4, with conversation evidence. Insufficient speech is left unscored.</p>
+                <div className="speaking-builder-card-heading"><div><span className="speaking-card-kicker">{t("Evaluation rubric")}</span><h2>{t("Customize the standard rubric")}</h2></div><span className="speaking-builder-step">{t("Advanced")}</span></div>
+            <p className="speaking-rubric-intro">{t("Each enabled criterion is scored from 0 to 4, with conversation evidence. Insufficient speech is left unscored.")}</p>
             <div className="speaking-rubric-editor-heading">
               <div>
-                <span className="speaking-card-kicker">Editable rubric</span>
-                <p>
-                  Keep the skills that matter for this activity. Pronunciation
-                  scoring is not included.
-                </p>
+                <span className="speaking-card-kicker">{t("Editable rubric")}</span>
+                <p>{t("Keep the skills that matter for this activity. Pronunciation scoring is not included.")}</p>
               </div>
               <button
                 type="button"
@@ -1531,9 +1500,7 @@ function SpeakingCreatePage({
                   ])
                 }
               >
-                <Plus size={16} aria-hidden="true" />
-                Add criterion
-              </button>
+                <Plus size={16} aria-hidden="true" />{t("Add criterion")}</button>
             </div>
             <div className="speaking-rubric-editor">
               {draft.rubric.map((criterion, index) => (
@@ -1544,7 +1511,7 @@ function SpeakingCreatePage({
                   <label className="speaking-rubric-toggle">
                     <input
                       type="checkbox"
-                      aria-label={`Evaluate ${criterion.name}`}
+                      aria-label={t("Evaluate {value0}", { value0: criterion.name })}
                       checked={criterion.enabled}
                       onChange={(event) =>
                         updateCriterion(index, {
@@ -1552,18 +1519,18 @@ function SpeakingCreatePage({
                         })
                       }
                     />
-                    <span>{criterion.enabled ? "On" : "Off"}</span>
+                    <span>{criterion.enabled ? t("On") : t("Off")}</span>
                   </label>
                   <div>
                     <input
-                      aria-label={`${criterion.name} name`}
+                      aria-label={t("{value0} name", { value0: criterion.name })}
                       value={criterion.name}
                       onChange={(event) =>
                         updateCriterion(index, { name: event.target.value })
                       }
                     />
                     <textarea
-                      aria-label={`${criterion.name} description`}
+                      aria-label={t("{value0} description", { value0: criterion.name })}
                       rows={2}
                       value={criterion.description}
                       onChange={(event) =>
@@ -1584,7 +1551,7 @@ function SpeakingCreatePage({
                         ),
                       )
                     }
-                    aria-label={`Remove ${criterion.name}`}
+                    aria-label={t("Remove {value0}", { value0: criterion.name })}
                   >
                     <Trash2 size={16} aria-hidden="true" />
                   </button>
@@ -1595,9 +1562,9 @@ function SpeakingCreatePage({
             </details>
           </section>
           <section id="speaking-review" className="speaking-builder-card speaking-review-card">
-             <div className="speaking-builder-card-heading"><div><span className="speaking-card-kicker">Review & save</span><h2>{draft.title || "Your Speaking Task"}</h2></div><span className="speaking-builder-step">03</span></div>
-            <p>{draft.scenario}</p><dl className="speaking-review-facts"><div><dt>Mode</dt><dd><span className={`speaking-mode-badge speaking-mode-${selectedMode}`}>{speakingModeLabel(selectedMode)}</span></dd></div><div className="speaking-review-support-fact"><dt>Student support</dt><dd>{speakingSupportSummary({ mode: selectedMode, supportSettings: selectedSupportSettings })}</dd></div><div><dt>Speaking time</dt><dd>{formatDuration(draft.durationSeconds)}</dd></div><div><dt>Student identification</dt><dd>{SPEAKING_IDENTIFIER_MODE_LABELS[draft.identifierMode]}</dd></div><div><dt>Evaluation</dt><dd>{draft.rubric.filter((criterion) => criterion.enabled).length} criteria · 4 points each</dd></div></dl>
-            <p>Save this reusable task. On the next screen, launch a session to get your class code.</p>
+             <div className="speaking-builder-card-heading"><div><span className="speaking-card-kicker">{t("Review & save")}</span><h2>{draft.title || t("Your Speaking Task")}</h2></div><span className="speaking-builder-step">03</span></div>
+            <p>{draft.scenario}</p><dl className="speaking-review-facts"><div><dt>{t("Mode")}</dt><dd><span className={`speaking-mode-badge speaking-mode-${selectedMode}`}>{t(speakingModeLabel(selectedMode))}</span></dd></div><div className="speaking-review-support-fact"><dt>{t("Student support")}</dt><dd>{t(speakingSupportSummary({ mode: selectedMode, supportSettings: selectedSupportSettings }, t))}</dd></div><div><dt>{t("Speaking time")}</dt><dd>{formatDuration(draft.durationSeconds)}</dd></div><div><dt>{t("Student identification")}</dt><dd>{t(SPEAKING_IDENTIFIER_MODE_LABELS[draft.identifierMode])}</dd></div><div><dt>{t("Evaluation")}</dt><dd>{draft.rubric.filter((criterion) => criterion.enabled).length}{" "}{t("criteria · 4 points each")}</dd></div></dl>
+            <p>{t("Save this reusable task. On the next screen, launch a session to get your class code.")}</p>
           </section>
           {formError && (
             <p className="speaking-error speaking-builder-error" role="alert">
@@ -1607,10 +1574,7 @@ function SpeakingCreatePage({
           <div className="speaking-builder-footer">
             <p>
               <ShieldIcon />
-              <span>
-                Activities are saved to your teacher workspace. Classroom join
-                codes are created only when you launch a session.
-              </span>
+              <span>{t("Activities are saved to your teacher workspace. Classroom join codes are created only when you launch a session.")}</span>
             </p>
             <button
               type="submit"
@@ -1618,7 +1582,7 @@ function SpeakingCreatePage({
               disabled={saving}
             >
               <Check size={17} aria-hidden="true" />
-              {editing ? "Save changes" : "Create task"}
+              {editing ? t("Save changes") : t("Create task")}
             </button>
           </div>
         </form>
@@ -1654,6 +1618,7 @@ function SpeakingActivityDetailPage({
   navigate: Navigate;
   activityId: string;
 }) {
+  const { t, locale } = useSiteTranslation();
   const [activity, setActivity] = useState<SpeakingActivity>();
   const [sessions, setSessions] = useState<SpeakingSession[]>([]);
   const [error, setError] = useState("");
@@ -1727,7 +1692,7 @@ function SpeakingActivityDetailPage({
   }, [latestSessionId, loadRoster]);
   if (!activity)
     return error ? (
-      <MissingSpeakingSession navigate={navigate} message={error} />
+      <MissingSpeakingSession navigate={navigate} message={t(error)} />
   ) : (
       <TeacherLoading />
     );
@@ -1788,33 +1753,31 @@ function SpeakingActivityDetailPage({
             className="speaking-text-button"
             onClick={() => navigate("/speak/teacher")}
           >
-            <ArrowLeft size={16} aria-hidden="true" />
-            All activities
-          </button>
+            <ArrowLeft size={16} aria-hidden="true" />{t("All activities")}</button>
           <div className="speaking-share-header">
             <div>
               <span className="speaking-eyebrow">
                 <Check size={15} aria-hidden="true" />{" "}
-                {latest ? "Classroom session" : "Reusable activity"}
+                {latest ? t("Classroom session") : t("Reusable activity")}
               </span>
               <h1>{activity.title}</h1>
               <p>{activity.scenario}</p>
-              <div className="speaking-activity-mode-summary"><span className={`speaking-mode-badge speaking-mode-${activity.mode}`}>{speakingModeLabel(activity.mode)}</span><span>{speakingSupportSummary(activity)}</span></div>
+              <div className="speaking-activity-mode-summary"><span className={`speaking-mode-badge speaking-mode-${activity.mode}`}>{t(speakingModeLabel(activity.mode))}</span><span>{t(speakingSupportSummary(activity, t))}</span></div>
             </div>
             <span
               className={`speaking-status-pill speaking-status-${latest?.status ?? "ready"}`}
             >
-              {latest ? latest.status : "Ready to launch"}
+              {latest ? t(latest.status) : t("Ready to launch")}
             </span>
           </div>
           {error && (
             <p className="speaking-error" role="alert">
-              {error}
+              {t(error)}
             </p>
           )}
           {projecting && shareable && latest && <SpeakingProjector activity={activity} session={latest} shareUrl={shareUrl} roster={roster} stale={Boolean(rosterError)} onClose={() => setProjecting(false)} />}
           <div className="speaking-share-actions">
-            {shareable && <button type="button" className="speaking-outline-button" onClick={() => setProjecting(true)}><Monitor size={17} aria-hidden="true" />Project join screen</button>}
+            {shareable && <button type="button" className="speaking-outline-button" onClick={() => setProjecting(true)}><Monitor size={17} aria-hidden="true" />{t("Project join screen")}</button>}
 
             {latest && latest.status === "ready" && (
               <button
@@ -1824,9 +1787,7 @@ function SpeakingActivityDetailPage({
                 onClick={() =>
                   void run(() => speakingApi.startSession(latest.id))
                 }
-              >
-                Start session
-              </button>
+              >{t("Start session")}</button>
             )}
             {latest && latest.status === "active" && (
               <button
@@ -1836,9 +1797,7 @@ function SpeakingActivityDetailPage({
                 onClick={() =>
                   void run(() => speakingApi.pauseSession(latest.id))
                 }
-              >
-                Pause session
-              </button>
+              >{t("Pause session")}</button>
             )}
             {latest && latest.status === "paused" && (
               <button
@@ -1848,9 +1807,7 @@ function SpeakingActivityDetailPage({
                 onClick={() =>
                   void run(() => speakingApi.resumeSession(latest.id))
                 }
-              >
-                Resume session
-              </button>
+              >{t("Resume session")}</button>
             )}
             {latest &&
               ["ready", "active", "paused"].includes(latest.status) && (
@@ -1859,9 +1816,7 @@ function SpeakingActivityDetailPage({
                   className="speaking-outline-button"
                   disabled={working}
                   onClick={endLatestSession}
-                >
-                  End session
-                </button>
+                >{t("End session")}</button>
               )}
             {latest && (
               <button
@@ -1873,29 +1828,24 @@ function SpeakingActivityDetailPage({
                   )
                 }
               >
-                <Trophy size={17} aria-hidden="true" />
-                View results
-              </button>
+                <Trophy size={17} aria-hidden="true" />{t("View results")}</button>
             )}
           </div>
           <details className="speaking-session-instructions" open={!shareable || latest?.status === "ready"}>
-          <summary>{shareable ? `Join instructions · ${latest!.joinCode}` : "Launch a classroom session"}</summary>
+          <summary>{shareable ? t("Join instructions · {value0}", { value0: latest!.joinCode }) : t("Launch a classroom session")}</summary>
           <div className="speaking-share-grid">
             <section className="speaking-share-card speaking-share-code-card">
               {shareable ? (
                 <>
                   <div>
-                    <span className="speaking-card-kicker">
-                      参加コード / QRコード
-                    </span>
+                    <span className="speaking-card-kicker">{t("参加コード / QRコード")}</span>
                     <h2>
                       {latest!.status === "ready"
-                        ? "Students are joining"
-                        : latest!.status === "paused" ? "Speaking Task paused" : "Speaking Task running"}
+                        ? t("Students are joining")
+                        : latest!.status === "paused" ? t("Speaking Task paused") : t("Speaking Task running")}
                     </h2>
-                    <p>
-                      Scan the QR code or enter this short code at{" "}
-                      <strong>/speak/join</strong>.
+                    <p>{t("Scan the QR code or enter this short code at")}{" "}
+                      <strong>{t("/speak/join")}</strong>.
                     </p>
                   </div>
                   <div className="speaking-share-visual">
@@ -1907,12 +1857,12 @@ function SpeakingActivityDetailPage({
                       level="M"
                     />
                     <div className="speaking-join-code-block">
-                      <small>Session code</small>
+                      <small>{t("Session code")}</small>
                       <strong>{latest!.joinCode}</strong>
                       <button
                         type="button"
                         onClick={copyShareUrl}
-                        aria-label="Copy join URL"
+                        aria-label={t("Copy join URL")}
                       >
                         {copied ? (
                           <Check size={18} aria-hidden="true" />
@@ -1922,15 +1872,15 @@ function SpeakingActivityDetailPage({
                       </button>
                     </div>
                   </div>
-                  {copyError && <p className="speaking-error" role="alert">{copyError}</p>}
+                  {copyError && <p className="speaking-error" role="alert">{t(copyError)}</p>}
                   <div className="speaking-share-link">
-                    <input aria-label="Student join link" value={shareUrl} readOnly onFocus={(event) => event.currentTarget.select()} />
+                    <input aria-label={t("Student join link")} value={shareUrl} readOnly onFocus={(event) => event.currentTarget.select()} />
                     <button
                       className="speaking-outline-button"
                       type="button"
                       onClick={copyShareUrl}
                     >
-                      {copied ? "Copied" : "Copy link"}
+                      {copied ? t("Copied") : t("Copy link")}
                     </button>
                   </div>
                 </>
@@ -1939,18 +1889,15 @@ function SpeakingActivityDetailPage({
                   <div>
                     <span className="speaking-card-kicker">
                       {latest
-                        ? "Launch a new classroom run"
-                        : "Launch a classroom run"}
+                        ? t("Launch a new classroom run")
+                        : t("Launch a classroom run")}
                     </span>
                     <h2>
                       {latest
-                        ? "Ready for another class?"
-                        : "Ready when you are"}
+                        ? t("Ready for another class?")
+                        : t("Ready when you are")}
                     </h2>
-                    <p>
-                      Launching creates a new secure session code. This activity
-                      itself stays reusable.
-                    </p>
+                    <p>{t("Launching creates a new secure session code. This activity itself stays reusable.")}</p>
                   </div>
                   <button
                     type="button"
@@ -1966,9 +1913,7 @@ function SpeakingActivityDetailPage({
                       })
                     }
                   >
-                    <Play size={17} aria-hidden="true" />
-                    Launch session
-                  </button>
+                    <Play size={17} aria-hidden="true" />{t("Launch session")}</button>
                 </>
               )}
             </section>
@@ -1985,55 +1930,55 @@ function SpeakingActivityDetailPage({
               onFilter={setRosterFilter}
             />
           )}
-            {!latest && <section className="speaking-share-card"><span className="speaking-card-kicker">Your next steps</span><h2>Bring your class together</h2><ol className="speaking-launch-steps"><li>Launch a session to get a join code.</li><li>Share the code and wait for students to join.</li><li>Start the session when everyone is ready.</li></ol></section>}
+            {!latest && <section className="speaking-share-card"><span className="speaking-card-kicker">{t("Your next steps")}</span><h2>{t("Bring your class together")}</h2><ol className="speaking-launch-steps"><li>{t("Launch a session to get a join code.")}</li><li>{t("Share the code and wait for students to join.")}</li><li>{t("Start the session when everyone is ready.")}</li></ol></section>}
 
           <details className="speaking-setup-details">
-            <summary>Activity setup <span>Roles, target English and settings</span></summary>
+            <summary>{t("Activity setup")}{" "}<span>{t("Roles, target English and settings")}</span></summary>
             <section className="speaking-share-card">
               <div className="speaking-share-card-heading">
-                <span className="speaking-card-kicker">Activity setup</span>
+                <span className="speaking-card-kicker">{t("Activity setup")}</span>
                 <button
                   type="button"
                   className="speaking-icon-button"
                   onClick={() =>
                     navigate(`/speak/teacher/activity/${activity.id}/edit`)
                   }
-                  aria-label="Edit activity"
+                  aria-label={t("Edit activity")}
                 >
                   <Pencil size={16} aria-hidden="true" />
                 </button>
-                <span className="speaking-edit-label">Edit Activity</span>
+                <span className="speaking-edit-label">{t("Edit Activity")}</span>
               </div>
               <dl className="speaking-activity-facts">
                 <div>
-                  <dt>Speaking partner role</dt>
+                  <dt>{t("Speaking partner role")}</dt>
                   <dd>{activity.aiRole}</dd>
                 </div>
                 <div>
-                  <dt>Student role</dt>
+                  <dt>{t("Student role")}</dt>
                   <dd>{activity.studentRole}</dd>
                 </div>
                 <div>
-                  <dt>Category</dt>
-                  <dd>{resourceDetails.category ?? "Everyday Communication"}</dd>
+                  <dt>{t("Category")}</dt>
+                  <dd>{resourceDetails.category ?? t("Everyday Communication")}</dd>
                 </div>
                 <div>
-                  <dt>Communication skills</dt>
-                  <dd>{resourceDetails.communicationSkills.length ? resourceDetails.communicationSkills.join(", ") : "Conversation skills"}</dd>
+                  <dt>{t("Communication skills")}</dt>
+                  <dd>{resourceDetails.communicationSkills.length ? resourceDetails.communicationSkills.join(", ") : t("Conversation skills")}</dd>
                 </div>
                 <div>
-                  <dt>Speaking time</dt>
+                  <dt>{t("Speaking time")}</dt>
                   <dd>{formatDuration(activity.durationSeconds)}</dd>
                 </div>
                 <div>
-                  <dt>Feedback</dt>
+                  <dt>{t("Feedback")}</dt>
                   <dd>
-                    {SPEAKING_NATIVE_LANGUAGE_LABELS[activity.nativeLanguage]}
+                    {t(SPEAKING_NATIVE_LANGUAGE_LABELS[activity.nativeLanguage])}
                   </dd>
                 </div>
               </dl>
               <div className="speaking-share-targets">
-                <span>Target English</span>
+                <span>{t("Target English")}</span>
                 <div>
                   {activity.targetExpressions.map((expression) => (
                     <span key={expression}>{expression}</span>
@@ -2045,7 +1990,7 @@ function SpeakingActivityDetailPage({
           {sessions.length > 1 && (
             <section className="speaking-share-card speaking-previous-sessions">
               <div className="speaking-share-card-heading">
-                <span className="speaking-card-kicker">Other sessions</span>
+                <span className="speaking-card-kicker">{t("Other sessions")}</span>
               </div>
               {sessions.slice(1).map((session) => (
                 <button
@@ -2058,12 +2003,12 @@ function SpeakingActivityDetailPage({
                     )
                   }
                 >
-                  <span>{new Date(session.createdAt).toLocaleString()}</span>
+                  <span>{new Date(session.createdAt).toLocaleString(locale)}</span>
                   <code>{session.joinCode}</code>
                   <span
                     className={`speaking-status-pill speaking-status-${session.status}`}
                   >
-                    {session.status}
+                    {t(session.status)}
                   </span>
                   <ChevronRight size={18} aria-hidden="true" />
                 </button>
@@ -2082,6 +2027,7 @@ function RosterIcon({ status }: { status: SpeakingRosterStatus }) {
 }
 
 function SpeakingProjector({ activity, session, shareUrl, roster, stale, onClose }: { activity: SpeakingActivity; session: SpeakingSession; shareUrl: string; roster?: SpeakingRosterResponse; stale: boolean; onClose: () => void }) {
+  const { t } = useSiteTranslation();
   const dialogRef = useRef<HTMLDialogElement>(null);
   useEffect(() => {
     const returnFocus = document.activeElement as HTMLElement | null;
@@ -2090,12 +2036,12 @@ function SpeakingProjector({ activity, session, shareUrl, roster, stale, onClose
     return () => { dialog?.close(); returnFocus?.focus(); };
   }, []);
   return createPortal(<dialog ref={dialogRef} className="speaking-projector speaking-app" aria-labelledby="speaking-projector-title" onCancel={onClose}>
-    <header><div className="speaking-projector-brand-lockup"><GyakutenEigoBrand className="speaking-projector-brand" /><span>Speaking Task</span></div><button type="button" onClick={onClose}>Close projection</button></header>
-    <main><span className={`speaking-status-pill speaking-status-${session.status}`}>{session.status === "ready" ? "Students are joining" : session.status === "paused" ? "Speaking Task paused" : "Speaking Task running"}</span><span className={`speaking-mode-badge speaking-mode-${activity.mode}`}>{speakingModeLabel(activity.mode)}</span><h1 id="speaking-projector-title">{activity.title}</h1><p>Scan the QR code or enter the code below.</p><p lang="ja">QRコードを読み取るか、参加コードを入力してください。</p>
-    <div className="speaking-projector-join"><QRCodeSVG value={shareUrl} size={240} marginSize={3} level="M" /><div><span>Session code</span><strong>{session.joinCode}</strong><p>{window.location.origin}/speak/join</p></div></div>
-    <div className="speaking-projector-counts" role="status"><span><strong>{roster?.items.length ?? "—"}</strong> joined</span><span><strong>{roster?.counts.ready ?? "—"}</strong> ready</span><span><strong>{roster?.counts.error ?? "—"}</strong> need attention</span></div>
-    {stale && <p role="alert">Class counts may be out of date. Updates are retrying.</p>}
-    <p>{session.status === "ready" ? "Check your microphone, then wait for your teacher." : session.status === "paused" ? "Please wait for your teacher to resume." : "Work on your own device. Use Help if you need a hint."}</p></main>
+    <header><div className="speaking-projector-brand-lockup"><GyakutenEigoBrand className="speaking-projector-brand" /><span>{t("Speaking Task")}</span></div><button type="button" onClick={onClose}>{t("Close projection")}</button></header>
+    <main><span className={`speaking-status-pill speaking-status-${session.status}`}>{session.status === "ready" ? t("Students are joining") : session.status === "paused" ? t("Speaking Task paused") : t("Speaking Task running")}</span><span className={`speaking-mode-badge speaking-mode-${activity.mode}`}>{t(speakingModeLabel(activity.mode))}</span><h1 id="speaking-projector-title">{activity.title}</h1><p>{t("Scan the QR code or enter the code below.")}</p>
+    <div className="speaking-projector-join"><QRCodeSVG value={shareUrl} size={240} marginSize={3} level="M" /><div><span>{t("Session code")}</span><strong>{session.joinCode}</strong><p>{window.location.origin}{t("/speak/join")}</p></div></div>
+    <div className="speaking-projector-counts" role="status"><span><strong>{roster?.items.length ?? "—"}</strong>{" "}{t("joined")}</span><span><strong>{roster?.counts.ready ?? "—"}</strong>{" "}{t("ready")}</span><span><strong>{roster?.counts.error ?? "—"}</strong>{" "}{t("need attention")}</span></div>
+    {stale && <p role="alert">{t("Class counts may be out of date. Updates are retrying.")}</p>}
+    <p>{session.status === "ready" ? t("Check your microphone, then wait for your teacher.") : session.status === "paused" ? t("Please wait for your teacher to resume.") : t("Work on your own device. Use Help if you need a hint.")}</p></main>
   </dialog>, document.body);
 }
 
@@ -2116,6 +2062,7 @@ function SpeakingRosterCard({
   onSearch: (value: string) => void;
   onFilter: (value: SpeakingRosterStatus | "all") => void;
 }) {
+  const { t, locale } = useSiteTranslation();
   const query = search.trim().toLocaleLowerCase();
   const items = (roster?.items ?? []).filter((item) => {
     const display = item.participant.displayIdentifier ?? `Student ${item.participant.id.slice(0, 6)}`;
@@ -2126,48 +2073,48 @@ function SpeakingRosterCard({
     <section className="speaking-roster-card" aria-labelledby="speaking-roster-title">
       <div className="speaking-roster-heading">
         <div>
-          <span className="speaking-card-kicker">Live classroom</span>
-          <h2 id="speaking-roster-title">Class monitor</h2>
-          <p>{roster ? `${roster.items.length} students joined · Private teacher view` : "The roster will update as students join."}</p>
+          <span className="speaking-card-kicker">{t("Live classroom")}</span>
+          <h2 id="speaking-roster-title">{t("Class monitor")}</h2>
+          <p>{roster ? t("{value0} students joined · Private teacher view", { value0: roster.items.length }) : t("The roster will update as students join.")}</p>
         </div>
         <span className={`speaking-status-pill speaking-status-${roster?.session.status ?? "ready"}`}>
-          {roster?.session.status ?? "loading"}
+          {t(roster?.session.status ?? "loading")}
         </span>
       </div>
-      <div className="speaking-roster-counts" aria-label="Roster counts">
+      <div className="speaking-roster-counts" aria-label={t("Roster counts")}>
         {rosterStatusOrder.map((status) => (
           <button type="button" className={`speaking-roster-count status-${status}`} key={status} aria-pressed={filter === status} onClick={() => onFilter(filter === status ? "all" : status)}>
             <strong>{roster?.counts[status] ?? 0}</strong>
-            <span>{ROSTER_STATUS_LABELS[status]}</span>
+            <span>{t(ROSTER_STATUS_LABELS[status])}</span>
           </button>
         ))}
       </div>
       <div className="speaking-roster-toolbar">
         <label>
-          <span className="sr-only">Search classroom roster</span>
+          <span className="sr-only">{t("Search classroom roster")}</span>
           <input
-            aria-label="Search classroom roster"
+            aria-label={t("Search classroom roster")}
             value={search}
             onChange={(event) => onSearch(event.target.value)}
-            placeholder="Search students"
+            placeholder={t("Search students")}
           />
         </label>
         <label>
-          <span className="sr-only">Filter classroom roster</span>
+          <span className="sr-only">{t("Filter classroom roster")}</span>
           <select
-            aria-label="Filter classroom roster"
+            aria-label={t("Filter classroom roster")}
             value={filter}
             onChange={(event) => onFilter(event.target.value as SpeakingRosterStatus | "all")}
           >
-            <option value="all">All statuses</option>
-            {rosterStatusOrder.map((status) => <option key={status} value={status}>{ROSTER_STATUS_LABELS[status]}</option>)}
+            <option value="all">{t("All statuses")}</option>
+            {rosterStatusOrder.map((status) => <option key={status} value={status}>{t(ROSTER_STATUS_LABELS[status])}</option>)}
           </select>
         </label>
-        <span className="speaking-roster-refreshing" role="status">{loading ? "Updating…" : error ? "Updates interrupted" : "Refreshes every 5 seconds"}</span>
+        <span className="speaking-roster-refreshing" role="status">{loading ? t("Updating…") : error ? t("Updates interrupted") : t("Refreshes every 5 seconds")}</span>
       </div>
-      {error && <p className="speaking-error" role="alert">{error} {roster ? "Showing the last received roster; updates will retry automatically." : "Retrying automatically."}</p>}
+      {error && <p className="speaking-error" role="alert">{t(error)} {roster ? t("Showing the last received roster; updates will retry automatically.") : t("Retrying automatically.")}</p>}
       {!roster && error ? null : !roster && loading ? (
-        <p className="speaking-roster-empty">Loading live roster…</p>
+        <p className="speaking-roster-empty">{t("Loading live roster…")}</p>
       ) : items.length ? (
         <div className="speaking-roster-list" role="list">
           {items.map((item) => {
@@ -2176,14 +2123,14 @@ function SpeakingRosterCard({
               <div className="speaking-roster-row" role="listitem" key={item.participant.id}>
                 <RosterIcon status={item.status} />
                 <strong>{display}</strong>
-                <span className={`speaking-roster-status status-${item.status}`}>{ROSTER_STATUS_LABELS[item.status]}</span>
-                <time dateTime={item.latestActivityAt}>{formatRosterActivity(item.latestActivityAt)}</time>
+                <span className={`speaking-roster-status status-${item.status}`}>{t(ROSTER_STATUS_LABELS[item.status])}</span>
+                <time dateTime={item.latestActivityAt}>{t(formatRosterActivity(item.latestActivityAt, locale))}</time>
               </div>
             );
           })}
         </div>
       ) : (
-        <p className="speaking-roster-empty">{roster?.items.length ? "No students match this view. Clear the search or select All statuses." : "Waiting for your class. Share the QR or code to invite students."}</p>
+        <p className="speaking-roster-empty">{roster?.items.length ? t("No students match this view. Clear the search or select All statuses.") : t("Waiting for your class. Share the QR or code to invite students.")}</p>
       )}
     </section>
   );
@@ -2196,6 +2143,7 @@ function SpeakingResultsPage({
   navigate: Navigate;
   activityId: string;
 }) {
+  const { t, locale } = useSiteTranslation();
   const [activity, setActivity] = useState<SpeakingActivity>();
   const [sessions, setSessions] = useState<SpeakingSession[]>([]);
   const [sessionId, setSessionId] = useState(
@@ -2289,7 +2237,7 @@ function SpeakingResultsPage({
   const completed = payload?.items.filter((item) => item.status === "completed").length ?? 0;
   const needsReview = payload?.items.filter((item) => item.status === "error" || item.evaluationStatus === "failed" || item.evaluation?.assessmentStatus === "insufficient_evidence").length ?? 0;
   if (error && !activity)
-    return <MissingSpeakingSession navigate={navigate} message={error} />;
+    return <MissingSpeakingSession navigate={navigate} message={t(error)} />;
   if (!activity || (sessionId && loadingResults)) return <TeacherLoading />;
   const displayActivity = payload?.activity ?? activity;
   const criteria = displayActivity.rubric.filter((criterion) => criterion.enabled);
@@ -2308,15 +2256,14 @@ function SpeakingResultsPage({
           <div className="speaking-teacher-heading speaking-results-heading">
             <div>
               <span className="speaking-eyebrow">
-                <Trophy size={15} aria-hidden="true" /> Results &amp; evidence
-              </span>
-              <h1>Class results</h1>
-              <p>{displayActivity.title} · Review completion, rubric scores and conversation evidence.</p>
-              <div className="speaking-activity-mode-summary"><span className={`speaking-mode-badge speaking-mode-${displayActivity.mode}`}>{speakingModeLabel(displayActivity.mode)}</span><span>{speakingSupportSummary(displayActivity)}</span></div>
+                <Trophy size={15} aria-hidden="true" />{" "}{t("Results & evidence")}</span>
+              <h1>{t("Class results")}</h1>
+              <p>{displayActivity.title}{" "}{t("· Review completion, rubric scores and conversation evidence.")}</p>
+              <div className="speaking-activity-mode-summary"><span className={`speaking-mode-badge speaking-mode-${displayActivity.mode}`}>{t(speakingModeLabel(displayActivity.mode))}</span><span>{t(speakingSupportSummary(displayActivity, t))}</span></div>
             </div>
             {sessions.length > 0 && (
               <select
-                aria-label="Select classroom session"
+                aria-label={t("Select classroom session")}
                 value={sessionId}
                 onChange={(event) => {
                   setPayload(undefined);
@@ -2331,7 +2278,7 @@ function SpeakingResultsPage({
               >
                 {sessions.map((session) => (
                   <option key={session.id} value={session.id}>
-                    {new Date(session.createdAt).toLocaleString()} ·{" "}
+                    {new Date(session.createdAt).toLocaleString(locale)} ·{" "}
                     {session.joinCode}
                   </option>
                 ))}
@@ -2340,84 +2287,78 @@ function SpeakingResultsPage({
           </div>
           {error && (
             <p className="speaking-error" role="alert">
-              {error}
+              {t(error)}
             </p>
           )}
-          {payload && <div className="speaking-class-summary" aria-label="Class result summary"><span><strong>{completed} / {payload.items.length}</strong> completed</span><span><strong>{payload.items.length - completed}</strong> not completed</span><span><strong>{needsReview}</strong> need review</span></div>}
+          {payload && <div className="speaking-class-summary" aria-label={t("Class result summary")}><span><strong>{completed} / {payload.items.length}</strong>{" "}{t("completed")}</span><span><strong>{payload.items.length - completed}</strong>{" "}{t("not completed")}</span><span><strong>{needsReview}</strong>{" "}{t("need review")}</span></div>}
           {payload && sessions.length > 0 && (
             <div className="speaking-results-toolbar">
               <label>
-                <span className="sr-only">Search learning results</span>
+                <span className="sr-only">{t("Search learning results")}</span>
                 <input
-                  aria-label="Search learning results"
+                  aria-label={t("Search learning results")}
                   value={resultsSearch}
                   onChange={(event) => setResultsSearch(event.target.value)}
-                  placeholder="Search students"
+                  placeholder={t("Search students")}
                 />
               </label>
               <label>
-                <span className="sr-only">Filter learning results</span>
+                <span className="sr-only">{t("Filter learning results")}</span>
                 <select
-                  aria-label="Filter learning results"
+                  aria-label={t("Filter learning results")}
                   value={resultsFilter}
                   onChange={(event) => setResultsFilter(event.target.value as SpeakingParticipant["status"] | "retrying" | "all" | "review")}
                 >
-                  <option value="all">All statuses</option>
-                  <option value="review">Needs review / unscored</option>
-                  <option value="joined">Joined</option>
-                  <option value="in_progress">Practicing</option>
-                  <option value="evaluating">Evaluating</option>
-                  <option value="retrying">Evaluation retrying</option>
-                  <option value="completed">Completed</option>
-                  <option value="error">Needs attention</option>
+                  <option value="all">{t("All statuses")}</option>
+                  <option value="review">{t("Needs review / unscored")}</option>
+                  <option value="joined">{t("Joined")}</option>
+                  <option value="in_progress">{t("Practicing")}</option>
+                  <option value="evaluating">{t("Evaluating")}</option>
+                  <option value="retrying">{t("Evaluation retrying")}</option>
+                  <option value="completed">{t("Completed")}</option>
+                  <option value="error">{t("Needs attention")}</option>
                 </select>
               </label>
-              <label><span className="sr-only">Sort class results</span><select aria-label="Sort class results" value={sort} onChange={(event) => setSort(event.target.value)}><option value="name">Student order</option><option value="score">Score: low to high</option><option value="help">Help: most used</option></select></label>
-              <button type="button" className="speaking-outline-button" onClick={() => setRefreshNonce((current) => current + 1)}>
-                Refresh
-              </button>
+              <label><span className="sr-only">{t("Sort class results")}</span><select aria-label={t("Sort class results")} value={sort} onChange={(event) => setSort(event.target.value)}><option value="name">{t("Student order")}</option><option value="score">{t("Score: low to high")}</option><option value="help">{t("Help: most used")}</option></select></label>
+              <button type="button" className="speaking-outline-button" onClick={() => setRefreshNonce((current) => current + 1)}>{t("Refresh")}</button>
             </div>
           )}
           {sessions.length === 0 ? (
             <div className="speaking-empty-card">
               <Trophy size={32} aria-hidden="true" />
-              <h2>No classroom sessions yet</h2>
-              <p>Launch this activity before opening its learning results.</p>
+              <h2>{t("No classroom sessions yet")}</h2>
+              <p>{t("Launch this activity before opening its learning results.")}</p>
               <button
                 type="button"
                 className="speaking-primary-button"
                 onClick={() =>
                   navigate(`/speak/teacher/activity/${activity.id}`)
                 }
-              >
-                Open activity
-              </button>
+              >{t("Open activity")}</button>
             </div>
           ) : error && !payload ? (
             <div className="speaking-empty-card">
               <Trophy size={32} aria-hidden="true" />
-              <h2>Results unavailable</h2>
-              <p>Please return to the activity and try opening the results again.</p>
+              <h2>{t("Results unavailable")}</h2>
+              <p>{t("Please return to the activity and try opening the results again.")}</p>
               <button
                 type="button"
                 className="speaking-primary-button"
                 onClick={() =>
                   navigate(`/speak/teacher/activity/${activity.id}`)
                 }
-              >
-                Open activity
-              </button>
+              >{t("Open activity")}</button>
             </div>
           ) : payload?.items.length ? filteredResults.length ? (
-            <div className="speaking-results-table" role="region" aria-label="Class results table" tabIndex={0}>
-              <table><caption>Rubric scores from 0 to 4 · Speaking evaluation and conversation evidence for teacher review</caption><thead><tr>
-                <th scope="col">Student</th><th scope="col">Status</th><th scope="col">Overall</th>
+            <div className="speaking-results-table" role="region" aria-label={t("Class results table")} tabIndex={0}>
+              <table><caption>{t("Rubric scores from 0 to 4 · Speaking evaluation and conversation evidence for teacher review")}</caption><thead><tr>
+                <th scope="col">{t("Student")}</th><th scope="col">{t("Status")}</th><th scope="col">{t("Overall")}</th>
                 {criteria.map((criterion) => <th scope="col" key={criterion.id} title={criterion.description}>{criterion.name}</th>)}
-                <th scope="col">Elapsed</th><th scope="col">Help</th>
+                <th scope="col">{t("Elapsed")}</th><th scope="col">{t("Help")}</th>
               </tr></thead><tbody>
               {filteredResults.map((item) => <tr className="speaking-results-table-row" key={item.participant.id}>
-                <th scope="row"><button type="button" className="speaking-result-student-link" onClick={() => navigate(`/speak/teacher/result/${item.participant.id}`)}>{item.participant.displayIdentifier ?? `Student ${item.participant.id.slice(0, 6)}`}<ChevronRight size={16} aria-hidden="true" /></button></th>
-                <td><span className={`speaking-status-pill speaking-status-${item.evaluationStatus === "retrying" ? "retrying" : item.status}`}>{item.evaluation?.assessmentStatus === "insufficient_evidence" ? "Not scored" : item.evaluationStatus === "retrying" ? "Evaluation retrying" : item.evaluationStatus === "failed" ? "Needs attention" : item.status === "completed" ? "Completed" : item.status === "error" ? "Needs attention" : item.status === "joined" ? "Not started" : item.status === "evaluating" ? "Evaluating" : "Practicing"}</span></td>
+                <th scope="row"><button type="button" className="speaking-result-student-link" onClick={() => navigate(`/speak/teacher/result/${item.participant.id}`)}>{item.participant.displayIdentifier ?? t("Student {value0}", { value0: item.participant.id.slice(0, 6) })}<ChevronRight size={16} aria-hidden="true" /></button></th>
+                <td><span className={`speaking-status-pill speaking-status-${item.evaluationStatus === "retrying" ? "retrying" : item.status}`}>{item.evaluation?.assessmentStatus === "insufficient_evidence" ? t("Not scored") : item.evaluationStatus === "retrying" ? t("Evaluation retrying") : item.evaluationStatus === "failed" ? t("Needs attention") : item.status === "completed" ? t("Completed") : item.status === "error" ? t("Needs attention") : item.status === "joined" ? t("Not started") : item.status === "evaluating" ? t("Evaluating") : t("Practicing")}</span></td>
                 <td className="speaking-table-score">{item.overallScore === undefined ? "—" : <>{item.overallScore}<small>/100</small></>}</td>
                 {criteria.map((criterion) => <td key={criterion.id}>{item.evaluation?.scores[criterion.id] ?? "—"}</td>)}
                 <td>{formatDuration(item.durationSeconds)}</td><td>{item.helpCount}</td>
@@ -2427,26 +2368,21 @@ function SpeakingResultsPage({
           ) : (
             <div className="speaking-empty-card">
               <Users size={32} aria-hidden="true" />
-              <h2>No students match this view</h2>
-              <p>Try clearing the search or choosing another status.</p>
+              <h2>{t("No students match this view")}</h2>
+              <p>{t("Try clearing the search or choosing another status.")}</p>
             </div>
           ) : (
             <div className="speaking-empty-card">
               <Users size={32} aria-hidden="true" />
-              <h2>No students yet</h2>
-              <p>
-                Share {payload?.session.joinCode} to invite the first practice
-                session.
-              </p>
+              <h2>{t("No students yet")}</h2>
+              <p>{t("Share")}{" "}{payload?.session.joinCode}{" "}{t("to invite the first practice session.")}</p>
               <button
                 type="button"
                 className="speaking-primary-button"
                 onClick={() =>
                   navigate(`/speak/teacher/activity/${activity.id}`)
                 }
-              >
-                Show session code
-              </button>
+              >{t("Show session code")}</button>
             </div>
           )}
         </section>
@@ -2462,6 +2398,7 @@ function SpeakingTeacherResultPage({
   navigate: Navigate;
   participantId: string;
 }) {
+  const { t } = useSiteTranslation();
   const [result, setResult] = useState<ResultResponse["result"]>();
   const [evaluationStatus, setEvaluationStatus] = useState<ResultResponse["evaluationStatus"]>();
   const [evaluationRetryable, setEvaluationRetryable] = useState(false);
@@ -2499,7 +2436,7 @@ function SpeakingTeacherResultPage({
   }, [participantId]);
   if (!result && !error) return <TeacherLoading />;
   if (!result)
-    return <MissingSpeakingSession navigate={navigate} message={error} />;
+    return <MissingSpeakingSession navigate={navigate} message={t(error)} />;
   const evaluation = result.evaluation;
   return (
     <div className="speaking-page-shell speaking-teacher-shell">
@@ -2514,26 +2451,21 @@ function SpeakingTeacherResultPage({
               )
             }
           >
-            <ArrowLeft size={16} aria-hidden="true" />
-            Back to results
-          </button>
+            <ArrowLeft size={16} aria-hidden="true" />{t("Back to results")}</button>
           <div className="speaking-teacher-heading speaking-detail-heading">
             <div>
               <span className="speaking-eyebrow">
-                <UserRound size={15} aria-hidden="true" /> Student evidence
-              </span>
+                <UserRound size={15} aria-hidden="true" />{" "}{t("Student evidence")}</span>
               <h1>
-                {result.participant.displayIdentifier ?? "Anonymous student"}
+                {result.participant.displayIdentifier ?? t("Anonymous student")}
               </h1>
               <p>
                 {result.activity.title} ·{" "}
                 {
                   result.turns.filter((turn) => turn.speaker === "student")
                     .length
-                }{" "}
-                speaking turns · {result.participant.helpCount} Help uses
-              </p>
-              <div className="speaking-activity-mode-summary"><span className={`speaking-mode-badge speaking-mode-${result.activity.mode}`}>{speakingModeLabel(result.activity.mode)}</span><span>{speakingSupportSummary(result.activity)}</span></div>
+                }{" "}{t("speaking turns ·")}{" "}{result.participant.helpCount}{" "}{t("Help uses")}</p>
+              <div className="speaking-activity-mode-summary"><span className={`speaking-mode-badge speaking-mode-${result.activity.mode}`}>{t(speakingModeLabel(result.activity.mode))}</span><span>{t(speakingSupportSummary(result.activity, t))}</span></div>
             </div>
             <span className="speaking-detail-score">
               <strong>
@@ -2553,18 +2485,18 @@ function SpeakingTeacherResultPage({
             />
           ) : (
             <div className="speaking-empty-card">
-              <h2>{evaluationStatus === "retrying" || evaluationStatus === "queued" || evaluationStatus === "running" ? "Evaluation in progress" : "Evaluation needs attention"}</h2>
+              <h2>{evaluationStatus === "retrying" || evaluationStatus === "queued" || evaluationStatus === "running" ? t("Evaluation in progress") : t("Evaluation needs attention")}</h2>
               <p>
                 {evaluationStatus === "retrying" || evaluationStatus === "queued" || evaluationStatus === "running"
-                  ? "The transcript is safely saved. The evaluation service is still preparing feedback."
+                  ? t("The transcript is safely saved. The evaluation service is still preparing feedback.")
                   : evaluationRetryable
-                    ? "The transcript remains available. A retry can use the saved turns without asking the student to repeat the task."
-                    : "The participant’s transcript remains available. Evaluation needs technical attention; the student does not need to repeat the task."}
+                    ? t("The transcript remains available. A retry can use the saved turns without asking the student to repeat the task.")
+                    : t("The participant’s transcript remains available. Evaluation needs technical attention; the student does not need to repeat the task.")}
               </p>
               <div className="speaking-transcript-detail">
                 {result.turns.map((turn) => (
                   <p key={turn.id}>
-                    <strong>{turn.speaker === "ai" ? "Speaking partner" : "Student"}</strong>
+                    <strong>{turn.speaker === "ai" ? t("Speaking partner") : t("Student")}</strong>
                     <span>{turn.text}</span>
                   </p>
                 ))}

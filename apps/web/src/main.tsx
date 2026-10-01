@@ -8,6 +8,6 @@ import "./styles/site-theme.css";
 
 createRoot(document.getElementById("root")!).render(
   <React.StrictMode>
-    <SiteLanguageProvider><div className="ge-site" lang="en"><BrowserApp /></div></SiteLanguageProvider>
+    <SiteLanguageProvider><div className="ge-site"><BrowserApp /></div></SiteLanguageProvider>
   </React.StrictMode>
 );

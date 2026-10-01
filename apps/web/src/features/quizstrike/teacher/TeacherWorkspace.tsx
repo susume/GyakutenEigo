@@ -1,3 +1,4 @@
+import { useSiteTranslation } from "../../../ui/siteTranslation";
 import "../../speaking/speaking-auth.css";
 import { lazy, Suspense, useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { BookOpen, Bot, Check, ChevronDown, ChevronLeft, ChevronRight, Copy, Download, Eye, EyeOff, Footprints, Globe2, GraduationCap, Link2, Minus, Play, Plus, RefreshCw, Trash2, Trophy, WifiOff } from "lucide-react";
@@ -154,6 +155,7 @@ function TeacherAuth({
   apiWakeState: ApiWakeState;
   speaking?: boolean;
 }) {
+  const { t } = useSiteTranslation();
   const [isSignup, setIsSignup] = useState(initialMode === "signup");
   const [form, setForm] = useState({ name: "", email: "", password: "" });
   const [isPasswordVisible, setIsPasswordVisible] = useState(false);
@@ -223,32 +225,28 @@ function TeacherAuth({
 
   return (
     <section className={`auth-layout quizstrike-auth-layout auth-game-first${speaking ? " speaking-auth" : ""}`}>
-      <aside className="auth-visual" aria-label="GyakutenEigo teacher workspace">
+      <aside className="auth-visual" aria-label={t("GyakutenEigo teacher workspace")}>
         <img className="auth-visual-art" src="/assets/quizstrike-game-hero.png" alt="" width={1672} height={941} fetchPriority="high" />
         <div className="auth-visual-shade" aria-hidden="true" />
         <div className="auth-visual-content">
           <GyakutenEigoBrand className="auth-game-wordmark" />
-          <span className="auth-kicker">Teacher dashboard</span>
-          <p className="auth-visual-title">{speaking ? <>More speaking.<br />For every student.</> : <>One workspace.<br />Every class.</>}</p>
-          <p>{speaking ? "Choose a conversation, invite your students with a code, and see how they are doing in one classroom workspace." : "Create QuizStrike games and Speaking Tasks from the same focused teacher dashboard."}</p>
-          <span className="auth-tagline">Games ready. Voices heard.</span>
+          <span className="auth-kicker">{t("Teacher dashboard")}</span>
+          <p className="auth-visual-title">{speaking ? <>{t("More speaking.")}<br />{t("For every student.")}</> : <>{t("One workspace.")}<br />{t("Every class.")}</>}</p>
+          <p>{speaking ? t("Choose a conversation, invite your students with a code, and see how they are doing in one classroom workspace.") : t("Create QuizStrike games and Speaking Tasks from the same focused teacher dashboard.")}</p>
+          <span className="auth-tagline">{t("Games ready. Voices heard.")}</span>
         </div>
       </aside>
       <form className="panel form-panel auth-form-panel" onSubmit={submit}>
         <div className="auth-form-heading">
-          <span className="auth-kicker">Teacher account</span>
-          <h1>{isSignup ? "Welcome to GyakutenEigo" : "Sign in to GyakutenEigo"}</h1>
-          <p>{isSignup ? "Create one teacher workspace for games and speaking tasks." : "Open QuizStrike, Speaking Tasks, and your class results."}</p>
+          <span className="auth-kicker">{t("Teacher account")}</span>
+          <h1>{isSignup ? t("Welcome to GyakutenEigo") : t("Sign in to GyakutenEigo")}</h1>
+          <p>{isSignup ? t("Create one teacher workspace for games and speaking tasks.") : t("Open QuizStrike, Speaking Tasks, and your class results.")}</p>
         </div>
         {isSignup && (
-          <label htmlFor="teacher-name">
-            Your name
-            <input id="teacher-name" autoComplete="name" required minLength={2} maxLength={80} value={form.name} onChange={(event) => { setForm({ ...form, name: event.target.value }); status.clearError(); }} />
+          <label htmlFor="teacher-name">{t("Your name")}<input id="teacher-name" autoComplete="name" required minLength={2} maxLength={80} value={form.name} onChange={(event) => { setForm({ ...form, name: event.target.value }); status.clearError(); }} />
           </label>
         )}
-        <label htmlFor="teacher-email">
-          Email
-          <input
+        <label htmlFor="teacher-email">{t("Email")}<input
             id="teacher-email"
             required
             type="email"
@@ -259,12 +257,10 @@ function TeacherAuth({
             onChange={(event) => { setForm({ ...form, email: event.target.value }); status.clearError(); }}
           />
         </label>
-        <label htmlFor="teacher-password">
-          Password
-          <span className="password-field">
+        <label htmlFor="teacher-password">{t("Password")}<span className="password-field">
             <input
               id="teacher-password"
-              aria-label="Password"
+              aria-label={t("Password")}
               required
               minLength={isSignup ? 8 : undefined}
               aria-describedby={isSignup ? "teacher-password-help" : undefined}
@@ -274,23 +270,23 @@ function TeacherAuth({
               value={form.password}
               onChange={(event) => { setForm({ ...form, password: event.target.value }); status.clearError(); }}
             />
-            <button type="button" className="password-toggle" aria-label={isPasswordVisible ? "Hide password" : "Show password"} onClick={() => setIsPasswordVisible((visible) => !visible)}>
+            <button type="button" className="password-toggle" aria-label={isPasswordVisible ? t("Hide password") : t("Show password")} onClick={() => setIsPasswordVisible((visible) => !visible)}>
               {isPasswordVisible ? <EyeOff size={18} aria-hidden="true" /> : <Eye size={18} aria-hidden="true" />}
             </button>
           </span>
         </label>
-        {isSignup && <small id="teacher-password-help">Use at least 8 characters for your password.</small>}
+        {isSignup && <small id="teacher-password-help">{t("Use at least 8 characters for your password.")}</small>}
         <div className={`server-wake-status server-wake-${wakeDisplay.tone}`} role="status" aria-live="polite">
           <RefreshCw size={18} aria-hidden="true" />
-          <span><strong>{wakeDisplay.title}</strong><small>{wakeDisplay.detail}</small></span>
+          <span><strong>{t(wakeDisplay.title)}</strong><small>{t(wakeDisplay.detail)}</small></span>
         </div>
         <StatusMessages error={status.error} />
         <button className="primary" type="submit" disabled={isSubmitting}>
           <GraduationCap size={18} aria-hidden="true" />
-          {submitLabel}
+          {t(submitLabel)}
         </button>
         <button className="text-button" type="button" onClick={() => { setIsSignup(!isSignup); status.clear(); }} disabled={isSubmitting}>
-          {isSignup ? "I already have an account" : "Create a teacher account"}
+          {isSignup ? t("I already have an account") : t("Create a teacher account")}
         </button>
       </form>
     </section>
@@ -298,6 +294,7 @@ function TeacherAuth({
 }
 
 function TeacherDashboard({ teacher, onLogout, initialPath, onNavigate }: { teacher: TeacherUser; onLogout: () => void; initialPath: string; onNavigate: (path: string, mode?: "quizStrike" | "teacher") => void }) {
+  const { t } = useSiteTranslation();
   const initialRoute = useMemo(() => teacherRouteState(initialPath), [initialPath]);
   const [tab, setTab] = useState<TeacherTab>(initialRoute.tab);
   const [activeSetupSection, setActiveSetupSection] = useState<SetupSection>("mode");
@@ -317,11 +314,11 @@ function TeacherDashboard({ teacher, onLogout, initialPath, onNavigate }: { teac
 
   useEffect(() => {
     const previousTitle = document.title;
-    document.title = "Teacher Dashboard · GyakutenEigo";
+    document.title = t("Teacher Dashboard · GyakutenEigo");
     return () => {
       document.title = previousTitle;
     };
-  }, []);
+  }, [t]);
 
   const updateGamePreferences = (update: Partial<GamePreferences>) => {
     setGamePreferences((current) => {
@@ -494,12 +491,10 @@ function TeacherDashboard({ teacher, onLogout, initialPath, onNavigate }: { teac
       selectedSessionId={selectedSession?.id}
       onOpenSession={openGameSession}
     >
-      <StatusMessages error={status.error} message={status.message} />
+      <StatusMessages error={status.error} message={t(status.message)} />
       {isSocketReconnecting && (
         <p className="connection-banner">
-          <WifiOff size={16} aria-hidden="true" />
-          Connection paused · trying again...
-        </p>
+          <WifiOff size={16} aria-hidden="true" />{t("Connection paused · trying again...")}</p>
       )}
 
       {tab === "home" && <TeacherHome loading={isDashboardLoading} error={dashboardError} onRetry={() => void refresh()} teacher={teacher} quizSets={data.quizSets} sessions={data.sessions} recognition={data.recognition} onCreate={() => openQuizManager()} onDiscover={() => navigateTeacherTab("discover")} onLibrary={() => navigateTeacherTab("library")} onReports={() => navigateTeacherTab("reports")} onHost={(quizSetId) => void openStudySetForGame(quizSetId)} onOpenSession={openGameSession} onOpenSet={openStudySet} onStartQuizStrike={() => navigateTeacherTab("library")} onStartSpeaking={() => navigateTeacherTab("speaking")} onCreateSpeaking={() => onNavigate(teacherSpeakingPath("create"), "teacher")} />}
@@ -548,9 +543,9 @@ function TeacherDashboard({ teacher, onLogout, initialPath, onNavigate }: { teac
           audioOnly
         />
       )}
-      {tab === "tournaments" && <Suspense fallback={<ArenaLoading label="Loading tournament center" />}><TournamentCenter teacher={teacher} quizSets={data.quizSets.map((quiz) => ({ id: quiz.id, title: quiz.title }))} /></Suspense>}
+      {tab === "tournaments" && <Suspense fallback={<ArenaLoading label={t("Loading tournament center")} />}><TournamentCenter teacher={teacher} quizSets={data.quizSets.map((quiz) => ({ id: quiz.id, title: quiz.title }))} /></Suspense>}
       {tab === "speaking" && (
-        <Suspense fallback={<ArenaLoading label="Loading Speaking Tasks" />}>
+        <Suspense fallback={<ArenaLoading label={t("Loading Speaking Tasks")} />}>
           <SpeakingTeacherWorkspace initialPath={initialPath} onNavigate={(path) => onNavigate(path, "teacher")} />
         </Suspense>
       )}
@@ -581,6 +576,7 @@ function SessionManager({
   initialQuizSetId?: string;
   activeSetupSection: SetupSection;
 }) {
+  const { t } = useSiteTranslation();
   const {
     quizSetId, setQuizSetId,
     settings, setSettings,
@@ -1104,48 +1100,46 @@ function SessionManager({
           <>
             <header className="setup-flow-header">
               <div className="setup-flow-title">
-                <h2>Choose a game mode</h2>
+                <h2>{t("Choose a game mode")}</h2>
               </div>
               <div className="setup-quiz-summary">
                 <BookOpen size={22} aria-hidden="true" />
-                <strong>{selectedQuiz?.title ?? "Choose a question set"}</strong>
-                <small>{selectedQuiz?.questions.length ?? 0} questions</small>
+                <strong>{selectedQuiz?.title ?? t("Choose a question set")}</strong>
+                <small>{selectedQuiz?.questions.length ?? 0}{" "}{t("questions")}</small>
               </div>
             </header>
 
             {initialQuizSetId && selectedQuiz ? <section className="setup-study-set-lock" aria-labelledby="study-set-lock-title">
-              <div><span className="eyebrow">Study Set</span><h3 id="study-set-lock-title">{selectedQuiz.title}</h3><p>{selectedQuiz.questions.length} questions · ready to host</p></div>
-              <span className="study-set-lock-note">Selected from your content library</span>
+              <div><span className="eyebrow">{t("Study Set")}</span><h3 id="study-set-lock-title">{selectedQuiz.title}</h3><p>{selectedQuiz.questions.length}{" "}{t("questions · ready to host")}</p></div>
+              <span className="study-set-lock-note">{t("Selected from your content library")}</span>
             </section> : <section className="setup-study-set-picker" aria-labelledby="study-set-picker-title">
               <div>
-                <span className="eyebrow">Study Set</span>
-                <h3 id="study-set-picker-title">Choose what your class will practice</h3>
-                <p>Use one of your sets or browse the public library for a ready-to-play set.</p>
+                <span className="eyebrow">{t("Study Set")}</span>
+                <h3 id="study-set-picker-title">{t("Choose what your class will practice")}</h3>
+                <p>{t("Use one of your sets or browse the public library for a ready-to-play set.")}</p>
               </div>
               <div className="setup-study-set-controls">
-                <label htmlFor="session-study-set">Question set</label>
+                <label htmlFor="session-study-set">{t("Question set")}</label>
                 <select
                   id="session-study-set"
                   value={quizSetId}
                   onChange={(event) => setQuizSetId(event.target.value)}
                   disabled={hasSelectedSession || availableStudySets.length === 0}
                 >
-                  <option value="">Choose a question set</option>
+                  <option value="">{t("Choose a question set")}</option>
                   {availableStudySets.map((quiz) => (
-                    <option key={quiz.id} value={quiz.id}>{quiz.title} ({quiz.questions.length} questions){data.quizSets.some((owned) => owned.id === quiz.id) ? "" : " · Public Library"}</option>
+                    <option key={quiz.id} value={quiz.id}>{quiz.title} ({quiz.questions.length}{" "}{t("questions)")}{data.quizSets.some((owned) => owned.id === quiz.id) ? "" : t(" · Public Library")}</option>
                   ))}
                 </select>
                 <button type="button" className="secondary setup-study-set-browse" onClick={onBrowseStudySets} disabled={hasSelectedSession}>
-                  <Globe2 size={17} aria-hidden="true" />
-                  Browse Study Sets
-                </button>
+                  <Globe2 size={17} aria-hidden="true" />{t("Browse Study Sets")}</button>
               </div>
             </section>}
 
             {activeSetupSection === "mode" && (
               <section className="setup-choice-section setup-panel-section mode-choice-section" aria-labelledby="mode-title">
-              <div className="setup-panel-heading"><h3 id="mode-title">Choose the game</h3><span>Pick a mode to continue</span></div>
-                <div className="mode-choice-grid" aria-label="Game modes">
+              <div className="setup-panel-heading"><h3 id="mode-title">{t("Choose the game")}</h3><span>{t("Pick a mode to continue")}</span></div>
+                <div className="mode-choice-grid" aria-label={t("Game modes")}>
                   {([
                     { id: "zombie", title: "Zombie Survival", description: "Answer for energy, stay alive, and keep the team moving.", icon: <img src="/assets/zombie/zombie-head.png" alt="" /> },
                     { id: "classic", title: "Team Tag", description: "Answer questions, move through the arena, and tag the other team.", icon: <img src="/assets/mode-icons/tag.png" alt="" /> },
@@ -1158,7 +1152,7 @@ function SessionManager({
                         type="button"
                         key={mode.id}
                         className={`mode-choice mode-${mode.id}${selected ? " selected" : ""}`}
-                        aria-label={`${mode.title}: ${mode.description}`}
+                        aria-label={t("{value0}: {value1}", { value0: mode.title, value1: mode.description })}
                         aria-pressed={selected}
                         onClick={() => {
                           const switchingToAthletics = mode.id === "athletics" && settings.gameMode !== "athletics";
@@ -1181,17 +1175,17 @@ function SessionManager({
                         }}
                       >
                         <span className="mode-choice-art" aria-hidden="true">{mode.icon}</span>
-                        <strong>{mode.title}</strong>
+                        <strong>{t(mode.title)}</strong>
                         {selected && <span className="mode-choice-check" aria-hidden="true"><Check size={18} /></span>}
                       </button>
                     );
                   })}
                 </div>
                 {settings.gameMode === "athletics" && (
-                  <div className="athletics-mode-picker" aria-label="Athletics modes">
+                  <div className="athletics-mode-picker" aria-label={t("Athletics modes")}>
                     <div className="athletics-mode-picker-heading">
-                      <div><span className="eyebrow">Athletics variant</span><strong>Choose how the climb plays</strong></div>
-                      <small>Classic keeps the original race rules.</small>
+                      <div><span className="eyebrow">{t("Athletics variant")}</span><strong>{t("Choose how the climb plays")}</strong></div>
+                      <small>{t("Classic keeps the original race rules.")}</small>
                     </div>
                     <div className="athletics-mode-grid">
                       {ATHLETICS_MODES.map((modeId) => {
@@ -1202,12 +1196,12 @@ function SessionManager({
                             type="button"
                             key={modeId}
                             className={`athletics-mode-choice athletics-mode-choice-${modeId}${selectedAthletics ? " selected" : ""}`}
-                            aria-label={`${mode.label}: ${mode.description}`}
+                            aria-label={t("{value0}: {value1}", { value0: mode.label, value1: mode.description })}
                             aria-pressed={selectedAthletics}
                             onClick={() => setSettings({ ...settings, athleticsMode: modeId })}
                           >
-                            <span className="athletics-mode-choice-top"><strong>{mode.shortLabel}</strong>{selectedAthletics && <Check size={16} aria-hidden="true" />}</span>
-                            <small>{mode.description}</small>
+                            <span className="athletics-mode-choice-top"><strong>{t(mode.shortLabel)}</strong>{selectedAthletics && <Check size={16} aria-hidden="true" />}</span>
+                            <small>{t(mode.description)}</small>
                           </button>
                         );
                       })}
@@ -1219,25 +1213,25 @@ function SessionManager({
 
             {activeSetupSection === "arena" && (
               <section className="setup-choice-section setup-panel-section" aria-labelledby="arena-title">
-              <div className="setup-panel-heading"><h3 id="arena-title">Game options</h3><span>{settings.gameMode === "athletics" ? "Course and race rules" : "Map and team rules"}</span></div>
+              <div className="setup-panel-heading"><h3 id="arena-title">{t("Game options")}</h3><span>{settings.gameMode === "athletics" ? t("Course and race rules") : t("Map and team rules")}</span></div>
                 {settings.gameMode === "athletics" ? (
                   <div className="athletics-course-card">
                     <div className="athletics-course-card-heading">
-                      <div><span className="eyebrow">Selected course</span><h4>{ATHLETICS_STADIUM_COURSE.title}</h4><p>{ATHLETICS_STADIUM_COURSE.subtitle}</p></div>
-                      <span className="athletics-course-badge">{ATHLETICS_STADIUM_COURSE.sections.length} chapters · {ATHLETICS_STADIUM_COURSE.checkpoints.length} checkpoints · {ATHLETICS_STADIUM_COURSE.shortcuts.length} shortcuts</span>
+                      <div><span className="eyebrow">{t("Selected course")}</span><h4>{t(ATHLETICS_STADIUM_COURSE.title)}</h4><p>{t(ATHLETICS_STADIUM_COURSE.subtitle)}</p></div>
+                      <span className="athletics-course-badge">{ATHLETICS_STADIUM_COURSE.sections.length}{" "}{t("chapters ·")}{" "}{ATHLETICS_STADIUM_COURSE.checkpoints.length}{" "}{t("checkpoints ·")}{" "}{ATHLETICS_STADIUM_COURSE.shortcuts.length}{" "}{t("shortcuts")}</span>
                     </div>
                     <div className={`athletics-mode-brief athletics-mode-${selectedAthleticsMode}`}>
-                      <div><span className="eyebrow">{selectedAthleticsModeConfig.label}</span><strong>{selectedAthleticsModeConfig.description}</strong></div>
+                      <div><span className="eyebrow">{t(selectedAthleticsModeConfig.label)}</span><strong>{t(selectedAthleticsModeConfig.description)}</strong></div>
                       <ul>{selectedAthleticsModeConfig.instructionLines.map((line) => <li key={line}>{line}</li>)}</ul>
                     </div>
-                    <div className="athletics-course-sections" aria-label="Skyline Adventure Park chapters">
+                    <div className="athletics-course-sections" aria-label={t("Skyline Adventure Park chapters")}>
                       {ATHLETICS_STADIUM_COURSE.sections.map((section, index) => (
                         <div key={section.id} className={`athletics-course-section athletics-accent-${section.accent}`}>
-                          <span>{String(index + 1).padStart(2, "0")}</span><strong>{section.label}</strong><small>{section.description}</small>
+                          <span>{String(index + 1).padStart(2, "0")}</span><strong>{t(section.label)}</strong><small>{t(section.description)}</small>
                         </div>
                       ))}
                     </div>
-                    <p className="athletics-course-note"><Trophy size={15} aria-hidden="true" />Correct answers refill movement energy. Wrong answers cost no energy; a fall returns the runner to their last safe checkpoint.</p>
+                    <p className="athletics-course-note"><Trophy size={15} aria-hidden="true" />{t("Correct answers refill movement energy. Wrong answers cost no energy; a fall returns the runner to their last safe checkpoint.")}</p>
                   </div>
                 ) : <div className="arena-choice-grid">
                   {ARENA_MAPS.map((map) => {
@@ -1248,14 +1242,14 @@ function SessionManager({
                         type="button"
                         key={map.id}
                         className={`arena-choice map-${map.id}${selected ? " selected" : ""}`}
-                        aria-label={`${displayTitle}: ${map.districts.slice(0, 2).join(" · ")}`}
+                        aria-label={t("{value0}: {value1}", { value0: displayTitle, value1: map.districts.slice(0, 2).join(" · ") })}
                         aria-pressed={selected}
                         onClick={() => setSettings({ ...settings, mapId: map.id })}
                       >
                         <img
                           className="arena-choice-image"
                           src={ARENA_MAP_PREVIEW_ASSETS[map.id]}
-                          alt={`Top-down preview of ${displayTitle}`}
+                          alt={t("Top-down preview of {value0}", { value0: displayTitle })}
                           loading="lazy"
                         />
                         <span className="arena-choice-title"><strong>{displayTitle}</strong></span>
@@ -1266,17 +1260,17 @@ function SessionManager({
                 </div>}
                 {(settings.gameMode === "flag" || settings.gameMode === "zombie") && (
                   <div className="arena-rules-panel">
-                    <div className="arena-rules-heading"><h4>Game rules</h4><span>{gameModeLabel(settings.gameMode)}</span></div>
+                    <div className="arena-rules-heading"><h4>{t("Game rules")}</h4><span>{t(gameModeLabel(settings.gameMode))}</span></div>
                     <div className="arena-rules-grid">
                       {settings.gameMode === "flag" && (
                         <label>
-                          <span>How teams are chosen</span>
+                          <span>{t("How teams are chosen")}</span>
                           <select
                             value={settings.teamAssignment}
                             onChange={(event) => setSettings({ ...settings, teamAssignment: event.target.value as SessionSettings["teamAssignment"] })}
                           >
-                            <option value="players_choose">Students choose</option>
-                            <option value="random">Assign randomly</option>
+                            <option value="players_choose">{t("Students choose")}</option>
+                            <option value="random">{t("Assign randomly")}</option>
                           </select>
                         </label>
                       )}
@@ -1286,8 +1280,8 @@ function SessionManager({
                         const errorId = `session-setting-${field.name}-error`;
                         const unit = "unit" in field ? field.unit : undefined;
                         return (
-                          <label key={field.name} title={field.help}>
-                            <span>{field.label}{unit ? ` (${unit})` : ""}</span>
+                          <label key={field.name} title={t(field.help)}>
+                            <span>{t(field.label)}{unit ? t(" ({value0})", { value0: unit }) : ""}</span>
                             <input
                               type="number"
                               min={field.min}
@@ -1299,7 +1293,7 @@ function SessionManager({
                               aria-describedby={invalidSettings[field.name] ? errorId : undefined}
                               onChange={(event) => updateNumberSetting(field.name, event.target.value)}
                             />
-                            {invalidSettings[field.name] && <small id={errorId} className="field-error" role="alert">Use {field.min}–{field.max}{unit ? ` ${unit}` : ""}.</small>}
+                            {invalidSettings[field.name] && <small id={errorId} className="field-error" role="alert">{t("Use")}{" "}{field.min}–{field.max}{unit ? t(" {value0}", { value0: unit }) : ""}.</small>}
                           </label>
                         );
                       })}
@@ -1311,7 +1305,7 @@ function SessionManager({
 
             {activeSetupSection === "advanced" && (
               <section className="setup-choice-section setup-panel-section setup-advanced-section" aria-labelledby="advanced-title">
-              <div className="setup-panel-heading"><h3 id="advanced-title">Advanced settings</h3><span>Optional</span></div>
+              <div className="setup-panel-heading"><h3 id="advanced-title">{t("Advanced settings")}</h3><span>{t("Optional")}</span></div>
                 <div className="advanced-settings-content">
                 {sessionSettingGroups.map((group) => {
                   const fields = group.fields
@@ -1326,16 +1320,16 @@ function SessionManager({
                           const errorId = `session-setting-${field.name}-error`;
                           const unit = "unit" in field ? field.unit : undefined;
                           return (
-                            <label key={field.name} title={field.help}>
-                              <span>{field.label}{unit ? ` (${unit})` : ""}</span>
+                            <label key={field.name} title={t(field.help)}>
+                              <span>{t(field.label)}{unit ? t(" ({value0})", { value0: unit }) : ""}</span>
                               {field.name === "athleticsCourseLaps" ? (
                                 <div className="course-laps-setting">
                                   <div className="course-laps-stepper">
-                                    <button type="button" aria-label="Decrease course laps" disabled={(settings.athleticsCourseLaps ?? 1) <= field.min} onClick={() => updateNumberSetting(field.name, String(Math.max(field.min, (settings.athleticsCourseLaps ?? 1) - 1)))}><Minus size={17} aria-hidden="true" /></button>
+                                    <button type="button" aria-label={t("Decrease course laps")} disabled={(settings.athleticsCourseLaps ?? 1) <= field.min} onClick={() => updateNumberSetting(field.name, String(Math.max(field.min, (settings.athleticsCourseLaps ?? 1) - 1)))}><Minus size={17} aria-hidden="true" /></button>
                                     <input type="number" min={field.min} max={field.max} step={1} inputMode="numeric" value={settingInputs[field.name]} aria-invalid={invalidSettings[field.name] ? "true" : undefined} aria-describedby={errorId} onChange={(event) => updateNumberSetting(field.name, event.target.value)} />
-                                    <button type="button" aria-label="Increase course laps" disabled={(settings.athleticsCourseLaps ?? 1) >= field.max} onClick={() => updateNumberSetting(field.name, String(Math.min(field.max, (settings.athleticsCourseLaps ?? 1) + 1)))}><Plus size={17} aria-hidden="true" /></button>
+                                    <button type="button" aria-label={t("Increase course laps")} disabled={(settings.athleticsCourseLaps ?? 1) >= field.max} onClick={() => updateNumberSetting(field.name, String(Math.min(field.max, (settings.athleticsCourseLaps ?? 1) + 1)))}><Plus size={17} aria-hidden="true" /></button>
                                   </div>
-                                  <small id={errorId} role={invalidSettings[field.name] ? "alert" : undefined} className={invalidSettings[field.name] ? "field-error" : "session-setting-help"}>{invalidSettings[field.name] ? `Use ${field.min}–${field.max}.` : `Students must complete the course ${settings.athleticsCourseLaps ?? 1} ${(settings.athleticsCourseLaps ?? 1) === 1 ? "time" : "times"}.`}</small>
+                                  <small id={errorId} role={invalidSettings[field.name] ? "alert" : undefined} className={invalidSettings[field.name] ? "field-error" : "session-setting-help"}>{invalidSettings[field.name] ? t("Use {value0}–{value1}.", { value0: field.min, value1: field.max }) : t("Students must complete the course {value0} {value1}.", { value0: settings.athleticsCourseLaps ?? 1, value1: (settings.athleticsCourseLaps ?? 1) === 1 ? "time" : "times" })}</small>
                                 </div>
                               ) : (
                                 <input
@@ -1350,7 +1344,7 @@ function SessionManager({
                                   onChange={(event) => updateNumberSetting(field.name, event.target.value)}
                                 />
                               )}
-                              {field.name !== "athleticsCourseLaps" && invalidSettings[field.name] && <small id={errorId} className="field-error" role="alert">Use {field.min}–{field.max}{unit ? ` ${unit}` : ""}.</small>}
+                              {field.name !== "athleticsCourseLaps" && invalidSettings[field.name] && <small id={errorId} className="field-error" role="alert">{t("Use")}{" "}{field.min}–{field.max}{unit ? t(" {value0}", { value0: unit }) : ""}.</small>}
                             </label>
                           );
                         })}
@@ -1360,29 +1354,29 @@ function SessionManager({
                 })}
 
                 <fieldset>
-                  <legend>Make the game welcoming</legend>
-                  {settings.gameMode !== "athletics" && <label className="toggle-row"><input type="checkbox" checked={settings.deadPlayersCanPractice} onChange={(event) => setSettings({ ...settings, deadPlayersCanPractice: event.target.checked })} />Let students practice while out</label>}
-                  {settings.gameMode !== "athletics" && <label className="toggle-row"><input type="checkbox" checked={settings.deadPlayersEarnMoney} onChange={(event) => setSettings({ ...settings, deadPlayersEarnMoney: event.target.checked })} />Keep rewards going while out</label>}
-                  <label className="toggle-row"><input type="checkbox" checked={settings.characterCustomization.enabled} onChange={(event) => setSettings({ ...settings, characterCustomization: { ...settings.characterCustomization, enabled: event.target.checked } })} />Let students style their players</label>
-                  <label className="toggle-row"><input type="checkbox" checked={settings.characterCustomization.uploadsEnabled} disabled={!settings.characterCustomization.enabled} onChange={(event) => setSettings({ ...settings, characterCustomization: { ...settings.characterCustomization, uploadsEnabled: event.target.checked } })} />Allow student stickers</label>
-                  <label className="toggle-row"><input type="checkbox" checked={settings.characterCustomization.persistAcrossSessions} disabled={!settings.characterCustomization.enabled} onChange={(event) => setSettings({ ...settings, characterCustomization: { ...settings.characterCustomization, persistAcrossSessions: event.target.checked } })} />Remember player choices</label>
+                  <legend>{t("Make the game welcoming")}</legend>
+                  {settings.gameMode !== "athletics" && <label className="toggle-row"><input type="checkbox" checked={settings.deadPlayersCanPractice} onChange={(event) => setSettings({ ...settings, deadPlayersCanPractice: event.target.checked })} />{t("Let students practice while out")}</label>}
+                  {settings.gameMode !== "athletics" && <label className="toggle-row"><input type="checkbox" checked={settings.deadPlayersEarnMoney} onChange={(event) => setSettings({ ...settings, deadPlayersEarnMoney: event.target.checked })} />{t("Keep rewards going while out")}</label>}
+                  <label className="toggle-row"><input type="checkbox" checked={settings.characterCustomization.enabled} onChange={(event) => setSettings({ ...settings, characterCustomization: { ...settings.characterCustomization, enabled: event.target.checked } })} />{t("Let students style their players")}</label>
+                  <label className="toggle-row"><input type="checkbox" checked={settings.characterCustomization.uploadsEnabled} disabled={!settings.characterCustomization.enabled} onChange={(event) => setSettings({ ...settings, characterCustomization: { ...settings.characterCustomization, uploadsEnabled: event.target.checked } })} />{t("Allow student stickers")}</label>
+                  <label className="toggle-row"><input type="checkbox" checked={settings.characterCustomization.persistAcrossSessions} disabled={!settings.characterCustomization.enabled} onChange={(event) => setSettings({ ...settings, characterCustomization: { ...settings.characterCustomization, persistAcrossSessions: event.target.checked } })} />{t("Remember player choices")}</label>
                 </fieldset>
                 </div>
               </section>
             )}
 
-            {hasInvalidSettings && <p className="error-text">Check the highlighted settings before creating the game.</p>}
+            {hasInvalidSettings && <p className="error-text">{t("Check the highlighted settings before creating the game.")}</p>}
             <div className="setup-create-bar">
-              <span><strong>Ready to create</strong><small>{settings.gameMode === "athletics" ? ATHLETICS_STADIUM_COURSE.title : selectedMap.title} · {settings.gameMode === "athletics" ? selectedAthleticsModeConfig.label : gameModeLabel(settings.gameMode)} · your settings are saved with this room</small></span>
+              <span><strong>{t("Ready to create")}</strong><small>{settings.gameMode === "athletics" ? t(ATHLETICS_STADIUM_COURSE.title) : selectedMap.title} · {settings.gameMode === "athletics" ? t(selectedAthleticsModeConfig.label) : t(gameModeLabel(settings.gameMode))}{" "}{t("· your settings are saved with this room")}</small></span>
               <button className="primary create-game-button" type="submit" disabled={!quizSetId || hasInvalidSettings || isCreatingSession}>
                 <Play size={20} aria-hidden="true" />
-                {isCreatingSession ? "Creating lobby..." : "Continue to Lobby"}
+                {isCreatingSession ? t("Creating lobby...") : t("Continue to Lobby")}
               </button>
             </div>
-            <StatusMessages error={status.error} message={status.message} />
+            <StatusMessages error={status.error} message={t(status.message)} />
           </>
         ) : (
-          <p className="setup-lock-note">This room is live. Use the controls beside it to keep the game moving.</p>
+          <p className="setup-lock-note">{t("This room is live. Use the controls beside it to keep the game moving.")}</p>
         )}
       </form>
 
@@ -1390,70 +1384,68 @@ function SessionManager({
         {selectedSession && <GameAnnouncementOverlay announcement={selectedSession.announcement} serverTime={selectedSession.serverTime} />}
         {selectedSession ? isSessionEnded ? (
           <div className="session-ended-summary">
-            <span className="status-pill status-ended">Game complete</span>
-            <h3>{sessionGameModeLabel(selectedSession)} has ended</h3>
-            <p>The room is closed. Students can view their summary, and the full class learning report is ready.</p>
+            <span className="status-pill status-ended">{t("Game complete")}</span>
+            <h3>{t(sessionGameModeLabel(selectedSession))}{" "}{t("has ended")}</h3>
+            <p>{t("The room is closed. Students can view their summary, and the full class learning report is ready.")}</p>
             <dl>
-              <div><dt>Final learners</dt><dd>{learnerPlayers.length}</dd></div>
-              <div><dt>Test bots</dt><dd>{botPlayers.length}</dd></div>
-              <div><dt>Final outcome</dt><dd>{getModeScoreSummary(selectedSession)}</dd></div>
-              <div><dt>Top learner</dt><dd>{topLearner?.nickname ?? "No answers recorded"}</dd></div>
+              <div><dt>{t("Final learners")}</dt><dd>{learnerPlayers.length}</dd></div>
+              <div><dt>{t("Test bots")}</dt><dd>{botPlayers.length}</dd></div>
+              <div><dt>{t("Final outcome")}</dt><dd>{t(getModeScoreSummary(selectedSession))}</dd></div>
+              <div><dt>{t("Top learner")}</dt><dd>{topLearner?.nickname ?? t("No answers recorded")}</dd></div>
             </dl>
             {selectedSession.settings.gameMode === "athletics" && (
-              <section className="athletics-teacher-results" aria-label="Athletics race results">
-                <div className="athletics-teacher-results-heading"><Trophy size={18} aria-hidden="true" /><strong>Skyline Adventure Park finishers</strong></div>
+              <section className="athletics-teacher-results" aria-label={t("Athletics race results")}>
+                <div className="athletics-teacher-results-heading"><Trophy size={18} aria-hidden="true" /><strong>{t("Skyline Adventure Park finishers")}</strong></div>
                 <ol>
                   {resolveAthleticsStandings(selectedSession.players).slice(0, 3).map((standing) => {
                     const racer = selectedSession.players.find((player) => player.id === standing.playerId);
                     const requiredLaps = selectedSession.athletics?.requiredLaps ?? selectedSession.settings.athleticsCourseLaps ?? 1;
-                    return racer ? <li key={racer.id}><span>#{standing.rank}</span><strong>{racer.nickname}</strong><small>{standing.completedLaps}/{requiredLaps} {requiredLaps === 1 ? "lap" : "laps"} · {standing.status === "finished" && racer.athletics?.finishTimeMs !== undefined ? formatDuration(racer.athletics.finishTimeMs / 1000) : standing.status.toUpperCase()}</small></li> : null;
+                    return racer ? <li key={racer.id}><span>#{standing.rank}</span><strong>{racer.nickname}</strong><small>{standing.completedLaps}/{requiredLaps} {requiredLaps === 1 ? t("lap") : t("laps")} · {standing.status === "finished" && racer.athletics?.finishTimeMs !== undefined ? formatDuration(racer.athletics.finishTimeMs / 1000) : standing.status.toUpperCase()}</small></li> : null;
                   })}
                 </ol>
               </section>
             )}
             <div className="button-row">
-              <button className="primary teacher-report-button" onClick={onOpenReports}><Download size={18} aria-hidden="true" />See the learning report</button>
-              <button onClick={() => setSelectedSession(null)}>Start another game</button>
+              <button className="primary teacher-report-button" onClick={onOpenReports}><Download size={18} aria-hidden="true" />{t("See the learning report")}</button>
+              <button onClick={() => setSelectedSession(null)}>{t("Start another game")}</button>
             </div>
           </div>
         ) : selectedSession.status === "waiting" ? (
           <div className="teacher-waiting-room">
             <header className="waiting-room-header">
               <div>
-                <span className="flow-step">Lobby · Invite students</span>
-                <h2>{sessionQuiz?.title ?? "Live Game"}</h2>
-                <p>{selectedSession.settings.gameMode === "athletics" ? ATHLETICS_STADIUM_COURSE.title : arenaMapLabel(selectedSession.settings.mapId)} · {displayedPresetName} · {selectedSession.settings.gameMode === "athletics" ? `${selectedSession.settings.athleticsCourseLaps ?? 1} ${(selectedSession.settings.athleticsCourseLaps ?? 1) === 1 ? "Lap" : "Laps"}` : `${selectedSession.settings.roundCount} Rounds`} · {formatDuration(selectedSession.settings.roundDurationSeconds)} time limit</p>
+                <span className="flow-step">{t("Lobby · Invite students")}</span>
+                <h2>{sessionQuiz?.title ?? t("Live Game")}</h2>
+                <p>{selectedSession.settings.gameMode === "athletics" ? t(ATHLETICS_STADIUM_COURSE.title) : t(arenaMapLabel(selectedSession.settings.mapId))} · {displayedPresetName} · {selectedSession.settings.gameMode === "athletics" ? t("{value0} {value1}", { value0: selectedSession.settings.athleticsCourseLaps ?? 1, value1: (selectedSession.settings.athleticsCourseLaps ?? 1) === 1 ? "Lap" : "Laps" }) : t("{value0} Rounds", { value0: selectedSession.settings.roundCount })} · {formatDuration(selectedSession.settings.roundDurationSeconds)}{" "}{t("time limit")}</p>
               </div>
                     <div className="waiting-header-actions">
                 <details className="waiting-settings-summary">
-                  <summary>View game details</summary>
+                  <summary>{t("View game details")}</summary>
                   <dl>
-                    <div><dt>Mode</dt><dd>{sessionGameModeLabel(selectedSession)}</dd></div>
-                    <div><dt>{selectedSession.settings.gameMode === "athletics" ? "Course" : "Teams"}</dt><dd>{selectedSession.settings.gameMode === "athletics" ? ATHLETICS_STADIUM_COURSE.title : selectedSession.settings.teamAssignment === "players_choose" ? "Players Choose" : "Random Teams"}</dd></div>
-                    <div><dt>Players</dt><dd>Up to {selectedSession.maxPlayers}</dd></div>
+                    <div><dt>{t("Mode")}</dt><dd>{t(sessionGameModeLabel(selectedSession))}</dd></div>
+                    <div><dt>{selectedSession.settings.gameMode === "athletics" ? t("Course") : t("Teams")}</dt><dd>{selectedSession.settings.gameMode === "athletics" ? t(ATHLETICS_STADIUM_COURSE.title) : selectedSession.settings.teamAssignment === "players_choose" ? t("Players Choose") : t("Random Teams")}</dd></div>
+                    <div><dt>{t("Players")}</dt><dd>{t("Up to")}{" "}{selectedSession.maxPlayers}</dd></div>
                   </dl>
                 </details>
                 <button type="button" className="projector-button" onClick={() => setIsProjectorOpen(true)}>
-                  <Eye size={18} aria-hidden="true" />
-                  Projector View
-                </button>
-                <button ref={endSessionTriggerRef} className="text-button danger-text" onClick={() => setIsEndConfirmOpen(true)} disabled={isEndingSession}>End game</button>
+                  <Eye size={18} aria-hidden="true" />{t("Projector View")}</button>
+                <button ref={endSessionTriggerRef} className="text-button danger-text" onClick={() => setIsEndConfirmOpen(true)} disabled={isEndingSession}>{t("End game")}</button>
               </div>
             </header>
 
             <section className="invite-students-panel" aria-labelledby="join-game-title">
               <div className="invite-code-block">
-                <span id="join-game-title">Invite students</span>
+                <span id="join-game-title">{t("Invite students")}</span>
                 <strong>{selectedSession.sessionCode}</strong>
-                <small>Enter this code at {new URL(studentJoinLink).host}/join</small>
+                <small>{t("Enter this code at")}{" "}{new URL(studentJoinLink).host}{t("/join")}</small>
               </div>
               <div className="invite-link-grid">
                 <div className="invite-link-copy">
-                  <span><Link2 size={17} aria-hidden="true" />Student Join Link</span>
+                  <span><Link2 size={17} aria-hidden="true" />{t("Student Join Link")}</span>
                   <p>{studentJoinLink.replace(/^https?:\/\//, "")}</p>
-                  <button type="button" onClick={copyStudentJoinLink} aria-label="Copy student join link" aria-live="polite">
+                  <button type="button" onClick={copyStudentJoinLink} aria-label={t("Copy student join link")} aria-live="polite">
                     {isJoinLinkCopied ? <Check size={18} aria-hidden="true" /> : <Copy size={18} aria-hidden="true" />}
-                    {isJoinLinkCopied ? "✓ Link copied" : "Copy join link"}
+                    {isJoinLinkCopied ? t("✓ Link copied") : t("Copy join link")}
                   </button>
                 </div>
                 <div className="invite-qr">
@@ -1462,23 +1454,21 @@ function SessionManager({
                     size={220}
                     level="M"
                     marginSize={2}
-                    title={`Join QuizStrike game ${selectedSession.sessionCode}`}
+                    title={t("Join QuizStrike game {value0}", { value0: selectedSession.sessionCode })}
                   />
-                  <span>Scan to join</span>
+                  <span>{t("Scan to join")}</span>
                 </div>
               </div>
             </section>
 
             {isLocalOnlyJoinLink && (
-              <p className="network-share-warning" role="status">
-                This preview link works only on this computer. Use the classroom Wi-Fi address before sharing with students.
-              </p>
+              <p className="network-share-warning" role="status">{t("This preview link works only on this computer. Use the classroom Wi-Fi address before sharing with students.")}</p>
             )}
 
             <section className="waiting-student-roster" aria-labelledby="students-title" aria-live="polite">
               <header>
-                <div><h3 id="students-title">Students</h3><span>{learnerPlayers.length} / {selectedSession.maxPlayers} joined</span></div>
-                {botPlayers.length > 0 && <small>{botPlayers.length} bot{botPlayers.length === 1 ? "" : "s"} added</small>}
+                <div><h3 id="students-title">{t("Students")}</h3><span>{learnerPlayers.length} / {selectedSession.maxPlayers}{" "}{t("joined")}</span></div>
+                {botPlayers.length > 0 && <small>{botPlayers.length}{" "}{t("bot")}{botPlayers.length === 1 ? "" : "s"}{" "}{t("added")}</small>}
               </header>
               {learnerPlayers.length > 0 ? (
                 <div className="waiting-student-grid">
@@ -1491,60 +1481,60 @@ function SessionManager({
                   ))}
                 </div>
               ) : (
-                <p className="waiting-students-empty">Students will appear here as they join.</p>
+                <p className="waiting-students-empty">{t("Students will appear here as they join.")}</p>
               )}
             </section>
 
             <details className="waiting-optional-control bot-control-card">
-              <summary><Bot size={19} aria-hidden="true" /><span>+ Add test players</span><small>{availableBotSlots} seats available</small></summary>
+              <summary><Bot size={19} aria-hidden="true" /><span>{t("+ Add test players")}</span><small>{availableBotSlots}{" "}{t("seats available")}</small></summary>
               <div className="bot-control-fields">
-                <label><span>Number of bots</span><input type="number" min={1} max={Math.max(1, availableBotSlots)} value={botCount} disabled={availableBotSlots === 0 || isAddingBot} onChange={(event) => setBotCount(Math.max(1, Number(event.target.value) || 1))} /></label>
+                <label><span>{t("Number of bots")}</span><input type="number" min={1} max={Math.max(1, availableBotSlots)} value={botCount} disabled={availableBotSlots === 0 || isAddingBot} onChange={(event) => setBotCount(Math.max(1, Number(event.target.value) || 1))} /></label>
                 <label>
-                  <span>Difficulty</span>
+                  <span>{t("Difficulty")}</span>
                   <select value={botDifficulty} disabled={isAddingBot} onChange={(event) => setBotDifficulty(event.target.value as BotDifficulty)}>
-                    <option value="beginner">Beginner</option>
-                    <option value="standard">Standard</option>
-                    <option value="advanced">Advanced</option>
+                    <option value="beginner">{t("Beginner")}</option>
+                    <option value="standard">{t("Standard")}</option>
+                    <option value="advanced">{t("Advanced")}</option>
                   </select>
                 </label>
                 <button type="button" onClick={addBots} disabled={availableBotSlots === 0 || isAddingBot}>
-                  {isAddingBot ? "Adding..." : `Add ${Math.min(botCount, availableBotSlots)} Bot${Math.min(botCount, availableBotSlots) === 1 ? "" : "s"}`}
+                  {isAddingBot ? t("Adding...") : t("Add {value0} Bot{value1}", { value0: Math.min(botCount, availableBotSlots), value1: Math.min(botCount, availableBotSlots) === 1 ? "" : "s" })}
                 </button>
               </div>
             </details>
 
-            <details className="teacher-customization-controls" aria-label="Character customization controls" open={selectedSession.players.some((item) => !item.isBot && item.appearance?.decalAssetId)}>
-              <summary><span><strong>Player style</strong><small>Optional character and sticker controls</small></span><span className="details-summary-action">Manage</span></summary>
+            <details className="teacher-customization-controls" aria-label={t("Character customization controls")} open={selectedSession.players.some((item) => !item.isBot && item.appearance?.decalAssetId)}>
+              <summary><span><strong>{t("Player style")}</strong><small>{t("Optional character and sticker controls")}</small></span><span className="details-summary-action">{t("Manage")}</span></summary>
               <div className="teacher-customization-toggles">
-                <label className="toggle-row"><input type="checkbox" checked={selectedSession.settings.characterCustomization.enabled} onChange={(event) => void updateLiveCustomization({ ...selectedSession.settings.characterCustomization, enabled: event.target.checked })} />Creator enabled</label>
-                <label className="toggle-row"><input type="checkbox" checked={selectedSession.settings.characterCustomization.uploadsEnabled} disabled={!selectedSession.settings.characterCustomization.enabled} onChange={(event) => void updateLiveCustomization({ ...selectedSession.settings.characterCustomization, uploadsEnabled: event.target.checked })} />Artwork uploads</label>
-                <label className="toggle-row"><input type="checkbox" checked={selectedSession.settings.characterCustomization.persistAcrossSessions} disabled={!selectedSession.settings.characterCustomization.enabled} onChange={(event) => void updateLiveCustomization({ ...selectedSession.settings.characterCustomization, persistAcrossSessions: event.target.checked })} />Remember choices</label>
+                <label className="toggle-row"><input type="checkbox" checked={selectedSession.settings.characterCustomization.enabled} onChange={(event) => void updateLiveCustomization({ ...selectedSession.settings.characterCustomization, enabled: event.target.checked })} />{t("Creator enabled")}</label>
+                <label className="toggle-row"><input type="checkbox" checked={selectedSession.settings.characterCustomization.uploadsEnabled} disabled={!selectedSession.settings.characterCustomization.enabled} onChange={(event) => void updateLiveCustomization({ ...selectedSession.settings.characterCustomization, uploadsEnabled: event.target.checked })} />{t("Artwork uploads")}</label>
+                <label className="toggle-row"><input type="checkbox" checked={selectedSession.settings.characterCustomization.persistAcrossSessions} disabled={!selectedSession.settings.characterCustomization.enabled} onChange={(event) => void updateLiveCustomization({ ...selectedSession.settings.characterCustomization, persistAcrossSessions: event.target.checked })} />{t("Remember choices")}</label>
               </div>
-              <button type="button" onClick={() => void resetAllAppearances()}>Reset everyone</button>
+              <button type="button" onClick={() => void resetAllAppearances()}>{t("Reset everyone")}</button>
               <div className="appearance-moderation-list">
                 {learnerPlayers.map((item) => (
-                  <div key={item.id}><span>{item.nickname}{item.appearance?.decalAssetId ? " · sticker submitted" : ""}</span><span>{item.appearance?.decalAssetId && <button type="button" onClick={() => void removePlayerDecal(item.id)}>Remove Sticker</button>}<button type="button" onClick={() => void clearPlayerAppearance(item.id)}>Clear Player</button></span></div>
+                  <div key={item.id}><span>{item.nickname}{item.appearance?.decalAssetId ? t(" · sticker submitted") : ""}</span><span>{item.appearance?.decalAssetId && <button type="button" onClick={() => void removePlayerDecal(item.id)}>{t("Remove Sticker")}</button>}<button type="button" onClick={() => void clearPlayerAppearance(item.id)}>{t("Clear Player")}</button></span></div>
                 ))}
               </div>
               <TeacherDecalGallery sessionCode={selectedSession.sessionCode} refreshKey={selectedSession.players.map((item) => `${item.id}:${item.appearance?.decalAssetId ?? "none"}`).join("|")} loadAsset={loadTeacherDecal} onRemove={removeDecalAsset} />
             </details>
 
-            <StatusMessages error={status.error} message={status.message} />
+            <StatusMessages error={status.error} message={t(status.message)} />
             <div className="waiting-start-bar">
               <div>
-                <strong>{learnerPlayers.length > 0 ? `${learnerPlayers.length} student${learnerPlayers.length === 1 ? "" : "s"} ready` : "Waiting for students…"}</strong>
-                {learnerPlayers.length > 0 && <small>Everyone can join until the room is full.</small>}
+                <strong>{learnerPlayers.length > 0 ? t("{value0} student{value1} ready", { value0: learnerPlayers.length, value1: learnerPlayers.length === 1 ? "" : "s" }) : t("Waiting for students…")}</strong>
+                {learnerPlayers.length > 0 && <small>{t("Everyone can join until the room is full.")}</small>}
               </div>
               <button className="primary" type="button" onClick={start} disabled={Boolean(startBlockedReason) || isStartingSession}>
                 <Play size={22} aria-hidden="true" />
-                {isStartingSession ? "Starting…" : "Start game"}
+                {isStartingSession ? t("Starting…") : t("Start game")}
               </button>
             </div>
           </div>
         ) : (
           <>
             <header className="live-control-heading">
-              <div><span className="flow-step">Live game</span><h2>Run the live game</h2></div>
+              <div><span className="flow-step">{t("Live game")}</span><h2>{t("Run the live game")}</h2></div>
               <div className="button-row">
                 <TeacherPauseControls
                   paused={selectedSession.controlState === "teacher_paused"}
@@ -1560,11 +1550,9 @@ function SessionManager({
                     setIsTeacherSpectatorOpen(true);
                   }}
                   disabled={!teacherSpectatorPlayers.length}
-                  title={teacherSpectatorPlayers.length ? "Watch the live game from a learner's point of view" : "A connected learner is needed to spectate"}
+                  title={teacherSpectatorPlayers.length ? t("Watch the live game from a learner's point of view") : t("A connected learner is needed to spectate")}
                 >
-                  <Eye size={18} aria-hidden="true" />
-                  Spectator View
-                </button>
+                  <Eye size={18} aria-hidden="true" />{t("Spectator View")}</button>
                 {selectedSession.settings.gameMode !== "zombie" && selectedSession.settings.gameMode !== "athletics" && (
                   <button
                     type="button"
@@ -1572,32 +1560,32 @@ function SessionManager({
                     onClick={() => void endRound()}
                     disabled={selectedSession.status !== "active" || selectedSession.controlState === "teacher_paused" || isEndingRound || isEndingSession}
                   >
-                    {isEndingRound ? "Ending Round..." : "End Round"}
+                    {isEndingRound ? t("Ending Round...") : t("End Round")}
                   </button>
                 )}
-                <button ref={endSessionTriggerRef} className="end-game-button" onClick={() => setIsEndConfirmOpen(true)} disabled={isEndingSession}>{isEndingSession ? "Finishing…" : "End game"}</button>
+                <button ref={endSessionTriggerRef} className="end-game-button" onClick={() => setIsEndConfirmOpen(true)} disabled={isEndingSession}>{isEndingSession ? t("Finishing…") : t("End game")}</button>
               </div>
             </header>
             <div className="live-summary">
-              <span className={`status-pill status-${selectedSession.status}${selectedSession.controlState === "teacher_paused" ? " teacher-paused-status" : ""}`}>{selectedSession.controlState === "teacher_paused" ? "Game paused" : isRoundPreparationPhase(selectedSession) ? "Preparation" : isZombieSelectionPhase(selectedSession) ? "Choosing Zombies" : sessionStatusLabel(selectedSession.status)}</span>
-              <span>{sessionGameModeLabel(selectedSession)}</span>
-              <span>{selectedSession.settings.gameMode === "athletics" ? ATHLETICS_STADIUM_COURSE.title : arenaMapLabel(selectedSession.settings.mapId)}</span>
-              {selectedSession.settings.gameMode === "flag" && <span>Round {selectedSession.currentRound}/{selectedSession.settings.roundCount}</span>}
-              <span>{selectedSession.settings.gameMode === "athletics" ? `${sessionGameModeLabel(selectedSession)} · Race · ${selectedSession.athletics?.requiredLaps ?? selectedSession.settings.athleticsCourseLaps ?? 1} ${(selectedSession.athletics?.requiredLaps ?? selectedSession.settings.athleticsCourseLaps ?? 1) === 1 ? "lap" : "laps"} · ${ATHLETICS_STADIUM_COURSE.sections.length} chapters` : `Time ${formatDuration(remainingSeconds)}`}</span>
-              <span>{activePlayers}/{selectedSession.players.length || 0} active</span>
-              <span>{activeLearners} learner{activeLearners === 1 ? "" : "s"}</span>
-              {botPlayers.length > 0 && <span>{botPlayers.length} bot{botPlayers.length === 1 ? "" : "s"}</span>}
-              <span>{selectedSession.settings.gameMode === "athletics" ? `${resolveAthleticsStandings(selectedSession.players).filter((standing) => standing.status === "finished").length} finished` : selectedSession.settings.gameMode === "zombie" ? `Humans ${zombieCounts.humans} - Zombies ${zombieCounts.zombies}` : `Blue ${teamTotals.blue} - Red ${teamTotals.red}`}</span>
+              <span className={`status-pill status-${selectedSession.status}${selectedSession.controlState === "teacher_paused" ? " teacher-paused-status" : ""}`}>{selectedSession.controlState === "teacher_paused" ? t("Game paused") : isRoundPreparationPhase(selectedSession) ? t("Preparation") : isZombieSelectionPhase(selectedSession) ? t("Choosing Zombies") : t(sessionStatusLabel(selectedSession.status))}</span>
+              <span>{t(sessionGameModeLabel(selectedSession))}</span>
+              <span>{selectedSession.settings.gameMode === "athletics" ? t(ATHLETICS_STADIUM_COURSE.title) : t(arenaMapLabel(selectedSession.settings.mapId))}</span>
+              {selectedSession.settings.gameMode === "flag" && <span>{t("Round")}{" "}{selectedSession.currentRound}/{selectedSession.settings.roundCount}</span>}
+              <span>{selectedSession.settings.gameMode === "athletics" ? t("{value0} · Race · {value1} {value2} · {value3} chapters", { value0: sessionGameModeLabel(selectedSession), value1: selectedSession.athletics?.requiredLaps ?? selectedSession.settings.athleticsCourseLaps ?? 1, value2: (selectedSession.athletics?.requiredLaps ?? selectedSession.settings.athleticsCourseLaps ?? 1) === 1 ? "lap" : "laps", value3: ATHLETICS_STADIUM_COURSE.sections.length }) : t("Time {value0}", { value0: formatDuration(remainingSeconds) })}</span>
+              <span>{activePlayers}/{selectedSession.players.length || 0}{" "}{t("active")}</span>
+              <span>{activeLearners}{" "}{t("learner")}{activeLearners === 1 ? "" : "s"}</span>
+              {botPlayers.length > 0 && <span>{botPlayers.length}{" "}{t("bot")}{botPlayers.length === 1 ? "" : "s"}</span>}
+              <span>{selectedSession.settings.gameMode === "athletics" ? t("{value0} finished", { value0: resolveAthleticsStandings(selectedSession.players).filter((standing) => standing.status === "finished").length }) : selectedSession.settings.gameMode === "zombie" ? t("Humans {value0} - Zombies {value1}", { value0: zombieCounts.humans, value1: zombieCounts.zombies }) : t("Blue {value0} - Red {value1}", { value0: teamTotals.blue, value1: teamTotals.red })}</span>
             </div>
             {selectedSession.settings.gameMode === "athletics" && (selectedSession.settings.athleticsMode ?? selectedSession.athletics?.mode ?? "classic") !== "classic" && (
-              <div className="athletics-teacher-monitor" aria-label="Athletics mode monitor">
-                <strong>{sessionGameModeLabel(selectedSession)}</strong>
-                {(selectedSession.settings.athleticsMode ?? selectedSession.athletics?.mode) === "zeus" && <span>Phase: {selectedSession.athletics?.zeus?.phase ?? "idle"} · Attack {selectedSession.athletics?.zeus?.attackIndex ?? 0}</span>}
-                {(selectedSession.settings.athleticsMode ?? selectedSession.athletics?.mode) === "hunters-runners" && <span>Round {selectedSession.athletics?.modeRound ?? 1}/{selectedSession.athletics?.modeRoundsTotal ?? 2} · {selectedSession.athletics?.hunterIds?.length ?? 0} hunters · {selectedSession.athletics?.runnerIds?.length ?? 0} runners</span>}
-                {(selectedSession.settings.athleticsMode ?? selectedSession.athletics?.mode) === "chaos-climb" && <span>Wave {selectedSession.athletics?.chaos?.waveIndex ?? 0} · {selectedSession.athletics?.chaos?.activeHazards.length ?? 0} hazards active{selectedSession.athletics?.chaos?.currentEvent ? ` · ${selectedSession.athletics.chaos.currentEvent.label}` : ""}</span>}
+              <div className="athletics-teacher-monitor" aria-label={t("Athletics mode monitor")}>
+                <strong>{t(sessionGameModeLabel(selectedSession))}</strong>
+                {(selectedSession.settings.athleticsMode ?? selectedSession.athletics?.mode) === "zeus" && <span>{t("Phase:")}{" "}{selectedSession.athletics?.zeus?.phase ?? t("idle")}{" "}{t("· Attack")}{" "}{selectedSession.athletics?.zeus?.attackIndex ?? 0}</span>}
+                {(selectedSession.settings.athleticsMode ?? selectedSession.athletics?.mode) === "hunters-runners" && <span>{t("Round")}{" "}{selectedSession.athletics?.modeRound ?? 1}/{selectedSession.athletics?.modeRoundsTotal ?? 2} · {selectedSession.athletics?.hunterIds?.length ?? 0}{" "}{t("hunters ·")}{" "}{selectedSession.athletics?.runnerIds?.length ?? 0}{" "}{t("runners")}</span>}
+                {(selectedSession.settings.athleticsMode ?? selectedSession.athletics?.mode) === "chaos-climb" && <span>{t("Wave")}{" "}{selectedSession.athletics?.chaos?.waveIndex ?? 0} · {selectedSession.athletics?.chaos?.activeHazards.length ?? 0}{" "}{t("hazards active")}{selectedSession.athletics?.chaos?.currentEvent ? t(" · {value0}", { value0: selectedSession.athletics.chaos.currentEvent.label }) : ""}</span>}
               </div>
             )}
-            <Suspense fallback={<ArenaLoading label="Loading live arena" />}>
+            <Suspense fallback={<ArenaLoading label={t("Loading live arena")} />}>
               <ArenaPreview key={`${selectedSession.id}:overview`} session={selectedSession} loadDecalAsset={loadTeacherDecal} />
             </Suspense>
             <LearningPulse pulse={selectedSession.learningPulse} />
@@ -1605,17 +1593,17 @@ function SessionManager({
             <EventFeed events={selectedSession.events ?? []} />
           </>
         ) : (
-          <p>Create a game to invite students.</p>
+          <p>{t("Create a game to invite students.")}</p>
         )}
 
         {selectedSession && isEndConfirmOpen && (
           <div className="modal-backdrop" role="presentation">
             <div ref={endSessionDialogRef} className="panel confirm-modal" role="dialog" aria-modal="true" aria-labelledby="end-session-title">
-              <h2 id="end-session-title">Finish this game?</h2>
-              <p>This closes the room and prepares the learning report. Students won’t be able to rejoin afterward.</p>
+              <h2 id="end-session-title">{t("Finish this game?")}</h2>
+              <p>{t("This closes the room and prepares the learning report. Students won’t be able to rejoin afterward.")}</p>
               <div className="button-row">
-                <button className="primary" onClick={end} disabled={isEndingSession}>{isEndingSession ? "Finishing..." : "Finish and see report"}</button>
-                <button ref={keepSessionOpenRef} onClick={() => setIsEndConfirmOpen(false)}>Keep game open</button>
+                <button className="primary" onClick={end} disabled={isEndingSession}>{isEndingSession ? t("Finishing...") : t("Finish and see report")}</button>
+                <button ref={keepSessionOpenRef} onClick={() => setIsEndConfirmOpen(false)}>{t("Keep game open")}</button>
               </div>
             </div>
           </div>
@@ -1625,26 +1613,26 @@ function SessionManager({
           <div className="projector-backdrop" role="presentation">
             <section ref={projectorDialogRef} className="projector-waiting-room" role="dialog" aria-modal="true" aria-labelledby="projector-title">
               <header>
-                 <div><span className="projector-kicker">{sessionQuiz?.title ?? "QuizStrike"}</span><h2 id="projector-title">Join the game</h2></div>
-                <button ref={projectorCloseRef} type="button" onClick={() => setIsProjectorOpen(false)} aria-label="Close projector view">Close</button>
+                 <div><span className="projector-kicker">{sessionQuiz?.title ?? "QuizStrike"}</span><h2 id="projector-title">{t("Join the game")}</h2></div>
+                <button ref={projectorCloseRef} type="button" onClick={() => setIsProjectorOpen(false)} aria-label={t("Close projector view")}>{t("Close")}</button>
               </header>
               <div className="projector-content">
-                 <div className="projector-join-code"><span>Game code</span><strong>{selectedSession.sessionCode}</strong><small>{studentJoinLink.replace(/^https?:\/\//, "")}</small></div>
+                 <div className="projector-join-code"><span>{t("Game code")}</span><strong>{selectedSession.sessionCode}</strong><small>{studentJoinLink.replace(/^https?:\/\//, "")}</small></div>
                 <div className="projector-qr">
-                  <QRCodeSVG value={studentJoinLink} size={260} level="M" marginSize={2} title={`Join QuizStrike game ${selectedSession.sessionCode}`} />
-                  <span>Scan to join</span>
+                  <QRCodeSVG value={studentJoinLink} size={260} level="M" marginSize={2} title={t("Join QuizStrike game {value0}", { value0: selectedSession.sessionCode })} />
+                  <span>{t("Scan to join")}</span>
                 </div>
               </div>
               <div className="projector-roster" aria-live="polite">
-                <strong>{learnerPlayers.length} student{learnerPlayers.length === 1 ? "" : "s"} joined</strong>
+                <strong>{learnerPlayers.length}{" "}{t("student")}{learnerPlayers.length === 1 ? "" : "s"}{" "}{t("joined")}</strong>
                 <div>
                   {learnerPlayers.map((item) => <span key={item.id}>{item.nickname} · {item.team.toUpperCase()}</span>)}
-                   {learnerPlayers.length === 0 && <span>Students will appear as they join.</span>}
+                   {learnerPlayers.length === 0 && <span>{t("Students will appear as they join.")}</span>}
                 </div>
               </div>
               <footer>
-                 <button type="button" onClick={copyStudentJoinLink}>{isJoinLinkCopied ? <Check size={20} aria-hidden="true" /> : <Copy size={20} aria-hidden="true" />}{isJoinLinkCopied ? "✓ Link copied" : "Copy join link"}</button>
-                 <button className="primary" type="button" onClick={start} disabled={Boolean(startBlockedReason) || isStartingSession}><Play size={22} aria-hidden="true" />{isStartingSession ? "Starting…" : "Start game"}</button>
+                 <button type="button" onClick={copyStudentJoinLink}>{isJoinLinkCopied ? <Check size={20} aria-hidden="true" /> : <Copy size={20} aria-hidden="true" />}{isJoinLinkCopied ? t("✓ Link copied") : t("Copy join link")}</button>
+                 <button className="primary" type="button" onClick={start} disabled={Boolean(startBlockedReason) || isStartingSession}><Play size={22} aria-hidden="true" />{isStartingSession ? t("Starting…") : t("Start game")}</button>
               </footer>
             </section>
           </div>
@@ -1655,9 +1643,9 @@ function SessionManager({
             <section ref={teacherSpectatorDialogRef} className="teacher-spectator-dialog" role="dialog" aria-modal="true" aria-labelledby="teacher-spectator-title">
               <header className="teacher-spectator-header">
                 <div>
-                  <span className="teacher-spectator-kicker"><Eye size={15} aria-hidden="true" /> Read-only live view</span>
-                  <h2 id="teacher-spectator-title">Watch the game</h2>
-              <p>{selectedSession.settings.gameMode === "athletics" ? ATHLETICS_STADIUM_COURSE.title : arenaMapLabel(selectedSession.settings.mapId)} <span aria-hidden="true">{"\u00B7"}</span> {sessionGameModeLabel(selectedSession)} <span aria-hidden="true">{"\u00B7"}</span> Follow a learner</p>
+                  <span className="teacher-spectator-kicker"><Eye size={15} aria-hidden="true" />{" "}{t("Read-only live view")}</span>
+                  <h2 id="teacher-spectator-title">{t("Watch the game")}</h2>
+              <p>{selectedSession.settings.gameMode === "athletics" ? t(ATHLETICS_STADIUM_COURSE.title) : t(arenaMapLabel(selectedSession.settings.mapId))} <span aria-hidden="true">{"\u00B7"}</span> {t(sessionGameModeLabel(selectedSession))} <span aria-hidden="true">{"\u00B7"}</span>{" "}{t("Follow a learner")}</p>
                 </div>
                 <button
                   ref={teacherSpectatorCloseRef}
@@ -1673,12 +1661,10 @@ function SessionManager({
                     setIsTeacherSpectatorPickerOpen(false);
                     setIsTeacherSpectatorOpen(false);
                   }}
-                >
-                  Close View
-                </button>
+                >{t("Close View")}</button>
               </header>
               <div className="teacher-spectator-arena">
-                <Suspense fallback={<ArenaLoading label="Loading spectator view" />}>
+                <Suspense fallback={<ArenaLoading label={t("Loading spectator view")} />}>
                   <ArenaPreview
                     key={`${selectedSession.id}:teacher-spectator`}
                     session={selectedSession}
@@ -1690,7 +1676,7 @@ function SessionManager({
                     loadDecalAsset={loadTeacherDecal}
                   />
                 </Suspense>
-                <span className="teacher-spectator-readonly"><Eye size={15} aria-hidden="true" /> Teacher view {"\u00B7"} controls locked</span>
+                <span className="teacher-spectator-readonly"><Eye size={15} aria-hidden="true" />{" "}{t("Teacher view")}{" "}{"\u00B7"}{" "}{t("controls locked")}</span>
               </div>
               <footer className="teacher-spectator-footer">
                 <button
@@ -1703,11 +1689,10 @@ function SessionManager({
                   }}
                   disabled={teacherSpectatorPlayers.length < 2}
                 >
-                  <ChevronLeft size={18} aria-hidden="true" /> Previous player
-                </button>
+                  <ChevronLeft size={18} aria-hidden="true" />{" "}{t("Previous player")}</button>
                 <div className="teacher-spectator-target">
                   <div ref={teacherSpectatorPickerRef} className="teacher-spectator-picker">
-                    <span className="teacher-spectator-picker-label">Select learner</span>
+                    <span className="teacher-spectator-picker-label">{t("Select learner")}</span>
                     <button
                       type="button"
                       className="teacher-spectator-picker-trigger"
@@ -1729,7 +1714,7 @@ function SessionManager({
                       <ChevronDown size={17} aria-hidden="true" />
                     </button>
                     {isTeacherSpectatorPickerOpen && (
-                      <div id="teacher-spectator-player-list" className="teacher-spectator-picker-menu" role="listbox" aria-label="Learners available to spectate">
+                      <div id="teacher-spectator-player-list" className="teacher-spectator-picker-menu" role="listbox" aria-label={t("Learners available to spectate")}>
                         {teacherSpectatorPlayers.map((player) => (
                           <button
                             key={player.id}
@@ -1749,7 +1734,7 @@ function SessionManager({
                       </div>
                     )}
                   </div>
-                  <small>{teacherSpectatorPlayer.team.toUpperCase()} team {"\u00B7"} choose a learner to follow</small>
+                  <small>{teacherSpectatorPlayer.team.toUpperCase()}{" "}{t("team")}{" "}{"\u00B7"}{" "}{t("choose a learner to follow")}</small>
                 </div>
                 <button
                   type="button"
@@ -1760,8 +1745,7 @@ function SessionManager({
                     cycleTeacherSpectator(1);
                   }}
                   disabled={teacherSpectatorPlayers.length < 2}
-                >
-                  Next player <ChevronRight size={18} aria-hidden="true" />
+                >{t("Next player")}{" "}<ChevronRight size={18} aria-hidden="true" />
                 </button>
               </footer>
             </section>
@@ -1791,6 +1775,7 @@ function ReportsPanel({
   onRefresh: () => Promise<void>;
   onOpenSpeaking: (path: string) => void;
 }) {
+  const { t, locale } = useSiteTranslation();
   const [reportArea, setReportArea] = useState<"quizstrike" | "speaking">("quizstrike");
   const [code, setCode] = useState(reports[0]?.sessionCode ?? "");
   const [selectedReportId, setSelectedReportId] = useState(reports[0]?.id ?? "");
@@ -1924,42 +1909,42 @@ function ReportsPanel({
   };
 
   if (reportArea === "speaking") {
-    return <div className="report-panel reports-page"><div className="reports-area-tabs" role="tablist" aria-label="Report type"><button type="button" role="tab" aria-selected="false" onClick={() => setReportArea("quizstrike")}>QuizStrike</button><button type="button" className="is-active" role="tab" aria-selected="true">Speaking Tasks</button></div><SpeakingReportsPanel navigate={onOpenSpeaking} /></div>;
+    return <div className="report-panel reports-page"><div className="reports-area-tabs" role="tablist" aria-label={t("Report type")}><button type="button" role="tab" aria-selected="false" onClick={() => setReportArea("quizstrike")}>QuizStrike</button><button type="button" className="is-active" role="tab" aria-selected="true">{t("Speaking Tasks")}</button></div><SpeakingReportsPanel navigate={onOpenSpeaking} /></div>;
   }
   return (
     <div className="report-panel reports-page">
       <header className="reports-page-heading">
         <div>
-          <span className="eyebrow">Learning reports</span>
-          <h2>See what to teach next</h2>
-          <p>Review completed games, spot difficult questions, and plan the next lesson with less guesswork.</p>
+          <span className="eyebrow">{t("Learning reports")}</span>
+          <h2>{t("See what to teach next")}</h2>
+          <p>{t("Review completed games, spot difficult questions, and plan the next lesson with less guesswork.")}</p>
         </div>
         <div className="reports-page-actions">
-          <span className="reports-count">{endedSessions.length} completed {endedSessions.length === 1 ? "game" : "games"}</span>
-          <button onClick={() => setTab("sessions")}>Open live games</button>
+          <span className="reports-count">{endedSessions.length}{" "}{t("completed")}{" "}{endedSessions.length === 1 ? t("game") : t("games")}</span>
+          <button onClick={() => setTab("sessions")}>{t("Open live games")}</button>
         </div>
       </header>
-      <div className="reports-area-tabs" role="tablist" aria-label="Report type"><button type="button" className="is-active" role="tab" aria-selected="true">QuizStrike</button><button type="button" role="tab" aria-selected="false" onClick={() => setReportArea("speaking")}>Speaking Tasks</button></div>
-      <StatusMessages error={status.error} message={status.message} />
+      <div className="reports-area-tabs" role="tablist" aria-label={t("Report type")}><button type="button" className="is-active" role="tab" aria-selected="true">QuizStrike</button><button type="button" role="tab" aria-selected="false" onClick={() => setReportArea("speaking")}>{t("Speaking Tasks")}</button></div>
+      <StatusMessages error={status.error} message={t(status.message)} />
 
       <div className="reports-layout">
-        <section className="report-history-card" aria-label="Completed game history">
+        <section className="report-history-card" aria-label={t("Completed game history")}>
           <div className="report-card-heading">
             <div>
-              <span className="report-card-kicker">Game history</span>
-              <h3>Finished games</h3>
+              <span className="report-card-kicker">{t("Game history")}</span>
+              <h3>{t("Finished games")}</h3>
             </div>
             <button className="report-danger-button" onClick={() => void clearHistory()} disabled={isClearingHistory || endedSessions.length === 0}>
               <Trash2 size={16} aria-hidden="true" />
-              {isClearingHistory ? "Clearing..." : "Clear history"}
+              {isClearingHistory ? t("Clearing...") : t("Clear history")}
             </button>
           </div>
-          <p className="report-card-note">Select a game to open its learning report. Live games stay separate.</p>
-          <div className="report-history-list" role="listbox" aria-label="Completed games">
+          <p className="report-card-note">{t("Select a game to open its learning report. Live games stay separate.")}</p>
+          <div className="report-history-list" role="listbox" aria-label={t("Completed games")}>
             {endedSessions.map((session) => {
               const metadata = reportBySessionId.get(session.id);
               const quizTitle = metadata?.quizSetName ?? quizSetById.get(session.quizSetId)?.title ?? "Quiz set";
-              const date = new Date(session.endedAt ?? session.createdAt).toLocaleDateString();
+              const date = new Date(session.endedAt ?? session.createdAt).toLocaleDateString(locale);
               const isSelected = code === session.sessionCode;
               return (
                 <div className={`report-history-row${isSelected ? " selected" : ""}`} key={session.id}>
@@ -1975,9 +1960,9 @@ function ReportsPanel({
                       <strong>{quizTitle}</strong>
                       <small>{session.sessionCode} · {date}</small>
                     </span>
-                    <span className="report-history-meta">{metadata ? "Saved" : "Open"}</span>
+                    <span className="report-history-meta">{metadata ? t("Saved") : t("Open")}</span>
                   </button>
-                  {metadata && <button className="report-history-delete" aria-label={`Delete saved report ${metadata.displayName}`} onClick={() => void deleteSavedReport(metadata)} disabled={isDeletingReport}><Trash2 size={15} aria-hidden="true" /></button>}
+                  {metadata && <button className="report-history-delete" aria-label={t("Delete saved report {value0}", { value0: metadata.displayName })} onClick={() => void deleteSavedReport(metadata)} disabled={isDeletingReport}><Trash2 size={15} aria-hidden="true" /></button>}
                 </div>
               );
             })}
@@ -1985,36 +1970,36 @@ function ReportsPanel({
               <div className={`report-history-row${selectedReportId === metadata.id ? " selected" : ""}`} key={metadata.id}>
                 <button className="report-history-item" role="option" aria-selected={selectedReportId === metadata.id} onClick={() => void loadSavedReport(metadata)} disabled={isLoadingReport}>
                   <span className="report-history-status" aria-hidden="true" />
-                  <span className="report-history-copy"><strong>{metadata.quizSetName}</strong><small>{metadata.sessionCode} · Saved report</small></span>
-                  <span className="report-history-meta">Saved</span>
+                  <span className="report-history-copy"><strong>{metadata.quizSetName}</strong><small>{metadata.sessionCode}{" "}{t("· Saved report")}</small></span>
+                  <span className="report-history-meta">{t("Saved")}</span>
                 </button>
-                <button className="report-history-delete" aria-label={`Delete saved report ${metadata.displayName}`} onClick={() => void deleteSavedReport(metadata)} disabled={isDeletingReport}><Trash2 size={15} aria-hidden="true" /></button>
+                <button className="report-history-delete" aria-label={t("Delete saved report {value0}", { value0: metadata.displayName })} onClick={() => void deleteSavedReport(metadata)} disabled={isDeletingReport}><Trash2 size={15} aria-hidden="true" /></button>
               </div>
             ))}
           </div>
-          {endedSessions.length === 0 && reports.length === 0 && <div className="report-empty-state"><strong>No finished games yet</strong><span>Finish a live game and its report will appear here.</span></div>}
-          <div className="report-history-footer"><span>{reports.length}/15 saved reports retained</span><span>Completed game data can be cleared at any time.</span></div>
+          {endedSessions.length === 0 && reports.length === 0 && <div className="report-empty-state"><strong>{t("No finished games yet")}</strong><span>{t("Finish a live game and its report will appear here.")}</span></div>}
+          <div className="report-history-footer"><span>{reports.length}{t("/15 saved reports retained")}</span><span>{t("Completed game data can be cleared at any time.")}</span></div>
         </section>
 
-        <section className="report-detail-card" aria-label="Selected game report">
+        <section className="report-detail-card" aria-label={t("Selected game report")}>
           <div className="report-detail-heading">
             <div>
-              <span className="report-card-kicker">Selected game</span>
+              <span className="report-card-kicker">{t("Selected game")}</span>
               <h3>{selectedQuizTitle}</h3>
-              <p>{code ? `${code} · ${selectedSession ? new Date(selectedSession.endedAt ?? selectedSession.createdAt).toLocaleString() : "Saved report"}` : "Choose a finished game from the history panel."}</p>
+              <p>{code ? t("{value0} · {value1}", { value0: code, value1: selectedSession ? new Date(selectedSession.endedAt ?? selectedSession.createdAt).toLocaleString(locale) : "Saved report" }) : t("Choose a finished game from the history panel.")}</p>
             </div>
             <div className="report-detail-actions">
               <button onClick={() => void load()} disabled={!code || isLoadingReport}>
                 <Download size={17} aria-hidden="true" />
-                {isLoadingReport ? "Loading..." : "Open report"}
+                {isLoadingReport ? t("Loading...") : t("Open report")}
               </button>
               <button onClick={exportCsv} disabled={!code || isExportingCsv}>
                 <Download size={17} aria-hidden="true" />
-                {isExportingCsv ? "Exporting..." : "Export CSV"}
+                {isExportingCsv ? t("Exporting...") : t("Export CSV")}
               </button>
             </div>
           </div>
-          {!report && <div className="report-empty-state report-detail-empty"><strong>Your report will appear here</strong><span>Select a finished game, then open the report to see class accuracy, rewards, and questions to revisit.</span></div>}
+          {!report && <div className="report-empty-state report-detail-empty"><strong>{t("Your report will appear here")}</strong><span>{t("Select a finished game, then open the report to see class accuracy, rewards, and questions to revisit.")}</span></div>}
           {report && (
             <>
               {(() => {
@@ -2022,39 +2007,39 @@ function ReportsPanel({
                 const attemptedStudents = report.rows.filter((row) => row.correctAnswers + row.wrongAnswers > 0).length;
                 return (
                   <div className="report-summary-grid">
-                    <div className="metric"><span>Class accuracy</span><strong>{classAccuracy === null ? "-" : `${classAccuracy}%`}</strong><small>{attemptedStudents} of {report.rows.length} students answered</small></div>
+                    <div className="metric"><span>{t("Class accuracy")}</span><strong>{classAccuracy === null ? "-" : t("{value0}%", { value0: classAccuracy })}</strong><small>{attemptedStudents}{" "}{t("of")}{" "}{report.rows.length}{" "}{t("students answered")}</small></div>
                     {report.session.settings.gameMode === "athletics" ? (
-                      <div className="metric"><span>Finishers</span><strong>{report.rows.filter((row) => row.raceStatus === "finished").length}</strong><small>Students who crossed the tape</small></div>
+                      <div className="metric"><span>{t("Finishers")}</span><strong>{report.rows.filter((row) => row.raceStatus === "finished").length}</strong><small>{t("Students who crossed the tape")}</small></div>
                     ) : (
-                      <div className="metric"><span>Rewards earned</span><strong>{formatRewards(report.rows.reduce((total, row) => total + row.quizMoney, 0))}</strong><small>Rewards from correct answers</small></div>
+                      <div className="metric"><span>{t("Rewards earned")}</span><strong>{formatRewards(report.rows.reduce((total, row) => total + row.quizMoney, 0))}</strong><small>{t("Rewards from correct answers")}</small></div>
                     )}
-                    <div className="metric"><span>Questions to revisit</span><strong>{report.missedQuestions.length}</strong><small>Questions missed by students</small></div>
+                    <div className="metric"><span>{t("Questions to revisit")}</span><strong>{report.missedQuestions.length}</strong><small>{t("Questions missed by students")}</small></div>
                   </div>
                 );
               })()}
               <div className="report-table-wrap">
                 <table className="report-table">
-                  <thead><tr><th>Student</th>{report.session.settings.gameMode === "athletics" ? <><th>Place</th><th>Race time</th><th>Status</th><th>Laps</th><th>Falls</th><th>Checkpoint</th>{reportHasAthleticsModeStats && <><th>Role</th><th>Hits</th><th>Score</th></>}</> : <th>Team</th>}<th>Correct</th><th>Wrong</th><th>Accuracy</th>{report.session.settings.gameMode !== "athletics" && <><th>Rewards</th><th>Score</th></>}</tr></thead>
+                  <thead><tr><th>{t("Student")}</th>{report.session.settings.gameMode === "athletics" ? <><th>{t("Place")}</th><th>{t("Race time")}</th><th>{t("Status")}</th><th>{t("Laps")}</th><th>{t("Falls")}</th><th>{t("Checkpoint")}</th>{reportHasAthleticsModeStats && <><th>{t("Role")}</th><th>{t("Hits")}</th><th>{t("Score")}</th></>}</> : <th>{t("Team")}</th>}<th>{t("Correct")}</th><th>{t("Wrong")}</th><th>{t("Accuracy")}</th>{report.session.settings.gameMode !== "athletics" && <><th>{t("Rewards")}</th><th>{t("Score")}</th></>}</tr></thead>
                   <tbody>
                     {report.rows.map((row) => (
                       <tr key={row.nickname}>
                         <td data-label="Student">{row.nickname}</td>
                         {report.session.settings.gameMode === "athletics" ? <>
-                          <td data-label="Place">{row.racePlace ? `#${row.racePlace}` : "—"}</td>
+                          <td data-label="Place">{row.racePlace ? t("#{value0}", { value0: row.racePlace }) : "—"}</td>
                           <td data-label="Race time">{row.raceTimeMs === undefined ? "—" : formatDuration(row.raceTimeMs / 1000)}</td>
-                          <td data-label="Status">{row.raceStatus === "finished" ? "Finished" : row.raceStatus === "hunter" ? "Hunter" : "DNF"}</td>
+                          <td data-label="Status">{row.raceStatus === "finished" ? t("Finished") : row.raceStatus === "hunter" ? t("Hunter") : t("DNF")}</td>
                           <td data-label="Laps">{row.raceLapsCompleted ?? 0}/{row.raceLapsRequired ?? 1}</td>
                           <td data-label="Falls">{row.raceFalls ?? 0}</td>
                           <td data-label="Checkpoint">{row.raceCheckpoint ?? 0}</td>
                           {reportHasAthleticsModeStats && <>
-                            <td data-label="Role">{row.athleticsRole === "hunter" ? "Hunter" : "Runner"}</td>
+                            <td data-label="Role">{row.athleticsRole === "hunter" ? t("Hunter") : t("Runner")}</td>
                             <td data-label="Hits">{row.athleticsHunterHits ?? "—"}</td>
                             <td data-label="Score">{row.score}</td>
                           </>}
-                        </> : <td data-label="Team">{teamLabel(row.team)}</td>}
+                        </> : <td data-label="Team">{t(teamLabel(row.team))}</td>}
                         <td data-label="Correct">{row.correctAnswers}</td>
                         <td data-label="Wrong">{row.wrongAnswers}</td>
-                        <td data-label="Accuracy">{row.correctAnswers + row.wrongAnswers > 0 ? `${row.accuracy}%` : "-"}</td>
+                        <td data-label="Accuracy">{row.correctAnswers + row.wrongAnswers > 0 ? t("{value0}%", { value0: row.accuracy }) : "-"}</td>
                         {report.session.settings.gameMode !== "athletics" && <>
                           <td data-label="Rewards">{formatRewards(row.quizMoney)}</td>
                           <td data-label="Score">{row.score}</td>
@@ -2065,10 +2050,10 @@ function ReportsPanel({
                 </table>
               </div>
               <section className="report-reteach-section" aria-labelledby="reteach-title">
-                <div className="report-section-heading"><div><span className="report-card-kicker">Next lesson</span><h3 id="reteach-title">Questions to revisit</h3></div><span>{report.missedQuestions.length} item{report.missedQuestions.length === 1 ? "" : "s"}</span></div>
+                <div className="report-section-heading"><div><span className="report-card-kicker">{t("Next lesson")}</span><h3 id="reteach-title">{t("Questions to revisit")}</h3></div><span>{report.missedQuestions.length}{" "}{t("item")}{report.missedQuestions.length === 1 ? "" : "s"}</span></div>
                 <ul className="plain-list">
-                  {report.missedQuestions.map((item) => <li key={item.questionId}><span>{item.prompt}</span><small>{item.misses} misses</small></li>)}
-                  {report.missedQuestions.length === 0 && <li>No questions to revisit yet. This group is ready for the next challenge.</li>}
+                  {report.missedQuestions.map((item) => <li key={item.questionId}><span>{item.prompt}</span><small>{item.misses}{" "}{t("misses")}</small></li>)}
+                  {report.missedQuestions.length === 0 && <li>{t("No questions to revisit yet. This group is ready for the next challenge.")}</li>}
                 </ul>
               </section>
             </>

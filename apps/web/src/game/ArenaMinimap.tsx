@@ -1,3 +1,4 @@
+import { useSiteTranslation } from "../ui/siteTranslation";
 import { useState } from "react";
 import {
   ARENA_PLAYER_EYE_HEIGHT,
@@ -53,6 +54,7 @@ export const ArenaMinimap = ({
   displayedFlagPosition,
   session
 }: ArenaMinimapProps) => {
+  const { t } = useSiteTranslation();
   const [expanded, setExpanded] = useState(false);
   const toMiniMapX = (x: number) => ((x + arenaBounds.limitX) / (arenaBounds.limitX * 2)) * MINIMAP_WIDTH;
   const toMiniMapY = (z: number) => ((z + arenaBounds.limitZ) / (arenaBounds.limitZ * 2)) * MINIMAP_HEIGHT;
@@ -75,12 +77,12 @@ export const ArenaMinimap = ({
     ? getArenaObjectiveGroundY(arenaMapId, displayedFlagPosition, ARENA_PLAYER_EYE_HEIGHT)
     : undefined;
   return (
-    <div className={`arena-minimap${expanded ? " expanded" : ""}`} aria-label={`${arenaMap.title} minimap`}>
-      <button type="button" className="minimap-title" aria-label={expanded ? "Shrink map" : "Expand map"} aria-expanded={expanded} onClick={() => setExpanded(!expanded)}>Map <span aria-hidden="true">{expanded ? "−" : "+"}</span></button>
-      <svg viewBox={`0 0 ${MINIMAP_WIDTH} ${MINIMAP_HEIGHT}`} role="img" aria-label={`${arenaMap.title} route overview`}>
-        <title>{arenaMap.title} route overview</title>
+    <div className={`arena-minimap${expanded ? " expanded" : ""}`} aria-label={t("{value0} minimap", { value0: arenaMap.title })}>
+      <button type="button" className="minimap-title" aria-label={expanded ? t("Shrink map") : t("Expand map")} aria-expanded={expanded} onClick={() => setExpanded(!expanded)}>{t("Map")}{" "}<span aria-hidden="true">{expanded ? "−" : "+"}</span></button>
+      <svg viewBox={`0 0 ${MINIMAP_WIDTH} ${MINIMAP_HEIGHT}`} role="img" aria-label={t("{value0} route overview", { value0: arenaMap.title })}>
+        <title>{arenaMap.title}{" "}{t("route overview")}</title>
         <desc>
-          {`${arenaMap.title} minimap. Team bases, objectives, item locations, delivery zones, and the current player are represented with color and shape instead of visible text labels.`}
+          {t("{value0} minimap. Team bases, objectives, item locations, delivery zones, and the current player are represented with color and shape instead of visible text labels.", { value0: arenaMap.title })}
         </desc>
         <rect x="0" y="0" width={MINIMAP_WIDTH} height={MINIMAP_HEIGHT} rx="5" className={mapClass} />
 
@@ -114,7 +116,7 @@ export const ArenaMinimap = ({
           const groundY = captureGroundY(zone);
           return (
             <g key={zone.id} opacity={objectiveOpacity(groundY)}>
-              <title>{zone.label}</title>
+              <title>{t(zone.label)}</title>
               <circle cx={toMiniMapX(zone.x)} cy={toMiniMapY(zone.z)} r="2.1" className="minimap-capture" />
             </g>
           );
@@ -124,7 +126,7 @@ export const ArenaMinimap = ({
           const groundY = itemGroundY(item);
           return (
             <g key={item.id} opacity={objectiveOpacity(groundY)}>
-              <title>{item.label}</title>
+              <title>{t(item.label)}</title>
               <rect x={toMiniMapX(item.x) - 1.4} y={toMiniMapY(item.z) - 1.4} width="2.8" height="2.8" className="minimap-item" />
             </g>
           );
@@ -135,7 +137,7 @@ export const ArenaMinimap = ({
           const groundY = deliveryGroundY(zone);
           return (
             <g key={`${team}-delivery`} opacity={objectiveOpacity(groundY)}>
-              <title>{`${team === "blue" ? "Blue" : "Red"} delivery zone`}</title>
+              <title>{t("{value0} delivery zone", { value0: team === "blue" ? "Blue" : "Red" })}</title>
               <circle cx={toMiniMapX(zone.x)} cy={toMiniMapY(zone.z)} r="2.8" className={`minimap-${team}-delivery`} />
             </g>
           );
@@ -147,7 +149,7 @@ export const ArenaMinimap = ({
             transform={`translate(${toMiniMapX(displayedFlagPosition.x)} ${toMiniMapY(displayedFlagPosition.z)})`}
             opacity={objectiveOpacity(flagGroundY)}
           >
-            <title>{`Red flag: ${session.flag.state}`}</title>
+            <title>{t("Red flag: {value0}", { value0: session.flag.state })}</title>
             <circle r="3" />
             <path d="M 0 -4 L 0 4 M 0 -4 L 4 -2 L 0 0" />
           </g>

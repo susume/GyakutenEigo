@@ -463,7 +463,7 @@ body[data-theme] .ge-site .student-join-form .linked-join-code :is(span, small) 
 body[data-theme] .ge-site .student-join-form .linked-code-edit { border-color: var(--color-border); background: var(--color-surface); color: var(--color-action); }
 body[data-theme] .ge-site :is(.auth-form-panel, .student-join-form) .error-text { color: var(--color-danger); background: var(--color-danger-surface); }
 
-/* Public language selection also drives the bilingual About page. */
+/* The same language control is available on public, teacher and student screens. */
 body[data-theme] .ge-site .ge-language-picker { display: flex; align-items: center; gap: 6px; color: var(--color-text-muted); }
 body[data-theme] .ge-site .ge-language-picker select {
   width: auto;
@@ -484,6 +484,15 @@ body[data-theme] .ge-site .product-hub-topbar .top-actions { gap: 16px; }
 body[data-theme] .ge-site .product-hub-topbar .top-actions .product-hub-nav-link { padding-inline: 10px; }
 body[data-theme] .ge-site .product-hub-footer a { min-height: 44px; display: inline-flex; align-items: center; color: var(--color-action); text-decoration: none; }
 body[data-theme] .ge-site .product-hub-footer a:hover { text-decoration: underline; }
+html[lang="ja"] .ge-site :is(.public-homepage, .product-hub-homepage, .speaking-app, .auth-layout) :is(h1, h2, h3) {
+  letter-spacing: normal;
+  line-height: 1.4;
+  line-break: strict;
+  text-wrap: balance;
+}
+body[data-theme] .ge-site .student-join-screen-nav .ge-language-picker { margin-left: auto; }
+body[data-theme] .ge-site .speaking-student-topbar .ge-language-picker { margin-left: auto; }
+body[data-theme] .ge-site .game-preferences-panel > .ge-language-picker { justify-content: space-between; margin-bottom: 16px; }
 @media (max-width: 1160px) {
   body[data-theme] .ge-site .product-hub-auth-group .ge-language-picker { grid-column: 1 / -1; justify-content: space-between; }
   body[data-theme] .ge-site .ge-language-picker select { flex: 1; border-color: var(--color-border); }

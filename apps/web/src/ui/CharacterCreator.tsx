@@ -1,3 +1,4 @@
+import { useSiteTranslation } from "./siteTranslation";
 import { useEffect, useRef } from "react";
 import * as THREE from "three";
 import type {
@@ -163,6 +164,7 @@ export function CharacterPreview({
   focusFootwear?: boolean;
   showWeapon?: boolean;
 }) {
+  const { t } = useSiteTranslation();
   const mountRef = useRef<HTMLDivElement>(null);
   const loadRef = useRef(loadDecalAsset);
   loadRef.current = loadDecalAsset;
@@ -398,7 +400,7 @@ export function CharacterPreview({
       ref={mountRef}
       className={`character-preview team-${team}`}
       role="img"
-      aria-label="Live player preview. Drag to rotate and scroll to zoom."
+      aria-label={t("Live player preview. Drag to rotate and scroll to zoom.")}
     />
   );
 }
