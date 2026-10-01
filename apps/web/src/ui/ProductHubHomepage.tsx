@@ -136,7 +136,7 @@ export default function ProductHubHomepage({ onOpenSpeaking, onOpenQuizStrike, o
             );
           })}
         </section>
-        <footer className="product-hub-footer"><span>GyakutenEigo · English classroom tools</span><span>Teachers host. Students join with a code.</span></footer>
+        <footer className="product-hub-footer"><span>GyakutenEigo · English classroom tools</span><a href="/about">About / 講師紹介</a><span>Teachers host. Students join with a code.</span></footer>
       </section>
     </div>
   );

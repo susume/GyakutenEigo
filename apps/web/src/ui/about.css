@@ -1,0 +1,79 @@
+.ge-about-page { min-height: 100vh; background: var(--color-surface-page); color: var(--color-text-strong); }
+.ge-about-shell { width: min(var(--ge-content-width), calc(100% - 48px)); margin-inline: auto; }
+.ge-about-skip { position: fixed; z-index: 50; top: 12px; left: 12px; transform: translateY(-160%); padding: 12px 16px; border-radius: var(--radius-control); background: var(--color-action); color: white; }
+.ge-about-skip:focus { transform: none; }
+.ge-about-page a:focus-visible { outline: 3px solid var(--color-focus); outline-offset: 4px; }
+.ge-about-shell:focus { outline: none; }
+.ge-about-hero { display: grid; grid-template-columns: minmax(0, 1.7fr) minmax(280px, .85fr); align-items: center; gap: clamp(40px, 6vw, 88px); padding-block: 72px 56px; }
+.ge-about-hero h1 { margin: 0 0 28px; font-size: clamp(2.4rem, 4.4vw, 4rem); font-weight: 750; letter-spacing: -.045em; line-height: 1.12; text-wrap: balance; }
+.ge-about-page[lang="ja"] .ge-about-hero h1 { font-size: clamp(2.2rem, 3.5vw, 3.4rem); line-height: 1.45; letter-spacing: -.025em; word-break: normal; }
+.ge-about-lead { max-width: 620px; margin: 0; color: var(--color-text); font-size: 1.15rem; line-height: 1.8; }
+.ge-about-profile { padding: 32px; border: 1px solid var(--color-border); border-radius: var(--radius-panel); background: var(--color-surface); box-shadow: var(--shadow-panel); }
+.ge-about-profile-label { display: flex; align-items: center; gap: 8px; color: var(--color-text-muted); font-size: .8rem; }
+.ge-about-page .ge-about-name { margin: 28px 0 14px; color: var(--color-text-strong); font-size: clamp(3.2rem, 4.4vw, 4.6rem); font-weight: 750; letter-spacing: -.06em; line-height: 1.07; }
+.ge-about-name > span { color: var(--color-action); }
+.ge-about-role { margin: 0 0 24px; color: var(--color-text-muted); font-size: .9rem; }
+.ge-about-experience { display: flex; align-items: center; gap: 12px; padding-top: 20px; border-top: 1px solid var(--color-border); color: var(--ge-speaking); font-size: .9rem; font-weight: 650; line-height: 1.6; }
+.ge-about-experience svg { flex: 0 0 auto; }
+.ge-about-intro { display: grid; grid-template-columns: minmax(0, 1.6fr) minmax(0, 1fr); gap: 48px; align-items: center; margin-bottom: 64px; padding: 36px 40px; border: 1px solid var(--color-border); border-radius: var(--radius-panel); background: var(--color-surface); }
+.ge-about-page p { line-height: 1.8; }
+.ge-about-intro p { margin-bottom: 16px; color: var(--color-text); font-size: 1rem; }
+.ge-about-intro p:last-child { margin-bottom: 0; }
+.ge-about-page blockquote { margin: 24px 0 0; padding: 4px 0 4px 22px; border-left: 3px solid var(--ge-speaking); color: var(--color-text-strong); font-size: 1.45rem; font-weight: 600; letter-spacing: -.02em; line-height: 1.65; }
+.ge-about-intro blockquote { margin: 0; }
+.ge-about-reading-layout { display: grid; grid-template-columns: 255px minmax(0, 1fr); gap: clamp(48px, 7vw, 104px); align-items: start; }
+.ge-about-contents { position: sticky; top: 28px; display: grid; gap: 32px; }
+.ge-about-contents nav > p { margin-bottom: 12px; color: var(--color-text-muted); font-size: .7rem; font-weight: 750; text-transform: uppercase; letter-spacing: .09em; }
+.ge-about-contents nav > a { display: flex; align-items: center; gap: 12px; min-height: 44px; padding: 8px 0; color: var(--color-text); font-size: .85rem; line-height: 1.5; text-decoration: none; }
+.ge-about-contents nav > a span { color: var(--color-action); font-size: .7rem; font-weight: 750; }
+.ge-about-contents nav > a:hover { color: var(--color-action); text-decoration: underline; text-underline-offset: 4px; }
+.ge-about-credentials { padding: 24px; border: 1px solid var(--color-border); border-radius: var(--radius-panel); background: var(--color-surface); }
+.ge-about-credentials > svg { color: var(--color-action); margin-bottom: 12px; }
+.ge-about-credentials h2 { margin-bottom: 16px; font-size: .9rem; line-height: 1.5; }
+.ge-about-credentials ul { display: grid; gap: 14px; margin: 0; padding: 0; list-style: none; }
+.ge-about-credentials li { color: var(--color-text-muted); font-size: .8rem; line-height: 1.6; }
+.ge-about-section { padding-bottom: 48px; margin-bottom: 48px; border-bottom: 1px solid var(--color-border); scroll-margin-top: 24px; }
+.ge-about-section:last-child { padding-bottom: 0; margin-bottom: 0; border: 0; }
+.ge-about-section-label { display: flex; align-items: center; gap: 10px; margin-bottom: 18px; color: var(--color-action); font-size: .75rem; font-weight: 700; letter-spacing: .025em; }
+.ge-about-section h2 { margin: 0 0 24px; font-size: clamp(1.6rem, 2.6vw, 2.1rem); font-weight: 750; letter-spacing: -.035em; line-height: 1.3; text-wrap: balance; }
+.ge-about-section p { max-width: 760px; margin-bottom: 18px; color: var(--color-text); font-size: 1rem; }
+.ge-about-section p:last-child { margin-bottom: 0; }
+.ge-about-lesson-list { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 12px 24px; margin: 28px 0 0; padding: 24px; border: 1px solid var(--color-border); border-radius: var(--radius-panel); background: var(--color-surface); list-style: none; }
+.ge-about-lesson-list li { display: flex; align-items: start; gap: 10px; color: var(--color-text); font-size: .9rem; line-height: 1.65; }
+.ge-about-lesson-list svg { flex: 0 0 auto; margin-top: 3px; color: var(--ge-speaking); }
+.ge-about-closing { margin-block: 64px 32px; padding: 48px; border: 1px solid var(--color-border); border-radius: var(--radius-panel); background: var(--color-surface); text-align: center; }
+.ge-about-closing h2 { margin: 0 0 20px; font-size: clamp(1.8rem, 3vw, 2.5rem); line-height: 1.3; letter-spacing: -.035em; }
+.ge-about-closing p { max-width: 700px; margin: 0 auto 28px; color: var(--color-text); }
+.ge-about-actions { display: flex; flex-wrap: wrap; justify-content: center; gap: 12px; }
+.ge-about-actions a { display: inline-flex; align-items: center; justify-content: center; gap: 12px; min-height: 48px; padding: 12px 18px; border: 1px solid var(--color-border); border-radius: var(--radius-control); background: var(--color-surface); color: var(--color-action); font-size: .9rem; font-weight: 650; text-decoration: none; }
+.ge-about-actions a:hover { background: var(--color-selected); }
+.ge-about-actions .ge-about-primary { border-color: var(--color-action); background: var(--color-action); color: white; }
+.ge-about-actions .ge-about-primary:hover { background: var(--color-action-hover); }
+.ge-about-footer { display: flex; flex-wrap: wrap; justify-content: space-between; gap: 12px; padding-block: 24px 32px; border-top: 1px solid var(--color-border); color: var(--color-text-muted); font-size: .8rem; line-height: 1.6; }
+.ge-about-page[lang="ja"] :is(.ge-about-section h2, .ge-about-closing h2) { line-height: 1.6; }
+.ge-about-page[lang="ja"] :is(.ge-about-section p, .ge-about-intro p) { line-height: 2; }
+@media (max-width: 900px) {
+  .ge-about-hero { grid-template-columns: minmax(0, 1.5fr) minmax(240px, 1fr); gap: 28px; padding-top: 48px; }
+  .ge-about-profile { padding: 24px; }
+  .ge-about-intro { grid-template-columns: 1fr; gap: 28px; padding: 28px; }
+  .ge-about-reading-layout { grid-template-columns: 1fr; gap: 40px; }
+  .ge-about-contents { position: static; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 24px; }
+}
+@media (max-width: 600px) {
+  .ge-about-shell { width: calc(100% - 32px); }
+  .ge-about-hero { grid-template-columns: 1fr; padding-block: 36px 28px; gap: 28px; }
+  .ge-about-hero h1 { font-size: 2.5rem; line-height: 1.16; }
+  .ge-about-page[lang="ja"] .ge-about-hero h1 { font-size: 2.1rem; }
+  .ge-about-lead { font-size: 1rem; }
+  .ge-about-profile { padding: 24px; }
+  .ge-about-page .ge-about-name { font-size: 3.2rem; margin-top: 20px; }
+  .ge-about-intro { margin-bottom: 32px; padding: 24px; }
+  .ge-about-page blockquote { font-size: 1.2rem; padding-left: 16px; }
+  .ge-about-contents { grid-template-columns: 1fr; }
+  .ge-about-contents nav { padding: 20px 24px; border: 1px solid var(--color-border); border-radius: var(--radius-panel); }
+  .ge-about-section { padding-bottom: 32px; margin-bottom: 32px; }
+  .ge-about-lesson-list { grid-template-columns: 1fr; padding: 20px; }
+  .ge-about-closing { margin-top: 40px; padding: 28px 24px; }
+  .ge-about-actions { flex-direction: column; }
+  .ge-about-footer { flex-direction: column; }
+}

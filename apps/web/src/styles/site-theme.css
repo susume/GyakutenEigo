@@ -290,7 +290,7 @@ body[data-theme] .ge-site .workspace .sidebar .sidebar-create-button {
   box-shadow: none;
 }
 
-@media (max-width: 1000px) {
+@media (max-width: 1160px) {
   body[data-theme] .ge-site .product-hub-topbar { gap: 16px; padding: 12px 24px; }
   body[data-theme] .ge-site .product-hub-topbar .nav-menu-toggle {
     display: inline-flex;
@@ -462,3 +462,29 @@ body[data-theme] .ge-site .student-join-form .linked-join-code { border-color: v
 body[data-theme] .ge-site .student-join-form .linked-join-code :is(span, small) { color: var(--color-text); }
 body[data-theme] .ge-site .student-join-form .linked-code-edit { border-color: var(--color-border); background: var(--color-surface); color: var(--color-action); }
 body[data-theme] .ge-site :is(.auth-form-panel, .student-join-form) .error-text { color: var(--color-danger); background: var(--color-danger-surface); }
+
+/* Public language selection also drives the bilingual About page. */
+body[data-theme] .ge-site .ge-language-picker { display: flex; align-items: center; gap: 6px; color: var(--color-text-muted); }
+body[data-theme] .ge-site .ge-language-picker select {
+  width: auto;
+  min-height: 44px;
+  padding: 8px 6px;
+  border: 1px solid transparent;
+  border-radius: var(--radius-control);
+  background: var(--color-surface);
+  color: var(--color-text-strong);
+  font-size: .8rem;
+  font-weight: 650;
+  cursor: pointer;
+}
+body[data-theme] .ge-site .ge-language-picker select:hover { border-color: var(--color-border); }
+body[data-theme] .ge-site .product-hub-auth-group { gap: 8px; }
+body[data-theme] .ge-site .product-hub-nav-group { gap: 2px; }
+body[data-theme] .ge-site .product-hub-topbar .top-actions { gap: 16px; }
+body[data-theme] .ge-site .product-hub-topbar .top-actions .product-hub-nav-link { padding-inline: 10px; }
+body[data-theme] .ge-site .product-hub-footer a { min-height: 44px; display: inline-flex; align-items: center; color: var(--color-action); text-decoration: none; }
+body[data-theme] .ge-site .product-hub-footer a:hover { text-decoration: underline; }
+@media (max-width: 1160px) {
+  body[data-theme] .ge-site .product-hub-auth-group .ge-language-picker { grid-column: 1 / -1; justify-content: space-between; }
+  body[data-theme] .ge-site .ge-language-picker select { flex: 1; border-color: var(--color-border); }
+}

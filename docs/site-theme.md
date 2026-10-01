@@ -13,7 +13,7 @@ warm gold identify products; they do not change the meaning of primary buttons.
   .ge-site` scope keeps the theme stable when legacy CSS loads during navigation.
 - `ProductHubHeader` owns public navigation for the homepage, SpeakCheck,
   QuizStrike, and teacher authentication. Set `active` for the current product.
-  The menu collapses at 1000px; Escape closes it and returns focus to its toggle.
+  The menu collapses at 1160px; Escape closes it and returns focus to its toggle.
 
 ## Design rules
 
@@ -43,3 +43,12 @@ Check direct entry and in-app navigation in both directions when changing styles
 `/speak/join`. Verify desktop and mobile, the menu, active navigation, form labels,
 and invalid code feedback. The local speaking teacher preview can be used at
 `/speak/teacher?teacherPreview=1` without changing a real account.
+
+## About page and language
+
+`/about` uses the shared theme and English/Japanese content in
+`apps/web/src/ui/aboutContent.ts`. The header language selector persists an
+explicit choice under `gyakuteneigo.language`. Without a saved choice, use the
+first supported browser language, falling back to English. The About page and
+public header update immediately; existing product content remains in English.
+The document language and each content region identify their actual language.

@@ -236,7 +236,7 @@ export default function PublicHomepage({
         <span>© {new Date().getFullYear()} GyakutenEigo. Empowering every learner&apos;s voice.</span>
         <nav aria-label="Footer">
           <a href="#performance-flow">How it works</a>
-          <span lang="en">English</span>
+          <a href="/about">About / 講師紹介</a>
         </nav>
       </footer>
     </div>
