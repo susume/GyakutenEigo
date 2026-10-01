@@ -1,56 +1,7 @@
-import { Gamepad2, Menu, ScanLine, Sparkles, UserRound } from "lucide-react";
-import { useState } from "react";
-import GyakutenEigoBrand from "./GyakutenEigoBrand";
-import "./performance-header.css";
+import ProductHubHeader from "./ProductHubHeader";
 
-type PerformanceHeaderProps = {
-  onNavigate: (path: string) => void;
-};
-
-export default function PerformanceHeader({ onNavigate }: PerformanceHeaderProps) {
-  const [menuOpen, setMenuOpen] = useState(false);
-
-  const go = (path: string) => {
-    setMenuOpen(false);
-    onNavigate(path);
-  };
-
-  return (
-    <header className="topbar performance-topbar performance-route-header">
-      <button className="brand-button" type="button" aria-label="GyakutenEigo home" onClick={() => go("/")}>
-        <GyakutenEigoBrand />
-      </button>
-      <nav className="primary-nav" aria-label="Speaking Tasks navigation" onKeyDown={(event) => {
-        if (event.key === "Escape" && menuOpen) {
-          setMenuOpen(false);
-          event.currentTarget.querySelector<HTMLButtonElement>(".nav-menu-toggle")?.focus();
-        }
-      }} onBlur={(event) => {
-        if (!event.currentTarget.contains(event.relatedTarget)) setMenuOpen(false);
-      }}>
-        <button className="nav-menu-toggle" type="button" aria-expanded={menuOpen} aria-controls="performance-actions" onClick={() => setMenuOpen((open) => !open)}>
-          <Menu size={18} aria-hidden="true" />
-          Menu
-        </button>
-        <div id="performance-actions" className="top-actions" data-open={menuOpen ? "true" : "false"}>
-          <button className="performance-nav-link is-active" type="button" onClick={() => go("/speak")}>
-            <Sparkles size={19} aria-hidden="true" />
-            SpeakCheck
-          </button>
-          <button className="performance-nav-link" type="button" onClick={() => go("/speak/join")}>
-            <ScanLine size={19} aria-hidden="true" />
-            Join a task
-          </button>
-          <button className="performance-nav-link" type="button" onClick={() => go("/speak/teacher")}>
-            <UserRound size={19} aria-hidden="true" />
-            Teacher tools
-          </button>
-          <button className="performance-nav-link" type="button" onClick={() => go("/quiz-strike")}>
-            <Gamepad2 size={19} aria-hidden="true" />
-            QuizStrike
-          </button>
-        </div>
-      </nav>
-    </header>
-  );
+export default function PerformanceHeader({ onNavigate }: { onNavigate: (path: string) => void }) {
+  return <ProductHubHeader active="speaking" onNavigate={onNavigate}
+    onLogin={() => onNavigate("/quiz-strike/teacher/home")}
+    onGetStarted={() => onNavigate("/quiz-strike/teacher/home?auth=signup")} />;
 }

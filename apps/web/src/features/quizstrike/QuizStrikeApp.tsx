@@ -159,8 +159,9 @@ export default function App() {
   return (
     <main id="main-content" className="app-shell" tabIndex={-1}>
       <a className={`skip-link skip-link-${mode}`} href={mode === "home" ? "#product-hub-title" : "#main-content"}>Skip to main content</a>
-      {mode === "home" ? (
+      {mode === "home" || (!teacher && (mode === "quizStrike" || mode === "teacher")) ? (
         <ProductHubHeader
+          active={mode === "quizStrike" ? "quiz" : mode === "teacher" ? "teacher" : undefined}
           onNavigate={(path) => navigateTo(path)}
           onLogin={() => { setTeacherAuthMode("login"); navigateTo("/quiz-strike/teacher/home", "teacher"); }}
           onGetStarted={() => { setTeacherAuthMode("signup"); navigateTo("/quiz-strike/teacher/home", "teacher"); }}

@@ -676,10 +676,10 @@ test("the product hub routes visitors to both classroom products", async ({ page
   page.on("pageerror", (error) => pageErrors.push(error.message));
 
   await page.goto("/");
-  await expect(page.getByRole("heading", { name: "Two powerful tools for English classrooms", exact: true })).toBeVisible();
-  await expect(page.getByRole("heading", { name: "SpeakCheck App", exact: true })).toBeVisible();
+  await expect(page.getByRole("heading", { name: "Small steps. Confident English.", exact: true })).toBeVisible();
+  await expect(page.getByRole("heading", { name: "SpeakCheck", exact: true })).toBeVisible();
   await expect(page.getByRole("heading", { name: "QuizStrike", exact: true })).toBeVisible();
-  await expect(page.getByRole("button", { name: "Open SpeakCheck App", exact: true })).toBeVisible();
+  await expect(page.getByRole("button", { name: "Open SpeakCheck", exact: true })).toBeVisible();
   await expect(page.getByRole("button", { name: "Open QuizStrike", exact: true })).toBeVisible();
   expect(await page.locator("img").evaluateAll((images) => images.every((image) => {
     const element = image as HTMLImageElement;
@@ -694,33 +694,34 @@ test("the product hub routes visitors to both classroom products", async ({ page
   await quizArtwork.evaluate(async (image) => { await (image as HTMLImageElement).decode(); });
   await page.evaluate(async () => { await document.fonts.ready; });
   await page.waitForTimeout(1000);
-  for (const name of ["Open SpeakCheck App", "Open QuizStrike"]) {
+  for (const name of ["Open SpeakCheck", "Open QuizStrike"]) {
     const bounds = await page.getByRole("button", { name, exact: true }).boundingBox();
     expect(bounds).toBeTruthy();
-    expect(bounds!.y + bounds!.height).toBeLessThanOrEqual(941);
+    expect(bounds!.height).toBeGreaterThanOrEqual(44);
+    expect(bounds!.x + bounds!.width).toBeLessThanOrEqual(1672);
   }
   await page.screenshot({ path: testInfo.outputPath("product-hub-1672.png"), fullPage: false });
 
   await page.setViewportSize({ width: 1891, height: 900 });
   await page.goto("/");
-  await expect(page.getByRole("heading", { name: "Two powerful tools for English classrooms", exact: true })).toBeVisible();
+  await expect(page.getByRole("heading", { name: "Small steps. Confident English.", exact: true })).toBeVisible();
   const wideHub = await page.evaluate(() => {
     const header = document.querySelector(".product-hub-topbar")?.getBoundingClientRect();
     const shell = document.querySelector(".product-hub-shell")?.getBoundingClientRect();
-    const brandMark = document.querySelector(".product-hub-topbar .performance-brand-mark")?.getBoundingClientRect();
+    const brandMark = document.querySelector(".product-hub-topbar .gyakuteneigo-brand")?.getBoundingClientRect();
     return { headerHeight: header?.height ?? 0, shellLeft: shell?.left ?? 0, shellWidth: shell?.width ?? 0, brandMarkWidth: brandMark?.width ?? 0 };
   });
   expect(wideHub.headerHeight).toBeGreaterThanOrEqual(72);
   expect(wideHub.shellLeft).toBeGreaterThanOrEqual(24);
-  expect(wideHub.shellLeft).toBeLessThanOrEqual(220);
-  expect(wideHub.shellWidth).toBeGreaterThanOrEqual(1400);
-  expect(wideHub.brandMarkWidth).toBeGreaterThanOrEqual(40);
+  expect(wideHub.shellWidth).toBeLessThanOrEqual(1200);
+  expect(wideHub.shellWidth).toBeGreaterThanOrEqual(1100);
+  expect(wideHub.brandMarkWidth).toBeGreaterThanOrEqual(150);
   await expect(page.locator(".product-hub-quiz-art-frame img")).toHaveJSProperty("naturalWidth", 1448);
   await page.screenshot({ path: testInfo.outputPath("product-hub-1891.png"), fullPage: false });
 
-  await page.getByRole("button", { name: "Open SpeakCheck App", exact: true }).click();
+  await page.getByRole("button", { name: "Open SpeakCheck", exact: true }).click();
   await expect(page).toHaveURL(/\/speak$/);
-  await expect(page.getByRole("heading", { name: "SpeakCheck App", exact: true })).toBeVisible();
+  await expect(page.getByRole("heading", { name: "Use the English you’ve learned.", exact: true })).toBeVisible();
 
   await page.goto("/");
   await page.getByRole("button", { name: "Open QuizStrike", exact: true }).click();
@@ -729,7 +730,7 @@ test("the product hub routes visitors to both classroom products", async ({ page
 
   await page.setViewportSize({ width: 390, height: 844 });
   await page.goto("/");
-  await expect(page.getByRole("heading", { name: "Two powerful tools for English classrooms", exact: true })).toBeVisible();
+  await expect(page.getByRole("heading", { name: "Small steps. Confident English.", exact: true })).toBeVisible();
   expect(await page.evaluate(() => document.documentElement.scrollWidth)).toBeLessThanOrEqual(390);
   await page.screenshot({ path: testInfo.outputPath("product-hub-390.png"), fullPage: true });
   expect(consoleErrors).toEqual([]);

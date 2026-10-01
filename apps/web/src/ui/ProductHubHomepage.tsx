@@ -59,16 +59,9 @@ export default function ProductHubHomepage({ onOpenSpeaking, onOpenQuizStrike, o
     <div className="product-hub-home">
       <section className="product-hub-shell" aria-labelledby="product-hub-title">
         <section className="product-hub-intro">
-          <span className="product-hub-scribble product-hub-scribble-left" aria-hidden="true">
-            <span>Better English</span>
-            <span>Brighter futures</span>
-            <i />
-          </span>
-          <h1 id="product-hub-title" tabIndex={-1}>Two powerful tools for English classrooms</h1>
+          <span className="ge-eyebrow">GyakutenEigo · Classroom tools</span>
+          <h1 id="product-hub-title" tabIndex={-1}>Small steps.<br />Confident English.</h1>
           <p>More speaking. More participation. One teacher workspace.</p>
-          <span className="product-hub-scribble product-hub-scribble-right" aria-hidden="true">
-            Small steps Big voices
-          </span>
         </section>
 
         <ClassroomCodeEntry onJoin={(product, code) => onNavigate(product === "speaking" ? `/speak/join/${code}` : `/join?code=${code}`)} />
@@ -76,7 +69,7 @@ export default function ProductHubHomepage({ onOpenSpeaking, onOpenQuizStrike, o
         <section className="product-hub-products" aria-label="GyakutenEigo products">
           <article className="product-hub-card product-hub-speaking-card">
             <p className="product-hub-card-label">Speaking assessment</p>
-            <h2>SpeakCheck App</h2>
+            <h2>SpeakCheck</h2>
             <p className="product-hub-card-description">Create speaking tasks, practise with an AI partner, and review each student’s evidence.</p>
             <div className="product-hub-speaking-flow" aria-label="SpeakCheck App steps">
               {speakingSteps.map((step, index) => (
@@ -99,7 +92,7 @@ export default function ProductHubHomepage({ onOpenSpeaking, onOpenQuizStrike, o
             </div>
             <button className="product-hub-card-button product-hub-speaking-button" type="button" onClick={onOpenSpeaking}>
               <BookOpenText size={21} aria-hidden="true" />
-              <span>Open SpeakCheck App</span>
+              <span>Open SpeakCheck</span>
               <ArrowRight size={22} aria-hidden="true" />
             </button>
           </article>

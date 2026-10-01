@@ -1,0 +1,464 @@
+/* GyakutenEigo's shared theme. The explicit site scope wins over lazy-loaded
+   legacy page styles, independently of which product was visited first.
+   Game/HUD colours remain in --qs-*; the aliases below apply only to web pages. */
+body[data-theme="gyakuteneigo"] {
+  background: var(--color-surface-page);
+  color: var(--color-text-strong);
+  font-family: var(--font-sans);
+}
+
+body[data-theme] .ge-site {
+  min-height: 100vh;
+  font-family: var(--font-sans);
+}
+
+body[data-theme] .ge-site .app-shell:has(.quizstrike-auth-layout, .competition-hub-page, .competition-detail-page, .workspace) {
+  background: var(--color-surface-page);
+}
+
+body[data-theme] .ge-site :is(.product-hub-home, .speaking-app, .quizstrike-page, .competition-hub-page, .competition-detail-page,
+  .quizstrike-auth-layout, .student-join-screen, .workspace) {
+  --hub-blue: var(--color-action);
+  --hub-blue-dark: var(--color-action-hover);
+  --hub-navy: var(--color-text-strong);
+  --hub-muted: var(--color-text-muted);
+  --hub-border: var(--color-border);
+  --speaking-blue: var(--color-action);
+  --speaking-blue-bright: var(--color-action);
+  --speaking-navy: var(--color-text-strong);
+  --speaking-muted: var(--color-text-muted);
+  --speaking-line: var(--color-border);
+  --speaking-cloud: var(--color-surface-subtle);
+  --speaking-shadow: var(--shadow-panel);
+  background: var(--color-surface-page);
+  color: var(--color-text-strong);
+  font-family: var(--font-sans);
+}
+
+body[data-theme] .ge-site :is(.quizstrike-page, .competition-hub-page, .competition-detail-page, .quizstrike-auth-layout, .student-join-screen) {
+  --qs-ink: var(--color-text-strong);
+  --qs-muted: var(--color-text-muted);
+  --qs-page: var(--color-surface-page);
+  --qs-panel: var(--color-surface);
+  --qs-panel-strong: var(--color-surface-subtle);
+  --qs-border: var(--color-border);
+  --qs-blue: var(--color-action);
+  --qs-blue-strong: var(--color-action-hover);
+}
+
+body[data-theme] .ge-site :is(.product-hub-home, .speaking-app, .quizstrike-page, .competition-hub-page, .competition-detail-page,
+  .quizstrike-auth-layout, .student-join-screen, .workspace) :is(h1, h2, h3) {
+  letter-spacing: -0.035em;
+  line-height: 1.15;
+  font-weight: 750;
+  text-shadow: none;
+}
+
+/* One public header, with one mobile breakpoint and one active state. */
+body[data-theme] .ge-site .product-hub-topbar {
+  position: relative;
+  z-index: var(--z-navigation);
+  display: flex;
+  flex-direction: row;
+  align-items: center;
+  justify-content: space-between;
+  gap: 36px;
+  min-height: 80px;
+  height: auto;
+  padding: 12px max(24px, calc((100vw - var(--ge-content-width)) / 2));
+  border-bottom: 1px solid var(--color-border);
+  background: var(--color-surface);
+  color: var(--color-text-strong);
+  box-shadow: none;
+}
+
+body[data-theme] .ge-site .product-hub-topbar .brand-button {
+  flex: 0 0 auto;
+  min-width: 0;
+  min-height: 44px;
+  padding: 0;
+  border: 0;
+  background: transparent;
+}
+body[data-theme] .ge-site .product-hub-topbar .gyakuteneigo-brand { width: 172px; }
+body[data-theme] .ge-site .product-hub-topbar .primary-nav {
+  position: relative;
+  display: flex;
+  flex-direction: row;
+  justify-content: flex-end;
+  width: auto;
+  flex: 1;
+}
+body[data-theme] .ge-site .product-hub-topbar .top-actions {
+  position: static;
+  display: flex;
+  flex-direction: row;
+  align-items: center;
+  justify-content: space-between;
+  gap: 24px;
+  width: 100%;
+  min-width: 0;
+  padding: 0;
+  border: 0;
+  background: transparent;
+  box-shadow: none;
+}
+body[data-theme] .ge-site .product-hub-nav-group { gap: 6px; margin: 0 auto; }
+body[data-theme] .ge-site .product-hub-auth-group { gap: 10px; }
+body[data-theme] .ge-site .product-hub-topbar .top-actions button {
+  min-height: 44px;
+  width: auto;
+  padding: 0 12px;
+  border: 1px solid transparent;
+  border-radius: var(--radius-control);
+  background: transparent;
+  color: var(--color-text);
+  font-size: .875rem;
+  font-weight: 650;
+  text-transform: none;
+  letter-spacing: 0;
+  box-shadow: none;
+}
+body[data-theme] .ge-site .product-hub-topbar .top-actions button:is(:hover, [aria-current="page"]) {
+  background: var(--color-selected);
+  color: var(--color-action);
+}
+body[data-theme] .ge-site .product-hub-topbar .product-hub-login {
+  min-width: 80px;
+  border-color: var(--color-border) !important;
+  background: var(--color-surface) !important;
+  color: var(--color-text-strong) !important;
+}
+body[data-theme] .ge-site .product-hub-topbar .product-hub-get-started {
+  min-width: 120px;
+  border-color: var(--color-action) !important;
+  background: var(--color-action) !important;
+  color: white !important;
+}
+body[data-theme] .ge-site .product-hub-topbar .product-hub-get-started:hover {
+  background: var(--color-action-hover) !important;
+}
+body[data-theme] .ge-site .product-hub-topbar .nav-menu-toggle { display: none; }
+
+/* Public homepage: a quieter canvas, stronger hierarchy, and paired products. */
+body[data-theme] .ge-site .product-hub-home { padding: 64px 0 28px; }
+body[data-theme] .ge-site .product-hub-shell { width: min(var(--ge-content-width), calc(100% - 48px)); }
+body[data-theme] .ge-site .product-hub-intro { margin-bottom: 40px; }
+body[data-theme] .ge-site .ge-eyebrow {
+  display: block;
+  margin-bottom: 16px;
+  color: var(--color-action);
+  font-size: .75rem;
+  font-weight: 750;
+  letter-spacing: .12em;
+  text-transform: uppercase;
+}
+body[data-theme] .ge-site .product-hub-intro h1 {
+  max-width: 800px;
+  margin: 0 auto 20px;
+  color: var(--color-text-strong);
+  font-size: clamp(2.5rem, 4.7vw, 4.25rem);
+  line-height: 1.07;
+  font-weight: 750;
+}
+body[data-theme] .ge-site .product-hub-intro > p { color: var(--color-text-muted); font-size: 1.05rem; }
+body[data-theme] .ge-site :is(.product-hub-card, .hub-classroom-entry, .product-hub-benefit-card) {
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius-panel);
+  background: var(--color-surface);
+  box-shadow: var(--shadow-panel);
+}
+body[data-theme] .ge-site .hub-classroom-entry { padding: 24px 28px; margin-bottom: 28px; }
+body[data-theme] .ge-site .hub-classroom-entry h2 { font-size: 1.35rem; }
+body[data-theme] .ge-site .product-hub-products { gap: 24px; }
+body[data-theme] .ge-site .product-hub-card { padding: 28px; }
+body[data-theme] .ge-site .product-hub-card h2 { color: var(--color-text-strong); font-size: 2rem; }
+body[data-theme] .ge-site .product-hub-card-label {
+  color: var(--ge-speaking);
+  font-size: .7rem;
+  font-weight: 750;
+  letter-spacing: .1em;
+}
+body[data-theme] .ge-site .product-hub-quizstrike-card .product-hub-card-label { color: var(--ge-quiz); }
+body[data-theme] .ge-site .product-hub-card-description { color: var(--color-text-muted); font-size: .95rem; }
+body[data-theme] .ge-site :is(.hub-code-submit, .product-hub-card-button) {
+  min-height: 48px;
+  border: 1px solid var(--color-action);
+  border-radius: var(--radius-control);
+  background: var(--color-action);
+  color: white;
+  font-size: .9rem;
+  font-weight: 650;
+  box-shadow: none;
+}
+body[data-theme] .ge-site :is(.hub-code-submit, .product-hub-card-button):hover { background: var(--color-action-hover); }
+body[data-theme] .ge-site .hub-product-choice input:checked + span {
+  border-color: var(--color-action);
+  background: var(--color-selected);
+  color: var(--color-action);
+}
+body[data-theme] .ge-site .product-hub-flow-number { background: var(--ge-speaking-soft); color: var(--ge-speaking); }
+body[data-theme] .ge-site .product-hub-quiz-title-row > svg { width: 38px; color: var(--ge-quiz); }
+body[data-theme] .ge-site .product-hub-benefits { gap: 16px; margin-top: 24px; }
+body[data-theme] .ge-site .product-hub-benefit-card { padding: 20px; box-shadow: none; }
+body[data-theme] .ge-site .product-hub-benefit-card strong { color: var(--color-text-strong); font-size: .9rem; }
+body[data-theme] .ge-site .product-hub-footer { margin-top: 32px; border-top: 1px solid var(--color-border); padding-top: 20px; color: var(--color-text-muted); }
+
+/* Sign-in and joining use the same surface and control vocabulary. */
+body[data-theme] .ge-site :is(.auth-form-panel, .student-join-form, .speaking-join-card,
+  .speaking-prep-card, .speaking-empty-card, .speaking-student-info-card, .speaking-evaluation-card) {
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius-panel);
+  background: var(--color-surface);
+  color: var(--color-text-strong);
+  box-shadow: var(--shadow-panel);
+}
+body[data-theme] .ge-site :is(.auth-form-heading h1, .student-join-help h1, .student-join-form h2) {
+  color: var(--color-text-strong);
+  font-size: clamp(2rem, 3.5vw, 3rem);
+  line-height: 1.15;
+}
+body[data-theme] .ge-site :is(.auth-form-panel, .student-join-screen) :is(p, small, label) { color: var(--color-text-muted); }
+body[data-theme] .ge-site :is(.auth-form-panel, .student-join-form) input {
+  border-color: var(--color-border-strong);
+  background: var(--color-surface);
+  color: var(--color-text-strong);
+}
+body[data-theme] .ge-site :is(.auth-form-panel, .student-join-form) input::placeholder { color: var(--color-text-muted); }
+body[data-theme] .ge-site .auth-form-panel :is(.password-toggle, .server-wake-status) {
+  border-color: var(--color-border);
+  background: var(--color-surface-subtle);
+  color: var(--color-text);
+}
+body[data-theme] .ge-site .auth-form-panel .server-wake-status :is(strong, small) { color: var(--color-text); }
+body[data-theme] .ge-site .auth-form-panel .text-button { color: var(--color-action); }
+body[data-theme] .ge-site .auth-form-panel .auth-kicker { color: var(--color-action); }
+body[data-theme] .ge-site :is(.quizstrike-auth-layout, .student-join-screen, .quizstrike-page, .workspace) button.primary,
+body[data-theme] .ge-site .speaking-app button.speaking-primary-button {
+  border-color: var(--color-action);
+  border-radius: var(--radius-control);
+  background: var(--color-action);
+  color: white;
+  box-shadow: none;
+}
+body[data-theme] .ge-site :is(.quizstrike-auth-layout, .student-join-screen, .quizstrike-page, .workspace) button.primary:hover,
+body[data-theme] .ge-site .speaking-app button.speaking-primary-button:hover { background: var(--color-action-hover); }
+body[data-theme] .ge-site .auth-visual { border-color: var(--color-border); box-shadow: var(--shadow-panel); }
+body[data-theme] .ge-site .auth-visual-title { line-height: 1.06; }
+
+/* Speaking landing, setup, and results. */
+body[data-theme] .ge-site :is(.performance-home, .performance-shell, .speaking-page-shell,
+  .speaking-home-page, .speaking-welcome, .speaking-join-page, .speaking-result-page) { background: var(--color-surface-page); }
+body[data-theme] .ge-site .speaking-topbar {
+  min-height: 80px;
+  border-bottom: 1px solid var(--color-border);
+  background: var(--color-surface);
+  box-shadow: none;
+}
+body[data-theme] .ge-site .speaking-app :is(.speaking-eyebrow, .speaking-card-kicker) { color: var(--color-action); }
+body[data-theme] .ge-site .speaking-app :is(.speaking-join-card h1, .speaking-preactivity-copy h1, .speaking-result-hero h1) { color: var(--color-text-strong); }
+body[data-theme] .ge-site .speaking-app :is(input, textarea, select):focus-visible,
+body[data-theme] .ge-site :is(.hub-classroom-entry, .auth-form-panel, .student-join-form) input:focus-visible {
+  border-color: var(--color-focus);
+  outline: 2px solid var(--color-focus);
+  outline-offset: 3px;
+  box-shadow: none;
+}
+
+/* Teacher workspace: retain the working layout, share the theme. */
+body[data-theme] .ge-site .app-shell:has(.workspace) > .product-hub-topbar { display: none; }
+body[data-theme] .ge-site .workspace :is(.dashboard-brand-row, .sidebar, .teacher-page-topbar) {
+  border-color: var(--color-border);
+  background: var(--color-surface);
+  box-shadow: none;
+}
+body[data-theme] .ge-site .workspace .main-panel { background: var(--color-surface-page); }
+body[data-theme] .ge-site .workspace :is(.panel, .metric, .teacher-action-card, .study-set-card) {
+  border-color: var(--color-border);
+  border-radius: var(--radius-panel);
+  box-shadow: var(--shadow-panel);
+}
+body[data-theme] .ge-site .workspace .sidebar button.active {
+  border-color: var(--color-border);
+  background: var(--color-selected);
+  color: var(--color-action);
+}
+body[data-theme] .ge-site .workspace .sidebar .sidebar-create-button {
+  border-color: var(--color-action);
+  background: var(--color-action);
+  color: white;
+  box-shadow: none;
+}
+
+@media (max-width: 1000px) {
+  body[data-theme] .ge-site .product-hub-topbar { gap: 16px; padding: 12px 24px; }
+  body[data-theme] .ge-site .product-hub-topbar .nav-menu-toggle {
+    display: inline-flex;
+    min-height: 44px;
+    border: 1px solid var(--color-border);
+    background: var(--color-surface);
+    color: var(--color-text-strong);
+  }
+  body[data-theme] .ge-site .product-hub-topbar .top-actions {
+    position: absolute;
+    top: calc(100% + 16px);
+    right: 0;
+    display: none;
+    width: min(320px, calc(100vw - 48px));
+    padding: 12px;
+    border: 1px solid var(--color-border);
+    border-radius: var(--radius-panel);
+    background: var(--color-surface);
+    box-shadow: var(--shadow-floating);
+  }
+  body[data-theme] .ge-site .product-hub-topbar .top-actions[data-open="true"] { display: grid; gap: 12px; }
+  body[data-theme] .ge-site :is(.product-hub-nav-group, .product-hub-auth-group) { display: grid; margin: 0; width: 100%; }
+  body[data-theme] .ge-site .product-hub-auth-group { grid-template-columns: 1fr 1fr; padding-top: 12px; border-top: 1px solid var(--color-border); }
+  body[data-theme] .ge-site .product-hub-topbar .product-hub-nav-link { width: 100%; justify-content: flex-start; }
+}
+@media (max-width: 600px) {
+  body[data-theme] .ge-site .product-hub-topbar { min-height: 72px; padding: 10px 16px; }
+  body[data-theme] .ge-site .product-hub-topbar .gyakuteneigo-brand { width: 152px; }
+  body[data-theme] .ge-site .product-hub-home { padding-top: 36px; }
+  body[data-theme] .ge-site .product-hub-shell { width: calc(100% - 32px); }
+  body[data-theme] .ge-site .product-hub-intro { margin-bottom: 28px; }
+  body[data-theme] .ge-site .product-hub-intro h1 { font-size: 2.6rem; }
+  body[data-theme] .ge-site :is(.hub-classroom-entry, .product-hub-card) { padding: 20px; }
+  body[data-theme] .ge-site .product-hub-card h2 { font-size: 1.75rem; }
+  body[data-theme] .ge-site .product-hub-products { gap: 20px; }
+}
+@media (prefers-reduced-motion: reduce) {
+  body[data-theme] .ge-site *, body[data-theme] .ge-site *::before, body[data-theme] .ge-site *::after {
+    transition-duration: .01ms !important;
+    animation-duration: .01ms !important;
+    animation-iteration-count: 1 !important;
+    scroll-behavior: auto !important;
+  }
+}
+
+/* Product landing pages use the same canvas and components as the hub. */
+body[data-theme] .ge-site .performance-home {
+  --performance-blue: var(--color-action);
+  --performance-blue-dark: var(--color-action-hover);
+  --performance-navy: var(--color-text-strong);
+  --performance-muted: var(--color-text-muted);
+  --performance-border: var(--color-border);
+}
+body[data-theme] .ge-site .performance-hero-copy { min-width: 0; }
+body[data-theme] .ge-site .performance-hero-actions { flex-wrap: wrap; gap: 12px; }
+body[data-theme] .ge-site .performance-hero-actions .performance-button { width: auto; min-width: 0; max-width: 100%; }
+body[data-theme] .ge-site .performance-flow { border-color: var(--color-border); box-shadow: var(--shadow-panel); }
+body[data-theme] .ge-site .performance-flow-heading > span { display: none; }
+body[data-theme] .ge-site .performance-flow-heading h2 { color: var(--color-text-strong); }
+body[data-theme] .ge-site .performance-flow-stage-copy strong { color: var(--color-text-strong); font-weight: 650; }
+body[data-theme] .ge-site .performance-flow-number { color: var(--ge-speaking); background: var(--ge-speaking-soft); }
+body[data-theme] .ge-site :is(.performance-orb, .performance-scribble),
+body[data-theme] .ge-site .performance-home::before,
+body[data-theme] .ge-site .performance-home::after,
+body[data-theme] .ge-site :is(.competition-hub-page, .competition-detail-page)::before { display: none; }
+body[data-theme] .ge-site .performance-shell { width: min(var(--ge-content-width), calc(100% - 48px)); }
+body[data-theme] .ge-site :is(.performance-entry-card, .performance-benefit-card, .performance-flow-card) {
+  border-color: var(--color-border);
+  border-radius: var(--radius-panel);
+  background: var(--color-surface);
+  box-shadow: var(--shadow-panel);
+}
+body[data-theme] .ge-site :is(.performance-button-primary, .performance-entry-action-teacher, .performance-entry-action-student) {
+  border-color: var(--color-action);
+  background: var(--color-action);
+  color: white;
+  box-shadow: none;
+  border-radius: var(--radius-control);
+}
+body[data-theme] .ge-site :is(.performance-button-primary, .performance-entry-action-teacher, .performance-entry-action-student):hover { background: var(--color-action-hover); }
+body[data-theme] .ge-site .quiz-classroom-entry {
+  padding-inline: max(24px, calc((100vw - var(--ge-content-width)) / 2));
+  border-color: var(--color-border);
+  background: var(--color-surface);
+}
+body[data-theme] .ge-site .quiz-classroom-entry :is(h2, .auth-kicker) { color: var(--color-text-strong); }
+body[data-theme] .ge-site .quiz-classroom-entry p { color: var(--color-text-muted); }
+body[data-theme] .ge-site .quiz-classroom-entry .auth-kicker { color: var(--color-action); }
+body[data-theme] .ge-site .quiz-classroom-actions button {
+  border-color: var(--color-border);
+  background: var(--color-surface);
+  color: var(--color-text-strong);
+}
+body[data-theme] .ge-site :is(.quiz-classroom-actions, .competition-hub-page, .competition-detail-page) button.primary {
+  border-color: var(--color-action);
+  background: var(--color-action);
+  color: white;
+  font-weight: 650;
+  box-shadow: none;
+}
+body[data-theme] .ge-site :is(.quiz-classroom-actions, .competition-hub-page, .competition-detail-page) button.primary:hover { background: var(--color-action-hover); }
+body[data-theme] .ge-site :is(.competition-hub-hero, .competition-hub-content) { width: min(var(--ge-content-width), calc(100% - 48px)); }
+body[data-theme] .ge-site .competition-hub-hero { min-height: 560px; padding-block: 56px; }
+body[data-theme] .ge-site .competition-hub-hero h1 {
+  color: var(--color-text-strong);
+  font-size: clamp(2.6rem, 4.5vw, 4rem);
+  line-height: 1.1;
+  font-weight: 750;
+}
+body[data-theme] .ge-site .competition-hub-hero-copy > p { color: var(--color-text-muted); font-size: 1rem; }
+body[data-theme] .ge-site .competition-hub-kicker { color: var(--ge-quiz); }
+body[data-theme] .ge-site .competition-hub-hero-art {
+  transform: none;
+  border-color: var(--color-border);
+  border-radius: var(--radius-panel);
+  box-shadow: var(--shadow-panel);
+}
+body[data-theme] .ge-site :is(.competition-hub-page, .competition-detail-page) :is(.secondary-button, .hero-rules-link) {
+  border-color: var(--color-border);
+  background: var(--color-surface);
+  color: var(--color-action);
+  font-weight: 650;
+}
+body[data-theme] .ge-site :is(.competition-hub-page, .competition-detail-page) :is(.secondary-button, .hero-rules-link):hover { background: var(--color-selected); }
+body[data-theme] .ge-site :is(.competition-filter-bar, .competition-card, .competition-loading, .empty-browser,
+  .featured-competition-card, .competition-guidance-grid article, .competition-overview-grid > article,
+  .competition-detail-tabs, .competition-study-panel, .competition-bracket-panel) {
+  border-color: var(--color-border);
+  border-radius: var(--radius-panel);
+  background: var(--color-surface);
+  box-shadow: var(--shadow-panel);
+  color: var(--color-text);
+}
+body[data-theme] .ge-site :is(.competition-hub-page, .competition-detail-page) :is(.section-heading h2,
+  .featured-copy h3, .competition-card h3, .competition-guidance-grid h3, .empty-browser strong,
+  .competition-detail-hero-copy h1, .competition-overview-grid h3) { color: var(--color-text-strong); }
+body[data-theme] .ge-site :is(.featured-copy, .competition-card-body, .competition-guidance-grid,
+  .competition-detail-hero-copy) p { color: var(--color-text-muted); }
+body[data-theme] .ge-site .competition-filter-bar select { background: var(--color-surface); border-color: var(--color-border-strong); color: var(--color-text-strong); }
+body[data-theme] .ge-site :is(.competition-proof-row, .competition-card-topline, .featured-details, .detail-hero-meta) { color: var(--color-text-muted); }
+body[data-theme] .ge-site .competition-proof-row svg { color: var(--color-success); }
+body[data-theme] .ge-site .competition-status-chip { color: var(--color-success); background: var(--color-success-surface); }
+body[data-theme] .ge-site .competition-notice.error { color: var(--color-danger); background: var(--color-danger-surface); }
+body[data-theme] .ge-site .competition-detail-tabs button { color: var(--color-text); background: var(--color-surface); }
+body[data-theme] .ge-site .competition-detail-tabs button.active { color: var(--color-action); background: var(--color-selected); }
+@media (max-width: 700px) {
+  body[data-theme] .ge-site :is(.performance-shell, .competition-hub-hero, .competition-hub-content) { width: calc(100% - 32px); }
+  body[data-theme] .ge-site .competition-hub-hero { min-height: auto; padding-block: 32px; }
+  body[data-theme] .ge-site .quiz-classroom-entry { padding-inline: 16px; }
+}
+
+/* Standalone QuizStrike join screen still loads only the small join bundle. */
+body[data-theme] .ge-site .quizstrike-join-page { min-height: 100vh; background: var(--color-surface-page); color: var(--color-text-strong); }
+body[data-theme] .ge-site .student-join-screen-nav {
+  max-width: none;
+  min-height: 80px;
+  padding: 12px max(24px, calc((100vw - var(--ge-content-width)) / 2));
+  border-bottom: 1px solid var(--color-border);
+  background: var(--color-surface);
+}
+body[data-theme] .ge-site .student-join-screen-nav a { color: var(--color-action); }
+body[data-theme] .ge-site .student-join-form :is(h1, .join-field-label) { color: var(--color-text-strong); }
+body[data-theme] .ge-site .student-join-form h1 { font-size: clamp(2rem, 3.5vw, 3rem); }
+body[data-theme] .ge-site .student-join-form .auth-kicker { color: var(--color-action); }
+body[data-theme] .ge-site .student-join-help .controls-card { background: var(--color-surface); border-color: var(--color-border); box-shadow: var(--shadow-panel); }
+body[data-theme] .ge-site .student-join-help :is(h2, .student-control) { color: var(--color-text-strong); }
+body[data-theme] .ge-site .student-join-help :is(kbd, .student-control kbd) { border-color: var(--color-border); background: var(--color-surface-subtle); color: var(--color-text); }
+body[data-theme] .ge-site .student-join-form .linked-join-code { border-color: var(--color-border); background: var(--color-selected); color: var(--color-text-strong); }
+body[data-theme] .ge-site .student-join-form .linked-join-code :is(span, small) { color: var(--color-text); }
+body[data-theme] .ge-site .student-join-form .linked-code-edit { border-color: var(--color-border); background: var(--color-surface); color: var(--color-action); }
+body[data-theme] .ge-site :is(.auth-form-panel, .student-join-form) .error-text { color: var(--color-danger); background: var(--color-danger-surface); }

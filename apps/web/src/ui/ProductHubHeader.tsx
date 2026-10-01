@@ -1,14 +1,16 @@
 import { Gamepad2, Menu, Mic, UserRound } from "lucide-react";
 import { useState } from "react";
 import GyakutenEigoBrand from "./GyakutenEigoBrand";
+import "./product-hub.css";
 
 type ProductHubHeaderProps = {
   onNavigate: (path: string) => void;
   onLogin: () => void;
   onGetStarted: () => void;
+  active?: "speaking" | "quiz" | "teacher";
 };
 
-export default function ProductHubHeader({ onNavigate, onLogin, onGetStarted }: ProductHubHeaderProps) {
+export default function ProductHubHeader({ onNavigate, onLogin, onGetStarted, active }: ProductHubHeaderProps) {
   const [menuOpen, setMenuOpen] = useState(false);
 
   const go = (path: string) => {
@@ -41,22 +43,22 @@ export default function ProductHubHeader({ onNavigate, onLogin, onGetStarted }: 
         </button>
         <div id="product-hub-actions" className="top-actions" data-open={menuOpen ? "true" : "false"}>
           <div className="product-hub-nav-group">
-            <button className="product-hub-nav-link" type="button" onClick={() => go("/speak")}>
+            <button className="product-hub-nav-link" aria-current={active === "speaking" ? "page" : undefined} type="button" onClick={() => go("/speak")}>
               <Mic size={18} aria-hidden="true" />
-              SpeakCheck App
+              SpeakCheck
             </button>
-            <button className="product-hub-nav-link" type="button" onClick={() => go("/quiz-strike")}>
+            <button className="product-hub-nav-link" aria-current={active === "quiz" ? "page" : undefined} type="button" onClick={() => go("/quiz-strike")}>
               <Gamepad2 size={18} aria-hidden="true" />
               QuizStrike
             </button>
-            <button className="product-hub-nav-link" type="button" onClick={onLogin}>
+            <button className="product-hub-nav-link" aria-current={active === "teacher" ? "page" : undefined} type="button" onClick={() => { setMenuOpen(false); onLogin(); }}>
               <UserRound size={18} aria-hidden="true" />
               Teacher tools
             </button>
           </div>
           <div className="product-hub-auth-group">
-            <button className="product-hub-login" type="button" onClick={onLogin}>Log in</button>
-            <button className="product-hub-get-started" type="button" onClick={onGetStarted}>Get started</button>
+            <button className="product-hub-login" type="button" onClick={() => { setMenuOpen(false); onLogin(); }}>Log in</button>
+            <button className="product-hub-get-started" type="button" onClick={() => { setMenuOpen(false); onGetStarted(); }}>Get started</button>
           </div>
         </div>
       </nav>
