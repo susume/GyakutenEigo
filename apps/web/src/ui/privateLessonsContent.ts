@@ -1,6 +1,6 @@
 import type { SiteLanguage } from "./siteLanguage";
 
-export const privateLessonDetails = { price: 4000, minutes: 60, email: "hungbo82@gmail.com" } as const;
+export const privateLessonDetails = { price: 4000, minutes: 60, email: "contact@gyakuteneigo.com" } as const;
 
 type LessonFocus = { id: string; title: string; description: string };
 type LessonContent = {
