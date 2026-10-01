@@ -5,7 +5,7 @@ type AboutContent = {
   pageTitle: string; eyebrow: string; title: string; introduction: string; location: string;
   experience: string; teacher: string; navigation: string; skip: string; qualifications: string;
   introParagraphs: string[]; introQuote: string; sections: AboutSection[];
-  closingTitle: string; closingParagraphs: string[]; tools: string; speaking: string; footer: string;
+  closingTitle: string; closingParagraphs: string[]; privateLessons: string; tools: string; speaking: string; footer: string;
 };
 
 export const aboutContent: Record<SiteLanguage, AboutContent> = {
@@ -52,7 +52,7 @@ export const aboutContent: Record<SiteLanguage, AboutContent> = {
     ],
     closingTitle: "Let’s learn English together.",
     closingParagraphs: ["Whether you are a beginner taking your first steps, a student preparing for an important examination, or someone who simply wants to become a more confident English speaker, I would be happy to help."],
-    tools: "Explore classroom tools", speaking: "Discover SpeakCheck", footer: "English knowledge. Real communication."
+    privateLessons: "Explore private lessons", tools: "Explore classroom tools", speaking: "Discover SpeakCheck", footer: "English knowledge. Real communication."
   },
   ja: {
     pageTitle: "講師紹介 · Peter Hoang · GyakutenEigo",
@@ -98,7 +98,7 @@ export const aboutContent: Record<SiteLanguage, AboutContent> = {
     ],
     closingTitle: "一緒に英語を学びませんか？",
     closingParagraphs: ["英語の第一歩を踏み出す初心者の方、大切な試験に向けて準備する生徒さん、もっと自信を持って英語を話したい方。一人ひとりの目標に合わせて、喜んでお手伝いします。"],
-    tools: "学習ツールを見る", speaking: "SpeakCheckについて", footer: "英語の知識を、実際のコミュニケーションへ。"
+    privateLessons: "プライベートレッスンを見る", tools: "学習ツールを見る", speaking: "SpeakCheckについて", footer: "英語の知識を、実際のコミュニケーションへ。"
   }
 };
 

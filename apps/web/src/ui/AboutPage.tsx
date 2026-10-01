@@ -78,8 +78,8 @@ export default function AboutPage() {
         <h2 id="about-closing-title">{copy.closingTitle}</h2>
         {copy.closingParagraphs.map((paragraph) => <p key={paragraph}>{paragraph}</p>)}
         <div className="ge-about-actions">
-          <a href="/" className="ge-about-primary">{copy.tools}<ArrowRight size={18} aria-hidden="true" /></a>
-          <a href="/speak">{copy.speaking}<ArrowRight size={18} aria-hidden="true" /></a>
+          <a href="/private-lessons" className="ge-about-primary">{copy.privateLessons}<ArrowRight size={18} aria-hidden="true" /></a>
+          <a href="/">{copy.tools}<ArrowRight size={18} aria-hidden="true" /></a>
         </div>
       </section>
       <footer className="ge-about-footer"><span>GyakutenEigo · Peter Hoang</span><span>{copy.footer}</span></footer>

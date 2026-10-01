@@ -63,3 +63,12 @@ Keep teacher-authored tasks, quiz questions, student input, English examples,
 transcripts, and generated feedback content in their original language. The site
 selection controls interface labels; an activity's native language controls its
 learning support and generated feedback.
+
+## Private lessons
+
+`/private-lessons` uses the same header, theme tokens and saved language choice.
+Its structured English/Japanese content lives in
+`apps/web/src/ui/privateLessonsContent.ts`, including the lesson price and enquiry
+email. Enquiry links open a draft in the visitor's email app in the selected
+language. The About page's closing section links to this page. The portrait is
+Peter's supplied headshot in `apps/web/public/assets/peter-hoang-headshot.png`.

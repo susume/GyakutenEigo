@@ -7,6 +7,7 @@ const NetworkDiagnosticsPage = lazy(() => import("./features/quizstrike/NetworkD
 const SpeakingPracticeApp = lazy(() => import("./features/speaking/SpeakingPracticeApp"));
 const ProductHubPage = lazy(() => import("./ui/ProductHubPage"));
 const AboutPage = lazy(() => import("./ui/AboutPage"));
+const PrivateLessonsPage = lazy(() => import("./ui/PrivateLessonsPage"));
 const StudentJoinScreen = lazy(() => import("./features/quizstrike/student/StudentJoinScreen"));
 const ModernizationLab = import.meta.env.DEV ? lazy(() => import("./game/ModernizationLab")) : null;
 const AthleticsCourseLab = import.meta.env.DEV ? lazy(() => import("./game/AthleticsCourseLab")) : null;
@@ -39,6 +40,7 @@ export default function BrowserApp() {
   if (pathname === "/join") return <Suspense fallback={<section className="app-loading-screen" role="status"><p>{t("Opening QuizStrike join…")}</p></section>}><StudentJoinScreen onJoined={openGame} /></Suspense>;
   if (pathname === "/") return <Suspense fallback={<section className="app-loading-screen" role="status"><p>{t("Loading GyakutenEigo…")}</p></section>}><ProductHubPage /></Suspense>;
   if (pathname === "/about") return <Suspense fallback={<section className="app-loading-screen" role="status"><p>{t("Loading / 読み込み中…")}</p></section>}><AboutPage /></Suspense>;
+  if (pathname === "/private-lessons") return <Suspense fallback={<section className="app-loading-screen" role="status"><p>{t("Loading / 読み込み中…")}</p></section>}><PrivateLessonsPage /></Suspense>;
   if (pathname === "/modernization-lab" && ModernizationLab) return <Suspense fallback={loadingFallback}><ModernizationLab /></Suspense>;
   if (pathname === "/athletics-lab" && AthleticsCourseLab) return <Suspense fallback={loadingFallback}><AthleticsCourseLab /></Suspense>;
   if (isSpeakingTeacherRoute(pathname)) {
