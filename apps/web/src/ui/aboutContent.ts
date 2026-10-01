@@ -34,7 +34,7 @@ export const aboutContent: Record<SiteLanguage, AboutContent> = {
         "Those changes are what good teaching is really about."
       ] },
       { id: "technology", label: "Teaching & technology", title: "English teaching and technology", paragraphs: [
-        "Technology has always been an important part of my teaching. I hold qualifications including Google for Education Level 1, Microsoft 21st Century Learning Design, a TESOL Certificate IV, and a Bachelor of Arts.",
+        "Technology has always been an important part of my teaching. I hold qualifications including Google for Education Level 1, Microsoft 21st Century Learning Design, a TESOL Certificate IV, and a BA in Politics.",
         "But I do not use technology simply because it is new. I use it when it helps students learn better.",
         "That may mean interactive activities, digital worksheets, personalised practice, tablet-based lessons, games, multimedia, or tools that allow students to practise and review outside the classroom.",
         "Over the years, I have also created my own educational resources and learning applications because I often found myself thinking:"
@@ -80,7 +80,7 @@ export const aboutContent: Record<SiteLanguage, AboutContent> = {
         "そうした生徒自身の成長を見ることが、教師として何よりもうれしい瞬間です。"
       ] },
       { id: "technology", label: "英語教育とICT", title: "英語教育 × テクノロジー", paragraphs: [
-        "私は以前から、教育にICTやデジタル教材を取り入れることにも力を入れてきました。TESOL Certificate IV、Bachelor of Artsのほか、Google for Education Level 1、Microsoft 21st Century Learning Designなどの資格・認定を取得しています。",
+        "私は以前から、教育にICTやデジタル教材を取り入れることにも力を入れてきました。TESOL Certificate IV、BA in Politicsのほか、Google for Education Level 1、Microsoft 21st Century Learning Designなどの資格・認定を取得しています。",
         "ただし、私は「新しいから」という理由だけでテクノロジーを使うことはありません。大切なのは、「それを使うことで、生徒がもっと分かりやすく、もっと楽しく、もっと効果的に学べるか」ということです。",
         "そのため、必要に応じて、タブレットやPCを使った学習、デジタル教材、インタラクティブな練習、オンライン教材、ゲーム形式の学習、個別練習用の教材なども取り入れています。",
         "また、自分自身で英語学習教材や教育用アプリを作ることもあります。そのきっかけになるのは、いつもこんな問いです。"
@@ -102,4 +102,4 @@ export const aboutContent: Record<SiteLanguage, AboutContent> = {
   }
 };
 
-export const aboutQualifications = ["TESOL Certificate IV", "Bachelor of Arts", "Google for Education Level 1", "Microsoft 21st Century Learning Design"];
+export const aboutQualifications = ["TESOL Certificate IV", "BA in Politics", "Google for Education Level 1", "Microsoft 21st Century Learning Design"];
