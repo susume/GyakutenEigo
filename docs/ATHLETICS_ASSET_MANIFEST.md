@@ -95,6 +95,22 @@ licenses or attribution obligations for the three new modes. The server sends
 only compact mode state (timestamps, route progress, hazard definitions, and
 event identifiers); the client renders the corresponding primitives locally.
 
+## Authored environment refresh — 4 October 2026
+
+`AthleticsParkScenery.ts` adds project-authored Three.js meshes for canyon
+rocks, garden pavilions/benches, a lookout, festival pennants, hills, clouds
+and a meadow. Repeated props are instanced; static box props join the stadium
+atlas batches. They are decoration and do not add movement/collision proxies.
+The Low scenery addition is tested below 5,000 triangles, including every
+instance. The existing eight unique downloaded GLBs remain unchanged.
+
+`AthleticsSurfaceTextures.ts` authors neutral paint/rubber, wood-grain and
+panel tiles directly into the existing-size canvas atlas. Athletics uses a
+corrected Y orientation and matte material response; other maps retain their
+default batch material parameters. These mesh/texture sources add no external
+downloads or third-party attribution requirements. See the
+[player audit](athletics-player-audit.md) for screenshots and playtest limits.
+
 ## Credits
 
 * Ferris Wheel: CreativeTrio via Poly Pizza, Public Domain/CC0.

@@ -32,10 +32,34 @@ export const resumeSessionForTeacher = (session: GameSession, nowMs = Date.now()
   session.startedAt = shiftIso(session.startedAt, pausedDurationMs);
   session.endsAt = shiftIso(session.endsAt, pausedDurationMs);
   if (session.athletics) {
-    session.athletics = {
-      ...session.athletics,
-      startAt: shiftIso(session.athletics.startAt, pausedDurationMs)!
-    };
+    const race = session.athletics;
+    race.startAt = shiftIso(race.startAt, pausedDurationMs)!;
+    if (race.zeus) {
+      race.zeus.nextAttackAt = shiftIso(race.zeus.nextAttackAt, pausedDurationMs);
+      if (race.zeus.currentAttack) {
+        race.zeus.currentAttack.warningStartedAt = shiftIso(race.zeus.currentAttack.warningStartedAt, pausedDurationMs)!;
+        race.zeus.currentAttack.strikeAt = shiftIso(race.zeus.currentAttack.strikeAt, pausedDurationMs)!;
+      }
+    }
+    if (race.chaos) {
+      race.chaos.nextWaveAt = shiftIso(race.chaos.nextWaveAt, pausedDurationMs)!;
+      for (const hazard of race.chaos.activeHazards) {
+        hazard.spawnAt = shiftIso(hazard.spawnAt, pausedDurationMs)!;
+        hazard.expiresAt = shiftIso(hazard.expiresAt, pausedDurationMs)!;
+      }
+      if (race.chaos.currentEvent) {
+        race.chaos.currentEvent.startedAt = shiftIso(race.chaos.currentEvent.startedAt, pausedDurationMs)!;
+        race.chaos.currentEvent.expiresAt = shiftIso(race.chaos.currentEvent.expiresAt, pausedDurationMs)!;
+      }
+    }
+    for (const player of session.players) {
+      const athletics = player.athletics;
+      if (!athletics) continue;
+      for (const key of ["recoverySettleUntil", "lapTransitionUntil", "respawnPenaltyUntil", "wrongAnswerPenaltyUntil", "dashUntil", "jumpBoostUntil", "knockbackResistUntil", "staggerUntil", "zeusFrozenUntil"] as const) {
+        athletics[key] = shiftIso(athletics[key], pausedDurationMs);
+      }
+      athletics.lastSupportedAtMs = shiftNumber(athletics.lastSupportedAtMs, pausedDurationMs);
+    }
   }
   if (session.roundTransition) {
     session.roundTransition = {

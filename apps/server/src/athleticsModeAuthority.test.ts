@@ -1,5 +1,6 @@
 import test from "node:test";
 import assert from "node:assert/strict";
+import { CHAOS_HAZARD_WARNING_MS, getAthleticsRouteTangent } from "@quizstrike/shared";
 import {
   createAthleticsModeRoundState,
   createAuthoritativeChaosWave,
@@ -76,6 +77,15 @@ test("server Zeus plans and Chaos waves are deterministic", () => {
   const plan = getZeusTargetPlan({ candidates, attackIndex: 4, recentTargetIds: [], highestProgress: 0.7 });
   assert.equal(plan.profile.tier, "upper");
   assert.equal(plan.targets.length, 2);
+  for (const target of plan.targets) {
+    const warning = plan.warningPositions[target.id]!;
+    const tangent = getAthleticsRouteTangent(target.routeProgress);
+    const dx = warning.x - target.x;
+    const dz = warning.z - target.z;
+    assert.ok(Math.abs(Math.hypot(dx, dz) - 3) < 0.001);
+    assert.ok(dx * tangent.x + dz * tangent.z > 2.99, "Zeus warns in front along the course");
+    assert.equal(warning.y, target.y);
+  }
   assert.deepEqual(plan.targets, getZeusTargetPlan({ candidates, attackIndex: 4, recentTargetIds: [], highestProgress: 0.7 }).targets);
 
   const first = createAuthoritativeChaosWave({ seed: 99, waveIndex: 4, nowMs, activeHazardCount: 0, playerCount: playerIds.length });
@@ -84,7 +94,7 @@ test("server Zeus plans and Chaos waves are deterministic", () => {
   assert.ok(first.event?.label);
   assert.ok(first.hazards.length > 0);
   const hazard = first.hazards[0]!;
-  assert.equal(isActiveChaosHazard(hazard, nowMs + 1599), false);
-  assert.equal(isActiveChaosHazard(hazard, nowMs + 1600), true);
+  assert.equal(isActiveChaosHazard(hazard, nowMs + CHAOS_HAZARD_WARNING_MS - 1), false);
+  assert.equal(isActiveChaosHazard(hazard, nowMs + CHAOS_HAZARD_WARNING_MS), true);
   assert.equal(isActiveChaosHazard(hazard, Date.parse(hazard.expiresAt) + 1), false);
 });

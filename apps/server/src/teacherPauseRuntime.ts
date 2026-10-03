@@ -28,6 +28,8 @@ export const shiftTeacherPauseRuntimeTimers = <
   deltaMs,
   playerMoveTimestamps,
   playerNextFireAt,
+  athleticsActionNextAt,
+  athleticsProjectiles,
   botRespawnAt,
   botNextAttackAt,
   playerQuestionGate,
@@ -39,6 +41,8 @@ export const shiftTeacherPauseRuntimeTimers = <
   deltaMs: number;
   playerMoveTimestamps: Map<string, number>;
   playerNextFireAt: Map<string, number>;
+  athleticsActionNextAt?: Map<string, number>;
+  athleticsProjectiles?: ReadonlyMap<string, Array<{ launchedAt: number; impactAt: number }>>;
   botRespawnAt: Map<string, number>;
   botNextAttackAt: Map<string, number>;
   playerQuestionGate: PlayerQuestionGate;
@@ -50,6 +54,11 @@ export const shiftTeacherPauseRuntimeTimers = <
   const playerIds = new Set(session.players.map((player) => player.id));
   shiftTimestampMap(playerMoveTimestamps, playerIds, deltaMs);
   shiftTimestampMap(playerNextFireAt, playerIds, deltaMs);
+  if (athleticsActionNextAt) shiftTimestampMap(athleticsActionNextAt, playerIds, deltaMs);
+  for (const projectile of athleticsProjectiles?.get(session.id) ?? []) {
+    projectile.launchedAt += deltaMs;
+    projectile.impactAt += deltaMs;
+  }
   shiftTimestampMap(botRespawnAt, playerIds, deltaMs);
   shiftTimestampMap(botNextAttackAt, playerIds, deltaMs);
   playerQuestionGate.shiftTimestamps(deltaMs, playerIds);

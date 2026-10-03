@@ -1,4 +1,5 @@
 import * as THREE from "three";
+import { buildAthleticsParkScenery } from "./AthleticsParkScenery";
 
 type AddBatchedBox = (
   size: [number, number, number],
@@ -69,7 +70,7 @@ const addRoundedTrack = (
   y: number
 ) => {
   const track = addMesh(parent, new THREE.RingGeometry(radius, radius + width, 72), material, [0, y, 0], [-Math.PI / 2, 0, 0]);
-  track.scale.z = scaleZ;
+  track.scale.y = scaleZ;
   track.receiveShadow = true;
   return track;
 };
@@ -187,16 +188,16 @@ const addScoreboard = (
   addBatchedBox([1.4, 30, 1.4], [20, 15, -128], materials.metal, "metal");
   const panel = addBox(board, materials.stadiumDark, [43, 13, 1.2], [0, 28, 0]);
   panel.castShadow = true;
-  addBox(board, materials.gold, [39.5, 0.42, 0.14], [0, 34.05, -0.66]);
-  addBox(board, materials.cyan, [0.42, 8.4, 0.14], [-19.2, 28, -0.66]);
-  addBox(board, materials.orange, [0.42, 8.4, 0.14], [19.2, 28, -0.66]);
+  addBox(board, materials.gold, [39.5, 0.42, 0.14], [0, 34.05, 0.66]);
+  addBox(board, materials.cyan, [0.42, 8.4, 0.14], [-19.2, 28, 0.66]);
+  addBox(board, materials.orange, [0.42, 8.4, 0.14], [19.2, 28, 0.66]);
   if (makeLabelTexture) {
     const texture = makeLabelTexture("SKYLINE GAMES  •  RACE DAY", "#fff5d6", "#18324a");
     const face = new THREE.Mesh(
       new THREE.PlaneGeometry(37, 5.2),
       new THREE.MeshBasicMaterial({ map: texture, transparent: true, depthWrite: false })
     );
-    face.position.set(0, 28.6, -0.67);
+    face.position.set(0, 28.6, 0.67);
     board.add(face);
   }
 };
@@ -234,7 +235,7 @@ const addVegetation = (
   seededRandom: (seed: number) => () => number
 ) => {
   const count = detail === 0 ? 10 : detail === 1 ? 16 : 24;
-  const trunkGeometry = new THREE.CylinderGeometry(0.7, 1.05, 7, 8);
+  const trunkGeometry = new THREE.CylinderGeometry(0.7, 1.05, 12, 8);
   const foliageGeometry = new THREE.IcosahedronGeometry(4.4, 1);
   const trunks = new THREE.InstancedMesh(trunkGeometry, materials.trunk, count);
   const lightCount = Math.ceil(count / 3);
@@ -250,10 +251,10 @@ const addVegetation = (
     const progress = random() * 2 - 1;
     const x = edge === 0 ? -148 - random() * 5 : edge === 1 ? 148 + random() * 5 : progress * 112;
     const z = edge === 2 ? -148 - random() * 5 : edge === 3 ? 148 + random() * 5 : progress * 112;
-    const y = 3.5;
+    const y = 14;
     scale.set(0.8 + random() * 0.42, 0.9 + random() * 0.65, 0.8 + random() * 0.42);
     matrix.compose(new THREE.Vector3(x, y, z), new THREE.Quaternion().setFromEuler(new THREE.Euler(0, random() * Math.PI, 0)), scale);
-    trunks.setMatrixAt(index, new THREE.Matrix4().makeTranslation(x, 3.5, z));
+    trunks.setMatrixAt(index, new THREE.Matrix4().makeTranslation(x, 6, z));
     if (index % 3 === 0) lightFoliage.setMatrixAt(lightFoliageIndex++, matrix);
     else foliage.setMatrixAt(foliageIndex++, matrix);
   }
@@ -334,7 +335,7 @@ export const buildAthleticsEnvironmentDress = ({
   addRoundedTrack(root, materials.trackLine, 91, 0.48, 0.74, 0.088);
   addRoundedTrack(root, materials.trackLine, 101.5, 0.48, 0.74, 0.091);
   const infield = addMesh(root, new THREE.CircleGeometry(77.5, 72), materials.turf, [0, 0.045, 0], [-Math.PI / 2, 0, 0]);
-  infield.scale.z = 0.74;
+  infield.scale.y = 0.74;
   infield.receiveShadow = true;
   for (let index = -4; index <= 4; index += 1) {
     addBatchedBox([132, 0.07, 1.25], [0, 0.13, index * 9], index % 2 === 0 ? materials.turfLight : materials.turf, "sand");
@@ -349,6 +350,7 @@ export const buildAthleticsEnvironmentDress = ({
   addLightTowers(root, detail, addBatchedBox, materials);
   addVegetation(root, detail, materials, seededRandom);
   const banners = addBanners(root, detail, materials);
+  buildAthleticsParkScenery(root, detail, materials, addBatchedBox);
 
   // Small perimeter rails and sponsor blocks add scale while leaving the
   // actual route and course sightlines open.

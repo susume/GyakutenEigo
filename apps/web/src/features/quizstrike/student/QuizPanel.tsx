@@ -1,7 +1,7 @@
 import { useSiteTranslation } from "../../../ui/siteTranslation";
 import { useEffect, useState } from "react";
 import type { Choice, GameSession, PlayerSession, PublicQuestion } from "@quizstrike/shared";
-import { RESPAWN_CORRECT_ANSWERS_REQUIRED, ZOMBIE_HUMAN_CORRECT_ENERGY } from "@quizstrike/shared";
+import { RESPAWN_CORRECT_ANSWERS_REQUIRED, ZOMBIE_HUMAN_CORRECT_ENERGY, resolveHunterQuizReward } from "@quizstrike/shared";
 import { CheckCircle2, Volume2, XCircle } from "lucide-react";
 import { getApiUrl } from "../../../api/client";
 
@@ -73,10 +73,13 @@ export default function QuizPanel({
   if (!question) return <div className="panel"><p>{t("Your next question will appear here.")}</p></div>;
   const isAthletics = session.settings.gameMode === "athletics";
   const isAthleticsRecovery = isAthletics && player.athletics?.recoveryActive === true;
+  const isHunter = isAthletics && player.athletics?.role === "hunter";
+  const hunterAmmo = player.athletics?.hunterAmmo ?? 0;
+  const hunterReward = resolveHunterQuizReward({ isCorrect: true, currentAmmo: hunterAmmo, currentStreak: player.athletics?.hunterQuizStreak ?? 0 });
   const reward = isAthletics
     ? isAthleticsRecovery
-      ? `Recovery Questions ${player.athletics?.recoveryCorrectAnswers ?? 0} / ${player.athletics?.recoveryRequiredAnswers ?? 3}`
-      : "+220 movement energy"
+      ? `${t("Recovery Questions")} ${player.athletics?.recoveryCorrectAnswers ?? 0} / ${player.athletics?.recoveryRequiredAnswers ?? 3}`
+      : isHunter ? t("+{value0} foam ammo", { value0: hunterReward.ammo - hunterAmmo }) : t("+220 movement energy")
     : session.settings.gameMode === "zombie" && player.role !== "zombie"
     ? `+${ZOMBIE_HUMAN_CORRECT_ENERGY} movement energy`
     : player.isAlive || session.settings.deadPlayersEarnMoney
@@ -95,10 +98,18 @@ export default function QuizPanel({
       <div className="panel-title">
         <div>
            <span className="menu-eyebrow">{isAthleticsRecovery ? t("Fall recovery") : t("Live question")}</span>
-           <h2>{isAthleticsRecovery ? t("Recovery question") : isAthletics ? t("Refuel movement") : t("Answer to earn")}</h2>
+           <h2>{isAthleticsRecovery ? t("Recovery question") : isHunter ? t("Refill foam ammo") : isAthletics ? t("Refuel movement") : t("Answer to earn")}</h2>
         </div>
         <span className="question-reward">{reward}</span>
       </div>
+      {isAthleticsRecovery && (
+        <div className="athletics-recovery-progress">
+          <p>{t("Answer 3 questions to get back on the course.")}</p>
+          <div className="respawn-meter" role="progressbar" aria-label={t("Recovery question progress")} aria-valuemin={0} aria-valuemax={player.athletics?.recoveryRequiredAnswers ?? 3} aria-valuenow={player.athletics?.recoveryCorrectAnswers ?? 0}>
+            <span style={{ width: `${Math.min(100, ((player.athletics?.recoveryCorrectAnswers ?? 0) / Math.max(1, player.athletics?.recoveryRequiredAnswers ?? 3)) * 100)}%` }} />
+          </div>
+        </div>
+      )}
       <div className="question-prompt-card">
         <p className="question-text">{question.prompt}</p>
       </div>

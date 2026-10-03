@@ -36,6 +36,7 @@ import {
   ATHLETICS_CRITICAL_ENERGY,
   ATHLETICS_MAX_ENERGY,
   ATHLETICS_MODE_CONFIG,
+  HUNTER_PROJECTILE_TRAVEL_MS,
   getChaosAbilityLabel,
   canPlayerFireInMode,
   getCosmeticProgress,
@@ -396,7 +397,7 @@ export default function StudentExperience({ onExit }: { onExit: () => void }) {
     session?.controlState === "teacher_paused" ? session.teacherPausedAt : undefined
   );
   const athleticsStandings = useMemo(
-    () => athleticsRace && session ? resolveAthleticsStandings(session.players) : [],
+    () => athleticsRace && session ? resolveAthleticsStandings(session.players.filter((racer) => racer.athletics?.role !== "hunter")) : [],
     [athleticsRace, session]
   );
   const preparationRemainingSeconds = useDeadlineRemainingSeconds(
@@ -425,6 +426,7 @@ export default function StudentExperience({ onExit }: { onExit: () => void }) {
   const currentPlayerRef = useRef<PlayerSession | null>(player);
   const questionFetchInFlightRef = useRef(false);
   const answerActionRef = useRef<(choice: Choice) => Promise<void>>(async () => undefined);
+  const athleticsAbilityActionRef = useRef<() => void>(() => undefined);
   const buyActionRef = useRef<(gearId: string) => Promise<void>>(async () => undefined);
   const buySnowballsActionRef = useRef<(packSize: SnowballPackSize) => Promise<void>>(async () => undefined);
   const setStatusError = status.setError;
@@ -1041,11 +1043,7 @@ export default function StudentExperience({ onExit }: { onExit: () => void }) {
         strikeAt: payload.strikeAt,
         ...(position ? { position } : {})
       });
-      setFeedback(targeted ? "⚡ Dodge the warning ring! Move before lightning strikes." : "Zeus is charging. Watch the course.");
-      gameAudio.playEvent("ui_warning");
-      if (position && targeted) {
-        emitArenaVfx({ kind: "objective", x: position.x, y: position.y, z: position.z, color: "#b697ff", local: true, intensity: 1.1 });
-      }
+      if (targeted) gameAudio.playEvent("ui_warning");
     });
     connectedSocket.on("zeus_strike", (payload: {
       playerId?: string;
@@ -1064,7 +1062,6 @@ export default function StudentExperience({ onExit }: { onExit: () => void }) {
         setBuyOpen(false);
         setScoreboardOpen(false);
         setSettingsOpen(false);
-        setFeedback(payload.message ?? "Lightning caught you! Answer correctly to break the freeze.");
         setPlayer((current) => current?.athletics ? {
           ...current,
           isAlive: true,
@@ -1074,7 +1071,6 @@ export default function StudentExperience({ onExit }: { onExit: () => void }) {
         emitArenaVfx({ kind: "player_hit", x: payload.position?.x ?? currentPlayer?.x ?? 0, y: payload.position?.y ?? currentPlayer?.y, z: payload.position?.z ?? currentPlayer?.z ?? 0, color: "#b697ff", local: true, intensity: 1.25 });
         gameAudio.playEvent("ui_warning");
       } else {
-        setFeedback(payload.message ?? "You dodged Zeus's lightning!");
         gameAudio.playEvent("athletics_checkpoint");
       }
     });
@@ -1114,8 +1110,8 @@ export default function StudentExperience({ onExit }: { onExit: () => void }) {
     }) => {
       if (lastVisualSession.settings.gameMode !== "athletics" || athleticsModeForSession(lastVisualSession) !== "hunters-runners") return;
       if (!payload.origin || !payload.targetAtLaunch) return;
-      const travelMs = Math.max(180, Math.min(1_500, payload.travelMs ?? 520));
-      const steps = 5;
+      const travelMs = Math.max(180, Math.min(1_500, payload.travelMs ?? HUNTER_PROJECTILE_TRAVEL_MS));
+      const steps = Math.ceil(travelMs / 60);
       for (let step = 0; step <= steps; step += 1) {
         const delay = Math.round((travelMs * step) / steps);
         const timer = window.setTimeout(() => {
@@ -1128,13 +1124,13 @@ export default function StudentExperience({ onExit }: { onExit: () => void }) {
             z: payload.origin!.z + (payload.targetAtLaunch!.z - payload.origin!.z) * amount,
             color: "#ff9c54",
             playerId: payload.hunterId,
+            anchor: "world",
             local: payload.targetId === activePlayerId
           });
         }, delay);
         modeProjectileTimers.push(timer);
       }
       if (payload.hunterId === activePlayerId) gameAudio.playEvent("weapon_fire_basic");
-      if (payload.targetId === activePlayerId) setFeedback("Foam ball incoming — keep moving!");
     });
     connectedSocket.on("athletics_projectile_impact", (payload: {
       projectileId?: string;
@@ -1154,7 +1150,6 @@ export default function StudentExperience({ onExit }: { onExit: () => void }) {
       else emitArenaVfx({ kind: "player_hit", x: payload.x!, y: payload.y, z: payload.z!, color: "#ff9c54", playerId: payload.targetId, local: payload.targetId === activePlayerId });
       emitPlayerAnimation("hit", payload.targetId, target?.team);
       if (payload.targetId === activePlayerId) {
-        setFeedback(payload.shielded ? "Shield absorbed the foam hit." : `Foam hit — staggered${payload.knockback ? ` and pushed ${payload.knockback.toFixed(1)}m` : ""}.`);
         if (payload.shielded) gameAudio.playEvent("shield_impact");
         else gameAudio.play("player_tagged");
       }
@@ -1162,23 +1157,17 @@ export default function StudentExperience({ onExit }: { onExit: () => void }) {
     connectedSocket.on("athletics_ability", (payload: { playerId?: string; ability?: AthleticsAbility; nextAbility?: AthleticsAbility; charge?: number; shieldCharges?: number }) => {
       if (lastVisualSession.settings.gameMode !== "athletics" || payload.playerId !== activePlayerId) return;
       if (payload.ability === "shield") emitPlayerVfx("shield", activePlayerId);
-      setRewardPulse(`${getChaosAbilityLabel(payload.ability)} ready`);
+      setRewardPulse(`${getChaosAbilityLabel(payload.ability)} activated`);
       setFeedback(`${getChaosAbilityLabel(payload.ability)} activated. ${payload.nextAbility ? `${getChaosAbilityLabel(payload.nextAbility)} next.` : ""}`);
       gameAudio.playEvent("score_awarded");
     });
-    connectedSocket.on("chaos_wave", (payload: { waveIndex?: number; event?: { label?: string } }) => {
-      if (lastVisualSession.settings.gameMode !== "athletics" || athleticsModeForSession(lastVisualSession) !== "chaos-climb") return;
-      if (payload.event?.label) {
-        setFeedback(`CHAOS EVENT: ${payload.event.label}. Watch the path.`);
-        gameAudio.playEvent("ui_warning");
-      }
-    });
+    // Chaos waves are already shown by world arrows and the event HUD. They
+    // need no room-wide toast or alert sound on every launch.
     connectedSocket.on("chaos_hazard_impact", (payload: { playerId?: string; x?: number; y?: number; z?: number; shielded?: boolean; hazardType?: string }) => {
       if (lastVisualSession.settings.gameMode !== "athletics" || athleticsModeForSession(lastVisualSession) !== "chaos-climb") return;
       if (!Number.isFinite(payload.x) || !Number.isFinite(payload.z)) return;
       emitArenaVfx({ kind: payload.shielded ? "shield" : "player_hit", x: payload.x!, y: payload.y, z: payload.z!, color: "#ff7fb4", playerId: payload.playerId, local: payload.playerId === activePlayerId, intensity: 0.92 });
       if (payload.playerId === activePlayerId) {
-        setFeedback(payload.shielded ? "Shield absorbed the chaos hazard." : `${payload.hazardType ?? "Hazard"} bounced you. Recover your line.`);
         if (payload.shielded) gameAudio.playEvent("shield_impact");
         else gameAudio.play("player_tagged");
       }
@@ -1348,6 +1337,10 @@ export default function StudentExperience({ onExit }: { onExit: () => void }) {
       }));
     });
     connectedSocket.on("game_event", (event: GameEvent) => {
+      // The dedicated mode handlers own hazard cues. Their audit-log timer
+      // events must not recreate a toast and countdown sound after each hit
+      // or dodge through this generic combat-event feed.
+      if (lastVisualSession.settings.gameMode === "athletics" && event.type === "timer") return;
       if (event.type === "join") gameAudio.playEvent("player_join");
       if (event.type === "start" && lastVisualSession.settings.gameMode !== "athletics") gameAudio.playEvent("round_start");
       if (event.type === "buy" && lastVisualSession.settings.gameMode !== "athletics") gameAudio.playEvent("results_confirm");
@@ -1814,7 +1807,7 @@ export default function StudentExperience({ onExit }: { onExit: () => void }) {
     status.clear();
   };
 
-  const openAthleticsQuestion = useCallback(() => {
+  const openAthleticsQuestion = useCallback((grounded = true) => {
     if (!athleticsRace || teacherPaused || !session || !player || !playerToken) return;
     if (player.athletics?.recoveryActive) {
       if (!quizOpen) {
@@ -1841,7 +1834,7 @@ export default function StudentExperience({ onExit }: { onExit: () => void }) {
       return;
     }
     if (player.athletics?.status !== "racing") return;
-    if (player.jumping) {
+    if (!grounded || player.jumping) {
       setFeedback("Land on a platform before opening a question.");
       return;
     }
@@ -2145,6 +2138,11 @@ export default function StudentExperience({ onExit }: { onExit: () => void }) {
     };
     const onKeyDown = (event: KeyboardEvent) => {
       if (!hasActiveArenaConnection || isTypingTarget(event.target)) return;
+      if (athleticsRace && event.key.toLowerCase() === "r" && !event.repeat && !quizOpen && !buyOpen && !settingsOpen && !scoreboardOpen) {
+        event.preventDefault();
+        athleticsAbilityActionRef.current();
+        return;
+      }
       if (event.key.toLowerCase() === "q") {
         if (athleticsRace) {
           openAthleticsQuestion();
@@ -2204,6 +2202,7 @@ export default function StudentExperience({ onExit }: { onExit: () => void }) {
     playerToken,
     quizOpen,
     buyOpen,
+    settingsOpen,
     question,
     scoreboardOpen,
     answeringChoice,
@@ -2530,13 +2529,16 @@ export default function StudentExperience({ onExit }: { onExit: () => void }) {
   );
 
   const activateAthleticsAbility = (ability: AthleticsAbility) => {
-    if (!athleticsRace || !athleticsPlayer || !athleticsAbilityCharged || athleticsAbility !== ability) return;
+    if (!roundActive || !athleticsRace || !athleticsPlayer || !athleticsAbilityCharged || athleticsAbility !== ability || athleticsMovementLocked) return;
     void sendAthleticsAction("ability", {
       x: player.x ?? 0,
       z: player.z ?? 0,
       y: player.y,
       facing: player.facing ?? 0
     }, ability);
+  };
+  athleticsAbilityActionRef.current = () => {
+    if (athleticsAbility) activateAthleticsAbility(athleticsAbility);
   };
 
   const downloadWorksheet = async () => {
@@ -2652,18 +2654,15 @@ export default function StudentExperience({ onExit }: { onExit: () => void }) {
               <button
                 type="button"
                 className="athletics-ability-button"
+                aria-keyshortcuts="R"
+                title={`${t(getChaosAbilityLabel(athleticsAbility))} · R`}
                 disabled={!roundActive || !athleticsAbilityCharged || athleticsZeusFrozen}
                 onClick={() => activateAthleticsAbility(athleticsAbility)}
               >
                 <Zap size={16} aria-hidden="true" />
+                <kbd aria-hidden="true">R</kbd>
                 {t(getChaosAbilityLabel(athleticsAbility))}
               </button>
-            )}
-            {athleticsMode === "zeus" && athleticsWarning?.targeted && (
-              <span className="athletics-warning-chip" role="status">{t("⚡ STRIKE IN")}{" "}{athleticsWarningRemainingSeconds}s</span>
-            )}
-            {athleticsMode === "chaos-climb" && chaosEventLabel && (
-              <span className="athletics-warning-chip athletics-chaos-event-chip" role="status">💥 {t(chaosEventLabel)}</span>
             )}
           </div>
         )}
@@ -2814,28 +2813,13 @@ export default function StudentExperience({ onExit }: { onExit: () => void }) {
         )}
         {rewardPulse && <div className="reward-toast" onAnimationEnd={() => setRewardPulse("")}>{rewardPulse}</div>}
         {panelsOpen && (
-          <div className="game-menu-overlay" role="dialog" aria-modal="false" aria-label={t("Arena menu")}>
+          <div className={`game-menu-overlay${athleticsRace ? " athletics-menu" : ""}`} role="dialog" aria-modal="false" aria-label={t("Arena menu")}>
             <div className="game-menu-bar">
               <strong>{menuTitle}</strong>
               <button type="button" onClick={() => { gameAudio.play("menu_toggle"); setQuizOpen(false); setBuyOpen(false); setScoreboardOpen(false); setSettingsOpen(false); }}>{t("Back to the game")}</button>
             </div>
             {quizOpen && (
               <>
-                {athleticsRecoveryActive && (
-                  <div className="panel respawn-card respawn-card-overlay athletics-recovery-card" role="status" aria-live="polite">
-                    <div className="panel-title">
-                      <div>
-                        <span className="menu-eyebrow">{t("Fall recovery")}</span>
-                        <h2>{t("You fell! Answer 3 questions to get back on the course.")}</h2>
-                      </div>
-                      <span>{athleticsPlayer?.recoveryCorrectAnswers ?? 0}/{athleticsPlayer?.recoveryRequiredAnswers ?? 3}</span>
-                    </div>
-                    <div className="respawn-meter" aria-label={t("Recovery question progress")}>
-                      <span style={{ width: `${Math.min(100, ((athleticsPlayer?.recoveryCorrectAnswers ?? 0) / Math.max(1, athleticsPlayer?.recoveryRequiredAnswers ?? 3)) * 100)}%` }} />
-                    </div>
-                    <p>{t("Recovery Questions")}{" "}{athleticsPlayer?.recoveryCorrectAnswers ?? 0} / {athleticsPlayer?.recoveryRequiredAnswers ?? 3}{" "}{t("· only correct answers count. You’ll return to the previous safe platform.")}</p>
-                  </div>
-                )}
                 {canPracticeToRespawn && (
                   <div className="panel respawn-card respawn-card-overlay">
                     <div className="panel-title">

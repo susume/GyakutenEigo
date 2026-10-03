@@ -33,6 +33,7 @@ test("resuming one room shifts only that room's ephemeral timers", () => {
   const maps = {
     playerMoveTimestamps: new Map([["paused-player", 100], ["other-player", 200]]),
     playerNextFireAt: new Map([["paused-player", 300], ["other-player", 400]]),
+    athleticsActionNextAt: new Map([["paused-player", 900], ["other-player", 1000]]),
     botRespawnAt: new Map([["paused-player", 500], ["other-player", 600]]),
     botNextAttackAt: new Map([["paused-player", 700], ["other-player", 800]])
   };
@@ -50,16 +51,24 @@ test("resuming one room shifts only that room's ephemeral timers", () => {
     ["PAUSED", new Map([["blue" as const, { createdAtMs: 100 }]])],
     ["OTHER", new Map([["blue" as const, { createdAtMs: 200 }]])]
   ]);
+  const pausedProjectile = { launchedAt: 100, impactAt: 1200 };
+  const otherProjectile = { launchedAt: 200, impactAt: 1300 };
+  const athleticsProjectiles = new Map([[session.id, [pausedProjectile]], ["other-room", [otherProjectile]]]);
 
   shiftTeacherPauseRuntimeTimers({
     session,
     deltaMs: 100,
     ...maps,
+    athleticsProjectiles,
     playerQuestionGate: questionGate,
     playerPositionHistory: positionHistory,
     botMemoryById: memories,
     botAlertsBySession: alerts
   });
+  assert.equal(maps.athleticsActionNextAt.get("paused-player"), 1000);
+  assert.equal(maps.athleticsActionNextAt.get("other-player"), 1000);
+  assert.deepEqual(pausedProjectile, { launchedAt: 200, impactAt: 1300 });
+  assert.deepEqual(otherProjectile, { launchedAt: 200, impactAt: 1300 });
 
   assert.deepEqual([...maps.playerMoveTimestamps], [["paused-player", 200], ["other-player", 200]]);
   assert.deepEqual([...maps.playerNextFireAt], [["paused-player", 400], ["other-player", 400]]);

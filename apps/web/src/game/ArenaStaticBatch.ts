@@ -44,7 +44,8 @@ export const makeSurfaceAtlas = (textures: {
 export class ArenaStaticBatcher {
   private readonly materials = new Map<StaticSurface, THREE.MeshStandardMaterial>();
 
-  constructor(private readonly atlas: THREE.Texture, private readonly castShadow: boolean) {}
+  constructor(private readonly atlas: THREE.Texture, private readonly castShadow: boolean,
+    private readonly materialOverrides: THREE.MeshStandardMaterialParameters = {}) {}
 
   private materialFor(surfaceName: string) {
     const surface = normalizeSurface(surfaceName);
@@ -63,7 +64,7 @@ export class ArenaStaticBatcher {
       emissiveIntensity: isAccent ? 0.1 : 0
     };
     if (surface !== "cloth" && !isAccent) options.bumpMap = this.atlas;
-    const material = new THREE.MeshStandardMaterial(options);
+    const material = new THREE.MeshStandardMaterial({ ...options, ...this.materialOverrides });
     material.name = `arena_atlas_${surface}`;
     this.materials.set(surface, material);
     return material;

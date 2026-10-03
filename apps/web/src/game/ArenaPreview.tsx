@@ -106,7 +106,7 @@ interface ArenaPreviewProps {
   onMove?: (position: ArenaLivePosition) => void;
   onFire?: (position: ArenaLivePosition) => void;
   onInteract?: (position: ArenaLivePosition) => void;
-  onOpenQuestion?: () => void;
+  onOpenQuestion?: (grounded?: boolean) => void;
   onAbilityFromTouch?: () => void;
   athleticsHud?: AthleticsHudState;
   loadDecalAsset?: (assetId: string) => Promise<Blob>;
@@ -462,6 +462,18 @@ export default function ArenaPreview({
       return;
     }
     const { scene, camera, renderer, qualityConfig } = sceneSetup;
+    // The arena can resize when a tablet rotates or the Codex/browser panel
+    // changes size without a window resize event.
+    const resizeArena = () => {
+      const width = Math.max(1, mount.clientWidth);
+      const height = Math.max(1, mount.clientHeight);
+      camera.aspect = width / height;
+      camera.updateProjectionMatrix();
+      renderer.setSize(width, height);
+    };
+    const arenaResizeObserver = new ResizeObserver(resizeArena);
+    arenaResizeObserver.observe(mount);
+    window.addEventListener("resize", resizeArena);
     const rendererDiagnostics = registerArenaRenderer(renderer, {
       currentRound: session?.currentRound,
       playerCount: session?.players.length ?? (currentPlayer ? 1 : 0),
@@ -892,9 +904,9 @@ export default function ArenaPreview({
       };
       questionControlRef.current = () => {
         if (controlsDisabledRef.current || inputPausedRef.current || !isAthleticsMode) return;
-        if (!wasGrounded || isJumping) return;
-        questionHoldPosition = playerPosition.clone();
-        onOpenQuestionRef.current?.();
+        const grounded = wasGrounded && !isJumping;
+        if (grounded) questionHoldPosition = playerPosition.clone();
+        onOpenQuestionRef.current?.(grounded);
       };
       const hasHeavyGun = () => getEquippedGearId() === "power_blaster";
       const hasZoomGear = () => hasHeavyGun() || getGearZoomFovMultiplier(getEquippedGearId()) < 1;
@@ -1392,7 +1404,8 @@ export default function ArenaPreview({
           return;
         }
         syncFirstPersonLoadout();
-        const authoritativeNowMs = Date.now();
+        const pausedAt = sessionRef.current?.controlState === "teacher_paused" ? sessionRef.current.teacherPausedAt : undefined;
+        const authoritativeNowMs = pausedAt ? Date.parse(pausedAt) : Date.now();
         performanceCapture.frame(currentTime);
         // Put target/body previews downrange on the aim line. The former close,
         // side-offset point made them read like HUD clutter beside the weapon.
@@ -1769,19 +1782,11 @@ export default function ArenaPreview({
       restartRenderLoop = fpsLoop.start;
       if (!contextLost) fpsLoop.start();
 
-      const resizeFps = () => {
-        const width = mount.clientWidth;
-        const height = Math.max(1, mount.clientHeight);
-        camera.aspect = width / height;
-        camera.updateProjectionMatrix();
-        renderer.setSize(width, height);
-      };
-      window.addEventListener("resize", resizeFps);
-
       return () => {
         disposed = true;
         fpsLoop.stop();
-        window.removeEventListener("resize", resizeFps);
+        arenaResizeObserver.disconnect();
+        window.removeEventListener("resize", resizeArena);
         renderer.domElement.removeEventListener("webglcontextlost", onWebglContextLost);
         renderer.domElement.removeEventListener("webglcontextrestored", onWebglContextRestored);
         unsubscribeVfx();
@@ -1895,19 +1900,11 @@ export default function ArenaPreview({
     restartRenderLoop = overviewLoop.start;
     if (!contextLost) overviewLoop.start();
 
-    const resize = () => {
-      const width = mount.clientWidth;
-      const height = Math.max(1, mount.clientHeight);
-      camera.aspect = width / height;
-      camera.updateProjectionMatrix();
-      renderer.setSize(width, height);
-    };
-    window.addEventListener("resize", resize);
-
     return () => {
       disposed = true;
       overviewLoop.stop();
-      window.removeEventListener("resize", resize);
+      arenaResizeObserver.disconnect();
+      window.removeEventListener("resize", resizeArena);
       renderer.domElement.removeEventListener("webglcontextlost", onWebglContextLost);
       renderer.domElement.removeEventListener("webglcontextrestored", onWebglContextRestored);
       unsubscribeVfx();
@@ -2122,6 +2119,7 @@ export default function ArenaPreview({
             snowballs={currentPlayer?.snowballs ?? session?.settings.startingSnowballs ?? 0}
             weaponCooldown={weaponCooldown}
             controlsDisabled={controlsDisabled || inputPaused}
+            inputPaused={inputPaused}
             isPointerLocked={isPointerLocked}
             suppressHint={suppressHint}
             joystickElementRef={joystickElementRef}

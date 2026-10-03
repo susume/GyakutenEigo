@@ -6,7 +6,6 @@ import {
   getAthleticsPointAtProgress,
   getAthleticsRouteTangent,
   getChaosHazardPosition,
-  getChaosEventModifiers,
   getHunterStationProgress,
   type AthleticsMode,
   type GameSession
@@ -196,9 +195,6 @@ const createChaosVisuals = (root: THREE.Group) => {
   return {
     update: (session: GameSession | null | undefined, nowMs: number) => {
       const hazards = session?.athletics?.chaos?.activeHazards ?? [];
-      const event = session?.athletics?.chaos?.currentEvent;
-      const eventActive = event && nowMs < Date.parse(event.expiresAt) ? event : undefined;
-      const hazardSpeedMultiplier = eventActive ? getChaosEventModifiers(eventActive).hazardSpeedMultiplier : 1;
       pool.forEach(({ hazard, ball, bumper, barrel, duck, cart, material, warning, warningRing, warningMaterial }, index) => {
         const definition = hazards[index];
         if (!definition) {
@@ -206,26 +202,33 @@ const createChaosVisuals = (root: THREE.Group) => {
           warning.visible = false;
           return;
         }
-        const position = getChaosHazardPosition(definition, ATHLETICS_STADIUM_COURSE.route, nowMs, hazardSpeedMultiplier);
+        const position = getChaosHazardPosition(definition, ATHLETICS_STADIUM_COURSE.route, nowMs);
         const spawnAt = Date.parse(definition.spawnAt);
         const expiresAt = Date.parse(definition.expiresAt);
         const telegraphing = nowMs < spawnAt;
-        warning.visible = telegraphing;
+        // Keep the direction marker under a travelling prop too, so the
+        // player can read its route without taking their eyes off the course.
+        warning.visible = nowMs < expiresAt;
         hazard.visible = !telegraphing && nowMs < expiresAt;
-        if (telegraphing) {
-          warning.position.set(position.x, position.y - 0.88, position.z);
+        if (warning.visible) {
+          warning.position.set(position.x, position.y - (definition.kind === "giant-ball" ? definition.radius : 1.1) + 0.22, position.z);
           warningRing.scale.setScalar(definition.radius + 0.8);
-          warningMaterial.opacity = 0.45 + 0.5 * (1 - Math.min(1, (spawnAt - nowMs) / CHAOS_HAZARD_WARNING_MS));
-          const ahead = getChaosHazardPosition(definition, ATHLETICS_STADIUM_COURSE.route, spawnAt + 250, hazardSpeedMultiplier);
-          warning.rotation.y = Math.atan2(ahead.x - position.x, ahead.z - position.z);
+          warningMaterial.opacity = telegraphing
+            ? 0.45 + 0.5 * (1 - Math.min(1, (spawnAt - nowMs) / CHAOS_HAZARD_WARNING_MS)) : 0.35;
+          const next = getChaosHazardPosition(definition, ATHLETICS_STADIUM_COURSE.route, Math.max(spawnAt, nowMs) + 250);
+          warning.rotation.y = Math.atan2(next.x - position.x, next.z - position.z);
         }
-        hazard.position.set(position.x, definition.kind === "giant-ball" ? position.y - 1.1 + definition.radius : position.y, position.z);
-        hazard.rotation.y = nowMs * (definition.kind === "swinging-bumper" ? 0.003 : 0.0015) * (index % 2 ? -1 : 1);
+        hazard.position.set(position.x, position.y, position.z);
+        // Carts and ducks face their travel direction instead of spinning.
+        hazard.rotation.y = warning.rotation.y;
+        ball.rotation.x = nowMs * 0.002;
+        barrel.rotation.x = nowMs * 0.002;
+        bumper.rotation.z = nowMs * 0.002;
         const color = colors[definition.kind] ?? "#ff7fb4";
         material.color.set(color);
         material.emissive.set(color);
         material.emissiveIntensity = definition.kind === "giant-ball" ? 0.8 : 0.5;
-        const scale = definition.kind === "giant-ball" ? definition.radius : Math.max(0.7, definition.radius / 1.45);
+        const scale = definition.kind === "giant-ball" ? definition.radius : definition.radius / 1.45;
         hazard.scale.setScalar(scale);
         ball.visible = definition.kind === "giant-ball";
         bumper.visible = definition.kind === "swinging-bumper";

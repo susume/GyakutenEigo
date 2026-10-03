@@ -1,6 +1,6 @@
 import assert from "node:assert/strict";
 import test from "node:test";
-import { DEFAULT_SESSION_SETTINGS, type GameSession } from "@quizstrike/shared";
+import { createChaosWave, DEFAULT_SESSION_SETTINGS, getChaosHazardPosition, type GameSession } from "@quizstrike/shared";
 import { pauseSessionForTeacher, resumeSessionForTeacher } from "./teacherPause.js";
 
 const makeSession = (): GameSession => ({
@@ -65,4 +65,36 @@ test("waiting and ended rooms cannot enter teacher pause mode", () => {
     const session = { ...makeSession(), status };
     assert.deepEqual(pauseSessionForTeacher(session), { ok: false, reason: "not_pausable" });
   }
+});
+
+test("athletics resumes with the same warning time, hazard position and effect duration", () => {
+  const session = makeSession();
+  const pausedAt = Date.parse("2026-08-01T00:01:00.000Z");
+  const iso = (offset: number) => new Date(pausedAt + offset).toISOString();
+  const hazards = createChaosWave({ seed: 123, waveIndex: 1, nowMs: pausedAt - 3000, playerCount: 2 });
+  session.settings.gameMode = "athletics";
+  session.athletics = {
+    courseId: "stadium_loop", questionsPerLap: 3, questionCount: 3, requiredLaps: 1,
+    status: "running", startAt: iso(-60_000), finishOrder: [],
+    zeus: { phase: "charging", attackIndex: 1, recentTargetIds: [], nextAttackAt: iso(9000),
+      currentAttack: { id: "bolt", tier: "lower", targetIds: ["runner"], warningPositions: { runner: { x: 3, y: 4.21, z: 0 } }, warningStartedAt: iso(-1000), strikeAt: iso(1800), strikeRadius: 1.95, shockwave: false } },
+    chaos: { seed: 123, waveIndex: 1, nextWaveAt: iso(8500), activeHazards: hazards,
+      currentEvent: { id: "event", type: "low-gravity", label: "LOW GRAVITY", startedAt: iso(-1000), expiresAt: iso(6000) } }
+  };
+  session.players = [{ id: "runner", gameSessionId: session.id, nickname: "Runner", team: "blue", money: 0, isAlive: true, score: 0, correctAnswers: 0, wrongAnswers: 0, gear: "starter_blaster", joinedAt: iso(-60_000),
+    athletics: { questionIndex: 0, checkpointIndex: 0, routeProgress: .1, gateOpen: true, falls: 0, lastSafeCheckpointIndex: 0, checkpointSplitsMs: [], completedLaps: 0, lapSplitsMs: [], status: "racing", zeusFrozen: true, zeusFrozenUntil: iso(2500), dashUntil: iso(500), recoverySettleUntil: iso(300), lastSupportedAtMs: pausedAt - 100 } }];
+  const route = [{ x: 0, y: 0, z: 0 }, { x: 100, y: 0, z: 0 }];
+  const before = getChaosHazardPosition(hazards[0]!, route, pausedAt);
+  pauseSessionForTeacher(session, pausedAt);
+  resumeSessionForTeacher(session, pausedAt + 45_000);
+  assert.deepEqual(getChaosHazardPosition(hazards[0]!, route, pausedAt + 45_000), before);
+  assert.equal(Date.parse(session.athletics.zeus!.currentAttack!.strikeAt) - (pausedAt + 45_000), 1800);
+  assert.equal(Date.parse(session.athletics.zeus!.currentAttack!.warningStartedAt), pausedAt + 44_000);
+  assert.equal(Date.parse(session.athletics.chaos!.nextWaveAt) - (pausedAt + 45_000), 8500);
+  assert.equal(Date.parse(session.athletics.chaos!.currentEvent!.expiresAt) - (pausedAt + 45_000), 6000);
+  const runner = session.players[0]!.athletics!;
+  assert.equal(Date.parse(runner.zeusFrozenUntil!) - (pausedAt + 45_000), 2500);
+  assert.equal(Date.parse(runner.dashUntil!) - (pausedAt + 45_000), 500);
+  assert.equal(Date.parse(runner.recoverySettleUntil!) - (pausedAt + 45_000), 300);
+  assert.equal(runner.lastSupportedAtMs, pausedAt + 44_900);
 });

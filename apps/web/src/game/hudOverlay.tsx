@@ -71,6 +71,7 @@ export const ArenaHudOverlay = ({
   snowballs,
   weaponCooldown,
   controlsDisabled,
+  inputPaused = false,
   isPointerLocked,
   suppressHint,
   joystickElementRef,
@@ -93,6 +94,7 @@ export const ArenaHudOverlay = ({
   snowballs: number;
   weaponCooldown: WeaponCooldown | null;
   controlsDisabled: boolean;
+  inputPaused?: boolean;
   isPointerLocked: boolean;
   suppressHint: boolean;
   joystickElementRef: RefObject<HTMLButtonElement | null>;
@@ -138,23 +140,17 @@ export const ArenaHudOverlay = ({
 
     return (
       <>
-        {athleticsOnboardingEligible && !athleticsOnboardingDismissed && (
+        {athleticsOnboardingEligible && !athleticsOnboardingDismissed && !controlsDisabled && !athleticsHud.zeusWarningSeconds && !athleticsHud.zeusFrozen && (
           <div className="athletics-onboarding" aria-label={t("Jump tutorial")}>
             <strong>{t("SPRINT FORWARD · JUMP THE STRIPED HURDLES")}</strong>
             <span>{t("SPACE — JUMP · Tablet: tap JUMP")}</span>
           </div>
         )}
-        {athleticsHud.recoveryActive && (
+        {athleticsHud.recoveryActive && !inputPaused && (
           <div className="athletics-recovery-banner" role="status" aria-live="assertive">
             <strong>{t("You fell!")}</strong>
             <span>{t("Answer 3 questions to get back on the course.")}</span>
             <b>{t("Recovery Questions")}{" "}{athleticsHud.recoveryCorrectAnswers ?? 0} / {athleticsHud.recoveryRequiredAnswers ?? 3}</b>
-          </div>
-        )}
-        {isVariant && athleticsHud.mode === "zeus" && athleticsHud.zeusFrozen && (
-          <div className="athletics-mode-banner athletics-zeus-freeze" role="status" aria-live="assertive">
-            <strong>{t("LIGHTNING FREEZE")}</strong>
-            <span>{t("Answer correctly to break the charge.")}</span>
           </div>
         )}
         <div className="athletics-hud" data-testid="athletics-compact-hud" aria-label={t("Athletics race status")}>
@@ -162,6 +158,18 @@ export const ArenaHudOverlay = ({
             <div className="athletics-variant-header">
               <strong>{t(athleticsHud.modeLabel ?? athleticsHud.mode?.toUpperCase())}</strong>
               <span className={`athletics-role athletics-role-${athleticsHud.role ?? "runner"}`}>{athleticsHud.role === "hunter" ? t("HUNTER") : t("RUNNER")}</span>
+            </div>
+          )}
+          {athleticsHud.mode === "zeus" && athleticsHud.zeusFrozen && (
+            <div className="athletics-threat-status" role="status">
+              <strong>{t("LIGHTNING FREEZE")}</strong>
+              <span>{t("Answer correctly to break the charge.")}</span>
+            </div>
+          )}
+          {athleticsHud.mode === "zeus" && !athleticsHud.zeusFrozen && Boolean(athleticsHud.zeusWarningSeconds) && (
+            <div className="athletics-threat-status" role="status" aria-live="off">
+              <strong>{t("Lightning ahead")}</strong>
+              <span>{t("Move clear of the ring")} · {athleticsHud.zeusWarningSeconds}s</span>
             </div>
           )}
           <div className="athletics-hud-header">
@@ -178,7 +186,7 @@ export const ArenaHudOverlay = ({
             <div className="athletics-energy-track"><span style={{ width: `${energyPercent}%` }} /></div>
             <strong>{Math.round(athleticsHud.energy)} / {athleticsHud.maxEnergy}</strong>
           </div>
-          <div className="athletics-hud-stats">
+          {athleticsHud.role !== "hunter" && <div className="athletics-hud-stats">
             <span>
               <span className="athletics-stat-icon" aria-hidden="true">🏆</span>
               <span><small>{t("Place")}</small><strong>{language === "ja" ? t("{value0} place", { value0: Math.max(1, Math.round(athleticsHud.rank)) }) : formatPlace(athleticsHud.rank)} / {athleticsHud.totalRacers}</strong></span>
@@ -187,7 +195,7 @@ export const ArenaHudOverlay = ({
               <span className="athletics-stat-icon athletics-stat-icon-lap" aria-hidden="true">↻</span>
               <span><small>{t("Lap")}</small><strong>{lap} / {athleticsHud.requiredLaps}</strong></span>
             </span>
-          </div>
+          </div>}
           {isVariant && (
             <div className="athletics-variant-stats">
               {athleticsHud.role === "hunter" ? (
@@ -195,7 +203,7 @@ export const ArenaHudOverlay = ({
               ) : (
                 <span><small>{t("Ability")}</small><strong>{athleticsHud.abilityCharge ?? 0} / {athleticsHud.abilityMax ?? 3}</strong><em>{athleticsHud.abilityReady ? t(getChaosAbilityLabel(athleticsHud.abilityReady)) : t("Charging")}</em></span>
               )}
-              {athleticsHud.mode === "hunters-runners" && athleticsHud.role !== "hunter" && (
+              {athleticsHud.mode === "hunters-runners" && (
                 <span><small>{t("Runners left")}</small><strong>{athleticsHud.remainingRunners ?? 0}</strong></span>
               )}
               {athleticsHud.mode === "chaos-climb" && (
@@ -222,6 +230,7 @@ export const ArenaHudOverlay = ({
               disabled={controlsDisabled || !athleticsHud.canAnswer || athleticsHud.status !== "racing"}
               aria-label={t("Answer a movement energy question")}
               onPointerDown={(event) => { event.preventDefault(); onQuestionFromTouch(); }}
+              onClick={(event) => { if (event.detail === 0) onQuestionFromTouch(); }}
             >
               <span aria-hidden="true">?</span>{t("Answer")}</button>
           )}
@@ -240,16 +249,16 @@ export const ArenaHudOverlay = ({
                   <kbd aria-hidden="true">SHIFT</kbd>{t("Crouch")}</button>
               )}
               {onJumpFromTouch && (
-                <button type="button" className="touch-jump" disabled={controlsDisabled} aria-label={t("Jump")} aria-keyshortcuts="Space" onPointerDown={(event) => { event.preventDefault(); onJumpFromTouch(); }}>
+                <button type="button" className="touch-jump" disabled={controlsDisabled} aria-label={t("Jump")} aria-keyshortcuts="Space" onPointerDown={(event) => { event.preventDefault(); onJumpFromTouch(); }} onClick={(event) => { if (event.detail === 0) onJumpFromTouch(); }}>
                   <kbd aria-hidden="true">SPACE</kbd>{t("Jump")}</button>
               )}
               {onFireFromTouch && athleticsHud.role === "hunter" && (
-                <button type="button" className="touch-fire" disabled={controlsDisabled} aria-label={t("Throw foam ball")} onPointerDown={(event) => { event.preventDefault(); onFireFromTouch(); }}>
+                <button type="button" className="touch-fire" disabled={controlsDisabled} aria-label={t("Throw foam ball")} onPointerDown={(event) => { event.preventDefault(); onFireFromTouch(); }} onClick={(event) => { if (event.detail === 0) onFireFromTouch(); }}>
                   <kbd aria-hidden="true">F</kbd>{t("Throw")}</button>
               )}
               {onAbilityFromTouch && athleticsHud.role !== "hunter" && athleticsHud.abilityReady && (
-                <button type="button" className="touch-ability" disabled={controlsDisabled || (athleticsHud.abilityCharge ?? 0) < (athleticsHud.abilityMax ?? 3)} aria-label={t("Use {value0}", { value0: t(getChaosAbilityLabel(athleticsHud.abilityReady)) })} onPointerDown={(event) => { event.preventDefault(); onAbilityFromTouch(); }}>
-                  <kbd aria-hidden="true">A</kbd>
+                <button type="button" className="touch-ability" disabled={controlsDisabled || (athleticsHud.abilityCharge ?? 0) < (athleticsHud.abilityMax ?? 3)} aria-label={t("Use {value0}", { value0: t(getChaosAbilityLabel(athleticsHud.abilityReady)) })} aria-keyshortcuts="R" onPointerDown={(event) => { event.preventDefault(); onAbilityFromTouch(); }} onClick={(event) => { if (event.detail === 0) onAbilityFromTouch(); }}>
+                  <kbd aria-hidden="true">R</kbd>
                   {t(getChaosAbilityLabel(athleticsHud.abilityReady))}
                 </button>
               )}

@@ -4,6 +4,7 @@ import {
   CHAOS_HAZARD_LIMIT,
   createChaosWave,
   getAthleticsModeSeed,
+  getAthleticsRouteTangent,
   getChaosEventForWave,
   getHunterCount,
   getHunterStationProgress,
@@ -140,7 +141,11 @@ export const getZeusTargetPlan = ({
     targetCount: profile.targetCount,
     recentTargetIds
   });
-  return { profile, targets };
+  const warningPositions = Object.fromEntries(targets.map((target) => {
+    const tangent = getAthleticsRouteTangent(target.routeProgress);
+    return [target.id, { x: target.x + tangent.x * 3, y: target.y, z: target.z + tangent.z * 3 }];
+  }));
+  return { profile, targets, warningPositions };
 };
 
 export const resolveZeusHit = resolveZeusStrike;

@@ -20,6 +20,7 @@ import type { ArenaQuality } from "./gamePreferences";
 import type { ArenaQualityConfig } from "./sceneSetup";
 import { createQuizStrikeMaterial, type QuizStrikeMaterialStyle } from "./rendering/materials/QuizStrikeMaterials";
 import { buildAthleticsEnvironmentDress } from "./rendering/environment/AthleticsEnvironmentDress";
+import { makeAthleticsSurfaceTexture } from "./rendering/environment/AthleticsSurfaceTextures";
 import { getAthleticsLandingGuide, type AthleticsLandingGuide } from "./athleticsNavigation";
 
 type ActiveArenaQuality = Exclude<ArenaQuality, "auto">;
@@ -96,16 +97,6 @@ const addBox = (
   position: [number, number, number],
   rotation: [number, number, number] = [0, 0, 0]
 ) => addMesh(parent, new THREE.BoxGeometry(...size), material, position, rotation);
-
-const addCylinder = (
-  parent: THREE.Object3D,
-  material: THREE.Material,
-  radius: number,
-  height: number,
-  position: [number, number, number],
-  segments = 16,
-  rotation: [number, number, number] = [0, 0, 0]
-) => addMesh(parent, new THREE.CylinderGeometry(radius, radius, height, segments), material, position, rotation);
 
 const addArch = (
   parent: THREE.Object3D,
@@ -260,11 +251,11 @@ export const buildAthleticsStadiumScene = ({
 }: AthleticsStadiumBuilderDependencies) => {
   const surfaceTextureResolution = activeQuality === "high" ? 1024 : 512;
   const floorTexture = makeCanvasTexture("floor", "#83c995", surfaceTextureResolution);
-  const stoneTexture = makeCanvasTexture("stone", "#dbe6e2", surfaceTextureResolution);
-  const woodTexture = makeCanvasTexture("wood", "#dba16e", surfaceTextureResolution);
+  const stoneTexture = makeAthleticsSurfaceTexture("stone", surfaceTextureResolution);
+  const woodTexture = makeAthleticsSurfaceTexture("wood", surfaceTextureResolution);
   const waterTexture = makeCanvasTexture("water", "#5de6ec", surfaceTextureResolution);
-  const sandTexture = makeCanvasTexture("sand", "#dfc875", surfaceTextureResolution);
-  const metalTexture = makeCanvasTexture("metal", "#a9c2cc", surfaceTextureResolution);
+  const sandTexture = makeAthleticsSurfaceTexture("sand", surfaceTextureResolution);
+  const metalTexture = makeAthleticsSurfaceTexture("metal", surfaceTextureResolution);
   [floorTexture, stoneTexture, woodTexture, waterTexture, sandTexture, metalTexture].forEach((texture) => {
     texture.anisotropy = qualityConfig.anisotropy;
   });
@@ -273,7 +264,12 @@ export const buildAthleticsStadiumScene = ({
     { stone: stoneTexture, wood: woodTexture, metal: metalTexture, sand: sandTexture },
     activeQuality === "high" ? 2048 : 1024
   );
-  const staticBatcher = new ArenaStaticBatcher(surfaceAtlas, !isFps && qualityConfig.shadows);
+  // The batch UV tiles count down from the canvas's top edge. CanvasTexture
+  // flips Y by default, which swapped wood into white markings and metal
+  // into the running pads. Keep this map's authored tiles in that order.
+  surfaceAtlas.flipY = false;
+  surfaceAtlas.anisotropy = qualityConfig.anisotropy;
+  const staticBatcher = new ArenaStaticBatcher(surfaceAtlas, !isFps && qualityConfig.shadows, { metalness: .08, bumpScale: 0 });
   const materialCache = new Map<string, THREE.MeshStandardMaterial>();
   const collisionProxyMaterial = new THREE.MeshBasicMaterial({ visible: false, colorWrite: false, depthWrite: false });
   const park = new THREE.Group();
@@ -290,11 +286,12 @@ export const buildAthleticsStadiumScene = ({
   const stone = makeMaterial(materialCache, "park-stone", "#a9c3c4", { roughness: 0.84 });
   const wood = makeMaterial(materialCache, "park-wood", "#c97845", { roughness: 0.76 });
   const metal = makeMaterial(materialCache, "park-metal", "#506a82", { roughness: 0.38, metalness: 0.56 });
+  const supportPaint = makeMaterial(materialCache, "park-support-paint", "#548da7", { roughness: .82, metalness: .02 });
   const cream = makeMaterial(materialCache, "park-cream", "#fff0c8", { roughness: 0.68 });
   const dark = makeMaterial(materialCache, "park-dark", "#26334d", { roughness: 0.78 });
-  const stadium = makeMaterial(materialCache, "stadium-concrete", "#6b8996", { roughness: 0.88 });
-  const stadiumDark = makeMaterial(materialCache, "stadium-dark", "#293d54", { roughness: 0.82 });
-  const stadiumRoof = makeMaterial(materialCache, "stadium-roof", "#36566d", { roughness: 0.55, metalness: 0.32 });
+  const stadium = makeMaterial(materialCache, "stadium-concrete", "#c2dde1", { roughness: 0.88 });
+  const stadiumDark = makeMaterial(materialCache, "stadium-dark", "#648ba0", { roughness: 0.82 });
+  const stadiumRoof = makeMaterial(materialCache, "stadium-roof", "#418fa9", { roughness: 0.68, metalness: 0.08 });
   const seatBlue = makeMaterial(materialCache, "stadium-seat-blue", "#38b7d8", { roughness: 0.62, metalness: 0.08 });
   const seatCoral = makeMaterial(materialCache, "stadium-seat-coral", "#ee766b", { roughness: 0.62, metalness: 0.08 });
   const foliage = makeMaterial(materialCache, "park-foliage", "#2b8d70", { roughness: 0.94 });
@@ -352,10 +349,10 @@ export const buildAthleticsStadiumScene = ({
   addBox(park, turf, [284, 1, 284], [0, -0.52, 0]);
   addBatchedBox(cream, [278, 0.55, 278], [0, -0.3, 0], "sand");
   addBox(park, turf, [272, 0.25, 272], [0, -0.1, 0]);
-  addBatchedBox(dark, [4, 11, 276], [-140, 5.5, 0], "stone");
-  addBatchedBox(dark, [4, 11, 276], [140, 5.5, 0], "stone");
-  addBatchedBox(dark, [276, 11, 4], [0, 5.5, -140], "stone");
-  addBatchedBox(dark, [276, 11, 4], [0, 5.5, 140], "stone");
+  addBatchedBox(stadium, [4, 11, 276], [-140, 5.5, 0], "stone");
+  addBatchedBox(stadium, [4, 11, 276], [140, 5.5, 0], "stone");
+  addBatchedBox(stadium, [276, 11, 4], [0, 5.5, -140], "stone");
+  addBatchedBox(stadium, [276, 11, 4], [0, 5.5, 140], "stone");
   for (const z of [-112, -56, 0, 56, 112]) {
     addBox(park, metal, [0.9, 14, 0.9], [-136, 8, z]);
     addBox(park, accentMaterials.cyan, [3.2, 0.28, 0.35], [-136, 14.5, z]);
@@ -388,7 +385,12 @@ export const buildAthleticsStadiumScene = ({
     ...course.surfaces.map((surface) => ({ surface, shortcut: false })),
     ...course.shortcuts.flatMap((shortcut) => shortcut.surfaces.map((surface) => ({ surface, shortcut: true })))
   ];
-  const supportIndices = new Set(course.surfaces.map((_, index) => index));
+  const supportIndices = new Set(course.surfaces.flatMap((surface, index) => {
+    if (surface.safe || surface.kind !== "stair") return [index];
+    // Connected beams and descent treads form spans. A post beneath every
+    // tread made the return staircase read as one enormous black wall.
+    return index % (index >= 68 ? 8 : 3) === 0 ? [index] : [];
+  }));
   const surfacePoint = (surface: AthleticsCourseSurface, localX: number, localZ: number) => {
     const angle = surface.rotationY ?? 0;
     return {
@@ -414,10 +416,17 @@ export const buildAthleticsStadiumScene = ({
     const surfaceLayer = surface.material === "wood" ? "wood" : surface.material === "accent" ? "accent" : surface.material === "stone" ? "stone" : "metal";
     const surfaceRotation: [number, number, number] = [0, surface.rotationY ?? 0, 0];
     addBatchedBox(platformMaterial, [surface.width, slabHeight, surface.depth], [surface.x, surface.y - slabHeight / 2, surface.z], surfaceLayer, surfaceRotation);
-    const districtTint = new THREE.Color(sectionColors[accent]).lerp(new THREE.Color("#ffffff"), .35).getHexString();
+    const districtTint = new THREE.Color(sectionColors[accent]).lerp(new THREE.Color("#ffffff"), .16).getHexString();
     const topMaterial = surface.kind === "checkpoint" || shortcut ? accentMaterials[accent]
       : surface.material === "wood" ? wood : makeMaterial(materialCache, `district-stone-top-${accent}`, `#${districtTint}`, { roughness: .85 });
     addBatchedBox(topMaterial, [Math.max(1, surface.width - .6), 0.08, Math.max(1, surface.depth - .6)], [surface.x, surface.y + .04, surface.z], surface.material === "wood" ? "wood" : "stone", surfaceRotation);
+
+    // Solid painted fascias distinguish the landings from the grass below.
+    // Keep every trim below the shared walkable top, including narrow beams.
+    for (const side of [-1, 1]) {
+      const rim = surfacePoint(surface, side * (surface.width / 2 - .12), 0);
+      addBatchedBox(accentMaterials[accent], [.24, .22, surface.depth], [rim.x, surface.y - .13, rim.z], "accent", surfaceRotation);
+    }
 
     // A bright perimeter is the primary next-landing language. It is kept
     // outside the collision proxy and updated only for the upcoming landing.
@@ -467,8 +476,8 @@ export const buildAthleticsStadiumScene = ({
       const supportHeight = Math.max(.2, surface.y - 0.8);
       const leftSupport = surfacePoint(surface, -surface.width * 0.33, -surface.depth * 0.3);
       const rightSupport = surfacePoint(surface, surface.width * 0.33, surface.depth * 0.3);
-      addBatchedBox(metal, [1.25, supportHeight, 1.25], [leftSupport.x, supportHeight / 2, leftSupport.z], "metal", surfaceRotation);
-      addBatchedBox(metal, [1.25, supportHeight, 1.25], [rightSupport.x, supportHeight / 2, rightSupport.z], "metal", surfaceRotation);
+      addBatchedBox(supportPaint, [1.25, supportHeight, 1.25], [leftSupport.x, supportHeight / 2, leftSupport.z], "stone", surfaceRotation);
+      addBatchedBox(supportPaint, [1.25, supportHeight, 1.25], [rightSupport.x, supportHeight / 2, rightSupport.z], "stone", surfaceRotation);
     }
   });
 
@@ -506,6 +515,17 @@ export const buildAthleticsStadiumScene = ({
       [challenge.x, challenge.y + challenge.height / 2, challenge.z], "accent");
     addBatchedBox(cream, [challenge.width + .08, .12, challenge.depth + .08],
       [challenge.x, challenge.y + challenge.height + .06, challenge.z], "sand");
+    if (challenge.kind === "hurdle") {
+      for (let stripe = -2; stripe <= 2; stripe += 1) {
+        addBatchedBox(cream, [.025, challenge.height * .72, 1.1],
+          [challenge.x + challenge.width / 2 + .015, challenge.y + challenge.height / 2, challenge.z + stripe * 2.4], "sand");
+        addBatchedBox(cream, [.025, challenge.height * .72, 1.1],
+          [challenge.x - challenge.width / 2 - .015, challenge.y + challenge.height / 2, challenge.z + stripe * 2.4], "sand");
+      }
+    } else {
+      for (const fraction of [.3, .65]) addBatchedBox(cream, [challenge.width + .04, .25, challenge.depth + .04],
+        [challenge.x, challenge.y + challenge.height * fraction, challenge.z], "sand");
+    }
   });
 
   const nextMarker = new THREE.Group();

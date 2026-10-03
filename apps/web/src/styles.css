@@ -14508,6 +14508,19 @@ body:has(.workspace) .study-set-audio-recorder audio { width: min(100%, 440px); 
   pointer-events: none;
 }
 
+.athletics-threat-status {
+  display: grid;
+  gap: 3px;
+  padding: 6px 8px;
+  border-left: 3px solid #ffd66e;
+  background: #211745;
+  color: #fff7d6;
+  font-size: .75rem;
+  line-height: 1.35;
+}
+
+.athletics-threat-status strong { color: #fff0a8; }
+
 .athletics-mode-banner {
   position: absolute;
   top: var(--hud-safe-top, 16px);
@@ -14607,7 +14620,8 @@ body:has(.workspace) .study-set-audio-recorder audio { width: min(100%, 440px); 
 .athletics-mode-action-bar {
   position: absolute;
   left: var(--hud-safe-edge, 16px);
-  right: var(--hud-safe-edge, 16px);
+  right: auto;
+  width: min(340px, calc(100% - 32px));
   bottom: max(14px, env(safe-area-inset-bottom));
   z-index: var(--z-hud, 20);
   display: flex;
@@ -15114,6 +15128,7 @@ body:has(.workspace) .study-set-audio-recorder audio { width: min(100%, 440px); 
    the bottom row for the menu so neither Answer nor the joystick is covered. */
 .athletics-game-layout:has(.athletics-touch-controls:not([hidden])) .athletics-mode-action-bar { display: none; }
 .fps-view .athletics-touch-controls { bottom: max(72px, calc(env(safe-area-inset-bottom) + 72px)); }
+.fps-view[data-input-mode="touch"] .athletics-touch-controls .touch-action-group { bottom: 94px; }
 
 .athletics-lobby-card,
 .athletics-course-card,
@@ -15424,8 +15439,8 @@ body:has(.workspace) .athletics-teacher-results {
 }
 
 @media (max-width: 700px) {
-  .fps-view .athletics-hud { left: 10px; top: 10px; width: min(300px, calc(100% - 20px)); padding: 9px 10px 10px; }
-  .athletics-mode-action-bar { left: 10px; right: 10px; bottom: max(10px, env(safe-area-inset-bottom)); }
+  .fps-view .athletics-hud { left: 10px; top: 58px; width: min(300px, calc(100% - 20px)); padding: 9px 10px 10px; }
+  .athletics-mode-action-bar { left: 10px; right: auto; width: min(340px, calc(100% - 20px)); bottom: max(10px, env(safe-area-inset-bottom)); }
   .athletics-mode-action-copy small { max-width: 160px; }
   body:has(.workspace) .athletics-mode-picker-heading { display: grid; align-items: start; }
   body:has(.workspace) .athletics-mode-brief { grid-template-columns: 1fr; }
@@ -15441,6 +15456,51 @@ body:has(.workspace) .athletics-teacher-results {
   .athletics-touch-controls .touch-crouch { min-width: 92px; min-height: 58px; }
   .athletics-touch-controls .touch-question { min-width: 82px; min-height: 74px; }
 }
+
+@media (orientation: landscape) and (max-height: 500px) {
+  .fps-view .athletics-onboarding {
+    top: 108px;
+    right: 10px;
+    width: min(340px, calc(100% - 20px));
+    padding: 6px 10px;
+  }
+  .fps-view .athletics-hud {
+    top: 10px;
+    width: min(380px, calc(100% - 20px));
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+    gap: 3px;
+    padding: 3px 10px;
+  }
+  .athletics-hud > .athletics-variant-header,
+  .athletics-hud > .athletics-threat-status,
+  .athletics-hud > .athletics-hud-header,
+  .athletics-hud > .athletics-energy-meter { grid-column: 1 / -1; }
+  .athletics-hud .athletics-hud-stats,
+  .athletics-hud .athletics-variant-stats { gap: 4px; }
+  .athletics-hud .athletics-variant-stats:has(> span:nth-child(3)) { grid-template-columns: repeat(3, minmax(0, 1fr)); }
+  .athletics-hud .athletics-threat-status { display: flex; align-items: center; flex-wrap: wrap; gap: 6px; padding: 4px 6px; }
+  .athletics-hud .athletics-variant-stats > span,
+  .athletics-hud .athletics-hud-stats > span { padding: 4px 6px; }
+  .athletics-hud .athletics-hud-time { display: flex; align-items: baseline; gap: 6px; }
+  .athletics-game-layout .game-utility-bar { left: auto; right: 10px; }
+  .athletics-game-layout .athletics-menu {
+    inset: 8px 14px;
+    padding: 8px;
+    gap: 8px;
+  }
+  .athletics-menu .game-menu-bar { margin: -8px -8px 0; padding: 8px; }
+  .athletics-menu .quiz-panel { padding: 10px; gap: 8px; }
+  .athletics-menu .panel-title h2 { font-size: 1rem; }
+  .athletics-menu .question-prompt-card { padding: 8px 10px; }
+  .athletics-menu .question-text { font-size: 1rem; margin: 0; }
+  .athletics-menu .answer-grid { gap: 6px; }
+  .athletics-menu .answer-grid button { min-height: 44px; padding: 8px 10px; }
+  .athletics-menu .question-feedback-area { min-height: 30px; padding: 6px 10px; }
+}
+
+.athletics-recovery-progress { display: grid; gap: 6px; }
+.athletics-recovery-progress p { margin: 0; font-size: .8rem; }
+.athletics-recovery-progress .respawn-meter { height: 6px; }
 
 /* Unified teacher shell refinements: product grouping, quick actions, and tablet navigation. */
 body:has(.workspace) .teacher-sidebar-nav { display: grid; gap: 4px; }

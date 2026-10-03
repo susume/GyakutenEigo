@@ -38,7 +38,7 @@ export const ATHLETICS_MODE_CONFIG: Readonly<Record<AthleticsMode, AthleticsMode
     shortLabel: "Zeus",
     description: "Climb toward Zeus, dodge telegraphed lightning, and answer to break an electric freeze.",
     instructionTitle: "CLIMB TO ZEUS",
-    instructionLines: ["Leave the lightning ring before it fills", "Answer correctly to break a freeze", "First to finish the circuit defeats Zeus"],
+    instructionLines: ["Lightning marks the path ahead; move clear of the fixed ring", "Answer correctly to break a freeze", "First to finish the circuit defeats Zeus"],
     accent: "#b697ff"
   },
   "hunters-runners": {
@@ -47,7 +47,7 @@ export const ATHLETICS_MODE_CONFIG: Readonly<Record<AthleticsMode, AthleticsMode
     shortLabel: "Hunters & Runners",
     description: "Runners climb while Hunters defend stations with answer-powered foam balls.",
     instructionTitle: "RUN OR HUNT",
-    instructionLines: ["Runners climb and descend the full circuit", "Hunters answer for foam-ball ammo", "Roles swap for the next round"],
+    instructionLines: ["Runners dodge foam balls; CPU Hunters only throw from ahead", "Hunters answer for foam-ball ammo", "Roles swap for the next round"],
     accent: "#ff9c54"
   },
   "chaos-climb": {
@@ -56,7 +56,7 @@ export const ATHLETICS_MODE_CONFIG: Readonly<Record<AthleticsMode, AthleticsMode
     shortLabel: "Chaos Climb",
     description: "Race through hazard waves with advance warnings, dodge rolling park props, and charge simple abilities.",
     instructionTitle: "SURVIVE THE CHAOS",
-    instructionLines: ["Answer for energy; three correct answers charge an ability", "Amber rings warn where hazards will appear", "Follow the arrows and retry from your last landing"],
+    instructionLines: ["Answer for energy; three correct answers charge an ability", "Hazards approach from ahead; amber arrows show their direction", "Sidestep or jump over props; follow the course arrows"],
     accent: "#ff7fb4"
   }
 };
@@ -120,12 +120,25 @@ export const HUNTER_START_AMMO = 0;
 export const HUNTER_CORRECT_AMMO = 3;
 export const HUNTER_STREAK_BONUS_AMMO = 2;
 export const HUNTER_MAX_AMMO = 12;
-export const HUNTER_PROJECTILE_TRAVEL_MS = 520;
-export const HUNTER_PROJECTILE_COOLDOWN_MS = 850;
-export const HUNTER_PROJECTILE_RADIUS = 1.3;
+export const HUNTER_PROJECTILE_TRAVEL_MS = 1100;
+export const HUNTER_PROJECTILE_COOLDOWN_MS = 1800;
+export const HUNTER_PROJECTILE_RADIUS = 0.9;
 export const HUNTER_PROJECTILE_RANGE = 96;
 export const HUNTER_KNOCKBACK_DISTANCE = 3.2;
 export const HUNTER_STAGGER_MS = 280;
+
+/** Camera-facing cone; CPU throws must be visible and on the same storey. */
+export const isCpuHunterThreatAhead = (
+  origin: AthleticsPointLike,
+  runner: AthleticsPointLike & { facing: number }
+) => {
+  const dx = origin.x - runner.x;
+  const dz = origin.z - runner.z;
+  const distance = Math.hypot(dx, dz);
+  return distance >= 8 && distance <= 48
+    && Math.abs(origin.y - runner.y) <= 5
+    && (dx * -Math.sin(runner.facing) + dz * -Math.cos(runner.facing)) / distance >= 0.5;
+};
 
 export interface HunterQuizReward {
   ammo: number;
@@ -231,10 +244,10 @@ export const getZeusAttackTier = (highestProgress: number): ZeusAttackTier => {
 export const getZeusAttackProfile = (highestProgress: number, playerCount: number): ZeusAttackProfile => {
   const tier = getZeusAttackTier(highestProgress);
   const count = Math.max(1, Math.floor(playerCount));
-  if (tier === "rage") return { tier, warningDurationMs: 1600, cooldownMs: 4200, targetCount: Math.min(2, count), strikeRadius: 3.4, shockwave: true };
-  if (tier === "upper") return { tier, warningDurationMs: 1800, cooldownMs: 5200, targetCount: Math.min(2, count), strikeRadius: 2.8, shockwave: true };
-  if (tier === "middle") return { tier, warningDurationMs: 2100, cooldownMs: 6500, targetCount: Math.min(2, count), strikeRadius: 2.35, shockwave: false };
-  return { tier, warningDurationMs: 2400, cooldownMs: 8200, targetCount: 1, strikeRadius: 1.95, shockwave: false };
+  if (tier === "rage") return { tier, warningDurationMs: 2200, cooldownMs: 5800, targetCount: Math.min(2, count), strikeRadius: 2.4, shockwave: true };
+  if (tier === "upper") return { tier, warningDurationMs: 2400, cooldownMs: 6500, targetCount: Math.min(2, count), strikeRadius: 2.2, shockwave: true };
+  if (tier === "middle") return { tier, warningDurationMs: 2600, cooldownMs: 7500, targetCount: Math.min(2, count), strikeRadius: 2.05, shockwave: false };
+  return { tier, warningDurationMs: 2800, cooldownMs: 9000, targetCount: 1, strikeRadius: 1.95, shockwave: false };
 };
 
 export interface ZeusTargetCandidate {
@@ -356,8 +369,8 @@ export interface AthleticsChaosState {
 }
 
 export const CHAOS_HAZARD_LIMIT = 18;
-export const CHAOS_HAZARD_WARNING_MS = 1600;
-export const CHAOS_WAVE_INTERVAL_MS = 5200;
+export const CHAOS_HAZARD_WARNING_MS = 2200;
+export const CHAOS_WAVE_INTERVAL_MS = 8500;
 export const CHAOS_EVENT_DURATION_MS = 7000;
 export const CHAOS_EVENT_INTERVAL = 4;
 
@@ -401,20 +414,23 @@ export const createChaosWave = ({
     const kind = eventType === "giant-ball" && index === 0
       ? "giant-ball"
       : chaosKinds[Math.floor(seededValue(seed, waveIndex * 17 + index + 3) * chaosKinds.length)] ?? "barrel";
-    const downhill = (waveIndex + index) % 2 === 0;
     const travel = 0.045 + variance * 0.025;
-    const startProgress = downhill ? Math.min(0.94, progress + travel) : Math.max(0.04, progress - variance * 0.025);
-    const endProgress = downhill ? Math.max(0.04, startProgress - travel) : Math.min(0.94, startProgress + travel);
-    const durationMs = Math.round(4500 + variance * 1200 + (kind === "giant-ball" ? 600 : 0));
-    const radius = kind === "giant-ball" ? 3.1 : kind === "runaway-cart" ? 2.3 : kind === "swinging-bumper" ? 2 : 1.45;
+    // Every prop travels against race progress, including on the descent.
+    // Stagger launches in a wave so the whole path never fills at once.
+    const startProgress = Math.min(0.94, progress + travel);
+    const endProgress = Math.max(0.04, startProgress - travel);
+    const durationMs = Math.round((4500 + variance * 1200 + (kind === "giant-ball" ? 600 : 0))
+      / (eventType === "speed-round" ? 1.35 : 1));
+    const launchDelayMs = index * 900;
+    const radius = kind === "giant-ball" ? 1.8 : kind === "runaway-cart" ? 1.2 : kind === "swinging-bumper" ? 1.1 : 0.9;
     wave.push({
       id: `chaos-${Math.max(0, Math.floor(waveIndex))}-${index}-${(hashString(`${seed}:${waveIndex}:${index}`) >>> 0).toString(36)}`,
       kind,
       startProgress,
       endProgress,
-      laneOffset: (seededValue(seed, waveIndex * 23 + index + 5) - 0.5) * 8,
-      spawnAt: new Date(nowMs + CHAOS_HAZARD_WARNING_MS).toISOString(),
-      expiresAt: new Date(nowMs + CHAOS_HAZARD_WARNING_MS + durationMs).toISOString(),
+      laneOffset: (seededValue(seed, waveIndex * 23 + index + 5) - 0.5) * 3,
+      spawnAt: new Date(nowMs + CHAOS_HAZARD_WARNING_MS + launchDelayMs).toISOString(),
+      expiresAt: new Date(nowMs + CHAOS_HAZARD_WARNING_MS + launchDelayMs + durationMs).toISOString(),
       speed: 1 / durationMs,
       radius,
       knockback: kind === "giant-ball" ? 5.2 : kind === "runaway-cart" ? 4.2 : kind === "swinging-bumper" ? 3.6 : 2.6,
@@ -437,7 +453,8 @@ export const getChaosEventForWave = ({ seed, waveIndex, nowMs }: { seed: number;
 };
 
 export const getChaosHazardPosition = (
-  hazard: Pick<AthleticsHazardDefinition, "startProgress" | "endProgress" | "laneOffset" | "spawnAt" | "expiresAt">,
+  hazard: Pick<AthleticsHazardDefinition, "startProgress" | "endProgress" | "laneOffset" | "spawnAt" | "expiresAt">
+    & Partial<Pick<AthleticsHazardDefinition, "kind" | "radius">>,
   route: readonly AthleticsPointLike[],
   nowMs: number,
   speedMultiplier = 1
@@ -475,7 +492,7 @@ export const getChaosHazardPosition = (
   const length = Math.hypot(tangentX, tangentZ) || 1;
   return {
     x: point.x - (tangentZ / length) * hazard.laneOffset,
-    y: point.y + 1.1,
+    y: point.y + (hazard.kind === "giant-ball" ? hazard.radius ?? 1.1 : 1.1),
     z: point.z + (tangentX / length) * hazard.laneOffset,
     progress
   };

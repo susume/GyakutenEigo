@@ -410,6 +410,8 @@
   "Live question": "ゲーム中の問題",
   "Recovery question": "復帰用の問題",
   "Refuel movement": "移動エネルギーを補充",
+  "Refill foam ammo": "フォーム弾を補充",
+  "+{value0} foam ammo": "フォーム弾 +{value0}",
   "Answer to earn": "答えて獲得",
   "Listen to the question": "問題を聞く",
   "Question audio": "問題の音声",
@@ -2518,5 +2520,11 @@
   "Could not load My Speaking Tasks or My Sets. Built-in scenarios are still available.": "マイスピーキング課題とマイセットを読み込めませんでした。基本の場面は利用できます。",
   "Could not load My Speaking Tasks. Built-in scenarios are still available.": "マイスピーキング課題を読み込めませんでした。基本の場面は利用できます。",
   "Could not load My Sets. Built-in scenarios are still available.": "マイセットを読み込めませんでした。基本の場面は利用できます。",
-  "Japanese feedback": "日本語のフィードバック"
+  "Japanese feedback": "日本語のフィードバック",
+  "Lightning ahead": "前方に雷",
+  "Move clear of the ring": "輪の外へ移動",
+  "Lightning marks the path ahead; move clear of the fixed ring": "前方の輪が雷の予告です。輪の外へ移動しましょう",
+  "Runners dodge foam balls; CPU Hunters only throw from ahead": "ランナーはボールをよけましょう。CPUハンターは前方からだけ投げます",
+  "Hazards approach from ahead; amber arrows show their direction": "障害物は前方から来ます。琥珀色の矢印が進む方向を示します",
+  "Sidestep or jump over props; follow the course arrows": "横によけるかジャンプで越え、コースの矢印に沿って進みましょう"
 }

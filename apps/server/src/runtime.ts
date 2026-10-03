@@ -207,6 +207,7 @@ import {
   getChaosEventForWave,
   getChaosEventModifiers,
   getChaosHazardPosition,
+  isCpuHunterThreatAhead,
   getHunterStationProgress,
   getZeusAttackProfile,
   resolveChaosHazardImpact,
@@ -1407,6 +1408,10 @@ const updateAthleticsRace = (session: GameSession, player: PlayerSession, nowMs:
   if (race.status === "countdown" && nowMs >= Date.parse(race.startAt)) {
     race.status = "running";
     session.announcement = makeAnnouncement("round_start", "GO", "Jump to the next platform. Answer anytime to refill movement energy.", undefined, 2_000);
+    // Let GO clear before the first telegraph; its full reaction window must
+    // remain visible rather than run behind the opening announcement.
+    if (race.zeus) race.zeus.nextAttackAt = new Date(nowMs + 3_000).toISOString();
+    if (race.chaos) race.chaos.nextWaveAt = new Date(nowMs + 3_000).toISOString();
     appendEvent(session, { type: "start", message: "Athletics Race is live." });
     broadcastSession(session);
   }
@@ -1597,7 +1602,7 @@ const advanceZeusMode = (session: GameSession, nowMs: number) => {
     id: attackId,
     tier: plan.profile.tier,
     targetIds: plan.targets.map((target) => target.id),
-    warningPositions: Object.fromEntries(plan.targets.map((target) => [target.id, { x: target.x, y: target.y, z: target.z }])),
+    warningPositions: plan.warningPositions,
     warningStartedAt,
     strikeAt,
     strikeRadius: plan.profile.strikeRadius,
@@ -1621,13 +1626,7 @@ const advanceZeusMode = (session: GameSession, nowMs: number) => {
     strikeRadius: plan.profile.strikeRadius,
     shockwave: plan.profile.shockwave
   });
-  session.announcement = makeAnnouncement(
-    "round_start",
-    plan.profile.tier === "rage" ? "Zeus is furious!" : "Lightning warning",
-    plan.profile.tier === "rage" ? "Move now. Zeus is charging a stronger strike." : "Watch for the warning ring, then dodge.",
-    `${plan.profile.warningDurationMs / 1000}s warning · ${plan.profile.targetCount > 1 ? "multiple targets" : "one target"}`,
-    plan.profile.warningDurationMs
-  );
+  // Routine attacks use world telegraphs and the compact runner HUD.
   broadcastSession(session);
   return true;
 };
@@ -1730,13 +1729,6 @@ const advanceChaosClimb = (session: GameSession, nowMs: number) => {
     chaos.nextWaveAt = new Date(nowMs + CHAOS_WAVE_INTERVAL_MS).toISOString();
     if (event) {
       chaos.currentEvent = event;
-      session.announcement = makeAnnouncement(
-        "round_start",
-        `CHAOS EVENT: ${event.label}!`,
-        event.type === "wind-gust" ? "Hold your line through the gust." : "Watch the course and react together.",
-        "A short warning gives everyone time to respond.",
-        2_200
-      );
     }
     emitAthleticsModeEvent(session, "chaos_wave", {
       waveIndex: chaos.waveIndex,
@@ -1746,13 +1738,13 @@ const advanceChaosClimb = (session: GameSession, nowMs: number) => {
     });
     changed = true;
   }
-  const activeEvent = chaos.currentEvent && nowMs < Date.parse(chaos.currentEvent.expiresAt) ? chaos.currentEvent : undefined;
-  const hazardSpeedMultiplier = activeEvent ? getChaosEventModifiers(activeEvent).hazardSpeedMultiplier : 1;
   for (const hazard of chaos.activeHazards) {
     // Telegraphs are present in snapshots before they become collidable.
     if (!isActiveChaosHazard(hazard, nowMs)) continue;
     if (hazard.hitIds && hazard.hitIds.length >= session.players.length) continue;
-    const position = getChaosHazardPosition(hazard, ATHLETICS_STADIUM_COURSE.route, nowMs, hazardSpeedMultiplier);
+    // Speed is baked into each launch duration; event expiry cannot move a
+    // travelling hazard backwards or change a previously shown trajectory.
+    const position = getChaosHazardPosition(hazard, ATHLETICS_STADIUM_COURSE.route, nowMs);
     for (const player of session.players) {
       if (hazard.hitIds?.includes(player.id)) continue;
       if (applyChaosImpact(session, player, hazard, position, nowMs)) changed = true;
@@ -1968,11 +1960,14 @@ const pauseSession = (session: GameSession) => pauseSessionForTeacher(session);
 const resumeSession = (session: GameSession) => {
   const result = resumeSessionForTeacher(session);
   if (result.ok && result.changed) {
+    const deltaMs = result.pausedDurationMs ?? 0;
     shiftTeacherPauseRuntimeTimers({
       session,
-      deltaMs: result.pausedDurationMs ?? 0,
+      deltaMs,
       playerMoveTimestamps,
       playerNextFireAt,
+      athleticsActionNextAt,
+      athleticsProjectiles,
       botRespawnAt,
       botNextAttackAt,
       playerQuestionGate,
@@ -2565,6 +2560,10 @@ const advanceAthleticsBot = (session: GameSession, bot: PlayerSession, index: nu
     const nextAllowedAt = athleticsActionNextAt.get(bot.id) ?? 0;
     const target = session.players
       .filter((candidate) => candidate.id !== bot.id && candidate.isAlive && candidate.athletics?.status === "racing" && candidate.athletics.role === "runner")
+      .filter((candidate) => !candidate.athletics?.recoveryActive && isCpuHunterThreatAhead(station, {
+        x: candidate.x ?? 0, y: candidate.y ?? ATHLETICS_PLAYER_EYE_HEIGHT,
+        z: candidate.z ?? 0, facing: candidate.facing ?? 0
+      }))
       .map((candidate) => ({ candidate, distance: Math.hypot((candidate.x ?? 0) - station.x, (candidate.z ?? 0) - station.z) }))
       .filter(({ distance }) => distance <= HUNTER_PROJECTILE_RANGE)
       .sort((left, right) => left.distance - right.distance)[0]?.candidate;

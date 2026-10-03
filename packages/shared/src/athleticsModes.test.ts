@@ -3,6 +3,8 @@ import assert from "node:assert/strict";
 import {
   ATHLETICS_MODES,
   CHAOS_HAZARD_LIMIT,
+  CHAOS_HAZARD_WARNING_MS,
+  isCpuHunterThreatAhead,
   createChaosWave,
   getAthleticsModeConfig,
   getAthleticsModeSeed,
@@ -137,8 +139,9 @@ test("Zeus allows normal jumps but cannot strike another course storey", () => {
 test("Chaos telegraphs precede locally bounded travel and use course distance", () => {
   const nowMs = 10_000;
   for (let waveIndex = 1; waveIndex <= 20; waveIndex += 1) {
-    for (const hazard of createChaosWave({ seed: 123, waveIndex, nowMs, playerCount: 40 })) {
-      assert.equal(Date.parse(hazard.spawnAt) - nowMs, 1600);
+    for (const [index, hazard] of createChaosWave({ seed: 123, waveIndex, nowMs, playerCount: 40 }).entries()) {
+      assert.equal(Date.parse(hazard.spawnAt) - nowMs, CHAOS_HAZARD_WARNING_MS + index * 900);
+      assert.ok(hazard.startProgress > hazard.endProgress, "all props approach against race direction");
       assert.ok(Date.parse(hazard.expiresAt) - Date.parse(hazard.spawnAt) >= 4500);
       assert.ok(Math.abs(hazard.endProgress - hazard.startProgress) <= 0.071);
       assert.equal(getChaosHazardPosition(hazard, [{ x: 0, y: 0, z: 0 }, { x: 100, y: 0, z: 0 }], nowMs).progress, 0);
@@ -150,6 +153,28 @@ test("Chaos telegraphs precede locally bounded travel and use course distance", 
   assert.equal(getChaosHazardPosition(hazard, route, 0).x, 50);
   assert.equal(getChaosHazardPosition({ ...hazard, laneOffset: 2 }, route, 1000).z, 2);
   assert.equal(getChaosEventModifiers("wind-gust").movementSpeedMultiplier, 1);
+});
+
+test("CPU Hunter attacks come from the front, at readable range and the same storey", () => {
+  const runner = { x: 0, y: 4.21, z: 0, facing: 0 };
+  assert.equal(isCpuHunterThreatAhead({ x: 0, y: 4.21, z: -20 }, runner), true);
+  assert.equal(isCpuHunterThreatAhead({ x: 0, y: 4.21, z: 20 }, runner), false);
+  assert.equal(isCpuHunterThreatAhead({ x: 20, y: 4.21, z: 0 }, runner), false);
+  assert.equal(isCpuHunterThreatAhead({ x: 0, y: 24.21, z: -20 }, runner), false);
+  assert.equal(isCpuHunterThreatAhead({ x: 0, y: 4.21, z: -5 }, runner), false);
+  assert.equal(isCpuHunterThreatAhead({ x: 0, y: 4.21, z: -60 }, runner), false);
+  assert.equal(isCpuHunterThreatAhead({ x: -20, y: 4.21, z: 0 }, { ...runner, facing: Math.PI / 2 }), true);
+});
+
+test("every Chaos prop can be jumped over and sped-up waves have fixed launch timing", () => {
+  const normal = createChaosWave({ seed: 123, waveIndex: 4, nowMs: 0, playerCount: 30 });
+  const fast = createChaosWave({ seed: 123, waveIndex: 4, nowMs: 0, playerCount: 30, eventType: "speed-round" });
+  normal.forEach((hazard, index) => {
+    const groundY = hazard.kind === "giant-ball" ? hazard.radius : 1.1;
+    assert.equal(resolveChaosHazardImpact({ hazard, playerPosition: { x: 0, y: 4.21 + 4.5, z: 0 }, hazardPosition: { x: 0, y: groundY, z: 0 } }).hit, false);
+    assert.equal(hazard.spawnAt, fast[index]!.spawnAt);
+    assert.ok(Date.parse(fast[index]!.expiresAt) < Date.parse(hazard.expiresAt));
+  });
 });
 
 test("non-Classic Athletics reports export mode-specific results", () => {
