@@ -1,6 +1,6 @@
 import { useSiteTranslation } from "../../../ui/siteTranslation";
 import { Trash2 } from "lucide-react";
-import { resolveAthleticsStandings, type PlayerSession, type SessionSettings, type Team } from "@quizstrike/shared";
+import { resolveAthleticsStandings, ZEUS_SUMMIT_PROGRESS, type PlayerSession, type SessionSettings, type Team } from "@quizstrike/shared";
 import { groupScoreboardRows } from "../../../scoreboardGroups";
 import { getZombieCounts } from "../../../sessionPresentation";
 
@@ -15,6 +15,7 @@ export default function Scoreboard({
   localPlayerId,
   gameMode,
   athleticsRequiredLaps = 1,
+  athleticsMode,
   onRemovePlayer,
   removingPlayerId
 }: {
@@ -22,6 +23,7 @@ export default function Scoreboard({
   localPlayerId?: string;
   gameMode: SessionSettings["gameMode"];
   athleticsRequiredLaps?: number;
+  athleticsMode?: SessionSettings["athleticsMode"];
   onRemovePlayer?: (playerId: string) => void;
   removingPlayerId?: string | null;
 }) {
@@ -35,7 +37,7 @@ export default function Scoreboard({
           <h2>{t("Race standings")}</h2>
           <span>{players.length} {players.length === 1 ? t("racer") : t("racers")}</span>
         </div>
-        <p className="scoreboard-mode-note">{t("Finish order leads. Progress breaks ties until the tape.")}{hunters.length > 0 ? t(" Hunters earn hits at their stations.") : ""}</p>
+        <p className="scoreboard-mode-note">{t(athleticsMode === "zeus" ? "First to the summit wins" : "Finish order leads. Progress breaks ties until the tape.")}{hunters.length > 0 ? t(" Hunters earn hits at their stations.") : ""}</p>
         <div className="scoreboard-table-wrap">
           <table className="scoreboard-table">
             <caption>{t("Athletics Race standings")}</caption>
@@ -43,9 +45,9 @@ export default function Scoreboard({
               <tr className="scoreboard-row scoreboard-head">
                 <th scope="col">{t("Place")}</th>
                 <th scope="col">{t("Racer")}</th>
-                <th scope="col">{t("Laps")}</th>
+                {athleticsMode !== "zeus" && <th scope="col">{t("Laps")}</th>}
                 <th scope="col">{t("Checkpoint")}</th>
-                <th scope="col">{t("Progress")}</th>
+                <th scope="col">{t(athleticsMode === "zeus" ? "Summit" : "Progress")}</th>
                 <th scope="col">{t("Falls")}</th>
                 <th scope="col">{t("Status")}</th>
                 {onRemovePlayer && <th scope="col" className="scoreboard-actions-heading">{t("Actions")}</th>}
@@ -60,9 +62,9 @@ export default function Scoreboard({
                   <tr className="scoreboard-row athletics-scoreboard-row" key={racer.id}>
                     <th scope="row">{standing.status === "finished" ? t("#{value0}", { value0: standing.rank }) : standing.rank}</th>
                     <td>{racer.nickname}{racer.isBot ? t(" · test player") : ""}{racer.id === localPlayerId ? t(" · you") : ""}</td>
-                    <td>{standing.completedLaps}/{athleticsRequiredLaps}</td>
+                    {athleticsMode !== "zeus" && <td>{standing.completedLaps}/{athleticsRequiredLaps}</td>}
                     <td>{standing.checkpointIndex}</td>
-                    <td>{Math.round(standing.routeProgress * 100)}%</td>
+                    <td>{Math.min(100, Math.round(standing.routeProgress / (athleticsMode === "zeus" ? ZEUS_SUMMIT_PROGRESS : 1) * 100))}%</td>
                     <td>{athletics?.falls ?? 0}</td>
                     <td>{standing.status === "finished" ? t("Finished") : standing.status === "dnf" ? t("DNF") : t("Racing")}</td>
                     {onRemovePlayer && (
@@ -82,7 +84,7 @@ export default function Scoreboard({
                 <td colSpan={5}>{t("Station")}{" "}{(hunter.athletics?.stationIndex ?? 0) + 1} · {hunter.athletics?.hunterHits ?? 0}{" "}{t("hits ·")}{" "}{hunter.score}{" "}{t("points")}</td>
                 {onRemovePlayer && <td className="scoreboard-actions"><button type="button" className="scoreboard-remove-player" onClick={() => onRemovePlayer(hunter.id)} disabled={Boolean(removingPlayerId)} aria-label={t("Remove {value0} from the game", { value0: hunter.nickname })}><Trash2 size={15} aria-hidden="true" />{t("Remove")}</button></td>}
               </tr>)}
-              {standings.length === 0 && <tr><td colSpan={onRemovePlayer ? 8 : 7}>{t("No racers here yet.")}</td></tr>}
+              {standings.length === 0 && <tr><td colSpan={(athleticsMode === "zeus" ? 6 : 7) + (onRemovePlayer ? 1 : 0)}>{t("No racers here yet.")}</td></tr>}
             </tbody>
           </table>
         </div>

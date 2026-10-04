@@ -6,6 +6,7 @@ import {
   GAME_AUDIO_EVENT_CUES,
   GAME_AUDIO_ASSETS,
   GAME_AUDIO_CUES,
+  gameAudio,
   getCombatAudioSpatial,
   getMovementStepIntervalMs,
   type GameAudioCue
@@ -155,4 +156,58 @@ test("footstep sample levels are reduced by half", () => {
   assert.equal(GAME_AUDIO_ASSETS.surface_water?.gain, 0.06);
   assert.equal(GAME_AUDIO_CUES.run_step.gain, 0.01125);
   assert.equal(GAME_AUDIO_CUES.crouch_step.gain, 0.006);
+});
+
+test("Zeus narration retries blocked audio at the live offset and cancels suspended playback", async (t) => {
+  const starts: { when: number; offset: number }[] = [];
+  let fetches = 0;
+  const contexts: AuditAudioContext[] = [];
+  class AuditAudioContext {
+    constructor() { contexts.push(this); }
+    state = "suspended";
+    currentTime = 10;
+    destination = {};
+    resume() { return Promise.resolve(); }
+    createGain() { return { gain: { setValueAtTime() {} }, connect() {} }; }
+    decodeAudioData() { return Promise.resolve({ duration: 5.083 }); }
+    createBufferSource() {
+      return { connect() {}, disconnect() {}, stop() {}, start(when: number, offset: number) { starts.push({ when, offset }); } };
+    }
+  }
+  const windowBefore = Object.getOwnPropertyDescriptor(globalThis, "window");
+  const fetchBefore = globalThis.fetch;
+  Object.defineProperty(globalThis, "window", { configurable: true, value: {
+    AudioContext: AuditAudioContext,
+    requestIdleCallback() {}
+  } });
+  globalThis.fetch = async () => { fetches++; return new Response(new Uint8Array(8)); };
+  t.after(() => {
+    gameAudio.stopZeusChant();
+    audio.state = "closed";
+    globalThis.fetch = fetchBefore;
+    if (windowBefore) Object.defineProperty(globalThis, "window", windowBefore);
+    else Reflect.deleteProperty(globalThis, "window");
+  });
+  const startedAt = Date.now() - 2000;
+  gameAudio.syncZeusChant("blocked-chant", "slow", startedAt, Date.now());
+  const audio = contexts[0]!;
+  assert.equal(fetches, 0, "blocked audio must not queue an old voice");
+  audio!.state = "running";
+  gameAudio.syncZeusChant("blocked-chant", "slow", startedAt, Date.now());
+  await new Promise<void>((resolve) => setImmediate(resolve));
+  assert.equal(starts.length, 1);
+  assert.ok(starts[0]!.offset >= 2 && starts[0]!.offset < 2.5);
+  gameAudio.syncZeusChant("blocked-chant", "slow", startedAt, Date.now());
+  assert.equal(starts.length, 1, "snapshots must not replay the same chant");
+  gameAudio.syncZeusChant("suspended-during-load", "steady", startedAt, Date.now());
+  audio!.state = "suspended";
+  await new Promise<void>((resolve) => setImmediate(resolve));
+  assert.equal(starts.length, 1);
+  audio!.state = "running";
+  gameAudio.syncZeusChant("suspended-during-load", "steady", startedAt, Date.now());
+  await new Promise<void>((resolve) => setImmediate(resolve));
+  assert.equal(starts.length, 2, "a suspended load can retry when audio returns");
+  gameAudio.syncZeusChant("expired-chant", "slow", Date.now() - 8000, Date.now());
+  await new Promise<void>((resolve) => setImmediate(resolve));
+  assert.equal(starts.length, 2, "an expired chant must not start late");
 });

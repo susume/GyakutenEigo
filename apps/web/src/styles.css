@@ -15491,6 +15491,13 @@ body:has(.workspace) .athletics-teacher-results {
 .zeus-status-red { border-left: 3px solid #ffc3ae; }
 .zeus-audio-choice { display: grid; gap: 8px; margin: 16px 0; }
 .zeus-audio-choice select { padding: 10px; border-radius: 8px; }
+.athletics-menu { grid-template-columns: minmax(0, 1fr); }
+.athletics-menu > * { min-width: 0; }
+.athletics-menu .game-menu-bar { flex-wrap: wrap; gap: 8px; }
+.athletics-menu .game-menu-bar button { min-height: 44px; }
+.zeus-question-open .game-utility-bar { visibility: hidden; }
+.arena-canvas canvas[data-look-control="drag"] { cursor: grab; }
+.arena-canvas canvas[data-look-control="drag"]:active { cursor: grabbing; }
 @media (max-width: 600px) {
   .zeus-light-signal:not(.is-inline) { top: 8px; padding: 5px 12px; }
   .zeus-light-signal:not(.is-inline) strong { font-size: 18px; }

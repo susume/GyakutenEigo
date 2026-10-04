@@ -76,7 +76,8 @@ export const PlayerPositionCommandSchema = z.object({
   movementEpoch: z.number().int().nonnegative().max(2_147_483_647).optional(),
   movementIntent: z.boolean().optional(),
   jumpStarted: z.boolean().optional(),
-  zeusPhase: z.enum(["green", "red", "waiting", "defeated"]).optional()
+  zeusPhase: z.enum(["green", "red", "waiting", "defeated"]).optional(),
+  zeusCycleIndex: z.number().int().nonnegative().max(2_147_483_647).optional()
 }).strict();
 
 export const FireActionCommandSchema = z.object({

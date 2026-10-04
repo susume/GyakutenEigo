@@ -50,3 +50,15 @@ test("Zombie waiting room does not expose team terminology", () => {
   const session = zombieSession({ status: "waiting" });
   assert.equal(getReadyRoomTitle(session, session.players[0]), "Zombie Survival Ready Room");
 });
+
+test("Zeus results describe the summit while classic race results keep the finish line", () => {
+  const athletics = { questionIndex: 1, checkpointIndex: 6, routeProgress: 0.8, gateOpen: false, falls: 0,
+    lastSafeCheckpointIndex: 6, checkpointSplitsMs: [], lapSplitsMs: [], status: "finished" as const, finishPosition: 1, completedLaps: 1 };
+  const session = zombieSession({ settings: { ...DEFAULT_SESSION_SETTINGS, gameMode: "athletics", athleticsMode: "zeus" }, players: [player({ athletics })] });
+  assert.equal(getSessionResultText(session), "Learner reached the summit and defeated Zeus.");
+  session.players = [];
+  assert.equal(getSessionResultText(session), "The climb ended before anyone defeated Zeus.");
+  session.settings.athleticsMode = "classic";
+  session.players = [player({ athletics })];
+  assert.equal(getSessionResultText(session), "Learner crossed the finish line first.");
+});

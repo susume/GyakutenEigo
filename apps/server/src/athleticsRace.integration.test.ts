@@ -581,7 +581,7 @@ test("two-lap race keeps players independent, preserves the timer, and finishes 
   assert.ok(Date.now() >= officialStartAt);
 });
 
-test("Zeus allows looking and answering during STOP, then resets movement without losing energy or accepting stale packets", { timeout: 30_000 }, async () => {
+test("Zeus allows looking and answering during STOP, then resets movement without losing energy or accepting stale packets", { timeout: 45_000 }, async () => {
   const teacher = await createTeacherWithQuiz();
   const session = await createSession(teacher, 3, "zeus");
   const student = await joinSession(session.sessionCode, "Daruma Runner");
@@ -601,8 +601,10 @@ test("Zeus allows looking and answering during STOP, then resets movement withou
     await delay(220);
     const safe = (await read()).players.find((entry) => entry.id === student.player.id)!;
     assert.equal(safe.athletics?.movementEpoch ?? 0, 0);
-    const answer = await api<{ result: { player: PlayerFixture } }>(`/api/sessions/${session.sessionCode}/players/${student.player.id}/answer`, { method: "POST", playerToken: student.playerToken, body: { questionId: student.question!.id, selectedChoice: "A" } });
+    const answer = await api<{ result: { player: PlayerFixture; rewardLabel: string; feedback: string } }>(`/api/sessions/${session.sessionCode}/players/${student.player.id}/answer`, { method: "POST", playerToken: student.playerToken, body: { questionId: student.question!.id, selectedChoice: "A" } });
     assert.equal(answer.response.status, 200);
+    assert.equal(answer.body.result.rewardLabel, "+220 movement energy");
+    assert.equal(answer.body.result.feedback, "Correct! Move on GO; stop when Zeus watches.");
     const beforeStrike = answer.body.result.player;
     socket.emit("player_position", { x: beforeStrike.x! - 1, y: beforeStrike.y, z: beforeStrike.z, facing: 1.3, movementIntent: true, zeusPhase: "red", movementEpoch: 0, movementSequence: 3 });
     const struck = await waitUntil(read, (snapshot) => (snapshot.players.find((entry) => entry.id === student.player.id)?.athletics?.movementEpoch ?? 0) === 1, 3000);
@@ -617,6 +619,22 @@ test("Zeus allows looking and answering during STOP, then resets movement withou
     const afterStale = (await read()).players.find((entry) => entry.id === student.player.id)!;
     assert.equal(afterStale.x, restarted.x);
     assert.equal(afterStale.athletics?.movementEpoch, 1);
+    const nextRed = await waitUntil(read, (snapshot) => snapshot.athletics?.zeus?.phase === "red"
+      && snapshot.athletics.zeus.cycleIndex !== red.athletics!.zeus!.cycleIndex
+      && Date.now() > Date.parse(snapshot.athletics.zeus.graceEndsAt!), 20_000);
+    socket.emit("player_position", { x: restarted.x! - 1, y: restarted.y, z: restarted.z, facing: 1.3, movementIntent: true, zeusPhase: "red", zeusCycleIndex: red.athletics!.zeus!.cycleIndex, movementEpoch: 1, movementSequence: 5 });
+    await delay(150);
+    const afterOldCycle = (await read()).players.find((entry) => entry.id === student.player.id)!;
+    assert.equal(afterOldCycle.athletics?.movementEpoch, 1, "old STOP input must not strike in a later cycle");
+    // Finishing an already-started jump does not count as a new jump, even if
+    // the server missed the green packet that first reported it.
+    socket.emit("player_position", { x: afterOldCycle.x, y: afterOldCycle.y! + 1, z: afterOldCycle.z, facing: 1.4, jumping: true, jumpStarted: false, movementIntent: false, zeusPhase: "red", zeusCycleIndex: nextRed.athletics!.zeus!.cycleIndex, movementEpoch: 1, movementSequence: 6 });
+    await delay(150);
+    const afterSafeJump = (await read()).players.find((entry) => entry.id === student.player.id)!;
+    assert.equal(afterSafeJump.athletics?.movementEpoch, 1);
+    assert.equal(afterSafeJump.facing, 1.4);
+    socket.emit("player_position", { x: afterSafeJump.x, y: afterSafeJump.y, z: afterSafeJump.z, facing: 1.4, jumping: true, jumpStarted: true, movementIntent: false, zeusPhase: "red", zeusCycleIndex: nextRed.athletics!.zeus!.cycleIndex, movementEpoch: 1, movementSequence: 7 });
+    await waitUntil(read, (snapshot) => snapshot.players.find((entry) => entry.id === student.player.id)?.athletics?.movementEpoch === 2, 3000);
   } finally { socket.disconnect(); }
 });
 

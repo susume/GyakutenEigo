@@ -36,6 +36,7 @@ export type AthleticsHudState = {
   shieldCharges?: number;
   zeusLight?: "green" | "red" | "waiting" | "defeated";
   zeusSummitPercent?: number;
+  zeusRestarting?: boolean;
   remainingRunners?: number;
   chaosEventLabel?: string;
 };
@@ -163,16 +164,16 @@ export const ArenaHudOverlay = ({
           )}
           {athleticsHud.mode === "zeus" && <div className={`athletics-threat-status zeus-status-${athleticsHud.zeusLight ?? "waiting"}`}>
             <ZeusLightSignal light={athleticsHud.zeusLight ?? "waiting"} />
-            <span>{t("First to the summit wins")}</span>
+            <span>{t(athleticsHud.zeusLight === "defeated" ? "Zeus defeated" : athleticsHud.zeusRestarting ? "Back to start · Energy kept" : "First to the summit wins")}</span>
           </div>}
           <div className="athletics-hud-header">
             <div className="athletics-energy-label">
               <span className="athletics-energy-icon" aria-hidden="true">⚡</span>
               <span>{t("Movement energy")}</span>
             </div>
-            <div className={`athletics-hud-time${athleticsHud.startRemainingSeconds > 0 ? " is-countdown" : ""}`} role="timer" aria-label={t("Race time remaining {value0}", { value0: formatRaceTime(athleticsHud.remainingSeconds) })}>
+            <div className={`athletics-hud-time${athleticsHud.startRemainingSeconds > 0 ? " is-countdown" : ""}`} role="timer" aria-label={athleticsHud.zeusLight === "defeated" ? t("Zeus defeated") : t("Race time remaining {value0}", { value0: formatRaceTime(athleticsHud.remainingSeconds) })}>
               <span>{t("Time")}</span>
-              <strong>{athleticsHud.startRemainingSeconds > 0 ? t("GO in {value0}", { value0: athleticsHud.startRemainingSeconds }) : formatRaceTime(athleticsHud.remainingSeconds)}</strong>
+              <strong>{athleticsHud.zeusLight === "defeated" ? t("Finished") : athleticsHud.startRemainingSeconds > 0 ? t("GO in {value0}", { value0: athleticsHud.startRemainingSeconds }) : formatRaceTime(athleticsHud.remainingSeconds)}</strong>
             </div>
           </div>
           <div className={`athletics-energy-meter${athleticsHud.energy <= athleticsHud.criticalEnergy ? " is-critical" : ""}`} role="meter" aria-label={t("{value0} of {value1} movement energy", { value0: Math.round(athleticsHud.energy), value1: athleticsHud.maxEnergy })} aria-valuemin={0} aria-valuemax={athleticsHud.maxEnergy} aria-valuenow={Math.round(athleticsHud.energy)}>

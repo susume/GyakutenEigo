@@ -1299,7 +1299,7 @@ const startAthleticsRace = (session: GameSession) => {
       modeState.mode === "classic"
         ? "Jump from platform to platform. Answer anytime to refill movement energy."
         : getAthleticsModeIntro(modeState.mode).message,
-      `${getAthleticsModeIntro(modeState.mode).detail} · ${Math.ceil(ATHLETICS_START_COUNTDOWN_MS / 1000)} seconds until GO · ${requiredLaps} ${requiredLaps === 1 ? "lap" : "laps"}`,
+      `${getAthleticsModeIntro(modeState.mode).detail} · ${Math.ceil(ATHLETICS_START_COUNTDOWN_MS / 1000)} seconds until GO${modeState.mode === "zeus" ? " · Finish at the summit" : ` · ${requiredLaps} ${requiredLaps === 1 ? "lap" : "laps"}`}`,
       ATHLETICS_START_COUNTDOWN_MS
     ),
     expiresAt: startAt
@@ -1323,7 +1323,7 @@ const markAthleticsFinished = (session: GameSession, player: PlayerSession, nowM
   if (session.athletics) session.athletics.finishOrder.push(player.id);
   appendEvent(session, {
     type: "end",
-    message: `${player.nickname} crossed the Athletics finish line in place ${athletics.finishPosition}.`,
+    message: session.athletics?.mode === "zeus" ? `${player.nickname} reached the summit in place ${athletics.finishPosition}.` : `${player.nickname} crossed the Athletics finish line in place ${athletics.finishPosition}.`,
     playerId: player.id,
     team: player.team
   });
@@ -2105,6 +2105,7 @@ const applyAuthoritativePosition = (
     movementIntent?: boolean;
     jumpStarted?: boolean;
     zeusPhase?: string;
+    zeusCycleIndex?: number;
   },
   nowMs = Date.now()
 ) => {
@@ -2176,6 +2177,13 @@ const applyAuthoritativePosition = (
     advanceZeusMode(session, nowMs);
     const zeus = session.athletics.zeus;
     const cycleIndex = zeus?.cycleIndex ?? 0;
+    // A red packet from an earlier cycle can arrive after the next chant.
+    // Discard it before interpreting its input as a new STOP violation.
+    if (requested.zeusCycleIndex !== undefined && requested.zeusCycleIndex !== cycleIndex) {
+      playerMoveTimestamps.set(player.id, nowMs);
+      player.facing = requestedFacing;
+      return { ...currentPosition, facing: requestedFacing };
+    }
     if (getZeusLight(zeus, nowMs) === "red") {
       // Packets sampled before STOP may arrive afterwards. Reject their
       // displacement without punishing the student for network delay.
@@ -2999,7 +3007,9 @@ const answerQuestion = (
         isCorrect,
         currentEnergy: player.energy
       });
-  const energyAwarded = Math.max(0, player.energy - previousEnergy);
+  // This value is presentation copy; keep floating point drain arithmetic
+  // from exposing labels such as +220.00000000000003 to students.
+  const energyAwarded = Number(Math.max(0, player.energy - previousEnergy).toFixed(1));
   if (reward.correctDelta > 0) player.cosmeticXp = Math.max(0, player.cosmeticXp ?? 0) + reward.correctDelta * 100;
   let respawn = athleticsRecoveryActive
     ? {
@@ -3173,6 +3183,10 @@ const answerQuestion = (
               ? isCorrect
                 ? `Correct! +${energyAwarded} movement energy · Ability charge ${athletics?.abilityCharge ?? 0} / ${RUNNER_ABILITY_METER_MAX}.`
                 : "Not quite. No energy or ability charge gained."
+            : athleticsMode === "zeus" && isCorrect
+              ? energyAwarded > 0
+                ? "Correct! Move on GO; stop when Zeus watches."
+                : "Correct! Movement energy is full. Move on GO; stop when Zeus watches."
             : isCorrect
               ? energyAwarded > 0
                 ? `Correct! +${energyAwarded} movement energy. Keep climbing.`

@@ -1,4 +1,4 @@
-import { createZeusVisuals } from "./zeusBackdrop";
+import { createZeusVisuals, ZEUS_SKY_LAYER } from "./zeusBackdrop";
 import * as THREE from "three";
 import {
   ATHLETICS_STADIUM_COURSE,
@@ -13,6 +13,7 @@ import {
 
 type AthleticsModeVisuals = {
   update: (session: GameSession | null | undefined, nowMs: number) => void;
+  renderOverlay?: (renderer: THREE.WebGLRenderer) => void;
   dispose: () => void;
 };
 
@@ -187,9 +188,41 @@ export const createAthleticsModeVisuals = ({ scene, mode, camera }: { scene: THR
   scene.add(root);
   if (mode === "zeus") {
     const visuals = createZeusVisuals(root, camera, typeof window !== "undefined" && window.matchMedia("(prefers-reduced-motion: reduce)").matches);
+    const lights: { light: THREE.Light; mask: number }[] = [];
+    if (camera) scene.traverse((object) => {
+      if (object instanceof THREE.Light) {
+        lights.push({ light: object, mask: object.layers.mask });
+        object.layers.enable(ZEUS_SKY_LAYER);
+      }
+    });
     return {
       update: visuals.update,
-      dispose: () => disposeVisualObject(root)
+      renderOverlay: camera ? (renderer) => {
+        const cameraMask = camera.layers.mask;
+        const background = scene.background;
+        const autoClear = renderer.autoClear;
+        const autoReset = renderer.info.autoReset;
+        const shadowAutoUpdate = renderer.shadowMap.autoUpdate;
+        try {
+          camera.layers.set(ZEUS_SKY_LAYER);
+          scene.background = null;
+          renderer.autoClear = false;
+          renderer.info.autoReset = false;
+          renderer.shadowMap.autoUpdate = false;
+          renderer.clearDepth();
+          renderer.render(scene, camera);
+        } finally {
+          camera.layers.mask = cameraMask;
+          scene.background = background;
+          renderer.autoClear = autoClear;
+          renderer.info.autoReset = autoReset;
+          renderer.shadowMap.autoUpdate = shadowAutoUpdate;
+        }
+      } : undefined,
+      dispose: () => {
+        lights.forEach(({ light, mask }) => { light.layers.mask = mask; });
+        disposeVisualObject(root);
+      }
     };
   }
   if (mode === "chaos-climb") {

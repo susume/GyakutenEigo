@@ -1,4 +1,5 @@
 import { useZeusDaruma } from "../../../game/useZeusDaruma";
+import { ZEUS_SUMMIT_PROGRESS, ZEUS_SUMMIT_CHECKPOINT_COUNT } from "@quizstrike/shared";
 import { useSiteTranslation } from "../../../ui/siteTranslation";
 import "../../speaking/speaking-auth.css";
 import { lazy, Suspense, useCallback, useEffect, useMemo, useRef, useState } from "react";
@@ -1411,7 +1412,7 @@ function SessionManager({
                   {resolveAthleticsStandings(selectedSession.players).slice(0, 3).map((standing) => {
                     const racer = selectedSession.players.find((player) => player.id === standing.playerId);
                     const requiredLaps = selectedSession.athletics?.requiredLaps ?? selectedSession.settings.athleticsCourseLaps ?? 1;
-                    return racer ? <li key={racer.id}><span>#{standing.rank}</span><strong>{racer.nickname}</strong><small>{standing.completedLaps}/{requiredLaps} {requiredLaps === 1 ? t("lap") : t("laps")} · {standing.status === "finished" && racer.athletics?.finishTimeMs !== undefined ? formatDuration(racer.athletics.finishTimeMs / 1000) : standing.status.toUpperCase()}</small></li> : null;
+                    return racer ? <li key={racer.id}><span>#{standing.rank}</span><strong>{racer.nickname}</strong><small>{selectedSession.settings.athleticsMode === "zeus" ? `${Math.min(100, Math.round(standing.routeProgress / ZEUS_SUMMIT_PROGRESS * 100))}% ${t("Summit")}` : `${standing.completedLaps}/${requiredLaps} ${requiredLaps === 1 ? t("lap") : t("laps")}`} · {standing.status === "finished" && racer.athletics?.finishTimeMs !== undefined ? formatDuration(racer.athletics.finishTimeMs / 1000) : standing.status.toUpperCase()}</small></li> : null;
                   })}
                 </ol>
               </section>
@@ -1427,7 +1428,7 @@ function SessionManager({
               <div>
                 <span className="flow-step">{t("Lobby · Invite students")}</span>
                 <h2>{sessionQuiz?.title ?? t("Live Game")}</h2>
-                <p>{selectedSession.settings.gameMode === "athletics" ? t(ATHLETICS_STADIUM_COURSE.title) : t(arenaMapLabel(selectedSession.settings.mapId))} · {displayedPresetName} · {selectedSession.settings.gameMode === "athletics" ? t("{value0} {value1}", { value0: selectedSession.settings.athleticsCourseLaps ?? 1, value1: (selectedSession.settings.athleticsCourseLaps ?? 1) === 1 ? "Lap" : "Laps" }) : t("{value0} Rounds", { value0: selectedSession.settings.roundCount })} · {formatDuration(selectedSession.settings.roundDurationSeconds)}{" "}{t("time limit")}</p>
+                <p>{selectedSession.settings.gameMode === "athletics" ? t(ATHLETICS_STADIUM_COURSE.title) : t(arenaMapLabel(selectedSession.settings.mapId))} · {displayedPresetName} · {selectedSession.settings.gameMode === "athletics" ? selectedSession.settings.athleticsMode === "zeus" ? t("Six checkpoints · Finish at the summit") : t("{value0} {value1}", { value0: selectedSession.settings.athleticsCourseLaps ?? 1, value1: (selectedSession.settings.athleticsCourseLaps ?? 1) === 1 ? "Lap" : "Laps" }) : t("{value0} Rounds", { value0: selectedSession.settings.roundCount })} · {formatDuration(selectedSession.settings.roundDurationSeconds)}{" "}{t("time limit")}</p>
               </div>
                     <div className="waiting-header-actions">
                 <details className="waiting-settings-summary">
@@ -1582,7 +1583,7 @@ function SessionManager({
               <span>{t(sessionGameModeLabel(selectedSession))}</span>
               <span>{selectedSession.settings.gameMode === "athletics" ? t(ATHLETICS_STADIUM_COURSE.title) : t(arenaMapLabel(selectedSession.settings.mapId))}</span>
               {selectedSession.settings.gameMode === "flag" && <span>{t("Round")}{" "}{selectedSession.currentRound}/{selectedSession.settings.roundCount}</span>}
-              <span>{selectedSession.settings.gameMode === "athletics" ? t("{value0} · Race · {value1} {value2} · {value3} chapters", { value0: sessionGameModeLabel(selectedSession), value1: selectedSession.athletics?.requiredLaps ?? selectedSession.settings.athleticsCourseLaps ?? 1, value2: (selectedSession.athletics?.requiredLaps ?? selectedSession.settings.athleticsCourseLaps ?? 1) === 1 ? "lap" : "laps", value3: ATHLETICS_STADIUM_COURSE.sections.length }) : t("Time {value0}", { value0: formatDuration(remainingSeconds) })}</span>
+              <span>{selectedSession.settings.gameMode === "athletics" ? selectedSession.settings.athleticsMode === "zeus" ? t("Six checkpoints · Finish at the summit") : t("{value0} · Race · {value1} {value2} · {value3} chapters", { value0: sessionGameModeLabel(selectedSession), value1: selectedSession.athletics?.requiredLaps ?? selectedSession.settings.athleticsCourseLaps ?? 1, value2: (selectedSession.athletics?.requiredLaps ?? selectedSession.settings.athleticsCourseLaps ?? 1) === 1 ? "lap" : "laps", value3: ATHLETICS_STADIUM_COURSE.sections.length }) : t("Time {value0}", { value0: formatDuration(remainingSeconds) })}</span>
               <span>{activePlayers}/{selectedSession.players.length || 0}{" "}{t("active")}</span>
               <span>{activeLearners}{" "}{t("learner")}{activeLearners === 1 ? "" : "s"}</span>
               {botPlayers.length > 0 && <span>{botPlayers.length}{" "}{t("bot")}{botPlayers.length === 1 ? "" : "s"}</span>}
@@ -1600,7 +1601,7 @@ function SessionManager({
               <ArenaPreview key={`${selectedSession.id}:overview`} session={selectedSession} loadDecalAsset={loadTeacherDecal} />
             </Suspense>
             <LearningPulse pulse={selectedSession.learningPulse} />
-            <Scoreboard players={selectedSession.players} gameMode={selectedSession.settings.gameMode} athleticsRequiredLaps={selectedSession.athletics?.requiredLaps ?? selectedSession.settings.athleticsCourseLaps ?? 1} onRemovePlayer={(playerId) => void removePlayer(playerId)} removingPlayerId={removingPlayerId} />
+            <Scoreboard players={selectedSession.players} gameMode={selectedSession.settings.gameMode} athleticsMode={selectedSession.athletics?.mode ?? selectedSession.settings.athleticsMode} athleticsRequiredLaps={selectedSession.athletics?.requiredLaps ?? selectedSession.settings.athleticsCourseLaps ?? 1} onRemovePlayer={(playerId) => void removePlayer(playerId)} removingPlayerId={removingPlayerId} />
             <EventFeed events={selectedSession.events ?? []} />
           </>
         ) : (
@@ -2030,7 +2031,7 @@ function ReportsPanel({
               })()}
               <div className="report-table-wrap">
                 <table className="report-table">
-                  <thead><tr><th>{t("Student")}</th>{report.session.settings.gameMode === "athletics" ? <><th>{t("Place")}</th><th>{t("Race time")}</th><th>{t("Status")}</th><th>{t("Laps")}</th><th>{t("Falls")}</th><th>{t("Checkpoint")}</th>{reportHasAthleticsModeStats && <><th>{t("Role")}</th><th>{t("Hits")}</th><th>{t("Score")}</th></>}</> : <th>{t("Team")}</th>}<th>{t("Correct")}</th><th>{t("Wrong")}</th><th>{t("Accuracy")}</th>{report.session.settings.gameMode !== "athletics" && <><th>{t("Rewards")}</th><th>{t("Score")}</th></>}</tr></thead>
+                  <thead><tr><th>{t("Student")}</th>{report.session.settings.gameMode === "athletics" ? <><th>{t("Place")}</th><th>{t("Race time")}</th><th>{t("Status")}</th><th>{t(report.session.settings.athleticsMode === "zeus" ? "Summit" : "Laps")}</th><th>{t("Falls")}</th><th>{t("Checkpoint")}</th>{reportHasAthleticsModeStats && <><th>{t("Role")}</th><th>{t("Hits")}</th><th>{t("Score")}</th></>}</> : <th>{t("Team")}</th>}<th>{t("Correct")}</th><th>{t("Wrong")}</th><th>{t("Accuracy")}</th>{report.session.settings.gameMode !== "athletics" && <><th>{t("Rewards")}</th><th>{t("Score")}</th></>}</tr></thead>
                   <tbody>
                     {report.rows.map((row) => (
                       <tr key={row.nickname}>
@@ -2039,9 +2040,9 @@ function ReportsPanel({
                           <td data-label="Place">{row.racePlace ? t("#{value0}", { value0: row.racePlace }) : "—"}</td>
                           <td data-label="Race time">{row.raceTimeMs === undefined ? "—" : formatDuration(row.raceTimeMs / 1000)}</td>
                           <td data-label="Status">{row.raceStatus === "finished" ? t("Finished") : row.raceStatus === "hunter" ? t("Hunter") : t("DNF")}</td>
-                          <td data-label="Laps">{row.raceLapsCompleted ?? 0}/{row.raceLapsRequired ?? 1}</td>
+                          <td data-label={report.session.settings.athleticsMode === "zeus" ? "Summit" : "Laps"}>{report.session.settings.athleticsMode === "zeus" ? t(row.raceStatus === "finished" ? "Summit reached" : "Not finished") : `${row.raceLapsCompleted ?? 0}/${row.raceLapsRequired ?? 1}`}</td>
                           <td data-label="Falls">{row.raceFalls ?? 0}</td>
-                          <td data-label="Checkpoint">{row.raceCheckpoint ?? 0}</td>
+                          <td data-label="Checkpoint">{row.raceCheckpoint ?? 0}{report.session.settings.athleticsMode === "zeus" ? `/${ZEUS_SUMMIT_CHECKPOINT_COUNT}` : ""}</td>
                           {reportHasAthleticsModeStats && <>
                             <td data-label="Role">{row.athleticsRole === "hunter" ? t("Hunter") : t("Runner")}</td>
                             <td data-label="Hits">{row.athleticsHunterHits ?? "—"}</td>

@@ -398,13 +398,17 @@ class GameAudioController {
   syncZeusChant(key: string, chantId: ZeusChantId, startsAtMs: number, nowMs: number) {
     if (key === this.zeusChantKey) return;
     this.stopZeusChant();
-    this.zeusChantKey = key;
     const audio = this.ensureAudio();
     if (!audio || !this.masterGain) return;
     this.warm();
+    // An autoplay-blocked context must not reserve this chant or queue an
+    // out-of-date voice. Retry after a gesture unlocks audio, at its live offset.
+    if (audio.state !== "running") return;
+    this.zeusChantKey = key;
     const requestAt = Date.now();
     void this.loadAssetBuffer(audio, ZEUS_CHANTS[chantId].path).then((buffer) => {
       if (!buffer || this.zeusChantKey !== key || this.audio !== audio || !this.masterGain) return;
+      if (audio.state !== "running") { this.stopZeusChant(); return; }
       const elapsedMs = nowMs + Date.now() - requestAt - startsAtMs;
       const offset = Math.max(0, elapsedMs / 1000);
       if (offset >= buffer.duration) return;

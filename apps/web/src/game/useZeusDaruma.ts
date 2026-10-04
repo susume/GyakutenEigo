@@ -37,5 +37,5 @@ export const useZeusDaruma = (session: GameSession | null | undefined, enabled: 
     document.addEventListener("visibilitychange", sync);
     return () => { window.clearInterval(timer); document.removeEventListener("visibilitychange", sync); gameAudio.stopZeusChant(); };
   }, [enabled, narration]);
-  return { light };
+  return { light, serverNowMs: serverNow };
 };

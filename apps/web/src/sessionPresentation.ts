@@ -30,6 +30,9 @@ export const getSessionResultText = (session: GameSession) => {
     const standings = resolveAthleticsStandings(session.players);
     const winner = standings.find((standing) => standing.status === "finished");
     const winnerName = winner ? session.players.find((player) => player.id === winner.playerId)?.nickname : undefined;
+    if ((session.athletics?.mode ?? session.settings.athleticsMode) === "zeus") {
+      return winnerName ? `${winnerName} reached the summit and defeated Zeus.` : "The climb ended before anyone defeated Zeus.";
+    }
     return winnerName ? `${winnerName} crossed the finish line first.` : "The race ended before anyone crossed the finish line.";
   }
   if (session.settings.gameMode === "zombie") {

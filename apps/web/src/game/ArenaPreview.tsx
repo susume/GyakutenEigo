@@ -126,6 +126,7 @@ type ArenaLivePosition = {
   movementIntent?: boolean;
   jumpStarted?: boolean;
   zeusPhase?: "green" | "red" | "waiting" | "defeated";
+  zeusCycleIndex?: number;
 };
 
 type ArenaRendererRuntime = {
@@ -497,6 +498,7 @@ export default function ArenaPreview({
       if (disposed || contextLost) return false;
       try {
         renderer.render(scene, camera);
+        athleticsModeVisuals?.renderOverlay?.(renderer);
         return true;
       } catch {
         contextLost = true;
@@ -1113,7 +1115,8 @@ export default function ArenaPreview({
         read: () => ({ yaw, pitch }), write: (state) => { yaw = state.yaw; pitch = state.pitch; },
         enabled: () => !controlsDisabledRef.current && !inputPausedRef.current,
         sensitivity: () => lookSensitivityRef.current,
-        minPitch: ARENA_MIN_AIM_PITCH, maxPitch: ARENA_MAX_AIM_PITCH
+        minPitch: ARENA_MIN_AIM_PITCH, maxPitch: ARENA_MAX_AIM_PITCH,
+        dragFallback: athleticsMode === "zeus"
       });
       const onPointerLockChange = () => {
         const locked = document.pointerLockElement === renderer.domElement;
@@ -1124,7 +1127,14 @@ export default function ArenaPreview({
           setZoomLevel(0);
         }
       };
-      const onPointerLockError = () => setIsPointerLocked(false);
+      let pointerLockUnavailable = false;
+      const onPointerLockError = () => {
+        setIsPointerLocked(false);
+        if (athleticsMode === "zeus") {
+          pointerLockUnavailable = true;
+          renderer.domElement.dataset.lookControl = "drag";
+        }
+      };
       const onPointerDown = (event: PointerEvent) => {
         if (controlsDisabledRef.current || inputPausedRef.current) return;
         gameAudio.warm();
@@ -1146,7 +1156,8 @@ export default function ArenaPreview({
           return;
         }
         if (document.pointerLockElement !== renderer.domElement) {
-          void renderer.domElement.requestPointerLock().catch(() => setIsPointerLocked(false));
+          if (athleticsMode === "zeus" && pointerLockUnavailable) return;
+          void renderer.domElement.requestPointerLock().catch(onPointerLockError);
           return;
         }
         const action = resolveCombatPointerAction({ button: event.button, buttons: event.buttons });
@@ -1337,7 +1348,7 @@ export default function ArenaPreview({
           ...localToServerPosition(playerPosition, yaw),
           crouching: isCrouching,
           jumping: isJumping,
-          ...(athleticsMode === "zeus" ? { movementIntent, jumpStarted, zeusPhase: getZeusLight(sessionRef.current?.athletics?.zeus, Date.now() + zeusClockOffsetRef.current) } : {})
+          ...(athleticsMode === "zeus" ? { movementIntent, jumpStarted, zeusPhase: getZeusLight(sessionRef.current?.athletics?.zeus, Date.now() + zeusClockOffsetRef.current), zeusCycleIndex: sessionRef.current?.athletics?.zeus?.cycleIndex } : {})
         };
         const moved = Math.hypot(nextPosition.x - lastSentPosition.x, nextPosition.z - lastSentPosition.z);
         const movedVertically = Math.abs(Number(nextPosition.y) - Number(lastSentPosition.y));

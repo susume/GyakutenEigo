@@ -1,6 +1,8 @@
 import * as THREE from "three";
 import { ATHLETICS_STADIUM_COURSE, ATHLETICS_PLAYER_EYE_HEIGHT, ZEUS_SUMMIT_SURFACE_INDEX, getZeusLight, type GameSession } from "@quizstrike/shared";
 
+export const ZEUS_SKY_LAYER = 1;
+
 /** A sky apparition follows the view so the course's bends cannot hide Zeus. */
 export const createZeusVisuals = (root: THREE.Group, camera?: THREE.PerspectiveCamera, reducedMotion = false) => {
   const sky = new THREE.Group();
@@ -52,6 +54,9 @@ export const createZeusVisuals = (root: THREE.Group, camera?: THREE.PerspectiveC
   }
   const cloudMaterial = new THREE.MeshStandardMaterial({ color: "#e9e3fa", emissive: "#70658e", emissiveIntensity: 0.25, roughness: 1, transparent: true, opacity: 0.75, fog: false });
   for (let i = -3; i <= 3; i++) ellipsoid(sky, cloudMaterial, [i * 0.86, -2.68 + Math.abs(i) * 0.08, -0.25], [1.15, 0.42, 0.76]);
+  // Render the apparition after the course so nearby scenery cannot hide the
+  // signal. Its own depth buffer still keeps the face hidden when turned away.
+  if (camera) sky.traverse((object) => object.layers.set(ZEUS_SKY_LAYER));
 
   const summit = ATHLETICS_STADIUM_COURSE.surfaces[ZEUS_SUMMIT_SURFACE_INDEX]!;
   const gateway = new THREE.Mesh(new THREE.TorusGeometry(4.5, 0.25, 8, 40), gold);
@@ -111,9 +116,10 @@ export const createZeusVisuals = (root: THREE.Group, camera?: THREE.PerspectiveC
         camera.getWorldPosition(position);
         camera.getWorldQuaternion(orientation);
         const halfHeight = 110 * Math.tan(THREE.MathUtils.degToRad(camera.fov / 2));
-        // Phone HUDs occupy the upper quarter; wide views leave the right sky free.
+        // Phone HUDs occupy the upper third; place the face below them and
+        // beside the central course guide. Wide views leave the right sky free.
         const narrow = camera.aspect < 0.65;
-        sky.position.set(narrow ? 0 : halfHeight * camera.aspect * 0.48, halfHeight * (narrow ? 0.17 : 0.68), -110).applyQuaternion(orientation).add(position);
+        sky.position.set(halfHeight * camera.aspect * (narrow ? 0.55 : 0.48), halfHeight * (narrow ? 0.03 : 0.68), -110).applyQuaternion(orientation).add(position);
         sky.quaternion.copy(orientation);
         sky.scale.setScalar(Math.max(0.75, Math.min(1, camera.aspect)) * 8.5 * (1 - defeat * 0.5));
       } else {

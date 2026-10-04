@@ -1,6 +1,6 @@
 import { useZeusDaruma } from "../../../game/useZeusDaruma";
 import { ZeusLightSignal } from "../../../game/ZeusLightSignal";
-import { ZEUS_SUMMIT_PROGRESS } from "@quizstrike/shared";
+import { ZEUS_SUMMIT_PROGRESS, ZEUS_SUMMIT_CHECKPOINT_COUNT } from "@quizstrike/shared";
 import { useSiteTranslation } from "../../../ui/siteTranslation";
 import "./device-hud.css";
 import { lazy, Suspense, useCallback, useEffect, useMemo, useRef, useState } from "react";
@@ -147,6 +147,7 @@ type ArenaPositionPayload = {
   movementIntent?: boolean;
   jumpStarted?: boolean;
   zeusPhase?: "green" | "red" | "waiting" | "defeated";
+  zeusCycleIndex?: number;
   movementSequence?: number;
   movementEpoch?: number;
 };
@@ -1016,7 +1017,7 @@ export default function StudentExperience({ onExit }: { onExit: () => void }) {
       setBuyOpen(false);
       setScoreboardOpen(false);
       setRewardPulse(`Finished #${payload.finishPosition ?? "—"}`);
-      setFeedback(`Finish line crossed in ${formatDuration((payload.finishTimeMs ?? 0) / 1000)}.`);
+      setFeedback(`${athleticsModeForSession(lastVisualSession) === "zeus" ? "Summit reached" : "Finish line crossed"} in ${formatDuration((payload.finishTimeMs ?? 0) / 1000)}.`);
       gameAudio.playEvent("athletics_finish");
     });
     connectedSocket.on("zeus_strike", (payload: {
@@ -2455,6 +2456,7 @@ export default function StudentExperience({ onExit }: { onExit: () => void }) {
     shieldCharges: athleticsPlayer.shieldCharges ?? 0,
     zeusLight: zeusDaruma.light,
     zeusSummitPercent: Math.min(100, Math.round((athleticsPlayer.routeProgress ?? 0) / ZEUS_SUMMIT_PROGRESS * 100)),
+    zeusRestarting: Boolean(athleticsPlayer.zeusRestartUntil && zeusDaruma.serverNowMs < Date.parse(athleticsPlayer.zeusRestartUntil)),
     remainingRunners: athleticsRemainingRunners,
     chaosEventLabel
   } : undefined;
@@ -2463,7 +2465,7 @@ export default function StudentExperience({ onExit }: { onExit: () => void }) {
     || Boolean(athleticsPlayer?.respawnPenaltyUntil && Date.now() < Date.parse(athleticsPlayer.respawnPenaltyUntil))
     || Boolean(athleticsPlayer?.recoveryActive)
     || athleticsZeusFrozen
-    || Boolean(athleticsPlayer?.zeusRestartUntil && Date.now() < Date.parse(athleticsPlayer.zeusRestartUntil))
+    || Boolean(athleticsPlayer?.zeusRestartUntil && zeusDaruma.serverNowMs < Date.parse(athleticsPlayer.zeusRestartUntil))
     || Boolean(athleticsPlayer?.staggerUntil && Date.now() < Date.parse(athleticsPlayer.staggerUntil))
   );
 
@@ -2513,7 +2515,8 @@ export default function StudentExperience({ onExit }: { onExit: () => void }) {
       isCompactViewport ? "compact-game-layout" : "",
       athleticsRace ? "athletics-game-layout" : "",
       gamePreferences.highContrastHud ? "high-contrast-hud" : "",
-      session.status === "waiting" ? "waiting-game-layout" : ""
+      session.status === "waiting" ? "waiting-game-layout" : "",
+      athleticsMode === "zeus" && quizOpen ? "zeus-question-open" : ""
     ].filter(Boolean).join(" ")}>
       <div className="game-stage">
         {athleticsMode === "zeus" && session.status === "active" && quizOpen && !teacherPaused && <ZeusLightSignal light={zeusDaruma.light} floating />}
@@ -2794,7 +2797,7 @@ export default function StudentExperience({ onExit }: { onExit: () => void }) {
                 buyPhaseSeconds={roundPreparation ? preparationRemainingSeconds : undefined}
               />
             )}
-            {scoreboardOpen && <Scoreboard players={session.players} localPlayerId={player.id} gameMode={session.settings.gameMode} athleticsRequiredLaps={athleticsRequiredLaps} />}
+            {scoreboardOpen && <Scoreboard players={session.players} localPlayerId={player.id} gameMode={session.settings.gameMode} athleticsMode={athleticsMode} athleticsRequiredLaps={athleticsRequiredLaps} />}
             {settingsOpen && <GamePreferencesPanel preferences={gamePreferences} onChange={updateGamePreferences} />}
           </div>
         )}
@@ -2816,9 +2819,9 @@ export default function StudentExperience({ onExit }: { onExit: () => void }) {
                     <div className="athletics-lobby-card athletics-briefing" role="note">
                       <Footprints className="athletics-lobby-mark" size={22} aria-hidden="true" />
                       <span><strong>{t(athleticsModeConfig.label)}{" "}{t("· Skyline Adventure Park")}</strong>
-                        <small>{ATHLETICS_STADIUM_COURSE.sections.length}{" "}{t("chapters ·")}{" "}{ATHLETICS_STADIUM_COURSE.checkpoints.length}{" "}{t("checkpoints")}</small>
-                        <small>{t("Hurdles → balance → zigzag → moving bridges → climb → summit → descent.")}</small>
-                        <small>{athleticsRequiredLaps > 1 ? t("Stage 7 leads back to the start/finish line. Cross it to begin your next lap without stopping.") : t("Visit all seven checkpoints, then cross the start/finish line to finish.")}</small>
+                        <small>{athleticsMode === "zeus" ? t("Six checkpoints · Finish at the summit") : <>{ATHLETICS_STADIUM_COURSE.sections.length}{" "}{t("chapters ·")}{" "}{ATHLETICS_STADIUM_COURSE.checkpoints.length}{" "}{t("checkpoints")}</>}</small>
+                        <small>{t(athleticsMode === "zeus" ? "Hurdles → balance → zigzag → moving bridges → climb → summit." : "Hurdles → balance → zigzag → moving bridges → climb → summit → descent.")}</small>
+                        <small>{athleticsMode === "zeus" ? t("Looking and answering questions are safe during STOP. Use this time to refuel.") : athleticsRequiredLaps > 1 ? t("Stage 7 leads back to the start/finish line. Cross it to begin your next lap without stopping.") : t("Visit all seven checkpoints, then cross the start/finish line to finish.")}</small>
                         <ol>{athleticsModeConfig.instructionLines.map((line) => <li key={line}>{line}</li>)}</ol>
                         <small>{t("Move: WASD · Look: mouse / arrows · Jump: Space · Question: Q. On touch screens, use the on-screen controls. Cyan markers show required moving platforms.")}</small>
                       </span>
@@ -2883,10 +2886,10 @@ export default function StudentExperience({ onExit }: { onExit: () => void }) {
                   <section className="athletics-result-card" aria-label={t("Your race result")}>
                     <div className="athletics-result-kicker"><Trophy size={18} aria-hidden="true" />{" "}{t("Skyline Adventure Park result")}</div>
                     <div className="athletics-result-grid">
-                      <span><small>{athleticsPlayer?.role === "hunter" ? t("Role") : t("Place")}</small><strong>{athleticsPlayer?.role === "hunter" ? t("Hunter") : athleticsPlayer?.status === "finished" && athleticsStanding?.rank ? t("#{value0}", { value0: athleticsStanding.rank }) : t("Time up")}</strong></span>
+                      <span><small>{athleticsPlayer?.role === "hunter" ? t("Role") : t("Place")}</small><strong>{athleticsPlayer?.role === "hunter" ? t("Hunter") : athleticsPlayer?.status === "finished" && athleticsStanding?.rank ? t("#{value0}", { value0: athleticsStanding.rank }) : athleticsMode === "zeus" && session.athletics?.status === "finished" ? t("Not finished") : t("Time up")}</strong></span>
                       <span><small>{athleticsPlayer?.role === "hunter" ? t("Hits") : t("Time")}</small><strong>{athleticsPlayer?.role === "hunter" ? athleticsPlayer.hunterHits ?? 0 : athleticsPlayer?.finishTimeMs === undefined ? "—" : formatDuration(athleticsPlayer.finishTimeMs / 1000)}</strong></span>
-                      <span><small>{athleticsPlayer?.role === "hunter" ? t("Points") : t("Laps")}</small><strong>{athleticsPlayer?.role === "hunter" ? player.score : t("{value0}/{value1}", { value0: athleticsPlayer?.completedLaps ?? 0, value1: athleticsRequiredLaps })}</strong></span>
-                      {athleticsPlayer?.role !== "hunter" && <span><small>{t("Checkpoints reached")}</small><strong>{athleticsPlayer?.checkpointIndex ?? 0}/{ATHLETICS_STADIUM_COURSE.checkpoints.length}</strong></span>}
+                      <span><small>{athleticsPlayer?.role === "hunter" ? t("Points") : athleticsMode === "zeus" ? t("Summit") : t("Laps")}</small><strong>{athleticsPlayer?.role === "hunter" ? player.score : athleticsMode === "zeus" ? `${athleticsHud?.zeusSummitPercent ?? 0}%` : t("{value0}/{value1}", { value0: athleticsPlayer?.completedLaps ?? 0, value1: athleticsRequiredLaps })}</strong></span>
+                      {athleticsPlayer?.role !== "hunter" && <span><small>{t("Checkpoints reached")}</small><strong>{athleticsPlayer?.checkpointIndex ?? 0}/{athleticsMode === "zeus" ? ZEUS_SUMMIT_CHECKPOINT_COUNT : ATHLETICS_STADIUM_COURSE.checkpoints.length}</strong></span>}
                       <span><small>{t("Questions answered")}</small><strong>{athleticsPlayer?.questionIndex ?? 0}</strong></span>
                       <span><small>{t("Falls")}</small><strong>{athleticsPlayer?.falls ?? 0}</strong></span>
                     </div>
