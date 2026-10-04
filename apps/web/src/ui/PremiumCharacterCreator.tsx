@@ -1,5 +1,5 @@
 import { useSiteTranslation } from "./siteTranslation";
-import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState, useId } from "react";
 import {
   APPEARANCE_UPDATE_COOLDOWN_MS,
   COSMETIC_CATALOG,
@@ -11,7 +11,8 @@ import {
   type PlayerAppearance,
   type Team
 } from "@quizstrike/shared";
-import { Award, Backpack, Check, Dice5, Footprints, Lock, RotateCcw, Smile, UserRound, X } from "lucide-react";
+import { Award, Backpack, Check, Dice5, Footprints, Lock, RotateCcw, Smile, UserRound, X, Play, Shirt, ScanFace, Sparkles, Pencil } from "lucide-react";
+import WardrobeBadgeEditor from "./WardrobeBadgeEditor";
 import {
   BACK_ACCESSORY_OPTIONS,
   CharacterPreview,
@@ -19,6 +20,8 @@ import {
   HEAD_STYLE_OPTIONS,
   VICTORY_POSE_OPTIONS
 } from "./CharacterCreator";
+
+import "./wardrobeStudio.css";
 
 type PremiumCharacterCreatorProps = {
   appearance?: PlayerAppearance;
@@ -42,6 +45,7 @@ export default function PremiumCharacterCreator({
   progress,
   disabled,
   onSave,
+  onUploadDecal,
   loadDecalAsset
 }: PremiumCharacterCreatorProps) {
   const { t } = useSiteTranslation();
@@ -58,6 +62,14 @@ export default function PremiumCharacterCreator({
       : BACK_ACCESSORY_OPTIONS,
     [nonCombat]
   );
+  const [portrait, setPortrait] = useState(false);
+  const [fullOutfit, setFullOutfit] = useState(false);
+  const [arenaGear, setArenaGear] = useState(false);
+  const [replaySignal, setReplaySignal] = useState(0);
+  const [localBadge, setLocalBadge] = useState<Blob | null>(null);
+  const panelId = useId();
+  const tabsRef = useRef<HTMLDivElement>(null);
+  const scrollRef = useRef<HTMLDivElement>(null);
   const lastSubmittedSignature = useRef("");
 
   useEffect(() => {
@@ -143,231 +155,136 @@ export default function PremiumCharacterCreator({
     );
   }
 
+  const categories = [
+    { id: "head", label: "Head", title: "Find your character", detail: "A little personality. A whole new look.", Icon: UserRound },
+    { id: "back", label: "Back", title: "Make an entrance", detail: "Wings, packs and a little extra flair.", Icon: Backpack },
+    { id: "footwear", label: "Footwear", title: "Finish your fit", detail: "From the first step to the victory lap.", Icon: Footprints },
+    { id: "pose", label: "Victory pose", title: "Own the celebration", detail: "Pick your signature victory moment.", Icon: Smile }
+  ] as const;
+  const category = categories.find(item => item.id === activeCategory)!;
+  const catalogs = {
+    head: HEAD_STYLE_OPTIONS.map(item => ({ ...item, description: item.description })),
+    back: availableBackAccessories.map(item => ({ ...item, id: item.value, description: item.detail })),
+    footwear: FOOTWEAR_OPTIONS.map(item => ({ ...item, id: item.value, description: item.detail })),
+    pose: VICTORY_POSE_OPTIONS.map(item => ({ ...item, id: item.value, description: item.detail }))
+  };
+  const items = catalogs[activeCategory];
+  const selectedId = { head: draft.headStyleId, back: draft.backAccessoryId, footwear: draft.footwearId, pose: draft.victoryPoseId }[activeCategory];
+  const selected = items.find(item => item.id === selectedId);
+  const selectedHead = HEAD_STYLE_OPTIONS.find(item => item.id === draft.headStyleId)!;
+  const selectCategory = (id: CosmeticSlot) => {
+    setActiveCategory(id); setPortrait(false); setFullOutfit(false);
+    if (scrollRef.current) scrollRef.current.scrollTop = 0;
+  };
+  const recipes = [
+    { name: "Fresh start", head: "boy_short_hair", back: "utility_pack", footwear: "runners", pose: "wave" },
+    { name: "Foxfire", head: "fox", back: "devil_tail", footwear: "basketball_shoes", pose: "power" },
+    { name: "Sky angel", head: "girl_mid_hair", back: "angel_wings", footwear: "runners", pose: "champion" },
+    { name: "Shadow runner", head: "ninja", back: "arena_cape", footwear: "skate_shoes", pose: "salute" },
+    { name: "Arcade bot", head: "robot", back: "boost_pack", footwear: "army_boots", pose: "wave" }
+  ] as const;
+
   return (
-    <section className="character-creator premium-character-creator" aria-label={t("Player style")}>
+    <section className={`character-creator premium-character-creator wardrobe-studio team-${team}`} aria-label={t("Player style")}>
       <div className="character-creator-preview-column">
         <div className="preview-heading">
-          <div>
-            <span className={`team-marker team-${team}`}>{nonCombat ? t("Runner") : team === "blue" ? t("Blue team") : t("Red team")}</span>
-            <h3>{t("Your player")}</h3>
-          </div>
-          <button
-            className="icon-action"
-            type="button"
-            onClick={() => setCameraResetSignal((value) => value + 1)}
-            aria-label={t("Reset player preview")}
-          >
-            <RotateCcw size={16} />{t("Reset preview")}</button>
+          <div><span className={`team-marker team-${team}`}>{nonCombat ? t("Runner") : team === "blue" ? t("Blue team") : t("Red team")}</span><h3>{t("Your player")}</h3></div>
+          <button className="icon-action" type="button" onClick={() => setCameraResetSignal(value => value + 1)} aria-label={t("Reset player preview")}>
+            <RotateCcw size={16} aria-hidden="true" />{t("Reset preview")}
+          </button>
         </div>
-        <CharacterPreview
-          appearance={draft}
-          team={team}
-          loadDecalAsset={loadDecalAsset}
-          resetSignal={cameraResetSignal}
-          showVictoryPose={activeCategory === "pose"}
-          focusBack={activeCategory === "back"}
-          focusFootwear={activeCategory === "footwear"}
-          showWeapon={!nonCombat}
-        />
-        <p className="preview-hint"><RotateCcw size={13} />{t("Drag to rotate")}{" "}<span />{" "}{t("Scroll to zoom")}</p>
+        <div className="wardrobe-stage">
+          <span className="wardrobe-live"><span />{t("Live preview")}</span>
+          <div className="wardrobe-view-switch" role="group" aria-label={t("Preview view")}>
+            <button type="button" aria-pressed={activeCategory === "head" ? !portrait : fullOutfit || activeCategory === "pose"} onClick={() => { setPortrait(false); setFullOutfit(true); }} title={t("Full outfit")}><Shirt size={16} aria-hidden="true" /><span>{t("Full outfit")}</span></button>
+            {activeCategory === "head" && <button type="button" aria-pressed={portrait} onClick={() => setPortrait(true)} title={t("Close-up")}><ScanFace size={16} aria-hidden="true" /><span>{t("Close-up")}</span></button>}
+            {(activeCategory === "back" || activeCategory === "footwear") && <button type="button" aria-pressed={!fullOutfit} onClick={() => setFullOutfit(false)} title={t("Item detail")}><ScanFace size={16} aria-hidden="true" /><span>{t("Item detail")}</span></button>}
+          </div>
+          <CharacterPreview appearance={draft} team={team} loadDecalAsset={loadDecalAsset} localDecal={localBadge} resetSignal={cameraResetSignal}
+            showVictoryPose={activeCategory === "pose"} focusBack={activeCategory === "back" && !fullOutfit} focusFootwear={activeCategory === "footwear" && !fullOutfit}
+            focusHead={portrait} showWeapon={arenaGear && !nonCombat && activeCategory !== "pose"} replaySignal={replaySignal} allowCombatAccessories={!nonCombat} />
+          <div className="wardrobe-stage-caption"><span>{t(activeCategory === "pose" ? "Signature move" : "Your look")}</span><strong>{t(activeCategory === "head" ? selectedHead.label : selected?.label)}</strong></div>
+          {activeCategory === "pose" ? <button type="button" className="wardrobe-replay" onClick={() => setReplaySignal(value => value + 1)}><Play size={15} aria-hidden="true" />{t("Replay pose")}</button>
+            : !nonCombat && <label className="wardrobe-gear-toggle"><input type="checkbox" checked={arenaGear} onChange={event => setArenaGear(event.target.checked)} />{t("Arena gear")}</label>}
+        </div>
+        <p className="preview-hint"><RotateCcw size={13} aria-hidden="true" />{t("Drag to rotate")}<span />{t("Scroll to zoom")}</p>
       </div>
 
       <div className="character-creator-controls">
         <div className="customizer-heading">
           <div className="customizer-title-row">
-            <div><span>{t("Player style")}</span><h3>{t("Make it yours")}</h3></div>
-            <div className="cosmetic-level"><Award size={15} /><span>{t("Level")}{" "}{progress.level}</span><strong>{progress.levelName}</strong></div>
+            <div><span className="wardrobe-eyebrow">{t("Player locker")}</span><h3>{t("Make it yours")}</h3></div>
+            <div className="cosmetic-level"><Award size={18} aria-hidden="true" /><span>{t("Level")} {progress.level}</span><strong>{t(progress.levelName)}</strong></div>
           </div>
-          <div className="cosmetic-progress" aria-label={t("{value0} cosmetic experience", { value0: progress.xp })}>
-            <span style={{ width: `${progress.progressPercent}%` }} />
-          </div>
+          <div className="cosmetic-progress" role="progressbar" aria-label={t("Style level progress")} aria-valuemin={0} aria-valuemax={100} aria-valuenow={progress.progressPercent}><span style={{ width: `${progress.progressPercent}%` }} /></div>
           <p>{progress.nextLevelXp === undefined ? t("Every style is unlocked") : t("{value0} XP to unlock the next style", { value0: progress.nextLevelXp - progress.xp })}</p>
         </div>
-        <div className="creator-controls-scroll">
-          <div className="cosmetic-category-tabs" role="tablist" aria-label={t("Player style categories")}>
-                {([
-                  { id: "head", label: "Head", Icon: UserRound },
-                  { id: "back", label: "Back", Icon: Backpack },
-                  { id: "footwear", label: "Footwear", Icon: Footprints },
-                  { id: "pose", label: "Victory pose", Icon: Smile }
-                ] as const).map((category) => (
-                  <button
-                    type="button"
-                    role="tab"
-                    key={category.id}
-                    className={activeCategory === category.id ? "selected" : ""}
-                    aria-selected={activeCategory === category.id}
-                    onClick={() => setActiveCategory(category.id)}
-                  >
-                    <category.Icon size={15} />{t(category.label)}
-                  </button>
-                ))}
-          </div>
-
-              {activeCategory === "head" && (
-                <fieldset className="creator-option-section accessory-options cosmetic-catalog-grid">
-                  <legend>{t("Head style")}</legend>
-                  <p className="creator-option-help">{t("Choose the look your player wears in the game.")}</p>
-                  <div className="accessory-card-grid">
-                    {HEAD_STYLE_OPTIONS.map((option) => {
-                      const level = unlockLevel("head", option.id);
-                      const locked = level > progress.level;
-                      return (
-                        <button
-                          type="button"
-                          key={option.id}
-                          className={draft.headStyleId === option.id ? "selected" : ""}
-                          onClick={() => updateDraft((current) => ({ ...current, headStyleId: option.id }))}
-                          aria-pressed={draft.headStyleId === option.id}
-                          disabled={disabled || locked}
-                          title={locked ? t("Unlocks at style level {value0}", { value0: level }) : t(option.label)}
-                        >
-                          <span className="cosmetic-card-icon cosmetic-image-preview">
-                            <option.Icon className="cosmetic-image-fallback" size={21} />
-                            <img src={option.thumbnail} alt="" aria-hidden="true" />
-                          </span>
-                          <span><strong>{t(option.label)}</strong><small>{locked ? t("Style level {value0}", { value0: level }) : t(option.description)}</small></span>
-                          {locked && <Lock className="cosmetic-lock" size={12} />}
-                          {!locked && draft.headStyleId === option.id && <Check className="cosmetic-check" size={13} />}
-                        </button>
-                      );
-                    })}
-                  </div>
-                </fieldset>
-              )}
-
-              {activeCategory === "back" && (
-                <fieldset className="creator-option-section accessory-options cosmetic-catalog-grid">
-                  <legend>{t("Back gear · choose one")}</legend>
-                  <div className="accessory-card-grid">
-                    {availableBackAccessories.map((option) => {
-                      const level = unlockLevel("back", option.value);
-                      const locked = level > progress.level;
-                      return (
-                        <button
-                          type="button"
-                          key={option.value}
-                          className={draft.backAccessoryId === option.value ? "selected" : ""}
-                          onClick={() => updateDraft((current) => ({ ...current, backAccessoryId: option.value }))}
-                          aria-pressed={draft.backAccessoryId === option.value}
-                          disabled={disabled || locked}
-                          title={locked ? t("Unlocks at style level {value0}", { value0: level }) : t(option.detail)}
-                        >
-                          <span className="cosmetic-card-icon cosmetic-image-preview">
-                            <option.Icon className="cosmetic-image-fallback" size={21} />
-                            <img src={option.thumbnail} alt="" aria-hidden="true" />
-                          </span>
-                          <span><strong>{t(option.label)}</strong><small>{locked ? t("Style level {value0}", { value0: level }) : t(option.detail)}</small></span>
-                          {locked && <Lock className="cosmetic-lock" size={12} />}
-                          {!locked && draft.backAccessoryId === option.value && <Check className="cosmetic-check" size={13} />}
-                        </button>
-                      );
-                    })}
-                  </div>
-                </fieldset>
-              )}
-
-              {activeCategory === "footwear" && (
-                <fieldset className="creator-option-section accessory-options cosmetic-catalog-grid footwear-options">
-                  <legend>{t("Footwear · choose one")}</legend>
-                  <p className="creator-option-help">{t("Style only · movement and game rules stay the same.")}</p>
-                  <div className="accessory-card-grid footwear-card-grid">
-                    {FOOTWEAR_OPTIONS.map((option) => {
-                      const level = unlockLevel("footwear", option.value);
-                      const locked = level > progress.level;
-                      return (
-                        <button
-                          type="button"
-                          key={option.value}
-                          className={draft.footwearId === option.value ? "selected" : ""}
-                          onClick={() => updateDraft((current) => ({ ...current, footwearId: option.value }))}
-                          aria-pressed={draft.footwearId === option.value}
-                          disabled={disabled || locked}
-                          title={locked ? t("Unlocks at style level {value0}", { value0: level }) : t(option.detail)}
-                        >
-                          <span className="cosmetic-card-icon cosmetic-image-preview footwear-card-preview">
-                            <option.Icon className="cosmetic-image-fallback" size={28} />
-                            <img src={option.thumbnail} alt="" aria-hidden="true" />
-                          </span>
-                          <span><strong>{t(option.label)}</strong><small>{locked ? t("Style level {value0}", { value0: level }) : t(option.detail)}</small></span>
-                          {locked && <Lock className="cosmetic-lock" size={12} />}
-                          {!locked && draft.footwearId === option.value && <Check className="cosmetic-check" size={13} />}
-                        </button>
-                      );
-                    })}
-                  </div>
-                </fieldset>
-              )}
-
-              {activeCategory === "pose" && (
-                <fieldset className="creator-option-section accessory-options cosmetic-catalog-grid">
-                  <legend>{t("Victory pose")}</legend>
-                  <div className="accessory-card-grid">
-                    {VICTORY_POSE_OPTIONS.map((option) => {
-                      const level = unlockLevel("pose", option.value);
-                      const locked = level > progress.level;
-                      return (
-                        <button
-                          type="button"
-                          key={option.value}
-                          className={draft.victoryPoseId === option.value ? "selected" : ""}
-                          onClick={() => updateDraft((current) => ({ ...current, victoryPoseId: option.value }))}
-                          aria-pressed={draft.victoryPoseId === option.value}
-                          disabled={disabled || locked}
-                          title={locked ? t("Unlocks at style level {value0}", { value0: level }) : t(option.detail)}
-                        >
-                          <span className="cosmetic-card-icon cosmetic-image-preview">
-                            <option.Icon className="cosmetic-image-fallback" size={21} />
-                            <img src={option.thumbnail} alt="" aria-hidden="true" />
-                          </span>
-                          <span><strong>{t(option.label)}</strong><small>{locked ? t("Style level {value0}", { value0: level }) : t(option.detail)}</small></span>
-                          {locked && <Lock className="cosmetic-lock" size={12} />}
-                          {!locked && draft.victoryPoseId === option.value && <Check className="cosmetic-check" size={13} />}
-                        </button>
-                      );
-                    })}
-                  </div>
-                </fieldset>
-              )}
+        <div className="cosmetic-category-tabs" ref={tabsRef} role="tablist" aria-label={t("Player style categories")} onKeyDown={event => {
+          if (!["ArrowLeft", "ArrowRight", "Home", "End"].includes(event.key)) return;
+          event.preventDefault();
+          const focusedIndex = Array.from(event.currentTarget.querySelectorAll('[role="tab"]')).indexOf(document.activeElement as Element);
+          const index = focusedIndex >= 0 ? focusedIndex : categories.findIndex(item => item.id === activeCategory);
+          const next = event.key === "Home" ? 0 : event.key === "End" ? categories.length - 1 : (index + (event.key === "ArrowRight" ? 1 : -1) + categories.length) % categories.length;
+          selectCategory(categories[next].id);
+          (tabsRef.current?.children[next] as HTMLButtonElement | undefined)?.focus();
+        }}>
+          {categories.map(item => <button type="button" role="tab" key={item.id} id={`${panelId}-${item.id}`} aria-controls={`${panelId}-panel`} tabIndex={activeCategory === item.id ? 0 : -1}
+            className={activeCategory === item.id ? "selected" : ""} aria-selected={activeCategory === item.id} onClick={() => selectCategory(item.id)}>
+            <item.Icon size={18} aria-hidden="true" /><span>{t(item.label)}</span>
+          </button>)}
+        </div>
+        <div className="creator-controls-scroll" ref={scrollRef} role="tabpanel" id={`${panelId}-panel`} aria-labelledby={`${panelId}-${activeCategory}`} tabIndex={0}>
+          <div className="wardrobe-category-heading"><div><h4>{t(category.title)}</h4><p>{t(category.detail)}</p></div><span>{items.length} {t("styles")}</span></div>
+          <fieldset className="creator-option-section accessory-options cosmetic-catalog-grid">
+            <legend className="wardrobe-sr-only">{t(category.label)}</legend>
+            <div className="accessory-card-grid wardrobe-item-grid">
+              {items.map(item => {
+                const level = unlockLevel(activeCategory, item.id), locked = level > progress.level;
+                const equipped = item.id === selectedId;
+                return <button type="button" key={item.id} className={equipped ? "selected" : ""} aria-pressed={equipped} disabled={disabled || locked}
+                  aria-label={`${t(item.label)}${locked ? ` · ${t("Style level {value0}", { value0: level })}` : ""}`}
+                  title={t(item.description)} onClick={() => {
+                    const field = { head: "headStyleId", back: "backAccessoryId", footwear: "footwearId", pose: "victoryPoseId" }[activeCategory];
+                    updateDraft(current => ({ ...current, [field]: item.id }));
+                  }}>
+                  <span className="cosmetic-card-icon cosmetic-image-preview">
+                    <item.Icon className="cosmetic-image-fallback" size={32} aria-hidden="true" />
+                    <img src={item.thumbnail} alt="" aria-hidden="true" loading="lazy" onError={event => { event.currentTarget.style.display = "none"; }} />
+                  </span>
+                  <span className="wardrobe-item-copy"><strong>{t(item.label)}</strong><small>{locked ? t("Style level {value0}", { value0: level }) : equipped ? t("Equipped") : t(item.description)}</small></span>
+                  {locked ? <Lock className="cosmetic-lock" size={15} aria-hidden="true" /> : equipped && <Check className="cosmetic-check" size={15} aria-hidden="true" />}
+                </button>;
+              })}
+            </div>
+          </fieldset>
+          <details className="wardrobe-recipes"><summary><Sparkles size={15} aria-hidden="true" />{t("Quick looks")}<span>{t("Try a complete outfit")}</span></summary>
+            <div>{recipes.map(recipe => {
+              const locked = !isUnlocked("head", recipe.head) || !isUnlocked("back", recipe.back) || !isUnlocked("footwear", recipe.footwear) || !isUnlocked("pose", recipe.pose);
+              return <button type="button" key={recipe.name} disabled={disabled || locked} onClick={() => updateDraft(current => ({ ...current, headStyleId: recipe.head, backAccessoryId: recipe.back, footwearId: recipe.footwear, victoryPoseId: recipe.pose }))}>
+                <img src={HEAD_STYLE_OPTIONS.find(item => item.id === recipe.head)?.thumbnail} alt="" />{t(recipe.name)}{locked && <Lock size={12} aria-hidden="true" />}
+              </button>;
+            })}</div>
+          </details>
+          {policy.uploadsEnabled && <details className="wardrobe-recipes"><summary><Pencil size={15} aria-hidden="true" />{t("Your signature badge")}<span>{t("Draw it. Wear it.")}</span></summary>
+            <WardrobeBadgeEditor disabled={disabled} onPreview={setLocalBadge} onApply={async blob => {
+              const assetId = await onUploadDecal(blob);
+              updateDraft(current => ({ ...current, decalAssetId: assetId }));
+              setLocalBadge(null);
+            }} />
+          </details>}
+          {(localBadge || draft.decalAssetId) && <button type="button" className="wardrobe-remove-badge" disabled={disabled} onClick={() => {
+            if (localBadge) setLocalBadge(null);
+            else updateDraft(current => ({ ...current, decalAssetId: undefined }));
+          }}><X size={14} aria-hidden="true" />{t(localBadge ? "Discard badge preview" : "Remove badge")}</button>}
         </div>
       </div>
-
       <footer className="creator-footer">
-        <div className="creator-actions">
-          <button type="button" onClick={randomize} disabled={disabled}><Dice5 size={16} />{t("Surprise me")}</button>
-          <button
-            type="button"
-            onClick={() => updateDraft(() => ({ ...DEFAULT_PLAYER_APPEARANCE }))}
-            disabled={disabled}
-          >
-            <RotateCcw size={16} />{t("Reset player")}</button>
-        </div>
-        <div className="save-cluster">
-          <div className="save-state-copy">
-            <div
-              className={`appearance-save-state${dirty || saving ? " pending" : ""}${error ? " failed" : ""}`}
-              aria-live="polite"
-            >
-              {error
-                ? <><X size={15} />{t("Couldn’t save")}</>
-                : saving
-                  ? <><span className="saving-dot" />{t("Saving player style…")}</>
-                  : dirty
-                    ? t("Unsaved changes")
-                    : <><Check size={15} />{t("Player style saved")}</>}
-            </div>
-            {error && <small className="save-error-detail">{t(error)}</small>}
-          </div>
-          {(dirty || error) && (
-            <button
-              className="primary save-appearance"
-              type="button"
-              onClick={() => void save()}
-              disabled={disabled || saving}
-            >
-              {error ? t("Try again") : t("Save style")}
-            </button>
-          )}
+        <div className="creator-actions"><button type="button" onClick={randomize} disabled={disabled}><Dice5 size={17} aria-hidden="true" />{t("Surprise me")}</button>
+          <button type="button" onClick={() => updateDraft(() => ({ ...DEFAULT_PLAYER_APPEARANCE }))} disabled={disabled}><RotateCcw size={16} aria-hidden="true" />{t("Reset player")}</button></div>
+        <div className="save-cluster"><div className="save-state-copy"><div className={`appearance-save-state${dirty || saving ? " pending" : ""}${error ? " failed" : ""}`} role="status" aria-live="polite">
+          {error ? <><X size={15} aria-hidden="true" />{t("Couldn’t save")}</> : saving ? <><span className="saving-dot" />{t("Saving player style…")}</> : dirty ? t("Unsaved changes") : localBadge ? t("Badge preview · choose Use badge to save") : <><Check size={15} aria-hidden="true" />{t("Player style saved")}</>}
+        </div>{error && <small className="save-error-detail">{t(error)}</small>}</div>
+          {(dirty || error) && <button className="primary save-appearance" type="button" onClick={() => void save()} disabled={disabled || saving}>{error ? t("Try again") : t("Save style")}</button>}
         </div>
       </footer>
     </section>

@@ -1,0 +1,127 @@
+{
+  "errors": [],
+  "layouts": [
+    {
+      "name": "desktop",
+      "viewport": [
+        1440,
+        900
+      ],
+      "horizontalOverflow": false,
+      "preview": {
+        "x": 49,
+        "y": 347.140625,
+        "width": 676.09375,
+        "height": 426.859375,
+        "top": 347.140625,
+        "right": 725.09375,
+        "bottom": 774,
+        "left": 49
+      }
+    },
+    {
+      "name": "laptop",
+      "viewport": [
+        1440,
+        650
+      ],
+      "horizontalOverflow": false,
+      "preview": {
+        "x": 45,
+        "y": 333.140625,
+        "width": 682.234375,
+        "height": 200.859375,
+        "top": 333.140625,
+        "right": 727.234375,
+        "bottom": 534,
+        "left": 45
+      }
+    },
+    {
+      "name": "tablet",
+      "viewport": [
+        1024,
+        768
+      ],
+      "horizontalOverflow": false,
+      "preview": {
+        "x": 35.46875,
+        "y": 340.921875,
+        "width": 470.53125,
+        "height": 305.078125,
+        "top": 340.921875,
+        "right": 506,
+        "bottom": 646,
+        "left": 35.46875
+      }
+    },
+    {
+      "name": "phone",
+      "viewport": [
+        390,
+        844
+      ],
+      "horizontalOverflow": false,
+      "preview": {
+        "x": 37,
+        "y": 569.0625,
+        "width": 316,
+        "height": 312,
+        "top": 569.0625,
+        "right": 353,
+        "bottom": 881.0625,
+        "left": 37
+      }
+    }
+  ],
+  "arena": {
+    "engine": "three.js r178",
+    "quality": "high",
+    "rendererInstanceId": "arena-renderer-5",
+    "rendererCreateCount": "5",
+    "rendererDisposeCount": "4",
+    "webglContextLostCount": "0",
+    "webglContextRestoreCount": "0",
+    "currentRound": "1",
+    "playerCount": "40",
+    "graphicsQuality": "high",
+    "environmentKit": "procedural-core",
+    "assetsLoaded": "4",
+    "assetsTotal": "4",
+    "assetsFailed": "0",
+    "assetsActive": "0",
+    "staticSources": "1547",
+    "staticBatches": "6",
+    "playerX": "-49.600",
+    "playerY": "12.210",
+    "playerZ": "0.000",
+    "playerFacing": "-1.57080",
+    "drawCalls": "830",
+    "triangles": "2388599",
+    "playerGroundY": "8.000",
+    "detectedFloor": "8.000",
+    "currentNavRegion": "desert_citadel:main",
+    "colliderName": "none",
+    "currentLevel": "main",
+    "fps": "30",
+    "importedCharacters": "0",
+    "frameP95": "37.1",
+    "textures": "70",
+    "textureMb": "105.3",
+    "geometries": "89",
+    "shadowCasters": "0",
+    "heapMb": "98",
+    "longTasks": "12",
+    "vfxActive": "0",
+    "vfxSprites": "0",
+    "vfxDropped": "0",
+    "renderBudget": "fps,frame-p95,triangles,textures",
+    "renderBudgetDrawCalls": "2000",
+    "renderBudgetTriangles": "1100000",
+    "renderBudgetTextureMb": "48",
+    "renderBudgetShadowCasters": "256",
+    "renderBudgetParticles": "64",
+    "adapter": "ANGLE (Intel, Intel(R) UHD Graphics (0x00009BC4) Direct3D11 vs_5_0 ps_5_0, D3D11)"
+  },
+  "environment": "Headless desktop Chrome; smoke check, not a Chromebook frame-rate certification."
+}

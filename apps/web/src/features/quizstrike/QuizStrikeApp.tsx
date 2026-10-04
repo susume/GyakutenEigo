@@ -48,6 +48,7 @@ import type { AthleticsHudState } from "../../game/hudOverlay";
 import ArenaLoading from "./shared/ArenaLoading";
 
 const ArenaPreview = lazy(() => import("../../game/ArenaPreview"));
+const CharacterArtLab = lazy(() => import("../../ui/CharacterArtLab"));
 const CompetitionHub = lazy(() => import("./competition/CompetitionHub"));
 const OrganizerWorkspace = lazy(() => import("./competition/CompetitionHub").then((module) => ({ default: module.OrganizerWorkspace })));
 const TournamentRegistrationPage = lazy(() => import("./tournament/TournamentRegistrationPage"));
@@ -242,7 +243,9 @@ export default function App() {
         onTeacherLogin={() => { setTeacherAuthMode("login"); navigateTo("/quiz-strike/teacher/home", "teacher"); }}
       />}
       {mode === "tournamentStudy" && <Suspense fallback={<FeatureLoading label={t("Loading tournament study")} />}><TournamentStudyPage tournamentId={decodeURIComponent(routePath.slice("/tournament-study/".length))} /></Suspense>}
-      {mode === "characterLab" && (isCharacterLabAvailable ? <CharacterLab /> : <InternalToolNotice onReturn={() => navigateTo("/quiz-strike", "quizStrike")} />)}
+      {mode === "characterLab" && (isCharacterLabAvailable ? new URLSearchParams(window.location.search).get("wardrobe") === "1"
+        ? <Suspense fallback={<FeatureLoading label={t("Loading character studio")} />}><CharacterArtLab /></Suspense>
+        : <CharacterLab /> : <InternalToolNotice onReturn={() => navigateTo("/quiz-strike", "quizStrike")} />)}
       {mode === "teacher" && restoringTeacher && !isTeacherDashboardPreview && <FeatureLoading label={t("Opening your teacher workspace")} />}
       {mode === "teacher" && (!restoringTeacher || isTeacherDashboardPreview) && <Suspense fallback={<FeatureLoading label={t("Loading teacher workspace")} />}><TeacherWorkspace teacher={teacher ?? (isTeacherDashboardPreview ? DEV_TEACHER_PREVIEW : null)} apiWakeState={apiWakeState} initialMode={teacherAuthMode} initialPath={routePath} onNavigate={navigateTo} onLogout={logout} onAuthed={(user) => {
           setTeacher(user);

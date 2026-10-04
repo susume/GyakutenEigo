@@ -1,5 +1,5 @@
 import { useSiteTranslation } from "./siteTranslation";
-import { useEffect, useRef } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import * as THREE from "three";
 import type {
   PlayerBackAccessoryId,
@@ -11,6 +11,10 @@ import type {
 } from "@quizstrike/shared";
 import { FOOTWEAR_CATALOG, HEAD_STYLE_CATALOG } from "@quizstrike/shared";
 import {
+  ArrowLeft,
+  ArrowRight,
+  ZoomIn,
+  ZoomOut,
   Backpack,
   Bot,
   Cat,
@@ -36,9 +40,8 @@ import {
   X,
   type LucideIcon
 } from "lucide-react";
-import { CharacterFactory } from "../game/characters/CharacterFactory";
+import { CharacterPreviewScene, type WardrobeView } from "./CharacterPreviewScene";
 
-const appearanceSignature = (appearance: PlayerAppearance) => JSON.stringify(appearance);
 
 const customizationThumbnail = (
   category: "head" | "back" | "footwear" | "victory",
@@ -144,263 +147,67 @@ export const VICTORY_POSE_OPTIONS: ReadonlyArray<{
 }));
 
 export function CharacterPreview({
-  appearance,
-  team,
-  loadDecalAsset,
-  localDecal,
-  resetSignal = 0,
-  showVictoryPose = false,
-  focusBack = false,
-  focusFootwear = false,
-  showWeapon = true
+  appearance, team, loadDecalAsset, localDecal, resetSignal = 0,
+  showVictoryPose = false, focusBack = false, focusFootwear = false,
+  focusHead = false, showWeapon = false, replaySignal = 0, allowCombatAccessories = true
 }: {
-  appearance: PlayerAppearance;
-  team: Team;
-  loadDecalAsset: (assetId: string) => Promise<Blob>;
-  localDecal?: Blob | null;
-  resetSignal?: number;
-  showVictoryPose?: boolean;
-  focusBack?: boolean;
-  focusFootwear?: boolean;
-  showWeapon?: boolean;
+  appearance: PlayerAppearance; team: Team;
+  loadDecalAsset: (assetId: string) => Promise<Blob>; localDecal?: Blob | null;
+  resetSignal?: number; showVictoryPose?: boolean; focusBack?: boolean;
+  focusFootwear?: boolean; focusHead?: boolean; showWeapon?: boolean; replaySignal?: number; allowCombatAccessories?: boolean;
 }) {
   const { t } = useSiteTranslation();
   const mountRef = useRef<HTMLDivElement>(null);
-  const loadRef = useRef(loadDecalAsset);
-  loadRef.current = loadDecalAsset;
-
-  const appearanceKey = appearanceSignature(appearance);
+  const controller = useRef<CharacterPreviewScene | null>(null);
+  const loadRef = useRef(loadDecalAsset); loadRef.current = loadDecalAsset;
+  const localDecalId = useMemo(() => localDecal ? crypto.randomUUID() : undefined, [localDecal]);
+  const localDecalRef = useRef({ blob: localDecal, id: localDecalId });
+  localDecalRef.current = { blob: localDecal, id: localDecalId };
+  const previewAppearance = useMemo(() => localDecalId ? { ...appearance, decalAssetId: localDecalId } : appearance, [appearance, localDecalId]);
+  const [previewError, setPreviewError] = useState("");
+  const view: WardrobeView = focusFootwear ? "footwear" : focusBack ? "back" : focusHead ? "portrait" : "outfit";
+  const current = useRef({ appearance: previewAppearance, showWeapon, view, showVictoryPose, allowCombatAccessories });
+  current.current = { appearance: previewAppearance, showWeapon, view, showVictoryPose, allowCombatAccessories };
 
   useEffect(() => {
-    const mount = mountRef.current;
-    if (!mount) return;
-    const scene = new THREE.Scene();
-    const camera = new THREE.PerspectiveCamera(32, 1, 0.1, 40);
-    const compactLandscape = window.innerHeight <= 620 && window.innerWidth >= 901;
-    const minDistance = 12.5;
-    const maxDistance = 19;
-    let distance = focusFootwear ? (compactLandscape ? 14.5 : 15.1) : (compactLandscape ? 15.2 : 16.1);
-    camera.position.set(0.45, focusFootwear ? 2.25 : (compactLandscape ? 2.5 : 2.55), distance);
-    camera.lookAt(0, focusFootwear ? 1.8 : (compactLandscape ? 1.95 : 2), 0);
-    const renderer = new THREE.WebGLRenderer({ antialias: true, alpha: true, powerPreference: "low-power" });
-    renderer.setPixelRatio(Math.min(window.devicePixelRatio, 1.5));
-    renderer.outputColorSpace = THREE.SRGBColorSpace;
-    renderer.setClearColor(0x000000, 0);
-    renderer.shadowMap.enabled = true;
-    renderer.shadowMap.type = THREE.PCFSoftShadowMap;
-    mount.appendChild(renderer.domElement);
-
-    scene.add(new THREE.HemisphereLight("#e9f7ff", "#152b42", 1.8));
-    const key = new THREE.DirectionalLight("#fff6df", 2.7);
-    key.position.set(4.5, 7, 5);
-    key.castShadow = true;
-    key.shadow.mapSize.set(1024, 1024);
-    scene.add(key);
-    const fill = new THREE.DirectionalLight("#74d7ff", 1.35);
-    fill.position.set(-5, 3, 3);
-    scene.add(fill);
-    const rim = new THREE.DirectionalLight(team === "blue" ? "#31b6ff" : "#ff6b46", 2.2);
-    rim.position.set(-3, 4, -5);
-    scene.add(rim);
-
-    const platform = new THREE.Mesh(
-      new THREE.CylinderGeometry(2.15, 2.35, 0.2, 48),
-      new THREE.MeshStandardMaterial({
-        color: team === "blue" ? "#143b59" : "#4b2932",
-        roughness: 0.66,
-        metalness: 0.12
-      })
-    );
-    platform.position.y = -0.24;
-    platform.receiveShadow = true;
-    scene.add(platform);
-    const platformRing = new THREE.Mesh(
-      new THREE.TorusGeometry(1.72, 0.035, 8, 56),
-      new THREE.MeshBasicMaterial({ color: team === "blue" ? "#49c8ff" : "#ff8268" })
-    );
-    platformRing.rotation.x = Math.PI / 2;
-    platformRing.position.y = -0.125;
-    scene.add(platformRing);
-
+    const mount = mountRef.current; if (!mount) return;
     const makeTexture = async (assetId: string) => {
-      const blob = assetId === "00000000-0000-0000-0000-000000000000" && localDecal
-        ? localDecal
-        : await loadRef.current(assetId);
+      const local = localDecalRef.current;
+      const blob = local.id === assetId && local.blob ? local.blob : await loadRef.current(assetId);
       const url = URL.createObjectURL(blob);
-      try {
-        return await new Promise<THREE.Texture>((resolve, reject) =>
-          new THREE.TextureLoader().load(url, resolve, undefined, reject)
-        );
-      } finally {
-        URL.revokeObjectURL(url);
-      }
+      try { return await new THREE.TextureLoader().loadAsync(url); }
+      finally { URL.revokeObjectURL(url); }
     };
-    const previewAppearance = localDecal
-      ? { ...appearance, decalAssetId: "00000000-0000-0000-0000-000000000000" }
-      : appearance;
-    const factory = new CharacterFactory({ loadDecalTexture: makeTexture });
-    const model = factory.createCharacter({
-      playerId: "lobby-preview",
-      team,
-      appearance: previewAppearance,
-      gear: "starter_blaster",
-      showWeapon
-    });
-    const previewParams = new URLSearchParams(window.location.search);
-    const previewView = previewParams.get("characterView");
-    const presentationRotation = {
-      front: Math.PI,
-      left: Math.PI / 2,
-      right: -Math.PI / 2,
-      rear: 0,
-      "three-quarter": Math.PI - 0.55,
-      "rear-three-quarter": 0.55
-    }[previewView ?? ""] ?? (focusBack ? 0.68 : Math.PI - 0.78);
-    const previewPose = previewParams.get("characterPose");
-    if (showVictoryPose || previewPose === "victory") {
-      model.triggerAnimation("victory");
-    } else if (previewPose === "jump") {
-      model.triggerAnimation("jump");
-    } else if (previewPose === "shoot") {
-      model.triggerAnimation("fire");
-    } else if (previewPose === "respawn") {
-      model.triggerAnimation("respawn");
+    try {
+      const preview = new CharacterPreviewScene(mount, team, makeTexture);
+      controller.current = preview;
+      preview.setAppearance(current.current.appearance, team, current.current.showWeapon, current.current.allowCombatAccessories);
+      preview.setView(current.current.view, current.current.showVictoryPose);
+      setPreviewError("");
+      return () => { preview.dispose(); controller.current = null; };
+    } catch {
+      setPreviewError("The 3D preview couldn’t load. Your style choices will still save.");
     }
-    model.root.rotation.y = presentationRotation;
-    scene.add(model.root);
-
-    const body = model.root.getObjectByName(`stylized_humanoid_${model.appearance.variant}`);
-    if (body?.userData.geometryStats) {
-      mount.dataset.modelStats = JSON.stringify(body.userData.geometryStats);
-    }
-
-    const reducedMotion = window.matchMedia("(prefers-reduced-motion: reduce)").matches;
-    let frame = 0;
-    let dragging = false;
-    let lastX = 0;
-    const pointers = new Map<number, { x: number; y: number }>();
-    let pinchDistance = 0;
-    let lastTime = performance.now();
-    let hasInteracted = false;
-
-    const resize = () => {
-      const width = Math.max(1, mount.clientWidth);
-      const height = Math.max(1, mount.clientHeight);
-      camera.aspect = width / height;
-      camera.updateProjectionMatrix();
-      renderer.setSize(width, height, false);
-    };
-    const observer = new ResizeObserver(resize);
-    observer.observe(mount);
-    resize();
-
-    const animate = (time: number) => {
-      if (document.hidden) {
-        if (!reducedMotion) frame = requestAnimationFrame(animate);
-        return;
-      }
-      const delta = Math.min(0.05, (time - lastTime) / 1000);
-      lastTime = time;
-      if (!reducedMotion && !dragging && !hasInteracted) {
-        model.root.rotation.y = presentationRotation + Math.sin(time * 0.00042) * 0.12;
-      }
-      const previewSpeed = previewPose === "walk" ? 3.2 : previewPose === "sprint" ? 5.4 : 0;
-      model.update({
-        camera,
-        delta,
-        elapsed: time / 1000,
-        speed: previewSpeed,
-        forwardSpeed: previewSpeed,
-        alive: true,
-        aimPitch: previewPose === "aim" ? -0.18 : 0,
-        firing: previewPose === "shoot",
-        crouching: previewPose === "crouch"
-      });
-      renderer.render(scene, camera);
-      mount.dataset.renderStats = JSON.stringify({
-        calls: renderer.info.render.calls,
-        triangles: renderer.info.render.triangles,
-        geometries: renderer.info.memory.geometries,
-        textures: renderer.info.memory.textures,
-        pixelRatio: renderer.getPixelRatio()
-      });
-      if (!reducedMotion) frame = requestAnimationFrame(animate);
-    };
-    frame = requestAnimationFrame(animate);
-
-    const pointerDown = (event: PointerEvent) => {
-      dragging = true;
-      lastX = event.clientX;
-      pointers.set(event.pointerId, { x: event.clientX, y: event.clientY });
-      if (pointers.size === 2) {
-        const [first, second] = [...pointers.values()];
-        pinchDistance = Math.hypot(second.x - first.x, second.y - first.y);
-      }
-      renderer.domElement.setPointerCapture(event.pointerId);
-    };
-    const pointerMove = (event: PointerEvent) => {
-      if (!dragging) return;
-      pointers.set(event.pointerId, { x: event.clientX, y: event.clientY });
-      if (pointers.size >= 2) {
-        const [first, second] = [...pointers.values()];
-        const nextDistance = Math.hypot(second.x - first.x, second.y - first.y);
-        if (pinchDistance > 0) {
-          distance = Math.max(minDistance, Math.min(maxDistance, distance - (nextDistance - pinchDistance) * 0.02));
-          camera.position.z = distance;
-        }
-        pinchDistance = nextDistance;
-        hasInteracted = true;
-        return;
-      }
-      model.root.rotation.y += (event.clientX - lastX) * 0.012;
-      lastX = event.clientX;
-      hasInteracted = true;
-      if (reducedMotion) renderer.render(scene, camera);
-    };
-    const pointerUp = (event: PointerEvent) => {
-      pointers.delete(event.pointerId);
-      pinchDistance = 0;
-      dragging = pointers.size > 0;
-      const remaining = [...pointers.values()][0];
-      if (remaining) lastX = remaining.x;
-    };
-    const wheel = (event: WheelEvent) => {
-      event.preventDefault();
-      distance = Math.max(minDistance, Math.min(maxDistance, distance + event.deltaY * 0.011));
-      camera.position.z = distance;
-      if (reducedMotion) renderer.render(scene, camera);
-    };
-    renderer.domElement.addEventListener("pointerdown", pointerDown);
-    renderer.domElement.addEventListener("pointermove", pointerMove);
-    renderer.domElement.addEventListener("pointerup", pointerUp);
-    renderer.domElement.addEventListener("pointercancel", pointerUp);
-    renderer.domElement.addEventListener("wheel", wheel, { passive: false });
-
-    return () => {
-      cancelAnimationFrame(frame);
-      renderer.domElement.removeEventListener("pointerdown", pointerDown);
-      renderer.domElement.removeEventListener("pointermove", pointerMove);
-      renderer.domElement.removeEventListener("pointerup", pointerUp);
-      renderer.domElement.removeEventListener("pointercancel", pointerUp);
-      renderer.domElement.removeEventListener("wheel", wheel);
-      observer.disconnect();
-      model.dispose();
-      factory.dispose();
-      renderer.dispose();
-      platform.geometry.dispose();
-      (platform.material as THREE.Material).dispose();
-      platformRing.geometry.dispose();
-      (platformRing.material as THREE.Material).dispose();
-      renderer.domElement.remove();
-    };
-  }, [appearance, appearanceKey, team, localDecal, resetSignal, showVictoryPose, focusBack, focusFootwear, showWeapon]);
+  }, [team]);
+  useEffect(() => {
+    controller.current?.setAppearance(previewAppearance, team, showWeapon, allowCombatAccessories);
+  }, [previewAppearance, team, showWeapon, allowCombatAccessories]);
+  useEffect(() => { controller.current?.setView(view, showVictoryPose); }, [view, showVictoryPose]);
+  useEffect(() => { if (resetSignal) controller.current?.reset(); }, [resetSignal]);
+  useEffect(() => { if (replaySignal) controller.current?.playPose(); }, [replaySignal]);
 
   return (
-    <div
-      ref={mountRef}
-      className={`character-preview team-${team}`}
-      role="img"
-      aria-label={t("Live player preview. Drag to rotate and scroll to zoom.")}
-    />
+    <div className="wardrobe-preview-wrap">
+      <div ref={mountRef} className={`character-preview team-${team}`} role="img"
+        aria-label={t("Live player preview. Drag to rotate and scroll to zoom.")} />
+      {previewError && <p className="wardrobe-preview-error" role="status">{t(previewError)}</p>}
+      <div className="wardrobe-camera-controls" role="group" aria-label={t("Preview camera controls")}>
+        <button type="button" aria-label={t("Rotate player left")} onClick={() => controller.current?.rotate(-1)}><ArrowLeft size={17} aria-hidden="true" /></button>
+        <button type="button" aria-label={t("Rotate player right")} onClick={() => controller.current?.rotate(1)}><ArrowRight size={17} aria-hidden="true" /></button>
+        <span />
+        <button type="button" aria-label={t("Zoom out")} onClick={() => controller.current?.changeZoom(-1)}><ZoomOut size={17} aria-hidden="true" /></button>
+        <button type="button" aria-label={t("Zoom in")} onClick={() => controller.current?.changeZoom(1)}><ZoomIn size={17} aria-hidden="true" /></button>
+      </div>
+    </div>
   );
 }

@@ -1,5 +1,7 @@
 # QuizStrike Character System
 
+The October 2026 [customisation overhaul](character-overhaul/README.md) replaces the default placeholder appearance with original illustrated students and revised art for all 30 cosmetic choices. It also adds a persistent studio preview and drawing badge editor. The runtime architecture and multiplayer contracts below continue to apply; the production GLB section describes a future artist-authored asset pipeline.
+
 ## Existing Architecture
 
 The current game client is a React/Vite app using Three.js `0.178.0`. `ArenaPreview.tsx` owns scene creation, map rendering, the first-person camera, movement input, local collision against map cover, and lightweight multiplayer position rendering from `PlayerSession` state. The server/shared package already owns sessions, teams, player health, respawns, gear, and authoritative quiz/game rules. Socket.IO state synchronization sends gameplay state such as position and facing; character bones are not synchronized.
@@ -9,7 +11,7 @@ The current game client is a React/Vite app using Three.js `0.178.0`. `ArenaPrev
 The character system lives in `apps/web/src/game/characters/` and is intentionally modular:
 
 - `CharacterAppearance` centralizes Team Alpha and Team Bravo palettes, silhouettes, role variants, LOD thresholds, and hitbox specs.
-- `CharacterFactory` builds reusable low-poly development placeholder characters and the first-person view model.
+- `CharacterFactory` builds reusable illustrated student characters, modular cosmetics, and the first-person view model.
 - `CharacterModel` owns the root Three.js group and coordinates animation, hitboxes, LOD, and lightweight audio stepping.
 - `CharacterAnimator` reconstructs motion locally from speed/alive/firing state.
 - `CharacterController` smooths remote network position and facing updates.
@@ -22,11 +24,9 @@ The character system lives in `apps/web/src/game/characters/` and is intentional
 
 ## Visual Direction
 
-Team Alpha is a cool modern tactical unit: navy/slate uniform, blue accents, visor helmets, plate carriers, and compact radio packs.
+The default students use rounded athletic silhouettes, expressive human and mascot heads, detailed footwear and modular back accessories. Blue and red team palettes retain clear team recognition. Shared physical materials add illustrated contrast and rim highlights while keeping the normal Three.js lighting and skinning pipeline.
 
-Team Bravo is a warm rugged tactical group: sand/olive/brown clothing, orange accents, ridged helmets, longer rigs, and bedroll-style packs.
-
-The current meshes are clearly labeled development placeholders made from simple low-poly geometry. They are designed for readability and integration, not final production art.
+The current default is original code-sculpted geometry, shared by the lobby and arena. The previous community body is available through the explicit `legacyCharacterBody=1` comparison parameter. See the [overhaul notes and catalogue](character-overhaul/README.md) for the current art, drawing editor and validation evidence.
 
 ## Multiplayer Strategy
 
@@ -58,6 +58,8 @@ The implementation reuses geometries and materials through `CharacterFactory`, s
 ## Character Lab And Stress Testing
 
 Open `/character-lab` in the web app during development to run the character test arena. This route is outside the normal student and teacher flow and uses generated session data only.
+
+Open `/character-lab?wardrobe=1` to inspect the character art studio and all cosmetic choices. This uses the same preview and factory as the student lobby.
 
 The lab supports stress presets for:
 

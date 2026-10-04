@@ -34,6 +34,7 @@ export interface CharacterAnimationState {
   firing?: boolean;
   crouching?: boolean;
   carryingObjective?: boolean;
+  unarmed?: boolean;
 }
 
 export type CharacterAnimationCue = "fire" | "hit" | "respawn" | "jump" | "land" | "flag_plant" | "flag_capture" | "victory" | "defeat";
@@ -330,6 +331,15 @@ export class CharacterAnimator {
     this.fireKick = Math.max(0, this.fireKick - 0.18);
 
     if (!cue) {
+      if (state.unarmed && !state.carryingObjective) {
+        parts.leftArm.rotation.x = -swing * 0.65;
+        parts.rightArm.rotation.x = swing * 0.65;
+        parts.leftArm.rotation.z = 0.1;
+        parts.rightArm.rotation.z = -0.1;
+        parts.leftForearm.rotation.set(-0.12, 0, 0);
+        parts.rightForearm.rotation.set(-0.12, 0, 0);
+        return;
+      }
       this.alignWeaponToDominantHand(parts, state);
       if (!state.carryingObjective) this.applySupportHandIK(parts);
       return;
@@ -377,7 +387,35 @@ export class CharacterAnimator {
       parts.leftArm.rotation.z = THREE.MathUtils.lerp(parts.leftArm.rotation.z, -0.34, snap);
       parts.rightArm.rotation.z = THREE.MathUtils.lerp(parts.rightArm.rotation.z, 0.34, snap);
     } else if (cue.kind === "victory") {
-      if (parts.rearHandGrip && parts.leftHandSupport) {
+      if (state.unarmed) {
+        const blend = THREE.MathUtils.smoothstep(cueProgress, 0, 0.18) * (1 - THREE.MathUtils.smoothstep(cueProgress, 0.78, 1));
+        parts.leftArm.rotation.set(0, 0, 0.1);
+        parts.rightArm.rotation.set(0, 0, -0.1);
+        parts.leftForearm.rotation.set(0, 0, 0);
+        parts.rightForearm.rotation.set(0, 0, 0);
+        if (this.victoryPose === "champion") {
+          parts.leftArm.rotation.set(-0.18 * blend, 0, -2.55 * blend);
+          parts.rightArm.rotation.set(-0.18 * blend, 0, 2.55 * blend);
+          parts.leftForearm.rotation.x = -0.3 * blend;
+          parts.rightForearm.rotation.x = -0.3 * blend;
+        } else if (this.victoryPose === "wave") {
+          parts.rightArm.rotation.set(-0.1 * blend, 0, (2.55 + Math.sin(cueProgress * Math.PI * 6) * 0.24) * blend);
+          parts.rightForearm.rotation.x = 0.1 * blend;
+          parts.head.rotation.z = -0.08 * blend;
+        } else if (this.victoryPose === "salute") {
+          parts.rightArm.rotation.set(0.2 * blend, 0, 2.1 * blend);
+          parts.rightForearm.rotation.z = 1.9 * blend;
+          parts.head.rotation.x = -0.06 * blend;
+        } else {
+          parts.leftArm.rotation.set(0.1 * blend, 0, -1.25 * blend);
+          parts.rightArm.rotation.set(0.1 * blend, 0, 1.25 * blend);
+          parts.leftForearm.rotation.z = -1.2 * blend;
+          parts.rightForearm.rotation.z = 1.2 * blend;
+          parts.torso.rotation.x = -0.08 * blend;
+        }
+        parts.root.position.y = pulse * 0.06;
+        return;
+      } else if (parts.rearHandGrip && parts.leftHandSupport) {
         // A full arm flourish would drag a hand-owned rifle through the torso.
         // Keep the arena rifle in a proud two-handed high-ready instead.
         parts.root.position.y += pulse * 0.12;

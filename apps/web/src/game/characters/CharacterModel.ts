@@ -1,6 +1,6 @@
 import * as THREE from "three";
 import type { CharacterAppearance } from "./CharacterAppearance.js";
-import { CharacterAnimator, type CharacterAnimationCue } from "./CharacterAnimator.js";
+import { CharacterAnimator, type CharacterAnimationCue, type CharacterAnimationParts } from "./CharacterAnimator.js";
 import { CharacterAudio } from "./CharacterAudio.js";
 import { CharacterHitboxController } from "./CharacterHitboxController.js";
 import { CharacterLOD } from "./CharacterLOD.js";
@@ -51,6 +51,7 @@ export class CharacterModel {
   private readonly animator: CharacterAnimator;
   private readonly parts: CharacterModelParts;
   private readonly showWeapon: boolean;
+  private readonly animationParts: CharacterAnimationParts;
   private readonly cosmeticMotionNodes: THREE.Object3D[] = [];
   private shadowLevel: "near" | "off" | "uninitialized" = "uninitialized";
   private worldY = 0;
@@ -60,6 +61,11 @@ export class CharacterModel {
     this.appearance = appearance;
     this.parts = parts;
     this.showWeapon = options.showWeapon !== false;
+    this.animationParts = {
+      ...parts,
+      rearHandGrip: this.showWeapon ? parts.rearHandGrip : undefined,
+      leftHandSupport: this.showWeapon ? parts.leftHandSupport : undefined
+    };
     this.root = parts.root;
     this.animator = new CharacterAnimator(appearance.customization.victoryPoseId);
     this.root.userData.characterAppearance = appearance;
@@ -187,12 +193,12 @@ export class CharacterModel {
       this.shadowLevel = nextShadowLevel;
       this.root.traverse((object) => {
         const mesh = object as THREE.Mesh;
-        if (mesh.isMesh) mesh.castShadow = nextShadowLevel === "near";
+        if (mesh.isMesh) mesh.castShadow = nextShadowLevel === "near" && !mesh.userData.ownedDecalMaterial;
       });
     }
     if (lodState.shouldAnimate || this.animator.hasActiveCue) {
       this.root.position.y = this.animatedLocalY;
-      this.animator.update(this.parts, { delta, elapsed, speed, velocityX, velocityZ, forwardSpeed, strafeSpeed, turnSpeed, alive, aimPitch, firing, crouching, carryingObjective });
+      this.animator.update(this.animationParts, { delta, elapsed, speed, velocityX, velocityZ, forwardSpeed, strafeSpeed, turnSpeed, alive, aimPitch, firing, crouching, carryingObjective, unarmed: !this.showWeapon });
       this.animatedLocalY = this.root.position.y;
       this.audio.update(speed, delta);
     }

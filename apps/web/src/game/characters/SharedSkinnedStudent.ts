@@ -3,6 +3,7 @@ import { mergeGeometries } from "three/examples/jsm/utils/BufferGeometryUtils.js
 import type { PlayerFootwearId } from "@quizstrike/shared";
 import type { CharacterAppearance } from "./CharacterAppearance.js";
 import type { CharacterMaterials } from "./CharacterEquipment.js";
+import { applyCharacterArt } from "./CharacterArtMaterial.js";
 
 export type AthleteBoneName =
   | "root"
@@ -99,13 +100,13 @@ const part = (
 };
 
 const capsule = (radius: number, length: number, radialSegments = 8) =>
-  new THREE.CapsuleGeometry(radius, length, 4, radialSegments);
+  new THREE.CapsuleGeometry(radius, length, 8, Math.max(16, radialSegments));
 
 const joint = (radius: number, widthScale = 1) =>
-  new THREE.SphereGeometry(radius, 10, 7).scale(widthScale, 1, 1);
+  new THREE.SphereGeometry(radius, 20, 14).scale(widthScale, 1, 1);
 
 const taperedLimb = (topRadius: number, bottomRadius: number, height: number) =>
-  new THREE.CylinderGeometry(topRadius, bottomRadius, height, 12, 2, false);
+  new THREE.CylinderGeometry(topRadius, bottomRadius, height, 24, 4, false);
 
 const torsoGeometry = () => new THREE.LatheGeometry([
   new THREE.Vector2(0.255, -0.37),
@@ -115,7 +116,7 @@ const torsoGeometry = () => new THREE.LatheGeometry([
   new THREE.Vector2(0.39, 0.2),
   new THREE.Vector2(0.37, 0.31),
   new THREE.Vector2(0.3, 0.37)
-], 14);
+], 32);
 
 const pelvisGeometry = () => new THREE.LatheGeometry([
   new THREE.Vector2(0.225, -0.18),
@@ -123,14 +124,14 @@ const pelvisGeometry = () => new THREE.LatheGeometry([
   new THREE.Vector2(0.305, 0),
   new THREE.Vector2(0.29, 0.12),
   new THREE.Vector2(0.255, 0.17)
-], 12);
+], 28);
 
 const waistbandGeometry = () => new THREE.LatheGeometry([
   new THREE.Vector2(0.245, -0.07),
   new THREE.Vector2(0.285, -0.045),
   new THREE.Vector2(0.295, 0.035),
   new THREE.Vector2(0.265, 0.075)
-], 12);
+], 28);
 
 const chestPanelGeometry = () => {
   const shape = new THREE.Shape();
@@ -146,15 +147,15 @@ const chestPanelGeometry = () => {
   return new THREE.ExtrudeGeometry(shape, {
     depth: 0.035,
     bevelEnabled: true,
-    bevelSegments: 2,
+    bevelSegments: 4,
     bevelSize: 0.018,
     bevelThickness: 0.012,
-    curveSegments: 3,
+    curveSegments: 8,
     steps: 1
   });
 };
 
-const roundedPad = (radius = 0.5, widthSegments = 12, heightSegments = 8) =>
+const roundedPad = (radius = 0.5, widthSegments = 24, heightSegments = 16) =>
   new THREE.SphereGeometry(radius, widthSegments, heightSegments);
 
 const FOOTWEAR_PROMINENCE_SCALE: Record<PlayerFootwearId, [number, number, number]> = {
@@ -257,13 +258,37 @@ const buildFootwearPieces = (footwearId: PlayerFootwearId) => {
     });
   }
 
+  // Authored surface details are bound into the same shared mesh as the shoes.
+  // No extra skeletons or per-frame attachment work is required.
+  forEachFoot((bone, x, yaw, side) => {
+    if (footwearId === "barefoot") {
+      for (let i = 0; i < 3; i++) add(roundedPad(), bone, BODY_MATERIALS.armor,
+        [x - 0.055 + i * 0.055, 0.126, -0.363], [0.024, 0.007, 0.028]);
+    } else if (footwearId === "sandals") {
+      add(new THREE.TorusGeometry(0.024, 0.006, 8, 16), bone, BODY_MATERIALS.armor,
+        [x + side * 0.075, 0.218, -0.093], [1, 1, 0.5]);
+    } else {
+      const high = footwearId === "army_boots" || footwearId === "basketball_shoes";
+      for (let i = 0; i < 4; i++) {
+        const laceY = high ? 0.255 + i * 0.026 : 0.213 - i * 0.015;
+        const laceZ = high ? -0.14 : -0.14 - i * 0.034;
+        add(capsule(0.007, 0.1), bone, BODY_MATERIALS.armor,
+          [x, laceY, laceZ], [1, 1, 1], [0, high ? 0 : -0.4, Math.PI / 2 + (i % 2 ? 0.12 : -0.12)]);
+      }
+      add(capsule(0.012, 0.075), bone, BODY_MATERIALS.accent,
+        [x, high ? 0.35 : 0.225, 0.035], [1, 1, 0.6]);
+      for (let i = 0; i < 5; i++) add(capsule(0.008, 0.13), bone, BODY_MATERIALS.dark,
+        [x, 0.034, -0.06 - i * 0.048], [1, 1, 0.6], [0, 0, Math.PI / 2]);
+    }
+  });
   return pieces;
 };
 
 const buildSharedBodyGeometry = (
   palette: THREE.Color[],
   shoulderBulk: number,
-  footwearId: PlayerFootwearId
+  footwearId: PlayerFootwearId,
+  showEmblem = true
 ) => {
   const shoulderScale = Math.min(1.18, shoulderBulk);
   const pieces = [
@@ -273,8 +298,10 @@ const buildSharedBodyGeometry = (
     part(capsule(0.065, 0.4, 10), "torso", BODY_MATERIALS.cloth, [-0.285, 1.2, -0.205], [0.72, 1, 0.42], [0, 0, -0.09]),
     part(capsule(0.065, 0.4, 10), "torso", BODY_MATERIALS.cloth, [0.285, 1.2, -0.205], [0.72, 1, 0.42], [0, 0, 0.09]),
     part(chestPanelGeometry(), "torso", BODY_MATERIALS.armor, [0, 1.27, -0.286], [0.86, 0.86, 1], [0, Math.PI, 0]),
-    part(new THREE.TorusGeometry(0.052, 0.012, 6, 14), "torso", BODY_MATERIALS.dark, [0, 1.26, -0.333]),
-    part(roundedPad(), "torso", BODY_MATERIALS.accent, [0, 1.26, -0.347], [0.025, 0.025, 0.012]),
+    ...(showEmblem ? [
+      part(new THREE.TorusGeometry(0.052, 0.012, 6, 14), "torso", BODY_MATERIALS.dark, [0, 1.26, -0.333]),
+      part(roundedPad(), "torso", BODY_MATERIALS.accent, [0, 1.26, -0.347], [0.025, 0.025, 0.012])
+    ] : []),
     part(new THREE.CylinderGeometry(0.115, 0.135, 0.17, 12), "torso", BODY_MATERIALS.dark, [0, 1.61, 0], [1, 1, 0.88]),
     part(new THREE.TorusGeometry(0.125, 0.018, 5, 14), "torso", BODY_MATERIALS.accent, [0, 1.68, 0], [1, 0.9, 1], [Math.PI / 2, 0, 0]),
 
@@ -330,13 +357,35 @@ const buildSharedBodyGeometry = (
     ...buildFootwearPieces(footwearId)
   ];
 
+  // Embroidered shoulder stripes, zipper, piping and broad jersey graphics.
+  for (const side of [-1, 1] as const) {
+    const bone = side === -1 ? "leftArm" : "rightArm";
+    for (let i = 0; i < 3; i++) pieces.push(part(capsule(0.009, 0.12), bone,
+      BODY_MATERIALS.accent, [side * 0.39, 1.345 - i * 0.035, -0.097], [1, 1, 0.6], [0, 0, Math.PI / 2]));
+    pieces.push(part(capsule(0.014, 0.25), "torso", BODY_MATERIALS.accent,
+      [side * 0.25, 1.23, -0.205], [1, 1, 0.6], [0, 0, side * -0.1]));
+    pieces.push(part(capsule(0.012, 0.135), "torso", BODY_MATERIALS.uniform,
+      [side * 0.095, 1.43, -0.317], [1, 1, 0.65], [0, 0, side * 0.45]));
+  }
+  pieces.push(part(capsule(0.009, 0.17), "torso", BODY_MATERIALS.dark,
+    [0, 1.49, -0.29], [1, 1, 0.7]));
+  pieces.push(part(roundedPad(), "torso", BODY_MATERIALS.armor,
+    [0, 1.42, -0.31], [0.023, 0.037, 0.014]));
+  for (const z of [-0.32, 0.269]) {
+    pieces.push(part(capsule(0.015, 0.19), "torso", BODY_MATERIALS.accent,
+      [0, 1.13, z], [1, 1, 0.7], [0, 0, Math.PI / 2]));
+  }
+
   pieces.forEach((piece) => {
     const color = palette[piece.userData.materialIndex] ?? palette[0];
     const colors = new Float32Array(piece.getAttribute("position").count * 3);
     for (let index = 0; index < colors.length; index += 3) {
-      colors[index] = color.r;
-      colors[index + 1] = color.g;
-      colors[index + 2] = color.b;
+      // Painted ambient shading stays readable in the bright outdoor arenas.
+      const normalY = piece.getAttribute("normal").getY(index / 3);
+      const shade = 0.88 + Math.max(0, normalY) * 0.12;
+      colors[index] = color.r * shade;
+      colors[index + 1] = color.g * shade;
+      colors[index + 2] = color.b * shade;
     }
     piece.setAttribute("color", new THREE.Float32BufferAttribute(colors, 3));
   });
@@ -439,7 +488,7 @@ export const createSharedSkinnedStudent = (
     materials.visor,
     materials.skin
   ];
-  const paletteKey = `humanoid-v5-footwear-${appearance.customization.footwearId}-${materialArray
+  const paletteKey = `humanoid-art-v1-emblem-${!appearance.customization.decalAssetId}-footwear-${appearance.customization.footwearId}-${materialArray
     .map((material) => `#${material.color.getHexString()}`)
     .join("-")}-${appearance.silhouette.shoulderBulk.toFixed(2)}`;
   let geometry = sharedBodyGeometries.get(paletteKey);
@@ -448,19 +497,20 @@ export const createSharedSkinnedStudent = (
     geometry = buildSharedBodyGeometry(
       materialArray.map((material) => material.color),
       appearance.silhouette.shoulderBulk,
-      appearance.customization.footwearId
+      appearance.customization.footwearId,
+      !appearance.customization.decalAssetId
     );
     sharedBodyGeometries.set(paletteKey, geometry);
   }
   let bodyMaterial = sharedBodyMaterials.get(paletteKey);
   if (!bodyMaterial) {
-    bodyMaterial = new THREE.MeshStandardMaterial({
+    bodyMaterial = applyCharacterArt(new THREE.MeshStandardMaterial({
       color: "#ffffff",
       vertexColors: true,
       roughness: 0.78,
       metalness: 0.025,
       flatShading: false
-    });
+    }), "fabric");
     sharedBodyMaterials.set(paletteKey, bodyMaterial);
   }
 

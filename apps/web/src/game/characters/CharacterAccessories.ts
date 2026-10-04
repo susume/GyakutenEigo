@@ -2,6 +2,7 @@ import * as THREE from "three";
 import { RoundedBoxGeometry } from "three/examples/jsm/geometries/RoundedBoxGeometry.js";
 import type { PlayerBackAccessoryId } from "@quizstrike/shared";
 import type { CharacterMaterials } from "./CharacterEquipment.js";
+import { characterArtMaterial } from "./CharacterArtMaterial.js";
 
 export type AccessorySocketName =
   | "HeadSocket"
@@ -41,10 +42,13 @@ export const BACK_ACCESSORY_DEFINITIONS: Record<
   snowboard: { id: "snowboard", socket: "DiagonalBackSocket", mount: "diagonalBack", position: [0, -0.02, 0.07], rotation: [0, 0, -0.34], scale: [0.88, 0.88, 0.88] }
 };
 
-const roundedUnit = new RoundedBoxGeometry(1, 1, 1, 2, 0.12);
-const cylinderUnit = new THREE.CylinderGeometry(0.5, 0.5, 1, 10);
-const coneUnit = new THREE.ConeGeometry(0.5, 1, 8);
-const sphereUnit = new THREE.SphereGeometry(0.5, 10, 7);
+const roundedUnit = new RoundedBoxGeometry(1, 1, 1, 5, 0.12);
+const cylinderUnit = new THREE.CylinderGeometry(0.5, 0.5, 1, 24);
+const coneUnit = new THREE.ConeGeometry(0.5, 1, 24);
+const sphereUnit = new THREE.SphereGeometry(0.5, 24, 16);
+const trimRing = new THREE.TorusGeometry(0.5, 0.035, 10, 32);
+const goldMaterial = characterArtMaterial("#f5c96c", 0.4, 0.38, "metal");
+const seamMaterial = characterArtMaterial("#c5e4f2", 0.88, 0, "fabric");
 const createDoubleSidedGeometry = (front: number[]) => {
   const geometry = new THREE.BufferGeometry();
   const back: number[] = [];
@@ -59,11 +63,18 @@ const createDoubleSidedGeometry = (front: number[]) => {
   geometry.computeVertexNormals();
   return geometry;
 };
-const createCapePanel = (topWidth: number, bottomWidth: number, height: number, depth: number) =>
-  createDoubleSidedGeometry([
-    -topWidth, 0, 0, topWidth, 0, 0, -bottomWidth, -height, depth,
-    topWidth, 0, 0, bottomWidth, -height, depth, -bottomWidth, -height, depth
-  ]);
+const createCapePanel = (topWidth: number, bottomWidth: number, height: number, depth: number) => {
+  const geometry = new THREE.PlaneGeometry(2, 1, 16, 6);
+  const points = geometry.getAttribute("position");
+  for (let i = 0; i < points.count; i++) {
+    const t = 0.5 - points.getY(i);
+    const u = points.getX(i);
+    points.setXYZ(i, u * THREE.MathUtils.lerp(topWidth, bottomWidth, t), -t * height,
+      t * depth + Math.cos(u * Math.PI * 3) * 0.018);
+  }
+  geometry.computeVertexNormals();
+  return geometry;
+};
 const createCapeHem = () => {
   const center = [0, -0.05, 0] as const;
   const outline = [
@@ -87,10 +98,13 @@ const capePanels = [
   createCapePanel(0.37, 0.33, 0.28, 0.045),
   createCapeHem()
 ] as const;
-const featherUnit = createDoubleSidedGeometry([
-  0, 0.12, 0, -0.18, 0, 0.018, 0, -0.55, 0.04,
-  0, 0.12, 0, 0, -0.55, 0.04, 0.18, 0, 0.018
-]);
+const featherShape = new THREE.Shape();
+featherShape.moveTo(0, 0.12);
+featherShape.bezierCurveTo(-0.2, 0.08, -0.18, -0.2, 0, -0.55);
+featherShape.bezierCurveTo(0.18, -0.2, 0.2, 0.08, 0, 0.12);
+const featherUnit = new THREE.ExtrudeGeometry(featherShape, {
+  depth: 0.018, bevelEnabled: true, bevelSize: 0.012, bevelThickness: 0.009, bevelSegments: 3, curveSegments: 12, steps: 1
+});
 const wingMembraneUnit = createDoubleSidedGeometry([
   0, 0.12, 0,
   1.02, 1, 0.025,
@@ -114,15 +128,21 @@ const wingMembraneUnit = createDoubleSidedGeometry([
   0.64, -0.82, 0.08,
   0.34, -0.5, 0.065
 ]);
-const demonWingMaterial = new THREE.MeshStandardMaterial({
-  color: "#781523",
-  roughness: 0.82,
-  side: THREE.DoubleSide
-});
-const angelFeatherMaterial = new THREE.MeshStandardMaterial({
-  color: "#f4f1e8",
-  roughness: 0.92
-});
+const demonWingMaterial = characterArtMaterial("#93416a", 0.63, 0.05);
+demonWingMaterial.side = THREE.DoubleSide;
+const angelFeatherMaterial = characterArtMaterial("#fff5df", 0.6);
+const capeMaterialCache = new WeakMap<THREE.Material, THREE.Material>();
+const doubleSided = (material: THREE.MeshStandardMaterial) => {
+  let cached = capeMaterialCache.get(material);
+  if (!cached) {
+    cached = characterArtMaterial(material.color, 0.9, 0, "fabric");
+    cached.side = THREE.DoubleSide;
+    capeMaterialCache.set(material, cached);
+    // Factory-owned material disposal also releases this shared variant.
+    material.addEventListener("dispose", () => cached?.dispose());
+  }
+  return cached;
+};
 
 const add = (
   parent: THREE.Object3D,
@@ -349,7 +369,7 @@ export const createBackAccessory = (
       markMotionNode(hinge, "capeSegment", index);
       hinge.name = `CapeHinge_${index}`;
       parent.add(hinge);
-      const cape = new THREE.Mesh(geometry, materials.uniform);
+      const cape = new THREE.Mesh(geometry, doubleSided(materials.uniform));
       cape.castShadow = true;
       cape.receiveShadow = true;
       cape.userData.preserveSharedResources = true;
@@ -368,5 +388,47 @@ export const createBackAccessory = (
     add(group, roundedUnit, materials.accent, [0, 0.55, 0.105], [0.2, 0.12, 0.025]).userData.cosmeticDetail = true;
   }
 
+  // Give every cosmetic its own construction details and original graphic motif.
+  if (accessoryId === "utility_pack") {
+    add(group, roundedUnit, materials.uniform, [0, 0.03, 0.12], [0.4, 0.35, 0.065]);
+    add(group, roundedUnit, goldMaterial, [0, 0.13, 0.162], [0.07, 0.06, 0.014]);
+    for (const side of [-1, 1]) {
+      add(group, roundedUnit, materials.dark, [side * 0.185, 0.01, 0.16], [0.04, 0.36, 0.027]);
+      for (let i = 0; i < 6; i++) add(group, roundedUnit, seamMaterial, [side * 0.16, -0.12 + i * 0.043, 0.168], [0.008, 0.018, 0.008]);
+    }
+    add(group, trimRing, materials.dark, [0, 0.29, 0.01], [0.16, 0.1, 0.1]);
+  } else if (accessoryId === "angel_wings" || accessoryId === "demon_wings") {
+    add(group, trimRing, goldMaterial, [0, 0.13, 0.09], [0.19, 0.24, 0.6]);
+    add(group, sphereUnit, materials.visor, [0, 0.13, 0.12], [0.1, 0.15, 0.035]);
+  } else if (accessoryId === "devil_tail") {
+    add(group, trimRing, goldMaterial, [0, 0.08, 0.015], [0.12, 0.12, 0.6], [Math.PI / 2, 0, 0]);
+  } else if (accessoryId === "samurai_sword" || accessoryId === "twin_swords") {
+    for (const angle of accessoryId === "twin_swords" ? [-0.58, 0.58] : [0]) {
+      const detailing = new THREE.Group(); detailing.rotation.z = angle;
+      if (accessoryId === "twin_swords") detailing.position.x = angle < 0 ? -0.03 : 0.03;
+      group.add(detailing);
+      for (let i = 0; i < 6; i++) add(detailing, trimRing, materials.dark, [0, 0.48 + i * 0.035, 0], [0.069, 0.069, 0.5], [Math.PI / 2, 0, 0]);
+      for (const y of [-0.45, -0.28, 0.27]) add(detailing, trimRing, goldMaterial, [0, y, 0], [0.088, 0.088, 0.55], [Math.PI / 2, 0, 0]);
+      add(detailing, roundedUnit, goldMaterial, [0, -0.1, 0.046], [0.03, 0.1, 0.008]);
+    }
+  } else if (accessoryId === "boost_pack") {
+    add(group, trimRing, goldMaterial, [0, 0.13, 0.184], [0.17, 0.17, 0.6]);
+    for (const side of [-1, 1]) {
+      add(group, trimRing, materials.dark, [side * 0.17, -0.21, 0.04], [0.14, 0.14, 0.55], [Math.PI / 2, 0, 0]);
+      for (let i = 0; i < 4; i++) add(group, roundedUnit, materials.accent, [side * 0.17, -0.02 + i * 0.045, 0.104], [0.048, 0.016, 0.013]);
+    }
+  } else if (accessoryId === "arena_cape") {
+    const hinge = group.getObjectByName("CapeHinge_0");
+    if (hinge) {
+      add(hinge, trimRing, goldMaterial, [0, -0.16, 0.055], [0.18, 0.18, 0.4]);
+      for (const side of [-1, 1]) add(hinge, roundedUnit, goldMaterial, [side * 0.055, -0.16, 0.065], [0.025, 0.12, 0.014], [0, 0, side * 0.5]);
+    }
+    for (const side of [-1, 1]) add(group, sphereUnit, goldMaterial, [side * 0.3, 0.26, 0.02], [0.09, 0.09, 0.035]);
+  } else if (accessoryId === "snowboard") {
+    add(group, roundedUnit, materials.uniform, [0, 0, 0.052], [0.27, 1.05, 0.009]);
+    for (let i = 0; i < 5; i++) add(group, roundedUnit, i % 2 ? goldMaterial : materials.accent,
+      [0, -0.4 + i * 0.2, 0.06], [0.23, 0.04, 0.012], [0, 0, -0.6]);
+    for (const y of [-0.22, 0.22]) add(group, trimRing, materials.armor, [0, y, 0.118], [0.14, 0.09, 0.5]);
+  }
   return finishAccessory(accessoryId, BACK_ACCESSORY_DEFINITIONS[accessoryId], group);
 };

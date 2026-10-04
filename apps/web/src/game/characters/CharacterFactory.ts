@@ -16,6 +16,7 @@ import { CharacterModel } from "./CharacterModel.js";
 import { createSharedSkinnedStudent } from "./SharedSkinnedStudent.js";
 import { CommunityWeaponLibrary } from "./CommunityWeaponLibrary";
 import { CommunityStudentBodyLibrary } from "./CommunityStudentBody.js";
+import { characterArtMaterial } from "./CharacterArtMaterial.js";
 
 export interface FirstPersonViewModel {
   root: THREE.Group;
@@ -35,12 +36,7 @@ export interface CharacterFactoryOptions {
 const CHARACTER_VISUAL_SCALE = 2.45;
 
 const makeMaterial = (color: string, roughness = 0.82, metalness = 0.03) =>
-  new THREE.MeshStandardMaterial({
-    color,
-    roughness,
-    metalness,
-    flatShading: false
-  });
+  characterArtMaterial(color, roughness, metalness, roughness > 0.85 ? "fabric" : roughness < 0.4 ? "glass" : "paint");
 
 export class CharacterFactory {
   private readonly boxGeometry = new THREE.BoxGeometry(1, 1, 1);
@@ -141,7 +137,7 @@ export class CharacterFactory {
     return mesh;
   }
 
-  createCharacter(input: { playerId: string; team: Team; role?: PlayerRole; gear?: string; appearance?: PlayerAppearance; showWeapon?: boolean }) {
+  createCharacter(input: { playerId: string; team: Team; role?: PlayerRole; gear?: string; appearance?: PlayerAppearance; showWeapon?: boolean; allowCombatAccessories?: boolean }) {
     const appearance = resolveCharacterAppearance(input);
     const materials = this.materialsFor(appearance);
     const root = new THREE.Group();
@@ -161,8 +157,12 @@ export class CharacterFactory {
     root.add(contactShadow);
     const athlete = createSharedSkinnedStudent(appearance, materials);
     root.add(athlete.mesh);
-    root.userData.characterModelSource = "built-in-fallback";
-    if (typeof window !== "undefined") void this.communityBodies.attach(athlete.mesh, root, materials, appearance.customization.footwearId);
+    root.userData.characterModelSource = "quizstrike-sculpted-v1";
+    // The modular art body is shared by the lobby and every game mode. Keep the
+    // legacy imported body available only as an explicit development comparison.
+    if (typeof window !== "undefined" && new URLSearchParams(window.location.search).get("legacyCharacterBody") === "1") {
+      void this.communityBodies.attach(athlete.mesh, root, materials, appearance.customization.footwearId);
+    }
     const {
       root: skeletonRoot,
       torso,
@@ -200,7 +200,9 @@ export class CharacterFactory {
       LowerBackSocket: [0, -0.2, 0.26],
       PelvisRearSocket: [0, 0.75, 0.18],
       DiagonalBackSocket: [0, 0.02, 0.29],
-      ChestDecalSocket: [0, 0.12, -0.325],
+      // Clear the beveled chest panel and its central embroidery so drawings
+      // remain visible with normal depth testing in the lobby and arena.
+      ChestDecalSocket: [0, 0.12, -0.36],
       HipSocket: [0.29, 0.8, 0]
     };
     const accessorySockets = {} as Record<AccessorySocketName, THREE.Group>;
@@ -218,7 +220,7 @@ export class CharacterFactory {
     accessorySockets.HeadSocket.add(activeHeadStyle);
     root.userData.activeHeadStyleId = activeHeadStyle.userData.headStyleId;
     const accessories: THREE.Object3D[] = [];
-    const activeBackAccessoryId = input.showWeapon === false && (
+    const activeBackAccessoryId = input.showWeapon === false && input.allowCombatAccessories !== true && (
       appearance.customization.backAccessoryId === "samurai_sword"
       || appearance.customization.backAccessoryId === "twin_swords"
     ) ? "none" : appearance.customization.backAccessoryId;
@@ -240,7 +242,7 @@ export class CharacterFactory {
       shoulderContact,
       sight
     } = createWeaponSet(materials, this.boxGeometry, gearId);
-    if (typeof window !== "undefined") void this.communityWeapons.attach(weapon, gearId);
+    if (typeof window !== "undefined" && input.showWeapon !== false) void this.communityWeapons.attach(weapon, gearId);
     const mount = getWeaponMountTransform(gearId);
     const weaponSocket = new THREE.Group();
     weaponSocket.name = "RightHandWeaponSocket";
@@ -263,7 +265,7 @@ export class CharacterFactory {
     }
 
     if (appearance.customization.decalAssetId && this.options.loadDecalTexture) {
-      const decalMaterial = new THREE.MeshBasicMaterial({ transparent: true, depthWrite: false, side: THREE.DoubleSide });
+      const decalMaterial = new THREE.MeshBasicMaterial({ transparent: true, depthWrite: false, side: THREE.DoubleSide, toneMapped: false });
       const decal = new THREE.Mesh(new THREE.PlaneGeometry(0.32, 0.32), decalMaterial);
       decal.rotation.y = Math.PI;
       decal.visible = false;
