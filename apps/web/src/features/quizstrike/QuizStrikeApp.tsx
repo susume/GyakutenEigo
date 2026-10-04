@@ -26,6 +26,9 @@ import {
   DESERT_CITADEL_ROOFTOP_LEVEL_Y,
   IRON_JUNCTION_LOADING_LEVEL_Y,
   IRON_JUNCTION_OVERPASS_LEVEL_Y,
+  LUNAR_RELAY_BRIDGE_LEVEL_Y,
+  LUNAR_RELAY_STAIR_FLIGHTS,
+  getArenaGroundHeight,
   TEMPLE_RUNOFF_MAIN_LEVEL_Y,
   TEMPLE_RUNOFF_UPPER_LEVEL_Y,
   type ArenaMapId,
@@ -285,14 +288,31 @@ function CharacterLab() {
   // The lab is also used to inspect the playable camera. Keep diagnostics
   // opt-in so collision boxes and performance text cannot cover the course.
   const showDebugOverlay = previewParams.get("debugOverlay") === "1" && previewParams.get("cleanPreview") !== "1";
+  // Reproducible ground-level approaches for walking the real FPS controller.
+  const lunarStairId = previewParams.get("lunarStair");
+  const lunarStair = LUNAR_RELAY_STAIR_FLIGHTS.find(flight => flight.id === `lunar-${lunarStairId}-stairs`);
+  const lunarStairPosition = useMemo(() => {
+    if (!lunarStair) return undefined;
+    const along = (lunarStair.axis === "x" ? lunarStair.x : lunarStair.z)
+      - lunarStair.direction * (lunarStair.length / 2 + 2);
+    return {
+      x: (lunarStair.axis === "x" ? along : lunarStair.x) * ARENA_SCALE,
+      z: (lunarStair.axis === "z" ? along : lunarStair.z) * ARENA_SCALE,
+      y: ARENA_PLAYER_EYE_HEIGHT,
+      facing: lunarStair.axis === "x" ? -lunarStair.direction * Math.PI / 2 : lunarStair.direction === 1 ? Math.PI : 0
+    };
+  }, [lunarStair]);
   const [count, setCount] = useState<CharacterStressCount>(40);
   const [isMoving, setIsMoving] = useState(true);
   const [tick, setTick] = useState(0);
   const [athleticsLab, setAthleticsLab] = useState(false);
-  const [labMapId, setLabMapId] = useState<ArenaMapId>("desert_citadel");
+  const [labMapId, setLabMapId] = useState<ArenaMapId>(() => {
+    const requested = previewParams.get("map");
+    return requested === "lunar_relay" || requested === "iron_junction" || requested === "temple_runoff" ? requested : "desert_citadel";
+  });
   const [labQuality, setLabQuality] = useState<ArenaQuality>("balanced");
-  const [labView, setLabView] = useState<"overview" | "fps">("overview");
-  const [labLevel, setLabLevel] = useState<"lower" | "market" | "cistern" | "flag" | "main" | "upper">("main");
+  const [labView, setLabView] = useState<"overview" | "fps">(lunarStair ? "fps" : "overview");
+  const [labLevel, setLabLevel] = useState<"lower" | "market" | "cistern" | "flag" | "main" | "upper">(lunarStair ? "lower" : "main");
   const athleticsProgressValue = previewParams.get("athleticsProgress");
   const athleticsProgressParam = athleticsProgressValue === null ? 0 : Number(athleticsProgressValue);
   const athleticsProgress = Number.isFinite(athleticsProgressParam)
@@ -313,6 +333,12 @@ function CharacterLab() {
     };
     const testPosition = athleticsLab
       ? athleticsTestPosition
+      : labMapId === "lunar_relay"
+        ? (standardLabLevel === "lower" ? lunarStairPosition : undefined) ?? {
+            lower: { x: -65 * ARENA_SCALE, y: ARENA_PLAYER_EYE_HEIGHT, z: 70 * ARENA_SCALE, facing: -.7 },
+            main: { x: -65 * ARENA_SCALE, y: ARENA_PLAYER_EYE_HEIGHT, z: -55 * ARENA_SCALE, facing: -.45 },
+            upper: { x: -65 * ARENA_SCALE, y: LUNAR_RELAY_BRIDGE_LEVEL_Y + ARENA_PLAYER_EYE_HEIGHT, z: 0, facing: -.9 }
+          }[standardLabLevel]
       : labMapId === "temple_runoff"
       ? {
           lower: { x: 0, y: ARENA_PLAYER_EYE_HEIGHT, z: 0, facing: -Math.PI / 2 },
@@ -373,6 +399,11 @@ function CharacterLab() {
         };
       }
       if (index === 0) return { ...player, ...testPosition };
+      if (labMapId === "lunar_relay" && (labView !== "fps" || count !== 10 || index > 8)) {
+        const x = ((index % 8) - 3.5) * 22 * ARENA_SCALE;
+        const z = [-55, 32, 100, -158, 156][Math.floor(index / 8) % 5] * ARENA_SCALE;
+        return { ...player, x, z, y: getArenaGroundHeight(labMapId, x, z) + ARENA_PLAYER_EYE_HEIGHT };
+      }
       if (labView !== "fps" || count !== 10 || index > 8) return player;
 
       // Keep the focused aura ladder in a compact, camera-relative formation
@@ -401,7 +432,7 @@ function CharacterLab() {
       },
       players
     };
-  }, [athleticsLab, athleticsProgress, count, tick, labMapId, labLevel, labView]);
+  }, [athleticsLab, athleticsProgress, count, tick, labMapId, labLevel, labView, lunarStairPosition]);
   const summary = useMemo(() => summarizeCharacterDebugSession(session), [session]);
   const athleticsPlayer = session.players[0]?.athletics;
   const athleticsHud: AthleticsHudState | undefined = athleticsLab && labView === "fps" ? {
@@ -454,6 +485,7 @@ function CharacterLab() {
             <button className={!athleticsLab && labMapId === "desert_citadel" ? "active" : ""} aria-pressed={!athleticsLab && labMapId === "desert_citadel"} onClick={() => { setAthleticsLab(false); setLabMapId("desert_citadel"); }}>{t("Desert Citadel")}</button>
             <button className={!athleticsLab && labMapId === "iron_junction" ? "active" : ""} aria-pressed={!athleticsLab && labMapId === "iron_junction"} onClick={() => { setAthleticsLab(false); setLabMapId("iron_junction"); }}>{t("Iron Junction")}</button>
             <button className={!athleticsLab && labMapId === "temple_runoff" ? "active" : ""} aria-pressed={!athleticsLab && labMapId === "temple_runoff"} onClick={() => { setAthleticsLab(false); setLabMapId("temple_runoff"); }}>{t("Temple Runoff")}</button>
+            <button className={!athleticsLab && labMapId === "lunar_relay" ? "active" : ""} aria-pressed={!athleticsLab && labMapId === "lunar_relay"} onClick={() => { setAthleticsLab(false); setLabMapId("lunar_relay"); }}>{t("Lunar Relay")}</button>
           </div>
           <div className="button-row" aria-label={t("Character lab quality")}>
             <button className={labQuality === "performance" ? "active" : ""} aria-pressed={labQuality === "performance"} onClick={() => setLabQuality("performance")}>{t("Low")}</button>
@@ -474,8 +506,8 @@ function CharacterLab() {
               {labMapId === "desert_citadel" && <button className={labLevel === "market" ? "active" : ""} aria-pressed={labLevel === "market"} onClick={() => setLabLevel("market")}>{t("Market •")}</button>}
               {labMapId === "desert_citadel" && <button className={labLevel === "cistern" ? "active" : ""} aria-pressed={labLevel === "cistern"} onClick={() => setLabLevel("cistern")}>{t("Cistern •")}</button>}
               {labMapId === "desert_citadel" && <button className={labLevel === "flag" ? "active" : ""} aria-pressed={labLevel === "flag"} onClick={() => setLabLevel("flag")}>{t("Flag ⚑")}</button>}
-              <button className={labLevel === "main" ? "active" : ""} aria-pressed={labLevel === "main"} onClick={() => setLabLevel("main")}>{labMapId === "temple_runoff" ? t("Main •") : labMapId === "iron_junction" ? t("Loading ↑") : t("Citadel ↑")}</button>
-              <button className={labLevel === "upper" ? "active" : ""} aria-pressed={labLevel === "upper"} onClick={() => setLabLevel("upper")}>{labMapId === "temple_runoff" ? t("Bridge ↑") : labMapId === "iron_junction" ? t("Overpass ↑") : t("Lookout ↑↑")}</button>
+              <button className={labLevel === "main" ? "active" : ""} aria-pressed={labLevel === "main"} onClick={() => setLabLevel("main")}>{labMapId === "lunar_relay" ? t("Observatory •") : labMapId === "temple_runoff" ? t("Main •") : labMapId === "iron_junction" ? t("Loading ↑") : t("Citadel ↑")}</button>
+              <button className={labLevel === "upper" ? "active" : ""} aria-pressed={labLevel === "upper"} onClick={() => setLabLevel("upper")}>{labMapId === "lunar_relay" ? t("Relay ↑") : labMapId === "temple_runoff" ? t("Bridge ↑") : labMapId === "iron_junction" ? t("Overpass ↑") : t("Lookout ↑↑")}</button>
             </div>
           ))}
           {athleticsLab && <p className="mini-copy">{t("The default playable view starts on the race grid. Use")}{" "}<code>?athleticsProgress=0.08</code>{" "}{t("through")}{" "}<code>0.96</code>{" "}{t("to inspect later elevations.")}</p>}

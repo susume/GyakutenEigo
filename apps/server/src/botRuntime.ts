@@ -427,7 +427,9 @@ const advanceBots = () => {
         hasTarget: Boolean(target),
         distanceToGoal: horizontalDistance(botPosition(bot), rawGoal)
       })) {
-        brain.routeIndex += session.settings.mapId === "iron_junction"
+        brain.routeIndex += session.settings.mapId === "lunar_relay"
+          ? 4
+          : session.settings.mapId === "iron_junction"
           || session.settings.mapId === "desert_citadel"
           || session.settings.mapId === "temple_runoff"
           ? 5

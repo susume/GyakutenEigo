@@ -1,6 +1,8 @@
 import {
   ATHLETICS_JUMP_GRAVITY,
-  ATHLETICS_JUMP_VELOCITY
+  ATHLETICS_JUMP_VELOCITY,
+  getArenaGroundHeightForPlayer,
+  type SessionMapId
 } from "@quizstrike/shared";
 
 export const CHARACTER_VISUAL_SCALE = 2.45;
@@ -26,6 +28,15 @@ export const FPS_GROUNDED_CAMERA_RESPONSE = 18;
 // lets authored stairs behave like stairs without making ordinary cover
 // automatically climbable.
 export const FPS_MAX_AUTO_STEP_HEIGHT = 0.8;
+
+/** Eye height changes with posture; floor identity must stay the same. */
+export const getFpsPlayerGroundY = (
+  mapId: SessionMapId,
+  player: { x: number; z: number; y?: number; crouching?: boolean }
+) => getArenaGroundHeightForPlayer(
+  mapId, player.x, player.z, player.y,
+  player.crouching ? FPS_CROUCH_EYE_HEIGHT : FPS_STANDING_EYE_HEIGHT
+);
 
 /**
  * Smooths only the rendered eye height while grounded. Collision and server
@@ -71,6 +82,11 @@ export type FpsSupportSurface = {
   footprint?: { x: number; z: number; width: number; depth: number; rotationY?: number };
 };
 
+export type FpsCollisionSource = { id?: string; style?: string; stair?: boolean };
+
+const isFpsStair = (source: FpsCollisionSource | undefined) =>
+  source?.style === "stair" || source?.stair === true;
+
 const isPointWithinFpsSurface = (
   surface: FpsSupportSurface,
   x: number,
@@ -104,6 +120,17 @@ export const intersectsFpsBody = (
   return isPointWithinFpsSurface(surface, (bodyBox.min.x + bodyBox.max.x) / 2, (bodyBox.min.z + bodyBox.max.z) / 2, radius);
 };
 
+/** Keep authored stair metadata in the actual client collision decision. */
+export const findFpsBlockingSurfaceIndex = (
+  surfaces: readonly FpsSupportSurface[],
+  sources: readonly FpsCollisionSource[],
+  bodyBox: Parameters<typeof intersectsFpsBody>[1],
+  body: ReturnType<typeof getFpsBodyVerticalBounds>
+) => surfaces.findIndex((surface, index) => {
+  if (!intersectsFpsBody(surface, bodyBox) || canFpsBodyClearObstacle(body, surface.max.y)) return false;
+  return !isFpsStair(sources[index]) || !canFpsBodyAutoStepOnto(body, surface.max.y);
+});
+
 /**
  * Finds the highest collision-box top crossed by the player's feet.
  * Horizontal radius overlap keeps the player supported until their whole body
@@ -129,5 +156,29 @@ export const findFpsSupportSurfaceY = (
     if (supportY === undefined || topY > supportY) supportY = topY;
   }
 
+  return supportY;
+};
+
+/** Radius contact reaches the next tread before the player's center does. */
+export const findFpsGroundSupportY = (
+  surfaces: readonly FpsSupportSurface[],
+  sources: readonly FpsCollisionSource[],
+  x: number,
+  z: number,
+  radius: number,
+  footY: number,
+  allowStairStep: boolean
+) => {
+  let supportY = findFpsSupportSurfaceY(surfaces, x, z, radius, footY, footY);
+  if (allowStairStep) {
+    for (let index = 0; index < surfaces.length; index += 1) {
+      if (!isFpsStair(sources[index])) continue;
+      const stepY = findFpsSupportSurfaceY(
+        [surfaces[index]!], x, z, radius,
+        footY - FPS_MAX_AUTO_STEP_HEIGHT, footY + FPS_MAX_AUTO_STEP_HEIGHT, 0
+      );
+      if (stepY !== undefined && (supportY === undefined || stepY > supportY)) supportY = stepY;
+    }
+  }
   return supportY;
 };

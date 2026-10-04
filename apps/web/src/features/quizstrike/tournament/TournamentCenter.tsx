@@ -21,7 +21,7 @@ import {
   UsersRound,
   X
 } from "lucide-react";
-import type { SessionSettings, TeacherUser } from "@quizstrike/shared";
+import type { ArenaMapId, SessionSettings, TeacherUser } from "@quizstrike/shared";
 import { ApiError, teacherApi, tournamentApi } from "../../../api/client";
 
 type QuizChoice = { id: string; title: string };
@@ -101,7 +101,7 @@ type WizardForm = {
   maximumTeams: number;
   quizSetId: string;
   gameMode: "zombie" | "classic" | "flag";
-  mapId: "desert_citadel" | "iron_junction" | "temple_runoff";
+  mapId: ArenaMapId;
   roundCount: number;
   roundDurationSeconds: number;
   preparationDurationSeconds: number;
@@ -127,7 +127,7 @@ const levelLabels: Record<string, string> = {
   INVITATIONAL: "Invitational",
   SPONSORED: "Sponsored"
 };
-const mapLabels: Record<string, string> = { desert_citadel: "Desert Citadel", iron_junction: "The Iron Junction", temple_runoff: "Temple Runoff" };
+const mapLabels: Record<string, string> = { desert_citadel: "Desert Citadel", iron_junction: "The Iron Junction", temple_runoff: "Temple Runoff", lunar_relay: "Lunar Relay" };
 const modeLabels: Record<string, string> = { zombie: "Zombie Survival", classic: "Team Tag", flag: "Capture the Flag" };
 const formatDate = (value: string | undefined, timeZone = "Asia/Tokyo", withTime = false) => {
   if (!value) return "Not set";

@@ -1,9 +1,19 @@
 import type { LearningPulse } from "./learningPulse.js";
 import {
+  LUNAR_RELAY_BRIDGE_LEVEL_Y,
+  LUNAR_RELAY_LAYOUT_BLOCKS,
+  LUNAR_RELAY_RAW_BOUNDS,
+  LUNAR_RELAY_RAW_CAPTURE_ZONES,
+  LUNAR_RELAY_RAW_SEARCH_ITEMS,
+  LUNAR_RELAY_STAIR_FLIGHTS
+} from "./lunarRelayLayout.js";
+export * from "./lunarRelayLayout.js";
+import {
   getAthleticsObstacles as getAuthoredAthleticsObstacles,
   ATHLETICS_COURSE_BOUNDS,
   ATHLETICS_DEFAULT_COURSE_LAPS,
   ATHLETICS_DEFAULT_TIME_LIMIT_SECONDS,
+  ATHLETICS_PLAYER_RADIUS,
   sanitizeAthleticsCourseLaps
 } from "./athleticsRace.js";
 import type {
@@ -30,7 +40,7 @@ export type SessionControlState = "running" | "teacher_paused";
 export type Choice = "A" | "B" | "C" | "D";
 export type SnowballPackSize = "standard" | "large";
 export type GameMode = "flag" | "zombie" | "classic" | "athletics";
-export type ArenaMapId = "desert_citadel" | "iron_junction" | "temple_runoff";
+export type ArenaMapId = "desert_citadel" | "iron_junction" | "temple_runoff" | "lunar_relay";
 export const ATHLETICS_ARENA_MAP_ID = "athletics_park" as const;
 export type SessionMapId = ArenaMapId | typeof ATHLETICS_ARENA_MAP_ID;
 export type TeamAssignment = "players_choose" | "random";
@@ -959,7 +969,7 @@ const sanitizeGameMode = (value: unknown): GameMode =>
   value === "zombie" || value === "classic" || value === "flag" || value === "athletics" ? value : DEFAULT_SESSION_SETTINGS.gameMode;
 
 const sanitizeArenaMap = (value: unknown): ArenaMapId =>
-  value === "desert_citadel" || value === "iron_junction" || value === "temple_runoff"
+  value === "desert_citadel" || value === "iron_junction" || value === "temple_runoff" || value === "lunar_relay"
     ? value
     : "desert_citadel";
 
@@ -1557,11 +1567,13 @@ export const getArenaStairFlightsForMap = (
 ): readonly ArenaStairFlight[] =>
   mapId === ATHLETICS_ARENA_MAP_ID
     ? []
-    : mapId === "temple_runoff"
-      ? TEMPLE_RUNOFF_STAIR_FLIGHTS
-      : mapId === "iron_junction"
-        ? IRON_JUNCTION_STAIR_FLIGHTS
-        : DESERT_CITADEL_STAIR_FLIGHTS;
+    : mapId === "lunar_relay"
+      ? LUNAR_RELAY_STAIR_FLIGHTS
+      : mapId === "temple_runoff"
+        ? TEMPLE_RUNOFF_STAIR_FLIGHTS
+        : mapId === "iron_junction"
+          ? IRON_JUNCTION_STAIR_FLIGHTS
+          : DESERT_CITADEL_STAIR_FLIGHTS;
 
 export type ArenaBounds = { limitX: number; limitZ: number };
 export const TEMPLE_RUNOFF_BOUNDS: ArenaBounds = {
@@ -1576,17 +1588,23 @@ export const DESERT_CITADEL_BOUNDS: ArenaBounds = {
   limitX: scaleArenaValue(260),
   limitZ: scaleArenaValue(200)
 };
+export const LUNAR_RELAY_BOUNDS: ArenaBounds = {
+  limitX: scaleArenaValue(LUNAR_RELAY_RAW_BOUNDS.limitX),
+  limitZ: scaleArenaValue(LUNAR_RELAY_RAW_BOUNDS.limitZ)
+};
 
 export const getArenaBounds = (mapId: ArenaMapId | string | undefined): ArenaBounds =>
   mapId === ATHLETICS_ARENA_MAP_ID
     ? ATHLETICS_COURSE_BOUNDS
-    : mapId === "temple_runoff"
-    ? TEMPLE_RUNOFF_BOUNDS
-    : mapId === "iron_junction"
-      ? IRON_JUNCTION_BOUNDS
-      : mapId === "desert_citadel"
-        ? DESERT_CITADEL_BOUNDS
-        : { limitX: ARENA_LIMIT_X, limitZ: ARENA_LIMIT_Z };
+    : mapId === "lunar_relay"
+      ? LUNAR_RELAY_BOUNDS
+      : mapId === "temple_runoff"
+        ? TEMPLE_RUNOFF_BOUNDS
+        : mapId === "iron_junction"
+          ? IRON_JUNCTION_BOUNDS
+          : mapId === "desert_citadel"
+            ? DESERT_CITADEL_BOUNDS
+            : { limitX: ARENA_LIMIT_X, limitZ: ARENA_LIMIT_Z };
 
 const isInsideRawRect = (
   x: number,
@@ -1642,9 +1660,16 @@ export const getArenaFloorSurfaces = (
   x: number,
   z: number
 ): number[] => {
-  if (mapId !== "temple_runoff" && mapId !== "iron_junction" && mapId !== "desert_citadel") return [0];
+  if (mapId !== "temple_runoff" && mapId !== "iron_junction" && mapId !== "desert_citadel" && mapId !== "lunar_relay") return [0];
   const rawX = x / ARENA_SCALE;
   const rawZ = z / ARENA_SCALE;
+  if (mapId === "lunar_relay") {
+    const stair = stairFlightHeight(LUNAR_RELAY_STAIR_FLIGHTS, rawX, rawZ);
+    if (stair !== undefined) return [stair];
+    const onBridge = isInsideRawRect(rawX, rawZ, -84, 84, -16, 16)
+      || isInsideRawRect(rawX, rawZ, -14, 14, -34, 34);
+    return onBridge ? [0, LUNAR_RELAY_BRIDGE_LEVEL_Y] : [0];
+  }
   if (mapId === "iron_junction") {
     const stair = ironStairHeight(rawX, rawZ);
     const surfaces = [0];
@@ -1731,6 +1756,7 @@ export const getArenaLevelLabel = (
   mapId: ArenaMapId | string | undefined,
   groundY: number
 ) => {
+  if (mapId === "lunar_relay") return groundY >= LUNAR_RELAY_BRIDGE_LEVEL_Y - 1 ? "upper" : "lower";
   if (mapId === "temple_runoff") {
     return groundY < TEMPLE_RUNOFF_MAIN_LEVEL_Y - 1
       ? "lower"
@@ -1881,14 +1907,28 @@ export const TEMPLE_RUNOFF_TEAM_SPAWNS: Record<Team, SpawnPoint[]> = {
   }))
 };
 
+export const LUNAR_RELAY_TEAM_SPAWNS: Record<Team, SpawnPoint[]> = {
+  blue: [-120, -40, 40, 120].flatMap((z, row) =>
+    [-222, -214, -206, -198, -190].map((x, column) => ({
+      id: `blue-lunar-${row + 1}-${column + 1}`, label: "Blue Airlock",
+      x: scaleArenaValue(x), z: scaleArenaValue(z), y: ARENA_PLAYER_EYE_HEIGHT, facing: -Math.PI / 2
+    }))),
+  red: [-120, -40, 40, 120].flatMap((z, row) =>
+    [222, 214, 206, 198, 190].map((x, column) => ({
+      id: `red-lunar-${row + 1}-${column + 1}`, label: "Red Airlock",
+      x: scaleArenaValue(x), z: scaleArenaValue(z), y: ARENA_PLAYER_EYE_HEIGHT, facing: Math.PI / 2
+    })))
+};
+
 const TEAM_SPAWNS_BY_MAP: Record<ArenaMapId, Record<Team, SpawnPoint[]>> = {
   desert_citadel: TEAM_SPAWNS,
   iron_junction: IRON_JUNCTION_TEAM_SPAWNS,
-  temple_runoff: TEMPLE_RUNOFF_TEAM_SPAWNS
+  temple_runoff: TEMPLE_RUNOFF_TEAM_SPAWNS,
+  lunar_relay: LUNAR_RELAY_TEAM_SPAWNS
 };
 
 export const getTeamSpawnsForMap = (mapId: ArenaMapId | string | undefined) =>
-  TEAM_SPAWNS_BY_MAP[mapId === "iron_junction" || mapId === "temple_runoff" ? mapId : "desert_citadel"];
+  TEAM_SPAWNS_BY_MAP[mapId === "iron_junction" || mapId === "temple_runoff" || mapId === "lunar_relay" ? mapId : "desert_citadel"];
 
 const teamSpawnsForMap = getTeamSpawnsForMap;
 
@@ -1997,14 +2037,18 @@ export const DESERT_CITADEL_CAPTURE_ZONES = [
   { id: "desert-crown-rampart", label: "Crown Rampart", x: 0, z: scaleArenaValue(-160), radius: scaleArenaValue(24), y: DESERT_CITADEL_ROOFTOP_LEVEL_Y }
 ] as const;
 
+export const LUNAR_RELAY_CAPTURE_ZONES = LUNAR_RELAY_RAW_CAPTURE_ZONES.map(scaleArenaRadius);
+
 export const getCaptureZonesForMap = (mapId: ArenaMapId | string | undefined) =>
-  mapId === "temple_runoff"
-    ? TEMPLE_RUNOFF_CAPTURE_ZONES
-    : mapId === "iron_junction"
-      ? IRON_JUNCTION_CAPTURE_ZONES
-      : mapId === "desert_citadel"
-        ? DESERT_CITADEL_CAPTURE_ZONES
-        : CAPTURE_ZONES;
+  mapId === "lunar_relay"
+    ? LUNAR_RELAY_CAPTURE_ZONES
+    : mapId === "temple_runoff"
+      ? TEMPLE_RUNOFF_CAPTURE_ZONES
+      : mapId === "iron_junction"
+        ? IRON_JUNCTION_CAPTURE_ZONES
+        : mapId === "desert_citadel"
+          ? DESERT_CITADEL_CAPTURE_ZONES
+          : CAPTURE_ZONES;
 
 const RAW_SEARCH_RETRIEVE_ITEMS = [
   { id: "old-well-scroll", label: "Old Well Scroll", x: -8, z: -18 },
@@ -2031,14 +2075,18 @@ export const DESERT_CITADEL_SEARCH_RETRIEVE_ITEMS = [
   { id: "desert-cistern-ledger", label: "Cistern Ledger", x: scaleArenaValue(24), z: scaleArenaValue(120), y: 1.4 }
 ] as const;
 
+export const LUNAR_RELAY_SEARCH_RETRIEVE_ITEMS = LUNAR_RELAY_RAW_SEARCH_ITEMS.map(scaleArenaPosition);
+
 export const getSearchRetrieveItemsForMap = (mapId: ArenaMapId | string | undefined) =>
-  mapId === "temple_runoff"
-    ? TEMPLE_RUNOFF_SEARCH_RETRIEVE_ITEMS
-    : mapId === "iron_junction"
-      ? IRON_JUNCTION_SEARCH_RETRIEVE_ITEMS
-      : mapId === "desert_citadel"
-        ? DESERT_CITADEL_SEARCH_RETRIEVE_ITEMS
-        : SEARCH_RETRIEVE_ITEMS;
+  mapId === "lunar_relay"
+    ? LUNAR_RELAY_SEARCH_RETRIEVE_ITEMS
+    : mapId === "temple_runoff"
+      ? TEMPLE_RUNOFF_SEARCH_RETRIEVE_ITEMS
+      : mapId === "iron_junction"
+        ? IRON_JUNCTION_SEARCH_RETRIEVE_ITEMS
+        : mapId === "desert_citadel"
+          ? DESERT_CITADEL_SEARCH_RETRIEVE_ITEMS
+          : SEARCH_RETRIEVE_ITEMS;
 
 const RAW_SEARCH_RETRIEVE_DELIVERY_ZONES = {
   blue: { id: "blue-delivery", label: "West Fortress Delivery", x: -146, z: 0, radius: 18 },
@@ -2062,14 +2110,21 @@ export const DESERT_CITADEL_SEARCH_RETRIEVE_DELIVERY_ZONES = {
   red: { id: "red-desert-delivery", label: "Red Bastion Delivery", x: scaleArenaValue(228), z: 0, radius: scaleArenaValue(15), y: 0 }
 } as const;
 
+export const LUNAR_RELAY_SEARCH_RETRIEVE_DELIVERY_ZONES = {
+  blue: { id: "blue-lunar-delivery", label: "Blue Airlock Delivery", x: scaleArenaValue(-206), z: 0, radius: scaleArenaValue(18), y: 0 },
+  red: { id: "red-lunar-delivery", label: "Red Airlock Delivery", x: scaleArenaValue(206), z: 0, radius: scaleArenaValue(18), y: 0 }
+} as const;
+
 export const getSearchRetrieveDeliveryZonesForMap = (mapId: ArenaMapId | string | undefined) =>
-  mapId === "temple_runoff"
-    ? TEMPLE_RUNOFF_SEARCH_RETRIEVE_DELIVERY_ZONES
-    : mapId === "iron_junction"
-      ? IRON_JUNCTION_SEARCH_RETRIEVE_DELIVERY_ZONES
-      : mapId === "desert_citadel"
-        ? DESERT_CITADEL_SEARCH_RETRIEVE_DELIVERY_ZONES
-        : SEARCH_RETRIEVE_DELIVERY_ZONES;
+  mapId === "lunar_relay"
+    ? LUNAR_RELAY_SEARCH_RETRIEVE_DELIVERY_ZONES
+    : mapId === "temple_runoff"
+      ? TEMPLE_RUNOFF_SEARCH_RETRIEVE_DELIVERY_ZONES
+      : mapId === "iron_junction"
+        ? IRON_JUNCTION_SEARCH_RETRIEVE_DELIVERY_ZONES
+        : mapId === "desert_citadel"
+          ? DESERT_CITADEL_SEARCH_RETRIEVE_DELIVERY_ZONES
+          : SEARCH_RETRIEVE_DELIVERY_ZONES;
 
 const isKnownPosition = (position: { x?: number; z?: number } | undefined): position is { x: number; z: number } =>
   Boolean(position && Number.isFinite(position.x) && Number.isFinite(position.z));
@@ -2188,10 +2243,17 @@ export const IRON_JUNCTION_TEAM_BASE_ZONES: typeof TEAM_BASE_ZONES = {
   red: { minX: scaleArenaValue(220), maxX: scaleArenaValue(272), minZ: scaleArenaValue(-110), maxZ: scaleArenaValue(110) }
 };
 
+export const LUNAR_RELAY_TEAM_BASE_ZONES: typeof TEAM_BASE_ZONES = {
+  blue: { minX: scaleArenaValue(-232), maxX: scaleArenaValue(-180), minZ: scaleArenaValue(-152), maxZ: scaleArenaValue(152) },
+  red: { minX: scaleArenaValue(180), maxX: scaleArenaValue(232), minZ: scaleArenaValue(-152), maxZ: scaleArenaValue(152) }
+};
+
 export const getTeamBaseZones = (mapId: ArenaMapId | string | undefined) =>
-  mapId === "temple_runoff"
-    ? TEMPLE_RUNOFF_TEAM_BASE_ZONES
-    : mapId === "iron_junction" ? IRON_JUNCTION_TEAM_BASE_ZONES : TEAM_BASE_ZONES;
+  mapId === "lunar_relay"
+    ? LUNAR_RELAY_TEAM_BASE_ZONES
+    : mapId === "temple_runoff"
+      ? TEMPLE_RUNOFF_TEAM_BASE_ZONES
+      : mapId === "iron_junction" ? IRON_JUNCTION_TEAM_BASE_ZONES : TEAM_BASE_ZONES;
 
 export const isInsideTeamBase = (team: Team, position: ArenaPosition | undefined, mapId?: ArenaMapId | string) => {
   if (!position || !Number.isFinite(position.x) || !Number.isFinite(position.z)) return false;
@@ -2557,14 +2619,24 @@ export const TEMPLE_RUNOFF_OBSTACLES: ArenaObstacle[] = [
   circleObstacle("rain-god-statue", 0, 126, 7, false, 8, 25)
 ];
 
+export const LUNAR_RELAY_OBSTACLES: ArenaObstacle[] = [
+  ...stairObstaclesForFlights(LUNAR_RELAY_STAIR_FLIGHTS),
+  ...LUNAR_RELAY_LAYOUT_BLOCKS.filter(block => block.collides).map(block => rectObstacle(
+    block.id, block.x, block.z, block.w, block.d, false,
+    (block.y ?? block.h / 2) - block.h / 2,
+    (block.y ?? block.h / 2) + block.h / 2
+  ))
+];
+
 const ARENA_OBSTACLES_BY_MAP: Record<ArenaMapId, ArenaObstacle[]> = {
   desert_citadel: ARENA_OBSTACLES,
   iron_junction: IRON_JUNCTION_OBSTACLES,
-  temple_runoff: TEMPLE_RUNOFF_OBSTACLES
+  temple_runoff: TEMPLE_RUNOFF_OBSTACLES,
+  lunar_relay: LUNAR_RELAY_OBSTACLES
 };
 
 export const getArenaObstacles = (mapId: ArenaMapId | string | undefined): ArenaObstacle[] =>
-  ARENA_OBSTACLES_BY_MAP[mapId === "iron_junction" || mapId === "temple_runoff" ? mapId : "desert_citadel"];
+  ARENA_OBSTACLES_BY_MAP[mapId === "iron_junction" || mapId === "temple_runoff" || mapId === "lunar_relay" ? mapId : "desert_citadel"];
 
 /** Athletics has its own compact collision course even though it reuses the
  * existing ArenaMapId for persistence compatibility with older clients. */
@@ -3167,6 +3239,27 @@ export const findBotNavigationPath = ({
     : getArenaGroundHeightForPlayer(mapId, goal.x, goal.z, start.y, ARENA_PLAYER_EYE_HEIGHT, 1.4) + ARENA_PLAYER_EYE_HEIGHT;
   const navigationObstacles = obstacles.filter((obstacle) => obstacle.kind !== "rect" || obstacle.stair !== true);
   const hasNavigationClearance = (from: ArenaPosition, to: ArenaPosition) => {
+    if (mapId === "lunar_relay") {
+      // Enter each flight through an end. A diagonal shortcut through its side
+      // can miss the first tread's brief radius contact at a slower frame rate.
+      for (const flight of LUNAR_RELAY_STAIR_FLIGHTS) {
+        const alongFrom = flight.axis === "x" ? from.x : from.z;
+        const alongTo = flight.axis === "x" ? to.x : to.z;
+        const acrossFrom = flight.axis === "x" ? from.z : from.x;
+        const acrossTo = flight.axis === "x" ? to.z : to.x;
+        if (Math.abs(acrossTo - acrossFrom) < 1e-6) continue;
+        const centerAlong = scaleArenaValue(flight.axis === "x" ? flight.x : flight.z);
+        const centerAcross = scaleArenaValue(flight.axis === "x" ? flight.z : flight.x);
+        const halfWidth = scaleArenaValue(flight.width) / 2 + ATHLETICS_PLAYER_RADIUS;
+        const halfLength = scaleArenaValue(flight.length) / 2 + ATHLETICS_PLAYER_RADIUS;
+        for (const side of [-1, 1]) {
+          const progress = (centerAcross + side * halfWidth - acrossFrom) / (acrossTo - acrossFrom);
+          if (progress < 0 || progress > 1) continue;
+          const along = alongFrom + (alongTo - alongFrom) * progress;
+          if (Math.abs(along - centerAlong) < halfLength) return false;
+        }
+      }
+    }
     if (!hasLineOfSight({ from, to, obstacles: navigationObstacles, padding })) return false;
     if (!Number.isFinite(from.y) || !Number.isFinite(to.y)) return true;
     const distance = Math.hypot(to.x - from.x, to.z - from.z);

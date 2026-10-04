@@ -5,6 +5,7 @@ import {
   DESERT_CITADEL_ROOFTOP_LEVEL_Y,
   IRON_JUNCTION_LOADING_LEVEL_Y,
   IRON_JUNCTION_OVERPASS_LEVEL_Y,
+  LUNAR_RELAY_BRIDGE_LEVEL_Y,
   TEMPLE_RUNOFF_MAIN_LEVEL_Y,
   clampArenaPosition,
   getArenaObstacles,
@@ -113,7 +114,7 @@ export class BotNavigationService {
       ? this.scaledPoint((team === "blue" ? -1 : 1) * 235, 0)
       : this.scaledPoint(
         (team === "blue" ? -1 : 1)
-          * (mapId === "temple_runoff" ? 205 : mapId === "iron_junction" ? 248 : 142),
+          * (mapId === "temple_runoff" ? 205 : mapId === "iron_junction" ? 248 : mapId === "lunar_relay" ? 206 : 142),
         0
       );
   }
@@ -123,7 +124,7 @@ export class BotNavigationService {
       ? this.scaledPoint((team === "blue" ? 1 : -1) * 235, 0)
       : this.scaledPoint(
         (team === "blue" ? 1 : -1)
-          * (mapId === "temple_runoff" ? 205 : mapId === "iron_junction" ? 248 : 142),
+          * (mapId === "temple_runoff" ? 205 : mapId === "iron_junction" ? 248 : mapId === "lunar_relay" ? 206 : 142),
         0
       );
   }
@@ -181,7 +182,17 @@ export class BotNavigationService {
   }
 
   private getBotPatrolPoints(team: Team, mapId?: string) {
-    return mapId === "temple_runoff"
+    return mapId === "lunar_relay"
+      ? [-155, -70, 0, 70, 155].flatMap(rawX => {
+          const x = rawX * (team === "blue" ? 1 : -1);
+          return [
+            this.scaledLevelPoint(x, -55),
+            this.scaledLevelPoint(x, 100),
+            this.scaledLevelPoint(Math.max(-70, Math.min(70, x)), 0, LUNAR_RELAY_BRIDGE_LEVEL_Y),
+            this.scaledLevelPoint(0, -121)
+          ];
+        })
+      : mapId === "temple_runoff"
       ? this.getTempleRunoffPatrolPoints(team)
       : mapId === "iron_junction"
         ? this.getIronJunctionPatrolPoints(team)

@@ -30,6 +30,17 @@ export const getQuizStrikeLightingConfig = ({
 }: LightingContext): QuizStrikeLightingConfig => {
   const isAthletics = mapId === "athletics_park";
   const shadowQuality = quality === "high" && !isFps ? "high" : quality === "balanced" && !isFps ? "soft" : "off";
+  if (mapId === "lunar_relay") {
+    return {
+      background: "#111c35",
+      fog: { color: "#26344e", near: isFps ? 185 : 340, far: 700 },
+      ambient: { sky: "#d0e4ff", ground: "#4e5872", intensity: 1.35 },
+      sun: { color: "#f5e3cb", intensity: 2.25, direction: [-100, 160, 80] },
+      fill: { color: "#9aceef", intensity: .8, direction: [110, 70, -110] },
+      shadowQuality,
+      shadowBounds: { left: -160, right: 160, top: 145, bottom: -145, near: 1, far: 500 }
+    };
+  }
   if (isAthletics) {
     return {
       background: "#82cbe5",

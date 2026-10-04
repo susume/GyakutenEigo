@@ -3,6 +3,7 @@ import assert from "node:assert/strict";
 import {
   DESERT_CITADEL_STAIR_FLIGHTS,
   IRON_JUNCTION_STAIR_FLIGHTS,
+  LUNAR_RELAY_STAIR_FLIGHTS,
   TEMPLE_RUNOFF_STAIR_FLIGHTS
 } from "@quizstrike/shared";
 import {
@@ -80,6 +81,7 @@ test("every authored map stair rise fits the FPS automatic step allowance", () =
   const flights = [
     ...DESERT_CITADEL_STAIR_FLIGHTS,
     ...IRON_JUNCTION_STAIR_FLIGHTS,
+    ...LUNAR_RELAY_STAIR_FLIGHTS,
     ...TEMPLE_RUNOFF_STAIR_FLIGHTS
   ];
 

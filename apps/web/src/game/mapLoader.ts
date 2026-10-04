@@ -23,6 +23,6 @@ export const loadArenaMapContext = (arenaMapId: SessionMapId) => {
     isIronJunction: arenaMapId === "iron_junction",
     isDesertCitadel: arenaMapId === "desert_citadel",
     isTempleRunoff: arenaMapId === "temple_runoff",
-    hasMultipleLevels: arenaMapId === "iron_junction" || arenaMapId === "desert_citadel" || arenaMapId === "temple_runoff"
+    hasMultipleLevels: arenaMapId === "iron_junction" || arenaMapId === "desert_citadel" || arenaMapId === "temple_runoff" || arenaMapId === "lunar_relay"
   };
 };

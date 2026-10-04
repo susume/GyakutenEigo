@@ -62,7 +62,7 @@ export const ArenaMinimap = ({
   const toMiniMapH = (d: number) => (d / (arenaBounds.limitZ * 2)) * MINIMAP_HEIGHT;
   const mapClass = arenaMapId === "iron_junction"
     ? "minimap-iron"
-    : arenaMapId === "temple_runoff" ? "minimap-temple" : "minimap-sand";
+    : arenaMapId === "temple_runoff" ? "minimap-temple" : arenaMapId === "lunar_relay" ? "minimap-lunar" : "minimap-sand";
   const objectiveOpacity = (groundY: number) =>
     !hasMultipleLevels || getArenaLevelLabel(arenaMapId, groundY) === miniMapLevel ? 0.95 : 0.35;
   const captureGroundY = (zone: (typeof captureZones)[number]) =>
@@ -93,7 +93,7 @@ export const ArenaMinimap = ({
             y={toMiniMapY(block.z - block.d / 2)}
             width={Math.max(0.7, toMiniMapW(block.w))}
             height={Math.max(0.7, toMiniMapH(block.d))}
-            className={block.material === "wood" ? "minimap-wood" : "minimap-wall"}
+            className={arenaMapId === "lunar_relay" ? "minimap-lunar-wall" : block.material === "wood" ? "minimap-wood" : "minimap-wall"}
             opacity={!hasMultipleLevels || getArenaLevelLabel(arenaMapId, (block.y ?? block.h / 2) - block.h / 2) === miniMapLevel ? 0.82 : 0.28}
           />
         ))}

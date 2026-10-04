@@ -1,0 +1,66 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="960" height="540" viewBox="-320 -225 640 450" role="img" aria-labelledby="title desc">
+<title id="title">Lunar Relay tactical map</title><desc id="desc">Two shielded airlocks, the north observatory, a cross-shaped raised relay bridge with four stair approaches, and the south solar cargo court.</desc>
+<defs><radialGradient id="space"><stop stop-color="#304a68"/><stop offset="1" stop-color="#0e1931"/></radialGradient>
+<pattern id="stepsX" width="2.8" height="32" patternUnits="userSpaceOnUse"><rect width="2.8" height="32" fill="#9aafc5"/><path d="M0 0V32" stroke="#405d76" stroke-width=".8"/></pattern>
+<pattern id="stepsZ" width="28" height="2.8" patternUnits="userSpaceOnUse"><rect width="28" height="2.8" fill="#9aafc5"/><path d="M0 0H28" stroke="#405d76" stroke-width=".8"/></pattern></defs>
+<rect x="-320" y="-225" width="640" height="450" rx="20" fill="url(#space)"/>
+<g fill="#c0d2ea" opacity=".6"><circle cx="-270" cy="-172" r="1"/><circle cx="273" cy="-125" r="1.6"/><circle cx="-286" cy="133" r="1.4"/><circle cx="281" cy="88" r="1"/><circle cx="230" cy="-202" r="1.2"/></g>
+<rect x="-240" y="-180" width="480" height="360" rx="8" fill="#687c96" stroke="#aac2d6" stroke-width="2"/>
+<g fill="none" stroke="#8298ae" stroke-width="1" opacity=".6"><path d="M-170-60H170M-170 94H170M-154-154V154M154-154V154"/></g>
+<rect x="-232" y="-152" width="52" height="304" fill="#5b98bc" opacity=".45"/>
+<rect x="180" y="-152" width="52" height="304" fill="#b47481" opacity=".5"/>
+<rect x="-240" y="-180" width="480" height="8" rx="1.5" fill="#465b73" stroke="#8aa5c0" stroke-width="1.2"/>
+<rect x="-240" y="172" width="480" height="8" rx="1.5" fill="#465b73" stroke="#8aa5c0" stroke-width="1.2"/>
+<rect x="-240" y="-176" width="8" height="352" rx="1.5" fill="#465b73" stroke="#8aa5c0" stroke-width="1.2"/>
+<rect x="232" y="-176" width="8" height="352" rx="1.5" fill="#465b73" stroke="#8aa5c0" stroke-width="1.2"/>
+<rect x="-84" y="-16" width="168" height="32" rx="1.5" fill="#bacddd" stroke="#85eed9" stroke-width="1.2"/>
+<rect x="-14" y="-34" width="28" height="18" rx="1.5" fill="#bacddd" stroke="#85eed9" stroke-width="1.2"/>
+<rect x="-14" y="16" width="28" height="18" rx="1.5" fill="#bacddd" stroke="#85eed9" stroke-width="1.2"/>
+<rect x="-60.5" y="-13.5" width="5" height="5" rx="1.5" fill="#465b73" stroke="#8aa5c0" stroke-width="1.2"/>
+<rect x="-60.5" y="8.5" width="5" height="5" rx="1.5" fill="#465b73" stroke="#8aa5c0" stroke-width="1.2"/>
+<rect x="55.5" y="-13.5" width="5" height="5" rx="1.5" fill="#465b73" stroke="#8aa5c0" stroke-width="1.2"/>
+<rect x="55.5" y="8.5" width="5" height="5" rx="1.5" fill="#465b73" stroke="#8aa5c0" stroke-width="1.2"/>
+<rect x="-60.5" y="-13.5" width="5" height="27" rx="1.5" fill="#c9d7e2" stroke="#8aa5c0" stroke-width="1.2"/>
+<rect x="55.5" y="-13.5" width="5" height="27" rx="1.5" fill="#c9d7e2" stroke="#8aa5c0" stroke-width="1.2"/>
+<rect x="-84" y="-15.75" width="64" height="1.5" rx="1.5" fill="#465b73" stroke="#8aa5c0" stroke-width="1.2"/>
+<rect x="-84" y="14.25" width="64" height="1.5" rx="1.5" fill="#465b73" stroke="#8aa5c0" stroke-width="1.2"/>
+<rect x="20" y="-15.75" width="64" height="1.5" rx="1.5" fill="#465b73" stroke="#8aa5c0" stroke-width="1.2"/>
+<rect x="20" y="14.25" width="64" height="1.5" rx="1.5" fill="#465b73" stroke="#8aa5c0" stroke-width="1.2"/>
+<rect x="-176" y="-134" width="8" height="28" rx="1.5" fill="#648eab" stroke="#8aa5c0" stroke-width="1.2"/>
+<rect x="-176" y="-54" width="8" height="28" rx="1.5" fill="#648eab" stroke="#8aa5c0" stroke-width="1.2"/>
+<rect x="-176" y="26" width="8" height="28" rx="1.5" fill="#648eab" stroke="#8aa5c0" stroke-width="1.2"/>
+<rect x="-176" y="106" width="8" height="28" rx="1.5" fill="#648eab" stroke="#8aa5c0" stroke-width="1.2"/>
+<rect x="-124" y="-130" width="48" height="28" rx="1.5" fill="#c9d7e2" stroke="#8aa5c0" stroke-width="1.2"/>
+<rect x="-148" y="-92" width="26" height="24" rx="1.5" fill="#465b73" stroke="#8aa5c0" stroke-width="1.2"/>
+<rect x="-133" y="72" width="30" height="20" rx="1.5" fill="#d7a45e" stroke="#8aa5c0" stroke-width="1.2"/>
+<rect x="-72" y="125" width="24" height="18" rx="1.5" fill="#c9d7e2" stroke="#8aa5c0" stroke-width="1.2"/>
+<rect x="-94" y="50" width="32" height="8" rx="1.5" fill="#263c58" stroke="#8aa5c0" stroke-width="1.2"/>
+<rect x="-150" y="-6" width="8" height="12" rx="1.5" fill="#465b73" stroke="#8aa5c0" stroke-width="1.2"/>
+<rect x="-47" y="-11.5" width="18" height="5" rx="1.5" fill="#465b73" stroke="#8aa5c0" stroke-width="1.2"/>
+<rect x="168" y="-134" width="8" height="28" rx="1.5" fill="#b88381" stroke="#8aa5c0" stroke-width="1.2"/>
+<rect x="168" y="-54" width="8" height="28" rx="1.5" fill="#b88381" stroke="#8aa5c0" stroke-width="1.2"/>
+<rect x="168" y="26" width="8" height="28" rx="1.5" fill="#b88381" stroke="#8aa5c0" stroke-width="1.2"/>
+<rect x="168" y="106" width="8" height="28" rx="1.5" fill="#b88381" stroke="#8aa5c0" stroke-width="1.2"/>
+<rect x="76" y="-130" width="48" height="28" rx="1.5" fill="#c9d7e2" stroke="#8aa5c0" stroke-width="1.2"/>
+<rect x="122" y="-92" width="26" height="24" rx="1.5" fill="#465b73" stroke="#8aa5c0" stroke-width="1.2"/>
+<rect x="103" y="72" width="30" height="20" rx="1.5" fill="#d7a45e" stroke="#8aa5c0" stroke-width="1.2"/>
+<rect x="48" y="125" width="24" height="18" rx="1.5" fill="#c9d7e2" stroke="#8aa5c0" stroke-width="1.2"/>
+<rect x="62" y="50" width="32" height="8" rx="1.5" fill="#263c58" stroke="#8aa5c0" stroke-width="1.2"/>
+<rect x="142" y="-6" width="8" height="12" rx="1.5" fill="#465b73" stroke="#8aa5c0" stroke-width="1.2"/>
+<rect x="29" y="6.5" width="18" height="5" rx="1.5" fill="#465b73" stroke="#8aa5c0" stroke-width="1.2"/>
+<rect x="-31" y="-149" width="62" height="6" rx="1.5" fill="#c9d7e2" stroke="#8aa5c0" stroke-width="1.2"/>
+<rect x="-37" y="-149" width="6" height="44" rx="1.5" fill="#c9d7e2" stroke="#8aa5c0" stroke-width="1.2"/>
+<rect x="31" y="-149" width="6" height="44" rx="1.5" fill="#c9d7e2" stroke="#8aa5c0" stroke-width="1.2"/>
+<rect x="-37" y="-149" width="74" height="44" rx="1.5" fill="#c9d7e2" stroke="#8aa5c0" stroke-width="1.2"/>
+<rect x="-18" y="144" width="36" height="6" rx="1.5" fill="#465b73" stroke="#8aa5c0" stroke-width="1.2"/>
+<rect x="-138" y="-16" width="56" height="32" fill="url(#stepsX)" stroke="#85eed9" stroke-width="1.5"/>
+<rect x="82" y="-16" width="56" height="32" fill="url(#stepsX)" stroke="#85eed9" stroke-width="1.5"/>
+<rect x="-14" y="-88" width="28" height="56" fill="url(#stepsZ)" stroke="#85eed9" stroke-width="1.5"/>
+<rect x="-14" y="32" width="28" height="56" fill="url(#stepsZ)" stroke="#85eed9" stroke-width="1.5"/>
+<g fill="none" stroke="#85eed9" stroke-width="2.5"><circle cx="0" cy="0" r="12"/><circle cx="0" cy="-121" r="18"/><circle cx="0" cy="112" r="20"/></g>
+<g font-family="Arial,sans-serif" text-anchor="middle" font-size="9" font-weight="700" letter-spacing="1.5" fill="#e2edf5">
+<text x="0" y="-159">OBSERVATORY</text><text x="0" y="-40">RELAY BRIDGE</text><text x="0" y="145">SOLAR COURT</text>
+<text x="-206" y="165" fill="#c2e8ff">BLUE</text><text x="206" y="165" fill="#ffd3ce">RED</text></g>
+<g fill="#e0edf9"><circle cx="-206" cy="-120" r="3"/><circle cx="206" cy="-120" r="3"/><circle cx="-206" cy="-40" r="3"/><circle cx="206" cy="-40" r="3"/><circle cx="-206" cy="40" r="3"/><circle cx="206" cy="40" r="3"/><circle cx="-206" cy="120" r="3"/><circle cx="206" cy="120" r="3"/></g>
+<text x="0" y="211" text-anchor="middle" font-family="Arial,sans-serif" font-size="13" font-weight="700" letter-spacing="5" fill="#85eed9">LUNAR RELAY</text>
+</svg>

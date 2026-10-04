@@ -109,7 +109,7 @@ const sessionGameModeLabel = (session: GameSession) => session.settings.gameMode
   ? ATHLETICS_MODE_CONFIG[session.settings.athleticsMode ?? session.athletics?.mode ?? "classic"].label
   : gameModeLabel(session.settings.gameMode);
 const arenaMapDisplayTitle = (title: string) => title.replace(/\s2\.0$/, "");
-const ARENA_MAP_PREVIEW_ASSETS: Record<ArenaMapId, string> = { desert_citadel: "/assets/arena-maps/desert-citadel.png", iron_junction: "/assets/arena-maps/iron-junction.png", temple_runoff: "/assets/arena-maps/temple-runoff.png" };
+const ARENA_MAP_PREVIEW_ASSETS: Record<ArenaMapId, string> = { desert_citadel: "/assets/arena-maps/desert-citadel.png", iron_junction: "/assets/arena-maps/iron-junction.png", temple_runoff: "/assets/arena-maps/temple-runoff.png", lunar_relay: "/assets/arena-maps/lunar-relay.svg" };
 const getTopLearner = (players: PlayerSession[], mode?: SessionSettings["gameMode"]) => {
   if (mode === "athletics") {
     const winner = resolveAthleticsStandings(players).find((standing) => standing.status === "finished" && players.some((player) => player.id === standing.playerId && !player.isBot));

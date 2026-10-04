@@ -34,7 +34,8 @@ const mapFrontObjectiveIds: Record<ArenaMapId, readonly string[]> = {
     "lower-waterway",
     "rain-court",
     "temple-terrace"
-  ]
+  ],
+  lunar_relay: ["lunar-observatory", "lunar-underpass", "lunar-relay", "lunar-solar-court"]
 };
 
 const mapFrontGoalOffsets: Record<ArenaMapId, readonly { x: number; z: number }[]> = {
@@ -56,12 +57,13 @@ const mapFrontGoalOffsets: Record<ArenaMapId, readonly { x: number; z: number }[
     { x: 18, z: 0 },
     { x: -40, z: 0 },
     { x: -16, z: 0 }
-  ]
+  ],
+  lunar_relay: [{ x: 0, z: 0 }, { x: -30, z: 0 }, { x: 0, z: 0 }, { x: 0, z: 0 }]
 };
 
 const maps = Object.keys(mapFrontObjectiveIds) as ArenaMapId[];
 
-test("all three arenas preserve evenly loaded spawn fronts for a 40-player opening", () => {
+test("all combat arenas preserve evenly loaded spawn fronts for a 40-player opening", () => {
   for (const mapId of maps) {
     const spawns = getTeamSpawnsForMap(mapId);
     const obstacles = getArenaObstacles(mapId);

@@ -784,6 +784,9 @@ label.toggle-row input {
   fill: #65704b;
 }
 
+.minimap-lunar { fill: #283b55; }
+.minimap-lunar-wall { fill: #b3c6db; }
+
 .minimap-wall {
   fill: rgba(77, 51, 29, 0.82);
 }

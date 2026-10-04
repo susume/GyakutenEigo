@@ -41,11 +41,11 @@ import {
   FPS_JUMP_GRAVITY,
   FPS_JUMP_VELOCITY,
   FPS_STANDING_EYE_HEIGHT,
-  canFpsBodyAutoStepOnto,
-  canFpsBodyClearObstacle,
+  findFpsBlockingSurfaceIndex,
+  findFpsGroundSupportY,
   findFpsSupportSurfaceY,
   getFpsBodyVerticalBounds,
-  intersectsFpsBody,
+  getFpsPlayerGroundY,
   smoothFpsGroundedCameraY
 } from "./ArenaCamera.js";
 import { createArenaSceneSetup, FPS_BASE_FOV, getArenaQualityConfig } from "./sceneSetup";
@@ -584,8 +584,8 @@ export default function ArenaPreview({
     if (isFps) {
       camera.position.set(0, 0, 0);
     } else {
-      camera.position.set(0, 238, 246);
-      camera.lookAt(0, 0, 0);
+      camera.position.set(0, arenaMapId === "lunar_relay" ? 170 : 238, arenaMapId === "lunar_relay" ? 285 : 246);
+      camera.lookAt(0, arenaMapId === "lunar_relay" ? 12 : 0, arenaMapId === "lunar_relay" ? -35 : 0);
     }
 
     const textureLoader = new THREE.TextureLoader();
@@ -1347,12 +1347,7 @@ export default function ArenaPreview({
         bodyMin.set(next.x - PLAYER_RADIUS, verticalBounds.minY, next.z - PLAYER_RADIUS);
         bodyMax.set(next.x + PLAYER_RADIUS, verticalBounds.maxY, next.z + PLAYER_RADIUS);
         bodyBox.set(bodyMin, bodyMax);
-        const blockingIndex = coverBoxes.findIndex((box, index) => {
-          if (!intersectsFpsBody(box, bodyBox) || canFpsBodyClearObstacle(verticalBounds, box.max.y)) return false;
-          const source = collisionSources[index] as { style?: string; stair?: boolean } | undefined;
-          const isStair = source?.style === "stair" || source?.stair === true;
-          return !isStair || !canFpsBodyAutoStepOnto(verticalBounds, box.max.y);
-        });
+        const blockingIndex = findFpsBlockingSurfaceIndex(coverBoxes, collisionSources, bodyBox, verticalBounds);
         lastColliderName = blockingIndex >= 0 ? collisionSources[blockingIndex]?.id ?? "unknown" : "none";
         return blockingIndex < 0;
       };
@@ -1373,22 +1368,10 @@ export default function ArenaPreview({
           );
         if (verticalVelocity > 0) return mappedGroundY;
         const footY = eyeY - floorEyeHeight;
-        let supportY = findFpsSupportSurfaceY(
-          coverBoxes,
-          x,
-          z,
-          PLAYER_RADIUS,
-          footY,
-          footY
+        const supportY = findFpsGroundSupportY(
+          coverBoxes, collisionSources, x, z, PLAYER_RADIUS, footY,
+          wasGrounded && verticalVelocity === 0
         );
-        if (wasGrounded && verticalVelocity === 0) {
-          for (let index = 0; index < coverBoxes.length; index += 1) {
-            const source = collisionSources[index] as { stair?: boolean; style?: string } | undefined;
-            if (!source?.stair && source?.style !== "stair") continue;
-            const stepY = findFpsSupportSurfaceY([coverBoxes[index]!], x, z, PLAYER_RADIUS, footY - 0.8, footY + 0.8, 0);
-            if (stepY !== undefined && (supportY === undefined || stepY > supportY)) supportY = stepY;
-          }
-        }
         return supportY === undefined ? mappedGroundY : Math.max(mappedGroundY, supportY);
       };
 
@@ -1520,6 +1503,11 @@ export default function ArenaPreview({
         renderer.domElement.dataset.currentNavRegion = currentNavRegion;
         renderer.domElement.dataset.colliderName = lastColliderName;
         renderer.domElement.dataset.currentLevel = currentLevel;
+        if (levelDebugEnabled) {
+          renderer.domElement.dataset.playerX = playerPosition.x.toFixed(3);
+          renderer.domElement.dataset.playerY = playerPosition.y.toFixed(3);
+          renderer.domElement.dataset.playerZ = playerPosition.z.toFixed(3);
+        }
         if (levelDebugEnabled && currentTime - lastLevelDebugAt >= 1000) {
           console.debug("[Arena level diagnostics]", {
             playerPosition: {
@@ -1610,7 +1598,7 @@ export default function ArenaPreview({
         if (gamepadMove.right > GAMEPAD_DEAD_ZONE) movementVector.add(rightVector);
         if (gamepadMove.right < -GAMEPAD_DEAD_ZONE) movementVector.sub(rightVector);
         if (movementVector.lengthSq() > 0 && !isStationaryAthleticsHunter()) {
-          const movementSurface: "metal" | "water" | "stone" | "sand" = isAthleticsMode ? "stone" : isIronJunction ? "metal" : isTempleRunoff ? (surfaceGroundY < 1 ? "water" : "stone") : "sand";
+          const movementSurface: "metal" | "water" | "stone" | "sand" = isAthleticsMode ? "stone" : isIronJunction || arenaMapId === "lunar_relay" ? "metal" : isTempleRunoff ? (surfaceGroundY < 1 ? "water" : "stone") : "sand";
           if (wasGrounded && moveSpeed > 0) {
             gameAudio.playMovementStep(movementAudioMode, currentTime, movementSurface);
             const footstepInterval = crouching ? 360 : 240;
@@ -1715,7 +1703,7 @@ export default function ArenaPreview({
         updateCamera(delta);
         if (currentTime - lastMiniMapAt > 220) {
           lastMiniMapAt = currentTime;
-          setMiniMapPosition(localToServerPosition(playerPosition, yaw));
+          setMiniMapPosition({ ...localToServerPosition(playerPosition, yaw), crouching: isCrouching });
         }
         maybeEmitPosition(currentTime);
         billboardSprites.forEach((sprite) => sprite.lookAt(camera.position));
@@ -1881,8 +1869,8 @@ export default function ArenaPreview({
         performanceWindowAt = currentTime;
       }
       camera.position.x = Math.sin(elapsed * 0.04) * 24;
-      camera.position.z = 246 + Math.cos(elapsed * 0.04) * 16;
-      camera.lookAt(0, 0, -6);
+      camera.position.z = (arenaMapId === "lunar_relay" ? 285 : 246) + Math.cos(elapsed * 0.04) * 16;
+      camera.lookAt(0, arenaMapId === "lunar_relay" ? 12 : 0, arenaMapId === "lunar_relay" ? -35 : -6);
       billboardSprites.forEach((sprite) => sprite.lookAt(camera.position));
       characterManager.update(delta, elapsed, camera);
       if (debugOverlay && currentTime - lastDebugStatsAt > 500) {
@@ -2014,11 +2002,11 @@ export default function ArenaPreview({
   };
   const miniMapPlayer = miniMapPosition ?? (
     isFiniteNumber(currentPlayer?.x) && isFiniteNumber(currentPlayer?.z)
-      ? { x: currentPlayer.x, y: currentPlayer.y, z: currentPlayer.z, facing: currentPlayer.facing ?? 0 }
+      ? { x: currentPlayer.x, y: currentPlayer.y, z: currentPlayer.z, facing: currentPlayer.facing ?? 0, crouching: currentPlayer.crouching }
       : null
   );
   const miniMapPlayerGround = miniMapPlayer
-    ? isAthleticsMode ? 0 : getArenaGroundHeightForPlayer(arenaMapId, miniMapPlayer.x, miniMapPlayer.z, miniMapPlayer.y, FPS_STANDING_EYE_HEIGHT)
+    ? isAthleticsMode ? 0 : getFpsPlayerGroundY(arenaMapId, miniMapPlayer)
     : 0;
   const miniMapLevel = getArenaLevelLabel(arenaMapId, miniMapPlayerGround);
   const flagCarrier = session?.flag?.carrierId

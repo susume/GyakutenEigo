@@ -1396,7 +1396,7 @@ export default function StudentExperience({ onExit }: { onExit: () => void }) {
               attacker: { x: position.x!, z: position.z! },
               target: { x: local.x!, z: local.z!, facing: local.facing ?? 0 }
             }),
-            lastVisualSession.settings.mapId === "iron_junction"
+            lastVisualSession.settings.mapId === "iron_junction" || lastVisualSession.settings.mapId === "lunar_relay"
               ? "metal"
               : lastVisualSession.settings.mapId === "temple_runoff"
                 ? getArenaGroundHeight("temple_runoff", position.x!, position.z!) < 1 ? "water" : "stone"

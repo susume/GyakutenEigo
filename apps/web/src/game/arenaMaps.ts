@@ -1,4 +1,5 @@
 import type { ArenaMapId } from "@quizstrike/shared";
+import { LUNAR_RELAY, blocks as lunarBlocks, cylinders as lunarCylinders, floorMarks as lunarFloorMarks, props as lunarProps, signs as lunarSigns } from "./lunarRelayMap";
 import { DESERT_CITADEL, blocks as desertBlocks, cylinders as desertCylinders, floorMarks as desertFloorMarks, props as desertProps, signs as desertSigns } from "./desertCitadelMap";
 import { IRON_JUNCTION, blocks as ironBlocks, cylinders as ironCylinders, floorMarks as ironFloorMarks, props as ironProps, signs as ironSigns } from "./ironJunctionMap";
 import { TEMPLE_RUNOFF, blocks as templeBlocks, cylinders as templeCylinders, floorMarks as templeFloorMarks, props as templeProps, signs as templeSigns } from "./templeRunoffMap";
@@ -36,7 +37,8 @@ export const ARENA_MAPS: ArenaMapData[] = [
   },
   { ...DESERT_CITADEL, blocks: desertBlocks, cylinders: desertCylinders, floorMarks: desertFloorMarks, props: desertProps, signs: desertSigns },
   { ...IRON_JUNCTION, blocks: ironBlocks, cylinders: ironCylinders, floorMarks: ironFloorMarks, props: ironProps, signs: ironSigns },
-  { ...TEMPLE_RUNOFF, blocks: templeBlocks, cylinders: templeCylinders, floorMarks: templeFloorMarks, props: templeProps, signs: templeSigns }
+  { ...TEMPLE_RUNOFF, blocks: templeBlocks, cylinders: templeCylinders, floorMarks: templeFloorMarks, props: templeProps, signs: templeSigns },
+  { ...LUNAR_RELAY, blocks: lunarBlocks, cylinders: lunarCylinders, floorMarks: lunarFloorMarks, props: lunarProps, signs: lunarSigns }
 ];
 
 export const getArenaMap = (mapId: ArenaMapId | string | undefined): ArenaMapData =>

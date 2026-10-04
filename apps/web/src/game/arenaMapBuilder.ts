@@ -18,6 +18,7 @@ import { addDesertCitadelVfx } from "./DesertCitadelVfx";
 import { addDesertCitadelArtPass } from "./desertCitadelArtPass";
 import { addIronJunctionArtPass } from "./IronJunctionArtPass";
 import { addTempleRunoffArtPass } from "./TempleRunoffArtPass";
+import { addLunarRelayArtPass } from "./LunarRelayArtPass";
 import type { ArenaQuality } from "./gamePreferences";
 import type { ArenaQualityConfig } from "./sceneSetup";
 import { FPS_CROUCH_EYE_HEIGHT, FPS_STANDING_EYE_HEIGHT } from "./ArenaCamera";
@@ -192,7 +193,7 @@ const createFlagClothGeometry = (width: number, height: number, segments = 12) =
 
 // The shared QuizStrikeLighting rig is created by sceneSetup. Maps only add
 // local accent lights when a landmark genuinely benefits from one.
-if (!isIronJunction) {
+if (isDesertCitadel || isTempleRunoff) {
   const aqueductLight = new THREE.PointLight("#53e7ff", 42, 135, 2);
   aqueductLight.position.set(0, 7, isTempleRunoff ? -27 : 0);
   scene.add(aqueductLight);
@@ -761,7 +762,7 @@ const addBlock = (block: (typeof arenaMap.blocks)[number]) => {
     // Desert Citadel's shared obstacle proxies already use the player radius
     // during authoritative movement. Keep the client footprint exact so a
     // stair landing or market doorway cannot disagree by an extra 0.25u.
-    colliderForObject(proxy, isDesertCitadel ? 0 : 0.25);
+    colliderForObject(proxy, isDesertCitadel || arenaMapId === "lunar_relay" ? 0 : 0.25);
   }
   if (block.visual !== false) {
     addModularBlockBody(block);
@@ -1033,7 +1034,7 @@ addCircle(searchRetrieveDeliveryZones.red.x, searchRetrieveDeliveryZones.red.z, 
 const visibleTeamSpawns = getTeamSpawnsForMap(arenaMapId);
 visibleTeamSpawns.blue.forEach((spawn) => addCircle(spawn.x, spawn.z, 2.2, "#38bdf8", isFps ? 0.08 : 0.28, Number.isFinite(spawn.y) ? Number(spawn.y) - FPS_STANDING_EYE_HEIGHT : undefined));
 visibleTeamSpawns.red.forEach((spawn) => addCircle(spawn.x, spawn.z, 2.2, "#fb7185", isFps ? 0.08 : 0.28, Number.isFinite(spawn.y) ? Number(spawn.y) - FPS_STANDING_EYE_HEIGHT : undefined));
-if (!isFps) FREE_FOR_ALL_SPAWNS.forEach((spawn) => addCircle(spawn.x, spawn.z, 1.3, "#ffffff", 0.18));
+if (!isFps) (arenaMapId === "lunar_relay" ? Object.values(getTeamSpawnsForMap(arenaMapId)).flat() : FREE_FOR_ALL_SPAWNS).forEach((spawn) => addCircle(spawn.x, spawn.z, 1.3, "#ffffff", 0.18, arenaMapId === "lunar_relay" ? 0 : undefined));
 
 // Desert Citadel keeps all visible geometry traceable to its authored map
 // manifest. Its edge rocks are intentionally omitted here; the other maps
@@ -1064,11 +1065,12 @@ if (shouldScatterEdgeRocks(qualityConfig.detail, arenaMapId)) {
   scene.add(rockInstances);
 }
 
-addCombatMapScenery(scene, arenaMapId, arenaBounds, qualityConfig.detail, addDecorativeMesh);
+if (arenaMapId === "lunar_relay") addLunarRelayArtPass(scene, addDecorativeMesh, qualityConfig.detail);
+else addCombatMapScenery(scene, arenaMapId, arenaBounds, qualityConfig.detail, addDecorativeMesh);
 if (isIronJunction) addIronJunctionArtPass(scene, addDecorativeMesh, qualityConfig.detail, isFps);
 const templeRunoffArt = isTempleRunoff ? addTempleRunoffArtPass(scene, addDecorativeMesh, qualityConfig.detail, isFps) : null;
 const desertCitadelArt = isDesertCitadel ? addDesertCitadelArtPass(scene, addDecorativeMesh, qualityConfig.detail, isFps) : null;
-const desertCitadelVfx = isIronJunction || isTempleRunoff ? null : addDesertCitadelVfx(scene, qualityConfig.detail);
+const desertCitadelVfx = isDesertCitadel ? addDesertCitadelVfx(scene, qualityConfig.detail) : null;
 const replaceableVisuals = isIronJunction
   ? IRON_JUNCTION_IMPORTED_ASSETS.filter(asset => qualityConfig.detail >= asset.minimumDetail).flatMap(asset => [
     ...(asset.fallbackBlockIds ?? []).flatMap(id => [`modular_${id}`, `detail_${id}`]),

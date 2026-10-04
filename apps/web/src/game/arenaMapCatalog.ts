@@ -22,6 +22,11 @@ export const ARENA_MAPS: readonly ArenaMapCatalogItem[] = [
     id: "temple_runoff",
     title: "Temple Runoff",
     districts: ["Blue Temple Complex · western team staging", "Flooded Ceremonial Canal · continuous lower lane"]
+  },
+  {
+    id: "lunar_relay",
+    title: "Lunar Relay",
+    districts: ["Observatory · sheltered north route", "Solar Court · cargo flank", "Relay Bridge · upper crossing"]
   }
 ];
 
