@@ -32,6 +32,7 @@ export type Team = "blue" | "red";
 export * from "./protocol/index.js";
 export * from "./athleticsRace.js";
 export * from "./athleticsModes.js";
+export * from "./zeusDaruma.js";
 export * from "./speaking.js";
 export * from "./speakingLibraryRegistry.js";
 export * from "./speakingCoreLibrary.js";
@@ -593,6 +594,7 @@ export interface SessionSettings {
   gameMode: GameMode;
   /** Selected sub-mode when gameMode is Athletics. Legacy rooms resolve to Classic. */
   athleticsMode?: AthleticsMode;
+  athleticsZeusAudio?: "everyone" | "teacher";
   athleticsCourseId?: AthleticsCourseId;
   /** Athletics only. Missing legacy values resolve to one lap. */
   athleticsCourseLaps?: number;
@@ -986,8 +988,9 @@ export const sanitizeSessionSettings = (input: Partial<SessionSettings> = {}): S
   gameMode,
   ...(gameMode === "athletics" ? {
     athleticsMode: sanitizeAthleticsMode(input.athleticsMode),
+    athleticsZeusAudio: input.athleticsZeusAudio === "teacher" ? "teacher" as const : "everyone" as const,
     athleticsCourseId: input.athleticsCourseId === "stadium_loop" ? input.athleticsCourseId : "stadium_loop" as const,
-    athleticsCourseLaps: sanitizeAthleticsCourseLaps(input.athleticsCourseLaps)
+    athleticsCourseLaps: sanitizeAthleticsMode(input.athleticsMode) === "zeus" ? 1 : sanitizeAthleticsCourseLaps(input.athleticsCourseLaps)
   } : {}),
   botDifficulty: sanitizeBotDifficulty(input.botDifficulty),
   roundCount: clampNumber(input.roundCount, DEFAULT_SESSION_SETTINGS.roundCount, 1, 30),

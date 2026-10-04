@@ -112,6 +112,9 @@ export interface AthleticsPlayerState {
   staggerUntil?: string;
   zeusFrozen?: boolean;
   zeusFrozenUntil?: string;
+  zeusRestartUntil?: string;
+  zeusStrikes?: number;
+  zeusRedAnchor?: { x: number; z: number; cycleIndex: number; confirmed?: boolean };
   lastChaosHazardId?: string;
 }
 

@@ -37,20 +37,29 @@ test("Chaos renders a warning before its hazard, then removes both at expiry", (
   assert.equal(scene.children.length, 0);
 });
 
-test("Zeus warning stays at its actual radius while its countdown closes", () => {
+test("Zeus turns his visible sky head with the shared signal and disappears when defeated", () => {
   const scene = new THREE.Scene();
-  const visuals = createAthleticsModeVisuals({ scene, mode: "zeus" });
-  const session = { athletics: { zeus: { phase: "charging", currentAttack: {
-    warningPositions: { runner: { x: 5, y: 24.21, z: 10 } }, strikeRadius: 3.4,
-    warningStartedAt: new Date(1000).toISOString(), strikeAt: new Date(3000).toISOString()
-  } } } } as GameSession;
-  visuals.update(session, 2000);
-  const warning = scene.getObjectByName("athletics-zeus-warning-0")!;
-  assert.ok(Math.abs(warning.position.y - 20.22) < 0.001);
-  assert.equal(warning.children[0]!.scale.x, 3.4);
-  assert.equal(warning.children[1]!.scale.x, 1.7);
-  visuals.update(session, 2500);
-  assert.equal(warning.children[0]!.scale.x, 3.4);
-  assert.equal(warning.children[1]!.scale.x, .85);
+  const camera = new THREE.PerspectiveCamera(72, 1.6, 0.1, 620);
+  const visuals = createAthleticsModeVisuals({ scene, mode: "zeus", camera });
+  const green = { athletics: { zeus: { phase: "green", phaseStartedAt: new Date(1000).toISOString(), phaseEndsAt: new Date(7000).toISOString() } } } as GameSession;
+  const head = scene.getObjectByName("athletics-zeus-head")!;
+  const sky = scene.getObjectByName("athletics-zeus-sky")!;
+  visuals.update(green, 2000);
+  assert.equal(head.rotation.y, Math.PI);
+  assert.equal(sky.userData.light, "green");
+  visuals.update(green, 7500);
+  assert.equal(head.rotation.y, 0, "the head turns at the chant deadline, even before the next snapshot");
+  assert.equal(sky.userData.light, "red");
+  camera.position.set(80, 50, -90);
+  camera.rotation.y = Math.PI / 2;
+  visuals.update(green, 7501);
+  const projection = sky.position.clone().project(camera);
+  assert.ok(projection.x > 0 && projection.x < 1, "course bends keep the head visible beside the HUD");
+  assert.ok(projection.y > 0 && projection.y < 1, "head stays in the sky above the course");
+  green.athletics!.zeus!.phase = "defeated";
+  visuals.update(green, 8000);
+  visuals.update(green, 9200);
+  assert.equal(sky.visible, false);
   visuals.dispose();
+  assert.equal(scene.children.length, 0);
 });

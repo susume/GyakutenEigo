@@ -1,3 +1,4 @@
+import { getZeusLight } from "@quizstrike/shared";
 import { useSiteTranslation } from "../ui/siteTranslation";
 import { seededRandom, makeCanvasTexture, makeLabelTexture } from "./arenaTextures";
 import { useCallback, useEffect, useMemo, useRef, useState, type PointerEvent as ReactPointerEvent } from "react";
@@ -122,6 +123,9 @@ type ArenaLivePosition = {
   zoomLevel?: number;
   crouching?: boolean;
   jumping?: boolean;
+  movementIntent?: boolean;
+  jumpStarted?: boolean;
+  zeusPhase?: "green" | "red" | "waiting" | "defeated";
 };
 
 type ArenaRendererRuntime = {
@@ -235,6 +239,8 @@ export default function ArenaPreview({
   const joystickPointerRef = useRef<number | null>(null);
   const joystickElementRef = useRef<HTMLButtonElement | null>(null);
   const syncPlayersRef = useRef<(session?: GameSession, currentPlayer?: PlayerSession) => void>(() => undefined);
+  const zeusClockOffsetRef = useRef(0);
+  const previousMovementEpochRef = useRef<number | undefined>(undefined);
   const roundResetRef = useRef<() => void>(() => undefined);
   const rendererRuntimeRef = useRef<ArenaRendererRuntime | null>(null);
   const rendererDiagnosticsRef = useRef<ArenaRendererDiagnosticsHandle | null>(null);
@@ -552,7 +558,7 @@ export default function ArenaPreview({
       renderer.domElement.dataset.assetsActive = String(progress.active);
     });
     const athleticsModeVisuals = isAthleticsMode
-      ? createAthleticsModeVisuals({ scene, mode: athleticsMode })
+      ? createAthleticsModeVisuals({ scene, mode: athleticsMode, camera })
       : null;
     const onWebglContextLost = (event: Event) => {
       event.preventDefault();
@@ -1221,6 +1227,8 @@ export default function ArenaPreview({
       let lastDebugStatsAt = 0;
       let isCrouching = false;
       let isJumping = false;
+      let movementIntent = false;
+      let jumpStarted = false;
       let previousFloorEyeHeight = FPS_STANDING_EYE_HEIGHT;
       let performanceWindowAt = performance.now();
       let lastSentPosition = {
@@ -1259,6 +1267,9 @@ export default function ArenaPreview({
         wasGrounded = true;
         isCrouching = false;
         isJumping = false;
+        movementIntent = false;
+        jumpStarted = false;
+        touchMoveRef.current = { forward: 0, right: 0 };
         previousFloorEyeHeight = FPS_STANDING_EYE_HEIGHT;
         previousControlsDisabled = controlsDisabledRef.current;
         lastMoveEmitAt = 0;
@@ -1325,7 +1336,8 @@ export default function ArenaPreview({
         const nextPosition = {
           ...localToServerPosition(playerPosition, yaw),
           crouching: isCrouching,
-          jumping: isJumping
+          jumping: isJumping,
+          ...(athleticsMode === "zeus" ? { movementIntent, jumpStarted, zeusPhase: getZeusLight(sessionRef.current?.athletics?.zeus, Date.now() + zeusClockOffsetRef.current) } : {})
         };
         const moved = Math.hypot(nextPosition.x - lastSentPosition.x, nextPosition.z - lastSentPosition.z);
         const movedVertically = Math.abs(Number(nextPosition.y) - Number(lastSentPosition.y));
@@ -1335,11 +1347,13 @@ export default function ArenaPreview({
         // Continue confirming a stationary Athletics landing so server-side
         // movement clamping can settle onto it or complete fall recovery.
         const athleticsHeartbeat = isAthleticsMode && currentTime - lastMoveEmitAt >= 750;
-        if (moved < 0.3 && movedVertically < 0.12 && turned < 0.08 && !postureChanged && !athleticsHeartbeat) return;
+        const zeusInputActive = athleticsMode === "zeus" && (movementIntent || jumpStarted);
+        if (moved < 0.3 && movedVertically < 0.12 && turned < 0.08 && !postureChanged && !athleticsHeartbeat && !zeusInputActive) return;
         lastMoveEmitAt = currentTime;
         lastSentPosition = nextPosition;
         if (controlsDisabledRef.current || inputPausedRef.current) return;
         onMoveRef.current?.(nextPosition);
+        jumpStarted = false;
       };
 
       const canOccupy = (next: THREE.Vector3, floorEyeHeight: number) => {
@@ -1388,7 +1402,7 @@ export default function ArenaPreview({
         }
         syncFirstPersonLoadout();
         const pausedAt = sessionRef.current?.controlState === "teacher_paused" ? sessionRef.current.teacherPausedAt : undefined;
-        const authoritativeNowMs = pausedAt ? Date.parse(pausedAt) : Date.now();
+        const authoritativeNowMs = pausedAt ? Date.parse(pausedAt) : Date.now() + (athleticsMode === "zeus" ? zeusClockOffsetRef.current : 0);
         performanceCapture.frame(currentTime);
         // Put target/body previews downrange on the aim line. The former close,
         // side-offset point made them read like HUD clutter beside the weapon.
@@ -1400,7 +1414,6 @@ export default function ArenaPreview({
         vfxPool.setViewPosition(playerPosition);
         vfxPool.update(currentTime);
         const platformCarry = athleticsUpdate?.(elapsed, playerPosition, wasGrounded);
-        athleticsModeVisuals?.update(sessionRef.current, authoritativeNowMs);
         if (isAthleticsMode && platformCarry && !inputPausedRef.current && !controlsDisabledRef.current) {
           playerPosition.x += platformCarry.x;
           playerPosition.y += platformCarry.y;
@@ -1534,6 +1547,7 @@ export default function ArenaPreview({
             nowMs: authoritativeNowMs
           });
           verticalVelocity = FPS_JUMP_VELOCITY * jumpHeightScale;
+          jumpStarted = true;
           jumpQueuedAt = 0;
           emitArenaAnimation({ kind: "jump", playerId: currentPlayerRef.current?.id ?? "", team: currentPlayerRef.current?.team ?? "blue" });
           gameAudio.play("jump");
@@ -1591,12 +1605,14 @@ export default function ArenaPreview({
         if (keys.has("KeyS")) movementVector.sub(forwardVector);
         if (keys.has("KeyD")) movementVector.add(rightVector);
         if (keys.has("KeyA")) movementVector.sub(rightVector);
-        movementVector.addScaledVector(forwardVector, touchMove.forward);
-        movementVector.addScaledVector(rightVector, touchMove.right);
+        const touchDeadZone = athleticsMode === "zeus" ? 0.12 : 0;
+        if (Math.abs(touchMove.forward) > touchDeadZone) movementVector.addScaledVector(forwardVector, touchMove.forward);
+        if (Math.abs(touchMove.right) > touchDeadZone) movementVector.addScaledVector(rightVector, touchMove.right);
         if (gamepadMove.forward > GAMEPAD_DEAD_ZONE) movementVector.add(forwardVector);
         if (gamepadMove.forward < -GAMEPAD_DEAD_ZONE) movementVector.sub(forwardVector);
         if (gamepadMove.right > GAMEPAD_DEAD_ZONE) movementVector.add(rightVector);
         if (gamepadMove.right < -GAMEPAD_DEAD_ZONE) movementVector.sub(rightVector);
+        movementIntent = movementVector.lengthSq() > 0.01 && !inputPausedRef.current && !controlsDisabledRef.current;
         if (movementVector.lengthSq() > 0 && !isStationaryAthleticsHunter()) {
           const movementSurface: "metal" | "water" | "stone" | "sand" = isAthleticsMode ? "stone" : isIronJunction || arenaMapId === "lunar_relay" ? "metal" : isTempleRunoff ? (surfaceGroundY < 1 ? "water" : "stone") : "sand";
           if (wasGrounded && moveSpeed > 0) {
@@ -1701,6 +1717,8 @@ export default function ArenaPreview({
           camera.updateProjectionMatrix();
         }
         updateCamera(delta);
+        athleticsModeVisuals?.update(sessionRef.current, authoritativeNowMs);
+        if (athleticsMode === "zeus") renderer.domElement.dataset.zeusLight = getZeusLight(sessionRef.current?.athletics?.zeus, authoritativeNowMs);
         if (currentTime - lastMiniMapAt > 220) {
           lastMiniMapAt = currentTime;
           setMiniMapPosition({ ...localToServerPosition(playerPosition, yaw), crouching: isCrouching });
@@ -1852,7 +1870,6 @@ export default function ArenaPreview({
       vfxPool.setViewPosition(camera.position);
       vfxPool.update(currentTime);
       athleticsUpdate?.(elapsed);
-      athleticsModeVisuals?.update(sessionRef.current, Date.now());
       desertCitadelVfx?.update(elapsed);
       templeRunoffArt?.update(elapsed);
       if (currentTime - performanceWindowAt >= 1000) {
@@ -1871,6 +1888,7 @@ export default function ArenaPreview({
       camera.position.x = Math.sin(elapsed * 0.04) * 24;
       camera.position.z = (arenaMapId === "lunar_relay" ? 285 : 246) + Math.cos(elapsed * 0.04) * 16;
       camera.lookAt(0, arenaMapId === "lunar_relay" ? 12 : 0, arenaMapId === "lunar_relay" ? -35 : -6);
+      athleticsModeVisuals?.update(sessionRef.current, sessionRef.current?.controlState === "teacher_paused" ? Date.parse(sessionRef.current.teacherPausedAt ?? "") : Date.now() + (athleticsMode === "zeus" ? zeusClockOffsetRef.current : 0));
       billboardSprites.forEach((sprite) => sprite.lookAt(camera.position));
       characterManager.update(delta, elapsed, camera);
       if (debugOverlay && currentTime - lastDebugStatsAt > 500) {
@@ -1941,6 +1959,17 @@ export default function ArenaPreview({
       renderer.domElement.remove();
     };
   }, [sceneSessionId, view, debugOverlay, quality, arenaMapId, arenaMap, environmentKit, arenaBounds, teamBaseZones, captureZones, searchRetrieveItems, searchRetrieveDeliveryZones, isIronJunction, isDesertCitadel, isTempleRunoff, isAthleticsMode, athleticsMode, localToServerPosition, serverToLocalX, serverToLocalZ, movementLimitX, movementLimitZ, session?.settings.gameMode]);
+
+  useEffect(() => {
+    const serverMs = Date.parse(session?.serverTime ?? "");
+    zeusClockOffsetRef.current = Number.isFinite(serverMs) ? serverMs - Date.now() : 0;
+  }, [session?.serverTime]);
+
+  useEffect(() => {
+    const epoch = currentPlayer?.athletics?.movementEpoch;
+    if (athleticsMode === "zeus" && epoch !== undefined && previousMovementEpochRef.current !== undefined && epoch !== previousMovementEpochRef.current) roundResetRef.current();
+    previousMovementEpochRef.current = epoch;
+  }, [currentPlayer?.athletics?.movementEpoch, athleticsMode]);
 
   // Auto quality changes only adjust renderer settings in place. Manual quality,
   // map, mode, and view changes remain intentional scene rebuild boundaries.

@@ -1,3 +1,4 @@
+import { useZeusDaruma } from "../../../game/useZeusDaruma";
 import { useSiteTranslation } from "../../../ui/siteTranslation";
 import "../../speaking/speaking-auth.css";
 import { lazy, Suspense, useCallback, useEffect, useMemo, useRef, useState } from "react";
@@ -336,10 +337,13 @@ function TeacherDashboard({ teacher, onLogout, initialPath, onNavigate }: { teac
     return () => gameAudio.setMuted(false);
   }, [gamePreferences.soundEnabled, gamePreferences.sfxVolume, gamePreferences.musicVolume]);
 
+  useZeusDaruma(selectedSession, tab === "sessions" && selectedSession?.settings.gameMode === "athletics" && selectedSession.settings.athleticsMode === "zeus", selectedSession?.settings.athleticsZeusAudio === "teacher");
+
   useEffect(() => {
     const syncBgm = () => {
       gameAudio.setBgmActive(Boolean(
         (tab === "settings" || (tab === "sessions" && selectedSession?.status === "active"))
+        && !(selectedSession?.settings.gameMode === "athletics" && selectedSession.settings.athleticsMode === "zeus")
         && selectedSession?.controlState !== "teacher_paused"
         && document.visibilityState === "visible"
       ));
@@ -350,7 +354,7 @@ function TeacherDashboard({ teacher, onLogout, initialPath, onNavigate }: { teac
       document.removeEventListener("visibilitychange", syncBgm);
       gameAudio.setBgmActive(false);
     };
-  }, [tab, selectedSession?.id, selectedSession?.status, selectedSession?.controlState]);
+  }, [tab, selectedSession?.id, selectedSession?.status, selectedSession?.controlState, selectedSession?.settings.gameMode, selectedSession?.settings.athleticsMode]);
 
   const refresh = useCallback(async () => {
     const requestId = ++dashboardRequest.current;
@@ -912,7 +916,7 @@ function SessionManager({
   const visibleNumberFields = sessionNumberFields.filter((field) => {
     if (settings.gameMode === "flag") return field.name !== "initialZombieCount";
     if (settings.gameMode === "zombie") return field.name !== "roundCount" && field.name !== "flagHoldSeconds";
-    if (settings.gameMode === "athletics") return field.name === "athleticsCourseLaps" || field.name === "roundDurationSeconds" || field.name === "maxPlayers";
+    if (settings.gameMode === "athletics") return (field.name === "athleticsCourseLaps" && selectedAthleticsMode !== "zeus") || field.name === "roundDurationSeconds" || field.name === "maxPlayers";
     return field.name !== "flagHoldSeconds" && field.name !== "initialZombieCount";
   });
 
@@ -1198,7 +1202,7 @@ function SessionManager({
                             className={`athletics-mode-choice athletics-mode-choice-${modeId}${selectedAthletics ? " selected" : ""}`}
                             aria-label={t("{value0}: {value1}", { value0: mode.label, value1: mode.description })}
                             aria-pressed={selectedAthletics}
-                            onClick={() => setSettings({ ...settings, athleticsMode: modeId })}
+                            onClick={() => setSettings({ ...settings, athleticsMode: modeId, ...(modeId === "zeus" ? { athleticsCourseLaps: 1 } : {}) })}
                           >
                             <span className="athletics-mode-choice-top"><strong>{t(mode.shortLabel)}</strong>{selectedAthletics && <Check size={16} aria-hidden="true" />}</span>
                             <small>{t(mode.description)}</small>
@@ -1217,15 +1221,22 @@ function SessionManager({
                 {settings.gameMode === "athletics" ? (
                   <div className="athletics-course-card">
                     <div className="athletics-course-card-heading">
-                      <div><span className="eyebrow">{t("Selected course")}</span><h4>{t(ATHLETICS_STADIUM_COURSE.title)}</h4><p>{t(ATHLETICS_STADIUM_COURSE.subtitle)}</p></div>
-                      <span className="athletics-course-badge">{ATHLETICS_STADIUM_COURSE.sections.length}{" "}{t("chapters ·")}{" "}{ATHLETICS_STADIUM_COURSE.checkpoints.length}{" "}{t("checkpoints ·")}{" "}{ATHLETICS_STADIUM_COURSE.shortcuts.length}{" "}{t("shortcuts")}</span>
+                      <div><span className="eyebrow">{t("Selected course")}</span><h4>{t(ATHLETICS_STADIUM_COURSE.title)}</h4><p>{t(selectedAthleticsMode === "zeus" ? "Climb six districts to Zeus at the summit." : ATHLETICS_STADIUM_COURSE.subtitle)}</p></div>
+                      <span className="athletics-course-badge">{selectedAthleticsMode === "zeus" ? 6 : ATHLETICS_STADIUM_COURSE.sections.length}{" "}{t("chapters ·")}{" "}{selectedAthleticsMode === "zeus" ? 6 : ATHLETICS_STADIUM_COURSE.checkpoints.length}{" "}{t("checkpoints ·")}{" "}{ATHLETICS_STADIUM_COURSE.shortcuts.length}{" "}{t("shortcuts")}</span>
                     </div>
                     <div className={`athletics-mode-brief athletics-mode-${selectedAthleticsMode}`}>
                       <div><span className="eyebrow">{t(selectedAthleticsModeConfig.label)}</span><strong>{t(selectedAthleticsModeConfig.description)}</strong></div>
                       <ul>{selectedAthleticsModeConfig.instructionLines.map((line) => <li key={line}>{line}</li>)}</ul>
                     </div>
+                    {selectedAthleticsMode === "zeus" && <label className="zeus-audio-choice">{t("Zeus voice plays on")}
+                      <select value={settings.athleticsZeusAudio ?? "everyone"} onChange={(event) => setSettings({ ...settings, athleticsZeusAudio: event.target.value as "everyone" | "teacher" })}>
+                        <option value="everyone">{t("Student devices")}</option>
+                        <option value="teacher">{t("Teacher speakers only")}</option>
+                      </select>
+                      <small>{t("GO and STOP remain visible on every device.")}</small>
+                    </label>}
                     <div className="athletics-course-sections" aria-label={t("Skyline Adventure Park chapters")}>
-                      {ATHLETICS_STADIUM_COURSE.sections.map((section, index) => (
+                      {ATHLETICS_STADIUM_COURSE.sections.filter((_, index) => selectedAthleticsMode !== "zeus" || index < 6).map((section, index) => (
                         <div key={section.id} className={`athletics-course-section athletics-accent-${section.accent}`}>
                           <span>{String(index + 1).padStart(2, "0")}</span><strong>{t(section.label)}</strong><small>{t(section.description)}</small>
                         </div>
@@ -1580,7 +1591,7 @@ function SessionManager({
             {selectedSession.settings.gameMode === "athletics" && (selectedSession.settings.athleticsMode ?? selectedSession.athletics?.mode ?? "classic") !== "classic" && (
               <div className="athletics-teacher-monitor" aria-label={t("Athletics mode monitor")}>
                 <strong>{t(sessionGameModeLabel(selectedSession))}</strong>
-                {(selectedSession.settings.athleticsMode ?? selectedSession.athletics?.mode) === "zeus" && <span>{t("Phase:")}{" "}{selectedSession.athletics?.zeus?.phase ?? t("idle")}{" "}{t("· Attack")}{" "}{selectedSession.athletics?.zeus?.attackIndex ?? 0}</span>}
+                {(selectedSession.settings.athleticsMode ?? selectedSession.athletics?.mode) === "zeus" && <span>{t("Phase:")}{" "}{selectedSession.athletics?.zeus?.phase ?? t("idle")}{" "}{t("· Cycle")}{" "}{(selectedSession.athletics?.zeus?.cycleIndex ?? 0) + 1}</span>}
                 {(selectedSession.settings.athleticsMode ?? selectedSession.athletics?.mode) === "hunters-runners" && <span>{t("Round")}{" "}{selectedSession.athletics?.modeRound ?? 1}/{selectedSession.athletics?.modeRoundsTotal ?? 2} · {selectedSession.athletics?.hunterIds?.length ?? 0}{" "}{t("hunters ·")}{" "}{selectedSession.athletics?.runnerIds?.length ?? 0}{" "}{t("runners")}</span>}
                 {(selectedSession.settings.athleticsMode ?? selectedSession.athletics?.mode) === "chaos-climb" && <span>{t("Wave")}{" "}{selectedSession.athletics?.chaos?.waveIndex ?? 0} · {selectedSession.athletics?.chaos?.activeHazards.length ?? 0}{" "}{t("hazards active")}{selectedSession.athletics?.chaos?.currentEvent ? t(" · {value0}", { value0: selectedSession.athletics.chaos.currentEvent.label }) : ""}</span>}
               </div>

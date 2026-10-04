@@ -1,3 +1,4 @@
+import { getZeusCycle, startZeusGreen, getZeusLight, isZeusStopEnforced, ZEUS_STOP_GRACE_MS, ZEUS_RESTART_GUARD_MS, ZEUS_SUMMIT_CHECKPOINT_COUNT, ZEUS_SUMMIT_SURFACE_INDEX, ZEUS_SUMMIT_PROGRESS } from "@quizstrike/shared";
 import "dotenv/config";
 import compression from "compression";
 import cors from "cors";
@@ -209,12 +210,10 @@ import {
   getChaosHazardPosition,
   isCpuHunterThreatAhead,
   getHunterStationProgress,
-  getZeusAttackProfile,
   resolveChaosHazardImpact,
   resolveHunterQuizReward,
   resolveRunnerQuizReward,
   resolveZeusAnswer,
-  resolveZeusStrike,
   type AthleticsPlayerState,
   type AthleticsPhysicalSupport,
   type AthleticsRecoveryReason
@@ -224,7 +223,6 @@ import {
   createAthleticsModeRoundState,
   getAthleticsMode,
   getAthleticsModeIntro,
-  getZeusTargetPlan,
   isActiveChaosHazard,
   resolveHunterHitsForRound,
   type PendingHunterProjectile
@@ -1214,7 +1212,7 @@ const {
 
 const startAthleticsRace = (session: GameSession) => {
   const questionPoolSize = Math.max(1, getSessionQuestions(session).length);
-  const requiredLaps = session.settings.athleticsCourseLaps ?? 1;
+  const requiredLaps = session.settings.athleticsMode === "zeus" ? 1 : session.settings.athleticsCourseLaps ?? 1;
   const questionsPerLap = getAthleticsQuestionsPerLap(questionPoolSize, requiredLaps);
   const questionCount = getAthleticsTotalQuestionCount(questionPoolSize, requiredLaps);
   const modeState = createAthleticsModeRoundState({
@@ -1348,11 +1346,11 @@ const markAthleticsFinished = (session: GameSession, player: PlayerSession, nowM
     });
     finishSession(
       session,
-      `${player.nickname} completed the circuit and defeated Zeus.`,
+      `${player.nickname} reached the summit and defeated Zeus.`,
       makeAnnouncement(
         "game_over",
         "ZEUS HAS BEEN DEFEATED!",
-        `${player.nickname} completed the circuit first.`,
+        `${player.nickname} reached Zeus at the summit first.`,
         "Final standings and quiz results are ready.",
         GAME_OVER_ANNOUNCEMENT_MS
       )
@@ -1410,7 +1408,7 @@ const updateAthleticsRace = (session: GameSession, player: PlayerSession, nowMs:
     session.announcement = makeAnnouncement("round_start", "GO", "Jump to the next platform. Answer anytime to refill movement energy.", undefined, 2_000);
     // Let GO clear before the first telegraph; its full reaction window must
     // remain visible rather than run behind the opening announcement.
-    if (race.zeus) race.zeus.nextAttackAt = new Date(nowMs + 3_000).toISOString();
+    if (race.zeus) race.zeus = startZeusGreen(race.modeSeed ?? 0, 0, nowMs);
     if (race.chaos) race.chaos.nextWaveAt = new Date(nowMs + 3_000).toISOString();
     appendEvent(session, { type: "start", message: "Athletics Race is live." });
     broadcastSession(session);
@@ -1426,6 +1424,15 @@ const updateAthleticsRace = (session: GameSession, player: PlayerSession, nowMs:
     player.crouching === true ? ARENA_PLAYER_CROUCH_EYE_HEIGHT : ATHLETICS_PLAYER_EYE_HEIGHT,
     nowMs
   );
+  if (race.mode === "zeus" && !player.jumping && athletics.checkpointIndex >= ZEUS_SUMMIT_CHECKPOINT_COUNT - 1
+    && isAthleticsCheckpointOccupied(support, ZEUS_SUMMIT_SURFACE_INDEX)) {
+    athletics.checkpointIndex = ZEUS_SUMMIT_CHECKPOINT_COUNT;
+    athletics.routeProgress = ZEUS_SUMMIT_PROGRESS;
+    athletics.completedLaps = 1;
+    athletics.lapSplitsMs.push(Math.max(0, nowMs - Date.parse(race.startAt)));
+    if (markAthleticsFinished(session, player, nowMs)) { broadcastPlayerState(session, [player]); broadcastSession(session); }
+    return;
+  }
   athletics.currentSupportedSurfaceIndex = support.kind === "main_surface" ? support.surfaceIndex : undefined;
   athletics.currentSupportKind = support.kind;
   if (isAthleticsPlayableSupport(support)) athletics.lastSupportedAtMs = nowMs;
@@ -1493,142 +1500,64 @@ const emitAthleticsModeEvent = (session: GameSession, eventName: string, payload
 
 const advanceZeusMode = (session: GameSession, nowMs: number) => {
   const race = session.athletics;
-  const zeus = race?.zeus;
-  if (!race || !zeus || race.status !== "running") return false;
-  let changed = false;
-
-  for (const player of session.players) {
-    const athletics = ensureAthleticsPlayerState(session, player);
-    if (!athletics?.zeusFrozen || !athletics.zeusFrozenUntil) continue;
-    if (nowMs < Date.parse(athletics.zeusFrozenUntil)) continue;
-    athletics.zeusFrozen = false;
-    athletics.zeusFrozenUntil = undefined;
-    changed = true;
-    emitToPlayers(session, [player.id], "zeus_freeze_break", {
-      playerId: player.id,
-      automatic: true,
-      message: "The charge faded. Keep climbing and watch for the next warning."
-    });
-  }
-
-  const attack = zeus.currentAttack;
-  if (attack) {
-    const strikeAt = Date.parse(attack.strikeAt);
-    if (!Number.isFinite(strikeAt) || nowMs < strikeAt) return changed;
-    for (const targetId of attack.targetIds) {
-      const target = session.players.find((player) => player.id === targetId);
-      if (!target) continue;
-      const targetAthletics = ensureAthleticsPlayerState(session, target);
-      const warningPosition = attack.warningPositions[target.id];
-      if (!targetAthletics || !warningPosition || targetAthletics.status !== "racing" || targetAthletics.recoveryActive) continue;
-      const strike = resolveZeusStrike({
-        targetPosition: { x: target.x ?? warningPosition.x, y: target.y, z: target.z ?? warningPosition.z },
-        warningPosition,
-        radius: attack.strikeRadius
-      });
-      if (strike.hit) {
-        targetAthletics.zeusFrozen = true;
-        targetAthletics.zeusFrozenUntil = new Date(nowMs + 7_500).toISOString();
-        const question = issueNextQuestion(session, target.id);
-        emitToPlayers(session, [target.id], "zeus_strike", {
-          playerId: target.id,
-          attackId: attack.id,
-          hit: true,
-          position: warningPosition,
-          frozenUntil: targetAthletics.zeusFrozenUntil,
-          question,
-          message: "Lightning caught you! Answer correctly to break the freeze."
-        });
-      } else {
-        emitToPlayers(session, [target.id], "zeus_strike", {
-          playerId: target.id,
-          attackId: attack.id,
-          hit: false,
-          position: warningPosition,
-          message: "You dodged the lightning!"
-        });
-      }
-      appendEvent(session, {
-        type: "timer",
-        message: strike.hit ? `${target.nickname} was caught by Zeus's lightning.` : `${target.nickname} dodged Zeus's lightning.`,
-        playerId: target.id,
-        team: target.team
-      });
-      broadcastPlayerState(session, [target]);
+  if (!race?.zeus || race.status !== "running") return false;
+  const zeus = race.zeus;
+  const endsAt = Date.parse(zeus.phaseEndsAt ?? "");
+  if (zeus.phase === "green" && nowMs < endsAt) return false;
+  if (zeus.phase === "red" && nowMs < endsAt) return false;
+  if (zeus.phase === "defeated") return false;
+  if (zeus.phase === "green") {
+    const cycle = getZeusCycle(race.modeSeed ?? 0, zeus.cycleIndex ?? 0);
+    zeus.phase = "red";
+    zeus.phaseStartedAt = new Date(endsAt).toISOString();
+    zeus.phaseEndsAt = new Date(endsAt + cycle.redMs).toISOString();
+    zeus.graceEndsAt = new Date(endsAt + ZEUS_STOP_GRACE_MS).toISOString();
+    for (const player of session.players) {
+      if (player.athletics) player.athletics.zeusRedAnchor = { x: player.x ?? 0, z: player.z ?? 0, cycleIndex: zeus.cycleIndex ?? 0 };
     }
-    zeus.currentAttack = undefined;
-    zeus.phase = attack.tier === "rage" ? "rage" : "idle";
-    const profile = getZeusAttackProfile(
-      Math.max(...session.players.map((player) => player.athletics?.routeProgress ?? 0), 0),
-      Math.max(1, session.players.length)
-    );
-    zeus.nextAttackAt = new Date(nowMs + profile.cooldownMs).toISOString();
-    changed = true;
-    emitAthleticsModeEvent(session, "zeus_strike_complete", {
-      attackId: attack.id,
-      tier: attack.tier,
-      nextAttackAt: zeus.nextAttackAt
-    });
-    broadcastSession(session);
-    return changed;
+  } else {
+    // Start from the actual tick after a stall: always give a complete chant.
+    race.zeus = startZeusGreen(race.modeSeed ?? 0, (zeus.cycleIndex ?? -1) + 1, nowMs);
+    for (const player of session.players) if (player.athletics) {
+      player.athletics.zeusRedAnchor = undefined;
+      player.athletics.zeusFrozen = false;
+      player.athletics.zeusFrozenUntil = undefined;
+    }
   }
-
-  if (zeus.nextAttackAt && nowMs < Date.parse(zeus.nextAttackAt)) return changed;
-  const eligible = session.players
-    .map((player) => {
-      const athletics = ensureAthleticsPlayerState(session, player);
-      return {
-        id: player.id,
-        routeProgress: athletics?.routeProgress ?? 0,
-        x: player.x ?? 0,
-        y: player.y ?? ATHLETICS_PLAYER_EYE_HEIGHT,
-        z: player.z ?? 0,
-        eligible: Boolean(athletics && athletics.status === "racing" && !athletics.recoveryActive && !athletics.zeusFrozen)
-      };
-    });
-  if (eligible.every((candidate) => candidate.eligible === false)) return changed;
-  const highestProgress = Math.max(...eligible.map((candidate) => candidate.routeProgress), 0);
-  const plan = getZeusTargetPlan({
-    candidates: eligible,
-    attackIndex: zeus.attackIndex,
-    recentTargetIds: zeus.recentTargetIds,
-    highestProgress
-  });
-  if (plan.targets.length === 0) return changed;
-  const warningStartedAt = new Date(nowMs).toISOString();
-  const strikeAt = new Date(nowMs + plan.profile.warningDurationMs).toISOString();
-  const attackId = `${session.id}:zeus:${zeus.attackIndex}`;
-  zeus.currentAttack = {
-    id: attackId,
-    tier: plan.profile.tier,
-    targetIds: plan.targets.map((target) => target.id),
-    warningPositions: plan.warningPositions,
-    warningStartedAt,
-    strikeAt,
-    strikeRadius: plan.profile.strikeRadius,
-    shockwave: plan.profile.shockwave
-  };
-  zeus.attackIndex += 1;
-  zeus.phase = "charging";
-  zeus.recentTargetIds = [
-    ...plan.targets.map((target) => target.id),
-    ...zeus.recentTargetIds
-  ].filter((targetId, index, list) => list.indexOf(targetId) === index).slice(0, 6);
-  zeus.nextAttackAt = undefined;
-  emitAthleticsModeEvent(session, "zeus_warning", {
-    attackId,
-    tier: plan.profile.tier,
-    targetIds: zeus.currentAttack.targetIds,
-    warningPositions: zeus.currentAttack.warningPositions,
-    warningStartedAt,
-    strikeAt,
-    warningDurationMs: plan.profile.warningDurationMs,
-    strikeRadius: plan.profile.strikeRadius,
-    shockwave: plan.profile.shockwave
-  });
-  // Routine attacks use world telegraphs and the compact runner HUD.
+  emitAthleticsModeEvent(session, "zeus_light", { ...race.zeus });
   broadcastSession(session);
   return true;
+};
+
+const restartZeusRunner = (session: GameSession, player: PlayerSession, nowMs: number) => {
+  const athletics = ensureAthleticsPlayerState(session, player)!;
+  const struckPosition = { x: player.x ?? 0, y: player.y ?? ATHLETICS_PLAYER_EYE_HEIGHT, z: player.z ?? 0 };
+  const spawn = getAthleticsStartPosition(athletics.laneIndex ?? 0, Math.max(1, session.players.length));
+  Object.assign(player, spawn, { jumping: false, crouching: false, isAlive: true });
+  Object.assign(athletics, {
+    checkpointIndex: 0, lastSafeCheckpointIndex: 0, routeProgress: 0,
+    lastSafeSurfaceIndex: 0, currentSupportedSurfaceIndex: 0, currentSupportKind: "main_surface",
+    lastSupportedAtMs: nowMs, checkpointSplitsMs: [], completedLaps: 0,
+    recoveryActive: false, recoverySettleUntil: new Date(nowMs + ZEUS_RESTART_GUARD_MS).toISOString(),
+    zeusRestartUntil: new Date(Math.max(nowMs + ZEUS_RESTART_GUARD_MS, Date.parse(session.athletics?.zeus?.phaseEndsAt ?? "") || 0)).toISOString(),
+    zeusStrikes: (athletics.zeusStrikes ?? 0) + 1,
+    movementEpoch: (athletics.movementEpoch ?? 0) + 1,
+    lastAcceptedMovementSequence: undefined, zeusRedAnchor: undefined,
+    zeusFrozen: false, zeusFrozenUntil: undefined
+  });
+  playerMoveTimestamps.set(player.id, nowMs);
+  playerPositionHistory.clear(player.id);
+  playerPositionHistory.record(player.id, spawn, nowMs);
+  const zeus = session.athletics?.zeus;
+  if (zeus) zeus.lastStrikes = [...(zeus.lastStrikes ?? []).filter((strike) => nowMs - Date.parse(strike.at) < 600), { playerId: player.id, position: struckPosition, at: new Date(nowMs).toISOString() }].slice(-8);
+  emitAthleticsModeEvent(session, "zeus_strike", {
+    playerId: player.id, hit: true, position: struckPosition, spawn,
+    movementEpoch: athletics.movementEpoch, restartUntil: athletics.zeusRestartUntil,
+    message: "Zeus saw you move! Back to the start."
+  });
+  broadcastPlayerState(session, [player]);
+  broadcastSession(session);
+  return spawn;
 };
 
 const applyChaosImpact = (session: GameSession, player: PlayerSession, hazard: AthleticsHazardDefinition, hazardPosition: { x: number; y: number; z: number }, nowMs: number) => {
@@ -2173,6 +2102,9 @@ const applyAuthoritativePosition = (
     jumping?: boolean;
     movementSequence?: number;
     movementEpoch?: number;
+    movementIntent?: boolean;
+    jumpStarted?: boolean;
+    zeusPhase?: string;
   },
   nowMs = Date.now()
 ) => {
@@ -2229,6 +2161,7 @@ const applyAuthoritativePosition = (
     athletics.status !== "racing"
     || athletics.recoveryActive
     || athletics.zeusFrozen
+    || Boolean(athletics.zeusRestartUntil && nowMs < Date.parse(athletics.zeusRestartUntil))
     || Boolean(athletics.lapTransitionUntil && nowMs < Date.parse(athletics.lapTransitionUntil))
     || (athletics.respawnPenaltyUntil && nowMs < Date.parse(athletics.respawnPenaltyUntil))
     || (athletics.wrongAnswerPenaltyUntil && nowMs < Date.parse(athletics.wrongAnswerPenaltyUntil))
@@ -2238,6 +2171,29 @@ const applyAuthoritativePosition = (
     playerMoveTimestamps.set(player.id, nowMs);
     player.facing = requestedFacing;
     return { ...currentPosition, facing: requestedFacing };
+  }
+  if (isAthletics && athletics && session.athletics?.mode === "zeus") {
+    advanceZeusMode(session, nowMs);
+    const zeus = session.athletics.zeus;
+    const cycleIndex = zeus?.cycleIndex ?? 0;
+    if (getZeusLight(zeus, nowMs) === "red") {
+      // Packets sampled before STOP may arrive afterwards. Reject their
+      // displacement without punishing the student for network delay.
+      if (requested.zeusPhase === "green") return { ...currentPosition, facing: requestedFacing };
+      const support = getAthleticsPhysicalSupport(currentPosition, ATHLETICS_STADIUM_COURSE, requestedEyeHeight, nowMs);
+      const carried = support.kind === "moving_platform";
+      const anchor = athletics.zeusRedAnchor;
+      const drift = anchor?.cycleIndex === cycleIndex ? Math.hypot(requestedX - anchor.x, requestedZ - anchor.z) : 0;
+      const newJump = requested.jumpStarted === true || (requested.jumpStarted === undefined && requested.jumping === true && player.jumping !== true);
+      if (isZeusStopEnforced(zeus, nowMs) && (requested.movementIntent === true || newJump || (anchor?.confirmed && !carried && drift > 0.45))) {
+        return restartZeusRunner(session, player, nowMs);
+      }
+      if (!anchor?.confirmed || anchor.cycleIndex !== cycleIndex || !isZeusStopEnforced(zeus, nowMs) || carried) {
+        // Establish the actual stopped position on the first red packet. A
+        // late green packet can otherwise leave the server behind the client.
+        athletics.zeusRedAnchor = { x: requestedX, z: requestedZ, cycleIndex, confirmed: true };
+      }
+    }
   }
   if (isStationaryAthleticsHunter && athletics) {
     // Hunters defend authored stations rather than standing on the runner
@@ -2533,6 +2489,7 @@ const advanceAthleticsBot = (session: GameSession, bot: PlayerSession, index: nu
   const athletics = ensureAthleticsPlayerState(session, bot, index);
   if (!race || !athletics || race.status !== "running" || athletics.status !== "racing") return false;
   const mode = getAthleticsMode(session.settings.athleticsMode ?? race.mode);
+  if (mode === "zeus" && getZeusLight(race.zeus, nowMs) === "red") return false;
   if (athletics.recoveryActive || (athletics.zeusFrozen && mode === "zeus") || (athletics.staggerUntil && nowMs < Date.parse(athletics.staggerUntil))) return false;
   if (mode === "hunters-runners" && athletics.role === "hunter") {
     const hunterCount = Math.max(1, race.hunterIds?.length ?? 1);

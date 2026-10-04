@@ -1,4 +1,4 @@
-import { isTeacherPaused, type GameSession } from "@quizstrike/shared";
+import { isTeacherPaused, ZEUS_STOP_GRACE_MS, type GameSession } from "@quizstrike/shared";
 
 export type TeacherPauseResult =
   | { ok: true; changed: boolean; pausedAt?: string; pausedDurationMs?: number }
@@ -35,6 +35,10 @@ export const resumeSessionForTeacher = (session: GameSession, nowMs = Date.now()
     const race = session.athletics;
     race.startAt = shiftIso(race.startAt, pausedDurationMs)!;
     if (race.zeus) {
+      race.zeus.phaseStartedAt = shiftIso(race.zeus.phaseStartedAt, pausedDurationMs);
+      race.zeus.phaseEndsAt = shiftIso(race.zeus.phaseEndsAt, pausedDurationMs);
+      race.zeus.graceEndsAt = shiftIso(race.zeus.graceEndsAt, pausedDurationMs);
+      if (race.zeus.phase === "red") race.zeus.graceEndsAt = new Date(Math.max(nowMs + ZEUS_STOP_GRACE_MS, Date.parse(race.zeus.graceEndsAt ?? "") || 0)).toISOString();
       race.zeus.nextAttackAt = shiftIso(race.zeus.nextAttackAt, pausedDurationMs);
       if (race.zeus.currentAttack) {
         race.zeus.currentAttack.warningStartedAt = shiftIso(race.zeus.currentAttack.warningStartedAt, pausedDurationMs)!;
@@ -55,7 +59,7 @@ export const resumeSessionForTeacher = (session: GameSession, nowMs = Date.now()
     for (const player of session.players) {
       const athletics = player.athletics;
       if (!athletics) continue;
-      for (const key of ["recoverySettleUntil", "lapTransitionUntil", "respawnPenaltyUntil", "wrongAnswerPenaltyUntil", "dashUntil", "jumpBoostUntil", "knockbackResistUntil", "staggerUntil", "zeusFrozenUntil"] as const) {
+      for (const key of ["recoverySettleUntil", "lapTransitionUntil", "respawnPenaltyUntil", "wrongAnswerPenaltyUntil", "dashUntil", "jumpBoostUntil", "knockbackResistUntil", "staggerUntil", "zeusFrozenUntil", "zeusRestartUntil"] as const) {
         athletics[key] = shiftIso(athletics[key], pausedDurationMs);
       }
       athletics.lastSupportedAtMs = shiftNumber(athletics.lastSupportedAtMs, pausedDurationMs);

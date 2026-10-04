@@ -67,6 +67,26 @@ test("waiting and ended rooms cannot enter teacher pause mode", () => {
   }
 });
 
+test("Daruma pause preserves the remaining chant and grants a fresh stopping allowance on red-light resume", () => {
+  const session = makeSession();
+  const nowMs = Date.parse("2026-08-01T00:01:00.000Z");
+  const iso = (offset: number) => new Date(nowMs + offset).toISOString();
+  session.settings.gameMode = "athletics";
+  session.athletics = {
+    courseId: "stadium_loop", mode: "zeus", questionsPerLap: 3, questionCount: 3, requiredLaps: 1,
+    status: "running", startAt: iso(-10_000), finishOrder: [],
+    zeus: { phase: "green", attackIndex: 0, recentTargetIds: [], cycleIndex: 0, chantId: "slow", phaseStartedAt: iso(-3000), phaseEndsAt: iso(3283) }
+  };
+  pauseSessionForTeacher(session, nowMs);
+  resumeSessionForTeacher(session, nowMs + 45_000);
+  assert.equal(Date.parse(session.athletics.zeus!.phaseEndsAt!) - (nowMs + 45_000), 3283);
+  session.athletics.zeus!.phase = "red";
+  session.athletics.zeus!.graceEndsAt = iso(43_000);
+  pauseSessionForTeacher(session, nowMs + 45_000);
+  resumeSessionForTeacher(session, nowMs + 60_000);
+  assert.equal(Date.parse(session.athletics.zeus!.graceEndsAt!) - (nowMs + 60_000), 650);
+});
+
 test("athletics resumes with the same warning time, hazard position and effect duration", () => {
   const session = makeSession();
   const pausedAt = Date.parse("2026-08-01T00:01:00.000Z");

@@ -73,7 +73,10 @@ export const PlayerPositionCommandSchema = z.object({
   /** Optional ordering metadata; legacy clients remain valid. */
   movementSequence: z.number().int().nonnegative().max(2_147_483_647).optional(),
   /** Server-owned recovery epoch; packets from before a recovery are stale. */
-  movementEpoch: z.number().int().nonnegative().max(2_147_483_647).optional()
+  movementEpoch: z.number().int().nonnegative().max(2_147_483_647).optional(),
+  movementIntent: z.boolean().optional(),
+  jumpStarted: z.boolean().optional(),
+  zeusPhase: z.enum(["green", "red", "waiting", "defeated"]).optional()
 }).strict();
 
 export const FireActionCommandSchema = z.object({

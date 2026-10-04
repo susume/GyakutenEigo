@@ -36,9 +36,9 @@ export const ATHLETICS_MODE_CONFIG: Readonly<Record<AthleticsMode, AthleticsMode
     id: "zeus",
     label: "Zeus Mode",
     shortLabel: "Zeus",
-    description: "Climb toward Zeus, dodge telegraphed lightning, and answer to break an electric freeze.",
+    description: "Race to the summit while Zeus chants. Stop when he turns, or lightning sends you back to the start.",
     instructionTitle: "CLIMB TO ZEUS",
-    instructionLines: ["Lightning marks the path ahead; move clear of the fixed ring", "Answer correctly to break a freeze", "First to finish the circuit defeats Zeus"],
+    instructionLines: ["Climb while Zeus chants; stop when he turns around", "Move during STOP and lightning sends you to the start", "Answer for energy; first to the summit defeats Zeus"],
     accent: "#b697ff"
   },
   "hunters-runners": {
@@ -202,7 +202,7 @@ export const consumeRunnerAbility = ({
   };
 };
 
-export type ZeusPhase = "idle" | "selecting" | "charging" | "striking" | "rage" | "defeated";
+export type ZeusPhase = "green" | "red" | "idle" | "selecting" | "charging" | "striking" | "rage" | "defeated";
 export type ZeusAttackTier = "lower" | "middle" | "upper" | "rage";
 
 export interface AthleticsZeusAttack {
@@ -218,6 +218,12 @@ export interface AthleticsZeusAttack {
 
 export interface AthleticsZeusState {
   phase: ZeusPhase;
+  cycleIndex?: number;
+  chantId?: import("./zeusDaruma.js").ZeusChantId;
+  phaseStartedAt?: string;
+  phaseEndsAt?: string;
+  graceEndsAt?: string;
+  lastStrikes?: { playerId: string; position: AthleticsPointLike; at: string }[];
   attackIndex: number;
   nextAttackAt?: string;
   recentTargetIds: string[];

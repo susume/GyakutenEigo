@@ -15460,6 +15460,49 @@ body:has(.workspace) .athletics-teacher-results {
   .athletics-touch-controls .touch-question { min-width: 82px; min-height: 74px; }
 }
 
+.zeus-light-signal {
+  position: fixed;
+  top: 74px;
+  left: 50%;
+  transform: translateX(-50%);
+  z-index: 160;
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  width: max-content;
+  max-width: calc(100vw - 28px);
+  padding: 8px 16px;
+  border: 2px solid #c7baff;
+  border-radius: 16px;
+  background: #201b39;
+  color: #fff;
+  pointer-events: none;
+  box-shadow: 0 4px 18px #13132938;
+}
+.zeus-light-signal strong { display: block; font-size: 22px; line-height: 1; letter-spacing: .08em; }
+.zeus-light-signal div > span { display: block; margin-top: 3px; font-size: 12px; }
+.zeus-signal-icon { font-size: 20px; }
+.zeus-light-signal.is-green { background: #133e2d; border-color: #84e4ac; }
+.zeus-light-signal.is-red { background: #642522; border-color: #ffc3ae; }
+.zeus-light-signal.is-inline { position: static; transform: none; width: auto; max-width: none; padding: 2px 0; border: 0; border-radius: 0; box-shadow: none; background: transparent; }
+.zeus-light-signal.is-inline strong { font-size: 18px; }
+.zeus-light-signal.is-inline div > span { margin-top: 2px; font-size: 11px; }
+.zeus-status-green { border-left: 3px solid #84e4ac; }
+.zeus-status-red { border-left: 3px solid #ffc3ae; }
+.zeus-audio-choice { display: grid; gap: 8px; margin: 16px 0; }
+.zeus-audio-choice select { padding: 10px; border-radius: 8px; }
+@media (max-width: 600px) {
+  .zeus-light-signal:not(.is-inline) { top: 8px; padding: 5px 12px; }
+  .zeus-light-signal:not(.is-inline) strong { font-size: 18px; }
+  .zeus-light-signal:not(.is-inline) div > span { font-size: 10px; }
+}
+@media (max-height: 500px) {
+  .zeus-light-signal { top: 8px; padding: 5px 12px; }
+  .zeus-light-signal strong { font-size: 18px; }
+  .zeus-light-signal div > span { font-size: 10px; }
+  .zeus-light-signal.is-inline div > span { display: none; }
+}
+
 @media (orientation: landscape) and (max-height: 500px) {
   .fps-view .athletics-onboarding {
     top: 108px;

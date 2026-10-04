@@ -1,4 +1,5 @@
 import { useSiteTranslation } from "../ui/siteTranslation";
+import { ZeusLightSignal } from "./ZeusLightSignal";
 import { useEffect, useState, type RefObject } from "react";
 import { getChaosAbilityLabel, type AthleticsAbility, type AthleticsMode, type AthleticsRole } from "@quizstrike/shared";
 
@@ -33,8 +34,8 @@ export type AthleticsHudState = {
   abilityMax?: number;
   abilityReady?: AthleticsAbility;
   shieldCharges?: number;
-  zeusFrozen?: boolean;
-  zeusWarningSeconds?: number;
+  zeusLight?: "green" | "red" | "waiting" | "defeated";
+  zeusSummitPercent?: number;
   remainingRunners?: number;
   chaosEventLabel?: string;
 };
@@ -140,7 +141,7 @@ export const ArenaHudOverlay = ({
 
     return (
       <>
-        {athleticsOnboardingEligible && !athleticsOnboardingDismissed && !controlsDisabled && !athleticsHud.zeusWarningSeconds && !athleticsHud.zeusFrozen && (
+        {athleticsOnboardingEligible && !athleticsOnboardingDismissed && !controlsDisabled && athleticsHud.mode !== "zeus" && (
           <div className="athletics-onboarding" aria-label={t("Jump tutorial")}>
             <strong>{t("SPRINT FORWARD · JUMP THE STRIPED HURDLES")}</strong>
             <span>{t("SPACE — JUMP · Tablet: tap JUMP")}</span>
@@ -153,25 +154,17 @@ export const ArenaHudOverlay = ({
             <b>{t("Recovery Questions")}{" "}{athleticsHud.recoveryCorrectAnswers ?? 0} / {athleticsHud.recoveryRequiredAnswers ?? 3}</b>
           </div>
         )}
-        <div className="athletics-hud" data-testid="athletics-compact-hud" aria-label={t("Athletics race status")}>
+        <div className={`athletics-hud athletics-mode-${athleticsHud.mode ?? "classic"}`} data-testid="athletics-compact-hud" aria-label={t("Athletics race status")}>
           {isVariant && (
             <div className="athletics-variant-header">
               <strong>{t(athleticsHud.modeLabel ?? athleticsHud.mode?.toUpperCase())}</strong>
               <span className={`athletics-role athletics-role-${athleticsHud.role ?? "runner"}`}>{athleticsHud.role === "hunter" ? t("HUNTER") : t("RUNNER")}</span>
             </div>
           )}
-          {athleticsHud.mode === "zeus" && athleticsHud.zeusFrozen && (
-            <div className="athletics-threat-status" role="status">
-              <strong>{t("LIGHTNING FREEZE")}</strong>
-              <span>{t("Answer correctly to break the charge.")}</span>
-            </div>
-          )}
-          {athleticsHud.mode === "zeus" && !athleticsHud.zeusFrozen && Boolean(athleticsHud.zeusWarningSeconds) && (
-            <div className="athletics-threat-status" role="status" aria-live="off">
-              <strong>{t("Lightning ahead")}</strong>
-              <span>{t("Move clear of the ring")} · {athleticsHud.zeusWarningSeconds}s</span>
-            </div>
-          )}
+          {athleticsHud.mode === "zeus" && <div className={`athletics-threat-status zeus-status-${athleticsHud.zeusLight ?? "waiting"}`}>
+            <ZeusLightSignal light={athleticsHud.zeusLight ?? "waiting"} />
+            <span>{t("First to the summit wins")}</span>
+          </div>}
           <div className="athletics-hud-header">
             <div className="athletics-energy-label">
               <span className="athletics-energy-icon" aria-hidden="true">⚡</span>
@@ -193,10 +186,10 @@ export const ArenaHudOverlay = ({
             </span>
             <span>
               <span className="athletics-stat-icon athletics-stat-icon-lap" aria-hidden="true">↻</span>
-              <span><small>{t("Lap")}</small><strong>{lap} / {athleticsHud.requiredLaps}</strong></span>
+              <span><small>{athleticsHud.mode === "zeus" ? t("Summit") : t("Lap")}</small><strong>{athleticsHud.mode === "zeus" ? `${athleticsHud.zeusSummitPercent ?? 0}%` : `${lap} / ${athleticsHud.requiredLaps}`}</strong></span>
             </span>
           </div>}
-          {isVariant && (
+          {isVariant && athleticsHud.mode !== "zeus" && (
             <div className="athletics-variant-stats">
               {athleticsHud.role === "hunter" ? (
                 <span><small>{t("Foam ammo")}</small><strong>{athleticsHud.hunterAmmo ?? 0}</strong><em>{athleticsHud.hunterHits ?? 0}{" "}{t("hits")}</em></span>
@@ -211,9 +204,6 @@ export const ArenaHudOverlay = ({
                   <span><small>{t("Shields")}</small><strong>{athleticsHud.shieldCharges ?? 0}</strong></span>
                   <span><small>{t("Event")}</small><strong>{t(athleticsHud.chaosEventLabel ?? "Watch")}</strong></span>
                 </>
-              )}
-              {athleticsHud.mode === "zeus" && (
-                <span><small>{t("Lightning")}</small><strong>{athleticsHud.zeusFrozen ? t("Frozen") : athleticsHud.zeusWarningSeconds ? t("{value0}s", { value0: athleticsHud.zeusWarningSeconds }) : t("Watch")}</strong></span>
               )}
             </div>
           )}

@@ -1,7 +1,7 @@
+import { createZeusVisuals } from "./zeusBackdrop";
 import * as THREE from "three";
 import {
   ATHLETICS_STADIUM_COURSE,
-  ATHLETICS_PLAYER_EYE_HEIGHT,
   CHAOS_HAZARD_WARNING_MS,
   getAthleticsPointAtProgress,
   getAthleticsRouteTangent,
@@ -33,108 +33,6 @@ const disposeVisualObject = (root: THREE.Object3D) => {
     else material?.dispose?.();
   });
   root.parent?.remove(root);
-};
-
-const createZeusVisuals = (root: THREE.Group) => {
-  const boss = new THREE.Group();
-  boss.name = "athletics-zeus-boss";
-  const body = new THREE.Mesh(new THREE.CylinderGeometry(2.2, 3.1, 6.2, 12), makeMaterial("#4f5dbd", "#8d7dff"));
-  body.position.y = 3.1;
-  boss.add(body);
-  const robe = new THREE.Mesh(new THREE.ConeGeometry(3.4, 5.1, 12), makeMaterial("#2a356f", "#554dba"));
-  robe.position.y = 1.3;
-  boss.add(robe);
-  const head = new THREE.Mesh(new THREE.SphereGeometry(1.45, 16, 12), makeMaterial("#e5ad83", "#bd7d62"));
-  head.position.y = 7.3;
-  boss.add(head);
-  const crown = new THREE.Mesh(new THREE.TorusGeometry(1.42, 0.18, 8, 20), makeMaterial("#ffd66e", "#ffaf40"));
-  crown.rotation.x = Math.PI / 2;
-  crown.position.y = 8.35;
-  boss.add(crown);
-  for (const side of [-1, 1]) {
-    const bolt = new THREE.Mesh(new THREE.ConeGeometry(0.28, 2.2, 5), makeMaterial("#b697ff", "#e8ddff"));
-    bolt.position.set(side * 1.28, 8.75, 0);
-    bolt.rotation.z = side * -0.46;
-    boss.add(bolt);
-  }
-  const aura = new THREE.Mesh(
-    new THREE.TorusGeometry(4.25, 0.18, 8, 40),
-    new THREE.MeshBasicMaterial({ color: "#b697ff", transparent: true, opacity: 0.78, depthWrite: false })
-  );
-  aura.rotation.x = Math.PI / 2;
-  aura.position.y = 0.18;
-  boss.add(aura);
-  const lightning = new THREE.PointLight("#b697ff", 16, 54, 2);
-  lightning.position.y = 7;
-  boss.add(lightning);
-  const finish = getAthleticsPointAtProgress(1, ATHLETICS_STADIUM_COURSE);
-  const bossHome = new THREE.Vector3(finish.x, finish.y + 0.25, finish.z);
-  boss.position.copy(bossHome);
-  root.add(boss);
-  let lastPhase: string | undefined;
-  let defeatedAt = 0;
-
-  const warningPool = Array.from({ length: 4 }, (_, index) => {
-    const warning = new THREE.Group();
-    warning.name = `athletics-zeus-warning-${index}`;
-    const ring = new THREE.Mesh(
-      new THREE.TorusGeometry(1, 0.16, 8, 32),
-      new THREE.MeshBasicMaterial({ color: "#d8c7ff", transparent: true, opacity: 0.92, depthWrite: false })
-    );
-    ring.rotation.x = Math.PI / 2;
-    warning.add(ring);
-    const countdown = new THREE.Mesh(new THREE.TorusGeometry(1, 0.08, 6, 32),
-      new THREE.MeshBasicMaterial({ color: "#ffd66e", transparent: true, opacity: 0.9, depthWrite: false }));
-    countdown.rotation.x = Math.PI / 2;
-    warning.add(countdown);
-    const column = new THREE.Mesh(
-      new THREE.CylinderGeometry(0.13, 0.42, 5.8, 8),
-      new THREE.MeshBasicMaterial({ color: "#b697ff", transparent: true, opacity: 0.16, depthWrite: false })
-    );
-    column.position.y = 2.8;
-    warning.add(column);
-    root.add(warning);
-    return { warning, ring, countdown, column };
-  });
-
-  return {
-    update: (session: GameSession | null | undefined, nowMs: number) => {
-      const zeus = session?.athletics?.zeus;
-      const phase = zeus?.phase;
-      if (phase !== lastPhase && phase === "defeated") defeatedAt = nowMs;
-      lastPhase = phase;
-      const defeatProgress = phase === "defeated" ? Math.min(1, Math.max(0, (nowMs - defeatedAt) / 1100)) : 0;
-      boss.visible = phase !== "defeated" || defeatProgress < 1;
-      boss.position.set(bossHome.x + defeatProgress * 2.8, bossHome.y + Math.sin(defeatProgress * Math.PI) * 1.4, bossHome.z);
-      boss.scale.setScalar(phase === "rage" ? 1.12 + Math.sin(nowMs * 0.008) * 0.03 : Math.max(0.08, 1 - defeatProgress * 0.34));
-      boss.rotation.y = nowMs * (phase === "rage" ? 0.0009 : 0.00035);
-      boss.rotation.z = defeatProgress * 1.2;
-      aura.rotation.z = nowMs * 0.0014;
-      lightning.intensity = phase === "rage" ? 24 : phase === "charging" ? 19 : phase === "defeated" ? Math.max(0, 14 * (1 - defeatProgress)) : 12;
-      const attack = zeus?.currentAttack;
-      const entries = attack ? Object.entries(attack.warningPositions) : [];
-      warningPool.forEach(({ warning, ring, countdown, column }, index) => {
-        const target = entries[index]?.[1];
-        if (!target || !attack) {
-          warning.visible = false;
-          return;
-        }
-        warning.visible = true;
-        warning.position.set(target.x, target.y - ATHLETICS_PLAYER_EYE_HEIGHT + 0.22, target.z);
-        const strikeAt = Date.parse(attack.strikeAt);
-        const remaining = Number.isFinite(strikeAt) ? Math.max(0, strikeAt - nowMs) : 0;
-        // The outer ring always shows the true damage radius. The inner ring
-        // closes toward the centre to communicate time, without flashing.
-        ring.scale.setScalar(attack.strikeRadius);
-        const duration = Math.max(1, strikeAt - Date.parse(attack.warningStartedAt));
-        countdown.scale.setScalar(attack.strikeRadius * Math.max(0.04, Math.min(1, remaining / duration)));
-        ring.rotation.z = nowMs * (remaining < 900 ? 0.008 : 0.002);
-        (ring.material as THREE.MeshBasicMaterial).opacity = remaining < 900 ? 1 : 0.72;
-        (column.material as THREE.MeshBasicMaterial).opacity = remaining < 900 ? 0.3 : 0.12;
-      });
-    },
-    dispose: () => undefined
-  };
 };
 
 const createChaosVisuals = (root: THREE.Group) => {
@@ -283,12 +181,12 @@ const createHuntersRunnersVisuals = (root: THREE.Group) => {
   };
 };
 
-export const createAthleticsModeVisuals = ({ scene, mode }: { scene: THREE.Scene; mode: AthleticsMode }): AthleticsModeVisuals => {
+export const createAthleticsModeVisuals = ({ scene, mode, camera }: { scene: THREE.Scene; mode: AthleticsMode; camera?: THREE.PerspectiveCamera }): AthleticsModeVisuals => {
   const root = new THREE.Group();
   root.name = `athletics-mode-visuals-${mode}`;
   scene.add(root);
   if (mode === "zeus") {
-    const visuals = createZeusVisuals(root);
+    const visuals = createZeusVisuals(root, camera, typeof window !== "undefined" && window.matchMedia("(prefers-reduced-motion: reduce)").matches);
     return {
       update: visuals.update,
       dispose: () => disposeVisualObject(root)

@@ -89,6 +89,45 @@ for (const athleticsMode of ["zeus", "hunters-runners", "chaos-climb"] as const)
   });
 }
 
+test("Zeus's head and signal switch together, and moving during STOP returns a runner to the start", async ({ page, request }, testInfo) => {
+  const classroom = await createClassroom(request, { gameMode: "athletics", athleticsMode: "zeus", roundDurationSeconds: 120 });
+  await page.goto(`/join?code=${classroom.code}`);
+  await page.getByPlaceholder("Player name").fill("Daruma Student");
+  await page.getByRole("button", { name: "Join game", exact: true }).click();
+  await expect(page.locator(".athletics-briefing")).toContainText("stop when he turns around");
+  await request.post(`/api/sessions/${classroom.code}/start`, { headers: { Authorization: `Bearer ${classroom.teacherToken}` } });
+  const signal = page.getByTestId("zeus-light-signal");
+  const canvas = page.locator(".arena-canvas canvas");
+  await expect(signal).toHaveAttribute("data-light", "green", { timeout: 25_000 });
+  await expect(canvas).toHaveAttribute("data-zeus-light", "green");
+  await page.screenshot({ path: testInfo.outputPath("zeus-looking-away.png") });
+  await page.keyboard.down("w");
+  await page.waitForTimeout(600);
+  await page.keyboard.up("w");
+  await expect(signal).toHaveAttribute("data-light", "red", { timeout: 15_000 });
+  await expect(canvas).toHaveAttribute("data-zeus-light", "red");
+  await page.waitForTimeout(800);
+  await page.screenshot({ path: testInfo.outputPath("zeus-watching.png") });
+  await page.getByRole("button", { name: "Answer movement energy question", exact: true }).click();
+  await expect(page.getByTestId("zeus-question-signal")).toBeVisible();
+  await page.screenshot({ path: testInfo.outputPath("zeus-question-stop.png") });
+  await page.getByRole("button", { name: "Answer A: This one", exact: true }).click();
+  await page.getByRole("button", { name: "Back to the game", exact: true }).click();
+  await page.keyboard.down("w");
+  await page.waitForTimeout(450);
+  await page.keyboard.up("w");
+  await expect.poll(async () => {
+    const response = await request.get(`/api/sessions/${classroom.code}`, { headers: { Authorization: `Bearer ${classroom.teacherToken}` } });
+    const { session } = await response.json();
+    return session.players[0].athletics.zeusStrikes ?? 0;
+  }).toBe(1);
+  await expect(canvas).toHaveAttribute("data-player-x", "0.000");
+  await expect(canvas).toHaveAttribute("data-player-z", "123.000");
+  await expect(page.locator(".athletics-hud")).toContainText("Summit");
+  await expect(page.locator(".athletics-hud")).not.toContainText("Lap");
+  await expect(page.locator(".athletics-mode-action-bar")).toBeHidden();
+});
+
 test.describe("Narrow touch warnings", () => {
 test.use({ hasTouch: true });
 test("Zeus warnings keep a narrow touch viewport and its controls clear", async ({ page, request }, testInfo) => {
@@ -117,6 +156,16 @@ test("Zeus warnings keep a narrow touch viewport and its controls clear", async 
   const answer = await page.locator(".athletics-touch-controls .touch-question").boundingBox();
   expect(answer!.y - (jump!.y + jump!.height)).toBeGreaterThanOrEqual(8);
   await page.screenshot({ path: testInfo.outputPath("zeus-narrow-warning.png") });
+  await expect(page.getByTestId("zeus-light-signal")).toHaveAttribute("data-light", "red", { timeout: 15_000 });
+  await page.screenshot({ path: testInfo.outputPath("zeus-narrow-stop.png") });
+  await page.locator(".touch-question").tap();
+  const questionSignal = page.getByTestId("zeus-question-signal");
+  await expect(questionSignal).toBeVisible();
+  const questionSignalBounds = await questionSignal.boundingBox();
+  const questionBounds = await page.locator(".game-menu-overlay").boundingBox();
+  expect(questionSignalBounds!.y + questionSignalBounds!.height).toBeLessThanOrEqual(questionBounds!.y);
+  await page.screenshot({ path: testInfo.outputPath("zeus-phone-question.png") });
+  await page.getByRole("button", { name: "Back to the game", exact: true }).tap();
   await page.setViewportSize({ width: 812, height: 375 });
   const canvas = page.locator(".arena-canvas canvas");
   await expect.poll(() => canvas.evaluate((element) => Math.abs(element.clientWidth - element.parentElement!.clientWidth))).toBeLessThanOrEqual(2);

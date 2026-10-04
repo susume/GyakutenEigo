@@ -1,3 +1,6 @@
+import { useZeusDaruma } from "../../../game/useZeusDaruma";
+import { ZeusLightSignal } from "../../../game/ZeusLightSignal";
+import { ZEUS_SUMMIT_PROGRESS } from "@quizstrike/shared";
 import { useSiteTranslation } from "../../../ui/siteTranslation";
 import "./device-hud.css";
 import { lazy, Suspense, useCallback, useEffect, useMemo, useRef, useState } from "react";
@@ -141,6 +144,9 @@ type ArenaPositionPayload = {
   zoomLevel?: number;
   crouching?: boolean;
   jumping?: boolean;
+  movementIntent?: boolean;
+  jumpStarted?: boolean;
+  zeusPhase?: "green" | "red" | "waiting" | "defeated";
   movementSequence?: number;
   movementEpoch?: number;
 };
@@ -214,13 +220,7 @@ const getPlayerWarmth = (player: PlayerSession) => Math.max(0, Math.round(player
 
 type FeedbackCue = "success" | "warning" | "error";
 
-type AthleticsWarning = {
-  attackId: string;
-  tier: string;
-  targeted: boolean;
-  position?: { x: number; y: number; z: number };
-  strikeAt: string;
-};
+
 
 const warmFeedbackCue = () => gameAudio.warm();
 const playFeedbackCue = (cue: FeedbackCue) => {
@@ -349,7 +349,6 @@ export default function StudentExperience({ onExit }: { onExit: () => void }) {
   const [rewardVfx, setRewardVfx] = useState<RewardVfxCue | null>(null);
   const [currencyPulse, setCurrencyPulse] = useState(0);
   const [hitConfirmPulse, setHitConfirmPulse] = useState(0);
-  const [athleticsWarning, setAthleticsWarning] = useState<AthleticsWarning | null>(null);
   const [learningReport, setLearningReport] = useState<StudentLearningReport | null>(null);
   const [isLearningReportLoading, setIsLearningReportLoading] = useState(false);
   const [learningReportError, setLearningReportError] = useState("");
@@ -381,11 +380,7 @@ export default function StudentExperience({ onExit }: { onExit: () => void }) {
   const zombieSelection = Boolean(session && isZombieSelectionPhase(session));
   const athleticsRace = session?.settings.gameMode === "athletics";
   const athleticsMode = athleticsRace && session ? athleticsModeForSession(session) : "classic";
-  const athleticsWarningRemainingSeconds = useDeadlineRemainingSeconds(
-    athleticsWarning?.strikeAt,
-    session?.serverTime,
-    session?.controlState === "teacher_paused" ? session.teacherPausedAt : undefined
-  );
+  const zeusDaruma = useZeusDaruma(session, athleticsRace && athleticsMode === "zeus", session?.settings.athleticsZeusAudio !== "teacher");
   const athleticsStartRemainingSeconds = useDeadlineRemainingSeconds(
     athleticsRace ? session?.athletics?.startAt : undefined,
     session?.serverTime,
@@ -458,7 +453,6 @@ export default function StudentExperience({ onExit }: { onExit: () => void }) {
     setAnsweringChoice(null);
     setAnswerFeedback(null);
     setQuestion(null);
-    setAthleticsWarning(null);
     setBuyingGearId(null);
     setIsBuyingSnowballs(false);
     setQuizOpen(false);
@@ -735,7 +729,7 @@ export default function StudentExperience({ onExit }: { onExit: () => void }) {
 
   useEffect(() => {
     const syncBgm = () => {
-      gameAudio.setBgmActive(Boolean(hasActiveStudentSession && !teacherPaused && document.visibilityState === "visible"));
+      gameAudio.setBgmActive(Boolean(hasActiveStudentSession && athleticsMode !== "zeus" && !teacherPaused && document.visibilityState === "visible"));
     };
     syncBgm();
     document.addEventListener("visibilitychange", syncBgm);
@@ -743,7 +737,7 @@ export default function StudentExperience({ onExit }: { onExit: () => void }) {
       document.removeEventListener("visibilitychange", syncBgm);
       gameAudio.setBgmActive(false);
     };
-  }, [hasActiveStudentSession, teacherPaused]);
+  }, [hasActiveStudentSession, teacherPaused, athleticsMode]);
 
   useEffect(() => {
     const activeSession = currentSessionRef.current;
@@ -1025,77 +1019,25 @@ export default function StudentExperience({ onExit }: { onExit: () => void }) {
       setFeedback(`Finish line crossed in ${formatDuration((payload.finishTimeMs ?? 0) / 1000)}.`);
       gameAudio.playEvent("athletics_finish");
     });
-    connectedSocket.on("zeus_warning", (payload: {
-      attackId?: string;
-      tier?: string;
-      targetIds?: string[];
-      warningPositions?: Record<string, { x: number; y: number; z: number }>;
-      strikeAt?: string;
-    }) => {
-      if (lastVisualSession.settings.gameMode !== "athletics" || athleticsModeForSession(lastVisualSession) !== "zeus") return;
-      if (!payload.attackId || !payload.strikeAt) return;
-      const position = payload.warningPositions?.[activePlayerId];
-      const targeted = payload.targetIds?.includes(activePlayerId) === true;
-      setAthleticsWarning({
-        attackId: payload.attackId,
-        tier: payload.tier ?? "lower",
-        targeted,
-        strikeAt: payload.strikeAt,
-        ...(position ? { position } : {})
-      });
-      if (targeted) gameAudio.playEvent("ui_warning");
-    });
     connectedSocket.on("zeus_strike", (payload: {
-      playerId?: string;
-      hit?: boolean;
-      position?: { x: number; y: number; z: number };
-      frozenUntil?: string;
-      question?: PublicQuestion;
-      message?: string;
+      playerId?: string; position?: { x: number; y: number; z: number };
+      spawn?: { x: number; y: number; z: number; facing: number };
+      movementEpoch?: number; restartUntil?: string; message?: string;
     }) => {
       if (lastVisualSession.settings.gameMode !== "athletics" || athleticsModeForSession(lastVisualSession) !== "zeus") return;
-      setAthleticsWarning(null);
-      if (payload.playerId !== activePlayerId) return;
-      if (payload.hit) {
-        if (payload.question) setQuestion(payload.question);
-        setQuizOpen(true);
-        setBuyOpen(false);
-        setScoreboardOpen(false);
-        setSettingsOpen(false);
-        setPlayer((current) => current?.athletics ? {
-          ...current,
-          isAlive: true,
-          athletics: { ...current.athletics, zeusFrozen: true, zeusFrozenUntil: payload.frozenUntil }
-        } : current);
-        const currentPlayer = currentPlayerRef.current;
-        emitArenaVfx({ kind: "player_hit", x: payload.position?.x ?? currentPlayer?.x ?? 0, y: payload.position?.y ?? currentPlayer?.y, z: payload.position?.z ?? currentPlayer?.z ?? 0, color: "#b697ff", local: true, intensity: 1.25 });
-        gameAudio.playEvent("ui_warning");
-      } else {
-        gameAudio.playEvent("athletics_checkpoint");
-      }
-    });
-    connectedSocket.on("zeus_freeze_extended", (payload: { playerId?: string; frozenUntil?: string; message?: string }) => {
-      if (lastVisualSession.settings.gameMode !== "athletics" || payload.playerId !== activePlayerId) return;
-      setFeedback(payload.message ?? "The lightning charge lasts longer.");
+      if (payload.position) emitArenaVfx({ kind: "player_hit", ...payload.position, color: "#b697ff", local: payload.playerId === activePlayerId, intensity: 1.25 });
+      if (payload.playerId !== activePlayerId || !payload.spawn) return;
+      if (payload.movementEpoch !== undefined) athleticsMovementEpochRef.current = payload.movementEpoch;
       setPlayer((current) => current?.athletics ? {
-        ...current,
-        athletics: { ...current.athletics, zeusFrozen: true, zeusFrozenUntil: payload.frozenUntil }
+        ...current, ...payload.spawn, isAlive: true, jumping: false,
+        athletics: { ...current.athletics, checkpointIndex: 0, routeProgress: 0, completedLaps: 0,
+          movementEpoch: payload.movementEpoch, zeusRestartUntil: payload.restartUntil, zeusFrozen: false }
       } : current);
+      setFeedback(payload.message ?? "Zeus saw you move! Back to the start.");
       gameAudio.playEvent("ui_warning");
-    });
-    connectedSocket.on("zeus_freeze_break", (payload: { playerId?: string; automatic?: boolean; message?: string }) => {
-      if (lastVisualSession.settings.gameMode !== "athletics" || payload.playerId !== activePlayerId) return;
-      setPlayer((current) => current?.athletics ? {
-        ...current,
-        athletics: { ...current.athletics, zeusFrozen: false, zeusFrozenUntil: undefined }
-      } : current);
-      if (payload.automatic) setQuizOpen(false);
-      setFeedback(payload.message ?? "Lightning freeze broken. Keep climbing.");
-      gameAudio.playEvent("athletics_checkpoint");
     });
     connectedSocket.on("zeus_defeated", (payload: { winnerId?: string; message?: string }) => {
       if (lastVisualSession.settings.gameMode !== "athletics" || athleticsModeForSession(lastVisualSession) !== "zeus") return;
-      setAthleticsWarning(null);
       setFeedback(payload.message ?? "ZEUS HAS BEEN DEFEATED!");
       emitPlayerVfx("victory", payload.winnerId ?? activePlayerId);
       gameAudio.playEvent("athletics_finish");
@@ -1174,7 +1116,6 @@ export default function StudentExperience({ onExit }: { onExit: () => void }) {
     });
     connectedSocket.on("athletics_role_swap", (payload: { modeRound?: number; modeRoundsTotal?: number }) => {
       if (lastVisualSession.settings.gameMode !== "athletics" || athleticsModeForSession(lastVisualSession) !== "hunters-runners") return;
-      setAthleticsWarning(null);
       setQuestion(null);
       setQuizOpen(false);
       setFeedback(`Roles swapped — round ${payload.modeRound ?? 2}/${payload.modeRoundsTotal ?? 2} is loading.`);
@@ -1782,7 +1723,6 @@ export default function StudentExperience({ onExit }: { onExit: () => void }) {
     setPlayer(null);
     setPlayerToken("");
     setQuestion(null);
-    setAthleticsWarning(null);
     if (answerFeedbackTimerRef.current !== undefined) {
       window.clearTimeout(answerFeedbackTimerRef.current);
       answerFeedbackTimerRef.current = undefined;
@@ -2455,10 +2395,8 @@ export default function StudentExperience({ onExit }: { onExit: () => void }) {
         ? "You fell! Answer 3 questions to get back on the course."
         : athleticsPlayer?.status === "finished"
         ? `Finished in ${formatDuration((athleticsPlayer.finishTimeMs ?? 0) / 1000)}. Watch the remaining racers.`
-        : athleticsMode === "zeus" && athleticsZeusFrozen
-          ? "Lightning freeze active. Answer correctly to break it."
-          : athleticsMode === "zeus" && athleticsWarning?.targeted
-            ? `Dodge Zeus's warning ring in ${athleticsWarningRemainingSeconds}s.`
+        : athleticsMode === "zeus"
+          ? zeusDaruma.light === "red" ? "STOP! Zeus is watching. Answer for energy while you wait." : "GO! Climb while Zeus chants. First to the summit wins."
             : athleticsMode === "hunters-runners" && athleticsPlayer?.role === "hunter"
               ? `Answer for foam ammo. Defend your station and tag runners without stopping them.`
               : athleticsMode === "hunters-runners"
@@ -2515,8 +2453,8 @@ export default function StudentExperience({ onExit }: { onExit: () => void }) {
     abilityMax: 3,
     abilityReady: athleticsAbility,
     shieldCharges: athleticsPlayer.shieldCharges ?? 0,
-    zeusFrozen: athleticsZeusFrozen,
-    zeusWarningSeconds: athleticsWarning?.targeted ? athleticsWarningRemainingSeconds : 0,
+    zeusLight: zeusDaruma.light,
+    zeusSummitPercent: Math.min(100, Math.round((athleticsPlayer.routeProgress ?? 0) / ZEUS_SUMMIT_PROGRESS * 100)),
     remainingRunners: athleticsRemainingRunners,
     chaosEventLabel
   } : undefined;
@@ -2525,6 +2463,7 @@ export default function StudentExperience({ onExit }: { onExit: () => void }) {
     || Boolean(athleticsPlayer?.respawnPenaltyUntil && Date.now() < Date.parse(athleticsPlayer.respawnPenaltyUntil))
     || Boolean(athleticsPlayer?.recoveryActive)
     || athleticsZeusFrozen
+    || Boolean(athleticsPlayer?.zeusRestartUntil && Date.now() < Date.parse(athleticsPlayer.zeusRestartUntil))
     || Boolean(athleticsPlayer?.staggerUntil && Date.now() < Date.parse(athleticsPlayer.staggerUntil))
   );
 
@@ -2577,6 +2516,7 @@ export default function StudentExperience({ onExit }: { onExit: () => void }) {
       session.status === "waiting" ? "waiting-game-layout" : ""
     ].filter(Boolean).join(" ")}>
       <div className="game-stage">
+        {athleticsMode === "zeus" && session.status === "active" && quizOpen && !teacherPaused && <ZeusLightSignal light={zeusDaruma.light} floating />}
         {session.status !== "waiting" && !teacherPaused && <GameAnnouncementOverlay announcement={roundPreparation || zombieSelection || roundEnded ? undefined : session.announcement} serverTime={session.serverTime} />}
         <div className={`game-utility-bar${session.status === "waiting" ? " lobby-utility-bar" : ""}`}>
           {session.status === "waiting" ? (
@@ -2643,7 +2583,7 @@ export default function StudentExperience({ onExit }: { onExit: () => void }) {
             {session.settings.gameMode === "flag" ? t(" · Round {value0}/{value1}", { value0: session.currentRound, value1: session.settings.roundCount }) : ""}
           </span>
         </div>
-        {athleticsRace && athleticsMode !== "classic" && !isAthleticsSpectator && !isFlagSpectator && (
+        {athleticsRace && (athleticsMode === "chaos-climb" || athleticsMode === "hunters-runners") && !isAthleticsSpectator && !isFlagSpectator && (
           <div className={`athletics-mode-action-bar athletics-mode-${athleticsMode}`} aria-label={t("{value0} controls", { value0: athleticsModeConfig.label })}>
             <div className="athletics-mode-action-copy">
               <span className="eyebrow">{athleticsModeConfig.instructionTitle}</span>

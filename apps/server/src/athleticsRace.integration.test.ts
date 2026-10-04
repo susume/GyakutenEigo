@@ -2,7 +2,7 @@ import assert from "node:assert/strict";
 import type { AddressInfo } from "node:net";
 import test from "node:test";
 import { io as createSocket, type Socket as ClientSocket } from "socket.io-client";
-import { getAthleticsPhysicalSupport, getAthleticsPointAtProgress, getAthleticsRecoveryPosition, getAthleticsRouteTangent } from "@quizstrike/shared";
+import { getAthleticsPhysicalSupport, getAthleticsPointAtProgress, getAthleticsRecoveryPosition, getAthleticsRouteTangent, ZEUS_SUMMIT_SURFACE_INDEX, type AthleticsZeusState } from "@quizstrike/shared";
 
 type ServerRuntime = typeof import("./index.js");
 type SessionFixture = {
@@ -11,7 +11,7 @@ type SessionFixture = {
   status: "waiting" | "active" | "paused" | "ended";
   settings: { mapId: string; gameMode: string; athleticsMode?: string; athleticsCourseId?: string; athleticsCourseLaps?: number };
   players: PlayerFixture[];
-  athletics?: { status: string; questionCount: number; questionsPerLap: number; requiredLaps: number; startAt: string; finishOrder: string[] };
+  athletics?: { status: string; questionCount: number; questionsPerLap: number; requiredLaps: number; startAt: string; finishOrder: string[]; zeus?: AthleticsZeusState };
 };
 type PlayerFixture = {
   id: string;
@@ -579,6 +579,61 @@ test("two-lap race keeps players independent, preserves the timer, and finishes 
   assert.equal(getAthleticsPhysicalSupport({ x: finishedBot.x!, y: finishedBot.y!, z: finishedBot.z! }).surfaceIndex, 0);
   assert.equal(afterFinish.athletics?.finishOrder.filter((playerId) => playerId === botId).length, 1);
   assert.ok(Date.now() >= officialStartAt);
+});
+
+test("Zeus allows looking and answering during STOP, then resets movement without losing energy or accepting stale packets", { timeout: 30_000 }, async () => {
+  const teacher = await createTeacherWithQuiz();
+  const session = await createSession(teacher, 3, "zeus");
+  const student = await joinSession(session.sessionCode, "Daruma Runner");
+  const { socket, initialState } = connectStudentSocket(session.sessionCode, student);
+  await initialState;
+  const read = async () => (await api<{ session: SessionFixture }>(`/api/sessions/${session.sessionCode}`, { playerToken: student.playerToken })).body.session;
+  try {
+    await api(`/api/sessions/${session.sessionCode}/start`, { method: "POST", teacherToken: teacher.token });
+    const red = await waitUntil(read, (snapshot) => snapshot.athletics?.zeus?.phase === "red" && Date.now() > Date.parse(snapshot.athletics.zeus.graceEndsAt!));
+    assert.equal(red.athletics?.requiredLaps, 1);
+    const original = red.players.find((entry) => entry.id === student.player.id)!;
+    socket.emit("player_position", { x: original.x! - 1, y: original.y, z: original.z, facing: 1.3, jumping: true, jumpStarted: true, movementIntent: true, zeusPhase: "green", movementEpoch: 0, movementSequence: 1 });
+    await delay(100);
+    const delayed = (await read()).players.find((entry) => entry.id === student.player.id)!;
+    assert.equal(delayed.x, original.x, "late green movement is rejected without a strike");
+    socket.emit("player_position", { x: original.x! - 1, y: original.y, z: original.z, facing: 1.3, jumping: false, jumpStarted: false, movementIntent: false, zeusPhase: "red", movementEpoch: 0, movementSequence: 2 });
+    await delay(220);
+    const safe = (await read()).players.find((entry) => entry.id === student.player.id)!;
+    assert.equal(safe.athletics?.movementEpoch ?? 0, 0);
+    const answer = await api<{ result: { player: PlayerFixture } }>(`/api/sessions/${session.sessionCode}/players/${student.player.id}/answer`, { method: "POST", playerToken: student.playerToken, body: { questionId: student.question!.id, selectedChoice: "A" } });
+    assert.equal(answer.response.status, 200);
+    const beforeStrike = answer.body.result.player;
+    socket.emit("player_position", { x: beforeStrike.x! - 1, y: beforeStrike.y, z: beforeStrike.z, facing: 1.3, movementIntent: true, zeusPhase: "red", movementEpoch: 0, movementSequence: 3 });
+    const struck = await waitUntil(read, (snapshot) => (snapshot.players.find((entry) => entry.id === student.player.id)?.athletics?.movementEpoch ?? 0) === 1, 3000);
+    const restarted = struck.players.find((entry) => entry.id === student.player.id)!;
+    assert.equal(restarted.athletics?.routeProgress, 0);
+    assert.equal(restarted.athletics?.checkpointIndex, 0);
+    assert.equal(restarted.athletics?.questionIndex, 1);
+    assert.equal(restarted.energy, beforeStrike.energy);
+    assert.equal(restarted.isAlive, true);
+    socket.emit("player_position", { x: restarted.x! - 8, y: restarted.y, z: restarted.z, facing: 1.3, movementIntent: true, zeusPhase: "red", movementEpoch: 0, movementSequence: 4 });
+    await delay(220);
+    const afterStale = (await read()).players.find((entry) => entry.id === student.player.id)!;
+    assert.equal(afterStale.x, restarted.x);
+    assert.equal(afterStale.athletics?.movementEpoch, 1);
+  } finally { socket.disconnect(); }
+});
+
+test("Zeus's first finisher wins at the summit without descending or completing multiple laps", { timeout: 40_000 }, async () => {
+  const teacher = await createTeacherWithQuiz();
+  const session = await createSession(teacher, 3, "zeus");
+  const observer = await joinSession(session.sessionCode, "Summit Observer");
+  const bots = await api<{ bots: PlayerFixture[] }>(`/api/sessions/${session.sessionCode}/bots`, { method: "POST", teacherToken: teacher.token, body: { count: 1, difficulty: "advanced" } });
+  const botId = bots.body.bots[0]!.id;
+  await api(`/api/sessions/${session.sessionCode}/start`, { method: "POST", teacherToken: teacher.token });
+  const finished = await waitUntil(async () => (await api<{ session: SessionFixture }>(`/api/sessions/${session.sessionCode}`, { playerToken: observer.playerToken })).body.session, (snapshot) => snapshot.status === "ended", 35_000);
+  const winner = finished.players.find((entry) => entry.id === botId)!;
+  assert.equal(winner.athletics?.status, "finished");
+  assert.equal(winner.athletics?.completedLaps, 1);
+  assert.equal(finished.athletics?.zeus?.phase, "defeated");
+  assert.deepEqual(finished.athletics?.finishOrder, [botId]);
+  assert.equal(getAthleticsPhysicalSupport({ x: winner.x!, y: winner.y!, z: winner.z! }).surfaceIndex, ZEUS_SUMMIT_SURFACE_INDEX);
 });
 
 test("three-lap race completes every lap without duplicating or underflowing energy", { timeout: 75_000 }, async () => {

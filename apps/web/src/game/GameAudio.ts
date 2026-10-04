@@ -1,3 +1,5 @@
+import { ZEUS_CHANTS, type ZeusChantId } from "@quizstrike/shared";
+
 export type MovementAudioMode = "run" | "crouch";
 export type MovementSurface = "snow" | "wood" | "stone" | "sand" | "metal" | "water";
 
@@ -330,6 +332,8 @@ class GameAudioController {
   private sfxGain: GainNode | null = null;
   private musicGain: GainNode | null = null;
   private bgmSource: AudioBufferSourceNode | null = null;
+  private zeusSource: AudioBufferSourceNode | null = null;
+  private zeusChantKey: string | null = null;
   private bgmBufferPromise: Promise<AudioBuffer | null> | null = null;
   private bgmTimer: number | null = null;
   private bgmIndex = 0;
@@ -382,6 +386,35 @@ class GameAudioController {
     if (this.audio && this.musicGain) {
       this.musicGain.gain.setTargetAtTime(nextVolume, this.audio.currentTime, 0.02);
     }
+  }
+
+  stopZeusChant() {
+    this.zeusChantKey = null;
+    const source = this.zeusSource;
+    this.zeusSource = null;
+    if (source) { try { source.stop(); } catch { /* Already ended. */ } source.disconnect(); }
+  }
+
+  syncZeusChant(key: string, chantId: ZeusChantId, startsAtMs: number, nowMs: number) {
+    if (key === this.zeusChantKey) return;
+    this.stopZeusChant();
+    this.zeusChantKey = key;
+    const audio = this.ensureAudio();
+    if (!audio || !this.masterGain) return;
+    this.warm();
+    const requestAt = Date.now();
+    void this.loadAssetBuffer(audio, ZEUS_CHANTS[chantId].path).then((buffer) => {
+      if (!buffer || this.zeusChantKey !== key || this.audio !== audio || !this.masterGain) return;
+      const elapsedMs = nowMs + Date.now() - requestAt - startsAtMs;
+      const offset = Math.max(0, elapsedMs / 1000);
+      if (offset >= buffer.duration) return;
+      const source = audio.createBufferSource();
+      source.buffer = buffer;
+      source.connect(this.masterGain);
+      source.onended = () => { source.disconnect(); if (this.zeusSource === source) this.zeusSource = null; };
+      this.zeusSource = source;
+      source.start(audio.currentTime + Math.max(0, -elapsedMs / 1000), offset);
+    });
   }
 
   setSfxVolume(volume: number) {
