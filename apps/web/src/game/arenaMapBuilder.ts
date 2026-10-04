@@ -22,6 +22,11 @@ import type { ArenaQuality } from "./gamePreferences";
 import type { ArenaQualityConfig } from "./sceneSetup";
 import { FPS_CROUCH_EYE_HEIGHT, FPS_STANDING_EYE_HEIGHT } from "./ArenaCamera";
 import { createQuizStrikeMaterial, styleForArenaSurface } from "./rendering/materials/QuizStrikeMaterials";
+import { makeCombatSurfaceTexture } from "./rendering/environment/CombatSurfaceTextures";
+import { addCombatMapScenery } from "./rendering/environment/CombatMapScenery";
+import { IRON_JUNCTION_IMPORTED_ASSETS } from "./ironJunctionImportedAssets";
+import { DESERT_CITADEL_IMPORTED_ASSETS } from "./desertCitadelImportedAssets";
+import { TEMPLE_RUNOFF_IMPORTED_ASSETS } from "./templeRunoffImportedAssets";
 
 type ActiveArenaQuality = Exclude<ArenaQuality, "auto">;
 type TextureKind = "floor" | "stone" | "wood" | "water" | "sand" | "metal";
@@ -70,7 +75,6 @@ export const buildArenaMapScene = (deps: MapBuilderDependencies) => {
     isZombieMode,
     activeQuality,
     qualityConfig,
-    makeCanvasTexture,
     seededRandom
   } = deps;
   const palette = arenaMap.palette;
@@ -84,12 +88,12 @@ export const buildArenaMapScene = (deps: MapBuilderDependencies) => {
   const warning = "#d18a3f";
 
 const surfaceTextureResolution = activeQuality === "high" ? 1024 : 512;
-const floorTexture = makeCanvasTexture(palette.floorTexture, palette.accent, surfaceTextureResolution);
-const stoneTexture = makeCanvasTexture("stone", "#f6d98e", surfaceTextureResolution);
-const woodTexture = makeCanvasTexture("wood", "#bb8652", surfaceTextureResolution);
-const waterTexture = makeCanvasTexture("water", "#67e8f9", surfaceTextureResolution);
-const sandTexture = makeCanvasTexture("sand", "#f2ca73", surfaceTextureResolution);
-const metalTexture = makeCanvasTexture("metal", "#93a6ad", surfaceTextureResolution);
+const floorTexture = makeCombatSurfaceTexture(palette.floorTexture, surfaceTextureResolution);
+const stoneTexture = makeCombatSurfaceTexture("stone", surfaceTextureResolution);
+const woodTexture = makeCombatSurfaceTexture("wood", surfaceTextureResolution);
+const waterTexture = makeCombatSurfaceTexture("water", surfaceTextureResolution);
+const sandTexture = makeCombatSurfaceTexture("sand", surfaceTextureResolution);
+const metalTexture = makeCombatSurfaceTexture("metal", surfaceTextureResolution);
 [floorTexture, stoneTexture, woodTexture, waterTexture, sandTexture, metalTexture].forEach((texture) => {
   texture.anisotropy = qualityConfig.anisotropy;
 });
@@ -118,7 +122,9 @@ const surfaceAtlas = makeSurfaceAtlas(
   activeQuality === "high" ? 2048 : 1024
 );
 surfaceAtlas.anisotropy = qualityConfig.anisotropy;
-const staticBatcher = new ArenaStaticBatcher(surfaceAtlas, !isFps && qualityConfig.shadows);
+const staticBatcher = new ArenaStaticBatcher(surfaceAtlas, !isFps && qualityConfig.shadows, {
+  roughness: 0.88, metalness: 0.08, bumpScale: 0
+});
 
 const materialCache = new Map<string, THREE.MeshStandardMaterial>();
 const materialFor = (color: string, material = "stone") => {
@@ -138,8 +144,8 @@ const materialFor = (color: string, material = "stone") => {
           : stoneTexture;
   const materialOptions: THREE.MeshStandardMaterialParameters = {
     color,
-    roughness: material === "water" ? (isTempleRunoff ? 0.32 : 0.18) : material === "cloth" ? 0.84 : material === "metal" ? 0.42 : 0.68,
-    metalness: material === "water" ? 0.05 : material === "metal" ? 0.62 : 0.02,
+    roughness: material === "water" ? (isTempleRunoff ? 0.32 : 0.18) : material === "metal" ? 0.72 : 0.9,
+    metalness: material === "water" ? 0.05 : material === "metal" ? 0.22 : 0.02,
     emissive: material === "water" || material === "accent" ? color : "#000000",
     emissiveIntensity: material === "water" ? (isTempleRunoff ? 0.12 : 0.28) : material === "accent" ? 0.16 : 0,
     transparent: material === "water",
@@ -344,16 +350,7 @@ floor.position.y = -0.2;
 floor.receiveShadow = true;
 scene.add(floor);
 
-const grid = new THREE.GridHelper(
-  arenaBounds.limitX * 2,
-  35,
-  isIronJunction ? "#aeb8b5" : isTempleRunoff ? "#b8d8ad" : "#fff1c1",
-  isIronJunction ? "#566266" : isTempleRunoff ? "#4f6f52" : "#ad7b45"
-);
-grid.position.y = 0.012;
-grid.material.transparent = true;
-grid.material.opacity = 0.13;
-if (activeQuality !== "performance") scene.add(grid);
+// Authored materials replace the construction grid used in the blockout.
 
 const coverBoxes: THREE.Box3[] = [];
 const collisionProxyMaterial = new THREE.MeshBasicMaterial({ visible: false, colorWrite: false, depthWrite: false });
@@ -388,7 +385,7 @@ const addBlockDetail = (block: (typeof arenaMap.blocks)[number]) => {
   detail.position.set(block.x, (block.y ?? block.h / 2) - block.h / 2, block.z);
   detail.rotation.y = block.rotationY ?? 0;
   scene.add(detail);
-  const stoneTone = block.material === "wood" ? block.color : paleStone;
+  const stoneTone = block.material === "wood" ? block.color : isIronJunction ? "#b3b3a0" : isTempleRunoff ? "#b2b58c" : paleStone;
   const structuralStyle = ["wall", "ruin", "gate", "house", "tower", "shed", "machinery"].includes(block.style);
 
   if (structuralStyle) {
@@ -402,8 +399,13 @@ const addBlockDetail = (block: (typeof arenaMap.blocks)[number]) => {
   }
 
   if (block.style === "wall") {
+    if (isIronJunction) {
+      const cap = addDecorativeMesh(detail, new THREE.BoxGeometry(block.w, .22, block.d), "#617579", "metal");
+      cap.position.y = block.h - .12;
+      return;
+    }
     addDecorativeMesh(detail, new THREE.BoxGeometry(block.w * 0.98, 0.28, block.d * 1.08), stoneTone);
-    const crenelCount = Math.min(10, Math.max(2, Math.floor(block.w / 22)));
+    const crenelCount = isTempleRunoff ? 0 : Math.min(10, Math.max(2, Math.floor(block.w / 22)));
     for (let index = 0; index < crenelCount; index += 1) {
       const x = -block.w / 2 + ((index + 0.5) / crenelCount) * block.w;
       const crenel = addDecorativeMesh(detail, new THREE.BoxGeometry(Math.min(3.6, block.w / crenelCount * 0.55), 0.85, block.d * 1.1), stoneTone);
@@ -690,6 +692,18 @@ const addModularBlockBody = (block: (typeof arenaMap.blocks)[number]) => {
   group.position.set(block.x, block.y ?? block.h / 2, block.z);
   group.rotation.set(block.rotationX ?? 0, block.rotationY ?? 0, block.rotationZ ?? 0);
   scene.add(group);
+  if ((block.style === "sandbank" || block.style === "bridge" || block.style === "trackbed") && Math.max(block.w, block.d) > 45 && block.material !== "water") {
+    // Atlas tiles must stay clamped on facades. Broad floors instead use world
+    // sized UVs so ashlar, gravel and decking don't stretch across an entire lane.
+    const geometry = new THREE.BoxGeometry(block.w, block.h, block.d);
+    const positions = geometry.getAttribute("position");
+    const uv = geometry.getAttribute("uv");
+    for (let i = 0; i < uv.count; i++) uv.setXY(i, positions.getX(i) / 12, positions.getZ(i) / 12);
+    const body = new THREE.Mesh(geometry, materialFor(block.color, block.material ?? "stone"));
+    body.receiveShadow = true;
+    group.add(body);
+    return group;
+  }
   const structural = ["wall", "ruin", "gate", "house", "tower", "shed", "machinery", "gantry"].includes(block.style ?? "");
   if (qualityConfig.detail === 0 || !structural || block.material === "water") {
     const body = new THREE.Mesh(new THREE.BoxGeometry(block.w, block.h, block.d), materialFor(block.color, block.material ?? "stone"));
@@ -1050,10 +1064,26 @@ if (shouldScatterEdgeRocks(qualityConfig.detail, arenaMapId)) {
   scene.add(rockInstances);
 }
 
+addCombatMapScenery(scene, arenaMapId, arenaBounds, qualityConfig.detail, addDecorativeMesh);
 if (isIronJunction) addIronJunctionArtPass(scene, addDecorativeMesh, qualityConfig.detail, isFps);
 const templeRunoffArt = isTempleRunoff ? addTempleRunoffArtPass(scene, addDecorativeMesh, qualityConfig.detail, isFps) : null;
 const desertCitadelArt = isDesertCitadel ? addDesertCitadelArtPass(scene, addDecorativeMesh, qualityConfig.detail, isFps) : null;
 const desertCitadelVfx = isIronJunction || isTempleRunoff ? null : addDesertCitadelVfx(scene, qualityConfig.detail);
+const replaceableVisuals = isIronJunction
+  ? IRON_JUNCTION_IMPORTED_ASSETS.filter(asset => qualityConfig.detail >= asset.minimumDetail).flatMap(asset => [
+    ...(asset.fallbackBlockIds ?? []).flatMap(id => [`modular_${id}`, `detail_${id}`]),
+    ...(asset.fallbackObjectNames ?? [])
+  ])
+  : isDesertCitadel ? DESERT_CITADEL_IMPORTED_ASSETS.flatMap(asset =>
+    (asset.fallbackBlockIds ?? []).flatMap(id => [`modular_${id}`, `detail_${id}`]))
+  : TEMPLE_RUNOFF_IMPORTED_ASSETS.flatMap(asset => [
+    ...(asset.fallbackBlockIds ?? []).flatMap(id => [`modular_${id}`, `detail_${id}`]),
+    ...(asset.fallbackCylinderIds ?? []).map(id => `cylinder_visual_${id}`)
+  ]);
+replaceableVisuals.forEach(name => {
+  const visual = scene.getObjectByName(name);
+  if (visual) visual.userData.staticBatchBoundary = true;
+});
 const staticBatchStats = staticBatcher.flush(scene);
 renderer.domElement.dataset.staticSources = String(staticBatchStats.sourceMeshes);
 renderer.domElement.dataset.staticBatches = String(staticBatchStats.batchMeshes);

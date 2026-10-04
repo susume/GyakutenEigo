@@ -45,8 +45,8 @@ export const getQuizStrikeLightingConfig = ({
     background: isZombieMode ? "#5d668a" : isIronJunction ? "#8da6aa" : isTempleRunoff ? "#a9cfbe" : "#8fc9df",
     fog: {
       color: isZombieMode ? "#8f8395" : isIronJunction ? "#bfd4d0" : isTempleRunoff ? "#b9d9ca" : "#e5dcc9",
-      near: isFps ? 110 : 185,
-      far: isFps ? 360 : 520
+      near: isFps ? 155 : 340,
+      far: isFps ? 510 : 700
     },
     ambient: {
       sky: isZombieMode ? "#d8ddff" : isIronJunction ? "#d9edf0" : isTempleRunoff ? "#e7f4d5" : "#eef7ff",
@@ -54,7 +54,7 @@ export const getQuizStrikeLightingConfig = ({
       intensity: isFps ? 1.04 : 1.18
     },
     sun: {
-      color: isZombieMode ? "#d9e1ff" : isIronJunction ? "#d6edf0" : isTempleRunoff ? "#ffd798" : "#fff0ca",
+      color: isZombieMode ? "#d9e1ff" : isIronJunction ? "#fff0d5" : isTempleRunoff ? "#ffe4b4" : "#fff0ca",
       intensity: isFps ? 1.72 : 2.1,
       direction: [isIronJunction ? -120 : isTempleRunoff ? -105 : -85, 180, isIronJunction ? -60 : 95]
     },

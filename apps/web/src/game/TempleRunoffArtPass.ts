@@ -1,5 +1,6 @@
 import * as THREE from "three";
 import { ARENA_SCALE, TEMPLE_RUNOFF_MAIN_LEVEL_Y } from "@quizstrike/shared";
+import { blocks } from "./templeRunoffMap";
 
 type AddStaticMesh = (
   parent: THREE.Object3D,
@@ -31,6 +32,44 @@ export const addTempleRunoffArtPass = (
   detail: number,
   isFps: boolean
 ): TempleRunoffArtHandle => {
+  const carvings = new THREE.Group();
+  carvings.name = "temple_runoff_carved_stonework";
+  scene.add(carvings);
+  // Shallow relief follows existing cover rather than inventing new obstacles.
+  for (const block of blocks.filter((item) => item.style === "ruin" && item.material === "stone" && item.h >= 8)) {
+    const horizontal = block.w >= block.d;
+    const width = horizontal ? block.w : block.d;
+    const depth = horizontal ? block.d : block.w;
+    const face = new THREE.Group();
+    face.position.set(block.x, (block.y ?? block.h / 2) - block.h / 2, block.z);
+    face.rotation.y = horizontal ? 0 : Math.PI / 2;
+    carvings.add(face);
+    for (const side of [-1, 1]) {
+      const course = addStaticMesh(face, new THREE.BoxGeometry(width * .94, .4, .12), "#a7ad87");
+      course.position.set(0, block.h - 1.2, side * depth / 2);
+      const sun = addStaticMesh(face, new THREE.TorusGeometry(1.05, .18, 5, 12), "#9aab85");
+      sun.position.set(0, block.h * .6, side * depth / 2);
+      for (const x of [-2.4, 2.4]) {
+        const glyph = addStaticMesh(face, new THREE.BoxGeometry(.45, 2.4, .14), "#a7ad87");
+        glyph.position.set(x, block.h * .6, side * depth / 2);
+      }
+    }
+  }
+  for (const z of [-192, 192]) {
+    const wall = new THREE.Group();
+    wall.position.z = scaled(z);
+    carvings.add(wall);
+    for (const y of [15.5, 25]) {
+      const course = addStaticMesh(wall, new THREE.BoxGeometry(scaled(452), .45, .16), "#8e9f80");
+      course.position.y = y;
+    }
+    for (const x of [-192, -128, -64, 0, 64, 128, 192]) {
+      const pier = addStaticMesh(wall, new THREE.BoxGeometry(1.2, 16, .16), "#7e9278");
+      pier.position.set(scaled(x), 18, 0);
+      const seal = addStaticMesh(wall, new THREE.TorusGeometry(1.6, .24, 5, 12), "#a2b491");
+      seal.position.set(scaled(x + 24), 20, 0);
+    }
+  }
   const tunnelStory = new THREE.Group();
   tunnelStory.name = "temple_runoff_sluice_story";
   scene.add(tunnelStory);
@@ -83,11 +122,20 @@ export const addTempleRunoffArtPass = (
   const instancedMeshes: THREE.InstancedMesh[] = [];
   if (vegetationCount > 0) {
     const trunkGeometry = new THREE.CylinderGeometry(0.22, 0.42, 5.4, 6);
-    const leafGeometry = new THREE.ConeGeometry(1.9, 5.2, 5);
-    const fernGeometry = new THREE.BoxGeometry(0.12, 0.05, 3.8);
+    const leafGeometry = new THREE.IcosahedronGeometry(2.3, 1);
+    const fernGeometry = new THREE.BufferGeometry();
+    const fernVertices: number[] = [];
+    for (let i = 0; i < 7; i++) {
+      const angle = i * Math.PI * 2 / 7;
+      const dx = Math.cos(angle), dz = Math.sin(angle);
+      fernVertices.push(0, 0, 0, dx * 1.1 - dz * .24, .32, dz * 1.1 + dx * .24, dx * 1.8, .15, dz * 1.8);
+      fernVertices.push(0, 0, 0, dx * 1.8, .15, dz * 1.8, dx * 1.1 + dz * .24, .32, dz * 1.1 - dx * .24);
+    }
+    fernGeometry.setAttribute("position", new THREE.Float32BufferAttribute(fernVertices, 3));
+    fernGeometry.computeVertexNormals();
     const trunkMaterial = new THREE.MeshStandardMaterial({ color: "#5f452f", roughness: 0.92 });
     const leafMaterial = new THREE.MeshStandardMaterial({ color: "#3f704d", roughness: 0.9 });
-    const fernMaterial = new THREE.MeshStandardMaterial({ color: "#6c925c", roughness: 0.94 });
+    const fernMaterial = new THREE.MeshStandardMaterial({ color: "#6c925c", roughness: 0.94, side: THREE.DoubleSide });
     disposable.push(trunkGeometry, leafGeometry, fernGeometry, trunkMaterial, leafMaterial, fernMaterial);
     const trunks = new THREE.InstancedMesh(trunkGeometry, trunkMaterial, vegetationCount);
     const leaves = new THREE.InstancedMesh(leafGeometry, leafMaterial, vegetationCount * 2);
@@ -119,9 +167,11 @@ export const addTempleRunoffArtPass = (
 
       for (let crown = 0; crown < 2; crown += 1) {
         position.set(scaled(rawX) + (crown ? 1.35 : -1.1), groundY + 5.2 + treeScale * 2.5 + crown * 0.55, scaled(rawZ) + (crown ? -0.8 : 0.7));
-        rotation.setFromEuler(new THREE.Euler(crown ? 1.16 : -1.12, random() * Math.PI, 0));
-        itemScale.setScalar(0.72 + random() * 0.38);
+        rotation.setFromEuler(new THREE.Euler(0, random() * Math.PI, 0));
+        const crownScale = .9 + random() * .35;
+        itemScale.set(crownScale, crownScale * .75, crownScale);
         matrix.compose(position, rotation, itemScale);
+        leaves.setColorAt(leafIndex, new THREE.Color(["#92af7a", "#b0bd8e", "#82aa85"][index % 3]));
         leaves.setMatrixAt(leafIndex++, matrix);
       }
 
@@ -149,7 +199,7 @@ export const addTempleRunoffArtPass = (
       });
     },
     dispose() {
-      scene.remove(tunnelStory, connectorStory, waterGroup, vegetationGroup);
+      scene.remove(carvings, tunnelStory, connectorStory, waterGroup, vegetationGroup);
       disposable.forEach((resource) => resource.dispose());
     }
   };

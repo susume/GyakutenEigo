@@ -52,12 +52,12 @@ export const TEMPLE_RUNOFF: ArenaMapDefinition = {
   }
 };
 
-const sandstone = "#aa9162";
+const sandstone = "#b8a070";
 const sunStone = "#c5ab70";
-const mossStone = "#697653";
-const dampStone = "#4f6657";
-const deepMoss = "#405542";
-const darkStone = "#454c43";
+const mossStone = "#819273";
+const dampStone = "#6c806a";
+const deepMoss = "#526951";
+const darkStone = "#657767";
 const timber = "#6b4b31";
 const water = "#399e9e";
 const agedPlaster = "#b7a779";

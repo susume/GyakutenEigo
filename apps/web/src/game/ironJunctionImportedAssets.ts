@@ -32,7 +32,8 @@ export const IRON_JUNCTION_IMPORTED_ASSETS: readonly ImportedAssetSpec[] = [
     position: [4, 0, 0],
     scale: 6.5,
     rotationY: Math.PI / 2,
-    minimumDetail: 1
+    minimumDetail: 0,
+    fallbackBlockIds: ["junction-locomotive"]
   },
   {
     id: "iron-junction-blue-container",
@@ -204,6 +205,21 @@ const disposeOwnedRootResources = (root: THREE.Group) => {
   materials.forEach((material) => material.dispose());
 };
 
+/** A two-car cover proxy must not disappear after only one car loads. */
+export const settleIronJunctionFallbacks = (scene: THREE.Scene, root: THREE.Group, assets: readonly ImportedAssetSpec[], loaded: ReadonlySet<string>) => {
+  const owners = new Map<string, string[]>();
+  for (const asset of assets) for (const name of [
+    ...(asset.fallbackBlockIds ?? []).flatMap(id => [`modular_${id}`, `detail_${id}`]),
+    ...(asset.fallbackObjectNames ?? [])
+  ]) owners.set(name, [...(owners.get(name) ?? []), asset.id]);
+  for (const [name, ids] of owners) {
+    const complete = ids.every(id => loaded.has(id));
+    const fallback = scene.getObjectByName(name);
+    if (fallback) fallback.visible = !complete;
+    if (!complete) ids.forEach(id => root.getObjectByName(id)?.removeFromParent());
+  }
+};
+
 export const mountIronJunctionImportedAssets = async ({
   scene,
   detail,
@@ -221,6 +237,8 @@ export const mountIronJunctionImportedAssets = async ({
   SIGN_SPECS.forEach((spec) => addSign(root, spec));
   let disposed = false;
   const acquiredPaths: string[] = [];
+  const activeAssets = IRON_JUNCTION_IMPORTED_ASSETS.filter(asset => detail >= asset.minimumDetail);
+  const loaded = new Set<string>();
   const isDisposed = () => disposed || signal?.aborted === true;
   const dispose = () => {
     if (disposed) return;
@@ -234,7 +252,7 @@ export const mountIronJunctionImportedAssets = async ({
   if (signal?.aborted) dispose();
   else signal?.addEventListener("abort", onAbort, { once: true });
 
-  await Promise.all(IRON_JUNCTION_IMPORTED_ASSETS.filter((asset) => detail >= asset.minimumDetail).map(async (asset) => {
+  await Promise.all(activeAssets.map(async (asset) => {
     if (isDisposed()) return;
     try {
       const source = await loadArenaAsset(asset.path);
@@ -255,20 +273,14 @@ export const mountIronJunctionImportedAssets = async ({
         if (mesh.isMesh) mesh.castShadow = false;
       });
       root.add(instance);
-      asset.fallbackBlockIds?.forEach((blockId) => {
-        const fallback = scene.getObjectByName(`modular_${blockId}`);
-        if (fallback) fallback.visible = false;
-      });
-      asset.fallbackObjectNames?.forEach((objectName) => {
-        const fallback = scene.getObjectByName(objectName);
-        if (fallback) fallback.visible = false;
-      });
+      loaded.add(asset.id);
     } catch (error) {
       if (isDisposed()) return;
       // The procedural map remains playable if an optional GLB fails to load.
       console.warn(`[QuizStrike] optional Iron Junction asset failed: ${asset.id}`, error);
     }
   }));
+  if (!isDisposed()) settleIronJunctionFallbacks(scene, root, activeAssets, loaded);
 
   return {
     dispose: () => {

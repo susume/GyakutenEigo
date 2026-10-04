@@ -1,5 +1,6 @@
 import * as THREE from "three";
 import { ARENA_SCALE } from "@quizstrike/shared";
+import { blocks } from "./ironJunctionMap";
 
 type AddStaticMesh = (
   parent: THREE.Object3D,
@@ -16,6 +17,34 @@ export const addIronJunctionArtPass = (
   detail: number,
   isFps: boolean
 ) => {
+  const facades = new THREE.Group();
+  facades.name = "iron_junction_industrial_facades";
+  scene.add(facades);
+  if (detail > 0) for (const block of blocks.filter((item) => item.style === "wall" && item.h >= 13 && /^(warehouse|dispatch|depot)-/.test(item.id))) {
+    const facade = new THREE.Group();
+    const horizontal = block.w >= block.d;
+    const width = horizontal ? block.w : block.d;
+    const depth = horizontal ? block.d : block.w;
+    facade.position.set(block.x, (block.y ?? block.h / 2) - block.h / 2, block.z);
+    facade.rotation.y = horizontal ? 0 : Math.PI / 2;
+    facades.add(facade);
+    const bays = Math.max(1, Math.floor(width / 10));
+    for (const side of [-1, 1]) {
+      const lintel = addStaticMesh(facade, new THREE.BoxGeometry(width, .45, .14), "#aaa993", "stone");
+      lintel.position.set(0, block.h - 1, side * (depth / 2 + .04));
+      for (let i = 0; i < bays; i++) {
+        const x = -width / 2 + (i + .5) * width / bays;
+        const rib = addStaticMesh(facade, new THREE.BoxGeometry(.28, block.h - 2, .12), block.id.startsWith("depot") ? "#6b898b" : "#bdad91", "metal");
+        rib.position.set(x, block.h / 2, side * (depth / 2 + .04));
+        if (!block.id.startsWith("depot")) {
+          const frame = addStaticMesh(facade, new THREE.BoxGeometry(5.2, 3.4, .13), "#d0c6a9", "stone");
+          frame.position.set(x, block.h - 4.3, side * (depth / 2 + .06));
+          const window = addStaticMesh(facade, new THREE.BoxGeometry(4.6, 2.8, .14), "#708f95", "metal");
+          window.position.set(x, block.h - 4.3, side * (depth / 2 + .09));
+        }
+      }
+    }
+  }
   const railway = new THREE.Group();
   railway.name = "iron_junction_shared_rail_system";
   scene.add(railway);

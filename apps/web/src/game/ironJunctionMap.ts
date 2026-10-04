@@ -89,20 +89,20 @@ export const IRON_JUNCTION: ArenaMapDefinition = {
   palette: {
     sky: "#718189",
     fog: "#809096",
-    floor: "#4b5352",
+    floor: "#7e8277",
     floorTexture: "floor",
     accent: "#c98242"
   }
 };
 
-const steel = "#39464b";
-const darkSteel = "#253136";
-const weatheredSteel = "#53615f";
-const rust = "#884a33";
-const brick = "#705247";
-const concrete = "#737b78";
-const gravel = "#4d5452";
-const dirtyCream = "#b2aa91";
+const steel = "#61767d";
+const darkSteel = "#374b52";
+const weatheredSteel = "#6f8586";
+const rust = "#b26847";
+const brick = "#a36e53";
+const concrete = "#a2a89b";
+const gravel = "#737c72";
+const dirtyCream = "#d2c7a7";
 const warning = "#cf873d";
 const redStripe = "#a94d42";
 

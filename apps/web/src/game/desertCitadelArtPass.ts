@@ -34,14 +34,17 @@ const addPerimeterWallDetails = (
     for (const y of [4.2, 9.2]) {
       const course = addStaticMesh(
         facade,
-        new THREE.BoxGeometry(s(492), 0.16, 0.18),
+        new THREE.BoxGeometry(s(horizontal ? 492 : 376), 0.16, 0.18),
         y < 5 ? "#c18755" : sunbleached,
         "stone"
       );
       course.position.y = y;
     }
 
-    for (const [index, x] of [-204, -136, -68, 0, 68, 136, 204].entries()) {
+    const bays = horizontal ? [-204, -136, -68, 0, 68, 136, 204] : [-136, -68, 0, 68, 136];
+    for (const [index, x] of bays.entries()) {
+      const pier = addStaticMesh(facade, new THREE.BoxGeometry(.9, 12.6, .18), plaster);
+      pier.position.set(s(x + 24), 6.3, 0);
       const recess = addStaticMesh(
         facade,
         new THREE.BoxGeometry(s(3.1), 2.15, 0.16),
@@ -87,5 +90,21 @@ export const addDesertCitadelArtPass = (
   _isFps: boolean
 ) => {
   addPerimeterWallDetails(scene, addStaticMesh, detail);
+  // The Falcon Obelisk becomes a recognizable carved landmark. Relief stays
+  // inside its existing footprint and below the authored crown height.
+  const relief = new THREE.Group();
+  relief.name = "desert_citadel_falcon_relief";
+  relief.position.set(0, 0, s(-112));
+  scene.add(relief);
+  for (const side of [-1, 1]) {
+    const sun = addStaticMesh(relief, new THREE.CylinderGeometry(1.7, 1.7, .14, 16), "#d9b874", "stone");
+    sun.rotation.x = Math.PI / 2;
+    sun.position.set(0, 12, side * s(7));
+    for (const wing of [-1, 1]) {
+      const feather = addStaticMesh(relief, new THREE.BoxGeometry(2.5, .6, .16), "#619e9a", "stone");
+      feather.position.set(wing * 1.6, 10.3, side * s(7));
+      feather.rotation.z = wing * -.35;
+    }
+  }
   return { dispose: () => undefined };
 };

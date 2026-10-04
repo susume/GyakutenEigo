@@ -35,6 +35,9 @@ export const makeSurfaceAtlas = (textures: {
   context.drawImage(textures.stone.image as CanvasImageSource, 0, tileResolution, tileResolution, tileResolution);
   context.drawImage(textures.wood.image as CanvasImageSource, tileResolution, tileResolution, tileResolution, tileResolution);
   const atlas = new THREE.CanvasTexture(canvas);
+  // Tile coordinates use the canvas's top-left origin. Flipping at upload
+  // swaps stone with metal and wood with sand on every batched facade.
+  atlas.flipY = false;
   atlas.colorSpace = THREE.SRGBColorSpace;
   atlas.wrapS = THREE.ClampToEdgeWrapping;
   atlas.wrapT = THREE.ClampToEdgeWrapping;
@@ -101,26 +104,36 @@ export class ArenaStaticBatcher {
 
   flush(scene: THREE.Scene) {
     scene.updateMatrixWorld(true);
-    const groups = new Map<string, { material: THREE.Material; geometries: THREE.BufferGeometry[]; sources: THREE.Mesh[] }>();
+    const groups = new Map<string, { parent: THREE.Object3D; material: THREE.Material; geometries: THREE.BufferGeometry[]; sources: THREE.Mesh[] }>();
     scene.traverse((object) => {
       const mesh = object as THREE.Mesh;
       if (!mesh.isMesh || !mesh.userData.staticFacade || Array.isArray(mesh.material)) return;
-      const entry = groups.get(mesh.material.uuid) ?? { material: mesh.material, geometries: [], sources: [] };
-      entry.geometries.push(mesh.geometry.clone().applyMatrix4(mesh.matrixWorld));
+      if (mesh.userData.staticBatchBoundary) return;
+      // Optional imported models hide their procedural fallback after loading.
+      // Keep those batches in the fallback's local space and visibility tree.
+      let parent: THREE.Object3D = scene;
+      for (let ancestor = mesh.parent; ancestor && ancestor !== scene; ancestor = ancestor.parent) {
+        if (ancestor.userData.staticBatchBoundary) { parent = ancestor; break; }
+      }
+      const key = `${mesh.material.uuid}:${parent.uuid}`;
+      const entry = groups.get(key) ?? { parent, material: mesh.material, geometries: [], sources: [] };
+      const transform = new THREE.Matrix4().copy(parent.matrixWorld).invert().multiply(mesh.matrixWorld);
+      entry.geometries.push(mesh.geometry.clone().applyMatrix4(transform));
       entry.sources.push(mesh);
-      groups.set(mesh.material.uuid, entry);
+      groups.set(key, entry);
     });
     let sourceMeshes = 0;
     let batchMeshes = 0;
     groups.forEach((entry) => {
       if (entry.geometries.length === 0) return;
       const geometry = mergeGeometries(entry.geometries, false);
+      entry.geometries.forEach((source) => source.dispose());
       if (!geometry) return;
       const batch = new THREE.Mesh(geometry, entry.material);
       batch.name = `static_facade_batch_${entry.material.name}`;
       batch.castShadow = this.castShadow;
       batch.receiveShadow = true;
-      scene.add(batch);
+      entry.parent.add(batch);
       entry.sources.forEach((source) => {
         source.parent?.remove(source);
         source.geometry.dispose();
