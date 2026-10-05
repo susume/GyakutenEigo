@@ -17,8 +17,33 @@ phrases. A room-seeded shuffled bag plays every delivery once per six cycles,
 rotating the order and avoiding consecutive repeats. Silence inside the chant
 is still GO: students must wait for the final syllable and the STOP cue. The WAV
 durations define the server's turn deadlines; there is a 1.2-second lead-in and
-a 650-millisecond stopping allowance. The recordings are synthesized Japanese
-speech, generated locally with `tools/audio/generate-zeus-chants.ps1`.
+a 650-millisecond stopping allowance. The recordings use a fictional childlike
+Japanese voice: Microsoft Ayumi synthesis with a modest pitch/formant lift and
+duration-preserving tempo correction. Generate them locally in PowerShell 7 with
+`tools/audio/generate-zeus-chants.ps1`; the script updates the authoritative WAV
+durations as well. Versioned `child-*.wav` URLs avoid cached adult recordings.
+
+Refill and recovery questions share a persisted shuffled bag for each student.
+Every question is used once before the next shuffle; the new bag avoids repeating
+the previous last question and, for pools of three or more, the previous order.
+Reopening a question or reconnecting keeps the assignment. Wrong answers keep
+the same question; correct recovery answers advance the bag without adding race
+question credit.
+
+Zigzag Steps has eight-unit square landings and wider alternating jumps. Timing
+Traverse uses smaller floating landings and six shuttles, each six by seven units,
+with faster, offset movement cycles. Safe checkpoints remain spacious. Main jumps,
+shuttle boarding/exits, and optional shortcuts are checked against the shared
+jump envelope and server collision geometry.
+
+Power Stairs uses ten floating pink landings that rise and fall with staggered
+phases and periods. Their tall posts, ground supports, and static collision slabs
+are removed; the blue connecting lift remains. Guidance tracks the actual moving
+deck, and recovery returns to a stable checkpoint. Skyline Descent is a narrow weaving staircase with
+six offset posts and three low hurdles. Its treads still connect continuously
+to the finish lane. The map uses colored checkpoint arches, landing chevrons,
+and the next-landing marker for direction; start, finish, checkpoint, district,
+shortcut, and stadium caption boards have been removed.
 
 The head appears above the course and follows the view through its bends.
 Phone layouts place it below the compact HUD; wider views place it beside the

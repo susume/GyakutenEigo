@@ -6,12 +6,12 @@ export const ZEUS_RESTART_GUARD_MS = 900;
 export const ZEUS_CHANT_LEAD_MS = 1200;
 export const ZEUS_STRIKE_VISIBLE_MS = 1800;
 export const ZEUS_CHANTS = {
-  slow: { durationMs: 5083, path: "/assets/audio/zeus/slow.wav" },
-  steady: { durationMs: 3867, path: "/assets/audio/zeus/steady.wav" },
-  quick: { durationMs: 2845, path: "/assets/audio/zeus/quick.wav" },
-  rush: { durationMs: 3329, path: "/assets/audio/zeus/rush.wav" },
-  suspense: { durationMs: 4424, path: "/assets/audio/zeus/suspense.wav" },
-  staccato: { durationMs: 4190, path: "/assets/audio/zeus/staccato.wav" }
+  slow: { durationMs: 5125, path: "/assets/audio/zeus/child-slow.wav" },
+  steady: { durationMs: 3746, path: "/assets/audio/zeus/child-steady.wav" },
+  quick: { durationMs: 2794, path: "/assets/audio/zeus/child-quick.wav" },
+  rush: { durationMs: 3365, path: "/assets/audio/zeus/child-rush.wav" },
+  suspense: { durationMs: 4396, path: "/assets/audio/zeus/child-suspense.wav" },
+  staccato: { durationMs: 4245, path: "/assets/audio/zeus/child-staccato.wav" }
 } as const;
 export type ZeusChantId = keyof typeof ZEUS_CHANTS;
 

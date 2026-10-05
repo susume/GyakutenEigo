@@ -24,6 +24,7 @@ type PlayerFixture = {
   questionIndex?: number;
   athletics?: {
     questionIndex: number;
+    questionCursor?: number;
     checkpointIndex: number;
     routeProgress: number;
     gateOpen: boolean;
@@ -308,6 +309,7 @@ test("Athletics creation, start gate, wrong-answer retry, skip prevention, and D
   );
   assert.equal(recoveryQuestion.response.status, 200);
   let recoveryQuestionId = recoveryQuestion.body.question.id;
+  assert.notEqual(recoveryQuestionId, alpha.question!.id, "a fall keeps the next shuffled assignment");
   const wrongRecovery = await api<{ result: { isCorrect: boolean; nextQuestion?: { id: string }; player: PlayerFixture; respawnProgress?: number; feedback?: string } }>(
     `/api/sessions/${session.sessionCode}/players/${alpha.player.id}/answer`,
     { method: "POST", playerToken: alpha.playerToken, body: { questionId: recoveryQuestionId, selectedChoice: "B" } }
@@ -326,7 +328,9 @@ test("Athletics creation, start gate, wrong-answer retry, skip prevention, and D
     );
     assert.equal(recoveryAnswer.response.status, 200);
     assert.equal(recoveryAnswer.body.result.isCorrect, true);
+    assert.equal(recoveryAnswer.body.result.player.athletics?.questionCursor, (correctCount + 1) % 3);
     assert.equal(recoveryAnswer.body.result.respawnProgress, correctCount);
+    assert.notEqual(recoveryAnswer.body.result.nextQuestion?.id, recoveryQuestionId, "recovery and returning to the course both advance the shuffled bag");
     if (correctCount < 3) {
       assert.equal(recoveryAnswer.body.result.player.athletics?.recoveryActive, true);
       assert.equal(recoveryAnswer.body.result.player.athletics?.recoveryCorrectAnswers, correctCount);
@@ -468,8 +472,21 @@ test("movement refill questions keep cycling after the quiz pool is exhausted", 
   await api(`/api/sessions/${session.sessionCode}/start`, { method: "POST", teacherToken: teacher.token });
   let questionId = student.question!.id;
   const seen = new Set<string>();
+  const served: string[] = [];
   for (let answerCount = 1; answerCount <= 7; answerCount += 1) {
     seen.add(questionId);
+    served.push(questionId);
+    const assigned = await api<{ question: { id: string } }>(
+      `/api/sessions/${session.sessionCode}/players/${student.player.id}/question`,
+      { playerToken: student.playerToken }
+    );
+    assert.equal(assigned.body.question.id, questionId, "reopening keeps the current question");
+    const rejoined = await api<JoinedPlayer>(
+      `/api/sessions/${session.sessionCode}/players/${student.player.id}/rejoin`,
+      { playerToken: student.playerToken }
+    );
+    assert.equal(rejoined.response.status, 200);
+    assert.equal(rejoined.body.question?.id, questionId, "reconnecting keeps the bag position");
     const answered = await api<{ result: { nextQuestion?: { id: string }; player: PlayerFixture } }>(
       `/api/sessions/${session.sessionCode}/players/${student.player.id}/answer`,
       { method: "POST", playerToken: student.playerToken, body: { questionId, selectedChoice: "A" } }
@@ -478,10 +495,14 @@ test("movement refill questions keep cycling after the quiz pool is exhausted", 
     assert.equal(answered.body.result.player.athletics?.questionIndex, answerCount);
     assert.ok(answered.body.result.nextQuestion?.id, "a long circuit must never run out of refill questions");
     assert.ok((answered.body.result.player.energy ?? 0) <= 1000);
+    assert.notEqual(answered.body.result.nextQuestion!.id, questionId);
     questionId = answered.body.result.nextQuestion!.id;
     await delay(600);
   }
   assert.equal(seen.size, 3);
+  assert.equal(new Set(served.slice(0, 3)).size, 3);
+  assert.equal(new Set(served.slice(3, 6)).size, 3);
+  assert.notDeepEqual(served.slice(0, 3), served.slice(3, 6), "exhausting the pool must reshuffle its order");
 });
 
 test("Chaos Climb answers charge a usable ability", { timeout: 20_000 }, async () => {

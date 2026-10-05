@@ -33,9 +33,7 @@ type AthleticsStadiumBuilderDependencies = {
   activeQuality: ActiveArenaQuality;
   qualityConfig: ArenaQualityConfig;
   makeCanvasTexture: (kind: TextureKind, accent?: string, resolution?: number) => THREE.CanvasTexture;
-  makeLabelTexture: (label: string, color?: string, background?: string) => THREE.CanvasTexture;
   questionsPerLap?: number;
-  requiredLaps?: number;
   serverTime?: string;
   debugOverlay?: boolean;
   seededRandom: (seed: number) => () => number;
@@ -242,9 +240,7 @@ export const buildAthleticsStadiumScene = ({
   activeQuality,
   qualityConfig,
   makeCanvasTexture,
-  makeLabelTexture,
   questionsPerLap = 7,
-  requiredLaps = 1,
   serverTime,
   debugOverlay = false,
   seededRandom
@@ -339,8 +335,7 @@ export const buildAthleticsStadiumScene = ({
       pink: accentMaterials.pink,
       gold: accentMaterials.gold
     },
-    seededRandom,
-    makeLabelTexture
+    seededRandom
   });
 
   // 280 x 280 floor and boundary match ATHLETICS_COURSE_BOUNDS. The route is
@@ -369,13 +364,6 @@ export const buildAthleticsStadiumScene = ({
   const startTangent = getAthleticsRouteTangent(0, course);
   const startAngle = Math.atan2(startTangent.x, startTangent.z);
 
-  const labelMaterial = (key: string, texture: THREE.Texture) => makeMaterial(materialCache, key, "#ffffff", {
-    map: texture,
-    emissive: "#ffffff",
-    emissiveMap: texture,
-    emissiveIntensity: 0.42
-  });
-
   const getSectionAccent = (progress: number): AthleticsAccent =>
     course.sections.find((section) => progress <= section.endProgress)?.accent ?? course.sections.at(-1)?.accent ?? "cyan";
 
@@ -400,6 +388,7 @@ export const buildAthleticsStadiumScene = ({
   };
 
   allSurfaceEntries.forEach(({ surface, shortcut }) => {
+    if (surface.movingObstacleId) return;
     const routeIndex = course.surfaces.indexOf(surface);
     const progress = shortcut
       ? getAthleticsRouteProgress({ x: surface.x, y: surface.y + ATHLETICS_PLAYER_EYE_HEIGHT, z: surface.z }, course)
@@ -481,32 +470,18 @@ export const buildAthleticsStadiumScene = ({
     }
   });
 
-  // Start teaching is local and concrete: a large pad, a short sign, and one
-  // marker hovering over landing #2. No road, centerline, or gate is needed.
+  // Painted start markings and the next-landing marker guide the first jump.
   addBox(park, accentMaterials.cyan, [22, 0.12, 0.55], [start.x, start.y + 0.23, start.z - 4.4], [0, startAngle, 0]);
   addBox(park, accentMaterials.cyan, [15, 0.12, 0.45], [start.x - startTangent.x * 4, start.y + 0.24, start.z - startTangent.z * 4], [0, startAngle, 0]);
   const entranceFallback = new THREE.Group();
   entranceFallback.name = "athletics-fallback-entrance";
   park.add(entranceFallback);
   addArch(entranceFallback, accentMaterials.cyan, { x: start.x, y: start.y, z: start.z + 7 }, 0, 24, 8);
-  addBox(entranceFallback, dark, [22, 2.4, 0.5], [start.x, start.y + 10.2, start.z + 7], [0, startAngle, 0]);
-  const startLabel = makeLabelTexture("HURDLE SPRINT · FOLLOW THE RUNWAY", "#0e1a2d", "#7bf0ff");
-  addBox(park, labelMaterial("start-label", startLabel), [22, 1.8, 0.08], [start.x, start.y + 10.2, start.z + 6.68], [0, startAngle, 0]);
-
-  const finishLabel = makeLabelTexture(requiredLaps > 1 ? "START / FINISH · KEEP RUNNING" : "START / FINISH", "#2b1731", "#ffd66e");
   addArch(park, accentMaterials.gold, finish, 1, 14, 7);
-  addBox(park, labelMaterial("finish-label", finishLabel), [14, 1.9, 0.08], [finish.x, finish.y + 8, finish.z]);
   for (let tile = 0; tile < 14; tile += 1) {
     for (let row = 0; row < 2; row += 1) addBatchedBox((tile + row) % 2 ? cream : dark,
       [1, .05, .8], [finish.x - 6.5 + tile, .2, finish.z - .4 + row * .8], "stone");
   }
-  course.sections.forEach((section, index) => {
-    const point = getAthleticsPointAtProgress(section.startProgress, course);
-    const tangent = getAthleticsRouteTangent(section.startProgress, course);
-    const label = makeLabelTexture(`${index + 1} · ${section.label.toUpperCase()}`, "#13243b", sectionColors[section.accent]);
-    addBox(park, labelMaterial(`district-label-${index}`, label), [12, 1.2, .08],
-      [point.x + tangent.z * 8, point.y + 4, point.z - tangent.x * 8], [0, Math.atan2(tangent.x, tangent.z), 0]);
-  });
   // These are the same solid rectangles that the server validates, rather
   // than scenery that merely resembles an obstacle.
   (course.challenges ?? []).forEach((challenge) => {
@@ -516,11 +491,14 @@ export const buildAthleticsStadiumScene = ({
     addBatchedBox(cream, [challenge.width + .08, .12, challenge.depth + .08],
       [challenge.x, challenge.y + challenge.height + .06, challenge.z], "sand");
     if (challenge.kind === "hurdle") {
+      const alongX = challenge.width > challenge.depth;
+      const span = alongX ? challenge.width : challenge.depth;
       for (let stripe = -2; stripe <= 2; stripe += 1) {
-        addBatchedBox(cream, [.025, challenge.height * .72, 1.1],
-          [challenge.x + challenge.width / 2 + .015, challenge.y + challenge.height / 2, challenge.z + stripe * 2.4], "sand");
-        addBatchedBox(cream, [.025, challenge.height * .72, 1.1],
-          [challenge.x - challenge.width / 2 - .015, challenge.y + challenge.height / 2, challenge.z + stripe * 2.4], "sand");
+        for (const side of [-1, 1]) addBatchedBox(cream,
+          alongX ? [span * .075, challenge.height * .72, .025] : [.025, challenge.height * .72, span * .075],
+          [challenge.x + (alongX ? stripe * span * .18 : side * (challenge.width / 2 + .015)),
+            challenge.y + challenge.height / 2,
+            challenge.z + (alongX ? side * (challenge.depth / 2 + .015) : stripe * span * .18)], "sand");
       }
     } else {
       for (const fraction of [.3, .65]) addBatchedBox(cream, [challenge.width + .04, .25, challenge.depth + .04],
@@ -542,19 +520,6 @@ export const buildAthleticsStadiumScene = ({
     const point = getAthleticsPointAtProgress(progress, course);
     const accent = getSectionAccent(progress);
     addArch(park, accentMaterials[accent], point, progress, 18, 6.8);
-    const sectionLabel = course.sections.find((section) => progress <= section.endProgress)?.label ?? "Sky Park Summit";
-    const checkpointLabel = makeLabelTexture(`CHECKPOINT ${index + 1} · ${sectionLabel.toUpperCase()}`, "#13243b", sectionColors[accent]);
-    const tangent = getAthleticsRouteTangent(progress, course);
-    addBox(park, labelMaterial(`checkpoint-label-${index}`, checkpointLabel), [13.5, 1.1, 0.08], [point.x, point.y + 7.7, point.z], [0, Math.atan2(tangent.x, tangent.z), 0]);
-  });
-
-  // Branches are advertised before the player commits to a narrower jump.
-  course.shortcuts.forEach((shortcut) => {
-    const point = getAthleticsPointAtProgress(shortcut.startProgress, course);
-    const tangent = getAthleticsRouteTangent(shortcut.startProgress, course);
-    const label = makeLabelTexture("GOLD SHORTCUT · HARDER JUMPS", "#30241a", "#ffd66e");
-    addBox(park, labelMaterial(`shortcut-label-${shortcut.id}`, label), [8, 0.85, 0.08],
-      [point.x + tangent.z * 4.2, point.y + 3, point.z - tangent.x * 4.2], [0, Math.atan2(tangent.x, tangent.z), 0]);
   });
 
   // Ground-level attraction district: imported GLBs can hide these named
@@ -587,11 +552,14 @@ export const buildAthleticsStadiumScene = ({
     const group = new THREE.Group();
     group.name = `moving-${obstacle.id}`;
     group.position.set(obstacle.x, obstacle.y, obstacle.z);
-    const material = obstacle.kind === "barrier" ? accentMaterials.pink : obstacle.kind === "elevator" ? accentMaterials.cyan : accentMaterials.violet;
+    const linkedSurface = course.surfaces.find((surface) => surface.movingObstacleId === obstacle.id);
+    const accent = linkedSurface ? getSectionAccent(getAthleticsSurfaceRouteProgress(course.surfaces.indexOf(linkedSurface), course))
+      : obstacle.kind === "barrier" ? "pink" : obstacle.kind === "elevator" ? "cyan" : "violet";
+    const material = accentMaterials[accent];
     addBox(group, material, [obstacle.width, obstacle.height, obstacle.depth], [0, obstacle.height / 2, 0]);
     addBox(group, cream, [obstacle.width * 0.68, 0.12, 0.24], [0, obstacle.height + 0.08, -obstacle.depth * 0.28]);
     const movingEdgeMaterial = new THREE.LineBasicMaterial({
-      color: obstacle.material === "wood" ? sectionColors.orange : obstacle.material === "accent" ? sectionColors.violet : sectionColors.cyan,
+      color: sectionColors[accent],
       transparent: true,
       opacity: 0.88,
       depthWrite: false
@@ -604,7 +572,13 @@ export const buildAthleticsStadiumScene = ({
     movingEdge.position.y = obstacle.height + 0.14;
     movingEdge.renderOrder = 3;
     group.add(movingEdge);
-    if (obstacle.kind === "elevator") addBox(group, accentMaterials.cyan, [0.35, obstacle.height + 1.4, 0.35], [0, -(obstacle.height + 1.4) / 2, 0]);
+    if (linkedSurface) {
+      const nextSurface = course.surfaces[course.surfaces.indexOf(linkedSurface) + 1];
+      const heading = nextSurface ? Math.atan2(nextSurface.x - obstacle.x, nextSurface.z - obstacle.z) : 0;
+      for (const side of [-1, 1]) addBox(group, cream, [.22, .035, 1.7],
+        [Math.cos(heading) * side * .42, obstacle.height + .185, -Math.sin(heading) * side * .42],
+        [0, heading + side * -.55, 0]);
+    } else if (obstacle.kind === "elevator") addBox(group, accentMaterials.cyan, [0.35, obstacle.height + 1.4, 0.35], [0, -(obstacle.height + 1.4) / 2, 0]);
     park.add(group);
     return { obstacle, group };
   });
@@ -655,7 +629,8 @@ export const buildAthleticsStadiumScene = ({
         coverBox.max.set(next.x + obstacle.width / 2, next.y + obstacle.height, next.z + obstacle.depth / 2);
       }
       if (currentPosition && grounded
-        && Math.abs(currentPosition.y - ATHLETICS_PLAYER_EYE_HEIGHT - previous.y) < 1.35
+        && obstacle.kind !== "barrier"
+        && Math.abs(currentPosition.y - ATHLETICS_PLAYER_EYE_HEIGHT - (previous.y + obstacle.height)) < 1.35
         && Math.abs(currentPosition.x - previous.x) <= obstacle.width / 2 + 0.75
         && Math.abs(currentPosition.z - previous.z) <= obstacle.depth / 2 + 0.75) {
         carry.x += next.x - previous.x;

@@ -6,15 +6,16 @@ import {
   ATHLETICS_COURSE_BOUNDS,
   ATHLETICS_CORRECT_ENERGY,
   ATHLETICS_DEFAULT_TIME_LIMIT_SECONDS,
-  ATHLETICS_JUMP_AIRTIME_SECONDS,
   ATHLETICS_JUMP_APEX_HEIGHT,
+  ATHLETICS_JUMP_GRAVITY,
+  ATHLETICS_JUMP_VELOCITY,
   ATHLETICS_JUMP_HORIZONTAL_SPEED,
+  ATHLETICS_JUMP_LANDING_MARGIN,
   ATHLETICS_MOVEMENT_DRAIN_PER_SECOND,
   ATHLETICS_PLAYER_RADIUS,
   ATHLETICS_PLAYER_EYE_HEIGHT,
   ATHLETICS_MAX_ENERGY,
   ATHLETICS_STADIUM_COURSE,
-  ATHLETICS_TRANSITION_AIR_GAP_TARGETS,
   awardAthleticsEnergy,
   getAthleticsCourseGeometryIssues,
   getAthleticsCourseGeometryMetrics,
@@ -43,7 +44,6 @@ import {
   getAthleticsTransitionJumpEnvelope,
   getAthleticsJumpHorizontalReach,
   getAthleticsTransitionAirGap,
-  isAthleticsJumpTransition,
   isAthleticsFinish,
   isAthleticsBelowRecoverableRoute,
   isAthleticsCourseFinish,
@@ -62,7 +62,7 @@ test("Skyline Adventure Park exposes seven separated athletic districts", () => 
   assert.ok(getAthleticsRouteLength() >= 1100 && getAthleticsRouteLength() <= 1250);
   assert.ok(ATHLETICS_STADIUM_COURSE.surfaces.length >= 130 && ATHLETICS_STADIUM_COURSE.surfaces.length <= 150);
   assert.equal(ATHLETICS_STADIUM_COURSE.shortcuts.length, 3);
-  assert.equal(ATHLETICS_STADIUM_COURSE.movingObstacles.length, 5);
+  assert.equal(ATHLETICS_STADIUM_COURSE.movingObstacles.length, 19);
   for (const point of ATHLETICS_STADIUM_COURSE.route) {
     assert.ok(Math.abs(point.x) <= ATHLETICS_COURSE_BOUNDS.limitX);
     assert.ok(Math.abs(point.z) <= ATHLETICS_COURSE_BOUNDS.limitZ);
@@ -90,17 +90,17 @@ test("Athletics has distinct connected, balance, jumping, and timing challenges"
   assert.deepEqual(getAthleticsCourseGeometryIssues(course), []);
   assert.equal(metrics.mainRoutePlatformCount, 138);
   assert.equal(metrics.transitionCount, 138);
-  assert.equal(metrics.genuineJumpTransitionCount, 32);
+  assert.equal(metrics.genuineJumpTransitionCount, 34);
   assert.equal(metrics.jumpTransitionAirGapPercentage, 100);
   assert.ok(metrics.jumpTransitionPercentage > 20);
-  assert.equal(metrics.connectedNonJumpTransitionCount, 106);
-  assert.equal(metrics.movingPlatformTransitionCount, 5);
+  assert.equal(metrics.connectedNonJumpTransitionCount, 104);
+  assert.equal(metrics.movingPlatformTransitionCount, 9);
   assert.ok(metrics.medianAirGap >= 4);
   assert.ok(metrics.averagePlatformWidth < 16 && metrics.averagePlatformDepth < 15);
   assert.ok(course.transitions.slice(0, 9).every((transition) => getAthleticsTransitionAirGap(transition, course) <= .001));
   assert.ok(course.surfaces.slice(11, 21).every((surface) => surface.width === 4 && surface.material === "wood"));
   assert.ok(course.surfaces.slice(28, 32).every((surface) => surface.kind === "stair"));
-  assert.equal(course.challenges?.filter((entry) => entry.kind === "hurdle").length, 4);
+  assert.equal(course.challenges?.filter((entry) => entry.kind === "hurdle").length, 7);
   assert.equal(course.challenges?.filter((entry) => entry.kind === "slalom").length, 6);
   for (const challenge of course.challenges ?? []) {
     const proxy = getAthleticsObstacles().find((entry) => entry.id === challenge.id);
@@ -123,6 +123,127 @@ test("Athletics geometry QA rejects route crossings even at different heights", 
   assert.ok(getAthleticsCourseGeometryIssues(brokenCourse).some((issue) => issue.includes("route-platform-003") && issue.includes("route-platform-061")));
 });
 
+test("zigzag and floating districts demand precision and six shuttle crossings", () => {
+  const course = ATHLETICS_STADIUM_COURSE;
+  for (const surface of course.surfaces.slice(22, 28)) {
+    assert.ok(surface.width <= 8 && surface.depth <= 8);
+  }
+  for (const transition of course.transitions.slice(22, 26)) {
+    const envelope = getAthleticsTransitionJumpEnvelope(transition, course);
+    assert.ok(envelope.airGap >= 9, transition.id);
+    assert.ok(envelope.airGap <= envelope.horizontalReach, transition.id);
+  }
+  assert.ok(course.surfaces.slice(33, 43).every((surface) => surface.width <= 8 && surface.depth <= 6));
+  const shuttles = course.movingObstacles.filter((obstacle) => obstacle.kind === "platform");
+  assert.equal(shuttles.length, 6);
+  for (const shuttle of shuttles) {
+    assert.ok(shuttle.width <= 6 && shuttle.depth <= 7);
+    assert.ok(shuttle.amplitude >= 6 && shuttle.periodMs <= 4100);
+    const crossing = course.transitions.find((transition) => transition.movingObstacleId === shuttle.id)!;
+    assert.equal(crossing.type, "moving_jump");
+    const envelope = getAthleticsTransitionJumpEnvelope(crossing, course);
+    assert.ok(envelope.airGap > envelope.horizontalReach, "a direct jump must require boarding the shuttle");
+  }
+});
+
+test("Power Stairs replaces every pink landing with moving support and recovers on a stable checkpoint", () => {
+  const course = ATHLETICS_STADIUM_COURSE;
+  const ledges = course.surfaces.slice(44, 54);
+  assert.ok(ledges.every((surface) => surface.width <= 8 && surface.depth <= 8));
+  assert.equal(ledges.length, 10);
+  for (const surface of ledges) {
+    const float = course.movingObstacles.find((obstacle) => obstacle.id === surface.movingObstacleId)!;
+    assert.ok(float && float.axis === "y" && float.amplitude >= 2.8);
+    assert.equal(ATHLETICS_COLLISION_PROXIES.some((proxy) => proxy.id === surface.id), false,
+      "the original landing must not leave a stationary invisible floor");
+    for (const fraction of [.25, .75]) {
+      const nowMs = float.periodMs * fraction - (float.phaseMs ?? 0);
+      const point = getAthleticsMovingObstaclePosition(float, nowMs);
+      const support = getAthleticsPhysicalSupport({ ...point, y: point.y + float.height + ATHLETICS_PLAYER_EYE_HEIGHT }, course, ATHLETICS_PLAYER_EYE_HEIGHT, nowMs);
+      assert.equal(support.kind, "moving_platform");
+      assert.equal(support.obstacleId, float.id);
+      assert.equal(support.surfaceId, surface.id);
+      assert.equal(getAthleticsPhysicalSupport({ ...surface, y: surface.y + ATHLETICS_PLAYER_EYE_HEIGHT }, course, ATHLETICS_PLAYER_EYE_HEIGHT, nowMs).kind, "airborne");
+    }
+    assert.equal(getAthleticsPreviousSafeSurfaceIndex(getAthleticsSurfaceRouteProgress(course.surfaces.indexOf(surface))), 43);
+    const recovery = getAthleticsRecoveryPosition(course.surfaces.indexOf(surface));
+    assert.equal(getAthleticsPhysicalSupport(recovery).surfaceIndex, 43);
+  }
+  for (let index = 1; index < ledges.length; index++) {
+    assert.ok(Math.abs(ledges[index]!.x - ledges[index - 1]!.x) >= 8);
+    assert.ok(getAthleticsSurfaceAirGap(ledges[index - 1]!, ledges[index]!) >= 7);
+  }
+  const lift = course.movingObstacles.find((obstacle) => obstacle.id === "power-stairs-lift")!;
+  assert.ok(lift.width <= 8 && lift.depth <= 6 && lift.periodMs <= 4000);
+  const board = { ...lift, y: lift.y - lift.amplitude + lift.height };
+  const exit = { ...lift, y: lift.y + lift.amplitude + lift.height };
+  assert.ok(getAthleticsSurfaceAirGap(course.surfaces[49]!, board)
+    <= getAthleticsJumpHorizontalReach(board.y - course.surfaces[49]!.y));
+  assert.ok(getAthleticsSurfaceAirGap(exit, course.surfaces[50]!)
+    <= getAthleticsJumpHorizontalReach(course.surfaces[50]!.y - exit.y));
+});
+
+test("every floating ascent jump has a landing window while the destination moves during flight", () => {
+  const course = ATHLETICS_STADIUM_COURSE;
+  const deckAt = (surface: typeof course.surfaces[number], nowMs: number) => {
+    const mover = course.movingObstacles.find((obstacle) => obstacle.id === surface.movingObstacleId);
+    if (!mover) return surface;
+    const point = getAthleticsMovingObstaclePosition(mover, nowMs);
+    return { ...surface, ...point, y: point.y + mover.height };
+  };
+  const lift = course.movingObstacles.find((obstacle) => obstacle.id === "power-stairs-lift")!;
+  const liftAnchor = { ...course.surfaces[49]!, ...lift, y: lift.y + lift.height,
+    kind: "platform" as const, movingObstacleId: lift.id, rotationY: 0 };
+  let restrictedJumps = 0;
+  for (let index = 43; index <= 53; index++) {
+    const pairs = index === 49 ? [[course.surfaces[49]!, liftAnchor], [liftAnchor, course.surfaces[50]!]]
+      : [[course.surfaces[index]!, course.surfaces[index + 1]!]];
+    for (const [from, to] of pairs) {
+      let landingWindows = 0;
+      for (let startMs = 0; startMs < 60_000; startMs += 100) {
+        const start = deckAt(from!, startMs);
+        const gap = getAthleticsSurfaceAirGap(start, deckAt(to!, startMs));
+        let previousDifference = start.y - deckAt(to!, startMs).y;
+        for (let flight = .02; flight <= 1.6; flight += .02) {
+          const footY = start.y + ATHLETICS_JUMP_VELOCITY * flight - .5 * ATHLETICS_JUMP_GRAVITY * flight * flight;
+          const difference = footY - deckAt(to!, startMs + flight * 1000).y;
+          if (flight > ATHLETICS_JUMP_VELOCITY / ATHLETICS_JUMP_GRAVITY && previousDifference >= 0 && difference <= 0) {
+            if (gap + ATHLETICS_JUMP_LANDING_MARGIN <= (flight - .02) * ATHLETICS_JUMP_HORIZONTAL_SPEED) landingWindows++;
+            break;
+          }
+          previousDifference = difference;
+        }
+      }
+      assert.ok(landingWindows >= 30, `${from!.id} to ${to!.id} needs usable timed jump windows`);
+      if (landingWindows < 600) restrictedJumps++;
+    }
+  }
+  assert.ok(restrictedJumps >= 6, "the rising and falling decks must make timing matter");
+});
+
+test("Skyline Descent requires steering on its narrow continuous lane and jumping its hurdles", () => {
+  const course = ATHLETICS_STADIUM_COURSE;
+  for (const index of [76, 92, 108, 124]) {
+    const surface = course.surfaces[index]!;
+    const position = { x: surface.x, y: surface.y + ATHLETICS_PLAYER_EYE_HEIGHT, z: surface.z };
+    assert.equal(getAthleticsPhysicalSupport(position).surfaceIndex, index);
+    assert.notEqual(getAthleticsPhysicalSupport({ ...position, x: -54 }).kind, "main_surface",
+      "running straight must no longer bypass the weaving lane");
+  }
+  const hurdles = course.challenges!.filter((challenge) => challenge.id.startsWith("descent-hurdle-"));
+  assert.equal(hurdles.length, 3);
+  for (const hurdle of hurdles) {
+    const cross = (rise: number) => resolveAuthoritativeMovement({
+      current: { x: hurdle.x, y: hurdle.y + ATHLETICS_PLAYER_EYE_HEIGHT + rise, z: hurdle.z - 1, facing: 0 },
+      requested: { x: hurdle.x, y: hurdle.y + ATHLETICS_PLAYER_EYE_HEIGHT + rise, z: hurdle.z + 1, facing: 0 },
+      elapsedMs: 300, maxSpeed: 22, obstacles: getAthleticsObstacles(), groundY: hurdle.y,
+      eyeHeight: ATHLETICS_PLAYER_EYE_HEIGHT, mapId: ATHLETICS_ARENA_MAP_ID
+    });
+    assert.equal(cross(0).blocked, true, hurdle.id);
+    assert.equal(cross(2).z, hurdle.z + 1, hurdle.id);
+  }
+});
+
 test("solid sprint hurdles require a jump and slalom posts require steering", () => {
   const hurdlePad = ATHLETICS_STADIUM_COURSE.surfaces[2]!;
   const crossHurdle = (rise: number) => resolveAuthoritativeMovement({
@@ -133,7 +254,7 @@ test("solid sprint hurdles require a jump and slalom posts require steering", ()
   });
   assert.equal(crossHurdle(0).blocked, true);
   assert.equal(crossHurdle(2).x, hurdlePad.x - 2);
-  const slalomPad = ATHLETICS_STADIUM_COURSE.surfaces[46]!;
+  const slalomPad = ATHLETICS_STADIUM_COURSE.challenges!.find((challenge) => challenge.kind === "slalom")!;
   const passPost = (offset: number) => resolveAuthoritativeMovement({
     current: { x: slalomPad.x + offset, y: slalomPad.y + ATHLETICS_PLAYER_EYE_HEIGHT, z: slalomPad.z - 3, facing: 0 },
     requested: { x: slalomPad.x + offset, y: slalomPad.y + ATHLETICS_PLAYER_EYE_HEIGHT, z: slalomPad.z + 3, facing: 0 },
@@ -302,7 +423,7 @@ test("authored shortcuts and moving platforms remain collision-backed and route-
   assert.equal(isAthleticsOnRoute({ ...shortcutPoint, y: shortcutPoint.y + 20 }), false);
 
   const expectedStaticProxyCount = 4
-    + ATHLETICS_STADIUM_COURSE.surfaces.length
+    + ATHLETICS_STADIUM_COURSE.surfaces.filter((surface) => !surface.movingObstacleId).length
     + (ATHLETICS_STADIUM_COURSE.challenges?.length ?? 0)
     + ATHLETICS_STADIUM_COURSE.shortcuts.reduce((total, branch) => total + branch.surfaces.length, 0);
   assert.equal(ATHLETICS_COLLISION_PROXIES.length, expectedStaticProxyCount);
@@ -321,6 +442,7 @@ test("authored shortcuts and moving platforms remain collision-backed and route-
 test("physical support classification covers main, shortcut, moving, crouch, and checkpoint occupancy", () => {
   const course = ATHLETICS_STADIUM_COURSE;
   for (const [index, surface] of course.surfaces.entries()) {
+    if (surface.movingObstacleId) continue; // Moving support is sampled across its travel above.
     const standing = getAthleticsPhysicalSupport({
       x: surface.x,
       y: surface.y + ATHLETICS_PLAYER_EYE_HEIGHT,

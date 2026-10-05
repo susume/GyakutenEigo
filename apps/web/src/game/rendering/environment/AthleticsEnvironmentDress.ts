@@ -174,34 +174,6 @@ const addSideStand = (
   stand.add(seats);
 };
 
-const addScoreboard = (
-  root: THREE.Group,
-  addBatchedBox: AddBatchedBox,
-  materials: AthleticsDressMaterials,
-  makeLabelTexture?: (label: string, color?: string, background?: string) => THREE.CanvasTexture
-) => {
-  const board = new THREE.Group();
-  board.name = "athletics-scoreboard";
-  board.position.set(0, 0, -128);
-  root.add(board);
-  addBatchedBox([1.4, 30, 1.4], [-20, 15, -128], materials.metal, "metal");
-  addBatchedBox([1.4, 30, 1.4], [20, 15, -128], materials.metal, "metal");
-  const panel = addBox(board, materials.stadiumDark, [43, 13, 1.2], [0, 28, 0]);
-  panel.castShadow = true;
-  addBox(board, materials.gold, [39.5, 0.42, 0.14], [0, 34.05, 0.66]);
-  addBox(board, materials.cyan, [0.42, 8.4, 0.14], [-19.2, 28, 0.66]);
-  addBox(board, materials.orange, [0.42, 8.4, 0.14], [19.2, 28, 0.66]);
-  if (makeLabelTexture) {
-    const texture = makeLabelTexture("SKYLINE GAMES  •  RACE DAY", "#fff5d6", "#18324a");
-    const face = new THREE.Mesh(
-      new THREE.PlaneGeometry(37, 5.2),
-      new THREE.MeshBasicMaterial({ map: texture, transparent: true, depthWrite: false })
-    );
-    face.position.set(0, 28.6, 0.67);
-    board.add(face);
-  }
-};
-
 const addLightTowers = (
   root: THREE.Group,
   detail: number,
@@ -313,8 +285,7 @@ export const buildAthleticsEnvironmentDress = ({
   isFps,
   addBatchedBox,
   materials,
-  seededRandom,
-  makeLabelTexture
+  seededRandom
 }: {
   parent: THREE.Group;
   detail: number;
@@ -322,7 +293,6 @@ export const buildAthleticsEnvironmentDress = ({
   addBatchedBox: AddBatchedBox;
   materials: AthleticsDressMaterials;
   seededRandom: (seed: number) => () => number;
-  makeLabelTexture?: (label: string, color?: string, background?: string) => THREE.CanvasTexture;
 }) : AthleticsEnvironmentDress => {
   const root = new THREE.Group();
   root.name = "athletics-authored-stadium-dress";
@@ -346,7 +316,6 @@ export const buildAthleticsEnvironmentDress = ({
     addSideStand(root, -136, Math.PI / 2, detail, addBatchedBox, materials);
     addSideStand(root, 136, -Math.PI / 2, detail, addBatchedBox, materials);
   }
-  addScoreboard(root, addBatchedBox, materials, makeLabelTexture);
   addLightTowers(root, detail, addBatchedBox, materials);
   addVegetation(root, detail, materials, seededRandom);
   const banners = addBanners(root, detail, materials);

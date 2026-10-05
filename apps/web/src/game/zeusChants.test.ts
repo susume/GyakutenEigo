@@ -5,7 +5,7 @@ import { ZEUS_CHANTS } from "@quizstrike/shared";
 
 test("bundled narration durations agree with the authoritative turn deadlines", () => {
   for (const [id, chant] of Object.entries(ZEUS_CHANTS)) {
-    const wav = readFileSync(new URL(`../../public/assets/audio/zeus/${id}.wav`, import.meta.url));
+    const wav = readFileSync(new URL(`../../public${chant.path}`, import.meta.url));
     assert.equal(wav.toString("ascii", 0, 4), "RIFF");
     let bytesPerSecond = 0;
     let dataSize = 0;

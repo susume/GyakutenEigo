@@ -5,7 +5,7 @@ import { ATHLETICS_STADIUM_COURSE, getAthleticsPointAtProgress, getAthleticsRout
 import { buildAthleticsStadiumScene } from "./athleticsStadiumBuilder";
 import { createArenaSceneSetup } from "./sceneSetup";
 import { ARENA_MAPS } from "./arenaMaps";
-import { makeCanvasTexture, makeLabelTexture, seededRandom } from "./arenaTextures";
+import { makeCanvasTexture, seededRandom } from "./arenaTextures";
 import { mountAthleticsImportedAssets } from "./athleticsImportedAssets";
 import "./athletics-course-lab.css";
 
@@ -26,7 +26,7 @@ export default function AthleticsCourseLab() {
     scene.fog = null;
     camera.far = 1400;
     const course = buildAthleticsStadiumScene({ scene, renderer, qualityConfig, isFps: false,
-      activeQuality: "balanced", requiredLaps: 2, makeCanvasTexture, makeLabelTexture, seededRandom });
+      activeQuality: "balanced", makeCanvasTexture, seededRandom });
     const assetAbort = new AbortController();
     const assets = mountAthleticsImportedAssets({ scene, detail: qualityConfig.detail, isFps: false, signal: assetAbort.signal });
     void assets.then((result) => { if (!assetAbort.signal.aborted) renderer.domElement.dataset.assetsLoaded = String(result.loadedAssetIds.length); });

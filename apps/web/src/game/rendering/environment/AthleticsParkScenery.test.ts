@@ -60,15 +60,13 @@ test("Low keeps scenery instanced with less than 5000 added triangles", () => {
   assert.equal((root.getObjectByName("athletics-start-pennants") as THREE.InstancedMesh).count, 30);
 });
 
-test("stadium oval, tree crowns and scoreboard face use their visible axes", () => {
+test("stadium oval and tree crowns use their visible axes without a caption board", () => {
   const root = new THREE.Group();
   const dress = buildAthleticsEnvironmentDress({ parent: root, detail: 0, isFps: true, materials,
-    addBatchedBox: addBox(root), seededRandom: () => () => .5, makeLabelTexture: () => new THREE.CanvasTexture({} as HTMLCanvasElement) });
+    addBatchedBox: addBox(root), seededRandom: () => () => .5 });
   const track = dress.root.children.find(object => (object as THREE.Mesh).geometry?.type === "RingGeometry");
   assert.equal(track?.scale.y, .74);
-  const board = root.getObjectByName("athletics-scoreboard")!;
-  const face = board.children.find(object => (object as THREE.Mesh).geometry?.type === "PlaneGeometry")!;
-  assert.ok(face.position.z > .6, "The sign must face the infield");
+  assert.equal(root.getObjectByName("athletics-scoreboard"), undefined);
   const crown = dress.root.children.find(object => (object as THREE.Mesh).geometry?.type === "IcosahedronGeometry") as THREE.InstancedMesh;
   const matrix = new THREE.Matrix4(); crown.getMatrixAt(0, matrix);
   assert.equal(new THREE.Vector3().setFromMatrixPosition(matrix).y, 14);

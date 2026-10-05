@@ -13,6 +13,7 @@ import { AppearanceSecurityService, inspectProcessedDecal } from "./appearanceSe
 import { DecalStore } from "./decalStore.js";
 import { CombatService } from "./combat.js";
 import { BotNavigationService } from "./botNavigation.js";
+import { getAthleticsQuestion } from "./athleticsQuestions.js";
 import { registerAuthRoutes } from "./routes/authRoutes.js";
 import { registerSpeakingRoutes } from "./routes/speakingRoutes.js";
 import { createSpeakingProviders } from "./speakingProviders.js";
@@ -176,7 +177,6 @@ import {
   getAthleticsGroundHeight,
   getAthleticsPhysicalSupport,
   getAthleticsCheckpointSurfaceIndex,
-  getAthleticsQuestionPoolIndex,
   getAthleticsQuestionsPerLap,
   getAthleticsPointAtProgress,
   getAthleticsRecoveryPosition,
@@ -818,12 +818,7 @@ const selectNextQuestion = (session: GameSession, playerId: string): PublicQuest
 
 const issueAthleticsRecoveryQuestion = (session: GameSession, player: PlayerSession, athletics: AthleticsPlayerState) => {
   const questions = getSessionQuestions(session);
-  if (questions.length === 0) return undefined;
-  const recoveryIndex = getAthleticsQuestionPoolIndex(
-    athletics.questionIndex + (athletics.recoveryCorrectAnswers ?? 0),
-    questions.length
-  );
-  const question = questions[recoveryIndex];
+  const question = getAthleticsQuestion(questions, athletics);
   if (!question) return undefined;
   playerQuestionGate.issue(player.id, question.id);
   return publicQuestion(question);
@@ -839,14 +834,14 @@ const issueNextQuestion = (session: GameSession, playerId: string): PublicQuesti
     // Zeus reuses the normal question gate while a player is electrified. It
     // must not advance the race question until the freeze is cleared.
     if (athletics.zeusFrozen) {
-      const question = questions[getAthleticsQuestionPoolIndex(athletics.questionIndex, questions.length)];
+      const question = getAthleticsQuestion(questions, athletics);
       if (!question) return undefined;
       playerQuestionGate.issue(player.id, question.id);
       return publicQuestion(question);
     }
     // Refill questions cycle for the whole race, including long return legs.
     if (questions.length === 0) return undefined;
-    const question = questions[getAthleticsQuestionPoolIndex(athletics.questionIndex, questions.length)];
+    const question = getAthleticsQuestion(questions, athletics);
     if (!question) return undefined;
     playerQuestionGate.issue(player.id, question.id);
     return publicQuestion(question);
@@ -1265,6 +1260,9 @@ const startAthleticsRace = (session: GameSession) => {
       : getAthleticsStartPosition(index, playerCount);
     playerQuestionGate.clear(player.id);
     const athletics = makeAthleticsPlayerState(index);
+    // Keep the question already shown in the lobby assigned at the start.
+    athletics.questionOrder = player.athletics?.questionOrder;
+    athletics.questionCursor = player.athletics?.questionCursor;
     athletics.role = role;
     athletics.stationIndex = role === "hunter" ? Math.max(0, stationIndex) : undefined;
     athletics.hunterAmmo = role === "hunter" ? 0 : undefined;
@@ -1288,8 +1286,7 @@ const startAthleticsRace = (session: GameSession) => {
   });
   for (const player of session.players) {
     if (!player.isBot) {
-      const question = getSessionQuestions(session)[player.athletics?.questionIndex ?? 0];
-      if (question) playerQuestionGate.issue(player.id, question.id);
+      issueNextQuestion(session, player.id);
     }
   }
   session.announcement = {
@@ -1821,8 +1818,7 @@ const startNextHuntersRunnersRound = (session: GameSession, nowMs: number) => {
   });
   for (const player of session.players) {
     if (!player.isBot) {
-      const question = getSessionQuestions(session)[player.athletics?.questionIndex ?? 0];
-      if (question) playerQuestionGate.issue(player.id, question.id);
+      issueNextQuestion(session, player.id);
     }
   }
   const intro = getAthleticsModeIntro("hunters-runners");
@@ -2968,11 +2964,8 @@ const answerQuestion = (
     return failStudentCommand(400, "Question or answer choice is invalid.");
   }
   const athleticsQuestions = isAthletics ? getSessionQuestions(session) : [];
-  const athleticsExpectedQuestion = isAthletics && athleticsQuestions.length > 0
-    ? athleticsQuestions[getAthleticsQuestionPoolIndex(
-        (athletics?.questionIndex ?? 0) + (athleticsRecoveryActive ? (athletics?.recoveryCorrectAnswers ?? 0) : 0),
-        athleticsQuestions.length
-      )]
+  const athleticsExpectedQuestion = athletics
+    ? getAthleticsQuestion(athleticsQuestions, athletics)
     : undefined;
   if (isAthletics && question.id !== athleticsExpectedQuestion?.id) {
     return failStudentCommand(409, athleticsRecoveryActive
@@ -3040,6 +3033,7 @@ const answerQuestion = (
   }
 
   if (isAthletics && athletics) {
+    if (isCorrect) athletics.questionCursor = (athletics.questionCursor ?? 0) + 1;
     if (athleticsRecoveryActive) {
       if (isCorrect) {
         const requiredAnswers = athletics.recoveryRequiredAnswers ?? ATHLETICS_RECOVERY_CORRECT_ANSWERS_REQUIRED;

@@ -32,6 +32,7 @@ test("server fall authority accepts every authored main-route landing and exact 
   const course = ATHLETICS_STADIUM_COURSE;
   assert.equal(course.surfaces.length, 138);
   for (const [index, surface] of course.surfaces.entries()) {
+    if (surface.movingObstacleId) continue;
     const position = { x: surface.x, y: surface.y + ATHLETICS_PLAYER_EYE_HEIGHT, z: surface.z };
     const support = getAthleticsPhysicalSupport(position, course, ATHLETICS_PLAYER_EYE_HEIGHT, 0);
     assert.equal(support.kind, "main_surface", `${surface.id} must be physically supported`);
@@ -171,7 +172,7 @@ test("server fall authority handles moving platforms across sampled positions wi
       movingPlatformSamples += 1;
     }
   }
-  assert.equal(movingPlatformSamples, 12);
+  assert.equal(movingPlatformSamples, 54);
 });
 
 test("server fall authority keeps airborne gaps safe until floor or a real fall threshold", () => {

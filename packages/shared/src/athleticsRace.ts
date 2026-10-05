@@ -57,6 +57,10 @@ export interface AthleticsRaceState {
 export interface AthleticsPlayerState {
   /** Number of race questions answered correctly. */
   questionIndex: number;
+  /** Persisted per-student shuffled bag, shared by refill and recovery questions. */
+  questionOrder?: string[];
+  /** Position in that bag. Correct recovery answers also advance this cursor. */
+  questionCursor?: number;
   /** Number of safe course checkpoints reached on the current lap. */
   checkpointIndex: number;
   /** Monotonic validated route progress within the current lap. */
@@ -163,6 +167,8 @@ export type AthleticsSurfaceKind = "platform" | "ramp" | "stair" | "checkpoint";
 /** Authored walkable surface used by both the scene and authoritative collision. */
 export interface AthleticsCourseSurface {
   id: string;
+  /** A moving deck replaces this route anchor's static slab and supports. */
+  movingObstacleId?: string;
   kind: AthleticsSurfaceKind;
   x: number;
   z: number;
@@ -612,6 +618,17 @@ export const getAthleticsCourseGeometryIssues = (
 ) => {
   const issues: string[] = [];
   const movingObstacleIds = new Set(course.movingObstacles.map((obstacle) => obstacle.id));
+  for (const surface of allAthleticsSurfaces(course)) {
+    if (!surface.movingObstacleId) continue;
+    const mover = course.movingObstacles.find((obstacle) => obstacle.id === surface.movingObstacleId);
+    if (!mover) issues.push(`${surface.id} references missing moving deck ${surface.movingObstacleId}`);
+    else if (surface.safe || mover.kind === "barrier" || mover.jumpable === false
+      || mover.axis !== "y" || mover.x !== surface.x || mover.z !== surface.z
+      || mover.width !== surface.width || mover.depth !== surface.depth
+      || Math.abs(mover.y + mover.height - surface.y) > .001) {
+      issues.push(`${surface.id} moving deck does not match its walkable route anchor`);
+    }
+  }
   const checkMovingReference = (transition: AthleticsCourseTransition, label: string) => {
     if (transition.type === "moving_jump" && !transition.movingObstacleId) {
       issues.push(`${label} moving_jump has no moving obstacle reference`);
@@ -870,6 +887,7 @@ export const getAthleticsPreviousSafeSurfaceIndex = (
   const safeProgress = clamp01(progress);
   let candidate = 0;
   course.surfaces.forEach((surface, index) => {
+    if (surface.movingObstacleId) return;
     if (getAthleticsSurfaceRouteProgress(index, course) <= safeProgress + 0.002) candidate = index;
   });
   return candidate;
@@ -890,6 +908,7 @@ export const getAthleticsSurfaceIndexAtPosition = (
   const footY = Number(position.y) - eyeHeight;
   let best: { index: number; distance: number } | undefined;
   course.surfaces.forEach((surface, index) => {
+    if (surface.movingObstacleId) return;
     const obstacle = surfaceToObstacle(surface);
     if (obstacle.kind !== "rect") return;
     if (!isPointInsideAthleticsRect(position, obstacle, -ATHLETICS_PLAYER_RADIUS)) return;
@@ -931,7 +950,7 @@ const ATHLETICS_ALL_SURFACES: readonly AthleticsCourseSurface[] = [
 /** Static collision proxies shared by server movement and the client scene. */
 export const ATHLETICS_COLLISION_PROXIES: readonly AthleticsObstacle[] = [
   ...parkBoundaryObstacles,
-  ...ATHLETICS_ALL_SURFACES.map(surfaceToObstacle),
+  ...ATHLETICS_ALL_SURFACES.filter((surface) => !surface.movingObstacleId).map(surfaceToObstacle),
   ...(ATHLETICS_STADIUM_COURSE.challenges ?? []).map((challenge) => ({
     id: challenge.id, kind: "rect" as const, x: challenge.x, z: challenge.z,
     width: challenge.width, depth: challenge.depth, rotationY: challenge.rotationY,
@@ -997,7 +1016,7 @@ export const getAthleticsPhysicalSupport = (
       if (transition.fromSurfaceId === surface.id) neighbors.add(transition.toSurfaceId);
       if (transition.toSurfaceId === surface.id) neighbors.add(transition.fromSurfaceId);
     }
-    const joined = course.surfaces.filter((entry) => neighbors.has(entry.id) && Math.abs(entry.y - surface.y) <= .8);
+    const joined = course.surfaces.filter((entry) => !entry.movingObstacleId && neighbors.has(entry.id) && Math.abs(entry.y - surface.y) <= .8);
     if (joined.length < 2) return false;
     // A body spanning two joined treads is still supported. Require the
     // whole footprint to be covered, so outside edges remain real falls.
@@ -1010,6 +1029,7 @@ export const getAthleticsPhysicalSupport = (
     surfaceIndex?: number,
     priority = kind === "main_surface" ? 0 : 1
   ) => {
+    if (surface.movingObstacleId) return;
     const obstacle = surfaceToObstacle(surface);
     if (obstacle.kind !== "rect") return;
     if (!isPointInsideAthleticsRect(position, obstacle, -ATHLETICS_PLAYER_RADIUS)
@@ -1043,6 +1063,7 @@ export const getAthleticsPhysicalSupport = (
       kind: "moving_platform",
       supportY,
       obstacleId: moving.id,
+      surfaceId: course.surfaces.find((surface) => surface.movingObstacleId === moving.id)?.id,
       verticalDistance,
       horizontalDistance: Math.hypot(position.x - obstacle.x, position.z - obstacle.z),
       priority: 2
@@ -1294,7 +1315,8 @@ export const getAthleticsRecoveryPosition = (
   laneIndex = 0,
   course: AthleticsCourseDefinition = ATHLETICS_STADIUM_COURSE
 ) => {
-  const safeIndex = Math.max(0, Math.min(course.surfaces.length - 1, Math.floor(surfaceIndex)));
+  let safeIndex = Math.max(0, Math.min(course.surfaces.length - 1, Math.floor(surfaceIndex)));
+  while (safeIndex > 0 && course.surfaces[safeIndex]?.movingObstacleId) safeIndex -= 1;
   const surface = course.surfaces[safeIndex] ?? course.surfaces[0]!;
   const progress = getAthleticsSurfaceRouteProgress(safeIndex, course);
   const tangent = getAthleticsRouteTangent(Math.min(1, progress + 0.004), course);

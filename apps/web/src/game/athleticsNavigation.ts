@@ -26,24 +26,30 @@ export const getAthleticsLandingGuide = (
   const support = getAthleticsPhysicalSupport(position, course, ATHLETICS_PLAYER_EYE_HEIGHT, nowMs);
   const allSurfaces = [...course.surfaces, ...course.shortcuts.flatMap((shortcut) => shortcut.surfaces)];
   const transitions = [...course.transitions, ...course.shortcuts.flatMap((shortcut) => shortcut.transitions)];
-  const transition = support.kind === "moving_platform"
-    ? course.transitions.find((entry) => entry.movingObstacleId === support.obstacleId)
-    : transitions.find((entry) => entry.fromSurfaceId === support.surfaceId);
+  const transition = support.surfaceId
+    ? transitions.find((entry) => entry.fromSurfaceId === support.surfaceId)
+    : support.kind === "moving_platform"
+      ? course.transitions.find((entry) => entry.movingObstacleId === support.obstacleId) : undefined;
   if (!transition) {
     return support.surfaceId === course.surfaces.at(-1)?.id ? null : undefined;
   }
   const destination = allSurfaces.find((surface) => surface.id === transition.toSurfaceId);
   if (!destination) return undefined;
+  const movingDestination = course.movingObstacles.find((obstacle) => obstacle.id === destination.movingObstacleId);
+  const destinationPoint = movingDestination ? getAthleticsMovingObstaclePosition(movingDestination, nowMs) : { ...destination };
+  if (movingDestination) destinationPoint.y += movingDestination.height;
+  const onTransport = support.obstacleId === transition.movingObstacleId;
   const lift = course.movingObstacles.find((obstacle) => obstacle.id === transition.movingObstacleId && obstacle.kind === "elevator");
-  if (lift && support.kind !== "moving_platform" && destination.y - support.supportY > ATHLETICS_JUMP_APEX_HEIGHT) {
+  if (lift && !onTransport && destinationPoint.y - support.supportY > ATHLETICS_JUMP_APEX_HEIGHT) {
     const point = getAthleticsMovingObstaclePosition(lift, nowMs);
     return { id: lift.id, ...point, y: point.y + lift.height, kind: "lift" };
   }
   const shuttle = course.movingObstacles.find((obstacle) => obstacle.id === transition.movingObstacleId && obstacle.kind === "platform");
   const envelope = getAthleticsTransitionJumpEnvelope(transition, course);
-  if (shuttle && support.kind !== "moving_platform" && envelope.airGap > envelope.horizontalReach) {
+  if (shuttle && !onTransport && envelope.airGap > envelope.horizontalReach) {
     const point = getAthleticsMovingObstaclePosition(shuttle, nowMs);
     return { id: shuttle.id, ...point, y: point.y + shuttle.height, kind: "shuttle" };
   }
-  return { id: destination.id, x: destination.x, y: destination.y, z: destination.z, kind: "landing" };
+  return { id: movingDestination?.id ?? destination.id, x: destinationPoint.x, y: destinationPoint.y,
+    z: destinationPoint.z, kind: movingDestination ? "lift" : "landing" };
 };

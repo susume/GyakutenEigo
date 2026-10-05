@@ -645,14 +645,12 @@ export default function ArenaPreview({
       athleticsUpdate
     } = isAthleticsMode
       ? buildAthleticsStadiumScene({
-        requiredLaps: sessionRef.current?.athletics?.requiredLaps ?? 1,
           scene,
           renderer,
           isFps,
           activeQuality: initialArenaQuality,
           qualityConfig,
           makeCanvasTexture,
-          makeLabelTexture,
           questionsPerLap: session?.athletics?.questionsPerLap,
           serverTime: session?.serverTime,
           debugOverlay,
