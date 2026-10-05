@@ -1146,10 +1146,10 @@ function SessionManager({
               <div className="setup-panel-heading"><h3 id="mode-title">{t("Choose the game")}</h3><span>{t("Pick a mode to continue")}</span></div>
                 <div className="mode-choice-grid" aria-label={t("Game modes")}>
                   {([
-                    { id: "zombie", title: "Zombie Survival", description: "Answer for energy, stay alive, and keep the team moving.", icon: <img src="/assets/zombie/zombie-head.png" alt="" /> },
-                    { id: "classic", title: "Team Tag", description: "Answer questions, move through the arena, and tag the other team.", icon: <img src="/assets/mode-icons/tag.png" alt="" /> },
-                    { id: "flag", title: "Capture the Flag", description: "Answer to earn an advantage, then capture the flag as a team.", icon: <img src="/assets/mode-icons/flag.png" alt="" /> },
-                    { id: "athletics", title: "Athletics Race", description: "Jump through a vertical amusement park. Answer anytime to refill movement energy.", icon: <Footprints className="mode-choice-icon-athletics" size={22} aria-hidden="true" /> }
+                    { id: "zombie", title: "Zombie Survival", icon: <img src="/assets/zombie/zombie-head.png" alt="" /> },
+                    { id: "classic", title: "Team Tag", icon: <img src="/assets/mode-icons/tag.png" alt="" /> },
+                    { id: "flag", title: "Capture the Flag", icon: <img src="/assets/mode-icons/flag.png" alt="" /> },
+                    { id: "athletics", title: "Athletics Race", icon: <Footprints className="mode-choice-icon-athletics" size={22} aria-hidden="true" /> }
                   ] as const).map((mode) => {
                     const selected = settings.gameMode === mode.id;
                     return (
@@ -1157,7 +1157,7 @@ function SessionManager({
                         type="button"
                         key={mode.id}
                         className={`mode-choice mode-${mode.id}${selected ? " selected" : ""}`}
-                        aria-label={t("{value0}: {value1}", { value0: mode.title, value1: mode.description })}
+                        aria-label={t(mode.title)}
                         aria-pressed={selected}
                         onClick={() => {
                           const switchingToAthletics = mode.id === "athletics" && settings.gameMode !== "athletics";
@@ -1189,8 +1189,7 @@ function SessionManager({
                 {settings.gameMode === "athletics" && (
                   <div className="athletics-mode-picker" aria-label={t("Athletics modes")}>
                     <div className="athletics-mode-picker-heading">
-                      <div><span className="eyebrow">{t("Athletics variant")}</span><strong>{t("Choose how the climb plays")}</strong></div>
-                      <small>{t("Classic keeps the original race rules.")}</small>
+                      <strong>{t("Athletics variant")}</strong>
                     </div>
                     <div className="athletics-mode-grid">
                       {ATHLETICS_MODES.map((modeId) => {
@@ -1201,12 +1200,11 @@ function SessionManager({
                             type="button"
                             key={modeId}
                             className={`athletics-mode-choice athletics-mode-choice-${modeId}${selectedAthletics ? " selected" : ""}`}
-                            aria-label={t("{value0}: {value1}", { value0: mode.label, value1: mode.description })}
+                            aria-label={t(mode.label)}
                             aria-pressed={selectedAthletics}
                             onClick={() => setSettings({ ...settings, athleticsMode: modeId, ...(modeId === "zeus" ? { athleticsCourseLaps: 1 } : {}) })}
                           >
                             <span className="athletics-mode-choice-top"><strong>{t(mode.shortLabel)}</strong>{selectedAthletics && <Check size={16} aria-hidden="true" />}</span>
-                            <small>{t(mode.description)}</small>
                           </button>
                         );
                       })}
@@ -1222,28 +1220,15 @@ function SessionManager({
                 {settings.gameMode === "athletics" ? (
                   <div className="athletics-course-card">
                     <div className="athletics-course-card-heading">
-                      <div><span className="eyebrow">{t("Selected course")}</span><h4>{t(ATHLETICS_STADIUM_COURSE.title)}</h4><p>{t(selectedAthleticsMode === "zeus" ? "Climb six districts to Zeus at the summit." : ATHLETICS_STADIUM_COURSE.subtitle)}</p></div>
+                      <div><span className="eyebrow">{t("Selected course")}</span><h4>{t(ATHLETICS_STADIUM_COURSE.title)}</h4></div>
                       <span className="athletics-course-badge">{selectedAthleticsMode === "zeus" ? 6 : ATHLETICS_STADIUM_COURSE.sections.length}{" "}{t("chapters ·")}{" "}{selectedAthleticsMode === "zeus" ? 6 : ATHLETICS_STADIUM_COURSE.checkpoints.length}{" "}{t("checkpoints ·")}{" "}{ATHLETICS_STADIUM_COURSE.shortcuts.length}{" "}{t("shortcuts")}</span>
-                    </div>
-                    <div className={`athletics-mode-brief athletics-mode-${selectedAthleticsMode}`}>
-                      <div><span className="eyebrow">{t(selectedAthleticsModeConfig.label)}</span><strong>{t(selectedAthleticsModeConfig.description)}</strong></div>
-                      <ul>{selectedAthleticsModeConfig.instructionLines.map((line) => <li key={line}>{line}</li>)}</ul>
                     </div>
                     {selectedAthleticsMode === "zeus" && <label className="zeus-audio-choice">{t("Zeus voice plays on")}
                       <select value={settings.athleticsZeusAudio ?? "everyone"} onChange={(event) => setSettings({ ...settings, athleticsZeusAudio: event.target.value as "everyone" | "teacher" })}>
                         <option value="everyone">{t("Student devices")}</option>
                         <option value="teacher">{t("Teacher speakers only")}</option>
                       </select>
-                      <small>{t("GO and STOP remain visible on every device.")}</small>
                     </label>}
-                    <div className="athletics-course-sections" aria-label={t("Skyline Adventure Park chapters")}>
-                      {ATHLETICS_STADIUM_COURSE.sections.filter((_, index) => selectedAthleticsMode !== "zeus" || index < 6).map((section, index) => (
-                        <div key={section.id} className={`athletics-course-section athletics-accent-${section.accent}`}>
-                          <span>{String(index + 1).padStart(2, "0")}</span><strong>{t(section.label)}</strong><small>{t(section.description)}</small>
-                        </div>
-                      ))}
-                    </div>
-                    <p className="athletics-course-note"><Trophy size={15} aria-hidden="true" />{t("Correct answers refill movement energy. Wrong answers cost no energy; a fall returns the runner to their last safe checkpoint.")}</p>
                   </div>
                 ) : <div className="arena-choice-grid">
                   {ARENA_MAPS.map((map) => {
@@ -1393,7 +1378,7 @@ function SessionManager({
       </form>
 
       <div className={`panel live-session${selectedSession ? "" : " empty-live-session"}${selectedSession?.status === "waiting" ? " waiting-room-panel" : ""}`}>
-        {selectedSession && <GameAnnouncementOverlay announcement={selectedSession.announcement} serverTime={selectedSession.serverTime} />}
+        {selectedSession && <GameAnnouncementOverlay announcement={selectedSession.announcement?.kind === "round_start" ? undefined : selectedSession.announcement} serverTime={selectedSession.serverTime} />}
         {selectedSession ? isSessionEnded ? (
           <div className="session-ended-summary">
             <span className="status-pill status-ended">{t("Game complete")}</span>

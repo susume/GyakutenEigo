@@ -5,9 +5,35 @@ const joinWaitingRoom = async (page: Page, code: string, nickname: string) => {
   await page.goto(`/join?code=${code}`);
   await page.getByPlaceholder("Player name").fill(nickname);
   await page.getByRole("button", { name: "Join game", exact: true }).click();
-  await expect(page.getByRole("heading", { name: "Choose your team, then wait for the host to start." })).toBeVisible();
+  await expect(page.getByTestId("student-lobby-status")).toBeVisible();
   await expect(page.getByRole("region", { name: "Player style" })).toBeVisible();
 };
+
+test("Zeus waiting room gives students room to customize and save their player", async ({ page, request }, testInfo) => {
+  await page.setViewportSize({ width: 1280, height: 720 });
+  const classroom = await createClassroom(request, { gameMode: "athletics", athleticsMode: "zeus" });
+  await joinWaitingRoom(page, classroom.code, "Zeus stylist");
+  const header = await page.getByTestId("student-lobby-status").boundingBox();
+  const preview = await page.locator(".character-creator-preview-column").boundingBox();
+  const menu = await page.locator(".creator-controls-scroll").boundingBox();
+  expect(header!.height).toBeLessThan(90);
+  expect(preview!.height).toBeGreaterThan(250);
+  expect(menu!.height).toBeGreaterThan(180);
+  await expect(page.locator(".athletics-briefing")).toHaveCount(0);
+  await page.getByRole("tab", { name: "Back", exact: true }).click();
+  await page.getByRole("button", { name: "Utility Pack", exact: true }).click();
+  const save = page.getByRole("button", { name: "Save style", exact: true });
+  const footer = await page.locator(".creator-footer").boundingBox();
+  expect(footer!.y + footer!.height).toBeLessThanOrEqual(720);
+  await save.click();
+  await expect(save).toBeHidden();
+  await expect.poll(async () => {
+    const snapshot = await request.get(`/api/sessions/${classroom.code}`, { headers: { Authorization: `Bearer ${classroom.teacherToken}` } });
+    const { session } = await snapshot.json();
+    return session.players[0].appearance.backAccessoryId;
+  }).toBe("utility_pack");
+  await page.screenshot({ path: testInfo.outputPath("zeus-player-customization.png") });
+});
 
 for (const viewport of [
   { name: "desktop", width: 1440, height: 650 },

@@ -9,10 +9,10 @@ test("Athletics sessions render Skyline Adventure Park instead of a combat map",
   await page.getByPlaceholder("Player name").fill("Athletics Student");
   await page.getByRole("button", { name: "Join game", exact: true }).click();
 
-  await expect(page.getByRole("heading", { name: "Choose your lane, then wait for the host to start." })).toBeVisible();
-  await expect(page.locator(".athletics-briefing li")).toHaveCount(3);
-  await expect(page.locator(".athletics-briefing")).toContainText("gold paths are optional shortcuts");
-  await page.screenshot({ path: testInfo.outputPath("athletics-briefing.png") });
+  await expect(page.getByTestId("student-lobby-status")).toBeVisible();
+  await expect(page.locator(".athletics-briefing")).toHaveCount(0);
+  await expect(page.getByRole("region", { name: "Player style" })).toBeVisible();
+  await page.screenshot({ path: testInfo.outputPath("athletics-waiting-room.png") });
   const start = await request.post(`/api/sessions/${classroom.code}/start`, {
     headers: { Authorization: `Bearer ${classroom.teacherToken}` }
   });
@@ -40,17 +40,19 @@ test("Athletics sessions render Skyline Adventure Park instead of a combat map",
 });
 
 for (const athleticsMode of ["zeus", "hunters-runners", "chaos-climb"] as const) {
-  test(`${athleticsMode} explains its rules and renders its live course`, async ({ page, request }, testInfo) => {
+  test(`${athleticsMode} opens customization and renders its live course`, async ({ page, request }, testInfo) => {
     const classroom = await createClassroom(request, { gameMode: "athletics", athleticsMode, roundDurationSeconds: 300 });
     await page.goto(`/join?code=${classroom.code}`);
     await page.getByPlaceholder("Player name").fill("Mode Explorer");
     await page.getByRole("button", { name: "Join game", exact: true }).click();
-    await expect(page.locator(".athletics-briefing li")).toHaveCount(3);
-    await page.screenshot({ path: testInfo.outputPath(`${athleticsMode}-briefing.png`) });
+    await expect(page.getByTestId("student-lobby-status")).toBeVisible();
+    await expect(page.locator(".athletics-briefing")).toHaveCount(0);
+    await expect(page.getByRole("region", { name: "Player style" })).toBeVisible();
+    await page.screenshot({ path: testInfo.outputPath(`${athleticsMode}-waiting-room.png`) });
     const start = await request.post(`/api/sessions/${classroom.code}/start`, { headers: { Authorization: `Bearer ${classroom.teacherToken}` } });
     expect(start.status()).toBe(200);
     await expect(page.locator(".athletics-hud")).toBeVisible({ timeout: 30_000 });
-    await expect(page.locator(`.athletics-mode-${athleticsMode}`)).toBeVisible();
+    await expect(page.locator(`.athletics-hud.athletics-mode-${athleticsMode}`)).toBeVisible();
     await expect(page.locator(".athletics-hud")).not.toContainText("GO in", { timeout: 15_000 });
     await expect(page.locator(".game-announcement")).toBeHidden({ timeout: 15_000 });
     if (athleticsMode === "zeus" || athleticsMode === "chaos-climb") {
@@ -109,7 +111,7 @@ test("Zeus's head and signal switch together, and moving during STOP returns a r
   await page.goto(`/join?code=${classroom.code}`);
   await page.getByPlaceholder("Player name").fill("Daruma Student");
   await page.getByRole("button", { name: "Join game", exact: true }).click();
-  await expect(page.locator(".athletics-briefing")).toContainText("stop when he turns around");
+  await expect(page.getByTestId("student-lobby-status")).toBeVisible();
   await request.post(`/api/sessions/${classroom.code}/start`, { headers: { Authorization: `Bearer ${classroom.teacherToken}` } });
   const signal = page.getByTestId("zeus-light-signal");
   const canvas = page.locator(".arena-canvas canvas");

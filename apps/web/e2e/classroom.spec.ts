@@ -126,7 +126,7 @@ test("student lobby reports and recovers from a temporary realtime connection fa
   await page.goto(`/join?code=${classroom.code}`);
   await page.getByPlaceholder("Player name").fill("Socket Test Student");
   await page.getByRole("button", { name: "Join game", exact: true }).click();
-  await expect(page.getByRole("heading", { name: "Choose your team, then wait for the host to start." })).toBeVisible();
+  await expect(page.getByTestId("student-lobby-status")).toBeVisible();
   const reconnecting = page.getByTestId("student-realtime-reconnecting");
   await expect(reconnecting).toContainText("Live game connection lost", { timeout: 15_000 });
 
@@ -134,7 +134,7 @@ test("student lobby reports and recovers from a temporary realtime connection fa
   await page.unroute("**/socket.io/**");
 
   await expect(reconnecting).toBeHidden({ timeout: 20_000 });
-  await expect(page.getByRole("heading", { name: "Choose your team, then wait for the host to start." })).toBeVisible();
+  await expect(page.getByTestId("student-lobby-status")).toBeVisible();
 });
 
 test("school device check reports same-origin API and realtime paths", async ({ page }) => {
@@ -189,7 +189,7 @@ test("student customizes, reloads, and receives match start over Socket.IO", asy
   await page.getByPlaceholder("Player name").fill("Browser Student");
   await page.getByRole("button", { name: "Join game", exact: true }).click();
 
-  await expect(page.getByRole("heading", { name: "Choose your team, then wait for the host to start." })).toBeVisible();
+  await expect(page.getByTestId("student-lobby-status")).toBeVisible();
   const creatorReadyMs = performance.now() - browserStartedAt;
   await expect(page.getByText("1 player joined", { exact: true })).toBeVisible();
   const foxHead = page.getByRole("button", { name: /Fox/ });
@@ -202,7 +202,7 @@ test("student customizes, reloads, and receives match start over Socket.IO", asy
   await expect(foxHead).toHaveAttribute("aria-pressed", "true");
 
   await page.reload();
-  await expect(page.getByRole("heading", { name: "Choose your team, then wait for the host to start." })).toBeVisible();
+  await expect(page.getByTestId("student-lobby-status")).toBeVisible();
   await expect(page.getByRole("button", { name: /Fox/ })).toHaveAttribute("aria-pressed", "true");
   const restoredMs = performance.now() - browserStartedAt;
 
@@ -211,7 +211,7 @@ test("student customizes, reloads, and receives match start over Socket.IO", asy
   });
   expect(start.status()).toBe(200);
   await expect(page.getByRole("timer")).toBeVisible();
-  await expect(page.getByRole("heading", { name: "Choose your team, then wait for the host to start." })).toBeHidden();
+  await expect(page.getByTestId("student-lobby-status")).toBeHidden();
   await expect.poll(() => socketFrames.some(
     (frame) => frame.includes("session_state") && (frame.includes('"status":"paused"') || frame.includes('"status":"active"'))
   )).toBe(true);
@@ -361,7 +361,7 @@ test("teacher pause survives a student reconnect and live learning pulse updates
   await page.goto(`/join?code=${classroom.code}`);
   await page.getByPlaceholder("Player name").fill("Pause Test Student");
   await page.getByRole("button", { name: "Join game", exact: true }).click();
-  await expect(page.getByRole("heading", { name: "Choose your team, then wait for the host to start." })).toBeVisible();
+  await expect(page.getByTestId("student-lobby-status")).toBeVisible();
 
   const start = await request.post(`/api/sessions/${classroom.code}/start`, {
     headers: { Authorization: `Bearer ${classroom.teacherToken}` }
@@ -427,7 +427,7 @@ test("fresh joins replay remembered appearance without growing restore history",
   await page.goto(`/join?code=${firstClassroom.code}`);
   await page.getByPlaceholder("Player name").fill("First Session Student");
   await page.getByRole("button", { name: "Join game", exact: true }).click();
-  await expect(page.getByRole("heading", { name: "Choose your team, then wait for the host to start." })).toBeVisible();
+  await expect(page.getByTestId("student-lobby-status")).toBeVisible();
 
   const firstAppearanceSaved = page.waitForResponse(
     (response) => response.request().method() === "PUT" && response.url().includes("/appearance")
@@ -443,13 +443,13 @@ test("fresh joins replay remembered appearance without growing restore history",
   );
   await page.getByRole("button", { name: "Join game", exact: true }).click();
   expect((await rememberedAppearanceApplied).status()).toBe(200);
-  await expect(page.getByRole("heading", { name: "Choose your team, then wait for the host to start." })).toBeVisible();
+  await expect(page.getByTestId("student-lobby-status")).toBeVisible();
   await expect(page.getByRole("button", { name: /Fox/ })).toHaveAttribute("aria-pressed", "true");
 
   const historyLengthBeforeRestore = await page.evaluate(() => window.history.length);
   await page.goto("/join");
   await expect(page).toHaveURL(/\/game$/u);
-  await expect(page.getByRole("heading", { name: "Choose your team, then wait for the host to start." })).toBeVisible();
+  await expect(page.getByTestId("student-lobby-status")).toBeVisible();
   const historyLengthAfterRestore = await page.evaluate(() => window.history.length);
   expect(historyLengthAfterRestore).toBe(historyLengthBeforeRestore + 1);
 });

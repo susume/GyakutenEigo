@@ -247,18 +247,16 @@ const flagStatusText = (session: GameSession) => {
   if (!session.flag) return "Flag ready at Red base";
   if (session.flag.state === "carried") return "Red is carrying the flag";
   if (session.flag.state === "dropped") return "The flag is down";
-  if (session.flag.state === "placed") return "Flag placed. Red protects. Blue captures.";
+  if (session.flag.state === "placed") return "Flag placed";
   if (session.flag.state === "captured") return "Blue captured the flag";
   return "Flag ready";
 };
 
-const zombieStatusText = (session: GameSession, player?: PlayerSession | null) => {
+const zombieStatusText = (session: GameSession) => {
   if (session.settings.gameMode !== "zombie") return "";
   const humans = session.players.filter((item) => item.role !== "zombie").length;
   const zombies = session.players.filter((item) => item.role === "zombie").length;
-  return player?.role === "zombie"
-    ? `Humans ${humans} · Zombies ${zombies} · Find the Blue humans`
-    : `Humans ${humans} · Zombies ${zombies} · Answer for energy, then move`;
+  return `Humans ${humans} · Zombies ${zombies}`;
 };
 
 
@@ -2363,8 +2361,6 @@ export default function StudentExperience({ onExit }: { onExit: () => void }) {
   const snowballs = player.snowballs ?? session.settings.startingSnowballs;
   const warmth = getPlayerWarmth(player);
   const athleticsPlayer = player.athletics;
-  const athleticsCourseSection = ATHLETICS_STADIUM_COURSE.sections.find((section) => (athleticsPlayer?.routeProgress ?? 0) < section.endProgress)
-    ?? ATHLETICS_STADIUM_COURSE.sections.at(-1);
   const athleticsModeConfig = ATHLETICS_MODE_CONFIG[athleticsMode];
   const athleticsRequiredLaps = Math.max(1, session.athletics?.requiredLaps ?? session.settings.athleticsCourseLaps ?? 1);
   const athleticsStanding = athleticsStandings.find((standing) => standing.playerId === player.id);
@@ -2402,31 +2398,11 @@ export default function StudentExperience({ onExit }: { onExit: () => void }) {
     roundActive ? "round-countdown-active" : "",
     roundActive && (athleticsRace ? athleticsRemainingSeconds : remainingSeconds) <= 30 ? "round-countdown-low" : ""
   ].filter(Boolean).join(" ");
-  const objectiveText = roundPreparation
-    ? "Choose gear or answer questions for rewards before the round starts."
-    : zombieSelection
-      ? `Everyone is Human. Answer questions for energy; Zombies are chosen in ${preparationRemainingSeconds}s.`
-    : athleticsRace
-      ? athleticsRecoveryActive
-        ? "You fell! Answer 3 questions to get back on the course."
-        : athleticsPlayer?.status === "finished"
-        ? `Finished in ${formatDuration((athleticsPlayer.finishTimeMs ?? 0) / 1000)}. Watch the remaining racers.`
-        : athleticsMode === "zeus"
-          ? zeusDaruma.light === "red" ? "STOP! Zeus is watching. Answer for energy while you wait." : "GO! Climb while Zeus chants. First to the summit wins."
-            : athleticsMode === "hunters-runners" && athleticsPlayer?.role === "hunter"
-              ? `Answer for foam ammo. Defend your station and tag runners without stopping them.`
-              : athleticsMode === "hunters-runners"
-                ? `Complete the circuit. ${athleticsRemainingRunners} runner${athleticsRemainingRunners === 1 ? "" : "s"} still racing.`
-                : athleticsMode === "chaos-climb"
-                  ? "Amber rings warn of hazards. Answer to charge abilities and keep climbing."
-                  : athleticsEnergy <= ATHLETICS_CRITICAL_ENERGY
-                    ? "Energy is low. Answer on a platform, then keep climbing."
-                    : `${athleticsCourseSection?.description ?? "Follow the course."} Answer anytime to refill energy.`
-    : session.settings.gameMode === "flag"
-      ? flagStatusText(session)
+  const objectiveText = session.settings.gameMode === "flag"
+    ? flagStatusText(session)
     : session.settings.gameMode === "zombie"
-      ? zombieStatusText(session, player)
-      : "Most tags wins. Respawns come next, then answer accuracy breaks ties.";
+      ? zombieStatusText(session)
+      : "";
   const sessionResult = getSessionResultText(session);
   const isFlagSpectator = !player.isAlive && session.settings.gameMode === "flag";
   const isAthleticsSpectator = athleticsRace && athleticsPlayer?.status === "finished" && Boolean(spectatorPlayer);
@@ -2536,7 +2512,7 @@ export default function StudentExperience({ onExit }: { onExit: () => void }) {
       <div className="game-stage">
         {athleticsMode === "zeus" && session.status === "active" && !teacherPaused && zeusStrikePulse > 0 && <ZeusStrikeFeedback key={zeusStrikePulse} levelNumber={(player.athletics?.checkpointIndex ?? 0) + 1} />}
         {athleticsMode === "zeus" && session.status === "active" && quizOpen && !teacherPaused && <ZeusLightSignal light={zeusDaruma.light} floating />}
-        {session.status !== "waiting" && !teacherPaused && <GameAnnouncementOverlay announcement={roundPreparation || zombieSelection || roundEnded ? undefined : session.announcement} serverTime={session.serverTime} />}
+        {session.status !== "waiting" && !teacherPaused && <GameAnnouncementOverlay announcement={roundPreparation || zombieSelection || roundEnded || session.announcement?.kind === "round_start" ? undefined : session.announcement} serverTime={session.serverTime} />}
         <div className={`game-utility-bar${session.status === "waiting" ? " lobby-utility-bar" : ""}`}>
           {session.status === "waiting" ? (
             <div className="lobby-brand">
@@ -2590,7 +2566,7 @@ export default function StudentExperience({ onExit }: { onExit: () => void }) {
         </div>
         <div className="arena-objective-strip">
           <span className={`status-pill status-${session.status}`}>{athleticsRace && athleticsPlayer?.status === "finished" ? t("Finished") : roundPreparation ? t("Get ready") : zombieSelection ? t("Choosing Zombies") : t(sessionStatusLabel(session.status))}</span>
-          <span className="objective-primary" title={objectiveText}>{session.settings.gameMode === "classic" && roundActive ? t("Most tags wins") : objectiveText}</span>
+          {objectiveText && <span className="objective-primary">{objectiveText}</span>}
           {session.settings.gameMode === "flag" && session.flag?.state === "placed" && (
             <span className={`flag-objective-countdown${flagRemainingSeconds <= 10 ? " urgent" : ""}`} role="timer" aria-label={t("Active flag time remaining {value0}", { value0: formatDuration(flagRemainingSeconds) })}>
               <Timer size={14} aria-hidden="true" />
@@ -2605,7 +2581,6 @@ export default function StudentExperience({ onExit }: { onExit: () => void }) {
         {athleticsRace && (athleticsMode === "chaos-climb" || athleticsMode === "hunters-runners") && !isAthleticsSpectator && !isFlagSpectator && (
           <div className={`athletics-mode-action-bar athletics-mode-${athleticsMode}`} aria-label={t("{value0} controls", { value0: athleticsModeConfig.label })}>
             <div className="athletics-mode-action-copy">
-              <span className="eyebrow">{athleticsModeConfig.instructionTitle}</span>
               <strong>{athleticsPlayer?.role === "hunter" ? t("Defend the station") : t(athleticsModeConfig.label)}</strong>
               <small>{athleticsPlayer?.role === "hunter" ? t("{value0} foam ammo · {value1} hits", { value0: athleticsPlayer.hunterAmmo ?? 0, value1: athleticsPlayer.hunterHits ?? 0 }) : t("{value0}/3 ability charge", { value0: athleticsPlayer?.abilityCharge ?? 0 })}</small>
             </div>
@@ -2821,28 +2796,12 @@ export default function StudentExperience({ onExit }: { onExit: () => void }) {
           <div className={`student-alerts${session.status === "waiting" ? " has-character-creator" : ""}`} aria-live="polite">
             {session.status === "waiting" && (
               <div className="panel pre-round-card creator-ready-room">
-                <header className="lobby-selection-header">
-                  <div className="lobby-instruction">
-                    <span>{t("Before the game")}</span>
-                    <h2>{athleticsRace ? t("Choose your lane, then wait for the host to start.") : t("Choose your team, then wait for the host to start.")}</h2>
-                    <p className="lobby-ready-note">{athleticsRace ? t("You’re connected. Style your runner while the others join. The course opens on the host’s start signal.") : t("You’re connected. Pick a team and style your player while the others join.")}</p>
+                <header className="lobby-selection-header lobby-compact-header" data-testid="student-lobby-status">
                     <div className="lobby-status-row">
                       <span className="waiting-status"><span className="waiting-pulse" />{t("Waiting for host…")}</span>
                       <span className="lobby-player-count"><Users size={15} />{connectedPlayers.length} {connectedPlayers.length === 1 ? t("player") : t("players")}{" "}{t("joined")}</span>
                     </div>
-                  </div>
-                  {athleticsRace ? (
-                    <div className="athletics-lobby-card athletics-briefing" role="note">
-                      <Footprints className="athletics-lobby-mark" size={22} aria-hidden="true" />
-                      <span><strong>{t(athleticsModeConfig.label)}{" "}{t("· Skyline Adventure Park")}</strong>
-                        <small>{athleticsMode === "zeus" ? t("Six checkpoints · Finish at the summit") : <>{ATHLETICS_STADIUM_COURSE.sections.length}{" "}{t("chapters ·")}{" "}{ATHLETICS_STADIUM_COURSE.checkpoints.length}{" "}{t("checkpoints")}</>}</small>
-                        <small>{t(athleticsMode === "zeus" ? "Hurdles → balance → zigzag → moving bridges → climb → summit." : "Hurdles → balance → zigzag → moving bridges → climb → summit → descent.")}</small>
-                        <small>{athleticsMode === "zeus" ? t("Looking and answering questions are safe during STOP. Use this time to refuel.") : athleticsRequiredLaps > 1 ? t("Stage 7 leads back to the start/finish line. Cross it to begin your next lap without stopping.") : t("Visit all seven checkpoints, then cross the start/finish line to finish.")}</small>
-                        <ol>{athleticsModeConfig.instructionLines.map((line) => <li key={line}>{line}</li>)}</ol>
-                        <small>{t("Move: WASD · Look: mouse / arrows · Jump: Space · Question: Q. On touch screens, use the on-screen controls. Cyan markers show required moving platforms.")}</small>
-                      </span>
-                    </div>
-                  ) : <div className="team-choice-grid" aria-label={t("Choose your team")}>
+                  {!athleticsRace && <div className="team-choice-grid" aria-label={t("Choose your team")}>
                     <button
                       type="button"
                       className={`team-choice team-choice-red${player.team === "red" ? " selected" : ""}`}

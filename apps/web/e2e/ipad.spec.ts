@@ -1,15 +1,16 @@
 import { expect, test } from "@playwright/test";
 import { createClassroom } from "./classroomFixture";
 
-test("Athletics briefing and jump/question controls fit an iPad", async ({ page, request }, testInfo) => {
+test("Athletics customization and jump/question controls fit an iPad", async ({ page, request }, testInfo) => {
   const classroom = await createClassroom(request, { gameMode: "athletics", athleticsMode: "chaos-climb" });
   await page.goto(`/join?code=${classroom.code}`);
   await page.getByPlaceholder("Player name").fill("Tablet Runner");
   await page.getByRole("button", { name: "Join game", exact: true }).tap();
-  await expect(page.locator(".athletics-briefing li")).toHaveCount(3);
-  const briefing = await page.locator(".athletics-briefing").boundingBox();
-  expect(briefing!.x).toBeGreaterThanOrEqual(0);
-  expect(briefing!.x + briefing!.width).toBeLessThanOrEqual(page.viewportSize()!.width);
+  await expect(page.getByTestId("student-lobby-status")).toBeVisible();
+  await expect(page.locator(".athletics-briefing")).toHaveCount(0);
+  const wardrobe = await page.getByRole("region", { name: "Player style" }).boundingBox();
+  expect(wardrobe!.x).toBeGreaterThanOrEqual(0);
+  expect(wardrobe!.x + wardrobe!.width).toBeLessThanOrEqual(page.viewportSize()!.width);
   const start = await request.post(`/api/sessions/${classroom.code}/start`, { headers: { Authorization: `Bearer ${classroom.teacherToken}` } });
   expect(start.status()).toBe(200);
   await expect(page.locator(".athletics-hud")).toBeVisible({ timeout: 30_000 });
@@ -29,7 +30,7 @@ test("iPad-like profile joins, starts, renders the arena shell, and accepts touc
   await expect(page.getByPlaceholder("Player name")).toBeVisible();
   await page.getByPlaceholder("Player name").fill("iPad Student");
   await page.getByRole("button", { name: "Join game", exact: true }).tap();
-  await expect(page.getByRole("heading", { name: "Choose your team, then wait for the host to start." })).toBeVisible();
+  await expect(page.getByTestId("student-lobby-status")).toBeVisible();
   const redTeam = page.getByRole("button", { name: /Red team/i });
   await redTeam.tap();
   await expect(redTeam).toHaveAttribute("aria-pressed", "true");
@@ -255,7 +256,7 @@ test("iPad-like Athletics controls expose crouch and jump together", async ({ pa
   await page.goto(`/join?code=${classroom.code}`);
   await page.getByPlaceholder("Player name").fill("iPad Athletics Student");
   await page.getByRole("button", { name: "Join game", exact: true }).tap();
-  await expect(page.getByRole("heading", { name: "Choose your lane, then wait for the host to start." })).toBeVisible();
+  await expect(page.getByTestId("student-lobby-status")).toBeVisible();
 
   const start = await request.post(`/api/sessions/${classroom.code}/start`, {
     headers: { Authorization: `Bearer ${classroom.teacherToken}` }

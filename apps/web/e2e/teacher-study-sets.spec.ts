@@ -30,6 +30,28 @@ const createStudySet = async (request: APIRequestContext, token: string, title: 
   return { token, quizSetId: quizSet.id };
 };
 
+test("teacher hosts Zeus with compact setup and retains the narration setting", async ({ page, request }, testInfo) => {
+  const teacher = await signupTeacher(request, "Zeus Host");
+  const studySet = await createStudySet(request, teacher.token, "Zeus Practice");
+  await page.addInitScript((token) => localStorage.setItem("quizstrike_token", token), teacher.token);
+  await page.goto(`/quiz-strike/teacher/host/${studySet.quizSetId}`);
+  await page.getByRole("button", { name: "Athletics Race", exact: true }).click();
+  await page.getByRole("button", { name: "Zeus Mode", exact: true }).click();
+  await page.getByRole("button", { name: "Arena", exact: true }).click();
+  await expect(page.getByRole("heading", { name: "Skyline Adventure Park", exact: true })).toBeVisible();
+  await expect(page.locator(".athletics-mode-brief, .athletics-course-sections, .athletics-course-note")).toHaveCount(0);
+  await page.getByLabel("Zeus voice plays on").selectOption("teacher");
+  await page.screenshot({ path: testInfo.outputPath("teacher-zeus-setup.png") });
+  const created = page.waitForResponse((response) => response.url().endsWith("/api/sessions") && response.request().method() === "POST");
+  await page.getByRole("button", { name: "Continue to Lobby", exact: true }).click();
+  const response = await created;
+  expect(response.status()).toBe(201);
+  const { session } = await response.json();
+  await expect(page.locator(".teacher-waiting-room")).toBeVisible();
+  expect(session.settings.athleticsMode).toBe("zeus");
+  expect(session.settings.athleticsZeusAudio).toBe("teacher");
+});
+
 test("teacher creates continuously, opens a detail page, and hosts the same Study Set", async ({ page, request }) => {
   const teacher = await signupTeacher(request, "Study Set Creator");
   await page.addInitScript((token) => localStorage.setItem("quizstrike_token", token), teacher.token);

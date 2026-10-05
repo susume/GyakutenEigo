@@ -1,6 +1,6 @@
 import { useSiteTranslation } from "../ui/siteTranslation";
 import { ZeusLightSignal } from "./ZeusLightSignal";
-import { useEffect, useState, type RefObject } from "react";
+import type { RefObject } from "react";
 import { getChaosAbilityLabel, type AthleticsAbility, type AthleticsMode, type AthleticsRole } from "@quizstrike/shared";
 
 type WeaponCooldown = {
@@ -45,9 +45,6 @@ const formatRaceTime = (seconds: number) => {
   const safeSeconds = Math.max(0, Math.round(seconds));
   return `${Math.floor(safeSeconds / 60)}:${String(safeSeconds % 60).padStart(2, "0")}`;
 };
-
-const ATHLETICS_ONBOARDING_MAX_PROGRESS = 0.05;
-const ATHLETICS_ONBOARDING_DURATION_MS = 4200;
 
 const formatPlace = (rank: number) => {
   const safeRank = Math.max(1, Math.round(rank));
@@ -112,29 +109,6 @@ export const ArenaHudOverlay = ({
   athleticsHud?: AthleticsHudState;
 }) => {
   const { t, language } = useSiteTranslation();
-  const athleticsOnboardingEligible = Boolean(
-    athleticsHud
-    && athleticsHud.status === "racing"
-    && athleticsHud.role !== "hunter"
-    && athleticsHud.startRemainingSeconds === 0
-    && !athleticsHud.recoveryActive
-    && athleticsHud.checkpointIndex === 0
-    && athleticsHud.routeProgress < ATHLETICS_ONBOARDING_MAX_PROGRESS
-  );
-  const hasAthleticsHud = Boolean(athleticsHud);
-  const [athleticsOnboardingDismissed, setAthleticsOnboardingDismissed] = useState(false);
-
-  useEffect(() => {
-    if (!hasAthleticsHud) return;
-    if (!athleticsOnboardingEligible) {
-      setAthleticsOnboardingDismissed(true);
-      return;
-    }
-    setAthleticsOnboardingDismissed(false);
-    const timeout = window.setTimeout(() => setAthleticsOnboardingDismissed(true), ATHLETICS_ONBOARDING_DURATION_MS);
-    return () => window.clearTimeout(timeout);
-  }, [athleticsOnboardingEligible, hasAthleticsHud]);
-
   if (athleticsHud) {
     const energyPercent = Math.round(Math.min(1, Math.max(0, athleticsHud.energy / Math.max(1, athleticsHud.maxEnergy))) * 100);
     const lap = Math.min(athleticsHud.requiredLaps, athleticsHud.completedLaps + (athleticsHud.status === "finished" ? 0 : 1));
@@ -142,12 +116,6 @@ export const ArenaHudOverlay = ({
 
     return (
       <>
-        {athleticsOnboardingEligible && !athleticsOnboardingDismissed && !controlsDisabled && athleticsHud.mode !== "zeus" && (
-          <div className="athletics-onboarding" aria-label={t("Jump tutorial")}>
-            <strong>{t("SPRINT FORWARD · JUMP THE STRIPED HURDLES")}</strong>
-            <span>{t("SPACE — JUMP · Tablet: tap JUMP")}</span>
-          </div>
-        )}
         {athleticsHud.recoveryActive && !inputPaused && (
           <div className="athletics-recovery-banner" role="status" aria-live="assertive">
             <strong>{t("You fell!")}</strong>
