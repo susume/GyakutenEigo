@@ -581,12 +581,14 @@ test("two-lap race keeps players independent, preserves the timer, and finishes 
   assert.ok(Date.now() >= officialStartAt);
 });
 
-test("Zeus allows looking and answering during STOP, then resets movement without losing energy or accepting stale packets", { timeout: 45_000 }, async () => {
+test("Zeus allows looking and answering during STOP, then halves energy while keeping learning credit and rejecting stale packets", { timeout: 45_000 }, async () => {
   const teacher = await createTeacherWithQuiz();
   const session = await createSession(teacher, 3, "zeus");
   const student = await joinSession(session.sessionCode, "Daruma Runner");
   const { socket, initialState } = connectStudentSocket(session.sessionCode, student);
   await initialState;
+  const strikes: { energy: number; restartUntil: string; athletics: { checkpointIndex: number; questionIndex: number } }[] = [];
+  socket.on("zeus_strike", (payload) => strikes.push(payload));
   const read = async () => (await api<{ session: SessionFixture }>(`/api/sessions/${session.sessionCode}`, { playerToken: student.playerToken })).body.session;
   try {
     await api(`/api/sessions/${session.sessionCode}/start`, { method: "POST", teacherToken: teacher.token });
@@ -612,13 +614,23 @@ test("Zeus allows looking and answering during STOP, then resets movement withou
     assert.equal(restarted.athletics?.routeProgress, 0);
     assert.equal(restarted.athletics?.checkpointIndex, 0);
     assert.equal(restarted.athletics?.questionIndex, 1);
-    assert.equal(restarted.energy, beforeStrike.energy);
+    assert.equal(restarted.energy, beforeStrike.energy! / 2);
     assert.equal(restarted.isAlive, true);
+    assert.equal(strikes[0]!.energy, restarted.energy, "the strike event must update the energy HUD immediately");
+    assert.equal(strikes[0]!.athletics.questionIndex, 1);
+    assert.equal(strikes[0]!.athletics.checkpointIndex, restarted.athletics!.checkpointIndex);
+    assert.ok(Date.parse(strikes[0]!.restartUntil) >= Date.parse(red.athletics!.zeus!.phaseEndsAt!));
     socket.emit("player_position", { x: restarted.x! - 8, y: restarted.y, z: restarted.z, facing: 1.3, movementIntent: true, zeusPhase: "red", movementEpoch: 0, movementSequence: 4 });
     await delay(220);
     const afterStale = (await read()).players.find((entry) => entry.id === student.player.id)!;
     assert.equal(afterStale.x, restarted.x);
     assert.equal(afterStale.athletics?.movementEpoch, 1);
+    assert.equal(afterStale.energy, restarted.energy, "stale packets cannot apply the fuel penalty twice");
+    socket.emit("player_position", { x: restarted.x! - 1, y: restarted.y, z: restarted.z, facing: 1.3, movementIntent: true, zeusPhase: "red", movementEpoch: 1, movementSequence: 4 });
+    await delay(150);
+    const guarded = (await read()).players.find((entry) => entry.id === student.player.id)!;
+    assert.equal(guarded.athletics?.movementEpoch, 1, "current STOP input is protected after a strike until GO");
+    assert.equal(guarded.energy, restarted.energy);
     const nextRed = await waitUntil(read, (snapshot) => snapshot.athletics?.zeus?.phase === "red"
       && snapshot.athletics.zeus.cycleIndex !== red.athletics!.zeus!.cycleIndex
       && Date.now() > Date.parse(snapshot.athletics.zeus.graceEndsAt!), 20_000);

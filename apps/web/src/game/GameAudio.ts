@@ -180,6 +180,9 @@ export type AudioEventCue =
   | "athletics_checkpoint"
   | "athletics_fall"
   | "athletics_finish"
+  | "zeus_strike"
+  | "zeus_stop"
+  | "zeus_go"
   | "match_victory"
   | "match_defeat"
   | "scoreboard_open"
@@ -275,6 +278,9 @@ export const GAME_AUDIO_EVENT_CUES: Record<AudioEventCue, ToneDefinition> = {
   athletics_checkpoint: eventTone(620, 190, 0.03, "triangle", 1040),
   athletics_fall: eventTone(170, 180, 0.024, "sine", 92),
   athletics_finish: eventTone(540, 460, 0.038, "triangle", 1180),
+  zeus_strike: eventTone(1350, 130, 0.055, "sawtooth", 140),
+  zeus_stop: eventTone(220, 160, 0.036, "triangle", 110),
+  zeus_go: eventTone(440, 140, 0.026, "sine", 740),
   match_victory: eventTone(500, 420, 0.034, "triangle", 980),
   match_defeat: eventTone(210, 360, 0.026, "sine", 100),
   scoreboard_open: eventTone(390, 105, 0.018, "sine", 520),
@@ -482,6 +488,12 @@ class GameAudioController {
       return;
     }
     this.playTone(GAME_AUDIO_EVENT_CUES[cue], spatial);
+    if (cue === "zeus_strike") {
+      this.playTone(eventTone(74, 850, 0.065, "sine", 32, true), spatial);
+      try {
+        if (this.audio) this.playNoiseWhoosh(this.audio.currentTime, this.audio.currentTime + 0.16, 0.06, spatial, 6500);
+      } catch { /* Audio feedback must not interrupt the runner's reset. */ }
+    }
   }
 
   playHeavyFire() {
@@ -635,7 +647,7 @@ class GameAudioController {
         gain.disconnect();
         spatialNodes.cleanup();
       };
-      if (definition.noise) this.playNoiseWhoosh(now, end, definition.gain * 0.9);
+      if (definition.noise) this.playNoiseWhoosh(now, end, definition.gain * 0.9, spatial);
     } catch {
       // Audio feedback is decorative and should never break gameplay.
     }
@@ -689,7 +701,7 @@ class GameAudioController {
     };
   }
 
-  private playNoiseWhoosh(start: number, end: number, peakGain: number) {
+  private playNoiseWhoosh(start: number, end: number, peakGain: number, spatial: SpatialAudioOptions = {}, cutoff = 520) {
     if (!this.audio || !this.sfxGain) return;
     if (!this.noiseBuffer) {
       this.noiseBuffer = this.audio.createBuffer(1, 4096, this.audio.sampleRate);
@@ -704,20 +716,21 @@ class GameAudioController {
     source.buffer = this.noiseBuffer;
     source.loop = true;
     filter.type = "lowpass";
-    filter.frequency.setValueAtTime(520, start);
+    filter.frequency.setValueAtTime(cutoff, start);
     filter.frequency.exponentialRampToValueAtTime(120, end);
     gain.gain.setValueAtTime(0.0001, start);
-    gain.gain.exponentialRampToValueAtTime(peakGain, start + 0.025);
+    gain.gain.exponentialRampToValueAtTime(Math.max(0.0001, peakGain * this.getSpatialGain(spatial)), start + 0.025);
     gain.gain.exponentialRampToValueAtTime(0.0001, end);
     source.connect(filter);
     filter.connect(gain);
-    gain.connect(this.sfxGain);
+    const spatialNodes = this.connectSpatial(gain, spatial, start);
     source.start(start);
     source.stop(end + 0.02);
     source.onended = () => {
       source.disconnect();
       filter.disconnect();
       gain.disconnect();
+      spatialNodes.cleanup();
     };
   }
 

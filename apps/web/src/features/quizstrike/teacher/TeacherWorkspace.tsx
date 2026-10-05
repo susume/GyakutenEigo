@@ -338,7 +338,7 @@ function TeacherDashboard({ teacher, onLogout, initialPath, onNavigate }: { teac
     return () => gameAudio.setMuted(false);
   }, [gamePreferences.soundEnabled, gamePreferences.sfxVolume, gamePreferences.musicVolume]);
 
-  useZeusDaruma(selectedSession, tab === "sessions" && selectedSession?.settings.gameMode === "athletics" && selectedSession.settings.athleticsMode === "zeus", selectedSession?.settings.athleticsZeusAudio === "teacher");
+  useZeusDaruma(selectedSession, tab === "sessions" && selectedSession?.settings.gameMode === "athletics" && selectedSession.settings.athleticsMode === "zeus", selectedSession?.settings.athleticsZeusAudio === "teacher", false);
 
   useEffect(() => {
     const syncBgm = () => {

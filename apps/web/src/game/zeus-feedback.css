@@ -1,0 +1,15 @@
+.zeus-strike-feedback { position: absolute; inset: 0; z-index: 90; pointer-events: none; overflow: hidden; }
+.zeus-strike-glow { position: absolute; inset: 0; box-shadow: inset 0 0 95px 28px #bd98ff; background: radial-gradient(ellipse at center, #fff1be30, #a16bff30); animation: zeus-impact-fade 1.1s ease-out both; }
+.zeus-strike-bolts { position: absolute; inset: 0; width: 100%; height: 100%; fill: none; stroke: #fff2af; stroke-width: 5; filter: drop-shadow(0 0 8px #c48cff); animation: zeus-impact-fade 1.3s ease-out both; }
+.zeus-strike-message { position: absolute; top: 43%; left: 50%; transform: translate(-50%, -50%); display: flex; align-items: center; gap: 12px; width: max-content; max-width: calc(100% - 28px); box-sizing: border-box; padding: 16px 20px; border: 2px solid #ffda7a; border-radius: 16px; background: #261b3ff5; color: #fff6db; box-shadow: 0 8px 32px #120a2b99; animation: zeus-message-fade 2.8s ease-out both; }
+.zeus-strike-symbol { font-size: 48px; color: #ffda7a; line-height: 1; }
+.zeus-strike-message strong { display: block; font-size: clamp(17px, 3vw, 26px); letter-spacing: .04em; }
+.zeus-strike-message p { margin: 6px 0; color: #fff6db; font-size: 14px; line-height: 1.4; }
+.zeus-strike-message small { display: block; color: #e5d8ff; font-size: 12px; line-height: 1.4; }
+@keyframes zeus-impact-fade { from { opacity: .85; } to { opacity: 0; } }
+@keyframes zeus-message-fade { 0%, 82% { opacity: 1; } 100% { opacity: 0; } }
+@media (max-height: 480px) { .zeus-strike-message { top: 49%; padding: 10px 14px; } }
+@media (prefers-reduced-motion: reduce) {
+  .zeus-strike-glow, .zeus-strike-bolts { display: none; }
+  .zeus-strike-message { animation: none; }
+}

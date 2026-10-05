@@ -2,7 +2,7 @@ import { useEffect, useRef, useState } from "react";
 import { getZeusLight, ZEUS_CHANT_LEAD_MS, type GameSession } from "@quizstrike/shared";
 import { gameAudio } from "./GameAudio";
 
-export const useZeusDaruma = (session: GameSession | null | undefined, enabled: boolean, narration = true) => {
+export const useZeusDaruma = (session: GameSession | null | undefined, enabled: boolean, narration = true, phaseCues = true) => {
   const [nowMs, setNowMs] = useState(Date.now);
   const clock = useRef({ offset: 0 });
   const currentSession = useRef(session);
@@ -20,6 +20,14 @@ export const useZeusDaruma = (session: GameSession | null | undefined, enabled: 
   const serverNow = paused ? Date.parse(session?.teacherPausedAt ?? "") : nowMs + clock.current.offset;
   const zeus = session?.athletics?.zeus;
   const light = getZeusLight(zeus, serverNow);
+  const previousLight = useRef(light);
+  useEffect(() => {
+    const previous = previousLight.current;
+    previousLight.current = light;
+    if (!enabled || !phaseCues || paused || session?.status !== "active" || session.athletics?.status !== "running" || document.visibilityState !== "visible") return;
+    if (previous === "green" && light === "red") gameAudio.playEvent("zeus_stop");
+    if (previous === "red" && light === "green") gameAudio.playEvent("zeus_go");
+  }, [enabled, phaseCues, paused, light, session?.status, session?.athletics?.status]);
   useEffect(() => {
     const sync = () => {
       const snapshot = currentSession.current;

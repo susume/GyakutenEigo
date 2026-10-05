@@ -1,4 +1,5 @@
 import { useZeusDaruma } from "../../../game/useZeusDaruma";
+import { ZeusStrikeFeedback } from "../../../game/ZeusStrikeFeedback";
 import { ZeusLightSignal } from "../../../game/ZeusLightSignal";
 import { ZEUS_SUMMIT_PROGRESS, ZEUS_SUMMIT_CHECKPOINT_COUNT } from "@quizstrike/shared";
 import { useSiteTranslation } from "../../../ui/siteTranslation";
@@ -350,6 +351,7 @@ export default function StudentExperience({ onExit }: { onExit: () => void }) {
   const [rewardVfx, setRewardVfx] = useState<RewardVfxCue | null>(null);
   const [currencyPulse, setCurrencyPulse] = useState(0);
   const [hitConfirmPulse, setHitConfirmPulse] = useState(0);
+  const [zeusStrikePulse, setZeusStrikePulse] = useState(0);
   const [learningReport, setLearningReport] = useState<StudentLearningReport | null>(null);
   const [isLearningReportLoading, setIsLearningReportLoading] = useState(false);
   const [learningReportError, setLearningReportError] = useState("");
@@ -640,6 +642,12 @@ export default function StudentExperience({ onExit }: { onExit: () => void }) {
     const timeout = window.setTimeout(() => setFeedback(""), 4500);
     return () => window.clearTimeout(timeout);
   }, [feedback, setFeedback]);
+
+  useEffect(() => {
+    if (!zeusStrikePulse) return;
+    const timer = window.setTimeout(() => setZeusStrikePulse(0), 2800);
+    return () => window.clearTimeout(timer);
+  }, [zeusStrikePulse]);
 
   useEffect(() => () => {
     if (answerFeedbackTimerRef.current !== undefined) window.clearTimeout(answerFeedbackTimerRef.current);
@@ -1024,18 +1032,25 @@ export default function StudentExperience({ onExit }: { onExit: () => void }) {
       playerId?: string; position?: { x: number; y: number; z: number };
       spawn?: { x: number; y: number; z: number; facing: number };
       movementEpoch?: number; restartUntil?: string; message?: string;
+      energy?: number; athletics?: PlayerSession["athletics"];
     }) => {
       if (lastVisualSession.settings.gameMode !== "athletics" || athleticsModeForSession(lastVisualSession) !== "zeus") return;
       if (payload.position) emitArenaVfx({ kind: "player_hit", ...payload.position, color: "#b697ff", local: payload.playerId === activePlayerId, intensity: 1.25 });
+      const localStrike = payload.playerId === activePlayerId;
+      const listener = lastVisualSession.players.find((racer) => racer.id === activePlayerId);
+      gameAudio.playEvent("zeus_strike", localStrike ? {} : {
+        ...(payload.position && listener ? getCombatAudioSpatial({ attacker: payload.position, target: { x: listener.x ?? 0, z: listener.z ?? 0, facing: listener.facing ?? 0 } }) : {}),
+        intensity: 0.45
+      }, localStrike ? 0 : 100);
       if (payload.playerId !== activePlayerId || !payload.spawn) return;
+      setZeusStrikePulse((pulse) => pulse + 1);
       if (payload.movementEpoch !== undefined) athleticsMovementEpochRef.current = payload.movementEpoch;
       setPlayer((current) => current?.athletics ? {
-        ...current, ...payload.spawn, isAlive: true, jumping: false,
-        athletics: { ...current.athletics, checkpointIndex: 0, routeProgress: 0, completedLaps: 0,
+        ...current, ...payload.spawn, energy: payload.energy ?? current.energy, isAlive: true, jumping: false, crouching: false,
+        athletics: { ...current.athletics, ...payload.athletics,
           movementEpoch: payload.movementEpoch, zeusRestartUntil: payload.restartUntil, zeusFrozen: false }
       } : current);
-      setFeedback(payload.message ?? "Zeus saw you move! Back to the start.");
-      gameAudio.playEvent("ui_warning");
+      setFeedback(payload.message ?? "Zeus saw you move! Back one level with half your energy.");
     });
     connectedSocket.on("zeus_defeated", (payload: { winnerId?: string; message?: string }) => {
       if (lastVisualSession.settings.gameMode !== "athletics" || athleticsModeForSession(lastVisualSession) !== "zeus") return;
@@ -2519,6 +2534,7 @@ export default function StudentExperience({ onExit }: { onExit: () => void }) {
       athleticsMode === "zeus" && quizOpen ? "zeus-question-open" : ""
     ].filter(Boolean).join(" ")}>
       <div className="game-stage">
+        {athleticsMode === "zeus" && session.status === "active" && !teacherPaused && zeusStrikePulse > 0 && <ZeusStrikeFeedback key={zeusStrikePulse} levelNumber={(player.athletics?.checkpointIndex ?? 0) + 1} />}
         {athleticsMode === "zeus" && session.status === "active" && quizOpen && !teacherPaused && <ZeusLightSignal light={zeusDaruma.light} floating />}
         {session.status !== "waiting" && !teacherPaused && <GameAnnouncementOverlay announcement={roundPreparation || zombieSelection || roundEnded ? undefined : session.announcement} serverTime={session.serverTime} />}
         <div className={`game-utility-bar${session.status === "waiting" ? " lobby-utility-bar" : ""}`}>

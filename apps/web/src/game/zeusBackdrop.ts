@@ -1,5 +1,5 @@
 import * as THREE from "three";
-import { ATHLETICS_STADIUM_COURSE, ATHLETICS_PLAYER_EYE_HEIGHT, ZEUS_SUMMIT_SURFACE_INDEX, getZeusLight, type GameSession } from "@quizstrike/shared";
+import { ATHLETICS_STADIUM_COURSE, ATHLETICS_PLAYER_EYE_HEIGHT, ZEUS_SUMMIT_SURFACE_INDEX, ZEUS_STRIKE_VISIBLE_MS, getZeusLight, type GameSession } from "@quizstrike/shared";
 
 export const ZEUS_SKY_LAYER = 1;
 
@@ -63,12 +63,13 @@ export const createZeusVisuals = (root: THREE.Group, camera?: THREE.PerspectiveC
   gateway.name = "athletics-zeus-summit";
   gateway.position.set(summit.x, summit.y + 5, summit.z);
   root.add(gateway);
-  const boltGeometry = new THREE.CylinderGeometry(0.1, 0.16, 1, 5);
+  const boltGeometry = new THREE.CylinderGeometry(0.16, 0.24, 1, 5);
   const boltPoints = [new THREE.Vector3(0, 16, 0), new THREE.Vector3(0.6, 13, 0.1), new THREE.Vector3(-0.7, 10.5, 0), new THREE.Vector3(0.6, 8, 0.2), new THREE.Vector3(-0.45, 5, 0), new THREE.Vector3(0.4, 2.5, 0), new THREE.Vector3(0, 0, 0)];
   const bolts = Array.from({ length: 8 }, (_, index) => {
     const bolt = new THREE.Group();
     bolt.name = `athletics-zeus-lightning-${index}`;
-    const glow = new THREE.MeshBasicMaterial({ color: "#e9d5ff", transparent: true, opacity: 1 });
+    bolt.visible = false;
+    const glow = new THREE.MeshBasicMaterial({ color: "#fff2af", transparent: true, opacity: 1, depthWrite: false, fog: false });
     for (let i = 1; i < boltPoints.length; i++) {
       const a = boltPoints[i - 1]!;
       const b = boltPoints[i]!;
@@ -77,9 +78,23 @@ export const createZeusVisuals = (root: THREE.Group, camera?: THREE.PerspectiveC
       segment.scale.y = a.distanceTo(b);
       segment.quaternion.setFromUnitVectors(new THREE.Vector3(0, 1, 0), b.clone().sub(a).normalize());
       bolt.add(segment);
+      const halo = new THREE.Mesh(boltGeometry, new THREE.MeshBasicMaterial({ color: "#b587ff", transparent: true, opacity: 0.25, depthWrite: false, fog: false }));
+      halo.position.copy(segment.position);
+      halo.quaternion.copy(segment.quaternion);
+      halo.scale.set(3, segment.scale.y, 3);
+      bolt.add(halo);
     }
+    const ringMaterial = new THREE.MeshBasicMaterial({ color: "#c49aff", transparent: true, opacity: 0.8, depthWrite: false, side: THREE.DoubleSide, fog: false });
+    const ring = new THREE.Mesh(new THREE.RingGeometry(0.7, 1, 24), ringMaterial);
+    ring.name = `athletics-zeus-impact-${index}`;
+    ring.rotation.x = -Math.PI / 2;
+    ring.position.y = 0.15;
+    bolt.add(ring);
+    const spark = new THREE.Mesh(new THREE.IcosahedronGeometry(0.65, 0), glow);
+    spark.position.y = 0.9;
+    bolt.add(spark);
     root.add(bolt);
-    return { bolt, glow };
+    return { bolt, glow, ring, ringMaterial };
   });
   const position = new THREE.Vector3();
   const orientation = new THREE.Quaternion();
@@ -88,13 +103,19 @@ export const createZeusVisuals = (root: THREE.Group, camera?: THREE.PerspectiveC
   return {
     update: (session: GameSession | null | undefined, nowMs: number) => {
       const zeus = session?.athletics?.zeus;
-      bolts.forEach(({ bolt, glow }, index) => {
+      bolts.forEach(({ bolt, glow, ring, ringMaterial }, index) => {
         const strike = zeus?.lastStrikes?.[index];
         const age = strike ? nowMs - Date.parse(strike.at) : Infinity;
-        bolt.visible = age >= 0 && age < 600;
+        bolt.visible = age >= 0 && age < ZEUS_STRIKE_VISIBLE_MS;
         if (strike && bolt.visible) {
           bolt.position.set(strike.position.x, strike.position.y - ATHLETICS_PLAYER_EYE_HEIGHT, strike.position.z);
-          glow.opacity = Math.max(0, 1 - age / 600);
+          const fade = Math.max(0, 1 - age / ZEUS_STRIKE_VISIBLE_MS);
+          glow.opacity = fade;
+          bolt.children.forEach((child) => {
+            if (child instanceof THREE.Mesh && child.material !== glow && child.material !== ringMaterial) child.material.opacity = fade * 0.25;
+          });
+          ringMaterial.opacity = fade * 0.8;
+          ring.scale.setScalar(reducedMotion ? 2 : 1 + age / 300);
         }
       });
       const light = getZeusLight(zeus, nowMs);

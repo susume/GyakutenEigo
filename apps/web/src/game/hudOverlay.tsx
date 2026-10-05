@@ -164,7 +164,7 @@ export const ArenaHudOverlay = ({
           )}
           {athleticsHud.mode === "zeus" && <div className={`athletics-threat-status zeus-status-${athleticsHud.zeusLight ?? "waiting"}`}>
             <ZeusLightSignal light={athleticsHud.zeusLight ?? "waiting"} />
-            <span>{t(athleticsHud.zeusLight === "defeated" ? "Zeus defeated" : athleticsHud.zeusRestarting ? "Back to start · Energy kept" : "First to the summit wins")}</span>
+            <span>{t(athleticsHud.zeusLight === "defeated" ? "Zeus defeated" : athleticsHud.zeusRestarting ? "Back to level {value0} · Half energy kept" : "First to the summit wins", { value0: athleticsHud.checkpointIndex + 1 })}</span>
           </div>}
           <div className="athletics-hud-header">
             <div className="athletics-energy-label">

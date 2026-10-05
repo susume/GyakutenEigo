@@ -1,4 +1,4 @@
-import { getZeusCycle, startZeusGreen, getZeusLight, isZeusStopEnforced, ZEUS_STOP_GRACE_MS, ZEUS_RESTART_GUARD_MS, ZEUS_SUMMIT_CHECKPOINT_COUNT, ZEUS_SUMMIT_SURFACE_INDEX, ZEUS_SUMMIT_PROGRESS } from "@quizstrike/shared";
+import { getZeusCycle, getZeusStrikeRecovery, startZeusGreen, getZeusLight, isZeusStopEnforced, ZEUS_STOP_GRACE_MS, ZEUS_RESTART_GUARD_MS, ZEUS_STRIKE_VISIBLE_MS, ZEUS_SUMMIT_CHECKPOINT_COUNT, ZEUS_SUMMIT_SURFACE_INDEX, ZEUS_SUMMIT_PROGRESS } from "@quizstrike/shared";
 import "dotenv/config";
 import compression from "compression";
 import cors from "cors";
@@ -1518,6 +1518,7 @@ const advanceZeusMode = (session: GameSession, nowMs: number) => {
   } else {
     // Start from the actual tick after a stall: always give a complete chant.
     race.zeus = startZeusGreen(race.modeSeed ?? 0, (zeus.cycleIndex ?? -1) + 1, nowMs);
+    race.zeus.lastStrikes = zeus.lastStrikes;
     for (const player of session.players) if (player.athletics) {
       player.athletics.zeusRedAnchor = undefined;
       player.athletics.zeusFrozen = false;
@@ -1532,12 +1533,14 @@ const advanceZeusMode = (session: GameSession, nowMs: number) => {
 const restartZeusRunner = (session: GameSession, player: PlayerSession, nowMs: number) => {
   const athletics = ensureAthleticsPlayerState(session, player)!;
   const struckPosition = { x: player.x ?? 0, y: player.y ?? ATHLETICS_PLAYER_EYE_HEIGHT, z: player.z ?? 0 };
-  const spawn = getAthleticsStartPosition(athletics.laneIndex ?? 0, Math.max(1, session.players.length));
-  Object.assign(player, spawn, { jumping: false, crouching: false, isAlive: true });
+  const recovery = getZeusStrikeRecovery({ checkpointIndex: athletics.checkpointIndex, energy: player.energy,
+    laneIndex: athletics.laneIndex, totalPlayers: Math.max(1, session.players.length) });
+  const spawn = recovery.spawn;
+  Object.assign(player, spawn, { energy: recovery.energy, jumping: false, crouching: false, isAlive: true });
   Object.assign(athletics, {
-    checkpointIndex: 0, lastSafeCheckpointIndex: 0, routeProgress: 0,
-    lastSafeSurfaceIndex: 0, currentSupportedSurfaceIndex: 0, currentSupportKind: "main_surface",
-    lastSupportedAtMs: nowMs, checkpointSplitsMs: [], completedLaps: 0,
+    checkpointIndex: recovery.checkpointIndex, lastSafeCheckpointIndex: recovery.checkpointIndex, routeProgress: recovery.routeProgress,
+    lastSafeSurfaceIndex: recovery.surfaceIndex, currentSupportedSurfaceIndex: recovery.surfaceIndex, currentSupportKind: "main_surface",
+    lastSupportedAtMs: nowMs, checkpointSplitsMs: athletics.checkpointSplitsMs.slice(0, recovery.checkpointIndex), completedLaps: 0,
     recoveryActive: false, recoverySettleUntil: new Date(nowMs + ZEUS_RESTART_GUARD_MS).toISOString(),
     zeusRestartUntil: new Date(Math.max(nowMs + ZEUS_RESTART_GUARD_MS, Date.parse(session.athletics?.zeus?.phaseEndsAt ?? "") || 0)).toISOString(),
     zeusStrikes: (athletics.zeusStrikes ?? 0) + 1,
@@ -1549,11 +1552,12 @@ const restartZeusRunner = (session: GameSession, player: PlayerSession, nowMs: n
   playerPositionHistory.clear(player.id);
   playerPositionHistory.record(player.id, spawn, nowMs);
   const zeus = session.athletics?.zeus;
-  if (zeus) zeus.lastStrikes = [...(zeus.lastStrikes ?? []).filter((strike) => nowMs - Date.parse(strike.at) < 600), { playerId: player.id, position: struckPosition, at: new Date(nowMs).toISOString() }].slice(-8);
+  if (zeus) zeus.lastStrikes = [...(zeus.lastStrikes ?? []).filter((strike) => nowMs - Date.parse(strike.at) < ZEUS_STRIKE_VISIBLE_MS), { playerId: player.id, position: struckPosition, at: new Date(nowMs).toISOString() }].slice(-8);
   emitAthleticsModeEvent(session, "zeus_strike", {
     playerId: player.id, hit: true, position: struckPosition, spawn,
     movementEpoch: athletics.movementEpoch, restartUntil: athletics.zeusRestartUntil,
-    message: "Zeus saw you move! Back to the start."
+    energy: player.energy, athletics: { ...athletics },
+    message: `Zeus saw you move! Back to level ${recovery.checkpointIndex + 1} with half your energy.`
   });
   broadcastPlayerState(session, [player]);
   broadcastSession(session);

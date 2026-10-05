@@ -89,7 +89,22 @@ for (const athleticsMode of ["zeus", "hunters-runners", "chaos-climb"] as const)
   });
 }
 
-test("Zeus's head and signal switch together, and moving during STOP returns a runner to the start", async ({ page, request }, testInfo) => {
+test("Zeus's head and signal switch together, and moving during STOP returns a runner one level with half energy", async ({ page, request }, testInfo) => {
+  await page.emulateMedia({ reducedMotion: "no-preference" });
+  await page.addInitScript(() => {
+    const starts: number[] = [];
+    Object.defineProperty(window, "zeusSoundAudit", { value: starts });
+    const createOscillator = AudioContext.prototype.createOscillator;
+    AudioContext.prototype.createOscillator = function () {
+      const oscillator = createOscillator.call(this);
+      const start = oscillator.start.bind(oscillator);
+      let scheduledFrequency = oscillator.frequency.value;
+      const setFrequency = oscillator.frequency.setValueAtTime.bind(oscillator.frequency);
+      oscillator.frequency.setValueAtTime = (value, when) => { scheduledFrequency = value; return setFrequency(value, when); };
+      oscillator.start = (when) => { starts.push(scheduledFrequency); start(when); };
+      return oscillator;
+    };
+  });
   const classroom = await createClassroom(request, { gameMode: "athletics", athleticsMode: "zeus", roundDurationSeconds: 120 });
   await page.goto(`/join?code=${classroom.code}`);
   await page.getByPlaceholder("Player name").fill("Daruma Student");
@@ -113,12 +128,31 @@ test("Zeus's head and signal switch together, and moving during STOP returns a r
   await page.screenshot({ path: testInfo.outputPath("zeus-question-stop.png") });
   await page.getByRole("button", { name: "Answer A: This one", exact: true }).click();
   await page.getByRole("button", { name: "Back to the game", exact: true }).click();
-  await page.keyboard.down("w");
-  await page.waitForTimeout(450);
-  await page.keyboard.up("w");
+  // Screenshots and answering can consume the first STOP window on slow PCs.
+  let energyBeforeStrike = 0;
   await expect.poll(async () => {
     const response = await request.get(`/api/sessions/${classroom.code}`, { headers: { Authorization: `Bearer ${classroom.teacherToken}` } });
     const { session } = await response.json();
+    const zeus = session.athletics.zeus;
+    energyBeforeStrike = session.players[0].energy;
+    return zeus.phase === "red" && Date.now() > Date.parse(zeus.graceEndsAt) && Date.parse(zeus.phaseEndsAt) - Date.now() > 1600;
+  }, { timeout: 15_000 }).toBe(true);
+  await page.keyboard.down("w");
+  const impact = page.getByTestId("zeus-strike-feedback");
+  await expect(impact).toContainText("ZEUS STRUCK YOU!");
+  await page.keyboard.up("w");
+  await expect(impact).toContainText("You moved during STOP");
+  await expect(impact).toContainText("Half your energy kept");
+  await expect(impact).toContainText("Back to level 1");
+  const sounds = await page.evaluate(() => (window as Window & { zeusSoundAudit?: number[] }).zeusSoundAudit ?? []);
+  expect(sounds).toContain(1350); // Electrical crack, rather than the old UI warning.
+  expect(sounds).toContain(74); // Thunder tail.
+  await expect(page.locator(".zeus-strike-bolts")).toBeVisible();
+  await page.screenshot({ path: testInfo.outputPath("zeus-lightning-impact.png") });
+  await expect.poll(async () => {
+    const response = await request.get(`/api/sessions/${classroom.code}`, { headers: { Authorization: `Bearer ${classroom.teacherToken}` } });
+    const { session } = await response.json();
+    expect(session.players[0].energy).toBe(energyBeforeStrike / 2);
     return session.players[0].athletics.zeusStrikes ?? 0;
   }).toBe(1);
   await expect(canvas).toHaveAttribute("data-player-x", "0.000");
@@ -126,6 +160,33 @@ test("Zeus's head and signal switch together, and moving during STOP returns a r
   await expect(page.locator(".athletics-hud")).toContainText("Summit");
   await expect(page.locator(".athletics-hud")).not.toContainText("Lap");
   await expect(page.locator(".athletics-mode-action-bar")).toBeHidden();
+  await expect(impact).toBeHidden({ timeout: 5000 });
+});
+
+test("Zeus strike feedback fits phones and remains readable with reduced motion", async ({ page, request }, testInfo) => {
+  await page.setViewportSize({ width: 375, height: 812 });
+  await page.emulateMedia({ reducedMotion: "reduce" });
+  const classroom = await createClassroom(request, { gameMode: "athletics", athleticsMode: "zeus", roundDurationSeconds: 120 });
+  await page.goto(`/join?code=${classroom.code}`);
+  await page.getByPlaceholder("Player name").fill("Phone Strike Runner");
+  await page.getByRole("button", { name: "Join game", exact: true }).click();
+  await request.post(`/api/sessions/${classroom.code}/start`, { headers: { Authorization: `Bearer ${classroom.teacherToken}` } });
+  await expect(page.getByTestId("zeus-light-signal")).toHaveAttribute("data-light", "red", { timeout: 25_000 });
+  await page.waitForTimeout(800);
+  await page.keyboard.down("w");
+  const impact = page.getByTestId("zeus-strike-feedback");
+  await expect(impact).toBeVisible();
+  await page.keyboard.up("w");
+  const bounds = await page.locator(".zeus-strike-message").boundingBox();
+  expect(bounds!.x).toBeGreaterThanOrEqual(0);
+  expect(bounds!.x + bounds!.width).toBeLessThanOrEqual(375);
+  await expect(impact).toContainText("Half your energy kept");
+  expect(await page.locator(".zeus-strike-message p").evaluate((element) => getComputedStyle(element).color)).toBe("rgb(255, 246, 219)");
+  await expect(page.locator(".zeus-strike-bolts")).toBeHidden();
+  await expect(page.locator(".zeus-strike-glow")).toBeHidden();
+  await expect(impact).toBeVisible();
+  await page.screenshot({ path: testInfo.outputPath("zeus-phone-impact-reduced-motion.png") });
+  await expect(impact).toBeHidden({ timeout: 5000 });
 });
 
 test.describe("Narrow touch warnings", () => {

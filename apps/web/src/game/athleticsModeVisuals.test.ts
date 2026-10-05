@@ -1,8 +1,31 @@
 import test from "node:test";
 import assert from "node:assert/strict";
 import * as THREE from "three";
-import { CHAOS_HAZARD_WARNING_MS, createChaosWave, getChaosHazardPosition, ATHLETICS_STADIUM_COURSE, type GameSession } from "@quizstrike/shared";
+import { CHAOS_HAZARD_WARNING_MS, createChaosWave, getChaosHazardPosition, ATHLETICS_STADIUM_COURSE, ATHLETICS_PLAYER_EYE_HEIGHT, ZEUS_STRIKE_VISIBLE_MS, type GameSession } from "@quizstrike/shared";
+import { createZeusVisuals } from "./zeusBackdrop";
 import { createAthleticsModeVisuals } from "./athleticsModeVisuals";
+
+test("Zeus lightning and its landing impact remain visible after the runner resets and expire together", () => {
+  for (const reducedMotion of [false, true]) {
+    const root = new THREE.Group();
+    const visuals = createZeusVisuals(root, undefined, reducedMotion);
+    const bolt = root.getObjectByName("athletics-zeus-lightning-0")!;
+    const ring = root.getObjectByName("athletics-zeus-impact-0")!;
+    assert.equal(bolt.visible, false);
+    const strike = { playerId: "runner", position: { x: 12, y: 24, z: 36 }, at: new Date(10_000).toISOString() };
+    const session = { athletics: { zeus: { phase: "red", lastStrikes: [strike] } }, players: [{ id: "runner", x: 0, y: 0, z: 0 }] } as GameSession;
+    visuals.update(session, 10_800);
+    assert.equal(bolt.visible, true, "a late snapshot can still display the strike");
+    assert.deepEqual(bolt.position.toArray(), [12, 24 - ATHLETICS_PLAYER_EYE_HEIGHT, 36], "impact stays at the strike rather than the new spawn");
+    const scale = ring.scale.x;
+    session.athletics!.zeus!.phase = "green";
+    visuals.update(session, 11_000);
+    assert.equal(bolt.visible, true, "GO must not truncate a recent strike");
+    assert.equal(ring.scale.x === scale, reducedMotion, "reduced motion keeps the impact stationary");
+    visuals.update(session, 10_000 + ZEUS_STRIKE_VISIBLE_MS);
+    assert.equal(bolt.visible, false);
+  }
+});
 
 test("Chaos renders a warning before its hazard, then removes both at expiry", () => {
   const scene = new THREE.Scene();
