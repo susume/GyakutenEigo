@@ -328,10 +328,13 @@ test("teacher and student Speaking Practice screens use the connected mock API",
   await studentPage.getByRole("button", { name: "Conversation Your conversation so far", exact: true }).click();
   await expect(studentPage.getByRole("heading", { name: "Conversation", exact: true })).toBeVisible();
   await expect(studentPage.getByText("Your conversation so far", { exact: true })).toBeVisible();
+  await studentPage.getByRole("button", { name: "Open support panel", exact: true }).click();
   await expect(studentPage.getByRole("tab", { name: "Useful English", exact: true })).toHaveAttribute("aria-selected", "true");
   await expect(studentPage.getByText("Notes", { exact: true })).toHaveCount(0);
   await expect(studentPage.getByLabel("Notes", { exact: true })).toHaveCount(0);
-  await expect(studentPage.getByText("Try using these expressions in your conversation!", { exact: true })).toBeVisible();
+  await expect(studentPage.getByText("Use these examples or your own words.", { exact: true })).toBeVisible();
+  await expect(studentPage.locator(".speaking-student-expression-list button")).toHaveCount(0);
+  await studentPage.getByRole("button", { name: "Close support panel", exact: true }).click();
   const responsiveViewports = [
     { width: 360, height: 800 },
     { width: 1366, height: 768 },
@@ -425,6 +428,7 @@ test("teacher and student Speaking Practice screens use the connected mock API",
     await studentPage.screenshot({ path: testInfo.outputPath(`speaking-${viewport.width}x${viewport.height}.png`), fullPage: false });
   }
   await studentPage.setViewportSize({ width: 1366, height: 768 });
+  await studentPage.getByRole("button", { name: "Conversation Your conversation so far", exact: true }).click();
   const transcriptList = studentPage.locator(".speaking-transcript-list");
   const transcriptMetrics = await transcriptList.evaluate((element) => ({ scrollHeight: element.scrollHeight, clientHeight: element.clientHeight }));
   expect(transcriptMetrics.scrollHeight).toBeGreaterThan(transcriptMetrics.clientHeight);
@@ -450,7 +454,7 @@ test("teacher and student Speaking Practice screens use the connected mock API",
   await studentPage.screenshot({ path: testInfo.outputPath("speaking-zoom-125.png"), fullPage: false });
   await studentPage.evaluate(() => { document.documentElement.style.zoom = ""; });
   // Exercise the global shortcut with focus outside inputs and buttons.
-  await studentPage.locator(".speaking-transcript-card").click();
+  await studentPage.locator("#main-content").focus();
   await studentPage.keyboard.press("Space");
   await expect(studentPage.getByRole("button", { name: "Stop speaking", exact: true })).toBeVisible();
   await studentPage.waitForTimeout(300);

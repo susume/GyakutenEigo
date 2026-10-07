@@ -34,7 +34,7 @@ function installGlobal(t: TestContext, name: string, value: unknown) {
 async function flushLoad() { for (let i = 0; i < 12; i += 1) await Promise.resolve(); }
 
 /** An in-memory scene exercises real VRM pose/expression/disposal APIs, without a model file or GPU. */
-function model(scale = 1) {
+function model(scale = 1, shoulders = false) {
   const scene = new Group();
   const hips = new Object3D();
   const spine = new Object3D();
@@ -43,7 +43,16 @@ function model(scale = 1) {
   hips.position.y = 0.9;
   spine.position.y = 0.4;
   head.position.y = 0.5;
-  const humanoid = new VRMHumanoid({ hips: { node: hips }, spine: { node: spine }, head: { node: head } } as VRMHumanBones);
+  const bones = { hips: { node: hips }, spine: { node: spine }, head: { node: head } } as VRMHumanBones;
+  if (shoulders) {
+    for (const [side, direction] of [["left", 1], ["right", -1]] as const) {
+      const upper = new Object3D();
+      spine.add(upper);
+      upper.position.set(direction * 0.23, 0.35, 0);
+      bones[`${side}UpperArm`] = { node: upper };
+    }
+  }
+  const humanoid = new VRMHumanoid(bones);
   scene.add(humanoid.normalizedHumanBonesRoot);
   const geometry = new BoxGeometry(0.5, 2, 0.2);
   const material = new MeshBasicMaterial();
@@ -295,4 +304,29 @@ test("portrait resize adapts the camera clipping planes to model scale", async (
   assert.equal(camera.aspect, 240 / 280);
   assert.ok(camera.far > 50);
   assert.ok(Math.abs(projection.x) < 1 && Math.abs(projection.y) < 1 && Math.abs(projection.z) < 1);
+});
+
+test("portrait framing fits hair and shoulders across scales/aspects while excluding the waist", async (t) => {
+  for (const scale of [0.1, 1, 100]) {
+    const env = environment(t);
+    const portrait = model(scale, true);
+    env.runtime.parseModel = async () => ({ scene: portrait.scene, userData: { vrm: portrait.vrm } });
+    const dispose = env.mount();
+    await flushLoad();
+    for (const [width, height] of [[660, 440], [390, 448], [620, 598], [660, 298]]) {
+      env.host.clientWidth = width!;
+      env.host.clientHeight = height!;
+      env.resize();
+      const camera = env.stats().camera!;
+      const hairTop = new Vector3(0, 2 * scale, 0).project(camera);
+      assert.ok(hairTop.y < 0.95 && hairTop.y > 0.3, "Comfortable space above the hair");
+      for (const side of ["left", "right"] as const) {
+        const shoulder = portrait.vrm.humanoid.getRawBoneNode(`${side}UpperArm`)!.getWorldPosition(new Vector3()).project(camera);
+        assert.ok(Math.abs(shoulder.x) < 0.95 && Math.abs(shoulder.y) < 0.95, "Both shoulders fit the portrait");
+      }
+      const waist = portrait.vrm.humanoid.getRawBoneNode("hips")!.getWorldPosition(new Vector3()).project(camera);
+      assert.ok(waist.y < -1, "The conversational portrait does not include the waist");
+    }
+    dispose();
+  }
 });

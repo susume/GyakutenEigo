@@ -108,3 +108,19 @@ test("useful keywords follow language support and expressions stay optional", ()
   }));
   assert.doesNotMatch(hidden, /Useful keywords/u);
 });
+
+test("Useful English and vocabulary always render read-only, even when replay is allowed", () => {
+  const markup = renderToStaticMarkup(createElement(SpeakingSupportPanel, {
+    activity: {
+      ...SPEAKING_TEMPLATES[0]!, targetExpressions: ["I recommend...", "You should visit...", "It is near..."],
+      supportSettings: { showTargetExpressions: true, showContext: false, showTranscript: true, allowReplay: true, allowHelp: true },
+      scenarioResources: { usefulVocabulary: ["park", "station"] }
+    },
+    activeTab: "useful-english", onTabChange: () => undefined, onClose: () => undefined
+  }));
+  const referenceContent = markup.slice(markup.indexOf('class="speaking-useful-panel-content"'));
+  assert.match(referenceContent, /I recommend\.\.\.|You should visit\.\.\.|It is near\.\.\./u);
+  assert.match(referenceContent, /<li>park<\/li><li>station<\/li>/u);
+  assert.equal((referenceContent.match(/class="speaking-expression-card"/gu) ?? []).length, 3);
+  assert.doesNotMatch(referenceContent, /<button|tabindex=|onclick=|onkeydown=|role="button"|chevron-right/iu);
+});

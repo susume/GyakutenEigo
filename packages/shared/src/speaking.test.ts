@@ -43,6 +43,16 @@ test("speaking scenario support bounds teacher-authored reference material", () 
   assert.equal(resources.referenceItems.length, 24);
 });
 
+test("optional scene environment survives activity validation and resource normalization", () => {
+  const template = SPEAKING_CORE_LIBRARY[0]!;
+  const parsed = SpeakingCreateActivityInputSchema.parse({ ...template, scenarioResources: {
+    ...template.scenarioResources, sceneBackground: " /assets/speaking/environment.webp "
+  } });
+  assert.equal(parsed.scenarioResources?.sceneBackground, "/assets/speaking/environment.webp");
+  assert.equal(speakingScenarioResources(parsed.scenarioResources).sceneBackground, "/assets/speaking/environment.webp");
+  assert.equal(speakingScenarioResources().sceneBackground, undefined);
+});
+
 test("speaking modes expose explicit recommendations and preserve legacy support", () => {
   assert.deepEqual(recommendedSpeakingSupportSettings("practice"), DEFAULT_SPEAKING_PRACTICE_SUPPORT_SETTINGS);
   assert.deepEqual(recommendedSpeakingSupportSettings("assessment"), DEFAULT_SPEAKING_ASSESSMENT_SUPPORT_SETTINGS);

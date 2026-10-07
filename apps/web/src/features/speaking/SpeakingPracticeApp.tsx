@@ -16,6 +16,7 @@ import {
   Menu,
   MessageCircle,
   Mic,
+  Square,
   RotateCcw,
   ScanLine,
   Sparkles,
@@ -58,6 +59,7 @@ import { isKeyboardEditingTarget, isSpaceShortcutEvent } from "./speakingKeyboar
 import { SpeakingSupportPanel, SpeakingKeywords, SpeakingReferenceSheet, type SpeakingSupportTab } from "./SpeakingSupportPanel";
 import { getSpeakingSupportTabs } from "./SpeakingSupportPanel";
 import { speakingModeAction, speakingModeIntro, speakingModeLabel } from "./speakingCopy";
+import { resolveSpeakingSceneBackground } from "./speakingSceneBackground";
 import "./speaking.css";
 import "./speaking-layout.css";
 import "./speaking-scene.css";
@@ -194,26 +196,57 @@ function SpeakingStudentScreenV2({ statusText, avatarPaused = false, activity, s
   const [transcriptOpen, setTranscriptOpen] = useState(false);
   const conversationButtonRef = useRef<HTMLButtonElement>(null);
   const supportButtonRef = useRef<HTMLButtonElement>(null);
+  const supportInvokerRef = useRef<HTMLButtonElement | null>(null);
+  const conversationCloseRef = useRef<HTMLButtonElement>(null);
+  const helpButtonRef = useRef<HTMLButtonElement>(null);
+  const replyContentRef = useRef<HTMLDivElement>(null);
+  const hintRef = useRef<HTMLDivElement>(null);
+  const [dismissedHelp, setDismissedHelp] = useState<typeof helpResponse>();
+  const backgroundSrc = resolveSpeakingSceneBackground(activity);
+  const [failedBackground, setFailedBackground] = useState<string>();
   const [showJumpToLatest, setShowJumpToLatest] = useState(false);
   const transcriptListRef = useRef<HTMLDivElement>(null);
   const transcriptAwayFromBottomRef = useRef(false);
   const transcriptUserIntentRef = useRef(false);
   const resources = speakingScenarioResources(activity.scenarioResources);
   const currentAiTurn = [...turns].reverse().find((turn) => turn.speaker === "ai");
+  const partnerText = state === "listening" ? t("Listening to you…") : state === "thinking" ? t("Processing your answer…") : currentAiTurn?.text ?? resources.openingLine;
+  const visibleHelp = helpResponse !== dismissedHelp ? helpResponse : undefined;
   const durationProgress = Math.max(0, Math.min(100, (remainingSeconds / Math.max(1, activity.durationSeconds)) * 100));
   const micLabel = statusText ?? (state === "ai-speaking" ? "Stop playback" : state === "listening" ? "Stop speaking" : state === "thinking" ? "Processing your answer" : "Tap to speak");
+  const micCaption = statusText ?? (state === "ai-speaking" ? "Stop playback" : state === "listening" ? "Listening…" : state === "thinking" ? "Processing…" : "Tap to speak");
   const pendingReply = state === "thinking" && turns.some((turn) => turn.speaker === "student");
   const partnerImage = SPEAKING_AVATARS.default.fallbackImageSrc;
   const [supportTab, setSupportTab] = useState<SpeakingSupportTab>(() => supportTabs[0]?.id ?? "useful-english");
   const helperText = statusText ?? (state === "thinking" ? "Still processing your answer…" : stateDescriptions[state]);
 
   useEffect(() => {
-    if (!supportOpen || !window.matchMedia("(max-width: 900px)").matches) return;
-    const frame = window.requestAnimationFrame(() => {
-      document.querySelector<HTMLButtonElement>('#speaking-scene-support [role="tab"][aria-selected="true"]')?.focus();
-    });
+    // New utterances start at the top, including when an older hint is open.
+    if (replyContentRef.current) replyContentRef.current.scrollTop = 0;
+  }, [partnerText]);
+
+  useEffect(() => {
+    // Reveal a requested hint in the same scroller without moving the card,
+    // Replay button or page. Closing it returns to the dialogue.
+    const content = replyContentRef.current;
+    if (content) content.scrollTop = hintRef.current?.offsetTop ?? 0;
+  }, [visibleHelp]);
+
+  useEffect(() => {
+    if (!transcriptOpen) return;
+    const frame = window.requestAnimationFrame(() => conversationCloseRef.current?.focus());
     return () => window.cancelAnimationFrame(frame);
-  }, [supportOpen]);
+  }, [transcriptOpen]);
+
+  const closeSupport = useCallback(() => {
+    setSupportOpen(false);
+    window.requestAnimationFrame(() => (supportInvokerRef.current ?? supportButtonRef.current)?.focus());
+  }, []);
+
+  const closeConversation = useCallback(() => {
+    setTranscriptOpen(false);
+    window.requestAnimationFrame(() => conversationButtonRef.current?.focus());
+  }, []);
 
   useEffect(() => {
     if (!hasSupportPanel) {
@@ -271,17 +304,17 @@ function SpeakingStudentScreenV2({ statusText, avatarPaused = false, activity, s
   useEffect(() => {
     const handleEscape = (event: KeyboardEvent) => {
       if (event.key !== "Escape") return;
-      if (transcriptOpen) {
-        setTranscriptOpen(false);
-        conversationButtonRef.current?.focus();
+      if (supportOpen && document.activeElement?.closest("#speaking-scene-support")) {
+        closeSupport();
+      } else if (transcriptOpen) {
+        closeConversation();
       } else if (supportOpen) {
-        setSupportOpen(false);
-        supportButtonRef.current?.focus();
+        closeSupport();
       }
     };
     window.addEventListener("keydown", handleEscape);
     return () => window.removeEventListener("keydown", handleEscape);
-  }, [transcriptOpen, supportOpen]);
+  }, [transcriptOpen, supportOpen, closeSupport, closeConversation]);
 
   useEffect(() => {
     const handleSpacebar = (event: KeyboardEvent) => {
@@ -294,44 +327,53 @@ function SpeakingStudentScreenV2({ statusText, avatarPaused = false, activity, s
     return () => window.removeEventListener("keydown", handleSpacebar);
   }, [disabled, onMic]);
 
-  const openContext = () => {
-    if (!showContextButton) return;
-    setSupportTab("context");
+  const openSupport = (invoker: HTMLButtonElement, tab = supportTab) => {
+    supportInvokerRef.current = invoker;
+    setSupportTab(tab);
     setSupportOpen(true);
+    // When the requested tab is already open, there is no state change to focus it.
+    window.requestAnimationFrame(() => document.querySelector<HTMLButtonElement>('#speaking-scene-support [role="tab"][aria-selected="true"]')?.focus());
     if (window.matchMedia("(max-width: 900px)").matches) setTranscriptOpen(false);
   };
 
-  return <div className={"speaking-student-screen speaking-scene-screen speaking-student-screen-" + state}>
+  return <div className={"speaking-student-screen speaking-scene-screen speaking-student-screen-" + state} onFocusCapture={(event) => {
+    // These are non-modal drawers: learners can move directly back to speaking.
+    // Dismiss an overlay before keyboard focus can move behind it.
+    const target = event.target;
+    if (supportOpen && window.matchMedia("(max-width: 900px)").matches && !target.closest("#speaking-scene-support, .speaking-scene-support-toggle")) setSupportOpen(false);
+    if (transcriptOpen && !target.closest("#speaking-conversation-drawer, .speaking-scene-conversation-toggle")) setTranscriptOpen(false);
+  }}>
     <header className="speaking-student-header">
       <div className="speaking-student-brand"><SpeakingBrand navigate={onBrandClick ?? (() => undefined)} compact markOnly /></div>
       <div className="speaking-student-context"><span className={`speaking-student-product speaking-student-mode speaking-mode-${activity.mode}`}>{t(speakingModeLabel(activity.mode))}</span><ChevronRight size={24} aria-hidden="true" /><strong title={activity.title}>{activity.title}</strong></div>
       <div className="speaking-student-timer"><span className="speaking-student-time"><Clock3 size={21} aria-hidden="true" />{formatDuration(remainingSeconds)}{" "}{t("left")}</span><span className="speaking-student-progress" aria-label={Math.round(durationProgress) + "% time remaining"}><span style={{ width: durationProgress + "%" }} /></span><button type="button" onClick={onFinish} disabled={finishDisabled}>{t(speakingModeAction(activity.mode, "finish"))}</button></div>
     </header>
     <div className={`speaking-student-grid speaking-scene${supportOpen ? "" : " is-support-collapsed"}${!hasSupportPanel ? " no-support-panel" : ""}`}>
-      <img className="speaking-scene-background" src="/assets/speaking/practice-plaza.webp" alt="" aria-hidden="true" />
+      {backgroundSrc && failedBackground !== backgroundSrc && <img className="speaking-scene-background" src={backgroundSrc} alt="" aria-hidden="true" onError={() => setFailedBackground(backgroundSrc)} />}
       <div className="speaking-student-center speaking-scene-stage">
         <SpeakingAvatar className="speaking-scene-avatar" state={speakingAvatarState(state, avatarPaused)} />
-        <section className="speaking-live-reply speaking-scene-reply" aria-live="polite" aria-label={t("Current speaking partner")}>
-          <div className="speaking-partner-message"><div><span className="speaking-card-kicker">{activity.aiRole}</span><p>{state === "listening" ? t("Listening to you…") : state === "thinking" ? t("Processing your answer…") : currentAiTurn?.text ?? resources.openingLine}</p></div>
+        <section className="speaking-live-reply speaking-scene-reply" aria-live="polite">
+          <div className="speaking-partner-message"><div ref={replyContentRef} className="speaking-reply-content" role="region" aria-label={t("Current speaking partner")} tabIndex={0} data-keyboard-input><span className="speaking-card-kicker">{activity.aiRole}</span><p>{partnerText}</p>
+            {visibleHelp && <div ref={hintRef} className="speaking-help-response speaking-scene-hint" role="status"><Lightbulb size={24} aria-hidden="true" /><div><strong>{t("Hint")}</strong><p>{visibleHelp.hint}</p>{visibleHelp.english && <span>{visibleHelp.english}</span>}</div><button type="button" className="speaking-icon-button" aria-label={t("Close hint")} onClick={() => { setDismissedHelp(helpResponse); window.requestAnimationFrame(() => helpButtonRef.current?.focus()); }}><X size={20} aria-hidden="true" /></button></div>}
+          </div>
             {supportSettings.allowReplay && <button type="button" className="speaking-icon-button" onClick={() => onReplay?.(currentAiTurn?.text)} disabled={!onReplay || !currentAiTurn || state !== "ready"} aria-label={t("Replay current partner message")}><Volume2 size={25} strokeWidth={1.8} aria-hidden="true" /></button>}
           </div>
         </section>
         <footer className="speaking-student-controls speaking-scene-controls" aria-label={t("Speaking controls")}>
           {supportSettings.allowReplay && <button className="speaking-scene-utility speaking-replay-button" type="button" onClick={() => onReplay?.(currentAiTurn?.text)} disabled={!onReplay || !currentAiTurn || state !== "ready"} aria-label={t("Replay latest partner message")}><span className="speaking-scene-control-icon"><RotateCcw size={35} strokeWidth={1.7} aria-hidden="true" /></span><span>{t("Replay")}</span></button>}
-          <div className="speaking-student-mic-wrap"><button className={"speaking-student-mic speaking-student-mic-" + state} type="button" onClick={onMic} disabled={disabled} aria-label={t(micLabel)}><Mic size={62} strokeWidth={1.65} aria-hidden="true" /></button><span>{t(micLabel)}</span></div>
-          {showContextButton && <button className="speaking-scene-utility speaking-student-context-button" type="button" onClick={openContext} disabled={supportDisabled} aria-label={t("Open Context support")}><span className="speaking-scene-control-icon"><MapPinned size={35} strokeWidth={1.8} aria-hidden="true" /></span><span>{t("Context")}</span></button>}
-          {showHelpButton && <button className="speaking-scene-utility speaking-student-help-button" type="button" onClick={onHelp} disabled={supportDisabled || state !== "ready" || helpLoading} aria-label={t("Ask for a hint")}><span className="speaking-scene-control-icon">{helpLoading ? <LoaderCircle size={35} className="speaking-spin" aria-hidden="true" /> : <Lightbulb size={35} strokeWidth={1.8} aria-hidden="true" />}</span><span>{helpLoading ? t("Getting a hint…") : t("Help")}</span></button>}
+          <div className="speaking-student-mic-wrap"><button className={"speaking-student-mic speaking-student-mic-" + state} type="button" onClick={onMic} disabled={disabled} aria-label={t(micLabel)}>{state === "thinking" ? <LoaderCircle size={62} className="speaking-spin" aria-hidden="true" /> : state === "ai-speaking" || state === "listening" ? <Square size={48} aria-hidden="true" /> : <Mic size={62} strokeWidth={1.65} aria-hidden="true" />}</button><span>{t(micCaption)}</span></div>
+          {showContextButton && <button className="speaking-scene-utility speaking-student-context-button" type="button" onClick={(event) => openSupport(event.currentTarget, "context")} disabled={supportDisabled} aria-label={t("Open Context support")}><span className="speaking-scene-control-icon"><MapPinned size={35} strokeWidth={1.8} aria-hidden="true" /></span><span>{t("Context")}</span></button>}
+          {showHelpButton && <button ref={helpButtonRef} className="speaking-scene-utility speaking-student-help-button" type="button" onClick={onHelp} disabled={supportDisabled || state !== "ready" || helpLoading} aria-label={t("Ask for a hint")}><span className="speaking-scene-control-icon">{helpLoading ? <LoaderCircle size={35} className="speaking-spin" aria-hidden="true" /> : <Lightbulb size={35} strokeWidth={1.8} aria-hidden="true" />}</span><span>{helpLoading ? t("Getting a hint…") : t("Help")}</span></button>}
           <p className="speaking-student-status" aria-live="polite">{t(helperText)}</p>
         </footer>
-        {helpResponse && <div className="speaking-help-response speaking-scene-hint" role="status"><Lightbulb size={24} aria-hidden="true" /><div><strong>{t("Hint")}</strong><p>{helpResponse.hint}</p>{helpResponse.english && <span>{helpResponse.english}</span>}</div></div>}
         {supportSettings.showTranscript && <>
           <button ref={conversationButtonRef} className="speaking-scene-conversation-toggle" type="button" aria-expanded={transcriptOpen} aria-controls="speaking-conversation-drawer" onClick={() => { setTranscriptOpen((open) => !open); if (window.matchMedia("(max-width: 900px)").matches) setSupportOpen(false); }}>
             <MessageCircle size={36} strokeWidth={1.8} aria-hidden="true" /><span><strong>{t("Conversation")}</strong><small>{t("Your conversation so far")}</small></span><ChevronRight size={23} aria-hidden="true" />
           </button>
           <section id="speaking-conversation-drawer" className="speaking-transcript-card speaking-scene-conversation" hidden={!transcriptOpen} aria-labelledby="speaking-conversation-title">
-           <div className="speaking-transcript-heading"><MessageCircle size={26} strokeWidth={1.8} aria-hidden="true" /><div><h2 id="speaking-conversation-title">{t("Conversation")}</h2><span>{turns.length}{" "}{t("turns")}</span></div><button type="button" className="speaking-icon-button" onClick={() => { setTranscriptOpen(false); conversationButtonRef.current?.focus(); }} aria-label={t("Close conversation")}><X size={20} aria-hidden="true" /></button></div>
+           <div className="speaking-transcript-heading"><MessageCircle size={26} strokeWidth={1.8} aria-hidden="true" /><div><h2 id="speaking-conversation-title">{t("Conversation")}</h2><span>{turns.length}{" "}{t("turns")}</span></div><button ref={conversationCloseRef} type="button" className="speaking-icon-button" onClick={closeConversation} aria-label={t("Close conversation")}><X size={20} aria-hidden="true" /></button></div>
            {showJumpToLatest && <button type="button" className="speaking-jump-latest" onClick={() => scrollToLatest()}><span>{t("Jump to latest")}</span><ChevronDown size={17} aria-hidden="true" /></button>}
-           <div ref={transcriptListRef} className="speaking-transcript-list" role="list" aria-label={t("Conversation turns")} aria-live="polite" aria-busy={pendingReply} onPointerDown={() => { transcriptUserIntentRef.current = true; }} onTouchStart={() => { transcriptUserIntentRef.current = true; }} onWheel={() => { transcriptUserIntentRef.current = true; }} onScroll={handleTranscriptScroll}>
+           <div ref={transcriptListRef} className="speaking-transcript-list" tabIndex={0} data-keyboard-input onKeyDown={() => { transcriptUserIntentRef.current = true; }} role="list" aria-label={t("Conversation turns")} aria-live="polite" aria-busy={pendingReply} onPointerDown={() => { transcriptUserIntentRef.current = true; }} onTouchStart={() => { transcriptUserIntentRef.current = true; }} onWheel={() => { transcriptUserIntentRef.current = true; }} onScroll={handleTranscriptScroll}>
              {turns.map((turn) => <StudentTranscriptTurnV2 key={turn.id} activity={activity} turn={turn} onReplay={supportSettings.allowReplay && state === "ready" && !disabled ? onReplay : undefined} />)}
              {pendingReply && <div className="speaking-transcript-turn speaking-transcript-turn-ai is-pending" role="listitem"><div className="speaking-turn-avatar speaking-turn-avatar-ai">{partnerImage ? <img src={partnerImage} alt="" aria-hidden="true" /> : <MessageCircle size={22} aria-hidden="true" />}</div><div className="speaking-turn-body"><p className="speaking-turn-label">{t("Speaking partner ·")}{" "}{activity.aiRole}</p><div className="speaking-turn-bubble" role="status"><div><span className="speaking-pending-dots" aria-hidden="true">•••</span><strong>{t("Processing your answer…")}</strong></div></div></div></div>}
            </div>
@@ -340,9 +382,9 @@ function SpeakingStudentScreenV2({ statusText, avatarPaused = false, activity, s
 
        </div>
        {hasSupportPanel && <>
-         <button ref={supportButtonRef} type="button" className="speaking-scene-support-toggle" aria-label={t(supportOpen ? "Collapse support panel" : "Open support panel")} aria-expanded={supportOpen} aria-controls="speaking-scene-support" onClick={() => { setSupportOpen((open) => !open); if (window.matchMedia("(max-width: 900px)").matches) setTranscriptOpen(false); }}>{supportOpen ? <ChevronRight size={25} aria-hidden="true" /> : <><BookOpenText size={22} aria-hidden="true" /><span>{t("Language Support")}</span></>}</button>
+         <button ref={supportButtonRef} type="button" className="speaking-scene-support-toggle" aria-label={t(supportOpen ? "Collapse support panel" : "Open support panel")} aria-expanded={supportOpen} aria-controls="speaking-scene-support" onClick={(event) => supportOpen ? closeSupport() : openSupport(event.currentTarget)}>{supportOpen ? <ChevronRight size={25} aria-hidden="true" /> : <><BookOpenText size={22} aria-hidden="true" /><span>{t("Language Support")}</span></>}</button>
          <aside id="speaking-scene-support" className={`speaking-student-sidebar${supportOpen ? " is-open" : " is-collapsed"}`} hidden={!supportOpen}>
-           <SpeakingSupportPanel activity={activity} activeTab={supportTab} onTabChange={setSupportTab} onClose={() => { setSupportOpen(false); supportButtonRef.current?.focus(); }} onPhraseClick={supportSettings.allowReplay ? onReplay : undefined} disabled={supportDisabled || state !== "ready"} />
+           <SpeakingSupportPanel activity={activity} activeTab={supportTab} onTabChange={setSupportTab} onClose={closeSupport} />
          </aside>
        </>}
      </div>

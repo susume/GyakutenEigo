@@ -1,6 +1,6 @@
 import * as THREE from "three";
 import { GLTFLoader, type GLTF } from "three/examples/jsm/loaders/GLTFLoader.js";
-import { VRMLoaderPlugin, VRMUtils, type VRM } from "@pixiv/three-vrm";
+import { VRMLoaderPlugin, VRMUtils, type MToonMaterial, type VRM } from "@pixiv/three-vrm";
 import { AvatarRig } from "./AvatarRig";
 import { AVATAR_FRAME_INTERVAL_MS, AVATAR_MAX_PIXEL_RATIO, type SpeakingAvatarState } from "./avatarBehavior";
 
@@ -87,11 +87,13 @@ export function mountSpeakingAvatar(host: HTMLDivElement, modelSrc: string,
     activeRenderer.setPixelRatio(Math.min(window.devicePixelRatio || 1, AVATAR_MAX_PIXEL_RATIO));
     activeRenderer.domElement.setAttribute("aria-hidden", "true");
     host.appendChild(activeRenderer.domElement);
-    scene.add(new THREE.HemisphereLight(0xffffff, 0xc8d7ec, 1));
-    const key = new THREE.DirectionalLight(0xfff4e8, 1.1);
-    key.position.set(-1, 2, 3);
+    // A gentle warm key and cooler fill keep the authored skin colors while
+    // giving the face/shirt more shape than uniform bright ambient lighting.
+    scene.add(new THREE.HemisphereLight(0xf7f9ff, 0xc9c7c5, 0.82));
+    const key = new THREE.DirectionalLight(0xfff1e5, 1.25);
+    key.position.set(-1.5, 2.2, 3);
     scene.add(key);
-    const fill = new THREE.DirectionalLight(0xdbeaff, 0.35);
+    const fill = new THREE.DirectionalLight(0xe1ecff, 0.3);
     fill.position.set(2, 1, 1);
     scene.add(fill);
 
@@ -101,6 +103,7 @@ export function mountSpeakingAvatar(host: HTMLDivElement, modelSrc: string,
     let lastFrame: number | undefined;
     let nextFrame: number | undefined;
     let portraitHeight = 0.7;
+    let portraitWidth = 0.5;
     const target = new THREE.Vector3();
     const resize = () => {
       if (disposed) return;
@@ -110,7 +113,7 @@ export function mountSpeakingAvatar(host: HTMLDivElement, modelSrc: string,
         activeRenderer.setSize(width, height, false);
         camera.aspect = width / height;
         // Reserve shoulder width on narrow canvases; no full-body thumbnail.
-        const visibleHeight = Math.max(portraitHeight, portraitHeight * 0.85 / camera.aspect);
+        const visibleHeight = Math.max(portraitHeight, portraitWidth / camera.aspect);
         const distance = visibleHeight / (2 * Math.tan(THREE.MathUtils.degToRad(camera.fov / 2)));
         camera.near = Math.max(0.001, distance / 100);
         camera.far = Math.max(50, distance * 4);
@@ -182,21 +185,41 @@ export function mountSpeakingAvatar(host: HTMLDivElement, modelSrc: string,
       VRMUtils.rotateVRM0(loaded);
       VRMUtils.removeUnnecessaryVertices(loaded.scene);
       VRMUtils.combineSkeletons(loaded.scene);
-      loaded.scene.traverse((object) => { object.frustumCulled = false; });
+      loaded.scene.traverse((object) => {
+        object.frustumCulled = false;
+        const material = (object as THREE.Mesh).material;
+        for (const candidate of Array.isArray(material) ? material : material ? [material] : []) {
+          const toon = candidate as MToonMaterial;
+          if (!toon.isMToonMaterial) continue;
+          // Preserve texture/base colors, while softening hard toon bands and
+          // allowing the key/fill to model the face instead of flat ambient GI.
+          toon.giEqualizationFactor = Math.min(toon.giEqualizationFactor, 0.75);
+          toon.shadingToonyFactor = Math.min(toon.shadingToonyFactor, 0.8);
+        }
+      });
       scene.add(loaded.scene);
       rig = new AvatarRig(loaded);
       rig.update(0, getState(), reduce);
       loaded.scene.updateMatrixWorld(true);
       const head = loaded.humanoid.getRawBoneNode("head")!.getWorldPosition(new THREE.Vector3());
-      const hips = (loaded.humanoid.getRawBoneNode("hips") ?? loaded.humanoid.getRawBoneNode("spine"))
+      const chest = (loaded.humanoid.getRawBoneNode("chest") ?? loaded.humanoid.getRawBoneNode("spine"))
         ?.getWorldPosition(new THREE.Vector3());
       const bounds = new THREE.Box3().setFromObject(loaded.scene);
       const bodyHeight = bounds.max.y - bounds.min.y;
       if (!Number.isFinite(bodyHeight) || bodyHeight <= 0) throw new Error("Avatar has no visible geometry");
       const top = Math.max(head.y + bodyHeight * 0.09, bounds.max.y);
-      // Frame the partner from the head to below the waist for the full scene.
-      const bottom = hips ? hips.y - bodyHeight * 0.12 : head.y - bodyHeight * 0.55;
-      portraitHeight = Math.max(bodyHeight * 0.3, top - bottom) * 1.08;
+      const leftShoulder = (loaded.humanoid.getRawBoneNode("leftUpperArm") ?? loaded.humanoid.getRawBoneNode("leftShoulder"))
+        ?.getWorldPosition(new THREE.Vector3());
+      const rightShoulder = (loaded.humanoid.getRawBoneNode("rightUpperArm") ?? loaded.humanoid.getRawBoneNode("rightShoulder"))
+        ?.getWorldPosition(new THREE.Vector3());
+      // Chest bones often sit near the abdomen. Derive the upper-chest crop
+      // from shoulders, or interpolate the head/chest when shoulders are absent.
+      const upperChest = leftShoulder && rightShoulder ? (leftShoulder.y + rightShoulder.y) / 2 - bodyHeight * 0.09
+        : chest ? (head.y + chest.y) / 2 - bodyHeight * 0.05 : head.y - bodyHeight * 0.2;
+      const bottom = Math.min(upperChest, head.y - bodyHeight * 0.12);
+      portraitHeight = Math.max(bodyHeight * 0.24, top - bottom) * 1.12;
+      portraitWidth = leftShoulder && rightShoulder ? leftShoulder.distanceTo(rightShoulder) * 1.4
+        : portraitHeight * 0.85;
       target.set(head.x, (top + bottom) / 2, head.z);
       resize();
       if (disposed) return;

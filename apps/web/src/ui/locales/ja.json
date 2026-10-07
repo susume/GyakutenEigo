@@ -2232,6 +2232,7 @@
   "Microphone permission was denied. Allow microphone access, then try again.": "マイクが許可されていません。許可してから再試行してください。",
   "The microphone could not be tested. Check the device and try again.": "マイクを確認できませんでした。端末を確認して再試行してください。",
   "Listening…": "聞いています…",
+  "Close hint": "ヒントを閉じる",
   "Microphone detected": "マイクを確認しました",
   "Microphone blocked": "マイクが制限されています",
   "No microphone detected": "マイクを検出できません",

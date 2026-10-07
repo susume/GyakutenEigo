@@ -963,6 +963,7 @@ const scenarioResourcesFromJson = (value: Prisma.JsonValue): SpeakingScenarioRes
     ...(referenceItems ? { referenceItems } : {}),
     ...(typeof source.imageSrc === "string" ? { imageSrc: source.imageSrc } : {}),
     ...(typeof source.imageAlt === "string" ? { imageAlt: source.imageAlt } : {}),
+    ...(typeof source.sceneBackground === "string" ? { sceneBackground: source.sceneBackground } : {}),
     ...(context ? { context } : {})
   };
   return Object.keys(resources).length ? resources : undefined;

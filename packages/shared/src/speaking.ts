@@ -218,6 +218,8 @@ export interface SpeakingScenarioResources {
   referenceItems?: Array<{ label: string; detail?: string }>;
   imageSrc?: string;
   imageAlt?: string;
+  /** Decorative environment only. Maps, menus and other references belong in context. */
+  sceneBackground?: string;
   /** Supported for scenario-owned authoring and legacy JSON records. */
   context?: SpeakingContext;
 }
@@ -240,6 +242,7 @@ export type SpeakingResolvedScenarioResources = {
   referenceItems: Array<{ label: string; detail?: string }>;
   imageSrc?: string;
   imageAlt?: string;
+  sceneBackground?: string;
   context?: SpeakingContext;
 };
 
@@ -314,6 +317,7 @@ export const speakingScenarioResources = (
     }).slice(0, 24),
   ...(resources?.imageSrc?.trim() ? { imageSrc: resources.imageSrc.trim().slice(0, 500) } : {}),
   ...(resources?.imageAlt?.trim() ? { imageAlt: resources.imageAlt.trim().slice(0, 160) } : {}),
+  ...(resources?.sceneBackground?.trim() ? { sceneBackground: resources.sceneBackground.trim().slice(0, 500) } : {}),
   ...(normalizeSpeakingContext(resources?.context) ? { context: normalizeSpeakingContext(resources?.context) } : {})
 });
 
@@ -608,6 +612,7 @@ export const SpeakingCreateActivityInputSchema = z.object({
     referenceItems: z.array(z.object({ label: z.string().trim().min(1).max(120), detail: z.string().trim().max(240).optional() })).max(24).optional(),
     imageSrc: z.string().trim().min(1).max(500).optional(),
     imageAlt: z.string().trim().min(1).max(160).optional(),
+    sceneBackground: z.string().trim().min(1).max(500).optional(),
     context: SpeakingContextSchema.optional()
   }).partial().optional()
 }).superRefine((input, context) => {

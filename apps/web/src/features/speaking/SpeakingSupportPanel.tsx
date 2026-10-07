@@ -1,6 +1,6 @@
 import { useSiteTranslation } from "../../ui/siteTranslation";
 import { useEffect, useId, useState, type KeyboardEvent } from "react";
-import { BookOpenText, ChevronRight, ImageOff, Lightbulb, MessageCircle, X } from "lucide-react";
+import { BookOpenText, ImageOff, Lightbulb, MessageCircle, X } from "lucide-react";
 import { speakingContext, speakingScenarioResources, speakingSupportSettings, type SpeakingActivity, type SpeakingContext } from "@quizstrike/shared";
 
 export type SpeakingSupportTab = "useful-english" | "context";
@@ -10,8 +10,6 @@ export interface SpeakingSupportPanelProps {
   activeTab: SpeakingSupportTab;
   onTabChange: (tab: SpeakingSupportTab) => void;
   onClose: () => void;
-  onPhraseClick?: (phrase: string) => void;
-  disabled?: boolean;
 }
 
 export const getSpeakingSupportTabs = (activity: SpeakingActivity): Array<{ id: SpeakingSupportTab; label: string }> => {
@@ -29,9 +27,7 @@ export function SpeakingSupportPanel({
   activity,
   activeTab,
   onTabChange,
-  onClose,
-  onPhraseClick,
-  disabled = false
+  onClose
 }: SpeakingSupportPanelProps) {
   const { t } = useSiteTranslation();
   const generatedId = useId();
@@ -95,11 +91,11 @@ export function SpeakingSupportPanel({
       </div>
       <div className="speaking-support-content">
         {selectedTab === "useful-english" ? (
-          <div id={`${panelId}-panel-useful-english`} role="tabpanel" aria-labelledby={`${panelId}-tab-useful-english`} tabIndex={0} className="speaking-support-tabpanel">
-            <UsefulEnglishPanel activity={activity} onPhraseClick={onPhraseClick} disabled={disabled} />
+          <div id={`${panelId}-panel-useful-english`} role="tabpanel" aria-labelledby={`${panelId}-tab-useful-english`} tabIndex={0} data-keyboard-input className="speaking-support-tabpanel">
+            <UsefulEnglishPanel activity={activity} />
           </div>
         ) : (
-          <div id={`${panelId}-panel-context`} role="tabpanel" aria-labelledby={`${panelId}-tab-context`} tabIndex={0} className={`speaking-support-tabpanel speaking-support-tabpanel-context${resources.referenceItems.length ? " has-reference-sheet" : ""}`}>
+          <div id={`${panelId}-panel-context`} role="tabpanel" aria-labelledby={`${panelId}-tab-context`} tabIndex={0} data-keyboard-input className={`speaking-support-tabpanel speaking-support-tabpanel-context${resources.referenceItems.length ? " has-reference-sheet" : ""}`}>
             <SpeakingContextPanel context={context} referenceItems={resources.referenceItems} />
           </div>
         )}
@@ -108,7 +104,7 @@ export function SpeakingSupportPanel({
   );
 }
 
-function UsefulEnglishPanel({ activity, onPhraseClick, disabled }: { activity: SpeakingActivity; onPhraseClick?: (phrase: string) => void; disabled: boolean }) {
+function UsefulEnglishPanel({ activity }: { activity: SpeakingActivity }) {
   const { t } = useSiteTranslation();
   const resources = speakingScenarioResources(activity.scenarioResources);
   return (
@@ -122,18 +118,10 @@ function UsefulEnglishPanel({ activity, onPhraseClick, disabled }: { activity: S
       </div>
       <div className="speaking-student-expression-list" role="list" aria-label={t("Target expressions")}>
         {activity.targetExpressions.map((expression) => (
-          onPhraseClick ? (
-            <button type="button" key={expression} onClick={() => onPhraseClick(expression)} disabled={disabled}>
-              <MessageCircle size={19} strokeWidth={1.7} aria-hidden="true" />
-              <span>{expression}</span>
-              <ChevronRight size={22} strokeWidth={1.7} aria-hidden="true" />
-            </button>
-          ) : (
-            <div className="speaking-expression-card" key={expression} role="listitem">
-              <MessageCircle size={19} strokeWidth={1.7} aria-hidden="true" />
-              <span>{expression}</span>
-            </div>
-          )
+          <div className="speaking-expression-card" key={expression} role="listitem">
+            <MessageCircle size={19} strokeWidth={1.7} aria-hidden="true" />
+            <span>{expression}</span>
+          </div>
         ))}
       </div>
       <SpeakingKeywords words={resources.usefulVocabulary} />

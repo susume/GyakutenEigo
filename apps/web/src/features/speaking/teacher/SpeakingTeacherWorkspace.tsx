@@ -773,6 +773,7 @@ const draftFromTemplate = (
       usefulVocabulary: [...resources.usefulVocabulary],
       referenceItems: resources.referenceItems.map((item) => ({ ...item })),
       ...(resources.imageSrc ? { imageSrc: resources.imageSrc } : {}),
+      ...(resources.sceneBackground ? { sceneBackground: resources.sceneBackground } : {}),
       ...(resources.imageAlt ? { imageAlt: resources.imageAlt } : {})
     };
   })(),

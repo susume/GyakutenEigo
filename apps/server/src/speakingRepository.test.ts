@@ -33,6 +33,18 @@ const input: SpeakingCreateActivityInput = {
   rubric: DEFAULT_SPEAKING_RUBRIC
 };
 
+test("Prisma activity JSON preserves scene environments separately from context references", async () => {
+  const now = new Date("2026-10-07T00:00:00Z");
+  const prisma = { speakingActivity: { findUnique: async () => ({
+    ...input, id: "scene-activity", teacherId: "owner", status: "ready", mode: "practice",
+    targetExpressionsJson: input.targetExpressions, rubric: [], createdAt: now, updatedAt: now,
+    scenarioResourcesJson: { sceneBackground: "/assets/speaking/environment.webp", context: { type: "menu", imageUrl: "/menu.webp" } }
+  }) } } as unknown as PrismaClient;
+  const activity = await new PrismaSpeakingRepository(prisma).getActivity("scene-activity");
+  assert.equal(activity?.scenarioResources?.sceneBackground, "/assets/speaking/environment.webp");
+  assert.equal(activity?.context?.imageUrl, "/menu.webp");
+});
+
 const evaluation = (participantId: string): SpeakingEvaluation => ({
   participantId,
   language: "ja",

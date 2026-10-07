@@ -4,7 +4,7 @@ import { AvatarBehavior, MOUTH_PRESETS, type SpeakingAvatarState } from "./avata
 
 /** Feature-detect once at load time; all expression and pose work stays out of React. */
 export class AvatarRig {
-  private readonly behavior = new AvatarBehavior();
+  private readonly behavior: AvatarBehavior;
   private readonly manager: VRM["expressionManager"];
   private readonly mouths: { name: string; index: number }[];
   private readonly missingMouths;
@@ -20,7 +20,8 @@ export class AvatarRig {
   private readonly rotation = new Euler();
   private readonly offset = new Quaternion();
 
-  constructor(private readonly vrm: VRM) {
+  constructor(private readonly vrm: VRM, random = Math.random) {
+    this.behavior = new AvatarBehavior(random);
     this.manager = vrm.expressionManager;
     this.manager?.resetValues();
     this.mouths = MOUTH_PRESETS.map((name, index) => ({ name, index }))
@@ -35,7 +36,8 @@ export class AvatarRig {
     const safeExpression = (name: string) => {
       const expression = this.manager?.getExpression(name);
       // Some faces block vowels/blinks at ANY positive smile weight.
-      return Boolean(expression && expression.overrideMouth !== "block" && expression.overrideBlink !== "block");
+      return Boolean(expression && !expression.isBinary && expression.overrideMouth !== "block"
+        && expression.overrideBlink !== "block" && expression.overrideLookAt !== "block");
     };
     this.happy = safeExpression("happy");
     this.relaxed = safeExpression("relaxed");

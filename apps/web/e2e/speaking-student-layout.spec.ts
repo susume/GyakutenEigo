@@ -27,6 +27,7 @@ const activityBase = {
   targetExpressions: ["I recommend…", "You should visit…", "It is near…"],
   rubric: [],
   scenarioResources: {
+    sourceTemplateId: "core-helping-a-tourist",
     openingLine: "Hello. Could you recommend somewhere interesting nearby?",
     studentGoal: "Recommend a nearby place clearly.",
     suggestedSteps: [],
@@ -85,12 +86,16 @@ async function mockStudentSession(page: Page, id: string, data: Omit<ReturnType<
     sessionStorage.setItem(`speaking-token:${sessionId}`, "student-layout-test-token");
   }, id);
   if (!nativeSpeech) await page.addInitScript((hold: boolean) => {
+    const speechCalls: string[] = [];
+    (window as unknown as { speechCalls: string[] }).speechCalls = speechCalls;
     Object.defineProperty(window, "speechSynthesis", { configurable: true, value: {
       cancel: () => undefined,
       getVoices: () => [],
-      speak: (utterance: { onend?: () => void }) => hold
-        ? window.addEventListener("speaking-test-tts-end", () => utterance.onend?.(), { once: true })
-        : setTimeout(() => utterance.onend?.(), 0)
+      speak: (utterance: { text: string; onend?: () => void }) => {
+        speechCalls.push(utterance.text);
+        if (hold) window.addEventListener("speaking-test-tts-end", () => utterance.onend?.(), { once: true });
+        else setTimeout(() => utterance.onend?.(), 0);
+      }
     } });
   }, holdSpeech);
   await page.route("**/api/speaking/sessions/**", async (route: Route) => {
@@ -106,6 +111,207 @@ async function mockStudentSession(page: Page, id: string, data: Omit<ReturnType<
     await route.fulfill({ json: data });
   });
 }
+
+test("Useful English phrases and vocabulary cannot activate speech or replay", async ({ page }) => {
+  const id = "read-only-support";
+  const data = makeSessionData(id, "active", "practice", {
+    showTargetExpressions: true, showContext: true, showTranscript: true, allowReplay: true, allowHelp: true
+  });
+  data.activity.targetExpressions = ["I recommend...", "You should visit...", "It is near..."];
+  const activity = { ...data.activity, scenarioResources: { ...data.activity.scenarioResources, usefulVocabulary: ["park", "station"] } };
+  await mockStudentSession(page, id, { ...data, activity }, true);
+  await page.goto(`${baseUrl}/speak/session/${id}`);
+  const avatar = page.locator(".speaking-avatar");
+  await expect(avatar).toHaveAttribute("data-avatar-state", "speaking");
+  await page.evaluate(() => window.dispatchEvent(new Event("speaking-test-tts-end")));
+  await expect(avatar).toHaveAttribute("data-avatar-state", "idle");
+  const panel = page.getByRole("tabpanel", { name: "Useful English", exact: true });
+  const cards = panel.locator(".speaking-expression-card");
+  await expect(cards).toHaveCount(3);
+  await expect(panel.locator("button, a, [role=button], [tabindex]")).toHaveCount(0);
+  await expect(panel.locator(".speaking-keywords li")).toHaveCount(2);
+  const calls = () => page.evaluate(() => (window as unknown as { speechCalls: string[] }).speechCalls);
+  const before = await calls();
+  for (const reference of [...data.activity.targetExpressions, "park", "station"]) {
+    const text = panel.getByText(reference, { exact: true });
+    await expect(text).toHaveCSS("cursor", "auto");
+    await text.click();
+    await expect(avatar).toHaveAttribute("data-avatar-state", "idle");
+    await expect(page).toHaveURL(`${baseUrl}/speak/session/${id}`);
+    await expect(page.locator(".speaking-partner-message p")).toHaveText(data.turns[0]!.text);
+  }
+  const usefulTab = page.getByRole("tab", { name: "Useful English", exact: true });
+  await usefulTab.focus();
+  await page.keyboard.press("Enter");
+  await page.keyboard.press("Space");
+  await expect(avatar).toHaveAttribute("data-avatar-state", "idle");
+  expect(await calls()).toEqual(before);
+  for (let index = 0; index < 12; index += 1) {
+    await page.keyboard.press("Tab");
+    expect(await page.evaluate(() => Boolean(document.activeElement?.closest(".speaking-expression-card, .speaking-keywords")))).toBe(false);
+  }
+  await page.getByRole("button", { name: "Replay latest partner message" }).click();
+  await expect(avatar).toHaveAttribute("data-avatar-state", "speaking");
+  expect((await calls()).length).toBe(before.length + 1);
+  expect((await calls()).at(-1)).toBe(data.turns[0]!.text);
+});
+
+test("visible scene selection distinguishes tourist, restaurant, custom environment and missing assets", async ({ page }, testInfo) => {
+  const data = makeSessionData("scene-background", "active", "practice", {
+    showTargetExpressions: true, showContext: true, showTranscript: true, allowReplay: true, allowHelp: true
+  });
+  const cases = [
+    { id: "tourist-scene", resources: { sourceTemplateId: "core-helping-a-tourist" }, src: "/assets/speaking/practice-plaza.webp" },
+    { id: "restaurant-scene", task: SPEAKING_CORE_LIBRARY.find((item) => item.id === "core-ordering-food")!, resources: SPEAKING_CORE_LIBRARY.find((item) => item.id === "core-ordering-food")!.scenarioResources, src: undefined },
+    { id: "unknown-scene", resources: {}, src: undefined },
+    { id: "explicit-scene", resources: { sceneBackground: "/assets/speaking/practice-plaza.webp" }, src: "/assets/speaking/practice-plaza.webp" },
+    { id: "broken-scene", resources: { sceneBackground: "/assets/speaking/missing-environment.webp" }, src: undefined }
+  ];
+  await page.route("**/assets/speaking/missing-environment.webp", (route) => route.fulfill({ status: 404, body: "missing" }));
+  for (const scenario of cases) {
+    await mockStudentSession(page, scenario.id, { ...data, session: { ...data.session, id: scenario.id },
+      activity: { ...data.activity, ...(scenario.task ?? {}), scenarioResources: scenario.resources },
+      turns: data.turns.map((turn) => ({ ...turn, text: scenario.task?.scenarioResources.openingLine ?? turn.text }))
+    });
+    await page.goto(`${baseUrl}/speak/session/${scenario.id}`);
+    await expect(page.locator(".speaking-scene-screen")).toBeVisible();
+    const background = page.locator(".speaking-scene-background");
+    if (scenario.src) await expect(background).toHaveAttribute("src", scenario.src);
+    else await expect(background).toHaveCount(0);
+    await expect(page.locator(".speaking-scene")).toHaveCSS("background-image", /radial-gradient/);
+    await expect(page.getByRole("button", { name: "Open Context support" })).toBeVisible();
+    if (scenario.id === "restaurant-scene") {
+      await expect(page.locator(".speaking-avatar")).toHaveAttribute("data-avatar-status", "ready", { timeout: 20_000 });
+      await page.screenshot({ path: testInfo.outputPath("final-neutral-restaurant.jpg"), type: "jpeg", quality: 85 });
+    }
+  }
+});
+
+async function expectReachable(page: Page, name: string) {
+  const button = page.getByRole("button", { name, exact: true });
+  await expect(button).toBeInViewport();
+  expect(await button.evaluate((element) => {
+    const rect = element.getBoundingClientRect();
+    return rect.left >= 0 && rect.top >= 0 && rect.right <= innerWidth + 1 && rect.bottom <= innerHeight + 1 &&
+      document.elementFromPoint(rect.x + rect.width / 2, rect.y + rect.height / 2)?.closest("button") === element;
+  }), name).toBe(true);
+}
+
+test("scene drawers, hints, long dialogue and primary controls remain usable across viewports", async ({ page }, testInfo) => {
+  test.setTimeout(180_000);
+  const id = "scene-responsive-qa";
+  const data = makeSessionData(id, "active", "practice", {
+    showTargetExpressions: true, showContext: true, showTranscript: true, allowReplay: true, allowHelp: true
+  });
+  await mockStudentSession(page, id, data);
+  await page.route(`**/api/speaking/sessions/${id}/help`, (route) => route.fulfill({ json: {
+    hint: "Think of a place you enjoy visiting. Explain where it is and why you recommend it.", english: "You should visit the park.", helpCount: 1
+  } }));
+  for (const viewport of [
+    { width: 1920, height: 1080 }, { width: 1366, height: 768 }, { width: 1280, height: 720 },
+    { width: 1024, height: 768 }, { width: 768, height: 1024 }, { width: 390, height: 844 },
+    { width: 360, height: 800 }, { width: 1366, height: 600 }
+  ]) {
+    await page.setViewportSize(viewport);
+    await page.goto(`${baseUrl}/speak/session/${id}`);
+    await expect(page.locator(".speaking-avatar")).toHaveAttribute("data-avatar-status", "ready", { timeout: 20_000 });
+    await expect(page.locator(".speaking-avatar")).toHaveAttribute("data-avatar-state", "idle");
+    expect(await page.evaluate(() => document.documentElement.scrollWidth)).toBeLessThanOrEqual(viewport.width);
+    await expectReachable(page, "Tap to speak");
+    await expectReachable(page, "Finish practice");
+    if (await page.locator(".speaking-student-sidebar").isVisible()) await page.getByRole("button", { name: "Close support panel" }).click();
+    const shortReplyBounds = await page.locator(".speaking-scene-reply").boundingBox();
+    await page.screenshot({ path: testInfo.outputPath(`final-closed-${viewport.width}x${viewport.height}.jpg`), type: "jpeg", quality: 85 });
+    await page.getByRole("button", { name: "Open support panel" }).click();
+    await expect(page.getByRole("tab", { name: "Useful English", exact: true })).toBeFocused();
+    await expectReachable(page, "Tap to speak");
+    await page.keyboard.press("End");
+    await expect(page.getByRole("tab", { name: "Context", exact: true })).toBeFocused();
+    await page.keyboard.press("Home");
+    await expect(page.getByRole("tab", { name: "Useful English", exact: true })).toBeFocused();
+    if (viewport.width === 390 || viewport.width === 1366 && viewport.height === 768) {
+      await page.screenshot({ path: testInfo.outputPath(`final-support-${viewport.width}.jpg`), type: "jpeg", quality: 85 });
+    }
+    await page.keyboard.press("Escape");
+    await expect(page.getByRole("button", { name: "Open support panel" })).toBeFocused();
+    await page.getByRole("button", { name: "Open Context support" }).click();
+    await expect(page.getByRole("tabpanel", { name: "Context", exact: true })).toBeVisible();
+    await page.keyboard.press("Escape");
+    await expect(page.getByRole("button", { name: "Open Context support" })).toBeFocused();
+    await page.getByRole("button", { name: "Conversation Your conversation so far", exact: true }).click();
+    await expect(page.getByRole("button", { name: "Close conversation" })).toBeFocused();
+    await expectReachable(page, "Tap to speak");
+    await expectReachable(page, "Finish practice");
+    await expect(page.locator(".speaking-scene-conversation")).toContainText(data.turns[0]!.text);
+    await page.keyboard.press("Escape");
+    await expect(page.getByRole("button", { name: "Conversation Your conversation so far", exact: true })).toBeFocused();
+    if (viewport.width <= 900) {
+      await page.getByRole("button", { name: "Open support panel" }).click();
+      await page.getByRole("button", { name: "Conversation Your conversation so far", exact: true }).click();
+      await expect(page.locator(".speaking-student-sidebar")).toBeHidden();
+      await expect(page.locator(".speaking-scene-conversation")).toBeVisible();
+      await page.getByRole("button", { name: "Open support panel" }).click();
+      await expect(page.locator(".speaking-scene-conversation")).toBeHidden();
+      await expect(page.locator(".speaking-student-sidebar")).toBeVisible();
+      await page.keyboard.press("Escape");
+    }
+    await page.getByRole("button", { name: "Ask for a hint" }).click();
+    await expect(page.locator(".speaking-help-response")).toContainText("You should visit the park.");
+    expect(await page.locator(".speaking-scene-reply").boundingBox(), "Hints must not resize or move the card").toEqual(shortReplyBounds);
+    await page.getByRole("button", { name: "Close hint" }).click();
+    await expect(page.getByRole("button", { name: "Ask for a hint" })).toBeFocused();
+    // Long messages stay in accessible, keyboard-scrollable HTML above controls.
+    data.turns[0]!.text = "Could you recommend a place to visit? Please tell me where it is, what I can do there, and how to get there. ".repeat(8);
+    await page.reload();
+    await expect(page.locator(".speaking-partner-message p")).toHaveText(data.turns[0]!.text.trim());
+    await expect(page.locator(".speaking-avatar")).toHaveAttribute("data-avatar-status", "ready", { timeout: 20_000 });
+    if (await page.locator(".speaking-student-sidebar").isVisible()) await page.getByRole("button", { name: "Close support panel" }).click();
+    const sceneBounds = await page.locator(".speaking-scene").boundingBox();
+    const replyBounds = await page.locator(".speaking-scene-reply").boundingBox();
+    expect(replyBounds, "Long messages must use the same card dimensions and position").toEqual(shortReplyBounds);
+    expect(replyBounds!.y, "Long replies must leave the upper portrait area visible").toBeGreaterThanOrEqual(sceneBounds!.y + sceneBounds!.height / 3);
+    const content = page.getByRole("region", { name: "Current speaking partner", exact: true });
+    const replay = page.getByRole("button", { name: "Replay current partner message", exact: true });
+    const replayBounds = await replay.boundingBox();
+    await content.focus();
+    await page.keyboard.press("End");
+    await expect.poll(() => content.evaluate((element) => element.scrollTop)).toBeGreaterThan(0);
+    expect(await replay.boundingBox(), "Replay stays fixed while the dialogue scrolls").toEqual(replayBounds);
+    expect(await page.locator(".speaking-scene-reply").evaluate((element) => element.scrollTop)).toBe(0);
+    await expectReachable(page, "Tap to speak");
+    await expectReachable(page, "Replay current partner message");
+    if (viewport.width === 360 || viewport.height === 600) {
+      await page.screenshot({ path: testInfo.outputPath(`long-dialogue-${viewport.width}x${viewport.height}.jpg`), type: "jpeg", quality: 85 });
+    }
+    await page.keyboard.press("Home");
+    await expect.poll(() => content.evaluate((element) => element.scrollTop)).toBe(0);
+    await page.keyboard.press("Space");
+    await expect.poll(() => content.evaluate((element) => element.scrollTop)).toBeGreaterThan(0);
+    await expect(page.locator(".speaking-avatar")).toHaveAttribute("data-avatar-state", "idle");
+    data.turns[0]!.text = activityBase.scenarioResources.openingLine;
+  }
+});
+
+test("Japanese text and primary controls survive a failed local font", async ({ page }, testInfo) => {
+  await page.setViewportSize({ width: 360, height: 800 });
+  const id = "scene-font-fallback";
+  const data = makeSessionData(id, "active", "practice", {
+    showTargetExpressions: true, showContext: true, showTranscript: true, allowReplay: true, allowHelp: true
+  });
+  data.activity.title = "観光客におすすめの場所を紹介しよう";
+  await mockStudentSession(page, id, data);
+  await page.addInitScript(() => localStorage.setItem("gyakuteneigo.language", "ja"));
+  await page.route("**/assets/speaking/fonts/nunito-sans.woff2", (route) => route.abort());
+  await page.goto(`${baseUrl}/speak/session/${id}`);
+  await expect(page.locator("html")).toHaveAttribute("lang", "ja");
+  await expect(page.locator(".speaking-student-context > strong")).toHaveText(data.activity.title);
+  await page.evaluate(() => document.fonts.ready);
+  await expect(page.locator(".speaking-scene-screen")).toHaveCSS("font-family", /"Noto Sans JP"/);
+  expect(await page.evaluate(() => document.documentElement.scrollWidth)).toBeLessThanOrEqual(360);
+  await expectReachable(page, "タップして話す");
+  await expectReachable(page, "練習を終了");
+  await page.screenshot({ path: testInfo.outputPath("font-fallback-ja.jpg"), type: "jpeg", quality: 85 });
+});
 
 test("workplace reference sheets and keywords are usable without a context image", async ({ page }, testInfo) => {
   const id = "workplace-reference-support";
@@ -319,12 +525,107 @@ type AvatarProbe = {
   mouth: number[];
   vowelPeaks: number[];
   blinkPeak: number;
+  happy: number;
+  relaxed: number;
 };
+
+test("portrait personality stays responsive through real avatar conversation states", async ({ page }, testInfo) => {
+  test.setTimeout(180_000);
+  await page.emulateMedia({ reducedMotion: "no-preference" });
+  await page.addInitScript(observeAvatarWebGL);
+  const phase = process.env.SPEAKING_AVATAR_QA_PHASE === "before" ? "before" : "after";
+  await page.addInitScript(() => {
+    Object.defineProperty(navigator, "mediaDevices", { configurable: true, value: {
+      getUserMedia: async () => ({ getTracks: () => [{ stop: () => undefined }] })
+    } });
+    class PortraitRecorder {
+      static isTypeSupported = () => true;
+      state = "inactive";
+      mimeType = "audio/webm";
+      ondataavailable?: (event: { data: Blob }) => void;
+      onstop?: () => void;
+      start() { this.state = "recording"; }
+      stop() {
+        this.state = "inactive";
+        this.ondataavailable?.({ data: new Blob(["portrait QA recording"], { type: this.mimeType }) });
+        this.onstop?.();
+      }
+    }
+    Object.defineProperty(window, "MediaRecorder", { configurable: true, value: PortraitRecorder });
+  });
+  for (const viewport of [
+    { width: 1366, height: 768 }, { width: 390, height: 844 },
+    { width: 1920, height: 1080 }, { width: 1280, height: 720 },
+    { width: 1024, height: 768 }, { width: 768, height: 1024 }
+  ]) {
+    await page.setViewportSize(viewport);
+    const id = `portrait-${viewport.width}`;
+    const data = makeSessionData(id, "active", "practice", {
+      showTargetExpressions: true, showContext: true, showTranscript: true, allowReplay: true, allowHelp: true
+    });
+    await mockStudentSession(page, id, data, true);
+    let releaseReply!: () => void;
+    const turnGate = new Promise<void>((resolve) => { releaseReply = resolve; });
+    await page.route(`**/api/speaking/sessions/${id}/turn`, async (route) => {
+      await turnGate;
+      await route.fulfill({ json: {
+        studentTurn: { ...data.turns[0]!, id: `${id}-student`, speaker: "student", text: "You should visit the park." },
+        aiTurn: { ...data.turns[0]!, id: `${id}-reply`, text: "Thank you! That sounds lovely. How can I get there?" }, session: data.session
+      } });
+    });
+    await page.goto(`${baseUrl}/speak/session/${id}`);
+    const avatar = page.locator(".speaking-avatar");
+    await expect(avatar).toHaveAttribute("data-avatar-status", "ready", { timeout: 20_000 });
+    const canvas = await avatar.locator("canvas").elementHandle();
+    let idleReplyBounds: { x: number; y: number; width: number; height: number } | undefined;
+    const capture = async (state: string) => {
+      await expect(avatar).toHaveAttribute("data-avatar-state", state);
+      // Allow the state expression to settle before visual comparison.
+      await page.waitForTimeout(900);
+      const face = () => page.evaluate(() => (window as unknown as { avatarProbe: AvatarProbe }).avatarProbe);
+      if (phase === "after") {
+        await expect.poll(async () => (await face()).happy).toBeGreaterThan(state === "thinking" ? 0.02 : 0.04);
+        expect((await face()).happy).toBeLessThan(0.15);
+        if (state === "speaking") await expect.poll(async () => Math.max(...(await face()).mouth)).toBeGreaterThan(0.15);
+        else expect(Math.max(...(await face()).mouth)).toBeLessThan(0.005);
+      }
+      await expectReachable(page, "Finish practice");
+      const replyBounds = await page.locator(".speaking-scene-reply").boundingBox();
+      if (state === "idle") idleReplyBounds = replyBounds!;
+      else expect(replyBounds, "Listening, thinking and speaking must not move or resize the dialogue card").toEqual(idleReplyBounds);
+      expect(await page.evaluate(() => document.documentElement.scrollWidth)).toBeLessThanOrEqual(viewport.width);
+      await page.screenshot({ path: testInfo.outputPath(`${phase}-${state}-${viewport.width}x${viewport.height}.jpg`), type: "jpeg", quality: 88 });
+    };
+    await page.evaluate(() => window.dispatchEvent(new Event("speaking-test-tts-end")));
+    await capture("idle");
+    if (viewport.width === 1366 || viewport.width === 390) {
+      await page.getByRole("button", { name: "Tap to speak", exact: true }).click();
+      await capture("listening");
+      await page.getByRole("button", { name: "Stop speaking", exact: true }).click();
+      await capture("thinking");
+      releaseReply();
+      await capture("speaking");
+      await page.evaluate(() => window.dispatchEvent(new Event("speaking-test-tts-end")));
+      await expect(avatar).toHaveAttribute("data-avatar-state", "idle");
+      await page.getByRole("button", { name: "Replay latest partner message" }).click();
+      await expect(avatar).toHaveAttribute("data-avatar-state", "speaking");
+      await page.getByRole("button", { name: "Stop playback", exact: true }).click();
+      await expect(avatar).toHaveAttribute("data-avatar-state", "idle");
+    }
+    expect(await avatar.locator("canvas").evaluate((element, original) => element === original, canvas)).toBe(true);
+    await expect(page.locator("canvas")).toHaveCount(1);
+    if (viewport.width > 900) {
+      await page.getByRole("button", { name: "Close support panel" }).click();
+      await expect(avatar).toHaveAttribute("data-avatar-status", "ready");
+      await expectReachable(page, "Tap to speak");
+    }
+  }
+});
 
 function observeAvatarWebGL() {
   // Observe real GPU uniforms without exposing renderer internals in production.
   // The pinned model's facial morphs are blink=12 and vowels=36..40.
-  const probe: AvatarProbe = { contexts: 0, frames: 0, mouth: [], vowelPeaks: [0, 0, 0, 0, 0], blinkPeak: 0 };
+  const probe: AvatarProbe = { contexts: 0, frames: 0, mouth: [], vowelPeaks: [0, 0, 0, 0, 0], blinkPeak: 0, happy: 0, relaxed: 0 };
   (window as unknown as { avatarProbe: AvatarProbe }).avatarProbe = probe;
   const contexts = new WeakSet<object>();
   const originalContext = HTMLCanvasElement.prototype.getContext;
@@ -350,6 +651,8 @@ function observeAvatarWebGL() {
       const weights = Array.from(values);
       if (weights.length >= 41) {
         probe.mouth = weights.slice(36, 41);
+        probe.happy = weights[3]!;
+        probe.relaxed = weights[2]!;
         probe.blinkPeak = Math.max(probe.blinkPeak, weights[12]!);
         probe.mouth.forEach((value, index) => { probe.vowelPeaks[index] = Math.max(probe.vowelPeaks[index]!, value); });
       }
@@ -370,6 +673,10 @@ test("bundled VRM renders real facial animation through the student speech lifec
   const data = makeSessionData(id, "active", "practice", {
     showTargetExpressions: true, showContext: true, showTranscript: true, allowReplay: true, allowHelp: true
   });
+  data.turns = Array.from({ length: 21 }, (_, index) => ({
+    ...data.turns[0]!, id: `history-${index}`, speaker: index % 2 ? "student" : "ai",
+    text: `Conversation turn ${index + 1}: ${data.turns[0]!.text}`
+  }));
   const errors: string[] = [];
   const failedResources: string[] = [];
   page.on("pageerror", (error) => errors.push(error.message));
@@ -446,10 +753,31 @@ test("bundled VRM renders real facial animation through the student speech lifec
   await page.getByRole("button", { name: "Stop speaking", exact: true }).click();
   await expect(avatar).toHaveAttribute("data-avatar-state", "thinking");
   await expectClosedMouth();
+  await page.getByRole("button", { name: "Conversation Your conversation so far", exact: true }).click();
+  await expect(page.locator(".speaking-transcript-list")).toHaveAttribute("aria-busy", "true");
+  await expect(page.locator(".speaking-transcript-turn.is-pending")).toContainText("Processing your answer…");
   await page.screenshot({ path: testInfo.outputPath("real-vrm-thinking.png") });
   releaseTurn();
   await expect(avatar).toHaveAttribute("data-avatar-state", "speaking");
   await expect.poll(async () => Math.max(...(await readProbe()).mouth)).toBeGreaterThan(0.15);
+  await page.evaluate(() => window.dispatchEvent(new Event("speaking-test-tts-end")));
+  await expect(avatar).toHaveAttribute("data-avatar-state", "idle");
+  await expectClosedMouth();
+  const transcript = page.locator(".speaking-transcript-list");
+  await expect(transcript).toHaveAttribute("aria-busy", "false");
+  await expect(transcript.locator(".speaking-transcript-turn")).toHaveCount(23);
+  await expect(transcript.getByText("Thank you. How can I get there?", { exact: true })).toBeInViewport();
+  await expect(transcript.locator("canvas")).toHaveCount(0);
+  await expect(transcript.locator(".speaking-turn-avatar-ai img")).toHaveCount(12);
+  await transcript.focus();
+  await page.keyboard.press("Home");
+  await expect(page.getByRole("button", { name: "Jump to latest", exact: true })).toBeVisible();
+  await expect(avatar).toHaveAttribute("data-avatar-state", "idle");
+  await page.getByRole("button", { name: "Jump to latest", exact: true }).click();
+  await expect(page.getByRole("button", { name: "Jump to latest", exact: true })).toBeHidden();
+  await expect(transcript.getByText("Thank you. How can I get there?", { exact: true })).toBeInViewport();
+  await transcript.getByRole("button", { name: "Replay partner message", exact: true }).last().click();
+  await expect(avatar).toHaveAttribute("data-avatar-state", "speaking");
   await page.evaluate(() => window.dispatchEvent(new Event("speaking-test-tts-end")));
   await expect(avatar).toHaveAttribute("data-avatar-state", "idle");
   await expectClosedMouth();
@@ -528,7 +856,8 @@ test("bundled VRM follows native browser SpeechSynthesis replay, end and cancell
   await page.getByRole("button", { name: "Replay latest partner message" }).click();
   await expect.poll(() => page.evaluate(() => (window as unknown as { nativeSpeechEvents: { started: number } }).nativeSpeechEvents.started)).toBeGreaterThan(starts);
   await expect(avatar).toHaveAttribute("data-avatar-state", "speaking");
-  await expect.poll(() => page.evaluate(() => Math.max(...(window as unknown as { avatarProbe: AvatarProbe }).avatarProbe.mouth))).toBeGreaterThan(0.3);
+  await expect.poll(() => page.evaluate(() => Math.max(...(window as unknown as { avatarProbe: AvatarProbe }).avatarProbe.mouth))).toBeGreaterThan(0.15);
+  expect(await page.evaluate(() => Math.max(...(window as unknown as { avatarProbe: AvatarProbe }).avatarProbe.vowelPeaks))).toBeLessThan(0.43);
   await page.screenshot({ path: testInfo.outputPath("real-vrm-native-tts.png") });
   await expect(avatar).toHaveAttribute("data-avatar-state", "idle", { timeout: 20_000 });
   await expect.poll(() => page.evaluate(() => Math.max(...(window as unknown as { avatarProbe: AvatarProbe }).avatarProbe.mouth))).toBeLessThan(0.01);

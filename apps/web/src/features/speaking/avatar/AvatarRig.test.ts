@@ -56,7 +56,7 @@ test("custom mouth-open and separate eye blink expressions are supported", () =>
   assert.ok(blinkSeen && mouthSeen);
   for (let i = 0; i < 30; i += 1) rig.update(1 / 30, "paused", true);
   assert.ok(model.values.get("mouthOpen")! < 0.001);
-  assert.ok(model.values.get("happy")! < 0.001);
+  assert.ok(model.values.get("happy")! > 0.04 && model.values.get("happy")! < 0.08, "Paused partners stay gently friendly");
 });
 
 test("optional expressions may be absent; a jaw bone is used when available", () => {
@@ -82,6 +82,33 @@ test("optional facial activity never blocks speech or blinking on models with ov
   for (let i = 0; i < 90; i += 1) rig.update(1 / 30, "speaking", false);
   assert.equal(model.values.get("happy"), 0);
   for (let i = 0; i < 90; i += 1) rig.update(1 / 30, "thinking", false);
+  assert.equal(model.values.get("relaxed"), 0);
+});
+
+test("friendly expressions reach the rig in reduced motion without opening a listening mouth", () => {
+  const model = fixture(["aa", "blink", "happy", "relaxed"]);
+  const rig = new AvatarRig(model.vrm, () => 0.5);
+  for (let i = 0; i < 90; i += 1) rig.update(1 / 30, "idle", true);
+  const idle = model.values.get("happy")!;
+  assert.ok(idle > 0.04 && idle < 0.1);
+  for (let i = 0; i < 90; i += 1) rig.update(1 / 30, "listening", true);
+  assert.ok(model.values.get("happy")! > idle);
+  assert.equal(model.values.get("aa"), 0);
+  for (let i = 0; i < 90; i += 1) rig.update(1 / 30, "thinking", true);
+  assert.ok(model.values.get("happy")! < idle);
+  assert.ok(model.values.get("relaxed")! > 0.03);
+  assert.equal(model.values.get("aa"), 0);
+});
+
+test("binary or gaze-blocking expressions do not become a permanent grin or frozen stare", () => {
+  const model = fixture(["aa", "blink", "happy", "relaxed"]);
+  Object.defineProperty(model.vrm.expressionManager, "getExpression", { value: (name: string) => model.values.has(name) ? ({
+    isBinary: name === "happy", overrideMouth: "none", overrideBlink: "none",
+    overrideLookAt: name === "relaxed" ? "block" : "none"
+  }) : null });
+  const rig = new AvatarRig(model.vrm, () => 0.5);
+  for (let i = 0; i < 90; i += 1) rig.update(1 / 30, "speaking", false);
+  assert.equal(model.values.get("happy"), 0);
   assert.equal(model.values.get("relaxed"), 0);
 });
 

@@ -2899,47 +2899,6 @@ body[data-speaking="true"] {
   gap: 14px;
 }
 
-.speaking-student-expression-list button {
-  min-width: 0;
-  display: flex;
-  align-items: center;
-  justify-content: flex-start;
-  gap: 17px;
-  border: 1px solid #dfe8f1 !important;
-  border-radius: 14px;
-  color: #6a7e9b !important;
-  background: #fbfdff !important;
-  box-shadow: none !important;
-  font-size: 1.04rem !important;
-  font-weight: 700 !important;
-  text-align: left;
-}
-
-.speaking-student-expression-list button:hover:not(:disabled),
-.speaking-student-expression-list button:focus-visible {
-  border-color: #9dc5f4 !important;
-  color: #315a91 !important;
-  background: #f3f8ff !important;
-}
-
-.speaking-student-expression-list button > span {
-  min-width: 0;
-  flex: 1 1 auto;
-  overflow: hidden;
-  text-overflow: ellipsis;
-  white-space: nowrap;
-}
-
-.speaking-student-expression-list button > svg:first-child {
-  flex: 0 0 auto;
-  color: #788da8;
-}
-
-.speaking-student-expression-list button > svg:last-child {
-  flex: 0 0 auto;
-  color: var(--student-blue);
-}
-
 .speaking-menu-card {
   min-height: 107px !important;
   display: flex;
@@ -3251,10 +3210,6 @@ body[data-speaking="true"] {
     font-size: 1.1rem;
   }
 
-  .speaking-student-expression-list button {
-    padding-inline: 11px !important;
-    font-size: .88rem !important;
-  }
 
   .speaking-student-controls {
     grid-template-columns: 155px minmax(0, 1fr) 165px;
@@ -3587,10 +3542,6 @@ body[data-speaking="true"] {
     min-height: 32px !important;
   }
 
-  .speaking-student-expression-list button {
-    min-height: 56px !important;
-    font-size: .84rem !important;
-  }
 }
 
 /* Speaking reliability layout: the live partner and controls own the first
@@ -3900,10 +3851,6 @@ body[data-speaking="true"] {
   padding-right: 3px;
 }
 
-.speaking-student-expression-list button {
-  min-height: 48px !important;
-  padding: 9px 10px !important;
-}
 
 .speaking-inline-operation-error {
   display: flex;
@@ -5019,41 +4966,6 @@ body[data-speaking="true"] {
   gap: 12px;
 }
 
-.speaking-student-expression-list button {
-  min-width: 0;
-  min-height: 56px !important;
-  display: flex;
-  align-items: center;
-  justify-content: flex-start;
-  gap: 14px;
-  padding: 0 16px !important;
-  border: 1px solid #dbe7f2 !important;
-  border-radius: 14px;
-  color: #557198 !important;
-  background: #fbfdff !important;
-  box-shadow: none !important;
-  font-size: 1rem !important;
-  font-weight: 700 !important;
-  text-align: left;
-}
-
-.speaking-student-expression-list button:hover:not(:disabled),
-.speaking-student-expression-list button:focus-visible {
-  border-color: #9dc5f4 !important;
-  color: #315a91 !important;
-  background: #f3f8ff !important;
-}
-
-.speaking-student-expression-list button > span {
-  min-width: 0;
-  flex: 1 1 auto;
-  overflow: hidden;
-  text-overflow: ellipsis;
-  white-space: nowrap;
-}
-
-.speaking-student-expression-list button > svg { flex: 0 0 auto; color: #7289a7; }
-
 .speaking-useful-callout {
   min-width: 0;
   display: grid;
@@ -5149,6 +5061,5 @@ body[data-speaking="true"] {
   .speaking-turn-bubble strong { font-size: .88rem; }
   .speaking-turn-meta time { font-size: .68rem; }
   .speaking-turn-meta button { width: 30px; min-height: 30px !important; }
-  .speaking-student-expression-list button { min-height: 52px !important; font-size: .88rem !important; }
   .speaking-useful-student-card { padding: 16px; }
 }

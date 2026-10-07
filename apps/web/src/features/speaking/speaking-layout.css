@@ -81,7 +81,6 @@
   .speaking-student-context { padding-inline: 0; }
 }
 .speaking-app :is(.speaking-flow-copy strong,.speaking-goal-card p,.speaking-student-card-heading p,.speaking-student-status,.speaking-turn-label,.speaking-transcript-heading span) { font-size: 14px; }
-.speaking-app .speaking-student-expression-list button { font-size: 15px !important; }
 .speaking-app .speaking-student-help-button small { font-size: 12px; }
 .speaking-app .speaking-turn-bubble strong { font-size: 16px; }
 @media (max-width: 1000px) {
@@ -1595,10 +1594,6 @@
   gap: 12px;
 }
 
-.speaking-support-panel .speaking-student-expression-list button {
-  min-height: 56px !important;
-}
-
 .speaking-support-panel .speaking-useful-callout {
   margin-top: auto;
 }
@@ -1922,10 +1917,6 @@
     font-size: .86rem;
   }
 
-  .speaking-app .speaking-support-panel .speaking-student-expression-list button {
-    min-height: 52px !important;
-    font-size: .88rem !important;
-  }
 
   .speaking-app .speaking-support-panel .speaking-useful-callout {
     font-size: .86rem;
