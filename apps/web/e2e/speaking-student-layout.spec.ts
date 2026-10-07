@@ -239,10 +239,10 @@ for (const failure of ["missing-model", "invalid-model", "unavailable-webgl"] as
     const fallbackSize = await avatar.locator("img").boundingBox();
     expect(fallbackSize!.height).toBeLessThanOrEqual(desktopSize!.height + 1);
     if (failure === "missing-model") {
-      // A hint adds another row. Short classroom displays must allow scrolling
-      // rather than clipping the hint or conversation beneath the portrait.
+      // Hints and the Conversation drawer remain reachable on short displays.
       await page.getByRole("button", { name: "Ask for a hint" }).click();
       await expect(page.locator(".speaking-help-response")).toContainText("You should visit the park.");
+      await page.getByRole("button", { name: "Conversation Your conversation so far", exact: true }).click();
       for (const height of [600, 700, 720, 768]) {
         await page.setViewportSize({ width: 1366, height });
         const center = page.locator(".speaking-student-center");
@@ -460,6 +460,9 @@ test("bundled VRM renders real facial animation through the student speech lifec
     expect(await page.evaluate(() => document.documentElement.scrollWidth)).toBeLessThanOrEqual(viewport.width);
     await expect(page.getByRole("button", { name: "Tap to speak", exact: true })).toBeInViewport();
     await page.screenshot({ path: testInfo.outputPath(`real-vrm-idle-${viewport.width}.png`) });
+    if (await page.locator(".speaking-scene-conversation-toggle").getAttribute("aria-expanded") === "false") {
+      await page.getByRole("button", { name: "Conversation Your conversation so far", exact: true }).click();
+    }
     await page.locator(".speaking-transcript-card").scrollIntoViewIfNeeded();
     await expect(page.getByRole("heading", { name: "Conversation", exact: true })).toBeInViewport();
   }
@@ -612,9 +615,9 @@ test("student Speaking layout keeps active and waiting states balanced", async (
       expect(layout.header).not.toBeNull();
       expect(layout.controls).not.toBeNull();
       expect(layout.mic).not.toBeNull();
-      const micCenter = layout.mic!.left + layout.mic!.width / 2;
-      const controlsCenter = layout.controls!.left + layout.controls!.width / 2;
-      expect(Math.abs(micCenter - controlsCenter)).toBeLessThanOrEqual(1);
+      expect(layout.mic!.left).toBeGreaterThanOrEqual(layout.controls!.left);
+      expect(layout.mic!.left + layout.mic!.width).toBeLessThanOrEqual(layout.controls!.left + layout.controls!.width + 1);
+      await expect(page.getByRole("button", { name: scenario.status === "ready" ? "Waiting for your teacher" : "Tap to speak", exact: true })).toBeInViewport();
       expect(layout.markCount).toBe(1);
       expect(layout.logoImageCount).toBe(0);
 
@@ -633,6 +636,16 @@ test("student Speaking layout keeps active and waiting states balanced", async (
       expect(layout.transcriptCount).toBe(scenario.supportSettings.showTranscript ? 1 : 0);
       expect(layout.sidebarCount).toBe(scenario.supportSettings.showTargetExpressions || scenario.supportSettings.showContext ? 1 : 0);
       expect(layout.replayCount).toBe(scenario.supportSettings.allowReplay ? 1 : 0);
+
+      if (scenario.supportSettings.showTranscript) {
+        const drawer = page.locator(".speaking-transcript-card");
+        await expect(drawer).toBeHidden();
+        await page.getByRole("button", { name: "Conversation Your conversation so far", exact: true }).click();
+        await expect(drawer).toBeVisible();
+        await expect(drawer).toContainText(activityBase.scenarioResources.openingLine);
+        await page.getByRole("button", { name: "Close conversation", exact: true }).click();
+        await expect(drawer).toBeHidden();
+      }
 
       await page.screenshot({ path: testInfo.outputPath(scenario.screenshot), fullPage: false });
     } finally {

@@ -87,11 +87,11 @@ export function mountSpeakingAvatar(host: HTMLDivElement, modelSrc: string,
     activeRenderer.setPixelRatio(Math.min(window.devicePixelRatio || 1, AVATAR_MAX_PIXEL_RATIO));
     activeRenderer.domElement.setAttribute("aria-hidden", "true");
     host.appendChild(activeRenderer.domElement);
-    scene.add(new THREE.HemisphereLight(0xffffff, 0xc8d7ec, 2));
-    const key = new THREE.DirectionalLight(0xfff4e8, 2.1);
+    scene.add(new THREE.HemisphereLight(0xffffff, 0xc8d7ec, 1));
+    const key = new THREE.DirectionalLight(0xfff4e8, 1.1);
     key.position.set(-1, 2, 3);
     scene.add(key);
-    const fill = new THREE.DirectionalLight(0xdbeaff, 1);
+    const fill = new THREE.DirectionalLight(0xdbeaff, 0.35);
     fill.position.set(2, 1, 1);
     scene.add(fill);
 
@@ -188,13 +188,14 @@ export function mountSpeakingAvatar(host: HTMLDivElement, modelSrc: string,
       rig.update(0, getState(), reduce);
       loaded.scene.updateMatrixWorld(true);
       const head = loaded.humanoid.getRawBoneNode("head")!.getWorldPosition(new THREE.Vector3());
-      const chest = (loaded.humanoid.getRawBoneNode("chest") ?? loaded.humanoid.getRawBoneNode("spine"))
+      const hips = (loaded.humanoid.getRawBoneNode("hips") ?? loaded.humanoid.getRawBoneNode("spine"))
         ?.getWorldPosition(new THREE.Vector3());
       const bounds = new THREE.Box3().setFromObject(loaded.scene);
       const bodyHeight = bounds.max.y - bounds.min.y;
       if (!Number.isFinite(bodyHeight) || bodyHeight <= 0) throw new Error("Avatar has no visible geometry");
       const top = Math.max(head.y + bodyHeight * 0.09, bounds.max.y);
-      const bottom = chest ? chest.y - bodyHeight * 0.06 : head.y - bodyHeight * 0.28;
+      // Frame the partner from the head to below the waist for the full scene.
+      const bottom = hips ? hips.y - bodyHeight * 0.12 : head.y - bodyHeight * 0.55;
       portraitHeight = Math.max(bodyHeight * 0.3, top - bottom) * 1.08;
       target.set(head.x, (top + bottom) / 2, head.z);
       resize();

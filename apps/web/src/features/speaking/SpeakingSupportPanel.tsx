@@ -1,6 +1,6 @@
 import { useSiteTranslation } from "../../ui/siteTranslation";
 import { useEffect, useId, useState, type KeyboardEvent } from "react";
-import { ImageOff, Lightbulb, MessageCircle, X } from "lucide-react";
+import { BookOpenText, ChevronRight, ImageOff, Lightbulb, MessageCircle, X } from "lucide-react";
 import { speakingContext, speakingScenarioResources, speakingSupportSettings, type SpeakingActivity, type SpeakingContext } from "@quizstrike/shared";
 
 export type SpeakingSupportTab = "useful-english" | "context";
@@ -68,6 +68,10 @@ export function SpeakingSupportPanel({
   return (
     <section className="speaking-support-panel" aria-label={t("Speaking support")}>
       <div className="speaking-support-header">
+        <h2 className="speaking-support-heading"><BookOpenText size={28} strokeWidth={1.8} aria-hidden="true" />{t("Language Support")}</h2>
+        <button className="speaking-support-close" type="button" onClick={onClose} aria-label={t("Close support panel")}>
+          <X size={20} strokeWidth={2} aria-hidden="true" />
+        </button>
         <div className="speaking-support-tabs" role="tablist" aria-label={t("Speaking support modes")}>
           {tabs.map((tab) => {
             const selected = selectedTab === tab.id;
@@ -88,9 +92,6 @@ export function SpeakingSupportPanel({
             );
           })}
         </div>
-        <button className="speaking-support-close" type="button" onClick={onClose} aria-label={t("Close support panel")}>
-          <X size={20} strokeWidth={2} aria-hidden="true" />
-        </button>
       </div>
       <div className="speaking-support-content">
         {selectedTab === "useful-english" ? (
@@ -125,6 +126,7 @@ function UsefulEnglishPanel({ activity, onPhraseClick, disabled }: { activity: S
             <button type="button" key={expression} onClick={() => onPhraseClick(expression)} disabled={disabled}>
               <MessageCircle size={19} strokeWidth={1.7} aria-hidden="true" />
               <span>{expression}</span>
+              <ChevronRight size={22} strokeWidth={1.7} aria-hidden="true" />
             </button>
           ) : (
             <div className="speaking-expression-card" key={expression} role="listitem">
@@ -137,7 +139,7 @@ function UsefulEnglishPanel({ activity, onPhraseClick, disabled }: { activity: S
       <SpeakingKeywords words={resources.usefulVocabulary} />
       <div className="speaking-useful-callout">
         <Lightbulb size={27} strokeWidth={1.7} aria-hidden="true" />
-        <span>{t("Focus on your message. You do not need to use every expression or keyword.")}</span>
+        <span><strong>{t("Focus on your message.")}</strong>{" "}{t("You do not need to use every expression or keyword.")}</span>
       </div>
     </div>
   );

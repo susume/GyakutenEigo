@@ -325,6 +325,7 @@ test("teacher and student Speaking Practice screens use the connected mock API",
   expect(await studentPage.evaluate(() => (window as Window & { __speakingSpeechCancelCount?: number }).__speakingSpeechCancelCount ?? 0)).toBeGreaterThan(cancelCountBeforeStart);
   await expect.poll(() => studentPage.evaluate(() => (window as Window & { __speakingSpeechLog?: Array<{ voiceId: string }> }).__speakingSpeechLog?.some((entry) => entry.voiceId === "fake-ken") ?? false)).toBe(true);
   await expect(studentPage.locator(".speaking-flow-panel")).toHaveCount(0);
+  await studentPage.getByRole("button", { name: "Conversation Your conversation so far", exact: true }).click();
   await expect(studentPage.getByRole("heading", { name: "Conversation", exact: true })).toBeVisible();
   await expect(studentPage.getByText("Your conversation so far", { exact: true })).toBeVisible();
   await expect(studentPage.getByRole("tab", { name: "Useful English", exact: true })).toHaveAttribute("aria-selected", "true");
@@ -380,6 +381,9 @@ test("teacher and student Speaking Practice screens use the connected mock API",
     await studentPage.screenshot({ path: testInfo.outputPath(`speaking-context-${viewport.width}x${viewport.height}.png`), fullPage: false });
     await studentPage.getByRole("button", { name: "Close support panel", exact: true }).click();
     await expect(studentPage.locator(".speaking-student-sidebar")).toHaveClass(/is-collapsed/u);
+    if (await studentPage.locator(".speaking-scene-conversation-toggle").getAttribute("aria-expanded") === "false") {
+      await studentPage.getByRole("button", { name: "Conversation Your conversation so far", exact: true }).click();
+    }
     const bounds = await studentPage.evaluate(() => {
       const read = (selector: string) => {
         const element = document.querySelector<HTMLElement>(selector);
