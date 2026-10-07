@@ -247,6 +247,18 @@ sees that the conversation is saved and never needs to retake the test. Auth
 and request/configuration failures are terminal and are surfaced as teacher
 attention. A retry never appends another transcript turn.
 
+Gemini evaluations send their JSON Schema through `responseJsonSchema`.
+`responseSchema` accepts a smaller OpenAPI schema and rejects the evaluator's
+`additionalProperties` fields with HTTP 400. Migration
+`20261008000000_recover_speaking_schema_failures` requeues failed `bad_request`
+jobs from the affected release once, provided they have saved student speech
+and no saved evaluation. It also restores the participant's evaluating state.
+Jobs stay failed with a one-time recovery marker until a corrected worker
+requeues them, so an older server cannot consume them during a rolling deploy.
+The worker then prepares results from the existing transcript; students
+do not need to repeat their task. New request/configuration failures remain
+terminal instead of automatically retrying an invalid request.
+
 Evaluation output is validated against the immutable activity snapshot. The
 prompt includes the explicit student goal, support resources, rubric, timing,
 Help metadata, and stable transcript turn IDs. The server then re-checks goal

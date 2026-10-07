@@ -279,7 +279,7 @@ const withGeminiEvaluationEnvironment = async (work: () => Promise<void>, respon
   }
 };
 
-test("Gemini evaluation sends a dynamic v1beta structured-output schema", async () => {
+test("Gemini evaluation sends its dynamic JSON Schema through responseJsonSchema", async () => {
   let requestedUrl = "";
   let requestedBody: Record<string, unknown> | undefined;
   await withGeminiEvaluationEnvironment(async () => {
@@ -304,10 +304,12 @@ test("Gemini evaluation sends a dynamic v1beta structured-output schema", async 
   }, new Response("{}"));
 
   assert.equal(requestedUrl, "https://generativelanguage.googleapis.com/v1beta/models/gemini-evaluation-test:generateContent");
-  const generationConfig = requestedBody?.generationConfig as { maxOutputTokens?: number; responseMimeType?: string; responseSchema?: Record<string, any> };
+  const generationConfig = requestedBody?.generationConfig as { maxOutputTokens?: number; responseMimeType?: string; responseJsonSchema?: Record<string, any> };
   assert.equal(generationConfig.maxOutputTokens, SPEAKING_EVALUATION_MAX_OUTPUT_TOKENS);
   assert.equal(generationConfig.responseMimeType, "application/json");
-  const schema = generationConfig.responseSchema!;
+  // Gemini rejects additionalProperties anywhere under responseSchema.
+  assert.equal(Object.hasOwn(generationConfig, "responseSchema"), false);
+  const schema = generationConfig.responseJsonSchema!;
   assert.deepEqual(schema.required, ["scores", "evidence", "strengths", "improvements", "usefulEnglish", "goalCompletion", "overallMessage"]);
   assert.deepEqual(Object.keys(schema.properties.scores.properties), ["communication", "custom"]);
   assert.deepEqual(schema.properties.scores.required, ["communication", "custom"]);

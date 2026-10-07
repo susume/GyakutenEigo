@@ -1,6 +1,6 @@
 import { createHash } from "node:crypto";
 import { Prisma, PrismaClient } from "@prisma/client";
-import { SPEAKING_EVALUATION_MAX_ATTEMPTS } from "./speakingEvaluation.js";
+import { SPEAKING_EVALUATION_MAX_ATTEMPTS, SPEAKING_GEMINI_SCHEMA_RECOVERY_CODE } from "./speakingEvaluation.js";
 import {
   SPEAKING_LIMITS,
   SPEAKING_LIBRARY_CATEGORY_IDS,
@@ -831,7 +831,7 @@ export class InMemorySpeakingRepository implements SpeakingRepository {
 
   async recoverableEvaluationParticipants(now: string) {
     const nowMs = Date.parse(now);
-    return [...this.state.evaluationJobs.values()].filter((job) => job.status === "queued" || job.status === "retrying" && (!job.nextRetryAt || !Number.isFinite(Date.parse(job.nextRetryAt)) || Date.parse(job.nextRetryAt) <= nowMs) || job.status === "running" && (!job.leaseUntil || Date.parse(job.leaseUntil) <= nowMs)).slice(0, 100).map((job) => job.participantId);
+    return [...this.state.evaluationJobs.values()].filter((job) => job.status === "queued" || job.status === "failed" && job.lastErrorCode === SPEAKING_GEMINI_SCHEMA_RECOVERY_CODE || job.status === "retrying" && (!job.nextRetryAt || !Number.isFinite(Date.parse(job.nextRetryAt)) || Date.parse(job.nextRetryAt) <= nowMs) || job.status === "running" && (!job.leaseUntil || Date.parse(job.leaseUntil) <= nowMs)).slice(0, 100).map((job) => job.participantId);
   }
 
   async updateEvaluationJob(participantId: string, patch: { status?: SpeakingEvaluationJobStatus; startedAt?: string | null; finishedAt?: string | null; leaseUntil?: string | null; lastErrorCode?: string | null; retryable?: boolean; nextRetryAt?: string | null; updatedAt: string }) {
@@ -1734,7 +1734,7 @@ export class PrismaSpeakingRepository implements SpeakingRepository {
   }
 
   async recoverableEvaluationParticipants(now: string) {
-    const rows = await this.prisma.speakingEvaluationJob.findMany({ where: { OR: [{ status: "queued" }, { status: "retrying", OR: [{ nextRetryAt: { lte: new Date(now) } }, { nextRetryAt: null }] }, { status: "running", leaseUntil: { lte: new Date(now) } }, { status: "running", leaseUntil: null }] }, select: { participantId: true }, orderBy: { queuedAt: "asc" }, take: 100 });
+    const rows = await this.prisma.speakingEvaluationJob.findMany({ where: { OR: [{ status: "queued" }, { status: "failed", lastErrorCode: SPEAKING_GEMINI_SCHEMA_RECOVERY_CODE }, { status: "retrying", OR: [{ nextRetryAt: { lte: new Date(now) } }, { nextRetryAt: null }] }, { status: "running", leaseUntil: { lte: new Date(now) } }, { status: "running", leaseUntil: null }] }, select: { participantId: true }, orderBy: { queuedAt: "asc" }, take: 100 });
     return rows.map((row) => row.participantId);
   }
 

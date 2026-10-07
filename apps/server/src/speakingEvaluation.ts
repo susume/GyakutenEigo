@@ -11,6 +11,9 @@ import {
 /** Bump when the evaluator's evidence contract or scoring guardrails change. */
 export const SPEAKING_EVALUATOR_PROMPT_VERSION = "2026-09-30-task-facts-v2";
 
+/** One-time migration marker, recognized only by workers with the schema fix. */
+export const SPEAKING_GEMINI_SCHEMA_RECOVERY_CODE = "gemini_json_schema_recovery_pending";
+
 export const SPEAKING_EVALUATION_MAX_ATTEMPTS = 5;
 export const SPEAKING_EVALUATION_RETRY_DELAYS_MS = [10_000, 30_000, 120_000, 300_000] as const;
 /** A terminal provider failure can be retried explicitly, but not in a tight loop. */

@@ -6,7 +6,7 @@ import { SPEAKING_CORE_LIBRARY, SPEAKING_LIMITS, speakingRemainingSeconds, type 
 import { createSpeakingProviders, parseJsonResponse } from "./speakingProviders.js";
 import { SpeakingProviderError } from "./speakingProviders.js";
 import { createSpeakingRouteState, registerSpeakingRoutes } from "./routes/speakingRoutes.js";
-import { speakingGoalRequirements } from "./speakingEvaluation.js";
+import { speakingGoalRequirements, SPEAKING_GEMINI_SCHEMA_RECOVERY_CODE } from "./speakingEvaluation.js";
 
 const teachers = new Map<string, TeacherUser>([
   ["owner", { id: "owner", name: "Owner", email: "owner@example.test", role: "teacher" }],
@@ -505,6 +505,7 @@ for (const failure of [
   new SpeakingProviderError("network failure", "network"),
   new SpeakingProviderError("malformed JSON", "invalid_response"),
   new SpeakingProviderError("bad credentials", "authentication", 401),
+  new SpeakingProviderError("Unknown additionalProperties in responseSchema", "bad_request", 400),
   new SpeakingProviderError("invalid model", "bad_request", 404)
 ]) test(`evaluation recovery handles ${failure.failureKind} ${failure.status ?? ""}`, async () => {
   const app = express();
@@ -568,6 +569,33 @@ for (const failure of [
       await api(`/api/speaking/sessions/${joined.body.session.id}/finish`, { method: "POST", speakingToken: joined.body.token });
       await api(`/api/speaking/results/${joined.body.participant.id}`, { speakingToken: joined.body.token });
       assert.equal(evaluationCalls, 1);
+      if (failure.status === 400) {
+        const saved = await api<{ result: { turns: unknown[] } }>(`/api/speaking/results/${joined.body.participant.id}`, { speakingToken: joined.body.token });
+        const job = state.evaluationJobs.get(joined.body.participant.id);
+        assert.ok(job);
+        // Simulate the one-time migration after the request-format correction.
+        job.lastErrorCode = SPEAKING_GEMINI_SCHEMA_RECOVERY_CODE;
+        job.attempt = 5;
+        let recovered: { evaluation?: SpeakingEvaluation; turns: unknown[] } | undefined;
+        for (let attempt = 0; attempt < 20; attempt += 1) {
+          const next = await api<{ result: { evaluation?: SpeakingEvaluation; turns: unknown[] } }>(`/api/speaking/results/${joined.body.participant.id}`, { speakingToken: joined.body.token });
+          recovered = next.body.result;
+          if (recovered.evaluation) break;
+          await new Promise((resolve) => setTimeout(resolve, 25));
+        }
+        assert.equal(recovered?.evaluation?.assessmentStatus, "scored");
+        assert.equal(typeof recovered?.evaluation?.scores.communication, "number");
+        assert.deepEqual(recovered?.turns, saved.body.result.turns);
+        assert.equal(evaluationCalls, 2);
+        const completedJob = state.evaluationJobs.get(joined.body.participant.id);
+        assert.equal(completedJob?.status, "completed");
+        assert.equal(completedJob?.attempt, 1);
+        assert.equal(completedJob?.lastErrorCode, undefined);
+        const teacher = await api<{ items: Array<{ evaluation?: SpeakingEvaluation }> }>(`/api/speaking/sessions/${joined.body.session.id}/results`, { teacher: "owner" });
+        assert.deepEqual(teacher.body.items[0]?.evaluation, recovered?.evaluation);
+        await api(`/api/speaking/results/${joined.body.participant.id}`, { speakingToken: joined.body.token });
+        assert.equal(evaluationCalls, 2, "completed recovery must never restart evaluation");
+      }
       return;
     }
     assert.equal(firstFinish.body.evaluationStatus, "retrying");

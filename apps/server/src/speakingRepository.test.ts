@@ -3,6 +3,20 @@ import test from "node:test";
 import { DEFAULT_SPEAKING_ASSESSMENT_SUPPORT_SETTINGS, DEFAULT_SPEAKING_PRACTICE_SUPPORT_SETTINGS, DEFAULT_SPEAKING_RUBRIC, speakingActiveElapsedMs, speakingRemainingSeconds, type SpeakingCreateActivityInput, type SpeakingEvaluation } from "@quizstrike/shared";
 import { InMemorySpeakingRepository, PrismaSpeakingRepository, createInMemorySpeakingState, createSpeakingRepository, hashSpeakingToken } from "./speakingRepository.js";
 import type { PrismaClient } from "@prisma/client";
+import { SPEAKING_GEMINI_SCHEMA_RECOVERY_CODE } from "./speakingEvaluation.js";
+
+test("schema recovery scans marked failures without making them claimable by older workers", async () => {
+  const state = createInMemorySpeakingState();
+  const now = "2026-10-08T00:00:00.000Z";
+  for (const [participantId, lastErrorCode] of [["marked", SPEAKING_GEMINI_SCHEMA_RECOVERY_CODE], ["unmarked", "bad_request"]] as const) {
+    state.evaluationJobs.set(participantId, { id: `job-${participantId}`, participantId, status: "failed", attempt: 5, queuedAt: now, updatedAt: now, lastErrorCode });
+  }
+  const repository = new InMemorySpeakingRepository(state);
+  assert.deepEqual(await repository.recoverableEvaluationParticipants(now), ["marked"]);
+  assert.equal(await repository.claimEvaluationJob("marked", now, now), undefined);
+  assert.equal((await repository.getEvaluationJob("marked"))?.status, "failed");
+  assert.equal((await repository.getEvaluationJob("unmarked"))?.lastErrorCode, "bad_request");
+});
 
 test("Prisma history queries and atomic deletion constrain terminal statuses and ownership", async () => {
   const calls: unknown[] = [];

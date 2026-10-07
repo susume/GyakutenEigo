@@ -398,7 +398,7 @@ const retryDelayFromGeminiDetails = (details: Array<{ retryDelay?: string }> | u
 
 const hasGeminiResponseSchema = (body: Record<string, unknown>) => {
   const config = body.generationConfig;
-  return typeof config === "object" && config !== null && "responseSchema" in config;
+  return typeof config === "object" && config !== null && ("responseSchema" in config || "responseJsonSchema" in config);
 };
 
 const geminiRequestResult = async (
@@ -688,7 +688,9 @@ export const geminiEvaluationProvider: EvaluationProvider = {
         }]
       },
       contents: [{ role: "user", parts: [{ text: "Return the completed evaluation as JSON only." }] }],
-      generationConfig: { temperature: 0.2, maxOutputTokens: SPEAKING_EVALUATION_MAX_OUTPUT_TOKENS, responseMimeType: "application/json", responseSchema: buildGeminiEvaluationResponseSchema(input.activity) }
+      // This is JSON Schema (including additionalProperties), not the smaller
+      // OpenAPI Schema accepted by responseSchema. Mixing them returns HTTP 400.
+      generationConfig: { temperature: 0.2, maxOutputTokens: SPEAKING_EVALUATION_MAX_OUTPUT_TOKENS, responseMimeType: "application/json", responseJsonSchema: buildGeminiEvaluationResponseSchema(input.activity) }
     }, process.env, "evaluation");
     const output = parseGeminiJsonResponse<Partial<Omit<SpeakingEvaluation, "participantId" | "language" | "createdAt">>>(response);
     const scores = output.scores && typeof output.scores === "object" ? output.scores : {};

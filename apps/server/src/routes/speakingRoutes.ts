@@ -54,6 +54,7 @@ import {
   SPEAKING_EVALUATION_MAX_ATTEMPTS,
   SPEAKING_EVALUATION_MANUAL_RETRY_COOLDOWN_MS,
   SPEAKING_EVALUATOR_PROMPT_VERSION,
+  SPEAKING_GEMINI_SCHEMA_RECOVERY_CODE,
   buildSpeakingInteractionMetadata,
   nextSpeakingEvaluationRetryAt,
   sanitizeSpeakingEvaluation
@@ -620,7 +621,8 @@ export const registerSpeakingRoutes = (app: Application, deps: SpeakingRouteDepe
     Number.parseInt(process.env.SPEAKING_EVALUATION_LEASE_MS ?? "120000", 10) || 120_000
   ));
 
-  const evaluationStatus = (job?: SpeakingEvaluationJob) => job?.status ?? "queued";
+  const isSchemaRecoveryPending = (job?: SpeakingEvaluationJob) => job?.status === "failed" && job.lastErrorCode === SPEAKING_GEMINI_SCHEMA_RECOVERY_CODE;
+  const evaluationStatus = (job?: SpeakingEvaluationJob) => isSchemaRecoveryPending(job) ? "queued" : job?.status ?? "queued";
   const manualEvaluationRetryAt = (job?: SpeakingEvaluationJob) => {
     if (!job || job.status !== "failed" || job.retryable !== true || job.attempt < SPEAKING_EVALUATION_MAX_ATTEMPTS) return undefined;
     const terminalAt = Date.parse(job.finishedAt ?? job.updatedAt);
@@ -818,9 +820,10 @@ export const registerSpeakingRoutes = (app: Application, deps: SpeakingRouteDepe
     const manualRetryAt = manualEvaluationRetryAt(existing);
     const manualRetryReady = manual && Boolean(manualRetryAt && Date.parse(manualRetryAt) <= Date.parse(now));
     const shouldRetryFailed = (retryFailed && existing?.status === "failed" && existing.retryable === true && existing.attempt < SPEAKING_EVALUATION_MAX_ATTEMPTS) || manualRetryReady;
-    const shouldQueue = !existing || shouldRetryFailed || (existing.status === "completed" && !(await repository.getResult(current.id))?.evaluation);
+    const schemaRecoveryPending = isSchemaRecoveryPending(existing);
+    const shouldQueue = !existing || shouldRetryFailed || schemaRecoveryPending || (existing.status === "completed" && !(await repository.getResult(current.id))?.evaluation);
     const job = shouldQueue
-      ? await repository.upsertEvaluationJob(current.id, { id: existing?.id ?? deps.id(), queuedAt: now, updatedAt: now, status: "queued", attempt: manualRetryReady ? 0 : existing?.attempt ?? 0 })
+      ? await repository.upsertEvaluationJob(current.id, { id: existing?.id ?? deps.id(), queuedAt: now, updatedAt: now, status: "queued", attempt: manualRetryReady || schemaRecoveryPending ? 0 : existing?.attempt ?? 0 })
       : existing;
     if (job.status === "completed") return job;
     if (job.status === "failed") return job;
@@ -1803,7 +1806,7 @@ export const registerSpeakingRoutes = (app: Application, deps: SpeakingRouteDepe
     }
     const job = await repository.getEvaluationJob(result.participant.id);
     const retryReady = job?.status === "retrying" && (!job.nextRetryAt || Date.parse(job.nextRetryAt) <= Date.parse(deps.now()));
-    if (job && (job.status === "queued" || retryReady || (job.status === "running" && job.leaseUntil && Date.parse(job.leaseUntil) <= Date.parse(deps.now()))) && !evaluationRuns.has(result.participant.id)) {
+    if (job && (job.status === "queued" || isSchemaRecoveryPending(job) || retryReady || (job.status === "running" && job.leaseUntil && Date.parse(job.leaseUntil) <= Date.parse(deps.now()))) && !evaluationRuns.has(result.participant.id)) {
       void scheduleEvaluation({ session: result.session, activity: result.activity, participant: result.participant }, false).catch(() => undefined);
     }
     const currentJob = await repository.getEvaluationJob(result.participant.id) ?? job;
