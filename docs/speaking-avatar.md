@@ -7,7 +7,10 @@ Added under `apps/web/src/features/speaking/avatar/`:
 `avatarBehavior.ts`, `speakingAvatars.ts`, `speaking-avatar.css`,
 `AvatarRig.test.ts`, `SpeakingAvatarRenderer.test.ts`, `avatarBehavior.test.ts`,
 and `avatarAssets.test.ts`.
-Also added `apps/web/public/assets/speaking/avatar/README.md` and this document.
+The bundled model, README and licence are in
+`apps/web/public/assets/speaking/avatar/`. See
+[speaking-avatar-model.md](speaking-avatar-model.md) for model selection,
+licensing, lossless optimization, and real-character validation.
 
 Updated `SpeakingPracticeApp.tsx` (live partner/transcript presentation),
 `speakingLifecycle.ts` (extract the existing state mapping for reuse/tests), and
@@ -66,18 +69,25 @@ status, and existing aria-live announcements. The canvas is presentational.
 
 ## Installation and limits
 
-No VRM was present or downloaded. Add a properly licensed self-contained VRM to
-`apps/web/public/assets/speaking/avatar/default.vrm`, following the requirements
-in that directory's README. Assets/resources are restricted to the app's origin.
+The bundled pixiv **VRM1_Constraint_Twist_Sample v1.0.1** is a self-contained VRM
+1.0 with standard blink and all five vowel expressions. Its 8,568,504-byte file
+is installed at `apps/web/public/assets/speaking/avatar/default.vrm`. The
+creator's VRM Public License 1.0 settings explicitly allow corporate commercial
+use and original/modified redistribution; see the accompanying
+[licence](../apps/web/public/assets/speaking/avatar/LICENSE.md).
+Assets/resources are restricted to the app's origin.
 Model download and rendering are local to the student browser and have no per-use
 service cost. Existing Gemini services and browser voice capabilities are unchanged.
 
-The visible character will remain a static fallback until a model is provided.
-Full visual validation of a particular character (framing, facial expressions,
-licence, performance on classroom devices) requires that chosen model. Portrait
-framing assumes a conventional upright humanoid; unusual proportions/accessories
-may need camera tuning. Models without blink/mouth presets have limited facial
-animation. Procedural mouth movements follow speech state, not precise phonemes
+The real character has been visually checked at desktop, tablet and phone sizes.
+It has a stylized, youthful appearance and a plain white T-shirt, rather than a
+photorealistic professional adult appearance. Its size is slightly above the
+preferred 8 MB; compression preserved texture pixels and geometry. Performance
+was checked on this Windows/Chrome environment, not physical Chromebooks/iPads.
+Portrait framing assumes a conventional upright humanoid; unusual proportions
+or accessories may need camera tuning. Replacement models without blink/mouth
+presets have limited facial animation. Procedural mouth movements follow speech
+state, not precise phonemes
 or audio pauses. Different browser/OS voices may use their own network services;
 the avatar itself does not introduce any network service.
 
@@ -99,14 +109,25 @@ Run root
 
 Verified on 2026-10-07:
 
-- Root typecheck and build passed, as did the final web/e2e typecheck and focused lint.
-- Root tests after the audit: 718 passed, one existing server test skipped (719 total).
-- Avatar unit tests: all 26 passed. The two new test files also passed a separate
+- Root typecheck and build passed, as did web/e2e typecheck and focused lint.
+- Root tests with the bundled model: 719 passed, one existing server test skipped
+  (720 total).
+- Avatar unit tests: all 27 passed, including the actual asset's licence settings,
+  self-contained resources and facial morph bindings. The earlier audit test files passed a separate
   TypeScript check (the normal app config excludes unit tests).
-- Avatar/layout Playwright suite: all five passed. Desktop/tablet/mobile fallback
-  screenshots were inspected; recording, processing, reply, replay/end/cancel,
+- Avatar/layout Playwright suite: all seven passed. It includes the real-model GPU uniform/lifecycle
+  test and a native browser SpeechSynthesis test, alongside the five existing
+  cases. Desktop/tablet/mobile screenshots were inspected; recording, processing,
+  reply, replay/end/cancel,
   Context, Help, Finish, and feedback loading were checked. Hint/transcript
   reachability was verified at desktop heights of 600, 700, 720, and 768 pixels.
+  The real model reaches `ready`, replaces the fallback, renders all five vowels
+  and blinking, and closes its mouth in idle/listening/thinking and after stop/end.
+  Native Chrome SpeechSynthesis start/end events were observed with the real VRM.
+  Native TTS tests skip on operating systems without a local English voice.
+  Visibility-handler suspension/resumption was verified against the real VRM
+  with simulated browser events. Actual window hiding was not observable in
+  this automated Chrome environment; see speaking-avatar-model.md for details.
 - The earlier broader 12-test speaking browser run passed eight and failed four existing
   tests in `speaking.spec.ts`, before the live avatar screen. A separate Vite build
   with the modified speaking source files restored from HEAD reproduced all four
