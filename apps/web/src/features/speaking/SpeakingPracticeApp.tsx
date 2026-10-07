@@ -49,7 +49,10 @@ import { cancelSpeakingAudioCapture, createSpeakingAudioActivityMonitor, createS
 import SpeakingVoiceSelector from "./SpeakingVoiceSelector";
 import { getBrowserSpeechSynthesis, getCuratedSpeakingVoices, getDefaultCuratedSpeakingVoice, persistSpeakingVoiceSelection, readBrowserSpeechVoices, readSpeakingVoiceForSession, readSpeakingVoicePreference, speakingVoiceIdForSession } from "./speakingVoices";
 import { hasStudentSpeech, ResultPanel, scoreFor } from "./SpeakingResultPanel";
-import { mergeSpeakingTurns, nextSpeakingPollDelay, shouldAcceptSpeakingRevision, speakingTimerReference } from "./speakingLifecycle";
+import { mergeSpeakingTurns, nextSpeakingPollDelay, shouldAcceptSpeakingRevision, speakingTimerReference, speakingUiState, type SpeakingUiState, type SpeakingVoiceState } from "./speakingLifecycle";
+import SpeakingAvatar from "./avatar/SpeakingAvatar";
+import { speakingAvatarState } from "./avatar/avatarBehavior";
+import { SPEAKING_AVATARS } from "./avatar/speakingAvatars";
 import { isKeyboardEditingTarget, isSpaceShortcutEvent } from "./speakingKeyboard";
 import { SpeakingSupportPanel, SpeakingKeywords, SpeakingReferenceSheet, type SpeakingSupportTab } from "./SpeakingSupportPanel";
 import { getSpeakingSupportTabs } from "./SpeakingSupportPanel";
@@ -63,8 +66,6 @@ type SpeakingRoute =
   | { kind: "session"; id: string }
   | { kind: "result"; id: string };
 
-type SpeakingUiState = "ready" | "listening" | "thinking" | "ai-speaking";
-type SpeakingVoiceState = "ready" | "ai_speaking" | "student_recording" | "processing" | "paused" | "finishing" | "evaluating" | "completed" | "error";
 type Navigate = (nextPath: string) => void;
 
 type JoinResponse = { activity: SpeakingActivity; participant: SpeakingParticipant; session: SpeakingSession; token: string };
@@ -177,10 +178,10 @@ function SpeakingHome({ navigate }: { navigate: Navigate }) {
 }
 
 
-interface SpeakingScreenProps { statusText?: string; activity: SpeakingActivity; state: SpeakingUiState; remainingSeconds: number; turns: SpeakingTurn[]; onMic: () => void; onReplay?: (text?: string) => void; onHelp?: () => void; helpLoading?: boolean; helpResponse?: { hint: string; english?: string; helpCount?: number }; onBrandClick?: () => void; onFinish: () => void; disabled?: boolean; supportDisabled?: boolean; finishDisabled?: boolean; }
+interface SpeakingScreenProps { statusText?: string; avatarPaused?: boolean; activity: SpeakingActivity; state: SpeakingUiState; remainingSeconds: number; turns: SpeakingTurn[]; onMic: () => void; onReplay?: (text?: string) => void; onHelp?: () => void; helpLoading?: boolean; helpResponse?: { hint: string; english?: string; helpCount?: number }; onBrandClick?: () => void; onFinish: () => void; disabled?: boolean; supportDisabled?: boolean; finishDisabled?: boolean; }
 const stateDescriptions: Record<SpeakingUiState, string> = { ready: "Your turn · Tap the microphone to speak.", listening: "Listening · Tap again when you finish.", thinking: "Processing your answer…", "ai-speaking": "Your partner is speaking…" };
 
-function SpeakingStudentScreenV2({ statusText, activity, state, remainingSeconds, turns, onMic, onReplay, onHelp, helpLoading = false, helpResponse, onBrandClick, onFinish, disabled = false, supportDisabled = false, finishDisabled = false }: SpeakingScreenProps) {
+function SpeakingStudentScreenV2({ statusText, avatarPaused = false, activity, state, remainingSeconds, turns, onMic, onReplay, onHelp, helpLoading = false, helpResponse, onBrandClick, onFinish, disabled = false, supportDisabled = false, finishDisabled = false }: SpeakingScreenProps) {
   const { t } = useSiteTranslation();
   const supportSettings = resolveSpeakingSupportSettings(activity.supportSettings);
   const supportTabs = getSpeakingSupportTabs(activity);
@@ -198,7 +199,7 @@ function SpeakingStudentScreenV2({ statusText, activity, state, remainingSeconds
   const durationProgress = Math.max(0, Math.min(100, (remainingSeconds / Math.max(1, activity.durationSeconds)) * 100));
   const micLabel = statusText ?? (state === "ai-speaking" ? "Stop playback" : state === "listening" ? "Stop speaking" : state === "thinking" ? "Processing your answer" : "Tap to speak");
   const pendingReply = state === "thinking" && turns.some((turn) => turn.speaker === "student");
-  const partnerImage = resources.imageSrc;
+  const partnerImage = SPEAKING_AVATARS.default.fallbackImageSrc;
   const [supportTab, setSupportTab] = useState<SpeakingSupportTab>(() => supportTabs[0]?.id ?? "useful-english");
   const helperText = statusText ?? (state === "thinking" ? "Still processing your answer…" : stateDescriptions[state]);
 
@@ -280,10 +281,11 @@ function SpeakingStudentScreenV2({ statusText, activity, state, remainingSeconds
     </header>
     <div className={`speaking-student-grid${supportOpen ? "" : " is-support-collapsed"}${!hasSupportPanel ? " no-support-panel" : ""}`}>
       <div className={`speaking-student-center${supportSettings.showTranscript ? "" : " is-no-transcript"}${helpResponse ? " has-help-response" : ""}`}>
-        <section className="speaking-live-reply" aria-live="polite" aria-label={t("Current speaking partner")}>
-           <div className="speaking-live-reply-avatar">{partnerImage ? <img src={partnerImage} alt={resources.imageAlt ?? t("Speaking partner")} /> : <MessageCircle size={28} aria-hidden="true" />}</div>
-           <div><span className="speaking-card-kicker">{t("Speaking partner ·")}{" "}{activity.aiRole}</span><p>{state === "listening" ? t("Listening to you…") : state === "thinking" ? t("Processing your answer…") : currentAiTurn?.text ?? resources.openingLine}</p></div>
+        <section className="speaking-live-reply speaking-partner-card" aria-live="polite" aria-label={t("Current speaking partner")}>
+           <SpeakingAvatar state={speakingAvatarState(state, avatarPaused)} />
+           <div className="speaking-partner-message"><div><span className="speaking-card-kicker">{t("Speaking partner ·")}{" "}{activity.aiRole}</span><p>{state === "listening" ? t("Listening to you…") : state === "thinking" ? t("Processing your answer…") : currentAiTurn?.text ?? resources.openingLine}</p></div>
            {supportSettings.allowReplay && <button type="button" className="speaking-icon-button" onClick={() => onReplay?.(currentAiTurn?.text)} disabled={!onReplay || !currentAiTurn || state !== "ready"} aria-label={t("Replay current partner message")}><Volume2 size={20} aria-hidden="true" /></button>}
+           </div>
          </section>
          <footer className="speaking-student-controls" aria-label={t("Speaking controls")}>
            {supportSettings.allowReplay ? <button className="speaking-replay-button" type="button" onClick={() => onReplay?.(currentAiTurn?.text)} disabled={!onReplay || !currentAiTurn || state !== "ready"} aria-label={t("Replay latest partner message")}><RotateCcw size={27} strokeWidth={1.7} aria-hidden="true" /><span>{t("Replay")}</span></button> : <span className="speaking-student-control-balance is-left" aria-hidden="true" />}
@@ -314,11 +316,10 @@ function SpeakingStudentScreenV2({ statusText, activity, state, remainingSeconds
 function StudentTranscriptTurnV2({ activity, turn, onReplay }: { activity: SpeakingActivity; turn: SpeakingTurn; onReplay?: (text?: string) => void }) {
   const { t, locale } = useSiteTranslation();
   const isAi = turn.speaker === "ai";
-  const resources = speakingScenarioResources(activity.scenarioResources);
   const createdAt = new Date(turn.createdAt);
   const time = Number.isNaN(createdAt.getTime()) ? "" : createdAt.toLocaleTimeString(locale, { hour: "numeric", minute: "2-digit" });
   return <article className={"speaking-transcript-turn " + (isAi ? "speaking-transcript-turn-ai" : "speaking-transcript-turn-student")} role="listitem">
-    <div className={"speaking-turn-avatar " + (isAi ? "speaking-turn-avatar-ai" : "speaking-turn-avatar-student")} aria-hidden="true">{isAi ? resources.imageSrc ? <img src={resources.imageSrc} alt="" aria-hidden="true" /> : <MessageCircle size={22} aria-hidden="true" /> : <img src="/assets/speaking/student-avatar.png" alt="" aria-hidden="true" />}</div>
+    <div className={"speaking-turn-avatar " + (isAi ? "speaking-turn-avatar-ai" : "speaking-turn-avatar-student")} aria-hidden="true"><img src={isAi ? SPEAKING_AVATARS.default.fallbackImageSrc : "/assets/speaking/student-avatar.png"} alt="" /></div>
     <div className="speaking-turn-body"><p className="speaking-turn-label">{isAi ? "Speaking partner · " + activity.aiRole : t("You")}</p><div className="speaking-turn-bubble"><div><strong>{turn.text}</strong></div><div className="speaking-turn-meta">{time && <time dateTime={turn.createdAt}>{time}</time>}{isAi && onReplay && <button type="button" onClick={() => onReplay(turn.text)} aria-label={t("Replay partner message")}><Volume2 size={22} strokeWidth={1.8} aria-hidden="true" /></button>}</div></div></div>
   </article>;
 }
@@ -977,9 +978,9 @@ function SpeakingSessionExperienceV2({ navigate, token, initialData }: { navigat
   const paused = data.session.status === "paused" || voiceState === "paused";
   const ended = data.session.status === "ended" || data.session.status === "expired";
   const controlsDisabled = authorizationFailed || waiting || paused || ended || !["ready", "student_recording", "ai_speaking"].includes(voiceState);
-  const uiState: SpeakingUiState = voiceState === "student_recording" ? "listening" : voiceState === "ai_speaking" ? "ai-speaking" : ["processing", "finishing", "evaluating"].includes(voiceState) ? "thinking" : "ready";
+  const uiState = speakingUiState(voiceState);
   const operationMessage = errorOperation === "microphone" ? "Retry microphone" : errorOperation === "turn" ? "Retry this turn" : errorOperation === "evaluation" ? "Check evaluation" : "Refresh status";
-  return <div className="speaking-session-page"><main className="speaking-session-main">{waiting && <div className="speaking-session-note speaking-session-waiting-note" role="status"><Clock3 size={16} aria-hidden="true" /><span>{t("You’re ready! Waiting for your teacher to start the")}{" "}{data.activity.mode === "practice" ? t("practice") : t("task")}.</span></div>}{paused && <div className="speaking-session-alert" role="alert"><HelpCircle size={18} aria-hidden="true" /><span>{t("Your teacher paused the activity.")}</span></div>}{ended && <div className="speaking-session-alert" role="alert"><HelpCircle size={18} aria-hidden="true" /><span>{t("This speaking task has ended. Your saved conversation can still be reviewed.")}</span></div>}{error && <div className="speaking-session-alert" role="alert"><HelpCircle size={18} aria-hidden="true" /><span>{t(error)}</span>{!authorizationFailed && <button type="button" onClick={retryOperation}>{operationMessage}</button>}</div>}{micNotice && <div className="speaking-session-note" role="status"><Mic size={16} aria-hidden="true" /><span>{t(micNotice)}</span></div>}{voiceState === "evaluating" && <div className="speaking-session-note" role="status"><LoaderCircle size={16} className="speaking-spin" aria-hidden="true" /><span>{t("Your speaking task is finished. Your feedback is being prepared.")}</span></div>}<SpeakingStudentScreenV2 statusText={waiting ? "Waiting for your teacher" : paused ? "Paused" : ended ? "Task ended" : voiceState === "finishing" || voiceState === "evaluating" ? "Finishing" : error ? "Check the message above" : undefined} activity={data.activity} state={uiState} remainingSeconds={remaining} turns={data.turns} onMic={onMic} onReplay={supportSettings.allowReplay ? replay : undefined} onHelp={supportSettings.allowHelp ? requestHelp : undefined} helpLoading={helpLoading} helpResponse={helpResponse} onBrandClick={() => navigate("/speak")} onFinish={() => void finish()} disabled={controlsDisabled} supportDisabled={authorizationFailed || waiting || paused || ended} finishDisabled={authorizationFailed || waiting || ["finishing", "evaluating", "completed", "ai_speaking", "student_recording", "processing"].includes(voiceState)} /></main></div>;
+  return <div className="speaking-session-page"><main className="speaking-session-main">{waiting && <div className="speaking-session-note speaking-session-waiting-note" role="status"><Clock3 size={16} aria-hidden="true" /><span>{t("You’re ready! Waiting for your teacher to start the")}{" "}{data.activity.mode === "practice" ? t("practice") : t("task")}.</span></div>}{paused && <div className="speaking-session-alert" role="alert"><HelpCircle size={18} aria-hidden="true" /><span>{t("Your teacher paused the activity.")}</span></div>}{ended && <div className="speaking-session-alert" role="alert"><HelpCircle size={18} aria-hidden="true" /><span>{t("This speaking task has ended. Your saved conversation can still be reviewed.")}</span></div>}{error && <div className="speaking-session-alert" role="alert"><HelpCircle size={18} aria-hidden="true" /><span>{t(error)}</span>{!authorizationFailed && <button type="button" onClick={retryOperation}>{operationMessage}</button>}</div>}{micNotice && <div className="speaking-session-note" role="status"><Mic size={16} aria-hidden="true" /><span>{t(micNotice)}</span></div>}{voiceState === "evaluating" && <div className="speaking-session-note" role="status"><LoaderCircle size={16} className="speaking-spin" aria-hidden="true" /><span>{t("Your speaking task is finished. Your feedback is being prepared.")}</span></div>}<SpeakingStudentScreenV2 avatarPaused={waiting || paused || ended || authorizationFailed || voiceState === "error" || voiceState === "completed"} statusText={waiting ? "Waiting for your teacher" : paused ? "Paused" : ended ? "Task ended" : voiceState === "finishing" || voiceState === "evaluating" ? "Finishing" : error ? "Check the message above" : undefined} activity={data.activity} state={uiState} remainingSeconds={remaining} turns={data.turns} onMic={onMic} onReplay={supportSettings.allowReplay ? replay : undefined} onHelp={supportSettings.allowHelp ? requestHelp : undefined} helpLoading={helpLoading} helpResponse={helpResponse} onBrandClick={() => navigate("/speak")} onFinish={() => void finish()} disabled={controlsDisabled} supportDisabled={authorizationFailed || waiting || paused || ended} finishDisabled={authorizationFailed || waiting || ["finishing", "evaluating", "completed", "ai_speaking", "student_recording", "processing"].includes(voiceState)} /></main></div>;
 }
 
 

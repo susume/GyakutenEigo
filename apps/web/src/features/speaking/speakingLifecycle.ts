@@ -1,5 +1,12 @@
 import type { SpeakingParticipant, SpeakingSession, SpeakingTurn } from "@quizstrike/shared";
 
+export type SpeakingUiState = "ready" | "listening" | "thinking" | "ai-speaking";
+export type SpeakingVoiceState = "ready" | "ai_speaking" | "student_recording" | "processing" | "paused" | "finishing" | "evaluating" | "completed" | "error";
+
+export const speakingUiState = (state: SpeakingVoiceState): SpeakingUiState =>
+  state === "student_recording" ? "listening" : state === "ai_speaking" ? "ai-speaking"
+    : ["processing", "finishing", "evaluating"].includes(state) ? "thinking" : "ready";
+
 export type SpeakingPollState = {
   stablePolls: number;
   urgent?: boolean;
