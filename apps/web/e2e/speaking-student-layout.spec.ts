@@ -624,7 +624,7 @@ test("portrait personality stays responsive through real avatar conversation sta
 
 function observeAvatarWebGL() {
   // Observe real GPU uniforms without exposing renderer internals in production.
-  // The pinned model's facial morphs are blink=12 and vowels=36..40.
+  // Mika 1.0's facial morphs are blink=13 and vowels=39..43.
   const probe: AvatarProbe = { contexts: 0, frames: 0, mouth: [], vowelPeaks: [0, 0, 0, 0, 0], blinkPeak: 0, happy: 0, relaxed: 0 };
   (window as unknown as { avatarProbe: AvatarProbe }).avatarProbe = probe;
   const contexts = new WeakSet<object>();
@@ -649,11 +649,11 @@ function observeAvatarWebGL() {
   gl.uniform1fv = function (location, values, ...rest) {
     if (location && locations.get(location)?.startsWith("morphTargetInfluences")) {
       const weights = Array.from(values);
-      if (weights.length >= 41) {
-        probe.mouth = weights.slice(36, 41);
+      if (weights.length >= 44) {
+        probe.mouth = weights.slice(39, 44);
         probe.happy = weights[3]!;
         probe.relaxed = weights[2]!;
-        probe.blinkPeak = Math.max(probe.blinkPeak, weights[12]!);
+        probe.blinkPeak = Math.max(probe.blinkPeak, weights[13]!);
         probe.mouth.forEach((value, index) => { probe.vowelPeaks[index] = Math.max(probe.vowelPeaks[index]!, value); });
       }
     }

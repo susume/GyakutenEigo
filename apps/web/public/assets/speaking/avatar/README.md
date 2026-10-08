@@ -1,17 +1,18 @@
 # Local SpeakCheck avatar
 
-The bundled **pixiv VRM1_Constraint_Twist_Sample v1.0.1** is installed at
+The bundled **Mika 1.0**, created by **Peter Hoang** in VRoid Studio, is installed at
 **apps/web/public/assets/speaking/avatar/default.vrm**. Vite serves it as
 `/assets/speaking/avatar/default.vrm`. It is a self-contained VRM 1.0 character
 with neutral clothing, blink and all five standard vowel expressions. It is
-stylized rather than photorealistic. Its losslessly compressed file is 8.57 MB
-(8.17 MiB), with 36,470 triangles and 13 source materials. See [LICENSE.md](LICENSE.md)
-for the original creator's licence, explicit corporate use/redistribution grant,
-source commit, hashes, and optimization details. On-screen attribution is not required.
+stylized rather than photorealistic, with long brown hair.
+The original export is installed unchanged: 17.73 MB (16.91 MiB), with 43,346
+triangles, 13 source materials and 23 embedded PNGs. See [LICENSE.md](LICENSE.md)
+for creator credit, source, the preserved export licence settings and integrity hash.
 The existing partner image remains the automatic fallback if loading/rendering fails.
 
-To replace the character later, place a correctly licensed VRM at the same path
-and update its licence/attribution and validation records.
+To replace the character later, place an authorized VRM export at the same path
+and update its licence/attribution and validation records. An editable `.vroid`
+project must first be exported as `.vrm` in VRoid Studio.
 
 Use a VRM 0.x or VRM 1.0 humanoid supported by the installed @pixiv/three-vrm 3.5.5.
 The model needs a head bone and visible geometry. Prefer a self-contained GLB/VRM

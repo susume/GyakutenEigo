@@ -69,20 +69,20 @@ status, and existing aria-live announcements. The canvas is presentational.
 
 ## Installation and limits
 
-The bundled pixiv **VRM1_Constraint_Twist_Sample v1.0.1** is a self-contained VRM
-1.0 with standard blink and all five vowel expressions. Its 8,568,504-byte file
+The bundled **Mika 1.0** by **Peter Hoang** is a self-contained VRM
+1.0 with standard blink and all five vowel expressions. Its 17,733,740-byte file
 is installed at `apps/web/public/assets/speaking/avatar/default.vrm`. The
-creator's VRM Public License 1.0 settings explicitly allow corporate commercial
-use and original/modified redistribution; see the accompanying
+creator supplied the export and requested its installation. The embedded export
+licence settings are preserved unchanged; see the accompanying
 [licence](../apps/web/public/assets/speaking/avatar/LICENSE.md).
 Assets/resources are restricted to the app's origin.
 Model download and rendering are local to the student browser and have no per-use
 service cost. Existing Gemini services and browser voice capabilities are unchanged.
 
 The real character has been visually checked at desktop, tablet and phone sizes.
-It has a stylized, youthful appearance and a plain white T-shirt, rather than a
-photorealistic professional adult appearance. Its size is slightly above the
-preferred 8 MB; compression preserved texture pixels and geometry. Performance
+Mika has a stylized appearance with long brown hair. The export
+is larger than the preferred 8 MB and is installed byte-for-byte, preserving all
+texture pixels, geometry and metadata. Performance
 was checked on this Windows/Chrome environment, not physical Chromebooks/iPads.
 Portrait framing assumes a conventional upright humanoid; unusual proportions
 or accessories may need camera tuning. Replacement models without blink/mouth

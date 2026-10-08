@@ -13,7 +13,7 @@ test("avatar assets stay on the application origin, with relative local resource
   }
 });
 
-test("bundled VRM retains redistribution permissions, embedded resources and usable facial bindings", () => {
+test("bundled Mika VRM retains creator metadata, embedded resources and usable facial bindings", () => {
   const directory = new URL("../../../../public/assets/speaking/avatar/", import.meta.url);
   const bytes = readFileSync(new URL("default.vrm", directory));
   assert.equal(bytes.toString("ascii", 0, 4), "glTF");
@@ -22,11 +22,15 @@ test("bundled VRM retains redistribution permissions, embedded resources and usa
   const model = JSON.parse(bytes.toString("utf8", 20, 20 + bytes.readUInt32LE(12)));
   const vrm = model.extensions.VRMC_vrm;
   assert.equal(vrm.specVersion, "1.0");
-  assert.deepEqual(vrm.meta.authors, ["pixiv Inc."]);
+  assert.equal(vrm.meta.name, "Mika");
+  assert.equal(vrm.meta.version, "1.0");
+  assert.deepEqual(vrm.meta.authors, ["Peter Hoang"]);
   assert.equal(vrm.meta.licenseUrl, "https://vrm.dev/licenses/1.0/");
-  assert.equal(vrm.meta.commercialUsage, "corporation");
-  assert.equal(vrm.meta.allowRedistribution, true);
-  assert.equal(vrm.meta.modification, "allowModificationRedistribution");
+  assert.equal(vrm.meta.avatarPermission, "onlyAuthor");
+  assert.equal(vrm.meta.commercialUsage, "personalNonProfit");
+  assert.equal(vrm.meta.allowRedistribution, false);
+  assert.equal(vrm.meta.modification, "prohibited");
+  assert.equal(vrm.meta.creditNotation, "required");
   assert.ok(vrm.humanoid.humanBones.head);
   for (const resource of [...model.buffers, ...model.images]) assert.equal(resource.uri, undefined);
   for (const name of ["blink", "aa", "ih", "ou", "ee", "oh"]) {
