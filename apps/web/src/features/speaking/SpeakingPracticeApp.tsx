@@ -192,7 +192,7 @@ function SpeakingStudentScreenV2({ statusText, avatarPaused = false, activity, s
   const hasSupportPanel = supportTabs.length > 0;
   const showContextButton = supportTabs.some((tab) => tab.id === "context");
   const showHelpButton = supportSettings.allowHelp && Boolean(onHelp);
-  const [supportOpen, setSupportOpen] = useState(() => hasSupportPanel && (typeof window === "undefined" || window.matchMedia("(min-width: 901px)").matches));
+  const [supportOpen, setSupportOpen] = useState(() => hasSupportPanel && (typeof window === "undefined" || window.matchMedia("(min-width: 1101px) and (min-height: 481px)").matches));
   const [transcriptOpen, setTranscriptOpen] = useState(false);
   const conversationButtonRef = useRef<HTMLButtonElement>(null);
   const supportButtonRef = useRef<HTMLButtonElement>(null);
@@ -257,7 +257,7 @@ function SpeakingStudentScreenV2({ statusText, avatarPaused = false, activity, s
   }, [hasSupportPanel, supportTab, supportTabs]);
 
   useEffect(() => {
-    const mediaQuery = window.matchMedia("(min-width: 901px)");
+    const mediaQuery = window.matchMedia("(min-width: 1101px) and (min-height: 481px)");
     const handleViewportChange = () => {
       // Keep the portrait drawer out of the way of the microphone when a
       // school tablet is rotated or a responsive preview narrows the page.
@@ -333,14 +333,14 @@ function SpeakingStudentScreenV2({ statusText, avatarPaused = false, activity, s
     setSupportOpen(true);
     // When the requested tab is already open, there is no state change to focus it.
     window.requestAnimationFrame(() => document.querySelector<HTMLButtonElement>('#speaking-scene-support [role="tab"][aria-selected="true"]')?.focus());
-    if (window.matchMedia("(max-width: 900px)").matches) setTranscriptOpen(false);
+    if (window.matchMedia("(max-width: 1100px), (max-height: 480px)").matches) setTranscriptOpen(false);
   };
 
   return <div className={"speaking-student-screen speaking-scene-screen speaking-student-screen-" + state} onFocusCapture={(event) => {
     // These are non-modal drawers: learners can move directly back to speaking.
     // Dismiss an overlay before keyboard focus can move behind it.
     const target = event.target;
-    if (supportOpen && window.matchMedia("(max-width: 900px)").matches && !target.closest("#speaking-scene-support, .speaking-scene-support-toggle")) setSupportOpen(false);
+    if (supportOpen && window.matchMedia("(max-width: 1100px), (max-height: 480px)").matches && !target.closest("#speaking-scene-support, .speaking-scene-support-toggle")) setSupportOpen(false);
     if (transcriptOpen && !target.closest("#speaking-conversation-drawer, .speaking-scene-conversation-toggle")) setTranscriptOpen(false);
   }}>
     <header className="speaking-student-header">
@@ -356,20 +356,21 @@ function SpeakingStudentScreenV2({ statusText, avatarPaused = false, activity, s
           <div className="speaking-partner-message"><div ref={replyContentRef} className="speaking-reply-content" role="region" aria-label={t("Current speaking partner")} tabIndex={0} data-keyboard-input><span className="speaking-card-kicker">{activity.aiRole}</span><p>{partnerText}</p>
             {visibleHelp && <div ref={hintRef} className="speaking-help-response speaking-scene-hint" role="status"><Lightbulb size={24} aria-hidden="true" /><div><strong>{t("Hint")}</strong><p>{visibleHelp.hint}</p>{visibleHelp.english && <span>{visibleHelp.english}</span>}</div><button type="button" className="speaking-icon-button" aria-label={t("Close hint")} onClick={() => { setDismissedHelp(helpResponse); window.requestAnimationFrame(() => helpButtonRef.current?.focus()); }}><X size={20} aria-hidden="true" /></button></div>}
           </div>
-            {supportSettings.allowReplay && <button type="button" className="speaking-icon-button" onClick={() => onReplay?.(currentAiTurn?.text)} disabled={!onReplay || !currentAiTurn || state !== "ready"} aria-label={t("Replay current partner message")}><Volume2 size={25} strokeWidth={1.8} aria-hidden="true" /></button>}
+            {supportSettings.allowReplay && <button type="button" className="speaking-icon-button speaking-replay-button" onClick={() => onReplay?.(currentAiTurn?.text)} disabled={!onReplay || !currentAiTurn || state !== "ready"} aria-label={t("Replay current partner message")}><Volume2 size={25} strokeWidth={1.8} aria-hidden="true" /></button>}
           </div>
         </section>
         <footer className="speaking-student-controls speaking-scene-controls" aria-label={t("Speaking controls")}>
-          {supportSettings.allowReplay && <button className="speaking-scene-utility speaking-replay-button" type="button" onClick={() => onReplay?.(currentAiTurn?.text)} disabled={!onReplay || !currentAiTurn || state !== "ready"} aria-label={t("Replay latest partner message")}><span className="speaking-scene-control-icon"><RotateCcw size={35} strokeWidth={1.7} aria-hidden="true" /></span><span>{t("Replay")}</span></button>}
+          <div className="speaking-scene-control-group">
+          {supportSettings.showTranscript && <button ref={conversationButtonRef} className="speaking-scene-utility speaking-scene-conversation-toggle" type="button" aria-label={t("Conversation") + " " + t("Your conversation so far")} title={t("Your conversation so far")} aria-expanded={transcriptOpen} aria-controls="speaking-conversation-drawer" onClick={() => { setTranscriptOpen((open) => !open); if (window.matchMedia("(max-width: 1100px), (max-height: 480px)").matches) setSupportOpen(false); }}><span className="speaking-scene-control-icon"><MessageCircle size={24} strokeWidth={1.8} aria-hidden="true" /></span><span>{t("Conversation")}</span></button>}
+          </div>
           <div className="speaking-student-mic-wrap"><button className={"speaking-student-mic speaking-student-mic-" + state} type="button" onClick={onMic} disabled={disabled} aria-label={t(micLabel)}>{state === "thinking" ? <LoaderCircle size={62} className="speaking-spin" aria-hidden="true" /> : state === "ai-speaking" || state === "listening" ? <Square size={48} aria-hidden="true" /> : <Mic size={62} strokeWidth={1.65} aria-hidden="true" />}</button><span>{t(micCaption)}</span></div>
+          <div className="speaking-scene-control-group speaking-scene-control-group-end">
           {showContextButton && <button className="speaking-scene-utility speaking-student-context-button" type="button" onClick={(event) => openSupport(event.currentTarget, "context")} disabled={supportDisabled} aria-label={t("Open Context support")}><span className="speaking-scene-control-icon"><MapPinned size={35} strokeWidth={1.8} aria-hidden="true" /></span><span>{t("Context")}</span></button>}
           {showHelpButton && <button ref={helpButtonRef} className="speaking-scene-utility speaking-student-help-button" type="button" onClick={onHelp} disabled={supportDisabled || state !== "ready" || helpLoading} aria-label={t("Ask for a hint")}><span className="speaking-scene-control-icon">{helpLoading ? <LoaderCircle size={35} className="speaking-spin" aria-hidden="true" /> : <Lightbulb size={35} strokeWidth={1.8} aria-hidden="true" />}</span><span>{helpLoading ? t("Getting a hint…") : t("Help")}</span></button>}
+          </div>
           <p className="speaking-student-status" aria-live="polite">{t(helperText)}</p>
         </footer>
         {supportSettings.showTranscript && <>
-          <button ref={conversationButtonRef} className="speaking-scene-conversation-toggle" type="button" aria-expanded={transcriptOpen} aria-controls="speaking-conversation-drawer" onClick={() => { setTranscriptOpen((open) => !open); if (window.matchMedia("(max-width: 900px)").matches) setSupportOpen(false); }}>
-            <MessageCircle size={36} strokeWidth={1.8} aria-hidden="true" /><span><strong>{t("Conversation")}</strong><small>{t("Your conversation so far")}</small></span><ChevronRight size={23} aria-hidden="true" />
-          </button>
           <section id="speaking-conversation-drawer" className="speaking-transcript-card speaking-scene-conversation" hidden={!transcriptOpen} aria-labelledby="speaking-conversation-title">
            <div className="speaking-transcript-heading"><MessageCircle size={26} strokeWidth={1.8} aria-hidden="true" /><div><h2 id="speaking-conversation-title">{t("Conversation")}</h2><span>{turns.length}{" "}{t("turns")}</span></div><button ref={conversationCloseRef} type="button" className="speaking-icon-button" onClick={closeConversation} aria-label={t("Close conversation")}><X size={20} aria-hidden="true" /></button></div>
            {showJumpToLatest && <button type="button" className="speaking-jump-latest" onClick={() => scrollToLatest()}><span>{t("Jump to latest")}</span><ChevronDown size={17} aria-hidden="true" /></button>}

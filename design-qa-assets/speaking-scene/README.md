@@ -2,7 +2,7 @@
 
 Audited on 2026-10-07 in the current GyakutenEigo checkout. Starting commit: `feaad5679cc2bacadeec3cbb8e6fa3c49a94ab24` (`incomplete speakcheck`). The existing immersive design was completed in place.
 
-This is the historical scene-completion report. A subsequent [avatar personality pass](../speaking-avatar-personality/README.md) updates the portrait renderer/behavior and records the latest before/after captures and validation results; preservation statements and counts below describe the earlier scene work.
+This is the historical scene-completion report. A subsequent [avatar personality pass](../speaking-avatar-personality/README.md) updates the portrait renderer/behavior. The [2026-10-09 responsive layout and environment pass](../speaking-responsive/README.md) replaces the oversized controls and adds appropriate backgrounds for all built-in templates. Preservation statements and counts below describe the earlier scene work.
 
 **1. What was incomplete.** Useful English could invoke Replay through `onPhraseClick`; every activity inherited the tourist plaza; overlapping drawer/controls positioning and shrink-wrapped mobile drawers could obstruct the microphone; hints lacked dismissal; focus restoration did not consistently return to the actual invoker; state descriptions were clipped; long replies could cover the partner's face. Unused phrase-button CSS and duplicate intermediate assets remained.
 

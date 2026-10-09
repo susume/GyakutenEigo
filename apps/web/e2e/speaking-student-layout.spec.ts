@@ -150,7 +150,7 @@ test("Useful English phrases and vocabulary cannot activate speech or replay", a
     await page.keyboard.press("Tab");
     expect(await page.evaluate(() => Boolean(document.activeElement?.closest(".speaking-expression-card, .speaking-keywords")))).toBe(false);
   }
-  await page.getByRole("button", { name: "Replay latest partner message" }).click();
+  await page.getByRole("button", { name: "Replay current partner message" }).click();
   await expect(avatar).toHaveAttribute("data-avatar-state", "speaking");
   expect((await calls()).length).toBe(before.length + 1);
   expect((await calls()).at(-1)).toBe(data.turns[0]!.text);
@@ -162,7 +162,7 @@ test("visible scene selection distinguishes tourist, restaurant, custom environm
   });
   const cases = [
     { id: "tourist-scene", resources: { sourceTemplateId: "core-helping-a-tourist" }, src: "/assets/speaking/practice-plaza.webp" },
-    { id: "restaurant-scene", task: SPEAKING_CORE_LIBRARY.find((item) => item.id === "core-ordering-food")!, resources: SPEAKING_CORE_LIBRARY.find((item) => item.id === "core-ordering-food")!.scenarioResources, src: undefined },
+    { id: "restaurant-scene", task: SPEAKING_CORE_LIBRARY.find((item) => item.id === "core-ordering-food")!, resources: SPEAKING_CORE_LIBRARY.find((item) => item.id === "core-ordering-food")!.scenarioResources, src: "/assets/speaking/practice-cafe.webp" },
     { id: "unknown-scene", resources: {}, src: undefined },
     { id: "explicit-scene", resources: { sceneBackground: "/assets/speaking/practice-plaza.webp" }, src: "/assets/speaking/practice-plaza.webp" },
     { id: "broken-scene", resources: { sceneBackground: "/assets/speaking/missing-environment.webp" }, src: undefined }
@@ -182,7 +182,7 @@ test("visible scene selection distinguishes tourist, restaurant, custom environm
     await expect(page.getByRole("button", { name: "Open Context support" })).toBeVisible();
     if (scenario.id === "restaurant-scene") {
       await expect(page.locator(".speaking-avatar")).toHaveAttribute("data-avatar-status", "ready", { timeout: 20_000 });
-      await page.screenshot({ path: testInfo.outputPath("final-neutral-restaurant.jpg"), type: "jpeg", quality: 85 });
+      await page.screenshot({ path: testInfo.outputPath("final-cafe-restaurant.jpg"), type: "jpeg", quality: 85 });
     }
   }
 });
@@ -210,7 +210,7 @@ test("scene drawers, hints, long dialogue and primary controls remain usable acr
   for (const viewport of [
     { width: 1920, height: 1080 }, { width: 1366, height: 768 }, { width: 1280, height: 720 },
     { width: 1024, height: 768 }, { width: 768, height: 1024 }, { width: 390, height: 844 },
-    { width: 360, height: 800 }, { width: 1366, height: 600 }
+    { width: 360, height: 800 }, { width: 320, height: 568 }, { width: 844, height: 390 }, { width: 1366, height: 600 }
   ]) {
     await page.setViewportSize(viewport);
     await page.goto(`${baseUrl}/speak/session/${id}`);
@@ -245,7 +245,7 @@ test("scene drawers, hints, long dialogue and primary controls remain usable acr
     await expect(page.locator(".speaking-scene-conversation")).toContainText(data.turns[0]!.text);
     await page.keyboard.press("Escape");
     await expect(page.getByRole("button", { name: "Conversation Your conversation so far", exact: true })).toBeFocused();
-    if (viewport.width <= 900) {
+    if (viewport.width <= 1100 || viewport.height <= 480) {
       await page.getByRole("button", { name: "Open support panel" }).click();
       await page.getByRole("button", { name: "Conversation Your conversation so far", exact: true }).click();
       await expect(page.locator(".speaking-student-sidebar")).toBeHidden();
@@ -266,10 +266,12 @@ test("scene drawers, hints, long dialogue and primary controls remain usable acr
     await expect(page.locator(".speaking-partner-message p")).toHaveText(data.turns[0]!.text.trim());
     await expect(page.locator(".speaking-avatar")).toHaveAttribute("data-avatar-status", "ready", { timeout: 20_000 });
     if (await page.locator(".speaking-student-sidebar").isVisible()) await page.getByRole("button", { name: "Close support panel" }).click();
-    const sceneBounds = await page.locator(".speaking-scene").boundingBox();
     const replyBounds = await page.locator(".speaking-scene-reply").boundingBox();
     expect(replyBounds, "Long messages must use the same card dimensions and position").toEqual(shortReplyBounds);
-    expect(replyBounds!.y, "Long replies must leave the upper portrait area visible").toBeGreaterThanOrEqual(sceneBounds!.y + sceneBounds!.height / 3);
+    const avatarBounds = await page.locator(".speaking-scene-avatar").boundingBox();
+    expect(avatarBounds!.height, "Long replies must preserve room for the portrait").toBeGreaterThan(80);
+    if (viewport.height > 480) expect(replyBounds!.y, "Portrait and dialogue must not overlap").toBeGreaterThanOrEqual(avatarBounds!.y + avatarBounds!.height);
+    else expect(replyBounds!.x, "Short landscape screens place dialogue beside the portrait").toBeGreaterThanOrEqual(avatarBounds!.x + avatarBounds!.width);
     const content = page.getByRole("region", { name: "Current speaking partner", exact: true });
     const replay = page.getByRole("button", { name: "Replay current partner message", exact: true });
     const replayBounds = await replay.boundingBox();
@@ -412,7 +414,7 @@ for (const failure of ["missing-model", "invalid-model", "unavailable-webgl"] as
     await page.evaluate(() => window.dispatchEvent(new Event("speaking-test-tts-end")));
     await expect(avatar).toHaveAttribute("data-avatar-state", "idle");
     await expect(page.getByRole("button", { name: "Tap to speak", exact: true })).toBeEnabled();
-    await page.getByRole("button", { name: "Replay latest partner message" }).click();
+    await page.getByRole("button", { name: "Replay current partner message" }).click();
     await expect(avatar).toHaveAttribute("data-avatar-state", "speaking");
     await page.getByRole("button", { name: "Stop playback", exact: true }).click();
     await expect(avatar).toHaveAttribute("data-avatar-state", "idle");
@@ -607,14 +609,14 @@ test("portrait personality stays responsive through real avatar conversation sta
       await capture("speaking");
       await page.evaluate(() => window.dispatchEvent(new Event("speaking-test-tts-end")));
       await expect(avatar).toHaveAttribute("data-avatar-state", "idle");
-      await page.getByRole("button", { name: "Replay latest partner message" }).click();
+      await page.getByRole("button", { name: "Replay current partner message" }).click();
       await expect(avatar).toHaveAttribute("data-avatar-state", "speaking");
       await page.getByRole("button", { name: "Stop playback", exact: true }).click();
       await expect(avatar).toHaveAttribute("data-avatar-state", "idle");
     }
     expect(await avatar.locator("canvas").evaluate((element, original) => element === original, canvas)).toBe(true);
     await expect(page.locator("canvas")).toHaveCount(1);
-    if (viewport.width > 900) {
+    if (viewport.width > 1100) {
       await page.getByRole("button", { name: "Close support panel" }).click();
       await expect(avatar).toHaveAttribute("data-avatar-status", "ready");
       await expectReachable(page, "Tap to speak");
@@ -740,7 +742,7 @@ test("bundled VRM renders real facial animation through the student speech lifec
   await writeFile(performancePath, JSON.stringify({ fps, ...await readProbe() }, null, 2));
   await testInfo.attach("real-vrm-performance", { path: performancePath, contentType: "application/json" });
 
-  await page.getByRole("button", { name: "Replay latest partner message" }).click();
+  await page.getByRole("button", { name: "Replay current partner message" }).click();
   await expect(avatar).toHaveAttribute("data-avatar-state", "speaking");
   await expect.poll(async () => Math.max(...(await readProbe()).mouth)).toBeGreaterThan(0.15);
   await page.getByRole("button", { name: "Stop playback", exact: true }).click();
@@ -853,7 +855,7 @@ test("bundled VRM follows native browser SpeechSynthesis replay, end and cancell
   if (await stop.isVisible()) await stop.click();
   await expect(avatar).toHaveAttribute("data-avatar-state", "idle");
   const starts = await page.evaluate(() => (window as unknown as { nativeSpeechEvents: { started: number } }).nativeSpeechEvents.started);
-  await page.getByRole("button", { name: "Replay latest partner message" }).click();
+  await page.getByRole("button", { name: "Replay current partner message" }).click();
   await expect.poll(() => page.evaluate(() => (window as unknown as { nativeSpeechEvents: { started: number } }).nativeSpeechEvents.started)).toBeGreaterThan(starts);
   await expect(avatar).toHaveAttribute("data-avatar-state", "speaking");
   await expect.poll(() => page.evaluate(() => Math.max(...(window as unknown as { avatarProbe: AvatarProbe }).avatarProbe.mouth))).toBeGreaterThan(0.15);
@@ -862,7 +864,7 @@ test("bundled VRM follows native browser SpeechSynthesis replay, end and cancell
   await expect(avatar).toHaveAttribute("data-avatar-state", "idle", { timeout: 20_000 });
   await expect.poll(() => page.evaluate(() => Math.max(...(window as unknown as { avatarProbe: AvatarProbe }).avatarProbe.mouth))).toBeLessThan(0.01);
   expect(await page.evaluate(() => (window as unknown as { nativeSpeechEvents: { ended: number } }).nativeSpeechEvents.ended)).toBeGreaterThan(0);
-  await page.getByRole("button", { name: "Replay latest partner message" }).click();
+  await page.getByRole("button", { name: "Replay current partner message" }).click();
   await expect(avatar).toHaveAttribute("data-avatar-state", "speaking");
   await stop.click();
   await expect(avatar).toHaveAttribute("data-avatar-state", "idle");
