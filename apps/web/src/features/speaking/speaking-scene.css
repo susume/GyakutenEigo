@@ -7,10 +7,11 @@
   font-display: swap;
 }
 .speaking-app .speaking-session-main:has(.speaking-scene-screen) { height: 100dvh; min-height: 0; overflow: hidden; background: #f7f9fc; }
+.speaking-app .speaking-session-main:has(.speaking-scene-screen) > .speaking-session-alert button { min-width: 44px; min-height: 44px !important; }
 .speaking-app .speaking-scene-screen {
   --student-blue: #1164da;
   --student-navy: #142f67;
-  --scene-support-width: 320px;
+  --scene-support-width: clamp(280px, 28vw, 320px);
   --scene-reply-height: 128px;
   display: flex; flex-direction: column; flex: 1 1 auto;
   min-height: 0; height: auto; overflow: hidden; background: #f7f9fc;
@@ -35,25 +36,28 @@
 .speaking-app .speaking-scene-screen .speaking-student-timer button { min-width: 112px; min-height: 44px !important; padding: 0 16px; font-size: 15px; font-weight: 800; border-radius: 12px; }
 .speaking-app .speaking-scene-screen .speaking-scene {
   position: relative; isolation: isolate; flex: 1 1 auto;
-  display: grid; grid-template-columns: minmax(0, 1fr) var(--scene-support-width); grid-template-rows: minmax(0, 1fr); grid-template-areas: "center sidebar";
+  display: grid; grid-template-columns: minmax(0, 1fr); grid-template-rows: minmax(0, 1fr); grid-template-areas: "center";
   gap: 20px; width: 100%; max-width: none; min-height: 0; height: auto; margin: 0; padding: 20px;
-  overflow: hidden; border-radius: 0;
+  /* The scaled background must not create a scroll offset when a control is focused. */
+  overflow: clip; border-radius: 0;
   background: radial-gradient(ellipse at 50% 38%, #fffaf2 0%, #eef5fc 48%, #dce9f6 100%);
 }
 .speaking-scene-background { position: absolute; inset: 0; z-index: -1; width: 100%; height: 100%; object-fit: cover; object-position: center; filter: blur(2px) saturate(.8); opacity: .85; transform: scale(1.015); }
-.speaking-app .speaking-scene-screen .speaking-scene.is-support-collapsed,
-.speaking-app .speaking-scene-screen .speaking-scene.no-support-panel { grid-template-columns: minmax(0, 1fr); grid-template-areas: "center"; }
 .speaking-app .speaking-scene-screen .speaking-scene-stage {
-  position: relative; display: grid; grid-template-columns: minmax(0, 1fr); grid-template-rows: minmax(0, 1fr) var(--scene-reply-height) auto;
+  position: relative; display: grid; grid-template-columns: minmax(0, 1fr) var(--scene-support-width); grid-template-rows: minmax(0, 1fr) var(--scene-reply-height) auto;
+  grid-template-areas: "portrait sidebar" "reply sidebar" "controls sidebar";
   align-items: stretch; justify-items: center; gap: 12px; min-width: 0; min-height: 0; height: 100%; overflow: visible; padding: 0;
 }
-.speaking-app .speaking-scene-screen .is-support-collapsed .speaking-scene-stage { padding-top: 42px; }
+.speaking-app .speaking-scene-screen :is(.is-support-collapsed, .no-support-panel) .speaking-scene-stage { grid-template-columns: minmax(0, 1fr); grid-template-areas: "portrait" "reply" "controls"; }
+.speaking-app .speaking-scene-screen .is-support-collapsed .speaking-scene-stage { padding-top: 52px; }
 .speaking-app .speaking-scene-screen .no-support-panel .speaking-scene-stage { padding-top: 0; }
 .speaking-app .speaking-scene-screen .speaking-scene-avatar {
+  grid-area: portrait;
   position: relative; top: auto; left: auto; width: min(640px, 100%); height: 100%; min-height: 0; transform: none;
   background: transparent; pointer-events: none; mask-image: linear-gradient(#000 88%, transparent 100%);
 }
 .speaking-app .speaking-scene-screen .speaking-scene-reply {
+  grid-area: reply;
   position: relative; left: auto; bottom: auto; transform: none; display: block;
   width: min(740px, 100%); height: var(--scene-reply-height); min-height: 0; max-height: none; margin: 0; padding: 0;
   overflow: hidden; border: 1px solid #ffffffaa; border-radius: 20px; background: #fffffff5; box-shadow: 0 8px 24px #253a5f12;
@@ -64,6 +68,7 @@
 .speaking-app .speaking-scene-screen .speaking-partner-message p { margin: 0; color: var(--student-navy); font-size: clamp(18px, 1.4vw, 23px); font-weight: 750; line-height: 1.45; letter-spacing: -.015em; overflow-wrap: anywhere; }
 .speaking-app .speaking-scene-screen .speaking-partner-message .speaking-icon-button { width: 44px; height: 44px; min-height: 44px !important; border: 1px solid #e2e9f3; border-radius: 12px; color: #416897; background: #f8faff; box-shadow: none; }
 .speaking-app .speaking-scene-screen .speaking-scene-controls {
+  grid-area: controls;
   position: relative; left: auto; bottom: auto; transform: none;
   display: grid; grid-template-columns: minmax(0, 1fr) 128px minmax(0, 1fr); align-items: center; justify-content: normal;
   gap: 4px 12px; width: min(740px, 100%); max-width: 100%; min-height: 0; height: auto; padding: 10px 20px 8px;
@@ -73,9 +78,9 @@
 .speaking-scene-control-group-end { justify-content: flex-end; }
 .speaking-app .speaking-scene-screen .speaking-scene-utility {
   position: static; display: flex; flex-direction: column; flex: 0 0 auto; align-items: center; justify-content: center; align-self: center;
-  gap: 4px; width: auto; max-width: none; min-width: 44px; min-height: 44px !important; margin: 0; padding: 0;
+  gap: 4px; width: auto; max-width: 96px; min-width: 44px; min-height: 44px !important; margin: 0; padding: 0;
   border: 0 !important; border-radius: 10px; color: #456289 !important; background: transparent !important; box-shadow: none !important;
-  font-size: 12px; font-weight: 700; text-align: center;
+  font-size: 13px; font-weight: 700; text-align: center;
 }
 .speaking-app .speaking-scene-screen .speaking-scene-utility > span:last-child { text-align: center; line-height: 1.2; }
 .speaking-scene-control-icon { display: grid; place-items: center; width: 44px; height: 44px; border: 1px solid #e2e9f3; border-radius: 12px; color: #2966aa; background: #f8faff; box-shadow: none; }
@@ -85,13 +90,15 @@
 .speaking-app .speaking-scene-screen .speaking-student-mic-wrap { display: flex; flex-direction: column; flex: 0 0 auto; align-items: center; justify-content: center; gap: 4px; align-self: center; width: 128px; }
 .speaking-app .speaking-scene-screen .speaking-student-mic { display: grid; place-items: center; width: 60px; height: 60px; min-height: 60px !important; padding: 0; border: 3px solid #e8f3ff !important; border-radius: 50%; outline: none; background: #1476ff !important; box-shadow: 0 3px 10px #1476ff24 !important; }
 .speaking-app .speaking-scene-screen .speaking-student-mic svg { width: 28px; height: 28px; }
-.speaking-app .speaking-scene-screen .speaking-student-mic-wrap > span { color: #284f83; font-size: 13px; font-weight: 800; line-height: 1.2; }
+.speaking-app .speaking-scene-screen .speaking-student-mic-wrap > span { display: flex; align-items: center; justify-content: center; width: 100%; height: 34px; color: #284f83; font-size: 14px; font-weight: 800; line-height: 1.2; text-align: center; }
 .speaking-app .speaking-scene-screen .speaking-student-mic-listening { background: #087e72 !important; border-color: #c8eee8 !important; }
 .speaking-app .speaking-scene-screen .speaking-student-mic-thinking { background: #6488c2 !important; }
 .speaking-app .speaking-scene-screen .speaking-student-mic-ai-speaking { background: #365ca3 !important; }
 .speaking-app .speaking-scene-screen .speaking-student-mic:disabled { background: #8393aa !important; opacity: .65; cursor: not-allowed; box-shadow: none !important; }
-.speaking-app .speaking-scene-screen .speaking-student-status { position: static; grid-column: 1 / -1; width: 100%; min-height: 18px; margin: 0; color: #4e6585; font-size: 12px; line-height: 1.4; font-weight: 600; text-align: center; }
-.speaking-app .speaking-scene-screen .speaking-scene-conversation { position: absolute; z-index: 5; left: 0; top: 52px; bottom: 128px; width: min(440px, 100%); height: auto; max-height: 520px; min-height: 0; margin: 0; border: 1px solid #dfe8f4; border-radius: 18px; background: #fffffff7; box-shadow: 0 16px 48px #1b355b26; overflow: hidden; }
+/* Keep the repeated status announcement accessible without a visible subtitle row. */
+.speaking-app .speaking-scene-screen .speaking-student-status { position: absolute; top: 0; left: 0; width: 1px; height: 1px; min-height: 0; margin: -1px; padding: 0; overflow: hidden; clip: rect(0, 0, 0, 0); clip-path: inset(50%); white-space: nowrap; border: 0; }
+/* Drawers share the portrait's grid cell so neither dialogue nor controls can be covered. */
+.speaking-app .speaking-scene-screen .speaking-scene-conversation { grid-area: portrait; position: relative; z-index: 5; left: auto; top: auto; bottom: auto; justify-self: start; align-self: stretch; width: min(440px, 100%); height: 100%; max-height: none; min-height: 0; margin: 0; border: 1px solid #dfe8f4; border-radius: 18px; background: #fffffff7; box-shadow: 0 16px 48px #1b355b26; overflow: hidden; }
 .speaking-app .speaking-scene-screen .speaking-scene-conversation[hidden],
 .speaking-app .speaking-scene-screen .speaking-student-sidebar[hidden] { display: none; }
 .speaking-app .speaking-scene-screen .speaking-transcript-heading { grid-template-columns: 24px minmax(0, 1fr) 44px; padding: 10px 14px; }
@@ -120,7 +127,7 @@
 .speaking-useful-callout strong { display: block; color: #142f67; font-weight: 800; }
 .speaking-app .speaking-scene-screen .has-reference-sheet .speaking-context-panel-content { flex: 0 0 auto; height: auto; }
 .speaking-app .speaking-scene-screen .speaking-support-tabpanel-context { overflow-y: auto; }
-.speaking-app .speaking-scene-screen .speaking-scene-support-toggle { position: absolute; z-index: 3; top: 16px; right: 20px; display: flex; align-items: center; justify-content: center; gap: 8px; width: auto; min-height: 44px !important; padding: 8px 12px; border: 1px solid #dfe8f4; border-radius: 12px; color: #284f83; background: #fffffff5; box-shadow: 0 4px 16px #274a7e08; font-size: 13px; font-weight: 800; }
+.speaking-app .speaking-scene-screen .speaking-scene-support-toggle { position: absolute; z-index: 3; top: 0; right: 0; display: flex; align-items: center; justify-content: center; gap: 8px; width: auto; min-height: 44px !important; padding: 8px 12px; border: 1px solid #dfe8f4; border-radius: 12px; color: #284f83; background: #fffffff5; box-shadow: 0 4px 16px #274a7e08; font-size: 13px; font-weight: 800; }
 .speaking-app .speaking-scene-screen .speaking-scene-support-toggle[aria-expanded="true"] { display: none; }
 .speaking-app .speaking-scene-screen .speaking-scene-hint { position: relative; display: flex; align-items: start; gap: 8px; margin: 12px 0 0; padding: 12px 0; border: 0; border-top: 1px solid #f6e5be; border-radius: 0; background: #fffcf4; }
 .speaking-app .speaking-scene-screen .speaking-scene-hint > div { flex: 1; min-width: 0; overflow-wrap: anywhere; }
@@ -132,9 +139,16 @@
 @media (min-width: 1600px) { .speaking-app .speaking-scene-screen { --scene-support-width: 340px; } }
 @media (max-width: 1100px) {
   .speaking-app .speaking-scene-screen .speaking-student-progress { display: none; }
-  .speaking-app .speaking-scene-screen .speaking-scene { grid-template-columns: minmax(0, 1fr); grid-template-areas: "center"; padding: 16px; }
-  .speaking-app .speaking-scene-screen .speaking-student-sidebar { grid-area: auto; position: absolute; z-index: 6; top: 12px; right: 12px; bottom: 148px; width: min(360px, calc(100% - 24px)); height: calc(100% - 160px); border-radius: 18px; box-shadow: 0 16px 48px #1b355b26; }
-  .speaking-app .speaking-scene-screen .speaking-scene-support-toggle { top: 12px; right: 16px; }
+  .speaking-app .speaking-scene-screen .speaking-scene { padding: 16px; }
+}
+@media (max-width: 959px), (max-height: 480px) {
+  .speaking-app .speaking-scene-screen .speaking-scene-stage { grid-template-columns: minmax(0, 1fr); grid-template-areas: "portrait" "reply" "controls"; }
+  .speaking-app .speaking-scene-screen .speaking-student-sidebar { grid-area: portrait; z-index: 6; justify-self: end; align-self: stretch; width: min(360px, 100%); height: 100%; border-radius: 18px; box-shadow: 0 16px 48px #1b355b26; }
+}
+/* Portrait school tablets have room for a partner and support in the top row. */
+@media (min-width: 700px) and (max-width: 959px) and (min-height: 481px) {
+  .speaking-app .speaking-scene-screen .speaking-scene-stage { grid-template-columns: minmax(0, 1fr) min(360px, 48%); grid-template-areas: "portrait sidebar" "reply reply" "controls controls"; }
+  .speaking-app .speaking-scene-screen .speaking-student-sidebar { grid-area: sidebar; width: 100%; }
 }
 @media (max-height: 640px) {
   .speaking-app .speaking-scene-screen { --scene-reply-height: 104px; }
@@ -166,22 +180,19 @@
   .speaking-app .speaking-scene-screen .speaking-partner-message p { font-size: 18px; }
   .speaking-app .speaking-scene-screen .speaking-scene-controls { grid-template-columns: minmax(0, 1fr) 96px minmax(0, 1fr); gap: 4px; padding: 8px; border-radius: 16px; }
   .speaking-scene-control-group { gap: 4px; }
-  .speaking-app .speaking-scene-screen .speaking-scene-utility > span:last-child { display: block; font-size: 10px; line-height: 1.2; }
+  .speaking-app .speaking-scene-screen .speaking-scene-utility { width: 44px; max-width: 44px; }
+  .speaking-app .speaking-scene-screen .speaking-scene-utility > span:last-child { display: block; max-width: 44px; font-size: 10px; line-height: 1.2; overflow-wrap: anywhere; }
   .speaking-app .speaking-scene-screen .speaking-student-mic-wrap { width: 96px; }
   .speaking-app .speaking-scene-screen .speaking-student-mic { width: 56px; height: 56px; min-height: 56px !important; }
   .speaking-app .speaking-scene-screen .speaking-student-mic-wrap > span { font-size: 12px; }
-  .speaking-app .speaking-scene-screen .speaking-student-status { font-size: 11px; }
-  .speaking-app .speaking-scene-screen .speaking-scene-conversation { top: 52px; bottom: 128px; width: 100%; }
-  .speaking-app .speaking-scene-screen .speaking-student-sidebar { top: 10px; right: 10px; bottom: 134px; width: calc(100% - 20px); height: calc(100% - 144px); }
-  .speaking-app .speaking-scene-screen .speaking-scene-support-toggle { top: 10px; right: 10px; }
+  .speaking-app .speaking-scene-screen .speaking-scene-conversation,
+  .speaking-app .speaking-scene-screen .speaking-student-sidebar { width: 100%; }
 }
 @media (max-width: 600px) and (max-height: 640px) { .speaking-app .speaking-scene-screen { --scene-reply-height: 112px; } }
 @media (min-width: 601px) and (max-height: 480px) {
-  .speaking-app .speaking-scene-screen .speaking-scene { grid-template-columns: minmax(0, 1fr); grid-template-areas: "center"; padding: 10px; }
-  .speaking-app .speaking-scene-screen .speaking-scene-stage { grid-template-columns: minmax(0, 1fr) minmax(0, 1fr); grid-template-rows: minmax(0, 1fr) auto; }
+  .speaking-app .speaking-scene-screen .speaking-scene { padding: 10px; }
+  .speaking-app .speaking-scene-screen .speaking-scene-stage,
+  .speaking-app .speaking-scene-screen :is(.is-support-collapsed, .no-support-panel) .speaking-scene-stage { grid-template-columns: minmax(0, 1fr) minmax(0, 1fr); grid-template-rows: minmax(0, 1fr) auto; grid-template-areas: "portrait reply" "controls controls"; }
   .speaking-app .speaking-scene-screen .is-support-collapsed .speaking-scene-stage { padding-top: 0; }
-  .speaking-app .speaking-scene-screen .speaking-scene-avatar { grid-column: 1; grid-row: 1; }
-  .speaking-app .speaking-scene-screen .speaking-scene-reply { grid-column: 2; grid-row: 1; height: 100%; margin-top: 44px; max-height: calc(100% - 44px); }
-  .speaking-app .speaking-scene-screen .speaking-scene-controls { grid-column: 1 / -1; grid-row: 2; }
-  .speaking-app .speaking-scene-screen .speaking-student-sidebar { grid-area: auto; position: absolute; z-index: 6; top: 10px; right: 10px; bottom: 128px; width: min(360px, calc(100% - 20px)); height: calc(100% - 138px); }
+  .speaking-app .speaking-scene-screen .speaking-scene-reply { height: 100%; margin-top: 44px; max-height: calc(100% - 44px); }
 }

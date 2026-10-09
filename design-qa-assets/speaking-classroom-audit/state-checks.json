@@ -1,0 +1,758 @@
+{
+  "idle": {
+    "avatar": {
+      "bottom": 342.6607360839844,
+      "height": 274.6607360839844,
+      "left": 44.642860412597656,
+      "right": 684.6428604125977,
+      "top": 68,
+      "width": 640
+    },
+    "avatarStatus": "loading",
+    "backgroundLoaded": true,
+    "canvasCount": 1,
+    "controls": {
+      "bottom": 588.0000305175781,
+      "height": 125.33929443359376,
+      "left": 12.000000953674316,
+      "right": 717.2857675552368,
+      "top": 462.6607360839844,
+      "width": 705.2857666015625
+    },
+    "focus": "\n    PracticeOrdering Food4:00 leftFinis",
+    "history": null,
+    "historyClear": true,
+    "mic": {
+      "bottom": 521.2321815490723,
+      "height": 52.000003814697266,
+      "left": 338.64288330078125,
+      "right": 390.6428871154785,
+      "top": 469.232177734375,
+      "width": 52.000003814697266
+    },
+    "overflow": false,
+    "reply": {
+      "bottom": 454.6607437133789,
+      "height": 104.00000762939452,
+      "left": 12.000000953674316,
+      "right": 717.2857675552368,
+      "top": 350.6607360839844,
+      "width": 705.2857666015625
+    },
+    "support": {
+      "bottom": 588,
+      "height": 520,
+      "left": 725.2857666015625,
+      "right": 1012.0000610351562,
+      "top": 68,
+      "width": 286.71429443359375
+    },
+    "supportClear": true,
+    "targets": [
+      {
+        "height": 44.000003814697266,
+        "inViewport": true,
+        "name": "GyakutenEigo Speaking Tasks home",
+        "uncovered": true,
+        "width": 44.000003814697266
+      },
+      {
+        "height": 44.000003814697266,
+        "inViewport": true,
+        "name": "Finish practice",
+        "uncovered": true,
+        "width": 134.15179443359375
+      },
+      {
+        "height": 44.000003814697266,
+        "inViewport": true,
+        "name": "Replay current partner message",
+        "uncovered": true,
+        "width": 44.000003814697266
+      },
+      {
+        "height": 63.59821701049805,
+        "inViewport": true,
+        "name": "Conversation Your conversation so far",
+        "uncovered": true,
+        "width": 79.05357360839844
+      },
+      {
+        "height": 52.000003814697266,
+        "inViewport": true,
+        "name": "Tap to speak",
+        "uncovered": true,
+        "width": 52.000003814697266
+      },
+      {
+        "height": 63.59821701049805,
+        "inViewport": true,
+        "name": "Open Context support",
+        "uncovered": true,
+        "width": 47.49107360839844
+      },
+      {
+        "height": 63.59821701049805,
+        "inViewport": true,
+        "name": "Ask for a hint",
+        "uncovered": true,
+        "width": 44.000003814697266
+      },
+      {
+        "height": 44.000003814697266,
+        "inViewport": true,
+        "name": "Close support panel",
+        "uncovered": true,
+        "width": 44.000003814697266
+      },
+      {
+        "height": 48.000003814697266,
+        "inViewport": true,
+        "name": "Useful English",
+        "uncovered": true,
+        "width": 126.21429443359376
+      },
+      {
+        "height": 48.000003814697266,
+        "inViewport": true,
+        "name": "Context",
+        "uncovered": true,
+        "width": 126.21429443359376
+      }
+    ],
+    "viewport": [
+      1024,
+      600
+    ]
+  },
+  "listening": {
+    "avatar": {
+      "bottom": 342.6607360839844,
+      "height": 274.6607360839844,
+      "left": 44.642860412597656,
+      "right": 684.6428604125977,
+      "top": 68,
+      "width": 640
+    },
+    "avatarStatus": "ready",
+    "backgroundLoaded": true,
+    "canvasCount": 1,
+    "controls": {
+      "bottom": 588.0000305175781,
+      "height": 125.33929443359376,
+      "left": 12.000000953674316,
+      "right": 717.2857675552368,
+      "top": 462.6607360839844,
+      "width": 705.2857666015625
+    },
+    "focus": "Stop speaking",
+    "history": null,
+    "historyClear": true,
+    "mic": {
+      "bottom": 521.2321815490723,
+      "height": 52.000003814697266,
+      "left": 338.64288330078125,
+      "right": 390.6428871154785,
+      "top": 469.232177734375,
+      "width": 52.000003814697266
+    },
+    "overflow": false,
+    "reply": {
+      "bottom": 454.6607437133789,
+      "height": 104.00000762939452,
+      "left": 12.000000953674316,
+      "right": 717.2857675552368,
+      "top": 350.6607360839844,
+      "width": 705.2857666015625
+    },
+    "support": {
+      "bottom": 588,
+      "height": 520,
+      "left": 725.2857666015625,
+      "right": 1012.0000610351562,
+      "top": 68,
+      "width": 286.71429443359375
+    },
+    "supportClear": true,
+    "targets": [
+      {
+        "height": 44.000003814697266,
+        "inViewport": true,
+        "name": "GyakutenEigo Speaking Tasks home",
+        "uncovered": true,
+        "width": 44.000003814697266
+      },
+      {
+        "height": 44.000003814697266,
+        "inViewport": true,
+        "name": "Finish practice",
+        "uncovered": true,
+        "width": 134.15179443359375
+      },
+      {
+        "height": 44.000003814697266,
+        "inViewport": true,
+        "name": "Replay current partner message",
+        "uncovered": true,
+        "width": 44.000003814697266
+      },
+      {
+        "height": 63.59821701049805,
+        "inViewport": true,
+        "name": "Conversation Your conversation so far",
+        "uncovered": true,
+        "width": 79.05357360839844
+      },
+      {
+        "height": 52.000003814697266,
+        "inViewport": true,
+        "name": "Stop speaking",
+        "uncovered": true,
+        "width": 52.000003814697266
+      },
+      {
+        "height": 63.59821701049805,
+        "inViewport": true,
+        "name": "Open Context support",
+        "uncovered": true,
+        "width": 47.49107360839844
+      },
+      {
+        "height": 63.59821701049805,
+        "inViewport": true,
+        "name": "Ask for a hint",
+        "uncovered": true,
+        "width": 44.000003814697266
+      },
+      {
+        "height": 44.000003814697266,
+        "inViewport": true,
+        "name": "Close support panel",
+        "uncovered": true,
+        "width": 44.000003814697266
+      },
+      {
+        "height": 48.000003814697266,
+        "inViewport": true,
+        "name": "Useful English",
+        "uncovered": true,
+        "width": 126.21429443359376
+      },
+      {
+        "height": 48.000003814697266,
+        "inViewport": true,
+        "name": "Context",
+        "uncovered": true,
+        "width": 126.21429443359376
+      }
+    ],
+    "viewport": [
+      1024,
+      600
+    ]
+  },
+  "thinking": {
+    "avatar": {
+      "bottom": 342.6607360839844,
+      "height": 274.6607360839844,
+      "left": 44.642860412597656,
+      "right": 684.6428604125977,
+      "top": 68,
+      "width": 640
+    },
+    "avatarStatus": "ready",
+    "backgroundLoaded": true,
+    "canvasCount": 1,
+    "controls": {
+      "bottom": 588.0000305175781,
+      "height": 125.33929443359376,
+      "left": 12.000000953674316,
+      "right": 717.2857675552368,
+      "top": 462.6607360839844,
+      "width": 705.2857666015625
+    },
+    "focus": "\n    PracticeOrdering Food4:00 leftFinis",
+    "history": null,
+    "historyClear": true,
+    "mic": {
+      "bottom": 521.2321815490723,
+      "height": 52.000003814697266,
+      "left": 338.64288330078125,
+      "right": 390.6428871154785,
+      "top": 469.232177734375,
+      "width": 52.000003814697266
+    },
+    "overflow": false,
+    "reply": {
+      "bottom": 454.6607437133789,
+      "height": 104.00000762939452,
+      "left": 12.000000953674316,
+      "right": 717.2857675552368,
+      "top": 350.6607360839844,
+      "width": 705.2857666015625
+    },
+    "support": {
+      "bottom": 588,
+      "height": 520,
+      "left": 725.2857666015625,
+      "right": 1012.0000610351562,
+      "top": 68,
+      "width": 286.71429443359375
+    },
+    "supportClear": true,
+    "targets": [
+      {
+        "height": 44.000003814697266,
+        "inViewport": true,
+        "name": "GyakutenEigo Speaking Tasks home",
+        "uncovered": true,
+        "width": 44.000003814697266
+      },
+      {
+        "height": 44.000003814697266,
+        "inViewport": true,
+        "name": "Finish practice",
+        "uncovered": true,
+        "width": 134.15179443359375
+      },
+      {
+        "height": 44.000003814697266,
+        "inViewport": true,
+        "name": "Replay current partner message",
+        "uncovered": true,
+        "width": 44.000003814697266
+      },
+      {
+        "height": 63.59821701049805,
+        "inViewport": true,
+        "name": "Conversation Your conversation so far",
+        "uncovered": true,
+        "width": 79.05357360839844
+      },
+      {
+        "height": 52.000003814697266,
+        "inViewport": true,
+        "name": "Processing your answer",
+        "uncovered": true,
+        "width": 52.000003814697266
+      },
+      {
+        "height": 63.59821701049805,
+        "inViewport": true,
+        "name": "Open Context support",
+        "uncovered": true,
+        "width": 47.49107360839844
+      },
+      {
+        "height": 63.59821701049805,
+        "inViewport": true,
+        "name": "Ask for a hint",
+        "uncovered": true,
+        "width": 44.000003814697266
+      },
+      {
+        "height": 44.000003814697266,
+        "inViewport": true,
+        "name": "Close support panel",
+        "uncovered": true,
+        "width": 44.000003814697266
+      },
+      {
+        "height": 48.000003814697266,
+        "inViewport": true,
+        "name": "Useful English",
+        "uncovered": true,
+        "width": 126.21429443359376
+      },
+      {
+        "height": 48.000003814697266,
+        "inViewport": true,
+        "name": "Context",
+        "uncovered": true,
+        "width": 126.21429443359376
+      }
+    ],
+    "viewport": [
+      1024,
+      600
+    ]
+  },
+  "speaking": {
+    "avatar": {
+      "bottom": 342.6607360839844,
+      "height": 274.6607360839844,
+      "left": 44.642860412597656,
+      "right": 684.6428604125977,
+      "top": 68,
+      "width": 640
+    },
+    "avatarStatus": "ready",
+    "backgroundLoaded": true,
+    "canvasCount": 1,
+    "controls": {
+      "bottom": 588.0000305175781,
+      "height": 125.33929443359376,
+      "left": 12.000000953674316,
+      "right": 717.2857675552368,
+      "top": 462.6607360839844,
+      "width": 705.2857666015625
+    },
+    "focus": "\n    PracticeOrdering Food4:00 leftFinis",
+    "history": null,
+    "historyClear": true,
+    "mic": {
+      "bottom": 521.2321815490723,
+      "height": 52.000003814697266,
+      "left": 338.64288330078125,
+      "right": 390.6428871154785,
+      "top": 469.232177734375,
+      "width": 52.000003814697266
+    },
+    "overflow": false,
+    "reply": {
+      "bottom": 454.6607437133789,
+      "height": 104.00000762939452,
+      "left": 12.000000953674316,
+      "right": 717.2857675552368,
+      "top": 350.6607360839844,
+      "width": 705.2857666015625
+    },
+    "support": {
+      "bottom": 588,
+      "height": 520,
+      "left": 725.2857666015625,
+      "right": 1012.0000610351562,
+      "top": 68,
+      "width": 286.71429443359375
+    },
+    "supportClear": true,
+    "targets": [
+      {
+        "height": 44.000003814697266,
+        "inViewport": true,
+        "name": "GyakutenEigo Speaking Tasks home",
+        "uncovered": true,
+        "width": 44.000003814697266
+      },
+      {
+        "height": 44.000003814697266,
+        "inViewport": true,
+        "name": "Finish practice",
+        "uncovered": true,
+        "width": 134.15179443359375
+      },
+      {
+        "height": 44.000003814697266,
+        "inViewport": true,
+        "name": "Replay current partner message",
+        "uncovered": true,
+        "width": 44.000003814697266
+      },
+      {
+        "height": 63.59821701049805,
+        "inViewport": true,
+        "name": "Conversation Your conversation so far",
+        "uncovered": true,
+        "width": 79.05357360839844
+      },
+      {
+        "height": 52.000003814697266,
+        "inViewport": true,
+        "name": "Stop playback",
+        "uncovered": true,
+        "width": 52.000003814697266
+      },
+      {
+        "height": 63.59821701049805,
+        "inViewport": true,
+        "name": "Open Context support",
+        "uncovered": true,
+        "width": 47.49107360839844
+      },
+      {
+        "height": 63.59821701049805,
+        "inViewport": true,
+        "name": "Ask for a hint",
+        "uncovered": true,
+        "width": 44.000003814697266
+      },
+      {
+        "height": 44.000003814697266,
+        "inViewport": true,
+        "name": "Close support panel",
+        "uncovered": true,
+        "width": 44.000003814697266
+      },
+      {
+        "height": 48.000003814697266,
+        "inViewport": true,
+        "name": "Useful English",
+        "uncovered": true,
+        "width": 126.21429443359376
+      },
+      {
+        "height": 48.000003814697266,
+        "inViewport": true,
+        "name": "Context",
+        "uncovered": true,
+        "width": 126.21429443359376
+      }
+    ],
+    "viewport": [
+      1024,
+      600
+    ]
+  },
+  "hintBefore": {
+    "avatar": {
+      "bottom": 342.6607360839844,
+      "height": 274.6607360839844,
+      "left": 44.642860412597656,
+      "right": 684.6428604125977,
+      "top": 68,
+      "width": 640
+    },
+    "avatarStatus": "ready",
+    "backgroundLoaded": true,
+    "canvasCount": 1,
+    "controls": {
+      "bottom": 588.0000305175781,
+      "height": 125.33929443359376,
+      "left": 12.000000953674316,
+      "right": 717.2857675552368,
+      "top": 462.6607360839844,
+      "width": 705.2857666015625
+    },
+    "focus": "Tap to speak",
+    "history": null,
+    "historyClear": true,
+    "mic": {
+      "bottom": 521.2321815490723,
+      "height": 52.000003814697266,
+      "left": 338.64288330078125,
+      "right": 390.6428871154785,
+      "top": 469.232177734375,
+      "width": 52.000003814697266
+    },
+    "overflow": false,
+    "reply": {
+      "bottom": 454.6607437133789,
+      "height": 104.00000762939452,
+      "left": 12.000000953674316,
+      "right": 717.2857675552368,
+      "top": 350.6607360839844,
+      "width": 705.2857666015625
+    },
+    "support": {
+      "bottom": 588,
+      "height": 520,
+      "left": 725.2857666015625,
+      "right": 1012.0000610351562,
+      "top": 68,
+      "width": 286.71429443359375
+    },
+    "supportClear": true,
+    "targets": [
+      {
+        "height": 44.000003814697266,
+        "inViewport": true,
+        "name": "GyakutenEigo Speaking Tasks home",
+        "uncovered": true,
+        "width": 44.000003814697266
+      },
+      {
+        "height": 44.000003814697266,
+        "inViewport": true,
+        "name": "Finish practice",
+        "uncovered": true,
+        "width": 134.15179443359375
+      },
+      {
+        "height": 44.000003814697266,
+        "inViewport": true,
+        "name": "Replay current partner message",
+        "uncovered": true,
+        "width": 44.000003814697266
+      },
+      {
+        "height": 63.59821701049805,
+        "inViewport": true,
+        "name": "Conversation Your conversation so far",
+        "uncovered": true,
+        "width": 79.05357360839844
+      },
+      {
+        "height": 52.000003814697266,
+        "inViewport": true,
+        "name": "Tap to speak",
+        "uncovered": true,
+        "width": 52.000003814697266
+      },
+      {
+        "height": 63.59821701049805,
+        "inViewport": true,
+        "name": "Open Context support",
+        "uncovered": true,
+        "width": 47.49107360839844
+      },
+      {
+        "height": 63.59821701049805,
+        "inViewport": true,
+        "name": "Ask for a hint",
+        "uncovered": true,
+        "width": 44.000003814697266
+      },
+      {
+        "height": 44.000003814697266,
+        "inViewport": true,
+        "name": "Close support panel",
+        "uncovered": true,
+        "width": 44.000003814697266
+      },
+      {
+        "height": 48.000003814697266,
+        "inViewport": true,
+        "name": "Useful English",
+        "uncovered": true,
+        "width": 126.21429443359376
+      },
+      {
+        "height": 48.000003814697266,
+        "inViewport": true,
+        "name": "Context",
+        "uncovered": true,
+        "width": 126.21429443359376
+      }
+    ],
+    "viewport": [
+      1024,
+      600
+    ]
+  },
+  "hintLoading": {
+    "avatar": {
+      "bottom": 342.6607360839844,
+      "height": 274.6607360839844,
+      "left": 44.642860412597656,
+      "right": 684.6428604125977,
+      "top": 68,
+      "width": 640
+    },
+    "avatarStatus": "ready",
+    "backgroundLoaded": true,
+    "canvasCount": 1,
+    "controls": {
+      "bottom": 588.0000305175781,
+      "height": 125.33929443359376,
+      "left": 12.000000953674316,
+      "right": 717.2857675552368,
+      "top": 462.6607360839844,
+      "width": 705.2857666015625
+    },
+    "focus": "\n    PracticeOrdering Food4:00 leftFinis",
+    "history": null,
+    "historyClear": true,
+    "mic": {
+      "bottom": 521.2321815490723,
+      "height": 52.000003814697266,
+      "left": 338.64288330078125,
+      "right": 390.6428871154785,
+      "top": 469.232177734375,
+      "width": 52.000003814697266
+    },
+    "overflow": false,
+    "reply": {
+      "bottom": 454.6607437133789,
+      "height": 104.00000762939452,
+      "left": 12.000000953674316,
+      "right": 717.2857675552368,
+      "top": 350.6607360839844,
+      "width": 705.2857666015625
+    },
+    "support": {
+      "bottom": 588,
+      "height": 520,
+      "left": 725.2857666015625,
+      "right": 1012.0000610351562,
+      "top": 68,
+      "width": 286.71429443359375
+    },
+    "supportClear": true,
+    "targets": [
+      {
+        "height": 44.000003814697266,
+        "inViewport": true,
+        "name": "GyakutenEigo Speaking Tasks home",
+        "uncovered": true,
+        "width": 44.000003814697266
+      },
+      {
+        "height": 44.000003814697266,
+        "inViewport": true,
+        "name": "Finish practice",
+        "uncovered": true,
+        "width": 134.15179443359375
+      },
+      {
+        "height": 44.000003814697266,
+        "inViewport": true,
+        "name": "Replay current partner message",
+        "uncovered": true,
+        "width": 44.000003814697266
+      },
+      {
+        "height": 63.59821701049805,
+        "inViewport": true,
+        "name": "Conversation Your conversation so far",
+        "uncovered": true,
+        "width": 79.05357360839844
+      },
+      {
+        "height": 52.000003814697266,
+        "inViewport": true,
+        "name": "Tap to speak",
+        "uncovered": true,
+        "width": 52.000003814697266
+      },
+      {
+        "height": 63.59821701049805,
+        "inViewport": true,
+        "name": "Open Context support",
+        "uncovered": true,
+        "width": 47.49107360839844
+      },
+      {
+        "height": 63.59821701049805,
+        "inViewport": true,
+        "name": "Ask for a hint",
+        "uncovered": true,
+        "width": 92.55357360839844
+      },
+      {
+        "height": 44.000003814697266,
+        "inViewport": true,
+        "name": "Close support panel",
+        "uncovered": true,
+        "width": 44.000003814697266
+      },
+      {
+        "height": 48.000003814697266,
+        "inViewport": true,
+        "name": "Useful English",
+        "uncovered": true,
+        "width": 126.21429443359376
+      },
+      {
+        "height": 48.000003814697266,
+        "inViewport": true,
+        "name": "Context",
+        "uncovered": true,
+        "width": 126.21429443359376
+      }
+    ],
+    "viewport": [
+      1024,
+      600
+    ]
+  }
+}

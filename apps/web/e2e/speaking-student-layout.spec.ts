@@ -209,7 +209,9 @@ test("scene drawers, hints, long dialogue and primary controls remain usable acr
   } }));
   for (const viewport of [
     { width: 1920, height: 1080 }, { width: 1366, height: 768 }, { width: 1280, height: 720 },
-    { width: 1024, height: 768 }, { width: 768, height: 1024 }, { width: 390, height: 844 },
+    { width: 1024, height: 768 }, { width: 1180, height: 820 }, { width: 1024, height: 600 },
+    { width: 1280, height: 640 }, { width: 960, height: 512 }, { width: 959, height: 768 },
+    { width: 768, height: 1024 }, { width: 900, height: 1440 }, { width: 390, height: 844 },
     { width: 360, height: 800 }, { width: 320, height: 568 }, { width: 844, height: 390 }, { width: 1366, height: 600 }
   ]) {
     await page.setViewportSize(viewport);
@@ -225,6 +227,12 @@ test("scene drawers, hints, long dialogue and primary controls remain usable acr
     await page.getByRole("button", { name: "Open support panel" }).click();
     await expect(page.getByRole("tab", { name: "Useful English", exact: true })).toBeFocused();
     await expectReachable(page, "Tap to speak");
+    await expectReachable(page, "Replay current partner message");
+    expect(await page.locator(".speaking-student-sidebar").evaluate((element) => {
+      const panel = element.getBoundingClientRect();
+      const reply = document.querySelector(".speaking-scene-reply")!.getBoundingClientRect();
+      return panel.bottom <= reply.top + 1 || panel.left >= reply.right - 1 || panel.right <= reply.left + 1;
+    }), "Support must stay beside or above the dialogue").toBe(true);
     await page.keyboard.press("End");
     await expect(page.getByRole("tab", { name: "Context", exact: true })).toBeFocused();
     await page.keyboard.press("Home");
@@ -240,12 +248,17 @@ test("scene drawers, hints, long dialogue and primary controls remain usable acr
     await expect(page.getByRole("button", { name: "Open Context support" })).toBeFocused();
     await page.getByRole("button", { name: "Conversation Your conversation so far", exact: true }).click();
     await expect(page.getByRole("button", { name: "Close conversation" })).toBeFocused();
+    expect(await page.locator(".speaking-scene-conversation").evaluate((element) => {
+      const panel = element.getBoundingClientRect();
+      const reply = document.querySelector(".speaking-scene-reply")!.getBoundingClientRect();
+      return panel.bottom <= reply.top + 1 || panel.right <= reply.left + 1;
+    }), "Conversation must stay above or beside the dialogue").toBe(true);
     await expectReachable(page, "Tap to speak");
     await expectReachable(page, "Finish practice");
     await expect(page.locator(".speaking-scene-conversation")).toContainText(data.turns[0]!.text);
     await page.keyboard.press("Escape");
     await expect(page.getByRole("button", { name: "Conversation Your conversation so far", exact: true })).toBeFocused();
-    if (viewport.width <= 1100 || viewport.height <= 480) {
+    if (viewport.width < 960 || viewport.height <= 480) {
       await page.getByRole("button", { name: "Open support panel" }).click();
       await page.getByRole("button", { name: "Conversation Your conversation so far", exact: true }).click();
       await expect(page.locator(".speaking-student-sidebar")).toBeHidden();
@@ -294,6 +307,41 @@ test("scene drawers, hints, long dialogue and primary controls remain usable acr
   }
 });
 
+test("tablet rotation restores visible focus and a delayed hint preserves the speaking controls", async ({ page }) => {
+  const id = "classroom-tablet-rotation";
+  const data = makeSessionData(id, "active", "practice", {
+    showTargetExpressions: true, showContext: true, showTranscript: true, allowReplay: true, allowHelp: true
+  });
+  await page.setViewportSize({ width: 1024, height: 768 });
+  await mockStudentSession(page, id, data);
+  await page.goto(`${baseUrl}/speak/session/${id}`);
+  await expect(page.locator(".speaking-avatar")).toHaveAttribute("data-avatar-status", "ready", { timeout: 20_000 });
+  await page.getByRole("button", { name: "Close support panel" }).click();
+  for (const invoker of ["Open support panel", "Open Context support"]) {
+    await page.setViewportSize({ width: 1024, height: 768 });
+    await page.getByRole("button", { name: invoker, exact: true }).click();
+    await page.getByRole("tab", { name: "Context", exact: true }).click();
+    await page.setViewportSize({ width: 768, height: 1024 });
+    await expect(page.locator(".speaking-student-sidebar")).toBeHidden();
+    await expect(page.getByRole("button", { name: invoker, exact: true })).toBeFocused();
+    await expectReachable(page, "Tap to speak");
+  }
+  let releaseHint!: () => void;
+  const hintGate = new Promise<void>((resolve) => { releaseHint = resolve; });
+  await page.route(`**/api/speaking/sessions/${id}/help`, async (route) => {
+    await hintGate;
+    await route.fulfill({ json: { hint: "Choose a place to recommend.", helpCount: 1 } });
+  });
+  const before = await page.locator(".speaking-student-mic").boundingBox();
+  const replyBefore = await page.locator(".speaking-scene-reply").boundingBox();
+  await page.getByRole("button", { name: "Ask for a hint" }).click();
+  await expect(page.getByRole("button", { name: "Ask for a hint" })).toBeDisabled();
+  expect(await page.locator(".speaking-student-mic").boundingBox(), "Loading must not move the microphone").toEqual(before);
+  expect(await page.locator(".speaking-scene-reply").boundingBox()).toEqual(replyBefore);
+  releaseHint();
+  await expect(page.getByRole("button", { name: "Close hint" })).toBeVisible();
+});
+
 test("Japanese text and primary controls survive a failed local font", async ({ page }, testInfo) => {
   await page.setViewportSize({ width: 360, height: 800 });
   const id = "scene-font-fallback";
@@ -313,6 +361,18 @@ test("Japanese text and primary controls survive a failed local font", async ({ 
   await expectReachable(page, "タップして話す");
   await expectReachable(page, "練習を終了");
   await page.screenshot({ path: testInfo.outputPath("font-fallback-ja.jpg"), type: "jpeg", quality: 85 });
+});
+
+test("waiting practice disables partner replay as well as recording", async ({ page }) => {
+  const id = "classroom-waiting-practice";
+  const data = makeSessionData(id, "ready", "practice", {
+    showTargetExpressions: true, showContext: true, showTranscript: true, allowReplay: true, allowHelp: true
+  });
+  await page.setViewportSize({ width: 1024, height: 600 });
+  await mockStudentSession(page, id, data);
+  await page.goto(`${baseUrl}/speak/session/${id}`);
+  await expect(page.getByRole("button", { name: "Waiting for your teacher", exact: true })).toBeDisabled();
+  await expect(page.getByRole("button", { name: "Replay current partner message", exact: true })).toBeDisabled();
 });
 
 test("workplace reference sheets and keywords are usable without a context image", async ({ page }, testInfo) => {
@@ -616,7 +676,7 @@ test("portrait personality stays responsive through real avatar conversation sta
     }
     expect(await avatar.locator("canvas").evaluate((element, original) => element === original, canvas)).toBe(true);
     await expect(page.locator("canvas")).toHaveCount(1);
-    if (viewport.width > 1100) {
+    if (viewport.width >= 960) {
       await page.getByRole("button", { name: "Close support panel" }).click();
       await expect(avatar).toHaveAttribute("data-avatar-status", "ready");
       await expectReachable(page, "Tap to speak");
@@ -958,6 +1018,7 @@ test("student Speaking layout keeps active and waiting states balanced", async (
         expect(layout.waiting?.height).toBe(44);
         expect(layout.micDisabled).toBe(true);
         expect(layout.finishDisabled).toBe(true);
+        if (scenario.supportSettings.allowReplay) await expect(page.getByRole("button", { name: "Replay current partner message" })).toBeDisabled();
       } else {
         await expect(page.locator(".speaking-avatar")).toHaveAttribute("data-avatar-state", "idle");
         expect(layout.waiting).toBeNull();
