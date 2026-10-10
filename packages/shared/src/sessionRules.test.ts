@@ -290,6 +290,49 @@ test("resolvePracticeRespawn tracks eliminated progress without respawning early
   assert.equal(result.player.isAlive, false);
 });
 
+test("practice respawns use the selected map's safe floor and reset posture", () => {
+  for (const mapId of ["desert_citadel", "iron_junction", "temple_runoff", "lunar_relay"] as const) {
+    for (const team of ["blue", "red"] as const) {
+      const result = resolvePracticeRespawn({
+        player: makePlayer({ team, isAlive: false, health: 0, crouching: true, jumping: true,
+          x: 0, y: 30, z: 0, respawnCorrectAnswers: RESPAWN_CORRECT_ANSWERS_REQUIRED - 1 }),
+        settings: { ...DEFAULT_SESSION_SETTINGS, mapId },
+        isCorrect: true
+      });
+      const spawn = getTeamSpawnForMap(mapId, team);
+      assert.deepEqual(
+        { x: result.player.x, y: result.player.y, z: result.player.z, facing: result.player.facing },
+        spawn, `${mapId} ${team} must respawn on its own map`
+      );
+      assert.equal(result.player.crouching, false);
+      assert.equal(result.player.jumping, false);
+      assert.equal(spawn.y, getArenaGroundHeight(mapId, spawn.x, spawn.z) + ARENA_PLAYER_EYE_HEIGHT);
+      for (const direction of [-1, 1]) {
+        const firstStep = resolveAuthoritativeMovement({
+          current: spawn, requested: { ...spawn, x: spawn.x + direction * .1 },
+          elapsedMs: 100, maxSpeed: 10, obstacles: getArenaObstacles(mapId),
+          groundY: Number(spawn.y) - ARENA_PLAYER_EYE_HEIGHT, mapId
+        });
+        assert.equal(firstStep.blocked, undefined, `${mapId} ${team} respawn must allow walking`);
+      }
+    }
+  }
+});
+
+test("practice respawns avoid occupied starts using live session players", () => {
+  const mapId = "lunar_relay";
+  const occupied = getTeamSpawnForMap(mapId, "blue");
+  const result = resolvePracticeRespawn({
+    player: makePlayer({ isAlive: false, health: 0, respawnCorrectAnswers: 2 }),
+    settings: { ...DEFAULT_SESSION_SETTINGS, mapId }, isCorrect: true,
+    players: [makePlayer({ id: "teammate", ...occupied }), makePlayer({ id: "enemy", team: "red", ...occupied })]
+  });
+  assert.equal(result.respawned, true);
+  assert.ok(Math.hypot(result.player.x! - occupied.x, result.player.z! - occupied.z) > 10);
+  assert.ok(getTeamSpawnsForMap(mapId).blue.some(spawn =>
+    spawn.x === result.player.x && spawn.y === result.player.y && spawn.z === result.player.z));
+});
+
 test("resolveAnswerReward applies wrong-answer penalties only to active players", () => {
   const active = resolveAnswerReward({
     player: makePlayer({ money: 300 }),

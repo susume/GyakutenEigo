@@ -43,7 +43,7 @@ const surfaces: AthleticsCourseSurface[] = route.map((point, index) => {
     : index === 67 || index === 132 ? [12, 12] : index >= 68 && index <= 131 ? [4.8, 1.52]
       : index >= 65 ? [10, 12] : index === 0 ? [26, 24] : checkpoint ? [26, 18]
     : index <= 9 ? [16, 12] : index <= 20 ? [4, 10.1]
-      : index <= 27 ? [8, 8] : index <= 31 ? [8, 12]
+      : index <= 27 ? [9, 9] : index <= 31 ? [8, 12]
         : index <= 42 ? [8, 6] : index <= 53 ? [8, 8] : [14, 12];
   return {
     ...point, id: idAt(index), kind: checkpoint ? "checkpoint" : (index >= 11 && index <= 20) || (index >= 28 && index <= 31) || (index >= 68 && index <= 131) ? "stair" : "platform",

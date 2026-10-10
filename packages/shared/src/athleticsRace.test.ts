@@ -16,6 +16,7 @@ import {
   ATHLETICS_PLAYER_EYE_HEIGHT,
   ATHLETICS_MAX_ENERGY,
   ATHLETICS_STADIUM_COURSE,
+  ATHLETICS_TRANSITION_AIR_GAP_TARGETS,
   awardAthleticsEnergy,
   getAthleticsCourseGeometryIssues,
   getAthleticsCourseGeometryMetrics,
@@ -123,14 +124,15 @@ test("Athletics geometry QA rejects route crossings even at different heights", 
   assert.ok(getAthleticsCourseGeometryIssues(brokenCourse).some((issue) => issue.includes("route-platform-003") && issue.includes("route-platform-061")));
 });
 
-test("zigzag and floating districts demand precision and six shuttle crossings", () => {
+test("zigzag has wider landings with reachable gaps and floating districts require six shuttle crossings", () => {
   const course = ATHLETICS_STADIUM_COURSE;
   for (const surface of course.surfaces.slice(22, 28)) {
-    assert.ok(surface.width <= 8 && surface.depth <= 8);
+    assert.equal(surface.width, 9);
+    assert.equal(surface.depth, 9);
   }
   for (const transition of course.transitions.slice(22, 26)) {
     const envelope = getAthleticsTransitionJumpEnvelope(transition, course);
-    assert.ok(envelope.airGap >= 9, transition.id);
+    assert.ok(envelope.airGap >= ATHLETICS_TRANSITION_AIR_GAP_TARGETS.easy_jump, transition.id);
     assert.ok(envelope.airGap <= envelope.horizontalReach, transition.id);
   }
   assert.ok(course.surfaces.slice(33, 43).every((surface) => surface.width <= 8 && surface.depth <= 6));

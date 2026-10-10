@@ -2,6 +2,8 @@ import assert from "node:assert/strict";
 import test from "node:test";
 import {
   ARENA_PLAYER_EYE_HEIGHT,
+  ATHLETICS_PLAYER_RADIUS,
+  DEFAULT_SESSION_SETTINGS,
   getArenaGroundHeight,
   getArenaFloorSurfaces,
   getArenaObjectiveGroundY,
@@ -11,9 +13,12 @@ import {
   getSearchRetrieveItemsForMap,
   getTeamSpawnsForMap,
   findBotNavigationPath,
+  resolvePracticeRespawn,
   scaleArenaValue,
   type ArenaMapId
 } from "@quizstrike/shared";
+import { getArenaMap } from "./arenaMaps.js";
+import { findFpsBlockingSurfaceIndex, getFpsBodyVerticalBounds } from "./ArenaCamera.js";
 
 const mapFrontObjectiveIds: Record<ArenaMapId, readonly string[]> = {
   desert_citadel: [
@@ -62,6 +67,41 @@ const mapFrontGoalOffsets: Record<ArenaMapId, readonly { x: number; z: number }[
 };
 
 const maps = Object.keys(mapFrontObjectiveIds) as ArenaMapId[];
+
+test("every combat respawn admits the FPS body, including renderer collision padding", () => {
+  for (const mapId of maps) {
+    const map = getArenaMap(mapId);
+    const sources = map.blocks.filter(block => block.collides);
+    const surfaces = [
+      ...sources.map(block => ({
+        min: { x: block.x - block.w / 2 - .25, y: (block.y ?? block.h / 2) - block.h / 2, z: block.z - block.d / 2 - .25 },
+        max: { x: block.x + block.w / 2 + .25, y: (block.y ?? block.h / 2) + block.h / 2, z: block.z + block.d / 2 + .25 }
+      })),
+      ...map.cylinders.filter(cylinder => cylinder.collides).map(cylinder => ({
+        min: { x: cylinder.x - cylinder.radius - .25, y: (cylinder.y ?? cylinder.h / 2) - cylinder.h / 2, z: cylinder.z - cylinder.radius - .25 },
+        max: { x: cylinder.x + cylinder.radius + .25, y: (cylinder.y ?? cylinder.h / 2) + cylinder.h / 2, z: cylinder.z + cylinder.radius + .25 }
+      }))
+    ];
+    for (const team of ["blue", "red"] as const) {
+      for (let preferredIndex = 0; preferredIndex < 20; preferredIndex++) {
+        const spawn = getTeamSpawnsForMap(mapId)[team][preferredIndex]!;
+        const { player } = resolvePracticeRespawn({
+          player: { id: "respawn", gameSessionId: "qa", nickname: "Respawn", team,
+            money: 0, score: 0, correctAnswers: 0, wrongAnswers: 0, gear: "starter_blaster", joinedAt: "",
+            isAlive: false, respawnCorrectAnswers: 2 },
+          settings: { ...DEFAULT_SESSION_SETTINGS, mapId }, isCorrect: true, preferredIndex
+        });
+        assert.deepEqual([player.x, player.y, player.z], [spawn.x, spawn.y, spawn.z]);
+        const body = getFpsBodyVerticalBounds(player.y!, ARENA_PLAYER_EYE_HEIGHT);
+        const blockingIndex = findFpsBlockingSurfaceIndex(surfaces, sources, {
+          min: { x: player.x! - ATHLETICS_PLAYER_RADIUS, y: body.minY, z: player.z! - ATHLETICS_PLAYER_RADIUS },
+          max: { x: player.x! + ATHLETICS_PLAYER_RADIUS, y: body.maxY, z: player.z! + ATHLETICS_PLAYER_RADIUS }
+        }, body);
+        assert.equal(blockingIndex, -1, `${mapId} ${spawn.id} respawns inside client collision`);
+      }
+    }
+  }
+});
 
 test("all combat arenas preserve evenly loaded spawn fronts for a 40-player opening", () => {
   for (const mapId of maps) {

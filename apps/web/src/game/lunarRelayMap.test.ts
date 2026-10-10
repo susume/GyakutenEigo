@@ -95,6 +95,19 @@ test("authoritative movement walks all four stair flights and their landings wit
   }
 });
 
+test("ground players cannot snap onto a tall Lunar stair tread from the side", () => {
+  const x = scaleArenaValue(-90);
+  const z = scaleArenaValue(15);
+  const groundY = getArenaGroundHeightForPlayer(mapId, x, z, ARENA_PLAYER_EYE_HEIGHT);
+  assert.equal(groundY, 0, "the upper tread is too high to auto-step onto from the ground");
+  assert.notEqual(clientBlockingIndex(x, z, groundY), -1, "the side of the stair must block the body");
+  const result = resolveAuthoritativeMovement({
+    current: point(-90, 18), requested: point(-90, 15),
+    elapsedMs: 100, maxSpeed: 40, obstacles: getArenaObstacles(mapId), groundY, mapId
+  });
+  assert.equal(result.blocked, true);
+});
+
 test("the FPS client walks each Lunar stair flight up and down while standing or crouching", () => {
   for (const flight of LUNAR_RELAY_STAIR_FLIGHTS) {
     for (const eyeHeight of [FPS_STANDING_EYE_HEIGHT, FPS_CROUCH_EYE_HEIGHT]) {

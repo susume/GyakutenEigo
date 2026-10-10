@@ -1355,11 +1355,15 @@ export const resolvePracticeRespawn = ({
   player,
   settings,
   isCorrect,
+  players = [],
+  preferredIndex = 0,
   required = RESPAWN_CORRECT_ANSWERS_REQUIRED
 }: {
   player: PlayerSession;
   settings: SessionSettings;
   isCorrect: boolean;
+  players?: Array<Pick<PlayerSession, "x" | "z" | "team" | "isAlive">>;
+  preferredIndex?: number;
   required?: number;
 }) => {
   if (player.isAlive || !settings.deadPlayersCanPractice) {
@@ -1371,7 +1375,7 @@ export const resolvePracticeRespawn = ({
     return { player: { ...player, respawnCorrectAnswers: progress }, respawned: false, progress, required };
   }
 
-  const spawn = getTeamSpawn(player.team);
+  const spawn = selectTeamSpawnForMap(settings.mapId, player.team, players, preferredIndex);
   return {
     player: {
       ...player,
@@ -1379,6 +1383,8 @@ export const resolvePracticeRespawn = ({
       isAlive: true,
       health: DEFAULT_PLAYER_HEALTH,
       snowballs: settings.startingSnowballs,
+      crouching: false,
+      jumping: false,
       respawnCorrectAnswers: 0
     },
     respawned: true,
@@ -1748,6 +1754,10 @@ export const getArenaGroundHeightForPlayer = (
   const footY = Number(eyeY) - eyeHeight;
   const reachable = surfaces.filter((surface) => surface <= footY + maxStepUp);
   if (reachable.length > 0) return reachable[reachable.length - 1];
+  // Lunar stair blocks are solid from the sides. Keep a ground player below
+  // an unreachable tread so body collision rejects entry instead of lifting
+  // them several metres onto the flight.
+  if (mapId === "lunar_relay") return 0;
   // Desert Citadel's raised structures are solid. A ground-level player who
   // probes their footprint must stay on ground so the foundation collider can
   // reject the move instead of being lifted onto the terrace.

@@ -249,6 +249,7 @@ export default function ArenaPreview({
   const previousRoundLifecycleKeyRef = useRef<string | undefined>(undefined);
   const previousRoundNumberRef = useRef<number | undefined>(undefined);
   const previousCurrentPlayerIdRef = useRef<string | undefined>(undefined);
+  const previousPlayerAliveRef = useRef<boolean | undefined>(undefined);
   const arenaComponentMountedRef = useRef(false);
   const [isPointerLocked, setIsPointerLocked] = useState(false);
   const [touchCrouchEnabled, setTouchCrouchEnabled] = useState(false);
@@ -1979,6 +1980,15 @@ export default function ArenaPreview({
     if (athleticsMode === "zeus" && epoch !== undefined && previousMovementEpochRef.current !== undefined && epoch !== previousMovementEpochRef.current) roundResetRef.current();
     previousMovementEpochRef.current = epoch;
   }, [currentPlayer?.athletics?.movementEpoch, athleticsMode]);
+
+  useEffect(() => {
+    if (previousPlayerAliveRef.current === false && currentPlayer?.isAlive === true) {
+      // Respawn is a teleport. Reset posture, held input and camera smoothing
+      // before movement can carry the old crouched/death position into a wall.
+      roundResetRef.current();
+    }
+    previousPlayerAliveRef.current = currentPlayer?.isAlive;
+  }, [currentPlayer?.id, currentPlayer?.isAlive]);
 
   // Auto quality changes only adjust renderer settings in place. Manual quality,
   // map, mode, and view changes remain intentional scene rebuild boundaries.

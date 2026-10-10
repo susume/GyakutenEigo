@@ -3022,7 +3022,10 @@ const answerQuestion = (
           progress: player.respawnCorrectAnswers ?? 0,
           required: RESPAWN_CORRECT_ANSWERS_REQUIRED
         }
-      : resolvePracticeRespawn({ player, settings: session.settings, isCorrect });
+      : resolvePracticeRespawn({
+          player, settings: session.settings, isCorrect, players: session.players,
+          preferredIndex: session.players.filter(candidate => candidate.team === player.team).findIndex(candidate => candidate.id === player.id)
+        });
   Object.assign(player, respawn.player);
   let recoveryNextQuestion: PublicQuestion | undefined;
   if (respawn.respawned) {
@@ -3030,6 +3033,11 @@ const answerQuestion = (
     player.roundRespawns = (player.roundRespawns ?? 0) + 1;
     player.crouching = false;
     player.jumping = false;
+    const respawnedAt = Date.now();
+    playerMoveTimestamps.set(player.id, respawnedAt);
+    playerPositionHistory.clear(player.id);
+    playerPositionHistory.record(player.id, { x: player.x!, y: player.y, z: player.z! }, respawnedAt);
+    pendingPositionBroadcasts.get(session.sessionCode)?.delete(player.id);
   }
 
   if (isAthletics && athletics) {

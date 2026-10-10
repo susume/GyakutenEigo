@@ -2,6 +2,10 @@ import assert from "node:assert/strict";
 import type { AddressInfo } from "node:net";
 import test from "node:test";
 import { io as createSocket, type Socket as ClientSocket } from "socket.io-client";
+import {
+  ARENA_PLAYER_EYE_HEIGHT, findBotNavigationPath, getArenaGroundHeightForPlayer,
+  getArenaObstacles, getTeamSpawnsForMap, type PlayerSession
+} from "@quizstrike/shared";
 
 type ServerRuntime = typeof import("./index.js");
 
@@ -497,6 +501,88 @@ test("live sessions admit late and returning students while teachers can remove 
     api(`/api/sessions/${zombieSession.sessionCode}/end`, { method: "POST", teacherToken: teacher.token }),
     api(`/api/sessions/${flagSession.sessionCode}/end`, { method: "POST", teacherToken: teacher.token })
   ]);
+});
+
+test("Lunar Relay quiz respawns return to a safe map spawn and accept movement", { timeout: 60_000 }, async () => {
+  const teacher = await createTeacherWithQuiz();
+  const session = await createSession(teacher, { gameMode: "classic", mapId: "lunar_relay", maxPlayers: 4, roundDurationSeconds: 120 });
+  const victim = await joinSession(session.sessionCode, "Respawn Student");
+  const attacker = await joinSession(session.sessionCode, "Tag Student");
+  const connected = connectStudentSocket(session.sessionCode, attacker);
+  const victimConnection = connectStudentSocket(session.sessionCode, victim);
+  try {
+    await Promise.all([connected.initialState, victimConnection.initialState]);
+    const start = await api(`/api/sessions/${session.sessionCode}/start`, { method: "POST", teacherToken: teacher.token });
+    assert.equal(start.response.status, 200);
+    await new Promise(resolve => setTimeout(resolve, 150));
+    runtime.advanceRounds();
+    const read = await api<{ session: SessionFixture }>(`/api/sessions/${session.sessionCode}`, { teacherToken: teacher.token });
+    assert.equal(read.body.session.status, "active");
+    const target = read.body.session.players.find(player => player.id === victim.player.id)!;
+    let position = read.body.session.players.find(player => player.id === attacker.player.id)!;
+    const move = async (student: JoinedPlayer, socket: ClientSocket, requested: PlayerFixture) => {
+      const accepted = new Promise<PlayerFixture>((resolve, reject) => {
+        const timeout = setTimeout(() => { socket.off("player_positions", onPositions); reject(new Error("Movement was not broadcast")); }, 5000);
+        const onPositions = (positions: Array<PlayerFixture & { playerId: string }>) => {
+          const update = positions.find(next => next.playerId === student.player.id);
+          if (!update) return;
+          clearTimeout(timeout);
+          socket.off("player_positions", onPositions);
+          resolve({ ...requested, ...update });
+        };
+        socket.on("player_positions", onPositions);
+      });
+      socket.emit("player_position", { x: requested.x, y: requested.y, z: requested.z, facing: requested.facing, crouching: false, jumping: false });
+      return accepted;
+    };
+    const goal = { x: target.x! + (target.team === "blue" ? 3 : -3), y: target.y!, z: target.z!, facing: 0 };
+    const path = findBotNavigationPath({ from: { x: position.x!, y: position.y, z: position.z! }, to: goal, obstacles: getArenaObstacles("lunar_relay"), mapId: "lunar_relay" });
+    assert.ok(path.length > 0);
+    for (const waypoint of path) {
+      let steps = 0;
+      while (Math.hypot(waypoint.x - position.x!, waypoint.z - position.z!) > .05) {
+        assert.ok(steps++ < 600, "the attacker must not become stuck on the route");
+        const distance = Math.hypot(waypoint.x - position.x!, waypoint.z - position.z!);
+        const fraction = Math.min(1, .8 / distance);
+        const x = position.x! + (waypoint.x - position.x!) * fraction;
+        const z = position.z! + (waypoint.z - position.z!) * fraction;
+        const y = getArenaGroundHeightForPlayer("lunar_relay", x, z, position.y) + ARENA_PLAYER_EYE_HEIGHT;
+        position = await move(attacker, connected.socket, { ...position, x, y, z });
+      }
+    }
+    for (let shot = 0; shot < 5; shot++) {
+      const damage = new Promise<{ ok: boolean; eliminated: boolean }>(resolve => connected.socket.once("damage_result", resolve));
+      connected.socket.emit("fire_action", {
+        requestId: `respawn-shot-${shot}`, x: position.x, y: position.y, z: position.z,
+        facing: Math.atan2(position.x! - target.x!, position.z! - target.z!), pitch: 0, targetId: target.id
+      });
+      const result = await damage;
+      assert.equal(result.ok, true);
+      assert.equal(result.eliminated, shot === 4);
+      await new Promise(resolve => setTimeout(resolve, 170));
+    }
+    let questionId = victim.question!.id;
+    let revived: PlayerSession | undefined;
+    for (let answer = 0; answer < 3; answer++) {
+      const response = await api<{ result: { respawned: boolean; player: PlayerSession; nextQuestion: { id: string } } }>(
+        `/api/sessions/${session.sessionCode}/players/${victim.player.id}/answer`,
+        { method: "POST", playerToken: victim.playerToken, body: { questionId, selectedChoice: "A" } }
+      );
+      assert.equal(response.response.status, 200);
+      assert.equal(response.body.result.respawned, answer === 2);
+      questionId = response.body.result.nextQuestion.id;
+      revived = response.body.result.player;
+    }
+    assert.ok(revived?.isAlive);
+    assert.ok(getTeamSpawnsForMap("lunar_relay")[revived.team].some(spawn => spawn.x === revived.x && spawn.y === revived.y && spawn.z === revived.z));
+    const next = await move(victim, victimConnection.socket, { ...revived, x: revived.x! + .2 });
+    assert.equal(next.x, revived.x! + .2, "the respawn must allow ordinary walking");
+    assert.equal(next.y, revived.y);
+  } finally {
+    connected.socket.disconnect();
+    victimConnection.socket.disconnect();
+    await api(`/api/sessions/${session.sessionCode}/end`, { method: "POST", teacherToken: teacher.token });
+  }
 });
 
 test("teacher pause is owner-only, blocks student commands, and is authoritative on reconnect", { timeout: 30_000 }, async () => {
