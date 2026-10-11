@@ -32,7 +32,7 @@ export const getQuizStrikeLightingConfig = ({
   const shadowQuality = quality === "high" && !isFps ? "high" : quality === "balanced" && !isFps ? "soft" : "off";
   if (mapId === "lunar_relay") {
     return {
-      background: "#111c35",
+      background: "#0b1326",
       fog: { color: "#26344e", near: isFps ? 185 : 340, far: 700 },
       ambient: { sky: "#d0e4ff", ground: "#4e5872", intensity: 1.35 },
       sun: { color: "#f5e3cb", intensity: 2.25, direction: [-100, 160, 80] },

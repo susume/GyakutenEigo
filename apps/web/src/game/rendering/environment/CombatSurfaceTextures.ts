@@ -2,6 +2,41 @@ import * as THREE from "three";
 
 type Surface = "floor" | "stone" | "wood" | "water" | "sand" | "metal";
 
+/** A quiet, pitted regolith tile; dust and shallow impact marks replace the
+ * warm sand ripples used by the earthbound maps. It is paint, not elevation. */
+export const makeLunarRegolithTexture = (resolution = 512) => {
+  const canvas = document.createElement("canvas");
+  canvas.width = canvas.height = resolution;
+  const ctx = canvas.getContext("2d")!;
+  ctx.scale(resolution / 512, resolution / 512);
+  ctx.fillStyle = "#d7dce4";
+  ctx.fillRect(0, 0, 512, 512);
+  let seed = 841;
+  const random = () => { seed = (seed * 1664525 + 1013904223) >>> 0; return seed / 0x100000000; };
+  for (let i = 0; i < 34; i++) {
+    const radius = 5 + random() * 23;
+    const x = radius + random() * (512 - radius * 2), y = radius + random() * (512 - radius * 2);
+    const impact = ctx.createRadialGradient(x - radius * .12, y - radius * .12, radius * .15, x, y, radius);
+    impact.addColorStop(0, "rgba(48,64,87,.11)");
+    impact.addColorStop(.66, "rgba(48,64,87,.06)");
+    impact.addColorStop(.82, "rgba(255,255,255,.18)");
+    impact.addColorStop(1, "rgba(255,255,255,0)");
+    ctx.fillStyle = impact;
+    ctx.fillRect(x - radius, y - radius, radius * 2, radius * 2);
+  }
+  for (let i = 0; i < 2400; i++) {
+    ctx.fillStyle = i % 2 ? "rgba(40,54,75,.07)" : "rgba(255,255,255,.12)";
+    const size = .5 + random() * 1.5;
+    ctx.fillRect(random() * 512, random() * 512, size, size);
+  }
+  const texture = new THREE.CanvasTexture(canvas);
+  texture.name = "combat-lunar-regolith-tile";
+  texture.colorSpace = THREE.SRGBColorSpace;
+  texture.wrapS = texture.wrapT = THREE.RepeatWrapping;
+  texture.repeat.set(18, 14);
+  return texture;
+};
+
 /** Neutral tiles: map paint supplies the hue, the tile supplies the material. */
 export const makeCombatSurfaceTexture = (kind: Surface, resolution = 512) => {
   const canvas = document.createElement("canvas");

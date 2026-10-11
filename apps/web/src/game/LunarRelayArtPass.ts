@@ -1,5 +1,6 @@
 import * as THREE from "three";
 import { LUNAR_RELAY_LAYOUT_BLOCKS, LUNAR_RELAY_STAIR_FLIGHTS, scaleArenaValue } from "@quizstrike/shared";
+import { addLunarRelayLandmarks } from "./LunarRelayLandmarks";
 
 type AddMesh = (parent: THREE.Object3D, geometry: THREE.BufferGeometry, color: string, surface?: string) => THREE.Mesh;
 
@@ -9,6 +10,7 @@ export const addLunarRelayArtPass = (scene: THREE.Scene, addMesh: AddMesh, detai
   const root = new THREE.Group();
   root.name = "lunar_relay_art";
   scene.add(root);
+  addLunarRelayLandmarks(root, addMesh, detail);
   const box = (x: number, y: number, z: number, w: number, h: number, d: number, color: string, surface = "metal") => {
     const mesh = addMesh(root, new THREE.BoxGeometry(w, h, d), color, surface);
     mesh.position.set(x, y, z);
@@ -150,7 +152,7 @@ export const addLunarRelayArtPass = (scene: THREE.Scene, addMesh: AddMesh, detai
   planetRoot.position.set(-128, 82, -255);
   planetRoot.rotation.z = -.24;
   root.add(planetRoot);
-  const planetGeometry = new THREE.SphereGeometry(62, detail === 0 ? 24 : 40, 24);
+  const planetGeometry = new THREE.SphereGeometry(62, detail === 0 ? 24 : 40, detail === 0 ? 16 : 24);
   const positions = planetGeometry.getAttribute("position");
   const colors = new Float32Array(positions.count * 3);
   const tint = new THREE.Color();

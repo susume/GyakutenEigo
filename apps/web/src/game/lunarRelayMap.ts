@@ -4,11 +4,11 @@ import type { ArenaMapDefinition, CitadelBlock, CitadelCylinder, CitadelFloorMar
 export const LUNAR_RELAY: ArenaMapDefinition = {
   id: "lunar_relay",
   title: "Lunar Relay",
-  description: "An off-world outpost under a ringed planet. Contest the relay bridge, slip through its underpass, or flank through the observatory and solar court.",
+  description: "A moon communications outpost crowned by an orbital relay halo. Cross its illuminated bridge, slip beneath it, or flank through the telescope observatory and solar cargo court.",
   districts: ["Observatory · sheltered north route", "Solar Court · cargo flank", "Relay Bridge · upper crossing"],
   routes: ["Observatory loop", "Service underpass", "Relay bridge", "Solar cargo flank"],
   footprint: { width: 480, depth: 360 },
-  palette: { sky: "#111c35", fog: "#202d46", floor: "#8998ad", floorTexture: "sand", accent: "#85eed9" }
+  palette: { sky: "#0b1326", fog: "#202d46", floor: "#8998ad", floorTexture: "sand", accent: "#85eed9" }
 };
 
 const stairBlocks: CitadelBlock[] = LUNAR_RELAY_STAIR_FLIGHTS.flatMap(flight =>

@@ -18,6 +18,10 @@ The map uses procedural geometry and existing surface materials. It requires no 
 
 ## Validation
 
+The visual identity pass adds an orbital relay halo above the central gantries, a roof-mounted observatory telescope, octagonal pressure hatches, and separate cyan relay and amber solar-court markings. The terrain uses a procedural regolith texture and exterior impact craters; a gold lunar lander marks the southern horizon. These landmarks remain present on Low. They use the existing static batching and require no downloaded assets.
+
+Gameplay geometry remains shared with the server. The halo clears a jumping player on the bridge, and the lander and every crater mesh stay outside the playable bounds. The art regression checks these clearances and the original 8,000-triangle Low / 18,000-triangle Medium and High budgets alongside the existing stair, spawn, objective, and navigation checks.
+
 Automated checks cover session sanitization, setup/runtime metadata, every visual collider, all four stair approaches through authoritative movement, stacked floors and shot blocking, protected spawn sightlines, route fairness, and art geometry budgets at all three quality levels. Client checks walk all four flights up and down while standing and crouching, in three lanes and with two movement increments (96 scenarios). All 160 spawn-to-objective routes are sampled along their full length with the FPS support and body collision functions. Every spawn and objective admits the client body on its intended floor.
 
 Final results: 329 web tests pass (run from `apps/web` with test concurrency 2), 153 shared tests pass, and 11 server bot tests pass. The full production build, lint on changed source files, and `git diff --check` pass. The build retains the existing Three.js chunk-size advisory.

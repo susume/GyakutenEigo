@@ -1,8 +1,9 @@
 import assert from "node:assert/strict";
 import test from "node:test";
 import * as THREE from "three";
-import { getArenaBounds } from "@quizstrike/shared";
+import { LUNAR_RELAY_BRIDGE_LEVEL_Y, getArenaBounds } from "@quizstrike/shared";
 import { addLunarRelayArtPass } from "./LunarRelayArtPass.js";
+import { FPS_JUMP_APEX_HEIGHT, FPS_STANDING_EYE_HEIGHT } from "./ArenaCamera.js";
 
 test("Lunar Relay retains its landmarks within a bounded geometry budget at every quality", () => {
   const bounds = getArenaBounds("lunar_relay");
@@ -18,6 +19,21 @@ test("Lunar Relay retains its landmarks within a bounded geometry budget at ever
     const stars = root.getObjectByName("lunar_relay_stars") as THREE.Points;
     starsByQuality.push(stars.geometry.getAttribute("position").count);
     root.updateMatrixWorld(true);
+    const halo = root.getObjectByName("lunar_relay_halo");
+    assert.ok(halo, "the relay silhouette survives Low quality");
+    assert.ok(new THREE.Box3().setFromObject(halo).min.y > LUNAR_RELAY_BRIDGE_LEVEL_Y + FPS_JUMP_APEX_HEIGHT + FPS_STANDING_EYE_HEIGHT,
+      "overhead hardware must clear a jumping player on the bridge");
+    assert.ok(root.getObjectByName("lunar_relay_observatory_telescope"));
+    for (const name of ["lunar_relay_lander", "lunar_relay_exterior_craters"]) {
+      const landmark = root.getObjectByName(name);
+      assert.ok(landmark, `${name} survives Low quality`);
+      landmark.traverse(object => {
+        if ((object as THREE.Mesh).isMesh) {
+          assert.equal(new THREE.Box3().setFromObject(object).intersectsBox(playable), false,
+            `${name} must stay outside the playable arena`);
+        }
+      });
+    }
     let triangles = 0;
     root.traverse(object => {
       const mesh = object as THREE.Mesh;

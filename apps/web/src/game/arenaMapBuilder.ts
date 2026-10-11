@@ -23,7 +23,7 @@ import type { ArenaQuality } from "./gamePreferences";
 import type { ArenaQualityConfig } from "./sceneSetup";
 import { FPS_CROUCH_EYE_HEIGHT, FPS_STANDING_EYE_HEIGHT } from "./ArenaCamera";
 import { createQuizStrikeMaterial, styleForArenaSurface } from "./rendering/materials/QuizStrikeMaterials";
-import { makeCombatSurfaceTexture } from "./rendering/environment/CombatSurfaceTextures";
+import { makeCombatSurfaceTexture, makeLunarRegolithTexture } from "./rendering/environment/CombatSurfaceTextures";
 import { addCombatMapScenery } from "./rendering/environment/CombatMapScenery";
 import { IRON_JUNCTION_IMPORTED_ASSETS } from "./ironJunctionImportedAssets";
 import { DESERT_CITADEL_IMPORTED_ASSETS } from "./desertCitadelImportedAssets";
@@ -89,11 +89,15 @@ export const buildArenaMapScene = (deps: MapBuilderDependencies) => {
   const warning = "#d18a3f";
 
 const surfaceTextureResolution = activeQuality === "high" ? 1024 : 512;
-const floorTexture = makeCombatSurfaceTexture(palette.floorTexture, surfaceTextureResolution);
+const floorTexture = arenaMapId === "lunar_relay"
+  ? makeLunarRegolithTexture(surfaceTextureResolution)
+  : makeCombatSurfaceTexture(palette.floorTexture, surfaceTextureResolution);
 const stoneTexture = makeCombatSurfaceTexture("stone", surfaceTextureResolution);
 const woodTexture = makeCombatSurfaceTexture("wood", surfaceTextureResolution);
 const waterTexture = makeCombatSurfaceTexture("water", surfaceTextureResolution);
-const sandTexture = makeCombatSurfaceTexture("sand", surfaceTextureResolution);
+const sandTexture = arenaMapId === "lunar_relay"
+  ? makeLunarRegolithTexture(surfaceTextureResolution)
+  : makeCombatSurfaceTexture("sand", surfaceTextureResolution);
 const metalTexture = makeCombatSurfaceTexture("metal", surfaceTextureResolution);
 [floorTexture, stoneTexture, woodTexture, waterTexture, sandTexture, metalTexture].forEach((texture) => {
   texture.anisotropy = qualityConfig.anisotropy;
