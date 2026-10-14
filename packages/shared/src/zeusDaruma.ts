@@ -42,8 +42,8 @@ export const getZeusStrikeRecovery = ({ checkpointIndex, energy, laneIndex = 0, 
 
 export const getZeusCycle = (seed: number, cycleIndex: number) => {
   const mix = Math.imul(seed ^ (cycleIndex + 1), 2654435761) >>> 0;
-  // A room-seeded shuffled bag guarantees every delivery is heard. Rotate the
-  // bag each round to vary the order without repeating at the bag boundary.
+  // Index the bag by audible chants, not by the silent cycles between them.
+  // Rotate each bag to vary the order without repeating at its boundary.
   const chants = Object.keys(ZEUS_CHANTS) as ZeusChantId[];
   let random = seed >>> 0;
   for (let index = chants.length - 1; index > 0; index--) {
@@ -51,10 +51,11 @@ export const getZeusCycle = (seed: number, cycleIndex: number) => {
     const pick = random % (index + 1);
     [chants[index], chants[pick]] = [chants[pick]!, chants[index]!];
   }
-  // The first varied chant must differ from the two slow teaching cycles.
+  // The first varied chant must differ from the opening slow teaching chant.
   if (chants[0] === "slow") [chants[0], chants[1]] = [chants[1]!, chants[0]!];
-  const variedIndex = Math.max(0, cycleIndex - 2);
-  const chantId: ZeusChantId = cycleIndex < 2 ? "slow" : chants[(variedIndex + Math.floor(variedIndex / chants.length)) % chants.length]!;
+  const spokenIndex = Math.floor(cycleIndex / ZEUS_CHANT_EVERY_CYCLES);
+  const variedIndex = Math.max(0, spokenIndex - 1);
+  const chantId: ZeusChantId = spokenIndex === 0 ? "slow" : chants[(variedIndex + Math.floor(variedIndex / chants.length)) % chants.length]!;
   // Most of the race should be climbing. Variations remain room-synchronized,
   // but never accelerate into a barrage of chants and long freezes.
   return { chantId, greenMs: cycleIndex < 2 ? 18000 : 14000 + (mix % 5) * 900, redMs: 2200 + (mix % 3) * 200 };

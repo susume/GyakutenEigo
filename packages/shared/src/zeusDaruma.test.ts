@@ -52,17 +52,18 @@ test("Zeus opens with slower chants then varies their delivery deterministically
   assert.deepEqual(cycles[8], getZeusCycle(123, 8));
 });
 
-test("Zeus gives each room all six rhythms without consecutive repeats after the teaching cycles", () => {
-  for (const seed of [0, 1, 123, 456, 0xffffffff]) {
-    const cycles = Array.from({ length: 62 }, (_, i) => getZeusCycle(seed, i));
-    for (let i = 2; i < cycles.length; i++) {
-      assert.notEqual(cycles[i]!.chantId, cycles[i - 1]!.chantId, `seed ${seed}, cycle ${i}`);
-      assert.ok(cycles[i]!.greenMs >= 14000 && cycles[i]!.greenMs <= 17600);
-      assert.ok(cycles[i]!.redMs >= 2200 && cycles[i]!.redMs <= 2600);
+test("the chants players actually hear use all six rhythms without consecutive repeats", () => {
+  for (const seed of [0xffffffff, ...Array.from({ length: 256 }, (_, i) => i)]) {
+    const cycles = Array.from({ length: 183 }, (_, i) => getZeusCycle(seed, i));
+    const heard = cycles.filter((_, i) => shouldPlayZeusChant(i));
+    for (let i = 1; i < heard.length; i++) {
+      assert.notEqual(heard[i]!.chantId, heard[i - 1]!.chantId, `seed ${seed}, spoken chant ${i}`);
+      assert.ok(heard[i]!.greenMs >= 14000 && heard[i]!.greenMs <= 17600);
+      assert.ok(heard[i]!.redMs >= 2200 && heard[i]!.redMs <= 2600);
     }
-    for (let i = 2; i < cycles.length; i += 6) assert.equal(new Set(cycles.slice(i, i + 6).map((cycle) => cycle.chantId)).size, 6);
+    for (let i = 1; i < heard.length; i += 6) assert.equal(new Set(heard.slice(i, i + 6).map((cycle) => cycle.chantId)).size, 6);
   }
-  assert.notDeepEqual(Array.from({ length: 6 }, (_, i) => getZeusCycle(123, i + 2).chantId), Array.from({ length: 6 }, (_, i) => getZeusCycle(456, i + 2).chantId));
+  assert.notDeepEqual(Array.from({ length: 6 }, (_, i) => getZeusCycle(123, (i + 1) * 3).chantId), Array.from({ length: 6 }, (_, i) => getZeusCycle(456, (i + 1) * 3).chantId));
 });
 
 test("Zeus leaves most playtime for climbing and keeps narration to about once a minute", () => {

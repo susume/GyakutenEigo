@@ -83,6 +83,8 @@ export const BGM_PATTERN: ToneDefinition[] = [
 
 const AUDIO_ROOT = "/assets/audio/kenney/";
 const file = (name: string) => `${AUDIO_ROOT}${name}`;
+export const getGameAudioAssetUrl = (asset: string, base = import.meta.env?.BASE_URL ?? "/") =>
+  `${base}${(asset.startsWith("/") ? asset : file(asset)).replace(/^\/+/, "")}`;
 export const BGM_ASSET = "/assets/audio/game/tank-metal.mp3";
 const DEFAULT_GUN_ASSET = "/assets/audio/game/default-gun-sound.mp3";
 const HEAVY_GUN_ASSET = "/assets/audio/game/heavy-gun-sound.mp3";
@@ -582,7 +584,7 @@ class GameAudioController {
     if (existing) return existing;
     const loading = (async () => {
       try {
-        const response = await fetch(asset.startsWith("/") ? asset : file(asset), { cache: "force-cache" });
+        const response = await fetch(getGameAudioAssetUrl(asset), { cache: "force-cache" });
         if (!response.ok) return null;
         return await audio.decodeAudioData(await response.arrayBuffer());
       } catch {
@@ -590,6 +592,11 @@ class GameAudioController {
       }
     })();
     this.assetBufferPromises.set(asset, loading);
+    void loading.then((buffer) => {
+      // Keep the current chant reserved to avoid retrying every 100 ms, but
+      // let a later voiced cycle recover from a temporary download failure.
+      if (!buffer && this.assetBufferPromises.get(asset) === loading) this.assetBufferPromises.delete(asset);
+    });
     return loading;
   }
 

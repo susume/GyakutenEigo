@@ -1,0 +1,22 @@
+{
+  "title": "Zeus Ammon",
+  "inventoryNumber": "KAS1110",
+  "source": "https://open.smk.dk/en/artwork/image/KAS1110",
+  "download": "https://api.smk.dk/api/v1/download-3d/hd76s484q_KAS1110_small.stl",
+  "creator": "Unknown ancient sculptor; scan supplied by SMK / Scan the World",
+  "license": "Public domain",
+  "licenseUrl": "https://www.smk.dk/en/section/use-of-smk-material/",
+  "modifications": [
+    "STL converted to GLB",
+    "Z-up converted to Y-up",
+    "Museum display stem cropped below the neck",
+    "Centered and normalized to 4.5 units tall",
+    "Simplified and smooth normals generated",
+    "Ivory material and quantized geometry"
+  ],
+  "sourceSha256": "8fcd4d37c6f45d4f2c730c574c06a7f5a3e6e66406d18d2d405757082c10e83e",
+  "sha256": "4e544496667b60c405fe58bc4fabbdfdbb8964588ce16017dc32ef15abb391e6",
+  "originalTriangles": 399996,
+  "triangles": 40000,
+  "bytes": 562008
+}

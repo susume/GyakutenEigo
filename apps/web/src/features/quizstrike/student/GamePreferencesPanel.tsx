@@ -87,6 +87,10 @@ export default function GamePreferencesPanel({
         {" "}{t("from")}{" "}
         <a href="https://pixabay.com//?utm_source=link-attribution&utm_medium=referral&utm_campaign=music&utm_content=220562" target="_blank" rel="noreferrer">Pixabay</a>.
       </p>
+      {showZeusAudio && <p className="audio-credit">{t("Zeus model:")}{" "}
+        <a href="https://open.smk.dk/en/artwork/image/KAS1110" target="_blank" rel="noreferrer">SMK / Scan the World</a>
+        {" · "}{t("Public domain")}
+      </p>}
       {!audioOnly && (
         <label className="toggle-row">
           <input type="checkbox" checked={preferences.vibrationEnabled} onChange={(event) => onChange({ vibrationEnabled: event.target.checked })} />

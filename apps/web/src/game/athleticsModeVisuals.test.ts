@@ -5,13 +5,23 @@ import { CHAOS_HAZARD_WARNING_MS, createChaosWave, getChaosHazardPosition, ATHLE
 import { createZeusVisuals } from "./zeusBackdrop";
 import { createAthleticsModeVisuals } from "./athleticsModeVisuals";
 
+const zeusAssets = {
+  load: async () => {
+    const source = new THREE.Group();
+    source.add(new THREE.Mesh(new THREE.BoxGeometry(2, 4.5, 2), new THREE.MeshStandardMaterial()));
+    return source;
+  },
+  release: () => undefined
+};
+
 test("Zeus lightning and its landing impact remain visible after the runner resets and expire together", () => {
   for (const reducedMotion of [false, true]) {
     const root = new THREE.Group();
-    const visuals = createZeusVisuals(root, undefined, reducedMotion);
+    const visuals = createZeusVisuals(root, undefined, reducedMotion, zeusAssets);
     const bolt = root.getObjectByName("athletics-zeus-lightning-0")!;
     const ring = root.getObjectByName("athletics-zeus-impact-0")!;
     assert.equal(bolt.visible, false);
+    visuals.dispose();
     const strike = { playerId: "runner", position: { x: 12, y: 24, z: 36 }, at: new Date(10_000).toISOString() };
     const session = { athletics: { zeus: { phase: "red", lastStrikes: [strike] } }, players: [{ id: "runner", x: 0, y: 0, z: 0 }] } as GameSession;
     visuals.update(session, 10_800);
@@ -60,10 +70,11 @@ test("Chaos renders a warning before its hazard, then removes both at expiry", (
   assert.equal(scene.children.length, 0);
 });
 
-test("Zeus turns his visible sky head with the shared signal and disappears when defeated", () => {
+test("Zeus turns his scanned sky head with the shared signal and disappears when defeated", async () => {
   const scene = new THREE.Scene();
   const camera = new THREE.PerspectiveCamera(72, 1.6, 0.1, 620);
-  const visuals = createAthleticsModeVisuals({ scene, mode: "zeus", camera });
+  const visuals = createAthleticsModeVisuals({ scene, mode: "zeus", camera, zeusAssets });
+  await visuals.ready;
   const green = { athletics: { zeus: { phase: "green", phaseStartedAt: new Date(1000).toISOString(), phaseEndsAt: new Date(7000).toISOString() } } } as GameSession;
   const head = scene.getObjectByName("athletics-zeus-head")!;
   const sky = scene.getObjectByName("athletics-zeus-sky")!;
@@ -74,8 +85,9 @@ test("Zeus turns his visible sky head with the shared signal and disappears when
   head.traverse((object) => {
     if (object instanceof THREE.Mesh && object.material instanceof THREE.MeshStandardMaterial) greenEyeMaterials.push(object.material.clone());
   });
-  assert.ok(sky.scale.x <= 4.6, "the referee leaves the course visible");
-  assert.ok(scene.getObjectByName("athletics-zeus-smile"), "Zeus keeps a calm smile");
+  assert.equal(visuals.getModelStatus!(), "ready");
+  assert.ok(scene.getObjectByName("athletics-zeus-model"), "the imported model replaces the procedural face");
+  assert.equal(scene.getObjectByName("athletics-zeus-smile"), undefined);
   visuals.update(green, 7500);
   assert.equal(head.rotation.y, 0, "the head turns at the chant deadline, even before the next snapshot");
   assert.equal(sky.userData.light, "red");
@@ -100,7 +112,6 @@ test("Zeus turns his visible sky head with the shared signal and disappears when
   const phoneProjection = sky.position.clone().project(camera);
   assert.ok(phoneProjection.x > 0.45 && phoneProjection.x < 0.7, "phone head stays beside the central course guidance");
   assert.ok(phoneProjection.y > 0 && phoneProjection.y < 0.12, "phone head sits beneath the top HUD");
-  assert.ok(sky.scale.x <= 2.8, "the phone referee stays small beside the route");
   green.athletics!.zeus!.phase = "defeated";
   visuals.update(green, 8000);
   visuals.update(green, 9200);
@@ -109,19 +120,22 @@ test("Zeus turns his visible sky head with the shared signal and disappears when
   assert.equal(scene.children.length, 0);
 });
 
-test("Zeus sky renders above scenery with its own depth and restores renderer state", () => {
+test("Zeus sky renders above scenery with its own depth and restores renderer state", async () => {
   const scene = new THREE.Scene();
   const background = new THREE.Color("#66aaff");
   scene.background = background;
   const light = new THREE.AmbientLight();
   scene.add(light);
   const camera = new THREE.PerspectiveCamera();
-  const visuals = createAthleticsModeVisuals({ scene, mode: "zeus", camera });
+  const visuals = createAthleticsModeVisuals({ scene, mode: "zeus", camera, zeusAssets });
+  await visuals.ready;
   const head = scene.getObjectByName("athletics-zeus-head")!;
-  const face = head.children.find((object) => object instanceof THREE.Mesh) as THREE.Mesh<THREE.BufferGeometry, THREE.MeshStandardMaterial>;
+  const face = head.getObjectByProperty("isMesh", true) as THREE.Mesh<THREE.BufferGeometry, THREE.MeshStandardMaterial>;
   assert.equal(face.layers.mask, 2, "sky is excluded from the course pass");
   assert.equal(face.material.depthTest, true, "the back of Zeus still hides his face");
-  assert.equal(light.layers.mask, 3, "sky retains the course lighting");
+  assert.equal(light.layers.mask, 1, "the model has independent neutral lighting");
+  const sky = scene.getObjectByName("athletics-zeus-sky")!;
+  sky.traverse((object) => { if (object instanceof THREE.Light) assert.equal(object.layers.mask, 2); });
   const events: string[] = [];
   const renderer = {
     autoClear: true,
@@ -153,4 +167,14 @@ test("Zeus sky renders above scenery with its own depth and restores renderer st
   visuals.dispose();
   assert.equal(light.layers.mask, 1);
   assert.deepEqual(scene.children, [light]);
+});
+
+test("reduced motion hides defeated Zeus immediately, including his cloud", () => {
+  const root = new THREE.Group();
+  const visuals = createZeusVisuals(root, new THREE.PerspectiveCamera(), true, zeusAssets);
+  const session = { athletics: { zeus: { phase: "defeated" } } } as GameSession;
+  visuals.update(session, 1000);
+  assert.equal(root.getObjectByName("athletics-zeus-sky")!.visible, false);
+  assert.equal(root.getObjectByName("athletics-zeus-summit")!.visible, false);
+  visuals.dispose();
 });

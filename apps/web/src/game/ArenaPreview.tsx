@@ -1728,7 +1728,10 @@ export default function ArenaPreview({
         }
         updateCamera(delta);
         athleticsModeVisuals?.update(sessionRef.current, authoritativeNowMs);
-        if (athleticsMode === "zeus") renderer.domElement.dataset.zeusLight = getZeusLight(sessionRef.current?.athletics?.zeus, authoritativeNowMs);
+        if (athleticsMode === "zeus") {
+          renderer.domElement.dataset.zeusLight = getZeusLight(sessionRef.current?.athletics?.zeus, authoritativeNowMs);
+          renderer.domElement.dataset.zeusModelStatus = athleticsModeVisuals?.getModelStatus?.() ?? "loading";
+        }
         if (currentTime - lastMiniMapAt > 220) {
           lastMiniMapAt = currentTime;
           setMiniMapPosition({ ...localToServerPosition(playerPosition, yaw), crouching: isCrouching });

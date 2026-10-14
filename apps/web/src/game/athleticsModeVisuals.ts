@@ -1,4 +1,5 @@
 import { createZeusVisuals, ZEUS_SKY_LAYER } from "./zeusBackdrop";
+import type { ZeusModelAssets } from "./zeusModel";
 import * as THREE from "three";
 import {
   ATHLETICS_STADIUM_COURSE,
@@ -14,6 +15,8 @@ import {
 type AthleticsModeVisuals = {
   update: (session: GameSession | null | undefined, nowMs: number) => void;
   renderOverlay?: (renderer: THREE.WebGLRenderer) => void;
+  ready?: Promise<void>;
+  getModelStatus?: () => string;
   dispose: () => void;
 };
 
@@ -26,13 +29,20 @@ const makeMaterial = (color: string, emissive = color) => new THREE.MeshStandard
 });
 
 const disposeVisualObject = (root: THREE.Object3D) => {
+  if (root.userData.visualResourcesDisposed) return;
+  root.userData.visualResourcesDisposed = true;
+  const geometries = new Set<THREE.BufferGeometry>();
+  const materials = new Set<THREE.Material>();
   root.traverse((object) => {
     const mesh = object as THREE.Mesh;
-    if (mesh.geometry) mesh.geometry.dispose();
+    if (mesh.userData.preserveSharedResources) return;
+    if (mesh.geometry) geometries.add(mesh.geometry);
     const material = mesh.material;
-    if (Array.isArray(material)) material.forEach((item) => item.dispose());
-    else material?.dispose?.();
+    if (Array.isArray(material)) material.forEach((item) => materials.add(item));
+    else if (material) materials.add(material);
   });
+  geometries.forEach((geometry) => geometry.dispose());
+  materials.forEach((material) => material.dispose());
   root.parent?.remove(root);
 };
 
@@ -182,21 +192,16 @@ const createHuntersRunnersVisuals = (root: THREE.Group) => {
   };
 };
 
-export const createAthleticsModeVisuals = ({ scene, mode, camera }: { scene: THREE.Scene; mode: AthleticsMode; camera?: THREE.PerspectiveCamera }): AthleticsModeVisuals => {
+export const createAthleticsModeVisuals = ({ scene, mode, camera, zeusAssets }: { scene: THREE.Scene; mode: AthleticsMode; camera?: THREE.PerspectiveCamera; zeusAssets?: ZeusModelAssets }): AthleticsModeVisuals => {
   const root = new THREE.Group();
   root.name = `athletics-mode-visuals-${mode}`;
   scene.add(root);
   if (mode === "zeus") {
-    const visuals = createZeusVisuals(root, camera, typeof window !== "undefined" && window.matchMedia("(prefers-reduced-motion: reduce)").matches);
-    const lights: { light: THREE.Light; mask: number }[] = [];
-    if (camera) scene.traverse((object) => {
-      if (object instanceof THREE.Light) {
-        lights.push({ light: object, mask: object.layers.mask });
-        object.layers.enable(ZEUS_SKY_LAYER);
-      }
-    });
+    const visuals = createZeusVisuals(root, camera, typeof window !== "undefined" && window.matchMedia("(prefers-reduced-motion: reduce)").matches, zeusAssets);
     return {
       update: visuals.update,
+      ready: visuals.ready,
+      getModelStatus: visuals.getModelStatus,
       renderOverlay: camera ? (renderer) => {
         const cameraMask = camera.layers.mask;
         const background = scene.background;
@@ -220,7 +225,7 @@ export const createAthleticsModeVisuals = ({ scene, mode, camera }: { scene: THR
         }
       } : undefined,
       dispose: () => {
-        lights.forEach(({ light, mask }) => { light.layers.mask = mask; });
+        visuals.dispose();
         disposeVisualObject(root);
       }
     };

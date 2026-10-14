@@ -2653,6 +2653,8 @@
   "Caught moving! Your checkpoints and 90% of your energy are safe.": "動いたところを見つかった！チェックポイントとエネルギーの90%はそのまま。",
   "Caught moving! Try level {value0} again. Checkpoints kept; 90% energy kept.": "動いたところを見つかった！ステージ{value0}に再挑戦。チェックポイントとエネルギーの90%はそのまま。",
   "Zeus chant voice": "ゼウスのかけ声",
+  "Zeus model:": "ゼウスのモデル：",
+  "Public domain": "パブリックドメイン",
   "An occasional chant. Turn it off to keep just GO and STOP sounds. The countdown always stays visible.": "かけ声は時々だけ。オフにすると「進め」「止まれ」の合図音だけになります。カウントダウンはいつでも見えます。",
   "Climb on GO; the countdown warns you before STOP": "「進め」で登ろう。「止まれ」の前にはカウントダウンが出るよ",
   "Caught moving? Keep your checkpoints and 90% of your energy": "動いて見つかっても、チェックポイントとエネルギーの90%はキープ",

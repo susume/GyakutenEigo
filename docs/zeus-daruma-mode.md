@@ -17,9 +17,9 @@ on cycles 0, 3, 6, and so on: approximately once per minute. Silence is still GO
 the visible signal is always the movement authority. Later cycles select six
 deliveries deterministically for the entire room: slow, steady, quick, a slow
 start with a rushed finish, a long suspense pause, and separated rhythmic
-phrases. A room-seeded shuffled bag assigns every delivery once per six cycles,
-rotating the order and avoiding consecutive repeats. Only every third assignment
-is spoken. WAV durations determine when narration begins relative to the
+phrases. A room-seeded shuffled bag assigns every delivery once per six audible
+chants, rotating the order and avoiding consecutive audible repeats. Silent
+cycles do not advance the bag. WAV durations determine when narration begins relative to the
 server's STOP deadline. The recordings use a fictional childlike
 Japanese voice: Microsoft Ayumi synthesis with a modest pitch/formant lift and
 duration-preserving tempo correction. Generate them locally in PowerShell 7 with
@@ -48,20 +48,29 @@ to the finish lane. The map uses colored checkpoint arches, landing chevrons,
 and the next-landing marker for direction; start, finish, checkpoint, district,
 shortcut, and stadium caption boards have been removed.
 
-The small, smiling Zeus referee has a blue robe, a short white beard, softly
-raised eyebrows, and eyes that retain their normal color during STOP. He appears
-above the course and follows the view through its bends.
+Zeus uses the public-domain **Zeus Ammon (KAS1110)** scan from SMK / Scan the
+World, with natural facial anatomy, curly hair, and a detailed beard. The
+procedural cartoon face is removed. The display stem beneath the neck is
+cropped; the smooth ivory sculpture has neutral lighting in its own render
+layer. The bundled model is 562 KB / 40,000 triangles with no remote textures.
+Source, licensing, modifications, and hashes live in
+`apps/web/public/assets/zeus/`. He appears above the course and follows the view through its bends.
 Phone layouts place it below the compact HUD; wider views place it beside the
 HUD. The sky head uses a separate depth pass so scenery cannot hide the signal,
 while its own depth still hides the face when turned away. GO/STOP uses words
 and shapes as well as color, remains visible when a
 question is open, and works without sound. Reduced motion uses an immediate
-head turn. Background music is disabled in Zeus mode. Teachers can select
+head turn and immediate disappearance when defeated. Background music is disabled in Zeus mode. Teachers can select
 student-device narration or teacher-speaker narration when creating the room.
 Student devices play distinct GO and STOP cues in either narration setting.
 Students can turn off the chant voice independently in game settings. Narration
 pauses while they read questions or change settings. Narration has a quiet gain
 of 0.4 and follows both the SFX volume and master mute.
+Audio paths respect the deployment's URL prefix. A failed voice download can
+retry on a later voiced cycle instead of remaining cached as a permanent failure.
+Model loading is asynchronous: leaving the arena prevents a late attachment,
+releases its cache reference, and disposes only its own materials. The GO/STOP
+signal continues to work if the model is unavailable.
 
 Mistakes use a quiet retry chime, with quieter spatial audio for other runners.
 Gold lightning with a purple halo and a landing ring

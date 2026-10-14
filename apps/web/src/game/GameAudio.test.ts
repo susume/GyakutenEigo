@@ -8,6 +8,7 @@ import {
   GAME_AUDIO_CUES,
   gameAudio,
   getCombatAudioSpatial,
+  getGameAudioAssetUrl,
   getMovementStepIntervalMs,
   type GameAudioCue
 } from "./GameAudio.js";
@@ -36,6 +37,12 @@ test("game audio defines cues for core movement and action feedback", () => {
     assert.ok(GAME_AUDIO_CUES[cue].frequency > 0, `${cue} should have a playable frequency`);
     assert.ok(GAME_AUDIO_CUES[cue].durationMs > 0, `${cue} should have a duration`);
   }
+});
+
+test("audio files follow the deployment prefix, including Zeus narration", () => {
+  assert.equal(getGameAudioAssetUrl("/assets/audio/zeus/child-slow.wav", "/class-game/"), "/class-game/assets/audio/zeus/child-slow.wav");
+  assert.equal(getGameAudioAssetUrl("/assets/audio/zeus/child-slow.wav", "/"), "/assets/audio/zeus/child-slow.wav");
+  assert.equal(getGameAudioAssetUrl("jump.wav", "/class-game/"), "/class-game/assets/audio/kenney/jump.wav");
 });
 
 test("combat audio spatialization follows attacker direction and range", () => {
@@ -221,4 +228,44 @@ test("Zeus narration retries blocked audio at the live offset and cancels suspen
   gameAudio.syncZeusChant("expired-chant", "slow", Date.now() - 8000, Date.now());
   await new Promise<void>((resolve) => setImmediate(resolve));
   assert.equal(starts.length, 2, "an expired chant must not start late");
+});
+
+test("a failed chant download retries on a later voiced cycle without hammering the server", async (t) => {
+  let fetches = 0;
+  let starts = 0;
+  const contexts: AuditAudioContext[] = [];
+  class AuditAudioContext {
+    constructor() { contexts.push(this); }
+    state = "running";
+    currentTime = 10;
+    destination = {};
+    resume() { return Promise.resolve(); }
+    createGain() { return { gain: { setValueAtTime() {} }, connect() {} }; }
+    decodeAudioData() { return Promise.resolve({ duration: 2.794 }); }
+    createBufferSource() { return { connect() {}, disconnect() {}, stop() {}, start() { starts++; } }; }
+  }
+  const windowBefore = Object.getOwnPropertyDescriptor(globalThis, "window");
+  const fetchBefore = globalThis.fetch;
+  Object.defineProperty(globalThis, "window", { configurable: true, value: { AudioContext: AuditAudioContext, requestIdleCallback() {} } });
+  globalThis.fetch = async () => {
+    fetches++;
+    return fetches === 1 ? new Response(null, { status: 503 }) : new Response(new Uint8Array(8));
+  };
+  t.after(() => {
+    gameAudio.stopZeusChant();
+    contexts[0]!.state = "closed";
+    globalThis.fetch = fetchBefore;
+    if (windowBefore) Object.defineProperty(globalThis, "window", windowBefore);
+    else Reflect.deleteProperty(globalThis, "window");
+  });
+  const startedAt = Date.now() - 1000;
+  gameAudio.syncZeusChant("failed-download", "quick", startedAt, Date.now());
+  await new Promise<void>((resolve) => setImmediate(resolve));
+  assert.equal(starts, 0);
+  for (let i = 0; i < 20; i++) gameAudio.syncZeusChant("failed-download", "quick", startedAt, Date.now());
+  assert.equal(fetches, 1);
+  gameAudio.syncZeusChant("later-voiced-cycle", "quick", startedAt, Date.now());
+  await new Promise<void>((resolve) => setImmediate(resolve));
+  assert.equal(fetches, 2);
+  assert.equal(starts, 1);
 });

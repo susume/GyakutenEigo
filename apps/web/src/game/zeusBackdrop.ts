@@ -1,10 +1,11 @@
 import * as THREE from "three";
 import { ATHLETICS_STADIUM_COURSE, ATHLETICS_PLAYER_EYE_HEIGHT, ZEUS_SUMMIT_SURFACE_INDEX, ZEUS_STRIKE_VISIBLE_MS, getZeusLight, type GameSession } from "@quizstrike/shared";
+import { attachZeusModel, type ZeusModelAssets } from "./zeusModel";
 
 export const ZEUS_SKY_LAYER = 1;
 
-/** A small sky referee stays visible through bends without dominating the race. */
-export const createZeusVisuals = (root: THREE.Group, camera?: THREE.PerspectiveCamera, reducedMotion = false) => {
+/** A scanned classical Zeus has natural anatomy and follows the race signal. */
+export const createZeusVisuals = (root: THREE.Group, camera?: THREE.PerspectiveCamera, reducedMotion = false, assets?: ZeusModelAssets) => {
   const sky = new THREE.Group();
   sky.name = "athletics-zeus-sky";
   const head = new THREE.Group();
@@ -12,13 +13,7 @@ export const createZeusVisuals = (root: THREE.Group, camera?: THREE.PerspectiveC
   sky.add(head);
   root.add(sky);
   const material = (color: string, glow = "#000000") => new THREE.MeshStandardMaterial({ color, emissive: glow, emissiveIntensity: 0.18, roughness: 0.8, fog: false });
-  const skin = material("#f2c5a1", "#815441");
-  const hair = material("#fff8ed", "#827e98");
   const gold = material("#ffd76b", "#bd721b");
-  const eyes = material("#fffdf5");
-  const pupil = material("#27324b");
-  const cheeks = material("#e9a5a0");
-  const robe = material("#84c9ed", "#274a69");
   const sphere = new THREE.SphereGeometry(1, 24, 16);
   const ellipsoid = (parent: THREE.Group, mat: THREE.Material, position: number[], scale: number[]) => {
     const mesh = new THREE.Mesh(sphere, mat);
@@ -27,45 +22,19 @@ export const createZeusVisuals = (root: THREE.Group, camera?: THREE.PerspectiveC
     parent.add(mesh);
     return mesh;
   };
-  ellipsoid(head, robe, [0, -1.9, -0.15], [1.5, 0.75, 0.75]);
-  ellipsoid(head, hair, [0, 0.38, -0.4], [1.42, 1.47, 1]);
-  ellipsoid(head, skin, [0, 0, 0.15], [1.28, 1.35, 1.04]);
-  for (const side of [-1, 1]) {
-    ellipsoid(head, skin, [side * 1.24, 0, 0.12], [0.23, 0.35, 0.28]);
-    ellipsoid(head, eyes, [side * 0.46, 0.21, 1.08], [0.27, 0.25, 0.12]);
-    ellipsoid(head, pupil, [side * 0.46, 0.21, 1.19], [0.12, 0.15, 0.06]);
-    ellipsoid(head, eyes, [side * 0.46 - 0.035, 0.27, 1.25], [0.036, 0.045, 0.015]);
-    ellipsoid(head, cheeks, [side * 0.79, -0.27, 1.04], [0.23, 0.13, 0.07]);
-    const brow = ellipsoid(head, hair, [side * 0.46, 0.61, 1.08], [0.31, 0.075, 0.1]);
-    brow.rotation.z = -side * 0.08;
-    ellipsoid(head, hair, [side * 0.86, -0.9, 0.68], [0.38, 0.48, 0.42]);
-    ellipsoid(head, hair, [side * 0.45, -1.18, 0.81], [0.45, 0.48, 0.38]);
-    for (let i = 0; i < 3; i++) ellipsoid(head, hair, [side * (0.35 + i * 0.34), 1.18 - i * 0.24, 0.15], [0.46, 0.35, 0.52]);
-  }
-  ellipsoid(head, skin, [0, -0.13, 1.16], [0.19, 0.24, 0.23]);
-  // A shallow upward smile, instead of an opening black mouth and red eyes.
-  const smile = new THREE.Mesh(new THREE.TorusGeometry(0.3, 0.04, 6, 20, Math.PI), pupil);
-  smile.name = "athletics-zeus-smile";
-  smile.position.set(0, -0.43, 1.15);
-  smile.rotation.z = Math.PI;
-  smile.scale.y = 0.5;
-  head.add(smile);
-  ellipsoid(head, hair, [0, -1.4, 0.78], [0.47, 0.38, 0.38]);
-  const crown = new THREE.Mesh(new THREE.TorusGeometry(1.25, 0.11, 8, 28), gold);
-  crown.rotation.x = Math.PI / 2;
-  crown.position.y = 1.15;
-  head.add(crown);
-  for (let i = 0; i < 5; i++) {
-    const angle = i * Math.PI * 2 / 5;
-    const spike = new THREE.Mesh(new THREE.ConeGeometry(0.16, 0.34, 6), gold);
-    spike.position.set(Math.cos(angle) * 1.2, 1.37, Math.sin(angle) * 1.2);
-    head.add(spike);
-  }
+  // Neutral lighting reveals the real scan's features without changing them
+  // to angry eyes or tinting the course. These lights move with the apparition.
+  const fill = new THREE.HemisphereLight("#fff5e6", "#8b9ba8", 1.4);
+  const key = new THREE.DirectionalLight("#fff3df", 2.2);
+  key.position.set(-5, 7, 9);
+  key.target = head;
+  sky.add(fill, key);
   const cloudMaterial = new THREE.MeshStandardMaterial({ color: "#f4f5ff", emissive: "#8d8fa8", emissiveIntensity: 0.25, roughness: 1, transparent: true, opacity: 0.8, fog: false });
   for (let i = -2; i <= 2; i++) ellipsoid(sky, cloudMaterial, [i * 0.75, -2.22 + Math.abs(i) * 0.08, -0.25], [0.96, 0.4, 0.72]);
   // Render the apparition after the course so nearby scenery cannot hide the
   // signal. Its own depth buffer still keeps the face hidden when turned away.
   if (camera) sky.traverse((object) => object.layers.set(ZEUS_SKY_LAYER));
+  const model = attachZeusModel(head, sky, camera ? ZEUS_SKY_LAYER : 0, assets);
 
   const summit = ATHLETICS_STADIUM_COURSE.surfaces[ZEUS_SUMMIT_SURFACE_INDEX]!;
   const gateway = new THREE.Mesh(new THREE.TorusGeometry(4.5, 0.25, 8, 40), gold);
@@ -110,6 +79,9 @@ export const createZeusVisuals = (root: THREE.Group, camera?: THREE.PerspectiveC
   let lastPhase: string | undefined;
   let defeatedAt = 0;
   return {
+    ready: model.ready,
+    dispose: model.dispose,
+    getModelStatus: () => sky.userData.modelStatus as string,
     update: (session: GameSession | null | undefined, nowMs: number) => {
       const zeus = session?.athletics?.zeus;
       bolts.forEach(({ bolt, glow, ring, ringMaterial }, index) => {
@@ -130,7 +102,7 @@ export const createZeusVisuals = (root: THREE.Group, camera?: THREE.PerspectiveC
       const light = getZeusLight(zeus, nowMs);
       if (light === "defeated" && lastPhase !== light) defeatedAt = nowMs;
       lastPhase = light;
-      const defeat = light === "defeated" ? Math.min(1, Math.max(0, (nowMs - defeatedAt) / 1100)) : 0;
+      const defeat = light === "defeated" ? (reducedMotion ? 1 : Math.min(1, Math.max(0, (nowMs - defeatedAt) / 1100))) : 0;
       sky.visible = defeat < 1;
       gateway.visible = light !== "defeated";
       const phaseStart = light === "red" && zeus?.phase === "green" ? Date.parse(zeus.phaseEndsAt ?? "") : Date.parse(zeus?.phaseStartedAt ?? "");
@@ -148,10 +120,10 @@ export const createZeusVisuals = (root: THREE.Group, camera?: THREE.PerspectiveC
         const narrow = camera.aspect < 1;
         sky.position.set(halfHeight * camera.aspect * (narrow ? 0.62 : 0.7), halfHeight * (narrow ? 0.03 : 0.68), -110).applyQuaternion(orientation).add(position);
         sky.quaternion.copy(orientation);
-        sky.scale.setScalar((narrow ? 2.8 : 4.6) * (1 - defeat * 0.5));
+        sky.scale.setScalar((narrow ? 3.3 : 5.2) * (1 - defeat * 0.5));
       } else {
         sky.position.set(summit.x, summit.y + 30, summit.z);
-        sky.scale.setScalar(4.6 * (1 - defeat * 0.5));
+        sky.scale.setScalar(5.2 * (1 - defeat * 0.5));
       }
     }
   };
