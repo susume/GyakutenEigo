@@ -15500,14 +15500,19 @@ body:has(.workspace) .athletics-teacher-results {
 }
 .zeus-light-signal strong { display: block; font-size: 22px; line-height: 1; letter-spacing: .08em; }
 .zeus-light-signal div > span { display: block; margin-top: 3px; font-size: 12px; }
-.zeus-signal-icon { font-size: 20px; }
+.zeus-signal-icon { flex-shrink: 0; }
 .zeus-light-signal.is-green { background: #133e2d; border-color: #84e4ac; }
 .zeus-light-signal.is-red { background: #642522; border-color: #ffc3ae; }
+.zeus-light-signal.is-warning { background: #493615; border-color: #ffda7a; }
+.zeus-light-signal.is-warning div > span { color: #ffe7a6; font-weight: 700; }
 .zeus-light-signal.is-inline { position: static; transform: none; width: auto; max-width: none; padding: 2px 0; border: 0; border-radius: 0; box-shadow: none; background: transparent; }
 .zeus-light-signal.is-inline strong { font-size: 18px; }
 .zeus-light-signal.is-inline div > span { margin-top: 2px; font-size: 11px; }
 .zeus-status-green { border-left: 3px solid #84e4ac; }
 .zeus-status-red { border-left: 3px solid #ffc3ae; }
+.zeus-status-warning { border-left: 3px solid #ffda7a; }
+/* Keep the moving course clear around the HUD on school GPUs. */
+.fps-view .athletics-hud.athletics-mode-zeus { backdrop-filter: none; background: linear-gradient(145deg, #051625, #0d2e3b); }
 .zeus-audio-choice { display: grid; gap: 8px; margin: 16px 0; }
 .zeus-audio-choice select { padding: 10px; border-radius: 8px; }
 .athletics-menu { grid-template-columns: minmax(0, 1fr); }
@@ -15526,7 +15531,7 @@ body:has(.workspace) .athletics-teacher-results {
   .zeus-light-signal { top: 8px; padding: 5px 12px; }
   .zeus-light-signal strong { font-size: 18px; }
   .zeus-light-signal div > span { font-size: 10px; }
-  .zeus-light-signal.is-inline div > span { display: none; }
+  .zeus-light-signal.is-inline:not(.is-warning) div > span { display: none; }
 }
 
 @media (orientation: landscape) and (max-height: 500px) {

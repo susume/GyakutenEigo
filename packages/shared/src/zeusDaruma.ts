@@ -1,9 +1,12 @@
 import { ATHLETICS_STADIUM_COURSE, getAthleticsCheckpointSurfaceIndex, getAthleticsRecoveryPosition, getAthleticsStartPosition, getAthleticsSurfaceRouteProgress, normalizeAthleticsEnergy } from "./athleticsRace.js";
 import type { AthleticsZeusState } from "./athleticsModes.js";
 
-export const ZEUS_STOP_GRACE_MS = 650;
+export const ZEUS_STOP_GRACE_MS = 1000;
 export const ZEUS_RESTART_GUARD_MS = 900;
 export const ZEUS_CHANT_LEAD_MS = 1200;
+export const ZEUS_STOP_WARNING_MS = 2500;
+export const ZEUS_CHANT_EVERY_CYCLES = 3;
+export const ZEUS_STRIKE_ENERGY_RETAINED = 0.9;
 export const ZEUS_STRIKE_VISIBLE_MS = 1800;
 export const ZEUS_CHANTS = {
   slow: { durationMs: 5125, path: "/assets/audio/zeus/child-slow.wav" },
@@ -20,19 +23,19 @@ export const ZEUS_SUMMIT_CHECKPOINT_COUNT = ATHLETICS_STADIUM_COURSE.sections.le
 export const ZEUS_SUMMIT_SURFACE_INDEX = getAthleticsCheckpointSurfaceIndex(ZEUS_SUMMIT_CHECKPOINT_COUNT - 1, ATHLETICS_STADIUM_COURSE)!;
 export const ZEUS_SUMMIT_PROGRESS = ATHLETICS_STADIUM_COURSE.checkpoints[ZEUS_SUMMIT_CHECKPOINT_COUNT - 1]!;
 
-/** Completed checkpoints identify the current level. Drop back one level,
- * retaining all checkpoints before its start and exactly half the fuel. */
+/** Keep earned checkpoints: a mistake retries the current level with a small
+ * fuel cost, instead of erasing a completed level and half the runner's fuel. */
 export const getZeusStrikeRecovery = ({ checkpointIndex, energy, laneIndex = 0, totalPlayers = 1 }: {
   checkpointIndex: number; energy: number | undefined; laneIndex?: number; totalPlayers?: number;
 }) => {
   const currentLevel = Math.max(0, Math.min(ZEUS_SUMMIT_CHECKPOINT_COUNT - 1, Math.floor(Number.isFinite(checkpointIndex) ? checkpointIndex : 0)));
-  const retainedCheckpoints = Math.max(0, currentLevel - 1);
+  const retainedCheckpoints = currentLevel;
   const surfaceIndex = retainedCheckpoints === 0 ? 0 : getAthleticsCheckpointSurfaceIndex(retainedCheckpoints - 1)!;
   return {
     checkpointIndex: retainedCheckpoints,
     surfaceIndex,
     routeProgress: getAthleticsSurfaceRouteProgress(surfaceIndex),
-    energy: normalizeAthleticsEnergy(energy) / 2,
+    energy: normalizeAthleticsEnergy(energy) * ZEUS_STRIKE_ENERGY_RETAINED,
     spawn: surfaceIndex === 0 ? getAthleticsStartPosition(laneIndex, totalPlayers) : getAthleticsRecoveryPosition(surfaceIndex, laneIndex)
   };
 };
@@ -52,7 +55,26 @@ export const getZeusCycle = (seed: number, cycleIndex: number) => {
   if (chants[0] === "slow") [chants[0], chants[1]] = [chants[1]!, chants[0]!];
   const variedIndex = Math.max(0, cycleIndex - 2);
   const chantId: ZeusChantId = cycleIndex < 2 ? "slow" : chants[(variedIndex + Math.floor(variedIndex / chants.length)) % chants.length]!;
-  return { chantId, greenMs: ZEUS_CHANT_LEAD_MS + ZEUS_CHANTS[chantId].durationMs, redMs: 3600 + (mix % 4) * 400 };
+  // Most of the race should be climbing. Variations remain room-synchronized,
+  // but never accelerate into a barrage of chants and long freezes.
+  return { chantId, greenMs: cycleIndex < 2 ? 18000 : 14000 + (mix % 5) * 900, redMs: 2200 + (mix % 3) * 200 };
+};
+
+export const shouldPlayZeusChant = (cycleIndex = 0) => cycleIndex % ZEUS_CHANT_EVERY_CYCLES === 0;
+
+/** End the occasional voice at STOP, leaving a quiet stretch to climb first.
+ * The fallback preserves narration for older snapshots without a deadline. */
+export const getZeusChantStartAt = (zeus: AthleticsZeusState | undefined) => {
+  if (!zeus?.chantId) return NaN;
+  const end = Date.parse(zeus.phaseEndsAt ?? "");
+  return Number.isFinite(end) ? end - ZEUS_CHANTS[zeus.chantId].durationMs
+    : Date.parse(zeus.phaseStartedAt ?? "") + ZEUS_CHANT_LEAD_MS;
+};
+
+export const getZeusStopCountdown = (zeus: AthleticsZeusState | undefined, nowMs: number): number | null => {
+  if (zeus?.phase !== "green") return null;
+  const remaining = Date.parse(zeus.phaseEndsAt ?? "") - nowMs;
+  return remaining > 0 && remaining <= ZEUS_STOP_WARNING_MS ? Math.ceil(remaining / 1000) : null;
 };
 
 export const startZeusGreen = (seed: number, cycleIndex: number, nowMs: number): AthleticsZeusState => {

@@ -162,16 +162,23 @@ test("Zeus narration retries blocked audio at the live offset and cancels suspen
   const starts: { when: number; offset: number }[] = [];
   let fetches = 0;
   const contexts: AuditAudioContext[] = [];
+  type AuditGain = { level: number; output?: unknown; gain: { setValueAtTime: (value: number) => void }; connect: (output: unknown) => void };
+  const gains: AuditGain[] = [];
+  const sourceOutputs: unknown[] = [];
   class AuditAudioContext {
     constructor() { contexts.push(this); }
     state = "suspended";
     currentTime = 10;
     destination = {};
     resume() { return Promise.resolve(); }
-    createGain() { return { gain: { setValueAtTime() {} }, connect() {} }; }
+    createGain() {
+      const node: AuditGain = { level: 0, gain: { setValueAtTime(value) { node.level = value; } }, connect(output) { node.output = output; } };
+      gains.push(node);
+      return node;
+    }
     decodeAudioData() { return Promise.resolve({ duration: 5.083 }); }
     createBufferSource() {
-      return { connect() {}, disconnect() {}, stop() {}, start(when: number, offset: number) { starts.push({ when, offset }); } };
+      return { connect(output: unknown) { sourceOutputs.push(output); }, disconnect() {}, stop() {}, start(when: number, offset: number) { starts.push({ when, offset }); } };
     }
   }
   const windowBefore = Object.getOwnPropertyDescriptor(globalThis, "window");
@@ -196,6 +203,10 @@ test("Zeus narration retries blocked audio at the live offset and cancels suspen
   gameAudio.syncZeusChant("blocked-chant", "slow", startedAt, Date.now());
   await new Promise<void>((resolve) => setImmediate(resolve));
   assert.equal(starts.length, 1);
+  assert.equal(sourceOutputs[0], gains[3], "narration uses its own quiet gain");
+  assert.equal(gains[3]!.level, .4);
+  assert.equal(gains[3]!.output, gains[1], "SFX volume controls the chant as well as game cues");
+  assert.equal(gains[1]!.output, gains[0], "master mute also silences narration");
   assert.ok(starts[0]!.offset >= 2 && starts[0]!.offset < 2.5);
   gameAudio.syncZeusChant("blocked-chant", "slow", startedAt, Date.now());
   assert.equal(starts.length, 1, "snapshots must not replay the same chant");

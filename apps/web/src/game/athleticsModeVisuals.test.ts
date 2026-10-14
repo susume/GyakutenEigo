@@ -70,9 +70,24 @@ test("Zeus turns his visible sky head with the shared signal and disappears when
   visuals.update(green, 2000);
   assert.equal(head.rotation.y, Math.PI);
   assert.equal(sky.userData.light, "green");
+  const greenEyeMaterials: THREE.MeshStandardMaterial[] = [];
+  head.traverse((object) => {
+    if (object instanceof THREE.Mesh && object.material instanceof THREE.MeshStandardMaterial) greenEyeMaterials.push(object.material.clone());
+  });
+  assert.ok(sky.scale.x <= 4.6, "the referee leaves the course visible");
+  assert.ok(scene.getObjectByName("athletics-zeus-smile"), "Zeus keeps a calm smile");
   visuals.update(green, 7500);
   assert.equal(head.rotation.y, 0, "the head turns at the chant deadline, even before the next snapshot");
   assert.equal(sky.userData.light, "red");
+  let materialIndex = 0;
+  head.traverse((object) => {
+    if (object instanceof THREE.Mesh && object.material instanceof THREE.MeshStandardMaterial) {
+      const before = greenEyeMaterials[materialIndex++]!;
+      assert.equal(object.material.emissive.getHex(), before.emissive.getHex(), "STOP does not turn the eyes red");
+      assert.equal(object.material.emissiveIntensity, before.emissiveIntensity);
+      before.dispose();
+    }
+  });
   camera.position.set(80, 50, -90);
   camera.rotation.y = Math.PI / 2;
   visuals.update(green, 7501);
@@ -85,6 +100,7 @@ test("Zeus turns his visible sky head with the shared signal and disappears when
   const phoneProjection = sky.position.clone().project(camera);
   assert.ok(phoneProjection.x > 0.45 && phoneProjection.x < 0.7, "phone head stays beside the central course guidance");
   assert.ok(phoneProjection.y > 0 && phoneProjection.y < 0.12, "phone head sits beneath the top HUD");
+  assert.ok(sky.scale.x <= 2.8, "the phone referee stays small beside the route");
   green.athletics!.zeus!.phase = "defeated";
   visuals.update(green, 8000);
   visuals.update(green, 9200);

@@ -381,7 +381,8 @@ export default function StudentExperience({ onExit }: { onExit: () => void }) {
   const zombieSelection = Boolean(session && isZombieSelectionPhase(session));
   const athleticsRace = session?.settings.gameMode === "athletics";
   const athleticsMode = athleticsRace && session ? athleticsModeForSession(session) : "classic";
-  const zeusDaruma = useZeusDaruma(session, athleticsRace && athleticsMode === "zeus", session?.settings.athleticsZeusAudio !== "teacher");
+  const zeusDaruma = useZeusDaruma(session, athleticsRace && athleticsMode === "zeus",
+    session?.settings.athleticsZeusAudio !== "teacher" && gamePreferences.zeusChantEnabled && !quizOpen && !settingsOpen);
   const athleticsStartRemainingSeconds = useDeadlineRemainingSeconds(
     athleticsRace ? session?.athletics?.startAt : undefined,
     session?.serverTime,
@@ -1048,7 +1049,7 @@ export default function StudentExperience({ onExit }: { onExit: () => void }) {
         athletics: { ...current.athletics, ...payload.athletics,
           movementEpoch: payload.movementEpoch, zeusRestartUntil: payload.restartUntil, zeusFrozen: false }
       } : current);
-      setFeedback(payload.message ?? "Zeus saw you move! Back one level with half your energy.");
+      setFeedback(payload.message ?? "Caught moving! Your checkpoints and 90% of your energy are safe.");
     });
     connectedSocket.on("zeus_defeated", (payload: { winnerId?: string; message?: string }) => {
       if (lastVisualSession.settings.gameMode !== "athletics" || athleticsModeForSession(lastVisualSession) !== "zeus") return;
@@ -2446,6 +2447,8 @@ export default function StudentExperience({ onExit }: { onExit: () => void }) {
     abilityReady: athleticsAbility,
     shieldCharges: athleticsPlayer.shieldCharges ?? 0,
     zeusLight: zeusDaruma.light,
+    zeusStopInSeconds: zeusDaruma.stopInSeconds,
+    zeusGoInSeconds: zeusDaruma.goInSeconds,
     zeusSummitPercent: Math.min(100, Math.round((athleticsPlayer.routeProgress ?? 0) / ZEUS_SUMMIT_PROGRESS * 100)),
     zeusRestarting: Boolean(athleticsPlayer.zeusRestartUntil && zeusDaruma.serverNowMs < Date.parse(athleticsPlayer.zeusRestartUntil)),
     remainingRunners: athleticsRemainingRunners,
@@ -2511,7 +2514,7 @@ export default function StudentExperience({ onExit }: { onExit: () => void }) {
     ].filter(Boolean).join(" ")}>
       <div className="game-stage">
         {athleticsMode === "zeus" && session.status === "active" && !teacherPaused && zeusStrikePulse > 0 && <ZeusStrikeFeedback key={zeusStrikePulse} levelNumber={(player.athletics?.checkpointIndex ?? 0) + 1} />}
-        {athleticsMode === "zeus" && session.status === "active" && quizOpen && !teacherPaused && <ZeusLightSignal light={zeusDaruma.light} floating />}
+        {athleticsMode === "zeus" && session.status === "active" && quizOpen && !teacherPaused && <ZeusLightSignal light={zeusDaruma.light} stopInSeconds={zeusDaruma.stopInSeconds} goInSeconds={zeusDaruma.goInSeconds} floating />}
         {session.status !== "waiting" && !teacherPaused && <GameAnnouncementOverlay announcement={roundPreparation || zombieSelection || roundEnded || session.announcement?.kind === "round_start" ? undefined : session.announcement} serverTime={session.serverTime} />}
         <div className={`game-utility-bar${session.status === "waiting" ? " lobby-utility-bar" : ""}`}>
           {session.status === "waiting" ? (
@@ -2789,7 +2792,7 @@ export default function StudentExperience({ onExit }: { onExit: () => void }) {
               />
             )}
             {scoreboardOpen && <Scoreboard players={session.players} localPlayerId={player.id} gameMode={session.settings.gameMode} athleticsMode={athleticsMode} athleticsRequiredLaps={athleticsRequiredLaps} />}
-            {settingsOpen && <GamePreferencesPanel preferences={gamePreferences} onChange={updateGamePreferences} />}
+            {settingsOpen && <GamePreferencesPanel preferences={gamePreferences} onChange={updateGamePreferences} showZeusAudio={athleticsMode === "zeus"} />}
           </div>
         )}
         {(session.status === "waiting" || roundEnded || isSocketReconnecting || (!player.isAlive && session.settings.gameMode !== "flag" && !athleticsRace) || status.error || feedback) && (

@@ -36,9 +36,9 @@ export const ATHLETICS_MODE_CONFIG: Readonly<Record<AthleticsMode, AthleticsMode
     id: "zeus",
     label: "Zeus Mode",
     shortLabel: "Zeus",
-    description: "Race to the summit while Zeus chants. Stop when he turns, or lightning sends you back one level with half your energy.",
+    description: "Race to the summit on GO. Watch the countdown and freeze on STOP. If caught, retry from your latest checkpoint with 90% of your energy.",
     instructionTitle: "CLIMB TO ZEUS",
-    instructionLines: ["Climb while Zeus chants; stop when he turns around", "Move during STOP: back one level and lose half your energy", "Answer for energy; first to the summit defeats Zeus"],
+    instructionLines: ["Climb on GO; the countdown warns you before STOP", "Caught moving? Keep your checkpoints and 90% of your energy", "Answer for energy; first to the summit defeats Zeus"],
     accent: "#b697ff"
   },
   "hunters-runners": {

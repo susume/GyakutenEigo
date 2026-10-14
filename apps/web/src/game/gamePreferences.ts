@@ -5,6 +5,7 @@ export type GamePreferences = {
   highContrastHud: boolean;
   gamepadEnabled: boolean;
   soundEnabled: boolean;
+  zeusChantEnabled: boolean;
   sfxVolume: number;
   musicVolume: number;
   vibrationEnabled: boolean;
@@ -20,6 +21,7 @@ export const DEFAULT_GAME_PREFERENCES: GamePreferences = {
   highContrastHud: false,
   gamepadEnabled: true,
   soundEnabled: true,
+  zeusChantEnabled: true,
   sfxVolume: 0.86,
   musicVolume: 0.16,
   vibrationEnabled: true,
@@ -40,6 +42,7 @@ export const normalizeGamePreferences = (stored: Partial<GamePreferences>): Game
   highContrastHud: typeof stored.highContrastHud === "boolean" ? stored.highContrastHud : DEFAULT_GAME_PREFERENCES.highContrastHud,
   gamepadEnabled: typeof stored.gamepadEnabled === "boolean" ? stored.gamepadEnabled : DEFAULT_GAME_PREFERENCES.gamepadEnabled,
   soundEnabled: typeof stored.soundEnabled === "boolean" ? stored.soundEnabled : DEFAULT_GAME_PREFERENCES.soundEnabled,
+  zeusChantEnabled: typeof stored.zeusChantEnabled === "boolean" ? stored.zeusChantEnabled : DEFAULT_GAME_PREFERENCES.zeusChantEnabled,
   sfxVolume: clampVolume(stored.sfxVolume, DEFAULT_GAME_PREFERENCES.sfxVolume),
   musicVolume: clampVolume(stored.musicVolume, DEFAULT_GAME_PREFERENCES.musicVolume),
   vibrationEnabled: typeof stored.vibrationEnabled === "boolean" ? stored.vibrationEnabled : DEFAULT_GAME_PREFERENCES.vibrationEnabled,

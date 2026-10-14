@@ -1,23 +1,26 @@
 # Zeus: Daruma summit race
 
-Zeus faces away while chanting **だるまさんがころんだ**. When his chant ends,
-his head turns towards the runners and the shared signal changes to **STOP**.
+Zeus faces away during **GO**. A quiet climbing stretch comes first; the occasional
+**だるまさんがころんだ** chant ends exactly at **STOP**, when he faces the runners.
+Every cycle has an amber 2.5-second warning countdown, including silent cycles.
 Moving or starting a new jump during STOP triggers lightning and returns that
-runner to the start of the previous level, keeping exactly half their remaining
-movement energy. Level 1 and level 2 strikes return to the starting lane;
-a level 4 strike returns to the safe checkpoint at the beginning of level 3.
-Quiz answers, learning credit, and checkpoints before that level remain intact.
+runner to the start of their current level, keeping 90% of their remaining
+movement energy. A level 4 mistake returns to the safe checkpoint at the
+beginning of level 4. Quiz answers, learning credit, and every earned checkpoint
+remain intact. Repeated input cannot punish the runner again before the next GO.
 The first runner to physically land at the sixth checkpoint, at the summit,
 defeats Zeus and ends the race. Zeus always uses a single ascent.
 
-The opening two cycles use the slower narration. Later cycles select six
+The opening two cycles give 18 seconds to climb; later cycles give 14–17.6 seconds.
+STOP lasts 2.2–2.6 seconds, with a one-second stopping allowance. The chant plays
+on cycles 0, 3, 6, and so on: approximately once per minute. Silence is still GO;
+the visible signal is always the movement authority. Later cycles select six
 deliveries deterministically for the entire room: slow, steady, quick, a slow
 start with a rushed finish, a long suspense pause, and separated rhythmic
-phrases. A room-seeded shuffled bag plays every delivery once per six cycles,
-rotating the order and avoiding consecutive repeats. Silence inside the chant
-is still GO: students must wait for the final syllable and the STOP cue. The WAV
-durations define the server's turn deadlines; there is a 1.2-second lead-in and
-a 650-millisecond stopping allowance. The recordings use a fictional childlike
+phrases. A room-seeded shuffled bag assigns every delivery once per six cycles,
+rotating the order and avoiding consecutive repeats. Only every third assignment
+is spoken. WAV durations determine when narration begins relative to the
+server's STOP deadline. The recordings use a fictional childlike
 Japanese voice: Microsoft Ayumi synthesis with a modest pitch/formant lift and
 duration-preserving tempo correction. Generate them locally in PowerShell 7 with
 `tools/audio/generate-zeus-chants.ps1`; the script updates the authoritative WAV
@@ -45,7 +48,9 @@ to the finish lane. The map uses colored checkpoint arches, landing chevrons,
 and the next-landing marker for direction; start, finish, checkpoint, district,
 shortcut, and stadium caption boards have been removed.
 
-The head appears above the course and follows the view through its bends.
+The small, smiling Zeus referee has a blue robe, a short white beard, softly
+raised eyebrows, and eyes that retain their normal color during STOP. He appears
+above the course and follows the view through its bends.
 Phone layouts place it below the compact HUD; wider views place it beside the
 HUD. The sky head uses a separate depth pass so scenery cannot hide the signal,
 while its own depth still hides the face when turned away. GO/STOP uses words
@@ -54,15 +59,18 @@ question is open, and works without sound. Reduced motion uses an immediate
 head turn. Background music is disabled in Zeus mode. Teachers can select
 student-device narration or teacher-speaker narration when creating the room.
 Student devices play distinct GO and STOP cues in either narration setting.
+Students can turn off the chant voice independently in game settings. Narration
+pauses while they read questions or change settings. Narration has a quiet gain
+of 0.4 and follows both the SFX volume and master mute.
 
-Strikes use an electrical crack and a low thunder tail, with quieter spatial
-audio for other runners. Gold lightning with a purple halo and a landing ring
+Mistakes use a quiet retry chime, with quieter spatial audio for other runners.
+Gold lightning with a purple halo and a landing ring
 lasts 1.8 seconds at the struck position, even across the next GO transition.
-The punished runner also sees screen-space lightning and a 2.8-second message
-explaining that movement during STOP sent them back one level with half their energy.
+The runner also sees a calm 2.8-second retry message explaining that checkpoints
+are safe and 90% of their energy is kept. There is no full-screen flash or thunder.
 This overlay remains visible after the instant reset and over an open question,
 and never intercepts input. Reduced motion keeps the message and a stationary
-world impact while removing the screen glow and lightning animation. SFX obey
+world impact without the message fade. SFX obey
 the existing mute and sound-effects volume settings.
 
 Server enforcement rejects old movement packets, including packets from earlier
@@ -83,6 +91,6 @@ standings use six checkpoints and summit progress rather than circuit laps.
 
 Verification covers cycle timing, narration duration, head orientation and
 camera placement, pause/resume, safe red-light answers and looking, lightning
-resets, previous-level recovery, half-energy penalties, learning-credit preservation,
+resets, current-level recovery, small energy penalties, learning-credit preservation,
 stale movement rejection, summit completion,
 desktop play, and narrow portrait/landscape controls.

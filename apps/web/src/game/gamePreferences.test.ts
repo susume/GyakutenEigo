@@ -27,6 +27,8 @@ test("audio preferences migrate older saved settings and clamp unsafe levels", (
   assert.equal(normalizeGamePreferences({ sfxVolume: -0.5 }).sfxVolume, 0);
   assert.equal(normalizeGamePreferences({ musicVolume: Number.NaN }).musicVolume, DEFAULT_GAME_PREFERENCES.musicVolume);
   assert.equal(normalizeGamePreferences({}).sfxVolume, DEFAULT_GAME_PREFERENCES.sfxVolume);
+  assert.equal(normalizeGamePreferences({}).zeusChantEnabled, true);
+  assert.equal(normalizeGamePreferences({ zeusChantEnabled: false }).zeusChantEnabled, false, "children can silence narration without muting game cues");
 });
 
 test("modernized controls migrate saved preferences and clamp look sensitivity", () => {

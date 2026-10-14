@@ -35,6 +35,8 @@ export type AthleticsHudState = {
   abilityReady?: AthleticsAbility;
   shieldCharges?: number;
   zeusLight?: "green" | "red" | "waiting" | "defeated";
+  zeusStopInSeconds?: number | null;
+  zeusGoInSeconds?: number;
   zeusSummitPercent?: number;
   zeusRestarting?: boolean;
   remainingRunners?: number;
@@ -130,9 +132,9 @@ export const ArenaHudOverlay = ({
               <span className={`athletics-role athletics-role-${athleticsHud.role ?? "runner"}`}>{athleticsHud.role === "hunter" ? t("HUNTER") : t("RUNNER")}</span>
             </div>
           )}
-          {athleticsHud.mode === "zeus" && <div className={`athletics-threat-status zeus-status-${athleticsHud.zeusLight ?? "waiting"}`}>
-            <ZeusLightSignal light={athleticsHud.zeusLight ?? "waiting"} />
-            <span>{t(athleticsHud.zeusLight === "defeated" ? "Zeus defeated" : athleticsHud.zeusRestarting ? "Back to level {value0} · Half energy kept" : "First to the summit wins", { value0: athleticsHud.checkpointIndex + 1 })}</span>
+          {athleticsHud.mode === "zeus" && <div className={`athletics-threat-status zeus-status-${athleticsHud.zeusLight ?? "waiting"}${athleticsHud.zeusStopInSeconds != null ? " zeus-status-warning" : ""}`}>
+            <ZeusLightSignal light={athleticsHud.zeusLight ?? "waiting"} stopInSeconds={athleticsHud.zeusStopInSeconds} goInSeconds={athleticsHud.zeusGoInSeconds} />
+            <span>{t(athleticsHud.zeusLight === "defeated" ? "Zeus defeated" : athleticsHud.zeusRestarting ? "Try level {value0} again · Checkpoints kept" : "First to the summit wins", { value0: athleticsHud.checkpointIndex + 1 })}</span>
           </div>}
           <div className="athletics-hud-header">
             <div className="athletics-energy-label">

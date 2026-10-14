@@ -1,5 +1,5 @@
 import { useEffect, useRef, useState } from "react";
-import { getZeusLight, ZEUS_CHANT_LEAD_MS, type GameSession } from "@quizstrike/shared";
+import { getZeusLight, getZeusChantStartAt, getZeusStopCountdown, shouldPlayZeusChant, type GameSession } from "@quizstrike/shared";
 import { gameAudio } from "./GameAudio";
 
 export const useZeusDaruma = (session: GameSession | null | undefined, enabled: boolean, narration = true, phaseCues = true) => {
@@ -36,14 +36,20 @@ export const useZeusDaruma = (session: GameSession | null | undefined, enabled: 
       const active = enabled && narration && snapshot?.controlState !== "teacher_paused" && snapshot?.status === "active"
         && snapshot.athletics?.status === "running" && getZeusLight(currentZeus, currentNow) === "green"
         && document.visibilityState === "visible";
-      if (!active || !currentZeus?.chantId || !currentZeus.phaseStartedAt) { gameAudio.stopZeusChant(); return; }
+      if (!active || !currentZeus?.chantId || !currentZeus.phaseStartedAt || !shouldPlayZeusChant(currentZeus.cycleIndex)) { gameAudio.stopZeusChant(); return; }
+      const startsAt = getZeusChantStartAt(currentZeus);
+      // Do not load or schedule a voice during the quiet climbing stretch.
+      if (!Number.isFinite(startsAt) || currentNow < startsAt) { gameAudio.stopZeusChant(); return; }
       gameAudio.syncZeusChant(`${snapshot.id}:${currentZeus.cycleIndex}:${currentZeus.phaseStartedAt}`, currentZeus.chantId,
-        Date.parse(currentZeus.phaseStartedAt) + ZEUS_CHANT_LEAD_MS, currentNow);
+        startsAt, currentNow);
     };
     sync();
     const timer = window.setInterval(sync, 100);
     document.addEventListener("visibilitychange", sync);
     return () => { window.clearInterval(timer); document.removeEventListener("visibilitychange", sync); gameAudio.stopZeusChant(); };
   }, [enabled, narration]);
-  return { light, serverNowMs: serverNow };
+  const stopInSeconds = getZeusStopCountdown(zeus, serverNow);
+  const goInSeconds = zeus?.phase === "red" && Number.isFinite(Date.parse(zeus.phaseEndsAt ?? ""))
+    ? Math.max(0, Math.ceil((Date.parse(zeus.phaseEndsAt!) - serverNow) / 1000)) : undefined;
+  return { light, stopInSeconds, goInSeconds, serverNowMs: serverNow };
 };

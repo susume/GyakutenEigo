@@ -278,7 +278,7 @@ export const GAME_AUDIO_EVENT_CUES: Record<AudioEventCue, ToneDefinition> = {
   athletics_checkpoint: eventTone(620, 190, 0.03, "triangle", 1040),
   athletics_fall: eventTone(170, 180, 0.024, "sine", 92),
   athletics_finish: eventTone(540, 460, 0.038, "triangle", 1180),
-  zeus_strike: eventTone(1350, 130, 0.055, "sawtooth", 140),
+  zeus_strike: eventTone(560, 180, 0.024, "sine", 420),
   zeus_stop: eventTone(220, 160, 0.036, "triangle", 110),
   zeus_go: eventTone(440, 140, 0.026, "sine", 740),
   match_victory: eventTone(500, 420, 0.034, "triangle", 980),
@@ -339,6 +339,7 @@ class GameAudioController {
   private musicGain: GainNode | null = null;
   private bgmSource: AudioBufferSourceNode | null = null;
   private zeusSource: AudioBufferSourceNode | null = null;
+  private zeusGain: GainNode | null = null;
   private zeusChantKey: string | null = null;
   private bgmBufferPromise: Promise<AudioBuffer | null> | null = null;
   private bgmTimer: number | null = null;
@@ -420,7 +421,8 @@ class GameAudioController {
       if (offset >= buffer.duration) return;
       const source = audio.createBufferSource();
       source.buffer = buffer;
-      source.connect(this.masterGain);
+      if (!this.zeusGain) return;
+      source.connect(this.zeusGain);
       source.onended = () => { source.disconnect(); if (this.zeusSource === source) this.zeusSource = null; };
       this.zeusSource = source;
       source.start(audio.currentTime + Math.max(0, -elapsedMs / 1000), offset);
@@ -488,12 +490,6 @@ class GameAudioController {
       return;
     }
     this.playTone(GAME_AUDIO_EVENT_CUES[cue], spatial);
-    if (cue === "zeus_strike") {
-      this.playTone(eventTone(74, 850, 0.065, "sine", 32, true), spatial);
-      try {
-        if (this.audio) this.playNoiseWhoosh(this.audio.currentTime, this.audio.currentTime + 0.16, 0.06, spatial, 6500);
-      } catch { /* Audio feedback must not interrupt the runner's reset. */ }
-    }
   }
 
   playHeavyFire() {
@@ -542,10 +538,13 @@ class GameAudioController {
       this.masterGain = this.audio.createGain();
       this.sfxGain = this.audio.createGain();
       this.musicGain = this.audio.createGain();
+      this.zeusGain = this.audio.createGain();
       this.noiseBuffer = null;
       this.masterGain.gain.setValueAtTime(this.muted ? 0 : 0.72, this.audio.currentTime);
       this.sfxGain.gain.setValueAtTime(this.sfxVolume, this.audio.currentTime);
       this.musicGain.gain.setValueAtTime(this.musicVolume, this.audio.currentTime);
+      this.zeusGain.gain.setValueAtTime(0.4, this.audio.currentTime);
+      this.zeusGain.connect(this.sfxGain);
       this.sfxGain.connect(this.masterGain);
       this.musicGain.connect(this.masterGain);
       this.masterGain.connect(this.audio.destination);

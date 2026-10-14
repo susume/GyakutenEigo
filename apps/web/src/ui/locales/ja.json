@@ -2640,5 +2640,21 @@
   "Looking and answering questions are safe during STOP. Use this time to refuel.": "「止まれ」の間も、視点を動かしたり問題に答えたりして大丈夫。待ちながらエネルギーを補充しよう。",
   "ZEUS STRUCK YOU!": "ゼウスの雷が直撃！",
   "You moved during STOP. Back to level {value0}!": "「止まれ」の間に動いたので、ステージ{value0}に戻ろう！",
-  "Half your energy kept · Wait for GO to climb again": "エネルギーは半分・「進め」を待ってまた登ろう"
+  "Half your energy kept · Wait for GO to climb again": "エネルギーは半分・「進め」を待ってまた登ろう",
+  "Your turn to climb": "今のうちに登ろう",
+  "GO to climb · STOP to freeze": "「進め」で登り、「止まれ」でストップ",
+  "STOP in {value0} · Get ready to freeze": "あと{value0}秒でストップ・止まる準備をしよう",
+  "Hold still · GO in {value0}": "そのまま・あと{value0}秒で「進め」",
+  "Hold still · GO soon": "そのまま・もうすぐ「進め」",
+  "Try level {value0} again · Checkpoints kept": "ステージ{value0}にもう一度挑戦・チェックポイントはそのまま",
+  "Caught! Try again": "見つかった！もう一度挑戦",
+  "Retry level {value0} · Your checkpoints are safe": "ステージ{value0}に再挑戦・チェックポイントはそのまま",
+  "90% energy kept · Freeze on STOP, climb on GO": "エネルギーは90%キープ・「止まれ」で止まり、「進め」で登ろう",
+  "Caught moving! Your checkpoints and 90% of your energy are safe.": "動いたところを見つかった！チェックポイントとエネルギーの90%はそのまま。",
+  "Caught moving! Try level {value0} again. Checkpoints kept; 90% energy kept.": "動いたところを見つかった！ステージ{value0}に再挑戦。チェックポイントとエネルギーの90%はそのまま。",
+  "Zeus chant voice": "ゼウスのかけ声",
+  "An occasional chant. Turn it off to keep just GO and STOP sounds. The countdown always stays visible.": "かけ声は時々だけ。オフにすると「進め」「止まれ」の合図音だけになります。カウントダウンはいつでも見えます。",
+  "Climb on GO; the countdown warns you before STOP": "「進め」で登ろう。「止まれ」の前にはカウントダウンが出るよ",
+  "Caught moving? Keep your checkpoints and 90% of your energy": "動いて見つかっても、チェックポイントとエネルギーの90%はキープ",
+  "Race to the summit on GO. Watch the countdown and freeze on STOP. If caught, retry from your latest checkpoint with 90% of your energy.": "「進め」で頂上を目指そう。カウントダウンに注意して、「止まれ」でストップ。見つかっても最後のチェックポイントから再挑戦でき、エネルギーは90%キープ。"
 }

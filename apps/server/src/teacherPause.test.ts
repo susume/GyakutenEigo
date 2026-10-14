@@ -1,6 +1,6 @@
 import assert from "node:assert/strict";
 import test from "node:test";
-import { createChaosWave, DEFAULT_SESSION_SETTINGS, getChaosHazardPosition, type GameSession } from "@quizstrike/shared";
+import { createChaosWave, DEFAULT_SESSION_SETTINGS, getChaosHazardPosition, ZEUS_STOP_GRACE_MS, type GameSession } from "@quizstrike/shared";
 import { pauseSessionForTeacher, resumeSessionForTeacher } from "./teacherPause.js";
 
 const makeSession = (): GameSession => ({
@@ -84,7 +84,7 @@ test("Daruma pause preserves the remaining chant and grants a fresh stopping all
   session.athletics.zeus!.graceEndsAt = iso(43_000);
   pauseSessionForTeacher(session, nowMs + 45_000);
   resumeSessionForTeacher(session, nowMs + 60_000);
-  assert.equal(Date.parse(session.athletics.zeus!.graceEndsAt!) - (nowMs + 60_000), 650);
+  assert.equal(Date.parse(session.athletics.zeus!.graceEndsAt!) - (nowMs + 60_000), ZEUS_STOP_GRACE_MS);
 });
 
 test("athletics resumes with the same warning time, hazard position and effect duration", () => {

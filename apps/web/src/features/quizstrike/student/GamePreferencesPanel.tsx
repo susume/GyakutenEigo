@@ -6,11 +6,13 @@ import type { GamePreferences } from "../../../game/gamePreferences";
 export default function GamePreferencesPanel({
   preferences,
   onChange,
-  audioOnly = false
+  audioOnly = false,
+  showZeusAudio = false
 }: {
   preferences: GamePreferences;
   onChange: (update: Partial<GamePreferences>) => void;
   audioOnly?: boolean;
+  showZeusAudio?: boolean;
 }) {
   const { t } = useSiteTranslation();
   const [gamepadDetected, setGamepadDetected] = useState(() => Boolean(navigator.getGamepads?.().some((gamepad) => gamepad?.connected)));
@@ -70,6 +72,13 @@ export default function GamePreferencesPanel({
       <label>{t("SFX volume")}<input type="range" min="0" max="1" step="0.01" value={preferences.sfxVolume} disabled={!preferences.soundEnabled} onChange={(event) => onChange({ sfxVolume: Number(event.target.value) })} />
         <small>{Math.round(preferences.sfxVolume * 100)}{t("% for game sounds, answer feedback, and interface sounds.")}</small>
       </label>
+      {showZeusAudio && <>
+        <label className="toggle-row">
+          <input type="checkbox" checked={preferences.zeusChantEnabled} disabled={!preferences.soundEnabled} onChange={(event) => onChange({ zeusChantEnabled: event.target.checked })} />
+          <span>{t("Zeus chant voice")}</span>
+        </label>
+        <p className="settings-help">{t("An occasional chant. Turn it off to keep just GO and STOP sounds. The countdown always stays visible.")}</p>
+      </>}
       <label>{t("BGM volume")}<input type="range" min="0" max="1" step="0.01" value={preferences.musicVolume} disabled={!preferences.soundEnabled} onChange={(event) => onChange({ musicVolume: Number(event.target.value) })} />
         <small>{Math.round(preferences.musicVolume * 100)}{t("% for the game music.")}</small>
       </label>

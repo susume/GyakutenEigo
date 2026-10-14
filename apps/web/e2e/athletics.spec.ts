@@ -91,7 +91,7 @@ for (const athleticsMode of ["zeus", "hunters-runners", "chaos-climb"] as const)
   });
 }
 
-test("Zeus's head and signal switch together, and moving during STOP returns a runner one level with half energy", async ({ page, request }, testInfo) => {
+test("Zeus's head and signal switch together, and moving during STOP keeps checkpoints and 90% energy", async ({ page, request }, testInfo) => {
   await page.emulateMedia({ reducedMotion: "no-preference" });
   await page.addInitScript(() => {
     const starts: number[] = [];
@@ -121,9 +121,9 @@ test("Zeus's head and signal switch together, and moving during STOP returns a r
   await page.keyboard.down("w");
   await page.waitForTimeout(600);
   await page.keyboard.up("w");
-  await expect(signal).toHaveAttribute("data-light", "red", { timeout: 15_000 });
+  await expect(signal).toHaveAttribute("data-light", "red", { timeout: 30_000 });
   await expect(canvas).toHaveAttribute("data-zeus-light", "red");
-  await page.waitForTimeout(800);
+  await page.waitForTimeout(1100);
   await page.screenshot({ path: testInfo.outputPath("zeus-watching.png") });
   await page.getByRole("button", { name: "Answer movement energy question", exact: true }).click();
   await expect(page.getByTestId("zeus-question-signal")).toBeVisible();
@@ -137,24 +137,25 @@ test("Zeus's head and signal switch together, and moving during STOP returns a r
     const { session } = await response.json();
     const zeus = session.athletics.zeus;
     energyBeforeStrike = session.players[0].energy;
-    return zeus.phase === "red" && Date.now() > Date.parse(zeus.graceEndsAt) && Date.parse(zeus.phaseEndsAt) - Date.now() > 1600;
-  }, { timeout: 15_000 }).toBe(true);
+    return zeus.phase === "red" && Date.now() > Date.parse(zeus.graceEndsAt) && Date.parse(zeus.phaseEndsAt) - Date.now() > 700;
+  }, { timeout: 30_000, intervals: [100] }).toBe(true);
   await page.keyboard.down("w");
   const impact = page.getByTestId("zeus-strike-feedback");
-  await expect(impact).toContainText("ZEUS STRUCK YOU!");
+  await expect(impact).toContainText("Caught! Try again");
   await page.keyboard.up("w");
-  await expect(impact).toContainText("You moved during STOP");
-  await expect(impact).toContainText("Half your energy kept");
-  await expect(impact).toContainText("Back to level 1");
+  await expect(impact).toContainText("Your checkpoints are safe");
+  await expect(impact).toContainText("90% energy kept");
+  await expect(impact).toContainText("Retry level 1");
   const sounds = await page.evaluate(() => (window as Window & { zeusSoundAudit?: number[] }).zeusSoundAudit ?? []);
-  expect(sounds).toContain(1350); // Electrical crack, rather than the old UI warning.
-  expect(sounds).toContain(74); // Thunder tail.
-  await expect(page.locator(".zeus-strike-bolts")).toBeVisible();
+  expect(sounds).toContain(560); // A quiet retry chime.
+  expect(sounds).not.toContain(74); // No thunder tail.
+  await expect(page.locator(".zeus-strike-bolts")).toHaveCount(0);
+  await expect(page.locator(".zeus-strike-glow")).toHaveCount(0);
   await page.screenshot({ path: testInfo.outputPath("zeus-lightning-impact.png") });
   await expect.poll(async () => {
     const response = await request.get(`/api/sessions/${classroom.code}`, { headers: { Authorization: `Bearer ${classroom.teacherToken}` } });
     const { session } = await response.json();
-    expect(session.players[0].energy).toBe(energyBeforeStrike / 2);
+    expect(session.players[0].energy).toBe(energyBeforeStrike * .9);
     return session.players[0].athletics.zeusStrikes ?? 0;
   }).toBe(1);
   await expect(canvas).toHaveAttribute("data-player-x", "0.000");
@@ -173,8 +174,8 @@ test("Zeus strike feedback fits phones and remains readable with reduced motion"
   await page.getByPlaceholder("Player name").fill("Phone Strike Runner");
   await page.getByRole("button", { name: "Join game", exact: true }).click();
   await request.post(`/api/sessions/${classroom.code}/start`, { headers: { Authorization: `Bearer ${classroom.teacherToken}` } });
-  await expect(page.getByTestId("zeus-light-signal")).toHaveAttribute("data-light", "red", { timeout: 25_000 });
-  await page.waitForTimeout(800);
+  await expect(page.getByTestId("zeus-light-signal")).toHaveAttribute("data-light", "red", { timeout: 30_000 });
+  await page.waitForTimeout(1100);
   await page.keyboard.down("w");
   const impact = page.getByTestId("zeus-strike-feedback");
   await expect(impact).toBeVisible();
@@ -182,7 +183,7 @@ test("Zeus strike feedback fits phones and remains readable with reduced motion"
   const bounds = await page.locator(".zeus-strike-message").boundingBox();
   expect(bounds!.x).toBeGreaterThanOrEqual(0);
   expect(bounds!.x + bounds!.width).toBeLessThanOrEqual(375);
-  await expect(impact).toContainText("Half your energy kept");
+  await expect(impact).toContainText("90% energy kept");
   expect(await page.locator(".zeus-strike-message p").evaluate((element) => getComputedStyle(element).color)).toBe("rgb(255, 246, 219)");
   await expect(page.locator(".zeus-strike-bolts")).toBeHidden();
   await expect(page.locator(".zeus-strike-glow")).toBeHidden();
@@ -219,7 +220,7 @@ test("Zeus warnings keep a narrow touch viewport and its controls clear", async 
   const answer = await page.locator(".athletics-touch-controls .touch-question").boundingBox();
   expect(answer!.y - (jump!.y + jump!.height)).toBeGreaterThanOrEqual(8);
   await page.screenshot({ path: testInfo.outputPath("zeus-narrow-warning.png") });
-  await expect(page.getByTestId("zeus-light-signal")).toHaveAttribute("data-light", "red", { timeout: 15_000 });
+  await expect(page.getByTestId("zeus-light-signal")).toHaveAttribute("data-light", "red", { timeout: 30_000 });
   await page.screenshot({ path: testInfo.outputPath("zeus-narrow-stop.png") });
   await page.locator(".touch-question").tap();
   const questionSignal = page.getByTestId("zeus-question-signal");

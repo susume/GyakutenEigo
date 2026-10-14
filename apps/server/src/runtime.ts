@@ -1513,7 +1513,7 @@ const advanceZeusMode = (session: GameSession, nowMs: number) => {
       if (player.athletics) player.athletics.zeusRedAnchor = { x: player.x ?? 0, z: player.z ?? 0, cycleIndex: zeus.cycleIndex ?? 0 };
     }
   } else {
-    // Start from the actual tick after a stall: always give a complete chant.
+    // Start from the actual tick after a stall: give a complete climbing window.
     race.zeus = startZeusGreen(race.modeSeed ?? 0, (zeus.cycleIndex ?? -1) + 1, nowMs);
     race.zeus.lastStrikes = zeus.lastStrikes;
     for (const player of session.players) if (player.athletics) {
@@ -1554,7 +1554,7 @@ const restartZeusRunner = (session: GameSession, player: PlayerSession, nowMs: n
     playerId: player.id, hit: true, position: struckPosition, spawn,
     movementEpoch: athletics.movementEpoch, restartUntil: athletics.zeusRestartUntil,
     energy: player.energy, athletics: { ...athletics },
-    message: `Zeus saw you move! Back to level ${recovery.checkpointIndex + 1} with half your energy.`
+    message: `Caught moving! Try level ${recovery.checkpointIndex + 1} again. Checkpoints kept; 90% energy kept.`
   });
   broadcastPlayerState(session, [player]);
   broadcastSession(session);
