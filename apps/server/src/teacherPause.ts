@@ -20,6 +20,11 @@ export const pauseSessionForTeacher = (session: GameSession, nowMs = Date.now())
   if (!Number.isFinite(nowMs)) return { ok: false, reason: "invalid_pause_time" };
   session.controlState = "teacher_paused";
   session.teacherPausedAt = new Date(nowMs).toISOString();
+  for (const player of session.players) {
+    if (!player.athletics) continue;
+    player.athletics.battleChargeStartedAt = undefined;
+    player.athletics.battleChargeId = undefined;
+  }
   return { ok: true, changed: true, pausedAt: session.teacherPausedAt };
 };
 
@@ -34,6 +39,7 @@ export const resumeSessionForTeacher = (session: GameSession, nowMs = Date.now()
   if (session.athletics) {
     const race = session.athletics;
     race.startAt = shiftIso(race.startAt, pausedDurationMs)!;
+    for (const blast of race.battleBlasts ?? []) blast.launchedAt += pausedDurationMs;
     if (race.zeus) {
       race.zeus.phaseStartedAt = shiftIso(race.zeus.phaseStartedAt, pausedDurationMs);
       race.zeus.phaseEndsAt = shiftIso(race.zeus.phaseEndsAt, pausedDurationMs);
@@ -59,7 +65,7 @@ export const resumeSessionForTeacher = (session: GameSession, nowMs = Date.now()
     for (const player of session.players) {
       const athletics = player.athletics;
       if (!athletics) continue;
-      for (const key of ["recoverySettleUntil", "lapTransitionUntil", "respawnPenaltyUntil", "wrongAnswerPenaltyUntil", "dashUntil", "jumpBoostUntil", "knockbackResistUntil", "staggerUntil", "zeusFrozenUntil", "zeusRestartUntil"] as const) {
+      for (const key of ["recoverySettleUntil", "lapTransitionUntil", "respawnPenaltyUntil", "wrongAnswerPenaltyUntil", "dashUntil", "jumpBoostUntil", "knockbackResistUntil", "staggerUntil", "battleStunnedUntil", "battleImmuneUntil", "zeusFrozenUntil", "zeusRestartUntil"] as const) {
         athletics[key] = shiftIso(athletics[key], pausedDurationMs);
       }
       athletics.lastSupportedAtMs = shiftNumber(athletics.lastSupportedAtMs, pausedDurationMs);

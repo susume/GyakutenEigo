@@ -14,6 +14,7 @@ import { DecalStore } from "./decalStore.js";
 import { CombatService } from "./combat.js";
 import { BotNavigationService } from "./botNavigation.js";
 import { getAthleticsQuestion } from "./athleticsQuestions.js";
+import { advanceAthleticsBattle, handleAthleticsBattleAction } from "./athleticsBattleAuthority.js";
 import { registerAuthRoutes } from "./routes/authRoutes.js";
 import { registerSpeakingRoutes } from "./routes/speakingRoutes.js";
 import { createSpeakingProviders } from "./speakingProviders.js";
@@ -1774,6 +1775,7 @@ const startNextHuntersRunnersRound = (session: GameSession, nowMs: number) => {
   session.roundTransition = undefined;
   session.athletics = {
     ...race,
+    battleBlasts: [],
     mode: modeState.mode,
     modeSeed: modeState.modeSeed,
     modeRound: modeState.modeRound,
@@ -1852,6 +1854,10 @@ const advanceAthleticsRaces = () => {
     if (isTeacherPaused(session)) continue;
     if (!session.athletics) continue;
     for (const player of session.players) updateAthleticsRace(session, player, currentMs);
+    const battle = advanceAthleticsBattle(session, currentMs);
+    for (const impact of battle.impacts) emitAthleticsModeEvent(session, "athletics_battle_impact", impact);
+    if (battle.changedPlayers.size) broadcastPlayerState(session, [...battle.changedPlayers]);
+    if (battle.impacts.length || battle.changedPlayers.size) broadcastSession(session);
     const mode = getAthleticsMode(session.settings.athleticsMode ?? session.athletics.mode);
     if (mode === "zeus") advanceZeusMode(session, currentMs);
     if (mode === "chaos-climb") advanceChaosClimb(session, currentMs);
@@ -2167,6 +2173,7 @@ const applyAuthoritativePosition = (
     || (athletics.respawnPenaltyUntil && nowMs < Date.parse(athletics.respawnPenaltyUntil))
     || (athletics.wrongAnswerPenaltyUntil && nowMs < Date.parse(athletics.wrongAnswerPenaltyUntil))
     || Boolean(athletics.staggerUntil && nowMs < Date.parse(athletics.staggerUntil))
+    || Boolean(athletics.battleStunnedUntil && nowMs < Date.parse(athletics.battleStunnedUntil))
     || (session.athletics && nowMs < Date.parse(session.athletics.startAt))
   )) {
     playerMoveTimestamps.set(player.id, nowMs);
@@ -2498,7 +2505,7 @@ const advanceAthleticsBot = (session: GameSession, bot: PlayerSession, index: nu
   if (!race || !athletics || race.status !== "running" || athletics.status !== "racing") return false;
   const mode = getAthleticsMode(session.settings.athleticsMode ?? race.mode);
   if (mode === "zeus" && getZeusLight(race.zeus, nowMs) === "red") return false;
-  if (athletics.recoveryActive || (athletics.zeusFrozen && mode === "zeus") || (athletics.staggerUntil && nowMs < Date.parse(athletics.staggerUntil))) return false;
+  if (athletics.recoveryActive || (athletics.zeusFrozen && mode === "zeus") || (athletics.staggerUntil && nowMs < Date.parse(athletics.staggerUntil)) || (athletics.battleStunnedUntil && nowMs < Date.parse(athletics.battleStunnedUntil))) return false;
   if (mode === "hunters-runners" && athletics.role === "hunter") {
     const hunterCount = Math.max(1, race.hunterIds?.length ?? 1);
     const station = getAthleticsHunterStationPosition(athletics.stationIndex ?? 0, hunterCount);
@@ -2994,7 +3001,7 @@ const answerQuestion = (
   player.wrongAnswers += reward.wrongDelta;
   const previousEnergy = player.energy ?? 0;
   const athleticsHunter = athleticsMode === "hunters-runners" && athletics?.role === "hunter";
-  player.energy = isAthletics && !athleticsRecoveryActive && !athleticsHunter
+  player.energy = isAthletics && !athleticsRecoveryActive && (!athleticsHunter || session.settings.athleticsBattleEnabled)
     ? awardAthleticsEnergy({ isCorrect, currentEnergy: player.energy })
     : isAthletics
       ? normalizeAthleticsEnergy(player.energy)
@@ -3386,7 +3393,7 @@ const buySnowballs = (session: GameSession, player: PlayerSession, requestedPack
 
 type AthleticsActionResponse = {
   player: PlayerSession;
-  action: "fire" | "ability";
+  action: AthleticsActionCommand["action"];
   message: string;
 };
 
@@ -3400,6 +3407,19 @@ const handleAthleticsAction = (
   const athletics = session.settings.gameMode === "athletics"
     ? ensureAthleticsPlayerState(session, player)
     : undefined;
+  if (command.action.startsWith("battle_")) {
+    if (session.settings.gameMode !== "athletics" || !race || !athletics) return failStudentCommand(400, "Battle mode requires an Athletics room.");
+    const request = registerFireRequest(player.id, command.requestId);
+    if (!request.ok) return failStudentCommand(400, request.reason);
+    const result = handleAthleticsBattleAction(session, player, command, Date.now());
+    broadcastPlayerState(session, [player]);
+    if (!result.ok) return failStudentCommand(409, result.message);
+    broadcastSession(session);
+    if (command.action === "battle_fire") {
+      emitAthleticsModeEvent(session, "athletics_battle_fire", { playerId: player.id, blast: race.battleBlasts?.at(-1) });
+    }
+    return { ok: true, data: { player, action: command.action, message: result.message } };
+  }
   if (session.settings.gameMode !== "athletics" || !race || !athletics || mode === "classic") {
     return failStudentCommand(400, "This Athletics room does not have an active ability or projectile action.");
   }
@@ -3411,6 +3431,9 @@ const handleAthleticsAction = (
   }
   if (!player.isAlive || athletics.status !== "racing" || athletics.recoveryActive) {
     return failStudentCommand(400, "This racer cannot use a mode action right now.");
+  }
+  if (athletics.battleStunnedUntil && Date.now() < Date.parse(athletics.battleStunnedUntil)) {
+    return failStudentCommand(409, "Stunned. Your controls will return shortly.");
   }
 
   const fireRequest = registerFireRequest(player.id, command.requestId);

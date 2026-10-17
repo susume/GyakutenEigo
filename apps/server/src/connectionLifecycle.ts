@@ -58,6 +58,11 @@ export class ConnectionLifecycleService {
   markPlayerDisconnected(session: GameSession, player: PlayerSession) {
     if (player.connectionState === "disconnected") return;
     player.connectionState = "disconnected";
+    if (player.athletics) {
+      // Invalidate the hold immediately, including reconnects between race ticks.
+      player.athletics.battleChargeId = undefined;
+      player.athletics.battleChargeStartedAt = undefined;
+    }
     if (session.flag && player.id === session.flag.carrierId) {
       session.flag = resolveFlagDropForPlayer(session.flag, player, {
         x: player.x ?? 0,

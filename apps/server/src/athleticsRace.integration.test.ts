@@ -9,7 +9,7 @@ type SessionFixture = {
   id: string;
   sessionCode: string;
   status: "waiting" | "active" | "paused" | "ended";
-  settings: { mapId: string; gameMode: string; athleticsMode?: string; athleticsCourseId?: string; athleticsCourseLaps?: number };
+  settings: { mapId: string; gameMode: string; athleticsMode?: string; athleticsCourseId?: string; athleticsCourseLaps?: number; athleticsBattleEnabled?: boolean };
   players: PlayerFixture[];
   athletics?: { status: string; questionCount: number; questionsPerLap: number; requiredLaps: number; startAt: string; finishOrder: string[]; zeus?: AthleticsZeusState };
 };
@@ -21,6 +21,7 @@ type PlayerFixture = {
   y?: number;
   z?: number;
   facing?: number;
+  connectionState?: string;
   questionIndex?: number;
   athletics?: {
     questionIndex: number;
@@ -42,6 +43,8 @@ type PlayerFixture = {
     lapTransitionUntil?: string;
     abilityCharge?: number;
     abilityReady?: string;
+    battleStunnedUntil?: string;
+    battleChargeStartedAt?: string;
   };
   energy?: number;
   respawns?: number;
@@ -110,14 +113,15 @@ const createTeacherWithQuiz = async () => {
 const createSession = async (
   teacher: { token: string; quizSetId: string },
   athleticsCourseLaps = 1,
-  athleticsMode = "classic"
+  athleticsMode = "classic",
+  athleticsBattleEnabled = false
 ) => {
   const created = await api<{ session: SessionFixture }>("/api/sessions", {
     method: "POST",
     teacherToken: teacher.token,
     body: {
       quizSetId: teacher.quizSetId,
-      settings: { gameMode: "athletics", athleticsMode, athleticsCourseLaps, maxPlayers: 8, roundDurationSeconds: 60 }
+      settings: { gameMode: "athletics", athleticsMode, athleticsCourseLaps, athleticsBattleEnabled, maxPlayers: 8, roundDurationSeconds: 60 }
     }
   });
   assert.equal(created.response.status, 201);
@@ -723,4 +727,58 @@ test("three-lap race completes every lap without duplicating or underflowing ene
   assert.equal(finishedBot.athletics?.completedLaps, 3);
   assert.equal(afterFinish.athletics?.finishOrder.filter((playerId) => playerId === botId).length, 1);
   assert.ok((finishedBot.energy ?? -1) >= 0);
+});
+
+test("battle blasts authenticate, charge, spend energy and freeze a connected classmate's movement for 2.5 seconds", { timeout: 30_000 }, async () => {
+  const teacher = await createTeacherWithQuiz();
+  const session = await createSession(teacher, 1, "classic", true);
+  const alpha = await joinSession(session.sessionCode, "Battle Alpha");
+  const bravo = await joinSession(session.sessionCode, "Battle Bravo");
+  const a = connectStudentSocket(session.sessionCode, alpha);
+  const b = connectStudentSocket(session.sessionCode, bravo);
+  await Promise.all([a.initialState, b.initialState]);
+  const read = async () => (await api<{ session: SessionFixture }>(`/api/sessions/${session.sessionCode}`, { teacherToken: teacher.token })).body.session;
+  let sequence = 0;
+  const send = (action: string, chargeId: string, facing = 0) => new Promise<{ ok: boolean }>((resolve, reject) => {
+    a.socket.timeout(5000).emit("athletics_action", { type: "athletics_action", requestId: `battle-${++sequence}`, action, chargeId,
+      x: 999, y: 999, z: 999, facing, pitch: 0 }, (error: Error | null, ack: { ok: boolean }) => error ? reject(error) : resolve(ack));
+  });
+  try {
+    await api(`/api/sessions/${session.sessionCode}/start`, { method: "POST", teacherToken: teacher.token });
+    const running = await waitUntil(read, (snapshot) => snapshot.athletics?.status === "running");
+    const shooter = running.players.find((player) => player.id === alpha.player.id)!;
+    const target = running.players.find((player) => player.id === bravo.player.id)!;
+    const facing = Math.atan2(-(target.x! - shooter.x!), -(target.z! - shooter.z!));
+    assert.equal((await send("battle_fire", "unearned", facing)).ok, false);
+    assert.equal((await send("battle_charge", "cancelled", facing)).ok, true);
+    assert.equal((await send("battle_cancel", "cancelled", facing)).ok, true);
+    assert.equal((await send("battle_fire", "cancelled", facing)).ok, false);
+    assert.equal((await send("battle_charge", "charged", facing)).ok, true);
+    assert.equal((await send("battle_fire", "charged", facing)).ok, false);
+    await delay(3050);
+    assert.equal((await send("battle_fire", "charged", facing)).ok, true);
+    const hit = await waitUntil(read, (snapshot) => Boolean(snapshot.players.find((player) => player.id === bravo.player.id)?.athletics?.battleStunnedUntil));
+    assert.equal(hit.players.find((player) => player.id === alpha.player.id)!.energy, shooter.energy! - 100);
+    const stopped = hit.players.find((player) => player.id === bravo.player.id)!;
+    b.socket.emit("player_position", { x: stopped.x! + 1, y: stopped.y! + 2, z: stopped.z! - 1, facing: 0, jumping: true, jumpStarted: true, movementSequence: 1, movementEpoch: 0 });
+    await delay(100);
+    const held = (await read()).players.find((player) => player.id === bravo.player.id)!;
+    assert.deepEqual([held.x, held.y, held.z], [stopped.x, stopped.y, stopped.z], "the server rejects horizontal and vertical movement during the stun");
+    await delay(Math.max(0, Date.parse(stopped.athletics!.battleStunnedUntil!) - Date.now()) + 50);
+    b.socket.emit("player_position", { x: stopped.x! + 0.5, y: stopped.y, z: stopped.z, facing: 0, movementSequence: 2, movementEpoch: 0 });
+    await delay(100);
+    const released = (await read()).players.find((player) => player.id === bravo.player.id)!;
+    assert.ok(released.x! > stopped.x!, "movement resumes without an answer, respawn, or manual reset");
+    assert.equal((await send("battle_charge", "before-disconnect", facing)).ok, true);
+    a.socket.disconnect();
+    await delay(60);
+    // Deliberately do not advance the race tick: even a quick reconnect must
+    // invalidate the old hold at disconnect time.
+    const disconnected = (await read()).players.find((player) => player.id === alpha.player.id)!;
+    assert.equal(disconnected.connectionState, "disconnected");
+    assert.equal(disconnected.athletics!.battleChargeStartedAt, undefined);
+    const rejoined = waitForSessionState(a.socket);
+    a.socket.connect(); await rejoined;
+    assert.equal((await send("battle_fire", "before-disconnect", facing)).ok, false);
+  } finally { a.socket.disconnect(); b.socket.disconnect(); }
 });

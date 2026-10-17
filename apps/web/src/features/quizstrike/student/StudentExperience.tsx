@@ -1,6 +1,8 @@
 import { useZeusDaruma } from "../../../game/useZeusDaruma";
 import { ZeusStrikeFeedback } from "../../../game/ZeusStrikeFeedback";
 import { ZeusLightSignal } from "../../../game/ZeusLightSignal";
+import { emitAthleticsBattleImpact, type BattleImpactCue } from "../../../game/AthleticsBattleVfx";
+import type { AthleticsActionCommand, AthleticsBattleBlast } from "@quizstrike/shared";
 import { ZEUS_SUMMIT_PROGRESS, ZEUS_SUMMIT_CHECKPOINT_COUNT } from "@quizstrike/shared";
 import { useSiteTranslation } from "../../../ui/siteTranslation";
 import "./device-hud.css";
@@ -287,25 +289,34 @@ function useRoundRemaining(session: GameSession | null) {
   return at ? getRoundRemainingSeconds(session, at) : 0;
 }
 
-function useDeadlineRemainingSeconds(deadline?: string, serverTime?: string, pausedAt?: string) {
+function useDeadlineRemainingSeconds(deadline?: string, serverTime?: string, pausedAt?: string, precision = 1) {
   const [clientNowMs, setClientNowMs] = useState(() => Date.now());
   const [serverOffsetMs, setServerOffsetMs] = useState(0);
+  const serverOffsetRef = useRef(0);
 
   useEffect(() => {
     const serverTimeMs = serverTime ? Date.parse(serverTime) : Number.NaN;
-    setServerOffsetMs(Number.isFinite(serverTimeMs) ? serverTimeMs - Date.now() : 0);
+    serverOffsetRef.current = Number.isFinite(serverTimeMs) ? serverTimeMs - Date.now() : 0;
+    setServerOffsetMs(serverOffsetRef.current);
   }, [serverTime]);
 
   useEffect(() => {
     setClientNowMs(Date.now());
     if (!deadline || pausedAt) return;
-    const interval = window.setInterval(() => setClientNowMs(Date.now()), 250);
+    const deadlineMs = Date.parse(deadline);
+    const offset = serverOffsetRef.current;
+    if (!Number.isFinite(deadlineMs) || Date.now() + offset >= deadlineMs) return;
+    const interval = window.setInterval(() => {
+      const now = Date.now();
+      setClientNowMs(now);
+      if (now + offset >= deadlineMs) window.clearInterval(interval);
+    }, precision > 1 ? 100 : 250);
     return () => window.clearInterval(interval);
-  }, [deadline, serverTime, pausedAt]);
+  }, [deadline, serverTime, pausedAt, precision]);
 
-  if (!deadline) return 0;
+  if (!deadline || !Number.isFinite(Date.parse(deadline))) return 0;
   const nowMs = pausedAt ? Date.parse(pausedAt) : clientNowMs + serverOffsetMs;
-  return Math.max(0, Math.ceil((Date.parse(deadline) - nowMs) / 1000));
+  return Math.max(0, Math.ceil((Date.parse(deadline) - nowMs) / 1000 * precision) / precision);
 }
 
 function useFlagRemainingSeconds(session: GameSession | null) {
@@ -381,6 +392,17 @@ export default function StudentExperience({ onExit }: { onExit: () => void }) {
   const zombieSelection = Boolean(session && isZombieSelectionPhase(session));
   const athleticsRace = session?.settings.gameMode === "athletics";
   const athleticsMode = athleticsRace && session ? athleticsModeForSession(session) : "classic";
+  const athleticsBattle = athleticsRace && session?.settings.athleticsBattleEnabled === true;
+  const battleStunSeconds = useDeadlineRemainingSeconds(
+    athleticsBattle ? player?.athletics?.battleStunnedUntil : undefined,
+    session?.serverTime, session?.controlState === "teacher_paused" ? session.teacherPausedAt : undefined, 10
+  );
+  const battleWasStunned = useRef(false);
+  useEffect(() => {
+    const stunned = battleStunSeconds > 0;
+    if (battleWasStunned.current && !stunned && athleticsBattle && session?.status === "active" && session.controlState !== "teacher_paused") gameAudio.playEvent("battle_recover");
+    battleWasStunned.current = stunned;
+  }, [athleticsBattle, battleStunSeconds, session?.status, session?.controlState]);
   const zeusDaruma = useZeusDaruma(session, athleticsRace && athleticsMode === "zeus",
     session?.settings.athleticsZeusAudio !== "teacher" && gamePreferences.zeusChantEnabled && !quizOpen && !settingsOpen);
   const athleticsStartRemainingSeconds = useDeadlineRemainingSeconds(
@@ -1056,6 +1078,27 @@ export default function StudentExperience({ onExit }: { onExit: () => void }) {
       setFeedback(payload.message ?? "ZEUS HAS BEEN DEFEATED!");
       emitPlayerVfx("victory", payload.winnerId ?? activePlayerId);
       gameAudio.playEvent("athletics_finish");
+    });
+    connectedSocket.on("athletics_battle_fire", (payload: { playerId: string; blast?: AthleticsBattleBlast }) => {
+      if (!lastVisualSession.settings.athleticsBattleEnabled || !payload.blast) return;
+      const local = lastVisualSession.players.find((candidate) => candidate.id === activePlayerId);
+      const spatial = local ? getCombatAudioSpatial({ attacker: payload.blast.origin, target: { x: local.x ?? 0, z: local.z ?? 0, facing: local.facing ?? 0 } }) : {};
+      gameAudio.playEvent("battle_fire", payload.playerId === activePlayerId ? {} : spatial, payload.playerId === activePlayerId ? 0 : 70);
+    });
+    connectedSocket.on("athletics_battle_impact", (payload: BattleImpactCue & { playerId: string; stunnedUntil?: string; immune?: boolean }) => {
+      if (!lastVisualSession.settings.athleticsBattleEnabled || !payload.position) return;
+      emitAthleticsBattleImpact(payload);
+      const local = lastVisualSession.players.find((candidate) => candidate.id === activePlayerId);
+      const spatial = local ? getCombatAudioSpatial({ attacker: payload.position, target: { x: local.x ?? 0, z: local.z ?? 0, facing: local.facing ?? 0 } }) : {};
+      gameAudio.playEvent("battle_impact", spatial, payload.targetId === activePlayerId || payload.playerId === activePlayerId ? 0 : 90);
+      if (payload.targetId === activePlayerId && !payload.immune) {
+        gameAudio.playEvent("battle_stun");
+        setPlayer((current) => current?.athletics ? { ...current, athletics: { ...current.athletics, battleStunnedUntil: payload.stunnedUntil, battleChargeStartedAt: undefined, battleChargeId: undefined } } : current);
+        setFeedback("Hit by an energy blast. Movement returns in 2.5 seconds.");
+      } else if (payload.playerId === activePlayerId && payload.targetId && !payload.immune) {
+        setHitConfirmPulse((value) => value + 1);
+        gameAudio.play("hit_confirm");
+      }
     });
     connectedSocket.on("athletics_projectile", (payload: {
       projectileId?: string;
@@ -1826,19 +1869,22 @@ export default function StudentExperience({ onExit }: { onExit: () => void }) {
   ]);
 
   const sendAthleticsAction = useCallback(async (
-    action: "fire" | "ability",
+    action: AthleticsActionCommand["action"],
     position: ArenaPositionPayload,
-    ability?: AthleticsAbility
+    ability?: AthleticsAbility,
+    chargeId?: string
   ) => {
-    if (!athleticsRace || teacherPaused || !session || !player || !playerToken || !socketRef.current?.connected) {
-      setFeedback("Reconnect to the room before using that Athletics action.");
-      return;
+    if (teacherPaused && action !== "battle_cancel") return false;
+    if (!athleticsRace || !session || !player || !playerToken || !socketRef.current?.connected) {
+      if (action !== "battle_cancel") setFeedback("Reconnect to the room before using that Athletics action.");
+      return false;
     }
     const requestId = globalThis.crypto?.randomUUID?.() ?? `${Date.now()}-${Math.random().toString(36).slice(2)}`;
     const command = {
       type: "athletics_action" as const,
       requestId,
       action,
+      ...(chargeId ? { chargeId } : {}),
       ...(ability ? { ability } : {}),
       x: position.x,
       z: position.z,
@@ -1853,10 +1899,14 @@ export default function StudentExperience({ onExit }: { onExit: () => void }) {
         command,
         async () => { throw new Error("The Athletics action requires a live game connection."); }
       );
-      setPlayer(payload.player);
-      setFeedback(payload.message);
+      if (action !== "battle_charge" && action !== "battle_cancel") {
+        setPlayer((current) => current?.id === payload.player.id ? payload.player : current);
+        setFeedback(payload.message);
+      }
+      return true;
     } catch (error) {
-      status.report(error);
+      if (action !== "battle_cancel") status.report(error);
+      return false;
     }
   }, [athleticsRace, player, playerToken, session, setFeedback, status, teacherPaused]);
 
@@ -2441,6 +2491,7 @@ export default function StudentExperience({ onExit }: { onExit: () => void }) {
     recoveryCorrectAnswers: athleticsPlayer.recoveryCorrectAnswers ?? 0,
     recoveryRequiredAnswers: athleticsPlayer.recoveryRequiredAnswers ?? 3,
     hunterAmmo: athleticsPlayer.hunterAmmo ?? 0,
+    battleEnabled: athleticsBattle,
     hunterHits: athleticsPlayer.hunterHits ?? 0,
     abilityCharge: athleticsPlayer.abilityCharge ?? 0,
     abilityMax: 3,
@@ -2461,6 +2512,7 @@ export default function StudentExperience({ onExit }: { onExit: () => void }) {
     || athleticsZeusFrozen
     || Boolean(athleticsPlayer?.zeusRestartUntil && zeusDaruma.serverNowMs < Date.parse(athleticsPlayer.zeusRestartUntil))
     || Boolean(athleticsPlayer?.staggerUntil && Date.now() < Date.parse(athleticsPlayer.staggerUntil))
+    || battleStunSeconds > 0
   );
 
   const activateAthleticsAbility = (ability: AthleticsAbility) => {
@@ -2543,6 +2595,8 @@ export default function StudentExperience({ onExit }: { onExit: () => void }) {
               controlsDisabled={isFlagSpectator || isAthleticsSpectator || athleticsMovementLocked || !roundActive || !player.isAlive}
               inputPaused={gameplayInputPaused}
               hitConfirmPulse={hitConfirmPulse}
+              onBattleAction={athleticsBattle ? (action, position, chargeId) => sendAthleticsAction(action, position, undefined, chargeId) : undefined}
+              battleStunSeconds={battleStunSeconds}
               onMove={roundActive && player.isAlive && !isFlagSpectator && !isAthleticsSpectator && !athleticsMovementLocked ? sendArenaPosition : undefined}
               onFire={roundActive && player.isAlive
                 ? athleticsRace && athleticsMode === "hunters-runners" && athleticsPlayer?.role === "hunter"

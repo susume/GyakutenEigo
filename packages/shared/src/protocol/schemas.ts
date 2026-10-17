@@ -102,12 +102,16 @@ export const FlagActionCommandSchema = z.object({
 export const AthleticsActionCommandSchema = z.object({
   type: z.literal("athletics_action"),
   requestId: boundedId,
-  action: z.enum(["fire", "ability"]),
+  action: z.enum(["fire", "ability", "battle_charge", "battle_cancel", "battle_fire"]),
+  chargeId: boundedId.optional(),
   ability: z.enum(["dash", "shield", "super-jump", "anchor"]).optional(),
   ...positionFields,
   pitch: z.number().finite().min(-Math.PI).max(Math.PI).optional(),
   targetId: boundedId.optional()
 }).strict().superRefine((value, context) => {
+  if (value.action.startsWith("battle_") && !value.chargeId) {
+    context.addIssue({ code: "custom", path: ["chargeId"], message: "A battle charge ID is required." });
+  }
   if (value.action === "ability" && !value.ability) {
     context.addIssue({ code: "custom", path: ["ability"], message: "An Athletics ability is required." });
   }

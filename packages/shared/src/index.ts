@@ -32,6 +32,7 @@ export type Team = "blue" | "red";
 export * from "./protocol/index.js";
 export * from "./athleticsRace.js";
 export * from "./athleticsModes.js";
+export * from "./athleticsBattle.js";
 export * from "./zeusDaruma.js";
 export * from "./speaking.js";
 export * from "./speakingLibraryRegistry.js";
@@ -594,6 +595,8 @@ export interface SessionSettings {
   gameMode: GameMode;
   /** Selected sub-mode when gameMode is Athletics. Legacy rooms resolve to Classic. */
   athleticsMode?: AthleticsMode;
+  /** Optional energy blasts in every Athletics variant. Disabled for legacy rooms. */
+  athleticsBattleEnabled?: boolean;
   athleticsZeusAudio?: "everyone" | "teacher";
   athleticsCourseId?: AthleticsCourseId;
   /** Athletics only. Missing legacy values resolve to one lap. */
@@ -939,6 +942,7 @@ export const DEFAULT_SESSION_SETTINGS: SessionSettings = {
   mapId: "desert_citadel",
   gameMode: "flag",
   athleticsMode: "classic",
+  athleticsBattleEnabled: false,
   athleticsCourseLaps: ATHLETICS_DEFAULT_COURSE_LAPS,
   botDifficulty: "standard",
   roundCount: FLAG_MODE_DEFAULTS.roundCount,
@@ -988,6 +992,7 @@ export const sanitizeSessionSettings = (input: Partial<SessionSettings> = {}): S
   gameMode,
   ...(gameMode === "athletics" ? {
     athleticsMode: sanitizeAthleticsMode(input.athleticsMode),
+    athleticsBattleEnabled: input.athleticsBattleEnabled === true,
     athleticsZeusAudio: input.athleticsZeusAudio === "teacher" ? "teacher" as const : "everyone" as const,
     athleticsCourseId: input.athleticsCourseId === "stadium_loop" ? input.athleticsCourseId : "stadium_loop" as const,
     athleticsCourseLaps: sanitizeAthleticsMode(input.athleticsMode) === "zeus" ? 1 : sanitizeAthleticsCourseLaps(input.athleticsCourseLaps)

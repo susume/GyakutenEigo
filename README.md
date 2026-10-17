@@ -104,6 +104,11 @@ Pages workflow supplies `404.html` and direct route entry points.
 - Server-authoritative Classic, Flag, Zombie, and Athletics game modes.
 - Athletics variants: Classic Athletics, Zeus, Hunters & Runners, and Chaos
   Climb, using the authored Stadium Loop course.
+- Optional Athletics Battle mode in Game options: hold F, left mouse, or the
+  on-screen blast button for 3 seconds to spend 100 energy on a blast. Aim
+  with the crosshair and lead moving students: blasts fly straight without
+  homing or aim assistance, and only direct body contact pauses movement for
+  2.5 seconds. Hunters can still throw foam balls with G.
 - Standard arena maps: Desert Citadel, Iron Junction, and Temple Runoff.
 - Teacher-only Learning Pulse derived from authoritative non-bot answers.
 - Teacher-owned Competitions/Tournament Center with study packs, team approval,

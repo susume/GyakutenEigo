@@ -1,4 +1,8 @@
 import { getZeusLight } from "@quizstrike/shared";
+import { ATHLETICS_BATTLE_ENERGY_COST, type AthleticsBattleAction } from "@quizstrike/shared";
+import { AthleticsBattleInput, getAthleticsBattlePointerSource } from "./AthleticsBattleInput";
+import { AthleticsBattleHud } from "./AthleticsBattleHud";
+import { createAthleticsBattleVfx } from "./AthleticsBattleVfx";
 import { useSiteTranslation } from "../ui/siteTranslation";
 import { seededRandom, makeCanvasTexture, makeLabelTexture } from "./arenaTextures";
 import { useCallback, useEffect, useMemo, useRef, useState, type PointerEvent as ReactPointerEvent } from "react";
@@ -81,7 +85,7 @@ import { arenaAssetManager } from "./rendering/assets/ArenaAssetManager";
 import { mountCommunityBackdrop } from "./rendering/environment/CommunityEnvironment";
 import { createAthleticsModeVisuals } from "./athleticsModeVisuals";
 import { buildAthleticsStadiumScene } from "./athleticsStadiumBuilder";
-import { getAthleticsDashMultiplier, getAthleticsJumpVelocityMultiplier } from "./athleticsClientTiming";
+import { getAthleticsDashMultiplier, getAthleticsJumpVelocityMultiplier, isServerDeadlineActive } from "./athleticsClientTiming";
 import { getTempleRunoffReviewViewpoint } from "./templeRunoffReviewViewpoints";
 import { registerArenaRenderer, type ArenaRendererDiagnosticsHandle } from "./arenaRendererDiagnostics";
 import {
@@ -106,6 +110,8 @@ interface ArenaPreviewProps {
   gamepadEnabled?: boolean;
   onMove?: (position: ArenaLivePosition) => void;
   onFire?: (position: ArenaLivePosition) => void;
+  onBattleAction?: (action: AthleticsBattleAction, position: ArenaLivePosition, chargeId: string) => Promise<boolean>;
+  battleStunSeconds?: number;
   onInteract?: (position: ArenaLivePosition) => void;
   onOpenQuestion?: (grounded?: boolean) => void;
   onAbilityFromTouch?: () => void;
@@ -208,6 +214,8 @@ export default function ArenaPreview({
   touchControls = "auto",
   onMove,
   onFire,
+  onBattleAction,
+  battleStunSeconds = 0,
   onInteract,
   onOpenQuestion,
   onAbilityFromTouch,
@@ -225,6 +233,10 @@ export default function ArenaPreview({
   const questionControlRef = useRef<() => void>(() => undefined);
   const onMoveRef = useRef(onMove);
   const onFireRef = useRef(onFire);
+  const onBattleActionRef = useRef(onBattleAction);
+  onBattleActionRef.current = onBattleAction;
+  const battleControlRef = useRef<AthleticsBattleInput | null>(null);
+  const [battleChargeProgress, setBattleChargeProgress] = useState<number | null>(null);
   const onInteractRef = useRef(onInteract);
   const onOpenQuestionRef = useRef(onOpenQuestion);
   const currentPlayerRef = useRef(currentPlayer);
@@ -273,6 +285,7 @@ export default function ArenaPreview({
   const currentPlayerTeam = currentPlayer?.team ?? "blue";
   const currentWeaponId = currentPlayer ? getPlayerWeaponId(currentPlayer) : undefined;
   const isAthleticsMode = session?.settings.gameMode === "athletics";
+  const isBattleMode = isAthleticsMode && session?.settings.athleticsBattleEnabled === true;
   const athleticsMode = isAthleticsMode
     ? session?.settings.athleticsMode ?? session?.athletics?.mode ?? "classic"
     : "classic";
@@ -563,8 +576,10 @@ export default function ArenaPreview({
     const athleticsModeVisuals = isAthleticsMode
       ? createAthleticsModeVisuals({ scene, mode: athleticsMode, camera })
       : null;
+    const battleVfx = isBattleMode ? createAthleticsBattleVfx(scene, window.matchMedia("(prefers-reduced-motion: reduce)").matches) : null;
     const onWebglContextLost = (event: Event) => {
       event.preventDefault();
+      battleControlRef.current?.reset();
       contextLost = true;
       stopRenderLoop();
       rendererDiagnostics.contextLost({
@@ -904,6 +919,27 @@ export default function ArenaPreview({
       let fireHeld = false;
       let questionHoldPosition: THREE.Vector3 | null = null;
       let previousControlsDisabled = controlsDisabledRef.current;
+      let previousBattleStunned = false;
+      let stopBattleHum: (() => void) | undefined;
+      let lastBattleProgress = -1;
+      const battleInput = new AthleticsBattleInput({
+        canCharge: () => isBattleMode && !controlsDisabledRef.current && !inputPausedRef.current
+          && sessionRef.current?.status === "active" && sessionRef.current?.athletics?.status === "running"
+          && (currentPlayerRef.current?.energy ?? 0) >= ATHLETICS_BATTLE_ENERGY_COST
+          && Boolean(onBattleActionRef.current),
+        send: (action, chargeId) => onBattleActionRef.current?.(action, { ...localToServerPosition(playerPosition, yaw), pitch }, chargeId) ?? Promise.resolve(false),
+        progress: (progress) => {
+          const quantized = progress === null ? -1 : Math.round(progress * 60);
+          if (quantized === lastBattleProgress) return;
+          lastBattleProgress = quantized;
+          setBattleChargeProgress(progress);
+        },
+        charging: (active) => {
+          stopBattleHum?.();
+          stopBattleHum = active ? gameAudio.startBattleCharge() : undefined;
+        }
+      });
+      battleControlRef.current = battleInput;
       jumpControlRef.current = () => {
         if (controlsDisabledRef.current || inputPausedRef.current) return;
         if (isAthleticsMode && (currentPlayerRef.current?.energy ?? 0) < ATHLETICS_JUMP_ENERGY_COST) return;
@@ -1044,6 +1080,7 @@ export default function ArenaPreview({
       let gamepadInteractWasPressed = false;
       const applyGamepadInput = (delta: number) => {
         if (!gamepadEnabledRef.current || controlsDisabledRef.current || inputPausedRef.current || !navigator.getGamepads) {
+          battleInput.setHeld("gamepad", false, true);
           gamepadMove.forward = 0;
           gamepadMove.right = 0;
           gamepadFireWasPressed = false;
@@ -1052,6 +1089,7 @@ export default function ArenaPreview({
         }
         const gamepad = Array.from(navigator.getGamepads()).find((item) => item?.connected && item.mapping === "standard");
         if (!gamepad) {
+          battleInput.setHeld("gamepad", false, true);
           gamepadMove.forward = 0;
           gamepadMove.right = 0;
           gamepadFireWasPressed = false;
@@ -1066,14 +1104,30 @@ export default function ArenaPreview({
         pitch = clamp(pitch + look.pitch, ARENA_MIN_AIM_PITCH, ARENA_MAX_AIM_PITCH);
         const firePressed = Boolean(gamepad.buttons[7]?.pressed || gamepad.buttons[0]?.pressed);
         const interactPressed = Boolean(gamepad.buttons[2]?.pressed);
-        if (firePressed && !gamepadFireWasPressed) fire();
+        if (isBattleMode) battleInput.setHeld("gamepad", firePressed);
+        else if (firePressed && !gamepadFireWasPressed) fire();
         if (interactPressed && !gamepadInteractWasPressed) onInteractRef.current?.(localToServerPosition(playerPosition, yaw));
         gamepadFireWasPressed = firePressed;
         gamepadInteractWasPressed = interactPressed;
       };
       const onKeyDown = (event: KeyboardEvent) => {
         if (controlsDisabledRef.current || inputPausedRef.current) return;
+        // Native button activation belongs to the focused control. In
+        // particular, Space on the blast button must not also queue a jump.
+        if ((event.code === "Space" || event.key === " " || event.key === "Enter")
+          && event.target instanceof Element && event.target.closest("button, [role='button']")) return;
+        if (isBattleMode && athleticsHudRef.current?.role === "hunter" && (event.code === "KeyG" || event.key.toLowerCase() === "g")) {
+          if (!event.repeat) fire();
+          event.preventDefault();
+          return;
+        }
         if (isFireKeyboardEvent(event)) {
+          if (isBattleMode) {
+            gameAudio.warm();
+            battleInput.setHeld("keyboard", true);
+            event.preventDefault();
+            return;
+          }
           if (hasAutoFireGear()) fireHeld = true;
           fire();
           event.preventDefault();
@@ -1104,7 +1158,7 @@ export default function ArenaPreview({
         }
       };
       const onKeyUp = (event: KeyboardEvent) => {
-        if (isFireKeyboardEvent(event)) fireHeld = false;
+        if (isFireKeyboardEvent(event)) { fireHeld = false; battleInput.setHeld("keyboard", false); }
         const code = movementCode(event);
         if (code) keys.delete(code);
         const look = lookCode(event);
@@ -1124,6 +1178,7 @@ export default function ArenaPreview({
         else if (hadPointerLock) {
           hadPointerLock = false;
           setZoomLevel(0);
+          battleInput.reset();
         }
       };
       let pointerLockUnavailable = false;
@@ -1154,6 +1209,7 @@ export default function ArenaPreview({
           event.preventDefault();
           return;
         }
+        if (isBattleMode && event.button === 0) battleInput.setHeld(getAthleticsBattlePointerSource(event.pointerId), true);
         if (document.pointerLockElement !== renderer.domElement) {
           if (athleticsMode === "zeus" && pointerLockUnavailable) return;
           void renderer.domElement.requestPointerLock().catch(onPointerLockError);
@@ -1166,12 +1222,14 @@ export default function ArenaPreview({
           return;
         }
         if (action !== "fire") return;
+        if (isBattleMode) return;
         if (hasAutoFireGear()) fireHeld = true;
         fire();
       };
       const onPointerUp = (event: PointerEvent) => {
         if (event.button === 2 && !hasHeavyGun()) setZoomLevel(0);
         if (event.button === 0) fireHeld = false;
+        if (event.button === 0) battleInput.setHeld(getAthleticsBattlePointerSource(event.pointerId), false);
       };
       const onTouchPointerMove = (event: PointerEvent) => {
         if (event.pointerType !== "touch" || event.pointerId !== touchLookPointerId) return;
@@ -1189,14 +1247,16 @@ export default function ArenaPreview({
       };
       const finishTouchPointer = (event: PointerEvent) => {
         if (event.pointerType !== "touch" || event.pointerId !== touchLookPointerId) return;
-        if (shouldFireFromTouchGesture({ distance: touchLookDistance, durationMs: performance.now() - touchLookStartedAt })) fire();
+        if (!isBattleMode && shouldFireFromTouchGesture({ distance: touchLookDistance, durationMs: performance.now() - touchLookStartedAt })) fire();
         touchLookPointerId = null;
       };
       const onTouchPointerCancel = (event: PointerEvent) => {
+        battleInput.setHeld(getAthleticsBattlePointerSource(event.pointerId), false, true);
         if (event.pointerId === touchLookPointerId) touchLookPointerId = null;
       };
       const onContextMenu = (event: MouseEvent) => event.preventDefault();
       const clearKeys = () => {
+        battleInput.reset();
         keys.clear();
         lookKeys.clear();
         setZoomLevel(0);
@@ -1218,6 +1278,8 @@ export default function ArenaPreview({
         onTouchPointerCancel,
         onContextMenu
       });
+      const onVisibilityChange = () => { if (document.hidden) clearKeys(); };
+      document.addEventListener("visibilitychange", onVisibilityChange);
 
       const updateCamera = (delta = 0) => {
         cameraVisualY = wasGrounded
@@ -1248,6 +1310,7 @@ export default function ArenaPreview({
       };
       const resetGameplayState = () => {
         if (disposed) return;
+        battleInput.reset();
         const player = currentPlayerRef.current;
         const spawn = isAthleticsMode
           ? getAthleticsStartPosition(0, Math.max(1, sessionRef.current?.players.length ?? 1))
@@ -1282,6 +1345,7 @@ export default function ArenaPreview({
         touchMoveRef.current = { forward: 0, right: 0 };
         previousFloorEyeHeight = FPS_STANDING_EYE_HEIGHT;
         previousControlsDisabled = controlsDisabledRef.current;
+        previousBattleStunned = false;
         lastMoveEmitAt = 0;
         lastMiniMapAt = 0;
         keys.clear();
@@ -1412,7 +1476,7 @@ export default function ArenaPreview({
         }
         syncFirstPersonLoadout();
         const pausedAt = sessionRef.current?.controlState === "teacher_paused" ? sessionRef.current.teacherPausedAt : undefined;
-        const authoritativeNowMs = pausedAt ? Date.parse(pausedAt) : Date.now() + (athleticsMode === "zeus" ? zeusClockOffsetRef.current : 0);
+        const authoritativeNowMs = pausedAt ? Date.parse(pausedAt) : Date.now() + (athleticsMode === "zeus" || isBattleMode ? zeusClockOffsetRef.current : 0);
         performanceCapture.frame(currentTime);
         // Put target/body previews downrange on the aim line. The former close,
         // side-offset point made them read like HUD clutter beside the weapon.
@@ -1444,7 +1508,8 @@ export default function ArenaPreview({
           publishPerformanceDataset(profile);
           performanceWindowAt = currentTime;
         }
-        const controlsLocked = controlsDisabledRef.current;
+        const battleStunned = isBattleMode && isServerDeadlineActive(currentPlayerRef.current?.athletics?.battleStunnedUntil, authoritativeNowMs);
+        const controlsLocked = controlsDisabledRef.current || battleStunned;
         const chaosEventModifiers = getActiveChaosEventModifiers(authoritativeNowMs);
         if (controlsLocked) {
           verticalVelocity = 0;
@@ -1474,12 +1539,13 @@ export default function ArenaPreview({
             if (isFiniteNumber(followedPlayer.facing)) yaw = followedPlayer.facing;
             verticalVelocity = 0;
             jumpQueuedAt = 0;
-            wasGrounded = true;
-            isJumping = false;
+            wasGrounded = !previousBattleStunned || followedPlayer.jumping !== true;
+            isJumping = !wasGrounded;
             questionHoldPosition = null;
           }
         }
         previousControlsDisabled = controlsLocked;
+        previousBattleStunned = battleStunned;
         const horizontalLook = Number(lookKeys.has("ArrowLeft")) - Number(lookKeys.has("ArrowRight"));
         const verticalLook = Number(lookKeys.has("ArrowUp")) - Number(lookKeys.has("ArrowDown"));
         yaw += horizontalLook * KEYBOARD_LOOK_SPEED * delta;
@@ -1502,7 +1568,7 @@ export default function ArenaPreview({
           questionHoldPosition = null;
         }
         applyGamepadInput(delta);
-        const crouching = resolveCrouching({
+        const crouching = battleStunned ? currentPlayerRef.current?.crouching === true : resolveCrouching({
           shiftPressed: keys.has("Shift"),
           touchCrouch: touchCrouchRef.current
         });
@@ -1563,38 +1629,40 @@ export default function ArenaPreview({
           gameAudio.play("jump");
         }
         if (jumpQueuedAt > 0 && currentTime - jumpQueuedAt > jumpBufferMs) jumpQueuedAt = 0;
-        const previousFootY = playerPosition.y - floorEyeHeight;
-        verticalVelocity -= FPS_JUMP_GRAVITY * delta;
-        playerPosition.y += verticalVelocity * delta;
-        if (verticalVelocity <= 0) {
-          const supportY = findFpsSupportSurfaceY(
-            coverBoxes,
-            playerPosition.x,
-            playerPosition.z,
-            PLAYER_RADIUS,
-            previousFootY,
-            playerPosition.y - floorEyeHeight
-          );
-          if (supportY !== undefined && supportY > surfaceGroundY) {
-            surfaceGroundY = supportY;
-            groundEyeY = supportY + floorEyeHeight;
+        if (!battleStunned) {
+          const previousFootY = playerPosition.y - floorEyeHeight;
+          verticalVelocity -= FPS_JUMP_GRAVITY * delta;
+          playerPosition.y += verticalVelocity * delta;
+          if (verticalVelocity <= 0) {
+            const supportY = findFpsSupportSurfaceY(
+              coverBoxes,
+              playerPosition.x,
+              playerPosition.z,
+              PLAYER_RADIUS,
+              previousFootY,
+              playerPosition.y - floorEyeHeight
+            );
+            if (supportY !== undefined && supportY > surfaceGroundY) {
+              surfaceGroundY = supportY;
+              groundEyeY = supportY + floorEyeHeight;
+            }
           }
-        }
-        if (playerPosition.y < groundEyeY) {
-          playerPosition.y = groundEyeY;
-          verticalVelocity = 0;
-          if (!wasGrounded) {
-            landedAt = currentTime;
-            emitArenaAnimation({ kind: "land", playerId: currentPlayerRef.current?.id ?? "", team: currentPlayerRef.current?.team ?? "blue" });
-            gameAudio.play("land");
+          if (playerPosition.y < groundEyeY) {
+            playerPosition.y = groundEyeY;
+            verticalVelocity = 0;
+            if (!wasGrounded) {
+              landedAt = currentTime;
+              emitArenaAnimation({ kind: "land", playerId: currentPlayerRef.current?.id ?? "", team: currentPlayerRef.current?.team ?? "blue" });
+              gameAudio.play("land");
+            }
+            wasGrounded = true;
+          } else if (crouching && verticalVelocity === 0) {
+            playerPosition.y += (groundEyeY - playerPosition.y) * 0.18;
+          } else {
+            wasGrounded = false;
           }
-          wasGrounded = true;
-        } else if (crouching && verticalVelocity === 0) {
-          playerPosition.y += (groundEyeY - playerPosition.y) * 0.18;
-        } else {
-          wasGrounded = false;
+          isJumping = !wasGrounded;
         }
-        isJumping = !wasGrounded;
 
         const activePlayer = currentPlayerRef.current;
         const currentAthleticsPlayer = activePlayer?.athletics;
@@ -1688,6 +1756,7 @@ export default function ArenaPreview({
         }
 
         if (fireHeld && hasAutoFireGear() && !inputPausedRef.current && !controlsDisabledRef.current) fire();
+        battleInput.update();
 
         if (isAthleticsMode && inputPausedRef.current && questionHoldPosition) {
           playerPosition.copy(questionHoldPosition);
@@ -1705,10 +1774,20 @@ export default function ArenaPreview({
               authoritativeHunter.y,
               serverToLocalZ(authoritativeHunter.z)
             );
-            if (isFiniteNumber(authoritativeHunter.facing)) yaw = authoritativeHunter.facing;
             verticalVelocity = 0;
             wasGrounded = true;
             isJumping = false;
+          }
+        }
+        if (battleStunned) {
+          const frozen = currentPlayerRef.current;
+          if (isFiniteNumber(frozen?.x) && isFiniteNumber(frozen?.y) && isFiniteNumber(frozen?.z)) {
+            // A stun can land mid-jump. Freeze the authoritative pose instead
+            // of applying gravity and correcting the camera every frame.
+            playerPosition.set(serverToLocalX(frozen.x), frozen.y, serverToLocalZ(frozen.z));
+            verticalVelocity = 0;
+            isJumping = frozen.jumping === true;
+            wasGrounded = !isJumping;
           }
         }
 
@@ -1728,6 +1807,9 @@ export default function ArenaPreview({
         }
         updateCamera(delta);
         athleticsModeVisuals?.update(sessionRef.current, authoritativeNowMs);
+        battleVfx?.update(sessionRef.current, authoritativeNowMs, {
+          playerId: currentPlayerRef.current?.id ?? "", position: { x: playerPosition.x, y: playerPosition.y, z: playerPosition.z }, facing: yaw, pitch, progress: battleInput.progress
+        });
         if (athleticsMode === "zeus") {
           renderer.domElement.dataset.zeusLight = getZeusLight(sessionRef.current?.athletics?.zeus, authoritativeNowMs);
           renderer.domElement.dataset.zeusModelStatus = athleticsModeVisuals?.getModelStatus?.() ?? "loading";
@@ -1814,6 +1896,10 @@ export default function ArenaPreview({
         unsubscribeAssetProgress();
         vfxPool.dispose();
         athleticsModeVisuals?.dispose();
+        battleVfx?.dispose();
+        battleInput.reset();
+        battleControlRef.current = null;
+        document.removeEventListener("visibilitychange", onVisibilityChange);
         desertCitadelArt?.dispose();
         desertCitadelVfx?.dispose();
         templeRunoffArt?.dispose();
@@ -1902,6 +1988,7 @@ export default function ArenaPreview({
       camera.position.z = (arenaMapId === "lunar_relay" ? 285 : 246) + Math.cos(elapsed * 0.04) * 16;
       camera.lookAt(0, arenaMapId === "lunar_relay" ? 12 : 0, arenaMapId === "lunar_relay" ? -35 : -6);
       athleticsModeVisuals?.update(sessionRef.current, sessionRef.current?.controlState === "teacher_paused" ? Date.parse(sessionRef.current.teacherPausedAt ?? "") : Date.now() + (athleticsMode === "zeus" ? zeusClockOffsetRef.current : 0));
+      battleVfx?.update(sessionRef.current, sessionRef.current?.controlState === "teacher_paused" ? Date.parse(sessionRef.current.teacherPausedAt ?? "") : Date.now() + zeusClockOffsetRef.current);
       billboardSprites.forEach((sprite) => sprite.lookAt(camera.position));
       characterManager.update(delta, elapsed, camera);
       if (debugOverlay && currentTime - lastDebugStatsAt > 500) {
@@ -1932,6 +2019,7 @@ export default function ArenaPreview({
       unsubscribeAssetProgress();
       vfxPool.dispose();
       athleticsModeVisuals?.dispose();
+      battleVfx?.dispose();
       desertCitadelArt?.dispose();
       desertCitadelVfx?.dispose();
       templeRunoffArt?.dispose();
@@ -1971,7 +2059,7 @@ export default function ArenaPreview({
       renderer.dispose();
       renderer.domElement.remove();
     };
-  }, [sceneSessionId, view, debugOverlay, quality, arenaMapId, arenaMap, environmentKit, arenaBounds, teamBaseZones, captureZones, searchRetrieveItems, searchRetrieveDeliveryZones, isIronJunction, isDesertCitadel, isTempleRunoff, isAthleticsMode, athleticsMode, localToServerPosition, serverToLocalX, serverToLocalZ, movementLimitX, movementLimitZ, session?.settings.gameMode]);
+  }, [sceneSessionId, view, debugOverlay, quality, arenaMapId, arenaMap, environmentKit, arenaBounds, teamBaseZones, captureZones, searchRetrieveItems, searchRetrieveDeliveryZones, isIronJunction, isDesertCitadel, isTempleRunoff, isAthleticsMode, isBattleMode, athleticsMode, localToServerPosition, serverToLocalX, serverToLocalZ, movementLimitX, movementLimitZ, session?.settings.gameMode]);
 
   useEffect(() => {
     const serverMs = Date.parse(session?.serverTime ?? "");
@@ -2149,6 +2237,7 @@ export default function ArenaPreview({
       )}
       {view === "fps" && (
         <>
+          {isBattleMode && currentPlayer?.athletics?.status === "racing" && <AthleticsBattleHud progress={battleChargeProgress} energy={currentPlayer?.energy ?? 0} stunSeconds={battleStunSeconds} hunter={athleticsHud?.role === "hunter"} disabled={controlsDisabled || inputPaused} onHold={(source, held, cancelled) => battleControlRef.current?.setHeld(source, held, cancelled)} />}
           <ArenaHudOverlay
             showTouchControls={inputMode === "touch"}
             hitPulse={hitPulse}

@@ -9,6 +9,7 @@ type WeaponCooldown = {
 };
 
 export type AthleticsHudState = {
+  battleEnabled?: boolean;
   mode?: AthleticsMode;
   modeLabel?: string;
   role?: AthleticsRole;
@@ -214,8 +215,8 @@ export const ArenaHudOverlay = ({
                   <kbd aria-hidden="true">SPACE</kbd>{t("Jump")}</button>
               )}
               {onFireFromTouch && athleticsHud.role === "hunter" && (
-                <button type="button" className="touch-fire" disabled={controlsDisabled} aria-label={t("Throw foam ball")} onPointerDown={(event) => { event.preventDefault(); onFireFromTouch(); }} onClick={(event) => { if (event.detail === 0) onFireFromTouch(); }}>
-                  <kbd aria-hidden="true">F</kbd>{t("Throw")}</button>
+                <button type="button" className="touch-fire" disabled={controlsDisabled} aria-label={t("Throw foam ball")} aria-keyshortcuts={athleticsHud.battleEnabled ? "G" : "F"} onPointerDown={(event) => { event.preventDefault(); onFireFromTouch(); }} onClick={(event) => { if (event.detail === 0) onFireFromTouch(); }}>
+                  <kbd aria-hidden="true">{athleticsHud.battleEnabled ? "G" : "F"}</kbd>{t("Throw")}</button>
               )}
               {onAbilityFromTouch && athleticsHud.role !== "hunter" && athleticsHud.abilityReady && (
                 <button type="button" className="touch-ability" disabled={controlsDisabled || (athleticsHud.abilityCharge ?? 0) < (athleticsHud.abilityMax ?? 3)} aria-label={t("Use {value0}", { value0: t(getChaosAbilityLabel(athleticsHud.abilityReady)) })} aria-keyshortcuts="R" onPointerDown={(event) => { event.preventDefault(); onAbilityFromTouch(); }} onClick={(event) => { if (event.detail === 0) onAbilityFromTouch(); }}>

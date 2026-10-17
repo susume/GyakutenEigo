@@ -1,4 +1,5 @@
 import { useZeusDaruma } from "../../../game/useZeusDaruma";
+import "../../../game/athletics-battle.css";
 import { ZEUS_SUMMIT_PROGRESS, ZEUS_SUMMIT_CHECKPOINT_COUNT } from "@quizstrike/shared";
 import { useSiteTranslation } from "../../../ui/siteTranslation";
 import "../../speaking/speaking-auth.css";
@@ -1229,6 +1230,10 @@ function SessionManager({
                         <option value="teacher">{t("Teacher speakers only")}</option>
                       </select>
                     </label>}
+                    <label className="athletics-battle-toggle toggle-row">
+                      <input type="checkbox" role="switch" checked={settings.athleticsBattleEnabled === true} onChange={(event) => setSettings({ ...settings, athleticsBattleEnabled: event.target.checked })} aria-describedby="athletics-battle-help" />
+                      <span><strong>{t("Battle mode")}</strong><small id="athletics-battle-help">{t("All athletics modes · Hold F or left mouse for 3 seconds · 100 energy per blast · Hits stun for 2.5 seconds")}</small></span>
+                    </label>
                   </div>
                 ) : <div className="arena-choice-grid">
                   {ARENA_MAPS.map((map) => {

@@ -46,7 +46,7 @@ export const attachArenaInputListeners = ({
   document.addEventListener("pointerlockchange", onPointerLockChange);
   document.addEventListener("pointerlockerror", onPointerLockError);
   rendererElement.addEventListener("pointerdown", onPointerDown);
-  rendererElement.addEventListener("pointerup", onPointerUp);
+  window.addEventListener("pointerup", onPointerUp);
   window.addEventListener("pointermove", onTouchPointerMove, { passive: false });
   window.addEventListener("pointerup", onTouchPointerUp);
   window.addEventListener("pointercancel", onTouchPointerCancel);
@@ -61,7 +61,7 @@ export const attachArenaInputListeners = ({
     document.removeEventListener("pointerlockchange", onPointerLockChange);
     document.removeEventListener("pointerlockerror", onPointerLockError);
     rendererElement.removeEventListener("pointerdown", onPointerDown);
-    rendererElement.removeEventListener("pointerup", onPointerUp);
+    window.removeEventListener("pointerup", onPointerUp);
     window.removeEventListener("pointermove", onTouchPointerMove);
     window.removeEventListener("pointerup", onTouchPointerUp);
     window.removeEventListener("pointercancel", onTouchPointerCancel);

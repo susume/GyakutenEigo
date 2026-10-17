@@ -182,6 +182,10 @@ export type AudioEventCue =
   | "athletics_checkpoint"
   | "athletics_fall"
   | "athletics_finish"
+  | "battle_fire"
+  | "battle_impact"
+  | "battle_stun"
+  | "battle_recover"
   | "zeus_strike"
   | "zeus_stop"
   | "zeus_go"
@@ -280,6 +284,10 @@ export const GAME_AUDIO_EVENT_CUES: Record<AudioEventCue, ToneDefinition> = {
   athletics_checkpoint: eventTone(620, 190, 0.03, "triangle", 1040),
   athletics_fall: eventTone(170, 180, 0.024, "sine", 92),
   athletics_finish: eventTone(540, 460, 0.038, "triangle", 1180),
+  battle_fire: eventTone(840, 420, 0.054, "sawtooth", 95, true),
+  battle_impact: eventTone(520, 280, 0.042, "triangle", 120, true),
+  battle_stun: eventTone(210, 480, 0.035, "sine", 92),
+  battle_recover: eventTone(440, 240, 0.028, "triangle", 880),
   zeus_strike: eventTone(560, 180, 0.024, "sine", 420),
   zeus_stop: eventTone(220, 160, 0.036, "triangle", 110),
   zeus_go: eventTone(440, 140, 0.026, "sine", 740),
@@ -496,6 +504,42 @@ class GameAudioController {
 
   playHeavyFire() {
     this.play("heavy_fire");
+  }
+
+  /** A rising two-voice charge hum. Caller owns cancellation on release or blur. */
+  startBattleCharge(): () => void {
+    try {
+      this.warm();
+      const audio = this.ensureAudio();
+      if (!audio || !this.sfxGain) return () => undefined;
+      const voices = [1, 1.505].map((ratio) => {
+        const oscillator = audio.createOscillator();
+        const gain = audio.createGain();
+        const now = audio.currentTime;
+        oscillator.type = "sine";
+        oscillator.frequency.setValueAtTime(130 * ratio, now);
+        oscillator.frequency.exponentialRampToValueAtTime(690 * ratio, now + 3);
+        gain.gain.setValueAtTime(0.0001, now);
+        gain.gain.exponentialRampToValueAtTime(ratio === 1 ? 0.028 : 0.012, now + 0.12);
+        gain.gain.setTargetAtTime(0.0001, now + 3.05, 0.04);
+        oscillator.connect(gain);
+        gain.connect(this.sfxGain!);
+        oscillator.start(now);
+        oscillator.stop(now + 3.3);
+        oscillator.onended = () => { oscillator.disconnect(); gain.disconnect(); };
+        return { oscillator, gain };
+      });
+      let stopped = false;
+      return () => {
+        if (stopped) return;
+        stopped = true;
+        for (const voice of voices) {
+          voice.gain.gain.cancelScheduledValues(audio.currentTime);
+          voice.gain.gain.setTargetAtTime(0.0001, audio.currentTime, 0.015);
+          try { voice.oscillator.stop(audio.currentTime + 0.06); } catch { /* Already finished. */ }
+        }
+      };
+    } catch { return () => undefined; }
   }
 
   playMovementStep(mode: MovementAudioMode, nowMs: number, surface: MovementSurface = "snow") {

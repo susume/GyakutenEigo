@@ -44,6 +44,7 @@ export interface AthleticsRaceState {
   /** Official GO timestamp. Before this instant the course is locked. */
   startAt: string;
   finishOrder: string[];
+  battleBlasts?: import("./athleticsBattle.js").AthleticsBattleBlast[];
   /** Zeus telegraphs and Chaos waves are included in snapshots for interpolation. */
   zeus?: AthleticsZeusState;
   chaos?: AthleticsChaosState;
@@ -114,6 +115,10 @@ export interface AthleticsPlayerState {
   jumpBoostUntil?: string;
   knockbackResistUntil?: string;
   staggerUntil?: string;
+  battleChargeId?: string;
+  battleChargeStartedAt?: string;
+  battleStunnedUntil?: string;
+  battleImmuneUntil?: string;
   zeusFrozen?: boolean;
   zeusFrozenUntil?: string;
   zeusRestartUntil?: string;
