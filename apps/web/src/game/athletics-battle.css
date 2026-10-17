@@ -24,9 +24,16 @@
 .battle-stun-status > span { min-width: 3ch; font-variant-numeric: tabular-nums; }
 .athletics-battle-toggle { margin-top: 16px; align-items: center; padding: 14px; border: 1px solid #6fbed780; border-radius: 12px; background: #173342; }
 .athletics-battle-toggle > span { display: grid; gap: 5px; }
+.athletics-battle-toggle strong { color: #eaffff; }
 .athletics-battle-toggle small { max-width: 54ch; color: #c3e1ec; line-height: 1.5; }
 .athletics-battle-toggle input { min-width: 22px; min-height: 22px; accent-color: #61e2f7; }
 .athletics-battle-toggle:focus-within { outline: 2px solid #88eaff; outline-offset: 3px; }
+.athletics-battle-cost { display: grid; grid-template-columns: minmax(0, 1fr) 100px; align-items: center; gap: 8px 16px; margin-top: 12px; padding: 14px; border: 1px solid #6fbed780; border-radius: 12px; background: #173342; }
+.athletics-battle-cost label { color: #eaffff; font-weight: 600; }
+.athletics-battle-cost input { box-sizing: border-box; width: 100%; min-height: 44px; padding: 8px 12px; font: inherit; font-size: 16px; }
+.athletics-battle-cost small { grid-column: 1 / -1; color: #c3e1ec; line-height: 1.5; }
+.athletics-battle-cost .field-error { color: #ffb8b8; }
+.athletics-battle-cost input:focus-visible { outline: 2px solid #88eaff; outline-offset: 3px; }
 @media (max-width: 640px) {
   .athletics-battle-hud { width: 218px; bottom: max(14px, env(safe-area-inset-bottom)); }
   .arena-frame[data-input-mode="touch"] .athletics-battle-hud { width: 166px; }

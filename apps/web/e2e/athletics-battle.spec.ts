@@ -57,6 +57,26 @@ test("battle keyboard and mouse holds cancel early and spend once after three se
   expect(errors).toBe(0);
 });
 
+test("a teacher's zero-cost setting allows blasts without spending energy", async ({ page, request }) => {
+  const classroom = await createClassroom(request, { gameMode: "athletics", athleticsBattleEnabled: true, athleticsBattleEnergyCost: 0 });
+  await page.goto(`/join?code=${classroom.code}`);
+  await page.getByPlaceholder("Player name").fill("Free Blast Explorer");
+  await page.getByRole("button", { name: "Join game", exact: true }).click();
+  await expect(page.getByTestId("student-lobby-status")).toBeVisible();
+  await request.post(`/api/sessions/${classroom.code}/start`, { headers: { Authorization: `Bearer ${classroom.teacherToken}` } });
+  const charge = page.getByRole("button", { name: "Hold to charge energy blast", exact: true });
+  await expect(charge).toBeEnabled({ timeout: 30_000 });
+  await expect(charge).toContainText("0 energy / blast");
+  await page.keyboard.down("f");
+  await expect(charge).toContainText("Charging");
+  await expect(charge).toContainText("Energy blast", { timeout: 6000 });
+  await expect(page.getByRole("status").filter({ hasText: "Energy blast fired. −0 energy." })).toBeVisible();
+  await page.keyboard.up("f");
+  const response = await request.get(`/api/sessions/${classroom.code}`, { headers: { Authorization: `Bearer ${classroom.teacherToken}` } });
+  expect((await response.json()).session.players[0].energy).toBe(440);
+  await expect(charge).toBeEnabled();
+});
+
 test.describe("Battle touch layout", () => {
 test.use({ hasTouch: true });
 test("battle touch button fits phones and tablets without covering movement controls", async ({ page, request }, testInfo) => {

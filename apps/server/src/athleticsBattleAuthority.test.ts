@@ -33,11 +33,46 @@ test("battle settings default off, sanitize strictly, and support every Athletic
   for (const mode of ATHLETICS_MODES) {
     assert.equal(sanitizeSessionSettings({ gameMode: "athletics", athleticsMode: mode }).athleticsBattleEnabled, false);
     assert.equal(sanitizeSessionSettings({ gameMode: "athletics", athleticsMode: mode, athleticsBattleEnabled: true }).athleticsBattleEnabled, true);
+    assert.equal(sanitizeSessionSettings({ gameMode: "athletics", athleticsMode: mode }).athleticsBattleEnergyCost, 100);
+    assert.equal(sanitizeSessionSettings({ gameMode: "athletics", athleticsMode: mode, athleticsBattleEnergyCost: 250 }).athleticsBattleEnergyCost, 250);
+    assert.equal(sanitizeSessionSettings({ gameMode: "athletics", athleticsMode: mode, athleticsBattleEnergyCost: 0 }).athleticsBattleEnergyCost, 0);
   }
   assert.equal(sanitizeSessionSettings({ gameMode: "classic", athleticsBattleEnabled: true }).athleticsBattleEnabled, undefined);
+  assert.equal(sanitizeSessionSettings({ gameMode: "classic", athleticsBattleEnergyCost: 250 }).athleticsBattleEnergyCost, undefined);
   assert.equal(sanitizeSessionSettings({ gameMode: "athletics", athleticsBattleEnabled: "true" as unknown as boolean }).athleticsBattleEnabled, false);
   assert.equal(validateClientCommand("athletics_action", command("battle_charge")).success, true);
   assert.equal(validateClientCommand("athletics_action", { ...command("battle_fire"), chargeId: undefined }).success, false);
+});
+
+test("every Athletics mode charges the teacher's configured cost, including free blasts and the energy cap", () => {
+  for (const mode of ATHLETICS_MODES) for (const cost of [0, 25, 250, 1000]) {
+    const session = fixture(mode); const shooter = session.players[0];
+    session.settings.athleticsBattleEnergyCost = cost;
+    shooter.energy = cost;
+    launch(session);
+    assert.equal(shooter.energy, 0, `${mode}: a ${cost}-energy blast spends exactly the configured amount`);
+    assert.equal(session.athletics!.battleBlasts!.length, 1);
+    assert.equal(handleAthleticsBattleAction(session, shooter, command("battle_fire"), now + 3100).ok, false, "replaying a free blast still requires another charge");
+  }
+  const legacy = fixture(); delete legacy.settings.athleticsBattleEnergyCost;
+  launch(legacy);
+  assert.equal(legacy.players[0].energy, 340, "existing rooms without the new setting retain their original cost");
+});
+
+test("insufficient energy cannot start or finish a charge at the configured cost", () => {
+  const session = fixture(); const shooter = session.players[0];
+  session.settings.athleticsBattleEnergyCost = 250;
+  shooter.energy = 249;
+  assert.deepEqual(handleAthleticsBattleAction(session, shooter, command("battle_charge"), now), {
+    ok: false, message: "Answer for energy. A blast costs 250 energy."
+  });
+  shooter.energy = 300;
+  assert.equal(handleAthleticsBattleAction(session, shooter, command("battle_charge"), now).ok, true);
+  shooter.energy = 249;
+  assert.equal(handleAthleticsBattleAction(session, shooter, command("battle_fire"), now + 3000).ok, false);
+  assert.equal(shooter.energy, 249);
+  assert.equal(shooter.athletics!.battleChargeId, undefined);
+  assert.equal(session.athletics!.battleBlasts?.length ?? 0, 0);
 });
 
 for (const mode of ATHLETICS_MODES) test(`${mode}: full charge spends exactly 100 energy, hits classmates of either role, and cannot stun-lock`, () => {

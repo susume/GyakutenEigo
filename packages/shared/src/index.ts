@@ -1,4 +1,5 @@
 import type { LearningPulse } from "./learningPulse.js";
+import { ATHLETICS_BATTLE_ENERGY_COST, sanitizeAthleticsBattleEnergyCost } from "./athleticsBattle.js";
 import {
   LUNAR_RELAY_BRIDGE_LEVEL_Y,
   LUNAR_RELAY_LAYOUT_BLOCKS,
@@ -597,6 +598,8 @@ export interface SessionSettings {
   athleticsMode?: AthleticsMode;
   /** Optional energy blasts in every Athletics variant. Disabled for legacy rooms. */
   athleticsBattleEnabled?: boolean;
+  /** Energy spent per charged blast. Defaults to 100; zero makes blasts free. */
+  athleticsBattleEnergyCost?: number;
   athleticsZeusAudio?: "everyone" | "teacher";
   athleticsCourseId?: AthleticsCourseId;
   /** Athletics only. Missing legacy values resolve to one lap. */
@@ -943,6 +946,7 @@ export const DEFAULT_SESSION_SETTINGS: SessionSettings = {
   gameMode: "flag",
   athleticsMode: "classic",
   athleticsBattleEnabled: false,
+  athleticsBattleEnergyCost: ATHLETICS_BATTLE_ENERGY_COST,
   athleticsCourseLaps: ATHLETICS_DEFAULT_COURSE_LAPS,
   botDifficulty: "standard",
   roundCount: FLAG_MODE_DEFAULTS.roundCount,
@@ -993,6 +997,7 @@ export const sanitizeSessionSettings = (input: Partial<SessionSettings> = {}): S
   ...(gameMode === "athletics" ? {
     athleticsMode: sanitizeAthleticsMode(input.athleticsMode),
     athleticsBattleEnabled: input.athleticsBattleEnabled === true,
+    athleticsBattleEnergyCost: sanitizeAthleticsBattleEnergyCost(input.athleticsBattleEnergyCost),
     athleticsZeusAudio: input.athleticsZeusAudio === "teacher" ? "teacher" as const : "everyone" as const,
     athleticsCourseId: input.athleticsCourseId === "stadium_loop" ? input.athleticsCourseId : "stadium_loop" as const,
     athleticsCourseLaps: sanitizeAthleticsMode(input.athleticsMode) === "zeus" ? 1 : sanitizeAthleticsCourseLaps(input.athleticsCourseLaps)

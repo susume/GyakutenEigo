@@ -11,6 +11,7 @@ import {
   canStartRound,
   DEFAULT_SESSION_SETTINGS,
   ATHLETICS_DEFAULT_TIME_LIMIT_SECONDS,
+  ATHLETICS_MAX_ENERGY,
   getRoundRemainingSeconds,
   isRoundPreparationPhase,
   isZombieSelectionPhase,
@@ -88,8 +89,9 @@ const sessionNumberFields = [
   { name: "snowballsPerPack", label: "Snowballs per pack", min: 1, max: 50, unit: "snowballs", help: "Snowballs in each pack." },
   { name: "wrongAnswerPenalty", label: "Wrong answer penalty", min: 0, max: 16000, step: 100, unit: "rewards", help: "Rewards removed for an incorrect answer." },
   { name: "roundDurationSeconds", label: "Round time", min: 60, max: 3600, step: 30, unit: "seconds", help: "Time available for each round." },
-  { name: "athleticsCourseLaps", label: "Course Laps", min: 1, max: 10, help: "How many times must students complete the course?" }
-] as const satisfies ReadonlyArray<{ name: keyof Pick<SessionSettings, "maxPlayers" | "roundCount" | "flagHoldSeconds" | "initialZombieCount" | "startingMoney" | "correctAnswerReward" | "startingSnowballs" | "snowballPackPrice" | "snowballsPerPack" | "wrongAnswerPenalty" | "roundDurationSeconds" | "athleticsCourseLaps">; label: string; min: number; max: number; step?: number; unit?: string; help: string; }>;
+  { name: "athleticsCourseLaps", label: "Course Laps", min: 1, max: 10, help: "How many times must students complete the course?" },
+  { name: "athleticsBattleEnergyCost", label: "Energy per blast", min: 0, max: ATHLETICS_MAX_ENERGY, help: "Choose 0–1,000 energy per blast. Set 0 for free blasts." }
+] as const satisfies ReadonlyArray<{ name: keyof Pick<SessionSettings, "maxPlayers" | "roundCount" | "flagHoldSeconds" | "initialZombieCount" | "startingMoney" | "correctAnswerReward" | "startingSnowballs" | "snowballPackPrice" | "snowballsPerPack" | "wrongAnswerPenalty" | "roundDurationSeconds" | "athleticsCourseLaps" | "athleticsBattleEnergyCost">; label: string; min: number; max: number; step?: number; unit?: string; help: string; }>;
 type SessionNumberField = (typeof sessionNumberFields)[number]["name"];
 function useAsyncMessage() {
   const [message, setMessage] = useState("");
@@ -796,7 +798,8 @@ function SessionManager({
     return () => document.removeEventListener("pointerdown", closePicker);
   }, [isTeacherSpectatorPickerOpen]);
 
-  const hasInvalidSettings = Object.values(invalidSettings).some(Boolean);
+  const hasInvalidSettings = Object.entries(invalidSettings).some(([field, invalid]) => invalid
+    && (field !== "athleticsBattleEnergyCost" || (settings.gameMode === "athletics" && settings.athleticsBattleEnabled)));
 
   const updateNumberSetting = (field: SessionNumberField, rawValue: string) => {
     setSettingInputs((current) => ({ ...current, [field]: rawValue }));
@@ -916,6 +919,7 @@ function SessionManager({
   const shouldShowSetup = !selectedSession;
   const isSessionEnded = selectedSession?.status === "ended";
   const visibleNumberFields = sessionNumberFields.filter((field) => {
+    if (field.name === "athleticsBattleEnergyCost") return false; // Shown beside the battle toggle.
     if (settings.gameMode === "flag") return field.name !== "initialZombieCount";
     if (settings.gameMode === "zombie") return field.name !== "roundCount" && field.name !== "flagHoldSeconds";
     if (settings.gameMode === "athletics") return (field.name === "athleticsCourseLaps" && selectedAthleticsMode !== "zeus") || field.name === "roundDurationSeconds" || field.name === "maxPlayers";
@@ -1232,8 +1236,18 @@ function SessionManager({
                     </label>}
                     <label className="athletics-battle-toggle toggle-row">
                       <input type="checkbox" role="switch" checked={settings.athleticsBattleEnabled === true} onChange={(event) => setSettings({ ...settings, athleticsBattleEnabled: event.target.checked })} aria-describedby="athletics-battle-help" />
-                      <span><strong>{t("Battle mode")}</strong><small id="athletics-battle-help">{t("All athletics modes · Hold F or left mouse for 3 seconds · 100 energy per blast · Hits stun for 2.5 seconds")}</small></span>
+                      <span><strong>{t("Battle mode")}</strong><small id="athletics-battle-help">{t("All athletics modes · Hold F or left mouse for 3 seconds · Hits stun for 2.5 seconds")}</small></span>
                     </label>
+                    {settings.athleticsBattleEnabled && <div className="athletics-battle-cost">
+                      <label htmlFor="athletics-battle-energy-cost">{t("Energy per blast")}</label>
+                      <input id="athletics-battle-energy-cost" type="number" min={0} max={ATHLETICS_MAX_ENERGY} step={1} inputMode="numeric" required
+                        value={settingInputs.athleticsBattleEnergyCost}
+                        aria-invalid={invalidSettings.athleticsBattleEnergyCost ? "true" : undefined}
+                        aria-describedby={invalidSettings.athleticsBattleEnergyCost ? "athletics-battle-cost-error athletics-battle-cost-help" : "athletics-battle-cost-help"}
+                        onChange={(event) => updateNumberSetting("athleticsBattleEnergyCost", event.target.value)} />
+                      <small id="athletics-battle-cost-help">{t("Choose 0–1,000 energy per blast. Set 0 for free blasts.")}</small>
+                      {invalidSettings.athleticsBattleEnergyCost && <small id="athletics-battle-cost-error" className="field-error" role="alert">{t("Use a whole number from 0 to 1,000.")}</small>}
+                    </div>}
                   </div>
                 ) : <div className="arena-choice-grid">
                   {ARENA_MAPS.map((map) => {

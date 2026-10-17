@@ -2,11 +2,20 @@ import assert from "node:assert/strict";
 import test from "node:test";
 import {
   ATHLETICS_BATTLE_RADIUS, ATHLETICS_BATTLE_RANGE, ATHLETICS_BATTLE_SPEED,
-  getAthleticsBattleBlastPosition, getAthleticsBattleBodyContact, type AthleticsBattleBlast
+  getAthleticsBattleBlastPosition, getAthleticsBattleBodyContact, sanitizeAthleticsBattleEnergyCost, type AthleticsBattleBlast
 } from "./athleticsBattle.js";
 import { ATHLETICS_PLAYER_RADIUS } from "./athleticsRace.js";
 
 const eye = { x: 0, y: 4.21, z: -12 };
+
+test("blast energy costs default safely and allow whole numbers from free to the energy cap", () => {
+  for (const value of [undefined, null, "25", "", false, {}, NaN, Infinity, -Infinity]) {
+    assert.equal(sanitizeAthleticsBattleEnergyCost(value), 100);
+  }
+  for (const [input, expected] of [[0, 0], [25, 25], [250, 250], [1000, 1000], [-10, 0], [2000, 1000], [24.6, 25]]) {
+    assert.equal(sanitizeAthleticsBattleEnergyCost(input), expected);
+  }
+});
 
 test("blasts follow the launch ray at constant speed and stop at their maximum range", () => {
   const blast: AthleticsBattleBlast = {

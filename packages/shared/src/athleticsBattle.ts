@@ -1,7 +1,12 @@
-import { ATHLETICS_PLAYER_EYE_HEIGHT, ATHLETICS_PLAYER_RADIUS } from "./athleticsRace.js";
+import { ATHLETICS_MAX_ENERGY, ATHLETICS_PLAYER_EYE_HEIGHT, ATHLETICS_PLAYER_RADIUS } from "./athleticsRace.js";
 
 /** Shared, server-owned rules for the optional battle layer in every Athletics mode. */
 export const ATHLETICS_BATTLE_ENERGY_COST = 100;
+/** Legacy rooms keep the original cost; zero explicitly allows free blasts. */
+export const sanitizeAthleticsBattleEnergyCost = (value: unknown): number =>
+  typeof value === "number" && Number.isFinite(value)
+    ? Math.min(ATHLETICS_MAX_ENERGY, Math.max(0, Math.round(value)))
+    : ATHLETICS_BATTLE_ENERGY_COST;
 export const ATHLETICS_BATTLE_CHARGE_MS = 3000;
 export const ATHLETICS_BATTLE_CHARGE_EXPIRES_MS = 6000;
 export const ATHLETICS_BATTLE_STUN_MS = 2500;

@@ -9,7 +9,7 @@ type SessionFixture = {
   id: string;
   sessionCode: string;
   status: "waiting" | "active" | "paused" | "ended";
-  settings: { mapId: string; gameMode: string; athleticsMode?: string; athleticsCourseId?: string; athleticsCourseLaps?: number; athleticsBattleEnabled?: boolean };
+  settings: { mapId: string; gameMode: string; athleticsMode?: string; athleticsCourseId?: string; athleticsCourseLaps?: number; athleticsBattleEnabled?: boolean; athleticsBattleEnergyCost?: number };
   players: PlayerFixture[];
   athletics?: { status: string; questionCount: number; questionsPerLap: number; requiredLaps: number; startAt: string; finishOrder: string[]; zeus?: AthleticsZeusState };
 };
@@ -114,14 +114,15 @@ const createSession = async (
   teacher: { token: string; quizSetId: string },
   athleticsCourseLaps = 1,
   athleticsMode = "classic",
-  athleticsBattleEnabled = false
+  athleticsBattleEnabled = false,
+  athleticsBattleEnergyCost?: number
 ) => {
   const created = await api<{ session: SessionFixture }>("/api/sessions", {
     method: "POST",
     teacherToken: teacher.token,
     body: {
       quizSetId: teacher.quizSetId,
-      settings: { gameMode: "athletics", athleticsMode, athleticsCourseLaps, athleticsBattleEnabled, maxPlayers: 8, roundDurationSeconds: 60 }
+      settings: { gameMode: "athletics", athleticsMode, athleticsCourseLaps, athleticsBattleEnabled, athleticsBattleEnergyCost, maxPlayers: 8, roundDurationSeconds: 60 }
     }
   });
   assert.equal(created.response.status, 201);
@@ -731,7 +732,8 @@ test("three-lap race completes every lap without duplicating or underflowing ene
 
 test("battle blasts authenticate, charge, spend energy and freeze a connected classmate's movement for 2.5 seconds", { timeout: 30_000 }, async () => {
   const teacher = await createTeacherWithQuiz();
-  const session = await createSession(teacher, 1, "classic", true);
+  const session = await createSession(teacher, 1, "classic", true, 175);
+  assert.equal(session.settings.athleticsBattleEnergyCost, 175);
   const alpha = await joinSession(session.sessionCode, "Battle Alpha");
   const bravo = await joinSession(session.sessionCode, "Battle Bravo");
   const a = connectStudentSocket(session.sessionCode, alpha);
@@ -758,7 +760,7 @@ test("battle blasts authenticate, charge, spend energy and freeze a connected cl
     await delay(3050);
     assert.equal((await send("battle_fire", "charged", facing)).ok, true);
     const hit = await waitUntil(read, (snapshot) => Boolean(snapshot.players.find((player) => player.id === bravo.player.id)?.athletics?.battleStunnedUntil));
-    assert.equal(hit.players.find((player) => player.id === alpha.player.id)!.energy, shooter.energy! - 100);
+    assert.equal(hit.players.find((player) => player.id === alpha.player.id)!.energy, shooter.energy! - 175);
     const stopped = hit.players.find((player) => player.id === bravo.player.id)!;
     b.socket.emit("player_position", { x: stopped.x! + 1, y: stopped.y! + 2, z: stopped.z! - 1, facing: 0, jumping: true, jumpStarted: true, movementSequence: 1, movementEpoch: 0 });
     await delay(100);

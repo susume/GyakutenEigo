@@ -8,9 +8,10 @@ export const createClassroom = async (
     startingMoney = 0,
     athleticsMode = "classic",
     athleticsBattleEnabled = false,
+    athleticsBattleEnergyCost,
     mapId = "desert_citadel",
     roundDurationSeconds = 60
-  }: { gameMode?: "classic" | "flag" | "athletics"; roundCount?: number; startingMoney?: number; mapId?: "desert_citadel" | "iron_junction" | "temple_runoff" | "lunar_relay"; athleticsMode?: "classic" | "zeus" | "hunters-runners" | "chaos-climb"; athleticsBattleEnabled?: boolean; roundDurationSeconds?: number } = {}
+  }: { gameMode?: "classic" | "flag" | "athletics"; roundCount?: number; startingMoney?: number; mapId?: "desert_citadel" | "iron_junction" | "temple_runoff" | "lunar_relay"; athleticsMode?: "classic" | "zeus" | "hunters-runners" | "chaos-climb"; athleticsBattleEnabled?: boolean; athleticsBattleEnergyCost?: number; roundDurationSeconds?: number } = {}
 ) => {
   const suffix = `${Date.now()}-${Math.random().toString(16).slice(2)}`;
   const signup = await request.post("/api/auth/signup", {
@@ -47,7 +48,7 @@ export const createClassroom = async (
     headers: authorization,
     data: {
       quizSetId: quizSet.id,
-      settings: { gameMode, mapId, maxPlayers: 2, roundCount, startingMoney, roundDurationSeconds, athleticsMode, athleticsBattleEnabled }
+      settings: { gameMode, mapId, maxPlayers: 2, roundCount, startingMoney, roundDurationSeconds, athleticsMode, athleticsBattleEnabled, athleticsBattleEnergyCost }
     }
   });
   if (created.status() !== 201) throw new Error(`Session creation failed with ${created.status()}.`);

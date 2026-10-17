@@ -1,7 +1,10 @@
 {
   "+220 movement energy": "移動エネルギー +220",
   "Battle mode": "バトルモード",
-  "All athletics modes · Hold F or left mouse for 3 seconds · 100 energy per blast · Hits stun for 2.5 seconds": "全アスレチックモード対応 · Fキーまたはマウス左ボタンを3秒長押し · 1発につきエネルギー100 · 命中すると2.5秒間スタン",
+  "All athletics modes · Hold F or left mouse for 3 seconds · Hits stun for 2.5 seconds": "全アスレチックモード対応 · Fキーまたはマウス左ボタンを3秒長押し · 命中すると2.5秒間スタン",
+  "Energy per blast": "1発あたりの消費エネルギー",
+  "Choose 0–1,000 energy per blast. Set 0 for free blasts.": "1発につき消費するエネルギーを0〜1,000で設定します。0にすると無料で撃てます。",
+  "Use a whole number from 0 to 1,000.": "0〜1,000の整数を入力してください。",
   "Stunned": "スタン中",
   "Movement returns automatically": "自動的に動けるようになります",
   "Hold to charge energy blast": "長押しでエネルギー弾をチャージ",

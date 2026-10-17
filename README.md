@@ -105,7 +105,8 @@ Pages workflow supplies `404.html` and direct route entry points.
 - Athletics variants: Classic Athletics, Zeus, Hunters & Runners, and Chaos
   Climb, using the authored Stadium Loop course.
 - Optional Athletics Battle mode in Game options: hold F, left mouse, or the
-  on-screen blast button for 3 seconds to spend 100 energy on a blast. Aim
+  on-screen blast button for 3 seconds to fire. Teachers choose the energy
+  cost per blast in Game options (0–1,000; default 100; 0 makes blasts free). Aim
   with the crosshair and lead moving students: blasts fly straight without
   homing or aim assistance, and only direct body contact pauses movement for
   2.5 seconds. Hunters can still throw foam balls with G.

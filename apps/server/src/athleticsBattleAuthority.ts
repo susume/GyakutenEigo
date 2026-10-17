@@ -1,10 +1,10 @@
 import {
   ATHLETICS_BATTLE_CHARGE_EXPIRES_MS, ATHLETICS_BATTLE_CHARGE_MS,
-  ATHLETICS_BATTLE_ENERGY_COST, ATHLETICS_BATTLE_IMMUNITY_MS,
+  ATHLETICS_BATTLE_IMMUNITY_MS,
   ATHLETICS_BATTLE_RADIUS, ATHLETICS_BATTLE_RANGE, ATHLETICS_BATTLE_SPEED,
   ATHLETICS_BATTLE_STUN_MS, ATHLETICS_PLAYER_EYE_HEIGHT,
   clampArenaAimPitch, getAthleticsBattleBlastPosition, getAthleticsBattleBodyContact,
-  getAthleticsObstacles, hasLineOfSight, isTeacherPaused, normalizeAthleticsEnergy,
+  getAthleticsObstacles, hasLineOfSight, isTeacherPaused, normalizeAthleticsEnergy, sanitizeAthleticsBattleEnergyCost,
   type AthleticsActionCommand, type AthleticsBattlePoint, type GameSession, type PlayerSession
 } from "@quizstrike/shared";
 
@@ -34,9 +34,10 @@ export const handleAthleticsBattleAction = (session: GameSession, player: Player
     clearAthleticsBattleCharge(player);
     return { ok: false, message: "You cannot charge a blast right now." };
   }
-  if (normalizeAthleticsEnergy(player.energy) < ATHLETICS_BATTLE_ENERGY_COST) {
+  const energyCost = sanitizeAthleticsBattleEnergyCost(session.settings.athleticsBattleEnergyCost);
+  if (normalizeAthleticsEnergy(player.energy) < energyCost) {
     clearAthleticsBattleCharge(player);
-    return { ok: false, message: `Answer for energy. A blast costs ${ATHLETICS_BATTLE_ENERGY_COST} energy.` };
+    return { ok: false, message: `Answer for energy. A blast costs ${energyCost} energy.` };
   }
   if (command.action === "battle_charge") {
     // Repeated starts cannot reset or bypass the three-second server clock.
@@ -56,7 +57,7 @@ export const handleAthleticsBattleAction = (session: GameSession, player: Player
   // and later aim changes never alter a blast's direction or destination.
   const direction = { x: -Math.sin(facing) * Math.cos(pitch), y: Math.sin(pitch), z: -Math.cos(facing) * Math.cos(pitch) };
   player.facing = facing;
-  player.energy = normalizeAthleticsEnergy(player.energy) - ATHLETICS_BATTLE_ENERGY_COST;
+  player.energy = normalizeAthleticsEnergy(player.energy) - energyCost;
   clearAthleticsBattleCharge(player);
   session.athletics.battleBlasts ??= [];
   session.athletics.battleBlasts.push({
@@ -64,7 +65,7 @@ export const handleAthleticsBattleAction = (session: GameSession, player: Player
     origin: { x: player.x ?? 0, y: player.y ?? ATHLETICS_PLAYER_EYE_HEIGHT, z: player.z ?? 0 },
     direction, launchedAt: nowMs, distance: 0
   });
-  return { ok: true, message: `Energy blast fired. −${ATHLETICS_BATTLE_ENERGY_COST} energy.` };
+  return { ok: true, message: `Energy blast fired. −${energyCost} energy.` };
 };
 
 export interface AthleticsBattleImpact {

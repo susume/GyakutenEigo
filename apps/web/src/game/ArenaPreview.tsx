@@ -1,5 +1,5 @@
 import { getZeusLight } from "@quizstrike/shared";
-import { ATHLETICS_BATTLE_ENERGY_COST, type AthleticsBattleAction } from "@quizstrike/shared";
+import { sanitizeAthleticsBattleEnergyCost, type AthleticsBattleAction } from "@quizstrike/shared";
 import { AthleticsBattleInput, getAthleticsBattlePointerSource } from "./AthleticsBattleInput";
 import { AthleticsBattleHud } from "./AthleticsBattleHud";
 import { createAthleticsBattleVfx } from "./AthleticsBattleVfx";
@@ -925,7 +925,7 @@ export default function ArenaPreview({
       const battleInput = new AthleticsBattleInput({
         canCharge: () => isBattleMode && !controlsDisabledRef.current && !inputPausedRef.current
           && sessionRef.current?.status === "active" && sessionRef.current?.athletics?.status === "running"
-          && (currentPlayerRef.current?.energy ?? 0) >= ATHLETICS_BATTLE_ENERGY_COST
+          && (currentPlayerRef.current?.energy ?? 0) >= sanitizeAthleticsBattleEnergyCost(sessionRef.current?.settings.athleticsBattleEnergyCost)
           && Boolean(onBattleActionRef.current),
         send: (action, chargeId) => onBattleActionRef.current?.(action, { ...localToServerPosition(playerPosition, yaw), pitch }, chargeId) ?? Promise.resolve(false),
         progress: (progress) => {
@@ -2237,7 +2237,7 @@ export default function ArenaPreview({
       )}
       {view === "fps" && (
         <>
-          {isBattleMode && currentPlayer?.athletics?.status === "racing" && <AthleticsBattleHud progress={battleChargeProgress} energy={currentPlayer?.energy ?? 0} stunSeconds={battleStunSeconds} hunter={athleticsHud?.role === "hunter"} disabled={controlsDisabled || inputPaused} onHold={(source, held, cancelled) => battleControlRef.current?.setHeld(source, held, cancelled)} />}
+          {isBattleMode && currentPlayer?.athletics?.status === "racing" && <AthleticsBattleHud progress={battleChargeProgress} energy={currentPlayer?.energy ?? 0} energyCost={sanitizeAthleticsBattleEnergyCost(session?.settings.athleticsBattleEnergyCost)} stunSeconds={battleStunSeconds} hunter={athleticsHud?.role === "hunter"} disabled={controlsDisabled || inputPaused || session?.status !== "active" || session?.athletics?.status !== "running" || !onBattleAction} onHold={(source, held, cancelled) => battleControlRef.current?.setHeld(source, held, cancelled)} />}
           <ArenaHudOverlay
             showTouchControls={inputMode === "touch"}
             hitPulse={hitPulse}
