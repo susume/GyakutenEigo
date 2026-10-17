@@ -44,6 +44,8 @@ type PlayerFixture = {
     abilityCharge?: number;
     abilityReady?: string;
     battleStunnedUntil?: string;
+    battleImmuneUntil?: string;
+    battleStudyPosition?: { x: number; y: number; z: number };
     battleChargeStartedAt?: string;
   };
   energy?: number;
@@ -783,4 +785,39 @@ test("battle blasts authenticate, charge, spend energy and freeze a connected cl
     a.socket.connect(); await rejoined;
     assert.equal((await send("battle_fire", "before-disconnect", facing)).ok, false);
   } finally { a.socket.disconnect(); b.socket.disconnect(); }
+});
+
+test("battle question protection clears when closing, moving, and disconnecting", { timeout: 30_000 }, async () => {
+  const teacher = await createTeacherWithQuiz();
+  const session = await createSession(teacher, 1, "classic", true);
+  const joined = await joinSession(session.sessionCode, "Protected Reader");
+  const client = connectStudentSocket(session.sessionCode, joined);
+  await client.initialState;
+  const read = async () => (await api<{ session: SessionFixture }>(`/api/sessions/${session.sessionCode}`, { teacherToken: teacher.token })).body.session;
+  let sequence = 0;
+  const send = (action: string) => new Promise<{ ok: boolean }>((resolve, reject) => {
+    client.socket.timeout(5000).emit("athletics_action", { action, chargeId: "study-charge", requestId: `study-state-${++sequence}`, x: 999, y: 999, z: 999 },
+      (error: Error | null, ack: { ok: boolean }) => error ? reject(error) : resolve(ack));
+  });
+  try {
+    await api(`/api/sessions/${session.sessionCode}/start`, { method: "POST", teacherToken: teacher.token });
+    await waitUntil(read, (snapshot) => snapshot.athletics?.status === "running");
+    assert.equal((await send("battle_study_start")).ok, true);
+    let reader = (await read()).players[0];
+    assert.deepEqual(reader.athletics!.battleStudyPosition, { x: reader.x, y: reader.y, z: reader.z }, "study anchors use authoritative positions");
+    assert.equal((await send("battle_charge")).ok, false, "a protected reader cannot charge a shot");
+    assert.equal((await send("battle_study_end")).ok, true);
+    assert.equal((await read()).players[0].athletics!.battleStudyPosition, undefined);
+    assert.equal((await send("battle_study_start")).ok, true);
+    client.socket.emit("player_position", { x: reader.x! + 0.2, y: reader.y, z: reader.z, movementIntent: true, movementSequence: 1, movementEpoch: 0 });
+    await delay(100);
+    reader = (await read()).players[0];
+    assert.equal(reader.athletics!.battleStudyPosition, undefined);
+    assert.equal((await send("battle_study_start")).ok, true);
+    client.socket.disconnect();
+    await delay(60);
+    reader = (await read()).players[0];
+    assert.equal(reader.connectionState, "disconnected");
+    assert.equal(reader.athletics!.battleStudyPosition, undefined, "disconnecting cannot preserve a study shield");
+  } finally { client.socket.disconnect(); }
 });

@@ -48,6 +48,29 @@ test("projectile visuals keep their launch ray when the shooter and other studen
   visuals.dispose();
 });
 
+test("shield glows show stationary readers and recovery protection, then fade without lingering after expiry", () => {
+  const scene = new THREE.Scene(); const visuals = createAthleticsBattleVfx(scene, true); const session = fixture();
+  const reader = session.players[0]; const recovering = session.players[1];
+  reader.athletics!.battleStudyPosition = { x: 0, y: 4, z: 0 };
+  recovering.athletics!.battleStunnedUntil = new Date(2000).toISOString();
+  recovering.athletics!.battleImmuneUntil = new Date(5000).toISOString();
+  visuals.update(session, 1500);
+  const readerGlow = scene.getObjectByName("battle-protection-0")!;
+  const recoveryGlow = scene.getObjectByName("battle-protection-1")!;
+  assert.equal(readerGlow.visible, true);
+  assert.equal(recoveryGlow.visible, false, "stun stars are shown until movement returns");
+  visuals.update(session, 2000);
+  assert.equal(recoveryGlow.visible, true);
+  assert.equal(recoveryGlow.rotation.y, 0, "reduced motion keeps shields still");
+  visuals.update(session, 4900);
+  assert.ok((recoveryGlow.children[0] as THREE.Mesh<THREE.SphereGeometry, THREE.MeshBasicMaterial>).material.opacity < 0.08);
+  reader.x = 1;
+  visuals.update(session, 5000);
+  assert.equal(readerGlow.visible, false, "moving away from the reading position removes the glow");
+  assert.equal(recoveryGlow.visible, false);
+  visuals.dispose();
+});
+
 test("reduced-motion battle effects keep trajectory and stun information without rotating or throwing sparks", () => {
   const scene = new THREE.Scene(); const visuals = createAthleticsBattleVfx(scene, true); const session = fixture();
   visuals.update(session, 1500);

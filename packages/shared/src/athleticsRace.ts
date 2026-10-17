@@ -119,6 +119,8 @@ export interface AthleticsPlayerState {
   battleChargeStartedAt?: string;
   battleStunnedUntil?: string;
   battleImmuneUntil?: string;
+  /** Set only while a student has an energy question open and stays still. */
+  battleStudyPosition?: { x: number; y: number; z: number };
   zeusFrozen?: boolean;
   zeusFrozenUntil?: string;
   zeusRestartUntil?: string;

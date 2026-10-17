@@ -62,6 +62,7 @@ export class ConnectionLifecycleService {
       // Invalidate the hold immediately, including reconnects between race ticks.
       player.athletics.battleChargeId = undefined;
       player.athletics.battleChargeStartedAt = undefined;
+      player.athletics.battleStudyPosition = undefined;
     }
     if (session.flag && player.id === session.flag.carrierId) {
       session.flag = resolveFlagDropForPlayer(session.flag, player, {

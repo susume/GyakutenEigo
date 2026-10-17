@@ -1,4 +1,5 @@
 import { ATHLETICS_MAX_ENERGY, ATHLETICS_PLAYER_EYE_HEIGHT, ATHLETICS_PLAYER_RADIUS } from "./athleticsRace.js";
+import type { PlayerSession } from "./index.js";
 
 /** Shared, server-owned rules for the optional battle layer in every Athletics mode. */
 export const ATHLETICS_BATTLE_ENERGY_COST = 100;
@@ -11,7 +12,7 @@ export const ATHLETICS_BATTLE_CHARGE_MS = 3000;
 export const ATHLETICS_BATTLE_CHARGE_EXPIRES_MS = 6000;
 export const ATHLETICS_BATTLE_STUN_MS = 2500;
 /** A short grace after recovery prevents several classmates from chaining a stun. */
-export const ATHLETICS_BATTLE_IMMUNITY_MS = 1000;
+export const ATHLETICS_BATTLE_IMMUNITY_MS = 3000;
 export const ATHLETICS_BATTLE_SPEED = 46;
 export const ATHLETICS_BATTLE_RANGE = 80;
 /** The solid projectile core; the surrounding glow and trail cannot score hits. */
@@ -19,6 +20,20 @@ export const ATHLETICS_BATTLE_RADIUS = 0.22;
 
 export type AthleticsBattleAction = "battle_charge" | "battle_cancel" | "battle_fire";
 export interface AthleticsBattlePoint { x: number; y: number; z: number }
+/** Question protection is tied to a server-owned stationary position. */
+export const isAthleticsBattleStudying = (player: PlayerSession): boolean => {
+  const anchor = player.athletics?.battleStudyPosition;
+  return Boolean(anchor && player.connectionState !== "disconnected" && player.isAlive !== false && !player.jumping
+    && Math.hypot((player.x ?? 0) - anchor.x, (player.y ?? ATHLETICS_PLAYER_EYE_HEIGHT) - anchor.y, (player.z ?? 0) - anchor.z) <= 0.35);
+};
+export const getAthleticsBattleProtection = (player: PlayerSession, nowMs: number): "stunned" | "studying" | "recovery" | undefined => {
+  if (player.connectionState === "disconnected" || player.isAlive === false) return undefined;
+  const state = player.athletics;
+  if (nowMs < Date.parse(state?.battleStunnedUntil ?? "")) return "stunned";
+  if (isAthleticsBattleStudying(player)) return "studying";
+  if (nowMs < Date.parse(state?.battleImmuneUntil ?? "")) return "recovery";
+  return undefined;
+};
 export interface AthleticsBattleBlast {
   id: string;
   playerId: string;

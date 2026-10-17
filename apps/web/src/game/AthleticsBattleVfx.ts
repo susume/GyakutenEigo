@@ -1,5 +1,5 @@
 import * as THREE from "three";
-import { ATHLETICS_BATTLE_CHARGE_MS, ATHLETICS_BATTLE_CHARGE_EXPIRES_MS, ATHLETICS_BATTLE_RADIUS, ATHLETICS_BATTLE_RANGE, ATHLETICS_BATTLE_SPEED, getAthleticsBattleBlastPosition, type AthleticsBattlePoint, type GameSession } from "@quizstrike/shared";
+import { ATHLETICS_BATTLE_CHARGE_MS, ATHLETICS_BATTLE_CHARGE_EXPIRES_MS, ATHLETICS_BATTLE_RADIUS, ATHLETICS_BATTLE_RANGE, ATHLETICS_BATTLE_SPEED, getAthleticsBattleBlastPosition, getAthleticsBattleProtection, type AthleticsBattlePoint, type GameSession } from "@quizstrike/shared";
 
 export interface BattleImpactCue { blastId: string; position: AthleticsBattlePoint; targetId?: string }
 const impactListeners = new Set<(cue: BattleImpactCue) => void>();
@@ -55,6 +55,21 @@ export const createAthleticsBattleVfx = (scene: THREE.Scene, reducedMotion = fal
     return group;
   });
   stuns.forEach((group, index) => { group.name = `battle-stun-${index}`; });
+  const protections = Array.from({ length: 40 }, (_, index) => {
+    const group = new THREE.Group();
+    group.name = `battle-protection-${index}`;
+    const shell = new THREE.Mesh(sphere, material(0x64e8ff, 0.08));
+    const outlineMaterial = material(0x9fffee, 0.28);
+    outlineMaterial.wireframe = true;
+    const outline = new THREE.Mesh(sphere, outlineMaterial);
+    const ring = new THREE.Mesh(torus, material(0xb4fff2, 0.7));
+    ring.rotation.x = Math.PI / 2;
+    ring.scale.setScalar(1.15);
+    group.add(shell, outline, ring);
+    group.visible = false;
+    root.add(group);
+    return { group, shell, outline, ring };
+  });
   const impacts = Array.from({ length: 12 }, () => {
     const group = new THREE.Group();
     const rings = [new THREE.Mesh(torus, material(0x82eeff)), new THREE.Mesh(torus, material(0xc99cff))];
@@ -155,6 +170,23 @@ export const createAthleticsBattleVfx = (scene: THREE.Scene, reducedMotion = fal
           group.position.set(player.x ?? 0, (player.y ?? 4.21) + 0.9, player.z ?? 0);
           group.rotation.y = reducedMotion ? 0 : nowMs * 0.0018;
         }
+      });
+      protections.forEach((item, index) => {
+        const player = players[index];
+        const protection = player ? getAthleticsBattleProtection(player, nowMs) : undefined;
+        item.group.visible = Boolean(player && player.id !== local?.playerId && (protection === "studying" || protection === "recovery"));
+        if (!item.group.visible || !player) return;
+        const height = player.crouching ? 3.1 : 4.9;
+        item.group.position.set(player.x ?? 0, (player.y ?? 4.21) - (player.crouching ? 2.65 : 4.21) + height / 2, player.z ?? 0);
+        item.shell.scale.set(1.05, height / 2, 1.05);
+        item.outline.scale.copy(item.shell.scale);
+        item.ring.position.y = -height / 2 + 0.18;
+        item.group.rotation.y = reducedMotion ? 0 : nowMs * 0.0007;
+        const fade = protection === "recovery" ? Math.min(1, Math.max(0, Date.parse(player.athletics?.battleImmuneUntil ?? "") - nowMs) / 600) : 1;
+        item.shell.material.opacity = 0.08 * fade;
+        item.outline.material.opacity = 0.28 * fade;
+        item.ring.material.opacity = 0.7 * fade;
+        item.outline.material.color.setHex(protection === "studying" ? 0x9fffee : 0x9fdfff);
       });
       const effectNow = performance.now();
       for (const item of impacts) {

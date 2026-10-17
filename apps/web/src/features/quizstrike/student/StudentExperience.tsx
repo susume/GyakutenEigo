@@ -397,6 +397,10 @@ export default function StudentExperience({ onExit }: { onExit: () => void }) {
     athleticsBattle ? player?.athletics?.battleStunnedUntil : undefined,
     session?.serverTime, session?.controlState === "teacher_paused" ? session.teacherPausedAt : undefined, 10
   );
+  const battleProtectionSeconds = useDeadlineRemainingSeconds(
+    athleticsBattle ? player?.athletics?.battleImmuneUntil : undefined,
+    session?.serverTime, session?.controlState === "teacher_paused" ? session.teacherPausedAt : undefined
+  );
   const battleWasStunned = useRef(false);
   useEffect(() => {
     const stunned = battleStunSeconds > 0;
@@ -1910,6 +1914,23 @@ export default function StudentExperience({ onExit }: { onExit: () => void }) {
     }
   }, [athleticsRace, player, playerToken, session, setFeedback, status, teacherPaused]);
 
+  const canStudyInBattle = Boolean(athleticsBattle && session?.status === "active" && player?.isAlive
+    && player.athletics?.status === "racing" && !player.athletics.recoveryActive && !player.jumping && !teacherPaused && !isSocketReconnecting);
+  const studyRound = `${session?.currentRound}:${session?.athletics?.modeRound ?? 1}`;
+  useEffect(() => {
+    const socket = socketRef.current;
+    if (!canStudyInBattle || !socket?.connected) return;
+    const sendStudyState = (action: "battle_study_start" | "battle_study_end") => {
+      if (!socket.connected) return;
+      void sendStudentCommand(socket, "athletics_action", {
+        type: "athletics_action", action, x: 0, z: 0,
+        requestId: globalThis.crypto?.randomUUID?.() ?? `${Date.now()}-${Math.random().toString(36).slice(2)}`
+      }, async () => { throw new Error("Question protection requires a live game connection."); }).catch(() => undefined);
+    };
+    sendStudyState(quizOpen ? "battle_study_start" : "battle_study_end");
+    return () => { if (quizOpen) sendStudyState("battle_study_end"); };
+  }, [canStudyInBattle, quizOpen, playerId, sessionCode, studyRound]);
+
   const answer = async (choice: Choice) => {
     if (teacherPaused || !session || !player || !question || !playerToken || answeringChoice || answerFeedback || answerSubmissionLockRef.current) return;
     const operationId = answerOperationRef.current + 1;
@@ -2597,6 +2618,7 @@ export default function StudentExperience({ onExit }: { onExit: () => void }) {
               hitConfirmPulse={hitConfirmPulse}
               onBattleAction={athleticsBattle ? (action, position, chargeId) => sendAthleticsAction(action, position, undefined, chargeId) : undefined}
               battleStunSeconds={battleStunSeconds}
+              battleProtectionSeconds={battleProtectionSeconds}
               onMove={roundActive && player.isAlive && !isFlagSpectator && !isAthleticsSpectator && !athleticsMovementLocked ? sendArenaPosition : undefined}
               onFire={roundActive && player.isAlive
                 ? athleticsRace && athleticsMode === "hunters-runners" && athleticsPlayer?.role === "hunter"
@@ -2811,6 +2833,7 @@ export default function StudentExperience({ onExit }: { onExit: () => void }) {
             </div>
             {quizOpen && (
               <>
+                {athleticsBattle && player.athletics?.battleStudyPosition && <div className="battle-study-status" role="status"><Shield size={20} aria-hidden="true" /><span><strong>{t("Protected while answering")}</strong><small>{t("Stay still. Protection ends when you close the question or move.")}</small></span></div>}
                 {canPracticeToRespawn && (
                   <div className="panel respawn-card respawn-card-overlay">
                     <div className="panel-title">

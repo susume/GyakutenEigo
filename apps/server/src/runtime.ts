@@ -14,7 +14,8 @@ import { DecalStore } from "./decalStore.js";
 import { CombatService } from "./combat.js";
 import { BotNavigationService } from "./botNavigation.js";
 import { getAthleticsQuestion } from "./athleticsQuestions.js";
-import { advanceAthleticsBattle, handleAthleticsBattleAction } from "./athleticsBattleAuthority.js";
+import { advanceAthleticsBattle, clearAthleticsBattleStudy, handleAthleticsBattleAction } from "./athleticsBattleAuthority.js";
+import { getAthleticsBattleProtection } from "@quizstrike/shared";
 import { registerAuthRoutes } from "./routes/authRoutes.js";
 import { registerSpeakingRoutes } from "./routes/speakingRoutes.js";
 import { createSpeakingProviders } from "./speakingProviders.js";
@@ -1700,6 +1701,7 @@ const advanceAthleticsProjectiles = (session: GameSession, nowMs: number) => {
     const target = session.players.find((player) => player.id === projectile.targetId);
     const targetAthletics = target ? ensureAthleticsPlayerState(session, target) : undefined;
     if (!hunter || !target || !targetAthletics || targetAthletics.status !== "racing" || targetAthletics.role !== "runner" || targetAthletics.recoveryActive) continue;
+    if (session.settings.athleticsBattleEnabled && getAthleticsBattleProtection(target, nowMs)) continue;
     const impact = resolveChaosHazardImpact({
       hazard: { radius: projectile.radius, knockback: athleticsModeLimits.hunterKnockbackDistance },
       playerPosition: { x: target.x ?? 0, y: target.y, z: target.z ?? 0 },
@@ -1948,6 +1950,7 @@ const beginAthleticsRecovery = (
     facing: player.facing ?? 0
   };
   if (athletics.recoveryActive) return currentPosition;
+  clearAthleticsBattleStudy(player);
 
   const routeProgressBeforeRecovery = athletics.routeProgress;
   const progressSafeIndex = getAthleticsPreviousSafeSurfaceIndex(athletics.routeProgress, ATHLETICS_STADIUM_COURSE);
@@ -2210,6 +2213,11 @@ const applyAuthoritativePosition = (
       }
     }
   }
+  if (athletics?.battleStudyPosition && (requested.movementIntent || requested.jumpStarted || requested.jumping
+    || Math.hypot(requestedX - currentX, requestedZ - currentZ) > 0.05
+    || (requestedCrouching === (player.crouching === true) && Math.abs(requestedEyeY - currentEyeY) > 0.35))) {
+    clearAthleticsBattleStudy(player);
+  }
   if (isStationaryAthleticsHunter && athletics) {
     // Hunters defend authored stations rather than standing on the runner
     // route. Their station can intentionally hover beside a gap or elevated
@@ -2376,6 +2384,10 @@ const applyAuthoritativePosition = (
   player.z = position.z;
   player.facing = position.facing;
   player.crouching = requestedCrouching;
+  if (athletics?.battleStudyPosition) {
+    // Changing eye height in place must not turn a stationary reader into a target.
+    athletics.battleStudyPosition.y = player.y;
+  }
   if (typeof requested.jumping === "boolean") {
     player.jumping = athleticsCanJump && requested.jumping && !requestedCrouching;
   }
@@ -3435,6 +3447,7 @@ const handleAthleticsAction = (
   if (athletics.battleStunnedUntil && Date.now() < Date.parse(athletics.battleStunnedUntil)) {
     return failStudentCommand(409, "Stunned. Your controls will return shortly.");
   }
+  if (athletics.battleStudyPosition) return failStudentCommand(409, "Close your energy question before battling.");
 
   const fireRequest = registerFireRequest(player.id, command.requestId);
   if (!fireRequest.ok) return failStudentCommand(400, fireRequest.reason);
@@ -3813,7 +3826,9 @@ io.on("connection", (socket) => {
     if (!student) return;
     const { session, player } = student;
     if (isTeacherPaused(session) || !player.isAlive) return;
+    const wasStudying = Boolean(player.athletics?.battleStudyPosition);
     const position = applyAuthoritativePosition(session, player, command);
+    if (wasStudying && !player.athletics?.battleStudyPosition) broadcastPlayerState(session, [player]);
     updateAthleticsRace(session, player, Date.now());
     const authoritativePosition = {
       playerId: player.id,

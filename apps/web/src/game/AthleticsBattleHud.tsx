@@ -1,14 +1,16 @@
 import type { CSSProperties } from "react";
-import { Zap, Crosshair, Snowflake } from "lucide-react";
+import { Zap, Crosshair, Snowflake, Shield } from "lucide-react";
 import { useSiteTranslation } from "../ui/siteTranslation";
 import "./athletics-battle.css";
 import { getAthleticsBattlePointerSource } from "./AthleticsBattleInput";
 
-export const AthleticsBattleHud = ({ progress, energy, energyCost, stunSeconds, hunter, disabled, onHold }: {
+export const AthleticsBattleHud = ({ progress, energy, energyCost, stunSeconds, protectionSeconds = 0, studying = false, hunter, disabled, onHold }: {
   progress: number | null;
   energy: number;
   energyCost: number;
   stunSeconds: number;
+  protectionSeconds?: number;
+  studying?: boolean;
   hunter?: boolean;
   disabled: boolean;
   onHold: (source: string, held: boolean, cancelled?: boolean) => void;
@@ -20,6 +22,10 @@ export const AthleticsBattleHud = ({ progress, energy, energyCost, stunSeconds, 
   return <>
     <div className={`battle-reticle${charging ? " charging" : ""}${stunned ? " stunned" : ""}`} style={{ "--battle-charge": progress ?? 0 } as CSSProperties} aria-hidden="true"><span /><Crosshair size={26} /></div>
     {stunned && <div className="battle-stun-status"><Snowflake size={22} aria-hidden="true" /><strong role="status">{t("Stunned")}</strong><span role="timer" aria-live="off">{stunSeconds.toFixed(1)}s</span><small>{t("Movement returns automatically")}</small></div>}
+    {!stunned && (studying || protectionSeconds > 0) && <>
+      <div className="battle-protection-glow" aria-hidden="true" />
+      {!studying && <div className="battle-protection-status"><Shield size={20} aria-hidden="true" /><strong role="status">{t("Protected")}</strong><span role="timer" aria-live="off">{Math.ceil(protectionSeconds)}s</span></div>}
+    </>}
     <div className={`athletics-battle-hud${charging ? " charging" : ""}`} data-testid="athletics-battle-hud">
       <button type="button" className="battle-charge-button" disabled={disabled || low || stunned} aria-label={t("Hold to charge energy blast")} aria-keyshortcuts="F" aria-describedby="battle-charge-help"
         onPointerDown={(event) => { if (event.button !== 0) return; event.preventDefault(); try { event.currentTarget.setPointerCapture(event.pointerId); } catch { /* Window-level release also clears this hold. */ } onHold(getAthleticsBattlePointerSource(event.pointerId), true); }}

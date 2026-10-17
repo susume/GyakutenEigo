@@ -112,6 +112,7 @@ interface ArenaPreviewProps {
   onFire?: (position: ArenaLivePosition) => void;
   onBattleAction?: (action: AthleticsBattleAction, position: ArenaLivePosition, chargeId: string) => Promise<boolean>;
   battleStunSeconds?: number;
+  battleProtectionSeconds?: number;
   onInteract?: (position: ArenaLivePosition) => void;
   onOpenQuestion?: (grounded?: boolean) => void;
   onAbilityFromTouch?: () => void;
@@ -216,6 +217,7 @@ export default function ArenaPreview({
   onFire,
   onBattleAction,
   battleStunSeconds = 0,
+  battleProtectionSeconds = 0,
   onInteract,
   onOpenQuestion,
   onAbilityFromTouch,
@@ -925,6 +927,7 @@ export default function ArenaPreview({
       const battleInput = new AthleticsBattleInput({
         canCharge: () => isBattleMode && !controlsDisabledRef.current && !inputPausedRef.current
           && sessionRef.current?.status === "active" && sessionRef.current?.athletics?.status === "running"
+          && !currentPlayerRef.current?.athletics?.battleStudyPosition
           && (currentPlayerRef.current?.energy ?? 0) >= sanitizeAthleticsBattleEnergyCost(sessionRef.current?.settings.athleticsBattleEnergyCost)
           && Boolean(onBattleActionRef.current),
         send: (action, chargeId) => onBattleActionRef.current?.(action, { ...localToServerPosition(playerPosition, yaw), pitch }, chargeId) ?? Promise.resolve(false),
@@ -2237,7 +2240,7 @@ export default function ArenaPreview({
       )}
       {view === "fps" && (
         <>
-          {isBattleMode && currentPlayer?.athletics?.status === "racing" && <AthleticsBattleHud progress={battleChargeProgress} energy={currentPlayer?.energy ?? 0} energyCost={sanitizeAthleticsBattleEnergyCost(session?.settings.athleticsBattleEnergyCost)} stunSeconds={battleStunSeconds} hunter={athleticsHud?.role === "hunter"} disabled={controlsDisabled || inputPaused || session?.status !== "active" || session?.athletics?.status !== "running" || !onBattleAction} onHold={(source, held, cancelled) => battleControlRef.current?.setHeld(source, held, cancelled)} />}
+          {isBattleMode && currentPlayer?.athletics?.status === "racing" && <AthleticsBattleHud progress={battleChargeProgress} energy={currentPlayer?.energy ?? 0} energyCost={sanitizeAthleticsBattleEnergyCost(session?.settings.athleticsBattleEnergyCost)} stunSeconds={battleStunSeconds} protectionSeconds={battleProtectionSeconds} studying={Boolean(currentPlayer.athletics.battleStudyPosition)} hunter={athleticsHud?.role === "hunter"} disabled={controlsDisabled || inputPaused || session?.status !== "active" || session?.athletics?.status !== "running" || Boolean(currentPlayer.athletics.battleStudyPosition) || !onBattleAction} onHold={(source, held, cancelled) => battleControlRef.current?.setHeld(source, held, cancelled)} />}
           <ArenaHudOverlay
             showTouchControls={inputMode === "touch"}
             hitPulse={hitPulse}

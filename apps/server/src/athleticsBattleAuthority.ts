@@ -3,8 +3,8 @@ import {
   ATHLETICS_BATTLE_IMMUNITY_MS,
   ATHLETICS_BATTLE_RADIUS, ATHLETICS_BATTLE_RANGE, ATHLETICS_BATTLE_SPEED,
   ATHLETICS_BATTLE_STUN_MS, ATHLETICS_PLAYER_EYE_HEIGHT,
-  clampArenaAimPitch, getAthleticsBattleBlastPosition, getAthleticsBattleBodyContact,
-  getAthleticsObstacles, hasLineOfSight, isTeacherPaused, normalizeAthleticsEnergy, sanitizeAthleticsBattleEnergyCost,
+  clampArenaAimPitch, getAthleticsBattleBlastPosition, getAthleticsBattleBodyContact, getAthleticsBattleProtection,
+  getAthleticsObstacles, getAthleticsPhysicalSupport, hasLineOfSight, isAthleticsBattleStudying, isTeacherPaused, normalizeAthleticsEnergy, sanitizeAthleticsBattleEnergyCost,
   type AthleticsActionCommand, type AthleticsBattlePoint, type GameSession, type PlayerSession
 } from "@quizstrike/shared";
 
@@ -14,11 +14,14 @@ export const clearAthleticsBattleCharge = (player: PlayerSession) => {
   player.athletics.battleChargeId = undefined;
   player.athletics.battleChargeStartedAt = undefined;
 };
+export const clearAthleticsBattleStudy = (player: PlayerSession) => {
+  if (player.athletics) player.athletics.battleStudyPosition = undefined;
+};
 export const canUseAthleticsBattle = (session: GameSession, player: PlayerSession, nowMs: number) =>
   session.settings.gameMode === "athletics" && session.settings.athleticsBattleEnabled === true
   && session.status === "active" && !isTeacherPaused(session) && session.athletics?.status === "running"
   && nowMs >= Date.parse(session.athletics.startAt) && player.isAlive && player.connectionState !== "disconnected"
-  && player.athletics?.status === "racing" && !player.athletics.recoveryActive && !player.athletics.zeusFrozen
+  && player.athletics?.status === "racing" && !player.athletics.recoveryActive && !player.athletics.zeusFrozen && !player.athletics.battleStudyPosition
   && ![player.athletics.battleStunnedUntil, player.athletics.staggerUntil, player.athletics.zeusRestartUntil,
     player.athletics.respawnPenaltyUntil, player.athletics.wrongAnswerPenaltyUntil, player.athletics.lapTransitionUntil]
     .some((deadline) => active(deadline, nowMs));
@@ -26,6 +29,21 @@ export const canUseAthleticsBattle = (session: GameSession, player: PlayerSessio
 export const handleAthleticsBattleAction = (session: GameSession, player: PlayerSession, command: AthleticsActionCommand, nowMs: number) => {
   const athletics = player.athletics;
   if (!athletics || !session.athletics || !session.settings.athleticsBattleEnabled) return { ok: false, message: "Battle mode is switched off." };
+  if (command.action === "battle_study_end") {
+    clearAthleticsBattleStudy(player);
+    return { ok: true, message: "Question protection ended." };
+  }
+  if (command.action === "battle_study_start") {
+    const position = { x: player.x ?? 0, y: player.y ?? ATHLETICS_PLAYER_EYE_HEIGHT, z: player.z ?? 0 };
+    const supported = athletics.role === "hunter" || getAthleticsPhysicalSupport(position, undefined, player.crouching ? 2.65 : ATHLETICS_PLAYER_EYE_HEIGHT, nowMs).kind !== "airborne";
+    if (session.status !== "active" || isTeacherPaused(session) || !["running", "countdown"].includes(session.athletics.status)
+      || !player.isAlive || player.connectionState === "disconnected" || athletics.status !== "racing" || athletics.recoveryActive || player.jumping || !supported) {
+      return { ok: false, message: "Land on a platform before opening a question." };
+    }
+    clearAthleticsBattleCharge(player);
+    athletics.battleStudyPosition = position;
+    return { ok: true, message: "Protected while answering." };
+  }
   if (command.action === "battle_cancel") {
     if (athletics.battleChargeId === command.chargeId) clearAthleticsBattleCharge(player);
     return { ok: true, message: "Charge cancelled. No energy spent." };
@@ -84,6 +102,11 @@ export const advanceAthleticsBattle = (session: GameSession, nowMs: number) => {
   if (!race || isTeacherPaused(session)) return { impacts, changedPlayers };
   for (const player of session.players) {
     const state = player.athletics;
+    if (state?.battleStudyPosition && (!session.settings.athleticsBattleEnabled || session.status !== "active" || !["running", "countdown"].includes(race.status) || state.status !== "racing"
+      || state.recoveryActive || !isAthleticsBattleStudying(player))) {
+      clearAthleticsBattleStudy(player);
+      changedPlayers.add(player);
+    }
     if (state?.battleChargeStartedAt && (!canUseAthleticsBattle(session, player, nowMs)
       || nowMs - Date.parse(state.battleChargeStartedAt) > ATHLETICS_BATTLE_CHARGE_EXPIRES_MS)) {
       clearAthleticsBattleCharge(player);
@@ -119,7 +142,7 @@ export const advanceAthleticsBattle = (session: GameSession, nowMs: number) => {
     const blocked = !hasLineOfSight({ from: { ...from, facing: 0 }, to: { ...contact, facing: 0 }, obstacles, padding: ATHLETICS_BATTLE_RADIUS });
     if (hit && !blocked) {
       const state = hit.target.athletics!;
-      if (active(state.battleStunnedUntil, nowMs) || active(state.battleImmuneUntil, nowMs)) {
+      if (getAthleticsBattleProtection(hit.target, nowMs)) {
         // Immunity stops the stun, not the physical projectile. Do not let a
         // volley pass through this student and hit someone standing behind them.
         impacts.push({ blastId: blast.id, playerId: blast.playerId, targetId: hit.target.id, position: contact, immune: true });

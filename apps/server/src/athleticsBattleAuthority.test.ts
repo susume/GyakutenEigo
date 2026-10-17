@@ -1,7 +1,7 @@
 import assert from "node:assert/strict";
 import test from "node:test";
-import { ATHLETICS_MODES, ATHLETICS_BATTLE_CHARGE_MS, ATHLETICS_BATTLE_ENERGY_COST, ATHLETICS_BATTLE_STUN_MS,
-  DEFAULT_SESSION_SETTINGS, getAthleticsObstacles, sanitizeSessionSettings, validateClientCommand,
+import { ATHLETICS_MODES, ATHLETICS_BATTLE_CHARGE_MS, ATHLETICS_BATTLE_ENERGY_COST, ATHLETICS_BATTLE_STUN_MS, ATHLETICS_BATTLE_IMMUNITY_MS,
+  DEFAULT_SESSION_SETTINGS, getAthleticsBattleProtection, getAthleticsObstacles, getAthleticsStartPosition, sanitizeSessionSettings, validateClientCommand,
   type AthleticsActionCommand, type AthleticsMode, type GameSession, type PlayerSession } from "@quizstrike/shared";
 import { advanceAthleticsBattle, canUseAthleticsBattle, handleAthleticsBattleAction } from "./athleticsBattleAuthority.js";
 import { pauseSessionForTeacher, resumeSessionForTeacher } from "./teacherPause.js";
@@ -42,6 +42,68 @@ test("battle settings default off, sanitize strictly, and support every Athletic
   assert.equal(sanitizeSessionSettings({ gameMode: "athletics", athleticsBattleEnabled: "true" as unknown as boolean }).athleticsBattleEnabled, false);
   assert.equal(validateClientCommand("athletics_action", command("battle_charge")).success, true);
   assert.equal(validateClientCommand("athletics_action", { ...command("battle_fire"), chargeId: undefined }).success, false);
+  assert.equal(validateClientCommand("athletics_action", { ...command("battle_study_start"), chargeId: undefined }).success, true);
+  assert.equal(validateClientCommand("athletics_action", { ...command("battle_study_end"), chargeId: undefined }).success, true);
+});
+
+for (const mode of ATHLETICS_MODES) test(`${mode}: stationary readers are protected without energy and cannot charge until they close the question`, () => {
+  const session = fixture(mode); const reader = session.players[1];
+  Object.assign(reader, getAthleticsStartPosition(1, 2));
+  reader.energy = 0;
+  assert.equal(handleAthleticsBattleAction(session, reader, command("battle_study_start"), now).ok, true);
+  assert.deepEqual(reader.athletics!.battleStudyPosition, { x: reader.x, y: reader.y, z: reader.z });
+  assert.equal(getAthleticsBattleProtection(reader, now), "studying");
+  assert.equal(canUseAthleticsBattle(session, reader, now), false);
+  assert.equal(handleAthleticsBattleAction(session, reader, command("battle_charge"), now).ok, false);
+  assert.equal(handleAthleticsBattleAction(session, reader, command("battle_study_end"), now + 100).ok, true);
+  assert.equal(getAthleticsBattleProtection(reader, now + 100), undefined);
+  assert.equal(canUseAthleticsBattle(session, reader, now + 100), true);
+  reader.jumping = true;
+  assert.equal(handleAthleticsBattleAction(session, reader, command("battle_study_start"), now + 200).ok, false);
+  reader.jumping = false;
+  reader.y = 150;
+  assert.equal(handleAthleticsBattleAction(session, reader, command("battle_study_start"), now + 200).ok, false, "readers must be supported, not floating above the course");
+});
+
+test("reading absorbs a blast, ends on movement, and never lets a miss hit someone behind the reader", () => {
+  const session = fixture(); const reader = session.players[1];
+  session.players.push(player("far", -22));
+  reader.athletics!.battleStudyPosition = { x: reader.x!, y: reader.y!, z: reader.z! };
+  launch(session);
+  const blast = { ...session.athletics!.battleBlasts![0] };
+  assert.equal(advanceAthleticsBattle(session, now + 3400).impacts[0]?.immune, true);
+  assert.equal(reader.athletics!.battleStunnedUntil, undefined);
+  assert.equal(session.players[2].athletics!.battleStunnedUntil, undefined);
+  reader.x = 0.4;
+  session.athletics!.battleBlasts = [{ ...blast, id: "after-move", launchedAt: now + 3500, distance: 0 }];
+  assert.equal(advanceAthleticsBattle(session, now + 3800).impacts[0]?.targetId, reader.id);
+  assert.equal(reader.athletics!.battleStudyPosition, undefined);
+  assert.equal(reader.athletics!.battleStunnedUntil, iso(now + 3800 + ATHLETICS_BATTLE_STUN_MS));
+});
+
+test("hit protection lasts three full seconds after movement returns and repeated hits cannot refresh it", () => {
+  const session = fixture(); launch(session);
+  const blast = { ...session.athletics!.battleBlasts![0] }; const target = session.players[1];
+  const hitAt = now + 3300;
+  advanceAthleticsBattle(session, hitAt);
+  const stunEnd = hitAt + ATHLETICS_BATTLE_STUN_MS;
+  const immunityEnd = stunEnd + 3000;
+  assert.equal(ATHLETICS_BATTLE_IMMUNITY_MS, 3000);
+  assert.equal(target.athletics!.battleImmuneUntil, iso(immunityEnd));
+  assert.equal(getAthleticsBattleProtection(target, stunEnd - 1), "stunned");
+  assert.equal(getAthleticsBattleProtection(target, stunEnd), "recovery");
+  for (const at of [stunEnd + 2000, immunityEnd - 1, immunityEnd]) {
+    session.athletics!.battleBlasts = [{ ...blast, id: `at-${at}`, launchedAt: at - 300, distance: 0 }];
+    const impact = advanceAthleticsBattle(session, at).impacts[0];
+    if (at < immunityEnd) {
+      assert.equal(impact?.immune, true);
+      assert.equal(target.athletics!.battleImmuneUntil, iso(immunityEnd), "blocked hits do not restart the protection timer");
+      assert.equal(target.athletics!.battleStunnedUntil, iso(stunEnd));
+    } else {
+      assert.equal(impact?.immune, undefined);
+      assert.equal(target.athletics!.battleStunnedUntil, iso(at + ATHLETICS_BATTLE_STUN_MS));
+    }
+  }
 });
 
 test("every Athletics mode charges the teacher's configured cost, including free blasts and the energy cap", () => {

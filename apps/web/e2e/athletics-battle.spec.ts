@@ -239,3 +239,68 @@ test("airborne stuns freeze the pose and stop their timer after movement returns
     await expect.poll(async () => page.evaluate(() => (window as Window & { battleTimerAudit?: () => number }).battleTimerAudit!())).toBe(timersBefore);
   } finally { socket.disconnect(); }
 });
+
+test("energy questions protect idle students and a recovered student gets three seconds of protection", async ({ page, request }, testInfo) => {
+  const classroom = await createClassroom(request, { gameMode: "athletics", athleticsBattleEnabled: true, athleticsBattleEnergyCost: 0, roundDurationSeconds: 120 });
+  await page.goto(`/join?code=${classroom.code}`);
+  await page.getByPlaceholder("Player name").fill("Protected Runner");
+  await page.getByRole("button", { name: "Join game", exact: true }).click();
+  await expect(page.getByTestId("student-lobby-status")).toBeVisible();
+  const joined = await request.post(`/api/sessions/${classroom.code}/join`, { data: { nickname: "Shield Tester" } });
+  const partner = await joined.json();
+  const socket = createSocket("http://127.0.0.1:4000", { transports: ["websocket"], autoConnect: false, reconnection: false });
+  const connected = new Promise<void>((resolve, reject) => {
+    const timer = setTimeout(() => reject(new Error("Shield test partner did not connect.")), 5000);
+    socket.once("session_state", () => { clearTimeout(timer); resolve(); });
+    socket.on("connect", () => socket.emit("join_session_room", { code: classroom.code, playerId: partner.player.id, playerToken: partner.playerToken }));
+  });
+  const impacts: { targetId?: string; immune?: boolean }[] = [];
+  socket.on("athletics_battle_impact", (impact) => impacts.push(impact));
+  socket.connect();
+  let sequence = 0;
+  const action = (name: string, chargeId: string, facing = 0, pitch = 0) => new Promise<{ ok: boolean }>((resolve, reject) => {
+    socket.timeout(5000).emit("athletics_action", { action: name, chargeId, requestId: `question-protection-${++sequence}`, x: 0, z: 0, facing, pitch },
+      (error: Error | null, ack: { ok: boolean }) => error ? reject(error) : resolve(ack));
+  });
+  const snapshot = async () => {
+    const state = await request.get(`/api/sessions/${classroom.code}`, { headers: { Authorization: `Bearer ${classroom.teacherToken}` } });
+    return (await state.json()).session;
+  };
+  const fireAtReader = async (chargeId: string) => {
+    expect((await action("battle_charge", chargeId)).ok).toBe(true);
+    await page.waitForTimeout(3050);
+    const state = await snapshot();
+    const target = state.players.find((player: { nickname: string }) => player.nickname === "Protected Runner");
+    const shooter = state.players.find((player: { id: string }) => player.id === partner.player.id);
+    const dx = target.x - shooter.x; const dz = target.z - shooter.z;
+    expect((await action("battle_fire", chargeId, Math.atan2(-dx, -dz), Math.atan2(target.y - 1.5 - shooter.y, Math.hypot(dx, dz)))).ok).toBe(true);
+    return target;
+  };
+  try {
+    await connected;
+    await request.post(`/api/sessions/${classroom.code}/start`, { headers: { Authorization: `Bearer ${classroom.teacherToken}` } });
+    await expect(page.getByRole("button", { name: "Hold to charge energy blast", exact: true })).toBeEnabled({ timeout: 30_000 });
+    await page.getByRole("button", { name: "Answer movement energy question", exact: true }).click();
+    await expect(page.locator(".battle-study-status")).toContainText("Protected while answering");
+    await page.screenshot({ path: testInfo.outputPath("battle-question-protection.png") });
+    const reader = await fireAtReader("protected-shot");
+    await expect.poll(() => impacts.some((impact) => impact.targetId === reader.id && impact.immune)).toBe(true);
+    await expect(page.locator(".battle-stun-status")).toHaveCount(0);
+    const protectedState = (await snapshot()).players.find((player: { id: string }) => player.id === reader.id);
+    expect(protectedState.athletics.battleStudyPosition).toBeTruthy();
+    expect(protectedState.athletics.battleStunnedUntil).toBeUndefined();
+    await page.getByRole("button", { name: "Answer A: This one", exact: true }).click();
+    await expect.poll(async () => (await snapshot()).players.find((player: { id: string }) => player.id === reader.id).energy).toBe(660);
+    await expect(page.locator(".battle-study-status")).toBeVisible();
+    await page.getByRole("button", { name: "Back to the game", exact: true }).click();
+    await expect.poll(async () => (await snapshot()).players.find((player: { id: string }) => player.id === reader.id).athletics.battleStudyPosition).toBeFalsy();
+    await fireAtReader("unprotected-shot");
+    await expect(page.locator(".battle-stun-status")).toBeVisible();
+    const stopped = (await snapshot()).players.find((player: { id: string }) => player.id === reader.id);
+    expect(Date.parse(stopped.athletics.battleImmuneUntil) - Date.parse(stopped.athletics.battleStunnedUntil)).toBe(3000);
+    await expect(page.locator(".battle-protection-status")).toContainText("Protected", { timeout: 5000 });
+    await expect(page.locator(".battle-protection-glow")).toBeVisible();
+    await page.screenshot({ path: testInfo.outputPath("battle-recovery-protection.png") });
+    await expect(page.locator(".battle-protection-status")).toHaveCount(0, { timeout: 5000 });
+  } finally { socket.disconnect(); }
+});

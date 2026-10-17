@@ -109,7 +109,10 @@ Pages workflow supplies `404.html` and direct route entry points.
   cost per blast in Game options (0–1,000; default 100; 0 makes blasts free). Aim
   with the crosshair and lead moving students: blasts fly straight without
   homing or aim assistance, and only direct body contact pauses movement for
-  2.5 seconds. Hunters can still throw foam balls with G.
+  2.5 seconds, followed by 3 seconds of hit protection. Students are also
+  protected while stationary with an energy question open; closing it or
+  moving ends question protection. A shield glow shows protected students.
+  Hunters can still throw foam balls with G.
 - Standard arena maps: Desert Citadel, Iron Junction, and Temple Runoff.
 - Teacher-only Learning Pulse derived from authoritative non-bot answers.
 - Teacher-owned Competitions/Tournament Center with study packs, team approval,
