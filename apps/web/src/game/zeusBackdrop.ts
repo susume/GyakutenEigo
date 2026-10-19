@@ -119,7 +119,10 @@ export const createZeusVisuals = (root: THREE.Group, camera?: THREE.PerspectiveC
         // beside the central course guide. Wide views leave the right sky free.
         const narrow = camera.aspect < 1;
         sky.position.set(halfHeight * camera.aspect * (narrow ? 0.62 : 0.7), halfHeight * (narrow ? 0.03 : 0.68), -110).applyQuaternion(orientation).add(position);
-        sky.quaternion.copy(orientation);
+        // The head sits off-center. Aim +Z at the actual viewer so STOP shows
+        // his face directly, rather than a profile facing past the player.
+        sky.up.set(0, 1, 0).applyQuaternion(orientation);
+        sky.lookAt(position);
         sky.scale.setScalar((narrow ? 3.3 : 5.2) * (1 - defeat * 0.5));
       } else {
         sky.position.set(summit.x, summit.y + 30, summit.z);

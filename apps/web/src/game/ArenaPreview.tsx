@@ -578,7 +578,7 @@ export default function ArenaPreview({
     const athleticsModeVisuals = isAthleticsMode
       ? createAthleticsModeVisuals({ scene, mode: athleticsMode, camera })
       : null;
-    const battleVfx = isBattleMode ? createAthleticsBattleVfx(scene, window.matchMedia("(prefers-reduced-motion: reduce)").matches) : null;
+    const battleVfx = isBattleMode ? createAthleticsBattleVfx(scene, window.matchMedia("(prefers-reduced-motion: reduce)").matches, camera) : null;
     const onWebglContextLost = (event: Event) => {
       event.preventDefault();
       battleControlRef.current?.reset();

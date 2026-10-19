@@ -162,16 +162,17 @@ for (const mode of ATHLETICS_MODES) test(`${mode}: full charge spends exactly 10
 });
 
 test("early fire, fabricated charge IDs, repeated starts, and replayed fire cannot spend energy", () => {
+  assert.equal(ATHLETICS_BATTLE_CHARGE_MS, 2000);
   const session = fixture(); const shooter = session.players[0];
   assert.equal(handleAthleticsBattleAction(session, shooter, command("battle_fire"), now).ok, false);
   handleAthleticsBattleAction(session, shooter, command("battle_charge"), now);
-  assert.equal(handleAthleticsBattleAction(session, shooter, command("battle_fire"), now + 2999).ok, false);
-  assert.equal(handleAthleticsBattleAction(session, shooter, command("battle_fire", "forged"), now + 3000).ok, false);
+  assert.equal(handleAthleticsBattleAction(session, shooter, command("battle_fire"), now + 1999).ok, false);
+  assert.equal(handleAthleticsBattleAction(session, shooter, command("battle_fire", "forged"), now + 2000).ok, false);
   assert.equal(handleAthleticsBattleAction(session, shooter, command("battle_charge", "other"), now + 1500).ok, false);
   assert.equal(shooter.athletics!.battleChargeStartedAt, iso(now));
   assert.equal(shooter.energy, 440);
-  assert.equal(handleAthleticsBattleAction(session, shooter, command("battle_fire"), now + 3000).ok, true);
-  assert.equal(handleAthleticsBattleAction(session, shooter, command("battle_fire"), now + 3001).ok, false);
+  assert.equal(handleAthleticsBattleAction(session, shooter, command("battle_fire"), now + 2000).ok, true);
+  assert.equal(handleAthleticsBattleAction(session, shooter, command("battle_fire"), now + 2001).ok, false);
   assert.equal(shooter.energy, 340);
 });
 
@@ -244,15 +245,16 @@ test("a student can sidestep a launched blast and turning the shooter cannot ste
   launch(session);
   const blast = session.athletics!.battleBlasts![0];
   const direction = { ...blast.direction };
-  assert.equal(advanceAthleticsBattle(session, now + 3100).impacts.length, 0, "hits wait for projectile travel");
+  const firedAt = now + ATHLETICS_BATTLE_CHARGE_MS;
+  assert.equal(advanceAthleticsBattle(session, firedAt + 100).impacts.length, 0, "hits wait for projectile travel");
   target.x = 0.8;
   shooter.facing = Math.PI / 2; shooter.x = 20;
-  assert.equal(advanceAthleticsBattle(session, now + 3400).impacts.length, 0);
+  assert.equal(advanceAthleticsBattle(session, firedAt + 400).impacts.length, 0);
   assert.deepEqual(blast.origin, { x: 0, y: 150, z: 0 });
   assert.deepEqual(blast.direction, direction);
   target.x = 0;
-  assert.equal(advanceAthleticsBattle(session, now + 3500).impacts.length, 0, "returning after the shot passes does not trigger a delayed hit");
-  assert.equal(advanceAthleticsBattle(session, now + 5000).impacts[0]?.targetId, undefined);
+  assert.equal(advanceAthleticsBattle(session, firedAt + 500).impacts.length, 0, "returning after the shot passes does not trigger a delayed hit");
+  assert.equal(advanceAthleticsBattle(session, firedAt + 2000).impacts[0]?.targetId, undefined);
   assert.equal(target.athletics!.battleStunnedUntil, undefined);
 });
 
@@ -279,7 +281,7 @@ test("teacher pause cancels unfinished charges and preserves remaining stun and 
   assert.equal(session.players[0].athletics!.battleChargeStartedAt, undefined);
   assert.equal(advanceAthleticsBattle(session, now + 13200).impacts.length, 0);
   resumeSessionForTeacher(session, now + 13200);
-  assert.equal(session.athletics!.battleBlasts![0].launchedAt, now + 13000);
+  assert.equal(session.athletics!.battleBlasts![0].launchedAt, now + ATHLETICS_BATTLE_CHARGE_MS + 10000);
   assert.equal(target.athletics!.battleStunnedUntil, iso(now + 15500));
 });
 

@@ -1,4 +1,5 @@
 import type { CSSProperties } from "react";
+import { ATHLETICS_BATTLE_CHARGE_MS } from "@quizstrike/shared";
 import { Zap, Crosshair, Snowflake, Shield } from "lucide-react";
 import { useSiteTranslation } from "../ui/siteTranslation";
 import "./athletics-battle.css";
@@ -19,6 +20,7 @@ export const AthleticsBattleHud = ({ progress, energy, energyCost, stunSeconds, 
   const charging = progress !== null;
   const low = energy < energyCost;
   const stunned = stunSeconds > 0;
+  const chargeSeconds = ATHLETICS_BATTLE_CHARGE_MS / 1000;
   return <>
     <div className={`battle-reticle${charging ? " charging" : ""}${stunned ? " stunned" : ""}`} style={{ "--battle-charge": progress ?? 0 } as CSSProperties} aria-hidden="true"><span /><Crosshair size={26} /></div>
     {stunned && <div className="battle-stun-status"><Snowflake size={22} aria-hidden="true" /><strong role="status">{t("Stunned")}</strong><span role="timer" aria-live="off">{stunSeconds.toFixed(1)}s</span><small>{t("Movement returns automatically")}</small></div>}
@@ -32,10 +34,10 @@ export const AthleticsBattleHud = ({ progress, energy, energyCost, stunSeconds, 
         onPointerUp={(event) => onHold(getAthleticsBattlePointerSource(event.pointerId), false)} onPointerCancel={(event) => onHold(getAthleticsBattlePointerSource(event.pointerId), false, true)} onLostPointerCapture={(event) => onHold(getAthleticsBattlePointerSource(event.pointerId), false, true)}
         onKeyDown={(event) => { if (event.key === " " || event.key === "Enter") { event.preventDefault(); onHold("button-key", true); } }}
         onKeyUp={(event) => { if (event.key === " " || event.key === "Enter") { event.preventDefault(); onHold("button-key", false); } }} onBlur={() => onHold("button-key", false, true)}>
-        <Zap size={20} aria-hidden="true" /><span><strong>{stunned ? t("Stunned") : charging ? t("Charging…") : low ? t("Answer for energy") : t("Energy blast")}</strong><small>{charging ? `${Math.min(3, (progress ?? 0) * 3).toFixed(1)} / 3.0s` : `${energyCost} ${t("energy / blast")}`}</small></span><kbd>F</kbd>
+        <Zap size={20} aria-hidden="true" /><span><strong>{stunned ? t("Stunned") : charging ? t("Charging…") : low ? t("Answer for energy") : t("Energy blast")}</strong><small>{charging ? `${(Math.min(1, progress ?? 0) * chargeSeconds).toFixed(1)} / ${chargeSeconds.toFixed(1)}s` : `${energyCost} ${t("energy / blast")}`}</small></span><kbd>F</kbd>
         <span className="battle-charge-meter" role="progressbar" aria-label={t("Blast charge")} aria-valuemin={0} aria-valuemax={100} aria-valuenow={Math.round((progress ?? 0) * 100)}><i style={{ transform: `scaleX(${progress ?? 0})` }} /></span>
       </button>
-      <small id="battle-charge-help">{t("Hold F, left mouse or this button for 3s")}</small>
+      <small id="battle-charge-help">{t("Hold F, left mouse or this button for 2s")}</small>
       <small>{t("Aim ahead · Blasts fly straight")}</small>
       {hunter && <small>{t("G: Throw foam ball")}</small>}
     </div>

@@ -19,8 +19,9 @@ export const attachZeusModel = (head: THREE.Group, sky: THREE.Group, layer: numb
   sky.userData.modelStatus = "loading";
   const ready = assets.load(ZEUS_MODEL_PATH).then((source) => {
     if (disposed) return;
-    // The museum scan faces -Z; our STOP pose faces the camera along +Z.
-    instance = instantiateArenaAsset({ source, name: "athletics-zeus-model", position: new THREE.Vector3(), rotationY: Math.PI });
+    // The bundled scan already faces +Z, toward the camera in the STOP pose.
+    // Only the parent head turns: adding a half-turn here reverses GO and STOP.
+    instance = instantiateArenaAsset({ source, name: "athletics-zeus-model", position: new THREE.Vector3() });
     instance.traverse((object) => {
       object.layers.set(layer);
       if (!(object instanceof THREE.Mesh)) return;

@@ -1,7 +1,7 @@
 import { useZeusDaruma } from "../../../game/useZeusDaruma";
 import { ZeusStrikeFeedback } from "../../../game/ZeusStrikeFeedback";
 import { ZeusLightSignal } from "../../../game/ZeusLightSignal";
-import { emitAthleticsBattleImpact, type BattleImpactCue } from "../../../game/AthleticsBattleVfx";
+import { emitAthleticsBattleImpact, emitAthleticsBattleLaunch, type BattleImpactCue } from "../../../game/AthleticsBattleVfx";
 import type { AthleticsActionCommand, AthleticsBattleBlast } from "@quizstrike/shared";
 import { ZEUS_SUMMIT_PROGRESS, ZEUS_SUMMIT_CHECKPOINT_COUNT } from "@quizstrike/shared";
 import { useSiteTranslation } from "../../../ui/siteTranslation";
@@ -1085,6 +1085,7 @@ export default function StudentExperience({ onExit }: { onExit: () => void }) {
     });
     connectedSocket.on("athletics_battle_fire", (payload: { playerId: string; blast?: AthleticsBattleBlast }) => {
       if (!lastVisualSession.settings.athleticsBattleEnabled || !payload.blast) return;
+      emitAthleticsBattleLaunch(payload.blast);
       const local = lastVisualSession.players.find((candidate) => candidate.id === activePlayerId);
       const spatial = local ? getCombatAudioSpatial({ attacker: payload.blast.origin, target: { x: local.x ?? 0, z: local.z ?? 0, facing: local.facing ?? 0 } }) : {};
       gameAudio.playEvent("battle_fire", payload.playerId === activePlayerId ? {} : spatial, payload.playerId === activePlayerId ? 0 : 70);

@@ -1236,7 +1236,7 @@ function SessionManager({
                     </label>}
                     <label className="athletics-battle-toggle toggle-row">
                       <input type="checkbox" role="switch" checked={settings.athleticsBattleEnabled === true} onChange={(event) => setSettings({ ...settings, athleticsBattleEnabled: event.target.checked })} aria-describedby="athletics-battle-help" />
-                      <span><strong>{t("Battle mode")}</strong><small id="athletics-battle-help">{t("All athletics modes · Hold F or left mouse for 3 seconds · Hits stun for 2.5 seconds")}</small></span>
+                      <span><strong>{t("Battle mode")}</strong><small id="athletics-battle-help">{t("All athletics modes · Hold F or left mouse for 2 seconds · Hits stun for 2.5 seconds")}</small></span>
                     </label>
                     {settings.athleticsBattleEnabled && <div className="athletics-battle-cost">
                       <label htmlFor="athletics-battle-energy-cost">{t("Energy per blast")}</label>

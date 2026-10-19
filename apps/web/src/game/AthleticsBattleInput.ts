@@ -26,7 +26,7 @@ export class AthleticsBattleInput {
       if (!this.held.delete(source)) return;
       if (!this.held.size) {
         // Input events can arrive before the next animation frame. A completed
-        // hold must still fire when the student releases at the three-second mark.
+        // hold must still fire when the student releases at the charge deadline.
         if (!cancelled) this.update();
         this.cancel();
         this.latched = false;

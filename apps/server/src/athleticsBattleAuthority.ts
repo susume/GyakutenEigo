@@ -58,7 +58,7 @@ export const handleAthleticsBattleAction = (session: GameSession, player: Player
     return { ok: false, message: `Answer for energy. A blast costs ${energyCost} energy.` };
   }
   if (command.action === "battle_charge") {
-    // Repeated starts cannot reset or bypass the three-second server clock.
+    // Repeated starts cannot reset or bypass the server's charge clock.
     if (!athletics.battleChargeStartedAt || nowMs - Date.parse(athletics.battleChargeStartedAt) > ATHLETICS_BATTLE_CHARGE_EXPIRES_MS) {
       athletics.battleChargeId = command.chargeId;
       athletics.battleChargeStartedAt = new Date(nowMs).toISOString();
@@ -67,7 +67,7 @@ export const handleAthleticsBattleAction = (session: GameSession, player: Player
   }
   const elapsed = nowMs - Date.parse(athletics.battleChargeStartedAt ?? "");
   if (athletics.battleChargeId !== command.chargeId || !Number.isFinite(elapsed) || elapsed < ATHLETICS_BATTLE_CHARGE_MS || elapsed > ATHLETICS_BATTLE_CHARGE_EXPIRES_MS) {
-    return { ok: false, message: "Hold for three full seconds to charge a blast." };
+    return { ok: false, message: "Hold for two full seconds to charge a blast." };
   }
   const facing = typeof command.facing === "number" && Number.isFinite(command.facing) ? command.facing : player.facing ?? 0;
   const pitch = clampArenaAimPitch(command.pitch ?? 0);

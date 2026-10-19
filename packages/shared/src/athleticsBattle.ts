@@ -8,7 +8,7 @@ export const sanitizeAthleticsBattleEnergyCost = (value: unknown): number =>
   typeof value === "number" && Number.isFinite(value)
     ? Math.min(ATHLETICS_MAX_ENERGY, Math.max(0, Math.round(value)))
     : ATHLETICS_BATTLE_ENERGY_COST;
-export const ATHLETICS_BATTLE_CHARGE_MS = 3000;
+export const ATHLETICS_BATTLE_CHARGE_MS = 2000;
 export const ATHLETICS_BATTLE_CHARGE_EXPIRES_MS = 6000;
 export const ATHLETICS_BATTLE_STUN_MS = 2500;
 /** A short grace after recovery prevents several classmates from chaining a stun. */

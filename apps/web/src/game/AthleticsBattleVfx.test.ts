@@ -2,7 +2,7 @@ import assert from "node:assert/strict";
 import test from "node:test";
 import * as THREE from "three";
 import { ATHLETICS_BATTLE_RADIUS, type GameSession } from "@quizstrike/shared";
-import { createAthleticsBattleVfx, emitAthleticsBattleImpact } from "./AthleticsBattleVfx";
+import { createAthleticsBattleVfx, emitAthleticsBattleImpact, emitAthleticsBattleLaunch } from "./AthleticsBattleVfx";
 
 const fixture = (): GameSession => ({
   status: "active", settings: { athleticsBattleEnabled: true },
@@ -45,6 +45,90 @@ test("projectile visuals keep their launch ray when the shooter and other studen
   const shot = scene.getObjectByName("battle-projectile-0")!;
   assert.deepEqual(shot.position.toArray(), [0, 4, -23]);
   assert.deepEqual(new THREE.Vector3(0, 0, -1).applyQuaternion(shot.quaternion).toArray(), [0, 0, -1]);
+  visuals.dispose();
+});
+
+test("a local charge visibly builds a casting seal beside the aim line and cancels cleanly", () => {
+  const scene = new THREE.Scene(); const visuals = createAthleticsBattleVfx(scene); const session = fixture();
+  const local = { playerId: "student", position: { x: 0, y: 4, z: 0 }, facing: 0, pitch: 0.4, progress: 0 as number | null };
+  visuals.update(session, 1000, local);
+  const charge = scene.getObjectByName("battle-charge-0")!;
+  const startingSize = new THREE.Box3().setFromObject(charge).getSize(new THREE.Vector3());
+  local.progress = 1;
+  visuals.update(session, 3000, local);
+  const chargedSize = new THREE.Box3().setFromObject(charge).getSize(new THREE.Vector3());
+  assert.ok(chargedSize.x > startingSize.x * 1.5, "the buildup is large enough to read in first person");
+  assert.ok(chargedSize.x > 2, "the casting circle has a prominent world-space silhouette");
+  assert.ok(charge.position.x > 0.5, "the core stays beside the crosshair");
+  const aim = new THREE.Vector3(0, Math.sin(local.pitch), -Math.cos(local.pitch));
+  assert.ok(new THREE.Vector3(0, 0, -1).applyQuaternion(charge.quaternion).distanceTo(aim) < 1e-8, "the seal follows pitched aim");
+  assert.ok(charge.getObjectByName("battle-casting-sigil"));
+  local.progress = null;
+  visuals.update(session, 3100, local);
+  assert.equal(charge.visible, false, "local release overrides an old charging snapshot immediately");
+  visuals.dispose();
+});
+
+test("launch rings release once along the shot direction and never replay on a stale snapshot", () => {
+  const scene = new THREE.Scene(); const visuals = createAthleticsBattleVfx(scene); const session = fixture();
+  visuals.update(session, 1100);
+  const launch = scene.getObjectByName("battle-launch-0")!;
+  assert.equal(launch.visible, true);
+  assert.deepEqual(launch.position.toArray(), [0, 4, -3]);
+  const earlyScale = launch.scale.x;
+  visuals.update(session, 1300);
+  assert.ok(launch.scale.x > earlyScale, "the release ring expands away from the caster");
+  assert.equal(scene.getObjectByName("battle-launch-1")!.visible, false, "another snapshot does not duplicate the burst");
+  visuals.update(session, 1450);
+  assert.equal(launch.visible, false);
+  visuals.update(session, 1500);
+  assert.equal(launch.visible, false);
+  visuals.dispose();
+});
+
+test("the full casting circle fits inside a narrow phone view", () => {
+  const scene = new THREE.Scene(); const camera = new THREE.PerspectiveCamera(72, 375 / 812, 0.1, 620);
+  camera.position.set(0, 4, 0); camera.updateMatrixWorld();
+  const visuals = createAthleticsBattleVfx(scene, true, camera); const session = fixture();
+  visuals.update(session, 3000, { playerId: "student", position: { x: 0, y: 4, z: 0 }, facing: 0, pitch: 0, progress: 1 });
+  const sigil = scene.getObjectByName("battle-casting-sigil")!;
+  const bounds = new THREE.Box3().setFromObject(sigil);
+  assert.ok(bounds.min.clone().project(camera).x > -1);
+  assert.ok(bounds.max.clone().project(camera).x < 1, "the circle remains visible instead of being cropped at the right edge");
+  visuals.dispose();
+});
+
+test("fire events show the release even when a short-lived blast never reaches a snapshot", () => {
+  const scene = new THREE.Scene(); const visuals = createAthleticsBattleVfx(scene); const session = fixture();
+  const blast = session.athletics!.battleBlasts![0];
+  session.athletics!.battleBlasts = [];
+  visuals.update(session, 1000);
+  emitAthleticsBattleLaunch(blast);
+  visuals.update(session, 1100);
+  assert.equal(scene.getObjectByName("battle-launch-0")!.visible, true);
+  session.athletics!.battleBlasts = [blast];
+  visuals.update(session, 1150);
+  emitAthleticsBattleLaunch(blast);
+  assert.equal(scene.getObjectByName("battle-launch-1")!.visible, false, "event and snapshot share one release");
+  visuals.dispose();
+  emitAthleticsBattleLaunch(blast);
+  assert.equal(scene.children.length, 0, "leaving the arena removes the launch listener");
+});
+
+test("reduced motion keeps the casting seal and release cue still without gathering particles", () => {
+  const scene = new THREE.Scene(); const visuals = createAthleticsBattleVfx(scene, true); const session = fixture();
+  const local = { playerId: "student", position: { x: 0, y: 4, z: 0 }, facing: 0, pitch: 0, progress: 0.8 };
+  visuals.update(session, 1100, local);
+  const sigil = scene.getObjectByName("battle-casting-sigil")!;
+  const launch = scene.getObjectByName("battle-launch-0")!;
+  const releaseSize = launch.scale.x;
+  visuals.update(session, 1150, local);
+  assert.equal(sigil.rotation.z, 0);
+  assert.equal(scene.getObjectByName("battle-gathering-energy")!.visible, false);
+  assert.equal(launch.scale.x, releaseSize);
+  assert.equal(launch.visible, true);
+  visuals.update(session, 1250, local);
+  assert.equal(launch.visible, false);
   visuals.dispose();
 });
 

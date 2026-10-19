@@ -1,8 +1,10 @@
 import { expect, test } from "@playwright/test";
 import { createClassroom } from "./classroomFixture";
 import { io as createSocket } from "socket.io-client";
+import { ATHLETICS_BATTLE_CHARGE_MS } from "@quizstrike/shared";
 
-test("battle keyboard and mouse holds cancel early and spend once after three seconds", async ({ page, request }, testInfo) => {
+test("battle keyboard and mouse holds cancel early and spend once after two seconds", async ({ page, request }, testInfo) => {
+  await page.emulateMedia({ reducedMotion: "no-preference" });
   await page.addInitScript(() => {
     const original = AudioContext.prototype.createOscillator;
     const frequencies: number[] = [];
@@ -22,6 +24,7 @@ test("battle keyboard and mouse holds cancel early and spend once after three se
   await request.post(`/api/sessions/${classroom.code}/start`, { headers: { Authorization: `Bearer ${classroom.teacherToken}` } });
   const charge = page.getByRole("button", { name: "Hold to charge energy blast", exact: true });
   await expect(charge).toBeEnabled({ timeout: 30_000 });
+  await expect(page.locator("#battle-charge-help")).toHaveText("Hold F, left mouse or this button for 2s");
   const energy = async () => {
     const response = await request.get(`/api/sessions/${classroom.code}`, { headers: { Authorization: `Bearer ${classroom.teacherToken}` } });
     const { session } = await response.json();
@@ -35,10 +38,12 @@ test("battle keyboard and mouse holds cancel early and spend once after three se
   await expect(charge).toContainText("Energy blast");
   expect(await energy()).toBe(initial);
   await page.keyboard.down("f");
-  await page.waitForTimeout(700);
+  await page.waitForTimeout(1500);
+  await expect(charge).toContainText("/ 2.0s");
   await expect(page.getByRole("progressbar", { name: "Blast charge" })).toHaveAttribute("aria-valuenow", /[1-9]\d/);
   await page.screenshot({ path: testInfo.outputPath("battle-charging.png") });
-  await expect.poll(energy, { timeout: 6000 }).toBe(initial - 100);
+  await expect.poll(energy, { timeout: 6000, intervals: [30, 50, 100] }).toBe(initial - 100);
+  await page.screenshot({ path: testInfo.outputPath("battle-release.png") });
   await page.waitForTimeout(500);
   expect(await energy()).toBe(initial - 100);
   await page.keyboard.up("f");
@@ -215,7 +220,7 @@ test("airborne stuns freeze the pose and stop their timer after movement returns
     const timersBefore = await page.evaluate(() => (window as Window & { battleTimerAudit?: () => number }).battleTimerAudit!());
     const chargeAck = await action("battle_charge");
     expect(chargeAck, JSON.stringify(chargeAck)).toMatchObject({ ok: true });
-    await page.waitForTimeout(3050);
+    await page.waitForTimeout(ATHLETICS_BATTLE_CHARGE_MS + 50);
     await page.keyboard.press("Space");
     const canvas = page.locator(".arena-canvas canvas");
     await expect.poll(async () => Number(await canvas.getAttribute("data-player-y"))).toBeGreaterThan(4.6);
@@ -268,7 +273,7 @@ test("energy questions protect idle students and a recovered student gets three 
   };
   const fireAtReader = async (chargeId: string) => {
     expect((await action("battle_charge", chargeId)).ok).toBe(true);
-    await page.waitForTimeout(3050);
+    await page.waitForTimeout(ATHLETICS_BATTLE_CHARGE_MS + 50);
     const state = await snapshot();
     const target = state.players.find((player: { nickname: string }) => player.nickname === "Protected Runner");
     const shooter = state.players.find((player: { id: string }) => player.id === partner.player.id);

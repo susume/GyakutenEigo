@@ -6,6 +6,7 @@ import * as THREE from "three";
 import { GLTFLoader } from "three/examples/jsm/loaders/GLTFLoader.js";
 import { attachZeusModel, ZEUS_MODEL_PATH, type ZeusModelAssets } from "./zeusModel";
 import { createAthleticsModeVisuals } from "./athleticsModeVisuals";
+import { createZeusVisuals } from "./zeusBackdrop";
 import type { GameSession } from "@quizstrike/shared";
 
 test("the bundled museum scan parses with the game loader and stays within its download and geometry budgets", async () => {
@@ -54,7 +55,7 @@ test("leaving and reentering an arena preserves cached geometry and disposes eac
     const visuals = createAthleticsModeVisuals({ scene, mode: "zeus", camera: new THREE.PerspectiveCamera(), zeusAssets: f.assets });
     await visuals.ready;
     const model = scene.getObjectByName("athletics-zeus-model")!;
-    assert.equal(model.rotation.y, Math.PI, "the museum scan's -Z front is corrected for STOP");
+    assert.equal(model.rotation.y, 0, "the bundled scan already faces +Z for STOP");
     const mesh = model.getObjectByProperty("isMesh", true) as THREE.Mesh<THREE.BufferGeometry, THREE.MeshStandardMaterial>;
     assert.equal(mesh.geometry, f.geometry);
     assert.notEqual(mesh.material, f.material);
@@ -73,6 +74,43 @@ test("leaving and reentering an arena preserves cached geometry and disposes eac
     assert.equal(scene.children.length, 0);
     assert.deepEqual(f.stats(), { releases: i + 1, geometryDisposals: 0, materialDisposals: 0 });
   }
+});
+
+test("the bundled Zeus face points toward runners on STOP and away on GO as the camera turns", async () => {
+  const bytes = await readFile(new URL(`../../public${ZEUS_MODEL_PATH}`, import.meta.url));
+  const { scene: source } = await new GLTFLoader().parseAsync(Uint8Array.from(bytes).buffer, "");
+  for (const reducedMotion of [false, true]) {
+    const root = new THREE.Group();
+    const camera = new THREE.PerspectiveCamera(72, 1.6, 0.1, 620);
+    const visuals = createZeusVisuals(root, camera, reducedMotion, { load: async () => source, release: () => undefined });
+    await visuals.ready;
+    const model = root.getObjectByName("athletics-zeus-model")!;
+    for (const [yaw, aspect] of [[0, 1.6], [Math.PI / 2, 1.6], [-Math.PI * 0.8, 1.6], [0, 375 / 812], [Math.PI / 2, 375 / 812]]) {
+      camera.aspect = aspect;
+      camera.updateProjectionMatrix();
+      camera.position.set(80, 50, -90);
+      camera.rotation.set(0.2, yaw, 0);
+      const zeus = { phase: "green", phaseStartedAt: new Date(1000).toISOString(), phaseEndsAt: new Date(7000).toISOString() };
+      const session = { athletics: { zeus } } as GameSession;
+      const facing = () => {
+        root.updateMatrixWorld(true);
+        // The actual bundled scan's nose and face are on its +Z side.
+        return new THREE.Vector3(0, 0, 1).transformDirection(model.matrixWorld)
+          .dot(camera.getWorldPosition(new THREE.Vector3()).sub(model.getWorldPosition(new THREE.Vector3())).normalize());
+      };
+      visuals.update(session, 2000);
+      assert.ok(facing() < -0.99, "GO shows the back of the scan");
+      visuals.update(session, 7000 + (reducedMotion ? 0 : 450));
+      assert.ok(facing() > 0.99, "the locally predicted STOP shows the face");
+      zeus.phase = "red"; zeus.phaseStartedAt = new Date(7000).toISOString();
+      visuals.update(session, 7500);
+      assert.ok(facing() > 0.99, "the server STOP snapshot keeps the face visible");
+    }
+    visuals.dispose();
+  }
+  source.traverse((object) => {
+    if (object instanceof THREE.Mesh) { object.geometry.dispose(); (object.material as THREE.Material).dispose(); }
+  });
 });
 
 test("a slow model download cannot attach after the game has been left", async () => {
