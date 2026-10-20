@@ -198,6 +198,14 @@ export const resolveSpeakingSupportSettings = (
  * boundary so older/custom activities can be read safely; the resolver below
  * supplies a neutral fallback for the student experience.
  */
+export interface SpeakingTextbookReference {
+  book: 1 | 2 | 3;
+  section: string;
+  /** Printed textbook pages, distinct from the PDF's spread index. */
+  pages: string;
+  pdfPages: number[];
+}
+
 export interface SpeakingScenarioResources {
   teacherFocus?: string;
   /** Teacher-facing organization metadata. It is optional for legacy records. */
@@ -215,6 +223,9 @@ export interface SpeakingScenarioResources {
   studentGoal?: string;
   suggestedSteps?: string[];
   usefulVocabulary?: string[];
+  /** Adapted language support, never a required script or a source of task facts. */
+  exampleDialogue?: string;
+  textbookReferences?: SpeakingTextbookReference[];
   referenceItems?: Array<{ label: string; detail?: string }>;
   imageSrc?: string;
   imageAlt?: string;
@@ -239,6 +250,8 @@ export type SpeakingResolvedScenarioResources = {
   studentGoal: string;
   suggestedSteps: string[];
   usefulVocabulary: string[];
+  exampleDialogue?: string;
+  textbookReferences?: SpeakingTextbookReference[];
   referenceItems: Array<{ label: string; detail?: string }>;
   imageSrc?: string;
   imageAlt?: string;
@@ -310,6 +323,13 @@ export const speakingScenarioResources = (
     .map((step) => step.trim().slice(0, 160)).filter(Boolean).slice(0, 8),
   usefulVocabulary: (resources?.usefulVocabulary ?? DEFAULT_SPEAKING_SCENARIO_RESOURCES.usefulVocabulary)
     .map((item) => item.trim().slice(0, 160)).filter(Boolean).slice(0, 16),
+  ...(resources?.exampleDialogue?.trim() ? { exampleDialogue: resources.exampleDialogue.trim().slice(0, 2_400) } : {}),
+  ...(resources?.textbookReferences?.length ? { textbookReferences: resources.textbookReferences.slice(0, 4).map((reference) => ({
+    book: reference.book,
+    section: reference.section.trim().slice(0, 140),
+    pages: reference.pages.trim().slice(0, 40),
+    pdfPages: reference.pdfPages.filter((page) => Number.isInteger(page) && page >= 1 && page <= 200).slice(0, 8)
+  })) } : {}),
   referenceItems: (resources?.referenceItems ?? DEFAULT_SPEAKING_SCENARIO_RESOURCES.referenceItems)
     .flatMap((item) => {
       const label = item.label?.trim().slice(0, 120);
@@ -325,25 +345,25 @@ export const DEFAULT_SPEAKING_RUBRIC: SpeakingRubricCriterion[] = [
   {
     id: "task_achievement",
     name: "Task Achievement",
-    description: "Did the student accomplish the real-world communication goal?",
+    description: "Accomplish the stated communication goal with accurate, relevant information. Judge the outcome, not exact textbook wording. Minor language errors do not reduce achievement when the message succeeds.",
     enabled: true
   },
   {
     id: "interaction",
     name: "Interaction",
-    description: "Did the student understand, respond, ask questions, clarify, and maintain communication?",
+    description: "Respond appropriately and, when the task provides an opportunity, initiate, ask, clarify, or confirm. Reward useful repair and natural closure. Allowed support does not prevent full credit; do not require unnecessary questions.",
     enabled: true
   },
   {
     id: "language_range_control",
     name: "Language Range & Control",
-    description: "How effectively did the student use the vocabulary and grammar available to them?",
+    description: "Use vocabulary and grammar appropriate to the task and the taught language. Simple familiar English can earn full credit. Judge errors by their effect on meaning; advanced forms, memorized phrases and error-free speech are not required.",
     enabled: true
   },
   {
     id: "communication_fluency",
     name: "Communication & Fluency",
-    description: "How clearly and successfully did the student express themselves?",
+    description: "Make the task-relevant message understandable and logically connected. Assess clarity and organization using transcript evidence. Do not infer sound quality, delivery speed, hesitation, confidence or motivation from text or timing.",
     enabled: true
   }
 ];
@@ -609,6 +629,13 @@ export const SpeakingCreateActivityInputSchema = z.object({
     studentGoal: z.string().trim().min(1).max(240).optional(),
     suggestedSteps: z.array(z.string().trim().min(1).max(160)).max(8).optional(),
     usefulVocabulary: z.array(z.string().trim().min(1).max(160)).max(16).optional(),
+    exampleDialogue: z.string().trim().max(2_400).optional(),
+    textbookReferences: z.array(z.object({
+      book: z.union([z.literal(1), z.literal(2), z.literal(3)]),
+      section: z.string().trim().min(1).max(140),
+      pages: z.string().trim().min(1).max(40),
+      pdfPages: z.array(z.number().int().min(1).max(200)).min(1).max(8)
+    })).max(4).optional(),
     referenceItems: z.array(z.object({ label: z.string().trim().min(1).max(120), detail: z.string().trim().max(240).optional() })).max(24).optional(),
     imageSrc: z.string().trim().min(1).max(500).optional(),
     imageAlt: z.string().trim().min(1).max(160).optional(),

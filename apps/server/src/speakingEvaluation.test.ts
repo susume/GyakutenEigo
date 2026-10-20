@@ -83,8 +83,8 @@ test("evaluation sanitizer preserves exact transcript evidence and caps overgene
   assert.ok(sanitized.goalCompletion?.requirements.every((item) => item.evidenceTurnIds.every((id) => turns.some((turn) => turn.id === id))));
   assert.equal(sanitized.scores.communication, 3);
   assert.equal(sanitized.scores.interaction, 3);
-  assert.equal(sanitized.scores.grammar, 3);
-  assert.equal(sanitized.scores.vocabulary, 3);
+  assert.equal(sanitized.scores.grammar, 4);
+  assert.equal(sanitized.scores.vocabulary, 4);
   assert.equal(sanitized.scores.fluency, 4);
   assert.equal(sanitized.usefulEnglish.some((item) => item.said === "I want burger."), false);
   assert.deepEqual(sanitized.usefulEnglish.find((item) => item.sourceTurnId === "student-1"), {
@@ -218,7 +218,7 @@ test("goal validation preserves semantic judgment and rejects fabricated or unre
   assert.equal(semantic.scores.communication, 4);
 });
 
-test("actual restaurant name repair is detected without penalizing normal menu follow-ups", () => {
+test("actual name repair is recorded without an automatic penalty after successful clarification", () => {
   const exchange = [
     ["ai", "Can I get a name for the order?"], ["student", "Okay."],
     ["ai", "Okay, and what name should I put on the order?"], ["student", "Lucas"],
@@ -226,9 +226,12 @@ test("actual restaurant name repair is detected without penalizing normal menu f
     ["ai", "Would you like fries with your cheeseburger?"], ["student", "No thank you."]
   ].map(([speaker, text], index) => ({ ...turns[0]!, id: `repair-${index}`, speaker: speaker as SpeakingTurn["speaker"], text: text! }));
   assert.equal(buildSpeakingInteractionMetadata(exchange).repeatedQuestionCount, 1);
-  const result = sanitizeSpeakingEvaluation(providerEvaluation(), activity, exchange);
-  assert.equal(result.scores.interaction, 3);
-  assert.match(result.evidence.interaction!, /repeated/);
+  const result = sanitizeSpeakingEvaluation(providerEvaluation({ goalCompletion: {
+    completed: true,
+    requirements: [{ requirement: "Give your name", status: "completed", evidenceTurnIds: ["repair-3"] }]
+  } }), { ...activity, scenarioResources: { studentGoal: "Give your name." } }, exchange);
+  assert.equal(result.scores.interaction, 4);
+  assert.equal(result.goalCompletion?.completed, true);
 });
 
 test("added coaching stays within schema limits and low-confidence orders are not corrected", () => {
@@ -249,6 +252,36 @@ test("individual and Set focus are combined as assessment emphasis", () => {
   assert.match(prompt, /Neither focus creates a compulsory language requirement/);
   assert.match(prompt, /assessment emphasis only, not compulsory requirements\): Clarifying/);
   assert.match(prompt, /communication_fluency, assess clear and successful communication from transcript evidence even without audio timing/);
+});
+
+test("allowed support and familiar language can earn full credit with criterion-specific anchors", () => {
+  const rubric = SPEAKING_CORE_LIBRARY[0]!.rubric;
+  const standardActivity = { ...activity, rubric, supportSettings: { ...activity.supportSettings, allowHelp: true }, scenarioResources: { studentGoal: "State your choice." } };
+  const exchange: SpeakingTurn[] = [turns[0]!, { ...turns[1]!, text: "I want a burger, please.", usedHelp: true }];
+  const result = sanitizeSpeakingEvaluation(providerEvaluation({
+    scores: Object.fromEntries(rubric.map((criterion) => [criterion.id, 4])),
+    evidence: Object.fromEntries(rubric.map((criterion) => [criterion.id, "The student made a clear, relevant choice."])),
+    goalCompletion: { completed: true, requirements: [{ requirement: "State your choice", status: "completed", evidenceTurnIds: [exchange[1]!.id] }] }
+  }), standardActivity, exchange);
+  assert.equal(result.scores.language_range_control, 4);
+  assert.equal(result.scores.task_achievement, 4);
+  assert.equal(result.scores.interaction, 4);
+  const prompt = buildEvaluationPrompt({ activity: standardActivity, turns: exchange, rubric });
+  assert.match(prompt, /Criterion-specific anchors for task_achievement/u);
+  assert.match(prompt, /Allowed support can still earn 4/u);
+  assert.match(prompt, /not a compulsory script|Do not require every target phrase/u);
+  assert.doesNotMatch(prompt, /4 means consistently successful and independent/u);
+});
+
+test("missing opportunity stays uncertain instead of being turned into an absent-question failure", () => {
+  const questionActivity = { ...activity, scenarioResources: { studentGoal: "Ask one question." } };
+  const result = sanitizeSpeakingEvaluation(providerEvaluation({
+    scores: { communication: null, interaction: null },
+    goalCompletion: { completed: false, requirements: [{ requirement: "Ask one question", status: "uncertain", evidenceTurnIds: [] }] }
+  }), questionActivity, turns.slice(0, 2));
+  assert.equal(result.goalCompletion?.requirements[0]?.status, "uncertain");
+  assert.equal(result.scores.communication, null);
+  assert.equal(result.scores.interaction, null);
 });
 
 test("recording length cannot support pause claims anywhere in feedback", () => {

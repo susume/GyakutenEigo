@@ -25,12 +25,32 @@ The built-in catalog is browsed progressively as Collection → Category →
 Speaking Task. It is intentionally split so teachers can find a relevant
 scenario quickly:
 
-- School English: 30 tasks for junior-high students;
+- School English: 31 tasks for junior-high students;
 - Workplace English: 49 tasks for adults and workplace learners;
-- Total: 79 built-in tasks.
+- Total: 80 built-in tasks.
 
-School English preserves the original template ids and categories. Workplace
-English covers Luxury Car Sales, Hotels & Hospitality, Restaurants & Cafés,
+School English preserves the original template ids and categories and includes
+**HWG Giving Train Directions** under Travel & Transportation. This four-minute
+assessment asks students at Tokyo Station to help a tourist reach Asakusa,
+explain a transfer, answer a route question, and offer ticket help. The supplied
+Tokyo train map is included in student Context, with the class expressions and
+Japanese toolbox glosses under Useful English. Map notes supply the same route
+facts to the partner and evaluator; times, fares and platforms remain unknown.
+
+All 31 School English tasks also include R7 NEW HORIZON textbook connections,
+an adapted example dialogue, relevant words with Japanese meanings, and an
+additional communicative goal. Dialogues and source references appear under
+Useful English when language support is allowed. Teachers can edit the dialogue
+in Advanced settings; customization, saving and session snapshots preserve its
+references. See [the textbook cross-reference](speaking-textbook-crosswalk.md).
+
+The shared four-criterion rubric uses explicit 0-4 anchors, with N/A for missing
+evidence or opportunity. Simple taught English and allowed support can earn full
+credit. Repeated sentence starters, understandable grammar errors and a repaired
+misunderstanding do not automatically cap a score. Teachers can inspect the guide
+in previews and Advanced settings. See [the reusable rubric](fair-speaking-rubric.md).
+
+Workplace English covers Luxury Car Sales, Hotels & Hospitality, Restaurants & Cafés,
 Retail & Customer Service, Tourism & Visitor Support, and Office & Business.
 Every built-in task is an editable Assessment-mode template that can be
 previewed, customized into a teacher-owned activity, or used as-is. Unknown

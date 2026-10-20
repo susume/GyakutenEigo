@@ -38,6 +38,7 @@ export * from "./zeusDaruma.js";
 export * from "./speaking.js";
 export * from "./speakingLibraryRegistry.js";
 export * from "./speakingCoreLibrary.js";
+export * from "./speakingRubric.js";
 export type SessionStatus = "waiting" | "active" | "paused" | "ended";
 export type SessionControlState = "running" | "teacher_paused";
 export type Choice = "A" | "B" | "C" | "D";

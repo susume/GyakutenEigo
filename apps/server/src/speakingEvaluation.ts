@@ -9,7 +9,7 @@ import {
 } from "@quizstrike/shared";
 
 /** Bump when the evaluator's evidence contract or scoring guardrails change. */
-export const SPEAKING_EVALUATOR_PROMPT_VERSION = "2026-09-30-task-facts-v2";
+export const SPEAKING_EVALUATOR_PROMPT_VERSION = "2026-10-20-fair-task-rubric-v3";
 
 /** One-time migration marker, recognized only by workers with the schema fix. */
 export const SPEAKING_GEMINI_SCHEMA_RECOVERY_CODE = "gemini_json_schema_recovery_pending";
@@ -102,7 +102,7 @@ const deriveGoalCompletion = (activity: SpeakingActivity, turns: SpeakingTurn[],
     if ((status === "completed" || status === "partially_completed") && !evidence.length) status = "uncertain";
     // Reject a demonstrably absent question, but leave semantic goal judgment
     // to the evaluator. A food noun or any two words cannot prove completion.
-    if (requiresQuestion(requirement) && studentTurns.length && !studentTurns.some((turn) => questionLike(turn.text))) {
+    if (requiresQuestion(requirement) && source && source.status !== "uncertain" && studentTurns.length && !studentTurns.some((turn) => questionLike(turn.text))) {
       status = "not_completed";
       evidence.length = 0;
     }
@@ -150,8 +150,7 @@ export const sanitizeSpeakingEvaluation = (
   const sourceEvidence = evaluation.evidence && typeof evaluation.evidence === "object" ? evaluation.evidence : {};
   const goalCompletion = deriveGoalCompletion(activity, turns, evaluation);
   const questionRequirementMissing = goalCompletion.requirements.some((item) => requiresQuestion(item.requirement) && item.status === "not_completed");
-  const incompleteGoal = goalCompletion.requirements.some((item) => item.status !== "completed");
-  const malformedOrder = studentTurns.some((turn) => !uncertainAsrFragment(turn) && malformedFoodOrder(turn.text));
+  const observedIncompleteGoal = goalCompletion.requirements.some((item) => item.status === "not_completed" || item.status === "partially_completed");
   const repeatedStarter = studentTurns.filter((turn) => /^I\s+(?:want|like|need)\b/iu.test(turn.text.trim())).length >= 3;
   const reliableAudio = studentTurns.length > 0 && interactionMetadata.reliableAudioTurnCount === studentTurns.length;
   const scores: Record<string, number | null> = {};
@@ -172,28 +171,14 @@ export const sanitizeSpeakingEvaluation = (
         ? "音声の長さを確認できないため、流暢さは評価しません。"
         : "Fluency was not scored because reliable audio timing was not available; pauses were not judged.";
     }
-    if (((criterion.id === "communication" || criterion.id === "task_achievement") && incompleteGoal) || (criterion.id === "interaction" && (questionRequirementMissing || interactionMetadata.repeatedQuestionCount > 0))) {
+    if (((criterion.id === "communication" || criterion.id === "task_achievement") && observedIncompleteGoal) || (criterion.id === "interaction" && questionRequirementMissing)) {
       if (score !== null) score = Math.min(score, 3);
-      criterionEvidence = criterion.id === "interaction" && interactionMetadata.repeatedQuestionCount > 0
-        ? activity.nativeLanguage === "ja"
-          ? "相手が質問を言い直す場面があったため、ひとりで会話を進めたとは言い切れません。"
-          : "The partner repeated a question, so this was not treated as fully independent interaction."
-        : activity.nativeLanguage === "ja"
+      criterionEvidence = activity.nativeLanguage === "ja"
           ? "目標をすべて達成したと確認できないため、この項目は控えめに評価しました。"
           : "The transcript does not confirm completion of every task requirement.";
     }
-    if ((criterion.id === "grammar" || criterion.id === "language_range_control") && malformedOrder) {
-      if (score !== null) score = Math.min(score, 3);
-      criterionEvidence = activity.nativeLanguage === "ja"
-        ? "注文の文は伝わりました。冠詞と文の形をもう少し練習しましょう。"
-        : "Your order was understandable. Practice the article and sentence shape in the example below.";
-    }
-    if ((criterion.id === "vocabulary" || criterion.id === "language_range_control") && repeatedStarter) {
-      if (score !== null) score = Math.min(score, 3);
-      criterionEvidence = activity.nativeLanguage === "ja"
-        ? "同じ始め方が何度か続きました。別の言い方も試しましょう。"
-        : "You used the same sentence starter several times; try one different phrase next time.";
-    }
+    // Coaching can suggest a clearer form below. A surface pattern alone is
+    // not evidence for an automatic deduction from a criterion-specific score.
     scores[criterion.id] = score;
     evidence[criterion.id] = criterionEvidence;
   }

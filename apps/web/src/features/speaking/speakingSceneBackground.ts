@@ -21,6 +21,7 @@ const scenarioEnvironments: Readonly<Record<string, string>> = {
   "core-giving-street-directions": "plaza",
   "core-asking-for-train-directions": "station",
   "core-giving-train-directions": "station",
+  "core-hwg-giving-train-directions": "station",
   "core-using-public-transportation": "station",
   "core-at-a-train-station": "station",
   "core-introducing-your-hometown": "plaza",

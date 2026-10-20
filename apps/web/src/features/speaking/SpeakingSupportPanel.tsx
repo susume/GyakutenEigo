@@ -2,6 +2,7 @@ import { useSiteTranslation } from "../../ui/siteTranslation";
 import { useEffect, useId, useState, type KeyboardEvent } from "react";
 import { BookOpenText, ImageOff, Lightbulb, MessageCircle, X } from "lucide-react";
 import { speakingContext, speakingScenarioResources, speakingSupportSettings, type SpeakingActivity, type SpeakingContext } from "@quizstrike/shared";
+import { SpeakingTextbookSupport } from "./SpeakingTextbookSupport";
 
 export type SpeakingSupportTab = "useful-english" | "context";
 
@@ -16,7 +17,7 @@ export const getSpeakingSupportTabs = (activity: SpeakingActivity): Array<{ id: 
   const support = speakingSupportSettings(activity);
   const resources = speakingScenarioResources(activity.scenarioResources);
   return [
-    ...(support.showTargetExpressions && (activity.targetExpressions.length || resources.usefulVocabulary.length) ? [{ id: "useful-english" as const, label: "Useful English" }] : []),
+    ...(support.showTargetExpressions && (activity.targetExpressions.length || resources.usefulVocabulary.length || resources.exampleDialogue || resources.textbookReferences?.length) ? [{ id: "useful-english" as const, label: "Useful English" }] : []),
     ...(support.showContext && (speakingContext(activity) || resources.referenceItems.length) ? [{ id: "context" as const, label: "Context" }] : [])
   ];
 };
@@ -124,6 +125,7 @@ function UsefulEnglishPanel({ activity }: { activity: SpeakingActivity }) {
           </div>
         ))}
       </div>
+      <SpeakingTextbookSupport resources={resources} />
       <SpeakingKeywords words={resources.usefulVocabulary} />
       <div className="speaking-useful-callout">
         <Lightbulb size={27} strokeWidth={1.7} aria-hidden="true" />

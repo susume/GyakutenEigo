@@ -28,6 +28,7 @@ export const isCompatibleCoreLibraryResponse = (value: unknown): value is Speaki
     if (!SpeakingCreateActivityInputSchema.safeParse(candidate).success) return false;
     if (!isRecord(candidate.scenarioResources)) return false;
     const resources = candidate.scenarioResources;
+    if (resources.libraryCollection === "school-english" && (typeof resources.exampleDialogue !== "string" || !resources.exampleDialogue.trim() || !Array.isArray(resources.textbookReferences) || !resources.textbookReferences.length)) return false;
     if (resources.builtIn !== true || typeof resources.libraryCollection !== "string" || !SPEAKING_LIBRARY_COLLECTIONS.includes(resources.libraryCollection as typeof SPEAKING_LIBRARY_COLLECTIONS[number]) || typeof resources.categoryId !== "string" || typeof resources.category !== "string" || !Array.isArray(resources.communicationSkills) || resources.communicationSkills.length === 0 || !Array.isArray(resources.successConditions) || resources.successConditions.length < 3 || typeof resources.openingLine !== "string" || !resources.openingLine.trim() || typeof resources.studentGoal !== "string" || !resources.studentGoal.trim() || !Array.isArray(candidate.targetExpressions) || candidate.targetExpressions.length === 0 || resources.sourceTemplateId !== candidate.id) return false;
     const category = SPEAKING_LIBRARY_CATEGORY_DEFINITIONS.find((definition) => definition.id === resources.categoryId);
     if (!category || category.collectionId !== resources.libraryCollection || category.name !== resources.category) return false;

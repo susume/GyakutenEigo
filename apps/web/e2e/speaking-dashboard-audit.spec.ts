@@ -7,11 +7,11 @@ test("core preview traps focus and customization saves an owned version", async 
   await page.addInitScript((value) => localStorage.setItem("quizstrike_token", value), token);
   await page.goto("/quiz-strike/teacher/speaking/core");
   await expect(page.getByRole("tab", { name: /My Speaking Tasks/ })).toBeVisible();
-  await expect(page.getByRole("tab", { name: /Core Library 79/ })).toBeVisible();
+  await expect(page.getByRole("tab", { name: /Core Library 80/ })).toBeVisible();
   await expect(page.getByRole("tab", { name: /My Sets/ })).toBeVisible();
   await expect(page.locator(".speaking-collection-card")).toHaveCount(2);
   await expect(page.getByText("Ready-made speaking tasks for school and workplace English.", { exact: true })).toBeVisible();
-  await expect(page.locator(".speaking-collection-card").filter({ hasText: "School English" })).toContainText("30");
+  await expect(page.locator(".speaking-collection-card").filter({ hasText: "School English" })).toContainText("31");
   await expect(page.locator(".speaking-collection-card").filter({ hasText: "Workplace English" })).toContainText("49");
   await expect(page.getByText("No scenarios match", { exact: true })).toHaveCount(0);
   await page.locator(".speaking-collection-card").filter({ hasText: "Workplace English" }).click();

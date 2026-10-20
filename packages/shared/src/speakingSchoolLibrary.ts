@@ -9,6 +9,7 @@ import {
   type SpeakingLibraryCollection
 } from "./speaking.js";
 import { speakingLibraryCategoryId } from "./speakingLibraryRegistry.js";
+import { SCHOOL_TEXTBOOK_ALIGNMENTS } from "./speakingSchoolTextbookAlignment.js";
 
 export type SpeakingCoreLibraryItem = SpeakingCreateActivityInput & {
   id: string;
@@ -51,6 +52,7 @@ const LIBRARY_MAP = "/assets/speaking/context-library-map.webp";
 const CAFE_MENU = "/assets/speaking/context-cafe-menu.webp";
 const RESTAURANT_MENU = "/assets/speaking/context-restaurant-menu.webp";
 const TRANSIT_MAP = "/assets/speaking/context-transit-map.webp";
+const HWG_TRAIN_MAP = "/assets/speaking/context-hwg-tokyo-train-map.png";
 const STATION_BOARD = "/assets/speaking/context-station-board.webp";
 const CLOTHING_DISPLAY = "/assets/speaking/context-clothing-display.webp";
 const SCHOOL_SUPPLIES = "/assets/speaking/context-school-supplies.webp";
@@ -279,6 +281,14 @@ const contextForCoreSeed = (seed: CoreSeed): SpeakingContext =>
   };
 
 const core = (seed: CoreSeed): SpeakingCoreLibraryItem => {
+  const alignment = SCHOOL_TEXTBOOK_ALIGNMENTS[seed.id];
+  const vocabulary = [...seed.vocabulary];
+  const vocabularyKeys = new Set(vocabulary.map((word) => word.split(/\s+(?:\/|—)\s+/u)[0]!.toLocaleLowerCase()));
+  for (const word of alignment?.words ?? []) {
+    if (vocabularyKeys.has(word.word.toLocaleLowerCase())) continue;
+    vocabulary.push(`${word.word} — ${word.meaning}`);
+    vocabularyKeys.add(word.word.toLocaleLowerCase());
+  }
   const libraryCollection = seed.libraryCollection ?? "school-english";
   const sourceTemplateId = `core-${seed.id}`;
   const categoryId = seed.categoryId ?? speakingLibraryCategoryId(libraryCollection, seed.category);
@@ -297,7 +307,7 @@ const core = (seed: CoreSeed): SpeakingCoreLibraryItem => {
   identifierMode: "nickname",
   mode: "assessment",
   supportSettings: { ...DEFAULT_SPEAKING_ASSESSMENT_SUPPORT_SETTINGS },
-  targetExpressions: [...seed.targetExpressions],
+  targetExpressions: [...new Set([...seed.targetExpressions, ...(alignment?.expressions ?? [])])],
   rubric: DEFAULT_SPEAKING_RUBRIC.map((criterion) => ({ ...criterion })),
   context: { ...contextForCoreSeed(seed) },
   scenarioResources: {
@@ -309,9 +319,13 @@ const core = (seed: CoreSeed): SpeakingCoreLibraryItem => {
     possibleComplication: seed.complication,
     successConditions: [...seed.conditions],
     openingLine: seed.openingLine,
-    studentGoal: seed.goal,
+    studentGoal: alignment ? `${seed.goal.replace(/\.$/u, "")}; ${alignment.goalAddition}` : seed.goal,
     suggestedSteps: [...seed.steps],
-    usefulVocabulary: [...seed.vocabulary],
+    usefulVocabulary: vocabulary,
+    ...(alignment ? {
+      exampleDialogue: alignment.exampleDialogue,
+      textbookReferences: alignment.references.map((reference) => ({ ...reference, pdfPages: [...reference.pdfPages] }))
+    } : {}),
     referenceItems: seed.referenceItems?.map((item) => ({ ...item })) ?? [],
     builtIn: true,
     sourceTemplateId,
@@ -662,6 +676,81 @@ export const SCHOOL_ENGLISH_LIBRARY: SpeakingCoreLibraryItem[] = [
     imageSrc: DIRECTIONS,
     imageAlt: "A station helper explaining a train route",
     durationSeconds: 240
+  }),
+  core({
+    id: "hwg-giving-train-directions",
+    title: "HWG Giving Train Directions",
+    category: "Travel & Transportation",
+    scenario: "You are at Tokyo Station. A tourist asks how to get to Asakusa Station. Use the attached train map to give directions in English, explain a change of trains, answer a follow-up question, and offer help buying a train ticket.",
+    aiRole: "Tourist",
+    studentRole: "Student helping at Tokyo Station",
+    goal: "Help a tourist travel from Tokyo Station to Asakusa Station: explain the lines and transfer, answer a route question, and offer to show them how to buy a train ticket.",
+    aiContext: "You are at Tokyo Station and want Asakusa Station. After the student agrees to help, ask how to get there. Ask one route question at a time: which line after the transfer, or how many stops remain. Accept any route supported by the map notes; never give the route yourself. After directions, thank them and leave room for a ticket-help offer. If asked about buying a ticket, say 'No. Could you tell me how?' Accept an offer to show you and follow them. Times, fares and platforms are unknown.",
+    skills: ["Giving directions", "Explaining", "Asking questions", "Clarifying"],
+    complication: "The tourist asks which line to take after changing trains or how many stops remain. They do not know how to buy a ticket. If they ask about travel time, accept an offer to check because the map gives no times.",
+    conditions: [
+      "Respond politely to the tourist's request for help.",
+      "Give a map-supported route from Tokyo to Asakusa, naming the first line, transfer station, next line, and destination.",
+      "Answer the tourist's route question accurately; when asked for stops, count on the chosen line from the stated station.",
+      "Ask if the tourist knows how to buy a train ticket and offer to show them how."
+    ],
+    openingLine: "Excuse me. May I ask you something?",
+    steps: [
+      "Agree to help and listen to the tourist's destination.",
+      "Find Tokyo and Asakusa on the map and choose a route with a transfer.",
+      "Explain which line to take, where to get off, and which line to change to.",
+      "Answer a question about the next line or number of stops.",
+      "Ask about buying a train ticket and offer to show the tourist how.",
+      "Close politely when the tourist understands."
+    ],
+    vocabulary: [
+      "line / 路線",
+      "get off / 降りる",
+      "change trains / 乗り換える",
+      "stop / 駅",
+      "ticket / 切符",
+      "Could you tell me how to get to … Station?",
+      "Which line should I take from …?",
+      "How long does it take? — どのくらい時間がかかりますか",
+      "How many stops is … from here? — …はここからいくつめの駅ですか",
+      "I’d like to go to … — …まで行きたいです",
+      "Will you tell me which train to take? — どの電車に乗ればよいか教えてもらえますか"
+    ],
+    targetExpressions: [
+      "Sure.",
+      "Take the … Line and get off at … Station.",
+      "Then, change to the … Line.",
+      "… Station is … stops from ….",
+      "Do you know how to buy a train ticket?",
+      "Sure. I’ll show you. Follow me, please.",
+      "My pleasure.",
+      "I’ll check the travel time for you.",
+      "How long does it take?",
+      "How many stops is … from here?",
+      "I’d like to go to …",
+      "Will you tell me which train to take?"
+    ],
+    imageSrc: DIRECTIONS,
+    imageAlt: "A student helping a tourist at a train station",
+    context: {
+      title: "HWG Tokyo train map",
+      description: "You are at Tokyo Station. Use this map to help a tourist get to Asakusa Station. Count every stop on the line you take, including the small white circles.",
+      imageUrl: HWG_TRAIN_MAP,
+      alt: "Tokyo train map showing Tokyo, Ginza, Kanda, Akihabara, Ueno, Ochanomizu, Asakusabashi and Asakusa, with six train lines and interchange markers",
+      type: "subway"
+    },
+    durationSeconds: 240,
+    referenceItems: [
+      { label: "Your starting point and destination", detail: "You and the tourist are at Tokyo Station. The tourist wants to go to Asakusa Station. Use the supplied classroom map." },
+      { label: "JR Yamanote Line (green)", detail: "Tokyo → Kanda → Akihabara → one unnamed stop → Ueno. Ueno is four stops from Tokyo; Kanda is one stop from Tokyo." },
+      { label: "Ginza Line (orange)", detail: "Ginza → three unnamed stops → Kanda → two unnamed stops → Ueno → two unnamed stops → Asakusa. Asakusa is three stops from Ueno or six from Kanda." },
+      { label: "JR Ueno-Tokyo Line (pink)", detail: "Tokyo → Ueno, with no intermediate stop shown. This line passes Kanda and Akihabara without stopping." },
+      { label: "Marunouchi Line (red)", detail: "Ginza → Tokyo → two unnamed stops → Ochanomizu. Ginza is one stop from Tokyo; Ochanomizu is three stops from Tokyo." },
+      { label: "JR Sōbu Line (yellow-green)", detail: "Ochanomizu → Akihabara → Asakusabashi, with no intermediate stops shown." },
+      { label: "Asakusa Line (red-orange)", detail: "Asakusabashi → one unnamed stop → Asakusa. Asakusa is two stops from Asakusabashi." },
+      { label: "Reading the map", detail: "Blue markers show named stations and interchanges. Small white circles are additional stops. Count stops on your chosen line, excluding the station you start from. Some stops have no printed name." },
+      { label: "Information to check", detail: "The map gives no journey times, fares, platform numbers or ticket-machine instructions. If asked, offer to check or ask station staff. Offering to show the tourist how to buy a ticket is enough." }
+    ]
   }),
   core({
     id: "using-public-transportation",

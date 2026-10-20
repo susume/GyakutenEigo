@@ -69,6 +69,8 @@ import GyakutenEigoBrand from "../../../ui/GyakutenEigoBrand";
 import { formatDuration } from "../speakingData";
 import { ResultPanel, scoreFor } from "../SpeakingResultPanel";
 import { SpeakingKeywords, SpeakingReferenceSheet } from "../SpeakingSupportPanel";
+import { SpeakingTextbookSupport } from "../SpeakingTextbookSupport";
+import { SpeakingRubricGuide } from "../SpeakingRubricGuide";
 import { SpeakingSetDetailPage, SpeakingSetsPage } from "./SpeakingSetsPage";
 import SpeakingReportsPanel from "./SpeakingReportsPanel";
 import { coreFallbackActivities, isCompatibleCoreLibraryResponse } from "./speakingLibrary";
@@ -683,10 +685,12 @@ function SpeakingCorePreview({ template, working, onClose, onUse, onCustomize }:
         <div><span className="speaking-preview-label">{t("Success conditions")}</span><ul>{(resources.successConditions.length ? resources.successConditions : ["Communicate the main idea.", "Respond and keep the conversation moving."]).map((item) => <li key={item}>{item}</li>)}</ul></div>
         {resources.suggestedSteps.length > 0 && <div><span className="speaking-preview-label">{t("Suggested steps")}</span><ol>{resources.suggestedSteps.map((item, index) => <li key={`${index}-${item}`}>{item}</li>)}</ol></div>}
       </div>
+      <SpeakingTextbookSupport resources={resources} />
       <SpeakingKeywords words={resources.usefulVocabulary} />
       <SpeakingReferenceSheet items={resources.referenceItems} />
       <div className="speaking-preview-skills"><span className="speaking-preview-label">{t("Speaking partner role")}</span><p>{template.aiRole}</p><span className="speaking-preview-label">{t("Assessment criteria")}</span><ul>{template.rubric.filter((criterion) => criterion.enabled).map((criterion) => <li key={criterion.id}><strong>{criterion.name}</strong>: {criterion.description}</li>)}</ul></div>
       <div className="speaking-preview-skills"><span className="speaking-preview-label">{t("Communication skills")}</span><div className="speaking-skill-tags">{speakingSkills(template).map((item) => <span key={item}>{t(item)}</span>)}</div></div>
+      <SpeakingRubricGuide />
       <div className="speaking-preview-actions"><button type="button" className="speaking-outline-button" onClick={onClose}>{t("Close")}</button><button type="button" className="speaking-text-button" onClick={onCustomize}>{t("Customize")}</button><button type="button" className="speaking-primary-button" onClick={onUse} disabled={working}>{working ? t("Adding…") : t("Use as-is")}</button></div>
     </section>
   </div>;
@@ -771,6 +775,8 @@ const draftFromTemplate = (
       studentGoal: resources.studentGoal,
       suggestedSteps: [...resources.suggestedSteps],
       usefulVocabulary: [...resources.usefulVocabulary],
+      ...(resources.exampleDialogue ? { exampleDialogue: resources.exampleDialogue } : {}),
+      ...(resources.textbookReferences?.length ? { textbookReferences: resources.textbookReferences.map((reference) => ({ ...reference, pdfPages: [...reference.pdfPages] })) } : {}),
       referenceItems: resources.referenceItems.map((item) => ({ ...item })),
       ...(resources.imageSrc ? { imageSrc: resources.imageSrc } : {}),
       ...(resources.sceneBackground ? { sceneBackground: resources.sceneBackground } : {}),
@@ -1452,6 +1458,10 @@ function SpeakingCreatePage({
                     <label>{t("Useful vocabulary")}{" "}<small>{t("(one per line)")}</small>
                       <textarea rows={4} value={resourceDraft.usefulVocabulary.join("\n")} onChange={(event) => updateResources({ usefulVocabulary: event.target.value.split(/\r?\n/u) })} />
                     </label>
+                    <label className="speaking-span-2">{t("Example dialogue")}
+                      <textarea aria-label={t("Example dialogue")} rows={6} maxLength={2400} value={resourceDraft.exampleDialogue ?? ""} onChange={(event) => updateResources({ exampleDialogue: event.target.value || undefined })} placeholder={t("You: ...\nPartner: ...")} />
+                      <small>{t("Optional language support, not a required script. Use bracketed placeholders for task details.")}</small>
+                    </label>
                     <label>{t("Reference material")}{" "}<small>{t("(one item per line: label | detail)")}</small>
                       <textarea rows={4} value={resourceDraft.referenceItems.map((item) => item.detail !== undefined ? `${item.label}|${item.detail}` : item.label).join("\n")} onChange={(event) => updateResources({ referenceItems: event.target.value.split(/\r?\n/u).map((line) => { const [label, ...detail] = line.split("|"); return { label: label ?? "", ...(detail.length ? { detail: detail.join("|") } : {}) }; }) })} />
                     </label>
@@ -1480,6 +1490,7 @@ function SpeakingCreatePage({
                 </div>
                 <div className="speaking-builder-card-heading"><div><span className="speaking-card-kicker">{t("Evaluation rubric")}</span><h2>{t("Customize the standard rubric")}</h2></div><span className="speaking-builder-step">{t("Advanced")}</span></div>
             <p className="speaking-rubric-intro">{t("Each enabled criterion is scored from 0 to 4, with conversation evidence. Insufficient speech is left unscored.")}</p>
+            <SpeakingRubricGuide />
             <div className="speaking-rubric-editor-heading">
               <div>
                 <span className="speaking-card-kicker">{t("Editable rubric")}</span>

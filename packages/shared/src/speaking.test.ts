@@ -115,6 +115,7 @@ test("core speaking library contains complete, categorized junior-high scenarios
     "Giving Street Directions",
     "Asking for Train Directions",
     "Giving Train Directions",
+    "HWG Giving Train Directions",
     "Using Public Transportation",
     "At a Train Station",
     "Helping a Tourist",
@@ -129,10 +130,10 @@ test("core speaking library contains complete, categorized junior-high scenarios
     "Choosing Between Options",
     "Solving an Everyday Problem"
   ];
-  assert.equal(SCHOOL_ENGLISH_LIBRARY.length, 30);
-  assert.equal(SPEAKING_CORE_LIBRARY.length, 79);
+  assert.equal(SCHOOL_ENGLISH_LIBRARY.length, 31);
+  assert.equal(SPEAKING_CORE_LIBRARY.length, 80);
   assert.deepEqual(SCHOOL_ENGLISH_LIBRARY.map((item) => item.title).sort(), [...expectedTitles].sort());
-  assert.equal(new Set(SCHOOL_ENGLISH_LIBRARY.map((item) => item.id)).size, 30);
+  assert.equal(new Set(SCHOOL_ENGLISH_LIBRARY.map((item) => item.id)).size, 31);
   assert.deepEqual(new Set(SCHOOL_ENGLISH_LIBRARY.map((item) => item.scenarioResources.category)), new Set(SPEAKING_LIBRARY_CATEGORY_DEFINITIONS.filter((category) => category.collectionId === "school-english").map((category) => category.name)));
   for (const item of SCHOOL_ENGLISH_LIBRARY) {
     assert.ok(item.scenario.length > 40);
@@ -148,9 +149,9 @@ test("the canonical library has two collections and the requested category count
   assert.deepEqual(SPEAKING_LIBRARY_COLLECTIONS, ["school-english", "workplace-english"]);
   assert.equal(new Set(SPEAKING_LIBRARY_COLLECTIONS).size, 2);
   assert.equal(WORKPLACE_ENGLISH_LIBRARY.length, 49);
-  assert.equal(new Set(SPEAKING_CORE_LIBRARY.map((item) => item.id)).size, 79);
+  assert.equal(new Set(SPEAKING_CORE_LIBRARY.map((item) => item.id)).size, 80);
   const byCollection = countBy(SPEAKING_CORE_LIBRARY, (item) => item.scenarioResources.libraryCollection ?? "missing");
-  assert.equal(byCollection["school-english"], 30);
+  assert.equal(byCollection["school-english"], 31);
   assert.equal(byCollection["workplace-english"], 49);
   const workplaceCounts = countBy(WORKPLACE_ENGLISH_LIBRARY, (item) => item.scenarioResources.category ?? "missing");
   assert.deepEqual(workplaceCounts, {

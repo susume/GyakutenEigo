@@ -6,18 +6,18 @@ import { coreFallbackActivities, isCompatibleCoreLibraryResponse } from "./speak
 test("the complete built-in response is accepted", () => {
   const response = coreFallbackActivities();
   assert.equal(isCompatibleCoreLibraryResponse(response), true);
-  assert.equal(response.length, 79);
+  assert.equal(response.length, 80);
 });
 
 test("school scenarios retain their visual contexts while workplace scenarios stay image-optional", () => {
   const school = SPEAKING_CORE_LIBRARY.filter((activity) => activity.scenarioResources?.libraryCollection === "school-english");
   const workplace = SPEAKING_CORE_LIBRARY.filter((activity) => activity.scenarioResources?.libraryCollection === "workplace-english");
-  assert.equal(school.length, 30);
+  assert.equal(school.length, 31);
   assert.equal(workplace.length, 49);
   const contexts = school.map((activity) => speakingContext(activity));
 
   assert.equal(contexts.every((context) => Boolean(context?.title && context.description && context.imageUrl && context.alt)), true);
-  assert.equal(new Set(contexts.map((context) => context?.title)).size, 30);
+  assert.equal(new Set(contexts.map((context) => context?.title)).size, 31);
   assert.equal(new Set(contexts.map((context) => context?.imageUrl)).size >= 5, true);
   assert.equal(workplace.every((activity) => !speakingContext(activity)), true);
 });
@@ -41,6 +41,7 @@ test("partial, duplicate, and incompatible template responses fall back instead 
   assert.equal(isCompatibleCoreLibraryResponse([...response.slice(0, -1), response[0]]), false);
   assert.equal(isCompatibleCoreLibraryResponse(response.map((item) => ({ ...item, scenarioResources: { ...item.scenarioResources, builtIn: undefined } }))), false);
   assert.equal(isCompatibleCoreLibraryResponse(SPEAKING_CORE_LIBRARY.slice(0, 6)), false);
+  assert.equal(isCompatibleCoreLibraryResponse(response.map((item) => ({ ...item, scenarioResources: { ...item.scenarioResources, exampleDialogue: undefined, textbookReferences: undefined } }))), false);
 });
 
 test("the fallback exposes collection and category metadata for cross-collection search", () => {

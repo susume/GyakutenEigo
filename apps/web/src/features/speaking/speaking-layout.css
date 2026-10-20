@@ -1650,6 +1650,16 @@
   overflow-wrap: anywhere;
 }
 
+.speaking-textbook-support { min-width: 0; margin: 16px 0; }
+.speaking-textbook-support details, .speaking-rubric-guide { margin: 12px 0; padding: 14px; border: 1px solid #dbe7f2; border-radius: 12px; background: #f8fbff; overflow-wrap: anywhere; }
+.speaking-textbook-support summary, .speaking-rubric-guide > summary { color: #294776; font-weight: 750; cursor: pointer; }
+.speaking-textbook-support p, .speaking-textbook-support li, .speaking-rubric-guide p, .speaking-rubric-guide li { line-height: 1.6; }
+.speaking-example-dialogue-lines { white-space: pre-wrap; padding-top: 10px; border-top: 1px solid #dbe7f2; }
+.speaking-rubric-guide dl { margin: 8px 0 20px; }
+.speaking-rubric-guide dl > div { display: grid; grid-template-columns: 24px minmax(0, 1fr); gap: 8px; margin: 8px 0; }
+.speaking-rubric-guide dt { font-weight: 750; }
+.speaking-rubric-guide dd { margin: 0; line-height: 1.5; }
+
 .speaking-reference-sheet {
   min-width: 0;
   margin: 18px 0;
