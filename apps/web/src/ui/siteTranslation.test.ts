@@ -13,6 +13,7 @@ import SiteLanguagePicker from "./SiteLanguagePicker.js";
 import { SpeakingSupportPanel } from "../features/speaking/SpeakingSupportPanel.js";
 import { coreFallbackActivities } from "../features/speaking/teacher/speakingLibrary.js";
 import { speakingSupportSummary } from "../features/speaking/speakingCopy.js";
+import { SPEAKING_RUBRIC_FAIRNESS_RULES, SPEAKING_RUBRIC_GUIDE } from "@quizstrike/shared";
 
 const catalog: Record<string, string> = JSON.parse(readFileSync(new URL("./locales/ja.json", import.meta.url), "utf8"));
 const uiRoot = dirname(fileURLToPath(import.meta.url));
@@ -72,6 +73,16 @@ test("static interface messages have a Japanese translation", () => {
     visit(tree);
   }
   assert.deepEqual([...missing], []);
+});
+
+test("shared speaking rubric descriptors and fairness rules have Japanese translations", () => {
+  const messages = [
+    ...SPEAKING_RUBRIC_GUIDE.flatMap((criterion) => [criterion.name, ...Object.values(criterion.levels)]),
+    ...SPEAKING_RUBRIC_FAIRNESS_RULES
+  ];
+  for (const message of messages) {
+    assert.notEqual(translateSiteText("ja", message), message, `Missing rubric translation: ${message}`);
+  }
 });
 
 test("language options keep stable values and recognizable names", () => {
