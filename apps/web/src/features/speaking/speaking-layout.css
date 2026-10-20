@@ -1606,6 +1606,7 @@
   min-height: 0;
   flex: 1 1 auto;
   display: flex;
+  flex-direction: column;
   align-items: stretch;
   justify-content: center;
   overflow: hidden;
@@ -1625,9 +1626,6 @@
 }
 
 .speaking-context-enlarge {
-  position: absolute;
-  right: 10px;
-  bottom: 10px;
   width: 48px;
   min-height: 48px;
   display: grid;
@@ -1637,6 +1635,10 @@
   background: #fff;
   color: #10295b;
 }
+.speaking-context-image-scroll { flex: 1 1 auto; width: 100%; height: 100%; min-height: 0; overflow: auto; overscroll-behavior: contain; }
+.speaking-context-image-scroll img { max-width: none; }
+.speaking-context-tools { flex: 0 0 auto; display: flex; justify-content: flex-end; gap: 6px; padding: 6px; background: #fff; }
+.speaking-context-tools button { display: grid; place-items: center; width: 48px; min-height: 48px; padding: 0; border: 1px solid #bfd3e8; border-radius: 10px; background: #fff; color: #10295b; }
 
 .speaking-image-viewer {
   width: min(1100px, 96vw);
@@ -1654,7 +1656,7 @@
 .speaking-image-viewer-controls { display: flex; justify-content: flex-end; gap: 8px; padding: 8px; }
 .speaking-image-viewer-controls button { display: grid; place-items: center; width: 44px; min-height: 44px; }
 .speaking-image-viewer-scroll { flex: 1; min-height: 0; overflow: auto; overscroll-behavior: contain; touch-action: pan-x pan-y pinch-zoom; }
-.speaking-context-visual .speaking-image-viewer-scroll img { height: auto; max-width: none; object-fit: contain; }
+.speaking-context-visual .speaking-image-viewer-scroll img { height: auto; max-width: none; margin-inline: auto; object-fit: contain; }
 
 .speaking-keywords h3,
 .speaking-reference-sheet h3 {

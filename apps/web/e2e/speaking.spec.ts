@@ -1,4 +1,5 @@
-import { expect, test } from "@playwright/test";
+import { expect, test, type Page } from "@playwright/test";
+import { fileURLToPath } from "node:url";
 
 test("result reconnects after network failure and resumes polling after manual retry", async ({ page, request }) => {
   const templatesResponse = await request.get("/api/speaking/templates");
@@ -82,17 +83,17 @@ test("logged-out teacher returns to the Speaking builder after existing auth", a
     await expect(page).toHaveURL(/\/quiz-strike\/teacher\/speaking\/create$/);
     await expect(page.getByRole("heading", { name: "How would you like to start?" })).toBeVisible();
     await page.getByRole("button", { name: /Start from scratch/ }).click();
-    await expect(page.getByRole("heading", { name: "Create a Performance Test" })).toBeVisible();
-    await expect(page.getByRole("button", { name: "Speaking Practice", exact: true })).toHaveClass(/active/);
-    await page.getByRole("button", { name: "Speaking Practice", exact: true }).click();
+    await expect(page.getByRole("heading", { name: "Create a Speaking Task" })).toBeVisible();
+    await expect(page.getByRole("button", { name: "Speaking Tasks", exact: true })).toHaveClass(/active/);
+    await page.getByRole("button", { name: "Speaking Tasks", exact: true }).click();
     await expect(page).toHaveURL(/\/quiz-strike\/teacher\/speaking$/);
-    await expect(page.getByRole("heading", { name: "Speaking Practice", exact: true })).toBeVisible();
+    await expect(page.getByRole("heading", { name: "Speaking Tasks", exact: true })).toBeVisible();
     await expect(page.locator(".speaking-embedded-teacher .speaking-teacher-sidebar")).toBeHidden();
     await page.getByRole("button", { name: "Home", exact: true }).click();
     await expect(page).toHaveURL(/\/quiz-strike\/teacher\/home$/);
     await expect(page.getByRole("heading", { name: /Welcome back/ })).toBeVisible();
-    await page.getByRole("button", { name: "Speaking Practice", exact: true }).click();
-    await page.getByRole("complementary", { name: "Teacher sections" }).getByRole("button", { name: "New activity", exact: true }).click();
+    await page.getByRole("button", { name: "Speaking Tasks", exact: true }).click();
+    await page.getByRole("complementary", { name: "Teacher sections" }).getByRole("button", { name: "New task", exact: true }).click();
     await expect(page).toHaveURL(/\/quiz-strike\/teacher\/speaking\/create$/);
     await expect(page.getByRole("heading", { name: "How would you like to start?" })).toBeVisible();
   } finally {
@@ -115,15 +116,18 @@ test("teacher and student Speaking Practice screens use the connected mock API",
   await teacherPage.goto("/quiz-strike/teacher/speaking/create");
   await expect(teacherPage.getByRole("heading", { name: "How would you like to start?" })).toBeVisible();
   await teacherPage.getByRole("button", { name: /Start from scratch/ }).click();
-  await expect(teacherPage.getByRole("heading", { name: "Create a Performance Test" })).toBeVisible();
+  await expect(teacherPage.getByRole("heading", { name: "Create a Speaking Task" })).toBeVisible();
   for (const [label, value] of Object.entries({
-    "Activity name": "Connected mock activity",
-    "AI role": "Speaking partner",
+    "Task name": "Connected mock activity",
+    "Speaking partner role": "Speaking partner",
     "Student role": "Student",
     "Speaking situation": "Talk with your partner about your day."
   })) {
     await teacherPage.getByRole("textbox", { name: label, exact: true }).fill(value);
   }
+  await teacherPage.getByRole("textbox", { name: /^Student goal/ }).fill("Exchange information about your day and ask a follow-up question.");
+  await teacherPage.locator('input[name="speaking-mode"][value="practice"]').check();
+  for (const option of await teacherPage.getByRole("group", { name: "Student support", exact: true }).getByRole("checkbox").all()) await option.check();
   const expression = teacherPage.getByRole("textbox", { name: "New target expression", exact: true });
   await expression.fill("Hello");
   await expression.pressSequentially(" there.");
@@ -131,12 +135,11 @@ test("teacher and student Speaking Practice screens use the connected mock API",
   await expect(expression).toBeFocused();
   await expression.press("Enter");
   await expect(teacherPage.getByRole("textbox", { name: "Target expression 1", exact: true })).toHaveValue("Hello there.");
-  await expect(teacherPage.getByRole("heading", { name: "Context", exact: true })).toBeVisible();
-  await teacherPage.getByRole("button", { name: "Add Context", exact: true }).click();
-  await teacherPage.getByRole("textbox", { name: "Context title", exact: true }).fill("Class visual");
-  await teacherPage.getByRole("textbox", { name: "Image URL", exact: true }).fill("/assets/speaking/context-school-supplies.webp");
-  await teacherPage.getByRole("button", { name: "Remove Context", exact: true }).click();
-  await expect(teacherPage.getByText(/No Context is saved for this activity\./u)).toBeVisible();
+  const contextEditor = teacherPage.getByRole("region", { name: "Context image", exact: true });
+  await contextEditor.locator('input[type="file"]').setInputFiles(fileURLToPath(new URL("../public/assets/speaking/context-school-supplies.webp", import.meta.url)));
+  await expect(contextEditor.locator(".speaking-context-editor-preview img")).toBeVisible();
+  await contextEditor.getByRole("button", { name: "Remove image", exact: true }).click();
+  await expect(contextEditor.getByRole("button", { name: "Add image", exact: true })).toBeVisible();
   await teacherPage.setViewportSize({ width: 1366, height: 768 });
   await teacherPage.evaluate(() => window.scrollTo(0, 0));
   await teacherPage.screenshot({ path: testInfo.outputPath("teacher-builder.png"), fullPage: true });
@@ -147,7 +150,7 @@ test("teacher and student Speaking Practice screens use the connected mock API",
     await teacherPage.screenshot({ path: testInfo.outputPath(`teacher-builder-${viewport.width}.png`), fullPage: true });
   }
   await teacherPage.setViewportSize({ width: 1366, height: 768 });
-  await teacherPage.getByRole("button", { name: "Create Performance Test", exact: true }).last().click();
+  await teacherPage.getByRole("button", { name: "Create task", exact: true }).last().click();
   await expect(teacherPage).toHaveURL(/\/speaking\/activity\/[^/]+$/);
   const activityId = new URL(teacherPage.url()).pathname.split("/").pop()!;
   const savedActivity = await request.get(`/api/speaking/activities/${activityId}`, { headers: authorization });
@@ -296,11 +299,11 @@ test("teacher and student Speaking Practice screens use the connected mock API",
   });
   await studentPage.goto(`/speak/join/${joinCode}`);
   await studentPage.getByLabel("Nickname or student number").fill("Aki");
-  await studentPage.getByRole("button", { name: "Join session", exact: true }).click();
+  await studentPage.getByRole("button", { name: "Join speaking task", exact: true }).click();
   await studentPage.setViewportSize({ width: 1680, height: 942 });
   await studentPage.screenshot({ path: testInfo.outputPath("student-microphone.png"), fullPage: true });
   await expect(studentPage.getByRole("heading", { name: "Your task", exact: true })).toBeVisible();
-  await expect(studentPage.getByRole("heading", { name: "Choose AI voice", exact: true })).toBeVisible();
+  await expect(studentPage.getByRole("heading", { name: "Choose a speaking partner voice", exact: true })).toBeVisible();
   await expect(studentPage.locator("[data-testid^='speaking-voice-card-']")).toHaveCount(3);
   await studentPage.getByRole("button", { name: "Choose Ken voice", exact: true }).click();
   await expect(studentPage.locator("[data-testid='speaking-voice-card-ken']").getByRole("button", { name: "Choose Ken voice", exact: true })).toHaveAttribute("aria-pressed", "true");
@@ -320,21 +323,21 @@ test("teacher and student Speaking Practice screens use the connected mock API",
   }
   const cancelCountBeforeStart = await studentPage.evaluate(() => (window as Window & { __speakingSpeechCancelCount?: number }).__speakingSpeechCancelCount ?? 0);
   await studentPage.evaluate(() => { (window as Window & { __speakingSpeechLog?: unknown[] }).__speakingSpeechLog?.splice(0); });
-  await studentPage.getByRole("button", { name: "Start Speaking", exact: true }).click();
+  await studentPage.getByRole("button", { name: "Start practice", exact: true }).click();
   await expect(studentPage.getByRole("button", { name: "Tap to speak", exact: true })).toBeEnabled();
   expect(await studentPage.evaluate(() => (window as Window & { __speakingSpeechCancelCount?: number }).__speakingSpeechCancelCount ?? 0)).toBeGreaterThan(cancelCountBeforeStart);
   await expect.poll(() => studentPage.evaluate(() => (window as Window & { __speakingSpeechLog?: Array<{ voiceId: string }> }).__speakingSpeechLog?.some((entry) => entry.voiceId === "fake-ken") ?? false)).toBe(true);
   await expect(studentPage.locator(".speaking-flow-panel")).toHaveCount(0);
   await studentPage.getByRole("button", { name: "Conversation Your conversation so far", exact: true }).click();
   await expect(studentPage.getByRole("heading", { name: "Conversation", exact: true })).toBeVisible();
-  await expect(studentPage.getByText("Your conversation so far", { exact: true })).toBeVisible();
-  await studentPage.getByRole("button", { name: "Open support panel", exact: true }).click();
+  await expect(studentPage.getByRole("list", { name: "Conversation turns", exact: true })).toBeVisible();
+  await studentPage.getByRole("button", { name: "Useful English", exact: true }).click();
   await expect(studentPage.getByRole("tab", { name: "Useful English", exact: true })).toHaveAttribute("aria-selected", "true");
   await expect(studentPage.getByText("Notes", { exact: true })).toHaveCount(0);
   await expect(studentPage.getByLabel("Notes", { exact: true })).toHaveCount(0);
   await expect(studentPage.getByText("Use these examples or your own words.", { exact: true })).toBeVisible();
   await expect(studentPage.locator(".speaking-student-expression-list button")).toHaveCount(0);
-  await studentPage.getByRole("button", { name: "Close support panel", exact: true }).click();
+  await closeStudentSupport(studentPage);
   const responsiveViewports = [
     { width: 360, height: 800 },
     { width: 1366, height: 768 },
@@ -350,16 +353,16 @@ test("teacher and student Speaking Practice screens use the connected mock API",
   ];
   for (const viewport of responsiveViewports) {
     await studentPage.setViewportSize(viewport);
-    await studentPage.getByRole("button", { name: "Open Context support", exact: true }).click();
-    await expect(studentPage.locator(".speaking-context-visual img")).toBeVisible();
-    await expect(studentPage.locator(".speaking-context-visual img")).toHaveAttribute("src", "/assets/speaking/context-transit-map.webp");
+    await openStudentContext(studentPage);
+    await expect(studentPage.locator(".speaking-context-image-scroll > img")).toBeVisible();
+    await expect(studentPage.locator(".speaking-context-image-scroll > img")).toHaveAttribute("src", "/assets/speaking/context-transit-map.webp");
     const contextPanel = studentPage.getByRole("tabpanel", { name: "Context", exact: true });
     await expect(contextPanel.locator("h2, p")).toHaveCount(0);
-    await expect(contextPanel.locator("img")).toHaveAttribute("alt", "Illustrated transit map with train lines and station labels");
+    await expect(contextPanel.locator(".speaking-context-image-scroll > img")).toHaveAttribute("alt", "Illustrated transit map with train lines and station labels");
     await expect(contextPanel).toHaveClass(/speaking-support-tabpanel-context/u);
     const contextLayout = await contextPanel.evaluate((panel) => {
-      const visual = panel.querySelector<HTMLElement>(".speaking-context-visual");
-      const image = panel.querySelector<HTMLImageElement>(".speaking-context-visual img");
+      const visual = panel.querySelector<HTMLElement>(".speaking-context-image-scroll");
+      const image = panel.querySelector<HTMLImageElement>(".speaking-context-image-scroll > img");
       if (!visual || !image) return undefined;
       const visualStyle = getComputedStyle(visual);
       const imageStyle = getComputedStyle(image);
@@ -382,7 +385,7 @@ test("teacher and student Speaking Practice screens use the connected mock API",
     expect(contextLayout!.imageWidth).toBeCloseTo(contextLayout!.visualContentWidth, 0);
     expect(contextLayout!.imageHeight).toBeCloseTo(contextLayout!.visualContentHeight, 0);
     await studentPage.screenshot({ path: testInfo.outputPath(`speaking-context-${viewport.width}x${viewport.height}.png`), fullPage: false });
-    await studentPage.getByRole("button", { name: "Close support panel", exact: true }).click();
+    await closeStudentSupport(studentPage);
     await expect(studentPage.locator(".speaking-student-sidebar")).toHaveClass(/is-collapsed/u);
     if (await studentPage.locator(".speaking-scene-conversation-toggle").getAttribute("aria-expanded") === "false") {
       await studentPage.getByRole("button", { name: "Conversation Your conversation so far", exact: true }).click();
@@ -428,7 +431,8 @@ test("teacher and student Speaking Practice screens use the connected mock API",
     await studentPage.screenshot({ path: testInfo.outputPath(`speaking-${viewport.width}x${viewport.height}.png`), fullPage: false });
   }
   await studentPage.setViewportSize({ width: 1366, height: 768 });
-  await studentPage.getByRole("button", { name: "Conversation Your conversation so far", exact: true }).click();
+  const conversationButton = studentPage.getByRole("button", { name: "Conversation Your conversation so far", exact: true });
+  if (await conversationButton.getAttribute("aria-expanded") !== "true") await conversationButton.click();
   const transcriptList = studentPage.locator(".speaking-transcript-list");
   const transcriptMetrics = await transcriptList.evaluate((element) => ({ scrollHeight: element.scrollHeight, clientHeight: element.clientHeight }));
   expect(transcriptMetrics.scrollHeight).toBeGreaterThan(transcriptMetrics.clientHeight);
@@ -476,8 +480,8 @@ test("teacher and student Speaking Practice screens use the connected mock API",
   await studentPage.waitForTimeout(300);
   await studentPage.keyboard.press("Enter");
   await expect(studentPage.locator(".speaking-transcript-card")).toContainText("practice this conversation", { timeout: 15_000 });
-  await studentPage.getByRole("button", { name: "Finish", exact: true }).click();
-  await expect(studentPage.getByRole("heading", { name: "今回の結果" })).toBeVisible({ timeout: 15_000 });
+  await studentPage.getByRole("button", { name: "Finish practice", exact: true }).click();
+  await expect(studentPage.getByRole("heading", { name: "Practice complete", exact: true })).toBeVisible({ timeout: 15_000 });
 
   await teacherPage.goto(`/quiz-strike/teacher/speaking/activity/${activityId}/results?sessionId=${encodeURIComponent(session!.id)}`);
   await expect(teacherPage.locator(".speaking-results-table-row").filter({ hasText: "Aki" })).toContainText("Completed");
@@ -522,6 +526,7 @@ test("Speaking Practice recovers each failed operation without cross-retrying", 
     headers: authorization,
     data: {
       title: "Recovery conversation",
+      mode: "practice",
       scenario: "The student practices asking a classmate for help.",
       aiRole: "Classmate",
       studentRole: "Student",
@@ -560,8 +565,8 @@ test("Speaking Practice recovers each failed operation without cross-retrying", 
   });
   await deniedPage.goto(`/speak/join/${session.joinCode}`);
   await deniedPage.getByLabel("Nickname or student number").fill("Denied then recovered");
-  await deniedPage.getByRole("button", { name: "Join session", exact: true }).click();
-  await deniedPage.getByRole("button", { name: "Start Speaking", exact: true }).click();
+  await deniedPage.getByRole("button", { name: "Join speaking task", exact: true }).click();
+  await deniedPage.getByRole("button", { name: "Start practice", exact: true }).click();
   await expect(deniedPage.getByRole("button", { name: "Retry microphone", exact: true })).toBeVisible();
   await expect(deniedPage.getByRole("alert")).toContainText("Microphone permission was denied");
   await deniedPage.screenshot({ path: testInfo.outputPath("microphone-denied.png"), fullPage: true });
@@ -600,23 +605,20 @@ test("Speaking Practice recovers each failed operation without cross-retrying", 
   try {
     await page.goto(`/speak/join/${session.joinCode}`);
     await page.getByLabel("Nickname or student number").fill("Recovery student");
-    await page.getByRole("button", { name: "Join session", exact: true }).click();
-    await page.getByRole("button", { name: "Start Speaking", exact: true }).click();
+    await page.getByRole("button", { name: "Join speaking task", exact: true }).click();
+    await page.getByRole("button", { name: "Start practice", exact: true }).click();
     await page.getByRole("button", { name: "Continue without input test", exact: true }).click();
     await expect(page.getByRole("button", { name: "Tap to speak", exact: true })).toBeEnabled();
     await expect(page.getByText("One more question.", { exact: true })).toBeVisible();
 
-    await page.getByRole("button", { name: "Open Context support", exact: true }).click();
-    await expect(page.getByRole("tab", { name: "Context", exact: true })).toHaveAttribute("aria-selected", "true");
-    await expect(page.getByRole("tabpanel", { name: "Context", exact: true })).toContainText("No context available for this activity.");
+    await expect(page.getByRole("button", { name: "Open Context support", exact: true })).toHaveCount(0);
     await expect(page.getByRole("button", { name: "Tap to speak", exact: true })).toBeEnabled();
-    await page.getByRole("tab", { name: "Useful English", exact: true }).click();
+    await page.getByRole("button", { name: "Useful English", exact: true }).click();
     await expect(page.getByRole("tab", { name: "Useful English", exact: true })).toHaveAttribute("aria-selected", "true");
     await page.screenshot({ path: testInfo.outputPath("student-context-empty.png"), fullPage: true });
-    await page.getByRole("button", { name: "Close support panel", exact: true }).click();
+    await closeStudentSupport(page);
     await expect(page.getByRole("button", { name: "Close support panel", exact: true })).toBeHidden();
-    await page.getByRole("button", { name: "Open Context support", exact: true }).click();
-    await expect(page.getByRole("tab", { name: "Context", exact: true })).toHaveAttribute("aria-selected", "true");
+    await page.getByRole("button", { name: "Useful English", exact: true }).click();
 
     let turnAttempts = 0;
     await page.route(`**/api/speaking/sessions/${session.id}/turn`, async (route) => {
@@ -661,16 +663,16 @@ test("Speaking Practice recovers each failed operation without cross-retrying", 
         body: JSON.stringify({ ...payload, evaluationStatus: "running", result: { ...result, participant: { ...result.participant, status: "evaluating" }, evaluation: undefined } })
       });
     });
-    await page.getByRole("button", { name: "Finish", exact: true }).click();
+    await page.getByRole("button", { name: "Finish practice", exact: true }).click();
     await expect(page.getByRole("button", { name: "Check evaluation", exact: true })).toBeVisible();
     await page.getByRole("button", { name: "Check evaluation", exact: true }).click();
     expect(turnAttempts).toBe(2);
     await expect(page.locator(".speaking-result-hero h1")).toBeVisible({ timeout: 15_000 });
-    await expect(page.getByRole("heading", { name: "今回の結果" })).toBeVisible({ timeout: 15_000 });
+    await expect(page.getByRole("heading", { name: "Practice complete", exact: true })).toBeVisible({ timeout: 15_000 });
     expect(finishAttempts).toBe(2);
     expect(pendingResultShown).toBe(true);
     await page.reload();
-    await expect(page.getByRole("heading", { name: "今回の結果" })).toBeVisible({ timeout: 15_000 });
+    await expect(page.getByRole("heading", { name: "Practice complete", exact: true })).toBeVisible({ timeout: 15_000 });
   } finally {
     await context.close();
   }
@@ -750,7 +752,7 @@ test("speaking entry and join fit laptop viewports without page scaling", async 
     await page.setViewportSize(viewport);
     await page.goto("/speak");
     const student = page.getByRole("button", { name: "Join with Code", exact: true });
-    const teacher = page.getByRole("button", { name: "Create a Performance Test", exact: true });
+    const teacher = page.getByRole("button", { name: "Create a Speaking Task", exact: true });
     await expect(student).toBeVisible();
     await expect(teacher).toBeVisible();
     expect(await page.evaluate(() => document.documentElement.scrollWidth)).toBeLessThanOrEqual(viewport.width);
@@ -762,16 +764,29 @@ test("speaking entry and join fit laptop viewports without page scaling", async 
     }
     await page.screenshot({ path: testInfo.outputPath(`welcome-${viewport.width}.png`), fullPage: true });
     await student.click();
-    await expect(page.getByRole("button", { name: "Join session", exact: true })).toBeVisible();
+    await expect(page.getByRole("button", { name: "Join speaking task", exact: true })).toBeVisible();
     expect(await page.evaluate(() => document.documentElement.scrollWidth)).toBeLessThanOrEqual(viewport.width);
     await page.screenshot({ path: testInfo.outputPath(`join-${viewport.width}.png`), fullPage: true });
   }
   await page.setViewportSize({ width: 1894, height: 912 });
   await page.goto("/speak");
-  await expect(page.getByRole("heading", { name: "SpeakCheck App", exact: true })).toBeVisible();
+  await expect(page.getByRole("heading", { name: "Use the English you’ve learned.", exact: true })).toBeVisible();
   await page.evaluate(async () => { await document.fonts.ready; });
   await page.locator(".speaking-welcome img").evaluateAll(async (images) => {
     await Promise.all(images.map((image) => (image as HTMLImageElement).decode()));
   });
   await page.screenshot({ path: testInfo.outputPath("speaking-reference.png"), fullPage: false });
 });
+
+async function openStudentContext(page: Page) {
+  const button = page.getByRole("button", { name: "Open Context support", exact: true });
+  if (await button.getAttribute("aria-expanded") !== "true") await button.click();
+}
+
+async function closeStudentSupport(page: Page) {
+  const close = page.getByRole("button", { name: "Close support panel", exact: true });
+  if (await close.isVisible()) await close.click();
+  else if (await page.locator(".speaking-student-sidebar").isVisible()) {
+    await page.getByRole("button", { name: "Open Context support", exact: true }).click();
+  }
+}

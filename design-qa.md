@@ -1,3 +1,79 @@
+# Student speaking workspace proportions — 20 October 2026
+
+final result: passed
+
+The user's latest feedback supersedes the earlier preference for oversized dialogue and microphone controls. The shared layout now gives the AI portrait more space and uses smaller, lighter dialogue text. The map column and its zoom controls retain their space.
+
+- Portrait canvas maximum increased from 280 × 260 to 420 × 420 pixels; shorter laptop screens no longer cap it at 160 pixels.
+- Dialogue reduced from 23–34 pixels to 20–24 pixels on larger screens, and 18 pixels on shorter screens. The question card, header, role label and controls are more compact.
+- Inspected 1366 × 768 capture: portrait height approximately 329 pixels, dialogue 24 pixels. Screenshot: `tmp/speaking-proportions/02-laptop.png`.
+- Inspected final short-screen captures: `tmp/speaking-proportions/01-chromebook.png` (1024 × 600; portrait approximately 226 pixels high, dialogue 18 pixels) and `04-short-tablet.png` (768 × 540; portrait approximately 166 pixels high, dialogue 18 pixels). The portrait tablet screenshot `03-tablet.png` was rejected because the in-app capture cropped the bottom; DOM measurements and the browser regressions cover that size.
+- The initial proportion revision passed 21 existing browser checks, including all 16 viewport sizes, map viewing, long messages, hints, rotation, 125% magnification and speech-state layout stability. All six focused rechecks passed after the final short-screen adjustment. The production build passed. Changes remain local.
+
+---
+
+# Student speaking workspace audit — 20 October 2026
+
+The follow-up audit found and fixed keyboard focus loss, controls covering the map legend, fixed image dimensions, reference-sheet scrolling, compact landscape drawer placement, focus-triggered click cancellation, speech-state layout shifts and microphone clipping at 125% magnification. The shared student screen applies these fixes to School English, Workplace English and custom tasks.
+
+The [current audit report](docs/speaking-workspace-audit.md) contains the numbered flow, inspected screenshots, repair details, validation results and limits. The production build, root/web typechecks, focused ESLint and 409 web unit tests passed. The combined browser run passed 37 of 38 checks, including every viewport and connected classroom flow. The remaining native-speech probe passed three repeat runs after its timing-sensitive sampling was corrected. The report records that initial failure explicitly. Changes remain local.
+
+The following implementation review and earlier design reviews are retained as history.
+
+---
+
+# Student speaking workspace — option 1
+
+final result: passed
+
+The selected option is the first displayed generated image, the side-by-side speaking desk. The implementation changes the shared student session screen, so School English, Workplace English and custom activities use the same layout. Existing teacher support permissions still determine available actions.
+
+## Visual evidence
+
+- Source: `C:/Users/admin/.codex/generated_images/01a15687-75e7-7710-9988-c90fb48ca1e5/exec-eb86e3da-5bc1-41ff-9574-122d1e14068c.png` (1501 × 1048 pixels).
+- Implementation: `tmp/speaking-workspace-qa/landscape-final.png` (1194 × 834 pixels).
+- CSS viewport: 1194 × 834, ready state, HWG train map visible, English interface. Local preview uses a seven-minute duration to allow review; the generated target shows a different remaining time.
+- Density: source downsampled to 1194 × 834 for comparison; implementation retained at its captured size. No device frame or browser chrome.
+- Full comparison: `tmp/speaking-workspace-qa/comparison-final.png`, source left / implementation right.
+- Focused control comparison: `tmp/speaking-workspace-qa/controls-comparison.png`.
+- Responsive evidence: `tmp/speaking-workspace-qa/final-1366x768.png`, `final-1024x600.png`, `final-768x1024.png`, `final-390x844.png`, `final-844x390.png`. The in-app browser clipped one edge pixel in the compact phone/landscape captures; DOM viewport measurements confirmed the intended sizes and reachable controls.
+- Additional task evidence: `tmp/speaking-workspace-qa/workplace-reference.png`, `custom-no-support.png`.
+
+## Comparison history
+
+1. Initial comparison (`comparison.png`) found the main microphone smaller than the selected design, and the short dialogue surface unnecessarily tall. Increased the landscape microphone from 110 to 136 pixels and reduced the short-message surface to about 150 pixels. Added inline zoom controls to match the selected context interaction.
+2. A longer Workplace opening needed more readable line wrapping. Applied a smaller, still readable type size for long messages while preserving the scrollable question region and fixed controls.
+3. Final combined full-screen and focused comparisons show no actionable P0/P1/P2 issue. Compact landscape removes the decorative portrait to keep the microphone, dialogue, support and finish control reachable.
+
+## Required fidelity surfaces
+
+- Typography: bundled Nunito Sans, navy headings, large dialogue and visible microphone caption. Longer messages reduce to 20–26 pixels rather than displacing controls. Source text and actual task content remain separate.
+- Layout: white two-column workspace, modest live portrait above dialogue, primary microphone below; context fills the right column. Portrait tablets retain a split view; narrow screens put context above dialogue. No page-width overflow observed.
+- Color: retained product navy, blue, pale blue dialogue and restrained teal recording/timer states. No scenery behind the conversation.
+- Assets: existing licensed live avatar and supplied original map retained. The source concept's illustrated map lettering is not substituted for the actual station map. Avatar fallback remains functional. Standard icons use the existing icon library.
+- Copy: the same real task title, role and opening appear. Context images have no explanatory prose. Teacher-provided reference-only tasks still retain their factual reference sheets. State changes use the microphone area rather than replacing the AI's question.
+
+## Functional verification
+
+- In-app browser: Useful English opening, Context switching/collapsing, conversation drawer, expanded image, zoom in/out, close image, rotation, and control reachability.
+- Representative tasks: HWG, a Workplace reference-only assessment, and a custom practice task with every support option disabled.
+- Browser console: no rendering errors. An earlier timed-out local fixture reached the result page without its participant credential and logged a 401. Corrected the ignored preview harness to persist the same session and participant credentials as the normal join flow; this was not a production UI change.
+- Web unit suite: 407 passed. Root typecheck and focused ESLint passed. Production build passed.
+- Updated existing browser regression expectations for the shared neutral layout and context-first support. Those automated browser suites were not executed in this pass; browser verification used the in-app browser. Live microphone capture and external speech processing were not exercised.
+
+## Accepted product differences and follow-up polish
+
+- The live licensed avatar differs slightly from the generated character artwork.
+- Existing Conversation, Context and permitted Help actions remain in a quieter secondary row so no existing teacher-enabled function disappears.
+- The header uses the existing product speech mark. Context zoom uses the existing magnifier icons.
+
+Implementation checklist: shared screen, support permissions, image-only context, responsive controls, original assets, translation coverage and visual comparison are complete.
+
+
+---
+
+# Prior design reviews (preserved)
+
 # Student Context image-first pass — design QA (2026-09-15)
 
 ## Evidence

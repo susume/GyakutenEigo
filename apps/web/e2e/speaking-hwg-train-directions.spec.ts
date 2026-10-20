@@ -75,13 +75,17 @@ test("HWG assessment retains its train map from the library to the student conte
     await page.goto(`/speak/session/${session.id}`);
     await expect(page.locator(".speaking-student-screen-ready")).toBeVisible();
     await expect(page.locator(".speaking-partner-message p")).toHaveText("Excuse me. May I ask you something?");
-    await page.getByRole("button", { name: "Open Context support", exact: true }).click();
+    const contextButton = page.getByRole("button", { name: "Open Context support", exact: true });
+    if (await contextButton.getAttribute("aria-expanded") !== "true") await contextButton.click();
     const context = page.getByRole("tabpanel", { name: "Context", exact: true });
-    const map = context.locator("figure > img");
+    const map = context.locator(".speaking-context-image-scroll > img");
     await expect(map).toHaveAttribute("src", mapUrl);
     await expect.poll(() => map.evaluate((image) => (image as HTMLImageElement).naturalWidth)).toBeGreaterThan(600);
     await expect(map).toBeInViewport();
     await expect(map).toHaveCSS("object-fit", "contain");
+    const imageArea = await context.locator(".speaking-context-image-scroll").boundingBox();
+    const imageTools = await context.locator(".speaking-context-tools").boundingBox();
+    expect(imageTools!.y).toBeGreaterThanOrEqual(imageArea!.y + imageArea!.height - 1);
     await expect(context.locator(".speaking-reference-sheet")).toHaveCount(0);
     await expect(context).not.toContainText("Your starting point and destination");
     if (viewport.width > 900) {
@@ -92,15 +96,18 @@ test("HWG assessment retains its train map from the library to the student conte
     const viewer = page.getByRole("dialog", { name: "Context image", exact: true });
     await expect(viewer).toBeVisible();
     const enlarged = viewer.locator("img");
-    expect((await enlarged.boundingBox())!.width).toBeGreaterThanOrEqual(707);
+    await expect.poll(async () => (await enlarged.boundingBox())!.width).toBeGreaterThan(0);
+    const fittedWidth = (await enlarged.boundingBox())!.width;
+    expect(fittedWidth).toBeLessThanOrEqual(viewport.width);
+    await expect(enlarged).toBeInViewport({ ratio: 0.99 });
     await viewer.getByRole("button", { name: "Zoom in", exact: true }).click();
-    await expect.poll(async () => (await enlarged.boundingBox())!.width).toBeGreaterThanOrEqual(1060);
+    await expect.poll(async () => (await enlarged.boundingBox())!.width).toBeGreaterThan(fittedWidth * 1.3);
     await page.screenshot({ path: testInfo.outputPath(`hwg-map-enlarged-${viewport.width}.png`) });
     await page.keyboard.press("Escape");
     await expect(viewer).not.toBeVisible();
     expect(await page.evaluate(() => document.documentElement.scrollWidth)).toBeLessThanOrEqual(viewport.width);
     await page.screenshot({ path: testInfo.outputPath(`hwg-train-map-${viewport.width}.png`) });
-    await page.getByRole("tab", { name: "Useful English", exact: true }).click();
+    await page.getByRole("button", { name: "Useful English", exact: true }).click();
     const english = page.getByRole("tabpanel", { name: "Useful English", exact: true });
     await expect(english).toContainText("Then, change to the … Line.");
     await expect(english).toContainText("Do you know how to buy a train ticket?");
@@ -117,5 +124,7 @@ test("HWG assessment retains its train map from the library to the student conte
     await expect(english.locator(".speaking-textbook-references")).toContainText("Real Life English 6");
     await expect(english.locator(".speaking-textbook-references")).toContainText("p. 77");
     await page.screenshot({ path: testInfo.outputPath(`hwg-textbook-support-${viewport.width}.png`) });
+    await page.getByRole("tab", { name: "Context", exact: true }).click();
+    await expect(page.getByRole("tabpanel", { name: "Context", exact: true })).toBeFocused();
   }
 });

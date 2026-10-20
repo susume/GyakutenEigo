@@ -1,0 +1,121 @@
+/* Shared student workspace: the same layout serves every saved speaking task. */
+/* Insets follow the available viewport even when page content is magnified. */
+.speaking-app .speaking-session-main:has(.speaking-scene-screen) { position: fixed; inset: 0; height: auto; min-height: 0; background: #fff; }
+.speaking-app .speaking-scene-screen { --scene-support-width: 51%; background: #fff; }
+.speaking-app .speaking-scene-screen .speaking-student-header { grid-template-columns: auto minmax(0, 1fr) auto; height: 60px; min-height: 60px; padding: 0 20px; gap: 16px; }
+.speaking-app .speaking-scene-screen .speaking-student-brand { display: flex; align-items: center; gap: 9px; width: auto; height: 44px; }
+.speaking-student-wordmark { font-size: 22px; font-weight: 850; letter-spacing: -.035em; color: #142f67; }
+.speaking-app .speaking-scene-screen .speaking-student-context { padding-left: 18px; border-left: 1px solid #dce8f4; }
+.speaking-app .speaking-scene-screen .speaking-student-context > strong { font-size: 16px; }
+.speaking-app .speaking-scene-screen .speaking-student-time { font-size: 14px; }
+.speaking-app .speaking-scene-screen .speaking-student-timer button { min-height: 44px !important; font-size: 14px; }
+.speaking-app .speaking-scene-screen .speaking-scene { padding: 0; background: #fff; overflow: hidden; }
+.speaking-app .speaking-scene-screen .speaking-scene-stage { display: grid; width: 100%; min-height: 0; grid-template-columns: minmax(0, 49fr) minmax(0, 51fr); grid-template-rows: minmax(100px, 1fr) clamp(88px, 12vh, 116px) auto; gap: 0; padding: 0; overflow: hidden; }
+.speaking-app .speaking-scene-screen .is-support-collapsed .speaking-scene-stage,
+.speaking-app .speaking-scene-screen .no-support-panel .speaking-scene-stage { padding-top: 0; grid-template-columns: minmax(0, 1fr); grid-template-areas: "portrait" "reply" "controls"; }
+.speaking-scene-partner { grid-area: portrait; display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 6px; width: 100%; min-height: 0; padding: 12px 16px 6px; }
+.speaking-app .speaking-scene-screen .speaking-scene-avatar { width: min(420px, 92%); height: 100%; min-height: 0; flex: 1 1 auto; max-height: 420px; mask-image: none; background: transparent; }
+.speaking-app .speaking-scene-screen .speaking-avatar-fallback img { object-fit: contain; }
+.speaking-partner-role { flex: 0 0 auto; padding: 3px 12px; border-radius: 8px; background: #edf5ff; color: #294f86; font-size: 14px; font-weight: 750; }
+.speaking-app .speaking-scene-screen .speaking-scene-reply { align-self: stretch; width: calc(100% - 48px); height: 100%; min-height: 0; max-height: none; margin: 0; border: 0; border-radius: 22px; background: #edf5fc; box-shadow: none; }
+.speaking-app .speaking-scene-screen .speaking-partner-message { display: block; padding: 12px 20px; height: 100%; }
+.speaking-app .speaking-scene-screen .speaking-partner-message > div { height: 100%; max-height: none; }
+.speaking-app .speaking-scene-screen .speaking-partner-message .speaking-card-kicker { display: none; }
+.speaking-app .speaking-scene-screen .speaking-partner-message p { color: #142f67; font-size: clamp(20px, 1.8vw, 24px); line-height: 1.45; font-weight: 700; letter-spacing: -.015em; }
+.speaking-app .speaking-scene-screen .is-long-reply .speaking-partner-message p { font-size: clamp(18px, 1.6vw, 21px); }
+.speaking-app .speaking-scene-screen .speaking-scene-controls { display: grid; grid-template-columns: minmax(0, 1fr) minmax(120px, 1.2fr) minmax(0, 1fr); gap: 4px 10px; width: 100%; min-height: 0; padding: 10px 24px 6px; background: #fff; border: 0; border-radius: 0; box-shadow: none; }
+.speaking-app .speaking-scene-screen .speaking-scene-control-group { justify-content: center; align-self: end; padding-bottom: 14px; }
+.speaking-app .speaking-scene-screen .speaking-scene-utility { max-width: none; min-height: 44px !important; gap: 5px; color: #214a87 !important; font-size: 14px; }
+.speaking-app .speaking-scene-screen .speaking-scene-control-icon { width: 48px; height: 48px; border: 1px solid #d2e5ff; border-radius: 50%; background: #f3f8ff; }
+.speaking-app .speaking-scene-screen .speaking-scene-control-icon > svg { width: 28px; height: 28px; }
+.speaking-app .speaking-scene-screen .speaking-student-mic-wrap { width: 100%; min-width: 0; gap: 4px; }
+.speaking-turn-state { display: flex; align-items: center; justify-content: center; width: 100%; height: 2.6em; flex-shrink: 0; font-size: 14px; line-height: 1.3; color: #153d79; text-align: center; }
+.speaking-app .speaking-scene-screen .speaking-student-mic { width: 96px; height: 96px; min-height: 96px !important; border: 4px solid #d6e9ff !important; background: #1164da !important; box-shadow: none !important; }
+.speaking-app .speaking-scene-screen .speaking-student-mic svg { width: 38px; height: 38px; }
+.speaking-app .speaking-scene-screen .speaking-student-mic-wrap > span { height: 2.4em; min-height: 2.4em; font-size: 13px; }
+.speaking-app .speaking-scene-screen .speaking-student-mic-listening { background: #087e72 !important; }
+.speaking-app .speaking-scene-screen .speaking-student-mic-ai-speaking { background: #365ca3 !important; }
+.speaking-app .speaking-scene-screen .speaking-student-mic-thinking { background: #6488c2 !important; }
+.speaking-app .speaking-scene-screen .speaking-scene-extra-controls { grid-column: 1 / -1; display: flex; justify-content: center; gap: 22px; }
+.speaking-app .speaking-scene-screen .speaking-scene-extra-controls .speaking-scene-utility { flex-direction: row; gap: 5px; font-size: 13px; min-height: 44px !important; }
+.speaking-app .speaking-scene-screen .speaking-scene-extra-controls .speaking-scene-control-icon { width: 26px; height: 26px; border: 0; background: transparent; }
+.speaking-app .speaking-scene-screen .speaking-scene-extra-controls .speaking-scene-control-icon > svg { width: 20px; height: 20px; }
+.speaking-app .speaking-scene-screen .speaking-student-sidebar { grid-area: sidebar; width: 100%; max-width: none; height: 100%; border-radius: 0; padding: 18px; border-left: 1px solid #dce8f4; background: #fff; box-shadow: none; }
+.speaking-app .speaking-scene-screen .speaking-workspace-support { border: 0; border-radius: 0; box-shadow: none; background: #fff; }
+.speaking-app .speaking-scene-screen .speaking-workspace-support.is-context-view .speaking-support-header { display: none; }
+.speaking-app .speaking-scene-screen .speaking-support-tabpanel-context { overflow: hidden; }
+.speaking-app .speaking-scene-screen .speaking-support-tabpanel-context.has-reference-sheet { overflow-y: auto; overscroll-behavior: contain; }
+.speaking-app .speaking-scene-screen .speaking-context-visual { border-radius: 10px; background: #fff; }
+.speaking-app .speaking-scene-screen .speaking-context-enlarge { width: 48px; height: 48px; bottom: 10px; right: 10px; }
+.speaking-app .speaking-scene-screen .speaking-scene-conversation { width: calc(100% - 32px); align-self: stretch; margin: 8px 16px; max-height: calc(100% - 16px); box-shadow: none; background: #fff; }
+.speaking-app .speaking-scene-screen .speaking-scene-support-toggle { top: 12px; right: 16px; }
+@media (max-width: 1100px) {
+  .speaking-app .speaking-scene-screen .speaking-student-header { gap: 12px; padding-inline: 16px; }
+  .speaking-student-wordmark { font-size: 21px; }
+  .speaking-app .speaking-scene-screen .speaking-student-context { padding-left: 12px; gap: 8px; }
+  .speaking-app .speaking-scene-screen .speaking-student-progress { display: none; }
+}
+@media (min-width: 700px) and (max-width: 959px) and (min-height: 481px) {
+  .speaking-app .speaking-scene-screen .speaking-scene-stage { grid-template-columns: minmax(0, 46fr) minmax(0, 54fr); grid-template-areas: "portrait sidebar" "reply sidebar" "controls sidebar"; }
+  .speaking-app .speaking-scene-screen .speaking-student-wordmark { display: none; }
+  .speaking-app .speaking-scene-screen .speaking-student-sidebar { padding: 12px; }
+  .speaking-app .speaking-scene-screen .speaking-scene-controls { padding-inline: 12px; }
+  .speaking-app .speaking-scene-screen .speaking-scene-reply { width: calc(100% - 24px); }
+  .speaking-app .speaking-scene-screen .speaking-partner-message { padding: 14px 18px; }
+  .speaking-app .speaking-scene-screen .speaking-scene-control-icon { width: 52px; height: 52px; }
+  .speaking-app .speaking-scene-screen .speaking-scene-utility { font-size: 14px; }
+  .speaking-app .speaking-scene-screen .speaking-student-mic { width: 96px; height: 96px; min-height: 96px !important; }
+}
+@media (max-width: 699px) {
+  .speaking-app .speaking-scene-screen .speaking-student-header { grid-template-columns: 44px minmax(0, 1fr); grid-template-rows: 44px 28px; height: 88px; min-height: 88px; padding: 6px 12px; gap: 0 6px; }
+  .speaking-app .speaking-scene-screen .speaking-student-wordmark { display: none; }
+  .speaking-app .speaking-scene-screen .speaking-student-context { display: contents; }
+  .speaking-app .speaking-scene-screen .speaking-student-mode { grid-column: 1 / -1; grid-row: 2; justify-self: start; font-size: 10px; padding: 3px 6px; }
+  .speaking-app .speaking-scene-screen .speaking-student-context > strong { grid-column: 1 / -1; grid-row: 2; padding-left: 84px; font-size: 14px; }
+  .speaking-app .speaking-scene-screen .speaking-student-timer { grid-column: 2; grid-row: 1; justify-self: end; gap: 10px; }
+  .speaking-app .speaking-scene-screen .speaking-student-timer button { font-size: 12px; min-width: 0; padding-inline: 10px; }
+  .speaking-app .speaking-scene-screen .speaking-student-time { font-size: 13px; }
+  .speaking-app .speaking-scene-screen .speaking-scene-stage { grid-template-columns: minmax(0, 1fr); grid-template-rows: minmax(0, 1fr) 108px auto; grid-template-areas: "sidebar" "reply" "controls"; }
+  .speaking-app .speaking-scene-screen .speaking-scene:has(.speaking-student-sidebar:not([hidden])) .speaking-scene-partner { display: none; }
+  .speaking-app .speaking-scene-screen .speaking-student-sidebar { padding: 8px 12px; border-left: 0; min-height: 0; }
+  .speaking-app .speaking-scene-screen .speaking-scene-reply { width: calc(100% - 24px); border-radius: 16px; height: 100%; margin: 0; }
+  .speaking-app .speaking-scene-screen .speaking-partner-message { padding: 16px 20px; }
+  .speaking-app .speaking-scene-screen .speaking-partner-message p { font-size: 18px; }
+  .speaking-app .speaking-scene-screen .speaking-partner-message .speaking-card-kicker { display: inline-block; margin: 0 0 4px; padding: 0; background: transparent; font-size: 12px; }
+  .speaking-app .speaking-scene-screen .speaking-scene-controls { grid-template-columns: minmax(0, 1fr) 128px minmax(0, 1fr); padding: 12px 16px 4px; gap: 2px 4px; }
+  .speaking-app .speaking-scene-screen .speaking-scene-control-group { padding-bottom: 12px; }
+  .speaking-app .speaking-scene-screen .speaking-scene-utility { width: auto; max-width: none; font-size: 13px; }
+  .speaking-app .speaking-scene-screen .speaking-scene-utility > span:last-child { max-width: none; font-size: inherit; }
+  .speaking-app .speaking-scene-screen .speaking-scene-control-icon { width: 48px; height: 48px; }
+  .speaking-app .speaking-scene-screen .speaking-student-mic-wrap { width: 100%; gap: 4px; }
+  .speaking-app .speaking-scene-screen .speaking-student-mic { width: 76px; height: 76px; min-height: 76px !important; }
+  .speaking-app .speaking-scene-screen .speaking-student-mic svg { width: 34px; height: 34px; }
+  .speaking-app .speaking-scene-screen .speaking-turn-state { font-size: 14px; }
+  .speaking-app .speaking-scene-screen .speaking-student-mic-wrap > span { font-size: 13px; }
+}
+@media (max-height: 650px) and (min-width: 700px) {
+  .speaking-app .speaking-scene-screen .speaking-scene-stage { grid-template-rows: minmax(100px, 1fr) 72px auto; }
+  .speaking-app .speaking-scene-screen .speaking-scene-controls { padding: 6px 18px 2px; }
+  .speaking-app .speaking-scene-screen .speaking-student-mic { width: 64px; height: 64px; min-height: 64px !important; }
+  .speaking-app .speaking-scene-screen .speaking-student-mic svg { width: 32px; height: 32px; }
+  .speaking-app .speaking-scene-screen .speaking-turn-state { font-size: 13px; }
+  .speaking-app .speaking-scene-screen .speaking-student-mic-wrap > span { font-size: 12px; }
+  .speaking-app .speaking-scene-screen .speaking-partner-message { padding: 8px 18px; }
+  .speaking-app .speaking-scene-screen .speaking-partner-message p { font-size: 18px; }
+  .speaking-app .speaking-scene-screen .speaking-scene-avatar { max-height: 320px; }
+}
+@media (max-height: 480px) and (min-width: 700px) {
+  .speaking-app .speaking-scene-screen .speaking-scene-partner { display: none; }
+  .speaking-app .speaking-scene-screen .speaking-scene-stage { grid-template-columns: minmax(0, 1fr) minmax(0, 1fr); grid-template-rows: minmax(64px, 1fr) auto; grid-template-areas: "reply sidebar" "controls sidebar"; }
+  .speaking-app .speaking-scene-screen .is-support-collapsed .speaking-scene-stage,
+  .speaking-app .speaking-scene-screen .no-support-panel .speaking-scene-stage { grid-template-columns: minmax(0, 1fr); grid-template-rows: minmax(64px, 1fr) auto; grid-template-areas: "reply" "controls"; }
+  .speaking-app .speaking-scene-screen .speaking-scene-reply { width: calc(100% - 24px); margin: 8px 0 0; height: calc(100% - 8px); max-height: none; }
+  .speaking-app .speaking-scene-screen .speaking-student-mic { width: 56px; height: 56px; min-height: 56px !important; }
+  .speaking-app .speaking-scene-screen .speaking-scene-control-icon { width: 44px; height: 44px; }
+  .speaking-app .speaking-scene-screen .speaking-scene-control-group { padding-bottom: 12px; }
+  .speaking-app .speaking-scene-screen .speaking-scene-controls { padding: 8px 12px 2px; }
+  .speaking-app .speaking-scene-screen .speaking-partner-message p { font-size: 18px; }
+  .speaking-app .speaking-scene-screen .speaking-partner-message .speaking-card-kicker { display: inline-block; margin: 0 0 4px; padding: 0; background: transparent; font-size: 12px; }
+  .speaking-app .speaking-scene-screen .speaking-scene-stage:has(.speaking-scene-conversation:not([hidden])) { grid-template-columns: minmax(0, 1fr) minmax(0, 1fr); grid-template-areas: "reply conversation" "controls conversation"; }
+  .speaking-app .speaking-scene-screen .speaking-scene-conversation { grid-area: conversation; }
+}

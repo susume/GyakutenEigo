@@ -3,6 +3,7 @@ import { useEffect, useId, useRef, useState, type KeyboardEvent } from "react";
 import { BookOpenText, ImageOff, Lightbulb, MessageCircle, X, Maximize2, ZoomIn, ZoomOut } from "lucide-react";
 import { speakingContext, speakingScenarioResources, speakingSupportSettings, type SpeakingActivity, type SpeakingContext } from "@quizstrike/shared";
 import { SpeakingTextbookSupport } from "./SpeakingTextbookSupport";
+import { speakingImageFitWidth } from "./speakingImageViewport";
 
 export type SpeakingSupportTab = "useful-english" | "context";
 
@@ -11,6 +12,7 @@ export interface SpeakingSupportPanelProps {
   activeTab: SpeakingSupportTab;
   onTabChange: (tab: SpeakingSupportTab) => void;
   onClose: () => void;
+  workspace?: boolean;
 }
 
 export const getSpeakingSupportTabs = (activity: SpeakingActivity): Array<{ id: SpeakingSupportTab; label: string }> => {
@@ -28,7 +30,8 @@ export function SpeakingSupportPanel({
   activity,
   activeTab,
   onTabChange,
-  onClose
+  onClose,
+  workspace = false
 }: SpeakingSupportPanelProps) {
   const { t } = useSiteTranslation();
   const generatedId = useId();
@@ -46,7 +49,7 @@ export function SpeakingSupportPanel({
 
   const focusTab = (tab: SpeakingSupportTab) => {
     onTabChange(tab);
-    window.requestAnimationFrame(() => document.getElementById(`${panelId}-tab-${tab}`)?.focus());
+    window.requestAnimationFrame(() => document.getElementById(`${panelId}-${workspace && tab === "context" ? "panel" : "tab"}-${tab}`)?.focus());
   };
 
   const handleTabKeyDown = (event: KeyboardEvent<HTMLButtonElement>) => {
@@ -63,7 +66,7 @@ export function SpeakingSupportPanel({
   };
 
   return (
-    <section className="speaking-support-panel" aria-label={t("Speaking support")}>
+    <section className={`speaking-support-panel${workspace ? " speaking-workspace-support" : ""}${selectedTab === "context" ? " is-context-view" : ""}`} aria-label={t("Speaking support")}>
       <div className="speaking-support-header">
         <h2 className="speaking-support-heading"><BookOpenText size={28} strokeWidth={1.8} aria-hidden="true" />{t("Language Support")}</h2>
         <button className="speaking-support-close" type="button" onClick={onClose} aria-label={t("Close support panel")}>
@@ -81,7 +84,7 @@ export function SpeakingSupportPanel({
                 aria-selected={selected}
                 aria-controls={`${panelId}-panel-${tab.id}`}
                 tabIndex={selected ? 0 : -1}
-                onClick={() => onTabChange(tab.id)}
+                onClick={() => focusTab(tab.id)}
                 onKeyDown={handleTabKeyDown}
               >
                 <span>{t(tab.label)}</span>
@@ -159,12 +162,29 @@ export function SpeakingContextPanel({ context, referenceItems = [] }: { context
   const { t } = useSiteTranslation();
   const [imageError, setImageError] = useState(false);
   const viewer = useRef<HTMLDialogElement>(null);
+  const viewerScroll = useRef<HTMLDivElement>(null);
+  const inlineScroll = useRef<HTMLDivElement>(null);
   const [zoom, setZoom] = useState(1);
+  const [inlineZoom, setInlineZoom] = useState(1);
+  const [naturalSize, setNaturalSize] = useState({ width: 0, height: 0 });
+  const [viewerSize, setViewerSize] = useState({ width: 0, height: 0 });
   const imageUrl = context?.imageUrl;
 
   useEffect(() => {
     setImageError(false);
+    setInlineZoom(1);
+    setZoom(1);
+    inlineScroll.current?.scrollTo(0, 0);
+    viewerScroll.current?.scrollTo(0, 0);
   }, [imageUrl]);
+
+  useEffect(() => {
+    const viewport = viewerScroll.current;
+    if (!viewport) return;
+    const observer = new ResizeObserver(() => setViewerSize({ width: viewport.clientWidth, height: viewport.clientHeight }));
+    observer.observe(viewport);
+    return () => observer.disconnect();
+  }, [imageUrl, imageError]);
 
   if (!context && !referenceItems.length) {
     return <ContextEmptyState message={t("No context available for this activity.")} />;
@@ -176,18 +196,24 @@ export function SpeakingContextPanel({ context, referenceItems = [] }: { context
     <div className="speaking-context-panel-content">
       {imageUrl && !imageError ? (
         <figure className={`speaking-context-visual context-type-${context?.type ?? "photo"}`}>
-          <img src={imageUrl} alt={alt} onError={() => setImageError(true)} decoding="async" />
+          <div ref={inlineScroll} className="speaking-context-image-scroll" tabIndex={0} data-keyboard-input>
+            <img src={imageUrl} alt={alt} onLoad={(event) => setNaturalSize({ width: event.currentTarget.naturalWidth, height: event.currentTarget.naturalHeight })} onError={() => setImageError(true)} decoding="async" style={{ width: `${inlineZoom * 100}%`, height: `${inlineZoom * 100}%` }} />
+          </div>
+          <div className="speaking-context-tools">
           <button type="button" className="speaking-context-enlarge" aria-label={t("Enlarge image")} onClick={() => { setZoom(1); viewer.current?.showModal(); }}>
             <Maximize2 size={24} aria-hidden="true" />
           </button>
+          <button type="button" aria-label={t("Zoom out")} disabled={inlineZoom <= 1} onClick={() => setInlineZoom((value) => Math.max(1, value - .5))}><ZoomOut size={24} aria-hidden="true" /></button>
+          <button type="button" aria-label={t("Zoom in")} disabled={inlineZoom >= 3} onClick={() => setInlineZoom((value) => Math.min(3, value + .5))}><ZoomIn size={24} aria-hidden="true" /></button>
+          </div>
           <dialog ref={viewer} className="speaking-image-viewer" aria-label={t("Context image")} onKeyDown={(event) => { if (event.key === "Escape") event.stopPropagation(); }}>
             <div className="speaking-image-viewer-controls">
               <button type="button" aria-label={t("Zoom out")} disabled={zoom <= 1} onClick={() => setZoom((value) => Math.max(1, value - .5))}><ZoomOut size={24} aria-hidden="true" /></button>
               <button type="button" aria-label={t("Zoom in")} disabled={zoom >= 3} onClick={() => setZoom((value) => Math.min(3, value + .5))}><ZoomIn size={24} aria-hidden="true" /></button>
               <button type="button" aria-label={t("Close image")} onClick={() => viewer.current?.close()}><X size={24} aria-hidden="true" /></button>
             </div>
-            <div className="speaking-image-viewer-scroll" tabIndex={0} data-keyboard-input>
-              <img src={imageUrl} alt={alt} style={{ width: `${zoom * 100}%`, minWidth: `${zoom * 707}px` }} />
+            <div ref={viewerScroll} className="speaking-image-viewer-scroll" tabIndex={0} data-keyboard-input>
+              <img src={imageUrl} alt={alt} style={{ width: speakingImageFitWidth(viewerSize, naturalSize) * zoom }} />
             </div>
           </dialog>
         </figure>
