@@ -1599,6 +1599,7 @@
 }
 
 .speaking-context-visual {
+  position: relative;
   width: 100%;
   height: 100%;
   min-width: 0;
@@ -1622,6 +1623,38 @@
   object-fit: contain;
   object-position: center;
 }
+
+.speaking-context-enlarge {
+  position: absolute;
+  right: 10px;
+  bottom: 10px;
+  width: 48px;
+  min-height: 48px;
+  display: grid;
+  place-items: center;
+  border: 1px solid #bfd3e8;
+  border-radius: 12px;
+  background: #fff;
+  color: #10295b;
+}
+
+.speaking-image-viewer {
+  width: min(1100px, 96vw);
+  height: 94dvh;
+  max-width: 96vw;
+  max-height: 94dvh;
+  padding: 0;
+  border: 1px solid #bfd3e8;
+  border-radius: 16px;
+  background: #fff;
+  color: #10295b;
+}
+.speaking-image-viewer[open] { display: flex; flex-direction: column; }
+.speaking-image-viewer::backdrop { background: rgb(10 25 50 / 65%); }
+.speaking-image-viewer-controls { display: flex; justify-content: flex-end; gap: 8px; padding: 8px; }
+.speaking-image-viewer-controls button { display: grid; place-items: center; width: 44px; min-height: 44px; }
+.speaking-image-viewer-scroll { flex: 1; min-height: 0; overflow: auto; overscroll-behavior: contain; touch-action: pan-x pan-y pinch-zoom; }
+.speaking-context-visual .speaking-image-viewer-scroll img { height: auto; max-width: none; object-fit: contain; }
 
 .speaking-keywords h3,
 .speaking-reference-sheet h3 {

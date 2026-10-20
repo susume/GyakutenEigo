@@ -18,7 +18,8 @@ test("valid student context renders the accessible image without visible context
       imageUrl: "/assets/speaking/context-library-map.webp",
       alt: "Illustrated neighborhood map from the station to the library",
       type: "map"
-    }
+    },
+    referenceItems: [{ label: "Your starting point and destination", detail: "Take the train to Asakusa." }]
   }));
 
   assert.doesNotMatch(markup, /Neighborhood route/u);
@@ -26,6 +27,8 @@ test("valid student context renders the accessible image without visible context
   assert.match(markup, /src="\/assets\/speaking\/context-library-map\.webp"/u);
   assert.match(markup, /alt="Illustrated neighborhood map from the station to the library"/u);
   assert.match(markup, /context-type-map/u);
+  assert.doesNotMatch(markup, /Your starting point|Take the train|Task information/u);
+  assert.match(markup, /aria-label="Enlarge image"/u);
 });
 
 test("student context keeps the missing-context empty state", () => {

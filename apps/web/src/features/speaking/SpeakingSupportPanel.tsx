@@ -1,6 +1,6 @@
 import { useSiteTranslation } from "../../ui/siteTranslation";
-import { useEffect, useId, useState, type KeyboardEvent } from "react";
-import { BookOpenText, ImageOff, Lightbulb, MessageCircle, X } from "lucide-react";
+import { useEffect, useId, useRef, useState, type KeyboardEvent } from "react";
+import { BookOpenText, ImageOff, Lightbulb, MessageCircle, X, Maximize2, ZoomIn, ZoomOut } from "lucide-react";
 import { speakingContext, speakingScenarioResources, speakingSupportSettings, type SpeakingActivity, type SpeakingContext } from "@quizstrike/shared";
 import { SpeakingTextbookSupport } from "./SpeakingTextbookSupport";
 
@@ -96,7 +96,7 @@ export function SpeakingSupportPanel({
             <UsefulEnglishPanel activity={activity} />
           </div>
         ) : (
-          <div id={`${panelId}-panel-context`} role="tabpanel" aria-labelledby={`${panelId}-tab-context`} tabIndex={0} data-keyboard-input className={`speaking-support-tabpanel speaking-support-tabpanel-context${resources.referenceItems.length ? " has-reference-sheet" : ""}`}>
+          <div id={`${panelId}-panel-context`} role="tabpanel" aria-labelledby={`${panelId}-tab-context`} tabIndex={0} data-keyboard-input className={`speaking-support-tabpanel speaking-support-tabpanel-context${!context?.imageUrl && resources.referenceItems.length ? " has-reference-sheet" : ""}`}>
             <SpeakingContextPanel context={context} referenceItems={resources.referenceItems} />
           </div>
         )}
@@ -158,6 +158,8 @@ export function SpeakingReferenceSheet({ items = [] }: { items?: ReferenceItems 
 export function SpeakingContextPanel({ context, referenceItems = [] }: { context?: SpeakingContext; referenceItems?: ReferenceItems }) {
   const { t } = useSiteTranslation();
   const [imageError, setImageError] = useState(false);
+  const viewer = useRef<HTMLDialogElement>(null);
+  const [zoom, setZoom] = useState(1);
   const imageUrl = context?.imageUrl;
 
   useEffect(() => {
@@ -175,11 +177,24 @@ export function SpeakingContextPanel({ context, referenceItems = [] }: { context
       {imageUrl && !imageError ? (
         <figure className={`speaking-context-visual context-type-${context?.type ?? "photo"}`}>
           <img src={imageUrl} alt={alt} onError={() => setImageError(true)} decoding="async" />
+          <button type="button" className="speaking-context-enlarge" aria-label={t("Enlarge image")} onClick={() => { setZoom(1); viewer.current?.showModal(); }}>
+            <Maximize2 size={24} aria-hidden="true" />
+          </button>
+          <dialog ref={viewer} className="speaking-image-viewer" aria-label={t("Context image")} onKeyDown={(event) => { if (event.key === "Escape") event.stopPropagation(); }}>
+            <div className="speaking-image-viewer-controls">
+              <button type="button" aria-label={t("Zoom out")} disabled={zoom <= 1} onClick={() => setZoom((value) => Math.max(1, value - .5))}><ZoomOut size={24} aria-hidden="true" /></button>
+              <button type="button" aria-label={t("Zoom in")} disabled={zoom >= 3} onClick={() => setZoom((value) => Math.min(3, value + .5))}><ZoomIn size={24} aria-hidden="true" /></button>
+              <button type="button" aria-label={t("Close image")} onClick={() => viewer.current?.close()}><X size={24} aria-hidden="true" /></button>
+            </div>
+            <div className="speaking-image-viewer-scroll" tabIndex={0} data-keyboard-input>
+              <img src={imageUrl} alt={alt} style={{ width: `${zoom * 100}%`, minWidth: `${zoom * 707}px` }} />
+            </div>
+          </dialog>
         </figure>
       ) : context ? (
         <ContextEmptyState message={imageUrl ? t("Unable to load context image.") : t("No context image available for this activity.")} />
       ) : null}
-      <SpeakingReferenceSheet items={referenceItems} />
+      {!imageUrl && <SpeakingReferenceSheet items={referenceItems} />}
     </div>
   );
 }

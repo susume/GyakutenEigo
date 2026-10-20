@@ -77,11 +77,27 @@ test("HWG assessment retains its train map from the library to the student conte
     await expect(page.locator(".speaking-partner-message p")).toHaveText("Excuse me. May I ask you something?");
     await page.getByRole("button", { name: "Open Context support", exact: true }).click();
     const context = page.getByRole("tabpanel", { name: "Context", exact: true });
-    const map = context.locator("img");
+    const map = context.locator("figure > img");
     await expect(map).toHaveAttribute("src", mapUrl);
     await expect.poll(() => map.evaluate((image) => (image as HTMLImageElement).naturalWidth)).toBeGreaterThan(600);
     await expect(map).toBeInViewport();
     await expect(map).toHaveCSS("object-fit", "contain");
+    await expect(context.locator(".speaking-reference-sheet")).toHaveCount(0);
+    await expect(context).not.toContainText("Your starting point and destination");
+    if (viewport.width > 900) {
+      expect((await map.boundingBox())!.height).toBeGreaterThan(500);
+      expect((await map.boundingBox())!.width).toBeGreaterThan(450);
+    }
+    await context.getByRole("button", { name: "Enlarge image", exact: true }).click();
+    const viewer = page.getByRole("dialog", { name: "Context image", exact: true });
+    await expect(viewer).toBeVisible();
+    const enlarged = viewer.locator("img");
+    expect((await enlarged.boundingBox())!.width).toBeGreaterThanOrEqual(707);
+    await viewer.getByRole("button", { name: "Zoom in", exact: true }).click();
+    await expect.poll(async () => (await enlarged.boundingBox())!.width).toBeGreaterThanOrEqual(1060);
+    await page.screenshot({ path: testInfo.outputPath(`hwg-map-enlarged-${viewport.width}.png`) });
+    await page.keyboard.press("Escape");
+    await expect(viewer).not.toBeVisible();
     expect(await page.evaluate(() => document.documentElement.scrollWidth)).toBeLessThanOrEqual(viewport.width);
     await page.screenshot({ path: testInfo.outputPath(`hwg-train-map-${viewport.width}.png`) });
     await page.getByRole("tab", { name: "Useful English", exact: true }).click();
