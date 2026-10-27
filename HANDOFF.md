@@ -30,7 +30,7 @@ authority, persistence, provider, or route fact changes.
 
 ## Start locally
 
-Use Node 20.19+ or Node 22.13+; `.nvmrc` selects Node 22.13.
+Use Node 22.23.4; `.nvmrc` and both GitHub workflows select this patched version.
 
 ~~~powershell
 npm install
@@ -99,7 +99,7 @@ Required names (values belong only in Render):
 
 ~~~text
 NODE_ENV=production
-NODE_VERSION=22
+NODE_VERSION=22.23.4
 JWT_SECRET=<secret>
 DATABASE_URL=<Supabase session-pooler URL>
 CLIENT_ORIGIN=https://gyakuteneigo.com,https://www.gyakuteneigo.com,https://susume.github.io
@@ -119,7 +119,8 @@ the local default is 4000.
 
 ### GitHub Pages
 
-The Pages workflow builds on `main` with Node 22. Current default values are:
+The Pages workflow builds on `main` with the Node version in `.nvmrc`.
+Current default values are:
 
 ~~~text
 VITE_BASE_PATH=/

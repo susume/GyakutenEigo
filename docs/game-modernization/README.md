@@ -79,7 +79,7 @@ The settings slider stores sensitivity in the existing preferences key, migrates
 
 ## Reproduce the character pipeline
 
-Dependencies are pinned in `apps/web/package.json` and the workspace lockfile. Use the repository's supported Node version (`^20.19.0 || >=22.13.0`). Run commands from the repository root:
+Dependencies are pinned in `apps/web/package.json` and the workspace lockfile. Use Node 22.23.4, as selected by `.nvmrc`. Run commands from the repository root:
 
 ```powershell
 npm ci

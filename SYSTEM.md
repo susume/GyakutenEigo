@@ -270,7 +270,7 @@ Required/active server configuration names:
 
 ```text
 NODE_ENV=production
-NODE_VERSION=22
+NODE_VERSION=22.23.4
 PORT=<Render-provided port or local 4000>
 JWT_SECRET=<server-only secret>
 DATABASE_URL=<Supabase session-pooler URL>
@@ -288,6 +288,13 @@ SPEAKING_GEMINI_TRANSCRIPTION_MODEL=gemini-3.5-transcribe
 `PORT` is provider-controlled on Render; the local default is 4000. Never put
 `DATABASE_URL`, `JWT_SECRET`, provider keys, Supabase credentials, tokens, or
 private decal bytes in `VITE_*` variables or Git.
+
+The October 2026 runtime security baseline is Node 22.23.4. `.nvmrc`, CI,
+and the Pages build use that version; package requirements exclude earlier
+unpatched releases of Node 22, 24, and 26. Render's `NODE_VERSION` takes
+precedence over `.nvmrc` and must match the baseline. A new build applies the
+Node.js fixes and refreshes the native runtime's system certificate store.
+See [Render's eMudhra advisory](https://render.com/docs/advisory-emudhra).
 
 ### GitHub Pages web build
 

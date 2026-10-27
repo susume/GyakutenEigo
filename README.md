@@ -48,7 +48,9 @@ For the complete current-state description, read
 
 ## Local setup
 
-Use Node.js 20.19+ or 22.13+; `.nvmrc` selects Node 22.13.
+Use Node.js 22.23.4, as selected by `.nvmrc` and both GitHub workflows.
+The package requirements also allow patched Node 24.22.1+ and 26.12.1+ within
+their respective major versions.
 
 ~~~powershell
 npm install
@@ -128,7 +130,7 @@ Server-only Render values:
 
 ~~~text
 NODE_ENV=production
-NODE_VERSION=22
+NODE_VERSION=22.23.4
 JWT_SECRET=<secret>
 DATABASE_URL=<Supabase session-pooler URL>
 CLIENT_ORIGIN=https://gyakuteneigo.com,https://www.gyakuteneigo.com,https://susume.github.io
@@ -162,6 +164,16 @@ npm start -w @quizstrike/server
 The service runs `prisma migrate deploy` before listening when
 `DATABASE_URL` is configured. Do not use `prisma db push` or
 `prisma migrate dev` against production.
+
+Render's `NODE_VERSION` overrides `.nvmrc`, so keep that service variable at
+`22.23.4` when deploying this baseline. Rebuild the service after changing it
+to apply the October 2026 Node.js security fixes and refresh Render's system
+certificate store. See [Render's eMudhra advisory](https://render.com/docs/advisory-emudhra).
+
+The dependency lockfile includes the accompanying npm security updates.
+A scoped override keeps Prisma 6's `@prisma/config` on patched `deepmerge-ts`
+8.x for [GHSA-ggr8-5vv4-36mx](https://github.com/advisories/GHSA-ggr8-5vv4-36mx).
+Recheck this override when upgrading Prisma's configuration package.
 
 ## Verification
 

@@ -61,7 +61,7 @@ Server-only configuration names:
 
 ~~~text
 NODE_ENV=production
-NODE_VERSION=22
+NODE_VERSION=22.23.4
 JWT_SECRET=<long random secret>
 DATABASE_URL=<Supabase session-pooler URL>
 CLIENT_ORIGIN=https://gyakuteneigo.com,https://www.gyakuteneigo.com,https://susume.github.io

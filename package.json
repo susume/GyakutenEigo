@@ -3,13 +3,18 @@
   "version": "0.1.0",
   "private": true,
   "engines": {
-    "node": "^20.19.0 || >=22.13.0"
+    "node": "^22.23.4 || ^24.22.1 || ^26.12.1"
   },
   "workspaces": [
     "apps/web",
     "apps/server",
     "packages/shared"
   ],
+  "overrides": {
+    "@prisma/config": {
+      "deepmerge-ts": "^8.0.0"
+    }
+  },
   "scripts": {
     "dev": "concurrently -n shared,server,web -c cyan,green,magenta \"npm run dev -w @quizstrike/shared\" \"npm run dev -w @quizstrike/server\" \"npm run dev -w @quizstrike/web\"",
     "build": "npm run build -w @quizstrike/shared && npm run build -w @quizstrike/server && npm run build -w @quizstrike/web",
@@ -33,11 +38,11 @@
   },
   "devDependencies": {
     "@eslint/js": "^9.39.5",
-    "concurrently": "^9.2.1",
+    "concurrently": "^9.2.5",
     "eslint": "^9.39.5",
     "eslint-plugin-react-hooks": "^6.1.1",
     "globals": "^16.5.0",
-    "prisma": "^6.11.1",
+    "prisma": "^6.19.3",
     "typescript": "^5.8.3",
     "typescript-eslint": "^8.65.0"
   }
