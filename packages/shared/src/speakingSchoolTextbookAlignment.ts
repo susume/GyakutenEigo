@@ -577,6 +577,20 @@ export const SCHOOL_TEXTBOOK_ALIGNMENTS: Readonly<Record<string, SchoolTextbookA
       "You: Thank you. [Confirm the agreed next step].",
     ].join("\n")
   },
+  "hwg-bk2-dl6-going-to-the-doctor": {
+    references: [],
+    goalAddition: "Make your message easy for the doctor to understand.",
+    words: [],
+    expressions: [],
+    exampleDialogue: [
+      "Partner: Hello. What's the matter?",
+      "You: I have a headache. It started this morning.",
+      "Partner: You should take a rest.",
+      "You: Okay, I'll take a rest.",
+      "You: How long should I rest?",
+      "Partner: You can rest here until your parent comes."
+    ].join("\n")
+  },
   "making-requests-and-asking-permission": {
     references: [lessons.PERMISSION!, lessons.REQUESTS!],
     goalAddition: "Acknowledge any limit or rule on permission.",

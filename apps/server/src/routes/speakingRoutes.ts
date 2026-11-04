@@ -10,6 +10,8 @@ import {
   SpeakingTurnInputSchema,
   speakingActiveElapsedMs,
   speakingOverallScore,
+  hasHwgDoctorRubric,
+  hwgDoctorGrade,
   speakingFeedbackCopy,
   recommendedSpeakingSupportSettings,
   resolveSpeakingSupportSettings,
@@ -201,6 +203,7 @@ const speakingCsvRowsForResults = (items: Awaited<ReturnType<SpeakingRepository[
     ? Math.round(participantActiveElapsedMs(item.participant, item.session, referenceTime) / 1_000)
     : 0;
   const scores = speakingCsvEvaluationScores(item.evaluation);
+  const usesDoctorGrades = hasHwgDoctorRubric(item.activity.rubric);
   return {
     setNames,
     performanceTest: item.activity.title,
@@ -212,6 +215,7 @@ const speakingCsvRowsForResults = (items: Awaited<ReturnType<SpeakingRepository[
     status: item.participant.status,
     duration: speakingDurationLabel(durationSeconds),
     overallScore: speakingOverallScore(item.evaluation),
+    ...(usesDoctorGrades ? { doctorGrade: hwgDoctorGrade(item.activity.rubric, scores) ?? null } : {}),
     criteria: item.activity.rubric.filter((criterion) => criterion.enabled).map((criterion) => ({ id: criterion.id, name: criterion.name, score: scores[criterion.id] ?? null })),
     helpCount: item.participant.helpCount
   };

@@ -9,6 +9,7 @@ import {
   type SpeakingLibraryCollection
 } from "./speaking.js";
 import { speakingLibraryCategoryId } from "./speakingLibraryRegistry.js";
+import { HWG_DOCTOR_RUBRIC } from "./speakingRubric.js";
 import { SCHOOL_TEXTBOOK_ALIGNMENTS } from "./speakingSchoolTextbookAlignment.js";
 
 export type SpeakingCoreLibraryItem = SpeakingCreateActivityInput & {
@@ -37,6 +38,8 @@ type CoreSeed = {
   imageSrc: string;
   imageAlt: string;
   context?: SpeakingContext;
+  rubric?: SpeakingCreateActivityInput["rubric"];
+  supportSettings?: Partial<SpeakingCreateActivityInput["supportSettings"]>;
   durationSeconds?: number;
   referenceItems?: Array<{ label: string; detail?: string }>;
 };
@@ -306,9 +309,9 @@ const core = (seed: CoreSeed): SpeakingCoreLibraryItem => {
   durationSeconds: seed.durationSeconds ?? 180,
   identifierMode: "nickname",
   mode: "assessment",
-  supportSettings: { ...DEFAULT_SPEAKING_ASSESSMENT_SUPPORT_SETTINGS },
+  supportSettings: { ...DEFAULT_SPEAKING_ASSESSMENT_SUPPORT_SETTINGS, ...seed.supportSettings },
   targetExpressions: [...new Set([...seed.targetExpressions, ...(alignment?.expressions ?? [])])],
-  rubric: DEFAULT_SPEAKING_RUBRIC.map((criterion) => ({ ...criterion })),
+  rubric: (seed.rubric ?? DEFAULT_SPEAKING_RUBRIC).map((criterion) => ({ ...criterion })),
   context: { ...contextForCoreSeed(seed) },
   scenarioResources: {
     libraryCollection,
@@ -324,7 +327,9 @@ const core = (seed: CoreSeed): SpeakingCoreLibraryItem => {
     usefulVocabulary: vocabulary,
     ...(alignment ? {
       exampleDialogue: alignment.exampleDialogue,
-      textbookReferences: alignment.references.map((reference) => ({ ...reference, pdfPages: [...reference.pdfPages] }))
+      ...(alignment.references.length ? {
+        textbookReferences: alignment.references.map((reference) => ({ ...reference, pdfPages: [...reference.pdfPages] }))
+      } : {})
     } : {}),
     referenceItems: seed.referenceItems?.map((item) => ({ ...item })) ?? [],
     builtIn: true,
@@ -910,6 +915,37 @@ export const SCHOOL_ENGLISH_LIBRARY: SpeakingCoreLibraryItem[] = [
     imageSrc: INTRO,
     imageAlt: "A student speaking with a school nurse",
     durationSeconds: 240
+  }),
+  core({
+    id: "hwg-bk2-dl6-going-to-the-doctor",
+    title: "HWG Bk2 DL6 Going to the Doctor",
+    category: "Help & Problem Solving",
+    scenario: "You are a patient at a clinic. Open Context for your patient card. Explain how you feel and when it started. Listen to the doctor's advice, say what you will do, and ask a follow-up question about the advice. Use the fictional details on your card.",
+    aiRole: "Doctor",
+    studentRole: "Patient",
+    goal: "Describe all three symptoms and say when they started. Respond to the advice by saying what you will do, then ask a specific question about it.",
+    aiContext: "This is a fictional clinic role-play. Let the patient describe the card in their own words. If they omit when it started, ask when, without supplying details. Then say 'You should go home and take a rest.' Pause for the response and follow-up question. If they only respond, invite a question without suggesting one. Answer briefly in simple English. Avoid diagnoses, medicines, or real medical advice.",
+    skills: ["Describing", "Listening", "Follow-up questions"],
+    complication: "If you cannot understand what the patient said, ask them to repeat or clarify that part. Ask about onset separately from any request to repeat unclear speech.",
+    conditions: [
+      "Communicate the three symptoms from the patient card and their onset.",
+      "State what you will do in line with the doctor's advice.",
+      "Name the recommended action and ask a specific follow-up question about it."
+    ],
+    openingLine: "Hello. What's the matter?",
+    steps: ["Open your patient card.", "Describe how you feel and when it started.", "Say what you will do after hearing the advice.", "Ask the doctor a question about the advice."],
+    vocabulary: ["cough — 咳", "sneeze — くしゃみ", "runny nose — 鼻水", "take a rest — ひと休みする"],
+    targetExpressions: ["I have a…", "I keep…", "It started…", "I’ll…", "How long should I…?"],
+    imageSrc: INTRO,
+    imageAlt: "Illustration of a conversation",
+    context: { title: "Patient card", type: "other" },
+    referenceItems: [
+      { label: "症状 / Symptoms", detail: "咳、くしゃみ、鼻水" },
+      { label: "いつから / Onset", detail: "昨日の夜" }
+    ],
+    rubric: HWG_DOCTOR_RUBRIC.map(({ id, name, description }) => ({ id, name, description, enabled: true })),
+    supportSettings: { showTargetExpressions: false },
+    durationSeconds: 180
   }),
   core({
     id: "making-requests-and-asking-permission",

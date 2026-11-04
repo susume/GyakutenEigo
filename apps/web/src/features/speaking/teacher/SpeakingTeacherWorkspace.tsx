@@ -30,6 +30,9 @@ import { createPortal } from "react-dom";
 import { QRCodeSVG } from "qrcode.react";
 import {
   DEFAULT_SPEAKING_RUBRIC,
+  hasHwgDoctorRubric,
+  hwgDoctorGrade,
+  speakingCriterionMax,
   recommendedSpeakingSupportSettings,
   resolveSpeakingSupportSettings,
   SPEAKING_MODE_LABELS,
@@ -690,7 +693,7 @@ function SpeakingCorePreview({ template, working, onClose, onUse, onCustomize }:
       <SpeakingReferenceSheet items={resources.referenceItems} />
       <div className="speaking-preview-skills"><span className="speaking-preview-label">{t("Speaking partner role")}</span><p>{template.aiRole}</p><span className="speaking-preview-label">{t("Assessment criteria")}</span><ul>{template.rubric.filter((criterion) => criterion.enabled).map((criterion) => <li key={criterion.id}><strong>{criterion.name}</strong>: {criterion.description}</li>)}</ul></div>
       <div className="speaking-preview-skills"><span className="speaking-preview-label">{t("Communication skills")}</span><div className="speaking-skill-tags">{speakingSkills(template).map((item) => <span key={item}>{t(item)}</span>)}</div></div>
-      <SpeakingRubricGuide />
+      <SpeakingRubricGuide rubric={template.rubric} />
       <div className="speaking-preview-actions"><button type="button" className="speaking-outline-button" onClick={onClose}>{t("Close")}</button><button type="button" className="speaking-text-button" onClick={onCustomize}>{t("Customize")}</button><button type="button" className="speaking-primary-button" onClick={onUse} disabled={working}>{working ? t("Adding…") : t("Use as-is")}</button></div>
     </section>
   </div>;
@@ -752,9 +755,7 @@ const draftFromTemplate = (
   durationSeconds: template.durationSeconds,
   identifierMode: template.identifierMode,
   mode,
-  supportSettings: isCoreTemplate
-    ? recommendedSpeakingSupportSettings("assessment")
-    : resolveSpeakingSupportSettings(template.supportSettings),
+  supportSettings: resolveSpeakingSupportSettings(template.supportSettings ?? recommendedSpeakingSupportSettings(mode)),
   targetExpressions: [...template.targetExpressions],
   rubric: template.rubric.map((criterion) => ({ ...criterion })),
   ...((template.context ?? template.scenarioResources?.context) ? { context: { ...(template.context ?? template.scenarioResources?.context) } } : {}),
@@ -1489,8 +1490,10 @@ function SpeakingCreatePage({
                   </label>
                 </div>
                 <div className="speaking-builder-card-heading"><div><span className="speaking-card-kicker">{t("Evaluation rubric")}</span><h2>{t("Customize the standard rubric")}</h2></div><span className="speaking-builder-step">{t("Advanced")}</span></div>
-            <p className="speaking-rubric-intro">{t("Each enabled criterion is scored from 0 to 4, with conversation evidence. Insufficient speech is left unscored.")}</p>
-            <SpeakingRubricGuide />
+            <p className="speaking-rubric-intro">{draft.rubric.some((criterion) => criterion.enabled && speakingCriterionMax(criterion.id) === 5)
+              ? t("See the scoring guide for the point scale. Insufficient speech is left unscored.")
+              : t("Each enabled criterion is scored from 0 to 4, with conversation evidence. Insufficient speech is left unscored.")}</p>
+            <SpeakingRubricGuide rubric={draft.rubric} />
             <div className="speaking-rubric-editor-heading">
               <div>
                 <span className="speaking-card-kicker">{t("Editable rubric")}</span>
@@ -1575,7 +1578,9 @@ function SpeakingCreatePage({
           </section>
           <section id="speaking-review" className="speaking-builder-card speaking-review-card">
              <div className="speaking-builder-card-heading"><div><span className="speaking-card-kicker">{t("Review & save")}</span><h2>{draft.title || t("Your Speaking Task")}</h2></div><span className="speaking-builder-step">03</span></div>
-            <p>{draft.scenario}</p><dl className="speaking-review-facts"><div><dt>{t("Mode")}</dt><dd><span className={`speaking-mode-badge speaking-mode-${selectedMode}`}>{t(speakingModeLabel(selectedMode))}</span></dd></div><div className="speaking-review-support-fact"><dt>{t("Student support")}</dt><dd>{t(speakingSupportSummary({ mode: selectedMode, supportSettings: selectedSupportSettings }, t))}</dd></div><div><dt>{t("Speaking time")}</dt><dd>{formatDuration(draft.durationSeconds)}</dd></div><div><dt>{t("Student identification")}</dt><dd>{t(SPEAKING_IDENTIFIER_MODE_LABELS[draft.identifierMode])}</dd></div><div><dt>{t("Evaluation")}</dt><dd>{draft.rubric.filter((criterion) => criterion.enabled).length}{" "}{t("criteria · 4 points each")}</dd></div></dl>
+            <p>{draft.scenario}</p><dl className="speaking-review-facts"><div><dt>{t("Mode")}</dt><dd><span className={`speaking-mode-badge speaking-mode-${selectedMode}`}>{t(speakingModeLabel(selectedMode))}</span></dd></div><div className="speaking-review-support-fact"><dt>{t("Student support")}</dt><dd>{t(speakingSupportSummary({ mode: selectedMode, supportSettings: selectedSupportSettings }, t))}</dd></div><div><dt>{t("Speaking time")}</dt><dd>{formatDuration(draft.durationSeconds)}</dd></div><div><dt>{t("Student identification")}</dt><dd>{t(SPEAKING_IDENTIFIER_MODE_LABELS[draft.identifierMode])}</dd></div><div><dt>{t("Evaluation")}</dt><dd>{draft.rubric.filter((criterion) => criterion.enabled).length}{" "}{draft.rubric.some((criterion) => criterion.enabled && speakingCriterionMax(criterion.id) === 5)
+              ? t("criteria · {value0} points total", { value0: draft.rubric.filter((criterion) => criterion.enabled).reduce((total, criterion) => total + speakingCriterionMax(criterion.id), 0) })
+              : t("criteria · 4 points each")}</dd></div></dl>
             <p>{t("Save this reusable task. On the next screen, launch a session to get your class code.")}</p>
           </section>
           {formError && (
@@ -2245,7 +2250,6 @@ function SpeakingResultsPage({
     return (resultsFilter === "all" || (resultsFilter === "review" ? item.status === "error" || item.evaluationStatus === "failed" || item.evaluation?.assessmentStatus === "insufficient_evidence" : resultsFilter === "retrying" ? item.evaluationStatus === "retrying" : item.status === resultsFilter)) &&
       (!resultQuery || display.toLocaleLowerCase().includes(resultQuery));
   });
-  filteredResults.sort((a, b) => sort === "score" ? (a.overallScore ?? -1) - (b.overallScore ?? -1) : sort === "help" ? b.helpCount - a.helpCount : (a.participant.displayIdentifier ?? a.participant.id).localeCompare(b.participant.displayIdentifier ?? b.participant.id, undefined, { numeric: true }));
   const completed = payload?.items.filter((item) => item.status === "completed").length ?? 0;
   const needsReview = payload?.items.filter((item) => item.status === "error" || item.evaluationStatus === "failed" || item.evaluation?.assessmentStatus === "insufficient_evidence").length ?? 0;
   if (error && !activity)
@@ -2253,6 +2257,10 @@ function SpeakingResultsPage({
   if (!activity || (sessionId && loadingResults)) return <TeacherLoading />;
   const displayActivity = payload?.activity ?? activity;
   const criteria = displayActivity.rubric.filter((criterion) => criterion.enabled);
+  const usesDoctorGrades = hasHwgDoctorRubric(criteria);
+  const resultPoints = (item: typeof filteredResults[number]) =>
+    usesDoctorGrades ? hwgDoctorGrade(criteria, item.evaluation?.scores)?.points : item.overallScore;
+  filteredResults.sort((a, b) => sort === "score" ? (resultPoints(a) ?? -1) - (resultPoints(b) ?? -1) : sort === "help" ? b.helpCount - a.helpCount : (a.participant.displayIdentifier ?? a.participant.id).localeCompare(b.participant.displayIdentifier ?? b.participant.id, undefined, { numeric: true }));
   return (
     <div className="speaking-page-shell speaking-teacher-shell">
       <main className="speaking-teacher-layout">
@@ -2363,18 +2371,22 @@ function SpeakingResultsPage({
             </div>
           ) : payload?.items.length ? filteredResults.length ? (
             <div className="speaking-results-table" role="region" aria-label={t("Class results table")} tabIndex={0}>
-              <table><caption>{t("Rubric scores from 0 to 4 · Speaking evaluation and conversation evidence for teacher review")}</caption><thead><tr>
+              <table><caption>{criteria.some((criterion) => speakingCriterionMax(criterion.id) === 5) ? t("Rubric scores and conversation evidence for teacher review") : t("Rubric scores from 0 to 4 · Speaking evaluation and conversation evidence for teacher review")}</caption><thead><tr>
                 <th scope="col">{t("Student")}</th><th scope="col">{t("Status")}</th><th scope="col">{t("Overall")}</th>
                 {criteria.map((criterion) => <th scope="col" key={criterion.id} title={criterion.description}>{criterion.name}</th>)}
                 <th scope="col">{t("Elapsed")}</th><th scope="col">{t("Help")}</th>
               </tr></thead><tbody>
-              {filteredResults.map((item) => <tr className="speaking-results-table-row" key={item.participant.id}>
+              {filteredResults.map((item) => {
+                const grade = hwgDoctorGrade(criteria, item.evaluation?.scores);
+                const points = usesDoctorGrades ? grade?.points : item.overallScore;
+                return <tr className="speaking-results-table-row" key={item.participant.id}>
                 <th scope="row"><button type="button" className="speaking-result-student-link" onClick={() => navigate(`/speak/teacher/result/${item.participant.id}`)}>{item.participant.displayIdentifier ?? t("Student {value0}", { value0: item.participant.id.slice(0, 6) })}<ChevronRight size={16} aria-hidden="true" /></button></th>
                 <td><span className={`speaking-status-pill speaking-status-${item.evaluationStatus === "retrying" ? "retrying" : item.status}`}>{item.evaluation?.assessmentStatus === "insufficient_evidence" ? t("Not scored") : item.evaluationStatus === "retrying" ? t("Evaluation retrying") : item.evaluationStatus === "failed" ? t("Needs attention") : item.status === "completed" ? t("Completed") : item.status === "error" ? t("Needs attention") : item.status === "joined" ? t("Not started") : item.status === "evaluating" ? t("Evaluating") : t("Practicing")}</span></td>
-                <td className="speaking-table-score">{item.overallScore === undefined ? "—" : <>{item.overallScore}<small>/100</small></>}</td>
+                <td className="speaking-table-score">{points === undefined ? "—" : <>{points}<small>{grade ? `/20 · ${grade.grade}` : "/100"}</small></>}</td>
                 {criteria.map((criterion) => <td key={criterion.id}>{item.evaluation?.scores[criterion.id] ?? "—"}</td>)}
                 <td>{formatDuration(item.durationSeconds)}</td><td>{item.helpCount}</td>
-              </tr>)}
+              </tr>;
+              })}
               </tbody></table>
             </div>
           ) : (
@@ -2450,6 +2462,9 @@ function SpeakingTeacherResultPage({
   if (!result)
     return <MissingSpeakingSession navigate={navigate} message={t(error)} />;
   const evaluation = result.evaluation;
+  const usesDoctorGrades = hasHwgDoctorRubric(result.activity.rubric);
+  const grade = hwgDoctorGrade(result.activity.rubric, evaluation?.scores);
+  const points = usesDoctorGrades ? grade?.points : scoreFor(evaluation);
   return (
     <div className="speaking-page-shell speaking-teacher-shell">
       <main className="speaking-teacher-layout">
@@ -2481,10 +2496,10 @@ function SpeakingTeacherResultPage({
             </div>
             <span className="speaking-detail-score">
               <strong>
-                {evaluation ? (scoreFor(evaluation) ?? "—") : "—"}
+                {points ?? "—"}
               </strong>
-              {evaluation && scoreFor(evaluation) !== undefined && (
-                <small>/100</small>
+              {points !== undefined && (
+                <small>{grade ? `/20 · ${grade.grade}` : "/100"}</small>
               )}
             </span>
           </div>

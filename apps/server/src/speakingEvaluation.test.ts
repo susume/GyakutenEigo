@@ -1,8 +1,9 @@
 import assert from "node:assert/strict";
 import test from "node:test";
-import { DEFAULT_SPEAKING_ASSESSMENT_SUPPORT_SETTINGS, SPEAKING_CORE_LIBRARY, SpeakingEvaluationSchema, type SpeakingActivity, type SpeakingEvaluation, type SpeakingTurn } from "@quizstrike/shared";
+import { DEFAULT_SPEAKING_ASSESSMENT_SUPPORT_SETTINGS, SPEAKING_CORE_LIBRARY, SpeakingEvaluationSchema, speakingOverallScore, type SpeakingActivity, type SpeakingEvaluation, type SpeakingTurn } from "@quizstrike/shared";
 import { buildSpeakingInteractionMetadata, nextSpeakingEvaluationRetryAt, sanitizeSpeakingEvaluation, speakingGoalRequirements } from "./speakingEvaluation.js";
 import { buildConversationPrompt, buildEvaluationPrompt, buildHelpPrompt } from "./speakingPrompts.js";
+import { buildGeminiEvaluationResponseSchema } from "./speakingProviders.js";
 
 const activity = {
   id: "restaurant-regression",
@@ -268,9 +269,33 @@ test("allowed support and familiar language can earn full credit with criterion-
   assert.equal(result.scores.interaction, 4);
   const prompt = buildEvaluationPrompt({ activity: standardActivity, turns: exchange, rubric });
   assert.match(prompt, /Criterion-specific anchors for task_achievement/u);
-  assert.match(prompt, /Allowed support can still earn 4/u);
+  assert.match(prompt, /Allowed support can still earn full credit/u);
   assert.match(prompt, /not a compulsory script|Do not require every target phrase/u);
   assert.doesNotMatch(prompt, /4 means consistently successful and independent/u);
+});
+
+test("HWG DL6 carries five-point anchors through provider validation and scoring", () => {
+  const template = SPEAKING_CORE_LIBRARY.find((item) => item.id === "core-hwg-bk2-dl6-going-to-the-doctor")!;
+  const doctorActivity: SpeakingActivity = { ...activity, ...template, mode: "assessment", supportSettings: { ...activity.supportSettings, ...template.supportSettings } };
+  const rubric = doctorActivity.rubric;
+  const prompt = buildEvaluationPrompt({ activity: doctorActivity, turns: [], rubric });
+  assert.match(prompt, /咳、くしゃみ、鼻水/u);
+  for (const criterion of rubric) {
+    assert.match(prompt, new RegExp(`HWG DL6 anchors \\(0–5\\) for ${criterion.id}`, "u"));
+    assert.equal(buildGeminiEvaluationResponseSchema(doctorActivity).properties.scores.properties[criterion.id]?.anyOf[0]?.maximum, 5);
+  }
+  const scores = Object.fromEntries(rubric.map(({ id }) => [id, 5]));
+  const evaluation = providerEvaluation({ scores });
+  assert.ok(SpeakingEvaluationSchema.safeParse(evaluation).success);
+  assert.equal(SpeakingEvaluationSchema.safeParse(providerEvaluation({ scores: { task_achievement: 5 } })).success, false);
+  const result = sanitizeSpeakingEvaluation(evaluation, doctorActivity, [
+    { ...turns[0]!, text: "Hello. What's the matter?" },
+    { ...turns[1]!, text: "I have a cough and a runny nose. I keep sneezing. It started last night." },
+    { ...turns[2]!, text: "You should go home and take a rest." },
+    { ...turns[3]!, text: "I'll go home and rest. How long should I rest?" }
+  ]);
+  assert.deepEqual(result.scores, scores);
+  assert.equal(speakingOverallScore(result), 100);
 });
 
 test("missing opportunity stays uncertain instead of being turned into an absent-question failure", () => {

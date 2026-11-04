@@ -1,5 +1,6 @@
 import {
   SpeakingEvaluationSchema,
+  speakingCriterionMax,
   speakingFeedbackCopy,
   SPEAKING_PRACTICE_LANGUAGE,
   type SpeakingActivity,
@@ -303,7 +304,7 @@ export const mockEvaluationProvider: EvaluationProvider = {
     const copy = speakingFeedbackCopy(input.activity.nativeLanguage);
     const helpCount = input.helpMetadata?.helpCount ?? input.turns.filter((turn) => turn.usedHelp).length;
     for (const criterion of input.activity.rubric.filter((item) => item.enabled)) {
-      scores[criterion.id] = noSpeech ? null : Math.min(4, Math.max(1, studentTurns.length >= 2 ? 4 : 3));
+      scores[criterion.id] = noSpeech ? null : studentTurns.length >= 2 ? speakingCriterionMax(criterion.id) : 3;
       evidence[criterion.id] = noSpeech ? copy.insufficientEvidenceReason : mockReason(criterion, studentTurns.length, helpCount, input.activity.nativeLanguage);
     }
     const evaluation: SpeakingEvaluation = {
@@ -539,21 +540,6 @@ const goalCompletionSchema = {
   required: ["completed", "requirements"]
 };
 
-const evaluationSchema = {
-  type: "object",
-  additionalProperties: false,
-  properties: {
-    scores: { type: "object", additionalProperties: { anyOf: [{ type: "integer", minimum: 0, maximum: 4 }, { type: "null" }] } },
-    evidence: { type: "object", additionalProperties: { type: "string" } },
-    strengths: { type: "array", items: { type: "string" }, maxItems: 5 },
-    improvements: { type: "array", items: { type: "string" }, maxItems: 5 },
-    usefulEnglish: { type: "array", items: { type: "object", additionalProperties: false, properties: { said: { type: "string" }, try: { type: "string" }, sourceTurnId: { type: "string" } }, required: ["said", "try", "sourceTurnId"] }, maxItems: 5 },
-    goalCompletion: goalCompletionSchema,
-    overallMessage: { type: "string" }
-  },
-  required: ["scores", "evidence", "strengths", "improvements", "usefulEnglish", "goalCompletion", "overallMessage"]
-};
-
 export const buildGeminiEvaluationResponseSchema = (activity: Pick<SpeakingActivity, "rubric">) => {
   const enabledIds = activity.rubric.filter((criterion) => criterion.enabled).map((criterion) => criterion.id);
   return {
@@ -563,7 +549,7 @@ export const buildGeminiEvaluationResponseSchema = (activity: Pick<SpeakingActiv
       scores: {
         type: "object",
         additionalProperties: false,
-        properties: Object.fromEntries(enabledIds.map((id) => [id, { anyOf: [{ type: "integer", minimum: 0, maximum: 4 }, { type: "null" }] }])),
+        properties: Object.fromEntries(enabledIds.map((id) => [id, { anyOf: [{ type: "integer", minimum: 0, maximum: speakingCriterionMax(id) }, { type: "null" }] }])),
         required: enabledIds
       },
       evidence: {
@@ -588,7 +574,7 @@ export const openAiEvaluationProvider: EvaluationProvider = {
     const raw = await openAiRequest({
       temperature: 0.2,
       max_tokens: 1_200,
-      response_format: { type: "json_schema", json_schema: { name: "speaking_evaluation", strict: true, schema: evaluationSchema } },
+      response_format: { type: "json_schema", json_schema: { name: "speaking_evaluation", strict: true, schema: buildGeminiEvaluationResponseSchema(input.activity) } },
       messages: [{ role: "system", content: input.prompt ?? buildEvaluationPrompt({ activity: input.activity, turns: input.turns, rubric: input.activity.rubric, setFocus: input.setFocus, timingMetadata: input.timingMetadata, helpMetadata: input.helpMetadata, interactionMetadata: input.interactionMetadata }) }]
     }, process.env, "evaluation");
     const output = parseJsonResponse<Partial<Omit<SpeakingEvaluation, "participantId" | "language" | "createdAt">>>(raw);

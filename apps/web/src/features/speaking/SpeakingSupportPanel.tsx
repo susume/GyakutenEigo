@@ -217,7 +217,7 @@ export function SpeakingContextPanel({ context, referenceItems = [] }: { context
             </div>
           </dialog>
         </figure>
-      ) : context ? (
+      ) : context && (imageUrl || !referenceItems.length) ? (
         <ContextEmptyState message={imageUrl ? t("Unable to load context image.") : t("No context image available for this activity.")} />
       ) : null}
       {!imageUrl && <SpeakingReferenceSheet items={referenceItems} />}

@@ -12,7 +12,7 @@ test("every school task retains textbook support through activity validation and
     assert.ok(alignment, task.id);
     const parsed = SpeakingCreateActivityInputSchema.parse(task);
     const normalized = speakingScenarioResources(parsed.scenarioResources);
-    assert.deepEqual(normalized.textbookReferences, alignment.references, task.id);
+    assert.deepEqual(normalized.textbookReferences ?? [], alignment.references, task.id);
     assert.equal(normalized.exampleDialogue, alignment.exampleDialogue, task.id);
     assert.ok(normalized.studentGoal.includes(alignment.goalAddition), task.id);
     assert.ok((normalized.exampleDialogue?.split("\n").length ?? 0) >= 6, task.id);

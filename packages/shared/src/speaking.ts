@@ -1,4 +1,5 @@
 import { z } from "zod";
+import { speakingCriterionMax } from "./speakingRubric.js";
 import {
   SPEAKING_LIBRARY_CATEGORY_IDS,
   SPEAKING_LIBRARY_COLLECTIONS,
@@ -671,7 +672,13 @@ export const SpeakingEvaluationSchema = z.object({
   language: z.enum(SPEAKING_NATIVE_LANGUAGES),
   assessmentStatus: z.enum(SPEAKING_ASSESSMENT_STATUSES).default("scored"),
   notScoredReason: z.string().max(500).optional(),
-  scores: z.record(z.string(), z.number().int().min(0).max(4).nullable()),
+  scores: z.record(z.string(), z.number().int().min(0).max(5).nullable()).superRefine((scores, context) => {
+    for (const [id, score] of Object.entries(scores)) {
+      if (score !== null && score > speakingCriterionMax(id)) {
+        context.addIssue({ code: "custom", message: "Score exceeds the criterion maximum.", path: [id] });
+      }
+    }
+  }),
   evidence: z.record(z.string(), z.string().max(500)),
   strengths: z.array(z.string().max(300)).max(5),
   improvements: z.array(z.string().max(300)).max(5),
@@ -715,10 +722,14 @@ export const speakingRemainingSeconds = (
 ) => Math.max(0, Math.floor((durationSeconds * 1_000 - speakingActiveElapsedMs(participant, session, referenceTime)) / 1_000));
 
 export const speakingOverallScore = (evaluation?: Pick<SpeakingEvaluation, "scores">) => {
-  const scoredValues = evaluation ? Object.values(evaluation.scores).filter((score): score is number => typeof score === "number") : [];
-  return scoredValues.length
-    ? Math.round((scoredValues.reduce((sum, score) => sum + score, 0) / (scoredValues.length * 4)) * 100)
-    : undefined;
+  let points = 0;
+  let maximum = 0;
+  for (const [id, score] of Object.entries(evaluation?.scores ?? {})) {
+    if (typeof score !== "number") continue;
+    points += score;
+    maximum += speakingCriterionMax(id);
+  }
+  return maximum ? Math.round((points / maximum) * 100) : undefined;
 };
 
 export type SpeakingFeedbackCopy = {

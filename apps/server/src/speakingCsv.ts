@@ -1,4 +1,4 @@
-import { resolveSpeakingSupportSettings, type SpeakingEvaluation, type SpeakingMode, type SpeakingSupportSettings } from "@quizstrike/shared";
+import { resolveSpeakingSupportSettings, type hwgDoctorGrade, type SpeakingEvaluation, type SpeakingMode, type SpeakingSupportSettings } from "@quizstrike/shared";
 
 export type SpeakingCsvRow = {
   setNames: string;
@@ -11,6 +11,7 @@ export type SpeakingCsvRow = {
   status: string;
   duration: string;
   overallScore?: number;
+  doctorGrade?: NonNullable<ReturnType<typeof hwgDoctorGrade>> | null;
   criteria: Array<{ id: string; name: string; score?: number | null }>;
   helpCount: number;
 };
@@ -26,7 +27,8 @@ export const buildSpeakingCsv = (rows: SpeakingCsvRow[]) => {
     if (!all.some((candidate) => candidate.id === criterion.id)) all.push({ id: criterion.id, name: criterion.name });
     return all;
   }, []);
-  const headers = ["Set", "Speaking Task", "Mode", "Target expressions allowed", "Context allowed", "Transcript allowed", "Replay allowed", "Help allowed", "Session", "Date", "Student", "Status", "Duration", "Overall Score", ...criteria.map((criterion) => criterion.name), "Help Count"];
+  const includesDoctorGrades = rows.some((row) => row.doctorGrade !== undefined);
+  const headers = ["Set", "Speaking Task", "Mode", "Target expressions allowed", "Context allowed", "Transcript allowed", "Replay allowed", "Help allowed", "Session", "Date", "Student", "Status", "Duration", "Overall Score", ...(includesDoctorGrades ? ["HWG DL6 Points (out of 20)", "HWG DL6 Grade"] : []), ...criteria.map((criterion) => criterion.name), "Help Count"];
   const lines = [headers, ...rows.map((row) => [
     ...(() => {
       const supportSettings = resolveSpeakingSupportSettings(row.supportSettings);
@@ -46,7 +48,8 @@ export const buildSpeakingCsv = (rows: SpeakingCsvRow[]) => {
     row.student,
     row.status,
     row.duration,
-    row.overallScore ?? "",
+    row.doctorGrade === null ? "" : row.overallScore ?? "",
+    ...(includesDoctorGrades ? [row.doctorGrade?.points ?? "", row.doctorGrade?.grade ?? ""] : []),
     ...criteria.map((criterion) => row.criteria.find((candidate) => candidate.id === criterion.id)?.score ?? ""),
     row.helpCount
   ])];

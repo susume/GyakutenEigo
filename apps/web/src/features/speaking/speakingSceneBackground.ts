@@ -29,6 +29,7 @@ const scenarioEnvironments: Readonly<Record<string, string>> = {
   "core-asking-for-help": "school",
   "core-lost-property": "school",
   "core-feeling-sick": "school",
+  "core-hwg-bk2-dl6-going-to-the-doctor": "school",
   "core-making-requests-and-asking-permission": "school",
   "core-giving-advice": "school",
   "core-giving-an-opinion": "school",

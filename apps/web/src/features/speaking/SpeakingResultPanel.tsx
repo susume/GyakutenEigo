@@ -3,6 +3,7 @@ import { ArrowRight, Languages } from "lucide-react";
 import {
   speakingFeedbackCopy,
   speakingOverallScore,
+  speakingCriterionMax,
   type SpeakingActivity,
   type SpeakingEvaluation,
   type SpeakingTurn,
@@ -100,12 +101,15 @@ export function ResultPanel({
           </ul>
         </div>
       )}
-      <p className="speaking-rubric-intro">{t("Rubric and conversation evidence · Each criterion is scored from 0 to 4")}</p>
+      <p className="speaking-rubric-intro">{activity.rubric.some((criterion) => criterion.enabled && speakingCriterionMax(criterion.id) === 5)
+        ? t("Rubric and conversation evidence")
+        : t("Rubric and conversation evidence · Each criterion is scored from 0 to 4")}</p>
       <div className="speaking-score-grid">
         {activity.rubric
           .filter((criterion) => criterion.enabled)
           .map((criterion) => {
             const score = scoreForCriterion(evaluation, criterion.id);
+            const maximum = speakingCriterionMax(criterion.id);
             return (
               <div className="speaking-score-row" key={criterion.id}>
                 <div>
@@ -122,12 +126,12 @@ export function ResultPanel({
                   aria-label={
                     score === null || score === undefined
                       ? copy.notScored
-                      : t("{value0} out of 4", { value0: score })
+                      : t(maximum === 4 ? "{value0} out of 4" : "{value0} out of 5", { value0: score })
                   }
                 >
-                  {typeof score === "number" && <meter min={0} max={4} value={score} aria-label={t("{value0} score", { value0: criterion.name })} />}
+                  {typeof score === "number" && <meter min={0} max={maximum} value={score} aria-label={t("{value0} score", { value0: criterion.name })} />}
                   <b>
-                    {typeof score === "number" ? t("{value0}/4", { value0: score }) : copy.notScored}
+                    {typeof score === "number" ? `${score}/${maximum}` : copy.notScored}
                   </b>
                 </span>
               </div>

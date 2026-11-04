@@ -124,16 +124,17 @@ test("core speaking library contains complete, categorized junior-high scenarios
     "Asking for Help",
     "Lost Property",
     "Feeling Sick",
+    "HWG Bk2 DL6 Going to the Doctor",
     "Making Requests and Asking Permission",
     "Giving Advice",
     "Giving an Opinion",
     "Choosing Between Options",
     "Solving an Everyday Problem"
   ];
-  assert.equal(SCHOOL_ENGLISH_LIBRARY.length, 31);
-  assert.equal(SPEAKING_CORE_LIBRARY.length, 80);
+  assert.equal(SCHOOL_ENGLISH_LIBRARY.length, 32);
+  assert.equal(SPEAKING_CORE_LIBRARY.length, 81);
   assert.deepEqual(SCHOOL_ENGLISH_LIBRARY.map((item) => item.title).sort(), [...expectedTitles].sort());
-  assert.equal(new Set(SCHOOL_ENGLISH_LIBRARY.map((item) => item.id)).size, 31);
+  assert.equal(new Set(SCHOOL_ENGLISH_LIBRARY.map((item) => item.id)).size, 32);
   assert.deepEqual(new Set(SCHOOL_ENGLISH_LIBRARY.map((item) => item.scenarioResources.category)), new Set(SPEAKING_LIBRARY_CATEGORY_DEFINITIONS.filter((category) => category.collectionId === "school-english").map((category) => category.name)));
   for (const item of SCHOOL_ENGLISH_LIBRARY) {
     assert.ok(item.scenario.length > 40);
@@ -149,9 +150,9 @@ test("the canonical library has two collections and the requested category count
   assert.deepEqual(SPEAKING_LIBRARY_COLLECTIONS, ["school-english", "workplace-english"]);
   assert.equal(new Set(SPEAKING_LIBRARY_COLLECTIONS).size, 2);
   assert.equal(WORKPLACE_ENGLISH_LIBRARY.length, 49);
-  assert.equal(new Set(SPEAKING_CORE_LIBRARY.map((item) => item.id)).size, 80);
+  assert.equal(new Set(SPEAKING_CORE_LIBRARY.map((item) => item.id)).size, 81);
   const byCollection = countBy(SPEAKING_CORE_LIBRARY, (item) => item.scenarioResources.libraryCollection ?? "missing");
-  assert.equal(byCollection["school-english"], 31);
+  assert.equal(byCollection["school-english"], 32);
   assert.equal(byCollection["workplace-english"], 49);
   const workplaceCounts = countBy(WORKPLACE_ENGLISH_LIBRARY, (item) => item.scenarioResources.category ?? "missing");
   assert.deepEqual(workplaceCounts, {

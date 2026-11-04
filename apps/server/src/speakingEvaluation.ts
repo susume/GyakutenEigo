@@ -1,5 +1,6 @@
 import {
   speakingFeedbackCopy,
+  speakingCriterionMax,
   speakingScenarioResources,
   type SpeakingActivity,
   type SpeakingEvaluation,
@@ -9,7 +10,7 @@ import {
 } from "@quizstrike/shared";
 
 /** Bump when the evaluator's evidence contract or scoring guardrails change. */
-export const SPEAKING_EVALUATOR_PROMPT_VERSION = "2026-10-20-fair-task-rubric-v3";
+export const SPEAKING_EVALUATOR_PROMPT_VERSION = "2026-11-04-fair-task-rubric-v4";
 
 /** One-time migration marker, recognized only by workers with the schema fix. */
 export const SPEAKING_GEMINI_SCHEMA_RECOVERY_CODE = "gemini_json_schema_recovery_pending";
@@ -111,7 +112,8 @@ const deriveGoalCompletion = (activity: SpeakingActivity, turns: SpeakingTurn[],
   return { completed: requirements.length > 0 && requirements.every((item) => item.status === "completed"), requirements };
 };
 
-const scoreOrNull = (score: number | null | undefined) => typeof score === "number" && Number.isInteger(score) && score >= 0 && score <= 4 ? score : null;
+const scoreOrNull = (score: number | null | undefined, maximum: number) =>
+  typeof score === "number" && Number.isInteger(score) && score >= 0 && score <= maximum ? score : null;
 const appendUnique = (items: string[], value: string) => value && !items.includes(value) ? [...items, value] : items;
 const unsupportedTimingClaim = (text: string) => /\b(?:smooth(?:ly)?|hesitat\w*|pauses?|without stopping|fluent(?:ly)?)\b|流暢|流ちょう|すらすら|スラスラ|ためら|よどみ|間を空け|途切れ/iu.test(text);
 
@@ -156,7 +158,7 @@ export const sanitizeSpeakingEvaluation = (
   const scores: Record<string, number | null> = {};
   const evidence: Record<string, string> = {};
   for (const criterion of activity.rubric.filter((item) => item.enabled)) {
-    let score = scoreOrNull(sourceScores[criterion.id]);
+    let score = scoreOrNull(sourceScores[criterion.id], speakingCriterionMax(criterion.id));
     let criterionEvidence = typeof sourceEvidence[criterion.id] === "string" ? sourceEvidence[criterion.id].trim().slice(0, 500) : copy.insufficientEvidenceReason;
     if (unsupportedTimingClaim(criterionEvidence)) {
       criterionEvidence = activity.nativeLanguage === "ja" ? "会話の記録をもとに評価しました。音声の間やためらいは判断していません。" : "Assessed from the conversation record; recording duration does not establish speech rhythm.";
@@ -196,7 +198,11 @@ export const sanitizeSpeakingEvaluation = (
   const providerImprovements = (Array.isArray(evaluation.improvements) ? evaluation.improvements : []).filter((item): item is string => typeof item === "string").map((item) => item.trim()).filter((item) => Boolean(item) && !unsupportedTimingClaim(item));
   let improvements: string[] = [];
   if (questionRequirementMissing) {
-    improvements = appendUnique(improvements, activity.nativeLanguage === "ja" ? "「How much is it?」のような簡単な質問を1つしてみましょう。" : "Try asking one simple question, such as “How much is it?”");
+    const asksAboutAdvice = activity.rubric.some((criterion) => criterion.enabled && criterion.id === "hwg_dl6_follow_up");
+    const example = asksAboutAdvice ? "How long should I rest?" : "How much is it?";
+    improvements = appendUnique(improvements, activity.nativeLanguage === "ja"
+      ? `「${example}」のような簡単な質問を1つしてみましょう。`
+      : `Try asking one simple question, such as “${example}”`);
   }
   if (interactionMetadata.repeatedQuestionCount > 0) {
     improvements = appendUnique(improvements, activity.nativeLanguage === "ja" ? "質問が分からないときは、「Could you repeat that, please?」と言ってから答えてみましょう。" : "If a question is unclear, say “Could you repeat that, please?” and then answer it.");

@@ -3,6 +3,8 @@ import {
   SPEAKING_NATIVE_LANGUAGE_LABELS,
   SPEAKING_RUBRIC_GUIDE,
   SPEAKING_RUBRIC_FAIRNESS_RULES,
+  HWG_DOCTOR_RUBRIC,
+  speakingCriterionMax,
   resolveSpeakingSupportSettings,
   speakingScenarioResources,
   type SpeakingActivity,
@@ -133,6 +135,7 @@ export const buildEvaluationPrompt = ({
   const resources = speakingScenarioResources(activity.scenarioResources);
   const supportSettings = resolveSpeakingSupportSettings(activity.supportSettings);
   const enabledRubric = rubric.filter((criterion) => criterion.enabled);
+  const doctorCriteria = HWG_DOCTOR_RUBRIC.filter(({ id }) => enabledRubric.some((criterion) => criterion.id === id));
   return [
   `Evaluator prompt version: ${SPEAKING_EVALUATOR_PROMPT_VERSION}`,
   "Evaluate the completed speaking activity using only evidence in the transcript.",
@@ -147,8 +150,14 @@ export const buildEvaluationPrompt = ({
   "Private partner context is information for the learner to discover through conversation, not prior knowledge they must recite. Do not penalize a learner for failing to handle an optional complication the partner never introduced; do not claim that an unobserved response occurred. Base completion on the actual task goal and available conversational opportunities.",
   "The task goal is an explicit requirement. Judge each requirement separately, and set goalCompletion.completed to true only when every requirement has clear student evidence.",
   "A support explicitly allowed by the teacher is part of the task conditions, not a mistake. Never penalize a student for using allowed target expressions, example dialogues, context, transcript, replay, or Help. Support use may be acknowledged but is not a reason to lower a score. Independence conditions must be configured consistently before the test.",
-  "Score anchors: 4 means successful for this task; 3 means mostly successful; 2 means partial success; 1 means limited demonstrated success; 0 means an observed unsuccessful attempt. Null means missing usable evidence or an opportunity. Allowed support can still earn 4. Use the criterion-specific anchors below; do not equate a repeated sentence starter or a minor understandable grammar error with failure.",
+  "For the standard 0–4 scale, 4 means successful for this task, 3 mostly successful, 2 partial success, 1 limited demonstrated success, and 0 an observed unsuccessful attempt. Null means missing usable evidence or an opportunity. Allowed support can still earn full credit. Use the criterion-specific anchors below; do not equate a repeated sentence starter or a minor understandable grammar error with failure.",
   ...SPEAKING_RUBRIC_GUIDE.filter((guide) => enabledRubric.some((criterion) => criterion.id === guide.id)).map((guide) => `Criterion-specific anchors for ${guide.id}: ${([4, 3, 2, 1, 0] as const).map((score) => `${score}: ${guide.levels[score]}`).join(" | ")}`),
+  ...doctorCriteria.map(({ id, levels }) => `HWG DL6 anchors (0–5) for ${id}: ${levels.map((level, score) => `${score}: ${level}`).join(" | ")}`),
+  ...(doctorCriteria.length ? [
+    "For HWG DL6, match symptom meanings and onset against the patient card in the reference items. Accept natural equivalents. Credit symptoms only when the student communicates them.",
+    "Judge the advice response and follow-up against the advice actually delivered. Score the two independently, even when they appear in the same student turn. After a genuine opportunity, an observable omission earns 0 for that criterion. Use null if the doctor did not give advice or allow the learner to respond or ask.",
+    "For HWG DL6 Clarity, apply the listener-understanding part of each anchor. Award 5 if the intended message was understood right away. The transcript cannot establish voice volume or pace. A routine question for new information (for example, when symptoms began) is not a request to clarify unintelligible speech."
+  ] : []),
   ...SPEAKING_RUBRIC_FAIRNESS_RULES.map((rule) => `Fair scoring: ${rule}`),
   "For goalCompletion.requirements, include evidenceTurnIds that are real transcript id values. Use completed, partially_completed, not_completed, or uncertain; do not treat an AI turn as student evidence.",
   "For usefulEnglish, every item must include sourceTurnId and said must copy the corresponding student transcript text exactly, including wording and errors. Never rewrite the student's quote. If no exact source exists, omit the item.",
@@ -172,7 +181,7 @@ export const buildEvaluationPrompt = ({
   `Useful vocabulary (support context, semantic equivalents count): ${resources.usefulVocabulary.map((item) => clip(item, 160)).join(" | ")}`,
   `Reference items: ${referenceItemsForPrompt(activity)}`,
   `Target expressions (semantic equivalents count; exact wording is not required): ${activity.targetExpressions.slice(0, 12).map((item) => clip(item, 120)).join(" | ")}`,
-  `Rubric: ${enabledRubric.map((criterion) => `${criterion.id}: ${clip(criterion.description, 500)}`).join(" | ")}`,
+  `Rubric: ${enabledRubric.map((criterion) => `${criterion.id} (0–${speakingCriterionMax(criterion.id)}): ${clip(criterion.description, 500)}`).join(" | ")}`,
   `Timing evidence: ${timingMetadata?.durationSeconds === undefined ? "not available" : `${Math.round(timingMetadata.durationSeconds)} seconds elapsed`}; reliable student audio timing=${timingMetadata?.reliableAudioTiming === true ? "yes" : "no"}${timingMetadata?.studentAudioDurationMs === undefined ? "" : `; total recorded student audio=${Math.round(timingMetadata.studentAudioDurationMs)}ms`}`,
   `Help evidence: ${helpMetadata ? `${helpMetadata.helpCount} Help uses across ${helpMetadata.helpedTurnCount} student turns` : "not available"}`,
   `Interaction evidence (aggregate, not a score by itself): ${interactionMetadata ? JSON.stringify(interactionMetadata) : "not available"}`,

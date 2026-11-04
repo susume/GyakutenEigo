@@ -6,19 +6,22 @@ import { coreFallbackActivities, isCompatibleCoreLibraryResponse } from "./speak
 test("the complete built-in response is accepted", () => {
   const response = coreFallbackActivities();
   assert.equal(isCompatibleCoreLibraryResponse(response), true);
-  assert.equal(response.length, 80);
+  assert.equal(response.length, 81);
 });
 
 test("school scenarios retain their visual contexts while workplace scenarios stay image-optional", () => {
   const school = SPEAKING_CORE_LIBRARY.filter((activity) => activity.scenarioResources?.libraryCollection === "school-english");
   const workplace = SPEAKING_CORE_LIBRARY.filter((activity) => activity.scenarioResources?.libraryCollection === "workplace-english");
-  assert.equal(school.length, 31);
+  assert.equal(school.length, 32);
   assert.equal(workplace.length, 49);
-  const contexts = school.map((activity) => speakingContext(activity));
+  const doctor = school.find((activity) => activity.id === "core-hwg-bk2-dl6-going-to-the-doctor")!;
+  const contexts = school.filter((activity) => activity !== doctor).map((activity) => speakingContext(activity));
 
   assert.equal(contexts.every((context) => Boolean(context?.title && context.description && context.imageUrl && context.alt)), true);
   assert.equal(new Set(contexts.map((context) => context?.title)).size, 31);
   assert.equal(new Set(contexts.map((context) => context?.imageUrl)).size >= 5, true);
+  assert.equal(speakingContext(doctor)?.title, "Patient card");
+  assert.equal(doctor.scenarioResources.referenceItems?.length, 2);
   assert.equal(workplace.every((activity) => !speakingContext(activity)), true);
 });
 
