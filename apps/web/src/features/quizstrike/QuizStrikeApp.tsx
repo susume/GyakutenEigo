@@ -36,9 +36,11 @@ import {
 } from "@quizstrike/shared";
 import { authApi } from "../../api/client";
 import { buildTeacherSpeakingPath, getTournamentInvitationCodeFromSearch, isSpeakingTeacherRoute, isTeacherSpeakingRoute, modeForRoute, normalizeRoutePath, type AppMode } from "../../navigation";
+import { appRoute, getPublicPage, publicPagePath } from "../../seo/publicPages";
 import GyakutenEigoBrand from "../../ui/GyakutenEigoBrand";
 import ProductHubHeader from "../../ui/ProductHubHeader";
 import ProductHubHomepage from "../../ui/ProductHubHomepage";
+import { useHydrated } from "../../ui/useHydrated";
 import QuizStrikeLogo from "../../ui/QuizStrikeLogo";
 import {
   CHARACTER_STRESS_COUNTS,
@@ -64,9 +66,9 @@ const TOURNAMENT_TEACHER_RETURN_KEY = "quizstrike_tournament_teacher_return";
 const SPEAKING_TEACHER_RETURN_KEY = "quizstrike_speaking_teacher_return";
 const DEV_TEACHER_PREVIEW: TeacherUser = { id: "teacher-preview", name: "Peter Hoang", email: "preview@gyakuteneigo.local", role: "teacher" };
 
-export default function App() {
-  const { t } = useSiteTranslation();
-  const [routePath, setRoutePath] = useState(() => normalizeRoutePath(window.location.pathname));
+export default function App({ initialPath }: { initialPath?: string }) {
+  const { language, t } = useSiteTranslation();
+  const [routePath, setRoutePath] = useState(() => initialPath ?? appRoute(window.location.pathname));
   const isJoinRoute = routePath === "/join";
   const isGameRoute = routePath === "/game";
   const isSpeakingTeacherRoutePath = isSpeakingTeacherRoute(routePath);
@@ -79,27 +81,29 @@ export default function App() {
   const isCharacterLabAvailable = import.meta.env.DEV;
   const [mode, setMode] = useState<AppMode>(() => modeForRoute(routePath));
   const [teacher, setTeacher] = useState<TeacherUser | null>(null);
-  const [restoringTeacher, setRestoringTeacher] = useState(() => Boolean(localStorage.getItem("quizstrike_token")));
-  const [teacherAuthMode, setTeacherAuthMode] = useState<"login" | "signup">(() => new URLSearchParams(window.location.search).get("auth") === "signup" ? "signup" : "login");
+  const [restoringTeacher, setRestoringTeacher] = useState(() => !import.meta.env.SSR && Boolean(localStorage.getItem("quizstrike_token")));
+  const [teacherAuthMode, setTeacherAuthMode] = useState<"login" | "signup">(() => !import.meta.env.SSR && new URLSearchParams(window.location.search).get("auth") === "signup" ? "signup" : "login");
   const [isMobileNavOpen, setIsMobileNavOpen] = useState(false);
   const [apiWakeState, setApiWakeState] = useState<ApiWakeState>("waking");
 
   const navigateTo = useCallback((nextPath: string, nextMode?: AppMode) => {
     const target = new URL(nextPath, window.location.origin);
-    const normalizedPath = normalizeRoutePath(target.pathname);
-    const targetUrl = `${normalizedPath}${target.search}${target.hash}`;
-    if (window.location.pathname !== normalizedPath || window.location.search !== target.search || window.location.hash !== target.hash) {
+    const page = getPublicPage(target.pathname);
+    const targetPath = page ? publicPagePath(page.route, language) : normalizeRoutePath(target.pathname);
+    const nextRoute = appRoute(targetPath);
+    const targetUrl = `${targetPath}${target.search}${target.hash}`;
+    if (window.location.pathname !== targetPath || window.location.search !== target.search || window.location.hash !== target.hash) {
       window.history.pushState(null, "", targetUrl);
       window.dispatchEvent(new PopStateEvent("popstate"));
     }
-    setRoutePath(normalizedPath);
-    setMode(nextMode ?? modeForRoute(normalizedPath));
+    setRoutePath(nextRoute);
+    setMode(nextMode ?? modeForRoute(nextRoute));
     setIsMobileNavOpen(false);
-  }, []);
+  }, [language]);
 
   useEffect(() => {
     const syncRouteFromHistory = () => {
-      const nextRoutePath = normalizeRoutePath(window.location.pathname);
+      const nextRoutePath = appRoute(window.location.pathname);
       setRoutePath(nextRoutePath);
       setMode(modeForRoute(nextRoutePath));
       setIsMobileNavOpen(false);
@@ -157,10 +161,7 @@ export default function App() {
     navigateTo("/", "home");
   };
 
-  const openSpeakingPractice = () => {
-    window.history.pushState(null, "", "/speak");
-    window.dispatchEvent(new PopStateEvent("popstate"));
-  };
+  const openSpeakingPractice = () => navigateTo("/speak");
 
   return (
     <main id="main-content" className="app-shell" tabIndex={-1}>
@@ -168,7 +169,6 @@ export default function App() {
       {mode === "home" || (!teacher && (mode === "quizStrike" || mode === "teacher")) ? (
         <ProductHubHeader
           active={mode === "quizStrike" ? "quiz" : mode === "teacher" ? "teacher" : undefined}
-          onNavigate={(path) => navigateTo(path)}
           onLogin={() => { setTeacherAuthMode("login"); navigateTo("/quiz-strike/teacher/home", "teacher"); }}
           onGetStarted={() => { setTeacherAuthMode("signup"); navigateTo("/quiz-strike/teacher/home", "teacher"); }}
         />
@@ -227,11 +227,7 @@ export default function App() {
         </header>
       )}
 
-      {mode === "home" && <ProductHubHomepage
-        onNavigate={navigateTo}
-        onOpenSpeaking={() => navigateTo("/speak")}
-        onOpenQuizStrike={() => navigateTo("/quiz-strike", "quizStrike")}
-      />}
+      {mode === "home" && <ProductHubHomepage onNavigate={navigateTo} />}
       {mode === "quizStrike" && routePath === "/quiz-strike/organizer" && <Suspense fallback={<FeatureLoading label={t("Loading organizer workspace")} />}><OrganizerWorkspace teacher={teacher} onNavigate={navigateTo} /></Suspense>}
       {mode === "quizStrike" && isTournamentRegistrationRoute && <Suspense fallback={<FeatureLoading label={t("Loading tournament registration")} />}><TournamentRegistrationPage
         tournamentId={decodeURIComponent(tournamentRegistrationId)}
@@ -668,12 +664,13 @@ function FeatureLoading({ label }: { label: string }) {
 
 function QuizStrikeLanding({ teacher, slug, onNavigate, onTeacherLogin }: { teacher?: TeacherUser | null; slug?: string; onNavigate: (path: string, mode?: "quizStrike" | "teacher") => void; onTeacherLogin: () => void }) {
   const { t } = useSiteTranslation();
+  const hydrated = useHydrated();
   return <>
     {!slug && <section className="quiz-classroom-entry" aria-labelledby="quiz-classroom-title">
-      <div><span className="auth-kicker">{t("QuizStrike · Classroom games")}</span><h2 id="quiz-classroom-title">{t("Ready to play with your class?")}</h2><p>{t("Teachers choose a Study Set and host. Students join with a code.")}</p></div>
+      <div><span className="auth-kicker">{t("QuizStrike · Classroom games")}</span><h2 id="quiz-classroom-title">{t("Ready to play with your class?")}</h2><p>{t("QuizStrike is a live multiplayer quiz game for classrooms. Teachers choose a Study Set and host a match. Students join with a code and answer questions as a team.")}</p></div>
       <div className="quiz-classroom-actions">
-        <button className="primary" type="button" onClick={() => onNavigate("/quiz-strike/teacher/library", "teacher")}><GraduationCap size={18} aria-hidden="true" />{t("Host a classroom game")}</button>
-        <button type="button" onClick={() => onNavigate("/join")}><DoorOpen size={18} aria-hidden="true" />{t("Join with a code")}</button>
+        <button className="primary" type="button" disabled={!hydrated} onClick={() => onNavigate("/quiz-strike/teacher/library", "teacher")}><GraduationCap size={18} aria-hidden="true" />{t("Host a classroom game")}</button>
+        <button type="button" disabled={!hydrated} onClick={() => onNavigate("/join")}><DoorOpen size={18} aria-hidden="true" />{t("Join with a code")}</button>
       </div>
     </section>}
     <Suspense fallback={<FeatureLoading label={t("Loading QuizStrike")} />}><CompetitionHub teacher={teacher} slug={slug} onNavigate={onNavigate} onTeacherLogin={onTeacherLogin} /></Suspense>

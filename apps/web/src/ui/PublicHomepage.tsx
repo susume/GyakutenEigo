@@ -1,5 +1,7 @@
 import { useSiteTranslation, SiteText } from "./siteTranslation";
 import { useState } from "react";
+import { publicPagePath } from "../seo/publicPages";
+import { useHydrated } from "./useHydrated";
 import {
   ArrowRight,
   BarChart3,
@@ -65,7 +67,7 @@ const flowSteps = [
     number: "1",
     title: "Set Task",
     copy: <><SiteText text="Choose a task" /><br /><SiteText text="and rubric" /></>,
-    image: "/assets/speaking/performance-teacher.png",
+    image: "/assets/speaking/performance-teacher.webp",
     alt: "Teacher setting a task with a tablet",
     className: "flow-stage-teacher"
   },
@@ -73,7 +75,7 @@ const flowSteps = [
     number: "2",
     title: "Students Perform",
     copy: <><SiteText text="Speak independently" /><br /><SiteText text="on any device" /></>,
-    image: "/assets/speaking/performance-student.png",
+    image: "/assets/speaking/performance-student.webp",
     alt: "Student speaking with headphones at a laptop",
     className: "flow-stage-student"
   },
@@ -81,7 +83,7 @@ const flowSteps = [
     number: "3",
     title: "Score Fairly",
     copy: <><SiteText text="Use shared criteria" /><br /><SiteText text="with clear evidence" /></>,
-    image: "/assets/speaking/performance-results.png",
+    image: "/assets/speaking/performance-results.webp",
     alt: "Assessment results chart with a green checkmark",
     className: "flow-stage-results"
   }
@@ -92,7 +94,7 @@ const speakingFlowSteps = [
     number: "1",
     title: "Choose a task",
     copy: <><SiteText text="Set the goal" /><br /><SiteText text="and support" /></>,
-    image: "/assets/speaking/performance-teacher.png",
+    image: "/assets/speaking/performance-teacher.webp",
     alt: "Teacher setting a speaking task with a tablet",
     className: "flow-stage-teacher"
   },
@@ -100,7 +102,7 @@ const speakingFlowSteps = [
     number: "2",
     title: "Practise together",
     copy: <><SiteText text="Build confidence" /><br /><SiteText text="with helpful support" /></>,
-    image: "/assets/speaking/performance-student.png",
+    image: "/assets/speaking/performance-student.webp",
     alt: "Student practising speaking with headphones at a laptop",
     className: "flow-stage-student"
   },
@@ -108,7 +110,7 @@ const speakingFlowSteps = [
     number: "3",
     title: "Show what you can do",
     copy: <><SiteText text="Use the English" /><br /><SiteText text="you know" /></>,
-    image: "/assets/speaking/performance-results.png",
+    image: "/assets/speaking/performance-results.webp",
     alt: "Speaking task evidence ready for teacher review",
     className: "flow-stage-results"
   }
@@ -120,12 +122,13 @@ export default function PublicHomepage({
   onJoinGame,
   onTeacherLogin
 }: PublicHomepageProps) {
-  const { t } = useSiteTranslation();
+  const { language, t } = useSiteTranslation();
   const [sessionCode, setSessionCode] = useState("");
+  const hydrated = useHydrated();
   const speaking = variant === "speaking";
 
   return (
-    <div className="performance-home">
+    <main className="performance-home">
       <span className="performance-orb performance-orb-one" aria-hidden="true" />
       <span className="performance-orb performance-orb-two" aria-hidden="true" />
 
@@ -133,14 +136,14 @@ export default function PublicHomepage({
         <div className="performance-hero-copy">
           <p className="performance-eyebrow">{speaking ? t("SpeakCheck · Classroom speaking tasks") : t("Computer-based performance test")}</p>
           <h1 id="public-hero-title" tabIndex={-1}>{speaking ? t("Use the English you’ve learned.") : t("SpeakCheck App")}</h1>
-          <p className="performance-hero-lead">{speaking ? t("Learn it in class. Practise it together. Then try the speaking task yourself and show what you can do.") : t("Fair, consistent speaking assessment for every student.")}</p>
+          <p className="performance-hero-lead">{speaking ? t("With SpeakCheck, teachers set English speaking tasks and rubrics. Students join with a class code, practise with an AI conversation partner, and complete speaking tasks for teacher review.") : t("Fair, consistent speaking assessment for every student.")}</p>
           <div className="performance-hero-actions">
-            <button className="performance-button performance-button-primary" type="button" onClick={onCreateMatch}>
+            <button className="performance-button performance-button-primary" type="button" disabled={!hydrated} onClick={onCreateMatch}>
               <BookOpen size={20} aria-hidden="true" />
               <span>{speaking ? t("Create a Speaking Task") : t("Create a Performance Test")}</span>
               <ArrowRight size={21} aria-hidden="true" />
             </button>
-            <button className="performance-button performance-button-secondary" type="button" onClick={() => onJoinGame()}>
+            <button className="performance-button performance-button-secondary" type="button" disabled={!hydrated} onClick={() => onJoinGame()}>
               <ScanLine size={20} aria-hidden="true" />
               <span>{t("Join with Code")}</span>
             </button>
@@ -176,10 +179,11 @@ export default function PublicHomepage({
         <article className="performance-entry-card performance-teacher-card">
           <div className="performance-entry-illustration">
             <img
-              src="/assets/speaking/performance-teacher.png"
+              src="/assets/speaking/performance-teacher.webp"
               alt={t("Friendly teacher holding a tablet")}
-              loading="eager"
-              decoding="sync"
+              width={1448}
+              height={1086}
+              decoding="async"
             />
           </div>
           <div className="performance-entry-content">
@@ -190,7 +194,7 @@ export default function PublicHomepage({
               <li><span><Check size={16} strokeWidth={3} aria-hidden="true" /></span>{t("Set a rubric")}</li>
               <li><span><Check size={16} strokeWidth={3} aria-hidden="true" /></span>{speaking ? t("Collect student evidence") : t("Review results")}</li>
             </ul>
-            <button className="performance-entry-action performance-entry-action-teacher" type="button" onClick={onTeacherLogin}>
+            <button className="performance-entry-action performance-entry-action-teacher" type="button" disabled={!hydrated} onClick={onTeacherLogin}>
               <BookOpen size={21} aria-hidden="true" />
               <span>{t("Teacher workspace")}</span>
               <ArrowRight size={21} aria-hidden="true" />
@@ -201,10 +205,11 @@ export default function PublicHomepage({
         <article className="performance-entry-card performance-student-card">
           <div className="performance-entry-illustration">
             <img
-              src="/assets/speaking/performance-student.png"
+              src="/assets/speaking/performance-student.webp"
               alt={t("Student wearing headphones at a laptop")}
-              loading="eager"
-              decoding="sync"
+              width={1448}
+              height={1086}
+              decoding="async"
             />
           </div>
           <form className="performance-entry-content" onSubmit={(event) => { event.preventDefault(); onJoinGame(sessionCode); }}>
@@ -212,7 +217,7 @@ export default function PublicHomepage({
             <h2>{t("Join and begin")}</h2>
             <div className="performance-session-code">
               <label htmlFor="public-session-code" className="performance-code-label">{t("Classroom code")}</label>
-              <input id="public-session-code" required aria-label={t("Session code")} aria-describedby="public-code-help" placeholder="ABC123" value={sessionCode}
+              <input id="public-session-code" required aria-label={t("Session code")} aria-describedby="public-code-help" placeholder="ABC123" value={sessionCode} disabled={!hydrated}
                 onChange={(event) => setSessionCode(event.target.value.toUpperCase().replace(/[^A-Z0-9]/g, "").slice(0, 6))}
                 autoComplete="off" autoCapitalize="characters" spellCheck={false} maxLength={6} pattern="[A-Z0-9]{6}"
                 title={t("Enter the six-character code from your teacher")} />
@@ -225,7 +230,7 @@ export default function PublicHomepage({
               <ArrowRight size={16} aria-hidden="true" />
               <span><b>3</b>{t("Perform")}</span>
             </div>
-            <button className="performance-entry-action performance-entry-action-student" type="submit">
+            <button className="performance-entry-action performance-entry-action-student" type="submit" disabled={!hydrated}>
               <ScanLine size={21} aria-hidden="true" />
               <span>{speaking ? t("Join speaking task") : t("Join Performance Test")}</span>
               <ArrowRight size={21} aria-hidden="true" />
@@ -235,13 +240,13 @@ export default function PublicHomepage({
       </section>
 
       <footer className="performance-shell performance-footer">
-        <span>© {new Date().getFullYear()}{" "}{t("GyakutenEigo. Empowering every learner's voice.")}</span>
+        <span>© {t("GyakutenEigo. Empowering every learner's voice.")}</span>
         <nav aria-label={t("Footer")}>
           <a href="#performance-flow">{t("How it works")}</a>
-          <a href="/about">{t("About / 講師紹介")}</a>
+          <a href={publicPagePath("/about", language)}>{t("About / 講師紹介")}</a>
         </nav>
       </footer>
-    </div>
+    </main>
   );
 }
 
@@ -259,7 +264,7 @@ function PerformanceFlow({ speaking }: { speaking: boolean }) {
           <div className="performance-flow-stage-wrap" key={step.number}>
             <article className={`performance-flow-stage ${step.className}`}>
               <div className="performance-flow-visual">
-                <img src={step.image} alt={t(step.alt)} decoding="sync" />
+                <img src={step.image} alt={t(step.alt)} width={1448} height={1086} decoding="async" />
               </div>
               <div className="performance-flow-stage-copy">
                 <span className="performance-flow-number">{step.number}</span>

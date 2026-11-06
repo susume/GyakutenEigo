@@ -1,12 +1,11 @@
 import { useSiteTranslation, SiteText } from "./siteTranslation";
 import { ArrowRight, BookOpenText, Gamepad2, Globe2, Lightbulb, Settings2, Users } from "lucide-react";
 import { useEffect } from "react";
+import { publicPagePath } from "../seo/publicPages";
 import ClassroomCodeEntry from "./ClassroomCodeEntry";
 import "./product-hub.css";
 
 type ProductHubHomepageProps = {
-  onOpenSpeaking: () => void;
-  onOpenQuizStrike: () => void;
   onNavigate: (path: string) => void;
 };
 
@@ -15,7 +14,7 @@ const speakingSteps = [
     number: "1",
     title: "Set Task",
     copy: <><SiteText text="Choose a task and rubric" /></>,
-    image: "/assets/speaking/performance-teacher.png",
+    image: "/assets/speaking/performance-teacher.webp",
     alt: "Teacher setting a speaking task with a tablet",
     className: "product-hub-stage-teacher"
   },
@@ -23,7 +22,7 @@ const speakingSteps = [
     number: "2",
     title: "Students Speak",
     copy: <><SiteText text="Speak independently on any device" /></>,
-    image: "/assets/speaking/performance-student.png",
+    image: "/assets/speaking/performance-student.webp",
     alt: "Student speaking with headphones at a laptop",
     className: "product-hub-stage-student"
   },
@@ -31,7 +30,7 @@ const speakingSteps = [
     number: "3",
     title: "Review Results",
     copy: <><SiteText text="See scores, rubrics and clear evidence" /></>,
-    image: "/assets/speaking/performance-results.png",
+    image: "/assets/speaking/performance-results.webp",
     alt: "Speaking assessment results chart with a green checkmark",
     className: "product-hub-stage-results"
   }
@@ -43,19 +42,16 @@ const benefits = [
   { title: "Fun multiplayer review", copy: "Higher engagement, better retention", icon: Gamepad2, tone: "purple" }
 ] as const;
 
-export default function ProductHubHomepage({ onOpenSpeaking, onOpenQuizStrike, onNavigate }: ProductHubHomepageProps) {
-  const { t } = useSiteTranslation();
+export default function ProductHubHomepage({ onNavigate }: ProductHubHomepageProps) {
+  const { language, t } = useSiteTranslation();
   useEffect(() => {
     const previousSite = document.body.dataset.site;
-    const previousTitle = document.title;
     document.body.dataset.site = "product-hub";
-    document.title = t("GyakutenEigo · English classroom tools");
     return () => {
-      if (previousSite === undefined) delete document.body.dataset.site;
+      if (previousSite === undefined || previousSite === "product-hub") delete document.body.dataset.site;
       else document.body.dataset.site = previousSite;
-      document.title = previousTitle;
     };
-  }, [t]);
+  }, []);
 
   return (
     <div className="product-hub-home">
@@ -63,7 +59,7 @@ export default function ProductHubHomepage({ onOpenSpeaking, onOpenQuizStrike, o
         <section className="product-hub-intro">
           <span className="ge-eyebrow">{t("GyakutenEigo · Classroom tools")}</span>
           <h1 id="product-hub-title" tabIndex={-1}>{t("Small steps.")}<br />{t("Confident English.")}</h1>
-          <p>{t("More speaking. More participation. One teacher workspace.")}</p>
+          <p>{t("GyakutenEigo gives English teachers two classroom tools. Use SpeakCheck to assess speaking and QuizStrike to review vocabulary and grammar in live team games.")}</p>
         </section>
 
         <ClassroomCodeEntry onJoin={(product, code) => onNavigate(product === "speaking" ? `/speak/join/${code}` : `/join?code=${code}`)} />
@@ -78,7 +74,7 @@ export default function ProductHubHomepage({ onOpenSpeaking, onOpenQuizStrike, o
                 <div className="product-hub-flow-stage-wrap" key={step.number}>
                   <article className={`product-hub-flow-stage ${step.className}`}>
                     <div className="product-hub-flow-visual">
-                  <img src={step.image} alt={t(step.alt)} width={1440} height={1080} loading="eager" decoding="sync" />
+                      <img src={step.image} alt={t(step.alt)} width={1448} height={1086} decoding="async" />
                     </div>
                     <div className="product-hub-flow-copy">
                       <span className="product-hub-flow-number">{step.number}</span>
@@ -92,11 +88,11 @@ export default function ProductHubHomepage({ onOpenSpeaking, onOpenQuizStrike, o
                 </div>
               ))}
             </div>
-            <button className="product-hub-card-button product-hub-speaking-button" type="button" onClick={onOpenSpeaking}>
+            <a className="product-hub-card-button product-hub-speaking-button" href={publicPagePath("/speak", language)}>
               <BookOpenText size={21} aria-hidden="true" />
               <span>{t("Open SpeakCheck")}</span>
               <ArrowRight size={22} aria-hidden="true" />
-            </button>
+            </a>
           </article>
 
           <article className="product-hub-card product-hub-quizstrike-card">
@@ -107,18 +103,18 @@ export default function ProductHubHomepage({ onOpenSpeaking, onOpenQuizStrike, o
             </div>
             <p className="product-hub-card-description">{t("Turn classroom review into a multiplayer challenge.")}</p>
             <div className="product-hub-quiz-art-frame">
-              <img src="/assets/quizstrike-home-hero.png" alt={t("QuizStrike classroom review game with students answering a question")} width={1448} height={1086} fetchPriority="high" decoding="sync" />
+              <img src="/assets/quizstrike-home-hero.webp" alt={t("QuizStrike classroom review game with students answering a question")} width={1448} height={1086} fetchPriority="high" decoding="async" />
               <div className="product-hub-quiz-badges" aria-label={t("QuizStrike content areas")}>
                 <span><BookOpenText size={15} aria-hidden="true" />{t("Vocabulary")}</span>
                 <span><Settings2 size={15} aria-hidden="true" />{t("Grammar")}</span>
                 <span><Globe2 size={15} aria-hidden="true" />{t("Culture")}</span>
               </div>
             </div>
-            <button className="product-hub-card-button product-hub-quiz-button" type="button" onClick={onOpenQuizStrike}>
+            <a className="product-hub-card-button product-hub-quiz-button" href={publicPagePath("/quiz-strike", language)}>
               <Gamepad2 size={21} aria-hidden="true" />
               <span>{t("Open QuizStrike")}</span>
               <ArrowRight size={22} aria-hidden="true" />
-            </button>
+            </a>
           </article>
         </section>
 
@@ -138,7 +134,12 @@ export default function ProductHubHomepage({ onOpenSpeaking, onOpenQuizStrike, o
             );
           })}
         </section>
-        <footer className="product-hub-footer"><span>{t("GyakutenEigo · English classroom tools")}</span><a href="/about">{t("About / 講師紹介")}</a><span>{t("Teachers host. Students join with a code.")}</span></footer>
+        <footer className="product-hub-footer">
+          <span>{t("GyakutenEigo · English classroom tools")}</span>
+          <a href={publicPagePath("/about", language)}>{t("About / 講師紹介")}</a>
+          <a href={publicPagePath("/private-lessons", language)}>{t("Private English lessons")}</a>
+          <a href={publicPagePath("/", language === "en" ? "ja" : "en")} hrefLang={language === "en" ? "ja" : "en"} lang={language === "en" ? "ja" : "en"}>{language === "en" ? "日本語" : "English"}</a>
+        </footer>
       </section>
     </div>
   );

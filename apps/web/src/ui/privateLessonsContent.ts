@@ -4,7 +4,7 @@ export const privateLessonDetails = { price: 4000, minutes: 60, email: "contact@
 
 type LessonFocus = { id: string; title: string; description: string };
 type LessonContent = {
-  pageTitle: string; description: string; skip: string; back: string;
+  skip: string; back: string;
   eyebrow: string; title: string; introduction: string; enquire: string; explore: string;
   duration: string; oneToOne: string; portraitAlt: string; teacher: string;
   trust: { title: string; detail: string }[];
@@ -20,8 +20,6 @@ type LessonContent = {
 
 export const privateLessonsContent: Record<SiteLanguage, LessonContent> = {
   en: {
-    pageTitle: "Private English Lessons with Peter · GyakutenEigo",
-    description: "Personalised English lessons with Peter Hoang in Nakamozu, Sakai, Osaka or online. Conversation, Eiken, school English and presentation coaching. ¥4,000 for 60 minutes.",
     skip: "Skip to main content", back: "About Peter",
     eyebrow: "Private English lessons",
     title: "English lessons built around you.",
@@ -76,8 +74,6 @@ export const privateLessonsContent: Record<SiteLanguage, LessonContent> = {
     emailBody: "Hi Peter,\n\nI’m interested in private English lessons.\n\nMy English level:\nWhat I’d like to work on:\nPreferred format (Nakamozu / online):\nPreferred days and times:\n\nThank you!"
   },
   ja: {
-    pageTitle: "Peterのプライベート英語レッスン · GyakutenEigo",
-    description: "大阪府堺市・中百舌鳥（なかもず）またはオンラインで、Peter Hoangによるマンツーマン英語レッスン。英会話、英検対策、学校英語、スピーチなど。60分4,000円。",
     skip: "本文へ移動", back: "Peterについて",
     eyebrow: "プライベート英語レッスン", title: "あなたに合わせた、英語レッスン。",
     introduction: "自信を持って話したい。試験に向けて準備したい。伝えたいことを英語で表現したい。日本で10年以上の指導経験を持つオーストラリア人講師Peterが、マンツーマンでお手伝いします。",

@@ -689,8 +689,8 @@ test("the product hub routes visitors to both classroom products", async ({ page
   await expect(page.getByRole("heading", { name: "Small steps. Confident English.", exact: true })).toBeVisible();
   await expect(page.getByRole("heading", { name: "SpeakCheck", exact: true })).toBeVisible();
   await expect(page.getByRole("heading", { name: "QuizStrike", exact: true })).toBeVisible();
-  await expect(page.getByRole("button", { name: "Open SpeakCheck", exact: true })).toBeVisible();
-  await expect(page.getByRole("button", { name: "Open QuizStrike", exact: true })).toBeVisible();
+  await expect(page.getByRole("link", { name: "Open SpeakCheck", exact: true })).toBeVisible();
+  await expect(page.getByRole("link", { name: "Open QuizStrike", exact: true })).toBeVisible();
   expect(await page.locator("img").evaluateAll((images) => images.every((image) => {
     const element = image as HTMLImageElement;
     return element.complete && element.naturalWidth > 0;
@@ -705,7 +705,7 @@ test("the product hub routes visitors to both classroom products", async ({ page
   await page.evaluate(async () => { await document.fonts.ready; });
   await page.waitForTimeout(1000);
   for (const name of ["Open SpeakCheck", "Open QuizStrike"]) {
-    const bounds = await page.getByRole("button", { name, exact: true }).boundingBox();
+    const bounds = await page.getByRole("link", { name, exact: true }).boundingBox();
     expect(bounds).toBeTruthy();
     expect(bounds!.height).toBeGreaterThanOrEqual(44);
     expect(bounds!.x + bounds!.width).toBeLessThanOrEqual(1672);
@@ -729,13 +729,13 @@ test("the product hub routes visitors to both classroom products", async ({ page
   await expect(page.locator(".product-hub-quiz-art-frame img")).toHaveJSProperty("naturalWidth", 1448);
   await page.screenshot({ path: testInfo.outputPath("product-hub-1891.png"), fullPage: false });
 
-  await page.getByRole("button", { name: "Open SpeakCheck", exact: true }).click();
-  await expect(page).toHaveURL(/\/speak$/);
+  await page.getByRole("link", { name: "Open SpeakCheck", exact: true }).click();
+  await expect(page).toHaveURL(/\/speak\/$/);
   await expect(page.getByRole("heading", { name: "Use the English you’ve learned.", exact: true })).toBeVisible();
 
   await page.goto("/");
-  await page.getByRole("button", { name: "Open QuizStrike", exact: true }).click();
-  await expect(page).toHaveURL(/\/quiz-strike$/);
+  await page.getByRole("link", { name: "Open QuizStrike", exact: true }).click();
+  await expect(page).toHaveURL(/\/quiz-strike\/$/);
   await expect(page.getByRole("heading", { name: "Enter the QuizStrike Arena", exact: true })).toBeVisible();
 
   await page.setViewportSize({ width: 390, height: 844 });

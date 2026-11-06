@@ -11,10 +11,10 @@ export default function GyakutenEigoBrand({ compact = false, className, alt = "G
     <span className={["gyakuteneigo-brand", compact ? "gyakuteneigo-brand-compact" : "", className].filter(Boolean).join(" ")}>
       <img
         className="gyakuteneigo-logo-image"
-        src="/assets/gyakuteneigo-logo-exact-hires.png"
+        src="/assets/gyakuteneigo-logo-exact-hires.webp"
         alt={alt}
-        width={4096}
-        height={1248}
+        width={1024}
+        height={312}
         decoding="async"
       />
     </span>

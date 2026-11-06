@@ -21,6 +21,8 @@ body[data-site="product-hub"] .app-shell {
 }
 
 .product-hub-topbar .brand-button {
+  display: inline-flex;
+  align-items: center;
   min-width: 225px;
   min-height: 56px;
   justify-content: flex-start;
@@ -83,7 +85,7 @@ body[data-site="product-hub"] .app-shell {
   margin-left: auto;
 }
 
-.product-hub-topbar .top-actions button {
+.product-hub-topbar .top-actions :is(button, a) {
   min-height: 44px;
   border: 1px solid transparent;
   border-radius: 10px;
@@ -95,11 +97,14 @@ body[data-site="product-hub"] .app-shell {
 }
 
 .product-hub-topbar .top-actions .product-hub-nav-link {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
   padding-inline: 7px;
+  text-decoration: none;
 }
 
-.product-hub-topbar .top-actions button:hover,
-.product-hub-topbar .top-actions button:focus-visible {
+.product-hub-topbar .top-actions :is(button, a):is(:hover, :focus-visible) {
   border-color: #d7e7f5;
   background: #f5faff;
   color: #1676df;
@@ -434,6 +439,7 @@ body[data-site="product-hub"] .app-shell {
   color: #ffffff;
   font-size: 1rem;
   font-weight: 900;
+  text-decoration: none;
 }
 
 .product-hub-card-button span {
@@ -642,7 +648,7 @@ body[data-site="product-hub"] .app-shell {
     border-top: 1px solid #e0edf7;
   }
 
-  .product-hub-topbar .top-actions button {
+  .product-hub-topbar .top-actions :is(button, a) {
     width: 100%;
     justify-content: flex-start;
     padding-inline: 12px;
@@ -911,7 +917,7 @@ body[data-site="product-hub"] .app-shell {
 .product-hub-quiz-art-frame { margin-top: 20px; object-position: center; }
 .product-hub-quiz-art-frame img { object-position: center 24%; }
 .product-hub-card-button { margin-top: 20px; }
-.topbar.product-hub-topbar .top-actions button { white-space: nowrap; }
+.topbar.product-hub-topbar .top-actions :is(button, a) { white-space: nowrap; }
 
 @media (min-width: 901px) {
   .product-hub-products { grid-template-rows: auto auto auto 1fr auto; gap: 0 20px; }
@@ -929,7 +935,7 @@ body[data-site="product-hub"] .app-shell {
 }
 @media (min-width: 901px) and (max-width: 1180px) {
   .topbar.product-hub-topbar { padding-inline: 24px; }
-  .topbar.product-hub-topbar .top-actions button { padding-inline: 8px; font-size: 0.82rem; min-width: 0; }
+  .topbar.product-hub-topbar .top-actions :is(button, a) { padding-inline: 8px; font-size: 0.82rem; min-width: 0; }
   .topbar.product-hub-topbar .product-hub-nav-group { gap: 4px; }
   .product-hub-flow-copy { grid-template-columns: 1fr; }
   .product-hub-flow-copy strong { min-height: 2.1em; }

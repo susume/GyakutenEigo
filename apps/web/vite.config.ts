@@ -29,6 +29,7 @@ export default defineConfig(({ mode }) => ({
     proxy: localApiProxy
   },
   build: {
+    manifest: true,
     cssCodeSplit: true,
     rollupOptions: {
       output: {

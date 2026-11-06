@@ -2,7 +2,7 @@ import type { SiteLanguage } from "./siteLanguage";
 
 type AboutSection = { id: string; label: string; title: string; paragraphs: string[]; quote?: string; items?: string[] };
 type AboutContent = {
-  pageTitle: string; eyebrow: string; title: string; introduction: string; location: string;
+  eyebrow: string; title: string; introduction: string; location: string;
   experience: string; teacher: string; navigation: string; skip: string; qualifications: string;
   introParagraphs: string[]; introQuote: string; sections: AboutSection[];
   closingTitle: string; closingParagraphs: string[]; privateLessons: string; tools: string; speaking: string; footer: string;
@@ -10,7 +10,6 @@ type AboutContent = {
 
 export const aboutContent: Record<SiteLanguage, AboutContent> = {
   en: {
-    pageTitle: "About Peter Hoang · GyakutenEigo",
     eyebrow: "About your teacher",
     title: "Helping students turn English knowledge into real communication.",
     introduction: "Hi, I’m Peter Hoang, an Australian English teacher based in Osaka, Japan.",
@@ -55,7 +54,6 @@ export const aboutContent: Record<SiteLanguage, AboutContent> = {
     privateLessons: "Explore private lessons", tools: "Explore classroom tools", speaking: "Discover SpeakCheck", footer: "English knowledge. Real communication."
   },
   ja: {
-    pageTitle: "講師紹介 · Peter Hoang · GyakutenEigo",
     eyebrow: "講師紹介",
     title: "英語を「知っている」から「使える」へ。",
     introduction: "こんにちは。オーストラリア出身の英語講師、Peter Hoang（ピーター・ホアング）です。",

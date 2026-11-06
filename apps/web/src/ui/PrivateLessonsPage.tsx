@@ -1,5 +1,5 @@
 import { ArrowLeft, ArrowRight, BookOpenText, Check, GraduationCap, Mail, MapPin, MessageCircle, Mic, Monitor, PencilLine, Trophy } from "lucide-react";
-import { useEffect } from "react";
+import { publicPagePath } from "../seo/publicPages";
 import ProductHubHeader from "./ProductHubHeader";
 import { useSiteLanguage } from "./SiteLanguageProvider";
 import { privateLessonDetails, privateLessonEnquiryHref, privateLessonsContent } from "./privateLessonsContent";
@@ -21,29 +21,12 @@ export default function PrivateLessonsPage() {
     window.scrollTo(0, 0);
   };
 
-  useEffect(() => {
-    const previousTitle = document.title;
-    document.title = copy.pageTitle;
-    const existingMeta = document.querySelector<HTMLMetaElement>('meta[name="description"]');
-    const meta = existingMeta ?? document.createElement("meta");
-    const previousDescription = meta.getAttribute("content");
-    if (!existingMeta) { meta.name = "description"; document.head.appendChild(meta); }
-    meta.content = copy.description;
-    return () => {
-      document.title = previousTitle;
-      if (!existingMeta) meta.remove();
-      else if (previousDescription === null) meta.removeAttribute("content");
-      else meta.content = previousDescription;
-    };
-  }, [copy.pageTitle, copy.description]);
-
   return <div className="ge-lessons-page" lang={language}>
     <a className="ge-lessons-skip" href="#lessons-main">{copy.skip}</a>
-    <ProductHubHeader onNavigate={navigate}
-      onLogin={() => navigate("/quiz-strike/teacher/home")}
+    <ProductHubHeader onLogin={() => navigate("/quiz-strike/teacher/home")}
       onGetStarted={() => navigate("/quiz-strike/teacher/home?auth=signup")} />
     <main id="lessons-main" className="ge-lessons-shell" tabIndex={-1}>
-      <a className="ge-lessons-back" href="/about"><ArrowLeft size={16} aria-hidden="true" />{copy.back}</a>
+      <a className="ge-lessons-back" href={publicPagePath("/about", language)}><ArrowLeft size={16} aria-hidden="true" />{copy.back}</a>
       <section className="ge-lessons-hero" aria-labelledby="lessons-title">
         <div className="ge-lessons-hero-copy">
           <span className="ge-eyebrow">{copy.eyebrow}</span>
@@ -56,7 +39,7 @@ export default function PrivateLessonsPage() {
           </div>
         </div>
         <figure className="ge-lessons-portrait">
-          <img src={`${import.meta.env.BASE_URL}assets/peter-hoang-headshot.png`} alt={copy.portraitAlt} width={1086} height={1448} fetchPriority="high" decoding="async" />
+          <img src={`${import.meta.env.BASE_URL}assets/peter-hoang-headshot.webp`} alt={copy.portraitAlt} width={1086} height={1448} fetchPriority="high" decoding="async" />
           <figcaption><strong lang="en">Peter Hoang</strong><span>{copy.teacher}</span></figcaption>
         </figure>
       </section>
@@ -85,7 +68,7 @@ export default function PrivateLessonsPage() {
         <div className="ge-lessons-teacher-copy">
           <span className="ge-eyebrow">{copy.teacherEyebrow}</span><h2 id="lesson-teacher-title">{copy.teacherTitle}</h2>
           {copy.teacherParagraphs.map((paragraph) => <p key={paragraph}>{paragraph}</p>)}
-          <a className="ge-lessons-text-link" href="/about">{copy.about}<ArrowRight size={18} aria-hidden="true" /></a>
+          <a className="ge-lessons-text-link" href={publicPagePath("/about", language)}>{copy.about}<ArrowRight size={18} aria-hidden="true" /></a>
           <div className="ge-lessons-achievement"><Trophy size={22} aria-hidden="true" /><p>{copy.achievement}</p></div>
         </div>
         <div className="ge-lessons-approach"><h3>{copy.approachTitle}</h3><ul>
@@ -113,7 +96,7 @@ export default function PrivateLessonsPage() {
         <a className="ge-lessons-email" href={enquiryHref}>{privateLessonDetails.email}</a>
         <p className="ge-lessons-email-note">{copy.emailNote}</p>
       </section>
-      <footer className="ge-lessons-footer"><span>© {new Date().getFullYear()} GyakutenEigo · Peter Hoang</span><span>{copy.footer}</span></footer>
+      <footer className="ge-lessons-footer"><span>© GyakutenEigo · Peter Hoang</span><span>{copy.footer}</span></footer>
     </main>
   </div>;
 }

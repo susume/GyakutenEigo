@@ -1,5 +1,6 @@
 import { useSiteTranslation } from "../../ui/siteTranslation";
 import { useCallback, useEffect, useRef, useState, type FormEvent } from "react";
+import { appRoute, getPublicPage, publicPagePath } from "../../seo/publicPages";
 import {
   ArrowLeft,
   ArrowRight,
@@ -113,37 +114,36 @@ const saveJoinCredentials = (payload: JoinResponse) => {
 
 const tokenForSession = (sessionId: string) => sessionStorage.getItem(`speaking-token:${sessionId}`) ?? "";
 
-export default function SpeakingPracticeApp() {
-  const { t } = useSiteTranslation();
-  const [path, setPath] = useState(() => normalizePath(window.location.pathname));
+export default function SpeakingPracticeApp({ initialPath }: { initialPath?: string }) {
+  const { language } = useSiteTranslation();
+  const [path, setPath] = useState(() => initialPath ?? appRoute(window.location.pathname));
   const route = parseRoute(path);
 
   const navigate = useCallback<Navigate>((nextPath) => {
     const target = new URL(nextPath, window.location.origin);
-    const targetPath = `${normalizePath(target.pathname)}${target.search}${target.hash}`;
+    const page = getPublicPage(target.pathname);
+    const pathname = page ? publicPagePath(page.route, language) : normalizePath(target.pathname);
+    const targetPath = `${pathname}${target.search}${target.hash}`;
     window.history.pushState(null, "", targetPath);
     // Notify the outer product router too, including hub and QuizStrike links.
     window.dispatchEvent(new PopStateEvent("popstate"));
-    setPath(normalizePath(target.pathname));
+    setPath(appRoute(pathname));
     window.scrollTo(0, 0);
-  }, []);
+  }, [language]);
 
   useEffect(() => {
     const previousSite = document.body.dataset.site;
-    const previousTitle = document.title;
     document.body.dataset.speaking = "true";
     document.body.dataset.site = "performance";
-    document.title = t("Speaking Tasks · GyakutenEigo");
-    const onPopState = () => setPath(normalizePath(window.location.pathname));
+    const onPopState = () => setPath(appRoute(window.location.pathname));
     window.addEventListener("popstate", onPopState);
     return () => {
       delete document.body.dataset.speaking;
-      if (previousSite === undefined) delete document.body.dataset.site;
+      if (previousSite === undefined || previousSite === "performance") delete document.body.dataset.site;
       else document.body.dataset.site = previousSite;
-      document.title = previousTitle;
       window.removeEventListener("popstate", onPopState);
     };
-  }, [t]);
+  }, []);
 
   return (
     <div className="speaking-app" id="main-content" tabIndex={-1}>

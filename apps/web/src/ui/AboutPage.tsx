@@ -1,5 +1,5 @@
 import { ArrowRight, BookOpenText, Check, GraduationCap, MapPin, MessageCircle, Monitor, Target, Trophy } from "lucide-react";
-import { useEffect } from "react";
+import { publicPagePath } from "../seo/publicPages";
 import ProductHubHeader from "./ProductHubHeader";
 import { useSiteLanguage } from "./SiteLanguageProvider";
 import { aboutContent, aboutQualifications } from "./aboutContent";
@@ -16,15 +16,9 @@ export default function AboutPage() {
     window.scrollTo(0, 0);
   };
 
-  useEffect(() => {
-    const previousTitle = document.title;
-    document.title = copy.pageTitle;
-    return () => { document.title = previousTitle; };
-  }, [copy.pageTitle]);
-
   return <div className="ge-about-page" lang={language}>
     <a className="ge-about-skip" href="#about-main">{copy.skip}</a>
-    <ProductHubHeader active="about" onNavigate={navigate}
+    <ProductHubHeader active="about"
       onLogin={() => navigate("/quiz-strike/teacher/home")}
       onGetStarted={() => navigate("/quiz-strike/teacher/home?auth=signup")} />
     <main id="about-main" className="ge-about-shell" tabIndex={-1}>
@@ -78,8 +72,8 @@ export default function AboutPage() {
         <h2 id="about-closing-title">{copy.closingTitle}</h2>
         {copy.closingParagraphs.map((paragraph) => <p key={paragraph}>{paragraph}</p>)}
         <div className="ge-about-actions">
-          <a href="/private-lessons" className="ge-about-primary">{copy.privateLessons}<ArrowRight size={18} aria-hidden="true" /></a>
-          <a href="/">{copy.tools}<ArrowRight size={18} aria-hidden="true" /></a>
+          <a href={publicPagePath("/private-lessons", language)} className="ge-about-primary">{copy.privateLessons}<ArrowRight size={18} aria-hidden="true" /></a>
+          <a href={publicPagePath("/", language)}>{copy.tools}<ArrowRight size={18} aria-hidden="true" /></a>
         </div>
       </section>
       <footer className="ge-about-footer"><span>GyakutenEigo · Peter Hoang</span><span>{copy.footer}</span></footer>

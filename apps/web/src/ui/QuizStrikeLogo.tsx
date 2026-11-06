@@ -12,7 +12,7 @@ export default function QuizStrikeLogo({
   return (
     <span className={["quizstrike-logo", `quizstrike-logo-${size}`, className].filter(Boolean).join(" ")}>
       <img
-        src="/assets/quizstrike-classroom-logo.png"
+        src="/assets/quizstrike-classroom-logo.webp"
         alt={alt}
         width={1536}
         height={1024}

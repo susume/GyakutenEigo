@@ -5,7 +5,7 @@
   "type": "module",
   "scripts": {
     "dev": "vite --host 0.0.0.0",
-    "build": "node scripts/check-join-css.mjs && tsc && vite build",
+    "build": "node scripts/check-join-css.mjs && tsc && vite build && node scripts/build-public-pages.mjs",
     "analyze": "node scripts/check-join-css.mjs && vite build --mode analyze",
     "sync:join-css": "node scripts/check-join-css.mjs --write",
     "test": "node ../../scripts/run-tests.mjs src",

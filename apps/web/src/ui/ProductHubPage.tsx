@@ -12,9 +12,8 @@ export default function ProductHubPage() {
 
   return <main id="main-content" className="app-shell" tabIndex={-1}>
     <a className="hub-skip-link" href="#product-hub-title">{t("Skip to main content")}</a>
-    <ProductHubHeader onNavigate={navigate}
-      onLogin={() => navigate("/quiz-strike/teacher/home")}
+    <ProductHubHeader onLogin={() => navigate("/quiz-strike/teacher/home")}
       onGetStarted={() => navigate("/quiz-strike/teacher/home?auth=signup")} />
-    <ProductHubHomepage onNavigate={navigate} onOpenSpeaking={() => navigate("/speak")} onOpenQuizStrike={() => navigate("/quiz-strike")} />
+    <ProductHubHomepage onNavigate={navigate} />
   </main>;
 }
