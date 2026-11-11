@@ -18,8 +18,10 @@ import {
   ATHLETICS_STADIUM_COURSE,
   ATHLETICS_TRANSITION_AIR_GAP_TARGETS,
   awardAthleticsEnergy,
+  getAthleticsCourseForMode,
   getAthleticsCourseGeometryIssues,
   getAthleticsCourseGeometryMetrics,
+  getAthleticsGroundHeight,
   getAthleticsObstacles,
   getAthleticsQuestionPoolIndex,
   getAthleticsQuestionsPerLap,
@@ -122,6 +124,34 @@ test("Athletics geometry QA rejects route crossings even at different heights", 
   const brokenCourse = { ...course, surfaces: course.surfaces.map((surface, index) => index === 60
     ? { ...surface, x: course.surfaces[2]!.x, z: course.surfaces[2]!.z } : surface) };
   assert.ok(getAthleticsCourseGeometryIssues(brokenCourse).some((issue) => issue.includes("route-platform-003") && issue.includes("route-platform-061")));
+});
+
+test("Zeus leaves more jump and landing room at the tightest parts of the climb", () => {
+  const classic = getAthleticsCourseForMode("classic");
+  const zeus = getAthleticsCourseForMode("zeus");
+  assert.deepEqual(getAthleticsCourseGeometryIssues(zeus), []);
+  assert.deepEqual(zeus.checkpoints, classic.checkpoints);
+  for (const index of [22, 23, 24, 25, 45, 46, 47, 48, 50, 51, 52, 62]) {
+    const transition = zeus.transitions[index]!;
+    const before = getAthleticsTransitionJumpEnvelope(transition, classic);
+    const after = getAthleticsTransitionJumpEnvelope(transition, zeus);
+    assert.ok(before.airGap - after.airGap >= 1.5, `${transition.id} should give racers more room`);
+    assert.ok(after.horizontalReach - after.airGap >= 2.5, `${transition.id} needs a forgiving landing`);
+  }
+
+  const summitApproach = zeus.surfaces[62]!;
+  const edge = { x: summitApproach.x, y: summitApproach.y + ATHLETICS_PLAYER_EYE_HEIGHT, z: summitApproach.z - summitApproach.depth / 2 + 0.6 };
+  assert.equal(getAthleticsPhysicalSupport(edge, zeus).surfaceId, summitApproach.id);
+  assert.equal(getAthleticsPhysicalSupport(edge, classic).kind, "airborne");
+  assert.equal(getAthleticsGroundHeight(edge, 0, zeus), summitApproach.y);
+
+  const floatingLanding = zeus.surfaces[45]!;
+  const mover = zeus.movingObstacles.find((obstacle) => obstacle.id === floatingLanding.movingObstacleId)!;
+  const nowMs = 1700;
+  const deck = getAthleticsMovingObstaclePosition(mover, nowMs);
+  const deckEdge = { x: deck.x, y: deck.y + mover.height + ATHLETICS_PLAYER_EYE_HEIGHT, z: deck.z + floatingLanding.depth / 2 - 0.6 };
+  assert.equal(getAthleticsPhysicalSupport(deckEdge, zeus, ATHLETICS_PLAYER_EYE_HEIGHT, nowMs).obstacleId, mover.id);
+  assert.equal(getAthleticsPhysicalSupport(deckEdge, classic, ATHLETICS_PLAYER_EYE_HEIGHT, nowMs).kind, "airborne");
 });
 
 test("zigzag has wider landings with reachable gaps and floating districts require six shuttle crossings", () => {

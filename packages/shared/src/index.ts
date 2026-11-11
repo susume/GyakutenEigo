@@ -18,6 +18,7 @@ import {
   sanitizeAthleticsCourseLaps
 } from "./athleticsRace.js";
 import type {
+  AthleticsCourseDefinition,
   AthleticsCourseId,
   AthleticsPlayerState,
   AthleticsRaceState
@@ -2664,7 +2665,8 @@ export const getArenaObstacles = (mapId: ArenaMapId | string | undefined): Arena
 
 /** Athletics has its own compact collision course even though it reuses the
  * existing ArenaMapId for persistence compatibility with older clients. */
-export const getAthleticsObstacles = (nowMs = Date.now()): ArenaObstacle[] => getAuthoredAthleticsObstacles(nowMs).map((obstacle) => ({ ...obstacle }));
+export const getAthleticsObstacles = (nowMs = Date.now(), course?: AthleticsCourseDefinition): ArenaObstacle[] =>
+  getAuthoredAthleticsObstacles(nowMs, course);
 
 export type SnowballUseResult =
   | { ok: true; nextSnowballs: number }
