@@ -176,6 +176,7 @@ import {
   ATHLETICS_RECOVERY_MIN_ENERGY,
   ATHLETICS_RECOVERY_SETTLE_MS,
   awardAthleticsEnergy,
+  getAthleticsCourseForMode,
   getAthleticsGroundHeight,
   getAthleticsPhysicalSupport,
   getAthleticsCheckpointSurfaceIndex,
@@ -1416,10 +1417,11 @@ const updateAthleticsRace = (session: GameSession, player: PlayerSession, nowMs:
   // Hunters defend their authored stations; they are not additional racers
   // that should be evaluated against the parkour landing/checkpoint route.
   if (getAthleticsMode(session.settings.athleticsMode ?? race.mode) === "hunters-runners" && athletics.role === "hunter") return;
+  const course = getAthleticsCourseForMode(session.settings.athleticsMode ?? race.mode);
   const currentPosition = { x: player.x ?? 0, y: player.y ?? 0, z: player.z ?? 0 };
   const support = getAthleticsPhysicalSupport(
     currentPosition,
-    ATHLETICS_STADIUM_COURSE,
+    course,
     player.crouching === true ? ARENA_PLAYER_CROUCH_EYE_HEIGHT : ATHLETICS_PLAYER_EYE_HEIGHT,
     nowMs
   );
@@ -1989,7 +1991,7 @@ const beginAthleticsRecovery = (
     const diagnosticPosition = diagnostic?.position ?? currentPosition;
     const diagnosticSupport = diagnostic?.support ?? getAthleticsPhysicalSupport(
       diagnosticPosition,
-      ATHLETICS_STADIUM_COURSE,
+      getAthleticsCourseForMode(session.settings.athleticsMode ?? session.athletics?.mode),
       ATHLETICS_PLAYER_EYE_HEIGHT,
       nowMs
     );
@@ -2052,7 +2054,7 @@ const completeAthleticsRecovery = (
   const respawn = getAthleticsRecoveryPosition(
     safeSurfaceIndex,
     athletics.laneIndex ?? 0,
-    ATHLETICS_STADIUM_COURSE
+    getAthleticsCourseForMode(session.settings.athleticsMode ?? session.athletics?.mode)
   );
   const safeCheckpointIndex = ATHLETICS_STADIUM_COURSE.checkpoints.filter((progress) => progress <= safeProgress + 0.02).length;
   Object.assign(player, respawn, {
@@ -2119,6 +2121,8 @@ const applyAuthoritativePosition = (
   nowMs = Date.now()
 ) => {
   const isAthletics = session.settings.gameMode === "athletics";
+  const athleticsMode = getAthleticsMode(session.settings.athleticsMode ?? session.athletics?.mode);
+  const athleticsCourse = getAthleticsCourseForMode(athleticsMode);
   const athletics = isAthletics ? ensureAthleticsPlayerState(session, player) : undefined;
   const fallback = sessionSpawn(session, player.team);
   const lastMoveAt = playerMoveTimestamps.get(player.id) ?? nowMs - BOT_TICK_MS;
@@ -2164,7 +2168,7 @@ const applyAuthoritativePosition = (
   const isStationaryAthleticsHunter = Boolean(
     isAthletics
     && athletics
-    && getAthleticsMode(session.settings.athleticsMode ?? session.athletics?.mode) === "hunters-runners"
+    && athleticsMode === "hunters-runners"
     && athletics.role === "hunter"
   );
   if (isAthletics && athletics && (
@@ -2198,7 +2202,7 @@ const applyAuthoritativePosition = (
       // Packets sampled before STOP may arrive afterwards. Reject their
       // displacement without punishing the student for network delay.
       if (requested.zeusPhase === "green") return { ...currentPosition, facing: requestedFacing };
-      const support = getAthleticsPhysicalSupport(currentPosition, ATHLETICS_STADIUM_COURSE, requestedEyeHeight, nowMs);
+      const support = getAthleticsPhysicalSupport(currentPosition, athleticsCourse, requestedEyeHeight, nowMs);
       const carried = support.kind === "moving_platform";
       const anchor = athletics.zeusRedAnchor;
       const drift = anchor?.cycleIndex === cycleIndex ? Math.hypot(requestedX - anchor.x, requestedZ - anchor.z) : 0;
@@ -2251,7 +2255,7 @@ const applyAuthoritativePosition = (
     });
   }
   const requestedGroundY = isAthletics
-    ? getAthleticsGroundHeight({ x: requestedX, y: requestedEyeY, z: requestedZ }, nowMs)
+    ? getAthleticsGroundHeight({ x: requestedX, y: requestedEyeY, z: requestedZ }, nowMs, athleticsCourse)
     : getArenaGroundHeightForPlayer(
       session.settings.mapId,
       requestedX,
@@ -2269,7 +2273,7 @@ const applyAuthoritativePosition = (
     && nowMs < Date.parse(athletics.jumpBoostUntil)
   );
   const chaosEvent = isAthletics
-    && getAthleticsMode(session.settings.athleticsMode ?? session.athletics?.mode) === "chaos-climb"
+    && athleticsMode === "chaos-climb"
     ? session.athletics?.chaos?.currentEvent
     : undefined;
   const activeChaosEvent = chaosEvent && nowMs < Date.parse(chaosEvent.expiresAt) ? chaosEvent : undefined;
@@ -2309,13 +2313,13 @@ const applyAuthoritativePosition = (
       * getPlayerMoveSpeedMultiplier(player)
       * (athletics?.dashUntil && nowMs < Date.parse(athletics.dashUntil) ? 1.42 : 1)
       * (chaosEventModifiers?.movementSpeedMultiplier ?? 1),
-    obstacles: isAthletics ? getAthleticsObstacles(nowMs) : getArenaObstacles(session.settings.mapId),
+    obstacles: isAthletics ? getAthleticsObstacles(nowMs, athleticsCourse) : getArenaObstacles(session.settings.mapId),
     groundY: requestedGroundY,
     eyeHeight: requestedEyeHeight,
     mapId: isAthletics ? ATHLETICS_ARENA_MAP_ID : session.settings.mapId
   });
   if (isAthletics && athletics) {
-    if (getAthleticsMode(session.settings.athleticsMode ?? session.athletics?.mode) === "hunters-runners" && athletics.role === "hunter") {
+    if (athleticsMode === "hunters-runners" && athletics.role === "hunter") {
       const station = getAthleticsHunterStationPosition(
         athletics.stationIndex ?? 0,
         Math.max(1, session.athletics?.hunterIds?.length ?? 1)
@@ -2333,7 +2337,7 @@ const applyAuthoritativePosition = (
     };
     const physicalSupport = getAthleticsPhysicalSupport(
       resolvedPosition,
-      ATHLETICS_STADIUM_COURSE,
+      athleticsCourse,
       requestedEyeHeight,
       nowMs
     );
@@ -2396,7 +2400,7 @@ const applyAuthoritativePosition = (
       x: player.x ?? 0,
       y: player.y,
       z: player.z ?? 0
-    }, ATHLETICS_STADIUM_COURSE, requestedEyeHeight, nowMs);
+    }, athleticsCourse, requestedEyeHeight, nowMs);
     athletics.currentSupportedSurfaceIndex = support.kind === "main_surface" ? support.surfaceIndex : undefined;
     athletics.currentSupportKind = support.kind;
     if (isAthleticsPlayableSupport(support)) athletics.lastSupportedAtMs = nowMs;

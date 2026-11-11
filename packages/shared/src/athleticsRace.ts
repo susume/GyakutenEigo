@@ -1,5 +1,5 @@
 import type { ArenaPosition, PlayerSession } from "./index.js";
-import { SKYLINE_CIRCUIT_COURSE } from "./athleticsCourseLayout.js";
+import { SKYLINE_CIRCUIT_COURSE, ZEUS_SUMMIT_COURSE } from "./athleticsCourseLayout.js";
 import type {
   AthleticsAbility,
   AthleticsChaosState,
@@ -330,9 +330,9 @@ const routePointAtProgressUnchecked = (progress: number, route: readonly Athleti
 };
 
 export const ATHLETICS_STADIUM_COURSE: AthleticsCourseDefinition = SKYLINE_CIRCUIT_COURSE;
-const ATHLETICS_SURFACES = ATHLETICS_STADIUM_COURSE.surfaces;
-const ATHLETICS_SHORTCUTS = ATHLETICS_STADIUM_COURSE.shortcuts;
-const ATHLETICS_MOVING_OBSTACLES = ATHLETICS_STADIUM_COURSE.movingObstacles;
+
+export const getAthleticsCourseForMode = (mode?: AthleticsMode): AthleticsCourseDefinition =>
+  mode === "zeus" ? ZEUS_SUMMIT_COURSE : ATHLETICS_STADIUM_COURSE;
 
 /** Minimum authored edge-to-edge air for each transition vocabulary item. */
 export const ATHLETICS_TRANSITION_AIR_GAP_TARGETS: Readonly<Record<AthleticsTransitionType, number>> = {
@@ -864,11 +864,12 @@ const isPointInsideAthleticsRect = (
  */
 export const getAthleticsGroundHeight = (
   position: Pick<ArenaPosition, "x" | "z"> & { y?: number },
-  nowMs = Date.now()
+  nowMs = Date.now(),
+  course: AthleticsCourseDefinition = ATHLETICS_STADIUM_COURSE
 ) => {
   const footY = Number.isFinite(position.y) ? Number(position.y) - ATHLETICS_PLAYER_EYE_HEIGHT : 0;
   let supportY = 0;
-  for (const obstacle of getAthleticsObstacles(nowMs)) {
+  for (const obstacle of getAthleticsObstacles(nowMs, course)) {
     if (obstacle.kind !== "rect") continue;
     if (!isPointInsideAthleticsRect(position, obstacle, 0.45)) continue;
     const topY = Number(obstacle.maxY ?? 0);
@@ -949,26 +950,32 @@ const parkBoundaryObstacles: readonly AthleticsObstacle[] = [
   { id: "park-south-boundary", kind: "rect", x: 0, z: -140, width: 276, depth: 4, minY: 0, maxY: 18 }
 ];
 
-const ATHLETICS_ALL_SURFACES: readonly AthleticsCourseSurface[] = [
-  ...ATHLETICS_SURFACES,
-  ...ATHLETICS_SHORTCUTS.flatMap((shortcut) => shortcut.surfaces)
-];
+const athleticsStaticObstacles = new WeakMap<AthleticsCourseDefinition, readonly AthleticsObstacle[]>();
 
 /** Static collision proxies shared by server movement and the client scene. */
-export const ATHLETICS_COLLISION_PROXIES: readonly AthleticsObstacle[] = [
-  ...parkBoundaryObstacles,
-  ...ATHLETICS_ALL_SURFACES.filter((surface) => !surface.movingObstacleId).map(surfaceToObstacle),
-  ...(ATHLETICS_STADIUM_COURSE.challenges ?? []).map((challenge) => ({
-    id: challenge.id, kind: "rect" as const, x: challenge.x, z: challenge.z,
-    width: challenge.width, depth: challenge.depth, rotationY: challenge.rotationY,
-    minY: challenge.y, maxY: challenge.y + challenge.height, jumpable: true
-  }))
-];
+export const getAthleticsStaticObstacles = (course: AthleticsCourseDefinition = ATHLETICS_STADIUM_COURSE) => {
+  const cached = athleticsStaticObstacles.get(course);
+  if (cached) return cached;
+  const landings = [...course.surfaces, ...course.shortcuts.flatMap((shortcut) => shortcut.surfaces)];
+  const obstacles: readonly AthleticsObstacle[] = [
+    ...parkBoundaryObstacles,
+    ...landings.filter((surface) => !surface.movingObstacleId).map(surfaceToObstacle),
+    ...(course.challenges ?? []).map((challenge) => ({
+      id: challenge.id, kind: "rect" as const, x: challenge.x, z: challenge.z,
+      width: challenge.width, depth: challenge.depth, rotationY: challenge.rotationY,
+      minY: challenge.y, maxY: challenge.y + challenge.height, jumpable: true
+    }))
+  ];
+  athleticsStaticObstacles.set(course, obstacles);
+  return obstacles;
+};
+
+export const ATHLETICS_COLLISION_PROXIES = getAthleticsStaticObstacles();
 
 /** Collision includes the same deterministic moving transforms used by the renderer. */
-export const getAthleticsObstacles = (nowMs = Date.now()): AthleticsObstacle[] => [
-  ...ATHLETICS_COLLISION_PROXIES.map((obstacle) => ({ ...obstacle })),
-  ...ATHLETICS_MOVING_OBSTACLES.map((obstacle) => movingObstacleToObstacle(obstacle, nowMs))
+export const getAthleticsObstacles = (nowMs = Date.now(), course: AthleticsCourseDefinition = ATHLETICS_STADIUM_COURSE): AthleticsObstacle[] => [
+  ...getAthleticsStaticObstacles(course).map((obstacle) => ({ ...obstacle })),
+  ...course.movingObstacles.map((obstacle) => movingObstacleToObstacle(obstacle, nowMs))
 ];
 
 export interface AthleticsPhysicalSupport {

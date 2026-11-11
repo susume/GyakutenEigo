@@ -4,7 +4,7 @@ import {
   ATHLETICS_BATTLE_RADIUS, ATHLETICS_BATTLE_RANGE, ATHLETICS_BATTLE_SPEED,
   ATHLETICS_BATTLE_STUN_MS, ATHLETICS_PLAYER_EYE_HEIGHT,
   clampArenaAimPitch, getAthleticsBattleBlastPosition, getAthleticsBattleBodyContact, getAthleticsBattleProtection,
-  getAthleticsObstacles, getAthleticsPhysicalSupport, hasLineOfSight, isAthleticsBattleStudying, isTeacherPaused, normalizeAthleticsEnergy, sanitizeAthleticsBattleEnergyCost,
+  getAthleticsCourseForMode, getAthleticsObstacles, getAthleticsPhysicalSupport, hasLineOfSight, isAthleticsBattleStudying, isTeacherPaused, normalizeAthleticsEnergy, sanitizeAthleticsBattleEnergyCost,
   type AthleticsActionCommand, type AthleticsBattlePoint, type GameSession, type PlayerSession
 } from "@quizstrike/shared";
 
@@ -35,7 +35,8 @@ export const handleAthleticsBattleAction = (session: GameSession, player: Player
   }
   if (command.action === "battle_study_start") {
     const position = { x: player.x ?? 0, y: player.y ?? ATHLETICS_PLAYER_EYE_HEIGHT, z: player.z ?? 0 };
-    const supported = athletics.role === "hunter" || getAthleticsPhysicalSupport(position, undefined, player.crouching ? 2.65 : ATHLETICS_PLAYER_EYE_HEIGHT, nowMs).kind !== "airborne";
+    const course = getAthleticsCourseForMode(session.settings.athleticsMode ?? session.athletics.mode);
+    const supported = athletics.role === "hunter" || getAthleticsPhysicalSupport(position, course, player.crouching ? 2.65 : ATHLETICS_PLAYER_EYE_HEIGHT, nowMs).kind !== "airborne";
     if (session.status !== "active" || isTeacherPaused(session) || !["running", "countdown"].includes(session.athletics.status)
       || !player.isAlive || player.connectionState === "disconnected" || athletics.status !== "racing" || athletics.recoveryActive || player.jumping || !supported) {
       return { ok: false, message: "Land on a platform before opening a question." };
@@ -118,7 +119,7 @@ export const advanceAthleticsBattle = (session: GameSession, nowMs: number) => {
     race.battleBlasts = [];
     return { impacts, changedPlayers };
   }
-  const obstacles = getAthleticsObstacles(nowMs);
+  const obstacles = getAthleticsObstacles(nowMs, getAthleticsCourseForMode(session.settings.athleticsMode ?? race.mode));
   race.battleBlasts = race.battleBlasts.filter((blast) => {
     const from = {
       x: blast.origin.x + blast.direction.x * blast.distance,

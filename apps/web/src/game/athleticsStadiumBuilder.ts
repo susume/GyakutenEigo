@@ -1,6 +1,5 @@
 import * as THREE from "three";
 import {
-  ATHLETICS_COLLISION_PROXIES,
   ATHLETICS_GROUND_SURFACE_SLAB_HEIGHT,
   ATHLETICS_PLAYER_EYE_HEIGHT,
   ATHLETICS_STADIUM_COURSE,
@@ -10,10 +9,13 @@ import {
   getAthleticsRouteLength,
   getAthleticsRouteProgress,
   getAthleticsRouteTangent,
+  getAthleticsStaticObstacles,
   getAthleticsSurfaceRouteProgress,
   type AthleticsAccent,
+  type AthleticsCourseDefinition,
   type AthleticsCourseSurface,
-  type AthleticsMovingObstacle
+  type AthleticsMovingObstacle,
+  type AthleticsObstacle
 } from "@quizstrike/shared";
 import { ArenaStaticBatcher, makeSurfaceAtlas } from "./ArenaStaticBatch";
 import type { ArenaQuality } from "./gamePreferences";
@@ -33,6 +35,7 @@ type AthleticsStadiumBuilderDependencies = {
   activeQuality: ActiveArenaQuality;
   qualityConfig: ArenaQualityConfig;
   makeCanvasTexture: (kind: TextureKind, accent?: string, resolution?: number) => THREE.CanvasTexture;
+  course?: AthleticsCourseDefinition;
   questionsPerLap?: number;
   serverTime?: string;
   debugOverlay?: boolean;
@@ -203,7 +206,7 @@ type AthleticsCollisionBox = THREE.Box3 & {
   footprint?: { x: number; z: number; width: number; depth: number; rotationY?: number };
 };
 
-const makeCollisionBox = (obstacle: (typeof ATHLETICS_COLLISION_PROXIES)[number]): AthleticsCollisionBox => {
+const makeCollisionBox = (obstacle: AthleticsObstacle): AthleticsCollisionBox => {
   const minY = obstacle.minY ?? 0;
   const maxY = obstacle.maxY ?? 3;
   if (obstacle.kind === "rect") {
@@ -240,6 +243,7 @@ export const buildAthleticsStadiumScene = ({
   activeQuality,
   qualityConfig,
   makeCanvasTexture,
+  course = ATHLETICS_STADIUM_COURSE,
   questionsPerLap = 7,
   serverTime,
   debugOverlay = false,
@@ -355,7 +359,6 @@ export const buildAthleticsStadiumScene = ({
     addBox(park, accentMaterials.cyan, [3.2, 0.28, 0.35], [136, 14.5, z]);
   }
 
-  const course = ATHLETICS_STADIUM_COURSE;
   const routeLength = getAthleticsRouteLength(course);
   renderer.domElement.dataset.athleticsRouteLength = String(Math.round(routeLength));
   renderer.domElement.dataset.athleticsQuestionsPerLap = String(Math.max(0, questionsPerLap));
@@ -583,7 +586,7 @@ export const buildAthleticsStadiumScene = ({
     return { obstacle, group };
   });
 
-  const coverBoxes = ATHLETICS_COLLISION_PROXIES.map(makeCollisionBox);
+  const coverBoxes = getAthleticsStaticObstacles(course).map(makeCollisionBox);
   const movingCoverStartIndex = coverBoxes.length;
   for (const obstacle of course.movingObstacles) {
     const position = getAthleticsMovingObstaclePosition(obstacle, Date.now());

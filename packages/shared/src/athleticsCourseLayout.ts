@@ -138,3 +138,22 @@ export const SKYLINE_CIRCUIT_COURSE: AthleticsCourseDefinition = {
   ],
   routeWidth: 18, finishThreshold: .982, bounds: { limitX: 140, limitZ: 140 }
 };
+
+const zeusSurfaces = surfaces.map((surface, index) => {
+  // Give the zigzag turns and floating steps more room to take off and land.
+  if ((index >= 22 && index <= 26) || (index >= 45 && index <= 53)) {
+    return { ...surface, width: surface.width + 1, depth: surface.depth + 1.5 };
+  }
+  // Extend both decks around the longest jump on the approach to the summit lift.
+  if (index === 62 || index === 63) return { ...surface, depth: surface.depth + 2 };
+  return surface;
+});
+
+export const ZEUS_SUMMIT_COURSE: AthleticsCourseDefinition = {
+  ...SKYLINE_CIRCUIT_COURSE,
+  surfaces: zeusSurfaces,
+  movingObstacles: movingObstacles.map((obstacle) => {
+    const landing = zeusSurfaces.find((surface) => surface.movingObstacleId === obstacle.id);
+    return landing ? { ...obstacle, width: landing.width, depth: landing.depth } : obstacle;
+  })
+};
