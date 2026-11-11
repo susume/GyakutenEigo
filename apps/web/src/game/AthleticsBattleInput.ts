@@ -7,6 +7,7 @@ export class AthleticsBattleInput {
   private held = new Set<string>();
   private chargeId: string | undefined;
   private startedAt: number | undefined;
+  private completionTimer: ReturnType<typeof setTimeout> | undefined;
   private latched = false;
   private generation = 0;
   constructor(private options: {
@@ -47,7 +48,18 @@ export class AthleticsBattleInput {
       // Start after the server acknowledges. Network delay cannot make firing early.
       this.startedAt = this.now();
       this.options.charging(true);
+      this.scheduleCompletion();
     }).catch(() => { if (generation === this.generation) this.cancel(); });
+  }
+  private scheduleCompletion() {
+    if (this.startedAt === undefined) return;
+    const remaining = ATHLETICS_BATTLE_CHARGE_MS - (this.now() - this.startedAt);
+    // A slow graphics frame should never delay a completed hold.
+    this.completionTimer = setTimeout(() => {
+      this.completionTimer = undefined;
+      this.update();
+      this.scheduleCompletion();
+    }, Math.max(1, Math.ceil(remaining)));
   }
   update() {
     if (!this.chargeId) return;
@@ -57,20 +69,21 @@ export class AthleticsBattleInput {
     this.options.progress(progress);
     if (progress < 1) return;
     const chargeId = this.chargeId;
+    this.clearCharge();
+    void this.options.send("battle_fire", chargeId).catch(() => undefined);
+  }
+  private clearCharge() {
+    clearTimeout(this.completionTimer);
+    this.completionTimer = undefined;
     this.chargeId = undefined;
     this.startedAt = undefined;
     this.generation++;
     this.options.charging(false);
     this.options.progress(null);
-    void this.options.send("battle_fire", chargeId).catch(() => undefined);
   }
   cancel() {
     const chargeId = this.chargeId;
-    this.chargeId = undefined;
-    this.startedAt = undefined;
-    this.generation++;
-    this.options.charging(false);
-    this.options.progress(null);
+    this.clearCharge();
     if (chargeId) void this.options.send("battle_cancel", chargeId).catch(() => undefined);
   }
   reset() {

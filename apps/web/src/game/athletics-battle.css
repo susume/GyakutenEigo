@@ -9,6 +9,7 @@
 .battle-charge-button:focus-visible { outline: 3px solid #ffdc84; outline-offset: 4px; }
 .battle-charge-button:not(:disabled):hover, .charging > .battle-charge-button { background: #123e4ded; box-shadow: 0 0 26px #40dfff35; }
 .athletics-battle-hud > small { display: block; margin-top: 7px; color: #e4f6ff; font-size: 11px; text-shadow: 0 1px 5px #000, 0 1px 3px #000; }
+.athletics-battle-hud > .battle-keyboard-help { font-size: 13px; font-weight: 600; }
 .arena-frame[data-input-mode="touch"] .athletics-battle-hud { right: 110px; left: auto; bottom: max(214px, calc(env(safe-area-inset-bottom) + 214px)); width: 170px; transform: none; }
 .arena-frame[data-input-mode="touch"] .battle-charge-button { gap: 8px; padding: 10px 12px 14px; }
 .arena-frame[data-input-mode="touch"] .battle-charge-button kbd { display: none; }

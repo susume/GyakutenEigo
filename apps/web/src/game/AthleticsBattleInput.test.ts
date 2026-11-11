@@ -23,6 +23,7 @@ test("a full hold fires once, ignores key repeat, and requires a release before 
   f.time(9000); f.input.setHeld("keyboard", true); assert.equal(f.actions.length, 2);
   f.input.setHeld("keyboard", false); f.input.setHeld("keyboard", true); await flush();
   assert.equal(f.actions[2][0], "battle_charge"); assert.equal(f.progress(), 0);
+  f.input.reset();
 });
 
 test("release cancels, releasing one of two held controls preserves the charge, and reset stops audio", async () => {

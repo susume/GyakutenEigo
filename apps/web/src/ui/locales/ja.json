@@ -98,6 +98,8 @@
   "energy / blast": "エネルギー／1発",
   "Blast charge": "チャージ量",
   "Hold F, left mouse or this button for 2s": "Fキー・マウス左ボタン・このボタンを2秒長押し",
+  "Hold F for {value0} seconds to fire": "Fキーを{value0}秒間長押しして発射",
+  "Use the arrow keys to aim": "矢印キーで照準を合わせよう",
   "Aim ahead · Blasts fly straight": "動きを先読みして狙おう · 弾はまっすぐ飛ぶ",
   "G: Throw foam ball": "G：フォームボールを投げる",
   "Battle mode is switched off.": "バトルモードはオフです。",

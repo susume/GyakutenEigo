@@ -3,6 +3,56 @@ import { createClassroom } from "./classroomFixture";
 import { io as createSocket } from "socket.io-client";
 import { ATHLETICS_BATTLE_CHARGE_MS } from "@quizstrike/shared";
 
+test("Zeus fires a fully charged F hold without a mouse even when rendering stalls", async ({ page, request }) => {
+  await page.setViewportSize({ width: 1366, height: 768 });
+  await page.addInitScript(() => {
+    Element.prototype.requestPointerLock = () => Promise.reject(new DOMException("Pointer lock is blocked", "NotAllowedError"));
+    const requestFrame = window.requestAnimationFrame.bind(window);
+    let stalled = false;
+    window.addEventListener("test-stall-frames", () => { stalled = true; });
+    window.requestAnimationFrame = (callback) => requestFrame((time) => {
+      if (!stalled) callback(time);
+    });
+  });
+  const classroom = await createClassroom(request, {
+    gameMode: "athletics",
+    athleticsMode: "zeus",
+    athleticsBattleEnabled: true,
+    roundDurationSeconds: 120
+  });
+  const headers = { Authorization: `Bearer ${classroom.teacherToken}` };
+  await page.goto(`/join?code=${classroom.code}`);
+  const name = page.getByPlaceholder("Player name");
+  await name.fill("Keyboard Explorer");
+  await name.press("Enter");
+  await expect(page.getByTestId("student-lobby-status")).toBeVisible();
+  expect((await request.post(`/api/sessions/${classroom.code}/start`, { headers })).ok()).toBe(true);
+
+  const charge = page.getByRole("button", { name: "Hold to charge energy blast", exact: true });
+  await expect(charge).toBeEnabled({ timeout: 30_000 });
+  await expect(page.getByText("Hold F for 2 seconds to fire", { exact: true })).toBeVisible();
+  await expect(page.getByText("Use the arrow keys to aim", { exact: true })).toBeVisible();
+  const canvas = page.locator(".arena-canvas canvas");
+  const startingAim = await canvas.getAttribute("data-player-facing");
+  await page.keyboard.down("ArrowRight");
+  await expect(canvas).not.toHaveAttribute("data-player-facing", startingAim!);
+  await page.keyboard.up("ArrowRight");
+
+  const energy = async () => {
+    const response = await request.get(`/api/sessions/${classroom.code}`, { headers });
+    const { session } = await response.json();
+    return session.players[0].energy as number;
+  };
+  const initial = await energy();
+  await page.keyboard.down("f");
+  await expect(page.getByRole("progressbar", { name: "Blast charge" })).toHaveAttribute("aria-valuenow", /^[1-9]\d?$/);
+  await page.evaluate(() => window.dispatchEvent(new Event("test-stall-frames")));
+  await expect.poll(energy, { timeout: 5000 }).toBe(initial - 100);
+  await page.keyboard.up("f");
+  expect(await energy()).toBe(initial - 100);
+  expect(await page.evaluate(() => document.pointerLockElement === null)).toBe(true);
+});
+
 test("battle keyboard and mouse holds cancel early and spend once after two seconds", async ({ page, request }, testInfo) => {
   await page.emulateMedia({ reducedMotion: "no-preference" });
   await page.addInitScript(() => {
@@ -38,9 +88,8 @@ test("battle keyboard and mouse holds cancel early and spend once after two seco
   await expect(charge).toContainText("Energy blast");
   expect(await energy()).toBe(initial);
   await page.keyboard.down("f");
-  await page.waitForTimeout(1500);
   await expect(charge).toContainText("/ 2.0s");
-  await expect(page.getByRole("progressbar", { name: "Blast charge" })).toHaveAttribute("aria-valuenow", /[1-9]\d/);
+  await expect(page.getByRole("progressbar", { name: "Blast charge" })).toHaveAttribute("aria-valuenow", /^[1-9]\d?$/);
   await page.screenshot({ path: testInfo.outputPath("battle-charging.png") });
   await expect.poll(energy, { timeout: 6000, intervals: [30, 50, 100] }).toBe(initial - 100);
   await page.screenshot({ path: testInfo.outputPath("battle-release.png") });

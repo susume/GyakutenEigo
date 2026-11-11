@@ -5,7 +5,7 @@ import { useSiteTranslation } from "../ui/siteTranslation";
 import "./athletics-battle.css";
 import { getAthleticsBattlePointerSource } from "./AthleticsBattleInput";
 
-export const AthleticsBattleHud = ({ progress, energy, energyCost, stunSeconds, protectionSeconds = 0, studying = false, hunter, disabled, onHold }: {
+export const AthleticsBattleHud = ({ progress, energy, energyCost, stunSeconds, protectionSeconds = 0, studying = false, hunter, showKeyboardAim = false, disabled, onHold }: {
   progress: number | null;
   energy: number;
   energyCost: number;
@@ -13,6 +13,7 @@ export const AthleticsBattleHud = ({ progress, energy, energyCost, stunSeconds, 
   protectionSeconds?: number;
   studying?: boolean;
   hunter?: boolean;
+  showKeyboardAim?: boolean;
   disabled: boolean;
   onHold: (source: string, held: boolean, cancelled?: boolean) => void;
 }) => {
@@ -37,8 +38,10 @@ export const AthleticsBattleHud = ({ progress, energy, energyCost, stunSeconds, 
         <Zap size={20} aria-hidden="true" /><span><strong>{stunned ? t("Stunned") : charging ? t("Charging…") : low ? t("Answer for energy") : t("Energy blast")}</strong><small>{charging ? `${(Math.min(1, progress ?? 0) * chargeSeconds).toFixed(1)} / ${chargeSeconds.toFixed(1)}s` : `${energyCost} ${t("energy / blast")}`}</small></span><kbd>F</kbd>
         <span className="battle-charge-meter" role="progressbar" aria-label={t("Blast charge")} aria-valuemin={0} aria-valuemax={100} aria-valuenow={Math.round((progress ?? 0) * 100)}><i style={{ transform: `scaleX(${progress ?? 0})` }} /></span>
       </button>
-      <small id="battle-charge-help">{t("Hold F, left mouse or this button for 2s")}</small>
-      <small>{t("Aim ahead · Blasts fly straight")}</small>
+      <small id="battle-charge-help" className={showKeyboardAim ? "battle-keyboard-help" : undefined}>
+        {showKeyboardAim ? t("Hold F for {value0} seconds to fire", { value0: chargeSeconds }) : t("Hold F, left mouse or this button for 2s")}
+      </small>
+      <small>{showKeyboardAim ? t("Use the arrow keys to aim") : t("Aim ahead · Blasts fly straight")}</small>
       {hunter && <small>{t("G: Throw foam ball")}</small>}
     </div>
   </>;
