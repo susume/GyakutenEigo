@@ -15,6 +15,7 @@ import {
   ATHLETICS_JUMP_ENERGY_COST,
   ATHLETICS_PLAYER_RADIUS,
   ATHLETICS_STADIUM_COURSE,
+  getAthleticsCourseForMode,
   getAthleticsObstacles,
   getAthleticsStartPosition,
   getChaosEventModifiers,
@@ -644,6 +645,7 @@ export default function ArenaPreview({
       magic: loadTexture("/assets/vfx/kenney/magic_03.png?v=2"),
       snow: puffTexture
     };
+    const athleticsCourse = getAthleticsCourseForMode(athleticsMode);
     const {
       floorTexture,
       stoneTexture,
@@ -669,6 +671,7 @@ export default function ArenaPreview({
           activeQuality: initialArenaQuality,
           qualityConfig,
           makeCanvasTexture,
+          course: athleticsCourse,
           questionsPerLap: session?.athletics?.questionsPerLap,
           serverTime: session?.serverTime,
           debugOverlay,
@@ -1400,7 +1403,7 @@ export default function ArenaPreview({
         const bodyMin = new THREE.Vector3();
         const bodyMax = new THREE.Vector3();
       const collisionSources = isAthleticsMode
-        ? getAthleticsObstacles()
+        ? getAthleticsObstacles(Date.now(), athleticsCourse)
         : arenaMap.blocks.filter((block) => block.collides);
       const levelDebugEnabled = import.meta.env.DEV
         && ["1", "true"].includes(
