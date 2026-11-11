@@ -195,6 +195,8 @@ test("retry policy is bounded and jittered around the documented schedule", () =
   assert.equal(nextSpeakingEvaluationRetryAt(now, 1, () => 0.5), "2026-09-12T00:00:10.000Z");
   assert.equal(nextSpeakingEvaluationRetryAt(now, 4, () => 0.5), "2026-09-12T00:05:00.000Z");
   assert.equal(nextSpeakingEvaluationRetryAt(now, 1, () => 0.5, 45_000), "2026-09-12T00:00:45.000Z");
+  assert.equal(nextSpeakingEvaluationRetryAt(now, 1, () => 0.5, 7 * 60 * 60_000), "2026-09-12T07:00:00.000Z");
+  assert.equal(nextSpeakingEvaluationRetryAt(now, 1, () => 0.5, 100 * 60 * 60_000), "2026-09-13T01:00:00.000Z");
   assert.equal(nextSpeakingEvaluationRetryAt(now, 5, () => 0.5), undefined);
 });
 

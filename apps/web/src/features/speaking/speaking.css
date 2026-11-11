@@ -4321,6 +4321,11 @@ body[data-speaking="true"] {
   white-space: normal;
 }
 
+.speaking-session-alert button:disabled {
+  opacity: .55;
+  cursor: not-allowed;
+}
+
 .speaking-student-screen {
   --student-navy: #10295b;
   --student-ink: #172d55;

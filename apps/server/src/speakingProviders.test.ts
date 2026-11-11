@@ -261,12 +261,12 @@ const geminiEvaluationJson = (overrides: Record<string, unknown> = {}) => JSON.s
   ...overrides
 });
 
-const withGeminiEvaluationEnvironment = async (work: () => Promise<void>, response: Response | (() => Response)) => {
+const withGeminiEvaluationEnvironment = async (work: () => Promise<void>, response: Response | (() => Response), model = "gemini-evaluation-test") => {
   const previousFetch = globalThis.fetch;
   const previousKey = process.env.SPEAKING_GEMINI_API_KEY;
   const previousModel = process.env.SPEAKING_GEMINI_MODEL;
   process.env.SPEAKING_GEMINI_API_KEY = "test-gemini-key";
-  process.env.SPEAKING_GEMINI_MODEL = "gemini-evaluation-test";
+  process.env.SPEAKING_GEMINI_MODEL = model;
   globalThis.fetch = async () => typeof response === "function" ? response() : response;
   try {
     await work();
@@ -363,7 +363,7 @@ test("Gemini evaluation exposes finish reasons, structured-output failures, and 
         return true;
       }
     );
-  }, new Response("{}"));
+  }, new Response("{}"), "gemini-evaluation-retry-after-test");
 
   await withGeminiEvaluationEnvironment(async () => {
     globalThis.fetch = async () => new Response(JSON.stringify({ error: { message: "unavailable" } }), { status: 503 });
@@ -392,7 +392,8 @@ test("Gemini evaluation rejects provider JSON that violates score or goal schema
   }
 });
 
-test("Speaking provider failures retain only safe classification details", async () => {
+test("Speaking provider failures retain only safe classification details", async (t) => {
+  t.mock.method(Date, "now", () => 0);
   const previousFetch = globalThis.fetch;
   const previousKey = process.env.SPEAKING_OPENAI_API_KEY;
   process.env.SPEAKING_OPENAI_API_KEY = "test-speaking-key";
@@ -401,7 +402,7 @@ test("Speaking provider failures retain only safe classification details", async
     await assert.rejects(
       () => openAiTranscriptionProvider.transcribe({ audio: Buffer.from("audio"), mimeType: "audio/webm" }),
       (error) => {
-        assert.deepEqual(speakingProviderFailureDetails(error), { kind: "rate_limit", status: 429 });
+        assert.deepEqual(speakingProviderFailureDetails(error), { kind: "rate_limit", status: 429, retryAfterMs: 30_000 });
         return true;
       }
     );
@@ -409,6 +410,81 @@ test("Speaking provider failures retain only safe classification details", async
     globalThis.fetch = previousFetch;
     if (previousKey === undefined) delete process.env.SPEAKING_OPENAI_API_KEY;
     else process.env.SPEAKING_OPENAI_API_KEY = previousKey;
+  }
+});
+
+test("Gemini shares a model cooldown across evaluation and conversation and preserves independent transcription", async (t) => {
+  let now = Date.parse("2026-11-11T01:00:00.000Z");
+  t.mock.method(Date, "now", () => now);
+  await withGeminiEvaluationEnvironment(async () => {
+    let requests = 0;
+    globalThis.fetch = async (input) => {
+      requests += 1;
+      if (requests === 1) return new Response(JSON.stringify({ error: { details: [
+        { violations: [{ quotaId: "GenerateRequestsPerMinutePerProjectPerModel" }] },
+        { retryDelay: "15.5s" }
+      ] } }), { status: 429, headers: { "Retry-After": "7" } });
+      if (String(input).endsWith("/interactions")) return new Response(JSON.stringify({ output_text: "I would like a T-shirt." }));
+      return new Response(JSON.stringify({ candidates: [{ content: { parts: [{ text: "What size?" }] } }] }));
+    };
+    await assert.rejects(geminiEvaluationProvider.evaluate({ activity, turns: [], participantId: "participant-test", prompt: "Evaluate." }), (error) => {
+      assert.deepEqual(speakingProviderFailureDetails(error), {
+        kind: "rate_limit", status: 429, structuredOutput: true, retryAfterMs: 15_500, quotaWindow: "minute"
+      });
+      return true;
+    });
+
+    now += 500;
+    const respond = () => geminiConversationProvider.respond({ activity, turns: [], studentText: "I would like a T-shirt." });
+    await Promise.all(Array.from({ length: 40 }, () => assert.rejects(respond(), (error) => {
+      assert.deepEqual(speakingProviderFailureDetails(error), {
+        kind: "rate_limit", status: 429, structuredOutput: false, retryAfterMs: 15_000, quotaWindow: "minute", providerCooldown: true
+      });
+      return true;
+    })));
+    assert.equal(requests, 1);
+
+    assert.deepEqual(await geminiTranscriptionProvider.transcribe({ audio: Buffer.from("audio"), mimeType: "audio/webm" }), { text: "I would like a T-shirt." });
+    assert.equal(requests, 2);
+    now += 15_000;
+    assert.equal(await respond(), "What size?");
+    assert.equal(requests, 3);
+  }, new Response("{}"), "gemini-classroom-cooldown-test");
+});
+
+test("Gemini transcription recognizes the daily quota and waits for Pacific midnight", async (t) => {
+  let now = Date.parse("2026-11-01T07:15:00.000Z"); // 00:15 PDT on the fall DST transition date.
+  t.mock.method(Date, "now", () => now);
+  const previousModel = process.env.SPEAKING_GEMINI_TRANSCRIPTION_MODEL;
+  process.env.SPEAKING_GEMINI_TRANSCRIPTION_MODEL = "gemini-transcription-daily-quota-test";
+  try {
+    await withGeminiEvaluationEnvironment(async () => {
+      let requests = 0;
+      globalThis.fetch = async () => {
+        requests += 1;
+        if (requests === 1) return new Response(JSON.stringify({ error: { details: [
+          { violations: [{ quotaId: "GenerateRequestsPerDayPerProjectPerModel-FreeTier" }] },
+          { retryDelay: "5s" }
+        ] } }), { status: 429 });
+        return new Response(JSON.stringify({ output_text: "Hello." }));
+      };
+      const transcribe = () => geminiTranscriptionProvider.transcribe({ audio: Buffer.from("audio"), mimeType: "audio/webm" });
+      await assert.rejects(transcribe(), (error) => {
+        assert.deepEqual(speakingProviderFailureDetails(error), { kind: "rate_limit", status: 429, retryAfterMs: 24.75 * 60 * 60_000, quotaWindow: "day" });
+        return true;
+      });
+      now = Date.parse("2026-11-02T07:59:55.000Z");
+      await assert.rejects(transcribe(), (error) => {
+        assert.deepEqual(speakingProviderFailureDetails(error), { kind: "rate_limit", status: 429, retryAfterMs: 5_000, quotaWindow: "day", providerCooldown: true });
+        return true;
+      });
+      assert.equal(requests, 1);
+      now += 5_000;
+      assert.deepEqual(await transcribe(), { text: "Hello." });
+    }, new Response("{}"));
+  } finally {
+    if (previousModel === undefined) delete process.env.SPEAKING_GEMINI_TRANSCRIPTION_MODEL;
+    else process.env.SPEAKING_GEMINI_TRANSCRIPTION_MODEL = previousModel;
   }
 });
 

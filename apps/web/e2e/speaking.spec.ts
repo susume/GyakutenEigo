@@ -603,6 +603,7 @@ test("Speaking Practice recovers each failed operation without cross-retrying", 
     Object.defineProperty(window, "speechSynthesis", { configurable: true, value: { cancel: () => undefined, speak: (utterance: { onend?: () => void }) => setTimeout(() => utterance.onend?.(), 0) } });
   });
   try {
+    await page.clock.install();
     await page.goto(`/speak/join/${session.joinCode}`);
     await page.getByLabel("Nickname or student number").fill("Recovery student");
     await page.getByRole("button", { name: "Join speaking task", exact: true }).click();
@@ -620,21 +621,35 @@ test("Speaking Practice recovers each failed operation without cross-retrying", 
     await expect(page.getByRole("button", { name: "Close support panel", exact: true })).toBeHidden();
     await page.getByRole("button", { name: "Useful English", exact: true }).click();
 
-    let turnAttempts = 0;
+    const turnAttempts: Array<{ requestId?: string; recording: string | null }> = [];
     await page.route(`**/api/speaking/sessions/${session.id}/turn`, async (route) => {
-      turnAttempts += 1;
-      if (turnAttempts === 1) {
+      const request = route.request();
+      turnAttempts.push({ requestId: request.headers()["x-speaking-turn-id"], recording: request.postData() });
+      if (turnAttempts.length === 1) {
         await route.fulfill({ status: 503, contentType: "application/json", body: JSON.stringify({ error: "Turn service temporarily unavailable." }) });
+        return;
+      }
+      if (turnAttempts.length === 2) {
+        await route.fulfill({ status: 429, json: { code: "SPEAKING_TRANSCRIPTION_BUSY", retryAfterSeconds: 10, error: "Turn service is busy." } });
         return;
       }
       await route.continue();
     });
     await page.getByRole("button", { name: "Tap to speak", exact: true }).click();
     await page.getByRole("button", { name: "Stop speaking", exact: true }).click();
-    await expect(page.getByRole("button", { name: "Retry this turn", exact: true })).toBeVisible();
-    await page.getByRole("button", { name: "Retry this turn", exact: true }).click();
+    const retryTurn = page.getByRole("button", { name: "Retry this turn", exact: true });
+    await retryTurn.click();
+    await expect(page.getByText(/Your recording is kept in this tab\. Try again after/)).toBeVisible();
+    await expect(retryTurn).toBeDisabled();
+    await page.clock.fastForward(12_000);
+    await expect(retryTurn).toBeEnabled();
+    expect(turnAttempts).toHaveLength(2);
+    await retryTurn.click();
     await expect(page.locator(".speaking-transcript-card")).toContainText("practice this conversation", { timeout: 15_000 });
-    expect(turnAttempts).toBe(2);
+    expect(turnAttempts).toHaveLength(3);
+    expect(turnAttempts[0]?.requestId).toBeTruthy();
+    expect(turnAttempts[0]?.recording).toBe("mock browser audio");
+    expect(turnAttempts.slice(1)).toEqual([turnAttempts[0], turnAttempts[0]]);
 
     let finishAttempts = 0;
     let pendingResultShown = false;
@@ -666,7 +681,7 @@ test("Speaking Practice recovers each failed operation without cross-retrying", 
     await page.getByRole("button", { name: "Finish practice", exact: true }).click();
     await expect(page.getByRole("button", { name: "Check evaluation", exact: true })).toBeVisible();
     await page.getByRole("button", { name: "Check evaluation", exact: true }).click();
-    expect(turnAttempts).toBe(2);
+    expect(turnAttempts).toHaveLength(3);
     await expect(page.locator(".speaking-result-hero h1")).toBeVisible({ timeout: 15_000 });
     await expect(page.getByRole("heading", { name: "Practice complete", exact: true })).toBeVisible({ timeout: 15_000 });
     expect(finishAttempts).toBe(2);

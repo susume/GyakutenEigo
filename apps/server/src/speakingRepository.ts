@@ -1,5 +1,5 @@
 import { createHash } from "node:crypto";
-import { Prisma, PrismaClient } from "@prisma/client";
+import { Prisma, PrismaClient, type SpeakingEvaluationJob as PrismaSpeakingEvaluationJob } from "@prisma/client";
 import { SPEAKING_EVALUATION_MAX_ATTEMPTS, SPEAKING_GEMINI_SCHEMA_RECOVERY_CODE } from "./speakingEvaluation.js";
 import {
   SPEAKING_LIMITS,
@@ -55,6 +55,7 @@ export type SpeakingRosterItem = {
   participant: SpeakingParticipant;
   latestActivityAt?: string;
   latestTurnSpeaker?: "ai" | "student";
+  evaluationJob?: SpeakingEvaluationJob;
 };
 
 export class SpeakingParticipantAdmissionError extends Error {
@@ -647,8 +648,10 @@ export class InMemorySpeakingRepository implements SpeakingRepository {
         const latestTurn = session?.turns
           .filter((turn) => turn.participantId === participant.id)
           .sort((left, right) => right.createdAt.localeCompare(left.createdAt))[0];
+        const job = this.state.evaluationJobs.get(participant.id);
         return {
           participant: participantPublic(participant),
+          evaluationJob: job && cloneEvaluationJob(job),
           ...(latestTurn ? { latestActivityAt: latestTurn.createdAt, latestTurnSpeaker: latestTurn.speaker } : participant.lastSeenAt ? { latestActivityAt: participant.lastSeenAt } : {})
         };
       });
@@ -1071,6 +1074,21 @@ const toTurn = (row: { id: string; participantId: string; speaker: string; text:
   ...(row.requestId ? { requestId: row.requestId } : {})
 });
 
+const toEvaluationJob = (row: PrismaSpeakingEvaluationJob): SpeakingEvaluationJob => ({
+  id: row.id,
+  participantId: row.participantId,
+  status: row.status,
+  attempt: row.attempt,
+  queuedAt: row.queuedAt.toISOString(),
+  ...(row.startedAt ? { startedAt: row.startedAt.toISOString() } : {}),
+  ...(row.finishedAt ? { finishedAt: row.finishedAt.toISOString() } : {}),
+  ...(row.leaseUntil ? { leaseUntil: row.leaseUntil.toISOString() } : {}),
+  ...(row.lastErrorCode ? { lastErrorCode: row.lastErrorCode } : {}),
+  retryable: row.retryable,
+  ...(row.nextRetryAt ? { nextRetryAt: row.nextRetryAt.toISOString() } : {}),
+  updatedAt: row.updatedAt.toISOString()
+});
+
 const toEvaluation = (row: { participantId: string; language: string; scoresJson: Prisma.JsonValue; evidenceJson: Prisma.JsonValue; strengthsJson: Prisma.JsonValue; improvementsJson: Prisma.JsonValue; usefulEnglishJson: Prisma.JsonValue; metadataJson?: Prisma.JsonValue; overallMessage: string; createdAt: Date }): SpeakingEvaluation => {
   const metadata = objectFromJson(row.metadataJson ?? {});
   const goalCompletion = metadata.goalCompletion && typeof metadata.goalCompletion === "object" && !Array.isArray(metadata.goalCompletion)
@@ -1450,11 +1468,15 @@ export class PrismaSpeakingRepository implements SpeakingRepository {
   async listRoster(sessionId: string) {
     const rows = await this.prisma.speakingParticipant.findMany({
       where: { sessionId },
-      include: { turns: { orderBy: [{ createdAt: "desc" }], take: 1 } },
+      include: {
+        turns: { orderBy: [{ createdAt: "desc" }], take: 1, select: { createdAt: true, speaker: true } },
+        evaluationJob: true
+      },
       orderBy: [{ id: "asc" }]
     });
     return rows.map((row) => ({
       participant: toParticipant(row),
+      evaluationJob: row.evaluationJob ? toEvaluationJob(row.evaluationJob) : undefined,
       ...(row.turns[0]?.createdAt ? { latestActivityAt: row.turns[0].createdAt.toISOString(), latestTurnSpeaker: row.turns[0].speaker as "ai" | "student" } : row.lastSeenAt ? { latestActivityAt: row.lastSeenAt.toISOString() } : {})
     }));
   }
@@ -1635,20 +1657,7 @@ export class PrismaSpeakingRepository implements SpeakingRepository {
 
   async getEvaluationJob(participantId: string) {
     const row = await this.prisma.speakingEvaluationJob.findUnique({ where: { participantId } });
-    return row ? {
-      id: row.id,
-      participantId: row.participantId,
-      status: row.status as SpeakingEvaluationJobStatus,
-      attempt: row.attempt,
-      queuedAt: row.queuedAt.toISOString(),
-      ...(row.startedAt ? { startedAt: row.startedAt.toISOString() } : {}),
-      ...(row.finishedAt ? { finishedAt: row.finishedAt.toISOString() } : {}),
-      ...(row.leaseUntil ? { leaseUntil: row.leaseUntil.toISOString() } : {}),
-      ...(row.lastErrorCode ? { lastErrorCode: row.lastErrorCode } : {}),
-      retryable: row.retryable,
-      ...(row.nextRetryAt ? { nextRetryAt: row.nextRetryAt.toISOString() } : {}),
-      updatedAt: row.updatedAt.toISOString()
-    } : undefined;
+    return row ? toEvaluationJob(row) : undefined;
   }
 
   async upsertEvaluationJob(participantId: string, input: { id: string; queuedAt: string; updatedAt: string; status?: SpeakingEvaluationJobStatus; attempt?: number; retryable?: boolean; nextRetryAt?: string | null }) {

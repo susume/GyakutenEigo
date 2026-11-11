@@ -17,6 +17,7 @@ export const SPEAKING_GEMINI_SCHEMA_RECOVERY_CODE = "gemini_json_schema_recovery
 
 export const SPEAKING_EVALUATION_MAX_ATTEMPTS = 5;
 export const SPEAKING_EVALUATION_RETRY_DELAYS_MS = [10_000, 30_000, 120_000, 300_000] as const;
+export const MAX_SPEAKING_PROVIDER_RETRY_DELAY_MS = 25 * 60 * 60_000;
 /** A terminal provider failure can be retried explicitly, but not in a tight loop. */
 export const SPEAKING_EVALUATION_MANUAL_RETRY_COOLDOWN_MS = 60_000;
 
@@ -76,7 +77,7 @@ export const nextSpeakingEvaluationRetryAt = (now: string, attempt: number, rand
   const nowMs = Date.parse(now);
   if (!Number.isFinite(nowMs)) return undefined;
   const retryDelay = speakingEvaluationRetryDelayMs(attempt, random);
-  const providerDelay = Number.isFinite(providerRetryAfterMs) ? Math.min(10 * 60_000, Math.max(0, Math.round(providerRetryAfterMs!))) : 0;
+  const providerDelay = Number.isFinite(providerRetryAfterMs) ? Math.min(MAX_SPEAKING_PROVIDER_RETRY_DELAY_MS, Math.max(0, Math.round(providerRetryAfterMs!))) : 0;
   return new Date(nowMs + Math.max(retryDelay, providerDelay)).toISOString();
 };
 

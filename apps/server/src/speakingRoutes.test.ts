@@ -430,6 +430,7 @@ test("transcription retries one transient failure with the same audio and never 
         audioByRequest.set(requestId, recordings);
         if (requestId === "recover-turn" && attempt === 1) throw new SpeakingProviderError("temporary timeout", "timeout", 408);
         if (requestId === "fail-turn") throw new SpeakingProviderError("temporary timeout", "timeout", 408);
+        if (requestId === "limited-turn" && attempt === 1) throw new SpeakingProviderError("rate limited", "rate_limit", 429, { retryAfterMs: 7_400 });
         return { text: "I would like the blue one.", confidence: 0.9 };
       }
     },
@@ -464,6 +465,13 @@ test("transcription retries one transient failure with the same audio and never 
     const joined = await api<{ token: string; participant: { id: string } }>("/api/speaking/join", { method: "POST", body: { code: launched.body.session.joinCode, identifier: "Retry student" } });
     await api(`/api/speaking/sessions/${launched.body.session.id}/start`, { method: "POST", speakingToken: joined.body.token });
     const audio = new Uint8Array(Buffer.from("same-audio-fixture"));
+    const turnPath = `/api/speaking/sessions/${launched.body.session.id}/turn`;
+    const headers = { "x-speaking-token": joined.body.token };
+    for (let index = 0; index < 17; index += 1) {
+      const invalid = await fetch(`${baseUrl}${turnPath}${index % 2 === 0 ? "" : "/unexpected"}`, { headers });
+      assert.equal(invalid.status, 404);
+      await invalid.text();
+    }
     const recovered = await api<{ studentTurn: { id: string }; aiTurn: { id: string }; latency: { transcriptionAttempts: number; transcriptionRetryUsed: boolean; transcriptionRetrySucceeded: boolean } }>(`/api/speaking/sessions/${launched.body.session.id}/turn`, { method: "POST", speakingToken: joined.body.token, turnId: "recover-turn", rawBody: audio, contentType: "audio/webm", speechDetected: true });
     assert.equal(recovered.response.status, 200);
     assert.equal(recovered.body.latency.transcriptionAttempts, 2);
@@ -491,6 +499,17 @@ test("transcription retries one transient failure with the same audio and never 
     assert.ok(diagnostics.body.transcription.timeoutRate > 0);
     assert.ok(diagnostics.body.transcription.latencyMs.p95 >= diagnostics.body.transcription.latencyMs.p50);
     assert.equal(JSON.stringify(diagnostics.body).includes("recover-turn"), false);
+
+    const limitedTurn = { method: "POST", speakingToken: joined.body.token, turnId: "limited-turn", rawBody: audio, contentType: "audio/webm", speechDetected: true };
+    const limited = await api<{ code: string; retryAfterSeconds: number }>(turnPath, limitedTurn);
+    assert.equal(limited.response.status, 429);
+    assert.equal(limited.response.headers.get("retry-after"), "8");
+    assert.equal(limited.body.retryAfterSeconds, 8);
+    assert.equal(limited.body.code, "SPEAKING_TRANSCRIPTION_BUSY");
+    assert.equal(attemptsByRequest.get("limited-turn"), 1);
+    const retried = await api(turnPath, limitedTurn);
+    assert.equal(retried.response.status, 200);
+    assert.equal(attemptsByRequest.get("limited-turn"), 2);
   } finally {
     await new Promise<void>((resolve) => server.close(() => resolve()));
   }

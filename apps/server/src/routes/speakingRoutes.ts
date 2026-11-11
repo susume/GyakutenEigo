@@ -36,6 +36,8 @@ import {
   hashSpeakingToken,
   SpeakingParticipantAdmissionError,
   type InMemorySpeakingState,
+  type SpeakingSessionAccess,
+  type StoredSpeakingParticipant,
   type SpeakingRepository
 } from "../speakingRepository.js";
 import {
@@ -67,7 +69,11 @@ import { buildSpeakingCsv, speakingCsvEvaluationScores } from "../speakingCsv.js
 import { processSpeakingContextImage, SPEAKING_CONTEXT_IMAGE_LIMITS, SpeakingContextImageProcessingError } from "../speakingContextImages.js";
 
 type AuthedRequest = Request & { user?: TeacherUser };
-type SpeakingTurnRequest = Request & { speakingTurnRequestStartedAt?: number; releaseSpeakingUpload?: () => void };
+type SpeakingTurnRequest = Request & {
+  speakingTurnRequestStartedAt?: number;
+  speakingTurnAccess?: SpeakingSessionAccess & { participant: StoredSpeakingParticipant };
+  releaseSpeakingUpload?: () => void;
+};
 
 export type SpeakingLatencyDiagnostics = {
   audioBytes: number;
@@ -307,6 +313,12 @@ const transcriptionFailureResponse = (failure: ReturnType<typeof speakingProvide
   return { code: "SPEAKING_TRANSCRIPTION_UNAVAILABLE", error: "Speech recognition is temporarily unavailable. Please try again." };
 };
 
+const sendProviderRateLimit = (res: Response, failure: ReturnType<typeof speakingProviderFailureDetails>, code: string, error: string) => {
+  const retryAfterSeconds = Math.max(1, Math.ceil((failure.retryAfterMs ?? 30_000) / 1_000));
+  res.setHeader("Retry-After", String(retryAfterSeconds));
+  res.status(429).json({ code, error, retryAfterSeconds });
+};
+
 export const participantActiveElapsedMs = (participant: SpeakingParticipant, session: SpeakingSession, referenceTime: string) =>
   speakingActiveElapsedMs(participant, session, referenceTime);
 
@@ -352,7 +364,7 @@ export const registerSpeakingRoutes = (app: Application, deps: SpeakingRouteDepe
   const configuredSessionLifetime = deps.sessionLifetimeSeconds ?? (Number.isFinite(environmentSessionLifetime) ? environmentSessionLifetime : SPEAKING_LIMITS.sessionLifetimeSeconds);
   const sessionLifetimeSeconds = Math.min(7 * 24 * 60 * 60, Math.max(10 * 60, Math.floor(configuredSessionLifetime)));
   const turnLocks = new Map<string, Promise<void>>();
-  const evaluationRuns = new Map<string, symbol>();
+  const evaluationRuns = new Map<string, Promise<void>>();
   const workload = deps.workload ?? createSpeakingProviderWorkload();
   const configuredMaxParticipants = Number.parseInt(process.env.SPEAKING_MAX_PARTICIPANTS ?? "", 10);
   const maxParticipants = Number.isFinite(configuredMaxParticipants) ? Math.min(200, Math.max(40, configuredMaxParticipants)) : 60;
@@ -535,16 +547,16 @@ export const registerSpeakingRoutes = (app: Application, deps: SpeakingRouteDepe
   const turnRoutePath = "/api/speaking/sessions/:sessionId/turn";
   let bufferedTurns = 0;
   const uploadLimit = Math.max(1, Math.min(64, Number.parseInt(process.env.SPEAKING_UPLOAD_CONCURRENCY ?? "16", 10) || 16));
-  app.use(turnRoutePath, async (req, res, next) => {
-    (req as SpeakingTurnRequest).speakingTurnRequestStartedAt = performance.now();
+  const admitSpeakingTurn = async (req: SpeakingTurnRequest, res: Response, next: NextFunction) => {
+    req.speakingTurnRequestStartedAt = performance.now();
     // Authenticate and reject an obviously oversized upload before Express's
-    // raw parser allocates a Buffer. The full token/session check still runs in
-    // the route after parsing, but unauthenticated bodies never reach it.
+    // raw parser allocates a Buffer.
     const access = await getParticipantAccess(req);
     if (!access || access.session.id !== String(req.params.sessionId)) {
       res.status(401).json({ code: "SPEAKING_AUTH_REQUIRED", error: "This speaking session is no longer available." });
       return;
     }
+    req.speakingTurnAccess = access;
     if (bufferedTurns >= uploadLimit) {
       res.setHeader("Retry-After", "2");
       res.status(429).json({ code: "SPEAKING_UPLOAD_BUSY", retryAfterSeconds: 2, error: "Too many recordings are being processed. Retry this recording in a moment." });
@@ -559,14 +571,14 @@ export const registerSpeakingRoutes = (app: Application, deps: SpeakingRouteDepe
     // Hold admission through provider work: the parsed body remains retained.
     let released = false;
     const release = () => { if (!released) { released = true; bufferedTurns -= 1; } };
-    (req as SpeakingTurnRequest).releaseSpeakingUpload = release;
+    req.releaseSpeakingUpload = release;
     // A disconnected response can still have provider work retaining its body.
     // Only parsing failure or actual route completion releases admission.
     express.raw({ type: ["audio/*", "application/octet-stream"], limit: `${SPEAKING_LIMITS.maxAudioBytes}b` })(req, res, (error) => {
       if (error) release();
       next(error);
     });
-  });
+  };
 
   const withTurnLock = async <T>(participantId: string, work: () => Promise<T>) => {
     const previous = turnLocks.get(participantId) ?? Promise.resolve();
@@ -617,6 +629,16 @@ export const registerSpeakingRoutes = (app: Application, deps: SpeakingRouteDepe
       error: "Speaking services are busy. Please try again in a moment.",
       retryAfterSeconds: error.retryAfterSeconds
     });
+  };
+  const reportInteractiveProviderFailure = (res: Response, operation: "conversation" | "help", error: unknown) => {
+    const failure = speakingProviderFailureDetails(error);
+    console.warn(`[Speaking provider failure] ${JSON.stringify({
+      operation, kind: failure.kind, status: failure.status, retryAfterMs: failure.retryAfterMs,
+      quotaWindow: failure.quotaWindow, providerCooldown: failure.providerCooldown
+    })}`);
+    if (failure.kind !== "rate_limit") return false;
+    sendProviderRateLimit(res, failure, "SPEAKING_PROVIDER_BUSY", "The AI has reached its request limit. Please wait and try again.");
+    return true;
   };
 
   const evaluationGraceMs = Math.min(1_000, Math.max(0, Number.parseInt(process.env.SPEAKING_EVALUATION_RESPONSE_GRACE_MS ?? "250", 10) || 250));
@@ -834,23 +856,25 @@ export const registerSpeakingRoutes = (app: Application, deps: SpeakingRouteDepe
     if (evaluationRuns.has(current.id)) return job;
     const claimed = await repository.claimEvaluationJob(current.id, now, new Date(Date.parse(now) + evaluationLeaseMs).toISOString());
     if (claimed && !evaluationRuns.has(current.id)) {
-      const runToken = Symbol("speaking-evaluation");
-      evaluationRuns.set(current.id, runToken);
-      void runEvaluation(current.id, claimed)
+      const run = runEvaluation(current.id, claimed)
         .catch(() => undefined)
         .finally(() => {
-          if (evaluationRuns.get(current.id) === runToken) evaluationRuns.delete(current.id);
+          if (evaluationRuns.get(current.id) === run) evaluationRuns.delete(current.id);
         });
+      evaluationRuns.set(current.id, run);
     }
     return await repository.getEvaluationJob(current.id) ?? job;
   };
 
   const waitForEvaluationGrace = async (participantId: string) => {
-    const deadline = Date.now() + evaluationGraceMs;
-    while (Date.now() < deadline) {
-      const result = await repository.getResult(participantId);
-      if (result?.evaluation) return result;
-      await new Promise<void>((resolve) => setTimeout(resolve, 10));
+    const run = evaluationRuns.get(participantId);
+    if (run && evaluationGraceMs > 0) {
+      let timer: ReturnType<typeof setTimeout> | undefined;
+      try {
+        await Promise.race([run, new Promise<void>((resolve) => { timer = setTimeout(resolve, evaluationGraceMs); })]);
+      } finally {
+        clearTimeout(timer);
+      }
     }
     return repository.getResult(participantId);
   };
@@ -1269,9 +1293,9 @@ export const registerSpeakingRoutes = (app: Application, deps: SpeakingRouteDepe
       res.status(401).json({ code: "SPEAKING_AUTH_REQUIRED", error: "This speaking session is no longer available." });
       return;
     }
-    const session = await expireSessionIfNeeded(access);
-    let participant: SpeakingParticipant = await repository.getParticipant(access.participant.id) ?? access.participant;
     const now = deps.now();
+    const session = Date.parse(access.session.expiresAt) <= Date.parse(now) ? await expireSessionIfNeeded(access) : access.session;
+    let participant: SpeakingParticipant = access.participant;
     if (!participant.lastSeenAt || Date.parse(now) - Date.parse(participant.lastSeenAt) >= 10_000) {
       participant = await repository.touchParticipant(participant.id, now) ?? participant;
     }
@@ -1280,13 +1304,12 @@ export const registerSpeakingRoutes = (app: Application, deps: SpeakingRouteDepe
     if (job && (job.status === "queued" || retryReady || (job.status === "running" && job.leaseUntil && Date.parse(job.leaseUntil) <= Date.parse(now))) && !evaluationRuns.has(participant.id)) {
       void scheduleEvaluation({ session, activity: access.activity, participant }, false).catch(() => undefined);
     }
-    const currentJob = await repository.getEvaluationJob(participant.id) ?? job;
     res.json({
       participant: publicParticipant(participant),
       session: sessionPayload(session),
       revision: session.revision ?? 0,
       serverTime: now,
-      ...evaluationState(currentJob)
+      ...evaluationState(job)
     });
   });
 
@@ -1312,27 +1335,26 @@ export const registerSpeakingRoutes = (app: Application, deps: SpeakingRouteDepe
     }
     const session = await expireSessionIfNeeded(sessionAccess);
     const roster = await repository.listRoster(session.id);
-    const items = await Promise.all(roster.map(async (item) => {
-      const job = await repository.getEvaluationJob(item.participant.id);
+    const items = roster.map(({ evaluationJob: job, ...item }) => {
       const status = item.participant.status === "joined"
         ? (item.participant.readyAt ? "ready" : "joined")
         : item.participant.status === "in_progress"
           ? (item.latestTurnSpeaker === "student" ? "processing" : "practicing")
           : job?.status === "retrying" ? "retrying" : item.participant.status === "evaluating" ? "evaluating" : item.participant.status === "completed" ? "finished" : "error";
       return { ...item, status, ...evaluationState(job) };
-    }));
+    });
     const counts = { joined: 0, ready: 0, practicing: 0, processing: 0, evaluating: 0, retrying: 0, finished: 0, error: 0 };
     for (const item of items) counts[item.status as keyof typeof counts] += 1;
     res.json({ session: sessionPayload(session), counts, items });
   });
 
-  app.post(turnRoutePath, async (req, res) => {
+  app.post(turnRoutePath, admitSpeakingTurn, async (req: SpeakingTurnRequest, res) => {
     try {
-    const requestStartedAt = (req as SpeakingTurnRequest).speakingTurnRequestStartedAt;
+    const requestStartedAt = req.speakingTurnRequestStartedAt;
     const requestParsedAt = performance.now();
     const turnStartedAt = requestStartedAt ?? performance.now();
-    const access = await getParticipantAccess(req);
-    if (!access || access.session.id !== String(req.params.sessionId)) {
+    const access = req.speakingTurnAccess;
+    if (!access) {
       res.status(401).json({ error: "This speaking session is no longer available." });
       return;
     }
@@ -1465,7 +1487,7 @@ export const registerSpeakingRoutes = (app: Application, deps: SpeakingRouteDepe
                 latency.transcriptionFailureKind = failure.kind;
                 transcriptionTelemetry.failuresByKind[failure.kind] = (transcriptionTelemetry.failuresByKind[failure.kind] ?? 0) + 1;
                 if (attempt === 1) transcriptionTelemetry.firstAttemptFailures += 1;
-                const shouldRetry = attempt === 1 && isTransientTranscriptionFailure(failure);
+                const shouldRetry = attempt === 1 && failure.kind !== "rate_limit" && isTransientTranscriptionFailure(failure);
                 if (shouldRetry) {
                   latency.transcriptionRetryUsed = true;
                   transcriptionTelemetry.retriesScheduled += 1;
@@ -1483,6 +1505,9 @@ export const registerSpeakingRoutes = (app: Application, deps: SpeakingRouteDepe
                   attempt,
                   kind: failure.kind,
                   ...(failure.status === undefined ? {} : { status: failure.status }),
+                  retryAfterMs: failure.retryAfterMs,
+                  quotaWindow: failure.quotaWindow,
+                  providerCooldown: failure.providerCooldown,
                   providerDurationMs,
                   audioBytes: parsed.audio?.byteLength ?? 0,
                   audioDurationMs: parsed.audioDurationMs,
@@ -1491,7 +1516,11 @@ export const registerSpeakingRoutes = (app: Application, deps: SpeakingRouteDepe
                   automaticRetrySucceeded: false,
                   success: false
                 })}`);
-                res.status(503).json(transcriptionFailureResponse(failure, latency.transcriptionRetryUsed));
+                if (failure.kind === "rate_limit") {
+                  sendProviderRateLimit(res, failure, "SPEAKING_TRANSCRIPTION_BUSY", "Speech recognition has reached its request limit. Please wait and retry this recording.");
+                } else {
+                  res.status(503).json(transcriptionFailureResponse(failure, latency.transcriptionRetryUsed));
+                }
                 return;
               }
             }
@@ -1552,6 +1581,7 @@ export const registerSpeakingRoutes = (app: Application, deps: SpeakingRouteDepe
               providerBusyResponse(res, error);
               return;
             }
+            if (reportInteractiveProviderFailure(res, "conversation", error)) return;
             res.status(503).json({ error: "I couldn’t answer just now. Please tap Retry." });
             return;
           } finally {
@@ -1576,7 +1606,7 @@ export const registerSpeakingRoutes = (app: Application, deps: SpeakingRouteDepe
       }
     });
     } finally {
-      (req as SpeakingTurnRequest).releaseSpeakingUpload?.();
+      req.releaseSpeakingUpload?.();
     }
   });
 
@@ -1639,6 +1669,7 @@ export const registerSpeakingRoutes = (app: Application, deps: SpeakingRouteDepe
           providerBusyResponse(res, error);
           return;
         }
+        if (reportInteractiveProviderFailure(res, "help", error)) return;
         res.status(503).json({ code: "SPEAKING_HELP_UNAVAILABLE", error: "Help is temporarily unavailable. Please try again." });
       }
     });

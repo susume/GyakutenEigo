@@ -684,7 +684,7 @@ type SpeakingStatusResponse = {
 };
 
 function SpeakingSessionExperienceV2({ navigate, token, initialData }: { navigate: Navigate; token: string; initialData: SessionResponse }) {
-  const { t } = useSiteTranslation();
+  const { locale, t } = useSiteTranslation();
   const initialVoiceState: SpeakingVoiceState = initialData.participant.status === "evaluating"
     ? "evaluating"
     : initialData.participant.status === "completed"
@@ -695,6 +695,7 @@ function SpeakingSessionExperienceV2({ navigate, token, initialData }: { navigat
   const [remaining, setRemaining] = useState(() => speakingRemainingSeconds(initialData.participant, initialData.session, initialData.activity.durationSeconds, speakingTimerReference(initialData.participant, initialData.session, Date.now())));
   const [error, setError] = useState("");
   const [errorOperation, setErrorOperation] = useState<SpeakingOperationError>();
+  const [turnRetryAt, setTurnRetryAt] = useState(0);
   const errorOperationRef = useRef(errorOperation);
   errorOperationRef.current = errorOperation;
   const [micNotice, setMicNotice] = useState("");
@@ -713,6 +714,7 @@ function SpeakingSessionExperienceV2({ navigate, token, initialData }: { navigat
   const lastRequestIdRef = useRef<string | undefined>(undefined);
   const lastSpeechDetectedRef = useRef<boolean | undefined>(undefined);
   const lastAudioDurationRef = useRef<number | undefined>(undefined);
+  const submittingTurnRef = useRef(false);
   const greetingSpokenRef = useRef(false);
   const finishRef = useRef<() => void>(() => undefined);
   const voiceStateRef = useRef(voiceState);
@@ -805,7 +807,7 @@ function SpeakingSessionExperienceV2({ navigate, token, initialData }: { navigat
         if (["paused", "ended", "expired"].includes(next.session.status) || participantFinalizedRef.current) {
           cancelRecording();
           browserTtsProvider.cancel();
-          releaseRetryAudio();
+          if (next.session.status !== "paused" || participantFinalizedRef.current) releaseRetryAudio();
         }
         if (participantFinalizedRef.current && !navigatedToResultRef.current) {
           navigatedToResultRef.current = true;
@@ -825,7 +827,8 @@ function SpeakingSessionExperienceV2({ navigate, token, initialData }: { navigat
         } else if (["ended", "expired"].includes(next.session.status)) {
           setVoiceState((current) => current === "student_recording" ? "ready" : current);
         } else if (next.session.status === "active") {
-          setVoiceState((current) => current === "paused" ? "ready" : current);
+          const resumedState = lastAudioRef.current ? "error" : "ready";
+          setVoiceState((current) => current === "paused" ? resumedState : current);
         }
         stablePolls = Math.min(6, stablePolls + 1);
       } catch (loadError) {
@@ -882,16 +885,20 @@ function SpeakingSessionExperienceV2({ navigate, token, initialData }: { navigat
 
   useEffect(() => {
     const interval = window.setInterval(() => {
+      const now = Date.now();
       const current = dataRef.current;
-      const referenceTime = speakingTimerReference(current.participant, current.session, Date.now());
+      const referenceTime = speakingTimerReference(current.participant, current.session, now);
       const nextRemaining = speakingRemainingSeconds(current.participant, current.session, current.activity.durationSeconds, referenceTime);
       setRemaining(nextRemaining);
+      setTurnRetryAt((retryAt) => retryAt <= now ? 0 : retryAt);
       if (nextRemaining <= 0 && current.participant.startedAt && current.session.status === "active" && voiceStateRef.current === "ready") finishRef.current();
     }, 1_000);
     return () => window.clearInterval(interval);
   }, []);
 
   const submitRecording = useCallback(async (audio: Blob, requestId: string, speechDetected?: boolean, audioDurationMs?: number) => {
+    if (submittingTurnRef.current) return;
+    submittingTurnRef.current = true;
     lastAudioRef.current = audio;
     lastRequestIdRef.current = requestId;
     lastSpeechDetectedRef.current = speechDetected;
@@ -900,6 +907,7 @@ function SpeakingSessionExperienceV2({ navigate, token, initialData }: { navigat
     setHelpResponse(undefined);
     setError("");
     setErrorOperation(undefined);
+    setTurnRetryAt(0);
     try {
       const response = await speakingApi.turn(dataRef.current.session.id, token, { audio, requestId, speechDetected, audioDurationMs }) as { studentTurn: SpeakingTurn; aiTurn: SpeakingTurn; session: SpeakingSession };
       if (authorizationFailedRef.current || participantFinalizedRef.current) {
@@ -935,13 +943,25 @@ function SpeakingSessionExperienceV2({ navigate, token, initialData }: { navigat
         setVoiceState("ready");
       } else if (turnError instanceof ApiError && turnError.status === 409 && /paused/i.test(turnError.message)) {
         setVoiceState("paused");
-        setErrorOperation("connection");
-        setError(turnError.message);
+        setErrorOperation("turn");
+        setError("Your recording is kept in this tab. You can retry the same recording.");
+      } else if (turnError instanceof ApiError && (turnError.status === 429 || turnError.code === "SPEAKING_TRANSCRIPTION_BUSY")) {
+        const hint = turnError.retryAfterSeconds;
+        const seconds = typeof hint === "number" && Number.isFinite(hint) && hint > 0 ? hint : 2;
+        // Spread out retries from students who receive the same wait time.
+        const jitterMs = Math.floor(Math.random() * 1_000);
+        const retryAt = Date.now() + seconds * 1_000 + jitterMs;
+        setTurnRetryAt(Math.min(8_640_000_000_000_000, retryAt));
+        setErrorOperation("turn");
+        setError("Speaking is busy. Your recording is kept in this tab.");
+        setVoiceState("error");
       } else {
         setErrorOperation("turn");
         setError(getErrorMessage(turnError, "This turn could not be completed. You can retry the same recording."));
         setVoiceState("error");
       }
+    } finally {
+      submittingTurnRef.current = false;
     }
   }, [cancelRecording, handleFatalAuthorization, releaseRetryAudio, token]);
 
@@ -1035,11 +1055,12 @@ function SpeakingSessionExperienceV2({ navigate, token, initialData }: { navigat
   finishRef.current = () => { void finish(); };
 
   const retryTurn = () => {
+    if (authorizationFailedRef.current || participantFinalizedRef.current || voiceStateRef.current !== "error" || dataRef.current.session.status !== "active" || Date.now() < turnRetryAt) return;
     if (lastAudioRef.current && lastRequestIdRef.current) void submitRecording(lastAudioRef.current, lastRequestIdRef.current, lastSpeechDetectedRef.current, lastAudioDurationRef.current);
   };
   const retryOperation = () => {
     if (errorOperation === "microphone") { setError(""); void startRecording(); }
-    else if (errorOperation === "turn") { setError(""); retryTurn(); }
+    else if (errorOperation === "turn") retryTurn();
     else if (errorOperation === "evaluation") { setError(""); void finish(); }
     else { setError(""); pollNowRef.current(); }
   };
@@ -1062,7 +1083,63 @@ function SpeakingSessionExperienceV2({ navigate, token, initialData }: { navigat
   const controlsDisabled = authorizationFailed || waiting || paused || ended || !["ready", "student_recording", "ai_speaking"].includes(voiceState);
   const uiState = speakingUiState(voiceState);
   const operationMessage = errorOperation === "microphone" ? "Retry microphone" : errorOperation === "turn" ? "Retry this turn" : errorOperation === "evaluation" ? "Check evaluation" : "Refresh status";
-  return <div className="speaking-session-page"><main className="speaking-session-main">{waiting && <div className="speaking-session-note speaking-session-waiting-note" role="status"><Clock3 size={16} aria-hidden="true" /><span>{t("You’re ready! Waiting for your teacher to start the")}{" "}{data.activity.mode === "practice" ? t("practice") : t("task")}.</span></div>}{paused && <div className="speaking-session-alert" role="alert"><HelpCircle size={18} aria-hidden="true" /><span>{t("Your teacher paused the activity.")}</span></div>}{ended && <div className="speaking-session-alert" role="alert"><HelpCircle size={18} aria-hidden="true" /><span>{t("This speaking task has ended. Your saved conversation can still be reviewed.")}</span></div>}{error && <div className="speaking-session-alert" role="alert"><HelpCircle size={18} aria-hidden="true" /><span>{t(error)}</span>{!authorizationFailed && <button type="button" onClick={retryOperation}>{operationMessage}</button>}</div>}{micNotice && <div className="speaking-session-note" role="status"><Mic size={16} aria-hidden="true" /><span>{t(micNotice)}</span></div>}{voiceState === "evaluating" && <div className="speaking-session-note" role="status"><LoaderCircle size={16} className="speaking-spin" aria-hidden="true" /><span>{t("Your speaking task is finished. Your feedback is being prepared.")}</span></div>}<SpeakingStudentScreenV2 avatarPaused={waiting || paused || ended || authorizationFailed || voiceState === "error" || voiceState === "completed"} statusText={waiting ? "Waiting for your teacher" : paused ? "Paused" : ended ? "Task ended" : voiceState === "finishing" || voiceState === "evaluating" ? "Finishing" : error ? "Check the message above" : undefined} activity={data.activity} state={uiState} remainingSeconds={remaining} turns={data.turns} onMic={onMic} onReplay={supportSettings.allowReplay ? replay : undefined} onHelp={supportSettings.allowHelp ? requestHelp : undefined} helpLoading={helpLoading} helpResponse={helpResponse} onBrandClick={() => navigate("/speak")} onFinish={() => void finish()} disabled={controlsDisabled} supportDisabled={authorizationFailed || waiting || paused || ended} finishDisabled={authorizationFailed || waiting || ["finishing", "evaluating", "completed", "ai_speaking", "student_recording", "processing"].includes(voiceState)} /></main></div>;
+  const retryingTurn = errorOperation === "turn";
+  const turnRetryDisabled = retryingTurn && (turnRetryAt > 0 || paused || waiting);
+  const turnRetryTime = retryingTurn && turnRetryAt > 0
+    ? new Intl.DateTimeFormat(locale, { dateStyle: "short", timeStyle: "medium" }).format(turnRetryAt)
+    : undefined;
+  const showError = error && !(retryingTurn && ended);
+  return (
+    <div className="speaking-session-page">
+      <main className="speaking-session-main">
+        {waiting && <div className="speaking-session-note speaking-session-waiting-note" role="status">
+          <Clock3 size={16} aria-hidden="true" />
+          <span>{t("You’re ready! Waiting for your teacher to start the")}{" "}{data.activity.mode === "practice" ? t("practice") : t("task")}.</span>
+        </div>}
+        {paused && <div className="speaking-session-alert" role="alert">
+          <HelpCircle size={18} aria-hidden="true" />
+          <span>{t("Your teacher paused the activity.")}</span>
+        </div>}
+        {ended && <div className="speaking-session-alert" role="alert">
+          <HelpCircle size={18} aria-hidden="true" />
+          <span>{t("This speaking task has ended. Your saved conversation can still be reviewed.")}</span>
+        </div>}
+        {showError && <div className="speaking-session-alert" role="alert">
+          <HelpCircle size={18} aria-hidden="true" />
+          <span>{t(error)}{turnRetryTime && <> {t("Try again after {time}.", { time: turnRetryTime })}</>}</span>
+          {!authorizationFailed && <button type="button" disabled={turnRetryDisabled} onClick={retryOperation}>
+            {t(operationMessage)}
+          </button>}
+        </div>}
+        {micNotice && <div className="speaking-session-note" role="status">
+          <Mic size={16} aria-hidden="true" />
+          <span>{t(micNotice)}</span>
+        </div>}
+        {voiceState === "evaluating" && <div className="speaking-session-note" role="status">
+          <LoaderCircle size={16} className="speaking-spin" aria-hidden="true" />
+          <span>{t("Your speaking task is finished. Your feedback is being prepared.")}</span>
+        </div>}
+        <SpeakingStudentScreenV2
+          avatarPaused={waiting || paused || ended || authorizationFailed || voiceState === "error" || voiceState === "completed"}
+          statusText={waiting ? "Waiting for your teacher" : paused ? "Paused" : ended ? "Task ended" : voiceState === "finishing" || voiceState === "evaluating" ? "Finishing" : showError ? "Check the message above" : undefined}
+          activity={data.activity}
+          state={uiState}
+          remainingSeconds={remaining}
+          turns={data.turns}
+          onMic={onMic}
+          onReplay={supportSettings.allowReplay ? replay : undefined}
+          onHelp={supportSettings.allowHelp ? requestHelp : undefined}
+          helpLoading={helpLoading}
+          helpResponse={helpResponse}
+          onBrandClick={() => navigate("/speak")}
+          onFinish={() => void finish()}
+          disabled={controlsDisabled}
+          supportDisabled={authorizationFailed || waiting || paused || ended}
+          finishDisabled={authorizationFailed || waiting || ["finishing", "evaluating", "completed", "ai_speaking", "student_recording", "processing"].includes(voiceState)}
+        />
+      </main>
+    </div>
+  );
 }
 
 

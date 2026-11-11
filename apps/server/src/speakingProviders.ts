@@ -9,6 +9,7 @@ import {
   type SpeakingTurn
 } from "@quizstrike/shared";
 import { buildConversationPrompt, buildEvaluationPrompt, buildHelpPrompt } from "./speakingPrompts.js";
+import { MAX_SPEAKING_PROVIDER_RETRY_DELAY_MS } from "./speakingEvaluation.js";
 
 export interface TranscriptionInput {
   audio: Buffer;
@@ -73,12 +74,15 @@ export type SpeakingProviderOperation = "transcription" | "conversation" | "help
 export type SpeakingProviderName = "mock" | "openai" | "gemini";
 export type SpeakingProviderFailureKind = "timeout" | "rate_limit" | "authentication" | "bad_request" | "unavailable" | "network" | "invalid_response" | "unknown";
 export type SpeakingProviderResponseCategory = "empty_response" | "invalid_json" | "schema_validation" | "truncated_output";
+export type SpeakingProviderQuotaWindow = "minute" | "day";
 
 type SpeakingProviderErrorMetadata = {
   providerFinishReason?: string;
   structuredOutput?: boolean;
   responseCategory?: SpeakingProviderResponseCategory;
   retryAfterMs?: number;
+  quotaWindow?: SpeakingProviderQuotaWindow;
+  providerCooldown?: true;
 };
 
 export class SpeakingProviderError extends Error {
@@ -88,6 +92,8 @@ export class SpeakingProviderError extends Error {
   readonly structuredOutput?: boolean;
   readonly responseCategory?: SpeakingProviderResponseCategory;
   readonly retryAfterMs?: number;
+  readonly quotaWindow?: SpeakingProviderQuotaWindow;
+  readonly providerCooldown?: true;
 
   constructor(message: string, failureKind: SpeakingProviderFailureKind, status?: number, metadata: SpeakingProviderErrorMetadata = {}) {
     super(message);
@@ -98,17 +104,21 @@ export class SpeakingProviderError extends Error {
     this.structuredOutput = metadata.structuredOutput;
     this.responseCategory = metadata.responseCategory;
     this.retryAfterMs = metadata.retryAfterMs;
+    this.quotaWindow = metadata.quotaWindow;
+    this.providerCooldown = metadata.providerCooldown;
   }
 }
 
-export const speakingProviderFailureDetails = (error: unknown): { kind: SpeakingProviderFailureKind; status?: number; providerFinishReason?: string; structuredOutput?: boolean; responseCategory?: SpeakingProviderResponseCategory; retryAfterMs?: number } => {
+export const speakingProviderFailureDetails = (error: unknown): SpeakingProviderErrorMetadata & { kind: SpeakingProviderFailureKind; status?: number } => {
   if (error instanceof SpeakingProviderError) return {
     kind: error.failureKind,
     ...(error.status === undefined ? {} : { status: error.status }),
     ...(error.providerFinishReason === undefined ? {} : { providerFinishReason: error.providerFinishReason }),
     ...(error.structuredOutput === undefined ? {} : { structuredOutput: error.structuredOutput }),
     ...(error.responseCategory === undefined ? {} : { responseCategory: error.responseCategory }),
-    ...(error.retryAfterMs === undefined ? {} : { retryAfterMs: error.retryAfterMs })
+    ...(error.retryAfterMs === undefined ? {} : { retryAfterMs: error.retryAfterMs }),
+    ...(error.quotaWindow === undefined ? {} : { quotaWindow: error.quotaWindow }),
+    ...(error.providerCooldown === undefined ? {} : { providerCooldown: error.providerCooldown })
   };
   const message = error instanceof Error ? error.message : String(error);
   if (/timed? ?out|timeout/iu.test(message)) return { kind: "timeout" };
@@ -130,8 +140,23 @@ export const failureKindForStatus = (status: number): SpeakingProviderFailureKin
   return "unknown";
 };
 
-const providerHttpError = (provider: SpeakingProviderName, operation: SpeakingProviderOperation, status: number, message?: string, metadata: SpeakingProviderErrorMetadata = {}) =>
-  new SpeakingProviderError(message?.trim() || `${provider} ${operation} failed with ${status}.`, failureKindForStatus(status), status, metadata);
+const DEFAULT_PROVIDER_COOLDOWN_MS = 30_000;
+type RemoteSpeakingProvider = Exclude<SpeakingProviderName, "mock">;
+const providerCooldowns = new Map<string, { retryAtMs: number; quotaWindow?: SpeakingProviderQuotaWindow }>();
+
+const rejectDuringProviderCooldown = (provider: RemoteSpeakingProvider, model: string, metadata: SpeakingProviderErrorMetadata = {}) => {
+  const key = `${provider}:${model}`;
+  const cooldown = providerCooldowns.get(key);
+  if (!cooldown) return;
+  const retryAfterMs = cooldown.retryAtMs - Date.now();
+  if (retryAfterMs <= 0) {
+    providerCooldowns.delete(key);
+    return;
+  }
+  throw new SpeakingProviderError("Speaking provider capacity is temporarily limited.", "rate_limit", 429, {
+    ...metadata, retryAfterMs, quotaWindow: cooldown.quotaWindow, providerCooldown: true
+  });
+};
 
 const DEFAULT_PROVIDER_TIMEOUTS_MS: Record<SpeakingProviderOperation, number> = {
   // These are deliberately bounded, but leave enough room for a classroom
@@ -342,13 +367,15 @@ const openAiRequest = async (
 ) => {
   const apiKey = openAiKey(environment);
   if (!apiKey) throw new Error("OpenAI Speaking providers require OPENAI_API_KEY or SPEAKING_OPENAI_API_KEY.");
+  const model = openAiModel(environment);
+  rejectDuringProviderCooldown("openai", model);
   const response = await fetchWithSpeakingTimeout("https://api.openai.com/v1/chat/completions", {
     method: "POST",
     headers: { Authorization: `Bearer ${apiKey}`, "Content-Type": "application/json" },
-    body: JSON.stringify({ model: openAiModel(environment), ...body })
+    body: JSON.stringify({ ...body, model })
   }, operation, environment);
   const payload = await response.json().catch(() => ({})) as { error?: { message?: string }; choices?: Array<{ message?: { content?: string } }> };
-  if (!response.ok) throw providerHttpError("openai", operation, response.status, payload.error?.message);
+  if (!response.ok) throw providerHttpError("openai", model, operation, response, payload.error?.message);
   const content = payload.choices?.[0]?.message?.content?.trim();
   if (!content) throw new SpeakingProviderError("OpenAI returned an empty Speaking response.", "invalid_response");
   return content;
@@ -365,8 +392,13 @@ const geminiTranscriptionModel = (environment: NodeJS.ProcessEnv = process.env) 
   return !configured || configured === "gemini-2.5-flash-lite" ? "gemini-3.5-transcribe" : configured;
 };
 
+type GeminiErrorDetail = {
+  retryDelay?: string;
+  violations?: Array<{ quotaId?: string; quotaMetric?: string }>;
+};
+
 type GeminiResponsePayload = {
-  error?: { message?: string; details?: Array<{ retryDelay?: string }> };
+  error?: { message?: string; details?: GeminiErrorDetail[] };
   candidates?: Array<{ finishReason?: string; content?: { parts?: Array<{ text?: string }> } }>;
 };
 
@@ -383,18 +415,65 @@ const safeGeminiFinishReason = (value: unknown) => {
 };
 
 const retryAfterMilliseconds = (value: string | null, nowMs = Date.now()) => {
-  if (!value) return undefined;
-  const seconds = Number(value.trim());
-  if (Number.isFinite(seconds) && seconds >= 0) return Math.min(10 * 60_000, Math.round(seconds * 1_000));
+  if (!value?.trim()) return undefined;
+  if (/^\d+(?:\.\d+)?$/u.test(value.trim())) return Math.min(MAX_SPEAKING_PROVIDER_RETRY_DELAY_MS, Math.round(Number(value) * 1_000));
   const timestamp = Date.parse(value);
   if (!Number.isFinite(timestamp)) return undefined;
-  return Math.min(10 * 60_000, Math.max(0, timestamp - nowMs));
+  return Math.min(MAX_SPEAKING_PROVIDER_RETRY_DELAY_MS, Math.max(0, timestamp - nowMs));
 };
 
-const retryDelayFromGeminiDetails = (details: Array<{ retryDelay?: string }> | undefined) => {
-  const value = details?.map((detail) => detail.retryDelay).find((candidate) => typeof candidate === "string" && /^\d+(?:\.\d+)?s$/u.test(candidate.trim()));
+const retryDelayFromGeminiDetails = (details: GeminiErrorDetail[] | undefined) => {
+  const value = details?.map((detail) => detail?.retryDelay).find((candidate) => typeof candidate === "string" && /^\d+(?:\.\d+)?s$/u.test(candidate.trim()));
   if (!value) return undefined;
-  return Math.min(10 * 60_000, Math.round(Number.parseFloat(value) * 1_000));
+  return Math.min(MAX_SPEAKING_PROVIDER_RETRY_DELAY_MS, Math.round(Number.parseFloat(value) * 1_000));
+};
+
+const quotaWindowFromGeminiDetails = (details: GeminiErrorDetail[] | undefined): SpeakingProviderQuotaWindow | undefined => {
+  const quotaNames = details?.flatMap((detail) => Array.isArray(detail?.violations) ? detail.violations : [])
+    .flatMap((violation) => [violation?.quotaId, violation?.quotaMetric]);
+  if (quotaNames?.some((name) => typeof name === "string" && /per[_-]?day|daily/iu.test(name))) return "day";
+  if (quotaNames?.some((name) => typeof name === "string" && /per[_-]?minute/iu.test(name))) return "minute";
+  return undefined;
+};
+
+const pacificClock = new Intl.DateTimeFormat("en-US", {
+  timeZone: "America/Los_Angeles", year: "numeric", month: "numeric", day: "numeric", hour: "numeric", hourCycle: "h23"
+});
+const millisecondsUntilGeminiDailyReset = (nowMs: number) => {
+  const localDate = Object.fromEntries(pacificClock.formatToParts(nowMs).map(({ type, value }) => [type, Number(value)]));
+  // 08:00 UTC is midnight or 01:00 Pacific, before either DST transition hour.
+  const probeMs = Date.UTC(localDate.year, localDate.month - 1, localDate.day + 1, 8);
+  const localHour = Number(pacificClock.formatToParts(probeMs).find(({ type }) => type === "hour")?.value);
+  return probeMs - localHour * 60 * 60_000 - nowMs;
+};
+
+const providerHttpError = (
+  provider: RemoteSpeakingProvider,
+  model: string,
+  operation: SpeakingProviderOperation,
+  response: Response,
+  message?: string,
+  options: SpeakingProviderErrorMetadata & { geminiDetails?: GeminiErrorDetail[] } = {}
+) => {
+  const { status } = response;
+  const { geminiDetails, ...metadata } = options;
+  const errorMessage = message?.trim() || `${provider} ${operation} failed with ${status}.`;
+  const details = Array.isArray(geminiDetails) ? geminiDetails : undefined;
+  const nowMs = Date.now();
+  const retryHintMs = retryAfterMilliseconds(response.headers.get("retry-after"), nowMs);
+  const geminiRetryMs = retryDelayFromGeminiDetails(details);
+  const retryAfterMs = retryHintMs === undefined && geminiRetryMs === undefined ? undefined : Math.max(retryHintMs ?? 0, geminiRetryMs ?? 0);
+  if (status !== 429) return new SpeakingProviderError(errorMessage, failureKindForStatus(status), status, { ...metadata, retryAfterMs });
+
+  const quotaWindow = quotaWindowFromGeminiDetails(details);
+  const resetDelayMs = quotaWindow === "day" ? millisecondsUntilGeminiDailyReset(nowMs) : 0;
+  const delayMs = Math.max(1_000, retryAfterMs ?? DEFAULT_PROVIDER_COOLDOWN_MS, resetDelayMs);
+  const key = `${provider}:${model}`;
+  const previous = providerCooldowns.get(key);
+  const retryAtMs = Math.max(nowMs + delayMs, previous?.retryAtMs ?? 0);
+  const cooldownQuotaWindow = retryAtMs === previous?.retryAtMs ? previous.quotaWindow : quotaWindow;
+  providerCooldowns.set(key, { retryAtMs, quotaWindow: cooldownQuotaWindow });
+  return new SpeakingProviderError(errorMessage, "rate_limit", status, { ...metadata, retryAfterMs: retryAtMs - nowMs, quotaWindow: cooldownQuotaWindow });
 };
 
 const hasGeminiResponseSchema = (body: Record<string, unknown>) => {
@@ -411,14 +490,14 @@ const geminiRequestResult = async (
   const apiKey = geminiKey(environment);
   if (!apiKey) throw new Error("Gemini Speaking providers require GEMINI_API_KEY or SPEAKING_GEMINI_API_KEY.");
   const structuredOutput = hasGeminiResponseSchema(body);
+  rejectDuringProviderCooldown("gemini", model, { structuredOutput });
   const response = await fetchWithSpeakingTimeout(`https://generativelanguage.googleapis.com/v1beta/models/${encodeURIComponent(model)}:generateContent`, {
     method: "POST",
     headers: { "x-goog-api-key": apiKey, "Content-Type": "application/json" },
     body: JSON.stringify(body)
   }, operation, environment);
   const payload = await response.json().catch(() => ({})) as GeminiResponsePayload;
-  const retryAfterMs = retryAfterMilliseconds(response.headers.get("retry-after")) ?? retryDelayFromGeminiDetails(payload.error?.details);
-  if (!response.ok) throw providerHttpError("gemini", operation, response.status, payload.error?.message, { structuredOutput, retryAfterMs });
+  if (!response.ok) throw providerHttpError("gemini", model, operation, response, payload.error?.message, { structuredOutput, geminiDetails: payload.error?.details });
   const finishReason = safeGeminiFinishReason(payload.candidates?.map((candidate) => candidate.finishReason).find((reason) => reason !== undefined));
   const content = payload.candidates?.flatMap((candidate) => candidate.content?.parts ?? []).map((part) => part.text ?? "").join("").trim();
   if (!content) throw new SpeakingProviderError("Gemini returned an empty Speaking response.", "invalid_response", undefined, {
@@ -471,17 +550,19 @@ export const openAiTranscriptionProvider: TranscriptionProvider = {
   providerName: "openai",
   async transcribe(input) {
     if (!input.audio.length) return { text: "", confidence: 0 };
+    const apiKey = openAiKey();
+    if (!apiKey) throw new Error("OpenAI transcription requires OPENAI_API_KEY or SPEAKING_OPENAI_API_KEY.");
+    const model = openAiTranscriptionModel();
+    rejectDuringProviderCooldown("openai", model);
     const form = new FormData();
     const audioBytes = new Uint8Array(input.audio.byteLength);
     audioBytes.set(input.audio);
     form.append("file", new Blob([audioBytes.buffer], { type: input.mimeType }), "speaking-audio");
-    form.append("model", openAiTranscriptionModel());
+    form.append("model", model);
     form.append("language", SPEAKING_PRACTICE_LANGUAGE);
-    const apiKey = openAiKey();
-    if (!apiKey) throw new Error("OpenAI transcription requires OPENAI_API_KEY or SPEAKING_OPENAI_API_KEY.");
     const response = await fetchWithSpeakingTimeout("https://api.openai.com/v1/audio/transcriptions", { method: "POST", headers: { Authorization: `Bearer ${apiKey}` }, body: form }, "transcription");
     const payload = await response.json().catch(() => ({})) as { text?: string; error?: { message?: string } };
-    if (!response.ok) throw providerHttpError("openai", "transcription", response.status, payload.error?.message);
+    if (!response.ok) throw providerHttpError("openai", model, "transcription", response, payload.error?.message);
     return { text: payload.text?.trim() ?? "" };
   }
 };
@@ -593,11 +674,13 @@ export const geminiTranscriptionProvider: TranscriptionProvider = {
     if (!input.audio.length) return { text: "", confidence: 0 };
     const apiKey = geminiKey();
     if (!apiKey) throw new Error("Gemini transcription requires GEMINI_API_KEY or SPEAKING_GEMINI_API_KEY.");
+    const model = geminiTranscriptionModel();
+    rejectDuringProviderCooldown("gemini", model);
     const response = await fetchWithSpeakingTimeout("https://generativelanguage.googleapis.com/v1beta/interactions", {
       method: "POST",
       headers: { "x-goog-api-key": apiKey, "Content-Type": "application/json" },
       body: JSON.stringify({
-        model: geminiTranscriptionModel(),
+        model,
         input: [{
           type: "audio",
           data: input.audio.toString("base64"),
@@ -613,13 +696,13 @@ export const geminiTranscriptionProvider: TranscriptionProvider = {
       })
     }, "transcription");
     const payload = await response.json().catch(() => ({})) as {
-      error?: { message?: string };
+      error?: GeminiResponsePayload["error"];
       errors?: Array<{ message?: string }>;
       status?: string;
       output_text?: string;
       steps?: Array<{ type?: string; content?: Array<{ type?: string; text?: string }> }>;
     };
-    if (!response.ok) throw providerHttpError("gemini", "transcription", response.status, payload.error?.message);
+    if (!response.ok) throw providerHttpError("gemini", model, "transcription", response, payload.error?.message, { geminiDetails: payload.error?.details });
     if (payload.status === "failed") throw new SpeakingProviderError(payload.errors?.[0]?.message ?? "Gemini transcription failed.", "unavailable");
     const modelOutput = payload.steps?.filter((step) => step.type === "model_output")
       .flatMap((step) => step.content ?? [])

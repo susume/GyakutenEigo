@@ -486,7 +486,8 @@ export class NormalizedLibrary {
       if (input.isRemix) return;
       const setKey = `study-set-created:${input.studySetId}:valid`;
       const contentKey = `study-set-content:${input.teacherId}:${input.contentFingerprint}`;
-      await tx.$queryRaw(Prisma.sql`SELECT pg_advisory_xact_lock(hashtext(${input.teacherId}))`);
+      // The lock returns PostgreSQL void, so execute it without decoding a result.
+      await tx.$executeRaw(Prisma.sql`SELECT pg_advisory_xact_lock(hashtext(${input.teacherId}))`);
       const [setEvent, contentEvent] = await Promise.all([
         tx.contributionEvent.findUnique({ where: { eventKey: setKey }, select: { id: true } }),
         tx.contributionEvent.findUnique({ where: { eventKey: contentKey }, select: { id: true } })
@@ -526,7 +527,7 @@ export class NormalizedLibrary {
   async recordStudySetDuplicated(input: { teacherId: string; studySetId: string; originalSetId: string }) {
     const eventKey = `study-set-duplicated:${input.studySetId}`;
     return this.prisma.$transaction(async (tx) => {
-      await tx.$queryRaw(Prisma.sql`SELECT pg_advisory_xact_lock(hashtext(${eventKey}))`);
+      await tx.$executeRaw(Prisma.sql`SELECT pg_advisory_xact_lock(hashtext(${eventKey}))`);
       const existing = await tx.contributionEvent.findUnique({ where: { eventKey }, select: { id: true } });
       if (existing) return false;
       await tx.contributionEvent.create({
@@ -542,7 +543,7 @@ export class NormalizedLibrary {
     let externalTeacherAdded = false;
     let uniqueTeacherCount = 0;
     await this.prisma.$transaction(async (tx) => {
-      await tx.$queryRaw(Prisma.sql`SELECT pg_advisory_xact_lock(hashtext(${`${input.studySetId}:${input.consumerTeacherId}`}))`);
+      await tx.$executeRaw(Prisma.sql`SELECT pg_advisory_xact_lock(hashtext(${`${input.studySetId}:${input.consumerTeacherId}`}))`);
       const existing = await tx.studySetUsage.findUnique({ where: { sessionId: input.sessionId } });
       if (existing) return;
       await tx.studySetUsage.create({ data: { quizSetId: input.studySetId, consumerTeacherId: input.consumerTeacherId, sessionId: input.sessionId } });
@@ -643,7 +644,7 @@ export class NormalizedLibrary {
     await this.prisma.$transaction(async (tx) => {
       // PostgreSQL transaction-scoped advisory locks serialize retention for a
       // teacher even when several server instances finish matches together.
-      await tx.$queryRaw(Prisma.sql`SELECT pg_advisory_xact_lock(hashtext(${metadata.teacherId}))`);
+      await tx.$executeRaw(Prisma.sql`SELECT pg_advisory_xact_lock(hashtext(${metadata.teacherId}))`);
       await tx.report.upsert({
         where: { teacherId_sessionId: { teacherId: metadata.teacherId, sessionId: metadata.sessionId } },
         create: {
