@@ -76,6 +76,29 @@ try {
     }
   }
 
+  // These Japanese pages from the former site have replacements. Retired
+  // articles and tools without equivalents still fall through to the 404 page.
+  const legacyRedirects = [
+    { path: "aboutph.html", route: "/about" },
+    { path: "contactme.html", route: "/private-lessons", fragment: "#lesson-contact-title" }
+  ];
+  for (const { path, route, fragment = "" } of legacyRedirects) {
+    const destination = `${publicPagePath(route, "ja")}${fragment}`;
+    // GitHub Pages serves static files; an immediate refresh redirects without JavaScript.
+    await writeOutput(path, `<!doctype html>
+<html lang="ja">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>ページが移動しました | GyakutenEigo</title>
+    <link rel="canonical" href="${publicPageUrl(route, "ja")}" />
+    <meta http-equiv="refresh" content="0; url=${destination}" />
+  </head>
+  <body><p><a href="${destination}">移動先のページを開く</a></p></body>
+</html>
+`);
+  }
+
   await writeOutput("sitemap.xml", [
     '<?xml version="1.0" encoding="UTF-8"?>',
     '<urlset xmlns="http://www.sitemaps.org/schemas/sitemap/0.9">',
