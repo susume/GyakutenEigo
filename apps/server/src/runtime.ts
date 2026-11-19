@@ -186,11 +186,10 @@ import {
   getAthleticsPreviousSafeSurfaceIndex,
   getAthleticsRouteTangent,
   getAthleticsRouteProgress,
-  getAthleticsRouteDistance,
+  getAthleticsRouteProjection,
   getAthleticsRouteHeight,
   getAthleticsSurfaceRouteProgress,
   isAthleticsBelowRecoverableRoute,
-  isAthleticsOnRoute,
   getAthleticsStartPosition,
   getAthleticsTotalQuestionCount,
   normalizeAthleticsEnergy,
@@ -753,7 +752,7 @@ const getAthleticsRaceConfig = (session: GameSession) => {
     requiredLaps,
     questionsPerLap,
     questionCount: session.athletics?.questionCount ?? questionsPerLap * requiredLaps,
-    checkpointCount: ATHLETICS_CHECKPOINT_COUNT
+    checkpointCount: session.settings.athleticsMode === "zeus" ? ZEUS_SUMMIT_CHECKPOINT_COUNT : ATHLETICS_CHECKPOINT_COUNT
   };
 };
 
@@ -999,7 +998,18 @@ const flushPositionBroadcasts = () => {
 
 const broadcastPlayerPosition = (session: GameSession, position: LivePositionPayload) => {
   const positions = pendingPositionBroadcasts.get(session.sessionCode) ?? new Map<string, LivePositionPayload>();
-  positions.set(position.playerId, position);
+  // Position batches reach every runner. Keep pose precision at 1 cm on
+  // the wire and leave collision, scoring, and fuel calculations untouched.
+  positions.set(position.playerId, {
+    playerId: position.playerId,
+    x: Math.round(position.x * 100) / 100,
+    z: Math.round(position.z * 100) / 100,
+    y: position.y === undefined ? undefined : Math.round(position.y * 100) / 100,
+    facing: Math.round(position.facing * 1000) / 1000,
+    energy: position.energy === undefined ? undefined : Math.round(position.energy * 100) / 100,
+    crouching: position.crouching || undefined,
+    jumping: position.jumping || undefined
+  });
   pendingPositionBroadcasts.set(session.sessionCode, positions);
   positionBroadcastTimer ??= setTimeout(flushPositionBroadcasts, 50);
 };
@@ -1398,7 +1408,7 @@ const completeAthleticsLap = (session: GameSession, player: PlayerSession, nowMs
   return true;
 };
 
-const updateAthleticsRace = (session: GameSession, player: PlayerSession, nowMs: number) => {
+const updateAthleticsRace = (session: GameSession, player: PlayerSession, nowMs: number, acceptedSupport?: AthleticsPhysicalSupport) => {
   if (session.settings.gameMode !== "athletics") return;
   const race = session.athletics;
   const athletics = ensureAthleticsPlayerState(session, player);
@@ -1414,18 +1424,19 @@ const updateAthleticsRace = (session: GameSession, player: PlayerSession, nowMs:
     broadcastSession(session);
   }
   if (race.status !== "running" || athletics.status !== "racing" || athletics.recoveryActive) return;
+  const mode = getAthleticsMode(session.settings.athleticsMode ?? race.mode);
   // Hunters defend their authored stations; they are not additional racers
   // that should be evaluated against the parkour landing/checkpoint route.
-  if (getAthleticsMode(session.settings.athleticsMode ?? race.mode) === "hunters-runners" && athletics.role === "hunter") return;
-  const course = getAthleticsCourseForMode(session.settings.athleticsMode ?? race.mode);
+  if (mode === "hunters-runners" && athletics.role === "hunter") return;
+  const course = getAthleticsCourseForMode(mode);
   const currentPosition = { x: player.x ?? 0, y: player.y ?? 0, z: player.z ?? 0 };
-  const support = getAthleticsPhysicalSupport(
+  const support = acceptedSupport ?? getAthleticsPhysicalSupport(
     currentPosition,
     course,
     player.crouching === true ? ARENA_PLAYER_CROUCH_EYE_HEIGHT : ATHLETICS_PLAYER_EYE_HEIGHT,
     nowMs
   );
-  if (race.mode === "zeus" && !player.jumping && athletics.checkpointIndex >= ZEUS_SUMMIT_CHECKPOINT_COUNT - 1
+  if (mode === "zeus" && !player.jumping && athletics.checkpointIndex >= ZEUS_SUMMIT_CHECKPOINT_COUNT - 1
     && isAthleticsCheckpointOccupied(support, ZEUS_SUMMIT_SURFACE_INDEX)) {
     athletics.checkpointIndex = ZEUS_SUMMIT_CHECKPOINT_COUNT;
     athletics.routeProgress = ZEUS_SUMMIT_PROGRESS;
@@ -1437,7 +1448,7 @@ const updateAthleticsRace = (session: GameSession, player: PlayerSession, nowMs:
   athletics.currentSupportedSurfaceIndex = support.kind === "main_surface" ? support.surfaceIndex : undefined;
   athletics.currentSupportKind = support.kind;
   if (isAthleticsPlayableSupport(support)) athletics.lastSupportedAtMs = nowMs;
-  if (!player.jumping && athletics.checkpointIndex >= ATHLETICS_CHECKPOINT_COUNT
+  if (mode !== "zeus" && !player.jumping && athletics.checkpointIndex >= ATHLETICS_CHECKPOINT_COUNT
     && isAthleticsFinishOccupied(support, ATHLETICS_STADIUM_COURSE.finishSurfaceIndex ?? ATHLETICS_STADIUM_COURSE.surfaces.length - 1)) {
     if (completeAthleticsLap(session, player, nowMs)) { broadcastPlayerState(session, [player]); broadcastSession(session); }
     return;
@@ -1452,12 +1463,11 @@ const updateAthleticsRace = (session: GameSession, player: PlayerSession, nowMs:
       athletics.routeProgress,
       getAthleticsSurfaceRouteProgress(support.surfaceIndex, ATHLETICS_STADIUM_COURSE)
     );
-  } else if (support.kind === "shortcut_surface") {
-    athletics.routeProgress = Math.max(athletics.routeProgress, getAthleticsRouteProgress(currentPosition));
   } else if (support.kind !== "park_floor") {
     // Projection remains useful for standings while airborne, but it cannot
     // confirm a checkpoint or replace a physical landing for fall authority.
-    athletics.routeProgress = Math.max(athletics.routeProgress, getAthleticsRouteProgress(currentPosition));
+    const scale = mode === "zeus" ? ZEUS_SUMMIT_PROGRESS : 1;
+    athletics.routeProgress = Math.max(athletics.routeProgress, getAthleticsRouteProgress(currentPosition, course) * scale);
   }
   const nextCheckpointSurfaceIndex = getAthleticsCheckpointSurfaceIndex(
     athletics.checkpointIndex,
@@ -1483,7 +1493,9 @@ const updateAthleticsRace = (session: GameSession, player: PlayerSession, nowMs:
     });
     appendEvent(session, {
       type: "timer",
-      message: `${player.nickname} reached lap ${athletics.completedLaps + 1} checkpoint ${athletics.checkpointIndex}/${ATHLETICS_CHECKPOINT_COUNT}.`,
+      message: mode === "zeus"
+        ? `${player.nickname} reached Zeus checkpoint ${athletics.checkpointIndex}/${ZEUS_SUMMIT_CHECKPOINT_COUNT}.`
+        : `${player.nickname} reached lap ${athletics.completedLaps + 1} checkpoint ${athletics.checkpointIndex}/${ATHLETICS_CHECKPOINT_COUNT}.`,
       playerId: player.id,
       team: player.team
     });
@@ -1509,10 +1521,12 @@ const advanceZeusMode = (session: GameSession, nowMs: number) => {
   if (zeus.phase === "defeated") return false;
   if (zeus.phase === "green") {
     const cycle = getZeusCycle(race.modeSeed ?? 0, zeus.cycleIndex ?? 0);
+    // Keep an enforceable STOP window even if the runtime missed the turn.
+    const startsAt = Number.isFinite(endsAt) ? Math.max(endsAt, nowMs - ZEUS_STOP_GRACE_MS) : nowMs;
     zeus.phase = "red";
-    zeus.phaseStartedAt = new Date(endsAt).toISOString();
-    zeus.phaseEndsAt = new Date(endsAt + cycle.redMs).toISOString();
-    zeus.graceEndsAt = new Date(endsAt + ZEUS_STOP_GRACE_MS).toISOString();
+    zeus.phaseStartedAt = new Date(startsAt).toISOString();
+    zeus.phaseEndsAt = new Date(startsAt + cycle.redMs).toISOString();
+    zeus.graceEndsAt = new Date(startsAt + ZEUS_STOP_GRACE_MS).toISOString();
     for (const player of session.players) {
       if (player.athletics) player.athletics.zeusRedAnchor = { x: player.x ?? 0, z: player.z ?? 0, cycleIndex: zeus.cycleIndex ?? 0 };
     }
@@ -1554,13 +1568,16 @@ const restartZeusRunner = (session: GameSession, player: PlayerSession, nowMs: n
   playerPositionHistory.record(player.id, spawn, nowMs);
   const zeus = session.athletics?.zeus;
   if (zeus) zeus.lastStrikes = [...(zeus.lastStrikes ?? []).filter((strike) => nowMs - Date.parse(strike.at) < ZEUS_STRIKE_VISIBLE_MS), { playerId: player.id, position: struckPosition, at: new Date(nowMs).toISOString() }].slice(-8);
-  emitAthleticsModeEvent(session, "zeus_strike", {
-    playerId: player.id, hit: true, position: struckPosition, spawn,
+  const impact = { playerId: player.id, hit: true, position: struckPosition };
+  const struckSockets = [...(playerSockets.get(playerSocketKey(session.sessionCode, player.id)) ?? [])];
+  io.to(gameplayRoom(session.sessionCode)).except(struckSockets).emit("zeus_strike", impact);
+  io.to(teacherRoom(session.sessionCode)).emit("zeus_strike", impact);
+  emitToPlayers(session, [player.id], "zeus_strike", {
+    ...impact, spawn,
     movementEpoch: athletics.movementEpoch, restartUntil: athletics.zeusRestartUntil,
     energy: player.energy, athletics: { ...athletics },
     message: `Caught moving! Try level ${recovery.checkpointIndex + 1} again. Checkpoints kept; 90% energy kept.`
   });
-  broadcastPlayerState(session, [player]);
   broadcastSession(session);
   return spawn;
 };
@@ -1955,7 +1972,8 @@ const beginAthleticsRecovery = (
   clearAthleticsBattleStudy(player);
 
   const routeProgressBeforeRecovery = athletics.routeProgress;
-  const progressSafeIndex = getAthleticsPreviousSafeSurfaceIndex(athletics.routeProgress, ATHLETICS_STADIUM_COURSE);
+  const course = getAthleticsCourseForMode(session.settings.athleticsMode ?? session.athletics?.mode);
+  const progressSafeIndex = Math.min(course.surfaces.length - 1, getAthleticsPreviousSafeSurfaceIndex(athletics.routeProgress));
   const trackedSafeIndex = Number.isInteger(athletics.lastSafeSurfaceIndex)
     ? Math.max(0, athletics.lastSafeSurfaceIndex ?? 0)
     : progressSafeIndex;
@@ -1991,7 +2009,7 @@ const beginAthleticsRecovery = (
     const diagnosticPosition = diagnostic?.position ?? currentPosition;
     const diagnosticSupport = diagnostic?.support ?? getAthleticsPhysicalSupport(
       diagnosticPosition,
-      getAthleticsCourseForMode(session.settings.athleticsMode ?? session.athletics?.mode),
+      course,
       ATHLETICS_PLAYER_EYE_HEIGHT,
       nowMs
     );
@@ -2043,18 +2061,18 @@ const completeAthleticsRecovery = (
   athletics: AthleticsPlayerState,
   nowMs: number
 ) => {
+  const course = getAthleticsCourseForMode(session.settings.athleticsMode ?? session.athletics?.mode);
   const storedIndex = athletics.recoverySurfaceId
-    ? ATHLETICS_STADIUM_COURSE.surfaces.findIndex((surface) => surface.id === athletics.recoverySurfaceId)
+    ? course.surfaces.findIndex((surface) => surface.id === athletics.recoverySurfaceId)
     : -1;
   const safeSurfaceIndex = storedIndex >= 0
     ? storedIndex
-    : Math.max(0, Math.floor(athletics.lastSafeSurfaceIndex ?? 0));
-  const safeProgress = athletics.recoveryRouteProgress
-    ?? getAthleticsSurfaceRouteProgress(safeSurfaceIndex, ATHLETICS_STADIUM_COURSE);
+    : Math.max(0, Math.min(course.surfaces.length - 1, Math.floor(athletics.lastSafeSurfaceIndex ?? 0)));
+  const safeProgress = getAthleticsSurfaceRouteProgress(safeSurfaceIndex);
   const respawn = getAthleticsRecoveryPosition(
     safeSurfaceIndex,
     athletics.laneIndex ?? 0,
-    getAthleticsCourseForMode(session.settings.athleticsMode ?? session.athletics?.mode)
+    course
   );
   const safeCheckpointIndex = ATHLETICS_STADIUM_COURSE.checkpoints.filter((progress) => progress <= safeProgress + 0.02).length;
   Object.assign(player, respawn, {
@@ -2119,7 +2137,7 @@ const applyAuthoritativePosition = (
     zeusCycleIndex?: number;
   },
   nowMs = Date.now()
-) => {
+): ReturnType<typeof resolveAuthoritativeMovement> & { athleticsSupport?: AthleticsPhysicalSupport } => {
   const isAthletics = session.settings.gameMode === "athletics";
   const athleticsMode = getAthleticsMode(session.settings.athleticsMode ?? session.athletics?.mode);
   const athleticsCourse = getAthleticsCourseForMode(athleticsMode);
@@ -2160,7 +2178,6 @@ const applyAuthoritativePosition = (
       // Do not advance the movement clock for a packet that has already been
       // superseded; otherwise the next valid packet could receive an
       // artificial speed burst.
-      playerMoveTimestamps.set(player.id, nowMs);
       return { ...currentPosition, facing: requestedFacing };
     }
     if (hasSequence) athletics.lastAcceptedMovementSequence = requestedSequence;
@@ -2194,7 +2211,6 @@ const applyAuthoritativePosition = (
     // A red packet from an earlier cycle can arrive after the next chant.
     // Discard it before interpreting its input as a new STOP violation.
     if (requested.zeusCycleIndex !== undefined && requested.zeusCycleIndex !== cycleIndex) {
-      playerMoveTimestamps.set(player.id, nowMs);
       player.facing = requestedFacing;
       return { ...currentPosition, facing: requestedFacing };
     }
@@ -2202,7 +2218,8 @@ const applyAuthoritativePosition = (
       // Packets sampled before STOP may arrive afterwards. Reject their
       // displacement without punishing the student for network delay.
       if (requested.zeusPhase === "green") return { ...currentPosition, facing: requestedFacing };
-      const support = getAthleticsPhysicalSupport(currentPosition, athleticsCourse, requestedEyeHeight, nowMs);
+      const support = getAthleticsPhysicalSupport(currentPosition, athleticsCourse,
+        player.crouching ? ARENA_PLAYER_CROUCH_EYE_HEIGHT : ATHLETICS_PLAYER_EYE_HEIGHT, lastMoveAt);
       const carried = support.kind === "moving_platform";
       const anchor = athletics.zeusRedAnchor;
       const drift = anchor?.cycleIndex === cycleIndex ? Math.hypot(requestedX - anchor.x, requestedZ - anchor.z) : 0;
@@ -2255,7 +2272,7 @@ const applyAuthoritativePosition = (
     });
   }
   const requestedGroundY = isAthletics
-    ? getAthleticsGroundHeight({ x: requestedX, y: requestedEyeY, z: requestedZ }, nowMs, athleticsCourse)
+    ? getAthleticsGroundHeight({ x: requestedX, y: requestedEyeY, z: requestedZ }, nowMs, athleticsCourse, requestedEyeHeight)
     : getArenaGroundHeightForPlayer(
       session.settings.mapId,
       requestedX,
@@ -2318,6 +2335,7 @@ const applyAuthoritativePosition = (
     eyeHeight: requestedEyeHeight,
     mapId: isAthletics ? ATHLETICS_ARENA_MAP_ID : session.settings.mapId
   });
+  let acceptedSupport: AthleticsPhysicalSupport | undefined;
   if (isAthletics && athletics) {
     if (athleticsMode === "hunters-runners" && athletics.role === "hunter") {
       const station = getAthleticsHunterStationPosition(
@@ -2354,14 +2372,17 @@ const applyAuthoritativePosition = (
       athletics.recoverySettleUntil
       && nowMs < Date.parse(athletics.recoverySettleUntil)
     );
+    const playableSupport = isAthleticsPlayableSupport(physicalSupport);
+    const projection = playableSupport ? undefined : getAthleticsRouteProjection(resolvedPosition, athleticsCourse);
+    const onRoute = !projection || projection.distance <= projection.routeWidth;
     const fallDecision = decideAthleticsFall({
       support: physicalSupport,
       airborne,
       requestedY: requested.y,
-      routeDistance: getAthleticsRouteDistance(resolvedPosition),
-      routeWidth: ATHLETICS_STADIUM_COURSE.routeWidth,
-      onRoute: isAthleticsOnRoute(resolvedPosition),
-      belowRecoverableRoute: isAthleticsBelowRecoverableRoute(resolvedPosition, athletics.routeProgress),
+      routeDistance: projection?.distance ?? 0,
+      routeWidth: athleticsCourse.routeWidth,
+      onRoute,
+      belowRecoverableRoute: !playableSupport && isAthleticsBelowRecoverableRoute(resolvedPosition, athletics.routeProgress),
       settleGuardActive
     });
     if (fallDecision.recover) {
@@ -2370,16 +2391,16 @@ const applyAuthoritativePosition = (
         support: physicalSupport
       });
     }
-    const routeProgress = getAthleticsRouteProgress(resolvedPosition);
     // Out-of-route packets are rejected only when they do not have a valid
     // physical landing. This keeps elevated, rotated, shortcut, and moving
     // supports authoritative even when their route projection is imperfect.
-    if (!isAthleticsPlayableSupport(physicalSupport)
-      && (routeProgress < athletics.routeProgress - 0.03 || !isAthleticsOnRoute(resolvedPosition))) {
+    if (projection && (!onRoute || (athleticsMode !== "zeus" && projection.progress < athletics.routeProgress - 0.03))) {
       position.x = currentPosition.x;
       position.y = currentPosition.y;
       position.z = currentPosition.z;
       position.facing = requestedFacing;
+    } else {
+      acceptedSupport = physicalSupport;
     }
   }
   playerMoveTimestamps.set(player.id, nowMs);
@@ -2396,30 +2417,6 @@ const applyAuthoritativePosition = (
     player.jumping = athleticsCanJump && requested.jumping && !requestedCrouching;
   }
   if (isAthletics && athletics) {
-    const support = getAthleticsPhysicalSupport({
-      x: player.x ?? 0,
-      y: player.y,
-      z: player.z ?? 0
-    }, athleticsCourse, requestedEyeHeight, nowMs);
-    athletics.currentSupportedSurfaceIndex = support.kind === "main_surface" ? support.surfaceIndex : undefined;
-    athletics.currentSupportKind = support.kind;
-    if (isAthleticsPlayableSupport(support)) athletics.lastSupportedAtMs = nowMs;
-    if (support.kind === "main_surface" && support.surfaceIndex !== undefined && !player.jumping) {
-      if (support.surfaceIndex >= (athletics.lastSafeSurfaceIndex ?? 0)) {
-        athletics.lastSafeSurfaceIndex = support.surfaceIndex;
-      }
-      athletics.routeProgress = Math.max(
-        athletics.routeProgress,
-        getAthleticsSurfaceRouteProgress(support.surfaceIndex, ATHLETICS_STADIUM_COURSE)
-      );
-    } else if (support.kind !== "park_floor") {
-      // Route progress is a separate, monotonic positional signal. It can be
-      // useful in the air for standings, but never confirms a landing.
-      athletics.routeProgress = Math.max(
-        athletics.routeProgress,
-        getAthleticsRouteProgress({ x: player.x ?? 0, y: player.y, z: player.z ?? 0 })
-      );
-    }
     player.energy = resolveAthleticsMovementEnergy({
       currentEnergy: athleticsEnergy,
       elapsedMs,
@@ -2440,7 +2437,7 @@ const applyAuthoritativePosition = (
     y: player.y,
     z: player.z
   }, nowMs);
-  return position;
+  return { ...position, athleticsSupport: acceptedSupport };
 };
 
 const connectionLifecycle = new ConnectionLifecycleService({
@@ -2603,26 +2600,28 @@ const advanceAthleticsBot = (session: GameSession, bot: PlayerSession, index: nu
       : ATHLETICS_MAX_ENERGY;
     athletics.questionIndex = Math.min(questionCount, athletics.questionIndex + 1);
   }
-  if (athletics.checkpointIndex >= ATHLETICS_CHECKPOINT_COUNT && ATHLETICS_STADIUM_COURSE.closedLoop) {
-    const start = ATHLETICS_STADIUM_COURSE.surfaces[0]!;
+  const course = getAthleticsCourseForMode(mode);
+  if (athletics.checkpointIndex >= course.checkpoints.length && course.closedLoop) {
+    const start = course.surfaces[0]!;
     bot.x = start.x; bot.y = start.y + ATHLETICS_PLAYER_EYE_HEIGHT;
     bot.z = Math.min(start.z, (bot.z ?? start.z) + 4);
     updateAthleticsRace(session, bot, nowMs); broadcastPlayerState(session, [bot]); return true;
   }
+  const progressScale = mode === "zeus" ? ZEUS_SUMMIT_PROGRESS : 1;
   const currentProgress = Math.max(
-    athletics.routeProgress,
-    getAthleticsRouteProgress({ x: bot.x ?? 0, y: bot.y ?? ATHLETICS_PLAYER_EYE_HEIGHT, z: bot.z ?? 0 })
+    athletics.routeProgress / progressScale,
+    getAthleticsRouteProgress({ x: bot.x ?? 0, y: bot.y ?? ATHLETICS_PLAYER_EYE_HEIGHT, z: bot.z ?? 0 }, course)
   );
-  const nextCheckpoint = ATHLETICS_STADIUM_COURSE.checkpoints[athletics.checkpointIndex] ?? 1;
+  const nextCheckpoint = course.checkpoints[athletics.checkpointIndex] ?? 1;
   const nextProgress = Math.min(1, currentProgress + 0.06, nextCheckpoint);
-  const nextPoint = getAthleticsPointAtProgress(nextProgress);
-  const tangent = getAthleticsRouteTangent(nextProgress);
+  const nextPoint = getAthleticsPointAtProgress(nextProgress, course);
+  const tangent = getAthleticsRouteTangent(nextProgress, course);
   const laneOffset = ((athletics.laneIndex ?? index) % 5 - 2) * 0.75;
   bot.x = nextPoint.x - tangent.z * laneOffset;
   bot.y = nextPoint.y + ATHLETICS_PLAYER_EYE_HEIGHT;
   bot.z = nextPoint.z + tangent.x * laneOffset;
   bot.facing = Math.atan2(-tangent.x, -tangent.z);
-  athletics.routeProgress = nextProgress;
+  athletics.routeProgress = nextProgress * progressScale;
   updateAthleticsRace(session, bot, nowMs);
   broadcastPlayerPosition(session, { playerId: bot.id, x: bot.x, y: bot.y, z: bot.z, facing: bot.facing });
   return true;
@@ -3831,9 +3830,10 @@ io.on("connection", (socket) => {
     const { session, player } = student;
     if (isTeacherPaused(session) || !player.isAlive) return;
     const wasStudying = Boolean(player.athletics?.battleStudyPosition);
-    const position = applyAuthoritativePosition(session, player, command);
+    const nowMs = Date.now();
+    const position = applyAuthoritativePosition(session, player, command, nowMs);
     if (wasStudying && !player.athletics?.battleStudyPosition) broadcastPlayerState(session, [player]);
-    updateAthleticsRace(session, player, Date.now());
+    updateAthleticsRace(session, player, nowMs, position.athleticsSupport);
     const authoritativePosition = {
       playerId: player.id,
       x: position.x,

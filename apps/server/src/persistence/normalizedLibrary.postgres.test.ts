@@ -1,7 +1,7 @@
 import assert from "node:assert/strict";
 import { randomUUID } from "node:crypto";
 import test from "node:test";
-import { PrismaClient } from "@prisma/client";
+import { Prisma, PrismaClient } from "@prisma/client";
 import { DEFAULT_SESSION_SETTINGS, type ReportMetadata, type SessionReport } from "@quizstrike/shared";
 import { NormalizedLibrary } from "./normalizedLibrary.js";
 
@@ -45,8 +45,17 @@ test("PostgreSQL advisory locks permit report and contribution writes", { skip: 
       rows: [],
       missedQuestions: []
     };
-    await library.saveReport(metadata, report);
+    let acquired!: () => void;
+    const lockAcquired = new Promise<void>((resolve) => { acquired = resolve; });
+    const slowReportLock = prisma.$transaction(async (tx) => {
+      await tx.$executeRaw(Prisma.sql`SELECT pg_advisory_xact_lock(hashtext(${teacherId}))`);
+      acquired();
+      await new Promise((resolve) => setTimeout(resolve, 5_250));
+    }, { timeout: 12_000 });
+    await Promise.race([lockAcquired, slowReportLock]);
+    await Promise.all([slowReportLock, library.saveReport(metadata, report), library.saveReport(metadata, report)]);
     assert.deepEqual((await library.getReport(teacherId, metadata.id))?.report, report);
+    assert.equal(await prisma.report.count({ where: { teacherId, sessionId } }), 1);
   } finally {
     try {
       await prisma.user.deleteMany({ where: { id: teacherId } });

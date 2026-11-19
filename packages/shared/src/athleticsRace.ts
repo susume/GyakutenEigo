@@ -291,17 +291,25 @@ const safeNumber = (value: unknown, fallback = 0) => Number.isFinite(Number(valu
 const segmentLength = (start: Pick<ArenaPosition, "x" | "z">, end: Pick<ArenaPosition, "x" | "z">) =>
   Math.hypot(end.x - start.x, end.z - start.z);
 
-const routeLengths = (course: Pick<AthleticsCourseDefinition, "route">) => {
-  const lengths = course.route.slice(1).map((point, index) => segmentLength(course.route[index]!, point));
-  const total = lengths.reduce((sum, length) => sum + length, 0);
-  return { lengths, total: total || 1 };
+const routeMeasurements = new WeakMap<readonly AthleticsRoutePoint[], { lengths: number[]; offsets: number[]; total: number }>();
+const routeLengths = ({ route }: Pick<AthleticsCourseDefinition, "route">) => {
+  const cached = routeMeasurements.get(route);
+  if (cached) return cached;
+  const offsets = [0];
+  const lengths = route.slice(1).map((point, index) => {
+    const length = segmentLength(route[index]!, point);
+    offsets.push(offsets[index]! + length);
+    return length;
+  });
+  const measurements = { lengths, offsets, total: offsets.at(-1) || 1 };
+  routeMeasurements.set(route, measurements);
+  return measurements;
 };
 
 const routeProgressAtIndex = (route: readonly AthleticsRoutePoint[], index: number) => {
   const safeIndex = Math.max(0, Math.min(route.length - 1, Math.floor(index)));
-  const total = route.slice(1).reduce((sum, point, routeIndex) => sum + segmentLength(route[routeIndex]!, point), 0) || 1;
-  const distance = route.slice(1, safeIndex + 1).reduce((sum, point, routeIndex) => sum + segmentLength(route[routeIndex]!, point), 0);
-  return clamp01(distance / total);
+  const { offsets, total } = routeLengths({ route });
+  return clamp01((offsets[safeIndex] ?? 0) / total);
 };
 
 const routePointAtDistance = (distance: number, route: readonly AthleticsRoutePoint[]) => {
@@ -865,9 +873,10 @@ const isPointInsideAthleticsRect = (
 export const getAthleticsGroundHeight = (
   position: Pick<ArenaPosition, "x" | "z"> & { y?: number },
   nowMs = Date.now(),
-  course: AthleticsCourseDefinition = ATHLETICS_STADIUM_COURSE
+  course: AthleticsCourseDefinition = ATHLETICS_STADIUM_COURSE,
+  eyeHeight = ATHLETICS_PLAYER_EYE_HEIGHT
 ) => {
-  const footY = Number.isFinite(position.y) ? Number(position.y) - ATHLETICS_PLAYER_EYE_HEIGHT : 0;
+  const footY = Number.isFinite(position.y) ? Number(position.y) - eyeHeight : 0;
   let supportY = 0;
   for (const obstacle of getAthleticsObstacles(nowMs, course)) {
     if (obstacle.kind !== "rect") continue;
@@ -974,7 +983,7 @@ export const ATHLETICS_COLLISION_PROXIES = getAthleticsStaticObstacles();
 
 /** Collision includes the same deterministic moving transforms used by the renderer. */
 export const getAthleticsObstacles = (nowMs = Date.now(), course: AthleticsCourseDefinition = ATHLETICS_STADIUM_COURSE): AthleticsObstacle[] => [
-  ...getAthleticsStaticObstacles(course).map((obstacle) => ({ ...obstacle })),
+  ...getAthleticsStaticObstacles(course),
   ...course.movingObstacles.map((obstacle) => movingObstacleToObstacle(obstacle, nowMs))
 ];
 
@@ -1161,7 +1170,7 @@ export const getAthleticsRouteTangent = (
   progress: number,
   course: AthleticsCourseDefinition = ATHLETICS_STADIUM_COURSE
 ) => {
-  const point = getAthleticsPointAtProgress(progress, course);
+  const point = getAthleticsPointAtProgress(progress >= 1 && !course.closedLoop ? 0.998 : progress, course);
   const ahead = progress >= 1 && course.closedLoop ? course.route[0]! : getAthleticsPointAtProgress(Math.min(1, progress + 0.002), course);
   const length = Math.hypot(ahead.x - point.x, ahead.z - point.z) || 1;
   return { x: (ahead.x - point.x) / length, z: (ahead.z - point.z) / length };
@@ -1184,7 +1193,7 @@ const projectAthleticsRoute = (
   const useVerticalProjection = Number.isFinite(position.y);
   let distanceBefore = 0;
   let bestProgress = startProgress;
-  let bestDistance = Number.POSITIVE_INFINITY;
+  let bestDistanceSquared = Number.POSITIVE_INFINITY;
   for (let index = 0; index < lengths.length; index += 1) {
     const start = route[index]!;
     const end = route[index + 1]!;
@@ -1201,13 +1210,15 @@ const projectAthleticsRoute = (
     const nearestX = start.x + dx * part;
     const nearestY = start.y + dy * part;
     const nearestZ = start.z + dz * part;
-    const distance = Math.hypot(position.x - nearestX, position.z - nearestZ, ...(useVerticalProjection ? [Number(position.y) - nearestY] : []));
-    if (distance < bestDistance) {
-      bestDistance = distance;
+    const distanceSquared = (position.x - nearestX) ** 2 + (position.z - nearestZ) ** 2
+      + (useVerticalProjection ? (Number(position.y) - nearestY) ** 2 : 0);
+    if (distanceSquared < bestDistanceSquared) {
+      bestDistanceSquared = distanceSquared;
       bestProgress = startProgress + ((distanceBefore + lengths[index]! * part) / total) * (endProgress - startProgress);
     }
     distanceBefore += lengths[index]!;
   }
+  let bestDistance = Math.sqrt(bestDistanceSquared);
   if (!Number.isFinite(bestDistance)) {
     const point = route[0] ?? { x: 0, y: 0, z: 0 };
     bestDistance = Number.isFinite(position.y)
@@ -1217,9 +1228,9 @@ const projectAthleticsRoute = (
   return { progress: clamp01(bestProgress), distance: bestDistance, routeWidth };
 };
 
-const getAthleticsRouteProjection = (
+export const getAthleticsRouteProjection = (
   position: Pick<ArenaPosition, "x" | "z"> & { y?: number },
-  course: AthleticsCourseDefinition
+  course: AthleticsCourseDefinition = ATHLETICS_STADIUM_COURSE
 ) => {
   let best = projectAthleticsRoute(position, course.route, 0, 1, course.routeWidth);
   for (const shortcut of course.shortcuts) {

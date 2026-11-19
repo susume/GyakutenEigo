@@ -93,9 +93,15 @@ for (const athleticsMode of ["zeus", "hunters-runners", "chaos-climb"] as const)
 
 test("Zeus's head and signal switch together, and moving during STOP keeps checkpoints and 90% energy", async ({ page, request }, testInfo) => {
   await page.emulateMedia({ reducedMotion: "no-preference" });
+  await page.route("**/assets/audio/zeus/child-slow.wav", async (route) => {
+    await new Promise((resolve) => setTimeout(resolve, 1600));
+    await route.continue();
+  });
   await page.addInitScript(() => {
     const starts: number[] = [];
+    const chants: number[] = [];
     Object.defineProperty(window, "zeusSoundAudit", { value: starts });
+    Object.defineProperty(window, "zeusChantOffsets", { value: chants });
     const createOscillator = AudioContext.prototype.createOscillator;
     AudioContext.prototype.createOscillator = function () {
       const oscillator = createOscillator.call(this);
@@ -105,6 +111,17 @@ test("Zeus's head and signal switch together, and moving during STOP keeps check
       oscillator.frequency.setValueAtTime = (value, when) => { scheduledFrequency = value; return setFrequency(value, when); };
       oscillator.start = (when) => { starts.push(scheduledFrequency); start(when); };
       return oscillator;
+    };
+    const createBufferSource = AudioContext.prototype.createBufferSource;
+    AudioContext.prototype.createBufferSource = function () {
+      const source = createBufferSource.call(this);
+      const start = source.start.bind(source);
+      source.start = (when, offset, duration) => {
+        if (Math.abs((source.buffer?.duration ?? 0) - 5.125) < 0.01) chants.push(offset ?? 0);
+        if (duration === undefined) start(when, offset);
+        else start(when, offset, duration);
+      };
+      return source;
     };
   });
   const classroom = await createClassroom(request, { gameMode: "athletics", athleticsMode: "zeus", roundDurationSeconds: 120 });
@@ -117,12 +134,16 @@ test("Zeus's head and signal switch together, and moving during STOP keeps check
   const canvas = page.locator(".arena-canvas canvas");
   await expect(signal).toHaveAttribute("data-light", "green", { timeout: 25_000 });
   await expect(canvas).toHaveAttribute("data-zeus-light", "green");
+  await expect(page.getByText("Follow the gold arrow to the summit", { exact: true })).toBeVisible();
   await page.screenshot({ path: testInfo.outputPath("zeus-looking-away.png") });
   await page.keyboard.down("w");
   await page.waitForTimeout(600);
   await page.keyboard.up("w");
   await expect(signal).toHaveAttribute("data-light", "red", { timeout: 30_000 });
   await expect(canvas).toHaveAttribute("data-zeus-light", "red");
+  const chantOffsets = await page.evaluate(() => (window as Window & { zeusChantOffsets?: number[] }).zeusChantOffsets ?? []);
+  expect(chantOffsets).toHaveLength(1);
+  expect(chantOffsets[0]).toBeLessThan(0.8);
   await page.waitForTimeout(1100);
   await page.screenshot({ path: testInfo.outputPath("zeus-watching.png") });
   await page.getByRole("button", { name: "Answer movement energy question", exact: true }).click();
@@ -139,10 +160,9 @@ test("Zeus's head and signal switch together, and moving during STOP keeps check
     energyBeforeStrike = session.players[0].energy;
     return zeus.phase === "red" && Date.now() > Date.parse(zeus.graceEndsAt) && Date.parse(zeus.phaseEndsAt) - Date.now() > 700;
   }, { timeout: 30_000, intervals: [100] }).toBe(true);
-  await page.keyboard.down("w");
+  await page.keyboard.press("w", { delay: 95 });
   const impact = page.getByTestId("zeus-strike-feedback");
   await expect(impact).toContainText("Caught! Try again");
-  await page.keyboard.up("w");
   await expect(impact).toContainText("Your checkpoints are safe");
   await expect(impact).toContainText("90% energy kept");
   await expect(impact).toContainText("Retry level 1");

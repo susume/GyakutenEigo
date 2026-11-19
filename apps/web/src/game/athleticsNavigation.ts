@@ -21,9 +21,10 @@ export interface AthleticsLandingGuide {
 export const getAthleticsLandingGuide = (
   position: { x: number; y: number; z: number },
   nowMs: number,
-  course: AthleticsCourseDefinition = ATHLETICS_STADIUM_COURSE
+  course: AthleticsCourseDefinition = ATHLETICS_STADIUM_COURSE,
+  eyeHeight = ATHLETICS_PLAYER_EYE_HEIGHT
 ): AthleticsLandingGuide | null | undefined => {
-  const support = getAthleticsPhysicalSupport(position, course, ATHLETICS_PLAYER_EYE_HEIGHT, nowMs);
+  const support = getAthleticsPhysicalSupport(position, course, eyeHeight, nowMs);
   const allSurfaces = [...course.surfaces, ...course.shortcuts.flatMap((shortcut) => shortcut.surfaces)];
   const transitions = [...course.transitions, ...course.shortcuts.flatMap((shortcut) => shortcut.transitions)];
   const transition = support.surfaceId
@@ -45,10 +46,12 @@ export const getAthleticsLandingGuide = (
     return { id: lift.id, ...point, y: point.y + lift.height, kind: "lift" };
   }
   const shuttle = course.movingObstacles.find((obstacle) => obstacle.id === transition.movingObstacleId && obstacle.kind === "platform");
-  const envelope = getAthleticsTransitionJumpEnvelope(transition, course);
-  if (shuttle && !onTransport && envelope.airGap > envelope.horizontalReach) {
-    const point = getAthleticsMovingObstaclePosition(shuttle, nowMs);
-    return { id: shuttle.id, ...point, y: point.y + shuttle.height, kind: "shuttle" };
+  if (shuttle && !onTransport) {
+    const { airGap, horizontalReach } = getAthleticsTransitionJumpEnvelope(transition, course);
+    if (airGap > horizontalReach) {
+      const point = getAthleticsMovingObstaclePosition(shuttle, nowMs);
+      return { id: shuttle.id, ...point, y: point.y + shuttle.height, kind: "shuttle" };
+    }
   }
   return { id: movingDestination?.id ?? destination.id, x: destinationPoint.x, y: destinationPoint.y,
     z: destinationPoint.z, kind: movingDestination ? "lift" : "landing" };

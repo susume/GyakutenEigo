@@ -139,7 +139,9 @@ export const SKYLINE_CIRCUIT_COURSE: AthleticsCourseDefinition = {
   routeWidth: 18, finishThreshold: .982, bounds: { limitX: 140, limitZ: 140 }
 };
 
-const zeusSurfaces = surfaces.map((surface, index) => {
+const zeusSummitIndex = checkpointIndices.at(-2)!;
+const zeusSummitProgress = progressAt(zeusSummitIndex);
+const zeusSurfaces = surfaces.slice(0, zeusSummitIndex + 1).map((surface, index) => {
   // Give the zigzag turns and floating steps more room to take off and land.
   if ((index >= 22 && index <= 26) || (index >= 45 && index <= 53)) {
     return { ...surface, width: surface.width + 1, depth: surface.depth + 1.5 };
@@ -151,7 +153,23 @@ const zeusSurfaces = surfaces.map((surface, index) => {
 
 export const ZEUS_SUMMIT_COURSE: AthleticsCourseDefinition = {
   ...SKYLINE_CIRCUIT_COURSE,
+  title: "Zeus Summit",
+  subtitle: "Follow the gold arrow from landing to landing to reach the summit.",
+  closedLoop: false,
+  finishSurfaceIndex: zeusSummitIndex,
+  route: route.slice(0, zeusSummitIndex + 1),
   surfaces: zeusSurfaces,
+  transitions: transitions.slice(0, zeusSummitIndex),
+  checkpoints: SKYLINE_CIRCUIT_COURSE.checkpoints.slice(0, -1).map((progress) => progress / zeusSummitProgress),
+  sections: SKYLINE_CIRCUIT_COURSE.sections.slice(0, -1).map((section) => ({
+    ...section,
+    startProgress: section.startProgress / zeusSummitProgress,
+    endProgress: section.endProgress / zeusSummitProgress
+  })),
+  shortcuts: [],
+  challenges: SKYLINE_CIRCUIT_COURSE.challenges?.filter((challenge) => challenge.id.startsWith("sprint-")),
+  routeWidth: 14,
+  finishThreshold: 1,
   movingObstacles: movingObstacles.map((obstacle) => {
     const landing = zeusSurfaces.find((surface) => surface.movingObstacleId === obstacle.id);
     return landing ? { ...obstacle, width: landing.width, depth: landing.depth } : obstacle;

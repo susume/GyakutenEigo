@@ -70,7 +70,7 @@ try {
         .replace(/<title>[^<]*<\/title>/u, () => `<title>${title}</title>`)
         .replace("</head>", () => `  ${head}\n    ${styles}\n  </head>`)
         .replace('<body data-theme="gyakuteneigo">', `<body data-theme="gyakuteneigo"${bodyAttributes}>`)
-        .replace('<div id="root"></div>', () => `<div id="root" data-prerendered>${body}</div>`);
+        .replace('<div id="root"></div>', () => `<div id="root" data-prerendered="${path}">${body}</div>`);
       await writeOutput(`${path.slice(1)}index.html`, html);
       urls.push(publicPageUrl(route, language));
     }

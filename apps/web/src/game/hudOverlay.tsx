@@ -135,7 +135,9 @@ export const ArenaHudOverlay = ({
           )}
           {athleticsHud.mode === "zeus" && <div className={`athletics-threat-status zeus-status-${athleticsHud.zeusLight ?? "waiting"}${athleticsHud.zeusStopInSeconds != null ? " zeus-status-warning" : ""}`}>
             <ZeusLightSignal light={athleticsHud.zeusLight ?? "waiting"} stopInSeconds={athleticsHud.zeusStopInSeconds} goInSeconds={athleticsHud.zeusGoInSeconds} />
-            <span>{t(athleticsHud.zeusLight === "defeated" ? "Zeus defeated" : athleticsHud.zeusRestarting ? "Try level {value0} again · Checkpoints kept" : "First to the summit wins", { value0: athleticsHud.checkpointIndex + 1 })}</span>
+            {(athleticsHud.zeusLight !== "red" || athleticsHud.zeusRestarting) && (
+              <span>{t(athleticsHud.zeusLight === "defeated" ? "Zeus defeated" : athleticsHud.zeusRestarting ? "Try level {value0} again · Checkpoints kept" : "Follow the gold arrow to the summit", { value0: athleticsHud.checkpointIndex + 1 })}</span>
+            )}
           </div>}
           <div className="athletics-hud-header">
             <div className="athletics-energy-label">
@@ -248,8 +250,10 @@ export const ArenaHudOverlay = ({
         <span key={weaponCooldown.startedAt} style={{ animationDuration: `${weaponCooldown.durationMs}ms` }} />
       </div>
     )}
-    {!showTouchControls && !controlsDisabled && !isPointerLocked && !suppressHint && <div className="control-lock">{t("WASD moves at full speed · Shift crouches · Space jumps · Arrow keys or swipe look · click to aim · F fires · C zooms · E interacts")}</div>}
-    {!showTouchControls && <div className="keyboard-control-legend" aria-label={t("Keyboard controls")}><kbd>WASD</kbd>{" "}{t("Move")}{" "}<kbd>Space</kbd>{" "}{t("Jump")}{" "}<kbd>Shift</kbd>{" "}{t("Crouch")}{" "}<kbd>F</kbd>{" "}{t("Throw")}</div>}
+    {!showTouchControls && !controlsDisabled && !isPointerLocked && !suppressHint && <div className="control-lock">{t(onFireFromTouch
+      ? "WASD moves at full speed · Shift crouches · Space jumps · Arrow keys or swipe look · click to aim · F fires · C zooms · E interacts"
+      : "WASD moves at full speed · Shift crouches · Space jumps · Arrow keys or swipe looks · touch players can use Crouch + Jump")}</div>}
+    {!showTouchControls && <div className="keyboard-control-legend" aria-label={t("Keyboard controls")}><kbd>WASD</kbd>{" "}{t("Move")}{" "}<kbd>Space</kbd>{" "}{t("Jump")}{" "}<kbd>Shift</kbd>{" "}{t("Crouch")}{onFireFromTouch && <> <kbd>F</kbd>{" "}{t("Throw")}</>}</div>}
     <div hidden={!showTouchControls} className="touch-controls" aria-label={t("Touch controls")}>
       <button ref={joystickElementRef} type="button" className="touch-joystick" aria-label={t("Movement joystick")} disabled={controlsDisabled} onPointerDown={onBeginTouchMove}>
         <span aria-hidden="true" />

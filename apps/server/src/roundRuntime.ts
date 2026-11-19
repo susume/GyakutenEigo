@@ -339,11 +339,14 @@ const startPendingRound = (session: GameSession) => {
   }
 
   if (transition.phase === "zombie_selection") {
-    session.players = selectInitialZombies(session.players, session.settings.initialZombieCount).map((player) => (
-      player.role === "zombie"
-        ? { ...player, snowballs: session.settings.startingSnowballs }
-        : player
-    ));
+    session.players = selectInitialZombies(session.players, session.settings.initialZombieCount);
+    let zombieIndex = 0;
+    for (const player of session.players) {
+      if (player.role !== "zombie") continue;
+      const spawn = player.isBot ? getBotSpawn(session, "red", zombieIndex) : selectSessionSpawn(session, "red", zombieIndex);
+      zombieIndex += 1;
+      Object.assign(player, spawn, { snowballs: session.settings.startingSnowballs });
+    }
     activatePreparedRound(session);
   } else if (transition.phase === "preparation" || transition.phase === "buy") {
     activatePreparedRound(session);

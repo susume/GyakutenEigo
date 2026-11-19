@@ -54,7 +54,7 @@ import {
   resolveAthleticsMovementEnergy,
   resolveAthleticsStandings
 } from "./athleticsRace.js";
-import { ATHLETICS_ARENA_MAP_ID, resolveAnswerReward, resolveAuthoritativeMovement, sanitizeSessionSettings } from "./index.js";
+import { ARENA_PLAYER_CROUCH_EYE_HEIGHT, ATHLETICS_ARENA_MAP_ID, resolveAnswerReward, resolveAuthoritativeMovement, sanitizeSessionSettings } from "./index.js";
 
 test("Skyline Adventure Park exposes seven separated athletic districts", () => {
   assert.equal(ATHLETICS_STADIUM_COURSE.id, "stadium_loop");
@@ -130,7 +130,12 @@ test("Zeus leaves more jump and landing room at the tightest parts of the climb"
   const classic = getAthleticsCourseForMode("classic");
   const zeus = getAthleticsCourseForMode("zeus");
   assert.deepEqual(getAthleticsCourseGeometryIssues(zeus), []);
-  assert.deepEqual(zeus.checkpoints, classic.checkpoints);
+  assert.equal(zeus.closedLoop, false);
+  assert.equal(zeus.checkpoints.length, 6);
+  assert.equal(zeus.checkpoints.at(-1), 1);
+  assert.equal(zeus.shortcuts.length, 0);
+  assert.equal(zeus.finishSurfaceIndex, zeus.surfaces.length - 1);
+  assert.deepEqual(zeus.route, classic.route.slice(0, zeus.surfaces.length));
   for (const index of [22, 23, 24, 25, 45, 46, 47, 48, 50, 51, 52, 62]) {
     const transition = zeus.transitions[index]!;
     const before = getAthleticsTransitionJumpEnvelope(transition, classic);
@@ -144,6 +149,8 @@ test("Zeus leaves more jump and landing room at the tightest parts of the climb"
   assert.equal(getAthleticsPhysicalSupport(edge, zeus).surfaceId, summitApproach.id);
   assert.equal(getAthleticsPhysicalSupport(edge, classic).kind, "airborne");
   assert.equal(getAthleticsGroundHeight(edge, 0, zeus), summitApproach.y);
+  const crouched = { ...edge, y: summitApproach.y + ARENA_PLAYER_CROUCH_EYE_HEIGHT };
+  assert.equal(getAthleticsGroundHeight(crouched, 0, zeus, ARENA_PLAYER_CROUCH_EYE_HEIGHT), summitApproach.y);
 
   const floatingLanding = zeus.surfaces[45]!;
   const mover = zeus.movingObstacles.find((obstacle) => obstacle.id === floatingLanding.movingObstacleId)!;

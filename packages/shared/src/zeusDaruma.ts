@@ -1,4 +1,4 @@
-import { ATHLETICS_STADIUM_COURSE, getAthleticsCheckpointSurfaceIndex, getAthleticsRecoveryPosition, getAthleticsStartPosition, getAthleticsSurfaceRouteProgress, normalizeAthleticsEnergy } from "./athleticsRace.js";
+import { ATHLETICS_STADIUM_COURSE, getAthleticsCourseForMode, getAthleticsCheckpointSurfaceIndex, getAthleticsRecoveryPosition, getAthleticsStartPosition, getAthleticsSurfaceRouteProgress, normalizeAthleticsEnergy } from "./athleticsRace.js";
 import type { AthleticsZeusState } from "./athleticsModes.js";
 
 export const ZEUS_STOP_GRACE_MS = 1000;
@@ -18,9 +18,10 @@ export const ZEUS_CHANTS = {
 } as const;
 export type ZeusChantId = keyof typeof ZEUS_CHANTS;
 
-// The sixth landing checkpoint ends the ascent, before the descent district.
-export const ZEUS_SUMMIT_CHECKPOINT_COUNT = ATHLETICS_STADIUM_COURSE.sections.length - 1;
-export const ZEUS_SUMMIT_SURFACE_INDEX = getAthleticsCheckpointSurfaceIndex(ZEUS_SUMMIT_CHECKPOINT_COUNT - 1, ATHLETICS_STADIUM_COURSE)!;
+const zeusCourse = getAthleticsCourseForMode("zeus");
+export const ZEUS_SUMMIT_CHECKPOINT_COUNT = zeusCourse.checkpoints.length;
+export const ZEUS_SUMMIT_SURFACE_INDEX = zeusCourse.finishSurfaceIndex!;
+// Stored progress still uses the original circuit scale for existing rooms.
 export const ZEUS_SUMMIT_PROGRESS = ATHLETICS_STADIUM_COURSE.checkpoints[ZEUS_SUMMIT_CHECKPOINT_COUNT - 1]!;
 
 /** Keep earned checkpoints: a mistake retries the current level with a small
@@ -36,7 +37,7 @@ export const getZeusStrikeRecovery = ({ checkpointIndex, energy, laneIndex = 0, 
     surfaceIndex,
     routeProgress: getAthleticsSurfaceRouteProgress(surfaceIndex),
     energy: normalizeAthleticsEnergy(energy) * ZEUS_STRIKE_ENERGY_RETAINED,
-    spawn: surfaceIndex === 0 ? getAthleticsStartPosition(laneIndex, totalPlayers) : getAthleticsRecoveryPosition(surfaceIndex, laneIndex)
+    spawn: surfaceIndex === 0 ? getAthleticsStartPosition(laneIndex, totalPlayers, zeusCourse) : getAthleticsRecoveryPosition(surfaceIndex, laneIndex, zeusCourse)
   };
 };
 

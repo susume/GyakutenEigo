@@ -11,7 +11,7 @@ export const createClassroom = async (
     athleticsBattleEnergyCost,
     mapId = "desert_citadel",
     roundDurationSeconds = 60
-  }: { gameMode?: "classic" | "flag" | "athletics"; roundCount?: number; startingMoney?: number; mapId?: "desert_citadel" | "iron_junction" | "temple_runoff" | "lunar_relay"; athleticsMode?: "classic" | "zeus" | "hunters-runners" | "chaos-climb"; athleticsBattleEnabled?: boolean; athleticsBattleEnergyCost?: number; roundDurationSeconds?: number } = {}
+  }: { gameMode?: "classic" | "flag" | "zombie" | "athletics"; roundCount?: number; startingMoney?: number; mapId?: "desert_citadel" | "iron_junction" | "temple_runoff" | "lunar_relay"; athleticsMode?: "classic" | "zeus" | "hunters-runners" | "chaos-climb"; athleticsBattleEnabled?: boolean; athleticsBattleEnergyCost?: number; roundDurationSeconds?: number } = {}
 ) => {
   const suffix = `${Date.now()}-${Math.random().toString(16).slice(2)}`;
   const signup = await request.post("/api/auth/signup", {

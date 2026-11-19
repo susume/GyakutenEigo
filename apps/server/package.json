@@ -9,7 +9,7 @@
     "build": "tsc",
     "start": "node dist/start.js",
     "test": "node ../../scripts/run-tests.mjs src",
-    "test:load": "tsx --test --test-name-pattern=\"40 authenticated Socket.IO|bot ticks|load matrix\" src/appearanceFlow.integration.test.ts",
+    "test:load": "tsx --test --test-name-pattern=\"40 authenticated Socket.IO|40 Zeus runners|bot ticks|load matrix\" src/appearanceFlow.integration.test.ts src/athleticsRace.integration.test.ts",
     "typecheck": "tsc --noEmit"
   },
   "dependencies": {

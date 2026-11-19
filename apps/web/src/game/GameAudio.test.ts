@@ -166,6 +166,7 @@ test("footstep sample levels are reduced by half", () => {
 });
 
 test("Zeus narration retries blocked audio at the live offset and cancels suspended playback", async (t) => {
+  t.mock.method(Date, "now", () => 10_000);
   const starts: { when: number; offset: number }[] = [];
   let fetches = 0;
   const contexts: AuditAudioContext[] = [];
@@ -214,7 +215,7 @@ test("Zeus narration retries blocked audio at the live offset and cancels suspen
   assert.equal(gains[3]!.level, .4);
   assert.equal(gains[3]!.output, gains[1], "SFX volume controls the chant as well as game cues");
   assert.equal(gains[1]!.output, gains[0], "master mute also silences narration");
-  assert.ok(starts[0]!.offset >= 2 && starts[0]!.offset < 2.5);
+  assert.equal(starts[0]!.offset, 2);
   gameAudio.syncZeusChant("blocked-chant", "slow", startedAt, Date.now());
   assert.equal(starts.length, 1, "snapshots must not replay the same chant");
   gameAudio.syncZeusChant("suspended-during-load", "steady", startedAt, Date.now());

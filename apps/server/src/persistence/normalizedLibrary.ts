@@ -641,12 +641,13 @@ export class NormalizedLibrary {
 
   async saveReport(metadata: ReportMetadata, report: SessionReport) {
     const createdAt = new Date(metadata.createdAt);
-    await this.prisma.$transaction(async (tx) => {
+    const save = () => this.prisma.$transaction(async (tx) => {
       // PostgreSQL transaction-scoped advisory locks serialize retention for a
       // teacher even when several server instances finish matches together.
       await tx.$executeRaw(Prisma.sql`SELECT pg_advisory_xact_lock(hashtext(${metadata.teacherId}))`);
       await tx.report.upsert({
         where: { teacherId_sessionId: { teacherId: metadata.teacherId, sessionId: metadata.sessionId } },
+        select: { id: true },
         create: {
           id: metadata.id,
           teacherId: metadata.teacherId,
@@ -667,14 +668,20 @@ export class NormalizedLibrary {
         }
       });
 
-      const retained = await tx.report.findMany({
+      const expired = await tx.report.findMany({
         where: { teacherId: metadata.teacherId },
         select: { id: true },
-        orderBy: [{ createdAt: "desc" }, { id: "desc" }]
+        orderBy: [{ createdAt: "desc" }, { id: "desc" }],
+        skip: MAX_SAVED_REPORTS
       });
-      const expiredIds = retained.slice(MAX_SAVED_REPORTS).map((row) => row.id);
-      if (expiredIds.length > 0) await tx.report.deleteMany({ where: { id: { in: expiredIds }, teacherId: metadata.teacherId } });
-    }, { isolationLevel: Prisma.TransactionIsolationLevel.Serializable });
+      if (expired.length > 0) await tx.report.deleteMany({ where: { id: { in: expired.map((row) => row.id) }, teacherId: metadata.teacherId } });
+    }, { isolationLevel: Prisma.TransactionIsolationLevel.Serializable, maxWait: 5_000, timeout: 15_000 });
+    try {
+      await save();
+    } catch (error) {
+      if (!(error instanceof Prisma.PrismaClientKnownRequestError) || !["P2028", "P2034"].includes(error.code)) throw error;
+      await save();
+    }
   }
 
   async saveSession(session: GameSession, quizSetName: string) {

@@ -40,13 +40,10 @@ shuttle boarding/exits, and optional shortcuts are checked against the shared
 jump envelope and server collision geometry.
 
 Power Stairs uses ten floating pink landings that rise and fall with staggered
-phases and periods. Their tall posts, ground supports, and static collision slabs
-are removed; the blue connecting lift remains. Guidance tracks the actual moving
-deck, and recovery returns to a stable checkpoint. Skyline Descent is a narrow weaving staircase with
-six offset posts and three low hurdles. Its treads still connect continuously
-to the finish lane. The map uses colored checkpoint arches, landing chevrons,
-and the next-landing marker for direction; start, finish, checkpoint, district,
-shortcut, and stadium caption boards have been removed.
+phases and periods. The blue connecting lift remains. Guidance tracks the moving
+deck, and recovery returns to a stable landing. Zeus has a single playable route
+that ends at the summit arch. Gold chevrons and the floating gold arrow mark the
+next landing. The main Athletics circuit includes shortcuts and the descent.
 
 Zeus uses the public-domain **Zeus Ammon (KAS1110)** scan from SMK / Scan the
 World, with natural facial anatomy, curly hair, and a detailed beard. The
@@ -66,8 +63,9 @@ Student devices play distinct GO and STOP cues in either narration setting.
 Students can turn off the chant voice independently in game settings. Narration
 pauses while they read questions or change settings. Narration has a quiet gain
 of 0.4 and follows both the SFX volume and master mute.
-Audio paths respect the deployment's URL prefix. A failed voice download can
-retry on a later voiced cycle instead of remaining cached as a permanent failure.
+Audio paths respect the deployment's URL prefix. Each voiced GO window starts
+preparing its clip before the scheduled playback. A temporary download failure
+can retry on a later voiced cycle.
 Model loading is asynchronous: leaving the arena prevents a late attachment,
 releases its cache reference, and disposes only its own materials. The GO/STOP
 signal continues to work if the model is unavailable.

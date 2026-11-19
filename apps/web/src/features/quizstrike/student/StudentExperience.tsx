@@ -408,7 +408,8 @@ export default function StudentExperience({ onExit }: { onExit: () => void }) {
     battleWasStunned.current = stunned;
   }, [athleticsBattle, battleStunSeconds, session?.status, session?.controlState]);
   const zeusDaruma = useZeusDaruma(session, athleticsRace && athleticsMode === "zeus",
-    session?.settings.athleticsZeusAudio !== "teacher" && gamePreferences.zeusChantEnabled && !quizOpen && !settingsOpen);
+    session?.settings.athleticsZeusAudio !== "teacher" && gamePreferences.soundEnabled && gamePreferences.zeusChantEnabled && !quizOpen && !settingsOpen,
+    true, player?.athletics?.zeusRestartUntil);
   const athleticsStartRemainingSeconds = useDeadlineRemainingSeconds(
     athleticsRace ? session?.athletics?.startAt : undefined,
     session?.serverTime,
@@ -430,7 +431,7 @@ export default function StudentExperience({ onExit }: { onExit: () => void }) {
   );
   const socketRef = useRef<Socket | null>(null);
   const previousAliveRef = useRef<boolean | null>(null);
-  const previousPreparationRef = useRef(false);
+  const previousPreparationRef = useRef<"equipment" | "zombie" | null>(null);
   const lastCountdownCueRef = useRef("");
   const lastAthleticsCountdownCueRef = useRef("");
   const answerFeedbackTimerRef = useRef<number | undefined>(undefined);
@@ -1610,9 +1611,9 @@ export default function StudentExperience({ onExit }: { onExit: () => void }) {
       setSettingsOpen(false);
     } else if (previousPreparationRef.current) {
       setBuyOpen(false);
-      setQuizOpen(false);
+      if (previousPreparationRef.current === "zombie") setQuizOpen(false);
     }
-    previousPreparationRef.current = roundPreparation || zombieSelection;
+    previousPreparationRef.current = roundPreparation ? "equipment" : zombieSelection ? "zombie" : null;
   }, [roundPreparation, zombieSelection, session?.roundTransition?.startsAt, playerId, playerIsAlive, setBuyOpen, setQuizOpen, setScoreboardOpen, setSettingsOpen]);
 
   const panelsOpen = quizOpen || buyOpen || scoreboardOpen || settingsOpen;
@@ -1660,9 +1661,14 @@ export default function StudentExperience({ onExit }: { onExit: () => void }) {
 
   const sendArenaPosition = useCallback(
     (position: ArenaPositionPayload) => {
-      if (!hasActiveArenaConnection) return;
+      const socket = socketRef.current;
+      if (!hasActiveArenaConnection || !socket?.connected) return;
       movementSequenceRef.current += 1;
-      socketRef.current?.volatile.emit("player_position", {
+      // A STOP tap is a gameplay event. Volatile samples can be dropped while
+      // a transport is busy, so only send STOP attempts through the reliable path.
+      const transport = position.zeusPhase === "red" && (position.movementIntent || position.jumpStarted)
+        ? socket : socket.volatile;
+      transport.emit("player_position", {
         ...position,
         movementSequence: movementSequenceRef.current,
         movementEpoch: athleticsMovementEpochRef.current
@@ -2523,7 +2529,7 @@ export default function StudentExperience({ onExit }: { onExit: () => void }) {
     zeusStopInSeconds: zeusDaruma.stopInSeconds,
     zeusGoInSeconds: zeusDaruma.goInSeconds,
     zeusSummitPercent: Math.min(100, Math.round((athleticsPlayer.routeProgress ?? 0) / ZEUS_SUMMIT_PROGRESS * 100)),
-    zeusRestarting: Boolean(athleticsPlayer.zeusRestartUntil && zeusDaruma.serverNowMs < Date.parse(athleticsPlayer.zeusRestartUntil)),
+    zeusRestarting: zeusDaruma.restarting,
     remainingRunners: athleticsRemainingRunners,
     chaosEventLabel
   } : undefined;
@@ -2532,7 +2538,7 @@ export default function StudentExperience({ onExit }: { onExit: () => void }) {
     || Boolean(athleticsPlayer?.respawnPenaltyUntil && Date.now() < Date.parse(athleticsPlayer.respawnPenaltyUntil))
     || Boolean(athleticsPlayer?.recoveryActive)
     || athleticsZeusFrozen
-    || Boolean(athleticsPlayer?.zeusRestartUntil && zeusDaruma.serverNowMs < Date.parse(athleticsPlayer.zeusRestartUntil))
+    || zeusDaruma.restarting
     || Boolean(athleticsPlayer?.staggerUntil && Date.now() < Date.parse(athleticsPlayer.staggerUntil))
     || battleStunSeconds > 0
   );

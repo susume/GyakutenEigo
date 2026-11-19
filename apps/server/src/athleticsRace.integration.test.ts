@@ -1,5 +1,6 @@
 import assert from "node:assert/strict";
 import type { AddressInfo } from "node:net";
+import { monitorEventLoopDelay } from "node:perf_hooks";
 import test from "node:test";
 import { io as createSocket, type Socket as ClientSocket } from "socket.io-client";
 import { getAthleticsPhysicalSupport, getAthleticsPointAtProgress, getAthleticsRecoveryPosition, getAthleticsRouteTangent, ZEUS_SUMMIT_SURFACE_INDEX, type AthleticsZeusState } from "@quizstrike/shared";
@@ -117,14 +118,15 @@ const createSession = async (
   athleticsCourseLaps = 1,
   athleticsMode = "classic",
   athleticsBattleEnabled = false,
-  athleticsBattleEnergyCost?: number
+  athleticsBattleEnergyCost?: number,
+  maxPlayers = 8
 ) => {
   const created = await api<{ session: SessionFixture }>("/api/sessions", {
     method: "POST",
     teacherToken: teacher.token,
     body: {
       quizSetId: teacher.quizSetId,
-      settings: { gameMode: "athletics", athleticsMode, athleticsCourseLaps, athleticsBattleEnabled, athleticsBattleEnergyCost, maxPlayers: 8, roundDurationSeconds: 60 }
+      settings: { gameMode: "athletics", athleticsMode, athleticsCourseLaps, athleticsBattleEnabled, athleticsBattleEnergyCost, maxPlayers, roundDurationSeconds: 60 }
     }
   });
   assert.equal(created.response.status, 201);
@@ -676,6 +678,83 @@ test("Zeus allows looking and answering during STOP, then keeps 90% energy, lear
     socket.emit("player_position", { x: afterSafeJump.x, y: afterSafeJump.y, z: afterSafeJump.z, facing: 1.4, jumping: true, jumpStarted: true, movementIntent: false, zeusPhase: "red", zeusCycleIndex: nextRed.athletics!.zeus!.cycleIndex, movementEpoch: 1, movementSequence: 7 });
     await waitUntil(read, (snapshot) => snapshot.players.find((entry) => entry.id === student.player.id)?.athletics?.movementEpoch === 2, 3000);
   } finally { socket.disconnect(); }
+});
+
+test("40 Zeus runners can move, take one STOP penalty each, and move again on GO", { timeout: 45_000 }, async (context) => {
+  const teacher = await createTeacherWithQuiz();
+  const session = await createSession(teacher, 1, "zeus", false, undefined, 40);
+  const students = await Promise.all(Array.from({ length: 40 }, (_, index) => joinSession(session.sessionCode, `Zeus Runner ${index + 1}`)));
+  const clients = students.map((student) => connectStudentSocket(session.sessionCode, student));
+  const socketsByPlayerId = new Map(students.map((student, index) => [student.player.id, clients[index]!.socket]));
+  const read = async () => (await api<{ session: SessionFixture }>(`/api/sessions/${session.sessionCode}`, { teacherToken: teacher.token })).body.session;
+  const seen = new Set<string>();
+  let bytes = 0;
+  clients[0]!.socket.on("player_positions", (updates: { playerId: string }[]) => {
+    bytes += Buffer.byteLength(JSON.stringify(updates));
+    updates.forEach((update) => seen.add(update.playerId));
+  });
+  const strikeTimes: number[] = [];
+  const strikeCounts = new Map<string, number>();
+  let strikeSentAt = 0;
+  for (const [index, { socket }] of clients.entries()) {
+    const id = students[index]!.player.id;
+    socket.on("zeus_strike", (event: { playerId: string; spawn?: unknown }) => {
+      if (event.playerId !== id || !event.spawn) return;
+      strikeTimes.push(performance.now() - strikeSentAt);
+      strikeCounts.set(id, (strikeCounts.get(id) ?? 0) + 1);
+    });
+  }
+
+  const eventLoop = monitorEventLoopDelay({ resolution: 20 });
+  const send = (snapshot: SessionFixture, movementSequence: number, xOffset: number) => {
+    const zeus = snapshot.athletics!.zeus!;
+    for (const player of snapshot.players) {
+      socketsByPlayerId.get(player.id)!.emit("player_position", {
+        x: player.x! + xOffset, y: player.y, z: player.z, facing: player.facing,
+        movementSequence, movementEpoch: player.athletics?.movementEpoch ?? 0,
+        zeusPhase: zeus.phase, zeusCycleIndex: zeus.cycleIndex, movementIntent: true, jumpStarted: false
+      });
+    }
+  };
+  try {
+    await Promise.all(clients.map((client) => client.initialState));
+    assert.equal((await api(`/api/sessions/${session.sessionCode}/start`, { method: "POST", teacherToken: teacher.token })).response.status, 200);
+    const green = await waitUntil(read, (snapshot) => snapshot.athletics?.zeus?.phase === "green");
+    // Match the browser's 180 ms movement cadence while all 40 sockets move.
+    let sequence = 0;
+    const movementStartedAt = performance.now();
+    eventLoop.enable();
+    while (performance.now() - movementStartedAt < 5_000) {
+      send(green, ++sequence, sequence % 2 === 0 ? 0.6 : -0.6);
+      runtime.advanceRounds();
+      await delay(180);
+    }
+    eventLoop.disable();
+    const movementSeconds = (performance.now() - movementStartedAt) / 1_000;
+    const movementBytes = bytes;
+    assert.equal(seen.size, 40);
+    const red = await waitUntil(read, (snapshot) => snapshot.athletics?.zeus?.phase === "red"
+      && Date.now() >= Date.parse(snapshot.athletics.zeus.graceEndsAt!), 20_000);
+    strikeSentAt = performance.now();
+    send(red, ++sequence, -1);
+    send(red, ++sequence, -2);
+    const struck = await waitUntil(read, (snapshot) => snapshot.players.every((player) => player.athletics?.movementEpoch === 1), 3_000);
+    assert.equal(strikeCounts.size, 40);
+    assert.ok([...strikeCounts.values()].every((count) => count === 1));
+    struck.players.forEach((player, index) => assert.equal(player.energy, red.players[index]!.energy! * 0.9));
+
+    const nextGreen = await waitUntil(read, (snapshot) => snapshot.athletics?.zeus?.phase === "green", 5_000);
+    send(nextGreen, ++sequence, -0.6);
+    await waitUntil(read, (snapshot) => snapshot.players.every((player, index) => player.x! < nextGreen.players[index]!.x!), 3_000);
+    const sortedStrikeTimes = strikeTimes.sort((a, b) => a - b);
+    context.diagnostic(JSON.stringify({ clients: clients.length, movementSamplesPerClient: sequence - 3,
+      movingObserverBytesPerSecond: Math.round(movementBytes / movementSeconds), eventLoopP95Ms: Math.round(eventLoop.percentile(95) / 1e6),
+      strikeP95Ms: Math.round(sortedStrikeTimes[37]!), lastStrikeMs: Math.round(sortedStrikeTimes.at(-1)!) }));
+  } finally {
+    eventLoop.disable();
+    clients.forEach(({ socket }) => socket.disconnect());
+    await api(`/api/sessions/${session.sessionCode}/end`, { method: "POST", teacherToken: teacher.token });
+  }
 });
 
 test("Zeus's first finisher wins at the summit without descending or completing multiple laps", { timeout: 40_000 }, async () => {

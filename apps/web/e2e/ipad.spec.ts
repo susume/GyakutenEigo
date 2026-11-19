@@ -23,7 +23,7 @@ test("Athletics customization and jump/question controls fit an iPad", async ({ 
   await expect(page.getByText("Which answer is correct?", { exact: true })).toBeVisible();
 });
 
-test("iPad-like profile joins, starts, renders the arena shell, and accepts touch controls", async ({ page, request }) => {
+test("iPad-like profile joins, starts, renders the arena shell, and accepts touch controls", async ({ page, request }, testInfo) => {
   const classroom = await createClassroom(request, { gameMode: "flag", roundCount: 3, startingMoney: 4000 });
 
   await page.goto(`/join?code=${classroom.code}`);
@@ -187,6 +187,7 @@ test("iPad-like profile joins, starts, renders the arena shell, and accepts touc
   await expect.poll(async () => {
     return (await readFlagSession()).session.flag?.state ?? "missing";
   }, { timeout: 10_000 }).toBe("carried");
+  await page.screenshot({ path: testInfo.outputPath("flag-carry-tablet.png") });
   await page.getByRole("button", { name: "Questions", exact: true }).tap();
   await expect(page.getByText("Choose an answer", { exact: true })).toBeVisible();
   const firstAnswer = page.locator(".answer-grid button").first();

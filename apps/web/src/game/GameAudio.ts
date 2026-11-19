@@ -372,7 +372,7 @@ class GameAudioController {
   warm() {
     try {
       const audio = this.ensureAudio();
-      if (audio?.state === "suspended") void audio.resume();
+      if (audio && audio.state !== "running") void audio.resume().catch(() => undefined);
       if (audio) this.scheduleAssetLoad(audio);
       if (audio && this.bgmActive) void this.startBgmTrack(audio);
     } catch {
@@ -412,12 +412,16 @@ class GameAudioController {
     if (source) { try { source.stop(); } catch { /* Already ended. */ } source.disconnect(); }
   }
 
+  preloadZeusChant(chantId: ZeusChantId) {
+    const audio = this.ensureAudio();
+    if (audio) void this.loadAssetBuffer(audio, ZEUS_CHANTS[chantId].path);
+  }
+
   syncZeusChant(key: string, chantId: ZeusChantId, startsAtMs: number, nowMs: number) {
     if (key === this.zeusChantKey) return;
     this.stopZeusChant();
     const audio = this.ensureAudio();
     if (!audio || !this.masterGain) return;
-    this.warm();
     // An autoplay-blocked context must not reserve this chant or queue an
     // out-of-date voice. Retry after a gesture unlocks audio, at its live offset.
     if (audio.state !== "running") return;
