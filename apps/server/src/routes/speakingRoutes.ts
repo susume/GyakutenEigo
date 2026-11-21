@@ -525,6 +525,7 @@ export const registerSpeakingRoutes = (app: Application, deps: SpeakingRouteDepe
   const transcriptionTelemetrySnapshot = () => ({
     provider: transcriber.providerName ?? "custom",
     model: speakingTranscriptionProviderModel(transcriber.providerName),
+    practiceModel: speakingTranscriptionProviderModel(transcriber.providerName, process.env, { mode: "practice", mimeType: "audio/webm" }),
     attempts: transcriptionTelemetry.attempts,
     successes: transcriptionTelemetry.successes,
     firstAttemptSuccesses: transcriptionTelemetry.firstAttemptSuccesses,
@@ -1455,6 +1456,7 @@ export const registerSpeakingRoutes = (app: Application, deps: SpeakingRouteDepe
           const transcriptionInput = {
             audio: transcriptionAudio,
             mimeType: parsed.audio ? parsed.mimeType : "text/plain",
+            mode: access.activity.mode,
             languageHint: SPEAKING_PRACTICE_LANGUAGE,
             ...(requestId ? { requestId } : {}),
             ...(parsed.speechDetected === undefined ? {} : { speechDetected: parsed.speechDetected }),
@@ -1501,7 +1503,7 @@ export const registerSpeakingRoutes = (app: Application, deps: SpeakingRouteDepe
                 console.warn(`[Speaking provider failure] ${JSON.stringify({
                   operation: "transcription",
                   provider: transcriber.providerName ?? "custom",
-                  model: speakingTranscriptionProviderModel(transcriber.providerName),
+                  model: speakingTranscriptionProviderModel(transcriber.providerName, process.env, transcriptionInput),
                   attempt,
                   kind: failure.kind,
                   ...(failure.status === undefined ? {} : { status: failure.status }),

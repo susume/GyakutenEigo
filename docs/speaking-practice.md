@@ -103,6 +103,13 @@ SPEAKING_GEMINI_TRANSCRIPTION_MODEL=gemini-3.5-transcribe
 SPEAKING_SESSION_LIFETIME_SECONDS=28800
 ```
 
+In Gemini mode, Practice sessions use Gemini 3.5 Flash-Lite for WebM, Ogg, WAV,
+and MPEG audio. Assessment sessions and MP4 audio use the dedicated verbatim
+transcription model. Set `SPEAKING_GEMINI_PRACTICE_TRANSCRIPTION=false` to use
+the dedicated model for every session. The diagnostics response reports the
+practice model for WebM separately from the dedicated model and aggregates
+transcription metrics across both.
+
 The OpenAI adapters remain available as an alternative by selecting `openai` for
 both providers and supplying the corresponding OpenAI variables. A hybrid setup
 is also supported when an OpenAI key is available:

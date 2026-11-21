@@ -2,7 +2,7 @@ import assert from "node:assert/strict";
 import type { AddressInfo } from "node:net";
 import test from "node:test";
 import express, { type NextFunction, type Request, type Response } from "express";
-import { SPEAKING_CORE_LIBRARY, SPEAKING_LIMITS, speakingRemainingSeconds, type SpeakingEvaluation, type TeacherUser } from "@quizstrike/shared";
+import { SPEAKING_CORE_LIBRARY, SPEAKING_LIMITS, speakingRemainingSeconds, type SpeakingEvaluation, type SpeakingMode, type TeacherUser } from "@quizstrike/shared";
 import { createSpeakingProviders, parseJsonResponse } from "./speakingProviders.js";
 import { SpeakingProviderError } from "./speakingProviders.js";
 import { createSpeakingRouteState, registerSpeakingRoutes } from "./routes/speakingRoutes.js";
@@ -49,6 +49,7 @@ test("Speaking Practice uses one classroom session for multiple isolated partici
   const state = createSpeakingRouteState();
   let counter = 0;
   let receivedAudio: Buffer | undefined;
+  const audioModes: Array<SpeakingMode | undefined> = [];
   const providers = createSpeakingProviders({ NODE_ENV: "test", SPEAKING_MOCK_MODE: "true" });
   let recoveryConversationAttempts = 0;
   const conversationTurnSnapshots: Array<Array<{ speaker: string; text: string }>> = [];
@@ -89,6 +90,7 @@ test("Speaking Practice uses one classroom session for multiple isolated partici
         }
         if (input.mimeType === "audio/webm") {
           receivedAudio = Buffer.from(input.audio);
+          audioModes.push(input.mode);
           if (input.speechDetected === false) return { text: "", confidence: 0 };
           return { text: "Can I try it on?", confidence: 0.91 };
         }
@@ -264,6 +266,15 @@ test("Speaking Practice uses one classroom session for multiple isolated partici
     assert.equal(secondTurn.response.status, 200);
     assert.equal(secondTurn.body.studentTurn.participantId, joined[1]!.body.participant.id);
     assert.deepEqual(receivedAudio, Buffer.from("actual-audio-fixture"));
+    const assessmentTurn = await api(`/api/speaking/sessions/${restrictedJoin.body.session.id}/turn`, {
+      method: "POST",
+      speakingToken: restrictedJoin.body.token,
+      rawBody: new Uint8Array(Buffer.from("assessment-audio-fixture")),
+      contentType: "audio/webm",
+      speechDetected: true
+    });
+    assert.equal(assessmentTurn.response.status, 200);
+    assert.deepEqual(audioModes, ["practice", "assessment"]);
     const unsupportedFormat = await api(`/api/speaking/sessions/${joined[1]!.body.session.id}/turn`, {
       method: "POST",
       speakingToken: joined[1]!.body.token,

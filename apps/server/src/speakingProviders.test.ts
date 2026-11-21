@@ -250,6 +250,50 @@ test("Gemini transcription migrates the former general-purpose default to the de
   assert.equal(requestedModel, "gemini-3.5-transcribe");
 });
 
+test("Gemini only uses Flash-Lite for supported practice audio and preserves verbatim output", async (t) => {
+  const previousKey = process.env.SPEAKING_GEMINI_API_KEY;
+  const previousFlag = process.env.SPEAKING_GEMINI_PRACTICE_TRANSCRIPTION;
+  process.env.SPEAKING_GEMINI_API_KEY = "test-gemini-key";
+  delete process.env.SPEAKING_GEMINI_PRACTICE_TRANSCRIPTION;
+  t.after(() => {
+    if (previousKey === undefined) delete process.env.SPEAKING_GEMINI_API_KEY;
+    else process.env.SPEAKING_GEMINI_API_KEY = previousKey;
+    if (previousFlag === undefined) delete process.env.SPEAKING_GEMINI_PRACTICE_TRANSCRIPTION;
+    else process.env.SPEAKING_GEMINI_PRACTICE_TRANSCRIPTION = previousFlag;
+  });
+
+  const practiceUrl = "https://generativelanguage.googleapis.com/v1beta/models/gemini-3.5-flash-lite:generateContent";
+  const assessmentUrl = "https://generativelanguage.googleapis.com/v1beta/interactions";
+  const audio = Buffer.from("audio");
+  let practiceText: string | undefined = " Um, I, I goes there. ";
+  const fetchMock = t.mock.method(globalThis, "fetch", async (url: string, init?: RequestInit) => {
+    const body = JSON.parse(String(init?.body));
+    if (url === practiceUrl) {
+      assert.deepEqual(body.contents[0].parts[0].inlineData, { mimeType: "audio/webm", data: audio.toString("base64") });
+      assert.equal(body.generationConfig.thinkingConfig.thinkingLevel, "MINIMAL");
+      assert.equal(body.generationConfig.responseMimeType, "application/json");
+      assert.match(body.system_instruction.parts[0].text, /verbatim.*grammar mistakes/);
+      return Response.json({ candidates: [{ finishReason: "STOP", content: { parts: [{ text: JSON.stringify({ text: practiceText }) }] } }] });
+    }
+    assert.equal(url, assessmentUrl);
+    assert.equal(body.generation_config.transcription_config.mode.type, "verbatim");
+    assert.equal(body.store, false);
+    return Response.json({ status: "completed", output_text: "Dedicated transcript." });
+  });
+
+  const recording = { audio, mimeType: "audio/webm;codecs=opus", mode: "practice" } as const;
+  assert.deepEqual(await geminiTranscriptionProvider.transcribe(recording), { text: "Um, I, I goes there." });
+  practiceText = "";
+  assert.deepEqual(await geminiTranscriptionProvider.transcribe(recording), { text: "" });
+  practiceText = undefined;
+  await assert.rejects(geminiTranscriptionProvider.transcribe(recording), { failureKind: "invalid_response" });
+  assert.deepEqual(await geminiTranscriptionProvider.transcribe({ ...recording, mode: "assessment" }), { text: "Dedicated transcript." });
+  assert.deepEqual(await geminiTranscriptionProvider.transcribe({ ...recording, mimeType: "audio/mp4" }), { text: "Dedicated transcript." });
+  process.env.SPEAKING_GEMINI_PRACTICE_TRANSCRIPTION = "false";
+  assert.deepEqual(await geminiTranscriptionProvider.transcribe(recording), { text: "Dedicated transcript." });
+  assert.deepEqual(fetchMock.mock.calls.map(({ arguments: [url] }) => url), [practiceUrl, practiceUrl, practiceUrl, assessmentUrl, assessmentUrl, assessmentUrl]);
+});
+
 const geminiEvaluationJson = (overrides: Record<string, unknown> = {}) => JSON.stringify({
   scores: { communication: 3, custom: 2 },
   evidence: { communication: "The student explained the request clearly.", custom: "The student used a target expression." },
