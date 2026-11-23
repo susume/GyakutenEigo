@@ -9,27 +9,33 @@ export interface PersistenceSchedulerOptions {
 
 /** Serializes legacy runtime-snapshot writes and owns their debounce timer. */
 export class PersistenceScheduler {
-  private queue = Promise.resolve();
+  private write: Promise<void> | undefined;
+  private dirty = false;
   private timer: ReturnType<typeof setTimeout> | undefined;
 
   constructor(private readonly options: PersistenceSchedulerOptions) {}
 
-  persistNow() {
+  private persistNow() {
     const prisma = this.options.prisma;
     if (!prisma) return;
-    const data = this.options.getSnapshot() as Prisma.InputJsonValue;
-    this.queue = this.queue
-      .catch(() => undefined)
-      .then(async () => {
-        await prisma.runtimeSnapshot.upsert({
-          where: { id: this.options.runtimeSnapshotId },
-          create: { id: this.options.runtimeSnapshotId, data },
-          update: { data }
-        });
-      })
-      .catch((error: unknown) => {
-        console.error("Failed to persist QuizStrike runtime state.", error);
-      });
+    this.dirty = true;
+    this.write ??= Promise.resolve().then(async () => {
+      // Capture only the latest state after a slow write frees the connection.
+      while (this.dirty) {
+        this.dirty = false;
+        try {
+          const data = this.options.getSnapshot() as Prisma.InputJsonValue;
+          await prisma.runtimeSnapshot.upsert({
+            where: { id: this.options.runtimeSnapshotId },
+            create: { id: this.options.runtimeSnapshotId, data },
+            update: { data }
+          });
+        } catch (error) {
+          console.error("Failed to persist QuizStrike runtime state.", error);
+        }
+      }
+      this.write = undefined;
+    });
   }
 
   schedule() {
@@ -41,13 +47,12 @@ export class PersistenceScheduler {
   }
 
   flush() {
-    if (this.timer) clearTimeout(this.timer);
-    this.timer = undefined;
+    this.clearTimer();
     this.persistNow();
   }
 
   get pending() {
-    return this.queue;
+    return this.write ?? Promise.resolve();
   }
 
   clearTimer() {

@@ -850,7 +850,7 @@ export const getAthleticsMovingObstaclePosition = (obstacle: AthleticsMovingObst
 
 const isPointInsideAthleticsRect = (
   point: Pick<ArenaPosition, "x" | "z">,
-  obstacle: Extract<AthleticsObstacle, { kind: "rect" }>,
+  obstacle: Pick<AthleticsCourseSurface, "x" | "z" | "width" | "depth" | "rotationY">,
   padding = 0
 ) => {
   const angle = obstacle.rotationY ?? 0;
@@ -874,15 +874,15 @@ export const getAthleticsGroundHeight = (
   position: Pick<ArenaPosition, "x" | "z"> & { y?: number },
   nowMs = Date.now(),
   course: AthleticsCourseDefinition = ATHLETICS_STADIUM_COURSE,
-  eyeHeight = ATHLETICS_PLAYER_EYE_HEIGHT
+  eyeHeight = ATHLETICS_PLAYER_EYE_HEIGHT,
+  obstacles: readonly AthleticsObstacle[] = getAthleticsObstacles(nowMs, course)
 ) => {
   const footY = Number.isFinite(position.y) ? Number(position.y) - eyeHeight : 0;
   let supportY = 0;
-  for (const obstacle of getAthleticsObstacles(nowMs, course)) {
+  for (const obstacle of obstacles) {
     if (obstacle.kind !== "rect") continue;
-    if (!isPointInsideAthleticsRect(position, obstacle, 0.45)) continue;
     const topY = Number(obstacle.maxY ?? 0);
-    if (topY <= footY + 1.05 && topY > supportY) supportY = topY;
+    if (topY <= footY + 1.05 && topY > supportY && isPointInsideAthleticsRect(position, obstacle, 0.45)) supportY = topY;
   }
   return supportY;
 };
@@ -1044,7 +1044,7 @@ export const getAthleticsPhysicalSupport = (
     // A body spanning two joined treads is still supported. Require the
     // whole footprint to be covered, so outside edges remain real falls.
     return [[ATHLETICS_PLAYER_RADIUS, 0], [-ATHLETICS_PLAYER_RADIUS, 0], [0, ATHLETICS_PLAYER_RADIUS], [0, -ATHLETICS_PLAYER_RADIUS]]
-      .every(([dx, dz]) => joined.some((entry) => isPointInsideAthleticsRect({ x: position.x + dx!, z: position.z + dz! }, surfaceToObstacle(entry) as Extract<AthleticsObstacle, { kind: "rect" }>, 0)));
+      .every(([dx, dz]) => joined.some((entry) => isPointInsideAthleticsRect({ x: position.x + dx!, z: position.z + dz! }, entry)));
   };
   const addSurfaceCandidate = (
     surface: AthleticsCourseSurface,
@@ -1053,12 +1053,10 @@ export const getAthleticsPhysicalSupport = (
     priority = kind === "main_surface" ? 0 : 1
   ) => {
     if (surface.movingObstacleId) return;
-    const obstacle = surfaceToObstacle(surface);
-    if (obstacle.kind !== "rect") return;
-    if (!isPointInsideAthleticsRect(position, obstacle, -ATHLETICS_PLAYER_RADIUS)
-      && !(kind === "main_surface" && isPointInsideAthleticsRect(position, obstacle, 0) && isConnectedSeam(surface))) return;
     const verticalDistance = Math.abs(footY - surface.y);
     if (verticalDistance > 1.25) return;
+    if (!isPointInsideAthleticsRect(position, surface, -ATHLETICS_PLAYER_RADIUS)
+      && !(kind === "main_surface" && isPointInsideAthleticsRect(position, surface) && isConnectedSeam(surface))) return;
     candidates.push({
       kind,
       supportY: surface.y,

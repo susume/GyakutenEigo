@@ -7,6 +7,7 @@ import jwt from "jsonwebtoken";
 import { PrismaClient } from "@prisma/client";
 import { createServer } from "node:http";
 import { randomUUID } from "node:crypto";
+import { monitorEventLoopDelay } from "node:perf_hooks";
 import { Server, type Socket } from "socket.io";
 import { resolveClientOrigins } from "./origins.js";
 import { AppearanceSecurityService, inspectProcessedDecal } from "./appearanceSecurity.js";
@@ -2271,8 +2272,9 @@ const applyAuthoritativePosition = (
       support: { kind: "airborne", supportY: 0 }
     });
   }
+  const obstacles = isAthletics ? getAthleticsObstacles(nowMs, athleticsCourse) : getArenaObstacles(session.settings.mapId);
   const requestedGroundY = isAthletics
-    ? getAthleticsGroundHeight({ x: requestedX, y: requestedEyeY, z: requestedZ }, nowMs, athleticsCourse, requestedEyeHeight)
+    ? getAthleticsGroundHeight({ x: requestedX, y: requestedEyeY, z: requestedZ }, nowMs, athleticsCourse, requestedEyeHeight, obstacles)
     : getArenaGroundHeightForPlayer(
       session.settings.mapId,
       requestedX,
@@ -2330,7 +2332,7 @@ const applyAuthoritativePosition = (
       * getPlayerMoveSpeedMultiplier(player)
       * (athletics?.dashUntil && nowMs < Date.parse(athletics.dashUntil) ? 1.42 : 1)
       * (chaosEventModifiers?.movementSpeedMultiplier ?? 1),
-    obstacles: isAthletics ? getAthleticsObstacles(nowMs, athleticsCourse) : getArenaObstacles(session.settings.mapId),
+    obstacles,
     groundY: requestedGroundY,
     eyeHeight: requestedEyeHeight,
     mapId: isAthletics ? ATHLETICS_ARENA_MAP_ID : session.settings.mapId
@@ -4016,6 +4018,40 @@ function detachSocketBinding(socket: Socket) {
   connectionLifecycle.detachSocketBinding(socket);
 }
 
+const matchEventLoopDelay = monitorEventLoopDelay({ resolution: 20 });
+const startMatchMetrics = () => {
+  let previousTime = performance.now();
+  let previousCpu = process.cpuUsage();
+  matchEventLoopDelay.enable();
+  lifecycleTimers.interval(() => {
+    const currentTime = performance.now();
+    const currentCpu = process.cpuUsage();
+    const cpuMicros = currentCpu.user - previousCpu.user + currentCpu.system - previousCpu.system;
+    const cpuCores = cpuMicros / ((currentTime - previousTime) * 1000);
+    previousTime = currentTime;
+    previousCpu = currentCpu;
+    const eventLoopP95Ms = Math.round(matchEventLoopDelay.percentile(95) / 1e6);
+    const eventLoopMaxMs = Math.round(matchEventLoopDelay.max / 1e6);
+    matchEventLoopDelay.reset();
+    const sockets = io.sockets.sockets;
+    if (sockets.size === 0) return;
+
+    let activeRooms = 0;
+    for (const session of sessions.values()) if (session.status === "active") activeRooms++;
+    let pollingSockets = 0;
+    for (const socket of sockets.values()) if (socket.conn.transport.name === "polling") pollingSockets++;
+    console.info(`[match-metrics] ${JSON.stringify({
+      activeRooms,
+      sockets: sockets.size,
+      pollingSockets,
+      cpuCores: Number(cpuCores.toFixed(3)),
+      rssMiB: Math.round(process.memoryUsage.rss() / (1024 * 1024)),
+      eventLoopP95Ms,
+      eventLoopMaxMs
+    })}`);
+  }, 30_000, true);
+};
+
 const startServer = async () => {
   try {
     await hydrateRuntimeState();
@@ -4024,6 +4060,7 @@ const startServer = async () => {
     lifecycleTimers.interval(() => scheduleCompetitionNotifications(competitionState, new Date()), 60_000, true);
     lifecycleTimers.interval(pruneExpiredDecals, 15 * 60 * 1000, true);
     lifecycleTimers.interval(renewRoomAuthorities, config.roomLeaseRenewMs, true);
+    if (config.isProduction) startMatchMetrics();
     server.listen(port, () => {
       console.log(`QuizStrike Classroom server listening on http://localhost:${port}`);
       console.info(`[runtime] instance=${config.instanceId} store=${config.runtimeStore} stickySessions=required`);
@@ -4042,6 +4079,7 @@ const shutdown = (signal: string) => {
   isDraining = true;
   console.log(`[shutdown] received=${signal} instance=${config.instanceId}; draining and saving classroom state`);
   lifecycleTimers.clearAll();
+  matchEventLoopDelay.disable();
   networkMetrics.close();
   for (const timer of playerDisconnectTimers.values()) clearTimeout(timer);
   playerDisconnectTimers.clear();
