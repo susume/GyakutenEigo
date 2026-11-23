@@ -72,12 +72,14 @@ export const createRoomBroadcaster = ({
 }: RoomBroadcastOptions) => {
   const pendingSessions = new Map<string, GameSession>();
   let sessionTimer: ReturnType<typeof setTimeout> | undefined;
+  const hasSubscribers = (room: string) => io.sockets.adapter.rooms.has(room);
 
   const flushSessionBroadcasts = () => {
     sessionTimer = undefined;
     for (const session of pendingSessions.values()) {
-      io.to(session.sessionCode).emit("session_state", stampSession(session));
-      io.to(teacherRoom(session.sessionCode)).emit("session_state", stampTeacherSession(session));
+      if (hasSubscribers(session.sessionCode)) io.to(session.sessionCode).emit("session_state", stampSession(session));
+      const teacherChannel = teacherRoom(session.sessionCode);
+      if (hasSubscribers(teacherChannel)) io.to(teacherChannel).emit("session_state", stampTeacherSession(session));
     }
     pendingSessions.clear();
   };
@@ -89,18 +91,25 @@ export const createRoomBroadcaster = ({
   };
 
   const broadcastPlayerState = (session: GameSession, players: PlayerSession[]) => {
+    schedulePersistence();
+    const teacherChannel = teacherRoom(session.sessionCode);
+    const hasStudents = hasSubscribers(session.sessionCode);
+    const hasTeachers = hasSubscribers(teacherChannel);
+    if (!hasStudents && !hasTeachers) return;
+
     const uniquePlayers = [...new Map(players.map((player) => [player.id, player])).values()];
     const publicState = {
       players: uniquePlayers,
       flag: session.flag,
       recentEvents: session.events?.slice(0, 2)
     };
-    io.to(session.sessionCode).emit("player_state", publicState);
-    io.to(teacherRoom(session.sessionCode)).emit("player_state", {
-      ...publicState,
-      learningPulse: getLearningPulse(session)
-    });
-    schedulePersistence();
+    if (hasStudents) io.to(session.sessionCode).emit("player_state", publicState);
+    if (hasTeachers) {
+      io.to(teacherChannel).emit("player_state", {
+        ...publicState,
+        learningPulse: getLearningPulse(session)
+      });
+    }
   };
 
   return { broadcastSession, broadcastPlayerState, flushSessionBroadcasts, clearTimer: () => { if (sessionTimer) clearTimeout(sessionTimer); sessionTimer = undefined; } };

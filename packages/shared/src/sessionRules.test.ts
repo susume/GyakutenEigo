@@ -352,6 +352,9 @@ test("resolveAnswerReward applies wrong-answer penalties only to active players"
 });
 
 test("sanitizeSessionSettings keeps classroom settings inside safe bounds", () => {
+  assert.equal(sanitizeSessionSettings({}).maxPlayers, 40);
+  assert.equal(sanitizeSessionSettings({ maxPlayers: 20 }).maxPlayers, 20);
+
   const settings = sanitizeSessionSettings({
     startingMoney: 999999,
     correctAnswerReward: -100,

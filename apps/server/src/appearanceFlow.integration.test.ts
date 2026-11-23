@@ -17,6 +17,7 @@ type TeacherFixture = {
 type SessionFixture = {
   id: string;
   sessionCode: string;
+  maxPlayers: number;
   players: PlayerFixture[];
   status?: "waiting" | "active" | "paused" | "ended";
   controlState?: "running" | "teacher_paused";
@@ -719,10 +720,9 @@ test("teacher pause is owner-only, blocks student commands, and is authoritative
   await api(`/api/sessions/${session.sessionCode}/end`, { method: "POST", teacherToken: teacher.token });
 });
 
-test("a 40-student room keeps bounded appearance state and rejects student 41", { timeout: 30_000 }, async () => {
+test("a default room holds 40 students with bounded appearance state and rejects student 41", { timeout: 30_000 }, async () => {
   const teacher = await createTeacherWithQuiz();
   const session = await createSession(teacher, {
-    maxPlayers: 40,
     characterCustomization: {
       enabled: true,
       uploadsEnabled: false,
@@ -730,6 +730,7 @@ test("a 40-student room keeps bounded appearance state and rejects student 41", 
       persistAcrossSessions: false
     }
   });
+  assert.equal(session.maxPlayers, 40);
 
   const students = await Promise.all(
     Array.from({ length: 40 }, (_, index) => joinSession(session.sessionCode, `Student ${index + 1}`))
@@ -741,6 +742,7 @@ test("a 40-student room keeps bounded appearance state and rejects student 41", 
     body: { nickname: "Student 41" }
   });
   assert.equal(overflow.response.status, 400);
+  assert.match(overflow.text, /This game is full/);
 
   const saves = await Promise.all(students.map((student, index) => {
     const footwear = ["runners", "army_boots", "skate_shoes", "basketball_shoes", "sandals", "barefoot"];

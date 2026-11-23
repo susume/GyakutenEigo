@@ -963,7 +963,7 @@ export const DEFAULT_SESSION_SETTINGS: SessionSettings = {
   snowballPackPrice: 500,
   snowballsPerPack: 10,
   roundDurationSeconds: FLAG_MODE_DEFAULTS.roundDurationSeconds,
-  maxPlayers: 20,
+  maxPlayers: 40,
   deadPlayersCanPractice: true,
   deadPlayersEarnMoney: false,
   characterCustomization: DEFAULT_CHARACTER_CUSTOMIZATION_SETTINGS

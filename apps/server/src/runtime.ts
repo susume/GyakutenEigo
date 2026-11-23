@@ -316,7 +316,12 @@ const questionAudioAssets = new Map<string, QuestionAudioAsset>();
 const folders = new Map<string, QuizFolder>();
 const sessions = new InMemoryRoomStateStore<GameSession>();
 const joinCodeDirectory = new InMemoryJoinCodeDirectory();
-const answers: AnswerLog[] = [];
+const answersBySession = new Map<string, AnswerLog[]>();
+const recordSessionAnswer = (answer: AnswerLog) => {
+  const sessionAnswers = answersBySession.get(answer.gameSessionId);
+  if (sessionAnswers) sessionAnswers.push(answer);
+  else answersBySession.set(answer.gameSessionId, [answer]);
+};
 type StoredReport = ReportMetadata & { report: SessionReport };
 const reports = new Map<string, StoredReport>();
 const competitionState = createCompetitionState({ id: "official-quizstrike", name: "QuizStrike Classroom" });
@@ -414,7 +419,7 @@ const getPersistedRuntimeState = (): PersistedRuntimeState => ({
     const { learningPulse: _learningPulse, serverTime: _serverTime, ...persistedSession } = session;
     return persistedSession as GameSession;
   }),
-  answers: [...answers],
+  answers: [...answersBySession.values()].flat(),
   competitions: [...competitionState.competitions.values()],
   competitionNotifications: [...competitionState.notifications.values()],
   competitionAuditLogs: [...competitionState.auditLogs],
@@ -456,7 +461,7 @@ const hydrateRuntimeState = async () => {
   folders.clear();
   sessions.clear();
   joinCodeDirectory.clear();
-  answers.length = 0;
+  answersBySession.clear();
   reports.clear();
   tournamentState.tournaments.clear();
   tournamentState.auditEvents.length = 0;
@@ -504,7 +509,7 @@ const hydrateRuntimeState = async () => {
       console.error(`[ownership] restored room ${session.id} has another owner; simulation remains paused`);
     }
   }
-  answers.push(...savedAnswers.filter((answer) => answer?.id));
+  for (const answer of savedAnswers) if (answer?.id) recordSessionAnswer(answer);
   // Read legacy report snapshots for backwards compatibility. New report writes
   // are normalized and are intentionally not re-embedded in RuntimeSnapshot.
   for (const report of savedReports) if (report?.id && report.report) reports.set(report.id, report);
@@ -881,7 +886,7 @@ const getLearningPulse = (session: GameSession): LearningPulse => {
   const pulse = buildLearningPulse({
     sessionId: session.id,
     players: session.players,
-    answers,
+    answers: answersBySession.get(session.id) ?? [],
     questions
   });
   learningPulseCache.set(session.id, { sourceSignature, pulse });
@@ -1026,7 +1031,7 @@ const getQuizSetForUse = (userId: string, quizSetId: string) => {
 };
 
 const makeReport = (session: GameSession): SessionReport => {
-  const sessionAnswers = answers.filter((answer) => answer.gameSessionId === session.id);
+  const sessionAnswers = answersBySession.get(session.id) ?? [];
   const reportAnswers = sessionAnswers.filter(isMainRoundAnswer);
   const raceStandings = session.settings.gameMode === "athletics"
     ? resolveAthleticsStandings(session.players.map((player) => {
@@ -1082,7 +1087,7 @@ const makeStudentLearningReport = (session: GameSession, player: PlayerSession):
     playerSessionId: player.id,
     gameQuizSet: quiz ? { ...quiz, questions: sessionQuestions } : undefined,
     allQuizSets: quizSets.values(),
-    answers
+    answers: answersBySession.get(session.id) ?? []
   });
 
   return {
@@ -1143,10 +1148,9 @@ const durableReportMetadataForTeacher = async (teacherId: string) => {
 const deleteHistoryForTeacher = async (teacherId: string) => {
   const endedSessions = [...sessions.values()].filter((session) => session.teacherId === teacherId && session.status === "ended");
   const persistedCount = await normalizedLibrary?.deleteTeacherHistory(teacherId) ?? 0;
-  const endedSessionIds = new Set(endedSessions.map((session) => session.id));
-
   for (const session of endedSessions) {
     sessions.delete(session.id);
+    answersBySession.delete(session.id);
     joinCodeDirectory.release(session.sessionCode, session.id);
     roomAuthority.release(session.id);
     purgeSessionDecals(session);
@@ -1165,9 +1169,6 @@ const deleteHistoryForTeacher = async (teacherId: string) => {
 
   for (const [reportId, report] of reports) {
     if (report.teacherId === teacherId) reports.delete(reportId);
-  }
-  for (let index = answers.length - 1; index >= 0; index -= 1) {
-    if (endedSessionIds.has(answers[index]!.gameSessionId)) answers.splice(index, 1);
   }
   schedulePersistence();
   return Math.max(persistedCount, endedSessions.length);
@@ -3180,7 +3181,7 @@ const answerQuestion = (
     responseTimeMs,
     context: answerContext
   };
-  answers.push(answer);
+  recordSessionAnswer(answer);
   learningPulseCache.delete(session.id);
   // Keep the authoritative game history recoverable if a student reconnects
   // during a later round or the process is restarted before game end.

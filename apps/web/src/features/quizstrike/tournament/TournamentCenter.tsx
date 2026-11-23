@@ -21,7 +21,7 @@ import {
   UsersRound,
   X
 } from "lucide-react";
-import type { ArenaMapId, SessionSettings, TeacherUser } from "@quizstrike/shared";
+import { DEFAULT_SESSION_SETTINGS, type ArenaMapId, type SessionSettings, type TeacherUser } from "@quizstrike/shared";
 import { ApiError, teacherApi, tournamentApi } from "../../../api/client";
 
 type QuizChoice = { id: string; title: string };
@@ -162,7 +162,7 @@ const initialForm = (quizSets: QuizChoice[]): WizardForm => ({
   roundDurationSeconds: 180,
   preparationDurationSeconds: 30,
   teamSize: 4,
-  maxPlayers: 20,
+  maxPlayers: DEFAULT_SESSION_SETTINGS.maxPlayers,
   rewardsEnabled: true,
   studyItems: [
     { term: "adapt", meaning: "change so you can work in a new situation", example: "Teams adapt when the map changes." },
