@@ -2844,5 +2844,22 @@
   "Provisional feedback from device-generated transcripts. Ask your teacher to confirm the assessment.": "端末で認識した英文をもとにした暫定結果です。評価は先生に確認してください。",
   "Tell my teacher I need another way": "別の方法が必要だと先生に伝える",
   "Your teacher has been notified in the class monitor.": "クラスの準備状況に表示されました。",
-  "Your teacher can review your conversation and feedback. The app does not retain conversation recordings.": "先生は会話の記録とフィードバックを確認できます。アプリに会話の録音は保存されません。"
+  "Your teacher can review your conversation and feedback. The app does not retain conversation recordings.": "先生は会話の記録とフィードバックを確認できます。アプリに会話の録音は保存されません。",
+  "Structured conversation (experimental)": "質問の流れを設定する会話（試験運用）",
+  "Questions and objectives": "質問と会話の目標",
+  "Leave blank to reuse the activity opening and default follow-ups. For each custom step, enter question | objective | concept cues separated by commas | optional follow-up. Use @question in the cues field to invite a student question.": "空欄の場合は、活動の最初の質問と既定の追加質問を使います。設定する場合は1行ずつ「質問 | 目標 | 手がかり（カンマ区切り） | 追加質問（任意）」を入力します。生徒に質問してもらう場合は、手がかり欄に @question と入力します。",
+  "Prepare before class. Your recording stays on this device. The conversation and feedback use SpeakCheck’s structured rules.": "授業の前に準備しましょう。録音はこの端末に残ります。会話とフィードバックはSpeakCheckで設定された流れに沿って進みます。",
+  "Use authorized recordings and verified transcripts. The benchmark export contains measurements without audio or transcript text.": "使用許可のある録音と、人が確認した文字起こしを使ってください。書き出す測定結果に音声や発言の本文は含まれません。",
+  "Check saved model": "保存済みモデルを確認",
+  "Cached startup": "保存済みモデルで起動",
+  "Startup with model downloads": "モデルを取得して起動",
+  "Classroom background noise": "教室の雑音あり",
+  "No-speech control recording": "発話のない比較用録音",
+  "Substitutions {value0} · Insertions {value1} · Deletions {value2}": "置き換え {value0}・追加 {value1}・聞き逃し {value2}",
+  "Recognized fillers {value0} · Repeated words {value1}": "認識したつなぎ言葉 {value0}・連続して繰り返した単語 {value1}",
+  "No words recognized for a recording with speech.": "話し声のある録音から単語を認識できませんでした。",
+  "Words were recognized in the no-speech control.": "発話のない録音から単語が検出されました。",
+  "Export benchmark measurements": "測定結果を書き出す",
+  "Try the saved model first. If it is missing, prepare the model on the school network before the lesson.": "まず保存済みモデルを確認しましょう。見つからない場合は授業の前に、学校のネットワークでモデルを準備してください。",
+  "The conversation is complete. Finish to see your result.": "会話は終了しました。「終了する」を押すと結果を確認できます。"
 }

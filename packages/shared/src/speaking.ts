@@ -439,6 +439,9 @@ export interface SpeakingSession {
   /** Monotonic lifecycle revision used to reject stale browser responses. */
   revision?: number;
   localTranscription?: boolean;
+  structured?: boolean;
+  /** Server-only snapshot. Omitted from participant responses. */
+  structuredPlan?: SpeakingStructuredPlan;
 }
 
 /** Teacher-facing calendar dates must not depend on the server/browser timezone. */
@@ -680,6 +683,17 @@ export const SpeakingLocalSpeechReadinessSchema = z.enum(["preparing", "download
 export type SpeakingLocalSpeechReadiness = z.infer<typeof SpeakingLocalSpeechReadinessSchema>;
 
 export const SpeakingSessionStatusSchema = z.enum(SPEAKING_SESSION_STATUSES);
+
+export const SpeakingStructuredPlanSchema = z.object({
+  steps: z.array(z.object({
+    question: z.string().trim().min(1).max(180),
+    objective: z.string().trim().min(1).max(180),
+    concepts: z.array(z.string().trim().min(1).max(48)).max(8).default([]),
+    followUp: z.string().trim().min(1).max(180).optional(),
+    kind: z.enum(["answer", "question"]).default("answer")
+  }).strict()).min(1).max(6)
+}).strict();
+export type SpeakingStructuredPlan = z.infer<typeof SpeakingStructuredPlanSchema>;
 
 export const SpeakingEvaluationSchema = z.object({
   participantId: z.string().min(1),

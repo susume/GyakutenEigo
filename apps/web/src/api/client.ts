@@ -403,7 +403,10 @@ export const speakingApi = {
   deleteActivity: (id: string) => api(`/api/speaking/activities/${encodeURIComponent(id)}`, { method: "DELETE" }),
   activity: (id: string) => api(`/api/speaking/activities/${encodeURIComponent(id)}`),
   sessions: (activityId: string) => api(`/api/speaking/activities/${encodeURIComponent(activityId)}/sessions`),
-  launchSession: (activityId: string, setId?: string, localTranscription = false) => api(`/api/speaking/activities/${encodeURIComponent(activityId)}/sessions`, { method: "POST", ...(setId || localTranscription ? { body: JSON.stringify({ setId, localTranscription }) } : {}) }),
+  launchSession: (activityId: string, setId?: string, localTranscription = false, structured?: { steps?: unknown[] }) => api(`/api/speaking/activities/${encodeURIComponent(activityId)}/sessions`, {
+    method: "POST",
+    ...(setId || localTranscription || structured ? { body: JSON.stringify({ setId, localTranscription, ...(structured ? { structured: true, structuredPlan: structured.steps ? structured : undefined } : {}) }) } : {})
+  }),
   join: (code: string, identifier?: string, requestId?: string, joinToken?: string) => api("/api/speaking/join", { method: "POST", ...(requestId ? { headers: { "X-Speaking-Join-Id": requestId } } : {}), body: JSON.stringify({ code, identifier, ...(requestId ? { requestId } : {}), ...(joinToken ? { joinToken } : {}) }) }, { attemptTimeoutMs: SPEAKING_JOIN_REQUEST_TIMEOUT_MS }),
   startParticipant: (sessionId: string, token: string) => api(`/api/speaking/sessions/${encodeURIComponent(sessionId)}/start`, { method: "POST", headers: speakingHeaders(token) }),
   startSession: (sessionId: string) => api(`/api/speaking/sessions/${encodeURIComponent(sessionId)}/start-session`, { method: "POST" }),

@@ -623,7 +623,7 @@ function SpeakingPreActivityPageV2({ navigate, joined }: { navigate: Navigate; j
 
       <section className="speaking-prep-card speaking-ready-card">
         {joined.session.localTranscription
-          ? <Suspense fallback={<p role="status">{t("Checking your device…")}</p>}><SpeakingLocalReadiness
+          ? <Suspense fallback={<p role="status">{t("Checking your device…")}</p>}><SpeakingLocalReadiness structured={joined.session.structured}
             report={(status, signal) => speakingApi.localReadiness(joined.session.id, joined.token, status, signal)}
             onReady={() => void startSession()}
           />{error && <p className="speaking-error" role="alert">{t(error)}</p>}</Suspense>

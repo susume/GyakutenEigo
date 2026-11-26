@@ -4,7 +4,11 @@ import { join } from "node:path";
 import { fileURLToPath } from "node:url";
 
 const workspaceRoot = fileURLToPath(new URL("../..", import.meta.url));
-const reuseExistingServer = process.env.CI !== "true";
+const speakingTestDatabase = process.env.SPEAKCHECK_TEST_DATABASE_URL;
+if (speakingTestDatabase && !["127.0.0.1", "localhost", "[::1]"].includes(new URL(speakingTestDatabase).hostname)) {
+  throw new Error("SPEAKCHECK_TEST_DATABASE_URL must identify a disposable loopback PostgreSQL database.");
+}
+const reuseExistingServer = !speakingTestDatabase && process.env.CI !== "true";
 const installedChromePath = [
   process.env.ProgramFiles ? join(process.env.ProgramFiles, "Google", "Chrome", "Application", "chrome.exe") : undefined,
   process.env["ProgramFiles(x86)"] ? join(process.env["ProgramFiles(x86)"], "Google", "Chrome", "Application", "chrome.exe") : undefined,
@@ -55,7 +59,7 @@ export default defineConfig({
         PORT: "4000",
         NODE_ENV: "test",
         JWT_SECRET: "playwright-classroom-secret",
-        DATABASE_URL: " ",
+        DATABASE_URL: speakingTestDatabase ?? " ",
         QUIZSTRIKE_TEST_ROUND_PREPARATION_MS: "5000"
       },
       url: "http://127.0.0.1:4000/api/health",

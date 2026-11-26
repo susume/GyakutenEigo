@@ -1,7 +1,17 @@
 import assert from "node:assert/strict";
 import test from "node:test";
 import { hasLikelySpeech, LOCAL_SAMPLE_RATE } from "./audio.js";
-import { speechWordErrorRate } from "./diagnostics.js";
+import { speechBenchmarkMetrics, speechWordErrorRate } from "./diagnostics.js";
+
+test("benchmark distinguishes edit types and empty speech controls", () => {
+  const result = speechBenchmarkMetrics("um i like red books", "i like blue books books", false);
+  assert.deepEqual([result.substitutions, result.insertions, result.deletions], [1, 1, 1]);
+  assert.equal(result.wordErrorRate, 0.6);
+  assert.equal(result.referencePatterns.fillers, 1);
+  assert.equal(result.recognizedPatterns.adjacentRepeats, 1);
+  assert.equal(speechBenchmarkMetrics("expected words", "", false).missedSpeech, true);
+  assert.equal(speechBenchmarkMetrics("", "unwanted words", true).hallucinatedSpeech, true);
+});
 
 test("energy gate rejects silence and stationary sound without changing the waveform", () => {
   const quiet = new Float32Array(LOCAL_SAMPLE_RATE);

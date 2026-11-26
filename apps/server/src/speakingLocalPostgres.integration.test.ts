@@ -39,7 +39,7 @@ test("a PostgreSQL-backed pilot survives API restart, retries and rollback", {
     return JSON.parse(body) as T;
   }
 
-  async function start(pilotEnabled: boolean) {
+  async function start(pilotEnabled: boolean, independentOnly = false) {
     const reservation = createServer().listen(0, "127.0.0.1");
     await once(reservation, "listening");
     const { port } = reservation.address() as AddressInfo;
@@ -58,6 +58,8 @@ test("a PostgreSQL-backed pilot survives API restart, retries and rollback", {
         RUNTIME_STORE: "in-memory",
         QUIZSTRIKE_NO_AUTOSTART: "false",
         SPEAKING_MOCK_MODE: "true",
+        SPEAKING_STRUCTURED_ENABLED: String(independentOnly),
+        SPEAKING_PROVIDER_INDEPENDENT_ONLY: String(independentOnly),
         SPEAKING_LOCAL_TRANSCRIPTION_ENABLED: String(pilotEnabled),
         SPEAKING_LOCAL_TRANSCRIPTION_ALLOW_EXTERNAL_AI: "false",
         SPEAKING_LATENCY_DEBUG: "true"
@@ -164,6 +166,21 @@ test("a PostgreSQL-backed pilot survives API restart, retries and rollback", {
     assert.equal(preserved.result.evaluation.overallMessage, evaluation.overallMessage);
     const ordinary = await post<{ session: SpeakingSession }>(launchPath, 201, {}, teacher);
     assert.notEqual(ordinary.session.localTranscription, true);
+    const legacy = await post<{ participant: SpeakingParticipant; token: string }>(speaking + "/join", 201, { code: ordinary.session.joinCode });
+    await stop();
+    await prisma.speakingParticipant.update({ where: { id: legacy.participant.id }, data: { status: "evaluating", finishedAt: new Date() } });
+    await prisma.speakingEvaluationJob.create({ data: { participantId: legacy.participant.id, status: "queued" } });
+    await start(false, true);
+    const legacyHeaders = { "X-Speaking-Token": legacy.token };
+    await post(launchPath, 503, {}, teacher);
+    await post(`${speaking}/sessions/${ordinary.session.id}/start-session`, 503, undefined, teacher);
+    const legacyResultPath = `${speaking}/results/${legacy.participant.id}`;
+    const legacyResult = await request<{ evaluationStatus: string }>(legacyResultPath, 200, { headers: legacyHeaders });
+    assert.equal(legacyResult.evaluationStatus, "queued");
+    await post(legacyResultPath + "/retry-evaluation", 503, undefined, legacyHeaders);
+    const legacyJob = await prisma.speakingEvaluationJob.findUniqueOrThrow({ where: { participantId: legacy.participant.id } });
+    assert.equal(legacyJob.status, "queued");
+    assert.equal(legacyJob.attempt, 0);
   } finally {
     await stop();
     try {

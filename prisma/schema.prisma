@@ -428,6 +428,7 @@ model SpeakingSession {
   revision                 Int                   @default(0)
   activitySnapshotJson     Json
   localTranscription       Boolean               @default(false)
+  structuredPlanJson       Json?
   participants             SpeakingParticipant[]
   turns                    SpeakingTurn[]
 

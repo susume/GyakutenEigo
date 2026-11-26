@@ -830,13 +830,14 @@ export type SpeakingProviderRegistry = {
 
 export const createSpeakingProviders = (environment: NodeJS.ProcessEnv = process.env): SpeakingProviderRegistry => {
   const explicitMockMode = environment.SPEAKING_MOCK_MODE?.trim().toLowerCase() === "true";
+  const independentOnly = environment.SPEAKING_PROVIDER_INDEPENDENT_ONLY === "true";
   const production = environment.NODE_ENV?.trim().toLowerCase() === "production";
   const configuredAiMode = environment.SPEAKING_AI_PROVIDER?.trim().toLowerCase();
   const configuredTranscriptionMode = environment.SPEAKING_TRANSCRIPTION_PROVIDER?.trim().toLowerCase();
-  if (!explicitMockMode && production && (!configuredAiMode || !configuredTranscriptionMode)) {
+  if (!explicitMockMode && !independentOnly && production && (!configuredAiMode || !configuredTranscriptionMode)) {
     throw new Error("Production Speaking requires SPEAKING_AI_PROVIDER and SPEAKING_TRANSCRIPTION_PROVIDER, or an explicit SPEAKING_MOCK_MODE=true override.");
   }
-  const mockMode = explicitMockMode || (!production && !configuredAiMode && !configuredTranscriptionMode);
+  const mockMode = explicitMockMode || independentOnly || (!production && !configuredAiMode && !configuredTranscriptionMode);
   const aiMode = mockMode ? "mock" : configuredAiMode || "mock";
   const transcriptionMode = mockMode ? "mock" : configuredTranscriptionMode || "mock";
   if (aiMode !== "mock" && aiMode !== "openai" && aiMode !== "gemini") throw new Error(`Unsupported SPEAKING_AI_PROVIDER: ${aiMode}.`);

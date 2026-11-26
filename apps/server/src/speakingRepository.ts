@@ -2,6 +2,8 @@ import { createHash } from "node:crypto";
 import { Prisma, PrismaClient, type SpeakingEvaluationJob as PrismaSpeakingEvaluationJob } from "@prisma/client";
 import { SPEAKING_EVALUATION_MAX_ATTEMPTS, SPEAKING_GEMINI_SCHEMA_RECOVERY_CODE } from "./speakingEvaluation.js";
 import {
+  SpeakingStructuredPlanSchema,
+  type SpeakingStructuredPlan,
   SPEAKING_LIMITS,
   SPEAKING_LIBRARY_CATEGORY_IDS,
   recommendedSpeakingSupportSettings,
@@ -134,6 +136,7 @@ export interface SpeakingRepository {
   isJoinCodeTaken(joinCode: string): Promise<boolean>;
   createSession(input: {
     localTranscription?: boolean;
+    structuredPlan?: SpeakingStructuredPlan;
     speakingSetId?: string;
     speakingSetNameSnapshot?: string;
     speakingSetFocusSnapshot?: string;
@@ -176,7 +179,7 @@ export interface SpeakingRepository {
   upsertEvaluationJob(participantId: string, input: { id: string; queuedAt: string; updatedAt: string; status?: SpeakingEvaluationJobStatus; attempt?: number; retryable?: boolean; nextRetryAt?: string | null }): Promise<SpeakingEvaluationJob>;
   claimEvaluationJob(participantId: string, startedAt: string, leaseUntil: string): Promise<SpeakingEvaluationJob | undefined>;
   settleEvaluationJob(participantId: string, attempt: number, now: string, outcome: { evaluation?: SpeakingEvaluation; errorCode?: string; retryable?: boolean; nextRetryAt?: string | null }): Promise<boolean>;
-  recoverableEvaluationParticipants(now: string): Promise<string[]>;
+  recoverableEvaluationParticipants(now: string, structuredOnly?: boolean): Promise<string[]>;
   updateEvaluationJob(participantId: string, patch: { status?: SpeakingEvaluationJobStatus; startedAt?: string | null; finishedAt?: string | null; leaseUntil?: string | null; lastErrorCode?: string | null; retryable?: boolean; nextRetryAt?: string | null; updatedAt: string }): Promise<SpeakingEvaluationJob | undefined>;
   getResult(participantId: string): Promise<SpeakingResultRecord | undefined>;
   listResults(activityId: string, sessionId: string, teacherId: string): Promise<Array<SpeakingResultRecord & { overallScore?: number }>>;
@@ -276,6 +279,8 @@ const cloneActivity = (activity: SpeakingActivity): SpeakingActivity => ({
 
 const cloneSession = (session: SpeakingSession): SpeakingSession => ({
   ...(session.localTranscription ? { localTranscription: true } : {}),
+  ...(session.structured ? { structured: true } : {}),
+  ...(session.structuredPlan ? { structuredPlan: structuredClone(session.structuredPlan) } : {}),
   ...(session.speakingSetId ? { speakingSetId: session.speakingSetId, speakingSetNameSnapshot: session.speakingSetNameSnapshot, ...(session.speakingSetFocusSnapshot === undefined ? {} : { speakingSetFocusSnapshot: session.speakingSetFocusSnapshot }) } : {}),
   id: session.id,
   activityId: session.activityId,
@@ -585,6 +590,7 @@ export class InMemorySpeakingRepository implements SpeakingRepository {
     const session: InMemorySession = {
       id: input.id,
       ...(input.localTranscription ? { localTranscription: true } : {}),
+      ...(input.structuredPlan ? { structured: true, structuredPlan: structuredClone(input.structuredPlan) } : {}),
       ...(input.speakingSetId ? { speakingSetId: input.speakingSetId, speakingSetNameSnapshot: input.speakingSetNameSnapshot, ...(input.speakingSetFocusSnapshot === undefined ? {} : { speakingSetFocusSnapshot: input.speakingSetFocusSnapshot }) } : {}),
       activityId: input.activity.id,
       joinCode: input.joinCode,
@@ -836,9 +842,14 @@ export class InMemorySpeakingRepository implements SpeakingRepository {
     return true;
   }
 
-  async recoverableEvaluationParticipants(now: string) {
+  async recoverableEvaluationParticipants(now: string, structuredOnly = false) {
     const nowMs = Date.parse(now);
-    return [...this.state.evaluationJobs.values()].filter((job) => job.status === "queued" || job.status === "failed" && job.lastErrorCode === SPEAKING_GEMINI_SCHEMA_RECOVERY_CODE || job.status === "retrying" && (!job.nextRetryAt || !Number.isFinite(Date.parse(job.nextRetryAt)) || Date.parse(job.nextRetryAt) <= nowMs) || job.status === "running" && (!job.leaseUntil || Date.parse(job.leaseUntil) <= nowMs)).slice(0, 100).map((job) => job.participantId);
+    const eligible = [...this.state.evaluationJobs.values()].filter((job) => {
+      if (!structuredOnly) return true;
+      const sessionId = this.state.participants.get(job.participantId)?.sessionId;
+      return !!(sessionId && this.state.sessions.get(sessionId)?.structuredPlan);
+    });
+    return eligible.filter((job) => job.status === "queued" || job.status === "failed" && job.lastErrorCode === SPEAKING_GEMINI_SCHEMA_RECOVERY_CODE || job.status === "retrying" && (!job.nextRetryAt || !Number.isFinite(Date.parse(job.nextRetryAt)) || Date.parse(job.nextRetryAt) <= nowMs) || job.status === "running" && (!job.leaseUntil || Date.parse(job.leaseUntil) <= nowMs)).slice(0, 100).map((job) => job.participantId);
   }
 
   async updateEvaluationJob(participantId: string, patch: { status?: SpeakingEvaluationJobStatus; startedAt?: string | null; finishedAt?: string | null; leaseUntil?: string | null; lastErrorCode?: string | null; retryable?: boolean; nextRetryAt?: string | null; updatedAt: string }) {
@@ -1037,7 +1048,14 @@ const toContextImage = (row: PrismaContextImage): SpeakingContextImageRecord => 
   ...(row.deletedAt ? { deletedAt: row.deletedAt.toISOString() } : {})
 });
 
-const toSession = (row: Pick<PrismaSession, "id" | "activityId" | "joinCode" | "status" | "createdAt" | "startedAt" | "pausedAt" | "endedAt" | "expiresAt" | "revision"> & Partial<Pick<PrismaSession, "speakingSetId" | "speakingSetNameSnapshot" | "speakingSetFocusSnapshot" | "localTranscription">>): SpeakingSession => ({
+const readStructuredPlan = (value: Prisma.JsonValue | undefined): Pick<SpeakingSession, "structured" | "structuredPlan"> => {
+  if (value == null) return {};
+  const result = SpeakingStructuredPlanSchema.safeParse(value);
+  return result.success ? { structured: true, structuredPlan: result.data } : { structured: true };
+};
+
+const toSession = (row: Pick<PrismaSession, "id" | "activityId" | "joinCode" | "status" | "createdAt" | "startedAt" | "pausedAt" | "endedAt" | "expiresAt" | "revision"> & Partial<Pick<PrismaSession, "speakingSetId" | "speakingSetNameSnapshot" | "speakingSetFocusSnapshot" | "localTranscription" | "structuredPlanJson">>): SpeakingSession => ({
+  ...readStructuredPlan(row.structuredPlanJson),
   ...(row.localTranscription ? { localTranscription: true } : {}),
   ...(row.speakingSetId ? { speakingSetId: row.speakingSetId, speakingSetNameSnapshot: row.speakingSetNameSnapshot ?? undefined, ...(row.speakingSetFocusSnapshot === null || row.speakingSetFocusSnapshot === undefined ? {} : { speakingSetFocusSnapshot: row.speakingSetFocusSnapshot }) } : {}),
   id: row.id,
@@ -1415,7 +1433,8 @@ export class PrismaSpeakingRepository implements SpeakingRepository {
         expiresAt: new Date(input.expiresAt),
         revision: 0,
         activitySnapshotJson: snapshotActivity(input.activity) as unknown as Prisma.InputJsonValue,
-        localTranscription: input.localTranscription
+        localTranscription: input.localTranscription,
+        structuredPlanJson: input.structuredPlan
       },
       include: sessionInclude
     });
@@ -1754,8 +1773,14 @@ export class PrismaSpeakingRepository implements SpeakingRepository {
     });
   }
 
-  async recoverableEvaluationParticipants(now: string) {
-    const rows = await this.prisma.speakingEvaluationJob.findMany({ where: { OR: [{ status: "queued" }, { status: "failed", lastErrorCode: SPEAKING_GEMINI_SCHEMA_RECOVERY_CODE }, { status: "retrying", OR: [{ nextRetryAt: { lte: new Date(now) } }, { nextRetryAt: null }] }, { status: "running", leaseUntil: { lte: new Date(now) } }, { status: "running", leaseUntil: null }] }, select: { participantId: true }, orderBy: { queuedAt: "asc" }, take: 100 });
+  async recoverableEvaluationParticipants(now: string, structuredOnly = false) {
+    const rows = await this.prisma.speakingEvaluationJob.findMany({
+      where: {
+        ...(structuredOnly ? { participant: { session: { structuredPlanJson: { not: Prisma.DbNull } } } } : {}),
+        OR: [{ status: "queued" }, { status: "failed", lastErrorCode: SPEAKING_GEMINI_SCHEMA_RECOVERY_CODE }, { status: "retrying", OR: [{ nextRetryAt: { lte: new Date(now) } }, { nextRetryAt: null }] }, { status: "running", leaseUntil: { lte: new Date(now) } }, { status: "running", leaseUntil: null }]
+      },
+      select: { participantId: true }, orderBy: { queuedAt: "asc" }, take: 100
+    });
     return rows.map((row) => row.participantId);
   }
 

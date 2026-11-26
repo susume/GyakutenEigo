@@ -10,6 +10,7 @@ import {
   SpeakingJoinInputSchema,
   SpeakingLocalSpeechReadinessSchema,
   SpeakingLocalTranscriptSchema,
+  SpeakingStructuredPlanSchema,
   SpeakingTurnInputSchema,
   speakingActiveElapsedMs,
   speakingOverallScore,
@@ -57,6 +58,7 @@ import {
   type TranscriptionResult
 } from "../speakingProviders.js";
 import { buildConversationPrompt, buildEvaluationPrompt } from "../speakingPrompts.js";
+import { assessStructuredConversation, defaultStructuredPlan, structuredProgress } from "../speakingStructured.js";
 import {
   SPEAKING_EVALUATION_MAX_ATTEMPTS,
   SPEAKING_EVALUATION_MANUAL_RETRY_COOLDOWN_MS,
@@ -190,6 +192,7 @@ const toResult = (activity: SpeakingActivity, session: SpeakingSession, particip
 
 const safeResult = (result: SpeakingParticipantResult) => ({
   ...result,
+  session: sessionPayload(result.session),
   participant: publicParticipant(result.participant)
 });
 
@@ -201,7 +204,7 @@ const initialGreeting = (activity: SpeakingActivity) => {
   return activity.scenarioResources?.openingLine?.trim() || "Hi! Nice to meet you. Can we talk?";
 };
 
-const sessionPayload = (session: SpeakingSession) => ({ ...session });
+const sessionPayload = ({ structuredPlan: _structuredPlan, ...session }: SpeakingSession) => session;
 
 const speakingDurationLabel = (seconds: number) => `${Math.floor(Math.max(0, seconds) / 60)}:${String(Math.max(0, seconds) % 60).padStart(2, "0")}`;
 const csvFilenamePart = (value: string) => value.toLocaleLowerCase().replace(/[^a-z0-9]+/giu, "-").replace(/^-|-$/gu, "").slice(0, 48) || "speaking";
@@ -379,7 +382,15 @@ export const registerSpeakingRoutes = (app: Application, deps: SpeakingRouteDepe
   const latencyDebug = deps.latencyDebug ?? speakingLatencyDebugEnabled();
   const localExternalAiAllowed = process.env.SPEAKING_LOCAL_TRANSCRIPTION_ALLOW_EXTERNAL_AI === "true";
   const localProviderAllowed = localExternalAiAllowed || [conversationProvider, helpProvider, evaluationProvider].every((provider) => provider.providerName === "mock");
-  const localSpeechEnabled = process.env.SPEAKING_LOCAL_TRANSCRIPTION_ENABLED === "true" && localProviderAllowed;
+  const independentOnly = process.env.SPEAKING_PROVIDER_INDEPENDENT_ONLY === "true";
+  const structuredEnabled = process.env.SPEAKING_STRUCTURED_ENABLED === "true";
+  const localSpeechEnabled = !independentOnly && process.env.SPEAKING_LOCAL_TRANSCRIPTION_ENABLED === "true" && localProviderAllowed;
+  const canRunSession = (session: SpeakingSession) => session.structured
+    ? structuredEnabled && !!session.structuredPlan && session.localTranscription === true
+    : !independentOnly && (!session.localTranscription || localSpeechEnabled);
+  const canEvaluateSession = (session: SpeakingSession) => session.structured
+    ? !!session.structuredPlan && session.localTranscription === true
+    : !independentOnly && (!session.localTranscription || localProviderAllowed);
   const localSpeechUnavailable = { code: "SPEAKING_LOCAL_UNAVAILABLE", error: "This local speech pilot is unavailable. Ask your teacher for help." };
   const evaluationTelemetry = {
     attempts: 0,
@@ -567,12 +578,12 @@ export const registerSpeakingRoutes = (app: Application, deps: SpeakingRouteDepe
       return;
     }
     req.speakingTurnAccess = access;
+    if (!canRunSession(access.session)) {
+      res.status(503).json(localSpeechUnavailable);
+      return;
+    }
     const localContent = req.is(SPEAKING_LOCAL_TRANSCRIPT_CONTENT_TYPE);
     if (access.session.localTranscription) {
-      if (!localSpeechEnabled) {
-        res.status(503).json(localSpeechUnavailable);
-        return;
-      }
       if (!localContent) {
         res.status(415).json({ error: "This activity only accepts on-device transcripts." });
         return;
@@ -711,8 +722,8 @@ export const registerSpeakingRoutes = (app: Application, deps: SpeakingRouteDepe
     let queueWaitMs = Number.isFinite(Date.parse(claimedJob.startedAt ?? "")) && Number.isFinite(Date.parse(claimedJob.queuedAt))
       ? Math.max(0, Date.parse(claimedJob.startedAt ?? claimedJob.queuedAt) - Date.parse(claimedJob.queuedAt))
       : 0;
-    const providerName = evaluationProvider.providerName ?? "custom";
-    const model = speakingEvaluationProviderModel(evaluationProvider.providerName);
+    let providerName: string = evaluationProvider.providerName ?? "custom";
+    let model = speakingEvaluationProviderModel(evaluationProvider.providerName);
     let providerDurationMs = 0;
     let failureKind: string | undefined;
     let failureStatus: number | undefined;
@@ -727,18 +738,27 @@ export const registerSpeakingRoutes = (app: Application, deps: SpeakingRouteDepe
     let finalJobState = "unknown";
     let settled = false;
     evaluationTelemetry.attempts += 1;
-    if (structuredOutput) evaluationTelemetry.structuredOutputAttempts += 1;
     try {
       const result = await repository.getResult(participantId);
       if (!result) throw new Error("Speaking participant session not found.");
-      if (result.session.localTranscription && !localProviderAllowed) throw new SpeakingProviderError("Local pilot provider permission unavailable.", "bad_request");
+      const structuredPlan = result.session.structuredPlan;
+      if (!canEvaluateSession(result.session)) {
+        throw new SpeakingProviderError("Session evaluation is unavailable under this provider configuration.", "bad_request");
+      }
+      if (structuredPlan) {
+        providerName = "local";
+        model = "structured-rules-v1";
+        structuredOutput = false;
+      }
+      if (structuredOutput) evaluationTelemetry.structuredOutputAttempts += 1;
       const current = await repository.getParticipant(participantId);
       if (!current) throw new Error("Speaking participant not found.");
       const finishedAt = current.finishedAt ?? deps.now();
       const studentTurns = result.turns.filter((turn) => turn.speaker === "student" && turn.text.trim().length > 0);
       const interactionMetadata = buildSpeakingInteractionMetadata(result.turns);
       const studentAudioDurationMs = studentTurns.reduce((total, turn) => total + (Number.isFinite(turn.audioDurationMs) ? Math.max(0, turn.audioDurationMs ?? 0) : 0), 0);
-      const rawEvaluation = studentTurns.length === 0
+      const rawEvaluation = structuredPlan ? assessStructuredConversation(structuredPlan, result.activity, result.turns, participantId, finishedAt)
+        : studentTurns.length === 0
         ? makeInsufficientEvidenceEvaluation(result.activity, participantId, finishedAt)
         : await (async () => {
           const timingMetadata = {
@@ -788,7 +808,7 @@ export const registerSpeakingRoutes = (app: Application, deps: SpeakingRouteDepe
         responseChars = 0;
       }
       const evaluation = validateSpeakingEvaluation(
-        sanitizeSpeakingEvaluation(validateSpeakingEvaluation(rawEvaluation, result.activity, participantId), result.activity, result.turns, interactionMetadata),
+        structuredPlan ? rawEvaluation : sanitizeSpeakingEvaluation(validateSpeakingEvaluation(rawEvaluation, result.activity, participantId), result.activity, result.turns, interactionMetadata),
         result.activity,
         participantId
       );
@@ -866,13 +886,14 @@ export const registerSpeakingRoutes = (app: Application, deps: SpeakingRouteDepe
         retryable: retryScheduledAt !== undefined,
         ...(retryScheduledAt ? { retryScheduledAt } : {}),
         finalJobState,
-        promptVersion: SPEAKING_EVALUATOR_PROMPT_VERSION
+        promptVersion: providerName === "local" ? "structured-rules-v1" : SPEAKING_EVALUATOR_PROMPT_VERSION
       })}`);
     }
   };
 
   type EvaluationScheduleOptions = boolean | { retryFailed?: boolean; manual?: boolean };
   const scheduleEvaluation = async (access: { session: SpeakingSession; activity: SpeakingActivity; participant: SpeakingParticipant }, options: EvaluationScheduleOptions = false) => {
+    if (!canEvaluateSession(access.session)) return repository.getEvaluationJob(access.participant.id);
     const retryFailed = typeof options === "boolean" ? options : options.retryFailed === true;
     const manual = typeof options === "boolean" ? false : options.manual === true;
     const now = deps.now();
@@ -920,7 +941,7 @@ export const registerSpeakingRoutes = (app: Application, deps: SpeakingRouteDepe
     if (recovering) return;
     recovering = true;
     try {
-      for (const participantId of await repository.recoverableEvaluationParticipants(deps.now())) {
+      for (const participantId of await repository.recoverableEvaluationParticipants(deps.now(), independentOnly)) {
         if (evaluationRuns.has(participantId)) continue;
         const result = await repository.getResult(participantId);
         if (result) await scheduleEvaluation(result);
@@ -1111,7 +1132,7 @@ export const registerSpeakingRoutes = (app: Application, deps: SpeakingRouteDepe
 
   app.get("/api/speaking/activities/:activityId", deps.requireTeacher, async (req: AuthedRequest, res) => {
     const activity = await requireOwnedActivity(req, res);
-    if (activity) res.json({ activity: publicActivity(activity), localSpeechEnabled });
+    if (activity) res.json({ activity: publicActivity(activity), localSpeechEnabled, structuredEnabled, independentOnly });
   });
 
   app.get("/api/speaking/activities/:activityId/sessions", deps.requireTeacher, async (req: AuthedRequest, res) => {
@@ -1142,11 +1163,22 @@ export const registerSpeakingRoutes = (app: Application, deps: SpeakingRouteDepe
     }
     const setId: unknown = req.body?.setId;
     const localTranscription: unknown = req.body?.localTranscription;
+    const structured: unknown = req.body?.structured;
+    if ((structured !== undefined && typeof structured !== "boolean") || (req.body?.structuredPlan !== undefined && structured !== true)) {
+      res.status(400).json({ error: "Select a valid conversation mode." });
+      return;
+    }
+    const parsedPlan = req.body?.structuredPlan === undefined ? undefined : SpeakingStructuredPlanSchema.safeParse(req.body.structuredPlan);
+    if (parsedPlan && !parsedPlan.success) {
+      res.status(400).json({ error: "Check the structured questions and objectives." });
+      return;
+    }
+    const structuredPlan = structured === true ? parsedPlan?.data ?? defaultStructuredPlan(activity) : undefined;
     if (localTranscription !== undefined && typeof localTranscription !== "boolean") {
       res.status(400).json({ error: "Select a valid transcription mode." });
       return;
     }
-    if (localTranscription && !localSpeechEnabled) {
+    if (structuredPlan ? !structuredEnabled : independentOnly || (localTranscription && !localSpeechEnabled)) {
       res.status(503).json(localSpeechUnavailable);
       return;
     }
@@ -1164,7 +1196,7 @@ export const registerSpeakingRoutes = (app: Application, deps: SpeakingRouteDepe
     let session: SpeakingSession | undefined;
     for (let attempt = 0; attempt < 3 && !session; attempt += 1) {
       try {
-        session = await repository.createSession({ id: deps.id(), activity, joinCode: await makeJoinCode(repository), createdAt, expiresAt, localTranscription: localTranscription === true, ...(set ? { speakingSetId: set.id, speakingSetNameSnapshot: set.name, speakingSetFocusSnapshot: set.focus } : {}) });
+        session = await repository.createSession({ id: deps.id(), activity, joinCode: await makeJoinCode(repository), createdAt, expiresAt, localTranscription: !!structuredPlan || localTranscription === true, structuredPlan, ...(set ? { speakingSetId: set.id, speakingSetNameSnapshot: set.name, speakingSetFocusSnapshot: set.focus } : {}) });
       } catch (error) {
         if (attempt === 2) throw error;
       }
@@ -1189,7 +1221,8 @@ export const registerSpeakingRoutes = (app: Application, deps: SpeakingRouteDepe
       if (!saved || saved.session.joinCode !== parsed.data.code) return false;
       const requested = await repository.findParticipantByJoinRequest(saved.session.id, parsed.data.requestId);
       if (requested?.id !== saved.participant.id) return false;
-      res.status(201).json({ activity: publicActivity(saved.activity), participant: publicParticipant(saved.participant), session: sessionPayload(saved.session), token: parsed.data.joinToken });
+      if (!canRunSession(saved.session)) res.status(503).json(localSpeechUnavailable);
+      else res.status(201).json({ activity: publicActivity(saved.activity), participant: publicParticipant(saved.participant), session: sessionPayload(saved.session), token: parsed.data.joinToken });
       return true;
     };
     if (await recoverJoin()) return;
@@ -1203,7 +1236,7 @@ export const registerSpeakingRoutes = (app: Application, deps: SpeakingRouteDepe
       res.status(404).json({ error: "We couldn’t find an open classroom session. Check the code and try again." });
       return;
     }
-    if (access.session.localTranscription && !localSpeechEnabled) {
+    if (!canRunSession(access.session)) {
       res.status(503).json(localSpeechUnavailable);
       return;
     }
@@ -1243,7 +1276,7 @@ export const registerSpeakingRoutes = (app: Application, deps: SpeakingRouteDepe
       }
       throw error;
     }
-    const greeting: SpeakingTurn = { id: deps.id(), participantId: participant.id, speaker: "ai", text: initialGreeting(access.activity), createdAt: deps.now() };
+    const greeting: SpeakingTurn = { id: deps.id(), participantId: participant.id, speaker: "ai", text: access.session.structuredPlan?.steps[0]?.question ?? initialGreeting(access.activity), createdAt: deps.now() };
     await repository.appendTurn(greeting);
     const latestSession = await repository.getSession(access.session.id);
     res.status(201).json({ activity: publicActivity(access.activity), participant: publicParticipant(participant), session: sessionPayload(latestSession?.session ?? access.session), token });
@@ -1255,7 +1288,7 @@ export const registerSpeakingRoutes = (app: Application, deps: SpeakingRouteDepe
       res.status(401).json({ error: "This speaking session is no longer available." });
       return;
     }
-    if (!access.session.localTranscription || !localSpeechEnabled) {
+    if (!access.session.localTranscription || !canRunSession(access.session)) {
       res.status(409).json(localSpeechUnavailable);
       return;
     }
@@ -1290,8 +1323,8 @@ export const registerSpeakingRoutes = (app: Application, deps: SpeakingRouteDepe
       res.status(410).json({ error: "This activity has ended. Please ask your teacher for a new code." });
       return;
     }
-    if (session.localTranscription && (!localSpeechEnabled || access.participant.localSpeechReadiness !== "ready")) {
-      res.status(409).json(localSpeechEnabled ? { code: "SPEAKING_LOCAL_PREPARE", error: "Complete the local speech check before speaking." } : localSpeechUnavailable);
+    if (!canRunSession(session) || (session.localTranscription && access.participant.localSpeechReadiness !== "ready")) {
+      res.status(409).json(canRunSession(session) ? { code: "SPEAKING_LOCAL_PREPARE", error: "Complete the local speech check before speaking." } : localSpeechUnavailable);
       return;
     }
     // Reaching this endpoint means the browser completed the preflight check.
@@ -1314,6 +1347,10 @@ export const registerSpeakingRoutes = (app: Application, deps: SpeakingRouteDepe
     const sessionAccess = await repository.getSession(String(req.params.sessionId));
     if (!sessionAccess || sessionAccess.activity.teacherId !== req.user?.id) {
       res.status(404).json({ error: "We couldn’t find that speaking session." });
+      return;
+    }
+    if ((action === "start" || action === "resume") && !canRunSession(sessionAccess.session)) {
+      res.status(503).json(localSpeechUnavailable);
       return;
     }
     let current = await expireSessionIfNeeded(sessionAccess);
@@ -1490,11 +1527,16 @@ export const registerSpeakingRoutes = (app: Application, deps: SpeakingRouteDepe
         }
         let currentParticipant = await repository.getParticipant(access.participant.id) ?? access.participant;
         const existingTurns = requestTurns ?? await repository.listTurns(currentParticipant.id);
+        const plan = access.session.structuredPlan;
         let turnsForConversation = existingTurns;
         let studentTurn = previous?.studentTurn;
         if (!studentTurn) {
           if (currentParticipant.status === "completed") {
             res.status(409).json({ error: "This speaking activity is already finished." });
+            return;
+          }
+          if (plan && structuredProgress(plan, existingTurns).complete) {
+            res.status(409).json({ error: "The conversation is complete. Finish to see your result." });
             return;
           }
           const startedAt = currentParticipant.startedAt ?? deps.now();
@@ -1661,12 +1703,13 @@ export const registerSpeakingRoutes = (app: Application, deps: SpeakingRouteDepe
         let aiTurn = previous?.aiTurn;
         if (!aiTurn) {
           const promptStartedAt = performance.now();
-          const prompt = buildConversationPrompt({ activity: access.activity, turns: turnsForConversation, latestStudentText: studentTurn.text });
+          const prompt = plan ? "" : buildConversationPrompt({ activity: access.activity, turns: turnsForConversation, latestStudentText: studentTurn.text });
           latency.promptPreparationMs = boundedSpeakingDurationMs(promptStartedAt);
           let responseText: string;
           const conversationStartedAt = performance.now();
           try {
-            responseText = (await runProvider("conversation", () => conversationProvider.respond({ activity: access.activity, turns: turnsForConversation, studentText: studentTurn.text, prompt }))).trim().slice(0, 280);
+            responseText = (plan ? structuredProgress(plan, turnsForConversation.slice(0, turnsForConversation.findIndex((turn) => turn.id === studentTurn.id) + 1)).reply
+              : await runProvider("conversation", () => conversationProvider.respond({ activity: access.activity, turns: turnsForConversation, studentText: studentTurn.text, prompt }))).trim().slice(0, 280);
           } catch (error) {
             if (error instanceof SpeakingWorkloadError) {
               providerBusyResponse(res, error);
@@ -1707,7 +1750,7 @@ export const registerSpeakingRoutes = (app: Application, deps: SpeakingRouteDepe
       res.status(401).json({ error: "This speaking session is no longer available." });
       return;
     }
-    if (access.session.localTranscription && !localSpeechEnabled) {
+    if (!canRunSession(access.session)) {
       res.status(503).json(localSpeechUnavailable);
       return;
     }
@@ -1745,7 +1788,9 @@ export const registerSpeakingRoutes = (app: Application, deps: SpeakingRouteDepe
       }
       const turns = await repository.listTurns(participant.id);
       try {
-        const hint = await runProvider("help", () => helpProvider.hint({ activity: access.activity, turns, latestStudentText: [...turns].reverse().find((turn) => turn.speaker === "student")?.text }));
+        const hint = access.session.structured ? {
+          hint: access.activity.nativeLanguage === "ja" ? "自分の言葉で短く答え、理由や例を一つ添えてみましょう。" : "Try a short answer in your own words. Add one reason or example."
+        } : await runProvider("help", () => helpProvider.hint({ activity: access.activity, turns, latestStudentText: [...turns].reverse().find((turn) => turn.speaker === "student")?.text }));
         const latestSession = await expireSessionIfNeeded(access);
         const latestParticipant = await repository.getParticipant(participant.id);
         if (!latestParticipant || latestSession.status !== "active" || ["evaluating", "completed", "error"].includes(latestParticipant.status) || !participantHasSpeakingTime(latestParticipant, latestSession, access.activity, deps.now())) {
@@ -1791,6 +1836,10 @@ export const registerSpeakingRoutes = (app: Application, deps: SpeakingRouteDepe
       const existing = await repository.getResult(currentParticipant.id);
       if (existing?.evaluation) {
         res.json({ result: safeResult(toResult(existing.activity, existing.session, existing.participant, existing.turns, existing.evaluation)), ...evaluationState({ status: "completed", attempt: 0, id: "completed", participantId: currentParticipant.id, queuedAt: existing.evaluation.createdAt, updatedAt: existing.evaluation.createdAt }) });
+        return;
+      }
+      if (!canEvaluateSession(currentSession)) {
+        res.status(503).json(localSpeechUnavailable);
         return;
       }
       const existingJob = await repository.getEvaluationJob(currentParticipant.id);
@@ -1903,6 +1952,10 @@ export const registerSpeakingRoutes = (app: Application, deps: SpeakingRouteDepe
       res.json({ result: safeResult(toResult(result.activity, result.session, result.participant, result.turns, result.evaluation)), ...evaluationState({ status: "completed", attempt: 0, id: "completed", participantId, queuedAt: result.evaluation.createdAt, updatedAt: result.evaluation.createdAt }) });
       return;
     }
+    if (!canEvaluateSession(result.session)) {
+      res.status(503).json(localSpeechUnavailable);
+      return;
+    }
     const existingJob = await repository.getEvaluationJob(participantId);
     const retryAt = manualEvaluationRetryAt(existingJob);
     if (!retryAt) {
@@ -1936,7 +1989,7 @@ export const registerSpeakingRoutes = (app: Application, deps: SpeakingRouteDepe
     }
     const job = await repository.getEvaluationJob(result.participant.id);
     const retryReady = job?.status === "retrying" && (!job.nextRetryAt || Date.parse(job.nextRetryAt) <= Date.parse(deps.now()));
-    if (job && (job.status === "queued" || isSchemaRecoveryPending(job) || retryReady || (job.status === "running" && job.leaseUntil && Date.parse(job.leaseUntil) <= Date.parse(deps.now()))) && !evaluationRuns.has(result.participant.id)) {
+    if (canEvaluateSession(result.session) && job && (job.status === "queued" || isSchemaRecoveryPending(job) || retryReady || (job.status === "running" && job.leaseUntil && Date.parse(job.leaseUntil) <= Date.parse(deps.now()))) && !evaluationRuns.has(result.participant.id)) {
       void scheduleEvaluation({ session: result.session, activity: result.activity, participant: result.participant }, false).catch(() => undefined);
     }
     const currentJob = await repository.getEvaluationJob(result.participant.id) ?? job;

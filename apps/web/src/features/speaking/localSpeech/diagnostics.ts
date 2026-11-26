@@ -1,22 +1,23 @@
 import { LocalSpeechError } from "./audio";
+import { alignSpeechWords, speechWords } from "@quizstrike/shared";
 
 export const readinessPhrase = "I like reading books.";
 
-const words = (text: string) => text.normalize("NFKC").toLowerCase().match(/[a-z0-9]+(?:['’][a-z]+)*/gu)?.map((word) => word.replaceAll("’", "'")) ?? [];
-
 export function speechWordErrorRate(expected: string, recognized: string) {
-  const reference = words(expected);
-  const hypothesis = words(recognized);
-  if (!reference.length) return undefined;
-  let previous = Array.from({ length: hypothesis.length + 1 }, (_, i) => i);
-  for (const [row, word] of reference.entries()) {
-    const current = [row + 1];
-    for (const [column, observed] of hypothesis.entries()) {
-      current.push(Math.min(current[column]! + 1, previous[column + 1]! + 1, previous[column]! + Number(word !== observed)));
-    }
-    previous = current;
-  }
-  return previous[hypothesis.length]! / reference.length;
+  return alignSpeechWords(expected, recognized).wordErrorRate;
+}
+
+export function speechBenchmarkMetrics(reference: string, text: string, control: boolean) {
+  const { edits: _edits, ...alignment } = alignSpeechWords(control ? "" : reference, text);
+  const count = (value: string) => {
+    const words = speechWords(value);
+    return {
+      fillers: words.filter((word) => /^(?:um|uh|erm|er|hmm)$/u.test(word)).length,
+      adjacentRepeats: words.filter((word, index) => index > 0 && words[index - 1] === word).length
+    };
+  };
+  return { ...alignment, missedSpeech: !control && alignment.referenceWords > 0 && !alignment.recognizedWords,
+    hallucinatedSpeech: control && alignment.recognizedWords > 0, referencePatterns: count(control ? "" : reference), recognizedPatterns: count(text) };
 }
 
 export const localSpeechMessage = (error: unknown) => {

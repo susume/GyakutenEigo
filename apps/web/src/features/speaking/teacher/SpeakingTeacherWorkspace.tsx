@@ -1653,6 +1653,11 @@ function SpeakingActivityDetailPage({
   const [rosterError, setRosterError] = useState("");
   const [localSpeechEnabled, setLocalSpeechEnabled] = useState(false);
   const [localTranscription, setLocalTranscription] = useState(false);
+  const [structuredEnabled, setStructuredEnabled] = useState(false);
+  const [independentOnly, setIndependentOnly] = useState(false);
+  const [structuredSelected, setStructuredSelected] = useState(false);
+  const [structuredScript, setStructuredScript] = useState("");
+  const useStructured = structuredEnabled && (independentOnly || structuredSelected);
   const load = useCallback(async () => {
     try {
       const [activityPayload, sessionPayload] = await Promise.all([
@@ -1661,6 +1666,8 @@ function SpeakingActivityDetailPage({
       ]);
       setActivity((activityPayload as { activity: SpeakingActivity }).activity);
       setLocalSpeechEnabled((activityPayload as { localSpeechEnabled?: boolean }).localSpeechEnabled === true);
+      setStructuredEnabled((activityPayload as { structuredEnabled?: boolean }).structuredEnabled === true);
+      setIndependentOnly((activityPayload as { independentOnly?: boolean }).independentOnly === true);
       const nextSessions = (sessionPayload as { sessions: SpeakingSession[] }).sessions;
       const selectedId = new URLSearchParams(window.location.search).get("sessionId");
       setSessions(selectedId ? [...nextSessions].sort((a, b) => Number(b.id === selectedId) - Number(a.id === selectedId)) : nextSessions);
@@ -1925,19 +1932,31 @@ function SpeakingActivityDetailPage({
                         : t("Ready when you are")}
                     </h2>
                     <p>{t("Launching creates a new secure session code. This activity itself stays reusable.")}</p>
-                    {localSpeechEnabled && <label>
+                    {structuredEnabled && <label>
+                      <input type="checkbox" checked={useStructured} disabled={working || independentOnly} onChange={(event) => setStructuredSelected(event.target.checked)} />
+                      {" "}{t("Structured conversation (experimental)")}
+                    </label>}
+                    {useStructured && <label>{t("Questions and objectives")}
+                      <textarea rows={4} maxLength={4000} value={structuredScript} onChange={(event) => setStructuredScript(event.target.value)} aria-describedby="structured-script-help" />
+                      <small id="structured-script-help">{t("Leave blank to reuse the activity opening and default follow-ups. For each custom step, enter question | objective | concept cues separated by commas | optional follow-up. Use @question in the cues field to invite a student question.")}</small>
+                    </label>}
+                    {localSpeechEnabled && !useStructured && <label>
                       <input type="checkbox" checked={localTranscription} disabled={working} onChange={(event) => setLocalTranscription(event.target.checked)} />
                       {" "}{t("Use on-device speech recognition (pilot)")}
                     </label>}
-                    {localSpeechEnabled && localTranscription && <p>{t("Share the join code before class so students can prepare. Confirm that the configured conversation and evaluation service is permitted for this class. Results are provisional.")}</p>}
+                    {localSpeechEnabled && !useStructured && localTranscription && <p>{t("Share the join code before class so students can prepare. Confirm that the configured conversation and evaluation service is permitted for this class. Results are provisional.")}</p>}
                   </div>
                   <button
                     type="button"
                     className="speaking-primary-button"
-                    disabled={working}
+                    disabled={working || (independentOnly && !structuredEnabled)}
                     onClick={() =>
                       void run(async () => {
-                        await speakingApi.launchSession(activity.id, undefined, localSpeechEnabled && localTranscription);
+                        const steps = structuredScript.split(/\r?\n/u).map((line) => line.trim()).filter(Boolean).map((line) => {
+                          const [question, objective, cues = "", followUp] = line.split("|").map((field) => field.trim());
+                          return { question, objective, concepts: cues === "@question" ? [] : cues.split(",").map((cue) => cue.trim()).filter(Boolean), kind: cues === "@question" ? "question" : "answer", ...(followUp ? { followUp } : {}) };
+                        });
+                        await speakingApi.launchSession(activity.id, undefined, !useStructured && localSpeechEnabled && localTranscription, useStructured ? (steps.length ? { steps } : {}) : undefined);
                         setLocalTranscription(false);
                         // A new classroom run must replace any historical session selection.
                         const url = new URL(window.location.href);

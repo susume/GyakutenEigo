@@ -37,6 +37,7 @@ export * from "./athleticsModes.js";
 export * from "./athleticsBattle.js";
 export * from "./zeusDaruma.js";
 export * from "./speaking.js";
+export * from "./speechAlignment.js";
 export * from "./speakingLibraryRegistry.js";
 export * from "./speakingCoreLibrary.js";
 export * from "./speakingRubric.js";
