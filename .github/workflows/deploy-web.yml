@@ -33,6 +33,8 @@ jobs:
           enablement: true
 
       - name: Install dependencies
+        env:
+          ONNXRUNTIME_NODE_INSTALL_CUDA: skip
         run: npm ci
 
       - name: Build shared package
