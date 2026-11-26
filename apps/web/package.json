@@ -14,6 +14,7 @@
     "typecheck": "tsc --noEmit && tsc --noEmit -p tsconfig.e2e.json"
   },
   "dependencies": {
+    "@huggingface/transformers": "3.8.1",
     "@pixiv/three-vrm": "3.5.5",
     "@quizstrike/shared": "0.1.0",
     "@vitejs/plugin-react": "^4.6.0",

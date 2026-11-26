@@ -126,7 +126,7 @@ const foodCorrection = (text: string) => {
 };
 
 const malformedFoodOrder = (text: string) => /\bI\s+want\s+(?:to\s+)?(?:burger|cheeseburger|sandwich|pizza)\b/iu.test(text);
-const uncertainAsrFragment = (turn: SpeakingTurn) => (turn.transcriptionConfidence !== undefined && turn.transcriptionConfidence < 0.65) || (turn.transcriptionConfidence === undefined && /^(?:just\s+)?(?:oh|uh|um|okay|ok|yeah|yes|no)\.?$/iu.test(turn.text.trim()));
+const uncertainAsrFragment = (turn: SpeakingTurn) => turn.transcriptionUncertain === true || (turn.transcriptionConfidence !== undefined && turn.transcriptionConfidence < 0.65) || (turn.transcriptionConfidence === undefined && /^(?:just\s+)?(?:oh|uh|um|okay|ok|yeah|yes|no)\.?$/iu.test(turn.text.trim()));
 
 const safeSourceItems = (evaluation: SpeakingEvaluation, studentTurns: SpeakingTurn[]) => (Array.isArray(evaluation.usefulEnglish) ? evaluation.usefulEnglish : []).flatMap((item) => {
   const source = item.sourceTurnId
@@ -156,6 +156,7 @@ export const sanitizeSpeakingEvaluation = (
   const observedIncompleteGoal = goalCompletion.requirements.some((item) => item.status === "not_completed" || item.status === "partially_completed");
   const repeatedStarter = studentTurns.filter((turn) => /^I\s+(?:want|like|need)\b/iu.test(turn.text.trim())).length >= 3;
   const reliableAudio = studentTurns.length > 0 && interactionMetadata.reliableAudioTurnCount === studentTurns.length;
+  const clientTranscript = studentTurns.some((turn) => turn.clientTranscribed);
   const scores: Record<string, number | null> = {};
   const evidence: Record<string, string> = {};
   for (const criterion of activity.rubric.filter((item) => item.enabled)) {
@@ -173,6 +174,12 @@ export const sanitizeSpeakingEvaluation = (
       criterionEvidence = activity.nativeLanguage === "ja"
         ? "音声の長さを確認できないため、流暢さは評価しません。"
         : "Fluency was not scored because reliable audio timing was not available; pauses were not judged.";
+    }
+    const criterionTitle = `${criterion.id} ${criterion.name}`;
+    if (clientTranscript && (/pronunciation|intonation|accent|phoneme|rhythm|pace|pauses|hesitation|発音|抑揚|流暢|間合い/i.test(criterionTitle)
+      || (criterion.id !== "communication_fluency" && /fluency/i.test(criterionTitle)))) {
+      score = null;
+      criterionEvidence = activity.nativeLanguage === "ja" ? "音声の確認が必要です。先生に確認してもらいましょう。" : "Teacher review requires listening to the speech.";
     }
     if (((criterion.id === "communication" || criterion.id === "task_achievement") && observedIncompleteGoal) || (criterion.id === "interaction" && questionRequirementMissing)) {
       if (score !== null) score = Math.min(score, 3);

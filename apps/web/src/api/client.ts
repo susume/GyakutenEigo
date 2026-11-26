@@ -1,4 +1,4 @@
-import type { CharacterCustomizationSettings, Choice, PlayerAppearance, SessionSettings, SnowballPackSize, SpeakingCreateActivityInput, StudySetSummary } from "@quizstrike/shared";
+import { SPEAKING_LOCAL_TRANSCRIPT_CONTENT_TYPE, type CharacterCustomizationSettings, type Choice, type PlayerAppearance, type SessionSettings, type SnowballPackSize, type SpeakingCreateActivityInput, type SpeakingLocalSpeechReadiness, type SpeakingLocalTranscript, type StudySetSummary } from "@quizstrike/shared";
 import { ApiError } from "./errors";
 import { ApiRequestTimeoutError, buildApiUrlCandidates, fetchFromApiCandidates, resolveApiOrigin } from "./endpoints.js";
 import { retryOnce } from "./retry.js";
@@ -403,7 +403,7 @@ export const speakingApi = {
   deleteActivity: (id: string) => api(`/api/speaking/activities/${encodeURIComponent(id)}`, { method: "DELETE" }),
   activity: (id: string) => api(`/api/speaking/activities/${encodeURIComponent(id)}`),
   sessions: (activityId: string) => api(`/api/speaking/activities/${encodeURIComponent(activityId)}/sessions`),
-  launchSession: (activityId: string, setId?: string) => api(`/api/speaking/activities/${encodeURIComponent(activityId)}/sessions`, { method: "POST", ...(setId ? { body: JSON.stringify({ setId }) } : {}) }),
+  launchSession: (activityId: string, setId?: string, localTranscription = false) => api(`/api/speaking/activities/${encodeURIComponent(activityId)}/sessions`, { method: "POST", ...(setId || localTranscription ? { body: JSON.stringify({ setId, localTranscription }) } : {}) }),
   join: (code: string, identifier?: string, requestId?: string, joinToken?: string) => api("/api/speaking/join", { method: "POST", ...(requestId ? { headers: { "X-Speaking-Join-Id": requestId } } : {}), body: JSON.stringify({ code, identifier, ...(requestId ? { requestId } : {}), ...(joinToken ? { joinToken } : {}) }) }, { attemptTimeoutMs: SPEAKING_JOIN_REQUEST_TIMEOUT_MS }),
   startParticipant: (sessionId: string, token: string) => api(`/api/speaking/sessions/${encodeURIComponent(sessionId)}/start`, { method: "POST", headers: speakingHeaders(token) }),
   startSession: (sessionId: string) => api(`/api/speaking/sessions/${encodeURIComponent(sessionId)}/start-session`, { method: "POST" }),
@@ -414,6 +414,14 @@ export const speakingApi = {
   session: (sessionId: string, token: string, signal?: AbortSignal) => api(`/api/speaking/sessions/${encodeURIComponent(sessionId)}`, { headers: speakingHeaders(token), signal }, { attemptTimeoutMs: SPEAKING_STATUS_REQUEST_TIMEOUT_MS }),
   status: (sessionId: string, token: string, signal?: AbortSignal) => api(`/api/speaking/sessions/${encodeURIComponent(sessionId)}/status`, { headers: speakingHeaders(token), signal }, { attemptTimeoutMs: SPEAKING_STATUS_REQUEST_TIMEOUT_MS }),
   roster: (sessionId: string, signal?: AbortSignal) => api(`/api/speaking/sessions/${encodeURIComponent(sessionId)}/roster`, { signal }, { attemptTimeoutMs: SPEAKING_STATUS_REQUEST_TIMEOUT_MS }),
+  localReadiness: (sessionId: string, token: string, status: SpeakingLocalSpeechReadiness, signal?: AbortSignal) => api(`/api/speaking/sessions/${encodeURIComponent(sessionId)}/local-readiness`, {
+    method: "POST", headers: speakingHeaders(token), body: JSON.stringify({ status }), signal
+  }, { attemptTimeoutMs: SPEAKING_STATUS_REQUEST_TIMEOUT_MS }),
+  localTurn: (sessionId: string, token: string, requestId: string, transcript: SpeakingLocalTranscript, signal?: AbortSignal) => api(`/api/speaking/sessions/${encodeURIComponent(sessionId)}/turn`, {
+    method: "POST",
+    headers: { ...speakingHeaders(token), "Content-Type": SPEAKING_LOCAL_TRANSCRIPT_CONTENT_TYPE, "X-Speaking-Turn-Id": requestId },
+    body: JSON.stringify(transcript), signal
+  }, { attemptTimeoutMs: SPEAKING_TURN_REQUEST_TIMEOUT_MS }),
   turn: (sessionId: string, token: string, body: { text?: string; audio?: Blob; requestId?: string; speechDetected?: boolean; audioDurationMs?: number }) => api(`/api/speaking/sessions/${encodeURIComponent(sessionId)}/turn`, {
     method: "POST",
     headers: body.audio

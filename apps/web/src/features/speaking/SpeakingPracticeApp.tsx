@@ -1,5 +1,5 @@
 import { useSiteTranslation } from "../../ui/siteTranslation";
-import { useCallback, useEffect, useRef, useState, type FormEvent } from "react";
+import { lazy, Suspense, useCallback, useEffect, useRef, useState, type FormEvent } from "react";
 import { appRoute, getPublicPage, publicPagePath } from "../../seo/publicPages";
 import {
   ArrowLeft,
@@ -62,15 +62,21 @@ import { isKeyboardEditingTarget, isSpaceShortcutEvent } from "./speakingKeyboar
 import { SpeakingSupportPanel, SpeakingKeywords, SpeakingReferenceSheet, type SpeakingSupportTab } from "./SpeakingSupportPanel";
 import { getSpeakingSupportTabs } from "./SpeakingSupportPanel";
 import { speakingModeAction, speakingModeIntro, speakingModeLabel } from "./speakingCopy";
+import { localSpeechMessage } from "./localSpeech/diagnostics";
+import { LocalSpeechError } from "./localSpeech/audio";
+import { speakCheckRecognizer } from "./localSpeech/browserSpeech";
 import "./speaking.css";
 import "./speaking-layout.css";
 import "./speaking-scene.css";
 import "./speaking-workspace.css";
 
+const SpeakingLocalReadiness = lazy(() => import("./localSpeech/SpeakingLocalReadiness"));
+
 type SpeakingRoute =
   | { kind: "home" }
   | { kind: "join"; code?: string }
   | { kind: "session"; id: string }
+  | { kind: "prepare"; id?: string }
   | { kind: "result"; id: string };
 
 type Navigate = (nextPath: string) => void;
@@ -94,6 +100,7 @@ const parseRoute = (path: string): SpeakingRoute => {
   if (segments.length <= 1) return { kind: "home" };
   if (segments[1] === "join") return { kind: "join", ...(segments[2] ? { code: segments[2].toUpperCase() } : {}) };
   if (segments[1] === "session" && segments[2]) return { kind: "session", id: segments[2] };
+  if (segments[1] === "prepare" && (segments[2] || import.meta.env.VITE_SPEAKING_LOCAL_DIAGNOSTICS === "true")) return { kind: "prepare", id: segments[2] };
   if (segments[1] === "result" && segments[2]) return { kind: "result", id: segments[2] };
   return { kind: "home" };
 };
@@ -138,6 +145,7 @@ export default function SpeakingPracticeApp({ initialPath }: { initialPath?: str
     const onPopState = () => setPath(appRoute(window.location.pathname));
     window.addEventListener("popstate", onPopState);
     return () => {
+      speakCheckRecognizer.dispose();
       delete document.body.dataset.speaking;
       if (previousSite === undefined || previousSite === "performance") delete document.body.dataset.site;
       else document.body.dataset.site = previousSite;
@@ -145,11 +153,18 @@ export default function SpeakingPracticeApp({ initialPath }: { initialPath?: str
     };
   }, []);
 
+  useEffect(() => {
+    if (route.kind !== "prepare" && route.kind !== "session") speakCheckRecognizer.dispose();
+  }, [route.kind]);
+
   return (
     <div className="speaking-app" id="main-content" tabIndex={-1}>
       {route.kind === "home" && <SpeakingHome navigate={navigate} />}
       {route.kind === "join" && <SpeakingJoinPage key={route.code ?? "manual"} navigate={navigate} initialCode={route.code} />}
       {route.kind === "session" && <SpeakingSessionPage key={route.id} navigate={navigate} sessionId={route.id} />}
+      {route.kind === "prepare" && (route.id
+        ? <SpeakingSessionPage key={"prepare-" + route.id} navigate={navigate} sessionId={route.id} showPreparation />
+        : <div className="speaking-page-shell"><SpeakingTopbar navigate={navigate} student /><main className="speaking-form-card speaking-local-prep"><Suspense fallback={null}><SpeakingLocalReadiness diagnostic /></Suspense></main></div>)}
       {route.kind === "result" && <SpeakingResultPageV2 key={route.id} navigate={navigate} participantId={route.id} />}
     </div>
   );
@@ -184,12 +199,12 @@ function SpeakingHome({ navigate }: { navigate: Navigate }) {
 }
 
 
-interface SpeakingScreenProps { statusText?: string; avatarPaused?: boolean; activity: SpeakingActivity; state: SpeakingUiState; remainingSeconds: number; turns: SpeakingTurn[]; onMic: () => void; onReplay?: (text?: string) => void; onHelp?: () => void; helpLoading?: boolean; helpResponse?: { hint: string; english?: string; helpCount?: number }; onBrandClick?: () => void; onFinish: () => void; disabled?: boolean; supportDisabled?: boolean; finishDisabled?: boolean; }
+interface SpeakingScreenProps { statusText?: string; avatarPaused?: boolean; suspendAvatarRendering?: boolean; activity: SpeakingActivity; state: SpeakingUiState; remainingSeconds: number; turns: SpeakingTurn[]; onMic: () => void; onReplay?: (text?: string) => void; onHelp?: () => void; helpLoading?: boolean; helpResponse?: { hint: string; english?: string; helpCount?: number }; onBrandClick?: () => void; onFinish: () => void; disabled?: boolean; supportDisabled?: boolean; finishDisabled?: boolean; }
 const stateDescriptions: Record<SpeakingUiState, string> = { ready: "Your turn · Tap the microphone to speak.", listening: "Listening · Tap again when you finish.", thinking: "Processing your answer…", "ai-speaking": "Your partner is speaking…" };
 const SPEAKING_SUPPORT_DOCK_QUERY = "(min-width: 700px) and (min-height: 481px)";
 const SPEAKING_SUPPORT_DRAWER_QUERY = "(max-width: 699px), (max-height: 480px)";
 
-function SpeakingStudentScreenV2({ statusText, avatarPaused = false, activity, state, remainingSeconds, turns, onMic, onReplay, onHelp, helpLoading = false, helpResponse, onBrandClick, onFinish, disabled = false, supportDisabled = false, finishDisabled = false }: SpeakingScreenProps) {
+function SpeakingStudentScreenV2({ statusText, avatarPaused = false, suspendAvatarRendering, activity, state, remainingSeconds, turns, onMic, onReplay, onHelp, helpLoading = false, helpResponse, onBrandClick, onFinish, disabled = false, supportDisabled = false, finishDisabled = false }: SpeakingScreenProps) {
   const { t } = useSiteTranslation();
   const supportSettings = resolveSpeakingSupportSettings(activity.supportSettings);
   const supportTabs = getSpeakingSupportTabs(activity);
@@ -353,7 +368,7 @@ function SpeakingStudentScreenV2({ statusText, avatarPaused = false, activity, s
     </header>
     <div className={`speaking-student-grid speaking-scene${supportOpen ? "" : " is-support-collapsed"}${!hasSupportPanel ? " no-support-panel" : ""}`}>
       <div className="speaking-student-center speaking-scene-stage">
-        <div className="speaking-scene-partner"><SpeakingAvatar className="speaking-scene-avatar" state={speakingAvatarState(state, avatarPaused)} /><span className="speaking-partner-role">{activity.aiRole}</span></div>
+        <div className="speaking-scene-partner"><SpeakingAvatar className="speaking-scene-avatar" state={speakingAvatarState(state, avatarPaused)} suspendRendering={suspendAvatarRendering} /><span className="speaking-partner-role">{activity.aiRole}</span></div>
         <section className={`speaking-live-reply speaking-scene-reply${partnerText.length > 90 ? " is-long-reply" : ""}`} aria-live="polite">
           <div className="speaking-partner-message"><div ref={replyContentRef} className="speaking-reply-content" role="region" aria-label={t("Current speaking partner")} tabIndex={0} data-keyboard-input><span className="speaking-card-kicker">{activity.aiRole}</span><p>{partnerText}</p>
             {visibleHelp && <div ref={hintRef} className="speaking-help-response speaking-scene-hint" role="status"><Lightbulb size={24} aria-hidden="true" /><div><strong>{t("Hint")}</strong><p>{visibleHelp.hint}</p>{visibleHelp.english && <span>{visibleHelp.english}</span>}</div><button type="button" className="speaking-icon-button" aria-label={t("Close hint")} onClick={() => { setDismissedHelp(helpResponse); window.requestAnimationFrame(() => helpButtonRef.current?.focus()); }}><X size={20} aria-hidden="true" /></button></div>}
@@ -445,6 +460,7 @@ function SpeakingJoinPage({ navigate, initialCode }: { navigate: Navigate; initi
       saveJoinCredentials(payload);
       sessionStorage.removeItem(`speaking-pending-join:${code}`);
       if (["completed", "evaluating", "error"].includes(payload.participant.status)) { navigate("/speak/result/" + payload.participant.id); return; }
+      if (payload.session.localTranscription) { navigate("/speak/prepare/" + payload.session.id); return; }
       joinRequestIdRef.current = undefined;
       setJoined(payload);
     } catch (joinError) {
@@ -452,7 +468,7 @@ function SpeakingJoinPage({ navigate, initialCode }: { navigate: Navigate; initi
     } finally { setJoining(false); }
   };
   if (joined) return <SpeakingPreActivityPageV2 navigate={navigate} joined={joined} />;
-  return <div className="speaking-page-shell speaking-join-page"><SpeakingTopbar navigate={navigate} active="join" student /><main className="speaking-join-layout"><section className="speaking-join-copy"><span className="speaking-eyebrow"><ScanLine size={15} aria-hidden="true" />{" "}{t("Student entry")}</span><h1>{t("Join your speaking task")}</h1><p>{t("Enter the code from your teacher.")}</p><p lang="ja">先生からのコードと、指定された名前・出席番号を入力してください。</p></section><form className="speaking-form-card" onSubmit={submit}><div className="speaking-form-heading"><span>{t("Join a classroom")}</span><h2>{initialCode ? t("Your teacher’s session") : t("Enter session code")}</h2><p>{initialCode ? t("Your code is already filled in. Add your name or student number below.") : t("Ask your teacher for the six-character code.")}</p></div><label htmlFor="speaking-activity-code">{t("Session code")}<input id="speaking-activity-code" required autoCapitalize="characters" spellCheck={false} enterKeyHint="next" pattern="[A-Z0-9]{6}" className="speaking-code-input" value={code} onChange={(event) => { setCode(event.target.value.toUpperCase().replace(/[^A-Z0-9]/g, "").slice(0, 6)); setError(""); }} placeholder="ABC123" autoComplete="off" maxLength={6} /></label><label htmlFor="speaking-identifier">{t("Nickname or student number")}{" "}<small>{t("(if requested by your teacher)")}</small><input autoComplete="off" id="speaking-identifier" value={identifier} onChange={(event) => setIdentifier(event.target.value)} placeholder={t("e.g. Hana")} maxLength={80} /></label>{error && <p className="speaking-error" role="alert">{t(error)}</p>}<button className="speaking-primary-button speaking-wide-button" type="submit" disabled={joining || code.length !== 6}>{joining ? <><LoaderCircle size={18} className="speaking-spin" aria-hidden="true" />{t("Joining…")}</> : <><ArrowRight size={18} aria-hidden="true" />{t("Join speaking task")}</>}</button><p className="speaking-privacy-note"><ShieldIcon /><span>{t("Your teacher can review your conversation and feedback. Audio is sent for speech processing; the app does not store recordings.")}</span></p></form></main><div className="speaking-join-footer"><button type="button" className="speaking-text-button" onClick={() => navigate("/speak")}><ArrowLeft size={16} aria-hidden="true" />{t("Back to Speaking Tasks")}</button></div></div>;
+  return <div className="speaking-page-shell speaking-join-page"><SpeakingTopbar navigate={navigate} active="join" student /><main className="speaking-join-layout"><section className="speaking-join-copy"><span className="speaking-eyebrow"><ScanLine size={15} aria-hidden="true" />{" "}{t("Student entry")}</span><h1>{t("Join your speaking task")}</h1><p>{t("Enter the code from your teacher.")}</p><p lang="ja">先生からのコードと、指定された名前・出席番号を入力してください。</p></section><form className="speaking-form-card" onSubmit={submit}><div className="speaking-form-heading"><span>{t("Join a classroom")}</span><h2>{initialCode ? t("Your teacher’s session") : t("Enter session code")}</h2><p>{initialCode ? t("Your code is already filled in. Add your name or student number below.") : t("Ask your teacher for the six-character code.")}</p></div><label htmlFor="speaking-activity-code">{t("Session code")}<input id="speaking-activity-code" required autoCapitalize="characters" spellCheck={false} enterKeyHint="next" pattern="[A-Z0-9]{6}" className="speaking-code-input" value={code} onChange={(event) => { setCode(event.target.value.toUpperCase().replace(/[^A-Z0-9]/g, "").slice(0, 6)); setError(""); }} placeholder="ABC123" autoComplete="off" maxLength={6} /></label><label htmlFor="speaking-identifier">{t("Nickname or student number")}{" "}<small>{t("(if requested by your teacher)")}</small><input autoComplete="off" id="speaking-identifier" value={identifier} onChange={(event) => setIdentifier(event.target.value)} placeholder={t("e.g. Hana")} maxLength={80} /></label>{error && <p className="speaking-error" role="alert">{t(error)}</p>}<button className="speaking-primary-button speaking-wide-button" type="submit" disabled={joining || code.length !== 6}>{joining ? <><LoaderCircle size={18} className="speaking-spin" aria-hidden="true" />{t("Joining…")}</> : <><ArrowRight size={18} aria-hidden="true" />{t("Join speaking task")}</>}</button><p className="speaking-privacy-note"><ShieldIcon /><span>{t("Your teacher can review your conversation and feedback. The app does not retain conversation recordings.")}</span></p></form></main><div className="speaking-join-footer"><button type="button" className="speaking-text-button" onClick={() => navigate("/speak")}><ArrowLeft size={16} aria-hidden="true" />{t("Back to Speaking Tasks")}</button></div></div>;
 }
 
 function ShieldIcon() { return <span className="speaking-privacy-dot" aria-hidden="true"><CircleCheck size={14} /></span>; }
@@ -570,7 +586,7 @@ function SpeakingPreActivityPageV2({ navigate, joined }: { navigate: Navigate; j
   return <div className="speaking-page-shell speaking-preactivity-page">
     <SpeakingTopbar navigate={navigate} student studentSetup studentLabel={studentLabel} />
     <StudentJourney step={1} />
-    <main className="speaking-preactivity-layout">
+    <main className={`speaking-preactivity-layout${joined.session.localTranscription ? " speaking-preactivity-local" : ""}`}>
       <section className="speaking-preactivity-hero">
         <div className={introClassName}>
           <div className="speaking-preactivity-copy">
@@ -606,6 +622,12 @@ function SpeakingPreActivityPageV2({ navigate, joined }: { navigate: Navigate; j
       </section>
 
       <section className="speaking-prep-card speaking-ready-card">
+        {joined.session.localTranscription
+          ? <Suspense fallback={<p role="status">{t("Checking your device…")}</p>}><SpeakingLocalReadiness
+            report={(status, signal) => speakingApi.localReadiness(joined.session.id, joined.token, status, signal)}
+            onReady={() => void startSession()}
+          />{error && <p className="speaking-error" role="alert">{t(error)}</p>}</Suspense>
+          : <>
         <div className="speaking-ready-card-heading">
           <div>
             <span className="speaking-card-kicker">{t("Check your setup")}</span>
@@ -636,12 +658,13 @@ function SpeakingPreActivityPageV2({ navigate, joined }: { navigate: Navigate; j
         {micState === "unsupported" && <div className="speaking-error speaking-prep-error" role="alert"><strong>{t("This browser cannot record a microphone.")}</strong><span>{t("Use a current Chrome, Edge, or Safari browser on a secure connection.")}</span></div>}
         {micState === "no-signal" && <div className="speaking-preflight-actions"><button type="button" className="speaking-outline-button" onClick={() => void requestMicrophone()}>{t("Test again")}</button></div>}
         {micState === "requesting" ? <button type="button" className="speaking-primary-button speaking-wide-button" disabled><LoaderCircle size={18} className="speaking-spin" aria-hidden="true" />{t("Allowing microphone…")}</button> : micState === "testing" ? <button type="button" className="speaking-primary-button speaking-wide-button" disabled><LoaderCircle size={18} className="speaking-spin" aria-hidden="true" />{t("Listening for your voice…")}</button> : micState === "idle" || micState === "ready" ? <button type="button" className="speaking-primary-button speaking-wide-button" onClick={() => micState === "ready" ? void startSession() : void requestMicrophone()}><Mic size={18} aria-hidden="true" />{t(speakingModeAction(joined.activity.mode, "start"))}</button> : micState === "unverified" ? <button type="button" className="speaking-primary-button speaking-wide-button" onClick={() => void startSession()}>{t("Continue without input test")}</button> : null}
+          </>}
       </section>
     </main>
   </div>;
 }
 
-function SpeakingSessionPage({ navigate, sessionId }: { navigate: Navigate; sessionId: string }) {
+function SpeakingSessionPage({ navigate, sessionId, showPreparation = false }: { navigate: Navigate; sessionId: string; showPreparation?: boolean }) {
   const { t } = useSiteTranslation();
   const token = tokenForSession(sessionId);
   const [data, setData] = useState<SessionResponse>();
@@ -669,6 +692,9 @@ function SpeakingSessionPage({ navigate, sessionId }: { navigate: Navigate; sess
   }, [navigate, sessionId, token]);
   if (loading) return <div className="speaking-empty-page"><LoaderCircle size={34} className="speaking-spin" aria-hidden="true" /><h1>{t("Opening your session")}</h1><p>{t("Getting the classroom conversation ready…")}</p></div>;
   if (!data) return <div className="speaking-empty-page"><CircleCheck size={38} aria-hidden="true" /><h1>{t("Session unavailable")}</h1><p>{t(error)}</p><button className="speaking-primary-button" type="button" onClick={() => navigate("/speak/join")}>{t("Join another activity")}</button></div>;
+  if (data.session.localTranscription && (showPreparation || data.participant.localSpeechReadiness !== "ready")) {
+    return <SpeakingPreActivityPageV2 navigate={navigate} joined={{ ...data, token }} />;
+  }
   return <SpeakingSessionExperienceV2 navigate={navigate} token={token} initialData={data} />;
 }
 
@@ -685,11 +711,16 @@ type SpeakingStatusResponse = {
 
 function SpeakingSessionExperienceV2({ navigate, token, initialData }: { navigate: Navigate; token: string; initialData: SessionResponse }) {
   const { locale, t } = useSiteTranslation();
+  const waitingForPilotGreeting = initialData.session.localTranscription
+    && ["active", "ready"].includes(initialData.session.status)
+    && initialData.turns.some((turn) => turn.speaker === "ai")
+    && !sessionStorage.getItem("speaking-greeting:" + initialData.session.id);
   const initialVoiceState: SpeakingVoiceState = initialData.participant.status === "evaluating"
     ? "evaluating"
     : initialData.participant.status === "completed"
       ? "completed"
-      : initialData.participant.status === "error" ? "error" : "ready";
+      : initialData.participant.status === "error" ? "error"
+        : waitingForPilotGreeting ? "ai_speaking" : "ready";
   const [data, setData] = useState(initialData);
   const [voiceState, setVoiceState] = useState<SpeakingVoiceState>(initialVoiceState);
   const [remaining, setRemaining] = useState(() => speakingRemainingSeconds(initialData.participant, initialData.session, initialData.activity.durationSeconds, speakingTimerReference(initialData.participant, initialData.session, Date.now())));
@@ -714,6 +745,8 @@ function SpeakingSessionExperienceV2({ navigate, token, initialData }: { navigat
   const lastRequestIdRef = useRef<string | undefined>(undefined);
   const lastSpeechDetectedRef = useRef<boolean | undefined>(undefined);
   const lastAudioDurationRef = useRef<number | undefined>(undefined);
+  const lastLocalTranscriptRef = useRef<{ text: string; uncertain: boolean } | undefined>(undefined);
+  const localTurnAbortRef = useRef<AbortController | undefined>(undefined);
   const submittingTurnRef = useRef(false);
   const greetingSpokenRef = useRef(false);
   const finishRef = useRef<() => void>(() => undefined);
@@ -726,6 +759,7 @@ function SpeakingSessionExperienceV2({ navigate, token, initialData }: { navigat
   const supportSettings = resolveSpeakingSupportSettings(data.activity.supportSettings);
 
   const cancelRecording = useCallback(() => {
+    localTurnAbortRef.current?.abort();
     recordingGenerationRef.current += 1;
     const current = recorderRef.current;
     if (current) {
@@ -741,6 +775,7 @@ function SpeakingSessionExperienceV2({ navigate, token, initialData }: { navigat
     lastRequestIdRef.current = undefined;
     lastSpeechDetectedRef.current = undefined;
     lastAudioDurationRef.current = undefined;
+    lastLocalTranscriptRef.current = undefined;
   }, []);
 
   const handleFatalAuthorization = useCallback((authorizationError: unknown) => {
@@ -805,6 +840,10 @@ function SpeakingSessionExperienceV2({ navigate, token, initialData }: { navigat
         }
         participantFinalizedRef.current = ["evaluating", "completed", "error"].includes(next.participant.status);
         if (["paused", "ended", "expired"].includes(next.session.status) || participantFinalizedRef.current) {
+          if (next.session.status === "paused" && localTurnAbortRef.current && lastAudioRef.current) {
+            setErrorOperation("turn");
+            setError("Your recording is kept in this tab. You can retry the same recording.");
+          }
           cancelRecording();
           browserTtsProvider.cancel();
           if (next.session.status !== "paused" || participantFinalizedRef.current) releaseRetryAudio();
@@ -825,7 +864,7 @@ function SpeakingSessionExperienceV2({ navigate, token, initialData }: { navigat
         } else if (next.session.status === "paused") {
           setVoiceState("paused");
         } else if (["ended", "expired"].includes(next.session.status)) {
-          setVoiceState((current) => current === "student_recording" ? "ready" : current);
+          setVoiceState((current) => current === "student_recording" || (next.session.localTranscription && current === "processing") ? "ready" : current);
         } else if (next.session.status === "active") {
           const resumedState = lastAudioRef.current ? "error" : "ready";
           setVoiceState((current) => current === "paused" ? resumedState : current);
@@ -875,13 +914,14 @@ function SpeakingSessionExperienceV2({ navigate, token, initialData }: { navigat
     const key = "speaking-greeting:" + data.session.id;
     if (greeting && !["paused", "ended", "expired"].includes(data.session.status) && !sessionStorage.getItem(key) && !greetingSpokenRef.current) {
       greetingSpokenRef.current = true;
+      voiceStateRef.current = "ai_speaking";
       setVoiceState("ai_speaking");
-      void browserTtsProvider.speak(greeting.text, { lang: "en-US", rate: data.activity.level === "beginner" ? 0.82 : 0.92, voiceId: speakingVoiceIdForSession(data.session.id) }).finally(() => {
+      void browserTtsProvider.speak(greeting.text, { lang: "en-US", rate: data.activity.level === "beginner" ? 0.82 : 0.92, voiceId: speakingVoiceIdForSession(data.session.id), localOnly: data.session.localTranscription }).finally(() => {
         sessionStorage.setItem(key, "spoken");
-        if (dataRef.current.session.status === "active" || dataRef.current.session.status === "ready") setVoiceState("ready");
+        if (voiceStateRef.current === "ai_speaking" && ["active", "ready"].includes(dataRef.current.session.status)) setVoiceState("ready");
       });
     }
-  }, [data.activity.level, data.session.id, data.session.status, data.turns]);
+  }, [data.activity.level, data.session.id, data.session.localTranscription, data.session.status, data.turns]);
 
   useEffect(() => {
     const interval = window.setInterval(() => {
@@ -908,8 +948,28 @@ function SpeakingSessionExperienceV2({ navigate, token, initialData }: { navigat
     setError("");
     setErrorOperation(undefined);
     setTurnRetryAt(0);
+    const session = dataRef.current.session;
+    const controller = session.localTranscription ? new AbortController() : undefined;
+    localTurnAbortRef.current = controller;
     try {
-      const response = await speakingApi.turn(dataRef.current.session.id, token, { audio, requestId, speechDetected, audioDurationMs }) as { studentTurn: SpeakingTurn; aiTurn: SpeakingTurn; session: SpeakingSession };
+      let response: { studentTurn: SpeakingTurn; aiTurn: SpeakingTurn; session: SpeakingSession };
+      if (controller) {
+        const signal = controller.signal;
+        if (!lastLocalTranscriptRef.current) {
+          await speakCheckRecognizer.prepare({ backend: "wasm", cachedOnly: true, signal });
+          const transcript = await speakCheckRecognizer.transcribe(audio, SPEAKING_LIMITS.maxTurnSeconds + 2, { signal });
+          if (transcript.status === "no-speech") {
+            releaseRetryAudio();
+            setMicNotice("No speech was detected. Try saying your answer again.");
+            setVoiceState("ready");
+            return;
+          }
+          lastLocalTranscriptRef.current = { text: transcript.text.slice(0, SPEAKING_LIMITS.turnText), uncertain: transcript.status === "uncertain" };
+        }
+        response = await speakingApi.localTurn(session.id, token, requestId, lastLocalTranscriptRef.current, signal) as typeof response;
+      } else {
+        response = await speakingApi.turn(session.id, token, { audio, requestId, speechDetected, audioDurationMs }) as typeof response;
+      }
       if (authorizationFailedRef.current || participantFinalizedRef.current) {
         releaseRetryAudio();
         return;
@@ -927,7 +987,7 @@ function SpeakingSessionExperienceV2({ navigate, token, initialData }: { navigat
         return;
       }
       setVoiceState("ai_speaking");
-      await browserTtsProvider.speak(response.aiTurn.text, { lang: "en-US", rate: dataRef.current.activity.level === "beginner" ? 0.82 : 0.92, voiceId: speakingVoiceIdForSession(dataRef.current.session.id) });
+      await browserTtsProvider.speak(response.aiTurn.text, { lang: "en-US", rate: dataRef.current.activity.level === "beginner" ? 0.82 : 0.92, voiceId: speakingVoiceIdForSession(dataRef.current.session.id), localOnly: session.localTranscription });
       if (authorizationFailedRef.current || participantFinalizedRef.current) return;
       if (["paused", "ended", "expired"].includes(dataRef.current.session.status)) {
         browserTtsProvider.cancel();
@@ -935,6 +995,7 @@ function SpeakingSessionExperienceV2({ navigate, token, initialData }: { navigat
         setVoiceState(dataRef.current.session.status === "paused" ? "paused" : "ready");
       } else setVoiceState("ready");
     } catch (turnError) {
+      if (controller?.signal.aborted) return;
       if (isFatalParticipantAuthorizationError(turnError)) {
         handleFatalAuthorization(turnError);
       } else if (turnError instanceof ApiError && turnError.status === 422) {
@@ -957,10 +1018,11 @@ function SpeakingSessionExperienceV2({ navigate, token, initialData }: { navigat
         setVoiceState("error");
       } else {
         setErrorOperation("turn");
-        setError(getErrorMessage(turnError, "This turn could not be completed. You can retry the same recording."));
+        setError(turnError instanceof LocalSpeechError ? localSpeechMessage(turnError) : getErrorMessage(turnError, "This turn could not be completed. You can retry the same recording."));
         setVoiceState("error");
       }
     } finally {
+      if (localTurnAbortRef.current === controller) localTurnAbortRef.current = undefined;
       submittingTurnRef.current = false;
     }
   }, [cancelRecording, handleFatalAuthorization, releaseRetryAudio, token]);
@@ -996,7 +1058,7 @@ function SpeakingSessionExperienceV2({ navigate, token, initialData }: { navigat
       }
       const { recorder, mimeType } = createSpeakingAudioRecorder(stream);
       const activityMonitor = createSpeakingAudioActivityMonitor(stream);
-      const requestId = typeof crypto.randomUUID === "function" ? crypto.randomUUID() : String(Date.now()) + "-" + String(Math.random());
+      const requestId = typeof crypto.randomUUID === "function" ? crypto.randomUUID() : String(Date.now()) + "-" + String(Math.random()).slice(2);
       chunksRef.current = [];
       recorder.ondataavailable = (event) => { if (event.data.size > 0) chunksRef.current.push(event.data); };
       const capture: SpeakingAudioCapture = { recorder, stream, timeoutId: 0, requestId, activityMonitor, startedAtMs: Date.now(), submitOnStop: true };
@@ -1070,7 +1132,7 @@ function SpeakingSessionExperienceV2({ navigate, token, initialData }: { navigat
     if (aiTurn) {
       voiceStateRef.current = "ai_speaking";
       setVoiceState("ai_speaking");
-      void browserTtsProvider.speak(aiTurn, { lang: "en-US", rate: dataRef.current.activity.level === "beginner" ? 0.82 : 0.92, voiceId: speakingVoiceIdForSession(dataRef.current.session.id) }).finally(() => {
+      void browserTtsProvider.speak(aiTurn, { lang: "en-US", rate: dataRef.current.activity.level === "beginner" ? 0.82 : 0.92, voiceId: speakingVoiceIdForSession(dataRef.current.session.id), localOnly: dataRef.current.session.localTranscription }).finally(() => {
         if (!authorizationFailedRef.current && !participantFinalizedRef.current && dataRef.current.session.status === "active") setVoiceState("ready");
       });
     }
@@ -1110,6 +1172,7 @@ function SpeakingSessionExperienceV2({ navigate, token, initialData }: { navigat
           {!authorizationFailed && <button type="button" disabled={turnRetryDisabled} onClick={retryOperation}>
             {t(operationMessage)}
           </button>}
+          {retryingTurn && data.session.localTranscription && !authorizationFailed && <button type="button" onClick={() => navigate("/speak/prepare/" + data.session.id)}>{t("Open device preparation")}</button>}
         </div>}
         {micNotice && <div className="speaking-session-note" role="status">
           <Mic size={16} aria-hidden="true" />
@@ -1121,6 +1184,7 @@ function SpeakingSessionExperienceV2({ navigate, token, initialData }: { navigat
         </div>}
         <SpeakingStudentScreenV2
           avatarPaused={waiting || paused || ended || authorizationFailed || voiceState === "error" || voiceState === "completed"}
+          suspendAvatarRendering={data.session.localTranscription && voiceState === "processing"}
           statusText={waiting ? "Waiting for your teacher" : paused ? "Paused" : ended ? "Task ended" : voiceState === "finishing" || voiceState === "evaluating" ? "Finishing" : showError ? "Check the message above" : undefined}
           activity={data.activity}
           state={uiState}

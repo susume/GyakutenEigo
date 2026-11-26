@@ -15,6 +15,7 @@ import {
   type SpeakingParticipant,
   type SpeakingParticipantStatus,
   type SpeakingLibraryItem,
+  type SpeakingLocalSpeechReadiness,
   type SpeakingReportSummary,
   type SpeakingRubricCriterion,
   type SpeakingContext,
@@ -132,6 +133,7 @@ export interface SpeakingRepository {
   reorderSetActivities(teacherId: string, setId: string, activityIds: string[]): Promise<SpeakingSetDetail | undefined>;
   isJoinCodeTaken(joinCode: string): Promise<boolean>;
   createSession(input: {
+    localTranscription?: boolean;
     speakingSetId?: string;
     speakingSetNameSnapshot?: string;
     speakingSetFocusSnapshot?: string;
@@ -161,7 +163,7 @@ export interface SpeakingRepository {
   startParticipant(participantId: string, startedAt: string): Promise<SpeakingParticipant | undefined>;
   markParticipantReady(participantId: string, readyAt: string): Promise<SpeakingParticipant | undefined>;
   touchParticipant(participantId: string, lastSeenAt: string): Promise<SpeakingParticipant | undefined>;
-  updateParticipant(participantId: string, patch: { status?: SpeakingParticipantStatus; finishedAt?: string | null; helpPending?: boolean; helpCount?: number; readyAt?: string | null; lastSeenAt?: string | null }): Promise<SpeakingParticipant | undefined>;
+  updateParticipant(participantId: string, patch: { status?: SpeakingParticipantStatus; finishedAt?: string | null; helpPending?: boolean; helpCount?: number; readyAt?: string | null; lastSeenAt?: string | null; localSpeechReadiness?: SpeakingLocalSpeechReadiness }): Promise<SpeakingParticipant | undefined>;
   updateSession(sessionId: string, patch: { status?: SpeakingSessionStatus; startedAt?: string | null; pausedAt?: string | null; endedAt?: string | null }): Promise<SpeakingSession | undefined>;
   /** Finalize a currently open pause and add its duration to affected participants. */
   finalizeSessionPause(sessionId: string, pausedUntil: string): Promise<SpeakingSession | undefined>;
@@ -273,6 +275,7 @@ const cloneActivity = (activity: SpeakingActivity): SpeakingActivity => ({
 });
 
 const cloneSession = (session: SpeakingSession): SpeakingSession => ({
+  ...(session.localTranscription ? { localTranscription: true } : {}),
   ...(session.speakingSetId ? { speakingSetId: session.speakingSetId, speakingSetNameSnapshot: session.speakingSetNameSnapshot, ...(session.speakingSetFocusSnapshot === undefined ? {} : { speakingSetFocusSnapshot: session.speakingSetFocusSnapshot }) } : {}),
   id: session.id,
   activityId: session.activityId,
@@ -581,6 +584,7 @@ export class InMemorySpeakingRepository implements SpeakingRepository {
   async createSession(input: Parameters<SpeakingRepository["createSession"]>[0]) {
     const session: InMemorySession = {
       id: input.id,
+      ...(input.localTranscription ? { localTranscription: true } : {}),
       ...(input.speakingSetId ? { speakingSetId: input.speakingSetId, speakingSetNameSnapshot: input.speakingSetNameSnapshot, ...(input.speakingSetFocusSnapshot === undefined ? {} : { speakingSetFocusSnapshot: input.speakingSetFocusSnapshot }) } : {}),
       activityId: input.activity.id,
       joinCode: input.joinCode,
@@ -693,7 +697,7 @@ export class InMemorySpeakingRepository implements SpeakingRepository {
     return participantPublic(participant);
   }
 
-  async updateParticipant(participantId: string, patch: { status?: SpeakingParticipantStatus; finishedAt?: string | null; helpPending?: boolean; helpCount?: number; readyAt?: string | null; lastSeenAt?: string | null }) {
+  async updateParticipant(participantId: string, patch: Parameters<SpeakingRepository["updateParticipant"]>[1]) {
     const participant = this.state.participants.get(participantId);
     if (!participant) return undefined;
     Object.assign(participant, patch);
@@ -1033,7 +1037,8 @@ const toContextImage = (row: PrismaContextImage): SpeakingContextImageRecord => 
   ...(row.deletedAt ? { deletedAt: row.deletedAt.toISOString() } : {})
 });
 
-const toSession = (row: Pick<PrismaSession, "id" | "activityId" | "joinCode" | "status" | "createdAt" | "startedAt" | "pausedAt" | "endedAt" | "expiresAt" | "revision"> & Partial<Pick<PrismaSession, "speakingSetId" | "speakingSetNameSnapshot" | "speakingSetFocusSnapshot">>): SpeakingSession => ({
+const toSession = (row: Pick<PrismaSession, "id" | "activityId" | "joinCode" | "status" | "createdAt" | "startedAt" | "pausedAt" | "endedAt" | "expiresAt" | "revision"> & Partial<Pick<PrismaSession, "speakingSetId" | "speakingSetNameSnapshot" | "speakingSetFocusSnapshot" | "localTranscription">>): SpeakingSession => ({
+  ...(row.localTranscription ? { localTranscription: true } : {}),
   ...(row.speakingSetId ? { speakingSetId: row.speakingSetId, speakingSetNameSnapshot: row.speakingSetNameSnapshot ?? undefined, ...(row.speakingSetFocusSnapshot === null || row.speakingSetFocusSnapshot === undefined ? {} : { speakingSetFocusSnapshot: row.speakingSetFocusSnapshot }) } : {}),
   id: row.id,
   activityId: row.activityId,
@@ -1047,7 +1052,7 @@ const toSession = (row: Pick<PrismaSession, "id" | "activityId" | "joinCode" | "
   revision: row.revision
 });
 
-const toParticipant = (row: { id: string; activityId: string; sessionId: string; displayIdentifier: string | null; startedAt: Date | null; finishedAt: Date | null; readyAt?: Date | null; lastSeenAt?: Date | null; pausedDurationMs: number; status: string; helpCount: number }): SpeakingParticipant => ({
+const toParticipant = (row: { id: string; activityId: string; sessionId: string; displayIdentifier: string | null; startedAt: Date | null; finishedAt: Date | null; readyAt?: Date | null; lastSeenAt?: Date | null; pausedDurationMs: number; status: string; helpCount: number; localSpeechReadiness?: SpeakingLocalSpeechReadiness | null }): SpeakingParticipant => ({
   id: row.id,
   activityId: row.activityId,
   sessionId: row.sessionId,
@@ -1055,13 +1060,14 @@ const toParticipant = (row: { id: string; activityId: string; sessionId: string;
   ...(row.startedAt ? { startedAt: row.startedAt.toISOString() } : {}),
   ...(row.finishedAt ? { finishedAt: row.finishedAt.toISOString() } : {}),
   ...(row.readyAt ? { readyAt: row.readyAt.toISOString() } : {}),
+  ...(row.localSpeechReadiness ? { localSpeechReadiness: row.localSpeechReadiness } : {}),
   ...(row.lastSeenAt ? { lastSeenAt: row.lastSeenAt.toISOString() } : {}),
   pausedDurationMs: Math.max(0, row.pausedDurationMs ?? 0),
   status: row.status as SpeakingParticipant["status"],
   helpCount: row.helpCount
 });
 
-const toTurn = (row: { id: string; participantId: string; speaker: string; text: string; createdAt: Date; audioDurationMs: number | null; responseTimeMs: number | null; usedHelp: boolean; transcriptionConfidence: number | null; requestId?: string | null }): SpeakingTurn => ({
+const toTurn = (row: { id: string; participantId: string; speaker: string; text: string; createdAt: Date; audioDurationMs: number | null; responseTimeMs: number | null; usedHelp: boolean; transcriptionConfidence: number | null; requestId?: string | null; clientTranscribed?: boolean; transcriptionUncertain?: boolean }): SpeakingTurn => ({
   id: row.id,
   participantId: row.participantId,
   speaker: row.speaker as SpeakingTurn["speaker"],
@@ -1070,6 +1076,8 @@ const toTurn = (row: { id: string; participantId: string; speaker: string; text:
   ...(row.audioDurationMs === null ? {} : { audioDurationMs: row.audioDurationMs }),
   ...(row.responseTimeMs === null ? {} : { responseTimeMs: row.responseTimeMs }),
   ...(row.usedHelp ? { usedHelp: true } : {}),
+  ...(row.clientTranscribed ? { clientTranscribed: true } : {}),
+  ...(row.transcriptionUncertain ? { transcriptionUncertain: true } : {}),
   ...(row.transcriptionConfidence === null ? {} : { transcriptionConfidence: row.transcriptionConfidence }),
   ...(row.requestId ? { requestId: row.requestId } : {})
 });
@@ -1165,7 +1173,7 @@ export class PrismaSpeakingRepository implements SpeakingRepository {
         ...activityInclude,
         sessions: {
           orderBy: [{ createdAt: "desc" }, { id: "desc" }],
-          select: { id: true, activityId: true, joinCode: true, status: true, createdAt: true, startedAt: true, pausedAt: true, endedAt: true, expiresAt: true, revision: true, speakingSetId: true, speakingSetNameSnapshot: true, speakingSetFocusSnapshot: true }
+          select: { id: true, activityId: true, joinCode: true, status: true, createdAt: true, startedAt: true, pausedAt: true, endedAt: true, expiresAt: true, revision: true, speakingSetId: true, speakingSetNameSnapshot: true, speakingSetFocusSnapshot: true, localTranscription: true }
         },
         setMemberships: { include: { set: { select: { id: true, name: true, description: true, focus: true, createdAt: true, updatedAt: true } } } }
       },
@@ -1406,7 +1414,8 @@ export class PrismaSpeakingRepository implements SpeakingRepository {
         createdAt: new Date(input.createdAt),
         expiresAt: new Date(input.expiresAt),
         revision: 0,
-        activitySnapshotJson: snapshotActivity(input.activity) as unknown as Prisma.InputJsonValue
+        activitySnapshotJson: snapshotActivity(input.activity) as unknown as Prisma.InputJsonValue,
+        localTranscription: input.localTranscription
       },
       include: sessionInclude
     });
@@ -1515,13 +1524,14 @@ export class PrismaSpeakingRepository implements SpeakingRepository {
     return toParticipant(row);
   }
 
-  async updateParticipant(participantId: string, patch: { status?: SpeakingParticipantStatus; finishedAt?: string | null; helpPending?: boolean; helpCount?: number; readyAt?: string | null; lastSeenAt?: string | null }) {
+  async updateParticipant(participantId: string, patch: Parameters<SpeakingRepository["updateParticipant"]>[1]) {
     const row = await this.prisma.speakingParticipant.update({ where: { id: participantId }, data: {
       ...(patch.status ? { status: patch.status } : {}),
       ...(patch.finishedAt !== undefined ? { finishedAt: patch.finishedAt ? new Date(patch.finishedAt) : null } : {}),
       ...(patch.helpPending !== undefined ? { helpPending: patch.helpPending } : {}),
       ...(patch.helpCount !== undefined ? { helpCount: patch.helpCount } : {}),
       ...(patch.readyAt !== undefined ? { readyAt: patch.readyAt ? new Date(patch.readyAt) : null } : {}),
+      ...(patch.localSpeechReadiness ? { localSpeechReadiness: patch.localSpeechReadiness } : {}),
       ...(patch.lastSeenAt !== undefined ? { lastSeenAt: patch.lastSeenAt ? new Date(patch.lastSeenAt) : null } : {})
     } });
     await this.prisma.speakingSession.update({ where: { id: row.sessionId }, data: { revision: { increment: 1 } } });
@@ -1601,6 +1611,8 @@ export class PrismaSpeakingRepository implements SpeakingRepository {
         ...(input.audioDurationMs === undefined ? {} : { audioDurationMs: input.audioDurationMs }),
         ...(input.responseTimeMs === undefined ? {} : { responseTimeMs: input.responseTimeMs }),
         usedHelp: input.usedHelp === true,
+        clientTranscribed: input.clientTranscribed,
+        transcriptionUncertain: input.transcriptionUncertain,
         ...(input.transcriptionConfidence === undefined ? {} : { transcriptionConfidence: input.transcriptionConfidence }),
         ...(input.requestId ? { requestId: input.requestId } : {})
       } });

@@ -416,6 +416,8 @@ export interface SpeakingParticipant {
   helpCount: number;
   /** Set after the browser completed the lightweight microphone preflight. */
   readyAt?: string;
+  /** Browser-reported pilot status, not attested evidence. */
+  localSpeechReadiness?: SpeakingLocalSpeechReadiness;
   /** Last authenticated lifecycle touch from the student's browser. */
   lastSeenAt?: string;
 }
@@ -436,6 +438,7 @@ export interface SpeakingSession {
   expiresAt: string;
   /** Monotonic lifecycle revision used to reject stale browser responses. */
   revision?: number;
+  localTranscription?: boolean;
 }
 
 /** Teacher-facing calendar dates must not depend on the server/browser timezone. */
@@ -494,6 +497,8 @@ export interface SpeakingTurn {
   responseTimeMs?: number;
   usedHelp?: boolean;
   transcriptionConfidence?: number;
+  clientTranscribed?: boolean;
+  transcriptionUncertain?: boolean;
   /** Request id used to make retried student turns idempotent. */
   requestId?: string;
 }
@@ -664,6 +669,15 @@ export const SpeakingJoinInputSchema = z.object({
 export const SpeakingTurnInputSchema = z.object({
   text: z.string().trim().min(1).max(SPEAKING_LIMITS.turnText).optional()
 });
+
+export const SPEAKING_LOCAL_TRANSCRIPT_CONTENT_TYPE = "application/vnd.speakcheck.transcript+json";
+export const SpeakingLocalTranscriptSchema = z.object({
+  text: z.string().trim().min(1).max(SPEAKING_LIMITS.turnText).regex(/\p{L}/u),
+  uncertain: z.boolean()
+}).strict();
+export type SpeakingLocalTranscript = z.infer<typeof SpeakingLocalTranscriptSchema>;
+export const SpeakingLocalSpeechReadinessSchema = z.enum(["preparing", "downloading", "ready", "issue", "alternative"]);
+export type SpeakingLocalSpeechReadiness = z.infer<typeof SpeakingLocalSpeechReadinessSchema>;
 
 export const SpeakingSessionStatusSchema = z.enum(SPEAKING_SESSION_STATUSES);
 

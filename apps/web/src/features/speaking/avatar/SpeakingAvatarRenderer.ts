@@ -37,7 +37,7 @@ export function localAvatarUrl(src: string, base: string) {
 /** One renderer per mounted portrait. State changes never recreate it. */
 export function mountSpeakingAvatar(host: HTMLDivElement, modelSrc: string,
   getState: () => SpeakingAvatarState, onReady: () => void, onFailure: () => void,
-  runtime: SpeakingAvatarRuntime = browserRuntime): () => void {
+  runtime: SpeakingAvatarRuntime = browserRuntime, suspended: () => boolean = () => false): () => void {
   let disposed = false;
   let renderer: ReturnType<SpeakingAvatarRuntime["createRenderer"]> | undefined;
   let vrm: VRM | undefined;
@@ -125,6 +125,12 @@ export function mountSpeakingAvatar(host: HTMLDivElement, modelSrc: string,
     const tick = (now: number) => {
       frameId = undefined;
       if (disposed || document.hidden || !rig) return;
+      if (suspended()) {
+        lastFrame = undefined;
+        nextFrame = undefined;
+        frameId = requestAnimationFrame(tick);
+        return;
+      }
       if (nextFrame === undefined || now >= nextFrame - 0.1) {
         const delta = lastFrame === undefined ? 1 / 30 : Math.min((now - lastFrame) / 1000, 0.1);
         // Preserve the deadline across display refreshes; resetting it to now

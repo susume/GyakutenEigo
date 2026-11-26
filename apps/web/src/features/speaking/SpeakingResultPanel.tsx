@@ -63,6 +63,9 @@ export function ResultPanel({
     <section
       className={`speaking-result-panel${teacherView ? " speaking-result-panel-teacher" : ""}`}
     >
+      {turns.some((turn) => turn.clientTranscribed) && <p className="speaking-result-message speaking-result-message-warning">
+        {t("Provisional feedback from device-generated transcripts. Ask your teacher to confirm the assessment.")}
+      </p>}
       <div className="speaking-result-panel-heading">
         <div>
           <span className="speaking-card-kicker">

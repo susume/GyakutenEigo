@@ -3,10 +3,13 @@ import {
   speakingTeacherDate,
   isFinishedSpeakingSession,
   SPEAKING_LIMITS,
+  SPEAKING_LOCAL_TRANSCRIPT_CONTENT_TYPE,
   SPEAKING_PRACTICE_LANGUAGE,
   SpeakingCreateActivityInputSchema,
   SpeakingEvaluationSchema,
   SpeakingJoinInputSchema,
+  SpeakingLocalSpeechReadinessSchema,
+  SpeakingLocalTranscriptSchema,
   SpeakingTurnInputSchema,
   speakingActiveElapsedMs,
   speakingOverallScore,
@@ -154,8 +157,8 @@ const makeTemplate = (input: TemplateInput, now: string): SpeakingActivity => {
   };
 };
 
-const publicParticipant = (participant: SpeakingParticipant) => {
-  const { anonymousToken: _anonymousToken, ...safeParticipant } = participant;
+const publicParticipant = (participant: SpeakingParticipant & Partial<StoredSpeakingParticipant>) => {
+  const { anonymousToken: _anonymousToken, tokenHash: _tokenHash, joinRequestId: _joinRequestId, helpPending: _helpPending, ...safeParticipant } = participant;
   return safeParticipant;
 };
 
@@ -214,6 +217,7 @@ const speakingCsvRowsForResults = (items: Awaited<ReturnType<SpeakingRepository[
     setNames,
     performanceTest: item.activity.title,
     mode: item.activity.mode,
+    localTranscription: item.session.localTranscription,
     supportSettings: { ...resolveSpeakingSupportSettings(item.activity.supportSettings) },
     session: item.session.joinCode,
     date: speakingTeacherDate(item.session.endedAt ?? item.session.createdAt),
@@ -373,6 +377,10 @@ export const registerSpeakingRoutes = (app: Application, deps: SpeakingRouteDepe
   const configuredInvalidJoinLimit = Number.parseInt(process.env.SPEAKING_INVALID_JOIN_LIMIT ?? "", 10);
   const invalidJoinLimit = Number.isFinite(configuredInvalidJoinLimit) ? Math.min(50, Math.max(3, configuredInvalidJoinLimit)) : 10;
   const latencyDebug = deps.latencyDebug ?? speakingLatencyDebugEnabled();
+  const localExternalAiAllowed = process.env.SPEAKING_LOCAL_TRANSCRIPTION_ALLOW_EXTERNAL_AI === "true";
+  const localProviderAllowed = localExternalAiAllowed || [conversationProvider, helpProvider, evaluationProvider].every((provider) => provider.providerName === "mock");
+  const localSpeechEnabled = process.env.SPEAKING_LOCAL_TRANSCRIPTION_ENABLED === "true" && localProviderAllowed;
+  const localSpeechUnavailable = { code: "SPEAKING_LOCAL_UNAVAILABLE", error: "This local speech pilot is unavailable. Ask your teacher for help." };
   const evaluationTelemetry = {
     attempts: 0,
     successes: 0,
@@ -546,6 +554,7 @@ export const registerSpeakingRoutes = (app: Application, deps: SpeakingRouteDepe
   // Express's JSON parser skips audio/*, so parse only this endpoint as a
   // bounded binary request. Raw bytes are never written to the repository.
   const turnRoutePath = "/api/speaking/sessions/:sessionId/turn";
+  const parseLocalTranscript = express.json({ type: SPEAKING_LOCAL_TRANSCRIPT_CONTENT_TYPE, limit: "8kb", inflate: false });
   let bufferedTurns = 0;
   const uploadLimit = Math.max(1, Math.min(64, Number.parseInt(process.env.SPEAKING_UPLOAD_CONCURRENCY ?? "16", 10) || 16));
   const admitSpeakingTurn = async (req: SpeakingTurnRequest, res: Response, next: NextFunction) => {
@@ -558,6 +567,30 @@ export const registerSpeakingRoutes = (app: Application, deps: SpeakingRouteDepe
       return;
     }
     req.speakingTurnAccess = access;
+    const localContent = req.is(SPEAKING_LOCAL_TRANSCRIPT_CONTENT_TYPE);
+    if (access.session.localTranscription) {
+      if (!localSpeechEnabled) {
+        res.status(503).json(localSpeechUnavailable);
+        return;
+      }
+      if (!localContent) {
+        res.status(415).json({ error: "This activity only accepts on-device transcripts." });
+        return;
+      }
+      if (access.participant.localSpeechReadiness !== "ready") {
+        res.status(409).json({ code: "SPEAKING_LOCAL_PREPARE", error: "Complete the local speech check before speaking." });
+        return;
+      }
+      return parseLocalTranscript(req, res, (error?: { status?: number }) => {
+        if (!error) return next();
+        if (error.status === 413) res.status(413).json({ error: "The device transcript is too large." });
+        else res.status(error.status === 415 ? 415 : 400).json({ error: "Invalid on-device transcript. Try the recording again." });
+      });
+    }
+    if (localContent) {
+      res.status(415).json({ error: "This activity does not accept on-device transcripts." });
+      return;
+    }
     if (bufferedTurns >= uploadLimit) {
       res.setHeader("Retry-After", "2");
       res.status(429).json({ code: "SPEAKING_UPLOAD_BUSY", retryAfterSeconds: 2, error: "Too many recordings are being processed. Retry this recording in a moment." });
@@ -698,6 +731,7 @@ export const registerSpeakingRoutes = (app: Application, deps: SpeakingRouteDepe
     try {
       const result = await repository.getResult(participantId);
       if (!result) throw new Error("Speaking participant session not found.");
+      if (result.session.localTranscription && !localProviderAllowed) throw new SpeakingProviderError("Local pilot provider permission unavailable.", "bad_request");
       const current = await repository.getParticipant(participantId);
       if (!current) throw new Error("Speaking participant not found.");
       const finishedAt = current.finishedAt ?? deps.now();
@@ -1077,7 +1111,7 @@ export const registerSpeakingRoutes = (app: Application, deps: SpeakingRouteDepe
 
   app.get("/api/speaking/activities/:activityId", deps.requireTeacher, async (req: AuthedRequest, res) => {
     const activity = await requireOwnedActivity(req, res);
-    if (activity) res.json({ activity: publicActivity(activity) });
+    if (activity) res.json({ activity: publicActivity(activity), localSpeechEnabled });
   });
 
   app.get("/api/speaking/activities/:activityId/sessions", deps.requireTeacher, async (req: AuthedRequest, res) => {
@@ -1107,6 +1141,15 @@ export const registerSpeakingRoutes = (app: Application, deps: SpeakingRouteDepe
       return;
     }
     const setId: unknown = req.body?.setId;
+    const localTranscription: unknown = req.body?.localTranscription;
+    if (localTranscription !== undefined && typeof localTranscription !== "boolean") {
+      res.status(400).json({ error: "Select a valid transcription mode." });
+      return;
+    }
+    if (localTranscription && !localSpeechEnabled) {
+      res.status(503).json(localSpeechUnavailable);
+      return;
+    }
     if (setId !== undefined && (typeof setId !== "string" || !setId.trim())) {
       res.status(400).json({ error: "Enter a valid Set ID." });
       return;
@@ -1121,7 +1164,7 @@ export const registerSpeakingRoutes = (app: Application, deps: SpeakingRouteDepe
     let session: SpeakingSession | undefined;
     for (let attempt = 0; attempt < 3 && !session; attempt += 1) {
       try {
-        session = await repository.createSession({ id: deps.id(), activity, joinCode: await makeJoinCode(repository), createdAt, expiresAt, ...(set ? { speakingSetId: set.id, speakingSetNameSnapshot: set.name, speakingSetFocusSnapshot: set.focus } : {}) });
+        session = await repository.createSession({ id: deps.id(), activity, joinCode: await makeJoinCode(repository), createdAt, expiresAt, localTranscription: localTranscription === true, ...(set ? { speakingSetId: set.id, speakingSetNameSnapshot: set.name, speakingSetFocusSnapshot: set.focus } : {}) });
       } catch (error) {
         if (attempt === 2) throw error;
       }
@@ -1158,6 +1201,10 @@ export const registerSpeakingRoutes = (app: Application, deps: SpeakingRouteDepe
         return;
       }
       res.status(404).json({ error: "We couldn’t find an open classroom session. Check the code and try again." });
+      return;
+    }
+    if (access.session.localTranscription && !localSpeechEnabled) {
+      res.status(503).json(localSpeechUnavailable);
       return;
     }
     const validDecision = consumeSpeakingRateLimit(state.requestWindows, `join-valid:${req.ip}:${access.session.id}`, validJoinBurst, 60_000);
@@ -1202,6 +1249,36 @@ export const registerSpeakingRoutes = (app: Application, deps: SpeakingRouteDepe
     res.status(201).json({ activity: publicActivity(access.activity), participant: publicParticipant(participant), session: sessionPayload(latestSession?.session ?? access.session), token });
   });
 
+  app.post("/api/speaking/sessions/:sessionId/local-readiness", async (req, res) => {
+    const access = await getParticipantAccess(req);
+    if (!access || access.session.id !== String(req.params.sessionId)) {
+      res.status(401).json({ error: "This speaking session is no longer available." });
+      return;
+    }
+    if (!access.session.localTranscription || !localSpeechEnabled) {
+      res.status(409).json(localSpeechUnavailable);
+      return;
+    }
+    const status = SpeakingLocalSpeechReadinessSchema.safeParse(req.body?.status);
+    if (!status.success) {
+      res.status(400).json({ error: "Invalid device readiness status." });
+      return;
+    }
+    if (!allowRequest(state, `local-readiness:${access.participant.tokenHash}`, 20)) {
+      res.status(429).json({ error: "Please wait before checking readiness again." });
+      return;
+    }
+    const session = await expireSessionIfNeeded(access);
+    if (["ended", "expired"].includes(session.status)) {
+      res.status(410).json({ error: "This activity has ended. Please ask your teacher for a new code." });
+      return;
+    }
+    if (access.participant.localSpeechReadiness !== status.data) {
+      await repository.updateParticipant(access.participant.id, { localSpeechReadiness: status.data });
+    }
+    res.json({ status: status.data });
+  });
+
   app.post("/api/speaking/sessions/:sessionId/start", async (req, res) => {
     const access = await getParticipantAccess(req);
     if (!access || access.session.id !== String(req.params.sessionId)) {
@@ -1211,6 +1288,10 @@ export const registerSpeakingRoutes = (app: Application, deps: SpeakingRouteDepe
     const session = await expireSessionIfNeeded(access);
     if (["expired", "ended"].includes(session.status)) {
       res.status(410).json({ error: "This activity has ended. Please ask your teacher for a new code." });
+      return;
+    }
+    if (session.localTranscription && (!localSpeechEnabled || access.participant.localSpeechReadiness !== "ready")) {
+      res.status(409).json(localSpeechEnabled ? { code: "SPEAKING_LOCAL_PREPARE", error: "Complete the local speech check before speaking." } : localSpeechUnavailable);
       return;
     }
     // Reaching this endpoint means the browser completed the preflight check.
@@ -1382,6 +1463,11 @@ export const registerSpeakingRoutes = (app: Application, deps: SpeakingRouteDepe
         latency.requestParsingMs = requestStartedAt === undefined ? 0 : boundedSpeakingDurationMs(requestStartedAt, requestParsedAt);
         const rawRequestId = req.header("X-Speaking-Turn-Id")?.trim();
         const requestId = rawRequestId && rawRequestId.length <= 120 ? rawRequestId : undefined;
+        const localTranscript = access.session.localTranscription ? SpeakingLocalTranscriptSchema.safeParse(req.body) : undefined;
+        if (localTranscript && (!localTranscript.success || !requestId || !/^[\w-]{1,80}$/u.test(requestId))) {
+          res.status(400).json({ error: "Invalid on-device transcript. Try the recording again." });
+          return;
+        }
         const requestTurns = requestId ? await repository.listTurns(access.participant.id) : undefined;
         const previous = requestId && requestTurns ? findSpeakingTurnPair(requestTurns, requestId) : undefined;
         if (previous?.aiTurn) {
@@ -1446,89 +1532,91 @@ export const registerSpeakingRoutes = (app: Application, deps: SpeakingRouteDepe
             return;
           }
           const textInput = SpeakingTurnInputSchema.safeParse(parsed.text === undefined ? {} : { text: parsed.text });
-          if (!parsed.audio && (!allowTextInput || !textInput.success)) {
+          if (!localTranscript && !parsed.audio && (!allowTextInput || !textInput.success)) {
             res.status(400).json({ error: "I couldn’t hear that clearly. Please try again." });
             return;
           }
-          let transcription: TranscriptionResult | undefined;
-          const transcriptionStartedAt = performance.now();
-          const transcriptionAudio = parsed.audio ?? Buffer.from(parsed.text ?? "", "utf8");
-          const transcriptionInput = {
-            audio: transcriptionAudio,
-            mimeType: parsed.audio ? parsed.mimeType : "text/plain",
-            mode: access.activity.mode,
-            languageHint: SPEAKING_PRACTICE_LANGUAGE,
-            ...(requestId ? { requestId } : {}),
-            ...(parsed.speechDetected === undefined ? {} : { speechDetected: parsed.speechDetected }),
-            ...(allowTextInput && textInput.success ? { text: textInput.data.text } : {})
-          };
-          try {
-            for (let attempt = 1; attempt <= 2; attempt += 1) {
-              latency.transcriptionAttempts = attempt;
-              transcriptionTelemetry.attempts += 1;
-              const providerStartedAt = performance.now();
-              try {
-                transcription = await runProvider("transcription", () => transcriber.transcribe(transcriptionInput));
-                const providerDurationMs = boundedSpeakingDurationMs(providerStartedAt);
-                rememberEvaluationMetric(transcriptionTelemetry.providerDurationMs, providerDurationMs);
-                transcriptionTelemetry.successes += 1;
-                if (attempt === 1) transcriptionTelemetry.firstAttemptSuccesses += 1;
-                if (attempt > 1) {
-                  latency.transcriptionRetrySucceeded = true;
-                  transcriptionTelemetry.retryRecoveries += 1;
-                }
-                break;
-              } catch (error) {
-                if (error instanceof SpeakingWorkloadError) {
-                  providerBusyResponse(res, error);
+          let transcription: TranscriptionResult | undefined = localTranscript?.data;
+          if (!localTranscript) {
+            const transcriptionStartedAt = performance.now();
+            const transcriptionAudio = parsed.audio ?? Buffer.from(parsed.text ?? "", "utf8");
+            const transcriptionInput = {
+              audio: transcriptionAudio,
+              mimeType: parsed.audio ? parsed.mimeType : "text/plain",
+              mode: access.activity.mode,
+              languageHint: SPEAKING_PRACTICE_LANGUAGE,
+              ...(requestId ? { requestId } : {}),
+              ...(parsed.speechDetected === undefined ? {} : { speechDetected: parsed.speechDetected }),
+              ...(allowTextInput && textInput.success ? { text: textInput.data.text } : {})
+            };
+            try {
+              for (let attempt = 1; attempt <= 2; attempt += 1) {
+                latency.transcriptionAttempts = attempt;
+                transcriptionTelemetry.attempts += 1;
+                const providerStartedAt = performance.now();
+                try {
+                  transcription = await runProvider("transcription", () => transcriber.transcribe(transcriptionInput));
+                  const providerDurationMs = boundedSpeakingDurationMs(providerStartedAt);
+                  rememberEvaluationMetric(transcriptionTelemetry.providerDurationMs, providerDurationMs);
+                  transcriptionTelemetry.successes += 1;
+                  if (attempt === 1) transcriptionTelemetry.firstAttemptSuccesses += 1;
+                  if (attempt > 1) {
+                    latency.transcriptionRetrySucceeded = true;
+                    transcriptionTelemetry.retryRecoveries += 1;
+                  }
+                  break;
+                } catch (error) {
+                  if (error instanceof SpeakingWorkloadError) {
+                    providerBusyResponse(res, error);
+                    return;
+                  }
+                  const failure = speakingProviderFailureDetails(error);
+                  const providerDurationMs = boundedSpeakingDurationMs(providerStartedAt);
+                  rememberEvaluationMetric(transcriptionTelemetry.providerDurationMs, providerDurationMs);
+                  latency.transcriptionFailureKind = failure.kind;
+                  transcriptionTelemetry.failuresByKind[failure.kind] = (transcriptionTelemetry.failuresByKind[failure.kind] ?? 0) + 1;
+                  if (attempt === 1) transcriptionTelemetry.firstAttemptFailures += 1;
+                  const shouldRetry = attempt === 1 && failure.kind !== "rate_limit" && isTransientTranscriptionFailure(failure);
+                  if (shouldRetry) {
+                    latency.transcriptionRetryUsed = true;
+                    transcriptionTelemetry.retriesScheduled += 1;
+                    await waitForSpeakingRetry(transcriptionRetryDelayMs(deps.random ?? Math.random));
+                    continue;
+                  }
+                  transcriptionTelemetry.terminalFailures += 1;
+                  // This log is intentionally safe: no transcript, audio,
+                  // participant, session, request ID, provider response text,
+                  // or credential is kept.
+                  console.warn(`[Speaking provider failure] ${JSON.stringify({
+                    operation: "transcription",
+                    provider: transcriber.providerName ?? "custom",
+                    model: speakingTranscriptionProviderModel(transcriber.providerName, process.env, transcriptionInput),
+                    attempt,
+                    kind: failure.kind,
+                    ...(failure.status === undefined ? {} : { status: failure.status }),
+                    retryAfterMs: failure.retryAfterMs,
+                    quotaWindow: failure.quotaWindow,
+                    providerCooldown: failure.providerCooldown,
+                    providerDurationMs,
+                    audioBytes: parsed.audio?.byteLength ?? 0,
+                    audioDurationMs: parsed.audioDurationMs,
+                    mimeType: parsed.mimeType,
+                    automaticRetryUsed: latency.transcriptionRetryUsed,
+                    automaticRetrySucceeded: false,
+                    success: false
+                  })}`);
+                  if (failure.kind === "rate_limit") {
+                    sendProviderRateLimit(res, failure, "SPEAKING_TRANSCRIPTION_BUSY", "Speech recognition has reached its request limit. Please wait and retry this recording.");
+                  } else {
+                    res.status(503).json(transcriptionFailureResponse(failure, latency.transcriptionRetryUsed));
+                  }
                   return;
                 }
-                const failure = speakingProviderFailureDetails(error);
-                const providerDurationMs = boundedSpeakingDurationMs(providerStartedAt);
-                rememberEvaluationMetric(transcriptionTelemetry.providerDurationMs, providerDurationMs);
-                latency.transcriptionFailureKind = failure.kind;
-                transcriptionTelemetry.failuresByKind[failure.kind] = (transcriptionTelemetry.failuresByKind[failure.kind] ?? 0) + 1;
-                if (attempt === 1) transcriptionTelemetry.firstAttemptFailures += 1;
-                const shouldRetry = attempt === 1 && failure.kind !== "rate_limit" && isTransientTranscriptionFailure(failure);
-                if (shouldRetry) {
-                  latency.transcriptionRetryUsed = true;
-                  transcriptionTelemetry.retriesScheduled += 1;
-                  await waitForSpeakingRetry(transcriptionRetryDelayMs(deps.random ?? Math.random));
-                  continue;
-                }
-                transcriptionTelemetry.terminalFailures += 1;
-                // This log is intentionally safe: no transcript, audio,
-                // participant, session, request ID, provider response text,
-                // or credential is kept.
-                console.warn(`[Speaking provider failure] ${JSON.stringify({
-                  operation: "transcription",
-                  provider: transcriber.providerName ?? "custom",
-                  model: speakingTranscriptionProviderModel(transcriber.providerName, process.env, transcriptionInput),
-                  attempt,
-                  kind: failure.kind,
-                  ...(failure.status === undefined ? {} : { status: failure.status }),
-                  retryAfterMs: failure.retryAfterMs,
-                  quotaWindow: failure.quotaWindow,
-                  providerCooldown: failure.providerCooldown,
-                  providerDurationMs,
-                  audioBytes: parsed.audio?.byteLength ?? 0,
-                  audioDurationMs: parsed.audioDurationMs,
-                  mimeType: parsed.mimeType,
-                  automaticRetryUsed: latency.transcriptionRetryUsed,
-                  automaticRetrySucceeded: false,
-                  success: false
-                })}`);
-                if (failure.kind === "rate_limit") {
-                  sendProviderRateLimit(res, failure, "SPEAKING_TRANSCRIPTION_BUSY", "Speech recognition has reached its request limit. Please wait and retry this recording.");
-                } else {
-                  res.status(503).json(transcriptionFailureResponse(failure, latency.transcriptionRetryUsed));
-                }
-                return;
               }
+            } finally {
+              latency.transcriptionMs = boundedSpeakingDurationMs(transcriptionStartedAt);
+              rememberEvaluationMetric(transcriptionTelemetry.latencyMs, latency.transcriptionMs);
             }
-          } finally {
-            latency.transcriptionMs = boundedSpeakingDurationMs(transcriptionStartedAt);
-            rememberEvaluationMetric(transcriptionTelemetry.latencyMs, latency.transcriptionMs);
           }
           if (!transcription) {
             res.status(503).json(transcriptionFailureResponse({ kind: "unavailable" }, latency.transcriptionRetryUsed));
@@ -1558,6 +1646,7 @@ export const registerSpeakingRoutes = (app: Application, deps: SpeakingRouteDepe
               responseTimeMs: Math.max(0, Date.parse(turnCreatedAt) - Math.max(0, Date.parse(existingTurns.filter((turn) => turn.speaker === "ai").at(-1)?.createdAt ?? turnCreatedAt))),
               usedHelp: currentParticipant.helpPending,
               ...(transcription.confidence === undefined ? {} : { transcriptionConfidence: transcription.confidence }),
+              ...(localTranscript ? { clientTranscribed: true, transcriptionUncertain: localTranscript.data.uncertain } : {}),
               ...(requestId ? { requestId } : {})
             });
             await repository.updateParticipant(currentParticipant.id, { status: "in_progress", helpPending: false });
@@ -1616,6 +1705,10 @@ export const registerSpeakingRoutes = (app: Application, deps: SpeakingRouteDepe
     const access = await getParticipantAccess(req);
     if (!access || access.session.id !== String(req.params.sessionId)) {
       res.status(401).json({ error: "This speaking session is no longer available." });
+      return;
+    }
+    if (access.session.localTranscription && !localSpeechEnabled) {
+      res.status(503).json(localSpeechUnavailable);
       return;
     }
     if (!resolveSpeakingSupportSettings(access.activity.supportSettings).allowHelp) {

@@ -220,6 +220,9 @@ server stores transcript/evaluation metadata, not raw Speaking audio.
 
 ## Scaling and rollback guardrails
 
+The SpeakCheck pilot flags default off. Validate approved cohorts and school
+devices with the [pilot runbook](docs/speaking-local-first.md) before any rollout.
+
 Do not add Render replicas. Process-local rooms, sockets, timers, bots, rate
 limits, deduplication, and transient assets require room affinity and one
 authoritative instance.

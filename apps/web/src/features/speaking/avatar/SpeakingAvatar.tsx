@@ -10,6 +10,7 @@ export interface SpeakingAvatarProps {
   fallbackImageSrc?: string;
   fallbackAlt?: string;
   className?: string;
+  suspendRendering?: boolean;
 }
 
 function AvatarFallback({ src, alt }: { src: string; alt: string }) {
@@ -19,10 +20,11 @@ function AvatarFallback({ src, alt }: { src: string; alt: string }) {
 }
 
 export default function SpeakingAvatar({ state, modelSrc = SPEAKING_AVATARS.default.modelSrc,
-  fallbackImageSrc = SPEAKING_AVATARS.default.fallbackImageSrc, fallbackAlt = "", className = "" }: SpeakingAvatarProps) {
+  fallbackImageSrc = SPEAKING_AVATARS.default.fallbackImageSrc, fallbackAlt = "", className = "", suspendRendering = false }: SpeakingAvatarProps) {
   const hostRef = useRef<HTMLDivElement>(null);
   const stateRef = useRef(state);
-  useLayoutEffect(() => { stateRef.current = state; }, [state]);
+  const suspendedRef = useRef(suspendRendering);
+  useLayoutEffect(() => { stateRef.current = state; suspendedRef.current = suspendRendering; }, [state, suspendRendering]);
   const [status, setStatus] = useState<"loading" | "ready" | "fallback">("loading");
 
   useEffect(() => {
@@ -36,7 +38,7 @@ export default function SpeakingAvatar({ state, modelSrc = SPEAKING_AVATARS.defa
       if (cancelled) return;
       dispose = mountSpeakingAvatar(host, modelSrc, () => stateRef.current,
         () => { if (!cancelled) setStatus("ready"); },
-        () => { if (!cancelled) setStatus("fallback"); });
+        () => { if (!cancelled) setStatus("fallback"); }, undefined, () => suspendedRef.current);
     }).catch((error: unknown) => {
       if (cancelled) return;
       if (import.meta.env.DEV) console.warn("SpeakCheck avatar unavailable; using the image.", error);

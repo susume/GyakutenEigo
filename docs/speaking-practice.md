@@ -138,6 +138,10 @@ only a synthetic exchange; it never sends student data.
 
 ## Turn latency and diagnostics
 
+An opt-in pilot uses on-device transcription for a whole classroom session.
+See the [pilot runbook and benchmarks](speaking-local-first.md) for model
+preparation, permissions, eligibility, and rollback.
+
 The normal turn remains a single request so existing clients keep their
 idempotency, participant-token, lock, pause/end, and retry behavior:
 

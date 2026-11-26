@@ -156,6 +156,14 @@ enum SpeakingTurnSpeaker {
   student
 }
 
+enum SpeakingLocalSpeechReadiness {
+  preparing
+  downloading
+  ready
+  issue
+  alternative
+}
+
 enum SpeakingEvaluationJobStatus {
   queued
   running
@@ -419,6 +427,7 @@ model SpeakingSession {
   expiresAt                DateTime
   revision                 Int                   @default(0)
   activitySnapshotJson     Json
+  localTranscription       Boolean               @default(false)
   participants             SpeakingParticipant[]
   turns                    SpeakingTurn[]
 
@@ -439,6 +448,7 @@ model SpeakingParticipant {
   startedAt          DateTime?
   finishedAt         DateTime?
   readyAt            DateTime?
+  localSpeechReadiness SpeakingLocalSpeechReadiness?
   lastSeenAt         DateTime?
   pausedDurationMs   Int                       @default(0)
   status             SpeakingParticipantStatus @default(joined)
@@ -466,6 +476,8 @@ model SpeakingTurn {
   responseTimeMs          Int?
   usedHelp                Boolean             @default(false)
   transcriptionConfidence Float?
+  clientTranscribed       Boolean             @default(false)
+  transcriptionUncertain  Boolean             @default(false)
   requestId               String?
 
   @@unique([participantId, requestId])

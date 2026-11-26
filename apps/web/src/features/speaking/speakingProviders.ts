@@ -5,6 +5,7 @@ export interface SpeakOptions {
   rate?: number;
   /** Runtime-resolved SpeechSynthesisVoice.voiceURI from the curated list. */
   voiceId?: string;
+  localOnly?: boolean;
 }
 
 export interface TTSProvider {
@@ -28,11 +29,13 @@ export const browserTtsProvider: TTSProvider = {
     if (typeof window === "undefined" || !("speechSynthesis" in window) || typeof SpeechSynthesisUtterance === "undefined") return Promise.resolve();
     resolveActiveSpeech();
     window.speechSynthesis.cancel();
+    const voices = readBrowserSpeechVoices().filter((voice) => !options.localOnly || voice.localService);
+    const selectedVoice = (resolveCuratedSpeakingVoice(options.voiceId, voices)
+      ?? getDefaultCuratedSpeakingVoice(voices))?.voice
+      ?? (options.localOnly ? voices.find((voice) => /^en(?:-|$)/iu.test(voice.lang)) : undefined);
+    if (options.localOnly && !selectedVoice) return Promise.resolve();
     return new Promise((resolve) => {
       const utterance = new SpeechSynthesisUtterance(text);
-      const voices = readBrowserSpeechVoices();
-      const selectedVoice = (resolveCuratedSpeakingVoice(options.voiceId, voices)
-        ?? getDefaultCuratedSpeakingVoice(voices))?.voice;
       if (selectedVoice) {
         utterance.voice = selectedVoice;
         utterance.lang = selectedVoice.lang || options.lang || "en-US";

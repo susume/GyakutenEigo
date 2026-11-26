@@ -1,10 +1,19 @@
 import { performance } from "node:perf_hooks";
+import { readFile } from "node:fs/promises";
 
 const baseUrl = (process.env.SPEAKING_LOAD_BASE_URL || "http://127.0.0.1:4000").replace(/\/$/u, "");
 const joinCode = process.env.SPEAKING_LOAD_CODE?.trim();
 const requestedCount = Number.parseInt(process.env.SPEAKING_LOAD_COUNT || "40", 10);
 const count = Math.min(60, Math.max(1, Number.isFinite(requestedCount) ? requestedCount : 40));
 const textMode = process.env.SPEAKING_LOAD_TEXT === "true";
+const localMode = process.env.SPEAKING_LOAD_LOCAL_TRANSCRIPT === "true";
+const audioFile = process.env.SPEAKING_LOAD_AUDIO_FILE?.trim();
+const audioMime = process.env.SPEAKING_LOAD_AUDIO_MIME?.trim() || "audio/wav";
+const audioFixture = audioFile ? await readFile(audioFile) : undefined;
+const turnMode = localMode ? "local-transcript" : audioFixture ? "audio" : textMode ? "mock-text" : "none";
+const turnContent = (text) => localMode
+  ? { body: { text, uncertain: false }, contentType: "application/vnd.speakcheck.transcript+json" }
+  : audioFixture ? { body: audioFixture, contentType: audioMime } : { body: { text } };
 const trueBurst = process.env.SPEAKING_LOAD_TRUE_BURST === "true";
 const startTeacherSession = process.env.SPEAKING_LOAD_START_SESSION === "true";
 const teacherToken = process.env.SPEAKING_LOAD_TEACHER_TOKEN?.trim();
@@ -27,12 +36,13 @@ const statusCounts = (records) => records.reduce((counts, record) => {
 }, {});
 
 const allRequests = [];
-const request = async ({ phase, path, method = "GET", body, token, requestId, teacher = false, record = true }) => {
+const request = async ({ phase, path, method = "GET", body, token, requestId, contentType = "application/json", teacher = false, record = true }) => {
   const headers = new Headers();
   if (token) headers.set("X-Speaking-Token", token);
   if (requestId) headers.set("X-Speaking-Turn-Id", requestId);
   if (teacher && teacherToken) headers.set("Authorization", `Bearer ${teacherToken}`);
-  if (body !== undefined) headers.set("Content-Type", "application/json");
+  if (body !== undefined) headers.set("Content-Type", contentType);
+  const requestBody = body === undefined || Buffer.isBuffer(body) ? body : JSON.stringify(body);
   const controller = new AbortController();
   const timeoutId = setTimeout(() => controller.abort(), requestTimeoutMs);
   const startedAt = performance.now();
@@ -42,7 +52,7 @@ const request = async ({ phase, path, method = "GET", body, token, requestId, te
     const response = await fetch(`${baseUrl}${path}`, {
       method,
       headers,
-      body: body === undefined ? undefined : JSON.stringify(body),
+      body: requestBody,
       signal: controller.signal
     });
     status = response.status;
@@ -53,7 +63,7 @@ const request = async ({ phase, path, method = "GET", body, token, requestId, te
   } finally {
     clearTimeout(timeoutId);
   }
-  const result = { phase, status, data, durationMs: Math.round(performance.now() - startedAt) };
+  const result = { phase, status, data, durationMs: Math.round(performance.now() - startedAt), requestBytes: requestBody ? Buffer.byteLength(requestBody) : 0 };
   if (record) allRequests.push(result);
   return result;
 };
@@ -67,6 +77,7 @@ const reportPhase = (phase, records, extra = {}) => {
     successful: records.filter((record) => record.status >= 200 && record.status < 300).length,
     rateLimited429: records.filter((record) => record.status === 429).length,
     errorRate: records.length ? Number((records.filter((record) => record.status < 200 || record.status >= 400).length / records.length).toFixed(4)) : 0,
+    requestBodyBytes: records.reduce((total, record) => total + record.requestBytes, 0),
     latencyMs: {
       p50: percentile(latencies, 0.5),
       p95: percentile(latencies, 0.95),
@@ -98,7 +109,7 @@ const readWorkloadMetrics = async () => {
 
 const main = async () => {
   const memoryBefore = process.memoryUsage();
-  console.log(JSON.stringify({ baseUrl, count, textMode, trueBurst, startTeacherSession, sharedIp: "127.0.0.1", note: "Run against a disposable classroom session; tokens stay in memory and are never printed." }));
+  console.log(JSON.stringify({ baseUrl, count, turnMode, trueBurst, startTeacherSession, note: "Server traffic only. Use a disposable classroom and authorized synthetic fixtures." }));
   const workloadSamples = [];
 
   const joins = await runBatch("phase-1-join", Array.from({ length: count }, (_, index) => () => request({
@@ -123,6 +134,15 @@ const main = async () => {
     return;
   }
 
+  if (localMode) {
+    await runBatch("phase-2-local-readiness", participants.map((participant) => () => request({
+      phase: "phase-2-local-readiness",
+      path: `/api/speaking/sessions/${encodeURIComponent(sessionId)}/local-readiness`,
+      method: "POST",
+      token: participant.token,
+      body: { status: "ready" }
+    })));
+  }
   if (startTeacherSession && teacherToken) {
     const start = await request({ phase: "phase-2-teacher-start", path: `/api/speaking/sessions/${encodeURIComponent(sessionId)}/start-session`, method: "POST", teacher: true });
     console.log(JSON.stringify({ phase: "phase-2-teacher-start", status: start.status, latencyMs: start.durationMs }));
@@ -139,9 +159,9 @@ const main = async () => {
   let turnRecords = [];
   let duplicateRetrySuccesses = 0;
   let duplicatePairMismatches = 0;
-  if (!textMode) {
-    skipped("phase-3-turns", "Set SPEAKING_LOAD_TEXT=true; text input is a local/mock-only test mode and is not a real-provider claim.");
-    skipped("phase-4-help-mix", "Set SPEAKING_LOAD_TEXT=true to run mixed text turns and Help requests.");
+  if (turnMode === "none") {
+    skipped("phase-3-turns", "Set SPEAKING_LOAD_TEXT, SPEAKING_LOAD_LOCAL_TRANSCRIPT or SPEAKING_LOAD_AUDIO_FILE to simulate turns.");
+    skipped("phase-4-help-mix", "No turn simulation selected.");
   } else {
     turnRecords = await runBatch("phase-3-turns", participants.map((participant, index) => () => sleep(trueBurst ? 0 : (index * 37) % 1_000).then(() => request({
       phase: "phase-3-turns",
@@ -149,7 +169,7 @@ const main = async () => {
       method: "POST",
       token: participant.token,
       requestId: `load-turn-${index + 1}`,
-      body: { text: `This is load-test answer ${index + 1}.` }
+      ...turnContent(`This is load-test answer ${index + 1}.`)
     }))));
     const duplicateCandidates = turnRecords
       .map((record, index) => ({ record, participant: participants[index] }))
@@ -161,7 +181,7 @@ const main = async () => {
       method: "POST",
       token: participant.token,
       requestId: `load-turn-${participants.indexOf(participant) + 1}`,
-      body: { text: `This is load-test answer ${participants.indexOf(participant) + 1}.` },
+      ...turnContent(`This is load-test answer ${participants.indexOf(participant) + 1}.`),
       // The browser's request id is represented by the header in production;
       // this script records the retry count even when a deployment rejects
       // text input before it can reach idempotency.
@@ -175,7 +195,7 @@ const main = async () => {
     }).length;
     const mixedRecords = await runBatch("phase-4-help-mix", participants.map((participant, index) => () => sleep(trueBurst ? 0 : (index * 53) % 1_000).then(() => index % 4 === 0
       ? request({ phase: "phase-4-help-mix", path: `/api/speaking/sessions/${encodeURIComponent(sessionId)}/help`, method: "POST", token: participant.token })
-      : request({ phase: "phase-4-help-mix", path: `/api/speaking/sessions/${encodeURIComponent(sessionId)}/turn`, method: "POST", token: participant.token, requestId: `load-mixed-turn-${index + 1}`, body: { text: `A second mixed answer from student ${index + 1}.` } }))));
+      : request({ phase: "phase-4-help-mix", path: `/api/speaking/sessions/${encodeURIComponent(sessionId)}/turn`, method: "POST", token: participant.token, requestId: `load-mixed-turn-${index + 1}`, ...turnContent(`A second mixed answer from student ${index + 1}.`) }))));
     const mixedSample = await readWorkloadMetrics();
     if (mixedSample) workloadSamples.push(mixedSample);
     void starts;
@@ -235,7 +255,7 @@ const main = async () => {
       } : "not available"
     }
   }));
-  if (!textMode || participants.length !== count || pending.size || duplicatePairMismatches || allRequests.some((record) => record.status < 200 || record.status >= 300)) process.exitCode = 1;
+  if (turnMode === "none" || participants.length !== count || pending.size || duplicatePairMismatches || allRequests.some((record) => record.status < 200 || record.status >= 300)) process.exitCode = 1;
 };
 
 main().catch((error) => {

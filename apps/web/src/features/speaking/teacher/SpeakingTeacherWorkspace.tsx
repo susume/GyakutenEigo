@@ -149,6 +149,13 @@ const ROSTER_STATUS_LABELS: Record<SpeakingRosterStatus, string> = {
 };
 
 const rosterStatusOrder: SpeakingRosterStatus[] = ["joined", "ready", "practicing", "processing", "evaluating", "retrying", "finished", "error"];
+const localReadinessLabels = {
+  preparing: "Preparing model",
+  downloading: "Downloading model",
+  ready: "Device ready",
+  issue: "Device issue",
+  alternative: "Alternative assessment needed"
+};
 
 const formatRosterActivity = (value?: string, locale?: string) => {
   if (!value) return "No activity yet";
@@ -1644,6 +1651,8 @@ function SpeakingActivityDetailPage({
   const [rosterFilter, setRosterFilter] = useState<SpeakingRosterStatus | "all">("all");
   const [rosterLoading, setRosterLoading] = useState(false);
   const [rosterError, setRosterError] = useState("");
+  const [localSpeechEnabled, setLocalSpeechEnabled] = useState(false);
+  const [localTranscription, setLocalTranscription] = useState(false);
   const load = useCallback(async () => {
     try {
       const [activityPayload, sessionPayload] = await Promise.all([
@@ -1651,6 +1660,7 @@ function SpeakingActivityDetailPage({
         speakingApi.sessions(activityId),
       ]);
       setActivity((activityPayload as { activity: SpeakingActivity }).activity);
+      setLocalSpeechEnabled((activityPayload as { localSpeechEnabled?: boolean }).localSpeechEnabled === true);
       const nextSessions = (sessionPayload as { sessions: SpeakingSession[] }).sessions;
       const selectedId = new URLSearchParams(window.location.search).get("sessionId");
       setSessions(selectedId ? [...nextSessions].sort((a, b) => Number(b.id === selectedId) - Number(a.id === selectedId)) : nextSessions);
@@ -1915,6 +1925,11 @@ function SpeakingActivityDetailPage({
                         : t("Ready when you are")}
                     </h2>
                     <p>{t("Launching creates a new secure session code. This activity itself stays reusable.")}</p>
+                    {localSpeechEnabled && <label>
+                      <input type="checkbox" checked={localTranscription} disabled={working} onChange={(event) => setLocalTranscription(event.target.checked)} />
+                      {" "}{t("Use on-device speech recognition (pilot)")}
+                    </label>}
+                    {localSpeechEnabled && localTranscription && <p>{t("Share the join code before class so students can prepare. Confirm that the configured conversation and evaluation service is permitted for this class. Results are provisional.")}</p>}
                   </div>
                   <button
                     type="button"
@@ -1922,7 +1937,8 @@ function SpeakingActivityDetailPage({
                     disabled={working}
                     onClick={() =>
                       void run(async () => {
-                        await speakingApi.launchSession(activity.id);
+                        await speakingApi.launchSession(activity.id, undefined, localSpeechEnabled && localTranscription);
+                        setLocalTranscription(false);
                         // A new classroom run must replace any historical session selection.
                         const url = new URL(window.location.href);
                         url.searchParams.delete("sessionId");
@@ -2086,6 +2102,9 @@ function SpeakingRosterCard({
     return (filter === "all" || item.status === filter) &&
       (!query || display.toLocaleLowerCase().includes(query));
   }).sort((a, b) => Number(b.status === "error") - Number(a.status === "error") || (a.participant.displayIdentifier ?? a.participant.id).localeCompare(b.participant.displayIdentifier ?? b.participant.id, undefined, { numeric: true }));
+  const readiness = roster?.session.localTranscription ? Object.entries(localReadinessLabels).map(([status, label]) => ({
+    label, count: roster.items.filter((item) => item.participant.localSpeechReadiness === status).length
+  })) : undefined;
   return (
     <section className="speaking-roster-card" aria-labelledby="speaking-roster-title">
       <div className="speaking-roster-heading">
@@ -2098,6 +2117,9 @@ function SpeakingRosterCard({
           {t(roster?.session.status ?? "loading")}
         </span>
       </div>
+      {readiness && <div className="speaking-roster-counts" aria-label={t("On-device preparation summary")}>
+        {readiness.map(({ label, count }) => <span className="speaking-roster-count" key={label}><strong>{count}</strong> <span>{t(label)}</span></span>)}
+      </div>}
       <div className="speaking-roster-counts" aria-label={t("Roster counts")}>
         {rosterStatusOrder.map((status) => (
           <button type="button" className={`speaking-roster-count status-${status}`} key={status} aria-pressed={filter === status} onClick={() => onFilter(filter === status ? "all" : status)}>
@@ -2139,7 +2161,10 @@ function SpeakingRosterCard({
             return (
               <div className="speaking-roster-row" role="listitem" key={item.participant.id}>
                 <RosterIcon status={item.status} />
-                <strong>{display}</strong>
+                <div>
+                  <strong>{display}</strong>
+                  {roster?.session.localTranscription && item.participant.localSpeechReadiness && <small className="speaking-device-readiness-row">{t(localReadinessLabels[item.participant.localSpeechReadiness])}</small>}
+                </div>
                 <span className={`speaking-roster-status status-${item.status}`}>{t(ROSTER_STATUS_LABELS[item.status])}</span>
                 <time dateTime={item.latestActivityAt}>{t(formatRosterActivity(item.latestActivityAt, locale))}</time>
               </div>

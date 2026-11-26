@@ -44,7 +44,7 @@ explicit Render origin enabled.
 | Round lifecycle | `roundRuntime.ts`, `roundFlow.ts` | Server owns phases, deadlines, scoring, pause/resume, and conclusions |
 | Combat/objectives | `combat.ts`, runtime flag handlers, `botRuntime.ts` | Server validates position/intent and resolves damage, flags, respawns, and bots |
 | Athletics | `athleticsAuthority.ts`, `athleticsModeAuthority.ts`, shared Athletics modules | Server owns course progress, energy, role/variant rules, hazards, and race results |
-| Speaking | `routes/speakingRoutes.ts`, `speakingProviders.ts`, `speakingRepository.ts` | Server receives bounded audio/text and calls the selected provider; keys never reach browser |
+| Speaking | `routes/speakingRoutes.ts`, `speakingProviders.ts`, `speakingRepository.ts`, `features/speaking/localSpeech` | Standard turns use server transcription. Opt-in pilot sessions use a lazy browser Worker and a session-bound transcript submission. The server owns conversation, evaluation and result persistence. |
 | Durable storage | `persistence/normalizedLibrary.ts`, `persistenceScheduler.ts`, Prisma | PostgreSQL is authoritative for teacher/library/history/Speaking records |
 | Runtime checkpoint | `RuntimeSnapshot` and runtime hydration helpers | Recovery/backfill aid for active rooms, not the new library authority |
 

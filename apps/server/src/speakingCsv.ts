@@ -4,6 +4,7 @@ export type SpeakingCsvRow = {
   setNames: string;
   performanceTest: string;
   mode?: SpeakingMode;
+  localTranscription?: boolean;
   supportSettings?: Partial<SpeakingSupportSettings>;
   session: string;
   date: string;
@@ -28,7 +29,8 @@ export const buildSpeakingCsv = (rows: SpeakingCsvRow[]) => {
     return all;
   }, []);
   const includesDoctorGrades = rows.some((row) => row.doctorGrade !== undefined);
-  const headers = ["Set", "Speaking Task", "Mode", "Target expressions allowed", "Context allowed", "Transcript allowed", "Replay allowed", "Help allowed", "Session", "Date", "Student", "Status", "Duration", "Overall Score", ...(includesDoctorGrades ? ["HWG DL6 Points (out of 20)", "HWG DL6 Grade"] : []), ...criteria.map((criterion) => criterion.name), "Help Count"];
+  const includesLocalTranscription = rows.some((row) => row.localTranscription);
+  const headers = ["Set", "Speaking Task", "Mode", "Target expressions allowed", "Context allowed", "Transcript allowed", "Replay allowed", "Help allowed", "Session", "Date", "Student", "Status", "Duration", "Overall Score", ...(includesDoctorGrades ? ["HWG DL6 Points (out of 20)", "HWG DL6 Grade"] : []), ...criteria.map((criterion) => criterion.name), "Help Count", ...(includesLocalTranscription ? ["On-device transcript (provisional)"] : [])];
   const lines = [headers, ...rows.map((row) => [
     ...(() => {
       const supportSettings = resolveSpeakingSupportSettings(row.supportSettings);
@@ -51,7 +53,8 @@ export const buildSpeakingCsv = (rows: SpeakingCsvRow[]) => {
     row.doctorGrade === null ? "" : row.overallScore ?? "",
     ...(includesDoctorGrades ? [row.doctorGrade?.points ?? "", row.doctorGrade?.grade ?? ""] : []),
     ...criteria.map((criterion) => row.criteria.find((candidate) => candidate.id === criterion.id)?.score ?? ""),
-    row.helpCount
+    row.helpCount,
+    ...(includesLocalTranscription ? [row.localTranscription ? "Yes" : "No"] : [])
   ])];
   return `\uFEFF${lines.map((line) => line.map(escapeCsv).join(",")).join("\r\n")}\r\n`;
 };
