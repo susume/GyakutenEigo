@@ -1,5 +1,7 @@
 # SpeakCheck on-device speech pilot
 
+The [Phase 3 runbook](speaking-phase-3.md) covers adaptive structured conversations, Read Aloud, private passage import, review, validation and rollback. The measurements and operational notes below record the earlier pilot baselines.
+
 The pilot is implemented for teacher-selected Practice and Performance Test sessions. It sends transcripts to the existing conversation and evaluation flow. The pilot defaults off. An ordinary session uses its existing server transcription setting.
 
 ## Repository audit
@@ -111,7 +113,7 @@ API startup invokes the installed Prisma CLI with the current Node executable. T
 
 Pilot thresholds and all cohort evidence should be reviewed with teachers before expanding deployment. A passing synthetic smoke supports a technical pilot. Live learner accuracy and classroom completion determine eligibility for wider use.
 
-## Structured adaptive speaking and Read Aloud
+## Phase 2 structured conversation baseline
 
 The experimental structured conversation mode uses on-device Moonshine transcription and deterministic conversation, Help and assessment rules in the SpeakCheck API. The teacher can reuse an activity's opening and the first two stated success conditions or provide a question script when launching. The server snapshots each script in the session and withholds its concept cues from participant responses. Topic plans and replies survive an API restart through persisted turns and the existing idempotent request handling. Legacy open conversation stays available in deployments that opt to permit it.
 

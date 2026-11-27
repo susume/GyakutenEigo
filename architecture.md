@@ -55,6 +55,14 @@ teacher-only fields, and Learning Pulse.
 
 ## Runtime state model
 
+The Phase 3 SpeakCheck pilots reuse the student session, browser speech worker,
+and evaluation queue. A structured launch snapshots its algorithm version and
+authored plan. A reading launch snapshots the teacher-owned passage version
+and rubric. Reading sends a validated transcript and advisory duration through
+the existing session-bound turn route. The evaluation job aligns the transcript
+with the passage locally on the API. PostgreSQL stores provisional evidence
+and an append-only record of teacher decisions. See the [Phase 3 runbook](docs/speaking-phase-3.md).
+
 The deployed service is intentionally single-instance:
 
 - process-local rooms, join-code directory, room leases/fencing, sockets,

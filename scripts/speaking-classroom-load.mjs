@@ -6,13 +6,14 @@ const joinCode = process.env.SPEAKING_LOAD_CODE?.trim();
 const requestedCount = Number.parseInt(process.env.SPEAKING_LOAD_COUNT || "40", 10);
 const count = Math.min(60, Math.max(1, Number.isFinite(requestedCount) ? requestedCount : 40));
 const textMode = process.env.SPEAKING_LOAD_TEXT === "true";
-const localMode = process.env.SPEAKING_LOAD_LOCAL_TRANSCRIPT === "true";
+const readAloudMode = process.env.SPEAKING_LOAD_READ_ALOUD === "true";
+const localMode = readAloudMode || process.env.SPEAKING_LOAD_LOCAL_TRANSCRIPT === "true";
 const audioFile = process.env.SPEAKING_LOAD_AUDIO_FILE?.trim();
 const audioMime = process.env.SPEAKING_LOAD_AUDIO_MIME?.trim() || "audio/wav";
 const audioFixture = audioFile ? await readFile(audioFile) : undefined;
-const turnMode = localMode ? "local-transcript" : audioFixture ? "audio" : textMode ? "mock-text" : "none";
+const turnMode = readAloudMode ? "read-aloud" : localMode ? "local-transcript" : audioFixture ? "audio" : textMode ? "mock-text" : "none";
 const turnContent = (text) => localMode
-  ? { body: { text, uncertain: false }, contentType: "application/vnd.speakcheck.transcript+json" }
+  ? { body: { text: readAloudMode ? "I drew a map and took it to school. ".repeat(12).trim() : text, uncertain: false, ...(readAloudMode ? { durationMs: 60_000 } : {}) }, contentType: "application/vnd.speakcheck.transcript+json" }
   : audioFixture ? { body: audioFixture, contentType: audioMime } : { body: { text } };
 const trueBurst = process.env.SPEAKING_LOAD_TRUE_BURST === "true";
 const startTeacherSession = process.env.SPEAKING_LOAD_START_SESSION === "true";
@@ -193,13 +194,16 @@ const main = async () => {
       const original = duplicateCandidates[index].record;
       return record.status !== 200 || record.data?.studentTurn?.id !== original.data?.studentTurn?.id || record.data?.aiTurn?.id !== original.data?.aiTurn?.id;
     }).length;
-    const mixedRecords = await runBatch("phase-4-help-mix", participants.map((participant, index) => () => sleep(trueBurst ? 0 : (index * 53) % 1_000).then(() => index % 4 === 0
-      ? request({ phase: "phase-4-help-mix", path: `/api/speaking/sessions/${encodeURIComponent(sessionId)}/help`, method: "POST", token: participant.token })
-      : request({ phase: "phase-4-help-mix", path: `/api/speaking/sessions/${encodeURIComponent(sessionId)}/turn`, method: "POST", token: participant.token, requestId: `load-mixed-turn-${index + 1}`, ...turnContent(`A second mixed answer from student ${index + 1}.`) }))));
-    const mixedSample = await readWorkloadMetrics();
-    if (mixedSample) workloadSamples.push(mixedSample);
+    if (readAloudMode) {
+      skipped("phase-4-help-mix", "Reading assignments accept one transcript and have no conversation Help.");
+    } else {
+      await runBatch("phase-4-help-mix", participants.map((participant, index) => () => sleep(trueBurst ? 0 : (index * 53) % 1_000).then(() => index % 4 === 0
+        ? request({ phase: "phase-4-help-mix", path: `/api/speaking/sessions/${encodeURIComponent(sessionId)}/help`, method: "POST", token: participant.token })
+        : request({ phase: "phase-4-help-mix", path: `/api/speaking/sessions/${encodeURIComponent(sessionId)}/turn`, method: "POST", token: participant.token, requestId: `load-mixed-turn-${index + 1}`, ...turnContent(`A second mixed answer from student ${index + 1}.`) }))));
+      const mixedSample = await readWorkloadMetrics();
+      if (mixedSample) workloadSamples.push(mixedSample);
+    }
     void starts;
-    void mixedRecords;
   }
 
   const finishes = await runBatch("phase-5-finish", participants.map((participant) => () => request({

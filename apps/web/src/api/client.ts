@@ -1,5 +1,6 @@
 import { SPEAKING_LOCAL_TRANSCRIPT_CONTENT_TYPE, type CharacterCustomizationSettings, type Choice, type PlayerAppearance, type SessionSettings, type SnowballPackSize, type SpeakingCreateActivityInput, type SpeakingLocalSpeechReadiness, type SpeakingLocalTranscript, type StudySetSummary } from "@quizstrike/shared";
 import { ApiError } from "./errors";
+import type { SpeakingPassage, SpeakingReadingReview, SpeakingReadingReviewInput, SpeakingReadingRubric, SpeakingStructuredPlan } from "@quizstrike/shared";
 import { ApiRequestTimeoutError, buildApiUrlCandidates, fetchFromApiCandidates, resolveApiOrigin } from "./endpoints.js";
 import { retryOnce } from "./retry.js";
 
@@ -403,10 +404,18 @@ export const speakingApi = {
   deleteActivity: (id: string) => api(`/api/speaking/activities/${encodeURIComponent(id)}`, { method: "DELETE" }),
   activity: (id: string) => api(`/api/speaking/activities/${encodeURIComponent(id)}`),
   sessions: (activityId: string) => api(`/api/speaking/activities/${encodeURIComponent(activityId)}/sessions`),
-  launchSession: (activityId: string, setId?: string, localTranscription = false, structured?: { steps?: unknown[] }) => api(`/api/speaking/activities/${encodeURIComponent(activityId)}/sessions`, {
+  launchSession: (activityId: string, setId?: string, localTranscription = false, structured?: Partial<SpeakingStructuredPlan>, reading?: { passageId: string; rubric: SpeakingReadingRubric }) => api(`/api/speaking/activities/${encodeURIComponent(activityId)}/sessions`, {
     method: "POST",
-    ...(setId || localTranscription || structured ? { body: JSON.stringify({ setId, localTranscription, ...(structured ? { structured: true, structuredPlan: structured.steps ? structured : undefined } : {}) }) } : {})
+    ...(setId || localTranscription || structured || reading ? { body: JSON.stringify({ setId, localTranscription, ...(structured ? { structured: true, structuredPlan: structured.steps ? structured : undefined } : {}), ...(reading ? { readingPassageId: reading.passageId, readingRubric: reading.rubric } : {}) }) } : {})
   }),
+  readingAvailability: () => api<{ enabled: boolean }>("/api/speaking/read-aloud"),
+  passages: (signal?: AbortSignal) => api<{ passages: SpeakingPassage[] }>("/api/speaking/read-aloud/passages", { signal }),
+  importPassages: (catalog: unknown, authorized: boolean) => api<{ passages: SpeakingPassage[] }>("/api/speaking/read-aloud/passages", { method: "POST", body: JSON.stringify({ catalog, authorized }) }),
+  previewStructured: (activityId: string, plan: SpeakingStructuredPlan, responses: string[]) => api<{ reply: string; complete: boolean; completedObjectives: string[] }>(
+    `/api/speaking/activities/${encodeURIComponent(activityId)}/structured-preview`, { method: "POST", body: JSON.stringify({ plan, responses }) }
+  ),
+  readingReviews: (participantId: string, signal?: AbortSignal) => api<{ reviews: SpeakingReadingReview[] }>(`/api/speaking/results/${encodeURIComponent(participantId)}/reading-review`, { signal }),
+  saveReadingReview: (participantId: string, review: SpeakingReadingReviewInput) => api<{ review: SpeakingReadingReview }>(`/api/speaking/results/${encodeURIComponent(participantId)}/reading-review`, { method: "POST", body: JSON.stringify(review) }),
   join: (code: string, identifier?: string, requestId?: string, joinToken?: string) => api("/api/speaking/join", { method: "POST", ...(requestId ? { headers: { "X-Speaking-Join-Id": requestId } } : {}), body: JSON.stringify({ code, identifier, ...(requestId ? { requestId } : {}), ...(joinToken ? { joinToken } : {}) }) }, { attemptTimeoutMs: SPEAKING_JOIN_REQUEST_TIMEOUT_MS }),
   startParticipant: (sessionId: string, token: string) => api(`/api/speaking/sessions/${encodeURIComponent(sessionId)}/start`, { method: "POST", headers: speakingHeaders(token) }),
   startSession: (sessionId: string) => api(`/api/speaking/sessions/${encodeURIComponent(sessionId)}/start-session`, { method: "POST" }),
@@ -420,7 +429,7 @@ export const speakingApi = {
   localReadiness: (sessionId: string, token: string, status: SpeakingLocalSpeechReadiness, signal?: AbortSignal) => api(`/api/speaking/sessions/${encodeURIComponent(sessionId)}/local-readiness`, {
     method: "POST", headers: speakingHeaders(token), body: JSON.stringify({ status }), signal
   }, { attemptTimeoutMs: SPEAKING_STATUS_REQUEST_TIMEOUT_MS }),
-  localTurn: (sessionId: string, token: string, requestId: string, transcript: SpeakingLocalTranscript, signal?: AbortSignal) => api(`/api/speaking/sessions/${encodeURIComponent(sessionId)}/turn`, {
+  localTurn: (sessionId: string, token: string, requestId: string, transcript: SpeakingLocalTranscript & { durationMs?: number }, signal?: AbortSignal) => api(`/api/speaking/sessions/${encodeURIComponent(sessionId)}/turn`, {
     method: "POST",
     headers: { ...speakingHeaders(token), "Content-Type": SPEAKING_LOCAL_TRANSCRIPT_CONTENT_TYPE, "X-Speaking-Turn-Id": requestId },
     body: JSON.stringify(transcript), signal

@@ -62,7 +62,6 @@ import {
   type SpeakingSetSummary,
   type SpeakingMode,
   type SpeakingSupportSettings,
-  type SpeakingTurn,
   type SpeakingLibraryCollection,
   type SpeakingLibraryCategoryId,
 } from "@quizstrike/shared";
@@ -71,6 +70,10 @@ import { buildTeacherSpeakingPath } from "../../../navigation";
 import GyakutenEigoBrand from "../../../ui/GyakutenEigoBrand";
 import { formatDuration } from "../speakingData";
 import { ResultPanel, scoreFor } from "../SpeakingResultPanel";
+import { SpeakingReadingResults } from "../SpeakingReadingResults";
+import SpeakingReadingSetup from "./SpeakingReadingSetup";
+import SpeakingAdaptiveEditor, { emptyAdaptivePlan } from "./SpeakingAdaptiveEditor";
+import { SpeakingStructuredPlanSchema, type SpeakingParticipantResult, type SpeakingPassage, type SpeakingReadingRubric, type SpeakingStructuredPlan } from "@quizstrike/shared";
 import { SpeakingKeywords, SpeakingReferenceSheet } from "../SpeakingSupportPanel";
 import { SpeakingTextbookSupport } from "../SpeakingTextbookSupport";
 import { SpeakingRubricGuide } from "../SpeakingRubricGuide";
@@ -80,29 +83,13 @@ import { coreFallbackActivities, isCompatibleCoreLibraryResponse } from "./speak
 import { speakingModeDescription, speakingModeLabel, speakingSupportSummary } from "../speakingCopy";
 import "../speaking.css";
 import "../speaking-layout.css";
+import "../speaking-reading.css";
 import "./speaking-dashboard.css";
 
 type Navigate = (nextPath: string) => void;
 type SpeakingEvaluationStatus = "queued" | "running" | "retrying" | "completed" | "failed";
 type ResultResponse = {
-  result: {
-    activity: Pick<
-      SpeakingActivity,
-      | "id"
-      | "title"
-      | "scenario"
-      | "targetExpressions"
-      | "nativeLanguage"
-      | "rubric"
-      | "context"
-      | "mode"
-      | "supportSettings"
-    >;
-    session: SpeakingSession;
-    participant: SpeakingParticipant;
-    turns: SpeakingTurn[];
-    evaluation?: SpeakingEvaluation;
-  };
+  result: SpeakingParticipantResult;
   evaluationStatus?: SpeakingEvaluationStatus;
   evaluationRetryable?: boolean;
   nextRetryAt?: string;
@@ -110,8 +97,11 @@ type ResultResponse = {
 type SessionResultsResponse = {
   activity: SpeakingActivity;
   session: SpeakingSession;
+  readingPassage?: Omit<SpeakingPassage, "text">;
   items: Array<{
     participant: SpeakingParticipant;
+    readingReviewStatus?: "confirmed" | "reopened";
+    readingSubmitted?: boolean;
     status: SpeakingParticipant["status"];
     durationSeconds: number;
     overallScore?: number;
@@ -1654,10 +1644,15 @@ function SpeakingActivityDetailPage({
   const [localSpeechEnabled, setLocalSpeechEnabled] = useState(false);
   const [localTranscription, setLocalTranscription] = useState(false);
   const [structuredEnabled, setStructuredEnabled] = useState(false);
+  const [adaptiveEnabled, setAdaptiveEnabled] = useState(false);
+  const [readingEnabled, setReadingEnabled] = useState(false);
+  const [readingMode, setReadingMode] = useState(false);
+  const [readingSelection, setReadingSelection] = useState<{ passageId: string; rubric: SpeakingReadingRubric }>();
+  const [adaptivePlan, setAdaptivePlan] = useState(emptyAdaptivePlan);
   const [independentOnly, setIndependentOnly] = useState(false);
   const [structuredSelected, setStructuredSelected] = useState(false);
   const [structuredScript, setStructuredScript] = useState("");
-  const useStructured = structuredEnabled && (independentOnly || structuredSelected);
+  const useStructured = !readingMode && structuredEnabled && (independentOnly || structuredSelected);
   const load = useCallback(async () => {
     try {
       const [activityPayload, sessionPayload] = await Promise.all([
@@ -1667,6 +1662,8 @@ function SpeakingActivityDetailPage({
       setActivity((activityPayload as { activity: SpeakingActivity }).activity);
       setLocalSpeechEnabled((activityPayload as { localSpeechEnabled?: boolean }).localSpeechEnabled === true);
       setStructuredEnabled((activityPayload as { structuredEnabled?: boolean }).structuredEnabled === true);
+      setAdaptiveEnabled((activityPayload as { adaptiveEnabled?: boolean }).adaptiveEnabled === true);
+      setReadingEnabled((activityPayload as { readingEnabled?: boolean }).readingEnabled === true);
       setIndependentOnly((activityPayload as { independentOnly?: boolean }).independentOnly === true);
       const nextSessions = (sessionPayload as { sessions: SpeakingSession[] }).sessions;
       const selectedId = new URLSearchParams(window.location.search).get("sessionId");
@@ -1932,31 +1929,39 @@ function SpeakingActivityDetailPage({
                         : t("Ready when you are")}
                     </h2>
                     <p>{t("Launching creates a new secure session code. This activity itself stays reusable.")}</p>
-                    {structuredEnabled && <label>
+                    {readingEnabled && <label>
+                      <input type="checkbox" checked={readingMode} disabled={working} onChange={(event) => setReadingMode(event.target.checked)} />
+                      {" "}Read Aloud / 音読チェック
+                    </label>}
+                    {readingMode && <SpeakingReadingSetup onChange={setReadingSelection} disabled={working} />}
+                    {!readingMode && structuredEnabled && <label>
                       <input type="checkbox" checked={useStructured} disabled={working || independentOnly} onChange={(event) => setStructuredSelected(event.target.checked)} />
                       {" "}{t("Structured conversation (experimental)")}
                     </label>}
-                    {useStructured && <label>{t("Questions and objectives")}
+                    {useStructured && adaptiveEnabled && <SpeakingAdaptiveEditor activityId={activity.id} disabled={working} plan={adaptivePlan} setPlan={setAdaptivePlan} />}
+                    {useStructured && !adaptiveEnabled && <label>{t("Questions and objectives")}
                       <textarea rows={4} maxLength={4000} value={structuredScript} onChange={(event) => setStructuredScript(event.target.value)} aria-describedby="structured-script-help" />
                       <small id="structured-script-help">{t("Leave blank to reuse the activity opening and default follow-ups. For each custom step, enter question | objective | concept cues separated by commas | optional follow-up. Use @question in the cues field to invite a student question.")}</small>
                     </label>}
-                    {localSpeechEnabled && !useStructured && <label>
+                    {!readingMode && localSpeechEnabled && !useStructured && <label>
                       <input type="checkbox" checked={localTranscription} disabled={working} onChange={(event) => setLocalTranscription(event.target.checked)} />
                       {" "}{t("Use on-device speech recognition (pilot)")}
                     </label>}
-                    {localSpeechEnabled && !useStructured && localTranscription && <p>{t("Share the join code before class so students can prepare. Confirm that the configured conversation and evaluation service is permitted for this class. Results are provisional.")}</p>}
+                    {!readingMode && localSpeechEnabled && !useStructured && localTranscription && <p>{t("Share the join code before class so students can prepare. Confirm that the configured conversation and evaluation service is permitted for this class. Results are provisional.")}</p>}
                   </div>
                   <button
                     type="button"
                     className="speaking-primary-button"
-                    disabled={working || (independentOnly && !structuredEnabled)}
+                    disabled={working || (readingMode ? !readingSelection : (independentOnly && !structuredEnabled) || (useStructured && adaptiveEnabled && !SpeakingStructuredPlanSchema.safeParse(adaptivePlan).success))}
                     onClick={() =>
                       void run(async () => {
-                        const steps = structuredScript.split(/\r?\n/u).map((line) => line.trim()).filter(Boolean).map((line) => {
+                        const steps = structuredScript.split(/\r?\n/u).map((line) => line.trim()).filter(Boolean).map((line): SpeakingStructuredPlan["steps"][number] => {
                           const [question, objective, cues = "", followUp] = line.split("|").map((field) => field.trim());
                           return { question, objective, concepts: cues === "@question" ? [] : cues.split(",").map((cue) => cue.trim()).filter(Boolean), kind: cues === "@question" ? "question" : "answer", ...(followUp ? { followUp } : {}) };
                         });
-                        await speakingApi.launchSession(activity.id, undefined, !useStructured && localSpeechEnabled && localTranscription, useStructured ? (steps.length ? { steps } : {}) : undefined);
+                        await speakingApi.launchSession(activity.id, undefined, !readingMode && !useStructured && localSpeechEnabled && localTranscription,
+                          useStructured ? (adaptiveEnabled ? adaptivePlan : steps.length ? { steps } : {}) : undefined,
+                          readingMode ? readingSelection : undefined);
                         setLocalTranscription(false);
                         // A new classroom run must replace any historical session selection.
                         const url = new URL(window.location.href);
@@ -2204,7 +2209,7 @@ function SpeakingResultsPage({
   navigate: Navigate;
   activityId: string;
 }) {
-  const { t, locale } = useSiteTranslation();
+  const { t, locale, language } = useSiteTranslation();
   const [activity, setActivity] = useState<SpeakingActivity>();
   const [sessions, setSessions] = useState<SpeakingSession[]>([]);
   const [sessionId, setSessionId] = useState(
@@ -2289,13 +2294,21 @@ function SpeakingResultsPage({
     };
   }, [loadResults, refreshNonce, sessionId]);
   const resultQuery = resultsSearch.trim().toLocaleLowerCase();
+  const reading = payload?.session.reading === true;
+  const reviewNeeded = (item: SessionResultsResponse["items"][number]) => reading
+    ? !!item.evaluation && item.readingReviewStatus !== "confirmed"
+    : item.status === "error" || item.evaluationStatus === "failed" || item.evaluation?.assessmentStatus === "insufficient_evidence";
   const filteredResults = (payload?.items ?? []).filter((item) => {
     const display = item.participant.displayIdentifier ?? "Anonymous student";
-    return (resultsFilter === "all" || (resultsFilter === "review" ? item.status === "error" || item.evaluationStatus === "failed" || item.evaluation?.assessmentStatus === "insufficient_evidence" : resultsFilter === "retrying" ? item.evaluationStatus === "retrying" : item.status === resultsFilter)) &&
+    return (resultsFilter === "all" || (resultsFilter === "review" ? reviewNeeded(item) : resultsFilter === "retrying" ? item.evaluationStatus === "retrying" : item.status === resultsFilter)) &&
       (!resultQuery || display.toLocaleLowerCase().includes(resultQuery));
   });
   const completed = payload?.items.filter((item) => item.status === "completed").length ?? 0;
-  const needsReview = payload?.items.filter((item) => item.status === "error" || item.evaluationStatus === "failed" || item.evaluation?.assessmentStatus === "insufficient_evidence").length ?? 0;
+  const needsReview = payload?.items.filter(reviewNeeded).length ?? 0;
+  const submitted = payload?.items.filter((item) => item.readingSubmitted).length ?? 0;
+  const processingReadings = payload?.items.filter((item) => item.readingSubmitted && (item.status === "in_progress" || item.status === "evaluating")).length ?? 0;
+  const confirmed = payload?.items.filter((item) => item.readingReviewStatus === "confirmed").length ?? 0;
+  const firstReview = payload?.items.find(reviewNeeded);
   if (error && !activity)
     return <MissingSpeakingSession navigate={navigate} message={t(error)} />;
   if (!activity || (sessionId && loadingResults)) return <TeacherLoading />;
@@ -2322,7 +2335,9 @@ function SpeakingResultsPage({
               <span className="speaking-eyebrow">
                 <Trophy size={15} aria-hidden="true" />{" "}{t("Results & evidence")}</span>
               <h1>{t("Class results")}</h1>
-              <p>{displayActivity.title}{" "}{t("· Review completion, rubric scores and conversation evidence.")}</p>
+              <p>{displayActivity.title}{payload?.readingPassage
+                ? ` · ${payload.readingPassage.textbook} · ${language === "ja" ? `${payload.readingPassage.grade}年` : `Grade ${payload.readingPassage.grade}`} · Unit ${payload.readingPassage.unit} · Part ${payload.readingPassage.part}`
+                : " " + t("· Review completion, rubric scores and conversation evidence.")}</p>
               <div className="speaking-activity-mode-summary"><span className={`speaking-mode-badge speaking-mode-${displayActivity.mode}`}>{t(speakingModeLabel(displayActivity.mode))}</span><span>{t(speakingSupportSummary(displayActivity, t))}</span></div>
             </div>
             {sessions.length > 0 && (
@@ -2354,7 +2369,16 @@ function SpeakingResultsPage({
               {t(error)}
             </p>
           )}
-          {payload && <div className="speaking-class-summary" aria-label={t("Class result summary")}><span><strong>{completed} / {payload.items.length}</strong>{" "}{t("completed")}</span><span><strong>{payload.items.length - completed}</strong>{" "}{t("not completed")}</span><span><strong>{needsReview}</strong>{" "}{t("need review")}</span></div>}
+          {payload && <div className="speaking-class-summary" aria-label={t("Class result summary")}>{reading ? <>
+            <span><strong>{payload.items.length}</strong> {language === "ja" ? "参加" : "joined"}</span>
+            <span><strong>{submitted}</strong> {language === "ja" ? "提出済み" : "submitted"}</span>
+            <span><strong>{payload.items.length - submitted}</strong> {language === "ja" ? "未提出" : "not submitted"}</span>
+            <span><strong>{processingReadings}</strong> {language === "ja" ? "処理中" : "processing"}</span>
+            <span><strong>{confirmed}</strong> {language === "ja" ? "確定" : "confirmed"}</span>
+          </> : <><span><strong>{completed} / {payload.items.length}</strong>{" "}{t("completed")}</span><span><strong>{payload.items.length - completed}</strong>{" "}{t("not completed")}</span></>}
+            <span><strong>{needsReview}</strong>{" "}{t("need review")}</span>
+            {reading && firstReview && <button type="button" className="speaking-outline-button" onClick={() => navigate(`/speak/teacher/result/${firstReview.participant.id}`)}>{language === "ja" ? "確認待ちの評価を開く" : "Open first unreviewed reading"}</button>}
+          </div>}
           {payload && sessions.length > 0 && (
             <div className="speaking-results-toolbar">
               <label>
@@ -2425,7 +2449,7 @@ function SpeakingResultsPage({
                 const points = usesDoctorGrades ? grade?.points : item.overallScore;
                 return <tr className="speaking-results-table-row" key={item.participant.id}>
                 <th scope="row"><button type="button" className="speaking-result-student-link" onClick={() => navigate(`/speak/teacher/result/${item.participant.id}`)}>{item.participant.displayIdentifier ?? t("Student {value0}", { value0: item.participant.id.slice(0, 6) })}<ChevronRight size={16} aria-hidden="true" /></button></th>
-                <td><span className={`speaking-status-pill speaking-status-${item.evaluationStatus === "retrying" ? "retrying" : item.status}`}>{item.evaluation?.assessmentStatus === "insufficient_evidence" ? t("Not scored") : item.evaluationStatus === "retrying" ? t("Evaluation retrying") : item.evaluationStatus === "failed" ? t("Needs attention") : item.status === "completed" ? t("Completed") : item.status === "error" ? t("Needs attention") : item.status === "joined" ? t("Not started") : item.status === "evaluating" ? t("Evaluating") : t("Practicing")}</span></td>
+                <td><span className={`speaking-status-pill speaking-status-${item.evaluationStatus === "retrying" ? "retrying" : item.status}`}>{reading && item.evaluation ? (item.readingReviewStatus === "confirmed" ? (language === "ja" ? "評価確定" : "Confirmed") : (language === "ja" ? "確認待ち" : "Awaiting review")) : item.evaluation?.assessmentStatus === "insufficient_evidence" ? t("Not scored") : item.evaluationStatus === "retrying" ? t("Evaluation retrying") : item.evaluationStatus === "failed" ? t("Needs attention") : item.status === "completed" ? t("Completed") : item.status === "error" ? t("Needs attention") : item.status === "joined" ? t("Not started") : item.status === "evaluating" ? t("Evaluating") : t("Practicing")}</span></td>
                 <td className="speaking-table-score">{points === undefined ? "—" : <>{points}<small>{grade ? `/20 · ${grade.grade}` : "/100"}</small></>}</td>
                 {criteria.map((criterion) => <td key={criterion.id}>{item.evaluation?.scores[criterion.id] ?? "—"}</td>)}
                 <td>{formatDuration(item.durationSeconds)}</td><td>{item.helpCount}</td>
@@ -2508,7 +2532,12 @@ function SpeakingTeacherResultPage({
   const evaluation = result.evaluation;
   const usesDoctorGrades = hasHwgDoctorRubric(result.activity.rubric);
   const grade = hwgDoctorGrade(result.activity.rubric, evaluation?.scores);
-  const points = usesDoctorGrades ? grade?.points : scoreFor(evaluation);
+  const points = result.session.reading ? undefined : usesDoctorGrades ? grade?.points : scoreFor(evaluation);
+  const openNextReading = async () => {
+    const payload = await speakingApi.sessionResults(result.session.id) as SessionResultsResponse;
+    const next = payload.items.find((item) => item.participant.id !== participantId && item.evaluation && item.readingReviewStatus !== "confirmed");
+    navigate(next ? `/speak/teacher/result/${next.participant.id}` : `/speak/teacher/activity/${result.activity.id}/results?sessionId=${encodeURIComponent(result.session.id)}`);
+  };
   return (
     <div className="speaking-page-shell speaking-teacher-shell">
       <main className="speaking-teacher-layout">
@@ -2547,7 +2576,7 @@ function SpeakingTeacherResultPage({
               )}
             </span>
           </div>
-          {evaluation ? (
+          {evaluation && result.session.reading ? <SpeakingReadingResults key={participantId} result={result} teacher onNext={openNextReading} /> : evaluation ? (
             <ResultPanel
               activity={result.activity}
               turns={result.turns}

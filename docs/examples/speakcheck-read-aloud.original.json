@@ -1,0 +1,32 @@
+{
+  "formatVersion": 1,
+  "passages": [
+    {
+      "grade": 1,
+      "textbook": "SpeakCheck Original Samples",
+      "edition": "Original pilot materials",
+      "unit": "1",
+      "part": "1",
+      "title": "A map for the club",
+      "text": "Our school club made a map for new students. I drew the library, and my friend drew the garden. We put a star next to our classroom. On Friday, we shared the map with our teacher."
+    },
+    {
+      "grade": 1,
+      "textbook": "SpeakCheck Original Samples",
+      "edition": "Original pilot materials",
+      "unit": "1",
+      "part": "2",
+      "title": "A windy afternoon",
+      "text": "It was windy after school. I wanted to fly my kite, but the park was closed. My sister and I made a paper kite at home instead."
+    },
+    {
+      "grade": 2,
+      "textbook": "SpeakCheck Original Samples",
+      "edition": "Original pilot materials",
+      "unit": "3",
+      "part": "A",
+      "title": "A new shelf",
+      "text": "We asked the librarian if we could start a book exchange. She showed us an empty shelf by the door. Each of us brought one book. By Thursday, there were twenty books on the shelf."
+    }
+  ]
+}

@@ -4,7 +4,7 @@ import { getApiUrl } from "../../../api/client";
 import { useSiteTranslation } from "../../../ui/siteTranslation";
 import { createSpeakingAudioRecorder } from "../speakingRecorder";
 import { BrowserSpeechRecognizer, speakCheckRecognizer } from "./browserSpeech";
-import { localSpeechMessage, readinessPhrase, speechBenchmarkMetrics, speechWordErrorRate } from "./diagnostics";
+import { localSpeechMessage, readinessPhrase, readingBenchmarkMetrics, speechBenchmarkMetrics, speechWordErrorRate } from "./diagnostics";
 import { defaultLocalSpeechModel, localSpeechModels, localSpeechRuntimeBytes, type LocalSpeechModel } from "./models";
 import type { LocalSpeechBackend, LocalSpeechPreparation, LocalSpeechProgress, LocalTranscript } from "./protocol";
 
@@ -34,6 +34,8 @@ export default function SpeakingLocalReadiness({ diagnostic = false, structured 
   const [recording, setRecording] = useState(false);
   const [transcript, setTranscript] = useState<LocalTranscript>();
   const [reference, setReference] = useState(readinessPhrase);
+  const [readingBenchmark, setReadingBenchmark] = useState(false);
+  const [readingPassage, setReadingPassage] = useState("");
   const [noSpeechControl, setNoSpeechControl] = useState(false);
   const [classroomNoise, setClassroomNoise] = useState(false);
   const [benchmarkRuns, setBenchmarkRuns] = useState<object[]>([]);
@@ -180,12 +182,19 @@ export default function SpeakingLocalReadiness({ diagnostic = false, structured 
     setReady(false);
     setProgress({ stage: "processing" });
     try {
-      const result = await engine.transcribe(sample, diagnostic ? 32 : MAX_SAMPLE_SECONDS + 1, { signal: controller.signal });
+      const options = { signal: controller.signal };
+      const started = performance.now();
+      const result = diagnostic && readingBenchmark
+        ? await engine.transcribeReading(sample, options)
+        : await engine.transcribe(sample, diagnostic ? 32 : MAX_SAMPLE_SECONDS + 1, options);
+      const totalMs = Math.round(performance.now() - started);
       setTranscript(result);
       if (diagnostic) {
         const { text, chunks: _chunks, ...timings } = result;
         setBenchmarkRuns((runs) => [...runs.slice(-59), {
-          preparation, ...timings, classroomNoise, noSpeechControl, ...speechBenchmarkMetrics(reference, text, noSpeechControl)
+          preparation, ...timings, totalMs, classroomNoise, noSpeechControl, ...speechBenchmarkMetrics(reference, text, noSpeechControl),
+          ...(readingBenchmark && !noSpeechControl && readingPassage.trim()
+            ? { reading: readingBenchmarkMetrics(readingPassage, reference, text) } : {})
         }]);
       }
       const sampleMatched = result.status === "recognized" && (speechWordErrorRate(readinessPhrase, result.text) ?? 1) <= 0.5;
@@ -213,6 +222,8 @@ export default function SpeakingLocalReadiness({ diagnostic = false, structured 
   };
 
   const alignment = transcript && speechBenchmarkMetrics(reference, transcript.text, noSpeechControl);
+  const readingAlignment = transcript && readingBenchmark && !noSpeechControl && readingPassage.trim()
+    ? readingBenchmarkMetrics(readingPassage, reference, transcript.text) : undefined;
   const canCheck = preparation && (diagnostic || preparation.modelCached) && sample && (diagnostic ? noSpeechControl || reference.trim() : played);
   const deviceMemory = (navigator as Navigator & { deviceMemory?: number }).deviceMemory;
   return <>
@@ -250,9 +261,11 @@ export default function SpeakingLocalReadiness({ diagnostic = false, structured 
     <button type="button" className="speaking-outline-button" disabled={busy} onClick={() => recording ? record.current?.stop() : void recordSample()}>{t(recording ? "Stop recording" : "Record a sample")}</button>
     {diagnostic && <>
       <label>{t("Or choose an audio file")}<input type="file" accept="audio/*,.mp4,.m4a,.ogg,.webm" disabled={busy || recording} onChange={(event) => { const file = event.target.files?.[0]; if (file) { replaceSample(file); setReference(""); } }} /></label>
+      <label><input type="checkbox" checked={readingBenchmark} disabled={busy} onChange={(event) => { setReadingBenchmark(event.target.checked); setTranscript(undefined); }} /> {t("Long reading benchmark (up to 90 seconds)")}</label>
+      {readingBenchmark && <label>{t("Original passage for comparison")}<textarea rows={3} maxLength={3000} disabled={busy || noSpeechControl} value={readingPassage} onChange={(event) => { setReadingPassage(event.target.value); setTranscript(undefined); }} /></label>}
       <label><input type="checkbox" checked={classroomNoise} disabled={busy} onChange={(event) => setClassroomNoise(event.target.checked)} /> {t("Classroom background noise")}</label>
       <label><input type="checkbox" checked={noSpeechControl} disabled={busy} onChange={(event) => { setNoSpeechControl(event.target.checked); setTranscript(undefined); }} /> {t("No-speech control recording")}</label>
-      <label>{t("Reference transcript for measurement")}<textarea rows={3} value={reference} disabled={busy || noSpeechControl} maxLength={1500} onChange={(event) => { setReference(event.target.value); setTranscript(undefined); }} /></label>
+      <label>{t("Reference transcript for measurement")}<textarea rows={3} value={reference} disabled={busy || noSpeechControl} maxLength={readingBenchmark ? 4000 : 1500} onChange={(event) => { setReference(event.target.value); setTranscript(undefined); }} /></label>
     </>}
     {sample && <audio aria-label={t("Sample playback")} controls src={sampleUrl} onPlay={() => setPlayed(true)} onError={() => {
       setPlayed(false);
@@ -267,11 +280,16 @@ export default function SpeakingLocalReadiness({ diagnostic = false, structured 
         {alignment.missedSpeech && <p>{t("No words recognized for a recording with speech.")}</p>}
         {alignment.hallucinatedSpeech && <p>{t("Words were recognized in the no-speech control.")}</p>}
       </>}
+      {readingAlignment && <dl>{([
+        ["Recognition compared with verified speech", readingAlignment.recognitionAgainstSpoken],
+        ["Verified speech compared with the passage", readingAlignment.spokenAgainstPassage],
+        ["Recognition compared with the passage", readingAlignment.recognitionAgainstPassage]
+      ] as const).map(([label, value]) => <div key={label}><dt>{t(label)}</dt><dd>{value.wordErrorRate === null ? "—" : `${Math.round(value.wordErrorRate * 100)}%`}</dd></div>)}</dl>}
       {diagnostic && transcript.text && <p lang="en">{transcript.text}</p>}
       <p>{t(serverConnected ? "Server connected" : "Server connection unconfirmed")}</p>
     </div>}
     {diagnostic && (benchmarkRuns.length > 0 || startups.length > 0) && <button type="button" className="speaking-outline-button" onClick={() => {
-      const metrics = { version: 1, browser: navigator.userAgent, approximateDeviceMemoryGiB: deviceMemory, startups, benchmarkRuns };
+      const metrics = { version: 2, browser: navigator.userAgent, approximateDeviceMemoryGiB: deviceMemory, startups, benchmarkRuns };
       const url = URL.createObjectURL(new Blob([JSON.stringify(metrics, null, 2)], { type: "application/json" }));
       const link = document.createElement("a");
       link.href = url;

@@ -1,0 +1,102 @@
+.speaking-reading-page {
+  width: min(100% - 2rem, 52rem);
+  margin: 1.5rem auto;
+}
+
+.speaking-reading-home-link {
+  width: min(100% - 2rem, 70rem);
+  margin: 1rem auto;
+}
+
+.speaking-reading-card {
+  display: grid;
+  gap: 1rem;
+  min-width: 0;
+}
+
+.speaking-reading-selectors,
+.speaking-reading-scores {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 0.75rem;
+}
+
+.speaking-reading-card label,
+.speaking-adaptive-editor label {
+  display: grid;
+  gap: 0.35rem;
+  min-width: 0;
+}
+
+.speaking-reading-card :is(select, input, textarea),
+.speaking-adaptive-editor :is(select, input, textarea) {
+  box-sizing: border-box;
+  max-width: 100%;
+}
+
+.speaking-reading-passage {
+  border-inline-start: 3px solid currentColor;
+  padding-inline-start: 1rem;
+  font-size: 1.12rem;
+  line-height: 1.7;
+  overflow-wrap: anywhere;
+  white-space: pre-wrap;
+}
+
+.speaking-reading-submission,
+.speaking-reading-card fieldset,
+.speaking-adaptive-editor fieldset {
+  display: grid;
+  gap: 0.75rem;
+  min-width: 0;
+}
+
+.speaking-reading-card audio {
+  width: min(100%, 30rem);
+}
+
+.speaking-reading-actions {
+  display: flex;
+  gap: 0.6rem;
+  flex-wrap: wrap;
+}
+
+.speaking-reading-differences li {
+  margin-block: 0.5rem;
+  padding-inline-start: 0.5rem;
+  border-inline-start: 3px solid #b66c2b;
+}
+
+.speaking-reading-differences button {
+  margin-inline-start: 0.5rem;
+}
+
+.speaking-reading-word-substitution {
+  color: #863d03;
+  background: #fff0cd;
+  text-decoration: underline dotted;
+}
+
+.speaking-reading-word-omission {
+  color: #8c2335;
+  background: #ffe9ed;
+  text-decoration: line-through;
+}
+
+.speaking-reading-word-insertion {
+  color: #28518b;
+  background: #e3f0ff;
+  text-decoration: underline double;
+}
+
+.speaking-reading-alignment {
+  line-height: 1.75;
+  overflow-wrap: anywhere;
+}
+
+@media (max-width: 560px) {
+  .speaking-reading-selectors,
+  .speaking-reading-scores {
+    grid-template-columns: 1fr;
+  }
+}

@@ -51,7 +51,7 @@ try {
   if (!template.includes('<div id="root"></div>')) throw new Error("The HTML template must contain an empty React root.");
   const shell = template.replace("</head>", () => `  ${appShellHead}\n  </head>`);
   await writeOutput("404.html", shell);
-  for (const path of ["join", "game", "check", "diagnostics", "speak/join"]) {
+  for (const path of ["join", "game", "check", "diagnostics", "speak/join", "speak/read-aloud"]) {
     await writeOutput(`${path}/index.html`, shell);
   }
 

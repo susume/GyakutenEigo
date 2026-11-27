@@ -191,6 +191,7 @@ model User {
   speakingActivities    SpeakingActivity[]
   speakingSets          SpeakingSet[]
   speakingContextImages SpeakingContextImage[]
+  speakingPassages      SpeakingPassageVersion[]
   createdAt             DateTime               @default(now())
   updatedAt             DateTime               @updatedAt
 }
@@ -429,6 +430,7 @@ model SpeakingSession {
   activitySnapshotJson     Json
   localTranscription       Boolean               @default(false)
   structuredPlanJson       Json?
+  readingAssignmentJson   Json?
   participants             SpeakingParticipant[]
   turns                    SpeakingTurn[]
 
@@ -458,10 +460,33 @@ model SpeakingParticipant {
   turns              SpeakingTurn[]
   evaluation         SpeakingEvaluation?
   evaluationJob      SpeakingEvaluationJob?
+  readingReviews     SpeakingReadingReview[]
 
   @@unique([sessionId, joinRequestId])
   @@index([activityId, status])
   @@index([sessionId, status])
+}
+
+model SpeakingPassageVersion {
+  id          String   @id
+  teacherId   String
+  teacher     User     @relation(fields: [teacherId], references: [id], onDelete: Cascade)
+  passageKey  String
+  version     Int
+  passageJson Json
+  createdAt   DateTime @default(now())
+
+  @@unique([teacherId, passageKey, version])
+}
+
+model SpeakingReadingReview {
+  participantId String
+  participant   SpeakingParticipant @relation(fields: [participantId], references: [id], onDelete: Cascade)
+  revision      Int
+  reviewJson    Json
+  createdAt     DateTime @default(now())
+
+  @@id([participantId, revision])
 }
 
 model SpeakingTurn {

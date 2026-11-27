@@ -231,6 +231,15 @@ snapshot. See `packages/shared/PROTOCOL.md` for the wire-level contract.
 
 ## 8. Speaking Practice
 
+The repository includes two disabled-by-default Phase 3 capabilities. Adaptive
+structured conversation uses `SPEAKING_STRUCTURED_ENABLED` and
+`SPEAKING_ADAPTIVE_ENABLED`. Read Aloud uses `SPEAKING_READ_ALOUD_ENABLED`.
+Both use browser recognition and deterministic assessment with no external AI
+fallback. Authorized classroom submissions persist transcripts and provisional
+evidence. Read Aloud also stores versioned private passages and teacher
+moderation revisions. The current pilot stores no raw recordings. See the
+[Phase 3 runbook](docs/speaking-phase-3.md) for operation and rollout gates.
+
 Production requires both provider selectors unless explicit mock mode is
 enabled. Render currently uses:
 

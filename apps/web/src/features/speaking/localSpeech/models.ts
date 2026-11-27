@@ -1,3 +1,5 @@
+import { SPEAKCHECK_MOONSHINE } from "@quizstrike/shared";
+
 // Weight and tokenizer sizes from the pinned Hugging Face model trees, in bytes.
 export const localSpeechModels = {
   tiny: {
@@ -15,8 +17,7 @@ export const localSpeechModels = {
     timestamps: true
   },
   moonshine: {
-    id: "onnx-community/moonshine-tiny-ONNX",
-    revision: "a6da1241cd305dcd64eab1edbd615f2bb9aabb95",
+    ...SPEAKCHECK_MOONSHINE,
     bytes: 32_079_632,
     label: "Moonshine Tiny (8-bit)",
     timestamps: false

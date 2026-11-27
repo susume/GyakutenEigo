@@ -49,3 +49,32 @@ test("a provider-independent production process needs no provider credentials", 
   });
   assert.ok(Object.values(providers).every((provider) => provider.providerName === "mock"));
 });
+test("adaptive plans branch on alternate, negative, uncertain and corrected responses", () => {
+  const step = {
+    question: "Where did you go last Sunday?", objective: "Say where you went",
+    kind: "answer" as const, concepts: ["Kyoto"], alternateConcepts: ["home"],
+    followUp: "What did you do there?", alternateFollowUp: "What did you do at home?", clarification: "Where were you on Sunday?"
+  };
+  const plan = { version: 2 as const, maxResponses: 4, steps: [step] };
+  const answers = (...values: string[]) => values.map((text, index) => ({
+    id: `t${index}`, participantId: "synthetic", speaker: "student" as const, createdAt: "", text
+  }));
+  assert.equal(structuredProgress(plan, answers("I went to Kyoto.")).reply, step.followUp);
+  assert.equal(structuredProgress(plan, answers("I stayed home.")).reply, step.alternateFollowUp);
+  const repaired = structuredProgress(plan, answers("I went to Kyoto.", "Actually, I stayed home."));
+  assert.equal(repaired.reply, step.alternateFollowUp);
+  assert.deepEqual(repaired.evidence.get(0), ["t1"]);
+  assert.equal(structuredProgress(plan, answers("My cousin went to Kyoto.")).evidence.size, 0);
+  assert.equal(structuredProgress(plan, answers("I don't understand.")).reply, step.clarification);
+  assert.equal(structuredProgress(plan, answers("dinosaurs", "still dinosaurs")).complete, true);
+  const unsure = structuredProgress(plan, [{ ...answers("I went to Kyoto.")[0], transcriptionUncertain: true }]);
+  assert.deepEqual(unsure.uncertainTurnIds, ["t0"]);
+  const negative = { version: 2 as const, steps: [{
+    ...step, question: "Do you like sports?", concepts: ["soccer"], acceptsNegative: true,
+    negativeFollowUp: "What do you like doing instead?"
+  }] };
+  assert.equal(structuredProgress(negative, answers("No, I don’t.")).reply, "What do you like doing instead?");
+  assert.equal(structuredProgress(negative, answers("No, I don’t.")).evidence.size, 1);
+  const breakfast = { version: 2 as const, steps: [{ ...step, question: "What did you eat for breakfast?", concepts: ["eat breakfast"] }] };
+  assert.equal(structuredProgress(breakfast, answers("I didn't eat breakfast.")).evidence.size, 0);
+});

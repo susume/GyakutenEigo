@@ -1,5 +1,6 @@
 export const LOCAL_SAMPLE_RATE = 16_000;
 const MAX_FILE_BYTES = 8 * 1024 * 1024;
+export const MAX_READING_FILE_BYTES = 20 * 1024 * 1024;
 
 export class LocalSpeechError extends Error {
   constructor(readonly code: "unsupported" | "decode" | "too-long" | "too-large" | "timeout" | "model" | "busy" | "prepare") {
@@ -26,10 +27,10 @@ export function hasLikelySpeech(samples: Float32Array) {
   return activeFrames >= 5 && peakRms >= weakestRms * 1.7;
 }
 
-export async function decodeLocalAudio(blob: Blob, maxSeconds: number, signal?: AbortSignal) {
+export async function decodeLocalAudio(blob: Blob, maxSeconds: number, signal?: AbortSignal, maxBytes = MAX_FILE_BYTES) {
   signal?.throwIfAborted();
   if (!blob.size) throw new LocalSpeechError("decode");
-  if (blob.size > MAX_FILE_BYTES) throw new LocalSpeechError("too-large");
+  if (blob.size > maxBytes) throw new LocalSpeechError("too-large");
   if (typeof OfflineAudioContext === "undefined") throw new LocalSpeechError("unsupported");
   const context = new OfflineAudioContext(1, 1, LOCAL_SAMPLE_RATE);
   let timer: ReturnType<typeof setTimeout> | undefined;
@@ -61,4 +62,30 @@ export async function decodeLocalAudio(blob: Blob, maxSeconds: number, signal?: 
     for (let i = 0; i < data.length; i++) samples[i] = samples[i]! + data[i]! / audio.numberOfChannels;
   }
   return { samples, durationMs: Math.round(audio.duration * 1_000) };
+}
+
+/** Partition at a quiet frame when possible. No overlap or dropped samples. */
+export function localReadingChunks(samples: Float32Array) {
+  const chunks: Float32Array[] = [];
+  const preferred = 15 * LOCAL_SAMPLE_RATE;
+  const search = 2 * LOCAL_SAMPLE_RATE;
+  const frame = LOCAL_SAMPLE_RATE / 50;
+  let start = 0;
+  while (samples.length - start > preferred + search) {
+    let bestBoundary = start + preferred;
+    let lowestCost = Infinity;
+    for (let offset = start + preferred - search; offset <= Math.min(start + preferred + search, samples.length - frame); offset += frame) {
+      let sum = 0;
+      for (let index = offset - frame; index < offset + frame; index++) sum += samples[index]! ** 2;
+      const cost = sum / (2 * frame) + 1e-6 * Math.abs(offset - start - preferred) / search;
+      if (cost < lowestCost) {
+        lowestCost = cost;
+        bestBoundary = offset;
+      }
+    }
+    chunks.push(samples.slice(start, bestBoundary));
+    start = bestBoundary;
+  }
+  if (start < samples.length) chunks.push(samples.slice(start));
+  return chunks;
 }
