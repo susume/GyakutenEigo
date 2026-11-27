@@ -1,4 +1,5 @@
 import { z } from "zod";
+import type { SpeakingReadingAlignment, SpeakingReadingAssignment, SpeakingReadingReview } from "./speakingReading.js";
 import { speakingCriterionMax } from "./speakingRubric.js";
 import {
   SPEAKING_LIBRARY_CATEGORY_IDS,
@@ -423,6 +424,9 @@ export interface SpeakingParticipant {
 }
 
 export interface SpeakingSession {
+  reading?: boolean;
+  /** Authenticated assignment snapshot. */
+  readingAssignment?: SpeakingReadingAssignment;
   /** Immutable launch context; deliberately retained after a Set is deleted. */
   speakingSetId?: string;
   speakingSetNameSnapshot?: string;
@@ -507,6 +511,7 @@ export interface SpeakingTurn {
 }
 
 export interface SpeakingEvaluation {
+  assessmentEvidence?: SpeakingAssessmentEvidence;
   participantId: string;
   language: SpeakingNativeLanguage;
   assessmentStatus: SpeakingAssessmentStatus;
@@ -521,7 +526,19 @@ export interface SpeakingEvaluation {
   createdAt: string;
 }
 
+export interface SpeakingAssessmentEvidence {
+  version: 1;
+  algorithm: string;
+  source: "client_transcript";
+  /** Model configured for the pilot. Client inference is not attested. */
+  expectedRecognizer: string;
+  criteria: Record<string, { turnIds: string[]; rule: string; reviewRequired: boolean }>;
+  uncertainTurnIds: string[];
+  reading?: { passageId: string; passageVersion: number; alignment: SpeakingReadingAlignment; durationMs?: number };
+}
+
 export interface SpeakingParticipantResult {
+  readingReview?: SpeakingReadingReview;
   participant: SpeakingParticipant;
   session: SpeakingSession;
   activity: Pick<SpeakingActivity, "id" | "title" | "scenario" | "targetExpressions" | "nativeLanguage" | "rubric" | "scenarioResources" | "context" | "mode" | "supportSettings">;
@@ -685,14 +702,24 @@ export type SpeakingLocalSpeechReadiness = z.infer<typeof SpeakingLocalSpeechRea
 export const SpeakingSessionStatusSchema = z.enum(SPEAKING_SESSION_STATUSES);
 
 export const SpeakingStructuredPlanSchema = z.object({
+  version: z.literal(2).optional(),
+  maxResponses: z.number().int().min(1).max(11).optional(),
+  completeAfter: z.number().int().min(1).max(6).optional(),
   steps: z.array(z.object({
     question: z.string().trim().min(1).max(180),
     objective: z.string().trim().min(1).max(180),
     concepts: z.array(z.string().trim().min(1).max(48)).max(8).default([]),
     followUp: z.string().trim().min(1).max(180).optional(),
+    negativeFollowUp: z.string().trim().min(1).max(180).optional(),
+    alternateConcepts: z.array(z.string().trim().min(1).max(48)).max(8).optional(),
+    alternateFollowUp: z.string().trim().min(1).max(180).optional(),
+    clarification: z.string().trim().min(1).max(180).optional(),
+    acceptsNegative: z.boolean().optional(),
     kind: z.enum(["answer", "question"]).default("answer")
   }).strict()).min(1).max(6)
-}).strict();
+}).strict().refine(({ completeAfter, steps }) => completeAfter === undefined || completeAfter <= steps.length, {
+  path: ["completeAfter"], message: "Completion requires at most the number of configured objectives."
+});
 export type SpeakingStructuredPlan = z.infer<typeof SpeakingStructuredPlanSchema>;
 
 export const SpeakingEvaluationSchema = z.object({
@@ -749,7 +776,8 @@ export const speakingRemainingSeconds = (
   referenceTime: string | number | Date
 ) => Math.max(0, Math.floor((durationSeconds * 1_000 - speakingActiveElapsedMs(participant, session, referenceTime)) / 1_000));
 
-export const speakingOverallScore = (evaluation?: Pick<SpeakingEvaluation, "scores">) => {
+export const speakingOverallScore = (evaluation?: Pick<SpeakingEvaluation, "scores" | "assessmentEvidence">) => {
+  if (evaluation?.assessmentEvidence?.source === "client_transcript" && Object.values(evaluation.scores).some((score) => score === null)) return undefined;
   let points = 0;
   let maximum = 0;
   for (const [id, score] of Object.entries(evaluation?.scores ?? {})) {

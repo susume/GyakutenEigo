@@ -1,4 +1,7 @@
 import { useSiteTranslation } from "../../ui/siteTranslation";
+import type { SpeakingParticipantResult } from "@quizstrike/shared";
+import { SpeakingReadingResults } from "./SpeakingReadingResults";
+import "./speaking-reading.css";
 import { lazy, Suspense, useCallback, useEffect, useRef, useState, type FormEvent } from "react";
 import { appRoute, getPublicPage, publicPagePath } from "../../seo/publicPages";
 import {
@@ -37,7 +40,6 @@ import {
   speakingScenarioResources,
   speakingRemainingSeconds,
   type SpeakingActivity,
-  type SpeakingEvaluation,
   type SpeakingParticipant,
   type SpeakingSession,
   type SpeakingTurn
@@ -71,9 +73,11 @@ import "./speaking-scene.css";
 import "./speaking-workspace.css";
 
 const SpeakingLocalReadiness = lazy(() => import("./localSpeech/SpeakingLocalReadiness"));
+const SpeakingReadAloud = lazy(() => import("./SpeakingReadAloud"));
 
 type SpeakingRoute =
   | { kind: "home" }
+  | { kind: "read-aloud" }
   | { kind: "join"; code?: string }
   | { kind: "session"; id: string }
   | { kind: "prepare"; id?: string }
@@ -84,7 +88,7 @@ type Navigate = (nextPath: string) => void;
 type JoinResponse = { activity: SpeakingActivity; participant: SpeakingParticipant; session: SpeakingSession; token: string };
 type SessionResponse = { activity: SpeakingActivity; participant: SpeakingParticipant; session: SpeakingSession; turns: SpeakingTurn[] };
 type SpeakingEvaluationStatus = "queued" | "running" | "retrying" | "completed" | "failed";
-type ResultResponse = { result: { activity: Pick<SpeakingActivity, "id" | "title" | "scenario" | "targetExpressions" | "nativeLanguage" | "rubric" | "scenarioResources" | "context" | "mode" | "supportSettings">; session: SpeakingSession; participant: SpeakingParticipant; turns: SpeakingTurn[]; evaluation?: SpeakingEvaluation }; evaluationStatus?: SpeakingEvaluationStatus; evaluationRetryable?: boolean; evaluationManualRetryAt?: string; nextRetryAt?: string };
+type ResultResponse = { result: SpeakingParticipantResult; evaluationStatus?: SpeakingEvaluationStatus; evaluationRetryable?: boolean; evaluationManualRetryAt?: string; nextRetryAt?: string };
 
 const normalizePath = (path: string) => (path === "/" ? path : path.replace(/\/+$/u, ""));
 const decodeRouteSegment = (segment: string) => {
@@ -98,6 +102,7 @@ const decodeRouteSegment = (segment: string) => {
 const parseRoute = (path: string): SpeakingRoute => {
   const segments = normalizePath(path).split("/").filter(Boolean).map(decodeRouteSegment);
   if (segments.length <= 1) return { kind: "home" };
+  if (segments[1] === "read-aloud") return { kind: "read-aloud" };
   if (segments[1] === "join") return { kind: "join", ...(segments[2] ? { code: segments[2].toUpperCase() } : {}) };
   if (segments[1] === "session" && segments[2]) return { kind: "session", id: segments[2] };
   if (segments[1] === "prepare" && (segments[2] || import.meta.env.VITE_SPEAKING_LOCAL_DIAGNOSTICS === "true")) return { kind: "prepare", id: segments[2] };
@@ -160,6 +165,7 @@ export default function SpeakingPracticeApp({ initialPath }: { initialPath?: str
   return (
     <div className="speaking-app" id="main-content" tabIndex={-1}>
       {route.kind === "home" && <SpeakingHome navigate={navigate} />}
+      {route.kind === "read-aloud" && <ReadingPracticeEntry navigate={navigate} />}
       {route.kind === "join" && <SpeakingJoinPage key={route.code ?? "manual"} navigate={navigate} initialCode={route.code} />}
       {route.kind === "session" && <SpeakingSessionPage key={route.id} navigate={navigate} sessionId={route.id} />}
       {route.kind === "prepare" && (route.id
@@ -187,14 +193,38 @@ function SpeakingTopbar({ navigate, active = "home", teacher = false, student = 
 }
 
 function SpeakingHome({ navigate }: { navigate: Navigate }) {
+  const { language } = useSiteTranslation();
+  const enabled = useReadingAvailability();
   return <div className="speaking-home-page speaking-welcome">
     <PerformanceHeader onNavigate={navigate} />
+    {enabled && <div className="speaking-reading-home-link"><button type="button" className="speaking-outline-button" onClick={() => navigate("/speak/read-aloud")}>{language === "ja" ? "音読チェック" : "Read Aloud"}</button></div>}
     <PublicHomepage
       variant="speaking"
       onCreateMatch={() => navigate("/speak/teacher")}
       onJoinGame={(code) => navigate(code ? `/speak/join/${encodeURIComponent(code)}` : "/speak/join")}
       onTeacherLogin={() => navigate("/speak/teacher")}
     />
+  </div>;
+}
+
+function useReadingAvailability() {
+  const [enabled, setEnabled] = useState<boolean>();
+  useEffect(() => {
+    let current = true;
+    void speakingApi.readingAvailability().then((result) => { if (current) setEnabled(result.enabled); })
+      .catch(() => { if (current) setEnabled(false); });
+    return () => { current = false; };
+  }, []);
+  return enabled;
+}
+
+function ReadingPracticeEntry({ navigate }: { navigate: Navigate }) {
+  const { language } = useSiteTranslation();
+  const enabled = useReadingAvailability();
+  return <div className="speaking-page-shell"><SpeakingTopbar navigate={navigate} student />
+    {enabled
+      ? <Suspense fallback={null}><SpeakingReadAloud onJoin={() => navigate("/speak/join")} /></Suspense>
+      : enabled === false && <main className="speaking-empty-card"><p role="status">{language === "ja" ? "音読チェックは現在利用できません。" : "Read Aloud is currently unavailable."}</p></main>}
   </div>;
 }
 
@@ -692,6 +722,13 @@ function SpeakingSessionPage({ navigate, sessionId, showPreparation = false }: {
   }, [navigate, sessionId, token]);
   if (loading) return <div className="speaking-empty-page"><LoaderCircle size={34} className="speaking-spin" aria-hidden="true" /><h1>{t("Opening your session")}</h1><p>{t("Getting the classroom conversation ready…")}</p></div>;
   if (!data) return <div className="speaking-empty-page"><CircleCheck size={38} aria-hidden="true" /><h1>{t("Session unavailable")}</h1><p>{t(error)}</p><button className="speaking-primary-button" type="button" onClick={() => navigate("/speak/join")}>{t("Join another activity")}</button></div>;
+  if (data.session.reading) return <div className="speaking-page-shell">
+    <SpeakingTopbar navigate={navigate} student studentLabel={data.participant.displayIdentifier} />
+    <Suspense fallback={null}><SpeakingReadAloud onJoin={() => navigate("/speak/join")} classroom={{
+      session: data.session, token, submitted: data.turns.some((turn) => turn.speaker === "student"),
+      onFinish: () => navigate("/speak/result/" + data.participant.id)
+    }} /></Suspense>
+  </div>;
   if (data.session.localTranscription && (showPreparation || data.participant.localSpeechReadiness !== "ready")) {
     return <SpeakingPreActivityPageV2 navigate={navigate} joined={{ ...data, token }} />;
   }
@@ -1301,6 +1338,11 @@ function SpeakingResultPageV2({ navigate, participantId }: { navigate: Navigate;
   if (!result && !error) return <div className="speaking-empty-page"><LoaderCircle size={34} className="speaking-spin" aria-hidden="true" /><h1>{t("Preparing your result")}</h1><p>{t("Your real conversation is being evaluated…")}</p></div>;
   if (!result && resultUnavailable) return <MissingSpeakingSession navigate={navigate} message={t(error)} />;
   if (!result) return <div className="speaking-empty-page" role="status"><LoaderCircle size={34} className="speaking-spin" aria-hidden="true" /><h1>{t("Reconnecting to your result")}</h1><p>{t(error)}</p><button type="button" className="speaking-outline-button" onClick={() => pollNowRef.current()}>{t("Refresh status")}</button></div>;
+  if (result.session.reading && result.evaluation) return <div className="speaking-page-shell speaking-result-page">
+    <SpeakingTopbar navigate={navigate} student /><main className="speaking-reading-page">
+      <SpeakingReadingResults result={result} />
+    </main>
+  </div>;
   const hasSpeech = hasStudentSpeech(result.turns);
   const copy = speakingFeedbackCopy(language);
   const insufficientEvidence = Boolean(result.evaluation && (result.evaluation.assessmentStatus === "insufficient_evidence" || !hasSpeech));

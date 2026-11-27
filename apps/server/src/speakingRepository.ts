@@ -3,6 +3,13 @@ import { Prisma, PrismaClient, type SpeakingEvaluationJob as PrismaSpeakingEvalu
 import { SPEAKING_EVALUATION_MAX_ATTEMPTS, SPEAKING_GEMINI_SCHEMA_RECOVERY_CODE } from "./speakingEvaluation.js";
 import {
   SpeakingStructuredPlanSchema,
+  SpeakingReadingAssignmentSchema,
+  speakingPassageKey,
+  type SpeakingPassage,
+  type SpeakingPassageInput,
+  type SpeakingReadingAssignment,
+  type SpeakingReadingReview,
+  type SpeakingReadingReviewInput,
   type SpeakingStructuredPlan,
   SPEAKING_LIMITS,
   SPEAKING_LIBRARY_CATEGORY_IDS,
@@ -71,6 +78,7 @@ export type SpeakingSessionAccess = {
 };
 
 export type SpeakingResultRecord = {
+  readingReviewStatus?: SpeakingReadingReview["status"];
   session: SpeakingSession;
   participant: SpeakingParticipant;
   activity: SpeakingActivity;
@@ -134,9 +142,15 @@ export interface SpeakingRepository {
   removeSetActivity(teacherId: string, setId: string, activityId: string): Promise<SpeakingSetDetail | undefined>;
   reorderSetActivities(teacherId: string, setId: string, activityIds: string[]): Promise<SpeakingSetDetail | undefined>;
   isJoinCodeTaken(joinCode: string): Promise<boolean>;
+  listPassages(teacherId: string): Promise<SpeakingPassage[]>;
+  getPassage(teacherId: string, id: string): Promise<SpeakingPassage | undefined>;
+  importPassages(teacherId: string, passages: SpeakingPassageInput[], id: () => string): Promise<void>;
+  listReadingReviews(participantId: string): Promise<SpeakingReadingReview[]>;
+  appendReadingReview(participantId: string, input: SpeakingReadingReviewInput, now: string): Promise<SpeakingReadingReview | undefined>;
   createSession(input: {
     localTranscription?: boolean;
     structuredPlan?: SpeakingStructuredPlan;
+    readingAssignment?: SpeakingReadingAssignment;
     speakingSetId?: string;
     speakingSetNameSnapshot?: string;
     speakingSetFocusSnapshot?: string;
@@ -193,6 +207,8 @@ export type InMemorySpeakingState = {
   evaluationJobs: Map<string, SpeakingEvaluationJob>;
   sets: Map<string, InMemorySpeakingSet>;
   contextImages: Map<string, SpeakingContextImageRecord>;
+  passages: Map<string, Map<string, SpeakingPassage>>;
+  readingReviews: Map<string, SpeakingReadingReview[]>;
 };
 
 export type InMemorySpeakingSet = {
@@ -214,10 +230,29 @@ export const createInMemorySpeakingState = (): InMemorySpeakingState => ({
   tokenToParticipant: new Map(),
   evaluationJobs: new Map(),
   sets: new Map(),
-  contextImages: new Map()
+  contextImages: new Map(),
+  passages: new Map(),
+  readingReviews: new Map()
 });
 
 export const hashSpeakingToken = (token: string) => createHash("sha256").update(token).digest("hex");
+
+const samePassage = (previous: SpeakingPassage | undefined, passage: SpeakingPassageInput) => previous
+  && Object.entries(passage).every(([key, value]) => previous[key as keyof SpeakingPassageInput] === value)
+  && previous.title === passage.title && previous.publisher === passage.publisher;
+
+const prismaPassage = (row: { id: string; version: number; passageJson: Prisma.JsonValue }): SpeakingPassage =>
+  ({ ...(row.passageJson as SpeakingPassageInput), id: row.id, version: row.version });
+
+const prismaReadingReview = (row: { revision: number; createdAt: Date; reviewJson: Prisma.JsonValue }): SpeakingReadingReview =>
+  ({ ...(row.reviewJson as Omit<SpeakingReadingReview, "revision" | "createdAt">), revision: row.revision, createdAt: row.createdAt.toISOString() });
+
+const canAppendReadingReview = (previous: SpeakingReadingReview | undefined, input: SpeakingReadingReviewInput) =>
+  (previous?.revision ?? 0) === input.expectedRevision &&
+  (input.status === "reopened" ? previous?.status === "confirmed" : previous?.status !== "confirmed");
+
+const newReadingReview = ({ expectedRevision, ...input }: SpeakingReadingReviewInput, createdAt: string): SpeakingReadingReview =>
+  ({ ...input, revision: expectedRevision + 1, createdAt });
 
 export const snapshotActivity = (activity: SpeakingActivity): SpeakingActivitySnapshot => ({
   title: activity.title,
@@ -278,6 +313,8 @@ const cloneActivity = (activity: SpeakingActivity): SpeakingActivity => ({
 });
 
 const cloneSession = (session: SpeakingSession): SpeakingSession => ({
+  ...(session.reading ? { reading: true } : {}),
+  ...(session.readingAssignment ? { readingAssignment: structuredClone(session.readingAssignment) } : {}),
   ...(session.localTranscription ? { localTranscription: true } : {}),
   ...(session.structured ? { structured: true } : {}),
   ...(session.structuredPlan ? { structuredPlan: structuredClone(session.structuredPlan) } : {}),
@@ -589,6 +626,7 @@ export class InMemorySpeakingRepository implements SpeakingRepository {
   async createSession(input: Parameters<SpeakingRepository["createSession"]>[0]) {
     const session: InMemorySession = {
       id: input.id,
+      ...(input.readingAssignment ? { reading: true, readingAssignment: structuredClone(input.readingAssignment) } : {}),
       ...(input.localTranscription ? { localTranscription: true } : {}),
       ...(input.structuredPlan ? { structured: true, structuredPlan: structuredClone(input.structuredPlan) } : {}),
       ...(input.speakingSetId ? { speakingSetId: input.speakingSetId, speakingSetNameSnapshot: input.speakingSetNameSnapshot, ...(input.speakingSetFocusSnapshot === undefined ? {} : { speakingSetFocusSnapshot: input.speakingSetFocusSnapshot }) } : {}),
@@ -604,6 +642,39 @@ export class InMemorySpeakingRepository implements SpeakingRepository {
     };
     this.state.sessions.set(session.id, session);
     return cloneSession(session);
+  }
+
+  async listPassages(teacherId: string) {
+    const items = [...(this.state.passages.get(teacherId)?.values() ?? [])];
+    return structuredClone([...new Map(items.map((item) => [speakingPassageKey(item), item])).values()]);
+  }
+
+  async getPassage(teacherId: string, id: string) {
+    return structuredClone(this.state.passages.get(teacherId)?.get(id));
+  }
+
+  async importPassages(teacherId: string, passages: SpeakingPassageInput[], id: () => string) {
+    const catalog = this.state.passages.get(teacherId) ?? new Map<string, SpeakingPassage>();
+    const latest = new Map([...catalog.values()].map((item) => [speakingPassageKey(item), item]));
+    for (const passage of passages) {
+      const previous = latest.get(speakingPassageKey(passage));
+      if (samePassage(previous, passage)) continue;
+      const item = { ...passage, id: id(), version: (previous?.version ?? 0) + 1 };
+      catalog.set(item.id, item);
+    }
+    this.state.passages.set(teacherId, catalog);
+  }
+
+  async listReadingReviews(participantId: string) {
+    return structuredClone(this.state.readingReviews.get(participantId) ?? []);
+  }
+
+  async appendReadingReview(participantId: string, input: SpeakingReadingReviewInput, now: string) {
+    const history = this.state.readingReviews.get(participantId) ?? [];
+    if (!canAppendReadingReview(history.at(-1), input)) return undefined;
+    const review = newReadingReview(input, now);
+    this.state.readingReviews.set(participantId, [...history, review]);
+    return structuredClone(review);
   }
 
   async getSession(id: string) {
@@ -847,7 +918,8 @@ export class InMemorySpeakingRepository implements SpeakingRepository {
     const eligible = [...this.state.evaluationJobs.values()].filter((job) => {
       if (!structuredOnly) return true;
       const sessionId = this.state.participants.get(job.participantId)?.sessionId;
-      return !!(sessionId && this.state.sessions.get(sessionId)?.structuredPlan);
+      const session = sessionId ? this.state.sessions.get(sessionId) : undefined;
+      return !!(session?.structuredPlan || session?.readingAssignment);
     });
     return eligible.filter((job) => job.status === "queued" || job.status === "failed" && job.lastErrorCode === SPEAKING_GEMINI_SCHEMA_RECOVERY_CODE || job.status === "retrying" && (!job.nextRetryAt || !Number.isFinite(Date.parse(job.nextRetryAt)) || Date.parse(job.nextRetryAt) <= nowMs) || job.status === "running" && (!job.leaseUntil || Date.parse(job.leaseUntil) <= nowMs)).slice(0, 100).map((job) => job.participantId);
   }
@@ -891,8 +963,9 @@ export class InMemorySpeakingRepository implements SpeakingRepository {
       .map((participant) => {
         const turns = session.turns.filter((turn) => turn.participantId === participant.id).map((turn) => ({ ...turn }));
         const evaluation = session.evaluations.get(participant.id);
-        const overallScore = speakingOverallScore(evaluation);
-        return { session: cloneSession(session), participant: participantPublic(participant), activity: sessionActivity, turns, ...(evaluation ? { evaluation } : {}), ...(overallScore === undefined ? {} : { overallScore }) };
+        const overallScore = session.reading ? undefined : speakingOverallScore(evaluation);
+        const readingReviewStatus = this.state.readingReviews.get(participant.id)?.at(-1)?.status;
+        return { session: cloneSession(session), participant: participantPublic(participant), activity: sessionActivity, turns, readingReviewStatus, ...(evaluation ? { evaluation } : {}), ...(overallScore === undefined ? {} : { overallScore }) };
       });
   }
 }
@@ -1054,8 +1127,15 @@ const readStructuredPlan = (value: Prisma.JsonValue | undefined): Pick<SpeakingS
   return result.success ? { structured: true, structuredPlan: result.data } : { structured: true };
 };
 
-const toSession = (row: Pick<PrismaSession, "id" | "activityId" | "joinCode" | "status" | "createdAt" | "startedAt" | "pausedAt" | "endedAt" | "expiresAt" | "revision"> & Partial<Pick<PrismaSession, "speakingSetId" | "speakingSetNameSnapshot" | "speakingSetFocusSnapshot" | "localTranscription" | "structuredPlanJson">>): SpeakingSession => ({
+const readReadingAssignment = (value: Prisma.JsonValue | undefined): Pick<SpeakingSession, "reading" | "readingAssignment"> => {
+  if (value == null) return {};
+  const result = SpeakingReadingAssignmentSchema.safeParse(value);
+  return result.success ? { reading: true, readingAssignment: result.data } : { reading: true };
+};
+
+const toSession = (row: Pick<PrismaSession, "id" | "activityId" | "joinCode" | "status" | "createdAt" | "startedAt" | "pausedAt" | "endedAt" | "expiresAt" | "revision"> & Partial<Pick<PrismaSession, "speakingSetId" | "speakingSetNameSnapshot" | "speakingSetFocusSnapshot" | "localTranscription" | "structuredPlanJson" | "readingAssignmentJson">>): SpeakingSession => ({
   ...readStructuredPlan(row.structuredPlanJson),
+  ...readReadingAssignment(row.readingAssignmentJson),
   ...(row.localTranscription ? { localTranscription: true } : {}),
   ...(row.speakingSetId ? { speakingSetId: row.speakingSetId, speakingSetNameSnapshot: row.speakingSetNameSnapshot ?? undefined, ...(row.speakingSetFocusSnapshot === null || row.speakingSetFocusSnapshot === undefined ? {} : { speakingSetFocusSnapshot: row.speakingSetFocusSnapshot }) } : {}),
   id: row.id,
@@ -1138,6 +1218,8 @@ const toEvaluation = (row: { participantId: string; language: string; scoresJson
     return typeof candidate.said === "string" && typeof candidate.try === "string" ? [{ said: candidate.said, try: candidate.try, ...(typeof candidate.sourceTurnId === "string" ? { sourceTurnId: candidate.sourceTurnId } : {}) }] : [];
   }) : [],
   ...(goalCompletion ? { goalCompletion } : {}),
+  ...(metadata.assessmentEvidence && typeof metadata.assessmentEvidence === "object" && (metadata.assessmentEvidence as { version?: number }).version === 1
+    ? { assessmentEvidence: metadata.assessmentEvidence as SpeakingEvaluation["assessmentEvidence"] } : {}),
   overallMessage: row.overallMessage,
   createdAt: row.createdAt.toISOString()
   };
@@ -1434,11 +1516,56 @@ export class PrismaSpeakingRepository implements SpeakingRepository {
         revision: 0,
         activitySnapshotJson: snapshotActivity(input.activity) as unknown as Prisma.InputJsonValue,
         localTranscription: input.localTranscription,
-        structuredPlanJson: input.structuredPlan
+        structuredPlanJson: input.structuredPlan,
+        readingAssignmentJson: input.readingAssignment
       },
       include: sessionInclude
     });
     return (await this.sessionAccess(row)).session;
+  }
+
+  async listPassages(teacherId: string) {
+    const rows = await this.prisma.speakingPassageVersion.findMany({
+      where: { teacherId }, distinct: ["passageKey"], orderBy: [{ passageKey: "asc" }, { version: "desc" }]
+    });
+    return rows.map(prismaPassage);
+  }
+
+  async getPassage(teacherId: string, id: string) {
+    const row = await this.prisma.speakingPassageVersion.findFirst({ where: { teacherId, id } });
+    return row ? prismaPassage(row) : undefined;
+  }
+
+  async importPassages(teacherId: string, passages: SpeakingPassageInput[], id: () => string) {
+    await this.prisma.$transaction(async (tx) => {
+      // Serialize imports for this owner so concurrent imports assign stable versions.
+      await tx.$queryRaw`SELECT "id" FROM "User" WHERE "id" = ${teacherId} FOR UPDATE`;
+      for (const passage of passages) {
+        const passageKey = speakingPassageKey(passage);
+        const previous = await tx.speakingPassageVersion.findFirst({
+          where: { teacherId, passageKey }, orderBy: { version: "desc" }
+        });
+        if (samePassage(previous ? prismaPassage(previous) : undefined, passage)) continue;
+        await tx.speakingPassageVersion.create({
+          data: { id: id(), teacherId, passageKey, version: (previous?.version ?? 0) + 1, passageJson: passage }
+        });
+      }
+    });
+  }
+
+  async listReadingReviews(participantId: string) {
+    const rows = await this.prisma.speakingReadingReview.findMany({ where: { participantId }, orderBy: { revision: "asc" } });
+    return rows.map(prismaReadingReview);
+  }
+
+  async appendReadingReview(participantId: string, input: SpeakingReadingReviewInput, now: string) {
+    const previous = await this.prisma.speakingReadingReview.findFirst({ where: { participantId }, orderBy: { revision: "desc" } });
+    if (!canAppendReadingReview(previous ? prismaReadingReview(previous) : undefined, input)) return undefined;
+    const { revision, createdAt, ...reviewJson } = newReadingReview(input, now);
+    const inserted = await this.prisma.speakingReadingReview.createMany({
+      data: { participantId, revision, createdAt: new Date(createdAt), reviewJson }, skipDuplicates: true
+    });
+    return inserted.count ? { revision, createdAt, ...reviewJson } : undefined;
   }
 
   async getSession(id: string) {
@@ -1663,7 +1790,8 @@ export class PrismaSpeakingRepository implements SpeakingRepository {
         metadataJson: {
           assessmentStatus: evaluation.assessmentStatus,
           ...(evaluation.notScoredReason ? { notScoredReason: evaluation.notScoredReason } : {}),
-          ...(evaluation.goalCompletion ? { goalCompletion: evaluation.goalCompletion } : {})
+          ...(evaluation.goalCompletion ? { goalCompletion: evaluation.goalCompletion } : {}),
+          ...(evaluation.assessmentEvidence ? { assessmentEvidence: evaluation.assessmentEvidence } : {})
         } as unknown as Prisma.InputJsonValue,
         overallMessage: evaluation.overallMessage,
         createdAt: new Date(evaluation.createdAt)
@@ -1678,7 +1806,8 @@ export class PrismaSpeakingRepository implements SpeakingRepository {
         metadataJson: {
           assessmentStatus: evaluation.assessmentStatus,
           ...(evaluation.notScoredReason ? { notScoredReason: evaluation.notScoredReason } : {}),
-          ...(evaluation.goalCompletion ? { goalCompletion: evaluation.goalCompletion } : {})
+          ...(evaluation.goalCompletion ? { goalCompletion: evaluation.goalCompletion } : {}),
+          ...(evaluation.assessmentEvidence ? { assessmentEvidence: evaluation.assessmentEvidence } : {})
         } as unknown as Prisma.InputJsonValue,
         overallMessage: evaluation.overallMessage
       }
@@ -1776,7 +1905,7 @@ export class PrismaSpeakingRepository implements SpeakingRepository {
   async recoverableEvaluationParticipants(now: string, structuredOnly = false) {
     const rows = await this.prisma.speakingEvaluationJob.findMany({
       where: {
-        ...(structuredOnly ? { participant: { session: { structuredPlanJson: { not: Prisma.DbNull } } } } : {}),
+        ...(structuredOnly ? { participant: { session: { OR: [{ structuredPlanJson: { not: Prisma.DbNull } }, { readingAssignmentJson: { not: Prisma.DbNull } }] } } } : {}),
         OR: [{ status: "queued" }, { status: "failed", lastErrorCode: SPEAKING_GEMINI_SCHEMA_RECOVERY_CODE }, { status: "retrying", OR: [{ nextRetryAt: { lte: new Date(now) } }, { nextRetryAt: null }] }, { status: "running", leaseUntil: { lte: new Date(now) } }, { status: "running", leaseUntil: null }]
       },
       select: { participantId: true }, orderBy: { queuedAt: "asc" }, take: 100
@@ -1826,16 +1955,18 @@ export class PrismaSpeakingRepository implements SpeakingRepository {
   async listResults(activityId: string, sessionId: string, teacherId: string) {
     const rows = await this.prisma.speakingParticipant.findMany({
       where: { activityId, sessionId, session: { activity: { teacherId } } },
-      include: { session: { include: sessionInclude }, turns: true, evaluation: true },
+      include: { session: { include: sessionInclude }, turns: true, evaluation: true, readingReviews: { orderBy: { revision: "desc" }, take: 1 } },
       orderBy: [{ id: "asc" }]
-    }) as PrismaParticipantResult[];
+    });
     return rows.map((row) => {
       const accessActivity = toActivity(row.session.activity);
       const activity = activityFromSnapshot(accessActivity, snapshotFromJson(row.session.activitySnapshotJson, accessActivity));
       const turns = row.turns.sort((a, b) => a.createdAt.getTime() - b.createdAt.getTime()).map(toTurn);
       const evaluation = row.evaluation ? toEvaluation(row.evaluation) : undefined;
-      const overallScore = speakingOverallScore(evaluation);
-      return { session: toSession(row.session), participant: toParticipant(row), activity, turns, ...(evaluation ? { evaluation } : {}), ...(overallScore === undefined ? {} : { overallScore }) };
+      const session = toSession(row.session);
+      const overallScore = session.reading ? undefined : speakingOverallScore(evaluation);
+      const readingReviewStatus = row.readingReviews[0] ? prismaReadingReview(row.readingReviews[0]).status : undefined;
+      return { session, participant: toParticipant(row), activity, turns, readingReviewStatus, ...(evaluation ? { evaluation } : {}), ...(overallScore === undefined ? {} : { overallScore }) };
     });
   }
 }

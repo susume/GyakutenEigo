@@ -10,8 +10,10 @@ export type SpeechWordEdit = {
 
 /** Word-level Levenshtein alignment with deterministic ties favoring substitution. */
 export function alignSpeechWords(expected: string, actual: string) {
-  const reference = speechWords(expected);
-  const recognized = speechWords(actual);
+  return alignSpeechTokens(speechWords(expected), speechWords(actual));
+}
+
+export function alignSpeechTokens(reference: string[], recognized: string[]) {
   const rows = Array.from({ length: reference.length + 1 }, () => new Uint32Array(recognized.length + 1));
   for (let col = 0; col <= recognized.length; col++) rows[0]![col] = col;
   for (let row = 1; row <= reference.length; row++) {

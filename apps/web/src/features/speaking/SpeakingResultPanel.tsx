@@ -99,9 +99,20 @@ export function ResultPanel({
                   not_completed: t("Not yet completed"),
                   uncertain: t("Not enough evidence")
                 })[requirement.status]}:</strong> {requirement.requirement}
+                {teacherView && evaluation.assessmentEvidence && turns.filter((turn) => requirement.evidenceTurnIds.includes(turn.id)).map((turn) =>
+                  <blockquote key={turn.id} lang="en">{turn.text}</blockquote>
+                )}
               </li>
             ))}
           </ul>
+        </div>
+      )}
+      {teacherView && !!evaluation.assessmentEvidence?.uncertainTurnIds.length && (
+        <div className="speaking-result-message speaking-result-message-warning">
+          <h3>{language === "ja" ? "確認が必要な回答" : "Responses needing verification"}</h3>
+          {studentTurns.filter((turn) => evaluation.assessmentEvidence?.uncertainTurnIds.includes(turn.id)).map((turn) =>
+            <blockquote key={turn.id} lang="en">{turn.text}</blockquote>
+          )}
         </div>
       )}
       <p className="speaking-rubric-intro">{activity.rubric.some((criterion) => criterion.enabled && speakingCriterionMax(criterion.id) === 5)

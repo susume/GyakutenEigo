@@ -1,5 +1,5 @@
 import { LocalSpeechError } from "./audio";
-import { alignSpeechWords, speechWords } from "@quizstrike/shared";
+import { alignSpeakingReading, alignSpeechWords, speechWords } from "@quizstrike/shared";
 
 export const readinessPhrase = "I like reading books.";
 
@@ -18,6 +18,18 @@ export function speechBenchmarkMetrics(reference: string, text: string, control:
   };
   return { ...alignment, missedSpeech: !control && alignment.referenceWords > 0 && !alignment.recognizedWords,
     hallucinatedSpeech: control && alignment.recognizedWords > 0, referencePatterns: count(control ? "" : reference), recognizedPatterns: count(text) };
+}
+
+export function readingBenchmarkMetrics(passage: string, manuallyVerified: string, recognized: string) {
+  const summary = (reference: string, actual: string) => {
+    const { words: _words, ...metrics } = alignSpeakingReading(reference, actual);
+    return metrics;
+  };
+  return {
+    recognitionAgainstSpoken: summary(manuallyVerified, recognized),
+    spokenAgainstPassage: summary(passage, manuallyVerified),
+    recognitionAgainstPassage: summary(passage, recognized)
+  };
 }
 
 export const localSpeechMessage = (error: unknown) => {

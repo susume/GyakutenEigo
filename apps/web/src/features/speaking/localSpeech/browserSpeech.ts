@@ -1,4 +1,5 @@
-import { decodeLocalAudio, LocalSpeechError } from "./audio";
+import { SPEAKING_READING_MAX_SECONDS } from "@quizstrike/shared";
+import { decodeLocalAudio, localReadingChunks, LocalSpeechError, LOCAL_SAMPLE_RATE, MAX_READING_FILE_BYTES, hasLikelySpeech } from "./audio";
 import { defaultLocalSpeechModel, type LocalSpeechModel } from "./models";
 import type { LocalSpeechBackend, LocalSpeechPreparation, LocalSpeechProgress, LocalTranscript, SpeechWorkerRequest, SpeechWorkerResponse } from "./protocol";
 
@@ -93,9 +94,36 @@ export class BrowserSpeechRecognizer {
   async transcribe(blob: Blob, maxSeconds: number, options: Options = {}): Promise<LocalTranscript> {
     if (!this.preparation) throw new LocalSpeechError("prepare");
     const { samples, durationMs } = await decodeLocalAudio(blob, maxSeconds, options.signal);
+    return this.transcribeSamples(samples, durationMs, options);
+  }
+
+  private async transcribeSamples(samples: Float32Array, durationMs: number, options: Options): Promise<LocalTranscript> {
     const response = await this.request({ type: "transcribe", samples, durationMs }, 45_000, options);
     if (response.type !== "transcribed") throw new LocalSpeechError("model");
     return response.transcript;
+  }
+
+  async transcribeReading(blob: Blob, options: Options & { onChunk?: (completed: number, total: number) => void } = {}): Promise<LocalTranscript> {
+    if (!this.preparation) throw new LocalSpeechError("prepare");
+    const { model, backend } = this.preparation;
+    const { samples, durationMs } = await decodeLocalAudio(blob, SPEAKING_READING_MAX_SECONDS, options.signal, MAX_READING_FILE_BYTES);
+    const segments = localReadingChunks(samples);
+    const texts: string[] = [];
+    let inferenceMs = 0;
+    let missed = false;
+    for (const [index, segment] of segments.entries()) {
+      options.signal?.throwIfAborted();
+      if (hasLikelySpeech(segment)) {
+        const result = await this.transcribeSamples(segment, Math.round(segment.length / LOCAL_SAMPLE_RATE * 1_000), options);
+        if (result.text) texts.push(result.text);
+        else missed = true;
+        inferenceMs += result.inferenceMs;
+      }
+      options.onChunk?.(index + 1, segments.length);
+    }
+    const text = texts.join(" ");
+    return { model, backend, durationMs, text, inferenceMs,
+      status: !text ? "no-speech" : missed || text.split(/\s+/u).length === 1 ? "uncertain" : "recognized" };
   }
 }
 
